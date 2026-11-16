@@ -1,0 +1,511 @@
+{% extends "base.html" %}
+{% block title %}My career profile{% endblock %}
+{% block body %}
+<div class="page-head">
+  <div>
+    <h1>My career profile</h1>
+    <p class="muted">Where you're heading. Unlike your development plan, this
+      isn't tied to a period &mdash; it carries forward and you can change it
+      whenever your thinking changes.</p>
+  </div>
+</div>
+
+{# ---- Career map -------------------------------------------------------
+   Placed above the aspirations on purpose: it is hard to write where you want
+   to go before you can see what exists and what it would take. Everything here
+   is derived from the job architecture at read time, so it is silent -- not
+   broken -- on a database where no architecture has been imported yet. #}
+{% macro gapbar(g) %}
+<div class="cmap-bar" title="{{ g.met }} of {{ g.total }} competencies already held">
+  <span class="cmap-bar-fill" style="width:{{ g.pct }}%"></span>
+</div>
+{% endmacro %}
+
+{% macro rolecard(r, is_target=false, open_gap=false) %}
+{# Readiness is the headline, not role similarity. The two disagree constantly
+   and similarity is the less useful answer: a role can list every competency
+   your job does and still be one you hold none of at the depth it needs. The
+   overlap figure stays, as a title on the readiness number. #}
+<div class="cmap-role{{ ' is-target' if is_target }}" id="role-{{ r.profile.id }}">
+  {% if is_target %}<span class="cmap-flag">My target</span>{% endif %}
+  <div class="cmap-role-head">
+    <p class="cmap-role-title">{{ r.profile.job_title | proper }}
+      {% if r.pinned %}<span class="cmap-pin" title="A route Group People has confirmed">&#9733;</span>{% endif %}
+    </p>
+    {% if r.readiness is not none %}
+    <span class="cmap-ready" title="{{ r.overlap }}% of your current role's competencies also appear in this one">
+      {{ r.readiness }}%<s>skills match</s></span>
+    {% else %}
+    <span class="cmap-match">{{ r.overlap }}% of your role's skills</span>
+    {% endif %}
+  </div>
+  {# Department is what tells two same-titled roles apart. Dropping it when the
+     grade line went in made three different "Executive" roles render as three
+     identical cards -- the map offered a choice it gave you no way to make. #}
+  <p class="muted small" style="margin:0 0 8px">{{ r.profile.department | proper or '—' }}
+    &middot; JG {{ r.profile.job_grade }}
+    &middot; {{ 'a grade up' if r.step == 'up' else 'same grade' }}
+    {% if r.track_move %}&middot; moves into {{ r.track_move }}{% endif %}</p>
+  {% if r.gap %}
+    {# One bar, three segments: what you hold, what you hold but not deeply
+       enough, and what you have never been assessed on. Distance becomes
+       legible without opening anything. #}
+    <div class="cmap-bar" title="{{ r.gap.met }} held, {{ r.gap.stretch }} to deepen, {{ r.gap.missing }} new">
+      {% if r.gap.met %}<b class="is-met" style="width:{{ (100 * r.gap.met / r.gap.total) | round | int }}%"></b>{% endif %}
+      {% if r.gap.stretch %}<b class="is-stretch" style="width:{{ (100 * r.gap.stretch / r.gap.total) | round | int }}%"></b>{% endif %}
+      {% if r.gap.missing %}<b class="is-missing" style="width:{{ (100 * r.gap.missing / r.gap.total) | round | int }}%"></b>{% endif %}
+    </div>
+    <p class="cmap-legend">
+      {% if r.gap.met %}<span><i class="is-met"></i>{{ r.gap.met }} held</span>{% endif %}
+      {% if r.gap.stretch %}<span><i class="is-stretch"></i>{{ r.gap.stretch }} to deepen</span>{% endif %}
+      {% if r.gap.missing %}<span><i class="is-missing"></i>{{ r.gap.missing }} new</span>{% endif %}
+    </p>
+    {# Open on the roles you are closest to: the skill list is the reason
+       somebody came to this page, and behind a summary nobody opens it. #}
+    <details class="cmap-detail" {{ 'open' if open_gap }}>
+      <summary>What it would take</summary>
+      <ul class="cmap-skills">
+        {% for sk in r.gap.rows %}
+        <li class="cmap-skill is-{{ sk.state }}">
+          <span>{{ sk.title }}</span>
+          <span class="muted small">
+            {% if sk.state == 'met' %}held at level {{ sk.have }}
+            {% elif sk.state == 'stretch' %}level {{ sk.have }} &rarr; needs {{ sk.required }}
+            {% else %}not assessed &middot; needs level {{ sk.required }}{% endif %}
+          </span>
+        </li>
+        {% endfor %}
+      </ul>
+    </details>
+  {% endif %}
+  <div class="cmap-acts">
+    {% if is_target %}
+      <span class="cmap-chip">&#9733; You&rsquo;re working towards this</span>
+      <form method="post" action="{{ url_for('idp_career_anchor') }}">
+        <input type="hidden" name="field" value="target_profile_id">
+        <input type="hidden" name="profile_id" value="">
+        <button type="submit" class="btn-link">Clear target</button>
+      </form>
+    {% else %}
+      <form method="post" action="{{ url_for('idp_career_anchor') }}">
+        <input type="hidden" name="field" value="target_profile_id">
+        <input type="hidden" name="profile_id" value="{{ r.profile.id }}">
+        <button type="submit" class="btn-link">Set as my target</button>
+      </form>
+    {% endif %}
+  </div>
+</div>
+{% endmacro %}
+
+{% if here %}
+<div class="admin-card" id="career-map">
+  <h2 style="margin:0 0 4px;font-size:1.05rem">Your career map</h2>
+  <p class="muted small" style="margin:0 0 14px">
+    Built from the job architecture. Each role shows its skills match &mdash; the
+    share of its competencies you hold at the depth it asks for. A match is not a
+    promotion decision; it is a starting point for a conversation.
+  </p>
+
+  <div class="cmap-here">
+    <p class="cmap-eyebrow">You are here</p>
+    <p class="cmap-here-title">{{ here.job_title | proper }}</p>
+    <p class="muted small" style="margin:2px 0 0">{{ here.department | proper or '—' }} &middot; JG {{ here.job_grade }}
+      {% if anchor == 'self' %}<span class="cmap-selfnote">&middot; you chose this role</span>{% endif %}</p>
+    {% if here_gap and here_gap.total %}
+      <div style="max-width:320px;margin-top:8px">{{ gapbar(here_gap) }}</div>
+      <p class="muted small" style="margin:6px 0 0">{{ here_gap.met }} of {{ here_gap.total }} competencies
+        for your own role demonstrated so far</p>
+    {% endif %}
+    {% if anchor == 'self' %}
+    <form method="post" action="{{ url_for('idp_career_anchor') }}" style="margin-top:8px">
+      <input type="hidden" name="field" value="self_profile_id">
+      <input type="hidden" name="profile_id" value="">
+      <button type="submit" class="btn-link">Change my role</button>
+    </form>
+    {% endif %}
+  </div>
+
+  {# No separate "heading towards" card: the target is flagged on its own card
+     in the list below, so the same role never appears twice on one screen.
+     Kept only for a target that has dropped out of the ranked routes -- HR can
+     hide a route, and a saved target must not silently vanish with it. #}
+  {% if target and not (routes | selectattr('profile.id', 'equalto', target.id) | list) %}
+  <div class="cmap-target">
+    <p class="cmap-eyebrow">Heading towards</p>
+    <p class="cmap-here-title">{{ target.job_title | proper }}{% if target.retired %} (retired){% endif %}</p>
+    <p class="muted small" style="margin:2px 0 8px">{{ target.department | proper or '—' }} &middot; JG {{ target.job_grade }}
+      &middot; {% if target.retired %}this job has been retired, so it is no longer offered{% else %}no longer offered as a route from your role{% endif %}</p>
+    {% if target_gap and target_gap.total %}
+      <div style="max-width:320px">{{ gapbar(target_gap) }}</div>
+      <p class="muted small" style="margin:6px 0 0">
+        <strong>{{ target_gap.met }}</strong> of {{ target_gap.total }} held
+        &middot; {{ target_gap.stretch }} to deepen &middot; {{ target_gap.missing }} new</p>
+    {% endif %}
+    <form method="post" action="{{ url_for('idp_career_anchor') }}" style="margin-top:8px">
+      <input type="hidden" name="field" value="target_profile_id">
+      <input type="hidden" name="profile_id" value="">
+      <button type="submit" class="btn-link">Clear target</button>
+    </form>
+  </div>
+  {% endif %}
+
+  {# Grouped by how ready you are, not by track. Track still shows per card
+     ("moves into Rewards") -- two competing groupings on one screen makes
+     neither readable, and readiness is the one people plan around. #}
+  {% if routes_ranked %}
+    {% set ns = namespace(shown=0) %}
+    {% for key, title, blurb in ready_groups %}
+      {% set members = routes | selectattr('group', 'equalto', key) | list %}
+      {% if members %}
+      <div class="cmap-lane-head">
+        <div>
+          <p class="cmap-lane-title">{{ title }}</p>
+          <p class="muted small" style="margin:0">{{ blurb }}</p>
+        </div>
+        {# Buttons rather than relying on a trackpad swipe: on a mouse there is
+           no obvious way to reach card six, and a wrapping grid made every lane
+           several rows tall. JS reveals these only when the row overflows. #}
+        <div class="cmap-nav" hidden>
+          <button type="button" class="cmap-nav-btn" data-dir="-1" aria-label="Show earlier roles">&#8249;</button>
+          <button type="button" class="cmap-nav-btn" data-dir="1" aria-label="Show more roles">&#8250;</button>
+        </div>
+      </div>
+      <div class="cmap-lane">
+        {% for r in members %}
+          {# The gap opens on the first two cards overall, wherever they land. #}
+          {{ rolecard(r, is_target=(target and target.id == r.profile.id),
+                      open_gap=(ns.shown < 2)) }}
+          {% set ns.shown = ns.shown + 1 %}
+        {% endfor %}
+      </div>
+      {% endif %}
+    {% endfor %}
+  {% else %}
+    <div class="cmap-lane-head">
+      <div>
+        <p class="cmap-lane-title">Roles related to yours</p>
+        <p class="muted small" style="margin:0">
+          Ordered by how much of your role&rsquo;s skill set they share. Once your
+          technical competency assessment has been reviewed, these re-order by
+          how closely your assessed skills match each one.
+        </p>
+      </div>
+      <div class="cmap-nav" hidden>
+        <button type="button" class="cmap-nav-btn" data-dir="-1" aria-label="Show earlier roles">&#8249;</button>
+        <button type="button" class="cmap-nav-btn" data-dir="1" aria-label="Show more roles">&#8250;</button>
+      </div>
+    </div>
+    <div class="cmap-lane">
+      {% for r in routes %}{{ rolecard(r, is_target=(target and target.id == r.profile.id)) }}{% endfor %}
+    </div>
+  {% endif %}
+  {% if not routes %}
+  <p class="muted" style="margin:0">No related roles in the architecture yet. As more
+    roles are mapped, routes from yours will appear here.</p>
+  {% endif %}
+</div>
+
+{% elif all_profiles %}
+{# Unmapped: most of the roster. Let them anchor themselves rather than showing
+   a dead page -- and their pick is a signal HR can use to fix the mapping. #}
+<div class="admin-card" id="career-map">
+  <h2 style="margin:0 0 4px;font-size:1.05rem">Your career map</h2>
+  <p class="muted small" style="margin:0 0 12px">
+    We couldn't match your job title and grade to a role in the job architecture
+    yet. Pick the role closest to what you do and the map will build from there.
+  </p>
+  <form method="post" action="{{ url_for('idp_career_anchor') }}"
+        style="display:flex;gap:10px;flex-wrap:wrap;align-items:center">
+    <input type="hidden" name="field" value="self_profile_id">
+    <select name="profile_id" class="modern-select" style="min-width:340px">
+      <option value="">Choose your closest role…</option>
+      {% for p in all_profiles %}
+      <option value="{{ p.id }}">{{ p.job_title | proper }} — {{ p.department | proper or 'Any department' }} (JG {{ p.job_grade }})</option>
+      {% endfor %}
+    </select>
+    <button type="submit" class="primary">Build my map</button>
+  </form>
+</div>
+{% endif %}
+
+{# One bar for the whole profile. Without it the page is six empty boxes with
+   no sense of how far through you are, and the autosave state was a few muted
+   words most people never noticed. #}
+<div class="cp-bar">
+  <span class="small"><strong id="cp-done">0</strong> of <span id="cp-total">0</span> filled</span>
+  <span class="cp-track"><b id="cp-fill" style="width:0%"></b></span>
+  <span id="cp-status" class="cp-saved" aria-live="polite"></span>
+</div>
+
+<div class="admin-card">
+  <h2 style="margin:0 0 4px;font-size:1.05rem">What you're aiming for</h2>
+  <p class="muted small" style="margin:0 0 14px">Your manager can see this &mdash;
+    it's what the career conversation is built on.</p>
+  {% for h in horizons %}
+  <div class="idp-field" style="margin-bottom:14px">
+    <label for="cp-{{ h['key'] }}" style="font-weight:500;font-size:0.84375rem;display:block">{{ h['label'] }}</label>
+    <p class="muted small" style="margin:2px 0 6px">{{ h['hint'] }}</p>
+    {# The map and this box ask the same question. Somebody who has just picked
+       a target on the map should not then face an empty field about the move
+       they have already chosen -- offered, never auto-written, because the
+       words in this box are theirs and a manager reads them as such.
+       Only while the field is still empty, so it can never nag. #}
+    {% if h['key'] == 'aspiration_mid' and target and not target.retired and not (profile and profile['aspiration_mid']) %}
+    <div class="cp-prefill" id="cp-prefill">
+      <span>You set <strong>{{ target.job_title | proper }}</strong> as your target on the map. Use it here?</span>
+      <span style="display:flex;gap:8px">
+        <button type="button" class="primary cp-prefill-use"
+                data-text="Working towards {{ target.job_title }}">Use it</button>
+        <button type="button" class="btn-link cp-prefill-no">No thanks</button>
+      </span>
+    </div>
+    {% endif %}
+    <textarea id="cp-{{ h['key'] }}" class="cp-field" data-field="{{ h['key'] }}" rows="2"
+              style="width:100%;box-sizing:border-box;padding:8px 10px;border:1px solid var(--d-bd-d7dbe6);border-radius:8px;font-family:inherit;font-size:0.84375rem;resize:vertical">{{ (profile[h['key']] if profile else '') or '' }}</textarea>
+  </div>
+  {% endfor %}
+</div>
+
+<div class="admin-card" style="margin-top:16px">
+  <h2 style="margin:0 0 14px;font-size:1.05rem">How you'd like to get there</h2>
+
+  <div class="idp-field" style="margin-bottom:14px">
+    <label for="cp-strengths" style="font-weight:500;font-size:0.84375rem;display:block">What you want to build on</label>
+    <p class="muted small" style="margin:2px 0 6px">The strengths worth leaning into, in your own words</p>
+    <textarea id="cp-strengths" class="cp-field" data-field="strengths" rows="2"
+              style="width:100%;box-sizing:border-box;padding:8px 10px;border:1px solid var(--d-bd-d7dbe6);border-radius:8px;font-family:inherit;font-size:0.84375rem;resize:vertical">{{ (profile['strengths'] if profile else '') or '' }}</textarea>
+  </div>
+
+  <div class="idp-field" style="margin-bottom:14px">
+    <label for="cp-mobility" style="font-weight:500;font-size:0.84375rem;display:block">Mobility</label>
+    <p class="muted small" style="margin:2px 0 6px">How far you're open to moving for the right role</p>
+    <select id="cp-mobility" class="cp-field modern-select" data-field="mobility" style="max-width:360px">
+      <option value="">&mdash; not saying yet &mdash;</option>
+      {% for m in mobility_options %}
+      <option value="{{ m['key'] }}" {{ 'selected' if profile and profile['mobility'] == m['key'] else '' }}>{{ m['label'] }}</option>
+      {% endfor %}
+    </select>
+    <textarea id="cp-mobility_note" class="cp-field" data-field="mobility_note" rows="2"
+              placeholder="Anything that qualifies it &mdash; timing, family, a location that would work"
+              style="width:100%;box-sizing:border-box;margin-top:8px;padding:8px 10px;border:1px solid var(--d-bd-d7dbe6);border-radius:8px;font-family:inherit;font-size:0.84375rem;resize:vertical">{{ (profile['mobility_note'] if profile else '') or '' }}</textarea>
+  </div>
+
+  <div class="idp-field" style="margin-bottom:14px">
+    <label for="cp-preferences" style="font-weight:500;font-size:0.84375rem;display:block">Work you want more of &mdash; and less of</label>
+    <textarea id="cp-preferences" class="cp-field" data-field="preferences" rows="2"
+              style="width:100%;box-sizing:border-box;padding:8px 10px;border:1px solid var(--d-bd-d7dbe6);border-radius:8px;font-family:inherit;font-size:0.84375rem;resize:vertical">{{ (profile['preferences'] if profile else '') or '' }}</textarea>
+  </div>
+
+  <div class="idp-field">
+    <label for="cp-mentor" style="font-weight:500;font-size:0.84375rem;display:block">Who you'd like to learn from</label>
+    <p class="muted small" style="margin:2px 0 6px">A mentor, or simply someone whose work you'd like to be closer to</p>
+    <textarea id="cp-mentor" class="cp-field" data-field="mentor" rows="2"
+              style="width:100%;box-sizing:border-box;padding:8px 10px;border:1px solid var(--d-bd-d7dbe6);border-radius:8px;font-family:inherit;font-size:0.84375rem;resize:vertical">{{ (profile['mentor'] if profile else '') or '' }}</textarea>
+  </div>
+
+
+</div>
+
+{% if profile and profile['manager_comment'] %}
+<div class="admin-card" style="margin-top:16px">
+  <h2 style="margin:0 0 4px;font-size:1.05rem">Your manager's view</h2>
+  <p class="muted small" style="margin:0 0 8px">On where you're heading. Your own
+    answers above stay yours &mdash; this sits alongside them.</p>
+  <div class="resp-comment"><p>{{ profile['manager_comment'] }}</p></div>
+</div>
+{% endif %}
+
+{% if conversation and (conversation['held_on'] or conversation['note']) %}
+<div class="admin-card" style="margin-top:16px">
+  <h2 style="margin:0 0 4px;font-size:1.05rem">Your career conversation</h2>
+  <p class="muted small" style="margin:0 0 10px">
+    Recorded by {{ conversation['recorded_by_name'] or 'your manager' }}
+    {%- if conversation['held_on'] %} &middot; {{ conversation['held_on'] }}{% endif %}
+    {%- if period %} &middot; {{ period['name'] }}{% endif %}
+  </p>
+  {% if conversation['note'] %}
+  <div class="resp-comment"><p>{{ conversation['note'] }}</p></div>
+  {% endif %}
+
+  {# Confirming is NOT approval -- there is no reject, and it changes nothing
+     about the plan. It exists because a conversation only your manager
+     records is a claim rather than evidence, and this whole record exists
+     because the conversation is the step that usually gets skipped. #}
+  {% if conversation['acknowledged_at'] %}
+  <p class="muted small" style="margin:10px 0 0">
+    &#10003; You confirmed this on {{ conversation['acknowledged_at'] | myt_date }}.
+  </p>
+  {% if conversation['acknowledged_note'] %}
+  <div class="resp-comment" style="margin:8px 0 0">
+    <p class="resp-comment-head">Your note</p>
+    <p>{{ conversation['acknowledged_note'] }}</p>
+  </div>
+  {% endif %}
+  {% else %}
+  <div id="cc-ack" style="margin-top:12px;border-top:1px solid var(--line-soft);padding-top:12px">
+    <p class="muted small" style="margin:0 0 6px">Did this conversation happen? Confirming
+      records your side of it &mdash; it doesn't change your plan.</p>
+    <textarea id="cc-ack-note" rows="2" maxlength="2000"
+              placeholder="Anything you'd add (optional)"
+              style="width:100%;box-sizing:border-box;padding:8px 10px;border:1px solid var(--d-bd-d7dbe6);border-radius:8px;font-family:inherit;font-size:0.84375rem;resize:vertical"></textarea>
+    <div class="actions" style="margin-top:8px;align-items:center;gap:10px">
+      <span class="muted small" id="cc-ack-status" aria-live="polite"></span>
+      <button type="button" class="primary" id="cc-ack-btn">Yes, we spoke</button>
+    </div>
+  </div>
+  <script>
+  (function () {
+    var btn = document.getElementById('cc-ack-btn');
+    if (!btn) return;
+    btn.addEventListener('click', function () {
+      var st = document.getElementById('cc-ack-status');
+      var body = new FormData();
+      var m = document.querySelector('meta[name="csrf-token"]');
+      body.append('csrf_token', m ? m.content : '');
+      body.append('note', (document.getElementById('cc-ack-note') || {}).value || '');
+      btn.disabled = true;
+      st.textContent = 'Saving…';
+      fetch('{{ url_for("idp_conversation_acknowledge") }}',
+            {method: 'POST', body: body, credentials: 'same-origin'})
+        .then(function (r) { return r.json(); })
+        .then(function (d) {
+          if (d && d.ok) { location.reload(); return; }
+          btn.disabled = false;
+          st.textContent = (d && d.error) || 'Couldn’t save — try again.';
+        })
+        .catch(function () {
+          btn.disabled = false;
+          st.textContent = 'Couldn’t save — try again.';
+        });
+    });
+  })();
+  </script>
+  {% endif %}
+</div>
+{% endif %}
+
+<div class="cp-done">
+  <div>
+    <p style="margin:0;font-weight:600">That's your career profile.</p>
+    <p class="muted small" style="margin:3px 0 0">Everything here saves as you
+      type &mdash; there's nothing to submit. Your manager reads it as it
+      stands, and you can change it whenever your thinking does.</p>
+  </div>
+  <a class="primary" href="{{ url_for('idp_view') }}">Go to my plan &rarr;</a>
+</div>
+
+<script>
+(function () {
+  var fields = Array.prototype.slice.call(document.querySelectorAll('.cp-field'));
+  if (!fields.length) return;
+  var ENDPOINT = {{ url_for('idp_career_autosave') | tojson }};
+  var statusEl = document.getElementById('cp-status');
+  var timers = {};
+
+  function csrf() {
+    var m = document.querySelector('meta[name="csrf-token"]');
+    return m ? m.content : '';
+  }
+  // Three visible states rather than one grey word: people need to trust an
+  // autosaving page has actually kept what they wrote.
+  function setState(kind, text) {
+    if (!statusEl) return;
+    statusEl.textContent = text;
+    statusEl.className = 'cp-saved is-' + kind;
+  }
+
+  function save(el) {
+    var body = new FormData();
+    body.append('csrf_token', csrf());
+    body.append('field', el.getAttribute('data-field'));
+    body.append('value', el.value);
+    setState('saving', 'Saving…');
+    fetch(ENDPOINT, {method: 'POST', body: body, credentials: 'same-origin'})
+      .then(function (r) { return r.json(); })
+      .then(function (d) { setState(d && d.ok ? 'ok' : 'err',
+                                    d && d.ok ? '\u2713 Saved'
+                                      : '\u26a0 ' + ((d && d.reason === 'screened' && d.error) || 'Couldn\u2019t save')); })
+      .catch(function () { setState('err', '\u26a0 Couldn\u2019t save'); });
+  }
+  // Progress counts every field on the page, so it answers "how much of this
+   // have I done" rather than "how many aspirations".
+  function refreshProgress() {
+    var done = fields.filter(function (f) { return (f.value || '').trim() !== ''; }).length;
+    var total = fields.length;
+    var d = document.getElementById('cp-done'), t = document.getElementById('cp-total'),
+        f = document.getElementById('cp-fill');
+    if (d) d.textContent = done;
+    if (t) t.textContent = total;
+    if (f) f.style.width = (total ? Math.round(100 * done / total) : 0) + '%';
+  }
+  refreshProgress();
+
+  // Each lane is one horizontal row; the arrows page it by a card width.
+  // Hidden unless the row actually overflows, so a two-role lane shows none.
+  Array.prototype.forEach.call(document.querySelectorAll('.cmap-lane-head'), function (head) {
+    var lane = head.nextElementSibling;
+    var nav = head.querySelector('.cmap-nav');
+    if (!lane || !nav || !lane.classList.contains('cmap-lane')) return;
+    function sync() {
+      var over = lane.scrollWidth > lane.clientWidth + 4;
+      nav.hidden = !over;
+      if (!over) return;
+      var btns = nav.querySelectorAll('.cmap-nav-btn');
+      btns[0].disabled = lane.scrollLeft <= 2;
+      btns[1].disabled = lane.scrollLeft + lane.clientWidth >= lane.scrollWidth - 2;
+    }
+    nav.addEventListener('click', function (e) {
+      var b = e.target.closest('.cmap-nav-btn');
+      if (!b) return;
+      var card = lane.querySelector('.cmap-role');
+      var step = card ? card.getBoundingClientRect().width + 12 : lane.clientWidth * 0.8;
+      lane.scrollBy({left: step * parseInt(b.dataset.dir, 10), behavior: 'smooth'});
+    });
+    lane.addEventListener('scroll', sync);
+    window.addEventListener('resize', sync);
+    sync();
+  });
+
+  // Landing on #role-N puts the card in view vertically, but the browser will
+  // not scroll a horizontal container it is already inside -- nudge it so the
+  // role you just targeted is actually the one you are looking at.
+  if (location.hash.indexOf('#role-') === 0) {
+    var el = document.getElementById(location.hash.slice(1));
+    if (el && el.parentElement && el.parentElement.classList.contains('cmap-lane')) {
+      el.parentElement.scrollLeft = el.offsetLeft - el.parentElement.offsetLeft;
+    }
+  }
+
+  var prefill = document.getElementById('cp-prefill');
+  if (prefill) {
+    var use = prefill.querySelector('.cp-prefill-use');
+    var no = prefill.querySelector('.cp-prefill-no');
+    use.addEventListener('click', function () {
+      var box = document.getElementById('cp-aspiration_mid');
+      box.value = use.getAttribute('data-text');
+      box.focus();
+      // Route it through the field's own listener so it saves and counts the
+      // same way typing would -- no second save path to keep in step.
+      box.dispatchEvent(new Event('input', {bubbles: true}));
+      prefill.hidden = true;
+    });
+    no.addEventListener('click', function () { prefill.hidden = true; });
+  }
+
+  fields.forEach(function (el) {
+    var key = el.getAttribute('data-field');
+    // A <select> is a discrete choice, so it saves on change with no debounce;
+    // free text waits for a pause in typing.
+    if (el.tagName === 'SELECT') {
+      el.addEventListener('change', function () { save(el); });
+      return;
+    }
+    el.addEventListener('input', function () {
+      refreshProgress();
+      clearTimeout(timers[key]);
+      timers[key] = setTimeout(function () { save(el); }, 700);
+    });
+  });
+})();
+</script>
+{% endblock %}

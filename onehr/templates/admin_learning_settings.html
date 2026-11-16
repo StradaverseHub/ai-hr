@@ -1,0 +1,164 @@
+{% extends "base.html" %}
+{% block title %}Learning settings{% endblock %}
+{% block body %}
+{# Learning › Settings (AI+ Learning phase 2, 2026-10-20; canvas [design canvas link removed] board
+   Admin-7): the approval chain for each kind of programme, configurable by the L&D admin (Chris, decision 3: "ok with
+   the suggested approval chain, make this configurable by the admin"), and the L&D admins (decision 4), whom the super
+   admin adds and closes. A request keeps the chain it started with. #}
+<div class="adm-headrow">
+  <p class="adm-lede">Who approves a training request, step by step, for each kind of programme. Each step has a
+    <b>clock in working days</b>; past it, the step goes to the person you name as well. A step with nobody on record
+    (no line manager, no HOD) is skipped and said so. The Group People L&amp;D and L&amp;D admin steps are an L&amp;D admin's.
+    Requests already sent keep the chain they started with.</p>
+</div>
+
+{% for k, lab in kinds %}
+{% set c = chains[k] %}
+<section class="admin-card" aria-labelledby="lm-ch-{{ k }}">
+  <h2 id="lm-ch-{{ k }}" class="lm-h">{{ lab }}</h2>
+  <p class="muted small" style="margin:0">Now: {% for lv in c.levels %}{{ ' → ' if not loop.first }}{{ dict(roles)[lv.role] }} ({{ lv.days }} day{{ '' if lv.days == 1 else 's' }}{% if lv.above %}, above RM {{ '{:,.0f}'.format(lv.above) }}{% endif %}){% else %}no approval: a request is confirmed at once{% endfor %}.</p>
+  {% if can %}
+  <form method="post" class="admin-form adm-set-form" data-confirm="Save the approval chain for {{ lab | lower }} programmes? New requests follow it; requests already sent keep theirs." data-confirm-ok="Save">
+    <input type="hidden" name="action" value="chain"><input type="hidden" name="kind" value="{{ k }}">
+    <fieldset class="lm-chain"><legend>The steps, in order</legend>
+      <div class="lm-chrow lm-chhead" aria-hidden="true"><span>Step</span><span>Who</span><span>Working days</span><span>Then also</span><span>Only above (RM)</span></div>
+      {% for i in range(4) %}{% set lv = c.levels[i] if i < c.levels | length else none %}
+      <div class="lm-chrow">
+        <span class="lm-chn">{{ i + 1 }}</span>
+        <select name="role_{{ i }}" class="modern-select" aria-label="Step {{ i + 1 }}: who"><option value="">No step</option>{% for r, rl in roles %}<option value="{{ r }}"{{ ' selected' if lv and lv.role == r }}>{{ rl }}</option>{% endfor %}</select>
+        <input type="number" name="days_{{ i }}" min="1" max="20" value="{{ lv.days if lv else 3 }}" aria-label="Step {{ i + 1 }}: working days">
+        <select name="esc_{{ i }}" class="modern-select" aria-label="Step {{ i + 1 }}: past the clock, also"><option value="">Nobody</option>{% for r, rl in roles %}<option value="{{ r }}"{{ ' selected' if lv and lv.escalate == r }}>{{ rl }}</option>{% endfor %}</select>
+        <input type="number" name="above_{{ i }}" min="0" step="1" value="{{ '%g' % lv.above if lv and lv.above else '' }}" placeholder="Always" aria-label="Step {{ i + 1 }}: only when the cost is above">
+      </div>
+      {% endfor %}
+    </fieldset>
+    <label class="checkbox"><input type="checkbox" name="hod_counts" value="1"{{ ' checked' if c.hod_counts }}> An HOD's nomination counts as the line manager's and the HOD's steps</label>
+    <label class="checkbox"><input type="checkbox" name="none_ok" value="1"{{ ' checked' if not c.levels }}> With no steps, a request is confirmed at once with no approval</label>
+    <div class="actions"><span class="muted small">A line manager's own nomination always counts as their step.</span><button type="submit" class="primary">Save</button></div>
+  </form>
+  {% endif %}
+</section>
+{% endfor %}
+
+<section class="admin-card" id="lm-clock" aria-labelledby="lm-ck-h">
+  <h2 id="lm-ck-h" class="lm-h">The session clock</h2>
+  <p class="muted small" style="margin:0 0 10px">Days before a session's first day. Registration closing sets a new session's cut-off; the HRDC pack, the business groups' filing and the grant's approval show on each session and on HRDC, red when they're close. L&amp;D can give one session its own days.</p>
+  {% if can %}
+  <form method="post" class="admin-form adm-set-form" data-confirm="Save the session clock? Sessions with their own days keep them." data-confirm-ok="Save">
+    <input type="hidden" name="action" value="clock">
+    {% for k, label, d in clock %}<label>{{ label }}, days before day one<input type="number" name="{{ k }}" min="0" max="365" value="{{ d }}"></label>{% endfor %}
+    <div class="actions"><span class="muted small">HRDC must approve a grant 14 days before the course (D-14).</span><button type="submit" class="primary">Save</button></div>
+  </form>
+  {% else %}<p class="small">{% for k, label, d in clock %}{{ label }}: D-{{ d }}{{ ' · ' if not loop.last }}{% endfor %}</p>{% endif %}
+</section>
+
+<section class="admin-card" id="lm-owners" aria-labelledby="lm-own-h">
+  <h2 id="lm-own-h" class="lm-h">Who replies to HRDC's queries</h2>
+  <p class="muted small" style="margin:0 0 10px">The names L&amp;D picks from when it logs a query on HRDC, the first one
+    the default. Now: {{ owners | join(', ') }}. Queries already logged keep theirs.</p>
+  {% if can %}
+  <form method="post" class="admin-form adm-set-form" data-confirm="Save who replies to HRDC's queries? Queries already logged keep theirs." data-confirm-ok="Save">
+    <input type="hidden" name="action" value="hrdc_owners">
+    <label>One a line, up to 8<textarea name="owners" rows="4" maxlength="600">{{ owners | join('\n') }}</textarea></label>
+    <div class="actions"><span class="muted small">Empty puts the default back.</span><button type="submit" class="primary">Save</button></div>
+  </form>
+  {% endif %}
+</section>
+
+<section class="admin-card" id="lm-hols" aria-labelledby="lm-hol-h">
+  <h2 id="lm-hol-h" class="lm-h">Public holidays</h2>
+  <p class="muted small" style="margin:0 0 10px">The working-day clocks skip weekends and these days: each approval
+    step's days, HRDC's five days to answer a query, the reminders and L&amp;D's daily digest. Malaysia's national holidays
+    are built in; 2027's Islamic dates and Deepavali are provisional until they're gazetted. State and company days are
+    yours to add{% if can %}, and a national day you don't keep can be switched off{% endif %}.</p>
+  {% for y in hols %}
+  <details class="lm-hol-y"{% if loop.first %} open{% endif %}><summary>{{ y.year }} &middot; {{ y.n }} day{{ '' if y.n == 1 else 's' }}{% if loop.first %} from today{% endif %}</summary>
+  {% if y.rows %}
+  <table class="admin-table no-auto-table lm-hol">
+    <thead><tr><th scope="col">Date</th><th scope="col">Holiday</th><th scope="col"><span class="sr-only">Where it's from</span></th>{% if can %}<th scope="col"><span class="sr-only">Change</span></th>{% endif %}</tr></thead>
+    <tbody>{% for r in y.rows %}
+    <tr{% if r.off %} class="is-off"{% endif %}><td class="lm-hol-d">{{ r.iso | lms_day }}</td><td>{{ r.name }}</td>
+      <td>{% if r.off %}<span class="lm-hol-chip is-off">Switched off</span>{% elif r.src == 'ld' %}<span class="lm-hol-chip is-ld">Added by L&amp;D</span>{% else %}<span class="lm-hol-chip">National</span>{% if r.provisional %} <span class="lm-hol-chip is-prov">Provisional</span>{% endif %}{% endif %}</td>
+      {% if can %}<td class="lm-hol-act">
+        {% set op = 'on' if r.off else ('remove' if r.src == 'ld' else 'off') %}
+        <form method="post" data-confirm="{{ {'on': 'Switch ' ~ r.name ~ ' back on? The clocks skip ' ~ (r.iso | lms_day) ~ ' again.', 'remove': 'Remove ' ~ r.name ~ '? The clocks count ' ~ (r.iso | lms_day) ~ ' as a working day.', 'off': 'Switch off ' ~ r.name ~ '? The clocks count ' ~ (r.iso | lms_day) ~ ' as a working day until you switch it back on.'}[op] }}" data-confirm-ok="{{ {'on': 'Switch it on', 'remove': 'Remove it', 'off': 'Switch it off'}[op] }}">
+          <input type="hidden" name="action" value="holiday"><input type="hidden" name="op" value="{{ op }}"><input type="hidden" name="date" value="{{ r.iso }}">
+          <button type="submit" class="btn-link">{{ {'on': 'Switch back on', 'remove': 'Remove', 'off': 'Switch off'}[op] }}…</button>
+        </form></td>{% endif %}
+    </tr>{% endfor %}</tbody>
+  </table>
+  {% else %}<p class="muted small">None left this year.</p>{% endif %}
+  </details>
+  {% endfor %}
+  {% if can %}
+  <form method="post" class="admin-form adm-set-form lm-hol-add" data-confirm="Add this day? The working-day clocks skip it from now." data-confirm-ok="Add the day">
+    <input type="hidden" name="action" value="holiday"><input type="hidden" name="op" value="add">
+    <label>Date<input type="date" name="date" required></label>
+    <label>Holiday<input name="name" maxlength="80" required placeholder="e.g. Thaipusam (Selangor)"></label>
+    <div class="actions"><span class="muted small">A state's day counts for every request: add the ones your head offices keep.</span><button type="submit" class="primary">Add the day…</button></div>
+  </form>
+  {% endif %}
+</section>
+
+<section class="admin-card" aria-labelledby="lm-ev-h">
+  <h2 id="lm-ev-h" class="lm-h">Check-ins after training</h2>
+  <p class="muted small" style="margin:0 0 10px">One month after a course, each person says in their own words what
+    they've used from it; at three months they say where they are now and their line manager confirms it; at six
+    months, where the programme asks, the line manager looks again. The server opens each check-in when it falls due
+    and emails the person once, where this server sends email. Open now: <b>{{ n_due }}</b>.</p>
+  {% if can %}
+  <form method="post" class="lm-inline" data-confirm="Open the check-ins that have fallen due now, and tell each person once (by email only where this server sends email)?" data-confirm-ok="Run it now">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}"><input type="hidden" name="action" value="auto_run">
+    <button type="submit" class="primary">Run the check-ins now</button>
+  </form>
+  {% endif %}
+</section>
+
+{% if is_su %}
+<section class="admin-card" aria-labelledby="lm-lnd-h">
+  <h2 id="lm-lnd-h" class="lm-h">L&amp;D admins</h2>
+  <p class="muted small" style="margin:0 0 10px">An L&amp;D admin runs Learning for the whole group: programmes, sessions, attendance, requests and these
+    settings. They open nothing else in the admin area and see no performance or talent result.</p>
+  {% if admins %}
+  <div class="table-scroll"><table class="admin-table no-auto-table lm-lnd-table">
+    <thead><tr><th scope="col">Username</th><th scope="col">Name</th><th scope="col">Emails <span class="muted small">where Learning's emails to L&amp;D go</span></th><th scope="col">Status</th><th scope="col"><span class="sr-only">Actions</span></th></tr></thead>
+    <tbody>
+    {% for a in admins %}
+    <tr><td>{{ a.username }}</td><td>{{ a.full_name }}</td>
+      <td>
+        {% for e in a.emails %}
+        <form method="post" action="{{ url_for('admin_notify', aid=a.id, _method='POST') }}" class="lm-inline lm-lnd-mail" data-confirm="Stop Learning's emails to L&amp;D going to {{ e.email }}?" data-confirm-ok="Remove it">
+          <input type="hidden" name="action" value="remove"><input type="hidden" name="row_id" value="{{ e.id }}"><input type="hidden" name="next" value="{{ url_for('admin_learning_settings') }}">
+          <span>{{ e.email }}</span> <button type="submit" class="btn-link" aria-label="Remove {{ e.email }}">Remove</button></form>
+        {% else %}{% if not a.left_at %}<span class="lm-amber small">None: Learning's emails to L&amp;D don't reach them</span>{% endif %}{% endfor %}
+        {% if not a.left_at and a.emails | length < notify_max %}
+        <form method="post" action="{{ url_for('admin_notify', aid=a.id, _method='POST') }}" class="lm-inline lm-lnd-add" data-confirm="Send Learning's emails to L&amp;D for {{ a.username }} to this address too?" data-confirm-ok="Add it">
+          <input type="hidden" name="action" value="add"><input type="hidden" name="next" value="{{ url_for('admin_learning_settings') }}">
+          <label class="sr-only" for="lnd-mail-{{ a.id }}">An email for {{ a.username }}</label>
+          <input id="lnd-mail-{{ a.id }}" name="email" type="email" required maxlength="200" placeholder="name@example.com">
+          <button type="submit" class="btn-link">Add</button></form>
+        {% endif %}
+      </td>
+      <td>{{ 'Closed' if a.left_at else 'Active' }}</td>
+      <td class="lm-lnd-acts">{% if not a.left_at %}
+        <form method="post" class="lm-inline" data-prompt="New password for {{ a.username }} (at least 8 characters)" data-prompt-field="new_password" data-prompt-type="password" data-confirm-ok="Set password">
+          <input type="hidden" name="action" value="lnd_pw"><input type="hidden" name="user_id" value="{{ a.id }}"><input type="hidden" name="new_password" value="">
+          <button type="submit" class="btn-link">Reset password</button></form>
+        <form method="post" class="lm-inline" data-confirm="Close {{ a.username }}'s L&amp;D admin account? They can't sign in any more. What they did stays in the audit trail." data-confirm-ok="Close the account" data-confirm-tone="danger">
+          <input type="hidden" name="action" value="lnd_close"><input type="hidden" name="user_id" value="{{ a.id }}">
+          <button type="submit" class="btn-link lm-danger">Close</button></form>{% endif %}</td></tr>
+    {% endfor %}
+    </tbody>
+  </table></div>
+  {% else %}<p class="muted small">No L&amp;D admin yet.</p>{% endif %}
+  <form method="post" class="admin-form adm-set-form" data-confirm="Add this L&amp;D admin account? It opens Learning and nothing else in the admin area." data-confirm-ok="Add the account">
+    <input type="hidden" name="action" value="lnd_add">
+    <label>Username<input name="username" required maxlength="60" autocomplete="off"></label>
+    <label>Their name<input name="full_name" required maxlength="80"></label>
+    <label>Their email<input name="email" type="email" maxlength="200" placeholder="Where Learning's emails to L&amp;D reach them"></label>
+    <label>Password<input name="password" type="password" autocomplete="new-password" minlength="8" required placeholder="At least 8 characters"></label>
+    <div class="actions"><span class="muted small">Give them the password yourself; OneHR never shows it again.</span><button type="submit" class="primary">Add an L&amp;D admin</button></div>
+  </form>
+</section>
+{% endif %}
+{% endblock %}

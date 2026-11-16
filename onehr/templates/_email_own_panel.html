@@ -1,0 +1,225 @@
+{# Email › Schedule › Add an email / Edit the series, loaded into the list panel (admin_list_view ?fragment=1, list key email-own; Chris, 2026-11-09,
+   canvas B1 and B2, piece C). Three numbered steps like Everyone's reminder › When it goes: 1 The words (Start from = a COPY of one of our
+   templates, or Write new), 2 Who gets it (roles, waiting or all, business groups: never named people), 3 When (first day, time, repeat,
+   until) and the blue line that counts the sends. The panel's footer holds Cancel and Save the email (the <template data-list-foot> below,
+   which admin.js moves into it). The form posts with fetch (so a refusal keeps what was typed) and Save asks OneHR's confirm box, naming who,
+   how many and the dates. The summary, the amber lines and the box's words come from /admin/email/own/summary as it is typed. #}
+<div class="clp ecd eco" data-list-title="{{ lst.title }}" data-list-sub="{{ lst.sub }}" data-list-kicker="{{ lst.kicker }}"
+     data-list-full="{{ lst.full }}" data-list-full-label="Back to Email › Schedule ›" data-list-n="" data-day="{{ lst.iso }}">
+  {% if not lst.cycle %}
+  <p class="muted ecd-none">There is no active cycle, so there is nothing to send. Start or activate a cycle first.</p>
+  {% else %}
+  <template data-list-foot data-list-foot-replace><a class="rm2-btn2 eco-fb" href="{{ lst.back }}" data-list-reload>Cancel</a><button type="submit" class="primary eco-fb" form="eco-form">{{ 'Save the changes' if lst.own else 'Save the email' }}</button></template>
+  <form id="eco-form" class="eco-form" method="post" action="{{ url_for('admin_email_own_save') }}" novalidate
+        data-confirm="{{ lst.summary.confirm }}" data-confirm-title="{{ 'Save the changes?' if lst.own else 'Save the email?' }}" data-confirm-ok="{{ 'Save the changes' if lst.own else 'Save the email' }}"
+        data-sum="{{ url_for('admin_email_own_summary') }}" data-pv="{{ url_for('admin_email_own_preview') }}" data-words="{{ url_for('admin_email_own_words') }}"
+        data-blank="{{ lst.blank }}">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    {% if lst.own %}<input type="hidden" name="id" value="{{ lst.own.id }}">{% endif %}
+    <input type="hidden" name="day" value="{{ lst.iso }}">
+    <div class="eco-flash" role="alert" hidden></div>
+
+    <section class="eco-step" aria-labelledby="eco-h1">
+      <span class="eco-no" aria-hidden="true">1</span>
+      <div class="eco-body">
+        <h4 id="eco-h1">The words</h4>
+        <label class="eco-f"><span>Start from</span>
+          <select name="start" id="eco-start" data-prev="{{ 'keep' if lst.own else 'new' }}">
+            {% if lst.own %}<option value="keep" selected>Keep this email's own words</option>{% endif %}
+            {% for g in lst.starts %}<optgroup label="{{ g.label }}">{% for i in g.opts %}<option value="{{ i.tid }}">{{ i.label }}{{ ' · usual' if i.usual }}{{ ' · ' ~ i.when if i.dated }}{{ ' · BM / EN' if i.bm_en }}</option>{% endfor %}</optgroup>{% endfor %}
+            <optgroup label=" "><option value="new"{{ ' selected' if not lst.own }}>Write new · blank subject and words</option></optgroup>
+          </select>
+          <span class="eco-hint" id="eco-note">A copy: editing it here never changes the original.</span></label>
+        <label class="eco-f"><span>Name (only you see it)</span><input type="text" name="name" value="{{ lst.vals.name }}" maxlength="60" autocomplete="off"></label>
+        <p class="eco-warn" data-for="name" hidden></p>
+        <label class="eco-f"><span>Subject</span><input type="text" name="subject" value="{{ lst.vals.subject }}" maxlength="200" autocomplete="off"></label>
+        <label class="eco-f"><span>Opening</span><textarea name="opening" rows="3" maxlength="500">{{ lst.vals.opening }}</textarea></label>
+        <div class="eco-chips"><span class="eco-lbl">You can use</span>
+          {% for p in lst.placeholders %}<button type="button" class="eco-chip" data-ph="{{ '{' ~ p ~ '}' }}" title="Put it where the cursor is">{{ '{' ~ p ~ '}' }}</button>{% endfor %}
+          <span class="eco-sp"></span>
+          <button type="button" class="rm2-btn2 eco-pvb" id="eco-pvb" aria-controls="eco-pv" aria-expanded="false">Preview</button></div>
+        <p class="eco-warn" data-for="words" hidden></p>
+        <div class="eco-pv" id="eco-pv" hidden><iframe sandbox title="The email in these words"></iframe></div>
+        <details class="eco-more"><summary>Heading, greeting, button, closing line and footer</summary>
+          <label class="eco-f"><span>Heading</span><input type="text" name="heading" value="{{ lst.vals.heading }}" maxlength="120" autocomplete="off"></label>
+          <label class="eco-f"><span>Greeting</span><input type="text" name="greeting" value="{{ lst.vals.greeting }}" maxlength="80" autocomplete="off"></label>
+          <label class="eco-f"><span>Button</span><input type="text" name="button" value="{{ lst.vals.button }}" maxlength="40" autocomplete="off"></label>
+          <label class="eco-f"><span>Closing line</span><textarea name="closing" rows="2" maxlength="300">{{ lst.vals.closing }}</textarea></label>
+          <label class="eco-f"><span>Footer</span><textarea name="footer" rows="3" maxlength="500">{{ lst.vals.footer }}</textarea></label>
+        </details>
+      </div>
+    </section>
+
+    <section class="eco-step" aria-labelledby="eco-h2">
+      <span class="eco-no" aria-hidden="true">2</span>
+      <div class="eco-body">
+        <h4 id="eco-h2">Who gets it</h4>
+        <div class="eco-tks" role="group" aria-label="Roles">{% for k, lab in lst.roles %}<label class="eco-tk"><input type="checkbox" name="role" value="{{ k }}"{{ ' checked' if k in lst.vals.roles }}><span>{{ lab }}</span></label>{% endfor %}</div>
+        <div class="eco-rds" role="radiogroup" aria-label="Which of them">
+          <label class="eco-rd"><input type="radio" name="waiting" value="waiting"{{ ' checked' if lst.vals.waiting == 'waiting' }}><span>Only those with something still waiting</span></label>
+          <label class="eco-rd"><input type="radio" name="waiting" value="all"{{ ' checked' if lst.vals.waiting == 'all' }}><span>All of them</span></label></div>
+        <fieldset class="eco-bgf"><legend>Business groups</legend>
+          <div class="eco-rds"><label class="eco-rd"><input type="radio" name="bg_mode" value="all"{{ ' checked' if lst.vals.bg_mode == 'all' }}><span>All</span></label>
+            <label class="eco-rd"><input type="radio" name="bg_mode" value="some"{{ ' checked' if lst.vals.bg_mode == 'some' }}><span>Pick some…</span></label></div>
+          <div class="eco-tks eco-bgs"{{ ' hidden' if lst.vals.bg_mode != 'some' }}>{% for b in lst.bgs_all %}<label class="eco-tk"><input type="checkbox" name="bg" value="{{ b }}"{{ ' checked' if b in lst.vals.bgs }}><span>{{ display_bg(b) }}</span></label>{% endfor %}</div>
+        </fieldset>
+        <p class="eco-hint">Roles and business groups only: an email never goes to a named person. One email a person, even with two roles ticked; opt-outs and the Executive Chairman rule apply.</p>
+        <p class="eco-warn" data-for="who" hidden></p>
+      </div>
+    </section>
+
+    <section class="eco-step" aria-labelledby="eco-h3">
+      <span class="eco-no" aria-hidden="true">3</span>
+      <div class="eco-body">
+        <h4 id="eco-h3">When</h4>
+        <div class="eco-row">
+          <label class="eco-f"><span>First day</span><input type="date" name="first_day" value="{{ lst.vals.first_day }}" min="{{ lst.today }}"></label>
+          <label class="eco-f"><span>At</span><select name="at_time">{% for t in lst.times %}<option value="{{ t }}"{{ ' selected' if t == lst.vals.at_time }}>{{ t }}</option>{% endfor %}</select></label>
+        </div>
+        <div class="eco-f" role="radiogroup" aria-label="Repeat"><span>Repeat</span>
+          <div class="eco-row">
+            <label class="eco-rd"><input type="radio" name="repeat" value="once"{{ ' checked' if lst.vals.repeat == 'once' }}><span>Once</span></label>
+            <label class="eco-rd"><input type="radio" name="repeat" value="days"{{ ' checked' if lst.vals.repeat == 'days' }}><span>Every</span></label>
+            <input type="number" name="every_n" class="eco-n" min="1" max="{{ lst.every_max }}" value="{{ lst.vals.every_n }}" aria-label="Every how many days"><span>days</span>
+            <label class="eco-rd"><input type="radio" name="repeat" value="weekly"{{ ' checked' if lst.vals.repeat == 'weekly' }}><span>Every week on</span></label>
+            <select name="weekday" aria-label="Day of the week">{% for d in lst.weekdays %}<option value="{{ loop.index0 }}"{{ ' selected' if lst.vals.weekday == (loop.index0 | string) }}>{{ d[:3] }}</option>{% endfor %}</select>
+          </div>
+        </div>
+        <label class="eco-f"><span>Until</span><input type="date" name="until" value="{{ lst.vals.until }}" min="{{ lst.today }}"{% if lst.cap %} max="{{ lst.cap.isoformat() }}"{% endif %}></label>
+        {% if lst.cap %}<p class="eco-hint">Nothing goes after the cycle's last part closes: {{ lst.cap.strftime('%a') }} {{ lst.cap.day }} {{ lst.cap.strftime('%b %Y') }}.</p>{% endif %}
+        <p class="eco-sum" id="eco-sum" aria-live="polite">{{ lst.summary.summary | bold_marks }}</p>
+        <p class="eco-warn" data-for="when" hidden></p>
+      </div>
+    </section>
+  </form>
+  {% endif %}
+</div>
+<script>
+(function () {
+  var form = document.getElementById('eco-form');
+  if (!form) return;
+  var $ = function (sel, root) { return (root || form).querySelector(sel); };
+  var $$ = function (sel, root) { return Array.prototype.slice.call((root || form).querySelectorAll(sel)); };
+  var token = (document.querySelector('meta[name="csrf-token"]') || {}).content || '';
+  var WORDS = ['subject', 'heading', 'greeting', 'opening', 'button', 'closing', 'footer'];
+  var blank = {}; try { blank = JSON.parse(form.getAttribute('data-blank') || '{}'); } catch (e) {}
+  function fld(n) { return form.elements[n]; }
+  function words() { var o = {}; WORDS.forEach(function (k) { o[k] = fld(k) ? fld(k).value : ''; }); return o; }
+  var kept = words(), filled = null, lastPick = $('#eco-start').value, autoName = '';
+  function same(a, b) { return WORDS.every(function (k) { return (a[k] || '') === (b[k] || ''); }); }
+  // **bold** marks of the summary become <b>, written as text nodes: nothing the server sent is read as markup
+  function bolds(el, text) {
+    el.textContent = '';
+    String(text || '').split('**').forEach(function (part, i) {
+      if (!part) return;
+      if (i % 2) { var b = document.createElement('b'); b.textContent = part; el.appendChild(b); }
+      else el.appendChild(document.createTextNode(part));
+    });
+  }
+  function fetchJSON(url, body) {
+    return fetch(url, { method: 'POST', body: body, credentials: 'same-origin', headers: { 'X-Requested-With': 'fetch' } }).then(function (r) { return r.json(); });
+  }
+  // OneHR's own confirm box (base.html): a form with data-confirm, submitted; the box calls requestSubmit again once it is confirmed
+  function ask(msg, title, okLabel, yes) {
+    var f = document.createElement('form'); f.hidden = true;
+    f.setAttribute('data-confirm', msg); f.setAttribute('data-confirm-title', title); f.setAttribute('data-confirm-ok', okLabel);
+    form.parentNode.appendChild(f);
+    f.addEventListener('submit', function (e) { e.preventDefault(); f.remove(); yes(); });
+    f.requestSubmit();
+  }
+  // the live line, the amber lines and the box's words
+  var timer = null;
+  function warn(errors) {
+    $$('.eco-warn').forEach(function (p) {
+      var list = (errors && errors[p.getAttribute('data-for')]) || [];
+      p.hidden = !list.length; p.textContent = list.join(' ');
+    });
+  }
+  // answers can come back out of order (each takes seconds on a big world): only the latest request's answer is ever applied, and until it
+  // arrives the box says nothing about who, how many or when (a neutral line) and the blue line says it is counting
+  var seq = 0;
+  function neutral() { var n = (fld('name').value || '').trim(); return n ? 'Save \u201c' + n + '\u201d?' : 'Save the email?'; }
+  function pending() {
+    form.setAttribute('data-confirm', neutral());
+    var sm = $('#eco-sum'); sm.textContent = 'Counting\u2026'; sm.classList.add('is-pending');
+  }
+  function refresh() {
+    var mine = ++seq, fd = new FormData(form);
+    pending();
+    fetchJSON(form.getAttribute('data-sum'), fd).then(function (d) {
+      if (!d || mine !== seq) return;
+      var sm = $('#eco-sum'); sm.classList.remove('is-pending');
+      warn(d.errors);
+      bolds(sm, d.summary || '');
+      form.setAttribute('data-confirm', d.confirm || neutral());
+    }).catch(function () { if (mine === seq) { $('#eco-sum').classList.remove('is-pending'); $('#eco-sum').textContent = ''; } });
+  }
+  function later() { clearTimeout(timer); seq++; pending(); timer = setTimeout(refresh, 350); }
+  form.addEventListener('input', later);
+  form.addEventListener('change', function (e) {
+    var t = e.target;
+    if (t.name === 'bg_mode') { $('.eco-bgs').hidden = t.value !== 'some'; }
+    if (t.name === 'start') { return; }
+    later();
+  });
+  // Start from: a COPY of a template's words (the original is never touched); Write new is blank; asks before replacing words she edited
+  function apply(d, pick) {
+    WORDS.forEach(function (k) { if (fld(k)) fld(k).value = (d.words && d.words[k]) || ''; });
+    filled = words();
+    if (d.name && (!fld('name').value || fld('name').value === autoName)) { fld('name').value = d.name; autoName = d.name; }
+    $('#eco-note').textContent = d.note ? ('A copy: editing it here never changes the original. ' + d.note) : 'A copy: editing it here never changes the original.';
+    lastPick = pick; $('#eco-start').setAttribute('data-prev', pick);
+    $('#eco-start').value = pick;
+    refresh();
+  }
+  function pickWords(pick, label) {
+    if (pick === 'keep') { apply({ words: kept }, 'keep'); return; }
+    if (pick === 'new') { apply({ words: blank, note: '' }, 'new'); return; }
+    fetch(form.getAttribute('data-words') + '?tid=' + encodeURIComponent(pick), { credentials: 'same-origin', headers: { 'X-Requested-With': 'fetch' } })
+      .then(function (r) { return r.json(); }).then(function (d) { if (d && d.ok) apply(d, pick); });
+  }
+  $('#eco-start').addEventListener('change', function () {
+    var sel = this, pick = sel.value, prev = lastPick, label = sel.options[sel.selectedIndex].text;
+    var base = filled || (prev === 'keep' ? kept : (prev === 'new' ? blank : null));
+    var edited = base ? !same(words(), base) : WORDS.some(function (k) { return fld(k).value; });
+    if (!edited) { pickWords(pick, label); return; }
+    sel.value = prev;   // she has not agreed yet: the list stays where it was
+    var shown = label.split(' · ').slice(0, 2).join(' · ');
+    ask('Replace your words with ' + shown + '’s? What you typed here will be lost. The original template is never changed.', 'Replace your words?', 'Replace', function () { pickWords(pick, label); });
+  });
+  // a placeholder chip goes where the cursor was, in the last text box she used
+  var lastBox = fld('opening');
+  $$('input[type=text], textarea').forEach(function (b) { b.addEventListener('focus', function () { lastBox = b; }); });
+  $$('.eco-chip').forEach(function (c) {
+    c.addEventListener('click', function () {
+      var b = lastBox || fld('opening'), t = c.getAttribute('data-ph'), s = b.selectionStart == null ? b.value.length : b.selectionStart, e = b.selectionEnd == null ? s : b.selectionEnd;
+      b.value = b.value.slice(0, s) + t + b.value.slice(e); b.focus(); b.setSelectionRange(s + t.length, s + t.length); later();
+    });
+  });
+  // Preview: the email in the words as typed (made-up items, addressed to her); nothing is saved or sent
+  $('#eco-pvb').addEventListener('click', function () {
+    var box = $('#eco-pv'), fr = box.querySelector('iframe');
+    if (!box.hidden) { box.hidden = true; this.setAttribute('aria-expanded', 'false'); return; }
+    box.hidden = false; this.setAttribute('aria-expanded', 'true');
+    var fd = new FormData(); fd.append('csrf_token', token);
+    WORDS.forEach(function (k) { fd.append(k, fld(k).value); });
+    fetch(form.getAttribute('data-pv'), { method: 'POST', body: fd, credentials: 'same-origin', headers: { 'X-Requested-With': 'fetch' } })
+      .then(function (r) { return r.text(); }).then(function (h) { fr.srcdoc = h; })
+      .catch(function () { fr.srcdoc = '<p style="font:14px Arial;color:#5f6678;padding:12px">The preview didn\'t load.</p>'; });
+  });
+  // Save: after OneHR's confirm box, by fetch, so a refusal keeps what was typed
+  var flash = $('.eco-flash');
+  form.addEventListener('submit', function (e) {
+    e.preventDefault();
+    var fd = new FormData(form);
+    fetchJSON(form.action, fd).then(function (d) {
+      if (d && d.ok) { window.location.href = d.redirect || location.href; return; }
+      var list = (d && d.errors && d.errors.length) ? d.errors : [(d && d.message) || 'It could not be saved.'];
+      flash.textContent = ''; list.forEach(function (m) { var p = document.createElement('p'); p.textContent = m; flash.appendChild(p); });
+      flash.hidden = false; flash.scrollIntoView({ block: 'nearest' });
+      refresh();
+    }).catch(function () { flash.textContent = 'It could not be saved: the server did not answer.'; flash.hidden = false; });
+  });
+  refresh();
+})();
+</script>

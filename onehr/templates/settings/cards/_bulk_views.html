@@ -1,0 +1,99 @@
+{# Every unit at once, in the Department filter's and the Job grade filter's card heads (Chris, 2026-10-22: "can we have
+   a enable all/disable all toggle button on the top right same level as the header?", "when click, admin can pick to
+   enable all for BUCEO only, or BGCEO only, or both"). The switch shows whether every unit's switches are on; a click
+   opens the choice (enable or disable, and for which view), and Apply sets the card's own switches and sends the card's
+   own Save, whose confirm box names every change. Nothing is saved any other way. `bulk_for` = the card form's selector. #}
+{% set bk = sec.id %}
+<div class="bulk-views" data-bulk-views data-bulk-for="{{ bulk_for }}">
+  <button type="button" class="bulk-views-btn" aria-haspopup="dialog" aria-expanded="false" data-bulk-open>
+    <span class="bulk-views-sw" aria-hidden="true"></span><span>Enable / disable all</span></button>
+  <div class="bulk-views-pop" role="dialog" aria-label="Every unit at once" hidden data-bulk-pop>
+    <p class="bulk-views-h">Every unit in <b data-bulk-bg>this business group</b></p>
+    <div class="bulk-views-seg" role="radiogroup" aria-label="Enable or disable">
+      <label><input type="radio" name="bulk_do_{{ bk }}" value="on" data-bulk-do> Enable all</label>
+      <label><input type="radio" name="bulk_do_{{ bk }}" value="off" data-bulk-do> Disable all</label>
+    </div>
+    <div class="bulk-views-in" role="radiogroup" aria-label="For which view">
+      <label><input type="radio" name="bulk_in_{{ bk }}" value="both" data-bulk-in checked> Both views</label>
+      <label><input type="radio" name="bulk_in_{{ bk }}" value="bu" data-bulk-in> BU CEO calibration only</label>
+      <label><input type="radio" name="bulk_in_{{ bk }}" value="tb" data-bulk-in> BG CEO Talent Box only</label>
+    </div>
+    <p class="small muted bulk-views-sum" data-bulk-sum role="status"></p>
+    <div class="bulk-views-foot">
+      <button type="button" class="btn-link" data-bulk-cancel>Cancel</button>
+      <button type="button" class="primary" data-bulk-apply>Apply and save</button>
+    </div>
+  </div>
+</div>
+<script>
+(function () {
+  // this head's control, taken as the page is read; it is wired once the page is in, since the card's form comes after it
+  var all = document.querySelectorAll("[data-bulk-views]"), box = all[all.length - 1];
+  if (!box || box._on) return;
+  box._on = true;
+  if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", wire); else wire();
+  function wire() {
+    var card = box.closest(".adm-set-card"), form = card && card.querySelector(box.getAttribute("data-bulk-for"));
+    if (!form) { box.hidden = true; return; }
+    var btn = box.querySelector("[data-bulk-open]"), pop = box.querySelector("[data-bulk-pop]");
+    var sum = box.querySelector("[data-bulk-sum]");
+    var bg = form.getAttribute("data-df-bg") || form.getAttribute("data-jg-bg") || "this business group";
+    box.querySelector("[data-bulk-bg]").textContent = bg;
+    function sw(view) {
+      return [].slice.call(form.querySelectorAll('input[role="switch"]')).filter(function (cb) {
+        var v = (cb.name || "").split("_")[0];
+        return (v === "bu" || v === "tb") && (!view || view === "both" || v === view);
+      });
+    }
+    function pick(name) { var r = box.querySelector("[data-bulk-" + name + "]:checked"); return r ? r.value : null; }
+    function head() {   // the head's switch is on only when every unit's switch is on, in both views
+      var s = sw(), on = s.filter(function (cb) { return cb.checked; }).length;
+      btn.classList.toggle("is-on", s.length > 0 && on === s.length);
+      btn.classList.toggle("is-some", on > 0 && on < s.length);
+      btn.title = s.length ? on + " of " + s.length + " switches on" : "No business units here";
+      btn.disabled = !s.length;
+    }
+    function plan() {
+      var want = pick("do") === "on", list = sw(pick("in")), n = list.filter(function (cb) { return cb.checked !== want; }).length;
+      return {want: want, list: list, n: n};
+    }
+    function say() {
+      var p = plan(), v = {both: "both views", bu: "the BU CEO calibration", tb: "the BG CEO Talent Box"}[pick("in")];
+      sum.textContent = p.n ? (p.want ? "Enables " : "Disables ") + "the filter in " + v + " for " + p.n
+        + (p.n === 1 ? " switch" : " switches") + ". The confirm box lists each one before it saves."
+        : "Already " + (p.want ? "enabled" : "disabled") + " in " + v + " for every unit.";
+      box.querySelector("[data-bulk-apply]").disabled = !p.n;
+    }
+    function open(yes) {
+      pop.hidden = !yes; btn.setAttribute("aria-expanded", yes ? "true" : "false");
+      if (!yes) return;
+      var every = sw().every(function (cb) { return cb.checked; });
+      box.querySelector('[data-bulk-do][value="' + (every ? "off" : "on") + '"]').checked = true;
+      say();
+    }
+    btn.addEventListener("click", function () { open(pop.hidden); });
+    box.querySelector("[data-bulk-cancel]").addEventListener("click", function () { open(false); btn.focus(); });
+    box.addEventListener("change", say);
+    document.addEventListener("click", function (e) { if (!pop.hidden && !box.contains(e.target)) open(false); });
+    document.addEventListener("keydown", function (e) {
+      if (e.key === "Escape" && !pop.hidden && !document.querySelector(".modal-overlay")) { open(false); btn.focus(); }
+    });
+    box.querySelector("[data-bulk-apply]").addEventListener("click", function () {
+      var p = plan();
+      if (!p.n) return;
+      p.list.forEach(function (cb) { cb.checked = p.want; });
+      form.dispatchEvent(new Event("change", {bubbles: true}));   // the card's own check: its rows, status and confirm text
+      open(false); head();
+      var save = form.querySelector('button[type="submit"].primary');
+      if (save && !save.disabled) {
+        if (form.requestSubmit) form.requestSubmit(save); else save.click();
+      } else {
+        var st = form.querySelector("[data-df-status], [data-jg-status]");
+        if (st) st.textContent = "Switches set. Fix the bands above, then save.";
+      }
+    });
+    form.addEventListener("change", head);
+    head();
+  }
+})();
+</script>

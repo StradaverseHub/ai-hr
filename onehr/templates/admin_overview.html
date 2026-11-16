@@ -1,0 +1,303 @@
+{% extends "base.html" %}
+{% from "_adm_panel.html" import list_peek %}
+{% block title %}Admin — Home{% endblock %}
+{% macro hm_cell(c) -%}
+{%- set tone = 'none' if c.pct is none else ('ok' if c.pct >= 90 else ('mid' if c.pct >= 50 else 'low')) -%}
+{#- the super admin's cell opens its people in the list panel (2026-10-20); everyone's href is the group's progress -#}
+{%- set _lo = c.list and nav_is_super and c.pct is not none -%}
+{%- if c.url or _lo %}<a class="hm-cell hm-{{ tone }}" href="{{ c.url or c.list_page }}"{% if _lo %} data-list-open="{{ c.list }}"{% endif %}>{% else %}<span class="hm-cell hm-{{ tone }}">{% endif -%}
+<span class="hm-pct"><b>{{ '—' if c.pct is none else '%d%%' % c.pct }}</b><span>{{ c.sub }}</span></span>
+{% if c.pct is not none %}<span class="hm-bar"><span style="width:{{ c.pct }}%"></span></span>{% endif %}
+{%- if c.url or _lo %}</a>{% else %}</span>{% endif -%}
+{%- endmacro %}
+{% macro gh_n(val, link, low=false) -%}
+{%- set cls = 'gh-hm-n' ~ (' is-zero' if not val else (' is-low' if low else '')) -%}
+{%- if link %}<a class="{{ cls }}" href="{{ link.href }}"{% if link.list %} data-list-open="{{ link.list }}"{% endif %}>{{ '{:,}'.format(val) }}</a>{% else %}<span class="{{ cls }}">{{ '{:,}'.format(val) }}</span>{% endif -%}
+{%- endmacro %}
+{% macro gh_row(r) -%}
+<td class="gh-hm-num">{{ gh_n(r.n, r.links.all) }}</td>
+<td class="gh-hm-num">{{ gh_n(r.not_started, r.links.not_started, low=true) }}</td>
+<td class="gh-hm-num">{{ gh_n(r.lm, r.links.lm) }}</td>
+<td class="gh-hm-num">{{ gh_n(r.ack, r.links.ack) }}<span class="gh-hm-of"> of {{ '{:,}'.format(r.ack_of) }}</span></td>
+<td class="gh-hm-num">{{ gh_n(r.cal, r.links.cal) }}</td>
+<td class="gh-hm-num">{{ gh_n(r.signed, r.links.signed) }}</td>
+<td class="gh-hm-num">{{ gh_n(r.released, r.links.released) }}</td>
+<td><span class="gh-hm-bar" role="img" title="{{ r.bar_title }}" aria-label="{{ r.bar_title }}">{% for st, n, pct in r.bar %}{% if n %}<span class="gh-b-{{ {'not_started': 'ns', 'lm': 'lm', 'cal': 'cal', 'signed': 'signed', 'released': 'rel'}[st] }}" style="width:{{ pct }}%"></span>{% endif %}{% endfor %}</span></td>
+{%- endmacro %}
+{% block body %}
+{% if schema_error %}
+<div class="admin-card" style="border-left:4px solid var(--d-bd-a02323);margin-bottom:16px">
+  <h2 style="margin:0 0 4px;font-size:1.05rem;color:var(--d-fg-a02323)">Database schema is incomplete</h2>
+  <p class="muted small" style="margin:0 0 6px">This server was started with
+    <code>L360_ALLOW_SCHEMA_FAILURE=1</code> after a migration failed, so some tables or
+    columns may be missing and features that depend on them will misbehave. Fix the
+    migration and restart without that variable.</p>
+  <p class="muted small" style="margin:0"><code>{{ schema_error }}</code></p>
+</div>
+{% endif %}
+
+{# The admin's Home (2026-10-10, the "OneHR Admin Revamp" canvas): what needs you across every module, in the
+   readiness order, beside each live module's number; the full checklist folds underneath. Every state is computed
+   from data the app already holds; nothing here is entered by hand. #}
+<div class="page-head">
+  <div>
+    <p class="welcome-eyebrow">Welcome back, {{ user['full_name'] }}</p>
+    <h1>Home</h1>
+    <p class="muted">Where each business group is, module by module, and what needs you
+      {%- if admin_bg %}, across <strong>{{ display_bg(admin_bg) }}</strong>{% else %}, across the organisation{% endif %}.
+      Search finds any page, setting or report: <kbd class="adm-kbd">&#8984;K</kbd></p>
+  </div>
+  {#- with the stage switch these name the cycle's stages (the table on screen can be any of them); without it, the modules as before -#}
+  {% if matrix.stage %}{% set _open = matrix.stage.open_now %}{% else %}{% set _open = matrix.cols | selectattr('state', 'equalto', 'open') | map(attribute='label') | list %}{% endif %}
+  {% if gh_home and gh_home.any_open %}{% set _open = _open + ['Grade H Appraisal'] %}{% endif %}
+  {% if matrix.stage %}{% set _next = [matrix.stage.next_opens] if matrix.stage.next_opens else [] %}{% else %}{% set _next = matrix.cols | selectattr('state', 'equalto', 'not_open') | selectattr('opens') | list %}{% endif %}
+  <div class="hm-now">
+    {% if _open %}<span class="hm-open">Open now: {{ _open | join(' · ') }}</span>{% endif %}
+    {% if _next %}<span class="muted small">{{ _next[0].label }} opens {{ _next[0].opens }}</span>{% endif %}
+  </div>
+</div>
+
+{% if joiners %}
+{# New joiners still to set up (2026-10-18, the libraries canvas, board 12): from Add a person or the roster import, at
+   the top of Home. Each row says what to do about it. Starts folded: the columns and footnote sit in details.hj-fold (Chris 2026-11-09). #}
+<section class="admin-card hj-card" aria-label="New joiners to set up">
+  <div class="hj-head">
+    <div class="hj-what">
+      <span class="hj-k"><span class="jn-wait">Needs you</span> New joiners since {{ joiners.since }}</span>
+      <b>{{ joiners.n }} new joiner{{ 's' if joiners.n != 1 }} came in. {{ joiners.taking }} of them take{{ 's' if joiners.taking == 1 }} part this cycle.</b>
+      {% if joiners.not_taking %}<span class="muted small">The other {{ '{:,}'.format(joiners.not_taking) }} aren't in this cycle's review{% if joiners.why_out %}: {{ joiners.why_out }}{% endif %}.</span>{% endif %}
+    </div>
+    <a class="primary hj-go" href="{{ url_for('admin_joiners') }}">Set them up</a>
+  </div>
+  <details class="hj-fold"><summary class="hj-fold-sum"><span class="hj-fold-show">Show details</span><span class="hj-fold-hide">Hide details</span></summary>
+  <div class="hj-fold-in">
+  <div class="hj-cols">
+    <div class="hj-col"><span class="hj-k">The {{ joiners.taking }} taking part</span>
+      <div class="hj-r"><span>No KPI lines yet</span>{% if joiners.no_kpi and nav_is_super %}<a class="hj-n" href="{{ url_for('admin_joiners', tab='all') }}" data-list-open="{{ url_for('admin_list_view', key='joiners', which='no_kpi', fragment=1) }}"><b>{{ joiners.no_kpi }}</b></a>{% else %}<b>{{ joiners.no_kpi }}</b>{% endif %}
+        <span class="hj-act">{% if joiners.no_kpi %}<a class="hj-btn" href="{{ url_for('admin_joiners', tab='taking') }}">Add their KPIs</a>{% endif %}</span></div>
+      <div class="hj-r"><span>Competencies ready from their job</span>{% if joiners.ready and nav_is_super %}<a class="hj-n" href="{{ url_for('admin_joiners', tab='all') }}" data-list-open="{{ url_for('admin_list_view', key='joiners', which='ready', fragment=1) }}"><b>{{ joiners.ready }}</b></a>{% else %}<b>{{ joiners.ready }}</b>{% endif %}
+        <span class="hj-act">{% if joiners.ready %}<form method="post" action="{{ url_for('admin_joiners') }}" class="hj-form"
+              data-confirm="Give the {{ joiners.ready }} new joiner{{ 's' if joiners.ready != 1 }} who {{ 'is' if joiners.ready == 1 else 'are' }} ready their job's competencies? Each gets the five their job needs now and the same five one level up. It goes in the trail."
+              data-confirm-ok="Assign">
+          <input type="hidden" name="action" value="assign_ready">
+          {% for i in joiners.ready_ids %}<input type="hidden" name="sid" value="{{ i }}">{% endfor %}
+          <button type="submit" class="hj-btn">Assign to the {{ joiners.ready }}</button></form>{% endif %}</span></div>
+      <div class="hj-r"><span>Their job isn't placed, so no competencies</span>{% if joiners.no_job_taking and nav_is_super %}<a class="hj-n" href="{{ url_for('admin_joiners', tab='all') }}" data-list-open="{{ url_for('admin_list_view', key='joiners', which='no_job_taking', fragment=1) }}"><b>{{ joiners.no_job_taking }}</b></a>{% else %}<b>{{ joiners.no_job_taking }}</b>{% endif %}
+        <span class="hj-act">{% if joiners.no_job_taking %}<a class="hj-btn" href="{{ url_for('admin_joiners', tab='taking') }}">Place their job</a>{% endif %}</span></div>
+      <div class="hj-r"><span>{% if joiners.min_raters > 1 %}Fewer than {{ joiners.min_raters }} raters on their 360 panel{% else %}No 360 panel yet{% endif %}</span>{% if joiners.no_panel and nav_is_super %}<a class="hj-n" href="{{ url_for('admin_joiners', tab='all') }}" data-list-open="{{ url_for('admin_list_view', key='joiners', which='no_panel', fragment=1) }}"><b>{{ joiners.no_panel }}</b></a>{% else %}<b>{{ joiners.no_panel }}</b>{% endif %}
+        <span class="hj-act">{% if joiners.no_panel %}<a class="hj-btn" href="{{ url_for('admin_joiners', tab='taking') }}">Set up panels</a>{% endif %}</span></div></div>
+    <div class="hj-col"><span class="hj-k">All {{ joiners.n }}</span>
+      <div class="hj-r"><span>No line manager</span>{% if joiners.no_lm and nav_is_super %}<a class="hj-n" href="{{ url_for('admin_joiners', tab='all') }}" data-list-open="{{ url_for('admin_list_view', key='joiners', which='no_lm', fragment=1) }}"><b>{{ joiners.no_lm }}</b></a>{% else %}<b>{{ joiners.no_lm }}</b>{% endif %}
+        <span class="hj-act">{% if joiners.no_lm %}<a class="hj-btn" href="{{ url_for('admin_joiners', tab='all') }}">See who</a>{% endif %}</span></div>
+      <div class="hj-r"><span>Not taking part this cycle</span>{% if joiners.not_taking and nav_is_super %}<a class="hj-n" href="{{ url_for('admin_joiners', tab='all') }}" data-list-open="{{ url_for('admin_list_view', key='joiners', which='not_taking', fragment=1) }}"><b>{{ joiners.not_taking }}</b></a>{% else %}<b>{{ joiners.not_taking }}</b>{% endif %}
+        <span class="hj-act">{% if joiners.not_taking %}<a class="hj-btn" href="{{ url_for('admin_participants') }}">Review on Participants</a>{% endif %}</span></div>
+      <div class="hj-r"><span>Job placed · still to place</span><b>{{ joiners.placed }} · {{ joiners.to_place }}</b>
+        <span class="hj-act">{% if joiners.to_place %}<a class="hj-btn" href="{{ url_for('admin_joiners', tab='all') }}">Place jobs</a>{% endif %}</span></div></div>
+  </div>
+  <span class="muted small">The flag counts everyone who came in by Add a person or the roster import in the last {{ joiners.days }} days. Someone drops off it once they have a line manager and their job, and, if they take part, KPI lines, competencies and a 360 panel.</span>
+  </div></details>
+</section>
+{% endif %}
+
+{% if precal %}
+{# Before calibration (Chris, 2026-10-29, canvas as drawn): the super admin's countdown to the BU CEOs' performance
+   calibration and what it still needs, the BU KPI results and each unit's PAT (_precal_alert). The not-ready card starts
+   folded under its head (Chris 2026-11-09). #}
+{% if precal.ready %}
+<section class="admin-card hj-card pc-card" aria-label="Before calibration"><div class="pc-line">
+  <span class="pc-ok">Ready for calibration</span><b>{{ precal.lead }}</b>
+  <span class="muted small">{% if precal.opens_text %}Performance calibration opens {{ precal.opens_text }}. This line leaves Home when it opens.{% else %}Set its opening date on <a href="{{ url_for('admin_windows') }}">Cycle &rsaquo; Calendar</a>.{% endif %}</span></div></section>
+{% else %}
+<section class="admin-card hj-card pc-card{{ ' is-due' if precal.due }}" aria-label="Before calibration">
+  <div class="hj-head"><div class="hj-what">
+    <span class="hj-k"><span class="{{ precal.chip_cls }}">{{ precal.chip }}</span> {{ precal.when }}{% if precal.when_link %}<a href="{{ url_for('admin_windows') }}" style="color:var(--accent-ink)">set it on Cycle &rsaquo; Calendar</a>{% endif %}</span>
+    <b>{{ precal.lead }}</b>
+    <span class="muted small">Each unit's BU KPI result scores everyone who carries it. Each unit's PAT picks the curve its BU CEO calibrates against; a unit with no PAT calibrates against the Normal curve.</span>
+  </div></div>
+  <details class="hj-fold"><summary class="hj-fold-sum"><span class="hj-fold-show">Show details</span><span class="hj-fold-hide">Hide details</span></summary>
+  <div class="hj-fold-in">
+  <div class="hj-cols">
+    <div class="hj-col"><span class="hj-k">BU KPI results &middot; <b>{{ precal.bu_head }}</b></span>
+      {% for r in precal.rows %}
+      <div class="hj-r"><span class="pc-g">{{ r.name }}{% if not r.bu_n %}<small title="No BU KPI set up">No BU KPI set up</small>{% elif r.bu_done == r.bu_n %}<small title="All filled">All filled</small>{% else %}<small title="To fill: {{ r.bu_todo }}">To fill: {{ r.bu_todo }}</small>{% endif %}</span>
+        <b>{% if r.bu_n %}{{ r.bu_done }} of {{ r.bu_n }}{% else %}&mdash;{% endif %}</b>
+        <span class="hj-act">{% if r.bu_n and r.bu_done == r.bu_n %}<span class="pc-done">Done</span>{% elif r.bu_n %}<a class="hj-btn" href="{{ url_for('admin_performance_bu_fill', business_group=r.bg) }}">Fill BU KPI</a>{% endif %}</span></div>
+      {% endfor %}
+    </div>
+    <div class="hj-col"><span class="hj-k">PAT &middot; <b>{{ precal.pat_head }}</b></span>
+      {% for r in precal.rows %}
+      <div class="hj-r"><span class="pc-g">{{ r.name }}{% if r.pat_done == r.pat_n %}<small title="All entered">All entered</small>{% else %}<small title="To enter: {{ r.pat_todo }}">To enter: {{ r.pat_todo }}</small>{% endif %}</span>
+        <b>{{ r.pat_done }} of {{ r.pat_n }}</b>
+        <span class="hj-act">{% if r.pat_done == r.pat_n %}<span class="pc-done">Done</span>{% else %}<a class="hj-btn" href="{{ url_for('admin_performance_pbt', fbg=r.bg) }}">Enter PAT</a>{% endif %}</span></div>
+      {% endfor %}
+    </div>
+  </div>
+  <span class="muted small">Counts the units taking part in {{ precal.cycle }}. {% if precal.no_bu %}{{ precal.no_bu }} unit{{ ' carries' if precal.no_bu == 1 else 's carry' }} no BU KPI, so only {{ 'its' if precal.no_bu == 1 else 'their' }} PAT is needed. {% endif %}The card leaves Home once every BU KPI result and every unit's PAT is in. Super admin only.</span>
+  </div></details>
+</section>
+{% endif %}
+{% endif %}
+
+{# Canvas J1 (Chris, 2026-10-10: "The overview should show the summary of each BG and each module progress") #}
+{% if matrix.cols and matrix.rows %}
+<section class="admin-card hm" aria-label="Every business group, module by module">
+  {#- the stage switch (Chris, 2026-11-09): the table follows the cycle's stage; absent in an Early Year and on a past cycle -#}
+  {% set sg = matrix.stage %}
+  <div class="hm-title"><b>Where each business group is, module by module</b>
+    <span class="muted small">{{ cycle['name'] if cycle else '' }} &middot; share done of what's due &middot; {{ 'a cell opens its people' if sg else "a cell opens that group's progress" }}</span></div>
+  {% if sg %}
+  <div class="hm-stage">
+    <div class="seg-toggle hm-seg" role="tablist" aria-label="Stage">
+      {% for s in sg.switch %}<a role="tab" aria-selected="{{ 'true' if s.active else 'false' }}" class="{{ 'active' if s.active else '' }}" href="{{ s.href }}"><i class="hm-dot hm-dot-{{ s.dot }}" aria-hidden="true"></i>{{ s.label }}</a>{% endfor %}
+    </div>
+    <span class="hm-when">{% if sg.is_today %}<span class="hm-now-pill">Today's stage</span>{% endif %}<span>{{ sg.what }}{% if sg.span %} &middot; {{ sg.span }}{% endif %} &middot; {% if sg.tail_b %}<b>{{ sg.tail }}</b>{% else %}{{ sg.tail }}{% endif %}</span></span>
+    {% if sg.back %}<a class="hm-back" href="{{ sg.back.href }}">{{ sg.back.label }} &rsaquo;</a>{% endif %}
+  </div>
+  {% endif %}
+  {%- macro hm_extra(x) -%}
+  {%- if x.kind == 'limits' -%}
+    {%- if x.over %}<span class="hm-low hm-state">{{ x.over }} unit{{ '' if x.over == 1 else 's' }} over</span>{% endif -%}
+    {%- if x.over and x.full %} <span class="hm-quiet">&middot; {{ x.full }} full</span>{% elif x.full %}<span class="hm-mid hm-state">{{ x.full }} unit{{ '' if x.full == 1 else 's' }} full</span>{% endif -%}
+    {%- if not x.over and not x.full %}<span class="hm-quiet">All within</span>{% endif -%}
+  {%- else -%}
+    <span class="hm-n">{{ '{:,}'.format(x.n) }}</span> <span class="hm-quiet">of {{ '{:,}'.format(x.of) }}</span>
+  {%- endif -%}
+  {%- endmacro %}
+  <div class="table-scroll"><table class="hm-table">
+    <thead><tr><th scope="col" title="Business group" aria-label="Business group"><span class="hm-hl">Business group</span><span class="hm-hs" aria-hidden="true">BG</span></th>{% if matrix.who %}<th scope="col">{{ matrix.who }}</th>{% elif matrix.total.taking_part is not none %}<th scope="col" title="Taking part in this cycle's review | all active people" aria-label="Taking part | All"><span class="hm-hl">Taking part | All</span><span class="hm-hs" aria-hidden="true">Part | All</span></th>{% else %}<th scope="col">People</th>{% endif %}
+      {% for c in matrix.cols %}<th scope="col">{% if c.url %}<a href="{{ c.url }}">{% else %}<span class="hm-th">{% endif %}<span class="adm-side-sq" style="background:{{ c.color or 'var(--d-bg-8a90a2)' }}" aria-hidden="true"></span>{% if c.label == '360 Feedback' %}<span class="hm-hl">360 Feedback</span><span class="hm-hs" aria-hidden="true" title="360 Feedback">360</span>{% else %}{{ c.label }}{% endif %}{% if c.url %}</a>{% else %}</span>{% endif %}</th>{% endfor %}
+      {% for x in matrix.extra_cols %}<th scope="col">{{ x.label }}</th>{% endfor %}</tr></thead>
+    <tbody>
+      {% for r in matrix.rows %}
+      <tr><th scope="row">{{ display_bg(r.bg) }}</th><td class="hm-people">{% if r.taking_part is not none %}<b>{{ '{:,}'.format(r.taking_part) }}</b><span class="hm-people-all"> | {{ '{:,}'.format(r.people) }}</span>{% elif matrix.who %}<b>{{ '{:,}'.format(r.people) }}</b>{% else %}{{ '{:,}'.format(r.people) }}{% endif %}</td>
+        {% for c in r.cells %}<td>{{ hm_cell(c) }}</td>{% endfor %}
+        {% for x in r.extra %}<td class="hm-extra">{{ hm_extra(x) }}</td>{% endfor %}</tr>
+      {% endfor %}
+      {% if matrix.rows | length > 1 %}
+      <tr class="hm-total"><th scope="row">All business groups</th><td class="hm-people">{% if matrix.total.taking_part is not none %}<b>{{ '{:,}'.format(matrix.total.taking_part) }}</b><span class="hm-people-all"> | {{ '{:,}'.format(matrix.total.people) }}</span>{% elif matrix.who %}<b>{{ '{:,}'.format(matrix.total.people) }}</b>{% else %}{{ '{:,}'.format(matrix.total.people) }}{% endif %}</td>
+        {% for c in matrix.total.cells %}<td>{{ hm_cell(c) }}</td>{% endfor %}
+        {% for x in matrix.total.extra %}<td class="hm-extra">{{ hm_extra(x) }}</td>{% endfor %}</tr>
+      {% endif %}
+    </tbody>
+  </table></div>
+  {% if matrix.gone_note and matrix.rows | length > 1 %}<p class="hm-foot muted small">{{ matrix.gone_note }}</p>{% endif %}
+</section>
+{% endif %}
+
+{% if gh_home %}
+{# Grade H Appraisal (Chris, 2026-11-06, canvas boards H1-H3): where each business group (a BG or unit admin: each unit) stands, from the
+   Grade H list's people (_home_gradeh), after the matrix. Before Grade H opens it is one line. #}
+{% set _unit = gh_home.by_unit %}
+{% if gh_home.state == 'before' %}
+<section class="admin-card hm gh-hm gh-hm-wait" aria-label="Grade H Appraisal">
+  <span class="gh-sq" aria-hidden="true"></span><b>Grade H Appraisal</b>
+  <span class="jn-wait">{% if gh_home.opens_text %}Opens {{ gh_home.opens_text }}{% else %}No opening date yet{% endif %}</span>
+  <span class="muted small">{{ '{:,}'.format(gh_home.n) }} {{ 'person' if gh_home.n == 1 else 'people' }} on the list in {{ gh_home.n_groups }} business {{ 'unit' if _unit else 'group' }}{{ '' if gh_home.n_groups == 1 else 's' }}. The table starts here once it opens.</span>
+  <a class="gh-hm-full" href="{{ gh_home.report_url }}">Full report &rsaquo;</a>
+</section>
+{% else %}
+<section class="admin-card hm gh-hm" aria-label="Grade H Appraisal: where each business {{ 'unit' if _unit else 'group' }} is">
+  <div class="hm-title"><span class="gh-hm-name"><span class="gh-sq" aria-hidden="true"></span><b>Grade H Appraisal: where each business {{ 'unit' if _unit else 'group' }} is</b></span>
+    <span class="muted small gh-hm-cap"><span>{{ '{:,}'.format(gh_home.n) }} on the list{% if gh_home.open_part %} &middot; {{ gh_home.open_part }}{% endif %} &middot; {% if gh_home.sup %}a number opens its people{% else %}a number opens People &amp; progress{% endif %}</span> <a class="gh-hm-full" href="{{ gh_home.report_url }}">Full report &rsaquo;</a></span></div>
+  <div class="table-scroll"><table class="hm-table gh-hm-table">
+    <thead><tr><th scope="col">Business {{ 'unit' if _unit else 'group' }}</th>
+      <th scope="col" class="gh-hm-numh">On the list</th>
+      <th scope="col" class="gh-hm-numh" title="On the list, nothing keyed yet">Not started</th>
+      <th scope="col" class="gh-hm-numh" title="KPI keyed or with the line manager">With LM</th>
+      <th scope="col" class="gh-hm-numh" title="Of those their line manager submitted, by sign-in, in person or deemed; someone who does not agree is not counted">Acknowledged</th>
+      <th scope="col" class="gh-hm-numh" title="Submitted, with the HOD or BU CEO">In calibration</th>
+      <th scope="col" class="gh-hm-numh" title="The BU CEO signed the unit off">Signed off</th>
+      <th scope="col" class="gh-hm-numh" title="They can read their result">Released</th>
+      <th scope="col">Where they are</th></tr></thead>
+    <tbody>
+      {% for r in gh_home.rows %}
+      <tr><th scope="row">{{ r.label }}</th>{{ gh_row(r) }}</tr>
+      {% endfor %}
+      {% if gh_home.total %}
+      <tr class="hm-total"><th scope="row">{{ gh_home.total.label }}</th>{{ gh_row(gh_home.total) }}</tr>
+      {% endif %}
+    </tbody>
+  </table></div>
+  <div class="gh-hm-foot"><p class="gh-hm-legend" aria-label="Where they are: the bar's segments">
+    <span><i class="gh-b-ns" aria-hidden="true"></i>Not started</span><span><i class="gh-b-lm" aria-hidden="true"></i>With LM</span><span><i class="gh-b-cal" aria-hidden="true"></i>In calibration</span><span><i class="gh-b-signed" aria-hidden="true"></i>Signed off</span><span><i class="gh-b-rel" aria-hidden="true"></i>Released</span></p></div>
+</section>
+{% endif %}
+{% endif %}
+
+
+<div class="adm-home">
+  <section class="admin-card adm-home-needs">
+    <div class="adm-needs-head"><h2>Needs you</h2>
+      <span class="muted small">{{ ready_done }} of {{ ready_total }} steps done</span></div>
+    {% if needs %}
+    <ul class="adm-home-list">
+      {% for st in needs %}
+      <li>
+        <span class="adm-home-mod" style="--mc:{{ st.color or 'var(--accent-ink)' }}">{{ st.module }}</span>
+        <span class="adm-home-what"><b>{{ st.label }}</b><span class="muted small">{{ st.detail }} &middot;
+          {{ 'In progress' if st.state == 'partial' else 'Not started' }}</span></span>
+        {% if st.url %}<a class="adm-need-go" href="{{ st.url }}"{% if st.list and nav_is_super %} data-list-open="{{ st.list }}"{% endif %}>Open &rsaquo;</a>{% endif %}
+      </li>
+      {% endfor %}
+    </ul>
+    {% else %}
+    <p class="muted" style="margin:6px 0 0">Nothing is waiting on you: every step of the cycle that an admin does is done.</p>
+    {% endif %}
+  </section>
+
+  <section class="admin-card adm-home-notes" aria-label="What stands out">
+    <h2>What stands out</h2>
+    {% set _notes = matrix.notes + ([gh_home.note] if gh_home and gh_home.note else []) %}
+    {% if _notes %}
+    <ul class="adm-home-list">{% for n in _notes %}<li>{{ n }}</li>{% endfor %}</ul>
+    {% elif not matrix.cols %}
+    <p class="note" style="margin:0"><strong>Nothing is running yet.</strong> No cycle is active, so there is nothing
+      for a module to report.{% if nav_is_super %} Start one under <a href="{{ url_for('admin_cycles') }}">Cycle &rsaquo; All cycles</a>.{% endif %}</p>
+    {% else %}
+    <p class="muted" style="margin:6px 0 0">Nothing out of the ordinary.</p>
+    {% endif %}
+  </section>
+</div>
+
+<details class="admin-card adm-ready">
+  <summary><span><b>Cycle readiness</b> <span class="muted small">The order to set a cycle up in, and how far through
+    you are{%- if admin_bg %}, for {{ display_bg(admin_bg) }}{% endif %}.</span></span>
+    {% if ready_done >= ready_total %}<span class="status-pill status-reviewed">{{ ready_done }} of {{ ready_total }} done</span>
+    {% else %}<span class="status-pill status-submitted">{{ ready_done }} of {{ ready_total }} done</span>{% endif %}
+  </summary>
+  {% for g in ready_groups %}
+  <p class="succ-stat__label" style="margin-top:{{ '4px' if loop.first else '18px' }}">{{ g.label }}</p>
+  <div class="table-scroll">
+  <table class="admin-table">
+    <tbody>
+      {% for st in g.steps %}
+      <tr>
+        <td style="width:34%">
+          <p style="font-weight:500;margin:0">
+            {% if st.url %}<a href="{{ st.url }}">{{ st.label }}</a>
+            {% else %}{{ st.label }}{% endif %}</p>
+        </td>
+        <td class="muted small">{{ st.why }}</td>
+        <td style="width:14%" class="muted small">{{ st.detail }}</td>
+        <td style="width:12%">
+          {% if st.state == 'done' %}
+            <span class="status-pill status-reviewed">Done</span>
+          {% elif st.state == 'waiting' %}
+            <span class="status-pill status-progress">Waiting on {{ st.waits }}</span>
+          {% elif st.state == 'partial' %}
+            <span class="status-pill status-progress">In progress</span>
+          {% else %}
+            <span class="status-pill status-submitted">Not started</span>
+          {% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  </div>
+  {% endfor %}
+</details>
+{% if nav_is_super %}{{ list_peek() }}{% endif %}
+{# What's new's pop-out (2026-11-03): this account's unseen notes, once; nothing is drawn when there are none #}
+{% include "_whatsnew_popout.html" %}
+{% endblock %}

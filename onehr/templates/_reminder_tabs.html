@@ -1,0 +1,9 @@
+{# The emails that go on a day (2026-10-19), set up from Email › Schedule since 2026-10-24: everyone's one reminder,
+   and the leader progress email; and (2026-11-01) the people the super admin took off them, with an amber count of how
+   many are off now (the Executive Chairman seat's own rule included). #}
+{% set optout_n = optout_tab_count() %}
+<nav class="rm-tabs" aria-label="Which reminder">
+  <a href="{{ url_for('admin_reminders') }}" {% if request.endpoint == 'admin_reminders' %}aria-current="page" class="is-on"{% endif %}>Everyone's reminder</a>
+  <a href="{{ url_for('admin_reminders_leaders') }}" {% if request.endpoint == 'admin_reminders_leaders' %}aria-current="page" class="is-on"{% endif %}>Leader progress</a>
+  <a href="{{ url_for('admin_reminders_optouts') }}" {% if request.endpoint == 'admin_reminders_optouts' %}aria-current="page" class="is-on"{% endif %}>Opted out{% if optout_n %} <span class="rm-tab-n">{{ optout_n }} now</span>{% endif %}</a>
+</nav>

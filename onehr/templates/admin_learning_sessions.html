@@ -1,0 +1,40 @@
+{% extends "base.html" %}
+{% block title %}Learning sessions{% endblock %}
+{% block body %}
+{# Learning › Sessions (AI+ Learning phase 2, 2026-10-20; canvas [design canvas link removed] board
+   Admin-4): every dated session with its places and its registration clock. A session is added on its programme;
+   here it is run: the list, the room's QR screen, the T3, the clock-ins and closing it. #}
+<div class="adm-headrow">
+  <p class="adm-lede">Every <b>session</b> on the calendar: who's confirmed, who waits, and when registration closes.
+    Open one to run the day: the room's QR screen, the printed T3, the clock-ins, and closing it to give everyone their hours.
+    Sessions are added on their <a href="{{ url_for('admin_learning_programmes') }}">programme</a>.</p>
+</div>
+<nav class="adm-tabs" aria-label="Which sessions">
+  {% for k, lab in (('upcoming', 'Coming up'), ('past', 'Past'), ('all', 'All')) %}
+  <a class="{{ 'is-active' if show == k }}" href="{{ url_for('admin_learning_sessions', show=k) }}">{{ lab }}</a>
+  {% endfor %}
+</nav>
+<section class="admin-card" aria-label="Sessions">
+  {% if rows %}
+  <div class="table-scroll"><table class="admin-table no-auto-table lm-stable">
+    <thead><tr><th scope="col">Session</th><th scope="col" class="lm-num">Confirmed</th><th scope="col" class="lm-num">Waiting approval</th>
+      <th scope="col" class="lm-num">Waiting list</th><th scope="col">Registration</th><th scope="col">Status</th><th scope="col"><span class="sr-only">Open</span></th></tr></thead>
+    <tbody>
+    {% for r in rows %}
+    <tr>
+      <td><b>{{ r.title }}</b><span class="muted small lm-sub">{{ r.run_label or 'Session' }} · {{ r.line }}</span></td>
+      <td class="lm-num">{{ r.n.approved }}{% if r.seats %}<span class="muted small"> / {{ r.seats }}</span>{% endif %}</td>
+      <td class="lm-num">{{ r.n.pending or '–' }}</td>
+      <td class="lm-num">{{ r.n.waitlisted or '–' }}</td>
+      <td class="small">{% if r.past %}<span class="muted">Ended</span>{% elif r.running %}<b>Running now</b>{% elif r.cut_days is none %}Open{% elif r.cut_days < 0 %}<span class="muted">Closed {{ r.reg_cutoff | lms_day }}</span>{% elif r.cut_days <= 7 %}<span class="lm-amber">Closes in {{ r.cut_days }} day{{ '' if r.cut_days == 1 else 's' }}</span>{% else %}Closes {{ r.reg_cutoff | lms_day }}{% endif %}</td>
+      <td>{% if r.status == 'cancelled' %}<span class="lm-st is-archived">Cancelled</span>{% elif r.closed_at %}<span class="lm-st is-published">Closed</span>{% elif r.past %}<span class="lm-st is-draft">To close</span>{% else %}<span class="lm-st is-published">Planned</span>{% endif %}</td>
+      <td><a class="btn-link" href="{{ url_for('admin_learning_session', sid=r.id) }}">Open</a></td>
+    </tr>
+    {% endfor %}
+    </tbody>
+  </table></div>
+  {% else %}
+  <p class="muted" style="margin:0">{% if show == 'upcoming' %}Nothing on the calendar yet. Add a session on its programme.{% else %}No sessions here.{% endif %}</p>
+  {% endif %}
+</section>
+{% endblock %}

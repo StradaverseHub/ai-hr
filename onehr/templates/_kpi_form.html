@@ -1,0 +1,136 @@
+{# The form for one library row (a placement): who it applies to, and what the KPI is. The library holds no numbers
+   (Chris, 2026-10-18, 2026-11-02): a person's targets, rates and weight are set in the Early Year or with their line, a
+   unit's in BU KPI setup, so the form carries no scale and no weight. #}
+{% from "_kpi_unit.html" import unit_select with context %}
+{% from "_coa_place.html" import place_fields with context %}
+{% macro kpi_form(cfg, tiers, row, action, bg, companies, lists=none) %}
+{# scope and family are ticked or picked from lists (Chris, 2026-10-19: "should run as dropdown for selection to ensure
+   data validation"): the group's departments (each with its units), its numeric grades, the families the libraries hold #}
+{% set L = lists or {} %}{% set ldepts = (L.get('depts') or {}).get(bg, []) %}{% set lgrades = (L.get('grades') or {}).get(bg, []) %}{% set lcats = L.get('cats') or [] %}{# the Chart of KPI (flag on): a place on Add, named people on both #}{% set COA = coa_on() %}{% set PLACE = coa_place if (COA and coa_place is defined) else none %}{% set PLACED = (PLACE and action == 'add') %}{% set PEOPLE = (lib_people.get(row['id']) if (COA and row and lib_people is defined) else none) %}
+<form method="post" class="stack-form kl-form{{ ' coa-form' if coa_on() }}" data-no-busy
+      {% if action == 'update' -%}
+      data-confirm="Save your changes to “{{ row['kpi_name'] }}” in {{ display_bg(bg) }}'s library? Its scope and definition change for everyone who picks it from now on; lines already on scorecards stay as they are. You can edit it again."
+      data-confirm-title="Save changes?" data-confirm-ok="Save changes"
+      {%- else -%}
+      data-confirm="Add this KPI to {{ display_bg(bg) }}'s library? People whose business unit, department and job grade fit it can pick it for their scorecard."
+      data-confirm-title="Add this KPI?" data-confirm-ok="Add KPI"
+      {%- endif %}>
+  <input type="hidden" name="action" value="{{ action }}">
+  <input type="hidden" name="business_group" value="{{ bg }}">
+  {% if action == 'update' %}<input type="hidden" name="library_id" value="{{ row['id'] }}">{% endif %}{% if PLACED %}
+  <fieldset class="kpi-seg">
+    <legend>Its place in the chart</legend>
+    {{ place_fields(PLACE) }}
+    <span class="muted small">The code is the next free one in the group and is given when you add the KPI; it never changes. A KPI whose name already has a code keeps that code. Leave both blank to place it later.</span>
+  </fieldset>{% endif %}
+  <fieldset class="kpi-seg">
+    <legend>What the KPI is</legend>
+    <div class="pp-fields">
+      <label class="pp-f-wide">KPI name
+        <input type="text" name="kpi_name" required value="{{ row['kpi_name'] if row else (add_name if (action == 'add' and add_name is defined) else '') }}"></label>
+      {% set cur_cat = row['category'] if row and row['category'] else '' %}{% if not PLACED %}
+      <label class="pp-f-wide" data-choose-new-box>Family · group
+        <select name="category" class="modern-select" data-choose-new data-new-required>
+          <option value="">Not set</option>
+          {% for c in lcats %}<option value="{{ c }}" {{ 'selected' if cur_cat and c | lower == cur_cat | lower }}>{{ c }}</option>{% endfor %}
+          {% if cur_cat and cur_cat | lower not in lcats | map('lower') | list %}<option value="{{ cur_cat }}" selected>{{ cur_cat }}</option>{% endif %}
+          <option value="__new__">A new family · group…</option>
+        </select>
+        <input name="category_new" maxlength="120" placeholder="e.g. Financial · Profitability" aria-label="The new family · group" data-new-input hidden></label>{% endif %}
+      {{ unit_select('unit', row['unit'] if row and row['unit'] else '') }}
+      <label>Direction
+        <select name="method" class="modern-select" required>
+          <option value="more" {{ 'selected' if not row or row['method'] == 'more' }}>Higher is better</option>
+          <option value="less" {{ 'selected' if row and row['method'] == 'less' }}>Lower is better</option>
+        </select></label>{% if not PLACED %}
+      <label class="pp-f-wide">Perspective
+        <select name="perspective" class="modern-select">
+          <option value="">Not tagged</option>
+          {% for p in ['Financial', 'Customer', 'Internal Process', 'Learning & Growth'] %}<option {{ 'selected' if row and row['perspective'] == p }}>{{ p }}</option>{% endfor %}
+        </select></label>{% endif %}
+    </div>
+    <label class="kl-def">Definition
+      <textarea name="description" rows="2" placeholder="One or two sentences: what is measured, and how">{{ row['description'] if row and row['description'] else '' }}</textarea>
+      <span class="muted small">A short definition only. The person's own detail goes in their line's description.</span></label>
+    <p class="kl-note" role="note">The library is the record of the KPI: what it is, where it sits and which way is better. Targets, rates and weights change with each year's business plan: they are set on each person's line, and a unit's in BU KPI setup.</p>
+    <label class="company-opt">
+      <input type="checkbox" name="bu_level" value="1" {{ 'checked' if row and row['bu_level'] }}>
+      <span><strong>Business-unit level</strong> &mdash; one result for the whole unit (PAT, unit gross profit). Its one
+        target is set per unit in BU KPI setup, and the person sees it but doesn't fill it in.</span>
+    </label>
+  </fieldset>
+  <fieldset class="kpi-seg">
+    <legend>Who it applies to</legend>{% if COA %}
+    <div class="coa-seg" role="radiogroup" aria-label="Who it applies to" data-coa-who>
+      <label><input type="radio" name="mode" value="scope" {{ 'checked' if not (PEOPLE and PEOPLE.chips) }}><span>Units, departments and grades</span></label>
+      <label><input type="radio" name="mode" value="people" {{ 'checked' if PEOPLE and PEOPLE.chips }}><span>Named people</span></label>
+    </div>
+    <div data-coa-scope{{ ' hidden' if PEOPLE and PEOPLE.chips }}>{% endif %}
+    <div class="pp-fields">
+      <label class="pp-f-wide">Business unit
+        <select name="company" class="modern-select">
+          <option value="*" {{ 'selected' if not row or row['company'] == '*' }}>Any business unit</option>
+          {% for c in companies %}<option value="{{ c }}" {{ 'selected' if row and row['company'] == c }}>{{ display_company(bg, c) }}</option>{% endfor %}
+        </select></label>
+      <label class="pp-f-wide">Departments
+        <select name="department_mode" class="modern-select"
+                onchange="this.closest('.pp-fields').querySelector('.kpi-depts').hidden = (this.value === 'any')">
+          <option value="any" {{ 'selected' if not row or not row['departments'] }}>All departments</option>
+          <option value="include" {{ 'selected' if row and row['departments'] and (row['department_mode'] or 'include') == 'include' }}>Only these</option>
+          <option value="exclude" {{ 'selected' if row and row['departments'] and row['department_mode'] == 'exclude' }}>All except these</option>
+        </select></label>
+      {# the wrapper carries `hidden`: a label here would keep its own display and ignore the attribute #}
+      {% set have = ((row['departments'] if row and row['departments'] else '').split(',') | map('trim') | map('lower') | reject('equalto', '') | list) %}
+      {% set known = ldepts | map(attribute=0) | map('lower') | list %}
+      <div class="kpi-depts pp-f-wide" {{ '' if row and row['departments'] else 'hidden' }}>
+        <span class="kpi-dl-h">Which departments <span class="muted small">tick them; the business unit above narrows the list</span></span>
+        <div class="kpi-dlist" data-kpi-dlist>
+          {% for d, units in ldepts %}<label data-units="{{ units | join('|') }}"><input type="checkbox" name="departments" value="{{ d }}" {{ 'checked' if d | lower in have }}> {{ d }}</label>{% endfor %}
+          {% for h in have if h not in known %}<label class="kpi-dl-old"><input type="checkbox" name="departments" value="{{ h }}" checked> {{ h }} <span class="muted small">not on the roster now</span></label>{% endfor %}
+          {% if not ldepts and not have %}<span class="muted small">No departments on file in {{ display_bg(bg) }} yet.</span>{% endif %}
+        </div>
+      </div>
+    </div>
+    <div class="pp-fields">
+      {# An existing row scoped the old way (a tier, or one grade) is shown as the grades it actually meant, so editing
+         it cannot silently drop its scope. A namespace: a {% set %} inside the loop would not reach the input. #}
+      {% set kg = namespace(g=(row['job_grades'] if row and row['job_grades'] else
+                 ((row['job_grade'] if row and row['job_grade'] and row['job_grade'] != '*' else '')))) %}
+      {% if not kg.g and row and row['tier_n'] %}
+        {% for tt in tiers %}{% if tt.n == row['tier_n'] %}{% set kg.g = range(tt.min, tt.max + 1) | join(',') %}{% endif %}{% endfor %}
+      {% endif %}
+      {% set kgs = (kg.g | string).split(',') | map('trim') | reject('equalto', '') | list %}
+      {% set gn = namespace(nums=[], others=[]) %}
+      {% for gr in (lgrades + kgs) | unique %}{% if gr.isdigit() %}{% set gn.nums = gn.nums + [gr | int] %}{% else %}{% set gn.others = gn.others + [gr] %}{% endif %}{% endfor %}
+      <div class="pp-f-full kpi-grades" data-kpi-grades>
+        <span class="kpi-dl-h">Job grades <span class="muted small">none ticked applies to every grade</span></span>
+        <div class="kpi-glist">
+          {% for gr in (gn.nums | sort | map('string') | list) + gn.others %}<label><input type="checkbox" name="job_grades" value="{{ gr }}" {{ 'checked' if gr in kgs }}> {{ gr }}</label>{% endfor %}
+        </div>
+        <span class="muted small">Or tick a band:
+          <span class="kpi-tierbtns">
+            {% for tt in tiers %}<button type="button" class="btn-link kpi-tier-btn" data-grades="{{ range(tt.min, tt.max + 1) | join(',') }}">JG {{ tt.min }}&ndash;{{ tt.max }}</button>{% endfor %}
+            <button type="button" class="btn-link kpi-tier-btn" data-grades="">Clear</button>
+          </span></span></div>
+    </div>
+    {# the old single-value columns, pinned to their "any" sentinels: scope is said through the lists above #}
+    <input type="hidden" name="tier_n" value="0">
+    <input type="hidden" name="job_grade" value="">
+    <input type="hidden" name="department" value="">{% if COA %}
+    </div>
+    <div data-coa-people{{ '' if PEOPLE and PEOPLE.chips else ' hidden' }}>
+      <div class="coa-pickrow">People
+        <span class="pick pick-multi" data-pick data-pick-multi data-pick-bg="{{ bg }}" data-pick-init='{{ (PEOPLE.chips if PEOPLE else []) | tojson }}'>
+          <input type="text" class="pick-q" placeholder="Search by Employee ID or name" autocomplete="off" aria-label="Add a person">
+          <input type="hidden" class="pick-val" name="people_eids">
+        </span></div>
+      <span class="muted small">Picked, never typed: only active people in {{ display_bg(bg) }}. Up to 50; for more, use units, departments and grades. <span data-coa-picked></span></span>
+      <div class="coa-who">{% if row and PEOPLE and PEOPLE.n %}<a href="#" class="bk-carry-link" data-list-open="{{ url_for('admin_list_view', key='kpi-lib-people', fragment=1, lib=row['id']) }}">{{ PEOPLE.n }} {{ 'person' if PEOPLE.n == 1 else 'people' }}</a> can pick it{% else %}<b>Only the people you pick</b> can pick it{% endif %} for their scorecard, and nobody else. They keep it if they move unit or department; it goes when they leave the group.</div>
+      <div class="coa-note">Named people is for a person's own KPI. A BU-level KPI is the whole unit's, so this choice is off when Business-unit level is ticked; its carriers are chosen in BU KPI setup. Putting the KPI on someone's scorecard, with its target, stays where it is today: the Early Year's KPI setting, Group People adding a line on the person page, or an import.</div>
+    </div>{% endif %}
+  </fieldset>
+  <div class="actions">
+    <button type="submit" class="primary">{{ 'Save' if action == 'update' else 'Add KPI' }}</button>
+  </div>
+</form>
+{% endmacro %}

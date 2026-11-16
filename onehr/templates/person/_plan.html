@@ -1,0 +1,104 @@
+{# The person page's Career Plan (canvas I5): their path, role choice, career profile and development plan. HR's changes
+   go through the profile's one write path and are logged as HR's (admin_person_plan). Career routes (?routes=1, Chris
+   2026-10-19) turns the tab into the moves their job offers, so a list's person panel shows them in place; pins and
+   hides stay in the career tree, linked from there, as they change the map of everyone holding the job. #}
+{% set c = pl.career or {} %}
+{% if pl.rview is not none %}
+{% set rv = pl.rview %}
+{% set prof_ = pl.profile %}
+<section class="admin-card pp-card pp-rv" id="pp-routes" aria-label="Career routes from their job">
+  <a class="small pp-rv-back" href="{{ url_for('admin_person', uid=person['id'], tab='plan', cycle=request.args.get('cycle') or None) }}">&lsaquo; Back to their Career Plan</a>
+  <div class="pp-rv-head">
+    <span class="pp-k">Career routes from their job</span>
+    <b class="pp-rv-t">{{ prof_['job_title'] | proper }}{% if rv.g %} · JG {{ rv.g }}{% endif %}</b>
+    <span class="muted small">The moves their Career Plan offers, nearest first: the same list for everyone holding this job.</span>
+  </div>
+  {% for name, rows in rv.groups %}
+  <div class="pp-rv-grp">
+    <h3 class="pp-rv-gh">{{ name[:1] | upper ~ name[1:] }}</h3>
+    {% for r in rows %}
+    <div class="pp-rv-row">
+      <span class="pp-rv-n"><b>{{ r.title }}</b>{% if r.next %}<span class="cr-tag is-next">Next step</span>{% endif %}{% if r.target %}<span class="cr-tag">Target role</span>{% endif %}{% if r.pinned %}<span class="cr-tag is-pin">Pinned</span>{% endif %}</span>
+      <span class="muted small">{% if r.grade %}JG {{ r.grade }} · {% endif %}{{ r.jump }}{% if r.match %} · {{ r.match }}{% endif %}</span>
+    </div>
+    {% endfor %}
+  </div>
+  {% else %}
+  <p class="muted pp-none">No move is offered from their job yet.</p>
+  {% endfor %}
+  {% if rv.hidden %}
+  <div class="pp-rv-grp">
+    <h3 class="pp-rv-gh">Hidden by Group People</h3>
+    {% for h in rv.hidden %}<div class="pp-rv-row"><span class="pp-rv-n"><b class="muted">{{ h.job_title | proper }}</b><span class="cr-tag is-hid">Hidden</span></span></div>{% endfor %}
+  </div>
+  {% endif %}
+  <p class="muted small pp-rv-foot">A pin or a hide changes this list for everyone holding the job, so it is made in the career tree.
+    <a href="{{ url_for('admin_career_routes', profile=prof_['id'] if rv.tree else None) }}" target="_blank" rel="noopener">Open in the career tree &#8599;</a></p>
+</section>
+{% else %}
+{% if ai_ins %}{% from "person/_ai_insight.html" import card as ai_card %}{{ ai_card(ai_ins.idp, "Written for their line manager · read only") }}{% endif %}
+<section class="admin-card pp-card" aria-label="Their career path">
+  <div class="pp-h-row"><h2 class="pp-h">Their career path</h2>{% if pl.profile %}<a class="small" href="{{ url_for('admin_person', uid=person['id'], tab='plan', routes=1, cycle=request.args.get('cycle') or None) }}">Career routes &rsaquo;</a>{% endif %}</div>
+  <div class="pp-path">
+    <div class="pp-node"><span class="pp-k">Now</span><b>{{ person['job_title'] | proper or '—' }}</b><span class="muted small">{% if person['job_grade'] %}JG {{ person['job_grade'] }}{% endif %}{% if pl.profile %} · library: {{ pl.profile['job_title'] | proper }}{% endif %}</span></div>
+    <span class="pp-arr">&rarr;</span>
+    <div class="pp-node is-next"><span class="pp-k">Next · their choice</span>{% if pl.target %}<b>{{ pl.target['job_title'] | proper }}</b><span class="muted small">JG {{ pl.target['job_grade'] }}{% if pl.succession and pl.succession['readiness'] %} · {{ readiness_word.get(pl.succession['readiness'], pl.succession['readiness']) }} (succession record){% endif %}</span>{% else %}<b class="muted">Not chosen yet</b>{% endif %}</div>
+    <span class="pp-arr">&rarr;</span>
+    <div class="pp-node"><span class="pp-k">Later · aspiration</span><b>{{ c.get('aspiration_long') or '—' }}</b></div>
+    <div class="pp-routes"><span class="pp-k">Routes from their job</span>
+      {% for r in pl.routes %}<span class="{{ 'muted' if r['kind'] == 'hidden' }}">{{ r['job_title'] | proper }} <span class="muted small">· JG {{ r['job_grade'] }}{{ ' · hidden by Group People' if r['kind'] == 'hidden' else ' · pinned' }}</span></span>
+      {% else %}<span class="muted small">No pinned or hidden routes; the map reads them from shared competencies.</span>{% endfor %}</div>
+  </div>
+</section>
+
+<div class="pp-grid pp-grid-even">
+  <section class="admin-card pp-card" aria-label="Their career profile">
+    <h2 class="pp-h">Their role choice and career profile</h2>
+    {% if editable %}
+    <form method="post" action="{{ url_for('admin_person_plan', uid=person['id']) }}" class="pp-inline"
+          data-confirm="Set {{ person['full_name'] }}'s role choice to the role you picked? It replaces their own choice and their next-step aspiration, shows on their career map at once, and goes in the trail as Group People's."
+          data-confirm-ok="Set role choice">
+      <input type="hidden" name="action" value="role">
+      <label class="pp-k" for="pp-role">Role choice</label>
+      <select id="pp-role" name="profile_id" class="modern-select">
+        <option value="">Not chosen</option>
+        {% for r in pl.roles %}{% if r.profile_id %}<option value="{{ r.profile_id }}" {{ 'selected' if c.get('target_profile_id') == r.profile_id }}>{{ r.title }}{% if r.grade is not none %} · JG {{ r.grade }}{% endif %}</option>{% endif %}{% endfor %}
+      </select>
+      <button type="submit" class="btn-link">Set</button>
+    </form>
+    {% if not pl.roles %}<p class="muted small pp-none">Their job maps to no library profile, so there are no routes to choose from.</p>{% endif %}{% if pl.suggest %}{% include "person/_suggest_roles.html" %}{% endif %}
+    <form method="post" action="{{ url_for('admin_person_plan', uid=person['id']) }}" class="pp-fields pp-fields-2"
+          data-confirm="Save these changes to {{ person['full_name'] }}'s career profile? They are {{ person['full_name'] }}'s own answers; the new wording shows on their plan at once and goes in the trail as Group People's."
+          data-confirm-ok="Save">
+      <input type="hidden" name="action" value="profile">
+      {% for h in pl.horizons %}<label>{{ h.label }}<input name="{{ h.key }}" value="{{ c.get(h.key) or '' }}" maxlength="4000"></label>{% endfor %}
+      <label>Mobility<select name="mobility" class="modern-select"><option value="">Not said</option>
+        {% for m in pl.mobility %}<option value="{{ m.key }}" {{ 'selected' if c.get('mobility') == m.key }}>{{ m.label }}</option>{% endfor %}</select></label>
+      <label>Mobility note<input name="mobility_note" value="{{ c.get('mobility_note') or '' }}" maxlength="4000"></label>
+      <label>Strengths<input name="strengths" value="{{ c.get('strengths') or '' }}" maxlength="4000"></label>
+      <label>Mentor<input name="mentor" value="{{ c.get('mentor') or '' }}" maxlength="4000"></label>
+      <div class="pp-f-full pp-edit-btns"><button type="submit" class="primary">Save their profile</button>
+        <span class="muted small">These are {{ person['full_name'] }}'s own answers: what Group People changes goes in the trail as Group People's.</span></div>
+    </form>
+    {% else %}{% if pl.suggest %}
+    {% include "person/_suggest_roles.html" %}{% endif %}
+    {% for h in pl.horizons %}<div class="pp-r"><span class="muted">{{ h.label }}</span><span>{{ c.get(h.key) or '—' }}</span></div>{% endfor %}
+    {% endif %}
+  </section>
+
+  <section class="admin-card pp-card" aria-label="Development plan">
+    <div class="pp-h-row"><h2 class="pp-h">Development plan {{ pl.year or '' }}{% if pl.idp %} · {{ pl.idp['status'] }}{% endif %}</h2>
+      {# its Reopen is in Submitted this cycle above (2026-10-16): the plan, or the line manager's close of it #}</div>
+    {% if pl.idp %}
+      {% for g_ in pl.idp['goals'] %}
+      <div class="pp-goal"><b>{{ g_['area'] or g_['action'] or 'Goal %d' % loop.index }}</b>
+        {% if g_['action'] and g_['area'] %}<span class="small">{{ g_['action'] }}</span>{% endif %}
+        <span class="muted small">{% if g_['target_date'] %}Due {{ g_['target_date'] }}{% endif %}{% if g_['progress_status'] %} · {{ g_['progress_status'] | replace('_', ' ') }}{% endif %}</span></div>
+      {% else %}<p class="muted small pp-none">No goals written yet.</p>{% endfor %}
+      {% if rf and rf.plan %}{% from "person/_rf.html" import one as rf_one with context %}
+      {% call rf_one(rf.plan, True) %}{% if not rf.plan.closed %}<span class="pp-rmk-chip">They see this once the plan closes</span>{% endif %}{% endcall %}
+      {% elif pl.idp['manager_comment'] %}<p class="small pp-none"><b>Their manager:</b> “{{ pl.idp['manager_comment'] }}”</p>{% endif %}
+    {% else %}<p class="muted small pp-none">No development plan for {{ pl.year or 'this cycle' }} yet.</p>{% endif %}
+  </section>
+</div>
+{% endif %}

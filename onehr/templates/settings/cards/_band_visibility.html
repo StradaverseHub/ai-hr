@@ -1,0 +1,28 @@
+{# Settings card: band_visibility. Split out of the old General page (2026-10-10) so it lives on its module's settings page;
+   it posts to admin_settings, which sends you back to `settings_next` when the including page sets it. #}
+  <p class="muted small">Choose whether employees and managers see the potential band (Low, Mid or High) on their
+    360 feedback pages.</p>
+  <details class="muted small">
+    <summary>Why this matters</summary>
+    <p>The potential band isn't part of every round's 360 assessment. When this is <strong>off</strong>, the band
+      is hidden from the four places employees and managers see it &mdash; a person's own <strong>My Feedback</strong>
+      page (and its printed PDF), a manager's <strong>report view</strong> of a direct report, <strong>Team view</strong>
+      and <strong>HOD view</strong>. Turning it on restores all four exactly as before.</p>
+    <p><strong>Admin views always show the band</strong> whatever this says &mdash; the Overview distribution, a
+      person's 360 results, Reports and its PDF, and every Excel export. The <strong>calibration pages are also
+      unaffected</strong>: deciding the band is their whole point, so their own permissions govern them. This setting
+      changes only what is displayed &mdash; no score, band or report release is affected, and it doesn't change who
+      can open a report.</p>
+  </details>
+  <form method="post" action="{{ url_for('admin_settings') }}" class="admin-form adm-set-form"
+        data-confirm="Save this setting? It changes what every employee and manager sees on their 360 feedback pages."
+        data-confirm-ok="Save">
+    <input type="hidden" name="next" value="{{ (settings_next ~ '#band-visibility') if settings_next else '' }}">
+    <input type="hidden" name="action" value="band_visibility">
+    <label class="switch">
+      <input type="checkbox" name="show_band" value="1" {% if show_band %}checked{% endif %}>
+      <span class="track" aria-hidden="true"></span>
+      <span class="switch-label">Show the potential band to employees and managers</span>
+    </label>
+    <div class="actions"><button type="submit" class="primary">Save</button></div>
+  </form>

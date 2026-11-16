@@ -1,0 +1,74 @@
+{# The person page's Grade H Appraisal tab (2026-11-03, canvas P2): READ ONLY. Everything is read from Grade H's own records by
+   _person_gradeh (gradeh_computed, gradeh_band_at, gradeh_buceo_person_detail): this page works out no rating and no band. The
+   super admin and admin roles with gradeh.read; the reason a person gave for "I do not agree" is never here (the ticket holds it). #}
+{% from "person/_gradeh_blocks.html" import steps_block, route_block with context %}
+{% set G = gh.g %}{% set LV = gh.levels %}{% set D = gh.detail %}
+{% macro bandpill(b, axis) %}{% if b %}<span class="potential-pill" data-band="{{ b }}">{% if axis == 'perf' %}{{ {'UA':1,'BE':2,'ME':3,'AE':4,'OU':5}[b] }} · {% endif %}{{ b }}</span>{% else %}<span class="muted">Not yet</span>{% endif %}{% endmacro %}
+{% if not G %}
+<section class="admin-card pp-card"><p class="muted small pp-none">Nothing of theirs is on Grade H Appraisal in this cycle.</p></section>
+{% else %}
+<div class="pp-gh">
+<section class="admin-card pp-card" aria-label="Where it stands">
+  <div class="pp-h-row"><h2 class="pp-h">Where it stands</h2><span class="muted small">Read only. Set appraiser, HODs and Reopen stay on <a href="{{ url_for('admin_gradeh', tab='people') }}">Admin › Grade H Appraisal</a>.</span></div>
+  {{ steps_block(gh) }}
+</section>
+
+<section class="admin-card pp-card" aria-label="KPI achievement">
+  {{ route_block(gh) }}
+</section>
+
+<section class="admin-card pp-card" aria-label="Bands, level by level">
+  <div class="pp-h-row"><h2 class="pp-h">Bands, level by level</h2><span class="muted small">{% if G.shared %}A HOD's call counts once that HOD signs off · exactly halfway takes the lower band{% else %}A level shows a band only once someone at that level has set it{% endif %}</span></div>
+  <div class="table-scroll"><table class="pp-gh-table pp-gh-bands">
+    <thead><tr><th></th><th>Line manager</th><th>HOD level{% if G.shared %} · shared {{ G.hods[0].share }} : {{ G.hods[1].share }}{% endif %}</th><th>BU CEO</th><th>Final</th></tr></thead>
+    <tbody>
+    {% for ax, axname in (('perf', 'Performance'), ('pot', 'Potential')) %}
+    <tr><td><b>{{ axname }}</b></td>
+      <td>{% if LV[ax].lm %}{{ bandpill(LV[ax].lm, ax) }}{% if ax == 'pot' and gh.pot_score %} <span class="muted small" style="margin-left: 0.5rem">{{ gh.pot_score }} / {{ gh.pot_max }}</span>{% endif %}{% else %}<span class="muted">Not yet</span>{% endif %}</td>
+      <td>{{ bandpill(LV[ax].hod, ax) }}
+        {% if G.shared and not G.dis %}{% for h in G.hods %}{% set c = h[ax] or {} %}<div class="pp-gh-sm">{{ h.name }} · {% if c.band %}{{ bandpill(c.band, ax) }} {{ 'signed off' if c.signed else 'not signed off yet' }}{% else %}no call yet{% endif %}</div>{% endfor %}
+        <div class="pp-gh-sm">{{ gh.hod_note[ax] }}</div>{% endif %}</td>
+      <td>{{ bandpill(LV[ax].buceo, ax) }}</td>
+      <td>{{ bandpill(LV[ax].final, ax) }}</td></tr>
+    {% endfor %}
+    </tbody></table></div>
+  <h3 class="pp-gh-h3">Changes and remarks</h3>
+  {% for m in gh.moves %}
+  <div class="pp-gh-move"><span class="muted">{{ m.when }}</span><span>{{ m.who or '—' }}{% if m.stage == 'final' %} <span class="muted">(final band)</span>{% elif m.stage == 'buceo' %} <span class="muted">(BU CEO)</span>{% endif %}</span><span>{{ 'Performance' if m.axis == 'perf' else 'Potential' }} {% if m.agreed %}{{ m.to }}, agreed{% else %}{{ m.from or '–' }} → <b>{{ m.to }}</b>{% endif %}{% if m.remark %} <span class="muted">· “{{ m.remark }}”</span>{% endif %}</span></div>
+  {% else %}<p class="muted small pp-none">No HOD, BU CEO or final change recorded.</p>{% endfor %}
+</section>
+
+<div class="pp-gh-two">
+  <section class="admin-card pp-card" aria-label="Potential statements">
+    <div class="pp-h-row"><h2 class="pp-h">Potential · the 14 statements</h2><span class="muted small">{{ gh.yes_all }} of 14 Yes{% if gh.pot_score %} · {{ gh.pot_score }} / {{ gh.pot_max }}{% endif %}</span></div>
+    {% if gh.lps %}
+    <table class="pp-gh-table"><thead><tr><th>Leadership principle</th><th>Yes</th></tr></thead><tbody>
+      {% for l in gh.lps[:3] %}<tr><td>{{ l.n }} · {{ l.title }}</td><td>{{ l.yes }} of {{ l.of }}</td></tr>{% endfor %}
+    </tbody></table>
+    {% if gh.lps | length > 3 %}<details class="fold"><summary>{{ gh.lps | length - 3 }} more principles</summary>
+      <table class="pp-gh-table"><tbody>{% for l in gh.lps[3:] %}<tr><td>{{ l.n }} · {{ l.title }}</td><td>{{ l.yes }} of {{ l.of }}</td></tr>{% endfor %}</tbody></table>
+      <button type="button" class="fold-less" data-fold-less>Show less</button></details>{% endif %}
+    {% else %}<p class="muted small pp-none">Not answered yet.</p>{% endif %}
+  </section>
+  <section class="admin-card pp-card" aria-label="The line manager's comments">
+    <div class="pp-h-row"><h2 class="pp-h">The line manager's comments</h2></div>
+    {% if D and D.b and (D.b.ach or D.b.str or D.b.dev) %}
+    <div class="pp-gh-q">Achievements</div><p class="pp-gh-p">{{ D.b.ach or '–' }}</p>
+    <div class="pp-gh-q">Strengths</div><p class="pp-gh-p">{{ D.b.str or '–' }}</p>
+    <div class="pp-gh-q">To develop</div><p class="pp-gh-p">{{ D.b.dev or '–' }}</p>
+    <div class="pp-gh-q">Conversation held · Promotion nomination</div><p class="pp-gh-p">{{ 'Yes' if D.b.conv else 'No' }} · {{ 'Yes' if D.promo and D.promo.yes else 'No' }}{% if D.promo and D.promo.yes and D.promo.reason %} <span class="muted">· {{ D.promo.reason }}</span>{% endif %}</p>
+    {% else %}<p class="muted small pp-none">Nothing written yet.</p>{% endif %}
+  </section>
+</div>
+
+<section class="admin-card pp-card" aria-label="Acknowledgement">
+  <div class="pp-h-row"><h2 class="pp-h">Acknowledgement</h2></div>
+  {% if G.dis %}<p class="pp-gh-p">Does not agree · not calibrated{% if G.dis_on %}, since {{ G.dis_on }}{% endif %}.</p>
+  {% elif G.ack == 'person' %}<p class="pp-gh-p">Acknowledged in person{% if G.ack_on %} on {{ G.ack_on }}{% endif %}{% if gh.ack_by %}, recorded by {{ gh.ack_by }}{% endif %}.</p>
+  {% elif G.ack == 'self' %}<p class="pp-gh-p">Acknowledged by them{% if G.ack_on %} on {{ G.ack_on }}{% endif %}.</p>
+  {% elif G.ack == 'deemed' %}<p class="pp-gh-p">Deemed acknowledged{% if G.ack_on %} on {{ G.ack_on }}{% endif %}: they did not respond by the deadline.</p>
+  {% elif G.ack == 'wait' %}<p class="pp-gh-p">Waiting for them to acknowledge{% if G.ack_on %} ({{ G.ack_on }}){% endif %}.</p>
+  {% else %}<p class="muted small pp-none">Nothing to acknowledge yet: their line manager has not submitted.</p>{% endif %}
+</section>
+</div>
+{% endif %}

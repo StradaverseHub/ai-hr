@@ -1,0 +1,927 @@
+{% extends "base.html" %}
+{% from "_table_tools.html" import colth, colmenu, colmenu_script %}
+{% set TIER_NAME = {'buceo': 'Business unit', 'bgceo': 'Business group',
+                    'group': 'Calibration group'} %}
+{% block title %}Talent Box — {{ scope_label }}{% endblock %}
+{% block keep_place %} data-keep-place="own"{% endblock %}
+{% block body %}
+{# Cost centre and work location are optional roster attributes: each column
+   appears only once somebody in this scope actually carries one, so an
+   un-populated roster costs no width and a populated one needs no setting. #}
+{%- set has_cc = rows | selectattr('user.cost_center') | list | length > 0 %}
+{%- set has_loc = rows | selectattr('user.work_location') | list | length > 0 %}
+{%- set optcols = [
+      {'id': 'cc',  'label': 'Cost centre',   'on': has_cc,  'empty': not has_cc},
+      {'id': 'loc', 'label': 'Work location', 'on': has_loc, 'empty': not has_loc}] %}
+
+<div class="page-head">
+  <div>
+    <div class="calib-breadcrumb">
+      <a href="{{ url_for('talent_box_home') }}">Talent Box</a>
+      &#9656; {{ TIER_NAME[tier] }}
+    </div>
+    <h1 class="calib-title">{{ scope_label }}</h1>
+    {# The same three chips, in the same order, as the performance and potential
+       calibration headers: people, companies, status. One header shape across
+       all three calibration surfaces. #}
+    <div class="calib-chips">
+      <span class="calib-chip">{{ rows|length }} {{ 'person' if rows|length == 1 else 'people' }}</span>
+      <span class="calib-chip">{{ company_count }} {{ 'business unit' if company_count == 1 else 'business units' }}</span>
+      <span class="calib-chip">{{ placed }} of {{ rows|length }} placed</span>
+      {% if locked %}<span class="calib-chip calib-chip--locked">&#9679; Locked</span>
+      {% else %}<span class="calib-chip calib-chip--open">&#9679; Open for review</span>{% endif %}
+    </div>
+    <p class="muted small" style="margin:6px 0 0">
+      {# Both axes are named so the cycle/period pairing is never ambiguous --
+         they are two independent records that happen to align today. #}
+      Potential from <strong>{{ cycle_name }}</strong> &middot;
+      performance from <strong>{{ period['name'] }}</strong>
+    </p>
+  </div>
+</div>
+
+{# The stage tabs (Talent box · PIP · Promotion) were here: the PIP and promotion lists were archived 2026-10-13
+   (they move to another platform), which leaves the box as the only stage. #}
+
+{# Filters are SERVER-side, not cards hidden in JS: the distribution bars and
+   target gaps are recomputed over whatever is shown, and picking one company
+   also switches the performance target to that company's own PAT curve. So
+   narrowing the view genuinely re-asks the question rather than just hiding
+   people from an unchanged answer. #}
+{# Company reads as one scrolling row of pills, the same widget the
+   calibration pages use -- you scan business units rather than opening a
+   dropdown to find out what's in it. Plain links (not the JS multi-select
+   those pages use) because this filter is server-side, see the note above.
+   Arrows come from pillscroller.js and page a full row at a time. #}
+{# Only when the scope actually spans companies. A BUCEO scope IS one company --
+   the company is part of its route, not a filter -- so a picker there would
+   both be meaningless and collide with the route's own `company` argument. #}
+{% if all_companies | length > 1 %}
+{# scope_kwargs carries `company` at BUCEO tier; strip it so the filter value is
+   the only source of that argument. #}
+{% set fkw = dict(scope_kwargs, dept=f_depts, jg=f_jgs) %}
+{% set _ = fkw.pop('company', None) %}
+<div class="calib-burow">
+  <span class="calib-burow__label">Business unit</span>
+  <div class="calib-bu-scroller">
+    <button type="button" class="bu-nav bu-nav--left" aria-label="Previous companies" hidden>&#8249;</button>
+    <div class="calib-bu-pills">
+      <a class="bu-pill {{ 'is-on' if not f_company else '' }}"
+         href="{{ url_for(request.endpoint, **fkw) }}">All</a>
+      {% for c in all_companies %}
+      <a class="bu-pill {{ 'is-on' if c == f_company else '' }}" title="{{ c }}"
+         href="{{ url_for(request.endpoint, company=c, **fkw) }}">{{ company_labels[c] }}</a>
+      {% endfor %}
+    </div>
+    <button type="button" class="bu-nav bu-nav--right" aria-label="More companies" hidden>&#8250;</button>
+  </div>
+</div>
+{% endif %}
+
+<form method="get" class="admin-card tbox-filters" id="tbox-filter-form">
+  {% if f_company %}<input type="hidden" name="company" value="{{ f_company }}">{% endif %}
+  <div class="tbox-filter">
+    <span class="muted small">Department</span>
+    <button type="button" class="modern-select tbox-pickbtn" data-pick="dept">
+      {% if f_depts %}{{ f_depts|length }} selected{% else %}All departments{% endif %}
+    </button>
+  </div>
+  <div class="tbox-filter">
+    <span class="muted small">Job grade</span>
+    <button type="button" class="modern-select tbox-pickbtn" data-pick="jg">
+      {% if f_jgs %}{{ f_jgs|length }} selected{% else %}All grades{% endif %}
+    </button>
+  </div>
+  {% if filtered %}
+  <a class="btn-link" style="align-self:end;padding-bottom:9px"
+     href="{{ url_for(request.endpoint, **dict(scope_kwargs)) }}">Clear filters</a>
+  {% endif %}
+  <p class="muted small tbox-filter-note">
+    {% if filtered %}Showing <strong>{{ rows|length }}</strong> of this scope's people — the
+      distribution and gaps below are measured against those.
+    {% else %}Whole scope. Narrow by business unit, department or grade to re-measure the
+      distribution against that group.{% endif %}
+  </p>
+
+  {# Both pickers live INSIDE the form, so whatever is ticked submits with it. #}
+  <div class="modal-overlay" id="tbox-pick-dept" hidden>
+    <div class="modal-card" role="dialog" aria-modal="true">
+      <h2 style="margin:0 0 2px">Departments</h2>
+      <p class="muted small" style="margin:0 0 12px">Tick any number. Nothing ticked means all.</p>
+      <div class="company-pick"><div class="company-grid">
+        {% for d in all_depts %}
+        <label class="company-opt"><input type="checkbox" name="dept" value="{{ d }}"
+               {{ 'checked' if d in f_depts else '' }}> {{ d }}</label>
+        {% endfor %}
+      </div></div>
+      <div class="modal-actions">
+        <button type="button" class="btn-link" data-close="tbox-pick-dept">Cancel</button>
+        <button type="submit" class="primary">Apply</button>
+      </div>
+    </div>
+  </div>
+  <div class="modal-overlay" id="tbox-pick-jg" hidden>
+    <div class="modal-card" role="dialog" aria-modal="true">
+      <h2 style="margin:0 0 2px">Job grades</h2>
+      <p class="muted small" style="margin:0 0 12px">Tick any number. Nothing ticked means all.</p>
+      <div class="company-pick"><div class="company-grid">
+        {% for g in all_jgs %}
+        <label class="company-opt"><input type="checkbox" name="jg" value="{{ g }}"
+               {{ 'checked' if g in f_jgs else '' }}> JG {{ g }}</label>
+        {% endfor %}
+      </div></div>
+      <div class="modal-actions">
+        <button type="button" class="btn-link" data-close="tbox-pick-jg">Cancel</button>
+        <button type="submit" class="primary">Apply</button>
+      </div>
+    </div>
+  </div>
+</form>
+
+{# One row for every way of looking at this population: the two grid
+   resolutions and the four category lists. The grid toggles are links, not
+   panel switches -- which columns you're looking at is a property of the page
+   and belongs in the URL, so it survives a reload and a shared link; the
+   category tabs are local panels over the same data. The one matching the
+   current grid doubles as that panel's tab. #}
+{# `company` means two different things depending on the scope: at BUCEO tier it
+   is part of the ROUTE and must always be present, everywhere else it is the
+   optional filter. Falling back to the scope's own value keeps both true --
+   dropping it at BUCEO builds a URL the route can't satisfy. #}
+<div class="tbox-tabs" role="tablist">
+  <button type="button" class="tbox-tab is-active" data-tab="grid"
+     title="Performance grouped Low (UA+BE) / Mid (ME) / High (AE+OU)">9-box</button>
+  <button type="button" class="tbox-tab" data-tab="table"
+     title="Every row in this scope as one sortable list">Table</button>
+  {% for c in category_order %}
+  <button type="button" class="tbox-tab" data-tab="{{ category_slug[c] }}">
+    {{ c }} <span class="muted small">{{ cat_counts[c] }}</span>
+  </button>
+  {% endfor %}
+</div>
+
+<div class="tbox-panel" data-panel="grid">
+
+  {# Reference guideline, above the box rather than below it: it is what you
+     calibrate AGAINST, so reading it after the grid is reading it too late.
+     Collapsible because it is reference material -- once a room knows the
+     curve, the boxes are what they want the screen for. Per CELL rather than
+     per axis: a row or column can sit exactly on target while every box
+     inside it is wrong. #}
+  {# Collapsed by default: the guideline is reference material, and the grid
+     is the thing you came to look at. The one number that matters at a glance
+     -- how many people each category is away from its reference share -- is
+     lifted into the summary, so collapsing costs you nothing actionable.
+     These deltas are computed off the cells actually on screen, so they
+     re-read correctly whenever the company/department/JG filter changes. #}
+  {% set moves = cat_delta | selectattr('delta') | list if cat_delta else [] %}
+  <details class="tbox-ref">
+    <summary>
+      <span class="tbox-ref-chev" aria-hidden="true">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"
+             stroke-linecap="round" stroke-linejoin="round"><path d="M9 6l6 6-6 6"/></svg>
+      </span>
+      <span class="tbox-ref-title">Reference guideline</span>
+      {% if cat_delta %}
+      <span class="tbox-ref-mini">
+        {% if moves %}
+          {% for d in moves %}
+          <span class="tbox-delta-mini tbox-cat-{{ category_slug[d.cat] }}"
+                title="{{ d.actual }} now, {{ d.target }} at the reference share">{{ d.cat }}
+            <b>{% if d.delta > 0 %}+{% endif %}{{ d.delta }}</b></span>
+          {% endfor %}
+        {% else %}
+          <span class="tbox-delta-mini is-on">On target across every category</span>
+        {% endif %}
+      </span>
+      {% endif %}
+      {% if cap_view %}
+      <span class="tbox-capchip {{ 'is-full' if cap_view.single and cap_view.left == 0 else '' }}">
+        {% if cap_view.single %}Moves {{ cap_view.used }} of {{ cap_view.cap }}
+        {%- else %}Moves {{ cap_view.used }} of {{ cap_view.cap }} across {{ cap_view.companies }} business units{% endif %}
+      </span>
+      {% endif %}
+      <span class="tbox-ref-more"><span class="tbox-ref-more-show">Show details</span><span class="tbox-ref-more-hide">Hide details</span></span>
+    </summary>
+    <div class="tbox-ref-body">
+      {% if cell_ref %}
+      <p class="muted small" style="margin:0 0 8px">
+        Performance {{ curve.label }}{% if curve.entered %} (PAT achievement {{ '%g' | format(curve.pct) }}%){% else %} — PAT not entered, Normal assumed{% endif %}
+        &times; potential {{ potential_target['High'] }}/{{ potential_target['Mid'] }}/{{ potential_target['Low'] }},
+        over the {{ placed }} placed. Guidance, not a quota — the target is there to prompt a
+        conversation, not to force a move.
+      </p>
+
+      {# The number of PEOPLE each category is away from its reference share --
+         "+2" means the guideline wants two more here. Both sides are counted
+         off the grid you are actually looking at, so these reconcile with the
+         cells beside them. #}
+      {% if cat_delta %}
+      <p class="tbox-ref-sub">How many to move</p>
+      <div class="tbox-deltas">
+        {% for d in cat_delta %}
+        <span class="tbox-delta tbox-cat-{{ category_slug[d.cat] }}{{ ' is-on' if not d.delta else '' }}"
+              title="{{ d.actual }} now, {{ d.target }} at the reference share">
+          <span class="tbox-delta-cat">{{ d.cat }}</span>
+          <span class="tbox-delta-n">{% if d.delta > 0 %}+{{ d.delta }}{% elif d.delta < 0 %}{{ d.delta }}{% else %}on target{% endif %}</span>
+        </span>
+        {% endfor %}
+      </div>
+      {% endif %}
+
+      <p class="tbox-ref-sub">Reference share per box</p>
+      <div class="tbox-refgrid tbox-refgrid-{{ grid }}">
+        {% for pot in potential_order %}{% for col in col_order %}
+        <span class="tbox-refcell" title="{{ col_label[col] }} / {{ pot }} potential">{{ cell_ref[col ~ '|' ~ pot] }}%</span>
+        {% endfor %}{% endfor %}
+      </div>
+      {% else %}
+      <p class="muted small" style="margin:0">This scope spans several business units, so there is
+        no single PAT figure and no reference curve — the per-unit performance list has each one.</p>
+      {% endif %}
+
+      {% if cap_view %}
+      <p class="muted small tbox-ref-cap">
+        {% if cap_view.single %}
+          <strong>Movement cap:</strong> {{ cap_view.used }} of {{ cap_view.cap }} used
+          ({{ '%g' | format(cap_pct) }}% of {{ cap_view.headcount }}
+          {{ 'person' if cap_view.headcount == 1 else 'people' }}) — {{ cap_view.left }} left.
+        {% else %}
+          <strong>Movement cap:</strong> {{ '%g' | format(cap_pct) }}% of each business unit's headcount,
+          counted per business unit. {{ cap_view.used }} of {{ cap_view.cap }} used across the
+          {{ cap_view.companies }} business units in view — pick one business unit above to see its own
+          remaining allowance.
+        {% endif %}
+        Only a change of talent <em>category</em> counts; moving someone back gives the allowance
+        back.
+      </p>
+      {% endif %}
+    </div>
+  </details>
+
+  {# THE LIMITS (2026-11-03): only while Group People has switched one on; one line per unit in view, plain markup. A move past a limit
+     is refused with the reason (the flash), and a unit over its Star or Super Star limit can't be locked. #}
+  {% macro limchip(st) %}{% if st.state == 'full' %} <span class="tbox-limchip is-full">Full</span>{% elif st.state == 'over' %} <span class="tbox-limchip is-over">{{ st.over }} over</span>{% endif %}{% endmacro %}
+  {% if limit_rows %}
+  <div class="tbox-limits" role="note" aria-label="Limits">
+    <span class="tbox-limits-k">LIMITS</span>
+    <div class="tbox-limits-rows">
+      {% for L in limit_rows %}
+      <p class="tbox-limits-row">
+        {% if limit_rows | length > 1 %}<b class="tbox-limits-unit">{{ L.unit }}</b>{% endif %}
+        {% if L.moves %}<span><span>Moves</span> <b>{{ L.moves.used }} of {{ L.moves.cap }}</b>{{ limchip(L.moves) }}</span>{% endif %}
+        {% if L.super %}<span><span>Super Stars</span> <b>{{ L.super.n }} of {{ L.super.max }}</b>{{ limchip(L.super) }}</span>{% endif %}
+        {% if L.star %}<span><span>Stars</span> <b>{{ L.star.n }} of {{ L.star.max }}</b>{{ limchip(L.star) }}</span>{% endif %}
+        <span class="tbox-limits-by">{% if L.curve %}{{ L.curve }} curve &middot; {% endif %}set by Group People</span>
+      </p>
+      {% endfor %}
+    </div>
+  </div>
+  {% endif %}
+  {% set lim_one = limit_rows[0] if limit_rows | length == 1 else None %}
+
+  <p class="tbox-axis-title">Potential</p>
+  <div class="tbox-wrap">
+    <div class="tbox-ylab" aria-hidden="true">
+      {% for pot in potential_order %}
+      <div class="tbox-ylab-cell">
+        {{ {'High': '3 – High', 'Mid': '2 – Medium', 'Low': '1 – Low'}[pot] }}
+      </div>
+      {% endfor %}
+    </div>
+
+    <div class="tbox-grid tbox-grid-{{ grid }}">
+      {% for pot in potential_order %}
+        {% for col in col_order %}
+        {% set cat = cell_cats[col ~ '|' ~ pot] %}
+        {% set people = cells[(col, pot)] %}
+        <div class="tbox-cell tbox-cat-{{ category_slug[cat] }}"
+             data-perf="{{ col }}" data-pot="{{ pot }}" data-cat="{{ cat }}">
+          {% set ref = cell_ref.get(col ~ '|' ~ pot) %}
+          {% set n = people|length %}
+          {% set pct = (n / placed * 100) if placed else 0 %}
+          {# Count and share, with the reference share beside it. Two bare
+             numbers ("/ 22 30") read as a fraction and left you working out
+             which was which; a percentage against a percentage is the
+             comparison the calibration is actually making. #}
+          <div class="tbox-cell-head">
+            <span>{{ cat }}</span>
+            <span class="tbox-cell-head-right">
+              {% if lim_one and cat == 'Star' and lim_one.star and lim_one.star.state != 'ok' %}<span class="tbox-limchip {{ 'is-over' if lim_one.star.state == 'over' else 'is-full' }}">{{ 'Over' if lim_one.star.state == 'over' else 'Full' }}</span>
+              {% elif lim_one and cat == 'Super Star' and lim_one.super and lim_one.super.state != 'ok' %}<span class="tbox-limchip {{ 'is-over' if lim_one.super.state == 'over' else 'is-full' }}">{{ 'Over' if lim_one.super.state == 'over' else 'Full' }}</span>{% endif %}
+              <span class="tbox-cell-n">{{ n }}</span>
+              <span class="tbox-cell-pct">{{ '%.1f' | format(pct) }}%</span>
+              {% if ref is not none %}
+              <span class="tbox-cell-ref {{ 'is-over' if pct > ref + 0.05 else ('is-under' if pct < ref - 0.05 else 'is-on') }}"
+                    title="Reference {{ ref }}% of {{ placed }} placed &asymp; {{ cell_target.get(col ~ '|' ~ pot) }} people">vs {{ ref }}%</span>
+              {% endif %}
+            </span>
+          </div>
+          <div class="tbox-cell-body">
+            {# Ghosts sit in the cell a moved person LEFT, hidden until "Show
+               moves" is on. They are not .tbox-card, so they never count
+               toward the cell tally or become draggable -- they are a trace,
+               not a person in this cell. #}
+            {# Anyone moved this session is sorted to the top of the cell they
+               now sit in (see the sort in _talent_box_render) and carries
+               .is-moved, so this round's decisions read in one pass without a
+               toggle. Clicking the name reopens the panel, same as any card --
+               so a pinned person is also the handle for adjusting them again.
+               This replaced a ghost-in-the-origin-cell trace behind a "Show
+               moves" button: the useful place to revisit a decision is the box
+               they were moved TO, not the one they left. #}
+            {% for r in people %}
+            {# your own card reads only: nobody sets their own band (_talent_box_apply refuses it) #}
+            {% set mine = user and r['user']['id'] == user['id'] %}
+            <div class="tbox-card{{ ' is-moved' if r['moved'] else '' }}"
+                 data-jg="{{ r['user']['job_grade'] or '' }}"
+                 data-subject="{{ r['user']['id'] }}"
+                 data-name="{{ r['user']['full_name'] }}"
+                 data-perf="{{ r['perf_band'] }}" data-pot="{{ r['pot_band'] }}"
+                 data-cat="{{ r['category'] or '' }}"{% if mine %} data-self="1"{% endif %}
+                 {% if not locked and not mine %}draggable="true"{% endif %}
+                 title="{{ r['user']['full_name']|e }} — {{ label_names[r['perf_band']] }} / {{ r['pot_band'] }} potential{% if mine %}. You — the tier above sets your own band{% endif %}">
+              {% if not locked and not mine %}<span class="tbox-grip" aria-hidden="true">&#8942;&#8942;</span>{% endif %}
+              <span class="tbox-card-name">{{ r['user']['full_name'] }}</span>
+              {% if r['transfer'] %}<span class="rv-cal-notetag" title="{{ r['transfer'] }}">Transferred</span>{% endif %}
+              {% if mine %}<span class="muted small">You</span>{% endif %}
+              {% if r['moved'] %}
+              <span class="tbox-card-move {{ 'is-up' if r['moved']['up'] else 'is-down' }}"
+                    title="Moved from {{ r['moved']['from_cat'] }}">{{ '&#8599;'|safe if r['moved']['up'] else '&#8600;'|safe }}</span>
+              {% elif r['perf_adjusted'] or r['pot_adjusted'] %}
+              {# adjusted, but not out of its box -- or assigned from scratch,
+                 which has no origin cell to point back at #}
+              <span class="tbox-card-flag" title="Adjusted by a calibrator">&#9679;</span>
+              {% endif %}
+
+            </div>
+            {% endfor %}
+          </div>
+        </div>
+        {% endfor %}
+      {% endfor %}
+    </div>
+  </div>
+
+  <div class="tbox-xlab tbox-xlab-{{ grid }}">
+    <span></span>
+    {% for col in col_order %}
+    <span class="tbox-xlab-cell">
+      {% if grid == 9 %}{{ col_label[col] }} performance
+      {%- else %}Rating {{ loop.index }} – {{ col_label[col] }}{% endif %}
+      <br><span class="muted small">{{ col_counts[col] }}{% if placed %} · {{ (col_counts[col] / placed * 100) | round | int }}%{% endif %}</span>
+    </span>
+    {% endfor %}
+  </div>
+  <p class="tbox-axis-title tbox-axis-x">Performance &rarr;</p>
+
+  <p class="tbox-legend">
+    <span><span class="tbox-card-move is-up">&#8599;</span> moved up a box this calibration</span>
+    <span><span class="tbox-card-move is-down">&#8600;</span> moved down a box</span>
+    <span><span class="tbox-card-flag">&#9679;</span> adjusted, same box</span>
+  </p>
+</div>
+
+{# The whole scope as one list, replacing the old 15-box resolution. Five
+   performance columns asked people to read across a shape to recover what a
+   table states outright -- name, both bands, the category they land in -- and
+   this is also where the optional roster columns fit without crowding a cell.
+   Unplaced people are listed too, with the reason, rather than quietly
+   dropped: a row missing an axis is a gap to chase, not a non-person. #}
+<div class="tbox-panel" data-panel="table" hidden>
+  <div class="admin-card">
+    <h2 style="font-size:1rem;margin:0 0 2px">Everyone in this scope</h2>
+    <p class="muted small" style="margin:0 0 10px">
+      {{ rows | length }} row(s) in {{ scope_label }}, in the same population the box is built from.
+    </p>
+    {% if rows %}
+    {# Same picker, and the same stored preference as the calibration tiers:
+       "show me cost centre" is one choice about reviewing people, not one per
+       page. #}
+    <div class="optcols" data-optcols-key="calib" data-optcols-table="tbox-table"
+         data-optcols='{{ optcols | tojson }}'></div>
+    <div class="table-scroll table-scroll-capped"><table class="admin-table" id="tbox-table">
+      <thead><tr>{{ colth('name', 'Name') }}{{ colth('jg', 'JG') }}{{ colth('title', 'Job title') }}
+        {{ colth('cc', 'Cost centre', 'data-optcol="cc"' ~ ('' if has_cc else ' hidden')) }}
+        {{ colth('loc', 'Work location', 'data-optcol="loc"' ~ ('' if has_loc else ' hidden')) }}
+        {{ colth('perf', 'Performance') }}{{ colth('pot', 'Potential') }}
+        {{ colth('cat', 'Category') }}
+        {% if not locked %}<th>Action</th>{% endif %}</tr></thead>
+      <tbody>
+        {# data-jg was already here for the optcols/pills machinery; the rest
+           join it. This table lives in a hidden tab panel until the "table"
+           tab is chosen -- colmenu collects its rows at init either way. #}
+        {% for r in rows %}
+        <tr data-jg="{{ r['user']['job_grade'] or '' }}" class="tbox-listrow data-row"
+            data-name="{{ r['user']['full_name'] }}"
+            data-title="{{ r['user']['job_title'] or '' }}"
+            data-cc="{{ r['user']['cost_center'] or '' }}"
+            data-loc="{{ r['user']['work_location'] or '' }}"
+            data-perf="{{ label_names[r['perf_band']] if r['perf_band'] else '' }}"
+            data-pot="{{ r['pot_band'] or '' }}"
+            data-cat="{{ r['category'] or 'Not placed' }}">
+          <td><strong>{{ r['user']['full_name'] }}</strong>{% if r['transfer'] %} <span class="rv-cal-notetag" title="{{ r['transfer'] }}">Transferred</span>{% endif %}
+            <br><span class="muted small">{{ r['user']['employee_id'] }}</span></td>
+          <td>{{ r['user']['job_grade'] or '—' }}</td>
+          <td class="muted small">{{ r['user']['job_title'] | proper or '—' }}</td>
+          <td data-optcol="cc" class="muted small"{% if not has_cc %} hidden{% endif %}>{{ r['user']['cost_center'] or '—' }}</td>
+          <td data-optcol="loc" class="muted small"{% if not has_loc %} hidden{% endif %}>{{ r['user']['work_location'] or '—' }}</td>
+          <td>{% if r['perf_band'] %}<span class="potential-pill" data-band="{{ r['perf_band'] }}">{{ label_names[r['perf_band']] }}</span>{% else %}<span class="muted small">—</span>{% endif %}</td>
+          <td>{% if r['pot_band'] %}<span class="potential-pill" data-band="{{ r['pot_band'] }}">{{ r['pot_band'] }}</span>{% else %}<span class="muted small">—</span>{% endif %}</td>
+          <td>
+            {% if r['category'] %}
+            <span class="tbox-delta-mini tbox-cat-{{ category_slug[r['category']] }}">{{ r['category'] }}</span>
+            {% else %}
+            <span class="muted small">Not placed{% if r['missing'] %} — {{ r['missing'] | join('; ') }}{% endif %}</span>
+            {% endif %}
+          </td>
+          {% if not locked %}
+          {# Same POST as clicking a name in the grid, so the list is a working
+             surface rather than a read-only export of one. #}
+          <td>{% if user and r['user']['id'] == user['id'] %}<span class="muted small" title="You — the tier above sets your own band">You</span>{% elif r['category'] %}<button type="button" class="btn-link tbox-open"
+                data-subject="{{ r['user']['id'] }}"
+                data-name="{{ r['user']['full_name'] }}"
+                data-perf="{{ r['perf_band'] }}" data-pot="{{ r['pot_band'] }}"
+                >Calibrate</button>{% else %}<span class="muted small">—</span>{% endif %}</td>
+          {% endif %}
+        </tr>
+        {% endfor %}
+        <tr class="no-filter-match" hidden><td colspan="9" class="muted">No one matches the filters.</td></tr>
+      </tbody>
+    </table></div>
+    {# optcols hides the cost-centre and location COLUMNS; colmenu filters ROWS.
+       They are independent, and optcols already clears a colmenu filter on a
+       column it hides, so a hidden column cannot leave an invisible filter on. #}
+    {{ colmenu('tbox-table', {
+         'name':  {'mode': 'clientFilter', 'type': 'text', 'sortAttr': 'name'},
+         'jg':    {'mode': 'clientFilter', 'type': 'text', 'sortAttr': 'jg'},
+         'title': {'mode': 'clientFilter', 'type': 'text', 'sortAttr': 'title'},
+         'cc':    {'mode': 'clientFilter', 'type': 'text', 'sortAttr': 'cc'},
+         'loc':   {'mode': 'clientFilter', 'type': 'text', 'sortAttr': 'loc'},
+         'perf':  {'mode': 'clientFilter', 'type': 'text', 'sortAttr': 'perf'},
+         'pot':   {'mode': 'clientFilter', 'type': 'text', 'sortAttr': 'pot'},
+         'cat':   {'mode': 'clientFilter', 'type': 'text', 'sortAttr': 'cat'} }) }}
+    {{ colmenu_script(asset_v) }}
+    {% else %}
+    <p class="muted" style="margin:0">Nobody matches the current filters.</p>
+    {% endif %}
+  </div>
+</div>
+
+{% for c in category_order %}
+<div class="tbox-panel" data-panel="{{ category_slug[c] }}" hidden>
+  <div class="admin-card">
+    <h2 style="font-size:1rem;margin:0 0 2px">{{ c }}</h2>
+    <p class="muted small" style="margin:0 0 10px">
+      Everyone in {{ scope_label }} whose performance and potential place them here.
+    </p>
+    {% set members = rows | selectattr('category', 'equalto', c) | list %}
+    {% if members %}
+    <div class="table-scroll"><table class="admin-table">
+      <thead><tr><th>Name</th><th>JG</th><th>Job title</th><th>Performance</th><th>Potential</th>
+        {% if not locked %}<th>Action</th>{% endif %}</tr></thead>
+      <tbody>
+        {% for r in members %}
+        <tr data-jg="{{ r['user']['job_grade'] or '' }}" class="tbox-listrow">
+          <td><strong>{{ r['user']['full_name'] }}</strong>{% if r['transfer'] %} <span class="rv-cal-notetag" title="{{ r['transfer'] }}">Transferred</span>{% endif %}
+            <br><span class="muted small">{{ r['user']['employee_id'] }}</span></td>
+          <td>{{ r['user']['job_grade'] or '—' }}</td>
+          <td class="muted small">{{ r['user']['job_title'] | proper or '—' }}</td>
+          <td><span class="potential-pill" data-band="{{ r['perf_band'] }}">{{ label_names[r['perf_band']] }}</span></td>
+          <td><span class="potential-pill" data-band="{{ r['pot_band'] }}">{{ r['pot_band'] }}</span></td>
+          {% if not locked %}
+          {# Same panel, same POST as clicking a name in the grid -- working a
+             single category shouldn't mean going back to the grid to act. #}
+          <td>{% if user and r['user']['id'] == user['id'] %}<span class="muted small" title="You — the tier above sets your own band">You</span>{% else %}<button type="button" class="btn-link tbox-open"
+                data-subject="{{ r['user']['id'] }}"
+                data-name="{{ r['user']['full_name'] }}"
+                data-perf="{{ r['perf_band'] }}" data-pot="{{ r['pot_band'] }}"
+                >Calibrate</button>{% endif %}</td>
+          {% endif %}
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table></div>
+    {% else %}
+    <p class="muted" style="margin:0">Nobody in this scope is currently {{ c }}.</p>
+    {% endif %}
+  </div>
+</div>
+{% endfor %}
+
+
+{% if not locked %}
+{# Always on screen, like the potential-calibration pages: the lock is the end
+   of the job, and hunting back up the page for it after a long roster is
+   friction at exactly the wrong moment. #}
+<div class="tbox-lockbar">
+  <span class="muted small">{{ placed }} placed{% if filtered %} in this filter{% endif %} · locks
+    <strong>both</strong> performance and potential for {{ scope_label }}</span>
+  <form method="post" action="{{ url_for('talent_box_' ~ tier ~ '_lock', **scope_kwargs) }}"
+        data-confirm-title="Lock this calibration?" data-confirm-ok="Lock calibration" data-confirm-tone="danger"
+          data-confirm="It locks BOTH performance and potential for {{ scope_label|e }} and submits them upward."{{ super_remark_attrs() }}>
+    <button type="submit" class="primary">Lock calibration</button>
+    {% if tier == 'buceo' %}
+    {# Off-framework spreads (either axis) are refused; this records a reason and locks anyway. #}
+    <button type="button" class="btn-link calib-override-btn">Lock with override…</button>
+    {% endif %}
+  </form>
+</div>
+{% else %}
+{# Locked: the calibration is done. It used to lead on to the PIP and promotion lists, archived 2026-10-13. #}
+<div class="tbox-lockbar">
+  <span class="muted small">Calibration locked for {{ scope_label }}: performance and potential are final.</span>
+</div>
+{% endif %}
+
+<p class="muted small" style="margin-top:16px">
+  Prefer a list? The per-axis pages keep the filters, per-department breakdowns and
+  distribution bars this grid doesn't:
+  <a href="{{ list_urls['performance'] }}">performance list</a>{% if list_urls.get('potential') %} &middot;
+  <a href="{{ list_urls['potential'] }}">potential list</a>{% endif %}.
+</p>
+
+{% if not locked %}
+<div id="tbox-move-overlay" class="modal-overlay" hidden>
+  <div class="modal-card" role="dialog" aria-modal="true" aria-labelledby="tbox-move-title">
+    <h2 id="tbox-move-title" style="margin:0">Move</h2>
+    <p class="muted small" id="tbox-move-from" style="margin:2px 0 0"></p>
+
+    {# Before -> after, filled by JS from the drop target (or the dropdowns).
+       A drag says "put them here"; this says what that actually changes, on
+       each axis, in the same words the grid uses -- so the move is reviewed
+       rather than just executed. #}
+    <div class="tbox-ba" id="tbox-move-ba">
+      <div class="tbox-ba__side">
+        <span class="tbox-ba__lbl">Before</span>
+        <span class="tbox-ba__cat" id="tbox-ba-cat-before">—</span>
+        <span class="tbox-ba__bands"><span id="tbox-ba-perf-before"></span> &middot;
+          <span id="tbox-ba-pot-before"></span></span>
+      </div>
+      <span class="tbox-ba__arrow" aria-hidden="true">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"
+             stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
+      </span>
+      <div class="tbox-ba__side is-after">
+        <span class="tbox-ba__lbl">After</span>
+        <span class="tbox-ba__cat" id="tbox-ba-cat-after">—</span>
+        <span class="tbox-ba__bands"><span id="tbox-ba-perf-after"></span> &middot;
+          <span id="tbox-ba-pot-after"></span></span>
+      </div>
+    </div>
+    <p class="tbox-ba__delta" id="tbox-move-delta"></p>
+
+    {# The evidence behind each axis, one click from the decision itself. Both
+       open the shared report modal on top of this panel, so reading a report
+       doesn't discard a half-composed move.
+
+       The URLs are built from url_for() with a sentinel id rather than a path
+       string in JS -- so if either route ever moves, this follows it. #}
+    <p class="tbox-move-reports"
+       data-kpi-url="{{ url_for('calibration_kpi_report', uid=0) }}"
+       data-pot-url="{{ url_for('calibration_potential_report', uid=0) }}">
+      <span class="muted small">Evidence:</span>
+      <button type="button" class="btn-link calib-rep-link" id="tbox-rep-kpi">KPI report</button>
+      <span class="muted small">&middot;</span>
+      <button type="button" class="btn-link calib-rep-link" id="tbox-rep-pot">Potential report</button>
+    </p>
+
+    <form method="post" id="tbox-move-form"
+          action="{{ url_for('talent_box_' ~ tier ~ '_move', **scope_kwargs) }}"{{ super_remark_attrs(confirm="Save this move? You are acting for this tier as the super admin; your remark goes in the audit trail with the change.", ok="Save move") }}>
+      <input type="hidden" name="subject_id" id="tbox-move-subject">
+      {% if f_company %}<input type="hidden" name="company" value="{{ f_company }}">{% endif %}{% for d in f_depts %}<input type="hidden" name="dept" value="{{ d }}">{% endfor %}{% for g in f_jgs %}<input type="hidden" name="jg" value="{{ g }}">{% endfor %}
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+        <label><span>Performance</span>
+          <select name="performance_band" id="tbox-move-perf" class="modern-select">
+            {% for b in band_order %}<option value="{{ b }}">{{ loop.index }} – {{ label_names[b] }}</option>{% endfor %}
+          </select></label>
+        <label><span>Potential</span>
+          <select name="potential_band" id="tbox-move-pot" class="modern-select">
+            {% for p in potential_order %}<option value="{{ p }}">{{ p }}</option>{% endfor %}
+          </select></label>
+      </div>
+      <p class="muted small" id="tbox-move-cat" style="margin:8px 0 0"></p>
+      <label style="display:block;margin-top:10px"><span>Justification
+          <span class="muted small" id="tbox-move-jreq">(optional)</span></span>
+        <textarea name="justification" id="tbox-move-just" rows="2"
+                  style="width:100%;box-sizing:border-box;resize:vertical"></textarea></label>
+      <div class="modal-actions">
+        <button type="button" class="btn-link" id="tbox-move-cancel">Cancel</button>
+        <button type="submit" class="primary" id="tbox-move-save">Save move</button>
+      </div>
+    </form>
+
+    {# The pins were here: "Tag for promotion" (archived with Promotion) and "Special reward" (archived with Reward),
+       both 2026-10-13. Their rows are kept (pm_promotion_nominations, pm_talent_actions). #}
+  </div>
+</div>
+{% endif %}
+
+<script>
+(function () {
+  // Tabs: one panel visible at a time. No router -- the box is one page.
+  var tabs = Array.prototype.slice.call(document.querySelectorAll('.tbox-tab'));
+  var panels = Array.prototype.slice.call(document.querySelectorAll('.tbox-panel'));
+  tabs.forEach(function (t) {
+    // A tab with no data-tab is the OTHER grid resolution: it owns no panel on
+    // this page, so it stays a plain link and navigates. Everything else
+    // switches a panel in place, including the grid tab for the resolution
+    // already loaded -- reloading the page to show markup that's already here
+    // would be a needless round trip.
+    if (!t.dataset.tab) return;
+    t.addEventListener('click', function (e) {
+      e.preventDefault();
+      tabs.forEach(function (x) { x.classList.toggle('is-active', x === t); });
+      panels.forEach(function (p) { p.hidden = p.dataset.panel !== t.dataset.tab; });
+    });
+  });
+
+  // The two multi-select pickers. They live inside the filter form, so
+  // "Apply" is just that form submitting -- no JS state to keep in sync.
+  document.querySelectorAll('.tbox-pickbtn').forEach(function (b) {
+    b.addEventListener('click', function () {
+      document.getElementById('tbox-pick-' + b.dataset.pick).hidden = false;
+    });
+  });
+  document.querySelectorAll('[data-close]').forEach(function (b) {
+    b.addEventListener('click', function () {
+      document.getElementById(b.dataset.close).hidden = true;
+    });
+  });
+  document.querySelectorAll('#tbox-pick-dept, #tbox-pick-jg').forEach(function (ov) {
+    ov.addEventListener('click', function (e) { if (e.target === ov) ov.hidden = true; });
+  });
+
+  document.addEventListener('keydown', function (e) {
+    if (e.key === 'Escape') {
+      document.querySelectorAll('#tbox-pick-dept, #tbox-pick-jg').forEach(function (o) { o.hidden = true; });
+    }
+  });
+
+  // Keep your place across a move. A move POSTs and redirects, so the browser
+  // lands on a fresh document at the top -- on a grid this tall that means
+  // scrolling back and re-picking your tab after every single adjustment.
+  // Stash the scroll position and the open tab just before the move submits
+  // and put them back on the way in.
+  //
+  // Keyed by this exact view (scope + filters), so changing company or
+  // department never inherits a position measured against a different
+  // page. Short TTL because the entry is only ever meant to
+  // survive one redirect -- a stale one must not hijack a fresh visit.
+  window.tboxView = (function () {
+    var KEY = 'tboxview:' + location.pathname + location.search;
+    var TTL = 30000;
+    return {
+      save: function () {
+        var open = tabs.filter(function (t) {
+          return t.dataset.tab && t.classList.contains('is-active');
+        })[0];
+        try {
+          sessionStorage.setItem(KEY, JSON.stringify({
+            y: window.scrollY || window.pageYOffset || 0,
+            tab: open ? open.dataset.tab : null,
+            at: Date.now()
+          }));
+        } catch (err) {}      // private mode / quota -- just lose the position
+      },
+      restore: function () {
+        var raw = null;
+        try { raw = sessionStorage.getItem(KEY); sessionStorage.removeItem(KEY); }
+        catch (err) { return; }
+        if (!raw) return;
+        var v;
+        try { v = JSON.parse(raw); } catch (err) { return; }
+        if (!v || Date.now() - (v.at || 0) > TTL) return;
+        if (v.tab) {
+          var t = tabs.filter(function (x) { return x.dataset.tab === v.tab; })[0];
+          if (t) t.click();          // same path as a real click, so one panel shows
+        }
+        if (v.y) {
+          // After the panel swap and layout settle -- scrolling before that
+          // lands short, because the page is a different height. Re-applied on
+          // load for the same reason the pill scroller re-measures there: the
+          // document can still grow after parse, and a scrollTo against a
+          // shorter page is silently clamped.
+          var go = function () { window.scrollTo(0, v.y); };
+          requestAnimationFrame(go);
+          window.addEventListener('load', go, {once: true});
+        }
+      }
+    };
+  })();
+  window.tboxView.restore();
+})();
+
+{% if not locked %}
+(function () {
+  // Moving people. Two ways in -- drag a card, or click a name -- and both
+  // land in the SAME panel and the same POST, so they can't diverge. The
+  // server re-derives everything and enforces the justification rule
+  // regardless: an abandoned drag must not be able to write by replay.
+  var CATEGORIES = {{ categories_js | tojson }};
+  var BANDS = {{ band_order | tojson }};
+  var PERF_GROUPS = {{ perf_groups | tojson }};
+
+  // A 9-box column is a GROUP of performance bands (low = UA+BE, mid = ME,
+  // high = AE+OU), so a dropped cell names a group, not a band -- assigning it
+  // straight to the band <select> matched no option and silently left
+  // performance untouched, which is why dropping sideways only ever moved
+  // potential. Resolve the group to the band the person should actually land
+  // on:
+  //   - already in that group  -> keep their band (a purely vertical move must
+  //     not quietly re-rate them; OU dropped one row up stays OU, not AE)
+  //   - otherwise              -> the group's entry band from the direction of
+  //     travel: its lowest moving right, its highest moving left.
+  // Entry-band rather than "one band along" is what guarantees the card lands
+  // in the box you dropped it on -- UA moved one band right is BE, which is
+  // still the Low column. A cell that already names a real band (rather
+  // than a group) short-circuits at the top of resolvePerf().
+  function resolvePerf(cellPerf, currentBand) {
+    if (BANDS.indexOf(cellPerf) >= 0) return cellPerf;
+    var g = null;
+    for (var i = 0; i < PERF_GROUPS.length; i++) {
+      if (PERF_GROUPS[i].key === cellPerf) { g = PERF_GROUPS[i]; break; }
+    }
+    if (!g || !g.bands.length) return currentBand;
+    if (g.bands.indexOf(currentBand) >= 0) return currentBand;
+    var right = BANDS.indexOf(g.bands[0]) > BANDS.indexOf(currentBand);
+    return right ? g.bands[0] : g.bands[g.bands.length - 1];
+  }
+  var overlay = document.getElementById('tbox-move-overlay');
+  if (!overlay) return;
+  var fSubject = document.getElementById('tbox-move-subject');
+  var fPerf = document.getElementById('tbox-move-perf');
+  var fPot = document.getElementById('tbox-move-pot');
+  var fJust = document.getElementById('tbox-move-just');
+  var elTitle = document.getElementById('tbox-move-title');
+  var repWrap = document.querySelector('.tbox-move-reports');
+  var repKpi = document.getElementById('tbox-rep-kpi');
+  var repPot = document.getElementById('tbox-rep-pot');
+  var elFrom = document.getElementById('tbox-move-from');
+  var elCat = document.getElementById('tbox-move-cat');
+  var elJreq = document.getElementById('tbox-move-jreq');
+  var elDelta = document.getElementById('tbox-move-delta');
+  var LABEL_NAMES = {{ label_names | tojson }};
+  var origin = {perf: null, pot: null};
+
+  function catFor(perf, pot) { return CATEGORIES[perf + '|' + pot]; }
+
+  // Human label for a performance band: the grid's own "3 – Meet Expectation".
+  function perfLabel(b) {
+    var i = BANDS.indexOf(b);
+    return i < 0 ? b : ((i + 1) + ' – ' + (LABEL_NAMES[b] || b));
+  }
+
+  function refresh() {
+    var perf = fPerf.value, pot = fPot.value;
+    var cat = catFor(perf, pot);
+    elCat.textContent = cat ? ('Lands in: ' + cat) : '';
+
+    // Before -> after on both axes. A drop only ever changes the axes the
+    // movement actually crossed: sideways moves the performance band, up/down
+    // moves potential -- so an unchanged axis is shown greyed rather than
+    // dressed up as part of the change.
+    setText('tbox-ba-cat-before', catFor(origin.perf, origin.pot) || '—');
+    setText('tbox-ba-perf-before', perfLabel(origin.perf));
+    setText('tbox-ba-pot-before', origin.pot + ' potential');
+    setText('tbox-ba-cat-after', cat || '—');
+    setText('tbox-ba-perf-after', perfLabel(perf));
+    setText('tbox-ba-pot-after', pot + ' potential');
+    document.getElementById('tbox-ba-perf-after').classList.toggle('is-same', perf === origin.perf);
+    document.getElementById('tbox-ba-pot-after').classList.toggle('is-same', pot === origin.pot);
+
+    var bits = [];
+    if (perf !== origin.perf) {
+      bits.push('Performance ' + perfLabel(origin.perf) + ' → ' + perfLabel(perf));
+    }
+    if (pot !== origin.pot) bits.push('Potential ' + origin.pot + ' → ' + pot);
+    elDelta.textContent = bits.length ? bits.join('  ·  ') : 'No change yet — pick a new band.';
+    elDelta.classList.toggle('is-none', !bits.length);
+
+    // Always optional, at any distance. The 2+ band performance rule was
+    // retired -- the per-axis list pages never enforced it, so the box was
+    // refusing moves that saved fine one click away.
+    elJreq.textContent = '(optional)';
+    fJust.required = false;
+  }
+  function setText(id, txt) {
+    var el = document.getElementById(id);
+    if (el) el.textContent = txt;
+  }
+  fPerf.addEventListener('change', refresh);
+  fPot.addEventListener('change', refresh);
+
+  function openPanel(card, perf, pot) {
+    origin = {perf: card.dataset.perf, pot: card.dataset.pot};
+    fSubject.value = card.dataset.subject;
+    // Resolved here too, not just at the drop: the Calibrate buttons in the
+    // category lists pass their own perf value, and a group key reaching the
+    // band <select> is exactly the silent no-op this guards against.
+    fPerf.value = resolvePerf(perf || card.dataset.perf, card.dataset.perf);
+    fPot.value = pot || card.dataset.pot;
+    fJust.value = '';
+    elTitle.textContent = 'Move ' + card.dataset.name;
+    // The before/after block below now carries the current position, so this
+    // line identifies the person rather than repeating their bands.
+    elFrom.textContent = card.dataset.jg ? ('JG ' + card.dataset.jg) : '';
+    // Re-point the two evidence links at whoever this panel is now about. The
+    // sentinel id is 0, which appears once in each path.
+    if (repWrap) {
+      var sid = card.dataset.subject;
+      repKpi.setAttribute('data-report-url', repWrap.dataset.kpiUrl.replace('/0/', '/' + sid + '/'));
+      repPot.setAttribute('data-report-url', repWrap.dataset.potUrl.replace('/0/', '/' + sid + '/'));
+    }
+    refresh();
+    overlay.hidden = false;
+    fJust.focus();
+  }
+
+  // Remember where we were reading before this move reloads the page.
+  var moveForm = document.getElementById('tbox-move-form');
+  if (moveForm && window.tboxView) {
+    moveForm.addEventListener('submit', function () { window.tboxView.save(); });
+  }
+
+  function closePanel() { overlay.hidden = true; }
+  document.getElementById('tbox-move-cancel').addEventListener('click', closePanel);
+  overlay.addEventListener('click', function (e) { if (e.target === overlay) closePanel(); });
+  document.addEventListener('keydown', function (e) {
+    if (e.key !== 'Escape' || overlay.hidden) return;
+    // A report opened from this panel stacks on top of it, and this listener is
+    // registered first -- so without this guard one Escape would dismiss the
+    // report AND discard the half-composed move underneath. The top modal owns
+    // the key.
+    var rep = document.getElementById('calib-rep-overlay');
+    if (rep && !rep.hidden) return;
+    closePanel();
+  });
+
+  // A Calibrate button in a category list opens the same panel as clicking a
+  // name in the grid -- one path, one POST, so they can't diverge.
+  document.addEventListener('click', function (e) {
+    var b = e.target.closest('.tbox-open');
+    if (b) openPanel(b, b.dataset.perf, b.dataset.pot);
+  });
+
+  // Click a name -> the considered path (both dropdowns, justification).
+  document.addEventListener('click', function (e) {
+    var name = e.target.closest('.tbox-card-name');
+    if (!name) return;
+    var card = name.closest('.tbox-card');
+    if (card && !card.hasAttribute('data-self')) openPanel(card, null, null);   // your own card reads only
+  });
+
+  // Drag -> the quick path. A 1-band move saves straight away; a 2+ band move
+  // opens the same panel pre-filled, because it legally cannot save without a
+  // justification. The card is never moved in the DOM by the drag itself --
+  // the page reloads on success -- so an abandoned drag leaves nothing behind.
+  var dragged = null;
+  document.addEventListener('dragstart', function (e) {
+    var card = e.target.closest('.tbox-card');
+    if (!card) { return; }
+    dragged = card;
+    e.dataTransfer.effectAllowed = 'move';
+    // Firefox needs data set for a drag to start at all.
+    try { e.dataTransfer.setData('text/plain', card.dataset.subject); } catch (err) {}
+    card.classList.add('tbox-dragging');
+  });
+  document.addEventListener('dragend', function () {
+    if (dragged) dragged.classList.remove('tbox-dragging');
+    document.querySelectorAll('.tbox-cell.tbox-over').forEach(function (c) {
+      c.classList.remove('tbox-over');
+    });
+    dragged = null;
+  });
+  document.querySelectorAll('.tbox-cell').forEach(function (cell) {
+    cell.addEventListener('dragover', function (e) {
+      if (!dragged) return;
+      e.preventDefault();
+      cell.classList.add('tbox-over');
+    });
+    cell.addEventListener('dragleave', function () { cell.classList.remove('tbox-over'); });
+    cell.addEventListener('drop', function (e) {
+      if (!dragged) return;
+      e.preventDefault();
+      cell.classList.remove('tbox-over');
+      var card = dragged;
+      var perf = resolvePerf(cell.dataset.perf, card.dataset.perf);
+      var pot = cell.dataset.pot;
+      if (perf === card.dataset.perf && pot === card.dataset.pot) return;  // same cell
+      // Every drop opens the panel, including a one-band move. A drag says
+      // "put them here"; the panel is where the calibrator confirms the two
+      // bands that implies -- and can walk one back (dropped on Super Star but
+      // only meant the performance move? set potential to Mid and it lands on
+      // Star) without a save-then-undo. Saving straight from the drop meant a
+      // sideways slip was committed before it could be read.
+      openPanel(card, perf, pot);
+    });
+  });
+})();
+{% endif %}
+</script>
+<script src="{{ url_for('static', filename='pillscroller.js') }}?v={{ asset_v }}"></script>
+{# The shared report viewer. Any button on this page carrying
+   data-report-url opens it. #}
+{% include "_calib_report_modal.html" %}
+<script src="{{ url_for('static', filename='optcols.js') }}?v={{ asset_v }}"></script>
+{% endblock %}

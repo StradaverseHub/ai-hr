@@ -1,0 +1,194 @@
+{# The person page's Competency (canvas I3): their job matched to a library job profile, the competencies it brings,
+   add / remove, match to another profile, reset. Writes go to admin_person_competency (the generator's rules). #}
+{% from "_adm_panel.html" import panel %}
+{# 2026-10-27 (canvas "Person competency tab"): a competency's name opens its detail in the right-side panel (inside a
+   panel the same detail opens under its row: one panel at a time), the library box fits the screen and its results open
+   the same detail, and both searches answer as you type (static/comp_detail.js; the GET forms still work without it). #}
+{% set here = url_for('admin_person', uid=person['id'], tab='competency') %}
+<div class="pp-grid pp-comp" data-cd-root data-find-url="{{ url_for('admin_person_competency_find', uid=person['id']) }}"
+     data-lib-url="{{ url_for('admin_competency_library') }}"{% if in_panel %} data-cd-inline{% endif %}>
+  <div class="pp-col">
+    {% if ai_ins %}{% from "person/_ai_insight.html" import card as ai_card %}{{ ai_card(ai_ins.tc, "Written for their line manager · read only") }}{% endif %}
+    <section class="admin-card pp-frame" aria-label="Job profile match">
+      <span><span class="pp-k">Their job</span><b>{{ person['job_title'] | proper or '—' }}{% if person['job_grade'] %} · JG {{ person['job_grade'] }}{% endif %}</b> <span class="muted">· {{ person['department'] | proper or '' }}</span></span>
+      <span class="pp-arr">&rarr;</span>
+      <span><span class="pp-k">Library job profile</span>{% if tc.profile %}<b>{{ tc.profile['job_title'] | proper }}</b> <span class="muted">· {{ tc.profile['department'] | proper }} · JG {{ tc.profile['job_grade'] }}</span>{% else %}<b>none</b>{% endif %}</span>
+      <span class="pp-chip is-{{ tc.match_tone }}">{{ tc.match_word }}</span>
+      {% if tc.manual %}<span class="pp-chip is-ok">Set by Group People on this page</span>{% endif %}
+    </section>
+
+    {# Their job in the architecture (2026-10-18): where it came from, and placing it here for someone P&R's Mapper doesn't
+       have yet. A joiner who doesn't take part still gets their job placed, for their Career Plan later (Chris). #}
+    {% if editable %}
+    <section class="admin-card pp-card pp-place" id="pp-place-{{ person['id'] }}" aria-label="Their job in the architecture">
+      <div class="pp-place-head">
+        <h2 class="pp-h">Their job in the architecture</h2>
+        {% if tc.role %}<span class="pp-chip is-ok">{{ tc.placed_word }}</span>{% else %}<span class="pp-chip is-warn">Not placed yet</span>{% endif %}
+      </div>
+      {% if tc.role %}
+      <p class="pp-place-now"><b>{{ tc.role['title'] or '—' }}</b> <span class="muted">· {{ tc.job_code or 'no job code at their grade' }}</span></p>
+      {% else %}
+      <p class="muted small pp-place-now">They aren't in P&amp;R's Mapper, so no job gives them competencies yet. Place their job here; their job code then follows their grade.</p>
+      {% endif %}
+      {% if tc.at_grade %}
+      <details class="pp-place-pick" {{ 'open' if not tc.role }}>
+        <summary>{{ 'Change their job' if tc.role else 'Place their job' }}</summary>
+        <form method="post" action="{{ url_for('admin_person_competency', uid=person['id']) }}" class="pp-place-form"
+              data-confirm="Place {{ person['full_name'] }}'s job as the one you picked?{% if taking[0] and tc.can_change and not comp_out %} They get that job's competencies at once, replacing the ones a job gave them.{% elif tc.swap_ready %} They have started answering, so their competencies stay as they are for now; afterwards use Swap to their job's set on this tab to bring in the new job's.{% else %} Their competencies this cycle stay as they are.{% endif %} It goes in the trail."
+              data-confirm-ok="Place job">
+          <input type="hidden" name="action" value="place_job">
+          {% if tc.suggest %}
+          <span class="pp-k">Best fits for their title and department</span>
+          {% for pr in tc.suggest %}
+          <label class="pp-place-opt"><input type="radio" name="profile_id" value="{{ pr['id'] }}" {{ 'checked' if loop.first }} required>
+            <span><b>{{ pr['job_title'] | proper }}</b> <span class="muted small">· {{ pr['department'] | proper }} · {{ pr['job_code'] }}</span></span>{% if loop.first %}<span class="pp-chip">Best fit</span>{% endif %}</label>
+          {% endfor %}
+          {% endif %}
+          <div class="pp-place-sel">
+            <label>{{ 'Or pick: job family' if tc.suggest else 'Job family' }}
+              <select class="modern-select" data-place-fam aria-label="Job family"{{ ' required' if not tc.suggest }}>
+                <option value="">Choose…</option>
+                {% for d in tc.at_grade | map(attribute='department') | unique %}<option>{{ d }}</option>{% endfor %}
+              </select></label>
+            <label>Job at JG {{ tc.grade }}
+              <select class="modern-select" data-place-job aria-label="Job at their grade" disabled><option value="">Choose a job family first</option></select></label>
+          </div>
+          <div class="pp-place-btns">
+            <button type="submit" class="primary">{{ 'Place job and assign its competencies' if taking[0] and tc.can_change and not comp_out else 'Place job' }}</button>
+            {% if not taking[0] %}<span class="muted small">They don't take part this cycle, so only their job is placed.</span>{% endif %}
+          </div>
+        </form>
+        <script type="application/json" data-place-jobs>{{ tc.at_grade | tojson }}</script>
+      </details>
+      {% else %}
+      <p class="muted small">No job profiles at their grade{% if tc.grade is none %} (their grade isn't a number){% endif %}, so there is nothing to place yet.</p>
+      {% endif %}
+    </section>
+    <script>
+    (function () {
+      var root = document.getElementById({{ ('pp-place-' ~ person['id']) | tojson }});
+      if (!root) return;
+      var data = root.querySelector('[data-place-jobs]'), fam = root.querySelector('[data-place-fam]'), job = root.querySelector('[data-place-job]');
+      if (!data || !fam || !job) return;
+      var jobs = []; try { jobs = JSON.parse(data.textContent || '[]'); } catch (e) { jobs = []; }
+      fam.addEventListener('change', function () {
+        job.textContent = '';
+        var list = jobs.filter(function (j) { return j.department === fam.value; });
+        var first = document.createElement('option'); first.value = ''; first.textContent = list.length ? 'Choose…' : 'Choose a job family first';
+        job.appendChild(first);
+        list.forEach(function (j) { var o = document.createElement('option'); o.value = j.id; o.textContent = j.job_title + (j.job_scope ? ' (' + j.job_scope.toLowerCase() + ')' : '') + ' · ' + j.job_code; job.appendChild(o); });
+        job.disabled = !list.length;
+        job.required = !!list.length;
+        job.name = list.length ? 'profile_id' : '';
+        Array.prototype.forEach.call(root.querySelectorAll('input[name="profile_id"]'), function (r) { r.checked = false; r.required = false; });
+      });
+      // picking a suggestion again takes the picker's choice back out of the form
+      Array.prototype.forEach.call(root.querySelectorAll('input[type="radio"][name="profile_id"]'), function (r) {
+        r.addEventListener('change', function () { job.name = ''; job.value = ''; fam.value = ''; job.disabled = true; job.required = false; });
+      });
+    })();
+    </script>
+    {% endif %}
+
+    <section class="admin-card pp-kpis" aria-label="Their competencies">
+      <div class="pp-crow pp-khead"><span>Competency</span><span>Type</span><span>Level</span><span title="Where it came from">From</span><span>Self</span><span>Manager</span><span></span></div>
+      {% for r in tc.lines %}
+      <div class="pp-crow {{ 'is-future' if r.new_next }}" data-cd-row="{{ r.key }}">
+        <b><button type="button" class="pp-nm" data-cd-open data-cd-json='{{ r.detail | tojson }}' aria-haspopup="dialog">{{ r.title }}</button></b><span class="muted">{{ r.type }}</span><span class="pp-lv">{{ r.level }}</span>
+        <span class="small {{ 'pp-src-hr' if r.source != 'profile' }}">{{ r.from }}</span>
+        <span>{{ r.self }}</span><span class="muted">{{ r.manager }}</span>
+        <span>{% if r.can_remove %}<form method="post" action="{{ url_for('admin_person_competency', uid=person['id']) }}" data-confirm="Remove {{ r.title }} ({{ r.what }}) from {{ person['full_name'] }}'s competencies?" data-confirm-ok="Remove">
+          <input type="hidden" name="action" value="remove">{% for i in r.ids %}<input type="hidden" name="assignment_id" value="{{ i }}">{% endfor %}
+          <button type="submit" class="btn-link pp-danger">Remove</button></form>{% elif r.can_remove_answered %}
+        {# the super admin only, while their self-assessment is a draft or reopened (Chris, 2026-10-30, draft 2026-11-07): a line they have answered, taken out WITH its answers, after OneHR's box asks why #}
+        <form method="post" action="{{ url_for('admin_person_competency', uid=person['id']) }}"
+              data-confirm="Remove {{ r.title }} ({{ r.what }}) from {{ person['full_name'] }}'s competencies? {{ person['full_name'] }}'s answer{% if r.manager != '—' and r.manager %} and their line manager's{% endif %} for it will be deleted. This can't be undone."
+              data-confirm-title="Remove an answered competency" data-confirm-ok="Remove" data-confirm-tone="danger"
+              data-confirm-reason="Why it doesn't suit them" data-confirm-reason-max="500"
+              data-confirm-reason-placeholder="e.g. their line manager says it isn't part of their role">
+          <input type="hidden" name="action" value="remove_answered">{% for i in r.ids %}<input type="hidden" name="assignment_id" value="{{ i }}">{% endfor %}
+          <button type="submit" class="btn-link pp-danger">Remove</button></form>{% endif %}</span>
+      </div>
+      {% else %}
+      <p class="muted pp-none pp-pad">No competencies {{ 'yet' if editable else 'in this cycle' }}.</p>
+      {% endfor %}
+    </section>
+    {% if editable %}
+    <p class="muted small pp-foot">{% if comp_out %}This list is final: the potential result went out on {{ comp_out }}, so nothing here can be added, removed or matched again.
+      {% elif tc.reviewed %}Their manager has reviewed the self-assessment, so the list is final for this cycle.
+      {% elif tc.started %}They have started answering, so the set can't be swapped (their answers would go with it); single competencies they haven't answered can still be added or removed.{% if tc.lines | selectattr('can_remove_answered') | list %} While their self-assessment is a draft or reopened, the super admin can also remove one they have answered: its answers go with it.{% endif %}{% if tc.swap %} The super admin can also swap the whole set to their job's, with a reason: the competencies it doesn't list go with their answers.{% endif %}
+      {% else %}Changes here are for {{ person['full_name'] }} only and go in the trail. They see them at once.{% endif %}</p>
+    {% if tc.swap %}
+    {# the super admin only, while they have started but not submitted (Chris, 2026-11-06, "Swap with a reason"): the whole set swapped to their job's; what they answered and the job also lists stays #}
+    {% set sw = tc.swap %}
+    <form method="post" action="{{ url_for('admin_person_competency', uid=person['id']) }}" class="pp-swap"
+          data-confirm="Swap {{ person['full_name'] }}'s competencies to the {{ sw.profile['job_title'] | proper }} set? {% if sw.removed_answered == 1 %}1 competency they have answered goes, with their answer (and their line manager's).{% elif sw.removed_answered %}{{ sw.removed_answered }} competencies they have answered go, with their answers (and their line manager's).{% else %}Nothing they have answered goes.{% endif %} {{ sw.kept_answered }} they answered {{ 'stays' if sw.kept_answered == 1 else 'stay' }}.{% if sw.removed_unanswered %} {{ sw.removed_unanswered }} they haven't answered {{ 'goes' if sw.removed_unanswered == 1 else 'go' }} too.{% endif %} {{ sw.added }} {{ 'is' if sw.added == 1 else 'are' }} added. This can't be undone."
+          data-confirm-title="Swap to their job's competencies" data-confirm-ok="Swap" data-confirm-tone="danger"
+          data-confirm-reason="Why the set is swapped" data-confirm-reason-max="500"
+          data-confirm-reason-placeholder="e.g. their job was placed after they started, so the set was the old job's" {{ redo_notify_attrs(person, 'tc_swap') }}>
+      <input type="hidden" name="action" value="swap_started">
+      <button type="submit" class="btn-link pp-danger">Swap to their job's set</button>
+    </form>
+    {% endif %}
+    {% endif %}
+    {% if rf and rf.tc %}{% from "person/_rf.html" import block as rf_block with context %}{{ rf_block(rf.tc) }}{% endif %}
+  </div>
+
+  {% if editable and not comp_out %}
+  <div class="pp-col">
+    {% if tc.can_change %}
+    <section class="admin-card pp-card" aria-label="Change the match">
+      <h2 class="pp-h">Change the match</h2>
+      <form method="get" class="pp-inline pp-find" data-no-busy data-find="profiles">
+        <input type="hidden" name="tab" value="competency">
+        <input name="pq" value="{{ finds.pq }}" placeholder="Type a job title or job family" aria-label="Search the job profiles" autocomplete="off" role="combobox" aria-autocomplete="list" aria-expanded="false">
+        <button type="submit" class="sr-only">Search</button>
+      </form>
+      {% for pr in finds.profiles %}
+      <a class="pp-pick {{ 'is-on' if match_preview and match_preview.profile['id'] == pr['id'] }}" href="{{ here }}&pq={{ finds.pq | urlencode }}&profile={{ pr['id'] }}">
+        <b>{{ pr['job_title'] | proper }}</b><span class="muted small">{{ pr['department'] | proper }} · JG {{ pr['job_grade'] }} · {{ pr['n'] }} competenc{{ 'ies' if pr['n'] != 1 else 'y' }}{{ ' · current' if tc.profile and tc.profile['id'] == pr['id'] }}</span></a>
+      {% endfor %}
+      {% if match_preview %}
+      <div class="pp-plan">
+        <b>What {{ match_preview.profile['job_title'] | proper }} changes</b>
+        {% if match_preview.add %}<span>+ {{ match_preview.add | join(' · ') }}</span>{% endif %}
+        {% if match_preview.drop %}<span>− {{ match_preview.drop | join(' · ') }}</span>{% endif %}
+        <span class="muted small">{{ match_preview.keep }} stay as they are.</span>
+        <form method="post" action="{{ url_for('admin_person_competency', uid=person['id']) }}" class="pp-plan-btns"
+              data-confirm="Match {{ person['full_name'] }} to the {{ match_preview.profile['job_title'] | proper }} profile? Their job-profile competencies are swapped as listed above and they see it at once; anything Group People added by hand stays."
+              data-confirm-ok="Match">
+          <input type="hidden" name="action" value="match"><input type="hidden" name="profile_id" value="{{ match_preview.profile['id'] }}">
+          <button type="submit" class="primary">Apply to {{ person['full_name'] }}</button>
+          <a href="{{ url_for('admin_competency_profiles') }}" class="small">For everyone with this job: Job profiles &rsaquo;</a>
+        </form>
+      </div>
+      {% endif %}
+      <form method="post" action="{{ url_for('admin_person_competency', uid=person['id']) }}" data-confirm="Put {{ person['full_name'] }} back on the competencies their job profile gives? Anything added or matched here goes." data-confirm-ok="Reset">
+        <input type="hidden" name="action" value="reset"><button type="submit" class="btn-link">Reset to the job profile</button></form>
+    </section>
+    {% endif %}
+    {% if tc.can_add %}
+    <section class="admin-card pp-card pp-lib" aria-label="Add from the library">
+      <h2 class="pp-h">Add from the library</h2>
+      <form method="get" class="pp-inline pp-find" data-no-busy data-find="skills">
+        <input type="hidden" name="tab" value="competency">
+        <input name="sq" value="{{ finds.sq }}" placeholder="Type a competency or code" aria-label="Search the competencies" autocomplete="off">
+        <button type="submit" class="sr-only">Search</button>
+      </form>
+      <div class="pp-lib-res" data-lib-results>{% include "person/_comp_finds.html" %}</div>
+    </section>
+    {% endif %}
+  </div>
+  {% endif %}
+</div>
+{% if not in_panel %}
+{% call panel("cdetail", "Competency", "", "", peek=True, params="cd") %}
+  <div class="adm-panel-body cd-body" data-cd-body></div>
+  <footer class="adm-panel-foot">
+    <a class="btn-link adm-panel-grow" href="{{ url_for('admin_competency_library') }}" data-cd-lib>Open in the library &rsaquo;</a>
+    <button type="button" class="btn-link" data-cd-future hidden>For their future role</button>
+    <button type="button" class="primary" data-cd-add hidden>Add</button>
+  </footer>
+{% endcall %}
+{% endif %}
+<script src="{{ url_for('static', filename='comp_detail.js') }}?v={{ asset_v }}"></script>

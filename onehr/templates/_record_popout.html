@@ -1,0 +1,224 @@
+{# The record's pop-out, shared by the dashboard and /me, for BOTH halves of a
+   row: the feedback report and the KPI scorecard.
+
+   Reading a past half is a glance, not a destination. Navigating away loses
+   your place in the record -- and for KPIs it lands you on the page where you
+   key in the CURRENT cycle's results, which is a genuinely confusing place to
+   arrive when you asked to look at 2024. Same shape as the Talent Box /
+   Reports drill-downs: a read-only overlay fetched on demand, with the full
+   page still one click further on.
+
+   One overlay, two body renderers, dispatched on the button's data-kind --
+   the chrome (title, close, "open the full ...") is identical, only the
+   contents differ.
+
+   Every field is written with textContent, never innerHTML: comments and KPI
+   names are free text somebody typed. #}
+
+<div id="rec-report-overlay" class="modal-overlay" hidden>
+  <div class="modal-card" role="dialog" aria-modal="true" aria-labelledby="rec-report-title"
+       style="max-width:640px">
+    <div style="display:flex;align-items:flex-start;gap:12px">
+      <div style="flex:1">
+        <h2 id="rec-report-title" style="margin:0">Loading</h2>
+        <p class="muted small" id="rec-report-sub" style="margin:4px 0 0"></p>
+      </div>
+      <span id="rec-report-band"></span>
+    </div>
+    <div id="rec-report-body" style="margin-top:14px;max-height:56vh;overflow-y:auto"></div>
+    <div class="modal-actions">
+      <a class="btn-link" id="rec-report-full" href="#">Open the full report</a>
+      <button type="button" class="primary" id="rec-report-close">Close</button>
+    </div>
+  </div>
+</div>
+
+<script>
+(function () {
+  var overlay = document.getElementById('rec-report-overlay');
+  if (!overlay) return;
+  var titleEl = document.getElementById('rec-report-title');
+  var subEl   = document.getElementById('rec-report-sub');
+  var bandEl  = document.getElementById('rec-report-band');
+  var bodyEl  = document.getElementById('rec-report-body');
+  var fullEl  = document.getElementById('rec-report-full');
+
+  function close() { overlay.hidden = true; }
+  document.getElementById('rec-report-close').addEventListener('click', close);
+  overlay.addEventListener('click', function (e) { if (e.target === overlay) close(); });
+  document.addEventListener('keydown', function (e) {
+    if (e.key === 'Escape' && !overlay.hidden) close();
+  });
+
+  function note(text) {
+    var p = document.createElement('p');
+    p.className = 'muted small';
+    p.style.margin = '0';
+    p.textContent = text;
+    return p;
+  }
+
+  function principleBlock(pr) {
+    var wrap = document.createElement('div');
+    wrap.style.cssText = 'padding:10px 0;border-bottom:1px solid var(--line-soft)';
+
+    var head = document.createElement('div');
+    head.style.cssText = 'display:flex;align-items:center;gap:10px;flex-wrap:wrap';
+    var name = document.createElement('span');
+    name.style.cssText = 'font-weight:600;font-size:.92rem;flex:1';
+    name.textContent = pr.name;
+    head.appendChild(name);
+
+    // Same agreement bar the full report uses -- one visual language for one
+    // number, wherever it is read.
+    var wrapBar = document.createElement('span');
+    wrapBar.className = 'agree-bar-wrap';
+    wrapBar.style.minWidth = '0';
+    var bar = document.createElement('span');
+    bar.className = 'agree-bar';
+    var fill = document.createElement('span');
+    fill.style.width = pr.pct + '%';
+    bar.appendChild(fill);
+    var num = document.createElement('span');
+    num.className = 'agree-num';
+    num.textContent = pr.yes + ' / ' + pr.total;
+    wrapBar.appendChild(bar);
+    wrapBar.appendChild(num);
+    head.appendChild(wrapBar);
+    wrap.appendChild(head);
+
+    if (pr.description) {
+      var d = document.createElement('p');
+      d.className = 'muted small';
+      d.style.cssText = 'margin:2px 0 0;font-style:italic';
+      d.textContent = pr.description;
+      wrap.appendChild(d);
+    }
+    (pr.comments || []).forEach(function (c) {
+      var q = document.createElement('p');
+      q.className = 'resp-comment';
+      q.style.cssText = 'margin:8px 0 0';
+      q.textContent = c;
+      wrap.appendChild(q);
+    });
+    return wrap;
+  }
+
+  function render(d) {
+    titleEl.textContent = d.cycle + ' feedback';
+    subEl.textContent = d.n_submitted + ' assessor(s) submitted · comments are anonymous';
+    bandEl.textContent = '';
+    if (d.band) {
+      var pill = document.createElement('span');
+      pill.className = 'potential-pill';
+      pill.setAttribute('data-band', d.band);
+      pill.textContent = d.band;
+      bandEl.appendChild(pill);
+    }
+    bodyEl.innerHTML = '';
+    if (!d.principles || !d.principles.length) {
+      bodyEl.appendChild(note('Nothing to show for this season.'));
+    } else {
+      d.principles.forEach(function (pr) { bodyEl.appendChild(principleBlock(pr)); });
+    }
+    fullEl.href = d.url;
+  }
+
+  function num(v) {
+    if (v === null || v === undefined) return '\u2014';
+    // Trim a trailing .0 the way the record does, but keep a real decimal.
+    return (Math.round(v * 100) / 100).toLocaleString();
+  }
+
+  function scoreText(l) {
+    if (l.score === null || l.score === undefined) return '\u2014';
+    return l.mechanism === 'A' ? String(l.score) : (l.score + '%');
+  }
+
+  function lineRow(l) {
+    var wrap = document.createElement('div');
+    wrap.style.cssText = 'padding:10px 0;border-bottom:1px solid var(--line-soft)';
+
+    var top = document.createElement('div');
+    top.style.cssText = 'display:flex;align-items:baseline;gap:10px';
+    var nm = document.createElement('span');
+    nm.style.cssText = 'font-weight:600;font-size:.92rem;flex:1';
+    if (window.onehrKpiLine) window.onehrKpiLine.name(nm, l, l.name); else nm.textContent = l.name;
+    top.appendChild(nm);
+    if (l.label) {
+      var pill = document.createElement('span');
+      pill.className = 'potential-pill';
+      pill.setAttribute('data-band', l.label);
+      pill.textContent = scoreText(l);
+      top.appendChild(pill);
+    } else {
+      var plain = document.createElement('span');
+      plain.className = 'muted small';
+      plain.textContent = scoreText(l);
+      top.appendChild(plain);
+    }
+    wrap.appendChild(top);
+    var kd = window.onehrKpiLine && window.onehrKpiLine.desc(l, 'od-kd');
+    if (kd) wrap.appendChild(kd);
+
+    var sub = document.createElement('p');
+    sub.className = 'muted small';
+    sub.style.cssText = 'margin:3px 0 0';
+    var bits = [];
+    if (l.weightage !== null && l.weightage !== undefined) bits.push('Weight ' + l.weightage + '%');
+    bits.push('You reported ' + num(l.self) + (l.unit ? ' ' + l.unit : ''));
+    // Only claim a moderated figure once the line is actually locked -- an
+    // in-flight approval is not an outcome.
+    if (l.locked && l.moderated !== null && l.moderated !== undefined) {
+      bits.push('Moderated to ' + num(l.moderated) + (l.unit ? ' ' + l.unit : ''));
+    }
+    sub.textContent = bits.join(' \u00b7 ');
+    wrap.appendChild(sub);
+    return wrap;
+  }
+
+  function renderScorecard(d) {
+    titleEl.textContent = d.period + ' scorecard';
+    var n = (d.lines || []).length;
+    subEl.textContent = n + ' KPI line(s)';
+    bandEl.textContent = '';
+    if (d.overall) {
+      var pill = document.createElement('span');
+      pill.className = 'potential-pill';
+      pill.setAttribute('data-band', d.overall.label);
+      pill.textContent = (d.overall.value == null ? '' : (d.overall.mechanism === 'A' ? d.overall.value : d.overall.value + '%') + ' \u00b7 ')
+                         + d.overall.label_name;
+      bandEl.appendChild(pill);
+    }
+    bodyEl.innerHTML = '';
+    if (!n) {
+      bodyEl.appendChild(note('No KPI lines for this period.'));
+    } else {
+      d.lines.forEach(function (l) { bodyEl.appendChild(lineRow(l)); });
+    }
+    fullEl.href = d.url;
+  }
+
+  document.addEventListener('click', function (e) {
+    var btn = e.target.closest('.rec-report-btn');
+    if (!btn) return;
+    e.preventDefault();
+    var kind = btn.getAttribute('data-kind') || 'report';
+    titleEl.textContent = kind === 'kpi' ? 'Scorecard' : 'Feedback report';
+    subEl.textContent = '';
+    bandEl.textContent = '';
+    bodyEl.innerHTML = '';
+    bodyEl.appendChild(note('Loading…'));
+    fullEl.href = btn.getAttribute('data-full') || '#';
+    fullEl.textContent = kind === 'kpi' ? 'Open the full scorecard' : 'Open the full report';
+    overlay.hidden = false;
+    fetch(btn.getAttribute('data-url'), { credentials: 'same-origin' })
+      .then(function (r) { if (!r.ok) throw new Error(r.status); return r.json(); })
+      .then(kind === 'kpi' ? renderScorecard : render)
+      .catch(function () {
+        bodyEl.innerHTML = '';
+        bodyEl.appendChild(note("Couldn't load this. Use the full page instead."));
+      });
+  });
+})();
+</script>

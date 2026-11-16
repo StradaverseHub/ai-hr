@@ -1,0 +1,709 @@
+{% extends "base.html" %}
+{% from "_adm_panel.html" import panel %}
+{% block title %}Banner{% endblock %}
+{% block body %}
+{# Admin › Notices (Chris, 2026-10-26: "build the release window and notices as drawn on the canvas ... Notices page
+   super admin only"; canvas [design canvas link removed], boards 10-11): what's coming up, the
+   release window's set-up (following the cycle's timeline by the parts ticked, or dates by hand), and what went before.
+   Post a notice opens beside the page, its bar and both emails previewed from the picks as they change. #}
+<div class="page-head">
+  <div>
+    <h1>Banner</h1>
+    <p class="muted">The bar at the top of OneHR and the sign-in page: what you announce, and the notice before OneHR closes for an upgrade, maintenance or a data update.</p>
+  </div>
+</div>
+{# Banner's two tabs (Chris, 2026-10-26: "rename it as Banner, and put a two tabs: Announcement | Notice"; canvas boards
+   15-15b). Both are on the page; the tabs switch without a reload and keep ?tab= in the address. #}
+<nav class="adm-tabs ntc-tabs" aria-label="Banner">
+  <a href="{{ url_for('admin_notices', tab='announcements') }}" data-ntc-tabbtn="announcements" class="{{ 'is-active' if tab == 'announcements' }}" {% if tab == 'announcements' %}aria-current="page"{% endif %}>Announcements <span class="ntc-tabn{{ ' is-live' if ann_showing }}">{{ ann_showing ~ ' showing' if ann_showing else 'none showing' }}</span></a>
+  <a href="{{ url_for('admin_notices', tab='notices') }}" data-ntc-tabbtn="notices" class="{{ 'is-active' if tab == 'notices' }}" {% if tab == 'notices' %}aria-current="page"{% endif %}>Notices <span class="ntc-tabn{{ ' is-live' if coming }}">{{ (coming | length) ~ ' coming up' if coming else 'none coming up' }}</span></a>
+</nav>
+<div class="ntc" data-banner-tab="announcements"{% if tab != 'announcements' %} hidden{% endif %}>
+
+  <section class="admin-card ntc-card" aria-labelledby="ntc-ann-h">
+    <div class="ntc-head">
+      <h2 id="ntc-ann-h">Announcements</h2>
+      <button type="button" class="primary" data-panel-open="announce">Post an announcement</button>
+    </div>
+    <p class="muted small ntc-sub">A line in the bar for the people you pick: until the cycle opens, while a part is open, or between dates you pick. The first two follow the cycle calendar, so they move if it does. No email goes with it. Each shows on the pages you tick (the dashboard unless you tick more; the AI+ check-in only when ticked) and stays there until it ends. Several share one line, which runs across the bar, round and round, when it doesn't fit.</p>
+    {% if anns %}
+    <div class="ntc-scroll">
+    <table class="ntc-table">
+      <thead><tr><th>Status</th><th>What it says</th><th>Who sees it</th><th>Where it shows</th><th>When</th><th>Button</th><th>Posted by</th><th><span class="sr-only">Actions</span></th></tr></thead>
+      <tbody>
+      {% for a in anns %}
+        <tr>
+          <td><span class="ntc-state is-{{ a.state }}">{{ {'showing': 'Showing now', 'coming': 'Coming up', 'ended': 'Ended'}[a.state] }}</span></td>
+          <td class="ntc-ann-what"><b>{{ a.headline_shown }}</b><br><span class="muted">{{ a.message_shown }}</span></td>
+          <td>{{ a.who }}</td>
+          <td>{{ a.where }}</td>
+          <td>{{ a.when_label }}<br><span class="muted">{{ a.when_span }}</span></td>
+          <td>{% if a.button == 'link' %}{{ a.link_label }}<br><span class="muted">{{ a.link_name }}</span>{% else %}{{ a.button_label.split(' (')[0] }}{% endif %}</td>
+          <td>{{ a.by }}</td>
+          <td class="ntc-acts">
+            {% if a.state != 'ended' %}
+            <a href="{{ url_for('admin_notices', tab='announcements', panel='announce', aedit=a.id) }}" class="ntc-link">Change</a>
+            <form method="post" action="{{ url_for('admin_notices') }}" class="ntc-inline"
+                  data-confirm="End the announcement “{{ a.headline }}” now? It leaves the bar at everyone's next page."
+                  data-confirm-title="End the announcement?" data-confirm-ok="End it" data-confirm-tone="danger">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+              <input type="hidden" name="action" value="ann_end">
+              <input type="hidden" name="aid" value="{{ a.id }}">
+              <button type="submit" class="ntc-link is-danger">End</button>
+            </form>
+            {% endif %}
+          </td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+    </div>
+    {% else %}
+    <p class="muted small ntc-empty">No announcement is showing or coming up.</p>
+    {% endif %}
+  </section>
+
+  <section class="admin-card ntc-card" aria-labelledby="ntc-dl-h">
+    <h2 id="ntc-dl-h">Deadline reminder</h2>
+    <p class="muted small ntc-sub">Each person's own deadline, read from the cycle's calendar (Cycle › Calendar): the same dates the top bar shows. Move a part's dates there and the reminder moves with it. Nothing to post.</p>
+    <form method="post" action="{{ url_for('admin_notices') }}" class="admin-form adm-set-form ntc-rw" id="ntc-dl"
+          data-confirm="Save the deadline reminder? Everyone with a part closing soon sees it at their next page."
+          data-confirm-title="Save the deadline reminder?" data-confirm-ok="Save the deadline reminder">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <input type="hidden" name="action" value="save_deadline">
+      <label class="switch">
+        <input type="checkbox" name="on" value="1" {{ 'checked' if dl_rules.on }}>
+        <span class="track" aria-hidden="true"></span>
+        <span class="switch-label">Remind each person of their own deadline in the bar</span>
+      </label>
+      <label>Show it from
+        <select name="days">{% for d in dl_days %}<option value="{{ d }}" {{ 'selected' if d == dl_rules.days }}>{% if d == dl_whole %}the whole time their part is open{% else %}{{ d }} day{{ '' if d == 1 else 's' }} before their part closes{% endif %}</option>{% endfor %}</select>
+      </label>
+      <fieldset class="ntc-fs ntc-where">
+        <legend>Where it shows</legend>
+        <input type="hidden" name="places_sent" value="1">
+        <div class="ntc-where-row">
+          {% for k, label, _h in dl_places %}
+          <label class="ntc-check"><input type="checkbox" name="places" value="{{ k }}" {{ 'checked' if k in dl_rules.places }}><span>{{ label }}</span></label>
+          {% endfor %}
+        </div>
+      </fieldset>
+      <div class="ntc-fs">
+        <span class="ntc-lbl">{% if dl_rules.days == dl_whole %}What each role sees from the day their part opens, and on the last day{% else %}What each role sees, {{ dl_rules.days }} day{{ '' if dl_rules.days == 1 else 's' }} before and on the last day{% endif %}</span>
+        {% for p in dl_preview %}
+        <div class="ntc-dlrow">
+          <span class="ntc-dlwho"><b>{{ p.who }}</b><br><span class="muted small">{{ p.dates }}</span></span>
+          <div class="ntc-dlbars">
+            <div class="sn-bar ntc-bar-preview"><svg class="sn-ic" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M16 3v4M8 3v4M3 10h18"/></svg><span class="sn-text"><b class="sn-lead">{{ p.lead }}</b><span class="sn-sep"> · </span><span class="sn-body">{{ p.body }}</span></span></div>
+            <div class="sn-bar ntc-bar-preview is-red"><svg class="sn-ic" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M16 3v4M8 3v4M3 10h18"/></svg><span class="sn-text"><b class="sn-lead">{{ p.last_lead }}</b><span class="sn-sep"> · </span><span class="sn-body">{{ p.last_body }}</span></span></div>
+          </div>
+        </div>
+        {% else %}
+        <p class="muted small">No part of the cycle is dated yet, so there's nothing to remind anyone of.</p>
+        {% endfor %}{% if dl_gh %}
+        <p class="muted small ntc-ghsub">Employees, 360 raters, line managers, HODs, BU CEOs and BG CEOs as today, then:</p>
+        {% for p in dl_gh %}
+        <div class="ntc-dlrow">
+          <span class="ntc-dlwho"><b>{{ p.who }}</b><br><span class="muted small">{{ p.dates }}</span></span>
+          <div class="ntc-dlbars">
+            <div class="sn-bar ntc-bar-preview"><svg class="sn-ic" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M16 3v4M8 3v4M3 10h18"/></svg><span class="sn-text"><b class="sn-lead">{{ p.lead }}</b><span class="sn-sep"> · </span><span class="sn-body">{{ p.body }}</span></span></div>
+            <div class="sn-bar ntc-bar-preview is-red"><svg class="sn-ic" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M16 3v4M8 3v4M3 10h18"/></svg><span class="sn-text"><b class="sn-lead">{{ p.last_lead }}</b><span class="sn-sep"> · </span><span class="sn-body">{{ p.last_body }}</span></span></div>
+          </div>
+        </div>
+        {% endfor %}{% endif %}
+      </div>
+      <p class="muted small ntc-note">It shows only while something of theirs in that part is still to submit, and goes once it's done; on the last day it turns red and comes first. It shares the line with the announcements on the same page. Never on the sign-in page or admin pages, and no email: Everyone's reminder in Email does that.</p>{% if dl_gh %}
+      <p class="muted small ntc-note">Grade H staff see theirs on My Appraisal, in the language they picked; it also names the deemed date. Leaders see their Grade H line on the dashboard and on the Grade H pages.</p>{% endif %}
+      <div class="actions">
+        <span class="muted small">A line manager's line counts the people still waiting on them.</span>
+        <button type="submit" class="primary">Save</button>
+      </div>
+    </form>
+  </section>
+
+</div>
+<div class="ntc" data-banner-tab="notices"{% if tab != 'notices' %} hidden{% endif %}>
+
+  <section class="admin-card ntc-card" aria-labelledby="ntc-up-h">
+    <div class="ntc-head">
+      <h2 id="ntc-up-h">Coming up</h2>
+      <button type="button" class="primary" data-panel-open="post">Post a notice</button>
+    </div>
+    <p class="muted small ntc-sub">Before OneHR closes for an upgrade, maintenance or a data update: the bar, the emails before and after, and the closed page. While its bar shows, it stands alone: no announcement or deadline reminder.</p>
+    {% if coming %}
+    <div class="ntc-scroll">
+    <table class="ntc-table">
+      <thead><tr><th>When</th><th>What</th><th>Expected downtime</th><th>Bar</th><th>Emails</th><th>Posted by</th><th><span class="sr-only">Actions</span></th></tr></thead>
+      <tbody>
+      {% for n in coming %}
+        <tr>
+          <td><b>{{ n.when.split(',')[0] }}</b>, {{ n.day }}<br><span class="muted">{{ n.span }}</span></td>
+          <td>{{ n.what }}</td>
+          <td>{{ n.downtime }}</td>
+          <td>From {{ n.bar }}</td>
+          <td>{% for e in n.emails %}<span class="{{ 'muted' if not loop.first }}">{{ e }}</span>{% if not loop.last %}<br>{% endif %}{% endfor %}</td>
+          <td>{{ n.by }}</td>
+          <td class="ntc-acts">
+            {% if not n.started %}<a href="{{ url_for('admin_notices', tab='notices', panel='post', edit=n.id) }}" class="ntc-link">Change</a>{% endif %}
+            <form method="post" action="{{ url_for('admin_notices') }}" class="ntc-inline"
+                  data-confirm="Cancel the {{ n.what | lower }} notice for {{ n.when }}? The bar goes at once{{ ' and OneHR reopens within a minute' if n.started and n.closes }}. An email that already went out isn't taken back."
+                  data-confirm-title="Cancel the notice?" data-confirm-ok="Cancel the notice" data-confirm-tone="danger">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+              <input type="hidden" name="action" value="cancel">
+              <input type="hidden" name="nid" value="{{ n.id }}">
+              <button type="submit" class="ntc-link is-danger">Cancel</button>
+            </form>
+          </td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+    </div>
+    {% else %}
+    <p class="muted small ntc-empty">Nothing is posted. The release run posts tonight's notice once its release is approved.</p>
+    {% endif %}
+  </section>
+
+  <section class="admin-card ntc-card" aria-labelledby="ntc-rw-h">
+    <h2 id="ntc-rw-h">Release window</h2>
+    <p class="muted small">The standing set-up: when releases go out and how much warning people get. Each notice's own date and time are picked in Post a notice.</p>
+    <form method="post" action="{{ url_for('admin_notices') }}" class="admin-form adm-set-form ntc-rw" id="ntc-rw"
+          data-confirm="Save the release window? Notices posted from now on follow it; a notice already posted keeps its times."
+          data-confirm-title="Save the release window?" data-confirm-ok="Save the release window">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <input type="hidden" name="action" value="save_window">
+      <input type="hidden" name="cells_sent" value="1">
+      <label class="switch">
+        <input type="checkbox" name="on" value="1" {{ 'checked' if rules.on }}>
+        <span class="track" aria-hidden="true"></span>
+        <span class="switch-label">Release evenings are on</span>
+      </label>
+
+      <fieldset class="ntc-fs">
+        <legend>When release evenings apply</legend>
+        <div class="ntc-chips" role="radiogroup" aria-label="When release evenings apply">
+          <label class="ntc-chip"><input type="radio" name="mode" value="cycle" {{ 'checked' if rules.mode == 'cycle' }}><span>Follow the cycle's timeline</span></label>
+          <label class="ntc-chip"><input type="radio" name="mode" value="dates" {{ 'checked' if rules.mode == 'dates' }}><span>Set dates by hand</span></label>
+        </div>
+        <div class="ntc-follow" data-ntc-mode="cycle"{% if rules.mode != 'cycle' %} hidden{% endif %}>
+          <label>Cycle
+            <select disabled><option>{{ cycle.name if cycle else 'No cycle is running' }}</option></select>
+          </label>
+          <p class="small ntc-note">Release evenings apply while any part you tick is open. The dates come from the cycle calendar, so they move if the calendar does.</p>
+          <div class="ntc-mods">
+            {% for g in groups %}
+            <div class="ntc-mod">
+              <b>{{ g.name }}</b>
+              {% for p in g.parts %}
+              <label class="ntc-part">
+                <input type="checkbox" name="cells" value="{{ p.cell }}" {{ 'checked' if p.on }} data-opens="{{ p.opens }}" data-closes="{{ p.closes }}" data-who="{{ p.who }}">
+                <span class="ntc-part-n">{{ p.name }} <span class="muted">· {{ p.who }}</span></span>
+                <span class="muted ntc-part-d">{{ p.dates }}</span>
+              </label>
+              {% endfor %}
+            </div>
+            {% else %}
+            <p class="muted small">No cycle is running, so there's no timeline to follow yet.</p>
+            {% endfor %}
+          </div>
+          <p class="ntc-range" id="ntc-range" aria-live="polite">{% if range_text %}Release evenings run {{ range_text }}, while any ticked part is open.{% else %}Nothing ticked is dated, so release evenings don't apply yet: fixes ship when they're ready.{% endif %}</p>
+        </div>
+        <div class="ntc-dates" data-ntc-mode="dates"{% if rules.mode != 'dates' %} hidden{% endif %}>
+          <label>From<input type="date" name="from" value="{{ rules['from'] }}"></label>
+          <label>Until<input type="date" name="until" value="{{ rules['until'] }}"></label>
+          <span class="muted small">Fixed dates, whatever the cycle does.</span>
+        </div>
+        <p class="muted small">Outside these dates, fixes ship when they're ready, with no bar or email.</p>
+      </fieldset>
+
+      <div class="ntc-grid">
+        <label>The window starts at
+          <select name="start">{% for o in options.start %}<option value="{{ o }}" {{ 'selected' if o == rules.start }}>{{ o }}</option>{% endfor %}</select>
+        </label>
+        <label>Expected downtime, unless a notice says otherwise
+          <select name="downtime">{% for o in options.downtime %}<option value="{{ o }}" {{ 'selected' if o == rules.downtime }}>{{ o }} minutes</option>{% endfor %}</select>
+        </label>
+        <label>The bar shows from
+          <select name="bar_lead">{% for o in options.bar_lead %}<option value="{{ o }}" {{ 'selected' if o == rules.bar_lead }}>{{ o }} minutes before</option>{% endfor %}</select>
+        </label>
+        <label>The closing warning shows from
+          <select name="warn_lead">{% for o in options.warn_lead %}<option value="{{ o }}" {{ 'selected' if o == rules.warn_lead }}>{{ o }} minutes before</option>{% endfor %}</select>
+        </label>
+        <label>OneHR reopens by itself after
+          <select name="reopen_after">{% for o in options.reopen_after %}<option value="{{ o }}" {{ 'selected' if o == rules.reopen_after }}>{{ o }} minutes</option>{% endfor %}</select>
+        </label>
+      </div>
+
+      <fieldset class="ntc-fs">
+        <legend>Emails</legend>
+        <label class="ntc-check"><input type="checkbox" name="email_before" value="1" {{ 'checked' if rules.email_before }}><span><b>Email before</b>, once the release is approved, only to the roles whose window is open then (9 – 15 Nov: line managers only). Sent at 30 a minute.</span></label>
+        <label class="ntc-check"><input type="checkbox" name="email_after" value="1" {{ 'checked' if rules.email_after }}><span><b>Email after</b>, to the same people, when OneHR reopens.</span></label>
+        <a href="{{ url_for('admin_emails', email='notice_before') }}" class="ntc-link">Edit their words in Email › Emails and templates</a>
+      </fieldset>
+
+      <div class="ntc-fs">
+        <span class="ntc-lbl">No planned release on</span>
+        <div class="ntc-offs" id="ntc-offs" data-freeze="{{ blackouts[0].text if blackouts and 'freeze' in blackouts[0].text else '' }}">
+          {% for b in blackouts %}<span class="ntc-off">{{ b.text }}</span>{% endfor %}
+        </div>
+      </div>
+
+      <div class="actions">
+        <span class="muted small">Closing days come from the cycle calendar: the last day of each ticked part and the day before.</span>
+        <button type="submit" class="primary">Save</button>
+      </div>
+    </form>
+  </section>
+
+  <section class="admin-card ntc-card" aria-labelledby="ntc-past-h">
+    <h2 id="ntc-past-h">Past</h2>
+    {% for n in past %}
+    <div class="ntc-past"><span class="ntc-past-w">{{ n.day }}, {{ n.span }}</span><span class="ntc-past-k">{{ n.what }}</span>
+      <span class="muted">{% if n.status == 'cancelled' %}Cancelled{% elif n.closed %}{{ n.closed }}{% elif n.status == 'done' %}Done{% else %}Not reopened by the release run{% endif %} · {{ n.emails | join(' · ') }}</span></div>
+    {% else %}
+    <p class="muted small">Nothing yet.</p>
+    {% endfor %}
+  </section>
+</div>
+
+{% call panel("post", "Notices", "Change the notice" if edit else "Post a notice",
+              "Everyone signed in sees the bar, and so does the sign-in page. The words follow what you pick below.",
+              open=(request.args.get('panel') == 'post'), params="panel,edit") %}
+  <form method="post" action="{{ url_for('admin_notices') }}" class="adm-panel-body ntc-post" id="ntc-post"
+        data-preview="{{ url_for('admin_notices_preview') }}"
+        data-confirm="{{ 'Change this notice? The bar follows the new times at once.' if edit else 'Post this notice? Everyone signed in sees the bar from its time, and the email before goes now to the roles whose window is open. You can cancel it until it starts.' }}"
+        data-confirm-title="{{ 'Change the notice?' if edit else 'Post the notice?' }}" data-confirm-ok="{{ 'Change the notice' if edit else 'Post notice' }}">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <input type="hidden" name="action" value="{{ 'update' if edit else 'post' }}">
+    {% if edit %}<input type="hidden" name="nid" value="{{ edit.id }}">{% endif %}
+    <fieldset class="ntc-fs">
+      <legend>What it's for</legend>
+      <div class="ntc-chips" role="radiogroup" aria-label="What it's for">
+        {% for k in kinds %}
+        <label class="ntc-chip"><input type="radio" name="kind" value="{{ k[0] }}" {{ 'checked' if (edit and edit.kind == k[0]) or (not edit and loop.first) }}><span>{{ k[1] }}</span></label>
+        {% endfor %}
+      </div>
+    </fieldset>
+    <div class="ntc-three">
+      <label>Date
+        <select name="date">{% for d in days %}<option value="{{ d.value }}" {{ 'selected' if edit and edit.date == d.value }}>{{ d.label }}</option>{% endfor %}</select>
+      </label>
+      <label>From
+        <select name="from">{% for t in times %}<option value="{{ t }}" {{ 'selected' if (edit and edit['from'] == t) or (not edit and t == rules.start) }}>{{ t }}</option>{% endfor %}</select>
+      </label>
+      <label>Expected downtime
+        <select name="downtime">{% for m in downtimes %}<option value="{{ m }}" {{ 'selected' if (edit and edit.mins == m) or (not edit and m == rules.downtime) }}>{{ (m // 60) ~ ' hour' if m == 60 else ('1½ hours' if m == 90 else ('2 hours' if m == 120 else m ~ ' minutes')) }}</option>{% endfor %}</select>
+      </label>
+    </div>
+    <label class="switch">
+      <input type="checkbox" name="closes" value="1" {{ 'checked' if (not edit or edit.closes) }}>
+      <span class="track" aria-hidden="true"></span>
+      <span class="switch-label">Close OneHR during this time<span class="muted small ntc-sw-hint" id="ntc-close-hint">People see the closed page and can't sign in or save.</span></span>
+    </label>
+    <div class="ntc-checks">
+      <label class="ntc-check"><input type="checkbox" name="email_before" value="1" {{ 'checked' if (edit.email_before if edit else rules.email_before) }}><span><b>Email before</b>, now, to <span id="ntc-to">{{ recipients }}</span></span></label>
+      <label class="ntc-check"><input type="checkbox" name="email_after" value="1" {{ 'checked' if (edit.email_after if edit else rules.email_after) }}><span><b>Email after</b>, to the same people, when OneHR reopens</span></label>
+      {% if not mail_on %}<p class="muted small">This server sends no email: the emails are previewed here but never go.</p>{% endif %}
+    </div>
+    <div class="ntc-fs">
+      <span class="ntc-lbl">The bar, shown from <span id="ntc-shown">—</span></span>
+      <div class="sn-bar ntc-bar-preview" id="ntc-bar" aria-live="polite">
+        <svg class="sn-ic" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>
+        <span class="sn-text"><b class="sn-lead" id="ntc-bar-lead">—</b><span class="sn-sep"> · </span><span class="sn-body" id="ntc-bar-text"></span></span>
+      </div>
+    </div>
+    <div class="ntc-fs">
+      <div class="ntc-tabs" role="tablist" aria-label="Email preview">
+        <button type="button" role="tab" class="ntc-tab is-on" aria-selected="true" data-ntc-tab="notice_before">Email before</button>
+        <button type="button" role="tab" class="ntc-tab" aria-selected="false" data-ntc-tab="notice_after">Email after</button>
+      </div>
+      <p class="muted small ntc-mailhead" id="ntc-mailhead"></p>
+      <p class="ntc-mailoff" id="ntc-mailoff" hidden></p>
+      <iframe class="ntc-mail" id="ntc-mail" title="Email preview" sandbox=""></iframe>
+      <p class="muted small">The words come from the two email templates in Email › Emails and templates; the times, downtime and recipients fill in from here.</p>
+    </div>
+  </form>
+  <footer class="adm-panel-foot">
+    <span class="muted small adm-panel-grow">You can cancel it until <span id="ntc-cancel-by">{{ rules.start }}</span>.</span>
+    <button type="button" class="btn-link" data-panel-close>Cancel</button>
+    <button type="submit" class="primary" form="ntc-post">{{ 'Change the notice' if edit else 'Post notice' }}</button>
+  </footer>
+{% endcall %}
+
+{% call panel("announce", "Notices", "Change the announcement" if ann_edit else "Post an announcement",
+              "A line in the bar at the top of OneHR, for the people you pick, between two times. No email goes with it.",
+              open=(request.args.get('panel') == 'announce'), params="panel,aedit") %}
+  {% set e = ann_edit %}
+  <form method="post" action="{{ url_for('admin_notices') }}" class="adm-panel-body ntc-post" id="ntc-ann"
+        data-confirm="{{ 'Change this announcement? It reads the new way at everyone\'s next page.' if e else 'Post this announcement? The people you picked see it in the bar on the pages you ticked, from its start time until it ends.' }}"
+        data-confirm-title="{{ 'Change the announcement?' if e else 'Post the announcement?' }}" data-confirm-ok="{{ 'Change the announcement' if e else 'Post announcement' }}">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <input type="hidden" name="action" value="{{ 'ann_update' if e else 'ann_post' }}">
+    {% if e %}<input type="hidden" name="aid" value="{{ e.id }}">{% endif %}
+    <label>Headline <span class="muted small">bold, up to {{ ann_head_max }} characters</span>
+      <input type="text" name="headline" maxlength="{{ ann_head_max }}" required value="{{ e.headline if e else '' }}" placeholder="OneHR goes live on Mon 2 Nov">
+    </label>
+    <label>Message <span class="muted small">up to {{ ann_msg_max }} characters</span>
+      <textarea name="message" maxlength="{{ ann_msg_max }}" rows="3" required placeholder="Check your details now: open your Profile and make sure your job, unit and line manager are right.">{{ e.message if e else '' }}</textarea>
+      <span class="muted small ntc-count" id="ntc-ann-count" aria-live="polite"></span>
+    </label>
+    <fieldset class="ntc-fs">
+      <legend>Who sees it</legend>
+      <div class="ntc-chips" role="radiogroup" aria-label="Who sees it">
+        {% for k, label in ann_audiences %}
+        <label class="ntc-chip"><input type="radio" name="audience" value="{{ k }}" {{ 'checked' if (e and e.audience_form == k) or (not e and loop.first) }}><span>{{ label }}</span></label>
+        {% endfor %}
+      </div>
+      <div class="ntc-roles" id="ntc-ann-roles">
+        {% for k, label in ann_roles %}
+        <label class="ntc-check"><input type="checkbox" name="roles" value="{{ k }}" {{ 'checked' if e and k in e.roles }}><span>{{ label }}</span></label>
+        {% endfor %}
+      </div>
+      <p class="muted small ntc-note" id="ntc-ann-who"></p>
+    </fieldset>
+    <fieldset class="ntc-fs ntc-where" id="ntc-ann-where">
+      <legend>Where it shows</legend>
+      <input type="hidden" name="places_sent" value="1">
+      <div class="ntc-where-grid">
+        {% for k, label, hint in ann_places %}
+        <label class="ntc-check"><input type="checkbox" name="places" value="{{ k }}" {{ 'checked' if (e and k in e.places) or (not e and k in ann_places_default) }}><span><b>{{ label }}</b><br><span class="muted small"{% if k == 'signin' %} id="ntc-ann-signin-hint" data-hint="{{ hint }}"{% endif %}>{{ hint }}</span></span></label>
+        {% endfor %}
+      </div>
+      <p class="muted small ntc-note" id="ntc-ann-places"></p>
+    </fieldset>
+    <fieldset class="ntc-fs">
+      <legend>When it shows</legend>
+      <div class="ntc-chips" role="radiogroup" aria-label="When it shows">
+        {% for k, label in ann_timings %}
+        <label class="ntc-chip"><input type="radio" name="timing" value="{{ k }}" {{ 'checked' if (e and e.timing == k) or (not e and loop.first) }}><span>{{ label }}</span></label>
+        {% endfor %}
+      </div>
+      <label class="ntc-partpick" id="ntc-ann-part">The part
+        <select name="part">
+          {% for p in ann_parts %}<option value="{{ p.key }}" data-dates="{{ p.dates }}" data-first="{{ p.first }}" data-last="{{ p.last }}" data-words="{{ p.words }}" {{ 'disabled' if not p.dated }} {{ 'selected' if e and e.part == p.key }}>{{ p.label }} ({{ p.dates }})</option>{% endfor %}
+        </select>
+      </label>
+      <p class="ntc-range" id="ntc-ann-when" data-opens="{{ cyc_opens }}" data-stops="{{ cyc_stops }}" aria-live="polite"></p>
+    </fieldset>
+    <div class="ntc-four" id="ntc-ann-dates">
+      <label>Show from<input type="date" name="from_date" required value="{{ e.from_date if e else today }}"></label>
+      <label>At
+        <select name="from_time">
+          <option value="now" {{ 'selected' if not e }}>Now</option>
+          {% if e and e.from_time not in half_hours %}<option value="{{ e.from_time }}" selected>{{ e.from_time }}</option>{% endif %}
+          {% for t in half_hours %}{% if t != '23:59' %}<option value="{{ t }}" {{ 'selected' if e and e.from_time == t }}>{{ t }}</option>{% endif %}{% endfor %}
+        </select>
+      </label>
+      <label>Until<input type="date" name="until_date" required value="{{ e.until_date if e else ann_until }}"></label>
+      <label>At
+        <select name="until_time">
+          {% if e and e.until_time not in half_hours %}<option value="{{ e.until_time }}" selected>{{ e.until_time }}</option>{% endif %}
+          {% for t in half_hours %}<option value="{{ t }}" {{ 'selected' if (e and e.until_time == t) or (not e and t == '23:59') }}>{{ t }}</option>{% endfor %}
+        </select>
+      </label>
+    </div>
+    <label>A button <span class="muted small">after the words</span>
+      <select name="button">{% for k, label in ann_buttons %}<option value="{{ k }}" {{ 'selected' if (e and e.button == k) or (not e and k == 'none') }}>{{ label }}</option>{% endfor %}</select>
+    </label>
+    {# a page in OneHR, picked from a list (2026-10-26, canvas board 16): a feature's page, a programme's detail #}
+    <div class="ntc-linkpick" id="ntc-ann-link">
+      <label>The page it opens <span class="muted small">type to search, then pick</span>
+        <span class="pick ntc-pagepick" id="ntc-ann-page">
+          <input type="text" class="pick-q" autocomplete="off" placeholder="Learning, profile, a programme…" value="{{ e.link_name if e and e.link_name != 'No longer there' else '' }}">
+          <input type="hidden" class="pick-val" name="link_target" value="{{ e.link_target if e and e.link_name != 'No longer there' else '' }}">
+        </span>
+      </label>
+      <label>Button words <span class="muted small">up to {{ ann_link_max }}</span>
+        <input type="text" name="link_label" maxlength="{{ ann_link_max }}" value="{{ e.link_label if e else '' }}" placeholder="View the programme">
+      </label>
+      <p class="muted small ntc-note">OneHR's own pages{{ ', and AI+ Learning with each published programme' if lms_on() }}. A programme taken down takes the button with it. What's new and Who has submitted (its panel on the dashboard) are in the list too.</p>
+    </div>
+    <script type="application/json" id="ntc-link-targets">{{ ann_link_targets | tojson }}</script>
+    <div class="ntc-fs">
+      <span class="ntc-lbl">The bar, as they'll see it</span>
+      <div class="sn-bar ntc-bar-preview" id="ntc-ann-bar"><svg class="sn-ic" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 10v4a1 1 0 0 0 1 1h2l6 4V5L6 9H4a1 1 0 0 0-1 1z"/><path d="M16 9a3.5 3.5 0 0 1 0 6"/><path d="M19 6a8 8 0 0 1 0 12"/></svg><span class="sn-text"><b class="sn-lead" id="ntc-ann-lead"></b><span class="sn-sep"> · </span><span class="sn-body" id="ntc-ann-body"></span></span><span class="sn-act" id="ntc-ann-btn" hidden></span></div>
+      <p class="muted small ntc-note" id="ntc-ann-note"></p>
+    </div>
+  </form>
+  <footer class="adm-panel-foot">
+    <span class="muted small adm-panel-grow">You can change or end it any time.</span>
+    <button type="button" class="btn-link" data-panel-close>Cancel</button>
+    <button type="submit" class="primary" form="ntc-ann">{{ 'Change the announcement' if e else 'Post announcement' }}</button>
+  </footer>
+{% endcall %}
+
+<script>
+(function () {
+  // Banner's two tabs: both on the page, switched in place, ?tab= kept in the address
+  var btns = document.querySelectorAll('[data-ntc-tabbtn]');
+  btns.forEach(function (b) {
+    b.addEventListener('click', function (e) {
+      e.preventDefault();
+      var k = b.getAttribute('data-ntc-tabbtn');
+      document.querySelectorAll('[data-banner-tab]').forEach(function (p) { p.hidden = p.getAttribute('data-banner-tab') !== k; });
+      btns.forEach(function (x) {
+        var on = x === b;
+        x.classList.toggle('is-active', on);
+        if (on) x.setAttribute('aria-current', 'page'); else x.removeAttribute('aria-current');
+      });
+      try { var u = new URL(location.href); u.searchParams.set('tab', k); history.replaceState(null, '', u); } catch (err) { /* old browser */ }
+    });
+  });
+})();
+
+(function () {
+  // Post an announcement: the bar as they'll see it, who it reaches, where it shows, from the picks as they change
+  var f = document.getElementById('ntc-ann');
+  if (!f) return;
+  var HINT = {
+    everyone: 'Everyone who signs in, whatever their role.',
+    open: 'It follows the calendar day by day: whoever has a part open that day (on 13 Nov, line managers and HODs).',
+    roles: 'Only the roles you tick. Someone holding several sees it once.'
+  };
+  var BTN = { part: 'Open my check-in', profile: 'Check my details', help: 'Get Help' };
+  BTN.link = function () { return f.elements.link_label.value.trim() || 'Your button'; };
+  var fillv = {};
+  function fill(x) {
+    return x.replace(/\{(dates|opens|closes)\}/g, function (m, k) { return fillv[k] || m; });
+  }
+  function when() {
+    // When it shows: until the cycle opens, while a part is open (both read the calendar), or dates by hand
+    var timing = (f.querySelector('input[name=timing]:checked') || {}).value || 'dates';
+    document.getElementById('ntc-ann-part').hidden = timing !== 'part';
+    document.getElementById('ntc-ann-dates').hidden = timing !== 'dates';
+    var wl = document.getElementById('ntc-ann-when'), opens = wl.getAttribute('data-opens'), stops = wl.getAttribute('data-stops');
+    var sel = f.elements.part, opt = sel.options[sel.selectedIndex];
+    if (timing === 'until_open') {
+      wl.textContent = opens ? 'From now until ' + stops + ', 23:59: the day before the cycle opens on ' + opens + '. If its first part moves on the calendar, this moves with it.'
+                             : 'The cycle has no part dated on its calendar yet: pick dates by hand.';
+      fillv = opens ? { dates: 'from ' + opens, opens: opens, closes: opens } : {};
+    } else if (timing === 'part') {
+      if (opt && opt.getAttribute('data-first')) {
+        wl.textContent = 'While the ' + opt.getAttribute('data-words') + ' is open: ' + opt.getAttribute('data-dates') + ', from 00:00 on '
+          + opt.getAttribute('data-first') + ' to 23:59 on ' + opt.getAttribute('data-last') + '. It moves with the calendar. Write {dates}, {opens} or {closes} and OneHR fills them in.';
+        fillv = { dates: opt.getAttribute('data-dates'), opens: opt.getAttribute('data-first'), closes: opt.getAttribute('data-last') };
+      } else {
+        wl.textContent = 'That part has no dates on the calendar yet.';
+        fillv = {};
+      }
+    } else {
+      wl.textContent = 'Fixed times you pick below. They don\'t move with the calendar.';
+      fillv = {};
+    }
+  }
+  function sync() {
+    when();
+    var aud = (f.querySelector('input[name=audience]:checked') || {}).value || 'everyone';
+    document.getElementById('ntc-ann-roles').hidden = aud !== 'roles';
+    // the sign-in page is only for Everyone: before signing in, OneHR doesn't know anyone's role
+    var boxes = Array.prototype.slice.call(f.querySelectorAll('input[name=places]'));
+    var si = boxes.filter(function (c) { return c.value === 'signin'; })[0];
+    var sh = document.getElementById('ntc-ann-signin-hint');
+    if (si) {
+      if (aud !== 'everyone') si.checked = false;
+      si.disabled = aud !== 'everyone';
+      sh.textContent = aud === 'everyone' ? sh.getAttribute('data-hint') : 'Only for Everyone: before signing in, OneHR doesn\'t know anyone\'s role.';
+    }
+    var on = boxes.filter(function (c) { return c.checked; });
+    var signinOnly = on.length === 1 && on[0].value === 'signin';
+    var names = on.map(function (c) { var t = c.parentNode.querySelector('b').textContent; return /^AI\+/.test(t) ? t : t.charAt(0).toLowerCase() + t.slice(1); });
+    document.getElementById('ntc-ann-places').textContent = !on.length ? 'Tick at least one page.'
+      : 'In the bar on the ' + (names.length > 1 ? names.slice(0, -1).join(', ') + ' and ' + names[names.length - 1] : names[0])
+        + ', until it ends.' + (si && si.checked ? ' On the sign-in page it has no button: keep it general, no names, figures or links inside OneHR.' : '');
+    var sel = f.elements.button;
+    sel.disabled = signinOnly;
+    var ticked = Array.prototype.map.call(f.querySelectorAll('input[name=roles]:checked'), function (c) { return c.nextElementSibling.textContent; });
+    document.getElementById('ntc-ann-who').textContent = aud === 'roles' && ticked.length ? 'Only ' + ticked.join(', ') + '. Someone holding several sees it once.' : HINT[aud];
+    document.getElementById('ntc-ann-lead').textContent = fill(f.elements.headline.value.trim()) || 'Your headline';
+    document.getElementById('ntc-ann-body').textContent = fill(f.elements.message.value.trim()) || 'Your message';
+    var b = document.getElementById('ntc-ann-btn'), bv = signinOnly ? 'none' : sel.value;
+    b.hidden = bv === 'none';
+    b.textContent = typeof BTN[bv] === 'function' ? BTN[bv]() : (BTN[bv] || '');
+    document.getElementById('ntc-ann-link').hidden = bv !== 'link';
+    var n = f.elements.message.value.length;
+    document.getElementById('ntc-ann-count').textContent = n + ' / ' + f.elements.message.getAttribute('maxlength');
+    document.getElementById('ntc-ann-note').textContent = (bv === 'part'
+      ? 'The button follows each person: a line manager sees Open my team, an HOD Open my department review. ' : '')
+      + 'Words longer than the bar run across it, round and round, with any other announcement on the same page.';
+  }
+  f.addEventListener('input', sync);
+  f.addEventListener('change', sync);
+  sync();
+})();
+
+(function () {
+  // the page a button opens: picked from OneHR's own list, searched as you type (Chris, 2026-10-26: "make it a selection
+  // of the feature page ... searchable by admin"); typed text that isn't a pick stops the form, the browser's own check
+  var box = document.getElementById('ntc-ann-page');
+  if (!box) return;
+  var f = document.getElementById('ntc-ann'), q = box.querySelector('.pick-q'), val = box.querySelector('.pick-val');
+  var words = f.elements.link_label, all = [], items = [], active = -1;
+  try { all = JSON.parse(document.getElementById('ntc-link-targets').textContent) || []; } catch (e) { all = []; }
+  var list = document.createElement('ul');
+  list.className = 'pick-list'; list.id = 'ntc-page-list'; list.setAttribute('role', 'listbox'); list.hidden = true;
+  box.appendChild(list);
+  q.setAttribute('role', 'combobox'); q.setAttribute('aria-autocomplete', 'list');
+  q.setAttribute('aria-controls', list.id); q.setAttribute('aria-expanded', 'false');
+  function check() {
+    var on = !document.getElementById('ntc-ann-link').hidden;
+    q.setCustomValidity(on && !val.value ? 'Pick the page from the list: type part of its name, then choose it.' : '');
+  }
+  function close() { list.hidden = true; q.setAttribute('aria-expanded', 'false'); active = -1; q.removeAttribute('aria-activedescendant'); }
+  function mark() {
+    [].forEach.call(list.children, function (li, i) { li.classList.toggle('is-on', i === active); li.setAttribute('aria-selected', i === active ? 'true' : 'false'); });
+    if (active >= 0) q.setAttribute('aria-activedescendant', list.id + '-' + active);
+  }
+  function render() {
+    list.textContent = '';
+    if (!items.length) {
+      var none = document.createElement('li');
+      none.className = 'pick-none';
+      none.textContent = 'Nothing matches. Only OneHR\'s own pages are here.';
+      list.appendChild(none);
+    }
+    items.forEach(function (x, i) {
+      var li = document.createElement('li'), b = document.createElement('b'), sm = document.createElement('small');
+      li.id = list.id + '-' + i; li.setAttribute('role', 'option');
+      b.textContent = x.name; sm.textContent = x.kind;
+      li.appendChild(b); li.appendChild(sm);
+      li.addEventListener('mousedown', function (e) { e.preventDefault(); choose(i); });
+      list.appendChild(li);
+    });
+    list.hidden = false; q.setAttribute('aria-expanded', 'true'); active = -1; mark();
+  }
+  function find(t) {
+    t = t.toLowerCase();
+    return all.filter(function (x) { return !t || (x.name + ' ' + x.kind).toLowerCase().indexOf(t) >= 0; }).slice(0, 40);
+  }
+  function choose(i) {
+    var x = items[i];
+    if (!x) return;
+    val.value = x.key; q.value = x.name;
+    if (!words.value.trim() || words.getAttribute('data-auto') === '1') { words.value = x.words; words.setAttribute('data-auto', '1'); }
+    close(); check();
+    f.dispatchEvent(new Event('input', { bubbles: true }));   // the bar's preview takes the words
+  }
+  q.addEventListener('input', function () { val.value = ''; check(); items = find(q.value.trim()); render(); });
+  q.addEventListener('focus', function () { if (!val.value) { items = find(q.value.trim()); render(); } });
+  q.addEventListener('keydown', function (e) {
+    if (list.hidden) return;
+    if (e.key === 'ArrowDown') { active = Math.min(items.length - 1, active + 1); mark(); e.preventDefault(); }
+    else if (e.key === 'ArrowUp') { active = Math.max(0, active - 1); mark(); e.preventDefault(); }
+    else if (e.key === 'Enter' && active >= 0) { choose(active); e.preventDefault(); }
+    else if (e.key === 'Escape') { close(); e.preventDefault(); e.stopPropagation(); }
+  });
+  q.addEventListener('blur', function () { setTimeout(close, 120); });
+  words.addEventListener('input', function () { words.removeAttribute('data-auto'); });
+  f.addEventListener('change', check);
+  check();
+})();
+
+(function () {
+  // the release window: the two ways it applies, and the range line and no-release days as parts are ticked
+  var rw = document.getElementById('ntc-rw');
+  if (rw) {
+    var sync = function () {
+      var mode = (rw.querySelector('input[name=mode]:checked') || {}).value || 'cycle';
+      rw.querySelectorAll('[data-ntc-mode]').forEach(function (el) { el.hidden = el.getAttribute('data-ntc-mode') !== mode; });
+      var ticked = Array.prototype.filter.call(rw.querySelectorAll('input[name=cells]'), function (c) { return c.checked; });
+      var dated = ticked.filter(function (c) { return c.getAttribute('data-opens') && c.getAttribute('data-closes'); });
+      var range = document.getElementById('ntc-range');
+      var mon = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+      function d(s) { var p = s.split('-'); return new Date(+p[0], +p[1] - 1, +p[2]); }
+      function span(a, b) {
+        if (+a === +b) return a.getDate() + ' ' + mon[a.getMonth()];
+        if (a.getMonth() === b.getMonth()) return a.getDate() + ' – ' + b.getDate() + ' ' + mon[b.getMonth()];
+        return a.getDate() + ' ' + mon[a.getMonth()] + ' – ' + b.getDate() + ' ' + mon[b.getMonth()];
+      }
+      if (range) {
+        if (!dated.length) {
+          range.textContent = ticked.length ? 'Nothing ticked is dated, so release evenings don\'t apply yet: fixes ship when they\'re ready.'
+                                            : 'Nothing ticked, so release evenings never apply: fixes ship when they\'re ready.';
+        } else {
+          var a = dated.map(function (c) { return d(c.getAttribute('data-opens')); }).reduce(function (x, y) { return x < y ? x : y; });
+          var b = dated.map(function (c) { return d(c.getAttribute('data-closes')); }).reduce(function (x, y) { return x > y ? x : y; });
+          range.textContent = 'Release evenings run ' + span(a, b) + ' ' + b.getFullYear() + ', while any ticked part is open.';
+        }
+      }
+      // the no-release days: the freeze, then each followed part's last day and the day before (every dated part
+      // when the dates are set by hand), as release_blackouts says on save
+      var offs = document.getElementById('ntc-offs');
+      if (offs) {
+        var src = mode === 'dates' ? Array.prototype.filter.call(rw.querySelectorAll('input[name=cells]'), function (c) { return c.getAttribute('data-closes'); }) : dated;
+        var by = {};
+        src.forEach(function (c) {
+          var k = c.getAttribute('data-closes'), w = c.getAttribute('data-who');
+          by[k] = by[k] || [];
+          if (by[k].indexOf(w) < 0) by[k].push(w);
+        });
+        offs.textContent = '';
+        var chip = function (t) { var s = document.createElement('span'); s.className = 'ntc-off'; s.textContent = t; offs.appendChild(s); };
+        if (offs.getAttribute('data-freeze')) chip(offs.getAttribute('data-freeze'));
+        Object.keys(by).sort().forEach(function (k) {
+          var e = d(k), s = new Date(e.getTime() - 86400000), w = by[k];
+          chip(span(s, e) + ' · ' + (w.length === 1 ? w[0] : w.slice(0, -1).join(', ') + ' and ' + w[w.length - 1]) + ' close');
+        });
+      }
+    };
+    rw.addEventListener('change', sync);
+    sync();
+  }
+
+  // Post a notice: the bar and both emails, in the words the picks give (admin_notices_preview writes nothing)
+  var f = document.getElementById('ntc-post');
+  if (!f) return;
+  var tab = 'notice_before', last = null, timer = null, seq = 0;
+  function picks() {
+    var q = new URLSearchParams();
+    q.set('kind', (f.querySelector('input[name=kind]:checked') || {}).value || 'upgrade');
+    ['date', 'from', 'downtime'].forEach(function (k) { q.set(k, f.elements[k].value); });
+    q.set('closes', f.elements.closes.checked ? '1' : '0');
+    q.set('email_before', f.elements.email_before.checked ? '1' : '0');
+    q.set('email_after', f.elements.email_after.checked ? '1' : '0');
+    return q;
+  }
+  function show() {
+    if (!last) return;
+    var m = last[tab], frame = document.getElementById('ntc-mail'), off = document.getElementById('ntc-mailoff');
+    var head = document.getElementById('ntc-mailhead');
+    if (m.off) {
+      frame.hidden = true; head.textContent = ''; off.hidden = false; off.textContent = m.off;
+    } else {
+      off.hidden = true; frame.hidden = false;
+      head.textContent = 'To ' + last.recipients + ' · Subject: ' + m.subject;
+      frame.srcdoc = m.html;
+    }
+    f.querySelectorAll('[data-ntc-tab]').forEach(function (b) {
+      var on = b.getAttribute('data-ntc-tab') === tab;
+      b.classList.toggle('is-on', on); b.setAttribute('aria-selected', on ? 'true' : 'false');
+    });
+  }
+  function refresh() {
+    f.elements.email_after.disabled = !f.elements.closes.checked;
+    document.getElementById('ntc-close-hint').textContent = f.elements.closes.checked
+      ? 'People see the closed page and can\'t sign in or save.' : 'OneHR stays open; the bar and email say so.';
+    var my = ++seq;
+    fetch(f.getAttribute('data-preview') + '?' + picks().toString(), { credentials: 'same-origin' })
+      .then(function (r) { return r.ok ? r.json() : null; })
+      .then(function (j) {
+        if (!j || my !== seq) return;
+        last = j;
+        var bar = document.getElementById('ntc-bar');
+        bar.classList.toggle('is-red', !!j.red);
+        document.getElementById('ntc-bar-lead').textContent = j.lead;
+        document.getElementById('ntc-bar-text').textContent = j.info;
+        document.getElementById('ntc-shown').textContent = j.shown;
+        document.getElementById('ntc-to').textContent = j.recipients;
+        document.getElementById('ntc-cancel-by').textContent = j.cancel_by;
+        show();
+      })
+      .catch(function () {});
+  }
+  f.addEventListener('change', function () { clearTimeout(timer); timer = setTimeout(refresh, 150); });
+  f.querySelectorAll('[data-ntc-tab]').forEach(function (b) {
+    b.addEventListener('click', function () { tab = b.getAttribute('data-ntc-tab'); show(); });
+  });
+  refresh();
+})();
+</script>
+{% endblock %}

@@ -1,0 +1,226 @@
+{# Settings card: Points per answer (Chris, 8-9 Nov 2026; canvas "Points per answer": A1 the 360 card, A2 / A3 the step "When it
+   starts", A4 the card after a release, B1 the Competency card). ONE template for both kinds, read from `points` (_points_card_ctx):
+   what a Demonstrate and a Developing earn at the person's current level and at the next, the default for the current cycle (when
+   none of its results is released) and every future one. Saving does not write: "Save points" posts points_<kind>_check, which
+   re-draws this card with the step open (the people re-scored, the raw potential band changes, the cut-offs that move); the step's
+   own form posts points_<kind> with the reason (the super admin's band remark, asked once). Server-side checks repeat the card's. #}
+{% set P = points %}
+{% set is360 = P.kind == '360' %}
+{% set R = P.ref %}
+{% set st = P.step %}
+{% macro pts_icon_info() %}<svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><circle cx="8" cy="8" r="6.5"></circle><path d="M8 7.2v4M8 4.8v.01" stroke-linecap="round"></path></svg>{% endmacro %}
+{% macro pts_icon_lock() %}<svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><rect x="3.5" y="7" width="9" height="6.5" rx="1.5"></rect><path d="M5.5 7V5a2.5 2.5 0 0 1 5 0v2"></path></svg>{% endmacro %}
+  {% if is360 %}
+  <p class="muted small">What each answer on the 360 earns. A behaviour at the person's current level and one at the next level can earn
+    different points. Saving asks whether the change starts in the current cycle (only while none of its results is released) or
+    from the next cycle on. Released and past cycles keep their own.</p>
+  <details class="muted small">
+    <summary>Why this matters</summary>
+    <p>The points add up to the person's 360 score, which with their competency makes the potential score and band. A next-level
+      behaviour is a stretch, so it usually earns more. Changing points re-scores everyone in a cycle that follows them. Once a
+      cycle's first potential result is released, its points are fixed.</p>
+  </details>
+  {% else %}
+  <p class="muted small">What each competency answer earns, on its own, separate from the 360's points. A competency at the person's
+    current level and one at the next level can earn different points. Saving asks whether the change starts in the current cycle
+    (only while none of its results is released) or from the next cycle on. Released and past cycles keep their own.</p>
+  <details class="muted small">
+    <summary>Why this matters</summary>
+    <p>The points add up to the competency score the line manager approves. It counts toward the potential score as a share of its
+      own maximum, so the 360 and competency weighting stays as set whatever the points are.</p>
+  </details>
+  {% endif %}
+
+  {% if P.cycle %}
+  <div class="rl-status">
+    {% if P.released_on %}{{ pts_icon_lock() }}
+    <span><b>{{ P.cycle }}</b> keeps {{ '%g'|format(P.today.dc) }} · {{ '%g'|format(P.today.dn) }} · {{ '%g'|format(P.today.vc) }} · {{ '%g'|format(P.today.vn) }}: its first potential result was released on {{ P.released_on }}. A change here applies from the next cycle.</span>
+    {% elif P.own %}{{ pts_icon_info() }}
+    <span><b>{{ P.cycle }}</b> keeps its own {{ '%g'|format(P.today.dc) }} · {{ '%g'|format(P.today.dn) }} · {{ '%g'|format(P.today.vc) }} · {{ '%g'|format(P.today.vn) }}; the default ({{ '%g'|format(P.default.dc) }} · {{ '%g'|format(P.default.dn) }} · {{ '%g'|format(P.default.vc) }} · {{ '%g'|format(P.default.vn) }}) applies from the next cycle. None of its results is released yet.</span>
+    {% else %}{{ pts_icon_info() }}
+    <span><b>{{ P.cycle }}</b> uses {{ '%g'|format(P.today.dc) }} · {{ '%g'|format(P.today.dn) }} · {{ '%g'|format(P.today.vc) }} · {{ '%g'|format(P.today.vn) }}. None of its results is released yet.</span>
+    {% endif %}
+  </div>
+  {% else %}
+  <p class="muted small">No cycle is open. A change here applies from the next cycle on.</p>
+  {% endif %}
+
+  <form method="post" action="{{ url_for('admin_settings') }}" class="admin-form adm-set-form" id="pts-check" data-pts='{{ {
+        "kind": P.kind, "nCur": R.n_cur, "nFut": R.n_fut, "totCur": R.get("tot_cur", 0), "totFut": R.get("tot_fut", 0),
+        "base": [P.default.dc, P.default.dn, P.default.vc, P.default.vn], "todayMax": P.today_max,
+        "low": R.get("low"), "mid": R.get("mid"), "highPct": R.get("high_pct"), "midPct": R.get("mid_pct")}|tojson }}'>
+    <input type="hidden" name="next" value="{{ (settings_next ~ '#points') if settings_next else '' }}">
+    <input type="hidden" name="action" value="points_{{ P.kind }}_check">
+    <div class="rl-sec">
+      <h4>Points</h4>
+      <div class="pts-grid">
+        <span></span>
+        <span class="pts-h">At their current level</span>
+        <span class="pts-h">At the next level</span>
+
+        <span class="pts-h">Demonstrate</span>
+        <label class="pts-cell"><input type="number" name="dc" min="0" max="10" step="0.1" required data-pts-in="dc" aria-label="Demonstrate at the current level" value="{{ P.show.dc }}"><span>points</span></label>
+        <label class="pts-cell"><input type="number" name="dn" min="0" max="10" step="0.1" required data-pts-in="dn" aria-label="Demonstrate at the next level" value="{{ P.show.dn }}"><span>points</span></label>
+
+        <span class="pts-h">Developing</span>
+        <label class="pts-cell"><input type="number" name="vc" min="0" max="10" step="0.1" required data-pts-in="vc" aria-label="Developing at the current level" value="{{ P.show.vc }}"><span>points</span></label>
+        <label class="pts-cell"><input type="number" name="vn" min="0" max="10" step="0.1" required data-pts-in="vn" aria-label="Developing at the next level" value="{{ P.show.vn }}"><span>points</span></label>
+      </div>
+      <p class="muted small">0 to 10, one decimal. Developing earns less than Demonstrate at the same level, and the next level earns at least as much as the current level. Today: {{ '%g'|format(P.default.dc) }} · {{ '%g'|format(P.default.dn) }} · {{ '%g'|format(P.default.vc) }} · {{ '%g'|format(P.default.vn) }}.</p>
+      <div class="pts-err" role="alert" data-pts-err{% if not P.errors %} hidden{% endif %}>{% for e in P.errors %}<div>{{ e }}</div>{% endfor %}</div>
+    </div>
+
+    <div class="rl-sec">
+      <h4>What it does to a score</h4>
+      <dl class="pts-now">
+        <dt>Most a person can score</dt>
+        <dd><b data-pts-max>{{ '%g'|format(P.today_max) }}</b><span class="pts-was" data-pts-maxwas>(as today)</span></dd>
+        <dt>Lowest, all Developing</dt>
+        <dd><b data-pts-min>0</b>{% if not is360 %}<span class="pts-was">(<span data-pts-minpct>0%</span> of the most)</span>{% endif %}</dd>
+        {% if is360 %}
+        <dt>Potential bands (default cut-offs)</dt>
+        <dd><b>Low &le; <span data-pts-lo>{{ '%g'|format(R.low) }}</span> &middot; Mid &le; <span data-pts-mid>{{ '%g'|format(R.mid) }}</span></b><span class="pts-was">&middot; High above</span></dd>
+        {% else %}
+        <dt>Competency band</dt>
+        <dd><b>High from {{ '%g'|format(R.high_pct) }}% &middot; Mid from {{ '%g'|format(R.mid_pct) }}%</b><span class="pts-was">&middot; of the person's own maximum</span></dd>
+        {% endif %}
+      </dl>
+      {% if is360 %}
+      <p class="muted small">On the 360 scale for {{ R.name }}: {{ R.n_cur }} behaviours at the current level and {{ R.n_fut }} at the next
+        (each tier counts its own).{% if P.today_max and R.cu_lo is not none %} This cycle's cut-offs keep their share of the maximum,
+        {{ ((R.cu_lo / P.today_max) * 100)|round|int }}% and {{ ((R.cu_mi / P.today_max) * 100)|round|int }}%, and move in the same save.{% else %}
+        The cut-offs keep their share of the maximum and move in the same save.{% endif %}</p>
+      <div class="pts-warn" data-pts-warn hidden>Everyone now scores at least <b data-pts-wmin></b>. Someone who answers Developing on every behaviour lands in <b data-pts-wband></b>.</div>
+      {% else %}
+      <p class="muted small">For a person with {{ R.n_cur }} competencies at their current level and {{ R.n_fut }} at the next. The band and the
+        potential score read a share, so no cut-off moves when the points change.</p>
+      <div class="pts-warn" data-pts-warn hidden>Everyone now scores at least <b data-pts-wmin></b>. Someone who answers Developing on every competency gets a <b data-pts-wband></b> competency band.</div>
+      {% endif %}
+    </div>
+    <div class="actions"><button type="submit" class="primary" data-pts-save>Save points</button></div>
+  </form>
+
+  {% if st %}
+  <form method="post" action="{{ url_for('admin_settings') }}" class="pts-step" id="pts-step" data-pts-step
+        data-confirm="Save the {{ P.label }} points? {% if is360 %}Every potential band read from a score in a cycle that follows them is read again, and the potential cut-offs move with them.{% else %}Every competency score in a cycle that follows them is worked out again.{% endif %} A band a leader has moved stays as it is."
+        data-confirm-ok="Save the points" role="group" aria-labelledby="pts-step-t">
+    <input type="hidden" name="next" value="{{ (settings_next ~ '#points') if settings_next else '' }}">
+    <input type="hidden" name="action" value="points_{{ P.kind }}">
+    <input type="hidden" name="dc" value="{{ '%g'|format(st.new.dc) }}"><input type="hidden" name="dn" value="{{ '%g'|format(st.new.dn) }}">
+    <input type="hidden" name="vc" value="{{ '%g'|format(st.new.vc) }}"><input type="hidden" name="vn" value="{{ '%g'|format(st.new.vn) }}">
+    <div class="pts-step-head">{{ pts_icon_info() }}<h3 id="pts-step-t">Save the {{ P.label }} points?</h3></div>
+    <p>Demonstrate <b>{{ '%g'|format(st.new.dc) }}</b> at the current level and <b>{{ '%g'|format(st.new.dn) }}</b> at the next; Developing <b>{{ '%g'|format(st.new.vc) }}</b> and <b>{{ '%g'|format(st.new.vn) }}</b>.
+      Today {{ '%g'|format(st.old.dc) }} · {{ '%g'|format(st.old.dn) }} · {{ '%g'|format(st.old.vc) }} · {{ '%g'|format(st.old.vn) }}.</p>
+    <fieldset class="pts-when">
+      <legend>When it starts</legend>
+      {% if st.now_open %}
+      <label class="pts-opt" data-pts-opt>
+        <input type="radio" name="when" value="current" required>
+        <span class="pts-opt-t"><b>From {{ st.cycle }}, the current cycle</b>
+          <span>None of its results is released, so it is re-scored now: <b>{{ st.n }}</b> {{ 'person' if st.n == 1 else 'people' }}.
+            <b>{{ st.m }}</b> {{ 'lands' if st.m == 1 else 'land' }} in a different potential band by their scores; a band a leader has moved stays.
+            {% if is360 and st.cuts %}Its cut-offs move to Low &le; {{ '%g'|format(st.cuts[0]) }}, Mid &le; {{ '%g'|format(st.cuts[1]) }}.{% endif %}</span></span>
+      </label>
+      {% else %}
+      <label class="pts-opt is-off">
+        <input type="radio" name="when" value="current" disabled>
+        <span class="pts-opt-t"><b>From {{ st.cycle or 'the current cycle' }}, the current cycle</b>
+          <span>{% if st.released_on %}Not open: its first results were released on {{ st.released_on }}, so its points are fixed.{% else %}Not open: no cycle is open.{% endif %}</span></span>
+      </label>
+      {% endif %}
+      {% if st.next_open %}
+      <label class="pts-opt" data-pts-opt>
+        <input type="radio" name="when" value="next"{{ ' checked' if not st.now_open }} required>
+        <span class="pts-opt-t"><b>From the next cycle on</b>
+          <span>{% if st.cycle and st.keeps %}{{ st.cycle }} keeps {{ '%g'|format(st.keeps.dc) }} · {{ '%g'|format(st.keeps.dn) }} · {{ '%g'|format(st.keeps.vc) }} · {{ '%g'|format(st.keeps.vn) }}{% if is360 %} and its cut-offs{% endif %}. Nobody's score changes now.{% else %}Nobody's score changes now.{% endif %}
+            {% if is360 and st.cut_default %}The default cut-offs move with the new points, to Low &le; {{ '%g'|format(st.cut_default[0]) }}, Mid &le; {{ '%g'|format(st.cut_default[1]) }}.{% endif %}</span></span>
+      </label>
+      {% else %}
+      <label class="pts-opt is-off">
+        <input type="radio" name="when" value="next" disabled>
+        <span class="pts-opt-t"><b>From the next cycle on</b><span>Not open: these are already the default points.</span></span>
+      </label>
+      {% endif %}
+    </fieldset>
+    <label class="pts-why">Why you're changing it (required)
+      <textarea name="remark" rows="2" required maxlength="1000" data-pts-why></textarea>
+    </label>
+    <div class="actions">
+      <a class="pts-cancel" href="{{ (settings_next ~ '#points') if settings_next else '#points' }}">Cancel</a>
+      <button type="submit" class="primary" data-pts-go disabled>Save the points</button>
+    </div>
+  </form>
+  {% endif %}
+  <script>
+  // the card's numbers follow the four boxes as you type: the same rules as the server (points_parse), the most and the least a
+  // person can score, the cut-offs that move with the maximum (360) and the warning when Developing earns above 0
+  (function () {
+    function g(n) { return String(Math.round(n * 100) / 100); }
+    document.querySelectorAll('form[data-pts]').forEach(function (form) {
+      var cfg = JSON.parse(form.getAttribute('data-pts'));
+      var inp = {};
+      ['dc', 'dn', 'vc', 'vn'].forEach(function (k) { inp[k] = form.querySelector('[data-pts-in="' + k + '"]'); });
+      var $ = function (s) { return form.querySelector(s); };
+      var errBox = $('[data-pts-err]'), warn = $('[data-pts-warn]'), save = $('[data-pts-save]');
+      var M = { range: 'Each value is 0 to 10, with at most one decimal.',
+        vc: 'Developing must earn less than Demonstrate at the current level.',
+        vn: 'Developing must earn less than Demonstrate at the next level.',
+        dn: 'Demonstrate at the next level must earn at least as much as at the current level.',
+        vnup: 'Developing at the next level must earn at least as much as at the current level.' };
+      function num(el) { var v = el.value.trim(); return v === '' ? NaN : Number(v); }
+      function oneDecimal(v) { return Math.abs(v * 10 - Math.round(v * 10)) < 1e-9; }
+      function put(sel, text) { var e = $(sel); if (e) e.textContent = text; }
+      function sync() {
+        var dc = num(inp.dc), dn = num(inp.dn), vc = num(inp.vc), vn = num(inp.vn), errs = [];
+        if ([dc, dn, vc, vn].some(function (v) { return isNaN(v) || v < 0 || v > 10 || !oneDecimal(v); })) errs.push(M.range);
+        else {
+          if (vc >= dc) errs.push(M.vc);
+          if (vn >= dn) errs.push(M.vn);
+          if (dn < dc) errs.push(M.dn);
+          if (vn < vc) errs.push(M.vnup);
+        }
+        var ok = !errs.length;
+        errBox.hidden = ok;
+        while (errBox.firstChild) errBox.removeChild(errBox.firstChild);
+        errs.forEach(function (t) { var d = document.createElement('div'); d.textContent = t; errBox.appendChild(d); });
+        save.disabled = !ok;
+        var b = cfg.base, ref = cfg.kind === '360' ? cfg : { nCur: cfg.nCur, nFut: cfg.nFut };
+        var mx = ok ? cfg.nCur * dc + cfg.nFut * dn : cfg.todayMax, mn = ok ? cfg.nCur * vc + cfg.nFut * vn : 0;
+        put('[data-pts-max]', g(mx));
+        put('[data-pts-maxwas]', Math.abs(mx - cfg.todayMax) < 1e-9 ? '(as today)' : '(today ' + g(cfg.todayMax) + ')');
+        put('[data-pts-min]', g(mn));
+        var band = '';
+        if (cfg.kind === '360') {
+          var oldT = cfg.totCur * b[0] + cfg.totFut * b[1], newT = ok ? cfg.totCur * dc + cfg.totFut * dn : oldT;
+          var f = oldT > 0 ? newT / oldT : 1, lo = Math.round(cfg.low * f * 100) / 100, mid = Math.round(cfg.mid * f * 100) / 100;
+          put('[data-pts-lo]', g(lo)); put('[data-pts-mid]', g(mid));
+          band = mn <= lo ? 'Low, still' : (mn <= mid ? 'Mid' : 'High');
+          put('[data-pts-wmin]', g(mn));
+        } else {
+          var pct = mx ? Math.round(mn / mx * 100) : 0;
+          put('[data-pts-minpct]', pct + '%'); put('[data-pts-wmin]', pct + '%');
+          band = pct >= cfg.highPct ? 'High' : (pct >= cfg.midPct ? 'Mid' : 'Low');
+        }
+        put('[data-pts-wband]', band);
+        warn.hidden = !(ok && mn > 0);
+      }
+      Object.keys(inp).forEach(function (k) { inp[k].addEventListener('input', sync); });
+      sync();
+    });
+    // the step: Save the points opens once a start is picked and the reason is written; the chosen start is outlined
+    var step = document.querySelector('[data-pts-step]');
+    if (step) {
+      var go = step.querySelector('[data-pts-go]'), why = step.querySelector('[data-pts-why]');
+      var radios = step.querySelectorAll('input[name="when"]');
+      var upd = function () {
+        var picked = Array.prototype.some.call(radios, function (r) { return r.checked; });
+        go.disabled = !(picked && why.value.trim() !== '');
+        step.querySelectorAll('[data-pts-opt]').forEach(function (l) { var r = l.querySelector('input'); l.classList.toggle('is-on', !!r.checked); });
+      };
+      radios.forEach(function (r) { r.addEventListener('change', upd); });
+      why.addEventListener('input', upd);
+      upd();
+      step.scrollIntoView({ block: 'center' });
+    }
+  })();
+  </script>

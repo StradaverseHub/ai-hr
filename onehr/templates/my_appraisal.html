@@ -1,0 +1,300 @@
+{% extends "base.html" %}
+{# My Appraisal / Penilaian Saya: Grade H Appraisal's staff page (2026-10-28; canvases H1b, H2-H8). One page whose step changes:
+   KPI entry (Route A) -> waiting -> read and acknowledge -> done. Phone first; at 1024px and up the Ask OneHR panel sits on the
+   left, as it does on the dashboard, and the page is a desktop view (2026-10-31, canvases D1-D4): the same markup and words, the window
+   width picks the look. .gh-ph shows on the phone only and .gh-dk on desktop only (small read-only repeats such as a table's heading
+   row); the KPI inputs, the note and Send exist ONCE. Every string is T('key') from GRADEH_STAFF_T (app.py); this template computes nothing. #}
+{% block title %}{{ T('app') }} · OneHR{% endblock %}
+{% block back_button %}{% endblock %}
+{% macro spark(sz=14) %}<svg width="{{ sz }}" height="{{ sz }}" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2C12.8 8 16 11.2 22 12C16 12.8 12.8 16 12 22C11.2 16 8 12.8 2 12C8 11.2 11.2 8 12 2Z" fill="var(--on-fill)"></path></svg>{% endmacro %}
+{# a read-only list of KPI lines (What you sent): the phone's rows, and from 1024px a table (KPI | Your achievement) #}
+{% macro sent_rows(lines) %}
+<div class="gh-rows gh-ph">{% for l in lines %}<div class="gh-row"><span>{{ l.name }}</span><b>{{ l.shown }}</b></div>{% endfor %}</div>
+<table class="gh-tab gh-dk"><thead><tr><th scope="col">{{ T('col_kpi') }}</th><th scope="col" class="gh-r">{{ T('your_ach') }}</th></tr></thead>
+  <tbody>{% for l in lines %}<tr><td>{{ l.name }}</td><td class="gh-r"><b>{{ l.shown }}</b></td></tr>{% endfor %}</tbody></table>
+{% endmacro %}
+{% block body %}
+<link rel="stylesheet" href="{{ url_for('static', filename='gradeh_staff.css') }}?v={{ asset_v }}">
+<div id="gh-page" class="gh-page{{ ' is-setup' if setup }}" data-lang="{{ lang }}"{% if tour %} data-tour='{{ tour | tojson }}'{% endif %}>
+{% if setup %}
+{# ---- first sign-in: Language, Name, Picture, Look around (H1b). The last step's Start posts (so it completes with no script) and
+   the page then opens with ?tour=1: gradeh_staff.js runs the look around over the real page (data-tour, GRADEH_TOUR_STOPS). ---- #}
+<section class="gh-setup" aria-labelledby="gh-setup-h">
+  <div class="gh-setup-head"><span class="gh-mark gh-mark-lg" aria-hidden="true">{{ spark(15) }}</span>
+    <span class="gh-setup-hn"><b>Ask OneHR</b><span>{% if setup == 'language' %}Bermula · Getting started{% else %}{{ T('su_started') }}{% endif %}</span></span></div>
+  {% set _labels = [('su_lang', 'Bahasa'), ('su_name', 'Nama'), ('su_pic', 'Gambar'), ('su_tour', 'Lihat sekeliling')] if setup == 'language' else [('su_lang', ''), ('su_name', ''), ('su_pic', ''), ('su_tour', '')] %}
+  <ol class="gh-setup-steps" aria-label="{{ T('su_started') }}">
+    {% for k, bm in _labels %}<li class="{{ 'is-done' if loop.index0 < setup_no else ('is-now' if loop.index0 == setup_no else '') }}"{% if loop.index0 == setup_no %} aria-current="step"{% endif %}><span aria-hidden="true"></span>{{ bm if setup == 'language' else T(k) }}</li>{% endfor %}
+  </ol>
+  {% if setup == 'language' %}
+  <div class="gh-setup-body">
+    <h1 id="gh-setup-h">Pilih bahasa anda</h1>
+    <p class="gh-setup-h2">Choose your language</p>
+    <p class="gh-setup-p">Anda boleh menukarnya kemudian di butang atas kanan. · You can change it later from the top-right button.</p>
+    <form method="post" action="{{ url_for('my_appraisal_language') }}" class="gh-setup-form">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <div class="gh-lang-cards" role="radiogroup" aria-label="Bahasa / Language">
+        <label class="gh-lang-card"><input type="radio" name="lang" value="bm"{{ ' checked' if language_now == 'bm' }}><span class="gh-lc-t">Bahasa Melayu</span><span class="gh-lc-s">Semua skrin dalam Bahasa Melayu</span></label>
+        <label class="gh-lang-card"><input type="radio" name="lang" value="en"{{ ' checked' if language_now == 'en' }}><span class="gh-lc-t">English</span><span class="gh-lc-s">Every screen in English</span></label>
+      </div>
+      <button type="submit" class="gh-btn">Seterusnya: nama anda</button>
+      <p class="gh-setup-foot">Then: your name, your picture, a quick look around, all in the language picked.</p>
+    </form>
+  </div>
+  {% elif setup == 'name' %}
+  <div class="gh-setup-body">
+    <h1 id="gh-setup-h">{{ T('name_h') }}</h1>
+    <p class="gh-setup-p">{{ T('name_p', official=official) }}</p>
+    {% if hris_name %}
+    <p class="gh-setup-k">{{ T('name_hris') }}</p>
+    <form method="post" action="{{ url_for('my_appraisal_setup') }}" class="gh-chipform">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}"><input type="hidden" name="step" value="name">
+      <button type="submit" name="name" value="{{ hris_name }}" class="gh-chip">{{ hris_name }}</button>
+    </form>
+    {% endif %}
+    <form method="post" action="{{ url_for('my_appraisal_setup') }}" class="gh-setup-form">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}"><input type="hidden" name="step" value="name">
+      <label for="gh-name" class="gh-lab">{{ T('name_l') }}
+        <span class="gh-inp"><input id="gh-name" name="name" type="text" maxlength="60" autocomplete="nickname" value="{{ display }}" required></span></label>
+      <button type="submit" class="gh-btn">{{ T('name_btn') }}</button>
+    </form>
+  </div>
+  {% elif setup == 'picture' %}
+  <div class="gh-setup-body">
+    <h1 id="gh-setup-h">{{ T('pic_h') }}</h1>
+    <p class="gh-setup-p">{{ T('pic_p') }}</p>
+    <form method="post" action="{{ url_for('my_appraisal_setup') }}" class="gh-setup-form">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}"><input type="hidden" name="step" value="picture">
+      <fieldset class="gh-picset"><legend class="gh-sr">{{ T('pic_h') }}</legend>
+        {% for g in groups %}
+        <p class="gh-pic-h">{{ T('pic_group_' ~ g.name) }}</p>
+        <div class="gh-pics" role="radiogroup">
+          {% for o in g.pics %}
+          <label class="gh-pic" title="{{ o.label }}"><input type="radio" name="avatar" value="{{ o.n }}"{{ ' checked' if o.on }} aria-label="{{ o.label }}">
+            {% if o.url %}<img src="{{ o.url }}" alt="" width="40" height="40">{% else %}<span class="gh-pic-i" aria-hidden="true">{{ me['initials'] }}</span>{% endif %}</label>
+          {% endfor %}
+        </div>
+        {% endfor %}
+      </fieldset>
+      <button type="submit" class="gh-btn">{{ T('pic_use') }}</button>
+      <button type="submit" name="keep" value="1" class="gh-btn gh-btn-2">{{ T('pic_keep') }}</button>
+    </form>
+  </div>
+  {% else %}
+  <div class="gh-setup-body">
+    <h1 id="gh-setup-h">{{ T('tour_h') }}</h1>
+    <p class="gh-setup-p">{{ T('tour_p') }}</p>
+    <form method="post" action="{{ url_for('my_appraisal_setup') }}" class="gh-setup-form">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}"><input type="hidden" name="step" value="tour">
+      <button type="submit" class="gh-btn">{{ T('tour_btn') }}</button>
+    </form>
+  </div>
+  {% endif %}
+</section>
+{% else %}
+{# ---- the page ---- #}
+<div class="gh-layout">
+  <aside class="gh-ask" id="gh-ask" aria-labelledby="gh-ask-t" data-url="{{ url_for('my_appraisal_ask') }}">
+    <div class="gh-ask-head"><span class="gh-mark gh-mark-lg" aria-hidden="true">{{ spark(14) }}</span>
+      <span class="gh-ask-hn"><b id="gh-ask-t">{{ T('ask_t') }}</b><span>{{ T('app') }}</span></span></div>
+    <div class="gh-ask-log" id="gh-ask-log" aria-live="polite">
+      <p>{{ v.ask_hi }}</p>
+      <div class="gh-chips" id="gh-ask-chips">{% for q in v.ask_chips %}<button type="button" class="gh-chip gh-ask-q">{{ q }}</button>{% endfor %}</div>
+    </div>
+    <form class="gh-ask-form" id="gh-ask-form" autocomplete="off">
+      <label class="gh-sr" for="gh-ask-in">{{ T('ask_t') }}</label>
+      <div class="gh-ask-box"><input id="gh-ask-in" type="text" maxlength="300" placeholder="{{ T('ask_ph') }}">
+        <button type="submit" class="gh-ask-send" aria-label="{{ T('ask_send') }}"><svg width="16" height="16" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6" fill="none" stroke="var(--on-fill)" stroke-width="2.4"></path></svg></button></div>
+    </form>
+  </aside>
+  <div class="gh-main">
+    <header class="gh-head">
+      <div class="gh-hi">{{ T('hi', name=first) }}</div>
+      <div class="gh-cyc">{{ v.cycle_line }}</div>
+      {# the BM | EN switch, from 1024px (the phone has it in the account panel): the line manager pages' look (.ghl-lang); posts to the
+         same route and comes back to this page #}
+      <form method="post" action="{{ url_for('my_appraisal_language') }}" class="ghl-lang gh-dk" id="gh-head-lang">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+        <div role="radiogroup" aria-label="{{ T('lang_h') }}" class="gh-lang-pair">
+          <button type="submit" name="lang" value="bm" role="radio" aria-checked="{{ 'true' if lang == 'bm' else 'false' }}" class="gh-lang-b{{ ' is-on' if lang == 'bm' }}">Bahasa Melayu</button>
+          <button type="submit" name="lang" value="en" role="radio" aria-checked="{{ 'true' if lang == 'en' else 'false' }}" class="gh-lang-b{{ ' is-on' if lang == 'en' }}">English</button>
+        </div>
+      </form>
+    </header>
+    {% if v.appraise %}{# a Grade H supervisor also appraises Grade H staff (piece 4) #}
+    <div class="gh-content gh-appr"><section class="gh-card gh-pad"><p class="gh-p">{{ v.appraise.text }}</p>
+      <a class="gh-btn" href="{{ v.appraise.url }}">{{ v.appraise.open }}</a></section></div>
+    {% endif %}
+    <div class="gh-cols">
+      <section class="gh-card gh-steps-card" aria-label="{{ T('app') }}">
+        <ol class="gh-steps">
+          {% for s in v.steps %}
+          <li class="gh-step is-{{ s.state }}"{% if s.state == 'now' or s.cur %} aria-current="step"{% endif %}>
+            <span class="gh-dot" aria-hidden="true">{% if s.state == 'done' %}<svg width="16" height="16" viewBox="0 0 24 24"><path d="M5 12.5l4.5 4.5L19 7.5" fill="none" stroke="var(--ok-ink)" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"></path></svg>{% else %}{{ s.n }}{% endif %}</span>
+            <span class="gh-step-t"><b>{{ s.label }}</b>{% if s.sub %}<span class="gh-step-s">{{ s.sub }}</span>{% endif %}</span>
+          </li>
+          {% endfor %}
+        </ol>
+      </section>
+      <div class="gh-content gh-s-{{ v.step }}">
+      {% if v.step == 'kpi' %}
+        <div class="gh-dcard">{# one card from 1024px; no box of its own on the phone (display: contents) #}
+        <h1 class="gh-h1 gh-h1-plain">{{ T('kpi_h') }}</h1>
+        <p class="gh-p">{{ T('kpi_p') }}</p>
+        {% if v.kpi_msg %}<div class="gh-amber">{{ v.kpi_msg }}</div>{% endif %}
+        {% if v.kpi_lines %}
+        <form method="post" action="{{ url_for('my_appraisal_kpi_send') }}" id="gh-kpi" class="gh-kpi-form"
+              data-saved="{{ T('saved') }}" data-save="{{ url_for('my_appraisal_kpi_save') }}" data-preview="{{ url_for('my_appraisal_kpi_preview') }}">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+          <div class="gh-kpis">
+          <div class="gh-kpis-head gh-dk" aria-hidden="true"><span>{{ T('col_kpi') }}</span><span class="gh-r">{{ T('col_w') }}</span><span>{{ T('your_ach') }}</span><span></span></div>
+          {% for l in v.kpi_lines %}
+            <div class="gh-card gh-kpi" data-line="{{ l.id }}">
+              <div class="gh-kpi-top"><b>{{ l.name }}</b><span class="gh-w"><span class="gh-ph">{{ T('weight', w=l.weight) }}</span><span class="gh-dk">{{ T('weight_v', w=l.weight) }}</span></span></div>
+              {% if l.shared %}{# a KPI Group People fills once for everyone who shares it: no box, no figure of theirs (2026-11-03) #}
+              <div class="gh-lab gh-shared"><span class="gh-lab-t">{{ T('your_ach') }}<span class="gh-sr">: {{ l.name }}</span></span>
+                {% if l.shared_fig %}<b class="gh-shared-v">{{ l.shared_fig }}</b>{% else %}<span class="gh-shared-pill">{{ T('shared_pill') }}</span>{% endif %}</div>
+              {% else %}
+              <label for="k_{{ l.id }}" class="gh-lab"><span class="gh-lab-t">{{ T('your_ach') }}<span class="gh-sr">: {{ l.name }}</span></span>
+                <span class="gh-inp"><input id="k_{{ l.id }}" name="k_{{ l.id }}" type="text" inputmode="decimal" autocomplete="off" value="{{ l.value }}" placeholder="{{ T('ph') }}"{{ ' disabled' if not v.kpi_open }}><span class="gh-pct" aria-hidden="true">%</span></span>
+              </label>
+              <div class="gh-saved" id="gh-saved-{{ l.id }}" aria-live="polite">{% if l.saved %}{{ T('saved') }}{% endif %}</div>
+              {% endif %}
+            </div>
+          {% endfor %}
+          </div>
+          <div class="gh-result" id="gh-result" aria-live="polite">{% if v.result_pct is not none %}<span>{{ T('result_l') }}</span><b>{{ v.result_pct }}%</b>{% else %}<span>{{ v.result_wait_text or T('result_wait') }}</span>{% endif %}</div>
+          <label for="gh-note" class="gh-lab gh-note">{{ T('note_l') }}
+            <textarea id="gh-note" name="note" rows="3"{{ ' disabled' if not v.kpi_open }}>{{ v.note }}</textarea></label>
+          {% if v.kpi_open %}
+          <button type="submit" class="gh-btn" data-confirm="{{ T('send_confirm') }}" data-confirm-title="{{ T('cf_title') }}" data-confirm-ok="{{ T('cf_ok') }}" data-confirm-cancel="{{ T('cf_cancel') }}">{{ T('send') }}</button>
+          <noscript><button type="submit" class="gh-btn gh-btn-2" formaction="{{ url_for('my_appraisal_kpi_save') }}">{{ T('save_draft') }}</button></noscript>
+          <p class="gh-foot">{{ T('send_foot') }}</p>
+          {% endif %}
+        </form>
+        {% endif %}
+        </div>
+      {% elif v.step == 'wait' %}
+        <section class="gh-card gh-pad">
+          <h1 class="gh-h1 gh-h1-plain">{{ T('w_h') }}</h1>
+          <p class="gh-p">{% if v.lm %}{{ T('w_p1', lm=v.lm) }}{% else %}{{ T('w_p1_nolm') }}{% endif %}</p>
+          <p class="gh-p">{{ T('w_p2') }}</p>
+          <div class="gh-note-box">{{ T('w_note') }}</div>
+        </section>
+        {% if v.sent_lines %}
+        <section class="gh-card gh-pad">
+          <b class="gh-h3">{{ T('sent_h') }}</b>
+          {{ sent_rows(v.sent_lines) }}
+        </section>
+        {% endif %}
+      {% elif v.step == 'final' %}
+        {# the unit is released and the line manager never submitted: the released band is the result; nothing to acknowledge #}
+        <section class="gh-card gh-pad gh-final" id="gh-final-card">
+          <h1 class="gh-h1 gh-h1-plain">{{ T('fin_h') }}</h1>
+          <p class="gh-p">{{ T('fin_p') }}</p>
+          <div class="gh-rows"><div class="gh-row"><span>{{ T('perf_l') }}</span><b>{{ (v.final.rating ~ ' · ' ~ v.final.label) if v.final.rating else '–' }}</b></div>
+            <div class="gh-row"><span>{{ T('pot_l') }}</span><b>{{ v.final.pot or '–' }}</b></div></div>
+        </section>
+        {% if v.sent_lines %}
+        <section class="gh-card gh-pad">
+          <b class="gh-h3">{{ T('sent_h') }}</b>
+          {{ sent_rows(v.sent_lines) }}
+        </section>
+        {% endif %}
+      {% elif v.step in ('ack', 'done') %}
+        {% if v.step == 'done' %}
+        <section class="gh-card gh-pad gh-done">
+          <span class="gh-bigtick" aria-hidden="true"><svg width="22" height="22" viewBox="0 0 24 24"><path d="M5 12.5l4.5 4.5L19 7.5" fill="none" stroke="var(--ok-ink)" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"></path></svg></span>
+          <h1 class="gh-h1 gh-h1-plain">{{ v.done_h }}</h1>
+          <p class="gh-p">{{ v.done_p }}</p>
+          {% if v.dis_chip %}<span class="gh-dis-chip">{{ v.dis_chip }}</span>{% endif %}
+        </section>
+        {% endif %}
+        <section class="gh-card gh-pad" id="gh-result-card">
+          <h{{ '1' if v.step == 'ack' else '2' }} class="gh-h1{{ '' if v.step == 'ack' else ' gh-h2' }}">{{ v.res_h }}</h{{ '1' if v.step == 'ack' else '2' }}>
+          <div class="gh-tiles">
+            <div class="gh-tile"><span class="gh-tile-l"><span>{{ T('perf_l') }}</span><b class="gh-tile-s">{{ v.perf.wait or v.perf.label }}</b></span><b class="gh-tile-v">{{ v.perf.rating or ('–' if v.perf.wait else '') }}</b></div>
+            <div class="gh-tile"><span class="gh-tile-l"><span>{{ T('pot_l') }}</span><b class="gh-tile-s">{{ v.pot.of }}</b></span><b class="gh-tile-v">{{ v.pot.band }}</b></div>
+          </div>
+          {% if v.route == 'A' and v.perf.value is not none %}<p class="gh-p gh-weighted">{{ T('weighted_l', v=v.perf.value|int) }}</p>{% endif %}
+          {% if v.attrs %}
+          <details class="gh-fold gh-fold-a" data-open-wide><summary><span class="gh-ph">{{ T('attrs_fold') }}</span><span class="gh-dk">{{ T('attrs_h') }}</span></summary>
+            <div class="gh-rows">{% for a in v.attrs %}<div class="gh-row"><span>{{ a.name }}</span><b>{{ a.rating }}</b></div>{% endfor %}</div>
+          </details>
+          {% elif v.kpis %}
+          <details class="gh-fold gh-fold-k" data-open-wide><summary>{{ T('kpis_fold') }}</summary>
+            <div class="gh-rows gh-ph">{% for k in v.kpis %}<div class="gh-row gh-row-kpi"><span>{{ k.name }}<small>{{ T('weight', w=k.weight) }}{% if k.changed %} · {{ k.changed }}{% endif %}{% if k.updated %} · {{ k.updated }}{% endif %}</small>{% if k.why %}<small>{{ T('kpi_changed', why=k.why) }}</small>{% endif %}</span><b>{{ k.figure }}</b></div>{% endfor %}</div>
+            <table class="gh-tab gh-dk"><thead><tr><th scope="col">{{ T('col_kpis') }}</th><th scope="col" class="gh-r">{{ T('col_w') }}</th><th scope="col" class="gh-r">{{ T('col_ach') }}</th></tr></thead>
+              <tbody>{% for k in v.kpis %}<tr><td>{{ k.name }}{% if k.changed %}<small>{{ k.changed }}</small>{% endif %}{% if k.updated %}<small>{{ k.updated }}</small>{% endif %}{% if k.why %}<small>{{ T('kpi_changed', why=k.why) }}</small>{% endif %}</td><td class="gh-r gh-muted">{{ T('weight_v', w=k.weight) }}</td><td class="gh-r"><b>{{ k.figure }}</b></td></tr>{% endfor %}</tbody></table>
+          </details>
+          {% endif %}
+          {% if not v.released %}<div class="gh-amber">{{ v.not_final }}</div>{% endif %}
+        </section>
+        <section class="gh-card gh-pad" id="gh-comments">
+          <h2 class="gh-h2">{{ T('cm_h') }}</h2>
+          <div class="gh-comments">{% for q, a in v.comments %}{% if a %}<div class="gh-cm"><b>{{ q }}</b><p>{{ a }}</p></div>{% endif %}{% endfor %}</div>
+        </section>
+        {% if v.step == 'ack' and v.released and v.final %}
+        <section class="gh-card gh-pad gh-final">
+          <b class="gh-h3">{{ T('final_h') }}</b>
+          <p class="gh-p">{{ T('final_is') }}</p>
+          <div class="gh-rows"><div class="gh-row"><span>{{ T('perf_l') }}</span><b>{{ v.final.rating }} · {{ v.final.label }}</b></div>
+            <div class="gh-row"><span>{{ T('pot_l') }}</span><b>{{ v.final.pot }}</b></div></div>
+        </section>
+        {% endif %}
+        {% if v.step == 'ack' %}
+        <section class="gh-card gh-pad gh-ackcard" id="gh-ackcard">
+          {# the acknowledge pane, and (2 Nov 2026, canvas WMpPJbcSWxSDZHrcydSJJN) "I do not agree" in the same card: the button opens it with a script, or with ?disagree=1 without one #}
+          <div class="gh-ackpane" id="gh-ack-main"{% if v.dis_open %} hidden{% endif %}>
+            <h2 class="gh-h2">{{ T('ack_h') }}</h2>
+            <form method="post" action="{{ url_for('my_appraisal_acknowledge') }}" id="gh-ack-form" class="gh-ack-form">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+              <label for="gh-ack" class="gh-check"><span class="gh-check-box"><input id="gh-ack" type="checkbox" name="confirm" value="1"></span><span>{{ T('ack_check') }}</span></label>
+              <div class="gh-ack-btns">
+                <button type="submit" class="gh-btn" id="gh-ack-btn" disabled>{{ T('ack_btn') }}</button>
+                <a class="gh-btn gh-btn-2" id="gh-dis-open" href="{{ url_for('my_appraisal', disagree=1) }}#gh-ackcard">{{ T('dis_btn') }}</a>
+              </div>
+              {% if v.deemed_note %}<div class="gh-amber">{{ v.deemed_note }}</div>{% endif %}
+              <p class="gh-foot gh-foot-l">{{ v.ack_talk }}</p>
+            </form>
+          </div>
+          <div class="gh-ackpane" id="gh-dis"{% if not v.dis_open %} hidden{% endif %}>
+            <h2 class="gh-h2">{{ T('dis_h') }}</h2>
+            <form method="post" action="{{ url_for('my_appraisal_disagree') }}" id="gh-dis-form" class="gh-dis-form"
+                  data-confirm="{{ T('dis_cf') }}" data-confirm-title="{{ T('dis_cf_t') }}" data-confirm-ok="{{ T('dis_cf_ok') }}" data-confirm-cancel="{{ T('dis_cf_no') }}">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+              <label for="gh-dis-ck" class="gh-check"><span class="gh-check-box"><input id="gh-dis-ck" type="checkbox" name="confirm" value="1"></span><span>{{ T('dis_check') }}</span></label>
+              <div class="gh-note gh-dis-why">
+                <label class="gh-lab" for="gh-dis-why"><span>{{ T('dis_why') }} <span class="gh-dis-req">{{ T('dis_req') }}</span></span>
+                  <textarea id="gh-dis-why" name="reason" rows="5" placeholder="{{ T('dis_ph') }}" aria-describedby="gh-dis-count">{{ v.dis_reason }}</textarea></label>
+                <span class="gh-dis-count{{ ' is-over' if v.dis_n > 300 }}" id="gh-dis-count" data-tpl="{{ T('dis_count', n='{n}') }}" aria-live="polite">{{ T('dis_count', n=v.dis_n) }}</span>
+              </div>
+              <p class="gh-note-box gh-dis-info">{{ T('dis_info') }}</p>
+              <div class="gh-dis-acts">
+                <a class="gh-dis-back" id="gh-dis-back" href="{{ url_for('my_appraisal') }}#gh-ackcard">{{ T('dis_back') }}</a>
+                <button type="submit" class="gh-btn" id="gh-dis-send" disabled>{{ T('dis_send') }}</button>
+              </div>
+            </form>
+          </div>
+        </section>
+        {% else %}
+        <section class="gh-card gh-pad gh-final{{ '' if v.released else ' is-wait' }}">
+          <b class="gh-h3">{{ T('final_h') }}</b>
+          {% if v.released and v.final %}
+          <p class="gh-p">{{ T('final_is') }}</p>
+          <div class="gh-rows"><div class="gh-row"><span>{{ T('perf_l') }}</span><b>{{ v.final.rating }} · {{ v.final.label }}</b></div>
+            <div class="gh-row"><span>{{ T('pot_l') }}</span><b>{{ v.final.pot }}</b></div></div>
+          {% else %}<p class="gh-p">{{ v.final_wait }}</p>{% endif %}
+        </section>
+        {% endif %}
+      {% endif %}
+      </div>
+    </div>
+    <div class="gh-askcard"><span>{{ T('ask_q') }}</span>
+      <button type="button" class="gh-ai-btn" id="gh-ask-open" aria-controls="gh-ask" aria-expanded="false">{{ spark(13) }}{{ T('ask_open') }}</button></div>
+  </div>
+</div>
+{% endif %}
+</div>
+<script src="{{ url_for('static', filename='gradeh_staff.js') }}?v={{ asset_v }}"></script>
+{% endblock %}

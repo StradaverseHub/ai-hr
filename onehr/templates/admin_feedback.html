@@ -1,0 +1,145 @@
+{% extends "base.html" %}
+{% from "_filter_rows.html" import filter_rows %}
+{% from "_search_in.html" import search_in_box %}
+{% from "_adm_panel.html" import list_peek %}
+{% block title %}AI+ feedback{% endblock %}
+{% macro face(mouth, size=18) -%}
+<svg class="jfa-face" width="{{ size }}" height="{{ size }}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="9"></circle><circle cx="9" cy="10" r=".9" fill="currentColor" stroke="none"></circle><circle cx="15" cy="10" r=".9" fill="currentColor" stroke="none"></circle><path d="{{ mouth }}"></path></svg>
+{%- endmacro %}
+{% block body %}
+{# Reports & audit > AI+ feedback (Chris, 2026-10-29; the canvas "AI+ feedback", board Admin): how people found AI+ OneHR, from
+   the card that pops out when they finish their part. The super admin's and the system admin's only, and the people are
+   named. A count opens its people in the list panel. #}
+<div class="adm-headrow">
+  <p class="adm-lede">How people found AI+ OneHR, from the card that pops out when they finish their part.{% if cyc %} {{ cyc['name'] }}.{% endif %}</p>
+</div>
+
+<section class="admin-card adm-filters" aria-label="Filters">
+  {{ filter_rows(frows) }}
+</section>
+
+<div class="adm-tiles">
+  {% for t in tiles %}
+  {% if t.list %}<a class="admin-card adm-tile adm-tile-link" href="#by-persona" data-list-open="{{ t.list }}" aria-label="{{ t.k }}, {{ t.v }}: open the list">
+    <span class="muted small">{{ t.k }}</span><b>{{ t.v }}</b><span class="muted small">{{ t.sub }}</span></a>
+  {% else %}<div class="admin-card adm-tile"><span class="muted small">{{ t.k }}</span><b>{{ t.v }}</b><span class="muted small">{{ t.sub }}</span></div>{% endif %}
+  {% endfor %}
+</div>
+
+<section class="admin-card" id="by-persona" aria-label="By persona">
+  <div class="jfa-head">
+    <h2 class="jfa-h2">By persona</h2>
+    <div class="jfa-legend" aria-hidden="true">
+      {% for n, label in faces %}<span><i class="jfa-sw jfa-c{{ n }}"></i>{{ label }}</span>{% endfor %}
+    </div>
+  </div>
+  <div class="table-scroll">
+  <table class="admin-table jfa-table" id="jfa-persona">
+    <thead><tr><th>Persona</th><th class="jfa-r">Asked</th><th class="jfa-r">Answered</th><th>Average</th><th>Faces, 1 to 5</th><th class="jfa-r">Written</th></tr></thead>
+    <tbody>
+    {% for r in by_persona %}
+      <tr>
+        <td class="jfa-who">{{ r.who }}</td>
+        <td class="jfa-r">{% if r.asked %}<a href="#by-persona" data-list-open="{{ r.list_asked }}">{{ r.asked | thousands }}</a>{% else %}0{% endif %}</td>
+        <td class="jfa-r jfa-nw">{% if r.answered %}<a href="#by-persona" data-list-open="{{ r.list_answered }}">{{ r.answered | thousands }}</a>{% else %}0{% endif %} <span class="muted">· {{ r.pct }}%</span></td>
+        <td class="jfa-nw">{% if r.mouth %}<span class="jfa-avg">{{ face(r.mouth) }}<b>{{ r.avg }}</b><span class="muted">/ 5</span></span>{% else %}<span class="muted">–</span>{% endif %}</td>
+        <td><div class="jfa-bar" role="img" aria-label="{{ r.aria }}">{% for w in r.w %}<span class="jfa-c{{ loop.index }}" style="width: {{ w }}"></span>{% endfor %}</div></td>
+        <td class="jfa-r">{% if r.written %}<a href="#by-persona" data-list-open="{{ r.list_written }}">{{ r.written | thousands }}</a>{% else %}0{% endif %}</td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  </div>
+</section>
+
+<section class="admin-card" aria-label="What people wrote">
+  <div class="jfa-head">
+    <h2 class="jfa-h2">What people wrote <span class="jfa-n">{{ n_lines | thousands }}</span></h2>
+    <form method="get" class="adm-fsearch jfa-find">
+      {% if persona %}<input type="hidden" name="persona" value="{{ persona }}">{% endif %}
+      {% if fbg %}<input type="hidden" name="fbg" value="{{ fbg }}">{% endif %}
+      {{ search_in_box(search_in, qin, q, 'Search what people wrote') }}
+    </form>
+  </div>
+  {% if lines %}
+  <div class="table-scroll">
+  <table class="admin-table jfa-table" id="jfa-lines" data-rows-in-view="10">
+    <thead><tr><th>When (MYT)</th><th>Persona</th><th>Face</th><th>What they wrote</th><th>Group / unit</th><th>Person</th></tr></thead>
+    <tbody>
+    {% for c in lines %}
+      <tr>
+        <td class="muted jfa-nw jfa-top">{{ c.when }}</td>
+        <td class="jfa-nw jfa-top">{{ c.who }}</td>
+        <td class="jfa-nw jfa-top">{% if c.has_face %}<span class="jfa-avg">{{ face(c.mouth) }}{{ c.face }}</span>{% else %}<span class="muted">–</span>{% endif %}</td>
+        <td class="jfa-top jfa-text">{{ c.text }}</td>
+        <td class="jfa-top jfa-nw"><span class="jfa-l1">{{ c.bg }}</span>{% if c.unit %}<span class="muted small jfa-l2">{{ c.unit }}</span>{% endif %}</td>
+        <td class="jfa-top jfa-who2"><a href="{{ url_for('admin_person', uid=c.uid, tab='overview') }}"><b>{{ c.name }}</b></a>{% if c.title or c.dept %}<span class="muted small jfa-l2">{{ ((c.title | proper) ~ (' · ' if c.title and c.dept else '') ~ (c.dept | proper)) }}</span>{% endif %}</td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  </div>
+  {% if n_lines > lines | length %}<p class="muted small" style="margin:8px 0 0">Showing the newest {{ lines | length | thousands }} of {{ n_lines | thousands }}. The AI+ feedback download under Reports has them all.</p>{% endif %}
+  {% else %}
+  <p class="muted" style="margin:0">{% if q %}No line matches that search.{% else %}Nobody has written a line{% if persona or fbg %} for this choice{% endif %} yet.{% endif %}</p>
+  {% endif %}
+</section>
+<section class="admin-card jfw" id="where-asked" aria-labelledby="jfw-h">
+  <div class="jfw-top">
+    <h2 class="jfa-h2" id="jfw-h">Where AI+ feedback is asked</h2>
+    <p class="jfw-lede">Tick where the card pops out when someone finishes their part. Unticked means no card for that role there. It applies from their next finish; answers already given stay in this report.</p>
+  </div>
+  <form method="post" action="{{ url_for('admin_feedback_where') }}" class="jfw-form" data-feedback-where
+        data-confirm="Save where AI+ feedback is asked? Nothing has changed." data-confirm-title="Save where AI+ feedback is asked?" data-confirm-ok="Save">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <div class="table-scroll">
+    <table class="admin-table jfw-table">
+      <thead><tr><th class="jfw-role">Role</th>{% for m in where.mods %}<th class="jfw-c">{{ m.label }}</th>{% endfor %}</tr></thead>
+      <tbody>
+      {% for r in where.rows %}
+        <tr>
+          <td class="jfw-who">{{ r.label }}</td>
+          {% for c in r.cells %}
+          <td class="jfw-c">{% if c and c.locked %}<input type="checkbox" class="jfw-lock" disabled title="Not asked yet: the Grade H pages don't show the card" aria-label="{{ c.aria }}">{% elif c %}<input type="hidden" name="shown" value="{{ c.key }}"><input type="checkbox" name="where" value="{{ c.key }}" data-was="{{ 1 if c.on else 0 }}" data-role="{{ r.label }}" data-mod="{{ where.mods[loop.index0].words }}" {{ 'checked' if c.on }} aria-label="{{ c.aria }}">{% else %}<span class="jfw-na">Not in Grade H</span>{% endif %}</td>
+          {% endfor %}
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+    </div>
+    {% if where.locked %}<p class="jfw-note">Grade H Appraisal is not asked yet: its pages don't show the card. The column opens here when they do.</p>{% endif %}
+    <div class="jfw-foot">
+      <span class="small jfw-changes" data-where-changes><b>No changes</b></span>
+      <a class="btn-link" href="{{ url_for('admin_feedback') }}#where-asked">Cancel</a>
+      <button type="submit" class="primary">Save</button>
+    </div>
+  </form>
+</section>
+<script>
+// the footer counts what is changed and not saved; the confirm box names it (the same words the audit row carries)
+(function () {
+  var f = document.querySelector('[data-feedback-where]');
+  if (!f) return;
+  var boxes = [].slice.call(f.querySelectorAll('input[type=checkbox][name=where]'));
+  var el = f.querySelector('[data-where-changes]');
+  function sync() {
+    var ch = [];
+    boxes.forEach(function (b) {
+      if (b.checked !== (b.getAttribute('data-was') === '1')) {
+        ch.push(b.getAttribute('data-role') + ': ' + (b.checked ? 'a card' : 'no card') + ' after ' + b.getAttribute('data-mod') + '.');
+      }
+    });
+    if (!ch.length) {
+      el.innerHTML = '<b>No changes</b>';
+      f.setAttribute('data-confirm', 'Save where AI+ feedback is asked? Nothing has changed.');
+      return;
+    }
+    el.innerHTML = '<b>' + ch.length + ' change' + (ch.length === 1 ? '' : 's') + '</b> not saved';
+    f.setAttribute('data-confirm', 'Save where AI+ feedback is asked? ' + ch.join(' ') + ' It applies from their next finish and goes in the audit log.');
+  }
+  f.addEventListener('change', sync);
+  sync();
+})();
+</script>
+{{ list_peek() }}
+{% endblock %}

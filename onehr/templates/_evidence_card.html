@@ -1,0 +1,83 @@
+{# One entry in the ledger.
+
+   Shows WHEN IT HAPPENED as the headline, not when it was typed -- that is the
+   whole point of the object. Where the two differ by a lot the card says so,
+   because a March event written down in December is a weaker record than one
+   written in March, and hiding that would make the ledger look better than it
+   is. #}
+{% macro evidence_card(e, gap_days=none) %}
+<div class="ev-card{{ ' ev-draft' if e['state'] == 'draft' }}" id="ev-{{ e['id'] }}">
+  <div class="ev-head">
+    <div>
+      <span class="ev-when">{{ e['occurred_on'] }}</span>
+      {% if e['occurred_precision'] != 'day' %}<span class="muted small">({{ e['occurred_precision'] }})</span>{% endif %}
+      <span class="ev-kind">{{ e['kind'] | replace('_', ' ') }}</span>
+    </div>
+    <div>
+      {% if e['author_role'] == 'manager' %}<span class="potential-pill" data-band="Mid">from your manager</span>
+      {% elif e['state'] == 'draft' %}<span class="potential-pill" data-band="Low">draft</span>
+      {% else %}<span class="potential-pill" data-band="High">on your record</span>{% endif %}
+      {% if e['supersedes_id'] %}<span class="potential-pill" data-band="Mid">a correction</span>{% endif %}
+      {% if e['n_corrections'] %}<span class="potential-pill" data-band="Mid">corrected later</span>{% endif %}
+    </div>
+  </div>
+
+  {% if e['title'] %}<p class="ev-title">{{ e['title'] }}</p>{% endif %}
+  {% if e['body'] %}<p class="ev-body">{{ e['body'] }}</p>{% endif %}
+
+  <div class="ev-meta">
+    {% if e['metric_value'] is not none %}
+      <span><strong>{{ e['metric_value'] | commas }}</strong>{% if e['metric_unit'] %} {{ e['metric_unit'] }}{% endif %}</span>
+    {% endif %}
+    {% if e['impact'] %}<span>{{ e['impact'] }}</span>{% endif %}
+    {% if e['who'] %}<span>with {{ e['who'] }}</span>{% endif %}
+    {% if e['n_attach'] %}<span>&#128206; {{ e['n_attach'] }} file{{ 's' if e['n_attach'] != 1 }}</span>{% endif %}
+  </div>
+
+  {% set rvs = reviews[e['id']] if reviews is defined and reviews and e['id'] in reviews else [] %}
+  {% if rvs %}
+  <div class="ev-reviews">
+    {% for rv in rvs %}
+      <p class="ev-review ev-review-{{ rv['verdict'] }}">
+        {{ rv['reviewer_name'] or 'A manager' }}
+        {{ 'endorsed this' if rv['verdict'] == 'endorse' else 'disputed this' }}{% if rv['note'] %} &mdash; {{ rv['note'] }}{% endif %}</p>
+    {% endfor %}
+  </div>
+  {% endif %}
+
+  {% set cts = citations[e['id']] if citations is defined and citations and e['id'] in citations else [] %}
+  {% if cts %}
+  <div class="ev-reviews">
+    {% for c in cts %}
+      <p class="ev-review ev-review-{{ 'dispute' if c['stance'] == 'contradicts' else ('endorse' if c['stance'] == 'supports' else '') }}">
+        {% if c['cited_by_role'] == 'manager' %}{{ c['citer_name'] or 'A manager' }}{% else %}You{% endif %}
+        cited this ({{ c['stance'] }}) toward {{ c['decision_kind'] | replace('_', ' ') }}</p>
+    {% endfor %}
+  </div>
+  {% endif %}
+
+  <p class="ev-foot muted small">
+    Written {{ e['created_at'] | myt_date }}
+    {%- if gap_days is not none and gap_days > 60 %}
+      &middot; <span class="ev-late">{{ gap_days }} days after it happened</span>
+    {%- endif %}
+    {%- if e['author_shared_identity'] %}
+      &middot; written from a shared mailbox
+    {%- endif %}
+  </p>
+
+  {% if e['state'] == 'draft' %}
+  <div class="ev-actions">
+    <form method="post" action="{{ url_for('evidence_share', eid=e['id']) }}">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <button type="submit" class="primary"
+              data-confirm="Share this? Once it is on your record the wording can't be edited: you would add a correction instead." data-confirm-ok="Share">Share</button>
+    </form>
+    <form method="post" action="{{ url_for('evidence_retract', eid=e['id']) }}">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <button type="submit" class="btn-link">Discard</button>
+    </form>
+  </div>
+  {% endif %}
+</div>
+{% endmacro %}

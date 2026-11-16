@@ -1,0 +1,8 @@
+# Nothing generated should ever land here. The scratch copy -- app.py with the
+# login shim, and a copy of the database -- lives in /private/tmp on purpose,
+# so a database can never be committed to this repo by accident.
+__pycache__/
+*.pyc
+*.db
+*.db-wal
+*.db-shm

@@ -1,0 +1,157 @@
+{# AI+ Learning, the dashboard's Learning panel (phase 1, 2026-10-20; canvas [design canvas link removed]
+   boards 1B and 1C). Loaded into the dashboard drawer by static/dashboard.js from /learning/panel?tab=; its tabs, the
+   search and the interest buttons are data-lm-* hooks the same script handles. Read only, bar the interest a person
+   marks. The reasons are worked out from the two levels, not written by a model, so nothing here is AI-red. #}
+<nav class="lm-tabs" aria-label="Learning">
+  <button type="button" class="lm-tab{{ ' is-on' if tab == 'plan' }}" data-lm-tab="plan" aria-pressed="{{ 'true' if tab == 'plan' else 'false' }}">For your plan</button>
+  <button type="button" class="lm-tab{{ ' is-on' if tab == 'explore' }}" data-lm-tab="explore" aria-pressed="{{ 'true' if tab == 'explore' else 'false' }}">Explore</button>
+  <button type="button" class="lm-tab{{ ' is-on' if tab == 'catalogue' }}" data-lm-tab="catalogue" aria-pressed="{{ 'true' if tab == 'catalogue' else 'false' }}">Catalogue</button>
+  {% if xp_on %}<button type="button" class="lm-tab{{ ' is-on' if tab == 'progress' }}" data-lm-tab="progress" aria-pressed="{{ 'true' if tab == 'progress' else 'false' }}">Progress</button>{% endif %}
+</nav>
+<p class="lm-msg" data-lm-msg role="status" hidden></p>
+
+{% macro offer_row(o, show_why=True) -%}
+{% set p = o.p %}
+<div class="lm-prog">
+  <div class="lm-prog-h"><b>{{ p.title }}</b><span class="lm-meta">{{ kind_label.get(p.kind, p.kind) }}{% if p.days %} · {{ '%g' % p.days }} day{{ '' if p.days == 1 else 's' }}{% elif p.hours %} · {{ '%g' % p.hours }} h{% endif %}{% if p.hrdc_claimable %} · HRDC-claimable{% endif %}</span></div>
+  {% if show_why and o.why %}<p class="lm-why">{{ o.why }}</p>{% endif %}
+  <p class="lm-when">{% if p.next %}Next: {{ p.next | lms_session }}{% if p.next.reg_cutoff %} · registration closes {{ p.next.reg_cutoff | lms_day }}{% endif %}{% elif p.kind == 'elearning' %}Any time, online{% else %}No session dated yet{% endif %}</p>
+  <div class="lm-acts">
+    <a class="lm-btn" href="{{ url_for('learning_programme', pid=p.id) }}">Details</a>
+    {% set mine_s = my_regs.get(p.open.id) if p.open else none %}
+    {% if mine_s %}<span class="lm-chip">{{ mine_s }}</span>
+    {% elif p.open %}<a class="lm-btn lm-btn-nv" href="{{ url_for('learning_register', session=p.open.id) }}">Register</a>
+    {% else %}
+      {% if p.id in mine.programme %}<button type="button" class="lm-btn is-on" data-lm-interest data-kind="programme" data-programme="{{ p.id }}" data-on="0" aria-pressed="true">Interested &#10003;</button>
+      {% else %}<button type="button" class="lm-btn" data-lm-interest data-kind="programme" data-programme="{{ p.id }}" data-on="1" aria-pressed="false">I'm interested</button>{% endif %}
+      <span class="lm-soon">{% if p.next %}Registration has closed for the next session{% elif p.kind == 'elearning' %}Ask L&amp;D for access{% else %}No session open yet: interest is counted{% endif %}</span>
+    {% endif %}
+  </div>
+</div>
+{%- endmacro %}
+
+{% if tab == 'plan' %}
+  {% if needs %}
+    <p class="lm-lede">{% if needs[0].source == 'future' %}Your Career Plan has no goals yet, so here's what your job grows into next.{% else %}What your {% if needs[0].source == 'plan' %}Career Plan{% if target %} for <b>{{ target }}</b>{% endif %}{% else %}competency assessment{% endif %} asks of you, and what builds it.{% endif %}</p>
+    {% for n in needs %}
+    <section class="lm-need">
+      <div class="lm-need-h">
+        <b>{{ n.title }}</b>
+        {% if n.level %}<span class="lm-chip">{% if n.have %}L{{ n.have }} &rarr; {% endif %}L{{ n.level }}</span>{% endif %}
+        <span class="lm-src">{{ source_label.get(n.source, '') }}</span>
+      </div>
+      {% for o in n.offer %}{{ offer_row(o) }}{% endfor %}
+      {% if not n.offer %}
+      <p class="lm-none">Nothing on the calendar builds it yet.{% if n.key in mine.competency %} You're counted in what L&amp;D plans next.{% else %} Say you're interested and L&amp;D counts you in its plans.{% endif %}</p>
+      <div class="lm-acts">
+        {% if n.key in mine.competency %}<button type="button" class="lm-btn is-on" data-lm-interest data-kind="competency" data-key="{{ n.key }}" data-on="0" aria-pressed="true">Interested &#10003;</button>
+        {% else %}<button type="button" class="lm-btn" data-lm-interest data-kind="competency" data-key="{{ n.key }}" data-on="1" aria-pressed="false">I'm interested</button>{% endif %}
+      </div>
+      {% endif %}
+    </section>
+    {% endfor %}
+    <p class="lm-foot">The 70% and 20% count too: a stretch project or learning from someone, agreed with your manager. Your Career Plan holds them.</p>
+    <p class="lm-foot">Need a course that isn't here? <a href="{{ url_for('learning_request') }}">Ask for an external course</a>. Your requests and sessions are in <a href="{{ url_for('learning_home') }}">AI+ Learning</a>.</p>
+  {% else %}
+    <p class="lm-lede">Nothing to match yet: you have no Career Plan goals, competency assessment or job competencies in OneHR. See the <button type="button" class="lm-link" data-lm-tab="catalogue">catalogue</button>, or <button type="button" class="lm-link" data-lm-tab="explore">explore a competency</button>.</p>
+  {% endif %}
+
+{% elif tab == 'explore' %}
+  <p class="lm-lede">Pick any competency, even one your job doesn't ask for: see what builds it and which roles it opens up. You can explore {{ cap }} at a time.</p>
+  {% if exploring %}
+  <div class="lm-exploring"><span class="lm-k">Exploring</span>
+    {% for e in exploring %}<span class="lm-pill"><button type="button" class="lm-link" data-lm-key="{{ e.key }}">{{ e.title }}</button>
+      <button type="button" class="lm-x" data-lm-interest data-kind="explore" data-key="{{ e.key }}" data-on="0" aria-label="Stop exploring {{ e.title }}">&times;</button></span>{% endfor %}
+  </div>
+  {% endif %}
+  <form class="lm-search" data-lm-search role="search">
+    <label class="lm-sr" for="lm-q">Search the competency catalogue</label>
+    <input id="lm-q" name="q" type="search" value="{{ q }}" placeholder="Search the competency catalogue, e.g. data analysis" autocomplete="off" maxlength="80" aria-autocomplete="list" aria-expanded="false" data-suggest="learning" data-suggest-url="{{ url_for('search_suggest') }}" data-no-qin="the catalogue, not people">
+    <button type="submit" class="lm-btn">Search</button>
+  </form>
+  {% if results is defined %}
+    {% if results %}
+    <ul class="lm-results">{% for f in results %}<li><button type="button" class="lm-res{{ ' is-on' if f.key == key }}" data-lm-key="{{ f.key }}"><b>{{ f.title }}</b><span class="lm-meta">{{ f.category }}{% if f.levels %} · L{{ (f.levels | list | sort)[0] }}-L{{ (f.levels | list | sort)[-1] }}{% endif %}</span></button></li>{% endfor %}</ul>
+    {% else %}<p class="lm-none">Nothing in the catalogue is called that. Try a shorter word.</p>{% endif %}
+  {% endif %}
+  {% if pick %}
+  <section class="lm-need lm-pick">
+    <div class="lm-need-h"><b>{{ pick.title }}</b>{% if pick.own %}<span class="lm-src">Already in your plan or job</span>{% else %}<span class="lm-src">Not in your job or plan</span>{% endif %}</div>
+    {% if pick.desc %}<p class="lm-desc"><span class="lm-k">L{{ pick.level }}</span> {{ pick.desc }}</p>{% endif %}
+    <span class="lm-k">What builds it</span>
+    {% for o in pick.offer %}{{ offer_row(o, False) }}{% endfor %}
+    {% if not pick.offer %}<p class="lm-none">Nothing on the calendar builds it yet. Exploring it tells L&amp;D you want it.</p>{% endif %}
+    {% if pick.roles %}
+    <span class="lm-k">Roles that hold it</span>
+    <ul class="lm-roles">{% for r in pick.roles %}<li><b>{{ r.title }}</b>{% if r.grade %} · JG{{ r.grade }}{% endif %}<span class="lm-meta">{{ r.shared }} of its {{ r.of }} competencies are also your job's</span></li>{% endfor %}</ul>
+    <p class="lm-foot">Sharing competencies is not a promotion decision. It shows where this could take you.</p>
+    {% endif %}
+    {% if not pick.own %}
+    <div class="lm-acts">
+      {% if pick.key in mine.explore %}<button type="button" class="lm-btn is-on" data-lm-interest data-kind="explore" data-key="{{ pick.key }}" data-on="0" aria-pressed="true">Exploring &#10003; · stop</button>
+      {% else %}<button type="button" class="lm-btn lm-btn-nv" data-lm-interest data-kind="explore" data-key="{{ pick.key }}" data-on="1">Explore this competency</button>{% endif %}
+    </div>
+    {% endif %}
+  </section>
+  {% endif %}
+
+{% elif tab == 'progress' %}
+  {# Learning XP, level and badges (phase 3, 2026-10-21; canvas board 4C). Computed from the records, never by a model. #}
+  {% set x = prog.xp %}
+  <section class="lm-xp" aria-labelledby="lm-xp-h">
+    <div class="lm-xp-top">
+      <div class="lm-xp-ring" aria-hidden="true"><span>Level</span><b>{{ x.level }}</b></div>
+      <div class="lm-xp-main">
+        <h3 id="lm-xp-h" class="lm-xp-name">Level {{ x.level }}, {{ x.name }}</h3>
+        <div class="lm-xp-bar" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="{{ x.pct }}" aria-label="Toward the next level"><span style="width: {{ x.pct }}%"></span></div>
+        <p class="lm-xp-line"><b>{{ x.total }} XP</b>{% if x.next %} · {{ x.to_next }} to Level {{ x.next }}, {{ x.next_name }}{% else %} · the top level{% endif %}</p>
+        <ol class="lm-xp-ladder" aria-label="Levels">
+          {% for l in x.ladder %}{% if l %}<li class="{{ 'is-done' if l.done }}{{ ' is-now' if l.now }}"><span class="lm-xp-dot" aria-hidden="true"></span>{{ l.name }}</li>{% else %}<li class="is-gap" aria-hidden="true">&hellip;</li>{% endif %}{% endfor %}
+        </ol>
+      </div>
+    </div>
+    <div class="lm-xp-cols">
+      <div class="lm-xp-earn">
+        <span class="lm-k">How you earned it</span>
+        {% for r in x.rows %}
+        <div class="lm-xp-ev"><span>{{ r.title }} · {{ r.parts | map('first') | join(' · ') }}</span><b>+{{ r.xp }}</b></div>
+        {% else %}
+        <p class="lm-none">Nothing yet. XP comes from programmes you attend (10 an hour), rating them, and, most of all, from using what you learned.</p>
+        {% endfor %}
+        {% if x.rows %}<div class="lm-xp-ev is-total"><span>This year</span><b>{{ x.year }}</b></div>{% endif %}
+      </div>
+      <div class="lm-xp-badges">
+        <span class="lm-k">Badges</span>
+        {% if prog.badges %}
+        <ul class="lm-bdg-grid">
+          {% for b in prog.badges %}<li class="lm-bdg is-{{ b.state }}"><span class="lm-medal" aria-hidden="true">{% if b.level %}L{{ b.level }}{% endif %}</span><span>{{ b.title }}{% if b.state == 'progress' %} <span class="lm-meta">· in progress</span>{% endif %}{% if b.explore %} <span class="lm-chip">Explore</span>{% endif %}</span></li>{% endfor %}
+        </ul>
+        {% endif %}
+        <p class="lm-foot">A competency badge is earned when your line manager confirms, three months on, that you used it at work.</p>
+        {% if prog.course and prog.course.badges %}
+        <span class="lm-k">Courses completed</span>
+        <ul class="lm-bdg-grid">
+          {% for b in prog.course.badges %}<li class="lm-bdg is-earned"><span class="lm-medal" aria-hidden="true">&#10003;</span><span>{{ b.title }}{% if b.cert %} · <a href="{{ url_for('learning_certificate', cid=b.cert.id) }}" target="_blank" rel="noopener">certificate</a>{% endif %}</span></li>{% endfor %}
+        </ul>
+        {% endif %}
+      </div>
+    </div>
+    <div class="lm-xp-boxes">
+      {% if prog.dept %}<div class="lm-xp-box"><span class="lm-k">Your department this year</span>{{ '%g' % prog.dept.per_head }} h of learning per head</div>{% endif %}
+      <div class="lm-xp-box"><span class="lm-k">Your hours</span>{{ '%g' % prog.hours }} h this year{% if prog.hrdc_hours %} · {{ '%g' % prog.hrdc_hours }} h HRDC-claimable{% endif %}</div>
+    </div>
+    <p class="lm-foot">Seen by you and your line manager. No one else sees your XP, and it is never part of your performance or potential rating.</p>
+  </section>
+
+{% else %}
+  <form class="lm-search" data-lm-search role="search">
+    <label class="lm-sr" for="lm-cq">Search the programmes</label>
+    <input id="lm-cq" name="q" type="search" value="{{ q }}" placeholder="Search programmes or competencies" autocomplete="off" maxlength="80" aria-autocomplete="list" aria-expanded="false" data-suggest="learning_prog" data-suggest-url="{{ url_for('search_suggest') }}" data-no-qin="programmes, not people">
+    <button type="submit" class="lm-btn">Search</button>
+  </form>
+  {% for p in catalogue %}
+    {{ offer_row({'p': p, 'why': ''}, False) }}
+  {% else %}
+    <p class="lm-none">{% if q %}No programme open to you matches that.{% else %}No programme is open to you yet. L&amp;D publishes them here.{% endif %}</p>
+  {% endfor %}
+{% endif %}

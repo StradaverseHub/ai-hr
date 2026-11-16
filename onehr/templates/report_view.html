@@ -1,0 +1,91 @@
+{% extends "base.html" %}
+{% block title %}{{ s['full_name'] }}'s 360 Feedback{% endblock %}
+{% block body %}
+
+<div class="report-page">
+  <div class="page-head">
+    <div>
+      <h1>{{ s['full_name'] }}'s 360 Leadership Feedback</h1>
+      <p class="muted">
+        {% if s['job_title'] %}{{ s['job_title'] | proper }}{% endif %}
+        {% if s['company'] %} &middot; {{ display_company(s['business_group'], s['company']) }}{% endif %}
+        &middot; released {{ released_at | myt_date }}
+        &middot; <span class="rel-chip {{ 'hod-direct' if is_direct else 'hod-indirect' }}">{{ 'Direct report' if is_direct else 'Indirect report' }}</span>
+      </p>
+    </div>
+  </div>
+
+  <p class="muted small report-basis" style="margin-top:-4px">Review season: <strong>{{ cycle_name }}</strong></p>
+
+  <div class="card report-intro">
+    <p>
+      This is a summary of the feedback {{ s['full_name'] }}'s assessor panel shared
+      about how they demonstrate Chin Hin's leadership principles. For each behaviour
+      you can see <strong>how many of their assessors</strong> recognised it as
+      something they demonstrate.
+    </p>
+    <p class="muted small" style="margin-bottom:0">
+      To protect honesty, all feedback is <strong>anonymous</strong> — individual
+      assessors and their names are never shown{% if show_potential_band() %}, and the raw
+      score is not shown here{% else %} — and neither the raw score nor the potential band is
+      shown here{% endif %}.
+    </p>
+  </div>
+
+  {# Hidden with the same switch as the subject's own page (Settings -> Potential
+     band visibility), so a manager and their report see the same thing. #}
+  {% if show_potential_band() %}
+  <div class="band-hero">
+    <span class="hero-sub">Potential band</span>
+    <span class="potential-pill" data-band="{{ band_info['band'] if band_info['score_valid'] else 'None' }}">
+      <strong>{% if band_info['pot_none'] %}None this cycle{% elif band_info['pot_unreleased'] %}Not released yet{% elif band_info['score_valid'] and band_info['band'] %}{{ band_info['band'] }} Potential{% else %}Pending{% endif %}</strong>
+    </span>
+  </div>
+  {% if band_info['pot_none'] %}
+  <p class="muted small" style="margin:-16px 0 20px">This cycle ran no competency, so it has no potential band.</p>
+  {% elif band_info['pot_unreleased'] %}
+  <p class="muted small" style="margin:-16px 0 20px">Their final potential band appears here once Group People releases it, after calibration.</p>
+  {% elif not band_info['score_valid'] %}
+  <p class="muted small" style="margin:-16px 0 20px">Appears once at least {{ band_info['min_valid'] }} assessor(s) have submitted.</p>
+  {% endif %}
+  {% endif %}
+
+  {% if n_submitted == 0 %}
+    <div class="card"><p class="muted">No feedback has been submitted yet.</p></div>
+  {% else %}
+    <p class="muted small report-basis">Based on feedback from {{ n_submitted }} assessor{{ '' if n_submitted == 1 else 's' }}.</p>
+    {% for crit in agreement %}
+    <div class="card report-principle">
+      <div class="crit-head">
+        <span class="crit-name">{{ loop.index }}. {{ crit['name'] }}</span>
+        {% if crit['description'] %}<span class="crit-tag">{{ crit['description'] }}</span>{% endif %}
+      </div>
+      <table class="agree-table">
+        <tbody>
+          {% for st in crit['statements'] %}
+          <tr>
+            <td class="stmt-text">{{ st['text'] }}</td>
+            <td style="text-align:right;width:240px">
+              <span class="agree-bar-wrap">
+                <span class="agree-bar"><span style="width: {{ (100 * st['yes'] / st['total'])|round(0,'floor') if st['total'] else 0 }}%"></span></span>
+                <span class="agree-num">{{ st['yes'] }} / {{ st['total'] }}</span>
+              </span>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      {% if crit['comments'] %}
+      <div class="crit-feedback">
+        <div class="crit-feedback-head">What assessors shared (anonymous)</div>
+        {% for c in crit['comments'] %}
+        <div class="feedback-item"><p>{{ c['comment'] }}</p></div>
+        {% endfor %}
+      </div>
+      {% endif %}
+    </div>
+    {% endfor %}
+  {% endif %}
+</div>
+
+{% endblock %}

@@ -1,0 +1,71 @@
+{# The people behind one admin count, loaded into the list panel (admin_list_view ?fragment=1; Chris, 2026-10-20). The
+   first element says what the list is, for the panel's head; each person opens their tab in the same panel.
+   Optional parts (Email › Sent's runs, 2026-11-03): lst.chips (a row of links that reload this panel with the chosen one
+   on: data-list-reload), lst.search (Search in, a GET form the panel reloads itself with), lst.colw (every column's width,
+   in %), a cell's fourth element (a muted line under its pill) and the status tones is-ok / is-info / is-off / is-bad. #}
+{% from "_search_in.html" import search_in_box %}
+<div class="clp" data-list-title="{{ lst.title }}" data-list-sub="{{ lst.sub or '' }}" data-list-kicker="{{ lst.kicker }}"
+     data-list-full="{{ lst.full }}" data-list-n="{{ lst.n }}">
+  {# a leader's review (a role chip on their page, 2026-11-09): the status box over its people, the one action that fits its state #}
+  {% if lst.review %}{% include "_leader_review_box.html" %}{% endif %}
+  {% if lst.bulk and lst.rows %}
+  <div class="clp-bulk"><span>{{ lst.bulk.note }}</span><a class="primary clp-bulk-go" href="{{ lst.bulk.href }}">{{ lst.bulk.label }} &rsaquo;</a></div>
+  {% endif %}
+  {# an action on the whole list (Leaders › BU CEOs: Change BU CEO): closes this panel and opens the page's own panel #}
+  {% if lst.action %}
+  <div class="clp-bulk"><span>{{ lst.action.note }}</span><button type="button" class="btn clp-bulk-go" data-panel-open="{{ lst.action.panel }}">{{ lst.action.label }} &rsaquo;</button></div>
+  {% elif lst.info %}
+  {# the same note where the admin may not set the seat: no button #}
+  <div class="clp-bulk"><span>{{ lst.info }}</span></div>
+  {% endif %}
+  {% if lst.chips or lst.search %}
+  <div class="clp-tools">
+    {% if lst.chips %}<nav class="clp-chips" aria-label="Show">{% for c in lst.chips %}<a class="clp-chip{{ ' is-on' if c.on }}" href="{{ c.href }}" data-list-reload{% if c.on %} aria-current="true"{% endif %}>{{ c.label }} <b>{{ c.n | thousands }}</b></a>{% endfor %}</nav>{% endif %}
+    {% if lst.search %}
+    <form class="clp-search" method="get" action="{{ lst.search.action }}" role="search">
+      {% for k, v in lst.search.hidden.items() %}<input type="hidden" name="{{ k }}" value="{{ v }}">{% endfor %}
+      {{ search_in_box(lst.search.menu, lst.search.qin, lst.search.q, lst.search.label, suggest=False, joined=True) }}
+    </form>
+    {% endif %}
+  </div>
+  {% endif %}
+  {% if lst.rows %}
+  {# fixed widths: the person 27%, the unit 18%, Open 13% (its button and its padding: at 10% of the 720px panel it ran 17px
+     past the panel's edge, 2026-10-23), the list's own columns the rest (or as the list says; colw says every one) #}
+  {% set rest = 42 %}
+  <table class="admin-table clp-table{{ ' is-noopen' if lst.no_open }}" id="clp-{{ key }}">
+    {% if lst.colw %}<colgroup>{% for w in lst.colw %}<col style="width:{{ w }}%">{% endfor %}</colgroup>
+    {% else %}<colgroup><col style="width:{{ 27 if not lst.no_bu else 26 }}%">{% if not lst.no_bu %}<col style="width:18%">{% endif %}{% for c in lst.cols %}<col style="width:{{ lst.widths[loop.index0] if lst.widths else (rest / (lst.cols | length)) | round(1) }}%">{% endfor %}<col style="width:{{ 13 if not lst.no_bu else 14 }}%"></colgroup>{% endif %}
+    {# 720px holds four columns: the person (their ID, department and grade under the name), the business unit (it
+       filters), the list's own columns, Open #}
+    {# headings stay one short line (Chris, 2026-10-23: "shorten it to like W for Weight, so the header stay thinnest
+       possible"): a column is a word, or (short, full) with the full word on hover. Open has no heading of its own, so
+       admin.js gives it no menu (its sr-only text once came out as "O P E N"). #}
+    <thead><tr><th>{{ lst.head[0] if lst.head else 'Person' }}</th>
+      {% if lst.no_bu %}{% elif lst.head %}<th>{{ lst.head[1] }}</th>{% else %}<th title="Business unit" data-full="Business unit">BU</th>{% endif %}
+      {% for c in lst.cols %}{% if c is string %}<th>{{ c }}</th>{% else %}<th title="{{ c[1] }}" data-full="{{ c[1] }}">{{ c[0] }}</th>{% endif %}{% endfor %}{% if not lst.no_open %}<th aria-label="Open"></th>{% endif %}</tr></thead>
+    <tbody>
+    {% for r in lst.rows %}
+      <tr class="data-row" data-bu="{{ r.bu }}">
+        {# a row that isn't one person (a calibration scope, a finding with no account) has no panel: its Open goes to the page #}
+        <td class="clp-who">{% if r.uid %}<a href="{{ r.href }}" data-person-open="{{ r.uid }}"><b>{{ r.name }}</b></a>{% elif r.reload %}<a href="{{ r.reload }}" data-list-reload data-list-keep="{{ lst.keep }}"><b>{{ r.name }}</b></a>{% else %}<b>{{ r.name }}</b>{% endif %}{% if r.tag %} <span class="clp-tag" title="Named on this rule: it applies to them whatever their department">{{ r.tag }}</span>{% endif %}{% if r.chip %}<span class="bk2-pill is-unit clp-chip" title="{{ r.chip_title }}">{{ r.chip }}</span>{% endif %}
+          <span class="muted small clp-eid">{{ r.eid }}{% if r.dept and not r.eid_only %} · {{ r.dept | proper }}{% endif %}{% if r.jg != '' and not r.eid_only %} · JG {{ r.jg }}{% endif %}</span></td>
+        {% if not lst.no_bu %}<td class="muted small">{{ r.bu }}</td>{% endif %}
+        {% for c in r.cells %}{% set t = c[0] %}{% set tone = c[1] %}<td class="small">{% if tone == 'clip' %}<span class="clp-clip" title="{{ c[2] if c | length > 2 else t }}">{{ t }}</span>{% if c | length > 3 and c[3] %}<span class="clp-clip muted small clp-sub" title="{{ c[3] }}">{{ c[3] }}</span>{% endif %}{% elif tone %}<span class="clp-pill is-{{ tone }}"{% if c | length > 2 and c[2] %} title="{{ c[2] }}"{% endif %}>{{ t }}</span>{% if c | length > 3 and c[3] %}<span class="muted small clp-sub{{ ' is-clip' if tone == 'bad' }}"{% if tone == 'bad' and c[2] %} title="{{ c[2] }}"{% endif %}>{{ c[3] }}</span>{% endif %}{% else %}{{ t }}{% endif %}</td>{% endfor %}
+        {% if not lst.no_open %}<td>{% if r.retry %}{# Try again (AI insights › Failed): its own form, the box names who and what; adopt() stamps the CSRF token #}
+          <form method="post" action="{{ r.retry.action }}" class="clp-retry-f" data-confirm="{{ r.retry.confirm }}" data-confirm-title="{{ r.retry.title }}" data-confirm-ok="{{ r.retry.ok }}"><input type="hidden" name="job" value="{{ r.retry.job }}"><button type="submit" class="btn clp-retry">Try again</button></form>
+        {% elif r.uid %}<a class="btn-link" href="{{ r.href }}" data-person-open="{{ r.uid }}">{{ lst.act or 'Open' }} &rsaquo;</a>{% elif r.href %}<a class="btn-link" href="{{ r.href }}">Open &rsaquo;</a>{% endif %}</td>{% endif %}
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  {% if lst.foot %}
+  <div class="clp-footbar"><span class="muted small">A name opens their page</span>
+    <form method="post" action="{{ lst.foot.action }}" data-confirm="{{ lst.foot.confirm }}" data-confirm-title="{{ lst.foot.title }}" data-confirm-ok="{{ lst.foot.label }}"><input type="hidden" name="all" value="1"><button type="submit" class="primary">{{ lst.foot.label }}</button></form></div>
+  {% endif %}
+  {% if lst.more %}<p class="muted small clp-more">Showing the first {{ lst.rows | length | thousands }} of {{ lst.n | thousands }}.
+    {% if lst.more_text %}{{ lst.more_text }}{% else %}<a href="{{ lst.full }}">Open as a full page</a> for everyone.{% endif %}</p>{% endif %}
+  {% else %}
+  <p class="muted">{{ lst.empty or 'Nobody here right now.' }}</p>
+  {% endif %}
+</div>

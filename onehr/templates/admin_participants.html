@@ -1,0 +1,497 @@
+{% extends "base.html" %}
+{% from "_table_tools.html" import colth, colmenu, colmenu_script %}
+{% from "_adm_panel.html" import panel %}
+{% from "_search_in.html" import search_in_box %}
+{% block title %}Participants{% endblock %}
+{% block body %}
+
+{# WHO TAKES PART in the active cycle's own review (2026-10-02). The rule: confirmed before the cycle opened. An admin
+   adds someone confirmed mid-cycle (or not at all), or takes a confirmed person out. #}
+
+{% from "_filter_rows.html" import filter_rows %}
+<p class="adm-lede">Who fills in their own KPI check-in and competency{% if cyc %} in
+  {{ cyc['name'] }}{% endif %}. {% if cutoff %}Everyone confirmed on or before the cut-off below takes part; someone confirmed after it takes part only when whoever enters their confirmation date adds them, or you add them here.{% else %}Everyone whose confirmation date has come takes part; someone not confirmed yet joins only when you add them here.{% endif %}
+  The Career Plan (at Year-End) is everyone's, confirmed or not, taken out or not; only people taking part count in its progress. Rating colleagues and reviewing a team
+  don't depend on this either.{% if min_grade %} Only JG {{ min_grade }} and above take part at all: below it, and every
+  letter grade, has no review, isn't rated and doesn't rate others.{% endif %}</p>
+
+{% if not cyc %}
+<div class="admin-card"><p class="muted small" style="margin:0">No cycle is active.</p></div>
+{% else %}
+
+{# the lowest job grade taking part in this cycle at all (Chris, 2026-10-14) -- super admin sets it #}
+<section class="admin-card pt-mingrade" aria-labelledby="pt-mg-h">
+  <div class="adm-headrow">
+    <div>
+      <h2 id="pt-mg-h" style="margin:0 0 4px">Lowest job grade taking part</h2>
+      <p class="muted small" style="margin:0">{% if min_grade %}JG {{ min_grade }} and above &middot; {{ counts['below'] | thousands }} {{ 'person is' if counts['below'] == 1 else 'people are' }} below it{% if fbg or fbu or fdept %} in this selection{% endif %}{% else %}Every job grade takes part{% endif %}</p>
+    </div>
+    {% if is_super %}
+    <form method="post" class="adm-headrow-acts" data-confirm="Change who takes part in {{ cyc['name'] }}? Below the lowest job grade, and every letter grade, has no review of their own, isn't rated in the 360 and doesn't rate others. Existing panels don't change: rebuild them on Panels." data-confirm-title="Change the lowest job grade?" data-confirm-ok="Change it">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <input type="hidden" name="action" value="min_grade">
+      <label class="small">JG <input type="number" name="min_job_grade" min="1" max="40" value="{{ min_grade or '' }}" placeholder="Everyone" style="width:96px" aria-label="Lowest job grade taking part"></label>
+      <button type="submit" class="primary">Save</button>
+    </form>
+    {% endif %}
+  </div>
+</section>
+
+{# THE CONFIRMATION CUT-OFF (Chris, 2 Nov 2026; canvas [design canvas link removed] board 1): a date,
+   blank = none. Confirmed after it, whoever enters the confirmation date chooses Add them / Not this cycle. Super admin sets it. #}
+<section class="admin-card pt-cutoff" aria-labelledby="pt-co-h">
+  <div class="adm-headrow">
+    <div class="pt-cutoff-words">
+      <h2 id="pt-co-h" style="margin:0 0 4px">Confirmation cut-off</h2>
+      {% if cutoff %}
+      <p class="muted small" style="margin:0 0 4px">Confirmed on or before {{ cutoff_day }}: in {{ cyc['name'] }} by the rule. Confirmed after it: whoever enters their confirmation date chooses Add them to {{ cyc['name'] }} or Not this cycle.</p>
+      <p class="muted small" style="margin:0">{{ cut_n['after'] | thousands }} confirmed after it{% if fbg or fbu or fdept %} in this selection{% endif %} &middot; {{ cut_n['added'] | thousands }} added &middot; {{ cut_n['out'] | thousands }} not this cycle</p>
+      {% else %}
+      <p class="muted small" style="margin:0">No cut-off set: everyone whose confirmation date has come takes part, and nobody is asked when a confirmation date goes in.</p>
+      {% endif %}
+    </div>
+    {% if is_super %}
+    <form method="post" class="adm-headrow-acts" id="pt-cutoff-form" data-confirm-title="Change the confirmation cut-off?" data-confirm-ok="Save the cut-off"
+          data-confirm="Set {{ cyc['name'] }}'s confirmation cut-off to {{ cutoff_day or 'none' }}? It changes nobody's place in the cycle. From now on, anyone whose confirmation date goes in after it is asked: Add them to the cycle, or Not this cycle." data-cycle="{{ cyc['name'] }}">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <input type="hidden" name="action" value="confirm_cutoff">
+      <label class="small pt-cutoff-lbl"><span>Confirmed by</span> <input type="date" name="confirm_cutoff" id="pt-cutoff-date" value="{{ cutoff or '' }}" aria-label="Confirmation cut-off date"></label>
+      <button type="submit" class="primary">Save</button>
+    </form>
+    {% endif %}
+  </div>
+{% if is_super %}
+<script>
+(function () {
+  // the box names the date as it stands on the picker when Save is pressed
+  var f = document.getElementById('pt-cutoff-form'), d = document.getElementById('pt-cutoff-date');
+  if (!f || !d) return;
+  var M = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'], cyc = f.getAttribute('data-cycle');
+  function say() {
+    var m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(d.value || ''), when = m ? (+m[3]) + ' ' + M[+m[2] - 1] + ' ' + m[1] : '';
+    f.setAttribute('data-confirm', when
+      ? 'Set ' + cyc + '\u2019s confirmation cut-off to ' + when + '? It changes nobody\u2019s place in the cycle. From now on, anyone whose confirmation date goes in after it is asked: Add them to the cycle, or Not this cycle.'
+      : 'Clear ' + cyc + '\u2019s confirmation cut-off? It changes nobody\u2019s place in the cycle, and nobody is asked any more when a confirmation date goes in.');
+    f.setAttribute('data-confirm-title', when ? 'Change the confirmation cut-off?' : 'Clear the confirmation cut-off?');
+    f.setAttribute('data-confirm-ok', when ? 'Save the cut-off' : 'Clear it');
+  }
+  ['input', 'change'].forEach(function (e) { d.addEventListener(e, say); });
+  say();
+})();
+</script>
+{% endif %}
+</section>
+
+{# UNITS AND DEPARTMENTS NOT TAKING PART (Chris, 2026-10-21; canvas [design canvas link removed]):
+   the cycle's rule, the super admin's alone; BG and BU admins read it. Everyone in them is out altogether. #}
+{% if is_super or ex['rules'] %}
+<section class="admin-card pt-units" aria-labelledby="pt-ux-h">
+  <h2 id="pt-ux-h" style="margin:0 0 4px">Units and departments not taking part</h2>
+  <p class="muted small" style="margin:0 0 10px">Everyone in them is out of {{ cyc['name'] }} altogether: no review of their own, not rated in the 360, rating nobody, moderating nobody; their reports are reviewed one level up. People who join or move in later follow it; people who move out are back in.</p>
+  {% if ex['rules'] %}
+  <div class="table-scroll">
+    <table class="admin-table" id="pt-ux-table">
+      <thead><tr><th>Business group</th><th>Unit</th><th>Departments</th><th class="num">People</th><th>Set</th>{% if is_super %}<th><span class="sr-only">Action</span></th>{% endif %}</tr></thead>
+      <tbody>
+        {% for x in ex['rules'] %}
+        <tr>
+          <td>{{ display_bg(x['business_group']) }}</td>
+          <td><strong>{{ display_company(x['business_group'], x['company']) }}</strong></td>
+          <td>{{ x['department'] | proper or 'The whole unit' }}</td>
+          <td class="num"><a href="{{ url_for('admin_participants', bg=x['business_group'], bu=x['company'], show='unit') }}">{{ x['people'] }}</a></td>
+          <td class="muted small">{{ x['by'] or 'An admin' }} &middot; {{ x['created_at'] | myt_date }}</td>
+          {% if is_super %}<td style="text-align:right">
+            <form method="post" data-confirm="Bring {{ x['label'] }} back into {{ cyc['name'] }}? Its {{ x['people'] }} {{ 'person takes' if x['people'] == 1 else 'people take' }} part again by the usual rule. The 360 places archived and the moderation moved when it was left out stay as they are: top up their panels on 360 › Panels." data-confirm-title="Bring {{ x['label'] }} back?" data-confirm-ok="Bring back">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+              <input type="hidden" name="action" value="exclude_remove">
+              <input type="hidden" name="ex_id" value="{{ x['id'] }}">
+              <button type="submit" class="btn-link">Bring back</button>
+            </form>
+          </td>{% endif %}
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <p class="muted small" style="margin:0">Every unit and department takes part.</p>
+  {% endif %}
+  <div class="pt-ux-foot">
+    <span class="muted small">{% if is_super %}Super admin only. Every change is in the audit log.{% else %}The super admin sets these.{% endif %}</span>
+    {% if is_super %}<button type="button" class="primary" data-panel-open="exclude">Leave a unit or department out</button>{% endif %}
+  </div>
+</section>
+{% endif %}
+
+{% if is_super %}
+{% from "_adm_panel.html" import panel with context %}
+{% set pk = ex['pick'] %}
+{% call panel("exclude", "Participants · " ~ cyc['name'], "Leave a unit or department out", "", open=(request.args.get('panel') == 'exclude'), params="panel ex_bg ex_bu ex_scope ex_dept") %}
+  <div class="adm-panel-body">
+    <form method="get" class="pp-fields" id="pt-ux-pick">
+      <input type="hidden" name="panel" value="exclude">
+      {% for k in ('bg', 'bu', 'dept', 'show', 'q') %}{% if request.args.get(k) %}<input type="hidden" name="{{ k }}" value="{{ request.args.get(k) }}">{% endif %}{% endfor %}
+      <label>Business group<select name="ex_bg" class="modern-select" onchange="this.form.ex_bu.value='';this.form.submit()" required>
+        <option value="">Pick a business group</option>
+        {% for b in ex['units'] %}<option value="{{ b }}" {% if pk and pk['bg'] == b or request.args.get('ex_bg') == b %}selected{% endif %}>{{ display_bg(b) }}</option>{% endfor %}
+      </select></label>
+      {% set xb = request.args.get('ex_bg') %}
+      {% if xb in ex['units'] %}
+      <label>Unit<select name="ex_bu" class="modern-select" onchange="this.form.submit()" required>
+        <option value="">Pick a unit</option>
+        {% for c, info in ex['units'][xb].items() %}<option value="{{ c }}" {% if request.args.get('ex_bu') == c %}selected{% endif %}>{{ display_company(xb, c) }} · {{ info['n'] }}</option>{% endfor %}
+      </select></label>
+      {% else %}<input type="hidden" name="ex_bu" value="">{% endif %}
+      {% if pk %}
+      <fieldset class="pt-ux-scope">
+        <legend>Departments</legend>
+        <label><input type="radio" name="ex_scope" value="unit" onchange="this.form.submit()" {% if pk['whole'] %}checked{% endif %}> The whole unit</label>
+        <label><input type="radio" name="ex_scope" value="depts" onchange="this.form.submit()" {% if not pk['whole'] %}checked{% endif %}> Only some departments</label>
+        {% if not pk['whole'] %}
+        <div class="pt-ux-depts">
+          {% for d, n in ex['units'][pk['bg']][pk['bu']]['depts'] %}<label><input type="checkbox" name="ex_dept" value="{{ d }}" onchange="this.form.submit()" {% if d in pk['depts'] %}checked{% endif %}> {{ d }} · {{ n }}</label>{% else %}<span class="muted small">Nobody in this unit has a department on file.</span>{% endfor %}
+        </div>
+        {% endif %}
+      </fieldset>
+      {% endif %}
+      <noscript><button type="submit" class="btn-link">Show what changes</button></noscript>
+    </form>
+
+    {% if pk %}{% set pl = pk['plan'] %}
+    <section class="pt-ux-what" aria-labelledby="pt-ux-what-h">
+      <h3 id="pt-ux-what-h">What changes in {{ cyc['name'] }}</h3>
+      {% if not pk['valid'] %}
+      <p class="muted small" style="margin:0">{% if pk['whole'] %}Nobody active works in {{ pk['label'] }}.{% else %}Tick at least one department.{% endif %}</p>
+      {% else %}
+      <ul>
+        <li><strong>{{ pl['people'] | length }} {{ 'person takes' if pl['people'] | length == 1 else 'people take' }} no part</strong>: no KPI check-in, competency or Career Plan, and they're not rated in the 360.</li>
+        <li>{% if pl['places'] %}<strong>{{ pl['places'] }} of their {{ 'place' if pl['places'] == 1 else 'places' }}</strong> on other people's 360 panels {{ 'goes' if pl['places'] == 1 else 'go' }}, so they rate nobody.{% if pl['short'] %} {{ pl['short'] | length }} {{ 'person then sits' if pl['short'] | length == 1 else 'people then sit' }} below a full panel: top them up on <a href="{{ url_for('admin_panel_build') }}">360 › Panels</a>.{% endif %}{% else %}They rate nobody outside it in the 360, so no one else's panel changes.{% endif %}</li>
+        <li>{% if pl['own'] %}Their own 360 panels go too ({{ pl['own'] }} {{ 'row' if pl['own'] == 1 else 'rows' }} archived).{% else %}They have no 360 panel of their own yet.{% endif %}</li>
+        <li>{% if pk['moves'] %}<strong>{{ pk['moves'] | length }} {{ 'person is' if pk['moves'] | length == 1 else 'people are' }} reviewed one level up</strong>: their line manager or KPI moderator is in it, so their KPI lines, competency review and Career Plan review go to that manager's own line manager.{% else %}Nobody outside it is reviewed by someone in it.{% endif %}</li>
+        {% if pl['hod'] or pl['buceo'] or pl['bgceo'] %}<li>Seats: {% if pl['hod'] %}{{ pl['hod'] }} {{ 'person has' if pl['hod'] == 1 else 'people have' }} their HOD in it{% endif %}{% if pl['buceo'] %}{% if pl['hod'] %}; {% endif %}{{ pl['buceo'] }} BU CEO {{ 'seat' if pl['buceo'] == 1 else 'seats' }}{% endif %}{% if pl['bgceo'] %}{% if pl['hod'] or pl['buceo'] %}; {% endif %}{{ pl['bgceo'] }} BG CEO {{ 'seat' if pl['bgceo'] == 1 else 'seats' }}{% endif %}. Those steps stay closed until the seats change on <a href="{{ url_for('admin_leaders') }}">Leaders</a>.</li>{% endif %}
+        <li>Nothing anyone has entered is deleted: archived 360 rows are kept, just not counted.</li>
+      </ul>
+      {% if pk['moves'] %}
+      <details class="fold pt-ux-moves"{% if pk['moves'] | length <= 8 %} open{% endif %}>
+        <summary>{{ pk['moves'] | length }} reviewed one level up</summary>
+        <ul>{% for a, b in pk['moves'] %}<li>{{ a }} <span class="muted">→ {{ b }}</span></li>{% endfor %}</ul>
+        {% if pk['moves'] | length > 8 %}<button type="button" class="btn-link" data-fold-less>Show less</button>{% endif %}
+      </details>
+      {% endif %}
+      {% if pk['nobody'] %}
+      <p class="pt-ux-warn" role="status"><strong>{{ pk['nobody'] | length }} {{ 'person has' if pk['nobody'] | length == 1 else 'people have' }} nobody above them taking part:</strong> {{ pk['nobody'] | join(', ') }}. After saving, give them a line manager or KPI moderator on their person page.</p>
+      {% endif %}
+      {% endif %}
+    </section>
+    {% endif %}
+  </div>
+  <footer class="adm-panel-foot">
+    <span class="muted small adm-panel-grow">{% if pk and pk['valid'] %}You'll confirm on the next step.{% else %}Pick a unit to see what changes.{% endif %}</span>
+    <button type="button" class="btn-link" data-panel-close>Cancel</button>
+    {% if pk and pk['valid'] %}
+    <form method="post" data-confirm="Leave {{ pk['label'] }} out of {{ cyc['name'] }}? {{ pk['plan']['people'] | length }} {{ 'person takes' if pk['plan']['people'] | length == 1 else 'people take' }} no part: no review of their own, not rated in the 360, rating nobody, moderating nobody. {{ pk['plan']['archive'] | length }} 360 {{ 'row is' if pk['plan']['archive'] | length == 1 else 'rows are' }} archived and {{ pk['moves'] | length }} {{ 'person is' if pk['moves'] | length == 1 else 'people are' }} reviewed one level up. Joiners to it are left out too. Bring back puts them back in, but the archived 360 places and the moved moderation don't come back by themselves." data-confirm-title="Leave {{ pk['label'] }} out?" data-confirm-ok="Leave them out" data-confirm-tone="danger">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <input type="hidden" name="action" value="exclude_add">
+      <input type="hidden" name="ex_bg" value="{{ pk['bg'] }}">
+      <input type="hidden" name="ex_bu" value="{{ pk['bu'] }}">
+      <input type="hidden" name="ex_scope" value="{{ 'unit' if pk['whole'] else 'depts' }}">
+      {% for d in pk['depts'] %}<input type="hidden" name="ex_dept" value="{{ d }}">{% endfor %}
+      <button type="submit" class="primary">Leave them out…</button>
+    </form>
+    {% else %}
+    <button type="button" class="primary" disabled>Leave them out…</button>
+    {% endif %}
+  </footer>
+{% endcall %}
+{% endif %}
+
+<section class="admin-card adm-filters" aria-label="Filters">
+  {{ filter_rows(frows) }}
+  <form method="get" class="adm-fsearch rr-filters">
+    {% for k in ('bg', 'bu', 'dept') %}{% if request.args.get(k) %}<input type="hidden" name="{{ k }}" value="{{ request.args.get(k) }}">{% endif %}{% endfor %}
+    {{ search_in_box(search_in, qin, q) }}
+    <select name="show" class="modern-select" onchange="this.form.submit()" aria-label="Show">
+      <option value="out" {% if show == 'out' %}selected{% endif %}>Not taking part ({{ counts['out'] }})</option>
+      <option value="changed" {% if show == 'changed' %}selected{% endif %}>Added or taken out by an admin ({{ counts['changed'] }})</option>
+      {% if min_grade %}<option value="below" {% if show == 'below' %}selected{% endif %}>Below JG {{ min_grade }} ({{ counts['below'] }})</option>{% endif %}
+      {% if counts['unit'] or show == 'unit' %}<option value="unit" {% if show == 'unit' %}selected{% endif %}>Out by a unit or department ({{ counts['unit'] }})</option>{% endif %}
+      <option value="all" {% if show == 'all' %}selected{% endif %}>Everyone ({{ counts['in'] + counts['out'] + counts['below'] + counts['unit'] }})</option>
+    </select>
+  </form>
+</section>
+
+{% if not rows %}
+<div class="admin-card">
+  <p class="muted small" style="margin:0">
+    {% if show == 'out' %}Everyone {% if fbg or fbu or q %}in this selection {% endif %}is taking part in {{ cyc['name'] }}.
+    {% elif show == 'changed' %}Nobody {% if fbg or fbu or q %}in this selection {% endif %}has been added or taken out yet.
+    {% else %}Nobody matches.{% endif %}
+  </p>
+</div>
+{% else %}
+
+<form method="post" id="pt-form">
+  <input type="hidden" name="bg" value="{{ fbg }}">
+  <input type="hidden" name="bu" value="{{ fbu }}">
+  <input type="hidden" name="dept" value="{{ fdept }}">
+  <input type="hidden" name="q" value="{{ q }}">
+  <input type="hidden" name="qin" value="{{ qin }}">
+  <input type="hidden" name="show" value="{{ show }}">
+  <input type="hidden" name="action" value="add" id="pt-action">
+
+  <div class="admin-card" style="margin-bottom:12px;padding:12px 18px">
+    <div class="rr-bar">
+      <span class="muted small"><strong>{{ counts['in'] }}</strong> taking part &middot;
+        <strong>{{ counts['out'] }}</strong> not taking part{% if counts['changed'] %} &middot;
+        <strong>{{ counts['changed'] }}</strong> set by an admin{% endif %}</span>
+      <span style="flex:1"></span>
+      <button type="button" class="primary" data-pt="add" data-sends>Add to this cycle</button>
+      <button type="button" class="btn-link" data-pt="remove" data-sends>Take out of this cycle</button>
+      <button type="button" class="btn-link" data-pt="clear" data-sends>Back to the confirmation rule</button>
+    </div>
+    <p class="muted small" id="pt-msg" role="status" style="margin:6px 0 0" hidden></p>
+  </div>
+
+  <div class="table-scroll table-scroll-capped">
+    <table class="admin-table" id="participants-table">
+      <thead><tr>
+        <th style="width:34px"><input type="checkbox" id="pt-all" aria-label="Select all"></th>
+        {{ colth('person', 'Person') }}
+        {{ colth('conf', 'Confirmation') }}
+        {{ colth('status', 'This cycle') }}
+      </tr></thead>
+      <tbody>
+        {% for r in rows %}
+        {% set u = r['u'] %}
+        <tr class="data-row" data-person="{{ u['full_name'] }}"
+            data-conf="{{ u['confirmation_date'] or '' }}" data-status="{{ r['words'] }}">
+          <td>{% if r['why'] == 'unit_out' %}<span class="sr-only">Their unit or department is left out of this cycle: bring it back above</span>{% else %}<input type="checkbox" name="ids" value="{{ u['id'] }}" class="pt-row" data-name="{{ u['full_name'] }}"
+                     data-meta="{{ u['employee_id'] }}{% if u['job_grade'] %} · JG {{ u['job_grade'] }}{% endif %}{% if u['company'] %} · {{ display_company(u['business_group'], u['company']) }}{% endif %}"
+                     data-taking="{{ '1' if r['taking'] else '0' }}">{% endif %}</td>
+          <td>
+            <p style="font-weight:500;margin:0">{{ u['full_name'] }}</p>
+            <p class="muted small" style="margin:2px 0 0">
+              {{ u['employee_id'] }}
+              {%- if u['job_grade'] %} &middot; JG {{ u['job_grade'] }}{% endif %}
+              {%- if u['company'] %} &middot; {{ display_company(u['business_group'], u['company']) }}{% endif %}
+            </p>
+          </td>
+          <td>
+            {% if u['confirmation_date'] %}{{ u['confirmation_date'] | myt_day }}
+            {% elif (u['years_of_service'] or 0) > 1 %}<span class="muted small">Over a year's service</span>
+            {% else %}<span class="muted small">Not confirmed</span>{% endif %}
+          </td>
+          <td class="rr-cell">
+            <span class="status-pill {{ 'status-reviewed' if r['taking'] else 'status-pending' }}">{{ 'Taking part' if r['taking'] else 'Not taking part' }}</span>
+            {% if r['line'] %}<span class="rr-stage">{{ r['line'] }}</span>{% else %}<span class="rr-stage">{{ r['reason'][:1] | upper }}{{ r['reason'][1:] }}{% if r['override'] %}{% if r['override']['by_name'] %} &middot; {{ r['override']['by_name'] }}{% endif %}, {{ r['override']['set_at'] | myt_date }}{% endif %}</span>{% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+        <tr class="no-filter-match" hidden><td colspan="4" class="muted">No one matches the filters.</td></tr>
+      </tbody>
+    </table>
+  </div>
+  {{ colmenu('participants-table', {
+       'person': {'mode': 'clientFilter', 'type': 'text', 'sortAttr': 'person'},
+       'conf':   {'mode': 'clientFilter', 'type': 'text', 'sortAttr': 'conf'},
+       'status': {'mode': 'clientFilter', 'type': 'text', 'sortAttr': 'status'} }) }}
+</form>
+
+{% if can_confirm %}
+{#- Add to this cycle, for the super admin (or a role given cycle.confirm on Roles & access), in three steps (Chris, 2026-10-22; canvas
+    [design canvas link removed]): their KPI (the Confirmation rating by default, lines from their
+    library, or none yet), the rating on their behalf on the 5-point rating with one reason, then the check and OneHR's
+    confirm box. The Confirmation rating posts here as confirm_add; the other two choices are the page's plain add. -#}
+{% call panel("ptadd", "Participants · " ~ cyc['name'], "Add to this cycle", "Not confirmed yet, so they hold no KPI lines this cycle.", mid=True) %}
+<form method="post" id="ptc-form" class="adm-panel-form" data-confirm-title="Add and rate?" data-confirm-ok="Add and rate"
+      data-confirm="Add them to {{ cyc['name'] }} with the Confirmation rating, rated on their behalf?">
+  <input type="hidden" name="action" value="confirm_add">
+  <input type="hidden" name="bg" value="{{ fbg }}">
+  <input type="hidden" name="bu" value="{{ fbu }}">
+  <input type="hidden" name="dept" value="{{ fdept }}">
+  <input type="hidden" name="q" value="{{ q }}">
+  <input type="hidden" name="qin" value="{{ qin }}">
+  <input type="hidden" name="show" value="{{ show }}">
+  <div class="adm-panel-body">
+    <ol class="adm-steps" aria-label="Steps" id="ptc-steps">
+      <li class="is-on" aria-current="step"><span class="adm-step-n">1</span>Their KPI</li>
+      <li><span class="adm-step-n">2</span>Rate on their behalf</li>
+      <li><span class="adm-step-n">3</span>Check</li>
+    </ol>
+    <div data-ptc-step="1">
+      <section class="wiz-sec" aria-label="Who"><span class="wiz-k" id="ptc-who-k">Who</span><div id="ptc-who"></div></section>
+      <section class="wiz-sec" aria-label="Their KPI"><span class="wiz-k">Their KPI</span>
+        <label class="wiz-opt"><input type="radio" name="ptc_kpi" value="conf" checked>
+          <span><b>Confirmation rating</b> <span class="muted small">· the default</span><br><span class="muted small">One KPI line, 100% of their KPIs: their confirmation rating, on the 5-point rating in every business group. You rate it on their behalf next; from there their HOD reviews it and their BU CEO and BG CEO calibrate it like anyone's result.</span></span></label>
+        <label class="wiz-opt"><input type="radio" name="ptc_kpi" value="lib">
+          <span><b>Lines from their library</b><br><span class="muted small">They join the cycle; you then add their KPI lines on each person's Performance page, as in Add a person. Their line manager moderates the results.</span></span></label>
+        <label class="wiz-opt"><input type="radio" name="ptc_kpi" value="none">
+          <span><b>No KPI line yet</b><br><span class="muted small">They join the cycle with no performance result until an admin adds lines. Their HOD can still set their potential.</span></span></label>
+      </section>
+    </div>
+    <div data-ptc-step="2" hidden>
+      <p class="muted small wiz-lede">Their confirmation rating, rated by Group People on their behalf on the 5-point rating. It counts as a Group People-filled result: final for their line manager, with nothing for them to fill in, then reviewed by their HOD and calibrated by their BU CEO and BG CEO.</p>
+      <section class="wiz-sec" aria-label="Their ratings"><span class="wiz-k">Confirmation rating · 1 KPI line, 100%</span><div id="ptc-rate"></div></section>
+      <section class="wiz-sec" aria-label="Your reason"><span class="wiz-k">Your reason</span>
+        <label class="ptc-reason"><span class="muted small">Required. Kept with each result in the audit trail; their HOD and CEOs read it beside the rating.</span>
+          <textarea name="reason" rows="3" maxlength="{{ admin_result_reason_max }}" id="ptc-reason"></textarea></label>
+      </section>
+    </div>
+    <div data-ptc-step="3" hidden>
+      <section class="wiz-sec" aria-label="Check"><span class="wiz-k">Check before you add them</span><div id="ptc-check"></div></section>
+    </div>
+    <p class="wiz-note" id="ptc-msg" role="status" hidden></p>
+  </div>
+  <footer class="adm-panel-foot">
+    <button type="button" class="btn-link adm-panel-grow" id="ptc-back" data-panel-close>Cancel</button>
+    <span class="muted small" id="ptc-count"></span>
+    <button type="button" class="primary" id="ptc-next">Next: rate on their behalf</button>
+    <button type="submit" class="primary" id="ptc-go" hidden>Add and rate</button>
+  </footer>
+</form>
+{% endcall %}
+<button type="button" id="ptc-open" data-panel-open="ptadd" hidden></button>
+<script>
+(function () {
+  var form = document.getElementById('ptc-form');
+  if (!form) return;
+  var CYCLE = {{ cyc['name'] | tojson }};
+  var LABELS = ['Unacceptable (UA)', 'Below Expectation (BE)', 'Meet Expectation (ME)', 'Above Expectation (AE)',
+                'Outstanding (OU)'];
+  var BANDS = ['UA', 'BE', 'ME', 'AE', 'OU'];
+  var step = 1, people = [];
+  var back = document.getElementById('ptc-back'), next = document.getElementById('ptc-next');
+  var go = document.getElementById('ptc-go'), note = document.getElementById('ptc-msg');
+  var reason = document.getElementById('ptc-reason');
+  function el(tag, cls, text) { var e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; }
+  function kpi() { var c = form.querySelector('[name="ptc_kpi"]:checked'); return c ? c.value : 'conf'; }
+  function sel(p) { return form.querySelector('select[name="rating_' + p.id + '"]'); }
+  function rated() { return people.filter(function (p) { return sel(p) && sel(p).value; }).length; }
+  function whoText() { return people.length === 1 ? people[0].name : people.length + ' people'; }
+  function say(t) { note.textContent = t || ''; note.hidden = !t; }
+  function show(n) {
+    step = n;
+    form.querySelectorAll('[data-ptc-step]').forEach(function (d) { d.hidden = d.getAttribute('data-ptc-step') !== String(n); });
+    document.querySelectorAll('#ptc-steps li').forEach(function (li, i) {
+      li.className = i + 1 < n ? 'is-done' : (i + 1 === n ? 'is-on' : '');
+      if (i + 1 === n) li.setAttribute('aria-current', 'step'); else li.removeAttribute('aria-current');
+      li.querySelector('.adm-step-n').textContent = i + 1 < n ? '✓' : String(i + 1);
+    });
+    if (n === 1) { back.textContent = 'Cancel'; back.setAttribute('data-panel-close', ''); }
+    else { back.textContent = 'Back'; back.removeAttribute('data-panel-close'); }
+    next.hidden = n === 3; go.hidden = n !== 3;
+    next.textContent = n === 1 ? (kpi() === 'conf' ? 'Next: rate on their behalf' : 'Add them') : 'Next: check';
+    count(); say('');
+  }
+  function count() {
+    document.getElementById('ptc-count').textContent = step === 2 ? rated() + ' of ' + people.length + ' rated' : '';
+  }
+  window.ptcStart = function (picked) {
+    people = picked.map(function (b) {
+      return {id: b.value, name: b.getAttribute('data-name'), meta: b.getAttribute('data-meta') || ''};
+    });
+    document.getElementById('pnl-ptadd-h').textContent = 'Add ' + whoText() + ' to this cycle';
+    document.getElementById('ptc-who-k').textContent = 'Who · ' + people.length + ' ticked';
+    var who = document.getElementById('ptc-who'), rate = document.getElementById('ptc-rate');
+    who.textContent = ''; rate.textContent = '';
+    people.forEach(function (p) {
+      var w = el('div', 'wiz-have'), s = el('span');
+      s.appendChild(el('b', null, p.name)); s.appendChild(el('span', 'muted small', ' · ' + p.meta));
+      w.appendChild(s); w.appendChild(el('span', 'muted small', 'No KPI lines')); who.appendChild(w);
+      var r = el('div', 'wiz-have'), t = el('span');
+      t.appendChild(el('b', null, p.name)); t.appendChild(el('br')); t.appendChild(el('span', 'muted small', p.meta));
+      var s2 = el('select', 'modern-select'); s2.name = 'rating_' + p.id; s2.setAttribute('aria-label', 'Confirmation rating for ' + p.name);
+      s2.appendChild(el('option', null, 'Choose their rating')).value = '';
+      LABELS.forEach(function (l, i) { var o = el('option', null, (i + 1) + ' · ' + l); o.value = String(i + 1); s2.appendChild(o); });
+      s2.addEventListener('change', count);
+      var id = el('input'); id.type = 'hidden'; id.name = 'ids'; id.value = p.id;
+      r.appendChild(t); r.appendChild(s2); r.appendChild(id); rate.appendChild(r);
+    });
+    show(1);
+    document.getElementById('ptc-open').click();
+  };
+  form.querySelectorAll('[name="ptc_kpi"]').forEach(function (r) { r.addEventListener('change', function () { show(1); }); });
+  back.addEventListener('click', function () { if (step > 1) show(step - 1); });
+  next.addEventListener('click', function () {
+    if (step === 1) {
+      if (kpi() === 'conf') { show(2); return; }
+      // lines from their library, or none yet: the page's plain add, with its own confirm box
+      var pt = document.getElementById('pt-form');
+      document.getElementById('pt-action').value = 'add';
+      pt.setAttribute('data-confirm-title', 'Add to this cycle?');
+      pt.setAttribute('data-confirm-ok', 'Add');
+      pt.setAttribute('data-confirm', 'Add ' + whoText() + ' to ' + CYCLE + '? ' + (kpi() === 'lib'
+        ? 'Then add their KPI lines on each person’s Performance page; their line manager moderates the results.'
+        : 'They have no KPI line until an admin adds one; their HOD can still set their potential.'));
+      if (pt.requestSubmit) pt.requestSubmit(); else pt.submit();
+      return;
+    }
+    if (rated() < people.length) { say('Rate everyone on the 5-point rating first: ' + rated() + ' of ' + people.length + ' rated.'); return; }
+    if (!reason.value.trim()) { say('Give your reason: it goes in the audit trail with each rating.'); reason.focus(); return; }
+    var bands = people.map(function (p) { return BANDS[+sel(p).value - 1]; });
+    var chk = document.getElementById('ptc-check'); chk.textContent = '';
+    [['Joins this cycle', people.map(function (p) { return p.name; }).join(', ')],
+     ['Their KPI', 'One line each: Confirmation rating, 100%'],
+     ['Rated on their behalf', people.map(function (p, i) { return (people.length > 1 ? p.name + ' ' : '') + bands[i]; }).join(', ') + ' · 5-point rating'],
+     ['Your reason', reason.value.trim()],
+     ['Who reviews next', 'Their HOD in the Department Review, then their BU CEO and BG CEO'],
+     ['Potential', 'Set by their HOD: no 360 or competency this cycle'],
+     ['What they see', 'Nothing to fill in; their final bands and talent status once released']].forEach(function (kv) {
+      var r = el('div', 'wiz-have'); r.appendChild(el('span', 'muted small ptc-k', kv[0])); r.appendChild(el('span', 'ptc-v', kv[1])); chk.appendChild(r);
+    });
+    form.setAttribute('data-confirm', 'Add ' + people.map(function (p) { return p.name; }).join(', ') + ' to ' + CYCLE +
+      ', each with one KPI line, the Confirmation rating, rated by Group People as ' + bands.join(', ') +
+      '? Their HOD reviews them next and sets their potential. You can take them out again on Participants until ' +
+      'their results are released; the ratings and your reason stay in the audit trail.');
+    show(3);
+  });
+})();
+</script>
+{% endif %}
+
+<script>
+(function () {
+  var form = document.getElementById('pt-form');
+  if (!form) return;
+  var all = document.getElementById('pt-all');
+  all.addEventListener('change', function () {
+    form.querySelectorAll('.pt-row').forEach(function (b) {
+      var tr = b.closest('tr');
+      if (tr && !tr.hidden && tr.style.display !== 'none') b.checked = all.checked;
+    });
+  });
+  var CYCLE = {{ cyc['name'] | tojson }};
+  form.querySelectorAll('[data-pt]').forEach(function (btn) {
+    btn.addEventListener('click', function () {
+      var action = btn.getAttribute('data-pt');
+      var picked = Array.prototype.filter.call(form.querySelectorAll('.pt-row'), function (b) { return b.checked; });
+      var note = document.getElementById('pt-msg');
+      if (!picked.length) { note.textContent = 'Select at least one person first.'; note.hidden = false; return; }
+      note.hidden = true;
+      var n = picked.length, who = n === 1 ? picked[0].getAttribute('data-name') : n + ' people';
+      if (action === 'add' && window.ptcStart) { window.ptcStart(picked); return; }   // the super admin's three steps
+      document.getElementById('pt-action').value = action;
+      var msg, title, ok;
+      if (action === 'add') {
+        title = 'Add to this cycle?'; ok = 'Add';
+        msg = 'Add ' + who + ' to ' + CYCLE + '? Their own KPI check-in and competency become part of this cycle (their Career Plan already is). Generate their KPI targets, competencies and 360 panel as usual.';
+      } else if (action === 'remove') {
+        title = 'Take out of this cycle?'; ok = 'Take out';
+        msg = 'Take ' + who + ' out of ' + CYCLE + '? Their own review parts (KPI check-in, competency) are no longer required and they drop out of the calibration lists. Their 360, where they are the one rated, is archived, so their raters no longer see them. They keep their Career Plan and still rate colleagues on the 360. Anything they have already entered stays, and bringing them back returns their 360.';
+      } else {
+        title = 'Back to the confirmation rule?'; ok = 'Confirm';
+        msg = 'Clear the admin setting for ' + who + '? They take part again only if they were confirmed before ' + CYCLE + ' opened.';
+      }
+      form.setAttribute('data-confirm-title', title);
+      form.setAttribute('data-confirm-ok', ok);
+      form.setAttribute('data-confirm', msg);
+      if (form.requestSubmit) form.requestSubmit(); else form.submit();
+    });
+  });
+})();
+</script>
+{% endif %}
+{% endif %}
+
+{{ colmenu_script(asset_v) }}
+{% endblock %}

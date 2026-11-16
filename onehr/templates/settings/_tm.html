@@ -1,0 +1,18 @@
+{# Panel: tm. Talent Management holds two assessments -- the 360 and the
+   technical competency assessment -- so this panel dispatches to the
+   section the route picked. The sub-strip that used to sit here is gone:
+   360 / Competency / Career routes are separate sections of the admin sidebar now,
+   so repeating them inside the page was a second control doing the same job.
+
+   Each section is rendered by its own route, so a route only ever supplies its
+   own context -- admin_framework() for 360, admin_competency_profiles() for
+   profiles, admin_career_routes() for routes -- and none has to know about the
+   others. #}
+
+{% if tm_section == '360' %}
+  {% include "settings/_tm_360.html" %}
+{% elif tm_section == 'profiles' %}
+  {% include "settings/_tm_profiles.html" %}
+{% else %}
+  {% include "settings/_tm_competency.html" %}
+{% endif %}

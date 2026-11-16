@@ -1,0 +1,381 @@
+{% extends "base.html" %}
+{% block title %}Technical competency{% endblock %}
+{% block body %}
+{# Same vocabulary as the 360 rating page -- one act of judgement, one control.
+   Tips are first-person here because the person is rating themselves; the
+   review screen says "He/She", exactly as the prior design did. #}
+{% set RATING_LABELS = {'yes': 'Demonstrate', 'no': 'Developing'} %}
+{% set RATING_TIPS = {'yes': 'I show this ≥ 70% of the time',
+                      'no':  'I am still growing into it'} %}
+
+<div class="page-head">
+  <div>
+    <h1>Technical competency{% if cycle %} <span class="season-badge">{{ cycle['name'] }}</span>{% endif %}</h1>
+    <p class="muted">{{ subject['job_title'] | proper or '' }}{% if subject['department'] %} &middot; {{ subject['department'] | proper }}{% endif %}</p>
+  </div>
+  {% if assessment and assessment['status'] != 'pending' %}
+  <div class="page-head-right">
+    {% if assessment['status'] == 'reviewed' %}
+    <span class="status-pill status-reviewed">Approved</span>
+    {% else %}
+    <span class="status-pill status-submitted">Submitted, pending review</span>
+    {% endif %}
+  </div>
+  {% endif %}
+</div>
+
+{% include "_tc_switcher.html" %}
+
+{% if not rows %}
+<div class="admin-card">
+  <p class="muted" style="margin:0">No technical competencies have been assigned to you for
+    this cycle yet. They come from your job profile — Group People assigns them before the
+    assessment opens.</p>
+</div>
+{% else %}
+
+<p class="muted" style="margin:0 0 14px">
+  For each competency, say whether you <strong>demonstrate</strong> it consistently today
+  or are still <strong>developing</strong> it. Some are pitched at your current level and
+  some reach towards the next one, so "Developing" is a normal and expected answer.
+  Your answers save as you go.
+</p>
+
+<div id="incomplete-banner" class="banner-error" hidden>
+  <strong id="incomplete-banner-title">All items are required before you can submit.</strong>
+  <span>Every competency needs an answer.</span>
+</div>
+
+<form method="post" id="tc-form" action="{{ url_for('technical_submit') }}" data-no-busy>
+  {% for g in groups %}
+  {% set sec_idx = loop.index %}
+  {# Same shape as the 360 rating form, deliberately: navy section header,
+     statement table with the two rating buttons on the right, one collapsible
+     remark for the whole section underneath. The two assessments ask the same
+     kind of judgement and should not look like two different products. #}
+  <div class="criterion">
+    <div class="crit-head">
+      <div class="crit-name">{{ g['name'] }}</div>
+    </div>
+    <table class="stmt-table">
+      <tbody>
+      {% for r in g['rows'] %}
+        {% set lbl = 'tc-lbl-' ~ r['assignment_id'] %}
+        <tr data-assignment="{{ r['assignment_id'] }}">
+          <td class="stmt-text" id="{{ lbl }}">
+            <span class="stmt-num">{{ sec_idx }}.{{ loop.index }}</span>
+            {{ r['title'] }}
+            {% if r['ability_items'] or r['proficiency_description'] %}
+            <span class="info-tip" tabindex="0" role="button"
+                  aria-label="What this covers: {{ r['title'] }}">
+              <svg class="info-icon-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                   stroke-width="2" stroke-linecap="round" aria-hidden="true">
+                <circle cx="12" cy="12" r="9"/><path d="M12 16v-4"/><path d="M12 8h.01"/></svg>
+              <span class="info-tip-body">
+                {% if r['proficiency_description'] %}<strong>{{ r['proficiency_description'] }}</strong>{% endif %}
+                {% if r['ability_items'] %}<br>{{ r['ability_items'] }}{% endif %}
+              </span>
+            </span>
+            {% endif %}
+            {% if r['proficiency_description'] %}
+            <span class="stmt-sub">{{ r['proficiency_description'] }}</span>
+            {% endif %}
+          </td>
+          <td class="stmt-action">
+            {# Identical control to the 360 page, so the selection effect and the
+               keyboard behaviour are the same thing, not a lookalike. #}
+            <div class="rating-buttons" role="radiogroup" aria-labelledby="{{ lbl }}"
+                 data-field="ans_{{ r['assignment_id'] }}">
+              {% for val in ['yes','no'] %}
+              <label class="rating-btn rating-{{ val }}" data-tip="{{ RATING_TIPS[val] }}">
+                <input type="radio" name="ans_{{ r['assignment_id'] }}" value="{{ val }}"
+                       aria-label="{{ RATING_LABELS[val] }}"
+                       {% if r['answer'] == val %}checked{% endif %}
+                       {% if not can_edit %}disabled{% endif %}>
+                <span aria-hidden="true">{{ RATING_LABELS[val] }}</span>
+              </label>
+              {% endfor %}
+            </div>
+          </td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+
+    {% if can_edit %}
+    <details class="crit-comment"{% if g['remark'] %} open{% endif %}>
+      <summary class="crit-comment-toggle">
+        <span class="crit-comment-peek">{{ g['remark'] or '' }}</span>
+        <span class="crit-comment-btn">
+          {{ 'Comment' if g['remark'] else 'Add a comment' }} <span class="opt">(optional)</span>
+          <span class="crit-comment-chev" aria-hidden="true">&#9662;</span>
+        </span>
+      </summary>
+      <div class="crit-comment-body">
+        <label for="sec-remark-{{ sec_idx }}">
+          Anything to add about your {{ g['name'] }} competencies?
+        </label>
+        <textarea id="sec-remark-{{ sec_idx }}" class="tc-sec-remark" rows="3" maxlength="2000"
+                  data-category="{{ g['name'] }}"
+                  placeholder="Evidence or context for this section (optional)">{{ g['remark'] or '' }}</textarea>
+        {% if ai_enabled %}
+        <div class="ai-draft" data-endpoint="{{ url_for('technical_section_draft_ai') }}"
+             data-category="{{ g['name'] }}" data-limit="{{ ai_limit }}"
+             data-remaining="{{ g['ai_remaining'] if g['ai_remaining'] is not none else ai_limit }}"
+             data-reset="{{ g['ai_reset'] or 0 }}">
+          <div class="ai-split">
+            <button type="button" class="ai-draft-btn btn-link" aria-haspopup="true" aria-expanded="false">&#10024; Draft with AI <span class="ai-caret" aria-hidden="true">&#9662;</span></button>
+            <div class="ai-menu" role="menu" hidden>
+              <div class="ai-menu-head">Choose what AI should do</div>
+              <button type="button" class="ai-cmd" role="menuitem" data-cmd="polish">
+                <span class="ai-cmd-ico">&#10024;</span><span>Polish &amp; improve<small>Clearer, more specific</small></span></button>
+              <button type="button" class="ai-cmd" role="menuitem" data-cmd="shorter">
+                <span class="ai-cmd-ico">&#10134;</span><span>Make it shorter</span></button>
+              <button type="button" class="ai-cmd" role="menuitem" data-cmd="longer">
+                <span class="ai-cmd-ico">&#10133;</span><span>Make it longer / add detail</span></button>
+              <button type="button" class="ai-cmd" role="menuitem" data-cmd="formal">
+                <span class="ai-cmd-ico">&#128084;</span><span>More formal</span></button>
+              <div class="ai-sep"></div>
+              <button type="button" class="ai-cmd" role="menuitem" data-cmd="grammar">
+                <span class="ai-cmd-ico">&#9989;</span><span>Fix spelling &amp; grammar</span></button>
+            </div>
+          </div>
+          <span class="ai-status" aria-live="polite"></span>
+          <span class="ai-quota"></span>
+        </div>
+        {% endif %}
+        <p class="field-help">Optional. Your ratings are what count &mdash; this is for
+          evidence or context your line manager should see when they review the section.
+          {% if ai_enabled %} AI drafts are suggestions &mdash; read and edit before submitting.{% endif %}</p>
+      </div>
+    </details>
+    {% elif g['remark'] %}
+    <div class="crit-comment">
+      <p class="muted small" style="margin:0 0 4px;font-weight:600">Your comment</p>
+      <p style="margin:0">{{ g['remark'] }}</p>
+    </div>
+    {% endif %}
+  </div>
+  {% endfor %}
+
+  {# One remark on the whole assessment, after the sections rather than inside
+     any of them -- the place to say something that isn't about a single
+     category. The section remarks above stay exactly as they are. #}
+  {% if can_edit %}
+  <div class="admin-card" id="tc-overall-card">
+    <label for="tc-overall-remark" style="font-weight:600;display:block;margin-bottom:6px">
+      Overall remark <span class="muted small">(optional)</span>
+    </label>
+    <textarea id="tc-overall-remark" class="tc-sec-remark" rows="3" maxlength="2000"
+              data-endpoint="{{ url_for('technical_overall_autosave') }}"
+              placeholder="Anything about your technical competencies as a whole this cycle"
+              style="width:100%;box-sizing:border-box;resize:vertical">{{ assessment['overall_remark'] or '' }}</textarea>
+    {% if ai_enabled %}
+    <div class="ai-draft" data-endpoint="{{ url_for('technical_overall_draft_ai') }}"
+         data-limit="{{ ai_limit }}"
+         data-remaining="{{ overall_ai_remaining if overall_ai_remaining is not none else ai_limit }}"
+         data-reset="{{ overall_ai_reset or 0 }}">
+      <div class="ai-split">
+        <button type="button" class="ai-draft-btn btn-link" aria-haspopup="true" aria-expanded="false">&#10024; Draft with AI <span class="ai-caret" aria-hidden="true">&#9662;</span></button>
+        <div class="ai-menu" role="menu" hidden>
+          <div class="ai-menu-head">Choose what AI should do</div>
+          <button type="button" class="ai-cmd" role="menuitem" data-cmd="polish">
+            <span class="ai-cmd-ico">&#10024;</span><span>Polish &amp; improve<small>Clearer, more specific</small></span></button>
+          <button type="button" class="ai-cmd" role="menuitem" data-cmd="shorter">
+            <span class="ai-cmd-ico">&#10134;</span><span>Make it shorter</span></button>
+          <button type="button" class="ai-cmd" role="menuitem" data-cmd="longer">
+            <span class="ai-cmd-ico">&#10133;</span><span>Make it longer / add detail</span></button>
+          <button type="button" class="ai-cmd" role="menuitem" data-cmd="formal">
+            <span class="ai-cmd-ico">&#128084;</span><span>More formal</span></button>
+          <div class="ai-sep"></div>
+          <button type="button" class="ai-cmd" role="menuitem" data-cmd="grammar">
+            <span class="ai-cmd-ico">&#9989;</span><span>Fix spelling &amp; grammar</span></button>
+        </div>
+      </div>
+      <span class="ai-status" aria-live="polite"></span>
+      <span class="ai-quota"></span>
+    </div>
+    {% endif %}
+    <p class="field-help">Optional. Your line manager sees this alongside your ratings,
+      and it carries through to the potential report a calibrator reads.</p>
+  </div>
+  {% elif assessment and assessment['overall_remark'] %}
+  <div class="admin-card">
+    <p class="muted small" style="margin:0 0 4px;font-weight:600">Your overall remark</p>
+    <p style="margin:0">{{ assessment['overall_remark'] }}</p>
+  </div>
+  {% endif %}
+
+  {% if can_edit %}
+  <div class="actions" style="align-items:center;gap:10px">
+    <span id="tc-save-status" class="save-status" aria-live="polite" role="status">Your answers save automatically</span>
+    <button type="submit" class="primary" id="tc-submit-btn">Submit assessment</button>
+  </div>
+  {% endif %}
+</form>
+
+{# Double-confirm, same shape and same finality warning as the 360 page. #}
+<div id="tc-confirm-modal" class="modal-overlay" hidden>
+  <div class="modal-card" role="dialog" aria-modal="true" aria-labelledby="tc-confirm-title">
+    <h2 id="tc-confirm-title">Submit your technical competency assessment?</h2>
+    <p>You're about to submit all <strong>{{ total }}</strong> competencies for
+       {{ cycle['name'] if cycle else 'this cycle' }}.</p>
+    <div class="modal-warning">
+      <strong>This action cannot be undone.</strong>
+      <span> Once submitted, your assessment goes to your line manager for review and you
+        will not be able to change your answers.</span>
+    </div>
+    <div class="modal-actions">
+      <button type="button" id="tc-confirm-cancel">Cancel</button>
+      <button type="button" id="tc-confirm-yes" class="primary">Yes, submit (final)</button>
+    </div>
+  </div>
+</div>
+
+<script>
+(function () {
+  var form = document.getElementById('tc-form');
+  if (!form) return;
+  var modal = document.getElementById('tc-confirm-modal');
+  var banner = document.getElementById('incomplete-banner');
+  var status = document.getElementById('tc-save-status');
+  var submitting = false;
+
+  function csrf() {
+    var m = document.querySelector('meta[name="csrf-token"]');
+    return m ? m.content : '';
+  }
+  function setStatus(t, cls) {
+    if (!status) return;
+    status.textContent = t;
+    status.className = 'save-status' + (cls ? ' ' + cls : '');
+  }
+
+  // ---- autosave one row (answer and/or remark) ---------------------------
+  var timers = {};
+  function save(row) {
+    // The rating and the remark now live in two sibling <tr>s (the remark
+    // editor is a collapsible row), so resolve both from the assignment id
+    // rather than from whichever row triggered the save.
+    var aid = row.getAttribute('data-assignment');
+    var checked = form.querySelector(
+      'tr[data-assignment="' + aid + '"] input[type="radio"]:checked');
+    var remark = document.getElementById('remark_' + aid);
+    var body = new FormData();
+    body.append('csrf_token', csrf());
+    body.append('assignment_id', aid);
+    if (checked) body.append('answer', checked.value);
+    body.append('remark', remark ? remark.value : '');
+    setStatus('Saving…');
+    fetch('{{ url_for("technical_autosave") }}', {method: 'POST', body: body, credentials: 'same-origin'})
+      .then(function (r) { return r.json(); })
+      .then(function (d) {
+        if (d && d.ok) setStatus('Saved · ' + d.answered + ' of ' + d.total + ' answered');
+        else setStatus((d && d.reason === 'screened' && d.error) || 'Couldn’t save', 'failed');
+      })
+      .catch(function () { setStatus('Couldn’t save — check your connection', 'failed'); });
+  }
+  function schedule(row, delay) {
+    var aid = row.getAttribute('data-assignment');
+    clearTimeout(timers[aid]);
+    timers[aid] = setTimeout(function () { save(row); }, delay);
+  }
+  form.addEventListener('change', function (e) {
+    var row = e.target.closest('tr[data-assignment]');
+    if (!row || e.target.type !== 'radio') return;
+    row.querySelector('.rating-buttons').classList.remove('incomplete');
+    schedule(row, 0);                       // a click is a decision: save at once
+  });
+
+  // ---- completeness gate, then the confirm --------------------------------
+  form.addEventListener('submit', function (e) {
+    if (submitting) return;
+    e.preventDefault();
+    var groups = form.querySelectorAll('.rating-buttons');
+    var first = null, missing = 0;
+    groups.forEach(function (g) {
+      g.classList.remove('incomplete');
+      if (!g.querySelector('input[type="radio"]:checked')) {
+        g.classList.add('incomplete'); missing += 1;
+        if (!first) first = g;
+      }
+    });
+    if (first) {
+      if (banner) {
+        var t = document.getElementById('incomplete-banner-title');
+        if (t) t.textContent = 'You have ' + missing + ' of ' + groups.length + ' item(s) still blank.';
+        banner.hidden = false;
+      }
+      window.scrollTo({top: 0, behavior: 'smooth'});
+      setTimeout(function () { first.scrollIntoView({behavior: 'smooth', block: 'center'}); }, 250);
+      return;
+    }
+    if (banner) banner.hidden = true;
+    modal.hidden = false;
+    document.getElementById('tc-confirm-cancel').focus();
+  });
+
+  function closeModal() { modal.hidden = true; }
+  document.getElementById('tc-confirm-cancel').addEventListener('click', closeModal);
+  modal.addEventListener('click', function (e) { if (e.target === modal) closeModal(); });
+  document.addEventListener('keydown', function (e) {
+    if (e.key === 'Escape' && !modal.hidden) closeModal();
+  });
+  document.getElementById('tc-confirm-yes').addEventListener('click', function () {
+    submitting = true;
+    this.disabled = true;
+    this.textContent = 'Submitting…';
+    HTMLFormElement.prototype.submit.call(form);
+  });
+})();
+</script>
+<script>
+// ---- section remarks -------------------------------------------------------
+// One remark per section, saved on its own endpoint -- the row autosave above
+// only ever carries a competency's answer now. The collapsed preview is kept
+// in step as you type, so closing the box never hides what you just wrote.
+(function () {
+  var status = document.getElementById('tc-save-status');
+  var timers = {};
+
+  function csrf() {
+    var m = document.querySelector('meta[name="csrf-token"]');
+    return m ? m.getAttribute('content') : '';
+  }
+
+  function saveSection(ta) {
+    var body = new FormData();
+    body.append('csrf_token', csrf());
+    // The overall remark posts to its own endpoint and carries no category --
+    // there is exactly one of it, so there is no key to send or to validate.
+    if (ta.dataset.category) body.append('category', ta.dataset.category);
+    body.append('remark', ta.value);
+    fetch(ta.dataset.endpoint || '{{ url_for("technical_section_autosave") }}',
+          {method: 'POST', body: body, credentials: 'same-origin'})
+      .then(function (r) { return r.json(); })
+      .then(function (d) {
+        if (status) status.textContent = (d && d.ok) ? 'Saved'
+          : ((d && d.reason === 'screened' && d.error) || 'Couldn\u2019t save');
+      })
+      .catch(function () {
+        if (status) status.textContent = 'Couldn\u2019t save \u2014 check your connection';
+      });
+  }
+
+  document.addEventListener('input', function (e) {
+    var ta = e.target;
+    if (!ta.classList || !ta.classList.contains('tc-sec-remark')) return;
+    var box = ta.closest('details.crit-comment');
+    if (box) {
+      var peek = box.querySelector('.crit-comment-peek');
+      if (peek) peek.textContent = ta.value;
+    }
+    var key = ta.dataset.category || '';
+    clearTimeout(timers[key]);
+    timers[key] = setTimeout(function () { saveSection(ta); }, 700);
+  });
+})();
+</script>
+{% include "_tc_ai_widget.html" %}
+{% endif %}
+{% endblock %}

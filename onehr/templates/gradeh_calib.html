@@ -1,0 +1,413 @@
+{% extends "base.html" %}
+{# Grade H Appraisal, piece 5 (2026-10-28; canvases C1b, C1, C2, C2b): the HOD's Grade H potential and performance stages, and the BU CEO's
+   Grade H Talent Box. The AI+ journey's look, with the leaders' own classes (rv-calib-dist / calib-dist-* for the curve, rv-tbox-* for the
+   box, grid, drawer and list). Everything here is read from the server (gradeh_hod_view / gradeh_unit_view): the page computes no band and
+   no curve. The page's words are fixed. The one AI control, "Fit the curve with AI" (2 Nov 2026; canvas AI fit to curve), is a fixed rule like the main
+   review's fit (no model): AI+ suggests; you decide, and nothing changes until you apply. Its panel is built by static/gradeh_calib_fit.js. #}
+{% block title %}Grade H Appraisal · OneHR{% endblock %}
+{% block back_button %}{% endblock %}
+{% macro band(b, axis) %}{% if b %}{% if axis == 'perf' %}<b>{{ {'UA':1,'BE':2,'ME':3,'AE':4,'OU':5}[b] }}</b> {% endif %}<span class="potential-pill ghc-band" data-band="{{ b }}">{{ b }}</span>{% else %}<span class="ghc-dash">–</span>{% endif %}{% endmacro %}
+{% macro curve(cv, rows, verdict, kind, title, note, fit_on=false) %}
+<div class="rv-calib-dist ghc-curve">
+  <div class="ghc-curve-h"><b class="rv-cal-h4">{{ title }}</b><span class="ghc-sm">{{ note }}</span></div>
+  {% for r in rows %}
+  {% if r.url %}<a class="calib-dist-row is-filter{{ ' is-on' if r.on }}" data-code="{{ r.band }}" role="button" aria-pressed="{{ 'true' if r.on else 'false' }}" href="{{ r.url }}" title="{{ 'Show everyone again' if r.on else 'Show only ' ~ r.label ~ ' (' ~ r.n ~ ')' }}">
+  {% else %}<div class="calib-dist-row is-filter is-empty" data-code="{{ r.band }}">{% endif %}
+    <span class="calib-dist-band">{{ r.label }}</span>
+    <div class="calib-dist-bar"><span class="calib-dist-fill calib-dist-{{ r.band | lower }}" style="width: {{ r.fill }}%"></span><span class="calib-dist-tick" style="left: {{ r.tgt_pos }}%" title="Expected: {{ r.tgt }}%"></span></div>
+    <span class="calib-dist-pct">{{ r.n }} · {{ r.pct }}% <span class="rv-cal-soft">(expected {{ r.tgt }}%)</span></span>
+    <span class="calib-dist-gap is-{{ 'onTarget' if r.gap_kind == 'ok' else r.gap_kind }}">{{ r.gap }}</span>
+  {% if r.url %}</a>{% else %}</div>{% endif %}
+  {% endfor %}
+  {% if fit_on %}<div class="rv-cal-vline"><div class="rv-calib-verdict is-{{ kind }}">{{ verdict }}</div>
+    <div class="rv-cal-tools"><button type="button" class="rv-cal-fitbtn rv-ai-action" id="ghf-open" aria-haspopup="dialog" aria-controls="ghf"><svg class="rv-ico rv-ico-spark" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true" focusable="false"><path d="M12 2.5l2.3 6.2 6.2 2.3-6.2 2.3L12 19.5l-2.3-6.2L3.5 11l6.2-2.3z"/></svg>Fit the curve with AI</button></div></div>
+  {% else %}<div class="rv-calib-verdict is-{{ kind }}">{{ verdict }}</div>{% endif %}
+</div>
+{% endmacro %}
+{% block body %}
+<link rel="stylesheet" href="{{ url_for('static', filename='gradeh_calib.css') }}?v={{ asset_v }}">
+{% from "_review_icons.html" import rvicon %}
+{% if top %}
+{# The top row is the journey's own (2026-10-30; canvas 42gRB6b3xwPm7YHSH3BQWK): the view tray on the left (Mine | Dept, or Mine | BU), then the
+   leaders' tab (DR / CAL, ticked when that part is done), the open Grade H tab with its stages as steps, in the journey's classes
+   (.rv-topbar, .rv-viewtabs, .rv-modtab, .rv-mt-step). Server-rendered links; no script. #}
+<div class="rv-topbar ghc-topbar">
+  <div class="rv-topbar-nav">{% with views = top.views, active = top.view, journey = True %}{% include "_review_viewtabs.html" %}{% endwith %}</div>
+  <div class="rv-topbar-main">
+    <div id="rv-modtabs"><div class="rv-modtabs" role="tablist" aria-label="Review modules">
+      {% set L = top.leaders %}
+      <a class="rv-modtab rv-mt-min" role="tab" href="{{ L.url }}" aria-label="{{ L.full }}{% if L.done %} (done){% endif %}" title="{{ L.full }}{% if L.done %}: done{% endif %}">
+        <span class="rv-mt-name">{{ rvicon(L.icon) }}{{ L.code }}</span>
+        {% if L.done %}<span class="rv-mt-mintick" aria-hidden="true">&#10003;</span>{% endif %}
+      </a>
+      <div class="rv-modtab rv-mt-on rv-mt-exp rv-mt-gradeh" role="group" aria-label="Grade H (the part you are in)">
+        <span class="rv-mt-name"><span class="rv-mt-full">Grade H</span><span class="rv-mt-short" aria-hidden="true">Grade H</span></span>
+        <span class="rv-mt-steps">
+          {% for x in top.steps %}
+            {% if not loop.first %}<span class="rv-mt-sep"></span>{% endif %}
+            {% if x.href %}<a class="rv-mt-step rv-mt-{{ x.state }}" href="{{ x.href }}" title="{{ x.tip }}"{% if x.now %} aria-current="step"{% endif %}>
+            {% else %}<span class="rv-mt-step rv-mt-{{ x.state }}" title="{{ x.tip }}">{% endif %}
+              <span class="rv-mt-dot">{% if x.done %}&#10003;{% else %}{{ x.n }}{% endif %}</span><span class="rv-mt-steplabel">{{ x.label }}</span>
+            {% if x.href %}</a>{% else %}</span>{% endif %}
+          {% endfor %}
+        </span>
+      </div>
+    </div></div>
+  </div>
+</div>
+{% endif %}
+<div id="ghc-page" class="ghc ghc-{{ kind }}{{ ' is-person' if kind == 'unit' and v.person }}">
+
+{% if kind == 'hod' %}
+{# ===================== the HOD: C1b potential, C1 performance ===================== #}
+{% set S = v.summary %}
+<aside class="ghc-side" aria-label="Your stages">
+  <div class="ghc-sidecard{{ ' is-on' if v.stage == 'pot' }}">
+    <b>Grade H · Potential</b>
+    {% if S.pot.signed %}<span class="ghc-ok">Signed off {{ S.pot.signed_on }}</span>{% else %}<span class="ghc-sm">{{ S.pot.reviewed }} of {{ S.pot.n }} reviewed</span>{% endif %}
+    <div class="ghc-bar"><div style="width: {{ (100 * S.pot.reviewed / S.pot.n) | round | int if S.pot.n else 0 }}%"></div></div>
+    {% if v.stage != 'pot' %}<a class="ghc-sidebtn" href="{{ url_for('calib_gradeh_hod', stage='pot') }}">Open</a>{% endif %}
+  </div>
+  <div class="ghc-sidecard{{ ' is-on' if v.stage == 'perf' }}{{ ' is-off' if not S.pot.signed }}">
+    <b>Grade H · Performance</b>
+    {% if not S.pot.signed %}<span class="ghc-sm">Next, after potential</span>
+    {% else %}
+      {% if S.perf.signed %}<span class="ghc-ok">Signed off {{ S.perf.signed_on }}</span>{% else %}<span class="ghc-sm">{{ S.perf.reviewed }} of {{ S.perf.n }} reviewed · potential signed off</span>{% endif %}
+      <div class="ghc-bar"><div style="width: {{ (100 * S.perf.reviewed / S.perf.n) | round | int if S.perf.n else 0 }}%"></div></div>
+      {% if v.stage != 'perf' %}<a class="ghc-sidebtn" href="{{ url_for('calib_gradeh_hod', stage='perf') }}">Open</a>{% endif %}
+    {% endif %}
+  </div>
+  {% if v.lm_missing %}<span class="ghc-sm">{{ v.lm_missing }} {{ 'person has' if v.lm_missing == 1 else 'people have' }} no line manager input yet: shown at the default ({{ v.default_text }}), which you can agree or change</span>{% endif %}
+  {% if v.next_up and not v.cur.signed %}
+  <div class="ghc-upnext"><span class="ghc-sm">Up next</span>
+    {% for n in v.next_up[:2] %}<span class="ghc-who"><span class="ghc-av">{{ n.name[:1] }}{{ (n.name.split()[-1] or ' ')[:1] if n.name.split() | length > 1 }}</span><span><b>{{ n.name }}</b><span class="ghc-sm">{{ n.sub }}{% if n.now %} · {{ n.now }}{% endif %}</span></span></span>{% endfor %}
+    {% if v.next_up | length > 2 %}<details class="fold ghc-fold"><summary>{{ v.next_up | length - 2 }} more</summary>
+      {% for n in v.next_up[2:] %}<span class="ghc-who"><span class="ghc-av">{{ n.name[:1] }}</span><span><b>{{ n.name }}</b><span class="ghc-sm">{{ n.sub }}</span></span></span>{% endfor %}
+      <button type="button" class="fold-less" data-fold-less>Show less</button></details>{% endif %}
+  </div>
+  {% endif %}
+  <span class="ghc-sm ghc-foot">{% if v.cur.signed %}Signed off. Your BU CEO has it now.{% else %}Not signed off. Sign-off sends {{ 'potential' if v.stage == 'pot' else 'performance' }} to your BU CEO once all {{ v.n_sub }} are reviewed.{% endif %}</span>
+  {% if has_unit %}<a class="ghc-link" href="{{ url_for('calib_gradeh_unit') }}">Your unit's Talent Box</a>{% endif %}
+</aside>
+
+<section class="ghc-main">
+  <header class="ghc-head">
+    <b class="ghc-title">Department Review · Grade H {{ 'potential' if v.stage == 'pot' else 'performance' }}</b>
+  </header>
+  <div class="ghc-body">
+    <p class="ghc-say">
+      {% if v.stage == 'pot' %}Here's Grade H potential for {{ v.unit_name }}: {{ v.n_sub }} {{ 'person' if v.n_sub == 1 else 'people' }}. {% if v.lm_missing %}Anyone whose line manager has not submitted shows the default ({{ v.default_text }}). {% endif %}Each score comes from the line manager's 14 Leadership Principle answers (out of {{ v.pot_max }}): below {{ v.pot_cuts[0] }} is Low, {{ v.pot_cuts[1] }} and above is High. {% if v.curve.off %}The spread is outside the expected curve in {{ v.off_text }}.{% else %}The spread sits within the expected curve.{% endif %} Tap Review to change someone's band with your remark, tick the ones you agree with, then Save.
+      {% else %}Here's the Grade H Appraisal for {{ v.unit_name }}: {{ v.n_sub }} {{ 'person' if v.n_sub == 1 else 'people' }}. {% if v.curve.off %}The spread is outside the {{ v.curve.name }} curve in {{ v.off_text }}.{% else %}The spread sits within the {{ v.curve.name }} curve.{% endif %} Click a band on the curve to show only its people. Tap Review to change a rating with your remark, tick the people you agree with, then press Save.{% endif %}
+      {% if v.cur.locked %}<br><b>{{ v.cur.locked }}</b>{% endif %}
+    </p>
+
+    {% if v.n_people %}
+    {{ curve(v.curve, v.curve_rows, v.verdict, v.verdict_kind,
+             ('Potential curve: your team vs the expected spread' if v.stage == 'pot' else 'Calibration curve: your team vs the expected spread (' ~ v.curve.name ~ ')'),
+             (('Low below ' ~ v.pot_cuts[0] ~ ' · High from ' ~ v.pot_cuts[1] ~ ' · curve ' ~ v.curve_text) if v.stage == 'pot' else 'Grade H curve · set by Group People'), v.fit_on) }}
+    {% if v.dis_line %}<p class="ghc-disline" id="ghc-disline">{{ v.dis_line }}</p>{% endif %}
+    {% if v.picked %}<p class="ghc-sm ghc-pick">Showing {{ v.curve.labels[v.picked] }} only: {{ v.n_shown }} {{ 'person' if v.n_shown == 1 else 'people' }}. Click it again to show everyone.</p>{% endif %}
+
+    <form id="ghc-agree" method="post" action="{{ url_for('calib_gradeh_hod_agree') }}">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <input type="hidden" name="stage" value="{{ v.stage }}">
+      <input type="hidden" name="filter" value="{{ v.picked or '' }}">
+      {% for r in v.rows if not r.dis %}<input type="hidden" name="shown" value="{{ r.id }}">{% endfor %}
+    </form>
+    <div class="ghc-tablewrap">
+    <table class="ghc-table">
+      <thead><tr>
+        <th class="c-tick"><span class="sr-only">Agree</span></th><th>Person</th>
+        {% if v.stage == 'pot' %}<th>Score</th>{% else %}<th>Route</th>{% endif %}
+        <th>Line manager</th>
+        {% if v.stage == 'perf' %}<th>Potential</th>{% endif %}
+        <th>HOD</th>
+        {% if v.stage == 'perf' %}<th>Acknowledged</th>{% endif %}
+        <th class="c-act"><span class="sr-only">Review</span></th>
+      </tr></thead>
+      <tbody>
+      {% for r in v.rows %}
+      <tr id="p{{ r.id }}"{% if r.dis %} class="is-dis"{% endif %}>
+        <td class="c-tick">{% if not r.dis %}<input type="checkbox" name="agree" value="{{ r.id }}" form="ghc-agree" aria-label="Agree with {{ r.name }}"{% if r.agreed or r.moved %} checked{% endif %}{% if r.moved or v.cur.signed or v.cur.locked %} disabled{% endif %}>{% endif %}</td>
+        <td class="c-person"><b>{{ r.name }}</b><span class="ghc-sm">{{ r.title }}</span>{% if r.shared %}<span class="ghc-shared" title="Two HODs calibrate this person: your share first. Their HOD band is the two bands weighted by the split.">{{ r.shared.chip }}</span>{% endif %}{% if r.dis and v.stage == 'pot' %}<span class="ghc-dis-tag" title="Told us they do not agree with their result: not calibrated">Disagrees</span>{% endif %}{% if r.shared_wait %}<span class="ghc-nolm" title="The line manager has submitted. Group People has not filled a shared KPI yet, so there is no performance band from them: it shows the default until the figure is in.">Waiting for a shared figure</span>{% endif %}{% if r.late %}<span class="ghc-late">{{ r.late }}</span>{% endif %}</td>
+        {% if v.stage == 'pot' %}<td class="c-score"><span class="ghc-pl" hidden>Score</span>{{ r.score }} <span class="ghc-sm">· {{ r.yes }}</span></td>
+        {% else %}<td class="c-route"><span class="ghc-pl" hidden>KPI</span>{% if r.fig %}<span class="ghc-chip">{{ r.fig }}</span>{% else %}<span class="ghc-dash">–</span>{% endif %}</td>{% endif %}
+        <td class="c-lm"><span class="ghc-pl" hidden>Line manager</span>{% if r.nolm %}<span class="ghc-nolm" title="Their line manager has not submitted. The band shown is the default; agree it or change it.">No line manager input</span>{% else %}{{ band(r.lm_band, v.axis) }}{% endif %}</td>
+        {% if v.stage == 'perf' %}<td class="c-pot"><span class="ghc-pl" hidden>Potential</span>{% if r.pot_now %}{{ r.pot_now }}{% else %}<span class="ghc-dash">–</span>{% endif %}</td>{% endif %}
+        <td class="c-hod"><span class="ghc-pl" hidden>HOD</span>{% if r.hod_band %}{{ band(r.hod_band, v.axis) }}{% if r.moved %} <span class="ghc-moved" title="Your remark: {{ r.remark }}">moved</span>{% endif %}{% else %}<span class="ghc-dash">–</span>{% endif %}</td>
+        {% if v.stage == 'perf' %}<td class="c-ack"><span class="ghc-pl" hidden>Acknowledged</span>{% if r.dis %}<span class="ghc-dis-tag" title="Told us they do not agree with their result: not calibrated">Disagrees</span>{% else %}{{ r.ack }}{% endif %}</td>{% endif %}
+        <td class="c-act">
+          {% if r.dis %}<span class="ghc-lock" title="Does not agree with their result: Group People handle it. Not calibrated."><svg width="13" height="13" viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="11" width="14" height="10" rx="2" fill="none" stroke="currentColor" stroke-width="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3" fill="none" stroke="currentColor" stroke-width="2"/></svg>Not calibrated</span>
+          {% elif v.cur.signed or v.cur.locked %}<span class="ghc-sm">Locked</span>
+          {% else %}
+          <details class="ghc-mv"><summary class="ghc-btn is-outline">Review</summary>
+            <form class="ghc-mvform" method="post" action="{{ url_for('calib_gradeh_hod_move') }}">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+              <input type="hidden" name="pid" value="{{ r.id }}"><input type="hidden" name="stage" value="{{ v.stage }}"><input type="hidden" name="filter" value="{{ v.picked or '' }}">
+              <label>{{ 'Potential' if v.stage == 'pot' else 'Rating' }} for {{ r.name }}
+                <select name="band">{% for o in v.curve.order %}<option value="{{ o }}"{% if o == r.now %} selected{% endif %}>{% if v.stage == 'perf' %}{{ {'UA':1,'BE':2,'ME':3,'AE':4,'OU':5}[o] }} · {% endif %}{{ o }}{% if o == r.now %} (now){% endif %}</option>{% endfor %}</select></label>
+              <label>Your remark (needed to change a band)<textarea name="remark" rows="3" required maxlength="2500"></textarea></label>
+              <div class="ghc-actions"><button type="submit" class="ghc-btn">Save change</button></div>
+            </form>
+          </details>
+          {% endif %}
+        </td>
+      </tr>
+      {% if r.shared %}{% set S = r.shared %}
+      <tr class="ghc-co" data-shared-for="{{ r.id }}"><td class="c-tick"></td><td colspan="{{ 5 if v.stage == 'pot' else 7 }}"><div class="ghc-coline">
+        <span class="ghc-co-who"><b>{{ S.name }}</b> · {{ S.share }}% · {% if S.band %}{{ band(S.band, v.axis) }} <span class="ghc-sm">{{ S.state }}</span>{% else %}<span class="ghc-sm">{{ S.state }}</span>{% endif %}</span>
+        <span class="ghc-sm ghc-co-will">Their HOD band {{ S.will_when }}: <b>{{ S.will or '–' }}</b>{% if S.will_why %} ({{ S.will_why }}){% endif %}</span>
+      </div></td></tr>
+      {% endif %}
+      {% endfor %}
+      {% if not v.rows %}<tr><td colspan="8" class="ghc-empty">Nobody in this band.</td></tr>{% endif %}
+      </tbody>
+    </table>
+    </div>
+
+    <div class="ghc-footbar">
+      <span class="ghc-sm">
+        {% if v.cur.signed %}Signed off {{ v.cur.signed_on }}.{% else %}{{ v.cur.reviewed }} of {{ v.cur.n }} reviewed.{% endif %}
+        {% if v.reason_needed and not v.cur.signed %} The spread is off the curve: sign-off will ask you for a reason.{% endif %}
+      </span>
+      <span class="ghc-actions">
+        {% if not v.cur.signed and not v.cur.locked %}
+        <button type="submit" form="ghc-agree" class="ghc-btn is-outline">Save</button>
+        <form method="post" action="{{ url_for('calib_gradeh_hod_signoff') }}" class="ghc-inline"
+              data-confirm="Sign off Grade H {{ 'potential' if v.stage == 'pot' else 'performance' }} for {{ v.n_sub }} {{ 'person' if v.n_sub == 1 else 'people' }}? It goes to your BU CEO and you can't change it after."
+              data-confirm-ok="Sign off"{% if v.reason_needed %} data-confirm-reason="Why is the spread off the curve?"{% endif %}>
+          <input type="hidden" name="csrf_token" value="{{ csrf_token }}"><input type="hidden" name="stage" value="{{ v.stage }}">
+          <input type="hidden" name="confirm" value="1"><input type="hidden" name="reason" value="">
+          <button type="submit" class="ghc-btn"{% if not v.ready %} disabled title="Opens when every person is agreed or changed, and saved"{% endif %}>Sign off</button>
+        </form>
+        {% endif %}
+      </span>
+    </div>
+    {% else %}
+    <p class="ghc-empty">You have no Grade H people in your department.</p>
+    {% endif %}
+  </div>
+</section>
+
+{% else %}
+{# ===================== the BU CEO: C2 the box, C2b one person ===================== #}
+{% set st = v.state %}
+<aside class="ghc-side" aria-label="Your stages">
+  <div class="ghc-sidecard is-on">
+    <b>Grade H Appraisal</b>
+    <span class="ghc-sm">{{ st.hods_signed }} of {{ st.hods_total }} {{ 'department' if st.hods_total == 1 else 'departments' }} signed off by their HOD</span>
+    <div class="ghc-bar"><div style="width: {{ (100 * st.hods_signed / st.hods_total) | round | int if st.hods_total else 0 }}%"></div></div>
+    {% if st.signed %}<span class="ghc-ok">Signed off {{ v.signed_on }}</span>{% else %}<span class="ghc-sm">{{ v.n_all }} people</span>{% endif %}
+  </div>
+  {% if not v.person %}<span class="ghc-sm ghc-foot">Sign-off is the last step. Group People then sets final bands and releases results.</span>{% endif %}
+  {% if has_hod %}<a class="ghc-link" href="{{ url_for('calib_gradeh_hod') }}">Your department's stages</a>{% endif %}
+</aside>
+
+<section class="ghc-main">
+  <header class="ghc-head">
+    <b class="ghc-title">BU Review · {{ v.unit_name }}</b>
+  </header>
+  <div class="ghc-body">
+  {% if not v.person %}
+    <p class="ghc-say">Here's the Grade H Talent Box for {{ v.unit_name }}: {{ v.total }} {{ 'person' if v.total == 1 else 'people' }} placed. {{ v.super_stars }} {{ 'is a Super Star' if v.super_stars == 1 else 'are Super Stars' }} and {{ v.pip }} {{ 'sits' if v.pip == 1 else 'sit' }} in PIP/Improvement. Pick a box to see who's in it, then open anyone to read their appraisal and change their rating or potential with your remark. {% if not st.signed %}Anyone without a line manager's input shows the default ({{ v.default_text }}), and you can move anyone once the sign-off is open. {% if st.blocking %}{{ v.signoff_note }}{% else %}Every HOD has signed off.{% endif %}{% endif %}{% if v.gate %}<br><b>{{ v.gate }}</b>{% endif %}</p>
+  {% endif %}
+
+  <div class="rv-tbox ghc-box">
+    <div class="rv-cal-titlebar rv-tbox-titlebar">
+      <span class="rv-cal-title">Talent Box Calibration</span>
+      <span class="rv-cal-count">{{ v.unit_name }} · Grade H · {{ v.total }} placed</span>
+      {% if v.fit_on and not v.person %}<button type="button" class="rv-cal-fitbtn rv-ai-action ghf-titlefit" id="ghf-open" aria-haspopup="dialog" aria-controls="ghf"><svg class="rv-ico rv-ico-spark" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true" focusable="false"><path d="M12 2.5l2.3 6.2 6.2 2.3-6.2 2.3L12 19.5l-2.3-6.2L3.5 11l6.2-2.3z"/></svg>Fit the curve with AI</button>{% endif %}
+      <div class="rv-tbox-views" role="group" aria-label="View">
+        <a class="rv-tbox-view" href="{{ url_for('calib_gradeh_unit', unit=v.unit, view='grid', dept=v.dept) }}" aria-pressed="{{ 'true' if v.view == 'grid' and not v.person else 'false' }}">Grid</a>
+        <a class="rv-tbox-view" href="{{ url_for('calib_gradeh_unit', unit=v.unit, view='list', dept=v.dept) }}" aria-pressed="{{ 'true' if v.view == 'list' and not v.person else 'false' }}">List</a>
+      </div>
+    </div>
+    {% if v.units | length > 1 %}
+    <div class="ghc-pillrow"><span class="rv-grp-flbl">BU</span>
+      <div class="rv-tbox-bus">{% for x in v.units %}<a class="rv-tbox-bu{{ ' is-on' if x.company == v.unit }}" href="{{ url_for('calib_gradeh_unit', unit=x.company) }}">{{ x.name }}</a>{% endfor %}</div></div>
+    {% endif %}
+    {% if v.depts | length > 1 %}
+    <div class="ghc-pillrow"><span class="rv-grp-flbl">Dept</span>
+      <div class="rv-tbox-bus">
+        <a class="rv-tbox-bu{{ ' is-on' if not v.dept }}" href="{{ url_for('calib_gradeh_unit', unit=v.unit, view=v.view) }}">All {{ v.n_all }}</a>
+        {% for d in v.depts %}<a class="rv-tbox-bu{{ ' is-on' if v.dept == d.name }}" href="{{ url_for('calib_gradeh_unit', unit=v.unit, view=v.view, dept=d.name) }}">{{ d.name }} {{ d.n }}{% if d.hod_open %} · HOD not signed{% endif %}</a>{% endfor %}
+      </div></div>
+    {% endif %}
+
+    {% if v.person %}
+    {# ---- C2b: the box folds left, the person's page opens right ---- #}
+    {% set P = v.person %}
+    <div class="ghc-pbody">
+      <aside class="ghc-fold" aria-label="The box">
+        <div class="ghc-mini" role="group" aria-label="The Talent Box, 3 by 3">
+          {% for c in v.cells %}<a class="ghc-mini-cell{{ ' is-on' if c.key == P.box }}" data-cat="{{ c.label | lower | replace('/', '-') | replace(' ', '-') }}" href="{{ url_for('calib_gradeh_unit', unit=v.unit, p=P.item.id, box=c.key, tab=P.tab, dept=v.dept) }}" title="{{ c.label }}: {{ c.pot }} potential, {{ c.col_label }} performance, {{ c.n }}">{{ c.n }}</a>{% endfor %}
+        </div>
+        <div class="ghc-mini-ax"><span>↑ Potential</span><span>Performance →</span></div>
+        <div class="ghc-mini-h"><span class="rv-tbox-dpill" data-cat="{{ v.selc.label | lower | replace('/', '-') | replace(' ', '-') }}">{{ v.selc.label }}</span><span class="ghc-sm">{{ v.selc.n }} {{ 'person' if v.selc.n == 1 else 'people' }}</span></div>
+        <div class="ghc-mini-list">
+          {% for i in v.selc.people[:6] %}<a class="ghc-mini-p{{ ' is-on' if i.id == P.item.id }}" href="{{ url_for('calib_gradeh_unit', unit=v.unit, p=i.id, box=P.box, tab=P.tab, dept=v.dept) }}"><b>{{ i.name }}</b><span class="ghc-sm">{{ i.dept | proper }} · Grade H</span></a>{% endfor %}
+          {% if v.selc.people | length > 6 %}<details class="fold ghc-fold-d"><summary>{{ v.selc.people | length - 6 }} more</summary>
+            {% for i in v.selc.people[6:] %}<a class="ghc-mini-p{{ ' is-on' if i.id == P.item.id }}" href="{{ url_for('calib_gradeh_unit', unit=v.unit, p=i.id, box=P.box, tab=P.tab, dept=v.dept) }}"><b>{{ i.name }}</b><span class="ghc-sm">{{ i.dept | proper }} · Grade H</span></a>{% endfor %}
+            <button type="button" class="fold-less" data-fold-less>Show less</button></details>{% endif %}
+        </div>
+      </aside>
+      <section class="ghc-person" aria-label="{{ P.item.name }}">
+        <div class="ghc-phead">
+          <span class="ghc-pwho"><b>{{ P.item.name }}</b><span class="ghc-sm">{{ P.item.title }} · {{ P.item.dept | proper }} · Grade H · {{ 'KPI route' if P.item.route == 'A' else 'Line manager route' }}</span></span>
+          <span class="ghc-pager">
+            {% if P.pager.prev %}<a href="{{ url_for('calib_gradeh_unit', unit=v.unit, p=P.pager.prev, box=P.box, tab=P.tab, dept=v.dept) }}" data-scroll-top aria-label="Previous person">‹</a>{% else %}<span class="is-off">‹</span>{% endif %}
+            <span>{{ P.pager.i }} of {{ P.pager.n }}</span>
+            {% if P.pager.next %}<a href="{{ url_for('calib_gradeh_unit', unit=v.unit, p=P.pager.next, box=P.box, tab=P.tab, dept=v.dept) }}" data-scroll-top aria-label="Next person">›</a>{% else %}<span class="is-off">›</span>{% endif %}
+            <a class="ghc-x" href="{{ url_for('calib_gradeh_unit', unit=v.unit, box=P.box, view=v.view, dept=v.dept) }}" aria-label="Back to the box">×</a>
+          </span>
+        </div>
+        <nav class="ghc-tabs" aria-label="Their page">
+          {% for k, lbl in (('sum','Summary'),('perf','Performance'),('pot','Potential'),('comments','Comments')) %}<a class="ghc-tab{{ ' is-on' if P.tab == k }}" href="{{ url_for('calib_gradeh_unit', unit=v.unit, p=P.item.id, box=P.box, tab=k, dept=v.dept) }}"{% if P.tab == k %} aria-current="page"{% endif %}>{{ lbl }}</a>{% endfor %}
+        </nav>
+        {% set D = P.detail %}{% set I = P.item %}
+        <div class="ghc-pcontent">
+        {% if P.tab == 'sum' %}
+          <div class="ghc-grid2">
+            <div class="ghc-pcard"><span class="ghc-pk">Performance</span>
+              <div class="ghc-chain"><span>Line manager</span><span>{% if I.nolm %}<span class="ghc-nolm">No line manager input</span>{% else %}{{ band(I.lm_perf.split()[-1] if I.lm_perf else None, 'perf') }}{% if I.fig %} <span class="ghc-sm">({{ I.fig }})</span>{% endif %}{% endif %}</span></div>
+              {% if I.dis %}<div class="ghc-chain"><span>Acknowledged</span><span><span class="ghc-dis-tag">Disagrees</span></span></div>
+              {% else %}<div class="ghc-chain"><span>{{ 'HOD · shared' if I.hods else 'HOD' }}</span><span>{{ band(I.hod_perf.split()[-1] if I.hod_perf else None, 'perf') }}{% if I.hod_open %} <span class="ghc-sm">not signed off</span>{% endif %}</span></div>
+              {% for h in I.hods %}<div class="ghc-chain ghc-co-sum"><span class="ghc-sm">{{ h.name }} · {{ h.share }}%</span><span class="ghc-sm">{% if h.perf %}{{ h.perf }}{% else %}no call yet{% endif %}{% if h.perf_signed %} · signed off{% elif h.perf %} · not signed off{% endif %}</span></div>{% endfor %}{% endif %}
+              {% for m in D.moves if m.axis == 'perf' %}<div class="ghc-chain"><span>{{ (m.by if (I.hods and m.by) else 'HOD') if m.stage == 'hod' else 'You' }} moved it</span><span>{{ m.came_in or '–' }} → <b>{{ m.band }}</b> <span class="ghc-sm">{{ m.when }}</span></span></div><p class="ghc-quote">{{ m.stage | upper if m.stage == 'hod' else 'You' }}: "{{ m.remark }}"</p>{% endfor %}
+            </div>
+            <div class="ghc-pcard"><span class="ghc-pk">Potential</span>
+              <div class="ghc-chain"><span>Line manager</span><span>{% if I.nolm %}<span class="ghc-nolm">No line manager input</span>{% else %}{{ band(I.lm_pot or None, 'pot') }}{% endif %}</span></div>
+              {% if not I.dis %}<div class="ghc-chain"><span>{{ 'HOD · shared' if I.hods else 'HOD' }}</span><span>{{ band(I.hod_pot or None, 'pot') }}{% if I.hod_open %} <span class="ghc-sm">not signed off</span>{% endif %}</span></div>
+              {% for h in I.hods %}<div class="ghc-chain ghc-co-sum"><span class="ghc-sm">{{ h.name }} · {{ h.share }}%</span><span class="ghc-sm">{% if h.pot %}{{ h.pot }}{% else %}no call yet{% endif %}{% if h.pot_signed %} · signed off{% elif h.pot %} · not signed off{% endif %}</span></div>{% endfor %}{% endif %}
+              {% for m in D.moves if m.axis == 'pot' %}<div class="ghc-chain"><span>{{ (m.by if (I.hods and m.by) else 'HOD') if m.stage == 'hod' else 'You' }} moved it</span><span>{{ m.came_in or '–' }} → <b>{{ m.band }}</b> <span class="ghc-sm">{{ m.when }}</span></span></div><p class="ghc-quote">{{ m.stage | upper if m.stage == 'hod' else 'You' }}: "{{ m.remark }}"</p>{% endfor %}
+              {% if not I.dis %}<div class="ghc-chain"><span>Acknowledged</span><span>{{ I.ack }}</span></div>{% endif %}
+              {% if I.late %}<p class="ghc-late">{{ I.late }}</p>{% endif %}
+              {% if I.nolm %}<p class="ghc-sm">No line manager input, so the default band ({{ v.default_text }}) is shown until you or the HOD change it. It is never recorded as the line manager's.</p>{% endif %}
+            </div>
+            <div class="ghc-pcard"><span class="ghc-pk">Line manager's comments</span>
+              {% if D.b %}<p class="ghc-p">{{ D.b.ach | truncate(110) }}. Full text under Comments.</p>{% endif %}
+              <p class="ghc-p">Promotion nomination: <b>{{ 'Yes' if D.promo and D.promo.yes else 'No' }}</b></p>
+            </div>
+            {% include '_gradeh_calib_call.html' %}
+          </div>
+        {% elif P.tab == 'perf' %}
+          <div class="ghc-pcard">
+            <span class="ghc-pk">Performance · {{ 'what the line manager rated' if D.route == 'B' else 'KPI achievement' }}</span>
+            {% if D.route == 'B' %}
+            <table class="ghc-mini-table"><thead><tr><th>Attribute</th><th>Rating</th></tr></thead><tbody>
+            {% for a in D.attrs %}<tr><td>{{ a.title }}</td><td>{% if a.rating %}<b>{{ a.rating }}</b> {{ a.label }}{% else %}–{% endif %}</td></tr>{% endfor %}
+            </tbody></table>
+            {% else %}
+            <table class="ghc-mini-table"><thead><tr><th>KPI</th><th>Weight</th><th>Theirs</th><th>Line manager</th></tr></thead><tbody>
+            {% for k in D.kpis %}<tr><td>{{ k.name }}{% if k.reason %}<span class="ghc-sm"> · {{ k.reason }}</span>{% endif %}</td><td>{{ k.weight }}%</td><td>{{ k.theirs }}{% if k.theirs %}%{% endif %}</td><td>{{ k.figure }}</td></tr>{% endfor %}
+            </tbody></table>
+            {% endif %}
+          </div>
+          <div class="ghc-grid2">{% include '_gradeh_calib_call.html' %}</div>
+        {% elif P.tab == 'pot' %}
+          <div class="ghc-pcard"><span class="ghc-pk">Potential · the 14 Leadership Principle answers</span>
+            <table class="ghc-mini-table"><thead><tr><th>Principle</th><th>Statement</th><th>Answer</th></tr></thead><tbody>
+            {% for lp in D.lps %}{% for s in lp.st %}<tr><td>{% if s.n == 1 %}{{ lp.n }} · {{ lp.title }}{% endif %}</td><td>{{ s.text }} <span class="ghc-sm">({{ s.w }})</span></td><td>{{ 'Yes' if s.yes else 'Not yet' }}</td></tr>{% endfor %}{% endfor %}
+            </tbody></table>
+          </div>
+          <div class="ghc-grid2">{% include '_gradeh_calib_call.html' %}</div>
+        {% else %}
+          <div class="ghc-pcard"><span class="ghc-pk">Line manager's comments</span>
+            {% if D.b %}
+            <p class="ghc-p"><b>Achievements.</b> {{ D.b.ach }}</p>
+            <p class="ghc-p"><b>Strengths.</b> {{ D.b.str }}</p>
+            <p class="ghc-p"><b>Development.</b> {{ D.b.dev }}</p>
+            {% endif %}
+            <p class="ghc-p promo"><b>Promotion nomination: {{ 'Yes' if D.promo and D.promo.yes else 'No' }}.</b>{% if D.promo and D.promo.yes and D.promo.reason %} {{ D.promo.reason }}{% endif %}</p>
+          </div>
+          <div class="ghc-grid2">{% include '_gradeh_calib_call.html' %}</div>
+        {% endif %}
+        </div>
+      </section>
+    </div>
+
+    {% elif v.view == 'grid' %}
+    <div class="rv-tbox-body is-grid">
+      <div class="rv-tbox-grid">
+        <span class="rv-tbox-axbtn is-y"><span class="rv-tbox-axin"><span class="rv-tbox-axbtn-t">Potential</span><span class="rv-tbox-axbtn-a">→</span></span></span>
+        {% for rw in v.rowh %}
+          <div class="rv-tbox-rowh"><span class="rv-tbox-axt"><b>{{ rw.pot }}</b></span><span class="rv-tbox-axn">{{ rw.n }} · {{ rw.pct }}%</span></div>
+          {% for c in v.cells if c.pot == rw.pot %}
+          <a class="rv-tbox-cell{{ ' is-on' if c.key == v.sel }}{{ ' is-faded' if c.key != v.sel }}" data-cat="{{ c.label | lower | replace('/', '-') | replace(' ', '-') }}" href="{{ url_for('calib_gradeh_unit', unit=v.unit, box=c.key, dept=v.dept) }}" aria-label="{{ c.label }}: {{ c.pot | lower }} potential, {{ c.col_label | lower }} performance, {{ c.n }} {{ 'person' if c.n == 1 else 'people' }}, {{ c.pct }}%"{% if c.key == v.sel %} aria-current="true"{% endif %}>
+            <span class="rv-tbox-cellh"><span class="rv-tbox-cat">{{ c.label }}</span>{% if c.moved %}<span class="rv-tbox-mv">{{ c.moved }} moved</span>{% endif %}</span>
+            <span class="rv-tbox-num"><span class="rv-tbox-big">{{ c.n }}</span><span class="rv-tbox-pct">{{ c.pct }}%</span></span>
+            <span class="rv-tbox-faces" aria-hidden="true">{% for f in c.faces %}<span class="rv-tbox-face">{{ f }}</span>{% endfor %}{% if c.more %}<span class="rv-tbox-fmore">+{{ c.more }}</span>{% endif %}</span>
+          </a>
+          {% endfor %}
+        {% endfor %}
+        <div class="rv-tbox-corner"></div>
+        {% for cf in v.colf %}<div class="rv-tbox-colf"><span class="rv-tbox-axt"><b>{{ cf.label }}</b> · {{ cf.bands | join(' · ') }}</span><span class="rv-tbox-axn">{{ cf.n }} · {{ cf.pct }}%</span></div>{% endfor %}
+        <div class="rv-tbox-xaxis"><span class="rv-tbox-axbtn is-x"><span class="rv-tbox-axin"><span class="rv-tbox-axbtn-t">Performance</span><span class="rv-tbox-axbtn-a">→</span></span></span></div>
+      </div>
+      <aside class="rv-tbox-drawer" aria-label="People in the box you picked">
+        <div class="rv-tbox-dhead">
+          <div class="rv-tbox-dtop"><span class="rv-tbox-dpill" data-cat="{{ v.selc.label | lower | replace('/', '-') | replace(' ', '-') }}">{{ v.selc.label }}</span>
+            <span class="rv-tbox-dn">{{ v.selc.n }} {{ 'person' if v.selc.n == 1 else 'people' }} · {{ v.selc.pct }}% of {{ v.unit_name }}</span></div>
+          <h4 class="rv-tbox-dtitle">{{ v.selc.pot }} potential · {{ v.selc.col_label }} performance ({{ v.selc.bands | join(' · ') }})</h4>
+          {% if v.selc.n > 6 %}<form method="get" class="rv-tbox-search"><input type="hidden" name="unit" value="{{ v.unit }}"><input type="hidden" name="box" value="{{ v.sel }}"><input type="hidden" name="dept" value="{{ v.dept or '' }}"><input type="text" inputmode="search" enterkeyhint="search" name="q" value="{{ v.q }}" placeholder="Find a name or department" aria-label="Find a name or department" autocomplete="off"></form>{% endif %}
+        </div>
+        <div class="rv-tbox-plist">
+          {% for i in v.drawer[:12] %}{% include '_gradeh_calib_prow.html' %}{% endfor %}
+          {% if v.drawer | length > 12 %}<details class="fold ghc-fold-d"><summary>{{ v.drawer | length - 12 }} more</summary>
+            {% for i in v.drawer[12:] %}{% include '_gradeh_calib_prow.html' %}{% endfor %}
+            <button type="button" class="fold-less" data-fold-less>Show less</button></details>{% endif %}
+          {% if not v.drawer %}<p class="rv-tbox-none">No one is in this box{{ ' that matches that' if v.q }}.</p>{% endif %}
+        </div>
+      </aside>
+    </div>
+    {% else %}
+    <div class="ghc-tablewrap">
+    <form method="get" class="rv-tbox-search ghc-listsearch"><input type="hidden" name="unit" value="{{ v.unit }}"><input type="hidden" name="view" value="list"><input type="hidden" name="dept" value="{{ v.dept or '' }}">{% if v.moved_only %}<input type="hidden" name="moved" value="1">{% endif %}<input type="text" inputmode="search" enterkeyhint="search" name="q" value="{{ v.q }}" placeholder="Find a name or department" aria-label="Find a name or department" autocomplete="off"></form>
+    <table class="ghc-table ghc-listtable">
+      <thead><tr><th>Person</th><th>Department</th><th>Route</th><th>Performance</th><th>Potential</th><th>Box</th><th>HOD</th><th class="c-act"><span class="sr-only">Open</span></th></tr></thead>
+      <tbody>
+      {% for i in v.listing %}
+      <tr>
+        <td class="c-person"><b>{{ i.name }}</b><span class="ghc-sm">{{ i.title }}</span>{% if i.dis %}<span class="ghc-dis-tag" title="Told us they do not agree with their result: not calibrated">Disagrees</span>{% endif %}{% if i.nolm %}<span class="ghc-nolm">No line manager input</span>{% elif i.shared_wait %}<span class="ghc-nolm" title="Group People has not filled a shared KPI yet, so there is no performance band from the line manager.">Waiting for a shared figure</span>{% endif %}{% if i.late %}<span class="ghc-late">{{ i.late }}</span>{% endif %}</td>
+        <td class="c-dept">{{ i.dept | proper }}</td><td class="c-route"><span class="ghc-pl" hidden>KPI</span>{% if i.fig %}<span class="ghc-chip">{{ i.fig }}</span>{% else %}<span class="ghc-dash">–</span>{% endif %}</td>
+        <td class="c-perf"><span class="ghc-pl" hidden>Performance</span>{{ band(i.perf, 'perf') }}</td><td class="c-pot"><span class="ghc-pl" hidden>Potential</span>{{ band(i.pot, 'pot') }}</td><td class="c-box"><span class="ghc-pl" hidden>Box</span>{{ i.label }}</td>
+        <td class="c-hod"><span class="ghc-pl" hidden>HOD</span>{% if i.dis %}<span class="ghc-sm">Not calibrated</span>{% elif i.hod_open %}<span class="ghc-sm">Not signed off</span>{% elif i.moved_by == 'HOD' %}Moved{% else %}Signed{% endif %}</td>
+        <td class="c-act"><a class="ghc-link" href="{{ url_for('calib_gradeh_unit', unit=v.unit, p=i.id, view='list', dept=v.dept) }}">Open</a></td>
+      </tr>
+      {% endfor %}
+      {% if not v.listing %}<tr><td colspan="8" class="ghc-empty">Nobody here{{ ' that you moved' if v.moved_only }}.</td></tr>{% endif %}
+      </tbody>
+    </table>
+    </div>
+    {% endif %}
+
+    {% if v.curve_line %}<p class="ghc-disline" id="ghc-disline">{{ v.curve_line }}</p>{% endif %}
+    {% if not v.person %}
+    <div class="ghc-footbar">
+      <span class="ghc-sm">{% if v.lock %}{{ v.lock }}{% elif v.off_text %}{{ v.off_text }}{% elif st.blocking %}{{ st.blocking | length }} {{ "HOD hasn't" if st.blocking | length == 1 else "HODs haven't" }} signed off yet.{% else %}Both curves are within the expected spread.{% endif %}</span>
+      <span class="ghc-actions">
+        <a class="ghc-link{{ ' is-on' if v.moved_only }}" href="{{ url_for('calib_gradeh_unit', unit=v.unit, view='list', moved=1, dept=v.dept) }}">↕ Moved {{ v.n_moved }}</a>
+        {% if st.signed %}<span class="ghc-ok">Signed off {{ v.signed_on }}</span>
+        {% elif not v.lock %}
+        <form method="post" action="{{ url_for('calib_gradeh_unit_signoff') }}" class="ghc-inline"
+              data-confirm="Sign off Grade H Appraisal for {{ v.unit_name }}?{% if v.signoff_note %} {{ v.signoff_note }}{% endif %} Group People sets the final bands next and you can't change it after."
+              data-confirm-ok="Sign off"{% if v.reason_needed %} data-confirm-reason="Why is the spread off the curve?"{% endif %}>
+          <input type="hidden" name="csrf_token" value="{{ csrf_token }}"><input type="hidden" name="unit" value="{{ v.unit }}">
+          <input type="hidden" name="confirm" value="1"><input type="hidden" name="reason" value="">
+          <button type="submit" class="ghc-btn"{% if v.gate %} disabled title="{{ v.gate }}"{% elif not st.ready %} disabled title="Nobody is on this unit's Grade H list"{% endif %}>Sign off</button>
+        </form>
+        {% endif %}
+      </span>
+    </div>
+    {% endif %}
+  </div>
+  </div>
+</section>
+{% endif %}
+</div>
+{% if v.fit_on %}
+<div id="ghf" hidden data-kind="{{ kind }}" data-url="{{ url_for('calib_gradeh_hod_fit') if kind == 'hod' else url_for('calib_gradeh_unit_fit') }}" data-csrf="{{ csrf_token }}"
+     {% if kind == 'hod' %}data-stage="{{ v.stage }}" data-axis="{{ v.axis }}"{% else %}data-unit="{{ v.unit }}" data-axis="{{ 'pot' if v.curves.pot.breaches and not v.curves.perf.breaches else 'perf' }}"{% endif %}></div>
+<script src="{{ url_for('static', filename='gradeh_calib_fit.js') }}?v={{ asset_v }}" defer></script>
+{% endif %}
+{% endblock %}

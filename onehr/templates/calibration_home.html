@@ -1,0 +1,18 @@
+{% extends "base.html" %}
+{% block title %}Calibration{% endblock %}
+{% block body %}
+
+<div class="page-head">
+  <div>
+    <h1>Calibration</h1>
+    <p class="muted">You hold more than one calibration scope — choose which one to open.</p>
+  </div>
+</div>
+
+<div class="quick-actions">
+  {% for label, href in links %}
+    <a class="tile-sm" href="{{ href }}"><strong>{{ label }}</strong></a>
+  {% endfor %}
+</div>
+
+{% endblock %}

@@ -1,0 +1,28 @@
+{% extends "base.html" %}
+{% block title %}AI+ Learning · Calendar{% endblock %}
+{% block body %}
+{# The learning calendar's own page (2026-10-22; canvas [design canvas link removed] boards 8A, 8C):
+   the month or the list, with the learning coach on the left. Mine, Team and Dept are the AI+ shell (learning/shell.html,
+   2026-10-22, section 17); the calendar opens from its Find tab. #}
+{% if coach %}{% include "learning/_coach.html" %}{% endif %}
+<div class="ls{{ ' has-coach' if coach }} ls-v-{{ view }}">
+  <header class="ls-head">
+    <span class="ls-pill">AI+ Learning</span>
+    <nav class="ls-views" aria-label="Views">
+      {% for k, lab in views %}<a href="{{ url_for('learning_home', view=k) }}" class="{{ 'is-on' if k == view }}"{% if k == view %} aria-current="page"{% endif %}>{{ lab }}{% if n_view.get(k) %} · {{ n_view[k] }}{% endif %}</a>{% endfor %}
+    </nav>
+    <span class="ls-grow"></span>
+    <a class="ls-back" href="{{ url_for('dashboard') }}">Dashboard</a>
+  </header>
+  <div class="ls-body">
+    <aside class="ls-queue" aria-label="On this page">
+      <span class="ls-k">The calendar</span>
+      <a href="{{ cal_url(s=None, mode=None) }}" class="ls-q"><span>This month</span><b>{{ cal.events | length }}</b></a>
+      <a href="{{ url_for('learning_home', tab='find') }}#upcoming" class="ls-q"><span>Yours coming up</span></a>
+      <span class="ls-k">Find more</span>
+      <a href="{{ url_for('learning_home', tab='find') }}#runs" class="ls-q"><span>Runs for your plan</span></a>
+    </aside>
+    <div class="ls-main">{% include "learning/_calendar.html" %}</div>
+  </div>
+</div>
+{% endblock %}

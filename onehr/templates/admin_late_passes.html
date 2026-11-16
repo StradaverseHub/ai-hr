@@ -1,0 +1,69 @@
+{% extends "base.html" %}
+{% from "_mode_switch.html" import calendar_modes with context %}
+{% from "_search_in.html" import search_in_box %}
+{% block title %}Late passes{% endblock %}
+{% block body %}
+{# Cycle > Calendar > Late passes (Chris, 2026-10-31, canvas "OneHR Late pass", board C1): every late pass of the cycle in one list.
+   A pass opens ONE closed part for ONE person until a time; it ends when they submit or lock, when its time passes, or when
+   the super admin ends it. Given from the person's page (Overview > Past the deadline); ended here or there. #}
+{{ calendar_modes('late', cyc['id'] if cyc else None) }}
+<div class="adm-headrow">
+  <p class="adm-lede lp-lede">Every late pass in {{ cyc['name'] if cyc else 'the cycle' }}. A pass opens one closed part for one person until its time; it ends when they submit or lock, or when you end it. Give one from the person's page.</p>
+  {% if cycles %}
+  <form method="get" class="adm-cal-pick">
+    <label>Cycle <select name="cycle" class="modern-select" onchange="this.form.submit()">
+      {% for c in cycles %}<option value="{{ c['id'] }}" {% if cyc and c['id'] == cyc['id'] %}selected{% endif %}>{{ c['name'] }}{% if c['is_active'] %} &middot; active{% endif %}</option>{% endfor %}
+    </select></label>
+  </form>
+  {% endif %}
+</div>
+
+{% if not cyc %}
+<div class="admin-card"><p class="muted small" style="margin:0">No cycle exists yet.</p></div>
+{% else %}
+<section class="admin-card adm-filters" aria-label="Filters">
+  <form method="get" class="adm-fsearch rr-filters">
+    <input type="hidden" name="cycle" value="{{ cyc['id'] }}">
+    {{ search_in_box(search_in, qin, q, label='Search late passes') }}
+    <select name="show" class="modern-select" onchange="this.form.submit()" aria-label="Show">
+      <option value="all" {{ 'selected' if show == 'all' }}>Everything ({{ counts['all'] }})</option>
+      <option value="open" {{ 'selected' if show == 'open' }}>Open ({{ counts['open'] }})</option>
+      <option value="used" {{ 'selected' if show == 'used' }}>Used ({{ counts['used'] }})</option>
+      <option value="ended" {{ 'selected' if show == 'ended' }}>Ended ({{ counts['ended'] }})</option>
+    </select>
+  </form>
+</section>
+
+<section class="admin-card lp-list" aria-label="Late passes">
+  <div class="table-scroll">
+  <table class="admin-table lp-table">
+    <thead><tr><th>Person</th><th>Part</th><th>Open until</th><th>Given by</th><th>Reason</th><th>Status</th><th><span class="sr-only">End pass</span></th></tr></thead>
+    <tbody>
+      {% for r in rows %}
+      <tr>
+        <td><a class="lp-name" href="{{ url_for('admin_person', uid=r['uid']) }}"><b>{{ r['full_name'] }}</b></a><span class="muted small lp-sub">{{ r['employee_id'] or '' }}{% if r['department'] %} · {{ r['department'] | proper }}{% endif %}</span></td>
+        <td>{{ r['part'] }}{% if r['part_sub'] %}<span class="muted small lp-sub">{{ r['part_sub'] }}</span>{% endif %}</td>
+        <td class="lp-nowrap">{{ r['until_disp'] }}</td>
+        <td>{{ r['given_name'] or 'Group People' }}<span class="muted small lp-sub">{{ r['given_day'] }}</span></td>
+        <td class="lp-why">&ldquo;{{ r['reason'] }}&rdquo;</td>
+        <td><span class="lp-st is-{{ r['status'] }}">{{ r['status_text'] }}</span></td>
+        <td class="lp-act">
+          {% if r['status'] == 'open' %}
+          <form method="post" action="{{ url_for('admin_person_late_end', uid=r['uid']) }}"
+                data-confirm="It closes for {{ r['full_name'] }} again now. What they entered stays as it is, and nothing is sent to them." data-confirm-title="End {{ r['full_name'] }}'s late pass for the {{ r['part'] | lower }}?" data-confirm-ok="End pass" data-confirm-tone="danger">
+            <input type="hidden" name="pass_id" value="{{ r['id'] }}"><input type="hidden" name="back" value="list">
+            <button type="submit" class="lp-end">End pass</button>
+          </form>
+          {% endif %}
+        </td>
+      </tr>
+      {% else %}
+      <tr><td colspan="7" class="muted lp-none">{% if q or show != 'all' %}No late pass matches.{% else %}No late pass has been given in {{ cyc['name'] }} yet. Give one from a person's page, under Past the deadline.{% endif %}</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  </div>
+</section>
+<p class="muted small lp-foot">Super admin only. Each give and end is in Audit and usage with its reason.</p>
+{% endif %}
+{% endblock %}

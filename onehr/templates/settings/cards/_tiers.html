@@ -1,0 +1,43 @@
+{# Settings card: tiers. Split out of the old General page (2026-10-10) so it lives on its module's settings page;
+   it posts to admin_settings, which sends you back to `settings_next` when the including page sets it. #}
+  <p class="muted small">Open a grade band to see exactly what it is rated on. To change the wording or the behaviours, use
+    the Framework{% if not nav_is_super %} (the super admin's){% endif %} (active cycle).</p>
+  <details class="muted small">
+    <summary>Why this matters</summary>
+    <p>Each person is rated against the behaviours for their <strong>grade band</strong>, set automatically from their
+      job grade. Every behaviour is rated at two levels: <strong>Current</strong> (expected now) and
+      <strong>Future</strong> (stretch, readiness for the next level). The leadership principles are common to
+      every band; the specific behaviours differ by band.</p>
+  </details>
+  <div class="tier-summary">
+    {% for t in tiers %}
+      <span class="tier-chip" data-tier="{{ t['n'] }}">{{ t['name'] }} · {{ t['grades'] }}</span>
+    {% endfor %}
+  </div>
+
+  {% for t in tiers %}
+  <details class="tier-detail">
+    <summary>
+      <span class="tier-pill" data-tier="{{ t['n'] }}">{{ t['name'] }}</span>
+      <span class="tier-grades">{{ t['grades'] }}</span>
+      <span class="muted small">— {{ t['n_current'] }} current + {{ t['n_future'] }} future behaviours across {{ t['principles']|length }} principles</span>
+    </summary>
+    <div class="tier-body">
+      {% for p in t['principles'] %}
+      <div class="tier-principle">
+        <h4>{{ loop.index }}. {{ p['name'] }}</h4>
+        <div class="tier-cols">
+          <div>
+            <div class="tier-col-label tcl-current">Current level</div>
+            <ul>{% for s in p['current'] %}<li>{{ s }}</li>{% endfor %}</ul>
+          </div>
+          <div>
+            <div class="tier-col-label tcl-future">Future level</div>
+            <ul>{% for s in p['future'] %}<li>{{ s }}</li>{% endfor %}</ul>
+          </div>
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+  </details>
+  {% endfor %}

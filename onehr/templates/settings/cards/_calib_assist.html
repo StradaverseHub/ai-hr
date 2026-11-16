@@ -1,0 +1,27 @@
+{# Settings card: calib_assist. Split out of the old General page (2026-10-10) so it lives on its module's settings page;
+   it posts to admin_settings, which sends you back to `settings_next` when the including page sets it. #}
+  <p class="muted small">A chat that helps HODs and business unit CEOs calibrate performance: it flags who is off the
+    curve and suggests moves.
+    {% if not calib_assist_configured %}
+    <br><strong>Note:</strong> no AI model is configured, so the assistant stays hidden until one is
+    set even when this switch is on.
+    {% endif %}
+  </p>
+  <details class="muted small">
+    <summary>Why this matters</summary>
+    <p>It suggests moves toward the curve and drafts the rationale from each person's evidence. The calibrator still
+      makes every call and locks it themselves; the grid stays the main screen, and a link to the assistant appears
+      on it when this is on.</p>
+  </details>
+  <form method="post" action="{{ url_for('admin_settings') }}" class="admin-form adm-set-form"
+        data-confirm="Save this setting? It decides whether HODs and business unit CEOs see the calibration assistant on their grid. Nothing already calibrated changes."
+        data-confirm-ok="Save">
+    <input type="hidden" name="next" value="{{ (settings_next ~ '#calib-assist') if settings_next else '' }}">
+    <input type="hidden" name="action" value="calib_assist">
+    <label class="switch">
+      <input type="checkbox" name="calib_assist_on" value="1" {% if calib_assist_on %}checked{% endif %}>
+      <span class="track" aria-hidden="true"></span>
+      <span class="switch-label">Turn on the calibration assistant</span>
+    </label>
+    <div class="actions"><button type="submit" class="primary">Save</button></div>
+  </form>

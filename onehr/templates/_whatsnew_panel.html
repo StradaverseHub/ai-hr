@@ -1,0 +1,12 @@
+{# What's new's panel (2026-11-03, canvas board M2): the account menu's What's new, in Help's shell (.hp: the right, 480px, under the
+   top bar). static/whatsnew.js fills it from GET /me/whats-new when it opens, then posts the notes it showed as seen. No model. #}
+<div class="hp-dim" data-wn-dim hidden></div>
+<aside class="hp wn-panel" id="oh-whatsnew" role="dialog" aria-modal="true" aria-labelledby="wn-panel-h" hidden
+       data-list-url="{{ url_for('whats_new_list') }}" data-seen-url="{{ url_for('whats_new_seen') }}">
+  <header class="hp-head">
+    <div><h2 class="hp-h" id="wn-panel-h" tabindex="-1">What's new</h2>
+      <p class="hp-sub">Changes in AI+ OneHR that you can use.</p></div>
+    <button type="button" class="hp-x" data-wn-panel-close aria-label="Close What's new"><svg width="14" height="14" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 5l14 14M19 5L5 19"/></svg></button>
+  </header>
+  <div class="hp-body wn-body" data-wn-body><p class="hp-note">Loading…</p></div>
+</aside>

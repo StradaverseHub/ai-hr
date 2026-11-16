@@ -1,0 +1,17 @@
+{# Compact progress rail for the dashboard's "Your review" card. Read-only: the
+   card's CTA goes to /review, which resumes at the right stage, so the stages
+   here are a progress indicator rather than links -- the chat stays the one
+   entry into the flow. A switched-off stage is already absent (dash_review_
+   summary drops 'off' before this renders). #}
+<ol class="rv-mini">
+  {% for x in review['stages'] %}
+    <li class="rv-mini-{{ x['state'] }}">
+      <span class="rv-mini-dot" aria-hidden="true"></span>
+      <span class="rv-mini-label">{{ x['short'] }}</span>
+      {% if x['state'] == 'done' %}<span class="muted small">done</span>
+      {% elif x['state'] == 'waiting' %}<span class="muted small">with {{ x['blocked_on'] or 'your manager' }}</span>
+      {% elif x['state'] == 'open' and x['n_total'] %}<span class="muted small">{{ x['n_open'] }} of {{ x['n_total'] }} left</span>
+      {% elif x['state'] == 'later' %}<span class="muted small">not yet</span>{% endif %}
+    </li>
+  {% endfor %}
+</ol>

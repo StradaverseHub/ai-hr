@@ -1,0 +1,445 @@
+{% extends "base.html" %}
+{% block title %}Feedback - {{ subject['full_name'] }}{% endblock %}
+{% block body %}
+{% set RATING_LABELS = {'yes': 'Demonstrate', 'no': 'Developing', None: '—'} %}
+{% set RATING_TIPS = {
+     'yes': 'He/she shows this ≥ 70% of the time',
+     'no':  'He/she is still growing into it'
+} %}
+
+{% macro pills(statement_id, current_val, disabled=False, is_future=0, labelledby=None) %}
+  <div class="rating-buttons" role="radiogroup"
+       {% if labelledby %}aria-labelledby="{{ labelledby }}"{% endif %}
+       data-field="ans_{{ statement_id }}" data-future="{{ '1' if is_future else '0' }}">
+    {% for val in ['yes','no'] %}
+      <label class="rating-btn rating-{{ val }}" data-tip="{{ RATING_TIPS[val] }}">
+        <input type="radio" name="ans_{{ statement_id }}" value="{{ val }}"
+               aria-label="{{ RATING_LABELS[val] }}"
+               {% if current_val == val %}checked{% endif %}
+               {% if disabled %}disabled{% endif %}>
+        <span aria-hidden="true">{{ RATING_LABELS[val] }}</span>
+      </label>
+    {% endfor %}
+  </div>
+{% endmacro %}
+
+<div class="page-head">
+  <div>
+    <h1>{{ subject['full_name'] }}{% if rate_cycle %} <span class="season-badge">{{ rate_cycle['name'] }}</span>{% endif %}</h1>
+    <p class="muted">{{ subject['department'] | proper or '' }}</p>
+  </div>
+  <div class="page-head-right">
+    <span class="rel-chip rel-{{ assignment['relationship'] }}">You are his/her {{ REL_LABEL[assignment['relationship']]|lower }}</span>
+    <div class="status-pill status-{{ 'reviewed' if locked else 'pending' }}">{{ 'Submitted' if locked else 'In progress' }}</div>
+  </div>
+</div>
+
+{% if was_reset %}
+  <div class="note note-resubmit">
+    <strong>Resubmission requested.</strong> An administrator reset your previous
+    submission so you can revise it. Update your answers and comments below, then submit again.
+  </div>
+{% endif %}
+{% if locked %}
+  <p class="note">You have submitted this feedback. It's now read-only.</p>
+{% else %}
+  <div class="note">
+    <p>For each behaviour, choose <strong>Demonstrate</strong> if it describes
+       {{ subject['full_name'].split(' ')[0] }} today, or <strong>Developing</strong>
+       if he/she is still growing into it. Your individual answers are confidential
+       and visible only to Group People — they're combined with the rest of the panel.</p>
+    <div class="rating-legend">
+      <span><span class="dot"></span><strong>Demonstrate</strong> &mdash; {{ RATING_TIPS['yes'] }}</span>
+      <span><span class="dot"></span><strong>Developing</strong> &mdash; {{ RATING_TIPS['no'] }}</span>
+    </div>
+  </div>
+{% endif %}
+
+<div id="incomplete-banner" class="banner-error" hidden>
+  <strong id="incomplete-banner-title">All items are required before you can submit.</strong>
+  Please answer the highlighted items, then submit. Your progress is saved automatically.
+</div>
+
+<form method="post" id="rate-form" data-no-busy {% if locked %}class="is-locked"{% endif %}>
+  <section class="category-block">
+    <h2>Leadership Principles</h2>
+    {% for crit in grouped %}
+      {% set crit_idx = loop.index %}
+      <div class="criterion">
+        <div class="crit-head">
+          {# The principle STATEMENT is the headline, the short name the subtitle --
+             "Leadership Principle 1: We Focus on Customer Delight" over an
+             italic "Customer Centricity". A cycle whose criteria carry no
+             description falls back to the short name so the bar is never blank. #}
+          <div class="crit-name">Leadership Principle {{ crit_idx }}: {{ crit['description'] or crit['name'] }}</div>
+          {% if crit['description'] %}<div class="crit-tag">{{ crit['name'] }}</div>{% endif %}
+        </div>
+        <table class="stmt-table">
+          <tbody>
+          {% for stmt in crit['statements'] %}
+            {% set stmt_label_id = 'stmt-label-' ~ stmt['statement_id'] %}
+            <tr>
+              <td class="stmt-text" id="{{ stmt_label_id }}">
+                <span class="stmt-num">{{ crit_idx }}.{{ loop.index }}</span>
+                {{ stmt['text'] }}
+              </td>
+              <td class="stmt-action">
+                {{ pills(stmt['statement_id'], stmt['answer'], locked, is_future=stmt['is_future'], labelledby=stmt_label_id) }}
+              </td>
+            </tr>
+          {% endfor %}
+          </tbody>
+        </table>
+        {# Collapsed by default so seven principles' worth of comment boxes don't
+           bury the rating items. Opens automatically when a comment already
+           exists, so nothing a person wrote is ever hidden behind a click.
+           Native <details> -- no JS, and it still contains a real <textarea>
+           that the form posts and the autosave listener sees either way. #}
+        <details class="crit-comment"{% if crit['comment'] %} open{% endif %}>
+          <summary class="crit-comment-toggle">
+            <span class="crit-comment-peek">{{ crit['comment'] or '' }}</span>
+            <span class="crit-comment-btn">
+              {{ 'Comment' if (crit['comment'] or locked) else 'Add a comment' }}
+              {% if not locked %}<span class="opt">(optional)</span>{% endif %}
+              <span class="crit-comment-chev" aria-hidden="true">▾</span>
+            </span>
+          </summary>
+          <div class="crit-comment-body">
+          <label for="comment_{{ crit['criterion_id'] }}">
+            How does {{ subject['full_name'].split(' ')[0] }} demonstrate {{ crit['name'] }}?
+          </label>
+          <textarea id="comment_{{ crit['criterion_id'] }}" name="comment_{{ crit['criterion_id'] }}"
+                    rows="3" maxlength="2000"
+                    placeholder="Share a specific example or your overall thoughts…"
+                    {% if locked %}readonly{% endif %}>{{ crit['comment'] or '' }}</textarea>
+          {% if ai_enabled and not locked %}
+          <div class="ai-draft" data-cid="{{ crit['criterion_id'] }}" data-principle="{{ crit['name']|e }}"
+               data-subject="{{ subject['id'] }}" data-limit="{{ ai_limit }}"
+               data-remaining="{{ crit['ai_remaining'] }}" data-reset="{{ crit['ai_reset_seconds'] }}"
+               style="display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-top:6px">
+            <div class="ai-split">
+              <button type="button" class="ai-draft-btn btn-link" aria-haspopup="true" aria-expanded="false">✨ Draft with AI <span class="ai-caret" aria-hidden="true">▾</span></button>
+              <div class="ai-menu" role="menu" hidden>
+                <div class="ai-menu-head">Choose what AI should do</div>
+                <button type="button" class="ai-cmd is-default" role="menuitem" data-cmd="polish">
+                  <span class="ai-cmd-ico">✨</span><span>Polish &amp; improve<small>Clearer, more specific</small></span></button>
+                <button type="button" class="ai-cmd" role="menuitem" data-cmd="shorter">
+                  <span class="ai-cmd-ico">➖</span><span>Make it shorter</span></button>
+                <button type="button" class="ai-cmd" role="menuitem" data-cmd="longer">
+                  <span class="ai-cmd-ico">➕</span><span>Make it longer / add detail</span></button>
+                <button type="button" class="ai-cmd" role="menuitem" data-cmd="formal">
+                  <span class="ai-cmd-ico">👔</span><span>More formal</span></button>
+                <button type="button" class="ai-cmd" role="menuitem" data-cmd="casual">
+                  <span class="ai-cmd-ico">🙂</span><span>More casual</span></button>
+                <div class="ai-sep"></div>
+                <button type="button" class="ai-cmd" role="menuitem" data-cmd="grammar">
+                  <span class="ai-cmd-ico">✔️</span><span>Fix spelling &amp; grammar</span></button>
+              </div>
+            </div>
+            <span class="ai-quota small" aria-live="polite"></span>
+            <span class="ai-status muted small" aria-live="polite"></span>
+          </div>
+          {% endif %}
+          {% if not locked %}<p class="field-help">A specific example helps the most — you can leave this blank and still submit. <strong>Your comments are shared with {{ subject['full_name'].split(' ')[0] }} in their feedback report, but always stay completely anonymous</strong> — your name is never shown.{% if ai_enabled %} AI drafts are suggestions — read and edit before submitting.{% endif %}</p>{% endif %}
+          </div>
+        </details>
+      </div>
+    {% endfor %}
+  </section>
+
+  {% if not locked %}
+  <div class="actions">
+    <button type="submit" name="action" value="submit" class="primary" id="tour-submit">Submit feedback</button>
+    <a class="btn-link" href="{{ url_for('my_assessments') }}">Back</a>
+    <span id="save-status" class="save-status" aria-live="polite" role="status">Your answers save automatically</span>
+  </div>
+  {% endif %}
+</form>
+
+<div id="confirm-modal" class="modal-overlay" hidden>
+  <div class="modal-card" role="dialog" aria-modal="true" aria-labelledby="confirm-title">
+    <h2 id="confirm-title">Submit your feedback?</h2>
+    <p id="confirm-body">You're about to submit your feedback on {{ subject['full_name'] }}.
+       It will be combined with the rest of the panel.</p>
+    <div class="modal-warning">
+      <strong>This action cannot be undone.</strong>
+      <span> Once submitted you won't be able to change your answers.</span>
+    </div>
+    <div class="modal-actions">
+      <button type="button" id="confirm-cancel">Cancel</button>
+      <button type="button" id="confirm-yes" class="primary">Yes, submit (final)</button>
+    </div>
+  </div>
+</div>
+
+<script>
+(function () {
+  var form = document.getElementById('rate-form');
+  if (!form) return;
+  var banner = document.getElementById('incomplete-banner');
+  var submitting = false;   // set true only on a real final submit
+
+  form.addEventListener('change', function (e) {
+    if (e.target && e.target.matches('input[type="radio"]')) {
+      var group = e.target.closest('.rating-buttons');
+      if (group) group.classList.remove('incomplete');
+      if (!form.querySelector('.rating-buttons.incomplete') && banner) banner.hidden = true;
+    }
+  });
+
+  var modal = document.getElementById('confirm-modal');
+  var btnCancel = document.getElementById('confirm-cancel');
+  var btnYes = document.getElementById('confirm-yes');
+  function closeModal() { modal.hidden = true; }
+  btnCancel.addEventListener('click', closeModal);
+  modal.addEventListener('click', function (e) { if (e.target === modal) closeModal(); });
+  document.addEventListener('keydown', function (e) { if (e.key === 'Escape' && !modal.hidden) closeModal(); });
+  btnYes.addEventListener('click', function () {
+    submitting = true;   // stop auto-save/beacon from racing the submit
+    var hidden = document.createElement('input');
+    hidden.type = 'hidden'; hidden.name = 'action'; hidden.value = 'submit';
+    form.appendChild(hidden);
+    btnYes.disabled = true; btnYes.textContent = 'Submitting...';
+    HTMLFormElement.prototype.submit.call(form);
+  });
+
+  form.addEventListener('submit', function (e) {
+    var submitter = e.submitter;
+    if (!submitter || submitter.value !== 'submit') return;
+    var groups = form.querySelectorAll('.rating-buttons');
+    var firstIncomplete = null, missing = 0;
+    groups.forEach(function (g) {
+      g.classList.remove('incomplete');
+      if (!g.querySelector('input[type="radio"]:checked')) {
+        g.classList.add('incomplete'); missing += 1;
+        if (!firstIncomplete) firstIncomplete = g;
+      }
+    });
+    if (firstIncomplete) {
+      e.preventDefault();
+      if (banner) {
+        var title = document.getElementById('incomplete-banner-title');
+        if (title) title.textContent = 'You have ' + missing + ' of ' + groups.length + ' item(s) still blank.';
+        banner.hidden = false;
+      }
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+      setTimeout(function () { firstIncomplete.scrollIntoView({ behavior: 'smooth', block: 'center' }); }, 250);
+      return;
+    }
+    e.preventDefault();
+    modal.hidden = false;
+    btnCancel.focus();
+  });
+
+  // ---- Auto-save draft (replaces the manual "Save draft" button) ----------
+  if (!form.classList.contains('is-locked')) {
+    var statusEl = document.getElementById('save-status');
+    var saveURL = window.location.pathname;
+    var dirty = false, saving = false, failed = false, timer = null;
+
+    function setStatus(text, cls) {
+      if (!statusEl) return;
+      statusEl.textContent = text;
+      statusEl.className = 'save-status' + (cls ? ' ' + cls : '');
+    }
+    function buildData() {
+      var fd = new FormData(form);
+      fd.set('action', 'save');
+      fd.set('ajax', '1');
+      return fd;
+    }
+    function doSave() {
+      if (saving || !dirty || submitting) return;
+      saving = true; setStatus('Saving…');
+      fetch(saveURL, { method: 'POST', body: buildData(), credentials: 'include' })
+        .then(function (r) {
+          saving = false;
+          if (r.ok) { dirty = false; failed = false; setStatus('Saved ✓', 'saved'); }
+          else { failed = true; setStatus('Couldn’t save — we’ll retry', 'failed'); }
+        })
+        .catch(function () { saving = false; failed = true; setStatus('Couldn’t save — check your connection', 'failed'); });
+    }
+    function schedule() {
+      dirty = true; setStatus('Editing…');
+      if (timer) clearTimeout(timer);
+      timer = setTimeout(doSave, 1200);
+    }
+    form.addEventListener('change', function (e) {
+      if (e.target && e.target.matches('input[type="radio"]')) schedule();
+    });
+    form.addEventListener('input', function (e) {
+      if (e.target && e.target.matches('textarea')) schedule();
+    });
+    // Save instantly when the page is hidden / navigated away (Back, nav links,
+    // tab close, refresh) — sendBeacon survives the unload.
+    function flushBeacon() {
+      if (!dirty || submitting || !navigator.sendBeacon) return;
+      navigator.sendBeacon(saveURL, buildData());
+      dirty = false;
+    }
+    window.addEventListener('pagehide', flushBeacon);
+    document.addEventListener('visibilitychange', function () {
+      if (document.visibilityState === 'hidden') flushBeacon();
+    });
+    // Safety net: only nag if a save actually failed and changes are still unsaved.
+    window.addEventListener('beforeunload', function (e) {
+      if (!submitting && failed && dirty) { e.preventDefault(); e.returnValue = ''; }
+    });
+  }
+})();
+</script>
+<script>
+// ---- Draft with AI (Azure OpenAI) -----------------------------------------
+(function () {
+  var rows = document.querySelectorAll('.ai-draft');
+  if (!rows.length) return;
+  var csrf = (document.querySelector('meta[name="csrf-token"]') || {}).content || '';
+  // Preset commands: each maps to a fixed instruction sent to the model, so the
+  // rater never has to phrase a prompt. 'polish' is the default (main button).
+  var COMMANDS = {
+    polish:  { label: 'Polish & improve', busy: 'Polishing…', done: 'Polished — please review',
+      instr: 'Improve this feedback: make it clearer, more specific and well written, ' +
+             'while keeping my original meaning and points.' },
+    shorter: { label: 'Make it shorter', busy: 'Shortening…', done: 'Shortened — please review',
+      instr: 'Make this feedback more concise while keeping the key points.' },
+    longer:  { label: 'Make it longer', busy: 'Expanding…', done: 'Expanded — please review',
+      instr: 'Expand this feedback slightly using ONLY what it already says -- fuller, clearer wording; ' +
+             'do not add facts, figures, examples or events.' },
+    formal:  { label: 'More formal', busy: 'Rewriting…', done: 'Rewritten — please review',
+      instr: 'Rewrite this feedback in a more formal, professional tone.' },
+    casual:  { label: 'More casual', busy: 'Rewriting…', done: 'Rewritten — please review',
+      instr: 'Rewrite this feedback in a warmer, more conversational tone, still professional.' },
+    grammar: { label: 'Fix spelling & grammar', busy: 'Fixing…', done: 'Fixed — please review',
+      instr: 'Fix only the spelling, grammar and punctuation. Keep the wording and meaning ' +
+             'as close to the original as possible.' }
+  };
+  function fmt(sec) {
+    sec = Math.max(0, parseInt(sec, 10) || 0);
+    var h = Math.floor(sec / 3600), m = Math.floor((sec % 3600) / 60);
+    if (h && m) return h + 'h ' + m + 'm';
+    if (h) return h + 'h';
+    if (m) return m + 'm';
+    return 'under a minute';
+  }
+  function closeAllMenus() {
+    document.querySelectorAll('.ai-menu').forEach(function (m) { m.hidden = true; });
+    document.querySelectorAll('.ai-draft-btn').forEach(function (b) { b.setAttribute('aria-expanded', 'false'); });
+  }
+  rows.forEach(function (row) {
+    var mainBtn = row.querySelector('.ai-draft-btn');
+    var menu = row.querySelector('.ai-menu');
+    var status = row.querySelector('.ai-status');
+    var quota = row.querySelector('.ai-quota');
+    var ta = document.getElementById('comment_' + row.dataset.cid);
+    if (!mainBtn || !ta) return;
+    var limit = parseInt(row.dataset.limit, 10) || 5;
+    var remaining = parseInt(row.dataset.remaining, 10);
+    if (isNaN(remaining)) remaining = limit;
+    var reset = parseInt(row.dataset.reset, 10) || 0;
+    var busy = false;
+
+    function paint() {
+      var locked = remaining <= 0;
+      mainBtn.disabled = locked || busy;
+      quota.classList.remove('is-last', 'is-locked');
+      if (locked) {
+        quota.classList.add('is-locked');
+        quota.textContent = '⏱ Limit reached — resets in ' + fmt(reset);
+      } else if (remaining === 1) {
+        quota.classList.add('is-last');
+        quota.textContent = 'Last AI draft for today';
+      } else {
+        quota.textContent = remaining + ' of ' + limit + ' AI drafts left today';
+      }
+    }
+    paint();
+
+    function run(cmd) {
+      closeAllMenus();
+      if (remaining <= 0 || busy) return;
+      var spec = COMMANDS[cmd] || COMMANDS.polish;
+      if (!ta.value.trim()) { status.textContent = 'Write a few words first, then let AI help.'; return; }
+      busy = true; var label = mainBtn.innerHTML; mainBtn.textContent = spec.busy;
+      status.textContent = ''; paint();
+      var body = new URLSearchParams();
+      body.set('csrf_token', csrf);
+      body.set('draft', ta.value);
+      body.set('instruction', spec.instr);
+      body.set('command', cmd);
+      body.set('principle', row.dataset.principle || '');
+      body.set('subject_id', row.dataset.subject || '');
+      body.set('criterion_id', row.dataset.cid || '');
+      fetch('/api/draft-feedback', {
+        method: 'POST', credentials: 'include',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: body.toString()
+      }).then(function (r) { return r.json().then(function (d) { return { ok: r.ok, d: d }; }); })
+        .then(function (res) {
+          var d = res.d || {};
+          if (res.ok && d.ok) {
+            ta.value = d.text;
+            ta.dispatchEvent(new Event('input', { bubbles: true }));  // triggers autosave
+            status.textContent = '✓ ' + spec.done;
+            if (typeof d.remaining === 'number') remaining = d.remaining;
+            reset = d.reset_seconds || 0;
+          } else {
+            status.textContent = d.error || 'Something went wrong.';
+            if (d.limited) { remaining = 0; reset = d.reset_seconds || reset; }
+          }
+        })
+        .catch(function () { status.textContent = 'Network error — please try again.'; })
+        .finally(function () { busy = false; mainBtn.innerHTML = label; paint(); });
+    }
+
+    // The whole button opens the command menu (no default action on click).
+    mainBtn.addEventListener('click', function (e) {
+      e.stopPropagation();
+      if (remaining <= 0 || busy) return;
+      var open = menu.hidden;
+      closeAllMenus();
+      menu.hidden = !open;
+      mainBtn.setAttribute('aria-expanded', open ? 'true' : 'false');
+    });
+    menu.querySelectorAll('.ai-cmd').forEach(function (item) {
+      item.addEventListener('click', function () { run(item.dataset.cmd); });
+    });
+  });
+  // Click-away / Esc closes any open menu.
+  document.addEventListener('click', closeAllMenus);
+  document.addEventListener('keydown', function (e) { if (e.key === 'Escape') closeAllMenus(); });
+})();
+</script>
+{% endblock %}
+
+{% block tour %}
+<script>
+(function () {
+  if ({{ 'true' if locked else 'false' }}) return;   // already submitted — no tour
+  var params = new URLSearchParams(location.search);
+  var force = params.get('tour') === 'rate';
+  var pending = {{ 'true' if tour_rate_pending else 'false' }};
+  if (!(force || pending)) return;
+  if (force) history.replaceState({}, '', location.pathname);
+  // Comment boxes are collapsed by default, so the textarea and the AI button
+  // below have no visible position to ring. Open the first one for the tour --
+  // which also demonstrates the expand affordance the first step points at.
+  var firstComment = document.querySelector('details.crit-comment');
+  if (firstComment) firstComment.open = true;
+  var steps = [
+    { el: '.rating-buttons', title: 'Demonstrate or Developing',
+      body: 'For each behaviour, pick Demonstrate if the person shows it today, or Developing if they’re still growing into it.' },
+    { el: '.crit-comment textarea', title: 'Add an example (optional)',
+      body: 'Each principle has a comment box — click its heading to open or close it. A short comment helps. It’s shared in their report but always stays anonymous — your name is never shown.' },
+    {% if ai_enabled %}{ el: '.ai-draft-btn', title: 'Draft with AI ✨',
+      body: 'Not sure how to phrase it? Jot a few words, then click Draft with AI to polish them — or open the menu for options like shorter or more formal. It’s a suggestion you can edit, and your comment still stays anonymous.' },
+    {% endif %}{ el: '#save-status', title: 'Saved automatically', side: 'top',
+      body: 'Your answers save as you go, so you can leave and finish later.' },
+    { el: '#tour-submit', title: 'Submit when complete', side: 'top',
+      body: 'Answer every item, then submit. You won’t be able to change it afterwards.' },
+  ];
+  setTimeout(function () {
+    L360Tour(steps, { onDone: function () { if (window.l360MarkTourSeen) l360MarkTourSeen('rate'); } });
+  }, 350);
+})();
+</script>
+{% endblock %}

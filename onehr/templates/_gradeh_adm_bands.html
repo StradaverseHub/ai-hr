@@ -1,0 +1,66 @@
+{# Grade H Appraisal > Final bands (piece 6; canvas A4-FinalBands). Each person's performance and potential at every stage: line manager ->
+   HOD -> BU CEO, then the final band. The super admin changes a final band before release with a mandatory remark (the route is in
+   SUPER_BAND_ENDPOINTS, so the remark is checked before anything runs). #}
+{% from "_adm_panel.html" import panel, list_peek with context %}
+{% set keep = request.args.to_dict() %}{% set _x = keep.pop('panel', None) %}{% set _y = keep.pop('fp', None) %}
+{% set back = url_for('admin_gradeh', **dict(keep, tab='bands')) %}
+{% macro chain(a, b, c, f) -%}
+  {%- if a or b or c or f -%}<span class="gh-chain">{{ a or '–' }} <i>&rarr;</i> {% if b != a %}<b>{{ b or '–' }}</b>{% else %}{{ b or '–' }}{% endif %} <i>&rarr;</i> {% if c != b %}<b>{{ c or '–' }}</b>{% else %}{{ c or '–' }}{% endif %}</span>{%- else -%}<span class="muted">Not submitted yet</span>{%- endif -%}
+{%- endmacro %}
+{% if not rows %}
+<div class="admin-card"><p class="muted small" style="margin:0">Nobody matches.</p></div>
+{% else %}
+<div class="admin-card gh-tablecard">
+  <div class="table-scroll">
+    <table class="admin-table gh-table" id="gh-bands">
+      <thead><tr><th>Person</th><th>Performance: LM &rarr; HOD &rarr; BU CEO</th><th>Potential</th><th>Final</th><th><span class="sr-only">Actions</span></th></tr></thead>
+      <tbody>
+      {% for p in rows %}
+      <tr{% if final_person and final_person.pid == p.pid %} class="is-sel"{% endif %}>
+        <td><b>{{ p.name }}</b><div class="muted small">{{ p.title }}{% if p.title and p.unit %} · {% endif %}{{ p.unit }}</div></td>
+        <td class="gh-nowrap">{{ chain(p.lm.perf, p.b_hod.perf, p.b_bu.perf, p.b_fin.perf) }}{% if p.fin_moved.perf %} <span class="gh-tag">super admin</span>{% endif %}</td>
+        <td class="gh-nowrap">{{ chain(p.lm.pot, p.b_hod.pot, p.b_bu.pot, p.b_fin.pot) }}{% if p.fin_moved.pot %} <span class="gh-tag">super admin</span>{% endif %}</td>
+        <td class="gh-nowrap">{% if p.b_fin.perf and p.b_fin.pot %}<b>{{ p.b_fin.perf }} · {{ p.b_fin.pot }}</b>{% if p.label %}<div class="muted small">{{ p.label }}</div>{% endif %}{% else %}<span class="muted">–</span>{% endif %}</td>
+        <td class="gh-act">{% if p.submitted and not p.released %}<a class="btn-link" href="{{ url_for('admin_gradeh', **dict(keep, tab='bands', panel='final', fp=p.pid)) }}">Change</a>{% elif p.released %}<span class="muted small">Released</span>{% endif %}</td>
+      </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% if pg.last > 1 %}
+  <nav class="gh-pager" aria-label="Pages">
+    <span class="muted small">{{ pg.from }}–{{ pg.to }} of {{ pg.n | thousands }}</span>
+    {% if pg.page > 1 %}<a class="btn-link" data-scroll-top href="{{ url_for('admin_gradeh', **dict(keep, tab='bands', page=pg.page - 1)) }}">&lsaquo; Previous</a>{% endif %}
+    {% if pg.page < pg.last %}<a class="btn-link" data-scroll-top href="{{ url_for('admin_gradeh', **dict(keep, tab='bands', page=pg.page + 1)) }}">Next &rsaquo;</a>{% endif %}
+  </nav>
+  {% endif %}
+</div>
+{% endif %}
+<p class="muted small gh-foot">A bold band is where someone moved it. Super admin only, until a unit's results are released; every change keeps its remark on the band row and in the audit log. Release is on Cycle &rsaquo; Release results.</p>
+
+{% if final_person %}
+{% set fp_ = final_person %}
+{% call panel("final", "Grade H Appraisal · Final band", "Change " ~ fp_.name ~ "'s final band", ("Signed off by the BU CEO on " ~ (fp_.signed_at | myt_day)) if fp_.signed_at else "Not signed off by the BU CEO yet", open=True, params="panel fp") %}
+  <div class="adm-panel-body">
+    {% if fp_.released %}<p class="gh-warn small">This unit's results have been released, so nothing changes now.</p>
+    {% elif not fp_.submitted %}<p class="gh-warn small">Their line manager has not submitted, so there is no band to change.</p>{% endif %}
+    <form method="post" action="{{ url_for('admin_gradeh_final') }}" id="gh-final-form" class="adm-set-form gh-panel-form" data-confirm="Change {{ fp_.name }}'s final band? Your remark goes on the record and in the audit log." data-confirm-ok="Change final band" data-confirm-tone="danger">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <input type="hidden" name="pid" value="{{ fp_.pid }}">
+      <input type="hidden" name="next" value="{{ back }}">
+      <label>Performance
+        <select name="perf" class="modern-select">{% for b in perf_bands %}<option value="{{ b }}" {{ 'selected' if fp_.b_fin.perf == b }}>{{ band_long[b] }}</option>{% endfor %}</select></label>
+      <label>Potential
+        <select name="pot" class="modern-select">{% for b in pot_bands %}<option value="{{ b }}" {{ 'selected' if fp_.b_fin.pot == b }}>{{ band_long[b] }}</option>{% endfor %}</select></label>
+      <label>Remark (required)
+        <textarea name="remark" rows="4" maxlength="1000" required placeholder="Why you are changing it"></textarea></label>
+    </form>
+  </div>
+  <footer class="adm-panel-foot">
+    <span class="muted small adm-panel-grow">Super admin only, until results are released. The remark is kept on every band row and in the audit log.</span>
+    <button type="button" class="btn-link" data-panel-close>Cancel</button>
+    <button type="submit" form="gh-final-form" class="primary"{% if fp_.released or not fp_.submitted %} disabled{% endif %}>Change final band</button>
+  </footer>
+{% endcall %}
+{% endif %}
+{{ list_peek() }}

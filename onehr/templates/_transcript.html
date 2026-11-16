@@ -1,0 +1,42 @@
+{# Read-only render of a saved review conversation (pm_review_chat), shared by the admin
+   audit view (person/_conversation.html, the super admin's) and the employee history page
+   (review_history.html) so the two can't drift. No JS, no composer -- a static replay.
+   `messages` is the _review_chat_history list: {role, content, stage, created_at, card?}.
+   `who` (the audit view's) labels each side, e.g. {'user': 'Employee', 'agent': 'OneHR AI'}. #}
+{% macro transcript(messages, who=None) %}
+{% set _stage = {'account':'KPI check-in','checkin':'KPI check-in','feedback':'360 feedback',
+                 'competency':'Competency','career_plan':'Career plan','ahead':'Development plan',
+                 'career':'Career profile','agree':'KPI setting','pm_review':'KPI check-in'} %}
+{# what a saved card was, in words: the transcript keeps the card's data, not its look #}
+{% set _card = {'kpi_overview':'the KPI table','scorecard':'the KPI table','journey_status':'where the check-in stands',
+                'journey_complete':'the check-in summary','confirm':'the submit confirmation',
+                'competency_confirm':'the submit confirmation','feedback_confirm':'the submit confirmation',
+                'idp_confirm':'the submit confirmation','remark_guide':'the remark guide',
+                'feedback_remark_guide':'the remark guide','competency_overview':'the competency card',
+                'competency_progress':'the competency card','competency_to_justify':'the competencies to explain',
+                'competency_reflection_draft':'a drafted remark','feedback_overview':'the 360 card',
+                'feedback_progress':'the 360 card','career_routes':'the role choices','career_overview':'the Career Plan',
+                'career_direction':'the role choices','career_profile':'the career profile','idp_plan':'the drafted goals',
+                'idp_overview':'the Career Plan','idp_gaps':'the skill gaps'} %}
+<div class="rv-transcript{{ ' rv-tx-audit' if who }}">
+  {% if not messages %}
+    <p class="muted">No conversation was recorded for this cycle.</p>
+  {% else %}
+    {% set ns = namespace(stage='__none__') %}
+    {% for m in messages %}
+      {% if m.stage and m.stage != ns.stage %}
+        <div class="rv-tx-stage">{{ _stage.get(m.stage, m.stage) }}</div>
+        {% set ns.stage = m.stage %}
+      {% endif %}
+      <div class="rv-msg rv-msg-{{ 'user' if m.role == 'user' else 'agent' }} rv-tx-msg">
+        {% if who %}<span class="rv-tx-who">{{ who.get('user' if m.role == 'user' else 'agent') }}</span>{% endif %}
+        {% if m.content %}<div class="rv-tx-body">{{ m.content }}</div>{% endif %}
+        {% if m.card %}{% set _cards = m.card if m.card is sequence and m.card is not string and m.card is not mapping else [m.card] %}
+          {% set _shown = [] %}{% for c in _cards if c is mapping and _card.get(c.get('type')) and _card.get(c.get('type')) not in _shown %}{% set _ = _shown.append(_card.get(c.get('type'))) %}{% endfor %}
+          <div class="rv-tx-card">{% if _shown %}Showed {{ _shown | join(', ') }}{% else %}[showed a card — e.g. the scorecard]{% endif %}</div>{% endif %}
+        {% if m.created_at %}<span class="rv-tx-when">{{ m.created_at | myt }}</span>{% endif %}
+      </div>
+    {% endfor %}
+  {% endif %}
+</div>
+{% endmacro %}

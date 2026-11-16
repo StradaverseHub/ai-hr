@@ -1,0 +1,36 @@
+{# The library box's results on the person's Competency tab: a count line, then each match with its code, its name
+   opening the detail panel, and the row's own Add / For their future role (the panel's footer presses these).
+   Rendered by the tab and, as you type, by admin_person_competency_find (a fragment: nothing here writes). #}
+{% set sq = finds.sq %}
+<p class="pp-lib-count" data-lib-count role="status" aria-live="polite">
+  {%- if (sq | length) < 2 %}Type 2 letters: the list fills as you type
+  {%- elif finds.skills %}<b>{{ finds.n_skills }}</b> match{{ 'es' if finds.n_skills != 1 }}{% if finds.n_skills > finds.skills | length %} &middot; the first {{ finds.skills | length }} shown, type more to narrow{% endif %} &middot; a name opens its detail
+  {%- else %}No competency matches &ldquo;{{ sq }}&rdquo;{% endif -%}
+</p>
+{% if finds.skills %}
+{% set nt = redo_notify_attrs(person, 'tc_add') %}
+<div class="pp-libs" data-lib-list>
+  {% for sk in finds.skills %}
+  <div class="pp-lr" data-sid="{{ sk['id'] }}">
+    <span class="pp-lr-t"><button type="button" class="pp-nm" data-cd-open data-cd-json='{{ sk.detail | tojson }}' aria-haspopup="dialog">{{ sk.hl[0] }}{% if sk.hl[1] %}<mark>{{ sk.hl[1] }}</mark>{% endif %}{{ sk.hl[2] }}</button>
+      <span class="muted">&middot; L{{ sk['level'] }}{% if sk['skill_type'] %} &middot; {{ sk['skill_type'] }}{% endif %}</span></span>
+    <span class="pp-lr-c muted small">{{ sk.code_hl[0] }}{% if sk.code_hl[1] %}<mark>{{ sk.code_hl[1] }}</mark>{% endif %}{{ sk.code_hl[2] }}</span>
+    <form method="post" action="{{ url_for('admin_person_competency', uid=person['id']) }}" class="pp-inline">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <input type="hidden" name="action" value="add"><input type="hidden" name="skill_id" value="{{ sk['id'] }}">
+      {% if sk.next is defined %}<button type="submit" name="with_next" value="1" class="btn-link" data-cd-rowwith
+              data-confirm="Add {{ sk['title'] }} L{{ sk['level'] }} to {{ person['full_name'] }}, with L{{ sk.next.level }} ({{ sk.next.skill_code }}) as their next level? They see it at once and it goes in the trail."
+              data-confirm-ok="Add L{{ sk['level'] }} &rarr; L{{ sk.next.level }}" {{ nt }}>Add with next level (L{{ sk['level'] }} &rarr; L{{ sk.next.level }})</button>{% endif %}
+      {% if sk.add_ok is not defined or sk.add_ok %}<button type="submit" class="btn-link" data-cd-rowadd
+              data-confirm="Add {{ sk['title'] }} L{{ sk['level'] }} to {{ person['full_name'] }}'s competencies? They see it at once and it goes in the trail."
+              data-confirm-ok="Add" {{ nt }}>{% if sk.next is defined %}L{{ sk['level'] }} only{% else %}Add{% endif %}</button>{% endif %}
+      {% if sk.fut_ok is not defined or sk.fut_ok %}{% if sk.cur_level is defined %}<button type="submit" name="future" value="1" class="btn-link" data-cd-rowfuture
+              data-confirm="Add {{ sk['title'] }} L{{ sk['level'] }} to {{ person['full_name'] }} as the next level of their L{{ sk.cur_level }}? They see it at once, as one line (L{{ sk.cur_level }} &rarr; L{{ sk['level'] }}), and it goes in the trail."
+              data-confirm-ok="Add as next level" {{ nt }}>{{ sk.fut_label }}</button>{% else %}<button type="submit" name="future" value="1" class="btn-link" data-cd-rowfuture
+              data-confirm="Add {{ sk['title'] }} L{{ sk['level'] }} to {{ person['full_name'] }} as a stretch for their future role? They see it at once and it goes in the trail."
+              data-confirm-ok="Add as stretch" {{ nt }}>For their future role</button>{% endif %}{% endif %}
+      {% if sk.note %}<span class="muted small" data-lib-note>{{ sk.note }}</span>{% endif %}</form>
+  </div>
+  {% endfor %}
+</div>
+{% endif %}

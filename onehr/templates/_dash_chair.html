@@ -1,0 +1,93 @@
+{# 2026-10-30, one layout all year (canvas [design canvas link removed] boards 1 and 2): a section heading row
+   "AI+ PM·TM·IDP · LMS" over the Year-End row and Your 360 (between cycles: the last cycle's steps, all done, and no one waiting),
+   then a "Talent Box" heading row, with the source line, over the AI insight and Talent by business group, which always show the
+   LATEST RELEASED Year-End (chair['pg']['tb']: this cycle's once released to leaders, else the last OneHR one, else Group People's
+   records, said so). Everything reads chair['pg']; the older chair keys are Ask OneHR's. Counts only, never a name.
+   The Executive Chairman's dashboard (P2, 2026-10-29; ONEHR_CHAIR=1 and the seat is his: dashboard() sets `chair` for him
+   alone; canvas board 1, [design canvas link removed]). Drawn in the dashboard's own cards: the
+   Year-End card with his steps (his 360, his leaders' Talent Box, results to leaders), his 360, the AI insight's slot (P3),
+   then Talent by business group, a card each and one for all. His own review parts are not here: he is 360 only. Every
+   count is chair_people's, released to leaders and final only. Ask OneHR's panel is the page's own, as for everyone. #}
+{% macro ec_node(state) -%}
+<span class="od-node" aria-hidden="true">
+  {%- if state == 'done' %}<svg viewBox="0 0 24 24"><path class="ln" d="M5 12.5l4.5 4.5L19 7.5"></path></svg>
+  {%- elif state == 'progress' %}<svg viewBox="0 0 24 24"><circle class="fl" cx="12" cy="12" r="4.5"></circle></svg>
+  {%- endif -%}
+</span>
+{%- endmacro %}
+{% set pg = chair['pg'] %}
+{% set tb = pg['tb'] %}
+<div class="ec-sec" data-chair-sec="parts">
+  <h2 class="ec-sec-h" id="ec-sec-a"><span class="ec-aip">AI+</span> PM&middot;TM&middot;IDP &middot; LMS</h2>
+  <span class="od-muted ec-sec-sub">{{ pg['head_sub'] }}</span>
+  {% if pg['next'] %}<span class="od-muted ec-sec-sub ec-sec-end">{{ pg['next'] }}</span>{% endif %}
+</div>
+<div class="od-grid ec-top">
+  <section class="od-card od-rail od-calm" aria-labelledby="ec-ye-h">
+    <div class="od-hd">
+      <h2 id="ec-ye-h">{{ pg['ye']['title'] }}</h2>
+      <span class="od-muted">{{ pg['ye']['sub'] }}</span>
+      <span class="od-muted od-hd-end">{{ pg['ye']['done'] }} of {{ pg['ye']['n_steps'] }} done</span>
+    </div>
+    <ol class="od-steps">
+      {% for s in pg['ye']['steps'] %}
+      <li class="od-step is-{{ s['state'] }}" data-chair-step="{{ s['key'] }}" title="{{ s['name'] }}: {{ s['line'] }}">
+        <div class="od-track">{{ ec_node(s['state']) }}{% if not loop.last %}<span class="od-link" aria-hidden="true"></span>{% endif %}</div>
+        {% if s['url'] %}<a class="od-sn" href="{{ s['url'] }}">{{ s['name'] }}</a>{% else %}<span class="od-sn">{{ s['name'] }}</span>{% endif %}
+        <p class="od-sl"><span class="w">{{ s['line'] }}</span></p>
+      </li>
+      {% endfor %}
+    </ol>
+  </section>
+  <section class="od-card ec-360" aria-labelledby="ec-360-h">
+    <div class="od-hd"><h2 id="ec-360-h">Your 360</h2></div>
+    {% if pg['ratings']['n'] %}
+    <p class="od-sub">You {{ 'rated' if pg['ratings']['submitted'] == pg['ratings']['n'] else 'are rating' }} the {{ pg['ratings']['n'] }} colleague{{ '' if pg['ratings']['n'] == 1 else 's' }} you were asked to. Ratings stay anonymous.</p>
+    <a class="od-btn-nv is-outline ec-360-go" href="{{ pg['ratings']['url'] }}">See my ratings</a>
+    {% else %}
+    <p class="od-sub">No one is waiting on your rating{{ ' in this cycle' if pg['running'] else '' }}.</p>
+    {% endif %}
+  </section>
+</div>
+
+<div class="ec-sec" data-chair-sec="talent">
+  <h2 class="ec-sec-h" id="ec-sec-b">Talent Box</h2>
+  <span class="od-muted ec-sec-sub" data-chair-src>{{ tb['src'] }}</span>
+</div>
+
+{# the AI insight card (P3): chair['pg']['tb']['insight'] stays None until there is a finding, and then nothing is drawn. #}
+{% if tb['insight'] %}{% set ins_card = tb['insight'] %}{% include "_dash_chair_insight.html" %}{% endif %}
+
+<section class="od-card ec-bgs" aria-labelledby="ec-bg-h">
+  <div class="od-hd">
+    <h2 id="ec-bg-h">Talent by business group</h2>
+    <span class="od-muted">{% if tb['kind'] == 'records' %}Talent statuses{% else %}Final bands{% endif %}{% if tb['label'] and tb['kind'] in ('lastrel', 'records') %} &middot; {{ tb['label'] }}{% endif %}{% if tb['released_at'] %} &middot; released to leaders {{ tb['released_at'] }}{% endif %}</span>
+    <a class="od-linkbtn od-hd-end" href="{{ tb['box_url'] }}">Open the Group Talent Box &rarr;</a>
+  </div>
+  {% if tb['cards'] %}
+  <div class="ec-legendrow">
+    <p class="ec-legend" aria-label="What the bar shows">
+      <span><i class="is-tal" aria-hidden="true"></i>Super Star + Star</span>
+      <span><i class="is-sc" aria-hidden="true"></i>Solid Core</span>
+      <span><i class="is-pip" aria-hidden="true"></i>PIP / Improvement</span>
+    </p>
+    {% if tb['live'] %}<span class="od-muted">A card opens that group in the Group Talent Box</span>{% endif %}
+  </div>
+  <div class="ec-bgc-grid">
+    {% for c in tb['cards'] %}
+    {% set tag = 'a' if c['url'] else 'div' %}
+    <{{ tag }} class="ec-bgc{{ ' is-all' if not c['key'] else '' }}{{ '' if c['released'] else ' is-none' }}"{% if c['url'] %} href="{{ c['url'] }}"{% endif %} data-chair-bg="{{ c['key'] }}">
+      <span class="ec-bgc-hd"><b title="{{ c['name'] }}">{{ c['name'] }}</b><span class="od-muted">{% if c['released'] %}{{ '{:,}'.format(c['n']) }} calibrated{% else %}Not released yet{% endif %}</span></span>
+      {% if c['released'] %}
+      <span class="ec-bgc-nums"><span><b>{{ c['tal'] }}</b><small>Super Star + Star</small></span><span><b>{{ c['share'] }}</b><small>Share</small></span></span>
+      <span class="ec-bar" role="img" aria-label="{{ c['tal'] }} Super Star and Star, {{ c['sc'] }} Solid Core, {{ c['pip'] }} PIP / Improvement">{% for g in c['bar'] %}<i class="is-{{ g['k'] }}" style="width: {{ g['w'] }}%"></i>{% endfor %}</span>
+      <span class="ec-bgc-sc"><span>Solid Core <b>{{ c['sc'] }}</b></span><span>PIP / Improvement <b>{{ c['pip'] }}</b></span></span>
+      {% if c['locked'] %}<span class="ec-bgc-lk">{{ c['locked'] }} units locked</span>{% endif %}
+      {% endif %}
+    </{{ tag }}>
+    {% endfor %}
+  </div>
+  {% else %}
+  <p class="od-sub">The Group Talent Box opens at Year-End, once results are released to leaders.</p>
+  {% endif %}
+</section>

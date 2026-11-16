@@ -1,0 +1,17 @@
+{# The admin search (the canvas's C1): pages, settings with how they read now, and downloads -- fetched once from
+   /admin/search.json when it first opens. Opens from the top bar or with Cmd/Ctrl+K. #}
+<div class="adm-search" id="adm-search" role="dialog" aria-modal="true" aria-label="Search the admin" hidden
+     data-src="{{ url_for('admin_search_index') }}">
+  <div class="adm-search-box">
+    <label class="adm-search-input">
+      <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+           stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7"></circle><path d="M20 20l-4-4"></path></svg>
+      <input type="text" id="adm-search-q" placeholder="Search pages, settings, reports" autocomplete="off"
+             aria-label="Search pages, settings, reports" aria-controls="adm-search-list">
+      <kbd aria-hidden="true">Esc</kbd>
+    </label>
+    <div class="adm-search-list" id="adm-search-list" role="listbox" aria-label="Results"></div>
+    <p class="adm-search-foot">&uarr; &darr; to move &middot; Enter to open</p>
+  </div>
+</div>
+<script src="{{ url_for('static', filename='admin.js') }}?v={{ asset_v }}"></script>

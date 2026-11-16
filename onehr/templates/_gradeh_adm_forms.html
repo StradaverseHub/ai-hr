@@ -1,0 +1,82 @@
+{# The forms Grade H's admin pages share (2026-11-03, board H6b). The appraiser and HOD forms live here ONCE: People & progress's Set appraiser /
+   Set HOD side panels (?panel=appraiser / hod, which the person page's Change links open) and the person panel's Change view
+   (templates/_gradeh_adm_person.html) both call these macros, so the two can never drift. Each posts to today's route (admin_gradeh_appraiser,
+   admin_gradeh_hod, admin_gradeh_hods, admin_gradeh_reopen), with the session token and a double-confirm. `p` is one gradeh_admin_people row;
+   `back` is where the POST returns (`next`). Import with context: they read csrf_token. #}
+
+{# the appraiser: what it is now, then the strict picker #}
+{% macro appraiser_form(sp, back) %}
+    <p class="small">{% if sp.appr.kind == 'none' %}The source file names no appraiser and they have no line manager on OneHR.{% elif sp.appr.kind == 'sup' %}The source file names {{ sp.appr.name }} as supervisor, but they have no OneHR account, so they cannot appraise.{% elif sp.appr.kind == 'set' %}The appraiser is {{ sp.appr.name }}, set by hand.{% else %}Their line manager on OneHR, {{ sp.appr.name }}, is the appraiser.{% endif %}
+      The appraiser sees this person on their Grade H page and submits the appraisal.</p>
+    {% if sp.submitted %}<p class="gh-warn small">The appraisal is submitted: reopen it first to change the appraiser.</p>{% endif %}
+    <form method="post" action="{{ url_for('admin_gradeh_appraiser') }}" id="gh-appr-form" class="adm-set-form gh-panel-form" data-confirm="Make the person you picked the appraiser of {{ sp.name }}? They will see {{ sp.name }} in their Grade H list." data-confirm-ok="Set appraiser">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <input type="hidden" name="pid" value="{{ sp.pid }}">
+      <input type="hidden" name="next" value="{{ back }}">
+      <label>Appraiser
+        <span class="pick" data-pick><input type="text" class="pick-q" placeholder="Name, ID or job" aria-label="Appraiser for {{ sp.name }}" required autocomplete="off">
+          <input type="hidden" class="pick-val" name="appraiser_eid"></span>
+      </label>
+    </form>
+{%- endmacro %}
+
+{# "Use their line manager": its own small form, beside the solid button (the panel's footer, or the Change view's button row) #}
+{% macro appraiser_extra(sp, back) %}
+    {% if sp.appr.kind == 'set' %}
+    <form method="post" action="{{ url_for('admin_gradeh_appraiser') }}" data-confirm="Go back to {{ sp.name }}'s line manager on OneHR as the appraiser?" data-confirm-ok="Use their line manager">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}"><input type="hidden" name="pid" value="{{ sp.pid }}"><input type="hidden" name="clear" value="1"><input type="hidden" name="next" value="{{ back }}">
+      <button type="submit" class="btn-link">Use their line manager</button>
+    </form>{% endif %}
+{%- endmacro %}
+
+{# the Grade H HODs: what they are now, the two strict pickers and the split #}
+{% macro hod_form(hp, back) %}
+    <p class="small">{% if hp.shared %}Their Grade H HODs are {{ hp.hods[0].name }} ({{ hp.hods[0].share }}%) and {{ hp.hods[1].name }} ({{ hp.hods[1].share }}%).{% elif hp.hod_stage %}Their Grade H HOD is {{ hp.hod_name }}{% if hp.hod_listed %}, from the Grade H list{% else %}, their HOD on OneHR{% endif %}.{% elif hp.hod_set %}The Grade H list names an HOD for them who cannot take the stage now (they have left, or hold a BU CEO or BG CEO seat): the BU CEO covers them.{% else %}They have no HOD stage now: the BU CEO covers them.{% endif %}
+      The HOD sees this person under Grade H and calibrates them. With a second HOD, both calibrate them and their HOD band is the two bands weighted by the split. Their HOD on the main review is not changed.</p>
+    <p class="muted small">Picked from OneHR's people: a typed name that is not a pick is refused. The split steps in 10s, from 90 : 10 to 10 : 90.</p>
+    <form method="post" action="{{ url_for('admin_gradeh_hods') }}" id="gh-hod-form" class="adm-set-form gh-panel-form" data-confirm-for="{{ hp.name }}"
+          data-hod1="{{ hp.hod1_name }}" data-hod2="{{ hp.hod2_name }}" data-split="{{ hp.split }}"
+          data-confirm="{% if hp.hod2_id %}Keep {{ hp.hod1_name or 'their HOD' }} and {{ hp.hod2_name }} as the Grade H HODs of {{ hp.name }}, {{ hp.split }} : {{ 100 - hp.split }}? Bands either HOD has already set stay as they are.{% else %}Make the person you picked the Grade H HOD of {{ hp.name }}? They will see {{ hp.name }} under Grade H. Their HOD in the main review does not change.{% endif %}" data-confirm-ok="Set Grade H HODs">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <input type="hidden" name="pid" value="{{ hp.pid }}">
+      <input type="hidden" name="next" value="{{ back }}">
+      <label>HOD
+        {% if hp.hod1_name %}<span class="gh-chosen"><b>{{ hp.hod1_name }}</b>{% if hp.hod1_eid %} <span class="muted small">{{ hp.hod1_eid }}</span>{% endif %}</span>{% endif %}
+        <span class="pick" data-pick data-gh-pick-1><input type="text" class="pick-q" placeholder="{{ 'Change the HOD: name, ID or job' if hp.hod1_name else 'Name, ID or job' }}" aria-label="Grade H HOD for {{ hp.name }}" {{ '' if hp.hod1_name else 'required' }} autocomplete="off">
+          <input type="hidden" class="pick-val" name="hod_eid"></span>
+      </label>
+      <label class="gh-new">Second HOD <span class="muted small">(optional: only when two HODs share this person)</span>
+        {% if hp.hod2_id %}<span class="gh-chosen"><b>{{ hp.hod2_name }}</b> <span class="muted small">{{ hp.hod2_eid }}</span></span>{% endif %}
+        <span class="pick" data-pick data-gh-pick-2><input type="text" class="pick-q" placeholder="{{ 'Change the second HOD: name, ID or job' if hp.hod2_id else 'Name, ID or job' }}" aria-label="Second Grade H HOD for {{ hp.name }}" autocomplete="off">
+          <input type="hidden" class="pick-val" name="hod2_eid"></span>
+      </label>
+      <label class="gh-split">Split <span class="muted small">(the first HOD's share : the second's)</span>
+        <select name="hod_split" data-gh-split aria-label="Split between the two HODs"{% if not hp.hod2_id %} disabled{% endif %}>{% for n in (90, 80, 70, 60, 50, 40, 30, 20, 10) %}<option value="{{ n }}"{% if n == hp.split %} selected{% endif %}>{{ n }} : {{ 100 - n }}</option>{% endfor %}</select>
+      </label>
+      <div class="gh-how"><b>How their HOD band is worked out</b><br>Each band as its place (UA 1 … OU 5; Low 1, Mid 2, High 3), weighted by the split. Exactly halfway takes the lower band. Each HOD's band counts once that HOD signs off; if only one has signed off when the stage closes, that one stands. A second HOD who holds a BU CEO or BG CEO seat holds no Grade H HOD role: the other HOD takes 100%.</div>
+    </form>
+{%- endmacro %}
+
+{# "Remove the second HOD" and "Use their OneHR HOD": their own small forms #}
+{% macro hod_extra(hp, back) %}
+    {% if hp.hod2_id or hp.hod2_set %}
+    <form method="post" action="{{ url_for('admin_gradeh_hods') }}" data-confirm="Take {{ hp.hod2_name or 'the second HOD' }} off as a Grade H HOD of {{ hp.name }}? {{ hp.hod1_name or hp.hod_name or 'The first HOD' }} calibrates them alone again. Bands already set stay as they are." data-confirm-ok="Take the second HOD off" data-confirm-tone="danger">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}"><input type="hidden" name="pid" value="{{ hp.pid }}"><input type="hidden" name="clear2" value="1"><input type="hidden" name="next" value="{{ back }}">
+      <button type="submit" class="btn-link">Remove the second HOD</button>
+    </form>{% endif %}
+    {% if hp.hod_set %}
+    <form method="post" action="{{ url_for('admin_gradeh_hod') }}" data-confirm="Go back to {{ hp.name }}'s HOD on OneHR as their Grade H HOD?" data-confirm-ok="Use their OneHR HOD">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}"><input type="hidden" name="pid" value="{{ hp.pid }}"><input type="hidden" name="clear" value="1"><input type="hidden" name="next" value="{{ back }}">
+      <button type="submit" class="btn-link">Use their OneHR HOD</button>
+    </form>{% endif %}
+{%- endmacro %}
+
+{# Reopen: the reason is asked in OneHR's own box, the writer is gradeh_reopen (super admin only, refused once the unit is released) #}
+{% macro reopen_form(p, back) %}
+          <form method="post" action="{{ url_for('admin_gradeh_reopen') }}" data-confirm="Reopen {{ p.name }}'s Grade H appraisal? It goes back to their line manager as a draft, and any acknowledgement is cleared, with any “I do not agree” (its ticket stays with you). Staff are not told." data-confirm-ok="Reopen it" data-confirm-tone="danger" data-confirm-reason="Why you are reopening it (it goes in the audit log)" data-confirm-reason-field="reason" data-confirm-reason-max="500">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+            <input type="hidden" name="pid" value="{{ p.pid }}">
+            <input type="hidden" name="next" value="{{ back }}">
+            <button type="submit" class="pp-reopen">Reopen</button>
+          </form>
+{%- endmacro %}

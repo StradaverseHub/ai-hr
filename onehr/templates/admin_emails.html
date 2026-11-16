@@ -1,0 +1,232 @@
+{% extends "base.html" %}
+{% block title %}Emails and templates{% endblock %}
+{% block body %}
+{# Email › Emails and templates (canvas [design canvas link removed], boards "Email › Templates" and
+   "Templates › Preview open in the right panel"; Chris's comments there: "box height ... for preview, we can show it in
+   right panel", "add a show me preview here, and open at right panel"; the super admin's only): every mass email by
+   module with its templates (left), one template's name, when it's used and every word (middle, one Save), and Show
+   preview docking the email on the right, following the typing, while the list folds. Everything posts to
+   admin_emails and comes back to the template. #}
+<div class="eml">
+  <p class="adm-lede">The words of every email OneHR sends to many people. Each email has its usual template, and others can
+    take over on the days you give them, like a go-live announcement.</p>
+  <section class="admin-card rm-card" id="redo" aria-labelledby="eml-redo-h">
+    <div class="rm-h"><h2 id="eml-redo-h">When a KPI or competency changes</h2><span class="rm-badge">Super admin</span></div>
+    <p class="muted small rm-note">When Group People adds a KPI line or a competency after someone has started or submitted, or swaps their
+      competencies, that person gets one email naming what changed and what to fill in. Only the new item opens for them: everything
+      they already submitted stays as it is. Changing a target, a method, a unit or a weight, taking a line off, and a Reopen send no
+      such email. A save that reaches many people goes out in waves.</p>
+    <form method="post" action="{{ url_for('admin_emails') }}" class="admin-form adm-set-form" id="eml-redo"
+          data-confirm="{% if redo_on %}Switch the email off? Nobody is emailed when a KPI or competency is added or swapped, and emails already waiting are dropped before they go. You can switch it on again.{% else %}Switch the email on? People are emailed from now on when a KPI or competency is added or swapped and they have something to fill in.{% endif %} It goes in the audit log."
+          data-confirm-title="Save the switch?" data-confirm-ok="Save">
+      <input type="hidden" name="action" value="redo_switch">
+      <label class="switch">
+        <input type="checkbox" name="redo_on" value="1" {{ 'checked' if redo_on }}>
+        <span class="track" aria-hidden="true"></span>
+        <span class="switch-label">Email people when their KPI or competency changes</span>
+      </label>
+      <div class="actions"><span class="muted small">The words are the email &ldquo;Your KPI or competency changed&rdquo; below.</span><button type="submit" class="primary">Save</button></div>
+    </form>
+  </section>
+  <div class="eml-tg" id="eml-tg">
+    <section class="admin-card eml-list" aria-label="Emails">
+      {% for g in groups %}
+      <div class="eml-mod">{{ g.label }}</div>
+      {% for em in g.emails %}
+      <div class="eml-em{{ ' is-on' if em.key == row.email }}">
+        <b>{{ em.title }}</b>
+        {% for x in em.templates %}
+        <a class="eml-t{{ ' is-on' if x.id == row.id }}" href="{{ url_for('admin_emails', tid=x.id) }}"{% if x.id == row.id %} aria-current="page"{% endif %}>
+          <span class="eml-t-n" title="{{ x.name }}">{{ x.name }}</span>
+          <span class="eml-tpl{{ ' is-dated' if x.mode == 'dates' }}{{ ' is-off' if x.mode == 'none' or x.past }}">{{ 'usual' if x.usual else 'not in use' if x.mode == 'none' else x.when }}</span></a>
+        {% endfor %}
+      </div>
+      {% endfor %}
+      {% endfor %}
+      {% if lms %}
+      <div class="eml-mod">AI+ Learning</div>
+      <div class="eml-em"><a href="{{ url_for('admin_learning_emails') }}"><b>Learning's {{ lms_n }} emails</b></a>
+        <span class="muted small">Each its own words, on Learning › Settings › Emails</span></div>
+      {% endif %}
+    </section>
+
+    <section class="admin-card eml-ed" aria-labelledby="eml-ed-h">
+      <div class="eml-ed-h">
+        <div><span class="muted small">{{ e.title }}</span>
+          <h2 id="eml-ed-h">{{ row.name }} {% if t.in_use %}<span class="em-badge is-on">In use today</span>{% endif %}</h2></div>
+        <div class="eml-ed-btns">
+          <button type="submit" form="eml-dup" class="rm2-btn2">Duplicate</button>
+          <button type="submit" form="eml-new" class="rm2-btn2">+ New template</button>
+        </div>
+      </div>
+      <p class="small eml-ed-meta"><span class="muted">Who gets it:</span> {{ e.who }}. <span class="muted">When it goes:</span> {{ e.when }}.</p>
+      <form method="post" action="{{ url_for('admin_emails') }}" id="eml-form" class="rm2-form eml-form"
+            data-confirm="Save “{{ row.name }}”?{% if t.in_use %} It's the template in use today, so everyone who gets {{ kind.title | lower }} from the next send gets these words.{% else %} It's used on the days it covers, or as the usual one.{% endif %} Emails already waiting in a wave keep their words. It goes in the audit log."
+            data-confirm-title="Save the template?" data-confirm-ok="Save template">
+        <input type="hidden" name="action" value="save"><input type="hidden" name="email" value="{{ kind.key }}">
+        <input type="hidden" name="tid" value="{{ row.id }}">
+        <label class="eml-name">Template name<input name="name" value="{{ row.name }}" maxlength="{{ name_max }}" required></label>
+        <fieldset class="eml-modes"><legend class="rm2-lbl">When it's used</legend>
+          <label><input type="radio" name="mode" value="usual" {{ 'checked' if t.mode == 'usual' }}> The usual one</label>
+          <label class="eml-dates"><input type="radio" name="mode" value="dates" {{ 'checked' if t.mode == 'dates' }} {{ 'disabled' if t.usual }}> On
+            <input type="date" name="date_from" value="{{ t.from }}" min="{{ today }}" aria-label="First day" {{ 'disabled' if t.usual }}>
+            to <input type="date" name="date_to" value="{{ t.to }}" min="{{ today }}" aria-label="Last day" {{ 'disabled' if t.usual }}></label>
+          <label><input type="radio" name="mode" value="none" {{ 'checked' if t.mode == 'none' }} {{ 'disabled' if t.usual }}> Not in use</label>
+          {% if t.usual %}<span class="muted small">The usual one is used on every day no dated template covers. To stop using it, make another template the usual one.</span>{% endif %}
+        </fieldset>
+        <div class="eml-fields">
+          {% for k, label, cap, req in kind.fields %}
+          {% if k in kind.multiline %}
+          <label class="eml-wide">{{ label }}<textarea name="{{ k }}" rows="{{ 3 if cap > 300 else 2 }}" maxlength="{{ cap }}"{{ ' required' if req }}>{{ tpl[k] }}</textarea></label>
+          {% else %}
+          <label class="{{ 'eml-wide' if k == 'subject' }}">{{ label }}<input name="{{ k }}" value="{{ tpl[k] }}" maxlength="{{ cap }}"{{ ' required' if req }}></label>
+          {% endif %}
+          {% endfor %}
+        </div>
+        <div class="rm2-chips"><span class="rm2-lbl">You can use</span>
+          {% for p in kind.placeholders %}<button type="button" class="rm2-chip" data-ph="{{ '{' ~ p ~ '}' }}" title="Put it where the cursor is">{{ '{' ~ p ~ '}' }}</button>{% endfor %}</div>
+        <p class="muted small rm-note">{{ kind.lists }}{% if kind.own %} {name} is the name they chose at first sign-in, else their full name.{% else %} {display_name} is the name they chose at first sign-in, else their full name.{% endif %}</p>
+        <div class="eml-ed-foot">
+          {% if not t.usual %}<button type="submit" form="eml-ret" class="btn-link em-danger">Retire</button>{% endif %}
+          <span class="adm-panel-grow"></span>
+          <button type="button" class="rm2-btn2" id="eml-pv-btn" aria-controls="eml-pv" aria-expanded="false">Show preview</button>
+          {% if mail_on %}<button type="submit" form="eml-test" class="rm2-btn2">Send me a test</button>{% endif %}
+          <button type="submit" class="primary">Save</button>
+        </div>
+      </form>
+    </section>
+
+    <aside class="admin-card eml-pv" id="eml-pv" aria-labelledby="eml-pv-h" hidden>
+      <div class="eml-pv-h">
+        <div><span class="muted small">{{ row.name }}</span><h2 id="eml-pv-h">Preview</h2></div>
+        <button type="button" class="rm2-btn2 eml-x" id="eml-pv-x" aria-label="Close the preview">×</button>
+      </div>
+      {% if kind.key == 'reminder' %}
+      <div class="rm2-pick">
+        <label for="eml-pick-q"><b>Preview as</b></label>
+        <div class="rm2-pickbox">
+          <input id="eml-pick-q" type="search" autocomplete="off" placeholder="Name or Employee ID" data-search="{{ url_for('admin_reminders_people') }}">
+          <div class="rm2-res" id="eml-pick-res" role="listbox" aria-label="Matches" hidden></div>
+        </div>
+      </div>
+      {% endif %}
+      {% if (kind.key.startswith('ready_') or kind.key.startswith('gradeh_ready_')) %}<div class="eml-chips eml-pvo" role="group" aria-label="Preview"><button type="button" class="eml-chip is-on" data-pvo="case" data-v="open" aria-pressed="true">Part open</button><button type="button" class="eml-chip" data-pvo="case" data-v="later" aria-pressed="false">Opens later</button></div>{% endif %}{% if kind.key == 'gradeh_reminder' %}<div class="eml-chips eml-pvo" role="group" aria-label="Preview"><button type="button" class="eml-chip is-on" data-pvo="case" data-v="kpi" aria-pressed="true">KPI achievement</button><button type="button" class="eml-chip" data-pvo="case" data-v="ack" aria-pressed="false">Acknowledge</button><button type="button" class="eml-chip is-on" data-pvo="lang" data-v="en" aria-pressed="true">English</button><button type="button" class="eml-chip" data-pvo="lang" data-v="bm" aria-pressed="false">Bahasa Melayu</button></div>{% endif %}<p class="muted small" id="eml-pv-note">Made-up parts and counts, addressed to you. It follows your typing; nothing is saved or sent.</p>
+      <div class="rm2-frame eml-frame"><iframe id="eml-frame" sandbox title="The email in these words" data-url="{{ url_for('admin_emails_preview') }}" data-tid="{{ row.id }}"></iframe></div>
+    </aside>
+  </div>
+</div>
+<form method="post" action="{{ url_for('admin_emails') }}" id="eml-dup" class="adm-pform-x"
+      data-confirm="Make a copy of “{{ row.name }}”? The copy isn't used until you give it dates or make it the usual one." data-confirm-ok="Duplicate">
+  <input type="hidden" name="action" value="duplicate"><input type="hidden" name="email" value="{{ kind.key }}"><input type="hidden" name="tid" value="{{ row.id }}"></form>
+<form method="post" action="{{ url_for('admin_emails') }}" id="eml-new" class="adm-pform-x"
+      data-prompt="Name the new template of {{ e.title }} (it starts from OneHR's own words, and isn't used until you give it dates or make it the usual one)"
+      data-prompt-field="name" data-confirm-ok="Add the template">
+  <input type="hidden" name="action" value="new"><input type="hidden" name="email" value="{{ kind.key }}"><input type="hidden" name="name" value=""></form>
+{% if not t.usual %}
+<form method="post" action="{{ url_for('admin_emails') }}" id="eml-ret" class="adm-pform-x"
+      data-confirm="Retire “{{ row.name }}”? It's no longer used or listed{% if t.in_use %}, and the usual one is used from the next send{% endif %}. It stays in the audit log; to use these words again, duplicate another template and write them in." data-confirm-ok="Retire" data-confirm-tone="danger">
+  <input type="hidden" name="action" value="retire"><input type="hidden" name="email" value="{{ kind.key }}"><input type="hidden" name="tid" value="{{ row.id }}"></form>
+{% endif %}
+{% if mail_on %}
+<form method="post" action="{{ url_for('admin_emails') }}" id="eml-test" class="adm-pform-x"
+      {% if me_email %}data-confirm="Send yourself “{{ row.name }}” as saved, as a test, with “[Test]” in front of the subject? It goes to {{ me_email }} only, addressed to you, with made-up parts and counts." data-confirm-ok="Send the test"
+      {% else %}data-prompt="The address to send the test of “{{ row.name }}” to (your account has none)" data-prompt-field="test_to" data-confirm-ok="Send the test"{% endif %}>
+  <input type="hidden" name="action" value="test"><input type="hidden" name="email" value="{{ kind.key }}"><input type="hidden" name="tid" value="{{ row.id }}">
+  {% if not me_email %}<input type="hidden" name="test_to" value="">{% endif %}</form>
+{% endif %}
+<script>
+(function () {
+  var form = document.getElementById('eml-form'), wrap = document.getElementById('eml-tg');
+  var pv = document.getElementById('eml-pv'), btn = document.getElementById('eml-pv-btn'), frame = document.getElementById('eml-frame');
+  var token = (document.querySelector('meta[name="csrf-token"]') || {}).content || '';
+  var eid = '', timer = null;{% if kind.key == 'gradeh_reminder' or (kind.key.startswith('ready_') or kind.key.startswith('gradeh_ready_')) %} var pvo = {% if kind.key == 'gradeh_reminder' %}{ 'case': 'kpi', lang: 'en' }{% else %}{ 'case': 'open' }{% endif %};
+  document.querySelectorAll('[data-pvo]').forEach(function (b) { b.addEventListener('click', function () {
+    pvo[b.getAttribute('data-pvo')] = b.getAttribute('data-v');
+    document.querySelectorAll('[data-pvo="' + b.getAttribute('data-pvo') + '"]').forEach(function (o) { var on = o === b; o.classList.toggle('is-on', on); o.setAttribute('aria-pressed', on ? 'true' : 'false'); });
+    preview();
+  }); });{% endif %}
+  // a date picked ticks "On", so a Save gives it the days just typed
+  form.querySelectorAll('input[type=date]').forEach(function (d) {
+    d.addEventListener('input', function () { var r = form.querySelector('input[name=mode][value=dates]'); if (r && !r.disabled) r.checked = true; });
+  });
+  // the preview: the email in the words being typed, made-up or one person's (the reminder)
+  function preview() {
+    if (pv.hidden) return;
+    var fd = new FormData(form);
+    fd.delete('action'); fd.set('tid', frame.getAttribute('data-tid')); fd.set('csrf_token', token);
+    if (eid) fd.set('eid', eid);{% if kind.key == 'gradeh_reminder' or (kind.key.startswith('ready_') or kind.key.startswith('gradeh_ready_')) %} Object.keys(pvo).forEach(function (k) { fd.set(k, pvo[k]); });{% endif %}
+    fetch(frame.getAttribute('data-url'), { method: 'POST', body: fd, credentials: 'same-origin', headers: { 'X-Requested-With': 'fetch' } })
+      .then(function (r) { return r.text(); })
+      .then(function (h) { frame.srcdoc = h; })
+      .catch(function () { frame.srcdoc = '<p style="font:14px Arial;color:#5f6678;padding:12px">The preview didn\'t load. Type again to retry.</p>'; });
+  }
+  // the email is 600px wide: shown whole, scaled to the panel
+  function fit() {
+    if (pv.hidden) return;
+    var box = frame.parentNode, k = Math.min(box.clientWidth / 640, 1);
+    frame.style.width = '640px'; frame.style.transform = 'scale(' + k + ')';
+    frame.style.height = Math.round(box.clientHeight / k) + 'px';
+  }
+  window.addEventListener('resize', fit);
+  function show(on) {
+    pv.hidden = !on; wrap.classList.toggle('is-pv', on);
+    fit();
+    btn.textContent = on ? 'Hide preview' : 'Show preview'; btn.setAttribute('aria-expanded', on ? 'true' : 'false');
+    btn.classList.toggle('is-on', on);
+    try { sessionStorage.setItem('onehr-eml-pv', on ? '1' : ''); } catch (e) {}
+    if (on) preview();
+  }
+  btn.addEventListener('click', function () { show(pv.hidden); });
+  document.getElementById('eml-pv-x').addEventListener('click', function () { show(false); btn.focus(); });
+  document.addEventListener('keydown', function (e) { if (e.key === 'Escape' && !pv.hidden && !document.querySelector('.modal-overlay, .dp-overlay')) show(false); });
+  form.addEventListener('input', function () { clearTimeout(timer); timer = setTimeout(preview, 350); });
+  var keep = ''; try { keep = sessionStorage.getItem('onehr-eml-pv') || ''; } catch (e) {}
+  if (keep) show(true);
+  // a placeholder chip goes in where the cursor was
+  var lastField = null;
+  form.addEventListener('focusin', function (e) { if (/^(INPUT|TEXTAREA)$/.test(e.target.tagName) && e.target.name !== 'name' && e.target.type !== 'date') lastField = e.target; });
+  document.querySelectorAll('.rm2-chip').forEach(function (c) {
+    c.addEventListener('mousedown', function (e) { e.preventDefault(); });   // keep the field's cursor
+    c.addEventListener('click', function () {
+      var f = lastField; if (!f) return;
+      var a = f.selectionStart == null ? f.value.length : f.selectionStart, b = f.selectionEnd == null ? a : f.selectionEnd;
+      var t = c.getAttribute('data-ph');
+      f.value = f.value.slice(0, a) + t + f.value.slice(b); f.focus(); f.setSelectionRange(a + t.length, a + t.length);
+      f.dispatchEvent(new Event('input', { bubbles: true }));
+    });
+  });
+  // Preview as (the reminder): one person's real email in these words
+  var q = document.getElementById('eml-pick-q'), res = document.getElementById('eml-pick-res'), st = null;
+  var note = document.getElementById('eml-pv-note');
+  if (!q) return;
+  q.addEventListener('input', function () {
+    clearTimeout(st);
+    var v = q.value.trim();
+    if (!v && eid) { eid = ''; note.textContent = 'Made-up parts and counts, addressed to you. It follows your typing; nothing is saved or sent.'; preview(); }
+    if (v.length < 2) { res.hidden = true; return; }
+    st = setTimeout(function () {
+      fetch(q.getAttribute('data-search') + '?q=' + encodeURIComponent(v), { credentials: 'same-origin' })
+        .then(function (r) { return r.ok ? r.json() : { results: [] }; })
+        .then(function (d) {
+          res.textContent = '';
+          (d.results || []).forEach(function (r) {
+            var b = document.createElement('button'); b.type = 'button'; b.className = 'rm2-opt'; b.setAttribute('role', 'option');
+            var n = document.createElement('b'); n.textContent = r.name; b.appendChild(n);
+            var m = document.createElement('span'); m.textContent = r.eid + (r.n ? ' · ' + r.n + ' waiting' : ' · nothing waiting now'); b.appendChild(m);
+            b.addEventListener('click', function () {
+              eid = r.eid; q.value = r.name + ' · ' + r.eid; res.hidden = true;
+              note.textContent = r.name + "'s email with what is waiting on them now. Clear the box for made-up parts.";
+              preview();
+            });
+            res.appendChild(b);
+          });
+          if (!res.children.length) { var p = document.createElement('p'); p.className = 'muted small'; p.textContent = 'No one by that name or ID.'; res.appendChild(p); }
+          res.hidden = false;
+        });
+    }, 220);
+  });
+  q.addEventListener('keydown', function (e) { if (e.key === 'Escape' && !res.hidden) { e.stopPropagation(); res.hidden = true; } });
+  document.addEventListener('click', function (e) { if (!res.contains(e.target) && e.target !== q) res.hidden = true; });
+})();
+</script>
+{% endblock %}

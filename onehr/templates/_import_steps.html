@@ -1,0 +1,268 @@
+{#- Every import in four steps (Chris, 2026-10-26; canvas [design canvas link removed]): 1 File,
+    2 Quality, 3 Changes and the super admin's decisions, 4 the final preview and Apply. The page's spec in app.py
+    (_imp_register) gives `v` (a kept file at its step) or `done` (one just applied); these draw them the same way on
+    every import page. Import WITH CONTEXT (url_for, is_super). The KPI targets import keeps its own page. -#}
+
+{% macro steps(v, done, idle) %}
+{% set q = v.quality if v else none %}
+{% set st = v.step if v else ('done' if done else 'file') %}
+<ol class="ri-steps" aria-label="Import steps">
+  <li class="{{ 'is-on' if st == 'file' else 'is-done' }}"><b>1 · File</b><span>{% if v %}✓ {{ v.filename }}{% elif done %}✓ {{ done.filename }}{% else %}{{ idle.file or 'choose it below' }}{% endif %}</span></li>
+  <li class="{{ 'is-on' if st == 'quality' else ('is-done' if st in ('changes', 'apply', 'done') else '') }}"><b>2 · Quality</b><span>{% if v %}{% if st != 'quality' %}✓ {% endif %}{% if q.n_fix %}{{ q.n_fix }} to fix · {% endif %}{{ q.n_look }} to look at{% elif done %}✓ checked{% else %}what can't go in, what's worth a look{% endif %}</span></li>
+  <li class="{{ 'is-on' if st == 'changes' else ('is-done' if st in ('apply', 'done') else '') }}"><b>3 · Changes</b><span>{% if v and st == 'apply' %}✓ {% if v.n_decide %}{{ v.n_decide }} answered{% else %}looked at{% endif %}{% elif v and st == 'changes' and v.n_decide %}{{ v.n_decide - v.n_done }} to answer{% elif done %}✓ {% if done.n_decided %}{{ done.n_decided }} answered{% else %}looked at{% endif %}{% else %}{{ idle.changes or 'what it changes, and your answers' }}{% endif %}</span></li>
+  <li class="{{ 'is-on' if st == 'apply' else ('is-done' if st == 'done' else '') }}"><b>4 · Apply</b><span>{% if done %}✓ applied{% else %}the final preview, then apply this same file{% endif %}</span></li>
+</ol>
+{% endmacro %}
+
+{% macro done_card(done, page, pa={}) %}
+<section class="admin-card ri-check" aria-label="Applied">
+  <div class="ri-verdict is-ok" role="status">
+    <span class="ri-verdict-ic" aria-hidden="true">✓</span>
+    <div class="ri-verdict-t">
+      <b>Applied {{ done.filename }}{% if done.at %} at {{ done.at | myt }}{% endif %}.</b>
+      <span>{{ done.summary }}</span>
+    </div>
+  </div>
+  <ul class="bullets">
+    {% for line in done.lines or [] %}<li>{{ line }}</li>{% endfor %}
+    <li>The database was backed up just before it applied, and the audit log holds each change{% if done.n_decided %} and your answers{% endif %}.</li>
+  </ul>
+  <div class="ri-apply" style="justify-content:flex-start">
+    <a class="btn-link" href="{{ url_for(page, **pa) }}">Import another file</a>
+  </div>
+</section>
+{% endmacro %}
+
+{#- a one-word cell (a code, a number, a date) never breaks at its hyphens -#}
+{% macro td(c) %}<td{% if (c is string and ' ' not in c and c | length < 28) or c is number %} class="imp-nw"{% endif %}>{{ cell(c) }}</td>{% endmacro %}
+
+{% macro cell(c) %}{% if c is string or c is number %}{{ c }}{% elif c %}{{ c[0] }}{% if c[1] %}{% for line in c[1].split('\n') %}<div class="muted small">{{ line }}</div>{% endfor %}{% endif %}{% endif %}{% endmacro %}
+
+{% macro quality(v) %}
+{% set q = v.quality %}
+<section class="admin-card ri-check ri-quality" aria-label="Quality">
+  <div class="adm-needs-head"><h2>{{ v.filename }}{% if v.opts %} · {{ v.opts }}{% endif %}</h2>
+    <a class="btn-link" href="{{ url_for(v.page, **v.pa) }}">Choose another file</a></div>
+  <div class="ri-verdict {{ 'is-bad' if q.n_fix else ('is-warn' if q.n_look else 'is-ok') }}" role="status">
+    <span class="ri-verdict-ic" aria-hidden="true">{{ '!' if q.n_fix or q.n_look else '✓' }}</span>
+    <div class="ri-verdict-t">
+      {% if q.n_fix %}<b>Fix {{ q.n_fix }} row{{ '' if q.n_fix == 1 else 's' }} before you can go on.</b>
+        <span>{% if q.n_look %}{{ q.n_look }} more thing{{ '' if q.n_look == 1 else 's' }} {{ 'is' if q.n_look == 1 else 'are' }} worth a look; {% endif %}{{ q.clean | thousands }} row{{ '' if q.clean == 1 else 's' }} {{ 'is' if q.clean == 1 else 'are' }} clean.</span>
+      {% elif q.n_look %}<b>{{ q.n_look }} thing{{ '' if q.n_look == 1 else 's' }} worth a look.</b>
+        <span>They won't stop the import, but each is probably a mistake in the file. {{ q.clean | thousands }} row{{ '' if q.clean == 1 else 's' }} {{ 'is' if q.clean == 1 else 'are' }} clean.</span>
+      {% else %}<b>Every row is clean.</b><span>{{ q.rows | thousands }} row{{ '' if q.rows == 1 else 's' }}: nothing to fix and nothing to look at.</span>{% endif %}
+    </div>
+    {% if q.n_fix or q.n_look %}<a class="adm-rep-dl" href="{{ url_for(v.dl, token=v.token, what='issues') }}">Download every issue (Excel)</a>{% endif %}
+  </div>
+  <div class="ri-tiles">
+    <div class="ri-tile" style="--c:var(--d-cv-9aa1b5)"><b>{{ q.rows | thousands }}</b><span>row{{ '' if q.rows == 1 else 's' }} in the file</span></div>
+    <div class="ri-tile" style="--c:var(--d-cv-1a7a54)"><b>{{ q.clean | thousands }}</b><span>clean</span></div>
+    <div class="ri-tile" style="--c:var(--d-cv-d0716a)"><b>{{ q.n_fix | thousands }}</b><span>can't be imported</span></div>
+    <div class="ri-tile" style="--c:var(--d-cv-e0a84a)"><b>{{ q.n_look | thousands }}</b><span>worth a look</span></div>
+  </div>
+  {% if v.blank_rows %}<p class="muted small">{{ v.blank_rows }} row{{ '' if v.blank_rows == 1 else 's' }} had only an Employee ID and {{ 'is' if v.blank_rows == 1 else 'are' }} skipped: not filled in yet.</p>{% endif %}
+  {% if q.fix %}
+  <div class="ri-errs">
+    <div class="adm-needs-head"><h3>{{ q.n_fix }} row{{ '' if q.n_fix == 1 else 's' }} can't be imported <span class="muted small">· fix them in your file and choose it again</span></h3></div>
+    <ul class="ri-fix">
+      {% for f in q.fix %}<li><b>{{ f.n }}</b><span>{{ f.kind }}</span>{% if f.rows %}<span class="muted small">row{{ '' if f.rows | length == 1 else 's' }} {{ f.rows[:12] | join(', ') }}{% if f.rows | length > 12 %} and {{ f.rows | length - 12 }} more{% endif %}</span>{% endif %}</li>{% endfor %}
+    </ul>
+  </div>
+  {% endif %}
+  {% if q.look %}
+  <div class="ri-chg">
+    <div class="adm-needs-head"><h3>{{ q.n_look }} thing{{ '' if q.n_look == 1 else 's' }} worth a look <span class="muted small">· they won't stop the import</span></h3></div>
+    <div class="table-scroll"><table class="admin-table no-auto-table ri-look">
+      <thead><tr><th scope="col">What</th><th scope="col">Why it matters</th><th scope="col">For example</th><th scope="col"><span class="sr-only">Download</span></th></tr></thead>
+      <tbody>{% for w in q.look %}<tr>
+        <td><b class="ri-look-n">{{ w.n }}</b> {{ w.what }}</td><td class="muted small">{{ w.why }}</td>
+        <td class="small">{{ w.found[0].detail }}{% if w.n > 1 %} <span class="muted">· and {{ w.n - 1 }} more</span>{% endif %}</td>
+        <td class="ri-look-dl"><a class="ri-look-a" href="{{ url_for(v.dl, token=v.token, what='issues', kind=w.key) }}">{{ 'All %d' % w.n if w.n > 1 else 'Download' }}</a></td>
+      </tr>{% endfor %}</tbody>
+    </table></div>
+  </div>
+  {% endif %}
+  {% if v.checks %}
+  <details class="kti-checks">
+    <summary>What this step checks</summary>
+    <ul class="bullets">
+      <li><b>Can't be imported:</b> {{ v.checks[0] }}</li>
+      {% if v.checks[1] %}<li><b>Worth a look:</b> {{ v.checks[1] }}</li>{% endif %}
+    </ul>
+  </details>
+  {% endif %}
+  <form method="post" class="ri-apply ri-go">
+    <input type="hidden" name="token" value="{{ v.token }}"><input type="hidden" name="action" value="quality_ok">
+    {% if q.n_fix %}<span class="muted small">Opens once every row passes. With only things to look at, you tick “I've looked at these” and go on.</span>
+    {% elif q.n_look %}<label class="ri-ack"><input type="checkbox" name="ack" value="1" required> I've looked at these</label>{% endif %}
+    <button type="submit" class="primary" {{ 'disabled' if q.n_fix }}>Continue to the changes</button>
+  </form>
+</section>
+{% endmacro %}
+
+{% macro section(v, s) %}
+<div class="ri-chg{% if s.cls %} {{ s.cls }}{% endif %}">
+  <div class="adm-needs-head"><h3>{{ s.title }}</h3>
+    {% if s.dl %}<a class="adm-rep-dl" href="{{ url_for(v.dl, token=v.token, what=s.dl) }}">{{ s.dl_label or 'Download every change (Excel)' }}</a>{% endif %}</div>
+  {% if s.note %}<p class="muted small">{{ s.note }}</p>{% endif %}
+  {% if s.chips %}<ul class="ri-fields">{% for lbl, n, sub in s.chips %}<li><b>{{ lbl }}</b> {{ n | thousands }}{% if sub %} <span class="muted small">· {{ sub }}</span>{% endif %}</li>{% endfor %}</ul>{% endif %}
+  {% if s.list %}<ul class="bullets small">{% for li in s.list %}<li>{{ li }}</li>{% endfor %}</ul>{% endif %}
+  {% if s.head %}
+  <div class="table-scroll"><table class="admin-table no-auto-table imp-t">
+    <thead><tr>{% for h in s.head %}<th scope="col">{{ h }}</th>{% endfor %}</tr></thead>
+    <tbody>{% for r in s.rows %}<tr>{% for c in r %}{{ td(c) }}{% endfor %}</tr>{% endfor %}
+    {% if s.more %}<tr><td colspan="{{ s.head | length }}" class="muted small">… and {{ s.more | thousands }} more{% if s.dl %}, all in the download{% endif %}.</td></tr>{% endif %}</tbody>
+  </table></div>
+  {% endif %}
+</div>
+{% endmacro %}
+
+{% macro changes(v, title) %}
+{% set ch = v.ch %}
+<section class="admin-card ri-check" aria-label="Changes">
+  <div class="adm-needs-head"><h2>{{ title }}</h2>
+    <span class="ri-head-acts"><a class="btn-link" href="{{ url_for(v.page, check=v.token, **v.pa) }}">Back to the quality check</a>
+      <a class="btn-link" href="{{ url_for(v.page, **v.pa) }}">Choose another file</a></span></div>
+  <div class="ri-tiles">{% for n, lbl, c in ch.tiles %}<div class="ri-tile" style="--c:{{ c }}"><b>{{ n | thousands }}</b><span>{{ lbl }}</span></div>{% endfor %}</div>
+  {% for s in ch.sections %}{{ section(v, s) }}{% endfor %}
+</section>
+
+{% if ch.decide %}
+<section class="admin-card kti-decide" id="decide" aria-label="Your answers">
+  <div class="adm-needs-head"><h2>Your answers · {{ v.n_decide }} thing{{ '' if v.n_decide == 1 else 's' }} OneHR shouldn't guess</h2>
+    <span class="kti-who">Super admin answers</span></div>
+  {% if not is_super %}<p class="note">The super admin answers these. Ask them to import this file: you can't go on past this step.</p>{% endif %}
+  <form method="post" class="kti-form">
+    <input type="hidden" name="token" value="{{ v.token }}">
+    {% for g in ch.decide %}
+    {% set gi = loop.index %}
+    <div class="kti-group">
+      <div class="kti-ghead">
+        <div><b>{{ g.title }}</b>{% if g.sub %}<span class="muted small">{{ g.sub }}</span>{% endif %}</div>
+        {% if is_super and g['items'] | length > 1 %}
+        <span class="kti-all">{% for val, lbl in g.options %}<button type="button" class="btn-link" data-kti-all="{{ val }}" data-kti-group="g{{ gi }}">All: {{ lbl | lower }}</button>{% endfor %}</span>
+        {% endif %}
+      </div>
+      {% if g.why %}<p class="small kti-why">{{ g.why }}</p>{% endif %}
+      <div class="table-scroll"><table class="admin-table no-auto-table kti-table imp-t">
+        <thead><tr>{% for h in g.head %}<th scope="col">{{ h }}</th>{% endfor %}<th scope="col">Your answer</th></tr></thead>
+        <tbody>{% for it in g['items'] %}<tr data-kti-group="g{{ gi }}">
+          {% for c in it.cells %}{{ td(c) }}{% endfor %}
+          <td><div class="kti-seg" role="radiogroup" aria-label="{{ it.label or it.key }}">
+            {% for val, lbl in g.options %}<label><input type="radio" name="{{ it.fid }}" value="{{ val }}" {{ 'checked' if it.choice == val }} {{ 'disabled' if not is_super }}><span>{{ lbl }}</span></label>{% endfor %}
+          </div></td>
+        </tr>{% endfor %}</tbody>
+      </table></div>
+      {% if g.reason %}
+      <label class="kti-reason"><span>{{ g.reason.label }}</span>
+        <textarea name="{{ g.reason.fid }}" rows="{{ g.reason.rows or 2 }}" maxlength="{{ g.reason.max }}" aria-label="{{ g.reason.label }}" {{ 'disabled' if not is_super }}>{{ g.reason.value }}</textarea>
+        <span class="muted small">{{ g.reason.help }}</span></label>
+      {% endif %}
+    </div>
+    {% endfor %}
+    {% if is_super %}
+    <div class="ri-apply">
+      <span class="muted small" data-kti-count>{{ v.n_done }} of {{ v.n_decide }} answered</span>
+      <button type="submit" class="btn-link" name="action" value="decide">Save answers</button>
+      <button type="submit" class="primary" name="action" value="to_apply">Continue to the final preview</button>
+    </div>
+    {% endif %}
+  </form>
+</section>
+{% else %}
+<form method="post" class="ri-apply admin-card">
+  <input type="hidden" name="token" value="{{ v.token }}"><input type="hidden" name="action" value="to_apply">
+  <span class="muted small">Nothing is applied yet: the next step shows the final picture.</span>
+  <button type="submit" class="primary">Continue to the final preview</button>
+</form>
+{% endif %}
+{% endmacro %}
+
+{% macro final(v, title) %}
+{% set af = v.af %}
+<section class="admin-card ri-check" aria-label="Final preview">
+  <div class="adm-needs-head"><h2>{{ title }}</h2>
+    <a class="btn-link" href="{{ url_for(v.page, check=v.token, step='changes', **v.pa) }}">Back to the changes</a></div>
+  <p class="small">{% if v.n_decide %}{{ af.lede.rstrip('.') }}, with your {{ v.n_decide }} answer{{ '' if v.n_decide == 1 else 's' }} in.{% else %}{{ af.lede }}{% endif %} Nothing is applied yet.</p>
+  <div class="ri-tiles">{% for n, lbl, c in af.tiles %}<div class="ri-tile" style="--c:{{ c }}"><b>{{ n | thousands }}</b><span>{{ lbl }}</span></div>{% endfor %}</div>
+  {% if af.head %}
+  <div class="ri-chg">
+    <div class="adm-needs-head"><h3>{{ af.table_title or 'After the import' }}</h3>
+      <a class="adm-rep-dl" href="{{ url_for(v.dl, token=v.token, what='final') }}">Download the final preview (Excel)</a></div>
+    <div class="table-scroll"><table class="admin-table no-auto-table kti-after imp-t">
+      <thead><tr>{% for h in af.head %}<th scope="col">{{ h }}</th>{% endfor %}</tr></thead>
+      <tbody>{% for r in af.rows %}<tr>{% for c in r %}{{ td(c) }}{% endfor %}</tr>{% endfor %}
+      {% if af.more %}<tr><td colspan="{{ af.head | length }}" class="muted small">… and {{ af.more | thousands }} more, all in the download.</td></tr>{% endif %}</tbody>
+    </table></div>
+  </div>
+  {% endif %}
+  {% if v.recap %}
+  <div class="ri-chg">
+    <div class="adm-needs-head"><h3>Your answers</h3><a class="btn-link" href="{{ url_for(v.page, check=v.token, step='changes', **v.pa) }}#decide">Change them</a></div>
+    <ul class="bullets small">{% for lbl, it in v.recap[:40] %}<li><b>{{ lbl }}</b>: {{ it.label or it.key }}</li>{% endfor %}
+      {% if v.recap | length > 40 %}<li class="muted">… and {{ v.recap | length - 40 }} more.</li>{% endif %}
+      {% for lbl, txt in v.reasons or [] %}<li><b>{{ lbl }}</b>: &ldquo;{{ txt }}&rdquo;</li>{% endfor %}</ul>
+  </div>
+  {% endif %}
+  <p class="note">When you apply, OneHR backs up the database first, then applies this same file, never a new pick. Every change{% if v.n_decide %} and each of your answers{% endif %} goes into the audit log.</p>
+  <form method="post" class="ri-apply" data-confirm="{{ af.confirm }}"
+        data-confirm-title="Apply this file?" data-confirm-ok="Apply this file" data-confirm-tone="danger">
+    <input type="hidden" name="token" value="{{ v.token }}"><input type="hidden" name="action" value="apply">
+    <a class="btn-link" href="{{ url_for(v.page, check=v.token, step='changes', **v.pa) }}">Back to the changes</a>
+    <button type="submit" class="primary">Apply this file</button>
+  </form>
+</section>
+{% endmacro %}
+
+{% macro upload(note) %}
+<section class="admin-card">
+  <h2>Choose the file</h2>
+  <form method="post" enctype="multipart/form-data">
+    <input type="hidden" name="preview" value="1">
+    <div class="upload-box">
+      <p>Drop your <strong>.xlsx</strong> (or <strong>.csv</strong>) here, or browse.</p>
+      <input type="file" name="file" accept=".csv,.xlsx,.xls" required>
+      {% if caller %}{{ caller() }}{% endif %}
+    </div>
+    <div class="actions"><button type="submit" class="primary">Check the file</button></div>
+    <p class="muted small">{{ note or "Nothing changes yet. OneHR checks the file, shows what it would change and asks anything it needs to know. Then you apply that same file." }}</p>
+  </form>
+</section>
+{% endmacro %}
+
+{% macro script() %}
+<script>
+(function () {
+  var form = document.querySelector('.kti-form');
+  if (!form) return;
+  var count = form.querySelector('[data-kti-count]');
+  function recount() {
+    if (!count) return;
+    var groups = {}, done = 0, all = 0;
+    form.querySelectorAll('.kti-seg input[type=radio]').forEach(function (r) { groups[r.name] = groups[r.name] || r.checked; });
+    Object.keys(groups).forEach(function (k) { all++; if (groups[k]) done++; });
+    count.textContent = done + ' of ' + all + ' answered';
+  }
+  form.addEventListener('change', recount);
+  form.querySelectorAll('[data-kti-all]').forEach(function (b) {
+    b.addEventListener('click', function () {
+      var val = b.getAttribute('data-kti-all');
+      form.querySelectorAll('tr[data-kti-group="' + b.getAttribute('data-kti-group') + '"] .kti-seg input[value="' + val + '"]')
+        .forEach(function (r) { if (!r.disabled) r.checked = true; });
+      recount();
+    });
+  });
+})();
+</script>
+{% endmacro %}
+
+{#- One page: the steps, then the step's section (or the done card); a page passes its step-1 content as the caller. -#}
+{% macro page(v, done, titles, idle={}) %}
+{{ steps(v, done, idle) }}
+{% if done %}{{ done_card(done, titles.page, titles.pa or {}) }}
+{% elif v and v.step == 'quality' %}{{ quality(v) }}
+{% elif v and v.step == 'changes' %}{{ changes(v, titles.changes) }}
+{% elif v and v.step == 'apply' %}{{ final(v, titles.final) }}
+{% else %}{{ caller() }}{% endif %}
+{{ script() }}
+{% endmacro %}

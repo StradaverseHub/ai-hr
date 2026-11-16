@@ -1,0 +1,41 @@
+{# The status box over a leader-review list (Chris, 2026-11-09; canvas boards A1-A5, B1, C1). `lst.review` is _lr_review_for's:
+   {box: {title, state, pill {kind, tone, text}, note, line, acts [], no}, unlock (the Unlock row: its form and box), next (where
+   an action comes back to: the leader's page with this list open), tier, can_act}. Only the state's own action is in `acts`, and
+   only for the super admin; anyone else reads the same lines. The Unlock form and OneHR's box are the ones Lock status and Leaders
+   draw (unlock_attrs); Give late pass opens the person page's Give panel with this part picked; End pass is the page's own form. #}
+{% set rv = lst.review %}{% set bx = rv.box %}
+<section class="lr-box" data-lr-state="{{ bx.state }}" aria-label="{{ bx.title }}">
+  <div class="lr-main">
+    <b class="lr-title">{{ bx.title }}</b>
+    <div class="lr-pillrow small">
+      {% if bx.pill.kind == 'pass' %}<span class="adm-lock is-pass">{{ bx.pill.text }}</span>{% else %}<span class="clp-pill is-{{ bx.pill.tone }}">{{ bx.pill.text }}</span>{% endif %}
+      {% if bx.note %}<span class="muted">{{ bx.note }}</span>{% endif %}
+    </div>
+    {% if bx.line %}<div class="muted small lr-line">{{ bx.line }}</div>{% endif %}
+  </div>
+  {% if bx.acts or bx.no %}
+  <div class="lr-acts">
+    {% for a in bx.acts %}
+    <div class="lr-act">
+      {% if a.kind == 'unlock' and rv.unlock %}
+      <form method="post" class="lr-form" action="{{ rv.unlock.url }}" data-confirm="{{ rv.unlock.box.msg }}"{{ unlock_attrs(rv.unlock.box) }}>
+        <input type="hidden" name="next" value="{{ rv.next }}">
+        <button type="submit" class="pp-late-give">{{ 'Unlock the Talent Box…' if rv.tier == 'bgceo' else 'Unlock both…' }}</button>
+      </form>
+      {% elif a.kind == 'give' %}
+      {% if a.person_url %}{# the list is on another leader's page (a BG CEO's unit): the Give panel to open is the leader's own #}
+      <a class="pp-late-give" href="{{ a.person_url }}">Give late pass…</a>
+      {% else %}<button type="button" class="pp-late-give" data-panel-open="latepass" data-late-pick="{{ a.pick }}">Give late pass…</button>{% endif %}
+      {% elif a.kind == 'end' %}
+      <form method="post" class="lr-form" action="{{ a.url }}" data-confirm="{{ a.confirm }}" data-confirm-title="{{ a.title }}" data-confirm-ok="End pass" data-confirm-tone="danger">
+        <input type="hidden" name="pass_id" value="{{ a.pass_id }}"><input type="hidden" name="next" value="{{ rv.next }}">
+        <button type="submit" class="pp-late-end">End pass</button>
+      </form>
+      {% endif %}
+      {% if a.muted %}<span class="muted small">{{ a.muted }}</span>{% endif %}
+    </div>
+    {% endfor %}
+    {% if bx.no %}<span class="adm-lock-no muted small">{{ bx.no }}</span>{% endif %}
+  </div>
+  {% endif %}
+</section>

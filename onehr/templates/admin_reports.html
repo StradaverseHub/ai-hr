@@ -1,0 +1,384 @@
+{% extends "base.html" %}
+{% block title %}Results analysis{% endblock %}
+{% block body %}
+<div class="adm-headrow">
+  <p class="adm-lede">Potential-band distribution and Leadership Principle strengths for
+    {{ cyc['name'] if cyc else 'this cycle' }}.</p>
+  {% if picked_bg %}
+  <div class="adm-headrow-acts">
+    {% if picked_bg %}<button type="button" class="primary" id="rpt-pdf-open">Download report as PDF</button>{% endif %}
+  </div>
+  {% endif %}
+</div>
+
+{% from "_filter_rows.html" import filter_rows %}
+{# business group, then unit, then department, one row each (the review, 2026-10-10); combining several units stays in
+   its dialog #}
+<section class="admin-card adm-filters" aria-label="Filters">
+  {{ filter_rows(frows) }}
+  {% if picked_bg and (company_options|length >= 2 or active_fcompanies|length >= 2) %}
+  <div class="adm-fsearch">
+    {% if company_options|length >= 2 %}<button type="button" class="btn-link" id="rpt-combine-co-open">Combine business units&hellip;</button>{% endif %}
+    {% if active_fcompanies|length >= 2 %}
+    <span class="status-pill status-progress">{{ active_fcompanies|length }} business units combined</span>
+    <a class="btn-link" href="{{ url_for('admin_reports', fbg=active_fbg) }}">&times; Clear</a>
+    {% endif %}
+  </div>
+  {% endif %}
+</section>
+
+{% if not picked_bg %}
+<section class="admin-card"><p class="muted">Choose a business group above to see its reports.</p></section>
+
+{% else %}
+<section class="admin-card">
+  <h2>Potential band distribution by business unit</h2>
+  <p class="muted small">
+    {% if active_fcompanies %}High / Mid / Low potential % for {{ company_label }}.
+    {% else %}High / Mid / Low potential %, one bar per business unit in {{ display_bg(active_fbg) }}.{% endif %}
+    <strong>{{ total | thousands }}</strong> {{ 'person' if total == 1 else 'people' }} with a valid score.</p>
+  <div class="legend-key muted small rm-inline">
+    <span><span class="rpt-dot" data-band="Low"></span> Low</span>
+    <span><span class="rpt-dot" data-band="Mid"></span> Mid</span>
+    <span><span class="rpt-dot" data-band="High"></span> High</span>
+  </div>
+  {% if by_company %}
+    {% for group, b in by_company.items() %}
+    <div class="rpt-cut-row">
+      <div><span class="rpt-cut-name">{{ display_company(active_fbg, group) }}</span><span class="rpt-cut-n muted small">{{ b['total'] }} {{ 'person' if b['total'] == 1 else 'people' }}</span>{% if group in company_options %} <button type="button" class="rpt-view-btn" data-cut="company" data-group="{{ group }}" data-label="{{ display_company(active_fbg, group) }}" aria-label="View people in {{ display_company(active_fbg, group) }}"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg></button>{% endif %}</div>
+      <div class="rpt-cut-bar">
+        {% for band in ("Low", "Mid", "High") %}
+          {% set pct = b['pct'][band] %}
+          {% if b[band] %}
+          <div class="rpt-seg" data-band="{{ band }}" style="width:{{ pct }}%">
+            <span class="rpt-seg-label">{{ pct }}% ({{ b[band] | thousands }})</span>
+          </div>
+          {% endif %}
+        {% endfor %}
+      </div>
+    </div>
+    {% endfor %}
+  {% else %}
+    <p class="muted">No people with a valid score in this scope yet.</p>
+  {% endif %}
+</section>
+
+<section class="admin-card">
+  <h2>Potential band distribution by department and grade band</h2>
+  <p class="muted small">Scoped to {{ company_label }}{% if active_fdepts %}, departments: {{ dept_label }}{% endif %}.
+    <strong>{{ total | thousands }}</strong> {{ 'person' if total == 1 else 'people' }} with a valid score.</p>
+  <div class="legend-key muted small rm-inline">
+    <span><span class="rpt-dot" data-band="Low"></span> Low</span>
+    <span><span class="rpt-dot" data-band="Mid"></span> Mid</span>
+    <span><span class="rpt-dot" data-band="High"></span> High</span>
+  </div>
+
+  <h3 class="rpt-principles-col-title muted small">By department</h3>
+  {% if dept_options|length >= 2 or active_fdepts %}
+  <div class="rm-inline">
+    {% if dept_options|length >= 2 %}
+    <button type="button" class="btn-link" id="rpt-combine-dept-open">Combine departments&hellip;</button>
+    {% endif %}
+    {% if active_fdepts|length >= 2 %}
+    <span class="status-pill status-progress">{{ active_fdepts|length }} departments combined</span>
+    {% elif active_fdepts %}
+    <span class="status-pill status-progress">Filtered to 1 department</span>
+    {% endif %}
+    {% if active_fdepts %}
+    <a class="btn-link" href="{{ url_for('admin_reports', fbg=active_fbg, fcompany=active_fcompanies) }}">&times; Clear</a>
+    {% endif %}
+  </div>
+  {% endif %}
+  {% if by_dept %}
+    {% for group, b in by_dept.items() %}
+    <div class="rpt-cut-row">
+      <div><span class="rpt-cut-name">{{ group }}</span><span class="rpt-cut-n muted small">{{ b['total'] }} {{ 'person' if b['total'] == 1 else 'people' }}</span>{% if group in dept_options %} <button type="button" class="rpt-view-btn" data-cut="department" data-group="{{ group }}" data-label="{{ group }}" aria-label="View people in {{ group }}"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg></button>{% endif %}</div>
+      <div class="rpt-cut-bar">
+        {% for band in ("Low", "Mid", "High") %}
+          {% set pct = b['pct'][band] %}
+          {% if b[band] %}
+          <div class="rpt-seg" data-band="{{ band }}" style="width:{{ pct }}%">
+            <span class="rpt-seg-label">{{ pct }}% ({{ b[band] | thousands }})</span>
+          </div>
+          {% endif %}
+        {% endfor %}
+      </div>
+    </div>
+    {% endfor %}
+  {% else %}
+    <p class="muted">No people with a valid score in this scope yet.</p>
+  {% endif %}
+
+  <div class="adm-subcard">
+  <h3 class="rpt-principles-col-title muted small">By grade band</h3>
+  {% if by_tier %}
+    {% for group, b in by_tier.items() %}
+    <div class="rpt-cut-row">
+      <div><span class="rpt-cut-name">{{ group }}{% if group in tier_grades %} <span class="muted small">&middot; {{ tier_grades[group] }}</span>{% endif %}</span><span class="rpt-cut-n muted small">{{ b['total'] }} {{ 'person' if b['total'] == 1 else 'people' }}</span>{% if group in tier_grades %} <button type="button" class="rpt-view-btn" data-cut="tier" data-group="{{ group }}" data-label="{{ group }}" aria-label="View people in {{ group }}"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg></button>{% endif %}</div>
+      <div class="rpt-cut-bar">
+        {% for band in ("Low", "Mid", "High") %}
+          {% set pct = b['pct'][band] %}
+          {% if b[band] %}
+          <div class="rpt-seg" data-band="{{ band }}" style="width:{{ pct }}%">
+            <span class="rpt-seg-label">{{ pct }}% ({{ b[band] | thousands }})</span>
+          </div>
+          {% endif %}
+        {% endfor %}
+      </div>
+    </div>
+    {% endfor %}
+  {% else %}
+    <p class="muted">No people with a valid score in this scope yet.</p>
+  {% endif %}
+  </div>
+</section>
+
+<section class="admin-card">
+  <h2>Leadership Principles &mdash; strongest and weakest</h2>
+  <p class="muted small">Aggregate "Demonstrate" agreement % across every statement in each principle,
+    for {{ company_label }}{% if active_fdepts %}, departments: {{ dept_label }}{% endif %}.</p>
+
+  {% if principles %}
+  <div class="rpt-principles-grid">
+    <div>
+      <p class="rpt-principles-col-title muted small">Top 2 &mdash; strongest</p>
+      {% for p in top2 %}
+      <div class="rpt-principle-row">
+        <span class="rpt-rank-badge strong">{{ loop.index }}</span>
+        <span class="rpt-principle-name">{{ p['name'] }}{% if p['description'] %}<br><span class="rpt-principle-tag">{{ p['description'] }}</span>{% endif %}</span>
+        <span class="rpt-principle-pct">{{ p['pct'] }}%</span>
+      </div>
+      {% endfor %}
+    </div>
+    <div>
+      <p class="rpt-principles-col-title muted small">Bottom 2 &mdash; weakest</p>
+      {% for p in bottom2 %}
+      <div class="rpt-principle-row">
+        <span class="rpt-rank-badge weak">{{ principles|length - loop.index + 1 }}</span>
+        <span class="rpt-principle-name">{{ p['name'] }}{% if p['description'] %}<br><span class="rpt-principle-tag">{{ p['description'] }}</span>{% endif %}</span>
+        <span class="rpt-principle-pct">{{ p['pct'] }}%</span>
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+  {% else %}
+  <p class="muted">No submitted responses in this scope yet.</p>
+  {% endif %}
+</section>
+
+<div class="modal-overlay" id="rpt-pdf-overlay" hidden>
+  <div class="modal-card" role="dialog" aria-modal="true" aria-labelledby="rpt-pdf-title">
+    <h2 id="rpt-pdf-title">Download report as PDF</h2>
+    <p class="muted small">Choose one or more business units in {{ display_bg(active_fbg) }}. Each business unit prints as its own page.</p>
+    <form method="get" action="{{ url_for('admin_export_report_pdf') }}" id="rpt-pdf-form">
+      <input type="hidden" name="fbg" value="{{ active_fbg }}">
+      <fieldset class="company-pick">
+        <legend>Business units</legend>
+        <div class="company-grid">
+          {% for c in company_options %}
+          <label class="company-opt"><input type="checkbox" name="company" value="{{ c }}"> {{ display_company(active_fbg, c) }}</label>
+          {% endfor %}
+        </div>
+        <p class="rm-inline"><button type="button" class="btn-link" id="rpt-pdf-selall">Select all</button></p>
+      </fieldset>
+      <p class="small pp-danger" id="rpt-pdf-warn" hidden>Choose at least one business unit.</p>
+      <div class="modal-actions">
+        <button type="button" class="btn-link" id="rpt-pdf-cancel">Cancel</button>
+        <button type="submit" class="primary">Generate PDF</button>
+      </div>
+    </form>
+  </div>
+</div>
+<script>
+(function () {
+  var overlay = document.getElementById('rpt-pdf-overlay');
+  if (!overlay) return;
+  var openBtn = document.getElementById('rpt-pdf-open');
+  var form = document.getElementById('rpt-pdf-form');
+  var warn = document.getElementById('rpt-pdf-warn');
+  if (openBtn) openBtn.addEventListener('click', function () { overlay.hidden = false; });
+  document.getElementById('rpt-pdf-cancel').addEventListener('click', function () { overlay.hidden = true; });
+  overlay.addEventListener('click', function (e) { if (e.target === overlay) overlay.hidden = true; });
+  document.getElementById('rpt-pdf-selall').addEventListener('click', function () {
+    var boxes = overlay.querySelectorAll('input[name="company"]');
+    var allChecked = Array.prototype.every.call(boxes, function (b) { return b.checked; });
+    Array.prototype.forEach.call(boxes, function (b) { b.checked = !allChecked; });
+  });
+  form.addEventListener('submit', function (e) {
+    var checked = overlay.querySelectorAll('input[name="company"]:checked');
+    if (!checked.length) { e.preventDefault(); warn.hidden = false; }
+  });
+})();
+</script>
+
+<div class="modal-overlay" id="rpt-combine-co-overlay" hidden>
+  <div class="modal-card" role="dialog" aria-modal="true" aria-labelledby="rpt-combine-co-title">
+    <h2 id="rpt-combine-co-title">Combine business units</h2>
+    <p class="muted small">Pick two or more business units in {{ display_bg(active_fbg) }} to view as one combined group &mdash; the report narrows to just their combined data.</p>
+    <form method="get" id="rpt-combine-co-form">
+      <input type="hidden" name="fbg" value="{{ active_fbg }}">
+      <fieldset class="company-pick">
+        <legend>Business units</legend>
+        <div class="company-grid">
+          {% for c in company_options %}
+          <label class="company-opt"><input type="checkbox" name="fcompany" value="{{ c }}" {{ 'checked' if c in active_fcompanies else '' }}> {{ display_company(active_fbg, c) }}</label>
+          {% endfor %}
+        </div>
+      </fieldset>
+      <div class="admin-form">
+        <label>Custom label (optional)
+          <input type="text" name="fcompany_label" value="{{ company_label if active_fcompanies|length >= 2 else '' }}" placeholder="Defaults to the combined business unit names">
+        </label>
+      </div>
+      <p class="small pp-danger" id="rpt-combine-co-warn" hidden>Choose at least one business unit.</p>
+      <div class="modal-actions">
+        <button type="button" class="btn-link" id="rpt-combine-co-cancel">Cancel</button>
+        <button type="submit" class="primary">Combine</button>
+      </div>
+    </form>
+  </div>
+</div>
+<script>
+(function () {
+  var overlay = document.getElementById('rpt-combine-co-overlay');
+  if (!overlay) return;
+  var openBtn = document.getElementById('rpt-combine-co-open');
+  var form = document.getElementById('rpt-combine-co-form');
+  var warn = document.getElementById('rpt-combine-co-warn');
+  if (openBtn) openBtn.addEventListener('click', function () { overlay.hidden = false; });
+  document.getElementById('rpt-combine-co-cancel').addEventListener('click', function () { overlay.hidden = true; });
+  overlay.addEventListener('click', function (e) { if (e.target === overlay) overlay.hidden = true; });
+  form.addEventListener('submit', function (e) {
+    var checked = overlay.querySelectorAll('input[name="fcompany"]:checked');
+    if (!checked.length) { e.preventDefault(); warn.hidden = false; }
+  });
+})();
+</script>
+
+<div class="modal-overlay" id="rpt-combine-dept-overlay" hidden>
+  <div class="modal-card" role="dialog" aria-modal="true" aria-labelledby="rpt-combine-dept-title">
+    <h2 id="rpt-combine-dept-title">Combine departments</h2>
+    <p class="muted small">Pick two or more departments within {{ company_label }} to view as one combined group.</p>
+    <form method="get" id="rpt-combine-dept-form">
+      <input type="hidden" name="fbg" value="{{ active_fbg }}">
+      {% for c in active_fcompanies %}<input type="hidden" name="fcompany" value="{{ c }}">{% endfor %}
+      {% if active_fcompanies|length >= 2 %}<input type="hidden" name="fcompany_label" value="{{ company_label }}">{% endif %}
+      <fieldset class="company-pick">
+        <legend>Departments</legend>
+        <div class="company-grid">
+          {% for d in dept_options %}
+          <label class="company-opt"><input type="checkbox" name="fdept" value="{{ d }}" {{ 'checked' if d in active_fdepts else '' }}> {{ d }}</label>
+          {% endfor %}
+        </div>
+      </fieldset>
+      <div class="admin-form">
+        <label>Custom label (optional)
+          <input type="text" name="fdept_label" value="{{ dept_label if active_fdepts|length >= 2 else '' }}" placeholder="Defaults to the combined department names">
+        </label>
+      </div>
+      <p class="small pp-danger" id="rpt-combine-dept-warn" hidden>Choose at least one department.</p>
+      <div class="modal-actions">
+        <button type="button" class="btn-link" id="rpt-combine-dept-cancel">Cancel</button>
+        <button type="submit" class="primary">Combine</button>
+      </div>
+    </form>
+  </div>
+</div>
+<script>
+(function () {
+  var overlay = document.getElementById('rpt-combine-dept-overlay');
+  if (!overlay) return;
+  var openBtn = document.getElementById('rpt-combine-dept-open');
+  var form = document.getElementById('rpt-combine-dept-form');
+  var warn = document.getElementById('rpt-combine-dept-warn');
+  if (openBtn) openBtn.addEventListener('click', function () { overlay.hidden = false; });
+  document.getElementById('rpt-combine-dept-cancel').addEventListener('click', function () { overlay.hidden = true; });
+  overlay.addEventListener('click', function (e) { if (e.target === overlay) overlay.hidden = true; });
+  form.addEventListener('submit', function (e) {
+    var checked = overlay.querySelectorAll('input[name="fdept"]:checked');
+    if (!checked.length) { e.preventDefault(); warn.hidden = false; }
+  });
+})();
+</script>
+
+<div class="modal-overlay" id="rpt-subjects-overlay" hidden>
+  <div class="modal-card" role="dialog" aria-modal="true" aria-labelledby="rpt-subjects-title">
+    <h2 id="rpt-subjects-title"></h2>
+    <p class="muted small" id="rpt-subjects-sub"></p>
+    <div id="rpt-subjects-body" class="table-scroll-capped"></div>
+    <div class="modal-actions">
+      <button type="button" class="btn-link" id="rpt-subjects-close">Close</button>
+    </div>
+  </div>
+</div>
+<script>
+(function () {
+  var overlay = document.getElementById('rpt-subjects-overlay');
+  if (!overlay) return;
+  var title = document.getElementById('rpt-subjects-title');
+  var sub = document.getElementById('rpt-subjects-sub');
+  var body = document.getElementById('rpt-subjects-body');
+  var scope = {fbg: {{ active_fbg|tojson }}, fcompany: {{ active_fcompanies|tojson }}, fdept: {{ active_fdepts|tojson }}};
+
+  function closeOverlay() { overlay.hidden = true; }
+  document.getElementById('rpt-subjects-close').addEventListener('click', closeOverlay);
+  overlay.addEventListener('click', function (e) { if (e.target === overlay) closeOverlay(); });
+
+  document.addEventListener('click', function (e) {
+    var btn = e.target.closest('.rpt-view-btn');
+    if (!btn) return;
+    var cut = btn.getAttribute('data-cut');
+    var group = btn.getAttribute('data-group');
+    title.textContent = btn.getAttribute('data-label');
+    sub.textContent = 'Loading…';
+    body.textContent = '';
+    overlay.hidden = false;
+
+    var params = new URLSearchParams();
+    params.set('fbg', scope.fbg);
+    scope.fcompany.forEach(function (c) { params.append('fcompany', c); });
+    scope.fdept.forEach(function (d) { params.append('fdept', d); });
+    params.set('cut', cut);
+    params.set('group', group);
+
+    fetch('{{ url_for("admin_reports_subjects") }}?' + params.toString(), {credentials: 'same-origin'})
+      .then(function (r) { if (!r.ok) throw new Error('bad response'); return r.json(); })
+      .then(function (data) {
+        sub.textContent = data.total + (data.total === 1 ? ' person' : ' people');
+        if (!data.subjects.length) {
+          var p = document.createElement('p');
+          p.className = 'muted small';
+          p.textContent = 'No people with a valid score in this scope.';
+          body.appendChild(p);
+          return;
+        }
+        var table = document.createElement('table');
+        table.className = 'admin-table';
+        data.subjects.forEach(function (s) {
+          var tr = document.createElement('tr');
+          var tdName = document.createElement('td');
+          tdName.textContent = s.full_name;
+          var tdBand = document.createElement('td');
+          var pill = document.createElement('span');
+          pill.className = 'potential-pill';
+          pill.setAttribute('data-band', s.band);
+          pill.textContent = s.band;
+          tdBand.appendChild(pill);
+          tr.appendChild(tdName);
+          tr.appendChild(tdBand);
+          table.appendChild(tr);
+        });
+        body.appendChild(table);
+      })
+      .catch(function () {
+        sub.textContent = '';
+        var p = document.createElement('p');
+        p.className = 'small pp-danger';
+        p.textContent = 'Could not load the list. Please try again.';
+        body.appendChild(p);
+      });
+  });
+})();
+</script>
+{% endif %}
+{% endblock %}

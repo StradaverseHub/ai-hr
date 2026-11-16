@@ -1,0 +1,27 @@
+{# The notice bar (the release window, Chris 2026-10-26; canvas [design canvas link removed] boards
+   1-6): under the top bar on every page, and at the top of the sign-in pages ("add the notification bar on our login
+   page/landing page too"). Navy from an hour before (Hide folds it into the pill in the top bar), red with a countdown
+   ten minutes before (no Hide), then, in a tab left open, "closed" until OneHR is back. (The urgent fix kind is retired; an old row of it is red from the
+   start.) static/notice.js keeps it current and asks /notice.json every few minutes, so a page open since before the
+   notice still shows it. Nothing posted = no bar. #}
+<div id="site-notice-slot" data-url="{{ url_for('site_notice_json') }}" data-place="{{ site_place or 'other' }}" data-auth="{{ '1' if auth_page else '0' }}"
+     data-hide="{{ '1' if (user and not auth_page) else '0' }}" data-ann='{{ (site_ann or []) | tojson }}'>
+{% if site_notice %}{% set n = site_notice %}
+  <div class="sn-bar{{ ' is-red' if n.words.red or n.state != 'info' }}{{ ' is-auth' if auth_page }}" id="site-notice"
+       role="{{ 'alert' if (n.words.red or n.state != 'info') else 'status' }}" data-id="{{ n.id }}"
+       data-start="{{ n.start }}" data-end="{{ n.end }}" data-warn="{{ n.warn }}" data-now="{{ n.now }}"
+       data-closes="{{ '1' if n.closes else '0' }}" data-kind="{{ n.kind }}" data-words='{{ n.words | tojson }}'>
+    <svg class="sn-ic" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">{% if n.kind == 'fix' %}<path d="M14.7 6.3a4 4 0 0 0-5.4 5.4L3 18l3 3 6.3-6.3a4 4 0 0 0 5.4-5.4l-2.6 2.6-2.4-.6-.6-2.4 2.6-2.6z"/>{% else %}<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>{% endif %}</svg>
+    <span class="sn-text"><span class="sn-run">{% if n.state == 'info' %}<b class="sn-lead">{{ n.lead_now }}</b><span class="sn-sep"> · </span><span class="sn-body">{{ n.text_now }}</span>{% else %}<span class="sn-body">{{ n.text_now }}</span>{% endif %}</span></span>
+    {% if user and not auth_page and n.state == 'info' and not n.words.red %}<button type="button" class="sn-hide" data-sn-hide>Hide</button>{% endif %}
+  </div>
+{% elif site_ann %}
+  {# announcements and the deadline reminder meant for this page (bar_items; canvas boards 16-16b): all of them in one
+     line, each with its icon and its button, a dot between; notice.js runs the line across the bar, round and round,
+     when it doesn't fit, and keeps it to what /notice.json says every few minutes. No Got it: each stays until it ends. #}
+  <div class="sn-bar sn-ann{{ ' is-red' if site_ann[0].red }}{{ ' is-auth' if auth_page }}" id="site-ann"
+       role="{{ 'alert' if site_ann[0].red else 'status' }}">
+    <span class="sn-text"><span class="sn-run">{% for a in site_ann %}{% if not loop.first %}<span class="sn-dot" aria-hidden="true"></span>{% endif %}<span class="sn-item{{ ' is-red' if a.red }}" data-key="{{ a.key }}"><svg class="sn-ic" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">{% if a.icon == 'cal' %}<rect x="3" y="5" width="18" height="16" rx="2"/><path d="M16 3v4M8 3v4M3 10h18"/>{% else %}<path d="M3 10v4a1 1 0 0 0 1 1h2l6 4V5L6 9H4a1 1 0 0 0-1 1z"/><path d="M16 9a3.5 3.5 0 0 1 0 6"/><path d="M19 6a8 8 0 0 1 0 12"/>{% endif %}</svg><b class="sn-lead">{{ a.lead }}</b><span class="sn-sep"> · </span><span class="sn-body">{{ a.body }}</span>{% if a.button and a.button.help %}<button type="button" class="sn-act" data-help-open="home">{{ a.button.label }}</button>{% elif a.button and (a.button.url or '').startswith('/') and not (a.button.url or '').startswith('//') %}<a class="sn-act" href="{{ a.button.url }}">{{ a.button.label }}</a>{% endif %}</span>{% endfor %}</span></span>
+  </div>
+{% endif %}
+</div>

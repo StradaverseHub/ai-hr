@@ -1,0 +1,57 @@
+{# Every KPI line and what is keyed so far. Shared by the full page and the
+   ?fragment=1 fetch, so the two cannot drift -- the same discipline as
+   _principles_report_body.html.
+
+   ZERO NEW SCORING CODE. Every figure comes from pm_score_targets() and
+   pm_overall_for_targets(), the same calls performance_my_view() makes, so this
+   table cannot disagree with the module page about a person's own numbers.
+
+   No colmenu and no .table-scroll-capped: the admin table standard is for
+   admin LIST tables, and this is one person's six rows. #}
+<table class="admin-table" id="rv-summary">
+  <thead>
+    <tr>
+      <th>KPI</th><th>Weight</th><th>Target</th><th>Actual</th><th>Result</th><th>Band</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for t in st['targets'] %}
+      <tr class="data-row">
+        <td>{{ t['kpi_name'] }}{% if t['bu_level'] %} <span class="muted small">&middot; Group People fills this in</span>{% endif %}</td>
+        <td>{{ t['weightage'] }}%</td>
+        <td>{% if t['target'] is not none %}{{ t['target'] | commas }}{% else %}&mdash;{% endif %}</td>
+        <td>{% if t['result'] and t['result']['actual_value'] is not none %}{{ t['result']['actual_value'] | commas }}{% else %}<span class="muted">needs a figure</span>{% endif %}</td>
+        {# A's value is a 1-5 rating, B's is an achievement percentage. One
+           column, formatted by the mechanism it came from -- there is no 'pct'
+           on a score, and inventing one here would be a second scoring rule. #}
+        <td>{% if t['score'] and t['score']['value'] is not none %}
+              {% if t['score']['mechanism'] == 'B' %}{{ '%.0f%%' % t['score']['value'] }}
+              {% else %}{{ '%.1f of 5' % t['score']['value'] }}{% endif %}
+            {% else %}&mdash;{% endif %}</td>
+        <td>{% if t['score'] and t['score']['label'] %}{{ t['score']['label'] }}{% else %}&mdash;{% endif %}</td>
+      </tr>
+    {% else %}
+      <tr><td colspan="6" class="muted">No KPI lines this period.</td></tr>
+    {% endfor %}
+  </tbody>
+</table>
+
+{# THE PARTIAL RULE. pm_overall_for_targets(require_locked=False) excludes
+   unscored lines, so a 3.4 over 75% of the weight is a number over
+   three-quarters of a scorecard. It is never printed without its coverage --
+   the same rule as Reward's "partial -- 47 of 94 priced", and the fourth place
+   in this product where showing a partial total as a total would be the
+   dangerous mistake. #}
+<p class="muted small" style="margin-top:10px">
+  {% if overall and weight_total and covered >= weight_total %}
+    Weighted so far <strong>{{ ('%.0f%%' % overall['value']) if overall['mechanism'] == 'B' else ('%.2f' % overall['value']) }}</strong>
+    {% if overall['label'] %}({{ overall['label'] }}){% endif %}
+    &middot; covering all {{ '%.0f' % weight_total }}% of your weight
+  {% elif overall %}
+    Weighted so far <strong>{{ ('%.0f%%' % overall['value']) if overall['mechanism'] == 'B' else ('%.2f' % overall['value']) }}</strong>
+    &middot; <strong>partial</strong> &mdash; covering {{ '%.0f' % covered }}% of
+    {{ '%.0f' % weight_total }}% of your weight
+  {% else %}
+    Nothing scored yet, so there is no weighted figure to show.
+  {% endif %}
+</p>

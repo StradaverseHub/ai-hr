@@ -1,0 +1,60 @@
+{# One read-only popup, shared by every eye icon on the two decision pages.
+
+   Every trigger carries its own content as data-title + data-json (a list of
+   {label, value} pairs), so the page needs no fetch and no per-row modal --
+   and the content is written with textContent, never innerHTML, because names
+   and remarks are free text somebody else typed. #}
+<div id="tdec-modal" class="modal-overlay" hidden>
+  <div class="modal-card" role="dialog" aria-modal="true" aria-labelledby="tdec-modal-title"
+       style="max-width:520px">
+    <h2 id="tdec-modal-title" style="margin:0"></h2>
+    <div id="tdec-modal-body" style="margin-top:12px"></div>
+    <div class="modal-actions">
+      <button type="button" class="btn-link" id="tdec-modal-close">Close</button>
+    </div>
+  </div>
+</div>
+
+<script>
+(function () {
+  var overlay = document.getElementById('tdec-modal');
+  if (!overlay) return;
+  var titleEl = document.getElementById('tdec-modal-title');
+  var bodyEl = document.getElementById('tdec-modal-body');
+  function close() { overlay.hidden = true; }
+  document.getElementById('tdec-modal-close').addEventListener('click', close);
+  overlay.addEventListener('click', function (e) { if (e.target === overlay) close(); });
+  document.addEventListener('keydown', function (e) {
+    if (e.key === 'Escape' && !overlay.hidden) close();
+  });
+  document.addEventListener('click', function (e) {
+    var btn = e.target.closest ? e.target.closest('.tdec-view') : null;
+    if (!btn) return;
+    titleEl.textContent = btn.dataset.title || '';
+    bodyEl.innerHTML = '';
+    var rows = [];
+    try { rows = JSON.parse(btn.dataset.json || '[]'); } catch (err) { rows = []; }
+    if (!rows.length) {
+      var none = document.createElement('p');
+      none.className = 'muted small';
+      none.style.margin = '0';
+      none.textContent = 'Nothing recorded yet.';
+      bodyEl.appendChild(none);
+    }
+    rows.forEach(function (r) {
+      var wrap = document.createElement('div');
+      wrap.style.margin = '0 0 10px';
+      var lab = document.createElement('p');
+      lab.className = 'muted small';
+      lab.style.margin = '0 0 2px';
+      lab.textContent = r.label;
+      var val = document.createElement('p');
+      val.style.margin = '0';
+      val.textContent = r.value;
+      wrap.appendChild(lab); wrap.appendChild(val);
+      bodyEl.appendChild(wrap);
+    });
+    overlay.hidden = false;
+  });
+})();
+</script>

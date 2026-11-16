@@ -1,0 +1,49 @@
+{# The preview of moving a business unit to another business group (Org structure, 2026-11-06; canvas "Org structure: move a
+   business unit", board 2): a FRAGMENT the unit's side panel fetches (GET /admin/org/move-preview) and puts in place of its body and
+   foot. A refusal is just its words (the page shows them in the section, answer 409). Names go through display_bg /
+   display_company; the form has its own CSRF token (CSRF is stamped on a page's forms only as it loads). #}
+{% if refused %}{{ plan.refusal }}{% else %}
+<div class="adm-panel-body adm-psecs" data-move-body>
+  <section class="adm-psec adm-mv-first" aria-label="Move to {{ plan.new_label }}">
+    <h3 class="adm-ph">Move it to {{ plan.new_label }}</h3>
+    <p class="adm-mv-p">From {{ plan.old_label }} to {{ plan.new_label }}, with its {{ plan.people | thousands }} {{ 'person' if plan.people == 1 else 'people' }} and {{ plan.depts }} {{ 'department' if plan.depts == 1 else 'departments' }}. Nothing has changed yet.</p>
+    {% if plan.cycle %}
+    <div class="adm-mv-note" role="note"><b>The {{ plan.cycle.name }} is open.</b>
+      {% if plan.cycle.kpi %}{{ plan.cycle.kpi }}, and {{ plan.cycle.tb }}.{% else %}Their records move now, and {{ plan.cycle.tb }}.{% endif %}
+      {% if plan.kpi.differ and plan.lines %} Their {{ plan.lines | thousands }} KPI {{ 'line' if plan.lines == 1 else 'lines' }} stay on {{ plan.old_poss }} scale until they are set again{% if not plan.kpi.new_set %} ({{ plan.new_label }} has no KPI framework yet: set it under Performance settings first){% endif %}; the Total KPI score is held meanwhile.{% endif %}
+      {% if plan.kpi.differ and plan.bu_kpis %} The unit's {{ plan.bu_kpis }} BU KPI {{ 'line' if plan.bu_kpis == 1 else 'lines' }} need their figures set again on BU KPI setup.{% endif %}</div>
+    {% endif %}
+  </section>
+  <section class="adm-psec adm-mv-sec" aria-label="Goes with it">
+    <h3 class="adm-ph">Goes with it</h3>
+    {% for it in plan.goes %}<div class="adm-mv-row"><span class="adm-mv-what"><span class="adm-mv-t">{{ it.what }}</span><span class="adm-mv-s">{{ it.sub }}</span></span>
+      <b class="adm-mv-n{{ ' is-none' if it.n == 'None yet' }}">{{ it.n }}</b></div>{% endfor %}
+  </section>
+  <section class="adm-psec adm-mv-sec" aria-label="Takes {{ plan.new_poss }}">
+    <h3 class="adm-ph">Takes {{ plan.new_poss }}</h3>
+    <p class="adm-mv-p">{{ plan.takes }}</p>
+    <span class="muted small adm-mv-hint">These belong to each group, so {{ plan.old_poss }} stay where they are.</span>
+  </section>
+  <section class="adm-psec adm-mv-sec" aria-label="Let go">
+    <h3 class="adm-ph">Let go</h3>
+    {% for it in plan.lets %}<div class="adm-mv-row"><span class="adm-mv-what"><span class="adm-mv-t">{{ it.what }}</span><span class="adm-mv-s">{{ it.sub }}</span></span>
+      <span class="adm-mv-n adm-mv-{{ it.tone }}">{{ it.n }}</span></div>{% endfor %}
+  </section>
+  <section class="adm-psec adm-mv-sec" aria-label="Stays as filed">
+    <h3 class="adm-ph">Stays as filed</h3>
+    {% for s in plan.stays %}<p class="adm-mv-p">{{ s }}</p>{% endfor %}
+    {% for s in plan.info %}<p class="adm-mv-p">{{ s }}.</p>{% endfor %}
+  </section>
+</div>
+<footer class="adm-panel-foot" data-move-foot>
+  <button type="button" class="btn-link adm-panel-grow" data-move-back>Back</button>
+  <form method="post" action="{{ url_for('admin_org') }}" data-confirm="{{ plan.confirm }}" data-confirm-title="Move this business unit?" data-confirm-ok="Move">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <input type="hidden" name="action" value="move_company">
+    <input type="hidden" name="business_group" value="{{ plan.old_bg }}">
+    <input type="hidden" name="company" value="{{ plan.company }}">
+    <input type="hidden" name="to_bg" value="{{ plan.new_bg }}">
+    <button type="submit" class="primary">{{ plan.button }}</button>
+  </form>
+</footer>
+{% endif %}

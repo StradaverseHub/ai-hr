@@ -1,0 +1,265 @@
+{# The DYNAMIC left navigator for the unified journey: a pending-first table of the
+   items you can act on in the ACTIVE stage -- pending up top, done collapsed. Built
+   from `nav` (_journey_nav_items), the same rows the stage widget shows. TM shows its
+   two stage chips (360 -> Competency). Clicking an item is wired client-side
+   (journey_chat.js): a 360 colleague switches the assessment, a competency category
+   jumps the widget, a KPI / IDP item focuses the conversation. Swapped each turn. #}
+{% macro tick() %}<svg class="rv-tick" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" aria-hidden="true"><path d="M4 12l5 5L20 6"/></svg>{% endmacro %}
+{% macro padlock() %}<svg class="rv-tick" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg>{% endmacro %}
+{% macro nav_item(it, nav) %}
+  <button type="button" class="rv-nav-item rv-nav-pending{{ ' rv-ni-done' if it['done'] else '' }}{{ ' rv-ni-wait' if (nav['kind'] == 'team' and not it['done'] and not it.get('turn')) else '' }}" data-item-id="{{ it['id'] }}" data-kind="{{ nav['kind'] }}"
+    {% if nav.get('focus') is not none and (it['id']|string == nav['focus']|string) %}aria-current="true"{% endif %}>
+    {# The NAME has its own line -- up to two, then an ellipsis (the UX review's F18, 2026-10-08: names were cut to one
+       line beside their tag); the weight / relationship / status sits on the line beneath. #}
+    <span class="rv-ni-name" title="{{ it['name'] }}">{{ it['name'] }}</span>
+    {% if nav['kind'] == 'feedback' %}
+      {# The relationship (already colleague-to-me) is the sub-line. No "Not started" text --
+         the PENDING group conveys that. The progress bar shows only once under way. #}
+      <span class="rv-ni-meta">{% if it['prog'] %}<span class="rv-ni-prog"><i style="width:{{ (it['prog']/it['total']*100)|round|int if it['total'] else 0 }}%"></i></span>{% endif %}{{ it['tag'] }}</span>
+    {% elif nav['kind'] == 'competency' %}
+      {# Name only -- the pending total is on the group header; the per-category "N left" was
+         redundant (Chris, 2026-09-09). #}
+    {% elif it['tag'] or it['meta'] %}
+      <span class="rv-ni-meta">{% if it['tag'] %}<span class="rv-ni-tag{% if it.tag_kind %} is-{{ it.tag_kind }}{% endif %}"{% if it.tag_title %} title="{{ it.tag_title }}"{% endif %}>{{ it['tag'] }}</span>{% endif %}{% if it['meta'] %}<span class="rv-ni-metatext">{{ it['meta'] }}</span>{% endif %}</span>
+    {% endif %}
+  </button>
+{% endmacro %}
+{# One item in a queue (option C, every view since 2026-10-16): initials for a person, a status square for anything
+   else, the name (two lines at most) and where it stands -- a plain nav item to the client. #}
+{% macro nq_row(it, cur, kind, av) %}
+  <button type="button" class="rv-nav-item rv-nq-row is-{{ it['state'] }}" data-item-id="{{ it['id'] }}" data-kind="{{ kind }}"
+    {% if cur and it['id']|string == cur|string %}aria-current="true"{% endif %}>
+    {% if av == 'dot' %}<span class="rv-nq-dot is-{{ it['state'] }}" aria-hidden="true"></span>
+    {%- else %}<span class="rv-nq-av" aria-hidden="true">{% if it['state'] == 'done' %}<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>{% else %}{{ it['ini'] }}{% endif %}</span>{% endif %}
+    <span class="rv-nq-tx"><span class="rv-nq-nm" title="{{ it['name'] }}">{{ it['name'] }}</span>
+    {%- if it['line'] %}<span class="rv-nq-mt" title="{{ it['line'] }}">{{ it['line'] }}</span>{% endif %}</span>
+  </button>
+{% endmacro %}
+{% macro nq_icon(name) %}
+  {%- if name == 'tick' %}{{ tick() }}
+  {%- elif name == 'lock' %}<svg class="rv-nq-ico" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg>
+  {%- elif name == 'moved' %}<svg class="rv-nq-ico" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 17L17 7"/><path d="M9 7h8v8"/></svg>
+  {%- elif name == 'clock' %}<svg class="rv-nq-ico" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="8"/><path d="M12 8v4l2.5 1.5"/></svg>
+  {%- endif %}
+{%- endmacro %}
+{% set cur = (live_stages | selectattr('key','equalto',active_stage) | first) %}
+{% set active_mod = (cur['module'] if cur else none) %}
+{% set mod_stages = live_stages | selectattr('module','equalto',active_mod) | list %}
+{% set items = nav['items'] %}
+{% set pending = items | rejectattr('done') | list %}
+{% set done = items | selectattr('done') | list %}
+{% set view = view|default('mine') %}
+{# "Pending to …" so the group header carries the state -- the items no longer print a
+   per-row "Not started"; the grouping says it once for the whole list. In team view the
+   items are the manager's direct reports still to review. #}
+{% set _dept = (view is defined and view == 'dept') %}{# an HOD's department review (2026-09-30) #}
+{# KPI and competency lists hold more than their items to answer (the remark, Save & submit), so their group is "To do";
+   the count of what's answered is the header's (the UX review's F14, 2026-10-08) #}
+{% set todo_label = {'kpi':'To do','feedback':'Pending to assess','competency':'To do','career_plan':'Pending to fill in','team':'To review','calib':('Pending review' if _dept else 'In this calibration'),'chairbg':'Business groups'}.get(nav['kind'],'Pending') %}
+{# A department review is done person by person, so its people split into Pending review / Done like the line manager's
+   team (Chris, 2026-10-06: "split this into pending review category and done category"); a calibration is one list. #}
+{% set _split = nav['kind'] == 'team' or (nav['kind'] == 'calib' and _dept) %}
+{# Every navigator as a queue (Chris, 2026-10-16: "Go with C for the left panel", then "build it and deploy to both" for
+   every view; canvases "OneHR Team Review Navigator" and "OneHR Queue Panel, Every View"): what's on screen (or next),
+   who / what's up next, lists that open at the foot, and a bar with a segment an item. Built by _nq_build. #}
+{% set Q = nav.get('queue') %}
+{% set _queue = Q and items %}
+{# phone view (2026-11-07): what the To do button and the bottom sheet's head read after each swap (journey_chat.js todoSync): the items still to do, and the parts done of those the person has #}
+{% set _parts = live_stages | rejectattr('state', 'equalto', 'off') | list %}
+<nav class="rv-nav{{ ' is-queue' if _queue else '' }}" aria-label="Your review" data-todo-n="{{ 0 if nav.get('opens') else (pending | length) }}" data-parts-done="{{ _parts | selectattr('state', 'equalto', 'done') | list | length }}" data-parts-total="{{ _parts | length }}"{% if _queue %} data-nq-kind="{{ Q['nq_kind'] }}" data-nq-focus="{{ Q['focus'] }}"{% endif %}>
+  <div class="rv-nav-head">
+    <span class="rv-nav-stage">{{ cur['short'] if cur else 'Review' }}</span>
+    {% if nav.get('opens') %}
+    {# the leader's part is not open yet (2026-11-02): when it opens, never a pending count #}
+    <span class="rv-nav-prog">{{ nav['opens'] }}</span>
+    {% else %}
+    {% if nav['kind'] == 'tbox' %}
+    {# The BG CEO's Talent Box: its business units -- the BU selection (2026-09-30) #}
+    {# ...or a Group Chief's, their group as its one unit (2026-10-13): its own words #}
+    <span class="rv-nav-prog">{{ nav['prog_text'] if nav.get('prog_text') else ((done|length) ~ ' of ' ~ (items|length) ~ ' business units locked') }}</span>
+    {% elif nav['kind'] == 'calib' %}
+    {# Calibration is locked for the whole scope at once -- "0 of 4 done" read as if people were ticked off one by one #}
+    {% if _dept %}
+    {% set _subm = items and (items | selectattr('scope_locked') | list | length) == items|length %}
+    <span class="rv-nav-prog">{{ done|length }} of {{ items|length }} reviewed{% if not _queue %} &middot; {{ 'submitted' if _subm else 'not submitted yet' }}{% endif %}</span>
+    {% else %}
+    <span class="rv-nav-prog">{{ items|length }} {{ 'person' if items|length == 1 else 'people' }} &middot; {{ 'closed by your BG CEO' if (items and items[0]['closed']) else ('locked' if (items and done|length == items|length) else 'not locked yet') }}</span>
+    {% endif %}
+    {% elif nav.get('prog_text') %}
+    {# the part's own count -- results in / answered -- the same as its card and its tab (F14) #}
+    <span class="rv-nav-prog">{{ nav['prog_text'] }}</span>
+    {% else %}
+    <span class="rv-nav-prog">{{ done|length }} of {{ items|length }} done</span>
+    {% endif %}
+    {% endif %}
+    {% if _queue %}
+    {% if Q.get('group_name') %}<span class="rv-nq-sub">{{ Q['group_name'] }}</span>{% endif %}
+    <span class="rv-nq-bar" role="img" aria-label="{{ Q['segs']|length }} in all: {% for k in Q['keys'] %}{{ k['text'] if k.get('text') else (k['n'] ~ ' ' ~ k['label']) }}{{ ', ' if not loop.last else '' }}{% endfor %}{% if Q['on'] %}; {{ Q['on']['name'] }} on screen{% elif Q['style'] == 'next' and Q['start'] %}; next: {{ Q['start']['name'] }}{% endif %}">{% for g in Q['segs'] %}<i class="is-{{ g['state'] }}{{ ' is-here' if g['here'] else '' }}" title="{{ g['name'] }}"></i>{% endfor %}</span>
+    {% if not nav.get('opens') %}<span class="rv-nq-key" aria-hidden="true">{% for k in Q['keys'] %}<span><i class="is-{{ k['state'] }}"></i>{{ k['text'] if k.get('text') else (k['n'] ~ ' ' ~ k['label']) }}</span>{% endfor %}</span>{% endif %}
+    {% elif items %}<span class="rv-nav-bar"><i style="width:{{ ((nav['prog_frac'] if nav.get('prog_text') else (done|length / (items|length))) * 100)|round|int }}%"></i></span>{% endif %}
+  </div>
+
+  {# More time Group People gave them on this part (2026-10-31, canvas S1 / L3 / L4): an amber chip under the head, never the
+     words "late pass". The server decides (late_chip); empty = none. #}
+  {% set _lc = late_chip(active_stage, nav.get('focus')) %}
+  {% if _lc %}<div class="rv-late-chip" role="status">{{ _lc }}</div>{% endif %}
+
+  {# A custom dropdown to switch parts within a module (TM: 360 <-> Competency): the current
+     part + a chevron, and a menu that opens BELOW the button (a native <select> popup positions
+     itself; this one is CSS-controlled). Toggle + select are wired in journey_chat.js -- the
+     option buttons carry data-stage, so the existing [data-stage] -> switchStage handler picks. #}
+  {% if mod_stages | length > 1 %}
+  <div class="rv-nav-switch">
+    <button type="button" class="rv-nav-switch-btn" aria-haspopup="listbox" aria-expanded="false">
+      <span class="rv-nav-switch-cur" title="{{ cur['short'] if cur else 'Switch part' }}">{{ cur['short'] if cur else 'Switch part' }}</span>
+      <span class="rv-nav-switch-chev" aria-hidden="true">&#9662;</span>
+    </button>
+    <div class="rv-nav-switch-menu" role="listbox" hidden>
+      {% for s in mod_stages %}
+        <button type="button" class="rv-nav-switch-opt{{ ' rv-on' if s['key'] == active_stage }}" role="option" data-stage="{{ s['key'] }}"{% if s['key'] == active_stage %} aria-selected="true"{% endif %}>{{ s['short'] }}{% if s['state'] == 'done' %} &#10003;{% endif %}</button>
+      {% endfor %}
+    </div>
+  </div>
+  {% endif %}
+
+  {% if _queue %}
+  {% set on = Q['on'] %}{% set IK = Q['item_kind'] %}{% set AV = Q['av'] %}{% set FC = Q['focus'] %}
+  {% if Q.get('find') %}
+  {# the BU CEO: anyone in the unit, by name -- the matches open their page on the curve #}
+  <div class="rv-nq-find">
+    <label class="rv-nq-search"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="6.5"/><path d="M20 20l-4-4"/></svg><span class="sr-only">Find a person</span><input type="search" placeholder="Find a person" autocomplete="off" data-nq-find></label>
+    <div class="rv-nq-findlist" hidden>{% for it in Q['find'] %}{{ nq_row(it, FC, 'calib', 'ini') }}{% endfor %}<p class="rv-nq-none" data-nq-nomatch hidden>No one by that name here.</p></div>
+  </div>
+  {% endif %}
+  <div class="rv-nq-now">
+    {% if Q['style'] == 'next' %}
+    {% set S = Q['start'] %}
+    <p class="rv-nq-k">{{ 'Next step' if S else 'All done' }}</p>
+    {% if S %}
+    <div class="rv-nq-card">
+      <span class="rv-nq-wt"><span class="rv-nq-nm" title="{{ S['name'] }}">{{ S['name'] }}</span>{% if S['line'] %}<span class="rv-nq-mt">{{ S['line'] }}</span>{% endif %}</span>
+      <button type="button" class="rv-nav-item rv-nq-start is-go" data-item-id="{{ S['id'] }}" data-kind="{{ IK }}" aria-label="Go to {{ S['name'] }}"><span class="rv-nq-nm">Go to it</span><span aria-hidden="true">&rarr;</span></button>
+    </div>
+    {% else %}
+    <div class="rv-nq-card is-summary"><p class="rv-nq-sum">{{ Q['summary'] }}</p></div>
+    {% endif %}
+    {% else %}
+    <p class="rv-nq-k">{{ 'On screen' if on else Q['summary_k'] }}</p>
+    {% if on %}
+    <div class="rv-nq-card">
+      <div class="rv-nq-who">{% if AV == 'ini' %}<span class="rv-nq-av is-lg" aria-hidden="true">{{ on['ini'] }}</span>{% endif %}
+        <span class="rv-nq-wt"><span class="rv-nq-nm" title="{{ on['name'] }}">{{ on['name'] }}</span>{% if on['line'] %}<span class="rv-nq-mt">{{ on['line'] }}</span>{% endif %}</span></div>
+      {% if on.get('total') %}<span class="rv-nq-prog" aria-hidden="true"><i style="width: {{ ((on.get('prog') or 0) / on['total'] * 100)|round|int }}%"></i></span>{% endif %}
+      <div class="rv-nq-steps">
+        {% if Q['prev'] %}<button type="button" class="rv-nav-item rv-nq-step" data-item-id="{{ Q['prev']['id'] }}" data-kind="{{ IK }}" title="{{ Q['prev']['name'] }}" aria-label="Previous: {{ Q['prev']['name'] }}">&larr; Previous</button>
+        {%- else %}<button type="button" class="rv-nq-step" disabled>&larr; Previous</button>{% endif %}
+        {% if Q['next'] %}<button type="button" class="rv-nav-item rv-nq-step is-next" data-item-id="{{ Q['next']['id'] }}" data-kind="{{ IK }}" title="{{ Q['next']['name'] }}" aria-label="Next: {{ Q['next']['name'] }}">Next &rarr;</button>
+        {%- else %}<button type="button" class="rv-nq-step" disabled>Next &rarr;</button>{% endif %}
+      </div>
+      {% if Q['show_all'] %}<button type="button" class="rv-nav-item rv-nq-all" data-item-id="{{ Q['show_all']['id'] }}" data-kind="{{ IK }}">{{ Q['show_all']['label'] }}</button>{% endif %}
+    </div>
+    {% else %}
+    <div class="rv-nq-card is-summary">
+      <p class="rv-nq-sum">{{ Q['summary'] }}</p>
+      {# just "Start" (Chris, 2026-10-16: "the button to show only 'Start' and the arrow"); who it starts with on hover #}
+      {% if Q['start'] %}<button type="button" class="rv-nav-item rv-nq-start" data-item-id="{{ Q['start']['id'] }}" data-kind="{{ IK }}" title="{{ Q['start_label'] }} {{ Q['start']['name'] }}" aria-label="{{ Q['start_label'] }} {{ Q['start']['name'] }}"><span class="rv-nq-nm">Start</span><span aria-hidden="true">&rarr;</span></button>{% endif %}
+    </div>
+    {% endif %}
+    {% endif %}
+  </div>
+  {% if Q['up'] %}
+  <div class="rv-nq-up">
+    <p class="rv-nq-k">{{ 'Then' if Q['style'] == 'next' else 'Up next' }}</p>
+    {% for it in Q['up'] %}{{ nq_row(it, FC, IK, AV) }}{% endfor %}
+    {% if Q['more'] %}
+    <details class="rv-nq-more fold" data-keep="more"><summary>+{{ Q['more']|length }} more</summary>
+      {% for it in Q['more'] %}{{ nq_row(it, FC, IK, AV) }}{% endfor %}
+      <button type="button" class="fold-less" data-fold-less>Show less</button>
+    </details>
+    {% endif %}
+  </div>
+  {% elif on and Q['style'] == 'person' and (Q['segs'] | selectattr('state', 'equalto', 'turn') | list | length) > 1 %}
+  <p class="rv-nq-none">Nothing else is waiting on you here.</p>
+  {% endif %}
+  {% if Q['note'] or Q['lists'] %}
+  <div class="rv-nq-foot">
+    {% if Q['note'] %}<p class="rv-nq-note">{{ nq_icon(Q['note']['icon']) }}<span>{{ Q['note']['text'] }}</span></p>{% endif %}
+    {% if Q['lists'] %}
+    <div class="rv-nq-lists">
+      {% for L in Q['lists'] %}
+      <details class="rv-nq-list is-{{ L['key'] }}" data-keep="{{ L['key'] }}"><summary>{{ nq_icon(L['icon']) }}<span class="t">{{ L['label'] }}</span><span class="n">{{ L['items']|length }}</span><span class="rv-nav-chev" aria-hidden="true">&#8250;</span></summary>
+        {% for it in L['items'] %}{{ nq_row(it, FC, L.get('kind') or IK, 'ini' if L.get('kind') == 'calib' else AV) }}{% endfor %}
+      </details>
+      {% endfor %}
+    </div>
+    {% endif %}
+  </div>
+  {% endif %}
+  {% elif nav['kind'] == 'tbox' %}
+  {# The BG CEO's business units in two groups (Chris, 2026-10-07: "on left panel, once locked, move them to a locked
+     list. The rest should be under pending calibration"): the ones still to lock up top, each tagged Ready (its BU CEO
+     locked both axes) or Waiting; the locked ones in a Locked group that opens by itself when the unit on screen is one
+     of them, or when every unit is locked. Every unit stays clickable: picking one focuses the box on it (no chat
+     turn). #}
+  {% if pending %}
+  <p class="rv-nav-todo is-tbox"><span>{{ nav['opens'] if nav.get('opens') else 'Pending calibration' }}</span>{% if not nav.get('opens') %}<span class="rv-nav-todo-n">{{ pending|length }}</span>{% endif %}</p>
+  <div class="rv-nav-items">
+    {% for it in pending %}{{ nav_item(it, nav) }}{% endfor %}
+  </div>
+  {% elif items %}
+  <p class="rv-nav-empty">{{ nav.get('done_text') or 'Every business unit is locked.' }}</p>
+  {% endif %}
+  {% if done %}
+  {% set focus_done = nav.get('focus') is not none and (done | selectattr('id', 'equalto', nav['focus']) | list) %}
+  <details class="rv-nav-done rv-nav-done-team rv-nav-locked"{% if focus_done or not pending %} open{% endif %}>
+    <summary>{{ padlock() }} Locked ({{ done|length }})<span class="rv-nav-chev">&#8250;</span></summary>
+    <div class="rv-nav-items rv-nav-doneitems">
+      {% for it in done %}{{ nav_item(it, nav) }}{% endfor %}
+    </div>
+  </details>
+  {% endif %}
+  {% elif pending and nav['kind'] == 'team' %}
+  {# (the Team list without its queue: never drawn today -- every navigator carries one) #}
+  <div class="rv-nav-items">
+    {% for it in pending %}{{ nav_item(it, nav) }}{% endfor %}
+  </div>
+  {% elif pending %}
+  <p class="rv-nav-todo"><span>{{ nav['opens'] if nav.get('opens') else todo_label }}</span>{% if not nav.get('opens') %}<span class="rv-nav-todo-n">{{ pending|length }}</span>{% endif %}</p>
+  <div class="rv-nav-items">
+    {% for it in pending %}{{ nav_item(it, nav) }}{% endfor %}
+  </div>
+  {% endif %}
+
+  {# The manager view splits its reports into To review / Done too (Chris, 2026-09-24), but a reviewed
+     report stays a CLICKABLE item -- a manager must be able to open anyone -- in a Done group that opens
+     by itself when the report on screen is one of them. #}
+  {% if done and _split and not _queue %}
+  {% set focus_done = nav.get('focus') is not none and (done | selectattr('id', 'equalto', nav['focus']) | list) %}
+  <details class="rv-nav-done rv-nav-done-team"{% if focus_done %} open{% endif %}>
+    <summary>{{ tick() }} Done ({{ done|length }})<span class="rv-nav-chev">&#8250;</span></summary>
+    <div class="rv-nav-items rv-nav-doneitems">
+      {% for it in done %}{{ nav_item(it, nav) }}{% endfor %}
+    </div>
+  </details>
+  {% endif %}
+
+  {% if not items %}
+  <p class="rv-nav-empty">{{ 'No one to review here.' if nav['kind'] == 'team' else 'Nothing to do in this part.' }}</p>
+  {% endif %}
+
+  {% if done and not _split and nav['kind'] != 'tbox' and not _queue %}
+  <details class="rv-nav-done">
+    <summary>{{ tick() }} Done ({{ done|length }})<span class="rv-nav-chev">&#8250;</span></summary>
+    <div class="rv-nav-donelist">
+      {% for it in done %}
+        <div class="rv-nav-donerow" title="{{ it['name'] }}">{{ tick() }}<span class="rv-dn-name">{{ it['name'] }}</span><span class="rv-dn-meta"{% if it.get('band') %} data-band="{{ it['band'] }}"{% endif %}>{{ it['meta'] }}</span></div>
+      {% endfor %}
+    </div>
+  </details>
+  {% endif %}
+  {# The "Your team" manager doors were removed from the Mine nav (2026-09-11): the
+     Mine/Team toggle + the Team view's own module tabs are the manager surfaces now, and
+     these doors were showing only under Mine. Nothing is orphaned -- PM/IDP team pages are
+     in base.html's top nav and all three (incl. competency) are on the dashboard Leadership
+     zone; the journey Team tab fully covers the moderation. #}
+</nav>

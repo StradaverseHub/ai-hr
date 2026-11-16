@@ -1,0 +1,69 @@
+{% extends "base.html" %}
+{% block title %}Learning effectiveness{% endblock %}
+{% block body %}
+{# Learning › Effectiveness (AI+ Learning phase 3, 2026-10-22; canvas [design canvas link removed]
+   board 11): did people rate it on the day, check in at a month, and apply it at three months, their line manager
+   confirming, by business group and by programme, with the master rating listing's Gold and an AI read of which
+   programmes to look at. Counts only; the read is written from these counts and checked against them, and quotes a
+   comment only word for word, from a programme with enough comments that none points to its author. #}
+{% macro pct(n, of) -%}
+{% if of %}{% set p = (100.0 * n / of) | round | int %}<span class="lm-pc"><span class="lm-pb" aria-hidden="true"><span style="width: {{ p }}%"></span></span><span class="lm-pn">{{ p }}%</span><span class="muted small">{{ n }} of {{ of }}</span></span>{% else %}<span class="muted small">None due yet</span>{% endif %}
+{%- endmacro %}
+<div class="adm-headrow">
+  <p class="adm-lede">Courses OneHR ran that ended in the last <b>{{ eff.months }} months</b> (since {{ eff.since | lms_day }}), in
+    {{ eff.scope }}. Each check-in counts against those that have fallen due so far. None of this is part of anyone's
+    performance or potential rating.</p>
+</div>
+<div class="lm-lna">
+  <section class="admin-card lm-read" aria-labelledby="lm-er-h">
+    <h2 id="lm-er-h" class="lm-h lm-ai-k"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2l2.4 7.6L22 12l-7.6 2.4L12 22l-2.4-7.6L2 12l7.6-2.4z"></path></svg>Programmes to look at</h2>
+    {% if read %}
+      <ul class="lm-finds">{% for f in read.findings %}<li>{{ f }}</li>{% endfor %}</ul>
+      <p class="muted small">Written by AI from the ratings, check-ins and comments on this page, {{ read.at | myt }}.{% if not read.fresh %} They have changed since: write it again for today's.{% endif %} You decide what changes.</p>
+    {% else %}
+      <p class="muted small">Which programmes stick least, which rate well, and what comments ask for, written by AI from these figures. It quotes a comment only word for word, and only where a programme has five comments or more.</p>
+    {% endif %}
+    {% if ai_ok and eff.progs and can %}
+    <form method="post" action="{{ url_for('admin_learning_effectiveness_read') }}" data-confirm="Write the AI read of these programmes ({{ eff.scope }})? It uses the figures and comments on this page only, and replaces the read kept for this view." data-confirm-ok="Write it">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <button type="submit" class="od-btn-ai is-outline is-sm lm-ai-btn"><svg class="od-spark" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2.5l2.3 6.2 6.2 2.3-6.2 2.3L12 19.5l-2.3-6.2L3.5 11l6.2-2.3z"></path></svg>{{ 'Write it again' if read else 'Write the read' }}</button>
+    </form>
+    {% elif not ai_ok %}<p class="muted small">AI isn't set up on this server.</p>
+    {% elif not can %}<p class="muted small">L&amp;D writes the read for each view.</p>{% endif %}
+  </section>
+  <section class="admin-card" aria-labelledby="lm-eb-h">
+    <h2 id="lm-eb-h" class="lm-h">By business group</h2>
+    {% if eff.bgs %}
+    <div class="table-scroll"><table class="admin-table no-auto-table lm-eff">
+      {# short headings, the whole words on hover: at 1280 the long last one scrolled the table sideways (2026-10-24 QC) #}
+      <thead><tr><th scope="col">Business group</th><th scope="col" class="lm-num">Came</th><th scope="col">Rated on the day</th>
+        <th scope="col" title="1-month check-in done">1-month check-in</th><th scope="col" title="3 months on, confirmed by their manager">3 months, confirmed</th></tr></thead>
+      <tbody>
+      {% for b in eff.bgs[:rows_shown] %}
+      <tr><th scope="row">{{ display_bg(b.bg) }}</th><td class="lm-num">{{ b.came }}</td><td>{{ pct(b.rated, b.came) }}</td>
+        <td>{{ pct(b.m1_done, b.m1_due) }}</td><td>{{ pct(b.m3_done, b.m3_due) }}</td></tr>
+      {% endfor %}
+      </tbody>
+    </table></div>
+    {% else %}<p class="muted small">No course OneHR ran has ended in the last {{ eff.months }} months.</p>{% endif %}
+  </section>
+  <section class="admin-card" aria-labelledby="lm-ep-h">
+    <h2 id="lm-ep-h" class="lm-h">Programmes</h2>
+    {% if eff.progs %}
+    <div class="table-scroll"><table class="admin-table no-auto-table lm-eff">
+      <thead><tr><th scope="col">Programme</th><th scope="col" class="lm-num">Runs</th><th scope="col">Day-0</th>
+        <th scope="col">Applied at 3 months</th><th scope="col" class="lm-num">Need it now</th></tr></thead>
+      <tbody>
+      {% for p in eff.progs[:rows_shown] %}
+      <tr><th scope="row">{{ p.title }}</th><td class="lm-num">{{ p.runs }}</td>
+        <td>{% if p.mean is not none %}<span class="lm-chip{{ ' lm-gold' if p.gold }}">{{ '%.1f' % p.mean }}{{ ' Gold' if p.gold }}</span> <span class="muted small">{{ p.n_rated }} rating{{ '' if p.n_rated == 1 else 's' }}</span>{% else %}<span class="muted small">Not rated yet</span>{% endif %}</td>
+        <td>{% if p.m3_due %}{{ (100.0 * p.applied / p.m3_due) | round | int }}% <span class="muted small">{{ p.applied }} of {{ p.m3_due }}</span>{% else %}<span class="muted small">None due yet</span>{% endif %}</td>
+        <td class="lm-num">{{ p.need or '·' }}</td></tr>
+      {% endfor %}
+      </tbody>
+    </table></div>
+    <p class="muted small lm-note">Gold = a day-0 rating of {{ gold }} and above from {{ gold_min }} ratings or more, as in L&amp;D's master listing.{% if eff.progs | length > rows_shown %} The {{ rows_shown }} best rated of {{ eff.progs | length }}.{% endif %}</p>
+    {% else %}<p class="muted small">No programme has run in the last {{ eff.months }} months.</p>{% endif %}
+  </section>
+</div>
+{% endblock %}

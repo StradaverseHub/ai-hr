@@ -1,0 +1,81 @@
+{# The SIGNPOST for the unified journey: where you are in the ONE conversation and
+   a chooser to jump to any part. Same shape as _review_rail, but a self stage that
+   is a CHAT stage links to /review/journey?stage=<key> (in-chat navigation, one
+   conversation) rather than to a separate page. KPI setting (agree) and the team
+   handoffs keep their own pages. The active stage is `active_stage`. #}
+{# The self-stage list is the JOURNEY's own (`live_stages`): KPI Setting is absent
+   and the two IDP stages are folded into one 'Career Plan'. Team handoffs still
+   come from the raw review_state stages. #}
+{% from "_review_icons.html" import rvicon %}
+{% set self_stages = live_stages %}
+{% set team_stages = st['stages'] | selectattr('group', 'equalto', 'team') | list %}
+{% set MODULES = [('pm', 'PM', 'target'), ('tm', 'TM', 'users'), ('idp', 'IDP', 'trending-up')] %}
+<nav class="rv-rail" aria-label="Your review">
+  {# No Dashboard/Check-in toggle in the rail (2026-09-07, Chris): the Mine/Team switch
+     is in the top band, and the brand wordmark (top-left) links back to the dashboard. #}
+  {% for mkey, mlabel, micon in MODULES %}
+    {% set kids = self_stages | selectattr('module', 'equalto', mkey) | rejectattr('state', 'equalto', 'off') | list %}
+    {% if kids %}
+    <div class="rv-rail-group rv-mod-{{ mkey }}">
+      <p class="rv-rail-grouphead">{{ rvicon(micon) }}<span>{{ mlabel }}</span></p>
+      <ol class="rv-rail-sub">
+        {% for x in kids %}
+          {% set is_locked = x.get('locked') %}
+          {% set tip = 'Opens once your KPI check-in and competency assessment are done' if is_locked
+             else 'Done' if x['state'] == 'done'
+             else 'With ' ~ (x['blocked_on'] or 'your manager') if x['state'] == 'waiting'
+             else x['n_open'] ~ ' of ' ~ x['n_total'] ~ ' still yours' if (x['state'] == 'open' and x['n_total'])
+             else 'Still yours' if x['state'] == 'open'
+             else 'Not started yet' if x['state'] == 'later'
+             else '' %}
+          {% set is_chat = x['key'] in chat_keys %}
+          {% set is_here = x['key'] == active_stage %}
+          <li class="rv-{{ x['state'] }}{{ ' rv-here' if is_here }}{{ ' rv-locked-row' if is_locked }}"
+              {% if tip %}title="{{ tip }}"{% endif %}>
+            {% if is_locked %}
+              {# IDP is gated until the KPI check-in + competency are done: shown, not clickable. #}
+              <span class="rv-label rv-locked">{{ x['short'] }}</span>
+            {% elif is_here %}
+              <span class="rv-label">{{ x['short'] }}</span>
+            {% elif is_chat %}
+              {# In-journey jump: same conversation, a different active stage. #}
+              <a class="rv-label" href="{{ url_for('review_journey', stage=x['key']) }}"
+                 data-stage="{{ x['key'] }}">{{ x['short'] }}</a>
+            {% else %}
+              {# A self stage that is NOT in the chat (KPI setting): its own page. #}
+              <a class="rv-label" href="{{ url_for(x['endpoint']) }}">{{ x['short'] }}</a>
+            {% endif %}
+          </li>
+        {% endfor %}
+      </ol>
+    </div>
+    {% endif %}
+  {% endfor %}
+
+  {% set team_live = team_stages | rejectattr('state', 'equalto', 'off') | list %}
+  {% set ghd = gradeh_lm_door() %}{# Grade H Appraisal's door, only where the module runs and they have appraisees (2026-10-28) #}
+  {% set gcd = gradeh_cal_door() %}{# Grade H calibration's door, for an HOD or a BU CEO of Grade H people (2026-10-28) #}
+  {% if team_live or ghd or gcd %}
+  <p class="rv-rail-head rv-rail-head-team">Your team</p>
+  <ol>
+    {% for x in team_live %}
+      <li class="rv-team-door">
+        <a class="rv-label" href="{{ url_for(x['endpoint']) }}">{{ x['label'] }}</a>
+        {% if x['n_open'] %}<span class="rv-team-count">{{ x['n_open'] }}</span>{% endif %}
+      </li>
+    {% endfor %}
+    {% if ghd %}
+      <li class="rv-team-door">
+        <a class="rv-label" href="{{ ghd['url'] }}">{{ ghd['label'] }}</a>
+        {% if ghd['n_open'] %}<span class="rv-team-count">{{ ghd['n_open'] }}</span>{% endif %}
+      </li>
+    {% endif %}
+    {% if gcd %}
+      <li class="rv-team-door">
+        <a class="rv-label" href="{{ gcd['url'] }}">{{ gcd['label'] }}</a>
+        {% if gcd['n_open'] %}<span class="rv-team-count">{{ gcd['n_open'] }}</span>{% endif %}
+      </li>
+    {% endif %}
+  </ol>
+  {% endif %}
+</nav>

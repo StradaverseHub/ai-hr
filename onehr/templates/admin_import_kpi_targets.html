@@ -1,0 +1,367 @@
+{% extends "base.html" %}
+{% block title %}Import KPI targets{% endblock %}
+{% block body %}
+<p class="adm-lede">
+  {% if period %}Importing into <b>{{ period['name'] }}</b>, the active performance cycle.
+  {% else %}<b>There is no active performance cycle</b>: open one first.{% endif %}
+  Rows are matched on <b>Employee ID + KPI name</b>. The <b>KPI lines</b> download on Reports goes back in here once edited.
+</p>
+
+{# 1 File -> 2 Quality -> 3 Changes and the super admin's decisions -> 4 the final preview and Apply (Chris, 2026-10-26:
+   every import in these four steps; canvas [design canvas link removed]). The file is kept after
+   step 1 and every step, Apply included, uses that same file, re-checked against today's OneHR. #}
+{% set q = v.quality if v else none %}
+{% set st = v.step if v else ('done' if done else 'file') %}
+<ol class="ri-steps" aria-label="Import steps">
+  <li class="{{ 'is-on' if st == 'file' else 'is-done' }}"><b>1 · File</b><span>{% if v %}✓ {{ v.filename }}{% elif done %}✓ {{ done.filename }}{% else %}choose it below{% endif %}</span></li>
+  <li class="{{ 'is-on' if st == 'quality' else ('is-done' if st in ('changes', 'apply', 'done') else '') }}"><b>2 · Quality</b><span>{% if v %}{% if st != 'quality' %}✓ {% endif %}{% if q.n_fix %}{{ q.n_fix }} to fix · {% endif %}{{ q.n_look }} to look at{% elif done %}✓ checked{% else %}what can't go in, what's worth a look{% endif %}</span></li>
+  <li class="{{ 'is-on' if st == 'changes' else ('is-done' if st in ('apply', 'done') else '') }}"><b>3 · Changes</b><span>{% if v and st == 'apply' %}✓ {% if v.n_decide %}{{ v.n_decide }} decided{% else %}looked at{% endif %}{% elif v and st == 'changes' and v.n_decide %}{{ v.n_decide - v.n_done }} to decide{% elif done %}✓ {% set nd = (done.joined or 0) + (done.guests or 0) + (done.made or 0) + (done.kept or 0) %}{% if nd %}{{ nd }} decided{% else %}looked at{% endif %}{% else %}what it changes, and your decisions{% endif %}</span></li>
+  <li class="{{ 'is-on' if st == 'apply' else ('is-done' if st == 'done' else '') }}"><b>4 · Apply</b><span>{% if done %}✓ applied{% else %}the final preview, then apply this same file{% endif %}</span></li>
+</ol>
+
+{% if done %}
+<section class="admin-card ri-check" aria-label="Applied">
+  <div class="ri-verdict is-ok" role="status">
+    <span class="ri-verdict-ic" aria-hidden="true">✓</span>
+    <div class="ri-verdict-t">
+      <b>Applied {{ done.filename }}{% if done.at %} at {{ done.at | myt }}{% endif %}.</b>
+      <span>{{ done.created | thousands }} added, {{ done.updated | thousands }} updated{% if done.joined %} · {{ done.joined }} joined their unit's BU KPI{% endif %}{% if done.guests %} · {{ done.guests }} joined another unit's BU KPI as {{ 'a guest' if done.guests == 1 else 'guests' }}{% endif %}{% if done.made %} · {{ done.made }} new BU KPI{{ '' if done.made == 1 else 's' }} set up{% endif %}{% if done.kept %} · {{ done.kept }} kept their own{% endif %}{% if done.left %} · {{ done.left }} left as they were{% endif %}{% if done.skipped %} · {{ done.skipped }} skipped{% endif %}.</span>
+    </div>
+  </div>
+  <ul class="bullets">
+    {% if done.no_approver %}<li>{{ done.no_approver }} line{{ '' if done.no_approver == 1 else 's' }} have no moderator: <a href="{{ url_for('admin_performance_exceptions') }}">assign one on Exceptions</a>.</li>{% else %}<li>Every line has a moderator{% if done.chair_lines %}, except {{ done.chair_lines }} of the Executive Chairman's direct reports: nobody moderates those{% endif %}.</li>{% endif %}
+    {% if done.records_note %}<li>{{ done.records_note }}</li>{% endif %}
+    {% if done.weights_off %}<li>{{ done.weights_off }} {{ 'person\'s' if done.weights_off == 1 else 'people\'s' }} weights don't add up to 100%: they're in the download.</li>{% endif %}
+    <li>The database was backed up just before it applied, and the audit log holds each change{% if done.joined or done.kept or done.guests or done.made %} and your decisions{% endif %}.</li>
+    {% if done.fell %}<li>{{ done.fell | length }} line{{ '' if done.fell | length == 1 else 's' }} could not join the BU KPI picked and {{ 'stays' if done.fell | length == 1 else 'stay' }} the person's own: {% for f in done.fell[:10] %}{{ f[0] }} {{ f[1] }} ({{ f[2] }}){{ '; ' if not loop.last }}{% endfor %}.</li>{% endif %}
+  </ul>
+  <div class="ri-apply" style="justify-content:flex-start">
+    <a class="adm-rep-dl" href="{{ url_for('admin_import_kpi_targets_check_xlsx', token=done.token, what='done') }}">Download what changed (Excel)</a>
+    <a class="btn-link" href="{{ url_for('admin_import_kpi_targets') }}">Import another file</a>
+  </div>
+</section>
+
+{% elif v and st == 'quality' %}
+<section class="admin-card ri-check ri-quality" aria-label="Quality">
+  <div class="adm-needs-head"><h2>{{ v.filename }}</h2>
+    <a class="btn-link" href="{{ url_for('admin_import_kpi_targets') }}">Choose another file</a></div>
+  <div class="ri-verdict {{ 'is-bad' if q.n_fix else ('is-warn' if q.n_look else 'is-ok') }}" role="status">
+    <span class="ri-verdict-ic" aria-hidden="true">{{ '!' if q.n_fix or q.n_look else '✓' }}</span>
+    <div class="ri-verdict-t">
+      {% if q.n_fix %}<b>Fix {{ q.n_fix }} row{{ '' if q.n_fix == 1 else 's' }} before you can go on.</b>
+        <span>{% if q.n_look %}{{ q.n_look }} more thing{{ '' if q.n_look == 1 else 's' }} {{ 'is' if q.n_look == 1 else 'are' }} worth a look; {% endif %}{{ q.clean | thousands }} row{{ '' if q.clean == 1 else 's' }} {{ 'is' if q.clean == 1 else 'are' }} clean.</span>
+      {% elif q.n_look %}<b>{{ q.n_look }} thing{{ '' if q.n_look == 1 else 's' }} worth a look.</b>
+        <span>They won't stop the import, but each is probably a mistake in the file. {{ q.clean | thousands }} row{{ '' if q.clean == 1 else 's' }} {{ 'is' if q.clean == 1 else 'are' }} clean.</span>
+      {% else %}<b>Every row is clean.</b><span>{{ q.rows | thousands }} row{{ '' if q.rows == 1 else 's' }}: nothing to fix and nothing to look at.</span>{% endif %}
+    </div>
+    {% if q.n_fix or q.n_look %}<a class="adm-rep-dl" href="{{ url_for('admin_import_kpi_targets_check_xlsx', token=v.token, what='issues') }}">Download every issue (Excel)</a>{% endif %}
+  </div>
+  <div class="ri-tiles">
+    <div class="ri-tile" style="--c:var(--d-cv-9aa1b5)"><b>{{ q.rows | thousands }}</b><span>row{{ '' if q.rows == 1 else 's' }} in the file</span></div>
+    <div class="ri-tile" style="--c:var(--d-cv-1a7a54)"><b>{{ q.clean | thousands }}</b><span>clean</span></div>
+    <div class="ri-tile" style="--c:var(--d-cv-d0716a)"><b>{{ q.n_fix | thousands }}</b><span>can't be imported</span></div>
+    <div class="ri-tile" style="--c:var(--d-cv-e0a84a)"><b>{{ q.n_look | thousands }}</b><span>worth a look</span></div>
+  </div>
+  {% if v.blank_rows %}<p class="muted small">{{ v.blank_rows }} row{{ '' if v.blank_rows == 1 else 's' }} had only an Employee ID and {{ 'is' if v.blank_rows == 1 else 'are' }} skipped: not filled in yet.</p>{% endif %}
+  {% if q.fix %}
+  <div class="ri-errs">
+    <div class="adm-needs-head"><h3>{{ q.n_fix }} row{{ '' if q.n_fix == 1 else 's' }} can't be imported <span class="muted small">· fix them in your file and choose it again</span></h3></div>
+    <ul class="ri-fix">
+      {% for f in q.fix %}<li><b>{{ f.n }}</b><span>{{ f.kind }}</span><span class="muted small">row{{ '' if f.rows | length == 1 else 's' }} {{ f.rows[:12] | join(', ') }}{% if f.rows | length > 12 %} and {{ f.rows | length - 12 }} more{% endif %}</span></li>{% endfor %}
+    </ul>
+  </div>
+  {% endif %}
+  {% if q.look %}
+  <div class="ri-chg">
+    <div class="adm-needs-head"><h3>{{ q.n_look }} thing{{ '' if q.n_look == 1 else 's' }} worth a look <span class="muted small">· they won't stop the import</span></h3></div>
+    <div class="table-scroll"><table class="admin-table no-auto-table ri-look">
+      <thead><tr><th scope="col">What</th><th scope="col">Why it matters</th><th scope="col">For example</th><th scope="col"><span class="sr-only">Download</span></th></tr></thead>
+      <tbody>{% for w in q.look %}<tr>
+        <td><b class="ri-look-n">{{ w.n }}</b> {{ w.what }}</td><td class="muted small">{{ w.why }}</td>
+        <td class="small">{{ w.found[0].detail }}{% if w.n > 1 %} <span class="muted">· and {{ w.n - 1 }} more</span>{% endif %}</td>
+        <td class="ri-look-dl"><a class="ri-look-a" href="{{ url_for('admin_import_kpi_targets_check_xlsx', token=v.token, what='issues', kind=w.key) }}">{{ 'All %d' % w.n if w.n > 1 else 'Download' }}</a></td>
+      </tr>{% endfor %}</tbody>
+    </table></div>
+  </div>
+  {% endif %}
+  <details class="kti-checks">
+    <summary>What this step checks</summary>
+    <ul class="bullets">
+      <li><b>Can't be imported:</b> an unknown Employee ID, someone outside the data you manage, a result already released, a group with no scoring set, a missing weight or method, a column its scoring needs, a 5-point scale out of order, a matrix manager OneHR can't use, the same KPI twice for one person, the template's example rows.</li>
+      <li><b>Worth a look:</b> weights that don't total 100% after the import, people not taking part (their rows are skipped), units written another way, a KPI that isn't in the library.</li>
+    </ul>
+  </details>
+  <form method="post" class="ri-apply ri-go">
+    <input type="hidden" name="token" value="{{ v.token }}"><input type="hidden" name="action" value="quality_ok">
+    {% if q.n_fix %}<span class="muted small">Opens once every row passes. With only things to look at, you tick “I've looked at these” and go on.</span>
+    {% elif q.n_look %}<label class="ri-ack"><input type="checkbox" name="ack" value="1" required> I've looked at these</label>{% endif %}
+    <button type="submit" class="primary" {{ 'disabled' if q.n_fix }}>Continue to the changes</button>
+  </form>
+</section>
+
+{% elif v and st == 'changes' %}
+{% set c = v.counts %}
+<section class="admin-card ri-check" aria-label="Changes">
+  <div class="adm-needs-head"><h2>What it changes in {{ period['name'] }}</h2>
+    <span class="ri-head-acts"><a class="btn-link" href="{{ url_for('admin_import_kpi_targets', check=v.token) }}">Back to the quality check</a>
+      <a class="btn-link" href="{{ url_for('admin_import_kpi_targets') }}">Choose another file</a></span></div>
+  <div class="ri-tiles">
+    <div class="ri-tile" style="--c:var(--d-cv-1a7a54)"><b>{{ c['add'] | thousands }}</b><span>KPI line{{ '' if c['add'] == 1 else 's' }} to add</span></div>
+    <div class="ri-tile" style="--c:var(--d-cv-2f64d6)"><b>{{ c['update'] | thousands }}</b><span>to update</span></div>
+    {% if c['same'] %}<div class="ri-tile" style="--c:var(--d-cv-9aa1b5)"><b>{{ c['same'] | thousands }}</b><span>no change</span></div>{% endif %}
+    {% if c['left'] %}<div class="ri-tile" style="--c:var(--d-cv-e0a84a)"><b>{{ c['left'] | thousands }}</b><span>left as they are</span></div>{% endif %}
+    {% if c['skipped'] %}<div class="ri-tile" style="--c:var(--d-cv-9aa1b5)"><b>{{ c['skipped'] | thousands }}</b><span>skipped (not taking part)</span></div>{% endif %}
+    <div class="ri-tile" style="--c:var(--d-cv-9aa1b5)"><b>{{ c['people'] | thousands }}</b><span>{{ 'person' if c['people'] == 1 else 'people' }}</span></div>
+  </div>
+  {% if v.n_changes %}
+  <div class="ri-chg">
+    <div class="adm-needs-head"><h3>What the {{ c['update'] | thousands }} update{{ '' if c['update'] == 1 else 's' }} change</h3>
+      <a class="adm-rep-dl" href="{{ url_for('admin_import_kpi_targets_check_xlsx', token=v.token, what='changes') }}">Download every change (Excel)</a></div>
+    <ul class="ri-fields">{% for f, n in v.by_field %}<li><b>{{ f }}</b> {{ n | thousands }}{% if f == 'Moderator' %} <span class="muted small">· who moderates the line changes</span>{% endif %}</li>{% endfor %}</ul>
+    <div class="table-scroll"><table class="admin-table no-auto-table"><thead><tr><th>Person</th><th>KPI</th><th>Field</th><th>From</th><th>To</th></tr></thead>
+      <tbody>{% for ch in v.changes %}<tr><td>{{ ch.name }} <span class="muted small">· {{ ch.eid }}</span></td><td>{{ ch.kpi }}</td><td>{{ ch.field }}</td><td class="muted">{{ ch.from }}</td><td>{{ ch.to }}</td></tr>{% endfor %}
+      {% if v.n_changes > v.changes | length %}<tr><td colspan="5" class="muted small">… and {{ v.n_changes - (v.changes | length) }} more, all in the download.</td></tr>{% endif %}</tbody></table></div>
+  </div>
+  {% endif %}
+  {% if v.n_left %}
+  <div class="ri-chg">
+    <div class="adm-needs-head"><h3>Left as {{ 'it is' if v.n_left == 1 else 'they are' }} ({{ v.n_left }})</h3></div>
+    <p class="muted small">A moderator has already acted on a line, so new targets would change a score they signed off; reopen the KPI with the moderator first if it must change. A line that follows its unit's BU KPI setup takes its target from there.</p>
+    <div class="table-scroll"><table class="admin-table no-auto-table"><thead><tr><th>Person</th><th>KPI</th><th>Why</th></tr></thead>
+      <tbody>{% for r in v.left %}<tr><td>{{ r['subject_name'] }} <span class="muted small">· {{ r['eid'] }}</span></td><td>{{ r['kpi_name'] }}</td><td class="muted small">{{ 'A moderator has already acted on it' if r['skip'] == 'approved' else "It follows the unit's BU KPI setup" }}</td></tr>{% endfor %}</tbody></table></div>
+  </div>
+  {% endif %}
+  {% set rt = v.routing %}
+  <div class="ri-chg">
+    <div class="adm-needs-head"><h3>Who moderates what</h3></div>
+    <p class="small">{{ rt['lm_lines'] | thousands }} line{{ '' if rt['lm_lines'] == 1 else 's' }} go to each person's line manager{% if rt['matrix_lines'] %}; <b>{{ rt['matrix_lines'] }}</b> go to a matrix manager{% endif %}{% if rt['none_lines'] %}; <b>{{ rt['none_lines'] }}</b> have no moderator and wait on the Exceptions page{% endif %}{% if rt['chair_lines'] %}; <b>{{ rt['chair_lines'] }}</b> belong to the Executive Chairman's direct reports: nobody moderates those, he sets their bands in his Talent Box{% endif %}.</p>
+    {% if rt['split'] %}<ul class="bullets small">{% for p in rt['split'] %}<li>{{ p['name'] }} <span class="muted">· {{ p['eid'] }}</span>: {% if p['lm'] %}{{ p['lm'] }} to the line manager, {% endif %}{{ p['matrix'] }} to {{ p['mm'] | join(', ') }}</li>{% endfor %}{% if rt['split_n'] > rt['split'] | length %}<li class="muted">… and {{ rt['split_n'] - (rt['split'] | length) }} more.</li>{% endif %}</ul>{% endif %}
+  </div>
+</section>
+
+{% set bu = v.bu %}
+{% macro olabel(it, o) -%}
+{%- if o.kind == 'new' -%}{{ ('New BU KPI for ' ~ o.unit) if it.options | length == 1 else (o.unit ~ "'s: a new BU KPI") }}
+{%- elif o.own_unit -%}The unit's BU KPI
+{%- else -%}{{ o.unit }}'s BU KPI{%- endif -%}
+{%- endmacro %}
+{% if bu['items'] or bu['library_only'] %}
+<section class="admin-card kti-decide" id="decide" aria-label="Your decisions">
+  {% if v.n_decide %}
+  <div class="adm-needs-head"><h2>Your decisions · {{ v.n_decide }} line{{ '' if v.n_decide == 1 else 's' }} match{{ 'es' if v.n_decide == 1 else '' }} a BU KPI, saved or new</h2>
+    <span class="kti-who">Super admin decides</span></div>
+  <p class="small"><b>The unit's BU KPI</b>: the line takes the unit's one target and stays linked to BU KPI setup; take the person off there and it goes back to what this file gives it. <b>Another unit's BU KPI</b>: the line names that unit; they join it as a guest with the file's weight. <b>A new BU KPI</b>: nobody has set it up yet; Apply sets it up for that unit at the target you pick. <b>Their own</b>: it keeps this file's target, and BU KPI setup leaves it alone.</p>
+  {% if not is_super %}<p class="note">The super admin decides these. Ask them to import this file: you can't go on past this step.</p>{% endif %}
+  {% elif not bu['open'] %}
+  <div class="adm-needs-head"><h2>{{ bu['items'] | length }} line{{ '' if bu['items'] | length == 1 else 's' }} match a BU KPI {{ 'its' if bu['items'] | length == 1 else 'their' }} unit carries</h2></div>
+  {% endif %}
+  {% if not bu['open'] and bu['items'] %}<p class="note"><b>BU KPI setup reads only now.</b> {{ bu['note'] }} These go in as the person's own line with the file's target. Nothing to decide.</p>{% endif %}
+  <form method="post" class="kti-form">
+    <input type="hidden" name="token" value="{{ v.token }}">
+    {% for g in v.groups %}
+    {% set has_open = g.lines | selectattr('status', 'equalto', 'decide') | list %}
+    <div class="kti-group{{ ' is-new' if g.kind == 'new' }}" data-kti-gid="{{ g.gid }}">
+      <div class="kti-ghead">
+        <div>{% if g.kind == 'new' %}<b>{{ g.kpi }} · a new BU KPI for {{ g.unit }}</b>
+          <span class="muted small">Not in BU KPI setup for {{ g.unit }} yet · {{ 'the KPI library marks it BU-level' if g.new.bu_here else 'it becomes a BU KPI for this unit only, from the KPI library' }} · weight: each person's own, from the file{% if g.new.why %} · {{ g.new.why_text }}{% endif %}</span>
+          {% elif g.kind == 'info' %}<b>{{ g.kpi }}</b><span class="muted small">{{ g.unit }} · goes in as the person's own line · nothing to decide</span>
+          {% elif g.kind == 'other' %}<b>{{ g.kpi }}</b><span class="muted small">{{ g.unit }} · another unit · its target {{ g.target }} · weight: {{ g.weight_rule }}</span>
+          {% else %}<b>{{ g.kpi }}</b><span class="muted small">{{ g.unit }} · the unit's target {{ g.target }} · weight: {{ g.weight_rule }}</span>{% endif %}</div>
+        {% if g.new %}<label class="kti-tlab" for="{{ g.new.tid }}">Its target</label>
+        <select id="{{ g.new.tid }}" name="{{ g.new.tid }}" class="kti-tsel{{ ' is-open' if not g.new.picked }}"{% if not is_super or g.new.why %} disabled{% endif %}>
+          {% if not g.new.picked %}<option value="">Pick one…</option>{% endif %}
+          {% for t in g.new.targets %}<option value="{{ t.id }}" {{ 'selected' if g.new.picked == t.id }}>{{ t.text }}</option>{% endfor %}
+        </select>{% endif %}
+        {% if is_super and bu['open'] and has_open %}
+        <span class="kti-all">{% if g.kind == 'new' %}<button type="button" class="btn-link" data-kti-all="new" data-kti-group="{{ g.gid }}">All to the new BU KPI</button>
+          {% else %}<button type="button" class="btn-link" data-kti-all="bu" data-kti-group="{{ g.gid }}">All to {{ "the unit's" if g.kind == 'own' else (g.unit ~ "'s") }} BU KPI</button>{% endif %}
+          <button type="button" class="btn-link" data-kti-all="own" data-kti-group="{{ g.gid }}">All their own</button></span>
+        {% endif %}
+      </div>
+      {% if g.lines %}
+      <div class="table-scroll"><table class="admin-table no-auto-table kti-table kti-fixed">
+        <colgroup><col class="kti-c-person"><col class="kti-c-line"><col class="kti-c-target"><col></colgroup>
+        <thead><tr><th scope="col">Person</th><th scope="col">Line in the file</th><th scope="col">The file's target</th><th scope="col">Decide</th></tr></thead>
+        <tbody>{% for it in g.lines %}<tr data-kti-group="{{ g.gid }}">
+          <td><b class="kti-nm">{{ it.name }}</b><div class="muted small kti-sub">{{ it.eid }}{% if it.unit %} · {{ it.unit }}{% endif %}</div></td>
+          <td>{{ it.kpi_name }}{% if it.snippet %}<div class="muted small kti-quote" title="{{ it.snippet }}">“{{ it.snippet }}”</div>{% endif %}<div><span class="kti-tag" title="{{ it.how }}">{{ it.how }}</span></div></td>
+          <td>{{ it.file_target }}<div class="kti-w">Weight {{ '%g' | format(it.weight) }}%{% if it.unit_weight is not none and it.unit_weight != it.weight and it.kind == 'own' %} <span class="muted">· the unit gives {{ '%g' | format(it.unit_weight) }}%</span>{% endif %}</div>
+            {% if it.kind in ('own', 'other') and it.unit_target %}{% set tt = ("Same as the unit's" if it.kind == 'own' else 'Same as ' ~ it.target_unit ~ "'s") if it.same else ("Differs from the unit's" if it.kind == 'own' else 'Differs from ' ~ it.target_unit ~ "'s") %}<div><span class="kti-tag {{ 'is-same' if it.same else 'is-diff' }}" title="{{ tt }}">{{ tt }}</span></div>
+            {% elif it.kind == 'new' and g.new and g.new.picked and it.status == 'decide' %}<div><span class="kti-tag {{ 'is-same' if it.same_target else 'is-diff' }}" title="{{ 'The target picked' if it.same_target else 'Takes the target picked' }}">{{ 'The target picked' if it.same_target else 'Takes the target picked' }}</span></div>{% endif %}</td>
+          <td>{% if it.status == 'decide' %}
+            <select class="kti-pick{{ ' is-rec' if it.sel and it.sel != 'own' }}{{ ' is-open' if not it.sel }}" name="{{ it.fid }}" data-kti-sel title="{{ it.ch_label if it.ch else 'Pick one' }}" aria-label="{{ it.eid }}, {{ it.kpi_name }}"{% if not is_super %} disabled{% endif %}>
+              {% if not it.sel %}<option value="">Pick one…</option>{% endif %}
+              {% for o in it.options %}<option value="{{ o.value }}"{{ ' selected' if it.sel == o.value }}{% if o.disabled %} disabled title="{{ o.why_text }}"{% endif %}>{{ olabel(it, o) }}{{ ' (recommended)' if it.rec == o.value }}{{ ' (not available)' if o.disabled }}</option>{% endfor %}
+              <option value="own"{{ ' selected' if it.sel == 'own' }}>Their own</option>
+            </select>
+            {% set off = it.options | selectattr('disabled') | list %}
+            {% if off %}<div class="muted small kti-why">{{ off[0].why_text }}</div>
+            {% elif it.options | length > 1 and not it.sel %}<div class="muted small kti-why">{{ it.how }}: pick one, nothing is pre-picked.</div>
+            {% elif it.rec and it.kind in ('other', 'new') %}<div class="muted small kti-why">Recommended: the line names it.</div>{% endif %}
+            {% elif it.options %}<select class="kti-pick" disabled aria-label="{{ it.eid }}, {{ it.kpi_name }}"><option>Their own</option></select><div class="muted small kti-why">{{ it.why_text }}</div>
+            {% else %}<span class="muted small kti-why">{{ it.why_text }}</span>{% endif %}</td>
+        </tr>{% endfor %}</tbody>
+      </table></div>
+      {% else %}<p class="muted small kti-offered">Offered on the lines that name {{ g.unit }}: its target is picked here.</p>{% endif %}
+    </div>
+    {% endfor %}
+    {% if v.n_decide and is_super %}
+    <div class="ri-apply">
+      <span class="muted small" data-kti-count>{{ v.n_done }} of {{ v.n_decide }} decided</span>
+      <button type="submit" class="btn-link" name="action" value="decide">Save decisions</button>
+      <button type="submit" class="primary" name="action" value="to_apply">Continue to the final preview</button>
+    </div>
+    {% endif %}
+  </form>
+  {% if bu['library_only'] %}
+  <div class="ri-chg">
+    <div class="adm-needs-head"><h3>{{ bu['library_only'] | length }} line{{ '' if bu['library_only'] | length == 1 else 's' }} {{ 'is a' if bu['library_only'] | length == 1 else 'are' }} BU-level KPI{{ '' if bu['library_only'] | length == 1 else 's' }}, but {{ 'its' if bu['library_only'] | length == 1 else 'their' }} unit has no target yet</h3></div>
+    <p class="muted small">The library marks these BU-level, so the person won't fill them in and Group People fills the result. Their unit already has a BU KPI of the same family (or none can be set up here), so they go in as the person's own line with the file's target. Nothing to decide here.</p>
+    <div class="table-scroll"><table class="admin-table no-auto-table"><thead><tr><th>Person</th><th>Line in the file</th><th>Unit</th><th>The file's target</th></tr></thead>
+      <tbody>{% for r in bu['library_only'][:30] %}<tr><td>{{ r.name }} <span class="muted small">· {{ r.eid }}</span></td><td>{{ r.kpi_name }}</td><td>{{ r.unit }}</td><td>{{ r.file_target }}</td></tr>{% endfor %}</tbody></table></div>
+    <a class="btn-link" href="{{ url_for('admin_bu_kpis') }}">Set a unit's target in BU KPI setup</a>
+  </div>
+  {% endif %}
+</section>
+{% endif %}
+
+{% if not v.n_decide %}
+<form method="post" class="ri-apply admin-card">
+  <input type="hidden" name="token" value="{{ v.token }}"><input type="hidden" name="action" value="to_apply">
+  <span class="muted small">Nothing is applied yet: the next step shows the final picture.</span>
+  <button type="submit" class="primary">Continue to the final preview</button>
+</form>
+{% endif %}
+
+{% elif v and st == 'apply' %}
+{% set c = v.counts %}
+<section class="admin-card ri-check" aria-label="Final preview">
+  <div class="adm-needs-head"><h2>{{ period['name'] }} after you apply this file</h2>
+    <a class="btn-link" href="{{ url_for('admin_import_kpi_targets', check=v.token, step='changes') }}">Back to the changes</a></div>
+  <p class="small">{{ v.n_after | thousands }} {{ 'person\'s' if v.n_after == 1 else 'people\'s' }} KPI lines change{% if v.n_decide %}, with your {{ v.n_decide }} decision{{ '' if v.n_decide == 1 else 's' }} in{% endif %}. Nothing is applied yet.</p>
+  <div class="ri-tiles">
+    <div class="ri-tile" style="--c:var(--d-cv-1a7a54)"><b>{{ c['add'] | thousands }}</b><span>added</span></div>
+    <div class="ri-tile" style="--c:var(--d-cv-2f64d6)"><b>{{ (c['update'] + c['same']) | thousands }}</b><span>updated</span></div>
+    {% if v.n_decide %}<div class="ri-tile" style="--c:var(--d-cv-252a59)"><b>{{ v.to_bu }}</b><span>of them join their unit's BU KPI</span></div>
+    {% if v.to_x %}<div class="ri-tile" style="--c:var(--d-cv-252a59)"><b>{{ v.to_x }}</b><span>join another unit's BU KPI as guests</span></div>{% endif %}
+    {% if v.to_new %}<div class="ri-tile" style="--c:var(--d-cv-252a59)"><b>{{ v.to_new }}</b><span>join a new BU KPI ({{ v.plan | length }} to set up)</span></div>{% endif %}
+    <div class="ri-tile" style="--c:var(--d-cv-252a59)"><b>{{ v.n_own }}</b><span>of them stay their own line</span></div>{% endif %}
+    {% if c['left'] %}<div class="ri-tile" style="--c:var(--d-cv-e0a84a)"><b>{{ c['left'] }}</b><span>left as they are</span></div>{% endif %}
+    {% if c['skipped'] %}<div class="ri-tile" style="--c:var(--d-cv-9aa1b5)"><b>{{ c['skipped'] }}</b><span>skipped</span></div>{% endif %}
+  </div>
+  <div class="ri-chg">
+    <div class="adm-needs-head"><h3>Each person after the import</h3>
+      <a class="adm-rep-dl" href="{{ url_for('admin_import_kpi_targets_check_xlsx', token=v.token, what='final') }}">Download the final preview (Excel)</a></div>
+    <div class="table-scroll"><table class="admin-table no-auto-table kti-after">
+      <thead><tr><th scope="col">Person</th><th scope="col">KPI lines</th><th scope="col">Weights</th><th scope="col">What changes for them</th></tr></thead>
+      <tbody>{% for p in v.after %}<tr><td>{{ p.name }} <span class="muted small">· {{ p.eid }}</span></td><td>{{ p.lines }}</td>
+        <td>{{ '%g' | format(p.weight) }}%{% if p.weight_off %} <span class="kti-tag is-diff">not 100%</span>{% endif %}</td><td class="small">{{ p.says }}</td></tr>{% endfor %}
+      {% if v.n_after > v.after | length %}<tr><td colspan="4" class="muted small">… and {{ v.n_after - (v.after | length) }} more people, all in the download.</td></tr>{% endif %}</tbody>
+    </table></div>
+  </div>
+  {% if v.n_decide %}
+  <div class="ri-chg">
+    <div class="adm-needs-head"><h3>Your decisions</h3><a class="btn-link" href="{{ url_for('admin_import_kpi_targets', check=v.token, step='changes') }}#decide">Change them</a></div>
+    <ul class="bullets small">
+      {% for g in v.groups %}{% for it in g.lines if it.status == 'decide' %}<li><b>{{ it.ch_label }}</b>: {{ it.name }} <span class="muted">· {{ it.eid }}</span>, {{ it.kpi_name }} ({{ it.unit }})</li>{% endfor %}{% endfor %}
+    </ul>
+  </div>
+  {% if v.plan %}
+  <div class="ri-chg">
+    <div class="adm-needs-head"><h3>{{ v.plan | length }} new BU KPI{{ '' if v.plan | length == 1 else 's' }} this file sets up</h3></div>
+    <p class="muted small">Each is set up for its unit by BU KPI setup's own writer: the library KPI's name, the target you picked, each line at the weight the file gave it. The unit's people carry it; people of other units join as guests.</p>
+    <ul class="bullets small kti-newplan">
+      {% for g in v.plan %}<li><b>{{ g.kpi }}</b> for {{ g.unit }} · target {{ g.target_text }} · carried by {% if g.holders %}{% for i in g.holders %}{{ i.name }} <span class="muted">({{ i.eid }})</span>{{ ', ' if not loop.last }}{% endfor %}{% else %}nobody of the unit itself{% endif %}{% if g.guests %} · guests: {% for i in g.guests %}{{ i.name }} <span class="muted">({{ i.eid }}, {{ i.unit }})</span>{{ ', ' if not loop.last }}{% endfor %}{% endif %}</li>{% endfor %}
+    </ul>
+  </div>
+  {% endif %}
+  {% endif %}
+  <p class="note">When you apply, OneHR backs up the database first, then applies this same file, never a new pick. Every change{% if v.n_decide %} and each of your decisions{% endif %} goes into the audit log.</p>
+  <form method="post" class="ri-apply"
+        data-confirm="Apply {{ v.filename }}? {{ c['add'] }} KPI lines added and {{ c['update'] + c['same'] }} updated for {{ c['people'] }} {{ 'person' if c['people'] == 1 else 'people' }}{% if v.n_decide %}, {{ v.to_bu }} join their unit's BU KPI{% if v.to_x %}, {{ v.to_x }} join another unit's as guests{% endif %}{% if v.to_new %}, {{ v.to_new }} join {{ v.plan | length }} new BU KPI{{ '' if v.plan | length == 1 else 's' }} this sets up{% endif %} and {{ v.n_own }} stay their own{% endif %}{% if c['left'] %}, {{ c['left'] }} left as they are{% endif %}. This changes live KPI lines; the backup taken first is the way back."
+        data-confirm-title="Apply this file?" data-confirm-ok="Apply this file" data-confirm-tone="danger">
+    <input type="hidden" name="token" value="{{ v.token }}"><input type="hidden" name="action" value="apply">
+    <a class="btn-link" href="{{ url_for('admin_import_kpi_targets', check=v.token, step='changes') }}">Back to the changes</a>
+    <button type="submit" class="primary">Apply this file</button>
+  </form>
+</section>
+
+{% else %}
+<details class="admin-card">
+  <summary><b>How it works</b></summary>
+  <ul class="bullets">
+    <li><b>Four steps:</b> choose the file; OneHR checks its quality (what can't go in, what's worth a look); it shows what it would change and asks the super admin anything it shouldn't guess; then the final picture, and you apply that same file.</li>
+    <li>Each row is one KPI for one person, so a person can have many rows. The same KPI can repeat across many
+      people (unit, department or team KPIs).</li>
+    <li>Business group, business unit and department come from the <strong>person's own profile</strong>, not the
+      file. How the business group scores KPIs (the
+      <a href="{{ url_for('admin_module_settings', key='pm') }}">Scoring setting</a>) decides which columns a row
+      must carry: <strong>Rate 1–5</strong> for a rating ladder, or <strong>Threshold / Target</strong> plus
+      <strong>Multiple</strong> or <strong>Excellence</strong> for a threshold-to-target score.</li>
+    <li><strong>One moderator per KPI.</strong> Leave <strong>Matrix manager ID</strong> blank and the
+      person's line manager moderates that KPI; put a matrix manager's Employee ID and that KPI goes to them
+      alone. Once every KPI is moderated, the person goes to the HOD, then the BU CEO, then the BG CEO.</li>
+    <li><strong>A KPI their unit carries as a BU KPI</strong> (in BU KPI setup) is flagged for the super admin to
+      decide: the unit's BU KPI, with its one target, or the person's own line.</li>
+    <li>The old <strong>Approver 1/2/3</strong> columns are gone. A file that still fills them in is refused,
+      so download the new template.</li>
+  </ul>
+</details>
+
+<a class="template-dl" href="{{ url_for('admin_import_kpi_targets_template') }}" download>
+  <svg class="tdl-ic" viewBox="0 0 24 24" width="32" height="32" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+    <path d="M14 3v4a1 1 0 0 0 1 1h4"/>
+    <path d="M17 21H7a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h7l5 5v11a2 2 0 0 1-2 2z"/>
+    <path d="M12 11v6"/><path d="M9.5 14.5 12 17l2.5-2.5"/>
+  </svg>
+  <span class="tdl-main">
+    <span class="tdl-title">Download the KPI target template (Excel)</span>
+    <span class="tdl-sub">Covers the columns for both ways of scoring: fill in only the ones your business group needs. The last column is Matrix manager ID.</span>
+  </span>
+  <span class="tdl-cta">Download</span>
+</a>
+
+<section class="admin-card">
+  <h2>Choose the file</h2>
+  <form method="post" enctype="multipart/form-data" id="kpi-import-form">
+    <input type="hidden" name="preview" value="1">
+    <div class="upload-box">
+      <p>Drop your <strong>.xlsx</strong> (or <strong>.csv</strong>) here, or browse.</p>
+      <input type="file" name="file" accept=".csv,.xlsx,.xls" required>
+    </div>
+    <div class="actions"><button type="submit" class="primary">Check the file</button></div>
+    <p class="muted small">Nothing changes yet. OneHR checks the file, shows what it would change and asks anything it
+      needs to know. Then you apply that same file.</p>
+  </form>
+</section>
+{% endif %}
+
+<script>
+(function () {
+  var form = document.querySelector('.kti-form');
+  if (!form) return;
+  var count = form.querySelector('[data-kti-count]');
+  function sels() { return form.querySelectorAll('select[data-kti-sel]'); }
+  function recount() {
+    sels().forEach(function (x) { x.classList.toggle('is-open', !x.value); x.classList.toggle('is-rec', !!x.value && x.value !== 'own'); x.title = x.options[x.selectedIndex] ? x.options[x.selectedIndex].text : ''; });   // a choice too long ends in "...": the full words are the hover
+    form.querySelectorAll('.kti-tsel').forEach(function (x) { x.classList.toggle('is-open', !x.value); });
+    if (!count) return;
+    var done = 0, all = 0;
+    sels().forEach(function (x) { all++; if (x.value) done++; });
+    count.textContent = done + ' of ' + all + ' decided';
+  }
+  form.addEventListener('change', recount);
+  recount();
+  form.querySelectorAll('[data-kti-all]').forEach(function (b) {
+    b.addEventListener('click', function () {
+      var v = b.getAttribute('data-kti-all');
+      form.querySelectorAll('tr[data-kti-group="' + b.getAttribute('data-kti-group') + '"] select[data-kti-sel]').forEach(function (x) {
+        var o = Array.prototype.filter.call(x.options, function (op) { return op.value === v && !op.disabled; })[0];
+        if (o && !x.disabled) x.value = v;
+      });
+      recount();
+    });
+  });
+})();
+</script>
+{% endblock %}

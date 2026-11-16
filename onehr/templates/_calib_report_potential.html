@@ -1,0 +1,161 @@
+{% from "_paste_chip.html" import paste_chip %}
+{# The 360 evidence behind one person's potential band, for a calibrator.
+   A FRAGMENT, not a page -- served by calibration_potential_report() and
+   fetched into the shared report modal.
+
+   Anonymity is the same as every other 360 surface and is enforced upstream:
+   subject_report_context() strips assessor identity out of the comment rows
+   before they reach here, and the raw score is never passed in. Nothing in
+   this template can print either, even by accident. #}
+<div class="calib-rep">
+  <p class="calib-rep-eyebrow">Potential report</p>
+  <h2 class="calib-rep-name">{{ s['full_name'] }}</h2>
+  <p class="muted small calib-rep-meta">
+    {{ s['employee_id'] }}
+    {%- if s['job_grade'] %} &middot; JG {{ s['job_grade'] }}{% endif %}
+    {%- if s['job_title'] %} &middot; {{ s['job_title'] | proper }}{% endif %}
+    {%- if s['department'] %} &middot; {{ s['department'] | proper }}{% endif %}
+    &middot; {{ cycle_name }}
+  </p>
+
+  <div class="calib-rep-hero">
+    <span class="calib-rep-hero-lbl">Potential band</span>
+    <span class="calib-rep-hero-val">
+      {% if band_info['score_valid'] and band_info['band'] %}
+      <span class="potential-pill" data-band="{{ band_info['band'] }}">{{ band_info['band'] }}</span>
+      {% else %}
+      <span class="muted small">No band yet &mdash; needs at least
+        {{ band_info['min_valid'] }} submitted assessor(s)</span>
+      {% endif %}
+    </span>
+  </div>
+
+  {% if n_submitted == 0 %}
+  <p class="muted">No 360 feedback has been submitted for this person yet, so
+    there is no potential evidence to show.</p>
+  {% else %}
+  <p class="muted small">Based on feedback from {{ n_submitted }} assessor{{ '' if n_submitted == 1 else 's' }}.
+    Individual assessors are never identified.</p>
+
+  {% for crit in agreement %}
+  <div class="calib-rep-crit">
+    <p class="calib-rep-crit-name">{{ loop.index }}. {{ crit['name'] }}</p>
+    {% if crit['description'] %}<p class="muted small" style="margin:0 0 6px">{{ crit['description'] }}</p>{% endif %}
+    <table class="agree-table"><tbody>
+      {% for st in crit['statements'] %}
+      <tr>
+        <td class="stmt-text">{{ st['text'] }}</td>
+        <td style="text-align:right;width:170px">
+          <span class="agree-bar-wrap">
+            <span class="agree-bar"><span style="width: {{ (100 * st['yes'] / st['total'])|round(0,'floor') if st['total'] else 0 }}%"></span></span>
+            <span class="agree-num">{{ st['yes'] }} / {{ st['total'] }}</span>
+          </span>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody></table>
+    {% if crit['comments'] %}
+    <div class="crit-feedback">
+      <div class="crit-feedback-head">What assessors shared (anonymous)</div>
+      {% for c in crit['comments'] %}
+      <div class="feedback-item"><p>{{ c['comment'] }}</p></div>
+      {% endfor %}
+    </div>
+    {% endif %}
+  </div>
+  {% endfor %}
+
+  {# The raters' overall remarks (journey 360 step 2, 2026-09-23): required for a High or an all-Developing
+     rating, optional otherwise (the caption said "rated highly" -- stale since 2026-09-24). Identity stripped upstream
+     (feedback_overall_remarks), ordered by text. Raters who used the classic form have none, so
+     absence is not weak evidence. #}
+  {% if overall_remarks %}
+  <div class="calib-rep-crit">
+    <p class="calib-rep-crit-name">Overall remarks from assessors (anonymous)</p>
+    <p class="muted small" style="margin:0 0 6px">An assessor writes one to explain a high rating or an
+      all-Developing one, and may add one otherwise. Not every assessor writes one.</p>
+    <div class="crit-feedback">
+      {% for r in overall_remarks %}
+      <div class="feedback-item"><p>{{ r['remark'] }}</p></div>
+      {% endfor %}
+    </div>
+  </div>
+  {% endif %}
+  {% endif %}
+
+  {# The technical half of the same potential. Rendered only for someone who
+     actually carries competencies -- an empty block would read as a gap in the
+     record rather than a module they aren't in. #}
+  {% if tc %}
+  <div class="calib-rep-crit">
+    <p class="calib-rep-crit-name">Technical competency</p>
+    <p class="muted small" style="margin:0 0 8px">
+      {{ tc['n_assigned'] }} competenc{{ 'y' if tc['n_assigned'] == 1 else 'ies' }} assigned
+      &middot; once approved, its points are added to the 360's for the potential score
+    </p>
+
+    {% if tc['status'] != 'reviewed' %}
+    {# Same rule the band maths uses: unreviewed answers are the employee's own
+       unchallenged self-rating, so they don't get shown beside a 360 band a
+       calibrator is about to act on. The status still shows, so an outstanding
+       review reads as outstanding rather than as missing data. #}
+    <p class="muted">
+      {% if tc['status'] == 'submitted' %}Self-assessed and submitted, but the line
+        manager hasn't reviewed it yet &mdash; it doesn't count toward the band until they do.
+      {% else %}Not submitted yet.{% endif %}
+    </p>
+    {% else %}
+    <div class="calib-rep-hero" style="margin-bottom:10px">
+      <span class="calib-rep-hero-lbl">Approved technical score</span>
+      <span class="calib-rep-hero-val">
+        {% if tc['pct'] is not none %}{{ tc['pct'] }}%
+          <span class="muted small">({{ '%g' | format(tc['score']) }} / {{ '%g' | format(tc['max']) }})</span>
+        {% else %}<span class="muted small">Nothing answered</span>{% endif %}
+      </span>
+    </div>
+
+    <table class="agree-table"><tbody>
+      {% for grp in tc['groups'] %}
+      <tr>
+        <td class="stmt-text">
+          {{ grp['name'] }}
+          {% if grp['remark'] or grp['manager_remark'] %}
+          <br>
+          {% if grp['remark'] %}<span class="muted small">Self: {{ grp['remark'] }}</span>{% endif %}
+          {% if grp['remark'] and grp['manager_remark'] %}<br>{% endif %}
+          {% if grp['manager_remark'] %}<span class="muted small">Line manager: {{ grp['manager_remark'] }}</span>{% endif %}
+          {% endif %}
+          {# Per-competency reflections the person filed against a specific competency. #}
+          {% set _cnotes = grp['rows'] | selectattr('remark') | list %}
+          {% if _cnotes %}
+          <div class="muted small" style="margin-top:4px">
+            {% for r in _cnotes %}<div>&middot; {{ r['title'] }}: {{ r['remark'] }}</div>{% endfor %}
+          </div>
+          {% endif %}
+        </td>
+        <td style="text-align:right;width:170px">
+          <span class="agree-bar-wrap">
+            <span class="agree-bar"><span style="width: {{ (100 * grp['n_yes'] / grp['n_total'])|round(0,'floor') if grp['n_total'] else 0 }}%"></span></span>
+            <span class="agree-num">{{ grp['n_yes'] }} / {{ grp['n_total'] }}</span>
+          </span>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody></table>
+    {% endif %}
+
+    {% if tc['overall_remark'] %}
+    <div class="resp-comment" style="margin-top:12px">
+      <p class="resp-comment-head">Their own overall remark{{ paste_chip(paste_tc) }}</p>
+      <p>{{ tc['overall_remark'] }}</p>
+    </div>
+    {% endif %}
+    {% if tc['manager_overall_remark'] %}
+    <div class="resp-comment" style="margin-top:8px">
+      <p class="resp-comment-head">The line manager's overall remark</p>
+      <p>{{ tc['manager_overall_remark'] }}</p>
+    </div>
+    {% endif %}
+  </div>
+  {% endif %}
+</div>

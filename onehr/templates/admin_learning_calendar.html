@@ -1,0 +1,92 @@
+{% extends "base.html" %}
+{% block title %}Learning calendar{% endblock %}
+{% block body %}
+{# Learning › Run › Calendar (2026-10-22; canvas [design canvas link removed] board 15A): every
+   session in the month, a draft programme's dashed (staff don't see it); add a session on a day, or pick one to change
+   or cancel it. Changing when or where tells everyone on it and updates their invites. #}
+<div class="adm-headrow">
+  <div class="lm-shead">
+    <h2 class="lm-stitle">{{ cal.month_label }}</h2>
+    <p class="muted small">Every session; a draft programme's are dashed, and staff don't see them. Pick one to change it, or a day's + to add one.</p>
+  </div>
+  <div class="lm-head-acts">
+    <a class="btn-link" href="{{ url_for('admin_learning_calendar', m=cal.prev) }}" aria-label="Previous month">‹</a>
+    <a class="btn-link" href="{{ url_for('admin_learning_calendar') }}">This month</a>
+    <a class="btn-link" href="{{ url_for('admin_learning_calendar', m=cal.next) }}" aria-label="Next month">›</a>
+    <a class="btn-link" href="{{ url_for('admin_learning_programmes') }}">Add a programme</a>
+  </div>
+</div>
+
+<div class="lc-wrap lc-admin">
+  <div class="lc-grid" role="grid" aria-label="{{ cal.month_label }}">
+    <div class="lc-dow" role="row">{% for d in ('Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun') %}<span role="columnheader">{{ d }}</span>{% endfor %}</div>
+    {% for w in cal.weeks %}
+    <div class="lc-wk" role="row">
+      {% for c in w %}
+      <div class="lc-day{{ ' is-out' if not c.in_month }}{{ ' is-we' if c.weekend }}{{ ' is-hol' if c.holiday }}{{ ' is-today' if c.today }}" role="gridcell">
+        <span class="lc-n">{{ c.day.day }}</span>{% if c.holiday %}<span class="lc-hol" title="Public holiday: {{ c.holiday }}">{{ c.holiday }}</span>{% endif %}
+        {% for e in c.events[:3] %}<a class="lc-ev is-{{ 'briefing' if e.s.kind == 'briefing' and e.state != 'draft' else e.state }}{{ ' is-sel' if sel and sel.sid == e.sid }}" href="{{ url_for('admin_learning_calendar', m=cal.first.isoformat()[:7], s=e.sid) }}" title="{{ e.title }} · {{ e.sub }}"><b>{{ e.title }}</b><i>{{ e.sub }}</i></a>{% endfor %}
+        {% if c.events | length > 3 %}<a class="lc-evx" href="{{ url_for('admin_learning_calendar', m=cal.first.isoformat()[:7], d=c.iso) }}">{{ c.events | length - 3 }} others</a>{% endif %}
+        {% if can and c.in_month %}<a class="lc-add" href="{{ url_for('admin_learning_calendar', m=cal.first.isoformat()[:7], add=c.iso) }}" aria-label="Add a session on {{ c.iso | lms_day }}">+</a>{% endif %}
+      </div>
+      {% endfor %}
+    </div>
+    {% endfor %}
+    <div class="lc-legend">
+      <span><i class="lc-sw is-open"></i>Registering</span><span><i class="lc-sw is-full"></i>Full</span>
+      <span><i class="lc-sw is-briefing"></i>Briefing</span><span><i class="lc-sw is-draft"></i>Draft: staff don't see it</span>
+    </div>
+  </div>
+
+  <aside class="lc-drawer admin-card">
+    {% if sel %}{% set s = sel.s %}
+    <span class="lm-kick">Session · {{ s.run_label or 'Run' }}</span>
+    <h3 class="lm-h">{{ s.title }}</h3>
+    <p class="muted small lc-meta">{% if s.seats %}{{ sel.taken }} of {{ s.seats }} seats taken{% else %}{{ sel.taken }} on it{% endif %}{% if s.trainer %} · trainer {{ s.trainer }}{% endif %}</p>
+    {% if can %}
+    <form method="post" id="lc-edit" class="admin-form lc-form" data-confirm="Save the changes to {{ s.title }}? If its dates, times or venue change, everyone on it is told and their calendar invites are updated." data-confirm-ok="Save">
+      <input type="hidden" name="action" value="edit"><input type="hidden" name="session_id" value="{{ s.id }}"><input type="hidden" name="m" value="{{ cal.first.isoformat()[:7] }}">
+      <label>Label<input name="run_label" maxlength="40" value="{{ s.run_label or '' }}" placeholder="e.g. Run 3"></label>
+      <div class="lc-two"><label>First day<input type="date" name="starts_on" required value="{{ s.starts_on }}"></label><label>Last day<input type="date" name="ends_on" value="{{ s.ends_on }}"></label></div>
+      <div class="lc-two"><label>Starts<input type="time" name="start_time" value="{{ s.start_time or '' }}"></label><label>Ends<input type="time" name="end_time" value="{{ s.end_time or '' }}"></label></div>
+      <div class="lc-two"><label>Seats<input type="number" name="seats" min="1" value="{{ s.seats or '' }}"></label><label>Registration closes<input type="date" name="reg_cutoff" value="{{ s.reg_cutoff or '' }}"></label></div>
+      <label>Venue<input name="venue" maxlength="120" value="{{ s.venue or '' }}"></label>
+      <div class="lc-two"><label><span>Trainer <span class="muted small">(this run only)</span></span><input name="trainer_s" maxlength="120" value="{{ s.trainer_s or '' }}" placeholder="Programme's own"></label><label>Their email<input name="trainer_email_s" type="email" maxlength="160" value="{{ s.trainer_email_s or '' }}"></label></div>
+    </form>
+    <form method="post" id="lc-cancel" data-confirm="Cancel {{ s.title }}, {{ sel.line }}? Everyone on it is told with your reason; their places close and their calendar invites are cancelled. This can't be undone." data-confirm-ok="Cancel the session" data-confirm-tone="danger" data-confirm-reason="Why it's cancelled (everyone on it reads it)">
+      <input type="hidden" name="action" value="cancel"><input type="hidden" name="session_id" value="{{ s.id }}"><input type="hidden" name="m" value="{{ cal.first.isoformat()[:7] }}"></form>
+    {# one footer under a hairline (Chris, 2026-10-22: "the buttons are not aligned"): cancel on the left, save on the right #}
+    <div class="lc-foot">
+      <button type="submit" form="lc-cancel" class="btn-link lm-danger">Cancel the session…</button>
+      <button type="submit" form="lc-edit" class="primary">Save…</button>
+    </div>
+    {% endif %}
+    <a class="lc-open" href="{{ url_for('admin_learning_session', sid=s.id) }}"><b>Open the session page</b><span>Attendees, invites and the trainer's link</span></a>
+    {% elif add_day and can %}
+    <span class="lm-kick">Add a session</span>
+    <h3 class="lm-h">{{ add_day | lms_day }}</h3>
+    <form method="post" id="lc-add" class="admin-form lc-form" data-confirm="Add this session? A published programme's shows on staff's calendar at once." data-confirm-ok="Add">
+      <input type="hidden" name="action" value="add"><input type="hidden" name="m" value="{{ cal.first.isoformat()[:7] }}">
+      <label>Programme<select name="programme_id" class="modern-select" required>{% for p_ in progs %}<option value="{{ p_.id }}">{{ p_.title }}{{ ' (draft)' if p_.status == 'draft' }}</option>{% endfor %}</select></label>
+      <label>Label<input name="run_label" maxlength="40" placeholder="e.g. Run 4"></label>
+      <div class="lc-two"><label>First day<input type="date" name="starts_on" required value="{{ add_day }}"></label><label>Last day<input type="date" name="ends_on" value="{{ add_day }}"></label></div>
+      <div class="lc-two"><label>Starts<input type="time" name="start_time" value="09:00"></label><label>Ends<input type="time" name="end_time" value="17:00"></label></div>
+      <div class="lc-two"><label>Seats<input type="number" name="seats" min="1" value="20"></label><label>Registration closes<input type="date" name="reg_cutoff"></label></div>
+      <label>Venue<input name="venue" maxlength="120"></label>
+      <div class="lc-two"><label><span>Trainer <span class="muted small">(this run only)</span></span><input name="trainer_s" maxlength="120" placeholder="Programme's own"></label><label>Their email<input name="trainer_email_s" type="email" maxlength="160"></label></div>
+    </form>
+    <div class="lc-foot">
+      <span class="muted small">Registration closes 30 days before by default.</span>
+      <button type="submit" form="lc-add" class="primary">Add the session…</button>
+    </div>
+    {% elif on_day %}
+    <span class="lm-kick">{{ on_day.events | length }} sessions{% if on_day.holiday %} · {{ on_day.holiday }}{% endif %}</span>
+    <h3 class="lm-h">{{ on_day.iso | lms_day }}</h3>
+    <ul class="lc-dlist">{% for e in on_day.events %}<li><a class="lc-ev is-{{ 'briefing' if e.s.kind == 'briefing' and e.state != 'draft' else e.state }}" href="{{ url_for('admin_learning_calendar', m=cal.first.isoformat()[:7], s=e.sid) }}" title="{{ e.title }} · {{ e.sub }}"><b>{{ e.title }}</b><i>{% if e.s.run_label %}{{ e.s.run_label }} · {% endif %}{{ e.line }} · {{ e.sub }}</i></a></li>{% endfor %}</ul>
+    {% else %}
+    <h3 class="lm-h">Pick a session</h3>
+    <p class="muted small">Pick one to change its dates, times, seats or venue, or to cancel it; a day's + adds one. Staff see the same calendar, open to them only.</p>
+    {% endif %}
+  </aside>
+</div>
+{% endblock %}

@@ -1,0 +1,155 @@
+{% from "_paste_chip.html" import paste_chip %}
+{# The KPI evidence behind one person's performance rating, for a calibrator.
+   A FRAGMENT, not a page -- served by calibration_kpi_report() and fetched
+   into the shared report modal, so the calibrator keeps their place in the
+   grid or the table. Read-only by construction: it renders no form, no input
+   and no action, so it can never become a second way to change a rating. #}
+<div class="calib-rep">
+  <p class="calib-rep-eyebrow">KPI report</p>
+  <h2 class="calib-rep-name">{{ s['full_name'] }}</h2>
+  <p class="muted small calib-rep-meta">
+    {{ s['employee_id'] }}
+    {%- if s['job_grade'] %} &middot; JG {{ s['job_grade'] }}{% endif %}
+    {%- if s['job_title'] %} &middot; {{ s['job_title'] | proper }}{% endif %}
+    {%- if s['department'] %} &middot; {{ s['department'] | proper }}{% endif %}
+    {%- if period %} &middot; {{ period['name'] }}{% endif %}
+  </p>
+
+  {% if not period %}
+  <p class="muted">No performance period is active.</p>
+  {% elif not targets %}
+  <p class="muted">No KPI targets have been set for this person this period, so
+    there is no performance evidence to show yet.</p>
+  {% else %}
+
+  <div class="calib-rep-hero">
+    <span class="calib-rep-hero-lbl">Approved overall rating</span>
+    {% if overall %}
+    <span class="calib-rep-hero-val">
+      {% if overall['value'] is none %}{# a transferred person's blend by band has no figure #}
+      {%- elif overall['mechanism'] == 'A' %}{{ '%.2f' | format(overall['value']) }}
+      {%- else %}{{ '%.1f' | format(overall['value']) }}%{% endif %}
+      <span class="potential-pill" data-band="{{ overall['label'] }}">{{ label_names[overall['label']] }}</span>
+    </span>
+    {% else %}
+    {# Same require_locked=True rule the calibration row uses, so the report can
+       never disagree with the table that opened it. #}
+    <span class="muted small">Not finalised &mdash; some KPI lines are still awaiting approval</span>
+    {% endif %}
+  </div>
+
+  <div class="table-scroll"><table class="admin-table calib-rep-table">
+    <thead><tr>
+      <th>KPI</th><th>Weight</th><th>Target</th>
+      <th>Self</th><th>Moderated</th><th>Rating</th>
+    </tr></thead>
+    <tbody>
+      {% for t in targets %}
+      <tr>
+        <td>
+          {# the KPI, its Focus tag and the person's description (2026-10-18, board 22) #}
+          {% set _f = t['focus'] if 'focus' in t.keys() else none %}
+          <strong>{{ t['kpi_name'][:-(_f | length + 3)] if _f and t['kpi_name'].endswith(' · ' ~ _f) else t['kpi_name'] }}</strong>{% if _f %}<span class="kpi-focus">{{ _f }}</span>{% endif %}
+          {% if t['category'] %}<br><span class="muted small">{{ t['category'] }}</span>{% endif %}
+          {% if t['method'] %}<span class="muted small"> &middot; {{ 'higher is better' if t['method'] == 'more' else 'lower is better' }}</span>{% endif %}
+          {% if t['description'] %}<div class="rv-kpi-desc kpi-desc" data-kpi-read data-kpi-name="{{ t['kpi_name'][:-(_f | length + 3)] if _f and t['kpi_name'].endswith(' · ' ~ _f) else t['kpi_name'] }}" data-kpi-weight="{{ t['weightage'] | round | int }}"{% if t['category'] %} data-kpi-meta="{{ t['category'] }}"{% endif %}>{{ t['description'] }}</div>{% endif %}
+        </td>
+        <td>{{ t['weightage'] | round | int }}%</td>
+        <td class="muted small">
+          {# The reference the result is judged against, in the shape that
+             mechanism actually uses -- a Rate 1-5 ladder, or threshold/target
+             and whichever of multiple/excellence this BG's variant carries. #}
+          {% if t['mechanism'] == 'A' %}
+            {% for i in range(1, 6) %}{% set v = t['rate' ~ i] %}
+            {%- if v is not none %}{{ 'R' ~ i }} {{ v | commas }}{{ ' · ' if not loop.last }}{% endif %}
+            {%- endfor %}
+          {% elif t['mechanism'] == 'B' %}
+            Threshold {{ t['threshold'] | commas }} &middot; Target {{ t['target'] | commas }}
+            {%- if t['excellence'] is not none %} &middot; Excellence {{ t['excellence'] | commas }}
+            {%- elif t['multiple'] is not none %} &middot; Multiplier {{ t['multiple'] }}%{% endif %}
+          {% else %}
+            &mdash;
+          {% endif %}
+        </td>
+        <td>
+          {% if t['result'] %}<strong>{{ t['result']['actual_value'] | commas }}</strong>{% if t['unit'] %} {{ t['unit'] }}{% endif %}
+            {% if t['result']['note'] %}<br><span class="muted small">{{ t['result']['note'] }}</span>{% endif %}
+            {#- The evidence file the employee attached to this line. It has been
+                loaded into t['attachment'] all along and printed by no upward
+                template, so the one piece of hard proof a calibrator could open
+                was invisible in the room where the rating is defended. -#}
+            {#- It opens in the preview box (2026-11-07, static/file_preview.js): the href is the plain download, so an Excel or Word
+                file saves as before and with no script every link downloads; data-fpv-src is the inline one the box shows. -#}
+            {% if t['attachment'] %}<br><a class="small"
+              href="{{ url_for('performance_kpi_attachment_download', kpi_target_id=t['id']) }}"
+              data-fpv-src="{{ url_for('performance_kpi_attachment_download', kpi_target_id=t['id'], disp='inline') }}"
+              data-fpv-name="{{ t['attachment']['filename'] }}"
+              data-fpv-kpi="{{ t['kpi_name'][:-(_f | length + 3)] if _f and t['kpi_name'].endswith(' · ' ~ _f) else t['kpi_name'] }}"
+              data-fpv-size="{{ t['attachment']['size_bytes'] | filesize }}"
+              >&#128206; {{ t['attachment']['filename'] }}</a>{% endif %}
+          {% else %}<span class="muted small">Not submitted</span>{% endif %}
+        </td>
+        <td>
+          {# Only once the line is locked: mid-chain, effective_value is a
+             snapshot an earlier approver took, and showing it as "moderated"
+             would present a decision nobody has finished making. #}
+          {% if t['locked'] and t['effective_value'] is not none %}
+            <strong>{{ t['effective_value'] | commas }}</strong>{% if t['unit'] %} {{ t['unit'] }}{% endif %}
+            {% set last_j = t['approvals'][-1]['justification'] if t['approvals'] else none %}
+            {% if last_j %}<br><span class="muted small">{{ last_j }}</span>{% endif %}
+          {% else %}<span class="muted small">&mdash;</span>{% endif %}
+        </td>
+        <td>
+          {% if t['score'] %}
+            {% if t['score']['mechanism'] == 'A' %}{{ t['score']['value'] }}
+            {%- else %}{{ '%.1f' | format(t['score']['value']) }}%{% endif %}
+            {% if t['score']['label'] %}
+            <span class="potential-pill" data-band="{{ t['score']['label'] }}"
+                  title="{{ label_names[t['score']['label']] }}">{{ t['score']['label'] }}</span>
+            {% endif %}
+          {% else %}<span class="muted small">&mdash;</span>{% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table></div>
+
+  {% if self_remark %}
+  <div class="resp-comment" style="margin-top:14px">
+    <p class="resp-comment-head">The employee's own remark on the period{{ paste_chip(paste_self) }}</p>
+    <p>{{ self_remark }}</p>
+  </div>
+  {% endif %}
+  {% for mr in manager_remarks %}
+  <div class="resp-comment" style="margin-top:10px">
+    <p class="resp-comment-head">The line manager's remark on the period{% if mr['author'] %} &mdash; {{ mr['author'] }}{% endif %}{{ paste_chip(mr['paste']) }}</p>
+    <p>{{ mr['remark'] }}</p>
+  </div>
+  {% endfor %}
+
+  {#- THE LEDGER REACHING THE ROOM. Everything above was already here; this is
+      what the last four phases exist to surface -- the dated events the person
+      logged and cited toward this rating. Their own words, shown to whoever is
+      deciding their band. `cited` may be undefined on the potential report, so
+      guard it. -#}
+  {% if cited is defined and cited %}
+  <div class="calib-cited" style="margin-top:16px">
+    <p class="resp-comment-head">On the record &mdash; what they cited ({{ cited|length }})</p>
+    {% for e in cited %}
+      <div class="calib-cited-item" style="margin-top:8px">
+        <p class="muted small" style="margin:0">
+          {{ e['occurred_on'] }} &middot; {{ e['kind'] }}{% if e['cited_kinds'] %}
+            &middot; cited against {{ e['cited_kinds'].replace(',', ', ') }}{% endif %}
+          {%- if e['author_role'] == 'manager' %} &middot; <strong>manager-written</strong>{% endif %}
+          {%- if e['stances'] %} &middot; {{ e['stances'].replace(',', ', ') }}{% endif %}
+          {%- if e['n_endorse'] %} &middot; endorsed{{ ' \u00d7' ~ e['n_endorse'] if e['n_endorse'] > 1 else '' }}{% endif %}
+          {%- if e['n_dispute'] %} &middot; disputed{{ ' \u00d7' ~ e['n_dispute'] if e['n_dispute'] > 1 else '' }}{% endif %}
+        </p>
+        {% if e['title'] %}<strong>{{ e['title'] }}</strong><br>{% endif %}
+        <span>{{ e['body'] }}</span>
+      </div>
+    {% endfor %}
+  </div>
+  {% endif %}
+  {% endif %}
+</div>

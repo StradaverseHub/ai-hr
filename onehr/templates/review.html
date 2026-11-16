@@ -1,0 +1,52 @@
+{# The guided review as a CONVERSATION. The employee talks to the review
+   assistant in their own words; the agent understands, records via validated
+   server tools, and moves through the check-in. The rail is a slim progress /
+   hand-off strip, not a wizard. #}
+{% extends "base.html" %}
+{% block title %}Your review{% endblock %}
+{# No floating "Back" here: the Dashboard/Review tabs already navigate, and on
+   mobile the fixed back button would overlap the sticky composer. #}
+{% block back_button %}{% endblock %}
+{% block body %}
+{% from "_review_icons.html" import rvicon %}
+
+{# The demo controls (mechanism · Solo/Manager · Reset) now live in the navy top
+   banner (base.html), so the review body is all panel + chat. #}
+
+{# Top band: the Dashboard / AI Check-in toggle sits above the rail (left), and
+   the KPI summary row (dots · Now · Final · Hide/Show) sits above the chat
+   (right) -- so the summary aligns with the toggle and the chat with the rail.
+   The grid mirrors .rv-wrap (224px 1fr) so the two bands line up. #}
+<div class="rv-topbar">
+  <div class="rv-topbar-nav">{% include "_nav_toggle.html" %}</div>
+  <div class="rv-topbar-main">
+    <div class="rv-kpi-pin" id="rv-kpi-pin"></div>
+  </div>
+</div>
+
+<div class="rv-wrap">
+  <div class="rv-railcol">
+    {% include "_review_rail.html" %}
+  </div>
+
+  <div class="rv-main">
+    <div class="rv-chat" id="rv-chat"
+         data-history-url="{{ url_for('review_chat_history') }}"
+         data-send-url="{{ url_for('review_chat') }}"
+         {% set _wn = chat_window_note('pm_results') %}{% if _wn %}data-window-closed="{{ _wn }}"{% endif %}
+         {% if not agent_available %}data-unavailable="1"{% endif %}>
+      <div class="rv-chat-log" id="rv-chat-log" aria-live="polite"></div>
+      <div class="rv-chat-quick" id="rv-chat-quick"></div>
+      <form class="rv-composer" id="rv-chat-form" autocomplete="off" onsubmit="return false">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+        <textarea id="rv-chat-input" rows="1" placeholder="Type your reply…"
+                  aria-label="Message the review assistant"></textarea>
+        <button type="submit" class="rv-send" id="rv-chat-send" aria-label="Send" title="Send">{{ rvicon('send') }}</button>
+      </form>
+    </div>
+  </div>
+</div>
+
+<script src="{{ url_for('static', filename='img_shrink.js') }}?v={{ asset_v }}" defer></script>
+<script src="{{ url_for('static', filename='review_chat.js') }}?v={{ asset_v }}" defer></script>
+{% endblock %}

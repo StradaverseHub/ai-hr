@@ -1,0 +1,42 @@
+{% extends "base.html" %}
+{% from "_adm_panel.html" import list_peek %}
+{% block title %}Usage{% endblock %}
+{% block body %}
+<p class="adm-lede">Who has signed in and what they did, for everyone who is not an admin. &ldquo;Active&rdquo; means signed in at least once in the window.
+  {{ submits_total | thousands }} feedback {{ 'submission' if submits_total == 1 else 'submissions' }} recorded in total. Times are Malaysia time.</p>
+
+<div class="adm-tiles adm-tiles-5">
+  <div class="admin-card adm-tile"><span class="muted small">Active (ever)</span><b>{{ active_ever | thousands }}</b>
+    <span class="muted small">of {{ people | thousands }} &middot; {{ rate_ever }}%</span></div>
+  <div class="admin-card adm-tile"><span class="muted small">Active last 7 days</span><b>{{ active_7 | thousands }}</b>
+    <span class="muted small">of {{ people | thousands }} &middot; {{ rate_7 }}%</span></div>
+  <div class="admin-card adm-tile"><span class="muted small">Active last 30 days</span><b>{{ active_30 | thousands }}</b>
+    <span class="muted small">of {{ people | thousands }} &middot; {{ rate_30 }}%</span></div>
+  <div class="admin-card adm-tile"><span class="muted small">Logins today</span><b>{{ logins_today | thousands }}</b></div>
+  {# Online now (2026-11-02): last use inside the window and not signed out since; the super admin opens who. The line reads "in the last 15 min" (full words on hover): "active in the last 15 min" wrapped at the larger text sizes in a fifth of the row. #}
+  {% if nav_is_super %}<a class="admin-card adm-tile adm-tile-link" href="{{ url_for('admin_list_view', key='online-now') }}" data-list-open="{{ url_for('admin_list_view', key='online-now', fragment=1) }}" title="Active in the last {{ online_window }} minutes and not signed out since">{% else %}<div class="admin-card adm-tile" title="Active in the last {{ online_window }} minutes and not signed out since">{% endif %}<span class="muted small">Online now</span><b>{{ online_now | thousands }}</b>
+    <span class="muted small">in the last {{ online_window }} min</span>{% if nav_is_super %}</a>{% else %}</div>{% endif %}
+</div>
+
+<section class="admin-card">
+  <h2>Logins by day <span class="muted small">(last 14 days)</span></h2>
+  {% if daily %}
+  <div class="table-scroll">
+  <table class="admin-table">
+    <thead><tr><th>Date</th><th>People</th><th>Logins</th></tr></thead>
+    <tbody>
+      {% for d in daily %}
+      <tr><td>{{ d['d'] }}</td><td>{{ d['users'] }}</td><td>{{ d['logins'] }}</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  </div>
+  {% else %}
+    <p class="muted">No logins in the last 14 days.</p>
+  {% endif %}
+</section>
+
+{% if nav_is_super %}{{ list_peek() }}{% endif %}
+{% if nav_is_super %}<p class="muted small">Who changed what, and when: the Audit log tab.
+  One person's changes are on their page.</p>{% endif %}
+{% endblock %}

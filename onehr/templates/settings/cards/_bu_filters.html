@@ -1,0 +1,18 @@
+{# The Filters card (Chris, 2026-11-02, canvas "OneHR Calibration Filters by Viewer", "Yes, as drawn"): four tabs, one per kind of viewer,
+   because their people are grouped differently. "BU CEO & Talent Box" is the card as it was, per unit (_bu_filters_unit.html);
+   "Calibrators" (_vf_cal.html) and "Group Chiefs" (_vf_gc.html) hold a table and a 560px side panel each; "Executive Chairman"
+   (_vf_ec.html, only while his view is on) is one list. Every save posts to admin_calib_viewer_filter (or, per unit, to
+   admin_calib_filter); the confirm box names who and what. #}
+{% set vf = viewer_filters %}
+<p class="muted small vf-lede">Which filters a leader can use on the calibration screens. Each kind of viewer is set on its own tab, because their
+  people are grouped differently. Filters only narrow what a leader sees: no band, lock or move changes.</p>
+<nav class="vf-tabs" aria-label="Viewer">
+  {% for t in vf.tabs %}
+  <a href="{{ url_for('admin_module_settings', key='calibration', fview=t.key, bfbg=vf.bg) }}#bu-filters"
+     class="vf-tab{{ ' is-on' if t.key == vf.view }}"{% if t.key == vf.view %} aria-current="page"{% endif %}>{{ t.label }}{% if t.sub %} <span class="vf-tab-sub">· {{ t.sub }}</span>{% endif %}</a>
+  {% endfor %}
+</nav>
+{% if vf.view == 'cal' %}{% include "settings/cards/_vf_cal.html" %}
+{% elif vf.view == 'gc' %}{% include "settings/cards/_vf_gc.html" %}
+{% elif vf.view == 'ec' %}{% include "settings/cards/_vf_ec.html" %}
+{% else %}{% include "settings/cards/_bu_filters_unit.html" %}{% endif %}

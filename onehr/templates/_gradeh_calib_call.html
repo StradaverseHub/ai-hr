@@ -1,0 +1,20 @@
+{# "Your call": the BU CEO's change of one person's performance and potential, with a remark (canvas C2b). Included with P, I, D, v in scope. #}
+<div class="ghc-pcard ghc-call"><span class="ghc-pk">Your call</span>
+  {% if P.dis_note %}
+  <span class="ghc-p ghc-dis-note">{{ P.dis_note }}</span>
+  {% elif P.can_move %}
+  <form method="post" action="{{ url_for('calib_gradeh_unit_move') }}" class="ghc-callform">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}"><input type="hidden" name="pid" value="{{ I.id }}">
+    <input type="hidden" name="unit" value="{{ v.unit }}"><input type="hidden" name="box" value="{{ P.box }}"><input type="hidden" name="tab" value="{{ P.tab }}">
+    <div class="ghc-selects">
+      <label>Performance<select name="perf">{% for o in ('UA','BE','ME','AE','OU') %}<option value="{{ o }}"{% if o == I.perf %} selected{% endif %}>{{ {'UA':1,'BE':2,'ME':3,'AE':4,'OU':5}[o] }} · {{ o }}</option>{% endfor %}</select></label>
+      <label>Potential<select name="pot">{% for o in ('High','Mid','Low') %}<option value="{{ o }}"{% if o == I.pot %} selected{% endif %}>{{ o }}</option>{% endfor %}</select></label>
+    </div>
+    <label>Your remark (needed to change a band)<textarea name="remark" rows="3" required maxlength="2500"></textarea></label>
+    <div class="ghc-actions"><button type="submit" class="ghc-btn">Save change</button></div>
+  </form>
+  <span class="ghc-sm">Performance and potential, same as the HOD. A change needs your remark, and they move box straight away.</span>
+  {% else %}
+  <span class="ghc-sm">You can't change this person's bands now: {{ P.why_locked }}.</span>
+  {% endif %}
+</div>

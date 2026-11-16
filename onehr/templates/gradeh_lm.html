@@ -1,0 +1,341 @@
+{% extends "base.html" %}
+{# Grade H Appraisal, the line manager's pages (2026-10-28, piece 4; canvases L1-L7): the team list and one person's appraisal, on
+   the AI+ journey's look. Every string is L('key') from GRADEH_LM_T; every figure and band comes from the server. The Ask OneHR
+   panel sits on the left (fixed answers, no model) for every line manager (Chris, 2026-10-30); a Grade H supervisor, who has the
+   staff bar and the BM / EN button, has it too at desktop (gradeh_lm.css lays the page beside it) and none at phone width. #}
+{% block title %}{{ L('title') }} · OneHR{% endblock %}
+{% block back_button %}{% endblock %}
+{% macro spark(sz=14) %}<svg width="{{ sz }}" height="{{ sz }}" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2.5l2.3 6.2 6.2 2.3-6.2 2.3L12 19.5l-2.3-6.2L3.5 11l6.2-2.3z" fill="var(--on-fill)"></path></svg>{% endmacro %}
+{# the BM | EN switch (2026-10-30), for every line manager: the staff page's own control (gh-lang-pair / gh-lang-b / is-on, gradeh_staff.css),
+   smaller, in the page header. One writer, gradeh_lm_set_language; the form comes back to this page (lm_next). #}
+{% macro lang_switch() %}
+<form method="post" action="{{ url_for('review_gradeh_language') }}" class="ghl-lang">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token }}"><input type="hidden" name="next" value="{{ lm_next }}">
+  <div role="radiogroup" aria-label="{{ L('lang_h') }}" class="gh-lang-pair">
+    <button type="submit" name="lang" value="bm" role="radio" aria-checked="{{ 'true' if lang == 'bm' else 'false' }}" class="gh-lang-b{{ ' is-on' if lang == 'bm' }}">Bahasa Melayu</button>
+    <button type="submit" name="lang" value="en" role="radio" aria-checked="{{ 'true' if lang == 'en' else 'false' }}" class="gh-lang-b{{ ' is-on' if lang == 'en' }}">English</button>
+  </div>
+</form>
+{% endmacro %}
+{% macro band_pill(band) %}<span class="potential-pill ghl-band" data-band="{{ band }}">{{ band }}</span>{% endmacro %}
+{% block body %}
+<link rel="stylesheet" href="{{ url_for('static', filename='gradeh_lm.css') }}?v={{ asset_v }}">
+{% if gh_bar %}<link rel="stylesheet" href="{{ url_for('static', filename='gradeh_staff.css') }}?v={{ asset_v }}">{% endif %}
+<div id="ghl-page" class="ghl{{ ' is-bar' if gh_bar }}" data-lang="{{ lang }}" data-view="{{ view }}">
+<aside class="gp ghl-ask" id="ghl-ask" aria-labelledby="ghl-ask-t" data-url="{{ url_for('review_gradeh_ask') }}">
+  <div class="gp-head">
+    <span class="gp-mark" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M12 2l2.4 7.6L22 12l-7.6 2.4L12 22l-2.4-7.6L2 12l7.6-2.4z"></path></svg></span>
+    <div class="gp-ht"><h2 id="ghl-ask-t">{{ L('ask_t') }}</h2><p>{{ v.name if view == 'person' else L('ask_sub_team') }}</p></div>
+  </div>
+  <div class="gp-log" id="ghl-log" aria-live="polite">
+    <div class="gp-rest" id="ghl-rest">
+      <p class="gp-lead">{{ ask.hi }}</p>
+      {% if ask.hi2 %}<p class="gp-sub">{{ ask.hi2 }}</p>{% endif %}
+      <div class="gp-chips" id="ghl-chips">{% for q in ask.chips %}<button type="button" class="gp-chip ghl-q">{{ q }}</button>{% endfor %}</div>
+    </div>
+  </div>
+  <form class="gp-form" id="ghl-askform" autocomplete="off">
+    <label for="ghl-ask-in" class="sr-only">{{ L('ask_t') }}</label>
+    <div class="gp-box"><input id="ghl-ask-in" type="text" maxlength="300" placeholder="{{ L('ask_ph') }}">
+      <button type="submit" class="gp-send" aria-label="{{ L('ask_send') }}"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6"></path></svg></button></div>
+  </form>
+</aside>
+<div class="ghl-main">
+{% if view == 'team' %}
+{# ===================== L1: the team list ===================== #}
+<section class="ghl-card ghl-head" aria-labelledby="ghl-h1">
+  <div class="ghl-head-t">
+    <span class="ghl-k">{{ cyc_name }}</span>
+    <h1 id="ghl-h1">{{ L('team_h') }}</h1>
+    <span class="ghl-sub">{{ L('team_sub_by', d=t.closes) if t.closes else L('team_sub') }}</span>
+  </div>
+  <div class="ghl-head-r">
+    <div class="ghl-counts">
+      <div><b>{{ t.counts.ready }}</b><span>{{ L('n_ready') }}</span></div>
+      <div><b>{{ t.counts.staff }}</b><span>{{ L('n_staff') }}</span></div>
+      <div><b>{{ t.counts.done }}</b><span>{{ L('n_done') }}</span></div>
+    </div>
+    {{ lang_switch() }}
+  </div>
+</section>
+{% if t.n %}
+<nav class="ghl-pills" aria-label="{{ L('team_h') }}">
+  {% for f in t.filters %}<a class="ghl-pill{{ ' is-on' if f.key == t.filter }}" href="{{ url_for('review_gradeh', f=f.key) }}"{% if f.key == t.filter %} aria-current="true"{% endif %}>{{ f.label }}{% if f.key != 'all' %} <b>{{ f.n }}</b>{% endif %}</a>{% endfor %}
+</nav>
+<section class="ghl-card ghl-tablecard">
+  <table class="ghl-table">
+    <thead><tr><th>{{ L('th_person') }}</th><th>{{ L('th_route') }}</th><th>{{ L('th_where') }}</th><th>{{ L('th_rating') }}</th><th>{{ L('th_pot') }}</th><th><span class="sr-only">Open</span></th></tr></thead>
+    <tbody>
+    {% for r in t.rows %}
+    <tr class="is-{{ r.group }}">
+      <td class="c-person"><b>{{ r.name }}</b><span>{{ r.title }}{% if r.unit %} · {{ r.unit }}{% endif %}</span>{% if r.no_email %}<span class="ghl-noemail"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="2"></rect><path d="M3 7l9 6 9-6M3 3l18 18"></path></svg>{{ L('tag_noemail') }}</span>{% endif %}</td>
+      <td class="c-route"><span class="ghl-chip is-{{ r.route }}">{{ L('route_' ~ r.route) }}</span></td>
+      <td class="c-where"><span class="{{ 'is-wait' if r.group == 'staff' and r.kind == 'wait_kpi' else '' }}">{{ r.status }}</span>{% if r.dis %}<span class="ghl-dis-tag" title="{{ L('tag_dis') }}">{{ L('tag_dis') }}</span>{% endif %}</td>
+      <td class="c-rating{{ '' if r.rating else ' is-empty' }}">{% if r.rating %}<b>{{ r.rating[0] }}</b> {{ band_pill(r.rating[1]) }}{% else %}<span class="ghl-dash">–</span>{% endif %}</td>
+      <td class="c-pot{{ '' if r.pot else ' is-empty' }}">{% if r.pot %}{{ r.pot }}{% else %}<span class="ghl-dash">–</span>{% endif %}</td>
+      <td class="c-act">
+        {% if r.action == 'appraise' %}<a class="ghl-btn" href="{{ url_for('review_gradeh_person', pid=r.id) }}">{{ L('b_appraise') }}</a>
+        {% elif r.action == 'continue' %}<a class="ghl-btn is-outline" href="{{ url_for('review_gradeh_person', pid=r.id) }}">{{ L('b_continue') }}</a>
+        {% elif r.action == 'view' %}{% if r.ack_open %}<a class="ghl-link" href="{{ url_for('review_gradeh_person', pid=r.id, step='submit') }}#ghl-ack">{{ L('ack_h') }}</a>{% else %}<a class="ghl-link" href="{{ url_for('review_gradeh_person', pid=r.id, step='submit') }}">{{ L('b_view') }}</a>{% endif %}
+        {% else %}<span class="ghl-muted">{{ L('waiting') }}</span>{% endif %}
+      </td>
+    </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</section>
+<p class="ghl-note">{{ L('ack_note') }}</p>
+{% else %}
+<section class="ghl-card ghl-pad"><p class="ghl-p">{{ L('none_yet') }}</p></section>
+{% endif %}
+
+{% else %}
+{# ===================== L2-L7: one person ===================== #}
+{% set steps = v.steps %}
+<header class="ghl-ph">
+  <div class="ghl-ph-t">
+    <a class="ghl-back" href="{{ url_for('review_gradeh') }}">{{ L('back') }}</a>
+    <h1>{{ v.name }}<span>{% if v.title %} · {{ v.title }}{% endif %}{% if v.unit %} · {{ v.unit }}{% endif %}</span></h1>
+  </div>
+  <div class="ghl-ph-r">
+    {{ lang_switch() }}
+    <span class="ghl-tag is-{{ v.route }}">{{ v.chip }}</span>{% if v.dis %}<span class="ghl-dis-tag">{{ L('tag_dis') }}</span>{% endif %}
+  </div>
+</header>
+<nav class="ghl-steps" aria-label="{{ L('title') }}">
+  {% for s in steps %}<a class="ghl-step is-{{ s.state }}" href="{{ s.url }}"{% if s.state == 'now' %} aria-current="step"{% endif %} title="{{ s.title }}"><b>{{ s.label }}</b>{% if s.count %}<span>{{ s.count }}</span>{% endif %}</a>{% endfor %}
+</nav>
+{% set cur = (steps | selectattr('state', 'equalto', 'now') | list | first) %}
+<div class="ghl-phoneprog" aria-hidden="false">
+  <div><b>{{ cur.label }}</b>{% if cur.count %}<span>{{ cur.count }}</span>{% endif %}</div>
+  {% set _done = steps | selectattr('state', 'equalto', 'done') | list | length %}
+  <div class="ghl-prog" role="progressbar" aria-valuemin="0" aria-valuemax="{{ steps | length }}" aria-valuenow="{{ _done }}"><span style="width: {{ (100 * _done / (steps | length)) | round | int }}%"></span></div>
+  {% if v.next_labels %}<div class="ghl-prog-next">{{ L('next_word') }}: {{ v.next_labels | join(' · ') }}</div>{% endif %}
+</div>
+
+{# ---- the figures, drawn by every step that shows them ---- #}
+{% macro perf_card(v) %}
+<div class="ghl-side-card">
+  <span class="ghl-k">{{ L('perf_k') }}</span>
+  {% if v.result.perf %}<b class="ghl-big">{{ v.result.perf.words }}</b><span class="ghl-sm">{{ v.result.perf.note }}</span>
+  {% else %}<b class="ghl-mid is-wait">{{ v.result.perf_wait }}</b>{% if v.result.perf_wait_sub %}<span class="ghl-sm">{{ v.result.perf_wait_sub }}</span>{% endif %}{% endif %}
+</div>
+{% endmacro %}
+{% macro pot_card(v) %}
+<div class="ghl-side-card">
+  <span class="ghl-k">{{ L('pot_k') }}</span>
+  {% if v.result.pot %}<b class="ghl-big">{{ v.result.pot.word }}</b><span class="ghl-sm">{{ v.result.pot.note }}</span>
+  {% else %}<b class="ghl-mid is-wait">{{ v.result.pot_wait }}</b><span class="ghl-sm">{{ L('pot_note_wait') }}</span>{% endif %}
+</div>
+{% endmacro %}
+
+{% if v.step == 'attrs' %}
+<div class="ghl-cols">
+  <div class="ghl-stack">
+    {% for x in v.attrs %}
+    {% if x.open %}
+    <form method="post" action="{{ url_for('review_gradeh_ratings', pid=v.id) }}" class="ghl-card ghl-open ghl-auto" id="ghl-a-{{ x.n }}">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}"><input type="hidden" name="next_a" value="{{ x.next_a }}">
+      <b class="ghl-h3">{{ x.n }} · {{ x.title }}</b>
+      <span class="ghl-q-t">{{ x.question }}</span>
+      <div class="ghl-levels" role="radiogroup" aria-label="{{ x.title }}">
+        {% for lv in x.levels %}
+        <label class="ghl-level{{ ' is-on' if x.rating == lv.r }}"><span class="ghl-lv-top"><input type="radio" name="r_{{ x.key }}" value="{{ lv.r }}"{{ ' checked' if x.rating == lv.r }}><b>{{ lv.r }}</b></span><b class="ghl-lv-name">{{ lv.label }}</b><span class="ghl-lv-text">{{ lv.text }}</span></label>
+        {% endfor %}
+      </div>
+      <noscript><button type="submit" class="ghl-btn">{{ L('cm_save') }}</button></noscript>
+    </form>
+    {% elif x.rating %}
+    <div class="ghl-card ghl-fold">
+      <div class="ghl-fold-t"><b>{{ x.n }} · {{ x.title }}</b><span>{{ x.said }}</span></div>
+      <div class="ghl-fold-r"><b>{{ x.label }}</b><a class="ghl-link" href="{{ url_for('review_gradeh_person', pid=v.id, step='attrs', a=x.n) }}#ghl-a-{{ x.n }}">{{ L('change') }}</a></div>
+    </div>
+    {% elif x.next %}
+    <a class="ghl-card ghl-fold is-next" href="{{ url_for('review_gradeh_person', pid=v.id, step='attrs', a=x.n) }}"><div class="ghl-fold-t"><b>{{ x.n }} · {{ x.title }}</b></div><div class="ghl-fold-r"><span>{{ L('next_word') }}</span></div></a>
+    {% endif %}
+    {% endfor %}
+    {% if v.attrs_rest %}<p class="ghl-note">{{ L('then', rest=v.attrs_rest) }}</p>{% endif %}
+    {% if v.attrs | selectattr('rating') | list | length == 8 %}
+    <div class="ghl-actions"><a class="ghl-btn" href="{{ url_for('review_gradeh_person', pid=v.id, step='lp') }}">{{ L('s_lp_t') }} ›</a></div>
+    {% endif %}
+  </div>
+  <div class="ghl-side">{{ perf_card(v) }}<div class="ghl-side-card"><span class="ghl-k">{{ L('saved_h') }}</span><span class="ghl-sm">{{ L('autosaved') }}</span></div></div>
+</div>
+
+{% elif v.step == 'kpis' %}
+<form method="post" action="{{ url_for('review_gradeh_kpis', pid=v.id) }}" class="ghl-kform" id="ghl-kform">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+  <section class="ghl-card ghl-tablecard">
+    <table class="ghl-table ghl-ktable">
+      <thead><tr><th>{{ L('kpi_h') }}</th><th>{{ L('kpi_w') }}</th><th>{{ L('kpi_theirs') }}</th><th>{{ L('kpi_yours') if not v.kpi_other else L('kpi_rate') }}</th>{% if not v.kpi_other %}<th>{{ L('kpi_why') }}</th>{% endif %}</tr></thead>
+      <tbody>
+      {% for k in v.kpis %}
+      <tr data-theirs="{{ k.staff }}" class="{{ 'is-same' if (not k.changed and k.staff != '') }}">
+        <td class="c-person"><b>{{ k.name }}</b></td>
+        <td>{{ k.weight }}%</td>
+        <td>{% if k.shared %}<span class="ghl-dash">—</span>{% elif k.staff != '' %}{{ k.staff }}%{% else %}<span class="ghl-dash">{{ L('kpi_none') }}</span>{% endif %}</td>
+        {% if k.shared %}{# a KPI Group People fills once for everyone who shares it: no box, nothing typed here is kept (2026-11-03) #}
+        <td{% if v.kpi_other %} title="{{ k.shared_why }}"{% endif %}>{% if k.shared_fig %}<span class="ghl-shared-v"><b>{{ k.shared_fig }}</b><svg class="ghl-lock" width="12" height="12" viewBox="0 0 24 24" aria-hidden="true"><path d="M7 11V8a5 5 0 0 1 10 0v3h1a1 1 0 0 1 1 1v8a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1v-8a1 1 0 0 1 1-1h1zm2 0h6V8a3 3 0 0 0-6 0v3z" fill="currentColor"/></svg></span>{% else %}<span class="ghl-shared-pill">{{ L('shared_pill') }}</span>{% endif %}</td>
+        {% if not v.kpi_other %}<td class="c-why"><span class="ghl-shared-why">{{ k.shared_why }}</span></td>{% endif %}
+        {% elif v.kpi_other %}
+        <td><select name="r_{{ k.id }}" class="ghl-in ghl-in-sm" aria-label="{{ k.name }}"><option value="">–</option>{% for n in range(1, 6) %}<option value="{{ n }}"{{ ' selected' if k.rating | string == n | string }}>{{ n }}</option>{% endfor %}</select></td>
+        {% else %}
+        <td><span class="ghl-pct"><input class="ghl-in ghl-in-sm" type="text" inputmode="decimal" name="f_{{ k.id }}" value="{{ k.yours }}" aria-label="{{ L('kpi_yours') }}: {{ k.name }}" autocomplete="off"><i>%</i></span></td>
+        <td class="c-why"><input class="ghl-in ghl-why" type="text" name="w_{{ k.id }}" value="{{ k.reason }}" maxlength="1800" placeholder="{{ L('kpi_why_ph') }}" aria-label="{{ L('kpi_why') }}: {{ k.name }}"><span class="ghl-same">{{ L('kpi_same') }}</span></td>
+        {% endif %}
+      </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+    {% if v.kpi_note %}<p class="ghl-tnote">{{ L('kpi_note', note=v.kpi_note) }}</p>{% endif %}
+    {% if v.kpi_pending %}<p class="ghl-tnote">{{ L('kpi_pending') }}</p>{% endif %}
+  </section>
+  <div class="ghl-pair">
+    <div class="ghl-side-card"><span class="ghl-k">{{ L('weighted_k') }}</span>
+      {% if v.result.perf and v.result.perf.value %}<b class="ghl-big">{{ v.result.perf.value }}</b><span class="ghl-sm">{{ L('weights_ok') }}</span>{% elif v.wait %}<b class="ghl-mid is-wait">{{ v.wait.head }}</b><span class="ghl-sm">{{ v.wait.sub }}</span>{% else %}<b class="ghl-mid is-wait">{{ L('perf_kpi_wait') }}</b>{% endif %}</div>
+    {{ perf_card(v) }}
+  </div>
+  <div class="ghl-actions"><button type="submit" class="ghl-btn is-lg">{{ L('kpi_next') }}</button></div>
+</form>
+
+{% elif v.step == 'lp' %}
+<div class="ghl-cols">
+  <div class="ghl-stack">
+    {% for lp in v.lps %}
+    {% if lp.open %}
+    <form method="post" action="{{ url_for('review_gradeh_lp', pid=v.id) }}" class="ghl-card ghl-open ghl-lpform" id="ghl-lp-{{ lp.n }}">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <div class="ghl-lp-h"><b class="ghl-h3">LP{{ lp.n }} · {{ lp.title }}</b><span class="ghl-sm">{{ L('lp_count', n=lp.answered) }}</span></div>
+      {% for st in lp.stmts %}
+      <div class="ghl-stmt">
+        <div class="ghl-stmt-t"><span>{{ st.text }}</span>
+          <details><summary>{{ L('lp_examples') }}</summary><ul>{% for e in st.examples %}<li>{{ e }}</li>{% endfor %}</ul></details></div>
+        <div class="ghl-seg" role="radiogroup" aria-label="{{ st.text }}">
+          <label><input type="radio" name="lp_{{ lp.n }}_{{ st.n }}" value="yes"{{ ' checked' if st.answer == 'yes' }}><span>{{ L('yes') }}</span></label><label><input type="radio" name="lp_{{ lp.n }}_{{ st.n }}" value="not_yet"{{ ' checked' if st.answer == 'not_yet' }}><span>{{ L('not_yet') }}</span></label>
+        </div>
+      </div>
+      {% endfor %}
+      <p class="ghl-hint"><b>{{ L('lp_mgr') }}:</b> {{ lp.note }}</p>
+      <div class="ghl-actions"><button type="submit" name="go" value="next" class="ghl-btn">{{ L('lp_save') }}</button></div>
+    </form>
+    {% elif lp.done %}
+    <div class="ghl-card ghl-fold">
+      <div class="ghl-fold-t"><b>LP{{ lp.n }} · {{ lp.title }}</b></div>
+      <div class="ghl-fold-r"><span>{{ L('lp_sum', y=lp.yes, n=lp.no) }}</span><a class="ghl-link" href="{{ url_for('review_gradeh_person', pid=v.id, step='lp', lp=lp.n) }}#ghl-lp-{{ lp.n }}">{{ L('change') }}</a></div>
+    </div>
+    {% else %}
+    <a class="ghl-card ghl-fold is-next" href="{{ url_for('review_gradeh_person', pid=v.id, step='lp', lp=lp.n) }}"><div class="ghl-fold-t"><b>LP{{ lp.n }} · {{ lp.title }}</b></div><div class="ghl-fold-r"><span>{{ L('lp_count', n=lp.answered) }}</span></div></a>
+    {% endif %}
+    {% endfor %}
+    {% if v.lps | selectattr('done') | list | length == 7 %}<div class="ghl-actions"><a class="ghl-btn" href="{{ url_for('review_gradeh_person', pid=v.id, step='comments') }}">{{ L('s_cm_t') }} ›</a></div>{% endif %}
+  </div>
+  <div class="ghl-side">{{ perf_card(v) }}{{ pot_card(v) }}</div>
+</div>
+
+{% elif v.step == 'comments' %}
+<form method="post" action="{{ url_for('review_gradeh_comments', pid=v.id) }}" class="ghl-card ghl-pad ghl-cform" id="ghl-cform" data-help="{{ url_for('review_gradeh_help', pid=v.id) }}"
+      data-wait="{{ L('help_wait') }}">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token }}"><input type="hidden" name="go" value="next">
+  <div class="ghl-cform-h"><h2>{{ L('cm_h') }}</h2>
+    <button type="button" class="ghl-ai" id="ghl-help">{{ spark(13) }}{{ L('cm_help') }}</button></div>
+  <p class="ghl-help-msg" id="ghl-help-msg" role="status" hidden></p>
+  <div class="ghl-fields">
+    <label class="ghl-field"><span>{{ L('cm_1') }}</span><textarea name="ach" rows="4" data-field="ach" placeholder="{{ L('cm_ph1') }}">{{ v.cm.ach }}</textarea></label>
+    <label class="ghl-field"><span>{{ L('cm_2') }}</span><textarea name="str" rows="4" data-field="str" placeholder="{{ L('cm_ph') }}">{{ v.cm.str }}</textarea></label>
+    <label class="ghl-field"><span>{{ L('cm_3') }}</span><textarea name="dev" rows="4" data-field="dev" placeholder="{{ L('cm_ph') }}">{{ v.cm.dev }}</textarea></label>
+  </div>
+  <p class="ghl-hint">{{ L('cm_note') }} {{ L('help_note') }}</p>
+  <div class="ghl-actions"><button type="submit" class="ghl-btn is-lg">{{ L('cm_save') }}</button><span class="ghl-autosave" id="ghl-autosave" role="status"></span></div>
+</form>
+
+{% else %}
+{# ---- step 4: results, nomination, the tick, submit; or, once submitted, the record ---- #}
+{% if v.submitted %}
+<section class="ghl-card ghl-pad ghl-done" id="ghl-done">
+  <h2 class="ghl-h2">{{ L('done_h') }}</h2>
+  <p class="ghl-p">{{ L('done_p', d=v.submitted_on, name=v.name) }}</p>
+  <p class="ghl-hint">{{ L('ro_note') }}</p>
+</section>
+{% endif %}
+<div class="ghl-pair">
+  <section class="ghl-side-card ghl-res" aria-labelledby="ghl-res-h">
+    <h2 id="ghl-res-h" class="ghl-h2">{{ L('res_h') }}</h2>
+    <div class="ghl-res-rows">
+      <div><span class="ghl-k">{{ L('perf_k_roman') }}</span>{% if v.result.perf %}<b class="ghl-big">{{ v.result.perf.words }}</b>{% if v.result.perf.value %}<span class="ghl-sm">{{ v.result.perf.value }} · {{ v.result.perf.note }}</span>{% else %}<span class="ghl-sm">{{ v.result.perf.note }}</span>{% endif %}{% else %}<b class="ghl-mid is-wait">{{ v.result.perf_wait }}</b>{% if v.result.perf_wait_sub %}<span class="ghl-sm">{{ v.result.perf_wait_sub }}</span>{% endif %}{% endif %}</div>
+      <div><span class="ghl-k">{{ L('pot_k_roman') }}</span>{% if v.result.pot %}<b class="ghl-big">{{ v.result.pot.word }}</b><span class="ghl-sm">{{ v.result.pot.note }}</span>{% else %}<b class="ghl-mid is-wait">{{ v.result.pot_wait }}</b>{% endif %}</div>
+    </div>
+    <div class="ghl-amber">{{ v.wait.not_final if v.wait else L('not_final') }}</div>
+  </section>
+  <section class="ghl-side-card ghl-promo" aria-labelledby="ghl-promo-h">
+    <h2 id="ghl-promo-h" class="ghl-h2">{{ L('promo_h') }}</h2>
+    {% if v.submitted %}
+    <p class="ghl-p"><b>{{ L('promo_yes') if v.promo_yes else L('promo_no') }}</b></p>
+    {% if v.promo_yes and v.promo_reason %}<p class="ghl-p">{{ v.promo_reason }}</p>{% endif %}
+    {% else %}
+    <div class="ghl-radios" role="radiogroup" aria-labelledby="ghl-promo-h">
+      <label class="ghl-radio{{ ' is-on' if v.promo == 'no' }}"><input type="radio" name="promo" value="no" form="ghl-submit"{{ ' checked' if v.promo == 'no' }}>{{ L('promo_no') }}</label>
+      <label class="ghl-radio{{ ' is-on' if v.promo == 'yes' }}"><input type="radio" name="promo" value="yes" form="ghl-submit"{{ ' checked' if v.promo == 'yes' }}>{{ L('promo_yes') }}</label>
+    </div>
+    <label class="ghl-field ghl-promo-reason" {% if v.promo != 'yes' %}hidden{% endif %}><span>{{ L('promo_reason') }}</span><textarea name="promo_reason" form="ghl-submit" rows="3" data-field="promo_reason" placeholder="{{ L('cm_ph') }}">{{ v.promo_reason }}</textarea></label>
+    {% endif %}
+    <span class="ghl-sm">{{ L('promo_note', name=v.name) }}</span>
+  </section>
+</div>
+<div class="ghl-pair">
+  <section class="ghl-side-card ghl-recap" aria-labelledby="ghl-recap-h">
+    <div class="ghl-recap-h"><h2 id="ghl-recap-h" class="ghl-h2">{{ L('cm_h') }}</h2>{% if not v.submitted %}<a class="ghl-link" href="{{ url_for('review_gradeh_person', pid=v.id, step='comments') }}">{{ L('change') }}</a>{% endif %}</div>
+    <dl class="ghl-dl">
+      <dt>{{ L('cm_1') }}</dt><dd>{{ v.cm.ach or '–' }}</dd>
+      <dt>{{ L('cm_2') }}</dt><dd>{{ v.cm.str or '–' }}</dd>
+      <dt>{{ L('cm_3') }}</dt><dd>{{ v.cm.dev or '–' }}</dd>
+    </dl>
+  </section>
+  <section class="ghl-side-card ghl-submitcard" id="ghl-ack-top">
+    {% if not v.submitted %}
+    <form method="post" action="{{ url_for('review_gradeh_submit', pid=v.id) }}" id="ghl-submit" class="ghl-sform"
+          data-confirm="{{ L('submit_confirm', name=v.name) }}" data-confirm-ok="{{ L('submit_ok') }}" data-confirm-title="{{ T('cf_title') }}" data-confirm-cancel="{{ T('cf_cancel') }}">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}"><input type="hidden" name="confirm" value="1">
+      {% if v.todo %}<div class="ghl-todo"><b>{{ L('todo_h') }}</b><ul>{% for t_ in v.todo %}<li>{{ t_ }}</li>{% endfor %}</ul></div>{% endif %}
+      <label class="ghl-check"><input type="checkbox" name="conv" value="1"{{ ' checked' if v.conv }}><span>{{ L('conv', name=v.name) }}</span></label>
+      <button type="submit" class="ghl-btn is-lg" id="ghl-submit-btn"{% if not v.can_submit %} disabled{% endif %}>{{ L('submit') }}</button>
+      <span class="ghl-sm">{{ L('submit_after', name=v.name) }}</span>
+    </form>
+    {% else %}
+    <div id="ghl-ack">
+      <h2 class="ghl-h2">{{ L('ack_h') }}</h2>
+      {% if v.ack.text %}<p class="ghl-p">{{ v.ack.text }}</p>
+      {% elif v.ack.open %}
+      <p class="ghl-p">{{ L('ack_p', name=v.name) }}</p>
+      <form method="post" action="{{ url_for('review_gradeh_ack', pid=v.id) }}" class="ghl-ackform" data-confirm="" data-ack-confirm="{{ L('ack_confirm', name=v.name, d='{d}') }}" data-dis-confirm="{{ L('ack_dis_confirm', name=v.name, d='{d}') }}" data-confirm-ok="{{ L('ack_btn') }}" data-confirm-title="{{ T('cf_title') }}" data-confirm-cancel="{{ T('cf_cancel') }}">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+        <label class="ghl-field"><span>{{ L('ack_date') }}</span><input class="ghl-in" type="date" name="on" value="{{ v.ack.today }}" max="{{ v.ack.today }}" required></label>
+        {# "I do not agree" (2 Nov 2026): nothing is pre-picked; "do not agree" needs their reason, in their words, and opens the same ticket as their own #}
+        <fieldset class="ghl-agree">
+          <label class="ghl-agree-opt"><input type="radio" name="agrees" value="1" required><span>{{ L('ack_agree') }}</span></label>
+          <label class="ghl-agree-opt"><input type="radio" name="agrees" value="0" required><span>{{ L('ack_dis') }}</span></label>
+        </fieldset>
+        <label class="ghl-field ghl-reason"><span>{{ L('ack_why') }}</span><textarea name="reason" rows="3" placeholder="{{ L('ack_why_ph') }}"></textarea></label>
+        <button type="submit" class="ghl-btn is-outline">{{ L('ack_btn') }}</button>
+      </form>
+      {% endif %}
+    </div>
+    {% endif %}
+  </section>
+</div>
+{% if v.submitted %}
+<section class="ghl-card ghl-pad ghl-recapbig">
+  {% if v.recap_attrs %}
+  <h2 class="ghl-h2">{{ L('s_attrs_t') }}</h2>
+  <ul class="ghl-recap-list">{% for r in v.recap_attrs %}<li><span>{{ r.title }}</span><b>{{ r.rating }} · {{ r.label }}</b></li>{% endfor %}</ul>
+  {% else %}
+  <h2 class="ghl-h2">{{ L('s_kpis_t') }}</h2>
+  <ul class="ghl-recap-list">{% for r in v.recap_kpis %}<li><span>{{ r.name }} · {{ r.weight }}%{% if r.theirs and r.figure and r.theirs ~ '%' != r.figure %} · {{ L('kpi_theirs') }} {{ r.theirs }}%{% endif %}{% if r.reason %} · {{ r.reason }}{% endif %}</span><b>{{ r.figure }}</b></li>{% endfor %}</ul>
+  {% endif %}
+</section>
+{% endif %}
+{% endif %}
+{% endif %}
+</div>
+</div>
+<script src="{{ url_for('static', filename='gradeh_lm.js') }}?v={{ asset_v }}"></script>
+{% endblock %}

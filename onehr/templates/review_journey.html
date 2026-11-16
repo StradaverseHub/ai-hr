@@ -1,0 +1,72 @@
+{# The UNIFIED review as ONE conversation (Round 2). The employee talks to a single
+   assistant that carries the whole journey -- KPI results, 360 feedback, competency,
+   development plan, career -- and the rail signposts which part they are in while
+   letting them jump to any. Same shell as review.html; a stage-switching client.
+   Behind the review_unified flag (ZZ demo + the org toggle). #}
+{% extends "base.html" %}
+{% block title %}Your review{% endblock %}
+{# the floating way home, bottom left (Chris, 2026-10-11: "for the agent chat view, add back the floating back button at
+   bottom left, to go back to the dashboard view"): straight to the dashboard, not one step back in the history #}
+{% block back_button %}
+<a href="{{ url_for('dashboard') }}" id="floating-back" class="fab-back is-dash" aria-label="Back to your dashboard">
+  <span class="fab-back-arrow" aria-hidden="true">&larr;</span><span class="fab-back-label">Dashboard</span></a>
+{% endblock %}
+{% block body %}
+{% from "_review_icons.html" import rvicon %}
+
+{# Top band mirrors .rv-wrap (224px 1fr): Mine / Team stays top-left; the module
+   switcher (PM / TM / IDP) fills the rest of the row (replacing the old status
+   banner -- progress now lives in the navigator header). The left rail is the
+   dynamic, pending-first navigator. #}
+{# Phone view (2026-11-07): under 1024px the band is ONE sticky sub-bar under the top bar: the view tabs at full width and the
+   To do button on the right, then the module row on its own line (the phone section of static/style.css). The To do button
+   opens the left panel as a bottom sheet (journey_chat.js openDrawer); its count is the items still to do (the panel's
+   data-todo-n, kept by todoSync). The button is not drawn on a desktop. #}
+{% set _todo_n = (nav['items'] | rejectattr('done') | list | length) if (nav and nav['items'] is defined and not nav.get('opens')) else 0 %}
+<div class="rv-topbar">
+  <div class="rv-topbar-nav">{% with active = (view or 'mine'), journey = True %}{% include "_review_viewtabs.html" %}{% endwith %}
+    <button type="button" class="rv-nav-drawerbtn" id="rv-nav-drawerbtn" aria-label="To do, {{ _todo_n }} left" aria-haspopup="dialog" aria-controls="rv-navcol" aria-expanded="false"><svg class="rv-todo-i" width="18" height="18" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6h11M9 12h11M9 18h11M4.5 6h.01M4.5 12h.01M4.5 18h.01"/></svg><span class="rv-todo-t">To do</span><span class="rv-todo-n" id="rv-todo-n"{% if not _todo_n %} hidden{% endif %}>{{ _todo_n }}</span></button></div>
+  <div class="rv-topbar-main">
+    <div id="rv-modtabs">{% include "_journey_modtabs.html" %}</div>
+  </div>
+</div>
+
+<div class="rv-wrap">
+  <div class="rv-railcol" id="rv-navcol">
+    {# the bottom sheet's own head on a phone: grab bar, "Your check-in" with the parts done (the employee's own view), and the
+       x; a leader's view shows the panel's own head. Hidden on a desktop. journey_chat.js todoSync keeps the line current. #}
+    <div class="rv-sheet-head" hidden>
+      <span class="rv-sheet-grab" aria-hidden="true"></span>
+      <div class="rv-sheet-t">{% if (view or 'mine') == 'mine' %}<span class="rv-sheet-k">Your check-in</span><span class="rv-sheet-s" id="rv-sheet-s" aria-live="polite"></span>{% endif %}</div>
+      <button type="button" class="rv-sheet-x" id="rv-sheet-x" aria-label="Close To do"><svg width="20" height="20" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
+    </div>
+    {% include "_journey_nav.html" %}
+  </div>
+  <div class="rv-nav-scrim" id="rv-nav-scrim" hidden></div>
+
+  <div class="rv-main">
+    <div class="rv-chat" id="rv-chat"
+         data-history-url="{{ url_for('review_chat_history') }}"
+         data-send-url="{{ url_for('review_chat') }}"
+         data-active-stage="{{ active_stage or '' }}"
+         data-view="{{ view or 'mine' }}"
+         data-report="{{ report or '' }}"
+         data-mode="{{ mode or 'summary' }}"
+         {% if pick_spec %}data-pick='{{ pick_spec|tojson }}'{% endif %}
+         {% if not agent_available %}data-unavailable="1"{% endif %}>
+      <div class="rv-chat-log" id="rv-chat-log" aria-live="polite"></div>
+      <div class="rv-chat-quick" id="rv-chat-quick"></div>
+      <form class="rv-composer" id="rv-chat-form" autocomplete="off" onsubmit="return false">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+        <textarea id="rv-chat-input" rows="1" placeholder="Type your reply…"
+                  aria-label="Message the review assistant"></textarea>
+        <button type="submit" class="rv-send" id="rv-chat-send" aria-label="Send" title="Send">{{ rvicon('send') }}</button>
+      </form>
+    </div>
+  </div>
+</div>
+
+<script src="{{ url_for('static', filename='img_shrink.js') }}?v={{ asset_v }}" defer></script>
+<script src="{{ url_for('static', filename='calib_shared.js') }}?v={{ asset_v }}" defer></script>
+<script src="{{ url_for('static', filename='journey_chat.js') }}?v={{ asset_v }}" defer></script>
+{% endblock %}

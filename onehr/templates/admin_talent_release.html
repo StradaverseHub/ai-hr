@@ -1,0 +1,484 @@
+{% extends "base.html" %}
+{% from "_table_tools.html" import colth, colmenu, colmenu_script %}
+{% block title %}Release results{% endblock %}
+{% block body %}
+
+{# RELEASE RESULTS in two steps (Chris, 2026-10-12; the "OneHR Release, What You Led and Agents" canvas, boards R1-R2).
+   Step 1 goes to the person's leaders -- their line manager, HOD and BU CEO -- who then see the final performance and
+   potential bands, the talent status, and how each band moved, so they can talk it through first. Step 2 goes to the
+   person, who sees the final bands and talent status only, never the movement; it comes only after step 1. The BG CEO
+   sees the final result as soon as they lock. The 360 report goes to the person only. #}
+
+{% from "_filter_rows.html" import filter_rows %}
+{% set KIND_ORDER = ['pm', 'pot', 'talent'] %}
+<div class="adm-headrow">
+  <p class="adm-lede">Each result goes to the person's leaders first, so they can talk it through, then to the person.
+    Before that a person sees their line manager's approved rating and no potential band.
+    {% if outbox and outbox.queued %}<span class="rr2-topnote rr2-outbox">{{ outbox.queued | thousands }} email{{ '' if outbox.queued == 1 else 's' }} still going out, about 30 a minute{% if outbox.later %}: {{ outbox.later | thousands }} waiting for their wave, the next at {{ outbox.next }}{% endif %}.</span>{% endif %}
+    {% if top_cyc and period and top_cyc['id'] != period['id'] %}<span class="rr2-topnote">The top bar is on <b>{{ top_cyc['name'] }}</b>; this page releases <b>{{ period['name'] }}</b>, the cycle picked here.</span>{% endif %}</p>
+  <form method="get" class="adm-headrow-acts">
+    {% for k in ('bg', 'bu', 'dept', 'status') %}{% if request.args.get(k) %}<input type="hidden" name="{{ k }}" value="{{ request.args.get(k) }}">{% endif %}{% endfor %}
+    <label class="rr2-cyc">Cycle
+      <select name="period" class="modern-select" onchange="this.form.submit()">
+        {% for p in periods %}
+        <option value="{{ p['id'] }}" {% if period and p['id'] == period['id'] %}selected{% endif %}>
+          {{ p['name'] }}{% if p['is_active'] %} &middot; active{% endif %}</option>
+        {% endfor %}
+      </select>
+    </label>
+  </form>
+</div>
+
+{% if period and cyc %}
+{% if no_pot %}
+{# a cycle with no potential result (it ran no competency): performance only, no talent status (2026-10-14) #}
+<p class="adm-note-line" style="margin:0 0 12px"><b>{{ cyc.name }} has no potential band:</b> it ran no competency,
+  so only performance is released, and there is no talent status. A super admin sets this on the cycle's Edit cycle.</p>
+{% endif %}
+{% if gh_release %}{% include "_gradeh_adm_release.html" %}{% endif %}
+{# the two steps, in order: leaders first, then the person #}
+<div class="rr2-steps" aria-label="The two releases">
+  <section class="rr2-step">
+    <span class="rr2-num" aria-hidden="true">1</span>
+    <div class="rr2-step-t">
+      <div class="rr2-step-h"><b>To leaders</b><span><b class="is-ok">{{ counts['lead_all'] }}</b> released &middot; <b>{{ counts['ready'] }}</b> ready{% if counts['notfinal'] %} &middot; <b class="is-warn">{{ counts['notfinal'] }}</b> {{ "waiting on the HOD's review" if mid_year else 'still in calibration' }}{% endif %}</span></div>
+      <p>Their line manager, HOD and BU CEO see the final bands with every step's move and reason. The person sees
+        nothing yet.</p>
+    </div>
+  </section>
+  <span class="rr2-arrow" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M5 12h14"></path><path d="M13 6l6 6-6 6"></path></svg></span>
+  <section class="rr2-step">
+    <span class="rr2-num" aria-hidden="true">2</span>
+    <div class="rr2-step-t">
+      <div class="rr2-step-h"><b>To employees</b><span><b class="is-ok">{{ counts['to_emp'] }}</b> released &middot; <b>{{ counts['with_leaders'] }}</b> ready</span></div>
+      {% if mid_year %}
+      {# Mid-Year is Self, LM and HOD: the HOD's final bands place the talent status (2026-10-12) #}
+      <p>The person sees their final {{ 'performance band' if no_pot else 'bands and talent status' }}, never the
+        movement. Only after step 1. Mid-Year ends at the HOD's review.</p>
+      {% else %}
+      <p>The person sees their final bands and talent status, never the movement. Only after step 1. BG CEOs see results
+        as soon as they lock.</p>
+      {% endif %}
+    </div>
+  </section>
+</div>
+{% endif %}
+
+{# what an employee sees of their potential band on the classic pages: with the releases, on one page (2026-10-11; it
+   was on Organisation's Settings) #}
+<details class="admin-card rr-bandvis" id="band-visibility">
+  <summary><b>Potential band on the classic pages</b>
+    <span class="status-pill {{ 'status-reviewed' if show_band else 'status-submitted' }}">{{ 'Shown' if show_band else 'Hidden' }}</span>
+    <span class="muted small">· My Feedback, report view, Team and HOD views · change</span></summary>
+  {% include "settings/cards/_band_visibility.html" %}
+</details>
+
+<section class="admin-card adm-filters" aria-label="Filters">
+  {{ filter_rows(frows) }}
+  {% if period and cyc %}
+  {% set SHOW = [('', 'All', counts['all']), ('ready', 'Ready for leaders', counts['ready']),
+                 ('with_leaders', 'With leaders', counts['with_leaders']), ('to_emp', 'Released to employees', counts['to_emp']),
+                 ('notfinal', 'Not final yet', counts['notfinal'])] %}
+  <div class="rr2-show" role="group" aria-label="Show">
+    <span class="rr2-show-k">Show</span>
+    {% for v, lbl, n in SHOW %}
+    <a class="rr2-chip{{ ' is-on' if (fstatus or '') == v else '' }}" href="{{ url_for('admin_talent_release', period=period['id'], bg=fbg or None, bu=fbu or None, dept=fdept or None, status=v or None) }}"{% if (fstatus or '') == v %} aria-current="true"{% endif %}>{{ lbl }} <b>{{ n }}</b></a>
+    {% endfor %}
+  </div>
+  {% endif %}
+</section>
+
+{% if not (period and cyc) %}
+<div class="admin-card">
+  <p class="muted small" style="margin:0">
+    {% if not period %}No review period exists yet.
+    {% else %}<strong>{{ period['name'] }}</strong> has no 360 cycle of the same name, so there is nothing to
+    release for it.{% endif %}
+  </p>
+</div>
+{% elif not rows %}
+<div class="admin-card">
+  <p class="muted small" style="margin:0">
+    Nobody {% if fbg or fbu or fdept %}in this selection {% endif %}has a result for {{ period['name'] }} yet{% if fstatus %}
+    that matches this filter{% endif %}.
+    A 360 report shows once their first rating is in; a performance band needs every KPI line approved (or a band set
+    at calibration); a potential band needs a valid 360 score (or a band set at calibration).
+  </p>
+</div>
+{% else %}
+
+<form method="post" id="rr-form" class="rr2-form" data-cycle="{{ period['name'] }}">
+  <input type="hidden" name="period" value="{{ period['id'] }}">
+  <input type="hidden" name="bg" value="{{ fbg }}">
+  <input type="hidden" name="bu" value="{{ fbu }}">
+  <input type="hidden" name="dept" value="{{ fdept }}">
+  <input type="hidden" name="status" value="{{ fstatus }}">
+  <input type="hidden" name="action" value="release" id="rr-action">
+  <input type="hidden" name="to" value="leaders" id="rr-to">
+
+  <div class="rr2-tbar">
+    <span class="muted small"><b>{{ rows | length }}</b> {{ 'person' if rows | length == 1 else 'people' }}</span>
+    <label class="rr2-what">Results
+      <select name="result" id="rr-result" class="modern-select">
+        {% if no_pot %}{# no potential band, so no talent status: 'three' releases performance alone #}
+        <option value="three">Performance</option>
+        {% else %}
+        <option value="three">All three</option>
+        <option value="pm">Performance</option>
+        <option value="pot">Potential</option>
+        <option value="talent">Talent status</option>
+        {% endif %}
+        <option value="report">360 report (to the person only)</option>
+      </select>
+    </label>
+  </div>
+
+  <div class="table-scroll table-scroll-capped">
+    <table class="admin-table rr2-table" id="result-release-table">
+      <thead><tr>
+        <th class="rr2-tick"><input type="checkbox" id="rr-all" aria-label="Select everyone shown"></th>
+        {{ colth('person', 'Person') }}
+        {{ colth('pm', 'Performance') }}
+        {{ colth('pot', 'Potential') }}
+        {{ colth('talent', 'Talent status') }}
+        {{ colth('l1', '1 · Leaders') }}
+        {{ colth('l2', '2 · Employee') }}
+        <th class="rr2-actcol"><span class="sr-only">Release</span></th>
+      </tr></thead>
+      <tbody>
+        {% for r in rows %}
+        {% set u = r['u'] %}
+        {% set have = [r['pm'], r['pot'], r['talent']] | select | list %}
+        {% set lead_dates = have | map(attribute='leaders_at') | select | list %}
+        {% set emp_dates = have | map(attribute='released_at') | select | list %}
+        {% if not have %}{% set l1 = ('—', 'none') %}
+        {% elif r['lead_all'] %}{% set l1 = ('Released ' ~ (lead_dates | min | myt_day), 'ok') %}
+        {% elif lead_dates %}{% set l1 = ('Partly released', 'part') %}
+        {% elif r['notfinal'] %}{% set l1 = ('Not final yet', 'warn') %}
+        {% else %}{% set l1 = ('Not released', 'none') %}{% endif %}
+        {% if not have %}{% set l2 = ('—', 'none') %}
+        {% elif r['to_emp'] %}{% set l2 = ('Released ' ~ (emp_dates | min | myt_day), 'ok') %}
+        {% elif emp_dates %}{% set l2 = ('Partly released', 'part') %}
+        {% elif r['with_leaders'] %}{% set l2 = ('Waiting', 'warn') %}
+        {% else %}{% set l2 = ('After step 1', 'none') %}{% endif %}
+        <tr class="data-row" id="rr-row-{{ u['id'] }}"
+            data-person="{{ u['full_name'] }}"
+            data-pm="{{ r['pm']['band'] if r['pm'] else '' }}"
+            data-pot="{{ r['pot']['band'] if r['pot'] else '' }}"
+            data-talent="{{ r['talent']['cat']['name'] if r['talent'] else '' }}"
+            data-l1="{{ l1[0] }}" data-l2="{{ l2[0] }}">
+          <td class="rr2-tick"><input type="checkbox" name="ids" value="{{ u['id'] }}" class="rr-row"
+                     aria-label="Select {{ u['full_name'] }}"
+                     data-name="{{ u['full_name'] }}"
+                     data-meta="{{ [u['department'], ('Grade ' ~ u['job_grade']) if u['job_grade'] else ''] | select | join(' · ') }}"
+                     data-lm="{{ r['leaders']['lm'] or '' }}" data-hod="{{ r['leaders']['hod'] or '' }}" data-buceo="{{ r['leaders']['buceo'] or '' }}"
+                     data-leads="{{ (lead_reach.get(u['id']) or {}).keys() | join(' ') }}" data-mail="{{ 1 if (u['email'] or '').strip() else 0 }}"
+                     {% for k in KIND_ORDER %}{% set x = r[k] %}
+                     data-k-{{ k }}="{{ ('final' if x['final'] else 'open') if x else '' }}"
+                     data-l-{{ k }}="{{ (x['leaders_at'] | myt_day) if x and x['leaders_at'] else '' }}"
+                     data-e-{{ k }}="{{ (x['released_at'] | myt_day) if x and x['released_at'] else '' }}"
+                     {% endfor %}
+                     data-k-report="{{ ('final' if r['report']['final'] else 'open') if r['report'] else '' }}"
+                     data-e-report="{{ (r['report']['released_at'] | myt_day) if r['report'] and r['report']['released_at'] else '' }}"></td>
+          <td class="rr2-person">
+            <a href="{{ url_for('admin_person', uid=u['id']) }}"><b>{{ u['full_name'] }}</b></a>
+            <span class="muted small">{{ u['employee_id'] }}{% if u['department'] %} &middot; {{ u['department'] | proper }}{% endif %}{% if u['job_grade'] %} &middot; Grade {{ u['job_grade'] }}{% endif %}</span>
+          </td>
+          {% for k in KIND_ORDER %}
+          {% set x = r[k] %}
+          <td class="rr-cell">
+            {% if not x %}<span class="muted small">&mdash;</span>
+            {% elif k == 'talent' %}<span class="tcat-pill tbox-cat-{{ x['cat']['slug'] }}">{{ x['cat']['name'] }}</span>
+            {% else %}<span class="potential-pill" data-band="{{ x['band'] }}" title="{{ label_names[x['band']] if x['band'] in label_names else x['band'] }}">{{ x['band'] }}</span>
+              <span class="rr-stage{{ '' if x['final'] else ' is-open' }}">{{ x['stage'] }}</span>
+            {% endif %}
+          </td>
+          {% endfor %}
+          <td><span class="rr2-st is-{{ l1[1] }}">{{ l1[0] }}</span></td>
+          <td><span class="rr2-st is-{{ l2[1] }}">{{ l2[0] }}</span>
+            {% if r['report'] %}<span class="rr2-rep">360 report: {% if r['report']['released_at'] %}released {{ r['report']['released_at'] | myt_day }}{% elif r['report']['final'] %}ready{% else %}{{ r['report']['stage'] }}{% endif %}</span>{% endif %}
+          </td>
+          <td class="rr2-actcol">
+            {% if r['lead_open'] %}<button type="button" class="rr2-act" data-rr-one="leaders" data-id="{{ u['id'] }}">Release to leaders</button>
+            {% elif r['with_leaders'] %}<button type="button" class="rr2-act is-solid" data-rr-one="employees" data-id="{{ u['id'] }}">Release to employee</button>{% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+        <tr class="no-filter-match" hidden><td colspan="8" class="muted">No one matches the filters.</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="rr2-foot">
+    <span class="rr2-sel" id="rr-sel" aria-live="polite">None selected</span>
+    <span class="rr2-note" id="rr-note"></span>
+    <button type="button" class="rr2-btn" data-rr="leaders" id="rr-b1" disabled>Release to leaders</button>
+    <button type="button" class="rr2-btn is-solid" data-rr="employees" id="rr-b2" disabled>Release to employees</button>
+    <div class="rr2-revoke">
+      <button type="button" class="rr2-btn is-plain" id="rr-rev" aria-haspopup="true" aria-expanded="false" aria-controls="rr-rev-menu" disabled>Revoke &#9662;</button>
+      <div class="rr2-revmenu" id="rr-rev-menu" role="menu" hidden>
+        <button type="button" role="menuitem" data-rr-revoke="employees">From employees</button>
+        <button type="button" role="menuitem" data-rr-revoke="both">From leaders and employees</button>
+      </div>
+    </div>
+  </div>
+  {{ colmenu('result-release-table', {
+       'person': {'mode': 'clientFilter', 'type': 'text', 'sortAttr': 'person'},
+       'pm':     {'mode': 'clientFilter', 'type': 'text', 'sortAttr': 'pm', 'order': band_order},
+       'pot':    {'mode': 'clientFilter', 'type': 'text', 'sortAttr': 'pot', 'order': ['Low', 'Mid', 'High']},
+       'talent': {'mode': 'clientFilter', 'type': 'text', 'sortAttr': 'talent'},
+       'l1':     {'mode': 'clientFilter', 'type': 'text', 'sortAttr': 'l1'},
+       'l2':     {'mode': 'clientFilter', 'type': 'text', 'sortAttr': 'l2'} }) }}
+</form>
+
+<script>
+/* The two releases (canvas board R2). The bulk buttons count, for the results picked, who has something to send at
+   each step; each opens OneHR's own dialog (never the browser's) saying who it goes to, and the form posts only from
+   that dialog's button. The dialog is the form's question, so the form carries no data-confirm of its own. */
+(function () {
+  var form = document.getElementById('rr-form');
+  if (!form) return;
+  var all = document.getElementById('rr-all');
+  var boxes = Array.prototype.slice.call(form.querySelectorAll('.rr-row'));
+  var sel = document.getElementById('rr-sel'), note = document.getElementById('rr-note');
+  var b1 = document.getElementById('rr-b1'), b2 = document.getElementById('rr-b2'), rev = document.getElementById('rr-rev');
+  var menu = document.getElementById('rr-rev-menu');
+  var what = document.getElementById('rr-result');
+  var NOPOT = {{ no_pot | tojson }}, MIDYEAR = {{ mid_year | tojson }};
+  // the emails each release sends (2026-10-17): who they go to, and who has no address on file
+  var MAIL = {{ mail_on | tojson }}, LEADS = {{ lead_who | tojson }};
+  var OPEN_LINE = MIDYEAR ? "Not final yet: waiting on the HOD's review, so a band can change after this"
+    : 'Not final yet: still in calibration, so a band can change after this';
+  var LABEL = { three: {{ ('Performance' if no_pot else 'all three results') | tojson }}, pm: 'Performance', pot: 'Potential', talent: 'Talent status', report: 'the 360 report' };
+
+  function shown(b) { var tr = b.closest('tr'); return tr && !tr.hidden && tr.style.display !== 'none'; }
+  function kinds() { return what.value === 'three' ? ['pm', 'pot', 'talent'] : [what.value]; }
+  // one person, for the results picked: lead = something not yet with their leaders (a band still in calibration
+  // can go, and the dialog says so); emp = something with their leaders (or a ready 360 report) not yet with them;
+  // gate = a result still waiting on step 1; open = not final
+  function stand(b) {
+    var out = { lead: false, emp: false, gate: false, open: [], since: '' };
+    kinds().forEach(function (k) {
+      var st = b.getAttribute('data-k-' + k), l = b.getAttribute('data-l-' + k), e = b.getAttribute('data-e-' + k);
+      if (!st) return;
+      if (k === 'report') { if (st === 'final' && !e) out.emp = true; return; }
+      if (st === 'open') out.open.push(LABEL[k] || k);
+      if (!l) out.lead = true;
+      if (!l && !e) out.gate = true;
+      if (l && !e) { out.emp = true; if (!out.since) out.since = l; }
+    });
+    return out;
+  }
+  function picked() { return boxes.filter(function (b) { return b.checked; }); }
+  function refresh() {
+    var p = picked(), n1 = 0, n2 = 0, gate = 0;
+    p.forEach(function (b) { var s = stand(b); if (s.lead) n1++; if (s.emp) n2++; else if (s.gate) gate++; });
+    sel.textContent = p.length ? (p.length + ' selected') : 'None selected';
+    note.textContent = (p.length && gate && what.value !== 'report')
+      ? (gate + (gate === 1 ? " of them isn't" : " of them aren't") + ' released to leaders yet') : '';
+    b1.textContent = 'Release to leaders' + (n1 ? ' (' + n1 + ')' : '');
+    b2.textContent = 'Release to employees' + (n2 ? ' (' + n2 + ')' : '');
+    b1.disabled = !n1 || what.value === 'report';
+    b2.disabled = !(n2 || gate);
+    rev.disabled = !p.length;
+    var vis = boxes.filter(shown);
+    all.checked = vis.length > 0 && vis.every(function (b) { return b.checked; });
+    all.indeterminate = !all.checked && vis.some(function (b) { return b.checked; });
+  }
+  boxes.forEach(function (b) { b.addEventListener('change', refresh); });
+  what.addEventListener('change', refresh);
+  all.addEventListener('change', function () {   // select-all ticks only the rows the column filters leave on screen
+    boxes.forEach(function (b) { if (shown(b)) b.checked = all.checked; });
+    refresh();
+  });
+
+  function el(tag, cls, text) { var e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; }
+  // OneHR's dialog with a step kicker and a body built here (the shared one takes a message and a list only)
+  function dialog(o) {
+    var ov = el('div', 'modal-overlay confirm-dialog rr2-dlg');
+    var card = el('div', 'modal-card');
+    card.setAttribute('role', 'dialog'); card.setAttribute('aria-modal', 'true'); card.setAttribute('aria-labelledby', 'rr2-dlg-h');
+    card.appendChild(el('p', 'rr2-kick', o.kicker));
+    var h = el('h2', null, o.title); h.id = 'rr2-dlg-h'; card.appendChild(h);
+    o.body.forEach(function (n) { if (n) card.appendChild(n); });
+    var acts = el('div', 'modal-actions');
+    var cancel = el('button', 'btn-link', 'Cancel'); cancel.type = 'button';
+    var ok = el('button', o.danger ? 'danger' : 'primary', o.ok); ok.type = 'button';
+    ok.disabled = !!o.off;
+    acts.appendChild(cancel); acts.appendChild(ok); card.appendChild(acts);
+    ov.appendChild(card); document.body.appendChild(ov);
+    var back = document.activeElement;
+    function esc(e) { if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); close(true); } }
+    function close(refocus) {
+      ov.remove(); document.removeEventListener('keydown', esc, true);
+      if (refocus && back && back.focus) back.focus();
+    }
+    document.addEventListener('keydown', esc, true);
+    ov.addEventListener('click', function (e) { if (e.target === ov) close(true); });
+    cancel.addEventListener('click', function () { close(true); });
+    ok.addEventListener('click', function () { ok.disabled = true; ok.textContent = 'Working…'; o.go(); });
+    setTimeout(function () { (ok.disabled ? cancel : ok).focus(); }, 20);
+    return close;
+  }
+  function list(label, items, render) {
+    if (!items.length) return null;
+    var w = el('div', 'rr2-dl');
+    if (label) w.appendChild(el('p', 'rr2-dl-k', label));
+    var ul = el('ul', 'rr2-dl-ul');
+    items.forEach(function (it) { ul.appendChild(render(it)); });
+    w.appendChild(ul);
+    return w;
+  }
+  function post(to, action, ids) {
+    document.getElementById('rr-to').value = to;
+    document.getElementById('rr-action').value = action;
+    boxes.forEach(function (b) { b.checked = ids.indexOf(b.value) >= 0; });
+    form.removeAttribute('data-confirm');   // the dialog was the question
+    form.submit();
+  }
+  function goTo(b, close) {
+    close(false);
+    var tr = b.closest('tr');
+    tr.scrollIntoView({ block: 'center' });
+    tr.classList.add('rr2-goto');
+    setTimeout(function () { tr.classList.remove('rr2-goto'); }, 2400);
+    var act = tr.querySelector('.rr2-act'); (act || b).focus();
+  }
+  function mailBox(lines, missing) {
+    var w = el('div', 'rr2-mail');
+    if (!MAIL) { w.appendChild(el('span', 'rr2-mail-off', 'No email goes: this server sends none.')); return w; }
+    w.appendChild(el('b', null, 'Email'));
+    lines.forEach(function (t) { w.appendChild(el('span', null, t)); });
+    if (missing.length) {
+      var row = el('span', 'rr2-mail-miss', missing.length + (missing.length === 1 ? " has no email on file and won't get one. " : " have no email on file and won't get one. "));
+      var who = el('button', 'rr2-go', 'Who'); who.type = 'button';
+      var ul = el('ul', 'rr2-dl-ul'); ul.hidden = true;
+      missing.forEach(function (n) { ul.appendChild(el('li', null, n)); });
+      who.addEventListener('click', function () { ul.hidden = !ul.hidden; who.textContent = ul.hidden ? 'Who' : 'Hide'; });
+      row.appendChild(who); w.appendChild(row); w.appendChild(ul);
+    }
+    w.appendChild(el('span', 'rr2-small', 'They go out in the background, about 30 a minute. No one is emailed twice for the same result.'));
+    return w;
+  }
+  function nameLine(b, meta) {
+    var li = el('li'); li.appendChild(el('span', null, b.getAttribute('data-name')));
+    if (meta) li.appendChild(el('span', 'm', meta));
+    return li;
+  }
+
+  function stepOne(list_) {
+    var go = list_.filter(function (b) { return stand(b).lead; });
+    if (!go.length) return;
+    var n = go.length, body = [];
+    body.push(el('p', 'rr2-msg', "Their line manager, HOD and BU CEO will see the final " + (NOPOT ? 'performance band'
+      : 'performance and potential bands, the talent status,') + " and every step's move and reason, so they can talk it through first. The person sees nothing yet."));
+    if (n === 1) {
+      var b = go[0], box = el('div', 'rr2-who');
+      var nm = el('b', null, b.getAttribute('data-name'));
+      if (b.getAttribute('data-meta')) nm.appendChild(el('span', null, ' · ' + b.getAttribute('data-meta')));
+      box.appendChild(nm);
+      var g = el('dl', 'rr2-who-g');
+      [['Line manager', 'lm'], ['HOD', 'hod'], ['BU CEO', 'buceo']].forEach(function (x) {
+        g.appendChild(el('dt', null, x[0])); g.appendChild(el('dd', null, b.getAttribute('data-' + x[1]) || 'Nobody in this seat'));
+      });
+      box.appendChild(g); body.push(box);
+    } else {
+      body.push(list('Going to the leaders of', go, function (b) {
+        return nameLine(b, b.getAttribute('data-lm') ? 'Line manager ' + b.getAttribute('data-lm') : 'No line manager on file');
+      }));
+    }
+    var open = go.filter(function (b) { return stand(b).open.length; });
+    body.push(list(OPEN_LINE, open, function (b) {
+      return nameLine(b, stand(b).open.join(', '));
+    }));
+    var leads = {};
+    go.forEach(function (b) { (b.getAttribute('data-leads') || '').split(' ').forEach(function (id) { if (id) leads[id] = 1; }); });
+    var lids = Object.keys(leads), lmiss = lids.filter(function (id) { return LEADS[id] && !LEADS[id][1]; });
+    body.push(mailBox([lids.length === 1 ? 'Their 1 leader gets one email: their people\'s results are ready to see. No band is in it.'
+      : 'Their ' + lids.length + ' leaders each get one email: their people\'s results are ready to see. No band is in it.',
+      NOPOT || MIDYEAR ? '' : 'A BU CEO\'s also says how many of them the BG CEO moved.'].filter(Boolean),
+      lmiss.map(function (id) { return LEADS[id][0]; })));
+    var skip = list_.length - n;
+    if (skip) body.push(el('p', 'rr2-small', skip + (skip === 1 ? ' person is' : ' people are') + ' already with their leaders for these results, so ' + "they're left out."));
+    body.push(el('p', 'rr2-small', 'The BG CEO already sees it: they decided it.'));
+    dialog({ kicker: 'Step 1 · To leaders',
+             title: n === 1 ? "Release 1 person's results to their leaders?" : 'Release ' + n + " people's results to their leaders?",
+             ok: 'Release to leaders', body: body,
+             go: function () { post('leaders', 'release', go.map(function (b) { return b.value; })); } });
+  }
+  function stepTwo(list_) {
+    var go = list_.filter(function (b) { return stand(b).emp; });
+    var held = list_.filter(function (b) { var s = stand(b); return !s.emp && s.gate; });
+    if (!go.length && !held.length) return;
+    var n = go.length, body = [], close = null;
+    var rep = what.value === 'report';
+    body.push(el('p', 'rr2-msg', rep ? "They'll see their 360 report, with their colleagues' words shown without names."
+      : "They'll see their final " + (NOPOT ? 'performance band' : 'bands and talent status') + " for " + form.getAttribute('data-cycle') + ' on their dashboard. They never see how the bands moved.'));
+    body.push(list('Going to', go, function (b) { var s = stand(b); return nameLine(b, s.since ? 'Leaders since ' + s.since : ''); }));
+    var open2 = go.filter(function (b) { return stand(b).open.length; });
+    body.push(list(OPEN_LINE, open2, function (b) {
+      return nameLine(b, stand(b).open.join(', '));
+    }));
+    if (n) {
+      var pmiss = go.filter(function (b) { return b.getAttribute('data-mail') !== '1'; });
+      body.push(mailBox([n === 1 ? 'They get one email: their results are ready to see. No band is in it.'
+        : 'Each of them gets one email: their results are ready to see. No band is in it.'],
+        pmiss.map(function (b) { return b.getAttribute('data-name'); })));
+    }
+    if (held.length) {
+      var box = el('div', 'rr2-held');
+      box.appendChild(el('b', null, 'Not included: ' + held.length + (held.length === 1 ? " person isn't" : " people aren't") + ' released to their leaders yet'));
+      var ul = el('ul', 'rr2-dl-ul');
+      held.forEach(function (b) {
+        var li = nameLine(b, '');
+        var gb = el('button', 'rr2-go', 'Go to'); gb.type = 'button';
+        gb.addEventListener('click', function () { goTo(b, close); });
+        li.appendChild(gb); ul.appendChild(li);
+      });
+      box.appendChild(ul);
+      box.appendChild(el('span', null, 'Release to their leaders first, so they can talk it through.'));
+      body.push(box);
+    }
+    body.push(el('p', 'rr2-small', 'You can revoke it later; their leaders keep their view.'));
+    close = dialog({ kicker: 'Step 2 · To employees', title: n === 1 ? 'Release results to 1 person?' : 'Release results to ' + n + ' people?',
+                     ok: n === 1 ? 'Release to 1 person' : 'Release to ' + n + ' people', off: !n, body: body,
+                     go: function () { post('employees', 'release', go.map(function (b) { return b.value; })); } });
+  }
+  function revoke(to) {
+    var p = picked(); if (!p.length) return;
+    var n = p.length;
+    dialog({ kicker: to === 'employees' ? 'Revoke · from employees' : 'Revoke · from leaders and employees', danger: true,
+             title: 'Revoke ' + LABEL[what.value] + ' for ' + n + (n === 1 ? ' person?' : ' people?'), ok: 'Revoke',
+             body: [el('p', 'rr2-msg', to === 'employees'
+               ? 'It stops showing on their dashboard straight away. Their leaders keep their view.'
+               : 'It stops showing to them and to their line manager, HOD and BU CEO straight away. The BG CEO still sees it.')],
+             go: function () { post(to, 'revoke', p.map(function (b) { return b.value; })); } });
+  }
+  b1.addEventListener('click', function () { stepOne(picked()); });
+  b2.addEventListener('click', function () { stepTwo(picked()); });
+  form.querySelectorAll('[data-rr-one]').forEach(function (btn) {
+    btn.addEventListener('click', function () {
+      what.value = 'three'; refresh();
+      var b = boxes.filter(function (x) { return x.value === btn.getAttribute('data-id'); });
+      if (btn.getAttribute('data-rr-one') === 'leaders') stepOne(b); else stepTwo(b);
+    });
+  });
+  function closeMenu(refocus) { menu.hidden = true; rev.setAttribute('aria-expanded', 'false'); if (refocus) rev.focus(); }
+  rev.addEventListener('click', function (e) {
+    e.stopPropagation();
+    if (!menu.hidden) { closeMenu(false); return; }
+    menu.hidden = false; rev.setAttribute('aria-expanded', 'true');
+    menu.querySelector('button').focus();
+  });
+  menu.querySelectorAll('[data-rr-revoke]').forEach(function (m) {
+    m.addEventListener('click', function () { closeMenu(false); revoke(m.getAttribute('data-rr-revoke')); });
+  });
+  document.addEventListener('click', function (e) { if (!menu.hidden && !menu.contains(e.target)) closeMenu(false); });
+  menu.addEventListener('keydown', function (e) { if (e.key === 'Escape') { e.stopPropagation(); closeMenu(true); } });
+  refresh();
+})();
+</script>
+{% endif %}
+
+{{ colmenu_script(asset_v) }}
+{% endblock %}

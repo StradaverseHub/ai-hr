@@ -1,0 +1,28 @@
+{# Search in (Chris, 2026-10-20 on People; every admin list of people since 2026-10-26): the field the search looks in,
+   or all of them, then the box. `menu` is the route's people_search_in(...), so the list, its download and this choice
+   read one registry; a change re-runs a search already typed. One rounded field since 2026-11-09 (.sib: icon, chip, divider, box, Enter hint, round clear);
+   no visible Search button, a hidden submit stays and Enter submits. A form posting the list's search on carries
+   search_keep(). test_search_in fails an admin list search that isn't this macro or marked data-no-qin. #}
+{# `joined` (leader-reviews, 9 Nov) is accepted and IGNORED: there is ONE look now, the .sib field, on every list and panel (Chris, 2026-11-09). It stays in the
+   signature so every existing caller works. #}
+{% macro search_in_box(menu, qin, q, label='Search people', suggest=True, joined=False) -%}
+<span class="sib" data-sib>
+  <svg class="sib-ico" width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true"><circle cx="7" cy="7" r="5" stroke="currentColor" stroke-width="1.7"/><path d="M11 11l3.2 3.2" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg>
+  <select name="qin" class="modern-select adm-qin" aria-label="Search in" data-qin
+          onchange="var i=this.form.q; i.placeholder=this.selectedOptions[0].dataset.ph; if (i.value.trim()) { if (this.form.requestSubmit) this.form.requestSubmit(); else this.form.submit(); } else i.focus();">
+    {% for k, f in menu.items() %}
+    <option value="{{ k }}" data-ph="{{ f[1] }}" {{ 'selected' if qin == k }}>{{ f[0] }}</option>{% endfor %}
+  </select>
+  <span class="sib-div" aria-hidden="true"></span>
+  <input type="search" name="q" class="sib-in" value="{{ q }}" placeholder="{{ menu[qin][1] }}" aria-label="{{ label }}" autocomplete="off"{% if suggest %} aria-autocomplete="list" aria-expanded="false"
+         data-suggest="people" data-suggest-src="{{ request.endpoint }}" data-suggest-key="{{ (request.view_args or {}).get('key', '') }}" data-suggest-url="{{ url_for('search_suggest') }}"{% endif %}>
+  <kbd class="sib-enter" aria-hidden="true">Enter</kbd>
+  <button type="button" class="sib-clear" data-sib-clear aria-label="Clear the search" title="Clear the search"
+          onclick="var f=this.form,i=f.q; i.value=''; if (f.requestSubmit) f.requestSubmit(); else f.submit();">&times;</button>
+  <button type="submit" class="sr-only" tabindex="-1">Search</button>
+</span>
+{%- endmacro %}
+
+{% macro search_keep(q, qin) -%}
+{% if q %}<input type="hidden" name="q" value="{{ q }}">{% if qin and qin != 'all' %}<input type="hidden" name="qin" value="{{ qin }}">{% endif %}{% endif %}
+{%- endmacro %}

@@ -1,0 +1,578 @@
+{# The Leadership Principle report body -- filters, list, drill-down.
+
+   Included by BOTH admin_principles_report.html (the in-app page) and
+   principles_report_standalone.html (the export), so what an admin reviews
+   on screen and what management receives as a file are literally the same
+   markup. `standalone` is true only in the export, and hides the export button
+   (a downloaded file cannot generate another one).
+
+   Rendering is driven by the JSON payload below rather than by Jinja loops:
+   the sort, the BG/BU filters and the drill-down all have to keep working in a
+   file with no server behind it. #}
+
+<div class="lp-head-row" style="margin-bottom:14px">
+  <div>
+    <h1 style="margin:0 0 4px">Chin Hin Leadership Principle - 360 Review Report</h1>
+    <p class="muted" style="margin:0">{{ cyc['name'] if cyc else 'Current cycle' }}
+      &middot; 360 feedback by principle, per person.
+      {%- if standalone %} Generated {{ generated_at }} by {{ generated_by }}.
+      {%- else %} The people in your admin scope.{% endif %}</p>
+  </div>
+  {% if standalone %}
+  {# The export's header slot: on the page this is the Export button, which a
+     downloaded file has no use for. #}
+  <span class="lp-confidential">Confidential</span>
+  {% else %}
+  <div class="lp-exp-wrap">
+    <button class="primary" id="lp-exp-btn" type="button">Export HTML &#9662;</button>
+    <div class="lp-exp-panel" id="lp-exp-panel" hidden>
+      <h4 style="margin:0 0 12px;font-size:.98rem">Export report</h4>
+      <div class="lp-exp-grp">
+        <p class="lp-sec" style="margin:0 0 6px">Cycle</p>
+        <select id="lp-x-cycle">
+          {% for c in all_cycles %}<option value="{{ c['id'] }}">{{ c['name'] }}</option>{% endfor %}
+        </select>
+      </div>
+      <div class="lp-exp-grp"><p class="lp-sec" style="margin:0">Business group</p>
+        <div class="lp-exp-opts" id="lp-x-bg"></div></div>
+      <div class="lp-exp-grp"><p class="lp-sec" style="margin:0">Business unit</p>
+        <div class="lp-exp-opts" id="lp-x-bu"></div></div>
+      <div class="lp-exp-grp"><p class="lp-sec" style="margin:0">Job grade</p>
+        <div class="lp-exp-opts" id="lp-x-jg"></div></div>
+      <div class="lp-exp-foot">
+        <div><div class="small muted" id="lp-x-summary"></div>
+             <div class="lp-fname" id="lp-x-filename"></div></div>
+        <button class="primary" id="lp-x-go" type="button" style="flex:none">Generate</button>
+      </div>
+    </div>
+  </div>
+  {% endif %}
+</div>
+
+<div class="admin-card" style="margin-bottom:14px">
+  <p class="lp-sec" style="margin:0 0 9px">Business group</p>
+  <div class="lp-pillrow">
+    <button class="lp-arrow" type="button" data-scroll="lp-f-bg" data-dir="-1"
+            aria-label="Scroll left">&#8249;</button>
+    <div class="lp-chk" id="lp-f-bg"></div>
+    <button class="lp-arrow" type="button" data-scroll="lp-f-bg" data-dir="1"
+            aria-label="Scroll right">&#8250;</button>
+  </div>
+</div>
+
+<div class="admin-card" style="margin-bottom:14px">
+  <p class="lp-sec" style="margin:0 0 9px">Business unit</p>
+  <div class="lp-pillrow">
+    <button class="lp-arrow" type="button" data-scroll="lp-f-bu" data-dir="-1"
+            aria-label="Scroll left">&#8249;</button>
+    <div class="lp-chk" id="lp-f-bu"></div>
+    <button class="lp-arrow" type="button" data-scroll="lp-f-bu" data-dir="1"
+            aria-label="Scroll right">&#8250;</button>
+  </div>
+  <p class="lp-scope" id="lp-scope"></p>
+</div>
+
+{# Between the filters and the list on purpose: the two figures management asks
+   for first are "where are we strong" and "where are we weak", and both are a
+   property of whatever scope is selected above. #}
+<div class="lp-cards" id="lp-cards"></div>
+
+<div class="admin-card" style="padding-bottom:8px">
+  <table id="lp-table">
+    <colgroup><col class="w-name"><col class="w-dept"><col class="w-title">
+      <col class="w-jg"><col class="w-score"><col class="w-band"></colgroup>
+    <thead><tr>
+      <th><button class="lp-colbtn" type="button" data-col="name"><span class="lp-cm-label">Employee</span><span class="caret"></span></button></th>
+      <th><button class="lp-colbtn" type="button" data-col="dept"><span class="lp-cm-label">Department</span><span class="caret"></span></button></th>
+      <th><button class="lp-colbtn" type="button" data-col="title"><span class="lp-cm-label">Job title</span><span class="caret"></span></button></th>
+      <th title="Job grade"><button class="lp-colbtn" type="button" data-col="jg" aria-label="Job grade"><span class="lp-cm-label">JG</span><span class="caret"></span></button></th>
+      <th class="lp-num"><button class="lp-colbtn" type="button" data-col="score"><span class="lp-cm-label">Score / {{ '%.2f'|format(ctx['rows'][0]['maxScore']) if ctx['rows'] else '35.00' }}</span><span class="caret"></span></button></th>
+      <th><button class="lp-colbtn" type="button" data-col="band"><span class="lp-cm-label">Band</span><span class="caret"></span></button></th>
+    </tr></thead>
+    <tbody id="lp-tb"></tbody>
+  </table>
+  <p class="small muted" style="margin:10px 2px 12px">
+    Click any row to open that person's breakdown. Default order is job grade, highest first.</p>
+</div>
+
+<div class="lp-foot">
+  {% set pts = ctx['points'] if ctx['points'] is defined else [1.0, 1.5, 0.0, 0.0] %}
+  <p style="margin:0 0 6px"><strong>How the numbers work.</strong> A behaviour answered Demonstrate scores
+    <code>{{ '%g'|format(pts[0]) }}</code> at the person's own tier and <code>{{ '%g'|format(pts[1]) }}</code> where it is a stretch to the
+    next one{% if pts[2] or pts[3] %}; one answered Developing scores <code>{{ '%g'|format(pts[2]) }}</code> and <code>{{ '%g'|format(pts[3]) }}</code>{% endif %}
+    (the points set for this cycle). A person's figure is the mean across the assessors who submitted. Where an
+    extreme-assessor correction applies it adjusts the overall score only, so the seven
+    principles can sum to slightly more or less than the figure in the Score column.</p>
+  <p style="margin:0 0 6px"><strong>Bands.</strong> The overall band uses Group People's thresholds
+    (Low &le; {{ '%g'|format(ctx['lowMax']) }}, Mid &le; {{ '%g'|format(ctx['midMax']) }}).
+    Per-principle bands are <em>derived</em> by scaling those to each principle's share of the
+    total.</p>
+  <p style="margin:0"><strong>Who is in scope.</strong> Everyone with at least one submitted
+    assessment this cycle, excluding JG&nbsp;H. Anyone still short of the minimum submissions
+    shows as withheld, and the per-principle breakdown is withheld with the score.</p>
+</div>
+
+{# One menu element reused by every column, appended to <body> on open so the
+   table's own overflow cannot clip it. #}
+<div class="lp-cm" id="lp-cm" hidden></div>
+
+<script id="lp-payload" type="application/json">{{ ctx | tojson }}</script>
+<script>
+(function(){
+  var D = JSON.parse(document.getElementById("lp-payload").textContent);
+  var STANDALONE = {{ 'true' if standalone else 'false' }};
+  var ROWS = D.rows;
+
+  function esc(s){ return String(s == null ? "" : s)
+    .replace(/[&<>"]/g, function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]; }); }
+
+  /* ---------- filters ---------- */
+  /* One business unit at a time (confirmed). The export panel keeps its own
+     multi-select: combining three units into one FILE is a different act from
+     narrowing what is on screen. */
+  var activeBG = "", activeBU = "";
+  var bgBox = document.getElementById("lp-f-bg"), buBox = document.getElementById("lp-f-bu");
+
+  function pill(label, on, fn, cls){
+    var b = document.createElement("button");
+    b.type = "button"; b.textContent = label;
+    if(on) b.classList.add("on"); if(cls) b.classList.add(cls);
+    b.onclick = fn; return b;
+  }
+  function bgsInData(){
+    var seen = {}; var out = [];
+    ROWS.forEach(function(r){ if(!seen[r.bg]){ seen[r.bg]=1; out.push({key:r.bg,label:r.bgLabel}); } });
+    return out;
+  }
+  function busInScope(){
+    var seen = {}, out = [];
+    ROWS.forEach(function(r){
+      if(activeBG && r.bg !== activeBG) return;
+      if(r.bu && !seen[r.bu]){ seen[r.bu]=1; out.push({key:r.bu,label:r.buLabel}); }
+    });
+    return out;
+  }
+  function renderBGs(){
+    bgBox.innerHTML = "";
+    bgBox.appendChild(pill("All business groups", activeBG === "", function(){
+      activeBG=""; activeBU=""; renderBGs(); renderBUs(); draw(); }));
+    bgsInData().forEach(function(b){
+      bgBox.appendChild(pill(b.label, activeBG === b.key, function(){
+        activeBG=b.key; activeBU=""; renderBGs(); renderBUs(); draw(); })); });
+    arrows();
+  }
+  function renderBUs(){
+    buBox.innerHTML = "";
+    buBox.appendChild(pill("All business units", activeBU === "", function(){
+      activeBU=""; renderBUs(); draw(); }));
+    busInScope().forEach(function(b){
+      /* Picking a unit REPLACES the previous one; clicking the selected one
+         again releases it back to the whole business group. */
+      buBox.appendChild(pill(b.label, activeBU === b.key, function(){
+        activeBU = (activeBU === b.key) ? "" : b.key;
+        renderBUs(); draw(); })); });
+    arrows();
+  }
+  /* Disabled when there is nothing to scroll to, so the control never looks
+     live on a row that already fits. */
+  function arrows(){
+    Array.prototype.forEach.call(document.querySelectorAll(".lp-arrow"), function(a){
+      var box = document.getElementById(a.dataset.scroll), dir = +a.dataset.dir;
+      a.disabled = dir < 0 ? box.scrollLeft <= 1
+                           : box.scrollLeft >= box.scrollWidth - box.clientWidth - 1;
+      a.onclick = function(){
+        box.scrollBy({left: dir * Math.max(200, box.clientWidth * 0.7)});
+        setTimeout(arrows, 320); };
+    });
+  }
+  [bgBox, buBox].forEach(function(b){ b.addEventListener("scroll", arrows); });
+  window.addEventListener("resize", arrows);
+
+  /* ---------- columns: sort + Excel-style value filter ---------- */
+  /* One descriptor per column drives the menu, the sort and the filter, so the
+     three can never disagree about what a column contains. `sortVal` exists
+     where the sort key differs from the displayed text -- job grade prints "16"
+     but must sort by rank, and Band must sort Low < Mid < High rather than
+     alphabetically. */
+  var BAND_ORDER = ["Low","Mid","High","Withheld"];
+  var COLS = {
+    name:  {get:function(r){ return r.name; }},
+    dept:  {get:function(r){ return r.dept; }},
+    title: {get:function(r){ return r.title; }},
+    jg:    {get:function(r){ return r.jg; },
+            sortVal:function(r){ return r.jgr; },
+            cmp:function(a,b){ return b - a; }},          /* list: 16 above 12 */
+    score: {get:function(r){ return r.valid ? r.score.toFixed(2) : "—"; },
+            sortVal:function(r){ return r.score === null ? -1 : r.score; },
+            nofilter:true},                                /* continuous: sort only */
+    band:  {get:function(r){ return r.valid ? r.band : "Withheld"; },
+            sortVal:function(r){ return BAND_ORDER.indexOf(r.valid ? r.band : "Withheld"); },
+            cmp:function(a,b){ return BAND_ORDER.indexOf(a) - BAND_ORDER.indexOf(b); }}
+  };
+  function sortKey(col, r){
+    var c = COLS[col];
+    return c.sortVal ? c.sortVal(r) : String(c.get(r)).toLowerCase();
+  }
+
+  var sortCol = "jg", sortDir = "desc";
+  var colFilters = {};   /* col -> Set of chosen values; absent = no filter */
+
+  function passesPills(r){
+    if(activeBG && r.bg !== activeBG) return false;
+    if(activeBU && r.bu !== activeBU) return false;
+    return true;
+  }
+  /* `except` lets a column's own menu list the values still reachable under
+     every OTHER filter -- Excel's behaviour, so the list never offers a value
+     that would return nothing. */
+  function passesCols(r, except){
+    for(var c in colFilters){
+      if(c === except) continue;
+      var sel = colFilters[c];
+      if(sel && sel.size && !sel.has(String(COLS[c].get(r)))) return false;
+    }
+    return true;
+  }
+  function inScope(r){ return passesPills(r) && passesCols(r, null); }
+
+  function valuesFor(col){
+    var seen = {}, out = [];
+    ROWS.forEach(function(r){
+      if(!passesPills(r) || !passesCols(r, col)) return;
+      var v = String(COLS[col].get(r));
+      if(!(v in seen)){ seen[v] = 1; out.push(v); }
+    });
+    var cmp = COLS[col].cmp;
+    return cmp ? out.sort(cmp) : out.sort(function(a,b){ return a.localeCompare(b); });
+  }
+
+  var cm = document.getElementById("lp-cm");
+  document.body.appendChild(cm);   /* escape the card's own clipping */
+  var cmCol = null;
+
+  function closeMenu(){ cm.hidden = true; cm.innerHTML = ""; cmCol = null; }
+
+  function openMenu(col, btn){
+    if(cmCol === col){ closeMenu(); return; }
+    /* A drill-down left hanging under a row that is about to be filtered away
+       reads as a bug, so opening a menu closes it -- and the redraw has to
+       happen HERE: clearing openKey alone leaves the row on screen, since
+       nothing re-renders until the next draw(). Done before the menu is
+       positioned, so the button is measured where it finally sits. */
+    if(openKey !== null){ openKey = null; draw(); }
+    cmCol = col;
+    var c = COLS[col];
+    var numeric = !!c.sortVal && col !== "band";
+    var html = '<div class="cm-sort">'
+      + '<button type="button" data-sort="asc">&#9650; Sort '
+      + (numeric ? "smallest &rarr; largest" : "A &rarr; Z") + '</button>'
+      + '<button type="button" data-sort="desc">&#9660; Sort '
+      + (numeric ? "largest &rarr; smallest" : "Z &rarr; A") + '</button></div>';
+    if(!c.nofilter){
+      var vals = valuesFor(col);
+      var sel = colFilters[col];
+      html += '<div class="cm-search"><input type="text" placeholder="Search values…"></div>'
+        + '<label class="cm-all"><input type="checkbox" class="cm-selall"> <strong>(Select all)</strong></label>'
+        + '<div class="cm-list">'
+        + vals.map(function(v){
+            var on = !sel || !sel.size || sel.has(v);
+            return '<label><input type="checkbox" value="' + esc(v) + '"'
+                 + (on ? " checked" : "") + '> ' + esc(v === "" ? "(blank)" : v) + '</label>';
+          }).join("")
+        + '</div>'
+        + '<div class="cm-foot"><button type="button" class="cm-clear">Clear filter</button>'
+        + '<button type="button" class="cm-apply primary">Apply</button></div>';
+    }
+    cm.innerHTML = html;
+    cm.hidden = false;
+
+    var rc = btn.getBoundingClientRect();
+    var left = Math.min(window.scrollX + rc.left,
+                        window.scrollX + document.documentElement.clientWidth - cm.offsetWidth - 8);
+    cm.style.left = Math.max(8, left) + "px";
+    cm.style.top = (window.scrollY + rc.bottom + 4) + "px";
+
+    Array.prototype.forEach.call(cm.querySelectorAll(".cm-sort button"), function(b){
+      b.onclick = function(){ sortCol = col; sortDir = b.dataset.sort; closeMenu(); draw(); };
+    });
+    if(c.nofilter) return;
+
+    var boxes = function(){ return Array.prototype.slice.call(cm.querySelectorAll(".cm-list input")); };
+    var selAll = cm.querySelector(".cm-selall");
+    var applyBtn = cm.querySelector(".cm-apply");
+    function syncAll(){
+      var vis = boxes().filter(function(b){ return b.parentNode.style.display !== "none"; });
+      selAll.checked = vis.length > 0 && vis.every(function(b){ return b.checked; });
+      /* Nothing ticked disables Apply, as Excel does. Applying an empty
+         selection would otherwise read as "clear the filter", which is the
+         opposite of what unticking everything looks like it should do. */
+      applyBtn.disabled = !boxes().some(function(b){ return b.checked; });
+      applyBtn.style.opacity = applyBtn.disabled ? ".45" : "";
+      applyBtn.style.cursor = applyBtn.disabled ? "default" : "pointer";
+    }
+    syncAll();
+    selAll.onchange = function(){
+      boxes().forEach(function(b){
+        if(b.parentNode.style.display !== "none") b.checked = selAll.checked; });
+    };
+    cm.querySelector(".cm-list").addEventListener("change", syncAll);
+    cm.querySelector(".cm-search input").addEventListener("input", function(e){
+      var q = e.target.value.toLowerCase();
+      boxes().forEach(function(b){
+        b.parentNode.style.display =
+          b.parentNode.textContent.toLowerCase().indexOf(q) !== -1 ? "" : "none"; });
+      syncAll();
+    });
+    cm.querySelector(".cm-clear").onclick = function(){
+      delete colFilters[col]; closeMenu(); draw(); };
+    applyBtn.onclick = function(){
+      if(applyBtn.disabled) return;
+      /* b.value straight, NOT decodeURIComponent: the value was HTML-escaped
+         into the attribute and the browser already un-escaped it: URI-decoding
+         it again would corrupt any value containing a % sign. */
+      var chosen = boxes().filter(function(b){ return b.checked; })
+                          .map(function(b){ return b.value; });
+      /* everything ticked == no filter, so the header does not claim one */
+      if(chosen.length === boxes().length) delete colFilters[col];
+      else colFilters[col] = new Set(chosen);
+      closeMenu(); draw();
+    };
+    cm.querySelector(".cm-search input").focus();
+  }
+
+  Array.prototype.forEach.call(document.querySelectorAll(".lp-colbtn"), function(b){
+    b.onclick = function(e){ e.stopPropagation(); openMenu(b.dataset.col, b); };
+  });
+  cm.addEventListener("click", function(e){ e.stopPropagation(); });
+  document.addEventListener("click", function(){ if(!cm.hidden) closeMenu(); });
+  window.addEventListener("resize", function(){ if(!cm.hidden) closeMenu(); });
+  document.addEventListener("keydown", function(e){ if(e.key === "Escape") closeMenu(); });
+
+  /* ---------- render ---------- */
+  var tb = document.getElementById("lp-tb"), openKey = null;
+
+  function assessorLine(r){
+    /* names only for a holder of People > remarks and raters (the server sends none to anyone else); the rest read the count */
+    var n = r.assessorCount || 0;
+    return '<p class="lp-assessors"><span class="lp-sec">Assessors</span> '
+         + (r.assessors.length ? r.assessors.map(esc).join(", ")
+            : (n ? n + (n === 1 ? ' rater' : ' raters') + ' submitted'
+                 : '<span class="muted">none submitted yet</span>')) + '</p>';
+  }
+  function detailHTML(r){
+    if(!r.valid){
+      return '<div class="lp-detail-inner"><div class="lp-withheld">'
+        + '<p style="margin:0 0 4px"><strong>Score withheld &mdash; ' + r.submitted + ' of '
+        + r.minValid + ' required submissions.</strong></p>'
+        + '<p class="muted small" style="margin:0">The per-principle breakdown is withheld with'
+        + ' it: the seven principles sum to the overall score, so showing them would give back'
+        + ' the figure the threshold exists to hold.</p></div>'
+        + assessorLine(r) + '</div>';
+    }
+    var rows = r.principles.map(function(p, i){
+      return '<tr><td><div class="lp-pcell">'
+        + '<span class="lp-ptitle"><strong>' + (i+1) + ') ' + esc(p.tagline) + '</strong>'
+        + ' <span class="muted small">&middot; ' + esc(p.name) + '</span></span>'
+        + '<span class="lp-barwrap"><span class="lp-bar"><i data-band="' + p.band
+        + '" style="width:' + p.pct + '%"></i></span><b>' + p.pct + '%</b></span>'
+        + '</div></td>'
+        + '<td class="lp-num">' + p.score.toFixed(2) + '</td>'
+        + '<td><span class="lp-pill" data-band="' + p.band + '">' + p.band + '</span></td></tr>';
+    }).join("");
+    var pmax = r.principles.length ? r.principles[0].max.toFixed(2) : "5.00";
+    return '<div class="lp-detail-inner"><table class="lp-inner">'
+      + '<colgroup><col class="w-princ"><col class="w-score"><col class="w-band"></colgroup>'
+      + '<thead><tr><th>Leadership principle</th><th class="lp-num">Score / ' + pmax + '</th>'
+      + '<th>Band</th></tr></thead><tbody>' + rows + '</tbody></table>'
+      + assessorLine(r) + '</div>';
+  }
+
+  /* ---------- top-2 / bottom-2 ---------- */
+  /* Ranked by the MEAN WEIGHTED score per principle over exactly the rows on
+     screen, so the summary and the list can never describe different
+     populations. Note this is a different measure from the strongest/weakest
+     section on /admin/reports, which ranks by unweighted agreement % -- the two
+     can disagree, which is why each card names its measure. */
+  function principleRanking(rows){
+    var acc = {}, order = [];
+    rows.forEach(function(r){
+      if(!r.valid) return;                 /* withheld people carry no principles */
+      r.principles.forEach(function(p){
+        if(!acc[p.name]){ acc[p.name] = {name:p.name, tagline:p.tagline, sum:0, n:0, max:p.max};
+                          order.push(p.name); }
+        acc[p.name].sum += p.score; acc[p.name].n += 1;
+      });
+    });
+    var out = order.map(function(k){
+      var a = acc[k];
+      return {name:a.name, tagline:a.tagline, max:a.max,
+              mean:a.sum / a.n, pct:Math.round(100 * (a.sum / a.n) / a.max)};
+    });
+    out.sort(function(x,y){ return y.mean - x.mean; });
+    return {ranked: out, people: rows.filter(function(r){ return r.valid; }).length};
+  }
+
+  function cardHTML(title, note, items, cls, rankFrom){
+    return '<div class="admin-card lp-card"><h3>' + title + '</h3>'
+      + '<p class="lp-card-note">' + note + '</p>'
+      + items.map(function(p, i){
+          return '<div class="lp-prow"><span class="lp-badge ' + cls + '">'
+            + (rankFrom ? rankFrom - i : i + 1) + '</span>'
+            + '<span class="lp-pname">' + esc(p.tagline)
+            + '<span class="lp-ptag">' + esc(p.name) + '</span></span>'
+            + '<span class="lp-pscore">' + p.mean.toFixed(2) + ' / ' + p.max.toFixed(2)
+            + ' &middot; ' + p.pct + '%</span></div>';
+        }).join("") + '</div>';
+  }
+
+  function drawCards(rows){
+    var box = document.getElementById("lp-cards");
+    var rk = principleRanking(rows);
+    if(!rk.ranked.length){
+      box.innerHTML = '<div class="admin-card lp-card" style="grid-column:1/-1">'
+        + '<h3>Strongest and weakest</h3><p class="lp-card-note" style="margin:0">'
+        + 'Nobody in this scope has a valid score yet, so there is nothing to rank.</p></div>';
+      return;
+    }
+    /* The denominator is on the card on purpose: at this pilot's size a "top
+       principle" can rest on a handful of people, and the reader should see
+       that without having to count the rows below. */
+    var note = 'Mean weighted score across the <strong>' + rk.people
+             + '</strong> scored ' + (rk.people === 1 ? 'person' : 'people')
+             + ' in scope.';
+    box.innerHTML =
+        cardHTML("Top 2 &mdash; strongest", note, rk.ranked.slice(0, 2), "strong", 0)
+      + cardHTML("Bottom 2 &mdash; weakest", note,
+                 rk.ranked.slice(-2).reverse(), "weak", rk.ranked.length);
+  }
+
+  function draw(){
+    var rows = ROWS.filter(inScope).slice().sort(function(a,b){
+      var va = sortKey(sortCol, a), vb = sortKey(sortCol, b), c;
+      c = (typeof va === "string") ? va.localeCompare(vb) : va - vb;
+      if(c === 0) c = b.jgr - a.jgr;
+      return sortDir === "asc" ? c : -c;
+    });
+    Array.prototype.forEach.call(document.querySelectorAll(".lp-colbtn"), function(b){
+      b.classList.remove("asc","desc","has-filter");
+      if(b.dataset.col === sortCol) b.classList.add(sortDir);
+      var f = colFilters[b.dataset.col];
+      if(f && f.size) b.classList.add("has-filter");
+    });
+    var withheld = rows.filter(function(r){ return !r.valid; }).length;
+    var nfilters = Object.keys(colFilters).filter(function(c){ return colFilters[c].size; }).length;
+    document.getElementById("lp-scope").innerHTML =
+      "<strong>" + rows.length + "</strong> people in scope"
+      + (activeBG ? " &middot; " + esc((bgsInData().filter(function(b){return b.key===activeBG;})[0]||{}).label)
+                  : " &middot; all business groups")
+      + (activeBU ? " &middot; " + esc((busInScope().filter(function(b){return b.key===activeBU;})[0]||{}).label || activeBU) : "")
+      + (nfilters ? " &middot; " + nfilters + " column filter(s)" : "")
+      + (withheld ? " &middot; " + withheld + " without a valid score yet" : "");
+
+    drawCards(rows);
+
+    tb.innerHTML = (rows.length ? rows.map(function(r){
+      var key = r.eid || (r.name + "|" + r.bu);
+      var open = key === openKey;
+      /* The subline carries the three columns the phone layout hides. Rendered
+         at every width; CSS decides whether it shows. */
+      var sub = [("JG " + r.jg), r.title, r.dept]
+                  .filter(Boolean).map(esc).join(" &middot; ");
+      return '<tr class="lp-person' + (open ? " open" : "") + '" data-key="' + esc(key) + '">'
+        + '<td style="font-weight:600">' + esc(r.name)
+        + '<span class="lp-sub">' + sub + '</span></td>'
+        + '<td class="muted">' + esc(r.dept) + '</td>'
+        + '<td class="muted">' + esc(r.title) + '</td>'
+        + '<td>' + esc(r.jg) + '</td>'
+        + '<td class="lp-num">' + (r.valid ? r.score.toFixed(2) : '<span class="muted">&mdash;</span>') + '</td>'
+        + '<td><span class="lp-pill" data-band="' + (r.band || "None") + '">'
+        + (r.valid ? r.band : "Withheld") + '</span></td></tr>'
+        + (open ? '<tr class="lp-detail"><td colspan="6">' + detailHTML(r) + '</td></tr>' : "");
+    }).join("")
+      : '<tr><td colspan="6" class="muted" style="padding:18px 11px">'
+        + 'No people match the filters.</td></tr>');
+
+    Array.prototype.forEach.call(tb.querySelectorAll("tr.lp-person"), function(tr){
+      tr.onclick = function(){
+        openKey = (openKey === tr.dataset.key) ? null : tr.dataset.key; draw(); };
+    });
+  }
+
+  /* ---------- export ---------- */
+  if(!STANDALONE){
+    /* "All ... in one export" is a real choice, not the absence of one: it
+       means a single file covering everything. Picking it clears the
+       individual selections so the two can never disagree. And the export is
+       INDEPENDENT of the filters above -- what you are reading and what you
+       send to management are different questions. */
+    var XBG={all:true,picked:new Set()}, XBU={all:true,picked:new Set()}, XJG={all:true,picked:new Set()};
+    function slug(t){ return String(t).replace(/[^A-Za-z0-9]+/g,"_").replace(/^_+|_+$/g,""); }
+    function xFilename(){
+      var bg = XBG.all ? "AllBGs" : (XBG.picked.size===1 ? slug([...XBG.picked][0]) : XBG.picked.size+"_BGs");
+      var bu = XBU.all ? "AllBUs" : (XBU.picked.size===1 ? slug([...XBU.picked][0]) : XBU.picked.size+"_BUs");
+      var sel = document.getElementById("lp-x-cycle");
+      return "ChinHinLeadershipPrinciple_" + bg + "_" + bu + "_"
+           + slug(sel.options[sel.selectedIndex].text) + ".html";
+    }
+    function xBUs(){
+      var seen={}, out=[];
+      ROWS.forEach(function(r){
+        if(!XBG.all && !XBG.picked.has(r.bg)) return;
+        if(r.bu && !seen[r.bu]){ seen[r.bu]=1; out.push({key:r.bu,label:r.buLabel}); } });
+      return out;
+    }
+    function xRender(){
+      var bgX=document.getElementById("lp-x-bg"); bgX.innerHTML="";
+      bgX.appendChild(pill("All BGs in one export", XBG.all, function(){
+        XBG.all=true; XBG.picked.clear(); XBU.all=true; XBU.picked.clear(); xRender(); }));
+      bgsInData().forEach(function(b){
+        bgX.appendChild(pill(b.label, !XBG.all && XBG.picked.has(b.key), function(){
+          XBG.all=false; XBG.picked.has(b.key)?XBG.picked.delete(b.key):XBG.picked.add(b.key);
+          if(!XBG.picked.size) XBG.all=true;
+          XBU.all=true; XBU.picked.clear(); xRender(); })); });
+
+      var buX=document.getElementById("lp-x-bu"); buX.innerHTML="";
+      buX.appendChild(pill("All BUs in one export", XBU.all, function(){
+        XBU.all=true; XBU.picked.clear(); xRender(); }));
+      xBUs().forEach(function(b){
+        buX.appendChild(pill(b.label, !XBU.all && XBU.picked.has(b.key), function(){
+          XBU.all=false; XBU.picked.has(b.key)?XBU.picked.delete(b.key):XBU.picked.add(b.key);
+          if(!XBU.picked.size) XBU.all=true; xRender(); })); });
+
+      var jgX=document.getElementById("lp-x-jg"); jgX.innerHTML="";
+      jgX.appendChild(pill("All job grades", XJG.all, function(){
+        XJG.all=true; XJG.picked.clear(); xRender(); }));
+      D.grades.forEach(function(g){
+        jgX.appendChild(pill("JG "+g, !XJG.all && XJG.picked.has(g), function(){
+          XJG.all=false; XJG.picked.has(g)?XJG.picked.delete(g):XJG.picked.add(g);
+          if(!XJG.picked.size) XJG.all=true; xRender(); })); });
+
+      var n = ROWS.filter(function(r){
+        return (XBG.all || XBG.picked.has(r.bg)) && (XBU.all || XBU.picked.has(r.bu))
+            && (XJG.all || XJG.picked.has(r.jg)); }).length;
+      document.getElementById("lp-x-summary").textContent =
+        n + " people · " + (XBG.all?"all BGs":XBG.picked.size+" BG")
+          + ", " + (XBU.all?"all BUs":XBU.picked.size+" BU")
+          + ", " + (XJG.all?"all grades":XJG.picked.size+" grade(s)");
+      document.getElementById("lp-x-filename").textContent = xFilename();
+    }
+    var expBtn=document.getElementById("lp-exp-btn"), expPanel=document.getElementById("lp-exp-panel");
+    expBtn.onclick=function(e){ e.stopPropagation(); expPanel.hidden=!expPanel.hidden;
+                                if(!expPanel.hidden) xRender(); };
+    expPanel.onclick=function(e){ e.stopPropagation(); };
+    document.addEventListener("click", function(){ expPanel.hidden = true; });
+    document.getElementById("lp-x-cycle").onchange = xRender;
+    document.getElementById("lp-x-go").onclick = function(){
+      var q = new URLSearchParams();
+      q.set("cycle", document.getElementById("lp-x-cycle").value);
+      if(!XBG.all) XBG.picked.forEach(function(v){ q.append("bg", v); });
+      if(!XBU.all) XBU.picked.forEach(function(v){ q.append("bu", v); });
+      if(!XJG.all) XJG.picked.forEach(function(v){ q.append("jg", v); });
+      window.location = "{{ url_for('admin_export_principles') if not standalone else '' }}?" + q.toString();
+    };
+    xRender();
+  }
+
+  renderBGs(); renderBUs(); draw();
+})();
+</script>

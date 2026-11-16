@@ -1,0 +1,38 @@
+{# What's new, the release log (Chris, 2026-11-03, canvas [design canvas link removed] boards P1, P2, M2, S2):
+   the shared markup. The pop-out on the dashboard and admin Home (_whatsnew_popout.html), and the admin form's "As they'll see
+   it" (admin_whats_new.html), draw the same box from these macros; static/whatsnew.js draws the same notes in the account menu's
+   panel. A note's words are always text, never markup (Jinja escapes them). #}
+{% macro wn_icon(name) -%}
+<svg width="18" height="18" viewBox="0 0 24 24" aria-hidden="true">
+  {%- if name == 'list' -%}<path d="M9 6h11M9 12h11M9 18h11"/><path d="M4 6l1 1 2-2M4 12l1 1 2-2M4 18l1 1 2-2"/>
+  {%- elif name == 'clock' -%}<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>
+  {%- else -%}<path d="M3 10v4a1 1 0 0 0 1 1h2l6 4V5L6 9H4a1 1 0 0 0-1 1z"/><path d="M16 9a3.5 3.5 0 0 1 0 6"/><path d="M19 6a8 8 0 0 1 0 12"/>{%- endif -%}
+</svg>
+{%- endmacro %}
+{% macro wn_note(n) -%}
+<div class="wn-note">
+  <span class="wn-ic" aria-hidden="true">{{ wn_icon(n.icon) }}</span>
+  <div class="wn-nt">
+    <h3 class="wn-h">{{ n.title }}</h3>
+    <p class="wn-p">{{ n.body }}</p>
+    {% if n.link %}<a class="wn-go" href="{{ n.link.url }}" data-wn-go>{{ n.link.label }}</a>{% endif %}
+  </div>
+</div>
+{%- endmacro %}
+{# the box itself; `live` = the real pop-out (with its close ×), else the admin preview (no ×, no handlers) #}
+{% macro wn_card(notes, date, live=True) -%}
+<div class="modal-card wn-card" role="{{ 'dialog' if live else 'group' }}"{% if live %} aria-modal="true" aria-labelledby="wn-dlg-h"{% else %} aria-label="As they will see it"{% endif %}>
+  <div class="kpi-dlg-head">
+    {% if live %}<button type="button" class="kpi-dlg-x" data-wn-close aria-label="Close"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18"/></svg></button>{% endif %}
+    <p class="kpi-dlg-eyebrow" data-wn-eyebrow>What's new · {{ date }}</p>
+    <h2 class="kpi-dlg-title is-alone"{% if live %} id="wn-dlg-h"{% endif %}>New in <span class="ec-aip">AI+</span> OneHR</h2>
+  </div>
+  <div class="kpi-dlg-body"{% if live %} tabindex="0" role="region" aria-label="What's new"{% endif %} data-wn-notes>
+    {% for n in notes %}{{ wn_note(n) }}{% endfor %}
+  </div>
+  <div class="kpi-dlg-foot wn-foot">
+    <span class="wn-hint">Read these again any time: your account menu › What's new.</span>
+    <button type="button" class="wn-got"{% if live %} data-wn-close{% else %} tabindex="-1" aria-hidden="true"{% endif %}>Got it</button>
+  </div>
+</div>
+{%- endmacro %}

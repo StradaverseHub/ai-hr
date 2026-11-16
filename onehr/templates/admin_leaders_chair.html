@@ -1,0 +1,185 @@
+{% extends "base.html" %}
+{% block title %}Leaders{% endblock %}
+{% block body %}
+{#- Admin > Leaders > Executive Chairman (Chris, 2026-10-29; canvas board 3, [design canvas link removed]).
+    Super admin only, and only while ONEHR_CHAIR=1. One form, one Save: who holds the seat and which of his team
+    abilities stay his (no delegate any more, Chris 2026-11-06: nobody reviews his team, so there is nothing to stand in for). Rating his reports in the 360 is always his, and is no tick. -#}
+<div class="adm-headrow">
+  <p class="adm-lede">Who heads each business group, and the one seat above them: the Executive Chairman. The seat is one
+    person, picked from the list. He stays his reports' line manager and rates them in the 360. While Moderate is off nobody
+    moderates their KPI results and he sets their bands in his Talent Box; while Competency or Career Plan is off nobody reviews that part for them: their own submitted
+    competency self-assessment counts, and a Career Plan is final once they share it.</p>
+</div>
+<div class="adm-headrow ld-head">
+  <div class="seg-toggle" role="tablist" aria-label="Leader role">
+    <a role="tab" aria-selected="false" href="{{ url_for('admin_leaders', tab='hod') }}">HODs</a>
+    <a role="tab" aria-selected="false" href="{{ url_for('admin_leaders', tab='buceo') }}">BU CEOs</a>
+    <a role="tab" aria-selected="false" href="{{ url_for('admin_leaders', tab='bgceo') }}">BG CEOs</a>
+    <a role="tab" aria-selected="true" class="active" href="{{ url_for('admin_leaders_chair') }}">Executive Chairman</a>
+  </div>
+  <span class="muted small ec-super">Super admin only</span>
+</div>
+
+<form method="post" action="{{ url_for('admin_leaders_chair') }}" class="ec-form" data-ec-form
+      data-confirm="Save the Executive Chairman's seat? {{ chair.full_name if chair_ok else 'Nobody' }} holds it, and he keeps rating his reports in the 360{% for k, l, n in tick_rows if ticks[k] %}, {{ l | lower }}{% endfor %}."
+      data-confirm-title="Save the Executive Chairman's seat?" data-confirm-ok="Save the seat">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+  <input type="hidden" name="action" value="save">
+  <input type="hidden" name="team_posted" value="1">
+  <div class="ec-grid">
+    <section class="admin-card ec-card" aria-labelledby="ec-seat-h">
+      <h2 id="ec-seat-h">The seat</h2>
+      <div class="ec-field">
+        <span class="ec-lab" id="ec-chair-l">Who holds it</span>
+        <span class="pick" data-pick>
+          <input type="text" class="pick-q" placeholder="Search a name, Employee ID or job, then pick" autocomplete="off"
+                 aria-labelledby="ec-chair-l" value="{{ chair.full_name if chair_ok else '' }}">
+          <input type="hidden" class="pick-val" name="chair" value="{{ chair.employee_id if chair_ok else '' }}">
+        </span>
+        <p class="muted small">One person at a time. Picked from the list, never typed. Leave it empty and nobody holds the seat.</p>
+        {% if chair_ok %}<p class="muted small ec-now">{{ chair.employee_id }}{% if chair.job_title %} &middot; {{ chair.job_title | proper }}{% endif %} &middot; line manager of {{ reports }}</p>
+        {% elif chair %}<p class="ec-warn small" role="status">{{ chair.full_name }} ({{ chair.employee_id }}) is saved but has left, so nobody holds the seat now.</p>{% endif %}
+      </div>
+      <div class="ec-sep">
+        <span class="ec-lab">Their own review</span>
+        {% if urole %}<div class="ec-role"><span class="ec-pill">User role: {{ urole.name }}</span>
+          <span class="muted small">Opens: {{ urole.summary }}{% if urole.how != 'hand' %} (automatic){% endif %}</span></div>
+        {% else %}<p class="muted small">Pick the person to see their user role.</p>{% endif %}
+        <a class="ec-link" href="{{ url_for('admin_roles', tab='user') }}">Change on Roles &amp; access &rarr;</a>
+      </div>
+      <div class="ec-sep">
+        <span class="ec-lab">When they see results</span>
+        <p class="ec-fixed">Once results are released to leaders (step 1).</p>
+        <p class="muted small">Fixed, for every business group at once.</p>
+      </div>
+    </section>
+
+    <section class="admin-card ec-card" aria-labelledby="ec-team-h">
+      <h2 id="ec-team-h">What they can do</h2>
+      <span class="ec-lab ec-kick">Their team{% if chair_ok %} (line manager of {{ reports }}){% endif %}</span>
+      <label class="ec-tick"><input type="checkbox" checked disabled><span>Rate them in the 360</span><span class="muted small ec-n">as their line manager, always</span></label>
+      {% for k, l, n in tick_rows %}
+      <label class="ec-tick"><input type="checkbox" name="team" value="{{ k }}"{% if ticks[k] %} checked{% endif %}><span>{{ l }}</span><span class="muted small ec-n">{{ 'on: stays his' if ticks[k] else n }}</span></label>
+      {% endfor %}
+      <p class="muted small">These switch only for him. Roles &amp; access &rsaquo; Leader roles stays as it is for every other
+        line manager, and does not show his.</p>
+      <div class="ec-foot">
+        <a class="btn-link" href="{{ url_for('admin_leaders_chair') }}">Cancel</a>
+        <button type="submit" class="primary">Save</button>
+      </div>
+    </section>
+  </div>
+</form>
+{#- His leaders' Talent Box (Chris, 2026-10-30; canvas [design canvas link removed], board Main): who he places at
+    Year-End. Each action is its OWN post (not the Save form above), double-confirmed. The row controls name their form with the
+    form="" attribute, so no form wraps a table cell. -#}
+<section class="admin-card ec-box" aria-labelledby="ec-box-h">
+  <div class="ec-box-head">
+    <h2 id="ec-box-h">His leaders' Talent Box</h2>
+    {% if box.n_now is not none %}<span class="muted small">{{ box.cycle }} &middot; {{ box.n_now }} leader{{ '' if box.n_now == 1 else 's' }} in it now</span>{% endif %}
+  </div>
+  <p class="muted small ec-box-lede">Who he places at Year-End. His reports who are a BG CEO or lead a Group Chief group come in by themselves, and each BU CEO once their BG CEO locks their unit. Add anyone else he places here.</p>
+  {% if not box.chair_ok %}
+  <p class="ec-warn small" role="status">Pick the Executive Chairman above first: this is his box.</p>
+  {% else %}
+  <div class="ec-box-sec">
+    <span class="ec-lab">Come in by themselves &middot; {{ box.auto | length }}</span>
+    <span class="muted small">{% for x in box.auto %}{{ x.name }} ({{ x.role }}) &middot; {% endfor %}BU CEOs once their unit is locked</span>
+  </div>
+  <div class="ec-box-sec">
+    <span class="ec-lab">Added by you &middot; {{ box.added | length }}</span>
+    {% if box.locked %}<p class="muted small" role="status">His Talent Box is locked for {{ box.cycle }} and his decision is final, so nobody can be added, moved or taken out now.</p>{% endif %}
+    {% if box.added %}
+    <table class="ec-tbl">
+      <thead><tr><th scope="col">Name</th><th scope="col">Employee ID &middot; Job</th><th scope="col">In his box as</th><th scope="col">{{ box.cycle or 'This cycle' }}</th><th scope="col"><span class="sr-only">Remove</span></th></tr></thead>
+      <tbody>
+      {% for m in box.added %}
+      <tr>
+        <td class="ec-nm"><span class="ec-cut" title="{{ m.name }}">{{ m.name }}</span></td>
+        <td class="muted"><span class="ec-cut" title="{{ m.eid }}{% if m.job %} &middot; {{ m.job | proper }}{% endif %}">{{ m.eid }}{% if m.job %} &middot; {{ m.job | proper }}{% endif %}</span></td>
+        <td>
+          <select name="kind" form="ec-kf-{{ m.uid }}" class="ec-kind" aria-label="In his box as: {{ m.name }}" data-orig="{{ m.kind }}"{% if box.locked %} disabled{% endif %}>
+            {% for k, l in box.kinds %}<option value="{{ k }}"{% if k == m.kind %} selected{% endif %}>{{ l }}</option>{% endfor %}
+          </select>
+          <button type="submit" form="ec-kf-{{ m.uid }}" class="ec-kind-save" hidden>Save</button>
+        </td>
+        <td>{% if m.left %}<span class="ec-pill ec-pill-off">Has left</span>{% elif m.taking is none %}<span class="muted">&ndash;</span>{% elif m.taking %}<span class="ec-pill">Taking part</span>{% else %}<span class="ec-pill ec-pill-off">Not taking part</span>{% endif %}</td>
+        <td class="ec-act"><button type="submit" form="ec-rf-{{ m.uid }}" class="ec-remove"{% if box.locked %} disabled{% endif %}>Remove</button></td>
+      </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+    {% for m in box.added %}
+    <form method="post" action="{{ url_for('admin_leaders_chair') }}" id="ec-kf-{{ m.uid }}" class="ec-hf" data-ec-kindf data-name="{{ m.name }}" data-eid="{{ m.eid }}"
+          data-confirm="Move {{ m.name }} ({{ m.eid }}) in the Executive Chairman's Talent Box to {{ 'Senior leader' if m.kind == 'gc' else 'Group Chief' }}?"
+          data-confirm-title="Change where they sit?" data-confirm-ok="Change">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}"><input type="hidden" name="action" value="member_kind"><input type="hidden" name="leader" value="{{ m.eid }}">
+    </form>
+    <form method="post" action="{{ url_for('admin_leaders_chair') }}" id="ec-rf-{{ m.uid }}" class="ec-hf"
+          data-confirm="Take {{ m.name }} ({{ m.eid }}) out of his Talent Box? A move he made for them is dropped."
+          data-confirm-title="Take them out of his box?" data-confirm-ok="Remove from his box" data-confirm-tone="danger">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}"><input type="hidden" name="action" value="member_remove"><input type="hidden" name="leader" value="{{ m.eid }}">
+    </form>
+    {% endfor %}
+    {% else %}
+    <p class="muted small">Nobody added yet.</p>
+    {% endif %}
+    <p class="muted small">&quot;In his box as&quot; sets the pill he finds them under: Group Chiefs or Senior leaders. Someone who leads a Group Chief group is a Group Chief already.</p>
+  </div>
+  <div class="ec-box-sec">
+    <form method="post" action="{{ url_for('admin_leaders_chair') }}" class="ec-addf" data-ec-addf
+          data-confirm="Add this leader to the Executive Chairman's Talent Box as a Senior leader?"
+          data-confirm-title="Add to his box?" data-confirm-ok="Add to his box">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}"><input type="hidden" name="action" value="member_add"><input type="hidden" name="kind" value="senior">
+      <span class="ec-lab" id="ec-add-l">Add a leader</span>
+      <div class="ec-addrow">
+        <span class="pick" data-pick>
+          <input type="text" class="pick-q" placeholder="Search a name, Employee ID or job, then pick" autocomplete="off" aria-labelledby="ec-add-l" required{% if box.locked %} disabled{% endif %}>
+          <input type="hidden" class="pick-val" name="leader" value="">
+        </span>
+        <button type="submit" class="primary"{% if box.locked %} disabled{% endif %}>Add to his box</button>
+      </div>
+    </form>
+    <p class="muted small">Picked from the list, never typed: active employees only, never an admin or a leaver. They need not take part in the cycle: someone who doesn't comes in as Not placed and he places them by hand. What he locks goes through your result release like everyone's.</p>
+  </div>
+  {% endif %}
+</section>
+<script>
+// each box action's confirm names who and what, as the control stands when it is pressed
+(function () {
+  var add = document.querySelector('[data-ec-addf]');
+  if (add) {
+    var box = add.querySelector('.pick');
+    var upd = function () {
+      var q = box.querySelector('.pick-q'), v = box.querySelector('.pick-val');
+      var who = (v && v.value && q && q.value.trim()) ? q.value.trim() + ' (' + v.value + ')' : 'this leader';
+      add.setAttribute('data-confirm', 'Add ' + who + " to the Executive Chairman's Talent Box as a Senior leader?");
+    };
+    add.addEventListener('pick', upd); add.addEventListener('input', upd); upd();
+  }
+  [].forEach.call(document.querySelectorAll('.ec-kind'), function (sel) {
+    var f = document.getElementById(sel.getAttribute('form')); if (!f) return;
+    var btn = f.ownerDocument.querySelector('.ec-kind-save[form="' + f.id + '"]');
+    sel.addEventListener('change', function () {
+      var l = sel.options[sel.selectedIndex].textContent;
+      f.setAttribute('data-confirm', 'Move ' + f.getAttribute('data-name') + ' (' + f.getAttribute('data-eid') + ") in the Executive Chairman's Talent Box to " + l + '?');
+      if (btn) btn.hidden = (sel.value === sel.getAttribute('data-orig'));
+    });
+  });
+})();
+</script>
+<script>
+// the confirm box names who and what, as the form stands when Save is pressed
+(function () {
+  var f = document.querySelector('[data-ec-form]'); if (!f) return;
+  var picks = f.querySelectorAll('.pick');
+  function nm(box) { var q = box.querySelector('.pick-q'), v = box.querySelector('.pick-val'); return (v && v.value && q && q.value.trim()) || ''; }
+  function upd() {
+    var kept = [].map.call(f.querySelectorAll('input[name="team"]:checked'), function (c) { return c.parentNode.querySelector('span').textContent.toLowerCase(); });
+    f.setAttribute('data-confirm', "Save the Executive Chairman's seat? " + (nm(picks[0]) || 'Nobody') + ' holds it, and he keeps rating his reports in the 360' +
+      kept.map(function (k) { return ', ' + k; }).join('') + '.');
+  }
+  f.addEventListener('pick', upd); f.addEventListener('input', upd); f.addEventListener('change', upd); upd();
+})();
+</script>
+{% endblock %}

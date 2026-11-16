@@ -1,0 +1,70 @@
+{# The LM of N list panel in TEAM mode (Chris, 2026-11-09, canvas v6 P1 / P2; build brief "LM team reopen build brief 2026-11-09.md"): a
+   super admin opening a line manager's direct reports while a cycle runs. Three tiles (done of applicable per part), Search in, the
+   people TAKING PART with where each stands on the line manager's parts (a tick only where there is something to reopen or give more
+   time on), then a closed fold of those not taking part (today's pill and reason: no tick, no part columns). A name opens the person in
+   this panel, as in today's list. Ticking a person turns the panel's foot into the bar (N ticked, the part chips, Reopen or give
+   time…): static/lm_team.js, lmTeamBoot. Step 2 is _lm_team_step2.html. Read-only: every write is _lm_team_apply's. #}
+{% from "_search_in.html" import search_in_box %}
+{% set team = lst.team %}
+<div class="clp lmt" data-list-title="{{ lst.title }}" data-list-sub="{{ lst.sub }}" data-list-kicker="{{ lst.kicker }}"
+     data-list-full="{{ lst.full }}" data-list-n="{{ lst.n }}" data-lmt-src="{{ lst.base }}">
+  <template data-list-foot>
+    <span class="lmt-n" data-lmt-n hidden><b></b></span>
+    <span class="lmt-chips" data-lmt-chips hidden>{% for part in team.parts %}<button type="button" class="clp-chip" data-lmt-chip="{{ part }}" aria-pressed="false">{{ lst.labels[part] }}</button>{% endfor %}</span>
+    <button type="button" class="primary lmt-go" data-lmt-go hidden disabled>Reopen or give time&hellip;</button>
+  </template>
+  {% if team.taking %}
+  <div class="ri-tiles lmt-tiles">
+    {% for t in team.tiles %}<div class="ri-tile" style="--c:var(--{{ t.tone }})"><b>{{ t.n }}</b><span>{{ t.label }}</span>{% if t.na %}<span class="lmt-na">Not applicable</span>{% endif %}</div>{% endfor %}
+  </div>
+  {% endif %}
+  <div class="clp-tools">
+    <form class="clp-search" method="get" action="{{ lst.search.action }}" role="search">
+      {% for k, v in lst.search.hidden.items() %}<input type="hidden" name="{{ k }}" value="{{ v }}">{% endfor %}
+      {{ search_in_box(lst.search.menu, lst.search.qin, lst.search.q, lst.search.label, suggest=False, joined=True) }}
+    </form>
+  </div>
+  {% if team.taking %}
+  <table class="admin-table clp-table lmt-table" id="clp-lm-team">
+    <colgroup><col class="lmt-c-tick">{# the person 21%, each part the rest in equal shares #}<col style="width:25%">{% for part in team.parts %}<col>{% endfor %}</colgroup>
+    <thead><tr><th class="lmt-th-tick"><input type="checkbox" class="lmt-all" aria-label="Tick everyone who can be ticked"></th><th>Person</th>
+      {# a heading stays one short word where the full words don't fit the column (HEAD_SHORT's way): the full words on hover #}
+      {% set short = {'pm_mod': 'Moderation', 'tc_review': 'Competency', 'idp_review': 'Career Plan'} %}
+      {% for part in team.parts %}<th title="{{ lst.labels[part] }}" data-full="{{ lst.labels[part] }}">{{ short[part] }}</th>{% endfor %}</tr></thead>
+    <tbody>
+    {% for r in team.taking %}
+      <tr class="data-row">
+        <td class="lmt-tick"><input type="checkbox" class="lmt-pick" value="{{ r.id }}" data-acts="{{ r.acts | join(',') }}" aria-label="Tick {{ r.name }}"{% if not r.acts %} disabled title="Nothing to reopen or give more time on: every part is open for them, isn’t theirs, or its results are out"{% endif %}></td>
+        <td class="clp-who"><a href="{{ r.href }}" data-person-open="{{ r.id }}"><b>{{ r.name }}</b></a>
+          <span class="muted small clp-eid">{{ r.eid }}{% if r.title %} · {{ r.title | proper }}{% endif %}{% if r.jg != '' %} · JG {{ r.jg }}{% endif %}</span></td>
+        {% for part in team.parts %}{% set c = r.cells[part] %}<td class="small lmt-cell"><span class="clp-pill is-{{ c.tone }}">{{ c.word }}</span>{% if c.sub %}<span class="muted small clp-sub">{{ c.sub }}</span>{% endif %}</td>{% endfor %}
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  {% elif not team.out %}
+  <p class="muted">{{ lst.empty }}</p>
+  {% else %}
+  <p class="muted lmt-none">Nobody here is taking part in {{ lst.cyc.name }}.</p>
+  {% endif %}
+  {% if team.out %}
+  <details class="fold lmt-fold">
+    <summary class="muted small">{{ team.out | length }} not taking part</summary>
+    <table class="admin-table clp-table lmt-table lmt-out no-auto-table">
+      <colgroup><col class="lmt-c-tick"><col style="width:25%"><col></colgroup>
+      <tbody>
+      {% for r in team.out %}
+        <tr class="data-row">
+          <td class="lmt-tick"></td>
+          <td class="clp-who"><a href="{{ r.href }}" data-person-open="{{ r.id }}"><b>{{ r.name }}</b></a>
+            <span class="muted small clp-eid">{{ r.eid }}{% if r.title %} · {{ r.title | proper }}{% endif %}{% if r.jg != '' %} · JG {{ r.jg }}{% endif %}</span></td>
+          <td class="small lmt-cell" colspan="{{ team.parts | length }}"><span class="clp-pill is-{{ r.pill[1] }}" title="{{ r.pill[2] }}">{{ r.pill[0] }}</span></td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+    <button type="button" class="fold-less" data-fold-less>Show less</button>
+  </details>
+  {% endif %}
+</div>
+<script>window.lmTeamBoot && window.lmTeamBoot();</script>

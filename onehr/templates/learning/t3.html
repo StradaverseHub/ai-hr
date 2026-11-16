@@ -1,0 +1,70 @@
+{# The HRDC T3 attendance sheet for one day of a session (AI+ Learning phase 2, 2026-10-20; canvas board Admin-5): printed
+   pre-filled with the confirmed names, signed on paper at the door (Chris, decision 7: "HRDC still require hardcopy"),
+   then scanned back onto the session's page. No base.html: it is a page to print. #}
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>T3 · {{ s.title }} · {{ day | lms_day }}</title>
+<style>
+:root{--navy:#252A59;--ink:#1f2330;--line:#9aa0b4;--soft:#e4e7ef}
+*{box-sizing:border-box}
+body{margin:0;font:13px/1.45 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;color:var(--ink);background:#f5f6fa}
+.t3-bar{display:flex;gap:12px;align-items:center;justify-content:flex-end;max-width:1100px;margin:16px auto 0;padding:0 16px}
+.t3-bar button{font:inherit;font-weight:600;background:var(--navy);color:#fff;border:0;border-radius:8px;padding:8px 16px;cursor:pointer}
+.t3-bar a{color:var(--navy)}
+.t3{max-width:1100px;margin:12px auto 40px;background:#fff;border:1px solid var(--soft);border-radius:10px;padding:24px 28px}
+.t3 h1{font-size:18px;margin:0 0 2px}
+.t3 .k{font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:#5f6678}
+.t3 dl{display:grid;grid-template-columns:repeat(4,auto 1fr);gap:4px 10px;margin:14px 0 16px}
+.t3 dt{font-weight:600;color:#5f6678}
+.t3 dd{margin:0;border-bottom:1px solid var(--soft);min-height:18px}
+.t3 table{width:100%;border-collapse:collapse}
+.t3 th,.t3 td{border:1px solid var(--line);padding:6px 8px;text-align:left;vertical-align:middle}
+.t3 th{background:#f1f2f7;font-size:12px}
+.t3 td{height:34px}
+.t3 .n{width:34px;text-align:right}
+.t3 .sig{width:150px}
+.t3 .ic{width:140px}
+.t3 .foot{display:flex;gap:40px;margin-top:22px}
+.t3 .foot div{flex:1;border-top:1px solid var(--line);padding-top:4px;font-size:12px;color:#5f6678}
+.t3 .note{font-size:11.5px;color:#5f6678;margin:10px 0 0}
+@media print{
+  @page{size:A4 landscape;margin:12mm}
+  body{background:#fff}
+  .t3-bar{display:none}
+  .t3{border:0;border-radius:0;margin:0;max-width:none;padding:0}
+  .t3 th{-webkit-print-color-adjust:exact;print-color-adjust:exact}
+  tr{break-inside:avoid}
+}
+</style>
+</head>
+<body>
+<div class="t3-bar"><a href="{{ url_for('admin_learning_session', sid=s.id, day=day) }}">Back to the session</a><button type="button" onclick="window.print()">Print</button></div>
+<main class="t3">
+  <span class="k">Attendance list · HRDC T3</span>
+  <h1>{{ s.title }}</h1>
+  <dl>
+    <dt>Date</dt><dd>{{ day | lms_day }}</dd>
+    <dt>Time</dt><dd>{% if s.start_time %}{{ s.start_time }}{% if s.end_time %} – {{ s.end_time }}{% endif %}{% endif %}</dd>
+    <dt>Venue</dt><dd>{{ s.venue or '' }}</dd>
+    <dt>Session</dt><dd>{{ s.run_label or '' }}</dd>
+    <dt>Training provider</dt><dd>{{ s.vendor or '' }}</dd>
+    <dt>Trainer</dt><dd>{{ s.trainer or '' }}</dd>
+    <dt>HRDC-claimable</dt><dd>{{ 'Yes' if s.hrdc_claimable else 'No' }}</dd>
+    <dt>Confirmed</dt><dd>{{ sheet.n_confirmed }}</dd>
+  </dl>
+  <table>
+    <thead><tr><th class="n" scope="col">No.</th><th scope="col">Name</th><th scope="col">Employee ID</th><th scope="col">Company</th>
+      <th class="ic" scope="col">IC / passport no.</th><th class="sig" scope="col">Signature (AM)</th><th class="sig" scope="col">Signature (PM)</th></tr></thead>
+    <tbody>
+    {% for r in sheet.rows %}<tr><td class="n">{{ loop.index }}</td><td>{{ r.name }}{% if r.in_place_of %}<small style="display:block;color:#555">in place of {{ r.in_place_of }}</small>{% endif %}</td><td>{{ r.eid or '' }}</td><td>{{ r.unit or '' }}</td><td></td><td></td><td></td></tr>{% endfor %}
+    {% for i in range(5) %}<tr><td class="n">{{ sheet.rows | length + loop.index }}</td><td></td><td></td><td></td><td></td><td></td><td></td></tr>{% endfor %}
+    </tbody>
+  </table>
+  <p class="note">The blank rows are for walk-ins. Afterwards, upload the signed scan on the session's page and tick who signed: OneHR checks it against the clock-ins.</p>
+  <div class="foot"><div>Trainer's signature and date</div><div>Verified by (L&amp;D) and date</div></div>
+</main>
+</body>
+</html>

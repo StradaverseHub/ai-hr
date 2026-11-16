@@ -1,0 +1,67 @@
+{% extends "base.html" %}
+{% from "_adm_panel.html" import list_peek %}
+{% block title %}Career Plan{% endblock %}
+{% block body %}
+{# The Career Plan module's Overview (2026-10-10; split in two 2026-11-06, canvas PAzm9HkvkUTBsFGntZqKwd): first the people in the
+   cycle's review (the numbers Home shows), then the people who have a plan but are outside it, by why. #}
+<div class="adm-headrow">
+  <p class="adm-lede"><b>The {{ year }} plans.</b> A plan is written at Year-End for the year ahead, shared with the line
+    manager, and checked in on through the year.</p>
+</div>
+{# each number opens its people: the super admin's in the list panel (2026-10-20), everyone's the Progress page #}
+{% set prog = url_for('admin_module_progress', key='idp') %}
+{% macro lo(which, pop='in', reason=none, fbg=none) %}{% if nav_is_super %} data-list-open="{{ url_for('admin_list_view', key='idp-plans', which=which, pop=pop, reason=reason, fbg=fbg, fragment=1) }}"{% endif %}{% endmacro %}
+<div class="ipo-head">
+  <h2>In the {{ cname }}</h2>
+  <span class="muted small">{{ ov.people | thousands }} {{ 'person' if ov.people == 1 else 'people' }} in the review. These are the numbers Home shows.</span>
+</div>
+<div class="adm-tiles">
+  {% for t in ov.tiles %}
+  <a class="admin-card adm-tile adm-tile-link" href="{{ url_for('admin_module_progress', key='idp', **t.href) }}"{{ lo(t.which) }}><span class="muted small">{{ t.label }}</span><b>{{ t.n | thousands }}</b>
+    <span class="muted small">of {{ t.of | thousands }} {{ 'person' if t.of == 1 else 'people' }}{% if t.pct %} · {{ t.pct }}{% endif %}</span></a>
+  {% endfor %}
+  <a class="admin-card adm-tile adm-tile-link" href="{{ prog }}"{% if nav_is_super %} data-list-open="{{ url_for('admin_list_view', key='idp-checkins', fragment=1) }}"{% endif %}><span class="muted small">Check-ins this plan year</span><b>{{ ov.checkins | thousands }}</b>
+    <span class="muted small">on the in-review plans</span></a>
+</div>
+{% include "_admin_needs.html" %}
+<section class="admin-card">
+  <h2>By business group</h2>
+  {% if ov.in_rows %}
+  <div class="table-scroll"><table class="admin-table">
+    <thead><tr><th>Business group</th><th>People</th><th>Started</th><th>Shared</th><th>Closed</th><th>Not started</th></tr></thead>
+    <tbody>{% for r in ov.in_rows %}<tr{% if r.total %} class="ipo-total"{% endif %}><td>{{ r.bg if r.total else display_bg(r.bg) }}</td>
+      {% for which, n, show_pct in (('people', r.people, false), ('started', r.started, true), ('shared', r.shared, true), ('closed', r.closed, true), ('not_started', r.not_started, false)) %}
+      <td>{% if n and nav_is_super and (r.total or r.bg) %}<a href="{{ prog }}"{{ lo(which, fbg=(none if r.total else r.bg)) }}>{{ n | thousands }}</a>{% else %}{{ n | thousands }}{% endif %}{% if show_pct and pct(n, r.people) %}<span class="ipo-pct">{{ pct(n, r.people) }}</span>{% endif %}</td>{% endfor %}</tr>{% endfor %}</tbody>
+  </table></div>
+  {% else %}<p class="muted small pp-none">Nobody is in the review yet.</p>{% endif %}
+</section>
+<section class="admin-card">
+  <h2>Not in the cycle, writing a plan</h2>
+  {% if ov.out_rows %}
+  <p class="muted small ipo-lede">They keep their plan and can share it, and their line manager can close it. It is not counted on Home or in the numbers above.</p>
+  <div class="ipo-reasons">
+    {% for x in ov.out_boxes %}
+    {% if nav_is_super and x.people %}<a class="ipo-reason" href="{{ prog }}" title="{{ x.why }}"{{ lo('people', 'out', x.key) }}>{% else %}<div class="ipo-reason" title="{{ x.why }}">{% endif %}
+      <span class="muted small">{{ x.label }}</span><b>{{ x.people | thousands }} {{ 'person' if x.people == 1 else 'people' }}</b>
+      <span class="muted small">{{ x.started | thousands }} started · {{ x.shared | thousands }} shared · {{ x.closed | thousands }} closed</span>
+    {% if nav_is_super and x.people %}</a>{% else %}</div>{% endif %}
+    {% endfor %}
+  </div>
+  <div class="table-scroll"><table class="admin-table">
+    <thead><tr><th>Business group</th><th>People</th><th>Started</th><th>Shared</th><th>Closed</th><th>Not started</th></tr></thead>
+    <tbody>{% for r in ov.out_rows %}<tr{% if r.total %} class="ipo-total"{% endif %}><td>{{ r.bg if r.total else display_bg(r.bg) }}</td>
+      {% for which, n in (('people', r.people), ('started', r.started), ('shared', r.shared), ('closed', r.closed), ('not_started', r.not_started)) %}
+      <td>{% if n and nav_is_super and (r.total or r.bg) %}<a href="{{ prog }}"{{ lo(which, 'out', none, (none if r.total else r.bg)) }}>{{ n | thousands }}</a>{% else %}{{ n | thousands }}{% endif %}</td>{% endfor %}</tr>{% endfor %}</tbody>
+  </table></div>
+  {% else %}<p class="muted small pp-none">Everyone with a Career Plan is in the {{ cname }}.</p>{% endif %}
+</section>
+<section class="admin-card">
+  <h2>Dates</h2>
+  <div class="table-scroll"><table class="admin-table adm-dates">
+    <thead><tr><th>Who</th><th>What it covers</th><th>Opens</th><th>Closes</th><th>Now</th></tr></thead>
+    <tbody>{% for d in dates %}<tr><td>{{ d.who }}</td><td>{{ d.what }}</td><td>{{ d.opens }}</td><td>{{ d.closes }}</td>
+      <td><span class="adm-now is-{{ d.state }}">{{ d.now }}</span></td></tr>{% endfor %}</tbody>
+  </table></div>
+</section>
+{% if nav_is_super %}{{ list_peek() }}{% endif %}
+{% endblock %}

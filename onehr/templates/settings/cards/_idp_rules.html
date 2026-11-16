@@ -1,0 +1,66 @@
+{# Settings card: the Career Plan's plan rules (2026-10-10, moved off the IDP settings page onto the module's Settings
+   page). Posts to admin_idp_config, which brings you back here. Org-wide, so super admin only (the route enforces it). #}
+<form method="post" action="{{ url_for('admin_idp_config') }}" class="adm-set-form"
+      data-confirm="Save the plan rules? They apply to every employee's development plan from now on: how many goals a plan needs, how many actions each goal must fill, and whether employees can draft with AI. Plans already shared are not reopened."
+      data-confirm-ok="Save">
+  <input type="hidden" name="next" value="{{ (settings_next ~ '#plan-rules') if settings_next else '' }}">
+  <div class="adm-subcard">
+    <p class="succ-stat__label">Actions per goal</p>
+    <p class="muted small">
+      Every goal carries three ways to develop it:
+      {% for m in modes %}<strong>{{ m['label'] }}</strong> ({{ m['pct'] }}%){% if not loop.last %}, {% endif %}{% endfor %}.
+      How many a goal must actually fill in is your call.
+    </p>
+    {% for key, label in rules.items() %}
+    <label class="radio-line">
+      <input type="radio" name="action_rule" value="{{ key }}"
+             {{ 'checked' if rule == key else '' }}>
+      <span>{{ label }}</span>
+    </label>
+    {% endfor %}
+    <details class="muted small">
+      <summary>Why this matters</summary>
+      <p><strong>On requiring all three:</strong>
+        70:20:10 is a description of how people tend to learn, not a quota each
+        goal owes. Requiring all three turns a prompt into paperwork and tends to
+        produce a padded course line rather than a better plan. It's here because
+        some organisations genuinely want it &mdash; but <em>at least one</em> is the
+        default for a reason.</p>
+    </details>
+  </div>
+
+  <div class="adm-subcard">
+    <p class="succ-stat__label">Goals per plan</p>
+    <div class="succ-form">
+      <label class="muted small">Minimum
+        <input type="number" name="min_goals" min="1" step="1" value="{{ min_goals }}"></label>
+      <label class="muted small">Maximum
+        <input type="number" name="max_goals" min="0" step="1" value="{{ max_goals }}"></label>
+    </div>
+    <p class="muted small">Set the maximum to <strong>0</strong>
+      for no ceiling. The employee's plan page counts against this as they add
+      goals, so they see the limit before they hit it.</p>
+  </div>
+
+  <div class="adm-subcard">
+    <p class="succ-stat__label">Draft with AI</p>
+    <label class="switch">
+      <input type="checkbox" name="ai_enabled" value="1" {{ 'checked' if ai_on else '' }}>
+      <span class="track" aria-hidden="true"></span>
+      <span class="switch-label">Let employees draft their development actions with AI</span>
+    </label>
+    <p class="muted small">
+      Drafting is grounded in the goal the person already named &mdash; it suggests
+      <em>how</em> to develop something, never what to develop.
+      {% if not ai_configured %}
+      <br><strong>Not available on this server:</strong> no AI model is
+      configured, so the button stays hidden whatever this is set to.
+      {% endif %}
+    </p>
+  </div>
+
+  <div class="actions">
+    <button type="submit" class="primary"
+            {% if not nav_is_super %}disabled title="Only a super admin can change org-wide settings"{% endif %}>Save</button>
+  </div>
+</form>

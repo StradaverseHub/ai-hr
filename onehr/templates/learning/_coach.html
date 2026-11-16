@@ -1,0 +1,37 @@
+{# The learning coach (2026-10-22; canvas [design canvas link removed] boards 8B, 8C, 2C): Ask
+   OneHR's panel, on the LEFT as Ask OneHR always is (Chris's canvas comment), for AI+ Learning. It answers from the
+   page, the brochure, the calendar and the person's own plan, finds runs open to them with seats as cards, and never
+   registers anyone: Register opens their own request. Needs `coach` (lms_coach_ctx). #}
+<aside class="gp lco{{ ' is-offline' if not coach.ai else '' }}" id="lco" aria-labelledby="lco-title"
+       data-url="{{ url_for('learning_coach') }}" data-page="{{ coach.page }}" data-available="{{ '1' if coach.ai else '0' }}">
+  <div class="gp-head">
+    <span class="gp-mark" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M12 2l2.4 7.6L22 12l-7.6 2.4L12 22l-2.4-7.6L2 12l7.6-2.4z"></path></svg></span>
+    <div class="gp-ht"><h2 id="lco-title">Ask OneHR</h2><p>{{ coach.sub }}</p></div>
+    {% if not coach.ai %}<span class="gp-pill" title="The coach is off right now">Off</span>{% endif %}
+    <button type="button" class="gp-fold" id="lco-fold" aria-label="Fold the learning coach away" title="Fold away">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M11 17l-5-5 5-5M18 17l-5-5 5-5"></path></svg></button>
+  </div>
+  <div class="gp-log" id="lco-log" aria-live="polite"></div>
+  <div class="gp-chips lco-quick" id="lco-quick"></div>
+  <form class="gp-form" id="lco-form" autocomplete="off">
+    <label for="lco-input" class="sr-only">Ask the learning coach</label>
+    <div class="gp-box">
+      <input id="lco-input" type="text" maxlength="600" placeholder="{{ 'Ask about learning…' if coach.ai else 'The coach is off right now' }}"{{ ' disabled' if not coach.ai }}>
+      <button type="submit" class="gp-send{{ ' is-offline' if not coach.ai }}" aria-label="Ask"{{ ' disabled' if not coach.ai }}>
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6"></path></svg></button>
+    </div>
+    <p class="gp-foot">Answers come from this page, the brochure, the calendar and your own plan. It never registers you: Register opens your request to check and send.</p>
+  </form>
+</aside>
+<aside class="gp-rail" id="lco-rail" aria-label="The learning coach, folded" hidden>
+  <button type="button" class="gp-open" id="lco-open" aria-label="Open the learning coach">
+    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2l2.4 7.6L22 12l-7.6 2.4L12 22l-2.4-7.6L2 12l7.6-2.4z"></path></svg>
+  </button>
+  <span class="gp-rail-lab" aria-hidden="true">Learning coach</span>
+</aside>
+<script>
+  /* folded or open, as this person left it, before the page paints (this browser only) */
+  (function () { try { if (localStorage.getItem("onehr.coach.folded") === "1") {
+    document.getElementById("lco").hidden = true; document.getElementById("lco-rail").hidden = false; } } catch (e) {} })();
+</script>
+<script src="{{ url_for('static', filename='learning_coach.js') }}?v={{ asset_v }}"></script>

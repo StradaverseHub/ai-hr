@@ -1,0 +1,48 @@
+{# KPI SETTING as a CONVERSATION. The employee builds their scorecard by talking
+   to the setting assistant in their own words; the agent maps to eligible library
+   KPIs and records via validated server tools; the server enforces the 100%-weight
+   rule and every target, and only the person's explicit Submit proposes the set.
+   Same shell as the check-in chat (review.html), a different agent. #}
+{% extends "base.html" %}
+{% block title %}KPI Setting{% endblock %}
+{% block back_button %}{% endblock %}
+{% block body %}
+{% from "_review_icons.html" import rvicon %}
+
+{# The demo controls live in the navy banner (base.html), so the body is all
+   panel + chat. Top band mirrors .rv-wrap (224px 1fr): the Dashboard / AI
+   toggle above the rail, the scorecard summary row above the chat. #}
+<div class="rv-topbar">
+  <div class="rv-topbar-nav">{% include "_nav_toggle.html" %}</div>
+  <div class="rv-topbar-main">
+    <div class="rv-kpi-pin" id="rv-kpi-pin"></div>
+  </div>
+</div>
+
+<div class="rv-wrap">
+  <div class="rv-railcol">
+    {% include "_review_rail.html" %}
+  </div>
+
+  <div class="rv-main">
+    <div class="rv-chat" id="rv-chat"
+         data-history-url="{{ url_for('review_setting_chat_history') }}"
+         data-send-url="{{ url_for('review_setting_chat') }}"
+         {% set _wn = chat_window_note('pm_setting') %}{% if _wn %}data-window-closed="{{ _wn }}"{% endif %}
+         data-propose-url="{{ url_for('review_setting_propose') }}"
+         data-unit-url="{{ url_for('review_setting_unit') }}"
+         {% if not agent_available %}data-unavailable="1"{% endif %}>
+      <div class="rv-chat-log" id="rv-chat-log" aria-live="polite"></div>
+      <div class="rv-chat-quick" id="rv-chat-quick"></div>
+      <form class="rv-composer" id="rv-chat-form" autocomplete="off" onsubmit="return false">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+        <textarea id="rv-chat-input" rows="1" placeholder="Type your reply…"
+                  aria-label="Message the setting assistant"></textarea>
+        <button type="submit" class="rv-send" id="rv-chat-send" aria-label="Send" title="Send">{{ rvicon('send') }}</button>
+      </form>
+    </div>
+  </div>
+</div>
+
+<script src="{{ url_for('static', filename='setting_chat.js') }}?v={{ asset_v }}" defer></script>
+{% endblock %}

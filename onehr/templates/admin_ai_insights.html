@@ -1,0 +1,67 @@
+{% extends "base.html" %}
+{% from "_adm_panel.html" import list_peek %}
+{% block title %}AI insights{% endblock %}
+{% block body %}
+{# Audit and usage > AI insights (Chris, 2026-11-06; canvas [design canvas link removed], boards 1 and 2): how the AI
+   insights AI+ writes ahead are doing. Counts only; what an insight says is on the person's own page (the Overview's cards, for an
+   admin whose role has the item). The super admin's alone. #}
+<p class="adm-lede">AI+ writes each insight in the background when someone submits or a leader locks, so it is ready when the leader opens
+  their page. Counts only: what an insight says is on the person's own page. Finished work is kept for 2 days. Times are Malaysia time.</p>
+
+{% set T = h.tot %}{% set R = h.ready %}{% set S = h.service %}
+<div class="adm-tiles adm-tiles-5">
+  <div class="admin-card adm-tile"><span class="muted small">Written · last 2 days</span><b>{{ T.written | thousands }}</b>
+    <span class="muted small">{{ T.uptodate | thousands }} more already up to date</span></div>
+  <div class="admin-card adm-tile"><span class="muted small">Ready for line managers</span>
+    <b>{% if R.m %}{{ (100 * R.n / R.m) | round | int }}%{% else %}&mdash;{% endif %}</b>
+    <span class="muted small">{{ R.n | thousands }} of {{ R.m | thousands }} who submitted</span></div>
+  <div class="admin-card adm-tile"><span class="muted small">Waiting now</span><b>{{ T.waiting | thousands }}</b>
+    <span class="muted small{{ ' ais-amber' if T.over_hour }}">{{ T.over_hour | thousands }} over an hour</span></div>
+  {% if T.failed %}
+  <a class="admin-card adm-tile adm-tile-link" href="{{ url_for('admin_list_view', key='ai-failed') }}" data-list-open="{{ failed_url }}"><span class="muted small">Failed</span><b class="ais-bad">{{ T.failed | thousands }}</b><span class="muted small">See who &rsaquo;</span></a>
+  {% else %}
+  <div class="admin-card adm-tile"><span class="muted small">Failed</span><b>0</b><span class="muted small">nothing to try again</span></div>
+  {% endif %}
+  <div class="admin-card adm-tile"><span class="muted small">AI service · 24 hours</span><b>{{ S.calls | thousands }}</b>
+    <span class="muted small">calls{% if S.busiest_h %} · busiest hour {{ S.busiest_h }}{% endif %}</span></div>
+</div>
+
+<section class="admin-card" aria-label="By part">
+  <h2>By part <span class="muted small">(last 2 days)</span></h2>
+  <div class="table-scroll">
+  <table class="admin-table ais-health" id="ais-by-part">
+    <thead><tr><th>Part</th><th>Read by</th><th class="num">Written</th><th class="num">Up to date</th><th class="num">Waiting</th><th class="num">Over 1 h</th><th class="num">Failed</th><th>Last written</th></tr></thead>
+    <tbody>
+      {% for r in h.rows %}
+      <tr><td>{% if r.main %}<b>{{ r.part }}</b>{% else %}{{ r.part }}{% endif %}</td><td class="muted small">{{ r.who }}</td>
+        <td class="num">{{ r.written | thousands }}</td><td class="num">{{ r.uptodate | thousands }}</td><td class="num">{{ r.waiting | thousands }}</td>
+        <td class="num{{ ' ais-amber' if r.over_hour }}">{{ r.over_hour | thousands }}</td>
+        <td class="num">{% if r.failed %}<a class="ais-bad" href="{{ url_for('admin_list_view', key='ai-failed') }}" data-list-open="{{ failed_url }}">{{ r.failed | thousands }}</a>{% else %}0{% endif %}</td>
+        <td class="muted small ais-nw">{{ r.last or '—' }}</td></tr>
+      {% endfor %}
+      <tr class="ais-tot"><td>All parts</td><td></td><td class="num">{{ T.written | thousands }}</td><td class="num">{{ T.uptodate | thousands }}</td><td class="num">{{ T.waiting | thousands }}</td><td class="num">{{ T.over_hour | thousands }}</td><td class="num">{{ T.failed | thousands }}</td><td></td></tr>
+    </tbody>
+  </table>
+  </div>
+  <p class="muted small ais-foot-note">Up to date: nothing it reads had changed, so no AI call was made. Waiting over an hour is usually an insight held until something it reads is done first (a file, the plan's fit). Failed: AI+ tried {{ 3 }} times; the leader's page still writes it when they open it. The Talent Box is written for the BG CEO and Group Chief only; it is not on a person's page.</p>
+</section>
+
+<section class="admin-card" aria-label="AI service">
+  <h2>AI service <span class="muted small">(last 24 hours, every AI call in OneHR, not only insights)</span></h2>
+  <div class="ais-stats">
+    <div><span class="muted small">Calls answered</span><b>{{ S.calls | thousands }}</b></div>
+    <div><span class="muted small">Busiest hour</span><b>{{ S.busiest_n | thousands }}</b><span class="muted small">{% if S.busiest_h %}calls at {{ S.busiest_h }}{% else %}no calls{% endif %}</span></div>
+    <div><span class="muted small">Answered by the backup</span><b>{{ S.backup | thousands }}</b></div>
+    <div><span class="muted small">Not answered</span><b class="{{ 'ais-amber-b' if S.none }}">{{ S.none | thousands }}</b><span class="muted small">after every retry</span></div>
+    <div><span class="muted small">Failed attempts</span><b>{{ S.err_total | thousands }}</b>
+      <span class="muted small">429: {{ S.errs['429'] }} · 5xx: {{ S.errs['5xx'] }} · network: {{ S.errs['net'] }} · timeout: {{ S.errs['timeout'] }} · other: {{ S.errs['other'] }}</span></div>
+  </div>
+  <div class="ais-bars" role="img" aria-label="AI calls by hour, Malaysia time, the last 24 hours{% if S.busiest_h %}, busiest {{ S.busiest_h }}{% endif %}">
+    {% for b in S.bars %}<span class="{{ 'pk' if b.peak }}" style="height: {{ b.pct }}%" title="{{ b.h }} · {{ b.n | thousands }} call{{ '' if b.n == 1 else 's' }}"></span>{% endfor %}
+  </div>
+  <div class="ais-axis"><span>{{ S.bars[0].h }}</span><span>{{ S.bars[6].h }}</span><span>{{ S.bars[12].h }}</span><span>{{ S.bars[18].h }}</span><span>{{ S.bars[23].h }}</span></div>
+  <p class="muted small ais-foot-note">Hours are Malaysia time, oldest to newest. The counts are what OneHR keeps per hour and AI service; the 25-second limit and each reply's time are not counted.</p>
+</section>
+
+{{ list_peek() }}
+{% endblock %}

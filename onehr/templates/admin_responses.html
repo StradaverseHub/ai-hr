@@ -1,0 +1,51 @@
+{% extends "base.html" %}
+{% from "_paste_chip.html" import paste_chip %}
+{% block title %}Answers - {{ a['assessor_name'] }} on {{ s['full_name'] }}{% endblock %}
+{% block body %}
+{% set RATING_LABELS = {'yes': 'Demonstrate', 'no': 'Developing', None: '—'} %}
+<div class="page-head">
+  <div>
+    <h1>{{ a['assessor_name'] }}'s feedback</h1>
+    <p class="muted">
+      On <strong>{{ s['full_name'] }}</strong> &middot;
+      <span class="rel-chip rel-{{ a['relationship'] }}">{{ REL_LABEL[a['relationship']] }}</span> &middot;
+      {{ answered }} answered &middot; score {{ '%g'|format(score) }} / {{ '%g'|format(max_s) }}
+    </p>
+  </div>
+  <div class="page-head-right">
+    <a class="btn-link" href="{{ url_for('admin_subject_detail', uid=s['id']) }}">Back to results</a>
+  </div>
+</div>
+
+<div class="card">
+  {% for crit in grouped %}
+    <h3 class="skill-group-head">{{ loop.index }}. {{ crit['name'] }}</h3>
+    <table class="agree-table">
+      <tbody>
+        {% for st in crit['statements'] %}
+        <tr>
+          <td class="stmt-text">{{ st['text'] }}</td>
+          <td style="text-align:right;width:140px">
+            {% if st['answer'] == 'yes' %}<span class="potential-pill" data-band="High"><strong>Demonstrate</strong></span>
+            {% elif st['answer'] == 'no' %}<span class="potential-pill" data-band="Low"><strong>Developing</strong></span>
+            {% else %}<span class="muted">—</span>{% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% if crit['comment'] %}
+    <div class="resp-comment">
+      <div class="resp-comment-head">Their comment</div>
+      <p>{{ crit['comment'] }}</p>
+    </div>
+    {% endif %}
+  {% endfor %}
+  {% if overall_remark %}
+  <div class="resp-comment">
+    <div class="resp-comment-head">Their overall remark{{ paste_chip(paste) }}</div>
+    <p>{{ overall_remark }}</p>
+  </div>
+  {% endif %}
+</div>
+{% endblock %}

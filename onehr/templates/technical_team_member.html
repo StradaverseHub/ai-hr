@@ -1,0 +1,376 @@
+{% extends "base.html" %}
+{% block title %}Technical competency — {{ subject['full_name'] }}{% endblock %}
+{% block body %}
+{% set RATING_LABELS = {'yes': 'Demonstrate', 'no': 'Developing'} %}
+{% set RATING_TIPS = {'yes': 'He/she shows this ≥ 70% of the time',
+                      'no':  'He/she is still growing into it'} %}
+
+<div class="page-head">
+  <div>
+    <h1>{{ subject['full_name'] }}{% if cycle %} <span class="season-badge">{{ cycle['name'] }}</span>{% endif %}</h1>
+    <p class="muted">
+      {% if subject['job_grade'] %}JG {{ subject['job_grade'] }} &middot; {% endif %}
+      {{ subject['job_title'] | proper or '-' }} &middot; {{ subject['department'] | proper or '-' }}
+    </p>
+  </div>
+  <div class="page-head-right">
+    {% if assessment['status'] == 'reviewed' %}
+    <span class="status-pill status-reviewed">Approved</span>
+    {% elif assessment['status'] == 'submitted' %}
+    <span class="status-pill status-submitted">Awaiting your review</span>
+    {% endif %}
+  </div>
+</div>
+
+{% include "_tc_switcher.html" %}
+
+{% if not submitted %}
+<div class="admin-card">
+  <p class="muted" style="margin:0">{{ subject['full_name'] }} hasn't submitted their
+    technical competency assessment yet. A draft in progress is theirs to finish —
+    you'll see it here once they submit.</p>
+</div>
+{% else %}
+
+<p class="muted" style="margin:0 0 14px">
+  Their own rating is pre-selected on each competency. Change it only where you see it
+  differently — anything you change is ringed so the difference is visible at a glance,
+  and their original answer is kept on the record either way.
+</p>
+
+<form method="post" id="tc-review-form"
+      action="{{ url_for('technical_review_approve', subject_id=subject['id']) }}" data-no-busy>
+  {% for g in groups %}
+  {% set sec_idx = loop.index %}
+  {# Same layout as the employee's own form -- navy section header, statement
+     table, ratings on the right, remarks underneath. The manager's extra
+     column is Your rating; theirs is shown as Self-rating beside it. #}
+  <div class="criterion">
+    <div class="crit-head">
+      <div class="crit-name">{{ g['name'] }}</div>
+    </div>
+    <table class="stmt-table tc-review-table">
+      <thead><tr>
+        <th></th>
+        <th class="tc-selfcol">Self-rating</th>
+        <th class="stmt-action">{{ 'Your rating' if can_review else 'Final rating' }}</th>
+      </tr></thead>
+      <tbody>
+      {% for r in g['rows'] %}
+        {% set lbl = 'tc-lbl-' ~ r['assignment_id'] %}
+        <tr data-assignment="{{ r['assignment_id'] }}">
+          <td class="stmt-text" id="{{ lbl }}">
+            <span class="stmt-num">{{ sec_idx }}.{{ loop.index }}</span>
+            {{ r['title'] }}
+            {% if r['ability_items'] or r['proficiency_description'] %}
+            <span class="info-tip" tabindex="0" role="button"
+                  aria-label="What this covers: {{ r['title'] }}">
+              <svg class="info-icon-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                   stroke-width="2" stroke-linecap="round" aria-hidden="true">
+                <circle cx="12" cy="12" r="9"/><path d="M12 16v-4"/><path d="M12 8h.01"/></svg>
+              <span class="info-tip-body">
+                {% if r['proficiency_description'] %}<strong>{{ r['proficiency_description'] }}</strong>{% endif %}
+                {% if r['ability_items'] %}<br>{{ r['ability_items'] }}{% endif %}
+              </span>
+            </span>
+            {% endif %}
+            {% if r['proficiency_description'] %}
+            <span class="stmt-sub">{{ r['proficiency_description'] }}</span>
+            {% endif %}
+          </td>
+          <td class="tc-selfcol">
+            {% if r['answer'] %}
+              <span class="tc-self-answer{{ ' is-moderated' if r['moderated'] }}">{{ RATING_LABELS[r['answer']] }}</span>
+            {% else %}<span class="muted small">&mdash;</span>{% endif %}
+          </td>
+          <td class="stmt-action">
+            <div class="rating-buttons" role="radiogroup" aria-labelledby="{{ lbl }}"
+                 data-field="mgr_{{ r['assignment_id'] }}">
+              {% for val in ['yes','no'] %}
+              <label class="rating-btn rating-{{ val }}" data-tip="{{ RATING_TIPS[val] }}">
+                <input type="radio" name="mgr_{{ r['assignment_id'] }}" value="{{ val }}"
+                       aria-label="{{ RATING_LABELS[val] }}"
+                       {% if r['effective'] == val %}checked{% endif %}
+                       {% if not can_review %}disabled{% endif %}>
+                <span aria-hidden="true">{{ RATING_LABELS[val] }}</span>
+              </label>
+              {% endfor %}
+            </div>
+          </td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+
+    {# Two controls, both right-aligned: what THEY wrote (read-only), and the
+       manager's own remark. Theirs only appears when there is one to read. #}
+    <div class="tc-remark-row">
+      {% if g['remark'] %}
+      <details class="crit-comment tc-their-remark">
+        <summary class="crit-comment-toggle">
+          <span class="crit-comment-btn">
+            Their comment
+            <span class="crit-comment-chev" aria-hidden="true">&#9662;</span>
+          </span>
+        </summary>
+        <div class="crit-comment-body">
+          <p class="muted small" style="margin:0 0 4px;font-weight:600">
+            {{ subject['full_name'].split(' ')[0] }} wrote</p>
+          <p style="margin:0">{{ g['remark'] }}</p>
+        </div>
+      </details>
+      {% endif %}
+
+      {% if can_review %}
+      <details class="crit-comment"{% if g['manager_remark'] %} open{% endif %}>
+        <summary class="crit-comment-toggle">
+          <span class="crit-comment-peek">{{ g['manager_remark'] or '' }}</span>
+          <span class="crit-comment-btn">
+            {{ 'Your comment' if g['manager_remark'] else 'Add a comment' }} <span class="opt">(optional)</span>
+            <span class="crit-comment-chev" aria-hidden="true">&#9662;</span>
+          </span>
+        </summary>
+        <div class="crit-comment-body">
+          <label for="mgr-remark-{{ sec_idx }}">
+            Anything to add about their {{ g['name'] }} competencies?
+          </label>
+          <textarea id="mgr-remark-{{ sec_idx }}" class="tc-sec-remark" rows="3" maxlength="2000"
+                    data-category="{{ g['name'] }}"
+                    placeholder="Why you rated it this way (optional)">{{ g['manager_remark'] or '' }}</textarea>
+          {% if ai_enabled %}
+          <div class="ai-draft"
+               data-endpoint="{{ url_for('technical_review_section_draft_ai', subject_id=subject['id']) }}"
+               data-category="{{ g['name'] }}" data-limit="{{ ai_limit }}"
+               data-remaining="{{ g['ai_remaining'] if g['ai_remaining'] is not none else ai_limit }}"
+               data-reset="{{ g['ai_reset'] or 0 }}">
+            <div class="ai-split">
+              <button type="button" class="ai-draft-btn btn-link" aria-haspopup="true" aria-expanded="false">&#10024; Draft with AI <span class="ai-caret" aria-hidden="true">&#9662;</span></button>
+              <div class="ai-menu" role="menu" hidden>
+                <div class="ai-menu-head">Choose what AI should do</div>
+                <button type="button" class="ai-cmd" role="menuitem" data-cmd="polish">
+                  <span class="ai-cmd-ico">&#10024;</span><span>Polish &amp; improve<small>Clearer, more specific</small></span></button>
+                <button type="button" class="ai-cmd" role="menuitem" data-cmd="shorter">
+                  <span class="ai-cmd-ico">&#10134;</span><span>Make it shorter</span></button>
+                <button type="button" class="ai-cmd" role="menuitem" data-cmd="longer">
+                  <span class="ai-cmd-ico">&#10133;</span><span>Make it longer / add detail</span></button>
+                <button type="button" class="ai-cmd" role="menuitem" data-cmd="formal">
+                  <span class="ai-cmd-ico">&#128084;</span><span>More formal</span></button>
+                <div class="ai-sep"></div>
+                <button type="button" class="ai-cmd" role="menuitem" data-cmd="grammar">
+                  <span class="ai-cmd-ico">&#9989;</span><span>Fix spelling &amp; grammar</span></button>
+              </div>
+            </div>
+            <span class="ai-status" aria-live="polite"></span>
+            <span class="ai-quota"></span>
+          </div>
+          {% endif %}
+          <p class="field-help">Optional. Most useful where you changed a rating &mdash;
+            it tells them why.{% if ai_enabled %} AI drafts are suggestions &mdash; read and edit
+            before approving.{% endif %}</p>
+        </div>
+      </details>
+      {% elif g['manager_remark'] %}
+      <details class="crit-comment">
+        <summary class="crit-comment-toggle">
+          <span class="crit-comment-peek">{{ g['manager_remark'] }}</span>
+          <span class="crit-comment-btn">Your comment
+            <span class="crit-comment-chev" aria-hidden="true">&#9662;</span></span>
+        </summary>
+        <div class="crit-comment-body"><p style="margin:0">{{ g['manager_remark'] }}</p></div>
+      </details>
+      {% endif %}
+    </div>
+  </div>
+  {% endfor %}
+
+  {# The two overall remarks, the employee's above the manager's own -- same
+     merged-card shape the PM drill-down uses, so "what they said / what I
+     said" reads as one exchange rather than two scattered boxes. #}
+  {% if can_review or assessment['manager_overall_remark'] or (submitted and assessment['overall_remark']) %}
+  <div class="admin-card" id="tc-overall-card">
+    {% if can_review %}
+    <label for="tc-mgr-overall-remark" style="font-weight:600;display:block;margin-bottom:6px">
+      Your overall remark <span class="muted small">(optional)</span>
+    </label>
+    <textarea id="tc-mgr-overall-remark" class="tc-sec-remark" rows="3" maxlength="2000"
+              data-endpoint="{{ url_for('technical_review_overall_autosave', subject_id=subject['id']) }}"
+              placeholder="Your view of their technical competencies as a whole"
+              style="width:100%;box-sizing:border-box;resize:vertical">{{ assessment['manager_overall_remark'] or '' }}</textarea>
+    {% if ai_enabled %}
+    <div class="ai-draft"
+         data-endpoint="{{ url_for('technical_review_overall_draft_ai', subject_id=subject['id']) }}"
+         data-limit="{{ ai_limit }}"
+         data-remaining="{{ overall_ai_remaining if overall_ai_remaining is not none else ai_limit }}"
+         data-reset="{{ overall_ai_reset or 0 }}">
+      <div class="ai-split">
+        <button type="button" class="ai-draft-btn btn-link" aria-haspopup="true" aria-expanded="false">&#10024; Draft with AI <span class="ai-caret" aria-hidden="true">&#9662;</span></button>
+        <div class="ai-menu" role="menu" hidden>
+          <div class="ai-menu-head">Choose what AI should do</div>
+          <button type="button" class="ai-cmd" role="menuitem" data-cmd="polish">
+            <span class="ai-cmd-ico">&#10024;</span><span>Polish &amp; improve<small>Clearer, more specific</small></span></button>
+          <button type="button" class="ai-cmd" role="menuitem" data-cmd="shorter">
+            <span class="ai-cmd-ico">&#10134;</span><span>Make it shorter</span></button>
+          <button type="button" class="ai-cmd" role="menuitem" data-cmd="longer">
+            <span class="ai-cmd-ico">&#10133;</span><span>Make it longer / add detail</span></button>
+          <button type="button" class="ai-cmd" role="menuitem" data-cmd="formal">
+            <span class="ai-cmd-ico">&#128084;</span><span>More formal</span></button>
+          <div class="ai-sep"></div>
+          <button type="button" class="ai-cmd" role="menuitem" data-cmd="grammar">
+            <span class="ai-cmd-ico">&#9989;</span><span>Fix spelling &amp; grammar</span></button>
+        </div>
+      </div>
+      <span class="ai-status" aria-live="polite"></span>
+      <span class="ai-quota"></span>
+    </div>
+    {% endif %}
+    {% elif assessment['manager_overall_remark'] %}
+    <p class="muted small" style="margin:0 0 4px;font-weight:600">Your overall remark</p>
+    <p style="margin:0">{{ assessment['manager_overall_remark'] }}</p>
+    {% endif %}
+
+    {% if submitted and assessment['overall_remark'] %}
+    <div class="resp-comment" style="margin:14px 0 0">
+      <p class="resp-comment-head">{{ subject['full_name'] }}'s overall remark</p>
+      <p>{{ assessment['overall_remark'] }}</p>
+    </div>
+    {% endif %}
+  </div>
+  {% endif %}
+
+  {% if can_review %}
+  <div class="actions" style="align-items:center;gap:10px">
+    <span id="tc-save-status" class="save-status" aria-live="polite" role="status">Your changes save automatically</span>
+    <button type="submit" class="primary" id="tc-approve-btn">Approve</button>
+  </div>
+  {% endif %}
+</form>
+
+<div id="tc-approve-modal" class="modal-overlay" hidden>
+  <div class="modal-card" role="dialog" aria-modal="true" aria-labelledby="tc-approve-title">
+    <h2 id="tc-approve-title">Approve this assessment?</h2>
+    <p>You're approving {{ subject['full_name'] }}'s technical competency assessment for
+       {{ cycle['name'] if cycle else 'this cycle' }}.</p>
+    <div class="modal-warning">
+      <strong>This action cannot be undone.</strong>
+      <span> Once approved, the ratings are final for this cycle.</span>
+    </div>
+    <label style="display:flex;gap:8px;align-items:flex-start;margin-top:12px;cursor:pointer">
+      <input type="checkbox" id="tc-approve-ack" style="margin-top:3px">
+      <span>I've reviewed these ratings and confirm they're accurate.</span>
+    </label>
+    <div class="modal-actions">
+      <button type="button" id="tc-approve-cancel">Cancel</button>
+      <button type="button" id="tc-approve-yes" class="primary" disabled>Yes, approve (final)</button>
+    </div>
+  </div>
+</div>
+
+<script>
+(function () {
+  var form = document.getElementById('tc-review-form');
+  if (!form) return;
+  var modal = document.getElementById('tc-approve-modal');
+  var status = document.getElementById('tc-save-status');
+  var ack = document.getElementById('tc-approve-ack');
+  var yes = document.getElementById('tc-approve-yes');
+  var submitting = false;
+
+  function csrf() {
+    var m = document.querySelector('meta[name="csrf-token"]');
+    return m ? m.content : '';
+  }
+  function setStatus(t, cls) {
+    if (!status) return;
+    status.textContent = t;
+    status.className = 'save-status' + (cls ? ' ' + cls : '');
+  }
+
+  var timers = {};
+  function save(row) {
+    var aid = row.getAttribute('data-assignment');
+    var checked = row.querySelector('input[type="radio"]:checked');
+
+    var body = new FormData();
+    body.append('csrf_token', csrf());
+    body.append('assignment_id', aid);
+    if (checked) body.append('manager_answer', checked.value);
+    setStatus('Saving…');
+    fetch('{{ url_for("technical_review_autosave", subject_id=subject["id"]) }}',
+          {method: 'POST', body: body, credentials: 'same-origin'})
+      .then(function (r) { return r.json(); })
+      .then(function (d) { setStatus(d && d.ok ? 'Saved' : ((d && d.reason === 'screened' && d.error) || 'Couldn’t save'), d && d.ok ? '' : 'failed'); })
+      .catch(function () { setStatus('Couldn’t save — check your connection', 'failed'); });
+  }
+  function schedule(row, delay) {
+    var aid = row.getAttribute('data-assignment');
+    clearTimeout(timers[aid]);
+    timers[aid] = setTimeout(function () { save(row); }, delay);
+  }
+
+  form.addEventListener('change', function (e) {
+    var row = e.target.closest('tr[data-assignment]');
+    if (!row || e.target.type !== 'radio') return;
+    // Ring the control as soon as the manager departs from the self-rating,
+    // and drop the ring if they put it back.
+    var grp = row.querySelector('.rating-buttons');
+    grp.classList.toggle('is-moderated', e.target.value !== (grp.dataset.self || ''));
+    schedule(row, 0);
+  });
+
+  form.addEventListener('submit', function (e) {
+    if (submitting) return;
+    e.preventDefault();
+    modal.hidden = false;
+    document.getElementById('tc-approve-cancel').focus();
+  });
+  function close() { modal.hidden = true; ack.checked = false; yes.disabled = true; }
+  // ---- section remarks ---------------------------------------------------
+  // The manager's remark is per section, on its own endpoint -- the row save
+  // above now only carries a rating.
+  var secTimers = {};
+  function saveSection(ta) {
+    var body = new FormData();
+    body.append('csrf_token', csrf());
+    // The overall remark posts to its own endpoint and carries no category --
+    // there is exactly one of it, so there is no key to send or to validate.
+    if (ta.dataset.category) body.append('category', ta.dataset.category);
+    body.append('manager_remark', ta.value);
+    fetch(ta.dataset.endpoint || '{{ url_for("technical_review_section_autosave", subject_id=subject["id"]) }}',
+          {method: 'POST', body: body, credentials: 'same-origin'})
+      .then(function (r) { return r.json(); })
+      .then(function (d) {
+        if (status) status.textContent = (d && d.ok) ? 'Saved'
+          : ((d && d.reason === 'screened' && d.error) || 'Couldn\u2019t save');
+      })
+      .catch(function () {
+        if (status) status.textContent = 'Couldn\u2019t save \u2014 check your connection';
+      });
+  }
+  document.addEventListener('input', function (e) {
+    var ta = e.target;
+    if (!ta.classList || !ta.classList.contains('tc-sec-remark')) return;
+    var box = ta.closest('details.crit-comment');
+    if (box) {
+      var peek = box.querySelector('.crit-comment-peek');
+      if (peek) peek.textContent = ta.value;
+    }
+    var key = ta.dataset.category || '';
+    clearTimeout(secTimers[key]);
+    secTimers[key] = setTimeout(function () { saveSection(ta); }, 700);
+  });
+
+  document.getElementById('tc-approve-cancel').addEventListener('click', close);
+  modal.addEventListener('click', function (e) { if (e.target === modal) close(); });
+  document.addEventListener('keydown', function (e) { if (e.key === 'Escape' && !modal.hidden) close(); });
+  ack.addEventListener('change', function () { yes.disabled = !ack.checked; });
+  yes.addEventListener('click', function () {
+    submitting = true;
+    yes.disabled = true;
+    yes.textContent = 'Approving…';
+    HTMLFormElement.prototype.submit.call(form);
+  });
+})();
+</script>
+{% include "_tc_ai_widget.html" %}
+{% endif %}
+{% endblock %}

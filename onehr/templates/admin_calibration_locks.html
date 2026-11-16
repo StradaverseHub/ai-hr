@@ -1,0 +1,74 @@
+{% extends "base.html" %}
+{% from "_adm_panel.html" import list_peek %}
+{% block title %}Calibration lock status{% endblock %}
+{% block body %}
+{# Calibration & Talent › Run › Lock status (admin round 4, canvas row 1): every scope that locks this cycle, open or
+   locked. Read only: each lock is the leader's own, in their login. #}
+{% from "_filter_rows.html" import filter_rows %}
+<div class="adm-headrow">
+  <p class="adm-lede">Which calibrations are still open{% if cycle %} in {{ cycle['name'] }}{% endif %}, scope by scope.
+    A lock is final for the people under it.{% if mid %} Mid-Year has the HOD's department review only.{% endif %}</p>
+</div>
+{% if tiers %}
+<div class="adm-stage-tiles" style="--n: {{ tiers | length }}">
+  {% for t in tiers %}
+  {# the super admin's tier opens its scopes in the list panel, each with the leader who locks it (2026-10-20) #}
+  {% if nav_is_super %}<a class="admin-card adm-stage-tile" href="#scopes" data-list-open="{{ t.list }}">{% else %}<div class="admin-card adm-stage-tile">{% endif %}<span class="adm-stage-k">{{ t.label }}</span>
+    <b>{{ t.n | thousands }} <small class="muted">of {{ t.of | thousands }} locked</small></b>
+    <span class="adm-need-bar" role="img" aria-label="{{ t.pct }}%"><i style="width: {{ t.pct }}%; background: var(--ok-fill)"></i></span>
+    <span class="muted small">{{ t.what }}</span>{% if nav_is_super %}</a>{% else %}</div>{% endif %}
+  {% endfor %}
+</div>
+{% endif %}
+<section class="admin-card adm-filters" aria-label="Filters">
+  {{ filter_rows(frows) }}
+  <div class="adm-frow"><span class="adm-frow-lbl">Show</span>
+    <div class="adm-frow-pills" role="group" aria-label="Show">
+      {% for c in chips %}<a class="adm-frow-pill{{ ' is-on' if c.on }}" href="{{ c.href }}"{% if c.on %} aria-current="true"{% endif %}>{{ c.label }}<span>{{ c.n | thousands }}</span></a>{% endfor %}
+    </div></div>
+</section>
+<section class="admin-card">
+  {% if groups %}
+  <div class="table-scroll"><table class="admin-table adm-locks no-auto-table">
+    <thead><tr><th scope="col">Scope</th><th scope="col">Who locks it</th><th scope="col" class="num">People</th>
+      <th scope="col">Performance</th><th scope="col">Potential</th><th scope="col">Closes</th></tr></thead>
+    {% for g in groups %}
+    <tbody>
+      <tr class="adm-locks-head"><th colspan="6" scope="colgroup">{{ g.label }}</th></tr>
+      {% for r in g.rows %}
+      <tr>
+        <th scope="row">{{ r.scope }}{% if r.sub %}<span class="muted small" style="display:block;font-weight:400">{{ r.sub }}</span>{% endif %}</th>
+        <td>{{ r.who or '—' }}<span class="muted small" style="display:block">{{ r.role }}{% if not r.who %} · nobody holds it{% endif %}</span></td>
+        <td class="num">{{ r.n | thousands }}</td>
+        {% for at, closed in ((r.pm, r.pm_closed), (r.pot, r.pot_closed)) %}
+        {# one Unlock per row, both axes together (2026-11-07): under the performance pill, "Unlocks together" under the potential one; a tier above that has locked says why instead; a running late pass is an amber pill #}
+        <td>{% if at %}<span class="adm-lock is-locked">Locked {{ at | myt_day }}</span>
+          {%- if r.unlock and r.unlock.locked %}
+          {%- if loop.first and r.unlock.blocked %}<span class="adm-lock-no muted small">{{ r.unlock.blocked }}</span>
+          {%- elif loop.first %}
+          <form method="post" class="adm-lock-un" action="{{ r.unlock.url }}" data-confirm="{{ r.unlock.box.msg }}"{{ unlock_attrs(r.unlock.box) }}>
+            <input type="hidden" name="next" value="{{ request.full_path }}"><button type="submit" class="btn-link">Unlock both&hellip;</button>
+          </form>
+          {%- elif not r.unlock.blocked %}<span class="adm-lock-no muted small">Unlocks together</span>{% endif %}{% endif %}
+          {% elif r.unlock and r.unlock['pass'] %}<span class="adm-lock is-pass">{{ r.unlock['pass'] }}</span>
+          {% elif closed %}<span class="adm-lock is-closed">{{ closed }}</span>
+          {% elif r.anytime %}<span class="adm-lock is-any">Can lock any time</span>
+          {% else %}<span class="adm-lock is-open">Open</span>{% endif %}</td>
+        {% endfor %}
+        <td class="small">{{ r.closes or '—' }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+    {% endfor %}
+  </table></div>
+  <div class="adm-headrow" style="margin:12px 0 0">
+    <span class="muted small">{{ n_open | thousands }} scope{{ '' if n_open == 1 else 's' }} still open &middot; the
+      people who lock them hear about it in the one reminder</span>
+    {% if n_open and remind_href %}<a class="btn-link" href="{{ remind_href }}">Remind the {{ n_open | thousands }} still open &rsaquo;</a>{% endif %}
+  </div>
+  {% else %}
+  <p class="muted" style="margin:0">Nothing locks here this cycle{% if picked.bg %} for this business group{% endif %}.</p>
+  {% endif %}
+</section>
+{% if nav_is_super %}{{ list_peek() }}{% endif %}
+{% endblock %}

@@ -1,0 +1,52 @@
+{# "Submitted this cycle" (canvas "OneHR Admin Reopen", boards 1 and 4-8; Chris, 2026-10-16): what has been submitted in
+   the active cycle on this tab, each with its Reopen. Reopen sends one submission back to whoever made it, exactly as
+   they left it; the admin never changes what they entered. The button, then OneHR's own box naming who, what goes back,
+   what else changes and asking why (the person sees the reason): the double confirmation every admin action has.
+   Every rule is _reopen_submission's. The card is hidden when nothing is submitted on the tab (Chris, 2026-11-07), except for a person whose every KPI is a BU result Group People fills: their Performance tab shows one muted line in its place saying why there is nothing to reopen (subs_bu_note; Chris, 2026-11-09). The list rides in a single-quoted attribute: tojson escapes ' but not ". #}
+{% if subs %}
+<section class="admin-card pp-subs{{ ' has-ext' if (subs['rows'] | selectattr('extend') | list) }}" id="pp-subs" aria-label="Submitted this cycle">
+  <div class="pp-subs-h"><h2 class="pp-h">Submitted this cycle</h2>
+    <span class="muted small">Reopen sends a submission back to whoever made it, as they left it. You never change what they entered.</span></div>
+  {% if subs['out'] %}<p class="pp-subs-out" role="status">{{ subs['out'] }}</p>{% endif %}
+  {% for r in subs['rows'] %}
+  <div class="pp-srow{{ ' is-reopened' if r.get('reopened') }}">
+    <b class="pp-swhat">{{ r['what'] }}</b>
+    <span class="pp-swho"><span>{{ r['who'] }}</span><span class="pp-swhen{{ ' is-done' if not r.get('reopened') }}">{{ r['when'] }}</span></span>
+    <span class="pp-sin">{% if r.get('reason') %}&ldquo;{{ r['reason'] }}&rdquo;{% else %}{{ r['inside'] }}{% endif %}</span>
+    <span class="pp-sact">
+      {% if r.get('reopened') %}<span class="pp-sact-t"><span class="pp-sstate{{ ' is-ran-out' if r.get('extend') and r['extend'].get('lapsed') }}">{{ r['status'] }}</span>{% if r.get('pass') %}<span class="muted small">{{ r['pass'] }}</span>{% endif %}</span>
+      {% if r.get('extend') %}{% set X = r['extend'] %}
+      {# Extend (2026-11-07): more days on a reopen made past the deadline, same right as its Reopen; OneHR's box asks the days and the reason #}
+      <form method="post" action="{{ url_for('admin_person_reopen_extend', uid=person['id']) }}"
+            data-confirm="{{ X['msg'] }}" data-confirm-title="{{ X['title'] }}" data-confirm-ok="{{ X['ok'] }}"
+            data-confirm-reason="{{ X['reason'] }}" data-confirm-reason-max="500"
+            data-confirm-reason-placeholder="e.g. on leave over the deadline" data-confirm-foot="{{ X['foot'] }}"
+            data-confirm-days="{{ X['days']['default'] }}" data-confirm-days-label="{{ X['days']['label'] }}"
+            data-confirm-days-help="{{ X['days']['help'] }}">
+        <input type="hidden" name="part" value="{{ r['part'] }}"><input type="hidden" name="ref" value="{{ r.get('ref', '') }}">
+        <button type="submit" class="pp-reopen pp-extend">Extend&hellip;</button>
+      </form>{% endif %}
+      {% elif subs['out'] %}<span class="muted small">Results are out</span>
+      {% elif r.get('blocked') %}<span class="muted small">{{ r['blocked'] }}</span>
+      {% else %}
+      <form method="post" action="{{ url_for('admin_person_reopen', uid=person['id']) }}"
+            data-confirm="{{ r['box']['msg'] }}" data-confirm-title="{{ r['box']['title'] }}"
+            data-confirm-ok="{{ r['box']['ok'] }}" data-confirm-tone="danger"
+            data-confirm-list='{{ r["box"]["items"] | tojson }}' data-confirm-list-label="What else changes"
+            data-confirm-reason="{{ r['box']['reason'] }}" data-confirm-reason-max="500"
+            data-confirm-reason-placeholder="What needs correcting, e.g. a figure keyed in the wrong unit"
+            {% if r['box'].get('days') %}data-confirm-days="{{ r['box']['days']['default'] }}" data-confirm-days-label="{{ r['box']['days']['label'] }}" data-confirm-days-help="{{ r['box']['days']['help'] }}"{% endif %}>
+        <input type="hidden" name="part" value="{{ r['part'] }}"><input type="hidden" name="ref" value="{{ r['ref'] }}">
+        <button type="submit" class="pp-reopen">{{ r['btn'] }}</button>
+      </form>
+      {% endif %}
+    </span>
+  </div>
+  {% endfor %}
+</section>
+{% elif subs_bu_note %}
+<section class="admin-card pp-subs" id="pp-subs-bu" aria-label="Submitted this cycle">
+  <div class="pp-subs-h"><h2 class="pp-h">Submitted this cycle</h2></div>
+  <p class="muted small pp-subs-note">Every KPI is a BU result Group People fills for the whole unit, so there is nothing of theirs to reopen. To change a figure, use Edit on its line.</p>
+</section>
+{% endif %}

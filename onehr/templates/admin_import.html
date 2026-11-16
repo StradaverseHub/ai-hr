@@ -1,0 +1,74 @@
+{% extends "base.html" %}
+{% block title %}Import panels{% endblock %}
+{% block body %}
+{% from "_mode_switch.html" import panel_modes with context %}
+{{ panel_modes('import') }}
+<p class="adm-lede">Add people to panels from an Excel (or CSV) file: one row per person and someone who gives them
+  feedback. It checks the whole file first and imports all of it or none.</p>
+
+{% if not v and not done %}{# how it works and the template: step 1 only #}
+<div class="admin-card">
+  <h2>File format</h2>
+  <p>Three columns (header names are flexible / case-insensitive):</p>
+  <table class="admin-table">
+    <thead><tr><th>Subject Employee ID</th><th>Assessor Employee ID</th><th>Relationship</th></tr></thead>
+    <tbody>
+      <tr><td>100001</td><td>100045</td><td>line_manager</td></tr>
+      <tr><td>100001</td><td>100052</td><td>peer</td></tr>
+      <tr><td>100001</td><td>100120</td><td>direct_report</td></tr>
+    </tbody>
+  </table>
+  <p class="muted small">
+    Relationship accepts: <code>line_manager</code> / manager, <code>matrix_manager</code> / matrix,
+    <code>peer</code> / <code>peer/stakeholder</code> / stakeholder,
+    <code>direct_report</code> / report (case-insensitive). People are matched by Employee ID first, then exact full name.
+    A subject can have at most <strong>one</strong> line manager, but any number of matrix managers.
+  </p>
+  <p class="note">
+    <strong>Safety rules.</strong> Four steps: choose the file, OneHR checks it, shows what it changes and asks the
+    super admin about any pairing archived earlier, then you apply that same file. It is all-or-nothing: the whole
+    upload is refused (no rows committed) if any row references an unknown Employee ID,
+    is outside your Business Group, has a bad relationship, is a self-assessment,
+    or — in <em>Replace</em> mode — would wipe an assessor who has already
+    submitted feedback. The flash on failure lists every affected row so you can
+    fix the file and re-upload.
+  </p>
+  <p class="note">
+    <strong>Org-chart guardrail.</strong> A <code>line_manager</code> or <code>direct_report</code>
+    row must agree with that person's Line Manager on the user list (Manage → Users). If the
+    two disagree, the row is rejected with the name the user list currently shows — fix the
+    user list first (or correct the row) before re-uploading. A person with no Line Manager on
+    file can't be checked, so those rows go through as-is. If a row sets a NEW line manager for
+    someone who already has a different one, the outgoing line manager is automatically
+    reassigned to <strong>Matrix manager</strong> — never removed by a file import.
+  </p>
+</div>
+
+<a class="template-dl" href="{{ url_for('admin_import_template') }}" download>
+  <svg class="tdl-ic" viewBox="0 0 24 24" width="32" height="32" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+    <path d="M14 3v4a1 1 0 0 0 1 1h4"/>
+    <path d="M17 21H7a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h7l5 5v11a2 2 0 0 1-2 2z"/>
+    <path d="M12 11v6"/><path d="M9.5 14.5 12 17l2.5-2.5"/>
+  </svg>
+  <span class="tdl-main">
+    <span class="tdl-title">Download the panel template (Excel)</span>
+    <span class="tdl-sub">Ready-made column headers — fill in your rows, then upload below.</span>
+  </span>
+  <span class="tdl-cta">Download</span>
+</a>
+
+{% endif %}
+{% import "_import_steps.html" as imp with context %}
+{% call imp.page(v, done, {'page': 'admin_import', 'changes': 'What it changes in the panels',
+                           'final': 'The panels after you apply this file'},
+                 {'changes': 'each panel, and your answers'}) %}
+{% call imp.upload("Nothing changes yet. OneHR checks the file, shows each person's panel before and after, and asks the super admin about any pairing archived earlier. Then you apply that same file.") %}
+      <div style="margin-top:10px">
+        <label class="checkbox" style="justify-content:center; display:flex; gap:6px; align-items:center;">
+          <input type="checkbox" name="replace_existing" value="1">
+          Replace each affected subject's existing panel (otherwise rows are merged in)
+        </label>
+      </div>
+{% endcall %}
+{% endcall %}
+{% endblock %}

@@ -1,0 +1,106 @@
+{% extends "base.html" %}
+{% from "_table_tools.html" import colth, colmenu, colmenu_script %}
+{% block title %}HOD View{% endblock %}
+{% block body %}
+
+<div class="page-head">
+  <div>
+    <h1>HOD View</h1>
+    <p class="muted">Your whole department, direct and indirect reports, with each person's potential band for this review season. Raw scores are never shown here.</p>
+  </div>
+</div>
+
+{% include "_feedback_view_switcher.html" %}
+
+<div class="as-controls" style="margin-bottom:10px">
+  <label class="as-search">
+    Search
+    <input type="search" id="hod-search" placeholder="Filter by name, department, or job title..." autocomplete="off">
+  </label>
+</div>
+<div class="table-scroll table-scroll-capped"><table class="admin-table" id="hod-table">
+  <thead><tr>{{ colth('name', 'Name') }}{{ colth('dept', 'Department') }}{{ colth('title', 'Job Title') }}{{ colth('rel', 'Relationship') }}{% if show_potential_band() %}{{ colth('band', 'Potential Band') }}{% endif %}<th>Actions</th></tr></thead>
+  <tbody>
+    {% for row in flat_rows %}
+    <tr class="data-row"
+        data-name="{{ row['user']['full_name'] }}"
+        data-dept="{{ row['user']['department'] or '-' }}"
+        data-title="{{ row['user']['job_title'] or '-' }}"
+        data-rel="{{ 'Direct' if row['is_direct'] else 'Indirect' }}"
+        data-band="{% if row['released'] and row['band_info']['score_valid'] %}{{ row['band_info']['band'] }}{% elif row['released'] %}Pending{% else %}Not released{% endif %}">
+      <td>{{ row['user']['full_name'] }}</td>
+      <td>{{ row['user']['department'] | proper or '-' }}</td>
+      <td>{{ row['user']['job_title'] | proper or '-' }}</td>
+      <td><span class="rel-chip {{ 'hod-direct' if row['is_direct'] else 'hod-indirect' }}">{{ 'Direct' if row['is_direct'] else 'Indirect' }}</span></td>
+      {% if show_potential_band() %}
+      <td>
+        {% if row['released'] and row['band_info']['score_valid'] %}
+          <span class="potential-pill" data-band="{{ row['band_info']['band'] }}">{{ row['band_info']['band'] }}</span>
+        {% elif row['released'] %}
+          <span class="potential-pill" data-band="None">Pending</span>
+        {% else %}
+          <span class="muted small">Not released</span>
+        {% endif %}
+      </td>
+      {% endif %}
+      <td>
+        {% if row['released'] and row['band_info']['score_valid'] %}
+          <a class="btn-link" href="{{ url_for('view_report', uid=row['user']['id']) }}">View</a>
+        {% else %}
+          <span class="btn-link is-disabled" title="Not available until Group People releases this report">View</span>
+        {% endif %}
+      </td>
+    </tr>
+    {% endfor %}
+    <tr class="no-filter-match" hidden><td colspan="6" class="muted">No rows match the filters.</td></tr>
+  </tbody>
+</table></div>
+{{ colmenu('hod-table', {
+     'name':  {'mode': 'clientFilter', 'type': 'text', 'sortAttr': 'name'},
+     'dept':  {'mode': 'clientFilter', 'type': 'text', 'sortAttr': 'dept'},
+     'title': {'mode': 'clientFilter', 'type': 'text', 'sortAttr': 'title'},
+     'rel':   {'mode': 'clientFilter', 'type': 'text', 'sortAttr': 'rel'},
+     'band':  {'mode': 'clientFilter', 'type': 'text', 'sortAttr': 'band'} }) }}
+{{ colmenu_script(asset_v) }}
+<script>
+(function () {
+  // Registered as a colmenu PREDICATE rather than writing row.style.display
+  // itself. Both used to write that one property, so a search and a column
+  // filter overwrote each other; as a predicate the two are ANDed and narrow
+  // together.
+  var input = document.getElementById('hod-search');
+  if (!input) return;
+  var q = '';
+  window.colMenuAddPredicate('hod-table', function (row) {
+    return !q || row.textContent.toLowerCase().indexOf(q) !== -1;
+  });
+  input.addEventListener('input', function () {
+    q = input.value.trim().toLowerCase();
+    window.colMenuRefresh('hod-table');
+  });
+})();
+</script>
+{% endblock %}
+
+{% block tour %}
+<script>
+(function () {
+  var params = new URLSearchParams(location.search);
+  var force = params.get('tour') === 'feedback';
+  var pending = {{ 'true' if tour_feedback_pending else 'false' }};
+  if (!(force || pending)) return;
+  if (force) history.replaceState({}, '', location.pathname);
+  var steps = [
+    { el: '.cycle-history[aria-label="Feedback view"]', title: 'Switch views', side: 'bottom',
+      body: 'Use these tabs to move between your own feedback{% if nav_is_manager %} and your direct team{% endif %}.' },
+    { el: '#hod-search', title: 'Find someone fast',
+      body: 'Search by name, department, or job title to filter the list.' },
+    { el: '#hod-table', title: 'Your whole department',
+      body: 'Direct and indirect reports both appear here, tagged accordingly, with each person\'s potential band once released. Raw scores are never shown — click View to read their full anonymized report.' },
+  ];
+  setTimeout(function () {
+    L360Tour(steps, { onDone: function () { if (window.l360MarkTourSeen) l360MarkTourSeen('feedback'); } });
+  }, 350);
+})();
+</script>
+{% endblock %}

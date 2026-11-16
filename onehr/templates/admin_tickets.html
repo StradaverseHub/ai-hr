@@ -1,0 +1,296 @@
+{% extends "base.html" %}
+{% from "_adm_panel.html" import panel %}
+{% block title %}Ticketing{% endblock %}
+{% block body %}
+{# Ticketing › Tickets (Chris, 2026-10-22, canvas [design canvas link removed], boards 1-4): the
+   Get Help reports and the sign-in page's requests in one list, newest first. A row opens its ticket in the side panel.
+   Both kinds close the same way (his comment on board 2): What you did (stays in OneHR), the reply (required), Closed
+   by (one of this account's notification emails, never typed) and Reply & close. A closed ticket shows who closed it,
+   when and on which account, its history, and Reopen, which asks who too and sends nothing.
+   The Ticketing agent (boards 9-13, his picks: B, a needs column, the buttons the super admin's, then a role with Reset a password and Ticketing's reply): the ticket opens wide,
+   the agent on the left (what OneHR's records show, what to do, its buttons, Ask about this ticket), the ticket on the
+   right; the list shows what each ticket needs, a chip per need. #}
+{% set svg_help %}<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M9.5 9.5a2.6 2.6 0 0 1 5 1c0 1.8-2.5 2.3-2.5 4"/><path d="M12 17.5h.01"/></svg>{% endset %}
+{% set svg_lock %}<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></svg>{% endset %}
+{% set spark %}<svg viewBox="0 0 24 24" width="13" height="13" aria-hidden="true"><path d="M12 2 L14.2 9.8 L22 12 L14.2 14.2 L12 22 L9.8 14.2 L2 12 L9.8 9.8 Z" fill="currentColor"/></svg>{% endset %}
+{% set keep = {'type': typ or None, 'topic': topic or None, 'bg': bg or None, 'd': d or None} %}
+<div class="adm-headrow">
+  <p class="adm-lede">Get Help reports and sign-in requests, in one list. Close each with who closed it.</p>
+</div>
+{% if mail_on and not n_to %}
+<p class="sh-warn" role="note"><b>Nobody gets new tickets by email yet.</b> No super admin has a notification email set.
+  {% if nav_is_super %}Add one on <a href="{{ url_for('admin_admins') }}">Leaders and admins › Admins</a> (Manage › Notification emails).{% endif %}</p>
+{% endif %}
+<div class="tk-toolbar">
+  <nav class="adm-tabs tk-tabs" aria-label="Which tickets">
+    {% for k, lbl in [('open', 'Open'), ('progress', 'In progress'), ('closed', 'Closed')] %}
+    <a class="{{ 'is-active' if show == k }}" {% if show == k %}aria-current="page"{% endif %} href="{{ url_for('admin_tickets', show=k, **keep) }}">{{ lbl }} · {{ counts[k] }}</a>
+    {% endfor %}
+    <a class="{{ 'is-active' if show == 'all' }}" {% if show == 'all' %}aria-current="page"{% endif %} href="{{ url_for('admin_tickets', show='all', **keep) }}">All</a>
+  </nav>
+  <div class="tk-types" role="group" aria-label="Type">
+    {% set k2 = {'topic': topic or None, 'bg': bg or None, 'd': d or None} %}
+    <a class="tk-type{{ ' is-on' if not typ }}" href="{{ url_for('admin_tickets', show=show, **k2) }}" {% if not typ %}aria-current="true"{% endif %}>All types</a>
+    <a class="tk-type{{ ' is-on' if typ == 'help' }}" href="{{ url_for('admin_tickets', show=show, type='help', **k2) }}" {% if typ == 'help' %}aria-current="true"{% endif %}>Get Help · {{ by_type.help }}</a>
+    <a class="tk-type{{ ' is-on' if typ == 'signin' }}" href="{{ url_for('admin_tickets', show=show, type='signin', **k2) }}" {% if typ == 'signin' %}aria-current="true"{% endif %}>Sign-in help · {{ by_type.signin }}</a>
+  </div>
+</div>
+{% if needs %}
+<div class="tk-needs" role="group" aria-label="What it needs">
+  <a class="tk-type{{ ' is-on' if not need }}" href="{{ url_for('admin_tickets', show=show, **keep) }}" {% if not need %}aria-current="true"{% endif %}>Every need · {{ needs | sum(attribute='n') }}</a>
+  {% for n_ in needs %}
+  <a class="tk-type{{ ' is-on' if need == n_.key }}" href="{{ url_for('admin_tickets', show=show, need=n_.key, **keep) }}" {% if need == n_.key %}aria-current="true"{% endif %}>{{ n_.label }} · {{ n_.n }}</a>
+  {% endfor %}
+</div>
+{% endif %}
+{% if topic or bg or d %}
+<p class="tk-filter small">Showing
+  {%- if topic %} <b>{{ topic_label }}</b>{% endif %}
+  {%- if bg %}{{ ' ·' if topic }} <b>{{ display_bg(bg) }}</b>{% endif %}
+  {%- if d %}{{ ' ·' if topic or bg }} <b>{{ dict(periods)[d] | lower }}</b>{% endif %}
+  · <a href="{{ url_for('admin_tickets', show=show, type=typ or None) }}">Show every ticket</a></p>
+{% endif %}
+<section class="admin-card" aria-label="Tickets">
+  {% if rows %}
+  <div class="table-scroll"><table class="admin-table no-auto-table tk-table">
+    <thead><tr><th scope="col">Ref</th><th scope="col">From</th><th scope="col">What it's about</th>
+      {% if show != 'closed' %}<th scope="col">What it needs</th>{% endif %}
+      <th scope="col">Received</th>
+      {% if show == 'closed' %}<th scope="col">Closed by</th>{% endif %}
+      <th scope="col"><span class="sr-only">Open</span></th></tr></thead>
+    <tbody>
+    {% for t in rows %}
+    <tr>
+      <td class="sh-ref">{{ t.ref }}{% if show in ('all', 'progress') %}<span class="sh-sub"><span class="tk-status is-{{ t.status }}">{{ t.status_label }}</span></span>{% endif %}</td>
+      <td><b>{{ t.who }}</b><span class="muted small sh-sub">{{ t.who_sub }}</span></td>
+      <td><b>{{ t.topic }}</b><span class="tk-kind sh-sub">{{ (svg_help if t.kind == 'help' else svg_lock) | safe }}{{ t.type_label }}{% if t.shot %} · screenshot{% endif %}</span></td>
+      {% if show != 'closed' %}<td class="tk-needcell">{% if t.status != 'closed' and t.agent.need %}<span class="tk-need is-{{ t.agent.need_tone }}">{{ t.agent.need_label }}</span>{% if t.agent.need_sub %}<span class="muted small sh-sub">{{ t.agent.need_sub }}</span>{% endif %}{% elif t.status == 'closed' %}<span class="muted small">Closed</span>{% endif %}</td>{% endif %}
+      <td class="small tk-when">{{ t.created_at | myt }}</td>
+      {% if show == 'closed' %}<td class="small tk-closer">{{ t.closed_by_email or 'Not recorded' }}<span class="muted sh-sub">{{ t.closed_at | myt }}</span></td>{% endif %}
+      <td class="sh-acts"><button type="button" class="btn-link" data-panel-open="tk-{{ t.key }}" aria-label="Open {{ t.ref }}">Open</button></td>
+    </tr>
+    {% endfor %}
+    </tbody>
+  </table></div>
+  {% else %}
+  <p class="muted" style="margin:0">{{ 'Nothing open: every ticket has been picked up.' if show == 'open' and not need else 'No tickets here.' }}</p>
+  {% endif %}
+</section>
+<p class="muted small">Each new ticket is emailed to every super admin's notification addresses{% if not mail_on %} (this
+  server sends no email, so they show here only){% endif %}. People see their Get Help reports under Help, with your
+  reply. A screenshot opens only for the person who sent it and the admins who can see their ticket. What each ticket
+  needs is the agent's read of OneHR's records as the page opened.</p>
+
+{% for t in panels %}
+{% set a = t.agent or {} %}
+{% set who_to = t.who if t.kind == 'help' else (t.full_name or 'them') %}
+{% set fkeep = {'show': show, 'type': typ, 'topic': topic, 'bg': bg, 'd': d, 'need': need} %}
+{% call panel("tk-" ~ t.key, "Ticket · " ~ t.ref ~ " · " ~ t.type_label ~ " · received " ~ (t.created_at | myt), t.topic,
+   t.who ~ (' · ' ~ t.who_sub if t.who_sub else '') ~ ((' · JG ' ~ t.job_grade) if t.kind == 'help' and t.job_grade else ''), wide=True) %}
+  <div class="adm-panel-body tk-split">
+    {% if a.no_ai %}
+    {# a Grade H "I do not agree" ticket (2 Nov 2026): the super admin's alone. Their record, read from the database; NO OneHR Agent, no AI, no "others reported it too" #}
+    <section class="tk-agent tk-gh" aria-label="Their Grade H record">
+      <div class="tk-gh-card">
+        <span class="tk-ag-k">Their Grade H record</span>
+        {% if a.gradeh %}
+        <dl class="tk-gh-rec">
+          {% for lbl, val in a.gradeh.record %}<dt>{{ lbl }}</dt><dd>{{ val }}</dd>{% endfor %}
+        </dl>
+        <a class="tk-ag-link" href="{{ url_for('admin_gradeh', tab='bands', q=a.gradeh.eid) }}">Open their Grade H record &rsaquo;</a>
+        {% else %}<p class="muted small">Their Grade H record is no longer on the list.</p>{% endif %}
+      </div>
+      <p class="tk-gh-noai">No AI on this ticket: it holds a person's view of their own result.</p>
+    </section>
+    {% else %}
+    <section class="tk-agent" aria-label="OneHR Agent">
+      <div class="tk-ag-head"><span class="tk-ag-mark">{{ spark | safe }}</span>
+        <div><b>OneHR Agent</b><span>for this ticket · reads, never changes anything by itself</span></div></div>
+      <ul class="tk-ag-checks">
+        {% for c in a.checks or [] %}
+        <li class="is-{{ c.tone }}"><span class="tk-ag-ic" aria-hidden="true">{% if c.tone == 'ok' %}<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.4" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>{% elif c.tone == 'bad' %}<svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.6" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg>{% elif c.tone == 'warn' %}!{% else %}i{% endif %}</span>
+          <span><b>{{ c.head }}</b>{% if c.more %}: {{ c.more }}{% endif %}</span></li>
+        {% endfor %}
+      </ul>
+      {% if a.record %}
+      <dl class="tk-ag-rec">
+        {% for r_ in a.record %}<dt>{{ r_.label }}</dt><dd class="{{ '' if r_.value else 'is-gap' }}">{{ r_.value or 'Not on record yet' }}</dd>{% endfor %}
+      </dl>
+      {% endif %}
+      {% if a.advice %}
+      <div class="tk-ag-do">
+        <span class="tk-ag-k">What I'd do</span>
+        <p>{{ a.advice }}</p>
+        {% set live = t.status != 'closed' %}
+        <div class="tk-ag-acts">
+        {% for key, pid in a.actions or [] %}
+          {% if key in ('clear_lock', 'reset_link') and live %}
+            {% if can_pw %}
+            <form method="post" class="tk-ag-one"
+                  data-confirm="{{ ('Clear the failed sign-ins of ' ~ (a.person_name or 'this person') ~ ' on every browser, so they can sign in again now?') if key == 'clear_lock' else ('Email ' ~ (a.person_name or 'them') ~ ' a password reset link at their work email on file? It works once, for 30 minutes.') }}"
+                  data-confirm-ok="{{ 'Clear the lock-out' if key == 'clear_lock' else 'Email a reset link' }}">
+              <input type="hidden" name="action" value="{{ key }}"><input type="hidden" name="kind" value="{{ t.kind }}"><input type="hidden" name="ticket_id" value="{{ t.id }}">
+              {% for k, v in fkeep.items() if v %}<input type="hidden" name="{{ k }}" value="{{ v }}">{% endfor %}
+              <button type="submit" class="tk-ag-btn{{ ' is-main' if loop.first }}">{{ 'Clear the lock-out' if key == 'clear_lock' else 'Email a reset link' }}</button>
+            </form>
+            {% else %}<span class="tk-ag-super">{{ 'Clear the lock-out' if key == 'clear_lock' else 'Email a reset link' }}: needs Reset a password and Ticketing's reply</span>{% endif %}
+          {% elif key == 'add_person' and live %}
+            <a class="tk-ag-btn is-main" href="{{ url_for('admin_users', view='add', from_ticket='signin-%d' % t.id) }}">Add them to OneHR</a>
+          {% elif key == 'edit_details' and pid %}
+            <a class="tk-ag-btn is-main" href="{{ url_for('admin_person', uid=pid, panel='details') }}">Edit their details</a>
+          {% elif key == 'open_hods' %}
+            <a class="tk-ag-btn" href="{{ url_for('admin_leaders', tab='hod') }}">Open Leaders › HODs</a>
+          {% elif key == 'open_person' and pid %}
+            <a class="tk-ag-link" href="{{ url_for('admin_person', uid=pid) }}">Open their person page &rsaquo;</a>
+          {% endif %}
+        {% endfor %}
+        {% if a.person_id and not ((a.actions or []) | selectattr(0, 'equalto', 'open_person') | list) %}
+          <a class="tk-ag-link" href="{{ url_for('admin_person', uid=a.person_id) }}">Open their person page &rsaquo;</a>
+        {% endif %}
+        </div>
+      </div>
+      {% endif %}
+      {% if ai_on %}
+      <div class="tk-ag-ask" data-tk-ask data-kind="{{ t.kind }}" data-id="{{ t.id }}" data-key="{{ t.key }}">
+        <span class="tk-ag-k">Ask about this ticket</span>
+        <div class="tk-ag-log" aria-live="polite"></div>
+        <form class="tk-ag-form" data-tk-ask-form>
+          <label class="sr-only" for="tk-ag-q-{{ t.key }}">Ask the agent about this ticket</label>
+          <input id="tk-ag-q-{{ t.key }}" maxlength="500" autocomplete="off" placeholder="Ask about this ticket">
+          <button type="submit">Ask</button>
+        </form>
+      </div>
+      {% endif %}
+    </section>
+    {% endif %}
+
+    <div class="tk-main adm-psecs">
+    {% if t.status == 'closed' %}
+    <section class="tk-closed" role="status">
+      <span class="tk-tick" aria-hidden="true"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--on-fill)" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg></span>
+      <div><b>{{ ('Closed by ' ~ t.closed_by_email) if t.closed_by_email else 'Closed by: not recorded (before Ticketing)' }}</b>
+        <span>{{ t.closed_at | myt }}{% if t.closer_name %} · on the {{ t.closer_name }} account{% endif %}</span></div>
+    </section>
+    {% if t.reply %}
+    <section class="adm-psec"><h3 class="adm-ph">The reply</h3><p class="hr-words tk-box">{{ t.reply }}</p></section>
+    {% endif %}
+    {% if t.did_note %}
+    <section class="adm-psec"><h3 class="adm-ph">What you did <span class="tk-aside">(stays in OneHR)</span></h3><p class="hr-words">{{ t.did_note }}</p></section>
+    {% endif %}
+    {% endif %}
+
+    <section class="adm-psec"><h3 class="adm-ph">{{ 'Why they do not agree, in their words' if a.no_ai else ('What happened, in their words' if t.kind == 'help' else 'In their words') }}</h3>
+      <p class="hr-words{{ ' tk-box' if t.status != 'closed' }}">{{ t.detail or '(nothing more)' }}</p></section>
+
+    {% if t.kind == 'help' %}
+    <section class="adm-psec"><h3 class="adm-ph">Where</h3>
+      <dl class="hr-meta">
+        <dt>Where</dt><dd>{{ t.where_label or 'Not added (they left the page details out)' }}</dd>
+        {% if t.page_path %}<dt>Page</dt><dd>{{ t.page_path }}</dd>{% endif %}
+        {% if t.browser %}<dt>Browser</dt><dd>{{ t.browser }}</dd>{% endif %}
+        <dt>Sent from</dt><dd>{{ 'Grade H Appraisal, ' ~ (t.where_label or 'My Appraisal') if a.no_ai else 'Get Help, in the account menu' }}</dd>
+      </dl>
+    </section>
+    {% if t.shot %}
+    <section class="adm-psec"><h3 class="adm-ph">Screenshot</h3>
+      <a class="hr-shot" href="{{ url_for('help_shot', rid=t.id) }}" target="_blank" rel="noopener">
+        <img src="{{ url_for('help_shot', rid=t.id) }}" alt="The screenshot they sent with {{ t.ref }}" loading="lazy"></a>
+      <p class="muted small">Opens full size in a new tab.</p></section>
+    {% endif %}
+    {% else %}
+    <section class="adm-psec"><h3 class="adm-ph">As they typed it</h3>
+      <dl class="hr-meta tk-meta">
+        <dt>Name</dt><dd>{{ t.full_name or '(no name)' }}</dd>
+        <dt>Employee ID</dt><dd>{{ t.employee_id or '(none)' }}</dd>
+        <dt>Email</dt><dd>{{ t.email or '(none)' }}</dd>
+        <dt>What's happening</dt><dd>{{ t.topic }}</dd>
+      </dl>
+    </section>
+    {% endif %}
+
+    <section class="adm-psec"><h3 class="adm-ph">History</h3>
+      <ol class="tk-hist">
+        <li><span>{{ t.created_at | myt }}</span>Received{% if t.emailed %} · emailed to {{ t.emailed }} notification address{{ '' if t.emailed == 1 else 'es' }}{% else %} · not emailed{% endif %}{% if t.copied %} · a notice sent to them{% endif %}</li>
+        {% for e in t.events %}
+        <li><span>{{ e.at | myt }}</span>{{ {'progress': 'In progress', 'closed': 'Closed by ', 'reopened': 'Reopened by ', 'agent_clear_lock': 'Lock-out cleared, from the agent', 'agent_reset_link': 'Reset link emailed, from the agent'}.get(e.action, e.action) }}{{ e.by_email if e.action in ('closed', 'reopened') and e.by_email else '' }}</li>
+        {% endfor %}
+        {% if t.status == 'closed' and not t.events %}<li><span>{{ t.closed_at | myt }}</span>Closed, before Ticketing</li>{% endif %}
+      </ol>
+    </section>
+
+    {% if can_act %}
+    {% if t.status != 'closed' %}
+    <section class="adm-psec"><h3 class="adm-ph"><label for="tk-did-{{ t.key }}">What you did <span class="tk-aside">(stays in OneHR)</span></label></h3>
+      <textarea id="tk-did-{{ t.key }}" class="hr-reply" name="did_note" form="tk-close-{{ t.key }}" rows="2" maxlength="{{ note_max }}"
+                placeholder="For the history and the next admin; they don't see it."></textarea></section>
+    <section class="adm-psec"><div class="tk-reply-h"><h3 class="adm-ph"><label for="tk-reply-{{ t.key }}">Reply to {{ who_to }} <span class="tk-aside">(required)</span></label></h3>
+        {% if ai_on and not a.no_ai %}<button type="button" class="tk-ai-btn" data-tk-draft="{{ t.key }}" data-kind="{{ t.kind }}" data-id="{{ t.id }}">{{ spark | safe }}Draft the reply with AI</button>{% endif %}</div>
+      <textarea id="tk-reply-{{ t.key }}" class="hr-reply" name="reply" form="tk-close-{{ t.key }}" rows="4" maxlength="{{ reply_max }}" required
+                placeholder="What you did, or what they should do next."></textarea>
+      <p class="muted small tk-drafted" data-tk-drafted="{{ t.key }}" hidden>Drafted with AI from what the agent found and what you did. Edit it before you send.</p>
+      <p class="muted small tk-hint">{% if t.kind == 'help' %}Goes to them by email, quoting {{ t.ref }}, and shows under their reports in Help.{% elif t.can_reply %}Goes by email to the address they typed, since it's the one on their account.{% else %}Nothing can be emailed: the address they typed isn't the one on an active account. The reply stays here; answer them on the email thread.{% endif %}</p></section>
+    {% endif %}
+    <section class="adm-psec{{ ' tk-reopen' if t.status == 'closed' }}"><h3 class="adm-ph"><label for="tk-by-{{ t.key }}">{{ 'Reopened by' if t.status == 'closed' else 'Closed by' }} <span class="tk-aside">{{ '(only if you reopen it)' if t.status == 'closed' else '(required)' }}</span></label></h3>
+      {% if who_opts %}
+      <select id="tk-by-{{ t.key }}" class="tk-who" name="by_email" form="tk-{{ 'reopen' if t.status == 'closed' else 'close' }}-{{ t.key }}" required data-tk-who="tk-{{ 'reopen' if t.status == 'closed' else 'close' }}-{{ t.key }}">
+        <option value="">Pick your email</option>
+        {% for a_ in who_opts %}<option value="{{ a_ }}">{{ a_ }}</option>{% endfor %}
+      </select>
+      {% else %}
+      <p class="sh-warn tk-noaddr" role="note">This account has no notification email to pick, so it can't {{ 'reopen' if t.status == 'closed' else 'close' }} a ticket.
+        {% if nav_is_super %}Add yours on <a href="{{ url_for('admin_admins') }}">Leaders and admins › Admins</a> (Manage › Notification emails).{% else %}The super admin sets them.{% endif %}</p>
+      {% endif %}
+    </section>
+    {% else %}
+    <p class="muted small">Your admin role reads Ticketing; replying and closing aren't in it.</p>
+    {% endif %}
+    </div>
+  </div>
+  {% if can_act %}
+  {% if t.status != 'closed' %}
+  <form method="post" id="tk-close-{{ t.key }}" hidden
+        data-confirm-tpl="Close {{ t.ref }} as {who} and send your reply to {{ who_to }}? {{ 'They get it by email (where they have one) and under their reports in Help.' if t.kind == 'help' else ('It goes by email to the address they typed.' if t.can_reply else 'Nothing is emailed: the reply stays on the ticket.') }} You can reopen it, but an email can't be taken back."
+        data-confirm="Close {{ t.ref }}?" data-confirm-ok="Reply &amp; close">
+    <input type="hidden" name="action" value="close"><input type="hidden" name="kind" value="{{ t.kind }}"><input type="hidden" name="ticket_id" value="{{ t.id }}">
+    {% for k, v in fkeep.items() if v %}<input type="hidden" name="{{ k }}" value="{{ v }}">{% endfor %}</form>
+  {% if t.status == 'open' %}
+  <form method="post" id="tk-prog-{{ t.key }}" hidden
+        data-confirm="Mark {{ t.ref }} in progress? It moves from Open to In progress for everyone who sees Ticketing. Nothing goes to {{ who_to }}." data-confirm-ok="Mark in progress">
+    <input type="hidden" name="action" value="progress"><input type="hidden" name="kind" value="{{ t.kind }}"><input type="hidden" name="ticket_id" value="{{ t.id }}">
+    {% for k, v in fkeep.items() if v %}<input type="hidden" name="{{ k }}" value="{{ v }}">{% endfor %}</form>
+  {% endif %}
+  <footer class="adm-panel-foot">
+    {% if t.status == 'open' %}<button type="submit" class="btn-link" form="tk-prog-{{ t.key }}">Mark in progress</button>{% endif %}
+    <span class="muted small adm-panel-grow tk-foot-note">Asks you to confirm first</span>
+    <button type="submit" class="primary" form="tk-close-{{ t.key }}"{% if not who_opts %} disabled{% endif %}>Reply &amp; close</button>
+  </footer>
+  {% else %}
+  <form method="post" id="tk-reopen-{{ t.key }}" hidden
+        data-confirm-tpl="Reopen {{ t.ref }} as {who}? It goes back to In progress, its reply is cleared from the ticket, and nothing is sent to {{ who_to }}."
+        data-confirm="Reopen {{ t.ref }}?" data-confirm-ok="Reopen">
+    <input type="hidden" name="action" value="reopen"><input type="hidden" name="kind" value="{{ t.kind }}"><input type="hidden" name="ticket_id" value="{{ t.id }}">
+    {% for k, v in fkeep.items() if v %}<input type="hidden" name="{{ k }}" value="{{ v }}">{% endfor %}</form>
+  <footer class="adm-panel-foot">
+    <span class="muted small adm-panel-grow tk-foot-note">Reopening sends nothing to them</span>
+    <button type="submit" class="tk-btn" form="tk-reopen-{{ t.key }}"{% if not who_opts %} disabled{% endif %}>Reopen</button>
+  </footer>
+  {% endif %}
+  {% else %}
+  <footer class="adm-panel-foot"><button type="button" class="primary" data-panel-close>Done</button></footer>
+  {% endif %}
+{% endcall %}
+{% endfor %}
+<script>
+(function () {
+  // The confirm box names the email picked as Closed by / Reopened by (the box reads data-confirm when it opens)
+  document.querySelectorAll('select[data-tk-who]').forEach(function (sel) {
+    var f = document.getElementById(sel.getAttribute('data-tk-who'));
+    if (!f) return;
+    var tpl = f.getAttribute('data-confirm-tpl');
+    function sync() { f.setAttribute('data-confirm', tpl.replace('{who}', sel.value || 'nobody picked yet')); }
+    sel.addEventListener('change', sync); sync();
+  });
+})();
+</script>
+<script src="{{ url_for('static', filename='tickets.js') }}?v={{ asset_v }}" data-agent-url="{{ url_for('admin_tickets_agent') }}"></script>
+{% endblock %}

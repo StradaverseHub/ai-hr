@@ -1,0 +1,204 @@
+{# The person page's Performance (canvas I2): the KPI framework, where they are in the fixed flow, and their KPI table
+   with add / edit / delete and the one moderator per KPI. Writes go to admin_person_kpi (the import's rules). A line is
+   edited in a right-hand panel (2026-10-30, canvas [design canvas link removed]): person/_kpi_panels.html. #}
+{% set mech = cfg['mechanism'] if cfg else None %}
+{# Reorder (2026-11-08): the admin holds pm.kpi_reorder, the person has 2 or more lines, the result is not released, and this is the page itself (a module's side panel has no kpi_reorder.js) #}
+{% set rord_on = kpi_reorder_ok and not kpi_out and not in_panel %}
+{% macro ktotal(f, dom) %}
+  <div class="pp-krow pp-ktotal" id="{{ dom }}">
+    <span></span>
+    <span class="pp-kname"><b>Final result</b><span class="muted small">Total KPI score, weighted<span class="pp-kfixed"> · stays last, never moves</span></span></span>
+    <span class="{{ '' if f.weight_ok else 'pp-bad' }}">{{ '%g' | format(f.weight) }}%</span>
+    <span></span><span></span>
+    <span class="pp-rate">{% if f.state == 'done' %}<b class="pp-total">{{ f.text }}</b> <span class="potential-pill" data-band="{{ f.band }}">{{ f.band }}</span>{% else %}<span class="muted">—</span>{% endif %}</span>
+    <span class="pp-modc pp-modspan">
+      {% if f.state == 'done' %}
+      <span class="pp-state is-done">All {{ f.n }} moderated{% if f.when %} · {{ f.when }}{% endif %}</span>
+      <span class="muted small pp-cal">After calibration: {% if f.cal.decided %}<span class="potential-pill" data-band="{{ f.cal.band }}">{{ f.cal.band }}</span> {{ f.cal.stage }}{% else %}not yet{% endif %}</span>
+      {% if f.split %}<span class="muted small pp-split-line" title="{{ f.split.text }}">{{ f.split.calc_mid }} +</span><span class="muted small pp-split-line" title="{{ f.split.text }}">{{ f.split.calc_ye }}</span>{% endif %}
+      {% elif f.state == 'held' %}<span class="pp-state is-warn">Held: their lines sit on two scales</span>
+      {% elif f.state == 'unscored' %}<span class="pp-state is-warn">A moderated line has no score, so there is no total</span>
+      {% else %}<span class="muted">Worked out once all {{ f.n }} are moderated · {{ f.done }} of {{ f.n }} done</span>{% endif %}
+    </span>
+  </div>
+{% endmacro %}
+{% macro kcells(k, rord=false) %}
+    <span class="pp-ncell">{% if rord %}<button type="button" class="pp-grip" aria-label="Drag {{ k.name }}" data-rord-grip><svg width="10" height="16" viewBox="0 0 10 16" fill="currentColor" aria-hidden="true"><circle cx="2.5" cy="3" r="1.4"/><circle cx="7.5" cy="3" r="1.4"/><circle cx="2.5" cy="8" r="1.4"/><circle cx="7.5" cy="8" r="1.4"/><circle cx="2.5" cy="13" r="1.4"/><circle cx="7.5" cy="13" r="1.4"/></svg></button>{% endif %}<span class="pp-num"><span class="pp-n muted">{{ k.n }}</span>{% if rord %}<span class="pp-was" hidden></span>{% endif %}</span></span>
+    <span class="pp-kname"><span class="pp-kline"><b>{{ k.base or k.name }}{% if k.focus %}<span class="kpi-focus">{{ k.focus }}</span>{% endif %}</b>{% if k.bu %}<span class="pp-chip" title="A BU KPI: Group People fills in the unit's figure">BU KPI</span>{% if k.bu_setup and k.bu_setup.other_unit %}<span class="pp-chip is-unit" title="A guest carrier: {{ k.bu_setup.unit_name }}'s BU KPI, another unit of their group">{{ k.bu_setup.unit_name }}</span>{% endif %}{% endif %}</span>{% if k.category %}<span class="muted small">{{ k.category }}</span>{% endif %}{% if k.description %}<div class="rv-kpi-desc kpi-desc" data-kpi-read data-kpi-name="{{ k.base or k.name }}" data-kpi-weight="{{ k.weight }}"{% if k.category %} data-kpi-meta="{{ k.category }}"{% endif %}>{{ k.description }}</div>{% endif %}{% if k.rf is defined %}{{ rf_files(k, person) }}{% endif %}</span>
+    <span>{{ '%g' | format(k.weight) }}%</span>
+    <span class="small">{{ k.targets }}{% if k.unit and k.targets != '—' %} <span class="muted">{{ kpi_unit_normalise(k.unit) }}</span>{% endif %}</span>
+    <span class="pp-res"><span>{{ k.self or '—' }}</span><span class="pp-res-arr" aria-hidden="true">&rarr;</span>{% if k.moderated %}<b>{{ k.moderated }}</b>{% else %}<span class="muted">waiting</span>{% endif %}{% if k.adjusted %}<span class="pp-adj">Adjusted</span>{% endif %}</span>
+    <span class="pp-rate">{% if k.mod_done %}{% if k.rating %}<b>{{ k.rating }}</b>{% if k.band %} <span class="potential-pill" data-band="{{ k.band }}">{{ k.band }}</span>{% endif %}{% else %}<span class="muted">—</span>{% endif %}{% elif k.rating %}<span class="pp-rate-self">{{ k.rating }}</span><span class="pp-sub">their figure</span>{% else %}<span class="muted">—</span>{% endif %}</span>
+    <span class="pp-modc"><span class="pp-who-mod is-{{ k.route }}">{% if k.route == 'lm' %}<span class="pp-tag is-lm" title="Line manager">LM</span> {{ k.moderator }}{% elif k.route == 'matrix' %}<span class="pp-tag is-mx" title="Matrix manager">Matrix</span> {{ k.moderator }}{% elif k.route == 'earlier' %}{{ k.moderator }}{% elif k.route == 'two' %}{{ k.chain_names | join(' → ') }} <span class="muted small">(two steps, from before)</span>{% elif k.route == 'unit' %}<span class="muted">Filled for the unit</span>{% elif k.route == 'bu' %}<span class="muted">Group People fills</span>{% else %}<span class="pp-bad">Nobody</span>{% endif %}</span>
+    <span class="pp-state is-{{ k.state }}">{{ k.word }}</span></span>
+{% endmacro %}
+
+{% from "person/_ai_insight.html" import card as ai_card %}
+{% from "person/_rf.html" import files as rf_files, block as rf_block with context %}
+{% if ai_ins %}{{ ai_card(ai_ins.pm, "What AI+ wrote for the leaders reviewing them · read only", url_for('admin_person', uid=person['id'], panel='insight', part='pm', cycle=cyc['id']), "Each KPI's reason") }}{% endif %}
+
+{% if split %}
+{# TRANSFERRED (2026-11-03): the super admin's card. Off: one line and a button; on: the summary, Change weights, Remove. The
+   figures and the preview are the server's (pm_split_apply, the preview route); this page works nothing out. #}
+<section class="admin-card pp-split{{ ' is-on' if split.on }}" id="pp-split" aria-label="Transferred" data-split-name="{{ person['full_name'] }}" data-preview="{{ split.preview_url }}">
+  {% if split.on %}
+  <div class="pp-split-head">
+    <span class="pp-split-k">Transferred</span>
+    <span class="pp-split-sum"><b>{{ split.role_from }}</b> <span class="pp-split-arr" aria-hidden="true">&rarr;</span> <b>{{ split.role_to }}</b></span>
+    <span class="pp-split-w">Mid-Year {{ split.weight_mid }}% / Year-End {{ split.weight_ye }}%</span>
+    {% if split.blend %}<span class="pp-split-fig" title="{{ split.blend.text }}">{% if split.blend.figure %}<b>{{ split.blend.figure }}</b> {% endif %}<span class="potential-pill" data-band="{{ split.blend.band }}">{{ split.blend.band }}</span></span>
+    {% else %}<span class="muted small">Blended result once every Year-End line is moderated</span>{% endif %}
+    <span class="pp-split-acts">
+      {% if not split.released %}
+      <button type="button" class="btn-link" data-split-open="change">Change weights</button>
+      <form method="post" action="{{ url_for('admin_person_split_year_remove', uid=person['id']) }}" class="pp-split-rm" data-confirm="Remove the transferred mark from {{ person['full_name'] }}? Their Year-End result goes back to their Year-End lines alone." data-confirm-ok="Remove" data-confirm-title="Remove the transferred mark?" data-confirm-tone="danger"{{ super_remark_attrs() }}>
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+        <button type="submit" class="btn-link">Remove</button>
+      </form>
+      {% endif %}
+    </span>
+  </div>
+  <p class="muted small pp-split-note">Marked by {{ split.set_by or 'the super admin' }}, {{ split.set_on }}. {{ split.remark }}</p>
+  {% else %}
+  <div class="pp-split-head">
+    <span class="pp-split-k">Transferred</span>
+    <span class="pp-split-ask">Changed role and KPIs between Mid-Year and Year-End?</span>
+    {% if split.can %}<span class="pp-split-acts"><button type="button" class="btn-link" data-split-open="mark">Mark as transferred</button></span>
+    {% else %}<span class="muted small pp-split-why">{{ split.why }}</span>{% endif %}
+  </div>
+  {% endif %}
+  {% if (split.can or split.on) and not split.released %}
+  <form method="post" action="{{ url_for('admin_person_split_year', uid=person['id']) }}" class="admin-form adm-set-form pp-split-form" id="pp-split-form" hidden
+        data-confirm-title="{{ 'Change the weights?' if split.on else 'Mark as transferred?' }}" data-confirm-ok="{{ 'Change weights' if split.on else 'Mark as transferred' }}"
+        data-confirm="{{ ('Change ' if split.on else 'Mark ') ~ person['full_name'] ~ (': Mid-Year ' if split.on else ' as transferred: Mid-Year ') ~ split.weight_mid ~ '% / Year-End ' ~ split.weight_ye ~ '%?' }}">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <div class="pp-split-roles"><span><span class="pp-k">Role at {{ split.mid_name or 'Mid-Year' }}</span><b>{{ split.role_from }}</b></span>
+      <span class="pp-split-arr" aria-hidden="true">&rarr;</span>
+      <span><span class="pp-k">Role now</span><b>{{ split.role_to }}</b></span></div>
+    <div class="pp-split-weights">
+      <label><span class="pp-k">Mid-Year weight</span><span class="pp-split-num"><input type="number" name="weight_mid" id="pp-split-w" min="1" max="99" step="1" value="{{ split.weight_mid }}" required inputmode="numeric"> <span>%</span></span></label>
+      <span><span class="pp-k">Year-End weight</span><b id="pp-split-wy">{{ split.weight_ye }}%</b></span>
+    </div>
+    <div class="pp-split-figs">
+      <span><span class="pp-k">Mid-Year score</span><b>{{ split.mid or '—' }}</b>{% if split.mid_band %} <span class="potential-pill" data-band="{{ split.mid_band }}">{{ split.mid_band }}</span>{% endif %}</span>
+      <span><span class="pp-k">Year-End score{{ '' if split.ye_final else ' so far' }}</span><b>{{ split.ye or '—' }}</b>{% if split.ye_band %} <span class="potential-pill" data-band="{{ split.ye_band }}">{{ split.ye_band }}</span>{% endif %}{% if split.ye and not split.ye_final %} <span class="muted small">not final</span>{% endif %}</span>
+      <span><span class="pp-k">Result</span><b id="pp-split-res">{{ (split.preview.figure or '') if split.preview else '—' }}</b> <span class="potential-pill" id="pp-split-resb" data-band="{{ split.preview.band if split.preview and split.preview.band else '' }}"{% if not (split.preview and split.preview.band) %} hidden{% endif %}>{{ split.preview.band if split.preview and split.preview.band }}</span></span>
+    </div>
+    <p class="muted small pp-split-calc" id="pp-split-calc" aria-live="polite">{{ split.preview.text if split.preview else '' }}</p>
+    <label><span class="pp-k">Remark (required, {{ split.words }} words at most): why, for the audit trail</span>
+      <textarea name="remark" rows="3" required maxlength="1000" class="pp-split-ta" placeholder="For example: moved from Finance to Operations on 1 Aug; KPIs reset in the new role"></textarea></label>
+    <div class="actions"><span class="muted small">Only the super admin sees this. Both halves must count: 1 to 99.</span>
+      <button type="button" class="btn-link" data-split-close>Cancel</button>
+      <button type="submit" class="primary">{{ 'Save weights' if split.on else 'Save' }}</button></div>
+  </form>
+  {% endif %}
+</section>
+{% endif %}
+
+{% if split_mid %}
+{# THE TOGGLE (2026-11-03): a transferred person's Performance page shows Year-End (today's view, the Final row carrying the blend) or
+   Mid-Year (that cycle's lines, scores and final band as recorded, read only). Both are drawn here; the switch needs no reload. #}
+<div class="pp-half-bar">
+  <div class="acct-seg pp-half-seg" role="radiogroup" aria-label="Which half of the year to show" id="pp-half-seg">
+    <button type="button" class="acct-seg-b on" role="radio" aria-checked="true" data-half="ye">Year-End</button>
+    <button type="button" class="acct-seg-b" role="radio" aria-checked="false" data-half="mid">Mid-Year</button>
+  </div>
+  <span class="muted small pp-half-note" id="pp-half-ye-note">The Final result is the blend: Mid-Year {{ split_mid.weight_mid }}% + Year-End {{ split_mid.weight_ye }}%</span>
+</div>
+{% endif %}
+<div id="pp-half-ye"{% if split_mid %} class="pp-half"{% endif %}>
+{% if kpi_held %}
+<div class="pp-warn" role="note"><b>Total KPI score held</b>
+  <span>{{ kpi_held.text }}. Their Total KPI score is not worked out while their lines sit on two scales.{% if is_super %} <a href="{{ url_for('admin_person', uid=person['id'], panel='bgkpi') }}">Set them &rsaquo;</a>{% endif %}</span></div>
+{% endif %}
+<div class="pp-frame-row">
+  <section class="admin-card pp-frame" aria-label="KPI framework">
+    <span><span class="pp-k">Scoring</span><b>{% if not cfg %}Not set for {{ display_bg(person['business_group']) }}{% elif mech == 'A' %}Rate 1–5 ladder{% elif cfg['variant'] == 'excellence' %}Threshold → target, with excellence{% else %}Threshold → target{% endif %}</b>
+      <a class="small" href="{{ url_for('admin_module_settings', key='pm') }}">set for the group &rsaquo;</a></span>
+    <span><span class="pp-k">KPI framework</span><b>{{ tier['name'] }}{% if person['job_grade'] %} · JG {{ person['job_grade'] }}{% endif %}</b> <span class="muted">· {{ library | length }} library KPI{{ 's' if library | length != 1 }}</span>
+      <a class="small" href="{{ url_for('admin_kpi_library') }}">KPI library &rsaquo;</a></span>
+    <span><span class="pp-k">Weights</span><b class="{{ 'pp-ok' if summ.weight_ok else 'pp-bad' }}">{{ '%g' | format(summ.weight) }}%{{ ' ✓' if summ.weight_ok }}</b></span>
+    <span><span class="pp-k">Moderated</span><b>{{ summ.done }} of {{ summ.n }}</b></span>
+  </section>
+</div>
+
+{% set sub_ok = summ.n and summ.submitted >= summ.n %}
+<div class="pp-flow" aria-label="Where {{ person['full_name'] }} is">
+  <span class="pp-k">The flow</span>
+  <span class="pp-step {{ 'is-done' if sub_ok else 'is-now' }}">Employee · {{ summ.submitted }} of {{ summ.n }} submitted{{ ' ✓' if sub_ok }}</span><span class="pp-arr">&rarr;</span>
+  {% set mod_cls = 'is-done' if summ.all_done else ('is-now' if sub_ok else '') %}
+  {% if kpis | selectattr('mod_done') | list | length %}<a class="pp-step pp-step-link {{ mod_cls }}" href="{{ url_for('admin_person', uid=person['id'], tab='performance', panel='kpi-mod') }}" data-panel-open="kpi-mod" title="See what was moderated">Moderation · {{ summ.done }} of {{ summ.n }} done{{ ' ✓' if summ.all_done }} <span class="pp-step-go" aria-hidden="true">&rsaquo;</span></a>
+  {% else %}<span class="pp-step {{ mod_cls }}">Moderation · {{ summ.done }} of {{ summ.n }} done{{ ' ✓' if summ.all_done }}</span>{% endif %}
+  {% if summ.wait_lm %}<span class="pp-step is-lm">{{ summ.wait_lm }} with the line manager</span>{% endif %}
+  {% if summ.wait_mx %}<span class="pp-step is-mx">{{ summ.wait_mx }} with a matrix manager</span>{% endif %}
+  <span class="pp-arr">&rarr;</span>
+  <span class="pp-step {{ 'is-now' if summ.all_done }}">HOD · department review</span><span class="pp-arr">&rarr;</span>
+  <span class="pp-step">BU CEO · calibration</span><span class="pp-arr">&rarr;</span>
+  <span class="pp-step">BG CEO · Talent Box</span>
+</div>
+
+{% if editable and kpi_out %}
+<p class="muted small pp-foot pp-final">These KPI lines are final: the performance result went out on {{ kpi_out }}, so nothing here can be added, changed, reordered or deleted.</p>
+{% endif %}
+{% if (kpi_add_ok or rord_on) and not kpi_out %}
+<div class="admin-card pp-addbox kpe-addbar" id="kpe-addbar">
+  {% if kpi_add_ok %}<a class="primary kpe-addbtn" id="add" href="{{ url_for('admin_person', uid=person['id'], tab='performance', panel='kpi-add') }}" data-panel-open="kpi-add">+ Add a KPI</a>{% endif %}
+  {% if rord_on %}<button type="button" class="kpe-reordbtn" id="rord-open" aria-controls="rord-bar"><svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 5.5L7 2.5l3 3M4 8.5l3 3 3-3"/></svg>Reorder</button>{% endif %}
+  {% if kpi_add_ok %}<span class="muted small">Every KPI is picked from the KPI library{% if not library %}; there are none this person may take yet. <a href="{{ url_for('admin_kpi_library') }}">Add some to the KPI library &rsaquo;</a>{% endif %}.</span>
+  {% else %}<span class="muted small">Change the order their KPIs read in, everywhere they are listed.</span>{% endif %}
+</div>
+{% endif %}
+{% if rord_on %}
+{# REORDER MODE (2026-11-08, canvas [design canvas link removed]): the bar below replaces the add bar while the rows are moved on this page (static/kpi_reorder.js); Save order posts the ids in order to admin_person_kpi (action=reorder), after OneHR's own confirm box (the script rewrites its words and list as rows move). #}
+<div class="admin-card pp-addbox kpe-reorderbar" id="rord-bar" hidden data-rord-name="{{ person['full_name'] }}" data-rord-cycle="{{ cyc['name'] if cyc else '' }}">
+  <span class="rord-t"><b>Reorder KPIs</b><span class="muted small">Drag a row by its handle, or move it with the arrows. Only the order changes: weights, targets, results and ratings stay as they are.</span></span>
+  <span class="rord-count" id="rord-count" hidden></span>
+  <button type="button" class="btn-link rord-cancel" id="rord-cancel">Cancel</button>
+  <button type="submit" class="primary rord-save" id="rord-save" form="rord-form" disabled>Save order</button>
+  <span class="sr-only" id="rord-live" role="status" aria-live="polite"></span>
+</div>
+<form method="post" action="{{ url_for('admin_person_kpi', uid=person['id']) }}" id="rord-form" hidden data-confirm="Save the new order of {{ person['full_name'] }}'s {{ cyc['name'] if cyc else 'this cycle' }} KPIs?" data-confirm-ok="Save order" data-confirm-foot="Only the order changes. They, their moderators and their leaders see their KPIs in this order at once. Nobody is emailed.">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+  <input type="hidden" name="action" value="reorder">
+  <input type="hidden" name="order" id="rord-order" value="">
+</form>
+{% endif %}
+<section class="admin-card pp-kpis" id="pp-kpis" aria-label="KPIs">
+  <div class="pp-krow pp-khead"><span>#</span><span>KPI</span><span>Weight</span><span title="{{ 'Targets, Rate 1 → 5' if mech == 'A' else 'Targets, threshold → target' }}">Targets</span><span title="Result · self → moderated">Result</span><span title="{{ 'Their rating, then the moderated one' if mech == 'A' else 'Their achievement, then the moderated one' }}">{{ 'Achievement' if mech == 'B' else 'Rating' }}</span><span title="Who moderates, and where it stands">Moderation</span><span>{% if rord_on %}<span class="pp-hmove">Move</span>{% endif %}</span></div>
+  {% for k in kpis %}
+  {% set row = kcells(k, rord_on) %}
+  <div class="pp-krow" id="kpi-{{ k.id }}">{{ row }}<a class="pp-act" href="{{ url_for('admin_person', uid=person['id'], tab='performance', panel='kpi-%d' % k.id) }}" data-panel-open="kpi-{{ k.id }}">{{ 'Edit' if k.can_edit or k.weight_only else 'View' }}</a>{% if rord_on %}<span class="pp-mv" role="group" data-rord-name="{{ k.name }}" aria-label="Move {{ k.name }}"><button type="button" class="pp-mvb" data-rord-mv="-1" aria-label="Move {{ k.name }} up"><svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2.5 7.5L6 4l3.5 3.5"/></svg></button><button type="button" class="pp-mvb" data-rord-mv="1" aria-label="Move {{ k.name }} down"><svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2.5 4.5L6 8l3.5-3.5"/></svg></button></span>{% endif %}</div>
+  {% else %}
+  <p class="muted pp-none">No KPIs {{ 'yet' if kpi_add_ok else 'in ' ~ (cyc['name'] if cyc else 'this cycle') }}.{% if kpi_add_ok %} Add one above, or <a href="{{ url_for('admin_import_kpi_targets') }}">import them</a>.{% endif %}</p>
+  {% endfor %}
+  {% if summ.final %}{{ ktotal(summ.final, 'kpi-final') }}{% endif %}
+</section>
+
+{% if (kpi_editable or kpi_delete_ok) and not kpi_out and subs %}
+<p class="muted small pp-foot">A moderated KPI is locked. To have a result or a moderation redone, reopen it in Submitted this cycle above: it goes back to whoever made it, as they left it.</p>
+{% endif %}
+{% if rf and rf.pm %}{{ rf_block(rf.pm) }}{% endif %}
+</div>{# /pp-half-ye #}
+{% if split_mid %}
+<div id="pp-half-mid" class="pp-half" hidden>
+  <p class="muted small pp-half-title" id="pp-half-title">{{ split_mid.title }}</p>
+  <section class="admin-card pp-kpis pp-kpis-mid" aria-label="{{ split_mid.title }}, read only">
+    <div class="pp-krow pp-khead"><span>#</span><span>KPI</span><span>Weight</span><span>Targets</span><span title="Result · self → moderated">Result</span><span>Score</span><span title="Who moderated, and where it stood">Moderation</span><span></span></div>
+    {% for k in split_mid.kpis %}
+    <div class="pp-krow">{{ kcells(k) }}<span></span></div>
+    {% else %}
+    <p class="muted pp-none">No KPIs in {{ split_mid.cycle }}.</p>
+    {% endfor %}
+    {% if split_mid.summ.final %}{{ ktotal(split_mid.summ.final, 'kpi-final-mid') }}{% endif %}
+  </section>
+  <p class="muted small pp-foot">{{ split_mid.cycle }} as it was recorded: read only. Nothing on it can be changed here.</p>
+</div>
+{% endif %}
+
+{% if split or split_mid %}<script src="{{ url_for('static', filename='split_year.js') }}?v={{ asset_v }}"></script>{% endif %}
+{% if rf and rf.files %}<script src="{{ url_for('static', filename='kpi_files.js') }}?v={{ asset_v }}"></script>{% endif %}
+{% if not in_panel %}
+{% include "person/_kpi_panels.html" %}
+<script src="{{ url_for('static', filename='kpi_edit.js') }}?v={{ asset_v }}"></script>
+{% if rord_on %}<script src="{{ url_for('static', filename='kpi_reorder.js') }}?v={{ asset_v }}"></script>{% endif %}
+{% endif %}

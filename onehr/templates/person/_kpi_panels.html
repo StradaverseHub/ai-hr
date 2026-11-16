@@ -1,0 +1,485 @@
+{# The KPI panels of the person page's Performance tab (Chris, 2026-10-30, canvas [design canvas link removed],
+   boards 1-8): one right-hand panel per KPI line (Edit, View or, for a line the BU KPI setup owns, the unit's), and one
+   to Add. The KPI's identity stays with the KPI library: its name and family · group are read only (admin_person_kpi
+   refuses a change whatever is posted); "Pick another library KPI" re-points the line. Method and Unit are picked here
+   (canvas [design canvas link removed], Chris, 2026-11-04): they start as the library's, a change is for
+   THIS LINE ONLY (the library row never changes), and the line says when it "Differs from the library" (worked out on every
+   read, never stored). Once a result or check-in is in, the other steps of the unit's scale are held, and a method or unit change
+   asks for a reason in the confirm. Behaviour: static/kpi_edit.js.
+   Not rendered inside a module panel (admin.js opens one panel at a time): there the Edit / View / Add links open this
+   page with its panel. Included by person/_performance.html, so it reads that page's context. #}
+{% from "_adm_panel.html" import panel %}
+{% set who = person['full_name'] %}
+{% set cyc_name = cyc['name'] if cyc else 'this cycle' %}
+{% set unit_name = display_company(person['business_group'], person['company']) if person['company'] else '' %}
+{% set lock_svg %}<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><rect x="4" y="11" width="16" height="10" rx="2"></rect><path d="M8 11V7a4 4 0 0 1 8 0v4"></path></svg>{% endset %}
+{% set open_svg %}<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><rect x="4" y="11" width="16" height="10" rx="2"></rect><path d="M8 11V7a4 4 0 0 1 7.5-2"></path></svg>{% endset %}
+{% set search_svg %}<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7"></circle><path d="M20 20l-4-4"></path></svg>{% endset %}
+
+{# the scoring boxes, by the group's mechanism; k is the line or None (Add). Method and Unit are picked (the canvas, board 1):
+   they start as the library's and a change is for this line only. The unit is picked from the standard list, never typed; a
+   unit off the list stays "as entered" until changed; once a result or check-in is in, the other steps of the unit's scale
+   are disabled ("held", _kpi_unit_result_block). The "Differs" line, the scale-direction line and the result strip are drawn
+   by static/kpi_edit.js from the form's data-kpe-lib* attributes and filled here for the state the page opens in. #}
+{% macro kpe_scale(k, add=False) %}
+  {% set cur_unit = (kpi_unit_normalise(k.unit) or '') if k else '' %}
+  {% set held = k.unit_held if k else [] %}
+  {% if k and k.has_input %}
+  <div class="kpe-lock is-shut" data-kpe-restrip hidden>{{ lock_svg | safe }}<span><b>{{ who }} has {% if k.self %}entered a result: {{ k.self }}{% if cur_unit %} {{ cur_unit }}{% endif %}{% else %}checked in on this KPI{% endif %}.</b> It stays as they entered it. A new method or unit changes how it reads. Saving asks you why.</span></div>
+  {% endif %}
+  <div class="kpe-row kpe-mu">
+    <label class="kpe-fld kpe-f-m"><span class="kpe-l">Method</span>
+      <select class="modern-select kpe-sel" name="method" data-kpe-sel="method" data-kpe-track="Method" aria-label="Method">
+        <option value="more"{{ ' selected' if not k or k.method != 'less' }}>More is better</option>
+        <option value="less"{{ ' selected' if k and k.method == 'less' }}>Less is better</option>
+      </select></label>
+    <label class="kpe-fld kpe-f-u"><span class="kpe-l">Unit</span>
+      <select class="modern-select kpe-sel" name="unit" data-kpe-sel="unit" data-kpe-track="Unit" aria-label="Unit">
+        {% if not cur_unit %}<option value="" selected>No unit</option>{% endif %}
+        {% if cur_unit and cur_unit not in kpi_units %}<option value="{{ cur_unit }}" selected>{{ cur_unit }} (as entered)</option>{% endif %}
+        {% for g, us in kpi_unit_groups %}<optgroup label="{{ g }}">{% for u in us %}{% if u in held %}<option value="{{ u }}" disabled>{{ u }} · held</option>{% else %}<option value="{{ u }}"{{ ' selected' if u == cur_unit }}>{{ u }}</option>{% endif %}{% endfor %}</optgroup>{% endfor %}
+      </select></label>
+    <label class="kpe-fld kpe-f-w"><span class="kpe-l">Weight %</span><input class="kpe-in kpe-num" name="weightage" inputmode="decimal" value="{{ '%g' | format(k.weight) if k else '' }}" placeholder="{{ 'e.g. 10' if add }}" data-kpe-weight data-kpe-track="Weight" required></label>
+  </div>
+  {% if held %}<div class="kpe-why kpe-held" data-kpe-held>{% for u in held[:-1] %}{{ u }}{{ ', ' if not loop.last }}{% endfor %}{{ ' and ' if held | length > 1 }}{{ held[-1] }} {{ 'are' if held | length > 1 else 'is' }} held: what they entered is in {{ cur_unit }}, and in another step it would read a thousand times or more out.</div>{% endif %}
+  <div class="kpe-why" data-kpe-muwhy>{% if k and k.differs %}<span class="kpe-chip is-warn">Differs from the library</span> The library's: {{ 'Less is better' if k.lib_method == 'less' else 'More is better' }} · {{ k.lib_unit or 'No unit' }}. This line only; the library stays as it is. <a class="kpe-lk" href="#" data-kpe-putback>Put back the library's</a>{% elif k and not k.has_lib %}This KPI isn't in the library, so there is nothing to compare it with. A change here is for this line only.{% else %}Method and unit start as the KPI library's. A change here is for this line only: the library, and everyone else on this KPI, stay as they are.{% endif %}</div>
+  {% if mech == 'A' %}
+  <div class="kpe-row">
+    {% for i in range(1, 6) %}<label class="kpe-fld" style="width: 80px"><span class="kpe-l">Rate {{ i }}</span><input class="kpe-in kpe-num" name="rate {{ i }}" inputmode="decimal" value="{{ k.rates[i - 1] if k else '' }}" placeholder="{{ '—' if add }}" data-kpe-fig="r{{ i }}" data-kpe-track="Targets"></label>{% endfor %}
+  </div>
+  {% elif mech == 'B' %}
+  <div class="kpe-row">
+    <label class="kpe-fld" style="width: 112px"><span class="kpe-l">Threshold</span><input class="kpe-in kpe-num" name="threshold" inputmode="decimal" value="{{ k.threshold if k else '' }}" placeholder="{{ '—' if add }}" data-kpe-fig="th" data-kpe-track="Targets"></label>
+    <label class="kpe-fld" style="width: 112px"><span class="kpe-l">Target</span><input class="kpe-in kpe-num" name="target" inputmode="decimal" value="{{ k.target if k else '' }}" placeholder="{{ '—' if add }}" data-kpe-fig="tg" data-kpe-track="Targets"></label>
+    {% if cfg['variant'] == 'excellence' %}<label class="kpe-fld" style="width: 112px"><span class="kpe-l">Excellence</span><input class="kpe-in kpe-num" name="excellence" inputmode="decimal" value="{{ k.excellence if k else '' }}" placeholder="{{ '—' if add }}" data-kpe-fig="ex" data-kpe-track="Targets"></label>
+    {% else %}<label class="kpe-fld" style="width: 112px"><span class="kpe-l">Multiple</span><input class="kpe-in kpe-num" name="multiple" inputmode="numeric" value="{{ k.multiple if k else '' }}" placeholder="{{ '—' if add }}" data-kpe-fig="mu" data-kpe-track="Targets"></label>{% endif %}
+  </div>
+  {% endif %}
+  <div class="kpe-why" data-kpe-dirline hidden></div>
+  {% if mech %}<span class="kpe-sum">On the table <b data-kpe-sum>—</b></span>{% endif %}
+  <div class="kpe-why"><span data-kpe-wline></span></div>
+{% endmacro %}
+
+{# the description box with its staff preview #}
+{% macro kpe_desc(k, add=False) %}
+  <div class="kpe-sec-h"><h3>Description</h3>{% if add %}<span class="kpe-badge" data-kpe-libdesc hidden>From the library</span>{% endif %}<span class="kpe-note">{{ 'Edit it for this person, or leave it' if add else "This line's own words · line breaks kept" }}</span></div>
+  {% if not add %}<span class="kpe-why"><span>What it means for {{ who }}. The library's short definition stays as it is.</span></span>{% endif %}
+  <textarea class="kpe-ta" name="description" rows="5" data-kpe-desc data-kpe-track="Description" aria-label="Description">{{ k.description if k else '' }}</textarea>
+  <div class="kpe-ta-foot"><span>The box grows as you type; Enter starts a new line.</span><span data-kpe-count>0 characters</span></div>
+  <div class="kpe-pv" aria-label="How staff will see it">
+    <div class="kpe-pv-k"><span>How staff will see it</span><a href="#" data-kpe-pop>Open as the pop-out</a></div>
+    <div data-kpe-prev></div>
+  </div>
+{% endmacro %}
+
+{# Moderated by: two cards; a matrix manager is searched and picked, never typed #}
+{% macro kpe_mod(k) %}
+  {% set mx = k and k.route == 'matrix' %}
+  <div class="kpe-sec-h"><h3>Moderated by</h3></div>
+  <div class="kpe-mods" role="radiogroup" aria-label="Moderated by">
+    <label class="kpe-mod{{ '' if mx else ' on' }}"><input type="radio" name="moderator" value="lm" {{ '' if mx else 'checked' }} data-kpe-track="Moderated by"><span class="kpe-radio"></span>
+      <span class="kpe-mt"><b>Line manager</b><span>{% if leaders.lm %}{{ leaders.lm['full_name'] }}{% else %}<em>none set</em>{% endif %}</span></span></label>
+    <label class="kpe-mod{{ ' on' if mx }}"><input type="radio" name="moderator" value="matrix" {{ 'checked' if mx }} data-kpe-track="Moderated by"><span class="kpe-radio"></span>
+      <span class="kpe-mt"><b>Matrix manager</b>
+        <span class="pick pp-matrix" data-pick>
+          <input type="text" class="pick-q" placeholder="Search their name or Employee ID" aria-label="Matrix manager" autocomplete="off" value="{{ k.moderator if mx else '' }}">
+          <input type="hidden" class="pick-val" name="matrix_eid" value="{{ k.moderator_eid if mx else '' }}" data-kpe-track="Moderated by"></span></span></label>
+  </div>
+  <div class="kpe-why"><span>A new moderator gets the KPI at once; a draft the old one wrote is discarded.</span></div>
+{% endmacro %}
+
+{# the strict library search: only a listed KPI can be chosen; nothing typed is ever saved #}
+{% macro kpe_search(prefix) %}
+  <div class="kpe-pick" data-kpe-pick data-kpe-libhref="{{ url_for('admin_kpi_library') }}">
+    <label class="kpe-fld"><span class="kpe-l">Library KPI</span>
+      <span class="kpe-in kpe-q">{{ search_svg | safe }}<input type="text" data-kpe-q autocomplete="off" role="combobox" aria-expanded="false" aria-label="Search the KPI library" placeholder="Type any words of the name or family"></span></label>
+    <div class="kpe-list" role="listbox" aria-label="Library KPIs {{ who }} may take" data-kpe-list hidden></div>
+    <input type="hidden" name="library_id" value="" data-kpe-lid>
+    <span class="kpe-hint">A strict search: only the library KPIs their group, unit, department and grade may take. Nothing typed is ever saved as a KPI.</span>
+  </div>
+{% endmacro %}
+
+{# the Delete form of one line, shared by the Edit panel and the Remove-only panel (an admin whose role has pm.kpi_delete and not pm.kpi_edit) #}
+{% macro kpe_delform(k, who, csrf) %}
+  <form method="post" id="kpe-del-{{ k.id }}" action="{{ url_for('admin_person_kpi', uid=person['id']) }}" class="kpe-delform"
+        data-confirm="Delete '{{ k.name }}' from {{ who }}'s KPIs{{ ', with what they entered on it' if k.has_input }}? This can't be undone." data-confirm-tone="danger" data-confirm-ok="Delete"
+        {% if k.has_input %}data-confirm-reason="Why it goes" data-confirm-reason-placeholder="Required, because they entered a result or a check-in"{% endif %}>
+    <input type="hidden" name="csrf_token" value="{{ csrf }}">
+    <input type="hidden" name="action" value="delete"><input type="hidden" name="kpi_target_id" value="{{ k.id }}">
+  </form>
+{% endmacro %}
+
+{% if editable %}
+{# one JSON for every picker on the page #}
+{% if kpe %}<script type="application/json" id="kpe-lib">{{ kpe | tojson }}</script>{% endif %}
+
+{% for k in kpis %}
+{% set bs = k.bu_setup %}
+{% set mod_word = 'the line manager' if k.route == 'lm' else ('a matrix manager' if k.route == 'matrix' else ('Group People' if k.route in ('bu', 'unit') else 'nobody yet')) %}
+{% set sub = who ~ ' · ' ~ cyc_name ~ ' · moderated by ' ~ mod_word %}
+{% set pk = 'Performance · ' ~ ('Edit KPI' if k.can_edit and not k.bu_kpi_id else 'KPI') ~ ' ' ~ k.n ~ ' of ' ~ (kpis | length) %}
+
+{% if not k.can_edit and not (k.weight_only and k.bu_kpi_id) %}
+{# ---- locked or past: read only (board 5). A line filled for the unit (no moderator acted) is read only too, but for its Weight %:
+   the figure is the unit's, the weight is the person's (2026-11-05), so it carries the weight form, with a reason in the confirm. ---- #}
+{% call panel('kpi-%d' % k.id, pk ~ (' · Filled for the unit' if k.weight_only else ' · Read only'), k.base or k.name, sub) %}
+  {% if k.weight_only %}
+  <form method="post" action="{{ url_for('admin_person_kpi', uid=person['id']) }}" class="kpe" data-kpe="bu" data-kpe-name="{{ k.name }}" data-kpe-who="{{ who }}"
+        data-kpe-total="{{ '%g' | format(summ.weight) }}" data-kpe-was="{{ '%g' | format(k.weight) }}" data-kpe-input="{{ 1 if k.has_input else 0 }}"
+        data-confirm="Save the weight on '{{ k.name }}' for {{ who }}? {{ who }} sees it at once and it goes in the trail; their other weights are not re-balanced for you. The unit's figure stays as filled."
+        data-confirm-ok="Save weight">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <input type="hidden" name="action" value="edit"><input type="hidden" name="kpi_target_id" value="{{ k.id }}">
+  {% endif %}
+  <div class="adm-panel-body kpe-body">
+    {% if kpi_out %}
+    <div class="kpe-lock is-final">{{ lock_svg | safe }}<span><b>Final: {{ who }}'s {{ cyc_name }} performance result went out on {{ kpi_out }}.</b> Nothing on their KPIs can be added, changed or deleted, and a reopen is refused.</span></div>
+    {% elif k.filled %}
+    <div class="kpe-lock is-shut">{{ lock_svg | safe }}<span><b>Filled for the unit: Group People entered {{ unit_name or 'the unit' }}'s figure{% if k.filled_at %} on {{ k.filled_at }}{% endif %}.</b> {% if k.weight_only %}The figure and the rest of the line are final; only {{ who }}'s weight changes here.{% else %}It reads only now.{% endif %}</span></div>
+    {% elif k.acted %}
+    <div class="kpe-lock is-shut">{{ lock_svg | safe }}<span><b>Locked: {{ k.lock_by or 'The moderator' }} moderated it{% if k.lock_at %} on {{ k.lock_at }}{% endif %}.</b> To have it redone, reopen it in Submitted this cycle: it goes back to {{ k.lock_by or 'them' }} as they left it. {% if subs %}<a href="#pp-subs" data-kpe-subs>Submitted this cycle &rsaquo;</a>{% endif %}</span></div>
+    {% elif not kpi_editable %}
+    <div class="kpe-lock is-shut">{{ lock_svg | safe }}<span><b>Read only.</b> {% if k.deletable and kpi_delete_ok %}Your admin role can remove a KPI line but not change one.{% else %}Your admin role can't change KPI lines.{% endif %}</span></div>
+    {% else %}
+    <div class="kpe-lock is-shut">{{ lock_svg | safe }}<span><b>Read only.</b> This is a past cycle, so its KPI lines can't change.</span></div>
+    {% endif %}
+    <section class="kpe-sec" aria-label="What is measured">
+      <div class="kpe-sec-h"><h3>What's measured</h3></div>
+      <div class="kpe-facts">
+        <div><span class="k">KPI</span><span>{{ k.base or k.name }}</span></div>
+        <div><span class="k">Family · group</span><span>{{ k.category or '—' }}</span></div>
+        <div><span class="k">Focus</span><span class="kpe-muted">{{ k.focus or 'None' }}</span></div>
+      </div>
+    </section>
+    <section class="kpe-sec" aria-label="How it is scored">
+      <div class="kpe-sec-h"><h3>How it's scored</h3></div>
+      <div class="kpe-facts">
+        <div><span class="k">Method</span><span>{{ 'Less is better' if k.method == 'less' else 'More is better' }}</span></div>
+        <div><span class="k">Unit</span><span>{{ kpi_unit_normalise(k.unit) or 'No unit' }}</span></div>
+        {% if not k.weight_only %}<div><span class="k">Weight</span><span>{{ '%g' | format(k.weight) }}%</span></div>{% endif %}
+        <div><span class="k">Targets</span><span>{{ k.targets }}{% if k.unit and k.targets != '—' %} {{ kpi_unit_normalise(k.unit) }}{% endif %}</span></div>
+        <div><span class="k">Their figure</span><span>{{ k.self or '—' }}</span></div>
+        <div><span class="k">Moderated</span><span>{% if k.moderated %}<b>{{ k.moderated }}</b>{% else %}<span class="kpe-muted">waiting</span>{% endif %}</span></div>
+        <div><span class="k">Moderated by</span><span>{% if k.route == 'lm' %}<span class="pp-tag is-lm">LM</span> {{ k.moderator }}{% elif k.route == 'matrix' %}<span class="pp-tag is-mx">Matrix</span> {{ k.moderator }}{% elif k.route == 'two' %}{{ k.chain_names | join(' → ') }}{% elif k.route == 'unit' %}<span class="kpe-muted">Filled for the unit</span>{% elif k.route == 'bu' %}<span class="kpe-muted">Group People fills</span>{% elif k.moderator %}{{ k.moderator }}{% else %}<span class="kpe-muted">Nobody</span>{% endif %}</span></div>
+      </div>
+      {% if k.differs %}<div class="kpe-why"><span class="kpe-chip is-warn">Differs from the library</span> The library's: {{ 'Less is better' if k.lib_method == 'less' else 'More is better' }} · {{ k.lib_unit or 'No unit' }}. This line only; the library stays as it is.</div>{% endif %}
+    </section>
+    {% if k.description %}
+    <section class="kpe-sec" aria-label="Description">
+      <div class="kpe-sec-h"><h3>Description</h3><span class="kpe-note">As staff see it</span></div>
+      <div class="kpe-pv" data-kpe-static="{{ k.description }}"></div>
+    </section>
+    {% endif %}
+    {% if k.weight_only %}
+    <section class="kpe-sec" aria-label="Theirs on this line">
+      <div class="kpe-sec-h"><h3>Theirs on this line</h3></div>
+      <div class="kpe-row">
+        <label class="kpe-fld" style="width: 116px"><span class="kpe-l">Weight %</span><input class="kpe-in kpe-num" name="weightage" inputmode="decimal" value="{{ '%g' | format(k.weight) }}" data-kpe-weight data-kpe-track="Weight" required></label>
+        <span class="kpe-why" style="flex: 1; min-width: 0"><span>The unit's figure stays as filled; the weight is {{ who }}'s own. <span data-kpe-wline></span></span></span>
+      </div>
+    </section>
+    {% endif %}
+    {% if k.deletable and kpi_delete_ok %}
+    <div class="kpe-danger">
+      <p>Takes it off {{ who }}'s KPIs{% if k.has_input %}, with what they entered on it{% endif %}. Asks again first.</p>
+      <button type="submit" form="kpe-del-{{ k.id }}" class="kpe-delbtn" formnovalidate>Delete this KPI</button>
+    </div>
+    {% endif %}
+  </div>
+  {% if k.weight_only %}
+  <footer class="adm-panel-foot"><span class="adm-panel-grow kpe-foot-note">Only their weight changes here</span>
+    <button type="button" class="btn-link" data-panel-close>Cancel</button><button type="submit" class="primary">Save weight</button></footer>
+  </form>
+  {% else %}
+  <footer class="adm-panel-foot"><span class="adm-panel-grow kpe-foot-note">{{ 'You can remove this line, not change it' if (k.deletable and kpi_delete_ok) else 'Nothing here can change while it is locked' }}</span>
+    <button type="button" class="primary" data-panel-close>Done</button></footer>
+  {% endif %}
+  {% if k.deletable and kpi_delete_ok %}{{ kpe_delform(k, who, csrf_token) }}{% endif %}
+{% endcall %}
+
+{% elif k.bu_kpi_id %}
+{# ---- a line the BU KPI setup owns (board 4) ---- #}
+{% set own = bs and (bs.wmode == 'own' or bs.other_unit) %}
+{% call panel('kpi-%d' % k.id, pk ~ ' · BU KPI', k.base or k.name, who ~ ' · ' ~ cyc_name ~ ' · Group People fills') %}
+  <form method="post" action="{{ url_for('admin_person_kpi', uid=person['id']) }}" class="kpe" data-kpe="bu" data-kpe-name="{{ k.name }}" data-kpe-who="{{ who }}"
+        data-kpe-total="{{ '%g' | format(summ.weight) }}" data-kpe-was="{{ '%g' | format(k.weight) }}" data-kpe-input="{{ 1 if k.has_input else 0 }}"
+        data-confirm="Save the weight on '{{ k.name }}' for {{ who }}? {{ who }} sees it at once and it goes in the trail; their other weights are not re-balanced for you.{{ " The unit's figure stays as filled." if k.filled }}"
+        data-confirm-ok="Save weight">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <input type="hidden" name="action" value="edit"><input type="hidden" name="kpi_target_id" value="{{ k.id }}">
+    <div class="adm-panel-body kpe-body">
+      {% if k.filled %}<div class="kpe-lock is-shut">{{ lock_svg | safe }}<span><b>Filled for the unit: Group People entered {{ bs.unit_name if bs else (unit_name or 'the unit') }}'s figure{% if k.filled_at %} on {{ k.filled_at }}{% endif %}.</b> The figure stays as filled; only {{ who }}'s weight changes here.</span></div>{% endif %}
+      <div class="kpe-lock is-bu"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M3 21h18M5 21V8l7-4 7 4v13M9 21v-6h6v6"></path></svg>
+        <span><b>A BU KPI of {{ bs.unit_name if bs else (unit_name or 'the unit') }}, set on the BU KPI page.</b> Its name, description, unit, method and targets belong to the unit{% if bs %} and {{ bs.n }} {{ 'person carries' if bs.n == 1 else 'people carry' }} it{% endif %}, so they change only there, never here.</span></div>
+      {% if bs %}
+      <div class="kpe-gobu">
+        <a class="primary kpe-linkbtn" href="{{ url_for('admin_bu_kpis', fbg=bs.bg, fbu=bs.company, kpi=bs.lid, edit=1) }}">Edit on the BU KPI page &rsaquo;</a>
+        <p>Opens Performance › BU KPI setup at {{ bs.unit_name }}, on {{ k.base }}. <b>A change there reaches all {{ bs.n }} who carry it, lines with results too.</b> {{ bs.note or 'Open: this is an Early Year, where KPIs are set.' }}{% if not bs.open %} Nothing can be set there now.{% endif %}</p>
+      </div>
+      {% endif %}
+      <section class="kpe-sec" aria-label="What is measured">
+        <div class="kpe-sec-h"><h3>What's measured</h3><span class="kpe-badge" style="margin-left: auto">The unit's · read only</span></div>
+        <div class="kpe-facts">
+          <div><span class="k">KPI</span><span>{{ k.base or k.name }}</span></div>
+          <div><span class="k">Family · group</span><span>{{ k.category or '—' }}</span></div>
+          <div><span class="k">Focus</span><span class="kpe-muted">None</span></div>
+        </div>
+      </section>
+      <section class="kpe-sec" aria-label="How it is scored">
+        <div class="kpe-sec-h"><h3>How it's scored</h3><span class="kpe-badge" style="margin-left: auto">The unit's · read only</span></div>
+        <div class="kpe-facts">
+          <div><span class="k">Method</span><span>{{ 'Less is better' if k.method == 'less' else 'More is better' }}</span></div>
+          <div><span class="k">Unit</span><span>{{ kpi_unit_normalise(k.unit) or 'No unit' }}</span></div>
+          <div><span class="k">Targets</span><span>{{ k.targets }}{% if k.unit and k.targets != '—' %} {{ kpi_unit_normalise(k.unit) }}{% endif %}</span></div>
+        </div>
+      </section>
+      {% if k.description %}
+      <section class="kpe-sec" aria-label="Description">
+        <div class="kpe-sec-h"><h3>Description</h3><span class="kpe-badge" style="margin-left: auto">The unit's · read only</span></div>
+        <div class="kpe-pv" data-kpe-static="{{ k.description }}"></div>
+      </section>
+      {% endif %}
+      <section class="kpe-sec" aria-label="Theirs on this line">
+        <div class="kpe-sec-h"><h3>Theirs on this line</h3></div>
+        <div class="kpe-row">
+          {% if own %}
+          <label class="kpe-fld" style="width: 116px"><span class="kpe-l">Weight %</span><input class="kpe-in kpe-num" name="weightage" inputmode="decimal" value="{{ '%g' | format(k.weight) }}" data-kpe-weight data-kpe-track="Weight" required></label>
+          <span class="kpe-why" style="flex: 1; min-width: 0"><span>This setup lets each carrier keep their own weight.{% if k.filled %} The unit's figure stays as filled.{% endif %} <span data-kpe-wline></span></span></span>
+          {% else %}
+          <div class="kpe-fld" style="width: 116px"><span class="kpe-l">Weight %</span><span class="kpe-in kpe-num kpe-ro">{{ '%g' | format(k.weight) }}</span></div>
+          <span class="kpe-why" style="flex: 1; min-width: 0"><span>Set on the BU KPI page, not here.</span></span>
+          {% endif %}
+        </div>
+        <div class="kpe-facts kpe-facts-2">
+          <div><span class="k">Result</span>{% if k.filled %}<span><b style="margin-right: 8px">{{ k.self or '—' }}</b><span class="kpe-muted">filled for the unit, final</span></span>{% else %}<span class="kpe-muted">Group People enters the unit's figure once, on Fill BU KPI</span>{% endif %}</div>
+          <div><span class="k">Moderated by</span><span class="kpe-muted">Nobody: the unit's figure counts for all who carry it</span></div>
+        </div>
+      </section>
+      {% set rm = k.bu_remove %}
+      {% if rm and rm.clr %}
+      <div class="kpe-danger">
+        <p><b>Their line carries the unit's filled result{% if rm.clr.value %} ({{ rm.clr.value }}){% endif %}, and nothing else:</b> clearing it removes that result for {{ who }} only, then takes them off this BU KPI{% if rm.adopted %}; their own line goes back as it was before the BU KPI{% else %}; the line comes off their KPIs{% endif %}. {{ rm.unit }}{{ "'" if rm.unit.endswith('s') else "'s" }} BU KPI and its result stay for the other {{ rm.others }}. It cannot be undone from here; the old figure goes in the audit trail. Asks for a reason first.</p>
+        <button type="submit" form="kpe-bclr-{{ k.id }}" class="kpe-delbtn" formnovalidate>Clear result and take off</button>
+      </div>
+      {% elif rm and not rm.why %}
+      <div class="kpe-danger">
+        <p><b>Takes them off this BU KPI:</b> {% if rm.adopted %}their own line goes back as it was before the BU KPI{% else %}the line comes off their KPIs{% endif %}. {{ rm.unit }}{{ "'" if rm.unit.endswith('s') else "'s" }} BU KPI stays for the other {{ rm.others }}. Asks again first.</p>
+        <button type="submit" form="kpe-bout-{{ k.id }}" class="kpe-delbtn" formnovalidate>Take off this BU KPI</button>
+      </div>
+      {% else %}
+      <div class="kpe-danger is-col">
+        {% if rm and rm.why %}<p><b>{{ rm.why }}</b></p>{% endif %}
+        <p><b>Taking it off {{ who }}</b> happens on the BU KPI page too: untick them under Who carries it. A line the setup put on comes off; a line it took over goes back to what they had before. No Delete here: the next save there would put it back.</p>
+        {% if bs %}<a class="kpe-outlink" href="{{ url_for('admin_bu_kpis', fbg=bs.bg, fbu=bs.company, kpi=bs.lid, edit=1) }}">Take them off on the BU KPI page &rsaquo;</a>{% endif %}
+      </div>
+      {% endif %}
+    </div>
+    <footer class="adm-panel-foot"><span class="adm-panel-grow kpe-foot-note">{{ 'Only their weight changes here' if own else 'Nothing changes here: the unit sets it' }}</span>
+      {% if own %}<button type="button" class="btn-link" data-panel-close>Cancel</button><button type="submit" class="primary">Save weight</button>
+      {% else %}<button type="button" class="primary" data-panel-close>Done</button>{% endif %}</footer>
+  </form>
+  {% if k.bu_remove and k.bu_remove.clr %}
+  <form method="post" id="kpe-bclr-{{ k.id }}" action="{{ url_for('admin_person_kpi', uid=person['id']) }}" class="kpe-delform"
+        data-confirm="Clear the unit's result{% if k.bu_remove.clr.value %} ({{ k.bu_remove.clr.value }}){% endif %} on {{ k.base or k.name }} for {{ who }} and take them off it? Their result is deleted and {% if k.bu_remove.adopted %}their own line goes back as it was before the BU KPI{% else %}their line comes off their {{ cyc_name }} KPIs{% endif %}; {{ k.bu_remove.unit }}{{ "'" if k.bu_remove.unit.endswith('s') else "'s" }} BU KPI and its result stay for the other {{ k.bu_remove.others }}. This cannot be undone from here: the old figure is kept only in the audit trail."
+        data-confirm-tone="danger" data-confirm-ok="Clear result and take off"
+        data-confirm-reason="Why you are clearing it (required, up to 300 words): it goes in the audit trail with the old figure">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <input type="hidden" name="action" value="take_off_bu"><input type="hidden" name="kpi_target_id" value="{{ k.id }}">
+    <input type="hidden" name="clear_result" value="1">
+  </form>
+  {% elif k.bu_remove and not k.bu_remove.why %}
+  <form method="post" id="kpe-bout-{{ k.id }}" action="{{ url_for('admin_person_kpi', uid=person['id']) }}" class="kpe-delform"
+        data-confirm="Take {{ who }} off {{ k.base or k.name }}? {% if k.bu_remove.adopted %}Their own line goes back as it was before the BU KPI{% else %}Their line comes off their {{ cyc_name }} KPIs{% endif %}; {{ k.bu_remove.unit }}{{ "'" if k.bu_remove.unit.endswith('s') else "'s" }} BU KPI stays for the other {{ k.bu_remove.others }}. Their other weights are not re-balanced for you."
+        data-confirm-tone="danger" data-confirm-ok="Take off">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <input type="hidden" name="action" value="take_off_bu"><input type="hidden" name="kpi_target_id" value="{{ k.id }}">
+  </form>
+  {% endif %}
+{% endcall %}
+
+{% else %}
+{# ---- Edit (boards 1 and 2) ---- #}
+{% call panel('kpi-%d' % k.id, pk, k.base or k.name, sub) %}
+  <form method="post" action="{{ url_for('admin_person_kpi', uid=person['id']) }}" class="kpe" data-kpe="edit" data-kpe-name="{{ k.name }}" data-kpe-who="{{ who }}"
+        data-kpe-mech="{{ mech or '' }}" data-kpe-variant="{{ cfg['variant'] if cfg and cfg['variant'] else '' }}" data-kpe-unit="{{ kpi_unit_normalise(k.unit) or '' }}"
+        data-kpe-total="{{ '%g' | format(summ.weight) }}" data-kpe-was="{{ '%g' | format(k.weight) }}" data-kpe-lib="{{ k.library_id or '' }}" data-kpe-scale-form
+        data-kpe-haslib="{{ 1 if k.has_lib else 0 }}" data-kpe-libm="{{ k.lib_method }}" data-kpe-libu="{{ k.lib_unit }}"
+        data-kpe-input="{{ 1 if k.has_input else 0 }}" data-kpe-self="{{ k.self }}" data-kpe-dir-soft
+        data-kpe-modword="{{ 'line manager' if k.route == 'lm' else ('matrix manager' if k.route == 'matrix' else 'moderator') }}"
+        data-confirm="Save the changes to '{{ k.name }}' for {{ who }}? {{ who }} and the moderator see the new values at once, and it goes in the trail; if you changed the moderator, the KPI goes to the new one and any draft the old one wrote is discarded."
+        data-confirm-ok="Save changes" data-kpi-scale="{{ mech or '' }}">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <input type="hidden" name="action" value="edit"><input type="hidden" name="kpi_target_id" value="{{ k.id }}">
+    <input type="hidden" name="kpi" value="{{ k.base or k.name }}"><input type="hidden" name="category" value="{{ k.category }}">
+    <div class="adm-panel-body kpe-body">
+      <div class="kpe-lock is-open">{{ open_svg | safe }}<span><b>Nobody has moderated it yet, so it can change.</b> {{ who }} and the {{ 'line manager' if k.route == 'lm' else ('matrix manager' if k.route == 'matrix' else 'moderator') }} see a change at once, and it goes in the trail.</span></div>
+
+      <section class="kpe-sec" aria-label="What is measured">
+        <div class="kpe-sec-h"><h3>What's measured</h3>
+          {% if k.in_lib or k.bu %}<span class="kpe-badge" style="margin-left: auto" data-kpe-libbadge>KPI and family from the KPI library</span>
+          {% else %}<span class="kpe-chip is-warn" style="margin-left: auto" data-kpe-notlib>Not in the library</span>{% endif %}</div>
+        <div class="kpe-row kpe-nowrap">
+          <div class="kpe-fld" style="flex: 1"><span class="kpe-l">KPI</span><span class="kpe-in kpe-ro" data-kpe-o="name" title="{{ k.base or k.name }}">{{ k.base or k.name }}</span></div>
+          <div class="kpe-fld" style="width: 200px"><span class="kpe-l">Family · group</span><span class="kpe-in kpe-ro" data-kpe-o="family" title="{{ k.category }}">{{ k.category or 'Not set' }}</span></div>
+        </div>
+        <span class="kpe-why"><span>{% if k.in_lib or k.bu %}Read only: the library and the KPI tree find this line under its KPI by its name.{% else %}This KPI isn't in {{ display_bg(person['business_group']) }}'s KPI library, so the library and the KPI tree don't count this line under a KPI. <a class="kpe-lk" href="{{ url_for('admin_kpi_library') }}" target="_blank" rel="noopener">Add it to the KPI library &rsaquo;</a>{% endif %}
+          To measure something else, <a class="kpe-lk" href="#" data-kpe-repick>pick another library KPI</a> (a strict search of the library KPIs {{ who }} may take).
+          {% if k.in_lib or k.bu %}<a class="kpe-lk" href="{{ url_for('admin_kpi_library', kpi=k.key) }}" target="_blank" rel="noopener">Open in the KPI library &rsaquo;</a>{% endif %}</span></span>
+        <div class="kpe-repick" data-kpe-repickbox hidden>
+          {% if kpe %}{{ kpe_search('r') }}{% else %}<span class="kpe-hint">There are no library KPIs {{ who }} may take yet.</span>{% endif %}
+          <span class="kpe-why" data-kpe-repicked hidden><span>Re-pointed: its targets, description, weight, Focus and moderator stay as they are. <a class="kpe-lk" href="#" data-kpe-undo>Undo</a></span></span>
+        </div>
+        {% if not k.bu %}
+        <label class="kpe-fld"><span class="kpe-l">Focus <span class="kpe-muted">(optional, this person only)</span></span>
+          <input class="kpe-in" name="focus" maxlength="{{ kpi_focus_max }}" value="{{ k.focus }}" placeholder="A few words shown after the name, e.g. a region" data-kpe-track="Focus">
+          <span class="kpe-hint">Says what this line is about when they hold the same KPI twice. The library KPI stays as it is.</span></label>
+        {% else %}<span class="kpe-hint">A BU-level KPI takes no Focus: its one figure is the unit's.</span>{% endif %}
+      </section>
+
+      <section class="kpe-sec" aria-label="How it is scored">
+        <div class="kpe-sec-h"><h3>How it's scored</h3><span class="kpe-note">{% if not cfg %}No scoring set for {{ display_bg(person['business_group']) }}{% elif mech == 'A' %}{{ display_bg(person['business_group']) }} scores on Rate 1 → 5{% else %}{{ display_bg(person['business_group']) }} scores on threshold → target{% endif %}</span></div>
+        {{ kpe_scale(k) }}
+      </section>
+
+      <section class="kpe-sec" aria-label="Description">{{ kpe_desc(k) }}</section>
+      <section class="kpe-sec" aria-label="Moderated by">{{ kpe_mod(k) }}</section>
+
+      {% if kpi_delete_ok %}
+      <div class="kpe-danger">
+        <p>Takes it off {{ who }}'s KPIs{% if k.has_input %}, with what they entered on it{% endif %}. Asks again first.</p>
+        <button type="submit" form="kpe-del-{{ k.id }}" class="kpe-delbtn" formnovalidate>Delete this KPI</button>
+      </div>
+      {% endif %}
+    </div>
+    <footer class="adm-panel-foot"><span class="adm-panel-grow kpe-foot-note" data-kpe-changed>No changes yet</span>
+      <button type="button" class="btn-link" data-panel-close>Cancel</button><button type="submit" class="primary">Save changes</button></footer>
+  </form>
+  {% if kpi_delete_ok %}{{ kpe_delform(k, who, csrf_token) }}{% endif %}
+{% endcall %}
+{% endif %}
+{% endfor %}
+
+{# ---- Add (board 3) ---- #}
+{% if kpi_add_ok and not kpi_out %}
+{% call panel('kpi-add', 'Performance · Add a KPI', 'A new KPI for ' ~ who, who ~ ' · ' ~ cyc_name ~ ' · ' ~ (kpis | length) ~ ' KPI' ~ ('' if (kpis | length) == 1 else 's') ~ ' today, weights ' ~ ('%g' | format(summ.weight)) ~ '%') %}
+  {% if not kpe %}
+  <div class="adm-panel-body kpe-body">
+    <div class="kpe-lock is-shut">{{ lock_svg | safe }}<span><b>No library KPIs to pick from.</b> {% if not cfg %}{{ display_bg(person['business_group']) }} has no scoring set for its KPIs yet (Performance settings).{% else %}Every KPI comes from the KPI library, and none there fits {{ who }} yet. <a class="kpe-lk" href="{{ url_for('admin_kpi_library') }}" target="_blank" rel="noopener">Add one to the KPI library &rsaquo;</a>{% endif %}</span></div>
+  </div>
+  <footer class="adm-panel-foot"><span class="adm-panel-grow"></span><button type="button" class="primary" data-panel-close>Done</button></footer>
+  {% else %}
+  <form method="post" action="{{ url_for('admin_person_kpi', uid=person['id']) }}" class="kpe" data-kpe="add" data-kpe-who="{{ who }}" data-kpe-cyc="{{ cyc_name }}"
+        data-kpe-mech="{{ mech or '' }}" data-kpe-variant="{{ cfg['variant'] if cfg and cfg['variant'] else '' }}" data-kpe-unit=""
+        data-kpe-haslib="0" data-kpe-libm="" data-kpe-libu="" data-kpe-input="0" data-kpe-dir-soft
+        data-kpe-total="{{ '%g' | format(summ.weight) }}" data-kpe-was="0" data-kpi-scale="{{ mech or '' }}"
+        data-confirm="Add this KPI to {{ who }}'s {{ cyc_name }} KPIs? {{ who }} and the moderator see it at once and it counts as agreed; their other weights are not re-balanced for you."
+        data-confirm-ok="Add KPI" {{ redo_notify_attrs(person, 'kpi', cyc) }}>
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <input type="hidden" name="action" value="add" data-kpe-action>
+    {# a BU KPI of the person's unit picked (the super admin, outside an Early Year; static/kpi_edit.js): the same form posts add_bu #}
+    <input type="hidden" name="bu_setup" value="" data-kpe-busetup disabled>
+    <div class="adm-panel-body kpe-body">
+      <section class="kpe-sec" aria-label="Start from">
+        <div class="kpe-sec-h"><h3>Pick from the KPI library</h3><span class="kpe-note">Every KPI comes from the library</span></div>
+        {{ kpe_search('a') }}
+      </section>
+      {% if kpe.bu_items is defined %}
+      <div class="kpe-bu" data-kpe-bu hidden>
+        <div class="kpe-lock is-bu"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M3 21h18M5 21V8l7-4 7 4v13M9 21v-6h6v6"></path></svg>
+          <span data-kpe-bu-strip></span></div>
+        <section class="kpe-sec" aria-label="What is measured">
+          <div class="kpe-sec-h"><h3>What's measured</h3><span class="kpe-badge" style="margin-left: auto" data-kpe-bu-badge>The unit's &middot; read only</span></div>
+          <div class="kpe-facts">
+            <div><span class="k">KPI</span><span data-kpe-bu-o="name"></span></div>
+            <div><span class="k">Family &middot; group</span><span data-kpe-bu-o="family"></span></div>
+            <div><span class="k">Focus</span><span class="kpe-muted">None</span></div>
+          </div>
+        </section>
+        <section class="kpe-sec" aria-label="How it is scored">
+          <div class="kpe-sec-h"><h3>How it's scored</h3><span class="kpe-badge" style="margin-left: auto" data-kpe-bu-badge>The unit's &middot; read only</span></div>
+          <div class="kpe-facts">
+            <div><span class="k">Method</span><span data-kpe-bu-o="method"></span></div>
+            <div><span class="k">Unit</span><span data-kpe-bu-o="unit"></span></div>
+            <div><span class="k">Targets</span><span data-kpe-bu-o="target"></span></div>
+          </div>
+          <div class="kpe-row">
+            <label class="kpe-fld" style="width: 116px"><span class="kpe-l">Weight %</span><input class="kpe-in kpe-num" name="weight" inputmode="decimal" autocomplete="off" data-kpe-buw aria-label="Weight %" required disabled></label>
+            <span class="kpe-why" style="flex: 1; min-width: 0"><span data-kpe-bulive></span></span>
+          </div>
+        </section>
+      </div>
+      {% endif %}
+      <div class="kpe-after" data-kpe-after hidden>
+        <div class="kpe-lock is-open">{{ open_svg | safe }}<span>It counts as agreed, as an imported one does. {{ who }} and the moderator see it at once.</span></div>
+        <section class="kpe-sec" aria-label="What is measured">
+          <div class="kpe-sec-h"><h3>What's measured</h3></div>
+          <div class="kpe-fld"><span class="kpe-l">KPI <span class="kpe-badge">From the library</span></span><span class="kpe-in kpe-ro" data-kpe-o="name"></span></div>
+          <label class="kpe-fld"><span class="kpe-l">Focus <span class="kpe-muted">(optional, this person only)</span></span>
+            <input class="kpe-in" name="focus" maxlength="{{ kpi_focus_max }}" placeholder="A few words shown after the name, e.g. a region"></label>
+          <div class="kpe-fld"><span class="kpe-l">Family · group <span class="kpe-badge">From the library</span></span><span class="kpe-in kpe-ro" data-kpe-o="family"></span></div>
+        </section>
+        <section class="kpe-sec" aria-label="How it is scored">
+          <div class="kpe-sec-h"><h3>How it's scored</h3><span class="kpe-note">{% if mech == 'A' %}{{ display_bg(person['business_group']) }} scores on Rate 1 → 5{% else %}{{ display_bg(person['business_group']) }} scores on threshold → target{% endif %}</span></div>
+          {{ kpe_scale(None, True) }}
+          <span class="kpe-hint">The library holds no targets: set them here.</span>
+        </section>
+        <section class="kpe-sec" aria-label="Description">{{ kpe_desc(None, True) }}</section>
+        <section class="kpe-sec" aria-label="Moderated by">{{ kpe_mod(None) }}</section>
+      </div>
+    </div>
+    <footer class="adm-panel-foot"><span class="adm-panel-grow kpe-foot-note">Asks again before it adds</span>
+      <button type="button" class="btn-link" data-panel-close>Cancel</button><button type="submit" class="primary" data-kpe-addbtn disabled>Add the KPI</button></footer>
+  </form>
+  {% endif %}
+{% endcall %}
+{% endif %}
+{% endif %}
+
+{# ---- Moderation (2026-11-03): what each moderator did, read only. Opens from the flow strip's Moderation step, which is a link
+   only once a line is moderated. Everything is worked out in _person_kpis (summ.mod, each line's rating / steps). ---- #}
+{% set sm = summ.mod %}
+{% if sm and kpis | selectattr('mod_done') | list | length %}
+{% set fig_word = 'rating' if mech != 'B' else 'achievement' %}
+{% call panel('kpi-mod', 'Performance · Moderation', 'Moderation · ' ~ summ.done ~ ' of ' ~ summ.n ~ ' done', who ~ ' · ' ~ cyc_name ~ ' · by ' ~ sm.by) %}
+  <div class="adm-panel-body kpe-body kpm-body">
+    {% for k in kpis %}
+    <section class="kpm-card" aria-label="KPI {{ k.n }}, {{ k.base or k.name }}">
+      <div class="kpm-h">
+        <b class="kpm-name"><span class="kpm-n">{{ k.n }}</span> {{ k.base or k.name }}</b>
+        {% if k.filled %}<span class="kpm-chip is-unit">Filled for the unit</span>
+        {% elif not k.mod_done %}<span class="kpm-chip is-wait">Waiting on {{ k.wait_name or 'a moderator' }}</span>
+        {% elif k.behalf %}<span class="kpm-chip is-behalf">On their behalf</span>
+        {% elif k.adjusted %}<span class="kpm-chip is-adj">Adjusted</span>
+        {% else %}<span class="kpm-chip is-ok">Confirmed</span>{% endif %}
+      </div>
+      <div class="kpm-boxes">
+        <div class="kpm-box"><span class="kpm-k">Their figure</span><span class="kpm-v">{{ k.self_fig }}</span><span class="kpm-r">{{ fig_word }} {{ k.rating_self or '—' }}</span></div>
+        <span class="kpm-go" aria-hidden="true">&rarr;</span>
+        <div class="kpm-box{{ ' is-mod' if k.mod_done }}"><span class="kpm-k">Moderated</span><span class="kpm-v">{{ k.mod_fig }}</span><span class="kpm-r">{% if k.mod_done %}{{ fig_word }} {{ k.rating or '—' }}{% if k.band %} <span class="potential-pill" data-band="{{ k.band }}">{{ k.band }}</span>{% endif %}{% else %}<span class="muted">not yet</span>{% endif %}</span></div>
+      </div>
+      {% for st in k.steps %}
+      <div class="kpm-step">
+        {% if k.steps | length > 1 %}<span class="kpm-sn">Step {{ st.seq }} of {{ k.steps | length }} · {{ 'adjusted' if st.adjust else 'confirmed' }} {{ st.to }}</span>{% endif %}
+        {% if st.reason %}<span class="kpm-k">Reason</span><span class="kpm-reason">{{ st.reason }}</span>{% endif %}
+        <span class="kpm-meta">{{ st.by or 'A moderator' }}{% if st.when %} · {{ st.when }}{% endif %}{% if loop.last %} · weight {{ '%g' | format(k.weight) }}%{% endif %}{% if st.behalf %} <span class="kpm-tag">On their behalf</span>{% endif %}</span>
+      </div>
+      {% else %}
+      <div class="kpm-step"><span class="kpm-meta">{% if k.filled %}Group People filled the unit's figure{% if k.filled_at %} · {{ k.filled_at }}{% endif %}{% else %}Not moderated yet{% endif %} · weight {{ '%g' | format(k.weight) }}%</span></div>
+      {% endfor %}
+    </section>
+    {% endfor %}
+  </div>
+  <footer class="adm-panel-foot kpm-foot">
+    <div class="adm-panel-grow kpm-total"><span class="kpm-k">Total KPI score</span>
+      {% if sm.held %}<span class="kpe-foot-note">Held: their lines sit on two scales</span>
+      {% else %}
+      <span class="kpm-tv">Their figures <b>{{ sm.self or '—' }}</b>{% if sm.self_band %} <span class="potential-pill" data-band="{{ sm.self_band }}">{{ sm.self_band }}</span>{% endif %}</span>
+      {% if sm.official %}<span class="kpm-go" aria-hidden="true">&rarr;</span>
+      <span class="kpm-tv"><b class="kpm-big">{{ sm.official }}</b>{% if sm.official_band %} <span class="potential-pill" data-band="{{ sm.official_band }}">{{ sm.official_band }}</span>{% endif %}</span>
+      {% else %}<span class="kpe-foot-note">Worked out once all {{ summ.n }} are moderated</span>{% endif %}
+      {% endif %}
+    </div>
+    <button type="button" class="primary" data-panel-close>Done</button>
+  </footer>
+{% endcall %}
+{% endif %}

@@ -1,0 +1,88 @@
+{% extends "base.html" %}
+{% block title %}Ticketing{% endblock %}
+{% block body %}
+{# Ticketing › Overview, dashboard A (Chris, 2026-10-22: "ideally i want to see the most recurring issue, by BG
+   distribution of tickets"; "go with option A ticketing dashboard"; canvas [design canvas link removed]
+   board 6). Five tiles, then the most recurring issues ranked beside tickets by business group, per 100 active people by
+   default. Every count opens its tickets on the Tickets tab. Counts only, never a name. #}
+<form method="get" class="adm-headrow tk-ovhead" action="{{ url_for('admin_tickets_overview') }}">
+  <p class="adm-lede">What people raise most, and where. {{ ov.received }} ticket{{ '' if ov.received == 1 else 's' }} received, {{ period_label | lower }}{% if bg %}, {{ display_bg(bg) }}{% endif %}.</p>
+  <span class="tk-ovfilters">
+    <label class="sr-only" for="tk-d">Period</label>
+    <select id="tk-d" name="d" data-tk-auto>{% for k, l in periods %}<option value="{{ k }}"{{ ' selected' if k == d }}>{{ l }}</option>{% endfor %}</select>
+    {% if bgs | length > 1 or bg %}
+    <label class="sr-only" for="tk-bg">Business group</label>
+    <select id="tk-bg" name="bg" data-tk-auto><option value="">All groups</option>{% for b in bgs %}<option value="{{ b }}"{{ ' selected' if b == bg }}>{{ display_bg(b) }}</option>{% endfor %}</select>
+    {% endif %}
+    <input type="hidden" name="by" value="{{ by }}">
+    <noscript><button type="submit" class="btn-link">Show</button></noscript>
+  </span>
+</form>
+{% set T = ov.tiles %}
+{% set fk = {'bg': bg or None} %}
+<div class="tk-tiles">
+  <a class="tk-tile" href="{{ url_for('admin_tickets', show='open', **fk) }}"><span class="tk-tk">Open</span><b>{{ T.open }}</b>
+    <span class="tk-ts{{ ' is-wait' if T.open }}" title="{{ 'waiting on you' if T.open else 'nothing waiting' }}">{{ '● waiting on you' if T.open else 'nothing waiting' }}</span></a>
+  <a class="tk-tile" href="{{ url_for('admin_tickets', show='progress', **fk) }}"><span class="tk-tk">In progress</span><b>{{ T.progress }}</b>
+    <span class="tk-ts" title="picked up">picked up</span></a>
+  <a class="tk-tile" href="{{ url_for('admin_tickets', show='closed', d=d, **fk) }}"><span class="tk-tk">Closed, {{ period_label | lower }}</span><b>{{ T.closed }}</b>
+    <span class="tk-ts" title="of {{ T.received }} received">of {{ T.received }} received</span></a>
+  <div class="tk-tile"><span class="tk-tk">Time to close (median)</span><b>{{ T.median or '–' }}</b>
+    <span class="tk-ts" title="{{ 'received to closed' if T.median else 'nothing closed yet' }}">{{ 'received to closed' if T.median else 'nothing closed yet' }}</span></div>
+  {% if T.oldest %}
+  <a class="tk-tile" href="{{ url_for('admin_tickets', show='all', panel='tk-' ~ T.oldest_key) }}"><span class="tk-tk">Oldest open</span>
+    <b>{{ 'today' if T.oldest_days == 0 else ('%d day%s' % (T.oldest_days, '' if T.oldest_days == 1 else 's')) }}</b><span class="tk-ts" title="{{ T.oldest }}">{{ T.oldest }}</span></a>
+  {% else %}
+  <div class="tk-tile"><span class="tk-tk">Oldest open</span><b>–</b><span class="tk-ts" title="nothing open">nothing open</span></div>
+  {% endif %}
+</div>
+
+<div class="tk-ovgrid">
+  <section class="admin-card tk-ovcard" aria-labelledby="tk-iss-h">
+    <div class="tk-ovh"><h2 id="tk-iss-h">Most recurring issues</h2>
+      <span>{{ ov.received }} ticket{{ '' if ov.received == 1 else 's' }}, {{ period_label | lower }} · where each happens most</span></div>
+    {% if ov.issues %}
+    <ol class="tk-rank">
+      {% for it in ov.issues %}
+      <li><a href="{{ url_for('admin_tickets', show='all', topic=it.key, d=d, **fk) }}" title="{{ it.n }} ticket{{ '' if it.n == 1 else 's' }}, {{ it.share }}% of the period's">
+        <span class="tk-rn">{{ loop.index }}</span>
+        <span class="tk-rl"><b>{{ it.label }}</b><span title="{{ it.sub }}">{{ it.sub }}</span></span>
+        <span class="tk-bar" aria-hidden="true"><i style="width: {{ it.width }}%"></i></span>
+        <span class="tk-rv"><b>{{ it.n }}</b> <span>{{ it.share }}%</span></span></a></li>
+      {% endfor %}
+    </ol>
+    {% else %}
+    <p class="muted" style="margin:0">No tickets {{ period_label | lower }}.</p>
+    {% endif %}
+    <p class="tk-ovnote">A row opens its tickets. An issue is the topic picked in Get Help; the sign-in page's requests count together as "Locked out or password".</p>
+  </section>
+
+  <section class="admin-card tk-ovcard" aria-labelledby="tk-bg-h">
+    <div class="tk-ovh"><h2 id="tk-bg-h">By business group</h2>
+      <span class="tk-seg" role="group" aria-label="Show">
+        <a href="{{ url_for('admin_tickets_overview', d=d, bg=bg or None, by='count') }}" aria-pressed="{{ 'true' if by == 'count' else 'false' }}" class="{{ 'is-on' if by == 'count' }}">Count</a>
+        <a href="{{ url_for('admin_tickets_overview', d=d, bg=bg or None) }}" aria-pressed="{{ 'true' if by == 'rate' else 'false' }}" class="{{ 'is-on' if by == 'rate' }}">Per 100 people</a></span></div>
+    {% if ov.groups %}
+    <ol class="tk-bgs">
+      {% for g_ in ov.groups %}
+      <li><a href="{{ url_for('admin_tickets', show='all', bg=g_.bg, d=d) }}" title="{{ g_.n }} ticket{{ '' if g_.n == 1 else 's' }} · {{ g_.people }} active people">
+        <span class="tk-bl">{{ g_.label }}</span>
+        <span class="tk-bar" aria-hidden="true"><i style="width: {{ g_.width }}%"></i></span>
+        <span class="tk-rv">{% if by == 'rate' %}<b>{{ '%.1f' % g_.rate if g_.rate is not none else '–' }}</b> <span>· {{ g_.n }}</span>{% else %}<b>{{ g_.n }}</b>{% if g_.rate is not none %} <span>· {{ '%.1f' % g_.rate }}</span>{% endif %}{% endif %}</span></a></li>
+      {% endfor %}
+    </ol>
+    {% else %}
+    <p class="muted" style="margin:0">No tickets from a business group {{ period_label | lower }}.</p>
+    {% endif %}
+    <p class="tk-ovnote">{{ 'Per 100 active people, so groups of different sizes compare fairly; the count beside it.' if by == 'rate' else 'Tickets in the period; per 100 active people beside it.' }}
+      {% if ov.unmatched %}{{ ov.unmatched }} sign-in request{{ ' matches' if ov.unmatched == 1 else 's match' }} no account, so {{ 'it counts' if ov.unmatched == 1 else 'they count' }} in the issues but in no group.{% endif %}</p>
+  </section>
+</div>
+<script>
+(function () {
+  document.querySelectorAll('select[data-tk-auto]').forEach(function (s) {
+    s.addEventListener('change', function () { s.form.submit(); });
+  });
+})();
+</script>
+{% endblock %}

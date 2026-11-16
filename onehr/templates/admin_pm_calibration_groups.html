@@ -1,0 +1,39 @@
+{% extends "base.html" %}
+{% from "_table_tools.html" import colth, colmenu, colmenu_script %}
+{% from "_adm_panel.html" import panel %}
+{% block title %}Calibration groups{% endblock %}
+{% block body %}
+
+<p class="adm-lede"><b>Group Chief groups are set up on <a href="{{ url_for('admin_leaders', tab='bgceo') }}">Leaders › BG CEOs</a> now.</b> Group people from different business groups, units or departments so one calibrator reviews them
+  together, such as everyone in IT calibrated by the CTO. A group's band comes before the person's usual line (only a
+  super admin can override it), and a person can be in one group at a time.</p>
+<div class="adm-headrow"><span></span><div class="adm-headrow-acts"><button type="button" class="primary" data-panel-open="grp-new">Create a group</button></div></div>
+
+
+{% if not groups %}
+<div class="admin-card">
+  <p class="muted pp-none">No calibration groups yet. Create the first one.</p>
+</div>
+{% endif %}
+
+{% if groups %}
+<section class="admin-card" aria-label="Calibration groups">
+  <div class="table-scroll"><table class="admin-table no-auto-table gc-sum">
+    <thead><tr><th scope="col">Group</th><th scope="col">Calibrator</th><th scope="col">Final band</th>
+      <th scope="col" class="num">People</th><th scope="col">{{ period['name'] if period else 'State' }}</th><th scope="col"><span class="sr-only">Manage</span></th></tr></thead>
+    <tbody>
+    {% for row in groups %}{% set g = row.g %}
+      <tr><th scope="row">{{ g['name'] }}</th>
+        <td>{{ g['calibrator_name'] or '—' }} <span class="muted small">{{ g['calibrator_emp'] or '' }}</span></td>
+        <td class="small">{{ 'Both count, BG CEO %d : Group Chief %d' % (row.mode.bg, row.mode.chief) if row.mode.mode == 'blend' else dict(modes)[row.mode.mode] }}</td>
+        <td class="num">{{ row.members | length }}</td>
+        <td>{% if period %}{% if row.locked %}<span class="status-pill status-reviewed">Locked</span>{% else %}<span class="status-pill status-submitted">Open</span>{% endif %}{% else %}—{% endif %}</td>
+        <td><button type="button" class="btn-link" data-panel-open="grp-{{ g['id'] }}" aria-label="Manage {{ g['name'] }}">Manage</button></td></tr>
+    {% endfor %}
+    </tbody>
+  </table></div>
+</section>
+{% endif %}
+{% include "_gc_panels.html" %}
+{{ colmenu_script(asset_v) }}
+{% endblock %}

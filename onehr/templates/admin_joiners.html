@@ -1,0 +1,70 @@
+{% extends "base.html" %}
+{% from "_filter_rows.html" import filter_rows %}
+{% block title %}New joiners{% endblock %}
+{% block body %}
+{# People > New joiners (2026-10-18, the libraries canvas, board 13): everyone who came in by Add a person or the roster
+   import in the last {{ days }} days, and what each still needs before the cycle opens. Assign gives the ready ones
+   their job's competencies; placing a job and KPI lines happen on each person's page. #}
+<div class="adm-headrow">
+  <p class="adm-lede">Everyone who came in by Add a person or the roster import in the last {{ days }} days, and what
+    each still needs{% if cyc %} for {{ cyc['name'] }}{% endif %}: a line manager, their job, their competencies and
+    their KPI lines.</p>
+</div>
+
+{{ filter_rows(frows) }}
+
+<div class="adm-frows jn-via">
+  <div class="adm-frow"><span class="adm-frow-lbl">Came in</span>
+    <div class="adm-frow-pills" role="group" aria-label="Came in">
+      <a class="adm-frow-pill{{ ' is-on' if not via }}" href="{{ jh(via=None) }}">Either<span>{{ n_import + n_add }}</span></a>
+      <a class="adm-frow-pill{{ ' is-on' if via == 'import' }}" href="{{ jh(via='import') }}">Roster import<span>{{ n_import }}</span></a>
+      <a class="adm-frow-pill{{ ' is-on' if via == 'add' }}" href="{{ jh(via='add') }}">Add a person<span>{{ n_add }}</span></a>
+    </div></div>
+</div>
+
+<form method="post" id="jn-form"
+      data-confirm="Give the ticked joiners who are ready their job's competencies? Each gets the five their job needs now and the same five one level up; anything a job gave them before is replaced. It goes in the trail."
+      data-confirm-ok="Assign">
+  <input type="hidden" name="action" value="assign_ready">
+  <div class="jn-bar">
+    <nav class="adm-tabs" aria-label="Who takes part">
+      <a class="{{ 'is-active' if tab == 'taking' }}" href="{{ jh(tab='taking') }}">Taking part · {{ n_take }}</a>
+      <a class="{{ 'is-active' if tab == 'out' }}" href="{{ jh(tab='out') }}">Not taking part · {{ n_out }}</a>
+      <a class="{{ 'is-active' if tab == 'all' }}" href="{{ jh(tab='all') }}">All {{ n_all }}</a>
+    </nav>
+    {% if n_ready %}<button type="submit" class="primary">Assign competencies to the ticked ready</button>{% endif %}
+  </div>
+  <section class="admin-card jn-card" aria-label="New joiners">
+    {% if rows %}
+    <div class="jn-row jn-head"><span><span class="sr-only">Tick</span></span><span>Person</span><span>Unit</span><span>Line manager</span><span>Their job</span><span>Competencies</span><span>KPI lines</span><span></span></div>
+    {% for j in rows %}
+    {% set p = j.p %}
+    <div class="jn-row">
+      <span>{% if j.ready %}<input type="checkbox" name="sid" value="{{ p['id'] }}" checked aria-label="Tick {{ p['full_name'] }}">{% endif %}</span>
+      <span><a href="{{ url_for('admin_person', uid=p['id'], tab='competency') }}"><b>{{ p['full_name'] }}</b></a>
+        <span class="muted small jn-line" title="{{ p['job_title'] | proper or '' }}">{{ p['job_title'] | proper or '—' }}{% if p['job_grade'] %} · JG {{ p['job_grade'] }}{% endif %}</span>
+        <span class="muted small jn-line">{% if j.newly_confirmed %}Confirmed {{ j.newly_confirmed }}, during this cycle: set up their KPI lines, competencies and 360 panel{% if not j.n_panel %} (no panel yet){% endif %}{% else %}{{ 'Roster import' if j.via == 'import' else 'Add a person' }} · {{ p['created_at'] | myt_date }}{% endif %}</span>
+        {% if j.panel_short %}<span class="muted small jn-line">360 panel: {{ j.n_panel }} rater{{ 's' if j.n_panel != 1 }}, needs {{ j.min_raters }}</span>{% endif %}</span>
+      <span class="small">{{ display_bg(p['business_group']) }}{% if p['company'] %} · {{ display_company(p['business_group'], p['company']) }}{% endif %}</span>
+      <span>{% if j.lm_ok %}<span class="jn-ok">Set</span>{% else %}<span class="jn-wait">None</span>{% endif %}</span>
+      <span>{% if j.role %}{{ j.role['title'] or '—' }} <span class="pp-chip">{{ 'OneHR' if j.placed_word == 'Placed in OneHR' else 'Mapper' }}</span>
+        {% else %}<span class="jn-wait">To place</span>{% endif %}</span>
+      <span>{% if j.n_tc %}<span class="jn-ok">{{ j.n_tc }} assigned</span>
+        {% elif j.ready %}<span class="jn-ok">Ready · from their job</span>
+        {% elif not j.taking %}<span class="muted small">not this cycle</span>
+        {% elif not j.role %}<span class="muted small">needs a job first</span>
+        {% else %}<span class="muted small">no profile at their grade</span>{% endif %}</span>
+      <span>{% if j.taking %}{{ j.n_kpi }}{% else %}<span class="muted small">—</span>{% endif %}</span>
+      <a href="{{ url_for('admin_person', uid=p['id'], tab='competency') }}">Set up</a>
+    </div>
+    {% endfor %}
+    {% else %}
+    <p class="muted pp-none pp-pad">{% if n_all %}Nobody in this tab.{% else %}Nobody has come in by Add a person or the roster import in the last {{ days }} days.{% endif %}</p>
+    {% endif %}
+  </section>
+</form>
+<p class="muted small">"Mapper" means P&amp;R's Job Architecture Mapper placed their job; "OneHR" means it was placed on their
+  Competency page. Ready means they take part and their job gives them a set. Someone who doesn't take part this cycle
+  still gets their job placed, for their Career Plan later. No reason is needed: set-up stays open until their result is
+  released.</p>
+{% endblock %}

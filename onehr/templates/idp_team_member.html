@@ -1,0 +1,255 @@
+{% extends "base.html" %}
+{% block title %}{{ subject['full_name'] }} — development{% endblock %}
+{% block body %}
+<div class="page-head">
+  <div>
+    <h1>{{ subject['full_name'] }}</h1>
+    <p class="muted">{{ period['name'] }}
+      {%- if subject['job_grade'] %} &middot; JG {{ subject['job_grade'] }}{% endif %}
+      &middot; {{ subject['job_title'] | proper or '-' }} &middot; {{ subject['department'] | proper or '-' }}</p>
+  </div>
+</div>
+
+{# ---- their development plan, once they've shared it ---- #}
+<div class="admin-card" id="idp-plan">
+  <div style="display:flex;align-items:baseline;gap:10px;flex-wrap:wrap;margin-bottom:10px">
+    <h2 style="margin:0;font-size:1.05rem">Development plan</h2>
+    {% if idp and idp['status'] == 'closed' %}
+      <span class="status-pill status-reviewed">Agreed</span>
+    {% elif idp %}
+      <span class="status-pill status-submitted">Ready to discuss</span>
+    {% endif %}
+  </div>
+
+  {% if not idp %}
+  <p class="muted small" style="margin:0">{{ subject['full_name'] }} hasn't shared
+    a plan for this period yet. A plan they're still drafting stays private to them
+    until they share it.</p>
+  {% else %}
+
+  {# Editable only while the plan is with you. Agreeing settles it -- for both
+     sides -- which is what agreement already meant here. #}
+  {% set can_edit = idp['status'] == 'shared' %}
+  {% for g in goals %}
+  <div class="idp-mgr-goal" data-goal="{{ g['id'] }}"
+       style="padding:10px 0;{% if not loop.last %}border-bottom:1px solid var(--d-bd-e5e5e5){% endif %}">
+    {% if can_edit %}
+    <div style="display:flex;gap:8px;align-items:center;margin-bottom:6px">
+      <input type="text" class="idp-mgr-field" data-field="area" value="{{ g['area'] or '' }}"
+             aria-label="Goal {{ loop.index }}"
+             style="flex:1;font-weight:600;padding:6px 9px;border:1px solid var(--d-bd-d7dbe6);border-radius:8px">
+      <input type="date" class="idp-mgr-field" data-field="target_date"
+             value="{{ g['target_date'] or '' }}" aria-label="Target date for goal {{ loop.index }}"
+             style="padding:6px 9px;border:1px solid var(--d-bd-d7dbe6);border-radius:8px">
+    </div>
+    {% else %}
+    <p style="margin:0 0 6px"><strong>{{ g['area'] or '—' }}</strong>
+      {%- if g['target_date'] %} <span class="muted small">&middot; by {{ g['target_date'] }}</span>{% endif %}</p>
+    {% endif %}
+    {% if g['edited_by_name'] %}
+    <p class="muted small" style="margin:0 0 6px">Edited by {{ g['edited_by_name'] }}
+      {%- if g['edited_at'] %} &middot; {{ g['edited_at'] | myt_date }}{% endif %}</p>
+    {% endif %}
+    <div class="idp-modes">
+      {% for m in modes %}
+      {% set fname = 'action_' ~ m['key'] %}
+      <div class="idp-mode">
+        <p class="idp-mode-head"><span class="idp-mode-pct">{{ m['pct'] }}%</span> {{ m['label'] }}</p>
+        {% if can_edit %}
+        <textarea class="idp-mgr-field" data-field="{{ fname }}" rows="3" maxlength="1000"
+                  aria-label="{{ m['label'] }} for goal {{ loop.index }}"
+                  style="width:100%;box-sizing:border-box;padding:6px 8px;border:1px solid var(--d-bd-d7dbe6);border-radius:8px;font-family:inherit;font-size:0.8125rem;resize:vertical">{{ g[fname] or '' }}</textarea>
+        {% else %}
+        <p style="margin:0;font-size:0.84375rem">{{ g[fname] or '—' }}</p>
+        {% endif %}
+      </div>
+      {% endfor %}
+    </div>
+    {% if can_edit %}
+    <label style="display:block;margin-top:8px">
+      <span class="muted small">Your comment on this goal <span class="muted">(optional)</span></span>
+      <textarea class="idp-mgr-field" data-field="manager_comment" rows="2" maxlength="1000"
+                placeholder="What you'd add, or the support you'll provide"
+                style="width:100%;box-sizing:border-box;padding:6px 8px;border:1px solid var(--d-bd-d7dbe6);border-radius:8px;font-family:inherit;font-size:0.8125rem;resize:vertical">{{ g['manager_comment'] or '' }}</textarea>
+    </label>
+    {% elif g['manager_comment'] %}
+    <div class="resp-comment" style="margin:8px 0 0">
+      <p class="resp-comment-head">Your comment</p>
+      <p>{{ g['manager_comment'] }}</p>
+    </div>
+    {% endif %}
+    {# Progress, so a goal that's stuck is visible here rather than only at
+       year-end. Shown read-only: the check-in belongs to the employee. #}
+    {% set prog = progress_states.get(g['progress_status']) %}
+    <p style="margin:8px 0 0;font-size:0.8125rem">
+      {% if prog %}
+        <span class="status-pill {{ prog['tone'] }}">{{ prog['label'] }}</span>
+      {% else %}
+        <span class="muted small">Not checked in yet</span>
+      {% endif %}
+      {%- if g['progress_at'] %} <span class="muted small">&middot; updated {{ g['progress_at'] | myt_date }}</span>{% endif %}
+    </p>
+    {% if g['progress_note'] %}
+    <p class="muted small" style="margin:4px 0 0">{{ g['progress_note'] }}</p>
+    {% endif %}
+  </div>
+  {% else %}
+  <p class="muted small" style="margin:0">No goals were recorded.</p>
+  {% endfor %}
+
+  <form method="post" action="{{ url_for('idp_review', subject_id=subject['id']) }}"
+        style="margin-top:12px">
+    <label for="idp-comment" style="font-weight:500;font-size:0.84375rem;display:block;margin-bottom:6px">
+      Your comment <span class="muted small">(optional)</span>
+    </label>
+    <textarea id="idp-comment" name="comment" rows="3"
+              {% if idp['status'] == 'closed' %}disabled{% endif %}
+              placeholder="What you discussed, or the support you'll provide"
+              style="width:100%;box-sizing:border-box;padding:8px 10px;border:1px solid var(--d-bd-d7dbe6);border-radius:8px;font-family:inherit;font-size:0.84375rem;resize:vertical">{{ idp['manager_comment'] or '' }}</textarea>
+    {% if idp['status'] != 'closed' %}
+    <div class="actions" style="gap:10px;margin-top:10px;align-items:center">
+      <span class="muted small" id="idp-mgr-status" aria-live="polite">Your edits save automatically</span>
+      <button type="submit" class="primary">Save comment</button>
+    </div>
+    {# There is deliberately no "agree" button here. The plan closes when you
+       record the career conversation below -- one closing action, and it is
+       the one that requires the conversation to have happened. #}
+    <p class="muted small" style="margin:8px 0 0">Closing the plan happens when you
+      record the career conversation below.</p>
+    {% endif %}
+  </form>
+  {% endif %}
+</div>
+
+{# ---- their career profile: the input to the conversation ---- #}
+<div class="admin-card" style="margin-top:16px">
+  <h2 style="margin:0 0 10px;font-size:1.05rem">Career profile</h2>
+  {% set has_profile = profile and (profile['aspiration_now'] or profile['aspiration_mid']
+                        or profile['aspiration_long'] or profile['strengths']
+                        or profile['mobility'] or profile['preferences'] or profile['mentor']) %}
+  {% if not has_profile %}
+  <p class="muted small" style="margin:0">Nothing filled in yet. Worth asking about
+    before your next one-to-one &mdash; it's what this conversation is built on.</p>
+  {% else %}
+  <div class="idp-modes">
+    {% for h in horizons %}
+    <div class="idp-mode">
+      <p class="idp-mode-head">{{ h['label'] }}</p>
+      <p style="margin:0;font-size:0.84375rem">{{ profile[h['key']] or '—' }}</p>
+    </div>
+    {% endfor %}
+  </div>
+  <div style="margin-top:12px;display:grid;gap:10px">
+    {% if profile['strengths'] %}
+    <p style="margin:0;font-size:0.84375rem"><span class="muted small">Building on</span><br>{{ profile['strengths'] }}</p>
+    {% endif %}
+    {% if profile['mobility'] or profile['mobility_note'] %}
+    <p style="margin:0;font-size:0.84375rem"><span class="muted small">Mobility</span><br>
+      {{ mobility_label(profile['mobility']) or '—' }}
+      {%- if profile['mobility_note'] %} <span class="muted">&mdash; {{ profile['mobility_note'] }}</span>{% endif %}</p>
+    {% endif %}
+    {% if profile['preferences'] %}
+    <p style="margin:0;font-size:0.84375rem"><span class="muted small">More of / less of</span><br>{{ profile['preferences'] }}</p>
+    {% endif %}
+    {% if profile['mentor'] %}
+    <p style="margin:0;font-size:0.84375rem"><span class="muted small">Would like to learn from</span><br>{{ profile['mentor'] }}</p>
+    {% endif %}
+  </div>
+  {% endif %}
+
+  {# A comment, not an edit: the aspirations stay in their words. Ungated on the
+     plan's state -- the profile carries across periods and has no lifecycle of
+     its own, so an agreed plan shouldn't silence the conversation about it. #}
+  <label style="display:block;margin-top:14px">
+    <span class="muted small" style="font-weight:600">Your view on their career
+      <span class="muted" style="font-weight:400">(optional &mdash; they can see this)</span></span>
+    <textarea id="idp-career-comment" rows="3" maxlength="4000"
+              placeholder="Readiness, what a realistic next move looks like, what would help"
+              style="width:100%;box-sizing:border-box;padding:8px 10px;border:1px solid var(--d-bd-d7dbe6);border-radius:8px;font-family:inherit;font-size:0.84375rem;resize:vertical">{{ profile['manager_comment'] if profile else '' }}</textarea>
+    <span class="muted small" id="idp-career-status" aria-live="polite"></span>
+  </label>
+</div>
+
+{# ---- Approve the plan: the overall remark first (Chris, 2026-10-21: no career conversation; Approve closes it) ---- #}
+<div class="admin-card" style="margin-top:16px" id="idp-approve">
+  <h2 style="margin:0 0 4px;font-size:1.05rem">Approve the plan</h2>
+  <p class="muted small" style="margin:0 0 12px">
+    {% if plan_state == 'closed' %}
+      Their plan is approved and closed.
+    {% elif plan_state == 'shared' %}
+      <strong>Approving closes their development plan</strong> &mdash; they can't change it after, and they read
+      your overall remark. Write the remark first. Their aim guides the plan: approving agrees the development goals,
+      not a move to the role.
+    {% elif plan_state == 'draft' %}
+      They've started a plan but haven't shared it yet, so there is nothing to approve.
+    {% else %}
+      They have no development plan yet.
+    {% endif %}
+  </p>
+  {% if conversation and conversation['held_on'] %}
+  <p class="muted small" style="margin:0 0 12px">An earlier career conversation was recorded on {{ conversation['held_on'] }}.</p>
+  {% endif %}
+  {% if plan_state == 'shared' %}
+  <form method="post" action="{{ url_for('idp_career_conversation', subject_id=subject['id']) }}"
+        data-confirm="Approve {{ subject['full_name'] }}'s development plan? This closes it: they can't change it after, and they read your remark."
+        data-confirm-title="Approve the plan" data-confirm-ok="Approve plan">
+    <div class="actions"><button type="submit" class="primary">Approve plan</button></div>
+  </form>
+  {% endif %}
+</div>
+
+<script>
+// Manager-side autosave, same contract as every other on this module: JSON in,
+// JSON out, and the server re-checks the window rather than trusting the page.
+(function () {
+  function csrf() {
+    var m = document.querySelector('meta[name="csrf-token"]');
+    return m ? m.content : '';
+  }
+  function send(url, body, statusEl) {
+    body.append('csrf_token', csrf());
+    if (statusEl) statusEl.textContent = 'Saving…';
+    return fetch(url, {method: 'POST', body: body, credentials: 'same-origin'})
+      .then(function (r) { return r.json().then(function (d) { return {s: r.status, d: d}; }); })
+      .then(function (res) {
+        if (statusEl) {
+          statusEl.textContent = res.d && res.d.ok ? 'Saved'
+            : ((res.d && res.d.error) || 'Couldn\u2019t save');
+        }
+      })
+      .catch(function () { if (statusEl) statusEl.textContent = 'Couldn\u2019t save'; });
+  }
+
+  var timers = {};
+  var goalStatus = document.getElementById('idp-mgr-status');
+  document.addEventListener('input', function (e) {
+    var el = e.target;
+    if (!el.classList || !el.classList.contains('idp-mgr-field')) return;
+    var card = el.closest('.idp-mgr-goal');
+    if (!card) return;
+    var key = card.getAttribute('data-goal') + ':' + el.getAttribute('data-field');
+    clearTimeout(timers[key]);
+    timers[key] = setTimeout(function () {
+      var body = new FormData();
+      body.append('goal_id', card.getAttribute('data-goal'));
+      body.append('field', el.getAttribute('data-field'));
+      body.append('value', el.value);
+      send({{ url_for('idp_goal_edit', subject_id=subject['id']) | tojson }}, body, goalStatus);
+    }, 700);
+  });
+
+  var cc = document.getElementById('idp-career-comment');
+  if (cc) {
+    var ccTimer, ccStatus = document.getElementById('idp-career-status');
+    cc.addEventListener('input', function () {
+      clearTimeout(ccTimer);
+      ccTimer = setTimeout(function () {
+        var body = new FormData();
+        body.append('comment', cc.value);
+        send({{ url_for('idp_career_comment', subject_id=subject['id']) | tojson }}, body, ccStatus);
+      }, 700);
+    });
+  }
+})();
+</script>
+{% endblock %}

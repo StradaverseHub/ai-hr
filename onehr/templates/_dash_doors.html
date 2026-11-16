@@ -1,0 +1,11 @@
+{# One door row -- name, optional icon, an optional pending badge, and an arrow.
+   Shared by the dashboard's Leadership zone and its "record & tools" zone so
+   the two render identically and can never drift. #}
+{% macro door(name, url, pending=0, icon=none) %}
+<a class="dash-door" href="{{ url }}">
+  {% if icon %}<span class="dash-door-ico" aria-hidden="true">{{ icon | safe }}</span>{% endif %}
+  <span class="dash-door-name">{{ name }}</span>
+  {% if pending %}<span class="dash-count">{{ pending }}</span>{% endif %}
+  <svg class="dash-ico sm dash-door-arrow" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 6l6 6-6 6"></path></svg>
+</a>
+{% endmacro %}

@@ -1,0 +1,181 @@
+{% extends "base.html" %}
+{% from "_adm_panel.html" import panel %}
+{% block title %}Career routes{% endblock %}
+{% block body %}
+{# Career Plan > Settings > Career routes (Chris, 2026-10-19, canvas "OneHR Career Routes Tree", boards 1 to 4, option B
+   for both): admin_career_routes. The tree is job family > sub-family > job, the leadership track first; a job opens
+   with its whole ladder, JG 23 down to its first grade; a grade opens in the side panel with the moves its people are
+   offered, to pin or hide. A grade nobody holds is a target role once the ladders are filled (tc_fill_ladders). #}
+{% set qs = {'q': q or None, 'show': show or None} %}
+<p class="adm-crumb"><a href="{{ url_for('admin_module_settings', key='idp') }}">Settings</a> &rsaquo; Career routes</p>
+<div class="adm-headrow">
+  <p class="adm-lede">Every job's ladder by job grade, from the job architecture, and the moves its people are offered
+    from each grade. Pick a job, then a grade. A pin or a hide is Group People's; everything else is worked out each time.</p>
+</div>
+
+<section class="cr-check" aria-label="Ladder check">
+  <div class="cr-tile"><b>{{ check.jobs }}</b><span>jobs in the architecture{% if check.capped %}; {{ check.capped }} stop below JG {{ top }}, where the job does{% endif %}</span></div>
+  <div class="cr-tile"><b>{{ check.targets }}</b><span>target roles nobody holds yet, drafts for P&amp;R</span></div>
+  <div class="cr-tile{{ ' is-warn' if check.missing }}"><b>{{ check.missing }}</b><span>grades still missing from a job's ladder</span>
+    {% if sup and check.missing %}
+    <form method="post" data-confirm="Make the {{ check.missing }} missing grade{{ 's' if check.missing != 1 }} target roles? Each gets the ladder's title and the five of the grade below at its own level, as a draft for P&amp;R in the competency library. Nobody is placed on them; they're offered as the next step up. You can deactivate one in Job profiles."
+          data-confirm-ok="Fill the missing grades">
+      <input type="hidden" name="action" value="fill">
+      <button type="submit" class="cr-fill">Fill the missing grades</button>
+    </form>
+    {% endif %}
+  </div>
+  <div class="cr-tile"><b>{{ check.lead_roles }}</b><span>roles on the leadership track, JG 21 to 23</span></div>
+</section>
+
+<div class="cr-key" aria-label="The grade ladder"><span class="cr-key-h">The ladder</span>
+  <span class="cr-k"><b>12–13</b> Executive</span><span class="cr-k"><b>14</b> Senior Executive</span>
+  <span class="cr-k"><b>15</b> Assistant Manager</span><span class="cr-k"><b>16–17</b> Manager</span>
+  <span class="cr-k"><b>18</b> Senior Manager</span><span class="cr-k"><b>19</b> Assistant General Manager</span>
+  <span class="cr-k"><b>20</b> General Manager</span>
+  <span class="cr-k is-lead"><b>21</b> Director / C-suite</span><span class="cr-k is-lead"><b>22</b> BU CEO</span>
+  <span class="cr-k is-lead"><b>23</b> BG CEO / Group C-suite</span>
+</div>
+
+<div class="kl-grid cl-grid cr-grid">
+  <section class="admin-card kl-tree cl-tree" aria-label="The career tree">
+    <form method="get" class="cr-find" role="search">
+      <label class="kl-q"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="11" cy="11" r="7"></circle><path d="m20 20-3.5-3.5"></path></svg>
+        <input type="search" name="q" value="{{ q }}" placeholder="Find a job or job code" aria-label="Find a job" autocomplete="off" aria-autocomplete="list" aria-expanded="false" data-suggest="jobs" data-suggest-src="routes" data-suggest-url="{{ url_for('search_suggest') }}" data-no-qin="jobs, not people"></label>
+      {% if show %}<input type="hidden" name="show" value="{{ show }}">{% endif %}
+    </form>
+    <span class="adm-frow-pills cr-pills" role="group" aria-label="Which jobs">
+      <a class="adm-frow-pill{{ ' is-on' if not show }}" href="{{ url_for('admin_career_routes', job=job.base if job else None, q=q or None) }}">All jobs</a>
+      {% if n_targets %}<a class="adm-frow-pill{{ ' is-on' if show == 'targets' }}" href="{{ url_for('admin_career_routes', show='targets', job=job.base if job else None, q=q or None) }}">With target roles · {{ n_targets }}</a>{% endif %}
+      {% if n_missing %}<a class="adm-frow-pill{{ ' is-on' if show == 'missing' }}" href="{{ url_for('admin_career_routes', show='missing', job=job.base if job else None, q=q or None) }}">Missing grades · {{ n_missing }}</a>{% endif %}
+    </span>
+    {% for f in families %}
+    <details class="cl-fam cr-fam"{{ ' open' if q or show or (job and job.family == f.code) }}>
+      <summary class="kl-tn"><span>{{ f.name }}{% if f.lead %}<span class="cr-leadtag">Leadership track</span>{% endif %}</span><span class="kl-n">{{ f.n }} job{{ 's' if f.n != 1 }}</span></summary>
+      {% for sb in f.subs %}
+      <details class="cl-spec"{{ ' open' if q or show or (job and job.sub == sb.code) }}>
+        <summary class="kl-tn kl-tn2"><span>{{ sb.name }}</span><span class="kl-n">{{ sb.jobs | length }}</span></summary>
+        {% for j in sb.jobs %}
+        <a class="cl-job cr-job{{ ' is-on' if job and j.base == job.base }}" href="{{ url_for('admin_career_routes', job=j.base, **qs) }}"{% if job and j.base == job.base %} aria-current="true"{% endif %}>
+          <span class="cr-jn"><b>{{ j.name }}</b><span class="muted small">{{ j.base }} · JG {{ j.lo }}{% if j.hi != j.lo %}–{{ j.hi }}{% endif %} · {{ j.people }} {{ 'person' if j.people == 1 else 'people' }}</span></span>
+          {% if j.missing %}<span class="cr-chip is-warn">Missing {{ j.missing | length }}</span>{% elif j.targets %}<span class="cr-chip">{{ j.targets }} target</span>{% endif %}
+        </a>
+        {% endfor %}
+      </details>
+      {% endfor %}
+    </details>
+    {% else %}
+    <p class="muted pp-pad">{% if q or show %}No job matches. <a href="{{ url_for('admin_career_routes') }}">Show every job</a>.{% else %}No job architecture has been loaded yet: its jobs appear here once their competency profiles are in.{% endif %}</p>
+    {% endfor %}
+  </section>
+
+  <section class="admin-card cl-jobcard cr-ladder" aria-label="The job's ladder">
+    {% if job %}
+    <span class="muted small">{{ (families | selectattr('code', 'equalto', job.family) | map(attribute='name') | first) or job.family }} &rsaquo; {{ names.get(job.sub, job.sub) }} · {{ job.base }}</span>
+    <div class="cl-jhead">
+      <div class="cl-jtitle"><b>{{ job.name }}</b>
+        <span class="muted small">{{ job.people }} {{ 'person' if job.people == 1 else 'people' }} · JG {{ job.lo }} to {{ job.hi }}</span></div>
+      <div class="cl-jacts">
+        {% if job.missing %}<span class="cr-chip is-warn">Nobody holds JG {{ job.missing | join(', ') }}</span>
+        {% elif job.targets %}<span class="cr-chip">{{ job.targets }} target role{{ 's' if job.targets != 1 }}</span>
+        {% else %}<span class="pp-chip is-ok">Every grade held</span>{% endif %}
+      </div>
+    </div>
+    <table class="cr-table">
+      <thead><tr><th class="cr-g">Grade</th><th class="cr-lv">Level</th><th>This job at that grade</th><th class="cr-n">People</th><th class="cr-n"></th></tr></thead>
+      <tbody>
+        {% for r in ladder %}
+        <tr class="cr-r is-{{ r.kind }}{{ ' is-target' if r.target }}{{ ' is-sel' if pick and r.id == pick.prof.id }}">
+          <td class="cr-g">{% if r.first %}<span class="cr-gp{{ ' is-lead' if r.g > top }}">JG {{ r.g }}</span>{% endif %}</td>
+          <td class="cr-lv">{% if r.first %}{{ r.level }}{% endif %}</td>
+          {% if r.kind == 'held' %}
+          <td>{{ r.title }}{% if r.scope and r.scope | lower not in r.title | lower %} <span class="muted small">· {{ r.scope | title }}</span>{% endif %}
+            {% if r.target %}<span class="cr-chip">Target role</span><br><span class="muted small">Nobody holds it yet · its five: the grade below's, at this grade's level · a draft for P&amp;R</span>{% endif %}</td>
+          <td class="cr-n">{{ r.people }}</td>
+          <td class="cr-n"><a href="{{ url_for('admin_career_routes', job=job.base, g=r.g, pid=r.id, panel='routes', **qs) }}">Routes ›</a></td>
+          {% elif r.kind == 'missing' %}
+          <td colspan="3"><span class="cr-miss">Nobody holds JG {{ r.g }} in this job</span> <span class="muted small">· its people's next step skips it{% if sup %}: Fill the missing grades makes it a target role{% endif %}</span></td>
+          {% elif r.kind == 'stop' %}
+          <td colspan="3"><span class="cr-stop">This job's ladder stops at JG {{ r.top }}</span>{% if r.kind_label %} <span class="muted small">· {{ r.kind_label }}: the step past it is another job's, offered in Routes</span>{% endif %}</td>
+          {% else %}
+          <td colspan="3" class="muted">On the leadership track: {{ r.titles | join(' · ') if r.titles else 'no role at this grade yet' }}</td>
+          {% endif %}
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    <p class="muted small cr-foot">{% if job.top >= top - 1 or job.hi >= top - 1 %}From JG {{ top }}, each grade is also offered the next grade's roles on the leadership track. {% endif %}Pick a grade's Routes to see and correct what its people are offered.</p>
+    {% else %}
+    <p class="muted pp-pad">Pick a job on the left to see its ladder.</p>
+    {% endif %}
+  </section>
+</div>
+
+{% if pick %}
+{% call panel("routes", "Career routes · JG " ~ pick.g, pick.prof.title, (pick.prof.people ~ (" person" if pick.prof.people == 1 else " people") ~ " · the moves their Career Plan offers, nearest first" ~ (" · a target role" if pick.prof.target else "")), open=True, params="panel g pid") %}
+<div class="adm-panel-body cr-pbody">
+  {% if pick.at | length > 1 %}
+  <div class="cr-scopes" role="group" aria-label="Which role at this grade">
+    {% for p in pick.at %}<a class="adm-frow-pill{{ ' is-on' if p.id == pick.prof.id }}" href="{{ url_for('admin_career_routes', job=job.base, g=pick.g, pid=p.id, panel='routes', **qs) }}">{{ (p.scope | title) if p.scope else p.title }}</a>{% endfor %}
+  </div>
+  {% endif %}
+  {% for name, rows in pick.groups %}
+  <section class="adm-psec cr-psec">
+    <h3>{{ name[:1] | upper ~ name[1:] }}</h3>
+    {% for r in rows %}
+    <div class="cr-route">
+      <div class="cr-rt"><b>{{ r.title }}</b>
+        {% if r.next %}<span class="cr-tag is-next">Next step</span>{% endif %}
+        {% if r.target %}<span class="cr-tag">Target role</span>{% endif %}
+        {% if r.pinned %}<span class="cr-tag is-pin">Pinned</span>{% endif %}
+        <span class="muted small">JG {{ r.grade }} · {{ r.jump }}{% if r.people %} · {{ r.people }} {{ 'person' if r.people == 1 else 'people' }}{% endif %}{% if r.match %} · {{ r.match }}{% endif %}</span></div>
+      {% if sup %}
+      <div class="cr-ra">
+        {% if r.pinned %}
+        <form method="post" data-confirm="Unpin {{ r.title }} from {{ pick.prof.title }}? It goes back to what the architecture offers on its own." data-confirm-ok="Unpin">
+          <input type="hidden" name="from_profile_id" value="{{ pick.prof.id }}"><input type="hidden" name="to_profile_id" value="{{ r.id }}"><input type="hidden" name="kind" value="clear">
+          <button type="submit" class="cr-btn">Unpin</button></form>
+        {% else %}
+        <form method="post" data-confirm="Pin {{ r.title }} as a move from {{ pick.prof.title }}? It stays offered whatever the architecture says." data-confirm-ok="Pin">
+          <input type="hidden" name="from_profile_id" value="{{ pick.prof.id }}"><input type="hidden" name="to_profile_id" value="{{ r.id }}"><input type="hidden" name="kind" value="pinned">
+          <button type="submit" class="cr-btn">Pin</button></form>
+        {% endif %}
+        <form method="post" data-confirm="Hide {{ r.title }} from {{ pick.prof.title }}'s routes? Its people's Career Plan stops offering it. You can show it again here." data-confirm-ok="Hide" data-confirm-tone="danger">
+          <input type="hidden" name="from_profile_id" value="{{ pick.prof.id }}"><input type="hidden" name="to_profile_id" value="{{ r.id }}"><input type="hidden" name="kind" value="hidden">
+          <button type="submit" class="cr-btn">Hide</button></form>
+      </div>
+      {% endif %}
+    </div>
+    {% endfor %}
+  </section>
+  {% else %}
+  <p class="muted">No move is offered from this grade yet.</p>
+  {% endfor %}
+  {% if pick.hidden %}
+  <section class="adm-psec cr-psec"><h3>Hidden by Group People</h3>
+    {% for h in pick.hidden %}
+    <div class="cr-route"><div class="cr-rt"><b>{{ h.job_title | proper }}</b><span class="cr-tag is-hid">Hidden</span></div>
+      {% if sup %}<div class="cr-ra"><form method="post" data-confirm="Show {{ h.job_title | proper }} again in {{ pick.prof.title }}'s routes?" data-confirm-ok="Show again">
+        <input type="hidden" name="from_profile_id" value="{{ pick.prof.id }}"><input type="hidden" name="to_profile_id" value="{{ h.id }}"><input type="hidden" name="kind" value="clear">
+        <button type="submit" class="cr-btn">Show again</button></form></div>{% endif %}
+    </div>
+    {% endfor %}
+  </section>
+  {% endif %}
+  {% if sup %}
+  <section class="adm-psec cr-psec"><h3>Add a route by hand</h3>
+    <form method="post" class="cr-add" data-confirm="Pin this role as a move from {{ pick.prof.title }}? A pinned route is offered even across job families or more than two grades up." data-confirm-ok="Pin">
+      <input type="hidden" name="from_profile_id" value="{{ pick.prof.id }}"><input type="hidden" name="kind" value="pinned">
+      <select name="to_profile_id" aria-label="The role to pin" required>
+        <option value="">Choose a role…</option>
+        {% for o in pick.others %}<option value="{{ o.id }}">{{ o.title }} · JG {{ o.g }}</option>{% endfor %}
+      </select>
+      <button type="submit" class="cr-btn is-solid">Pin</button>
+    </form>
+    <p class="muted small">Each pin or hide is in the audit log.</p>
+  </section>
+  {% endif %}
+</div>
+{% endcall %}
+{% endif %}
+{% endblock %}

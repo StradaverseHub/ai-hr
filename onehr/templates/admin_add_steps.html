@@ -1,0 +1,437 @@
+{# Add a person, after their details (2026-10-18, the libraries canvas, boards 15-18): their KPIs, their job and what it
+   gives, and what's in place. Shown inside the Add a person panel on People (admin_users.html includes it with `wiz`);
+   every form posts to admin_add_steps, which uses the person page's own writers and goes on to the next step. #}
+{% from "_kpi_unit.html" import unit_select with context %}
+{% set w = wiz %}
+{% set p = w.p %}
+{% set order = ['details', 'kpis', 'job', 'done'] %}
+{% set at = order.index(w.step) %}
+{% macro steps() %}
+<ol class="adm-steps" aria-label="Steps">
+  {% for k, lbl in [('details', 'Details'), ('kpis', 'KPIs'), ('job', 'Competencies'), ('done', 'Done')] %}
+  <li class="{{ 'is-done' if loop.index0 < at else ('is-on' if loop.index0 == at else '') }}"{% if loop.index0 == at %} aria-current="step"{% endif %}>
+    <span class="adm-step-n">{{ '✓' if loop.index0 < at else loop.index }}</span>{{ lbl }}</li>
+  {% endfor %}
+</ol>
+{% endmacro %}
+{% set cyc_name = w.act['name'] if w.act else 'this cycle' %}
+
+{% if w.step == 'kpis' %}
+{# ---- 2 · their KPIs -------------------------------------------------------------------------------------------- #}
+{% set mech_word = {'A': 'the 5-point rating'}.get(w.mech) or ('achievement against target' ~ (', with excellence' if w.variant == 'excellence' else '')) %}
+<form method="post" action="{{ url_for('admin_add_steps', uid=p['id']) }}" class="adm-panel-form wiz-form" id="wiz-kpis"
+      data-confirm="Save these KPI lines on {{ p['full_name'] }}'s {{ cyc_name }} scorecard? They count as agreed, each moderated by their line manager, and {{ p['full_name'] }} sees them at once. It goes in the trail."
+      data-confirm-ok="Save KPIs">
+  <input type="hidden" name="action" value="kpis">
+  <div class="adm-panel-body">
+    {{ steps() }}
+    {% if not w.act %}
+    <p class="wiz-note">There is no active cycle, so there are no KPI lines to set now.</p>
+    {% elif w.kpi_out %}
+    <p class="wiz-note">Their {{ cyc_name }} performance result is released, so their KPI lines are final.</p>
+    {% else %}
+    {% if w.mech %}<p class="muted small wiz-lede">Their KPIs for {{ cyc_name }}, scored on {{ mech_word }}.</p>{% endif %}
+    {% if not w.taking[0] or w.cut_late %}
+    <section class="wiz-sec" aria-label="This cycle">
+      <span class="wiz-k">This cycle</span>
+      {% if w.below is not none %}
+      <p class="wiz-note">JG {{ p['job_grade'] or '?' }} is below {{ cyc_name }}'s lowest job grade (JG {{ w.below }}), so they don't take part in it and have no KPI lines this cycle. Next, their job is still placed, so their Career Plan works later.</p>
+      {% else %}
+      {% set pre = (w.cut_cur or 'out') if w.cut_late else 'out' %}
+      <label class="wiz-opt"><input type="radio" name="cycle" value="add" data-wiz-cycle{% if pre == 'add' %} checked{% endif %}>
+        <span><b>Add them to {{ cyc_name }}</b><br><span class="muted small">{% if w.cut_late %}They're confirmed after its cut-off ({{ w.cutoff_day }}), so you choose. Adding them puts them on Participants, with KPIs and competencies this cycle, from {{ w.conf_day }}.{% else %}They aren't confirmed by its start and have under a year's service, so the rule leaves them out. Adding them puts them on Participants, with KPIs and competencies this cycle.{% endif %}</span></span></label>
+      {% if w.can_confirm and not w.unit_out and (not w.cut_late or not w.lines) %}
+      <label class="wiz-opt"><input type="radio" name="cycle" value="confirm" data-wiz-cycle>
+        <span><b>Add them with a Confirmation rating</b><br><span class="muted small">One KPI line, 100% of their KPIs: their confirmation rating, on the 5-point rating in every business group. You rate it on their behalf below; there is nothing for them to fill in. Their HOD reviews it and sets their potential, then their BU CEO and BG CEO calibrate it.</span></span></label>
+      {% endif %}
+      <label class="wiz-opt"><input type="radio" name="cycle" value="skip" data-wiz-cycle{% if pre == 'out' %} checked{% endif %}>
+        <span><b>Not this cycle</b><br><span class="muted small">No KPIs this cycle. They keep their Career Plan and still rate colleagues on the 360. Next, their job is still placed.</span></span></label>
+      {% endif %}
+    </section>
+    {% if w.can_confirm and not w.unit_out and w.below is none and (not w.cut_late or not w.lines) %}
+    {#- the Confirmation rating, rated on their behalf (2026-10-22): posts as action=confirm, Participants' own writer -#}
+    <div class="wiz-conf" data-wiz-conf hidden>
+      <section class="wiz-sec" aria-label="Confirmation rating"><span class="wiz-k">Confirmation rating · 1 KPI line, 100%</span>
+        <div class="wiz-have" id="wiz-conf-rate"><span><b>{{ p['full_name'] }}</b><br><span class="muted small">Rated by Group People on their behalf. It counts as a Group People-filled result, final for their line manager.</span></span>
+          <select name="rating" class="modern-select" aria-label="Confirmation rating for {{ p['full_name'] }}" data-wiz-rating>
+            <option value="">Choose their rating</option>
+            {% for lbl in ['Unacceptable (UA)', 'Below Expectation (BE)', 'Meet Expectation (ME)', 'Above Expectation (AE)', 'Outstanding (OU)'] %}<option value="{{ loop.index }}">{{ loop.index }} · {{ lbl }}</option>{% endfor %}
+          </select></div>
+      </section>
+      <section class="wiz-sec" aria-label="Your reason"><span class="wiz-k">Your reason</span>
+        <label class="ptc-reason"><span class="muted small">Required. Kept with the result in the audit trail; their HOD and CEOs read it beside the rating.</span>
+          <textarea name="reason" rows="3" maxlength="{{ w.reason_max }}" data-wiz-reason></textarea></label>
+      </section>
+    </div>
+    {% endif %}
+    {% endif %}
+    <div class="wiz-kpis" data-wiz-kpis{% if not w.taking[0] or w.cut_late %} hidden{% endif %}>
+      {% if not w.cfg %}
+      <p class="wiz-note">{{ display_bg(p['business_group']) }} has no scoring set for its KPIs yet, so KPI lines can't be added. Set it in Performance settings first, or skip for now.</p>
+      {% else %}
+      {% set bu = w.lines | selectattr('bu') | list %}
+      {% set own = w.lines | rejectattr('bu') | list %}
+      {% if bu or w.bu_new %}
+      <section class="wiz-sec" aria-label="Business unit KPIs">
+        <div class="wiz-sec-head"><span class="wiz-k">From BU KPI setup · {{ display_company(p['business_group'], p['company']) or p['company'] }}</span>
+          <a class="small" href="{{ url_for('admin_bu_kpis', fbg=p['business_group'], fbu=p['company']) }}">Change in BU KPI setup</a></div>
+        {% for l in bu %}<div class="wiz-have"><span><b>{{ l.name }}</b> <span class="muted small">· on their scorecard already</span></span><span>{{ '%g' | format(l.weight) }}%</span></div>{% endfor %}
+        {% for b in w.bu_new %}<div class="wiz-have"><span><b>{{ b.name }}</b> <span class="muted small">· goes on with their own KPIs</span></span><span>{{ '%g' | format(b.w) }}%</span></div>{% endfor %}
+      </section>
+      {% endif %}
+      <section class="wiz-sec" aria-label="Their own KPIs">
+        <span class="wiz-k">Their own KPIs</span>
+        {% for l in own %}<div class="wiz-have"><span><b>{{ l.name }}</b> <span class="muted small">· on their scorecard already</span></span><span>{{ '%g' | format(l.weight) }}%</span></div>{% endfor %}
+        <div class="wiz-lines" id="wiz-lines" data-kpi-mech="{{ w.mech }}"></div>
+        <div class="wiz-pick" id="wiz-pick">
+          <label class="wiz-pick-q">Add a KPI from their library <span class="muted small">their own branches first</span>
+            <input type="search" id="wiz-pick-q" placeholder="Search {{ w.library | length }} KPIs by name or category" autocomplete="off" aria-controls="wiz-pick-list"></label>
+          <div class="wiz-pick-list" id="wiz-pick-list" role="listbox" aria-label="Library KPIs"></div>
+        </div>
+        <div class="wiz-tally" id="wiz-tally" data-have="{{ w.w_bu + w.w_own + w.w_bu_new }}" data-bu="{{ w.w_bu + w.w_bu_new }}" aria-live="polite"></div>
+        <p class="muted small">Each line is moderated by their line manager{% if w.leaders.lm %} ({{ w.leaders.lm['full_name'] }}){% endif %}, who sees the description when reviewing. Business unit KPIs come from BU KPI setup, not here.</p>
+      </section>
+      <template id="wiz-line-tpl">
+        <div class="wiz-line" data-kpi-scale="{{ w.mech }}">
+          <input type="hidden" name="lib_id">
+          <div class="wiz-line-head"><span><b data-f="name"></b> <span class="muted small" data-f="meta"></span></span>
+            <button type="button" class="btn-link" data-wiz-remove>Remove</button></div>
+          <input name="focus" maxlength="60" class="wiz-focus" aria-label="Focus" placeholder="Focus (optional), e.g. precast line: shown after the name when they hold this KPI more than once">
+          <textarea name="description" rows="2" aria-label="Description" placeholder="Description: what exactly it covers for them, how it's measured (source, how often) and the evidence they'll show. Figures go in the ratings below."></textarea>
+          <div class="wiz-rates">
+            {{ unit_select('unit', '', blank='No unit') }}
+            <label>Method<select name="method" class="modern-select"><option value="more">Higher is better</option><option value="less">Lower is better</option></select></label>
+            {% if w.mech == 'A' %}
+              {% for i in range(1, 6) %}<label>Rate {{ i }}<input name="rate {{ i }}" inputmode="decimal" required></label>{% endfor %}
+            {% else %}
+              <label>Threshold<input name="threshold" inputmode="decimal" required></label>
+              <label>Target<input name="target" inputmode="decimal" required></label>
+              {% if w.variant == 'excellence' %}<label>Excellence<input name="excellence" inputmode="decimal"></label>
+              {% else %}<label>Multiple<input name="multiple" inputmode="numeric"></label>{% endif %}
+            {% endif %}
+            <label>Weight %<input name="weightage" inputmode="decimal" required data-wiz-weight></label>
+          </div>
+        </div>
+      </template>
+      <script type="application/json" id="wiz-lib">{{ w.library | tojson }}</script>
+      {% endif %}
+    </div>
+    {% endif %}
+  </div>
+  <footer class="adm-panel-foot">
+    <a class="btn-link adm-panel-grow" href="{{ url_for('admin_person', uid=p['id']) }}">Their page</a>
+    <button type="submit" name="then" value="skip" class="wiz-btn" id="wiz-skip" formnovalidate
+            data-confirm="Go on to their job without KPI lines? You can add them later on their Performance page; until then Home's new-joiner flag lists them."
+            data-confirm-ok="Skip KPIs">Skip KPIs for now</button>
+    {% if w.act and not w.kpi_out and w.cfg %}
+    <button type="submit" name="then" value="save" class="primary" id="wiz-save" disabled>Save, then their competencies</button>
+    {% endif %}
+    {% if w.act and not w.kpi_out and w.can_confirm and (not w.taking[0] or w.cut_late) and not w.unit_out and w.below is none and (not w.cut_late or not w.lines) %}
+    <button type="submit" name="then" value="save" class="primary" id="wiz-conf-go" hidden disabled
+            data-confirm-title="Add and rate?" data-confirm-ok="Add and rate"
+            data-confirm="Add {{ p['full_name'] }} to {{ cyc_name }} with one KPI line, the Confirmation rating, rated by Group People on their behalf? Their HOD reviews it next and sets their potential. You can take them out again on Participants until their results are released; the rating and your reason stay in the audit trail.">Add and rate, then their competencies</button>
+    {% endif %}
+  </footer>
+</form>
+<script>
+/* Add a person's KPIs: pick lines from their library, each with its description, scale and weight; the weights,
+   with any business unit KPIs on their scorecard, have to come to 100% before it saves. The scale check is
+   kpi_scale.js's, per line. The server checks everything again (admin_add_steps). */
+(function () {
+  var form = document.getElementById('wiz-kpis'); if (!form) return;
+  var box = form.querySelector('[data-wiz-kpis]'), skip = document.getElementById('wiz-skip'),
+      save = document.getElementById('wiz-save'), lines = document.getElementById('wiz-lines'),
+      tpl = document.getElementById('wiz-line-tpl'), q = document.getElementById('wiz-pick-q'),
+      list = document.getElementById('wiz-pick-list'), tally = document.getElementById('wiz-tally'),
+      libEl = document.getElementById('wiz-lib');
+  var LIB = []; try { LIB = JSON.parse(libEl ? libEl.textContent : '[]'); } catch (e) { LIB = []; }
+  var byId = {}; LIB.forEach(function (r) { byId[r.id] = r; });
+  function cycleAdd() {
+    var r = form.querySelector('[data-wiz-cycle]:checked');
+    return r ? r.value === 'add' : true;
+  }
+  function fmt(n) { return (Math.round(n * 100) / 100).toString(); }
+  // the Confirmation rating (2026-10-22): its own box and button, and the form posts as action=confirm
+  var confBox = form.querySelector('[data-wiz-conf]'), confGo = document.getElementById('wiz-conf-go'),
+      act = form.querySelector('input[name="action"]');
+  function conf() {
+    var r = form.querySelector('[data-wiz-cycle]:checked');
+    return !!(r && r.value === 'confirm');
+  }
+  function drawConf() {
+    var on = conf();
+    if (act) act.value = on ? 'confirm' : 'kpis';
+    if (confBox) confBox.hidden = !on;
+    if (confGo) {
+      confGo.hidden = !on;
+      var rt = form.querySelector('[data-wiz-rating]'), rs = form.querySelector('[data-wiz-reason]');
+      var have = rt && rt.value, why = rs && (rs.value || '').trim();
+      confGo.disabled = !on || !have || !why;
+      confGo.title = !have ? 'Choose their rating first' : (!why ? 'Give your reason first' : '');
+    }
+    if (skip) skip.hidden = on;
+    if (save) save.hidden = on;
+    return on;
+  }
+  function draw() {
+    if (drawConf()) { if (box) box.hidden = true; return; }
+    if (box) box.hidden = !cycleAdd();
+    if (skip) {
+      var adding = form.querySelector('[data-wiz-cycle][value="add"]:checked');
+      skip.textContent = cycleAdd() ? 'Skip KPIs for now' : 'Next: their job';
+      skip.setAttribute('data-confirm', adding
+        ? 'Add them to the cycle and go on to their job without KPI lines? You can add them later on their Performance page; until then Home’s new-joiner flag lists them.'
+        : (cycleAdd() ? 'Go on to their job without KPI lines? You can add them later on their Performance page; until then Home’s new-joiner flag lists them.'
+                      : 'Go on to their job? They don’t take part this cycle, so they have no KPI lines.'));
+      skip.setAttribute('data-confirm-ok', cycleAdd() ? 'Skip KPIs' : 'Next');
+    }
+    if (!tally) { if (save) save.disabled = true; return; }
+    var have = parseFloat(tally.getAttribute('data-have')) || 0, bu = parseFloat(tally.getAttribute('data-bu')) || 0, own = 0, n = 0;
+    lines.querySelectorAll('[data-wiz-weight]').forEach(function (i) { own += parseFloat((i.value || '').replace('%', '')) || 0; n++; });
+    var total = have + own, ok = Math.abs(total - 100) < 0.01;
+    tally.innerHTML = '';
+    var l = document.createElement('span');
+    l.textContent = 'Weights: ' + (bu ? fmt(bu) + '% from business unit KPIs + ' : '') + fmt(total - bu) + '% their own';
+    var r = document.createElement('b');
+    r.className = ok ? 'is-ok' : 'is-bad';
+    r.textContent = fmt(total) + '%' + (ok ? ' ✓' : ' · needs 100%');
+    tally.appendChild(l); tally.appendChild(r);
+    var bad = form.querySelector('[data-kpi-scale-bad]');
+    if (save) {
+      save.disabled = !cycleAdd() || !n || !ok || !!bad;
+      save.title = !n ? 'Add a KPI first' : (!ok ? 'The weights need to come to 100%' : (bad ? 'Fix the ratings first' : ''));
+    }
+  }
+  function meta(r) {
+    var bits = [];
+    if (r.cat) bits.push(r.cat);
+    if (r.unit) bits.push(r.unit);
+    if (r.scope) bits.push(r.scope);
+    return bits.length ? '· ' + bits.join(' · ') : '';
+  }
+  function set(el, v) { if (el && v !== null && v !== undefined && v !== '') el.value = v; }
+  function addLine(r) {
+    var node = tpl.content.firstElementChild.cloneNode(true);
+    node.querySelector('[name="lib_id"]').value = r.id;
+    node.querySelector('[data-f="name"]').textContent = r.name;
+    node.querySelector('[data-f="meta"]').textContent = meta(r);
+    var m = node.querySelector('[name="method"]'); if (m && r.method) m.value = r.method === 'less' ? 'less' : 'more';
+    // the library's unit to start from (already in the standard's spelling); one off the list is kept as entered
+    var un = node.querySelector('select[data-kpi-unit]');
+    if (un && r.unit) {
+      if (!Array.prototype.some.call(un.options, function (o) { return o.value === r.unit; })) {
+        var o = document.createElement('option'); o.value = r.unit; o.textContent = r.unit + ' (as entered)'; un.insertBefore(o, un.options[1] || null);
+      }
+      un.value = r.unit;
+    }
+    // the library holds no numbers (Chris, 2026-11-02): the admin enters the figures and the weight with the line
+    lines.appendChild(node);
+    // a library row's own scale is checked as soon as it lands (kpi_scale.js listens for input)
+    var f = node.querySelector('[name="weightage"]'); f.dispatchEvent(new Event('input', {bubbles: true}));
+    var d = node.querySelector('textarea'); if (d) d.focus();
+    q.value = ''; find(); draw();
+  }
+  function taken() {
+    var t = {}; lines.querySelectorAll('[name="lib_id"]').forEach(function (i) { t[i.value] = 1; }); return t;
+  }
+  function find() {
+    if (!list) return;
+    var s = (q.value || '').trim().toLowerCase(), t = taken(), hits = [];
+    for (var i = 0; i < LIB.length && hits.length < (s ? 40 : 8); i++) {
+      var r = LIB[i];
+      if (t[r.id]) continue;
+      if (s && (r.name + ' ' + r.cat).toLowerCase().indexOf(s) < 0) continue;
+      hits.push(r);
+    }
+    list.textContent = '';
+    hits.forEach(function (r) {
+      var b = document.createElement('button'); b.type = 'button'; b.className = 'wiz-pick-hit'; b.setAttribute('role', 'option');
+      var nm = document.createElement('b'); nm.textContent = r.name;
+      var mt = document.createElement('span'); mt.className = 'muted small'; mt.textContent = ' ' + meta(r);
+      b.appendChild(nm); b.appendChild(mt);
+      b.addEventListener('click', function () { addLine(r); });
+      list.appendChild(b);
+    });
+    if (!hits.length) {
+      var p = document.createElement('p'); p.className = 'muted small'; p.textContent = s ? 'No KPI in their library matches.' : 'Every KPI in their library is on the list.';
+      list.appendChild(p);
+    }
+  }
+  if (q) { q.addEventListener('input', find); find(); }
+  form.addEventListener('click', function (e) {
+    var rm = e.target.closest && e.target.closest('[data-wiz-remove]');
+    if (rm) { e.preventDefault(); rm.closest('.wiz-line').remove(); find(); draw(); }
+  });
+  form.addEventListener('input', function () { setTimeout(draw, 0); });
+  form.addEventListener('change', function () { setTimeout(draw, 0); });
+  draw();
+})();
+</script>
+
+{% elif w.step == 'job' %}
+{# ---- 3 · their job and its competencies ---------------------------------------------------------------------- #}
+{% set can_assign = w.act and not w.block %}
+<form method="post" action="{{ url_for('admin_add_steps', uid=p['id']) }}" class="adm-panel-form wiz-form" id="wiz-job"
+      data-confirm="Place {{ p['full_name'] }}'s job as the one you picked?{% if can_assign %} They get that job's competencies at once.{% else %} Their competencies this cycle stay as they are.{% endif %} It goes in the trail."
+      data-confirm-ok="Place job">
+  <input type="hidden" name="action" value="job">
+  <div class="adm-panel-body">
+    {{ steps() }}
+    {% if w.role %}
+    <section class="wiz-sec" aria-label="Their job">
+      <span class="wiz-k">Their job</span>
+      <p class="wiz-job-now"><b>{{ w.role['title'] or '—' }}</b> <span class="muted">· {{ w.job_code or 'no job code at their grade' }}</span> <span class="pp-chip is-ok">{{ w.placed_word }}</span></p>
+      {% if not w.profile %}<p class="wiz-note">There is no job profile at their grade for this job yet, so it gives no competencies. You can change their job on their Competency page.</p>{% endif %}
+    </section>
+    {% if w.profile %}
+    <section class="wiz-sec" aria-label="What their job gives them">
+      <div class="wiz-sec-head"><span class="wiz-k">What their job gives them</span><span class="muted small">5 now · the same 5 one level up</span></div>
+      <div class="wiz-comp" data-wiz-preview="{{ w.profile['id'] }}"></div>
+    </section>
+    {% endif %}
+    {% elif w.at_grade %}
+    <section class="wiz-sec" aria-label="Their job">
+      <span class="wiz-k">Their job</span>
+      <p class="muted small">They aren't in P&amp;R's Job Architecture Mapper yet, so pick their job.{% if w.suggest %} Suggested from their title, department and grade:{% endif %}</p>
+      {% for r in w.suggest %}
+      <label class="wiz-opt wiz-job"><input type="radio" name="profile_id" value="{{ r['id'] }}" {{ 'checked' if loop.first }} data-wiz-job>
+        <span><b>{{ r['job_title'] | proper }}</b> <span class="muted small">· {{ r['department'] | proper }} · {{ r['job_code'] }}{% if r['held'] %} · {{ r['held'] }} {{ 'person holds' if r['held'] == 1 else 'people hold' }} it{% endif %}</span></span>{% if loop.first %}<span class="pp-chip">Best fit</span>{% endif %}</label>
+      {% endfor %}
+      <div class="wiz-sel">
+        <label>{{ 'Or pick: job family' if w.suggest else 'Job family' }}
+          <select class="modern-select" data-wiz-fam aria-label="Job family">
+            <option value="">Choose…</option>
+            {% for d in w.at_grade | map(attribute='department') | unique %}<option>{{ d }}</option>{% endfor %}
+          </select></label>
+        <label>Job at JG {{ w.grade }}
+          <select class="modern-select" data-wiz-pickjob aria-label="Job at their grade" disabled><option value="">Choose a job family first</option></select></label>
+      </div>
+    </section>
+    <section class="wiz-sec" aria-label="What that job gives them">
+      <div class="wiz-sec-head"><span class="wiz-k">What that job gives them</span><span class="muted small">5 now · the same 5 one level up</span></div>
+      <div class="wiz-comp" data-wiz-preview=""></div>
+      <p class="muted small">Adding or swapping one for this person only is on their Competency page afterwards.</p>
+    </section>
+    <script type="application/json" id="wiz-jobs">{{ w.at_grade | tojson }}</script>
+    {% else %}
+    <p class="wiz-note">There are no job profiles at their grade{% if w.grade is none %} (their grade isn't a number){% endif %}, so there is no job to place yet.</p>
+    {% endif %}
+    {% if w.block and (w.role or w.at_grade) %}<p class="muted small">{{ (w.block[0] | upper) ~ w.block[1:] }}{% if 'take part' in w.block %}; their job is still placed, for their Career Plan later{% endif %}.</p>{% endif %}
+    {% if w.n_tc %}<p class="muted small">They have {{ w.n_tc }} competencies this cycle already.</p>{% endif %}
+    <script type="application/json" id="wiz-preview">{{ w.preview | tojson }}</script>
+  </div>
+  <footer class="adm-panel-foot">
+    <a class="btn-link adm-panel-grow" href="{{ url_for('admin_users', view='add', step='kpis', uid=p['id']) }}">Back</a>
+    <a class="wiz-btn" href="{{ url_for('admin_users', view='add', step='done', uid=p['id']) }}">Skip for now</a>
+    {% if w.role %}
+      {% if w.profile and can_assign and not w.n_tc %}
+      <button type="submit" name="then" value="assign" class="primary"
+              data-confirm="Give {{ p['full_name'] }} their job's competencies for {{ cyc_name }}? Five now and the same five one level up. It goes in the trail."
+              data-confirm-ok="Assign">Assign their job's competencies</button>
+      {% else %}
+      <a class="primary wiz-a" href="{{ url_for('admin_users', view='add', step='done', uid=p['id']) }}">Next</a>
+      {% endif %}
+    {% elif w.at_grade %}
+    <button type="submit" name="then" value="place" class="primary" id="wiz-place">{{ 'Place job and assign its competencies' if can_assign else 'Place job' }}</button>
+    {% endif %}
+  </footer>
+</form>
+<script>
+/* Add a person's job: the suggestions or a family > job pick, and what the picked job gives (its five competencies now
+   and the level above), drawn from the profiles' plans. One profile_id posts. */
+(function () {
+  var form = document.getElementById('wiz-job'); if (!form) return;
+  var PV = {}; try { PV = JSON.parse(document.getElementById('wiz-preview').textContent || '{}'); } catch (e) { PV = {}; }
+  var jobsEl = document.getElementById('wiz-jobs'), JOBS = [];
+  try { JOBS = JSON.parse(jobsEl ? jobsEl.textContent : '[]'); } catch (e) { JOBS = []; }
+  var fam = form.querySelector('[data-wiz-fam]'), job = form.querySelector('[data-wiz-pickjob]'),
+      out = form.querySelector('[data-wiz-preview]'), place = document.getElementById('wiz-place');
+  function dots(l, n) {
+    var s = document.createElement('span'); s.className = 'wiz-dots'; s.setAttribute('role', 'img');
+    s.setAttribute('aria-label', (l ? 'Level ' + l + ' now' : 'New') + (n ? ', level ' + n + ' next' : ''));
+    for (var i = 1; i <= 6; i++) {
+      var d = document.createElement('span');
+      d.className = 'wiz-dot' + (l && i <= l ? ' is-on' : (n && i <= n ? ' is-next' : ''));
+      s.appendChild(d);
+    }
+    return s;
+  }
+  function draw(pid) {
+    if (!out) return;
+    out.textContent = '';
+    var rows = PV[pid] || [];
+    if (!pid) { var p0 = document.createElement('p'); p0.className = 'muted small'; p0.textContent = 'Pick a job to see its competencies.'; out.appendChild(p0); }
+    else if (!rows.length) { var p1 = document.createElement('p'); p1.className = 'muted small'; p1.textContent = 'This job has no competencies set yet.'; out.appendChild(p1); }
+    rows.forEach(function (r) {
+      var row = document.createElement('div'); row.className = 'wiz-cr';
+      var t = document.createElement('b'); t.textContent = r.t;
+      var c = document.createElement('span'); c.className = 'pp-chip'; c.textContent = r.src;
+      var lv = document.createElement('span'); lv.className = 'small'; lv.textContent = (r.l ? 'L' + r.l : 'new') + (r.n ? ' → L' + r.n : '');
+      row.appendChild(t); row.appendChild(c); row.appendChild(dots(r.l, r.n)); row.appendChild(lv);
+      out.appendChild(row);
+    });
+  }
+  function picked() {
+    if (job && job.name && job.value) return job.value;
+    var r = form.querySelector('[data-wiz-job]:checked'); return r ? r.value : '';
+  }
+  if (out && out.getAttribute('data-wiz-preview')) draw(out.getAttribute('data-wiz-preview'));
+  else draw(picked());
+  if (fam && job) {
+    fam.addEventListener('change', function () {
+      job.textContent = '';
+      var list = JOBS.filter(function (j) { return j.department === fam.value; });
+      var first = document.createElement('option'); first.value = ''; first.textContent = list.length ? 'Choose…' : 'Choose a job family first';
+      job.appendChild(first);
+      list.forEach(function (j) { var o = document.createElement('option'); o.value = j.id; o.textContent = j.job_title + (j.job_scope ? ' (' + j.job_scope.toLowerCase() + ')' : '') + ' · ' + j.job_code; job.appendChild(o); });
+      job.disabled = !list.length; job.required = !!list.length; job.name = list.length ? 'profile_id' : '';
+      form.querySelectorAll('[data-wiz-job]').forEach(function (r) { r.checked = false; });
+      draw('');
+      if (place) place.disabled = true;
+    });
+    job.addEventListener('change', function () { draw(job.value); if (place) place.disabled = !job.value; });
+  }
+  form.querySelectorAll('[data-wiz-job]').forEach(function (r) {
+    r.addEventListener('change', function () {
+      if (job) { job.name = ''; job.value = ''; job.disabled = true; job.required = false; }
+      if (fam) fam.value = '';
+      draw(r.value); if (place) place.disabled = false;
+    });
+  });
+  if (place && !picked()) place.disabled = true;
+})();
+</script>
+
+{% else %}
+{# ---- 4 · what's in place ------------------------------------------------------------------------------------- #}
+{% set own = w.lines | rejectattr('bu') | list %}
+{% set bu = w.lines | selectattr('bu') | list %}
+<div class="adm-panel-body">
+  {{ steps() }}
+  <span class="wiz-k">What's in place</span>
+  {% macro ck(ok, title, line, href=None, link='') %}
+  <div class="wiz-ck"><span class="{{ 'wiz-y' if ok else 'wiz-w' }}" aria-label="{{ 'Done' if ok else 'Still to do' }}">{{ '✓' if ok else '…' }}</span>
+    <span><b>{{ title }}</b><br><span class="muted small">{{ line }}</span></span>
+    {% if href %}<a href="{{ href }}">{{ link }}</a>{% else %}<span></span>{% endif %}</div>
+  {% endmacro %}
+  {{ ck(true, 'Their account', 'Signs in with their Employee ID. Joined ' ~ (w.joined_word or '—') ~ ', ' ~ (('confirmed ' ~ w.confirmed_word) if w.confirmed_word else 'not yet confirmed') ~ '.', url_for('admin_person', uid=p['id'], panel='details'), 'Details') }}
+  {{ ck(w.leaders.lm and w.leaders.hod, 'Line manager and HOD', ((w.leaders.lm['full_name'] if w.leaders.lm else 'no line manager') ~ ' · ' ~ (w.leaders.hod['full_name'] if w.leaders.hod else 'no HOD')), url_for('admin_person', uid=p['id']), 'Change') }}
+  {% if w.act %}
+  {{ ck(w.taking[0], ('Taking part in ' ~ cyc_name) if w.taking[0] else ('Not taking part in ' ~ cyc_name), {'added': 'Added on Participants (not confirmed by the cycle\'s start)', 'confirmed': 'Confirmed by the cycle\'s start, or over a year\'s service'}.get(w.taking[1], 'Not confirmed by its start and under a year\'s service: add them on Participants to include them') if w.taking[0] or w.below is none else 'Below its lowest job grade (JG ' ~ w.below ~ ')', url_for('admin_participants'), 'Participants') }}
+  {% if w.taking[0] %}
+  {% set wt = w.w_bu + w.w_own %}
+  {{ ck(w.lines and (wt - 100) | abs < 0.01, (w.lines | length) ~ ' KPI line' ~ ('' if w.lines | length == 1 else 's') ~ ', weights ' ~ ('%g' | format(wt)) ~ '%', ((bu | length) ~ ' business unit KPI' ~ ('' if bu | length == 1 else 's') ~ ' (' ~ ('%g' | format(w.w_bu)) ~ '%) and ' if bu else '') ~ (own | length) ~ ' of their own' ~ (' (' ~ ('%g' | format(w.w_own)) ~ '%)' if bu else '') ~ ', moderated by their line manager' if w.lines else 'None yet: add them on their Performance page', url_for('admin_person', uid=p['id'], tab='performance'), 'KPIs') }}
+  {% endif %}
+  {% endif %}
+  {{ ck(w.role and (w.n_tc or not w.taking[0]), ('Their job' ~ (' and ' ~ w.n_tc ~ ' competencies' if w.n_tc else '')) if w.role else 'Their job isn\'t placed', ((w.role['title'] or '—') ~ ' · ' ~ (w.job_code or 'no job code at their grade') ~ ' · ' ~ (w.placed_word or '')) if w.role else 'Place it on their Competency page, so their competencies and Career Plan follow', url_for('admin_person', uid=p['id'], tab='competency'), 'Competency') }}
+  {% if w.act and w.taking[0] %}
+  {{ ck(w.panel, 'Their 360 panel', (w.panel ~ ' colleague' ~ ('' if w.panel == 1 else 's') ~ ' to give feedback') if w.panel else 'Added the next time panels are built for ' ~ cyc_name) }}
+  {% endif %}
+  <p class="muted small">Each step is in the trail. Anything still to do stays on Home's new-joiner flag until it's done.</p>
+</div>
+<footer class="adm-panel-foot">
+  <a class="btn-link adm-panel-grow" href="{{ url_for('admin_person', uid=p['id']) }}">Open their page</a>
+  <a class="wiz-btn" href="{{ url_for('admin_users', view='add') }}">Add another person</a>
+  <button type="button" class="primary" data-panel-close>Done</button>
+</footer>
+{% endif %}

@@ -1,0 +1,40 @@
+{% extends "base.html" %}
+{% from "_signin_help_fields.html" import help_fields %}
+{% block title %}Get help signing in - AI+ OneHR by Chin Hin{% endblock %}
+{% block body %}
+{# Sign-in help on a page of its own (2026-10-19, canvas [design canvas link removed]): where Get
+   help goes on a narrow screen, where the assistant card isn't shown, or with no script. It posts the same request the
+   assistant's card does, with the same one answer whatever was typed. #}
+<div class="ax">
+  {% include "_auth_brand.html" %}
+  <section class="ax-main">
+    <div class="ax-card axh-page">
+      {% if sent is not none %}
+      <span class="ax-tile" aria-hidden="true"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 7l9 6 9-6"/></svg></span>
+      <div class="ax-head">
+        <h1 class="ax-h">Help is on its way</h1>
+        <p class="ax-sub" role="status">{% if sent %}Your reference is <b>{{ sent }}</b>. {% endif %}The People team has your request, and they'll reply by email. If that's the email on your OneHR account, you also get a short notice from OneHR.</p>
+      </div>
+      <a href="{{ url_for('login') }}" class="ax-btn">Back to sign in</a>
+      {% else %}
+      <div class="ax-head">
+        <h1 class="ax-h">Get help signing in</h1>
+        <p class="ax-sub">Tell us what's wrong. The People team will reply by email.</p>
+      </div>
+      <p class="axh-tip"><svg width="16" height="16" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 11v5M12 8h.01"/></svg>
+        <span>Forgot your password? <a href="{{ url_for('login', forgot=1) }}">Reset it yourself now</a>. Locked out? Sign-in opens again after {{ window_min or 15 }} minutes, and the browser you usually use still works.</span></p>
+      {% if error %}<div class="ax-alert" role="alert"><svg width="20" height="20" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 8v5M12 16.5v.01"/></svg><div><p>{{ error }}</p></div></div>{% endif %}
+      <form method="post" action="{{ url_for('signin_help') }}" class="ax-form axh-form" novalidate>
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+        {{ help_fields(issues, pick, form, max_text, 'axp') }}
+        <div class="ax-actions">
+          <a href="{{ url_for('login') }}" class="ax-btn ax-btn-quiet">Back to sign in</a>
+          <button type="submit" class="ax-btn">Send to the People team</button>
+        </div>
+      </form>
+      {% endif %}
+    </div>
+  </section>
+</div>
+<script src="{{ url_for('static', filename='auth.js') }}?v={{ asset_v }}"></script>
+{% endblock %}

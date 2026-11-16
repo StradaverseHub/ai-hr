@@ -1,0 +1,269 @@
+{% extends "base.html" %}
+{% block title %}Reminders · Leader progress{% endblock %}
+{% from "_adm_panel.html" import list_peek %}
+{% block body %}
+{# Email › Schedule › Leader progress, was Cycle > Reminders (canvas "OneHR Leader Progress Emails", board 1, 2026-10-19): each BU CEO's unit by
+   department and each BG CEO's group by business unit, how many submitted and how many not yet, on the super admin's
+   own schedule. Chris picked one table with the parts side by side for both (boards 3 and 4). #}
+<div class="rm rm2 lp">
+  {% include "_reminder_tabs.html" %}
+  <p class="muted rm-lede">A progress email to each BG CEO, their group by business unit, each BU CEO, their unit by
+    department, each calibrator, their Calibration Group by department, and each HOD, their department by line
+    manager's team: how many have submitted, how many haven't yet, and the percentage. Counts only, never the name of
+    anyone counted (an HOD's rows are headed by the line manager's name). It goes
+    out on its own schedule, separate from everyone's reminder.
+    {% if not status['configured'] %}<span class="rm-off">Email isn't set up on this server, so nothing is sent from here.</span>{% endif %}</p>
+
+  <div class="lp-grid">
+    <section class="admin-card rm-card" aria-label="When it goes out">
+      <div class="rm-h"><h2>When it goes out</h2>{% if is_super %}<span class="rm-badge">Super admin</span>{% endif %}</div>
+      <form method="post" class="rm-rules" id="lp-rules"
+            data-confirm="Save when the leader progress email goes out, who gets it and what it counts? If “Send it on its own” is ticked, the leaders ticked are emailed automatically on this schedule from now on; if it is unticked, nothing goes out on its own. You can change it again."
+            data-confirm-title="Save the schedule?" data-confirm-ok="Save the schedule">
+        <input type="hidden" name="action" value="save_rules">
+        <input type="hidden" name="role" value="{{ role }}">
+        <fieldset {{ 'disabled' if not is_super }}>
+        <label class="rm-switch"><input type="checkbox" name="enabled" {{ 'checked' if rules.enabled }}> Send it on its own</label>
+        <span class="lp-lbl">How often</span>
+        <label class="rm-rule"><input type="radio" name="freq" value="weekly" {{ 'checked' if rules.freq == 'weekly' }}> Every week, on
+          <select name="weekday" class="lp-sel" aria-label="Day of the week">{% for d in weekdays %}<option value="{{ loop.index0 }}" {{ 'selected' if loop.index0 == rules.weekday }}>{{ d }}</option>{% endfor %}</select></label>
+        <label class="rm-rule"><input type="radio" name="freq" value="every" {{ 'checked' if rules.freq == 'every' }}> Every
+          <input name="every_days" class="rm-num" inputmode="numeric" value="{{ rules.every_days }}" aria-label="Every how many days"> day(s)</label>
+        <label class="rm-rule"><input type="radio" name="freq" value="reminder" {{ 'checked' if rules.freq == 'reminder' }}> On the same days as everyone's reminder</label>
+        {# only between these days, when set (Chris, 2026-10-19: "similarly for BU and BGCEO reminder") #}
+        <span class="rm-rule rm-range">Between <input type="date" name="range_from" value="{{ rules.range_from or '' }}" aria-label="First day it goes out">
+          and <input type="date" name="range_to" value="{{ rules.range_to or '' }}" aria-label="Last day it goes out"></span>
+        <span class="muted small lp-hint">Leave the dates blank for no limit. “Every N days” counts from the first day.</span>
+        <label class="rm-rule">Send at <input type="time" name="send_time" value="{{ rules.send_time }}" step="900" class="rm-time"> <span class="muted small">Malaysia time</span></label>
+        <label class="rm-rule lp-top"><input type="checkbox" name="skip_done" {{ 'checked' if rules.skip_done }}> Leave out a unit (or a group) once everyone in it has submitted</label>
+        </fieldset>
+        <p class="muted small rm-note">Only while a part it counts is open: with nothing open, nothing goes out.</p>
+        <p class="small rm-note rm2-cad{{ ' is-warn' if cadence == 'daily' and rules.send_time != '09:00' }}">
+          {% if cadence == 'often' %}The server checks every 15 minutes and sends at this time, at most once a day.
+          {% elif cadence == 'daily' %}{% if rules.send_time != '09:00' %}The server still checks once a day, at 09:00, so this time takes effect once its 15-minute timer is installed.{% else %}The server checks once a day, at 09:00.{% endif %}
+          {% else %}This server has no reminder timer, so nothing goes out on its own here.{% endif %}</p>
+      </form>
+      <div class="lp-next">{% if next_send %}<span><b>Next:</b> {{ next_send }}</span>
+        <span class="muted">{% for k, label, _d in roles if k in rules.roles %}{{ reach[k].people }} {{ label }}{{ ' · ' if not loop.last }}{% endfor %}</span>
+        {% elif rules.enabled %}<span>No send day in the next two months{% if rules.freq == 'reminder' %}: everyone's reminder has none{% endif %}.</span>
+        {% else %}<span>It doesn't go out on its own.</span>{% endif %}</div>
+      {% if cycle and not open_parts %}<p class="small rm-note lp-shut">Nothing it counts is open now, so nothing would go out today.</p>{% endif %}
+      <div class="rm2-acts">
+        {% if is_super %}<button type="submit" class="primary" form="lp-rules">Save the schedule</button>{% endif %}
+        {% if cycle and is_super %}
+        <form method="post" data-confirm="Send the leader progress email now to {% for k, label, _d in roles if k in rules.roles %}{{ reach[k].people }} {{ label }}{{ ' and ' if not loop.last }}{% else %}nobody{% endfor %}? Each gets their own figures as they are right now{{ '; a unit where everyone has submitted is left out' if rules.skip_done }}. It can't be called back once sent."
+              data-confirm-ok="Send now" data-confirm-tone="danger">
+          <input type="hidden" name="action" value="send_now"><input type="hidden" name="role" value="{{ role }}">
+          <button type="submit" class="rm2-btn2" {{ 'disabled' if not status['configured'] or not open_parts or not rules.roles }}>Send now</button>
+        </form>
+        {% endif %}
+      </div>
+    </section>
+
+    <div class="lp-col">
+      <section class="admin-card rm-card" aria-label="Who gets it">
+        <h2>Who gets it</h2>
+        {% for k, label, desc in roles %}
+        <label class="lp-who">
+          <input type="checkbox" name="role" value="{{ k }}" form="lp-rules" {{ 'checked' if k in rules.roles }} {{ 'disabled' if not is_super }}>
+          <span><b>{{ label }}</b><br><span class="muted small">{{ desc }}</span></span>
+          <span class="lp-n">{{ reach[k].people }} {{ 'person' if reach[k].people == 1 else 'people' }} · {{ reach[k].places }} {% if k == 'buceo' %}{{ 'unit' if reach[k].places == 1 else 'units' }}{% elif k == 'hod' %}{{ 'department' if reach[k].places == 1 else 'departments' }}{% else %}{{ 'group' if reach[k].places == 1 else 'groups' }}{% endif %}</span>
+        </label>
+        {% endfor %}
+        <p class="muted small rm-note">One email a person, from the highest role ticked: BG CEO, then BU CEO, then Calibrator, then HOD. The Executive Chairman gets none{% if opted_n %}, nor anyone opted out: <a class="oo-lnk" href="#" data-list-open="{{ url_for('admin_list_view', key='email-optout', kind='leader_progress', fragment=1) }}">{{ opted_n }} now &rsaquo;</a>{% else %}.{% endif %}</p>
+        {% set ne = no_email_n %}
+        <p class="small rm-note {{ 'rm-off' if ne else 'muted' }}">A leader with no email address is left out: {{ ne }} now.</p>
+      </section>
+
+      <section class="admin-card rm-card" aria-label="What it counts">
+        <h2>What it counts</h2>
+        <span class="muted small lp-hint">From the day after a part opens, while it is open.</span>
+        <span class="lp-lbl">Each person's own part</span>
+        {% for p in parts if p[0] in own_parts %}
+        <label class="lp-part"><input type="checkbox" name="part" value="{{ p[0] }}" form="lp-rules" {{ 'checked' if p[0] in rules.parts }} {{ 'disabled' if not is_super }}>
+          <span>{{ p[1] }} <span class="muted">· {{ p[2] }}</span></span><span class="lp-st">{{ part_state[p[0]] }}</span></label>
+        {% endfor %}
+        <span class="lp-lbl lp-gap">Also, if you want them</span>
+        {% for p in parts if p[0] not in own_parts %}
+        <label class="lp-part"><input type="checkbox" name="part" value="{{ p[0] }}" form="lp-rules" {{ 'checked' if p[0] in rules.parts }} {{ 'disabled' if not is_super }}>
+          <span>{{ p[1] }} <span class="muted">· {{ p[2] }}</span></span><span class="lp-st">{{ part_state[p[0]] }}</span></label>
+        {% endfor %}
+        <p class="muted small rm-note">Over the people taking part in this cycle; 360 feedback counts ratings by the rater's place. A part not open yet shows the day it opens instead of its column; on the day it opens it is not counted yet, and a day with nothing to count sends no email.</p>
+      </section>
+    </div>
+
+    <section class="admin-card rm-card" id="email" aria-label="The email">
+      <div class="rm-h"><h2>The email</h2>
+        <div class="lp-seg" role="group" aria-label="Whose email">{% for k, label, _d in roles %}<a href="{{ url_for('admin_reminders_leaders', role=k) }}#email" {% if k == role %}aria-current="true" class="is-on"{% endif %}>{{ label }}</a>{% endfor %}</div></div>
+      {% if tpl_name %}<p class="muted small em-onrm">Template in use today: <b>{{ tpl_name }}</b>{% if is_super %}. Saving here changes this template. <a href="{{ url_for('admin_emails', email='lp_' ~ role) }}">All templates on Email › Emails and templates</a>{% endif %}</p>{% endif %}
+      <form method="post" class="rm2-form" id="lp-email"
+            data-confirm="Save the {{ role_label }}' progress email? Every email from now on uses these words. You can change them again, or go back to the default."
+            data-confirm-ok="Save the email">
+        <input type="hidden" name="action" value="save_email"><input type="hidden" name="role" value="{{ role }}">
+        <fieldset {{ 'disabled' if not is_super }}>
+        {% set F = {} %}{% for k, label, cap, req in fields %}{% set _ = F.update({k: (label, cap)}) %}{% endfor %}
+        <label>Subject<input name="subject" value="{{ tpl.subject }}" maxlength="{{ F.subject[1] }}" required></label>
+        <label>Heading<input name="heading" value="{{ tpl.heading }}" maxlength="{{ F.heading[1] }}" required></label>
+        <label>Opening<textarea name="opening" rows="3" maxlength="{{ F.opening[1] }}">{{ tpl.opening }}</textarea></label>
+        <div class="rm2-two">
+          <label>Greeting<input name="greeting" value="{{ tpl.greeting }}" maxlength="{{ F.greeting[1] }}" required></label>
+          <label>Button<input name="button" value="{{ tpl.button }}" maxlength="{{ F.button[1] }}" required></label>
+        </div>
+        <label>Closing line<input name="closing" value="{{ tpl.closing }}" maxlength="{{ F.closing[1] }}"></label>
+        {% if F['note'] %}
+        <label>{{ F['note_head'][0] }}<input name="note_head" value="{{ tpl.note_head }}" maxlength="{{ F['note_head'][1] }}"></label>
+        <label>{{ F['note'][0] }}<textarea name="note" rows="2" maxlength="{{ F['note'][1] }}">{{ tpl.note }}</textarea></label>
+        <p class="muted small rm-note">The note is a grey box under the opening. OneHR adds it only {% if role == 'hod' %}while their Department Review and a line managers' part are both open, and some line manager's team still has work to complete{% else %}while their calibration and the HODs' Department Review are both open, and a department in their email has an HOD to wait on{% endif %}. Leave both lines empty to never show it.</p>
+        {% endif %}
+        <div class="rm2-chips"><span class="rm2-lbl">You can use</span>
+          {% for p in placeholders %}<button type="button" class="rm2-chip" data-ph="{{ '{' ~ p ~ '}' }}" {{ 'disabled' if not is_super }} title="Put it where the cursor is">{{ '{' ~ p ~ '}' }}</button>{% endfor %}</div>
+        </fieldset>
+        <p class="muted small rm-note">The table is written by OneHR from what is counted at the moment it sends, and so is the line at the foot saying why they get it.</p>
+      </form>
+      {% if is_super %}
+      <div class="rm2-acts">
+        <button type="submit" class="primary" form="lp-email">Save the email</button>
+        <form method="post" data-confirm="Put the {{ role_label }}' progress email back to OneHR's default words? The words saved now are replaced." data-confirm-ok="Back to the default" data-confirm-tone="danger">
+          <input type="hidden" name="action" value="reset_email"><input type="hidden" name="role" value="{{ role }}">
+          <button type="submit" class="btn-link">Back to the default</button>
+        </form>
+      </div>
+      {% endif %}
+    </section>
+
+    <section class="admin-card rm-card lp-prev" aria-label="Preview as">
+      <div class="lp-pick"><h2>Preview as</h2>
+        {% if picks %}
+        <select id="lp-who" class="lp-sel" aria-label="Whose email">
+          {% for k, label, _d in roles %}<optgroup label="{{ label }}">{% for p in picks if p.role == k %}<option value="{{ p.value }}" {{ 'selected' if p.value == who }}>{{ p.label }}</option>{% endfor %}</optgroup>{% endfor %}
+        </select>
+        {% else %}<span class="muted small">No BG CEO, BU CEO, calibrator or HOD is in the list{{ ' in your scope' if not is_super }}.</span>{% endif %}
+      </div>
+      <div class="rm2-frame"><iframe id="lp-frame" sandbox title="The leader's email, as it would go out now" data-url="{{ url_for('admin_reminders_leaders_preview') }}" data-who="{{ who }}"></iframe></div>
+      {% if is_super and status['configured'] and picks %}
+      <form method="post" class="rm2-test" data-confirm="Send yourself this leader's progress email as it would go out now, with “[Test]” in front of the subject? It goes to your own address only." data-confirm-ok="Send the test">
+        <input type="hidden" name="action" value="test"><input type="hidden" name="role" value="{{ role }}"><input type="hidden" name="who" id="lp-test-who" value="{{ who }}">
+        {% if not me_email %}<input name="test_to" type="email" placeholder="you@example.com" aria-label="Send the test to" required>{% endif %}
+        <button type="submit" class="rm2-btn2">Send me this email as a test</button>
+      </form>
+      {% endif %}
+    </section>
+  </div>
+
+  {# BG admins: daily status (Chris, 2026-10-30, canvas boards 6 and 7): the BG CEO's table to each group-wide BG admin,
+     on its own rules; the words are the lp_bgadmin template on Email › Emails and templates. #}
+  <section class="admin-card rm-card" id="bga" aria-label="BG admins: daily status">
+    <div class="rm-h"><h2>BG admins: daily status</h2>{% if is_super %}<span class="rm-badge">Super admin</span>{% endif %}</div>
+    <p class="muted small">Each BG admin gets their group by business unit, the same table as the BG CEO's, at the addresses on their account's notification emails.</p>
+    <form method="post" class="rm-rules" id="bga-rules"
+          data-confirm="Save the BG admin status email? If “Send it on its own” is ticked, each BG admin is emailed their group's status automatically, every day at this time, from the day after a part opens, while it is open; if it is unticked, nothing goes out on its own. You can change it again."
+          data-confirm-title="Save the BG admin status email?" data-confirm-ok="Save">
+      <input type="hidden" name="action" value="bga_save">
+      <input type="hidden" name="role" value="{{ role }}">
+      <fieldset {{ 'disabled' if not is_super }}>
+      <label class="rm-switch"><input type="checkbox" name="enabled" {{ 'checked' if bga_rules.enabled }}> Send it on its own</label>
+      <label class="rm-rule">Every day at <input type="time" name="send_time" value="{{ bga_rules.send_time }}" step="900" class="rm-time"> <span class="muted small">Malaysia time</span></label>
+      <span class="muted small lp-hint">From the day after a part opens, while it is open.</span>
+      <span class="lp-lbl lp-gap">What it counts</span>
+      {% for p in parts %}
+      <label class="lp-part"><input type="checkbox" name="part" value="{{ p[0] }}" {{ 'checked' if p[0] in bga_rules.parts }}>
+        <span>{{ p[1] }} <span class="muted">· {{ p[2] }}</span></span><span class="lp-st">{{ part_state[p[0]] }}</span></label>
+      {% endfor %}
+      </fieldset>
+    </form>
+    <div class="lp-next"><span><b>{{ bga.admins }} BG admin{{ '' if bga.admins == 1 else 's' }} · {{ bga.groups }} group{{ '' if bga.groups == 1 else 's' }}</b></span>
+      <span class="{{ 'rm-off' if bga.no_email else 'muted' }}">With no notification email: {{ bga.no_email }}</span>
+      <span class="muted">{% if bga.next %}<b>Next:</b> {{ bga.next.strftime('%a') }} {{ bga.next.day }} {{ bga.next.strftime('%b') }} {{ bga.next.year }}, {{ bga_rules.send_time }}{% elif bga_rules.enabled and cycle %}No send day in the next two months{% elif not bga_rules.enabled %}It doesn't go out on its own{% endif %}</span></div>
+    <p class="small rm-note muted">{% if bga.live %}Counted today: {{ bga.live | join(', ') }}.{% elif cycle %}No part it counts has been open since yesterday, so nothing would go out today.{% else %}There is no active cycle.{% endif %}
+      An admin with no notification email gets nothing; a group where every unit has submitted gets nothing.{% if bga_tpl %} Words: the template <b>{{ bga_tpl.name }}</b>{% if is_super %} on <a href="{{ url_for('admin_emails', email='lp_bgadmin') }}">Email › Emails and templates</a>{% endif %}.{% endif %}
+      {% if bga.last %}Last run: {{ bga.last }}.{% endif %}</p>
+    {% if is_super %}
+    <div class="rm2-acts">
+      <button type="submit" class="primary" form="bga-rules">Save</button>
+      <form method="post" data-confirm="Send yourself the BG admin status email, with made-up units and counts and “[Test]” in front of the subject? It goes to the {{ bga_mine }} notification email{{ '' if bga_mine == 1 else 's' }} on your own account only." data-confirm-ok="Send the test">
+        <input type="hidden" name="action" value="bga_test"><input type="hidden" name="role" value="{{ role }}">
+        <button type="submit" class="rm2-btn2" {{ 'disabled' if not bga_mine or not status['configured'] }}{% if not status['configured'] %} title="Email isn't set up on this server"{% elif not bga_mine %} title="Add a notification email to your account first (Account › Notification emails)"{% endif %}>Send a test to me</button>
+      </form>
+    </div>
+    {% endif %}
+  </section>
+
+  {# Ready for you (Chris, 2026-11-02, canvas board A1): one email, once per place per cycle, when the tier below is done; its
+     own rules (ready_notice_rules); the words are the three Ready · ... templates on Email › Emails and templates. #}
+  <section class="admin-card rm-card" id="ready" aria-label="Ready for you">
+    <div class="rm-h"><h2>Ready for you: when the tier below is done</h2>{% if is_super %}<span class="rm-badge">Super admin</span>{% endif %}</div>
+    <p class="muted small">One email, once per cycle for each place, when everyone a leader waits on has finished: an HOD when every line manager's team in a department is 100% on KPI moderation and Competency review; a BU CEO or Calibrator when every HOD in their unit or Calibration Group has submitted the Department Review. It says to start now while their part is open, or the day it opens.</p>
+    <form method="post" class="rm-rules" id="ready-rules"
+          data-confirm="Save the ready notices? If “Send it on its own” is ticked, each leader ticked is emailed automatically, once for each department, unit or Calibration Group, when everyone they wait on has finished; the check runs every day at this time. If it is unticked, nothing goes out on its own. You can change it again."
+          data-confirm-title="Save the ready notices?" data-confirm-ok="Save">
+      <input type="hidden" name="action" value="ready_save">
+      <input type="hidden" name="role" value="{{ role }}">
+      <fieldset {{ 'disabled' if not is_super }}>
+      <label class="rm-switch"><input type="checkbox" name="enabled" {{ 'checked' if ready_rules.enabled }}> Send it on its own</label>
+      <label class="rm-rule">Checked every day at <input type="time" name="send_time" value="{{ ready_rules.send_time }}" step="900" class="rm-time"> <span class="muted small">Malaysia time</span></label>
+      <span class="muted small lp-hint">The leader progress email goes at {{ lp_time }}. Everyone's reminder goes at {{ reminder_time }}.</span>
+      <span class="lp-lbl lp-gap">Who gets it</span>
+      {% for k, label, what in ready_roles %}
+      <label class="lp-who">
+        <input type="checkbox" name="ready_role" value="{{ k }}" {{ 'checked' if k in ready_rules.roles }}>
+        <span><b>{{ label }}</b> · {{ what }}<br><span class="muted small">{% if k == 'hod' %}One a department they head.{% elif k == 'buceo' %}One a unit. A department with no HOD, or one they head themself, doesn't hold it up.{% else %}One a Calibration Group.{% endif %}{% if k != 'buceo' %} {{ ready.roles[k].when }}{% endif %}</span></span>
+        <span class="lp-n">Sent {{ ready.roles[k].sent }} · {{ ready.roles[k].ready }} {% if k == 'hod' %}{{ 'department' if ready.roles[k].ready == 1 else 'departments' }}{% elif k == 'buceo' %}{{ 'unit' if ready.roles[k].ready == 1 else 'units' }}{% else %}{{ 'group' if ready.roles[k].ready == 1 else 'groups' }}{% endif %} ready</span>
+      </label>
+      {% endfor %}
+      </fieldset>
+    </form>
+    <p class="small rm-note muted">A leader taken off the leader progress email (Opted out) gets none of these either.{% if is_super %} The words are on <a href="{{ url_for('admin_emails', email='ready_hod') }}">Email › Emails and templates</a>: {% for k, label, _w in ready_roles %}{% if ready_tpl[k] %}<a href="{{ url_for('admin_emails', email='ready_' ~ k) }}">Ready · {{ label }}</a>{% else %}Ready · {{ label }}{% endif %}{{ ', ' if not loop.last }}{% endfor %}.{% endif %}
+      {% if ready.last %}Last run: {{ ready.last }}.{% endif %}</p>
+    {% if is_super %}
+    <div class="rm2-acts">
+      <button type="submit" class="primary" form="ready-rules">Save</button>
+      <form method="post" data-confirm="Send yourself three made-up ready notices (an HOD's, a BU CEO's and a Calibrator's), with “[Test]” in front of the subject? They go to the {{ bga_mine }} notification email{{ '' if bga_mine == 1 else 's' }} on your own account only." data-confirm-ok="Send the test">
+        <input type="hidden" name="action" value="ready_test"><input type="hidden" name="role" value="{{ role }}">
+        <button type="submit" class="rm2-btn2" {{ 'disabled' if not bga_mine or not status['configured'] }}{% if not status['configured'] %} title="Email isn't set up on this server"{% elif not bga_mine %} title="Add a notification email to your account first (Account › Notification emails)"{% endif %}>Send a test to me</button>
+      </form>
+    </div>
+    {% endif %}
+  </section>
+
+  <section class="admin-card rm-card" id="sent" aria-label="Sent">
+    <h2>Sent</h2>
+    {% for r in runs %}
+    <div class="rm-run"><span>{{ r.when }}</span><span class="muted">{{ r.why }}</span>
+      <span>{% if r.closed %}nothing it counts was open{% else %}{{ r.emailed }} emailed{% if r.nothing %} · {{ r.nothing }} nothing to report{% endif %}{% if r.no_email %} · <b class="rm-bad">{{ r.no_email }} no email</b>{% endif %}{% endif %}</span></div>
+    {% else %}
+    <p class="muted small">Nothing sent yet.</p>
+    {% endfor %}
+  </section>
+</div>
+<script>
+(function () {
+  var sel = document.getElementById('lp-who'), frame = document.getElementById('lp-frame'), hid = document.getElementById('lp-test-who');
+  // the email is fetched and written into the frame (srcdoc), as everyone's reminder's preview does
+  function show(who) {
+    if (!frame) return;
+    if (!who) { frame.srcdoc = ''; return; }
+    fetch(frame.getAttribute('data-url') + '?who=' + encodeURIComponent(who), { credentials: 'same-origin',
+      headers: { 'X-Requested-With': 'fetch' } })
+      .then(function (r) { return r.text(); })
+      .then(function (h) { frame.srcdoc = h; })
+      .catch(function () { frame.srcdoc = '<p style="font:0.875rem Arial;color:var(--muted);padding:12px">The preview didn\'t load. Pick the leader again.</p>'; });
+  }
+  if (frame) show(frame.getAttribute('data-who'));
+  if (sel) sel.addEventListener('change', function () { show(sel.value); if (hid) hid.value = sel.value; });
+  var last = null;
+  document.querySelectorAll('#lp-email input, #lp-email textarea').forEach(function (el) {
+    el.addEventListener('focus', function () { last = el; });
+  });
+  document.querySelectorAll('#lp-email [data-ph]').forEach(function (b) {
+    b.addEventListener('click', function () {
+      var el = last || document.querySelector('#lp-email [name=opening]');
+      if (!el) return;
+      var s = el.selectionStart == null ? el.value.length : el.selectionStart, e = el.selectionEnd == null ? s : el.selectionEnd;
+      el.value = el.value.slice(0, s) + b.getAttribute('data-ph') + el.value.slice(e);
+      el.focus(); el.selectionStart = el.selectionEnd = s + b.getAttribute('data-ph').length;
+    });
+  });
+})();
+</script>
+{% if is_super %}{{ list_peek() }}{% endif %}
+{% endblock %}

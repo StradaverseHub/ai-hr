@@ -1,0 +1,80 @@
+{% extends "base.html" %}
+{% from "_table_tools.html" import colth, colmenu, colmenu_script %}
+{% set TIER_NAME = {'hod': 'Department', 'buceo': 'Business unit',
+                    'bgceo': 'Business group', 'group': 'Calibration group'} %}
+{% block title %}Performance calibration{% endblock %}
+{% block body %}
+
+<div class="page-head">
+  <div>
+    <h1>Performance calibration</h1>
+    <p class="muted">
+      {% if period %}{{ period['name'] }} &middot; {% endif %}
+      Moderate your people's <strong>performance bands</strong> against the reference
+      distribution their business unit's PAT achievement selects. Each scope locks
+      independently and feeds the tier above it.
+    </p>
+    {% if box_scopes %}
+    <p class="muted small" style="margin:6px 0 0">
+      From business unit level up you can calibrate performance and potential together
+      in the <a href="{{ url_for('talent_box_home') }}">Talent Box</a> — same decisions,
+      one grid.
+    </p>
+    {% endif %}
+  </div>
+</div>
+
+{% if not period %}
+<div class="admin-card"><p class="muted" style="margin:0">No active performance period yet.</p></div>
+{% elif not scopes %}
+<div class="admin-card">
+  {% if no_population %}
+  {# Holds a tier, but nobody in it has KPI targets yet. A real state, and the
+     reason the Hub badge points here -- so name the cause rather than refusing. #}
+  <p class="muted" style="margin:0">
+    Nothing to calibrate yet. You hold a calibration scope this period, but no one in it
+    has performance targets set, so there are no ratings to moderate. This page will fill
+    in once KPI targets have been imported and results approved.
+  </p>
+  {% else %}
+  <p class="muted" style="margin:0">
+    You don't hold a calibration scope this period. Scopes come from being a department's
+    HOD, from being set as a business unit's or business group's CEO, or from being named
+    the calibrator of a cross-organisation group.
+  </p>
+  {% endif %}
+</div>
+{% else %}
+<div class="admin-card">
+  <div class="table-scroll table-scroll-capped">
+  <table class="admin-table" id="calib-scopes-table">
+    <thead><tr>{{ colth('scope', 'Scope') }}{{ colth('level', 'Level') }}
+      {{ colth('people', 'People') }}{{ colth('status', 'Status') }}<th></th></tr></thead>
+    <tbody>
+      {% for s in scopes %}
+      <tr class="data-row" data-scope="{{ s.label }}" data-level="{{ TIER_NAME[s.tier] }}"
+          data-people="{{ s.count }}"
+          data-status="{{ 'Locked' if s.locked else 'Open' }}">
+        <td><strong>{{ s.label }}</strong></td>
+        <td class="muted small">{{ TIER_NAME[s.tier] }}</td>
+        <td>{{ s.count }}</td>
+        <td>
+          {% if s.locked %}<span class="status-pill status-reviewed">Locked</span>
+          {% else %}<span class="status-pill status-submitted">Open</span>{% endif %}
+        </td>
+        <td><a class="btn-link" href="{{ s.url }}">Open &rarr;</a></td>
+      </tr>
+      {% endfor %}
+          <tr class="no-filter-match" hidden><td colspan="5" class="muted">No scopes match the filters.</td></tr>
+    </tbody>
+  </table>
+  </div>
+  {{ colmenu('calib-scopes-table', {
+       'scope':  {'mode': 'clientFilter', 'type': 'text', 'sortAttr': 'scope'},
+       'level':  {'mode': 'clientFilter', 'type': 'text', 'sortAttr': 'level'},
+       'people': {'mode': 'sort', 'type': 'num', 'sortAttr': 'people'},
+       'status': {'mode': 'clientFilter', 'type': 'text', 'sortAttr': 'status'} }) }}
+</div>
+{% endif %}
+{{ colmenu_script(asset_v) }}
+{% endblock %}

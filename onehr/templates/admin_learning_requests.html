@@ -1,0 +1,240 @@
+{% extends "base.html" %}
+{% block title %}Learning requests{% endblock %}
+{% block body %}
+{# Learning › Requests (AI+ Learning phase 2, 2026-10-20; canvas [design canvas link removed] board
+   Admin-3): the steps that wait on this admin (the People Partner step and the L&D step above the cost they set,
+   both an L&D admin's since Chris's call of 2026-10-20; anything past its clock that escalates here), then every
+   request in flight with its clock (a BG or unit admin reads their own group's). The chain is
+   the L&D admin's to set, on Settings (Chris, decision 3). #}
+{% macro steps(r) -%}
+<ol class="ls-steps" aria-label="Approval steps">
+  {% for st in r.steps %}<li class="is-{{ st.state }}{{ ' is-now' if st.now }}"><span class="ls-dot" aria-hidden="true"></span>{{ st.label }}{% if st.state == 'approved' %} &#10003;{% elif st.state == 'skipped' %} · skipped{% endif %}{% if st.note %}<span class="ls-note">{{ st.note }}</span>{% endif %}</li>{% endfor %}
+</ol>
+{%- endmacro %}
+<div class="adm-headrow">
+  <p class="adm-lede">{% if view == 'external' %}Courses people asked for outside the catalogue, from approval to the
+    certificate. The person is asked for it the day after the course ends, on their page and by email; checking it
+    credits the hours and starts the 1- and 3-month check-ins.{% else %}Training requests that <b>wait on you</b>, then
+    every request still moving. Each step has its own working-day clock; past it, the step goes to the next person up as
+    well. The chain is set on <a href="{{ url_for('admin_learning_settings') }}">Settings</a>.{% endif %}</p>
+</div>
+<nav class="lm-viewby" aria-label="Requests"><span class="lm-viewby-k">Show</span>
+  <a class="{{ 'is-active' if view != 'external' }}" href="{{ url_for('admin_learning_requests') }}"{{ ' aria-current="page"' if view != 'external' }}>Waiting and moving</a>
+  <a class="{{ 'is-active' if view == 'external' }}" href="{{ url_for('admin_learning_requests', view='external') }}"{{ ' aria-current="page"' if view == 'external' }}>External courses{% if n_to_check %} · {{ n_to_check }} to check{% endif %}</a>
+</nav>
+{% if view == 'external' %}
+{# External courses (2026-10-23, the LMS gap check; canvas board 18F): approved, awaiting the certificate, to check,
+   checked. Checking credits the hours; "Didn't attend" closes it with the reason they read. L&D or the super admin act;
+   a BG / BU admin reads their own people's. #}
+<nav class="lm-viewby lm-ext-states" aria-label="Where it is">
+  <a class="{{ 'is-active' if not state }}" href="{{ url_for('admin_learning_requests', view='external') }}">All</a>
+  {% for k, lab in states %}<a class="{{ 'is-active' if state == k }}" href="{{ url_for('admin_learning_requests', view='external', state=k) }}">{{ lab }} · {{ ext.counts[k] }}</a>{% endfor %}
+</nav>
+<section class="admin-card" aria-labelledby="lm-ext-h">
+  <h2 id="lm-ext-h" class="lm-h">External courses</h2>
+  {% if ext.rows %}
+  <div class="table-scroll"><table class="admin-table no-auto-table lm-ext-table">
+    <thead><tr><th scope="col">Who</th><th scope="col">Course</th><th scope="col">Ends</th><th scope="col">Where it is</th></tr></thead>
+    <tbody>
+    {% for r in ext.rows %}
+    <tr><td>{{ r.person.full_name }}<span class="muted small"> · {{ display_bg(r.person.business_group) if r.person.business_group else '' }}</span></td>
+      <td>{{ r.title }} <span class="muted small">· {{ r.ext_provider }}</span></td>
+      <td>{{ r.ends | lms_day }}</td>
+      <td>{% if r.state == 'to_check' %}<a class="lm-amber" href="#ext-{{ r.id }}">{{ r.state_label }}</a>{% elif r.state == 'checked' %}{{ r.state_label }} · {{ '%g' % (r.hours or 0) }} h{% else %}{{ r.state_label }}{% endif %}
+        {% if r.state == 'not_attended' and r.ext_note %}<span class="muted small lm-sub">{{ 'Group People L&D' if r.checked_by else 'Their reason' }}: “{{ r.ext_note }}”</span>{% endif %}</td></tr>
+    {% endfor %}
+    </tbody>
+  </table></div>
+  {% else %}<p class="muted small">No external course here yet.</p>{% endif %}
+</section>
+{% for r in ext.rows if r.state in ('to_check', 'cert_due') and can %}
+<section class="admin-card lm-ext-card" id="ext-{{ r.id }}" aria-labelledby="lm-ext-{{ r.id }}">
+  <div class="lm-req-h"><h3 id="lm-ext-{{ r.id }}" class="lm-h">{{ r.person.full_name }} · {{ r.title }}</h3><span class="ls-chip{{ ' is-late' if r.state == 'to_check' }}">{{ 'To check' if r.state == 'to_check' else 'Awaiting certificate' }}</span></div>
+  <dl class="lm-ext-dl">
+    <dt>Provider</dt><dd>{{ r.ext_provider }}</dd>
+    <dt>Dates</dt><dd>{{ r.when.split(' · ', 1)[1] if ' · ' in r.when else r.when }}{% if r.ext_hours %} · {{ '%g' % r.ext_hours }} h asked{% endif %}</dd>
+    <dt>Cost</dt><dd>RM {{ '{:,.2f}'.format(r.cost or 0) }}{{ ' · HRDC-claimable' if r.hrdc_claimable }}</dd>
+    {% if r.cert_path %}<dt>Certificate</dt><dd><a href="{{ url_for('learning_req_file', rid=r.id, kind='cert') }}" target="_blank" rel="noopener">{{ r.cert_name or 'certificate' }}</a> · sent {{ (r.cert_at | myt)[:10] | lms_day }}</dd>{% endif %}
+    {% if r.ext_doc %}<dt>Quotation</dt><dd><a href="{{ url_for('learning_req_file', rid=r.id, kind='quote') }}" target="_blank" rel="noopener">{{ r.ext_doc_name or 'quotation' }}</a> · sent with the request</dd>{% endif %}
+  </dl>
+  <div class="lm-ext-acts">
+    <form method="post" class="lm-inline" data-confirm="Mark that {{ r.person.full_name }} didn't attend {{ r.title }}? It closes with no hours, and they read your reason." data-confirm-ok="Mark it" data-confirm-tone="danger" data-confirm-reason="Why (they read it)" data-confirm-reason-max="300">
+      <input type="hidden" name="action" value="ext_absent"><input type="hidden" name="registration_id" value="{{ r.id }}">
+      <button type="submit" class="btn-link lm-danger">Didn't attend…</button></form>
+    {% if r.state == 'to_check' %}
+    <form method="post" class="lm-inline lm-ext-check" data-confirm="Checked {{ r.person.full_name }}'s certificate for {{ r.title }}? Their hours are credited and the 1- and 3-month check-ins start." data-confirm-ok="Checked: credit the hours">
+      <input type="hidden" name="action" value="ext_checked"><input type="hidden" name="registration_id" value="{{ r.id }}">
+      <label>Hours<input name="hours" inputmode="decimal" value="{{ '%g' % r.ext_hours if r.ext_hours else '' }}" {{ 'required' if not r.ext_hours }} aria-label="Hours to credit"></label>
+      <button type="submit" class="primary">Checked: credit {{ ('%g h' % r.ext_hours) if r.ext_hours else 'the hours' }}</button></form>
+    {% endif %}
+  </div>
+</section>
+{% endfor %}
+{% else %}
+
+<section class="admin-card" aria-labelledby="lm-wait-h">
+  <h2 id="lm-wait-h" class="lm-h">Waiting on you · {{ waiting | length }}</h2>
+  {% if waiting %}
+  {# decide the ticked ones at once (Chris, 2026-10-23): one note for all, needed to return or decline #}
+  <form method="post" id="lm-bulk" class="lm-bulk" data-bulk
+        data-confirm="Approve the ticked requests? Each goes to its next step or is confirmed; on a full run it joins the waiting list." data-confirm-ok="Approve them">
+    <input type="hidden" name="action" value="bulk">
+    <label class="lm-tickall"><input type="checkbox" data-bulk-all> Tick all</label><span class="muted small" data-bulk-n>None ticked</span>
+    <input name="remark" maxlength="500" class="lm-bulk-rm" aria-label="One note for everyone ticked" placeholder="One note for everyone ticked (needed to return or decline)">
+    <button type="submit" name="bulk" value="decline" class="btn-link lm-danger" data-confirm="Decline the ticked requests? It's final: each person reads your note, and any place they held goes to the waiting list." data-confirm-ok="Decline them" data-confirm-tone="danger">Decline ticked</button>
+    <button type="submit" name="bulk" value="return" class="btn-link" data-confirm="Return the ticked requests with your note? Each person can change theirs and send it again." data-confirm-ok="Return them">Return ticked</button>
+    <button type="submit" name="bulk" value="approve" class="primary" data-confirm-ok="Approve them">Approve ticked</button>
+  </form>
+  {% endif %}
+  {% for r in waiting %}
+  <article class="lm-req">
+    <div class="lm-req-h">
+      <span><input type="checkbox" name="rid" value="{{ r.id }}" form="lm-bulk" data-bulk-one data-bulk-name="{{ r.person.full_name }}" class="lm-tick" aria-label="Tick {{ r.person.full_name }}'s request"><b>{{ r.person.full_name }}</b> <span class="muted small">{{ r.person.employee_id or '' }} · {{ display_bg(r.person.business_group) if r.person.business_group else '' }}{% if r.person.company %} · {{ display_company(r.person.business_group, r.person.company) }}{% endif %}</span></span>
+      <span class="ls-chip{{ ' is-late' if r.late }}">{% if r.who.escalated %}Passed to you: overdue{% elif r.due %}Due {{ r.due | lms_day }}{% endif %}</span>
+    </div>
+    <p class="lm-req-w"><b>{{ r.title }}</b> · {{ r.when }}{% if r.cost %} · RM {{ '{:,.2f}'.format(r.cost) }}{% endif %}{{ ' · HRDC-claimable' if r.hrdc_claimable }}{% if r.external %} · <span class="lm-amber">external</span>{% endif %}{% if r.off_audience %} · <span class="lm-amber">not in its audience</span>{% endif %}</p>
+    {% if r.why %}<p class="ls-remark">“{{ r.why }}”</p>{% endif %}
+    {% if r.ext_doc %}<p class="muted small"><a href="{{ url_for('learning_req_file', rid=r.id, kind='quote') }}" target="_blank" rel="noopener">{{ r.ext_doc_name or 'The quotation' }}</a> · sent with the request</p>{% endif %}
+    {{ steps(r) }}
+    <div class="lm-req-acts">
+      <form method="post" class="lm-inline" data-confirm="Approve {{ r.person.full_name }}'s request for {{ r.title }}{% if r.cost %} (RM {{ '{:,.2f}'.format(r.cost) }}){% endif %}?" data-confirm-ok="Approve">
+        <input type="hidden" name="action" value="approve"><input type="hidden" name="registration_id" value="{{ r.id }}">
+        <button type="submit" class="primary">Approve</button></form>
+      <form method="post" class="lm-inline" data-confirm="Return {{ r.person.full_name }}'s request for {{ r.title }}? They read your remark, and can change it and send it again." data-confirm-ok="Return"
+            data-confirm-reason="Your remark (they read this)" data-confirm-reason-field="remark" data-confirm-reason-max="500">
+        <input type="hidden" name="action" value="ret"><input type="hidden" name="registration_id" value="{{ r.id }}">
+        <button type="submit" class="btn-link">Return</button></form>
+      <form method="post" class="lm-inline" data-confirm="Decline {{ r.person.full_name }}'s request for {{ r.title }}? It's final: they read your remark, and any place they held goes to the waiting list." data-confirm-ok="Decline" data-confirm-tone="danger"
+            data-confirm-reason="Your remark (they read this)" data-confirm-reason-field="remark" data-confirm-reason-max="500">
+        <input type="hidden" name="action" value="decline"><input type="hidden" name="registration_id" value="{{ r.id }}">
+        <button type="submit" class="btn-link lm-danger">Decline</button></form>
+    </div>
+  </article>
+  {% else %}
+  <p class="muted small" style="margin:0">Nothing waits on you.</p>
+  {% endfor %}
+</section>
+
+{% if stuck %}
+{# a step nobody can act on, or past its clock with nobody to pass it to (Chris, 2026-10-23): Group People L&D decides it
+   for them, with a reason the person reads; it's in the audit log #}
+<section class="admin-card" aria-labelledby="lm-stuck-h">
+  <h2 id="lm-stuck-h" class="lm-h">Nobody else can act · {{ stuck | length }}</h2>
+  <p class="muted small">Their line manager or HOD has left, isn't on record, or can't act here, or the step is past its clock with nobody to pass it to. Decide it for them, with the reason they read.</p>
+  {% for r in stuck %}
+  {% set now = r.steps | selectattr('now') | list %}
+  <article class="lm-req" id="stuck-{{ r.id }}">
+    <div class="lm-req-h">
+      <span><b>{{ r.person.full_name }}</b> <span class="muted small">{{ r.person.employee_id or '' }} · {{ display_bg(r.person.business_group) if r.person.business_group else '' }}</span></span>
+      <span class="ls-chip is-late">{{ now[0].label if now else 'A step' }}{{ ' · overdue' if r.late else ' · nobody holds it' }}</span>
+    </div>
+    <p class="lm-req-w"><b>{{ r.title }}</b> · {{ r.when }}{% if r.cost %} · RM {{ '{:,.2f}'.format(r.cost) }}{% endif %}{% if r.off_audience %} · <span class="lm-amber">not in its audience</span>{% endif %}</p>
+    {% if r.why %}<p class="ls-remark">“{{ r.why }}”</p>{% endif %}
+    {{ steps(r) }}
+    <div class="lm-req-acts">
+      {% for act, verb, tone in [('approve', 'Approve', ''), ('ret', 'Return', ''), ('decline', 'Decline', 'danger')] %}
+      <form method="post" class="lm-inline" data-confirm="{{ verb }} {{ r.person.full_name }}'s request for {{ r.title }} for them? They read your reason; it goes in the audit log.{{ ' It is final, and any place they held goes to the waiting list.' if act == 'decline' }}" data-confirm-ok="{{ verb }}"{% if tone %} data-confirm-tone="danger"{% endif %}
+            data-confirm-reason="Why Group People L&amp;D decides it (they read this)" data-confirm-reason-field="remark" data-confirm-reason-max="500">
+        <input type="hidden" name="action" value="{{ act }}"><input type="hidden" name="registration_id" value="{{ r.id }}">
+        <button type="submit" class="{{ 'primary' if act == 'approve' else ('btn-link lm-danger' if tone else 'btn-link') }}">{{ verb }}…</button></form>
+      {% endfor %}
+    </div>
+  </article>
+  {% endfor %}
+</section>
+{% endif %}
+
+{% if nobody and (nobody.evals or nobody.ojt) %}
+{# no line manager and no HOD on record (Chris, 2026-10-23): Group People L&D confirms what they applied #}
+<section class="admin-card" aria-labelledby="lm-nb-h">
+  <h2 id="lm-nb-h" class="lm-h">No line manager or HOD to confirm · {{ nobody.evals | length + nobody.ojt | length }}</h2>
+  {% for e in nobody.evals %}
+  <article class="lm-req">
+    <div class="lm-req-h"><span><b>{{ e.person }}</b> · 3-month check-in</span><span class="ls-chip">Since {{ e.since | lms_day }}</span></div>
+    <p class="lm-req-w"><b>{{ e.title }}</b></p>
+    {% if e.words.changed %}<p class="ls-remark">“{{ e.words.changed }}”</p>{% endif %}
+    <div class="lm-req-acts">
+      <form method="post" class="lm-inline" data-confirm="Confirm what {{ e.person }} applied? Their learning XP and Career Plan goal move." data-confirm-ok="Confirm">
+        <input type="hidden" name="action" value="eval_confirm"><input type="hidden" name="eval_id" value="{{ e.id }}">
+        {% if e.comp %}<label class="small">Level <select name="level" class="modern-select">{% for x in e.comp.levels %}<option value="{{ x.level }}"{{ ' selected' if x.level == e.self_level }}>L{{ x.level }}</option>{% endfor %}</select></label>{% endif %}
+        <button type="submit" class="primary">Confirm</button></form>
+      <form method="post" class="lm-inline" data-confirm="Not yet for {{ e.person }}? Nothing moves; they read your note." data-confirm-ok="Not yet"
+            data-confirm-reason="Your note (they read this)" data-confirm-reason-field="note" data-confirm-reason-max="300">
+        <input type="hidden" name="action" value="eval_kept"><input type="hidden" name="eval_id" value="{{ e.id }}">
+        <button type="submit" class="btn-link">Not yet…</button></form>
+    </div>
+  </article>
+  {% endfor %}
+  {% for o in nobody.ojt %}
+  <article class="lm-req">
+    <div class="lm-req-h"><span><b>{{ o.person }}</b> · learning on the job</span><span class="ls-chip">{{ o.kind_label }}</span></div>
+    <p class="lm-req-w"><b>{{ o.what }}</b></p>
+    <p class="ls-remark">“{{ o.example }}”</p>
+    <div class="lm-req-acts">
+      <form method="post" class="lm-inline" data-confirm="Confirm {{ o.person }}'s learning on the job? Their learning XP and Career Plan goal move." data-confirm-ok="Confirm">
+        <input type="hidden" name="action" value="ojt_confirm"><input type="hidden" name="ojt_id" value="{{ o.id }}">
+        <button type="submit" class="primary">Confirm</button></form>
+      <form method="post" class="lm-inline" data-confirm="Not this one for {{ o.person }}? Nothing moves; they read your note." data-confirm-ok="Not this one"
+            data-confirm-reason="Your note (they read this)" data-confirm-reason-field="note" data-confirm-reason-max="300">
+        <input type="hidden" name="action" value="ojt_decline"><input type="hidden" name="ojt_id" value="{{ o.id }}">
+        <button type="submit" class="btn-link">Not this one…</button></form>
+    </div>
+  </article>
+  {% endfor %}
+</section>
+{% endif %}
+
+<section class="admin-card" aria-labelledby="lm-fl-h">
+  <h2 id="lm-fl-h" class="lm-h">Still moving · {{ flight | length }}</h2>
+  {% if flight %}
+  <div class="table-scroll"><table class="admin-table no-auto-table lm-fltable">
+    <thead><tr><th scope="col">Who</th><th scope="col">Programme</th><th scope="col">Where it is</th><th scope="col">Clock</th></tr></thead>
+    <tbody>
+    {% for r in flight %}
+    <tr>
+      <td>{{ r.person.full_name }}<span class="muted small lm-sub">{{ display_bg(r.person.business_group) if r.person.business_group else '' }}{% if r.person.company %} · {{ display_company(r.person.business_group, r.person.company) }}{% endif %}</span></td>
+      <td>{{ r.title }}<span class="muted small lm-sub">{{ r.when }}</span></td>
+      <td><span class="lm-rst is-{{ r.status }}">{{ r.status_label }}</span>{% set now = r.steps | selectattr('now') | list %}{% if now %}<span class="muted small lm-sub">at {{ now[0].label }}</span>{% elif r.place %}<span class="muted small lm-sub">place {{ r.place }}</span>{% endif %}</td>
+      <td class="small">{% if r.due %}<span class="{{ 'lm-late' if r.late }}">{{ 'Overdue since' if r.late else 'Due' }} {{ r.due | lms_day }}</span>{% else %}–{% endif %}</td>
+    </tr>
+    {% endfor %}
+    </tbody>
+  </table></div>
+  {% else %}
+  <p class="muted small" style="margin:0">No requests in flight.</p>
+  {% endif %}
+</section>
+<script>
+/* Tick all, and how many are ticked (2026-10-23) */
+(function () {
+  var f = document.querySelector('[data-bulk]');
+  if (!f) return;
+  var all = f.querySelector('[data-bulk-all]'), n = f.querySelector('[data-bulk-n]');
+  function ones() { return Array.prototype.slice.call(document.querySelectorAll('input[data-bulk-one][form="' + f.id + '"]')); }
+
+  function said(list) {
+    var n = list.length, who = list.slice(0, 3).join(', ') + (n > 3 ? ' and ' + (n - 3) + ' more' : '');
+    return n + ' request' + (n === 1 ? '' : 's') + ' (' + who + ')';
+  }
+  function words(list) {
+    var w = list.length ? said(list) : null;
+    var t = {
+      approve: w ? 'Approve ' + w + '? Each goes to its next step or is confirmed; on a full run it joins the waiting list.' : 'Tick at least one request first.',
+      'return': w ? 'Return ' + w + ' with your note? Each person can change theirs and send it again.' : 'Tick at least one request first.',
+      decline: w ? 'Decline ' + w + '? It\'s final: each person reads your note, and any place they held goes to the waiting list.' : 'Tick at least one request first.'
+    };
+    Array.prototype.forEach.call(f.querySelectorAll('button[name=bulk]'), function (b) { b.setAttribute('data-confirm', t[b.value]); });
+  }
+  function count() {
+    var on = ones().filter(function (b) { return b.checked; }), k = on.length;
+    n.textContent = k ? k + ' ticked' : 'None ticked';
+    if (all) all.checked = k > 0 && k === ones().length;
+    words(on.map(function (b) { return b.getAttribute('data-bulk-name') || 'one'; }));
+  }
+  if (all) all.addEventListener('change', function () { ones().forEach(function (b) { b.checked = all.checked; }); count(); });
+  document.addEventListener('change', function (e) { if (e.target && e.target.hasAttribute && e.target.hasAttribute('data-bulk-one')) count(); });
+  count();
+})();
+</script>
+{% endif %}
+{% endblock %}

@@ -1,0 +1,933 @@
+{% from "_pick_list.html" import unit_list %}
+{# The person page's Overview (canvas I1; re-laid 2026-10-17, canvas "OneHR Admin Side Panels"): a card per module,
+   what needs an admin, what changed; on the right ONE profile card -- their job, who they report to, their roles,
+   their account -- each with the button that changes it. A change opens in a side panel on this page (the forms,
+   routes and confirmations are the ones the cards had); a module's Open loads that tab into a wide panel. #}
+{% from "_adm_panel.html" import panel %}
+{% from "person/_ai_insight.html" import line as ai_line %}
+{% set L = leaders %}
+{% set pcyc = cyc['id'] if cyc and not editable else None %}
+{% set perf = url_for('admin_person', uid=person['id'], tab='performance', cycle=pcyc) %}
+{% set who_line = (person['employee_id'] or '') ~ ((' · ' ~ person['job_title'] | proper) if person['job_title'] else '') ~ ((' · JG ' ~ person['job_grade']) if person['job_grade'] else '') %}
+<div class="pp-grid" data-panel-home="{{ url_for('admin_person', uid=person['id']) }}">
+  <div class="pp-col">
+    {% if gh %}
+    {# a Grade H person (2026-11-03, canvases P1, P2): Grade H's own cards, read only; the normal review's four cards are not theirs #}
+    {% if gh.can and gh.g %}
+    {% set G = gh.g %}{% set gtab = url_for('admin_person', uid=person['id'], tab='gradeh', cycle=pcyc) %}
+    <div class="pp-mods pp-gh-mods">
+      <section class="admin-card pp-mod pp-gh-card" style="--mod: {{ admin_section_colors.get('gradeh', 'var(--d-cv-7c3aed)') }}">
+        <span class="pp-mod-h"><b>Grade H Appraisal</b><a href="{{ gtab }}">Open &rsaquo;</a></span>
+        <span>{{ gh.hod_line }}</span>
+        <div class="pp-flow pp-gh-steps" aria-label="Where {{ person['full_name'] }} is">{% for st in gh.steps %}<span class="pp-step{{ ' is-done' if st.state == 'done' }}{{ ' is-now' if st.state == 'now' }}{{ ' is-warn' if st.state == 'warn' }}">{{ '✓ ' if st.state == 'done' }}{{ st.text }}</span>{% endfor %}</div>
+      </section>
+      <section class="admin-card pp-mod pp-gh-card" style="--mod: {{ admin_section_colors.get('gradeh', 'var(--d-cv-7c3aed)') }}">
+        <span class="pp-mod-h"><b>KPI achievement</b><a href="{{ gtab }}">Open &rsaquo;</a></span>
+        {% if gh.route == 'A' %}
+        <span>{{ G.kpi_n }} line{{ 's' if G.kpi_n != 1 }} · weights {{ '%g' | format(G.kpi_w or 0) }}%</span>
+        <span class="muted small">{% if gh.perf_total %}{{ gh.perf_total }} weighted, the line manager's figures{% elif gh.perf_avg %}Average rating {{ gh.perf_avg }}, the line manager's ratings{% else %}Not worked out yet: the line manager has not entered figures{% endif %}</span>
+        {% else %}
+        <span>8 attributes{% if gh.perf_avg %} · average {{ gh.perf_avg }}{% endif %}</span>
+        <span class="muted small">{% if gh.perf_avg %}The line manager's ratings{% else %}Not rated yet{% endif %}</span>
+        {% endif %}
+      </section>
+      <section class="admin-card pp-mod pp-gh-card" style="--mod: {{ admin_section_colors.get('gradeh', 'var(--d-cv-7c3aed)') }}">
+        <span class="pp-mod-h"><b>Result so far</b><a href="{{ gtab }}">Open &rsaquo;</a></span>
+        {% set LV = gh.levels %}
+        {% if LV.perf.now or LV.pot.now %}
+        <span class="pp-gh-bands">{% if LV.perf.now %}Performance <span class="potential-pill" data-band="{{ LV.perf.now }}">{{ {'UA':1,'BE':2,'ME':3,'AE':4,'OU':5}[LV.perf.now] }} · {{ LV.perf.now }}</span>{% endif %}{% if LV.pot.now %} Potential <span class="potential-pill" data-band="{{ LV.pot.now }}">{{ LV.pot.now }}</span>{% endif %}</span>
+        <span class="muted small">{{ gh.now_words[:1] | upper }}{{ gh.now_words[1:] }}{% if gh.now_note %}, {{ gh.now_note }}{% endif %}</span>
+        {% else %}
+        <span>No band yet</span><span class="muted small">{{ 'Nothing is decided: the line manager has not submitted' if not G.submitted else 'Nothing set' }}</span>
+        {% endif %}
+      </section>
+    </div>
+    {% endif %}
+    {% else %}
+    <div class="pp-mods">
+      <section class="admin-card pp-mod" style="--mod: {{ admin_section_colors.get('pm', 'var(--d-cv-2f64d6)') }}">
+        <span class="pp-mod-h"><b>Performance</b><a href="{{ perf }}" data-panel-open="performance">Open &rsaquo;</a></span>
+        {% if summ.n %}
+        <span>{{ summ.n }} KPI{{ 's' if summ.n != 1 }} · {{ '%g' | format(summ.weight) }}% · {{ summ.done }} of {{ summ.n }} moderated</span>
+        <span class="muted small">{% if summ.all_done %}Ready for the HOD, then the BU CEO and the BG CEO{% else %}{{ summ.wait_text }}{% endif %}</span>
+        {% else %}<span>No KPIs {{ 'this cycle' if editable else 'in this cycle' }}</span><span class="muted small">Import them, or add one on Performance</span>{% endif %}
+        {% if kpi_held %}<span class="small pp-held">{{ kpi_held.text }}</span>{% endif %}
+        {% if ai_ins %}{{ ai_line(ai_ins.pm, person['id'], cyc['id']) }}{% endif %}
+      </section>
+      <section class="admin-card pp-mod" style="--mod: {{ admin_section_colors.get('competency', 'var(--d-cv-0b8a6b)') }}">
+        <span class="pp-mod-h"><b>Competency</b><a href="{{ url_for('admin_person', uid=person['id'], tab='competency', cycle=pcyc) }}" data-panel-open="competency">Open &rsaquo;</a></span>
+        <span>{% if mods.tc_now %}{{ mods.tc_now }} competenc{{ 'ies' if mods.tc_now != 1 else 'y' }} from their job profile{% if mods.tc_future %}, {{ mods.tc_future }} for their future role{% endif %}{% else %}No competencies assigned{% endif %}</span>
+        <span class="muted small">{% if mods.tc_status == 'reviewed' %}Reviewed by their manager{% elif mods.tc_status == 'submitted' and mods.tc_nobody %}Self-assessment submitted · nobody reviews it, so it counts{% elif mods.tc_status == 'submitted' %}Self-assessment submitted · their manager to review{% elif mods.tc_status %}Self-assessment not submitted yet{% elif mods.tc_now or mods.tc_future %}Self-assessment not started yet{% else %}No self-assessment this cycle{% endif %}</span>
+        {% if ai_ins %}{{ ai_line(ai_ins.tc, person['id'], cyc['id']) }}{% endif %}
+      </section>
+      <section class="admin-card pp-mod" style="--mod: {{ admin_section_colors.get('f360', 'var(--d-cv-c2410c)') }}">
+        <span class="pp-mod-h"><b>360 Feedback</b><a href="{{ url_for('admin_person', uid=person['id'], tab='f360', cycle=pcyc) }}" data-panel-open="f360">Open &rsaquo;</a></span>
+        <span>Panel of {{ mods.panel_n }}{% if mods.panel_target %}, target {{ mods.panel_target }}{% endif %} · {{ mods.panel_done }} submitted</span>
+        <span class="muted small"><a href="{{ url_for('admin_subject_detail', uid=person['id']) }}">Their 360 results &rsaquo;</a></span>
+        {% if ai_ins %}{{ ai_line(ai_ins.pot, person['id'], cyc['id']) }}{% endif %}
+      </section>
+      <section class="admin-card pp-mod" style="--mod: {{ admin_section_colors.get('idp', 'var(--d-cv-7c3aed)') }}">
+        <span class="pp-mod-h"><b>Career Plan</b><a href="{{ url_for('admin_person', uid=person['id'], tab='plan', cycle=pcyc) }}" data-panel-open="plan">Open &rsaquo;</a></span>
+        <span>{% if mods.plan %}Role choice: {{ mods.plan['target_role'] }}{% if mods.plan['readiness'] %} · {{ readiness_word.get(mods.plan['readiness'], mods.plan['readiness']) }}{% endif %}{% else %}No role choice yet{% endif %}</span>
+        <span class="muted small">{% if mods.idp %}Development plan {{ mods.idp['plan_year'] }} · {{ mods.idp['status'] }} · {{ mods.idp['goals'] }} action{{ 's' if mods.idp['goals'] != 1 }}{% if mods.idp_nobody %} · final, nobody reviews it{% endif %}{% else %}No development plan yet{% endif %}</span>
+        {% if ai_ins %}{{ ai_line(ai_ins.idp, person['id'], cyc['id']) }}{% endif %}
+      </section>
+      {# their own AI+ check-in conversation, word for word: the super admin's only (Chris, 2026-10-20) #}
+      {% if convo %}
+      <section class="admin-card pp-mod pp-mod-convo" style="--mod: var(--d-cv-252a59)">
+        <span class="pp-mod-h"><b>AI+ conversation</b><a href="{{ url_for('admin_review_transcript', uid=person['id'], cycle=cyc['id']) }}" data-panel-open="conversation">Read &rsaquo;</a></span>
+        <span>{% if convo.n %}{{ convo.n }} message{{ 's' if convo.n != 1 }}{% if convo.mgr.n %} as an employee{% endif %} in {{ cyc['name'] }}{% if convo.last %} · last on {{ convo.last | myt_day }}{% endif %}{% elif convo.mgr.n %}No conversation as an employee in {{ cyc['name'] }}{% else %}No conversation in {{ cyc['name'] }}{% endif %}</span>
+        {% if convo.parts %}<span class="muted small">{{ convo.parts | join(' · ') }}</span>{% endif %}
+        {% if convo.mgr.n %}<span>{{ convo.mgr.n }} message{{ 's' if convo.mgr.n != 1 }} as a manager</span>
+        {% if convo.mgr.parts %}<span class="muted small">{{ convo.mgr.parts | join(' · ') }}</span>{% endif %}{% endif %}
+        <span class="muted small">Their own check-in with OneHR AI{% if convo.mgr.n %}, and what they said to it as a manager,{% endif %} word for word. Super admin only; each read goes in the audit log.</span>
+      </section>
+      {% endif %}
+    </div>
+    {% endif %}
+
+    {% if editable %}
+    <section class="admin-card pp-card" aria-label="Needs attention">
+      <h2 class="pp-h">Needs attention{% if need_rows %} · {{ need_rows | length }}{% endif %}</h2>
+      {% for n in need_rows %}
+      <div class="pp-need"><span><b class="pp-need-m">{{ n.m }}</b> · {{ n.text }}</span><a href="{{ n.href }}"{% if n.panel %} data-panel-open="{{ n.panel }}"{% endif %}>{{ n.go }} &rsaquo;</a></div>
+      {% else %}
+      <p class="muted small pp-none">Nothing: their reporting lines, KPIs and panel are all set.</p>
+      {% endfor %}
+    </section>
+    {% endif %}
+
+    <section class="admin-card pp-card" aria-label="What changed">
+      <div class="pp-h-row"><h2 class="pp-h">What changed for {{ person['full_name'] }}</h2>
+        {% if nav_is_super %}<a class="small" href="{{ url_for('admin_audit_log', q=person['employee_id']) }}">The full trail &rsaquo;</a>{% endif %}</div>
+      {% for l in log %}
+      <div class="pp-log"><span class="muted">{{ l.when }}</span><span class="muted">{{ l.who }}</span><span><b>{{ l.kind }}</b>{% if l.what %}<span class="muted"> · {{ l.what }}</span>{% endif %}</span></div>
+      {% else %}
+      <p class="muted small pp-none">No admin changes recorded for them yet.</p>
+      {% endfor %}
+    </section>
+  </div>
+
+  <div class="pp-col">
+    {# ONE profile card: each part what it is now, and the button that changes it in its side panel #}
+    <section class="admin-card pp-card pp-prof" aria-label="Profile">
+      <div class="pp-prof-sec" id="details">
+        <div class="pp-h-row"><h2 class="pp-h">Job</h2>
+          {% if editable and not person['left_at'] %}<button type="button" class="btn-link" data-panel-open="details">Edit</button>{% endif %}</div>
+        <dl class="pp-dl">
+          <div><dt>Business unit</dt><dd>{{ display_company(person['business_group'], person['company']) if person['company'] else '—' }}</dd></div>
+          <div><dt>Department</dt><dd>{{ person['department'] | proper or '—' }}</dd></div>
+          <div><dt>Job title</dt><dd>{{ person['job_title'] | proper or '—' }}</dd></div>
+          <div><dt>Job grade</dt><dd>{{ ('JG ' ~ person['job_grade']) if person['job_grade'] else '—' }}</dd></div>
+          {% set sv = person_service(person) %}
+          <div><dt>Years of service</dt><dd>{% if sv.upcoming %}<em class="pp-none-v">Joins {{ sv.joined }}</em>{% else %}{{ sv.length or '—' }}{% if sv.joined %}<span class="pp-dd-sub">Joined {{ sv.joined }}</span>{% endif %}{% endif %}</dd></div>
+          <div><dt>Confirmation date</dt><dd>{% if sv.confirmed %}{{ sv.confirmed }}{% elif sv.counted %}—<span class="pp-dd-sub">Counted as confirmed: over a year's service</span>{% else %}<em class="pp-none-v">Not confirmed yet</em>{% endif %}</dd></div>
+        </dl>
+      </div>
+      {% if gh and gh.can and gh.g %}
+      {% set G = gh.g %}
+      <div class="pp-prof-sec" id="lines">
+        <h2 class="pp-h">Who appraises them</h2>
+        <div class="pp-prof-rows">
+          <div class="pp-prof-row"><span class="pp-prof-kv"><span class="pp-prof-k">Appraiser · line manager</span>
+            <span class="pp-prof-v">{% if G.appr.kind == 'none' %}<em class="pp-none-v">None yet</em>{% else %}{{ G.appr.name }}{% if G.appr.kind == 'sup' %} <span class="muted small">(supervisor in the file, no OneHR account)</span>{% elif G.appr.kind == 'set' %} <span class="muted small">(set by hand)</span>{% endif %}{% endif %}</span></span>
+            {% if gh.super and editable %}<a class="btn-link" href="{{ url_for('admin_gradeh', tab='people', panel='appraiser', set=gh.pid) }}">{{ 'Change' if G.appr.kind != 'none' else 'Set' }}</a>{% endif %}</div>
+          <div class="pp-prof-row"><span class="pp-prof-kv"><span class="pp-prof-k">Grade H HOD{{ 's · shared' if G.shared }}</span>
+            {% for h in G.hods %}<span class="pp-prof-v">{{ h.name }}{% if G.shared %}<span class="pp-prof-pct">{{ h.share }}%</span>{% endif %}</span>{% else %}<span class="pp-prof-v"><em class="pp-none-v">None: their BU CEO covers them</em></span>{% endfor %}</span>
+            {% if gh.super and editable %}<a class="btn-link" href="{{ url_for('admin_gradeh', tab='people', panel='hod', set=gh.pid) }}">{{ 'Change' if G.hods else 'Set' }}</a>{% endif %}</div>
+          <div class="pp-prof-row"><span class="pp-prof-kv"><span class="pp-prof-k">BU CEO · their unit's</span>
+            <span class="pp-prof-v">{% if L.bu %}{{ L.bu['full_name'] }}{% if L.bu['left_at'] %} <span class="pp-out">left</span>{% endif %}{% else %}<em class="pp-none-v">None yet</em>{% endif %}</span></span>
+            <a class="btn-link" href="{{ url_for('admin_leaders', bg=person['business_group'], tab='buceo') }}">Leaders &rsaquo;</a></div>
+        </div>
+        <p class="muted small pp-prof-note">Change opens the Grade H list's panel for them.</p>
+      </div>
+      {% else %}
+      <div class="pp-prof-sec" id="lines">
+        <h2 class="pp-h">Who they report to</h2>
+        <div class="pp-prof-rows">
+          <div class="pp-prof-row"><span class="pp-prof-kv"><span class="pp-prof-k">Line manager</span>
+            <span class="pp-prof-v">{% if L.lm %}{{ L.lm['full_name'] }}{% if L.lm['left_at'] %} <span class="pp-out">left</span>{% endif %}{% else %}<em class="pp-none-v">None yet</em>{% endif %}</span></span>
+            {% if editable %}<button type="button" class="btn-link" data-panel-open="lm">{{ 'Change' if L.lm else 'Set' }}</button>{% endif %}</div>
+          {% if summ.matrix_names %}
+          <div class="pp-prof-row"><span class="pp-prof-kv"><span class="pp-prof-k">Matrix, per KPI</span>
+            <span class="pp-prof-v">{{ summ.matrix_names | join(', ') }}</span></span>
+            <a class="btn-link" href="{{ perf }}" data-panel-open="performance">KPIs</a></div>
+          {% endif %}
+          <div class="pp-prof-row"><span class="pp-prof-kv"><span class="pp-prof-k">HOD</span>
+            <span class="pp-prof-v">{% if L.hod %}{{ L.hod['full_name'] }}{% if L.hod['left_at'] %} <span class="pp-out">left</span>{% endif %}{% else %}<em class="pp-none-v">None yet</em>{% endif %}</span></span>
+            {% if editable %}<button type="button" class="btn-link" data-panel-open="hod">{{ 'Change' if L.hod else 'Set' }}</button>{% endif %}</div>
+          <div class="pp-prof-row"><span class="pp-prof-kv"><span class="pp-prof-k">BU CEO · their unit's</span>
+            <span class="pp-prof-v">{% if L.bu %}{{ L.bu['full_name'] }}{% if L.bu['left_at'] %} <span class="pp-out">left</span>{% endif %}{% else %}<em class="pp-none-v">None yet</em>{% endif %}</span></span>
+            <a class="btn-link" href="{{ url_for('admin_leaders', bg=person['business_group'], tab='buceo') }}">Leaders &rsaquo;</a></div>
+          <div class="pp-prof-row"><span class="pp-prof-kv"><span class="pp-prof-k">BG CEO · their group's</span>
+            <span class="pp-prof-v">{% if L.bg %}{{ L.bg['full_name'] }}{% if L.bg['left_at'] %} <span class="pp-out">left</span>{% endif %}{% else %}<em class="pp-none-v">None yet</em>{% endif %}</span></span>
+            <a class="btn-link" href="{{ url_for('admin_leaders', bg=person['business_group'], tab='bgceo') }}">Leaders &rsaquo;</a></div>
+        </div>
+      </div>
+      {% endif %}
+      <div class="pp-prof-sec" id="roles">
+        <div class="pp-h-row"><h2 class="pp-h">Roles</h2><button type="button" class="btn-link" data-panel-open="roles">{{ 'Manage' if editable and not person['left_at'] else 'View' }}</button></div>
+        {% set rl = [] %}
+        {% if roles.reports %}{% set _ = rl.append('Line manager of ' ~ roles.reports) %}{% endif %}
+        {% if roles.heads %}{% set _ = rl.append('HOD of ' ~ roles.heads) %}{% endif %}
+        {% for bu in roles.buceo_units %}{% set _ = rl.append('BU CEO of ' ~ display_company(bu.bg, bu.company)) %}{% endfor %}
+        {% for cg in roles.cals %}{% set _ = rl.append(('BG CFO of ' if cg.tag == 'BGCFO' else 'Calibrator of ') ~ cg.name) %}{% endfor %}
+        {% if roles.bgceo %}{% set _ = rl.append('BG CEO of ' ~ display_bg(roles.bgceo)) %}{% endif %}
+        {% for g in roles.groups %}{% set _ = rl.append('Group Chief of ' ~ g) %}{% endfor %}
+        {% if roles.matrix_kpis %}{% set _ = rl.append('Matrix manager of ' ~ roles.matrix_kpis ~ ' KPI' ~ ('s' if roles.matrix_kpis != 1 else '')) %}{% endif %}
+        <p class="pp-prof-p">{{ rl | join(' · ') if rl else 'No leader roles' }}</p>
+      </div>
+      <div class="pp-prof-sec" id="account">
+        <div class="pp-h-row"><h2 class="pp-h">Account</h2><button type="button" class="btn-link" data-panel-open="account">Manage</button></div>
+        <p class="pp-prof-p">{{ person['email'] or 'No work email' }} · {% if person['left_at'] %}left {{ person['left_at'] | myt_date }}{% elif person['confirmation_date'] or confirmed %}confirmed{% else %}not confirmed yet{% endif %} · {{ ('signed in ' ~ last_in) if last_in else 'never signed in' }}{% if eids %} · {{ eids | length }} linked ID{{ 's' if eids | length != 1 }}{% endif %}</p>
+        {% if email_off %}<p class="pp-eoff-line">Reminder emails off{% if email_off[0].until_disp %} until {{ email_off[0].until_disp }}{% endif %}</p>{% endif %}
+      </div>
+    </section>
+  </div>
+</div>
+
+{# ---- the side panels -------------------------------------------------------------------------------------------- #}
+{% if editable and not person['left_at'] %}
+{% call panel("details", "Person · Job details", person['full_name'], who_line, open=(panel_open == 'details')) %}
+  {% if details_plan %}
+  {% set D = details_plan %}
+  {% set K = D.kpi if D.bg_moved else None %}
+  {% set blocked = D.refusals %}
+  {# what this change asks (piece 3, canvas "Profile Change Prompts" boards A1-A4): the competency table, the choices, the read-only line #}
+  {% macro ask_table(rows) %}
+      <div class="pp-cmp" role="table" aria-label="Their competencies, now and in the new job">
+        <div class="pp-cmp-r pp-cmp-h" role="row"><span role="columnheader">Competency</span><span role="columnheader">Now</span><span role="columnheader">The new job</span></div>
+        {% for r in rows[:5] %}<div class="pp-cmp-r" role="row"><span class="pp-cmp-n" role="cell">{{ r.title }}</span><span class="pp-cmp-l" role="cell">{{ r.now }}{% if r.answered %}<span class="pp-cmp-a">Answered</span>{% endif %}</span><span class="pp-cmp-l" role="cell">{% if r.tag == 'Goes' %}<span class="pp-chip is-go">Goes</span>{% else %}{{ r.new }}{% if r.tag %}<span class="pp-chip is-new">{{ r.tag }}</span>{% endif %}{% endif %}</span></div>{% endfor %}
+        {% if rows | length > 5 %}<details class="fold pp-cmp-fold"><summary>{{ rows | length - 5 }} more</summary>
+          {% for r in rows[5:] %}<div class="pp-cmp-r" role="row"><span class="pp-cmp-n" role="cell">{{ r.title }}</span><span class="pp-cmp-l" role="cell">{{ r.now }}{% if r.answered %}<span class="pp-cmp-a">Answered</span>{% endif %}</span><span class="pp-cmp-l" role="cell">{% if r.tag == 'Goes' %}<span class="pp-chip is-go">Goes</span>{% else %}{{ r.new }}{% if r.tag %}<span class="pp-chip is-new">{{ r.tag }}</span>{% endif %}{% endif %}</span></div>{% endfor %}
+          <button type="button" class="fold-less" data-fold-less>Show less</button></details>{% endif %}
+      </div>
+  {% endmacro %}
+  {% macro ask_block(a) %}
+      {% set chosen = request.form.get('ask_' ~ a.key) %}
+      {% set pick = chosen if chosen in (a.options | map(attribute='value') | list) else a.default %}
+      <fieldset class="pp-fs pp-ask" data-ask="{{ a.key }}">
+        <legend>{{ a.legend }}<span class="pp-chip">{{ a.title }}</span></legend>
+        <p class="pp-ask-p">{{ a.words }}</p>
+        {% if a.table %}{{ ask_table(a.table) }}{% endif %}
+        <input type="hidden" name="ask_state_{{ a.key }}" value="{{ a.state }}">
+        {% if a.who_can %}
+        <div class="pp-opts" role="radiogroup" aria-label="{{ a.aria }}">
+          {% for o in a.options %}
+          <label class="pp-opt{{ ' is-danger' if o.danger }}"><input type="radio" name="ask_{{ a.key }}" value="{{ o.value }}" {{ 'checked' if pick == o.value }} data-ask-opt="{{ a.key }}" data-ask-confirm="{{ o.confirm }}" data-ask-danger="{{ 1 if o.danger else 0 }}" data-ask-btn="{{ a.btn }}" data-ask-title="{{ a.confirm_title }}" {% if o.danger and a.notify %}{{ redo_notify_attrs(person, a.notify) }}{% endif %}>
+            <span class="pp-opt-t"><b>{{ o.label }}</b><span class="pp-opt-s">{{ o.words }}</span></span></label>
+          {% endfor %}
+        </div>
+        {% if a.needs_reason %}
+        <label class="pp-ask-why" data-ask-reason="{{ a.needs_reason }}" data-ask-for="{{ a.key }}" {{ 'hidden' if pick != a.needs_reason }}><span>{{ a.reason_label }}</span>
+          <textarea name="ask_reason_{{ a.key }}" rows="2" maxlength="500" aria-label="{{ a.reason_label }}" {{ 'required' if pick == a.needs_reason }}>{{ request.form.get('ask_reason_' ~ a.key) or '' }}</textarea>
+          <span class="muted small">{{ a.reason_help }}</span></label>
+        {% endif %}
+        {% else %}
+        <p class="pp-ro">{{ a.read_only_words }}</p>
+        {% endif %}
+      </fieldset>
+  {% endmacro %}
+  {% macro det_hidden(D) %}
+      {% if is_super %}<input type="hidden" name="full_name" value="{{ D.new.full_name }}">{% endif %}
+      {% if D.bg_moved %}<input type="hidden" name="business_group" value="{{ D.new.business_group }}">{% endif %}
+      {% for k in ('company', 'department', 'job_title', 'job_grade') %}{% if k in D.named_new %}<input type="hidden" name="{{ k }}" value="__new__"><input type="hidden" name="{{ k }}_new" value="{{ D.new[k] }}">{% else %}<input type="hidden" name="{{ k }}" value="{{ D.new[k] or '' }}">{% endif %}{% endfor %}<input type="hidden" name="joined_date" value="{{ (D.new.joined_date or '')[:10] }}">
+      {% if D.hod_offer and request.form.get('also_hod') == '1' %}<input type="hidden" name="also_hod" value="1">{% endif %}
+  {% endmacro %}
+  {% macro det_answers() %}{% for k in ('ask_shown', 'ask_competency', 'ask_gradeh', 'ask_rater360', 'ask_reason_competency', 'ask_reason_gradeh', 'ask_reason_rater360', 'ask_state_competency', 'ask_state_gradeh', 'ask_state_rater360', 'notify_person') %}{% if k in request.form %}<input type="hidden" name="{{ k }}" value="{{ request.form.get(k) }}">{% endif %}{% endfor %}{% endmacro %}
+  {% if D.step == 2 %}
+  {# step 2 of a business group move whose KPI framework differs: their KPI lines' figures on the new group's framework #}
+  {% from "person/_bg_kpi.html" import kpi_lines with context %}
+  <form method="post" action="{{ url_for('admin_person_lines', uid=person['id']) }}" class="adm-panel-form" id="pp-bgk-form">
+    <div class="adm-panel-body">
+      <input type="hidden" name="action" value="details_apply">
+      {{ det_hidden(D) }}{{ det_answers() }}
+      {{ kpi_lines(K.cards, K.mech, K.variant, K.new_bg, 'Their KPI lines on ' ~ K.new_bg ~ "'s " ~ ('rating' if K.mech == 'A' else 'achievement %'), 'From ' ~ K.old_fw ~ ' to ' ~ K.new_fw ~ '. Fill every line: the move saves them together.') }}
+      <p class="muted small pp-ren-note">Set later moves them now: their Total KPI score is held, and the {{ K.n }} line{{ '' if K.n == 1 else 's' }} wait in their Needs attention and your task email.</p>
+    </div>
+    <footer class="adm-panel-foot pp-bgk-foot">
+      <button type="submit" name="back" value="1" class="btn-link adm-panel-grow" formnovalidate>Back</button>
+      <button type="submit" name="kpi_mode" value="later" class="btn-link" formnovalidate
+              data-confirm="Move {{ person['full_name'] }} to {{ D.bg_new }} now and set their {{ K.n }} KPI line{{ '' if K.n == 1 else 's' }} later? Their Total KPI score is held until then." data-confirm-ok="Move, set later">Set later</button>
+      <button type="submit" name="kpi_mode" value="figures" class="primary"
+              data-confirm="Move {{ person['full_name'] }} to {{ D.bg_new }} and save the {{ K.n }} KPI line{{ '' if K.n == 1 else 's' }} on {{ D.bg_new }}'s scale? Their calibrators, KPI scale and admins follow the group." data-confirm-ok="Move to {{ D.bg_new }}">Move to {{ D.bg_new }}</button>
+    </footer>
+  </form>
+  {% else %}
+  {% set next_kpi = D.bg_moved and not blocked and K.can_set %}
+  {# what the Save box lists (board A5): the sentence each chosen answer says, then what follows on its own (the notes); the page's
+     script rebuilds the list, the button and the box's tone when an answer changes #}
+  {% set follow = [] %}
+  {% for n in D.notes if not n.card and n.key in ('f360', 'bu_kpi', 'career', 'part', 'into_gh', 'cal_group', 'left_out', 'left_out_kpi') %}{% if follow.append(n.words) %}{% endif %}{% endfor %}
+  {% set picked = [] %}
+  {% for a in D.asks if a.who_can %}{% for o in a.options if o.value == a.default and o.confirm and not o.danger %}{% if picked.append(o.confirm) %}{% endif %}{% endfor %}{% endfor %}
+  <form method="post" action="{{ url_for('admin_person_lines', uid=person['id']) }}" class="adm-panel-form" id="pp-det-apply"
+        {% if not next_kpi %}data-confirm="{% if D.bg_moved %}Move {{ person['full_name'] }} to {{ D.bg_new }}? Their BU CEO, BG CEO, KPI scale and admins follow the group.{% else %}Save these details for {{ person['full_name'] }}?{% if D.unit_moved %} The BU CEO who calibrates them changes with the unit.{% endif %} Their KPI lines and 360 panel stay as they are.{% endif %}" data-confirm-ok="{{ ('Move to ' ~ D.bg_new) if D.bg_moved else 'Save details' }}"{% if not D.bg_moved %} data-confirm-list='{{ (picked + follow) | tojson }}' data-ask-follow='{{ follow | tojson }}' data-ask-name="{{ person['full_name'] }}" data-ask-what="{% if D.asks | selectattr('key', 'equalto', 'rater360') | list %}details change{% elif D.changes | length == 1 %}{{ D.changes[0].label | lower }} becomes {{ D.changes[0].to }}{% else %}details change{% endif %}"{% endif %}{% endif %}>
+    <div class="adm-panel-body">
+      <input type="hidden" name="action" value="{{ 'details_kpi' if next_kpi else 'details_apply' }}">
+      <input type="hidden" name="ask_shown" value="1">
+      {{ det_hidden(D) }}
+      {% if D.bg_moved and not D.refusals and K.differ and not K.can_set %}<input type="hidden" name="kpi_mode" value="later">{% endif %}
+      {% if blocked %}
+      <div class="pp-refuse" role="alert">
+        <b>Can't move them yet</b>
+        <ul>{% for r in D.refusals %}<li><span>{{ r.text }}</span> <a href="{{ r.href }}">{{ r.go }} &rsaquo;</a></li>{% endfor %}</ul>
+        <span class="small">Nothing has been saved.</span>
+      </div>
+      {% elif D.bg_moved and K.differ %}
+      <div class="pp-warn" role="note">
+        <b>Their KPI framework changes</b>
+        <span>{{ D.bg_old }} reads KPIs as {{ K.old_fw }}; {{ D.bg_new }} reads them as {{ K.new_fw }}.{% if K.n %} Their {{ K.n }} KPI line{{ '' if K.n == 1 else 's' }} must be set again on the new group's scale.{% if not K.new_set %} {{ D.bg_new }} has no KPI framework yet: set it under Performance settings, and their lines wait until then.{% endif %}{% else %} They have no KPI lines to set this cycle.{% endif %} The Confirmation rating is 1-5 in every group and is never reset.</span>
+      </div>
+      {% endif %}
+      <b class="pp-plbl">What this changes</b>
+      <div class="pp-chg">
+        {% for c in D.changes %}<div><span>{{ c.label }}</span><span><span class="muted">{{ c.from }}</span> &rarr; <b>{{ c.to }}</b></span></div>{% endfor %}
+        {% if D.bg_moved %}<div><span>BG CEO calibration</span><span>{{ D.bgceo_old or 'nobody' }} &rarr; <b>{{ D.bgceo_new or 'nobody yet' }}</b>, from the next part that opens</span></div>{% endif %}
+        {% if D.unit_moved %}<div><span>BU CEO calibration</span><span>{{ D.bu_old or 'nobody' }} &rarr; <b>{{ D.bu_new or 'nobody yet' }}</b>, from the next part that opens</span></div>{% endif %}
+        {% if D.bg_moved %}
+        <div><span>Who sees them</span><span>{{ D.sees_lose }} admin{{ '' if D.sees_lose == 1 else 's' }} of {{ D.bg_old }} lose them; {{ D.sees_gain }} admin{{ '' if D.sees_gain == 1 else 's' }} of {{ D.bg_new }} gain them</span></div>
+        {% if D.cal_groups %}<div><span>BU calibration group</span><span>Taken out of {{ D.cal_groups | join(', ') }}</span></div>{% endif %}
+        <div><span>BU KPIs</span><span>{% if K.bu_off %}Off: {{ K.bu_off | join(', ') }}. {% endif %}{% if K.bu_held %}Stay, someone acted on them or BU KPI setup is closed: {{ K.bu_held | join(', ') }}. {% endif %}{% if K.bu_on %}On: {{ K.bu_on | join(', ') }}.{% elif not K.bu_off and not K.bu_held %}None either side.{% endif %}</span></div>
+        <div><span>Their KPI lines</span><span>{% if not K.n %}None this cycle{% elif K.differ %}{{ K.n }} line{{ '' if K.n == 1 else 's' }} to set on {{ D.bg_new }}'s {{ K.new_fw }}{% else %}{{ K.n }} line{{ '' if K.n == 1 else 's' }} move to {{ D.bg_new }} ({{ K.new_fw }}, the same as now), so its bands read them{% endif %}</span></div>
+        <div><span>Stays as it is</span><span>Their line manager{% if D.lm_across %} (now across groups){% endif %} and their 360 panel</span></div>
+        {% if D.hod_across %}<div><span>Their HOD</span><span>{{ D.hod_now }} stays, in another business group. No HOD found in the new department: change it under Who they report to if you want one there.</span></div>{% endif %}
+        {% endif %}
+        {% for n in D.notes if not n.card %}{% if not (D.bg_moved and n.key == 'bu_kpi') %}<div><span>{{ n.label }}</span><span>{{ n.words }}{% if n.href and n.go %} <a class="pp-lk" href="{{ n.href }}">{{ n.go }} &rsaquo;</a>{% endif %}</span></div>{% endif %}{% endfor %}
+        {% if not D.bg_moved %}
+        {% set left_out = D.notes | selectattr('key', 'equalto', 'left_out') | list %}
+        {% if not (left_out and not D.n_kpi_stay) %}<div><span>Stays as it is</span><span>{% if left_out %}Their own {{ D.n_kpi_stay }} KPI line{{ '' if D.n_kpi_stay == 1 else 's' }} stay{{ 's' if D.n_kpi_stay == 1 }} as {{ 'it is' if D.n_kpi_stay == 1 else 'they are' }}{% elif D.n_kpi_stay %}Their {{ D.n_kpi_stay }} KPI line{{ '' if D.n_kpi_stay == 1 else 's' }} and their 360 panel stay as they are{% else %}Their 360 panel stays as it is{% endif %}</span></div>{% endif %}
+        {% endif %}
+      </div>
+      {% for a in D.asks if a.key == 'gradeh' %}{{ ask_block(a) }}{% endfor %}
+      {% for a in D.asks if a.key == 'rater360' %}{{ ask_block(a) }}{% endfor %}
+      {% for a in D.asks if a.key == 'competency' %}{{ ask_block(a) }}{% endfor %}
+      {% for n in D.notes if n.card %}
+      <fieldset class="pp-fs pp-ask pp-ask-card"><legend>{{ n.label }}{% if n.chip %}<span class="pp-chip">{{ n.chip }}</span>{% endif %}</legend>
+        <p class="pp-ask-p">{{ n.words }}{% if n.href and n.go %} <a class="pp-lk" href="{{ n.href }}">{{ n.go }} &rsaquo;</a>{% endif %}</p></fieldset>
+      {% endfor %}
+      {% if D.renamed %}<p class="muted small pp-ren-note">The new name shows everywhere in OneHR at once; the trail keeps the old one. A roster import with their Employee ID writes the name in its file, so correct HRIS too.{% if D.name_twins %} <b>{{ D.name_twins }} other {{ 'person here is' if D.name_twins == 1 else 'people here are' }} already called {{ D.new.full_name }}.</b>{% endif %}</p>{% endif %}
+      {% if D.hod_offer %}<label class="pp-tick"><input type="checkbox" name="also_hod" value="1" checked> Also make {{ D.hod_offer.name }} their HOD (heads {{ D.hod_offer.n }} in {{ D.new.department | proper }}); now {{ D.hod_now or 'nobody' }}</label>{% endif %}
+    </div>
+    <footer class="adm-panel-foot">
+      <a class="btn-link adm-panel-grow" href="{{ url_for('admin_person', uid=person['id'], panel='details') }}">Back</a>
+      <button type="submit" class="primary"{% if blocked %} disabled{% endif %}>{% if D.bg_moved %}{{ 'Next: their KPI lines' if next_kpi else 'Move to ' ~ D.bg_new }}{% else %}Save details{% endif %}</button>
+    </footer>
+  </form>
+  {% if D.asks %}
+  <script>
+  (function () {
+    // What a change asks: a danger answer (a swap, taking a submitted appraisal off the list) turns its option red, shows its reason box,
+    // makes the foot button "Save and swap" / "Save and take off", red, and OneHR's confirm red with what follows listed. Scoped to
+    // this form; without the script the server decides (it needs every answer and a reason).
+    var f = document.getElementById('pp-det-apply'); if (!f || f.hasAttribute('data-ask-done')) return;
+    f.setAttribute('data-ask-done', '1');
+    var base = f.getAttribute('data-confirm'), okBase = f.getAttribute('data-confirm-ok');
+    var follow = JSON.parse(f.getAttribute('data-ask-follow') || '[]'), name = f.getAttribute('data-ask-name'), what = f.getAttribute('data-ask-what');
+    var radios = f.querySelectorAll('input[type=radio][data-ask-opt]'), btn = f.querySelector('.adm-panel-foot button.primary');
+    var NOTIFY = ['data-confirm-notify', 'data-confirm-notify-sub', 'data-confirm-notify-off'];
+    function sync() {
+      var items = [], danger = [], notify = null;
+      radios.forEach(function (r) {
+        var box = r.closest('.pp-opt');
+        if (box) box.classList.toggle('is-on', r.checked);
+        if (!r.checked) return;
+        if (r.getAttribute('data-ask-danger') === '1') { danger.push(r); if (r.hasAttribute(NOTIFY[0])) notify = r; }
+        else if (r.getAttribute('data-ask-confirm')) items.push(r.getAttribute('data-ask-confirm'));
+      });
+      f.querySelectorAll('[data-ask-reason]').forEach(function (w) {
+        var key = w.getAttribute('data-ask-for'), on = f.querySelector('input[name=ask_' + key + ']:checked');
+        var show = !!(on && on.value === w.getAttribute('data-ask-reason'));
+        w.hidden = !show;
+        var ta = w.querySelector('textarea'); if (ta) ta.required = show;
+      });
+      if (!name) return;   // a business group move: its own box and step 2 (the reason box above still follows the answer)
+      NOTIFY.forEach(function (a) { f.removeAttribute(a); });
+      if (danger.length) {
+        var lead = danger.map(function (r) { return r.getAttribute('data-ask-confirm'); }).join(' ');
+        f.setAttribute('data-confirm', (name + "'s " + what + '. ' + lead).replace(/\.\.$/, '.'));
+        f.setAttribute('data-confirm-ok', danger.length === 1 ? danger[0].getAttribute('data-ask-btn') : 'Save details');
+        f.setAttribute('data-confirm-title', danger.length === 1 ? danger[0].getAttribute('data-ask-title') : 'Save these details?');
+        f.setAttribute('data-confirm-tone', 'danger');
+        f.setAttribute('data-confirm-list', JSON.stringify(items.concat(follow)));
+        if (notify) NOTIFY.forEach(function (a) { f.setAttribute(a, notify.getAttribute(a)); });
+        btn.textContent = danger.length === 1 ? danger[0].getAttribute('data-ask-btn') : 'Save details';
+        btn.classList.add('is-danger');
+      } else {
+        f.setAttribute('data-confirm', base); f.setAttribute('data-confirm-ok', okBase);
+        f.removeAttribute('data-confirm-title'); f.removeAttribute('data-confirm-tone');
+        f.setAttribute('data-confirm-list', JSON.stringify(items.concat(follow)));
+        btn.textContent = 'Save details'; btn.classList.remove('is-danger');
+      }
+    }
+    radios.forEach(function (r) { r.addEventListener('change', sync); });
+    sync();
+  })();
+  </script>
+  {% endif %}
+  {% endif %}
+  {% else %}
+  <form method="post" action="{{ url_for('admin_person_lines', uid=person['id']) }}" class="adm-panel-form" id="pp-det-form">
+    <div class="adm-panel-body pp-pfields">
+      <input type="hidden" name="action" value="details_preview">
+      {% if is_super %}<label>Full name<input name="full_name" value="{{ person['full_name'] }}" maxlength="120" required autocomplete="off">
+        <span class="muted small">Super admin only. As it should read everywhere in OneHR; the old name stays in the trail.</span></label>{% endif %}
+      {% if is_super and det_bgs %}
+      <label>Business group
+        <select name="business_group" class="modern-select" id="pp-det-bg" data-bg-units="#pp-bg-units" data-unit-select="#pp-det-unit">
+          {% for b, bn in det_bgs %}<option value="{{ b }}" {{ 'selected' if b == person['business_group'] }}>{{ bn }}</option>{% endfor %}
+        </select><span class="muted small">For a transfer between groups. Their calibrators, KPI scale and admins follow the group; See what changes lists each one.</span></label>
+      {% endif %}
+      <label>Business unit
+        <select name="company" class="modern-select" id="pp-det-unit">
+          {% for c in det_units %}<option value="{{ c }}" {{ 'selected' if c == person['company'] }}>{{ display_company(person['business_group'], c) }}</option>{% endfor %}
+        </select><span class="muted small">From Org structure, so a unit can't be misspelt.</span></label>
+      {# picked from the unit's lists, or named as new (2026-10-19) #}
+      {{ unit_list('department', 'Department', 'pp-det-map', '#pp-det-unit', person['department']) }}
+      {{ unit_list('job_title', 'Job title', 'pp-det-tmap', '#pp-det-unit', person['job_title'], 'job title', 120) }}
+      <label>Job grade <select name="job_grade" class="modern-select">
+        {% if person['job_grade'] and person['job_grade'] not in det_grades %}<option value="{{ person['job_grade'] }}" selected>{{ person['job_grade'] }}</option>{% endif %}
+        {% for g in det_grades %}<option value="{{ g }}" {{ 'selected' if g == person['job_grade'] }}>{{ g }}</option>{% endfor %}</select></label>
+      {# the joined date (2026-10-22): before, only Add a person and the roster import set it #}
+      <label>Joined date <input type="date" name="joined_date" value="{{ (person['joined_date'] or '')[:10] }}" min="1950-01-01">
+        <span class="muted small">The day they joined the group. It sets their years of service.</span></label>
+    </div>
+    <footer class="adm-panel-foot">
+      <button type="button" class="btn-link" data-panel-close>Cancel</button>
+      <button type="submit" class="primary">See what changes</button>
+    </footer>
+  </form>
+  <script type="application/json" id="pp-det-map">{{ det_depts | tojson }}</script>
+  <script type="application/json" id="pp-det-tmap">{{ det_titles | tojson }}</script>
+  {% if det_bg_units %}<script type="application/json" id="pp-bg-units">{{ det_bg_units | tojson }}</script>{% endif %}
+  {% endif %}
+{% endcall %}
+{% endif %}
+
+{% if editable and not person['left_at'] and is_super and bgkpi %}
+{# Set them: the KPI lines a business group move left on the old framework (Needs attention's row, and the task email) #}
+{% from "person/_bg_kpi.html" import kpi_lines with context %}
+{% call panel("bgkpi", "Person · KPI lines to set", person['full_name'], who_line, open=(panel_open == 'bgkpi')) %}
+  <form method="post" action="{{ url_for('admin_person_lines', uid=person['id']) }}" class="adm-panel-form" id="pp-bgk-set"
+        data-confirm="Set {{ kpi_held.n }} KPI line{{ '' if kpi_held.n == 1 else 's' }} for {{ person['full_name'] }} on {{ bgkpi.bg }}'s scale? Their Total KPI score is worked out again." data-confirm-ok="Set KPI lines">
+    <div class="adm-panel-body">
+      <input type="hidden" name="action" value="bg_kpi_set">
+      {{ kpi_lines(bgkpi.cards, bgkpi.mech, bgkpi.variant, bgkpi.bg, 'Their KPI lines on ' ~ bgkpi.bg ~ "'s " ~ ('rating' if bgkpi.mech == 'A' else 'achievement %'), 'Fill every line: they save together, then their Total KPI score is worked out on one scale.') }}
+    </div>
+    <footer class="adm-panel-foot">
+      <button type="button" class="btn-link" data-panel-close>Cancel</button>
+      <button type="submit" class="primary">Set KPI lines</button>
+    </footer>
+  </form>
+{% endcall %}
+{% endif %}
+
+{% if editable %}
+{% call panel("lm", "Person · Line manager", person['full_name'], 'Now: ' ~ (L.lm['full_name'] if L.lm else 'nobody'), open=(panel_open == 'lm')) %}
+  <div class="adm-panel-body pp-pfields">
+    {% if lm_plan %}
+    <form method="post" action="{{ url_for('admin_person_lines', uid=person['id']) }}" id="pp-lm-apply"
+      data-confirm="Make {{ lm_plan.mgr['full_name'] }} the line manager of {{ person['full_name'] }}? Their reporting line changes everywhere, and the KPIs listed that nobody has moderated yet move to {{ lm_plan.mgr['full_name'] }}. Their 360 panel stays as filed.{% if lm_plan.follows %} Grade H Appraisal's appraiser follows the latest change, unless it is locked for them (the Follows rows say which).{% endif %}"
+      data-confirm-ok="Change line manager"{% if lm_plan.done and not lm_plan.out %} data-ho-form data-ho-old="{{ L.lm['full_name'] }}" data-ho-new="{{ lm_plan.mgr['full_name'] }}"{% endif %}>
+      <input type="hidden" name="action" value="lm_apply">
+      <input type="hidden" name="lm_eid" value="{{ lm_plan.mgr['employee_id'] }}">
+      <b class="pp-plbl">Make {{ lm_plan.mgr['full_name'] }} their line manager</b>
+      <div class="pp-chg">
+        <div><span>KPIs that move to them</span><span>{% if lm_plan.kpis %}{{ lm_plan.kpis | join(', ') }}{% else %}None (nothing waits on the old line manager){% endif %}. A KPI already moderated, or with a matrix manager, stays.</span></div>
+        <div><span>360 panel</span><span>Stays as filed. Change it on <a href="{{ url_for('admin_person', uid=person['id'], tab='f360') }}">their 360 tab</a>.</span></div>
+        {% for w in lm_plan.follows %}<div><span>Follows</span><span>{{ w }}</span></div>{% endfor %}
+      </div>
+      {% if lm_plan.done %}
+      {# Already done by the old line manager this cycle: kept by default, or handed over (ticked) to the new one. The server is the authority; the script only shows the reason box and turns the confirm red. #}
+      <fieldset class="pp-fs pp-ho"><legend>Already done by {{ L.lm['full_name'] }} this cycle</legend>
+        {% if lm_plan.out %}
+        <p class="muted small pp-ho-p">Results are out, so nothing can be handed over.</p>
+        {% else %}
+        <p class="muted small pp-ho-p">Each stays as {{ L.lm['full_name'] }} did it. Tick one to clear it and hand it to {{ lm_plan.mgr['full_name'] }} to redo.</p>
+        {% for x in lm_plan.done %}
+        <label class="pp-ho-row"><input type="checkbox" name="handover" value="{{ x.part }}" data-ho-box data-ho-word="{{ x.word }}" {{ 'checked' if x.part in lm_plan.ticked and x.ok }} {{ 'disabled' if not x.ok }}>
+          <span class="pp-ho-txt"><span><b>{{ x.label }}</b> <span class="muted">&middot; {{ x.line }}</span></span>
+            {% if not x.ok %}<span class="muted small">{{ x.why }}</span>{% endif %}
+            {% if x.part == 'pm_mod' %}<span class="muted small" data-ho-sub {{ 'hidden' if not (x.part in lm_plan.ticked and x.ok) }}>{{ lm_plan.mgr['full_name'] }} starts from {{ person['full_name'] }}'s own figures. Their band is worked out again.</span>
+            {% elif x.part == 'tc_review' %}<span class="muted small" data-ho-sub {{ 'hidden' if not (x.part in lm_plan.ticked and x.ok) }}>Back to waiting for the line manager's review.</span>{% endif %}</span></label>
+        {% endfor %}
+        <div class="pp-ho-why" data-ho-why {{ 'hidden' if not lm_plan.ticked }}>
+          <label>Why it goes to {{ lm_plan.mgr['full_name'] }}
+            <textarea name="handover_reason" rows="3" maxlength="500" data-ho-reason {{ 'required' if lm_plan.ticked }}>{{ lm_plan.reason }}</textarea>
+            <span class="muted small">Needed for a hand-over. {{ lm_plan.mgr['full_name'] }} sees it in their email (500 characters at most).</span></label>
+          <p class="pp-ho-note">{{ lm_plan.mgr['full_name'] }} can do it even after the line manager window closes, until results are released. {{ L.lm['full_name'] }} is not emailed; the audit log keeps what they did.</p>
+        </div>
+        {% endif %}
+      </fieldset>
+      {% endif %}
+    </form>
+    {% if lm_plan.done and not lm_plan.out %}
+    <script>
+    (function () {
+      // Hand-over: a ticked part shows its line and the reason box, the button reads "Change and hand over", and OneHR's
+      // confirm turns red and names what is cleared. Scoped to this form; without the script the server decides.
+      var f = document.getElementById('pp-lm-apply'); if (!f || f.hasAttribute('data-ho-done')) return;
+      f.setAttribute('data-ho-done', '1');
+      var base = f.getAttribute('data-confirm'), okBase = f.getAttribute('data-confirm-ok');
+      var boxes = f.querySelectorAll('[data-ho-box]'), why = f.querySelector('[data-ho-why]'),
+          reason = f.querySelector('[data-ho-reason]');
+      function sync() {
+        var words = [];
+        boxes.forEach(function (b) {
+          var sub = b.closest('label').querySelector('[data-ho-sub]');
+          if (sub) sub.hidden = !b.checked;
+          if (b.checked) words.push(b.getAttribute('data-ho-word'));
+        });
+        var any = words.length > 0;
+        if (why) why.hidden = !any;
+        if (reason) reason.required = any;
+        var btn = document.querySelector('[data-ho-btn]');   // the foot comes after this script: looked up when used
+        if (btn) btn.textContent = any ? 'Change and hand over' : 'Change line manager';
+        if (any) {
+          var list = words.length > 1 ? words.slice(0, -1).join(', ') + ' and ' + words[words.length - 1] : words[0];
+          f.setAttribute('data-confirm', base + ' ' + f.getAttribute('data-ho-old') + "'s " + list +
+            (words.length > 1 ? ' are cleared and go to ' : ' is cleared and goes to ') + f.getAttribute('data-ho-new') +
+            " to redo. This can't be undone.");
+          f.setAttribute('data-confirm-ok', 'Change and hand over');
+          f.setAttribute('data-confirm-title', 'Change line manager and hand over?');
+          f.setAttribute('data-confirm-tone', 'danger');
+        } else {
+          f.setAttribute('data-confirm', base); f.setAttribute('data-confirm-ok', okBase);
+          f.removeAttribute('data-confirm-title'); f.removeAttribute('data-confirm-tone');
+        }
+      }
+      boxes.forEach(function (b) { b.addEventListener('change', sync); });
+      sync();
+    })();
+    </script>
+    {% endif %}
+    {% else %}
+    <form method="post" action="{{ url_for('admin_person_lines', uid=person['id']) }}" id="pp-lm-prev">
+      <input type="hidden" name="action" value="lm_preview">
+      <label>New line manager
+        <span class="pick" data-pick><input type="text" class="pick-q" placeholder="Name, ID or job" aria-label="New line manager: name, Employee ID or job" required autocomplete="off">
+          <input type="hidden" name="lm_eid" class="pick-val" value=""></span>
+        <span class="muted small">Picked from the people in OneHR; you see what moves before anything changes.</span></label>
+    </form>
+    {% endif %}
+    <p class="muted small">{{ summ.wait_lm }} KPI{{ 's' if summ.wait_lm != 1 }} waiting on the line manager now · they are also the 360 line manager.</p>
+  </div>
+  <footer class="adm-panel-foot">
+    {% if lm_plan %}<a class="btn-link adm-panel-grow" href="{{ url_for('admin_person', uid=person['id'], panel='lm') }}">Back</a>
+    <button type="submit" class="primary" form="pp-lm-apply" data-ho-btn>Change line manager</button>
+    {% else %}<button type="button" class="btn-link" data-panel-close>Cancel</button>
+    <button type="submit" class="primary" form="pp-lm-prev">See what changes</button>{% endif %}
+  </footer>
+{% endcall %}
+
+{% call panel("hod", "Person · HOD", person['full_name'], 'Now: ' ~ (L.hod['full_name'] if L.hod else 'nobody') ~ ' · their department review, for them only', open=(panel_open == 'hod')) %}
+  <div class="adm-panel-body pp-pfields">
+    {% if hod_plan %}
+    <form method="post" action="{{ url_for('admin_person_lines', uid=person['id']) }}" id="pp-hod-apply"
+      data-confirm="Make {{ hod['full_name'] }} the HOD of {{ person['full_name'] }}? Their department review goes to {{ hod['full_name'] }} instead of the current HOD, for {{ person['full_name'] }} only.{% if hod_plan.follows %} Grade H Appraisal follows the latest change, unless it is locked for them (the Follows rows say which).{% endif %}"
+      data-confirm-ok="{{ 'Apply anyway' if hod_plan.blockers else 'Change HOD' }}">
+      <input type="hidden" name="action" value="hod_apply">
+      <input type="hidden" name="hod_eid" value="{{ hod['employee_id'] }}">
+      <input type="hidden" name="fingerprint" value="{{ hod_plan.fingerprint }}">
+      <b class="pp-plbl">Make {{ hod['full_name'] }} their HOD</b>
+      <div class="pp-chg">
+        {% for r in hod_plan.rows %}<input type="hidden" name="uid" value="{{ r.id }}">
+        <div><span>{{ r.dept | proper }}{% if r.company %}, {{ display_company(person['business_group'], r.company) }}{% endif %}</span><span>{{ r.old_name }} &rarr; <b>{{ hod['full_name'] }}</b></span></div>{% endfor %}
+        {% for w in hod_plan.follows %}<div><span>Follows</span><span>{{ w }}</span></div>{% endfor %}
+      </div>
+      {% for b in hod_plan.blockers %}<span class="pp-block">{{ b }}</span>{% endfor %}
+      {% if hod_plan.blockers and is_super %}<input name="override_reason" placeholder="Reason to apply anyway (super admin)" aria-label="Reason to apply anyway">{% endif %}
+      {% for w in hod_plan.warnings %}<span class="pp-warn">{{ w }}</span>{% endfor %}
+      {% if hod_plan.warnings %}<label class="pp-tick"><input type="checkbox" name="ack" value="1"> I've read these</label>{% endif %}
+    </form>
+    {% else %}
+    <form method="post" action="{{ url_for('admin_person_lines', uid=person['id']) }}" id="pp-hod-prev">
+      <input type="hidden" name="action" value="hod_preview">
+      <label>New HOD
+        <span class="pick" data-pick><input type="text" class="pick-q" placeholder="Name, ID or job" aria-label="New HOD: name, Employee ID or job" required autocomplete="off">
+          <input type="hidden" name="hod_eid" class="pick-val" value=""></span>
+        <span class="muted small">For {{ person['full_name'] }} only; the Leaders page sets a whole department.</span></label>
+    </form>
+    {% endif %}
+  </div>
+  <footer class="adm-panel-foot">
+    {% if hod_plan %}<a class="btn-link adm-panel-grow" href="{{ url_for('admin_person', uid=person['id'], panel='hod') }}">Back</a>
+    {% if not hod_plan.blockers or is_super %}<button type="submit" class="primary" form="pp-hod-apply">{{ 'Apply anyway' if hod_plan.blockers else 'Change HOD' }}</button>{% endif %}
+    {% else %}<button type="button" class="btn-link" data-panel-close>Cancel</button>
+    <button type="submit" class="primary" form="pp-hod-prev">See what changes</button>{% endif %}
+  </footer>
+{% endcall %}
+{% endif %}
+
+{% call panel("roles", "Person · Roles", person['full_name'], who_line, open=(panel_open == 'roles')) %}
+  <div class="adm-panel-body">
+    <div class="pp-r"><span><b>Employee</b> <span class="muted">· {% if person['left_at'] %}has left{% elif gh %}Grade H Appraisal, not in the normal review{% elif taking[0] %}taking part{% else %}not taking part{% endif %}</span></span></div>
+    <div class="pp-r"><span><b>Line manager</b> <span class="muted">· {% if roles.reports %}{% if is_super %}<a class="pp-count" data-list-from-panel href="{{ url_for('admin_list_view', key='lm-reports', uid=person['id']) }}" data-list-open="{{ url_for('admin_list_view', key='lm-reports', uid=person['id'], fragment=1) }}">{{ roles.reports }} direct report{{ 's' if roles.reports != 1 }}</a>{% else %}{{ roles.reports }} direct report{{ 's' if roles.reports != 1 }}{% endif %}{% else %}no direct reports{% endif %}</span></span></div>
+    <div class="pp-r"><span><b>HOD</b> <span class="muted">· {% if roles.heads %}{% if is_super %}<a class="pp-count" data-list-from-panel href="{{ url_for('admin_list_view', key='hod-people', uid=person['id']) }}" data-list-open="{{ url_for('admin_list_view', key='hod-people', uid=person['id'], fragment=1) }}">{% endif %}heads {{ roles.heads }}{% if roles.heads_bg | length > 1 %}: {% for hb, hn in roles.heads_bg %}{{ hn }} in {{ display_bg(hb) or hb or 'no group' }}{{ ', ' if not loop.last }}{% endfor %}{% else %} {{ 'person' if roles.heads == 1 else 'people' }}{% endif %}{% if is_super %}</a>{% endif %}{% else %}not an HOD{% endif %}</span></span>
+      <a class="small" href="{{ url_for('admin_leaders', bg=person['business_group'], tab='hod') }}">Departments &rsaquo;</a></div>
+    <div class="pp-r pp-r-bu"><span><b>BU CEO</b> <span class="muted">· {% if roles.buceo_units %}{% for bu in roles.buceo_units %}{{ display_company(bu.bg, bu.company) }}{{ ', ' if not loop.last else '' }}{% endfor %}{% if roles.buceo_units | length > 1 %} ({{ roles.buceo_units | length }} units, each locked on its own){% endif %}{% else %}leads no unit{% endif %}</span></span>
+      {# the super admin or the business group's admin, never a unit admin (Chris, 2026-10-18) #}
+      {% if (units or can_bu_take) and editable and not person['left_at'] %}
+        {% for bu in roles.buceo_units if bu.company in can_bu_take %}
+        <form method="post" action="{{ url_for('admin_person_lines', uid=person['id']) }}" data-confirm="{{ person['full_name'] }} stops being BU CEO of {{ display_company(bu.bg, bu.company) }}, which is left with none." data-confirm-tone="danger" data-confirm-ok="Remove">
+          <input type="hidden" name="action" value="clear_buceo"><input type="hidden" name="company" value="{{ bu.company }}">
+          <button type="submit" class="btn-link">Remove {{ display_company(bu.bg, bu.company) if roles.buceo_units | length > 1 else '' }}</button></form>
+        {% endfor %}
+        {% set held = roles.buceo_units | map(attribute='company') | list %}
+        {% set free = units | reject('in', held) | list %}
+        {% if free %}
+        <form method="post" action="{{ url_for('admin_person_lines', uid=person['id']) }}" class="pp-inline"
+          data-confirm="Make {{ person['full_name'] }} the BU CEO of the unit you picked? Whoever holds that seat now stops being its BU CEO{% if held %}, and {{ person['full_name'] }} keeps {{ held | join(', ') }} too: each unit is calibrated and locked on its own{% endif %}."
+          data-confirm-ok="Make BU CEO">
+          <input type="hidden" name="action" value="set_buceo">
+          <select name="company" class="modern-select" aria-label="Unit to lead" required><option value="">{{ 'Add a unit…' if held else 'Make BU CEO of…' }}</option>
+            {% for c in free %}<option value="{{ c }}">{{ display_company(person['business_group'], c) }}</option>{% endfor %}</select>
+          <button type="submit" class="btn-link">{{ 'Add' if held else 'Make' }}</button></form>
+        {% endif %}
+      {% endif %}</div>
+    {# the Calibrator (CG) role comes from a calibration group, set on Leaders › BU CEOs: read only here (2026-10-26) #}
+    {# one line per kind: Calibrator for a CG panel, BG CFO for a BGCFO panel (BGCFO tag, 2026-11-04); none: the no-group line #}
+    {% set cg_kinds = [('Calibrator', roles.cals | rejectattr('tag', 'equalto', 'BGCFO') | list), ('BG CFO', roles.cals | selectattr('tag', 'equalto', 'BGCFO') | list)] | selectattr(1) | list %}
+    {% for kind_word, kind_cals in (cg_kinds or [('Calibrator', [])]) %}
+    <div class="pp-r" data-cg-line><span><b>{{ kind_word }}</b> <span class="muted">· {% if kind_cals %}calibrates {% for cg in kind_cals %}{{ cg.name }} ({{ cg.n }} {{ 'person' if cg.n == 1 else 'people' }}){{ ', ' if not loop.last else '' }}{% endfor %}{% else %}calibrates no group{% endif %}</span></span>
+      {% if nav_is_super %}<a class="small" href="{{ url_for('admin_leaders', bg=person['business_group'], tab='buceo') }}">Leaders &rsaquo; BU CEOs &rsaquo;</a>{% endif %}</div>
+    {% endfor %}
+    <div class="pp-r"><span><b>BG CEO</b> <span class="muted">· {% if roles.bgceo %}{{ display_bg(roles.bgceo) }}{% else %}leads no group{% endif %}</span></span>
+      {% if editable and not person['left_at'] and ((roles.bgceo and roles.bgceo in all_bgs) or (not roles.bgceo and all_bgs)) %}
+        {% if roles.bgceo %}
+        <form method="post" action="{{ url_for('admin_person_lines', uid=person['id']) }}" data-confirm="{{ person['full_name'] }} stops being BG CEO of {{ display_bg(roles.bgceo) }}, which is left with none." data-confirm-tone="danger">
+          <input type="hidden" name="action" value="clear_bgceo"><button type="submit" class="btn-link">Remove</button></form>
+        {% else %}
+        <form method="post" action="{{ url_for('admin_person_lines', uid=person['id']) }}" class="pp-inline"
+          data-confirm="Make {{ person['full_name'] }} the BG CEO of the group you picked? Whoever holds that seat now stops being its BG CEO, and {{ person['full_name'] }} owns its Talent Box from now on."
+          data-confirm-ok="Make BG CEO">
+          <input type="hidden" name="action" value="set_bgceo">
+          <select name="target_bg" class="modern-select" aria-label="Group to lead" required><option value="">Make BG CEO of…</option>
+            {% for b in all_bgs %}<option value="{{ b }}">{{ display_bg(b) }}</option>{% endfor %}</select>
+          <button type="submit" class="btn-link">Make</button></form>
+        {% endif %}
+      {% endif %}</div>
+    <div class="pp-r"><span><b>Matrix manager</b> <span class="muted">· {% if roles.matrix_kpis %}moderates {{ roles.matrix_kpis }} KPI{{ 's' if roles.matrix_kpis != 1 }} for {{ roles.matrix_people }} {{ 'person' if roles.matrix_people == 1 else 'people' }} this cycle{% else %}moderates nobody else's KPIs{% endif %}</span></span></div>
+    {# Group Chief (admin round 4, row 8; canvas R1): the calibration groups they call, and making them the Group Chief
+       of another -- the confirm names who stops calling it #}
+    <div class="pp-r pp-r-bu"><span><b>Group Chief</b> <span class="muted">· {% if roles.groups %}calls {{ roles.groups | join(', ') }}{% else %}calls no calibration group{% endif %}</span></span>
+      {% if is_super and editable and not person['left_at'] %}
+        {% set other_groups = cal_groups | rejectattr('chief_id', 'equalto', person['id']) | list %}
+        {% if other_groups %}
+        <form method="post" action="{{ url_for('admin_person_lines', uid=person['id']) }}" class="pp-inline"
+          data-confirm="Make {{ person['full_name'] }} the Group Chief of the group you picked? Whoever calls it now stops, and {{ person['full_name'] }} calls its people from now on; calls already locked stay as they are."
+          data-confirm-ok="Make Group Chief">
+          <input type="hidden" name="action" value="set_gc">
+          <select name="group_id" class="modern-select" aria-label="Calibration group to call" required><option value="">Make Group Chief of…</option>
+            {% for gr in other_groups %}<option value="{{ gr.id }}">{{ gr.name }}{% if gr.chief_name %} (now {{ gr.chief_name }}){% endif %}</option>{% endfor %}</select>
+          <button type="submit" class="btn-link">Make</button></form>
+        {% endif %}
+      {% endif %}
+      {% if nav_is_super %}<a class="small" href="{{ url_for('admin_pm_calibration_groups') }}">Groups &rsaquo;</a>{% endif %}</div>
+    {% if not units and not all_bgs and not is_super %}<p class="muted small pp-none">Only the super admin, or the admin of their business group or unit, makes someone a BU CEO or BG CEO.</p>{% endif %}
+  </div>
+  <footer class="adm-panel-foot"><button type="button" class="primary" data-panel-close>Done</button></footer>
+{% endcall %}
+
+{# The account (canvas K7, 2026-10-10): what the Users row menu did, asked in the app's own dialog, posting to the Users
+   page's own actions, which come back here with this panel open (#account) #}
+{% call panel("account", "Person · Account", person['full_name'], who_line, open=(panel_open == 'account')) %}
+  <div class="adm-panel-body">
+    {% set back = url_for('admin_person', uid=person['id'], panel='account') %}
+    {# Employee IDs (Chris, 2026-10-29; canvas [design canvas link removed]): the main ID they sign in with
+       and the others they carry (R0001 and X0002). Link, Make main and Remove are the super admin's; anyone who can open the
+       person sees the IDs #}
+    <div class="pp-eids" id="employee-ids">
+      <div class="pp-eids-head"><span class="pp-eids-t"><b>Employee IDs</b> <span class="muted">&middot; {{ (1 if person['employee_id'] else 0) + (eids | length) }} on this person</span></span>
+        {% if is_super %}<form method="post" action="{{ url_for('admin_person_lines', uid=person['id']) }}"
+          data-prompt="Link another Employee ID to {{ person['full_name'] }}. Type it as HRIS or the old system has it; it can't be anyone else's ID."
+          data-prompt-field="eid" data-confirm-ok="Link this ID">
+          <input type="hidden" name="action" value="eid_link"><input type="hidden" name="eid" value="">
+          <button type="submit" class="btn-link">Link an ID</button></form>{% endif %}</div>
+      {% if person['employee_id'] %}<div class="pp-eids-row"><span class="pp-eids-id"><b>{{ person['employee_id'] }}</b><span class="pp-eids-chip">Main &middot; signs in</span></span></div>{% endif %}
+      {% for e in eids %}
+      <div class="pp-eids-row"><span class="pp-eids-id"><b>{{ e.eid }}</b><span class="muted pp-eids-by">linked by {{ e.by }}{% if e.day %}, {{ e.day }}{% endif %}</span></span>
+        {% if is_super %}<span class="pp-eids-acts">
+          <form method="post" action="{{ url_for('admin_person_lines', uid=person['id']) }}"
+            data-confirm-title="Make {{ e.eid }} the main Employee ID?"
+            data-confirm="Make {{ e.eid }} the main Employee ID for {{ person['full_name'] }}? {% set nu = eid_follow_username(person['username'], person['employee_id'], e.eid) %}{% if nu %}They sign in with {{ nu }} from now on, not {{ person['username'] }}.{% else %}Their sign-in name ({{ person['username'] }}) isn't their Employee ID, so it stays as it is.{% endif %} Their password doesn't change. {{ person['employee_id'] }} stays linked, so imports still find them. Pages, downloads and new audit rows show {{ e.eid }}; older audit rows keep the ID they were written with. OneHR sends them nothing: tell them their new sign-in ID first."
+            data-confirm-ok="Make main">
+            <input type="hidden" name="action" value="eid_main"><input type="hidden" name="eid" value="{{ e.eid }}">
+            <button type="submit" class="btn-link">Make main</button></form>
+          <form method="post" action="{{ url_for('admin_person_lines', uid=person['id']) }}"
+            data-confirm-title="Remove {{ e.eid }}?"
+            data-confirm="Take {{ e.eid }} off {{ person['full_name'] }}? Imports stop finding them by it. You can link it again later."
+            data-confirm-ok="Remove">
+            <input type="hidden" name="action" value="eid_unlink"><input type="hidden" name="eid" value="{{ e.eid }}">
+            <button type="submit" class="btn-link">Remove</button></form></span>{% endif %}</div>
+      {% endfor %}
+      <p class="muted pp-eids-note">Super admin only. Imports, People search and sign-in find them by any of these IDs.</p>
+    </div>
+    {# IDs in other systems (the Chart of KPI, piece C, canvas board 7; ONEHR_COA=1, the super admin): the key another system
+       knows this person by. Never shown to the person; one active ID per system; an ID belongs to one person in a system #}
+    {% if coa_on() and is_super %}
+    <div class="pp-eids pp-ext" id="ext-ids">
+      <div class="pp-eids-head"><span class="pp-eids-t"><b>IDs in other systems</b> <span class="muted">&middot; {{ ext_ids | length }}</span></span></div>
+      {% for e in ext_ids %}
+      <div class="pp-eids-row"><span class="pp-eids-id"><b>{{ e.ext }}</b><span class="muted pp-eids-by">{{ e.system }}{% if e.retired %} &middot; Retired{% endif %} &middot; added by {{ e.by }}{% if e.day %}, {{ e.day }}{% endif %}</span></span>
+        <span class="pp-eids-acts">
+          <form method="post" action="{{ url_for('admin_person_lines', uid=person['id']) }}"
+            data-confirm-title="Remove {{ e.ext }}?"
+            data-confirm="Take {{ e.ext }} ({{ e.system }}) off {{ person['full_name'] }}? A KPI that reads their own figure from {{ e.system }} stops finding them. You can add an ID again later."
+            data-confirm-ok="Remove">
+            <input type="hidden" name="action" value="ext_unlink"><input type="hidden" name="ext_row" value="{{ e.id }}">
+            <button type="submit" class="btn-link">Remove</button></form></span></div>
+      {% endfor %}
+      {% if ext_systems %}
+      <details class="pp-ext-add"{% if ext_ids | length == 0 %} open{% endif %}>
+        <summary class="btn-link">Add an ID</summary>
+        <form method="post" action="{{ url_for('admin_person_lines', uid=person['id']) }}" class="pp-ext-form"
+          data-confirm-title="Add this ID?"
+          data-confirm="Add this ID in the other system for {{ person['full_name'] }}? A KPI that reads their own figure from that system finds them by it. It can't be another person's ID in the same system, and they have one ID per system."
+          data-confirm-ok="Add the ID">
+          <input type="hidden" name="action" value="ext_link">
+          <label>System<select name="system_id" class="modern-select" aria-label="System">{% for s in ext_systems %}<option value="{{ s.id }}">{{ s.name }}</option>{% endfor %}</select></label>
+          <label>Their ID there<input type="text" name="ext_id" maxlength="60" required autocomplete="off" aria-label="Their ID in the system"></label>
+          <button type="submit" class="primary">Add the ID</button>
+        </form>
+      </details>
+      {% else %}<p class="muted small pp-ext-none">No system has been added yet. <a href="{{ url_for('admin_kpi_systems') }}">Add one on the Systems tab</a> of the KPI library.</p>{% endif %}
+      <p class="muted pp-eids-note">Super admin only. A KPI whose data link reads the person's own figure finds them by this ID. Never shown to the person; it can't be another person's ID in the same system. Never a password or key.</p>
+    </div>
+    {% endif %}
+    <div class="pp-r"><span><b>Work email</b> <span class="muted">· {{ person['email'] or 'none on file' }}</span></span>
+      {% if not person['left_at'] %}<form method="post" action="{{ url_for('admin_users') }}" class="pp-inline"
+        data-prompt="Work email for {{ person['full_name'] }} (leave blank to clear it)" data-prompt-field="email"
+        data-prompt-type="email" data-prompt-default="{{ person['email'] or '' }}" data-confirm-ok="Save">
+        <input type="hidden" name="action" value="set_email"><input type="hidden" name="user_id" value="{{ person['id'] }}">
+        <input type="hidden" name="email" value=""><input type="hidden" name="next" value="{{ back }}">
+        <button type="submit" class="btn-link">Change</button></form>{% endif %}</div>
+    {# Reminder emails (Chris, 2026-11-01; canvas [design canvas link removed] boards A1 / A5): the two emails
+       the super admin can take this person off. Everyone else sees the state, read-only. #}
+    {% if email_off %}
+    <div class="pp-eoff" id="reminder-emails">
+      <div class="pp-eoff-head"><span><b>Reminder emails</b> <span class="pp-eoff-state">· off{% if email_off[0].until_disp %} until {{ email_off[0].until_disp }}{% endif %}</span></span>
+        {% if is_super and not person['left_at'] %}<span class="pp-eoff-acts">
+          <button type="button" class="btn-link" data-panel-open="emailoff">Change</button>
+          <form method="post" action="{{ url_for('admin_person_lines', uid=person['id']) }}"
+            data-confirm-title="Turn reminder emails back on for {{ person['full_name'] }}?"
+            data-confirm="{{ email_off | map(attribute='label') | join(' and ') }} will reach {{ person['full_name'] }} again from the next send. It's in the audit log."
+            data-confirm-ok="Turn back on">
+            <input type="hidden" name="action" value="email_optout_end">
+            <button type="submit" class="btn-link">Turn back on</button></form></span>{% endif %}</div>
+      <div class="pp-eoff-chips">{% for o in email_off %}<span class="pp-eoff-k">{{ o.label }}</span>{% endfor %}</div>
+      <p class="pp-eoff-by">By the super admin on {{ email_off[0].at }}: &ldquo;{{ email_off[0].reason }}&rdquo;</p>
+      <p class="muted pp-eoff-note">Super admin only. Results, upgrade notices, password and ticket emails still reach them.</p>
+    </div>
+    {% else %}
+    <div class="pp-r"><span><b>Reminder emails</b> <span class="muted">· on: Everyone's reminder, Leader progress</span></span>
+      {% if is_super and not person['left_at'] %}<button type="button" class="btn-link" data-panel-open="emailoff">Turn off</button>{% endif %}</div>
+    {% endif %}
+    <div class="pp-r"><span><b>Confirmed</b> <span class="muted">· {% if person['confirmation_date'] %}{{ person['confirmation_date'] }}{% elif confirmed %}by length of service{% else %}not yet{% endif %}</span></span>
+      {# confirming someone is the super admin's, with the date (Chris, 2026-10-20); on it they move from Basic to Full #}
+      {% if is_super and not person['left_at'] %}<form method="post" action="{{ url_for('admin_users') }}" class="pp-inline"
+        data-prompt="The date {{ person['full_name'] }} was confirmed. On it they move from Basic to Full."{% if person['confirmation_date'] %} data-prompt-default="{{ person['confirmation_date'][:10] }}"{% endif %} data-prompt-field="confirmation_date" data-prompt-type="date" data-confirm-ok="Confirm them"{% if cc %} data-cycle-choice="{{ cc | tojson | forceescape }}"{% endif %}>
+        <input type="hidden" name="action" value="set_confirmed"><input type="hidden" name="user_id" value="{{ person['id'] }}">
+        <input type="hidden" name="confirmation_date" value=""><input type="hidden" name="cycle_choice" value=""><input type="hidden" name="next" value="{{ back }}">
+        <button type="submit" class="btn-link">{{ 'Change date' if person['confirmation_date'] else 'Mark confirmed' }}</button></form>{% endif %}</div>
+    <div class="pp-r"><span><b>User role</b> <span class="muted">· {{ urole.name }}{% if urole.how == 'hand' %}, given by the super admin{% elif urole.how == 'full' %}, confirmed{% else %}, until they're confirmed{% endif %}</span></span>
+      {% if is_super and not person['left_at'] %}<button type="button" class="btn-link" data-panel-open="urole">Change</button>{% endif %}</div>
+    <div class="pp-r"><span><b>Signed in</b> <span class="muted">· {{ ('last ' ~ last_in) if last_in else 'never' }}</span></span></div>
+    <div class="pp-acts">
+      {% if not person['left_at'] %}
+      <form method="post" action="{{ url_for('admin_users') }}"
+        data-prompt="New password for {{ person['full_name'] }} (at least 8 characters)"
+        data-prompt-field="new_password" data-prompt-type="password" data-confirm-ok="Set password">
+        <input type="hidden" name="action" value="reset_pw"><input type="hidden" name="user_id" value="{{ person['id'] }}">
+        <input type="hidden" name="new_password" value=""><input type="hidden" name="next" value="{{ back }}">
+        <button type="submit" class="btn-link">Reset password</button></form>
+      <form method="post" action="{{ url_for('admin_users') }}"
+        data-confirm="Mark {{ person['full_name'] }} as left? Their sign-in closes and the feedback they still owe is archived; their history stays."
+        data-confirm-ok="Mark as left" data-confirm-tone="danger">
+        <input type="hidden" name="action" value="mark_left"><input type="hidden" name="user_id" value="{{ person['id'] }}">
+        <input type="hidden" name="next" value="{{ back }}">
+        <button type="submit" class="btn-link danger-link">Mark as left</button></form>
+      {% else %}
+      <form method="post" action="{{ url_for('admin_users') }}"
+        data-confirm="Bring {{ person['full_name'] }} back? They can sign in again and what was archived when they left is restored."
+        data-confirm-ok="Bring back">
+        <input type="hidden" name="action" value="reactivate"><input type="hidden" name="user_id" value="{{ person['id'] }}">
+        <input type="hidden" name="next" value="{{ back }}">
+        <button type="submit" class="btn-link">Bring back</button></form>
+      {% endif %}
+    </div>
+  </div>
+  <footer class="adm-panel-foot"><button type="button" class="primary" data-panel-close>Done</button></footer>
+{% endcall %}
+
+{# Reminder emails off (2026-11-01, canvas boards A2 / A3): the super admin's alone. The form is plain HTML posting to
+   admin_person_lines; the server re-checks every rule (email_optout_set). static/email_optout.js writes OneHR's own confirm
+   box from what is ticked, as the form's data-confirm-* attributes, and keeps the count under the reason. #}
+{% if is_super and not person['left_at'] %}
+{% set off_now = email_off | map(attribute='kind') | list %}
+{% call panel("emailoff", "Person · Reminder emails", person['full_name'], who_line, open=(panel_open == 'emailoff')) %}
+  <form method="post" action="{{ url_for('admin_person_lines', uid=person['id']) }}" class="adm-panel-form" id="pp-eoff-form"
+        data-eoff-form data-eoff-name="{{ person['full_name'] }}"
+        data-confirm="Stop reminder emails to {{ person['full_name'] }}?" data-confirm-title="Stop reminder emails to {{ person['full_name'] }}?"
+        data-confirm-ok="Stop these emails" data-confirm-body="pp-eoff-box">
+    <input type="hidden" name="action" value="email_optout_set">
+    <div class="adm-panel-body">
+      <p class="pp-eoff-lede">Stop OneHR's reminder emails to them. Results, upgrade notices, password and ticket emails still reach them. They aren't told.</p>
+      <fieldset class="pp-eoff-which"><legend>Which emails</legend>
+        <div class="pp-eoff-list">
+          {% for k, label, desc in (('reminder', "Everyone's reminder", "What's waiting on them, on the mornings a part is open. Also a Grade H person's own reminder."), ('leader_progress', 'Leader progress', "Their departments' progress, as HOD. Also Grade H progress for an HOD or BU CEO.")) %}
+          <label class="pp-eoff-opt"><input type="checkbox" name="kind" value="{{ k }}" data-eoff-kind="{{ label }}" {{ 'checked' if (k in off_now or not off_now) }}>
+            <span><b>{{ label }}</b>
+              <span class="muted small pp-eoff-sub">{% if k == 'reminder' %}{{ desc }} {{ email_off_info.waiting if email_off_info }}{% else %}{{ email_off_info.lead if email_off_info }} {{ email_off_info.next if email_off_info }}{% endif %}</span></span></label>
+          {% endfor %}
+        </div>
+      </fieldset>
+      <div class="pp-eoff-f">
+        <label for="pp-eoff-until"><b>Until</b></label>
+        <div class="pp-eoff-when"><input type="date" name="until" id="pp-eoff-until"{% if email_off and email_off[0].until %} value="{{ email_off[0].until }}"{% endif %} aria-label="Until" data-eoff-until><span class="muted small">the end of that day, MYT</span></div>
+        <span class="muted small">Leave it blank to keep them off until you turn them back on. With a date, they come back on by themselves the next day.</span>
+      </div>
+      <div class="pp-eoff-f">
+        <label for="pp-eoff-why"><b>Why</b></label>
+        <textarea name="reason" id="pp-eoff-why" rows="3" maxlength="500" required data-eoff-why>{{ email_off[0].reason if email_off else '' }}</textarea>
+        <span class="muted small">Required, 500 characters at most. It goes in the audit log.</span>
+      </div>
+      <div class="pp-eoff-grey">Their own work is unchanged: the dashboard, the deadline bar and Ask OneHR still show what's waiting on them. Any of these emails already queued for them is dropped before it sends.</div>
+      <div id="pp-eoff-box" hidden></div>
+    </div>
+    <footer class="adm-panel-foot">
+      <button type="button" class="btn-link" data-panel-close>Cancel</button>
+      <button type="submit" class="primary">Stop these emails</button>
+    </footer>
+  </form>
+{% endcall %}
+<script src="{{ url_for('static', filename='email_optout.js') }}?v={{ asset_v }}" defer></script>
+{% endif %}
+
+{# their user role by hand: the super admin's only (Chris, 2026-10-20); Automatic = Basic until confirmed, then Full #}
+{% if is_super and not person['left_at'] %}
+{% call panel("urole", "Person · User role", person['full_name'], 'Now: ' ~ urole.name ~ (' (given by hand)' if urole.how == 'hand' else ' (automatic)'), open=(panel_open == 'urole')) %}
+  <form method="post" action="{{ url_for('admin_person_user_role', uid=person['id']) }}" class="adm-panel-form"
+        data-confirm="Change {{ person['full_name'] }}'s user role? What they can use for themselves follows it from their next click, and it goes in the audit log. You can change it back." data-confirm-ok="Change user role">
+    <div class="adm-panel-body">
+      <p class="muted small">What they can use for themselves: their KPI check-in, their 360, competency, Career Plan, {{ 'AI+ Learning, ' if lms_on() }}their results. What each role opens is set on <a href="{{ url_for('admin_roles', tab='user') }}">Roles &amp; access › User roles</a>. Their leader seats are separate.</p>
+      <fieldset class="adm-set-form"><legend class="sr-only">User role</legend>
+        <label class="pp-tick"><input type="radio" name="user_role_id" value="" {{ 'checked' if urole.how != 'hand' }}> <b>Automatic</b> <span class="muted small">· Basic until they're confirmed, then Full by itself</span></label>
+        {% for r in urole_options %}<label class="pp-tick"><input type="radio" name="user_role_id" value="{{ r.id }}" {{ 'checked' if urole.how == 'hand' and urole.id == r.id }}> <b>{{ r.name }}</b> <span class="muted small">· {{ r.summary }}</span></label>{% endfor %}
+      </fieldset>
+    </div>
+    <footer class="adm-panel-foot"><button type="button" class="btn-link" data-panel-close>Cancel</button>
+      <button type="submit" class="primary">Save user role</button></footer>
+  </form>
+{% endcall %}
+{% endif %}
+
+{# GIVE A LATE PASS (Chris, 2026-10-31, canvas "OneHR Late pass", boards A2 / L2): the super admin's. One person, until a time, for
+   every closed part ticked (all ticked to begin with, 2026-11-09: one Give covers them; at least one stays ticked); the line
+   manager's follow-on time for an employee part; for a BG CEO, which units open. The confirm box is built from this form as it
+   is filled (static/late_pass.js); every rule is _late_give's, server-side. #}
+{% if late and late['give'] and is_super and editable and not person['left_at'] %}
+{% call panel("latepass", "Person · Late pass", person['full_name'], ('Line manager: ' ~ late['lm']['name']) if late['lm'] else who_line, open=(panel_open == 'latepass')) %}
+  <form method="post" action="{{ url_for('admin_person_late_give', uid=person['id']) }}" class="adm-panel-form" id="pp-late-form"
+        data-late-form data-late-name="{{ person['full_name'] }}" data-late-lm="{{ late['lm']['name'] if late['lm'] else '' }}"
+        data-confirm="Give {{ person['full_name'] }} a late pass? It opens for them alone until the time you pick. What they already entered stays as it is."
+        data-confirm-title="Give {{ person['full_name'] }} a late pass?" data-confirm-ok="Give late pass"
+        data-confirm-list="[]" data-confirm-list-label="What else changes" data-confirm-body="pp-late-box">
+    <div class="adm-panel-body">
+      <fieldset class="pp-late-parts"><legend>Which parts</legend>
+        <div class="pp-late-list">
+          {% for r in late['give'] %}
+          <label class="pp-late-opt"><input type="checkbox" name="part" value="{{ r['key'] }}" checked
+              data-late-what="{{ r['say'] }}" data-late-kind="{{ r['kind'] }}"
+              data-late-closed="{{ r['closed_disp'] | replace('Closed ', '') }}" data-late-lm="{{ '1' if r['lm_ok'] else '' }}"
+              data-late-lmclose="{{ late['lm']['closes'].get(r['cell'], '') if late['lm'] and r['lm_ok'] else '' }}"
+              data-late-lmverb="{{ {'pm_results': 'moderate', 'tc_self': 'review', 'idp_self': 'review'}.get(r['cell'], 'review') }}"
+              data-late-behalf="{{ '1' if r['cell'] in ('pm_results', 'tc_self') else '' }}">
+            <span class="pp-late-ot"><b>{{ r['what'] }}{% if r['kind'] != 'own' and r['what_sub'] %} <span class="pp-late-os">· {{ r['what_sub'] }}</span>{% endif %}</b><span class="muted small">{{ r['closed_disp'] }} · {{ r['status'] }}</span></span></label>
+          {% endfor %}
+        </div>
+        <span class="pp-late-none small" data-late-none role="alert" hidden>Tick at least one part.</span>
+      </fieldset>
+      {% for r in late['give'] if r['units'] %}
+      <div class="pp-late-units" data-late-units="{{ r['key'] }}" hidden>
+        <div class="pp-late-uh">What opens</div>
+        {% for u_ in r['units'] %}
+        <div class="pp-late-ur"><span>{{ display_company(r['bg'], u_['company']) }}</span>
+          {% if u_['locked'] %}<span class="muted">Locked{% if u_['at'] %} {{ u_['at'].rsplit(' ', 1)[0] }}{% endif %} · stays locked</span>
+          {% else %}<span class="pp-late-uo">Opens for them · {{ u_['n'] }} {{ 'person' if u_['n'] == 1 else 'people' }}</span>{% endif %}</div>
+        {% endfor %}
+      </div>
+      {% endfor %}
+      {# an HOD's Department Review (2026-11-07, canvas H1): what opens, and that a tier above that locks first wins #}
+      {% for r in late['give'] if r['opens'] %}
+      <div class="pp-late-units" data-late-units="{{ r['key'] }}" hidden>
+        <div class="pp-late-uh">What opens</div>
+        {% for o_ in r['opens'] %}
+        <div class="pp-late-ur"><span>{{ o_['label'] }}</span><span class="pp-late-uo">{{ o_['state'] }}</span></div>
+        {% endfor %}
+        <div class="pp-late-un muted small">It closes early if their BU CEO or BG CEO locks first: the higher tier wins.</div>
+      </div>
+      {% endfor %}
+      <div class="pp-late-f">
+        <label for="pp-late-until"><b>Open for them until</b></label>
+        <div class="pp-late-when"><input type="datetime-local" name="until" id="pp-late-until" required data-odp-time="23:59" aria-label="Open for them until"><span class="muted small">MYT</span></div>
+        <span class="muted small" data-late-help>Any time before results go out.</span>
+      </div>
+      {% if late['lm'] %}
+      <fieldset class="pp-late-lm" data-late-lmbox hidden>
+        <label class="pp-late-lmtick"><input type="checkbox" name="lm_on" value="1" data-late-lmtick>
+          <span><b data-late-lmlabel>Give their line manager time to moderate it too</b>
+            <span class="pp-late-lmw">{{ late['lm']['name'] }} until <input type="datetime-local" name="lm_until" data-odp-time="23:59" aria-label="Line manager until" data-late-lmuntil></span>
+            <span class="muted small" data-late-lmhelp>Used only if they submit after the line manager window closes. It ends when {{ late['lm']['name'] }} acts on it.</span></span></label>
+      </fieldset>
+      {% endif %}
+      <div class="pp-late-f">
+        <label for="pp-late-why"><b>Why they get more time</b> <span class="muted">(they see it)</span></label>
+        <textarea name="reason" id="pp-late-why" rows="3" maxlength="{{ 500 }}" required placeholder="e.g. on medical leave over the deadline" data-late-why></textarea>
+        <span class="muted small pp-late-count" data-late-count>0 / 500</span>
+      </div>
+      <div id="pp-late-box" hidden></div>
+    </div>
+    <footer class="adm-panel-foot pp-late-foot">
+      <span class="muted small adm-panel-grow">Super admin only. They get a note in OneHR and an email with your reason.</span>
+      <button type="button" class="btn-link" data-panel-close>Cancel</button>
+      <button type="submit" class="primary">Give late pass</button>
+    </footer>
+  </form>
+{% endcall %}
+<script src="{{ url_for('static', filename='late_pass.js') }}?v={{ asset_v }}" defer></script>
+{% endif %}
+
+{# Each module, wide, loaded from its own tab when it opens: the tab's own forms and routes, and a save comes back here
+   with the panel open again #}
+{% for k, ttl in (('performance', 'Performance'), ('competency', 'Competency'), ('f360', '360 Feedback'), ('plan', 'Career Plan')) %}
+{% call panel(k, "Person · " ~ ttl, person['full_name'], who_line, wide=True, open=(panel_open == k), src=url_for('admin_person', uid=person['id'], tab=k, cycle=pcyc, fragment=1)) %}
+  <div class="adm-panel-body" data-panel-slot><p class="muted">Loading {{ ttl }}…</p></div>
+  <footer class="adm-panel-foot">
+    <a class="btn-link adm-panel-grow" href="{{ url_for('admin_person', uid=person['id'], tab=k, cycle=pcyc) }}">Open as a page &#8599;</a>
+    <button type="button" class="primary" data-panel-close>Done</button>
+  </footer>
+{% endcall %}
+{% endfor %}
+
+{% if ai_ins %}
+{% call panel("insight", "Person · AI insight", person['full_name'], who_line, wide=True, open=(panel_open == 'insight'), src=url_for('admin_person_insight', uid=person['id'], cycle=cyc['id'], part=(request.args.get('part') if request.args.get('part') in ('pm', 'tc', 'idp', 'pot') else 'pm'), fragment=1)) %}
+  <div class="adm-panel-body" data-panel-slot><p class="muted">Loading the AI insight…</p></div>
+  <footer class="adm-panel-foot">
+    <a class="btn-link adm-panel-grow" href="{{ url_for('admin_person', uid=person['id'], tab='performance', cycle=pcyc) }}" data-ais-open>Open the Performance tab</a>
+    <button type="button" class="primary" data-panel-close>Done</button>
+  </footer>
+{% endcall %}
+{% endif %}
+
+{% if convo %}
+{% call panel("conversation", "Person · AI+ conversation", person['full_name'], who_line, wide=True, open=(panel_open == 'conversation'), src=url_for('admin_review_transcript', uid=person['id'], cycle=cyc['id'])) %}
+  <div class="adm-panel-body" data-panel-slot><p class="muted">Loading the conversation…</p></div>
+  <footer class="adm-panel-foot">
+    <a class="btn-link adm-panel-grow" href="{{ url_for('admin_review_transcript', uid=person['id'], cycle=cyc['id']) }}">Open as a page &#8599;</a>
+    <button type="button" class="primary" data-panel-close>Done</button>
+  </footer>
+{% endcall %}
+{% endif %}
+
+

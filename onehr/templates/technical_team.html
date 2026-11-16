@@ -1,0 +1,86 @@
+{% extends "base.html" %}
+{% from "_table_tools.html" import colth, colmenu, colmenu_script %}
+{% block title %}Technical competency — Team{% endblock %}
+{% block body %}
+
+{% macro report_row(r) %}
+{# One macro, two tables (To review / Completed) -- the sort keys live here so
+   both get them, and status carries the words on screen. #}
+<tr class="tc-team-row data-row"
+    data-name="{{ r['full_name'] }}"
+    data-status="{% if r['status'] == 'reviewed' %}Approved
+      {%- elif r['status'] == 'submitted' %}Awaiting your review
+      {%- else %}Not submitted yet{% endif %}">
+  <td>
+    <p style="font-weight:500;margin:0">{{ r['full_name'] }}</p>
+    <p class="muted small" style="margin:2px 0 0">
+      {% if r['job_grade'] %}JG {{ r['job_grade'] }} &middot; {% endif %}
+      {{ r['job_title'] | proper or '-' }} &middot; {{ r['department'] | proper or '-' }}
+    </p>
+  </td>
+  <td>
+    {% if r['status'] == 'reviewed' %}
+      <span class="status-pill status-reviewed">Approved</span>
+    {% elif r['status'] == 'submitted' %}
+      <span class="status-pill status-submitted">Awaiting your review</span>
+    {% else %}
+      <span class="muted small">Not submitted yet</span>
+    {% endif %}
+  </td>
+  <td>
+    {# Only offer the drill-through once there is something to look at. A draft
+       in progress is the employee's, not the manager's, to see. #}
+    {% if r['status'] in ('submitted', 'reviewed') %}
+      <a class="btn-link" href="{{ url_for('technical_team_member_view', subject_id=r['id']) }}">
+        {{ 'View' if r['status'] == 'reviewed' else 'Review' }} &rarr;</a>
+    {% else %}
+      <span class="muted small">&mdash;</span>
+    {% endif %}
+  </td>
+</tr>
+{% endmacro %}
+
+<div class="page-head">
+  <div>
+    <h1>Technical competency{% if cycle %} <span class="season-badge">{{ cycle['name'] }}</span>{% endif %}</h1>
+    <p class="muted">Your direct reports' technical competency assessments.</p>
+  </div>
+</div>
+
+{% include "_tc_switcher.html" %}
+
+<h2>To review{% if awaiting %} <span class="todo-count">{{ awaiting }}</span>{% endif %}</h2>
+{% if todo %}
+<div class="table-scroll table-scroll-capped"><table class="admin-table tc-team-table" id="tc-todo-table">
+  <thead><tr>{{ colth('name', 'Direct report') }}{{ colth('status', 'Status') }}
+    <th>Action</th></tr></thead>
+  <tbody>{% for r in todo %}{{ report_row(r) }}{% endfor %}
+    <tr class="no-filter-match" hidden><td colspan="3" class="muted">No one matches the filters.</td></tr></tbody>
+</table></div>
+{{ colmenu('tc-todo-table', {
+     'name':   {'mode': 'clientFilter', 'type': 'text', 'sortAttr': 'name'},
+     'status': {'mode': 'clientFilter', 'type': 'text', 'sortAttr': 'status'} }) }}
+{% else %}
+<p class="muted">All caught up — every report's assessment has been approved.</p>
+{% endif %}
+
+{% if done %}
+<h2 style="margin-top:26px">Completed</h2>
+<div class="table-scroll table-scroll-capped"><table class="admin-table tc-team-table" id="tc-done-table">
+  <thead><tr>{{ colth('name', 'Direct report') }}{{ colth('status', 'Status') }}
+    <th>Action</th></tr></thead>
+  <tbody>{% for r in done %}{{ report_row(r) }}{% endfor %}
+    <tr class="no-filter-match" hidden><td colspan="3" class="muted">No one matches the filters.</td></tr></tbody>
+</table></div>
+{{ colmenu('tc-done-table', {
+     'name':   {'mode': 'clientFilter', 'type': 'text', 'sortAttr': 'name'},
+     'status': {'mode': 'clientFilter', 'type': 'text', 'sortAttr': 'status'} }) }}
+{% endif %}
+
+<script>
+// Returning here via the browser Back button after approving would otherwise
+// show a cached page with the report still sitting in "To review".
+window.addEventListener('pageshow', function (e) { if (e.persisted) location.reload(); });
+</script>
+{{ colmenu_script(asset_v) }}
+{% endblock %}

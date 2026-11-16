@@ -1,0 +1,29 @@
+{# A module's readiness steps on its Overview (the canvas's "What needs you, in order"): the same rows as Home's
+   checklist, so the two can never disagree. Each step is N of M with a bar (admin round 4, canvas row 1); a step only
+   others can move (employees, raters, the leaders who lock) says who it waits on and is not on the admin's to-do. #}
+{% if needs %}
+{% set _done = needs | selectattr('state', 'equalto', 'done') | list %}
+{% set _wait = needs | selectattr('state', 'equalto', 'waiting') | list %}
+<div class="admin-card adm-needs">
+  <div class="adm-needs-head"><h2>What needs you, in order</h2>
+    <span class="muted small">{{ _done | length }} of {{ needs | length }} done{% if _wait %} &middot; {{ _wait | length }}
+      wait{{ 's' if _wait | length == 1 else '' }} on others, not on you{% endif %}</span></div>
+  <ol class="adm-needs-list">
+    {% for st in needs %}
+    <li class="adm-need is-{{ st.state }}">
+      <span class="adm-need-mark" aria-hidden="true">{{ '✓' if st.state == 'done' else '' }}</span>
+      <span class="adm-need-body"><b>{{ st.label }}</b><span class="muted small">{{ st.why }}</span></span>
+      <span class="adm-need-prog">
+        {# the super admin opens the people the step still waits on in the list panel (2026-10-20) #}
+        <span class="adm-need-n">{% if st.list and nav_is_super %}<a href="{{ st.url or '#' }}" data-list-open="{{ st.list }}">{{ st.detail }}</a>{% else %}{{ st.detail }}{% endif %}</span>
+        {% if st.of %}<span class="adm-need-bar" role="img" aria-label="{{ st.pct }}%"><i style="width:{{ st.pct }}%"></i></span>{% endif %}
+      </span>
+      {% if st.state == 'done' %}<span class="adm-need-done">Done</span>
+      {% elif st.state == 'waiting' %}<span class="adm-need-wait">Waiting on {{ st.waits }}{% if st.url %} &middot;
+        <a href="{{ st.url }}"{% if st.list and nav_is_super %} data-list-open="{{ st.list }}"{% endif %}>See who</a>{% endif %}</span>
+      {% elif st.url %}<a class="adm-need-go" href="{{ st.url }}"{% if st.list and nav_is_super %} data-list-open="{{ st.list }}"{% endif %}>Open &rsaquo;</a>{% endif %}
+    </li>
+    {% endfor %}
+  </ol>
+</div>
+{% endif %}

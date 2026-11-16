@@ -1,0 +1,78 @@
+{% extends "base.html" %}
+{% from "_table_tools.html" import colth, colmenu, colmenu_script %}
+{% from "_filter_rows.html" import filter_rows %}
+{% block title %}Performance — KPI lines with no moderator{% endblock %}
+{% block body %}
+{# Performance > Run > Progress > KPI lines with no moderator, on the admin page kit (canvas K2, 2026-10-10). Was
+   "Approver exceptions": the person who signs a KPI line off is its moderator everywhere else in OneHR. #}
+<p class="adm-lede">KPI lines in {{ period['name'] }} with nobody to moderate them, usually because the person has no
+  reliable line manager on record. Give each one a moderator here: nothing is skipped or routed for you.</p>
+
+{# business group, unit and department as rows (the admin table standard, 2026-10-11), not column filters #}
+<section class="admin-card adm-filters" aria-label="Filters">
+  {{ filter_rows(frows) }}
+</section>
+
+<section class="admin-card" aria-label="KPI lines with no moderator">
+  <div class="table-scroll table-scroll-capped">
+  <table class="admin-table" id="pm-exceptions-table">
+    <thead><tr>{{ colth('person', 'Person') }}{{ colth('kpi', 'KPI') }}
+                {{ colth('problem', 'Problem') }}{{ colth('bg', 'Business group') }}
+                {{ colth('dept', 'Department') }}<th>Give a moderator</th></tr></thead>
+    <tbody>
+      {% for r in rows %}
+      {# problem carries the WORDS on screen, not the internal reason token:
+         "Moderator has left" is the thing an admin filters for. #}
+      <tr class="data-row"
+          data-person="{{ r['full_name'] }}" data-kpi="{{ r['kpi_name'] }}"
+          data-problem="{{ 'Moderator has left' if r['reason'] == 'left' else 'No moderator' }}"
+          data-bg="{{ display_bg(r['business_group']) if r['business_group'] else '' }}" data-dept="{{ r['department'] or '' }}">
+        <td><b>{{ r['full_name'] }}</b><span class="muted small" style="display:block">{{ r['employee_id'] }}</span></td>
+        <td>{{ r['kpi_name'] }}</td>
+        {# Two different problems land here, and the fix differs: a line with no moderator has never been routed, while
+           one whose moderator has LEFT is routed to an account that cannot sign in. #}
+        <td>
+          {% if r['reason'] == 'left' %}
+            <span class="status-pill status-submitted">Moderator has left</span>
+            {% if r['gone'] %}<span class="muted small" style="display:block">{{ r['gone'] }}</span>{% endif %}
+          {% else %}
+            <span class="status-pill status-progress">No moderator</span>
+          {% endif %}
+          {% if r['acted'] %}
+          <span class="muted small" style="display:block">{{ r['acted'] }} {{ 'step' if r['acted'] == 1 else 'steps' }}
+            already signed off: the new moderator comes after them, not in their place.</span>
+          {% endif %}
+        </td>
+        <td>{{ display_bg(r['business_group']) if r['business_group'] else '—' }}</td>
+        <td>{{ r['department'] | proper or '—' }}</td>
+        <td>
+          <form method="post" action="{{ url_for('admin_performance_exceptions_assign') }}"
+                class="inline-when" data-no-busy
+                data-confirm="Make the person you picked the moderator of “{{ r['kpi_name'] }}” for {{ r['full_name'] }}? They will be asked to sign this KPI line off{% if r['acted'] %}, after the {{ r['acted'] }} {{ 'step' if r['acted'] == 1 else 'steps' }} already signed off{% endif %}. You can assign someone else later."
+                data-confirm-title="Assign this moderator?" data-confirm-ok="Assign">
+            <input type="hidden" name="kpi_target_id" value="{{ r['id'] }}">
+            <span class="pick" data-pick>
+              <input type="text" class="pick-q" placeholder="Search the moderator, then pick" required autocomplete="off"
+                     aria-label="Moderator for {{ r['kpi_name'] }}">
+              <input type="hidden" class="pick-val" name="approver_employee_id">
+            </span>
+            <button type="submit" class="btn-link">Assign</button>
+          </form>
+        </td>
+      </tr>
+      {% else %}
+      <tr><td colspan="6" class="muted">Every KPI line has a moderator. Nothing to do here.</td></tr>
+      {% endfor %}
+      <tr class="no-filter-match" hidden><td colspan="6" class="muted">No KPI lines match the filters.</td></tr>
+    </tbody>
+  </table>
+  </div>
+</section>
+{{ colmenu('pm-exceptions-table', {
+     'person':  {'mode': 'clientFilter', 'type': 'text', 'sortAttr': 'person'},
+     'kpi':     {'mode': 'clientFilter', 'type': 'text', 'sortAttr': 'kpi'},
+     'problem': {'mode': 'clientFilter', 'type': 'text', 'sortAttr': 'problem'},
+     'bg':      {'mode': 'sort', 'type': 'text', 'sortAttr': 'bg'},
+     'dept':    {'mode': 'sort', 'type': 'text', 'sortAttr': 'dept'} }) }}
+{{ colmenu_script(asset_v) }}
+{% endblock %}

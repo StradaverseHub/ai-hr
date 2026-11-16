@@ -1,0 +1,648 @@
+{% extends "base.html" %}
+{% from "_adm_panel.html" import panel, list_peek %}
+{% from "_kpi_form.html" import kpi_form with context %}
+{% from "_coa_place.html" import place_fields, place_script with context %}
+{% from "_kpi_unit.html" import unit_select with context %}
+{% from "_coa_link.html" import link_editor with context %}
+{% block title %}KPI library{% endblock %}
+
+
+
+{% block body %}
+{# retire and archive (the canvas boards 8 and 9): one button = one form = OneHR's own confirm box, listing what happens #}
+{% macro coa_form(action, node, cf, o_key, label) -%}
+<form method="post" class="inline-when" data-no-busy data-confirm="{{ cf.msg }}" data-confirm-title="{{ cf.title }}" data-confirm-ok="{{ cf.ok }}" data-confirm-list='{{ cf.list | tojson }}'>
+  <input type="hidden" name="action" value="{{ action }}"><input type="hidden" name="node_id" value="{{ node.id }}"><input type="hidden" name="kpi" value="{{ o_key }}">
+  <button type="submit" class="btn-link">{{ label }}</button>
+</form>
+{%- endmacro %}
+{% macro coa_acts(node, stt, o_key) -%}
+{%- if stt.st == 'active' -%}{{ coa_form('chart_retire', node, stt.retire, o_key, 'Retire') }}
+{%- elif stt.blocked_back -%}<button type="button" class="btn-link" disabled title="{{ stt.blocked_back }}">Bring back</button>
+{%- else -%}{{ coa_form('chart_bringback', node, stt.bringback, o_key, 'Bring back') }}{%- endif -%}
+{%- if stt.why -%}<button type="button" class="btn-link" disabled title="{{ stt.why }}">Archive</button>
+{%- else -%}{{ coa_form('chart_archive', node, stt.archive, o_key, 'Archive') }}{%- endif -%}
+{%- endmacro %}
+{% macro coa_status(node, stt, o_key) -%}
+<div class="coa-kv"><span class="k">Status</span>
+  <span class="coa-stw">{% if stt.st == 'active' %}<span class="coa-st on">In use</span><span class="small muted">{{ (stt.lines_words ~ (' carries ' if stt.fam_now == 1 else ' carry ') ~ node.code) if stt.lines_words else ('No line carries ' ~ node.code ~ ' now') }}</span>
+  {%- else %}<span class="coa-st ret">Retired {{ stt.day }}</span><span class="small muted">not offered for new lines{% if stt.fam_now %}; its {{ stt.fam_now }} line{{ '' if stt.fam_now == 1 else 's' }} keep{{ 's' if stt.fam_now == 1 }} {{ node.code }}{% endif %}</span>{% endif %}</span>
+  <span class="coa-acts">{{ coa_acts(node, stt, o_key) }}</span></div>
+{%- endmacro %}
+<p class="adm-crumb"><a href="{{ url_for('admin_module_settings', key='pm') }}">Performance</a> &rsaquo; KPI library</p>
+<div class="adm-headrow">
+  <p class="adm-lede">Each KPI is defined once, at the widest level its meaning holds, and used below it. The library
+    holds no targets: they are set in the Early Year, or when Group People adds a KPI line for someone.</p>
+  <div class="adm-headrow-acts">
+    {% if can_edit %}
+    <a class="btn-link" href="{{ url_for('admin_kpi_library_import') }}">Bulk import</a>
+    <a class="primary kl-add" href="{{ url_for('admin_kpi_library', panel='add', node=node) }}" data-panel-open="add">Add a KPI</a>
+    {% else %}
+    <a class="primary kl-add" href="{{ url_for('admin_kpi_library', panel='propose', node=node) }}" data-panel-open="propose">Propose a KPI</a>
+    {% endif %}
+  </div>
+</div>
+<nav class="adm-tabs kl-tabs" aria-label="KPI library">
+  <a class="is-active" href="{{ url_for('admin_kpi_library') }}">Library</a>
+  <a href="{{ url_for('admin_kpi_merges') }}">Merge queue · {{ n_merges }}</a>{% if coa_switch %}
+  <a href="{{ url_for('admin_kpi_chart_match') }}">Match lines</a>
+  <a href="{{ url_for('admin_kpi_systems') }}">Systems</a>{% endif %}
+  <a href="{{ url_for('admin_library_requests') }}">{{ 'Requests' if can_edit else 'My proposals' }} · {{ n_requests }}</a>
+  <a href="{{ url_for('admin_bu_kpis') }}">BU KPI setup</a>
+</nav>
+
+{% if chart_view %}<form method="get" class="kl-filters" role="search">
+  <input type="hidden" name="view" value="chart"><input type="hidden" name="cn" value="{{ cn }}">
+  {% if status != 'active' %}<input type="hidden" name="status" value="{{ status }}">{% endif %}
+  <label class="kl-q"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="11" cy="11" r="7"></circle><path d="m20 20-3.5-3.5"></path></svg>
+    <input type="search" name="q" value="{{ q }}" placeholder="Search a code, a KPI or an old name" aria-label="Search the chart" autocomplete="off" aria-autocomplete="list" aria-expanded="false" data-suggest="kpis" data-suggest-url="{{ url_for('search_suggest') }}" data-no-qin="KPIs, not people"></label>
+  <span class="kl-status">
+    <a class="{{ 'is-on' if status == 'active' }}" href="{{ url_for('admin_kpi_library', view='chart', cn=cn, q=q or None) }}">In use</a>
+    <a class="{{ 'is-on' if status == 'retired' }}" href="{{ url_for('admin_kpi_library', view='chart', cn=cn, q=q or None, status='retired') }}">Retired · {{ chart.n_retired }}</a>
+    <a class="{{ 'is-on' if status == 'archived' }}" href="{{ url_for('admin_kpi_library', view='chart', cn=cn, q=q or None, status='archived') }}">Archived · {{ chart.n_archived }}</a>
+  </span>
+</form>{% else %}<form method="get" class="kl-filters" role="search">
+  <input type="hidden" name="node" value="{{ node }}">
+  {% if status != 'active' %}<input type="hidden" name="status" value="{{ status }}">{% endif %}
+  <label class="kl-q"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="11" cy="11" r="7"></circle><path d="m20 20-3.5-3.5"></path></svg>
+    <input type="search" name="q" value="{{ q }}" placeholder="Search KPI, old name, definition" aria-label="Search the library" autocomplete="off" aria-autocomplete="list" aria-expanded="false" data-suggest="kpis" data-suggest-url="{{ url_for('search_suggest') }}" data-no-qin="KPIs, not people"></label>
+  <label>Perspective
+    <select name="persp" class="modern-select" onchange="this.form.submit()">
+      <option value="">All four</option>
+      {% for p in perspectives %}<option {{ 'selected' if persp == p }}>{{ p }}</option>{% endfor %}
+      <option value="none" {{ 'selected' if persp == 'none' }}>Not tagged</option>
+    </select></label>
+  <label>Family
+    <select name="fam" class="modern-select" onchange="this.form.submit()">
+      <option value="">All {{ families | length }}</option>
+      {% for f in families %}<option {{ 'selected' if fam == f }}>{{ f }}</option>{% endfor %}
+    </select></label>
+  <label class="kl-check" title="KPIs one or two people hold"><input type="checkbox" name="spec" value="1" {{ 'checked' if show_spec }} onchange="this.form.submit()"> Specialised · {{ n_spec }}</label>
+  <span class="kl-status">
+    <a class="{{ 'is-on' if status == 'active' }}" href="{{ url_for('admin_kpi_library', node=node) }}">In use</a>
+    <a class="{{ 'is-on' if status == 'retired' }}" href="{{ url_for('admin_kpi_library', node=node, status='retired') }}">Retired · {{ n_retired }}</a>
+  </span>
+</form>{% endif %}
+
+{% if chart_view %}{% macro cnode(key, code, label, n, cls='') %}<a class="kl-tn {{ cls }}{{ ' is-on' if cn == key }}" title="{{ (code ~ '. ' if code else '') ~ label }}" href="{{ url_for('admin_kpi_library', view='chart', cn=key, q=q or None, status=(status if status != 'active' else None)) }}"{% if cn == key %} aria-current="true"{% endif %}><span>{% if code %}<span class="coa-c">{{ code }}.</span>{% endif %}{{ label }}</span><span class="kl-n">{{ n }}</span></a>{% endmacro %}<div class="kl-grid coa-grid">
+  <section class="admin-card kl-tree" aria-label="The chart">
+    <div class="coa-switch"><span class="mod-tabs"><a class="active" href="{{ url_for('admin_kpi_library', view='chart') }}" aria-current="true">Chart</a><a href="{{ url_for('admin_kpi_library') }}">Where used</a></span></div>
+    {{ cnode('all', '', 'Whole chart', chart.n_all) }}
+    <span class="kl-th">Perspectives</span>
+    {% for p in chart.tree %}
+      {{ cnode('p:' ~ p.code, p.code, p.name, p.n) }}
+      {% if p.groups and ((chart.pick_p and chart.pick_p.id == p.id) or (chart.pick_g and chart.pick_g.parent_id == p.id)) %}
+      <div class="kl-sub">{% for g in p.groups %}{{ cnode('g:' ~ g.code, g.code, g.name, g.n, 'kl-tn2') }}{% endfor %}</div>
+      {% endif %}
+    {% endfor %}
+    <span class="kl-th">Not in the chart yet</span>
+    {{ cnode('none', '', 'Needs a place', chart.n_none) }}
+    <form method="post" class="coa-seed" data-no-busy
+          data-confirm="Build the chart from today's library? It adds a KPI group for each family · group and a code for each KPI the libraries hold, across every business group. Nothing already in the chart changes, and a second run adds only what is missing."
+          data-confirm-title="Seed the chart?" data-confirm-ok="Seed the chart">
+      <input type="hidden" name="action" value="chart_seed">
+      <button type="submit" class="btn-link">Seed from the library</button>
+      <span class="muted small">Adds what is missing; changes nothing already coded.</span>
+    </form>
+  </section>
+
+  <section class="admin-card kl-node" aria-label="KPIs at {{ chart.sel_label }}">
+    <div class="kl-node-head">
+      <div><b>{{ chart.sel_label }}</b>
+        <span class="muted small">{{ chart.sel_sub }}{% if usage_cycle %} · {{ '{:,}'.format(chart.cov[1]) }} KPI line{{ 's' if chart.cov[1] != 1 }} on {{ usage_cycle['name'] }}{% endif %}</span></div>
+      <div class="coa-tied">
+        {% if chart.cov[1] %}<div class="kl-bar" role="img" aria-label="{{ chart.cov[0] }} of {{ chart.cov[1] }} lines have a code"><span class="kl-b1" style="width: {{ (chart.cov[0] * 100 / chart.cov[1]) | round(1) }}%"></span></div>
+        <span class="muted small">{{ 'All ' ~ chart.cov[1] if chart.cov[0] == chart.cov[1] else chart.cov[0] ~ ' of ' ~ chart.cov[1] }} KPI lines have a code</span>{% endif %}
+        <a class="small" href="{{ url_for('admin_kpi_library', view='chart', cn=cn, panel='chart') }}" data-panel-open="chart">Groups and names</a>
+      </div>
+    </div>
+    {% set lmode = 'in use' if (status == 'active' or chart.sel == 'none') else status %}{% if lmode == 'retired' %}<div class="kl-row kl-head coa-row coa-rt" role="row"><span>Code</span><span>KPI</span><span>Status</span><span>Lines now</span><span></span></div>
+    {% elif lmode == 'archived' %}<div class="kl-row kl-head coa-row coa-ar" role="row"><span>Code</span><span>KPI</span><span>Archived</span><span></span></div>
+    {% else %}<div class="kl-row kl-head coa-row" role="row"><span>Code</span><span>KPI</span><span>Level · used by</span><span>Target</span><span></span></div>{% endif %}
+    <div class="coa-body">
+    {% for sec in chart.sections %}
+      <div class="kl-grp">{{ sec.label }}</div>
+      {% for r in sec.rows %}
+      {% if lmode == 'retired' %}
+      <div class="kl-row coa-row coa-rt coa-ret{{ ' is-sub' if r.is_var }}">
+        <span class="coa-code{{ ' is-sub' if r.is_var }}">{{ r.code }}</span>
+        <span class="kl-name"><span class="coa-nm" title="{{ r.name }}"><b>{{ r.name }}</b>{% if r.bu_level %} <span class="pp-chip">BU-level</span>{% endif %}</span><span class="muted small coa-cut" title="{{ r.sub }}">{{ r.sub }}</span></span>
+        <span><span class="coa-st ret">{{ r.chip }}</span></span>
+        <span class="small{{ ' muted' if not r.lines_n }}">{{ r.lines_now }}</span>
+        {% if r.open_key %}<a class="small" href="{{ url_for('admin_kpi_library', view='chart', cn=cn, q=q or None, status='retired', kpi=r.open_key, panel='kpi') }}">Open</a>{% else %}<span></span>{% endif %}
+      </div>
+      {% elif lmode == 'archived' %}
+      <div class="kl-row coa-row coa-ar coa-ret{{ ' is-sub' if r.is_var }}">
+        <span class="coa-code{{ ' is-sub' if r.is_var }}">{{ r.code }}</span>
+        <span class="kl-name"><span class="coa-nm" title="{{ r.name }}"><b>{{ r.name }}</b></span><span class="muted small coa-cut" title="{{ r.sub }}">{{ r.sub }}</span></span>
+        <span class="small coa-cut" title="{{ r.arch }}">{{ r.arch }}</span>
+        <form method="post" class="inline-when" data-no-busy data-confirm="{{ r.restore.msg }}" data-confirm-title="{{ r.restore.title }}" data-confirm-ok="{{ r.restore.ok }}" data-confirm-list='{{ r.restore.list | tojson }}'>
+          <input type="hidden" name="action" value="chart_restore"><input type="hidden" name="node_id" value="{{ r.node_id }}"><input type="hidden" name="status" value="archived">
+          <button type="submit" class="btn-link"{% if r.restore_block %} disabled title="{{ r.restore_block }}"{% endif %}>Restore</button>
+        </form>
+      </div>
+      {% else %}
+      <div class="kl-row coa-row{{ ' is-sub' if r.is_var }}{{ ' is-open' if opened and r.key == opened.key }}">
+        <span class="coa-code{{ ' is-sub' if r.is_var }}">{{ r.code }}</span>
+        <span class="kl-name"><span class="coa-nm" title="{{ r.name }}"><b>{{ r.name }}</b>{% if r.bu_level %} <span class="pp-chip">BU-level</span>{% endif %}</span><span class="muted small coa-cut" title="{{ r.sub }}">{{ r.sub }}</span></span>
+        <span class="coa-lv"><b>{{ r.lvl or '—' }}</b><span class="muted small" title="{{ r.used }}">{{ r.used }}</span></span>
+        <span class="small">{{ r.target }}</span>
+        {% if r.key %}<a class="small" href="{{ url_for('admin_kpi_library', view='chart', cn=cn, q=q or None, status=(status if status != 'active' else None), kpi=r.key, panel='kpi') }}">Open</a>{% else %}<span></span>{% endif %}
+      </div>
+      {% endif %}
+      {% endfor %}
+    {% else %}
+      <p class="muted pp-pad">{% if q %}Nothing in the chart matches that search. <a href="{{ url_for('admin_kpi_library', view='chart', cn=cn) }}">Clear it</a>.{% elif chart.sel == 'none' %}Every library KPI has a place in the chart.{% elif status == 'archived' %}Nothing is archived{% if chart.sel != 'all' %} here{% endif %}. A retired KPI or variant that nothing uses can be archived from its panel.{% elif status == 'retired' %}Nothing is retired{% if chart.sel != 'all' %} here{% endif %}.{% elif chart.empty %}The chart is empty. Seed it from today's library (the button at the foot of the tree), or add a KPI group from Groups and names.{% else %}Nothing files here.{% endif %}</p>
+    {% endfor %}
+    </div>
+    <p class="muted small kl-foot">Showing {{ chart.n_kpis }} KPI{{ 's' if chart.n_kpis != 1 }}{% if chart.sel != 'none' %} and {{ chart.n_variants }} variant{{ 's' if chart.n_variants != 1 }}{% endif %} · the list scrolls inside the card · a code never changes and is never reused</p>
+  </section>
+</div>{% else %}<div class="kl-grid">
+  <section class="admin-card kl-tree" aria-label="The tree">{% if coa_switch %}<div class="coa-switch"><span class="mod-tabs"><a href="{{ url_for('admin_kpi_library', view='chart') }}">Chart</a><a class="active" href="{{ url_for('admin_kpi_library') }}" aria-current="true">Where used</a></span></div>{% endif %}
+    {% macro tnode(key, label, n, cls='') %}<a class="kl-tn {{ cls }}{{ ' is-on' if node == key }}" title="{{ label }}" href="{{ url_for('admin_kpi_library', node=key, q=q or None, persp=persp or None, fam=fam or None, status=(status if status != 'active' else None), spec=('1' if show_spec else None)) }}"{% if node == key %} aria-current="true"{% endif %}><span>{{ label }}</span><span class="kl-n">{{ n }}</span></a>{% endmacro %}
+    {{ tnode('global', 'Global', n_global) }}
+    <span class="kl-th">Business groups</span>
+    {% for b in tree_bgs if b.n or node == 'bg:' ~ b.bg %}
+      {{ tnode('bg:' ~ b.bg, display_bg(b.bg), b.n) }}
+      {% if b.units and (node == 'bg:' ~ b.bg or node.startswith('bu:' ~ b.bg ~ '|')) %}
+      <div class="kl-sub">
+        {% for u, n in b.units %}{{ tnode('bu:' ~ b.bg ~ '|' ~ u, display_company(b.bg, u) or u, n, 'kl-tn2') }}{% endfor %}
+      </div>
+      {% endif %}
+    {% endfor %}
+    {% if tree_fams %}<span class="kl-th">Job families</span>{% endif %}
+    {% for f in tree_fams %}
+      {% set open_f = node == 'jf:' ~ f.code or (node.startswith('sp:' ~ f.code ~ '-')) %}
+      {% if loop.index == 7 %}<details class="kl-more fold" {{ 'open' if tree_fams[6:] | selectattr('code', 'equalto', node[3:] if node.startswith('jf:') else '') | list }}><summary class="kl-tn">{{ tree_fams | length - 6 }} more job families</summary>{% endif %}
+      {{ tnode('jf:' ~ f.code, f.name, f.n) }}
+      {% if open_f and f.specs %}
+      <div class="kl-sub">{% for c, nm, n in f.specs %}{{ tnode('sp:' ~ c, nm, n, 'kl-tn2') }}{% endfor %}</div>
+      {% endif %}
+      {% if loop.last and loop.index >= 7 %}<button type="button" class="fold-less kl-tn" data-fold-less>Show less</button></details>{% endif %}
+    {% endfor %}
+  </section>
+
+  <section class="admin-card kl-node" aria-label="KPIs at {{ node_label }}">
+    <div class="kl-node-head">
+      <div><b>{{ node_label }}</b>
+        <span class="muted small">{{ node_sub }} · {{ n_node }} KPI{{ 's' if n_node != 1 }}{% if n_variants %}, {{ n_variants }} variant{{ 's' if n_variants != 1 }}{% endif %}{% if usage_cycle %} · {{ '{:,}'.format(n_lines) }} KPI line{{ 's' if n_lines != 1 }} on {{ usage_cycle['name'] }}{% endif %}</span></div>
+      {% set tot = n_node or 1 %}
+      <div class="kl-bal">
+        <div class="kl-bar" role="img" aria-label="Balance: {% for p in perspectives %}{{ p }} {{ balance[p] }}, {% endfor %}not tagged {{ balance['none'] }}">
+          {% for p in perspectives %}{% if balance[p] %}<span class="kl-b{{ loop.index }}" style="width: {{ (balance[p] * 100 / tot) | round(1) }}%"></span>{% endif %}{% endfor %}
+          {% if balance['none'] %}<span class="kl-b0" style="width: {{ (balance['none'] * 100 / tot) | round(1) }}%"></span>{% endif %}
+        </div>
+        <span class="muted small">{% for p in perspectives %}{% if balance[p] %}<span class="kl-dot kl-b{{ loop.index }}" aria-hidden="true"></span>{{ p }} {{ balance[p] }} · {% endif %}{% endfor %}not tagged {{ balance['none'] }}</span>
+      </div>
+    </div>
+    {% if groups %}
+    {% macro lib_row(it, sub=false) %}
+    <div class="kl-row{{ ' is-open' if opened and opened.key == it.key }}{{ ' is-sub' if sub }}">
+      <span class="kl-name"><span><b>{{ it.name }}</b>{% if sub %} <span class="pp-chip">Variant</span>{% endif %}{% if it.bu_level %} <span class="pp-chip">BU-level</span>{% endif %}{% if it.specialised %} <span class="pp-chip">Specialised</span>{% endif %}</span>
+        <span class="muted small">{{ it.unit or 'no unit' }} · {{ 'higher' if it.method == 'more' else 'lower' }} is better{% if not sub and it.variants %} · {{ it.variants | length }} variant{{ 's' if it.variants | length != 1 }}{% endif %}</span></span>
+      <span>{% if it.perspective %}<span class="pp-chip">{{ it.perspective }}</span>{% else %}<span class="muted small">not tagged</span>{% endif %}</span>
+      <span class="small">{% if it.n_people %}{{ it.n_people }} {{ 'person' if it.n_people == 1 else 'people' }} · {{ it.n_bgs }} BG{{ 's' if it.n_bgs != 1 }} · {{ it.n_units }} unit{{ 's' if it.n_units != 1 }}{% else %}<span class="muted">Nobody yet</span>{% endif %}</span>
+      <span class="small">{{ 'BU target, set in the Early Year' if it.bu_level else 'Per person' }}</span>
+      <a class="small" href="{{ url_for('admin_kpi_library', node=node, q=q or None, persp=persp or None, fam=fam or None, status=(status if status != 'active' else None), spec=('1' if show_spec else None), kpi=it.key, panel='kpi') }}">Open</a>
+    </div>
+    {% endmacro %}
+    <div class="kl-row kl-head" role="row"><span>KPI</span><span>Perspective</span><span>Used by</span><span>Target</span><span></span></div>
+    {% for g, items in groups %}
+    <div class="kl-grp">{{ g[0] }}{% if g[1] %} &rsaquo; {{ g[1] }}{% endif %}</div>
+    {% for it in items %}
+    {{ lib_row(it) }}
+    {% for v in it.variants %}{{ lib_row(v, true) }}{% endfor %}
+    {% endfor %}
+    {% endfor %}
+    <p class="muted small kl-foot">Showing {{ n_rows }} of {{ n_node }}{% if not show_spec %} · Specialised KPIs hidden{% endif %}{% if q or persp or fam %} · <a href="{{ url_for('admin_kpi_library', node=node) }}">Clear the filters</a>{% endif %}</p>
+    {% else %}
+    <p class="muted pp-pad">{% if n_node %}No KPI here matches the filters. <a href="{{ url_for('admin_kpi_library', node=node) }}">Clear them</a>.{% else %}No KPIs file here{% if status == 'retired' %} that are retired{% endif %}.{% endif %}</p>
+    {% endif %}
+  </section>
+</div>{% endif %}
+
+{# a KPI opened: one identity, its placements (the library rows), who uses it, its trail #}
+{% if opened %}
+{% set o = opened %}{% set cp = coa_panel if (coa_panel is defined and coa_panel) else none %}
+{% call panel("kpi", (("KPI " ~ cp.node.code ~ " · " ~ cp.persp.code ~ ". " ~ cp.persp.name ~ " › " ~ cp.group.code ~ ". " ~ cp.group.name) if (cp and cp.node and cp.group) else ("KPI · " ~ o.family ~ ((' › ' ~ o.group) if o.group else ''))), o.name, (o.unit or '—') ~ ' · ' ~ ('higher' if o.method == 'more' else 'lower') ~ ' is better' ~ ((' · ' ~ o.perspective) if o.perspective else '') ~ ' · used by ' ~ o.n_people ~ (' person' if o.n_people == 1 else ' people') ~ ((', and ' ~ cp.n_via ~ ' more through its ' ~ cp.variants | length ~ (' variant' if cp.variants | length == 1 else ' variants')) if (cp and cp.n_via) else ''), wide=True, open=(request.args.get('panel') != 'link'), params="kpi") %}
+<div class="adm-panel-body kl-panel">{% if cp %}
+  <section class="kl-psec">
+    <div class="wiz-sec-head"><span class="wiz-k">Code and place</span><span class="muted small">the key another system matches on</span></div>
+    {% if cp.node %}
+    <div class="coa-kv"><span class="k">Code</span><span><span class="coa-codebox">{{ cp.node.code }}</span></span><span class="muted small">Never changes, never used again</span></div>
+    {% if cp.is_variant %}
+    <div class="coa-kv"><span class="k">Variant of</span><span>{{ cp.kpi.code }} {{ cp.kpi.name }}{% if cp.group %} · {{ cp.persp.code }}. {{ cp.persp.name }} &rsaquo; {{ cp.group.code }}. {{ cp.group.name }}{% endif %}</span><span></span></div>
+    {{ coa_status(cp.node, cp.status, o.key) }}
+    {% else %}
+    <div class="coa-kv"><span class="k">Sits under</span><span>{% if cp.group %}{{ cp.persp.code }}. {{ cp.persp.name }} &rsaquo; {{ cp.group.code }}. {{ cp.group.name }}{% else %}<span class="muted">no KPI group</span>{% endif %}</span>
+      {% if cp.moves %}<button type="button" class="btn-link" data-coa-toggle="coa-move">Move</button>{% else %}<span></span>{% endif %}</div>
+    {% if cp.node.was %}<div class="coa-kv"><span class="k">Held before</span><span class="coa-was">{{ cp.node.was | join(', ') }}</span><span class="muted small">Never used again</span></div>{% endif %}
+    {{ coa_status(cp.node, cp.status, o.key) }}
+    {% if cp.moves %}
+    <form method="post" class="stack-form coa-moveform" id="coa-move" hidden data-no-busy
+          data-coa-confirm="Move {{ cp.node.code }} {{ cp.node.name }} to {p}? It and its variants take new codes there, and the old ones are never used again. Lines keep their words and history."
+          data-confirm="Move this KPI to another KPI group? It and its variants take new codes there, and the old ones are never used again. Lines keep their words and history."
+          data-confirm-title="Move this KPI?" data-confirm-ok="Move it">
+      <input type="hidden" name="action" value="chart_move"><input type="hidden" name="kpi" value="{{ o.key }}">
+      <label>Move to<select name="to_group" class="modern-select" data-coa-p>{% for pp, gs in cp.moves %}<optgroup label="{{ pp.code }}. {{ pp.name }}">{% for g in gs %}<option value="{{ g.id }}"{{ ' disabled' if not g.next }}>{{ g.code }}. {{ g.name }} ({{ 'becomes ' ~ g.next if g.next else 'full' }})</option>{% endfor %}</optgroup>{% endfor %}</select></label>
+      <div class="actions"><button type="button" class="btn-link" data-coa-toggle="coa-move">Cancel</button><button type="submit" class="primary">Move the KPI</button></div>
+    </form>
+    {% endif %}
+    {% endif %}
+    <span class="muted small">Moving it to another group gives it, and each variant, a new code there. The old codes are kept and never used again; every line's history and every name stay with the KPI.</span>
+    {% if cp.status.st == 'active' %}<span class="muted small">Retire stops {{ cp.node.code }}{% if not cp.is_variant %}, its variants and its placements{% endif %} being picked for new lines or matched; the lines that carry it keep {{ cp.node.code }} and their figures. Archive opens once nothing uses it: no line in any cycle, no data link{% if not cp.is_variant %}, every variant archived{% endif %}.</span>
+    {% else %}<span class="muted small">Bring back reopens {{ cp.node.code }}{% if not cp.is_variant %} and the placements that were retired with it; variants retired on their own stay retired{% endif %}. Archive opens once nothing uses it.</span>{% endif %}
+    {% else %}
+    <p class="muted">Not in the chart yet. Give it a place and it takes the next free code there.</p>
+    <form method="post" class="stack-form" data-no-busy
+          data-confirm="Give “{{ o.name }}” a code? It takes the next free code in the KPI group you pick and keeps it for good. The name and every line stay as they are."
+          data-confirm-title="Give it a place?" data-confirm-ok="Give it a code">
+      <input type="hidden" name="action" value="chart_place"><input type="hidden" name="kpi" value="{{ o.key }}">
+      {{ place_fields(cp.place_opts) }}
+      <div class="actions"><button type="submit" class="primary">Give it a place</button></div>
+    </form>
+    {% endif %}
+  </section>{% endif %}{% if cp and cp.node and coa_links %}
+  <section class="kl-psec">
+    <div class="wiz-sec-head"><span class="wiz-k">Data link</span><span class="muted small">where {{ cp.node.code }}'s result comes from</span></div>
+    {{ link_editor(cp.node, coa_links.by_node[cp.node.id], coa_links, o.key, link_test == cp.node.id) }}
+    <span class="muted small">When a system is connected, the figure it sends fills what the people who hold this KPI confirm. Nothing is ever submitted for anyone, and no line, target or result changes when a link is saved. Super admin only; saving and removing are double-confirmed and in the trail.</span>
+  </section>{% endif %}
+  <section class="kl-psec">
+    <span class="wiz-k">Definition</span>
+    {% if o.definition %}<p>{{ o.definition }}</p>{% else %}<p class="muted">No definition yet.{% if can_edit %} Add one with Edit below.{% endif %}</p>{% endif %}
+    <span class="muted small">A short definition only. The person's own detail goes in their line's description.</span>
+    {% if not can_edit and o.rows | selectattr('business_group', 'in', bgs) | list %}
+    <details class="kl-edit">
+      <summary class="small">Propose a change to the definition</summary>
+      <form method="post" action="{{ url_for('admin_library_propose') }}" class="stack-form kl-propose" data-viewonly-ok
+            data-confirm="Send this definition to the super admin? They decide; you'll see the answer under My proposals, and by email."
+            data-confirm-ok="Send">
+        <input type="hidden" name="kind" value="change_def"><input type="hidden" name="kpi" value="{{ o.key }}">
+        <label>The definition as you'd have it<textarea name="definition" rows="3" required maxlength="600">{{ o.definition or '' }}</textarea></label>
+        <label>Why<textarea name="reason" rows="2" required maxlength="500" placeholder="What the current wording gets wrong, for whom"></textarea></label>
+        <div class="actions"><button type="submit" class="primary">Send to the super admin</button></div>
+      </form>
+    </details>
+    {% endif %}
+  </section>{% if cp and cp.node and not cp.is_variant %}
+  <section class="kl-psec">
+    <div class="wiz-sec-head"><span class="wiz-k">Variants &middot; {{ cp.variants | length }}</span>{% if cp.bu_level %}<span class="muted small">A BU-level KPI's variants are made in BU KPI setup</span>{% elif cp.next_variant %}<button type="button" class="btn-link" data-panel-open="variant">Add a variant</button>{% endif %}</div>
+    {% if cp.variants %}
+    <div class="coa-v coa-v5 coa-vh"><span>Code</span><span>Variant</span><span>Holders</span><span>Status</span><span></span></div>
+    {% for v in cp.variants %}{% set vl = coa_links.by_node[v.node.id].link if coa_links else none %}{% set vs = v.status %}
+    <div class="coa-v coa-v5{{ ' is-ret' if vs.st == 'retired' }}">{% if coa_links %}<a class="coa-code" href="{{ url_for('admin_kpi_library', kpi=o.key, panel='link', link=v.node.id) }}" title="Data link: {% if vl %}{{ vl.system_name }} &middot; {{ vl.metric_id }}{% else %}none yet, open the editor{% endif %}">{{ v.node.code }}</a>{% else %}<span class="coa-code">{{ v.node.code }}</span>{% endif %}<b class="coa-cut" title="{{ v.node.name }}">{{ v.node.name }}</b>
+      <span class="small">{% if v.people %}<a href="#" data-list-open="{{ url_for('admin_list_view', key='chart-lines', fragment=1, node=v.node.id) }}">{{ v.people }} {{ 'person' if v.people == 1 else 'people' }}</a>{% else %}<span class="muted">{{ 'Nobody now' if vs.st == 'retired' else 'Nobody yet' }}</span>{% endif %}</span>
+      <span><span class="coa-st {{ 'on' if vs.st == 'active' else 'ret' }}">{{ 'In use' if vs.st == 'active' else 'Retired ' ~ vs.day }}</span></span>
+      <span class="coa-vact">{{ coa_acts(v.node, vs, o.key) }}</span></div>
+    {% endfor %}
+    {% endif %}
+    {% if not cp.next_variant and cp.next_variant_err and not cp.bu_level %}<span class="muted small">{{ cp.next_variant_err }}</span>{% endif %}
+    <span class="muted small">A variant shares this KPI's definition, unit and direction and has its own name and code. Reports can show it on its own or added into {{ cp.node.code }}. A retired variant stays on this list, greyed, until it is archived; Archive is greyed while anything uses it, and the hover says what.</span>
+  </section>{% endif %}
+  <section class="kl-psec">
+    <div class="wiz-sec-head"><span class="wiz-k">Placed at</span><span class="muted small">where people can pick it</span></div>
+    <div class="kl-pl kl-plh"><span>Business group</span><span>Scope</span><span>Holders</span><span>Target</span><span></span></div>
+    {% for r in o.rows %}
+    <div class="kl-pl{{ ' is-retired' if not r['active'] }}">
+      <b>{{ display_bg(r['business_group']) }}</b>
+      <span class="small">{% if r['merged_kind'] == 'scope' %}<b>{{ (r['scope_word'] or '') | capitalize }}</b> · {{ r['kpi_name'] }} · {% elif r['merged_kind'] %}merged in as “{{ r['kpi_name'] }}” · {% endif %}{% if lib_people is defined and lib_people.get(r['id']) and lib_people[r['id']].chips %}<b>Named people</b> &middot; {{ lib_people[r['id']].n }} can pick it{% else %}{% if r['company'] != '*' %}{{ display_company(r['business_group'], r['company']) }}{% else %}Every unit{% endif %}{% if r['departments'] %} · {{ 'not ' if r['department_mode'] == 'exclude' }}{{ r['departments'] }}{% endif %}{% if r['job_grades'] %} · JG {{ r['job_grades'] }}{% elif r['job_grade'] != '*' %} · JG {{ r['job_grade'] }}{% endif %}{% endif %}{% if not r['active'] %} · <span class="muted">retired</span>{% endif %}</span>
+      <span class="small">{{ o.by_bg.get(r['business_group'], 0) }} {{ 'person' if o.by_bg.get(r['business_group'], 0) == 1 else 'people' }}</span>
+      <span class="small">{% if r['bu_level'] %}<span class="pp-chip">BU-level</span> one target per unit, BU KPI setup{% else %}Per person{% endif %}</span>
+      <span class="kl-pacts">
+        {% if can_edit %}
+        <form method="post" class="inline-when" data-no-busy
+              {% if r['active'] -%}
+              data-confirm="Retire “{{ r['kpi_name'] }}” in {{ display_bg(r['business_group']) }}? People can no longer pick it until it's brought back; lines already on scorecards stay."
+              data-confirm-title="Retire this KPI?" data-confirm-ok="Retire"
+              {%- else -%}
+              data-confirm="Bring “{{ r['kpi_name'] }}” back in {{ display_bg(r['business_group']) }}? People whose unit, department and grade fit it can pick it again."
+              data-confirm-title="Bring this KPI back?" data-confirm-ok="Bring back"
+              {%- endif %}>
+          <input type="hidden" name="action" value="toggle_active"><input type="hidden" name="library_id" value="{{ r['id'] }}">
+          <button type="submit" class="btn-link">{{ 'Retire' if r['active'] else 'Bring back' }}</button>
+        </form>
+        {% endif %}
+      </span>
+    </div>
+    {% set cfg = configs.get(r['business_group']) %}
+    {% if can_edit %}
+    <details class="kl-edit">
+      <summary class="small">Edit {{ display_bg(r['business_group']) }}'s “{{ r['kpi_name'] }}”</summary>
+      <div class="adm-subcard">{{ kpi_form(cfg, tiers, r, 'update', r['business_group'], org_companies.get(r['business_group'], []), lib_lists) }}
+        <form method="post" class="inline-when kl-del" data-no-busy
+              data-confirm="Remove “{{ r['kpi_name'] }}” from {{ display_bg(r['business_group']) }}'s library? This can't be undone; lines already on scorecards keep their name. Retire it instead to keep it on record."
+              data-confirm-ok="Remove" data-confirm-tone="danger">
+          <input type="hidden" name="action" value="delete"><input type="hidden" name="library_id" value="{{ r['id'] }}">
+          <button type="submit" class="btn-link danger-link">Remove from the library</button>
+        </form></div>
+    </details>
+    {% endif %}
+    {% endfor %}
+  </section>{% if cp and cp.node and not cp.is_variant %}
+  <section class="kl-psec">
+    <div class="wiz-sec-head"><span class="wiz-k">Lines with this code &middot; {{ cp.n_lines }}</span><span class="muted small">{{ cp.cycle['name'] if cp.cycle else 'no cycle yet' }} &middot; as people wrote them</span></div>
+    {% for b in cp.by_bg %}
+    <div class="coa-wr"><span class="coa-cut"><b>{{ display_bg(b.bg) }}</b><span class="muted small coa-as" title="{% for nm, c in b.names | dictsort(by='value', reverse=true) %}{{ nm }} ({{ c }}){{ '; ' if not loop.last }}{% endfor %}">{% for nm, c in (b.names | dictsort(by='value', reverse=true))[:3] %}{{ nm }} ({{ c }}){{ ' · ' if not loop.last }}{% endfor %}{% if b.names | length > 3 %} · {{ b.names | length - 3 }} more{% endif %}</span></span>
+      <a href="#" class="small" data-list-open="{{ url_for('admin_list_view', key='chart-lines', fragment=1, node=cp.kpi.id, bg=b.bg) }}">{{ b.lines }} {{ 'line' if b.lines == 1 else 'lines' }}</a></div>
+    {% else %}<p class="muted small">No line on {{ cp.cycle['name'] if cp.cycle else 'any cycle' }} reads as this code.</p>{% endfor %}
+    <span class="muted small">Each line keeps its own name; the code is what reports and other systems read. A line matched to the wrong code is moved on Match lines.</span>
+  </section>{% endif %}
+  {% if o.aliases %}
+  <section class="kl-psec">
+    <span class="wiz-k">Old names merged into it</span>
+    <div class="mq-chips">{% for nm in o.aliases %}<span class="pp-chip">{{ nm }}</span>{% endfor %}</div>
+    <span class="muted small">Lines that used an old name keep their history; the library reads it as this KPI.</span>
+  </section>
+  {% endif %}
+  {% if opened_root %}
+  <section class="kl-psec kl-vof">
+    <span class="muted small">Variant of <a href="{{ url_for('admin_kpi_library', node=node, q=q or None, persp=persp or None, fam=fam or None, status=(status if status != 'active' else None), spec=('1' if show_spec else None), kpi=opened_root.key, panel='kpi') }}"><b>{{ opened_root.name }}</b></a>. It keeps its own target and people; the library only lists it under its root.</span>
+  </section>
+  {% endif %}
+  {% if opened_vars %}
+  <section class="kl-psec">
+    <div class="wiz-sec-head"><span class="wiz-k">Variants · {{ opened_vars | length }}</span><span class="muted small">each its own KPI</span></div>
+    {% for v in opened_vars %}
+    <div class="kl-var"><a href="{{ url_for('admin_kpi_library', node=node, q=q or None, persp=persp or None, fam=fam or None, status=(status if status != 'active' else None), spec=('1' if show_spec else None), kpi=v.key, panel='kpi') }}"><b>{{ v.name }}</b></a><span class="muted small">{{ v.n_people }} {{ 'person' if v.n_people == 1 else 'people' }}</span></div>
+    {% endfor %}
+  </section>
+  {% endif %}
+  <section class="kl-psec">
+    <span class="wiz-k">Used by</span>
+    {% if o.n_people %}
+    {% set mx = (o.by_bg.values() | list | max) or 1 %}
+    {% for b, n in o.by_bg | dictsort(by='value', reverse=true) %}
+    <div class="kl-use"><span>{{ display_bg(b) }}</span><span class="kl-usebar"><span style="width: {{ (n * 100 / mx) | round(1) }}%"></span></span><span class="small">{{ n }} {{ 'person' if n == 1 else 'people' }}</span></div>
+    {% endfor %}
+    <span class="muted small">On {{ usage_cycle['name'] if usage_cycle else 'the latest cycle' }}'s scorecards: {{ o.lines }} line{{ 's' if o.lines != 1 }} in {{ o.n_units }} unit{{ 's' if o.n_units != 1 }}.</span>
+    {% else %}<p class="muted small">Nobody has it on a scorecard yet.</p>{% endif %}
+  </section>
+  <section class="kl-psec">
+    <span class="wiz-k">History</span>
+    {% for h in history %}<div class="kl-hist"><span class="small">{{ h['created_at'] | myt_day }}</span><span class="small">{{ h['detail'] }}{% if h['who'] %} · {{ h['who'] }}{% endif %}</span></div>
+    {% else %}<p class="muted small">No changes recorded since it came in.</p>{% endfor %}
+  </section>
+</div>
+<footer class="adm-panel-foot">
+  <button type="button" class="btn-link adm-panel-grow" data-panel-close>Close</button>
+</footer>
+{% endcall %}{% if cp and cp.node and not cp.is_variant and not cp.bu_level and cp.next_variant %}
+{# Add a variant (the Chart of KPI, board 3): a narrower name and code under a KPI, and the lines that move onto it #}
+{% call panel("variant", "KPI library · variant", "Add a variant of " ~ cp.node.name, cp.node.code ~ " · " ~ cp.persp.code ~ ". " ~ cp.persp.name ~ " › " ~ cp.group.code ~ ". " ~ cp.group.name ~ " · " ~ (o.unit or '—') ~ " · " ~ ('higher' if o.method == 'more' else 'lower') ~ " is better", wide=True, params="kpi") %}
+<div class="adm-panel-body">
+<form method="post" class="stack-form kl-form coa-form" data-no-busy data-coa-variant
+      data-confirm="Add the variant {{ cp.next_variant }} of {{ cp.node.code }} {{ cp.node.name }}? It takes that code for good. Lines you moved onto it keep their name, target and result."
+      data-confirm-title="Add a variant?" data-confirm-ok="Add variant {{ cp.next_variant }}">
+  <input type="hidden" name="action" value="chart_variant_add"><input type="hidden" name="kpi" value="{{ o.key }}">
+  <fieldset class="kpi-seg">
+    <legend>The variant</legend>
+    <div class="pp-fields">
+      <label class="pp-f-full">Its name
+        <span class="coa-name"><span class="coa-fix">{{ cp.node.name }}:</span><input type="text" name="qualifier" maxlength="60" required placeholder="What makes it a variant, e.g. Export" aria-label="What makes it a variant" autocomplete="off" data-coa-q></span>
+      </label>
+    </div>
+    <span class="coa-live">New name: <b data-coa-vname>{{ cp.node.name }}: &hellip;</b> &middot; code <span class="coa-code">{{ cp.next_variant }}</span>, the next free one under {{ cp.node.code }}</span>
+  </fieldset>
+  <fieldset class="kpi-seg">
+    <legend>Shared with {{ cp.node.code }}</legend>
+    <div class="coa-share">
+      <span class="k">Definition</span><span>{{ o.definition or 'No definition yet.' }}</span>
+      <span class="k">Unit, direction</span><span>{{ o.unit or '—' }} &middot; {{ 'higher' if o.method == 'more' else 'lower' }} is better</span>
+      <span class="k">BU-level</span><span>No: each person has their own target</span>
+    </div>
+    <span class="muted small">Change these on {{ cp.node.code }} itself; every variant follows. A variant only adds a narrower name and where it is used.</span>
+  </fieldset>
+  <fieldset class="kpi-seg">
+    <legend>Lines to move onto it &middot; optional</legend>
+    <span class="muted small">Pick people who hold a line of {{ cp.node.code }} on {{ cp.cycle['name'] if cp.cycle else 'the latest cycle' }} ({{ cp.n_holders }} {{ 'person does' if cp.n_holders == 1 else 'people do' }}). Their lines of it get the variant's code; their name, target and result stay as they are. Anyone else is refused.</span>
+    <div class="coa-pickrow">People
+      <span class="pick pick-multi" data-pick data-pick-multi>
+        <input type="text" class="pick-q" placeholder="Search by Employee ID or name" autocomplete="off" aria-label="Add a person">
+        <input type="hidden" class="pick-val" name="move_eids">
+      </span></div>
+  </fieldset>
+  <div class="coa-chg">
+    <b>What changes</b>
+    <ul>
+      <li>{{ cp.next_variant }} <span data-coa-vname>{{ cp.node.name }}: &hellip;</span> is added under {{ cp.node.code }}.</li>
+      <li>The lines you pick move from {{ cp.node.code }} to {{ cp.next_variant }}. Nothing on their scorecards changes.</li>
+      <li>{{ cp.node.code }} and its other variants stay as they are.</li>
+    </ul>
+  </div>
+  <div class="coa-foot">
+    <span class="muted small">Super admin only. Double-confirmed, in the trail.</span>
+    <button type="button" class="btn-link" data-panel-close>Cancel</button>
+    <button type="submit" class="primary">Add variant {{ cp.next_variant }}</button>
+  </div>
+</form>
+</div>
+{% endcall %}{% endif %}{% if coa_links and coa_links.open_id %}{% set ln = cp.variants | selectattr('node.id', 'equalto', coa_links.open_id) | list %}{% if ln %}{% set vn = ln[0].node %}
+{# a variant's data link (the Chart of KPI, piece C): the same editor as the KPI's, in a panel of its own #}
+{% call panel("link", "KPI library · data link", "Data link of " ~ vn.name, vn.code ~ " · a variant of " ~ cp.node.code ~ " " ~ cp.node.name, wide=True, params="kpi link link_test") %}
+<div class="adm-panel-body kl-panel">
+  <section class="kl-psec">
+    {{ link_editor(vn, coa_links.by_node[vn.id], coa_links, o.key, link_test == vn.id) }}
+    <span class="muted small">A variant has a link of its own. Nothing is pulled yet, and no line, target or result changes when a link is saved.</span>
+  </section>
+</div>
+<footer class="adm-panel-foot">
+  <button type="button" class="btn-link adm-panel-grow" data-panel-close>Close</button>
+</footer>
+{% endcall %}{% endif %}{% endif %}
+{% endif %}
+
+{% if not can_edit %}
+{% call panel("propose", "KPI library · propose", "Propose a KPI", "You look after " ~ display_bg(bgs[0] if bgs else '') ~ ". The super admin decides; you see the answer under My proposals, and by email.", wide=True) %}
+<form method="post" action="{{ url_for('admin_library_propose') }}" class="adm-panel-form kl-propose" id="kl-propose" data-viewonly-ok
+      data-confirm="Send this KPI to the super admin? They decide whether it goes into the library; you'll see the answer under My proposals, and by email."
+      data-confirm-ok="Send">
+  <input type="hidden" name="kind" value="new_kpi">
+  <div class="adm-panel-body">
+    <section class="wiz-sec">
+      <span class="wiz-k">Where it applies</span>
+      <div class="bk-seg" role="radiogroup" aria-label="Where it applies">
+        <span class="bk-segb" title="Global KPIs are the super admin's own"><input type="radio" disabled><span>Global</span></span>
+        {% if not my_units or my_units | length == org_companies.get(bgs[0], []) | length %}<label class="bk-segb"><input type="radio" name="scope" value="bg" checked data-kl-scope><span>{{ display_bg(bgs[0]) }}, the whole group</span></label>{% endif %}
+        <label class="bk-segb"><input type="radio" name="scope" value="unit" data-kl-scope><span>One of its units</span></label>
+        <label class="bk-segb"><input type="radio" name="scope" value="jf" data-kl-scope><span>A job family</span></label>
+      </div>
+      <label class="kl-pf" data-kl-for="unit" hidden>Unit<select name="company" class="modern-select">{% for c in my_units %}<option value="{{ c }}">{{ display_company(bgs[0], c) or c }}</option>{% endfor %}</select></label>
+      <label class="kl-pf" data-kl-for="jf" hidden>Job family<select name="family" class="modern-select">{% for c, n in fam_opts %}<option value="{{ c }}">{{ n }}</option>{% endfor %}</select></label>
+    </section>
+    <section class="wiz-sec kl-pform">
+      <label>KPI name<input name="name" required maxlength="120"></label>
+      <label>Short definition <span class="muted small">one or two sentences: what is measured and how</span><textarea name="definition" rows="3" required maxlength="600"></textarea></label>
+      <div class="kl-p4">
+        {{ unit_select('unit', '') }}
+        <label>Better<select name="method" class="modern-select"><option value="more">Higher</option><option value="less">Lower</option></select></label>
+        <label>Perspective<select name="perspective" class="modern-select"><option value="">Not sure</option>{% for p in perspectives %}<option>{{ p }}</option>{% endfor %}</select></label>
+        <label data-choose-new-box>Family · group<select name="category" class="modern-select" data-choose-new data-new-required>
+          <option value="">Not sure</option>{% for c in lib_lists.cats %}<option value="{{ c }}">{{ c }}</option>{% endfor %}<option value="__new__">A new family · group…</option></select>
+          <input name="category_new" maxlength="120" placeholder="e.g. Financial · Revenue & Sales" aria-label="The new family · group" data-new-input hidden></label>
+      </div>
+      <label class="company-opt"><input type="checkbox" name="bu_level" value="1"> <span>It is a unit-wide result (BU-level): one target per unit, set in BU KPI setup</span></label>
+      <label>Why it's needed<textarea name="reason" rows="2" required maxlength="500" placeholder="Who will carry it, and why no KPI in the library fits"></textarea></label>
+    </section>
+  </div>
+  <footer class="adm-panel-foot">
+    <button type="button" class="btn-link adm-panel-grow" data-panel-close>Cancel</button>
+    <button type="submit" class="primary">Send to the super admin</button>
+  </footer>
+</form>
+<script>
+(function () {
+  var f = document.getElementById('kl-propose'); if (!f) return;
+  function draw() {
+    var v = (f.querySelector('[data-kl-scope]:checked') || {}).value;
+    if (!v) { var first = f.querySelector('[data-kl-scope]'); if (first) { first.checked = true; v = first.value; } }
+    f.querySelectorAll('[data-kl-for]').forEach(function (el) { el.hidden = el.getAttribute('data-kl-for') !== v; });
+  }
+  f.addEventListener('change', draw); draw();
+})();
+</script>
+{% endcall %}
+{% endif %}
+{% if can_edit %}
+{% call panel("add", "KPI library", "Add a KPI", "Defined once, at the widest level its meaning holds: a group's library first, a unit only when it's that unit's alone.", wide=True, params=("addbg kpi_name" if coa_switch else "addbg")) %}
+<div class="adm-panel-body">
+  {% if add_bg %}
+    {% if not configs.get(add_bg) %}
+    <p class="wiz-note">{{ display_bg(add_bg) }} has no scoring method yet: <a href="{{ url_for('admin_performance_config') }}">set one under Scoring</a> before adding library KPIs.</p>
+    {% else %}
+    {{ kpi_form(configs.get(add_bg), tiers, none, 'add', add_bg, org_companies.get(add_bg, []), lib_lists) }}
+    {% endif %}
+  {% else %}
+  <span class="wiz-k">Which business group's library?</span>
+  <div class="kl-pickbg">{% for b in bgs %}<a class="wiz-btn" href="{{ url_for('admin_kpi_library', panel='add', addbg=b, node=node) }}">{{ display_bg(b) }}</a>{% endfor %}</div>
+  {% endif %}
+</div>
+{% endcall %}
+{% endif %}{% if coa_switch %}{{ list_peek() }}{% endif %}{% if chart_view %}
+{% call panel("chart", "Chart of KPI", "Groups and names", "A code never changes and is never reused: renaming keeps it, and a new group or KPI takes the next free one.", wide=True) %}
+<div class="adm-panel-body coa-tools">
+  <section class="kl-psec">
+    <span class="wiz-k">Add a KPI group</span>
+    <form method="post" class="stack-form" data-no-busy data-coa-confirm="Add the KPI group “{n}” under {p}? It takes the next free code and keeps it for good." data-confirm="Add this KPI group? It takes the next free code and keeps it for good." data-confirm-title="Add a KPI group?" data-confirm-ok="Add the group">
+      <input type="hidden" name="action" value="chart_group_add">
+      <label>Perspective<select name="parent_id" class="modern-select" data-coa-p>{% for p in chart.tree %}<option value="{{ p.id }}">{{ p.code }}. {{ p.name }}</option>{% endfor %}</select></label>
+      <label>Name of the KPI group<input name="group_name" required maxlength="120" placeholder="e.g. Profitability" data-coa-n></label>
+      <p class="muted small">A perspective holds up to 9 KPI groups.</p>
+      <div class="actions"><button type="submit" class="primary">Add the KPI group</button></div>
+    </form>
+  </section>
+  {% if chart.group_opts and chart.group_opts | selectattr(2) | list %}
+  <section class="kl-psec">
+    <span class="wiz-k">Rename a KPI group</span>
+    <form method="post" class="stack-form" data-no-busy data-coa-confirm="Rename KPI group {p} to “{n}”? Its code stays." data-confirm="Rename this KPI group? Its code stays." data-confirm-title="Rename the KPI group?" data-confirm-ok="Rename">
+      <input type="hidden" name="action" value="chart_group_rename">
+      <label>KPI group<select name="node_id" class="modern-select" data-coa-p>{% for pc, pn, grs in chart.group_opts if grs %}<optgroup label="{{ pc }}. {{ pn }}">{% for gc, gn, gid in grs %}<option value="{{ gid }}">{{ gc }}. {{ gn }}</option>{% endfor %}</optgroup>{% endfor %}</select></label>
+      <label>New name<input name="group_name" required maxlength="120" data-coa-n></label>
+      <div class="actions"><button type="submit" class="primary">Rename the KPI group</button></div>
+    </form>
+  </section>
+  {% endif %}
+  {% if chart.kpi_opts %}
+  <section class="kl-psec">
+    <span class="wiz-k">Rename a KPI</span>
+    <form method="post" class="stack-form" data-no-busy data-coa-confirm="Rename KPI {p} to “{n}”? Its code stays, and lines keep their own words." data-confirm="Rename this KPI in the chart? Its code stays, and lines keep their own words." data-confirm-title="Rename the KPI?" data-confirm-ok="Rename">
+      <input type="hidden" name="action" value="chart_kpi_rename">
+      <label>KPI<select name="node_id" class="modern-select" data-coa-p>{% for lab, ks in chart.kpi_opts %}<optgroup label="{{ lab }}">{% for kid, kc, kn in ks %}<option value="{{ kid }}">{{ kc }} {{ kn }}</option>{% endfor %}</optgroup>{% endfor %}</select></label>
+      <label>New name<input name="node_name" required maxlength="120" data-coa-n></label>
+      <div class="actions"><button type="submit" class="primary">Rename the KPI</button></div>
+    </form>
+  </section>
+  {% endif %}
+</div>
+<footer class="adm-panel-foot">
+  <button type="button" class="btn-link adm-panel-grow" data-panel-close>Close</button>
+</footer>
+{% endcall %}
+{% endif %}{% if coa_switch %}
+{{ place_script() }}
+<script>
+// the confirm box names what is about to change: its words follow the picked option and the typed name
+(function () {
+  document.querySelectorAll('form[data-coa-confirm]').forEach(function (f) {
+    var p = f.querySelector('[data-coa-p]'), n = f.querySelector('[data-coa-n]'), t = f.getAttribute('data-coa-confirm');
+    function draw() {
+      var o = p && p.options[p.selectedIndex];
+      f.setAttribute('data-confirm', t.replace('{p}', o ? o.text : '').replace('{n}', n ? (n.value || '').trim() : ''));
+    }
+    f.addEventListener('input', draw); f.addEventListener('change', draw); draw();
+  });
+  // Move: the form opens beneath the code and closes again
+  document.addEventListener('click', function (e) {
+    var b = e.target.closest && e.target.closest('[data-coa-toggle]');
+    if (!b) return;
+    var f = document.getElementById(b.getAttribute('data-coa-toggle'));
+    if (f) { f.hidden = !f.hidden; if (!f.hidden) { var s = f.querySelector('select'); if (s) s.focus(); } }
+  });
+  // Data link: "Matched on" offers what fits whose figure it is (the server checks the same pairing)
+  document.querySelectorAll('form[data-coa-link]').forEach(function (f) {
+    var mo = f.querySelector('[data-coa-mo]'); if (!mo) return;
+    function draw() {
+      var w = (f.querySelector('input[name="whose"]:checked') || {}).value;
+      Array.prototype.forEach.call(mo.options, function (o) { var ok = !w || o.getAttribute('data-for') === w; o.hidden = !ok; o.disabled = !ok; });
+      if (mo.selectedOptions[0] && mo.selectedOptions[0].disabled) {
+        var first = Array.prototype.find.call(mo.options, function (o) { return !o.disabled; });
+        if (first) mo.value = first.value;
+      }
+    }
+    f.addEventListener('change', function (e) { if (e.target.name === 'whose') draw(); });
+    draw();
+  });
+  // Add a variant: the whole name follows what is typed
+  document.querySelectorAll('form[data-coa-variant]').forEach(function (f) {
+    var q = f.querySelector('[data-coa-q]'), fix = f.querySelector('.coa-fix');
+    function draw() {
+      var t = (q.value || '').replace(/\s+/g, ' ').trim();
+      f.querySelectorAll('[data-coa-vname]').forEach(function (el) { el.textContent = fix.textContent + ' ' + (t || '\u2026'); });
+    }
+    q.addEventListener('input', draw);
+  });
+  // Who it applies to: Units, departments and grades | Named people. The pill is off while Business-unit level is ticked
+  document.querySelectorAll('form.kl-form').forEach(function (f) {
+    var sc = f.querySelector('[data-coa-scope]'), pe = f.querySelector('[data-coa-people]'), pr = f.querySelector('input[name="mode"][value="people"]'),
+        sr = f.querySelector('input[name="mode"][value="scope"]'), bu = f.querySelector('input[name="bu_level"]');
+    if (!sc || !pe || !pr || !sr) return;
+    var counter = pe.querySelector('[data-coa-picked]'), chips = pe.querySelector('.pick-chips');
+    function count() { if (counter && chips) { var n = chips.querySelectorAll('.pick-chip').length; counter.textContent = n ? n + ' picked.' : ''; } }
+    function draw() {
+      if (bu && bu.checked && pr.checked) sr.checked = true;
+      pr.disabled = !!(bu && bu.checked);
+      pr.parentNode.title = pr.disabled ? 'Off while Business-unit level is ticked' : '';
+      sc.hidden = pr.checked; pe.hidden = !pr.checked;
+    }
+    f.addEventListener('change', draw); draw();
+    if (chips && window.MutationObserver) { new MutationObserver(count).observe(chips, { childList: true }); count(); }
+  });
+})();
+</script>{% endif %}
+<script>
+// Band buttons are a shortcut, not a second way to store scope: they tick the grades in the band, the only thing saved.
+document.addEventListener('click', function (e) {
+  var b = e.target.closest('.kpi-tier-btn');
+  if (!b) return;
+  var box = b.closest('[data-kpi-grades]'); if (!box) return;
+  var want = (b.dataset.grades || '').split(',').filter(Boolean);
+  box.querySelectorAll('input[name="job_grades"]').forEach(function (x) { x.checked = want.indexOf(x.value) >= 0; });
+});
+// the department ticks follow the business unit picked above them (Any business unit: every department); a ticked one
+// always shows, so nothing saved is hidden
+(function () {
+  function sync(f) {
+    var co = f.querySelector('select[name="company"]'), list = f.querySelector('[data-kpi-dlist]');
+    if (!co || !list) return;
+    list.querySelectorAll('label[data-units]').forEach(function (l) {
+      var units = (l.getAttribute('data-units') || '').split('|'), box = l.querySelector('input');
+      l.hidden = !(co.value === '*' || units.indexOf(co.value) >= 0 || (box && box.checked));
+    });
+  }
+  document.querySelectorAll('form.kl-form').forEach(function (f) {
+    f.addEventListener('change', function (e) { if (e.target.name === 'company') sync(f); });
+    sync(f);
+  });
+})();
+</script>
+{% endblock %}

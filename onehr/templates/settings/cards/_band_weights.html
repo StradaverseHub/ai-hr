@@ -1,0 +1,73 @@
+{# Settings card: band_weights. Split out of the old General page (2026-10-10) so it lives on its module's settings page;
+   it posts to admin_settings, which sends you back to `settings_next` when the including page sets it. #}
+  {# On 360 Feedback and Competency settings, the two halves of TM (2026-10-11). 2026-10-27: the sentence reads the LIVE
+     split (band_split: the one 360 share every grade has, else None), never a hardcoded default. #}
+  <p class="muted small">How much the 360 and the competency assessment each count toward a person's potential score and
+    band, by job grade. Set the 360 share; the competency share is whatever is left.
+    {% if band_split is not none %}Now <b>{{ '%g'|format(band_split) }} : {{ '%g'|format(100 - band_split) }} for every grade</b>.
+    {% else %}The split differs by grade.{% endif %}</p>
+  <details class="muted small">
+    <summary>Why this matters</summary>
+    <p>Each half is taken as a share of its own maximum, then weighted by this split and added up on the total of
+      both maximums &mdash; on {{ '%g'|format(sample_max) }} + {{ '%g'|format(sample_tc_max) }} points, the 360 can add up
+      to its share of the total and the competency up to the rest. The AI insight in the department review shows each part.
+      Weighting the shares (not adding raw points) is what makes the split you set the split that counts.</p>
+    <p>Someone with no line-manager-approved competency assessment is banded on their 360 alone &mdash; the
+      missing half is never counted as a zero.</p>
+  </details>
+  <form method="post" action="{{ url_for('admin_settings') }}" class="admin-form adm-set-form"
+        data-confirm="Save this weighting? It changes how every potential band is calculated."
+        data-confirm-ok="Save"{{ super_remark_attrs() }}>
+    <input type="hidden" name="next" value="{{ (settings_next ~ '#band-weights') if settings_next else '' }}">
+    <input type="hidden" name="action" value="band_weights">
+    {% set bw_v = band_split if band_split is not none else 50 %}
+    <div class="bw-all">
+      <label for="bw-all-in">Same split for every grade</label>
+      <span class="muted small">360</span>
+      <input id="bw-all-in" type="number" step="1" min="0" max="100" value="{{ '%g'|format(bw_v) }}" style="width:72px">
+      <span class="muted small">% &middot; competency <span id="bw-all-tech">{{ '%g'|format(100 - bw_v) }}</span> %</span>
+      <button type="button" class="btn-link bw-fill" id="bw-all-btn">Fill every grade</button>
+      <span class="muted small bw-note">Nothing changes until Save.</span>
+    </div>
+    <div class="bw-legend small muted"><span><i class="bw-sw bw-sw-360"></i>360</span><span><i class="bw-sw bw-sw-comp"></i>Competency</span></div>
+    <div class="bw-grid">
+      {% for jg, w360, wtech in band_weights %}
+      <div class="bw-tile">
+        <span class="bw-jg">JG {{ jg }}</span>
+        <div class="bw-bar" aria-hidden="true"><span id="bw-bar-{{ jg }}" style="width:{{ '%g'|format(w360) }}%"></span></div>
+        <span class="muted small">360 %</span>
+        <input name="w360_{{ jg }}" type="number" step="1" min="0" max="100" value="{{ '%g'|format(w360) }}"
+               data-jg="{{ jg }}" class="bw-input" aria-label="360 percent for JG {{ jg }}">
+        <span class="muted small bw-comp">Competency <b><span id="bw-tech-{{ jg }}">{{ '%g'|format(wtech) }}</span> %</b></span>
+      </div>
+      {% endfor %}
+    </div>
+    <div class="actions"><button type="submit" class="primary">Save</button></div>
+  </form>
+  <script>
+  // "Same split for every grade" fills the table; nothing changes until Save
+  (function () {
+    var allIn = document.getElementById('bw-all-in'), allTech = document.getElementById('bw-all-tech');
+    var btn = document.getElementById('bw-all-btn');
+    if (!allIn || !btn) return;
+    allIn.addEventListener('input', function () {
+      var v = parseFloat(allIn.value);
+      allTech.textContent = isNaN(v) ? '—' : (Math.round((100 - v) * 100) / 100);
+    });
+    btn.addEventListener('click', function () {
+      document.querySelectorAll('.bw-input').forEach(function (el) {
+        el.value = allIn.value; el.dispatchEvent(new Event('input'));
+      });
+    });
+  })();
+  // Keep the competency column honest as you type -- it is always 100 minus the
+  // 360 side, and a stale number next to a changed input reads as a bug.
+  document.querySelectorAll('.bw-input').forEach(function (el) {
+    el.addEventListener('input', function () {
+      var out = document.getElementById('bw-tech-' + el.dataset.jg), bar = document.getElementById('bw-bar-' + el.dataset.jg);
+      var v = parseFloat(el.value);
+      if (bar) bar.style.width = (isNaN(v) ? 0 : Math.max(0, Math.min(100, v))) + '%';
+      if (out) out.textContent = (isNaN(v) ? '—' : (Math.round((100 - v) * 100) / 100));
+    });
+  });
+  </script>

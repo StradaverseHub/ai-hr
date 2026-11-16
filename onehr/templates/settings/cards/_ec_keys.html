@@ -1,0 +1,24 @@
+{# Settings card: the Executive Chairman's key-people rule (2026-10-30; shown only while ONEHR_CHAIR=1; the super admin's alone, the
+   route enforces it). Posts to admin_settings (action ec_keys), which validates every field again on the server. The rule picks who
+   AI+ OneHR names as a key person for the Executive Chairman; it stores and changes nothing about any person. #}
+  <p class="muted small">AI+ OneHR names a key person for the Executive Chairman by this rule. It reads the talent status of each
+    Year-End on record, so it works from the latest released Year-End. Nothing is stored about anyone.</p>
+  <p class="muted small" data-ec-key-words>{{ ec_key_words }}</p>
+  <form method="post" action="{{ url_for('admin_settings') }}" class="admin-form adm-set-form" id="ec-keys-form"
+        data-confirm="Change who counts as a key person for the Executive Chairman? His AI+ OneHR names key people by this rule from the next question on. No person's record changes."
+        data-confirm-ok="Save the rule">
+    <input type="hidden" name="next" value="{{ (settings_next ~ '#ec-keys') if settings_next else '' }}">
+    <input type="hidden" name="action" value="ec_keys">
+    <div class="succ-form">
+      <label class="muted small">Star or Super Star for at least this many Year-Ends running
+        <input type="number" name="ec_key_min_years" min="1" max="10" step="1" value="{{ ec_key['min_years'] }}" required></label>
+      <label class="muted small">At this job grade or above
+        <input type="number" name="ec_key_min_grade" min="12" max="23" step="1" value="{{ ec_key['min_grade'] }}" required></label>
+    </div>
+    <label class="switch">
+      <input type="checkbox" name="ec_key_sole_holder" value="1" {% if ec_key['sole_holder'] %}checked{% endif %}>
+      <span class="track" aria-hidden="true"></span>
+      <span class="switch-label">Only the sole holder of their job profile</span>
+    </label>
+    <div class="actions"><button type="submit" class="primary">Save</button></div>
+  </form>

@@ -1,0 +1,91 @@
+{% extends "base.html" %}
+{% block title %}Learning certificates{% endblock %}
+{% block body %}
+{# Learning › Settings › Certificates (2026-10-23, LMS canvas [design canvas link removed] board
+   20F; Chris: "issued it under CHART, and allow L&D admin to upload the template, and the portal should help to assign
+   the name, date, training detail etc."): CHART's design, uploaded by Group People L&D, with the fields OneHR fills in
+   placed on it; a preview writes nothing; each programme's choice of who gives its certificate. #}
+<div class="adm-headrow">
+  <p class="adm-lede">The certificate everyone who comes to every day of a run gets, issued under CHART, the Chin Hin
+    Academy for Reskilling &amp; Transformation, when Group People L&amp;D closes the session. Upload CHART's design,
+    then place what OneHR fills in for each person.{% if n_issued %} {{ n_issued }} issued so far: each keeps the design and words it was made with.{% endif %}</p>
+</div>
+
+<section class="admin-card cx-card" aria-labelledby="cx-h">
+  <h3 id="cx-h" class="lm-h">The design</h3>
+  <div class="cx-design">
+    <div class="cx-file">{% if tpl.image_path %}<span class="cx-thumb" style="background-image:url({{ img_url }})" aria-hidden="true"></span><span><b>CHART's design</b> <span class="muted">· {{ tpl.width }} × {{ tpl.height }} px · {{ 'landscape' if tpl.width >= tpl.height else 'portrait' }} · saved {{ (tpl.created_at | myt)[:10] | lms_day }}</span></span>{% else %}<span class="cx-thumb is-plain" aria-hidden="true">CHART</span><span><b>OneHR's plain CHART page</b> <span class="muted">· until you upload CHART's design</span></span>{% endif %}</div>
+    {% if can %}
+    <form method="post" enctype="multipart/form-data" class="cx-up" data-confirm="Use this image as the certificate's design? Certificates issued from now on use it; issued ones keep theirs. Check where the fields sit, then Save." data-confirm-ok="Upload it">
+      <input type="hidden" name="action" value="upload">
+      <label class="cx-filepick"><span>{{ 'Replace the design' if tpl.image_path else 'Upload the design' }}</span><input type="file" name="design" accept=".png,.jpg,.jpeg,image/png,image/jpeg" required></label>
+      <button type="submit" class="primary">Upload…</button>
+    </form>
+    {% if tpl.image_path %}
+    <form method="post" class="lm-inline" data-confirm="Go back to OneHR's plain CHART page? Certificates issued from now on use it; issued ones keep theirs." data-confirm-ok="Use the plain page"><input type="hidden" name="action" value="plain"><button type="submit" class="btn-link">Use OneHR's plain page</button></form>
+    {% endif %}{% endif %}
+  </div>
+  <p class="muted small cx-hint">A PNG or JPG, A4 landscape or portrait, {{ '{:,}'.format(min_px) }} px or more on its long side, up to 10 MB, with nothing on it that changes per person: export it from Canva or PowerPoint as an image. The signature can be part of it.</p>
+
+  <div class="cx-ed" data-cx-ed>
+    <div class="cx-side">
+      <div class="cx-k">What OneHR fills in</div>
+      {% for k, lbl, ex in data_fields %}
+      <label class="cx-f" data-cx-row="{{ k }}"><input type="checkbox" data-cx-data="{{ k }}"{{ ' disabled' if not can }}><b>{{ lbl }}</b><span title="{{ ex }}">{{ ex }}</span></label>
+      {% endfor %}
+      <div class="cx-k">Your own words</div>
+      <div data-cx-own></div>
+      {% if can %}<button type="button" class="btn-link cx-add" data-cx-add>+ Add your own words</button>{% endif %}
+      <div class="cx-style" data-cx-style hidden>
+        <div class="cx-style-h"><b data-cx-style-name></b><span class="muted small">drag it on the design</span></div>
+        <span>Font</span><span class="cx-seg" data-cx-set="font"><button type="button" data-v="sans">Sans</button><button type="button" data-v="serif">Serif</button></span>
+        <span>Size</span><span class="cx-size"><button type="button" data-cx-size="-1" aria-label="Smaller">−</button><b data-cx-size-v></b><button type="button" data-cx-size="1" aria-label="Bigger">+</button></span>
+        <span>Bold</span><span class="cx-seg" data-cx-set="bold"><button type="button" data-v="0">Off</button><button type="button" data-v="1">On</button></span>
+        <span>Colour</span><span class="cx-sw" data-cx-set="color">{% for k, hexv in colours %}<button type="button" data-v="{{ k }}" style="background:{{ hexv }}" aria-label="{{ k }}"></button>{% endfor %}</span>
+        <span>Align</span><span class="cx-seg" data-cx-set="align"><button type="button" data-v="left">Left</button><button type="button" data-v="center">Centre</button><button type="button" data-v="right">Right</button></span>
+      </div>
+    </div>
+    <div class="cx-main">
+      <div class="cx-stage{{ ' is-plain' if not tpl.image_path }}{{ ' is-portrait' if tpl.image_path and tpl.height > tpl.width }}" data-cx-stage{% if img_url %} style="background-image:url({{ img_url }})"{% endif %}>
+        {% if not tpl.image_path %}<div class="cx-plain" aria-hidden="true"><span>CHIN HIN ACADEMY FOR RESKILLING &amp; TRANSFORMATION</span><b>CH<i>A</i>RT</b><small>RESKILL. TRANSFORM. LEAD.</small></div>{% endif %}
+      </div>
+      <p class="muted small cx-note">A long name or title shrinks to fit its box. Drag a box to move it, its right edge to widen it. Dashed boxes don't print.</p>
+      <div class="cx-acts">
+        {% if can %}
+        <form method="post" target="_blank" class="cx-prev" data-cx-form>
+          <input type="hidden" name="action" value="preview"><input type="hidden" name="fields" data-cx-json>
+          <span class="pick" data-pick><input type="text" class="pick-q" placeholder="Preview for someone (optional)" aria-label="Preview for someone" autocomplete="off">
+            <input type="hidden" name="employee_id" class="pick-val"></span>
+          <button type="submit" name="preview" value="1" class="btn-secondary">Preview as a PDF</button>
+        </form>
+        <form method="post" data-cx-form data-confirm="Save where the fields sit on the certificate? Certificates issued from now on use it; issued ones keep theirs." data-confirm-ok="Save">
+          <input type="hidden" name="action" value="fields"><input type="hidden" name="fields" data-cx-json>
+          <button type="submit" class="primary">Save…</button>
+        </form>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+  <script type="application/json" id="cx-init">{{ {'fields': tpl.fields, 'can': can, 'portrait': true if (tpl.image_path and tpl.height > tpl.width) else false} | tojson }}</script>
+  <script type="application/json" id="cx-data">{{ data_fields | tojson }}</script>
+  <script type="application/json" id="cx-colours">{{ colours | tojson }}</script>
+</section>
+
+<section class="admin-card" id="lm-cert-modes" aria-labelledby="cx-m-h">
+  <h3 id="cx-m-h" class="lm-h">Who gives each programme's certificate</h3>
+  <div class="table-scroll"><table class="admin-table no-auto-table cx-modes">
+    <thead><tr><th scope="col">Programme</th><th scope="col">Kind</th><th scope="col">Certificate</th></tr></thead>
+    <tbody>
+    {% for p in progs %}
+    <tr><td>{{ p.title }}{% if p.status != 'published' %} <span class="muted small">· {{ p.status }}</span>{% endif %}</td><td class="small">{{ kind_label.get(p.kind, p.kind) }}</td>
+      <td>{% if can %}<form method="post" class="lm-inline cx-mode" data-confirm="Change who gives {{ p.title }}'s certificate? Sessions closed from now on follow it." data-confirm-ok="Save">
+        <input type="hidden" name="action" value="mode"><input type="hidden" name="programme_id" value="{{ p.id }}">
+        <select name="cert_mode" class="modern-select" aria-label="{{ p.title }}'s certificate">{% for k, lbl in modes %}<option value="{{ k }}"{{ ' selected' if p.mode == k }}>{{ lbl }}</option>{% endfor %}</select>
+        <button type="submit" class="btn-link">Save…</button></form>{% else %}{{ dict(modes)[p.mode] }}{% endif %}</td></tr>
+    {% else %}<tr><td colspan="3" class="muted">No programmes yet.</td></tr>{% endfor %}
+    </tbody>
+  </table></div>
+  <p class="muted small">Held: the certificates wait for you to release them, on the session (an assessed course). The provider's: you upload each person's PDF on the session. External courses people ask for keep their own certificate, which they upload and you check. A certificate is never the HRDC attendance record: the signed T3 is.</p>
+</section>
+<script src="{{ url_for('static', filename='learning_certs.js') }}?v={{ asset_v }}"></script>
+{% endblock %}

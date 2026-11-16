@@ -1,0 +1,41 @@
+{# Settings card: calib_dev. Split out of the old General page (2026-10-10) so it lives on its module's settings page;
+   it posts to admin_settings, which sends you back to `settings_next` when the including page sets it. #}
+  <p class="muted small">How close to the expected curve each band must be before a business unit CEO can lock.</p>
+  <details class="muted small">
+    <summary>Why this matters</summary>
+    <p>The expected curve is a 15% / 70% / 15% split for potential, and the curve picked by the unit's PAT achievement
+      for performance. The same rule drives the curve's verdict and the AI fit suggestion. An HOD does a department
+      review, not a calibration, so their submit isn't checked; BG CEO and group calibration roll up and are not
+      checked either.</p>
+  </details>
+  {% set cr = calib_rule or {'mode': 'people', 'people': 1, 'pct': calib_dev_pct, 'strict': True} %}
+  <form method="post" action="{{ url_for('admin_settings') }}" class="admin-form adm-set-form"
+        data-confirm="Save this curve rule? It applies to every business unit CEO lock straight away."
+        data-confirm-ok="Save">
+    <input type="hidden" name="next" value="{{ (settings_next ~ '#calib-dev') if settings_next else '' }}">
+    <input type="hidden" name="action" value="calib_dev">
+    <fieldset class="calib-rule-mode" style="border:0;padding:0;margin:0 0 10px">
+      <legend class="small" style="font-weight:600;margin-bottom:4px">Allowed distance from the curve, per band</legend>
+      <label class="calib-rule-opt">
+        <input type="radio" name="calib_tol_mode" value="people" {{ 'checked' if cr['mode'] == 'people' }}>
+        A fixed number of people: &plusmn;
+        <input name="calib_tol_people" type="number" min="1" max="50" step="1" value="{{ cr['people'] }}"
+               aria-label="People either side of the curve">
+        {{ 'person' if cr['people'] == 1 else 'people' }}
+      </label>
+      <label class="calib-rule-opt">
+        <input type="radio" name="calib_tol_mode" value="percent" {{ 'checked' if cr['mode'] == 'percent' }}>
+        A share of the scope's headcount:
+        <input name="calib_dev_pct" type="number" step="0.5" min="0.5" max="100" value="{{ '%g'|format(cr['pct']) }}"
+               aria-label="Share of headcount, percent">
+        % (never less than one person)
+      </label>
+    </fieldset>
+    <label>When a spread is outside the rule
+      <select name="calib_lock_strict" class="modern-select">
+        <option value="1" {{ 'selected' if cr['strict'] }}>Refuse the lock &mdash; the calibrator adjusts the bands first</option>
+        <option value="0" {{ 'selected' if not cr['strict'] }}>Allow the lock with a recorded reason (shown at calibration review)</option>
+      </select>
+    </label>
+    <div class="actions"><button type="submit" class="primary">Save</button></div>
+  </form>

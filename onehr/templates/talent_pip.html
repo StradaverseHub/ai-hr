@@ -1,0 +1,158 @@
+{% extends "base.html" %}
+{% from "_table_tools.html" import colth, colmenu, colmenu_script %}
+{% from "_talent_decision_head.html" import decision_head, bu_row, view_icon %}
+{% block title %}PIP candidates — {{ ctx['scope_label'] }}{% endblock %}
+{% block body %}
+
+{{ decision_head(ctx, tier, scope_kwargs, box_url, 'pip', stat, 'in PIP/Improvement', bu) }}
+
+{% if not people %}
+<div class="admin-card">
+  <p class="muted" style="margin:0">Nobody in this scope sits in PIP/Improvement.
+    Nothing to decide here.</p>
+</div>
+{% else %}
+
+<div class="admin-card" style="padding:0">
+  <div class="table-scroll table-scroll-capped">
+  <table class="admin-table tdec-table" id="tdec-pip-table">
+    <thead><tr>
+      {{ colth('person', 'Employee') }}
+      {{ colth('role', 'Role') }}
+      {{ colth('status', 'Talent status') }}
+      {{ colth('pip', 'PIP candidate') }}
+      <th>Reason / remark</th>
+      <th></th>
+    </tr></thead>
+    <tbody>
+      {% for r in people %}
+      {% set u = r['user'] %}
+      {% set d = decisions.get(u['id']) %}
+      {# The <form> itself lives after the table -- a form element can't be a
+         child of <tr>, so the inputs reference it by id instead. One form per
+         person, so saving one row can never carry another row's edits. #}
+      {% set fid = 'tdec-f-' ~ u['id'] %}
+      {# Safe to reorder: each row's inputs belong to its own form, referenced
+         by id (tdec-f-<person>), never by position. #}
+      <tr class="data-row"
+          data-person="{{ u['full_name'] }}"
+          data-role="{{ u['job_title'] or '' }}"
+          data-status="{{ r['category'] or 'unplaced' }}"
+          data-pip="{{ 'Selected' if d and d['selected'] else ('Not selected' if d else 'Undecided') }}">
+        <td>
+          <p style="margin:0;font-weight:500">{{ u['full_name'] }}</p>
+          {# Business unit and department on the subline: on a BG-wide list the
+             same job title means different things in different units. #}
+          <p class="muted small" style="margin:2px 0 0">
+            {{ display_company(u['business_group'], u['company']) or '—' }}
+            &middot; {{ u['department'] | proper or '—' }}</p>
+        </td>
+        <td>
+          <p style="margin:0">{{ u['job_title'] | proper or '—' }}</p>
+          <p class="muted small" style="margin:2px 0 0">JG {{ u['job_grade'] or '—' }}</p>
+        </td>
+        <td class="tdec-status-cell">
+          <span class="tdec-cat tdec-cat--{{ category_slug[r['category']] }}">{{ r['category'] }}</span>
+          {% set pp = [{'label': 'Performance band',
+                        'value': label_names.get(r['perf_band'], r['perf_band'] or 'not set')},
+                       {'label': 'Potential band', 'value': r['pot_band'] or 'not set'},
+                       {'label': 'Talent status', 'value': r['category'] or 'unplaced'}] %}
+          {% if r['overall'] %}{% set _ = pp.append({'label': 'Overall performance rating',
+              'value': (('%.2f'|format(r['overall']['value']) ~ ' — ') if r['overall']['value'] is not none else '') ~ label_names[r['overall']['label']]}) %}{% endif %}
+          <button type="button" class="tdec-icon tdec-view"
+                  title="Performance &amp; potential"
+                  aria-label="Performance and potential for {{ u['full_name'] }}"
+                  data-title="{{ u['full_name'] }} — performance &amp; potential"
+                  data-json='{{ pp|tojson }}'>
+            {{ view_icon() }}
+          </button>
+        </td>
+        <td>
+          <label class="tdec-toggle">
+            <input type="checkbox" name="selected" value="1" form="{{ fid }}"
+                   {{ 'checked' if d and d['selected'] else '' }}
+                   {{ 'disabled' if not can_edit else '' }}>
+            <span>{{ 'Selected' if d and d['selected'] else ('Not selected' if d else 'Undecided') }}</span>
+          </label>
+        </td>
+        <td>
+          <textarea name="remark" rows="2" maxlength="2000" class="tdec-remark" form="{{ fid }}"
+                    placeholder="Why (optional)"
+                    {{ 'disabled' if not can_edit else '' }}>{{ d['remark'] if d and d['remark'] else '' }}</textarea>
+        </td>
+        <td>
+          {% if can_edit %}
+          <button type="submit" class="btn-link" form="{{ fid }}">Save</button>
+          {% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+      <tr class="no-filter-match" hidden><td colspan="6" class="muted">No one matches the filters.</td></tr>
+    </tbody>
+  </table>
+  </div>
+  {{ colmenu('tdec-pip-table', {
+       'person': {'mode': 'clientFilter', 'type': 'text', 'sortAttr': 'person'},
+       'role':   {'mode': 'clientFilter', 'type': 'text', 'sortAttr': 'role'},
+       'status': {'mode': 'clientFilter', 'type': 'text', 'sortAttr': 'status'},
+       'pip':    {'mode': 'clientFilter', 'type': 'text', 'sortAttr': 'pip'} }) }}
+</div>
+
+{% for r in people %}
+<form method="post" id="tdec-f-{{ r['user']['id'] }}" hidden
+      action="{{ url_for('talent_pip_decide_' ~ tier, **scope_kwargs) }}">
+  <input type="hidden" name="subject_id" value="{{ r['user']['id'] }}">
+</form>
+{% endfor %}
+
+<p class="muted small" style="margin-top:10px">
+  A saved row with the box unticked is a recorded &ldquo;no&rdquo;, not an
+  oversight — which is why the header counts selections against the
+  {{ stat['headcount'] }} people in
+  {{ bu['company_labels'][bu['f_company']] if bu['f_company'] else 'this scope' }},
+  not against this list.
+</p>
+{% endif %}
+
+{# Confirming the PIP list is the handover to the promotion list -- the same
+   shape as the box's own lock bar, in the same place, so the three stages end
+   the same way. Before the box is locked there is nothing to confirm, so the
+   bar is a plain link on to the promotion preview instead. #}
+<div class="tbox-lockbar" style="margin-top:16px">
+  {% if locks.get('pip') %}
+  <span class="muted small">PIP list confirmed for {{ ctx['scope_label'] }}.</span>
+  <div style="display:flex;gap:8px;align-items:center">
+    {% if ctx['can_decide'] %}
+    <form method="post" action="{{ url_for('talent_pip_lock_' ~ tier, **scope_kwargs) }}"
+          data-confirm="Reopen the PIP list for {{ ctx['scope_label']|e }}?">
+      <input type="hidden" name="action" value="reopen">
+      <button type="submit" class="btn-link">Reopen</button>
+    </form>
+    {% endif %}
+    <a class="primary" style="text-decoration:none"
+       href="{{ url_for('talent_promotion_' ~ tier, **scope_kwargs) }}">Promotion list &rarr;</a>
+  </div>
+  {% elif can_edit %}
+  <span class="muted small">{{ stat['selected'] }} of {{ stat['considered'] }} selected
+    — confirming closes the {{ 'whole scope' if bu['f_company'] else '' }} list and moves on to promotion.</span>
+  <div style="display:flex;gap:8px;align-items:center">
+    {# A business-unit filter narrows what you're LOOKING at, never what
+       confirming closes -- the list is the scope's, so say so rather than let
+       the filter imply a partial close. #}
+    <form method="post" action="{{ url_for('talent_pip_lock_' ~ tier, **scope_kwargs) }}"
+          data-confirm-title="Confirm the PIP list?" data-confirm-ok="Confirm list"
+          data-confirm="It closes the PIP list for {{ ctx['scope_label']|e }} and takes you to the promotion list. You can reopen it afterwards.">
+      <button type="submit" class="primary">Confirm PIP list</button>
+    </form>
+  </div>
+  {% else %}
+  <span class="muted small">Preview only until the calibration is locked.</span>
+  <a class="btn-link"
+     href="{{ url_for('talent_promotion_' ~ tier, **scope_kwargs) }}">Promotion list &rarr;</a>
+  {% endif %}
+</div>
+
+{% include "_talent_view_modal.html" %}
+<script src="{{ url_for('static', filename='pillscroller.js') }}?v={{ asset_v }}"></script>
+{{ colmenu_script(asset_v) }}
+{% endblock %}

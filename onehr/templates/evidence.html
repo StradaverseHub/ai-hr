@@ -1,0 +1,135 @@
+{# The employee's own ledger. Phase A: a plain five-slot form and a list.
+   No conversation and no AI -- both are later phases, and this has to work
+   without either. #}
+{% extends "base.html" %}
+{#- WITH CONTEXT is load-bearing: a macro imported without it sees none of the
+    caller's context, so {{ csrf_token }} inside the card rendered EMPTY and
+    Share silently did nothing. base.html's auto-token script does not save
+    it either -- that only fills forms with NO token field, not ones with an
+    empty value. -#}
+{% from "_evidence_card.html" import evidence_card with context %}
+{% block title %}My record{% endblock %}
+{% block body %}
+
+<div class="page-head">
+  <div>
+    <h1>My record</h1>
+    <p class="muted">Note down something that happened, on the day it happened. At review time
+      these are yours to draw on &mdash; nobody has to remember a whole year in December.</p>
+  </div>
+</div>
+
+<style>
+/* Scoped to this page. The ledger is a list of cards on every width; nothing
+   here is a table, because one entry is a paragraph and not a row. */
+.ev-form{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.ev-form .full{grid-column:1/-1}
+@media(max-width:700px){.ev-form{grid-template-columns:1fr}}
+.ev-form label{display:flex;flex-direction:column;gap:4px;font-size:.85rem;font-weight:600}
+.ev-form input,.ev-form select,.ev-form textarea{
+  padding:9px 11px;border:1px solid var(--d-bd-cdd1dd);border-radius:8px;font:inherit;font-weight:400;
+  background:var(--surface);width:100%;box-sizing:border-box}
+.ev-form textarea{min-height:96px;resize:vertical}
+.ev-form .hint{font-weight:400;font-size:.78rem;color:var(--d-fg-6b7186)}
+.ev-list{display:flex;flex-direction:column;gap:12px;margin-top:16px}
+.ev-card{border:1px solid var(--line);border-radius:11px;background:var(--surface);padding:14px 16px}
+.ev-card.ev-draft{border-style:dashed;background:var(--d-bg-fbfcfe)}
+.ev-head{display:flex;flex-wrap:wrap;justify-content:space-between;gap:8px;align-items:baseline}
+.ev-when{font-weight:700;font-variant-numeric:tabular-nums}
+.ev-kind{font-size:.72rem;text-transform:uppercase;letter-spacing:.06em;color:var(--d-fg-6b7186);
+  margin-left:8px;font-weight:600}
+.ev-title{margin:8px 0 2px;font-weight:600}
+.ev-body{margin:4px 0 8px;line-height:1.55;white-space:pre-wrap}
+.ev-meta{display:flex;flex-wrap:wrap;gap:6px 16px;font-size:.84rem;color:var(--d-fg-4a5066)}
+.ev-foot{margin:9px 0 0}
+.ev-late{color:var(--d-fg-8a4500)}
+.ev-reviews{margin:8px 0 0;display:flex;flex-direction:column;gap:4px}
+.ev-review{margin:0;font-size:.84rem;padding:5px 9px;border-radius:7px;line-height:1.45}
+.ev-review-endorse{background:var(--d-bg-eef7ee);color:var(--d-fg-1f5c2e)}
+.ev-review-dispute{background:var(--d-bg-fdeeee);color:var(--d-fg-8a2b2b)}
+.ev-actions{display:flex;gap:10px;align-items:center;margin-top:11px;
+  border-top:1px solid var(--line-soft);padding-top:11px}
+.ev-actions form{margin:0}
+.ev-empty{border:1px dashed var(--d-bd-cdd1dd);border-radius:11px;padding:26px 20px;text-align:center;
+  color:var(--d-fg-6b7186)}
+</style>
+
+<div class="admin-card">
+  <h2>Add something</h2>
+  <form method="post" action="{{ url_for('evidence_new') }}" class="ev-form">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+
+    <label class="full">What happened?
+      <span class="hint">One thing, not a habit. What you did, and what made it hard or
+        different &mdash; two or three sentences is plenty.</span>
+      <textarea name="body" maxlength="{{ body_max }}" required
+                placeholder="Went to the Ipoh site twice in January after the compressor failed, and rebuilt the delivery schedule with the plant team so nothing was missed."></textarea>
+    </label>
+
+    <label>When did it happen?
+      <span class="hint">The date it happened, not today.</span>
+      <input type="date" name="occurred_on" max="{{ today }}" value="{{ today }}" required>
+    </label>
+
+    <label>How exact is that date?
+      <select name="occurred_precision">
+        <option value="day">That day</option>
+        <option value="week">That week</option>
+        <option value="month">That month</option>
+        <option value="quarter">That quarter</option>
+      </select>
+    </label>
+
+    <label>What kind of thing was it?
+      <select name="kind">
+        {% for k in kinds %}<option value="{{ k }}">{{ k | replace('_',' ') | capitalize }}</option>{% endfor %}
+      </select>
+    </label>
+
+    <label>A short label <span class="hint">Optional. How you would refer to it.</span>
+      <input type="text" name="title" maxlength="120" placeholder="Ipoh compressor recovery">
+    </label>
+
+    <label>What changed because of it?
+      <span class="hint">Optional, and the part a manager reads first.</span>
+      <input type="text" name="impact" maxlength="{{ body_max }}"
+             placeholder="Zero missed deliveries that month">
+    </label>
+
+    <label>A number, if there is one
+      <span class="hint">Optional.</span>
+      <input type="text" name="metric_value" inputmode="decimal" placeholder="11">
+    </label>
+
+    <label>What is that number?
+      <input type="text" name="metric_unit" maxlength="40" placeholder="days">
+    </label>
+
+    <label class="full">Who else was there?
+      <span class="hint">Optional. Names make it something somebody else can confirm.</span>
+      <input type="text" name="who" maxlength="300" placeholder="Encik Rahim, plant maintenance">
+    </label>
+
+    <div class="full actions">
+      <button type="submit" class="primary">Save as a draft</button>
+      <span class="muted small">It stays a draft, and private to you, until you share it.</span>
+    </div>
+  </form>
+</div>
+
+<div class="admin-card" style="margin-top:16px">
+  <h2>Your record{% if items %} &mdash; {{ items | length }} entr{{ 'y' if items|length == 1 else 'ies' }}{% endif %}</h2>
+  {% if items %}
+  <div class="ev-list">
+    {% for e in items %}{{ evidence_card(e, e['gap_days']) }}{% endfor %}
+  </div>
+  {% else %}
+  <div class="ev-empty">
+    <p style="margin:0 0 6px"><strong>Nothing here yet.</strong></p>
+    <p style="margin:0" class="small">The first one is the hardest. Something from this week is
+      a good place to start &mdash; it does not have to be impressive to be worth writing down.</p>
+  </div>
+  {% endif %}
+</div>
+
+{% endblock %}

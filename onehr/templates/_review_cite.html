@@ -1,0 +1,30 @@
+{# The cite turn. You have keyed every result; now, optionally, point at the
+   things you logged that back one up. DETERMINISTIC -- this list and its
+   already-linked ticks come from the database, not the model. The AI only
+   decorates it: review.js fetches /review/account/suggest per KPI and adds a
+   "suggested" pre-tick on top, which the person confirms or ignores.
+
+   Ticking a box is the ONLY write in the whole flow, and it goes through
+   /evidence/<id>/link -- the human-confirmed writer from step 3. Nothing here
+   writes on its own. #}
+<div class="rv-cite">
+  <p class="rv-agent">You've keyed every result. Anything you logged that backs one up?
+    <span class="muted small">Optional, and only your own shared notes.</span></p>
+  {% for line in cite %}
+    <details class="rv-cite-kpi" data-kpi="{{ line['kpi_id'] }}"
+             data-suggest-url="{{ url_for('review_account_suggest', kpi=line['kpi_id']) }}">
+      <summary>{{ line['kpi_name'] }}</summary>
+      <div class="rv-cite-items">
+        {% for it in line['items'] %}
+          <label class="rv-cite-item">
+            <input type="checkbox" data-evid="{{ it['eid'] }}"
+                   data-link="{{ url_for('evidence_link', eid=it['eid']) }}"
+                   data-unlink="{{ url_for('evidence_unlink', eid=it['eid']) }}"
+                   {{ 'checked' if it['linked'] }}>
+            <span>{{ it['text'][:140] }}</span>
+          </label>
+        {% endfor %}
+      </div>
+    </details>
+  {% endfor %}
+</div>

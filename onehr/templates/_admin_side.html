@@ -1,0 +1,44 @@
+{# The admin sidebar (2026-10-10, the "OneHR Admin Revamp" canvas, direction A): Home and Cycle, the modules, then Ticketing and the Organisation, Comms, Reports & audit and System groups (a group opens a flyout, 2026-10-28) -- built by admin_shell() from ADMIN_SECTIONS, each entry gated by
+   its pages' own routes, with a module's to-do count from the Overview's readiness. #}
+{# PHONE VIEW, PIECE E (2026-11-08): under 1024px the menu is a bottom sheet the Menu button in the top bar opens (static/admin.js). The head and the dim are rendered
+   `hidden` and drawn only by the phone rules; each group's page list sits straight after its row (it opens in place on a phone; on a desktop width it is the same fixed flyout as before). #}
+{% set cur = namespace(name='') %}
+{% for grp in admin_side %}{% for it in grp['items'] %}{% if it.kind == 'group' %}{% for pg in it.pages if pg.active %}{% set cur.name = pg.label %}{% endfor %}{% elif it.active %}{% set cur.name = it.label %}{% endif %}{% endfor %}{% endfor %}
+<div class="adm-menu-scrim" id="adm-menu-scrim" hidden></div>
+<nav class="adm-side" id="adm-menu" aria-label="Admin"><div class="adm-menu-head" hidden>
+  <span class="adm-menu-grab" aria-hidden="true"></span>
+  <span class="adm-menu-t"><span class="adm-menu-k">Admin menu</span><span class="adm-menu-s">{{ cur.name or 'Admin' }}</span></span>
+  <button type="button" class="adm-menu-x" id="adm-menu-close" aria-label="Close the menu"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
+</div><div class="adm-side-in">
+  {% for grp in admin_side %}
+  {% if grp.label %}<div class="adm-side-sec">{{ grp.label }}</div>{% elif not loop.first %}<div class="adm-side-rule" aria-hidden="true"></div>{% endif %}
+  {% for it in grp['items'] %}
+  {% if it.kind == 'group' %}
+  <button type="button" class="adm-side-grp{{ ' is-active' if it.active }}" id="adm-grp-{{ it.key }}" data-grp="{{ it.key }}" aria-expanded="false" aria-controls="adm-fly-{{ it.key }}"{% if it.active %} data-current="1"{% endif %}>
+    <span class="adm-side-lbl">{{ it.label }}</span>
+    {% if it.badge %}<span class="adm-side-badge is-{{ it.tone }}">{{ it.badge }}</span>{% endif %}
+    <svg class="adm-side-chev" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m9 6 6 6-6 6"/></svg>
+  </button>
+  <div class="adm-fly" id="adm-fly-{{ it.key }}" data-grp="{{ it.key }}" role="group" aria-label="{{ it.label }}" hidden>
+    <div class="adm-fly-k">{{ it.label }}</div>
+    {% for pg in it.pages %}
+    <a class="adm-fly-row{{ ' is-active' if pg.active }}" href="{{ pg.href }}"{% if pg.active %} aria-current="page"{% endif %}>
+      <span class="adm-fly-t">
+        <span class="adm-fly-lbl">{% if pg.key == 'connect' %}<span class="adm-ai">AI+</span> Connect{% else %}{{ pg.label }}{% endif %}</span>
+        <span class="adm-fly-hint">{{ pg.hint }}</span>
+      </span>
+      {% if pg.badge %}<span class="adm-side-badge is-{{ pg.tone }}">{{ pg.badge }}</span>{% endif %}
+    </a>
+    {% endfor %}
+  </div>
+  {% else %}
+  <a class="adm-side-item{{ ' is-active' if it.active }}" href="{{ it.href }}"{% if it.active %} aria-current="page"{% endif %}>
+    {% if it.color %}<span class="adm-side-sq" style="background:{{ it.color }}" aria-hidden="true"></span>{% endif %}
+    <span class="adm-side-lbl">{% if it.key == 'connect' %}<span class="adm-ai">AI+</span> Connect{% else %}{{ it.label }}{% endif %}</span>
+    {% if it.badge %}<span class="adm-side-badge is-{{ it.tone }}">{{ it.badge }}</span>{% endif %}
+  </a>
+  {% endif %}
+  {% endfor %}
+  {% endfor %}
+</div>
+</nav>

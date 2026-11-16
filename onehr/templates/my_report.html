@@ -1,0 +1,165 @@
+{% extends "base.html" %}
+{% block title %}My 360 Feedback{% endblock %}
+{% block body %}
+
+{% if not released %}
+  <div class="page-head">
+    <div><h1>My 360 Feedback</h1></div>
+  </div>
+  {% include "_feedback_view_switcher.html" %}
+  <div class="card">
+    <h2>Your report isn't available yet</h2>
+    <p class="muted">
+      Your leadership feedback report will appear here once Group People has reviewed and
+      released it. You'll be able to read it and save a PDF copy for your own
+      reference. Please check back later.
+    </p>
+  </div>
+{% else %}
+
+<div class="report-page">
+  <div class="page-head report-actions">
+    <div>
+      <h1>My 360 Leadership Feedback</h1>
+      <p class="muted">
+        {{ s['full_name'] }}
+        {% if s['job_title'] %} &middot; {{ s['job_title'] | proper }}{% endif %}
+        {% if s['company'] %} &middot; {{ display_company(s['business_group'], s['company']) }}{% endif %}
+        {% if sel_cycle %} &middot; released {{ sel_cycle['released_at'] | myt_date }}{% endif %}
+      </p>
+    </div>
+    <div class="page-head-right">
+      <button type="button" class="primary" onclick="window.print()">Download / print PDF</button>
+    </div>
+  </div>
+
+  {% include "_feedback_view_switcher.html" %}
+
+  {% if released_cycles|length > 1 %}
+  <div class="cycle-history" role="group" aria-label="Review season">
+    <span class="ch-label">Review season:</span>
+    {% for c in released_cycles %}
+      <a class="ch-pill {{ 'on' if c['id'] == sel_cycle['id'] else '' }}"
+         href="{{ url_for('my_report', cycle=c['id']) }}">{{ c['name'] }}</a>
+    {% endfor %}
+  </div>
+  {% elif sel_cycle %}
+  <p class="muted small report-basis" style="margin-top:-4px">Review season: <strong>{{ sel_cycle['name'] }}</strong></p>
+  {% endif %}
+
+  <!-- Print-only banner (the on-screen nav bar is hidden when printing). -->
+  <div class="report-print-head" aria-hidden="true">
+    <div class="rph-org">Chin Hin — Leadership Principle 360 Review{% if sel_cycle %} · {{ sel_cycle['name'] }}{% endif %}</div>
+    <div class="rph-name">{{ s['full_name'] }}{% if s['job_title'] %} · {{ s['job_title'] | proper }}{% endif %}</div>
+  </div>
+
+  <div class="card report-intro">
+    <p>
+      This is a summary of the feedback your assessor panel shared about how you
+      demonstrate Chin Hin's leadership principles. For each behaviour you can see
+      <strong>how many of your assessors</strong> recognised it as something you
+      demonstrate.
+    </p>
+    <p class="muted small" style="margin-bottom:0">
+      To protect honesty, all feedback is <strong>anonymous</strong> — individual
+      assessors and their names are never shown.
+    </p>
+  </div>
+
+  {# The band isn't part of every round's assessment. When HR has it switched off
+     (Settings -> Potential band visibility) it comes off this page entirely --
+     the hero and the "appears once N have submitted" note together, since that
+     note only exists to explain the hero. Admin views keep it either way.
+     window.print() prints this page, so the PDF follows automatically. #}
+  {% if show_potential_band() %}
+  <div class="band-hero">
+    <span class="hero-sub">Your potential band</span>
+    {#- the FINAL band after calibration, shown once HR releases it (2026-10-02) -#}
+    <span class="potential-pill" data-band="{{ band_info['band'] if band_info['score_valid'] else 'None' }}">
+      <strong>{% if band_info['pot_none'] %}None this cycle{% elif band_info['pot_unreleased'] %}Not released yet{% elif band_info['score_valid'] and band_info['band'] %}{{ band_info['band'] }} Potential{% else %}Pending{% endif %}</strong>
+    </span>
+  </div>
+  {% if band_info['pot_none'] %}
+  <p class="muted small" style="margin:-16px 0 20px">This cycle ran no competency, so it has no potential band.</p>
+  {% elif band_info['pot_unreleased'] %}
+  <p class="muted small" style="margin:-16px 0 20px">Your final potential band appears here once Group People releases it, after calibration.</p>
+  {% elif not band_info['score_valid'] %}
+  <p class="muted small" style="margin:-16px 0 20px">Appears once at least {{ band_info['min_valid'] }} assessor(s) have submitted.</p>
+  {% endif %}
+  {% endif %}
+
+  {% if n_submitted == 0 %}
+    <div class="card"><p class="muted">No feedback has been submitted for you yet.</p></div>
+  {% else %}
+    <p class="muted small report-basis">Based on feedback from {{ n_submitted }} assessor{{ '' if n_submitted == 1 else 's' }}.</p>
+    {% for crit in agreement %}
+    <div class="card report-principle">
+      <div class="crit-head">
+        <span class="crit-name">{{ loop.index }}. {{ crit['name'] }}</span>
+        {% if crit['description'] %}<span class="crit-tag">{{ crit['description'] }}</span>{% endif %}
+      </div>
+      <table class="agree-table">
+        <tbody>
+          {% for st in crit['statements'] %}
+          <tr>
+            <td class="stmt-text">{{ st['text'] }}</td>
+            <td style="text-align:right;width:240px">
+              <span class="agree-bar-wrap">
+                <span class="agree-bar"><span style="width: {{ (100 * st['yes'] / st['total'])|round(0,'floor') if st['total'] else 0 }}%"></span></span>
+                <span class="agree-num">{{ st['yes'] }} / {{ st['total'] }}</span>
+              </span>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      {% if crit['comments'] %}
+      <div class="crit-feedback">
+        <div class="crit-feedback-head">What your assessors shared (anonymous)</div>
+        {% for c in crit['comments'] %}
+        <div class="feedback-item"><p>{{ c['comment'] }}</p></div>
+        {% endfor %}
+      </div>
+      {% endif %}
+    </div>
+    {% endfor %}
+  {% endif %}
+</div>
+
+{% endif %}
+{% endblock %}
+
+{% block tour %}
+<script>
+(function () {
+  var params = new URLSearchParams(location.search);
+  var force = params.get('tour') === 'feedback';
+  var pending = {{ 'true' if tour_feedback_pending else 'false' }};
+  if (!(force || pending)) return;
+  if (force) history.replaceState({}, '', location.pathname);
+  var steps = [
+    {% if nav_is_manager or nav_is_hod %}
+    { el: '.cycle-history[aria-label="Feedback view"]', title: 'Switch views', side: 'bottom',
+      body: 'Use these tabs to move between your own feedback{% if nav_is_manager %}, your team{% endif %}{% if nav_is_hod %}, and your whole department{% endif %}.' },
+    {% endif %}
+    {% if released %}
+    {# tour.js drops any step whose element is missing, so the band step
+       self-removes when the hero is hidden -- but only emit it when the band is
+       actually on, so the copy can't promise something that isn't there. #}
+    {% if show_potential_band() %}
+    { el: '.band-hero', title: 'Your potential band',
+      body: 'Once Group People releases your final results, your potential band (Low / Mid / High) appears here. Your exact score always stays with Group People.' },
+    {% endif %}
+    { el: '.report-principle', title: 'Feedback by principle',
+      body: 'See how many of your assessors recognised each behaviour — always anonymous, never tied to a name.' },
+    {% else %}
+    { el: '.card', title: 'Your report',
+      body: 'Your leadership feedback report{% if show_potential_band() %} — including your potential band —{% endif %} appears here once Group People has reviewed and released it.' },
+    {% endif %}
+  ];
+  setTimeout(function () {
+    L360Tour(steps, { onDone: function () { if (window.l360MarkTourSeen) l360MarkTourSeen('feedback'); } });
+  }, 350);
+})();
+</script>
+{% endblock %}

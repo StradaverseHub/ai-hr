@@ -1,0 +1,58 @@
+{# The current turn, and ONLY the current turn.
+
+   Fetched by the client after every save; the server recomputes review_state()
+   and decides what comes next. The client never works it out -- it asks. Every
+   number here comes from pm_score_targets(); nothing is computed in the browser.
+
+   The agent's sentences are phrasebook keys; when the AI is on, review.js swaps
+   in an AI-worded version fetched from /review/say -- so a slow or absent model
+   degrades to this deterministic wording, never blocking the turn. #}
+<div class="rv-turn" data-stage="{{ stage['key'] }}"
+     data-open="{{ stage['n_open'] }}" data-total="{{ stage['n_total'] }}">
+  {% if said %}<p class="rv-agent rv-said">{{ said }}</p>{% endif %}
+
+  {% if strong is defined and strong %}
+    {# A strong rating just landed -- ask for a compliment / evidence before the
+       next KPI. Optional: "Skip" advances without writing. #}
+    <p class="rv-agent" data-say="account.strong_prompt">{{ phrase('account.strong_prompt', kpi=strong['kpi_name'], score=strong['score_name']) }}</p>
+    {% with ev = strong %}{% include "_review_evprompt.html" %}{% endwith %}
+
+  {% elif stage['state'] == 'done' %}
+    <p class="rv-agent" data-say="{{ stage['key'] }}.done">{{ phrase(stage['key'] ~ '.done') }}</p>
+    {% if examples is defined and examples %}
+      <p class="rv-agent" data-say="account.overall_examples">{{ phrase('account.overall_examples', score=examples['score_name']) }}</p>
+      {% with ev = none %}{% include "_review_evprompt.html" %}{% endwith %}
+    {% endif %}
+    {% if cite is defined and cite %}{% include "_review_cite.html" %}{% endif %}
+
+  {% elif not stage['n_total'] %}
+    <p class="rv-agent" data-say="{{ stage['key'] }}.none">{{ phrase(stage['key'] ~ '.none') }}</p>
+
+  {% elif stage['key'] == 'checkin' and target %}
+    {# Quarterly trajectory. Four answers, "Nothing yet" included. #}
+    <p class="rv-agent" data-say="checkin.ask">{{ phrase('checkin.ask', kpi=target['kpi_name']) }}</p>
+    <div class="rv-kpi" data-kpi="{{ target['id'] }}">
+      <div class="rv-kpi-head"><strong>{{ target['kpi_name'] }}</strong>
+        <span class="muted small">Weight {{ target['weightage'] }}%</span></div>
+      <div class="rv-chips">
+        {% for opt in answers %}
+          <button type="button" class="rv-chip" data-checkin="{{ target['id'] }}"
+                  data-answer="{{ opt['key'] }}"
+                  data-url="{{ url_for('review_checkin_save') }}">{{ opt['label'] }}</button>
+        {% endfor %}
+      </div>
+      <input class="rv-note" placeholder="Anything worth saying? (optional)"
+             aria-label="Note for {{ target['kpi_name'] }}">
+    </div>
+
+  {% elif target %}
+    {# A KPI the person picked on the overview -- ask for its actual result. #}
+    <p class="rv-agent" data-say="account.ask">{{ phrase('account.ask', kpi=target['kpi_name']) }}</p>
+    {% with t = target %}{% include "_review_kpi_card.html" %}{% endwith %}
+
+  {% else %}
+    {# The opening overview: all KPIs at a glance, pick which to start. #}
+    <p class="rv-agent" data-say="account.overview">{{ phrase('account.overview', period=(st['period']['name'] if st['period'] else 'this period')) }}</p>
+    {% include "_review_overview.html" %}
+  {% endif %}
+</div>

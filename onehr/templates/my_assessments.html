@@ -1,0 +1,153 @@
+{% extends "base.html" %}
+{% block title %}My Assessments{% endblock %}
+{% block body %}
+<div class="page-head">
+  <div>
+    <p class="welcome-eyebrow">Welcome back, {{ user['full_name'] }}</p>
+    <h1>My Assessments{% if active_cycle %} <span class="season-badge">{{ active_cycle['name'] }}</span>{% endif %}</h1>
+    <p class="muted">
+      People you've been asked to give leadership feedback on{% if active_cycle %} for the <strong>{{ active_cycle['name'] }}</strong> review{% endif %}.
+      Your individual answers are confidential and only seen by Group People.
+    </p>
+  </div>
+</div>
+
+{% set pending = rows | selectattr('status', 'equalto', 'pending') | list %}
+{% set done = rows | selectattr('status', 'equalto', 'submitted') | list %}
+
+{% if not cycle_open and pending %}
+<div class="card cycle-closed-notice" role="status">
+  <h2>⏳ The review hasn't opened yet</h2>
+  <p>
+    {% if active_cycle %}The <strong>{{ active_cycle['name'] }}</strong> review{% else %}This review{% endif %}
+    opens on <strong>{{ cycle_opens_on or 'a date to be announced' }}</strong>.
+    You're all set up and can look around now — but the <em>Give feedback</em> buttons stay
+    locked until then. Please wait patiently; they'll switch on automatically on the start date.
+  </p>
+</div>
+{% endif %}
+
+{% if not rows %}
+  {% if nav_has_report %}
+  {# Case A — they're assessed (a subject) but have nobody to rate this cycle. #}
+  <div class="card empty-role is-subject" id="tour-empty">
+    <h2>You're all set for this round 🎉</h2>
+    <p>You haven't been asked to give feedback on anyone this cycle — but you're very much part of it.
+       Your own confidential feedback is being collected now, and your personal report will appear under
+       <strong>My Feedback</strong> once Group People releases it.</p>
+  </div>
+  {% else %}
+  {# Case B — active, no tasks, not a subject: a warm note. #}
+  <div class="card empty-role" id="tour-empty">
+    <h2>Nothing for you to action right now ✅</h2>
+    <p>There are no feedback tasks assigned to you for the
+       {% if active_cycle %}<strong>{{ active_cycle['name'] }}</strong>{% else %}current{% endif %} review,
+       so there's nothing you need to do at the moment. You still have full access to the system, and
+       you'll be included automatically in future review cycles. Thank you for being part of our
+       leadership journey.</p>
+  </div>
+  {% endif %}
+  {# Leadership principles — shown under either empty state (Case A and Case B). #}
+  {% if principles %}
+  <div class="card" style="margin-top:14px" id="tour-principles">
+    <h2>While you're here — our {{ principles|length }} leadership principles</h2>
+    <p class="muted small">The behaviours we recognise and grow across the organisation.</p>
+    <ul class="principle-list">
+      {% for p in principles %}
+      <li><strong>{{ p['description'] or p['name'] }}</strong></li>
+      {% endfor %}
+    </ul>
+  </div>
+  {% endif %}
+{% else %}
+
+<h2 style="margin-top:18px">To do{% if pending %} <span class="todo-count">{{ pending|length }}</span>{% endif %}</h2>
+{% if pending %}
+<table class="team-table assess-table" id="tour-todo">
+  <thead>
+    <tr><th>Name</th><th>Department</th><th>Your relationship</th><th>Action</th></tr>
+  </thead>
+  <tbody>
+    {% for r in pending %}
+    <tr>
+      <td><strong>{{ r['subject_name'] }}</strong>{% if r['reset_at'] %} <span class="resubmit-chip" title="An admin reset your earlier submission">Resubmission</span>{% endif %}</td>
+      <td>{{ r['subject_dept'] or '-' }}</td>
+      <td><span class="rel-chip rel-{{ r['relationship'] }}"{% if loop.first %} id="tour-rel"{% endif %}>{{ REL_LABEL[r['relationship']] }}</span></td>
+      <td>
+        {% if cycle_open %}
+        <a class="btn-link"{% if loop.first %} id="tour-give-feedback"{% endif %} href="{{ url_for('rate', subject_id=r['subject_id']) }}">{{ 'Revise & resubmit' if r['reset_at'] else 'Give feedback' }}</a>
+        {% else %}
+        <span class="btn-link is-disabled"{% if loop.first %} id="tour-give-feedback"{% endif %} tabindex="0" aria-disabled="true"
+              title="The review opens on {{ cycle_opens_on or 'the announced date' }}. Please wait patiently — you'll be able to give feedback then.">{{ 'Revise & resubmit' if r['reset_at'] else 'Give feedback' }}</span>
+        {% endif %}
+      </td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+{% else %}
+  <p class="muted">All caught up. Nothing pending.</p>
+{% endif %}
+
+{% if done %}
+<h2 style="margin-top:26px">Submitted</h2>
+<table class="team-table assess-table">
+  <thead>
+    <tr><th>Name</th><th>Department</th><th>Your relationship</th><th>Submitted</th></tr>
+  </thead>
+  <tbody>
+    {% for r in done %}
+    <tr>
+      <td>{{ r['subject_name'] }}</td>
+      <td>{{ r['subject_dept'] or '-' }}</td>
+      <td><span class="rel-chip rel-{{ r['relationship'] }}">{{ REL_LABEL[r['relationship']] }}</span></td>
+      <td>
+        <span class="status-pill status-reviewed">Done</span>
+        {% if nav_is_demo %}
+        <form method="post" action="{{ url_for('demo_reset_assessment', subject_id=r['subject_id']) }}"
+              style="display:inline; margin-left:8px"
+              data-confirm="Reset this demo assessment? This clears all answers, comments and the AI-draft count, and moves them back to your To-do.">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+          <button type="submit" class="btn-link">Revise &amp; resubmit</button>
+        </form>
+        {% endif %}
+      </td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+{% endif %}
+
+{% endif %}
+{% endblock %}
+
+{% block tour %}
+<script>
+(function () {
+  var params = new URLSearchParams(location.search);
+  var force = params.get('tour') === 'home';
+  var pending = {{ 'true' if tour_home_pending else 'false' }};
+  if (!(force || pending)) return;
+  if (force) history.replaceState({}, '', location.pathname);  // tidy the URL
+  var steps = [
+    { el: '#tour-todo', title: 'Your to-do list',
+      body: 'These are the people you’ve been asked to give leadership feedback on this review.' },
+    { el: '#tour-rel', title: 'Your relationship',
+      body: 'This tag shows how you know each person — peer/stakeholder, direct report, or line manager.' },
+    { el: '#tour-give-feedback', title: 'Start a rating',
+      body: 'Click here to open the short feedback form for that person.' },
+    { el: '#tour-empty', title: 'Your assessments home',
+      body: 'When you’re asked to give leadership feedback on someone, they’ll appear here for the active review. Nothing to do? You’re all set.' },
+    { el: '#tour-principles', title: 'Our leadership principles',
+      body: 'The behaviours we recognise and grow across the organisation — worth a read anytime.' },
+    { el: '#nav-feedback', title: 'Your own feedback', side: 'bottom',
+      body: 'Later, your own anonymous feedback report appears here — once Group People releases it.' },
+    { el: '#acct-trigger', title: 'Account', side: 'bottom',
+      body: 'Change your password or replay this tour (“Show me around”) anytime from here.' },
+  ];
+  setTimeout(function () {
+    L360Tour(steps, { onDone: function () { if (window.l360MarkTourSeen) l360MarkTourSeen('home'); } });
+  }, 350);
+})();
+</script>
+{% endblock %}

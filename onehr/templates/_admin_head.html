@@ -1,0 +1,25 @@
+{# The section you are in, its tabs, and -- when the tab holds more than one page -- that tab's pages
+   (admin_shell(): a module's four tabs are Overview, Run, Settings, Reports). #}
+<div class="adm-head">
+  <div class="adm-head-row">
+    {% if admin_head.page %}
+    <p class="adm-head-title">{% if admin_head.back %}<a class="adm-head-back" href="{{ admin_head.back }}">{{ admin_head.label }}</a>{% else %}{{ admin_head.label }}{% endif %}<span class="adm-head-sep" aria-hidden="true">&rsaquo;</span>{{ admin_head.page }}</p>
+    {% else %}
+    <p class="adm-head-title">{% if admin_head.color %}<span class="adm-side-sq" style="background:{{ admin_head.color }}" aria-hidden="true"></span>{% endif %}{{ admin_head.label }}</p>
+    {% endif %}
+    {% if admin_head.state %}
+      {% if admin_head.state.on %}<span class="adm-state is-on">On{% if admin_head.state.cycle %} for {{ admin_head.state.cycle }}{% endif %}</span>
+      {% else %}<span class="adm-state is-off" title="Switched off on this cycle: its settings stay open">Off{% if admin_head.state.cycle %} for {{ admin_head.state.cycle }}{% endif %}</span>{% endif %}
+    {% endif %}
+  </div>
+  {% if admin_head.tabs %}
+  <nav class="adm-tabs" aria-label="{{ admin_head.label }}">
+    {% for t in admin_head.tabs %}<a class="{{ 'is-active' if t.active }}" href="{{ t.href }}"{% if t.active %} aria-current="true"{% endif %}>{{ t.label }}</a>{% endfor %}
+  </nav>
+  {% endif %}
+  {% if admin_head.subnav %}
+  <nav class="adm-subnav" aria-label="Pages">
+    {% for p in admin_head.subnav %}<a class="{{ 'is-active' if p.active }}" href="{{ p.href }}"{% if p.active %} aria-current="page"{% endif %}>{{ p.label }}</a>{% endfor %}
+  </nav>
+  {% endif %}
+</div>

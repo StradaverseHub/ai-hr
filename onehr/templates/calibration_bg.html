@@ -1,0 +1,181 @@
+{% extends "base.html" %}
+{% from "_calib_chain.html" import chain_header, chain_cell, pot_basis %}
+{% from "_calib_report_btn.html" import report_btn %}
+{% block title %}Calibration — {{ scope_label }}{% endblock %}
+{% block body %}
+
+<div class="calib-head">
+  <div class="calib-breadcrumb"><a href="{{ url_for('calibration_home') }}">Calibration</a> &#9656; Business Group roll-up</div>
+  <h1 class="calib-title">{{ scope_label }}</h1>
+  <div class="calib-chips">
+    <span class="calib-chip">{{ people_count }} {{ 'person' if people_count == 1 else 'people' }}</span>
+    <span class="calib-chip">{{ company_count }} {{ 'business unit' if company_count == 1 else 'business units' }}</span>
+    {% if locked %}<span class="calib-chip calib-chip--locked">&#9679; Locked</span>
+    {% elif pending %}<span class="calib-chip calib-chip--wait">&#9679; Waiting on {{ pending | length }}</span>
+    {% else %}<span class="calib-chip calib-chip--open">&#9679; Open for review</span>{% endif %}
+  </div>
+  <p class="calib-head__note">The final pass. Calibration happens per business unit &mdash; your job is to validate each BU's calibrated bands. Pick a BU to see its distribution; the all-BU view is the reference. Adjust where warranted, then lock &mdash; the locked value becomes the calibrated band everyone else reads.</p>
+</div>
+
+{% if stale %}
+<div class="dash-alert dash-alert-warn">
+  <span class="dash-alert-num">!</span>
+  <span class="dash-alert-text"><strong>Data changed since this was locked.</strong> A business unit this roll-up was built on has since been unlocked — the locked value here may no longer reflect the current business-unit calibration. Re-lock is not required, but review before treating this as final.</span>
+</div>
+{% elif pending %}
+<div class="dash-alert dash-alert-warn">
+  <span class="dash-alert-num">{{ pending | length }}</span>
+  <span class="dash-alert-text"><strong>Waiting on business-unit calibration to lock first:</strong> {{ pending | map(attribute=0) | join(', ') }}.</span>
+</div>
+{% endif %}
+
+{% if locked %}
+<div class="dash-alert dash-alert-ok">
+  <span class="dash-alert-num">&#10004;</span>
+  <span class="dash-alert-text"><strong>Locked</strong>{% if locked_by_name %} by {{ locked_by_name }}{% endif %} at {{ session['locked_at'] | myt }} — this is the final calibrated value for this Business Group.</span>
+</div>
+{% endif %}
+
+<div class="calib-burow">
+  <span class="calib-burow__label">Business unit</span>
+  <div class="calib-bu-scroller">
+    <button type="button" class="bu-nav bu-nav--left" aria-label="Scroll left" hidden>&#8249;</button>
+    <div id="calib-bu-pills" class="calib-bu-pills">
+      <button type="button" class="bu-pill is-on" data-all>All</button>
+      {% for co in company_options %}
+      <button type="button" class="bu-pill" data-bu="{{ co|e }}" title="{{ co }}">{{ company_labels[co] }}</button>
+      {% endfor %}
+    </div>
+    <button type="button" class="bu-nav bu-nav--right" aria-label="Scroll right" hidden>&#8250;</button>
+  </div>
+</div>
+
+<div id="calib-panels" class="calib-panels" data-target='{{ target | tojson }}'></div>
+
+{# Cost centre and work location are optional roster attributes. They always
+   render now, and the "Columns" button above the table decides which are on --
+   defaulting to on wherever somebody in this scope actually carries a value, so
+   an un-populated roster still costs no width. Replaces the older auto-show
+   rule, which gave a reviewer who wanted a column no way to ask for it. #}
+{%- set has_cc = rows | selectattr('user.cost_center') | list | length > 0 %}
+{%- set has_loc = rows | selectattr('user.work_location') | list | length > 0 %}
+{%- set optcols = [
+      {'id': 'cc',  'label': 'Cost centre',   'on': has_cc,  'empty': not has_cc},
+      {'id': 'loc', 'label': 'Work location', 'on': has_loc, 'empty': not has_loc}] %}
+<div class="optcols" data-optcols-key="calib" data-optcols-table="calib-table"
+     data-optcols='{{ optcols | tojson }}'></div>
+<div class="table-scroll"><table class="admin-table" id="calib-table"
+       data-prev-note-label="BUCEO note:" data-own-note-label="BGCEO note:">
+  <thead><tr>
+    <th><button type="button" class="col-menu-btn" data-col="name"><span class="cm-label">Name</span><span class="cm-caret" aria-hidden="true">▾</span></button></th>
+    <th><button type="button" class="col-menu-btn" data-col="dept"><span class="cm-label">Department</span><span class="cm-caret" aria-hidden="true">▾</span></button></th>
+    <th><button type="button" class="col-menu-btn" data-col="title"><span class="cm-label">Job Title</span><span class="cm-caret" aria-hidden="true">▾</span></button></th>
+    <th><button type="button" class="col-menu-btn" data-col="jg"><span class="cm-label">JG</span><span class="cm-caret" aria-hidden="true">▾</span></button></th>
+    <th data-optcol="cc"{% if not has_cc %} hidden{% endif %}><button type="button" class="col-menu-btn" data-col="cc"><span class="cm-label">Cost centre</span><span class="cm-caret" aria-hidden="true">▾</span></button></th>
+    <th data-optcol="loc"{% if not has_loc %} hidden{% endif %}><button type="button" class="col-menu-btn" data-col="loc"><span class="cm-label">Work location</span><span class="cm-caret" aria-hidden="true">▾</span></button></th>
+    {{ chain_header(['Self', 'LM', 'HOD', 'BUCEO', 'BGCEO']) }}
+    {% if not locked %}<th>Action</th>{% endif %}
+  </tr></thead>
+  <tbody>
+    {% for row in rows %}
+    <tr class="data-row"
+        data-name="{{ row['user']['full_name']|e }}"
+        data-company="{{ row['user']['company'] or '' }}"
+        data-dept="{{ row['user']['department'] or '' }}"
+        data-title="{{ row['user']['job_title'] or '' }}"
+        data-jg="{{ row['user']['job_grade'] }}"
+        data-cc="{{ row['user']['cost_center'] or '' }}"
+        data-loc="{{ row['user']['work_location'] or '' }}"
+        data-band="{{ row['current_band'] or '' }}"
+        data-prev-band="{{ row['chain_incoming'] or '' }}"
+        data-prev-note="{{ (row['buceo_note'] or '')|e }}"
+        data-score-valid="{{ '1' if (row['band_info']['score_valid'] or row['adjusted'] or (row['band_info'].get('source') or 'raw') != 'raw') else '0' }}">
+      <td>
+        {% if row['band_info']['score_valid'] and row['avg_score'] is not none %}
+          <span class="calib-name" tabindex="0">{{ row['user']['full_name'] }}<span class="calib-name-tip">Potential score <strong>{{ '%.1f' | format(row['avg_score']) }}</strong> / {{ '%g' | format(row['max_score']) }}{% if row['pot_basis'] %} &middot; {{ pot_basis(row) }}{% endif %}</span></span>
+        {% else %}{{ row['user']['full_name'] }}{% endif %}
+        {{ report_btn(url_for('calibration_potential_report', uid=row['user']['id']),
+                      'Potential', row['user']['full_name']) }}
+        <div class="calib-subco">{{ display_company(row['user']['business_group'], row['user']['company']) or '—' }}</div>
+      </td>
+      <td>{{ row['user']['department'] | proper or '-' }}</td>
+      <td>{{ row['user']['job_title'] | proper or '-' }}</td>
+      <td>{{ row['user']['job_grade'] }}</td>
+      <td data-optcol="cc"{% if not has_cc %} hidden{% endif %}>{{ row['user']['cost_center'] or '—' }}</td>
+      <td data-optcol="loc"{% if not has_loc %} hidden{% endif %}>{{ row['user']['work_location'] or '—' }}</td>
+      {{ chain_cell(row, 'BUCEO note:', 'BGCEO note:') }}
+      {% if not locked %}
+      <td>
+        <form method="post" action="{{ url_for('calibration_bg_adjust') }}" class="calib-adjust-form calib-review"{{ super_remark_attrs(ok="Save band") }}>
+          <input type="hidden" name="subject_id" value="{{ row['user']['id'] }}">
+          {% if is_super_view %}<input type="hidden" name="bg" value="{{ bg }}">{% endif %}
+          <select name="adjusted_band" class="modern-select calib-band-select">
+            {% if not row['current_band'] %}<option value="" disabled selected>Select…</option>{% endif %}
+            <option value="Low" {{ 'selected' if row['current_band'] == 'Low' }}>Low</option>
+            <option value="Mid" {{ 'selected' if row['current_band'] == 'Mid' }}>Mid</option>
+            <option value="High" {{ 'selected' if row['current_band'] == 'High' }}>High</option>
+          </select>
+          <input type="hidden" name="justification" value="{{ row['justification'] }}">
+          <button type="button" class="calib-just-btn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg><span class="cjb-label">Add note</span></button>
+          <span class="calib-save-status" aria-live="polite"></span>
+        </form>
+      </td>
+      {% endif %}
+    </tr>
+    {% endfor %}
+    <tr id="no-filter-match" hidden><td data-colspan-base="{{ (5 if locked else 6) }}" colspan="{{ (5 if locked else 6) + (1 if has_cc else 0) + (1 if has_loc else 0) }}" class="muted">No rows match the filters.</td></tr>
+  </tbody>
+</table></div>
+<div id="col-menu" class="col-menu" hidden></div>
+<script>
+window.COLMENU_CONFIG = {
+  tableId: 'calib-table',
+  cols: {
+    cc:  { mode: 'clientFilter', type: 'text', sortAttr: 'cc' },
+    loc: { mode: 'clientFilter', type: 'text', sortAttr: 'loc' },
+    name:    { mode: 'clientFilter', type: 'text', sortAttr: 'name' },
+    company: { mode: 'clientFilter', type: 'text', sortAttr: 'company' },
+    dept:    { mode: 'clientFilter', type: 'text', sortAttr: 'dept' },
+    title:   { mode: 'clientFilter', type: 'text', sortAttr: 'title' },
+    jg:      { mode: 'clientFilter', type: 'text', sortAttr: 'jg',
+               order: ['H','12','13','14','15','16','17','18','19','20','21','22','23'] }
+  }
+};
+</script>
+<script src="{{ url_for('static', filename='colmenu.js') }}?v={{ asset_v }}"></script>
+<script src="{{ url_for('static', filename='optcols.js') }}?v={{ asset_v }}"></script>
+<script src="{{ url_for('static', filename='pillscroller.js') }}?v={{ asset_v }}"></script>
+<script src="{{ url_for('static', filename='calibration.js') }}?v={{ asset_v }}"></script>
+
+<div class="actions calib-actions">
+  {% if not locked %}
+    <form method="post" action="{{ url_for('calibration_bg_lock') }}"
+          class="calib-lock-form"
+          data-confirm-base="This is the final pass — the locked value becomes the calibrated band everyone else reads."
+          data-confirm-title="Lock this calibration?" data-confirm-ok="Lock calibration" data-confirm-tone="danger"
+          data-confirm="This is the final pass — the locked value becomes the calibrated band everyone else reads."{{ super_remark_attrs() }}>
+      {% if is_super_view %}<input type="hidden" name="bg" value="{{ bg }}">{% endif %}
+      <button type="submit" class="primary"{% if pending %} disabled{% endif %}>Lock Business Group calibration</button>
+    </form>
+    <form method="post" action="{{ url_for('calibration_bg_reset') }}"
+          class="calib-reset-form"
+          data-confirm-base="Reset all adjustments in this Business Group back to the business-unit roll-up?"
+          data-confirm="Reset all adjustments in this Business Group back to the business-unit roll-up? This can't be undone."{{ super_remark_attrs() }}>
+      {% if is_super_view %}<input type="hidden" name="bg" value="{{ bg }}">{% endif %}
+      <button type="submit" class="danger">Reset all</button>
+    </form>
+  {% elif is_super_view %}
+    {% set U = unlock_box('bgceo', bg) %}
+    {% if U and U.locked %}
+    <form method="post" action="{{ url_for('calibration_bg_unlock') }}" data-confirm="{{ U.box.msg }}"{{ unlock_attrs(U.box) }}>
+      <input type="hidden" name="bg" value="{{ bg }}">
+      <button type="submit" class="danger">Unlock (super admin)</button>
+    </form>
+    {% endif %}
+  {% endif %}
+</div>
+
+{# The shared report viewer. Any button on this page carrying
+   data-report-url opens it. #}
+{% include "_calib_report_modal.html" %}
+{% endblock %}

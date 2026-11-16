@@ -1,0 +1,111 @@
+{# Settings card: the potential band cutoffs (super admin). On 360 Feedback and Competency settings beside the weighting
+   (2026-10-11, Chris: "super admin also can set the threshold and cutoff for the potential band"). THIS cycle's own
+   cutoffs first -- a cycle carries its own from the one it was created from, so the default never reached it and
+   nothing on screen could change it -- then the default for a cycle without its own. Both post to admin_settings,
+   which sends you back to `settings_next` when the including page sets it. #}
+{% macro pc_bar(pfx, low, mid, mx, locked) %}
+  {# the cutoffs as a bar over 0..max (2026-10-27, canvas "Potential bands"); static/inline script moves it as you type #}
+  <div class="pc-bar" data-pcbar data-max="{{ mx }}">
+    <div class="pc-segs">
+      <div class="pc-seg" data-band="Low" data-seg="low"></div>
+      <div class="pc-seg" data-band="Mid" data-seg="mid"></div>
+      <div class="pc-seg" data-band="High" data-seg="high"></div>
+    </div>
+    <div class="pc-ends muted small"><span>0</span><span>{{ '%g'|format(mx) }}</span></div>
+    <div class="pc-cuts">
+      <span class="pc-tick" data-tick="low" aria-hidden="true"></span>
+      <span class="pc-tick" data-tick="mid" aria-hidden="true"></span>
+      <div class="pc-cut" data-cut="low">
+        <label for="{{ pfx }}-low" title="Low ends at (Low is &le; this)">Low ends at</label>
+        <span class="pc-in"><input id="{{ pfx }}-low" name="low_max" type="number" step="0.1" min="0"{% if mx %} max="{{ '%g'|format(mx) }}"{% endif %}
+               value="{{ '%g'|format(low) }}" required data-pc-in="low"><span class="muted small pc-pct" title="Share of the maximum"></span></span>
+      </div>
+      <div class="pc-cut" data-cut="mid">
+        <label for="{{ pfx }}-mid" title="Mid ends at (Mid is &le; this; High is above)">Mid ends at, High above</label>
+        <span class="pc-in"><input id="{{ pfx }}-mid" name="mid_max" type="number" step="0.1" min="0"{% if mx %} max="{{ '%g'|format(mx) }}"{% endif %}
+               value="{{ '%g'|format(mid) }}" required data-pc-in="mid"><span class="muted small pc-pct" title="Share of the maximum"></span></span>
+      </div>
+    </div>
+  </div>
+{% endmacro %}
+  <p class="muted small">Where the Low, Mid and High potential bands start and end. A person's potential score (the 360
+    and the competency, weighted as above) is read on the 360's own scale, 0&ndash;{{ '%g'|format(sample_max) }}.</p>
+  <details class="muted small">
+    <summary>Why this matters</summary>
+    <p>Each rater scores a person out of <strong>{{ '%g'|format(sample_max) }}</strong>
+      (a Demonstrate earns {{ '%g'|format(pts360.dc) }} at the person's current level and {{ '%g'|format(pts360.dn) }} at the next; a Developing earns
+      {{ '%g'|format(pts360.vc) }} and {{ '%g'|format(pts360.vn) }}, set under Points per answer). A person's
+      360 score is the <strong>average</strong> of the submitted ratings. That is then
+      combined with their approved competency score by the weighting on this page and read on the same scale.
+      Moving a cutoff moves everyone near it: a band read from a score is read again on the new numbers, while a band
+      someone set in calibration, or one the BG CEO locked, stays.</p>
+  </details>
+
+  {% if this_cutoffs %}
+  {% set tc = this_cutoffs %}
+  <div class="pc-block pc-wide">
+    <p class="pc-h"><b>{{ tc.name }}</b> <span class="muted small">{{ 'its own cutoffs' if tc.own else 'follows the default below' }}</span></p>
+    <form method="post" action="{{ url_for('admin_settings') }}" class="admin-form adm-set-form pc-form"
+          data-confirm="Save the cutoffs for {{ tc.name }}? Every potential band read from a score this cycle is read again on them. A band someone set in calibration, or a unit the BG CEO has locked, stays as it is."
+          data-confirm-ok="Save" data-confirm-tone="danger"{{ super_remark_attrs() }}>
+      <input type="hidden" name="next" value="{{ (settings_next ~ '#thresholds') if settings_next else '' }}">
+      <input type="hidden" name="action" value="cycle_cutoffs">
+      {{ pc_bar('pc-this', tc.low, tc.mid, tc.max) }}
+      <div class="actions"><button type="submit" class="primary">Save for this cycle</button></div>
+    </form>
+  </div>
+  {% endif %}
+
+  <details class="pc-default"{% if not this_cutoffs %} open{% endif %}>
+    <summary class="small">Default for a cycle without cutoffs of its own: Low &le; {{ '%g'|format(low_max) }}, Mid &le; {{ '%g'|format(mid_max) }}</summary>
+    <p class="muted small">A new cycle copies the cutoffs of the cycle it is made from; the default only reaches a cycle
+      that has none of its own.</p>
+    <form method="post" action="{{ url_for('admin_settings') }}" class="admin-form adm-set-form"
+          data-confirm="Save the default cutoffs? They reach only a cycle without cutoffs of its own."
+          data-confirm-ok="Save"{{ super_remark_attrs() }}>
+      <input type="hidden" name="next" value="{{ (settings_next ~ '#thresholds') if settings_next else '' }}">
+      {{ pc_bar('pc-def', low_max, mid_max, sample_max) }}
+      <div class="actions"><button type="submit" class="btn-link">Save the default</button></div>
+    </form>
+  </details>
+  <script>
+  // the bar, its cutoff labels and each cutoff's share of the maximum follow the numbers as you type; a label is held
+  // inside the bar's edges and never over its neighbour
+  (function () {
+    function num(v) { v = parseFloat(v); return isNaN(v) ? 0 : v; }
+    function g(n) { return String(Math.round(n * 100) / 100); }
+    document.querySelectorAll('[data-pcbar]').forEach(function (root) {
+      var mx = parseFloat(root.getAttribute('data-max')) || 0;
+      var lo = root.querySelector('[data-pc-in="low"]'), mi = root.querySelector('[data-pc-in="mid"]');
+      var segs = {}; root.querySelectorAll('[data-seg]').forEach(function (e) { segs[e.dataset.seg] = e; });
+      var cuts = {}; root.querySelectorAll('[data-cut]').forEach(function (e) { cuts[e.dataset.cut] = e; });
+      var ticks = {}; root.querySelectorAll('[data-tick]').forEach(function (e) { ticks[e.dataset.tick] = e; });
+      var box = root.querySelector('.pc-cuts');
+      function sync() {
+        if (!mx) return;
+        var l = Math.max(0, Math.min(mx, num(lo.value))), m = Math.max(l, Math.min(mx, num(mi.value)));
+        var lp = l / mx * 100, mp = m / mx * 100;
+        segs.low.style.width = lp + '%'; segs.mid.style.width = (mp - lp) + '%'; segs.high.style.width = (100 - mp) + '%';
+        segs.low.textContent = 'Low \u2264 ' + g(num(lo.value)); segs.mid.textContent = 'Mid \u2264 ' + g(num(mi.value));
+        segs.high.textContent = 'High > ' + g(num(mi.value));
+        segs.low.title = segs.low.textContent; segs.mid.title = segs.mid.textContent; segs.high.title = segs.high.textContent;
+        ticks.low.style.left = lp + '%'; ticks.mid.style.left = mp + '%';
+        [[lo, 'low'], [mi, 'mid']].forEach(function (p) {
+          var out = p[0].parentNode.querySelector('.pc-pct');
+          if (out) out.textContent = Math.round(num(p[0].value) / mx * 100) + '%';
+        });
+        var W = box.clientWidth, gap = 8, wl = cuts.low.offsetWidth, wm = cuts.mid.offsetWidth;
+        var pl = Math.max(wl / 2, Math.min(W - wl / 2, lp / 100 * W)), pm = Math.max(wm / 2, Math.min(W - wm / 2, mp / 100 * W));
+        if (pm - wm / 2 < pl + wl / 2 + gap) {   // neighbours: push the right one over, then pull the left one back
+          pm = Math.min(W - wm / 2, pl + wl / 2 + wm / 2 + gap);
+          if (pm - wm / 2 < pl + wl / 2 + gap) pl = Math.max(wl / 2, pm - wm / 2 - gap - wl / 2);
+        }
+        cuts.low.style.left = pl + 'px'; cuts.mid.style.left = pm + 'px';
+      }
+      lo.addEventListener('input', sync); mi.addEventListener('input', sync);
+      window.addEventListener('resize', sync);
+      document.querySelectorAll('details').forEach(function (d) { d.addEventListener('toggle', sync); });
+      sync(); setTimeout(sync, 150);
+    });
+  })();
+  </script>

@@ -1,0 +1,228 @@
+{% extends "base.html" %}
+{% block title %}Profile{% endblock %}
+{% set tb_title = 'Profile' %}
+{% block body %}
+{# Profile (was Settings; Chris, 2026-10-22, option A of the canvas "OneHR Profile Page",
+   [design canvas link removed]): their work profile from their record on the left, read only,
+   beside what they change themselves: what OneHR calls them, their picture and their password. The picture and the
+   password each open in a right-hand panel, the dashboard's look (scrim, the close bezel down its left edge). Theirs
+   alone: the name and picture show only to them; the official name stays everywhere else. #}
+{% macro fld(label, value, empty='Not on record yet', tip=None) %}
+  <dt>{% if tip %}<abbr title="{{ tip }}">{{ label }}</abbr>{% else %}{{ label }}{% endif %}</dt><dd{% if not value %} class="pf-none"{% endif %}>{{ value or empty }}</dd>
+{% endmacro %}
+{% macro pic_img(o, size) %}{% if o.url %}<img src="{{ o.url }}" alt="" width="{{ size }}" height="{{ size }}" class="pf-av">{% else %}<span class="st-init pf-av" aria-hidden="true" style="width:{{ size }}px;height:{{ size }}px">{{ initials }}</span>{% endif %}{% endmacro %}
+<div class="pf-page">
+  <div class="pf-head">
+    <h1>Profile</h1>
+    <span>Your work profile from Group People's records, and how OneHR shows you</span>
+  </div>
+
+  <div class="pf-grid">
+    <section class="st-card pf-rec" aria-label="Your work profile">
+      <div class="pf-who">
+        <span data-pf-now-pic>{{ pic_img(pic_now, 68) }}</span>
+        <div class="pf-who-t">
+          <b class="pf-name">{{ rec.name }}</b>
+          <span class="pf-title{{ ' pf-none' if not rec.title }}">{{ rec.title or 'Job title not on record yet' }}</span>
+          {% if rec.grade %}<span class="pf-jg">{{ rec.grade }}</span>{% endif %}
+        </div>
+      </div>
+      <dl class="pf-dl">
+        {{ fld('Employee ID', rec.eid) }}
+        {{ fld('Business group', rec.bg) }}
+        {{ fld('Business unit', rec.bu) }}
+        {{ fld('Department', rec.dept) }}
+        {{ fld('Line manager', rec.lm) }}
+        {% if not rec.hod_hidden %}{{ fld(rec.hod_label or 'HOD', rec.hod, tip=rec.hod_tip) }}{% endif %}
+        {{ fld('Work email', rec.email) }}
+        {{ fld('Joined', rec.joined) }}
+        {{ fld('Confirmed', rec.confirmed, 'Not yet') }}
+      </dl>
+      <p class="pf-foot">From Group People's records. Something wrong?
+        <a href="#" data-help-open="report" data-help-about="details">Report it with Help</a>.</p>
+    </section>
+
+    <div class="pf-side">
+      <form method="post" class="st-card" action="{{ url_for('my_settings') }}">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+        <input type="hidden" name="action" value="name">
+        <h2>What OneHR calls you</h2>
+        <label for="st-name">Display name</label>
+        <div class="st-row">
+          <input id="st-name" name="display_name" type="text" maxlength="60" value="{{ display }}" required
+                 placeholder="The name you go by">
+          <button type="submit" class="st-save">Save name</button>
+        </div>
+        <p class="st-note">Only you see it: your greeting, the top bar and the AI use it. Your official name,
+          <b>{{ official }}</b>, stays on your records and on everything your line manager, HOD and Group People see.
+          Letters, spaces, hyphens and apostrophes, up to {{ name_max }} characters.</p>
+      </form>
+
+      <section class="st-card pf-row" aria-label="Your picture">
+        <span data-pf-now-pic>{{ pic_img(pic_now, 56) }}</span>
+        <div class="pf-row-t"><h2>Your picture</h2>
+          <span><span data-pf-now-label>{{ pic_now.label }}</span> &middot; it shows on your Account button; nobody else sees it</span></div>
+        <button type="button" class="st-link" data-pf-open="picture" aria-haspopup="dialog">Change picture</button>
+      </section>
+
+      <section class="st-card pf-row" aria-label="Password">
+        <div class="pf-row-t"><h2>Password</h2><span>Change the password you sign in with</span></div>
+        <a class="st-link" href="{{ url_for('change_password') }}" data-pf-open="password" aria-haspopup="dialog">Change password &rsaquo;</a>
+      </section>
+    </div>
+  </div>
+</div>
+
+<div class="od-scrim" data-pf-scrim hidden></div>
+
+<aside class="od-drawer pf-drawer" data-pf-drawer="picture" role="dialog" aria-modal="true" aria-labelledby="pf-pic-h" hidden tabindex="-1">
+  <button type="button" class="od-bezel" data-pf-close aria-label="Close" title="Close &middot; Esc">
+    <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><path d="M9 6l6 6-6 6"></path></svg>
+  </button>
+  <form method="post" class="od-sheet pf-sheet" action="{{ url_for('my_settings') }}">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <input type="hidden" name="action" value="picture">
+    <div class="pf-dh">
+      <h2 id="pf-pic-h" class="od-dr-title">Change your picture</h2>
+      <p class="od-dr-sub">Your initials, or one of {{ options | length - 1 }} avatars</p>
+    </div>
+    <div class="pf-db">
+      <div class="pf-pick-now">
+        <span data-pf-pick-pic>{{ pic_img(pic_now, 64) }}</span>
+        <div><b data-pf-pick-label>{{ pic_now.label }}</b><span>On your Account button. Nobody else sees it.</span></div>
+      </div>
+      <fieldset class="st-picset">
+        <legend class="sr-only">Your picture</legend>
+        {% for g in groups %}
+        <div role="group" aria-labelledby="st-pg-{{ loop.index }}">
+          <p class="st-pics-h" id="st-pg-{{ loop.index }}">{{ g.name }}</p>
+          <div class="st-pics">
+            {% for o in g.pics %}
+            <label class="st-pic{{ ' is-on' if o.on else '' }}" title="{{ o.label }}">
+              <input type="radio" name="avatar" value="{{ o.n }}"{% if o.on %} checked data-pf-saved{% endif %} aria-label="{{ o.label }}">
+              {% if o.url %}<img src="{{ o.url }}" alt="" width="52" height="52">{% else %}<span class="st-init" aria-hidden="true">{{ initials }}</span>{% endif %}
+              <span class="st-tick" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M5 12.5l4.5 4.5L19 7.5"></path></svg></span>
+            </label>
+            {% endfor %}
+          </div>
+        </div>
+        {% endfor %}
+      </fieldset>
+    </div>
+    <div class="pf-df">
+      <button type="button" class="pf-cancel" data-pf-close>Cancel</button>
+      <button type="submit" class="st-save">Save picture</button>
+    </div>
+  </form>
+</aside>
+
+<aside class="od-drawer pf-drawer" data-pf-drawer="password" role="dialog" aria-modal="true" aria-labelledby="pf-pw-h" hidden tabindex="-1">
+  <button type="button" class="od-bezel" data-pf-close aria-label="Close" title="Close &middot; Esc">
+    <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><path d="M9 6l6 6-6 6"></path></svg>
+  </button>
+  <form method="post" class="od-sheet pf-sheet" action="{{ url_for('my_settings') }}" autocomplete="off" data-pf-pwform>
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <input type="hidden" name="action" value="password">
+    <div class="pf-dh">
+      <h2 id="pf-pw-h" class="od-dr-title">Change your password</h2>
+      <p class="od-dr-sub">Signed in as {{ official }}</p>
+    </div>
+    <div class="pf-db pf-pw">
+      {% if pw_error %}<p class="pf-err" role="alert">{{ pw_error }}</p>{% endif %}
+      {% for fid, lab, nm, ac in (('pf-cur', 'Current password', 'current', 'current-password'),
+                                  ('pf-new', 'New password', 'new', 'new-password'),
+                                  ('pf-conf', 'Confirm new password', 'confirm', 'new-password')) %}
+      <div class="pf-f">
+        <label for="{{ fid }}">{{ lab }}</label>
+        {# base.html gives every password field its show / hide eye #}
+        <input id="{{ fid }}" name="{{ nm }}" type="password" autocomplete="{{ ac }}" required{% if nm != 'current' %} minlength="{{ pw_min }}" maxlength="128"{% endif %}>
+      </div>
+      {% endfor %}
+      <ul class="pf-checks" aria-label="Your new password" aria-live="polite">
+        <li data-pf-check="len"><span class="pf-ck" aria-hidden="true"></span>At least {{ pw_min }} characters</li>
+        <li data-pf-check="match"><span class="pf-ck" aria-hidden="true"></span>The two new passwords match</li>
+        <li data-pf-check="diff"><span class="pf-ck" aria-hidden="true"></span>Different from your current one</li>
+      </ul>
+      <p class="st-note">Not your Employee ID, your name, a common word or one of your last 5 passwords. Forgot your current one? Sign out and use <b>Forgot password</b>.</p>
+    </div>
+    <div class="pf-df">
+      <span class="st-note">You stay signed in here</span>
+      <button type="button" class="pf-cancel" data-pf-close>Cancel</button>
+      <button type="submit" class="st-save" data-pf-pwgo>Update password</button>
+    </div>
+  </form>
+</aside>
+<script>
+  /* the two right-hand panels (picture, password): open, close by the bezel, the scrim, Cancel or Esc; the page behind
+     inert while one is open */
+  (function () {
+    var scrim = document.querySelector("[data-pf-scrim]"), page = document.querySelector(".pf"), open = null, back = null;
+    function shut() {
+      if (!open) return;
+      var d = open; open = null;
+      d.classList.remove("is-on"); scrim.classList.remove("is-on");
+      if (page) page.inert = false;
+      setTimeout(function () { d.hidden = true; scrim.hidden = true; }, 240);
+      if (d.getAttribute("data-pf-drawer") === "picture") reset();
+      if (back && back.focus) back.focus();
+    }
+    function show(key, from) {
+      var d = document.querySelector('[data-pf-drawer="' + key + '"]');
+      if (!d) return;
+      if (open && open !== d) shut();
+      back = from || document.activeElement; open = d;
+      d.hidden = false; scrim.hidden = false;
+      void d.offsetWidth;   // the slide starts from off the edge, timers or no animation frames
+      d.classList.add("is-on"); scrim.classList.add("is-on");
+      if (page) page.inert = true;
+      var f = d.querySelector(".pf-err") ? d.querySelector("#pf-cur") : d.querySelector('input:not([type=hidden]):checked, input[type=password]');
+      try { (f || d).focus({ preventScroll: true }); } catch (e) { (f || d).focus(); }
+    }
+    document.addEventListener("click", function (e) {
+      var o = e.target.closest && e.target.closest("[data-pf-open]");
+      if (o) { e.preventDefault(); show(o.getAttribute("data-pf-open"), o); return; }
+      if (e.target.closest && e.target.closest("[data-pf-close]")) { e.preventDefault(); shut(); return; }
+      if (e.target === scrim) shut();
+    });
+    document.addEventListener("keydown", function (e) {
+      if (e.key === "Escape" && open && !document.querySelector(".dp-overlay")) { e.preventDefault(); shut(); }
+    });
+
+    /* the picture: the ring and the preview follow the choice before it's saved; Cancel puts back the saved one */
+    var rs = Array.prototype.slice.call(document.querySelectorAll(".st-pic input"));
+    function paint() {
+      var on = rs.filter(function (r) { return r.checked; })[0];
+      rs.forEach(function (x) { x.closest(".st-pic").classList.toggle("is-on", x.checked); });
+      if (!on) return;
+      var pv = document.querySelector("[data-pf-pick-pic]"), img = on.closest(".st-pic").querySelector("img, .st-init");
+      if (pv && img) { var c = img.cloneNode(true); c.classList.add("pf-av"); c.setAttribute("width", "64");
+        c.setAttribute("height", "64"); c.style.width = c.style.height = "64px"; pv.textContent = ""; pv.appendChild(c); }
+      var lb = document.querySelector("[data-pf-pick-label]");
+      if (lb) lb.textContent = on.getAttribute("aria-label");
+    }
+    function reset() {
+      rs.forEach(function (r) { r.checked = r.hasAttribute("data-pf-saved"); });
+      if (!rs.some(function (r) { return r.checked; }) && rs[0]) rs[0].checked = true;
+      paint();
+    }
+    rs.forEach(function (r) { r.addEventListener("change", paint); });
+
+    /* the password: the checklist the button waits on */
+    var pf = document.querySelector("[data-pf-pwform]");
+    if (pf) {
+      var cur = pf.querySelector("#pf-cur"), nw = pf.querySelector("#pf-new"), cf = pf.querySelector("#pf-conf"),
+          go = pf.querySelector("[data-pf-pwgo]"), min = {{ pw_min }};
+      function tick(k, ok) { var li = pf.querySelector('[data-pf-check="' + k + '"]'); if (li) li.classList.toggle("is-ok", ok); }
+      function check() {
+        var len = nw.value.length >= min, match = !!nw.value && nw.value === cf.value,
+            diff = !!nw.value && nw.value !== cur.value;
+        tick("len", len); tick("match", match); tick("diff", diff);
+        go.disabled = !(cur.value && len && match && diff);
+      }
+      [cur, nw, cf].forEach(function (i) { i.addEventListener("input", check); });
+      check();
+    }
+    {% if panel %}show({{ panel | tojson }});{% endif %}
+  })();
+</script>
+{% endblock %}

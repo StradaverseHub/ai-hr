@@ -1,0 +1,234 @@
+{% extends "base.html" %}
+{% block title %}Roles &amp; access{% endblock %}
+{% block body %}
+{# Leaders and admins > Roles & access (Chris, 2026-10-20; canvas [design canvas link removed],
+   boards A, B, E, F). The super admin's only. Admin roles: what each role may do, set once for every admin who holds it
+   (up to 4 roles side by side, the rest a chip away); Leader roles: what each seat may do; User roles: what each kind of
+   employee can use. #}
+<nav class="rl-tabs" aria-label="Roles">
+  <a href="{{ url_for('admin_roles', tab='admin') }}" class="{{ 'is-on' if tab == 'admin' }}" {{ 'aria-current=page' if tab == 'admin' }}>Admin roles</a>
+  <a href="{{ url_for('admin_roles', tab='leader') }}" class="{{ 'is-on' if tab == 'leader' }}" {{ 'aria-current=page' if tab == 'leader' }}>Leader roles</a>
+  <a href="{{ url_for('admin_roles', tab='user') }}" class="{{ 'is-on' if tab == 'user' }}" {{ 'aria-current=page' if tab == 'user' }}>User roles</a>
+</nav>
+
+{% if tab == 'admin' %}
+<p class="adm-lede rl-lede">What each admin role can do. Tick it once and it applies to every admin who holds that role, from their next click. A role says what; each admin's own scope says where: one business group, the units they're given, or the whole company. Give a role to an admin on <a href="{{ url_for('admin_admins') }}">Admins</a>.</p>
+
+<div class="rl-cards">
+  <section class="admin-card rl-card is-fixed">
+    <span class="rl-card-h"><b>Super admin</b><span class="muted small">{{ n_super }}</span></span>
+    <span class="small">Everything, everywhere. Fixed.</span>
+  </section>
+  {% for c in cards %}
+  <section class="admin-card rl-card">
+    <span class="rl-card-h"><b>{{ c.name }}</b><span class="muted small">{{ c.n }} admin{{ '' if c.n == 1 else 's' }}</span></span>
+    <span class="small">{{ c.summary }}</span>
+    <span class="muted small">Acts in: {{ c.scope | lower }}</span>
+    <form method="post" action="{{ url_for('admin_roles', tab='admin') }}" class="rl-presets">
+      <input type="hidden" name="action" value="preset"><input type="hidden" name="role_id" value="{{ c.id }}"><input type="hidden" name="show" value="{{ show }}">
+      {% for k, lbl, d in presets %}<button type="submit" name="preset" value="{{ k }}" class="rl-preset{{ ' is-on' if c.preset == k }}" title="{{ d }}"
+        data-confirm="Make {{ c.name }} {{ lbl }}? {{ d }} It applies to its {{ c.n }} admin{{ '' if c.n == 1 else 's' }}{% if c.admins %} ({{ c.admins[:6] | join(', ') }}{% if c.admins | length > 6 %} and {{ c.admins | length - 6 }} more{% endif %}){% endif %} from their next click, and goes in the audit log. You can change it back." data-confirm-ok="Make it {{ lbl }}">{{ lbl }}</button>{% endfor %}
+    </form>
+    {% if not c.builtin %}
+    <details class="rl-more"><summary class="small">Rename or retire</summary>
+      <form method="post" action="{{ url_for('admin_roles', tab='admin') }}" class="rl-inline"
+            data-confirm="Rename {{ c.name }}? Its admins keep it, and what it can do." data-confirm-ok="Rename">
+        <input type="hidden" name="action" value="rename"><input type="hidden" name="role_id" value="{{ c.id }}"><input type="hidden" name="show" value="{{ show }}">
+        <label class="sr-only" for="rl-name-{{ c.id }}">New name</label>
+        <input id="rl-name-{{ c.id }}" name="name" value="{{ c.name }}" maxlength="60" required>
+        <button type="submit" class="btn-link">Rename</button></form>
+      <form method="post" action="{{ url_for('admin_roles', tab='admin') }}" class="rl-inline"
+            data-confirm="Retire {{ c.name }}? It can't be given to anyone after this. {{ 'Nobody holds it now.' if not c.n else '' }}" data-confirm-ok="Retire" data-confirm-tone="danger">
+        <input type="hidden" name="action" value="retire"><input type="hidden" name="role_id" value="{{ c.id }}">
+        <button type="submit" class="btn-link danger-link" {{ 'disabled' if c.n }}>Retire</button>
+        {% if c.n %}<span class="muted small">Give its {{ c.n }} admin{{ '' if c.n == 1 else 's' }} another role first.</span>{% endif %}</form>
+    </details>
+    {% endif %}
+  </section>
+  {% endfor %}
+  {% if lms_on() %}
+  <section class="admin-card rl-card is-fixed">
+    <span class="rl-card-h"><b>L&amp;D admin</b><span class="muted small">{{ lnd_n }} admin{{ '' if lnd_n == 1 else 's' }}</span></span>
+    <span class="small">Runs AI+ Learning for the whole company, and nothing else. Fixed.</span>
+    <span class="muted small">Added on AI+ Learning › Settings.</span>
+    <div class="rl-idle" data-lnd-idle>
+      <span class="rl-idle-lbl">After an hour with no activity</span>
+      <div class="rl-presets">
+        {% if lnd_idle_on %}
+        <form method="post" action="{{ url_for('admin_roles', tab='admin') }}" class="rl-idle-form" data-confirm-title="Keep L&amp;D admins signed in when idle?"
+              data-confirm="Its admins will no longer be signed out after an hour with no activity. A room screen left open will stay signed in. It applies from their next click and goes in the audit log. You can change it back." data-confirm-ok="Keep them signed in">
+          <input type="hidden" name="action" value="idle_lnd"><input type="hidden" name="idle" value="off"><input type="hidden" name="show" value="{{ show }}">
+          <button type="submit" class="rl-preset">Stays signed in</button></form>
+        <span class="rl-preset is-on" aria-current="true">Signed out</span>
+        {% else %}
+        <span class="rl-preset is-on" aria-current="true">Stays signed in</span>
+        <form method="post" action="{{ url_for('admin_roles', tab='admin') }}" class="rl-idle-form" data-confirm-title="Sign L&amp;D admins out when idle?"
+              data-confirm="Its admins will be signed out after an hour with no activity, like the other admins. A room screen left open will go back to the sign-in page. It applies from their next click and goes in the audit log. You can change it back." data-confirm-ok="Sign them out when idle">
+          <input type="hidden" name="action" value="idle_lnd"><input type="hidden" name="idle" value="on"><input type="hidden" name="show" value="{{ show }}">
+          <button type="submit" class="rl-preset">Signed out</button></form>
+        {% endif %}
+      </div>
+      <span class="muted small">For the room screen. The super admin&rsquo;s to change.</span>
+    </div>
+    <p class="acc-always small"><b>Learning:</b> run by the super admin and the L&amp;D admins; a BG or unit admin reads it (their own group's people only); every approval step after the line manager and HOD is Group People L&amp;D's. No role changes this.</p>
+  </section>
+  {% endif %}
+</div>
+
+<section class="admin-card rl-add">
+  <form method="post" action="{{ url_for('admin_roles', tab='admin') }}" class="rl-add-form"
+        data-confirm="Add this admin role? It starts View only: tick what it may do below, then give it to an admin on Admins." data-confirm-ok="Add the role">
+    <input type="hidden" name="action" value="add_role"><input type="hidden" name="show" value="{{ show }}">
+    <span class="rl-add-h"><b>Add a role</b><span class="muted small">e.g. a reviewer who reads People and Reports</span></span>
+    <label>Name<input name="name" class="rl-name" maxlength="60" required placeholder="e.g. Group People reviewer" autocomplete="off"></label>
+    <label>Where its admins act<select name="scope_kind" class="modern-select rl-scope">
+      {% for k, lbl in scope_kinds %}<option value="{{ k }}">{{ lbl }}</option>{% endfor %}</select></label>
+    <button type="submit" class="primary">Add the role</button>
+  </form>
+</section>
+
+<section class="admin-card rl-matrix-card" aria-label="What each role can do">
+  <div class="rl-chips"><span class="muted small">Side by side, up to {{ 4 }}:</span>
+    {% for ch in chips %}<a href="{{ ch.href }}" class="rl-chip{{ ' is-on' if ch.on }}" {{ 'aria-pressed=true' if ch.on else 'aria-pressed=false' }}>{{ ch.name }}</a>{% endfor %}
+    {% if hidden_n %}<span class="muted small">{{ hidden_n }} more role{{ '' if hidden_n == 1 else 's' }}: pick one to swap it in. Roles not shown keep their ticks.</span>{% endif %}
+  </div>
+  <form method="post" action="{{ url_for('admin_roles', tab='admin') }}" id="rl-matrix" data-roles-form
+        data-confirm="Save the roles shown? It applies to their admins from their next click, and goes in the audit log." data-confirm-ok="Save roles">
+    <input type="hidden" name="action" value="save"><input type="hidden" name="show" value="{{ show }}">
+    <input type="hidden" name="roles_shown" value="{{ shown | map(attribute='id') | join(',') }}"><input type="hidden" name="idle_in_form" value="1">
+    <div class="rl-fold"><span class="muted small">Each group shows what every role has; open one to change it.</span>
+      <button type="button" class="rl-foldall" data-rl-foldall aria-expanded="false">Open all</button></div>
+    <div class="rl-row rl-head" style="--rl-n: {{ shown | length }}">
+      <span>What they can do</span><span class="rl-cell">Super admin</span>
+      {% for r in shown %}<span class="rl-cell" data-role-head="{{ r.id }}" data-role-name="{{ r.name }}" data-role-n="{{ r.admins | length }}" data-role-admins="{{ r.admins | length }} admin{{ '' if r.admins | length == 1 else 's' }}{% if r.admins %}: {{ r.admins[:6] | join(', ') }}{% if r.admins | length > 6 %} and {{ r.admins | length - 6 }} more{% endif %}{% endif %}">{{ r.name }}</span>{% endfor %}
+    </div>
+    {% for m in mods %}
+    <details class="rl-mod">
+      <summary class="rl-row rl-modrow" style="--rl-n: {{ shown | length }}"><span class="rl-modname">{{ m.label }}{% if m.explicit %}<span class="rl-new" title="No preset gives it: a role has it only when ticked here">New</span>{% elif m.new %}<span class="rl-new" title="New: the built-in BG and BU admin roles have it ticked; View only includes it">New</span>{% endif %}</span><span class="rl-cell muted small">Everything</span>
+        {% for t in m.sums %}<span class="rl-cell small {{ 'rl-sum-on' if 'of' in t }}">{{ t }}</span>{% endfor %}</summary>
+      {% for it in m.rows %}
+      <div class="rl-row" style="--rl-n: {{ shown | length }}" data-item="{{ it.key }}" data-mod="{{ m.module }}"{% if it.read %} data-read{% endif %}>
+        <span class="rl-item">{{ it.label }}<span class="rl-kind">{{ it.kind }}</span></span>
+        <span class="rl-cell"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" role="img" aria-label="Super admin: always"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg></span>
+        {% for c in it.cells %}<label class="rl-cell"><input type="checkbox" name="t_{{ c.rid }}" value="{{ it.key }}" data-rid="{{ c.rid }}" {{ 'checked' if c.on }} aria-label="{{ shown[loop.index0].name }}: {{ it.label }}"></label>{% endfor %}
+      </div>
+      {% endfor %}
+      {% for lbl in m.supers %}
+      <div class="rl-row rl-super" style="--rl-n: {{ shown | length }}">
+        <span class="rl-item"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" aria-hidden="true"><rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></svg> {{ lbl }}</span>
+        <span class="rl-cell"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" role="img" aria-label="Super admin: always"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg></span>
+        <span class="rl-cell rl-superonly" style="grid-column: span {{ shown | length }}">Super admin only</span>
+      </div>
+      {% endfor %}
+    </details>
+    {% endfor %}
+    {# the last group, "Sign-in" (Chris, 2026-11-02, canvas [design canvas link removed]): ticked = the role's admins are
+       signed out after an hour with no activity. Saved with the rest by the route (the one idle writer); the Super admin never is. #}
+    <details class="rl-mod" data-idle-mod>
+      <summary class="rl-row rl-modrow" style="--rl-n: {{ shown | length }}"><span class="rl-modname">{{ idle_mod.label }}<span class="rl-new" title="New: a role's admins are signed out after an hour with no activity unless it is unticked here; BG, BU and every new role start ticked">New</span></span><span class="rl-cell muted small">Never signed out</span>
+        {% for t in idle_mod.sums %}<span class="rl-cell small {{ 'rl-sum-on' if t == 'Signed out' }}" data-idle-sum="{{ idle_mod.cells[loop.index0].rid }}">{{ t }}</span>{% endfor %}</summary>
+      <div class="rl-row" style="--rl-n: {{ shown | length }}" data-idle-row>
+        <span class="rl-item">Signed out after an hour with no activity<span class="rl-kind">sign-in</span><span class="rl-help muted small">At 50 minutes a box asks &ldquo;Are you still there?&rdquo;. Untick it for a role whose screen stays open, such as a room display.</span></span>
+        <span class="rl-cell rl-superonly">Never</span>
+        {% for c in idle_mod.cells %}<label class="rl-cell"><input type="checkbox" name="idle_{{ c.rid }}" value="1" data-idle-rid="{{ c.rid }}" {{ 'checked' if c.on }} aria-label="{{ shown[loop.index0].name }}: signed out after an hour with no activity"></label>{% endfor %}
+      </div>
+    </details>
+    <p class="muted small rl-note">Unticking a module's first row takes its changes away too. A tick never widens where an admin acts: a BU admin with "Appoint a BU or BG CEO" still appoints only inside the units they're given.</p>
+    <div class="rl-foot"><span class="small" data-roles-changes><b>No changes</b></span>
+      <a class="btn-link" href="{{ url_for('admin_roles', tab='admin', show=show) }}">Cancel</a>
+      <button type="submit" class="primary">Save roles</button></div>
+  </form>
+</section>
+<script>
+// every group starts folded (Chris, 2026-10-22: "minimize all by default"); Open all / Fold all flips them together
+(function () {
+  var b = document.querySelector('[data-rl-foldall]');
+  if (!b) return;
+  var mods = [].slice.call(document.querySelectorAll('details.rl-mod'));
+  function label() {
+    var all = mods.every(function (d) { return d.open; });
+    b.textContent = all ? 'Fold all' : 'Open all'; b.setAttribute('aria-expanded', all ? 'true' : 'false');
+  }
+  b.addEventListener('click', function () {
+    var open = !mods.every(function (d) { return d.open; });
+    mods.forEach(function (d) { d.open = open; }); label();
+  });
+  mods.forEach(function (d) { d.addEventListener('toggle', label); });
+})();
+// the matrix: a module's pages unticked switches its changes off (and they never post); a change ticks its pages;
+// the footer and the confirm box name what changes and for whom
+(function () {
+  var f = document.querySelector('[data-roles-form]');
+  if (!f) return;
+  var boxes = [].slice.call(f.querySelectorAll('input[type=checkbox][data-rid]'));
+  var start = {};
+  boxes.forEach(function (b) { start[b.getAttribute('data-rid') + '|' + b.value] = b.checked; });
+  // the Sign-in row (2026-11-02): a tick means signed out when idle; kept apart from the items' boxes (no data-rid)
+  var idleBoxes = [].slice.call(f.querySelectorAll('input[data-idle-rid]')), idleStart = {};
+  idleBoxes.forEach(function (b) { idleStart[b.getAttribute('data-idle-rid')] = b.checked; });
+  function rowOf(b) { return b.closest('[data-item]'); }
+  function readBox(b) {
+    var mod = rowOf(b).getAttribute('data-mod'), rid = b.getAttribute('data-rid');
+    var r = f.querySelector('[data-mod="' + mod + '"][data-read] input[data-rid="' + rid + '"]');
+    return r;
+  }
+  function sync() {
+    boxes.forEach(function (b) {
+      if (rowOf(b).hasAttribute('data-read')) return;
+      var r = readBox(b);
+      b.disabled = !(r && r.checked);
+      if (b.disabled) b.checked = false;
+    });
+    var ch = [], per = {};
+    boxes.forEach(function (b) {
+      var k = b.getAttribute('data-rid') + '|' + b.value;
+      if (b.checked !== start[k]) {
+        var rid = b.getAttribute('data-rid');
+        var head = f.querySelector('[data-role-head="' + rid + '"]');
+        var lbl = rowOf(b).querySelector('.rl-item').firstChild.textContent.trim();
+        (per[rid] = per[rid] || { name: head.getAttribute('data-role-name'), who: head.getAttribute('data-role-admins'), list: [] })
+          .list.push((b.checked ? '+ ' : '− ') + lbl);
+        ch.push(1);
+      }
+    });
+    var idleLines = [], idleWords = [];
+    idleBoxes.forEach(function (b) {
+      var rid = b.getAttribute('data-idle-rid'), head = f.querySelector('[data-role-head="' + rid + '"]');
+      var sum = f.querySelector('[data-idle-sum="' + rid + '"]');
+      if (sum) { sum.textContent = b.checked ? 'Signed out' : 'Stays signed in'; sum.classList.toggle('rl-sum-on', b.checked); }
+      if (b.checked === idleStart[rid]) return;
+      var nm = head.getAttribute('data-role-name'), n = parseInt(head.getAttribute('data-role-n'), 10) || 0;
+      var who = 'its ' + n + ' admin' + (n === 1 ? '' : 's');
+      idleWords.push(nm + (b.checked ? ' is signed out when idle' : ' stays signed in when idle'));
+      idleLines.push(nm + ': ' + who + (b.checked ? ' will be signed out' : ' will no longer be signed out') + ' after an hour with no activity.');
+    });
+    var el = f.querySelector('[data-roles-changes]');
+    var keys = Object.keys(per);
+    var total = ch.length + idleWords.length;
+    if (!total) {
+      el.innerHTML = '<b>No changes</b>';
+      f.setAttribute('data-confirm', 'Save the roles shown? Nothing has changed.');
+      return;
+    }
+    var said = keys.map(function (k) { return per[k].name + ' ' + per[k].list.join(', '); }).concat(idleWords);
+    el.textContent = total + ' change' + (total === 1 ? '' : 's') + ' not saved: ' + said.join(' \u00b7 ');
+    var tail = 'It applies to their admins from their next click, and goes in the audit log. You can change it back.';
+    var parts = keys.map(function (k) { return per[k].name + ' (' + per[k].who + '): ' + per[k].list.join('; ') + '.'; });
+    f.setAttribute('data-confirm', (keys.length ? 'Save these roles? ' : 'Save the roles shown? ') + parts.concat(idleLines).join(' ') + ' ' + tail);
+  }
+  f.addEventListener('change', function (e) {
+    var b = e.target;
+    if (!b.matches || !(b.matches('input[data-rid]') || b.matches('input[data-idle-rid]'))) return;
+    if (b.matches('input[data-idle-rid]')) { sync(); return; }
+    if (!rowOf(b).hasAttribute('data-read') && b.checked) { var r = readBox(b); if (r) r.checked = true; }
+    sync();
+  });
+  sync();
+})();
+</script>
+{% elif tab == 'leader' %}
+{% include "roles/_leader.html" %}
+{% else %}
+{% include "roles/_user.html" %}
+{% endif %}
+{% endblock %}

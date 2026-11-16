@@ -1,0 +1,105 @@
+{# Panel: Promotion Nomination. The standing rules that surface somebody
+   unnominated, and how far up the grade ladder a nomination may reach. These
+   controls ARE those rules -- promo_auto_reason() and promo_grade_options()
+   read nothing else. #}
+<div class="set-panel-head">
+  <div>
+    <h2>Promotion nomination</h2>
+    <p class="muted">Who the system puts forward on its own, and how far a nomination
+      may propose. The rules run on the calibrated talent status of past years, so they
+      surface people the record already argued for — before anyone remembers to.</p>
+  </div>
+</div>
+{# parked 2026-10-10 (PARKED_MODULES): in no menu; the page says so rather than looking live (the admin review, K1) #}
+<p class="flash flash-info" style="margin:0 0 12px">Promotion nomination is parked: it is in no menu and nobody is
+  nominated from it this cycle. These rules are kept for when it comes back.</p>
+
+{# These rules are org-wide: their setter writes app_settings, which carries no
+   business_group, so one BG saving here would change the rules for every
+   employee in the group. A BG admin can read them -- the rules govern their own
+   people -- but only a super admin may change them. The route enforces this;
+   this note and the disabled button are so the page says so rather than 403ing
+   on save. #}
+{% if not nav_is_super %}
+<div class="admin-card" style="margin-top:14px">
+  <p class="note" style="margin:0"><strong>Org-wide settings, read-only for you.</strong>
+    These rules apply to every Business Group, not just yours, so only a super admin can
+    change them. They are shown here because they govern your people too.</p>
+</div>
+{% endif %}
+
+
+<form method="post"
+      data-confirm="Save the promotion nomination rules? They apply to every business group: who the system puts forward on its own, and how far a nomination may reach, change."
+      data-confirm-ok="Save">
+  <div class="admin-card" style="margin-top:14px">
+    <p class="succ-stat__label">Standing rules</p>
+    <p class="muted small" style="margin:2px 0 10px">Each rule reads
+      <strong>N consecutive years</strong> at a talent category <strong>or better</strong>,
+      with no promotion inside that window. A gap year breaks the run rather than being
+      skipped — an unknown year is not a qualifying year. Rules are checked top down and
+      the first match wins, so put the longer, more forgiving rule first.</p>
+    <div class="table-scroll">
+    <table class="admin-table">
+      <thead><tr><th style="width:22%">Consecutive years</th><th>At this category or above</th></tr></thead>
+      <tbody>
+        {% for i in rule_slots %}
+        {% set r = rules[i] if rules | length > i else none %}
+        <tr>
+          <td>
+            <input type="number" name="rule_years_{{ i + 1 }}" min="0" max="10" step="1"
+                   style="width:90px" value="{{ r[0] if r else '' }}"
+                   placeholder="off">
+          </td>
+          <td>
+            <select name="rule_cat_{{ i + 1 }}" class="modern-select">
+              {% for c in categories %}
+              <option value="{{ c }}"{{ ' selected' if r and r[1] == c else '' }}>{{ c }}</option>
+              {% endfor %}
+            </select>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    </div>
+    <p class="muted small" style="margin:10px 0 0">Leave the years blank (or set 0) to turn
+      a rule off. Turning all three off is allowed and means exactly what it says: nobody is
+      surfaced automatically, and every nomination is made by hand.</p>
+    <p class="note" style="margin:10px 0 0"><strong>What a rule is not:</strong> it does not
+      promote anybody, and it is not a queue. It puts a name in front of the people who
+      decide, with the reason printed next to it. Someone the rules miss can still be
+      nominated; someone the rules surface can still be passed over.</p>
+  </div>
+
+  <div class="admin-card" style="margin-top:16px">
+    <p class="succ-stat__label">History window</p>
+    <p class="muted small" style="margin:2px 0 0">Reading
+      <strong>{{ history_years }} years</strong> of talent status — the longest rule above,
+      or five years, whichever is more.</p>
+    <p class="muted small" style="margin:6px 0 0">Not a separate setting on purpose: a
+      window shorter than the longest rule would starve that rule silently. It would still
+      sit on this page looking configured, and never fire.</p>
+  </div>
+
+  <div class="admin-card" style="margin-top:16px">
+    <p class="succ-stat__label">How far a nomination may reach</p>
+    <p class="muted small" style="margin:2px 0 10px">The grades a nomination may propose:
+      the person's own, plus this many above it, capped at the top of the ladder
+      (JG&nbsp;12&ndash;23).</p>
+    <div class="succ-form" style="margin-top:8px">
+      <label class="muted small">Grades above their own
+        <input type="number" name="grade_reach" min="1" max="11" step="1"
+               value="{{ grade_reach }}"></label>
+    </div>
+    <p class="muted small" style="margin:10px 0 0">Somebody on a non-numeric grade
+      (H, FW, INTERN) is offered the bottom rungs of the numeric ladder instead — promotion
+      out of one of those lands in the ladder rather than moving along it, so
+      &ldquo;+{{ grade_reach }}&rdquo; would mean nothing there.</p>
+  </div>
+
+  <div class="actions" style="margin-top:16px">
+    <button type="submit" class="primary"
+            {% if not nav_is_super %}disabled title="Only a super admin can change org-wide settings"{% endif %}>Save promotion settings</button>
+  </div>
+</form>

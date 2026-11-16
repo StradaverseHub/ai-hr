@@ -1,0 +1,299 @@
+{# The Group Chief groups' side panels (2026-10-22: shared by Leaders › BG CEOs, where Chris moved the set up, and the
+   groups' own page): every POST goes to admin_pm_calibration_groups and, from Leaders, comes back there (return_bg). #}
+{% from "_table_tools.html" import colth, colmenu %}
+{% from "_adm_panel.html" import panel %}
+{% set gc_base = url_for('admin_leaders', tab='bgceo', bg=gc_return_bg) if gc_return_bg else url_for('admin_pm_calibration_groups') %}
+{% macro gc_back() %}{% if gc_return_bg %}<input type="hidden" name="return_bg" value="{{ gc_return_bg }}">{% endif %}{% endmacro %}
+{# "Show them as": one of the group's names, a new one, or their own department (2026-10-19: picked, not typed) #}
+{% macro seg_pick(row, default='', label='Show them as') %}
+  {% set names = row.segments | map(attribute=0) | list %}
+  <label class="gc-segin" data-choose-new-box><span>{{ label }}</span>
+    <select name="segment" class="modern-select" data-choose-new data-new-required>
+      <option value="" {{ 'selected' if not default }}>Their own department</option>
+      {% for name, n in row.segments %}<option value="{{ name }}" {{ 'selected' if default and name == default }}>{{ name }} · {{ n }}</option>{% endfor %}
+      <option value="__new__" {{ 'selected' if default and default not in names }}>A new name…</option>
+    </select>
+    <input name="segment_new" maxlength="60" placeholder="e.g. Technology" aria-label="The new name" data-new-input
+           value="{{ default if default and default not in names else '' }}"{% if not (default and default not in names) %} hidden{% endif %}>
+  </label>
+{% endmacro %}
+{# each group in its side panel (phase 3 of the admin side panels, 2026-10-17; canvas frame "Calibration groups · a
+   summary row, Manage opens the panel"): the tools, its names, Refresh and its people, as the group's card had them. A
+   save lands on #group-<id>, which opens it again; a count or a refresh preview opens it on load. #}
+{% for row in groups %}
+{% set g = row.g %}
+{% call panel("grp-" ~ g['id'], "Calibration group", g['name'],
+   'Calibrated by ' ~ (g['calibrator_name'] or 'nobody') ~ ' · ' ~ (row.members | length) ~ (' person' if row.members | length == 1 else ' people') ~ (((' · locked for ' ~ period['name']) if row.locked else (' · open for ' ~ period['name'])) if period else ''),
+   mid=True, open=((preview and preview.g == g['id']) or (refresh and refresh.g == g['id'])), params="g dept gbg refresh") %}
+  <div class="adm-panel-body gc-pbody" id="group-{{ g['id'] }}">
+  <div class="gc-tools">
+    <form method="post" action="{{ url_for('admin_pm_calibration_groups') }}" class="gc-mode"
+          data-confirm="Change the split for “{{ g['name'] }}”? It changes the suggested final band: at 100 : 0 the BG CEO only reads these people; below 100 both give a band, the Group Chief's locked calls stop counting on their own and you decide on Final bands. You can change it back."
+          data-confirm-title="Change how the band is suggested?" data-confirm-ok="Save"{{ super_remark_attrs() }}>
+      {{ gc_back() }}<input type="hidden" name="action" value="set_mode"><input type="hidden" name="group_id" value="{{ g['id'] }}">
+      <span class="gc-k">How the final band is suggested</span>
+      <span class="ld-split gc-split">
+        <span class="ld-split-a">Group Chief <b data-split-cal>{{ row.share }}</b></span>
+        <input type="range" name="chief_share" min="5" max="100" step="5" value="{{ row.share }}" data-split aria-label="The Group Chief's share; the BG CEO has the rest">
+        <span class="ld-split-b"><b data-split-ceo>{{ 100 - row.share }}</b> BG CEO</span>
+      </span>
+      <button type="submit" class="btn-link">Save</button>
+      <span class="muted small"><b>100 : 0</b>: only the Group Chief gives a band; the BG CEO sees these people on the Talent Box, read only. Below 100: both give a band and the blend is suggested.</span>
+      <span class="muted small">It only suggests the final band: the super admin decides it on Final bands.</span>
+    </form>
+    <form method="get" class="gc-match" action="{{ gc_base }}">
+      {% if gc_return_bg %}<input type="hidden" name="tab" value="bgceo"><input type="hidden" name="bg" value="{{ gc_return_bg }}">{% endif %}
+      <input type="hidden" name="g" value="{{ g['id'] }}">
+      <span class="gc-k">Add everyone matching</span>
+      {% set cur = preview.dept if preview and preview.g == g['id'] else '' %}
+      <label>Department <select name="dept" class="modern-select gc-dept" data-dept-pick aria-label="Department to add">
+        <option value="">Any department</option>
+        {% for d, by in dept_opts %}<option value="{{ d }}" data-by="{{ by | tojson | forceescape }}" {{ 'selected' if cur and cur | lower == d | lower }}>{{ d }} · {{ by.values() | sum }}</option>{% endfor %}
+      </select></label><input type="hidden" name="exact" value="1">
+      <span class="gc-bgs">{% for b in all_bgs %}<label><input type="checkbox" name="gbg" value="{{ b }}" {{ 'checked' if preview and preview.g == g['id'] and b in preview.bgs }}> {{ display_bg(b) }}</label>{% endfor %}</span>
+      <button type="submit" class="btn-link">Count them</button>
+    </form>
+    {% set adds_open = not row.locked %}
+    {% if not adds_open %}<p class="muted small">Locked for {{ period['name'] }}: nobody joins or leaves this group until
+      the next cycle, since that would change bands already called.</p>{% endif %}
+    {% if adds_open and preview and preview.g == g['id'] %}
+    <form method="post" action="{{ url_for('admin_pm_calibration_groups') }}" class="gc-preview"
+          data-confirm="Add the {{ preview.n }} matching {{ 'person' if preview.n == 1 else 'people' }} to “{{ g['name'] }}”? Their calibration moves to {{ g['calibrator_name'] }}, ahead of their usual line{% if preview.elsewhere %}; {{ preview.elsewhere }} already in another group stay there{% endif %}. You can remove people one at a time."
+          data-confirm-title="Add these people?" data-confirm-ok="Add {{ preview.n }}">
+      {{ gc_back() }}<input type="hidden" name="action" value="add_matching"><input type="hidden" name="group_id" value="{{ g['id'] }}">
+      <input type="hidden" name="dept" value="{{ preview.dept }}">{% if preview.exact %}<input type="hidden" name="dept_exact" value="1">{% endif %}{% for b in preview.bgs %}<input type="hidden" name="bg" value="{{ b }}">{% endfor %}
+      <span><b>{{ preview.n }}</b> to add{% if preview.already %} · {{ preview.already }} already in{% endif %}{% if preview.elsewhere %} · {{ preview.elsewhere }} in another scope (left there){% endif %}</span>
+      {# the batch's name, the Group Chief's Talent Box filters by it (Chris, 2026-10-13: "People, Technology, Data") #}
+      {{ seg_pick(row, preview.dept) }}
+      {% if preview.dept %}<label class="gc-follow"><input type="checkbox" name="follow" value="1" checked> Keep following this department: Refresh brings in who joins it</label>{% endif %}
+      <button type="submit" class="primary" {{ 'disabled' if not preview.n }}>Add the {{ preview.n }}</button>
+    </form>
+    {% endif %}
+    {% if adds_open %}
+    {# people are searched and picked, one or several (Chris, 2026-10-19: "adding employee to the group ... should use
+       search function to find from our user pool"); the server still checks every Employee ID it gets #}
+    <div class="gc-row">
+      <form method="post" action="{{ url_for('admin_pm_calibration_groups') }}" class="admin-form gc-add"
+            data-confirm="Add the people you picked to “{{ g['name'] }}”? Their calibration moves to {{ g['calibrator_name'] }}, ahead of their usual line; anyone already in another group stays there. You can remove people one at a time."
+            data-confirm-title="Add these people?" data-confirm-ok="Add them">
+        {{ gc_back() }}<input type="hidden" name="action" value="paste_ids"><input type="hidden" name="group_id" value="{{ g['id'] }}">
+        <div class="gc-ids"><span id="gc-add-l-{{ g['id'] }}">Add people</span>
+          <span class="pick pick-multi" data-pick data-pick-multi data-pick-required>
+            <input type="text" class="pick-q" placeholder="Search a name, Employee ID or job, then pick" autocomplete="off"
+                   aria-labelledby="gc-add-l-{{ g['id'] }}">
+            <input type="hidden" class="pick-val" name="ids">
+          </span></div>
+        {{ seg_pick(row) }}
+        <button type="submit" class="btn-link">Add</button>
+      </form>
+      <p class="muted small gc-row-note">“Show them as” is the name the Group Chief's Talent Box filters by. Someone
+        already in the group moves to it; with their own department, they show under it.</p>
+    </div>
+    {% endif %}
+  </div>
+
+  {# the names the Group Chief's Talent Box filters by, the departments the group follows, and Refresh (2026-10-13) #}
+  <div class="gc-names">
+    {% if row.segments %}
+    <span class="gc-k">Shown on the Group Chief's Talent Box as</span>
+    {% for name, n in row.segments %}
+    <form method="post" action="{{ url_for('admin_pm_calibration_groups') }}" class="gc-name" data-prompt="Rename “{{ name }}” for the {{ n }} {{ 'person' if n == 1 else 'people' }} shown under it" data-prompt-field="new" data-prompt-default="{{ name }}" data-confirm-ok="Rename">
+      {{ gc_back() }}<input type="hidden" name="action" value="rename_segment"><input type="hidden" name="group_id" value="{{ g['id'] }}">
+      <input type="hidden" name="old" value="{{ name }}">
+      <span class="gc-pill">{{ name }} <b>{{ n }}</b></span> <button type="submit" class="btn-link small">rename</button>
+    </form>
+    {% endfor %}
+    {% endif %}
+    {% if row.rules %}
+    <span class="gc-k">Follows</span>
+    {% for r in row.rules %}
+    <form method="post" action="{{ url_for('admin_pm_calibration_groups') }}" class="gc-name" data-confirm="Stop following {{ r.dept | proper }}? The people in it stay; Refresh won't add or take anyone for it any more." data-confirm-title="Stop following this department?" data-confirm-ok="Stop following">
+      {{ gc_back() }}<input type="hidden" name="action" value="drop_rule"><input type="hidden" name="group_id" value="{{ g['id'] }}">
+      <input type="hidden" name="rule" value="{{ loop.index0 }}">
+      <span class="gc-pill">{{ r.dept | proper }}{% if r.bgs %} · {% for b in r.bgs %}{{ display_bg(b) }}{{ ', ' if not loop.last }}{% endfor %}{% else %} · every business group{% endif %}{% if r.segment %} → {{ r.segment }}{% endif %}</span>
+      <button type="submit" class="btn-link small" aria-label="Stop following {{ r.dept | proper }}">×</button>
+    </form>
+    {% endfor %}
+    {% if not row.frozen %}<a class="btn-link gc-refresh" href="{{ gc_base }}{{ '&' if '?' in gc_base else '?' }}refresh={{ g['id'] }}#group-{{ g['id'] }}">Refresh from departments</a>
+    {% else %}<span class="muted small" title="{{ row.frozen }}">Refresh is closed: {{ row.frozen }}.</span>{% endif %}
+    {% endif %}
+  </div>
+  {% if refresh and refresh.g == g['id'] %}
+  <div class="gc-refresh-box" role="region" aria-label="If you refresh now">
+    <div class="adm-headrow"><h3>If you refresh now</h3><span class="muted small">nothing has changed yet</span></div>
+    {% if not refresh.join and not refresh.leave %}
+    <p class="muted">Nobody would join or leave: the group matches the departments it follows.</p>
+    {% else %}
+    <div class="gc-refresh-cols">
+      <div><b class="gc-join">{{ refresh.join | length }} join</b>
+        <ul>{% for x in refresh.join[:30] %}<li>{{ x.name }} <span class="muted small">· {{ x.why }}{% if x.segment %} · shown as {{ x.segment }}{% endif %}</span></li>{% endfor %}</ul>
+        {% if refresh.join | length > 30 %}<p class="muted small">and {{ refresh.join | length - 30 }} more.</p>{% endif %}</div>
+      <div><b class="gc-leave">{{ refresh.leave | length }} leave</b>
+        <ul>{% for x in refresh.leave[:30] %}<li>{{ x.name }} <span class="muted small">· {{ x.why }}</span></li>{% endfor %}</ul>
+        {% if refresh.leave | length > 30 %}<p class="muted small">and {{ refresh.leave | length - 30 }} more.</p>{% endif %}</div>
+    </div>
+    {% endif %}
+    <ul class="muted small gc-refresh-notes">
+      <li>People added by Employee ID stay whatever their department.</li>
+      {% if refresh.held %}<li>{{ refresh.held | length }} who no longer match stay: their call is locked or their final band decided.</li>{% endif %}
+      {% if refresh.elsewhere %}<li>{{ refresh.elsewhere }} matching sit in another group and stay there.</li>{% endif %}
+      {% if refresh.out %}<li>{{ refresh.out }} you took out by hand aren't added back.</li>{% endif %}
+    </ul>
+    <div class="gc-refresh-acts">
+      <a class="btn-link" href="{{ gc_base }}#group-{{ g['id'] }}">Cancel</a>
+      {% if refresh.join or refresh.leave %}
+      <form method="post" action="{{ url_for('admin_pm_calibration_groups') }}" data-confirm="Apply the refresh to “{{ g['name'] }}”? {{ refresh.join | length }} join and {{ refresh.leave | length }} leave; their calibration moves to or from {{ g['calibrator_name'] }}." data-confirm-title="Apply the refresh?" data-confirm-ok="Apply">
+        {{ gc_back() }}<input type="hidden" name="action" value="refresh"><input type="hidden" name="group_id" value="{{ g['id'] }}">
+        <input type="hidden" name="fingerprint" value="{{ refresh.fingerprint }}">
+        <button type="submit" class="primary">Apply: {{ refresh.join | length }} join, {{ refresh.leave | length }} leave</button>
+      </form>
+      {% endif %}
+    </div>
+  </div>
+  {% endif %}
+
+  {# its locks this cycle, and the super admin's Unlock (Chris, 2026-10-23): both axes and the people locked one by one #}
+  {% set lk = row.locks %}
+  <div class="gc-locks">
+    <span class="gc-k">Locks this cycle</span>
+    {% for ax, label in (('pm', 'Performance'), ('pot', 'Potential')) %}
+    <div class="ld-lockrow"><span class="ld-lockrow-k">{{ label }}</span>{% if lk[ax] %}<span class="adm-lock is-locked">Locked {{ lk[ax] | myt_day }}</span>{% else %}<span class="adm-lock is-open">Open</span>{% endif %}</div>
+    {% endfor %}
+    {% if lk.people %}<div class="ld-lockrow"><span class="ld-lockrow-k">One by one</span><span class="muted small">{{ lk.people }} {{ 'person' if lk.people == 1 else 'people' }} locked</span></div>{% endif %}
+    {% set U = unlock_box('group', g['id']) if nav_is_super else none %}
+    {% if U and U.locked and U.blocked %}<p class="muted small" style="margin:4px 0 0">{{ U.blocked }}</p>
+    {% elif U and U.locked %}
+    <form method="post" action="{{ url_for('admin_pm_calibration_groups') }}" data-confirm="{{ U.box.msg }}"{{ unlock_attrs(U.box) }}>
+      {{ gc_back() }}<input type="hidden" name="action" value="unlock"><input type="hidden" name="group_id" value="{{ g['id'] }}">
+      <button type="submit" class="btn-link">Unlock the group&hellip;</button>
+    </form>
+    {% elif U and U['pass'] %}<span class="adm-lock is-pass">{{ U['pass'] }}</span>
+    {% endif %}
+    {% if nav_is_super and (lk.pm or lk.pot or lk.people) %}    <p class="muted small" style="margin:4px 0 0">Only the super admin unlocks.</p>
+    {% endif %}
+  </div>
+
+  {% if row.members %}
+  <div class="table-scroll table-scroll-capped">
+  <table class="admin-table" id="calib-group-{{ g['id'] }}">
+    <thead><tr>
+      {{ colth('name', 'Name') }}{{ colth('bg', 'Business group') }}
+      {{ colth('unit', 'Business unit') }}{{ colth('dept', 'Department') }}{{ colth('seg', 'Shown as') }}<th class="gc-act"></th>
+    </tr></thead>
+    <tbody>
+      {% for m in row.members %}
+      <tr class="data-row" data-name="{{ m['full_name'] }}"
+          data-bg="{{ display_bg(m['business_group']) or '—' }}"
+          data-unit="{{ display_company(m['business_group'], m['company']) or '—' }}"
+          data-dept="{{ m['department'] or '—' }}" data-seg="{{ m['segment'] or (m['department'] or '—') }}">
+        <td><strong>{{ m['full_name'] }}</strong>
+          <br><span class="muted small">{{ m['employee_id'] }}</span></td>
+        <td class="muted small">{{ display_bg(m['business_group']) or '—' }}</td>
+        <td class="muted small">{{ display_company(m['business_group'], m['company']) or '—' }}</td>
+        <td class="muted small">{{ m['department'] | proper or '—' }}</td>
+        <td class="small">{% if m['segment'] %}{{ m['segment'] }}{% else %}<span class="muted" title="No name given: they show under their own department">{{ m['department'] | proper or '—' }}</span>{% endif %}</td>
+        <td class="gc-act">
+          {% if row.locked or m['id'] in row.held %}<span class="muted small" title="Their band has been called">Locked</span>
+          {% else %}
+          <form method="post" action="{{ url_for('admin_pm_calibration_groups') }}"
+                data-confirm="Remove {{ m['full_name'] }} from “{{ g['name'] }}”? They go back to being calibrated by their own line. You can add them again."
+                data-confirm-title="Remove this person?" data-confirm-ok="Remove" data-confirm-tone="danger">
+            {{ gc_back() }}<input type="hidden" name="action" value="remove_member">
+            <input type="hidden" name="group_id" value="{{ g['id'] }}">
+            <input type="hidden" name="subject_id" value="{{ m['id'] }}">
+            <button type="submit" class="btn-link">Remove</button>
+          </form>
+          {% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+          <tr class="no-filter-match" hidden><td colspan="6" class="muted">No members match the filters.</td></tr>
+    </tbody>
+  </table>
+  </div>
+  {{ colmenu('calib-group-' ~ g['id'], {
+       'name': {'mode': 'clientFilter', 'type': 'text', 'sortAttr': 'name'},
+       'bg':   {'mode': 'sort', 'type': 'text', 'sortAttr': 'bg'},
+       'unit': {'mode': 'clientFilter', 'type': 'text', 'sortAttr': 'unit'},
+       'dept': {'mode': 'sort', 'type': 'text', 'sortAttr': 'dept'},
+       'seg':  {'mode': 'clientFilter', 'type': 'text', 'sortAttr': 'seg'} }) }}
+  {% else %}
+  <p class="muted small">No members yet. Add them with the tools above.</p>
+  {% endif %}
+    <div class="adm-danger">
+      <span><b>Delete this group</b><br>Its members go back to being calibrated by their own line.</span>
+    {# locked calls hold the membership still (Chris, 2026-10-13): no delete, add or remove once the group is locked #}
+    {% if row.frozen %}
+    <span class="muted small" title="Changing who is in it would change bands already called.">Can't be deleted: {{ row.frozen }}.</span>
+    {% else %}
+    <form method="post" action="{{ url_for('admin_pm_calibration_groups') }}" data-confirm="Delete {{ g['name'] }}? Its members go back to being calibrated by their own line."
+          data-confirm-ok="Delete group" data-confirm-tone="danger">
+      {{ gc_back() }}<input type="hidden" name="action" value="delete">
+      <input type="hidden" name="group_id" value="{{ g['id'] }}">
+      <button type="submit" class="btn-link">Delete group&hellip;</button>
+    </form>
+    {% endif %}
+    </div>
+  </div>
+  <footer class="adm-panel-foot">
+    <a class="btn-link adm-panel-grow" href="{{ url_for('admin_final_bands', g=g['id']) }}">Final bands &rsaquo;</a>
+    <button type="button" class="primary" data-panel-close>Done</button>
+  </footer>
+{% endcall %}
+{% endfor %}
+
+{% call panel("grp-new", "Calibration groups · New", "Create a group", "One calibrator reviews its people together, ahead of their usual line. It starts empty.") %}
+  <form method="post" action="{{ url_for('admin_pm_calibration_groups') }}" class="admin-form adm-panel-form"
+        data-confirm="Create this calibration group with the calibrator you picked? They will calibrate everyone you add to it, ahead of each person's usual line. The group starts empty and you can delete it later."
+        data-confirm-title="Create this group?" data-confirm-ok="Create group">
+    <div class="adm-panel-body pp-pfields">
+    {{ gc_back() }}<input type="hidden" name="action" value="create">
+      <label><span>Group name <span class="req" aria-hidden="true">*</span></span>
+        <input name="name" placeholder="e.g. IT Shared Services" required></label>
+      <div class="gc-cal"><span id="gc-cal-l">Calibrator <span class="req" aria-hidden="true">*</span></span>
+        <span class="pick" data-pick>
+          <input type="text" class="pick-q" placeholder="Search a name, Employee ID or job, then pick" autocomplete="off"
+                 aria-labelledby="gc-cal-l" required>
+          <input type="hidden" class="pick-val" name="calibrator">
+        </span></div>
+    </div>
+    <footer class="adm-panel-foot">
+      <button type="button" class="btn-link" data-panel-close>Cancel</button>
+      <button type="submit" class="primary">Create group</button>
+    </footer>
+  </form>
+{% endcall %}
+<script>
+// the department list follows the business groups ticked beside it: only departments in them, counted in them
+(function () {
+  document.querySelectorAll('form.gc-match').forEach(function (f) {
+    var sel = f.querySelector('[data-dept-pick]'); if (!sel) return;
+    function sync() {
+      var on = [].map.call(f.querySelectorAll('input[name="gbg"]:checked'), function (b) { return b.value; });
+      [].forEach.call(sel.options, function (o) {
+        if (!o.value) return;
+        var by = JSON.parse(o.getAttribute('data-by') || '{}'), n = 0;
+        Object.keys(by).forEach(function (k) { if (!on.length || on.indexOf(k) >= 0) n += by[k]; });
+        o.hidden = o.disabled = n === 0;
+        o.textContent = o.value + ' · ' + n;
+      });
+      if (sel.selectedOptions[0] && sel.selectedOptions[0].disabled) sel.value = '';
+    }
+    f.addEventListener('change', function (e) { if (e.target.name === 'gbg') sync(); });
+    sync();
+  });
+})();
+</script>
+
+<script>
+// the split's two shares read as the slider moves (2026-10-22)
+(function () {
+  document.querySelectorAll('form.gc-mode').forEach(function (f) {
+    var r = f.querySelector('input[data-split]'); if (!r) return;
+    r.addEventListener('input', function () {
+      var v = parseInt(r.value, 10) || 100;
+      f.querySelector('[data-split-cal]').textContent = v; f.querySelector('[data-split-ceo]').textContent = 100 - v;
+    });
+  });
+})();
+</script>

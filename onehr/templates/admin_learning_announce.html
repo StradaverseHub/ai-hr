@@ -1,0 +1,107 @@
+{% extends "base.html" %}
+{% block title %}Announce {{ prog.title }}{% endblock %}
+{% block body %}
+{# Announce a programme (2026-10-22; canvas [design canvas link removed] board 16B; Chris: "blast to
+   all users or selected group to notify the rollout of a training", "admin can choose by BG / BU / Dept / job grade /
+   job family"). Any of the picks within a row, all the rows together; counted before sending; people already confirmed
+   on a run still to come are left out. The AI drafts the message from the programme; L&D sends it, now or at a time,
+   in OneHR's waves. #}
+<div class="adm-headrow">
+  <div class="lm-shead">
+    <a class="btn-link" href="{{ url_for('admin_learning_programmes', pid=prog.id) }}">‹ {{ prog.title }}</a>
+    <h2 class="lm-stitle">Announce a programme</h2>
+    <p class="muted small">{{ prog.title }}{% if runs %} · open runs: {{ runs | join('; ') }}{% else %} · no run is open for registration yet{% endif %}</p>
+  </div>
+</div>
+
+<form method="post" class="lm-ann" id="lm-ann">
+  <input type="hidden" name="programme_id" value="{{ prog.id }}">
+  <section class="admin-card lm-ann-who" aria-labelledby="lm-ann-who-h">
+    <h3 id="lm-ann-who-h" class="lm-h">Who gets it</h3>
+    <label class="lm-radio"><input type="radio" name="who" value="all"{{ ' checked' if pick.all }}> Everyone in the group <span class="muted small">· {{ '{:,}'.format(total) }} with AI+ Learning</span></label>
+    <label class="lm-radio"><input type="radio" name="who" value="pick"{{ ' checked' if not pick.all }}> Pick who</label>
+    <div class="lm-ann-rows">
+      {% for k, lab in rows %}
+      <details class="lm-pickrow"{{ ' open' if pick[k] }}>
+        <summary><span class="lm-pickrow-l">{{ lab }}</span>
+          {% set chosen = options[k] | selectattr(0, 'in', pick[k]) | list %}
+          <span class="lm-pickrow-v">{% if chosen %}{% for v, l in chosen[:6] %}<span class="lm-chip on">{{ l }}</span>{% endfor %}{% if chosen | length > 6 %}<span class="muted small">and {{ chosen | length - 6 }} others</span>{% endif %}{% else %}<span class="muted small">{{ 'Any' if k in ('jf', 'grade') else 'All' }}</span>{% endif %}</span></summary>
+        <div class="lm-picklist">
+          {% if options[k] | length > 12 %}<input type="search" class="lm-pickfind" placeholder="Find a {{ lab | lower }}" aria-label="Find a {{ lab | lower }}">{% endif %}
+          <div class="lm-pickopts">
+            {% for v, l in options[k] %}<label><input type="checkbox" name="{{ k }}" value="{{ v }}"{{ ' checked' if v in pick[k] }}> {{ l }}</label>{% else %}<span class="muted small">None on record.</span>{% endfor %}
+          </div>
+        </div>
+      </details>
+      {% endfor %}
+      <p class="muted small">Within a row: any of them. Across rows: all of them. A row left as "All" or "Any" doesn't narrow it.</p>
+    </div>
+    <div class="lm-ann-count" role="status">
+      <b>{{ '{:,}'.format(n) }} {{ 'person' if n == 1 else 'people' }}</b>
+      {% if n %}<span>· {{ '{:,}'.format(n_email) }} by email{% if n - n_email %}, {{ n - n_email }} with no email address see it on their dashboard{% endif %}</span>{% endif %}
+      {% if left_out %}<span>· already confirmed on a run: left out ({{ left_out }})</span>{% endif %}
+      {# counts before the words are written (the 2026-10-24 Learning QC: the required subject and message stopped it) #}
+      <button type="submit" formmethod="get" formnovalidate class="btn-link" data-ann-count>Update the count</button>
+      {% if not_open %}<span class="lm-ann-aud">The programme is for {{ aud_rule }}: {{ '{:,}'.format(not_open) }} {{ 'person' if not_open == 1 else 'people' }} you picked {{ 'isn\'t' if not_open == 1 else 'aren\'t' }} in its audience and won't get it.</span>{% endif %}
+    </div>
+  </section>
+
+  <section class="admin-card" aria-labelledby="lm-ann-msg-h">
+    <div class="lm-cardhead">
+      <h3 id="lm-ann-msg-h" class="lm-h">Subject and message</h3>
+      {% if ai_on %}<button type="submit" formmethod="get" name="draft" value="1" class="btn-ai"><svg width="12" height="12" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2C12.6 7.4 16.6 11.4 22 12C16.6 12.6 12.6 16.6 12 22C11.4 16.6 7.4 12.6 2 12C7.4 11.4 11.4 7.4 12 2Z" fill="var(--d-fg-d61923)"></path></svg>Draft from the programme</button>{% endif %}
+    </div>
+    <label class="lm-fld">Subject<input name="subject" maxlength="160" required value="{{ subject }}" placeholder="New for sales and trading: {{ prog.title }}"></label>
+    <label class="lm-fld">Message<textarea name="message" rows="5" maxlength="2000" required placeholder="What it is, who it suits, what it builds.">{{ message }}</textarea></label>
+    <p class="muted small">OneHR adds the open runs and seats under your message, and a button to the programme. The AI's draft is only a draft: it never sends.</p>
+  </section>
+
+  <section class="admin-card lm-ann-send" aria-label="Send">
+    <label class="lm-radio"><input type="radio" name="when" value="now" checked> Send now</label>
+    <label class="lm-radio"><input type="radio" name="when" value="later"> Send at
+      <input type="date" name="send_date" min="{{ today }}" value="{{ today }}" aria-label="Date">
+      <select name="send_time" class="modern-select" aria-label="Time">{% for t in times %}<option{{ ' selected' if t == '09:00' }}>{{ t }}</option>{% endfor %}</select></label>
+    <span class="grow"></span>
+    {% if can %}<button type="submit" class="primary" {% if not n %}disabled{% endif %}
+      data-confirm="Send “{{ subject or 'this announcement' }}” to {{ '{:,}'.format(n) }} {{ 'person' if n == 1 else 'people' }}?{% if mail_on and n > waves.size %} It goes out in waves of {{ waves.size }} every {{ waves.gap }} minutes.{% elif not mail_on %} This server sends no email: it shows on their dashboard.{% endif %}" data-confirm-ok="Send it">Send to {{ '{:,}'.format(n) }}…</button>{% endif %}
+  </section>
+</form>
+
+<section class="admin-card" id="sent" aria-labelledby="lm-ann-sent-h">
+  <h3 id="lm-ann-sent-h" class="lm-h">Sent before</h3>
+  {% if sent %}
+  <div class="table-scroll"><table class="admin-table no-auto-table">
+    <thead><tr><th scope="col">Announcement</th><th scope="col">Sent</th><th scope="col" class="lm-num">To</th><th scope="col" class="lm-num">By email</th><th scope="col" class="lm-num">Registered since</th>{% if can %}<th scope="col"><span class="sr-only">Cancel</span></th>{% endif %}</tr></thead>
+    <tbody>{% for a in sent %}<tr{% if a.cancelled_at %} class="lm-ann-off"{% endif %}><td>{{ a.subject }}</td>
+      <td class="small">{% if a.cancelled_at %}Cancelled {{ (a.cancelled_at | myt)[:16] }}{% elif a.scheduled %}Goes {{ (a.send_at | myt)[:16] }}{% else %}{{ (a.send_at | myt)[:16] }}{% endif %}</td>
+      <td class="lm-num">{{ '{:,}'.format(a.n_people) }}</td><td class="lm-num">{{ '–' if a.cancelled_at else '{:,}'.format(a.n_emailed) }}</td><td class="lm-num">{{ '–' if a.cancelled_at or a.scheduled else a.registered }}</td>
+      {% if can %}<td class="lm-num">{% if a.scheduled %}<form method="post" data-confirm="Cancel &ldquo;{{ a.subject }}&rdquo; before it goes? Nobody gets it, by email or on their dashboard. This can't be undone; announce again to send it." data-confirm-ok="Cancel the announcement" data-confirm-tone="danger"><input type="hidden" name="programme_id" value="{{ prog.id }}"><input type="hidden" name="action" value="cancel"><input type="hidden" name="announcement_id" value="{{ a.id }}"><button type="submit" class="btn-link lm-danger">Cancel…</button></form>{% endif %}</td>{% endif %}
+    </tr>{% endfor %}</tbody>
+  </table></div>
+  {% else %}<p class="muted small">Not announced yet.</p>{% endif %}
+</section>
+<script>
+(function () {
+  // a long pick list narrows as you type
+  document.querySelectorAll('.lm-pickfind').forEach(function (inp) {
+    inp.addEventListener('input', function () {
+      var q = inp.value.trim().toLowerCase();
+      inp.parentNode.querySelectorAll('.lm-pickopts label').forEach(function (l) {
+        l.hidden = !!q && l.textContent.toLowerCase().indexOf(q) < 0;
+      });
+    });
+  });
+  // the count is a GET: it never carries the form's security token into the address
+  var cnt = document.querySelector('[data-ann-count]');
+  function tok(off) { var t = cnt && cnt.form && cnt.form.querySelector('input[name=csrf_token]'); if (t) t.disabled = off; }
+  if (cnt) cnt.addEventListener('click', function () { tok(true); });
+  window.addEventListener('pageshow', function () { tok(false); });   // back from the count: Send still carries it
+  // picking a row means "Pick who"
+  document.querySelectorAll('.lm-pickopts input').forEach(function (cb) {
+    cb.addEventListener('change', function () {
+      var r = document.querySelector('input[name=who][value=pick]'); if (r && cb.checked) r.checked = true;
+    });
+  });
+})();
+</script>
+{% endblock %}

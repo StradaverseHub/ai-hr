@@ -1,0 +1,34 @@
+{% extends "base.html" %}
+{% block title %}Strada8 KPI lines{% endblock %}
+{% block body %}
+<div class="page-head">
+  <div>
+    <h1>Import the Strada8 KPI lines</h1>
+    <p class="muted">Each KPI-route person's lines and weights{% if n.cycle %}, for {{ n.cycle.name }}{% endif %}.</p>
+  </div>
+</div>
+{% if not v and not done %}
+<div class="admin-card">
+  <h2>How it works</h2>
+  <ul class="bullets">
+    <li>One row a KPI line. Columns: {% for c in cols %}<strong>{{ c }}</strong>{{ ', ' if not loop.last }}{% endfor %}. For a person's second line and more, repeat their Employee ID.</li>
+    <li><strong>Weight %</strong> is a number, for example 25. A person's weights must <strong>total 100%</strong>: if they total 85%, OneHR names the total and the file cannot be applied until it is fixed.</li>
+    <li><strong>Group scale</strong> is FIAMMA or SIGNATURE, one for each person.</li>
+    <li>The person must already be on the Grade H list. Loading their lines puts them on the KPI route.</li>
+  </ul>
+  <p class="note"><strong>Four steps.</strong> OneHR checks the file, shows each person's lines, asks about anyone who has started and whose lines change, and you apply that same file.</p>
+</div>
+<a class="template-dl" href="{{ url_for('admin_gradeh_import_kpi_template') }}" download>
+  <svg class="tdl-ic" viewBox="0 0 24 24" width="32" height="32" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 3v4a1 1 0 0 0 1 1h4"/><path d="M17 21H7a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h7l5 5v11a2 2 0 0 1-2 2z"/><path d="M12 11v6"/><path d="M9.5 14.5 12 17l2.5-2.5"/></svg>
+  <span class="tdl-main"><span class="tdl-title">Download the KPI lines template (Excel)</span><span class="tdl-sub">Its example rows are placeholders OneHR refuses.</span></span>
+  <span class="tdl-cta">Download</span>
+</a>
+{% endif %}
+{% import "_import_steps.html" as imp with context %}
+{% call imp.page(v, done, {'page': 'admin_gradeh_import_kpi', 'changes': 'Each person\'s KPI lines',
+                           'final': 'The KPI lines after you apply this file'},
+                 {'changes': 'each person\'s lines, and your answers'}) %}
+{{ imp.upload("Nothing changes yet. OneHR checks that every person's weights total 100%, shows each person's lines and asks about anyone who has started. Then you apply that same file.") }}
+{% endcall %}
+<p><a class="btn-link" href="{{ url_for('admin_gradeh', tab='imports') }}">Back to Grade H Appraisal</a></p>
+{% endblock %}

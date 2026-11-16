@@ -1,0 +1,61 @@
+{% extends "base.html" %}
+{% block title %}{{ person['full_name'] }}{% endblock %}
+{% block body %}
+{% from "_adm_panel.html" import list_peek %}
+{# One person, everything set for them (canvas row I, part 1: Overview and Performance). Every form here posts to
+   admin_person_kpi / admin_person_lines, which write through the module pages' own helpers. #}
+{% set words = (person['full_name'] or '?').split() %}
+{% set lrn = namespace(any=false) %}
+<div class="pp">
+  <div class="pp-crumb muted small"><a href="{{ url_for('admin_users') }}">People</a> &rsaquo; {{ person['full_name'] }}</div>
+  <section class="admin-card pp-head" aria-label="{{ person['full_name'] }}">
+    <span class="pp-avatar" aria-hidden="true">{{ (words[0][:1] ~ (words[-1][:1] if words|length > 1 else ''))|upper }}</span>
+    <div class="pp-who">
+      <div class="pp-name-row"><h1 class="pp-name">{{ person['full_name'] }}</h1>
+        <span class="muted small pp-meta">{{ person['employee_id'] or '' }}{% if eids %} &middot; <button type="button" class="pp-also" data-panel-open="account" title="Linked Employee IDs: open the Account panel">also {{ eids | map(attribute='eid') | join(', ') }}</button>{% endif %}{% if person['job_title'] %} · {{ person['job_title'] | proper }}{% endif %}{% if person['job_grade'] %} · JG {{ person['job_grade'] }}{% endif %}{% if person['department'] %} · {{ person['department'] | proper }}{% endif %}{% if person['company'] %} · {{ display_company(person['business_group'], person['company']) }}{% endif %} · {{ display_bg(person['business_group']) }}</span></div>
+      <div class="pp-badges">
+        <span class="pp-role is-emp">Employee</span>
+        {% if roles.reports %}{% if is_super %}<a class="pp-role is-lm is-link" href="{{ url_for('admin_list_view', key='lm-reports', uid=person['id']) }}" data-list-open="{{ url_for('admin_list_view', key='lm-reports', uid=person['id'], fragment=1) }}" title="Show their {{ roles.reports }} direct report{{ 's' if roles.reports != 1 }}">LM of {{ roles.reports }}</a>{% else %}<span class="pp-role is-lm">LM of {{ roles.reports }}</span>{% endif %}{% endif %}
+        {# a leader's role chip opens their review's people in the list panel, with where each stands (Chris, 2026-11-09): the super admin's, and an admin whose role reads Calibration and whose scope covers it, while the review is live (lr_chip) #}
+        {% if roles.heads %}{% set lc = lr_chip(cyc, 'hod', person['id']) %}{% if lc %}{% set lrn.any = true %}<a class="pp-role is-hod is-link" href="{{ lc.page }}" data-list-open="{{ lc.frag }}" title="Show the {{ roles.heads }} {{ 'person' if roles.heads == 1 else 'people' }} they head">HOD of {{ roles.heads }}</a>{% else %}<span class="pp-role is-hod">HOD of {{ roles.heads }}</span>{% endif %}{% endif %}
+        {% for bu in roles.buceo_units %}{% set lc = lr_chip(cyc, 'buceo', bu.bg, bu.company) %}{% if lc %}{% set lrn.any = true %}<a class="pp-role is-bu is-link" href="{{ lc.page }}" data-list-open="{{ lc.frag }}" title="Show the people in {{ display_company(bu.bg, bu.company) }} and where their review stands">BU CEO · {{ display_company(bu.bg, bu.company) }}</a>{% else %}<span class="pp-role is-bu">BU CEO · {{ display_company(bu.bg, bu.company) }}</span>{% endif %}{% endfor %}
+        {% for cg in roles.cals %}{% set lc = lr_chip(cyc, 'bugrp', cg.bg, cg.company, cg.gid) %}{% if lc %}{% set lrn.any = true %}<a class="pp-role is-cg is-link" href="{{ lc.page }}" data-list-open="{{ lc.frag }}" title="Show the people in {{ cg.name }} and where their review stands">{{ 'BGCFO' if cg.tag == 'BGCFO' else 'CG' }} · {{ cg.name }}</a>{% else %}<span class="pp-role is-cg">{{ 'BGCFO' if cg.tag == 'BGCFO' else 'CG' }} · {{ cg.name }}</span>{% endif %}{% endfor %}
+        {% if roles.bgceo %}{% set lc = lr_chip(cyc, 'bgceo', roles.bgceo) %}{% if lc %}{% set lrn.any = true %}<a class="pp-role is-bg is-link" href="{{ lc.page }}" data-list-open="{{ lc.frag }}" title="Show the business units in {{ display_bg(roles.bgceo) }} and where their Talent Box stands">BG CEO · {{ display_bg(roles.bgceo) }}</a>{% else %}<span class="pp-role is-bg">BG CEO · {{ display_bg(roles.bgceo) }}</span>{% endif %}{% endif %}
+        {% for gid, gname in roles.group_ids %}{% set lc = lr_chip(cyc, 'group', gid) %}{% if lc %}{% set lrn.any = true %}<a class="pp-role is-gc is-link" href="{{ lc.page }}" data-list-open="{{ lc.frag }}" title="Show the people in {{ gname }} and where their review stands">Group Chief · {{ gname }}</a>{% else %}<span class="pp-role is-gc">Group Chief · {{ gname }}</span>{% endif %}{% endfor %}
+        {% if roles.matrix_kpis %}<span class="pp-role is-mx">Matrix manager · {{ roles.matrix_kpis }} KPI{{ 's' if roles.matrix_kpis != 1 }}</span>{% endif %}
+        {% if email_off %}<span class="pp-role is-off" title="{{ email_off | map(attribute='label') | join(' and ') }}{% if email_off[0].until_disp %}, until {{ email_off[0].until_disp }}{% else %}, until turned back on{% endif %}">Reminder emails off</span>{% endif %}
+        {% if person['left_at'] %}<span class="pp-out">Left {{ person['left_at'] | myt_date }}</span>
+        {% elif gh %}<span class="pp-role is-gh">Grade H Appraisal · {{ gh.route_word }}</span><span class="muted small pp-nonormal">Not in the normal review</span>
+        {% elif cyc and taking[0] %}<span class="pp-in">✓ Taking part in {{ cyc['name'] }}</span>
+        {% elif cyc %}<span class="pp-out">Not taking part in {{ cyc['name'] }}</span>{% endif %}
+        {% if late_open_n %}<span class="pp-latechip">{{ late_open_n }} late pass{{ 'es' if late_open_n != 1 }} open</span>{% endif %}
+      </div>
+    </div>
+    {% if cycles %}
+    <form method="get" class="pp-cycle" data-no-busy>
+      <input type="hidden" name="tab" value="{{ tab }}">
+      <label class="sr-only" for="pp-cycle">Cycle</label>
+      <select id="pp-cycle" name="cycle" class="modern-select" onchange="this.form.submit()">
+        {% for c in cycles %}<option value="{{ c['id'] }}" {{ 'selected' if cyc and c['id'] == cyc['id'] }}>{{ c['name'] }}{{ ' · current' if c['is_active'] }}</option>{% endfor %}
+      </select>
+    </form>
+    {% endif %}
+  </section>
+
+  <nav class="pp-tabs" aria-label="{{ person['full_name'] }}">
+    {% for k, label in tabs %}
+    <a href="{{ url_for('admin_person', uid=person['id'], tab=k, cycle=(cyc['id'] if cyc and not editable else None)) }}" class="{{ 'is-on' if k == tab }}" {{ 'aria-current=page' if k == tab }}>{{ label }}</a>
+    {% endfor %}
+  </nav>
+  {% if cyc and not editable %}
+  <p class="pp-past">Viewing <b>{{ cyc['name'] }}</b>, a past cycle: read-only. Pick the current cycle above to make a change.</p>
+  {% endif %}
+
+  {% if subs or subs_bu_note %}{% include "person/_submissions.html" %}{% endif %}
+  {% if late %}{% include "person/_late.html" %}{% endif %}
+  {% include "person/_%s.html" % tab %}
+  {# the Line manager / HOD counts open their people in the one list panel (super admin) #}
+  {% if (is_super and roles.reports) or lrn.any %}{{ list_peek() }}{% endif %}
+  {% if is_super and (roles.reports or roles.heads) %}<script src="{{ url_for('static', filename='lm_team.js') }}?v={{ asset_v }}" defer></script>{% endif %}
+</div>
+{% endblock %}

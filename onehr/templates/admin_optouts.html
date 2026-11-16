@@ -1,0 +1,60 @@
+{% extends "base.html" %}
+{% block title %}Reminders · Opted out{% endblock %}
+{% from "_search_in.html" import search_in_box %}
+{% block body %}
+{# Email › Schedule › Opted out (Chris, 2026-11-01, canvas [design canvas link removed] board L1): the
+   people the super admin took off Everyone's reminder or the leader progress email, with the Executive Chairman seat's
+   own rule as a fixed row. Set or change one on the person's page, Account. The super admin's only. #}
+<div class="rm rm2 oo">
+  {% include "_reminder_tabs.html" %}
+  <p class="adm-lede">People the super admin has taken off OneHR's reminder emails{% if chair %}, and the Executive Chairman seat, which OneHR leaves out of Leader progress{% endif %}. Everyone's reminder also covers a Grade H person's own reminder, and, with Leader progress, an HOD's or BU CEO's Grade H progress and ready notes. Results, upgrade notices, password and ticket emails still reach them all. Set or change one on the person's page, Account.</p>
+  <section class="admin-card adm-filters oo-filters" aria-label="Filters">
+    <form method="get" class="adm-fsearch">
+      {{ search_in_box(search_in, qin, q) }}
+      <label class="oo-show"><span class="muted small">Show</span>
+        <select name="show" class="modern-select" onchange="this.form.submit()" aria-label="Show">
+          <option value="now" {{ 'selected' if show == 'now' }}>Now · {{ counts.now + counts.chair }}</option>
+          <option value="ended" {{ 'selected' if show == 'ended' }}>Ended · {{ counts.ended }}</option>
+          <option value="all" {{ 'selected' if show == 'all' }}>Everyone · {{ counts.now + counts.chair + counts.ended }}</option>
+        </select></label>
+    </form>
+  </section>
+  <section class="admin-card oo-card" aria-label="Opted out">
+    {% if rows or chair %}
+    <table class="admin-table oo-table">
+      <colgroup><col style="width:21%"><col style="width:17%"><col style="width:14%"><col style="width:14%"><col style="width:20%"><col style="width:14%"></colgroup>
+      <thead><tr><th>Person</th><th>Stops</th><th>Until</th><th>Set by</th><th>Why</th><th><span class="sr-only">Turn back on</span></th></tr></thead>
+      <tbody>
+        {% if chair %}
+        <tr class="oo-fixed"><td><b>Executive Chairman seat</b><div class="muted small">Whoever holds it</div></td>
+          <td><span class="oo-k">Leader progress</span></td><td>While they hold the seat</td>
+          <td>OneHR rule<div class="muted small">{{ chair_since }}</div></td>
+          <td><span class="oo-why" title="Takes part only in the final Talent Box calibration">Takes part only in the final Talent Box calibration</span></td>
+          <td><span class="oo-fixedchip" title="Set in OneHR for the seat; it can't be turned back on here">Fixed</span></td></tr>
+        {% endif %}
+        {% for e in rows %}
+        <tr>
+          <td><a href="{{ url_for('admin_person', uid=e.uid, panel='account') }}"><b>{{ e.name }}</b></a><div class="muted small">{{ e.eid }}{% if e.company %} · {{ display_company(e.bg, e.company) }}{% endif %}</div></td>
+          <td>{% for k in e.kinds %}<span class="oo-k">{{ k }}</span>{% endfor %}</td>
+          <td>{{ e.until_disp or 'Until turned back on' }}</td>
+          <td>{{ e.by }}<div class="muted small">{{ e.at }}</div></td>
+          <td><span class="oo-why" title="{{ e.reason }}">{{ e.reason }}</span></td>
+          <td>{% if e.state == 'now' %}
+            <form method="post" action="{{ url_for('admin_person_lines', uid=e.uid) }}"
+                  data-confirm-title="Turn reminder emails back on for {{ e.name }}?"
+                  data-confirm="{{ e.kinds | join(' and ') }} will reach {{ e.name }} again from the next send. It's in the audit log."
+                  data-confirm-ok="Turn back on">
+              <input type="hidden" name="action" value="email_optout_end"><input type="hidden" name="next" value="optouts"><input type="hidden" name="show" value="{{ show }}">
+              <button type="submit" class="btn oo-on">Turn back on</button></form>
+            {% else %}<span class="muted small">{{ state_words(e) }}</span>{% endif %}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% else %}
+    <p class="muted">{% if q %}Nobody matches.{% elif show == 'ended' %}No opt-out has ended yet.{% else %}Nobody is opted out. Set one on a person's page, Account.{% endif %}</p>
+    {% endif %}
+    <p class="muted small oo-foot">One with a date ends by itself the next day and moves to Ended. Show: Now · Ended · Everyone. Every change, with its reason, is in the audit log.</p>
+  </section>
+</div>
+{% endblock %}

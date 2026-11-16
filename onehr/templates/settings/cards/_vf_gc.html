@@ -1,0 +1,61 @@
+{# Filters card › Group Chiefs · per group (canvas boards C and D). A Group Chief group holds people from any business group, so there
+   are no business group tabs: Segment (the names given to each batch of people) is always on, as before; the rest is the group's own
+   (calib_viewer_filter, kind 'gc'; no rows = Segment only). The panel posts to admin_calib_viewer_filter. #}
+{% from "_adm_panel.html" import panel with context %}
+{% from "settings/cards/_vf_macros.html" import filter_rows, preview, foot, search %}
+<p class="muted small vf-sub">A Group Chief group holds people from any business group, so there are no business group tabs here. Segment (the names you
+  give each batch of people) stays on, as today.</p>
+{{ search(vf, search_in, qin, q, 'Search Group Chiefs') }}
+<div class="table-scroll"><table class="admin-table vf-table vf-table-gc no-auto-table" id="vf-gc-table">
+  <thead><tr><th>Group</th><th>Group Chief</th><th>People</th><th>Filters</th><th><span class="sr-only">Edit</span></th></tr></thead>
+  <tbody>
+  {% for r in vf.gc %}
+    <tr data-vf-row-of="gc-{{ r.id }}">
+      <td><b>{{ r.name }}</b></td>
+      <td>{{ r.chief }}</td>
+      <td>{{ r.people }} <span class="vf-muted">· {{ r.n_bgs }} business group{{ '' if r.n_bgs == 1 else 's' }}</span></td>
+      <td>{{ r.filters }}{% if not r.set_here %}<div class="vf-subl">As today</div>{% endif %}</td>
+      <td class="vf-edit"><button type="button" class="btn-link" data-panel-open="vfg-{{ r.id }}"
+          aria-label="Edit the filters of {{ r.name }}">Edit</button></td>
+    </tr>
+  {% else %}
+    <tr><td colspan="5" class="muted">{% if q %}No Group Chief group matches that search.{% else %}No Group Chief groups yet. They are set up on Leaders › BG CEOs.{% endif %}</td></tr>
+  {% endfor %}
+  </tbody>
+</table></div>
+
+{% for r in vf.gc %}
+{% call panel("vfg-" ~ r.id, "Group Chief filters", r.name,
+              r.chief ~ " · " ~ r.people ~ (" person" if r.people == 1 else " people") ~ (" in " ~ (r.bgs | join(', ')) if r.bgs else "")) %}
+<form method="post" action="{{ url_for('admin_calib_viewer_filter') }}" class="adm-panel-form vf-pform" data-no-busy data-vf-form
+      data-vf-who="{{ r.name }}" data-vf-set="{{ 1 if r.set_here else 0 }}"
+      data-confirm="Nothing has changed for {{ r.name }}." data-confirm-title="Save filters?" data-confirm-ok="Save filters">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+  <input type="hidden" name="kind" value="gc">
+  <input type="hidden" name="viewer_id" value="{{ r.id }}">
+  <input type="hidden" name="action" value="save">
+  <div class="adm-panel-body">
+    <section class="vf-sec">
+      <span class="vf-lbl">1. Which filters</span>
+      {{ filter_rows(r.rows) }}
+      <p class="vf-note">Across business groups, Job grade lists each grade (JG 12, JG 13, …): every group bands its grades its own way.</p>
+    </section>
+    <section class="vf-sec">
+      <span class="vf-lbl">2. How a department reads</span>
+      <div class="vf-read">
+        {% if r.alone %}<div><span>{{ r.alone }}</span><span class="vf-muted">only in one group: its name alone</span></div>{% endif %}
+        {% if r.dup %}{% for d, g in r.dup %}<div><span>{{ d }} · {{ g }}</span><span class="vf-muted">{{ 'the same name in two groups:' if loop.first else 'one row each, with its group' }}</span></div>{% endfor %}
+        {% elif not r.alone %}<div><span class="vf-muted">No departments on the roster yet.</span></div>
+        {% else %}<div><span class="vf-muted">A name held by two groups reads “Finance · BG North” and “Finance · BG South”: one row each.</span></div>{% endif %}
+      </div>
+    </section>
+    <section class="vf-sec">
+      <span class="vf-lbl">3. What they will see</span>
+      {{ preview(r.people, lead=[{'plural': 'segments'}]) }}
+    </section>
+  </div>
+  {{ foot() }}
+</form>
+{% endcall %}
+{% endfor %}
+<script src="{{ url_for('static', filename='calib_viewer_filters.js') }}?v={{ asset_v }}"></script>

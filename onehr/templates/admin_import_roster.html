@@ -1,0 +1,72 @@
+{% extends "base.html" %}
+{% block title %}Import roster{% endblock %}
+{% block body %}
+{% from "_mode_switch.html" import import_modes with context %}
+{{ import_modes('people') }}
+<p class="adm-lede">Bring the headcount up to date from an Excel (or CSV) file, matched on Employee ID.
+  Today: <b>{{ n_active | thousands }}</b> active{% if n_left %}, {{ n_left | thousands }} left{% endif %}.</p>
+
+{% if not v and not done %}{# how it works and the template: step 1 only #}
+<div class="admin-card">
+  <h2>How it works</h2>
+  <ul class="bullets">
+    <li><strong>New Employee ID</strong> → the person is created with the <em>Manager</em> from their row (required for a new joiner) and the <em>HOD</em> if it's given (a BG admin can assign it later on Leaders).</li>
+    <li><strong>Existing Employee ID</strong> → their details are refreshed; the same record is kept, so their past reports and history stay intact. A returning leaver is reactivated.</li>
+    <li><strong>Manager / HOD</strong> columns take the manager's / HOD's <strong>Employee ID</strong>. Required for new joiners; optional when updating an existing person (left blank keeps their current link). That is also what makes someone a line manager or an HOD: they need no column of their own.</li>
+    <li><strong>BU CEO of</strong> (one or more units of their business group, separated by ";"), <strong>BG CEO of</strong> (a business group) and <strong>Group Chief of</strong> (a calibration group's name) set their seats. Blank leaves a seat as it is; <strong>NONE</strong> takes it away. The check lists every seat that changes, and who it is taken from. A business group's admin can set BU CEO and BG CEO in their group, a unit's admin no seat, and only the super admin Group Chief of.</li>
+  </ul>
+  <p class="muted small">
+    Columns (header names are flexible / case-insensitive): Employee ID, Employee Name, Business Group,
+    Company, Job Grade, Job Title, Department, Joined Date, Confirmation Date, Year(s) of Service,
+    Employment Type, Work Email, Cost Center, Work Location, Manager, HOD, BU CEO of, BG CEO of, Group Chief of. People already in OneHR keep their passwords.
+    <strong>Joined Date</strong> is their first day in the group (Group People's Original Hire Date), not the date of a move between companies.
+  </p>
+  <p class="note">
+    <strong>Quality first, then all-or-nothing.</strong> Choosing a file changes nothing: OneHR checks every row first.
+    A row that can't be imported (no Employee ID, Name or Business Group, outside your data, an admin account, a new
+    joiner with no Manager or HOD, a unit that isn't in Org structure) stops the file until you fix it. Things
+    that are probably a mistake (a manager who has left, a reporting loop, a department spelled two ways, a shared or
+    missing email, a date or grade OneHR can't read) are listed for you to look at before you go on.
+  </p>
+</div>
+
+<a class="template-dl" href="{{ url_for('admin_import_roster_template') }}" download>
+  <svg class="tdl-ic" viewBox="0 0 24 24" width="32" height="32" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+    <path d="M14 3v4a1 1 0 0 0 1 1h4"/>
+    <path d="M17 21H7a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h7l5 5v11a2 2 0 0 1-2 2z"/>
+    <path d="M12 11v6"/><path d="M9.5 14.5 12 17l2.5-2.5"/>
+  </svg>
+  <span class="tdl-main">
+    <span class="tdl-title">Download the roster template (Excel)</span>
+    <span class="tdl-sub">Ready-made column headers — fill in your rows, then upload below.</span>
+  </span>
+  <span class="tdl-cta">Download</span>
+</a>
+
+{# 1 File -> 2 Quality -> 3 Changes and the super admin's answers -> 4 the final preview and Apply (admin round 4, canvas
+   D4 + D5; the fourth step, 2026-10-26: every import in these four steps, canvas
+   [design canvas link removed]). The quality step comes first (Chris, 2026-10-13); Apply uses the
+   same file, kept on the server, never picked again. #}
+{% endif %}
+{% import "_import_steps.html" as imp with context %}
+{% call imp.page(v, done, {'page': 'admin_import_roster', 'changes': 'What it changes in the people records',
+                           'final': 'The people records after you apply this file'},
+                 {'changes': 'added, updated, roles, leavers, and your answers'}) %}
+{% call imp.upload("Nothing changes yet. OneHR checks the file's quality, shows what it would change and asks the super admin anything it shouldn't guess (who a full roster marks as left, a seat it moves). Then you apply that same file.") %}
+      <div style="margin-top:12px; text-align:left; max-width:560px; margin-left:auto; margin-right:auto;">
+        <label class="radio-line">
+          <input type="radio" name="mode" value="upsert" checked>
+          <span><strong>Add &amp; update only</strong> (safe for a partial file) — create new people and
+            refresh existing ones. Nobody is marked as left.</span>
+        </label>
+        <label class="radio-line">
+          <input type="radio" name="mode" value="authoritative">
+          <span><strong>Authoritative full roster</strong> — also flag anyone <em>in the business groups this file
+            names</em> who is <strong>not</strong> in it as <strong>left</strong> (login closed; data kept). Use only
+            when the file is those groups' complete current headcount: another group's people are never touched. The
+            super admin confirms each one before it applies.</span>
+        </label>
+      </div>
+{% endcall %}
+{% endcall %}
+{% endblock %}

@@ -1,0 +1,19 @@
+{# Served with status 404 by _module_gate() when a module the cycle switched
+   off is reached anyway -- a bookmark, a typed URL, a link in an old email.
+   404 rather than 403 on purpose: the module being off is not a permissions
+   question, and a 403 would confirm the page exists and is merely barred.
+   The page still names the module, because "not found" alone would send
+   somebody hunting for a link that is deliberately gone. #}
+{% extends "base.html" %}
+{% block title %}Not running this cycle{% endblock %}
+{% block body %}
+<div class="card error-card">
+  <div class="error-code">404</div>
+  <h1>{{ module_label }} isn't running this cycle</h1>
+  <p class="muted">This part of OneHR has been switched off for the current review
+    cycle, so its pages aren't available. Nothing has been deleted &mdash; if it is
+    switched back on, your work reappears exactly as you left it.</p>
+  <p class="muted">If you were expecting to use it, speak to Group People.</p>
+  <div class="actions" style="justify-content:flex-start"><a class="btn-link" href="{{ url_for('home') }}">Go home</a></div>
+</div>
+{% endblock %}

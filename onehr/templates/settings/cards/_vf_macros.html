@@ -1,0 +1,49 @@
+{% from "_search_in.html" import search_in_box %}
+{# Filters per viewer (2026-11-02): the pieces the Calibrators, Group Chiefs and Executive Chairman tabs share. #}
+{# One tick per filter a viewer can be given: its name, its code, where anyone has a value for it (or why it is disabled). A
+   disabled tick is never posted: Segment, "always on", is not a key. #}
+{% macro filter_rows(rows) -%}
+<ul class="vf-rows">
+  {% for r in rows %}
+  <li class="vf-row{{ ' is-off' if r.disabled }}" data-vf-row="{{ r.key }}" data-label="{{ r.label }}" data-plural="{{ r.plural }}">
+    <label>
+      <input type="checkbox"{% if not r.always %} name="filter" value="{{ r.key }}" data-vf-tick data-was="{{ 1 if r.checked else 0 }}"{% endif %}{{ ' checked' if r.checked }}{{ ' disabled' if (r.disabled or r.always) }}
+             aria-label="{{ r.label }} filter">
+      <span class="vf-name"><b>{{ r.label }}</b> <span class="vf-code">{{ r.code }}</span></span>
+      <span class="vf-cover{{ ' is-none' if r.reason }}">{{ r.reason or r.cover }}</span>
+    </label>
+  </li>
+  {% endfor %}
+</ul>
+{%- endmacro %}
+
+{# "What they will see": the preview filter line, drawn live by static/calib_viewer_filters.js from the ticks. `lead` = the chips that
+   are always there (a Group Chief's Segment). #}
+{% macro preview(n, lead=()) -%}
+<div class="vf-prev" data-vf-prev data-n="{{ n }}" aria-live="polite">
+  <span class="vf-prev-l">Filter</span>
+  {% for p in lead %}<span class="cfr-chip" data-vf-lead aria-hidden="true">All {{ p.plural }} <b>{{ n }}</b>
+    <svg width="12" height="12" viewBox="0 0 24 24"><path d="M6 9l6 6 6-6"/></svg></span>{% endfor %}
+  <span data-vf-chips class="vf-prev-chips"></span>
+  <span class="muted small" data-vf-none hidden></span>
+</div>
+{%- endmacro %}
+
+{# The panel's foot: what changed, Cancel, the one solid button. #}
+{% macro foot(save="Save filters") -%}
+<footer class="adm-panel-foot">
+  <span class="muted small adm-panel-grow" data-vf-status role="status">Nothing changed yet.</span>
+  <button type="button" class="btn-link" data-panel-close>Cancel</button>
+  <button type="submit" class="primary" data-vf-save disabled>{{ save }}</button>
+</footer>
+{%- endmacro %}
+
+{# The Search in box over a tab's table (Chris, 2026-10-20: every admin list of people has it): a GET back to this card. #}
+{% macro search(vf, search_in, qin, q, label) -%}
+<form method="get" action="{{ url_for('admin_module_settings', key='calibration') }}#bu-filters" class="adm-fsearch vf-search">
+  <input type="hidden" name="fview" value="{{ vf.view }}">
+  <input type="hidden" name="bfbg" value="{{ vf.bg }}">
+  {{ search_in_box(search_in, qin, q, label) }}
+  {% if q %}<a class="btn-link" href="{{ url_for('admin_module_settings', key='calibration', fview=vf.view, bfbg=vf.bg) }}#bu-filters">Clear</a>{% endif %}
+</form>
+{%- endmacro %}

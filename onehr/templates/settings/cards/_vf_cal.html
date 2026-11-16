@@ -1,0 +1,81 @@
+{# Filters card › Calibrators · per calibrator (canvas boards A and B). A calibrator reaches several units of ONE business group: until
+   the super admin edits one, it keeps what it showed before (every filter switched on for any unit it reaches); an edit gives it
+   filters of its own (calib_viewer_filter, kind 'cal'). The panel posts to admin_calib_viewer_filter; "Follow its units again"
+   is its own small form (the button reaches it by `form=`), so it has its own confirm. #}
+{% from "_adm_panel.html" import panel with context %}
+{% from "settings/cards/_vf_macros.html" import filter_rows, preview, foot, search %}
+{% if not vf.bgs %}
+  <p class="note">No business units in Org structure yet.</p>
+{% else %}
+<p class="muted small vf-sub">A calibrator reaches several units of one business group. Until you edit one, it keeps what it shows today: every
+  filter switched on for any unit it reaches.</p>
+<nav class="df-bgtabs" aria-label="Business group">
+  {% for g in vf.bgs %}
+  <a href="{{ url_for('admin_module_settings', key='calibration', fview='cal', bfbg=g.key) }}#bu-filters"
+     class="df-bgtab{{ ' is-on' if g.key == vf.bg }}"{% if g.key == vf.bg %} aria-current="page"{% endif %}
+     title="{{ display_bg(g.key) }}">{{ g.label }}</a>
+  {% endfor %}
+</nav>
+{{ search(vf, search_in, qin, q, 'Search calibrators') }}
+<div class="table-scroll"><table class="admin-table vf-table no-auto-table" id="vf-cal-table">
+  <thead><tr><th>Calibrator</th><th>Reaches</th><th>Filters</th><th><span class="sr-only">Edit</span></th></tr></thead>
+  <tbody>
+  {% for r in vf.cal %}
+    <tr data-vf-row-of="cal-{{ r.id }}">
+      <td><b>{{ r.name }}</b><div class="vf-subl">{{ r.group }}</div></td>
+      <td>{{ r.units_two | join(', ') }}{% if r.units_more %}, <details class="fold cfr-fold"><summary>{{ r.units_more | length }} more</summary>{{ r.units_more | join(', ') }} <button type="button" class="fold-less" data-fold-less>Show less</button></details>{% endif %}
+        <span class="vf-muted">· {{ r.people }} {{ 'person' if r.people == 1 else 'people' }}</span></td>
+      <td><span{% if r.filters == 'None' %} class="vf-muted"{% endif %}>{{ r.filters }}</span><div class="vf-subl">{{ 'Set here' if r.set_here else 'From its units' }}</div></td>
+      <td class="vf-edit"><button type="button" class="btn-link" data-panel-open="vfc-{{ r.id }}"
+          aria-label="Edit the filters of {{ r.name }}, {{ r.group }}">Edit</button></td>
+    </tr>
+  {% else %}
+    <tr><td colspan="4" class="muted">{% if q %}No calibrator in {{ vf.bg_label }} matches that search.{% else %}No calibrators in {{ vf.bg_label }}.{% endif %}</td></tr>
+  {% endfor %}
+  </tbody>
+</table></div>
+
+{% for r in vf.cal %}
+{% call panel("vfc-" ~ r.id, vf.bg_label ~ " · Calibrator filters", r.name,
+              r.group ~ " · " ~ (r.units | join(', ')) ~ " · " ~ r.people ~ (" person" if r.people == 1 else " people")) %}
+<form method="post" action="{{ url_for('admin_calib_viewer_filter') }}" class="adm-panel-form vf-pform" data-no-busy data-vf-form
+      data-vf-who="{{ r.name }}" data-vf-set="{{ 1 if r.set_here else 0 }}"
+      data-confirm="Nothing has changed for {{ r.name }}." data-confirm-title="Save filters?" data-confirm-ok="Save filters">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+  <input type="hidden" name="kind" value="cal">
+  <input type="hidden" name="viewer_id" value="{{ r.id }}">
+  <input type="hidden" name="action" value="save">
+  <div class="adm-panel-body">
+    <section class="vf-sec">
+      <span class="vf-lbl">1. Which filters</span>
+      {{ filter_rows(r.rows) }}
+      {% if r.set_here %}
+      <p class="vf-note">Set here for {{ r.name }}. The units' switches no longer change them.</p>
+      <div><button type="submit" form="vf-fol-{{ r.id }}" class="btn-link">Follow its units again</button></div>
+      {% else %}
+      <p class="vf-note">Now: following its units ({% if r.union_words %}{{ r.union_words | join(' and ') }} {{ 'is' if r.union_words | length == 1 else 'are' }} on for {{ r.union_units | join(', ') }}{% else %}no filter is switched on for them{% endif %}).
+        Saving gives this calibrator its own filters; the units' switches then no longer change them.</p>
+      {% endif %}
+    </section>
+    <section class="vf-sec">
+      <span class="vf-lbl">2. What they will see</span>
+      {{ preview(r.people) }}
+      <p class="vf-note">On their calibration card, in this order. No Calibrator chip: the people are already theirs.</p>
+    </section>
+  </div>
+  {{ foot() }}
+</form>
+{% if r.set_here %}
+<form id="vf-fol-{{ r.id }}" method="post" action="{{ url_for('admin_calib_viewer_filter') }}" data-no-busy hidden
+      data-confirm="{{ r.name }} will follow what its units show again ({{ r.union_words | join(' and ') if r.union_words else 'no filters' }}). Its own filters are removed. No band, lock or move changes."
+      data-confirm-title="Follow its units again?" data-confirm-ok="Follow its units again">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+  <input type="hidden" name="kind" value="cal">
+  <input type="hidden" name="viewer_id" value="{{ r.id }}">
+  <input type="hidden" name="action" value="follow">
+</form>
+{% endif %}
+{% endcall %}
+{% endfor %}
+<script src="{{ url_for('static', filename='calib_viewer_filters.js') }}?v={{ asset_v }}"></script>
+{% endif %}

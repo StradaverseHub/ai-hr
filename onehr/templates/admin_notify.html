@@ -1,0 +1,53 @@
+{% extends "base.html" %}
+{% block title %}Notification emails{% endblock %}
+{% block body %}
+{# Account > Notification emails (2026-10-18, the libraries canvas boards 20-21): where this admin account's pending
+   tasks are emailed. admin_notify. #}
+<div class="adm-headrow">
+  <p class="adm-lede">Where OneHR emails the tasks waiting on you. Every address here gets each one; add a shared
+    mailbox so a colleague sees them too. Up to {{ max_n }}.{% if not sup %} The super admin sets them.{% endif %}{% if not mail_on %} This server sends no email, so nothing
+    goes out from here.{% endif %}</p>
+</div>
+<div class="ne-grid">
+  <section class="admin-card ne-card" aria-label="Your notification emails">
+    <span class="wiz-k">Your notification emails</span>
+    {% if addrs %}
+    <div class="ne-chips">{% for e in addrs %}<span class="ne-chip">{{ e.email }}<button type="submit" form="ne-rm-{{ e.id }}" aria-label="Remove {{ e.email }}">×</button></span>{% endfor %}</div>
+    {% else %}
+    <p class="muted small">None yet, so nothing reaches you by email: add an address to get your pending tasks.</p>
+    {% endif %}
+    {% if addrs | length < max_n %}
+    <form method="post" action="{{ url_for('admin_notify', aid=user['id'], _method='POST') }}" class="ne-add"
+          data-confirm="Send your pending tasks to this address too? It goes in the trail." data-confirm-ok="Add address">
+      <input type="hidden" name="action" value="add">
+      <label class="sr-only" for="ne-in">Add an address</label>
+      <input type="email" id="ne-in" name="email" required maxlength="200" placeholder="Add an address, e.g. a shared mailbox">
+      <button type="submit" class="wiz-btn">Add address</button>
+    </form>
+    {% endif %}
+    {% if mail_on and addrs %}
+    <form method="post" action="{{ url_for('admin_notify', aid=user['id'], _method='POST') }}"
+          data-confirm="Send a test email to each address here?" data-confirm-ok="Send test">
+      <input type="hidden" name="action" value="test"><button type="submit" class="btn-link">Send a test email</button>
+    </form>
+    {% endif %}
+    {% for e in addrs %}
+    <form method="post" action="{{ url_for('admin_notify', aid=user['id'], _method='POST') }}" id="ne-rm-{{ e.id }}" class="adm-pform-x"
+          data-confirm="Stop sending your pending tasks to {{ e.email }}? It goes in the trail." data-confirm-ok="Remove">
+      <input type="hidden" name="action" value="remove"><input type="hidden" name="row_id" value="{{ e.id }}"></form>
+    {% endfor %}
+  </section>
+  <section class="admin-card ne-card" aria-label="What you're emailed about">
+    <span class="wiz-k">What you're emailed about</span>
+    {% if sup %}
+    <div class="ne-ev"><b>Sign-in help</b><span class="muted small">Someone who can't sign in asked the People team for help (Get help on the sign-in page): what they chose and wrote, copying them when it's their account's email. One email each; it waits in Ticketing.</span></div>
+    <div class="ne-ev"><b>A Get Help report</b><span class="muted small">Someone signed in reported a problem through Get Help in the account menu: what it's about, their words and where. One email each; it waits in Ticketing.</span></div>
+    <div class="ne-ev"><b>A KPI library proposal waiting</b><span class="muted small">A new KPI or a definition change from a business group or unit admin, with their reason. One email each.</span></div>
+    <div class="ne-ev"><b>New joiners to set up</b><span class="muted small">Only as a business group's admin; the super admin isn't told about every group's joiners.</span></div>
+    {% else %}
+    <div class="ne-ev"><b>New joiners to set up</b><span class="muted small">When a roster import or Add a person by someone else brings people into your {{ 'units' if units else 'business group' }}: how many. Once per import.</span></div>
+    <div class="ne-ev"><b>The answer to a KPI library proposal you sent</b><span class="muted small">Approved, pointed to a KPI the library has, or rejected with the reason.</span></div>
+    {% endif %}
+  </section>
+</div>
+{% endblock %}

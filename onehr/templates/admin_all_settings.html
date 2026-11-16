@@ -1,0 +1,45 @@
+{% extends "base.html" %}
+{% block title %}All settings{% endblock %}
+{% block body %}
+{# Every setting on one sheet (2026-10-10, the canvas's C2). The rows are the modules' own settings (ADMIN_SETTINGS),
+   so the sheet, each module's Settings page and the search always agree. Filters and search run in the page. #}
+<div class="page-head">
+  <div>
+    <h1>All settings</h1>
+    <p class="muted">{{ rows | length }} settings, each with one home. Open one to change it where it lives; every save
+      is in the audit log.</p>
+  </div>
+  <label class="adm-sheet-search"><span class="sr-only">Find a setting</span>
+    <input type="search" id="adm-sheet-q" placeholder="Find a setting or a value" autocomplete="off"></label>
+</div>
+<div class="adm-sheet-filters" role="group" aria-label="Filter the settings">
+  <div class="adm-chips" data-filter="module">
+    <button type="button" class="adm-chip is-on" data-v="" aria-pressed="true">All</button>
+    {% for k, lbl in modules %}<button type="button" class="adm-chip" data-v="{{ k }}" aria-pressed="false">{{ lbl }}</button>{% endfor %}
+  </div>
+  <div class="adm-chips" data-filter="scope">
+    <button type="button" class="adm-chip is-on" data-v="" aria-pressed="true">Any scope</button>
+    {% for k, lbl in scopes %}<button type="button" class="adm-chip" data-v="{{ k }}" aria-pressed="false">{{ lbl }}</button>{% endfor %}
+  </div>
+</div>
+<div class="admin-card adm-sheet">
+  <div class="table-scroll"><table class="admin-table" id="adm-sheet">
+    <thead><tr><th>Module</th><th>Setting</th><th>Now</th><th>Scope</th><th>Last changed</th><th><span class="sr-only">Open</span></th></tr></thead>
+    <tbody>
+      {% for r in rows %}
+      <tr data-module="{{ r.module }}" data-scope="{{ r.scope_filter }}"
+          data-text="{{ (r.module_label ~ ' ' ~ r.label ~ ' ' ~ r.value ~ ' ' ~ r.section) | lower }}">
+        <td class="adm-sheet-mod"><span class="adm-side-sq" style="background:{{ admin_section_colors.get(r.module, 'var(--d-bg-8a90a2)') }}" aria-hidden="true"></span>{{ r.module_label }}</td>
+        <td><b>{{ r.label }}</b></td>
+        <td>{{ r.value }}</td>
+        <td><span class="adm-scope is-{{ r.scope }}">{{ r.scope_label }}</span></td>
+        <td class="muted small">{% if r.last %}{{ r.last.when }} &middot; {{ r.last.who }}{% else %}&mdash;{% endif %}</td>
+        <td class="adm-sheet-open">{% if r.href %}<a href="{{ r.href }}">{{ 'Open' if r.can_edit else 'View' }} &rsaquo;</a>{% endif %}</td>
+      </tr>
+      {% endfor %}
+      <tr class="adm-sheet-none" hidden><td colspan="6" class="muted">No setting matches. Try fewer words, or another filter.</td></tr>
+    </tbody>
+  </table></div>
+  <p class="muted small adm-sheet-count">Showing <span id="adm-sheet-n">{{ rows | length }}</span> of {{ rows | length }}</p>
+</div>
+{% endblock %}

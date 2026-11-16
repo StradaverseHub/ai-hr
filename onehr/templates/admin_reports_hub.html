@@ -1,0 +1,160 @@
+{% extends "base.html" %}
+{% block title %}{{ (one.label ~ ' reports') if one else 'Reports' }}{% endblock %}
+{% block body %}
+{# Reports in two kinds (Chris, 2026-10-19: "one is the data report like csv export, another is html report where it
+   comes with BG/BU/department level reporting"; option A of canvas [design canvas link removed]):
+   On screen, the reports by business group, unit and department; Data downloads, every file (2026-10-10). Each is
+   offered only to an admin its route and their access let in. #}
+{% set lede %}{% if kind == 'data' and dl %}Download&hellip; asks which cycle, business group and units it is for.
+  {%- elif cycle %}For {{ cycle.name }}, the cycle you're viewing{% if kind == 'data' %}, unless a download says otherwise{% endif %}.{% endif %}
+  Every report and download shows only what you can see.{% endset %}
+{% if one %}
+<p class="adm-lede">{{ lede }}</p>
+{% else %}
+<div class="page-head">
+  <div>
+    <h1>Reports</h1>
+    <p class="adm-lede">{{ lede }}</p>
+  </div>
+</div>
+{% endif %}
+<nav class="rep-tabs" aria-label="Kind of report">
+  <a href="{{ url_for('admin_reports_all') }}" class="rep-tab{{ ' is-on' if kind == 'html' }}"{% if kind == 'html' %} aria-current="page"{% endif %}>On screen <span>· {{ n_html }}</span></a>
+  <a href="{{ url_for('admin_reports_all', kind='data') }}" class="rep-tab{{ ' is-on' if kind == 'data' }}"{% if kind == 'data' %} aria-current="page"{% endif %}>Data downloads <span>· {{ n_data }}</span></a>
+</nav>
+{% if kind == 'html' %}
+<p class="muted small rep-tabs-note">Each opens on everything you look after and goes down a level at a click: business group, then
+  business unit, then department. Every view prints, and downloads as the table you see.</p>
+<div class="rep-grid">
+  {% for gr in groups if gr.html %}
+  <section class="admin-card adm-rep rep-card" id="rep-{{ gr.key }}">
+    <h2 class="adm-rep-h"><span class="adm-side-sq" style="background:{{ gr.color or 'var(--d-bg-8a90a2)' }}" aria-hidden="true"></span>{{ gr.label }}</h2>
+    <ul class="adm-rep-files">
+      {% for r in gr.html %}
+      <li><span class="adm-rep-name"><b>{{ r.label }}</b><span class="muted small">{{ r.desc }}</span></span>
+        <a class="adm-rep-dl" href="{{ r.href }}">Open &rsaquo;</a></li>
+      {% endfor %}
+    </ul>
+    {% if gr.files %}<p class="adm-rep-pages small"><a href="{{ url_for('admin_reports_all', kind='data') }}#data-{{ gr.key }}">Its data: {{ gr.files | length }} download{{ 's' if gr.files | length != 1 }} &rsaquo;</a></p>{% endif %}
+  </section>
+  {% else %}
+  <section class="admin-card"><p class="muted pp-none">No report here for your access.</p></section>
+  {% endfor %}
+</div>
+{% else %}
+{% if built %}
+<section class="admin-card adm-rep adm-rep-built">
+  <h2 class="adm-rep-h"><span class="adm-agent-mark is-sm" aria-hidden="true">&#10022;</span>Built by the agent</h2>
+  <p class="muted small">Yours, from the last 30 days.</p>
+  <ul class="adm-rep-files">
+    {% for b in built %}
+    <li><span class="adm-rep-name"><b>{{ b.title }}</b><span class="muted small">{{ b.when }} &middot; built again from
+      today's data when you open it</span></span>
+      <a class="adm-rep-dl" href="{{ b.page }}">Open</a><a class="adm-rep-dl" href="{{ b.xlsx }}">Excel</a></li>
+    {% endfor %}
+  </ul>
+</section>
+{% endif %}
+{% for gr in groups if gr.files or gr.pages %}
+<section class="admin-card adm-rep" id="data-{{ gr.key }}">
+  {% if not one %}<h2 class="adm-rep-h"><span class="adm-side-sq" style="background:{{ gr.color or 'var(--d-bg-8a90a2)' }}" aria-hidden="true"></span>{{ gr.label }}</h2>{% endif %}
+  {% if gr.files %}
+  <ul class="adm-rep-files">
+    {% for f in gr.files %}
+    <li><span class="adm-rep-name"><b>{{ f.label }}</b><span class="muted small">{{ f.desc }}</span></span>
+      <span class="adm-rep-fmt">{{ f.fmt }}</span>
+      {%- if f.mode and dl %}<button type="button" class="adm-rep-dl" data-panel-open="dl" data-dl-href="{{ f.href }}"
+        data-dl-mode="{{ f.mode }}" data-dl-title="{{ gr.label }} · {{ f.label }}" data-dl-desc="{{ f.desc }}"
+        {%- if f.count %} data-dl-count="{{ f.count }}" data-dl-what="{{ f.what }}" data-dl-note="{{ f.note }}"{% endif %}
+        {%- if f.unit %} data-dl-unit="{{ f.unit }}"{% endif %}{% if f.remote %} data-dl-remote="{{ f.remote }}" data-dl-what="{{ f.what or 'in these dates, newest first, in one Excel file with an About sheet.' }}"{% endif %}>Download&hellip;</button>
+      {%- else %}<a class="adm-rep-dl" href="{{ f.href }}">Download</a>{% endif %}</li>
+    {% endfor %}
+  </ul>
+  {% endif %}
+  {% if gr.pages %}
+  <p class="adm-rep-pages muted small">Report pages:
+    {% for p in gr.pages %}<a href="{{ p.href }}">{{ p.label }}</a>{% if not loop.last %} &middot; {% endif %}{% endfor %}</p>
+  {% endif %}
+</section>
+{% else %}
+<section class="admin-card"><p class="muted pp-none">Nothing to download here for your access.</p></section>
+{% endfor %}
+{% if dl %}
+{# The download panel (Chris, 2026-10-23, canvas [design canvas link removed]): Download... opens it
+   for that one report, to pick the cycle (by the report's kind: any cycle that ran in OneHR, the active one only, or
+   none for a people list), the business group and the units ticked in it; static/dl_scope.js fills it from the
+   button and the data below, and remembers the last picks in this browser. A GET to the report's own address; the page
+   never reloads, so the form opts out of base.html's dimming of the clicked button (data-no-busy: it stayed dimmed). #}
+{% from "_adm_panel.html" import panel %}
+{% call panel("dl", "Reports · Data download", "Download", "") %}
+<form method="get" class="adm-panel-form" action="#" data-dl-form data-no-busy>
+  <div class="adm-panel-body adm-psecs">
+    <section class="adm-psec"><h3 class="adm-ph">Download for</h3>
+      <div class="dl-field" data-dl-cycle-pick>
+        <label class="dl-lab" for="dl-cycle">Cycle</label>
+        <select id="dl-cycle" name="cycle" class="modern-select" data-dl-cycle></select>
+        <p class="muted small dl-note" data-dl-cycle-hr hidden>Greyed years are Group People's records from before OneHR: nothing of them is in a download.</p>
+      </div>
+      <div class="dl-field" data-dl-cycle-active hidden>
+        <span class="dl-lab">Cycle</span>
+        <div class="dl-fixed"><span>{{ dl.active_name or 'No active cycle' }}</span><span class="muted small">active cycle only</span></div>
+        <p class="muted small dl-note" data-dl-active-note>This one is today's picture, so it is the active cycle's. For where everyone ended in a past cycle, download Results.</p>
+      </div>
+      <p class="muted small dl-note" data-dl-cycle-none hidden>No cycle to pick: this is the people as they stand today.</p>
+      {# the Audit log's panel (2026-11-04): its dates, picked with the audit log's own range picker (presets and all); the file reads ?date_from= and ?date_to= #}
+      <div class="dl-field dl-dates" data-dl-dates hidden>
+        <span class="dl-lab">Dates</span>
+        <span class="adm-field adm-field-date" role="group" aria-label="Dates">
+          <span data-odp-range data-odp-label="Dates" data-odp-cycle-start="{{ dl.active_start }}">
+            <input type="date" data-name="date_from" max="{{ odp_today }}" aria-label="From date">
+            <input type="date" data-name="date_to" max="{{ odp_today }}" aria-label="To date">
+          </span>
+        </span>
+        <p class="muted small dl-note">Every admin action in these dates, Malaysia time. Leave it empty for every action there has been.</p>
+      </div>
+      <div data-dl-who>
+      {% if dl.fixed_bg %}
+      <div class="dl-field">
+        <span class="dl-lab">Business group</span>
+        <div class="dl-fixed"><span>{{ display_bg(dl.fixed_bg) }}</span><span class="muted small">your group</span></div>
+        <input type="hidden" name="fbg" value="{{ dl.fixed_bg }}" data-dl-bg>
+      </div>
+      {% else %}
+      <div class="dl-field">
+        <label class="dl-lab" for="dl-bg">Business group</label>
+        <select id="dl-bg" name="fbg" class="modern-select" data-dl-bg>
+          <option value="">Every business group</option>
+          {% for b in dl.bgs %}<option value="{{ b.bg }}">{{ b.label }}</option>{% endfor %}
+        </select>
+      </div>
+      {% endif %}
+      <fieldset class="dl-field dl-units">
+        <legend class="dl-lab">Business units <span class="dl-units-n" data-dl-units-n></span></legend>
+        <p class="muted small dl-note" data-dl-units-none>Pick a business group first.</p>
+        {% for b in dl.bgs %}
+        <div class="dl-unitlist" data-dl-units-of="{{ b.bg }}" hidden>
+          <label class="dl-tk dl-tk-all"><input type="checkbox" data-dl-all checked> All units in {{ b.label }}<span class="muted small" data-dl-n-all>{{ b.n }}</span></label>
+          {% for u in b.units %}
+          <label class="dl-tk"><input type="checkbox" name="fcompany" value="{{ u.co }}" data-n="{{ u.n }}" data-n0="{{ u.n }}" disabled> {{ u.label }}<span class="muted small" data-dl-n-unit>{{ u.n }}</span></label>
+          {% endfor %}
+        </div>
+        {% endfor %}
+      </fieldset>
+      </div>
+    </section>
+    <section class="adm-psec"><h3 class="adm-ph">What you'll get</h3>
+      <p class="dl-what"><b data-dl-n></b> <span class="muted" data-dl-what>here today</span></p>
+      <p class="muted small dl-note" data-dl-picks-note>It opens on your last picks. A pick never widens what you can see; the file's name and its About sheet say what you picked.</p>
+    </section>
+  </div>
+  <footer class="adm-panel-foot">
+    <button type="button" class="btn-link" data-panel-close>Cancel</button>
+    <button type="submit" class="primary">Download Excel</button>
+  </footer>
+</form>
+{% endcall %}
+<script type="application/json" id="dl-data">{{ dl | tojson }}</script>
+<script src="{{ url_for('static', filename='dl_scope.js') }}?v={{ asset_v }}"></script>
+{% endif %}
+{% endif %}
+{% endblock %}

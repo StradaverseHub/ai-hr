@@ -1,0 +1,114 @@
+{% extends "base.html" %}
+{% block title %}Grade H Appraisal{% endblock %}
+{% block body %}
+<link rel="stylesheet" href="{{ url_for('static', filename='gradeh_admin.css') }}?v={{ asset_v }}">
+{# Grade H Appraisal (2026-10-28; canvas OneHR/JG H Appraisal/canvas/A1-List.dc.html): the super admin's page. every tab is built (piece 6). #}
+<div class="page-head">
+  <div>
+    {% if view_only %}<div class="gh-h1row"><h1>Grade H Appraisal</h1><span class="gh-viewonly">View only</span></div>{% else %}<h1>Grade H Appraisal</h1>{% endif %}
+    <p class="muted">Who is on the Grade H list{% if scope_label %} in {{ scope_label }}{% endif %}, how each person is appraised, and where each appraisal stands.{% if n.cycle %} Active cycle: {{ n.cycle.name }}.{% endif %}</p>
+  </div>
+</div>
+<nav class="adm-tabs" aria-label="Grade H Appraisal">
+  {% for key, label in tabs %}<a href="{{ url_for('admin_gradeh', tab=key) }}" class="{{ 'is-active' if tab == key }}" {% if tab == key %}aria-current="page"{% endif %}>{{ label }}</a>{% endfor %}
+</nav>
+
+{% if tab == 'imports' %}
+{% if not n.offered %}
+<div class="admin-card"><p class="note">Grade H Appraisal runs on a Year-End cycle only. {% if n.cycle %}{{ n.cycle.name }} is not one{% else %}There is no active cycle{% endif %}, so nothing can be imported yet.</p></div>
+{% endif %}
+<div class="ri-tiles">
+  <div class="ri-tile" style="--c:var(--d-cv-2f64d6)"><b>{{ n.on_list | thousands }}</b><span>on the Grade H list</span></div>
+  <div class="ri-tile" style="--c:var(--d-cv-1a7a54)"><b>{{ n.route_a | thousands }}</b><span>KPI route</span></div>
+  <div class="ri-tile" style="--c:var(--d-cv-9aa1b5)"><b>{{ n.route_b | thousands }}</b><span>Line manager route</span></div>
+  <div class="ri-tile" style="--c:var(--d-cv-e0a84a)"><b>{{ n.a_no_lines | thousands }}</b><span>KPI route, no KPI lines yet</span></div>
+</div>
+
+<section class="admin-card" aria-label="The Grade H list">
+  <h2>1 · The Grade H list</h2>
+  <p class="small">Who is appraised, and how: Employee ID, Route (KPI or Line manager), an Appraiser employee ID (blank means their line manager on OneHR), an HOD employee ID (their HOD for Grade H only; blank means their HOD on OneHR), the supervisor named in the source file (kept as text for someone with no line manager) and the company. Only people already in OneHR at grade H go on. Rows for a private company are skipped and counted, not loaded.</p>
+  <p class="muted small">{{ n.grade_h | thousands }} {{ 'person is' if n.grade_h == 1 else 'people are' }} at grade H in OneHR; {{ n.on_list | thousands }} {{ 'is' if n.on_list == 1 else 'are' }} on the list for this cycle.</p>
+  <div class="actions">
+    <a class="primary btn-link" href="{{ url_for('admin_gradeh_import_list') }}">Import the Grade H list</a>
+    <a class="btn-link" href="{{ url_for('admin_gradeh_import_list_template') }}">Template (Excel)</a>
+  </div>
+</section>
+
+<section class="admin-card" aria-label="The Strada8 KPI lines">
+  <h2>2 · The Strada8 KPI lines</h2>
+  <p class="small">Each KPI-route person's KPI lines: Employee ID, KPI name, Weight % and the group scale (FIAMMA or SIGNATURE). A person's weights must total 100%: one that totals 85% is flagged and the file cannot be applied until it is fixed. Loading lines puts the person on the KPI route.</p>
+  <p class="muted small">{{ n.with_lines | thousands }} {{ 'person has' if n.with_lines == 1 else 'people have' }} KPI lines for this cycle.</p>
+  <div class="actions">
+    <a class="primary btn-link" href="{{ url_for('admin_gradeh_import_kpi') }}">Import the KPI lines</a>
+    <a class="btn-link" href="{{ url_for('admin_gradeh_import_kpi_template') }}">Template (Excel)</a>
+  </div>
+</section>
+<p class="muted small">Each import runs in four steps: the file, its quality, what it changes (with your answers), then the final preview. The database is backed up before anything is written.</p>
+
+{% elif not n.offered %}
+<div class="admin-card"><p class="note">Grade H Appraisal runs on a Year-End cycle only. {% if n.cycle %}{{ n.cycle.name }} is not one{% else %}There is no active cycle{% endif %}, so there is nothing to show yet.</p></div>
+{% else %}
+{% if not on_cycle %}<div class="admin-card"><p class="note">{% if view_only %}Grade H Appraisal is not switched on for {{ n.cycle.name }} yet, so staff, line managers and calibrators have not started. This page is view only.{% else %}Grade H Appraisal is switched off on {{ n.cycle.name }}: tick it under Cycle &rsaquo; Modules on this cycle to open it to staff, line managers and calibrators. {% if tab == 'settings' %}You can save these settings now: they apply once Grade H Appraisal is ticked on this cycle.{% else %}What is on this page is read only until then.{% endif %}{% endif %}</p></div>{% endif %}
+{% if tab in ('people', 'bands') %}
+{% from "_search_in.html" import search_in_box %}
+{% from "_filter_rows.html" import filter_rows %}
+{# the tiles and the filters of both list tabs live here: the Search in box is drawn once, by this page (test_search_in) #}
+<div class="gh-tiles {{ 'gh-tiles-7' if tab == 'people' else 'gh-tiles-5' }}">
+  {% for t in tiles %}
+  {% if view_only %}{# counts are plain numbers for a BG or BU admin: the list panel is the super admin's #}
+  <{{ 'a' if t[0] == 'need' else 'div' }} class="gh-tile{{ ' is-need' if t[2] == 'need' }}"{% if t[0] == 'need' %} href="{{ url_for('admin_gradeh', tab=tab, show='need') }}"{% endif %}><b{% if t[2] and t[2] != 'need' %} style="color:{{ t[2] }}"{% endif %}>{{ tile_n[t[0]] | thousands }}</b><span>{{ t[1] }}</span></{{ 'a' if t[0] == 'need' else 'div' }}>
+  {% else %}
+  <a class="gh-tile{{ ' is-need' if t[2] == 'need' }}" href="{{ url_for('admin_gradeh', tab=tab, show=('need' if t[0] == 'need' else None)) }}" data-list-open="{{ list_url(t[0]) }}"><b{% if t[2] and t[2] != 'need' %} style="color:{{ t[2] }}"{% endif %}>{{ tile_n[t[0]] | thousands }}</b><span>{{ t[1] }}</span></a>
+  {% endif %}
+  {% endfor %}
+</div>
+{% if tab == 'people' %}
+{# the Leaders line (canvas A1, 2026-10-31): who has no HOD (their BU CEO covers them) and which units have no BU CEO seated (so cannot be signed off or released) #}
+<section class="admin-card gh-leaders" aria-label="Leaders">
+  <span class="gh-lead-k">LEADERS</span>
+  {% if leaders.nohod %}<span>{% if view_only %}<b class="gh-lead-n">{{ leaders.nohod | thousands }} {{ 'has' if leaders.nohod == 1 else 'have' }} no HOD</b>{% else %}<a class="gh-lead-n" href="{{ url_for('admin_gradeh', tab='people', show='nohod') }}" data-list-open="{{ list_url('nohod') }}">{{ leaders.nohod | thousands }} {{ 'has' if leaders.nohod == 1 else 'have' }} no HOD</a>{% endif %}<span class="gh-lead-m"> · their BU CEO covers them</span></span>
+  {% else %}<span class="gh-lead-m">Everyone has an HOD</span>{% endif %}
+  {% if leaders.shared %}<span class="gh-lead-div" aria-hidden="true"></span>
+  <span class="gh-lead-sh">{% if view_only %}<b class="gh-lead-n">{{ leaders.shared | thousands }} {{ 'shares' if leaders.shared == 1 else 'share' }} two HODs</b>{% else %}<a class="gh-lead-n" href="{{ url_for('admin_gradeh', tab='people', show='shared') }}" data-list-open="{{ list_url('shared') }}">{{ leaders.shared | thousands }} {{ 'shares' if leaders.shared == 1 else 'share' }} two HODs</a>{% endif %}<span class="gh-lead-m"> · both calibrate them</span></span>{% endif %}
+  <span class="gh-lead-div" aria-hidden="true"></span>
+  {% if leaders.nobu_units %}<span class="gh-lead-bu">{% if view_only %}<span class="gh-pill-amber">{{ leaders.nobu_units | thousands }} {{ 'unit has' if leaders.nobu_units == 1 else 'units have' }} no BU CEO seated</span><span class="gh-lead-m">{{ "it can't" if leaders.nobu_units == 1 else "they can't" }} be signed off or released; the super admin seats {{ 'one' if leaders.nobu_units == 1 else 'them' }}</span>{% else %}<a class="gh-pill-amber" href="{{ url_for('admin_gradeh', tab='people', show='nobu') }}" data-list-open="{{ list_url('nobu') }}">{{ leaders.nobu_units | thousands }} {{ 'unit has' if leaders.nobu_units == 1 else 'units have' }} no BU CEO seated</a><span class="gh-lead-m">{{ "it can't" if leaders.nobu_units == 1 else "they can't" }} be signed off or released ·</span><a class="gh-lead-go" href="{{ url_for('admin_leaders', tab='buceo') }}">Seat one on Leaders › BU CEOs</a>{% endif %}</span>
+  {% else %}<span class="gh-lead-m">Every unit has a BU CEO seated</span>{% endif %}
+</section>
+{% endif %}
+<section class="admin-card adm-filters gh-filters" aria-label="Filters">
+  {{ filter_rows(frows) }}
+  <form method="get" class="adm-fsearch rr-filters">
+    <input type="hidden" name="tab" value="{{ tab }}">
+    {% for k in ('bg', 'bu') %}{% if request.args.get(k) %}<input type="hidden" name="{{ k }}" value="{{ request.args.get(k) }}">{% endif %}{% endfor %}
+    {% if tab == 'people' %}
+    {# By person | By HOD (2026-11-03, board H5): the choice is the address (?view=hod), so a link keeps it #}
+    <div class="rv-tbox-views gh-seg" role="group" aria-label="View">
+      <a class="rv-tbox-view" href="{{ seg_url.person }}" aria-pressed="{{ 'false' if byhod else 'true' }}">By person</a>
+      <a class="rv-tbox-view" href="{{ seg_url.hod }}" aria-pressed="{{ 'true' if byhod else 'false' }}">By HOD</a>
+    </div>
+    {% if byhod %}<input type="hidden" name="view" value="hod">{% elif request.args.get('hod') %}<input type="hidden" name="hod" value="{{ request.args.get('hod') }}">{% endif %}
+    {% endif %}
+    <span class="gh-fgroup gh-fgroup-main">{{ search_in_box(search_in, qin, q, label=('Search HODs' if byhod else 'Search people'), suggest=not byhod) }}</span>
+    <span class="gh-fgroup gh-fgroup-end">
+    {% if tab == 'people' and byhod %}
+    <select name="hf" class="modern-select" onchange="this.form.submit()" aria-label="Show">
+      {% for k, l, c in hf_opts %}<option value="{{ k }}" {{ 'selected' if hf == k }}>{{ l }} ({{ c | thousands }})</option>{% endfor %}
+    </select>
+    {% elif tab == 'people' %}
+    <select name="show" class="modern-select" onchange="this.form.submit()" aria-label="Show">
+      {% for k, l, c in show_opts %}<option value="{{ k }}" {{ 'selected' if show == k }}>{{ l }} ({{ c | thousands }})</option>{% endfor %}
+    </select>
+    {% else %}
+    <select name="scope" class="modern-select" onchange="this.form.submit()" aria-label="Show">
+      {% for k, l, c in scope_opts %}<option value="{{ k }}" {{ 'selected' if scope == k }}>{{ l }} ({{ c | thousands }})</option>{% endfor %}
+    </select>
+    {% endif %}
+    </span>
+  </form>
+</section>
+{% endif %}
+{% if tab == 'people' %}{% include "_gradeh_adm_people.html" %}
+{% elif tab == 'bands' %}{% include "_gradeh_adm_bands.html" %}
+{% else %}{% include "_gradeh_adm_settings.html" %}{% endif %}
+{% endif %}
+{% endblock %}

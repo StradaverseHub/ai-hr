@@ -1,0 +1,18 @@
+{# The journey's shell when every view of this login is greyed (a BG CEO or Group Chief with no 360 to give, and nothing of
+   theirs open yet): the tab row, all greyed, and one plain line in place of the card. No chat, no stage, nothing written
+   (Chris, 2026-11-04). #}
+{% extends "base.html" %}
+{% block title %}Your review{% endblock %}
+{% block back_button %}
+<a href="{{ url_for('dashboard') }}" id="floating-back" class="fab-back is-dash" aria-label="Back to your dashboard">
+  <span class="fab-back-arrow" aria-hidden="true">&larr;</span><span class="fab-back-label">Dashboard</span></a>
+{% endblock %}
+{% block body %}
+<div class="rv-topbar">
+  <div class="rv-topbar-nav">{% with active = (view or 'mine'), journey = True %}{% include "_review_viewtabs.html" %}{% endwith %}</div>
+  <div class="rv-topbar-main"></div>
+</div>
+<div class="card" id="rv-closed-note">
+  <p class="muted" style="margin:0">{{ note }}</p>
+</div>
+{% endblock %}

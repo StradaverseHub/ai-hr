@@ -1,0 +1,88 @@
+{# The person in brief, for a list's side panel (People; phase 2 of the admin side panels, 2026-10-17): where each module
+   stands, what needs an admin, and who they are. Every change opens on their page, in that part's own panel
+   (?panel=<key>), so it goes through the same preview step and confirm box as there. #}
+{% set L = leaders %}
+{% set pg = url_for('admin_person', uid=person['id']) %}
+{% set ok_edit = editable and not person['left_at'] %}
+<div class="pp-sum">
+  {% if gh %}
+  {# a Grade H person (2026-11-03): never in the normal review, so the four module cards are not theirs; the chip says where they are #}
+  <section class="admin-card pp-card pp-gh-brief" aria-label="Grade H Appraisal">
+    <div class="pp-badges"><span class="pp-role is-gh">Grade H Appraisal · {{ gh.route_word }}</span><span class="muted small pp-nonormal">Not in the normal review</span></div>
+    {% if gh.can %}<a class="small" href="{{ url_for('admin_person', uid=person['id'], tab='gradeh') }}">Their Grade H Appraisal &rsaquo;</a>{% endif %}
+  </section>
+  {% else %}
+  <div class="pp-mods">
+    <section class="admin-card pp-mod" style="--mod: {{ admin_section_colors.get('pm', 'var(--d-cv-2f64d6)') }}">
+      <span class="pp-mod-h"><b>Performance</b><a href="{{ pg }}?panel=performance">Open &rsaquo;</a></span>
+      {% if summ.n %}
+      <span>{{ summ.n }} KPI{{ 's' if summ.n != 1 }} · {{ '%g' | format(summ.weight) }}% · {{ summ.done }} of {{ summ.n }} moderated</span>
+      <span class="muted small">{% if summ.all_done %}Ready for the HOD{% else %}{{ summ.wait_text }}{% endif %}</span>
+      {% else %}<span>No KPIs {{ 'this cycle' if editable else 'in this cycle' }}</span>{% endif %}
+    </section>
+    <section class="admin-card pp-mod" style="--mod: {{ admin_section_colors.get('competency', 'var(--d-cv-0b8a6b)') }}">
+      <span class="pp-mod-h"><b>Competency</b><a href="{{ pg }}?panel=competency">Open &rsaquo;</a></span>
+      <span>{% if mods.tc_now %}{{ mods.tc_now }} competenc{{ 'ies' if mods.tc_now != 1 else 'y' }}{% if mods.tc_future %}, {{ mods.tc_future }} for their future role{% endif %}{% else %}No competencies assigned{% endif %}</span>
+      <span class="muted small">{% if mods.tc_status == 'reviewed' %}Reviewed by their manager{% elif mods.tc_status == 'submitted' and mods.tc_nobody %}Submitted · nobody reviews it, so it counts{% elif mods.tc_status == 'submitted' %}Submitted · their manager to review{% elif mods.tc_status %}Not submitted yet{% elif mods.tc_now or mods.tc_future %}Not started yet{% else %}No self-assessment this cycle{% endif %}</span>
+    </section>
+    <section class="admin-card pp-mod" style="--mod: {{ admin_section_colors.get('f360', 'var(--d-cv-c2410c)') }}">
+      <span class="pp-mod-h"><b>360 Feedback</b><a href="{{ pg }}?panel=f360">Open &rsaquo;</a></span>
+      <span>Panel of {{ mods.panel_n }}{% if mods.panel_target %}, target {{ mods.panel_target }}{% endif %} · {{ mods.panel_done }} submitted</span>
+    </section>
+    <section class="admin-card pp-mod" style="--mod: {{ admin_section_colors.get('idp', 'var(--d-cv-7c3aed)') }}">
+      <span class="pp-mod-h"><b>Career Plan</b><a href="{{ pg }}?panel=plan">Open &rsaquo;</a></span>
+      <span>{% if mods.plan %}Role choice: {{ mods.plan['target_role'] }}{% else %}No role choice yet{% endif %}</span>
+      <span class="muted small">{% if mods.idp %}Development plan {{ mods.idp['plan_year'] }} · {{ mods.idp['status'] }}{% if mods.idp_nobody %} · final, nobody reviews it{% endif %}{% else %}No development plan yet{% endif %}</span>
+    </section>
+  </div>
+  {% endif %}
+
+  {% if editable and need_rows %}
+  <section class="admin-card pp-card" aria-label="Needs attention">
+    <h2 class="pp-h">Needs attention · {{ need_rows | length }}</h2>
+    {% for n in need_rows %}
+    <div class="pp-need"><span><b class="pp-need-m">{{ n.m }}</b> · {{ n.text }}</span><a href="{{ (pg ~ '?panel=' ~ n.panel) if n.panel else n.href }}">{{ n.go }} &rsaquo;</a></div>
+    {% endfor %}
+  </section>
+  {% endif %}
+
+  <section class="admin-card pp-card pp-prof pp-sum-prof" aria-label="Profile">
+    <div class="pp-prof-sec">
+      <div class="pp-h-row"><h2 class="pp-h">Job</h2>{% if ok_edit %}<a class="btn-link" href="{{ pg }}?panel=details">Edit</a>{% endif %}</div>
+      <dl class="pp-dl">
+        <div><dt>Business unit</dt><dd>{{ display_company(person['business_group'], person['company']) if person['company'] else '—' }}</dd></div>
+        <div><dt>Department</dt><dd>{{ person['department'] | proper or '—' }}</dd></div>
+        <div><dt>Job title</dt><dd>{{ person['job_title'] | proper or '—' }}</dd></div>
+        <div><dt>Job grade</dt><dd>{{ ('JG ' ~ person['job_grade']) if person['job_grade'] else '—' }}</dd></div>
+        {% set sv = person_service(person) %}
+        <div><dt>Confirmation date</dt><dd>{% if sv.confirmed %}{{ sv.confirmed }}{% elif sv.counted %}—<span class="pp-dd-sub">Counted as confirmed: over a year's service</span>{% else %}<em class="pp-none-v">Not confirmed yet</em>{% endif %}</dd></div>
+      </dl>
+    </div>
+    <div class="pp-prof-sec">
+      <h2 class="pp-h">Who they report to</h2>
+      <div class="pp-prof-rows pp-sum-rows">
+        {% for k, label, who, ch in (('lm', 'Line manager', L.lm, editable), ('hod', 'HOD', L.hod, editable), ('', 'BU CEO', L.bu, False), ('', 'BG CEO', L.bg, False)) %}
+        <div class="pp-prof-row"><span class="pp-prof-kv"><span class="pp-prof-k">{{ label }}</span>
+          <span class="pp-prof-v">{% if who %}{{ who['full_name'] }}{% if who['left_at'] %} <span class="pp-out">left</span>{% endif %}{% else %}<em class="pp-none-v">None yet</em>{% endif %}</span></span>
+          {% if ch %}<a class="btn-link" href="{{ pg }}?panel={{ k }}">{{ 'Change' if who else 'Set' }}</a>{% endif %}</div>
+        {% endfor %}
+      </div>
+    </div>
+    <div class="pp-prof-sec">
+      <div class="pp-h-row"><h2 class="pp-h">Roles</h2><a class="btn-link" href="{{ pg }}?panel=roles">{{ 'Manage' if ok_edit else 'View' }}</a></div>
+      {% set rl = [] %}
+      {% if roles.reports %}{% set _ = rl.append('Line manager of ' ~ roles.reports) %}{% endif %}
+      {% if roles.heads %}{% set _ = rl.append('HOD of ' ~ roles.heads) %}{% endif %}
+      {% for bu in roles.buceo_units %}{% set _ = rl.append('BU CEO of ' ~ display_company(bu.bg, bu.company)) %}{% endfor %}
+      {% if roles.bgceo %}{% set _ = rl.append('BG CEO of ' ~ display_bg(roles.bgceo)) %}{% endif %}
+      {% for g in roles.groups %}{% set _ = rl.append('Group Chief of ' ~ g) %}{% endfor %}
+      {% if roles.matrix_kpis %}{% set _ = rl.append('Matrix manager of ' ~ roles.matrix_kpis ~ ' KPI' ~ ('s' if roles.matrix_kpis != 1 else '')) %}{% endif %}
+      <p class="pp-prof-p">{{ rl | join(' · ') if rl else 'No leader roles' }}</p>
+    </div>
+    <div class="pp-prof-sec">
+      <div class="pp-h-row"><h2 class="pp-h">Account</h2><a class="btn-link" href="{{ pg }}?panel=account">Manage</a></div>
+      <p class="pp-prof-p">{{ person['email'] or 'No work email' }} · {% if person['left_at'] %}left {{ person['left_at'] | myt_date }}{% elif confirmed %}confirmed{% else %}not confirmed yet{% endif %} · {{ ('signed in ' ~ last_in) if last_in else 'never signed in' }}{% if eids %} · {{ eids | length }} linked ID{{ 's' if eids | length != 1 }}{% endif %}</p>
+      {% if email_off %}<p class="pp-eoff-line">Reminder emails off{% if email_off[0].until_disp %} until {{ email_off[0].until_disp }}{% endif %}</p>{% endif %}
+    </div>
+  </section>
+</div>

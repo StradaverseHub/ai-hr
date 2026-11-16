@@ -1,0 +1,46 @@
+{# TECHNICAL COMPETENCY as a CONVERSATION. The employee rates each assigned
+   competency Demonstrate / Developing by talking to the assistant; the server
+   validates every write, and only the employee's explicit Submit sends it to the
+   manager. Same shell as the setting/check-in chat, a different agent. #}
+{% extends "base.html" %}
+{% block title %}Competency Assessment{% endblock %}
+{% block back_button %}{% endblock %}
+{% block body %}
+{% from "_review_icons.html" import rvicon %}
+
+{# The demo controls live in the navy banner (base.html), so the body is all
+   panel + chat. Top band mirrors .rv-wrap (224px 1fr): the Dashboard / AI toggle
+   above the rail, the competency summary row above the chat. #}
+<div class="rv-topbar">
+  <div class="rv-topbar-nav">{% include "_nav_toggle.html" %}</div>
+  <div class="rv-topbar-main">
+    <div class="rv-kpi-pin" id="rv-kpi-pin"></div>
+  </div>
+</div>
+
+<div class="rv-wrap">
+  <div class="rv-railcol">
+    {% include "_review_rail.html" %}
+  </div>
+
+  <div class="rv-main">
+    <div class="rv-chat" id="rv-chat"
+         data-history-url="{{ url_for('review_competency_chat_history') }}"
+         data-send-url="{{ url_for('review_competency_chat') }}"
+         {% set _wn = chat_window_note('tc_self') %}{% if _wn %}data-window-closed="{{ _wn }}"{% endif %}
+         data-submit-url="{{ url_for('review_competency_submit') }}"
+         {% if not agent_available %}data-unavailable="1"{% endif %}>
+      <div class="rv-chat-log" id="rv-chat-log" aria-live="polite"></div>
+      <div class="rv-chat-quick" id="rv-chat-quick"></div>
+      <form class="rv-composer" id="rv-chat-form" autocomplete="off" onsubmit="return false">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+        <textarea id="rv-chat-input" rows="1" placeholder="Type your reply…"
+                  aria-label="Message the competency assistant"></textarea>
+        <button type="submit" class="rv-send" id="rv-chat-send" aria-label="Send" title="Send">{{ rvicon('send') }}</button>
+      </form>
+    </div>
+  </div>
+</div>
+
+<script src="{{ url_for('static', filename='competency_chat.js') }}?v={{ asset_v }}" defer></script>
+{% endblock %}

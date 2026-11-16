@@ -1,0 +1,23 @@
+{# The OneHR Admin Agent (2026-10-10, the canvas's two agent boards): on every admin page. It finds where a thing is set
+   and how it reads now, opens it, and builds reports -- and never saves a setting (Chris). The conversation lives in
+   this browser tab (sessionStorage) and goes back to /admin/agent with each message. Since 2026-10-12 (canvas board A3)
+   it opens from a floating icon at the bottom right, its panel above the icon. #}
+{% from "_ai_fab.html" import ai_fab %}
+<aside class="adm-agent" id="adm-agent" aria-label="OneHR Admin Agent" hidden data-src="{{ url_for('admin_agent') }}">
+  <div class="adm-agent-head">
+    <span class="adm-agent-mark" aria-hidden="true">&#10022;</span>
+    <div class="adm-agent-who"><b>OneHR Admin Agent</b>
+      <span>Sees what you can see: {{ display_bg(nav_admin_bg) if nav_admin_bg else 'every business group' }}</span></div>
+    <button type="button" class="adm-agent-new" id="adm-agent-new">New chat</button>
+    <button type="button" class="adm-agent-x" id="adm-agent-close" aria-label="Close the Admin Agent">&times;</button>
+  </div>
+  <div class="adm-agent-log" id="adm-agent-log" aria-live="polite"></div>
+  <form class="adm-agent-form" id="adm-agent-form">
+    <label class="adm-agent-input"><span class="sr-only">Ask the Admin Agent</span>
+      <textarea id="adm-agent-q" rows="1" maxlength="1000" placeholder="Ask, or say where you want to go"></textarea>
+      <button type="submit" class="adm-agent-send">Send</button>
+    </label>
+    <p>Opens pages and builds reports. Never saves a setting.</p>
+  </form>
+</aside>
+{{ ai_fab('adm-agent-open', 'adm-agent', 'Admin Agent', key='admin-agent') }}

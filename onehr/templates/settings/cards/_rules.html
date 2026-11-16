@@ -1,0 +1,141 @@
+{# Settings card: rules. Split out of the old General page (2026-10-10) so it lives on its module's settings page;
+   it posts to admin_settings, which sends you back to `settings_next` when the including page sets it.
+   2026-10-27 (canvas "Panel rules"): two-column panel + bands, one-line "reliable at", and the ACTIVE cycle's own rules
+   as a fold at the foot, posting to the All cycles page's set_rules / clear_rules handler (which returns to `next`). #}
+{% macro rl_bands(tiers, sfx) %}
+  <div class="rl-bands" style="grid-template-rows:repeat({{ (tiers|length + 1) // 2 }}, auto)">
+    {% for t in tiers %}
+    <div class="rl-band">
+      <span class="tier-pill" data-tier="{{ t['n'] }}">{{ t['name'] }}</span>
+      <span class="rl-to">JG</span>
+      <input name="tier{{ t['n'] }}_min" type="number" min="1" max="30" value="{{ t['min'] }}" required aria-label="{{ t['name'] }} lowest grade{{ sfx }}">
+      <span class="rl-to">to</span>
+      <input name="tier{{ t['n'] }}_max" type="number" min="1" max="30" value="{{ t['max'] }}" required aria-label="{{ t['name'] }} highest grade{{ sfx }}">
+    </div>
+    {% endfor %}
+  </div>
+{% endmacro %}
+  <p class="muted small">The default rules for panel size, when a person's score counts, and the job-grade bands. Saving applies
+    them to the current cycle and every future one; past cycles keep their own rules.</p>
+  <details class="muted small">
+    <summary>Why this matters</summary>
+    <p>These are the defaults for the whole organisation. A cycle that needs different rules can have its own
+      override, set at the foot of this card. Each grade band is
+      rated on its own set of behaviours, so the ranges below decide which behaviours a person is rated on.</p>
+  </details>
+  {% if rules_cycle %}
+  <div class="rl-status">
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="12" cy="12" r="9"></circle><path d="M12 8v5M12 16h.01"></path></svg>
+    <span><b>{{ rules_cycle.name }}</b> {{ 'has its own rules.' if rules_cycle.overrides_rules else 'follows these default rules.' }}</span>
+    <a href="#rules-own" data-rl-open>{{ 'See its rules' if rules_cycle.overrides_rules else 'Give it its own rules' }}</a>
+  </div>
+  {% endif %}
+  <form method="post" action="{{ url_for('admin_settings') }}" class="admin-form adm-set-form"
+        data-confirm="Save these as the default rules? They apply to the current cycle and every future cycle."
+        data-confirm-ok="Save"{{ super_remark_attrs() }}>
+    <input type="hidden" name="next" value="{{ (settings_next ~ '#rules') if settings_next else '' }}">
+    <input type="hidden" name="action" value="rules">
+    {# each takes No maximum (Chris, 2026-10-23: "when i say no cap, it applies to the two setting separately") #}
+    <div class="rl-sec">
+      <h4>Panel</h4>
+      <div class="rl-two">
+        <div class="rl-f">
+          <label for="rl-ps" class="rl-lbl">Target panel size (raters per person)</label>
+          <select name="panel_size" id="rl-ps" class="modern-select adm-num-select">
+            {% for n in assessor_cap_choices %}<option value="{{ n }}"{{ ' selected' if default_panel_size == n }}>{{ n }}</option>{% endfor %}
+            <option value="none"{{ ' selected' if default_panel_size is none }}>No maximum</option>
+          </select>
+          <p class="muted small">The panel build fills each panel to this; no more by hand or by file. No maximum: any number,
+            and the panel build is off. JG H is rated by the line manager only, so their panel is 1.</p>
+        </div>
+        <div class="rl-f">
+          <label for="rl-cap" class="rl-lbl">Most people one person rates</label>
+          <select name="assessor_cap" id="rl-cap" class="modern-select adm-num-select">
+            {% for n in assessor_cap_choices %}<option value="{{ n }}"{{ ' selected' if default_assessor_cap == n }}>{{ n }}</option>{% endfor %}
+            <option value="none"{{ ' selected' if default_assessor_cap is none }}>No maximum</option>
+          </select>
+          <p class="muted small">Own team, colleagues and manager all count. The panel build, every add by hand and a panel
+            file stop here, for every admin. No maximum: nobody is stopped.</p>
+        </div>
+      </div>
+    </div>
+
+    <div class="rl-sec">
+      <h4>When a score counts</h4>
+      <div class="rl-line">
+        <label for="rl-mv" class="rl-lbl">Score becomes reliable at</label>
+        <input id="rl-mv" name="min_valid" type="number" min="1" max="20" value="{{ default_min_valid }}" required>
+        <span class="rl-unit" data-rl-unit>{{ 'submission' if default_min_valid == 1 else 'submissions' }}</span>
+      </div>
+      <p class="muted small">The point a person's potential score becomes reliable.</p>
+      {% if default_panel_size %}
+      <p class="muted small"><strong>Complete</strong> means the full panel ({{ default_panel_size }}) has submitted (JG H is complete at 1 of 1). The first number can't exceed the panel size.</p>
+      {% else %}
+      <p class="muted small"><strong>Complete</strong> means everyone on the person's panel has submitted (JG H is complete at 1 of 1). With no maximum panel size, a panel takes any number.</p>
+      {% endif %}
+    </div>
+
+    <div class="rl-sec">
+      <h4>Job-grade bands</h4>
+      <p class="muted small">Set the job-grade range for each band. Ranges must not overlap and must increase (the first band is the lowest). Each band keeps its own behaviour set.</p>
+      {{ rl_bands(default_tiers, '') }}
+    </div>
+    <div class="actions"><button type="submit" class="primary">Save default rules</button></div>
+  </form>
+
+  {% if rules_cycle %}
+  {% set rc = rules_cycle %}
+  <details class="rl-own" id="rules-own"{{ ' open' if rc.overrides_rules }}>
+    <summary>{{ rc.name }}: {{ 'its own rules' if rc.overrides_rules else 'give this cycle its own rules' }}</summary>
+    <div class="pc-block rl-own-box">
+      <p class="pc-h"><b>{{ rc.name }}</b> <span class="muted small">{{ 'its own rules, for this cycle only' if rc.overrides_rules else 'follows the default rules' }}</span></p>
+      <form method="post" action="{{ url_for('admin_cycles') }}" class="admin-form adm-set-form" id="rl-own-form"
+            data-confirm="Set custom rules for {{ rc.name }}? They replace the default panel size, score threshold and tier grade bands for this cycle only. This cycle is active and may already have submissions — changes apply to it. You can reset to the default rules."
+            data-confirm-ok="Save override">
+        <input type="hidden" name="next" value="{{ (settings_next ~ '#rules') if settings_next else '' }}">
+        <input type="hidden" name="action" value="set_rules">
+        <input type="hidden" name="cycle_id" value="{{ rc.id }}">
+        <div class="rl-row3">
+          <div class="rl-f"><label for="rl-ops" class="rl-lbl">Target panel size</label>
+            <select name="panel_size" id="rl-ops" class="modern-select adm-num-select">
+              {% for n in assessor_cap_choices %}<option value="{{ n }}"{{ ' selected' if rc.eff_panel == n }}>{{ n }}</option>{% endfor %}
+              <option value="none"{{ ' selected' if rc.eff_panel is none }}>No maximum</option>
+            </select></div>
+          <div class="rl-f"><label for="rl-ocap" class="rl-lbl">Most one person rates</label>
+            <select name="assessor_cap" id="rl-ocap" class="modern-select adm-num-select">
+              {% for n in assessor_cap_choices %}<option value="{{ n }}"{{ ' selected' if rc.eff_cap == n }}>{{ n }}</option>{% endfor %}
+              <option value="none"{{ ' selected' if rc.eff_cap is none }}>No maximum</option>
+            </select></div>
+          <div class="rl-f"><label for="rl-omv" class="rl-lbl">Reliable at (submissions)</label>
+            <input id="rl-omv" name="min_valid" type="number" min="1" max="20" value="{{ rc.eff_min_valid }}" required></div>
+        </div>
+        {{ rl_bands(rc.eff_tiers, ', this cycle') }}
+        <p class="muted small">This cycle is active: people may already have submitted, and the change applies to them.</p>
+        <div class="actions">
+          {% if rc.overrides_rules %}<button type="submit" form="rl-clear-form" class="rl-ghost">Back to the default rules</button>{% endif %}
+          <button type="submit" class="primary">Save for this cycle</button>
+        </div>
+      </form>
+      {% if rc.overrides_rules %}
+      <form method="post" action="{{ url_for('admin_cycles') }}" id="rl-clear-form" data-no-busy
+            data-confirm="Reset {{ rc.name }} to follow the default rules? Its custom panel size, score threshold and tier grade bands are dropped. You can set them again." data-confirm-ok="Reset" data-confirm-tone="danger">
+        <input type="hidden" name="next" value="{{ (settings_next ~ '#rules') if settings_next else '' }}">
+        <input type="hidden" name="action" value="clear_rules">
+        <input type="hidden" name="cycle_id" value="{{ rc.id }}">
+      </form>
+      {% endif %}
+    </div>
+  </details>
+  {% endif %}
+  <script>
+  (function () {
+    // the status line's link opens the cycle's fold; "submission(s)" follows the number
+    var fold = document.getElementById('rules-own');
+    document.querySelectorAll('[data-rl-open]').forEach(function (a) {
+      a.addEventListener('click', function () { if (fold) fold.open = true; });
+    });
+    if (fold && location.hash === '#rules-own') fold.open = true;
+    var mv = document.getElementById('rl-mv'), unit = document.querySelector('[data-rl-unit]');
+    if (mv && unit) mv.addEventListener('input', function () { unit.textContent = parseInt(mv.value, 10) === 1 ? 'submission' : 'submissions'; });
+  })();
+  </script>

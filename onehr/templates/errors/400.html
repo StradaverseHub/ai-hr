@@ -1,0 +1,22 @@
+{% extends "base.html" %}
+{% block title %}{{ 'Session expired' if csrf else 'Something was missing' }}{% endblock %}
+{% block body %}
+{# Two different 400s (2026-10-11): the form's security token failed (the page was open too long), or the request
+   itself was missing something or out of range. Only the first is a session problem. #}
+<div class="card error-card">
+  <div class="error-code">400</div>
+  {% if csrf %}
+  <h1>Your session expired</h1>
+  <p class="muted">For your security, the form couldn't be verified. This usually means the page was open too long, or
+     cookies or JavaScript are turned off. Reload the page and try again.</p>
+  <div class="actions" style="justify-content:flex-start"><a class="btn-link" href="{{ url_for('home') }}">Reload</a></div>
+  {% else %}
+  <h1>That couldn't be done</h1>
+  <p class="muted">Something the page needed was missing or out of range, so nothing was changed. Go back, check what
+     you chose, and try again.</p>
+  <div class="actions" style="justify-content:flex-start">
+    <a class="btn-link" href="javascript:history.back()">&lsaquo; Back</a>
+    <a class="btn-link" href="{{ url_for('home') }}">Home</a></div>
+  {% endif %}
+</div>
+{% endblock %}

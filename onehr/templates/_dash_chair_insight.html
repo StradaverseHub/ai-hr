@@ -1,0 +1,24 @@
+{# The Executive Chairman's AI insight card (P3, 2026-10-29; canvas board 1, [design canvas link removed]).
+   Included by _dash_chair.html only when the card (`ins_card`: chair['pg']['tb']['insight'], of the latest released Year-End) is set (_chair_insight_card: None draws nothing at all). The figures and
+   the fixed sentences are counted on the server from the released final bands; the model only words them, through its own POST
+   (static/dashboard.js asks chair['insight']['make_url'] after the page has drawn when `pending`), so the card never waits on a
+   model. The red spark tile is the card's only red; no name, ever: names reach him only through each finding's link. #}
+{% set ins = ins_card %}
+<section class="od-card ec-ins{{ '' if ins['ai'] else ' is-fixed' }}" aria-labelledby="ec-ins-h" data-chair-insight data-source="{{ ins['source'] }}"{% if ins['pending'] %} data-pending="1" data-make-url="{{ ins['make_url'] }}"{% endif %}>
+  <div class="ec-ins-hd">
+    <span class="ec-ins-tile" aria-hidden="true"><svg viewBox="0 0 12 12"><path d="M6 0 L7.3 4.7 L12 6 L7.3 7.3 L6 12 L4.7 7.3 L0 6 L4.7 4.7 Z"></path></svg></span>
+    <h2 id="ec-ins-h" data-ins-title>{{ ins['title'] }}</h2>
+    <span class="ec-ins-stamp" data-ins-stamp>{{ ins['stamp'] }}</span>
+  </div>
+  <div class="ec-ins-grid">
+    {% for i in ins['items'] %}
+    <div class="ec-ins-item" data-ins-key="{{ i['key'] }}">
+      <span class="ec-ins-fig">{{ i['figure'] }}</span>
+      <div class="ec-ins-body">
+        <p class="ec-ins-text" data-ins-text>{{ i['text'] }}</p>
+        {% if i['url'] %}<a class="ec-ins-go" href="{{ i['url'] }}">{{ i['link'] }}</a>{% endif %}
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+</section>

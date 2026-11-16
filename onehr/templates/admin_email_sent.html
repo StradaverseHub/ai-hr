@@ -1,0 +1,209 @@
+{% extends "base.html" %}
+{% from "_adm_panel.html" import list_peek %}
+{% block title %}Email: sent{% endblock %}
+{% block body %}
+{# Email › Sent (canvas [design canvas link removed], board Sent): how far the latest mass email has
+   got (the super admin's), how every mass email goes out (in waves: the super admin's setting, read by the others), and
+   the runs of everyone's reminder and of the leader progress email. The waves form posts to Everyone's reminder
+   (save_waves), as it did on Cycle › Reminders. #}
+{% set wro = '' if is_super else 'disabled' %}
+{# a run's second line (what became of its emails): the same classification as the People › panel's chips (es_cards) #}
+{% macro es_sub(t, lead='', skips=True) -%}
+<span class="es-sub muted small">{{ lead }}{{ t.sent | thousands }} sent{% if t.failed %} · <b class="rm-bad">{{ t.failed | thousands }} failed</b>{% endif %}{% if skips and t.not_sent %} · {{ t.not_sent | thousands }} not sent{% endif %}{% if t.waiting %} · {{ t.waiting | thousands }} waiting{% endif %}</span>
+{%- endmacro %}
+{% macro es_people(r) -%}
+<td class="es-open">{% if r.people_url %}<a class="btn-link" href="{{ r.people_full }}" data-list-open="{{ r.people_url }}">People &rsaquo;</a>{% endif %}</td>
+{%- endmacro %}
+<div class="eml">
+  <section class="admin-card rm-card rm-waves" id="waves" aria-label="Mass emails go out in waves">
+    <div class="rm-h"><h2>Mass emails go out in waves</h2>{% if is_super %}<span class="rm-badge">Super admin</span>{% else %}<span class="muted small">Set by the super admin</span>{% endif %}</div>
+    <p class="muted small rm-note">Everyone's reminder and the emails a result release sends go to a few hundred people at a time, so the site isn't flooded with everyone signing in at once. Inside a wave they go out at {{ per_min }} a minute. The leader progress email goes at once.</p>
+    <form method="post" action="{{ url_for('admin_reminders') }}" class="admin-form adm-set-form rm-waves-form" id="rm-waves"
+          data-confirm="Save how mass emails go out? Everyone's reminder and the release emails queued from now on follow it; emails already waiting keep their times. You can change it again."
+          data-confirm-title="Save the waves?" data-confirm-ok="Save the waves">
+      <input type="hidden" name="action" value="save_waves">
+      <label class="switch">
+        <input type="checkbox" name="wave_on" value="1" {{ 'checked' if waves.on }} {{ wro }}>
+        <span class="track" aria-hidden="true"></span>
+        <span class="switch-label">Send mass emails in waves</span>
+      </label>
+      <div class="rm-wave-pair">
+        <label>People per wave<input type="number" name="wave_size" min="{{ wave_ranges[0][0] }}" max="{{ wave_ranges[0][1] }}" step="1" value="{{ waves.size }}" required {{ wro }}></label>
+        <label>Minutes between waves<input type="number" name="wave_gap" min="{{ wave_ranges[1][0] }}" max="{{ wave_ranges[1][1] }}" step="1" value="{{ waves.gap }}" required {{ wro }}></label>
+      </div>
+      <p class="rm-wave-plan" id="rm-wave-plan" data-n="{{ everyone }}" data-per-min="{{ per_min }}" aria-live="polite">{{ wave_line }}</p>
+      {# the super admin sees how far each mass send has got (Chris, 2026-10-21, option A); other admins the one line #}
+      <div class="actions">{% if sends is not none %}<div class="rm-sends" id="rm-sends" aria-label="How far the latest mass email has got" data-url="{{ url_for('admin_reminders_progress') }}">{% include "_mass_send_progress.html" %}</div>{% else %}<span class="muted small" id="rm-wave-status">{% if outbox.later %}{{ outbox.later | thousands }} email{{ '' if outbox.later == 1 else 's' }} waiting for their wave · next wave {{ outbox.next }}{% if outbox.due %} · {{ outbox.due | thousands }} going out now{% endif %}{% elif outbox.due %}{{ outbox.due | thousands }} email{{ '' if outbox.due == 1 else 's' }} going out now{% else %}Nothing waiting for a wave now.{% endif %}</span>{% endif %}{% if is_super %}<button type="submit" class="primary">Save the waves</button>{% endif %}</div>
+    </form>
+  </section>
+
+  {# one card, both runs as tables (canvas board C1, 2026-11-01): the new Opted out column is people the super admin took
+     off the email, so a run's numbers still add up #}
+  <section class="admin-card rm-card es-card" id="sent" aria-labelledby="eml-sent-h">
+    <h2 id="eml-sent-h">Everyone's reminder</h2>
+    {% if runs %}
+    <table class="admin-table es-table">
+      <colgroup><col style="width:14%"><col style="width:20%"><col style="width:31%"><col style="width:13%"><col style="width:11%"><col style="width:11%"></colgroup>
+      <thead><tr><th>When</th><th>Why</th><th>Queued</th><th>Opted out</th><th>Skipped</th><th aria-label="People"></th></tr></thead>
+      <tbody>
+      {% for r in runs %}
+      <tr><td>{{ r.when }}</td><td class="muted">{{ r.why }}</td>
+        <td>{% if r.queued %}{{ r.queued | thousands }} queued {{ r.plan }}{% else %}{{ r.sent }} sent{% endif %}{% if r.failed %} · <b class="rm-bad">{{ r.failed }} failed</b>{% endif %}{% if r.dry %} · {{ r.dry }} dry run{% endif %}{% if r.es.all %}<br>{{ es_sub(r.es) }}{% endif %}</td>
+        <td>{{ r.opted_out }}</td><td>{{ r.skipped }}</td>{{ es_people(r) }}</tr>
+      {% endfor %}
+      </tbody>
+    </table>
+    {% else %}
+    <p class="muted small">Nothing sent yet.</p>
+    {% endif %}
+  </section>
+  <section class="admin-card rm-card es-card" id="sent-lp" aria-labelledby="eml-lp-h">
+    <h2 id="eml-lp-h">Leader progress</h2>
+    {% if lp_runs %}
+    <table class="admin-table es-table">
+      <colgroup><col style="width:16%"><col style="width:18%"><col style="width:11%"><col style="width:22%"><col style="width:12%"><col style="width:10%"><col style="width:11%"></colgroup>
+      <thead><tr><th>When</th><th>Why</th><th>Leaders</th><th>Emailed</th><th>Opted out</th><th>No email</th><th aria-label="People"></th></tr></thead>
+      <tbody>
+      {% for r in lp_runs %}
+      {% if r.closed %}<tr><td>{{ r.when }}</td><td class="muted">{{ r.why }}</td><td colspan="4" class="muted">nothing it counts was open</td>{{ es_people(r) }}</tr>
+      {% else %}<tr><td>{{ r.when }}</td><td class="muted">{{ r.why }}</td><td>{{ r.leaders }}</td>
+        <td>{{ r.emailed }}{% if r.nothing %} <span class="muted">· {{ r.nothing }} nothing to report</span>{% endif %}{% if r.es.rows %}<br>{{ es_sub(r.es, '', False) }}{% endif %}</td>
+        <td>{{ r.opted_out }}</td><td>{% if r.no_email %}<b class="rm-bad">{{ r.no_email }}</b>{% else %}0{% endif %}</td>{{ es_people(r) }}</tr>{% endif %}
+      {% endfor %}
+      </tbody>
+    </table>
+    {% else %}
+    <p class="muted small">Nothing sent yet.</p>
+    {% endif %}
+    <p class="muted small es-note">Opted out counts the people left out when a run queued its emails. A reminder queued before its person was opted out is dropped just before it sends, and logged as skipped.</p>
+  </section>
+
+  {# Grade H progress (Chris, 2026-11-09, the email calendar): the HODs' and BU CEOs' three sends, counts only, like Leader progress #}
+  {% if ghp_show %}
+  <section class="admin-card rm-card es-card" id="sent-ghp" aria-labelledby="eml-ghp-h">
+    <h2 id="eml-ghp-h">Grade H progress</h2>
+    <p class="muted small es-intro">The email to each Grade H HOD and BU CEO on the day their part opens, 3 days before it closes and on its last day. Counts only, never a name.</p>
+    {% if ghp_runs %}
+    <table class="admin-table es-table">
+      <colgroup><col style="width:17%"><col style="width:19%"><col style="width:10%"><col style="width:10%"><col style="width:22%"><col style="width:11%"><col style="width:11%"></colgroup>
+      <thead><tr><th>When</th><th>Why</th><th>HODs</th><th>BU CEOs</th><th>Emailed</th><th>No email</th><th aria-label="People"></th></tr></thead>
+      <tbody>
+      {% for r in ghp_runs %}
+      <tr><td>{{ r.when }}</td><td class="muted">{{ r.why }}</td><td>{{ r.hods }}</td><td>{{ r.buceos }}</td>
+        <td>{{ r.emailed }}{% if r.note_served %} <span class="muted">· {{ r.note_served }} served by their ready note</span>{% endif %}{% if r.skipped %} <span class="muted">· skipped</span>{% endif %}{% if r.es.rows %}<br>{{ es_sub(r.es, '', False) }}{% endif %}</td>
+        <td>{% if r.no_email %}<b class="rm-bad">{{ r.no_email }}</b>{% else %}0{% endif %}</td>{{ es_people(r) }}</tr>
+      {% endfor %}
+      </tbody>
+    </table>
+    {% else %}
+    <p class="muted small">Nothing sent yet.</p>
+    {% endif %}
+  </section>
+  {% endif %}
+
+  {# Your own emails (Chris, 2026-11-09, the email calendar piece C): each send of a series the super admin wrote, counts only, People › into the panel #}
+  {% if own_show %}
+  <section class="admin-card rm-card es-card" id="sent-own" aria-labelledby="eml-own-h">
+    <h2 id="eml-own-h">Your own emails</h2>
+    <p class="muted small es-intro">Each send of an email you set up on Email › Schedule, in waves like every mass email. Counts only, never a name.</p>
+    {% if own_runs %}
+    <table class="admin-table es-table">
+      <colgroup><col style="width:16%"><col style="width:26%"><col style="width:12%"><col style="width:20%"><col style="width:11%"><col style="width:15%"></colgroup>
+      <thead><tr><th>When</th><th>Which</th><th>People</th><th>Emailed</th><th>No email</th><th aria-label="People"></th></tr></thead>
+      <tbody>
+      {% for r in own_runs %}
+      <tr><td>{{ r.when }}</td><td class="muted">{{ r.why }}</td><td>{{ r.people }}{% if r.opted_out %} <span class="muted">· {{ r.opted_out }} opted out</span>{% endif %}{% if r.nothing %} <span class="muted">· {{ r.nothing }} nothing waiting</span>{% endif %}</td>
+        <td>{{ r.emailed }}{% if r.es.rows %}<br>{{ es_sub(r.es, '', True) }}{% endif %}</td>
+        <td>{% if r.no_email %}<b class="rm-bad">{{ r.no_email }}</b>{% else %}0{% endif %}</td>{{ es_people(r) }}</tr>
+      {% endfor %}
+      </tbody>
+    </table>
+    {% else %}
+    <p class="muted small">Nothing sent yet.</p>
+    {% endif %}
+  </section>
+  {% endif %}
+
+  {# the daily email to each group-wide BG admin (Chris, 2026-11-03, board A) #}
+  <section class="admin-card rm-card es-card" id="sent-bga" aria-labelledby="eml-bga-h">
+    <h2 id="eml-bga-h">BG admin status</h2>
+    <p class="muted small es-intro">The daily email to each group-wide BG admin, sent to the addresses on their account's notification emails.</p>
+    {% if bga_runs %}
+    <table class="admin-table es-table">
+      <colgroup><col style="width:17%"><col style="width:21%"><col style="width:12%"><col style="width:28%"><col style="width:10%"><col style="width:12%"></colgroup>
+      <thead><tr><th>When</th><th>Why</th><th>BG admins</th><th>Emailed</th><th>No email</th><th aria-label="People"></th></tr></thead>
+      <tbody>
+      {% for r in bga_runs %}
+      {% if r.closed %}<tr><td>{{ r.when }}</td><td class="muted">{{ r.why }}</td><td colspan="3" class="muted">nothing it counts was open</td>{{ es_people(r) }}</tr>
+      {% else %}<tr><td>{{ r.when }}</td><td class="muted">{{ r.why }}</td><td>{{ r.admins }}</td>
+        <td>{{ r.emailed }}{% if r.nothing %} <span class="muted">· {{ r.nothing }} nothing to report</span>{% endif %}{% if r.es.rows %}<br>{{ es_sub(r.es.ob, ('%s address%s: ' % (r.es.rows | thousands, '' if r.es.rows == 1 else 'es')), False) }}{% endif %}</td>
+        <td>{% if r.no_email %}<b class="rm-bad">{{ r.no_email }}</b>{% else %}0{% endif %}</td>{{ es_people(r) }}</tr>{% endif %}
+      {% endfor %}
+      </tbody>
+    </table>
+    {% else %}
+    <p class="muted small">Nothing sent yet.</p>
+    {% endif %}
+  </section>
+
+  {# what OneHR emails an admin when something waits on them (Chris, 2026-11-03, board A): one row a day #}
+  <section class="admin-card rm-card es-card" id="notices" aria-labelledby="eml-notices-h">
+    <h2 id="eml-notices-h">Admin notices</h2>
+    <p class="muted small es-intro">The emails OneHR sends an admin when something waits on them: new joiners to set up, KPI lines to set, a library proposal, a help report. One row a day.</p>
+    {% if notices %}
+    <table class="admin-table es-table">
+      <colgroup><col style="width:15%"><col style="width:37%"><col style="width:11%"><col style="width:11%"><col style="width:11%"><col style="width:15%"></colgroup>
+      <thead><tr><th>Day</th><th>What</th><th>Emails</th><th>Sent</th><th>Failed</th><th aria-label="People"></th></tr></thead>
+      <tbody>
+      {% for d in notices %}
+      <tr><td>{{ d.label }}</td><td class="muted">{{ d.what }}</td><td>{{ d.n | thousands }}</td><td>{{ d.sent | thousands }}</td>
+        <td>{% if d.failed %}<b class="rm-bad">{{ d.failed | thousands }}</b>{% else %}0{% endif %}</td>
+        <td class="es-open"><a class="btn-link" href="{{ d.full }}" data-list-open="{{ d.url }}">People &rsaquo;</a></td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+    {% else %}
+    <p class="muted small">No admin emails yet.</p>
+    {% endif %}
+  </section>
+</div>
+{% if is_super %}{{ list_peek() }}{% endif %}
+<script>
+(function () {
+  // the waves' line follows the two fields as they are typed (email_wave_line and email_wave_error say the same)
+  var wf = document.getElementById('rm-waves'), wl = document.getElementById('rm-wave-plan');
+  function waveLine() {
+    var n = +wl.getAttribute('data-n') || 0, per = +wl.getAttribute('data-per-min') || 30;
+    var on = wf.elements.wave_on.checked, size = wf.elements.wave_size.value.trim(), gap = wf.elements.wave_gap.value.trim();
+    var who = 'Everyone (' + n.toLocaleString('en') + '): ';
+    function dur(m) { var h = Math.floor(m / 60), r = m % 60; return [h ? h + ' h' : '', r || !h ? r + ' min' : ''].filter(Boolean).join(' '); }
+    var bad = '';
+    size = /^\d{1,5}$/.test(size) ? +size : null; gap = /^\d{1,5}$/.test(gap) ? +gap : null;
+    if (size === null || size < {{ wave_ranges[0][0] }} || size > {{ wave_ranges[0][1] }}) bad = 'People per wave: from {{ wave_ranges[0][0] }} to {{ wave_ranges[0][1] | thousands }}.';
+    else if (gap === null || gap < {{ wave_ranges[1][0] }} || gap > {{ wave_ranges[1][1] }}) bad = 'Minutes between waves: from {{ wave_ranges[1][0] }} to {{ wave_ranges[1][1] }}.';
+    else if (gap < Math.ceil(size / per)) bad = 'A wave of ' + size.toLocaleString('en') + ' takes about ' + Math.ceil(size / per) + ' minutes to go out at ' + per + ' a minute, so leave at least ' + Math.ceil(size / per) + ' minutes between waves, or make the waves smaller.';
+    wl.classList.toggle('is-warn', !!bad);
+    if (bad) { wl.textContent = bad; return; }
+    if (!on) { wl.textContent = who + 'all at once, about ' + dur(Math.max(Math.ceil(n / per), 1)) + ' to go out at ' + per + ' a minute.'; return; }
+    var waves = n ? Math.ceil(n / size) : 0;
+    wl.textContent = waves <= 1 ? who + 'one wave, at ' + per + ' a minute.'
+      : who + waves + ' waves, the last one about ' + dur((waves - 1) * gap) + ' after the first.';
+  }
+  if (wf && wl) { wf.addEventListener('input', waveLine); wf.addEventListener('change', waveLine); }
+
+  // the mass-email bar ticks every 20 s while a send is going; a lost session or a refusal stops it
+  var sends = document.getElementById('rm-sends');
+  function tick() {
+    fetch(sends.getAttribute('data-url'), { credentials: 'same-origin', headers: { 'X-Requested-With': 'fetch' } })
+      .then(function (r) { return (r.ok && !r.redirected) ? r.text() : null; })
+      .then(function (h) {
+        if (h === null) return;
+        sends.innerHTML = h;
+        if (sends.querySelector('[data-live]')) setTimeout(tick, 20000);
+      })
+      .catch(function () { setTimeout(tick, 60000); });
+  }
+  if (sends && sends.querySelector('[data-live]')) setTimeout(tick, 20000);
+})();
+</script>
+{% endblock %}

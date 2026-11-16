@@ -1,0 +1,118 @@
+{% extends "base.html" %}
+{% block title %}Edit all dates{% endblock %}
+{% block body %}
+{# Edit all dates (admin round 4, canvas C3): every part's open and close dates in one table, inside the cycle's
+   period (Chris, 2026-10-13: "the module period can only be set within this period"). A Mid-Year greys the parts it
+   doesn't use. "Copy the dates of a cycle, shifted" pre-fills it from the Calendar's prompt; nothing saves until Save. #}
+{% from "_mode_switch.html" import calendar_modes with context %}
+{{ calendar_modes('list', cyc['id'] if cyc else None) }}
+<div class="adm-headrow">
+  <p class="adm-lede"><b>Edit all dates{% if cyc %} · {{ cyc['name'] }}{% endif %}.</b> Open &amp; close dates for every
+    part of the review, in Malaysia time (now {{ now_disp }}). Outside its dates a role can still read, but nothing it
+    saves, submits or approves goes through. {{ 'A part with no opening date stays closed.' if by_date else 'Leave both blank for no limit.' }}</p>
+  <form method="get" class="adm-cal-pick">
+    <label>Cycle <select name="cycle" class="modern-select" onchange="this.form.submit()">
+      {% for c in cycles %}<option value="{{ c['id'] }}" {% if cyc and c['id'] == cyc['id'] %}selected{% endif %}>{{ c['name'] }}{% if c['is_active'] %} &middot; active{% endif %}</option>{% endfor %}
+    </select></label>
+  </form>
+</div>
+
+{% if not cyc %}
+<div class="admin-card"><p class="muted small" style="margin:0">No cycle exists yet.</p></div>
+{% else %}
+<section class="admin-card adm-win-period">
+  <div><span class="adm-cyc-lbl">The cycle's period</span>
+    <b>{{ period or 'Not set' }}</b>
+    <span class="muted small">{% if period %}Every part below opens and closes inside it.{% else %}No period: parts can take any dates.{% endif %}
+      <a href="{{ url_for('admin_cycle_home', cycle=cyc['id']) }}#adm-cyc-edit">{{ 'Change it' if period else 'Set one' }} on Edit cycle &rsaquo;</a></span></div>
+  <div class="adm-win-move"><label>Move every part by <input type="number" id="win-move-n" value="7" style="width:70px"> days</label>
+    <button type="button" class="adm-rep-dl" id="win-move">Move</button></div>
+</section>
+{% if copied %}
+<p class="adm-note-line">Copied from {{ copied.name }}, {{ copied.shift | abs }} month{{ '' if copied.shift | abs == 1 else 's' }} {{ 'later' if copied.shift >= 0 else 'earlier' }}. Nothing is saved until you save.</p>
+{% endif %}
+<form method="post" id="win-form" action="{{ url_for('admin_windows') }}"
+      data-confirm="Save the open and close dates for {{ cyc['name'] }}? Roles outside their dates can still read but cannot save, submit or approve, so a changed date takes effect for everyone in that role at once."
+      data-confirm-title="Save these dates?" data-confirm-ok="Save all dates">
+  <input type="hidden" name="cycle" value="{{ cyc['id'] }}">
+  <input type="hidden" name="next" value="{{ url_for('admin_cycle_home', cycle=cyc['id']) }}">
+  {# PHONE VIEW, PIECE E (2026-11-08): drawn only on a phone (the rules at the end of style.css turn it on) #}
+  <p class="adm-win-easier" hidden>Easier on a computer. Scroll the table sideways for the dates.</p>
+  <section class="admin-card">
+  <div class="table-scroll">
+    <table class="admin-table win-table no-auto-table" id="window-table" data-po="{{ period_js.o }}" data-pc="{{ period_js.c }}">
+      <thead><tr><th scope="col">Who &middot; what</th><th scope="col">Opens</th><th scope="col">Closes</th>
+        <th scope="col">Last cycle{% if last %} <span class="muted small">({{ last['name'] }})</span>{% endif %}</th><th scope="col">Now</th></tr></thead>
+      {% for g in groups %}
+      <tbody>
+        <tr class="win-group"><th colspan="5" scope="colgroup"><span class="adm-side-sq" style="background:{{ g.color }}" aria-hidden="true"></span>{{ g.label }}</th></tr>
+        {% for r in g.rows %}
+        {% if r.used %}
+        <tr data-cell="{{ r.cell }}" class="win-row{{ ' is-bad' if r.err }}">
+          <td><b>{{ r.who }}</b> &middot; {{ r.what }}<span class="win-err" aria-live="polite">{{ r.err }}</span></td>
+          <td><input type="datetime-local" name="opens_{{ r.cell }}" value="{{ r.opens }}" aria-label="{{ r.who }}, {{ r.what }}: opens"></td>
+          <td><input type="datetime-local" name="closes_{{ r.cell }}" value="{{ r.closes }}" data-odp-time="23:59" aria-label="{{ r.who }}, {{ r.what }}: closes"></td>
+          <td class="muted small">{{ r.last }}</td>
+          <td><span class="win-state win-{{ r.state }}">{{ {'open': 'Open', 'not_open': 'Not open yet', 'closed': 'Closed'}[r.state] }}</span></td>
+        </tr>
+        {% else %}
+        <tr data-cell="{{ r.cell }}" class="win-row is-unused">
+          <td><b>{{ r.who }}</b> &middot; {{ r.what }}<span class="muted small" style="display:block">{{ r.why }}</span>
+            <input type="hidden" name="opens_{{ r.cell }}" value="{{ r.opens }}"><input type="hidden" name="closes_{{ r.cell }}" value="{{ r.closes }}"></td>
+          <td colspan="4"></td>
+        </tr>
+        {% endif %}
+        {% endfor %}
+      </tbody>
+      {% endfor %}
+    </table>
+  </div>
+  <div class="adm-headrow" style="margin:12px 0 0">
+    <span class="muted small" id="win-sum" data-used="{{ n_used }}">{{ n_used - n_out }} of {{ n_used }} parts{% if mid %} used at Mid-Year{% endif %} sit inside {{ period or 'the cycle' }}{% if n_out %} · {{ n_out }} outside{% endif %}</span>
+    <div class="adm-headrow-acts"><a class="btn-link" href="{{ url_for('admin_cycle_home', cycle=cyc['id']) }}">Cancel</a>
+      <button type="submit" class="primary" name="action" value="save" id="win-save">Save all dates</button></div>
+  </div>
+  </section>
+</form>
+<script>
+(function () {
+  var t = document.getElementById("window-table"); if (!t) return;
+  var po = t.dataset.po, pc = t.dataset.pc, save = document.getElementById("win-save"), sum = document.getElementById("win-sum");
+  var periodTxt = {{ (period or 'the cycle') | tojson }}, mid = {{ 'true' if mid else 'false' }};
+  function day(v) { var d = new Date(v); return d.getDate() + " " + d.toLocaleString("en-GB", { month: "short" }); }
+  function check() {
+    var bad = 0, used = 0;
+    t.querySelectorAll("tr.win-row:not(.is-unused)").forEach(function (tr) {
+      used++;
+      var o = tr.querySelector("input[name^=opens_]").value, c = tr.querySelector("input[name^=closes_]").value, err = "";
+      if (o && c && c <= o) err = "Closes before it opens";
+      else if (po && pc) {
+        if (o && o < po) err = "Opens before the cycle opens (" + day(po) + ")";
+        else if (c && c > pc) err = "After the cycle closes (" + day(pc) + ")";
+        else if (o && o > pc) err = "Opens after the cycle closes (" + day(pc) + ")";
+        else if (c && c < po) err = "Closes before the cycle opens (" + day(po) + ")";
+      }
+      tr.querySelector(".win-err").textContent = err;
+      tr.classList.toggle("is-bad", !!err);
+      if (err) bad++;
+    });
+    save.disabled = bad > 0;
+    save.title = bad ? "Fix the dates marked in red first" : "";
+    sum.textContent = (used - bad) + " of " + used + " parts" + (mid ? " used at Mid-Year" : "") + " sit inside " + periodTxt + (bad ? " · " + bad + " outside or out of order" : "");
+  }
+  function pad(n) { return (n < 10 ? "0" : "") + n; }
+  document.getElementById("win-move").addEventListener("click", function () {
+    var n = parseInt(document.getElementById("win-move-n").value, 10) || 0; if (!n) return;
+    t.querySelectorAll("tr.win-row:not(.is-unused) input[type=datetime-local]").forEach(function (i) {
+      if (!i.value) return;
+      var d = new Date(i.value); d.setDate(d.getDate() + n);
+      i.value = d.getFullYear() + "-" + pad(d.getMonth() + 1) + "-" + pad(d.getDate()) + "T" + pad(d.getHours()) + ":" + pad(d.getMinutes());
+    });
+    check();
+  });
+  t.addEventListener("input", check); t.addEventListener("change", check);
+  check();
+})();
+</script>
+{% endif %}
+{% endblock %}

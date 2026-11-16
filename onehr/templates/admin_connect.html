@@ -1,0 +1,108 @@
+{% extends "base.html" %}
+{% from "_adm_panel.html" import panel %}
+{% block title %}AI+ Connect{% endblock %}
+{% block body %}
+{# AI+ Connect (Chris, 2026-10-28, from the approved canvas "AI+ Connect: your tokens"): a system admin's personal tokens for
+   POST /mcp (onehr_mcp.py). Create opens in a side panel; the token is shown ONCE, in the response to that POST only, in a
+   panel that opens by itself: never in the session, a flash, a redirect or a log. Revoke is double-confirmed. #}
+<p class="adm-head-title"><span><span class="adm-ai">AI+</span> Connect</span></p>
+<div class="adm-headrow">
+  <p class="adm-lede cn-lede">Read OneHR's admin data from Claude with a personal token. Read only: Claude sees Employee IDs and counts, never names, ratings, bands or remarks.</p>
+  <div class="adm-headrow-acts"><a class="btn-link" href="{{ url_for('admin_audit_log') }}">Audit and usage &rsaquo;</a>
+    <button type="button" class="primary" data-panel-open="cn-new">Create a token</button></div>
+</div>
+
+{% if repeat %}<div class="cn-repeat" role="status">That token was already created. It was shown once; revoke it and create another if you didn't copy it.</div>{% endif %}
+<section class="admin-card" aria-labelledby="cn-tokens-h">
+  <h2 id="cn-tokens-h">Your tokens</h2>
+  <p class="muted small">One per device or app. Each lasts 30 days or 7; revoke one here and it stops at once.</p>
+  {% if tokens %}
+  <div class="table-scroll"><table class="admin-table cn-table">
+    <thead><tr><th>Token</th><th>Created</th><th>Expires</th><th>Last used</th><th>Status</th><th></th></tr></thead>
+    <tbody>
+    {% for t in tokens %}
+    <tr{% if t.state != 'active' %} class="cn-off"{% endif %}>
+      <td><b>{{ t.name }}</b><span class="muted small cn-sub">ohr_&hellip;{{ t.last4 or '----' }}</span></td>
+      <td class="muted small">{{ t.created }}</td>
+      <td class="muted small">{{ t.expires }}</td>
+      <td class="small">{% if t.last_used %}{{ t.last_used }}<span class="muted cn-sub">from {{ t.last_ip or 'an unknown address' }}</span>{% else %}<span class="muted">never</span>{% endif %}</td>
+      <td>{% if t.state == 'active' %}<span class="status-pill status-reviewed">Active</span>
+        {% elif t.state == 'revoked' %}<span class="status-pill acc-chip">Revoked</span>{% if t.revoked %}<span class="muted small cn-sub">{{ t.revoked }}, by you</span>{% endif %}
+        {% else %}<span class="status-pill status-submitted">Expired</span>{% endif %}</td>
+      <td class="adm-admins-acts">{% if t.state == 'active' %}<button type="submit" class="btn-link adm-danger-btn" form="cn-rv-{{ t.id }}">Revoke&hellip;</button>{% endif %}</td>
+    </tr>
+    {% endfor %}
+    </tbody>
+  </table></div>
+  {% else %}
+  <p class="muted" style="margin:12px 0 0">No tokens yet. Create one to connect Claude.</p>
+  {% endif %}
+</section>
+
+<section class="admin-card" aria-labelledby="cn-how-h">
+  <h2 id="cn-how-h">Connect Claude</h2>
+  <p class="small cn-steps">1. Create a token above and copy it: OneHR shows it once. 2. In Terminal on your Mac, add OneHR to Claude Code. 3. Ask, e.g. &ldquo;How many people in a business group haven't started their 360?&rdquo;</p>
+  <div class="cn-codebar"><code class="cn-code" id="cn-cmd">{{ command }}</code>
+    <button type="button" class="btn-link" data-copy="#cn-cmd">Copy</button></div>
+  <p class="muted small">Every call shows in Audit and usage as &ldquo;AI+ Connect: read&rdquo;.</p>
+</section>
+
+{# revoke: one form per live token, double-confirmed with the red verb #}
+{% for t in tokens if t.state == 'active' %}
+<form method="post" action="{{ url_for('admin_connect_revoke', tid=t.id) }}" id="cn-rv-{{ t.id }}" class="adm-pform-x"
+      data-confirm="Revoke the token {{ t.name }} (yours{% if t.last_used %}, last used {{ t.last_used }}{% endif %})? Claude on that device stops reaching OneHR at once. This can't be undone: create a new token to connect again."
+      data-confirm-ok="Revoke the token" data-confirm-tone="danger"></form>
+{% endfor %}
+
+{% call panel("cn-new", "AI+ Connect · New", "Create a token", "For one device or app. It reads OneHR as you, read only.") %}
+  <form method="post" action="{{ url_for('admin_connect_create') }}" class="adm-panel-form" id="cn-create-form"
+        data-confirm="Create a token for this device or app? It reads OneHR's admin data as you, read only, and lasts the time you chose. OneHR shows it once." data-confirm-ok="Create the token">
+    <input type="hidden" name="create_key" value="{{ create_key }}">
+    <div class="adm-panel-body">
+      <div class="pp-fields cn-fields">
+        <label>Name<input name="name" maxlength="80" required autocomplete="off" placeholder="e.g. MacBook · Claude Code"></label>
+        <label>Lasts<select name="days" class="modern-select"><option value="30">30 days</option><option value="7">7 days</option></select></label>
+      </div>
+      <div class="cn-can"><b>What Claude can read with it</b>
+        <ul>
+          <li>Where the cycle stands, who takes part, progress per part, who hasn't submitted</li>
+          <li>Leader seats and gaps, data quality, the ticket queue, email waves, the audit log</li>
+          <li>Employee IDs and counts only: never names, emails, ratings, bands, remarks or ticket text</li>
+        </ul>
+        <span class="muted small">It can't change anything. Every call shows in Audit and usage.</span></div>
+    </div>
+    <footer class="adm-panel-foot">
+      <button type="button" class="btn-link" data-panel-close>Cancel</button>
+      <button type="submit" class="primary">Create the token</button>
+    </footer>
+  </form>
+{% endcall %}
+
+{% if shown %}
+{% call panel("cn-shown", "AI+ Connect · Created", "Copy your token now", "OneHR shows it once and keeps only a scrambled copy. Lost it? Revoke it and create another.", open=True) %}
+  <div class="adm-panel-body">
+    <div class="cn-ok">Token &ldquo;{{ shown.name }}&rdquo; created. It lasts until {{ shown.until }}.</div>
+    <div class="cn-block"><b>Your token</b>
+      <div class="cn-codebar"><code class="cn-code" id="cn-tok">{{ shown.token }}</code><button type="button" class="btn-link" data-copy="#cn-tok">Copy</button></div></div>
+    <div class="cn-block"><b>Add OneHR to Claude Code (Terminal, on this Mac)</b>
+      <div class="cn-codebar"><code class="cn-code" id="cn-tok-cmd">{{ shown.command }}</code><button type="button" class="btn-link" data-copy="#cn-tok-cmd">Copy</button></div>
+      <span class="muted small">Claude Desktop: Settings &rsaquo; Connectors &rsaquo; Add, with the same address and token.</span></div>
+    <div class="cn-warn">Treat it like a password: anyone holding it reads OneHR's admin data as you. Never paste it in a chat, email or file you share.</div>
+  </div>
+  <footer class="adm-panel-foot"><a class="primary cn-done" href="{{ url_for('admin_connect') }}">Done</a></footer>
+{% endcall %}
+{% endif %}
+
+<script>
+document.addEventListener('click', function (e) {
+  var b = e.target.closest('[data-copy]');
+  if (!b) return;
+  var src = document.querySelector(b.getAttribute('data-copy'));
+  if (!src) return;
+  var txt = src.textContent.trim(), done = function () { var old = b.textContent; b.textContent = 'Copied'; setTimeout(function () { b.textContent = old; }, 1600); };
+  if (navigator.clipboard && navigator.clipboard.writeText) { navigator.clipboard.writeText(txt).then(done, function () {}); return; }
+  var ta = document.createElement('textarea'); ta.value = txt; document.body.appendChild(ta); ta.select();
+  try { document.execCommand('copy'); done(); } catch (x) {} document.body.removeChild(ta);
+});
+</script>
+{% endblock %}

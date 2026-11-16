@@ -1,0 +1,28 @@
+{# A moved person's KPI lines, each to be set on their new business group's framework (2026-10-27, canvas "Move a person to
+   another business group", boards 4 and 5): one card per line with its name, weight, method, old figures and the
+   achievement keyed so far, and the inputs of the NEW framework (the 1-5 ladder, or threshold / target / excellence or
+   multiple). Used by the move's step 2 and by Set them (Needs attention). The server checks every figure
+   (_bg_kpi_figures, pm_scale_error); `request.form` fills the boxes again after a refusal. #}
+{% macro kpi_lines(cards, mech, variant, bg, title, sub) %}
+<b class="pp-plbl">{{ title }}</b>
+<p class="muted small bgk-sub">{{ sub }}</p>
+<div class="bgk-list">
+  {% for c in cards %}
+  {% set k = 'k%d_' | format(c.id) %}
+  <section class="bgk-card" aria-label="{{ c.name }}">
+    <div class="bgk-head"><b class="bgk-name">{{ c.name }}</b><span class="bgk-meta"><span class="bgk-chip">{{ '%s%%' | format(c.weight) }}</span><span class="bgk-chip">{{ c.method }}</span></span></div>
+    <div class="bgk-old"><span class="muted">Was, on {{ c.old_fw }}</span><span>{{ c.old }}</span>{% if c.keyed %}<span class="muted">Keyed so far</span><span>{{ c.keyed }}</span>{% endif %}</div>
+    <div class="bgk-in {{ 'is-5' if mech == 'A' else 'is-3' }}">
+      {% if mech == 'A' %}
+      {% for i in range(1, 6) %}<label>Rate {{ i }}<input name="{{ k }}rate{{ i }}" inputmode="decimal" autocomplete="off" value="{{ request.form.get(k ~ 'rate' ~ i, '') }}" required></label>{% endfor %}
+      {% else %}
+      <label>Threshold<input name="{{ k }}threshold" inputmode="decimal" autocomplete="off" value="{{ request.form.get(k ~ 'threshold', '') }}" required></label>
+      <label>Target<input name="{{ k }}target" inputmode="decimal" autocomplete="off" value="{{ request.form.get(k ~ 'target', '') }}" required></label>
+      {% if variant == 'excellence' %}<label>Excellence<input name="{{ k }}excellence" inputmode="decimal" autocomplete="off" value="{{ request.form.get(k ~ 'excellence', '') }}" required></label>
+      {% else %}<label>Multiple<input name="{{ k }}multiple" inputmode="numeric" autocomplete="off" value="{{ request.form.get(k ~ 'multiple', '') }}" required></label>{% endif %}
+      {% endif %}
+    </div>
+  </section>
+  {% endfor %}
+</div>
+{% endmacro %}

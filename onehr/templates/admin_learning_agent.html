@@ -1,0 +1,35 @@
+{% extends "base.html" %}
+{% block title %}Learning · L&D agent{% endblock %}
+{% block body %}
+{# Learning › Overview › L&D agent (AI+ Learning S15, 2026-10-22; canvas [design canvas link removed]
+   board 14): what needs Group People L&D today across every business group, and a conversation that reads Learning's
+   records and drafts. It never sends, approves or changes anything: a draft goes only on L&D's own Send. A BG's admin
+   (their People Partner) sees their own group only. #}
+<div class="ld" id="ld" data-url="{{ url_for('admin_learning_agent') }}" data-available="{{ '1' if ai_ok else '0' }}">
+  <aside class="ld-left admin-card" aria-label="Today for L&D">
+    <span class="ld-k">Today for L&amp;D · {{ display_bg(scope) if scope else 'every business group' }}</span>
+    {% for i in today %}
+    {% if loop.index == 5 %}<details class="ld-more fold"><summary class="small">{{ today | length - 4 }} more</summary>{% endif %}
+    <a class="ld-q{{ ' is-first' if loop.first }}" href="{{ i.url }}" title="{{ i.text }}"><span>{{ i.text }}</span>{% if i.chip %}<span class="ld-chip{{ ' is-' ~ i.tone if i.tone }}">{{ i.chip }}</span>{% endif %}</a>
+    {% if loop.last and loop.index >= 5 %}<button type="button" class="fold-less" data-fold-less>Show less</button></details>{% endif %}
+    {% else %}<p class="muted small">Nothing urgent today.</p>{% endfor %}
+    <span class="ld-k ld-k2">Ask it</span>
+    <div class="ld-asks">
+      {% for q in ["Which groups are behind on 3-month check-ins?", "Which programmes stick least?", "HRDC: what's at risk?", "Draft the needs summary for a business group"] %}
+      <button type="button" class="ld-ask" data-ask="{{ q }}"{{ ' disabled' if not ai_ok }}>{{ q }}</button>
+      {% endfor %}
+    </div>
+    <p class="muted small ld-foot">{% if scope %}You see {{ display_bg(scope) }} only.{% else %}A People Partner opening this sees their own group only.{% endif %} Learning hours, Attendance, HRDC, Learning needs and the ISO evidence are under <a href="{{ url_for('admin_reports_all', kind='data') }}#data-learning">Reports</a>.</p>
+  </aside>
+  <section class="ld-conv admin-card" aria-label="The L&D agent">
+    <div class="ld-log" id="ld-log" aria-live="polite"></div>
+    <div class="ld-chips" id="ld-chips"></div>
+    <form class="ld-form" id="ld-form">
+      <label class="sr-only" for="ld-input">Message the L&amp;D agent</label>
+      <input id="ld-input" type="text" maxlength="600" placeholder="{{ 'Ask about programmes, needs, HRDC, attendance…' if ai_ok else 'The agent is off right now' }}"{{ ' disabled' if not ai_ok }}>
+      <button type="submit" class="ld-send" aria-label="Send"{{ ' disabled' if not ai_ok }}><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M22 2L11 13M22 2l-7 20-4-9-9-4z"/></svg></button>
+    </form>
+  </section>
+</div>
+<script src="{{ url_for('static', filename='learning_ld.js') }}?v={{ asset_v }}"></script>
+{% endblock %}

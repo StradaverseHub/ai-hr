@@ -1,0 +1,154 @@
+{% extends "base.html" %}
+{% block title %}Sign in - AI+ OneHR by Chin Hin{% endblock %}
+{% block body %}
+{# The sign-in page (redesigned 2026-10-15 from the canvas "OneHR AI+ Sign-in", in Chin Hin's brand: the navy panel
+   with the assistant, the form, and Forgot password as a pop-out on this page instead of a page of its own). The
+   pop-out posts to /forgot and shows the same one answer that page gives, so it never says whether an account
+   exists. With no script, the links go to /forgot as before. #}
+<div class="ax">
+  {% with ax_demo = true %}{% include "_auth_brand.html" %}{% endwith %}
+
+  <section class="ax-main">
+    <div class="ax-card">
+      <div class="ax-head">
+        <h1 class="ax-h">Welcome back</h1>
+        <p class="ax-sub">Sign in to AI+ OneHR</p>
+      </div>
+
+      {% if locked %}
+      <div class="ax-alert" role="alert">
+        <svg width="20" height="20" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg>
+        <div>
+          <strong>Too many failed attempts</strong>
+          <p>Wait {{ LOGIN_WINDOW_MIN }} minutes and try again, or reset your password now. Signing in from the browser you usually use still works.</p>
+          <a href="{{ url_for('forgot_password') }}" class="ax-alert-link" data-forgot-open>Reset my password</a>
+        </div>
+      </div>
+      {% endif %}
+
+      {% with messages = get_flashed_messages(with_categories=true) %}
+        {# the idle sign-out (2026-11-02): the page's own countdown sends ?signed_out=idle and the sentence is OneHR's
+           (idle_note, from code, never the query's text); the server's own ending flashes the same sentence, so it
+           shows once, never twice #}
+        {% if idle_note and not (messages | selectattr(1, 'equalto', idle_note) | list) %}
+          <div class="ax-alert" role="alert" data-idle-note>
+            <svg width="20" height="20" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 8v5M12 16.5v.01"/></svg>
+            <div><p>{{ idle_note }}</p></div>
+          </div>
+        {% endif %}
+        {% for category, msg in messages %}
+          {% if category in ('error', 'warn') %}
+          <div class="ax-alert" role="alert">
+            <svg width="20" height="20" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 8v5M12 16.5v.01"/></svg>
+            <div><p>{{ msg }}</p></div>
+          </div>
+          {% else %}
+          <div class="ax-note" role="status">
+            <svg width="20" height="20" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg>
+            <p>{{ msg }}</p>
+          </div>
+          {% endif %}
+        {% endfor %}
+      {% endwith %}
+
+      <form method="post" class="ax-form" id="ax-signin" novalidate>
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+        <div class="ax-field">
+          <label for="ax-user">Employee ID</label>
+          <input id="ax-user" aria-describedby="ax-user-hint" name="username" value="{{ username }}" autocomplete="username" autocapitalize="characters"
+                 spellcheck="false" required {% if not username %}autofocus{% endif %}>
+          <p class="ax-hint" id="ax-user-hint">Employee ID is case-sensitive, it uses capital letters.</p>
+        </div>
+        <div class="ax-field">
+          <label for="ax-pass">Password</label>
+          <input id="ax-pass" type="password" name="password" autocomplete="current-password" required
+                 {% if username %}autofocus{% endif %}>
+        </div>
+        <p class="ax-err" id="ax-signin-err" role="alert" hidden></p>
+        <button type="submit" class="ax-btn">Sign in</button>
+      </form>
+
+      <div class="ax-links">
+        <a href="{{ url_for('forgot_password') }}" data-forgot-open>Forgot your password?</a>
+        <button type="button" class="ax-linkbtn" id="ax-first" aria-expanded="false" aria-controls="ax-first-panel"><svg width="16" height="16" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 11v5M12 8h.01"/></svg>First time signing in?</button>
+      </div>
+      <div class="ax-first" id="ax-first-panel" hidden>
+        <p>Sign-in follows the main AI-HR app.</p>
+      </div>
+
+      {# Get help (2026-10-19): opens the help desk in the assistant card; on a narrow screen, or with no script, the
+         page of its own #}
+      <div class="ax-foot ax-helprow"><span>Trouble signing in?</span>
+        <a href="{{ url_for('signin_help') }}" class="ax-helpbtn" id="ax-help-open" data-help-open aria-controls="ax-help" aria-expanded="false"><svg width="13" height="13" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2l2.4 7.6L22 12l-7.6 2.4L12 22l-2.4-7.6L2 12l7.6-2.4z" fill="currentColor"/></svg>Get help</a></div>
+    </div>
+  </section>
+</div>
+
+{# Forgot password, as a pop-out on this page. #}
+<div class="ax-modal" id="ax-forgot" hidden {% if open_forgot %}data-open-on-load{% endif %}>
+  <div class="ax-dialog" role="dialog" aria-modal="true" aria-labelledby="{{ 'axf-title-form' if reset_available else 'axf-title-nomail' }}">
+    <button type="button" class="ax-x" data-forgot-close aria-label="Close">
+      <svg width="20" height="20" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg>
+    </button>
+
+    {% if reset_available %}
+    <div class="ax-pane" data-pane="form">
+      <span class="ax-tile" aria-hidden="true"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="8" cy="15" r="4"/><path d="M10.8 12.2L20 3M17 6l3 3M14 9l2 2"/></svg></span>
+      <div class="ax-dhead">
+        <h2 id="axf-title-form">Reset your password</h2>
+        <p>Enter your Employee ID and the work email on your OneHR account. We'll email you a link to set a new password.</p>
+      </div>
+      <form method="post" action="{{ url_for('forgot_password') }}" class="ax-form" id="ax-forgot-form" data-no-busy novalidate>
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+        <div class="ax-field">
+          <label for="axf-user">Employee ID</label>
+          <input id="axf-user" aria-describedby="axf-user-hint" name="username" autocomplete="username" autocapitalize="characters" spellcheck="false" required>
+          <p class="ax-hint" id="axf-user-hint">Employee ID is case-sensitive, it uses capital letters.</p>
+        </div>
+        <div class="ax-field">
+          <label for="axf-email">Work email</label>
+          <input id="axf-email" type="email" name="email" autocomplete="email" spellcheck="false" required>
+        </div>
+        <p class="ax-small">The link works once and expires after {{ RESET_TTL_MIN }} minutes.</p>
+        <p class="ax-err" id="axf-err" role="alert" hidden></p>
+        <div class="ax-actions">
+          <button type="button" class="ax-btn ax-btn-quiet" data-forgot-close>Cancel</button>
+          <button type="submit" class="ax-btn" id="axf-send">Email me a reset link</button>
+        </div>
+      </form>
+    </div>
+
+    <div class="ax-pane" data-pane="sent" hidden>
+      <span class="ax-tile" aria-hidden="true"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 7l9 6 9-6"/></svg></span>
+      <div class="ax-dhead">
+        <h2 id="axf-title-sent" tabindex="-1">Check your email</h2>
+        <p role="status">If that Employee ID and work email match an active account, we'll email a password-reset link to it. It can take a few minutes, so check your junk folder too.</p>
+      </div>
+      <ul class="ax-info">
+        <li><svg width="16" height="16" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>The link works once and expires after {{ RESET_TTL_MIN }} minutes.</li>
+        <li><svg width="16" height="16" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>Nothing arrived, or no work email on file? Group People can reset your password for you.</li>
+      </ul>
+      <div class="ax-dev" id="axf-dev" hidden>
+        <strong>Email isn't set up on this server, so here is the link:</strong>
+        <a id="axf-dev-link" href="#"></a>
+      </div>
+      <div class="ax-actions">
+        <button type="button" class="ax-btn" data-forgot-close>Back to sign in</button>
+      </div>
+    </div>
+    {% endif %}
+
+    <div class="ax-pane" data-pane="nomail" {% if reset_available %}hidden{% endif %}>
+      <span class="ax-tile" aria-hidden="true"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg></span>
+      <div class="ax-dhead">
+        <h2 id="axf-title-nomail" tabindex="-1">Ask Group People</h2>
+        <p>Resetting your password by email isn't available on OneHR just now. Group People can reset it for you, and you can then sign in and choose your own from Account › Change password.</p>
+      </div>
+      <div class="ax-actions">
+        <button type="button" class="ax-btn" data-forgot-close>Back to sign in</button>
+      </div>
+    </div>
+  </div>
+</div>
+<script src="{{ url_for('static', filename='auth.js') }}?v={{ asset_v }}"></script>
+{% endblock %}

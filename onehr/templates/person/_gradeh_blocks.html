@@ -1,0 +1,34 @@
+{# The two blocks the person page's Grade H tab and the Grade H list's person panel (templates/_gradeh_adm_person.html) share (2026-11-03,
+   board H6b): ONE copy, so the two screens can never say different things. Everything is read from `gh`, _person_gradeh's dict; nothing is
+   worked out here. #}
+{% macro steps_block(gh) %}
+{% set G = gh.g %}
+  <div class="pp-flow pp-gh-steps">{% for st in gh.steps %}<span class="pp-step{{ ' is-done' if st.state == 'done' }}{{ ' is-now' if st.state == 'now' }}{{ ' is-warn' if st.state == 'warn' }}">{{ '✓ ' if st.state == 'done' }}{{ st.text }}</span>{% endfor %}</div>
+  {% if G.dis %}<p class="muted small pp-gh-note">They told us they do not agree{% if G.dis_on %} (on {{ G.dis_on }}){% endif %}, so their result is not calibrated and their line manager's band stays unless Group People change it.{% if G.dis_ref and gh.super and G.dis_tid %} The reason is in the ticket <a href="{{ url_for('admin_tickets', show='all', panel='tk-help-' ~ G.dis_tid) }}">{{ G.dis_ref }}</a>.{% elif G.dis_ref and gh.super %} The reason is in the ticket {{ G.dis_ref }}.{% endif %}</p>{% endif %}
+{% endmacro %}
+
+{% macro route_block(gh) %}
+{% set G = gh.g %}{% set D = gh.detail %}
+  {% if gh.route == 'A' %}
+  <div class="pp-h-row"><h2 class="pp-h">KPI achievement · {{ G.kpi_n }} line{{ 's' if G.kpi_n != 1 }}</h2>{% if gh.scale %}<span class="muted small">Scale: {{ gh.scale | capitalize }}</span>{% endif %}</div>
+  {% if D and D.kpis %}
+  <div class="table-scroll"><table class="pp-gh-table">
+    <thead><tr><th>KPI</th><th>Weight</th><th>Theirs</th><th>Line manager</th><th class="pp-gh-prose" title="Line manager's reason">Reason</th></tr></thead>
+    <tbody>
+    {% for k in D.kpis %}<tr><td>{{ k.name }}</td><td>{{ k.weight }}%</td><td>{% if k.theirs %}{{ k.theirs }}%{% else %}<span class="muted">–</span>{% endif %}</td><td>{% if k.figure %}{{ k.figure }}{% else %}<span class="muted">–</span>{% endif %}</td><td class="pp-gh-prose">{% if k.reason %}{{ k.reason }}{% else %}<span class="muted">–</span>{% endif %}</td></tr>{% endfor %}
+    <tr class="pp-gh-total"><td>Weighted achievement</td><td>{{ '%g' | format(G.kpi_w or 0) }}%</td><td>{{ gh.kpi_theirs or '–' }}</td><td>{{ gh.perf_total or (gh.perf_avg or '–') }}</td><td class="pp-gh-prose pp-gh-rate">{% if gh.perf_rating_text %}Rating {{ gh.perf_rating_text.split()[0] }} · <span class="potential-pill" style="margin-left: 0.5rem" data-band="{{ gh.scores.perf }}">{{ gh.scores.perf }}</span>{% else %}<span class="muted">Not rated yet</span>{% endif %}</td></tr>
+    </tbody></table></div>
+  <p class="muted small pp-gh-note">Worked out by OneHR from the line manager's figures (their own where the line manager entered none).</p>
+  {% else %}<p class="muted small pp-none">No KPI lines yet: import them on Grade H Appraisal › Imports.</p>{% endif %}
+  {% else %}
+  <div class="pp-h-row"><h2 class="pp-h">The line manager's ratings · 8 attributes</h2></div>
+  {% if D and D.attrs %}
+  <div class="table-scroll"><table class="pp-gh-table">
+    <thead><tr><th>Attribute</th><th>Rating</th></tr></thead>
+    <tbody>
+    {% for at in D.attrs %}<tr><td>{{ at.title }}</td><td>{% if at.rating %}<b>{{ at.rating }}</b> {{ at.label }}{% else %}<span class="muted">–</span>{% endif %}</td></tr>{% endfor %}
+    <tr class="pp-gh-total"><td>Average</td><td>{% if gh.perf_avg %}{{ gh.perf_avg }}{% if gh.scores.perf %} · <span class="potential-pill" style="margin-left: 0.5rem" data-band="{{ gh.scores.perf }}">{{ gh.scores.perf }}</span>{% endif %}{% else %}<span class="muted">Not rated yet</span>{% endif %}</td></tr>
+    </tbody></table></div>
+  {% endif %}
+  {% endif %}
+{% endmacro %}

@@ -1,0 +1,239 @@
+{% extends "base.html" %}
+{% from "_table_tools.html" import colth, colmenu, colmenu_script %}
+{% from "_talent_decision_head.html" import decision_head, bu_row, view_icon, history_icon, info_icon %}
+{% block title %}Promotion list — {{ ctx['scope_label'] }}{% endblock %}
+{% block body %}
+
+{{ decision_head(ctx, tier, scope_kwargs, box_url, 'promotion', stat, 'on the list', bu) }}
+
+{% if not people %}
+<div class="admin-card">
+  <p class="muted" style="margin:0">Nobody in this scope has been nominated, and
+    no standing rule has picked anyone up. The list is empty.</p>
+  <p class="muted small" style="margin:8px 0 0">
+    Nominations come from line managers, HODs and BUCEOs in the Promotion
+    Nomination module, and from the BGCEO's promotion tag on the talent box.
+    The standing rules need at least {{ history_years }} years of recorded
+    talent status to fire.</p>
+</div>
+{% else %}
+
+<div class="admin-card" style="padding:0">
+  <div class="table-scroll table-scroll-capped">
+  <table class="admin-table tdec-table" id="tdec-promo-table">
+    <thead><tr>
+      {{ colth('person', 'Employee') }}
+      {# Role and tenure are each two facts that only mean anything together --
+         a job title without its grade, or time-in-role without time-since-
+         promotion, is half an answer. Pairing them also keeps this table at
+         eight columns instead of ten. #}
+      {{ colth('role', 'Role') }}
+      {{ colth('tenure', 'Tenure') }}
+      {{ colth('status', 'Talent status') }}
+      {{ colth('recby', 'Recommended by') }}
+      {{ colth('promote', 'Promote') }}
+      <th>Reason / remark</th>
+      <th></th>
+    </tr></thead>
+    <tbody>
+      {% for p in people %}
+      {% set u = p['user'] %}
+      {% set r = p['row'] %}
+      {% set d = decisions.get(u['id']) %}
+      {% set fid = 'tdec-f-' ~ u['id'] %}
+      {# Reordering is safe: every input belongs to its own per-person form,
+         referenced by id. tenure sorts on the NUMBER of years, not the printed
+         string, or "10 years" would sort before "2 years". #}
+      <tr class="data-row"
+          data-person="{{ u['full_name'] }}"
+          data-role="{{ u['job_title'] or '' }}"
+          data-tenure="{{ p['years_in_position'] if p['years_in_position'] is not none else '' }}"
+          data-status="{{ r['category'] or 'unplaced' }}"
+          data-recby="{{ p['nom_roles'] | map(attribute=0) | map('upper') | join(' · ') if p['nom_roles'] else 'None' }}"
+          data-promote="{{ 'Approved' if d and d['selected'] else ('Declined' if d else 'Undecided') }}">
+        <td>
+          <p style="margin:0;font-weight:500">{{ u['full_name'] }}</p>
+          <p class="muted small" style="margin:2px 0 0">
+            {{ display_company(u['business_group'], u['company']) or '—' }}
+            &middot; {{ u['department'] | proper or '—' }}</p>
+        </td>
+        <td>
+          <p style="margin:0">{{ u['job_title'] | proper or '—' }}</p>
+          <p class="muted small" style="margin:2px 0 0">JG {{ u['job_grade'] or '—' }}</p>
+        </td>
+        {# None reads as an em dash, never as 0: "we don't know when they took
+           this role" and "they took it today" are different facts. #}
+        <td style="white-space:nowrap">
+          <p style="margin:0">
+            {% if p['years_in_position'] is not none %}{{ '%.1f'|format(p['years_in_position']) }} yr
+              <span class="muted small">in position</span>
+            {% else %}<span class="muted small">position start unknown</span>{% endif %}
+          </p>
+          <p class="muted small" style="margin:2px 0 0">
+            {% if p['years_since_promotion'] is not none %}
+              {{ '%.1f'|format(p['years_since_promotion']) }} yr since promotion
+            {% else %}
+              <span title="No promotion on record — not the same as never promoted">no promotion on record</span>
+            {% endif %}
+          </p>
+        </td>
+        <td class="tdec-status-cell">
+          {% if r['category'] %}
+          <span class="tdec-cat tdec-cat--{{ category_slug[r['category']] }}">{{ r['category'] }}</span>
+          {% else %}<span class="muted small">unplaced</span>{% endif %}
+          {% set pp = [{'label': 'Performance band',
+                        'value': label_names.get(r['perf_band'], r['perf_band'] or 'not set')},
+                       {'label': 'Potential band', 'value': r['pot_band'] or 'not set'},
+                       {'label': 'Talent status', 'value': r['category'] or 'unplaced'}] %}
+          {% if r['overall'] %}{% set _ = pp.append({'label': 'Overall performance rating',
+              'value': (('%.2f'|format(r['overall']['value']) ~ ' — ') if r['overall']['value'] is not none else '') ~ label_names[r['overall']['label']]}) %}{% endif %}
+          <button type="button" class="tdec-icon tdec-view"
+                  title="Performance &amp; potential"
+                  aria-label="Performance and potential for {{ u['full_name'] }}"
+                  data-title="{{ u['full_name'] }} — performance &amp; potential"
+                  data-json='{{ pp|tojson }}'>{{ view_icon() }}</button>
+          {# The last five years of talent status, the evidence behind both
+             standing rules. An empty list says so rather than showing nothing. #}
+          {% set hist = [] %}
+          {% for year, cat in p['history'] %}{% set _ = hist.append({'label': year|string, 'value': cat}) %}{% endfor %}
+          <button type="button" class="tdec-icon tdec-view"
+                  title="Talent status, last {{ history_years }} years"
+                  aria-label="Talent status history for {{ u['full_name'] }}"
+                  data-title="{{ u['full_name'] }} — talent status, last {{ history_years }} years"
+                  data-json='{{ hist|tojson }}'>{{ history_icon() }}</button>
+        </td>
+        <td>
+          {% if p['noms'] %}
+            {# WHICH roles put them forward, not just how many -- "LM · HOD"
+               says something a "2" doesn't, in the same width. The full detail
+               (who, and what each proposed) stays one click away. #}
+            {% for role, n in p['nom_roles'] %}
+            <span class="tdec-nomrole" title="{{ role_names[role] }}{{ ' ×' ~ n if n > 1 else '' }}">
+              {{ role_short[role] }}{% if n > 1 %} &times;{{ n }}{% endif %}</span>
+            {% endfor %}
+            {% set info = [] %}
+            {% for n in p['noms'] %}
+              {% set _ = info.append({
+                  'label': role_names.get(n['nominator_role'], n['nominator_role'])
+                           ~ ' — ' ~ (n['nominator_name'] or 'unknown'),
+                  'value': ((('OFF-CYCLE (' ~ (off_cycle_reasons.get(n['off_cycle_reason'], 'unstated')) ~ ') — ')
+                             if n['nomination_kind'] == 'off_cycle' else '')
+                           ~ 'Proposed: ' ~ (n['proposed_job_grade'] or 'grade not stated')
+                            ~ ' / ' ~ (n['proposed_job_title'] or 'title not stated')
+                            ~ ((' — ' ~ n['rationale']) if n['rationale'] else '')) }) %}
+            {% endfor %}
+            <button type="button" class="tdec-icon tdec-view"
+                    title="Who recommended, and what they proposed"
+                    aria-label="Nominations for {{ u['full_name'] }}"
+                    data-title="{{ u['full_name'] }} — recommended by {{ p['noms']|length }}"
+                    data-json='{{ info|tojson }}'>{{ info_icon() }}</button>
+            {# Raised outside the season -- a counteroffer or a special case.
+               Flagged rather than blended in: the occasion is part of what the
+               BGCEO is being asked to approve. #}
+            {% for why in p['off_cycle'] %}
+            <span class="tdec-offcycle" title="Off-cycle: {{ why }}">Off-cycle &middot; {{ why }}</span>
+            {% endfor %}
+          {% else %}
+            {# Not nominated by anyone -- a standing rule put them here. Said
+               plainly, because "nobody put this person forward" is part of
+               what the reader is deciding on. #}
+            <span class="tdec-auto" title="{{ p['auto_reason'] }}">Non-nominee</span>
+            <p class="muted small" style="margin:2px 0 0">{{ p['auto_reason'] }}</p>
+          {% endif %}
+        </td>
+        <td>
+          <label class="tdec-toggle">
+            <input type="checkbox" name="selected" value="1" form="{{ fid }}"
+                   {{ 'checked' if d and d['selected'] else '' }}
+                   {{ 'disabled' if not can_edit else '' }}>
+            <span>{{ 'Approved' if d and d['selected'] else ('Declined' if d else 'Undecided') }}</span>
+          </label>
+          <div class="tdec-confirm">
+            <input type="text" name="confirmed_job_grade" maxlength="20" form="{{ fid }}"
+                   placeholder="New grade"
+                   value="{{ d['confirmed_job_grade'] if d and d['confirmed_job_grade'] else '' }}"
+                   {{ 'disabled' if not can_edit else '' }}>
+            <input type="text" name="confirmed_job_title" maxlength="120" form="{{ fid }}"
+                   placeholder="New job title"
+                   value="{{ d['confirmed_job_title'] if d and d['confirmed_job_title'] else '' }}"
+                   {{ 'disabled' if not can_edit else '' }}>
+          </div>
+        </td>
+        <td>
+          <textarea name="remark" rows="2" maxlength="2000" class="tdec-remark" form="{{ fid }}"
+                    placeholder="Why (optional)"
+                    {{ 'disabled' if not can_edit else '' }}>{{ d['remark'] if d and d['remark'] else '' }}</textarea>
+        </td>
+        <td>
+          {% if can_edit %}<button type="submit" class="btn-link" form="{{ fid }}">Save</button>{% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+      <tr class="no-filter-match" hidden><td colspan="8" class="muted">No one matches the filters.</td></tr>
+      </tbody>
+  </table>
+  </div>
+  {{ colmenu('tdec-promo-table', {
+       'person':  {'mode': 'clientFilter', 'type': 'text', 'sortAttr': 'person'},
+       'role':    {'mode': 'clientFilter', 'type': 'text', 'sortAttr': 'role'},
+       'tenure':  {'mode': 'sort', 'type': 'num', 'sortAttr': 'tenure'},
+       'status':  {'mode': 'clientFilter', 'type': 'text', 'sortAttr': 'status'},
+       'recby':   {'mode': 'clientFilter', 'type': 'text', 'sortAttr': 'recby'},
+       'promote': {'mode': 'clientFilter', 'type': 'text', 'sortAttr': 'promote'} }) }}
+</div>
+
+{% for p in people %}
+<form method="post" id="tdec-f-{{ p['user']['id'] }}" hidden
+      action="{{ url_for('talent_promotion_decide_' ~ tier, **scope_kwargs) }}">
+  <input type="hidden" name="subject_id" value="{{ p['user']['id'] }}">
+</form>
+{% endfor %}
+
+<p class="muted small" style="margin-top:10px">
+  The new grade and title are recorded as the approved outcome. Effecting the
+  promotion — changing the person's grade on the roster — is still Group People's own
+  step; nothing here writes to their record.
+</p>
+{% endif %}
+
+{# The promotion list is the last stage, so confirming it completes the scope
+   rather than handing on. It still offers the way back to the PIP list, since
+   the two are a pair and either order is legitimate. #}
+<div class="tbox-lockbar" style="margin-top:16px">
+  {% if locks.get('promotion') %}
+  <span class="muted small">Promotion list confirmed — {{ ctx['scope_label'] }} is
+    complete{% if not locks.get('pip') %}, though the PIP list is still open{% endif %}.</span>
+  <div style="display:flex;gap:8px;align-items:center">
+    <a class="btn-link" href="{{ url_for('talent_pip_' ~ tier, **scope_kwargs) }}">&larr; PIP list</a>
+    {% if ctx['can_decide'] %}
+    <form method="post" action="{{ url_for('talent_promotion_lock_' ~ tier, **scope_kwargs) }}"
+          data-confirm="Reopen the promotion list for {{ ctx['scope_label']|e }}?">
+      <input type="hidden" name="action" value="reopen">
+      <button type="submit" class="btn-link">Reopen</button>
+    </form>
+    {% endif %}
+  </div>
+  {% elif can_edit %}
+  <span class="muted small">{{ stat['selected'] }} of {{ stat['considered'] }} approved
+    — confirming closes the {{ 'whole scope' if bu['f_company'] else '' }} list.</span>
+  <div style="display:flex;gap:8px;align-items:center">
+    <a class="btn-link" href="{{ url_for('talent_pip_' ~ tier, **scope_kwargs) }}">&larr; PIP list</a>
+    {# A business-unit filter narrows what you're LOOKING at, never what
+       confirming closes -- the list is the scope's, so say so rather than let
+       the filter imply a partial close. #}
+    <form method="post" action="{{ url_for('talent_promotion_lock_' ~ tier, **scope_kwargs) }}"
+          data-confirm-title="Confirm the promotion list?" data-confirm-ok="Confirm list"
+          data-confirm="It closes the promotion list for {{ ctx['scope_label']|e }}. You can reopen it afterwards.">
+      <button type="submit" class="primary">Confirm promotion list</button>
+    </form>
+  </div>
+  {% else %}
+  <span class="muted small">Preview only until the calibration is locked.</span>
+  <a class="btn-link" href="{{ url_for('talent_pip_' ~ tier, **scope_kwargs) }}">&larr; PIP list</a>
+  {% endif %}
+</div>
+
+{% include "_talent_view_modal.html" %}
+<script src="{{ url_for('static', filename='pillscroller.js') }}?v={{ asset_v }}"></script>
+{{ colmenu_script(asset_v) }}
+{% endblock %}

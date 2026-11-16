@@ -1,0 +1,85 @@
+{# The admin list-table standard, in two macros.
+
+   Every table that renders one row per person or record looks and behaves the
+   same way: capped height with a frozen header, and an Excel-style menu on each
+   column offering sort and a checkbox value filter. Before this the behaviour
+   was per-page -- ten tables had the menu, four capped their height, and the
+   other ~75 did neither -- so the point of putting it here is that the next
+   table gets it by importing two macros rather than by copying eighty lines and
+   getting one of them subtly wrong.
+
+   Usage:
+
+     {% from "_table_tools.html" import colth, colmenu %}
+
+     <div class="table-scroll table-scroll-capped">
+     <table class="admin-table" id="bonus-table">
+       <thead><tr>
+         {{ colth('person', 'Person') }}
+         {{ colth('months', 'Computed') }}
+         <th>Why different</th>            <-- a column with no menu is fine
+       </tr></thead>
+       <tbody>
+         {% for r in rows %}
+         <tr class="data-row" data-person="{{ r.name }}" data-months="{{ r.m }}">
+           ...
+         </tr>
+         {% endfor %}
+         <tr class="no-filter-match" hidden><td colspan="3" class="muted">
+           No rows match the filters.</td></tr>
+       </tbody>
+     </table>
+     </div>
+     {{ colmenu('bonus-table', {
+          'person': {'mode': 'clientFilter', 'type': 'text', 'sortAttr': 'person'},
+          'months': {'mode': 'clientFilter', 'type': 'num',  'sortAttr': 'months'},
+        }) }}
+
+   The rules that are easy to get wrong:
+
+   - data-* on the <tr> carries the SORT VALUE, not the displayed markup. A cell
+     showing "RM 9,000,000" or a pill sorts on 9000000 / the raw band, or it
+     sorts as text and 100 lands between 10 and 20.
+   - one row = one record. A table with rowspan-merged cells must pass
+     noSort:true, because reordering rows would misalign the merged spans.
+   - 'clientFilter' for a table showing everything, 'server' for a paginated one
+     (its filter has to span pages, so it navigates); 'sort' for sort with no
+     value list.
+   - the no-match row uses a CLASS, not an id: several tables now share a page
+     and an id may only appear once.
+   - fixed config grids -- the 3x4 merit matrix, a band ladder -- are NOT list
+     tables. Sorting them is meaningless and capping three rows adds a scroll
+     box around nothing.
+   - the label is ESCAPED, so pass a literal character and not an HTML entity:
+     colth('mult', '&times;') renders the text "&times;". Use the character.
+   - colmenu.js must load ONCE, AFTER every config on the page. A page that
+     already had its own <script src="colmenu.js"> higher up must lose it:
+     loading twice binds every button twice, and loading before a config is
+     pushed means that table never initialises at all. #}
+
+{% macro colth(col, label, attrs='') %}
+<th {{ attrs | safe }}><button type="button" class="col-menu-btn" data-col="{{ col }}"><span
+  class="cm-label">{{ label }}</span><span class="cm-caret" aria-hidden="true">&#9662;</span></button></th>
+{%- endmacro %}
+
+{# Registers one table with colmenu.js. Safe to call several times on a page --
+   the configs accumulate into a list and colmenu.js initialises one instance
+   per entry. The script tag is emitted once, after the last config, because a
+   second <script src> for the same file would re-run the whole initialiser and
+   bind every button twice. #}
+{% macro colmenu(table_id, cols, base=None) %}
+<script>
+window.COLMENU_CONFIGS = window.COLMENU_CONFIGS || [];
+window.COLMENU_CONFIGS.push({
+  tableId: {{ table_id | tojson }},
+  {% if base %}base: {{ base | tojson }},{% endif %}
+  cols: {{ cols | tojson }}
+});
+</script>
+{%- endmacro %}
+
+{# Call ONCE per page, after every colmenu() call. Kept separate from colmenu()
+   so a page with six tables loads the script once rather than six times. #}
+{% macro colmenu_script(asset_v='') %}
+<script src="{{ url_for('static', filename='colmenu.js') }}{% if asset_v %}?v={{ asset_v }}{% endif %}"></script>
+{%- endmacro %}

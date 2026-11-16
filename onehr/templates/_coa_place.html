@@ -1,0 +1,62 @@
+{# The Chart of KPI's place pickers (ONEHR_COA=1, super admin; Chris, 2026-10-30, canvas boards 2 and 4): a Perspective and a
+   KPI group under it, "A new KPI group…" through data-choose-new, and the code it would take, read-only. The code shown is a
+   preview from the page's own read; the server works out the real one when it saves (and a code is never reused).
+   `opts` is _chart_place_opts. Used by Add a KPI ("Its place in the chart") and by "Give it a place" in the KPI panel. #}
+{% macro place_fields(opts) %}
+<div class="pp-fields coa-place" data-coa-place>
+  <label class="pp-f-wide">Perspective
+    <select name="perspective" class="modern-select" data-coa-persp>
+      <option value="">Not set</option>
+      {% for p in opts %}<option value="{{ p.name }}" data-next-group="{{ p.next_group or '' }}">{{ p.code }}. {{ p.name }}</option>{% endfor %}
+    </select></label>
+  <label class="pp-f-wide" data-choose-new-box>KPI group
+    <select name="chart_group" class="modern-select" data-choose-new data-new-required data-coa-group>
+      <option value="">Not set</option>
+      {% for p in opts %}{% for g in p.groups %}<option value="{{ g.id }}" data-persp="{{ p.name }}" data-next="{{ g.next or '' }}"{{ ' disabled' if not g.next }}>{{ g.code }}. {{ g.name }}{{ ' (full)' if not g.next }}</option>{% endfor %}{% endfor %}
+      <option value="__new__">A new KPI group…</option>
+    </select>
+    <input name="group_new" maxlength="120" placeholder="e.g. Profitability" aria-label="The new KPI group" data-new-input hidden></label>
+  <label>Its code
+    <input type="text" readonly class="coa-codein" value="" placeholder="—" aria-label="Its code, given when added" data-coa-code></label>
+</div>
+{% endmacro %}
+
+{# the script that makes the pickers work: the group list follows the perspective, the code preview follows the group.
+   Drawn once per page, after the forms. #}
+{% macro place_script() %}
+<script>
+(function () {
+  document.querySelectorAll('[data-coa-place]').forEach(function (box) {
+    var p = box.querySelector('[data-coa-persp]'), g = box.querySelector('[data-coa-group]'), c = box.querySelector('[data-coa-code]');
+    if (!p || !g || box._coa) return;
+    box._coa = true;
+    var all = [].slice.call(g.options).map(function (o) { return o.cloneNode(true); });
+    function code() {
+      var o = g.options[g.selectedIndex], v = '';
+      if (g.value === '__new__') {
+        var po = p.options[p.selectedIndex], ng = po && po.getAttribute('data-next-group');
+        v = ng ? ng + '01' : '';
+      } else if (o) v = o.getAttribute('data-next') || '';
+      c.value = v;
+    }
+    function draw() {
+      var pn = p.value, cur = g.value, po = p.options[p.selectedIndex], can = !!(po && po.getAttribute('data-next-group'));
+      g.innerHTML = '';
+      all.forEach(function (o, i) {
+        var n = o.cloneNode(true);
+        if (i === 0) g.appendChild(n);
+        else if (o.value === '__new__') { if (pn) { n.disabled = !can; g.appendChild(n); } }
+        else if (o.getAttribute('data-persp') === pn) g.appendChild(n);
+      });
+      g.value = cur;
+      if (g.value !== cur) g.value = '';
+      code();
+      g.dispatchEvent(new Event('change', { bubbles: true }));
+    }
+    p.addEventListener('change', draw);
+    g.addEventListener('change', code);
+    draw();
+  });
+})();
+</script>
+{% endmacro %}

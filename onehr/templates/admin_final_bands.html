@@ -1,0 +1,74 @@
+{% extends "base.html" %}
+{% block title %}Final bands{% endblock %}
+{% block body %}
+{% from "_adm_panel.html" import person_peek %}
+{# Calibration & Talent > Run > Final bands (canvas G3): a Group Chief's scope, both calls, the suggestion its mode
+   makes, and the super admin's final band. Every decision is a super-tier row (admin_final_bands -> _pm_super_set) and
+   an audit line; the person page's History shows the whole trail. #}
+{% set what = 'potential' if axis == 'pot' else 'performance' %}
+<p class="adm-lede">The final performance and potential bands of everyone in a Group Chief's scope are the super admin's:
+  accept the suggestion, or choose another band. Each decision, clear and reopen asks your remark, which goes in the audit trail.</p>
+{% if not groups %}
+<section class="admin-card"><p class="muted pp-none">No Group Chief scopes yet. Set one up on
+  <a href="{{ url_for('admin_pm_calibration_groups') }}">Calibration groups</a>.</p></section>
+{% elif not period %}
+<section class="admin-card"><p class="muted pp-none">There is no active performance cycle.</p></section>
+{% else %}
+<div class="fb-bar">
+  {# Performance | Potential (admin round 4, row 7) #}
+  <nav class="mod-tabs fb-axis" aria-label="Which band">
+    <a href="{{ url_for('admin_final_bands', g=group['id']) }}" class="{{ 'active' if axis != 'pot' }}"{% if axis != 'pot' %} aria-current="page"{% endif %}>Performance</a>
+    <a href="{{ url_for('admin_final_bands', g=group['id'], axis='pot') }}" class="{{ 'active' if axis == 'pot' }}"{% if axis == 'pot' %} aria-current="page"{% endif %}>Potential</a>
+  </nav>
+  <form method="get" data-no-busy>{% if axis == 'pot' %}<input type="hidden" name="axis" value="pot">{% endif %}<label class="sr-only" for="fb-g">Scope</label>
+    <select id="fb-g" name="g" class="modern-select" onchange="this.form.submit()">
+      {% for x in groups %}<option value="{{ x['id'] }}" {{ 'selected' if group and x['id'] == group['id'] }}>{{ x['name'] }} · {{ x['chief_name'] }}</option>{% endfor %}
+    </select></form>
+  <span class="small"><b>{{ mode_word }}</b> · {{ rows | length }} {{ 'in the potential calibration' if axis == 'pot' else 'with a scorecard' }} · {{ n_final }} decided ·
+    {% if locked %}Group Chief locked the whole scope{% else %}Group Chief locked {{ n_chief }} of {{ rows | length }}{% endif %}</span>
+  {% if n_agreed %}
+  <form method="post" data-confirm="Accept the suggested band for the {{ n_agreed }} where the suggestion is clear? Each one goes in the audit trail." data-confirm-ok="Accept {{ n_agreed }}"{{ super_remark_attrs() }}>
+    <input type="hidden" name="action" value="accept_agreed"><input type="hidden" name="g" value="{{ group['id'] }}"><input type="hidden" name="axis" value="{{ axis }}">
+    <button type="submit" class="primary">Accept the {{ n_agreed }} clear suggestion{{ 's' if n_agreed != 1 }}</button></form>
+  {% endif %}
+  <a class="small" href="{{ url_for('admin_pm_calibration_groups') }}">The scope's people and mode &rsaquo;</a>
+</div>
+{% if rows %}
+<section class="admin-card" style="padding:0;overflow:hidden" aria-label="Final bands">
+  <div class="fb-grid fb-head"><span>Person</span><span>BG CEO</span><span>Group Chief</span><span>Suggested</span><span>Final</span><span>Decide</span></div>
+  {% for r in rows %}
+  {% set p = r.p %}
+  <div class="fb-grid" id="p{{ p['id'] }}">
+    <div><a href="{{ url_for('admin_person', uid=p['id'], tab='history') }}" data-person-open="{{ p['id'] }}"><b>{{ p['full_name'] }}</b></a>
+      <div class="muted small">{{ p['department'] | proper or '' }} · {{ display_company(p['business_group'], p['company']) or '' }} · {{ display_bg(p['business_group']) }}</div></div>
+    <div>{% if r.bg %}<span class="potential-pill" data-band="{{ r.bg }}">{{ r.bg }}</span>{% else %}—{% endif %}</div>
+    <div>{% if r.chief %}<span class="potential-pill" data-band="{{ r.chief }}">{{ r.chief }}</span><div class="muted small">locked {{ r.chief_day }}</div>
+      {% elif r.draft %}<span class="muted small">draft {{ r.draft }}, not locked</span>
+      {% else %}<span class="muted small">not yet</span>{% endif %}</div>
+    <div>{% if r.tie %}<span class="fb-tie">{{ r.tie }}</span>{% elif r.sug %}<b>{{ r.sug }}</b>{% else %}—{% endif %}<div class="muted small">{{ r.why }}</div>{% if r.chair %}<div class="small" data-chair-lock>Executive Chairman</div>{% endif %}</div>
+    <div>{% if r.final %}<b class="fb-final">{{ r.final['adjusted_band'] }}</b><div class="muted small">{{ r.final['by_name'] or '' }} · {{ r.final['adjusted_at'] | myt_date }}</div>{% else %}<span class="muted small">not decided</span>{% endif %}</div>
+    <div>{% if r.ready %}
+      <form method="post"
+            data-confirm="{% if r.final %}Change {{ p['full_name'] }}'s final band from {{ r.final['adjusted_band'] }}? The band you chose replaces it as their official {{ what }} band for {{ period['name'] }}.{% else %}Set {{ p['full_name'] }}'s final band? The band you chose becomes their official {{ what }} band for {{ period['name'] }}.{% endif %} It is written to the audit trail, and you can change or clear it afterwards."
+            data-confirm-ok="{{ 'Change band' if r.final else 'Set final band' }}"{{ super_remark_attrs() }}>
+        <input type="hidden" name="action" value="decide"><input type="hidden" name="g" value="{{ group['id'] }}"><input type="hidden" name="axis" value="{{ axis }}"><input type="hidden" name="subject_id" value="{{ p['id'] }}">
+        <select name="band" aria-label="Final band for {{ p['full_name'] }}">{% for b in bands %}<option value="{{ b }}" {{ 'selected' if (r.final and r.final['adjusted_band'] == b) or (not r.final and (r.sug or r.bg) == b) }}>{{ b }}</option>{% endfor %}</select>
+        <button type="submit" class="btn-link">{{ 'Change' if r.final else 'Decide' }}</button>
+      </form>
+      {% if r.final %}<form method="post" data-confirm="Clear {{ p['full_name'] }}'s final band? They go back to the calibrated band." data-confirm-ok="Clear"{{ super_remark_attrs() }}>
+        <input type="hidden" name="action" value="clear"><input type="hidden" name="g" value="{{ group['id'] }}"><input type="hidden" name="axis" value="{{ axis }}"><input type="hidden" name="subject_id" value="{{ p['id'] }}">
+        <button type="submit" class="btn-link pp-danger">Clear</button></form>{% endif %}
+      {% if r.person_lock and not r.final %}<form method="post" data-confirm="Reopen {{ p['full_name'] }} for the Group Chief? Their locked call is lifted so they can call it again." data-confirm-ok="Reopen"{{ super_remark_attrs() }}>
+        <input type="hidden" name="action" value="reopen"><input type="hidden" name="g" value="{{ group['id'] }}"><input type="hidden" name="axis" value="{{ axis }}"><input type="hidden" name="subject_id" value="{{ p['id'] }}">
+        <button type="submit" class="btn-link">Reopen for the Group Chief</button></form>{% endif %}
+    {% else %}<span class="muted small">{{ 'No potential band yet.' if axis == 'pot' else "Their rating isn't final yet." }}</span>{% endif %}</div>
+  </div>
+  {% endfor %}
+</section>
+{% else %}
+<section class="admin-card"><p class="muted pp-none">{{ 'Nobody in this scope is in the potential calibration this cycle.' if axis == 'pot' else 'Nobody in this scope has a scorecard this cycle.' }}</p></section>
+{% endif %}
+{% endif %}
+{# a name opens their whole trail beside the list (History; phase 2 of the admin side panels) #}
+{{ person_peek("Final bands") }}
+{% endblock %}

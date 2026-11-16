@@ -1,0 +1,98 @@
+{# Panel: 360. Extracted from admin_framework.html so the settings section is ONE page with
+   switchable content rather than seven separate pages wearing a tab strip.
+   Rendered by _settings_shell(); its own POST endpoints are unchanged.
+   The page is hidden from the pills, so its crumb is the only thing that names it.
+
+   Remove is its own form, tied to its button with form="...". The confirm dialog replays a submit without the
+   clicked button, so a button that carried name="action" value="remove_..." inside the edit form would lose
+   its value after the dialog; a form of its own carries the action as a hidden field instead. #}
+<p class="adm-crumb"><a href="{{ url_for('admin_module_settings', key='f360') }}">Settings</a> &rsaquo; Framework</p>
+<p class="adm-lede">The principles, and the behaviours each grade band is rated on, for <strong>{{ cycle['name'] }}</strong>.
+  Changes apply to this cycle only; other cycles keep their own copy.</p>
+
+{% if n_submitted %}
+<p class="note">
+  <strong>Heads-up:</strong> {{ n_submitted | thousands }} {{ 'assessment has' if n_submitted == 1 else 'assessments have' }} already been submitted
+  in this cycle. Editing wording is safe; <strong>removing</strong> a behaviour or principle deletes
+  any answers given to it, and <strong>adding</strong> one leaves already-submitted people unrated on it.
+</p>
+{% endif %}
+
+{% for p in principles %}
+<details class="admin-card fw-principle"{% if loop.first %} open{% endif %}>
+  <summary>
+    <span class="fw-pname">{{ loop.index }}. {{ p['crit']['name'] }}</span>
+    {% if p['crit']['description'] %}<span class="crit-tag">{{ p['crit']['description'] }}</span>{% endif %}
+  </summary>
+
+  <form method="post" class="admin-form fw-edit-crit" data-no-busy
+        data-confirm="Save the changes to this principle?" data-confirm-ok="Save">
+    <input type="hidden" name="action" value="edit_principle">
+    <input type="hidden" name="criterion_id" value="{{ p['crit']['id'] }}">
+    <label>Principle name <input name="name" value="{{ p['crit']['name'] }}" required></label>
+    <label>Short description <input name="description" value="{{ p['crit']['description'] or '' }}"></label>
+    <div class="actions">
+      <button type="submit" class="btn-link">Save</button>
+      <button type="submit" form="fw-rm-p-{{ p['crit']['id'] }}" class="btn-link danger-link">Remove principle</button>
+    </div>
+  </form>
+  <form id="fw-rm-p-{{ p['crit']['id'] }}" method="post" data-no-busy
+        data-confirm="Remove the principle “{{ p['crit']['name'] }}” with all its behaviours, and any answers given to them? This cannot be undone."
+        data-confirm-title="Remove this principle?" data-confirm-ok="Remove principle" data-confirm-tone="danger">
+    <input type="hidden" name="action" value="remove_principle">
+    <input type="hidden" name="criterion_id" value="{{ p['crit']['id'] }}">
+  </form>
+
+  {% for tr in p['tiers'] %}
+  <div class="fw-tier">
+    <div class="fw-tier-head"><span class="tier-pill" data-tier="{{ tr['tier']['n'] }}">{{ tr['tier']['name'] }}</span> <span class="muted small">{{ tr['tier']['grades'] }}</span></div>
+    <div class="fw-cols">
+      {% for col, label, fut in [(tr['current'], 'Current level', 0), (tr['future'], 'Future level', 1)] %}
+      <div>
+        <div class="tier-col-label {{ 'tcl-current' if fut == 0 else 'tcl-future' }}">{{ label }}</div>
+        {% for s in col %}
+        <form method="post" class="fw-beh" data-no-busy
+              data-confirm="Save this behaviour wording?" data-confirm-ok="Save">
+          <input type="hidden" name="action" value="edit_behaviour">
+          <input type="hidden" name="statement_id" value="{{ s['id'] }}">
+          <textarea name="text" rows="2" required>{{ s['text'] }}</textarea>
+          <div class="fw-beh-acts">
+            <button type="submit" class="btn-link">Save</button>
+            <button type="submit" form="fw-rm-b-{{ s['id'] }}" class="btn-link danger-link">Remove</button>
+          </div>
+        </form>
+        <form id="fw-rm-b-{{ s['id'] }}" method="post" data-no-busy
+              data-confirm="Remove this behaviour, and any answers given to it? This cannot be undone."
+              data-confirm-title="Remove this behaviour?" data-confirm-ok="Remove" data-confirm-tone="danger">
+          <input type="hidden" name="action" value="remove_behaviour">
+          <input type="hidden" name="statement_id" value="{{ s['id'] }}">
+        </form>
+        {% endfor %}
+        <form method="post" class="fw-beh fw-add" data-no-busy
+              data-confirm="Add this new behaviour to {{ cycle['name'] }}?" data-confirm-ok="Add">
+          <input type="hidden" name="action" value="add_behaviour">
+          <input type="hidden" name="criterion_id" value="{{ p['crit']['id'] }}">
+          <input type="hidden" name="tier_n" value="{{ tr['tier']['n'] }}">
+          <input type="hidden" name="is_future" value="{{ fut }}">
+          <textarea name="text" rows="2" placeholder="Add a {{ label|lower }} behaviour…"></textarea>
+          <div class="fw-beh-acts"><button type="submit" class="btn-link">+ Add</button></div>
+        </form>
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+  {% endfor %}
+</details>
+{% endfor %}
+
+<div class="admin-card">
+  <h2>Add a principle</h2>
+  <form method="post" class="admin-form adm-set-form" data-no-busy
+        data-confirm="Add this new principle to {{ cycle['name'] }}?" data-confirm-ok="Add principle">
+    <input type="hidden" name="action" value="add_principle">
+    <label>Name <input name="name" required placeholder="e.g. Innovation Mindset"></label>
+    <label>Short description <input name="description" placeholder="optional"></label>
+    <div class="actions"><span class="muted small">It starts with no behaviours &mdash; add them for each grade band above.</span>
+      <button type="submit" class="primary">Add principle</button></div>
+  </form>
+</div>

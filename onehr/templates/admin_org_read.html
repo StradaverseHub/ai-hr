@@ -1,0 +1,21 @@
+{% extends "base.html" %}
+{% block title %}Org structure{% endblock %}
+{% block body %}
+{# A BG admin's Org structure (admin round 4, canvas O4): their own group's units, read only. #}
+<p class="adm-note-line">Read only: a super admin adds, renames and removes units. Your people's details you change on their own pages.</p>
+<section class="admin-card">
+  <h2>{{ display_bg(bg) }}</h2>
+  {% if units %}
+  <div class="table-scroll"><table class="admin-table no-auto-table">
+    <thead><tr><th scope="col">Business unit</th><th scope="col">Shown as</th><th scope="col" class="num">People</th>
+      <th scope="col" class="num">Departments</th><th scope="col">BU CEO</th><th scope="col"><span class="sr-only">People</span></th></tr></thead>
+    <tbody>{% for u in units %}
+      <tr><th scope="row">{{ u.name }}</th><td>{{ u.shown or '—' }}</td><td class="num">{{ u.people | thousands }}</td>
+        <td class="num">{{ u.depts }}</td><td>{% if u.lead %}{{ u.lead }}{% else %}<span class="org-none">No BU CEO</span>{% endif %}</td>
+        <td><a class="btn-link" href="{{ u.href }}">Its people &rsaquo;</a></td></tr>
+    {% endfor %}</tbody></table></div>
+  {% set nolead = units | rejectattr('lead') | list %}
+  {% if nolead %}<p class="muted small">{{ nolead | map(attribute='name') | join(', ') }} {{ 'has' if nolead | length == 1 else 'have' }} no BU CEO: a super admin sets one under Leaders and admins.</p>{% endif %}
+  {% else %}<p class="muted">No units in your scope.</p>{% endif %}
+</section>
+{% endblock %}

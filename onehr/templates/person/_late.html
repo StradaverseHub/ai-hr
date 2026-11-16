@@ -1,0 +1,34 @@
+{# "Past the deadline" (Chris, 2026-10-31, canvas "OneHR Late pass", boards A1, A4, L1): the person's closed parts they have not
+   finished, each with Give late pass; a running pass with End pass; a finished one as used; one that can't be given as a muted
+   line. The super admin's alone (the route's `late` is None for anyone else). A late pass opens ONE closed part for THIS person
+   until the time you set; nothing they entered changes (it is not a Reopen). The panel is in person/_overview.html. Every rule
+   is _late_give's; the card only shows them. In a list's panel (no Give panel here) the buttons open their page instead. #}
+{% if late %}
+<section class="admin-card pp-subs pp-late" id="pp-late" aria-label="Past the deadline">
+  <div class="pp-subs-h"><h2 class="pp-h">Past the deadline</h2>
+    <span class="muted small">{{ late['lede'] }}</span></div>
+  {% for r in late['rows'] %}
+  <div class="pp-srow pp-lrow is-{{ r['state'] }}">
+    <span class="pp-lwhat"><b class="pp-swhat">{{ r['what'] }}</b>{% if r['what_sub'] %}<span class="pp-lsub">{{ r['what_sub'] }}</span>{% endif %}</span>
+    <span class="pp-lwhen-c"><span class="pp-lwhen is-{{ r['tone'] }}">{{ r['when'] }}</span><span class="pp-lsub">{{ r['status'] }}</span></span>
+    <span class="pp-lnote">{% if r['reason'] %}&ldquo;{{ r['reason'] }}&rdquo;{% else %}{{ r['note'] }}{% endif %}</span>
+    <span class="pp-lact">
+      {% if r['state'] == 'open' %}
+      <span class="pp-lstate is-open">Open for them</span>
+      <form method="post" action="{{ url_for('admin_person_late_end', uid=person['id']) }}"
+            data-confirm="It closes for {{ person['full_name'] }} again now{% if r['kind'] == 'lmown' %} on {{ r['subject_name'] }}{% endif %}. What they entered stays as it is, and nothing is sent to them."
+            data-confirm-title="End {{ person['full_name'] }}'s late pass for the {{ r['what'] | lower }}{% if r['kind'] == 'lmown' %} of {{ r['subject_name'] }}{% elif r['kind'] != 'own' and r['what_sub'] %} ({{ r['what_sub'] }}){% endif %}?"
+            data-confirm-ok="End pass" data-confirm-tone="danger">
+        <input type="hidden" name="pass_id" value="{{ r['pass_id'] }}">
+        <button type="submit" class="pp-late-end">End pass</button>
+      </form>
+      {% elif r['state'] == 'used' %}<span class="pp-lstate is-used">Done</span>
+      {% elif r['state'] == 'blocked' %}<span class="pp-lblocked" title="{{ r['note'] }}">{{ r['blocked'] }}</span>
+      {% elif in_panel %}<a class="small" href="{{ url_for('admin_person', uid=person['id'], panel='latepass') }}">Give on their page &rsaquo;</a>
+      {% else %}<button type="button" class="pp-late-give" data-panel-open="latepass" data-late-pick="{{ r['key'] }}">Give late pass</button>
+      {% endif %}
+    </span>
+  </div>
+  {% endfor %}
+</section>
+{% endif %}

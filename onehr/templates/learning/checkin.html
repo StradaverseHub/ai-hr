@@ -1,0 +1,35 @@
+{% extends "base.html" %}
+{% block title %}Clock in · {{ s.title }}{% endblock %}
+{% block body %}
+{# Clock in (AI+ Learning phase 2, 2026-10-20; canvas [design canvas link removed] boards 3A-3B): the
+   page the room's QR opens on a phone, or where the 6-digit code on the screen is typed. One job: say whether they're
+   in. #}
+<main class="ck" aria-labelledby="ck-h">
+  <span class="ls-pill">AI+ Learning</span>
+  <h1 id="ck-h" class="ck-title">{{ s.title }}</h1>
+  <p class="ck-line">{{ line }}</p>
+  {% if ok and state in ('in', 'again') %}
+  <div class="ck-done" role="status">
+    <span class="ck-tick" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg></span>
+    <b>{{ msg }}</b>
+    <span>{{ day | lms_day }}. Remember to sign the HRDC T3 at the door too: HRDC still needs it on paper.</span>
+  </div>
+  {% elif ok and state == 'walkin' %}
+  <div class="ck-done is-walkin" role="status">
+    <span class="ck-tick" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg></span>
+    <b>You're clocked in as a walk-in.</b>
+    <span>You weren't on this session's list, so L&amp;D will check it with you. Sign the HRDC T3 at the door.</span>
+  </div>
+  {% else %}
+  {% if msg %}<p class="ck-msg" role="alert">{{ msg }}</p>{% endif %}
+  <form method="post" action="{{ url_for('learning_checkin', sid=s.id) }}" class="ck-form">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <label for="ck-c">Type the 6-digit code on the room's screen</label>
+    <input id="ck-c" name="c" inputmode="numeric" autocomplete="one-time-code" pattern="[0-9]{6}" maxlength="6" required placeholder="000000">
+    <button type="submit" class="primary">Clock in</button>
+    <p class="ck-note">The code changes every 30 seconds. If your phone won't scan, type it here.</p>
+  </form>
+  {% endif %}
+  <a class="ck-back" href="{{ url_for('learning_home') }}">Your learning</a>
+</main>
+{% endblock %}

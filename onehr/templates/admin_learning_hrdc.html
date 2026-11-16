@@ -1,0 +1,177 @@
+{% extends "base.html" %}
+{% from "_adm_panel.html" import panel %}
+{% block title %}Learning · HRDC{% endblock %}
+{% block body %}
+{# Learning › Run › HRDC (AI+ Learning S13, 2026-10-22; canvas [design canvas link removed] board 10):
+   every HRDC-claimable session against each business group's filing and its D-14, the JD14 claims and HRDC's queries.
+   Filing stays in eTRiS; OneHR keeps the clock and the record. Group People L&D records each step for every business
+   group; a BG's admins read their own group's line. #}
+{% set b = board %}
+<div class="adm-headrow">
+  <p class="adm-lede">Filing stays in eTRiS. OneHR keeps the clock and the record: Group People L&amp;D files and records each
+    step for every business group{% if not can %}; you read your own group's line{% endif %}. Unfiled at D-14 means the
+    business group pays: a filing turns red {{ red_days }} days before that.</p>
+  {% if can %}<a class="btn-link" href="{{ url_for('admin_learning_hrdc', edit='query') }}" data-panel-open="query">Log a query</a>{% endif %}
+</div>
+<nav class="lm-viewsw" aria-label="HRDC views"><a href="{{ url_for('admin_learning_hrdc') }}" class="is-on" aria-current="page">Filings by business group</a><a href="{{ url_for('admin_learning_hrdc', view='levy') }}">Levy balance by entity</a></nav>
+<div class="lm-hrdc">
+  <div class="lm-tiles" role="list">
+    <div class="lm-tile" role="listitem"><b>{{ b.tiles.due_week }}</b><span>BG filing{{ '' if b.tiles.due_week == 1 else 's' }} due this week</span></div>
+    <div class="lm-tile{{ ' is-flag' if b.tiles.at_risk }}" role="listitem"><b>{{ b.tiles.at_risk }}</b><span>at risk: unfiled, D-14 within {{ red_days }} days</span></div>
+    <div class="lm-tile" role="listitem"><b>{{ b.tiles.queries }}</b><span>HRDC quer{{ 'y' if b.tiles.queries == 1 else 'ies' }} open{% if b.tiles.next_reply %} · next reply {{ b.tiles.next_reply.reply_by | lms_day }}{% endif %}</span></div>
+    <div class="lm-tile" role="listitem"><b>{{ b.tiles.approved_year }}</b><span>grant{{ '' if b.tiles.approved_year == 1 else 's' }} approved this year</span></div>
+  </div>
+
+  <section class="admin-card lm-hrdc-grid" aria-labelledby="lm-hg-h">
+    <h2 id="lm-hg-h" class="lm-h">Sessions by business group</h2>
+    {% if b.rows %}
+    <div class="table-scroll"><table class="admin-table no-auto-table lm-hg">
+      <thead><tr><th scope="col">Session</th><th scope="col">Approved by (D-14)</th>
+        {% for bg in b.bgs %}<th scope="col" class="lm-hg-bg">{{ display_bg(bg) }}</th>{% endfor %}</tr></thead>
+      <tbody>
+      {% for r in b.rows %}
+      <tr class="{{ 'is-risk' if r.risk }}">
+        <th scope="row"><b>{{ r.s.title }}</b><span class="muted small"> · {{ r.s.run_label or 'Run' }} · {{ r.s.starts_on | lms_day }}</span>{% if r.s.status == 'cancelled' %} <span class="ls-chip is-returned">Session cancelled</span>{% endif %}
+          {% if not r.pax_fixed %}<span class="lm-hg-note">Pax fixed {{ r.reg_close.isoformat() | lms_day }}</span>{% endif %}</th>
+        <td class="lm-hg-d14{{ ' is-red' if r.risk }}">{{ r.d14.isoformat() | lms_day }}{% if 0 <= r.d14_days <= 30 %} · {{ r.d14_days }} day{{ '' if r.d14_days == 1 else 's' }}{% elif r.d14_days < 0 %} · passed{% endif %}</td>
+        {% for c in r.cells %}
+        <td class="lm-hg-c">{% if can and c.state not in ('nopax', 'afterpax') %}<a class="lm-hc is-{{ c.state }}{{ ' is-red' if c.red }}" href="{{ url_for('admin_learning_hrdc', edit='cell', s=r.s.id, bg=c.bg) }}" title="{{ c.pax }} confirmed · {{ c.label }}{{ (' · grant ' ~ c.grant) if c.grant }}">{{ c.label }}</a>{% if c.repl %}<span class="lm-hc is-query lm-hc-repl" title="A seat changed hands after the filing: update eTRiS, then save this cell">Replacement to file</span>{% endif %}{% else %}<span class="lm-hc is-{{ c.state }}{{ ' is-red' if c.red }}" title="{{ c.pax }} confirmed">{{ c.label }}</span>{% endif %}</td>
+        {% endfor %}
+      </tr>
+      {% endfor %}
+      </tbody>
+    </table></div>
+    {% else %}<p class="muted small">No HRDC-claimable session from the last 90 days or to come. A programme is HRDC-claimable on its own page under Programmes.</p>{% endif %}
+  </section>
+
+  {% if b.ext %}
+  {# an HRDC-claimable external course is its own row (2026-10-23, the LMS gap check) #}
+  <section class="admin-card" aria-labelledby="lm-hx-h">
+    <h2 id="lm-hx-h" class="lm-h">External courses · HRDC-claimable</h2>
+    <div class="table-scroll"><table class="admin-table no-auto-table lm-hl">
+      <thead><tr><th scope="col">Who</th><th scope="col">Business group</th><th scope="col">Course</th><th scope="col">Dates</th><th scope="col">Certificate</th><th scope="col">HRDC</th></tr></thead>
+      <tbody>{% for x in b.ext %}
+      <tr><td>{{ x.name }}</td><td>{{ display_bg(x.bg) if x.bg else '' }}</td>
+        <td>{{ x.title }}<span class="muted small"> · {{ x.provider }} · RM {{ '{:,.2f}'.format(x.cost or 0) }}</span></td>
+        <td>{{ x.starts | lms_day }}{% if x.ends and x.ends != x.starts %} - {{ x.ends | lms_day }}{% endif %}</td>
+        <td>{{ x.cert }}</td>
+        <td>{% if can %}<a class="lm-hc is-{{ x.state }}" href="{{ url_for('admin_learning_hrdc', edit='ext', r=x.id) }}">{{ x.label }}</a>{% else %}<span class="lm-hc is-{{ x.state }}">{{ x.label }}</span>{% endif %}</td></tr>
+      {% endfor %}</tbody>
+    </table></div>
+  </section>
+  {% endif %}
+
+  <div class="lm-hrdc-two">
+    <section class="admin-card" aria-labelledby="lm-jd-h">
+      <h2 id="lm-jd-h" class="lm-h">JD14 claims · vendor to Group People L&amp;D</h2>
+      {% if b.claims %}
+      <table class="admin-table no-auto-table lm-hl"><thead><tr><th scope="col">Session</th><th scope="col">Business group</th><th scope="col">With</th><th scope="col">Due</th></tr></thead>
+        <tbody>{% for c in b.claims %}
+        <tr><td>{% if can %}<a href="{{ url_for('admin_learning_hrdc', edit='claim', s=c.session_id, bg=c.business_group) }}">{{ c.title }}</a>{% else %}{{ c.title }}{% endif %}{% if c.run %}<span class="muted small"> · {{ c.run }}</span>{% endif %}</td>
+          <td>{{ display_bg(c.business_group) }}</td>
+          <td class="{{ 'is-red' if c.late }}">{{ c.step_label }}{% if c.late %} · {{ c.late }} day{{ '' if c.late == 1 else 's' }} late{% endif %}</td>
+          <td class="{{ 'is-red' if c.late }}">{{ c.due_on | lms_day if c.due_on else '–' }}</td></tr>
+        {% endfor %}</tbody></table>
+      {% else %}<p class="muted small">No claim open. Once a grant is approved, record its JD14 claim from the filing.</p>{% endif %}
+    </section>
+    <section class="admin-card" aria-labelledby="lm-hq-h">
+      <h2 id="lm-hq-h" class="lm-h">HRDC queries · one query, {{ query_days }} working days</h2>
+      {% if b.queries %}
+      <table class="admin-table no-auto-table lm-hl"><thead><tr><th scope="col">About</th><th scope="col">Business group</th><th scope="col">Reply by</th><th scope="col">Owner</th>{% if can %}<th scope="col"><span class="sr-only">Close</span></th>{% endif %}</tr></thead>
+        <tbody>{% for q in b.queries %}
+        <tr><td>{{ q.title }}: {{ q.about }}</td><td>{{ display_bg(q.business_group) }}</td>
+          <td class="{{ 'is-red' if q.left < 0 else 'is-amber' if q.left <= 2 }}">{{ q.reply_by | lms_day }}</td><td>{{ q.owner }}</td>
+          {% if can %}<td><form method="post" data-confirm="Close this HRDC query as answered? The filing reads Filed again." data-confirm-ok="Close it">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token }}"><input type="hidden" name="action" value="query_close"><input type="hidden" name="query_id" value="{{ q.id }}">
+            <button type="submit" class="btn-link">Answered</button></form></td>{% endif %}</tr>
+        {% endfor %}</tbody></table>
+      {% else %}<p class="muted small">No query open.</p>{% endif %}
+      {% if b.closed_month %}<p class="muted small">{{ b.closed_month }} closed this month.</p>{% endif %}
+    </section>
+  </div>
+</div>
+
+{% if can and sel and edit == 'cell' %}{% set c = sel.cell %}
+{% call panel("cell", "HRDC · " ~ display_bg(c.bg), sel.row.s.title ~ " · " ~ (sel.row.s.run_label or 'Run'), c.pax ~ " confirmed · day one " ~ (sel.row.s.starts_on | lms_day) ~ " · approved by " ~ (sel.row.d14.isoformat() | lms_day), open=True, params="edit s bg") %}
+<form method="post" class="adm-panel-form" data-confirm="Record this HRDC step for {{ display_bg(c.bg) }} on {{ sel.row.s.title }}? It goes in the trail." data-confirm-ok="Record it">
+  <div class="adm-panel-body">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}"><input type="hidden" name="action" value="cell">
+    <input type="hidden" name="session_id" value="{{ sel.row.s.id }}"><input type="hidden" name="bg" value="{{ c.bg }}">
+    <div class="adm-pform">
+      <label>Where it is<select name="status" class="modern-select">{% for k, lab in statuses %}<option value="{{ k }}"{{ ' selected' if (c.rec.status if c.rec else 'not_filed') == k }}>{{ lab }}</option>{% endfor %}</select></label>
+      <label>On<input type="date" name="on_date" value="{{ (c.rec.on_date if c.rec and c.rec.on_date else '') }}"></label>
+      <label><span>Grant ID <span class="muted small">(when approved)</span></span><input name="grant_id" maxlength="40" value="{{ c.rec.grant_id if c.rec and c.rec.grant_id else '' }}"></label>
+      <label><span>Note <span class="muted small">(optional)</span></span><input name="note" maxlength="300" value="{{ c.rec.note if c.rec and c.rec.note else '' }}"></label>
+    </div>
+    {% if sel.query %}<p class="muted small">Open query: {{ sel.query.about }} · reply by {{ sel.query.reply_by | lms_day }}. Close it on the page when it's answered.</p>{% endif %}
+    {% if c.rec and c.rec.status == 'approved' %}<p class="muted small">Approved: record its JD14 claim once the course has run, <a href="{{ url_for('admin_learning_hrdc', edit='claim', s=sel.row.s.id, bg=c.bg) }}">here</a>.</p>{% endif %}
+  </div>
+  <footer class="adm-panel-foot">
+    <a class="btn-link adm-panel-grow" href="{{ url_for('admin_learning_hrdc') }}">Cancel</a>
+    <button type="submit" class="primary">Record it</button>
+  </footer>
+</form>
+{% endcall %}
+{% endif %}
+
+{% if can and sel_ext and edit == 'ext' %}{% set x = sel_ext %}
+{% call panel("ext", "HRDC · external course · " ~ (display_bg(x.bg) if x.bg else ''), x.name ~ " · " ~ x.title, x.provider ~ " · " ~ (x.starts | lms_day) ~ " · " ~ x.cert, open=True, params="edit r") %}
+<form method="post" class="adm-panel-form" data-confirm="Record this HRDC step for {{ x.name }}'s {{ x.title }}? It goes in the trail." data-confirm-ok="Record it">
+  <div class="adm-panel-body">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}"><input type="hidden" name="action" value="ext_cell">
+    <input type="hidden" name="registration_id" value="{{ x.id }}">
+    <div class="adm-pform">
+      <label>Where it is<select name="status" class="modern-select">{% for k, lab in statuses %}<option value="{{ k }}"{{ ' selected' if (x.rec.status if x.rec else 'not_filed') == k }}>{{ lab }}</option>{% endfor %}</select></label>
+      <label>On<input type="date" name="on_date" value="{{ x.rec.on_date if x.rec and x.rec.on_date else '' }}"></label>
+      <label><span>Grant ID <span class="muted small">(when approved)</span></span><input name="grant_id" maxlength="40" value="{{ x.rec.grant_id if x.rec and x.rec.grant_id else '' }}"></label>
+      <label><span>Note <span class="muted small">(optional)</span></span><input name="note" maxlength="300" value="{{ x.rec.note if x.rec and x.rec.note else '' }}"></label>
+    </div>
+  </div>
+  <footer class="adm-panel-foot">
+    <a class="btn-link adm-panel-grow" href="{{ url_for('admin_learning_hrdc') }}">Cancel</a>
+    <button type="submit" class="primary">Record it</button>
+  </footer>
+</form>
+{% endcall %}
+{% endif %}
+
+{% if can and sel and edit == 'claim' %}{% set cl = sel.claim %}
+{% call panel("claim", "HRDC · JD14 claim · " ~ display_bg(sel.cell.bg), sel.row.s.title ~ " · " ~ (sel.row.s.run_label or 'Run'), "Vendor to Group People L&D, after the course", open=True, params="edit s bg") %}
+<form method="post" class="adm-panel-form" data-confirm="Record where {{ display_bg(sel.cell.bg) }}'s JD14 claim for {{ sel.row.s.title }} is? It goes in the trail." data-confirm-ok="Record it">
+  <div class="adm-panel-body">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}"><input type="hidden" name="action" value="claim">
+    <input type="hidden" name="session_id" value="{{ sel.row.s.id }}"><input type="hidden" name="bg" value="{{ sel.cell.bg }}">
+    <div class="adm-pform">
+      <label>Where it is<select name="step" class="modern-select">{% for k, lab in steps %}<option value="{{ k }}"{{ ' selected' if (cl.step if cl else 'vendor') == k }}>{{ lab }}</option>{% endfor %}</select></label>
+      <label>This step is due<input type="date" name="due_on" value="{{ cl.due_on if cl and cl.due_on else '' }}"></label>
+    </div>
+  </div>
+  <footer class="adm-panel-foot">
+    <a class="btn-link adm-panel-grow" href="{{ url_for('admin_learning_hrdc') }}">Cancel</a>
+    <button type="submit" class="primary">Record it</button>
+  </footer>
+</form>
+{% endcall %}
+{% endif %}
+
+{% if can %}
+{% call panel("query", "HRDC · a query", "Log an HRDC query", "One query at a time; the reply is due " ~ query_days ~ " working days after it came.", open=(edit == 'query'), params="edit") %}
+<form method="post" class="adm-panel-form" data-confirm="Log this HRDC query? The filing reads Query until you close it." data-confirm-ok="Log it">
+  <div class="adm-panel-body">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}"><input type="hidden" name="action" value="query_add">
+    <div class="adm-pform">
+      <label>Session<select name="session_id" class="modern-select" required><option value="">Choose…</option>{% for r in b.rows %}<option value="{{ r.s.id }}">{{ r.s.title }} · {{ r.s.run_label or 'Run' }} · {{ r.s.starts_on | lms_day }}</option>{% endfor %}</select></label>
+      <label>Business group<select name="bg" class="modern-select" required><option value="">Choose…</option>{% for bg in b.bgs %}<option value="{{ bg }}">{{ display_bg(bg) }}</option>{% endfor %}</select></label>
+      <label>What HRDC asked<input name="about" maxlength="200" required placeholder="e.g. the trainer's certificate"></label>
+      <label>Who replies<select name="owner" class="modern-select">{% for o in owners %}<option>{{ o }}</option>{% endfor %}</select></label>
+      <label>It came on<input type="date" name="opened_on" value="{{ b.today.isoformat() }}"></label>
+    </div>
+  </div>
+  <footer class="adm-panel-foot">
+    <a class="btn-link adm-panel-grow" href="{{ url_for('admin_learning_hrdc') }}">Cancel</a>
+    <button type="submit" class="primary">Log it</button>
+  </footer>
+</form>
+{% endcall %}
+{% endif %}
+{% endblock %}

@@ -1,0 +1,52 @@
+{# Shared "Potential band" provenance chain for all three calibration tiers.
+   chain_header(labels): the column header -- title + one tier label per slot.
+   chain_cell(row, prev_label, own_label): a person's row -- a fixed grid of
+   tier slots (band pill where that tier moved the band, a dash where it agreed),
+   the owning tier ring-highlighted, plus the note popover. The slot width is
+   shared between header and cells so the header labels sit over the pills. #}
+{# `title` and `notes` default to the 360 module's behaviour, so its three
+   templates need no change -- performance calibration passes its own title and
+   turns the note popover off, because its band column already carries one. #}
+{# `own` names the viewing tier's label. The 360 module passes a list that ENDS
+   at its own tier, so its default of "the last one" is correct there; the
+   performance module always passes all five, where the last is only the
+   viewing tier at BGCEO -- so it names its own explicitly. #}
+{% macro chain_header(labels, title='Potential band', own=None) %}
+<th class="calib-band-th">
+  <div class="cchain-htitle">{{ title }}</div>
+  <div class="cchain-grid" style="grid-template-columns:repeat({{ labels|length }}, 58px)">
+    {% for t in labels %}<span class="cchain-hlabel{% if (own is none and loop.last) or (own is not none and t == own) %} cchain-hlabel--own{% endif %}">{{ t }}</span>{% endfor %}
+  </div>
+</th>
+{% endmacro %}
+{% macro chain_cell(row, prev_label, own_label, notes=True) %}
+<td class="calib-hod-cell">
+  {% if row['tier_slots'] is none %}
+  {# Nothing decided yet -- performance calibration lists people whose KPI lines
+     aren't all approved, and they have no journey to draw. #}
+  <span class="muted small">&mdash;</span>
+  {% else %}
+  <span class="calib-hod-line">
+    <div class="cchain-grid" style="grid-template-columns:repeat({{ row['tier_slots']|length }}, 58px)">{% for s in row['tier_slots'] %}<span class="cchain-slot{% if s['own'] %} cchain-own-slot{% endif %}">{% if s['band'] is none %}<span class="cchain-dash">No Data</span>{% elif s['changed'] %}<span class="potential-pill{% if s['own'] %} cchain-ring{% endif %}" data-band="{{ s['band'] }}">{{ s['band'] }}</span>{% else %}<span class="cchain-dash">&ndash;</span>{% endif %}</span>{% endfor %}</div>
+    {#- The note popover shows EVERY lower tier that moved this person, not just
+        the one immediately below. row['note_trail'] is the full chain (each
+        entry carries its own tier label, so a BG CEO reads the HOD's reasoning
+        AND the BU CEO's); prev_note is the single-note fallback for any caller
+        not yet passing a trail, so both stay correct either way. -#}
+    {% set trail = row['note_trail'] or [] %}
+    {% set trail_notes = trail | selectattr('note') | list %}
+    {% if notes and (trail_notes or row['prev_note'] or row['justification']) %}<span class="calib-note"><span class="calib-note-ic" tabindex="0" role="button" aria-label="Show notes"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 11v5"/><circle cx="12" cy="7.6" r="0.7" fill="currentColor" stroke="none"/></svg></span><span class="calib-note-tip">{% if trail_notes %}{% for t in trail_notes %}<span class="cnt-row"><strong>{{ t['label'] }}</strong> {{ t['note'] }}</span>{% endfor %}{% elif row['prev_note'] %}<span class="cnt-row"><strong>{{ prev_label }}</strong> {{ row['prev_note'] }}</span>{% endif %}{% if row['justification'] %}<span class="cnt-row"><strong>{{ own_label }}</strong> {{ row['justification'] }}</span>{% endif %}</span></span>{% endif %}
+  </span>
+  {% endif %}
+</td>
+{% endmacro %}
+{# What a potential score is made of (Chris, 2026-10-01): the 360 and the approved competency, each weighted by the
+   admin split for the grade and added on the total of both maxima -- or the 360 alone while the line manager has yet
+   to approve the competency. #}
+{% macro pot_basis(row) -%}
+{%- if row['pot_basis'] == 'combined' and row['c_tech'] is not none -%}
+360 {{ '%.1f' | format(row['c_360']) }} of {{ '%g' | format(row['c_360_max']) }} + competency {{ '%.1f' | format(row['c_tech']) }} of {{ '%g' | format(row['c_tech_max']) }} (weighted {{ '%g' | format(row['w_360']) }}:{{ '%g' | format(row['w_tech']) }})
+{%- elif row['pot_basis'] == '360_only' -%}
+360 only: competency not reviewed yet
+{%- endif -%}
+{%- endmacro %}

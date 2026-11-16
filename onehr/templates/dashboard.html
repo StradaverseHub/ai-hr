@@ -1,0 +1,1026 @@
+{% extends "base.html" %}
+{% block title %}Dashboard{% endblock %}
+{% block body %}
+{# The dashboard as the cycle's journey (Chris, 2026-10-09: direction C on the "OneHR Personal Dashboard Directions"
+   canvas -- "go with C"). Read top to bottom: the whole cycle as one rail (your own parts, your team, what you lead,
+   then the results), then what needs you now beside where you stand, then your history and tools in one strip. Every
+   button that opens an AI conversation says so, in the AI red with the spark; the first is the page's one solid red
+   (static/style.css, .od-*). A past cycle slides in from the right (static/dashboard.js). #}
+{% macro spark(cls='od-spark') %}<svg class="{{ cls }}" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2.5l2.3 6.2 6.2 2.3-6.2 2.3L12 19.5l-2.3-6.2L3.5 11l6.2-2.3z"></path></svg>{% endmacro %}
+{# a department review's state on the BU CEO's card: the day it came in, its year on hover, so the department's name
+   keeps the room (Chris, 2026-10-26: no heading may wrap or run into the next) #}
+{% macro bu_cell(at) -%}{% if at %}<span role="cell" class="is-in" title="Submitted {{ at }}">&check; {{ at.rsplit(' ', 1)[0] }}</span>{% else %}<span role="cell" class="is-wait">to submit</span>{% endif %}{%- endmacro %}
+{% macro node(state) -%}
+<span class="od-node" aria-hidden="true">
+  {%- if state == 'done' %}<svg viewBox="0 0 24 24"><path class="ln" d="M5 12.5l4.5 4.5L19 7.5"></path></svg>
+  {%- elif state == 'turn' %}<svg viewBox="0 0 24 24"><path class="fl" d="M12 2.5l2.3 6.2 6.2 2.3-6.2 2.3L12 19.5l-2.3-6.2L3.5 11l6.2-2.3z"></path></svg>
+  {%- elif state == 'waiting' %}<svg viewBox="0 0 24 24"><circle class="ln" cx="12" cy="12" r="7"></circle><path class="ln" d="M12 8.5V12l2.5 1.5"></path></svg>
+  {%- elif state == 'locked' %}<svg viewBox="0 0 24 24"><rect class="ln" x="6" y="11" width="12" height="9" rx="2"></rect><path class="ln" d="M9 11V8a3 3 0 0 1 6 0v3"></path></svg>
+  {%- elif state == 'closed' %}<svg viewBox="0 0 24 24"><path class="ln" d="M7 12h10"></path></svg>
+  {%- elif state == 'progress' %}<svg viewBox="0 0 24 24"><circle class="fl" cx="12" cy="12" r="4.5"></circle></svg>
+  {%- endif -%}
+</span>
+{%- endmacro %}
+{# the calmer dashboard's buttons, chips and values (option B, 2026-10-16) #}
+{% macro calm_btn(x) -%}
+{%- if x.get('panel') %}<button type="button" class="od-btn-nv{{ '' if x['solid'] else ' is-outline' }}" data-panel="{{ x['panel'] }}"{% if x.get('panel_arg') %} data-arg="{{ x['panel_arg'] }}"{% endif %} aria-haspopup="dialog">{{ x['button'] }}</button>
+{%- elif x.get('lunit') %}<a class="od-btn-nv{{ '' if x['solid'] else ' is-outline' }}" href="{{ x['url'] }}" data-lunit-go="{{ x['lunit'] }}">{{ x['button'] }}</a>
+{%- elif x.get('ai', True) %}<a class="od-btn-ai{{ '' if x['solid'] else ' is-outline' }}" href="{{ x['url'] }}" data-move-sub="{{ x['title'] }}"{% if x['aria'] %} aria-label="{{ x['aria'] }}"{% endif %}>{{ spark() }}{{ x['button'] }}</a>
+{%- else %}<a class="od-btn-nv{{ '' if x['solid'] else ' is-outline' }}" href="{{ x['url'] }}" data-move-sub="{{ x['title'] }}"{% if x.get('download') %} download{% endif %}{% if x['aria'] %} aria-label="{{ x['aria'] }}"{% endif %}>{{ x['button'] }}</a>{% endif -%}
+{%- endmacro %}
+{% macro calm_chips(x) -%}
+{%- if x.get('chips') %}<p class="od-chips">{% for c in x['chips'] %}<a class="od-chip" href="{{ c['url'] }}">{{ c['name'] }} <b>{{ c['n'] }}</b></a>{% endfor %}</p>{% endif -%}
+{%- endmacro %}
+{% macro st_val(st) -%}
+  {%- if st['pending'] %}{{ st['pending'] }}
+  {%- else %}{% if st['text'] is defined and st['text'] %}{{ st['text'] }}{% endif %}{% if st['value'] %}{{ st['value'] }} {% endif %}
+  {%- if st['band'] %}<span class="potential-pill" data-band="{{ st['band'] }}">{{ label_names[st['band']] if st['band'] in label_names else st['band'] }}</span>{% endif %}{% endif -%}
+{%- endmacro %}
+{# label and value, nothing else (option B, 2026-10-16): the helper line is the row's tooltip, and a value that opens a
+   panel (the 360 report, the Career Plan) is itself the link. Where you stand's rows, and a CEO's Own view. #}
+{% macro stand_dl(standing) -%}
+<dl class="od-list">
+  {% for st in standing %}
+  <div class="od-li"{% if st['note'] %} title="{{ st['note'] | striptags }}"{% endif %}>
+    <dt>{{ st['label'] | replace(' rating', '') }}</dt>
+    <dd class="v{{ ' is-pending' if st['pending'] else '' }}">
+      {%- if st['panel'] %}<button type="button" class="od-linkbtn od-vlink" data-panel="{{ st['panel'] }}"{% if st['panel_arg'] %} data-arg="{{ st['panel_arg'] }}"{% endif %} aria-haspopup="dialog" title="{{ st['note'] | striptags }}">{{ st_val(st) }}</button>
+      {%- else %}{{ st_val(st) }}{% endif -%}
+    </dd>
+  </div>
+  {% endfor %}
+</dl>
+{%- endmacro %}
+{# A BU / BG CEO's card switches between their people's view and their own (Chris, 2026-10-26: "a toggle like the
+   reviews and learning on the where your BU is card, so we have toggle of BU view and Own view, own view will open the
+   personal card"; canvas [design canvas link removed]). It opens on their people's; Own is the
+   employee's Where you stand, Details included. Ask OneHR's "own" mark opens it on Own. #}
+{% macro own_tabs(first, tip='') -%}
+<div class="od-lt-tabs od-hd-end" role="tablist" aria-label="Whose view">
+  <button type="button" role="tab" class="od-lt-tab is-on" id="od-own-t-bu" aria-controls="od-own-p-bu" aria-selected="true" data-lt-tab="bu"{% if tip %} title="{{ tip }}"{% endif %}>{{ first }}</button><button type="button" role="tab" class="od-lt-tab" id="od-own-t-own" aria-controls="od-own-p-own" aria-selected="false" data-lt-tab="own">Own</button>
+</div>
+{%- endmacro %}
+{% macro own_pane(standing, panel) -%}
+<div class="od-own-pane" role="tabpanel" id="od-own-p-own" aria-labelledby="od-own-t-own" hidden>
+  {{ stand_dl(standing) }}
+  {% if not (panel and panel.get('early_year')) %}<div class="od-own-foot"><button type="button" class="od-linkbtn" data-record="current" aria-haspopup="dialog">Details &rarr;</button></div>{% endif %}
+</div>
+{%- endmacro %}
+{# the FINAL bands after calibration only, once released -- never a line manager's score (2026-10-08) #}
+{% macro record_vals(r) -%}
+  {#- an imported past Year-End holds its talent status, and HR's two bands where its record has them (2026-10-14,
+      2026-10-22) -#}
+  {%- set imp = r['talent'] and r['talent']['imported'] -%}
+  <span class="pf">{%- if imp and not r['final_pm'] -%}<span class="od-dash" title="No performance band was recorded that year (before OneHR)">&mdash;</span>{%- elif r['final_pm'] -%}<span class="potential-pill" data-band="{{ r['final_pm'] }}" title="{{ 'Performance band, from Group People\'s records before OneHR: ' if imp else 'Final performance band: ' }}{{ label_names[r['final_pm']] if r['final_pm'] in label_names else r['final_pm'] }}">{{ r['final_pm'] }}</span>{%- else -%}<span class="od-dash" title="Final performance band">Not released</span>{%- endif -%}</span>
+  <span class="pt">{%- if r['band'] -%}<span class="potential-pill" data-band="{{ r['band'] }}" title="{{ 'Potential band, from Group People\'s records before OneHR' if imp else 'Final potential band' }}">{{ r['band'] }}</span>{%- else -%}<span class="od-dash" title="{{ 'No potential band this cycle: it ran no competency' if r['no_pot'] else 'Final potential band' }}">&mdash;</span>{%- endif -%}</span>
+  <span class="ts">{%- if r['talent'] -%}<span class="tcat-pill tbox-cat-{{ r['talent']['slug'] }}"{% if imp %} title="From Group People's records before OneHR"{% endif %}>{{ r['talent']['name'] }}</span>{%- elif r['no_pot'] -%}<span class="od-dash" title="No talent status this cycle: it had no potential band">&mdash;</span>{%- else -%}<span class="od-dash" title="Talent status">Not released</span>{%- endif -%}</span>
+{%- endmacro %}
+{# The full record by YEAR (Chris, 2026-10-14: board A of the canvas "OneHR Full Record by Year" -- "go with A"): each
+   year shows its Year-End result, which decides the reward; opening it shows the Year-End ("Final") and the Mid-Year
+   ("Checkpoint"), each opening its record. A year whose Year-End isn't in the record shows its latest checkpoint,
+   labelled as one. #}
+{# a year with no Year-End in the record: its latest checkpoint, said as one. Its bands sit in the same three columns as
+   a Year-End's, so each reads as performance, potential or talent status (Chris, 2026-10-26: "the mid year checkpoint
+   is confusing, it doesn't if it is referring to performance or pontential"); the year cell says it's the checkpoint #}
+{% macro year_check_tag(g) -%}
+{%- if g['check'] %}<small class="od-ycp"><i aria-hidden="true"></i>{{ 'Checkpoint only' if g['state'] == 'none' else 'Mid-Year checkpoint' }}</small>{% endif -%}
+{%- endmacro %}
+{% macro year_check(g) -%}
+{%- if g['check'] %}{{ record_vals(g['check']) }}
+{%- else %}<span class="pf"><span class="od-dash">Not released</span></span><span class="pt"><span class="od-dash">&mdash;</span></span><span class="ts"><span class="od-dash">&mdash;</span></span>{% endif -%}
+{%- endmacro %}
+{# the dashboard's history card, by year too (2026-10-14, board D: "yes"): a year opens the full record at that year #}
+{% macro year_row(g) -%}
+<button type="button" class="od-row od-yrow" data-panel="records"{% if g['year'] %} data-arg="{{ g['year'] }}"{% endif %} aria-haspopup="dialog"
+        aria-label="{{ g['label'] }}, {{ g['sub'] }}. Open it in your full record">
+  <span class="cy">{{ g['label'] }}<small>{{ g['sub'] }}</small>{% if not g['ye'] %}{{ year_check_tag(g) }}{% endif %}</span>
+  {%- if g['ye'] %}
+  {{ record_vals(g['ye']) }}
+  {%- else %}
+  {{ year_check(g) }}
+  {%- endif %}
+  <span class="chev" aria-hidden="true">&rsaquo;</span>
+</button>
+{%- endmacro %}
+{% macro year_group(g, n) -%}
+<div class="od-yg is-{{ g['state'] }}" data-year="{{ g['label'] }}">
+  <button type="button" class="od-yr" aria-expanded="false" aria-controls="od-yc-{{ n }}"
+          aria-label="{{ g['label'] }}, {{ g['sub'] }}. Show its Year-End and Mid-Year">
+    <span class="cy">{{ g['label'] }}<small>{{ g['sub'] }}</small>{% if not g['ye'] %}{{ year_check_tag(g) }}{% endif %}</span>
+    {%- if g['ye'] %}
+    {{ record_vals(g['ye']) }}
+    {%- else %}
+    {{ year_check(g) }}
+    {%- endif %}
+    <svg class="od-ychev" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 9l6 6 6-6"></path></svg>
+  </button>
+  <div class="od-yc" id="od-yc-{{ n }}" hidden>
+    {%- for c in g['cycles'] %}
+    {%- if c['r'] %}
+    <button type="button" class="od-crow{{ ' is-final' if c['final'] else '' }}" data-record="{{ c['r']['key'] }}" aria-haspopup="dialog"
+            aria-label="Open {{ g['label'] }} {{ c['kind'] }}">
+      <span class="cy"><i class="od-cdot" aria-hidden="true"></i><span class="od-ck"><b>{{ c['kind'] }}</b>{% if c['tag'] %}<small class="od-ctag">{{ c['tag'] }}</small>{% endif %}<small>{% if c['r']['open'] %}This cycle &middot; released{% elif c['r']['closed_on'] %}Closed {{ c['r']['closed_on'] }}{% else %}Closed{% endif %}</small></span></span>
+      {{ record_vals(c['r']) }}
+      <span class="chev" aria-hidden="true">&rsaquo;</span>
+    </button>
+    {%- else %}
+    <div class="od-crow is-final is-wait">
+      <span class="cy"><i class="od-cdot" aria-hidden="true"></i><span class="od-ck"><b>{{ c['kind'] }}</b><small class="od-ctag">{{ c['tag'] }}</small><small>{{ c['sub'] }}</small></span></span>
+      <span class="od-cnote">{{ c['note'] }}</span>
+    </div>
+    {%- endif %}
+    {%- endfor %}
+  </div>
+</div>
+{%- endmacro %}
+{# how many a tally counts: an HOD / BU CEO sees results once Group People releases them to leaders (2026-10-12) #}
+{% macro tally_count(T) -%}
+{%- if T['gated'] -%}
+{%- if T['total'] %}{{ T['total'] }} released to you{% endif %}{% if T['total'] and T['waiting'] %} &middot; {% endif %}{% if T['waiting'] %}{{ T['waiting'] }} waiting for Group People to release them to you{% endif -%}
+{%- else -%}{{ T['total'] }} calibrated{%- endif -%}
+{%- endmacro %}
+{% macro led_card(rec, L) -%}
+<section class="od-card od-led" aria-labelledby="od-led-h">
+  <div class="od-hd"><h2 id="od-led-h">What you led</h2><span class="od-muted">{{ L['name'] }}</span></div>
+  {% if rec['led']['tiles'] %}
+  <div class="od-ledt">{% for r in rec['led']['rows'] %}<div><span class="k">{{ r['k'] }}</span><b>{{ r['v'] }}</b></div>{% endfor %}</div>
+  {% else %}
+  <dl class="od-ledl">
+    {% for r in rec['led']['rows'] %}<div><dt>{{ r['k'] }}</dt><dd>{{ r['v'] }}</dd></div>{% endfor %}
+  </dl>
+  {% endif %}
+  {% set T = rec['led']['tally'] %}
+  {% if T %}
+  <p class="od-tk">{{ T['scope'] }}'s final performance &middot; {{ tally_count(T) }}</p>
+  {% if T['total'] %}<div class="od-tally">
+    {% for b in T['bands'] %}<div class="od-tb"><span class="k"><i class="potential-pill" data-band="{{ b['band'] }}" aria-hidden="true"></i>{{ b['band'] }}</span><b>{{ b['n'] }}</b><span class="p">{{ b['pct'] }}%</span></div>{% endfor %}
+  </div>{% endif %}
+  {% endif %}
+  {% set Q = rec['led']['pot'] %}
+  {% if Q %}
+  {# its own row (Chris, 2026-10-10 on board H: "should we split to two rows") #}
+  <p class="od-tk">Final potential &middot; {{ tally_count(Q) }}</p>
+  {% if Q['total'] %}<div class="od-tally">
+    {% for b in Q['bands'] %}<div class="od-tb"><span class="k"><i class="potential-pill" data-band="{{ b['band'] }}" aria-hidden="true"></i>{{ b['band'] }}</span><b>{{ b['n'] }}</b><span class="p">{{ b['pct'] }}%</span></div>{% endfor %}
+  </div>{% endif %}
+  {% endif %}
+  {% if rec['led']['talent'] %}<p class="od-muted od-pnote">Talent status: {% for t in rec['led']['talent'] %}{{ t['n'] }} {{ t['name'] }}{{ ' · ' if not loop.last else '' }}{% endfor %}</p>{% endif %}
+  {# their people, in the right-hand panel (2026-10-12, canvas board W1): the whole movement once Group People releases the results
+     to them, up to their own step before that; the BG CEO, who decided them, at once #}
+  {% set Lp = rec['led'] %}
+  {% if Lp['people'] %}
+  <div class="od-ledp">
+    {% if not Lp['at_once'] %}
+    <div class="od-ledp-bar" role="img" aria-label="{{ Lp['with_you'] }} of {{ Lp['people'] }} released to you"><span style="width: {{ (100 * Lp['with_you'] / Lp['people']) | round | int }}%"></span></div>
+    <span class="od-ledp-n">{{ Lp['with_you'] }} of {{ Lp['people'] }} released to you{% if not Lp['with_you'] %} &middot; Group People releases them to you before they reach your people{% endif %}</span>
+    {% endif %}
+    <button type="button" class="od-btn-nv is-outline od-ledp-btn" data-panel="led"{% if L['cycle_id'] or L['period_id'] %} data-arg="{{ L['cycle_id'] or L['period_id'] }}"{% endif %} aria-haspopup="dialog">See your people{% if not Lp['at_once'] and not Lp['with_you'] %}, up to your step{% endif %} &rsaquo;</button>
+  </div>
+  {% endif %}
+</section>
+{%- endmacro %}
+{# The Talent Box between cycles (canvas board I; Chris, 2026-10-12/13): two cards on the dashboard's one grid -- the box
+   (8) and the business units (5), whose foot sits on the same line as the box's four talent status totals. The units
+   left, the box right, for every scope: the BG CEO's first ("swap the BU to the left and the talent box to the right
+   for BGCEO"), then the BU CEO's too (2026-10-16: "for BUCEO past cycle view, move the your business unit to left and
+   talent box to the right"). The box is the 9-box ("show this in 9 boxes"); at Mid-Year, the HOD's final bands. #}
+{% macro talent_box(X, rec) -%}
+<div class="od-grid is-flip">
+  <section class="od-card od-boxg" aria-label="The Talent Box">
+    {% for x in X['units'] %}
+    <div class="od-box-g" data-unit-box="{{ x['key'] or 'all' }}"{% if not loop.first %} hidden{% endif %}>
+      <div class="od-hd"><h2>The Talent Box &middot; {{ x['name'] }}</h2><span class="od-muted">{{ x['people'] }} placed{% if X['mid_year'] %} &middot; the HOD's final bands{% elif x['locked'] %} &middot; locked {{ x['locked'] }}{% endif %}</span></div>
+      <div class="od-grid9" role="table" aria-label="Final performance by potential, {{ x['name'] }}">
+        <span></span><span class="h" role="columnheader">Low <i>UA &middot; BE</i></span><span class="h" role="columnheader">Mid <i>ME</i></span><span class="h" role="columnheader">High <i>AE &middot; OU</i></span>
+        {% for r in x['rows'] %}<span class="h r" role="rowheader">{{ r['pot'] }}</span>{% for c in r['cells'] %}<span class="c tbox-cat-{{ c['slug'] }}" role="cell"><b>{{ c['n'] }}</b><small>{{ c['label'] }}</small></span>{% endfor %}{% endfor %}
+        <span></span><span class="ax">Final performance &rarr; &middot; potential &uarr;</span>
+      </div>
+      <div class="od-box-cats">{% for k in x['cats'] %}<div><span class="k"><i class="tbox-cat-{{ k['slug'] }}" aria-hidden="true"></i>{{ k['name'] }}</span><b>{{ k['n'] }}</b> <span class="p">{{ k['pct'] }}%</span></div>{% endfor %}</div>
+    </div>
+    {% endfor %}
+  </section>
+  <section class="od-card od-boxu" aria-labelledby="od-box-h">
+    {% if X['scope'] == 'group' %}
+    {# a Group Chief's group, batch by batch (2026-10-14): the BG CEO's card, a batch where they have a business unit #}
+    <div class="od-hd"><h2 id="od-box-h" title="{{ X['name'] }}">{{ X['name'] }}</h2><span class="od-muted">{% if X['mid_year'] %}The HOD's final bands{% else %}{{ ('Locked ' ~ X['units'][0]['locked']) if X['units'][0]['locked'] else 'Not locked' }}{% endif %}{% if X['n_units'] > 1 %} &middot; pick a batch{% endif %}</span></div>
+    {% elif X['scope'] == 'bu' %}
+    <div class="od-hd"><h2 id="od-box-h">Your business unit</h2><span class="od-muted">{{ "The HOD's final bands" if X['mid_year'] else (('Locked ' ~ X['units'][0]['locked']) if X['units'][0]['locked'] else 'Not locked') }}</span></div>
+    {% else %}
+    <div class="od-hd"><h2 id="od-box-h">Your business units</h2><span class="od-muted">{% if X['mid_year'] %}The HOD's final bands{% else %}{{ X['n_locked'] }} of {{ X['n_units'] }} locked{% endif %} &middot; pick one</span></div>
+    {% endif %}
+    <div class="od-box-units" role="group" aria-label="Show the Talent Box for">
+      {% for x in X['units'] %}<button type="button" class="od-box-u{{ ' is-on' if loop.first else '' }}" data-unit="{{ x['key'] or 'all' }}" aria-pressed="{{ 'true' if loop.first else 'false' }}">{% set _sub %}{{ x['people'] }} {{ 'person' if x['people'] == 1 else 'people' }}{% if x['locked'] %} &middot; {{ 'BG CEO locked it' if X['scope'] == 'bu' else ('you locked it' if X['scope'] == 'group' else ('last locked' if loop.first else 'you locked it')) }} {{ x['locked'] }}{% endif %}{% endset %}<span class="t"><b title="{{ x['name'] }}">{{ x['name'] }}</b><span title="{{ _sub }}">{{ _sub }}</span></span><span class="c"><span class="ss">{{ x['ss'] }} SS</span><span class="pip">{{ x['pip'] }} PIP</span></span></button>{% endfor %}
+    </div>
+    {% if X['scope'] in ('bg', 'group') %}
+    {% if rec['led'] and rec['led']['people'] %}<button type="button" class="od-btn-nv is-outline od-box-foot" data-panel="led" data-arg="{{ X['cycle'] }}" aria-haspopup="dialog">See your people &rsaquo;</button>{% endif %}
+    {% else %}
+    <div class="od-box-foot od-box-sum"><span class="k">Released to you</span><b>{{ X['units'][0]['people'] }} {{ 'person' if X['units'][0]['people'] == 1 else 'people' }}{% if X['waiting'] %} &middot; {{ X['waiting'] }} waiting for Group People{% endif %}</b></div>
+    {% endif %}
+  </section>
+</div>
+{%- endmacro %}
+
+{# AI+ Learning for a BU / BG CEO while a cycle runs (2026-10-20, canvas boards BU CEO and BG CEO): two rows in Where
+   your BU / the group is; the BU's departments with a Reviews | Learning switch; the BG's units picked, each with its
+   learning (and, behind ONEHR_DASH2, its Talent Box). Counts only. #}
+{% macro ceo_where(C) -%}
+<dl class="od-ceo-where">{% for r in C['where'] %}<div><dt>{{ r['label'] }} <span class="od-new">New</span></dt><dd><b>{{ r['value'] }}</b> {{ r['line'] }}</dd></div>{% endfor %}</dl>
+{%- endmacro %}
+{% macro bu_dept_card(B, C) -%}
+<section class="od-card od-dept" id="od-dept-learn" aria-labelledby="od-dept-h">
+  <div class="od-hd"><h2 id="od-dept-h">{{ B['unit'] }}, department by department</h2>
+    <div class="od-lt-tabs od-hd-end" role="tablist" aria-label="What the table shows">
+      <button type="button" role="tab" class="od-lt-tab" id="od-lt-t-rev" aria-controls="od-lt-p-rev" aria-selected="false" data-lt-tab="rev">Reviews</button><button type="button" role="tab" class="od-lt-tab is-on" id="od-lt-t-lrn" aria-controls="od-lt-p-lrn" aria-selected="true" data-lt-tab="lrn">Learning</button>
+    </div></div>
+  <div class="od-lt-pane" role="tabpanel" id="od-lt-p-rev" aria-labelledby="od-lt-t-rev" hidden>
+    <div class="od-bu-tbl" role="table" aria-label="Department reviews">
+      <div class="od-bu-r is-h" role="row"><span role="columnheader">Department</span><span role="columnheader">Performance</span><span role="columnheader">Potential</span></div>
+      <div class="od-bu-body od-dept-body" role="rowgroup" tabindex="0" aria-label="Departments, scrolls">
+      {% for d in B['depts'] %}<div class="od-bu-r" role="row"><span role="cell" class="n" title="{{ d['name'] }}">{{ d['name'] }}</span>{{ bu_cell(d['pm']) }}{{ bu_cell(d['pot']) }}</div>{% endfor %}
+      </div>
+    </div>
+  </div>
+  <div class="od-lt-pane" role="tabpanel" id="od-lt-p-lrn" aria-labelledby="od-lt-t-lrn">
+    <div class="od-lrn-tbl" role="table" aria-label="Department learning">
+      <div class="od-lrn-r is-h" role="row"><span role="columnheader">Department</span><span role="columnheader" class="num">People</span><span role="columnheader" title="With a Career Plan goal">With a plan goal</span><span role="columnheader" title="Learning done or booked for it">Learning done or booked</span><span role="columnheader" class="num" title="Hours this year">Hours</span><span role="columnheader" title="A need with no programme">Need, no programme</span></div>
+      <div class="od-lrn-body" role="rowgroup" tabindex="0" aria-label="Departments, scrolls">
+      {% for d in C['depts'] %}<div class="od-lrn-r" role="row"><span role="cell" class="n" title="{{ d['name'] }}">{{ d['name'] }}</span><span role="cell" class="num">{{ d['n'] }}</span><span role="cell">{{ d['plan'] }} &middot; {{ d['plan_pct'] }}%</span><span role="cell" class="pb"><span class="od-lt-bar" aria-hidden="true"><i style="width:{{ d['booked_pct'] }}%"></i></span><b>{{ d['booked'] }} &middot; {{ d['booked_pct'] }}%</b></span><span role="cell" class="num">{{ d['hours_txt'] }}</span><span role="cell" class="{{ 'gap' if d['gap'] else 'none' }}" title="{{ d['gap'] or 'None' }}">{{ d['gap'] or 'None' }}</span></div>{% endfor %}
+      </div>
+      {% set T = C['total'] %}
+      <div class="od-lrn-r is-tot" role="row"><span role="cell">{{ B['unit'] }}</span><span role="cell" class="num">{{ T['n'] }}</span><span role="cell">{{ T['plan'] }} &middot; {{ T['plan_pct'] }}%</span><span role="cell" class="pb"><span class="od-lt-bar" aria-hidden="true"><i style="width:{{ T['booked_pct'] }}%"></i></span><b>{{ T['booked'] }} &middot; {{ T['booked_pct'] }}%</b></span><span role="cell" class="num">{{ T['hours_txt'] }}</span><span role="cell">{{ T['uncovered'] }} need{{ '' if T['uncovered'] == 1 else 's' }}</span></div>
+    </div>
+  </div>
+</section>
+{%- endmacro %}
+{% macro bg_learn_card(C) -%}
+<div class="od-grid is-flip" id="od-bg-learn">
+  <section class="od-card od-boxg od-bgl" aria-labelledby="od-bgl-h">
+    <div class="od-hd"><h2 id="od-bgl-h"><span data-lview-title="lrn">Learning</span>{% if C['has_box'] %}<span data-lview-title="box" hidden>The Talent Box</span>{% endif %} &middot; <span data-lunit-name>{{ C['units'][0]['name'] }}</span></h2>
+      {% if C['has_box'] %}<div class="od-lt-tabs od-hd-end" role="group" aria-label="What the card shows"><button type="button" class="od-lt-tab" data-lview="box" aria-pressed="false">Talent Box</button><button type="button" class="od-lt-tab is-on" data-lview="lrn" aria-pressed="true">Learning</button></div>{% endif %}</div>
+    {% for x in C['units'] %}
+    <div class="od-bgl-pane" data-lpane="{{ x['key'] }}|lrn"{% if not loop.first %} hidden{% endif %}>
+      <p class="od-muted">{{ x['people'] }} {{ 'person' if x['people'] == 1 else 'people' }} &middot; counts only, names stay with their line managers</p>
+      <div class="od-lt-tiles">{% for k in x['tiles'] %}<div class="od-lt-tile"><b>{{ k['v'] }}</b><span>{{ k['k'] }}</span></div>{% endfor %}</div>
+      {% if x['bars'] %}<p class="od-lt-k">{{ x['bars_title'] }}</p>{% endif %}
+      <ul class="od-bgl-bars">{% for b in x['bars'] %}<li><span class="nm" title="{{ b['name'] }}">{{ b['name'] }}</span><span class="od-lt-bar" aria-hidden="true"><i style="width:{{ b['pct'] }}%"></i></span><b>{{ b['pct'] }}%</b></li>{% endfor %}</ul>
+      {% if x['needs'] %}<p class="od-lt-k">Biggest needs &middot; from their Career Plans and competency gaps</p>
+      <ul class="od-lt-needs od-bgl-needs">{% for n in x['needs'] %}<li><span class="nm" title="{{ n['title'] }}">{{ n['title'] }}</span><span class="ct">{{ n['n'] }} {{ 'person' if n['n'] == 1 else 'people' }}</span><span class="od-lt-chip{{ ' is-' ~ n['tone'] if n['tone'] else '' }}">{{ n['chip'] }}</span></li>{% endfor %}</ul>{% endif %}
+    </div>
+    {% if C['has_box'] %}
+    <div class="od-bgl-pane" data-lpane="{{ x['key'] }}|box" hidden>
+      {% set X = x['box'] %}
+      {% if X %}
+      <p class="od-muted">{{ X['people'] }} placed{% if X['locked'] %} &middot; locked {{ X['locked'] }}{% else %} &middot; as it stands now{% endif %}</p>
+      <div class="od-grid9" role="table" aria-label="Final performance by potential, {{ x['name'] }}">
+        <span></span><span class="h" role="columnheader">Low <i>UA &middot; BE</i></span><span class="h" role="columnheader">Mid <i>ME</i></span><span class="h" role="columnheader">High <i>AE &middot; OU</i></span>
+        {% for r in X['rows'] %}<span class="h r" role="rowheader">{{ r['pot'] }}</span>{% for c in r['cells'] %}<span class="c tbox-cat-{{ c['slug'] }}" role="cell"><b>{{ c['n'] }}</b><small>{{ c['label'] }}</small></span>{% endfor %}{% endfor %}
+        <span></span><span class="ax">Final performance &rarr; &middot; potential &uarr;</span>
+      </div>
+      <div class="od-box-cats">{% for k in X['cats'] %}<div><span class="k"><i class="tbox-cat-{{ k['slug'] }}" aria-hidden="true"></i>{{ k['name'] }}</span><b>{{ k['n'] }}</b> <span class="p">{{ k['pct'] }}%</span></div>{% endfor %}</div>
+      {% else %}
+      <p class="od-sub">Nobody here is placed in the Talent Box yet: it fills as calibration finishes.</p>
+      {% endif %}
+    </div>
+    {% endif %}
+    {% endfor %}
+  </section>
+  <section class="od-card od-boxu" aria-labelledby="od-bgu-h">
+    <div class="od-hd"><h2 id="od-bgu-h">{{ C['title'] }}</h2>{% if C['pick'] %}<span class="od-muted">{{ C['pick'] }}</span>{% endif %}</div>
+    <div class="od-box-units" role="group" aria-label="Show the learning for">
+      {% for x in C['units'] %}<button type="button" class="od-box-u od-lu{{ ' is-on' if loop.first else '' }}" data-lunit="{{ x['key'] }}" data-lunit-label="{{ x['name'] }}" aria-pressed="{{ 'true' if loop.first else 'false' }}"><span class="t"><b title="{{ x['name'] }}">{{ x['name'] }}</b><span title="{{ x['people'] }} {{ 'person' if x['people'] == 1 else 'people' }}">{{ x['people'] }} {{ 'person' if x['people'] == 1 else 'people' }}</span></span><span class="c"><span class="lp" data-lview-only="lrn">{{ x['pct'] }}% for their plan</span><span class="lh" data-lview-only="lrn">{{ x['hours_txt'] }}</span>{% if x['box'] %}<span class="ss" data-lview-only="box" hidden>{{ x['box']['ss'] }} SS</span><span class="pip" data-lview-only="box" hidden>{{ x['box']['pip'] }} PIP</span>{% endif %}</span></button>{% endfor %}
+    </div>
+  </section>
+</div>
+{%- endmacro %}
+{# the last cycle's released results (between cycles), shared by both record layouts #}
+{% macro res_card(L, P, own) -%}
+    <section class="od-card od-res" aria-labelledby="od-res-h">
+      {% if own %}
+      <div class="od-hd"><h2 id="od-res-h">Your {{ L['name'] }} results</h2>{% if rec['released_on'] %}<span class="od-muted">Released to you on {{ rec['released_on'] }}</span>{% endif %}</div>
+      <div class="od-tiles">
+        {% set L_imp = L['talent'] and L['talent']['imported'] %}
+        <div class="od-tile"><p class="k">Final performance</p>{% if L_imp and not L['final_pm'] %}<p class="v is-none">Not recorded that year</p>{% elif L['final_pm'] %}<p class="v"><span class="potential-pill" data-band="{{ L['final_pm'] }}">{{ L['final_pm'] }}</span> {{ label_names[L['final_pm']] if L['final_pm'] in label_names else '' }}</p>{% else %}<p class="v is-none">Not released</p>{% endif %}</div>
+        <div class="od-tile"><p class="k">Final potential</p>{% if L_imp and not L['band'] %}<p class="v is-none">Not recorded that year</p>{% elif L['band'] %}<p class="v"><span class="potential-pill" data-band="{{ L['band'] }}">{{ L['band'] }}</span></p>{% elif L['no_pot'] %}<p class="v is-none" title="This cycle ran no competency">None this cycle</p>{% else %}<p class="v is-none">Not released</p>{% endif %}</div>
+        <div class="od-tile"><p class="k">Talent status</p>{% if L['talent'] %}<p class="v"><span class="tcat-pill tbox-cat-{{ L['talent']['slug'] }}">{{ L['talent']['name'] }}</span></p>{% elif L['no_pot'] %}<p class="v is-none" title="No potential band this cycle, so no talent status">None this cycle</p>{% else %}<p class="v is-none">Not released</p>{% endif %}</div>
+      </div>
+      <div class="od-snap" data-snap-url="{{ url_for('my_record_snapshot', key=L['key']) }}" data-load="{{ '' if rec['snapshot'] else '1' }}">
+        <p class="od-snap-k{{ ' is-ai' if (not rec['snapshot'] or rec['snapshot']['source'] == 'ai') else '' }}">{% if not rec['snapshot'] or rec['snapshot']['source'] == 'ai' %}{{ spark() }}AI read of this cycle{% else %}This cycle at a glance{% endif %}</p>
+        <p class="od-snap-t">{{ rec['snapshot']['text'] if rec['snapshot'] else 'Reading your cycle…' }}</p>
+      </div>
+      <div class="od-res-acts">
+        <button type="button" class="od-btn-nv" data-record="{{ L['key'] }}" aria-haspopup="dialog">Open this cycle's record &rsaquo;</button>
+        {% if L['report_url'] and L['cycle_id'] %}<button type="button" class="od-btn-nv is-outline" data-panel="report" data-arg="{{ L['cycle_id'] }}" aria-haspopup="dialog">Your 360 report &rsaquo;</button>{% endif %}
+      </div>
+      {% if rec['led'] and P %}
+      <div class="od-pstrip"><span><b>Your {{ P['year'] }} plan</b> &middot; {{ P['goals'] | length }} goal{{ '' if P['goals'] | length == 1 else 's' }}{% if P['last_checkin'] %} &middot; last check-in {{ P['last_checkin'] }}{% endif %}</span>
+        <button type="button" class="od-btn-nv is-sm" data-panel="plan" data-arg="{{ P['year'] }}" aria-haspopup="dialog">{{ 'Check in on your plan' if P['can_checkin'] else 'Open your Career Plan' }}</button></div>
+      {% endif %}
+      {% else %}
+      <h2 id="od-res-h" class="od-h2">Your record starts here</h2>
+      <p class="od-sub">Your first cycle shows here once it closes: what you did at each step, your final bands and talent status once Group People releases them, and an AI read of how it went.</p>
+      {% endif %}
+    </section>
+{%- endmacro %}
+{# ---- between cycles, the second round (2026-10-20, canvas row 4 "learning leads"; behind ONEHR_DASH2): no timeline;
+   Your next step beside the result (or What you led); then the Career Plan with each goal's levels and the learning
+   card -- a leader's tabs beside their own result -- or, for a CEO, the unit picker over Learning and the last cycle's
+   Talent Box ---- #}
+{# A Learning step's second line (Chris, 2026-10-23: "the learning tag looks off and not aligned, and it can shared the
+   same row with the date"): the tag first, then its date and words, one line #}
+{% macro learn_line(x, cls) -%}
+<p class="{{ cls }} od-tagline"><span class="od-new">Learning</span>{% set tx = (x['sub'] or '') ~ (' · ' if x['sub'] and x.get('due') else '') ~ (x.get('due') or '') %}<span class="od-tagtx" title="{{ tx }}">{{ tx }}</span></p>
+{%- endmacro %}
+{% macro next_card(R) -%}
+{% set N = R['next'] %}
+<section class="od-card od-here od-calm" aria-labelledby="od-rn-h">
+  <div class="od-next">
+    <p class="od-nk">Your next step</p>
+    {% if N.get('kind') == 'learning' %}{# a Learning step: its button on the right (Chris, 2026-10-23) #}
+    <div class="od-nside"><div class="od-nside-t"><h2 id="od-rn-h" class="od-nt">{{ N['title'] }}</h2>{{ learn_line(N, 'od-ns') }}</div>
+      <div class="od-nb">{{ calm_btn(N) }}</div></div>
+    {% else %}
+    <h2 id="od-rn-h" class="od-nt">{{ N['title'] }}</h2>
+    {% if N['sub'] %}<p class="od-ns">{{ N['sub'] }}</p>{% endif %}
+    <div class="od-nb">{{ calm_btn(N) }}</div>
+    {% endif %}
+  </div>
+  {% if R['rest'] %}
+  <ul class="od-acts od-nrows">
+    {% for x in R['rest'] %}<li class="od-nrow"><div class="od-nrt"><p class="od-att">{{ x['title'] }}</p>{% if x.get('kind') == 'learning' %}{{ learn_line(x, 'od-ats') }}{% elif x['sub'] %}<p class="od-ats{{ ' od-ats-wrap' if x.get('wrap') }}">{{ x['sub'] }}</p>{% endif %}</div>{{ calm_btn(x) }}</li>{% endfor %}
+  </ul>
+  {% endif %}
+</section>
+{%- endmacro %}
+{% macro lv_dots(g) -%}
+{%- if g['have'] and g['need'] %}<span class="od-lv" aria-label="Level {{ g['have'] }} towards {{ g['need'] }}">{% for i in range(1, 7) %}<i class="{{ 'f' if i <= g['have'] else ('t' if i <= g['need'] else '') }}"></i>{% endfor %}</span>{% endif -%}
+{%- endmacro %}
+{% macro plan_card(G) -%}
+<section class="od-card od-plv" aria-labelledby="od-plv-h">
+  {% if G %}
+  <div class="od-hd"><h2 id="od-plv-h">Your Career Plan</h2>{% if G['target'] %}<span class="od-muted">Towards {{ G['target'] }}</span>{% endif %}
+    <button type="button" class="od-btn-nv is-outline is-sm od-hd-end" data-panel="plan" data-arg="{{ G['year'] }}" aria-haspopup="dialog">{{ 'Check in on it' if G['can_checkin'] else 'Open it' }}</button></div>
+  <ul class="od-plv-goals">
+    {% for g in G['goals'][:4] %}<li><span class="t"><b title="{{ g['area'] }}">{{ g['area'] }}</b>{{ lv_dots(g) }}</span><span class="od-gst is-{{ g['status'] }}">{{ g['status_label'] }}</span></li>{% endfor %}
+  </ul>
+  {% if G['lm_remark'] %}<p class="od-remark">Your manager: &ldquo;{{ G['lm_remark'] }}&rdquo;</p>{% endif %}
+  <p class="od-muted od-pnote">{{ G['year'] }} plan{% if G['last_checkin'] %} &middot; last check-in {{ G['last_checkin'] }}{% endif %}</p>
+  {% else %}
+  <h2 id="od-plv-h" class="od-h2">Your Career Plan</h2>
+  <p class="od-sub">Your plan for the year shows here once you write it in your AI check-in at Year-End, and you can check in on it as the year goes.</p>
+  {% endif %}
+</section>
+{%- endmacro %}
+{% macro record2(L, P, own, X) -%}
+{% set R = rec_next %}{% set CL = ceo_rec %}{% set LC2 = learn['card'] if learn else none %}
+{% set leader = rec['led'] %}
+{% if basic %}
+<div class="od-grid">{% if R %}{{ next_card(R) }}{% endif %}{{ plan_card(plan_lv) }}</div>
+<div class="od-grid">{% if LC2 %}{{ learn_card(LC2) }}{% endif %}{% if basic['grows'] %}{{ grows_card(basic['grows']) }}{% endif %}</div>
+{% else %}
+<div class="od-grid">
+  {% if R %}{{ next_card(R) }}{% endif %}
+  {% if leader %}{{ led_card(rec, L) }}{% else %}{{ res_card(L, P, own) }}{% endif %}
+</div>
+{% if CL %}
+{{ bg_learn_card(CL) }}
+<div class="od-grid">{% if learn and learn['mine'] %}{{ learn_card({'title': 'Your own learning', 'tabs': [], 'single': learn['mine']}) }}{% endif %}{{ plan_card(plan_lv) }}</div>
+{% if own %}<div class="od-grid">{{ res_card(L, P, own) }}</div>{% endif %}
+{% elif X and X['scope'] in ('bg', 'group', 'bu') %}
+{{ talent_box(X, rec) }}
+<div class="od-grid">{{ plan_card(plan_lv) }}{% if own %}{{ res_card(L, P, own) }}{% endif %}</div>
+{% elif leader %}
+<div class="od-grid">{% if LC2 %}{{ learn_card(LC2) }}{% endif %}{% if own %}{{ res_card(L, P, own) }}{% endif %}</div>
+<div class="od-grid">{{ plan_card(plan_lv) }}</div>
+{% else %}
+{% if LC2 and LC2['tabs'] %}{# a leader's tabs always take the wide column #}
+<div class="od-grid">{{ learn_card(LC2) }}{{ plan_card(plan_lv) }}</div>
+{% else %}
+<div class="od-grid">{{ plan_card(plan_lv) }}{% if LC2 %}{{ learn_card(LC2, narrow=True) }}{% endif %}</div>
+{% endif %}
+{% endif %}
+{% endif %}
+{%- endmacro %}
+{# A Basic person (2026-10-20, canvas boards A, Chris picked A; behind ONEHR_DASH2): their own steps on the rail, and
+   what their job grows into -- the next level's competencies, with how many programmes build each #}
+{% macro basic_rail(R) -%}
+<section class="od-card od-rail od-calm od-basic-rail" aria-labelledby="od-rail-h">
+  <div class="od-hd"><h2 id="od-rail-h">{{ R['title'] }}</h2><span class="od-muted od-hd-end">{{ R['done'] }} of {{ R['total'] }} done</span></div>
+  <ol class="od-steps">
+    {% for s in R['steps'] %}
+    <li class="od-step is-{{ s['state'] }}" title="{{ s['name'] }}: {{ s['full'] }}">
+      <div class="od-track">{{ node(s['state']) }}{% if not loop.last %}<span class="od-link" aria-hidden="true"></span>{% endif %}</div>
+      {% if s.get('url') %}<a class="od-sn" href="{{ s['url'] }}">{{ s['label'] }}</a>{% else %}<span class="od-sn">{{ s['label'] }}</span>{% endif %}
+      <p class="od-sl"><span class="w">{{ s['short'] }}</span></p>
+      {% if s.get('act') %}<button type="button" class="od-step-act" data-panel="{{ s['act']['panel'] }}" aria-haspopup="dialog">{{ s['act']['label'] }} &rsaquo;</button>{% endif %}
+    </li>
+    {% endfor %}
+  </ol>
+  <p class="od-muted od-rail-note">{{ R['note'] }}</p>
+</section>
+{%- endmacro %}
+{% macro grows_card(G) -%}
+<section class="od-card od-grows" aria-labelledby="od-grows-h">
+  <div class="od-hd"><h2 id="od-grows-h">What your job grows into</h2>{% if G['job'] %}<span class="od-muted">{{ G['job'] }} &middot; its next level</span>{% endif %}
+    <button type="button" class="od-btn-nv is-outline is-sm od-hd-end" data-panel="learning" data-arg="plan" aria-haspopup="dialog">Browse learning</button></div>
+  <ul class="od-grows-list">{% for r in G['rows'] %}<li><span class="nm" title="{{ r['title'] }}">{{ r['title'] }}</span><span class="od-lt-chip{{ '' if r['programmes'] else ' is-amb' }}">{% if r['programmes'] %}{{ r['programmes'] }} programme{{ '' if r['programmes'] == 1 else 's' }}{% else %}None yet{% endif %}</span></li>{% endfor %}</ul>
+</section>
+{%- endmacro %}
+{# Who has submitted (2026-11-02, canvas E1): the card strip of a BU CEO, calibrator, BG CEO or Group Chief: two lines of their own
+   parts and the way into the panel. Counts only. #}
+{% macro subs_strip_card(S) -%}
+{% if S %}<div class="od-subs" data-subs-strip>
+  <p class="od-subs-k">Their own parts</p>
+  {% for l in S['lines'] %}<p class="od-subs-l"><span class="nm">{{ l['name'] }}</span><b>{{ l['done'] }} of {{ l['n'] }}</b></p>{% endfor %}
+  <button type="button" class="od-subs-go" data-panel="subs" data-arg="{{ S['key'] }}" aria-haspopup="dialog">See who has submitted &rsaquo;</button>
+</div>{% endif %}
+{%- endmacro %}
+{% macro tools_card(tool_cards) -%}
+  <section class="od-card od-tools" aria-labelledby="od-tools-h">
+    <div class="od-hd"><h2 id="od-tools-h">Your tools</h2>{% if not lms_on() %}<span class="od-lms">AI+ LMS &middot; Coming soon</span>{% endif %}</div>
+    {% for t in tool_cards %}
+    <button type="button" class="od-tcard" data-panel="{{ t['key'] }}"{% if t['arg'] %} data-arg="{{ t['arg'] }}"{% endif %}{% if t['key'] == 'subs' %} data-subs-entry{% endif %} aria-haspopup="dialog" title="{{ t['line1'] }}{% if t['line2'] %} · {{ t['line2'] }}{% endif %}">
+      <span class="od-tc-ico" aria-hidden="true">{% if t['key'] == 'plan' %}<svg viewBox="0 0 24 24"><path d="M4 20l5-6 4 3 7-9"></path><path d="M15 8h5v5"></path></svg>{% elif t['key'] == 'subs' %}<svg viewBox="0 0 24 24"><path d="M9 11l3 3 8-8"></path><path d="M20 12v7a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1h11"></path></svg>{% elif t['key'] == 'learning' %}<svg viewBox="0 0 24 24"><path d="M3.5 6.5L12 3l8.5 3.5L12 10z"></path><path d="M6.5 8v5.2c0 1.6 2.5 3.3 5.5 3.3s5.5-1.7 5.5-3.3V8"></path><path d="M20.5 6.5v6"></path></svg>{% else %}<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"></circle><path d="M12 3.5V12h8.5"></path></svg>{% endif %}</span>
+      <span class="od-tc-txt"><b>{{ t['name'] }}</b><span class="l1" title="{{ t['line1'] }}">{{ t['line1'] }}</span>{% if t['line2'] %}<span class="l2">{{ t['line2'] }}</span>{% endif %}</span>
+      <svg class="od-tc-chev" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 6l6 6-6 6"></path></svg>
+    </button>
+    {% endfor %}
+    {# no "You lead" doors here (Chris, 2026-10-11: "for BUCEO view, why is there a Your Lead under the Your tools
+       box?"): each one opened a part of the AI+ leader view that What needs you already opens, the BU view holding
+       Performance then Potential, and the view toggle the rest #}
+</section>
+{%- endmacro %}
+{# AI+ Learning's card (2026-10-20): "Your learning" for someone who leads no one; tabs for a line manager (Your team,
+   Yours) and an HOD (Your department, Your team, Yours). Counts and their own people only. #}
+{% macro learn_pane(P) -%}
+  <div class="od-lt-tiles">{% for x in P['tiles'] %}<div class="od-lt-tile"><b>{{ x['v'] }}</b><span>{{ x['k'] }}</span></div>{% endfor %}</div>
+  {% if P.get('needs') %}
+  <p class="od-lt-k">Where your people need to grow · from their Career Plans and competency gaps</p>
+  <ul class="od-lt-needs">{% for n in P['needs'] %}<li><span class="nm" title="{{ n['title'] }}">{{ n['title'] }}</span><span class="od-lt-bar" aria-hidden="true"><i style="width:{{ n['pct'] }}%"></i></span><span class="ct">{{ n['n'] }} {{ 'person' if n['n'] == 1 else 'people' }}</span><span class="od-lt-chip{{ ' is-' ~ n['tone'] if n['tone'] else '' }}">{{ n['chip'] }}</span></li>{% endfor %}</ul>
+  {% elif P.get('rows') %}
+  <ul class="od-lt-rows">{% for r in P['rows'] %}<li><span class="who" title="{{ r['who'] }}">{{ r['who'] }}</span><span class="what"><b title="{{ r['title'] }}">{{ r['title'] }}</b><span>{{ r['sub'] }}</span></span><span class="od-lt-chip{{ ' is-' ~ r['tone'] if r['tone'] else '' }}">{{ r['chip'] }}</span></li>{% endfor %}</ul>
+  {% else %}
+  <p class="od-sub od-lt-empty">{{ P['empty'] }}</p>
+  {% endif %}
+  <div class="od-lt-fit"><span>{{ P['fit'] }}{% if P.get('fit_name') %} <b>{{ P['fit_name'] }}</b> has none yet.{% endif %}</span>
+    {%- if P.get('fit_url') %}<a class="od-btn-nv is-outline is-sm" href="{{ P['fit_url'] }}" data-move-sub="{{ P['fit_btn'] }}">{{ P['fit_btn'] }}</a>
+    {%- else %}<button type="button" class="od-btn-nv is-outline is-sm" data-panel="learning" data-arg="{{ P['fit_panel'] }}" aria-haspopup="dialog">{{ P['fit_btn'] }}</button>{% endif %}</div>
+{%- endmacro %}
+{% macro learn_card(C, narrow=False) -%}
+<section class="od-card od-learn{{ ' is-narrow' if narrow else '' }}" aria-labelledby="od-learn-h">
+  <div class="od-hd"><h2 id="od-learn-h">{{ C['title'] }}</h2><span class="od-new">New</span><a class="od-linkbtn od-hd-end" href="/learning" data-move-sub="Mine, Team and Dept">Open AI+ Learning &rarr;</a></div>
+  {% if C['tabs'] %}
+  <div class="od-lt-tabs" role="tablist" aria-label="Whose learning">
+    {% for T in C['tabs'] %}<button type="button" role="tab" class="od-lt-tab{{ ' is-on' if loop.first else '' }}" id="od-lt-t-{{ T['key'] }}" aria-controls="od-lt-p-{{ T['key'] }}" aria-selected="{{ 'true' if loop.first else 'false' }}" data-lt-tab="{{ T['key'] }}">{{ T['label'] }}</button>{% endfor %}
+  </div>
+  {% for T in C['tabs'] %}
+  <div class="od-lt-pane" role="tabpanel" id="od-lt-p-{{ T['key'] }}" aria-labelledby="od-lt-t-{{ T['key'] }}"{% if not loop.first %} hidden{% endif %}>{{ learn_pane(T) }}</div>
+  {% endfor %}
+  {% else %}
+  <div class="od-lt-pane">{{ learn_pane(C['single']) }}</div>
+  {% endif %}
+</section>
+{%- endmacro %}
+<div class="od"{% if ob %} inert{% endif %}>
+  {# no header row (top panel A, 2026-10-15): who you are and the cycle are in the top bar, what needs you in the guide
+     panel on the left and in You are here #}
+  <h1 class="sr-only">Your dashboard{% if welcome %}, {{ welcome['first_name'] }}{% endif %}</h1>{% if chair %}{% include "_dash_chair.html" %}{% else %}
+
+  {# ---- the cycle, as one quiet rail (option B, Chris 2026-10-16: "Go with option B with a calmer view"): a small node,
+     the step's name and one short line each, the whole line on hover; each step links to where it's done ---- #}
+  {% if basic and basic['rail'] %}{{ basic_rail(basic['rail']) }}
+  {% elif rail %}
+  <section class="od-card od-rail od-calm" aria-labelledby="od-rail-h">
+    <div class="od-hd">
+      <h2 id="od-rail-h">{{ rail['title'] }}</h2>
+      {% if rail['closes'] %}<span class="od-muted od-closes">{{ rail['closes'] }}</span>{% endif %}
+      <span class="od-muted od-hd-end">{% if rail['total'] %}{{ rail['done'] }} of {{ rail['total'] }} done{% else %}Nothing for you to do in it{% endif %}</span>
+    </div>
+    <ol class="od-steps">
+      {% for s in rail['steps'] %}
+      <li class="od-step is-{{ s['state'] }}{{ ' is-here' if s.get('here') else '' }}"{% if s.get('here') %} aria-current="step"{% endif %} title="{{ s['name'] }}: {{ s['full'] }}">
+        <div class="od-track">{{ node(s['state']) }}{% if not loop.last %}<span class="od-link" aria-hidden="true"></span>{% endif %}</div>
+        <p class="od-who sr-only">{{ s['who'] }}{% if s['tag'] %} · {{ s['tag'] }}{% endif %}</p>
+        {% if s['url'] %}<a class="od-sn" href="{{ s['url'] }}"{% if s['label'] != s['name'] %} aria-label="{{ s['name'] }}"{% endif %}>{{ s['label'] }}</a>{% else %}<span class="od-sn">{{ s['label'] }}</span>{% endif %}
+        <p class="od-sl"><span class="w">{{ s['short'] }}</span>{% if s['full'] != s['short'] %}<span class="sr-only">: {{ s['full'] }}</span>{% endif %}</p>
+        {% if s.get('act') %}<button type="button" class="od-step-act" data-panel="{{ s['act']['panel'] }}" aria-haspopup="dialog">{{ s['act']['label'] }} &rsaquo;</button>{% endif %}
+      </li>
+      {% endfor %}
+    </ol>
+  </section>
+  {% endif %}
+
+  {# ---- between cycles: the last cycle's journey, each step with what happened and when (Chris, 2026-10-10: "if not the
+     timeline will just show past cycle completion journey"). A step opens that cycle's record in the panel. ---- #}
+  {% if mode == 'record' and rec['steps'] and not dash2_on() %}{# none in the second round (Chris, 2026-10-20) #}
+  {% set n_done = rec['steps'] | selectattr('done') | list | length %}
+  <section class="od-card od-rail is-past od-calm" aria-labelledby="od-rail-h">
+    <div class="od-hd">
+      <h2 id="od-rail-h">{{ rec['last']['name'] }}: your journey through it{% if rec['led'] %}, and what you led{% endif %}</h2>
+      <span class="od-complete{{ '' if n_done == rec['steps'] | length else ' is-part' }}"><i aria-hidden="true"></i>{{ 'Complete' if n_done == rec['steps'] | length else 'Closed' }} &middot; {{ n_done }} of {{ rec['steps'] | length }} steps</span>
+    </div>
+    <ol class="od-steps">
+      {% for s in rec['steps'] %}
+      <li class="od-step is-{{ 'done' if s['done'] else 'closed' }}" title="{{ s['name'] }}: {{ s['word'] }}{% if s['line'] %} {{ s['line'] }}{% endif %}">
+        <div class="od-track">{{ node('done' if s['done'] else 'closed') }}{% if not loop.last %}<span class="od-link" aria-hidden="true"></span>{% endif %}</div>
+        <p class="od-who sr-only">{{ s['who'] }}{% if s['tag'] %} · {{ s['tag'] }}{% endif %}</p>
+        {% if rec['last']['own'] %}<button type="button" class="od-sn od-snb" data-record="{{ rec['last']['key'] }}" aria-haspopup="dialog">{{ s['name'] }}</button>{% else %}<span class="od-sn">{{ s['name'] }}</span>{% endif %}
+        <p class="od-sl"><span class="w">{{ s['word'] }}</span>{% if s['line'] %} {{ s['line'] }}{% endif %}</p>
+      </li>
+      {% endfor %}
+    </ol>
+  </section>
+  {% endif %}
+
+  {% if mode == 'running' %}
+  <div class="od-grid">
+    {# ---- your next step (option B, 2026-10-16): one thing first with the page's one solid button, then the rest as
+       compact rows -- the team's reviews as ONE row with a chip per part, each approval, each thing you lead ---- #}
+    <section class="od-card od-here od-calm" aria-labelledby="od-here-h">
+      {% if panel %}
+      {% set N = here['calm']['next'] %}
+      <div class="od-next">
+        <p class="od-nk">{{ 'Your next step' if N else 'You are here' }}</p>
+        {% if N and N.get('kind') == 'learning' %}{# a Learning step: its button on the right (Chris, 2026-10-23) #}
+        <div class="od-nside"><div class="od-nside-t"><h2 id="od-here-h" class="od-nt">{{ N['title'] }}</h2>{{ learn_line(N, 'od-ns') }}</div>
+          <div class="od-nb">{{ calm_btn(N) }}</div></div>
+        {% elif N %}
+        <h2 id="od-here-h" class="od-nt">{{ N['title'] }}</h2>
+        {% if N['sub'] or N['due'] %}<p class="od-ns">{{ N['sub'] }}{% if N['sub'] and N['due'] %} · {% endif %}{{ N['due'] }}</p>{% endif %}
+        {% if N.get('pass') %}<p class="od-npass">{{ N['pass'] }}</p>{% endif %}
+        {{ calm_chips(N) }}
+        <div class="od-nb">{{ calm_btn(N) }}</div>
+        {% elif here['note_only'] %}{# every KPI theirs a BU KPI Group People fills, nothing else open (2026-10-26) #}
+        {% set B = here['note_only'] %}
+        <h2 id="od-here-h" class="od-nt">{{ B['title'] }}</h2>
+        <p class="od-ns">{{ B['sub'] }}</p>
+        <div class="od-nb">{{ calm_btn(B) }}</div>
+        {% else %}
+        {% set ni_quiet = not_in and not not_in['plan'] %}{# their Career Plan is everyone's (2026-10-19) #}
+        <h2 id="od-here-h" class="od-nt">{{ 'Nothing needs you right now' if ni_quiet else here['head'] }}</h2>
+        {% if here['not_required'] and not not_in %}<p class="od-ns">{{ here['not_required'] }}</p>{% endif %}
+        {% if ni_quiet %}<p class="od-ns">Nothing in the {{ not_in['cycle'] }} is waiting on you. If a colleague asks for your 360 feedback, or your team needs you, it shows here.</p>{% endif %}
+        {% endif %}
+      </div>
+      {% if here['calm']['rest'] or here['bu_note'] %}
+      <ul class="od-acts od-nrows">
+        {% for x in here['calm']['rest'] %}
+        <li class="od-nrow">
+          <div class="od-nrt"><p class="od-att">{{ x['title'] }}</p>
+            {% if x.get('kind') == 'learning' %}{{ learn_line(x, 'od-ats') }}{% elif x.get('chips') %}{{ calm_chips(x) }}{% elif x['sub'] or x['due'] %}<p class="od-ats{{ ' od-ats-wrap' if x.get('wrap') }}">{{ x['sub'] }}{% if x['sub'] and x['due'] %} · {% endif %}{{ x['due'] }}</p>{% endif %}</div>
+          {{ calm_btn(x) }}
+        </li>
+        {% endfor %}
+        {% if here['bu_note'] %}{% set Bn = here['bu_note'] %}{# their BU KPIs: Group People's, an optional note (2026-10-26) #}
+        <li class="od-nrow od-bunote">
+          <div class="od-nrt"><p class="od-att">{{ Bn['title'] }}</p><p class="od-ats">{{ Bn['sub'] }}</p></div>
+          {{ calm_btn(Bn) }}
+        </li>
+        {% endif %}
+      </ul>
+      {% endif %}
+      {% if here['waits'] or here['done'] %}
+      <div class="od-lines">
+        {% for w in here['waits'] %}
+        <p class="od-ln is-wait"><span>Waiting · {{ w }}</span></p>
+        {% endfor %}
+        {% if here['done'] %}
+        <p class="od-ln is-done"><svg class="od-ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5"></path></svg><span>{{ here['done'] }}</span>
+          {% if here['summary'] %}<a class="od-btn-ai{{ '' if not here['acts'] else ' is-outline' }}" href="{{ here['summary']['url'] }}">{{ spark() }}{{ here['summary']['button'] }}</a>{% endif %}</p>
+        {% endif %}
+      </div>
+      {% endif %}
+      {% endif %}
+    </section>
+
+    {% if bu_status %}
+    {# ---- a BU CEO: where the BU is, each axis ready to lock or not, then each department's two reviews (Chris,
+       2026-10-10: "instead of showing where you stand, we should show the BU status on performance and potential
+       whether they are ready to lock") ---- #}
+    {% set B = bu_status %}
+    {# a calibrator's card is their Calibration Group's (2026-10-27): the same card, its words and its tab CG (BGCFO for a BG CFO, 2026-11-04) #}
+    {% set bu_title = 'Your Calibration Group' if B['group'] else 'Where your BU is' %}
+    {% set bu_count %}{% if B['mid_year'] %}Mid-Year &middot; {% endif %}{% if B['joined'] %}Together &middot; {% endif %}{{ B['people'] }} people &middot; {{ B['n_depts'] }} department{{ '' if B['n_depts'] == 1 else 's' }}{% endset %}
+    <section class="od-card od-bu{{ ' has-units' if B['units'] else '' }}" aria-labelledby="od-bu-h">
+      {% if own_view %}
+      <div class="od-hd is-tabs"><h2 id="od-bu-h"><span data-lt-for="bu">{{ bu_title }}</span><span data-lt-for="own" hidden>Where you stand</span></h2>{{ (own_tabs('BGCFO', 'BG CFO') if B['group_tag'] == 'BGCFO' else own_tabs('CG', 'Calibration Group')) if B['group'] else own_tabs('BU') }}</div>
+      <p class="od-muted od-own-sub" data-lt-for="bu"{% if B['joined'] %} title="Calibrated together this cycle: {{ B['joined'] }}"{% endif %}>{{ bu_count }}</p>
+      <p class="od-muted od-own-sub" data-lt-for="own" hidden>Your own review this cycle, up to your line manager</p>
+      {% else %}
+      <div class="od-hd"><h2 id="od-bu-h">{{ bu_title }}</h2><span class="od-muted"{% if B['joined'] %} title="Calibrated together this cycle: {{ B['joined'] }}"{% endif %}>{{ bu_count }}</span></div>
+      {% endif %}
+      <div class="od-own-pane"{% if own_view %} role="tabpanel" id="od-own-p-bu" aria-labelledby="od-own-t-bu"{% endif %}>
+      {% if B['units'] %}
+      {# a BU CEO of several units: each its own calibration and lock -- pick the one this card shows (admin round 4) #}
+      <nav class="od-bu-units" aria-label="{{ 'Your units and calibration groups' if B['units'] | selectattr('group') | list else 'Your units' }}">
+        {% for x in B['units'] %}<a href="{{ x['href'] }}" class="od-bu-unit is-{{ x['state'] }}{{ ' is-on' if x['on'] else '' }}"{% if x['on'] %} aria-current="true"{% endif %} title="{{ x['full'] or x['label'] }} · {{ x['people'] }} {{ 'person' if x['people'] == 1 else 'people' }} · {{ x['word'] }}"><b>{{ x['label'] }}</b><span>· {{ x['word'] }}</span></a>{% endfor %}
+      </nav>
+      {% endif %}
+      <div class="od-bu-axes">
+        {% for a in B['axes'] %}<div class="od-bu-ax"><p class="k">{{ a['label'] }}</p><span class="od-bu-st is-{{ a['state'] }}">{{ a['word'] }}</span><p class="l">{{ a['line'] }}</p></div>{% endfor %}
+      </div>
+      {{ subs_strip_card(subs_strip) }}
+      {% if ceo_learn %}{{ ceo_where(ceo_learn) }}{% endif %}
+      {% if B['depts'] and not ceo_learn %}
+      {# every department, the list scrolling inside the card so the page keeps one screen (Chris, 2026-10-10: "if there
+         are more departments, we should do interscroll") #}
+      <div class="od-bu-tbl" role="table" aria-label="Department reviews">
+        <div class="od-bu-r is-h" role="row"><span role="columnheader">Department</span><span role="columnheader">Performance</span><span role="columnheader">Potential</span></div>
+        <div class="od-bu-body" role="rowgroup" tabindex="0" aria-label="Departments, scrolls">
+        {% for d in B['depts'] %}<div class="od-bu-r" role="row"><span role="cell" class="n" title="{{ d['name'] }}">{{ d['name'] }}</span>{{ bu_cell(d['pm']) }}{{ bu_cell(d['pot']) }}</div>{% endfor %}
+        </div>
+      </div>
+      {% endif %}
+      </div>
+      {% if own_view %}{{ own_pane(standing, panel) }}{% endif %}
+    </section>
+    {% elif bg_status %}
+    {# ---- a BG CEO: where the group is, business unit by business unit (canvas board K), the list scrolling inside ---- #}
+    {% set G = bg_status %}
+    <section class="od-card od-bu od-bg" aria-labelledby="od-bg-h">
+      {# at Mid-Year nothing is calibrated or locked: each unit's department reviews in (2026-10-13, the canvas) #}
+      {# a Group Chief's card is the same, for the group they call, batch by batch (2026-10-14) #}
+      {% set GU = 'batch' if G['scope'] == 'group' else 'business unit' %}
+      {% set bg_count %}{% if G['hidden'] %}{{ G['hidden'] }}{% elif G['mid_year'] %}Mid-Year &middot; {{ G['ready'] }} of {{ G['total'] }} {{ GU }}{{ '' if G['total'] == 1 else ('es' if GU == 'batch' else 's') }} with every review in{% else %}{{ G['ready'] }} of {{ G['total'] }} {{ GU }}{{ '' if G['total'] == 1 else ('es' if GU == 'batch' else 's') }} ready{% if G['locked'] %} &middot; {{ G['locked'] }} locked{% endif %}{% endif %}{% endset %}
+      {% set bg_title = 'Where your group is' if G['scope'] == 'group' else 'Where the group is' %}
+      {% if own_view %}
+      <div class="od-hd is-tabs"><h2 id="od-bg-h"{% if G['scope'] == 'group' %} title="{{ G['name'] }}"{% endif %}><span data-lt-for="bu">{{ bg_title }}</span><span data-lt-for="own" hidden>Where you stand</span></h2>{{ own_tabs('Group') }}</div>
+      <p class="od-muted od-own-sub" data-lt-for="bu">{{ bg_count }}</p>
+      <p class="od-muted od-own-sub" data-lt-for="own" hidden>Your own review this cycle, up to your line manager</p>
+      {% else %}
+      <div class="od-hd"><h2 id="od-bg-h"{% if G['scope'] == 'group' %} title="{{ G['name'] }}"{% endif %}>{{ bg_title }}</h2><span class="od-muted">{{ bg_count }}</span></div>
+      {% endif %}
+      <div class="od-own-pane"{% if own_view %} role="tabpanel" id="od-own-p-bu" aria-labelledby="od-own-t-bu"{% endif %}>
+      {{ subs_strip_card(subs_strip) }}
+      {% if not G['hidden'] %}
+      <div class="od-bu-tbl" role="table" aria-label="{{ 'Batches' if G['scope'] == 'group' else 'Business units' }}">
+        <div class="od-bu-r od-bg-r is-h" role="row"><span role="columnheader" title="{{ 'Batch' if G['scope'] == 'group' else 'Business unit' }} &middot; {{ 'department reviews' if G['mid_year'] else ('ratings' if G['scope'] == 'group' else 'BU calibration') }}">{{ 'Batch' if G['scope'] == 'group' else 'Business unit' }}</span><span role="columnheader">{{ 'Reviews in' if G['mid_year'] else 'Talent Box' }}</span></div>
+        <div class="od-bu-body od-bg-body" role="rowgroup" tabindex="0" aria-label="{{ 'Batches' if G['scope'] == 'group' else 'Business units' }}, scrolls">
+        {% for x in G['units'] %}<div class="od-bu-r od-bg-r" role="row"><span role="cell" class="t"><b title="{{ x['name'] }}">{{ x['name'] }}</b><span title="{{ x['sub'] }}">{{ x['sub'] }}</span></span><span role="cell"><span class="od-bu-st is-{{ 'ready' if x['state'] == 'ready' else ('locked' if x['state'] == 'locked' else 'waiting') }}">{{ x['word'] }}</span></span></div>{% endfor %}
+        </div>
+      </div>
+      {% endif %}
+      {% if ceo_learn %}{{ ceo_where(ceo_learn) }}{% endif %}
+      </div>
+      {% if own_view %}{{ own_pane(standing, panel) }}{% endif %}
+    </section>
+    {% elif basic and learn and learn['card'] %}{{ learn_card(learn['card'], narrow=True) }}
+    {% elif not_in %}
+    {# ---- not in this cycle's own review, but asked to act (canvas boards L-N): why, what's still theirs, and where
+       their team or department stands ---- #}
+    {% set N = not_in %}
+    <section class="od-card od-notin" aria-labelledby="od-ni-h">
+      <div class="od-hd"><h2 id="od-ni-h">Not in this cycle's review</h2></div>
+      <p class="od-ni-why">You aren't reviewed in the {{ N['cycle'] }}: {{ N['why'] }}. {% if N['team'] or N['dept'] %}Your {{ 'department' if N['dept'] and not N['team'] else 'team' }} is, and you lead its review.{% else %}No KPI check-in, competency or results for you this time{% if N['plan'] %}, but your Career Plan is yours to write{% endif %}.{% endif %}</p>
+      {% if N['team'] %}
+      <p class="od-tk">Your team this cycle &middot; {{ N['team']['people'] }} {{ 'person' if N['team']['people'] == 1 else 'people' }}</p>
+      <div class="od-ni-st"><div class="is-turn"><b>{{ N['team']['turn'] }}</b><span>waiting on you</span></div><div><b>{{ N['team']['wait'] }}</b><span>still writing theirs</span></div><div><b>{{ N['team']['done'] }}</b><span>done</span></div></div>
+      {% elif N['dept'] %}
+      <p class="od-tk">Your department's review</p>
+      <dl class="od-ledl">{% for x in N['dept'] %}<div><dt>{{ x['label'] }}</dt><dd>{{ x['meta'] }}</dd></div>{% endfor %}</dl>
+      {% elif N['yours'] %}
+      <dl class="od-ledl"><div><dt>Still yours this cycle</dt><dd>{{ N['yours'] | join(', ') }}</dd></div></dl>
+      {% endif %}
+      {% if N['plan'] and (N['team'] or N['dept']) %}<p class="od-tk">Your Career Plan is yours to write this cycle, with your line manager.</p>{% endif %}
+      <p class="od-muted od-ni-foot">Your own review starts with your first full cycle. If this looks wrong, contact Group People.</p>
+    </section>
+    {% else %}
+    {# ---- where you stand this cycle, up to the line manager: one row each, nothing until it's final ---- #}
+    <section class="od-card od-stand" aria-labelledby="od-st-h">
+      <div class="od-hd"><h2 id="od-st-h">Where you stand</h2>
+        {# an Early Year has no result, 360 or competency to detail (2026-10-15) #}
+        {% if not (panel and panel.get('early_year')) %}<button type="button" class="od-linkbtn" data-record="current" aria-haspopup="dialog">Details &rarr;</button>{% endif %}</div>
+      {{ stand_dl(standing) }}
+    </section>
+    {% endif %}
+  </div>
+  {# Grade H Appraisal (2026-10-28, piece 4; canvas L0): this line manager's Grade H appraisees, in a paired row with Your team #}
+  {% if gradeh %}
+  <link rel="stylesheet" href="{{ url_for('static', filename='gradeh_lm.css') }}?v={{ asset_v }}">
+  {% set GH = gradeh %}
+  <div class="od-grid od-ghrow">
+    <section class="od-card ghl-card" aria-labelledby="ghl-h">
+      <div class="od-hd"><span class="ghl-k">New this year</span><span class="od-muted od-hd-end">{% if GH['closes_full'] %}Due {{ GH['closes_full'] }}{% endif %}</span></div>
+      <h2 id="ghl-h" class="ghl-t">Grade H Appraisal &middot; {{ GH['n'] }} to appraise</h2>
+      <div class="ghl-bar" role="img" aria-label="{{ GH['ready'] }} ready for you, {{ GH['staff'] }} with staff, {{ GH['done'] }} done">
+        {% if GH['done'] %}<span class="is-done" style="flex-grow: {{ GH['done'] }}"></span>{% endif %}{% if GH['staff'] %}<span class="is-staff" style="flex-grow: {{ GH['staff'] }}"></span>{% endif %}{% if GH['ready'] %}<span class="is-ready" style="flex-grow: {{ GH['ready'] }}"></span>{% endif %}
+      </div>
+      <ul class="ghl-legend"><li class="is-ready"><i aria-hidden="true"></i>{{ GH['ready'] }} ready for you</li><li class="is-staff"><i aria-hidden="true"></i>{{ GH['staff'] }} with staff</li><li class="is-done"><i aria-hidden="true"></i>{{ GH['done'] }} done</li></ul>
+      <a class="od-btn-nv ghl-go" href="{{ GH['url'] }}" data-move-sub="Grade H Appraisal">Open Grade H Appraisal</a>
+    </section>
+    {% if team %}
+    <section class="od-card ghl-card" aria-labelledby="ghl-team-h">
+      <div class="od-hd"><h2 id="ghl-team-h">Your team</h2></div>
+      <dl class="od-list">
+        {% for p in team['parts'] %}<div class="od-li"><dt>{{ p['name'] }}</dt><dd class="v">{{ p['done'] }} of {{ p['total'] }} done</dd></div>{% endfor %}
+        <div class="od-li"><dt>Grade H Appraisal</dt><dd class="v">{{ GH['done'] }} of {{ GH['n'] }} done</dd></div>
+      </dl>
+    </section>
+    {% endif %}
+  </div>
+  {% endif %}
+  {% if ceo_learn and ceo_learn['kind'] == 'bu' and bu_status %}{{ bu_dept_card(bu_status, ceo_learn) }}{% endif %}
+  {% if ceo_learn and ceo_learn['kind'] == 'bg' %}{{ bg_learn_card(ceo_learn) }}{% endif %}
+  {# a BU / BG CEO's own learning and Career Plan, under their people's (2026-10-20: "add for BUCEO and BGCEO too to have
+     the self LMS tracker and record"; shown by their user role's "Own learning on the dashboard") #}
+  {% if ceo_learn and learn and (learn['mine'] or plan_lv) %}<div class="od-grid">{% if learn['mine'] %}{{ learn_card({'title': 'Your own learning', 'tabs': [], 'single': learn['mine']}) }}{% endif %}{% if dash2_on() %}{{ plan_card(plan_lv) }}{% endif %}</div>{% endif %}
+  {% elif mode == 'awaiting' %}
+  {# ---- a cycle started with nothing open (2026-10-18, canvas "OneHR Year-End Details States" board 1): nothing to
+     do, each part not open yet, and Where you stand opening Details on the KPI targets and the competencies ---- #}
+  {% set W = awaiting %}
+  <div class="od-grid">
+    <section class="od-card od-here od-calm od-await" aria-labelledby="od-here-h">
+      <div class="od-next">
+        <p class="od-nk">{{ 'Your review: nothing to do yet' if learn_next else 'Nothing to do yet' }}</p>
+        {% if W['taking_part'] %}
+        <h2 id="od-here-h" class="od-nt">Your {{ W['cycle'] }} hasn't opened yet</h2>
+        <p class="od-ns">Group People opens each part when it's ready. Until then there's nothing to fill in, and the AI+ check-in stays closed.</p>
+        {% else %}
+        <h2 id="od-here-h" class="od-nt">Nothing for you in the {{ W['cycle'] }} yet</h2>
+        <p class="od-ns">You aren't in your own review this round. If a colleague asks for your 360 feedback, or your team needs you, it shows here once it opens.</p>
+        {% endif %}
+      </div>
+      {% if W['taking_part'] %}
+      <ul class="od-acts od-nrows">
+        {% for x in W['parts'] %}
+        <li class="od-nrow"><div class="od-nrt"><p class="od-att">{{ x }}</p></div><span class="od-await-st">Not open yet</span></li>
+        {% endfor %}
+      </ul>
+      {% endif %}
+      {% if learn_next %}{# Learning's rows while the cycle hasn't opened (2026-10-23) #}
+      <ul class="od-acts od-nrows od-await-learn">
+        {% for x in [learn_next['next']] + learn_next['rest'] %}<li class="od-nrow"><div class="od-nrt"><p class="od-att">{{ x['title'] }}</p>{{ learn_line(x, 'od-ats') }}</div>{{ calm_btn(x) }}</li>{% endfor %}
+      </ul>
+      {% endif %}
+    </section>
+    {% if W['taking_part'] %}
+    <section class="od-card od-stand" aria-labelledby="od-st-h">
+      <div class="od-hd"><h2 id="od-st-h">Where you stand</h2>
+        {% if W['details'] %}<button type="button" class="od-linkbtn" data-record="current" aria-haspopup="dialog">Details &rarr;</button>{% endif %}</div>
+      <dl class="od-list">
+        {% for st in W['rows'] %}
+        <div class="od-li">
+          <dt>{{ st['label'] }}</dt>
+          <dd class="v{{ ' is-pending' if st['pending'] else '' }}">
+            {%- if st['tab'] %}<button type="button" class="od-linkbtn od-vlink" data-record="current" data-tab="{{ st['tab'] }}" aria-haspopup="dialog">{{ st['value'] }}</button>
+            {%- else %}{{ st['value'] }}{% endif -%}
+          </dd>
+        </div>
+        {% endfor %}
+      </dl>
+    </section>
+    {% endif %}
+  </div>
+  {% else %}
+  {# ---- between cycles: the last cycle's released results with the AI read of it, then this year's plan -- or, for a
+     leader, what they led (the "OneHR Dashboard States" canvas, boards C and D) ---- #}
+  {% set L = rec['last'] %}
+  {% set P = rec['plan'] %}
+  {% set own = L and L['own'] %}
+  {% set X = rec['box'] %}
+  {% if dash2_on() %}
+  {{ record2(L, P, own, X) }}
+  {% else %}{% if learn_next %}<div class="od-grid">{{ next_card(learn_next) }}</div>{% endif %}{# Learning's rows between cycles (2026-10-23) #}
+  {% endif %}
+  {% if dash2_on() %}
+  {% elif X and X['scope'] in ('bg', 'group') %}
+  {{ talent_box(X, rec) }}
+  {% else %}
+  <div class="od-grid">
+    {% if not own and rec['led'] %}{{ led_card(rec, L) }}{% else %}
+    {{ res_card(L, P, own) }}
+    {% endif %}
+
+    {% if own and rec['led'] %}{{ led_card(rec, L) }}{% else %}
+    <section class="od-card od-planc" aria-labelledby="od-plan-h">
+      {% if P %}
+      <div class="od-hd"><h2 id="od-plan-h">This year: your {{ P['year'] }} plan</h2><span class="od-muted">{{ P['status_word'] }} &middot; {{ P['goals'] | length }} goal{{ '' if P['goals'] | length == 1 else 's' }}</span></div>
+      <ul class="od-pgoals">
+        {% for g in P['goals'][:3] %}<li><span class="t"><b title="{{ g['area'] }}">{{ g['area'] }}</b><span title="{{ g['last'] }}">{{ g['last'] }}</span></span><span class="od-gst is-{{ g['status'] }}">{{ g['label'] }}</span></li>{% endfor %}
+      </ul>
+      <p class="od-muted od-pnote">{% if P['can_checkin'] %}Your line manager sees where each goal is.{% if P['last_checkin'] %} Your last check-in was on {{ P['last_checkin'] }}.{% endif %}{% elif P['checkin_paused'] %}Check-ins open between cycles.{% if P['last_checkin'] %} Your last check-in was on {{ P['last_checkin'] }}.{% endif %}{% elif P['status'] == 'draft' %}Share it with your line manager to start checking in on it.{% elif P['checkin_ended'] %}Its year is over: it stays as your record.{% else %}This plan is closed.{% endif %}</p>
+      <button type="button" class="od-btn-nv" data-panel="plan" data-arg="{{ P['year'] }}" aria-haspopup="dialog">{{ 'Check in on your plan' if P['can_checkin'] else 'Open your Career Plan' }}</button>
+      {% else %}
+      <h2 id="od-plan-h" class="od-h2">Your Career Plan</h2>
+      <p class="od-sub">Your plan for the year shows here once you write it in your AI check-in at Year-End, and you can check in on it as the year goes.</p>
+      {% endif %}
+    </section>
+    {% endif %}
+  </div>
+  {% if X %}{{ talent_box(X, rec) }}{% endif %}
+  {% endif %}
+  {% endif %}
+
+  {# ---- your history and your tools: two cards on the one grid, under the cards above (Chris, 2026-10-13: "your history
+     and your tools" should line up); between cycles, under a Talent Box row (units left, box right), it mirrors it:
+     tools left, history right -- the BG CEO's and Group Chief's first, the BU CEO's too (2026-10-16: "yes, flip the
+     history and tools row too") ---- #}
+  {% set LC = learn['card'] if (learn and mode == 'running' and not bu_status and not bg_status and not basic) else none %}
+  {% set BG2 = basic and mode == 'running' %}
+  {% if BG2 %}<div class="od-grid">{% if basic['grows'] %}{{ grows_card(basic['grows']) }}{% else %}{{ plan_card(plan_lv) }}{% endif %}{{ tools_card(tool_cards) }}</div>{% endif %}
+  {% if LC %}
+  {# ---- AI+ Learning while a cycle runs (2026-10-20, canvas 7JRdbsa7Tj5fFx9KEp7uqT; staging only while Learning is):
+     the Learning card beside Your tools, the history under them, across ---- #}
+  <div class="od-grid">
+    {{ learn_card(LC) }}
+    {{ tools_card(tool_cards) }}
+  </div>
+  {% endif %}
+  <div class="od-grid{{ ' is-flip' if (mode == 'record' and rec and rec['box']) else '' }}">
+  <section class="od-card od-hist" aria-labelledby="od-hist-h">
+      <div class="od-hd"><h2 id="od-hist-h">{{ 'Cycles you led' if led_cycles else 'Your history' }}</h2>{% if record_all %}<button type="button" class="od-linkbtn" data-panel="records" aria-haspopup="dialog">Full record &rarr;</button>{% endif %}</div>
+      {% set rows = record_years[:2] %}   {# by year (2026-10-14); the rest in the Full record panel #}
+      {% if led_cycles %}
+      <div class="od-rows">{% for c in led_cycles %}<div class="od-ledc"><span class="cy">{{ c['name'] }}{% if c['closed_on'] %}<small>Closed {{ c['closed_on'] }}</small>{% endif %}</span><span class="l">{{ c['line'] }}</span></div>{% endfor %}</div>
+      {% elif rows %}
+      <div class="od-trend{{ '' if trend else ' is-empty' }}" data-trend-url="{{ url_for('my_record_trend') }}"
+           data-load="{{ '1' if (record_rated >= 2 and not trend) else '' }}"{% if not trend %} hidden{% endif %}>
+        <b class="od-trend-tag{{ ' is-ai' if trend and trend['source'] == 'ai' else '' }}">{% if trend and trend['source'] == 'ai' %}{{ spark() }}AI read{% else %}Trend{% endif %}</b>
+        <span class="od-trend-txt">{{ trend['text'] if trend else '' }}</span>
+      </div>
+      <div class="od-rows">
+        {% for g in rows %}{{ year_row(g) }}{% endfor %}
+      </div>
+      {% set older = record_years | length - rows | length %}
+      {% if older > 0 %}<p class="od-muted od-foot od-yfoot"><span>A year shows its Year-End result; its Mid-Year checkpoint is inside it.</span>
+        <button type="button" class="od-linkbtn" data-panel="records" aria-haspopup="dialog">{{ older }} older year{{ '' if older == 1 else 's' }} in your full record &rsaquo;</button></p>{% endif %}
+      {% else %}
+      <p class="od-sub">Your past cycles appear here once you have one: your final bands and talent status once released, your 360 and your plan, with an AI snapshot.</p>
+      {% endif %}
+  </section>
+  {% if not LC and not BG2 %}{{ tools_card(tool_cards) }}{% endif %}
+  </div>{% endif %}
+  {# phone view (2026-11-07): Ask OneHR starts closed; this card at the foot opens it as a bottom sheet (static/ask_onehr.js).
+     Hidden everywhere else (the phone section of static/style.css shows it). #}
+  {% if not ec_pa and (ob or ask is defined) %}
+  <section class="od-askfoot" hidden aria-label="Ask OneHR">
+    <div class="od-askfoot-t"><b>Any questions?</b><span>Find a page or an answer</span></div>
+    <button type="button" class="od-askfoot-btn" id="ask-foot-open" aria-haspopup="dialog" aria-controls="ask-panel"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2l2.4 7.6L22 12l-7.6 2.4L12 22l-2.4-7.6L2 12l7.6-2.4z"></path></svg>Ask OneHR</button>
+  </section>
+  {% endif %}
+</div>
+
+{# The record panel: one past cycle slides in from the right (static/dashboard.js fills it from /me/record/<cycle>). #}
+<div class="od-scrim" data-od-scrim hidden></div>
+<aside class="od-drawer" data-od-drawer role="dialog" aria-modal="true" aria-labelledby="od-dr-h" hidden tabindex="-1">
+  {# The close bezel runs the full height of the panel's left edge (Chris, 2026-10-08: "a thin arrow bezel along the
+     left border ... click on it to let it slide back to right to close"). The scrim and Escape close it too. #}
+  <button type="button" class="od-bezel" data-od-close aria-label="Close your record" title="Close &middot; Esc">
+    <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><path d="M9 6l6 6-6 6"></path></svg>
+  </button>
+  <div class="od-sheet">
+    <div class="od-dh">
+      <div class="od-dt"><h2 id="od-dr-h" class="od-dr-title">Your record</h2><p class="od-dr-sub" data-od-sub></p>
+        <div class="od-pick" data-od-pick role="group" hidden></div></div>
+      <div class="od-dnav">
+        <button type="button" class="od-ib od-ibw" data-od-back hidden>&lsaquo; Full record</button>
+        {# words, so they never read as a third arrow beside the close bezel #}
+        <button type="button" class="od-ib od-ibw" data-od-newer aria-label="Newer cycle">&lsaquo; Newer</button>
+        <button type="button" class="od-ib od-ibw" data-od-older aria-label="Older cycle">Older &rsaquo;</button>
+      </div>
+    </div>
+    <div class="od-db" data-od-body aria-live="polite"></div>
+    <div class="od-dlinks" data-od-links></div>
+  </div>
+</aside>
+{# the full record, for the panel's list (2026-10-09: "the full history record, it should open on the right slide
+   panel the list of historical records"), by year since 2026-10-14 #}
+<template id="od-records-tpl">{% for g in record_years %}{{ year_group(g, loop.index) }}{% endfor %}</template>
+<script src="{{ url_for('static', filename='dashboard.js') }}?v={{ asset_v }}"></script>
+<script src="{{ url_for('static', filename='move.js') }}?v={{ asset_v }}"></script>
+
+{# Ask OneHR, a permanent guide panel on the left (Chris, 2026-10-15: "make the ai chat a permanent display on the left
+   panel, and it should only serve to guide the user to navigate the dashboard and the modules, and check on the pending
+   items"; the "Ask OneHR guide panel and top bar" canvas). At rest it says what needs them, each with a way there, and a
+   few places to go; it answers from POST /ask, which holds no result, and takes them somewhere: a panel, a page, or a
+   card it marks. It folds to a rail that keeps the count of what needs them. The AI parts are the spark tile and the
+   send button; what it writes is never red, and its buttons are navy. Static/ask_onehr.js drives it. #}
+{% if ob %}
+{# The first sign-in (2026-10-15; canvas "OneHR Display Name and Avatar"): the guide asks what to call them, then a
+   picture, then shows them around. The rest of the page is dimmed and inert until it's done (the server sends every
+   other page here too, _onboarding_gate). Static/onboarding.js drives it. #}
+<div class="ob-dim" aria-hidden="true"></div>
+<aside class="gp is-onboarding" id="ob-panel" aria-labelledby="gp-title" data-step="{{ ob.step }}" data-mode="{{ mode }}"
+       data-name="{{ ob.display }}" data-url-name="{{ url_for('onboard_name') }}"
+       data-url-picture="{{ url_for('onboard_picture') }}" data-url-tour="{{ url_for('onboard_tour') }}">
+  <div class="gp-head">
+    <span class="gp-mark" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M12 2l2.4 7.6L22 12l-7.6 2.4L12 22l-2.4-7.6L2 12l7.6-2.4z"></path></svg></span>
+    <div class="gp-ht"><h2 id="gp-title">Ask OneHR</h2><p>Getting started</p></div>
+  </div>
+  {% set _steps = [('name', 'Your name'), ('picture', 'Your picture'), ('tour', 'A look around')] %}
+  {% set _now = {'name': 0, 'picture': 1, 'tour': 2}[ob.step] %}
+  <ol class="ob-steps" aria-label="Getting started">
+    {% for key, label in _steps %}<li class="{{ 'is-done' if loop.index0 < _now else ('is-now' if loop.index0 == _now else '') }}"{% if loop.index0 == _now %} aria-current="step"{% endif %}><span aria-hidden="true"></span>{{ label }}</li>{% endfor %}
+  </ol>
+  <div class="gp-log" id="ob-log" aria-live="polite">
+    {% if ob.step == 'name' %}
+    <div class="gp-rest" id="ob-rest">
+      <p class="gp-lead">Welcome to OneHR. Before we start: what should I call you?</p>
+      <p class="gp-sub">It's how I'll greet you and talk to you. Only you see it: your official name, {{ ob.official }}, stays on your records and on everything others see.</p>
+      {% if ob.hris_name %}
+      <p class="gp-try-h">From your employee record</p>
+      <div class="gp-chips"><button type="button" class="gp-chip ob-suggest" data-name="{{ ob.hris_name }}">{{ ob.hris_name }}</button></div>
+      <p class="ob-hint">Or type the name you go by below.</p>
+      {% endif %}
+    </div>
+    {% elif ob.step == 'picture' %}
+    <div class="gp-rest" id="ob-rest">
+      <p class="gp-lead">Nice to meet you, {{ ob.display }}. Now pick a picture for your Account button, or keep your initials. Only you see it.</p>
+      <fieldset class="ob-picset">
+        <legend class="sr-only">Your picture</legend>
+        {% for g in ob.groups %}
+        <div role="group" aria-labelledby="ob-pg-{{ loop.index }}">
+          <p class="ob-pics-h" id="ob-pg-{{ loop.index }}">{{ g.name }}</p>
+          <div class="ob-pics">
+            {% for o in g.pics %}
+            <label class="ob-pic{{ ' is-on' if o.on else '' }}" title="{{ o.label }}">
+              <input type="radio" name="ob-avatar" value="{{ o.n }}"{% if o.on %} checked{% endif %} aria-label="{{ o.label }}">
+              {% if o.url %}<img src="{{ o.url }}" alt="" width="38" height="38">{% else %}<span class="ob-init" aria-hidden="true">{{ ob.initials }}</span>{% endif %}
+            </label>
+            {% endfor %}
+          </div>
+        </div>
+        {% endfor %}
+      </fieldset>
+      <div class="gp-acts">
+        <button type="button" class="gp-act is-primary" id="ob-pic-use">Use this picture</button>
+        <button type="button" class="gp-act" id="ob-pic-keep">Keep my initials</button>
+      </div>
+    </div>
+    {% else %}
+    <div class="gp-rest" id="ob-rest">
+      <p class="ob-tour-k" id="ob-tour-k">A look around</p>
+      <p class="ob-tour-t" id="ob-tour-t"></p>
+      <p class="gp-lead" id="ob-tour-x"></p>
+      <div class="ob-tour-acts">
+        <button type="button" class="gp-act is-primary" id="ob-tour-next">Next &rsaquo;</button>
+        <button type="button" class="ob-skip" id="ob-tour-skip">Skip the tour</button>
+      </div>
+    </div>
+    {% endif %}
+  </div>
+  <form class="gp-form" id="ob-form" autocomplete="off">
+    <label for="ob-input" class="sr-only">{{ 'What should I call you?' if ob.step == 'name' else 'Ask OneHR' }}</label>
+    <div class="gp-box{{ '' if ob.step == 'name' else ' is-off' }}">
+      <input id="ob-input" type="text" maxlength="60" placeholder="{{ 'Type the name you go by' if ob.step == 'name' else 'Ask where something is…' }}"{% if ob.step != 'name' %} disabled{% endif %}>
+      <button type="submit" class="gp-send" aria-label="Send"{% if ob.step != 'name' %} disabled{% endif %}>
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6"></path></svg></button>
+    </div>
+    <p class="gp-foot">{{ 'Letters only, up to 30 characters. You can change it on your Profile.' if ob.step == 'name' else 'Pick above; you can ask me anything once we are done.' }} <button type="submit" form="ob-logout" class="gp-out">Not you? Log out</button></p>
+  </form>
+  {# a button for a POST with the token (security test 2-14), outside ob-form: forms don't nest #}
+  <form id="ob-logout" method="post" action="{{ url_for('logout') }}" hidden><input type="hidden" name="csrf_token" value="{{ csrf_token }}"></form>
+</aside>
+<script src="{{ url_for('static', filename='onboarding.js') }}?v={{ asset_v }}"></script>
+{% elif ec_pa and ask is defined %}{% include '_ec_pa_panel.html' %}
+{% elif ask is defined %}
+{% set G = ask %}
+{# phone view (2026-11-07): the dim behind Ask OneHR's bottom sheet; never shown on a desktop #}
+<div class="gp-scrim" id="gp-scrim" hidden></div>
+<aside class="gp{{ ' is-offline' if not G.available else '' }}" id="ask-panel" aria-labelledby="gp-title"
+       data-endpoint="{{ url_for('ask_onehr') }}" data-available="{{ '1' if G.available else '0' }}">
+  <div class="gp-head">
+    <span class="gp-mark" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M12 2l2.4 7.6L22 12l-7.6 2.4L12 22l-2.4-7.6L2 12l7.6-2.4z"></path></svg></span>
+    <div class="gp-ht"><h2 id="gp-title">Ask OneHR</h2><p>Finds things and takes you there</p></div>
+    {% if not G.available %}<span class="gp-pill" title="The assistant is off right now: it searches instead">Search only</span>{% endif %}
+    <button type="button" class="gp-fold" id="gp-fold" aria-label="Fold Ask OneHR away" title="Fold away">
+      <svg class="gp-fold-i" viewBox="0 0 24 24" aria-hidden="true"><path d="M11 17l-5-5 5-5M18 17l-5-5 5-5"></path></svg>
+      <span class="gp-x" hidden aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"></path></svg></span></button>
+  </div>
+  <div class="gp-log" id="ask-log" aria-live="polite">
+    <div class="gp-rest" id="gp-rest">
+      {# a short greeting and the prompts, nothing preloaded (Chris, 2026-10-16): what's pending is one chip away #}
+      <p class="gp-lead">{{ G.lead }}</p>
+      {% if G.suggestions %}
+      <p class="gp-try-h">Try</p>
+      <div class="gp-chips" id="ask-try">{% for q in G.suggestions %}<button type="button" class="gp-chip ask-sugg" data-q="{{ q }}">{{ q }}</button>{% endfor %}</div>
+      {% endif %}
+      <button type="button" class="ob-skip gp-again" id="gp-tour-again" data-url="{{ url_for('onboard_tour') }}">Show me around again</button>
+    </div>
+  </div>
+  <form class="gp-form" id="ask-form" autocomplete="off">
+    <label for="ask-input" class="sr-only">Ask OneHR</label>
+    <div class="gp-box">
+      <input id="ask-input" type="text" maxlength="600" placeholder="{{ 'Ask where something is…' if G.available else 'Search pages and panels' }}">
+      <button type="submit" class="gp-send{{ '' if G.available else ' is-offline' }}" aria-label="{{ 'Ask' if G.available else 'Search' }}">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6"></path></svg></button>
+    </div>
+    <p class="gp-foot">I find things and take you there. Results stay in their cards.</p>
+  </form>
+</aside>
+<aside class="gp-rail" id="gp-rail" aria-label="Ask OneHR, folded" hidden>
+  <button type="button" class="gp-open" id="gp-open" aria-label="Open Ask OneHR{{ (', %d %s you' % (G.pending, 'needs' if G.pending == 1 else 'need')) if G.pending else '' }}">
+    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2l2.4 7.6L22 12l-7.6 2.4L12 22l-2.4-7.6L2 12l7.6-2.4z"></path></svg>
+    {% if G.pending %}<span class="gp-badge" aria-hidden="true">{{ G.pending }}</span>{% endif %}
+  </button>
+  <span class="gp-rail-lab" aria-hidden="true">Ask OneHR</span>
+</aside>
+<script>
+  /* folded or open, as this person left it, before the page paints (this browser only) */
+  (function () { try { if (localStorage.getItem("onehr.guide.folded") === "1") {
+    document.getElementById("ask-panel").hidden = true; document.getElementById("gp-rail").hidden = false; } } catch (e) {} })();
+</script>
+<script src="{{ url_for('static', filename='ask_onehr.js') }}?v={{ asset_v }}"></script>
+{% endif %}
+{# What's new's pop-out (2026-11-03): this account's unseen notes, once; nothing is drawn when there are none #}
+{% include "_whatsnew_popout.html" %}
+{% endblock %}

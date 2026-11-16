@@ -1,0 +1,9 @@
+{% set n_views = (nav_has_report | int) + (nav_is_manager | int) + (nav_is_hod | int) %}
+{% if n_views > 1 %}
+<div class="cycle-history" role="group" aria-label="Feedback view" style="margin-bottom:14px">
+  <span class="ch-label">View:</span>
+  {% if nav_has_report %}<a class="ch-pill {{ 'on' if active_view == 'mine' else '' }}" {% if active_view == 'mine' %}aria-current="page"{% endif %} href="{{ url_for('my_report') }}">My Feedback</a>{% endif %}
+  {% if nav_is_manager %}<a class="ch-pill {{ 'on' if active_view == 'team' else '' }}" {% if active_view == 'team' %}aria-current="page"{% endif %} href="{{ url_for('team_view') }}">Team View</a>{% endif %}
+  {% if nav_is_hod %}<a class="ch-pill {{ 'on' if active_view == 'hod' else '' }}" {% if active_view == 'hod' %}aria-current="page"{% endif %} href="{{ url_for('hod_view') }}">HOD View</a>{% endif %}
+</div>
+{% endif %}

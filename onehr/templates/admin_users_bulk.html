@@ -1,0 +1,195 @@
+{% extends "base.html" %}
+{% from "_filter_rows.html" import filter_rows %}
+{% from "_search_in.html" import search_in_box %}
+{% set leaving = view == 'inactivate' %}
+{% set giving = view == 'urole' %}
+{% block title %}Users — {{ 'Give a user role' if giving else 'Mark several as left' if leaving else 'Bring people back' }}{% endblock %}
+{% block body %}
+{# People > Users > Mark several as left / Bring people back, on the admin page kit (canvas K4, 2026-10-10): business
+   group, unit and department rows as on the Users list, job grade beside the search; tick people, or every one that
+   matches, and the app's dialog says what changes before anything does. #}
+<div class="adm-headrow">
+  <p class="adm-lede">
+    {% if giving %}Give several people one user role by hand, or put them back on Automatic (Basic until confirmed, then
+      Full). Their access follows it from their next click; someone it doesn't rate in the 360 drops off their raters'
+      lists this cycle, and comes back when a role rates them again.
+    {% elif leaving %}Mark people who have left the company, several at once: they can no longer sign in and are not added
+      to new panels. Their history is kept.
+    {% else %}Bring back people marked as left: they can sign in and be added to panels again.{% endif %}</p>
+  <div class="adm-headrow-acts">
+    {% if giving %}<a class="btn-link" href="{{ url_for('admin_roles', tab='user') }}">The user roles &rsaquo;</a>
+    {% else %}<a class="btn-link" href="{{ url_for('admin_users', view='activate' if leaving else 'inactivate') }}">{{ 'Bring people back' if leaving else 'Mark several as left' }}</a>{% endif %}
+  </div>
+</div>
+
+<section class="admin-card adm-filters" aria-label="Filters">
+  {{ filter_rows(frows) }}
+  <form method="get" class="adm-fsearch">
+    <input type="hidden" name="view" value="{{ view }}">
+    {% for k in ('fbg', 'fbu', 'fdept') %}{% if request.args.get(k) %}<input type="hidden" name="{{ k }}" value="{{ request.args.get(k) }}">{% endif %}{% endfor %}
+    {{ search_in_box(search_in, qin, q) }}
+    {% if filt_jgs %}
+    <select name="fjg" class="modern-select" onchange="this.form.submit()" aria-label="Job grade">
+      <option value="">Every job grade</option>
+      {% for g in filt_jgs %}<option value="{{ g }}" {{ 'selected' if g in active_fjg }}>JG {{ g }}</option>{% endfor %}
+    </select>
+    {% endif %}
+    <span class="adm-count">{{ total | thousands }} {{ 'person' if total == 1 else 'people' }}{{ '' if leaving or giving else ' marked as left' }}</span>
+  </form>
+</section>
+
+<form method="post" id="bulk-form" data-confirm-ok="{{ 'Give the role' if giving else 'Mark as left' if leaving else 'Bring back' }}"{% if leaving %} data-confirm-tone="danger"{% endif %}>
+  <input type="hidden" name="action" value="{{ 'bulk_user_role' if giving else 'bulk_mark_left' if leaving else 'bulk_reactivate' }}">
+  <input type="hidden" name="select_all" id="select-all-flag" value="0">
+  <input type="hidden" name="q" value="{{ q }}">
+  <input type="hidden" name="qin" value="{{ qin }}">
+  {% for v in active_fbg %}<input type="hidden" name="fbg" value="{{ v }}">{% endfor %}
+  {% for v in active_fcompany %}<input type="hidden" name="fcompany" value="{{ v }}">{% endfor %}
+  {% for v in active_fdept %}<input type="hidden" name="fdept" value="{{ v }}">{% endfor %}
+  {% for v in active_fjg %}<input type="hidden" name="fjg" value="{{ v }}">{% endfor %}
+
+  <section class="admin-card" aria-label="People">
+    {% if users %}
+    <div class="adm-bulk-bar">
+      <span id="bulk-count-label" class="muted small">Tick the people you mean{% if total > users|length %}, or choose every one that matches{% endif %}.</span>
+      {% if total > users|length %}
+      <button type="button" id="select-all-btn" class="btn-link">Choose all {{ total | thousands }}</button>
+      {% endif %}
+      <span class="adm-bulk-acts" id="bulk-bar" hidden>
+        <button type="button" id="bulk-clear-btn" class="btn-link">Clear</button>
+        {% if giving %}<label class="sr-only" for="bulk-role">The user role to give</label>
+        <select id="bulk-role" name="user_role_id" class="modern-select" required>
+          <option value="">Choose a user role…</option>
+          {% for r in uroles %}<option value="{{ r.id }}" data-opens="{{ r.opens }}">{{ r.name }}</option>{% endfor %}
+          <option value="auto" data-opens="">Automatic: Basic until confirmed, then Full</option>
+        </select>{% endif %}
+        <button type="submit" id="bulk-submit-btn" class="{{ 'danger' if leaving else 'primary' }}">{{ 'Give the role' if giving else 'Mark as left' if leaving else 'Bring back' }}</button>
+      </span>
+    </div>
+    <div class="table-scroll">
+    <table class="admin-table" id="bulk-users-table">
+      <thead>
+        <tr>
+          <th class="adm-cb-col"><input type="checkbox" id="page-selall" aria-label="Choose everyone on this page"></th>
+          <th>Person</th>
+          <th>Unit · department</th>
+          <th>Job grade</th>
+          {% if giving %}<th>User role now</th>{% endif %}
+        </tr>
+      </thead>
+      <tbody>
+        {% for u in users %}
+        <tr class="data-row">
+          <td><input type="checkbox" class="row-cb" name="user_id" value="{{ u['id'] }}" data-impact="{{ u['impact_n'] }}"
+                     aria-label="Choose {{ u['full_name'] }}"></td>
+          <td><b>{{ u['full_name'] }}</b>
+            <span class="muted small" style="display:block">{{ u['employee_id'] }}{% if u['job_title'] %} · {{ u['job_title'] | proper }}{% endif %}</span></td>
+          <td>{{ display_company(u['business_group'], u['company']) or display_bg(u['business_group']) or '—' }}{% if u['department'] %}<span class="muted small" style="display:block">{{ u['department'] | proper }}</span>{% endif %}</td>
+          <td>{{ u['job_grade'] or '—' }}</td>
+          {% if giving %}<td class="small">{{ role_of.get(u['id'], '—') }}</td>{% endif %}
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    </div>
+    {% if total_pages > 1 %}
+    <div class="pagination">
+      {% if prev_href %}<a class="btn-link" data-scroll-top href="{{ prev_href }}">&larr; Previous</a>{% endif %}
+      <span class="muted small">Page {{ page }} of {{ total_pages }}</span>
+      {% if next_href %}<a class="btn-link" data-scroll-top href="{{ next_href }}">Next &rarr;</a>{% endif %}
+    </div>
+    {% endif %}
+    {% else %}
+    <p class="muted" style="margin:0">{{ 'Nobody matches.' if leaving or giving else 'Nobody marked as left matches.' }} Try another business group or unit, or clear the search.</p>
+    {% endif %}
+  </section>
+</form>
+
+<script>
+(function () {
+  var form = document.getElementById('bulk-form');
+  var boxes = Array.prototype.slice.call(document.querySelectorAll('.row-cb'));
+  var pageSelAll = document.getElementById('page-selall');
+  if (!form || !pageSelAll) return;
+  var selectAllBtn = document.getElementById('select-all-btn');
+  var selectAllFlag = document.getElementById('select-all-flag');
+  var bar = document.getElementById('bulk-bar');
+  var countLabel = document.getElementById('bulk-count-label');
+  var clearBtn = document.getElementById('bulk-clear-btn');
+  var hint = countLabel.textContent;
+  var totalMatching = {{ total|tojson }};
+  var leaving = {{ leaving|tojson }};
+  var giving = {{ giving|tojson }};
+  var roleSel = document.getElementById('bulk-role');
+  var selectAllMode = false;
+  function people(n) { return n.toLocaleString() + (n === 1 ? ' person' : ' people'); }
+  function ratings(n) { return n.toLocaleString() + (n === 1 ? ' rating' : ' ratings'); }
+
+  // what the dialog says: who, how many, and what happens to their ratings
+  function refresh() {
+    var checked = boxes.filter(function (b) { return b.checked; });
+    var n = selectAllMode ? totalMatching : checked.length;
+    bar.hidden = n === 0;
+    countLabel.textContent = n ? (selectAllMode ? 'All ' + people(n) + ' that match chosen' : people(n) + ' chosen') : hint;
+    var msg;
+    if (giving) {
+      var o = roleSel && roleSel.selectedIndex > 0 ? roleSel.options[roleSel.selectedIndex] : null;
+      var who = selectAllMode ? 'all ' + people(n) + ' that match (everyone these filters find, not just this page)' : people(n);
+      msg = o ? ('Give ' + who + ' the role ' + o.textContent + '? ' +
+                 (o.value === 'auto' ? 'They go back to Basic until confirmed, then Full. '
+                                     : 'It opens: ' + (o.getAttribute('data-opens') || 'nothing beyond the dashboard') + '. ') +
+                 'Their access follows it from their next click. Anyone it doesn\'t rate in the 360 drops off their raters\' lists this cycle; anyone it rates again comes back.')
+              : 'Choose a user role first.';
+      form.setAttribute('data-confirm', msg);
+      pageSelAll.checked = checked.length === boxes.length && boxes.length > 0;
+      pageSelAll.indeterminate = checked.length > 0 && checked.length < boxes.length;
+      return;
+    }
+    if (selectAllMode) {
+      msg = (leaving ? 'Mark all ' : 'Bring back all ') + people(n) + ' that match? It covers everyone these filters find, not just this page. ';
+      msg += leaving ? 'They can no longer sign in and are not added to new panels. Any ratings involving them that are not in yet are archived; ratings already in and their history are kept.'
+                     : 'They can sign in and be added to panels again, and the ratings archived when they left come back.';
+    } else {
+      var impact = checked.reduce(function (sum, b) { return sum + (parseInt(b.dataset.impact, 10) || 0); }, 0);
+      msg = (leaving ? 'Mark ' + people(n) + ' as left? ' : 'Bring back ' + people(n) + '? ');
+      msg += leaving ? 'They can no longer sign in and are not added to new panels. ' +
+                       (impact ? ratings(impact) + ' involving them that are not in yet are archived; ratings already in and their history are kept.'
+                               : 'They have no ratings waiting this cycle.')
+                     : 'They can sign in and be added to panels again. ' +
+                       (impact ? ratings(impact) + ' archived when they left come back.' : 'They have no archived ratings to bring back.');
+    }
+    form.setAttribute('data-confirm', msg);
+    pageSelAll.checked = checked.length === boxes.length && boxes.length > 0;
+    pageSelAll.indeterminate = checked.length > 0 && checked.length < boxes.length;
+  }
+  function exitSelectAll() {
+    selectAllMode = false;
+    selectAllFlag.value = '0';
+    boxes.forEach(function (b) { b.disabled = false; });
+  }
+  boxes.forEach(function (b) {
+    b.addEventListener('change', function () { if (selectAllMode) exitSelectAll(); refresh(); });
+  });
+  pageSelAll.addEventListener('change', function () {
+    if (selectAllMode) exitSelectAll();
+    boxes.forEach(function (b) { b.checked = pageSelAll.checked; });
+    refresh();
+  });
+  if (selectAllBtn) {
+    selectAllBtn.addEventListener('click', function () {
+      selectAllMode = true;
+      selectAllFlag.value = '1';
+      boxes.forEach(function (b) { b.checked = true; b.disabled = true; });
+      refresh();
+    });
+  }
+  if (roleSel) roleSel.addEventListener('change', refresh);
+  clearBtn.addEventListener('click', function () {
+    exitSelectAll();
+    boxes.forEach(function (b) { b.checked = false; });
+    refresh();
+  });
+  refresh();
+})();
+</script>
+{% endblock %}

@@ -1,0 +1,76 @@
+{% extends "base.html" %}
+{% block title %}{{ mod.label }} — Progress{% endblock %}
+{% block body %}
+{# The module's worklist: everyone taking part, one row per person, by stage (admin round 4, canvas row 1 -- the Career
+   Plan's pattern for every module). Its Excel is on Reports (Data downloads), the same status. #}
+{% from "_filter_rows.html" import filter_rows %}
+{% from "_search_in.html" import search_in_box %}
+{% from "_adm_panel.html" import person_peek %}
+<div class="adm-headrow">
+  <p class="adm-lede">Everyone taking part{% if view_cycle %} in {{ view_cycle['name'] }}{% endif %}, and where their
+    {{ mod.unit }} is; open someone to see or change it on their page.</p>
+  <div class="adm-headrow-acts">
+    {% if remind and remind_href %}<a class="btn-link" href="{{ remind_href }}">Remind the {{ remind | thousands }} {{ remind_words }} &rsaquo;</a>{% endif %}</div>
+</div>
+
+{% if note %}
+<div class="admin-card"><p class="muted" style="margin:0">{{ note }}</p></div>
+{% else %}
+{% if no_mod %}
+<p class="adm-note-line"><b>{{ no_mod | thousands }} KPI line{{ '' if no_mod == 1 else 's' }}</b> {{ 'has' if no_mod == 1 else 'have' }}
+  no moderator. <a href="{{ url_for('admin_performance_exceptions') }}">Give {{ 'it' if no_mod == 1 else 'them' }} one &rsaquo;</a></p>
+{% endif %}
+<section class="admin-card adm-filters" aria-label="Filters">
+  {{ filter_rows(frows) }}
+  <div class="adm-frow">
+    <span class="adm-frow-lbl">Status</span>
+    <div class="adm-frow-pills adm-stage-chips" role="group" aria-label="Status">
+      {% for c in chips %}<a class="adm-frow-pill{{ ' is-on' if c.on }}" href="{{ c.href }}"{% if c.on %} aria-current="true"{% endif %}{% if c.why %} title="{{ c.why }}"{% endif %}><i class="adm-dot" style="background: {{ c.color }}"></i>{{ c.label }}<span>{{ c.n | thousands }}</span></a>{% endfor %}
+    </div>
+  </div>
+  <form method="get" class="adm-fsearch">
+    {% for k in ('fbg', 'fbu', 'fdept', 'fstage') %}{% if request.args.get(k) %}<input type="hidden" name="{{ k }}" value="{{ request.args.get(k) }}">{% endif %}{% endfor %}
+    {{ search_in_box(search_in, qin, q) }}
+    <span class="adm-count">{{ total | thousands }} {{ 'person' if total == 1 else 'people' }}</span>
+  </form>
+</section>
+
+<div class="admin-card">
+  {% if rows %}
+  <div class="table-scroll table-scroll-capped"><table class="admin-table" id="module-progress-table">
+    <thead><tr><th>Person</th><th>Unit</th><th data-col-filter>Department</th><th>Line manager</th><th>Status</th>
+      <th>Last change</th><th><span class="sr-only">Open</span></th></tr></thead>
+    <tbody>
+      {% for r in rows %}
+      <tr class="data-row">
+        <td>
+          <p style="font-weight:600;margin:0"><a href="{{ url_for('admin_person', uid=r.id, tab=person_tab) }}" data-person-open="{{ r.id }}">{{ r.full_name }}</a></p>
+          <p class="muted small" style="margin:2px 0 0"><code>{{ r.employee_id }}</code>{% if r.job_grade %} &middot; JG {{ r.job_grade }}{% endif %}{% if r.job_title %} &middot; {{ r.job_title | proper }}{% endif %}</p>
+        </td>
+        <td class="small">{{ display_company(r.business_group, r.company) or '—' }}</td>
+        <td class="small">{{ r.department | proper or '—' }}</td>
+        <td class="small">{{ r.manager or '—' }}</td>
+        <td><span class="adm-stage-k"><i style="background: {{ stage_names[r.stage][3] }}"></i><b>{{ r.label }}</b></span>
+          <span class="muted small" style="display:block">{{ r.detail }}</span></td>
+        <td class="small">{{ r.last | myt_day if r.last else '—' }}</td>
+        <td><a class="btn-link" href="{{ url_for('admin_person', uid=r.id, tab=person_tab) }}" data-person-open="{{ r.id }}">Open &rsaquo;</a></td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table></div>
+
+  {% if pages > 1 %}
+  <div class="pagination">
+    {% if page > 1 %}<a class="btn-link" data-scroll-top href="{{ prev_href }}">&larr; Previous</a>{% endif %}
+    <span class="muted small">Showing {{ (page - 1) * per_page + 1 }}–{{ [page * per_page, total] | min }} of {{ total | thousands }}</span>
+    {% if page < pages %}<a class="btn-link" data-scroll-top href="{{ next_href }}">Next &rarr;</a>{% endif %}
+  </div>
+  {% endif %}
+  {% else %}
+  <p class="muted" style="margin:0">{% if fstage %}Nobody here is at this stage.{% else %}No one matches that search.{% endif %}</p>
+  {% endif %}
+</div>
+{% endif %}
+{# a person opens beside the list (phase 2 of the admin side panels): their {{ mod.unit }}, Previous / Next down the page #}
+{{ person_peek({"pm": "Performance", "competency": "Competency", "calibration": "Calibration", "idp": "Career Plan"}.get(mod.key, mod.label)) }}
+{% endblock %}

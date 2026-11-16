@@ -1,0 +1,872 @@
+{% extends "base.html" %}
+{% block title %}My development plan{% endblock %}
+{% block body %}
+<div class="page-head">
+  <div>
+    <h1>{% if plan_year %}My {{ plan_year }} development plan{% else %}My development plan{% endif %}</h1>
+    <p class="muted">
+      {% if is_authoring %}Written now, for the year ahead
+      {% elif plan_year %}Agreed at {{ plan_year - 1 }} Year-End{% endif %}
+      {% if idp and idp['status'] != 'draft' %}
+        &middot; shared{% if idp['shared_at'] %} {{ idp['shared_at'] | myt_date }}{% endif %}
+      {% endif %}
+    </p>
+  </div>
+  <div class="page-head-right">
+    {% if idp and idp['status'] == 'closed' %}
+      <span class="status-pill status-reviewed">Agreed with your manager</span>
+    {% elif idp and idp['status'] == 'shared' %}
+      <span class="status-pill status-submitted">Ready to discuss</span>
+    {% elif not is_active_period %}
+      <span class="muted small">Past period &mdash; read-only</span>
+    {% elif not is_authoring %}
+      <span class="muted small">Read-only &mdash; plans are written at Year-End</span>
+    {% endif %}
+  </div>
+</div>
+
+{# A plan is written once a year, so this switches YEARS, not halves. It shows
+   only when there is more than one to reach -- which is exactly the Year-End
+   case, where you are still running this year's plan while writing next
+   year's. Without it that live plan would vanish the moment Year-End opened. #}
+{% if plan_years | length > 1 %}
+<div class="bg-pills" style="margin-bottom:14px">
+  {% for y in plan_years %}
+  <a href="{{ url_for('idp_view', year=y) }}"
+     class="{{ 'active' if y == plan_year else '' }}">{{ y }}</a>
+  {% endfor %}
+</div>
+{% endif %}
+
+{% if not period %}
+<div class="admin-card">
+  <p class="note">No performance period is open yet, so there's nothing to plan against.</p>
+</div>
+{% elif not idp and not is_authoring %}
+{# Nothing was agreed for this year, and this isn't the period plans are
+   written in. Say both, and say when the next one opens -- an empty page with
+   no explanation reads as broken. #}
+<div class="admin-card">
+  <p class="note">
+    <strong>No development plan was agreed for {{ plan_year }}.</strong>
+    Plans are written at Year-End for the year ahead
+    {%- if next_authoring_year and next_authoring_year > plan_year %}, so your
+    {{ next_authoring_year }} plan opens at {{ next_authoring_year - 1 }} Year-End{% endif %}.
+  </p>
+</div>
+{% else %}
+
+{# ---- where you are in the plan --------------------------------------
+   The page below is four full-width cards in one long scroll, and nothing in
+   it says how far through you are or what is stopping you submitting. This
+   strip answers both without moving any of them: it is derived entirely from
+   state the page already has, so there is nothing new to keep in step. #}
+{% set has_evidence = (gaps and (gaps['items'] or gaps['future'])) or suggestions.get('principles') %}
+{% set planned = goals | selectattr('action_experience') | selectattr('action_exposure')
+                       | selectattr('action_education') | list %}
+{% set shared = idp and idp['status'] != 'draft' %}
+{# "You are here" is the first step not yet done, so exactly one is ever
+   marked -- and once everything is done, none is. #}
+{% set ns = namespace(cur=0) %}
+{% if not has_evidence %}{% set ns.cur = 1 %}
+{% elif not goals %}{% set ns.cur = 2 %}
+{% elif planned | length < goals | length %}{% set ns.cur = 3 %}
+{% elif not shared %}{% set ns.cur = 4 %}{% endif %}
+
+<div class="idp-steps">
+  <div class="idp-step {{ 'is-done' if has_evidence }}{{ ' is-now' if ns.cur == 1 }}">
+    <p class="n">Step 1{% if has_evidence %} &middot; done{% elif ns.cur == 1 %} &middot; you're here{% endif %}</p>
+    <p class="t">Review your feedback</p>
+    <p class="s">{% if has_evidence %}Your assessments are in{% else %}Nothing released to build from yet{% endif %}</p>
+  </div>
+  <div class="idp-step {{ 'is-done' if goals }}{{ ' is-now' if ns.cur == 2 }}">
+    <p class="n">Step 2{% if goals %} &middot; done{% elif ns.cur == 2 %} &middot; you're here{% endif %}</p>
+    <p class="t">Choose what to work on</p>
+    <p class="s">{% if goals %}{{ goals | length }} of {{ max_goals }} goal(s) added{% else %}No goals yet{% endif %}</p>
+  </div>
+  <div class="idp-step {{ 'is-done' if goals and planned | length == goals | length }}{{ ' is-now' if ns.cur == 3 }}">
+    <p class="n">Step 3{% if goals and planned | length == goals | length %} &middot; done{% elif ns.cur == 3 %} &middot; you're here{% endif %}</p>
+    <p class="t">Write how you'll do it</p>
+    <p class="s">{% if goals %}{{ planned | length }} of {{ goals | length }} have a full 70/20/10 plan{% else %}Add a goal first{% endif %}</p>
+  </div>
+  <div class="idp-step {{ 'is-done' if shared }}{{ ' is-now' if ns.cur == 4 }}">
+    <p class="n">Step 4{% if shared %} &middot; done{% elif ns.cur == 4 %} &middot; you're here{% endif %}</p>
+    <p class="t">Share for discussion</p>
+    <p class="s">
+      {%- if shared %}Shared &mdash; your manager can see it
+      {%- elif not goals %}Nothing to share yet
+      {%- elif planned | length < goals | length %}{{ goals | length - planned | length }} goal(s) still need actions
+      {%- else %}Ready when you are{% endif %}</p>
+  </div>
+</div>
+
+{% if can_edit %}
+<div class="admin-card" style="margin-bottom:14px">
+  <p style="margin:0 0 4px">Pick two or three things you want to get better at
+    over {{ plan_year }}, and say how you'll do it.</p>
+  <p class="muted small" style="margin:0">Your manager sees it once you share it, and you can keep editing right up to your career conversation.</p>
+</div>
+{% endif %}
+
+{# ---- what this plan is built from ------------------------------------
+   Context, not a checklist to clear. Nothing here blocks: the plan closes at
+   the career conversation, and an input still outstanding is a thing to raise
+   in that conversation rather than a reason to be locked out of it. #}
+{% if can_edit and readiness %}
+{% set outstanding = readiness | rejectattr('done') | list %}
+<div class="admin-card" style="margin-bottom:14px">
+  <h2 style="margin-top:0;font-size:1.05rem">What this plan is built on</h2>
+  <ul style="list-style:none;margin:0;padding:0">
+    {% for it in readiness %}
+    <li style="display:flex;gap:10px;align-items:flex-start;padding:7px 0;
+               border-top:{{ '1px solid var(--line-soft)' if not loop.first else '0' }}">
+      <span aria-hidden="true" style="flex:0 0 auto;font-size:0.8125rem;line-height:1.5;
+            color:{{ 'var(--d-fg-1a7a54)' if it['done'] else 'var(--d-fg-9aa0b0)' }}"
+        >{{ '&#10003;' | safe if it['done'] else '&#9679;' | safe }}</span>
+      <span style="flex:1 1 auto">
+        <span style="font-weight:500;font-size:0.84375rem">{{ it['label'] }}</span>
+        <span class="muted small" style="display:block;margin-top:1px">
+          {{ it['done_note'] if it['done'] else it['todo_note'] }}
+        </span>
+      </span>
+      {% if it['url'] and not it['done'] %}
+      <a class="btn-link" style="flex:0 0 auto;white-space:nowrap" href="{{ it['url'] }}">Open &rarr;</a>
+      {% endif %}
+    </li>
+    {% endfor %}
+  </ul>
+  {% if outstanding %}
+  <p class="muted small" style="margin:10px 0 0">
+    Write the plan anyway &mdash; you can keep editing it right up to your career
+    conversation, and anything still outstanding is worth raising there.
+  </p>
+  {% endif %}
+</div>
+{% endif %}
+
+{# ---- grounded suggestions: the person's own released feedback ---- #}
+{% if can_edit and (suggestions.get('principles') or suggestions.get('manager_remark')) %}
+<div class="admin-card" style="margin-bottom:14px">
+  <h2 style="margin-top:0;font-size:1.05rem">From your own feedback</h2>
+  {% if suggestions.get('principles') %}
+  <p class="muted small" style="margin:0 0 8px">
+    Your lowest-agreement leadership principles{% if suggestions.get('cycle_name') %}
+    in {{ suggestions['cycle_name'] }}{% endif %} &mdash; a reasonable place to start.
+    Click one to add it as a goal.
+  </p>
+  <div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:10px">
+    {% for p in suggestions['principles'] %}
+    <button type="button" class="btn-link idp-suggest"
+            data-area="{{ p['name'] }}"
+            style="border:1px solid var(--d-bd-e5e5e5);border-radius:999px;padding:5px 12px">
+      + {{ p['name'] }} <span class="muted small">{{ p['pct'] }}%</span>
+    </button>
+    {% endfor %}
+  </div>
+  {% endif %}
+  {% if suggestions.get('manager_remark') %}
+  <div class="resp-comment" style="margin:0">
+    <p class="resp-comment-head">Your manager's remark
+      <span class="muted small">&middot; {{ suggestions['manager_remark']['period'] }}</span></p>
+    <p>{{ suggestions['manager_remark']['remark'] }}</p>
+  </div>
+  {% endif %}
+</div>
+{% endif %}
+
+{# ---- where you said you want to go ----------------------------------
+   The panel above is all gap -- lowest principles, the manager's remark.
+   A plan built only from that is remediation with no direction in it. This
+   is the other half, in the person's own words, and it is not clickable on
+   purpose: an aspiration is a destination, not a development area. #}
+{# Not gated on can_edit, unlike the panel above: that one's chips ADD goals and
+   are meaningless once the plan is read-only, but this is context. Reading a
+   finished plan against where you said you were heading is the point of having
+   both, and the career profile stays editable year-round regardless. #}
+{% if suggestions.get('profile') %}
+{% set prof = suggestions['profile'] %}
+<div class="admin-card" style="margin-bottom:14px">
+  <h2 style="margin-top:0;font-size:1.05rem">Where you said you want to go</h2>
+  <p class="muted small" style="margin:0 0 10px">From your career profile.
+    {% if can_edit %}Your goals below are how you get there &mdash; what would you need
+    to develop to make this move?{% else %}Your goals below are how you get there.{% endif %}</p>
+  {% for lbl, text in prof['aspirations'] %}
+  <p class="succ-stat__label">{{ lbl }}</p>
+  <p class="succ-quote">{{ text }}</p>
+  {% endfor %}
+  {% if prof['strengths'] %}
+  <p class="succ-stat__label" style="margin-top:10px">Strengths you named</p>
+  <p class="succ-quote">{{ prof['strengths'] }}</p>
+  <p class="muted small" style="margin:-4px 0 0">A plan can build on one of these, not
+    only close a gap.</p>
+  {% endif %}
+  {% if prof['mentor'] %}
+  {# The 20% box is the hardest one to fill, and they have already named
+     somebody. Point at it rather than leaving the two facts unconnected. #}
+  <p class="muted small" style="margin:12px 0 0">You named
+    <strong>{{ prof['mentor'] }}</strong> as a mentor &mdash; a natural fit for the
+    <strong>From others (20%)</strong> box on a goal below.</p>
+  {% endif %}
+  <p class="muted small" style="margin:12px 0 0">
+    <a class="btn-link" href="{{ url_for('idp_career_view') }}">Update your career profile &rarr;</a></p>
+</div>
+{% else %}
+<div class="admin-card" style="margin-bottom:14px">
+  <h2 style="margin-top:0;font-size:1.05rem">Where you said you want to go</h2>
+  <p class="muted small" style="margin:0">You haven't filled in your career profile yet.
+    A plan reads very differently when it is pointed somewhere &mdash;
+    <a class="btn-link" href="{{ url_for('idp_career_view') }}">say where you want to go</a>
+    and it will show up here.</p>
+</div>
+{% endif %}
+
+{# ---- suggest goals from the assessments -------------------------------
+   Proposals, not a filled-in plan: a plan somebody didn't read isn't theirs.
+   The card says what the run would be built from before it is spent, so the
+   answer to "why is there nothing?" is on the page rather than in a failure. #}
+{% if can_edit %}
+{% set gap_n = gaps['items'] | length %}
+{% set fut_n = gaps['future'] | length %}
+<div class="admin-card" style="margin-bottom:14px">
+  <h2 style="margin-top:0;font-size:1.05rem">Build goals from your assessments</h2>
+  {% if gap_n or fut_n %}
+  <p class="muted small" style="margin:0 0 10px">
+    {% if gap_n %}
+    Your results recorded <strong>{{ gap_n }}</strong>
+    {{ 'thing' if gap_n == 1 else 'things' }} to develop{% if gaps['cycle_name'] %}
+    &mdash; from {{ gaps['cycle_name'] }} and your technical assessment{% endif %}.
+    Related ones are grouped into a single goal rather than one goal each.
+    {% else %}
+    Your assessments recorded nothing outstanding, so this builds from the
+    <strong>{{ fut_n }}</strong> {{ 'competency' if fut_n == 1 else 'competencies' }}
+    at your next proficiency level instead.
+    {% endif %}
+  </p>
+  <div style="display:flex;flex-wrap:wrap;gap:8px;align-items:center">
+    {% if ai_enabled %}
+    <button type="button" class="primary" id="idp-gen">Suggest goals</button>
+    <span class="muted small" id="idp-gen-status" aria-live="polite"></span>
+    {% else %}
+    <p class="muted small" style="margin:0">Goal suggestions aren't switched on here.</p>
+    {% endif %}
+  </div>
+  <details style="margin-top:10px">
+    <summary class="btn-link" style="cursor:pointer;padding:0">What it reads</summary>
+    <ul class="muted small" style="margin:8px 0 0;padding-left:18px">
+      {% for it in (gaps['items'] or gaps['future']) %}
+      <li>{{ it['label'] }}{% if it['note'] %} <span class="muted">&middot; {{ it['note'] }}</span>{% endif %}</li>
+      {% endfor %}
+    </ul>
+  </details>
+  {% else %}
+  {# The readiness strip above already names WHICH input is outstanding, and
+     links to it -- repeating that here would be the third time this page
+     says the same sentence. #}
+  <p class="muted small" style="margin:0">
+    Nothing to build from yet &mdash; see <strong>Before you submit</strong> above
+    for what this is waiting on. Add your goals yourself in the meantime.
+  </p>
+  {% endif %}
+</div>
+
+{# The proposals, reviewed before anything is written. #}
+<div id="idp-gen-overlay" class="modal-overlay" hidden>
+  <div class="modal-card" role="dialog" aria-modal="true" aria-labelledby="idp-gen-title"
+       style="max-width:720px">
+    <h2 id="idp-gen-title" style="margin:0">Suggested development goals</h2>
+    <p class="muted small" style="margin:4px 0 12px">Keep the ones you want. Everything
+      lands editable, and you set your own dates.</p>
+    <div id="idp-gen-body" style="max-height:52vh;overflow-y:auto"></div>
+    <div class="modal-actions">
+      <button type="button" class="btn-link" id="idp-gen-cancel">Cancel</button>
+      <button type="button" class="primary" id="idp-gen-apply">Add selected goals</button>
+    </div>
+  </div>
+</div>
+{% endif %}
+
+{# ---- the goals ---- #}
+<div class="admin-card">
+  <h2 style="margin-top:0;font-size:1.05rem">Development goals</h2>
+
+  {% if not goals %}
+  <p class="muted small" id="idp-empty" style="margin:0 0 10px">
+    {% if can_edit %}No goals yet. Add one below, or pick a suggestion above.
+    {% else %}No development goals were recorded for {{ plan_year }}.{% endif %}
+  </p>
+  {% endif %}
+
+  <div id="idp-goals">
+    {% for g in goals %}
+    <div class="admin-card idp-goal" data-goal="{{ g['id'] }}"
+         style="margin:0 0 12px;background:var(--d-bg-fbfbfe)">
+      <div style="display:flex;align-items:baseline;gap:10px;margin-bottom:8px">
+        <span class="muted small" style="font-variant-numeric:tabular-nums">{{ loop.index }}</span>
+        {# The goal's own name beside its number, so a plan reads as a list of
+           goals rather than a list of numbers. Kept in step with the field
+           below as it's typed -- see the idp-head-name listener. #}
+        <span class="idp-head-name" style="font-weight:600">{{ g['area'] or '' }}</span>
+        {% if g['source'] == 'suggested' %}
+        <span class="status-pill status-progress" title="Added from a suggestion — edit it freely">Suggested</span>
+        {% endif %}
+        {# Your plan is your document, so a change somebody else made to it is
+           never silent. #}
+        {% if g['edited_by_name'] %}
+        <span class="muted small">Edited by {{ g['edited_by_name'] }}
+          {%- if g['edited_at'] %} &middot; {{ g['edited_at'] | myt_date }}{% endif %}</span>
+        {% endif %}
+        {% if can_edit %}
+        <button type="button" class="btn-link idp-remove" style="margin-left:auto;color:var(--d-fg-bb0000)">Remove</button>
+        {% endif %}
+      </div>
+
+      {% if g['manager_comment'] %}
+      <div class="resp-comment" style="margin:0 0 10px">
+        <p class="resp-comment-head">Your manager on this goal</p>
+        <p>{{ g['manager_comment'] }}</p>
+      </div>
+      {% endif %}
+
+      <label style="display:block;margin-bottom:8px">
+        <span class="muted small">What do you want to develop?</span>
+        {% if can_edit %}
+        <input type="text" class="idp-field" data-field="area" value="{{ g['area'] or '' }}"
+               placeholder="A leadership principle, a skill, a competency"
+               style="width:100%;box-sizing:border-box;padding:7px 10px;border:1px solid var(--d-bd-d7dbe6);border-radius:8px">
+        {% else %}
+        <p style="margin:2px 0 0"><strong>{{ g['area'] or '—' }}</strong></p>
+        {% endif %}
+      </label>
+
+      <p class="muted small" style="margin:0 0 6px">How will you develop it? Most growth
+        comes from the work itself — start with the first box.</p>
+      <div class="idp-modes">
+        {% for m in modes %}
+        {% set fname = 'action_' ~ m['key'] %}
+        <div class="idp-mode">
+          <p class="idp-mode-head">
+            <span class="idp-mode-pct">{{ m['pct'] }}%</span> {{ m['label'] }}
+          </p>
+          {% if can_edit %}
+          <textarea class="idp-field" data-field="{{ fname }}" data-mode="{{ m['key'] }}" rows="3"
+                    placeholder="{{ m['hint'] }}"
+                    style="width:100%;box-sizing:border-box;padding:7px 10px;border:1px solid var(--d-bd-d7dbe6);border-radius:8px;font-family:inherit;font-size:0.84375rem;resize:vertical">{{ g[fname] or '' }}</textarea>
+          {% if ai_enabled %}
+          <div class="ai-draft" data-endpoint="{{ url_for('idp_draft_ai') }}"
+               data-limit="{{ ai_limit }}" data-remaining="{{ ai_remaining if ai_remaining is not none else ai_limit }}"
+               data-reset="{{ ai_reset_seconds or 0 }}"
+               style="display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-top:6px">
+            <div class="ai-split">
+              <button type="button" class="ai-draft-btn btn-link" aria-haspopup="true" aria-expanded="false">✨ Draft with AI <span class="ai-caret" aria-hidden="true">▾</span></button>
+              <div class="ai-menu" role="menu" hidden>
+                <div class="ai-menu-head">Choose what AI should do</div>
+                <button type="button" class="ai-cmd is-default" role="menuitem" data-cmd="polish">
+                  <span class="ai-cmd-ico">✨</span><span>Polish &amp; improve<small>Clearer, more specific</small></span></button>
+                <button type="button" class="ai-cmd" role="menuitem" data-cmd="longer">
+                  <span class="ai-cmd-ico">➕</span><span>Make it more concrete</span></button>
+                <button type="button" class="ai-cmd" role="menuitem" data-cmd="shorter">
+                  <span class="ai-cmd-ico">➖</span><span>Make it shorter</span></button>
+                <div class="ai-sep"></div>
+                <button type="button" class="ai-cmd" role="menuitem" data-cmd="grammar">
+                  <span class="ai-cmd-ico">✔️</span><span>Fix spelling &amp; grammar</span></button>
+              </div>
+            </div>
+            <span class="ai-quota small" aria-live="polite"></span>
+            <span class="ai-status muted small" aria-live="polite"></span>
+          </div>
+          {% endif %}
+          {% else %}
+          <p style="margin:2px 0 0;font-size:0.84375rem">{{ g[fname] or '—' }}</p>
+          {% endif %}
+        </div>
+        {% endfor %}
+      </div>
+      <p class="muted small" style="margin:8px 0 0">You don't have to fill all three —
+        the split is a guide, not a rule.</p>
+
+      <label style="display:block;margin-top:10px">
+        <span class="muted small">By when</span>
+        {% if can_edit %}
+        <input type="date" class="idp-field" data-field="target_date" value="{{ g['target_date'] or '' }}"
+               style="display:block;padding:7px 10px;border:1px solid var(--d-bd-d7dbe6);border-radius:8px">
+        {% else %}
+        <p style="margin:2px 0 0">{{ g['target_date'] or '—' }}</p>
+        {% endif %}
+      </label>
+
+      {# ---- check-in: live once the plan is out of draft ---- #}
+      {% if can_check_in %}
+      <div class="idp-progress">
+        <p class="muted small" style="margin:0 0 6px">Where are you with this?</p>
+        <div class="idp-prog-pills">
+          {% for s in progress_states %}
+          <button type="button" class="idp-prog-btn{{ ' is-on' if g['progress_status'] == s['key'] else '' }}"
+                  data-status="{{ s['key'] }}">{{ s['label'] }}</button>
+          {% endfor %}
+        </div>
+        <textarea class="idp-prog-note" rows="2" placeholder="Optional — what's happened, or what's blocking it"
+                  style="width:100%;box-sizing:border-box;margin-top:8px;padding:7px 10px;border:1px solid var(--d-bd-d7dbe6);border-radius:8px;font-family:inherit;font-size:0.84375rem;resize:vertical">{{ g['progress_note'] or '' }}</textarea>
+        {% if g['progress_at'] %}
+        <p class="muted small" style="margin:4px 0 0">Last updated {{ g['progress_at'] | myt_date }}</p>
+        {% endif %}
+      </div>
+      {% elif g['progress_status'] %}
+      <div class="idp-progress">
+        <span class="status-pill {{ progress_states | selectattr('key','equalto',g['progress_status']) | map(attribute='tone') | first }}">
+          {{ progress_states | selectattr('key','equalto',g['progress_status']) | map(attribute='label') | first }}</span>
+        {% if g['progress_note'] %}<p class="muted small" style="margin:6px 0 0">{{ g['progress_note'] }}</p>{% endif %}
+      </div>
+      {% endif %}
+
+      <span class="idp-status muted small" aria-live="polite" style="display:block;margin-top:6px"></span>
+    </div>
+    {% endfor %}
+  </div>
+
+  {% if can_edit %}
+  <div class="actions" style="justify-content:space-between;align-items:center;margin-top:4px">
+    <button type="button" class="btn-link" id="idp-add">+ Add a goal</button>
+    <span class="muted small" id="idp-count">{{ goals | length }} of {{ max_goals }}</span>
+  </div>
+  {% elif can_check_in %}
+  <p class="muted small" style="margin:4px 0 0">Your {{ plan_year }} goals are agreed —
+    keep the check-ins current so your manager can help where it's stuck.</p>
+  {% endif %}
+</div>
+
+{# ---- manager's response ----
+   Shown once the plan is CLOSED (agreed at the career conversation), like the PM manager remark shown once locked:
+   the manager's remark box saves as they type, so before that it is their working draft, not a published comment
+   (review, 2026-09-29). #}
+{% if idp and idp['manager_comment'] and idp['status'] == 'closed' %}
+<div class="admin-card" style="margin-top:14px">
+  <h2 style="margin-top:0;font-size:1.05rem">Your manager's comment</h2>
+  <div class="resp-comment" style="margin:0"><p>{{ idp['manager_comment'] }}</p></div>
+</div>
+{% endif %}
+
+{% if can_edit %}
+{# Sharing is NOT a hand-over -- no confirm dialog, because there is nothing
+   to warn about: the plan stays editable right up to the career conversation
+   that closes it. Once shared the button stays, so a plan can be re-shared
+   after edits without the employee wondering whether the manager saw them. #}
+<form method="post" action="{{ url_for('idp_submit') }}" style="margin-top:14px">
+  <div class="actions" style="align-items:center;gap:10px">
+    <span class="muted small">
+      {%- if shared %}Shared &mdash; keep editing until your career conversation
+      {%- else %}Your manager sees it once you share it. You can still edit afterwards.{% endif %}</span>
+    <button type="submit" class="primary" id="idp-submit-btn"
+      >{{ 'Update what your manager sees' if shared else 'Share with my manager' }}</button>
+  </div>
+</form>
+{% endif %}
+
+{% endif %}
+
+<script>
+(function () {
+  var goalsBox = document.getElementById('idp-goals');
+  if (!goalsBox) return;
+  var ENDPOINT = {{ url_for('idp_autosave') | tojson }};
+  var MAX = {{ max_goals }};
+
+  function csrf() {
+    var m = document.querySelector('meta[name="csrf-token"]');
+    return m ? m.content : '';
+  }
+  function post(body) {
+    body.append('csrf_token', csrf());
+    return fetch(ENDPOINT, {method: 'POST', body: body, credentials: 'same-origin'})
+      .then(function (r) { return r.json().then(function (d) { return {status: r.status, data: d}; }); });
+  }
+  function statusFor(el) {
+    var card = el.closest('.idp-goal');
+    return card ? card.querySelector('.idp-status') : null;
+  }
+
+  // Debounced per-field save, same 700ms rhythm as the scorecard's autosave.
+  var timers = {};
+  goalsBox.addEventListener('input', function (e) {
+    var el = e.target;
+    if (!el.classList || !el.classList.contains('idp-field')) return;
+    var card = el.closest('.idp-goal');
+    if (!card) return;
+    var key = card.getAttribute('data-goal') + ':' + el.getAttribute('data-field');
+    var st = statusFor(el);
+    clearTimeout(timers[key]);
+    timers[key] = setTimeout(function () {
+      if (st) st.textContent = 'Saving…';
+      var body = new FormData();
+      body.append('action', 'field');
+      body.append('goal_id', card.getAttribute('data-goal'));
+      body.append('field', el.getAttribute('data-field'));
+      body.append('value', el.value);
+      post(body).then(function (res) {
+        if (st) st.textContent = (res.data && res.data.ok) ? 'Saved' : (res.data && res.data.error) || 'Couldn’t save';
+      }).catch(function () { if (st) st.textContent = 'Couldn’t save'; });
+    }, 700);
+  });
+
+  goalsBox.addEventListener('click', function (e) {
+    var btn = e.target.closest('.idp-remove');
+    if (!btn) return;
+    var card = btn.closest('.idp-goal');
+    if (!card) return;
+    // the app's own dialog, not the browser's (2026-10-11)
+    window.askConfirm('Remove this goal from your plan?', 'Remove', function () {
+      var body = new FormData();
+      body.append('action', 'remove');
+      body.append('goal_id', card.getAttribute('data-goal'));
+      post(body).then(function (res) {
+        if (res.data && res.data.ok) { card.remove(); refreshCount(); }
+      });
+    }, true);
+  });
+
+  function refreshCount() {
+    var n = goalsBox.querySelectorAll('.idp-goal').length;
+    var c = document.getElementById('idp-count');
+    if (c) c.textContent = n + ' of ' + MAX;
+    var add = document.getElementById('idp-add');
+    if (add) add.disabled = n >= MAX;
+  }
+
+  function addGoal(area) {
+    var body = new FormData();
+    body.append('action', 'add');
+    if (area) { body.append('area', area); body.append('source', 'suggested'); }
+    return post(body).then(function (res) {
+      if (res.data && res.data.ok) { window.location.reload(); }
+      else if (res.data && res.data.error) { alert(res.data.error); }
+    });
+  }
+
+  var add = document.getElementById('idp-add');
+  if (add) add.addEventListener('click', function () { addGoal(null); });
+
+  Array.prototype.forEach.call(document.querySelectorAll('.idp-suggest'), function (b) {
+    b.addEventListener('click', function () { addGoal(b.getAttribute('data-area')); });
+  });
+
+  refreshCount();
+
+  // ---- check-in: status pills + a debounced note, on a committed plan.
+  // Its own endpoint, so a progress update can never write plan content.
+  var PROGRESS_ENDPOINT = {{ url_for('idp_progress') | tojson }};
+  function postProgress(card, body) {
+    body.append('csrf_token', csrf());
+    body.append('goal_id', card.getAttribute('data-goal'));
+    var st = card.querySelector('.idp-status');
+    if (st) st.textContent = 'Saving…';
+    return fetch(PROGRESS_ENDPOINT, {method: 'POST', body: body, credentials: 'same-origin'})
+      .then(function (r) { return r.json().then(function (d) { return {status: r.status, data: d}; }); })
+      .then(function (res) {
+        if (st) st.textContent = (res.data && res.data.ok) ? 'Saved'
+                                 : (res.data && res.data.error) || 'Couldn’t save';
+        return res;
+      })
+      .catch(function () { if (st) st.textContent = 'Couldn’t save'; });
+  }
+
+  goalsBox.addEventListener('click', function (e) {
+    var btn = e.target.closest('.idp-prog-btn');
+    if (!btn) return;
+    var card = btn.closest('.idp-goal');
+    var body = new FormData();
+    body.append('status', btn.getAttribute('data-status'));
+    postProgress(card, body).then(function (res) {
+      if (res && res.data && res.data.ok) {
+        // Paint only after the server confirms, so the pill never shows a
+        // state that wasn't actually stored.
+        card.querySelectorAll('.idp-prog-btn').forEach(function (b) { b.classList.remove('is-on'); });
+        btn.classList.add('is-on');
+      }
+    });
+  });
+
+  var noteTimers = {};
+  goalsBox.addEventListener('input', function (e) {
+    var ta = e.target;
+    if (!ta.classList || !ta.classList.contains('idp-prog-note')) return;
+    var card = ta.closest('.idp-goal');
+    var key = card.getAttribute('data-goal');
+    clearTimeout(noteTimers[key]);
+    noteTimers[key] = setTimeout(function () {
+      var body = new FormData();
+      body.append('note', ta.value);
+      postProgress(card, body);
+    }, 700);
+  });
+})();
+
+// ---- Draft with AI. Same COMMANDS presets and paint()/run() shape as the
+// scorecard's own widget (performance_my.html), parameterized by each
+// widget's data-endpoint. Copied per page, matching this app's existing
+// one-self-contained-IIFE-per-page convention for this widget.
+(function () {
+  var widgets = document.querySelectorAll('.ai-draft');
+  if (!widgets.length) return;
+  function csrfToken() {
+    var m = document.querySelector('meta[name="csrf-token"]');
+    return m ? m.content : '';
+  }
+  var COMMANDS = {
+    polish:  { busy: 'Polishing…', done: 'Polished — please review',
+      instr: 'Improve this text: make it clearer, more specific and well written, ' +
+             'while keeping my original meaning and points.' },
+    shorter: { busy: 'Shortening…', done: 'Shortened — please review',
+      instr: 'Make this text more concise while keeping the key points.' },
+    longer:  { busy: 'Expanding…', done: 'Expanded — please review',
+      instr: 'Make this development action more concrete and specific, without ' +
+             'inventing facts, courses or commitments that are not already implied.' },
+    grammar: { busy: 'Fixing…', done: 'Fixed — please review',
+      instr: 'Fix only the spelling, grammar and punctuation. Keep the wording and ' +
+             'meaning as close to the original as possible.' }
+  };
+  function fmt(sec) {
+    sec = Math.max(0, parseInt(sec, 10) || 0);
+    var h = Math.floor(sec / 3600), m = Math.floor((sec % 3600) / 60);
+    if (h && m) return h + 'h ' + m + 'm';
+    if (h) return h + 'h';
+    if (m) return m + 'm';
+    return 'under a minute';
+  }
+  function closeAllMenus() {
+    document.querySelectorAll('.ai-draft .ai-menu').forEach(function (m) { m.hidden = true; });
+    document.querySelectorAll('.ai-draft .ai-draft-btn').forEach(function (b) { b.setAttribute('aria-expanded', 'false'); });
+  }
+  function initAiWidget(widget, textarea) {
+    var endpoint = widget.dataset.endpoint;
+    var mainBtn = widget.querySelector('.ai-draft-btn');
+    var menu = widget.querySelector('.ai-menu');
+    var status = widget.querySelector('.ai-status');
+    var quota = widget.querySelector('.ai-quota');
+    if (!mainBtn || !textarea || !endpoint) return;
+    var limit = parseInt(widget.dataset.limit, 10) || 5;
+    var remaining = parseInt(widget.dataset.remaining, 10);
+    if (isNaN(remaining)) remaining = limit;
+    var reset = parseInt(widget.dataset.reset, 10) || 0;
+    var busy = false;
+
+    function paint() {
+      var locked = remaining <= 0;
+      mainBtn.disabled = locked || busy;
+      quota.classList.remove('is-last', 'is-locked');
+      if (locked) {
+        quota.classList.add('is-locked');
+        quota.textContent = '⏱ Limit reached — resets in ' + fmt(reset);
+      } else if (remaining === 1) {
+        quota.classList.add('is-last');
+        quota.textContent = 'Last AI draft for today';
+      } else {
+        quota.textContent = remaining + ' of ' + limit + ' AI drafts left today';
+      }
+    }
+    paint();
+
+    function run(cmd) {
+      closeAllMenus();
+      if (remaining <= 0 || busy) return;
+      var spec = COMMANDS[cmd] || COMMANDS.polish;
+      if (!textarea.value.trim()) { status.textContent = 'Write a few words first, then let AI help.'; return; }
+      // The area gives the model what this goal is ABOUT, so it drafts how to
+      // develop something the person already named rather than inventing one.
+      var card = widget.closest('.idp-goal');
+      var areaEl = card ? card.querySelector('[data-field="area"]') : null;
+      busy = true; var label = mainBtn.innerHTML; mainBtn.textContent = spec.busy;
+      status.textContent = ''; paint();
+      var body = new FormData();
+      body.append('csrf_token', csrfToken());
+      body.append('draft', textarea.value);
+      body.append('instruction', spec.instr);
+      body.append('command', cmd);
+      body.append('area', areaEl ? areaEl.value : '');
+      // Which 70:20:10 mode this box is, so the model drafts a stretch
+      // assignment / a person to learn from / a course as appropriate.
+      body.append('mode', textarea.getAttribute('data-mode') || '');
+      fetch(endpoint, { method: 'POST', body: body, credentials: 'same-origin' })
+        .then(function (r) { return r.json().then(function (d) { return { ok: r.ok, d: d }; }); })
+        .then(function (res) {
+          var d = res.d || {};
+          if (res.ok && d.ok) {
+            textarea.value = d.text;
+            textarea.dispatchEvent(new Event('input', { bubbles: true })); // triggers autosave
+            status.textContent = '✓ ' + spec.done;
+            if (typeof d.remaining === 'number') remaining = d.remaining;
+            reset = d.reset_seconds || 0;
+          } else {
+            status.textContent = d.error || 'Something went wrong.';
+            if (d.limited) { remaining = 0; reset = d.reset_seconds || reset; }
+          }
+        })
+        .catch(function () { status.textContent = 'Network error — please try again.'; })
+        .finally(function () { busy = false; mainBtn.innerHTML = label; paint(); });
+    }
+
+    mainBtn.addEventListener('click', function (e) {
+      e.stopPropagation();
+      if (remaining <= 0 || busy) return;
+      var open = menu.hidden;
+      closeAllMenus();
+      menu.hidden = !open;
+      mainBtn.setAttribute('aria-expanded', open ? 'true' : 'false');
+    });
+    menu.querySelectorAll('.ai-cmd').forEach(function (item) {
+      item.addEventListener('click', function () { run(item.dataset.cmd); });
+    });
+  }
+
+  widgets.forEach(function (widget) {
+    initAiWidget(widget, widget.parentElement.querySelector('textarea'));
+  });
+  document.addEventListener('click', closeAllMenus);
+  document.addEventListener('keydown', function (e) { if (e.key === 'Escape') closeAllMenus(); });
+})();
+
+// The goal's name in its own heading, kept in step as it is typed -- the field
+// already autosaves on its own, this only mirrors it so the card never shows a
+// heading that disagrees with the box under it.
+document.addEventListener('input', function (e) {
+  var el = e.target;
+  if (!el.classList || !el.classList.contains('idp-field')) return;
+  if (el.getAttribute('data-field') !== 'area') return;
+  var card = el.closest('.idp-goal');
+  var head = card && card.querySelector('.idp-head-name');
+  if (head) head.textContent = el.value;
+});
+
+// ---- suggest goals from the assessments ------------------------------------
+// Two steps on purpose: one call proposes, a second applies whatever survived
+// the person reading it. Nothing is written by the first.
+(function () {
+  var btn = document.getElementById('idp-gen');
+  var overlay = document.getElementById('idp-gen-overlay');
+  if (!btn || !overlay) return;
+  var body = document.getElementById('idp-gen-body');
+  var status = document.getElementById('idp-gen-status');
+  var applyBtn = document.getElementById('idp-gen-apply');
+  var proposals = [];
+
+  function csrf() {
+    var m = document.querySelector('meta[name="csrf-token"]');
+    return m ? m.content : '';
+  }
+  function close() { overlay.hidden = true; }
+  document.getElementById('idp-gen-cancel').addEventListener('click', close);
+  overlay.addEventListener('click', function (e) { if (e.target === overlay) close(); });
+  document.addEventListener('keydown', function (e) {
+    if (e.key === 'Escape' && !overlay.hidden) close();
+  });
+
+  // Built with createElement throughout: every string here is model output
+  // over assessment text somebody else wrote, which is the last thing to hand
+  // to innerHTML.
+  function render() {
+    body.innerHTML = '';
+    proposals.forEach(function (g, i) {
+      var card = document.createElement('div');
+      card.className = 'admin-card';
+      card.style.cssText = 'margin:0 0 10px;background:var(--d-bg-fbfbfe)';
+
+      var head = document.createElement('label');
+      head.style.cssText = 'display:flex;gap:8px;align-items:flex-start;cursor:pointer';
+      var cb = document.createElement('input');
+      cb.type = 'checkbox'; cb.checked = true; cb.className = 'idp-gen-pick';
+      cb.setAttribute('data-i', String(i));
+      cb.style.marginTop = '3px';
+      var title = document.createElement('span');
+      title.style.fontWeight = '600';
+      title.textContent = (i + 1) + '. ' + g.title;
+      head.appendChild(cb); head.appendChild(title);
+      card.appendChild(head);
+
+      var area = document.createElement('p');
+      area.style.cssText = 'margin:6px 0 0 24px';
+      area.textContent = g.area;
+      card.appendChild(area);
+
+      if (g.covers && g.covers.length) {
+        var chips = document.createElement('p');
+        chips.className = 'muted small';
+        chips.style.cssText = 'margin:6px 0 0 24px';
+        chips.textContent = 'From: ' + g.covers.map(function (c) {
+          return c.label + (c.note ? ' (' + c.note + ')' : '');
+        }).join(' · ');
+        card.appendChild(chips);
+      }
+
+      [['On the job', g.action_experience], ['From others', g.action_exposure],
+       ['Formal learning', g.action_education]].forEach(function (pair) {
+        if (!pair[1]) return;
+        var p = document.createElement('p');
+        p.className = 'muted small';
+        p.style.cssText = 'margin:6px 0 0 24px';
+        var b = document.createElement('strong');
+        b.textContent = pair[0] + ': ';
+        p.appendChild(b);
+        p.appendChild(document.createTextNode(pair[1]));
+        card.appendChild(p);
+      });
+      body.appendChild(card);
+    });
+  }
+
+  btn.addEventListener('click', function () {
+    btn.disabled = true;
+    if (status) status.textContent = 'Reading your assessments…';
+    var fd = new FormData();
+    fd.append('csrf_token', csrf());
+    fetch({{ url_for('idp_suggest') | tojson }},
+          {method: 'POST', body: fd, credentials: 'same-origin'})
+      .then(function (r) { return r.json(); })
+      .then(function (d) {
+        btn.disabled = false;
+        if (!d || !d.ok) {
+          if (status) status.textContent = (d && d.error) || 'Couldn’t suggest goals.';
+          return;
+        }
+        if (d.empty) { if (status) status.textContent = d.message || ''; return; }
+        proposals = d.goals || [];
+        if (status) {
+          status.textContent = d.remaining != null
+            ? d.remaining + ' of ' + d.limit + ' runs left today' : '';
+        }
+        render();
+        overlay.hidden = false;
+      })
+      .catch(function () {
+        btn.disabled = false;
+        if (status) status.textContent = 'Couldn’t reach the server.';
+      });
+  });
+
+  applyBtn.addEventListener('click', function () {
+    var keep = [];
+    body.querySelectorAll('.idp-gen-pick').forEach(function (cb) {
+      if (cb.checked) keep.push(proposals[parseInt(cb.getAttribute('data-i'), 10)]);
+    });
+    if (!keep.length) { close(); return; }
+    applyBtn.disabled = true;
+    applyBtn.textContent = 'Adding…';
+    var fd = new FormData();
+    fd.append('csrf_token', csrf());
+    fd.append('goals', JSON.stringify(keep));
+    fetch({{ url_for('idp_apply_suggestions') | tojson }},
+          {method: 'POST', body: fd, credentials: 'same-origin'})
+      .then(function (r) { return r.json(); })
+      .then(function (d) {
+        if (d && d.ok) { location.reload(); return; }
+        applyBtn.disabled = false;
+        applyBtn.textContent = 'Add selected goals';
+        if (status) status.textContent = (d && d.error) || 'Couldn’t add them.';
+        close();
+      })
+      .catch(function () {
+        applyBtn.disabled = false;
+        applyBtn.textContent = 'Add selected goals';
+        close();
+      });
+  });
+})();
+</script>
+{% endblock %}

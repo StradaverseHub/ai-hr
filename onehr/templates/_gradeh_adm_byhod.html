@@ -1,0 +1,62 @@
+{# Grade H Appraisal > People & progress > By HOD (2026-11-03; board H5, canvas [design canvas link removed]). One row a Grade H HOD in
+   the viewer's scope (gradeh_by_hod): who, their unit and departments, their people, who they share them with, each stage as their own page reads it
+   (gradeh_hod_progress), and a People icon beside the count. A HOD who holds a BU CEO or BG CEO seat reads "No HOD role" and where their people go; the last row is the
+   people no HOD is named for. The People count and icon open that HOD's people in the list panel (the super admin), else By person narrowed to
+   them. The switch, Search in and the filter are the page's own (admin_gradeh.html). #}
+{% macro places(r) -%}
+{% if r.units | length > 2 %}{{ r.units | length }} units{% else %}{{ r.units | join(', ') }}{% endif %}
+{%- endmacro %}
+{% macro hod_people(uid, n) -%}
+{% if can_write %}<a class="gh-cnt" href="{{ person_hod_url(uid) }}" data-list-open="{{ list_hod_url(uid) }}" title="Open their {{ n }} {{ 'person' if n == 1 else 'people' }}">{{ n | thousands }}</a>
+{% else %}<a class="gh-cnt" href="{{ person_hod_url(uid) }}">{{ n | thousands }}</a>{% endif %}
+{%- endmacro %}
+{% macro people_icon(uid, n) -%}
+{% set what = ('Open' if can_write else 'Show') ~ ' their ' ~ n ~ ' ' ~ ('person' if n == 1 else 'people') %}
+<a class="gh-picon" href="{{ person_hod_url(uid) }}"{% if can_write %} data-list-open="{{ list_hod_url(uid) }}"{% endif %} title="{{ what }}" aria-label="{{ what }}"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg></a>
+{%- endmacro %}
+{% macro stage(c) -%}
+<span class="gh-chip {{ 'is-ok' if c.kind == 'signed' else 'is-grey' }}"{% if c.title %} title="{{ c.title }}"{% endif %}>{{ c.text }}</span>
+{%- endmacro %}
+{% macro depts(r) -%}
+{% if r.depts %}<div class="muted small gh-depts">{{ r.depts[:2] | join(' · ') }}{% if r.depts | length > 2 %}<details class="fold gh-depts-fold"><summary>{{ r.depts | length - 2 }} more</summary>{{ r.depts[2:] | join(' · ') }} <button type="button" class="fold-less" data-fold-less>Show less</button></details>{% endif %}</div>{% endif %}
+{%- endmacro %}
+{% if not hod_rows and not hod_none %}
+<div class="admin-card"><p class="muted small" style="margin:0">No HOD matches.</p></div>
+{% else %}
+<div class="admin-card gh-tablecard">
+  <div class="table-scroll">
+    <table class="admin-table gh-table gh-hods" id="gh-hods">
+      <thead><tr><th class="gh-h-hod">HOD</th><th class="gh-h-unit">Unit · departments</th><th class="gh-h-n">People</th><th class="gh-h-sh">Shared</th><th class="gh-h-st">Potential</th><th class="gh-h-st">Performance</th></tr></thead>
+      <tbody>
+      {% for r in hod_rows %}
+      <tr>
+        <td><b>{{ r.name }}</b><div class="muted small">{{ r.eid }}{% if r.title %} · {{ r.title }}{% endif %}</div></td>
+        <td>{{ places(r) }}{{ depts(r) }}</td>
+        <td class="gh-pcell">{{ hod_people(r.uid, r.n) }}{{ people_icon(r.uid, r.n) }}</td>
+        {% if r.no_role %}
+        <td class="muted">–</td>
+        <td colspan="2"><span class="gh-chip is-warn">No HOD role · {{ r.reason }}</span>
+          {% if r.to_bu %}<div class="muted small">Their {{ r.to_bu }} go to the BU CEO</div>{% endif %}
+          {% for nm, k in r.to_other %}<div class="muted small">{{ k }} to {{ nm }}</div>{% endfor %}</td>
+        {% else %}
+        <td>{% if r.shared %}<span class="gh-chip is-shared">{{ r.shared }} shared</span><div class="muted small">{% if r['with'] | length == 1 %}with {{ r['with'][0] }}{% else %}with {{ r['with'] | length }} HODs{% endif %}</div>{% else %}<span class="muted">–</span>{% endif %}</td>
+        <td>{{ stage(r.pot) }}</td>
+        <td>{{ stage(r.perf) }}</td>
+        {% endif %}
+      </tr>
+      {% endfor %}
+      {% if hod_none %}
+      <tr class="gh-hods-none">
+        <td><b>{{ hod_none.name }}</b><div class="muted small">The BU CEO covers them</div></td>
+        <td>{{ hod_none.units | length }} {{ 'unit' if hod_none.units | length == 1 else 'units' }}</td>
+        <td class="gh-pcell">{{ hod_people('none', hod_none.n) }}{{ people_icon('none', hod_none.n) }}</td>
+        <td class="muted">–</td>
+        <td colspan="2" class="muted">Straight to the BU CEO</td>
+      </tr>
+      {% endif %}
+      </tbody>
+    </table>
+  </div>
+</div>
+<p class="muted small gh-foot">Potential and Performance read as each HOD's own Grade H page does: "reviewed" is the people they have moved or agreed, of those who are calibrated; a person who does not agree is not counted. {% if can_write %}A People count or icon opens that HOD's people in the list panel.{% else %}A People count or icon shows that HOD's people in the list.{% endif %}</p>
+{% endif %}

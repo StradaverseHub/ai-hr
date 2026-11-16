@@ -1,0 +1,106 @@
+{# Email › Schedule › a day, loaded into the list panel (admin_list_view ?fragment=1, list key email-day; Chris, 2026-11-09, canvas A2 to A4).
+   The panel's head is made from the data-list-* attributes (kicker, title, sub, the footer's link and label); data-step-prev / -next make
+   its two arrow buttons step a day. One card an email: who, how many, waves, words; Preview, Words for this day, and Skip this day or
+   Put back (OneHR's confirm box, with the reason asked in it). A day that has gone lists what went with People ›: no Skip. Counts only. #}
+<div class="clp ecd" data-list-title="{{ lst.title }}" data-list-sub="{{ lst.sub or '' }}" data-list-kicker="{{ lst.kicker }}"
+     data-list-full="{{ lst.sent_url }}" data-list-full-label="What went out: Email › Sent ›" data-list-n=""
+     data-step-prev="{{ lst.prev }}" data-step-next="{{ lst.next }}" data-step-label="day" data-day="{{ lst.iso }}">
+  {% if lst.add_url %}<template data-list-foot><a class="rm2-btn2 ecd-addbtn" href="{{ lst.add_url }}" data-list-reload data-list-keep="Back to {{ lst.daylabel }}">+ Add an email on {{ lst.daylabel }}</a></template>{% endif %}
+  {% if lst.all %}
+  <div class="clp-tools"><nav class="clp-chips" aria-label="Show">{% for c in lst.chips %}<a class="clp-chip{{ ' is-on' if lst.show == c.key }}" href="{{ lst.chip_urls[c.key] }}" data-list-reload{% if lst.show == c.key %} aria-current="true"{% endif %}>{{ c.label }} <b>{{ c.n }}</b></a>{% endfor %}</nav></div>
+  {% endif %}
+  {% for c in lst.cards %}
+  <article class="ecd-em is-{{ c.state }}" data-key="{{ c.key }}">
+    <header class="ecd-eh">
+      <h3 class="ecd-en">{{ c.name }}{% if c.own and c.own.tag %} <span class="ecd-tag is-rep">{{ c.own.tag }}</span>{% endif %}{% if c.own and not c.own.live %} <span class="ecd-tag">Removed</span>{% endif %}{% if c.state == 'skipped' %} <span class="ecd-tag">Skipped</span>{% elif c.state == 'sent' %} <span class="ecd-tag is-sent">Sent</span>{% elif c.state == 'off' %} <span class="ecd-tag">Off</span>{% endif %}</h3>
+      {% if c.time %}<span class="ecd-t">{{ c.time }}</span>{% endif %}
+    </header>
+    {% if c.state == 'sent' %}
+    <ul class="ecd-runs">
+      {% for r in c.runs %}<li><span><b>{{ r.when }}</b> <span class="muted small">{{ r.why }}</span><br>
+          <span class="muted small">{{ r.sent | thousands }} sent{% if r.failed %} · <b class="rm-bad">{{ r.failed | thousands }} failed</b>{% endif %}{% if r.not_sent %} · {{ r.not_sent | thousands }} not sent{% endif %}{% if r.waiting %} · {{ r.waiting | thousands }} waiting{% endif %}</span></span>
+        {% if r.people_url %}<a class="btn-link" href="{{ r.people_full }}" data-list-reload data-list-keep="Back to {{ lst.daylabel }}">People &rsaquo;</a>{% endif %}</li>{% endfor %}
+    </ul>
+    {% else %}
+    <dl class="ecd-d">
+      {% if c.who %}<dt>Who</dt><dd>{{ c.who }}</dd>{% endif %}
+      {% if c.many %}<dt>How many</dt><dd>{{ c.many }}</dd>{% endif %}
+      {% if c.own and c.own.sends %}<dt>Sends</dt><dd>{{ c.own.sends }}</dd>{% endif %}
+      {% if c.waves %}<dt>Waves</dt><dd>{{ c.waves }}</dd>{% endif %}
+      {% if c.words %}<dt>Words</dt><dd>{% for w in c.words %}<span class="eml-tpl{{ ' is-dated' if w.dated }}">{{ w.name }}</span>{% endfor %}</dd>{% endif %}
+      {% if c.skip %}
+      <dt>Why</dt><dd>{{ c.skip.reason }}</dd>
+      {% if c.skip.by %}<dt>By</dt><dd>{{ c.skip.by }}{% if c.skip.at %}, {{ c.skip.at }}{% endif %}</dd>{% endif %}
+      {% if not c.skip.own %}<dt>Skipped with</dt><dd>{{ c.skip.via }}</dd>{% endif %}
+      {% if c.next %}<dt>Next send</dt><dd>{{ c.next }}</dd>{% endif %}
+      {% endif %}
+    </dl>
+    {% if c.state == 'off' %}<p class="muted small ecd-off">Off · nothing goes on its own. These are the days it would go.</p>{% endif %}
+    {% if not lst.past %}
+    <div class="ecd-a">
+      {% for label, url in c.previews %}<button type="button" class="rm2-btn2 ecd-b" data-ecd-pv="{{ url }}">{{ label }}</button>{% endfor %}
+      {% if c.menu %}
+      <details class="ecd-menu"><summary class="rm2-btn2 ecd-b">Words for this day &#9662;</summary>
+        <div class="ecd-pop">
+          {% for m in c.menu %}
+          {% if c.menu | length > 1 %}<div class="ecd-mh">{{ m.label or m.title }}</div>{% endif %}
+          {% if m.others %}<div class="ecd-mh">Other templates{% if c.menu | length == 1 %} of {{ m.title }}{% endif %}</div>
+          <p class="ecd-mn muted small">Open one to set its dates; two templates can't cover the same day.</p>
+          {% for o in m.others %}<a class="ecd-mi" href="{{ o.url }}">{{ o.name }} <span class="muted small">{{ o.when }}</span></a>{% endfor %}{% endif %}
+          {% if m.covered %}<a class="ecd-mi" href="{{ m.covered_url }}">Edit &ldquo;{{ m.covered }}&rdquo; <span class="muted small">it covers this day</span></a>
+          {% elif m.write %}
+          <form method="post" action="{{ url_for('admin_email_day_words') }}" data-confirm="Write words for {{ lst.daylabel }}? OneHR makes a copy of &ldquo;{{ m.cur or 'OneHR’s own words' }}&rdquo;, used on that one day only, and opens it so you can change the words. The usual words stay as they are." data-confirm-title="Write words for {{ lst.daylabel }}?" data-confirm-ok="Write the words">
+            <input type="hidden" name="kind" value="{{ m.kind }}"><input type="hidden" name="day" value="{{ lst.iso }}">
+            <button type="submit" class="ecd-mi">Write words for this day&hellip;</button>
+          </form>{% endif %}
+          <a class="ecd-mi ecd-ml" href="{{ m.tpl_url }}">Open Emails and templates &rsaquo;</a>
+          {% endfor %}
+        </div></details>
+      {% endif %}
+      {% if c.own and c.own.live %}<a class="rm2-btn2 ecd-b" href="{{ c.own.edit_url }}" data-list-reload data-list-keep="Back to {{ lst.daylabel }}">Edit the series</a>{% endif %}
+      <span class="ecd-sp"></span>
+      {% if c.can_undo %}
+      <form method="post" action="{{ url_for('admin_email_skip_undo') }}" data-confirm="Put back {{ c.name }} on {{ lst.daylabel }}? It goes at {{ c.time }} that day as usual." data-confirm-title="Put back {{ c.name }} on {{ lst.daylabel }}?" data-confirm-ok="Put back">
+        <input type="hidden" name="skip_id" value="{{ c.skip.id }}"><input type="hidden" name="next" value="{{ lst.back_next }}">
+        <button type="submit" class="rm2-btn2 ecd-b">Put back</button></form>
+      <span class="muted small ecd-until">Until {{ c.time }} on {{ lst.daylabel }}</span>
+      {% elif c.can_skip %}
+      <form method="post" action="{{ url_for('admin_email_skip') }}" data-confirm="{{ c.confirm }}" data-confirm-title="Skip {{ c.name }} on {{ lst.daylabel }}?" data-confirm-ok="Skip this day" data-confirm-reason="Why (shown on the calendar and in the audit log)" data-confirm-reason-field="reason" data-confirm-reason-max="200">
+        <input type="hidden" name="email" value="{{ c.key }}"><input type="hidden" name="day" value="{{ lst.iso }}"><input type="hidden" name="reason" value=""><input type="hidden" name="next" value="{{ lst.back_next }}">
+        <button type="submit" class="rm2-btn2 ecd-b">Skip this day</button></form>
+      {% elif c.gone %}<span class="muted small">{{ c.gone }}</span>{% elif c.skip and not c.skip.own %}<span class="muted small">Put it back with the Grade H reminders.</span>{% endif %}
+      {% if c.own and c.own.live %}
+      <form method="post" class="ecd-rmf" action="{{ url_for('admin_email_own_remove') }}" data-confirm="{{ c.own.remove_confirm }}" data-confirm-title="Remove {{ c.name }}?" data-confirm-ok="Remove the series" data-confirm-tone="danger">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}"><input type="hidden" name="id" value="{{ c.own.id }}"><input type="hidden" name="next" value="{{ lst.back_next }}">
+        <button type="submit" class="rm2-btn2 ecd-b ecd-rm">Remove the series</button></form>
+      {% endif %}
+    </div>
+    <div class="ecd-pv" hidden><iframe sandbox title="Preview of {{ c.name }}"></iframe></div>
+    {% endif %}
+    {% endif %}
+  </article>
+  {% else %}
+  <p class="muted ecd-none">{% if lst.all %}Nothing matches that chip.{% else %}Nothing is on {{ lst.daylabel }}.{% endif %}</p>
+  {% endfor %}
+</div>
+<script>
+(function () {
+  if (window.ecalMark) window.ecalMark("{{ lst.iso }}");
+  if (window.__ecdBound) return;
+  window.__ecdBound = true;
+  document.addEventListener('click', function (e) {
+    var b = e.target.closest && e.target.closest('[data-ecd-pv]');
+    if (b) {
+      var card = b.closest('.ecd-em'), box = card.querySelector('.ecd-pv'), fr = box.querySelector('iframe');
+      var same = box.getAttribute('data-src') === b.getAttribute('data-ecd-pv');
+      if (!box.hidden && same) { box.hidden = true; return; }
+      box.hidden = false; box.setAttribute('data-src', b.getAttribute('data-ecd-pv'));
+      fetch(b.getAttribute('data-ecd-pv'), { credentials: 'same-origin', headers: { 'X-Requested-With': 'fetch' } })
+        .then(function (r) { return r.text(); }).then(function (h) { fr.srcdoc = h; })
+        .catch(function () { fr.srcdoc = '<p style="font:14px Arial;color:#5f6678;padding:12px">The preview didn\'t load.</p>'; });
+      return;
+    }
+    document.querySelectorAll('.ecd-menu[open]').forEach(function (m) { if (!m.contains(e.target)) m.open = false; });
+  });
+})();
+</script>

@@ -1,0 +1,62 @@
+{% extends "base.html" %}
+{% block title %}{{ prog.title }} · AI+ Learning{% endblock %}
+{% block body %}
+{# A programme's own page (2026-10-22; canvas [design canvas link removed] board 8B): L&D's photo,
+   brochure and details, what it builds (the person's own goals marked), its rating, and its runs with seats. Register
+   opens the person's own request; nothing here registers anyone. The learning coach is on the left (S8). #}
+{% if coach and staff %}{% include "learning/_coach.html" %}{% endif %}
+<div class="ls lp">
+  <header class="ls-head">
+    <span class="ls-pill">AI+ Learning</span>
+    <a class="ls-back" href="{{ url_for('learning_home') if staff else url_for('admin_learning_programme_page', pid=prog.id) }}">{{ '‹ Your learning' if staff else '‹ Edit the page' }}</a>
+  </header>
+  <div class="lp-body">
+    <section class="lp-hero ls-card">
+      <div class="lp-photo{{ ' is-empty' if not prog.photo_path }}">{% if prog.photo_path %}<img src="{{ url_for('learning_programme_file', pid=prog.id, kind='photo') }}" alt="">{% endif %}</div>
+      <div class="lp-hero-txt">
+        <span class="ls-k">Programme · {{ kind_label.get(prog.kind, prog.kind) }}{% if prog.vendor %} · {{ prog.vendor }}{% endif %}</span>
+        <h1 class="lp-title">{{ prog.title }}</h1>
+        {% if prog.summary or prog.description %}<p class="lp-sum">{{ prog.summary or prog.description }}</p>{% endif %}
+        <div class="lp-chips">
+          {% if prog.days or prog.hours %}<span class="ls-chip">{% if prog.days %}{{ '%g' % prog.days }} day{{ '' if prog.days == 1 else 's' }}{% endif %}{% if prog.days and prog.hours %} · {% endif %}{% if prog.hours %}{{ '%g' % prog.hours }} h{% endif %}</span>{% endif %}
+          {% if prog.audience_rule %}<span class="ls-chip">{{ prog.audience_rule }}</span>{% endif %}
+          {% if prog.hrdc_claimable %}<span class="ls-chip">HRDC-claimable</span>{% endif %}
+          {% for c in prog.comps %}<span class="ls-chip{{ ' lp-mine' if c.mine }}">Builds {{ c.title }} · L{{ c.level }}{% if c.mine %} · {{ {'plan': 'your goal', 'assessed': 'a gap of yours', 'future': "your job's next level", 'explore': "you're exploring it"}.get(c.mine.source, 'for you') }}{% endif %}</span>{% endfor %}
+        </div>
+        <div class="lp-hero-acts">
+          {% if prog.brochure_path %}<a class="btn-link" href="{{ url_for('learning_programme_file', pid=prog.id, kind='brochure') }}" target="_blank" rel="noopener">Brochure (PDF)</a>{% endif %}
+          {% if prog.rating.avg %}<span class="ls-note">Rated {{ prog.rating.avg }} by {{ prog.rating.n }} who came{% if prog.rating.gold %} · Gold{% endif %}</span>{% endif %}
+        </div>
+      </div>
+    </section>
+
+    {% if prog.outcome_list or prog.outline or prog.audience_text or prog.prereq or prog.trainer %}
+    <section class="ls-card lp-details" aria-label="About the programme">
+      {% if prog.outcome_list %}<h2 class="ls-h">What you'll be able to do</h2><ul class="lp-list">{% for o in prog.outcome_list %}<li>{{ o }}</li>{% endfor %}</ul>{% endif %}
+      {% if prog.outline %}<h2 class="ls-h">Outline</h2><div class="lp-text">{{ prog.outline | replace('\r', '') | e | replace('\n', '<br>' | safe) }}</div>{% endif %}
+      {% if prog.audience_text %}<h2 class="ls-h">Who it's for</h2><p class="lp-text">{{ prog.audience_text }}</p>{% endif %}
+      {% if prog.prereq %}<h2 class="ls-h">Before you come</h2><p class="lp-text">{{ prog.prereq }}</p>{% endif %}
+      {% if prog.trainer %}<h2 class="ls-h">Trainer</h2><p class="lp-text">{{ prog.trainer }}{% if prog.vendor %}, {{ prog.vendor }}{% endif %}</p>{% endif %}
+    </section>
+    {% endif %}
+
+    <section class="ls-card" id="runs" aria-labelledby="lp-runs-h">
+      <h2 id="lp-runs-h" class="ls-h">Runs{% if not prog.audience_ok %} <span class="ls-note">· not open to your group or grade</span>{% endif %}</h2>
+      {% for r in prog.runs %}
+      <div class="lp-run">
+        <span class="lp-run-when"><b>{{ r.s.run_label or 'Run' }}</b> · {{ r.line }}</span>
+        <span class="lp-run-seats">{% if r.full %}<span class="ls-chip">Full</span>{% elif r.left is not none %}<span class="ls-chip is-approved">{{ r.left }} left of {{ r.s.seats }}</span>{% endif %}</span>
+        <span class="lp-run-act">
+          {% if r.mine %}<span class="ls-chip is-{{ r.mine.status }}">{{ r.mine_label }}</span> <a class="btn-link" href="{{ url_for('learning_home') }}#upcoming">See it</a>
+          {% elif not staff %}<span class="ls-note">Staff register here</span>
+          {% elif not prog.audience_ok %}<span class="ls-note">Not open to you</span>
+          {% elif r.open %}<a class="{{ 'btn-link' if r.full else 'primary' }}" href="{{ url_for('learning_register', session=r.s.id) }}">{{ 'Join the waiting list' if r.full else 'Register' }}</a>
+          {% else %}<span class="ls-note">{{ r.why }}</span>{% endif %}
+        </span>
+      </div>
+      {% else %}<p class="ls-none">No run dated yet. {% if staff %}Mark your interest from your Learning panel, so L&amp;D counts it.{% endif %}</p>{% endfor %}
+      {% if staff and prog.runs %}<p class="ls-note">Register opens your request, filled in from your Career Plan; your line manager approves it as usual.</p>{% endif %}
+    </section>
+  </div>
+</div>
+{% endblock %}

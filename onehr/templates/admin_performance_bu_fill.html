@@ -1,0 +1,241 @@
+{% extends "base.html" %}
+{% from "_filter_rows.html" import filter_rows %}
+{% block title %}Fill BU-level KPI{% endblock %}
+{% block body %}
+{# `where` (from the route) names the raw unit or group; this is the same thing through the display names #}
+{% set where_label = display_company(business_group, company) if company
+   else (display_bg(business_group) ~ (', your units' if whole_label == 'All your units' else '')) %}
+{# Fill BU result (2026-10-27, canvas: Fill): the unit's saved BU KPIs on the left, the one picked on the right with its
+   scale, a result box scored by the server as you type (admin_performance_bu_fill, action=calc), who gets it, and the
+   button. The apply is the same route as before. #}
+<p class="adm-lede">
+  {% if period %}For <b>{{ period['name'] }}</b>: enter a unit's result once and it goes on every line of that BU KPI.{% else %}<b>There is no active performance cycle</b>: open one first.{% endif %}
+  The result is final immediately. It's one unit-wide figure, so it skips the moderator.
+</p>
+
+<section class="admin-card adm-filters" aria-label="Where to fill">
+  {{ filter_rows(frows) }}
+</section>
+
+{% if not business_group %}
+<p class="muted">Pick a business group above, then a unit or the whole of it.</p>
+{% elif not kpi_names %}
+<p class="muted small">No KPI targets found for {{ where_label }} this cycle.</p>
+{% elif not rail or not sel %}
+<p class="muted">{{ where_label }} has no saved BU KPI and no BU-level KPI with lines this cycle. <a href="{{ url_for('admin_bu_kpis', fbg=business_group, fbu=company or None) }}">Set up BU KPIs →</a></p>
+{% else %}
+{% set S = sel %}
+{% macro rail_row(x) -%}
+{% if x.heading %}<div class="bk2-row bk2-head"><span class="bk2-rowh"><b>{{ x.name }}</b></span><span class="bk2-sum">{{ x.n }} variant{{ '' if x.n == 1 else 's' }}</span></div>{% else %}
+{% set on = x.name | lower == S.name | lower %}
+{% set fl = x.filled %}
+<a class="bk2-row{{ ' is-on' if on }}{{ ' is-sub' if x.sub }}" href="{{ url_for('admin_performance_bu_fill', business_group=business_group, company=company or None, kpi_name=x.name) }}"{% if on %} aria-current="true"{% endif %}>
+  <span class="bk2-rowh"><b>{{ x.name }}</b>
+    {% if fl and fl.to_fill %}<span class="bk2-pill is-warn">Filled · {{ fl.to_fill }} to fill</span>{% elif fl %}<span class="bk2-pill is-ok">Filled</span>{% else %}<span class="bk2-pill is-warn">Not filled</span>{% endif %}</span>
+  <span class="bk2-sum">{% if x.other %}{{ x.n }} line{{ '' if x.n == 1 else 's' }}{% else %}{{ 'Variant' if x.sub else x.scope }}{% if not company and x.units %} · {{ x.units }} unit{{ '' if x.units == 1 else 's' }}{% endif %} · {{ x.carry }} carry it{% if x.n_gh %} ({{ (x.n_gh ~ ' Grade H') if x.n_gh < x.carry else 'Grade H' }}){% endif %}{% if x.keep %} · {{ x.keep }} keep their own{% endif %}{% endif %}{% if fl %} · result{% if fl.many %}: {{ fl.nfig }} figures{% else %} {{ '%g' | format(fl.value) }}{{ ' ' ~ fl.unit if fl.unit and fl.unit != '%' else ('%' if fl.unit == '%' else '') }}{% endif %}{% if fl.rate is not none %} · Rating {{ fl.rate }}{% elif fl.pct is not none %} · Score {{ '%.1f' | format(fl.pct) }}%{% endif %}{% endif %}</span>
+</a>{% endif %}
+{%- endmacro %}
+<div class="bk-grid bf-grid">
+  <section class="admin-card bk-lib" aria-label="BU KPIs to fill">
+    <span class="wiz-k">{{ where_label }}'s BU KPIs · {{ rail.saved | length }}</span>
+    <span class="muted small">As saved on BU KPI setup.</span>
+    {% for x in rail.saved_view %}{{ rail_row(x) }}{% else %}<span class="muted small">None saved for {{ where_label }}.</span>{% endfor %}
+    {% if rail.lib %}
+    <span class="wiz-k bk2-gap">BU-level in the library</span>
+    <span class="muted small">No saved setup, but their lines have the same name.</span>
+    {% for x in rail.lib %}{{ rail_row(x) }}{% endfor %}
+    {% endif %}
+    {% if rail.other %}
+    <details class="fold bk2-other"{% if S.item.other %} open{% endif %}><summary>{{ rail.other | length }} other KPI{{ '' if rail.other | length == 1 else 's' }} with lines, not BU KPIs</summary>
+      {% for x in rail.other %}{{ rail_row(x) }}{% endfor %}
+      <button type="button" class="fold-less" data-fold-less>Show less</button></details>
+    {% endif %}
+    <a class="bk2-setup-link" href="{{ url_for('admin_bu_kpis', fbg=business_group, fbu=company or None) }}">Set up BU KPIs →</a>
+  </section>
+  <div class="bk-cards">
+    {% set F = S.fs %}
+    <form method="post" id="bf-form" class="admin-card bk-card bk2-card bf-card{{ ' bf-f' if F }}" data-no-busy
+          action="{{ url_for('admin_performance_bu_fill', business_group=business_group, company=company or None, kpi_name=S.name) }}"
+          data-bf-calc="{{ url_for('admin_performance_bu_fill', business_group=business_group, company=company or None) }}"
+          data-bf-n="{{ S.n_fill }}" data-bf-label="{{ S.label }}"{% if F %} data-bf-f data-bf-init="{{ F.init_val }}" data-bf-fig="{{ F.figure_text }}" data-bf-init-note="{{ F.init_note }}" data-bf-unf="{{ F.n_unf }}" data-bf-lock="{{ 1 if F.action == 'fill' and F.single is not none else 0 }}"{% endif %}
+          data-confirm="Fill this result for {{ S.n_fill }} {{ 'line' if S.n_fill == 1 else 'lines' }} of {{ S.name }} now? It is final immediately and skips their moderator.{% if S.n_refill %} It replaces the earlier figure for {{ S.n_refill }} {{ 'person' if S.n_refill == 1 else 'people' }}.{% endif %}{% if S.n_mod %} It replaces the line manager's moderation on {{ S.n_mod }} {{ 'line' if S.n_mod == 1 else 'lines' }}.{% endif %}{% if S.n_gh %} It also reaches {{ S.n_gh }} Grade H appraisal{{ '' if S.n_gh == 1 else 's' }}.{% if S.n_gh_ack %} {{ S.n_gh_ack }} of them {{ 'has' if S.n_gh_ack == 1 else 'have' }} already acknowledged: their result updates, and their page says Updated, with today's date.{% endif %}{% endif %}"
+          data-confirm-ok="Fill {{ S.n_fill + S.n_gh }}" data-confirm-title="Fill this KPI result?"
+          {% if S.n_cal %}data-confirm-reason="Your remark (required): why, for the audit trail" data-confirm-reason-field="remark" data-confirm-reason-max="500"
+          data-confirm-reason-placeholder="e.g. the unit's audited figure for the year, agreed with the calibrators"{% else %}data-confirm-reason="Your reason (required): it goes in the audit trail" data-confirm-reason-max="500"
+          data-confirm-reason-placeholder="e.g. the unit's audited figure for the year"{% endif %}>
+      {% if S.n_cal %}<input type="hidden" name="action" value="apply_calibrated" data-bf-act>{% endif %}
+      <input type="hidden" name="business_group" value="{{ business_group }}">
+      <input type="hidden" name="company" value="{{ company }}">
+      <input type="hidden" name="kpi_name" value="{{ S.name }}">
+      <div class="bk2-head">
+        <div class="bk2-title"><span class="bk2-titleh"><b>{{ S.name }}</b>
+          {% if F %}<span class="bk2-pill bf-rd {{ 'is-warn' if F.n_to_fill else 'is-ok' }}">Filled{% if F.n_to_fill %} · {{ F.n_to_fill }} to fill{% endif %}</span><span class="bk2-pill is-navy bf-ed">Editing</span>{% endif %}</span>
+          <span class="muted small">{{ S.label }} · {{ S.unit or 'No unit' }} · {{ 'higher' if S.more else 'lower' }} is better · {{ S.weight }}{% if F and F.gh_only %} · held by Grade H lines only{% endif %}</span></div>
+        <div class="bk2-acts"><a class="bk2-btn bk2-cancel" href="{{ url_for('admin_bu_kpis', fbg=business_group, fbu=company or None) }}">View setup</a></div>
+      </div>
+      {% if S.rep %}
+      <div class="bk-sec">
+        <span class="wiz-k">Target · {{ '5-point rating' if S.mech == 'A' else 'achievement against target' }}</span>
+        {% if S.differ %}<p class="muted small" style="margin:0">The units hold different targets. Each line is rated on its own target, in the table below.</p>{% endif %}
+        <div class="bf-rates{{ ' is-b' if S.mech != 'A' }}">
+          {% for lbl, v in S.pairs %}<div class="bf-rate" data-bf-rate="{{ loop.index if S.mech == 'A' }}"><span>{{ lbl }}</span><b>{{ v }}</b></div>{% endfor %}
+        </div>
+      </div>
+      {# the result row is one grid: a row of labels, a row of 40px boxes, a row of small lines, so the three columns line up (2026-11-05) #}
+      <div class="bf-calc">
+        <div class="bf-col">
+          <label class="bf-lab" for="bf-val">{{ S.label }}'s result</label>
+          {% if F %}<span class="bf-ro bf-rd" data-bf-ro{% if F.single is none %} data-multi{% endif %}>{% if F.single is not none %}<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="5" y="11" width="14" height="10" rx="2"></rect><path d="M8 11V8a4 4 0 0 1 8 0v3"></path></svg><span>{{ '%g' | format(F.single) }}</span><em>{{ S.unit }}</em>{% else %}<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="5" y="11" width="14" height="10" rx="2"></rect><path d="M8 11V8a4 4 0 0 1 8 0v3"></path></svg><span>{{ F.box }}</span>{% endif %}</span>{% endif %}
+          <span class="bf-resin{{ ' bf-ed' if F }}"><input type="number" step="any" name="actual_value" id="bf-val" inputmode="decimal" data-bf-val aria-label="{{ S.label }}'s result" autocomplete="off"{% if F and F.single is not none %} value="{{ F.init_val }}"{% if F.action == 'fill' %} readonly{% endif %}{% endif %}><em>{{ S.unit }}</em></span>
+          <span class="muted small bf-sub">{% if F and F.single is not none %}<span class="bf-ed">was {{ F.filled_text }}</span>{% endif %}</span>
+        </div>
+        <div class="bf-col bf-out"><span class="wiz-k">Achievement</span><b class="bf-fig" data-bf-ach>{{ F.ach if F else '—' }}</b>
+          <span class="muted small bf-sub">{% if F %}{% if F.gh_only and S.mech != 'A' %}<span class="bf-rd">Grade H's own scale rates it</span>{% endif %}{% if F.was_ach %}<span class="bf-ed">was {{ F.was_ach }}</span>{% endif %}{% endif %}</span></div>
+        <div class="bf-col bf-out{{ ' bf-rd-hide' if F and F.gh_only and S.mech != 'A' }}"><span class="wiz-k">{{ 'Rating' if S.mech == 'A' else 'Score' }}</span><b class="bf-fig" data-bf-rt>{{ F.score if F else '—' }}</b>
+          <span class="muted small bf-sub"><span data-bf-band>{% if F and F.band %}({{ F.band }}){% endif %}</span>{% if F and F.was_score %}<span class="bf-ed">was {{ F.was_score }}</span>{% endif %}</span></div>
+      </div>
+      <p class="muted small bf-hint" style="margin:0">Every carrier gets this {{ 'rating' if S.mech == 'A' else 'score' }} on this line; their total moves by their own weight.{% if S.n_gh %} The {{ S.n_gh }} Grade H line{{ '' if S.n_gh == 1 else 's' }} below take {% if S.mech == 'A' %}the same rating{% else %}the same achievement %, and Grade H's own scale rates it{% endif %}. No email goes: they see Updated on the date.{% endif %}</p>
+      {% if S.n_cal %}<p class="wiz-note bk-note{{ ' bf-ed' if F }}" data-bf-cal role="status">{{ S.n_cal }} {{ 'person' if S.n_cal == 1 else 'people' }} below {{ 'is' if S.n_cal == 1 else 'are' }} calibrated. As super admin you can still fill their line until their result is released: the new figure replaces the line, a band a calibrator moved stays, and a band nobody moved follows the new score. Released people are left as they are. Your remark is asked, and it goes in the audit trail.</p>{% endif %}
+      <p class="bf-gh-err" data-bf-gherr role="alert" hidden></p>
+      {% if not (F and F.gh_only) %}
+      {% if F %}<div class="bf-notebox bf-rd"><span class="bf-lab">Note <span class="muted small" style="font-weight:400">(shown on every carrier's line)</span></span>
+        <p class="bf-ronote{{ '' if F.note else ' is-none' }}" data-bf-ronote>{{ F.note or 'No note' }}</p></div>{% endif %}
+      <label class="bf-note{{ ' bf-ed' if F }}">Note (optional, shown on every carrier's line)
+        <textarea name="note" rows="2" maxlength="600"{% if F and F.action == 'fill' and F.single is not none %} readonly{% endif %}>{% if F %}{{ F.init_note }}{% endif %}</textarea></label>
+      {% endif %}
+      <div class="bk-sec">
+        <div class="bk2-who-h"><span class="wiz-k">Who gets this result · {{ S.n_total + S.n_gh }}</span>
+          <span class="muted small">{% if S.keep %}{{ S.keep }} keep their own line and enter their own result{% endif %}</span></div>
+        <div class="bk2-who-h"><span></span>
+          <span class="bk2-sin"><select aria-label="Search in" data-bf-in class="modern-select adm-qin"><option value="all">All fields</option><option value="name">Name</option><option value="eid">Employee ID</option><option value="dept">Department</option></select>
+            <input type="search" placeholder="Search by name, ID or department" aria-label="Search who gets this result" data-bf-q></span></div>
+        {% set rows = S.rows %}<div class="table-scroll" data-bf-body>{% include "_bu_fill_rows.html" with context %}</div>
+        <p class="muted small bk2-none" data-bf-none hidden>Nobody matches.</p>
+      </div>
+      {% if F %}
+      <div class="bk2-foot bf-rd">
+        <span class="muted small">{{ F.foot }}</span>
+        {% if F.action == 'edit' %}<button type="button" class="bk2-btn bk2-edit" data-bf-edit>Edit</button>
+        {% elif F.action == 'edit_off' %}<button type="button" class="bk2-btn bk2-edit" disabled title="{{ F.off_title }}">Edit</button>
+        {% elif F.action == 'fill' %}<button type="button" class="bk2-btn bk2-edit" data-bf-edit>{{ F.action_label }}</button>{% endif %}
+      </div>
+      <div class="bk2-foot bf-ed">
+        <span class="muted small" data-bf-changed>No changes yet</span>
+        <span class="bk2-btns"><button type="button" class="bk2-btn bk2-cancel" data-bf-cancel>Cancel</button>
+          <button type="submit" class="bk2-btn bk2-edit" data-bf-go disabled>Save {{ S.n_fill + S.n_gh }} {{ 'line' if S.n_fill + S.n_gh == 1 else 'lines' }}</button></span>
+      </div>
+      {% else %}
+      <div class="bk2-foot">
+        <span class="muted small">The result is final at once and skips the moderator. A line a calibrator has acted on, or whose result is released, is left as it is.</span>
+        <button type="submit" class="bk2-btn bk2-edit" data-bf-go disabled>Fill {{ S.n_fill + S.n_gh }} {{ 'line' if S.n_fill + S.n_gh == 1 else 'lines' }}</button>
+      </div>
+      {% endif %}
+      {% else %}
+      <p class="muted">Nobody carries this KPI as a BU KPI of {{ S.label }} yet, so there is no line to fill. <a href="{{ url_for('admin_bu_kpis', fbg=business_group, fbu=company or None) }}">Set up BU KPIs →</a></p>
+      {% endif %}
+    </form>
+  </div>
+</div>
+<script>
+/* Fill BU result: as you type, the page asks the server to score the result (action=calc, the same selection as the
+   apply, scored by pm_score_kpi_line) and draws what comes back. Nothing is scored here. On a KPI Group People has already
+   filled (data-bf-f) the card reads first; Edit turns the same card into the entry form (no reload) and Cancel puts the read view back. */
+(function () {
+  var form = document.getElementById('bf-form'); if (!form) return;
+  var val = form.querySelector('[data-bf-val]'); if (!val) return;
+  var go = form.querySelector('[data-bf-go]'), body = form.querySelector('[data-bf-body]'), timer = null, seq = 0;
+  var ach = form.querySelector('[data-bf-ach]'), rt = form.querySelector('[data-bf-rt]'), band = form.querySelector('[data-bf-band]');
+  var qi = form.querySelector('[data-bf-q]'), sel = form.querySelector('[data-bf-in]'), none = form.querySelector('[data-bf-none]');
+  var F = form.hasAttribute('data-bf-f'), note = form.querySelector('textarea[name=note]'), last = null;
+  var kname = form.querySelector('[name=kpi_name]').value, where = form.getAttribute('data-bf-label');
+  var init = form.getAttribute('data-bf-init') || '', figTxt = form.getAttribute('data-bf-fig') || '', initNote = form.getAttribute('data-bf-init-note') || '', unf = +form.getAttribute('data-bf-unf') || 0;
+  var readRows = body.innerHTML, readTxt = {ach: ach.textContent, rt: rt.textContent, band: band.textContent};
+  function search() {
+    var s = qi.value.trim().toLowerCase(), f = sel.value, n = 0, t = form.querySelector('[data-bf-t]');
+    form.querySelectorAll('[data-bf-row]').forEach(function (r) {
+      var hay = f === 'all' ? (r.dataset.name + ' ' + r.dataset.eid + ' ' + r.dataset.dept) : r.dataset[f];
+      var ok = !s || hay.indexOf(s) >= 0; r.hidden = !ok; if (ok) n++;
+    });
+    var d = form.querySelector('details.fold'); if (d && s) d.open = true;
+    none.hidden = n > 0;
+  }
+  qi.addEventListener('input', search); sel.addEventListener('change', search);
+  function modWords(j) {   /* a line manager's moderation the figure replaces */
+    return j.n_mod ? " It replaces the line manager's moderation on " + plural(j.n_mod, 'line') + '.' : '';
+  }
+  function calWords(j) {   /* the super admin's fill reaches people a calibrator has acted on: their bands stay as the calibrator set them */
+    return j.n_cal ? ' It reaches ' + j.n_cal + (j.n_cal === 1 ? ' calibrated person' : ' calibrated people') + ': a band a calibrator moved stays, a band nobody moved follows the new score. Your remark is asked.' : '';
+  }
+  function ghWords(g, j) {
+    return g ? ' It also reaches ' + g + ' Grade H appraisal' + (g === 1 ? '' : 's') + '.' + (j.n_gh_ack ? ' ' + j.n_gh_ack + (j.n_gh_ack === 1 ? ' of them has' : ' of them have') + " already acknowledged: their result updates, and their page says Updated, with today's date." : '') : '';
+  }
+  function plural(n, w) { return n + ' ' + w + (n === 1 ? '' : 's'); }
+  function refresh() {   /* the button, the confirm box and the "Changed" line, from the last answer and what is typed now */
+    var j = last, g = j ? (j.n_gh || 0) : 0;
+    if (!F) {
+      if (!j) return;
+      var n = j.n_fill, t = n + g;
+      go.textContent = 'Fill ' + plural(t, 'line') + (j.value_text ? ' with ' + j.value_text : '');
+      go.disabled = !(t > 0 && j.value_text && !j.gh_err);
+      form.setAttribute('data-confirm', 'Fill ' + j.value_text + ' for ' + plural(n, 'line') + ' of ' + kname + ' in ' + where + ' now? It is final immediately and skips their moderator.' + (j.n_refill ? ' It replaces the earlier figure for ' + j.n_refill + (j.n_refill === 1 ? ' person.' : ' people.') : '') + modWords(j) + calWords(j) + ghWords(g, j));
+      form.setAttribute('data-confirm-ok', 'Fill ' + t);
+      return;
+    }
+    var typed = parseFloat(val.value), t = j ? j.n_fill + g : 0;
+    var valid = !!(j && j.value_text && t > 0 && !j.gh_err);
+    var figCh = init === '' ? true : !(Math.abs(typed - parseFloat(init)) < 1e-9);
+    var noteCh = !!note && note.value.trim() !== initNote.trim() && !!(j && j.n_refill > 0);
+    var parts = []; if (figCh && valid) parts.push('the figure'); if (noteCh) parts.push('the note');
+    var line = parts.length ? 'Changed: ' + parts.join(', ') + '.' : (unf > 0 && valid ? 'Fills the ' + plural(unf, 'line') + ' not filled yet.' : 'No changes yet');
+    if (parts.length && unf > 0) line += ' Also fills ' + plural(unf, 'line') + ' not filled yet.';
+    form.querySelector('[data-bf-changed]').textContent = line;
+    go.textContent = 'Save ' + plural(t, 'line') + (j && j.value_text ? ' with ' + j.value_text : '');
+    go.disabled = !(valid && ((figCh) || noteCh || unf > 0));
+    if (!j || !valid) return;
+    var tail = ' It is final immediately and skips their moderator.' + modWords(j) + calWords(j), ok, title = 'Change this KPI result?', txt;
+    if (figCh) {
+      txt = 'Change ' + kname + ' in ' + where + (init === '' ? '' : ' from ' + figTxt + ' to') + ' ' + j.value_text + ' on ' + plural(t, 'line') + (noteCh ? ', and its note' : '') + '?' + tail + ghWords(g, j);
+      ok = 'Change ' + t;
+    } else if (noteCh) {
+      txt = 'Change the note of ' + kname + ' in ' + where + ' on ' + plural(j.n_refill, 'line') + '?' + tail + (unf > 0 ? ' It also fills ' + plural(unf, 'line') + ' not filled yet.' : '') + ghWords(g, j);
+      ok = 'Change ' + j.n_refill;
+    } else {
+      txt = 'Fill ' + j.value_text + ' on the ' + plural(unf, 'line') + ' of ' + kname + ' not filled yet?' + tail + ghWords(g, j);
+      ok = 'Fill ' + unf; title = 'Fill this KPI result?';
+    }
+    form.setAttribute('data-confirm', txt); form.setAttribute('data-confirm-ok', ok); form.setAttribute('data-confirm-title', title);
+  }
+  function draw(j) {
+    last = j;
+    ach.textContent = j.achievement || '—'; rt.textContent = j.rating || '—';
+    band.textContent = j.band ? '(' + j.band + ')' : '';
+    form.querySelectorAll('[data-bf-rate]').forEach(function (e) { e.classList.toggle('is-hit', !!j.rate && +e.getAttribute('data-bf-rate') === j.rate); });
+    body.innerHTML = j.rows; search();
+    var ge = form.querySelector('[data-bf-gherr]'); if (ge) { ge.textContent = j.gh_err || ''; ge.hidden = !j.gh_err; }
+    refresh();
+  }
+  function ask() {
+    var fd = new FormData(form); fd.set('action', 'calc'); var me = ++seq;
+    fetch(form.getAttribute('data-bf-calc'), {method: 'POST', body: fd, credentials: 'same-origin', headers: {'X-Requested-With': 'fetch'}})
+      .then(function (r) { return r.json(); })
+      .then(function (j) { if (me === seq && j && j.ok) draw(j); }).catch(function () {});
+  }
+  val.addEventListener('input', function () { clearTimeout(timer); timer = setTimeout(ask, 250); });
+  if (!F) return;
+  note && note.addEventListener('input', refresh);
+  function edit(on) {
+    form.classList.toggle('is-editing', on); clearTimeout(timer); ++seq; last = null;
+    if (on) { val.value = init; note && (note.value = initNote); go.disabled = true; ask(); val.focus(); return; }
+    val.value = init; note && (note.value = initNote);
+    ach.textContent = readTxt.ach; rt.textContent = readTxt.rt; band.textContent = readTxt.band;
+    form.querySelectorAll('[data-bf-rate]').forEach(function (e) { e.classList.remove('is-hit'); });
+    body.innerHTML = readRows; search();
+    var ge = form.querySelector('[data-bf-gherr]'); if (ge) { ge.textContent = ''; ge.hidden = true; }
+  }
+  var eb = form.querySelector('[data-bf-edit]'), cb = form.querySelector('[data-bf-cancel]');
+  eb && eb.addEventListener('click', function () { edit(true); });
+  cb && cb.addEventListener('click', function () { edit(false); });
+})();
+</script>
+{% endif %}
+{% endblock %}

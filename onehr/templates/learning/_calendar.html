@@ -1,0 +1,76 @@
+{# The learning calendar, staff's view (2026-10-22; canvas [design canvas link removed] board 8A):
+   the month's sessions open to them, their plan's first, with seats; the one they pick on the right. Register opens
+   their own request. Ask OneHR joins on the left (S8). #}
+<div class="lc">
+  <div class="lc-head">
+    <a class="lc-nav" href="{{ cal_url(m=cal.prev, s=None) }}" aria-label="Previous month">‹</a>
+    <h1 class="lc-month">{{ cal.month_label }}</h1>
+    <a class="lc-nav" href="{{ cal_url(m=cal.next, s=None) }}" aria-label="Next month">›</a>
+    <a class="lc-today" href="{{ cal_url(m=None, s=None) }}">Today</a>
+    <span class="lc-grow"></span>
+    <nav class="lc-modes" aria-label="Show as"><a href="{{ cal_url(mode=None) }}" class="{{ 'is-on' if cal_mode == 'month' }}">Month</a><a href="{{ cal_url(mode='list') }}" class="{{ 'is-on' if cal_mode == 'list' }}">List</a></nav>
+  </div>
+  <form method="get" class="lc-filters" action="{{ url_for('learning_home') }}">
+    <input type="hidden" name="view" value="calendar">{% if cal_args.m %}<input type="hidden" name="m" value="{{ cal_args.m }}">{% endif %}{% if cal_args.mode %}<input type="hidden" name="mode" value="{{ cal_args.mode }}">{% endif %}
+    <input type="hidden" name="plan" value="0"><label class="lc-tog"><input type="checkbox" name="plan" value="1"{{ ' checked' if cal_args.get('plan', '1') == '1' }}> For my plan first</label>
+    <input type="hidden" name="seats" value="0"><label class="lc-tog"><input type="checkbox" name="seats" value="1"{{ ' checked' if cal_args.get('seats', '1') == '1' }}> With seats</label>
+    <select name="comp" class="modern-select" aria-label="Competency"><option value="">Competency: any</option>{% for k, t in cal.comps %}<option value="{{ k }}"{{ ' selected' if cal_args.comp == k }}>{{ t }}</option>{% endfor %}</select>
+    <select name="kind" class="modern-select" aria-label="Format"><option value="">Format: any</option>{% for k in cal.kinds %}<option value="{{ k }}"{{ ' selected' if cal_args.kind == k }}>{{ kind_label.get(k, k) }}</option>{% endfor %}</select>
+    <select name="venue" class="modern-select" aria-label="Where"><option value="">Where: any</option>{% for v in cal.venues %}<option value="{{ v }}"{{ ' selected' if cal_args.venue == v }}>{{ v }}</option>{% endfor %}</select>
+    <button type="submit" class="btn-link">Show</button>
+  </form>
+  <div class="lc-wrap">
+    {% if cal_mode == 'list' %}
+    <div class="lc-list ls-card">
+      {% for e in cal.events.values() | sort(attribute='s.starts_on') %}
+      <a class="lc-li is-{{ e.state }}" href="{{ cal_url(s=e.sid) }}"><span class="lc-li-d">{{ e.s.starts_on | lms_day }}</span><b>{{ e.title }}</b><span class="lc-li-s">{{ e.sub }}</span></a>
+      {% endfor %}
+      {% if not cal.events %}<p class="ls-none">Nothing open to you this month.</p>{% endif %}
+    </div>
+    {% else %}
+    <div class="lc-grid" role="grid" aria-label="{{ cal.month_label }}">
+      <div class="lc-dow" role="row">{% for d in ('Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun') %}<span role="columnheader">{{ d }}</span>{% endfor %}</div>
+      {% for w in cal.weeks %}
+      <div class="lc-wk" role="row">
+        {% for c in w %}
+        <div class="lc-day{{ ' is-out' if not c.in_month }}{{ ' is-we' if c.weekend }}{{ ' is-hol' if c.holiday }}{{ ' is-today' if c.today }}" role="gridcell">
+          <span class="lc-n">{{ c.day.day }}</span>{% if c.holiday %}<span class="lc-hol" title="Public holiday: {{ c.holiday }}">{{ c.holiday }}</span>{% endif %}
+          {% for e in c.events[:3] %}<a class="lc-ev is-{{ e.state }}{{ ' is-sel' if cal_sel and cal_sel.sid == e.sid }}" href="{{ cal_url(s=e.sid) }}" title="{{ e.title }} · {{ e.sub }}"><b>{{ e.title }}</b><i>{{ e.sub }}</i></a>{% endfor %}
+          {% if c.events | length > 3 %}<a class="lc-evx" href="{{ cal_url(mode='list') }}">{{ c.events | length - 3 }} others</a>{% endif %}
+        </div>
+        {% endfor %}
+      </div>
+      {% endfor %}
+    </div>
+    {% endif %}
+    <aside class="lc-side">
+      {% if cal_sel %}{% set e = cal_sel %}
+      <section class="ls-card lc-card">
+        <div class="lc-photo">{% if e.s.photo_path %}<img src="{{ url_for('learning_programme_file', pid=e.s.programme_id, kind='photo') }}" alt="">{% endif %}</div>
+        <div class="lc-card-b">
+          <span class="ls-k">{{ e.line.split(' · ')[0] }}</span>
+          <b class="lc-card-t">{{ e.title }}</b>
+          <span class="ls-note">{{ e.s.run_label or 'Run' }} · {{ e.line }}</span>
+          <div class="lp-chips">
+            {% if e.mine %}<span class="ls-chip is-approved">{{ e.mine }}</span>{% elif e.left is not none %}<span class="ls-chip{{ ' is-approved' if e.left > 0 }}">{% if e.left > 0 %}{{ e.left }} left of {{ e.s.seats }}{% else %}Full{% endif %}</span>{% endif %}
+            <span class="ls-chip">{{ kind_label.get(e.s.kind, e.s.kind) }}{% if e.s.p_hours %} · {{ '%g' % e.s.p_hours }} h{% endif %}</span>
+            {% if e.s.reg_cutoff and not e.mine %}<span class="ls-chip">Closes {{ e.s.reg_cutoff | lms_day }}</span>{% endif %}
+            {% if e.plan %}<span class="ls-chip lp-mine">Your plan</span>{% endif %}
+          </div>
+          <div class="ls-acts">
+            <a class="btn-link" href="{{ url_for('learning_programme', pid=e.s.programme_id) }}">Open the programme</a>
+            {% if not e.mine and e.open_ok %}<a class="primary" href="{{ url_for('learning_register', session=e.sid) }}">{{ 'Join the waiting list' if e.state == 'full' else 'Register' }}</a>{% endif %}
+          </div>
+        </div>
+      </section>
+      {% else %}<p class="ls-none">Pick a session to see it here.</p>{% endif %}
+      <div class="lc-legend">
+        <span><i class="lc-sw is-plan"></i>Builds a goal in your plan</span>
+        <span><i class="lc-sw is-open"></i>Open to you, with seats</span>
+        <span><i class="lc-sw is-full"></i>Full: the waiting list</span>
+        <span><i class="lc-sw is-registered"></i>Yours</span>
+      </div>
+      <p class="ls-note">Only programmes open to your group, unit and grade. Register opens your request, filled in from your Career Plan; your line manager approves it as usual.</p>
+    </aside>
+  </div>
+</div>

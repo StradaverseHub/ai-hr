@@ -1,0 +1,175 @@
+{# Bulk panel build. Modelled on admin_clear_panels.html -- same shape, same
+   preview-then-apply rhythm -- but SCOPE-driven rather than file-driven, because
+   needing a CSV of 3,600 Employee IDs is the problem this page exists to fix. #}
+{% extends "base.html" %}
+{% from "_table_tools.html" import colth, colmenu, colmenu_script %}
+{% from "_filter_rows.html" import filter_rows %}
+{% from "_mode_switch.html" import panel_modes with context %}
+{% block title %}Panels{% endblock %}
+{% block body %}
+{{ panel_modes('build') }}
+<p class="adm-lede">Who gives each person feedback. Build panels for a whole business group or unit from the rules;
+  it only adds, and shows what it would do first.</p>
+
+{% if target is none %}
+{# No maximum panel size: nothing to build panels to, so the build is off (Chris, 2026-10-23) #}
+<div class="admin-card" id="build-off">
+  <h2>The panel build is off</h2>
+  <p>The target panel size is <strong>No maximum</strong>, so there's no number to build panels to. Add raters on each
+    person's panel (360 Feedback &rsaquo; People), or import a panel file (Import a file, above).</p>
+  <p class="muted small">{% if nav_is_super %}To build again, choose a panel size on
+    <a href="{{ url_for('admin_module_settings', key='f360') }}#rules">360 Feedback &rsaquo; Settings &rsaquo; Rules</a>.{% else %}The
+    super admin sets the panel size on 360 Feedback &rsaquo; Settings &rsaquo; Rules.{% endif %}</p>
+</div>
+{% else %}
+<div class="admin-card">
+  <h2>How it works</h2>
+  <ul class="bullets">
+    {% if cap %}<li>Nobody rates more than <strong>{{ cap }} people</strong> in a cycle, whatever the role.</li>
+    {% else %}<li>There's <strong>no maximum</strong> on how many people one person rates: the super admin's choice on
+      360 Feedback &rsaquo; Settings &rsaquo; Rules. Whoever has the least to do is still picked first.</li>{% endif %}
+    <li>Each person gets their <strong>line manager</strong> first,{% if prior_name %} then the raters they had on their
+      <strong>{{ prior_name }}</strong> panel,{% endif %} then <strong>direct reports</strong>, then
+      <strong>peers</strong> in the same business group, unit and department; the unit's other departments only
+      when that isn't enough. Target <strong>{{ target }}</strong>; <strong>{{ min_valid }}</strong> is enough to be scored.</li>
+    {% if cap %}<li>A manager with a team bigger than {{ cap }} rates {{ cap }} of them, those with the fewest other people to
+      ask; colleagues rate the rest.</li>{% endif %}
+    <li>Only <strong>confirmed</strong> employees get a panel. Anyone active may serve as an assessor.</li>
+    <li>Job grade <strong>H</strong> is rated by their line manager only.</li>
+    <li>Affects the <strong>active cycle</strong> only.</li>
+  </ul>
+  <p class="note">
+    <strong>This page only ever adds.</strong> It never removes an assessor, never archives one, and
+    never touches an assessment somebody has already submitted. To empty a panel,
+    {% if nav_is_super %}use Clear panels, above{% else %}ask a super admin
+    (Clear panels is theirs){% endif %}.
+  </p>
+</div>
+
+<div class="admin-card" style="margin-top:16px">
+  <h2>Scope</h2>
+  {# business group and unit as rows (the admin table standard, 2026-10-11), then what to build #}
+  {{ filter_rows(frows) }}
+  <form method="get" class="adm-fsearch">
+    {% if bg %}<input type="hidden" name="bg" value="{{ bg }}">{% endif %}
+    {% if bu %}<input type="hidden" name="bu" value="{{ bu }}">{% endif %}
+    <label class="adm-field">What to build
+      <select name="mode" class="modern-select" onchange="this.form.submit()">
+        <option value="missing" {{ 'selected' if mode == 'missing' }}>People with no panel yet</option>
+        <option value="topup" {{ 'selected' if mode == 'topup' }}>Top up panels below {{ target }}</option>
+      </select>
+    </label>
+  </form>
+  <p class="muted small" style="margin-top:8px">
+    {% if mode == 'missing' %}
+      Builds a panel for confirmed people in scope who have <strong>no assessors at all</strong>.
+      Safe to run again after importing more people &mdash; anyone who already has a panel is skipped.
+    {% else %}
+      Adds assessors to panels that are <strong>below {{ target }}</strong> and where
+      <strong>nobody has submitted yet</strong>. A panel that is part-way through scoring is left
+      alone: changing who is on it changes the score it produces, so those belong in the
+      individual panel editor.
+    {% endif %}
+  </p>
+  <form method="post">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <input type="hidden" name="mode" value="{{ mode }}">
+    <input type="hidden" name="bg" value="{{ bg or '' }}">
+    <input type="hidden" name="bu" value="{{ bu or '' }}">
+    <div class="actions">
+      <button type="submit" class="btn-link">Preview (no changes)</button>
+      {% if plan and plan['to_create'] and not applied %}
+      <button type="submit" name="apply" value="1" class="primary"
+              data-confirm="Add {{ plan['to_create'] | thousands }} {{ 'rater' if plan['to_create'] == 1 else 'raters' }} to the panels of {{ plan['changed'] | thousands }} {{ 'person' if plan['changed'] == 1 else 'people' }}? It changes the live panels." data-confirm-ok="Build">
+        Build {{ plan['to_create'] | thousands }} assignments</button>
+      {% endif %}
+    </div>
+  </form>
+</div>
+
+{% if plan %}
+<div class="admin-card" style="margin-top:16px">
+  <h2>{% if applied %}Done{% else %}Preview &mdash; nothing has been changed yet{% endif %}</h2>
+  <div class="threshold-preview" style="margin-bottom:10px">
+    <span class="potential-pill" data-band="Mid"><strong>{{ plan['in_scope'] | thousands }}</strong> confirmed in scope</span>
+    <span class="potential-pill" data-band="High"><strong>{{ plan['changed'] | thousands }}</strong> people {{ 'gained assessors' if applied else 'would gain assessors' }}</span>
+    <span class="potential-pill" data-band="High"><strong>{{ plan['to_create'] | thousands }}</strong> assignments {{ 'created' if applied else 'to create' }}</span>
+    {% if plan['short'] %}<span class="potential-pill" data-band="Low"><strong>{{ plan['short'] | length | thousands }}</strong> below {{ plan['min_valid'] }}, can't be scored</span>{% endif %}
+    {% if plan['eligible'] != plan['changed'] %}<span class="potential-pill"><strong>{{ (plan['eligible'] - plan['changed']) | thousands }}</strong> considered but nobody left to add</span>{% endif %}
+  </div>
+
+  <p class="muted small">
+    Skipped:
+    {{ plan['skipped']['has_panel'] | thousands }} {{ 'already have a panel' if mode == 'missing' else 'have no panel yet' }}{% if mode == 'topup' %},
+    {{ plan['skipped']['already_full'] | thousands }} already at {{ target }},
+    {{ plan['skipped']['in_progress'] | thousands }} part-way through scoring,
+    {{ plan['skipped']['released'] | thousands }} already released{% endif %}.
+    {% if plan['by_rel'] %}
+    Breakdown: {% for rel, n in plan['by_rel'].items() %}{{ n | thousands }} {{ rel | replace('_', ' ') }}{{ ', ' if not loop.last }}{% endfor %}.
+    {% endif %}
+  </p>
+
+  {% if plan['dist_after'] %}
+  <p class="muted small">Panel sizes {{ 'now' if applied else 'afterwards' }}:
+    {% for n, c in plan['dist_after'] | dictsort %}{{ c | thousands }} &times; {{ n }}{{ ', ' if not loop.last }}{% endfor %}.</p>
+  {% endif %}
+  {% if plan['to_create'] %}
+  {% if plan['cap'] %}<p class="muted small">Nobody rates more than {{ plan['cap'] }}: the most anyone this {{ 'gave' if applied else 'gives' }} work to
+    rates is {{ plan['max_load'] }}, and {{ plan['at_cap'] | thousands }} {{ 'reach' if not applied else 'reached' }} {{ plan['cap'] }}.</p>
+  {% else %}<p class="muted small">No maximum: the most anyone this {{ 'gave' if applied else 'gives' }} work to rates is
+    {{ plan['max_load'] }}.</p>{% endif %}
+  {% endif %}
+  {% if plan['over_cap_before'] %}
+  <p class="muted small">{{ plan['over_cap_before'] | thousands }} {{ 'person already rates' if plan['over_cap_before'] == 1 else 'people already rate' }}
+    more than {{ plan['cap'] }} from panels built before the cap; this build gives them nothing more.</p>
+  {% endif %}
+</div>
+
+{% if plan['short'] %}
+<div class="admin-card" style="margin-top:16px">
+  <h2>Below {{ plan['min_valid'] }}, can't be scored &mdash; and why</h2>
+  <p class="muted small">These people can't reach {{ plan['min_valid'] }} raters within the rules. The reason is
+    usually missing manager data or too few colleagues in their unit. Fix the data and run this again, or add
+    assessors by hand from each person's panel editor.</p>
+  <div class="table-scroll table-scroll-capped">
+  <table class="admin-table" id="short-table">
+    <thead><tr>
+      {{ colth('person', 'Person') }}
+      {{ colth('bg', 'Business group') }}
+      {{ colth('bu', 'Business unit') }}
+      {{ colth('dept', 'Department') }}
+      {{ colth('jg', 'JG') }}
+      {{ colth('after', 'Panel') }}
+      <th>Why</th>
+    </tr></thead>
+    <tbody>
+      {% for r in plan['short'] %}
+      <tr class="data-row" data-person="{{ r['name'] }}" data-bg="{{ r['bg'] }}"
+          data-bu="{{ r['bu'] }}" data-dept="{{ r['dept'] }}" data-jg="{{ r['jg'] }}"
+          data-after="{{ r['after'] }}">
+        <td><strong>{{ r['name'] }}</strong><br><span class="muted small">{{ r['eid'] }}</span></td>
+        <td class="muted">{{ r['bg'] }}</td>
+        <td class="muted">{{ r['bu'] }}</td>
+        <td class="muted">{{ r['dept'] | proper }}</td>
+        <td>{{ r['jg'] }}</td>
+        <td>{{ r['after'] }} / {{ target }}</td>
+        <td class="muted small">{{ r['reason'] }}</td>
+      </tr>
+      {% endfor %}
+      <tr class="no-filter-match" hidden><td colspan="7" class="muted">No rows match the filters.</td></tr>
+    </tbody>
+  </table>
+  </div>
+  {{ colmenu('short-table', {
+       'person': {'mode': 'clientFilter', 'type': 'text', 'sortAttr': 'person'},
+       'bg':     {'mode': 'sort', 'type': 'text', 'sortAttr': 'bg'},
+       'bu':     {'mode': 'clientFilter', 'type': 'text', 'sortAttr': 'bu'},
+       'dept':   {'mode': 'sort', 'type': 'text', 'sortAttr': 'dept'},
+       'jg':     {'mode': 'clientFilter', 'type': 'text', 'sortAttr': 'jg'},
+       'after':  {'mode': 'clientFilter', 'type': 'num',  'sortAttr': 'after'} }) }}
+  {{ colmenu_script(asset_v) }}
+</div>
+{% endif %}
+{% endif %}
+{% endif %}{# target is none #}
+{% endblock %}

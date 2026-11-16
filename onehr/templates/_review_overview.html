@@ -1,0 +1,30 @@
+{# The opening KPI overview -- every line at a glance, each editable one a "Start"
+   handle. Picking posts ?pick=<id> to the turn route; the SERVER validates the id
+   is one of this person's own unanswered lines and renders that KPI. The client
+   chooses WHICH, never what the number means. #}
+<div class="rv-overview">
+  <ul class="rv-ov-list">
+    {% for t in st['targets'] %}
+      <li class="rv-ov-item{{ ' is-done' if t['has_value'] }}">
+        <div class="rv-ov-main">
+          <span class="rv-ov-name">{{ t['kpi_name'] }}</span>
+          <span class="muted small">Weight {{ t['weightage'] }}%</span>
+        </div>
+        <div class="rv-ov-right">
+          {% if t['bu_level'] %}
+            <span class="muted small">Group People fills this in</span>
+          {% elif t['has_value'] %}
+            <span class="rv-ov-band">
+              {%- if t['score'] and t['score']['label'] %}<span class="potential-pill" data-band="{{ t['score']['label'] }}">{{ t['score']['label'] }}</span>
+              {%- else %}keyed{% endif -%}
+            </span>
+          {% elif t['can_edit'] %}
+            <button type="button" class="rv-chip rv-ov-start" data-pick="{{ t['id'] }}">Start</button>
+          {% else %}
+            <span class="muted small">not yours to key</span>
+          {% endif %}
+        </div>
+      </li>
+    {% endfor %}
+  </ul>
+</div>

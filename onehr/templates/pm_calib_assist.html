@@ -1,0 +1,43 @@
+{# PERFORMANCE CALIBRATION as a CONVERSATION. A HOD/BUCEO talks the spread through
+   with the assistant; it flags who is off the reference curve and drafts the
+   rationale, but the server validates + writes every move (via _pm_calib_apply, the
+   grid's own path) and only the human's Lock click locks. Same chat shell as the
+   review-journey stages, a calibration agent + a pinned distribution/roster widget. #}
+{% extends "base.html" %}
+{% block title %}Calibrate — {{ scope_label }}{% endblock %}
+{% block back_button %}{% endblock %}
+{% block body %}
+{% from "_review_icons.html" import rvicon %}
+
+<div class="calib-assist-head">
+  <a class="calib-assist-back" href="{{ grid_url }}">&#8592; Back to the calibration grid</a>
+  <h1 class="calib-assist-title">Calibrate with AI+ &mdash; {{ scope_label }}</h1>
+</div>
+
+<div class="rv-calib-wrap">
+  {# The pinned live widget: the distribution vs the reference curve + the roster,
+     rebuilt from the server's `overview` every turn (never a snapshot). #}
+  <div class="rv-calib-pin" id="rv-calib-pin"></div>
+
+  <div class="rv-main">
+    <div class="rv-chat" id="rv-chat"
+         data-history-url="{{ url_for('pm_calib_chat_history') }}"
+         data-send-url="{{ url_for('pm_calib_chat') }}"
+         data-tier="{{ tier }}"
+         {% if tier == 'hod' %}data-hod-id="{{ scope_kwargs.hod_id }}"
+         {% else %}data-bg="{{ scope_kwargs.bg }}" data-company="{{ scope_kwargs.company }}"{% endif %}
+         {% if not agent_available %}data-unavailable="1"{% endif %}>
+      <div class="rv-chat-log" id="rv-chat-log" aria-live="polite"></div>
+      <div class="rv-chat-quick" id="rv-chat-quick"></div>
+      <form class="rv-composer" id="rv-chat-form" autocomplete="off" onsubmit="return false">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+        <textarea id="rv-chat-input" rows="1" placeholder="Type your reply…"
+                  aria-label="Message the calibration assistant"></textarea>
+        <button type="submit" class="rv-send" id="rv-chat-send" aria-label="Send" title="Send">{{ rvicon('send') }}</button>
+      </form>
+    </div>
+  </div>
+</div>
+
+<script src="{{ url_for('static', filename='pm_calib_chat.js') }}?v={{ asset_v }}" defer></script>
+{% endblock %}

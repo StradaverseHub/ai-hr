@@ -1,0 +1,705 @@
+{% extends "base.html" %}
+{% block title %}AI+ Learning{% endblock %}
+{% set tb_title = 'Learning' %}{% set tb_back_href = url_for('dashboard') %}
+{# AI+ Learning in the AI+ check-in's own shell (Chris, 2026-10-22: "for the AI+ Learning, we need to redesign it to
+   follow our PMTMIDP AI+ UI", then "go with the redesign"; canvas [design canvas link removed]
+   section 17). On the left the view switch and the queue card; across the top Learning's parts as tabs, the open one
+   with its steps; in the middle the learning coach's conversation, every action a card in it. Every write is the form
+   it always was, with OneHR's own confirm. #}
+{% block back_button %}
+  <a href="{{ url_for('dashboard') }}" id="floating-back" class="fab-back" aria-label="Back to your dashboard">
+    <span class="fab-back-arrow" aria-hidden="true">&larr;</span><span class="fab-back-label">Dashboard</span></a>
+{% endblock %}
+{% block body %}
+{% macro spark() %}<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2C12.6 7.4 16.6 11.4 22 12C16.6 12.6 12.6 16.6 12 22C11.4 16.6 7.4 12.6 2 12C7.4 11.4 11.4 7.4 12 2Z"></path></svg>{% endmacro %}
+{% macro agent(text) %}<div class="ln-ai"><span class="ln-av">{{ spark() }}</span><div class="ln-bub">{{ text }}</div></div>{% endmacro %}
+{% macro icon(k) -%}
+{% if k == 'find' %}<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="6.5"/><path d="M20 20l-4.2-4.2"/></svg>
+{% elif k == 'apply' %}<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 12.5l5 5L20 6.5"/></svg>
+{% elif k == 'progress' %}<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 17l6-6 4 4 8-8M15 7h6v6"/></svg>
+{% elif k == 'cal' %}<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3.5" y="5" width="17" height="15" rx="2"/><path d="M3.5 10h17M8 3v4M16 3v4"/></svg>
+{% else %}<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="9" cy="8" r="3.5"/><path d="M2.5 20c.8-3.6 3.4-5.5 6.5-5.5s5.7 1.9 6.5 5.5M16 4.8a3.5 3.5 0 010 6.4M18.5 14.8c1.6.7 2.6 2.4 3 5.2"/></svg>{% endif %}
+{%- endmacro %}
+{% macro steps(r) -%}
+<ol class="ls-steps" aria-label="Approval steps">
+  {% for st in r.steps %}<li class="is-{{ st.state }}{{ ' is-now' if st.now }}"><span class="ls-dot" aria-hidden="true"></span>{{ st.label }}{% if st.state == 'approved' %} &#10003;{% elif st.state == 'skipped' %} · skipped{% elif st.state == 'returned' %} · returned{% endif %}{% if st.note %}<span class="ls-note">{{ st.note }}</span>{% endif %}</li>{% endfor %}
+  {% if not r.steps %}<li class="is-approved"><span class="ls-dot" aria-hidden="true"></span>No approval needed</li>{% endif %}
+</ol>
+{%- endmacro %}
+{% macro withdraw_form(r) -%}
+{# Withdrawing needs a reason (Chris, 2026-10-22); the place goes to the next person waiting, an invite is cancelled. #}
+<details class="ls-wd">
+  <summary class="btn-link ls-danger">Withdraw…</summary>
+  <form method="post" action="{{ url_for('learning_mine_act', rid=r.id) }}" class="ls-wd-form" data-confirm="Withdraw from {{ r.title }}? Your line manager and L&amp;D read your reason, and your place goes to the next person waiting." data-confirm-ok="Withdraw" data-confirm-tone="danger">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}"><input type="hidden" name="action" value="withdraw">
+    <fieldset><legend>Why are you withdrawing?</legend>
+      {% for k, lab in withdraw_kinds %}<label><input type="radio" name="why_kind" value="{{ k }}" required> {{ lab }}</label>{% endfor %}
+    </fieldset>
+    <label class="ls-full"><span>Tell us more <span class="ls-opt">(required)</span></span><textarea name="why" rows="2" maxlength="300" required placeholder="e.g. year-end stock count on those days; I'll take the January run"></textarea></label>
+    <div class="ln-acts"><button type="submit" class="primary ls-danger-btn">Withdraw</button></div>
+  </form>
+</details>
+{%- endmacro %}
+{% macro chain_words(chain) -%}
+{% for st in chain %}{{ ' → ' if not loop.first }}{% if st.state == 'skipped' %}<s>{{ role_label[st.role] }}</s>{% elif st.state == 'approved' %}{{ role_label[st.role] }} &#10003;{% else %}{{ role_label[st.role] }} ({{ st.days }} working day{{ '' if st.days == 1 else 's' }}){% endif %}{% else %}No approval needed{% endfor %}
+{%- endmacro %}
+{% macro levels(comp, picked, mine=false) -%}
+<div class="le-levels">
+  {% for lv in comp.levels %}
+  <label class="le-lv"><input type="radio" name="level" value="{{ lv.level }}"{{ ' checked' if lv.level == picked }} required>
+    <span><span class="le-lvh"><b>L{{ lv.level }}</b>{% if mine and lv.level == picked %}<i>Their pick</i>{% endif %}{% if lv.tag %}<i>{{ lv.tag }}</i>{% endif %}</span><small>{{ lv.desc }}</small></span></label>
+  {% endfor %}
+</div>
+{%- endmacro %}
+
+{# a check-in's form (S9's writer): an open one in Apply, and a sent 3-month one's Change it #}
+{% macro eval_form(c, fid, sent=false) -%}
+<form method="post" action="{{ url_for('learning_eval', rid=c.reg, kind=c.kind) }}" class="le-form{{ ' ln-card' if not sent }}" id="{{ fid }}" data-confirm="{{ 'Save your 1-month check-in?' if c.kind == 'm1' else ('Send the change to your line manager?' if sent else 'Send your 3-month check-in to your line manager? You can change it until they confirm.') }}" data-confirm-ok="{{ 'Save' if c.kind == 'm1' else 'Send' }}">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+  {% if not sent %}<div class="ls-item-h"><b>{{ c.label }}: {{ c.title }}</b><span class="ls-chip{{ ' is-returned' if c.status == 'kept' }}">{{ 'Not yet: send it again' if c.status == 'kept' else 'Open since ' ~ (c.due_on | lms_day) }}</span></div>{% endif %}
+  {% if c.status == 'kept' and not sent %}<p class="ls-remark"><span class="ls-k">Your line manager: not yet</span>{% if c.words.mgr_note %} “{{ c.words.mgr_note }}”{% endif %} Send it again when you've used it more.</p>{% endif %}
+  {% if c.kind == 'm1' %}
+  <label class="ls-full"><span>What have you used from it since, and where? One real example.</span>
+    <textarea name="used" rows="3" maxlength="600" required minlength="15" placeholder="e.g. I used the price-objection steps with two dealers; on one quote I held our list price">{{ c.words.used or '' }}</textarea></label>
+  <label class="ls-full"><span>What got in the way? <span class="ls-opt">(optional)</span></span>
+    <textarea name="blocker" rows="2" maxlength="300">{{ c.words.blocker or '' }}</textarea></label>
+  <div class="le-acts"><span class="ls-note">+15 XP for checking in.</span><button type="submit" class="primary">Save</button></div>
+  {% else %}
+  {% if c.m1_words.used and not sent %}<p class="ls-remark"><span class="ls-k">Your 1-month words</span> “{{ c.m1_words.used }}”</p>{% endif %}
+  <label class="ls-full"><span>What's changed since then?</span>
+    <textarea name="changed" rows="3" maxlength="600" required minlength="15" placeholder="e.g. I now set the price band for the Southern dealers myself">{{ c.words.changed or '' }}</textarea></label>
+  {% if c.comp %}
+  <fieldset class="le-pick"><legend>Which is closest to how you work on {{ c.comp.title }} now? Pick the one that fits, not the one you'd like.</legend>
+    {{ levels(c.comp, c.self_level) }}
+  </fieldset>
+  {% endif %}
+  <label class="ls-full"><span>Your example</span>
+    <textarea name="example" rows="2" maxlength="300" required minlength="15" placeholder="One thing you do now, that your line manager could see">{{ c.words.example or '' }}</textarea></label>
+  <div class="le-acts"><span class="ls-note">+50 XP and the badge when your line manager confirms.</span><button type="submit" class="primary">{{ 'Send the change' if sent else ('Send it again' if c.status == 'kept' else 'Send to your line manager') }}</button></div>
+  {% endif %}
+</form>
+{%- endmacro %}
+
+<div class="ln" id="ln" data-view="{{ view }}" data-coach-url="{{ url_for('learning_coach') }}" data-available="{{ '1' if coach_on else '0' }}">
+  {# --- the left: the view switch and the queue card ------------------------------------------------------------------ #}
+  {% set q = shell.queue %}
+  <aside class="ln-left" aria-label="{{ q.title }}">
+    <nav class="ln-vs" aria-label="Views">
+      {% for k, lab in views if k != 'calendar' %}<a href="{{ url_for('learning_home', view=k) }}" class="{{ 'is-on' if k == view }}"{% if k == view %} aria-current="page"{% endif %}>{{ lab }}{% if k != view and n_view.get(k) %} <b>{{ n_view[k] }}</b>{% endif %}</a>{% endfor %}
+    </nav>
+    <section class="ln-q">
+      <h2>{{ q.title }}</h2>
+      <p class="ln-q-sub">{% if q.n_todo %}{{ q.n_todo }} to do{% endif %}{% if q.n_todo and q.n_wait %} · {% endif %}{% if q.n_wait %}{{ q.n_wait }} waiting{% endif %}{% if not q.n_todo and not q.n_wait %}Nothing to do right now{% endif %}</p>
+      {% if q.bar %}<div class="ln-bar" aria-hidden="true">{% for b in q.bar %}<i class="is-{{ b }}"></i>{% endfor %}</div>
+      <p class="ln-leg">{% if q.n_todo %}<span class="is-todo">{{ q.n_todo }} to do</span>{% endif %}{% if q.n_wait %}<span class="is-wait">{{ q.n_wait }} waiting</span>{% endif %}{% if q.n_done %}<span class="is-done">{{ q.n_done }} {{ 'coming up' if view == 'mine' else 'done' }}</span>{% endif %}</p>{% endif %}
+      {% if q.next %}
+      <p class="ln-k">Next step</p>
+      <div class="ln-next"><b>{{ q.next.title }}</b><span>{{ q.next.sub }}</span>
+        <a class="ln-go" href="{{ url_for('learning_home', view=view, tab=q.next.tab) }}#{{ q.next.anchor }}" data-go-tab="{{ q.next.tab }}" data-go="{{ q.next.anchor }}">Go to it &rarr;</a></div>
+      {% endif %}
+      {% if q.then %}
+      <p class="ln-k">Then</p>
+      <ul class="ln-then">{% for i in q.then %}<li class="is-{{ i.kind }}"><a href="{{ url_for('learning_home', view=view, tab=i.tab) }}#{{ i.anchor }}" data-go-tab="{{ i.tab }}" data-go="{{ i.anchor }}">{{ i.title }}<small>{{ i.sub }}</small></a></li>{% endfor %}</ul>
+      {% if q.more %}<p class="ln-more">and {{ q.more }} others in the tabs</p>{% endif %}
+      {% endif %}
+      <p class="ln-foot">{{ q.foot }}</p>
+    </section>
+  </aside>
+
+  <div class="ln-right">
+    {# --- across the top: Learning's parts as tabs, the open one with its steps ---------------------------------------- #}
+    <div class="ln-tabs" role="tablist" aria-label="Learning">
+      {% for t in shell.tabs %}
+      <button type="button" role="tab" id="ln-tab-{{ t.key }}" class="ln-tab{{ ' is-open' if t.key == shell.tab }}" data-tab="{{ t.key }}" data-coach-page="{{ t.coach }}" aria-selected="{{ 'true' if t.key == shell.tab else 'false' }}" aria-controls="ln-panel-{{ t.key }}"{% if t.label == 'Find and register' %} title="{{ t.label }}" aria-label="{{ t.label }}"{% endif %}>
+        <span class="ln-ic">{{ icon(t.icon) }}</span><span class="ln-tab-l">{% if t.label == 'Find and register' %}<span class="ln-tab-f">{{ t.label }}</span><span class="ln-tab-s" aria-hidden="true" hidden>Find</span>{% else %}{{ t.label }}{% endif %}</span>
+        {% if t.steps %}<span class="ln-steps{{ ' is-long' if t.steps | length > 4 }}">{% for lab, st in t.steps %}{% if not loop.first %}<hr>{% endif %}<em class="{{ 'is-' ~ st if st }}">{{ loop.index }}</em>{{ lab }}{% endfor %}</span>{% endif %}
+      </button>
+      {% endfor %}
+      {% if view == 'mine' %}<a class="ln-tab ln-tab-link" href="{{ url_for('learning_home', view='calendar') }}"><span class="ln-ic">{{ icon('cal') }}</span><span class="ln-tab-l">Calendar</span></a>{% endif %}
+    </div>
+
+    {# --- the middle: the coach's conversation, every action a card in it --------------------------------------------- #}
+    <div class="ln-conv">
+      <div class="ln-log" id="ln-log" aria-live="polite">
+        {% for t in shell.tabs %}
+        <div class="ln-panel" id="ln-panel-{{ t.key }}" role="tabpanel" aria-labelledby="ln-tab-{{ t.key }}" data-panel="{{ t.key }}"{% if t.key != shell.tab %} hidden{% endif %}>
+          {{ agent(shell.opening[t.key]) }}
+
+          {% if t.key == 'find' %}
+            {% if mode is defined and mode == 'register' %}
+            <section class="ln-frame ls-req" id="register" aria-labelledby="ls-reg-h">
+              <h3 id="ls-reg-h">Training request{{ ' · ' ~ s.title if s }}</h3>
+              {% if not s or not open_ok %}
+                <p class="ls-warn">{{ why_not }}</p>
+              {% else %}
+              <form method="post" action="{{ url_for('learning_register') }}" class="ln-card ls-form"
+                    data-confirm="Send your request for {{ s.title }} ({{ s_line }})? {% if full %}The session is full, so you'll join the waiting list.{% elif chain and chain[0].state == 'waiting' %}It goes to your {{ role_label[chain[0].role] | lower }} first.{% else %}No approval is needed.{% endif %} You can withdraw it until the day before it starts."
+                    data-confirm-ok="Send request">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                <input type="hidden" name="session" value="{{ s.id }}">
+                <dl class="ls-dl">
+                  <dt>When</dt><dd>{{ s_line }}{% if s.reg_cutoff %}<span class="ls-note">Registration closes {{ s.reg_cutoff | lms_day }}</span>{% endif %}</dd>
+                  <dt><label for="ls-goal">For your goal</label></dt>
+                  <dd>{% set ns = namespace(picked=false) %}<select id="ls-goal" name="goal_id" class="modern-select">{% if not goals | selectattr('fits') | list %}<option value="">Not linked to a goal</option>{% endif %}
+                    {% for g in goals %}<option value="{{ g.id }}"{% if g.fits and not ns.picked %} selected{% set ns.picked = true %}{% endif %}>{{ g.area }}{% if g.level %} · L{{ g.have or '?' }} → L{{ g.level }}{% endif %}{{ ' · fits' if g.fits }}</option>{% endfor %}</select>
+                    <span class="ls-note">From your Career Plan. It tells your approver why, so you needn't.</span></dd>
+                  {% if fit_need %}<dt>Your level now</dt><dd>{% if fit_need.have %}L{{ fit_need.have }}{% else %}Not assessed yet{% endif %} · this builds toward L{{ fit_need.level }}</dd>{% endif %}
+                  <dt>Cost to you</dt><dd>{% if s.cost_per_pax %}None: the company pays RM {{ '{:,.2f}'.format(s.cost_per_pax) }} a person{% else %}None{% endif %}{{ ' · HRDC-claimable' if s.hrdc_claimable }}</dd>
+                  <dt>Approval</dt><dd>{{ chain_words(chain) }}{% if full %}<span class="ls-note ls-amber">The session is full: you join the waiting list and move up when a place frees.</span>{% endif %}</dd>
+                  <dt><label for="ls-why">Why <span class="ls-opt">(optional)</span></label></dt>
+                  <dd><textarea id="ls-why" name="why" rows="2" maxlength="500" placeholder="Anything your approver should know"></textarea></dd>
+                </dl>
+                <div class="ln-acts"><span class="ls-note">Your name, unit and job are added for you.</span><a class="btn-link" href="{{ url_for('learning_home') }}">Cancel</a><button type="submit" class="primary">Send request</button></div>
+              </form>
+              {% endif %}
+            </section>
+            {% elif mode is defined and mode == 'request' %}
+            <section class="ln-frame ls-req" id="register" aria-labelledby="ls-ext-h">
+              <h3 id="ls-ext-h">Ask for a course that isn't in the catalogue</h3>
+              <form method="post" action="{{ url_for('learning_request') }}" class="ln-card ls-form" enctype="multipart/form-data"
+                    data-confirm="Send this request for an external course? It goes to your line manager first, then Group People L&amp;D, and to L&amp;D again when the cost is above their limit." data-confirm-ok="Send request">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                <div class="ls-grid2">
+                  <label>The course<input name="ext_title" required maxlength="160" value="{{ form.get('ext_title', '') }}"></label>
+                  <label>Who runs it<input name="ext_provider" required maxlength="120" value="{{ form.get('ext_provider', '') }}"></label>
+                  <label>First day<input type="date" name="ext_starts_on" required value="{{ form.get('ext_starts_on', '') }}"></label>
+                  <label>Last day<input type="date" name="ext_ends_on" value="{{ form.get('ext_ends_on', '') }}"></label>
+                  <label>Hours<input name="ext_hours" inputmode="decimal" value="{{ form.get('ext_hours', '') }}"></label>
+                  <label>Cost per person (RM)<input name="cost" inputmode="decimal" required value="{{ form.get('cost', '') }}"></label>
+                </div>
+                <label class="ls-check"><input type="checkbox" name="hrdc_claimable" value="1"{{ ' checked' if form.get('hrdc_claimable') }}> HRDC-claimable</label>
+                <label>For your goal<select name="goal_id" class="modern-select"><option value="">Not linked to a goal</option>{% for g in goals %}<option value="{{ g.id }}">{{ g.area }}</option>{% endfor %}</select></label>
+                <label>Why you need it<textarea name="why" rows="3" maxlength="500" required>{{ form.get('why', '') }}</textarea></label>
+                <label class="ls-file"><span>Attach the quotation or brochure <span class="ls-opt">(a PDF, optional)</span></span><input type="file" name="quote" accept=".pdf,application/pdf"><span class="ls-note">Your approvers read it with your request. The same course can't be sent twice: withdraw the first to change it.</span></label>
+                <div class="ln-acts"><span class="ls-note">Approval: {{ chain_words(chain) }}. The last step applies only above the cost L&amp;D sets.</span><a class="btn-link" href="{{ url_for('learning_home') }}">Cancel</a><button type="submit" class="primary">Send request</button></div>
+              </form>
+            </section>
+            {% endif %}
+
+            {% if find %}
+            <section class="ln-frame" id="runs" aria-labelledby="ln-runs-h">
+              <div class="ln-frame-h"><h3 id="ln-runs-h">Runs open to you</h3><a class="btn-link" href="{{ url_for('learning_home', view='calendar') }}">Open the calendar</a></div>
+              <p class="ln-lede">Your plan first. Seats and dates are OneHR's; the coach never registers you.</p>
+              {% if find.cards %}
+              <div class="ln-runs">
+                {% for c in find.cards %}
+                <article class="ln-card ln-run">
+                  <div class="ln-run-h"><span class="ln-pill{{ ' is-plan' if c.plan else '' }}">{{ 'Your plan' if c.plan else c.format }}</span>
+                    <span class="ln-seats{{ ' is-mine' if c.mine }}">{% if c.mine %}{{ c.mine }}{% elif c.left is none %}Open{% elif c.seats %}{{ c.left }} left of {{ c.seats }}{% else %}{{ c.left }} seat{{ '' if c.left == 1 else 's' }}{% endif %}</span></div>
+                  <b class="ln-run-t">{{ c.title }}</b>
+                  <span class="ln-run-w">{{ c.line }}</span>
+                  {% for b in c.builds %}<p class="ln-run-b">Builds <b>{{ b.title }}</b> to L{{ b.level }}{% if b.yours == 'plan' %} · your goal{% endif %}{% if b.desc %}<small>L{{ b.level }}: {{ b.desc }}</small>{% endif %}</p>{% endfor %}
+                  <div class="ln-acts"><a class="btn-link" href="{{ c.page }}">Details</a>{% if c.register %}<a class="primary" href="{{ c.register }}">Register</a>{% endif %}</div>
+                </article>
+                {% endfor %}
+              </div>
+              {% else %}<p class="ls-none">Nothing open to you with a seat right now. Ask the coach for something else, or see the calendar.</p>{% endif %}
+              {% if find.full or find.not_open or find.more %}<p class="ln-note">Not shown: {% set parts = [] %}{% if find.more %}{% set _ = parts.append('%d more open to you' % find.more) %}{% endif %}{% if find.full %}{% set _ = parts.append('%d full (a waiting list)' % find.full) %}{% endif %}{% if find.not_open %}{% set _ = parts.append('%d not open to your group or grade' % find.not_open) %}{% endif %}{{ parts | join(', ') }}.</p>{% endif %}
+              <p class="ln-note"><a href="{{ url_for('learning_request') }}">Ask for an external course</a> that isn't in the catalogue.</p>
+            </section>
+            {% endif %}
+
+            <section class="ln-frame" id="flight" aria-labelledby="ls-fl-h">
+              <h3 id="ls-fl-h">In progress</h3>
+              {% for r in flight %}
+              <article class="ln-card" id="req-{{ r.id }}">
+                <div class="ls-item-h"><b>{% if r.programme_id and not r.external %}<a href="{{ url_for('learning_programme', pid=r.programme_id) }}">{{ r.title }}</a>{% else %}{{ r.title }}{% endif %}</b><span class="ls-chip is-{{ r.status }}">{{ r.status_label }}{% if r.place %} · place {{ r.place }}{% endif %}</span></div>
+                <p class="ls-when">{{ r.when }}</p>
+                {{ steps(r) }}
+                {% if r.status == 'pending' and r.due %}<p class="ls-note{{ ' ls-amber' if r.late }}">{% if r.late %}Past its {{ r.due | lms_day }} date: it now goes to the next person up too.{% else %}Due by {{ r.due | lms_day }}.{% endif %}</p>{% endif %}
+                {% if r.status == 'returned' and r.remark %}<p class="ls-remark"><b>Returned:</b> “{{ r.remark }}”</p>{% endif %}
+                {% if r.status == 'returned' %}
+                {# change it, then send it again (the 2026-10-24 Learning QC: the line manager's Return promises they can) #}
+                <form method="post" id="resend-{{ r.id }}" class="ls-form ls-resend" action="{{ url_for('learning_mine_act', rid=r.id) }}" data-confirm="Send your request for {{ r.title }} again, with what you've changed? It starts its approval from the first step." data-confirm-ok="Send again">
+                  <input type="hidden" name="csrf_token" value="{{ csrf_token }}"><input type="hidden" name="action" value="resend">
+                  <label>Your answer, or why you need it <span class="ls-opt">(your line manager reads it)</span><textarea name="why" rows="2" maxlength="500"{{ ' required' if r.external or r.off_audience }} placeholder="e.g. I'll practise on the Southern dealer renewal in December">{{ r.why or '' }}</textarea></label>
+                  {% if ojt_goals %}<label>For your goal<select name="goal_id" class="modern-select"><option value="">Not linked to a goal</option>{% for g in ojt_goals %}<option value="{{ g.id }}"{{ ' selected' if g.id == r.goal_id }}>{{ g.area }}</option>{% endfor %}</select></label>{% endif %}
+                </form>
+                {% endif %}
+                <div class="ln-acts">
+                  {% if r.can_withdraw %}{{ withdraw_form(r) }}{% endif %}
+                  {% if r.status == 'returned' %}<button type="submit" form="resend-{{ r.id }}" class="primary">Send again</button>{% endif %}
+                </div>
+              </article>
+              {% else %}<p class="ls-none">Nothing waiting. Register for a run above, and it shows here until it's confirmed.</p>{% endfor %}
+            </section>
+
+            <section class="ln-frame" id="upcoming" aria-labelledby="ls-up-h">
+              <h3 id="ls-up-h">Coming up</h3>
+              {% for r in upcoming %}
+              <article class="ln-card" id="up-{{ r.id }}">
+                <div class="ls-item-h"><b>{% if r.programme_id and not r.external %}<a href="{{ url_for('learning_programme', pid=r.programme_id) }}">{{ r.title }}</a>{% else %}{{ r.title }}{% endif %}</b><span class="ls-chip is-approved">Confirmed</span></div>
+                <p class="ls-when">{{ r.when }}</p>
+                {% if r.replaces_reg and r.nomination != 'walkin' %}<p class="ls-note">A seat came free, so Group People L&amp;D gave it to you{% if r.seat_note %}: “{{ r.seat_note }}”{% endif %}. No approval waits.</p>{% endif %}
+                {% if not r.external %}
+                <dl class="ls-kv">
+                  {% if r.venue %}<dt>Venue</dt><dd>{{ r.venue }}</dd>{% endif %}
+                  {% if r.trainer or r.vendor %}<dt>Trainer</dt><dd>{{ [r.trainer, r.vendor] | select | join(', ') }}</dd>{% endif %}
+                  <dt>Calendar</dt><dd>{% if r.invite and r.invite.status == 'sent' and r.invite.via == 'email' %}In your Outlook calendar: the invite went to your work email on {{ (r.invite.sent_at | myt)[:10] | lms_day }}.{% elif r.invite and r.invite.status == 'sent' %}Your invite is ready: <a class="btn-link" href="{{ url_for('learning_ics', rid=r.id) }}">Add to calendar</a>{% else %}<a class="btn-link" href="{{ url_for('learning_ics', rid=r.id) }}">Add to your calendar</a>{% endif %}</dd>
+                </dl>
+                {% if r.kind == 'elearning' %}<p class="ls-note">E-learning: complete it online by {{ r.ends | lms_day }}. Group People L&amp;D marks it complete. If you withdraw, the invite is cancelled too.</p>
+                {% else %}<p class="ls-note">On the day, scan the QR code on the room's screen to clock in, and sign the HRDC T3 at the door. If you withdraw, the invite is cancelled too.</p>{% endif %}
+                {% endif %}
+                {% if r.can_withdraw %}<div class="ln-acts">{{ withdraw_form(r) }}</div>{% endif %}
+              </article>
+              {% else %}<p class="ls-none">No confirmed sessions coming up.</p>{% endfor %}
+            </section>
+            {% if closed %}
+            <section class="ln-frame" id="closed" aria-labelledby="ls-cl-h">
+              <h3 id="ls-cl-h">Closed</h3>
+              <details class="fold ls-closed"><summary class="small">{{ closed | length }} closed in the last four months</summary>
+              {% for r in closed %}
+              <article class="ln-card" id="closed-{{ r.id }}">
+                <div class="ls-item-h"><b>{{ r.title }}</b><span class="ls-chip is-returned">{{ r.status_label }}</span></div>
+                <p class="ls-when">{{ r.when }}</p>
+                {% if r.not_attended %}{% if r.ext_note %}<p class="ls-note">{{ 'Group People L&D' if r.checked_by else 'You' }}: “{{ r.ext_note }}”</p>{% endif %}
+                {% elif r.remark %}<p class="ls-note">“{{ r.remark }}”</p>{% elif r.lapsed %}<p class="ls-note">It started before it was approved.</p>{% endif %}
+              </article>
+              {% endfor %}
+              <button type="button" class="fold-less" data-fold-less>Show less</button></details>
+            </section>
+            {% endif %}
+
+          {% elif t.key == 'apply' %}
+            {% for c in completed or [] %}
+            {# a course completed (2026-10-23, board 20A): its course badge and CHART certificate, until they open it #}
+            <section class="ln-frame" id="done-{{ c.cid }}" aria-labelledby="ls-dn-h-{{ c.cid }}">
+              <h3 id="ls-dn-h-{{ c.cid }}">Completed · {{ c.title }}</h3>
+              <p class="ln-lede">{{ c.details }}{% if c.delivered %} · {{ c.delivered }}{% endif %}</p>
+              <div class="ls-done">
+                <div class="ls-medal"><svg width="60" height="60" viewBox="0 0 56 56" aria-hidden="true"><path d="M28 3l22 12.5v25L28 53 6 40.5v-25z" fill="var(--accent-ink)"/><path d="M19 28.5l6 6 12-13" fill="none" stroke="var(--on-fill)" stroke-width="3.4" stroke-linecap="round" stroke-linejoin="round"/></svg><b>{{ c.title }}</b><small>Course badge · {{ c.ends | lms_day }}</small></div>
+                <div class="ls-certcard"><b style="color: var(--accent-ink)">Your CHART certificate</b>
+                  <span class="ls-note">{{ c.number }} · a PDF in your name from your Group People record. It stays under Progress, and in your email.</span>
+                  <div class="ln-acts"><a class="primary" href="{{ url_for('learning_certificate', cid=c.cid, dl=1) }}">Download PDF</a><a class="btn-link" href="{{ url_for('learning_certificate', cid=c.cid) }}" target="_blank" rel="noopener">View</a></div></div>
+                <div class="ls-xpcard"><b style="color: var(--accent-ink)">XP from this course so far</b>
+                  {% for w, x in c.xp %}<div><span>{{ w }}</span><b>+{{ x }}</b></div>{% endfor %}
+                  <div style="border-top: 1px solid var(--line-soft); padding-top: 5px"><span style="color: inherit; font-weight: 700">So far</span><b style="color: var(--accent-ink)">{{ c.xp_total }}</b></div>
+                  <span class="ls-note">The badge and certificate add no XP of their own: the hours already count.</span></div>
+              </div>
+              <div class="ls-road" aria-label="What comes next">
+                <div class="is-ok"><i>&#10003;</i><b>Completed</b><small>{{ c.ends | lms_day }} · course badge and certificate</small></div>
+                <div class="is-next"><i>1m</i><b>1-month check-in</b><small>Opens {{ c.m1 | lms_day }} · how you've used it · +15 XP</small></div>
+                <div><i>3m</i><b>3-month check-in</b><small>{{ c.m3 | lms_day }} · your example and your level now</small></div>
+                <div><i>{{ ('L%d' % c.level) if c.level else '✓' }}</i><b>Your line manager confirms</b><small>{% if c.comp %}{{ c.comp }}{% if c.level %} at L{{ c.level }}{% endif %} · {% endif %}the competency badge · +50 XP</small></div>
+              </div>
+            </section>
+            {% endfor %}
+            {% if ext_due %}
+            {# an external course that's over (2026-10-23, board 18E): send the certificate, or say you didn't go #}
+            <section class="ln-frame" id="ext" aria-labelledby="ls-ex-h">
+              <h3 id="ls-ex-h">Your external course{{ 's' if ext_due | length > 1 }}</h3>
+              <p class="ln-lede">Send your certificate and Group People L&amp;D checks it. Your hours count then, and your 1-month check-in follows a month after the course.</p>
+              {% for r in ext_due %}
+              <article class="ln-card ls-ext" id="ext-{{ r.id }}">
+                <div class="ls-item-h"><b>{{ r.title }}</b><span class="ls-chip{{ ' is-late' if r.ext_state == 'cert_due' }}">{{ 'Certificate needed' if r.ext_state == 'cert_due' else 'With L&D to check' }}</span></div>
+                <p class="ls-when">{{ r.when }}</p>
+                <p class="ls-note">Approved{% if r.cost %} · RM {{ '{:,.2f}'.format(r.cost) }}{% endif %}{{ ' · HRDC-claimable' if r.hrdc_claimable }}{% if r.ext_hours %} · {{ '%g' % r.ext_hours }} h{% endif %}</p>
+                {% if r.ext_state == 'to_check' %}
+                <p class="ls-ext-sent">Sent <a href="{{ url_for('learning_req_file', rid=r.id, kind='cert') }}" target="_blank" rel="noopener">{{ r.cert_name or 'your certificate' }}</a> on {{ (r.cert_at | myt)[:10] | lms_day }}. Group People L&amp;D checks it.</p>
+                {% endif %}
+                <form method="post" action="{{ url_for('learning_ext', rid=r.id) }}" enctype="multipart/form-data" class="ls-ext-up" data-confirm="Send this file to Group People L&amp;D as your certificate for {{ r.title }}?" data-confirm-ok="Send to L&amp;D">
+                  <input type="hidden" name="csrf_token" value="{{ csrf_token }}"><input type="hidden" name="action" value="cert">
+                  <label class="ls-file"><span>{{ 'Your certificate' if r.ext_state == 'cert_due' else 'Send a different file' }}</span><input type="file" name="cert" accept=".pdf,.jpg,.jpeg,.png,application/pdf,image/jpeg,image/png" required><span class="ls-note">A PDF or a photo, up to 10 MB. L&amp;D sees it with your request; nobody else does.</span></label>
+                  <div class="ln-acts">
+                    <button type="submit" form="ls-ext-no-{{ r.id }}" class="btn-link">I didn't go</button>
+                    <button type="submit" class="primary">Send to L&amp;D</button>
+                  </div>
+                </form>
+                <form method="post" action="{{ url_for('learning_ext', rid=r.id) }}" id="ls-ext-no-{{ r.id }}" class="ls-sr-form" data-confirm="Tell Group People L&amp;D you didn't go to {{ r.title }}? It closes with no hours." data-confirm-ok="Send" data-confirm-reason="Why you didn't go (L&amp;D reads it)" data-confirm-reason-max="300">
+                  <input type="hidden" name="csrf_token" value="{{ csrf_token }}"><input type="hidden" name="action" value="not_going">
+                </form>
+              </article>
+              {% endfor %}
+            </section>
+            {% endif %}
+            {% if to_rate %}
+            <section class="ln-frame" id="rate" aria-labelledby="ls-rt-h">
+              <h3 id="ls-rt-h">How was it?</h3>
+              <p class="ln-lede">1 = not at all · 5 = very much. L&amp;D sees the averages and comments, never with your name.</p>
+              {% for r in to_rate %}
+              <form method="post" action="{{ url_for('learning_rate', rid=r.id) }}" class="ln-card ls-rate" id="rate-{{ r.id }}" data-confirm="Send your rating for {{ r.title }}? It goes to L&amp;D without your name on the comment." data-confirm-ok="Send">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                <div class="ls-item-h"><b>{{ r.title }}</b><span class="ls-note">You came on {{ r.starts | lms_day }}</span></div>
+                {% for k, qn in questions %}
+                <fieldset class="ls-scale"><legend>{{ qn }}</legend>
+                  {% for v in range(1, 6) %}<label><input type="radio" name="{{ k }}" value="{{ v }}" required><span>{{ v }}</span></label>{% endfor %}</fieldset>
+                {% endfor %}
+                <label class="ls-full"><span>Anything to add? <span class="ls-opt">(optional)</span></span><textarea name="comment" rows="2" maxlength="500"></textarea></label>
+                <div class="ln-acts"><button type="submit" class="primary">Send{% if my_xp %} · +10 XP{% endif %}</button></div>
+              </form>
+              {% endfor %}
+            </section>
+            {% endif %}
+
+            {% if checkin_cards %}
+            <section class="ln-frame" id="checkins" aria-labelledby="ls-ci-h">
+              <h3 id="ls-ci-h">Check-ins</h3>
+              <p class="ln-lede">In your own words. It is never part of your performance or potential rating.</p>
+              {% for c in checkin_cards %}
+              {{ eval_form(c, 'check-%d-%s' % (c.reg, c.kind)) }}
+              {% endfor %}
+            </section>
+            {% endif %}
+            {% if checkins_sent %}
+            <section class="ln-frame" id="checkins-sent" aria-labelledby="ls-cs-h">
+              <h3 id="ls-cs-h">With your line manager</h3>
+              {% for e in checkins_sent %}
+              <article class="ln-card" id="sent-{{ e.registration_id }}">
+                <div class="ls-item-h"><b>3-month check-in: {{ e.title }}</b><span class="ls-chip">To confirm</span></div>
+                {% if e.card %}{% if e.card.self_level %}<p class="ls-when">You picked L{{ e.card.self_level }}{% if e.card.words.example %} · “{{ e.card.words.example }}”{% endif %}</p>{% endif %}{% endif %}
+                <p class="ls-note">They confirm your level, or say not yet. You can change it until they do.</p>
+                {% if e.card %}
+                <details class="ln-fold" id="change-{{ e.registration_id }}">
+                  <summary>Change it</summary>
+                  {{ eval_form(e.card, 'changeform-%d' % e.registration_id, true) }}
+                </details>
+                {% endif %}
+              </article>
+              {% endfor %}
+            </section>
+            {% endif %}
+
+            {% if absences %}
+            <section class="ln-frame" id="absent" aria-labelledby="ls-ab-h">
+              <h3 id="ls-ab-h">Didn't come</h3>
+              <p class="ln-lede">Your line manager and L&amp;D see this and can excuse it. It's never part of your performance or potential rating.</p>
+              {% for a in absences %}
+              <article class="ln-card">
+                <div class="ls-item-h"><b>{{ a.title }}</b><span class="ls-chip is-{{ 'returned' if a.status == 'open' else 'approved' if a.status == 'excused' else 'pending' }}">{{ {'open': 'No reason yet', 'explained': 'You told us why', 'excused': 'Excused'}[a.status] }}</span></div>
+                <p class="ls-when">{{ a.on_date | lms_day }} · you were confirmed but didn't clock in</p>
+                {% if a.reason %}<p class="ls-remark"><b>You said:</b> “{{ a.reason }}”</p>{% endif %}
+                {% if a.status == 'excused' and a.note %}<p class="ls-note">Excused: {{ a.note }}</p>{% endif %}
+                {% if a.status == 'open' %}
+                <form method="post" action="{{ url_for('learning_absence', aid=a.id) }}" class="ls-wd-form" data-confirm="Send this to your line manager and L&amp;D?" data-confirm-ok="Send">
+                  <input type="hidden" name="csrf_token" value="{{ csrf_token }}"><input type="hidden" name="action" value="explain">
+                  <label class="ls-full"><span>Tell us why</span><textarea name="why" rows="2" maxlength="300" placeholder="e.g. a site emergency at Plant 2 that morning"></textarea></label>
+                  <label class="ls-chk"><input type="checkbox" name="was_there" value="1"> I was there: ask L&amp;D to check the T3</label>
+                  <div class="ln-acts"><button type="submit" class="primary">Send</button></div>
+                </form>
+                {% endif %}
+              </article>
+              {% endfor %}
+            </section>
+            {% endif %}
+
+            {# learning on the job, 70 / 20 (2026-10-22, S11, board 4E): log one, their line manager confirms it #}
+            <section class="ln-frame" id="ojt" aria-labelledby="ls-oj-h">
+              <h3 id="ls-oj-h">Learning on the job</h3>
+              <p class="ln-lede"><b>70% on the job:</b> a stretch project, a new responsibility, a rotation. <b>20% from others:</b> mentoring, being coached, coaching someone. Your line manager confirms each one: +{{ xp_ojt }} XP and your Career Plan goal moves. It is never part of your performance or potential rating.</p>
+              {% for o in ojt %}
+              <article class="ln-card" id="ojt-{{ o.id }}">
+                <div class="ls-item-h"><b>{{ o.what }}</b><span class="ls-chip{{ ' is-approved' if o.status == 'confirmed' else ' is-returned' if o.status == 'declined' else '' }}">{{ o.status_label }}</span></div>
+                <p class="ls-when">{{ o.kind_label }}{% if o.goal %} · for {{ o.goal }}{% endif %}{% if o.when_text %} · {{ o.when_text }}{% endif %}</p>
+                <p class="ls-remark">“{{ o.example }}”</p>
+                {% if o.status == 'declined' and o.note %}<p class="ls-note">Your line manager: {{ o.note }}</p>{% endif %}
+              </article>
+              {% endfor %}
+              <details class="ln-fold" id="ojt-new"{{ ' open' if not ojt }}>
+                <summary>Log learning on the job</summary>
+                <form method="post" action="{{ url_for('learning_ojt') }}" class="le-form ln-card" data-confirm="Send this to your line manager to confirm?" data-confirm-ok="Send">
+                  <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                  <fieldset class="ln-seg"><legend>Kind</legend>
+                    {% for k, lab in ojt_kinds %}<label><input type="radio" name="kind" value="{{ k }}"{{ ' checked' if loop.first }} required><span>{{ lab }}</span></label>{% endfor %}
+                  </fieldset>
+                  <label class="ls-full"><span>What was it?</span><input name="what" maxlength="200" required minlength="8" placeholder="e.g. Mentoring a new sales executive on dealer quotes"></label>
+                  <label class="ls-full"><span>Your example: what you did</span><textarea name="example" rows="2" maxlength="400" required minlength="15" placeholder="e.g. Sat in on her calls with two dealers, then went through each quote together after"></textarea></label>
+                  <div class="ln-two">
+                    <label class="ls-full"><span>For your goal</span><select name="goal_id" class="modern-select"><option value="">None of my goals</option>{% for g in ojt_goals %}<option value="{{ g.id }}">{{ g.area }}</option>{% endfor %}</select></label>
+                    <label class="ls-full"><span>When <span class="ls-opt">(optional)</span></span><input name="when" maxlength="80" placeholder="e.g. Early Sep to mid-Oct, about 6 weeks"></label>
+                  </div>
+                  <div class="le-acts"><span class="ls-note">+{{ xp_ojt }} XP when your line manager confirms.</span><button type="submit" class="primary">Send to your line manager</button></div>
+                </form>
+              </details>
+            </section>
+
+          {% elif t.key == 'progress' %}
+            <section class="ln-frame" aria-label="This year">
+              <div class="ls-tiles">
+                <div class="ls-tile"><b>{{ '%g' % totals.hours }}</b><span>hours this year</span></div>
+                <div class="ls-tile"><b>{{ totals.done }}</b><span>completed</span></div>
+                <div class="ls-tile"><b>{{ totals.absent }}</b><span>absent</span></div>
+                <div class="ls-tile"><b>RM {{ '{:,.0f}'.format(totals.rm) }}</b><span>invested in you</span></div>
+                {% if my_xp %}<div class="ls-tile ls-tile-xp"><b>Level {{ my_xp.level }}</b><span>{{ my_xp.name }} · {{ my_xp.total }} XP</span></div>{% endif %}
+              </div>
+              {% if my_xp %}
+              <div class="ln-card">
+                <div class="ls-item-h"><b>Level {{ my_xp.level }}, {{ my_xp.name }}</b>{% if my_xp.next %}<span class="ls-note">{{ my_xp.to_next }} XP to Level {{ my_xp.next }}, {{ my_xp.next_name }}</span>{% endif %}</div>
+                <div class="ln-xpbar"><i style="width: {{ my_xp.pct }}%"></i></div>
+                {% if my_xp.rows %}<table class="ls-table"><tbody>{% for r in my_xp.rows[:6] %}<tr><td>{{ r.title }} · {{ r.parts | map(attribute=0) | join(', ') }}</td><td class="ls-num">+{{ r.xp }}</td></tr>{% endfor %}</tbody></table>{% endif %}
+              </div>
+              {% endif %}
+            </section>
+            {% if course and (course.badges or course.pending or course.revoked) %}
+            {# course badges and CHART certificates (2026-10-23, board 20B): one a course completed #}
+            <section class="ln-frame" id="certificates" aria-labelledby="ln-cb-h">
+              <h3 id="ln-cb-h">Courses completed <span class="ls-note">· a badge for each, and the certificate</span></h3>
+              <div class="ls-cbadges">
+                {% for b in course.badges %}<div class="ls-cbadge"><svg width="38" height="38" viewBox="0 0 56 56" aria-hidden="true"><path d="M28 3l22 12.5v25L28 53 6 40.5v-25z" fill="var(--accent-ink)"/><path d="M19 28.5l6 6 12-13" fill="none" stroke="var(--on-fill)" stroke-width="3.4" stroke-linecap="round" stroke-linejoin="round"/></svg><span><b>{{ b.title }}</b><small>{{ 'External · ' if b.external }}{{ b.on | lms_day }}{% if b.hours %} · {{ '%g' % b.hours }} h{% endif %}</small>{% if b.cert %}<a href="{{ url_for('learning_certificate', cid=b.cert.id) }}" target="_blank" rel="noopener">Certificate</a>{% endif %}</span></div>{% endfor %}
+                {% for b in course.pending %}<div class="ls-cbadge is-wait"><svg width="38" height="38" viewBox="0 0 56 56" aria-hidden="true"><path d="M28 3l22 12.5v25L28 53 6 40.5v-25z" fill="none" stroke="var(--d-fg-9aa0b4)" stroke-width="2.5" stroke-dasharray="5 4"/></svg><span><b>{{ b.title }}</b><small>{{ b.why }}</small></span></div>{% endfor %}
+              </div>
+              {% for v in course.revoked %}<p class="ls-note">{{ v.title }}: the certificate was revoked by Group People L&amp;D on {{ v.on | lms_day }}: “{{ v.reason }}”</p>{% endfor %}
+            </section>
+            {% endif %}
+            <section class="ln-frame" aria-labelledby="ln-bd-h">
+              <h3 id="ln-bd-h">Competencies applied <span class="ls-note">· earned when your line manager confirms at 3 months</span></h3>
+              {% if badges %}
+              <div class="ln-badges">
+                {% for b in badges %}<div class="ln-badge is-{{ b.state }}"><span class="ln-bh">{{ ('L%d' % b.level) if b.level else '·' }}</span><span><b>{{ b.title }}</b><small>{{ {'earned': 'Earned', 'progress': 'In progress', 'todo': 'To start'}[b.state] }}{{ ' · exploring' if b.explore }}</small></span></div>{% endfor %}
+              </div>
+              {% else %}<p class="ls-none">None yet. Three months after a course, when your line manager confirms you've applied it, its competency badge is yours.</p>{% endif %}
+            </section>
+            {% if my_xp and xp_how %}
+            <section class="ln-frame" aria-labelledby="ln-xh-h">
+              <h3 id="ln-xh-h">How XP adds up <span class="ls-note">· worked out from your records, never typed in</span></h3>
+              <div class="ln-card"><table class="ls-xphow"><thead><tr><th scope="col">What you did</th><th scope="col">When it counts</th><th scope="col">XP</th></tr></thead><tbody>
+                {% for w, when, x in xp_how %}<tr><td>{{ w }}</td><td>{{ when }}</td><td>{{ x }}</td></tr>{% endfor %}
+              </tbody></table>
+              <p class="ls-note">Seen by you and your line manager, in name order, never ranked. Never part of your performance or potential rating.</p></div>
+            </section>
+            {% endif %}
+            {% if needs %}
+            <section class="ln-frame" aria-labelledby="ln-nd-h">
+              <h3 id="ln-nd-h">What your plan asks of you</h3>
+              <div class="ln-card"><table class="ls-table"><tbody>
+                {% for n in needs %}<tr><td><b>{{ n.title }}</b>{% if n.have %} · L{{ n.have }} to L{{ n.level }}{% elif n.level %} · to L{{ n.level }}{% endif %}</td><td class="ls-num ls-note">{{ {'plan': 'Career Plan goal', 'assessed': 'from your assessment', 'future': "your job's next level", 'explore': 'exploring'}.get(n.source, '') }}</td></tr>{% endfor %}
+              </tbody></table></div>
+            </section>
+            {% endif %}
+            <section class="ln-frame" id="done" aria-labelledby="ls-dn-h">
+              <h3 id="ls-dn-h">Done</h3>
+              {% if done %}
+              <div class="ln-card"><table class="ls-table"><thead><tr><th scope="col">Programme</th><th scope="col">When</th><th scope="col">Result</th><th scope="col" class="ls-num">Hours</th></tr></thead><tbody>
+                {% for r in done %}<tr><td>{{ r.title }}</td><td>{{ r.when }}</td><td>{% if not r.outcome and r.id in absent_regs %}Didn't clock in{% else %}{{ {'attended': 'Attended', 'partial': 'Part of it', 'absent': 'Absent'}.get(r.outcome, 'Completed') }}{% endif %}</td><td class="ls-num">{{ '%g' % r.hours if r.hours else '–' }}</td></tr>{% endfor %}
+              </tbody></table></div>
+              {% else %}<p class="ls-none">Your completed learning shows here, with its hours.</p>{% endif %}
+            </section>
+
+          {% elif t.key in ('team', 'dept') %}
+            {% if to_confirm %}
+            {# the 3-month check-ins their reports sent (board 4B): confirm the level they saw, or not yet #}
+            <section class="ln-frame" id="confirm" aria-labelledby="ls-cf-h">
+              <h3 id="ls-cf-h">What they applied: confirm it</h3>
+              <p class="ln-lede">Their own words at 3 months. Confirming gives their learning XP and moves their Career Plan goal to In progress. It is never part of their performance or potential rating.</p>
+              {% for e in to_confirm %}
+              <article class="ln-card le-confirm" id="conf-{{ e.id }}">
+                <div class="ls-item-h"><b>{{ e.person }} · {{ e.title }}</b><span class="ls-chip">Sent {{ e.since | lms_day }}</span></div>
+                {% if e.m1_words.used %}<p class="ls-remark"><span class="ls-k">At 1 month</span> “{{ e.m1_words.used }}”</p>{% endif %}
+                <p class="ls-remark"><span class="ls-k">At 3 months</span> “{{ e.words.changed }}”</p>
+                <p class="ls-remark"><span class="ls-k">Their example</span> “{{ e.words.example }}”</p>
+                <form method="post" action="{{ url_for('learning_eval_confirm', eid=e.id) }}" class="le-form" data-confirm="Confirm what {{ e.person }} applied from {{ e.title }}{% if e.comp %}, at the level you picked{% endif %}? Their learning XP and Career Plan goal move." data-confirm-ok="Confirm">
+                  <input type="hidden" name="csrf_token" value="{{ csrf_token }}"><input type="hidden" name="action" value="confirm">
+                  {% if e.comp %}<span class="ls-k">{{ e.comp.title }}: the level you see them working at</span>{{ levels(e.comp, e.self_level, true) }}{% endif %}
+                  <div class="le-acts"><button type="submit" class="primary">Confirm</button></div>
+                </form>
+                <form method="post" action="{{ url_for('learning_eval_confirm', eid=e.id) }}" class="le-form le-kept" data-confirm="Say not yet to {{ e.person }}'s check-in on {{ e.title }}? Nothing moves; they see your note, if you write one." data-confirm-ok="Not yet">
+                  <input type="hidden" name="csrf_token" value="{{ csrf_token }}"><input type="hidden" name="action" value="kept">
+                  <label class="ls-full"><span>Or not yet: a note for them <span class="ls-opt">(optional)</span></span>
+                    <span class="le-row"><input name="note" maxlength="300" placeholder="e.g. let's look at two more quotes together first"><button type="submit" class="btn-link">Not yet</button></span></label>
+                </form>
+              </article>
+              {% endfor %}
+            </section>
+            {% endif %}
+            {% if ojt_confirm %}
+            {# learning on the job their reports sent (S11, board 4E): confirm it, or not this one #}
+            <section class="ln-frame" id="ojt-confirm" aria-labelledby="ls-ojc-h">
+              <h3 id="ls-ojc-h">Learning on the job: confirm it</h3>
+              <p class="ln-lede">In their own words. Confirming gives their learning XP and moves the Career Plan goal it names. It is never part of their performance or potential rating.</p>
+              {% for o in ojt_confirm %}
+              <article class="ln-card le-confirm" id="ojtc-{{ o.id }}">
+                <div class="ls-item-h"><b>{{ o.person }} · {{ o.what }}</b><span class="ls-chip">{{ o.kind_label }}</span></div>
+                <p class="ls-when">{% if o.goal %}For {{ o.goal }}{% else %}No goal named{% endif %}{% if o.when_text %} · {{ o.when_text }}{% endif %}</p>
+                <p class="ls-remark"><span class="ls-k">Their example</span> “{{ o.example }}”</p>
+                <form method="post" action="{{ url_for('learning_ojt_decide', oid=o.id) }}" class="le-form">
+                  <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                  <label class="ls-full"><span>A note for them <span class="ls-opt">(optional)</span></span>
+                    <input name="note" maxlength="300" placeholder="e.g. good call on the second dealer; next, try it on a new account"></label>
+                  <div class="le-acts">
+                    <button type="submit" class="btn-link" name="action" value="decline" data-confirm="Say not this one to {{ o.person }}'s learning on the job? Nothing moves; they see your note, if you write one." data-confirm-ok="Not this one">Not this one</button>
+                    <button type="submit" class="primary" name="action" value="confirm" data-confirm="Confirm {{ o.person }}'s learning on the job? Their learning XP and Career Plan goal move." data-confirm-ok="Confirm">Confirm</button>
+                  </div>
+                </form>
+              </article>
+              {% endfor %}
+            </section>
+            {% endif %}
+            <section class="ln-frame" id="waiting" aria-labelledby="ls-w-h">
+              <h3 id="ls-w-h">Waiting on you</h3>
+              {% if waiting %}
+              {# decide the ticked ones at once (Chris, 2026-10-23): one note for all, needed to return or decline #}
+              <form method="post" action="{{ url_for('learning_decide_bulk') }}" class="ln-card ls-bulk" id="ln-bulk" data-bulk
+                    data-confirm="Approve the ticked requests? Each goes to its next step or is confirmed; on a full run it joins the waiting list." data-confirm-ok="Approve them">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token }}"><input type="hidden" name="view" value="{{ view }}">
+                <div class="ls-bulk-h"><label class="ls-tickall"><input type="checkbox" data-bulk-all> Tick all</label><span class="ls-note" data-bulk-n>None ticked</span></div>
+                <label class="ls-sr" for="ls-bulk-rm">One note for everyone ticked</label>
+                <input id="ls-bulk-rm" name="remark" maxlength="500" placeholder="One note for everyone ticked (needed to return or decline)">
+                <div class="ln-acts">
+                  <button type="submit" name="bulk" value="decline" class="btn-link ls-danger" data-confirm="Decline the ticked requests? It's final: each person reads your note, and any place they held goes to the waiting list." data-confirm-ok="Decline them" data-confirm-tone="danger">Decline ticked</button>
+                  <button type="submit" name="bulk" value="return" class="btn-link" data-confirm="Return the ticked requests with your note? Each person can change theirs and send it again." data-confirm-ok="Return them">Return ticked</button>
+                  <button type="submit" name="bulk" value="approve" class="primary" data-confirm-ok="Approve them">Approve ticked</button>
+                </div>
+              </form>
+              {% endif %}
+              {% for r in waiting %}
+              <article class="ln-card" id="wait-{{ r.id }}">
+                <div class="ls-item-h"><label class="ls-tick"><input type="checkbox" name="rid" value="{{ r.id }}" form="ln-bulk" data-bulk-one data-bulk-name="{{ r.person.full_name }}" aria-label="Tick {{ r.person.full_name }}'s request"></label><b>{{ r.person.full_name }}</b><span class="ls-chip{{ ' is-late' if r.late }}">{% if r.who.escalated %}Passed to you: overdue{% elif r.late %}Overdue since {{ r.due | lms_day }}{% elif r.due %}Due {{ r.due | lms_day }}{% endif %}</span></div>
+                <p class="ls-when"><b>{{ r.title }}</b> · {{ r.when }}{% if r.cost %} · RM {{ '{:,.2f}'.format(r.cost) }}{% endif %}{{ ' · HRDC-claimable' if r.hrdc_claimable }}{% if r.off_audience %} · <span class="lm-amber">not in its audience</span>{% endif %}</p>
+                {% if r.why %}<p class="ls-remark">“{{ r.why }}”</p>{% endif %}
+                {% if r.ext_doc %}<p class="ls-note"><a href="{{ url_for('learning_req_file', rid=r.id, kind='quote') }}" target="_blank" rel="noopener">{{ r.ext_doc_name or 'The quotation' }}</a> · sent with the request</p>{% endif %}
+                {% if r.nomination != 'self' %}<p class="ls-note">Nominated ({{ r.nomination }})</p>{% endif %}
+                {{ steps(r) }}
+                <div class="ln-decide">
+                  <form method="post" action="{{ url_for('learning_decide', rid=r.id) }}" class="ls-ret" data-confirm="Return {{ r.person.full_name }}'s request with your remark? They can change it and send it again." data-confirm-ok="Return">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token }}"><input type="hidden" name="view" value="{{ view }}">
+                    <label class="ls-sr" for="ls-rm-{{ r.id }}">Why you're returning or declining it</label>
+                    <input id="ls-rm-{{ r.id }}" name="remark" maxlength="500" required placeholder="Why you're returning or declining it (they read this)">
+                    <button type="submit" name="action" value="decline" class="btn-link ls-danger" data-confirm="Decline {{ r.person.full_name }}'s request for {{ r.title }}? It's final: they read your remark, and any place they held goes to the waiting list." data-confirm-ok="Decline" data-confirm-tone="danger">Decline</button>
+                    <button type="submit" name="action" value="return" class="btn-link">Return</button></form>
+                  <form method="post" action="{{ url_for('learning_decide', rid=r.id) }}" data-confirm="Approve {{ r.person.full_name }}'s request for {{ r.title }}?" data-confirm-ok="Approve">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token }}"><input type="hidden" name="action" value="approve"><input type="hidden" name="view" value="{{ view }}">
+                    <button type="submit" class="primary">Approve</button></form>
+                </div>
+              </article>
+              {% else %}<p class="ls-none">{{ learn_off.approve or 'Nothing waiting on you.' }}</p>{% endfor %}
+            </section>
+            {% if view == 'team' and team_done %}
+            <section class="ln-frame" id="completed" aria-labelledby="ls-tdn-h">
+              <h3 id="ls-tdn-h">Completed this month <span class="ls-note">· {{ team_done | length }}</span></h3>
+              <div class="ln-card"><ul class="ls-list">{% for d in team_done %}<li><b>{{ d.name }}</b> · {{ d.title }}{% if d.hours %} · {{ '%g' % d.hours }} h{% endif %} · {{ 'certificate issued' if d.cert else 'course badge' }}</li>{% endfor %}</ul>
+              <p class="ln-note">Each has their course badge. In a month they check in on what they've used, and at 3 months you confirm it.</p></div>
+            </section>
+            {% endif %}
+            {% if view == 'team' and (team_absences or team_withdrawn) %}
+            <section class="ln-frame" id="absent" aria-labelledby="ls-tab-h">
+              <h3 id="ls-tab-h">Didn't come, withdrew</h3>
+              {% if team_absences %}
+              <div class="ln-card"><table class="ls-table"><thead><tr><th scope="col">Who</th><th scope="col">Programme</th><th scope="col">When</th><th scope="col">Why</th><th scope="col"><span class="sr-only">Excuse</span></th></tr></thead><tbody>
+                {% for a in team_absences %}<tr>
+                  <td>{{ a.name }}{% if team_absence_n.get(a.user_id, 0) >= 2 %} <span class="ls-chip is-returned">{{ team_absence_n[a.user_id] }} this year</span>{% endif %}</td>
+                  <td>{{ a.title }}</td><td>{{ a.on_date | lms_day }}</td>
+                  <td class="small">{% if a.status == 'excused' %}Excused: {{ a.note }}{% elif a.reason %}“{{ a.reason }}”{% else %}<span class="ls-note">Not given yet</span>{% endif %}</td>
+                  <td>{% if a.status in ('open', 'explained') and not learn_off.excuse %}
+                    <form method="post" action="{{ url_for('learning_absence', aid=a.id) }}" data-confirm="Excuse {{ a.name }}'s absence from {{ a.title }}? It stays on the record but no longer counts." data-confirm-ok="Excuse" data-confirm-reason="Why (they and L&amp;D read it)" data-confirm-reason-placeholder="e.g. medical leave, MC on file">
+                      <input type="hidden" name="csrf_token" value="{{ csrf_token }}"><input type="hidden" name="action" value="excuse"><button type="submit" class="btn-link">Excuse…</button></form>{% endif %}</td>
+                </tr>{% endfor %}
+              </tbody></table></div>
+              {% endif %}
+              {% if team_withdrawn %}
+              <div class="ln-card"><b class="ls-h3">Withdrew in the last 60 days</b>
+                <ul class="ls-list">{% for r in team_withdrawn %}<li><b>{{ r.person.full_name }}</b> · {{ r.title }}{% if r.withdraw_label %} · {{ r.withdraw_label }}{% endif %}{% if r.remark %}: “{{ r.remark }}”{% endif %}</li>{% endfor %}</ul></div>
+              {% endif %}
+              <p class="ln-note">An absence is a confirmed place with no clock-in and no withdrawal before it. L&amp;D sees it too. It's never part of a performance or potential rating.</p>
+            </section>
+            {% endif %}
+            {% if view == 'dept' %}
+            <section class="ln-frame" id="rounds" aria-labelledby="ls-rd-h">
+              <h3 id="ls-rd-h">Nomination rounds</h3>
+              {% for rd in rounds %}
+              <form method="post" action="{{ url_for('learning_nominate') }}" class="ln-card ls-round" data-confirm="Nominate the people you ticked in “{{ rd.r.title }}”? Your nomination counts as their line manager's approval where L&amp;D's rules say so." data-confirm-ok="Nominate">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token }}"><input type="hidden" name="round_id" value="{{ rd.r.id }}">
+                <div class="ls-item-h"><b>{{ rd.r.title }}</b><span class="ls-chip">Closes {{ rd.r.closes_on | lms_day }}</span></div>
+                <p class="ls-note">Each run lists first the people whose shared Career Plan goal or competency gap it builds, Stars first; everyone else is folded under it, with a search. You decide. For in-house runs your nomination counts as their line manager's approval and yours.</p>
+                {% for x in rd.sessions %}
+                <details class="ls-rrun"{{ ' open' if loop.first }}>
+                  <summary><b>{{ x.s.title }}</b><span class="ls-note">{{ x.line }}</span><span class="ls-chip{{ ' is-approved' if x.n_fit }}">{{ ('%d suggested' % x.n_fit) if x.n_fit else 'None suggested' }}</span></summary>
+                  {% if x.fits %}<p class="ls-rk">Suggested · {{ x.n_fit }} it builds a need for</p>{% endif %}
+                  {% for p in x.fits %}
+                  <label class="ls-pk is-fit"><input type="checkbox" name="pick" value="{{ x.s.id }}:{{ p.id }}"{{ ' disabled' if p.taken }}>
+                    <span>{{ p.name }}{% if p.star %} <span class="ls-star">Star</span>{% endif %}<span class="ls-note">{{ p.why }}{% if p.taken %} · already {{ {'pending': 'waiting for approval', 'approved': 'confirmed', 'waitlisted': 'on the waiting list'}.get(p.taken, p.taken) }}{% elif not p.open %} · <span class="lm-amber">not in its audience: give the reason below</span>{% endif %}</span></span></label>
+                  {% endfor %}
+                  {% if x.rest %}
+                  <details class="ls-rmore">
+                    <summary>Find someone else in your department <span class="ls-note">{{ x.rest | length }} others, who it builds no need for</span></summary>
+                    <input type="search" class="ls-rfind" placeholder="Search a name" aria-label="Search your department for {{ x.s.title }}" data-filter-list>
+                    <div class="ls-rlist">
+                    {% for p in x.rest %}
+                    <label class="ls-pk"><input type="checkbox" name="pick" value="{{ x.s.id }}:{{ p.id }}"{{ ' disabled' if p.taken }}>
+                      <span>{{ p.name }}{% if p.star %} <span class="ls-star">Star</span>{% endif %}<span class="ls-note">{{ p.title or '' }}{% if p.taken %} · already {{ {'pending': 'waiting for approval', 'approved': 'confirmed', 'waitlisted': 'on the waiting list'}.get(p.taken, p.taken) }}{% elif not p.open %} · <span class="lm-amber">not in its audience: give the reason below</span>{% endif %}</span></span></label>
+                    {% endfor %}
+                    </div>
+                  </details>
+                  {% endif %}
+                </details>
+                {% endfor %}
+                <label class="ls-why">Why, for anyone you tick who isn't in a programme's audience<input type="text" name="why" maxlength="500" placeholder="e.g. they run the line this programme trains for"></label>
+                {% if rd.nobody %}<p class="ls-note">You said nobody from your department goes this round. You can still nominate.</p>{% endif %}
+                <div class="ln-acts">{% if not rd.nobody %}<button type="submit" name="nobody" value="1" formnovalidate class="btn-link" data-confirm="Tell L&amp;D nobody from your department goes in “{{ rd.r.title }}”? The reminders stop. You can still nominate later." data-confirm-ok="Nobody this round">Nobody this round</button>{% endif %}<button type="submit" class="primary">Nominate the ticked</button></div>
+              </form>
+              {% else %}<p class="ls-none">{{ learn_off.round or 'No nomination round is open. L&D opens one before each calendar.' }}</p>{% endfor %}
+            </section>
+            {% endif %}
+
+          {% elif t.key == 'plans' %}
+            <section class="ln-frame" id="nominate" aria-labelledby="ls-nm-h">
+              <h3 id="ls-nm-h">Runs that fit your team</h3>
+              {% if learn_off.nominate %}<p class="ls-none">{{ learn_off.nominate }}</p>
+              {% elif nom and nom.runs and team %}
+              <p class="ln-lede">Seats and dates are OneHR's. Fit comes from each person's shared Career Plan goals and their competency assessment. Nominating gives your own approval; any step after yours (the HOD, Group People L&amp;D) still applies.</p>
+              <div class="ls-nruns">
+                {% for r in nom.runs[:nom.shown] %}{% set x = r.s %}
+                <article class="ln-card ls-nrun{{ ' is-picked' if nom.pick and nom.pick.s.id == x.id }}" id="run-{{ x.id }}">
+                  <div class="ls-nrun-h"><span class="ls-chip{{ ' is-approved' if r.fits }}">{{ ('Fits %d in your team' % r.fits | length) if r.fits else ('Open to %d in your team' % r.n_open if r.n_open else 'Outside its audience') }}</span>
+                    <span class="ls-seat{{ ' is-full' if r.left == 0 }}">{% if r.left is none %}Seats open{% elif r.left %}{{ r.left }} left of {{ x.seats }}{% else %}Full{% if r.waiting %} · {{ r.waiting }} waiting{% endif %}{% endif %}</span></div>
+                  <b class="ls-nrun-t">{{ x.title }}</b>
+                  <p class="ls-when">{{ r.when }}</p>
+                  {% for f in r.fits[:3] %}<p class="ls-nfit"><b>{{ f.name }}</b> · {{ f.why }}</p>{% endfor %}
+                  {% if r.fits | length > 3 %}<p class="ls-note">and {{ r.fits | length - 3 }} more it fits</p>{% endif %}
+                  {% if not r.fits %}<p class="ls-note">{{ 'Open to your team. No shared plan goal or gap it builds.' if r.n_open else 'Not in its audience: allowed with a reason.' }}</p>{% endif %}
+                  <p class="ls-note">{% if r.has %}{{ r.has | map(attribute='name') | join(', ') }} {{ 'has' if r.has | length == 1 else 'have' }} a place or a request.{% else %}Nobody in your team has asked yet.{% endif %}{% if r.left == 0 %} A nomination joins the waiting list.{% endif %}</p>
+                  <div class="ln-acts ls-nrun-a"><a class="btn-link" href="{{ url_for('learning_programme', pid=x.programme_id) }}">Details</a><a class="primary" href="{{ url_for('learning_home', view='team', tab='plans', nom=x.id) }}#nom">Nominate…</a></div>
+                </article>
+                {% endfor %}
+              </div>
+              {% if nom.runs | length > nom.shown %}<p class="ls-note">{{ nom.runs | length - nom.shown }} more runs are open; ask the coach for one by name or month.</p>{% endif %}
+              {% elif team %}<p class="ls-none">No session is open for registration right now.</p>{% endif %}
+            </section>
+            {% if not learn_off.nominate and nom and nom.pick %}{% set pk = nom.pick %}
+            <section class="ln-frame" id="nom" aria-labelledby="ls-nk-h">
+              <h3 id="ls-nk-h">Nominate for {{ pk.s.title }} · {{ pk.s.starts_on | lms_day }}</h3>
+              <p class="ln-lede">Those it builds a need for come first. You decide.{% if pk.left == 0 %} It's full: a nomination joins the waiting list.{% endif %}</p>
+              <form method="post" action="{{ url_for('learning_nominate') }}" class="ln-card ls-npick" data-confirm="Nominate the people you ticked for {{ pk.s.title }}? Your own approval is given; any step after yours still applies." data-confirm-ok="Nominate">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                {% for p in pk.people %}
+                <label class="ls-pk{{ ' is-fit' if p.kind == 'fits' }}"><input type="checkbox" name="pick" value="{{ pk.s.id }}:{{ p.id }}"{{ ' disabled' if p.kind == 'has' }}>
+                  <span>{{ p.name }}<span class="ls-note">{% if p.kind == 'fits' %}{{ p.why }}{% elif p.kind == 'open' %}Open to them; it builds no need of theirs{% elif p.kind == 'outside' %}<span class="lm-amber">Not in its audience: allowed with a reason</span>{% else %}Already {{ {'pending': 'waiting for approval', 'approved': 'has a place', 'waitlisted': 'on the waiting list', 'returned': 'has a request back with them'}.get(p.status, p.status) }}{% endif %}</span></span>
+                  <span class="ls-chip{{ ' is-approved' if p.kind == 'fits' }}{{ ' is-returned' if p.kind == 'outside' }}">{{ {'fits': 'Fits', 'open': 'Open', 'outside': 'Outside audience', 'has': 'On it'}[p.kind] }}</span></label>
+                {% endfor %}
+                <label class="ls-why">Why them <span class="ls-opt">(they and Group People L&amp;D read it; needed for anyone outside the audience)</span><input type="text" name="why" maxlength="500" placeholder="e.g. both quote for the Q1 dealer tenders and need the variance check"></label>
+                <div class="ln-acts"><span class="ls-note">{% if pk.left is not none %}{{ pk.left }} seat{{ '' if pk.left == 1 else 's' }} left.{% endif %}</span><a class="btn-link" href="{{ url_for('learning_home', view='team', tab='plans') }}#nominate">Cancel</a><button type="submit" class="primary">Nominate the ticked</button></div>
+              </form>
+            </section>
+            {% endif %}
+            <section class="ln-frame" id="teamregs" aria-labelledby="ls-tr-h">
+              <h3 id="ls-tr-h">Your team's requests</h3>
+              {% if team_regs %}
+              <div class="ln-card"><table class="ls-table"><thead><tr><th scope="col">Who</th><th scope="col">Programme</th><th scope="col">When</th><th scope="col">Where it is</th></tr></thead><tbody>
+                {% for r in team_regs %}<tr><td>{{ r.person.full_name }}</td><td>{{ r.title }}</td><td>{{ r.when }}</td><td><span class="ls-chip is-{{ r.status }}">{{ r.status_label_other }}</span></td></tr>{% endfor %}
+              </tbody></table></div>
+              {% else %}<p class="ls-none">No requests from your team yet.</p>{% endif %}
+            </section>
+            {% if team_xp %}
+            <section class="ln-frame" id="teamxp" aria-labelledby="ls-tx-h">
+              <h3 id="ls-tx-h">Your team's learning XP</h3>
+              <div class="ln-card"><table class="ls-table"><thead><tr><th scope="col">Who</th><th scope="col">Level</th><th scope="col" class="ls-num">XP</th><th scope="col" class="ls-num">Hours this year</th></tr></thead><tbody>
+                {% for tx in team_xp %}<tr><td>{{ tx.name }}</td><td>{{ tx.xp.level }} · {{ tx.xp.name }}</td><td class="ls-num">{{ tx.xp.total }}</td><td class="ls-num">{{ '%g' % tx.hours }}</td></tr>{% endfor %}
+              </tbody></table></div>
+              <p class="ln-note">You, each of them and Group People L&amp;D's reports see this. It is never part of a rating, and it isn't a ranking.</p>
+            </section>
+            {% endif %}
+          {% endif %}
+        </div>
+        {% endfor %}
+        <div class="ln-chat" id="ln-chat"></div>
+      </div>
+      <div class="ln-chips" id="ln-chips"></div>
+      <form class="ln-comp" id="ln-form" autocomplete="off">
+        <label for="ln-input" class="sr-only">Ask the learning coach</label>
+        <input id="ln-input" type="text" maxlength="600" placeholder="{{ 'Ask about your learning…' if coach_on else 'The coach is off right now' }}"{{ ' disabled' if not coach_on }}>
+        <button type="submit" class="ln-send" aria-label="Send"{{ ' disabled' if not coach_on }}><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M22 2L11 13M22 2l-7 20-4-9-9-4z"/></svg></button>
+      </form>
+    </div>
+  </div>
+</div>
+<script src="{{ url_for('static', filename='learning_coach.js') }}?v={{ asset_v }}"></script>
+<script src="{{ url_for('static', filename='learning_shell.js') }}?v={{ asset_v }}"></script>
+{% endblock %}

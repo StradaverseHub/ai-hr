@@ -1,0 +1,14 @@
+{% extends "base.html" %}
+{% block title %}Not found{% endblock %}
+{% block body %}
+{% set back = request.referrer if request.referrer and request.referrer.startswith(request.host_url) else none %}
+<section class="admin-card error-card">
+  <div class="error-code">404</div>
+  <h1>Page not found</h1>
+  <p class="muted">That page doesn't exist.</p>
+  <div class="actions">
+    {% if back %}<a class="btn-link" href="{{ back }}">&larr; Back</a>{% endif %}
+    <a class="btn-link" href="{{ url_for('admin_overview') if nav_is_admin else url_for('home') }}">Go home</a>
+  </div>
+</section>
+{% endblock %}

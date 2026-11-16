@@ -1,0 +1,17 @@
+{# The floating AI icon at the bottom right (Chris, 2026-10-12: "make it into a floating icon on the bottom right like
+   how a normal chat agent is"; the "OneHR Release, What You Led and Agents" canvas, boards A1-A3). White with the AI spark
+   in red -- the page's one solid red stays the check-in button. Its name slides out on hover or focus, and once on
+   someone's first visit; with the AI out of reach it turns grey with a magnifier and says "Search only". Open, the
+   panel sits above it and the icon becomes its close button. #}
+{% macro ai_fab(fid, controls, name, offline=False, key='') -%}
+<button type="button" class="ai-fab{{ ' is-offline' if offline else '' }}" id="{{ fid }}" aria-controls="{{ controls }}"
+        aria-expanded="false" aria-label="{{ name }}{{ ', search only' if offline else '' }}" data-fab-name="{{ name }}"
+        data-fab-key="{{ key or fid }}"{% if offline %} title="The AI isn't reachable just now: it searches instead"{% endif %}>
+  <span class="ai-fab-lab" aria-hidden="true">{{ 'Search only' if offline else name }}</span>
+  <span class="ai-fab-btn" aria-hidden="true">
+    {%- if offline %}<svg class="ai-fab-ico" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"></circle><path d="M20 20l-3.5-3.5"></path></svg>
+    {%- else %}<svg class="ai-fab-spark" viewBox="0 0 24 24"><path d="M12 2l2.4 7.6L22 12l-7.6 2.4L12 22l-2.4-7.6L2 12l7.6-2.4z"></path></svg>{% endif %}
+    <svg class="ai-fab-x" viewBox="0 0 24 24"><path d="M6 6l12 12"></path><path d="M18 6L6 18"></path></svg>
+  </span>
+</button>
+{%- endmacro %}

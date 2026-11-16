@@ -1,0 +1,49 @@
+{% extends "base.html" %}
+{% set TIER_NAME = {'buceo': 'Business unit', 'bgceo': 'Business group',
+                    'group': 'Calibration group'} %}
+{% block title %}Talent Box{% endblock %}
+{% block body %}
+
+<div class="page-head">
+  <div>
+    <h1>Talent Box</h1>
+    <p class="muted">
+      {% if period %}{{ period['name'] }} &middot; {% endif %}
+      Performance and potential in one grid, so a scope can be calibrated on both
+      at once. Department heads keep calibrating the two separately &mdash;
+      <a href="{{ url_for('pm_calibration_home') }}">performance</a> and
+      <a href="{{ url_for('calibration_home') }}">potential</a> &mdash; the box
+      starts at business unit level.
+    </p>
+  </div>
+</div>
+
+{% if not period %}
+<div class="admin-card"><p class="muted" style="margin:0">No active performance period yet.</p></div>
+{% elif not scopes %}
+<div class="admin-card">
+  <p class="muted" style="margin:0">
+    You don't hold a Talent Box scope. The box is for business unit CEOs, business
+    group CEOs and cross-organisation group calibrators. If you're a department
+    head, your calibration lives on the
+    <a href="{{ url_for('pm_calibration_home') }}">performance</a> and
+    <a href="{{ url_for('calibration_home') }}">potential</a> pages instead.
+  </p>
+</div>
+{% else %}
+<div class="admin-card">
+  <table class="admin-table">
+    <thead><tr><th>Scope</th><th>Level</th><th></th></tr></thead>
+    <tbody>
+      {% for s in scopes %}
+      <tr>
+        <td><strong>{{ s.label }}</strong></td>
+        <td class="muted small">{{ TIER_NAME[s.tier] }}</td>
+        <td><a class="btn-link" href="{{ s.url }}">Open box &rarr;</a></td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endif %}
+{% endblock %}

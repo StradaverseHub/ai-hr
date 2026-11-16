@@ -1,0 +1,209 @@
+{% extends "base.html" %}
+{% from "_table_tools.html" import colth, colmenu, colmenu_script %}
+{% block title %}Review cycles{% endblock %}
+{% block body %}
+<p class="adm-lede">Every review season, each with its own panels, results and released reports. One cycle is active at a
+  time: the only one people see. Starting or activating a cycle archives the others. A cycle's dates, who takes part and
+  what runs are set on its Calendar.</p>
+
+<div class="admin-card">
+  <div class="table-scroll table-scroll-capped">
+  <table class="admin-table" id="cycles-table">
+    <thead>
+      <tr>{{ colth('cycle', 'Cycle') }}{{ colth('yh', 'Year · half') }}{{ colth('status', 'Status') }}
+        {{ colth('period', 'Period') }}{{ colth('subjects', 'People rated') }}{{ colth('records', 'Records') }}<th></th></tr>
+    </thead>
+    <tbody>
+      {% for c in cycles %}
+      <tr class="data-row" data-cycle="{{ c['name'] }}" data-yh="{{ c['year'] or '' }} {{ c['half_label'] }}"
+          data-status="{{ 'Active' if c['is_active'] else 'Archived' }}" data-period="{{ c['starts_on'] or '' }}"
+          data-subjects="{{ c['n_subjects'] if c['n_subjects'] is not none else '' }}"
+          data-records="{{ c['n_records'] or 0 }}">
+        <td><strong>{{ c['name'] }}</strong><br><span class="muted small"><code>{{ c['code'] }}</code></span></td>
+        <td>{{ c['year'] or '—' }}{% if c['half_label'] %} &middot; {{ c['half_label'] }}{% endif %}</td>
+        <td>
+          {% if c['is_active'] %}<span class="status-pill status-reviewed">Active</span>
+          {% else %}<span class="status-pill status-archived">Archived</span>{% endif %}
+        </td>
+        <td class="small">{{ c['period'] or '—' }}</td>
+        <td>{{ c['n_subjects'] | thousands }}</td>
+        <td class="small">{% if c['frozen_at'] %}Frozen {{ c['frozen_at'] | myt_day }}{% elif c['is_active'] %}Live{% else %}—{% endif %}
+          {% if c['n_records'] %}<span class="muted" style="display:block">{{ c['n_records'] | thousands }} people</span>{% endif %}</td>
+        <td>
+          <a class="btn-link" href="{{ url_for('admin_cycle_home', cycle=c['id']) }}">Calendar &rsaquo;</a>
+          {% if not c['is_active'] %}
+          <form method="post" style="display:inline" data-no-busy
+                data-confirm="Make {{ c['name'] }} the active cycle? It will become the only cycle employees see, and all other cycles (including the current active one) will be archived. The active cycle's rating records freeze, and making it active again later does not unfreeze them. Released reports are not affected." data-confirm-ok="Set active" data-confirm-tone="danger">
+            <input type="hidden" name="action" value="activate">
+            <input type="hidden" name="cycle_id" value="{{ c['id'] }}">
+            <button type="submit" class="btn-link">Set active</button>
+          </form>
+          {% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+          <tr class="no-filter-match" hidden><td colspan="7" class="muted">No cycles match the filters.</td></tr>
+    </tbody>
+  </table>
+  </div>
+  {{ colmenu('cycles-table', {
+       'cycle':     {'mode': 'clientFilter', 'type': 'text', 'sortAttr': 'cycle'},
+       'yh':        {'mode': 'clientFilter', 'type': 'text', 'sortAttr': 'yh'},
+       'status':    {'mode': 'clientFilter', 'type': 'text', 'sortAttr': 'status'},
+       'period':    {'mode': 'sort', 'type': 'text', 'sortAttr': 'period'},
+       'subjects':  {'mode': 'sort', 'type': 'num', 'sortAttr': 'subjects'},
+       'records':   {'mode': 'sort', 'type': 'num', 'sortAttr': 'records'} }) }}
+</div>
+<div class="admin-card">
+  <h2>Per-cycle rule overrides</h2>
+  <p class="muted small">
+    By default every cycle follows the org rules set on <a href="{{ url_for('admin_module_settings', key='f360') }}#rules">360 Feedback &rsaquo; Settings</a>
+    (panel size <strong>{{ default_panel_size if default_panel_size else 'no maximum' }}</strong>; {% if default_assessor_cap %}nobody rates more than <strong>{{ default_assessor_cap }}</strong>{% else %}<strong>no maximum</strong> on how many one person rates{% endif %}; tier bands
+    {% for t in default_tiers %}{{ t['grades'] }}{{ ', ' if not loop.last }}{% endfor %}).
+    Override a specific cycle here — its rules then stay fixed regardless of later default changes.
+  </p>
+  {% for c in cycles %}
+  <details class="tier-detail">
+    <summary>
+      {% if c['is_active'] %}<span class="status-pill status-reviewed">Active</span>{% else %}<span class="status-pill status-archived">Archived</span>{% endif %}
+      <span class="tier-grades">{{ c['name'] }}</span>
+      <span class="muted small">— panel {{ c['eff_panel'] if c['eff_panel'] else 'no maximum' }}, Stage 1 at {{ c['eff_min_valid'] }}, {{ ('at most %d each' % c['eff_cap']) if c['eff_cap'] else 'no maximum each' }};
+        {% if c['overrides_rules'] %}<strong>custom rules</strong>{% else %}using default{% endif %}</span>
+    </summary>
+    <div class="tier-body">
+      <form method="post" class="admin-form adm-set-form"
+            data-confirm="Set custom rules for {{ c['name'] }}? They replace the default panel size, score threshold and tier grade bands for this cycle only. {% if c['is_active'] %}This cycle is active and may already have submissions — changes apply to it. {% endif %}You can reset to the default rules." data-confirm-ok="Save override">
+        <input type="hidden" name="action" value="set_rules">
+        <input type="hidden" name="cycle_id" value="{{ c['id'] }}">
+        <label>Target panel size
+          <select name="panel_size" class="modern-select adm-num-select">
+            {% for n in assessor_cap_choices %}<option value="{{ n }}"{{ ' selected' if c['eff_panel'] == n }}>{{ n }}</option>{% endfor %}
+            <option value="none"{{ ' selected' if c['eff_panel'] is none }}>No maximum</option>
+          </select>
+        </label>
+        <label>Stage 1 — score valid at (submissions)
+          <input name="min_valid" type="number" min="1" max="20" value="{{ c['eff_min_valid'] }}" required>
+        </label>
+        <label>Most people one person rates
+          <select name="assessor_cap" class="modern-select adm-num-select">
+            {% for n in assessor_cap_choices %}<option value="{{ n }}"{{ ' selected' if c['eff_cap'] == n }}>{{ n }}</option>{% endfor %}
+            <option value="none"{{ ' selected' if c['eff_cap'] is none }}>No maximum</option>
+          </select>
+        </label>
+        <fieldset class="tier-edit">
+          <legend>Tier grade bands</legend>
+          {% for t in c['eff_tiers'] %}
+          <div class="tier-edit-row">
+            <span class="tier-pill" data-tier="{{ t['n'] }}">{{ t['name'] }}</span>
+            <label>Min JG <input name="tier{{ t['n'] }}_min" type="number" min="1" max="30" value="{{ t['min'] }}" required></label>
+            <label>Max JG <input name="tier{{ t['n'] }}_max" type="number" min="1" max="30" value="{{ t['max'] }}" required></label>
+          </div>
+          {% endfor %}
+        </fieldset>
+        <div class="actions">
+          <button type="submit" class="btn-link">Save override for this cycle</button>
+        </div>
+      </form>
+      {% if c['overrides_rules'] %}
+      <form method="post" data-no-busy style="margin-top:6px"
+            data-confirm="Reset {{ c['name'] }} to follow the default rules? Its custom panel size, score threshold and tier grade bands are dropped. You can set them again." data-confirm-ok="Reset" data-confirm-tone="danger">
+        <input type="hidden" name="action" value="clear_rules">
+        <input type="hidden" name="cycle_id" value="{{ c['id'] }}">
+        <button type="submit" class="btn-link danger-link">Reset to default rules</button>
+      </form>
+      {% endif %}
+    </div>
+  </details>
+  {% endfor %}
+</div>
+
+<div class="admin-card" id="start">
+  <h2>Start the next cycle</h2>
+  <p class="muted small">Starting a cycle makes it the one <strong>active</strong> cycle and archives every other; people
+    only ever see the active one. Before you start: bring the headcount up to date on
+    <a href="{{ url_for('admin_import_roster') }}">People › Import</a>, then build the panels on
+    <a href="{{ url_for('admin_panel_build') }}">360 Feedback › Panels</a>.</p>
+  <form method="post" class="stack-form" data-no-busy
+        data-confirm="Start the new cycle? Everyone sees it from now on.{% if act %} {{ act['name'] }} becomes read-only and its rating records freeze for {{ n_taking | thousands }} people; making it active again later does not unfreeze them.{% if waiting %} {{ waiting | thousands }} result{{ '' if waiting == 1 else 's' }} in {{ act['name'] }} {{ 'is' if waiting == 1 else 'are' }} still waiting on a moderator and freeze as they are.{% endif %}{% endif %} No part of the new cycle has dates yet: the Calendar asks for them next."
+        data-confirm-title="Start the next cycle?" data-confirm-ok="Start the cycle" data-confirm-tone="danger">
+    <input type="hidden" name="action" value="create">
+    <div class="form-row">
+      <label>Name <input type="text" name="name" placeholder="2027 Mid-Year" required maxlength="60" value="{{ form.get('name', '') }}"></label>
+      <label>Code <input type="text" name="code" placeholder="2027-H1" required maxlength="20" value="{{ form.get('code', '') }}"></label>
+      <label>Year <input type="number" name="year" placeholder="2027" min="2000" max="2100" value="{{ form.get('year', '') }}"></label>
+      <label>Cycle type
+        <select name="half" id="cyc-type">
+          <option value="">Not set</option>
+          <option value="0" {{ 'selected' if form.get('half') == '0' }}>Early Year</option>
+          <option value="1" {{ 'selected' if form.get('half') == '1' }}>Mid-Year</option>
+          <option value="2" {{ 'selected' if form.get('half') == '2' }}>Year-End</option>
+        </select>
+      </label>
+      <label>Cycle opens <input type="datetime-local" name="starts_on" value="{{ form.get('starts_on', '') }}"></label>
+      <label>Cycle closes <input type="datetime-local" name="ends_on" data-odp-time="23:59" value="{{ form.get('ends_on', '') }}"></label>
+      <label>Lowest job grade taking part <input type="number" name="min_job_grade" placeholder="Everyone" min="1" max="40" value="{{ form.get('min_job_grade', '') }}"></label>
+      <label>KPIs carry in from
+        <select name="kpi_source" id="cyc-kpi-src">
+          <option value="">None: set or import here</option>
+          {% for k in kpi_sources %}<option value="carry:{{ k['id'] }}" data-early="{{ 1 if k['early'] else 0 }}" data-year="{{ k['year'] or '' }}" {{ 'selected' if form.get('kpi_source') == 'carry:%d' % k['id'] }}>{{ k['name'] }} ({{ k['people'] | thousands }} {{ 'person' if k['people'] == 1 else 'people' }})</option>{% endfor %}
+        </select>
+      </label>
+    </div>
+    <p class="muted small" style="margin:-4px 0 8px">The <strong>lowest job grade</strong> decides who takes part at all:
+      below it, and every letter grade, has no review, isn't rated and doesn't rate others in this cycle. Blank is
+      everyone; change it later on Participants.</p>
+    <p class="muted small" style="margin:-4px 0 8px">The <strong>cycle type</strong> decides who works on what. The
+      <strong>Early Year</strong>, after the Year-End closes, is KPI setting and its approval only. The
+      <strong>Mid-Year</strong> checks in on those KPIs: self, line manager and HOD. The <strong>Year-End</strong> adds
+      the 360, competency, the BU CEO, BG CEO and the Talent Box, and is when plans are written for the year ahead. The
+      <strong>period</strong> (opens to closes) holds every part's dates; the opening date also decides who takes part.
+      Malaysia time.</p>
+    <p class="muted small" style="margin:-4px 0 8px"><strong>KPIs carry in from</strong>: a Mid-Year normally carries in
+      its Early Year's agreed KPIs, for the people taking part. Results, approvals and files never carry over.</p>
+    <fieldset class="cycle-source" id="cyc-panels">
+      <legend>How should panels start?</legend>
+      <label class="radio-line">
+        <input type="radio" name="source" value="clone:{{ cycles[0]['id'] }}" checked>
+        <span><strong>Copy from {{ cycles[0]['name'] }}</strong>: the 360 panels and the rules carry forward as a fresh draft (statuses reset; comments and releases don't carry over).</span>
+      </label>
+      <label class="radio-line">
+        <input type="radio" name="source" value="empty">
+        <span><strong>Start empty</strong>: no panels; build them on Panels.</span>
+      </label>
+    </fieldset>
+    {% if act %}
+    <label class="adm-freeze-tick"><input type="checkbox" name="confirm_freeze" value="1" required>
+      I understand {{ act['name'] }}'s records freeze and can't be changed after this.</label>
+    {% endif %}
+    <div class="actions">
+      <a class="btn-link" href="{{ url_for('admin_cycle_home') }}">Cancel</a>
+      <button type="submit" class="primary">Start the cycle</button>
+    </div>
+  </form>
+</div>
+<script>
+  // the cycle type steers the rest (2026-10-15): an Early Year has no 360 panels and no KPIs to carry in; a Mid-Year
+  // picks its year's Early Year to carry its agreed KPIs from
+  (function () {
+    var type = document.getElementById('cyc-type'), src = document.getElementById('cyc-kpi-src'),
+        panels = document.getElementById('cyc-panels'), year = document.querySelector('#start input[name=year]');
+    if (!type || !src) return;
+    function sync(pick) {
+      var early = type.value === '0';
+      src.disabled = early;
+      if (early) src.value = '';
+      if (panels) panels.hidden = early;
+      if (pick && type.value === '1') {
+        var y = year && year.value,
+            eys = Array.prototype.filter.call(src.options, function (o) { return o.dataset.early === '1'; }),
+            best = eys.filter(function (o) { return y && o.dataset.year === y; })[0] || eys[0];   // newest first
+        if (best) src.value = best.value;
+      }
+    }
+    type.addEventListener('change', function () { sync(true); });
+    if (year) year.addEventListener('change', function () { sync(type.value === '1'); });
+    sync(false);
+  })();
+</script>
+{{ colmenu_script(asset_v) }}
+{% endblock %}

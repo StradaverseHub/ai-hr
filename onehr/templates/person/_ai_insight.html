@@ -1,0 +1,146 @@
+{# A person's AI insight, as an admin reads it (Chris, 2026-11-06; canvas [design canvas link removed], boards 3 to 7).
+   Everything here is drawn from _ai_insight_read(): the cache tables and the queue, never the model. Only the admin whose role
+   has "Read a person's AI insight" (the super admin always) gets `ai_ins` at all; without it there is no line, no card, no panel.
+   The red spark and "AI insight" mark only what AI+ wrote (source 'ai'); a reading AI+ did not write carries the grey
+   "From their figures" tag and no spark; what the AI wrote is never red. The journey's own classes (.rv-cal-verdict,
+   .rv-verdict, .rv-cal-src) are reused; the rest are .ais-*. #}
+
+{% macro spark() -%}<svg class="rv-ico-spark" width="12" height="12" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2l2.2 7.8L22 12l-7.8 2.2L12 22l-2.2-7.8L2 12l7.8-2.2z" fill="currentColor"/></svg>{%- endmacro %}
+
+{% macro tone(v) -%}{{ 'ok' if v in ('well_justified', 'fits') else ('warn' if v in ('partly_justified', 'partly_fits') else ('bad' if v else 'mute')) }}{%- endmacro %}
+
+{# one reading: the question, the verdict, where it came from, then its words #}
+{% macro reading_block(r) %}
+<div class="rv-cal-verdict rv-lm-verdict ais-ins" data-tone="{{ tone(r.verdict) }}">
+  <div class="rv-cal-vh">
+    <span class="rv-cal-q">{{ r.q }}</span>
+    {% if r.verdict and r.vlabel %}<span class="rv-verdict" data-tone="{{ tone(r.verdict) }}"><span class="rv-vg" aria-hidden="true">{{ r.glyph }}</span><span class="rv-vw">{{ r.vlabel }}</span></span>{% endif %}
+    <span class="rv-cal-src{{ ' rv-ai-src' if r.is_ai }}">{% if r.is_ai %}{{ spark() }}{% endif %}{{ r.tag }}</span>
+  </div>
+  {% if r.lead %}<p class="rv-cal-why rv-lm-lead">{{ r.lead }}</p>{% endif %}
+  {% if r.body %}<p class="rv-cal-why rv-lm-para">{{ r.body }}</p>{% endif %}
+  {% if r.scores %}<p class="rv-cal-soft rv-lm-scores">{{ r.scores }}</p>{% endif %}
+</div>
+{% endmacro %}
+
+{# the per-KPI part and what it suggests the reviewer asks. In the panel (full): the table, then the steps. On a tab's card
+   (compact, board 5): a short KPI by KPI list (the reason on hover) beside the steps; the panel has each KPI's reason. #}
+{% macro reading_detail(r, full=False) %}
+{% if r.kpis or r.discuss %}
+<div class="{{ 'ais-stack' if full or not (r.kpis and r.discuss) else 'ais-two' }}">
+  {% if r.kpis %}
+  <div class="ais-kpis"><p class="ais-sh">KPI by KPI</p>
+    {% if full %}
+    <div class="table-scroll"><table class="admin-table ais-table">
+      <thead><tr><th>KPI</th><th>Their result · target</th><th>Justified?</th><th>Why</th></tr></thead>
+      <tbody>{% for k in r.kpis %}<tr><td>{{ k.n }} · {{ k.kpi }}</td><td class="ais-nw">{{ k.figures }}</td><td class="ais-nw ais-just">{% if k.glyph %}{{ k.glyph }} {% endif %}{{ k.word }}</td><td>{{ k.why }}</td></tr>{% endfor %}</tbody>
+    </table></div>
+    {% else %}
+    {% for k in r.kpis %}<div class="ais-kk"{% if k.why %} title="{{ k.why }}"{% endif %}><span class="ais-kk-n">{{ k.n }} · {{ k.kpi }}</span><span class="ais-just ais-nw">{% if k.glyph %}{{ k.glyph }} {% endif %}{{ k.word }}</span></div>{% endfor %}
+    {% endif %}
+  </div>
+  {% endif %}
+  {% if r.discuss %}
+  <div class="ais-asks"><p class="ais-sh">What it suggests {{ {'lm': 'the line manager', 'hod': 'the HOD', 'buceo': 'the BU CEO', 'bgceo': 'the BG CEO', 'group': 'the Group Chief'}.get(r.key, 'the reviewer') }} asks</p>
+    <ul>{% for x in r.discuss %}<li>{{ x }}</li>{% endfor %}</ul></div>
+  {% endif %}
+</div>
+{% endif %}
+{% endmacro %}
+
+{# "What was written" for a calibration tier #}
+{% macro written_block(w, title) %}
+<div class="ais-written"><p class="ais-sh">{{ title }}{% if w.seat %} · {{ w.seat }}{% endif %}
+  <span class="rv-cal-src{{ ' rv-ai-src' if w.is_ai }}">{% if w.is_ai %}{{ spark() }}{% endif %}{{ w.tag }}</span></p>
+  <p class="rv-cal-why">{{ w.text }}</p></div>
+{% endmacro %}
+
+{# the readings of one result, a segment per seat (only when there is more than one) #}
+{% macro readings(res, full=False) %}
+{% set segs = res.readings %}
+{% set first = (segs | selectattr('state', 'in', ['ai', 'plain']) | list | first) %}
+{% if segs | length > 1 %}
+<div class="ais-whose"><span class="ais-lb">Whose reading</span>
+  <div class="ais-seg" role="group" aria-label="Whose reading">
+    {% for r in segs %}{% if r.state == 'notyet' %}<button type="button" disabled title="{{ r.wait_title }}">{{ r.seat }} · not yet</button>{% else %}<button type="button" data-ais-pick="{{ r.key }}" class="{{ 'is-on' if r is sameas first }}" aria-pressed="{{ 'true' if r is sameas first else 'false' }}">{{ r.seat }}</button>{% endif %}{% endfor %}
+  </div></div>
+{% endif %}
+{% for r in segs if r.state != 'notyet' %}
+<div class="ais-seat" data-ais-seat="{{ r.key }}"{% if r is not sameas first %} hidden{% endif %}>
+  <p class="ais-stamp">{{ r.stamp }}</p>
+  {{ reading_block(r) }}
+  {{ reading_detail(r, full) }}
+  {% if r.rem %}{{ written_block(r.rem, 'What was written about their results') }}{% endif %}
+</div>
+{% endfor %}
+{% endmacro %}
+
+{# potential: one reading for every calibrator, and what was written about potential (a switch) #}
+{% macro potential(res) %}
+{% set main = (res.readings | first) %}
+{% if main and res.written %}
+<div class="ais-whose"><span class="ais-lb">What to read</span>
+  <div class="ais-seg" role="group" aria-label="What to read">
+    <button type="button" data-ais-pick="calp" class="is-on" aria-pressed="true">What their 360 and competency show</button>
+    <button type="button" data-ais-pick="written" aria-pressed="false">What was written about potential</button>
+  </div></div>
+{% endif %}
+{% if main %}
+<div class="ais-seat" data-ais-seat="calp">
+  <p class="ais-stamp">{{ main.stamp }}</p>
+  {{ reading_block(main) }}
+</div>
+{% endif %}
+{% if res.written %}
+<div class="ais-seat" data-ais-seat="written"{% if main %} hidden{% endif %}>
+  {% for w in res.written %}{{ written_block(w, 'What was written about potential') }}{% endfor %}
+</div>
+{% endif %}
+{% endmacro %}
+
+{# the card's body for every state (a to d, board 7); the part's own heading is the caller's #}
+{% macro body(res, full=False) %}
+{% if res.state == 'ok' %}
+  {% if res.part == 'pot' %}{{ potential(res) }}{% else %}{{ readings(res, full) }}{% endif %}
+  {% set plain = res.readings | selectattr('state', 'equalto', 'plain') | list %}
+  {% if plain %}<p class="muted small ais-note">AI+ couldn't write {{ 'this one' if plain | length == 1 else 'these' }}{% if res.fail %} ({{ res.fail | lower }}){% endif %}. The reviewer sees these fixed words; their page asks AI+ again when it opens.</p>{% endif %}
+{% elif res.state == 'waiting' %}
+  <div class="ais-wait"><span class="ais-dots" aria-hidden="true"><i></i><i></i><i></i></span>AI+ is writing it · in the queue since {{ res.since }}</div>
+  <p class="muted small ais-note">It shows here when it is done; reload the page.</p>
+{% else %}
+  <p class="ais-soft">{{ res.words }}</p>
+{% endif %}
+{% endmacro %}
+
+{# a tab's card (boards 5 and 6): heading, whose reading, the reading, its foot #}
+{% macro card(res, subtitle, more_href='', more_label='') %}
+{% if res %}
+<section class="admin-card pp-card ais-card" aria-label="{{ res.label }} AI insight" data-ais-root>
+  <div class="ais-head"><h2 class="pp-h">AI insight{{ ' · potential' if res.part == 'pot' }}</h2><span class="muted small">{{ subtitle }}</span></div>
+  {{ body(res) }}
+  <div class="ais-foot"><span class="muted small">{% if res.state == 'ok' %}This read is in the audit log. {% endif %}Read only: AI+ is not asked again from here.</span>{% if more_href and res.state == 'ok' %}<a class="ais-read" href="{{ more_href }}">{{ more_label }} &rsaquo;</a>{% endif %}</div>
+</section>
+{% endif %}
+{% endmacro %}
+
+{# the Overview's line under a module card (board 3): spark + tag, the verdict, Read ›, one ellipsised lead line #}
+{% macro line(res, uid, cid) %}
+{% if res %}
+{% set r = (res.readings | first) if res.state == 'ok' else none %}
+{% if r and r.state in ('ai', 'plain') %}
+<div class="ais-line" data-ais-line="{{ res.part }}">
+  <div class="ais-line-h">
+    <span class="rv-cal-src{{ ' rv-ai-src' if r.is_ai }}">{% if r.is_ai %}{{ spark() }}{% endif %}{{ r.tag }}</span>
+    {% if r.verdict and r.vlabel %}<span class="rv-verdict" data-tone="{{ tone(r.verdict) }}"><span class="rv-vg" aria-hidden="true">{{ r.glyph }}</span><span class="rv-vw">{{ r.vlabel }}</span></span>{% endif %}
+    <a href="{{ url_for('admin_person', uid=uid, panel='insight', part=res.part, cycle=cid) }}" data-panel-open="insight" data-ais-src="{{ url_for('admin_person_insight', uid=uid, part=res.part, cycle=cid, fragment=1) }}" class="ais-read">Read &rsaquo;</a>
+  </div>
+  {% set lead = r.lead or r.body %}
+  <div class="ais-lead" title="{{ lead }}">{{ lead }}</div>
+</div>
+{% elif res.state == 'waiting' %}
+<div class="ais-line is-quiet" data-ais-line="{{ res.part }}"><span class="ais-soft">AI+ is writing it · in the queue since {{ res.since }}</span></div>
+{% else %}
+<div class="ais-line is-quiet" data-ais-line="{{ res.part }}"><span class="ais-soft">{{ 'No AI insight yet' if res.state == 'none' else res.words }}</span>{% if res.state == 'none' and res.part == 'pot' %}<span class="ais-soft">Potential is written for the calibrators once calibration opens.</span>{% endif %}</div>
+{% endif %}
+{% endif %}
+{% endmacro %}

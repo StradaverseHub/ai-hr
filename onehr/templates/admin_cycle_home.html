@@ -1,0 +1,234 @@
+{% extends "base.html" %}
+{% block title %}Cycle calendar{% endblock %}
+{% block body %}
+{# WHO CAN WORK WHEN (2026-10-10, the canvas's B2): the cycle's 14 open and close dates on one calendar, grouped by
+   the module that owns them, today's line across it, and the picked row's dates beside it to change. A bar is solid
+   while its window is open, tinted before or after, dashed when it has no dates at all (open all cycle, or not open in
+   a cycle whose parts open by date, 2026-10-19). #}
+{% if not cyc %}
+<div class="admin-card"><p class="muted" style="margin:0">There is no cycle yet. Start one under
+  <a href="{{ url_for('admin_cycles') }}">All cycles</a>.</p></div>
+{% else %}
+{% from "_mode_switch.html" import calendar_modes with context %}
+<div class="page-head">
+  <div>
+    {{ calendar_modes('calendar', cyc.id) }}
+    <p class="adm-lede">Who can work when in {{ cyc.name }}{% if cyc.is_active %} (active){% endif %}: all {{ n_cells }}
+      open and close dates, in Malaysia time (now {{ now_disp }}). {{ dated_used }} of the {{ used_n }} parts this
+      cycle uses are dated; {% if by_date %}a part opens on its start date, and the rest aren't open{% else %}the rest are open all cycle{% endif %}. Outside its dates a role can still read, but nothing saves, submits or approves.</p>
+  </div>
+  <form method="get" class="adm-cal-pick">
+    <label>Cycle
+      <select name="cycle" class="modern-select" onchange="this.form.submit()">
+        {% for c in cycles %}<option value="{{ c.id }}" {{ 'selected' if c.id == cyc.id }}>{{ c.name }}{{ ' · active' if c.is_active }}</option>{% endfor %}
+      </select>
+    </label>
+    <noscript><button type="submit">Show</button></noscript>
+  </form>
+</div>
+
+{# This cycle (admin round 4, canvas C2): name, code, year, half and the cycle's period, with Edit cycle; then who takes
+   part and what runs. Every part's dates must sit inside the period. A BG admin reads it (canvas C5). #}
+{% set _hl = half_label or 'Not set' %}
+<section class="admin-card adm-cyc2" aria-label="This cycle">
+  <div class="adm-cyc2-head"><h2>This cycle</h2>
+    {% if can_edit %}<button type="button" class="adm-rep-dl" id="adm-cyc-edit-open" aria-expanded="false" aria-controls="adm-cyc-edit">Edit cycle</button>
+    {% elif not cyc.archived_at %}<span class="muted small">Read only: a super admin sets these.</span>
+    {% else %}<span class="muted small">A past cycle: it reads only.</span>{% endif %}</div>
+  <dl class="adm-cyc2-grid">
+    <div><dt>Name</dt><dd>{{ cyc.name }}</dd></div>
+    <div><dt>Code</dt><dd><code>{{ cyc.code }}</code></dd></div>
+    <div><dt>Year</dt><dd>{{ cyc.year or 'Not set' }}</dd></div>
+    <div><dt>Type</dt><dd>{{ _hl }}</dd></div>
+    <div class="is-wide"><dt>Period</dt><dd>{{ period or 'Not set' }}{% if not period %} <span class="muted small">· set when it opens and closes; every part's dates then sit inside it</span>{% endif %}</dd></div>
+    <div class="is-wide"><dt>Potential band</dt><dd>{% if has_pot %}Yes: the 360 with the competency{% if not comp_ran %} <span class="muted small">· no competency has run in this cycle yet</span>{% endif %}{% else %}None: no competency ran, so no potential band and no talent status{% endif %}</dd></div>
+  </dl>
+  <div class="adm-cyc2-foot">
+    <span class="muted small"><b>Who takes part:</b> {{ ('confirmed by ' ~ starts_disp) if starts_disp else 'everyone confirmed' }}{% if taking is not none %} · {{ taking | thousands }} of {{ people | thousands }} people{% endif %}{% if added or removed %} · {{ added }} added, {{ removed }} taken out{% endif %} · <a href="{{ url_for('admin_participants') }}">Participants &rsaquo;</a></span>
+    <span class="adm-cyc-mods">{% for m in modules %}<span class="adm-cyc-mod{{ '' if m.on else ' is-off' }}">{{ m.label }}</span>{% endfor %}</span>
+  </div>
+  {% if outside %}<p class="adm-note-line" style="margin:10px 0 0"><b>{{ outside | length }} part{{ '' if outside | length == 1 else 's' }} outside the period:</b>
+    {{ outside | join(', ') }}.{% if can_edit %} Move them with Edit all dates, above.{% endif %}</p>{% endif %}
+</section>
+
+{% if can_edit %}
+<section class="admin-card adm-cyc-editp" id="adm-cyc-edit" hidden aria-label="Edit cycle">
+  <div class="adm-cyc2-head"><h2>Edit cycle</h2><button type="button" class="adm-cyc-x" id="adm-cyc-edit-close" aria-label="Close">&times;</button></div>
+  <form method="post" action="{{ url_for('admin_cycles') }}" class="admin-form adm-cyc-form2"
+        data-confirm="Save the changes to {{ cyc.name }}? A changed cycle type changes who works on what: a Year-End cycle switched to Mid-Year closes its calibration steps. A changed opening date changes who takes part. Potential band None takes every potential band and talent status out of the cycle. Every change goes in the audit log."
+        data-confirm-title="Save this cycle?" data-confirm-ok="Save cycle">
+    <input type="hidden" name="action" value="edit_cycle"><input type="hidden" name="cycle_id" value="{{ cyc.id }}">
+    <input type="hidden" name="next" value="{{ url_for('admin_cycle_home', cycle=cyc.id) }}">
+    <div class="adm-cyc-fields">
+      <label>Name <input type="text" name="name" value="{{ cyc.name }}" required maxlength="60"></label>
+      <label>Code <input type="text" name="code" value="{{ cyc.code }}" required maxlength="20"></label>
+      <label>Year <input type="number" name="year" value="{{ cyc.year or '' }}" min="2000" max="2100">
+        <span class="muted small">Needed: development plans and the year-on-year views read it.</span></label>
+      <label>Cycle opens <input type="datetime-local" name="starts_on" value="{{ starts_input }}">
+        <span class="muted small">Also decides who takes part.</span></label>
+      <label>Cycle closes <input type="datetime-local" name="ends_on" data-odp-time="23:59" value="{{ ends_input }}">
+        <span class="muted small">Every part's dates must fall inside this period.</span></label>
+    </div>
+    <fieldset class="adm-cyc-half"><legend>Cycle type</legend>
+      <label class="radio-line"><input type="radio" name="half" value="0" {{ 'checked' if cyc.half == 0 }}>
+        <span><b>Early Year</b> — KPI setting and its approval only, after the Year-End closes</span></label>
+      <label class="radio-line"><input type="radio" name="half" value="1" {{ 'checked' if cyc.half == 1 }}>
+        <span><b>Mid-Year</b> — self, line manager and HOD; no calibration</span></label>
+      <label class="radio-line"><input type="radio" name="half" value="2" {{ 'checked' if cyc.half == 2 }}>
+        <span><b>Year-End</b> — adds the BU CEO, BG CEO and the Talent Box</span></label>
+    </fieldset>
+    <p class="muted small">Changing the type once people have started changes who works on what: a Year-End cycle switched to
+      Mid-Year closes its calibration steps. The change goes in the audit log.</p>
+    <fieldset class="adm-cyc-half"><legend>Potential band</legend>
+      <label class="radio-line"><input type="radio" name="potential" value="1" {{ 'checked' if has_pot }}>
+        <span><b>Yes</b> — the 360 with the competency gives each person a potential band, and with it a talent status</span></label>
+      <label class="radio-line"><input type="radio" name="potential" value="0" {{ 'checked' if not has_pot }}>
+        <span><b>None</b> — this cycle ran no competency: no potential band and no talent status, only performance</span></label>
+    </fieldset>
+    {% if not comp_ran %}<p class="muted small">No competency has run in this cycle{{ ' yet' if has_pot }}. The 360 stays as it is either way: its scores and reports are untouched.</p>{% endif %}
+    <div class="actions"><button type="button" class="btn-link" id="adm-cyc-edit-cancel">Cancel</button>
+      <button type="submit" class="primary">Save cycle</button></div>
+  </form>
+</section>
+{% if not dated_used %}
+<section class="admin-card adm-nodates" aria-label="No dates set">
+  {% if by_date %}
+  {# a cycle whose parts open by date (Chris, 2026-10-19: "I have yet set the start date of my modules, but in the user
+     page, it can start the AI+ check in already") #}
+  <h2>No dates set: none of the {{ used_n }} parts is open yet</h2>
+  <p class="muted small">Each part opens on its start date. Until it has one, nobody can work on it, even with its module switched on, and no reminder can be sent about it.</p>
+  {% else %}
+  <h2>No dates set: all {{ used_n }} parts are open now</h2>
+  <p class="muted small">Until a part has dates, anyone can work on it{% if cyc.half not in (0, 1) %}, the HOD, BU CEO and BG CEO calibrations included{% endif %}, and no reminder can be sent about it.</p>
+  {% endif %}
+  {% if copy_cycles %}
+  <form method="get" action="{{ url_for('admin_windows') }}" class="adm-nodates-form">
+    <input type="hidden" name="cycle" value="{{ cyc.id }}">
+    <label>Copy the dates of <select name="copy" class="modern-select">{% for c in copy_cycles %}<option value="{{ c.id }}" {{ 'selected' if copy_from and c.id == copy_from.id }}>{{ c.name }}</option>{% endfor %}</select></label>
+    <label>shifted by <input type="number" name="shift" value="{{ shift_default }}" min="-24" max="24" style="width:72px"> months</label>
+    <button type="submit" class="primary">Copy and review all {{ used_n }} &rsaquo;</button>
+  </form>
+  <p class="muted small" style="margin:8px 0 0">Nothing is saved until you save on the next page.</p>
+  {% else %}
+  <p class="muted small" style="margin:6px 0 0">Set them with Edit all dates, above.</p>
+  {% endif %}
+</section>
+{% endif %}
+{% endif %}
+{% if rel %}
+<section class="admin-card adm-cyc-rel" aria-label="Your group's results">
+  <h2>Your group's results</h2>
+  <div class="adm-cyc2-grid"><div><dt>To leaders</dt><dd>{{ rel.lead | thousands }} of {{ rel.n | thousands }}</dd></div>
+    <div><dt>To each person</dt><dd>{{ rel.emp | thousands }} of {{ rel.n | thousands }}</dd></div></div>
+  <p class="muted small" style="margin:6px 0 0">A super admin releases results. Your group follows these dates.</p>
+</section>
+{% endif %}
+
+<div class="adm-cal">
+  <section class="admin-card adm-cal-chart" aria-label="Open and close dates">
+    <div class="adm-cal-scale">
+      <span class="adm-cal-h">Module · who · what</span>
+      <div class="adm-cal-months" style="grid-template-columns:{% for m in months %} {{ m.days }}fr{% endfor %}">
+        {% for m in months %}<span>{{ m.label }}</span>{% endfor %}
+      </div>
+    </div>
+    {% for g in groups %}
+    <div class="adm-cal-group"><span class="adm-side-sq" style="background:{{ g.color }}" aria-hidden="true"></span><b>{{ g.label }}</b></div>
+    {% for r in g.rows %}
+    <a class="adm-cal-row{{ ' is-sel' if r.selected }}" href="{{ r.href }}"{% if r.selected %} aria-current="true"{% endif %}
+       title="{{ r.who }} · {{ r.what }}: {{ r.span }}">
+      <span class="adm-cal-name"><b>{{ r.who }}</b> · {{ r.what }}</span>
+      <span class="adm-cal-track">
+        {% for x in month_lines %}<span class="adm-cal-mline" style="left:{{ x }}%"></span>{% endfor %}
+        <span class="adm-cal-bar is-{{ r.state }}{{ ' is-undated' if not r.dated }}{{ ' is-unused' if r.unused }}"
+              style="left:{{ r.left }}%;width:{{ r.width }}%;--c:{{ g.color }};--t:{{ g.tint }}">{{ '' if r.narrow else r.span }}</span>
+        {% if r.narrow %}<span class="adm-cal-out" style="{{ r.out }}">{{ r.span }}</span>{% endif %}
+        {% if today is not none %}<span class="adm-cal-today" style="left:{{ today }}%" aria-hidden="true"></span>{% endif %}
+      </span>
+    </a>
+    {% endfor %}
+    {% endfor %}
+    <p class="adm-cal-key muted small">
+      <span><i class="adm-cal-k is-today"></i>Today</span>
+      <span><i class="adm-cal-k is-open"></i>Open now</span>
+      <span><i class="adm-cal-k is-tint"></i>Not open yet, or closed</span>
+      <span><i class="adm-cal-k is-undated"></i>{{ 'No start date: not open' if by_date else 'No dates: open all cycle' }}</span>
+    </p>
+  </section>
+
+  <aside class="adm-cal-side">
+    {% if can_edit %}
+    <section class="admin-card adm-cal-edit" id="adm-cal-edit" style="--c:{{ panel.color }}">
+      <p class="adm-cal-eyebrow">{{ panel.group }} · {{ panel.who }}</p>
+      <h2>{{ panel.what }}</h2>
+      <form method="post" action="{{ url_for('admin_windows') }}" class="admin-form">
+        <input type="hidden" name="cycle" value="{{ cyc.id }}">
+        <input type="hidden" name="next" value="{{ url_for('admin_cycle_home', cycle=cyc.id, cell=panel.cell) }}">
+        <label>Opens <input type="datetime-local" name="opens_{{ panel.cell }}" value="{{ panel.opens }}"></label>
+        <label>Closes <input type="datetime-local" name="closes_{{ panel.cell }}" data-odp-time="23:59" value="{{ panel.closes }}"></label>
+        <p class="muted small" style="margin:2px 0 0">Now: <b class="adm-now is-{{ panel.state }}">{{ {'open': 'Open', 'not_open': 'Not open yet', 'closed': 'Closed'}[panel.state] }}</b>
+          {{ 'With no opening date it stays closed.' if by_date else 'Leave both blank for no limit.' }}</p>
+        <div class="adm-cal-btns">
+          {# a confirm on a submit button: only this button asks, and the app replays the submit through it so its name/value still posts #}
+          <button type="submit" name="action" value="save_one:{{ panel.cell }}" class="primary"
+                  data-confirm="Save the open and close dates for {{ panel.who }} · {{ panel.what }}? Who can save, submit or approve in this role follows these dates from now on. You can change them again." data-confirm-ok="Save dates">Save dates</button>
+          {% if panel.state != 'open' %}
+          <button type="submit" name="action" value="open_now:{{ panel.cell }}"
+                  data-confirm="Open {{ panel.what }} now for {{ panel.who }}? They can save and submit straight away, and a closing time that has already passed is cleared. You can close it again." data-confirm-ok="Open now">Open now</button>
+          {% endif %}
+        </div>
+      </form>
+      {% if panel.state == 'open' %}
+      {# its own form: Close now only shows while the window is open, and it asks as a danger confirm on its own. (A confirm
+         on a submit button keeps that button's name/value now, as Save dates and Open now above rely on.) #}
+      <form method="post" action="{{ url_for('admin_windows') }}" class="adm-cal-closef"
+            data-confirm="Close this now? Nobody in this role can save or submit until it opens again." data-confirm-ok="Close now"
+            data-confirm-tone="danger">
+        <input type="hidden" name="cycle" value="{{ cyc.id }}">
+        <input type="hidden" name="next" value="{{ url_for('admin_cycle_home', cycle=cyc.id, cell=panel.cell) }}">
+        <input type="hidden" name="action" value="close_now:{{ panel.cell }}">
+        <button type="submit" class="btn-link danger-link">Close now</button>
+      </form>
+      {% endif %}
+    </section>
+
+    <section class="admin-card adm-cal-card" id="adm-cal-mods">
+      <h2>Modules on this cycle</h2>
+      <form method="post" action="{{ url_for('admin_cycles') }}"
+            data-confirm="Save which modules run on {{ cyc.name }}? A module switched off disappears for everyone; its data is kept."
+            data-confirm-ok="Save">
+        <input type="hidden" name="action" value="set_modules">
+        <input type="hidden" name="cycle_id" value="{{ cyc.id }}">
+        <input type="hidden" name="next" value="{{ url_for('admin_cycle_home', cycle=cyc.id) }}">
+        {% for m in modules %}
+        <label class="adm-cal-mod"><span>{{ m.label }}</span>
+          <input type="checkbox" name="module" value="{{ m.key }}" {{ 'checked' if m.on }}></label>
+        {% endfor %}
+        <div class="actions" style="margin-top:8px"><button type="submit" class="primary">Save</button></div>
+      </form>
+    </section>
+    {% else %}
+    <section class="admin-card adm-cal-edit" style="--c:{{ panel.color }}">
+      <p class="adm-cal-eyebrow">{{ panel.group }} · {{ panel.who }}</p>
+      <h2>{{ panel.what }}</h2>
+      <p class="small" style="margin:4px 0">Opens <b>{{ panel.opens.replace('T', ' ') or 'no date' }}</b><br>Closes <b>{{ panel.closes.replace('T', ' ') or 'no date' }}</b></p>
+      <p class="muted small" style="margin:0">Now: <b class="adm-now is-{{ panel.state }}">{{ {'open': 'Open', 'not_open': 'Not open yet', 'closed': 'Closed'}[panel.state] }}</b></p>
+    </section>
+    {% endif %}
+  </aside>
+</div>
+{% endif %}
+<script>
+(function () {
+  var p = document.getElementById("adm-cyc-edit"), o = document.getElementById("adm-cyc-edit-open");
+  if (!p || !o) return;
+  function show(on) { p.hidden = !on; o.setAttribute("aria-expanded", on ? "true" : "false");
+    if (on) { p.scrollIntoView({ block: "nearest" }); var f = p.querySelector("input[name=name]"); if (f) f.focus(); } else o.focus(); }
+  o.addEventListener("click", function () { show(p.hidden); });
+  ["adm-cyc-edit-close", "adm-cyc-edit-cancel"].forEach(function (id) {
+    var b = document.getElementById(id); if (b) b.addEventListener("click", function () { show(false); }); });
+  p.addEventListener("keydown", function (e) { if (e.key === "Escape") show(false); });
+  if (location.hash === "#adm-cyc-edit") show(true);   // Edit all dates' "Change it on Edit cycle"
+})();
+</script>
+{% endblock %}

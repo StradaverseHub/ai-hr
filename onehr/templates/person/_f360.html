@@ -1,0 +1,211 @@
+{# The person page's 360 Feedback (canvas I4): their panel, who could fill it, what they're rated on, the feedback they
+   owe. Every change posts to the panel editor (admin_panel) and comes back here (`next`). #}
+{% set here = url_for('admin_person', uid=person['id'], tab='f360') %}
+{% set rel_word = {'line_manager': 'Line manager', 'matrix_manager': 'Matrix manager', 'peer': 'Peer', 'direct_report': 'Direct report'} %}
+{# what the COLLEAGUE is to them, when they rate that colleague (the row's relationship is theirs to the colleague) #}
+{% set rel_of = {'line_manager': 'reports to them', 'matrix_manager': 'a matrix report', 'peer': 'a peer', 'direct_report': 'their line manager'} %}
+{# Reopen (2026-10-16): sends one colleague's submitted feedback back to them as they left it, through the one writer
+   (admin_person_reopen -> _reopen_submission), after OneHR's box asks why. Gone once the rated person's results are out. #}
+{% macro reopen_360(a) -%}
+  {% if a.get('box') %}<form method="post" action="{{ url_for('admin_person_reopen', uid=person['id']) }}" class="pp-inline"
+        data-confirm="{{ a['box']['msg'] }}" data-confirm-title="{{ a['box']['title'] }}" data-confirm-ok="{{ a['box']['ok'] }}"
+        data-confirm-tone="danger" data-confirm-list='{{ a["box"]["items"] | tojson }}' data-confirm-list-label="What else changes"
+        data-confirm-reason="{{ a['box']['reason'] }}" data-confirm-reason-max="500"
+        data-confirm-reason-placeholder="What needs correcting"
+        {% if a['box'].get('days') %}data-confirm-days="{{ a['box']['days']['default'] }}" data-confirm-days-label="{{ a['box']['days']['label'] }}" data-confirm-days-help="{{ a['box']['days']['help'] }}"{% endif %}>
+    <input type="hidden" name="part" value="f360"><input type="hidden" name="ref" value="{{ a['id'] }}">
+    <button type="submit" class="btn-link">Reopen</button>
+  </form>{% endif %}
+  {% if a.get('extend') %}{% set X = a['extend'] %}<form method="post" action="{{ url_for('admin_person_reopen_extend', uid=person['id']) }}" class="pp-inline"
+        data-confirm="{{ X['msg'] }}" data-confirm-title="{{ X['title'] }}" data-confirm-ok="{{ X['ok'] }}"
+        data-confirm-reason="{{ X['reason'] }}" data-confirm-reason-max="500" data-confirm-reason-placeholder="e.g. on leave over the deadline"
+        data-confirm-foot="{{ X['foot'] }}" data-confirm-days="{{ X['days']['default'] }}" data-confirm-days-label="{{ X['days']['label'] }}"
+        data-confirm-days-help="{{ X['days']['help'] }}">
+    <input type="hidden" name="part" value="f360"><input type="hidden" name="ref" value="{{ a['id'] }}">
+    <button type="submit" class="btn-link">Extend&hellip;</button>
+  </form>{% endif %}
+{%- endmacro %}
+{% if ai_ins %}{% from "person/_ai_insight.html" import card as ai_card %}<div class="ais-full">{{ ai_card(ai_ins.pot, "One reading for every calibrator · read only") }}</div>{% endif %}
+<div class="pp-grid">
+  <div class="pp-col">
+    <section class="admin-card pp-kpis" aria-label="Their panel">
+      <div class="pp-h-row pp-pad"><h2 class="pp-h">Who gives {{ person['full_name'] }} feedback</h2>
+        <span class="muted small">{% if f.target %}{{ f.n_live }} of a target {{ f.target }}{% else %}{{ f.n_live }} on the panel, no maximum{% endif %} · {{ f.n_done }} submitted{% if f.panel %} · <a href="{{ url_for('admin_subject_detail', uid=person['id']) }}">Their 360 results &rsaquo;</a>{% endif %}</span></div>
+      <div class="pp-frow pp-khead"><span>Assessor</span><span>Relationship</span><span>Status</span><span></span></div>
+      {% for a in f.panel %}
+      <div class="pp-frow {{ 'is-archived' if a['archived'] }}">
+        <span><b>{{ a['full_name'] }}</b><span class="muted small" style="display:block">{% if a['job_grade'] %}JG {{ a['job_grade'] }}{% if a['job_title'] %} · {% endif %}{% endif %}{{ a['job_title'] | proper or '' }}{% if a['company'] %} · {{ display_company(a['business_group'], a['company']) }}{% endif %}</span></span>
+        <span>{% if editable and not a['archived'] %}
+          {# the relationship changes here (it was the full panel editor's, canvas K7); a new line manager runs the same
+             conflict check as everywhere else (base.html, data-lm-*) #}
+          <form method="post" action="{{ url_for('admin_panel', uid=person['id']) }}" class="pp-inline"
+                data-confirm="Change {{ a['full_name'] }}'s relationship to {{ person['full_name'] }} on this panel? Their answers are kept; choosing Line manager also makes them {{ person['full_name'] }}'s line manager and moves any KPI nobody has moderated to them."
+                data-confirm-ok="Change"
+                data-lm-subject="{{ person['id'] }}" data-lm-rel-field="relationship" data-lm-eid="{{ a['employee_id'] }}">
+            <input type="hidden" name="next" value="{{ here }}"><input type="hidden" name="action" value="set_rel">
+            <input type="hidden" name="assignment_id" value="{{ a['id'] }}">
+            <select name="relationship" class="modern-select pp-relsel" aria-label="{{ a['full_name'] }} is their"
+                    data-was="{{ a['relationship'] }}"
+                    onchange="this.form.requestSubmit ? this.form.requestSubmit() : this.form.submit()">
+              {% for k, v in rel_word.items() %}<option value="{{ k }}" {{ 'selected' if k == a['relationship'] }}>{{ v }}</option>{% endfor %}
+            </select>
+          </form>
+          {% else %}<span class="pp-role is-{{ {'line_manager':'lm','matrix_manager':'mx','peer':'emp','direct_report':'hod'}[a['relationship']] }}">{{ rel_word[a['relationship']] }}</span>{% endif %}</span>
+        <span class="small {{ 'pp-ok' if a['status'] == 'submitted' and not a['archived'] }}{{ ' pp-warn' if a.get('reopened') and a['status'] != 'submitted' }}">{% if a['archived'] %}Archived{% if a['archive_reason'] %}: {{ a['archive_reason'] }}{% endif %}{% elif a['status'] == 'submitted' %}Submitted{% if f.dated %} {{ a['submitted_at'] | myt_date }}{% endif %}{% elif a.get('reopened') %}{{ a['reopened'] }}{% else %}Not submitted yet{% endif %}</span>
+        <span>{% if editable %}
+          <form method="post" action="{{ url_for('admin_panel', uid=person['id']) }}" class="pp-inline"
+                {% if a['archived'] %}data-confirm="Restore {{ a['full_name'] }} to {{ person['full_name'] }}'s panel? Any feedback they submitted counts towards the score again, and a report already released goes back to unreleased." data-confirm-ok="Restore"{% elif a['status'] == 'submitted' %}data-confirm="Archive {{ a['full_name'] }}'s feedback? It's kept, but stops counting." data-confirm-ok="Archive"{% else %}data-confirm="Take {{ a['full_name'] }} off the panel?" data-confirm-ok="Remove"{% endif %}>
+            <input type="hidden" name="next" value="{{ here }}"><input type="hidden" name="assignment_id" value="{{ a['id'] }}">
+            {% if a['archived'] %}<input type="hidden" name="action" value="restore"><button type="submit" class="btn-link">Restore</button>
+            {% elif a['status'] == 'submitted' %}<input type="hidden" name="action" value="archive"><input type="hidden" name="reason" value="Archived on the person page"><button type="submit" class="btn-link pp-danger">Archive</button>
+            {% else %}<input type="hidden" name="action" value="remove"><button type="submit" class="btn-link pp-danger">Remove</button>{% endif %}
+          </form>{% endif %}
+          {% if a['status'] == 'submitted' and not a['archived'] %}
+          {% if f.dated %}<a class="btn-link" href="{{ url_for('admin_view_responses', uid=person['id'], assignment_id=a['id']) }}">Answers</a>{% endif %}
+          {% if editable %}{{ reopen_360(a) }}{% endif %}{% endif %}
+          {% if editable and a.get('extend') and a['status'] != 'submitted' %}{{ reopen_360(a) }}{% endif %}</span>
+      </div>
+      {% else %}
+      <p class="muted pp-none pp-pad">Nobody is on their panel {{ 'yet' if editable else 'in this cycle' }}.</p>
+      {% endfor %}
+    </section>
+    {% if rf and rf.f360 %}{% from "person/_rf.html" import block as rf_block with context %}{{ rf_block(rf.f360) }}{% endif %}
+    {% if editable %}
+    <section class="admin-card pp-card" aria-label="Add an assessor">
+      <h2 class="pp-h">Add someone to their panel</h2>
+      {% if f.why %}<p class="pp-why">{{ f.why[:1] | upper }}{{ f.why[1:] }}.</p>{% endif %}
+      {# by name or Employee ID (the name search was the full panel editor's, canvas K7): the same search, which only
+         offers people who fit the relationship and aren't on the panel already #}
+      {# a line manager added here runs the same conflict check as the relationship select (base.html, data-lm-*):
+         the script sets data-lm-eid to whoever is picked (2026-10-11; before, it skipped the check) #}
+      <form method="post" action="{{ url_for('admin_panel', uid=person['id']) }}" class="pp-inline pp-addsearch"
+            data-confirm="Add this person to {{ person['full_name'] }}'s panel? They are asked for feedback straight away and it goes in the trail."
+            data-confirm-ok="Add to panel"
+            data-lm-subject="{{ person['id'] }}" data-lm-rel-field="relationship"
+            data-search="{{ url_for('admin_assessor_search', uid=person['id']) }}">
+        <input type="hidden" name="next" value="{{ here }}"><input type="hidden" name="action" value="add">
+        <select name="relationship" class="modern-select" aria-label="Relationship">
+          {% for k, v in rel_word.items() %}<option value="{{ k }}" {{ 'selected' if k == 'peer' }}>{{ v }}</option>{% endfor %}</select>
+        <input type="search" class="pp-addq" placeholder="Name or Employee ID" aria-label="Find someone by name or Employee ID" autocomplete="off">
+        <input type="hidden" name="assessor_eid" value="">
+        <button type="submit" class="btn-link" disabled>Add</button>
+        <div class="pp-addres" role="listbox" aria-label="Matches" hidden></div>
+      </form>
+      {% if f.sugg %}
+      {% set ns = namespace(lm=false) %}{% for a in f.panel %}{% if a['relationship'] == 'line_manager' and not a['archived'] %}{% set ns.lm = true %}{% endif %}{% endfor %}
+      {# the button waits for a tick, and the box names who is ticked (the script below; 2026-10-11) #}
+      {# the bulk build's own order and rater cap (Chris, 2026-10-20, canvas board 2): each with how many people they rate
+         this cycle; the build's own picks ticked; anyone at the cap can't be ticked #}
+      <form method="post" action="{{ url_for('admin_panel', uid=person['id']) }}" class="pp-sugg"
+            data-confirm="Add the ticked people to {{ person['full_name'] }}'s panel? They are asked for feedback straight away{% if f.target %}, up to the panel target of {{ f.target }}{% endif %}; a ticked line manager also becomes their line manager."
+            data-confirm-ok="Add to panel" data-target="{{ f.target or '' }}" data-live="{{ f.n_live }}"
+            data-has-lm="{{ '1' if ns.lm else '0' }}">
+        <input type="hidden" name="next" value="{{ here }}"><input type="hidden" name="action" value="add_suggested">
+        <span class="muted small">People close to them, closest first. {% if f.cap %}Nobody rates more than {{ f.cap }}.{% else %}No maximum on how many one person rates.{% endif %}</span>
+        {% for sg in f.sugg %}<label class="pp-sg{{ ' is-full' if sg.full }}"><input type="checkbox" name="pick_{{ sg.id }}" value="1" data-rel="{{ sg.rel }}"{{ ' checked' if sg.picked and not sg.full }}{{ ' disabled' if sg.full }}> <b>{{ sg.name }}</b> <span class="muted small">· {{ sg.tier | lower }}{% if sg.grade %} · JG {{ sg.grade }}{% endif %}{% if sg.title %} · {{ sg.title | proper }}{% endif %}</span>
+          <span class="pp-load">{{ ('rates %d of %d · full' % (sg.load, f.cap) if sg.full else 'rates %d of %d' % (sg.load, f.cap)) if f.cap else 'rates %d' % sg.load }}</span>
+          <input type="hidden" name="rel_{{ sg.id }}" value="{{ sg.rel }}"></label>{% endfor %}
+        <button type="submit" class="btn-link" disabled>Add the ticked</button>
+      </form>
+      {% endif %}
+      <p class="muted small pp-none">Submitted feedback is never taken off quietly: Archive keeps it, with a reason, and Restore brings it back.</p>
+    </section>
+    {% endif %}
+  </div>
+  <div class="pp-col">
+    <section class="admin-card pp-card" aria-label="What they're rated on">
+      <div class="pp-h-row"><h2 class="pp-h">What they're rated on</h2>{% if nav_is_super %}<a class="small" href="{{ url_for('admin_framework') }}">Framework &rsaquo;</a>{% endif %}</div>
+      <span class="muted small">{{ cyc['name'] if cyc else 'The cycle' }}'s criteria. The same for everyone in the cycle, so 360 scores stay comparable in calibration.</span>
+      {% for c in f.criteria %}<div class="pp-r"><span><b>{{ loop.index }}. {{ c['name'] }}</b>{% if c['description'] %} <span class="muted">· {{ c['description'] | truncate(90) }}</span>{% endif %}</span></div>{% endfor %}
+    </section>
+    <section class="admin-card pp-card" aria-label="Feedback they give">
+      <h2 class="pp-h">Feedback {{ person['full_name'] }} gives · {{ f.gives_done }} of {{ f.gives | length }} done</h2>
+      {% for g_ in f.gives %}<div class="pp-r"><span>{{ g_['full_name'] }} <span class="muted">· {{ rel_of[g_['relationship']] }}</span></span><span class="pp-inline"><span class="small {{ 'pp-ok' if g_['status'] == 'submitted' }}{{ ' pp-warn' if g_.get('reopened') and g_['status'] != 'submitted' }}">{% if g_['status'] == 'submitted' %}Submitted{% if f.dated %} {{ g_['submitted_at'] | myt_date }}{% endif %}{% elif g_.get('reopened') %}{{ g_['reopened'] }}{% else %}Not started{% endif %}</span>{% if editable %}{{ reopen_360(g_) }}{% endif %}</span></div>
+      {% else %}<p class="muted small pp-none">They rate nobody this cycle.</p>{% endfor %}
+    </section>
+  </div>
+</div>
+{% if editable %}
+<script>
+// Add someone by name: the panel editor's own search (admin_assessor_search), so it offers only people who fit the
+// relationship and aren't on the panel; picking one fills the Employee ID the form posts.
+(function () {
+  var f = document.querySelector('.pp-addsearch');
+  if (!f) return;
+  var q = f.querySelector('.pp-addq'), eid = f.querySelector('[name="assessor_eid"]'), rel = f.querySelector('[name="relationship"]');
+  var res = f.querySelector('.pp-addres'), btn = f.querySelector('button[type="submit"]'), t = null;
+  var who = {{ person['full_name'] | tojson }}, picked = '';
+  // the confirmation names the person picked and the relationship chosen (only known here, in the browser), so it is
+  // rewritten whenever either changes; the static sentence on the form is the fallback
+  function ask() {
+    var role = {line_manager: 'the line manager', matrix_manager: 'a matrix manager', peer: 'a peer', direct_report: 'a direct report'}[rel.value] || 'an assessor';
+    var m = 'Add ' + (picked || 'this person') + ' to ' + who + "'s panel as " + role + '? They are asked for feedback straight away and it goes in the trail.';
+    if (rel.value === 'line_manager') m += ' A line manager added here also becomes ' + who + "'s line manager; if someone else is their line manager now, you choose next what happens to them.";
+    f.setAttribute('data-confirm', m);
+  }
+  function pick(r) {
+    eid.value = r.employee_id; picked = r.full_name; q.value = r.full_name + ' (' + r.employee_id + ')';
+    f.setAttribute('data-lm-eid', r.employee_id);   // read by the line-manager conflict check (base.html)
+    res.hidden = true; btn.disabled = false; ask();
+  }
+  function run() {
+    var v = q.value.trim();
+    eid.value = ''; btn.disabled = true; picked = ''; f.removeAttribute('data-lm-eid');
+    if (v.length < 2) { res.hidden = true; return; }
+    fetch(f.getAttribute('data-search') + '?q=' + encodeURIComponent(v) + '&rel=' + encodeURIComponent(rel.value), { credentials: 'same-origin' })
+      .then(function (r) { return r.ok ? r.json() : { results: [] }; })
+      .then(function (d) {
+        res.textContent = '';
+        (d.results || []).slice(0, 8).forEach(function (r) {
+          var b = document.createElement('button'); b.type = 'button'; b.className = 'pp-addopt'; b.setAttribute('role', 'option');
+          var n = document.createElement('b'); n.textContent = r.full_name; b.appendChild(n);
+          var m = document.createElement('span'); m.className = 'muted small';
+          m.textContent = ' ' + [r.employee_id, r.job_title, r.department].filter(Boolean).join(' · '); b.appendChild(m);
+          // how many people they rate this cycle; at the rater cap they can't be picked (Chris, 2026-10-20)
+          var l = document.createElement('span'); l.className = 'pp-load';
+          l.textContent = 'rates ' + r.load + (d.cap ? ' of ' + d.cap + (r.full ? ' · full' : '') : ''); b.appendChild(l);
+          if (r.full) { b.disabled = true; b.classList.add('is-full'); }
+          else b.addEventListener('click', function () { pick(r); });
+          res.appendChild(b);
+        });
+        if (!(d.results || []).length) { var e = document.createElement('span'); e.className = 'muted small'; e.textContent = 'Nobody matches for this relationship.'; res.appendChild(e); }
+        res.hidden = false;
+      }).catch(function () { res.hidden = true; });
+  }
+  q.addEventListener('input', function () { clearTimeout(t); t = setTimeout(run, 220); });
+  rel.addEventListener('change', function () { ask(); if (q.value.trim() && !eid.value) run(); });
+})();
+// Add the ticked: the button waits for a tick, and the box names who is ticked (by name, the first three and how many
+// more), how many fit under the panel target, and what a ticked line manager changes (2026-10-11).
+(function () {
+  var f = document.querySelector('.pp-sugg');
+  if (!f) return;
+  var btn = f.querySelector('button[type="submit"]'), who = {{ person['full_name'] | tojson }};
+  // no target: the panel size is No maximum, so there's always room (2026-10-23)
+  var room = f.getAttribute('data-target') ? Math.max(0, parseInt(f.getAttribute('data-target'), 10)
+                                                         - parseInt(f.getAttribute('data-live'), 10)) : Infinity;
+  function sync() {
+    var ticked = Array.prototype.filter.call(f.querySelectorAll('input[type="checkbox"][name^="pick_"]'), function (c) { return c.checked; });
+    btn.disabled = !ticked.length || !room;
+    btn.textContent = !room ? 'The panel is full' : ticked.length ? 'Add the ' + ticked.length + ' ticked' : 'Add the ticked';
+    if (!ticked.length || !room) return;
+    var names = ticked.map(function (c) { var b = c.parentNode.querySelector('b'); return b ? b.textContent : ''; });
+    var list = names.length <= 3 ? names.slice(0, -1).join(', ') + (names.length > 1 ? ' and ' : '') + names[names.length - 1]
+                                 : names.slice(0, 3).join(', ') + ' and ' + (names.length - 3) + ' more';
+    var m = 'Add ' + list + ' to ' + who + "'s panel? They are asked for feedback straight away and it goes in the trail.";
+    var extra = ticked.length - room;   // the server adds in list order, up to the target
+    if (extra > 0) m += ' Only ' + room + ' fit under the panel target of ' + f.getAttribute('data-target') + ', so the last ' +
+                        extra + ' ticked in the list ' + (extra === 1 ? 'is' : 'are') + ' left off.';
+    if (ticked.some(function (c) { return c.getAttribute('data-rel') === 'line_manager'; })) {
+      m += ' The line manager you ticked also becomes ' + who + "'s line manager" +
+           (f.getAttribute('data-has-lm') === '1' ? ', and the line manager on the panel now becomes a matrix manager.' : '.');
+    }
+    f.setAttribute('data-confirm', m);
+    var adds = Math.min(ticked.length, room);
+    f.setAttribute('data-confirm-ok', adds === 1 ? 'Add to panel' : 'Add ' + adds);
+  }
+  f.addEventListener('change', sync);
+  sync();
+})();
+</script>
+{% endif %}

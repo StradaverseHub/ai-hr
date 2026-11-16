@@ -1,0 +1,99 @@
+{% extends "base.html" %}
+{% from "_table_tools.html" import colth, colmenu, colmenu_script %}
+{% block title %}Team development{% endblock %}
+{% block body %}
+<div class="page-head">
+  <div>
+    <h1>Team development</h1>
+    <p class="muted">{% if period %}{{ period['name'] }}{% endif %} &middot;
+      development plans to review and approve for the people whose KPIs you approve</p>
+  </div>
+</div>
+
+{% if not period %}
+<div class="admin-card">
+  <p class="note">No performance period is open yet.</p>
+</div>
+{% elif not todo and not agreed %}
+<div class="admin-card">
+  <p class="note">Nobody reports to you for KPI approval this period, so there's
+    nothing here yet.</p>
+</div>
+{% else %}
+
+{% macro dev_row(r) %}
+{# One macro, two tables (To review / Agreed). status carries the words the
+   cell prints, not the internal token. #}
+<tr class="idp-team-row data-row"
+    data-person="{{ r['subject']['full_name'] }}"
+    data-plan="{% if r['status'] == 'closed' %}Agreed
+      {%- elif r['status'] == 'shared' %}Ready to discuss{% else %}No plan yet{% endif %}"
+    data-goals="{{ r['goal_count'] or 0 }}">
+  <td>
+    <p style="font-weight:500;margin:0">{{ r['subject']['full_name'] }}</p>
+    <p class="muted small" style="margin:2px 0 0">
+      {%- if r['subject']['job_grade'] %}JG {{ r['subject']['job_grade'] }} &middot; {% endif -%}
+      {{ r['subject']['job_title'] | proper or '-' }} &middot; {{ r['subject']['department'] | proper or '-' }}</p>
+  </td>
+  <td>
+    {% if r['status'] == 'closed' %}
+      <span class="status-pill status-reviewed">Approved</span>
+    {% elif r['status'] == 'shared' %}
+      <span class="status-pill status-submitted">Ready to review</span>
+    {% else %}
+      <span class="muted small">No plan yet</span>
+    {% endif %}
+    {% if r['goal_count'] %}
+    <p class="muted small" style="margin:2px 0 0">
+      {{ r['goal_count'] }} goal{{ '' if r['goal_count'] == 1 else 's' }}
+      {%- if r['moving'] %} &middot; {{ r['moving'] }} in progress{% endif %}
+      {%- if r['done'] %} &middot; {{ r['done'] }} closed{% endif %}</p>
+    {% endif %}
+  </td>
+  <td>
+    {% if r['status'] == 'closed' and r['closed_at'] %}
+      <span class="muted small">{{ r['closed_at'] | myt_date }}</span>
+    {% elif r['conversation'] and r['conversation']['held_on'] %}
+      <span class="muted small">{{ r['conversation']['held_on'] }}</span>
+    {% else %}
+      <span class="muted small">&mdash;</span>
+    {% endif %}
+  </td>
+  <td><a class="btn-link" href="{{ url_for('idp_team_member_view', subject_id=r['subject']['id']) }}">View &rarr;</a></td>
+</tr>
+{% endmacro %}
+
+{% if todo %}
+<h2 style="font-size:1.05rem;margin:0 0 8px">To review
+  {% set awaiting = todo | selectattr('status', 'equalto', 'shared') | list %}
+  {% if awaiting %}<span class="todo-count">{{ awaiting | length }}</span>{% endif %}
+</h2>
+<div class="table-scroll table-scroll-capped"><table class="admin-table idp-team-table" id="idp-todo-table">
+  <thead><tr>{{ colth('person', 'Person') }}{{ colth('plan', 'Plan') }}
+    {{ colth('goals', 'Approved') }}<th>Action</th></tr></thead>
+  <tbody>{% for r in todo %}{{ dev_row(r) }}{% endfor %}
+    <tr class="no-filter-match" hidden><td colspan="4" class="muted">No one matches the filters.</td></tr></tbody>
+</table></div>
+{{ colmenu('idp-todo-table', {
+     'person': {'mode': 'clientFilter', 'type': 'text', 'sortAttr': 'person'},
+     'plan':   {'mode': 'clientFilter', 'type': 'text', 'sortAttr': 'plan'},
+     'goals':  {'mode': 'sort', 'type': 'num', 'sortAttr': 'goals'} }) }}
+{% endif %}
+
+{% if agreed %}
+<h2 style="font-size:1.05rem;margin:{{ '26px' if todo else '0' }} 0 8px">Approved</h2>
+<div class="table-scroll table-scroll-capped"><table class="admin-table idp-team-table" id="idp-agreed-table">
+  <thead><tr>{{ colth('person', 'Person') }}{{ colth('plan', 'Plan') }}
+    {{ colth('goals', 'Approved') }}<th>Action</th></tr></thead>
+  <tbody>{% for r in agreed %}{{ dev_row(r) }}{% endfor %}
+    <tr class="no-filter-match" hidden><td colspan="4" class="muted">No one matches the filters.</td></tr></tbody>
+</table></div>
+{{ colmenu('idp-agreed-table', {
+     'person': {'mode': 'clientFilter', 'type': 'text', 'sortAttr': 'person'},
+     'plan':   {'mode': 'clientFilter', 'type': 'text', 'sortAttr': 'plan'},
+     'goals':  {'mode': 'sort', 'type': 'num', 'sortAttr': 'goals'} }) }}
+{% endif %}
+
+{% endif %}
+{{ colmenu_script(asset_v) }}
+{% endblock %}

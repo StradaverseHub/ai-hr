@@ -1,0 +1,287 @@
+/* Grade H Appraisal, the line manager's pages and the dashboard's Grade H card (2026-10-28, piece 4; canvases L0-L7).
+   The AI+ journey's look: navy #252A59, brand red #D61923 for the AI controls only (the spark button), colour = status.
+   Keyed on #ghl-page / .ghl-* so no shared rule is touched. At 720px and under the page is the phone look (L6): one step at
+   a time with a progress bar, radio rows with the best level first, 44px targets, page scroll only. */
+#ghl-page { color: var(--ink); font-size: 0.875rem; }
+body:has(#ghl-page.is-bar) main.container { max-width: none; margin: 0; padding: 0; }
+body:has(#ghl-page) .mod-tabs { display: none; }   /* the Dashboard / review toggle is not drawn here: the wordmark is the way home */
+.ghl-main { display: flex; flex-direction: column; gap: 14px; min-width: 0; }
+.ghl.is-bar .ghl-main { max-width: 1040px; margin: 0 auto; padding: 16px; box-sizing: border-box; }
+/* a Grade H supervisor has the Ask OneHR panel like every line manager (Chris, 2026-10-30): at desktop the page sits beside it exactly as
+   the ordinary line manager's does (the shared .gp rule's 340px left, 20px right, 16px top); at phone width (L6) no panel, today's look */
+@media (min-width: 721px) {
+  body:has(#ghl-page.is-bar) main.container { margin: 16px 20px 12px 340px; }
+  .ghl.is-bar .ghl-main { max-width: none; margin: 0; padding: 0; }
+}
+@media (max-width: 720px) { #ghl-page.is-bar #ghl-ask { display: none; } }
+.ghl-card, .ghl-side-card { background: var(--surface); border: 1px solid var(--d-bd-e6e8ef); border-radius: 12px; box-sizing: border-box; }
+.ghl-pad { padding: 16px 18px; display: flex; flex-direction: column; gap: 10px; }
+.ghl-side-card { padding: 14px 16px; display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.ghl-k { font-size: max(10px, 0.71875rem); color: var(--faint); }
+.ghl-sm { font-size: 0.78125rem; color: var(--muted); line-height: 1.45; }
+.ghl-p { margin: 0; font-size: 0.875rem; line-height: 1.55; }
+.ghl-hint { margin: 0; font-size: 0.78125rem; color: var(--muted); line-height: 1.5; }
+.ghl-note { margin: 0; font-size: 0.78125rem; color: var(--muted); }
+.ghl-muted { color: var(--muted); font-size: 0.78125rem; }
+.ghl-dash { color: var(--faint); }
+.ghl-h2 { margin: 0; font-size: 0.875rem; font-weight: 700; color: var(--accent-ink); }
+.ghl-h3 { font-size: 0.9375rem; font-weight: 700; color: var(--ink); }
+.ghl-big { font-size: 1.125rem; font-weight: 700; color: var(--accent-ink); line-height: 1.25; }
+.ghl-mid { font-size: 0.9375rem; font-weight: 700; color: var(--ink); line-height: 1.3; }
+.ghl-mid.is-wait { color: var(--muted); }
+.ghl-link { color: var(--d-fg-2557d6); font-size: 0.78125rem; text-decoration: none; white-space: nowrap; }
+.ghl-link:hover { color: var(--d-fg-1d2249); background: var(--d-bg-eef1fa); box-shadow: 0 0 0 3px var(--d-bg-eef1fa); border-radius: 4px; }
+.ghl-btn { min-height: 34px; padding: 0 14px; border-radius: 8px; background: var(--accent); color: var(--on-fill); font: 600 0.78125rem/1 inherit; font-family: inherit;
+  display: inline-flex; align-items: center; justify-content: center; text-decoration: none; border: 1px solid var(--accent-line); cursor: pointer; white-space: nowrap; box-sizing: border-box; }
+.ghl-btn:hover { background: var(--d-bg-1b1f48); color: var(--on-fill); text-decoration: none; }
+.ghl-btn.is-outline { background: var(--surface); color: var(--accent-ink); }
+.ghl-btn.is-outline:hover { background: var(--d-bg-f1f3f8); color: var(--accent-ink); }
+.ghl-btn.is-lg { min-height: 40px; font-size: 0.875rem; padding: 0 20px; }
+.ghl-btn:disabled { opacity: .45; cursor: not-allowed; }
+.ghl-actions { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
+.ghl-amber { background: var(--d-bg-fdf3df); color: var(--d-fg-5c3d00); font-size: 0.78125rem; padding: 9px 11px; border-radius: 8px; line-height: 1.45; }
+
+/* ---- L1: the team list ---- */
+.ghl-head { padding: 16px 18px; display: flex; align-items: center; justify-content: space-between; gap: 20px; }
+.ghl-head-t { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.ghl-head h1 { margin: 0; font-size: 1.125rem; color: var(--ink); }
+.ghl-sub { font-size: 0.84375rem; color: var(--muted); }
+.ghl-head-r { display: flex; align-items: center; gap: 28px; flex: none; }
+.ghl-ph-r { display: flex; align-items: center; gap: 12px; flex: none; }
+/* the BM | EN switch: the staff page's classes (gh-lang-pair / gh-lang-b / is-on), drawn smaller here so it does not need gradeh_staff.css */
+.ghl-lang { margin: 0; }
+.ghl-lang .gh-lang-pair { display: grid; grid-template-columns: repeat(2, auto); gap: 8px; }
+.ghl-lang .gh-lang-b { min-height: 32px; padding: 0 12px; border: 1px solid var(--d-bd-d7dbe6); background: var(--surface); border-radius: 10px; font-size: 0.78125rem; color: var(--ink);
+  font-family: inherit; cursor: pointer; white-space: nowrap; box-sizing: border-box; }
+.ghl-lang .gh-lang-b:hover { background: var(--d-bg-f6f7fb); }
+.ghl-lang .gh-lang-b.is-on { border-color: var(--accent-line); box-shadow: inset 0 0 0 1px var(--accent-line); background: var(--d-bg-eef0f8); font-weight: 700; color: var(--accent-ink); }
+.ghl-lang .gh-lang-b:focus-visible { outline: 3px solid var(--d-bd-252a59-a35); outline-offset: 2px; }
+.ghl-counts { display: flex; gap: 28px; flex: none; }
+.ghl-counts div { display: flex; flex-direction: column; gap: 2px; align-items: flex-start; }
+.ghl-counts b { font-size: 1.375rem; color: var(--accent-ink); line-height: 1.1; }
+.ghl-counts span { font-size: 0.75rem; color: var(--muted); white-space: nowrap; }
+.ghl-pills { display: flex; flex-wrap: wrap; gap: 8px; }
+.ghl-pill { min-height: 32px; padding: 0 15px; border-radius: 999px; border: 1px solid var(--d-bd-d7dbe6); background: var(--surface); color: var(--ink); font-size: 0.78125rem;
+  display: inline-flex; align-items: center; gap: 6px; text-decoration: none; white-space: nowrap; }
+.ghl-pill:hover { background: var(--d-bg-f6f7fb); color: var(--ink); text-decoration: none; }
+.ghl-pill.is-on { background: var(--accent); border-color: var(--accent-line); color: var(--on-fill); }
+.ghl-pill b { font-weight: 600; }
+.ghl-tablecard { overflow: hidden; }
+.ghl-table { width: 100%; border-collapse: collapse; font-size: 0.84375rem; }
+.ghl-table th { text-align: left; background: var(--d-bg-f7f8fc); color: var(--muted); font-size: 0.75rem; font-weight: 600; padding: 10px 14px; white-space: nowrap; }
+.ghl-table td { padding: 11px 14px; border-top: 1px solid var(--line-soft); vertical-align: middle; }
+.ghl-table .c-person { display: table-cell; }
+.ghl-table .c-person b { display: block; }
+.ghl-table .c-person span { display: block; font-size: 0.75rem; color: var(--muted); }
+.ghl-table .c-where .is-wait { color: var(--muted); }
+.ghl-table .c-act { text-align: right; white-space: nowrap; }
+.ghl-table .c-rating { white-space: nowrap; }
+.ghl-band { margin-left: 4px; }   /* with the space after the number: 8px */
+.ghl-chip { display: inline-block; font-size: 0.75rem; padding: 3px 10px; border-radius: 999px; white-space: nowrap; }
+.ghl-chip.is-A, .ghl-tag.is-A { background: var(--d-bg-e6edfb); color: var(--d-fg-2350b5); }
+.ghl-chip.is-B, .ghl-tag.is-B { background: var(--d-bg-e4f3ea); color: var(--d-fg-1f7a45); }
+
+/* ---- one person ---- */
+.ghl-ph { display: flex; align-items: flex-start; justify-content: space-between; gap: 14px; }
+.ghl-ph-t { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.ghl-back { font-size: 0.78125rem; color: var(--d-fg-2557d6); text-decoration: none; }
+.ghl-ph h1 { margin: 0; font-size: 1.125rem; color: var(--ink); overflow-wrap: break-word; }
+.ghl-ph h1 span { font-size: 0.875rem; font-weight: 400; color: var(--muted); }
+.ghl-tag { font-size: 0.78125rem; padding: 4px 12px; border-radius: 999px; white-space: nowrap; flex: none; }
+.ghl-steps { display: flex; gap: 10px; flex-wrap: nowrap; }
+.ghl-step { display: flex; align-items: baseline; gap: 10px; padding: 10px 14px; border-radius: 10px; border: 1px solid var(--d-bd-e6e8ef); background: var(--surface);
+  color: var(--ink); font-size: 0.8125rem; text-decoration: none; white-space: nowrap; }
+.ghl-step b { font-weight: 700; }
+.ghl-step span { color: var(--muted); }
+.ghl-step:hover { text-decoration: none; background: var(--d-bg-f6f7fb); color: var(--ink); }
+.ghl-step.is-done span { color: var(--ok-ink); }
+.ghl-step.is-now { background: var(--accent); border-color: var(--accent-line); color: var(--on-fill); }
+.ghl-step.is-now span { color: var(--d-fg-dfe3f5); }
+.ghl-phoneprog { display: none; }
+.ghl-cols { display: grid; grid-template-columns: minmax(0, 1fr) 250px; gap: 14px; align-items: start; }
+.ghl-stack { display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+.ghl-side { display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+.ghl-pair { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; align-items: stretch; }
+.ghl-fold { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 14px 16px; color: var(--ink); text-decoration: none; }
+.ghl-fold:hover { text-decoration: none; color: var(--ink); }
+.ghl-fold-t { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.ghl-fold-t b { font-size: 0.875rem; }
+.ghl-fold-t span { font-size: 0.8125rem; color: var(--muted); }
+.ghl-fold-r { display: flex; align-items: center; gap: 14px; flex: none; font-size: 0.78125rem; }
+.ghl-fold-r b { color: var(--accent-ink); font-size: 0.875rem; }
+.ghl-fold-r span { color: var(--d-fg-4a5066); }
+.ghl-fold.is-next { color: var(--muted); }
+.ghl-fold.is-next .ghl-fold-t b { color: var(--muted); font-weight: 600; }
+.ghl-open { border: 1.5px solid var(--accent-line); padding: 16px; display: flex; flex-direction: column; gap: 10px; }
+.ghl-q-t { font-size: 0.84375rem; color: var(--d-fg-4a5066); line-height: 1.5; }
+.ghl-levels { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 10px; }
+.ghl-level { border: 1px solid var(--d-bd-d7dbe6); border-radius: 10px; padding: 12px; display: flex; flex-direction: column; gap: 6px; cursor: pointer; min-width: 0; background: var(--surface); }
+.ghl-level:hover { border-color: var(--accent-line); }
+.ghl-level.is-on, .ghl-level:has(input:checked) { border: 2px solid var(--accent-line); padding: 11px; background: var(--d-bg-eef0f8); }
+.ghl-lv-top { display: flex; align-items: center; gap: 8px; }
+.ghl-lv-top input { width: 18px; height: 18px; margin: 0; accent-color: var(--accent-ink); }
+.ghl-lv-name { font-size: 0.78125rem; color: var(--d-fg-4a5066); }
+.ghl-level.is-on .ghl-lv-name, .ghl-level:has(input:checked) .ghl-lv-name { color: var(--accent-ink); }
+.ghl-lv-text { font-size: 0.78125rem; line-height: 1.45; overflow-wrap: break-word; }
+.ghl-lp-h { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
+.ghl-stmt { display: flex; align-items: center; justify-content: space-between; gap: 18px; padding: 8px 0; border-top: 1px solid var(--d-bd-f0f2f7); }
+.ghl-stmt:first-of-type { border-top: 0; }
+.ghl-stmt-t { display: flex; flex-direction: column; gap: 4px; min-width: 0; font-size: 0.84375rem; line-height: 1.5; }
+.ghl-stmt-t details { font-size: 0.78125rem; color: var(--muted); }
+.ghl-stmt-t summary { cursor: pointer; color: var(--d-fg-2557d6); }
+.ghl-stmt-t ul { margin: 6px 0 0; padding-left: 18px; }
+.ghl-seg { display: inline-flex; border: 1px solid var(--d-bd-d7dbe6); border-radius: 8px; overflow: hidden; flex: none; }
+.ghl-seg label { position: relative; display: block; }
+.ghl-seg input { position: absolute; opacity: 0; width: 100%; height: 100%; margin: 0; cursor: pointer; }
+.ghl-seg span { display: flex; align-items: center; justify-content: center; min-height: 36px; min-width: 64px; padding: 0 16px; font-size: 0.8125rem; color: var(--ink-2); background: var(--surface); white-space: nowrap; }
+.ghl-seg input:checked + span { background: var(--accent); color: var(--on-fill); }
+.ghl-seg input:focus-visible + span { outline: 2px solid var(--d-bd-2557d6); outline-offset: -2px; }
+.ghl-kform { display: flex; flex-direction: column; gap: 14px; }
+.ghl-ktable td { padding: 12px 14px; }
+.ghl-ktable .c-why { min-width: 240px; }
+.ghl-in { min-height: 36px; border: 1px solid var(--d-bd-cdd1dd); border-radius: 8px; padding: 0 10px; font: inherit; font-size: 0.84375rem; background: var(--surface); color: var(--ink); box-sizing: border-box; }
+.ghl-in:focus { outline: none; border-color: var(--accent-line); box-shadow: 0 0 0 3px var(--d-sh-252a59-a12); }
+.ghl-in-sm { width: 80px; }
+.ghl-why { width: 100%; }
+.ghl-pct { display: inline-flex; align-items: center; gap: 6px; }
+.ghl-pct i { font-style: normal; color: var(--muted); }
+.ghl-same { display: none; color: var(--faint); font-size: 0.8125rem; }
+.ghl.js .ghl-ktable tr.is-same .ghl-why { display: none; }
+.ghl.js .ghl-ktable tr.is-same .ghl-same { display: inline; }
+.ghl-tnote { margin: 0; padding: 10px 14px; border-top: 1px solid var(--line-soft); font-size: 0.78125rem; color: var(--muted); }
+.ghl-cform { gap: 12px; }
+.ghl-cform-h { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.ghl-cform-h h2 { margin: 0; font-size: 0.875rem; color: var(--accent-ink); }
+.ghl-ai { min-height: 32px; padding: 0 12px; border-radius: 8px; background: var(--ai); color: var(--on-fill); border: 0; font: 600 0.78125rem/1 inherit; font-family: inherit;
+  display: inline-flex; align-items: center; gap: 6px; cursor: pointer; white-space: nowrap; }
+.ghl-ai:hover { background: var(--d-bg-b9141d); }
+.ghl-ai:disabled { opacity: .6; cursor: default; }
+.ghl-help-msg { margin: 0; font-size: 0.78125rem; color: var(--d-fg-5c3d00); background: var(--d-bg-fdf3df); border-radius: 8px; padding: 8px 11px; }
+.ghl-fields { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
+.ghl-field[hidden], .ghl-same[hidden] { display: none; }   /* a display rule beats [hidden] */
+.ghl-field { display: flex; flex-direction: column; gap: 6px; font-size: 0.8125rem; min-width: 0; }
+.ghl-field textarea { border: 1px solid var(--d-bd-cdd1dd); border-radius: 8px; padding: 9px 11px; font: inherit; font-size: 0.84375rem; resize: vertical; min-height: 84px; box-sizing: border-box; width: 100%; }
+.ghl-field textarea:focus { outline: none; border-color: var(--accent-line); box-shadow: 0 0 0 3px var(--d-sh-252a59-a12); }
+.ghl-autosave { font-size: 0.78125rem; color: var(--ok-ink); }
+.ghl-res-rows { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
+.ghl-res-rows > div { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.ghl-radios { display: flex; flex-direction: column; gap: 8px; }
+.ghl-radio { display: flex; align-items: flex-start; gap: 10px; border: 1px solid var(--d-bd-d7dbe6); border-radius: 8px; padding: 11px 12px; font-size: 0.84375rem; line-height: 1.4; cursor: pointer; }
+.ghl-radio.is-on, .ghl-radio:has(input:checked) { border: 2px solid var(--accent-line); padding: 10px 11px; background: var(--d-bg-eef0f8); }
+.ghl-radio input { margin: 2px 0 0; accent-color: var(--accent-ink); flex: none; }
+.ghl-sform { display: flex; flex-direction: column; gap: 12px; }
+.ghl-submitcard { border: 1.5px solid var(--accent-line); }
+.ghl-check { display: flex; align-items: flex-start; gap: 10px; font-size: 0.84375rem; line-height: 1.45; cursor: pointer; }
+.ghl-check input { width: 16px; height: 16px; margin: 2px 0 0; flex: none; accent-color: var(--accent-ink); }
+.ghl-todo { background: var(--d-bg-fdf3df); border-radius: 8px; padding: 9px 12px; font-size: 0.78125rem; color: var(--d-fg-5c3d00); }
+.ghl-todo ul { margin: 4px 0 0; padding-left: 18px; }
+.ghl-recap-h { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
+.ghl-dl { margin: 0; display: flex; flex-direction: column; gap: 4px; }
+.ghl-dl dt { font-size: 0.75rem; color: var(--faint); margin-top: 6px; }
+.ghl-dl dd { margin: 0; font-size: 0.84375rem; line-height: 1.5; white-space: pre-wrap; overflow-wrap: break-word; }
+.ghl-recap-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; }
+.ghl-recap-list li { display: flex; justify-content: space-between; gap: 16px; padding: 8px 0; border-top: 1px solid var(--d-bd-f0f2f7); font-size: 0.84375rem; }
+.ghl-recap-list li:first-child { border-top: 0; }
+.ghl-recap-list li b { color: var(--accent-ink); flex: none; }
+.ghl-done { border-color: var(--d-bd-1d9e75); }
+#ghl-ack { display: flex; flex-direction: column; gap: 10px; }
+.ghl-ackform { display: flex; align-items: flex-end; gap: 12px; flex-wrap: wrap; }
+.ghl-pc, .ghl-prog { display: none; }
+
+/* ---- the dashboard's Grade H card (L0) ---- */
+.od-ghrow .ghl-card { padding: 16px 18px; display: flex; flex-direction: column; gap: 10px; }
+.od-ghrow .ghl-k { font-size: max(10px, 0.71875rem); color: var(--faint); }
+.od-ghrow .ghl-t { margin: 0; font-size: 1rem; font-weight: 700; }
+.ghl-bar { display: flex; height: 10px; border-radius: 999px; overflow: hidden; background: var(--surface-3); }
+.ghl-bar span { min-width: 4px; }
+.ghl-bar .is-done, .ghl-legend .is-done i { background: var(--d-bg-1d9e75); }
+.ghl-bar .is-staff, .ghl-legend .is-staff i { background: var(--d-bg-9fb3e8); }
+.ghl-bar .is-ready, .ghl-legend .is-ready i { background: var(--ai); }
+.ghl-legend { display: flex; flex-wrap: wrap; gap: 8px 18px; margin: 0; padding: 0; list-style: none; font-size: 0.78125rem; color: var(--d-fg-4a5066); }
+.ghl-legend li { display: flex; align-items: center; gap: 6px; }
+.ghl-legend i { width: 8px; height: 8px; border-radius: 2px; flex: none; }
+.ghl-go { margin-top: auto; align-self: flex-start; }
+
+/* ---- phone (L6): one step at a time, best level first ---- */
+/* a narrower desktop (the Ask panel and the side column take 570px): the five level cards would be 70px each, so they stack as rows */
+@media (min-width: 721px) and (max-width: 1180px) {
+  .ghl-levels { grid-template-columns: minmax(0, 1fr); gap: 8px; }
+  .ghl-level { display: grid; grid-template-columns: 56px minmax(0, 1fr); column-gap: 14px; row-gap: 4px; align-items: start; }
+  .ghl-lv-top { grid-column: 1; grid-row: 1 / span 2; }
+  .ghl-lv-name { grid-column: 2; grid-row: 1; }
+  .ghl-lv-text { grid-column: 2; grid-row: 2; }
+}
+@media (max-width: 720px) {
+  .ghl-head { flex-direction: column; align-items: flex-start; }
+  .ghl-head-r { flex-direction: column; align-items: flex-start; gap: 14px; }
+  .ghl-ph-r { flex-wrap: wrap; }
+  .ghl-lang .gh-lang-b { min-height: 44px; font-size: 0.875rem; }
+  .ghl-steps { display: none; }
+  .ghl-phoneprog { display: flex; flex-direction: column; gap: 8px; }
+  .ghl-phoneprog > div:first-child { display: flex; justify-content: space-between; gap: 10px; font-size: 0.875rem; }
+  .ghl-phoneprog > div:first-child span { color: var(--muted); }
+  .ghl-prog { display: block; height: 8px; border-radius: 999px; background: var(--d-bg-e6e8ef); overflow: hidden; }
+  .ghl-prog span { display: block; height: 8px; background: var(--accent); }
+  .ghl-prog-next { font-size: 0.8125rem; color: var(--muted); }
+  .ghl-cols, .ghl-pair, .ghl-fields, .ghl-res-rows { grid-template-columns: minmax(0, 1fr); }
+  .ghl-levels { display: flex; flex-direction: column-reverse; gap: 8px; }
+  .ghl-level { padding: 12px 14px; min-height: 56px; }
+  .ghl-level.is-on, .ghl-level:has(input:checked) { padding: 11px 13px; }
+  .ghl-lv-top input { width: 20px; height: 20px; }
+  .ghl-lv-text { font-size: 0.90625rem; }
+  .ghl-q-t { font-size: 0.9375rem; }
+  .ghl-stmt { flex-direction: column; align-items: stretch; }
+  .ghl-seg { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .ghl-seg span { min-height: 48px; font-size: 0.9375rem; }
+  .ghl-btn { min-height: 44px; font-size: 0.875rem; }
+  .ghl-btn.is-lg { min-height: 52px; font-size: 1rem; }
+  .ghl-in { min-height: 44px; font-size: 1rem; }
+  .ghl-field textarea { font-size: 1rem; }
+  .ghl-radio, .ghl-check { min-height: 44px; font-size: 0.9375rem; }
+  .ghl-ph { flex-direction: column; }
+  .ghl-fold { flex-wrap: wrap; }
+  .ghl-ai { min-height: 44px; }
+  /* the team list stacks: a row is a card, headings go (the cells say what they are) */
+  .ghl-table thead { display: none; }
+  .ghl-table, .ghl-table tbody, .ghl-table tr, .ghl-table td { display: block; }
+  .ghl-table tr { padding: 12px 14px; border-top: 1px solid var(--line-soft); display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 6px 12px; }
+  .ghl-table tr:first-child { border-top: 0; }
+  .ghl-table td { padding: 0; border: 0; }
+  .ghl-table .c-person { grid-column: 1; }
+  .ghl-table .c-route { grid-column: 2; grid-row: 1; text-align: right; }
+  .ghl-table .c-where { grid-column: 1 / -1; }
+  .ghl-table .c-act { grid-column: 1 / -1; text-align: left; }
+  .ghl-table .c-rating, .ghl-table .c-pot { grid-column: 1 / -1; }
+  .ghl-table .is-empty { display: none; }   /* a dash says nothing on a phone */
+  .ghl-ktable tr { display: block; }
+  .ghl-ktable td { padding: 4px 0; }
+}
+/* a person with no work email (2026-10-31, canvas L1): a grey pill under their sub line, and the "No work email" filter chip */
+.ghl-table .c-person .ghl-noemail { display: inline-flex; align-items: center; gap: 5px; margin-top: 4px; background: var(--d-bg-eceef5); color: var(--d-fg-4b5164); font-size: max(10px, 0.71875rem); font-weight: 700; border-radius: 999px; padding: 2px 8px; white-space: nowrap; }
+.ghl-noemail svg { flex: none; }
+
+/* "I do not agree" (2 Nov 2026): the Disagrees tag (amber, the colour that already means "needs attention"), and the in-person form's choice and reason. New rules use tokens and rem. */
+.ghl-dis-tag { display: inline-flex; align-items: center; align-self: flex-start; min-height: 1.375rem; margin: 0.25rem 0 0 0; padding: 0 0.625rem; border-radius: 999px; font-size: max(10px, 0.75rem); font-weight: 700; white-space: nowrap; background: var(--warn-tint); color: var(--warn-ink); border: 1px solid var(--warn-fill); }
+.ghl-ph-r .ghl-dis-tag { margin: 0 0 0 0.5rem; }
+.c-where .ghl-dis-tag { display: flex; width: max-content; }
+.ghl-agree { display: flex; flex-direction: column; gap: 0.5rem; border: 0; margin: 0; padding: 0; min-width: 0; flex: 1 1 100%; }
+.ghl-agree-opt { display: flex; align-items: center; gap: 0.5rem; font-size: 0.875rem; cursor: pointer; }
+.ghl-reason { display: none; flex: 1 1 100%; }
+.ghl-ackform:has(input[name="agrees"][value="0"]:checked) .ghl-reason { display: flex; }
+
+/* a KPI that shares a unit's result (2026-11-03): Group People fills it once for everyone who shares it. The purple is Grade H's own
+   (the calendar's and the email's). This page is light-only like every rule in this file, so plain colours here (tokens are for style.css and the templates). */
+.ghl-shared-pill { display: inline-flex; align-items: center; min-height: 1.5rem; padding: 0 0.625rem; border-radius: 999px; font-size: max(10px, 0.78rem); font-weight: 700;
+  line-height: 1.25; white-space: nowrap; background: var(--d-bg-efeaf7); color: var(--d-fg-5b4b8a); }
+.ghl-shared-v { display: inline-flex; align-items: center; gap: 0.375rem; font-size: 0.9rem; }
+.ghl-shared-v .ghl-lock { color: var(--muted); flex: none; }
+.ghl-shared-why { font-size: max(10px, 0.78rem); color: var(--muted); line-height: 1.4; }
+
+/* ---- PHONE VIEW, PIECE F (F6, 2026-11-08): the line manager's team list. View and the status link are 44px tap boxes (padding and min-height, a negative margin so the rows do not
+   grow), the six filters are 44px tall, and the small grey text is 12px. Under 1024px only; the desktop is untouched. Light only, like the page. ---- */
+@media (max-width: 1023.98px) {
+  #ghl-page .ghl-table a.ghl-link { display: inline-flex; align-items: center; min-height: 44px; box-sizing: border-box; padding: 0 8px; margin: -14px -8px; }
+  #ghl-page a.ghl-pill { height: auto; min-height: 44px; box-sizing: border-box; }
+  #ghl-page .ghl-btn { min-height: 44px; }
+  #ghl-page .ghl-k, #ghl-page .ghl-table .c-person .ghl-noemail { font-size: 0.75rem; }
+}

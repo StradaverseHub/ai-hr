@@ -1,0 +1,116 @@
+{# Draft-with-AI behaviour for the competency remark fields.
+
+   Shared by the self-assessment and the manager review rather than copied into
+   each, unlike rate.html / performance_my.html which each carry their own copy
+   -- there are two pages here that need identical behaviour, and a second copy
+   is how two pages start behaving differently. Which prompt gets used is the
+   server's decision (self vs manager), not a flag this file sends.
+
+   Each widget carries its own endpoint and quota on data- attributes, so this
+   script needs no knowledge of which page it is on. #}
+<script>
+(function () {
+  var widgets = document.querySelectorAll('.ai-draft[data-endpoint]');
+  if (!widgets.length) return;
+
+  var COMMANDS = {
+    polish:  'Polish and improve this remark. Keep it factual and specific.',
+    shorter: 'Make this remark shorter without losing the substance.',
+    longer:  'Make this remark a little fuller and clearer using ONLY what it already says -- do not add facts, figures, examples or events.',
+    formal:  'Rewrite this remark in a more formal register.',
+    grammar: 'Fix only the spelling and grammar. Do not change the meaning.'
+  };
+
+  function csrf() {
+    var m = document.querySelector('meta[name="csrf-token"]');
+    return m ? m.content : '';
+  }
+  function closeAll(except) {
+    widgets.forEach(function (w) {
+      if (w === except) return;
+      var menu = w.querySelector('.ai-menu');
+      var btn = w.querySelector('.ai-draft-btn');
+      if (menu) menu.hidden = true;
+      if (btn) btn.setAttribute('aria-expanded', 'false');
+    });
+  }
+
+  widgets.forEach(function (w) {
+    var btn = w.querySelector('.ai-draft-btn');
+    var menu = w.querySelector('.ai-menu');
+    var statusEl = w.querySelector('.ai-status');
+    var quotaEl = w.querySelector('.ai-quota');
+    // The remark this widget belongs to: the textarea in the same cell.
+    var ta = w.parentElement.querySelector('textarea');
+    var limit = parseInt(w.dataset.limit || '0', 10);
+    var remaining = parseInt(w.dataset.remaining || '0', 10);
+
+    function paint() {
+      if (!quotaEl) return;
+      if (remaining <= 0) {
+        quotaEl.textContent = 'Daily limit reached';
+        if (btn) btn.disabled = true;
+      } else {
+        quotaEl.textContent = remaining + ' of ' + limit + ' left today';
+      }
+    }
+    paint();
+
+    if (btn && menu) {
+      btn.addEventListener('click', function (e) {
+        e.stopPropagation();
+        var open = menu.hidden;
+        closeAll(w);
+        menu.hidden = !open;
+        btn.setAttribute('aria-expanded', open ? 'true' : 'false');
+      });
+    }
+
+    w.querySelectorAll('.ai-cmd').forEach(function (cmd) {
+      cmd.addEventListener('click', function () {
+        if (menu) menu.hidden = true;
+        if (btn) btn.setAttribute('aria-expanded', 'false');
+        if (!ta) return;
+        var body = new FormData();
+        body.append('csrf_token', csrf());
+        body.append('draft', ta.value);
+        body.append('command', cmd.dataset.cmd);
+        body.append('instruction', COMMANDS[cmd.dataset.cmd] || COMMANDS.polish);
+        // A section remark has no assignment in its URL, so it identifies
+        // itself by category instead. Per-competency widgets carry no
+        // data-category and are unaffected.
+        if (w.dataset.category) body.append('category', w.dataset.category);
+        if (statusEl) statusEl.textContent = 'Drafting…';
+        if (btn) btn.disabled = true;
+        fetch(w.dataset.endpoint, {method: 'POST', body: body, credentials: 'same-origin'})
+          .then(function (r) { return r.json(); })
+          .then(function (d) {
+            if (btn) btn.disabled = false;
+            if (!d || !d.ok) {
+              if (statusEl) statusEl.textContent = (d && d.error) || 'Couldn’t draft';
+              if (d && d.limited) { remaining = 0; paint(); }
+              return;
+            }
+            ta.value = d.text;
+            // Fire input so the page's own autosave picks the new text up --
+            // the same handoff rate.html uses, so AI text is saved like typed
+            // text rather than needing its own save path.
+            ta.dispatchEvent(new Event('input', {bubbles: true}));
+            if (typeof d.remaining === 'number') { remaining = d.remaining; paint(); }
+            if (statusEl) statusEl.textContent = 'Drafted';
+            setTimeout(function () { if (statusEl) statusEl.textContent = ''; }, 2500);
+          })
+          .catch(function () {
+            if (btn) btn.disabled = false;
+            if (statusEl) statusEl.textContent = 'Couldn’t draft';
+          });
+      });
+    });
+  });
+
+  document.addEventListener('click', function () { closeAll(null); });
+  document.addEventListener('keydown', function (e) {
+    if (e.key === 'Escape') closeAll(null);
+  });
+})();
+</script>

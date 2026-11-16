@@ -1,0 +1,68 @@
+{% extends "base.html" %}
+{% block title %}Merge queue{% endblock %}
+{% block body %}
+{# Performance > KPI library > Merge queue (2026-10-18, the libraries canvas board 3): admin_kpi_merges. #}
+<p class="adm-crumb"><a href="{{ url_for('admin_module_settings', key='pm') }}">Performance</a> &rsaquo; <a href="{{ url_for('admin_kpi_library') }}">KPI library</a> &rsaquo; Merge queue</p>
+<div class="adm-headrow">
+  <p class="adm-lede">Suggestions from the library: the same measure stored at several scopes, a KPI with a qualifier
+    stored as a new KPI, and near-duplicate wording. Merging keeps every line's history: lines that used an old name
+    keep it, and the library reads it as the KPI it went into.{% if not can %} The super admin merges or keeps them
+    apart.{% endif %}</p>
+</div>
+<nav class="adm-tabs kl-tabs" aria-label="KPI library">
+  <a href="{{ url_for('admin_kpi_library') }}">Library</a>
+  <a class="is-active" href="{{ url_for('admin_kpi_merges') }}">Merge queue · {{ n_all }}</a>{% if coa_on() and can %}
+  <a href="{{ url_for('admin_kpi_chart_match') }}">Match lines</a>
+  <a href="{{ url_for('admin_kpi_systems') }}">Systems</a>{% endif %}
+  <a href="{{ url_for('admin_bu_kpis') }}">BU KPI setup</a>
+</nav>
+<div class="adm-frow-pills mq-tabs" role="group" aria-label="Kind">
+  <a class="adm-frow-pill{{ ' is-on' if not kind }}" href="{{ url_for('admin_kpi_merges') }}">All<span>{{ n_all }}</span></a>
+  <a class="adm-frow-pill{{ ' is-on' if kind == 'scope' }}" href="{{ url_for('admin_kpi_merges', kind='scope') }}">One measure, several scopes<span>{{ n.scope }}</span></a>
+  <a class="adm-frow-pill{{ ' is-on' if kind == 'variant' }}" href="{{ url_for('admin_kpi_merges', kind='variant') }}">A variant of a KPI<span>{{ n.variant }}</span></a>
+  <a class="adm-frow-pill{{ ' is-on' if kind == 'dupe' }}" href="{{ url_for('admin_kpi_merges', kind='dupe') }}">Near-duplicate wording<span>{{ n.dupe }}</span></a>
+</div>
+<section class="admin-card mq-list" aria-label="Suggestions">
+  {% for x in rows %}
+  <div class="mq">
+    <div class="mq-from">
+      <span class="wiz-k">{{ {'scope': 'One measure, %d scopes' % x.names | length, 'variant': 'A variant of a KPI', 'dupe': 'Near-duplicate wording'}[x.kind] }}{% if multi %} · {{ display_bg(x.bg) }}{% endif %}</span>
+      <div class="mq-chips">{% for nm in x.names %}<span class="pp-chip">{{ nm }}</span>{% endfor %}</div>
+    </div>
+    <span class="mq-arrow" aria-hidden="true">{{ '?' if x.kind == 'dupe' else '→' }}</span>
+    <div class="mq-to">
+      {% if x.kind == 'dupe' %}
+      <b>Your call</b>
+      <span class="muted small">The same words but for an abbreviation or punctuation: keep one name, or keep them apart if they measure different things.</span>
+      {% if can %}<select name="into" form="mq-f-{{ loop.index }}" class="modern-select" aria-label="The name it keeps" required>
+        <option value="">Keep which name?</option>
+        {% for nm in x.names %}<option>{{ nm }}</option>{% endfor %}
+      </select>{% endif %}
+      {% else %}
+      <b>{{ x.into }}</b>
+      <span class="muted small">{% if x.kind == 'scope' %}grouped as one KPI, placed at {{ x.scopes | join(', ') }}; every row stays as it is{% if x.bu_mixed %}, its BU-level mark included{% endif %}{% else %}Focus on each line: {{ x.focus | join(' · ') }}{% if not x.parent_exists %} · the KPI is added to the library{% endif %}{% endif %}</span>
+      {% endif %}
+    </div>
+    <div class="mq-acts">
+      {% if can %}
+      <form method="post" action="{{ url_for('admin_kpi_merges', kind=kind or None) }}"
+            data-confirm="Keep {{ x.names | join(', ') }} apart? The suggestion goes, and nothing else changes. It goes in the trail."
+            data-confirm-ok="Keep apart">
+        <input type="hidden" name="action" value="apart"><input type="hidden" name="sig" value="{{ x.sig }}"><input type="hidden" name="bg" value="{{ x.bg }}">
+        <button type="submit" class="wiz-btn">Keep apart</button>
+      </form>
+      <form method="post" action="{{ url_for('admin_kpi_merges', kind=kind or None) }}" class="mq-merge" id="mq-f-{{ loop.index }}"
+            data-confirm="{% if x.kind == 'scope' %}Group {{ x.names | join(', ') }} as one KPI, {{ x.into }}? Each row stays as it is, its BU-level mark and lines included; the library reads them as one KPI placed at {{ x.scopes | join(', ') }}.{% elif x.kind == 'variant' %}Merge {{ x.names | join(', ') }} into {{ x.into }}? Their library rows are retired into it and the old names kept as aliases; lines that used them keep their history, and a person's qualifier goes in their line's Focus.{% else %}Merge these into the name you chose? The other row is retired into it and its name kept as an alias; lines that used it keep their history.{% endif %} It goes in the trail."
+            data-confirm-ok="{{ 'Group' if x.kind == 'scope' else 'Merge' }}">
+        <input type="hidden" name="action" value="merge"><input type="hidden" name="sig" value="{{ x.sig }}"><input type="hidden" name="bg" value="{{ x.bg }}">
+        <button type="submit" class="primary">{{ 'Group' if x.kind == 'scope' else ('Merge' if x.kind == 'variant' else 'Keep this one') }}</button>
+      </form>
+      {% endif %}
+    </div>
+  </div>
+  {% else %}
+  <p class="muted pp-pad">Nothing to settle{% if kind %} of this kind{% endif %}.</p>
+  {% endfor %}
+</section>
+<p class="muted small">A merge asks you to confirm, names what it changes, and goes in the trail. Lines already on scorecards keep their names.</p>
+{% endblock %}

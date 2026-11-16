@@ -1,0 +1,97 @@
+{# The "BU CEO & Talent Box · per unit" tab of the Filters card (2026-11-02: the card has four tabs now, _bu_filters.html; this one is
+   today's card, unchanged but for the screen's name). Settings card: bu_filters, ONE RULE PER FILTER (Chris, 2026-10-30, canvas "OneHR Calibration Filter Rules", Option 2). It
+   replaced the tag table and its Set every unit pop-up (2026-10-26). A row per filter in CALIB_FILTERS (app.py): the filter,
+   the units that show it, the screens, and an Edit that opens the 560px side panel (templates/_adm_panel.html) holding that
+   filter's rule: which units, which screens, what leaders will see. The panel posts to admin_calib_filter, whose confirm box
+   (data-confirm, built by static/calib_filter_rules.js) names every unit and screen change. The job grade bands keep their
+   own card below. #}
+{% from "_adm_panel.html" import panel with context %}
+{% set bf = bu_filters %}
+<p class="muted small">Which filters a leader can use on the calibration screens, one rule per filter: the units that show it and the screens it
+  appears on. A leader sees them on one line, in this order, each counting within the picks before it. They only narrow what a leader
+  sees: no band, lock or move changes. Job grades are grouped in the card below.</p>
+{% if not bf or not bf.bgs %}
+  <p class="note">No business units in Org structure yet.</p>
+{% else %}
+<nav class="df-bgtabs" aria-label="Business group">
+  {% for g in bf.bgs %}
+  <a href="{{ url_for('admin_module_settings', key='calibration', bfbg=g.key) }}#bu-filters"
+     class="df-bgtab{{ ' is-on' if g.key == bf.bg }}"{% if g.key == bf.bg %} aria-current="page"{% endif %}
+     title="{{ display_bg(g.key) }}">{{ g.label }}</a>
+  {% endfor %}
+</nav>
+<div class="table-scroll"><table class="admin-table cfr-table no-auto-table" id="cfr-table">
+  <thead><tr><th>Filter</th><th>Units</th><th>Screens</th><th><span class="sr-only">Edit</span></th></tr></thead>
+  <tbody>
+  {% for f in bf.filters %}
+    <tr data-cfr-row="{{ f.key }}">
+      <td><b>{{ f.label }}</b><div class="cfr-code">{{ f.code_line }}</div></td>
+      <td class="cfr-units-c">{% if f.units_txt %}<span{% if f.n_on == 0 %} class="muted"{% endif %}>{{ f.units_txt }}</span>{% else %}{{ f.names | join(', ') }}{% if f.more %}, <details class="fold cfr-fold"><summary>{{ f.more | length }} more</summary>{{ f.more | join(', ') }} <button type="button" class="fold-less" data-fold-less>Show less</button></details>{% endif %}{% endif %}</td>
+      <td>{% if f.screens_txt == '–' %}<span class="muted">–</span>{% else %}{{ f.screens_txt }}{% endif %}</td>
+      <td class="cfr-edit"><button type="button" class="btn-link" data-panel-open="cf-{{ f.key }}"
+          aria-label="Edit the {{ f.label }} filter">Edit</button></td>
+    </tr>
+  {% else %}
+    <tr><td colspan="4" class="muted">No business units in {{ bf.bg_label }}.</td></tr>
+  {% endfor %}
+  </tbody>
+</table></div>
+
+{% for f in bf.filters %}
+{% call panel("cf-" ~ f.key, bf.bg_label ~ " · Filters at BU level", f.label ~ " filter", f.sub) %}
+<form method="post" action="{{ url_for('admin_calib_filter') }}" class="adm-panel-form cfr-pform" data-no-busy data-cfr-form
+      data-cfr-label="{{ f.label }}" data-cfr-plural="{{ f.plural }}" data-cfr-search="{{ f.search_min }}"
+      data-confirm="Nothing has changed for the {{ f.label }} filter." data-confirm-title="Save the {{ f.label }} filter?"
+      data-confirm-ok="Save filter">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+  <input type="hidden" name="bg" value="{{ bf.bg }}">
+  <input type="hidden" name="filter" value="{{ f.key }}">
+  <div class="adm-panel-body">
+    <section class="cfr-sec">
+      <div class="cfr-sec-h"><span class="cfr-lbl">1. Which units</span><span class="cfr-grow"></span>
+        {% if f.any_available %}<button type="button" class="btn-link" data-cfr-all>Tick every unit that has one</button>{% endif %}</div>
+      <ul class="cfr-units">
+        {% for r in f.rows %}{% set i = loop.index0 %}
+        <li class="cfr-unit{{ ' is-off' if r.disabled }}" data-cfr-unit data-people="{{ r.people }}" data-kinds="{{ r.kinds }}"
+            {% for v, w in r.was.items() %}data-was-{{ v }}="{{ 1 if w else 0 }}" {% endfor %}>
+          <label>
+            <input type="checkbox" name="on_{{ i }}" value="1" data-cfr-tick{{ ' checked' if r.checked }}{{ ' disabled' if r.disabled }}
+                   aria-label="{{ f.label }} filter for {{ r.name }}">
+            <span class="cfr-uname"><b>{{ r.name }}</b>{% if r.full and r.full != r.name %} <span class="cfr-ufull">{{ r.full }}</span>{% endif %}</span>
+            <span class="cfr-cover{{ ' is-none' if r.reason }}">{{ r.reason or r.cover }}</span>
+          </label>
+          <input type="hidden" name="unit_{{ i }}" value="{{ r.company }}">
+        </li>
+        {% else %}<li class="muted">No business units in {{ bf.bg_label }}.</li>{% endfor %}
+      </ul>
+    </section>
+    <section class="cfr-sec">
+      <span class="cfr-lbl">2. Which screens</span>
+      <div class="cfr-screens">
+        {% for v in f.views %}
+        <label><input type="checkbox" name="screen" value="{{ v.key }}" data-cfr-screen="{{ v.key }}" data-cfr-short="{{ v.short }}"
+                      {{ 'checked' if (v.on or f.n_on == 0) }}> {{ v.long }}</label>
+        {% endfor %}
+      </div>
+      {% if f.key == 'cal' %}<p class="muted small cfr-note">The BU CEO's own screen has no calibrator filter: it is the Talent Box's.</p>{% endif %}
+      {% if f.differs %}<p class="muted small cfr-note">Set differently per unit today: saving applies these screens to every ticked unit.</p>{% endif %}
+    </section>
+    <section class="cfr-sec">
+      <span class="cfr-lbl">3. What leaders will see</span>
+      <div class="cfr-prev" data-cfr-prev aria-live="polite">
+        <span class="cfr-chip" aria-hidden="true">All {{ f.plural }} <b data-cfr-prev-n>{{ f.preview_n }}</b>
+          <svg width="12" height="12" viewBox="0 0 24 24"><path d="M6 9l6 6 6-6"/></svg></span>
+        <span class="muted small" data-cfr-prev-t></span>
+      </div>
+    </section>
+  </div>
+  <footer class="adm-panel-foot">
+    <span class="muted small adm-panel-grow" data-cfr-status role="status">Nothing changed yet.</span>
+    <button type="button" class="btn-link" data-panel-close>Cancel</button>
+    <button type="submit" class="primary" data-cfr-save disabled>Save filter</button>
+  </footer>
+</form>
+{% endcall %}
+{% endfor %}
+<script src="{{ url_for('static', filename='calib_filter_rules.js') }}?v={{ asset_v }}"></script>
+{% endif %}

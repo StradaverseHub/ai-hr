@@ -1,0 +1,106 @@
+{# Help (2026-10-22, canvas [design canvas link removed], boards B-D): opened from Help in the
+   account menu, on every page, and from OneHR Agent's Go card. Three views in one panel: Help (quick answers for the
+   page, Report a problem, their own reports, Group People's address), Report a problem, and Sent. static/help.js fills
+   it from /help/answers when it opens and posts the report to /help/report. #}
+<div class="hp-dim" data-hp-dim hidden></div>
+<aside class="hp" id="oh-help" role="dialog" aria-modal="true" aria-labelledby="hp-h" hidden
+       data-ep="{{ request.endpoint or '' }}" data-answers-url="{{ url_for('help_answers_view') }}"
+       data-report-url="{{ url_for('help_report') }}">
+  <section class="hp-view" data-hp-view="home">
+    <header class="hp-head">
+      <div><h2 class="hp-h" id="hp-h" tabindex="-1">Help</h2>
+        <p class="hp-sub">Find an answer, or tell us what went wrong.</p></div>
+      <button type="button" class="hp-x" data-hp-close aria-label="Close Help"><svg width="14" height="14" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 5l14 14M19 5L5 19"/></svg></button>
+    </header>
+    <div class="hp-body">
+      <section class="hp-card" aria-labelledby="hp-qa-h">
+        <h3 class="hp-card-h" id="hp-qa-h">Quick answers <span class="hp-ctx" data-hp-label></span></h3>
+        <p class="hp-note">They change with the page and view you're on.</p>
+        <div class="hp-qa" data-hp-qa><p class="hp-note">Loading…</p></div>
+        <p class="hp-hint" data-hp-hint hidden></p>
+      </section>
+      <section class="hp-card is-report">
+        <h3 class="hp-card-h">Report a problem</h3>
+        <p class="hp-p">Something not working, or a figure that looks wrong? Tell Group People and get a reference.</p>
+        <button type="button" class="hp-btn" data-hp-go="report">Report a problem</button>
+      </section>
+      <section class="hp-card" data-hp-mine-card hidden>
+        <h3 class="hp-card-h">Your reports</h3>
+        <div class="hp-mine" data-hp-mine></div>
+      </section>
+      <p class="hp-mail">Rather write to us? <a href="mailto:group.people@example.com">group.people@example.com</a></p>
+    </div>
+  </section>
+
+  <section class="hp-view" data-hp-view="report" hidden>
+    <header class="hp-head">
+      <div><button type="button" class="hp-back" data-hp-go="home">&lsaquo; Help</button>
+        <h2 class="hp-h" tabindex="-1">Report a problem</h2></div>
+      <button type="button" class="hp-x" data-hp-close aria-label="Close Help"><svg width="14" height="14" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 5l14 14M19 5L5 19"/></svg></button>
+    </header>
+    <form class="hp-body hp-form" data-hp-form novalidate>
+      {# a required field left empty turns red with its own message under it, and Send report takes them to it
+         (Chris, 2026-10-22: "link them to it and red highlight the section") #}
+      <fieldset class="hp-field" data-hp-field="about" aria-describedby="hp-about-err">
+        <legend class="hp-label">What's it about?</legend>
+        <div class="hp-chips" data-hp-about></div>
+        <p class="hp-ferr" id="hp-about-err" data-hp-ferr="about" hidden>Pick what it's about.</p>
+      </fieldset>
+      <div class="hp-field" data-hp-field="detail">
+        <label class="hp-label" for="hp-detail">What happened?</label>
+        <textarea id="hp-detail" name="detail" rows="4" data-hp-detail aria-describedby="hp-detail-err"></textarea>
+        <p class="hp-ferr" id="hp-detail-err" data-hp-ferr="detail" hidden>Say what happened, in a line or two.</p>
+        <div class="hp-under"><span>What were you trying to do, and what happened instead?</span><span data-hp-count></span></div>
+      </div>
+      <div class="hp-where">
+        <div class="hp-where-k">Where it happened</div>
+        <div class="hp-where-v" data-hp-where></div>
+        <label class="hp-tick"><input type="checkbox" name="add_page" value="1" checked data-hp-addpage>
+          <span>Add the details of this page for Group People: the page, the part you're on, your browser and the time. Never your results or remarks.</span></label>
+      </div>
+      <div class="hp-field">
+        <div class="hp-label">A screenshot <span class="hp-opt">(optional)</span></div>
+        <div class="hp-shot" data-hp-shotzone tabindex="0" aria-label="Paste a screenshot here">
+          <div class="hp-shot-empty" data-hp-shotempty>Paste it here (<kbd data-hp-key>Ctrl+V</kbd>), or <button type="button" class="hp-linkbtn" data-hp-pick>choose a file</button></div>
+          <div class="hp-shot-has" data-hp-shothas hidden>
+            <img alt="Your screenshot" data-hp-shotimg>
+            <div class="hp-shot-t"><b>Your screenshot</b><span data-hp-shotsize></span></div>
+            <button type="button" class="hp-x" data-hp-shotrm aria-label="Remove the screenshot"><svg width="12" height="12" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 5l14 14M19 5L5 19"/></svg></button>
+          </div>
+        </div>
+        <input type="file" accept="image/png,image/jpeg,image/gif,image/webp" data-hp-file hidden>
+        <p class="hp-under" data-hp-shotnote></p>
+      </div>
+      <p class="hp-who">Group People's OneHR team sees your report with your name, to sort it out. You get a reference now and their reply when it's done.</p>
+      <p class="hp-err" role="alert" data-hp-err hidden></p>
+    </form>
+    <footer class="hp-foot">
+      <button type="button" class="hp-btn-link" data-hp-go="home">Cancel</button>
+      <button type="button" class="hp-btn" data-hp-send>Send report</button>
+    </footer>
+  </section>
+
+  <section class="hp-view" data-hp-view="sent" hidden>
+    <header class="hp-head">
+      <div><button type="button" class="hp-back" data-hp-go="home">&lsaquo; Help</button></div>
+      <button type="button" class="hp-x" data-hp-close aria-label="Close Help"><svg width="14" height="14" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 5l14 14M19 5L5 19"/></svg></button>
+    </header>
+    <div class="hp-body">
+      <div class="hp-tick-big" aria-hidden="true"><svg width="22" height="22" viewBox="0 0 24 24"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg></div>
+      <h2 class="hp-h hp-sent-h" tabindex="-1" data-hp-thanks>Thanks. We've got it.</h2>
+      <p class="hp-p" data-hp-refline></p>
+      <div class="hp-card">
+        <h3 class="hp-card-h">What happens next</h3>
+        <ol class="hp-next" data-hp-next></ol>
+      </div>
+      <div class="hp-sent-acts">
+        <button type="button" class="hp-btn" data-hp-close>Back to where I was</button>
+        <button type="button" class="hp-btn-link" data-hp-go="report" data-hp-fresh>Report something else</button>
+      </div>
+      <section class="hp-card" data-hp-mine-card hidden>
+        <h3 class="hp-card-h">Your reports</h3>
+        <div class="hp-mine" data-hp-mine></div>
+      </section>
+    </div>
+  </section>
+</aside>

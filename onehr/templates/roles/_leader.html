@@ -1,0 +1,44 @@
+{# Roles & access › Leader roles (canvas board F; Chris, 2026-10-20: "include the leader role like LM, HOD, BUCEO, BGCEO
+   and what they can access onto"). A leader role comes from a seat, never a tick; what each seat may do is switched
+   here, for every leader in it. On = as before. #}
+<p class="adm-lede rl-lede">What each leader can do for the people under them. A leader role comes from a seat, never a tick: managing someone, a KPI line naming them, heading a department, a BU or BG CEO seat, calibrating a calibration group (set on <a href="{{ url_for('admin_leaders', tab='buceo') }}">Leaders › BU CEOs</a>), a Group Chief's calibration group (set on <a href="{{ url_for('admin_leaders') }}">Leaders</a>). Someone can hold several and gets what each gives. Untick an ability and every leader in that seat loses it from their next click; the super admin's own overrides are never stopped.</p>
+<section class="admin-card rl-matrix-card" aria-label="What each leader role can do">
+  <form method="post" action="{{ url_for('admin_roles', tab='leader') }}" data-lroles-form
+        data-confirm="Save the leader roles? It applies to every leader in those seats from their next click, and goes in the audit log." data-confirm-ok="Save leader roles">
+    <input type="hidden" name="action" value="save">
+    <div class="rl-row rl-head rl-lrow"><span>What they can do</span>
+      {# seven columns: the long names are shortened, the full words in the title (HEAD_SHORT's way) #}
+      {% set head_short = {'lm': 'Line mgr', 'mx': 'Matrix mgr', 'cg': 'Calibrator'} %}
+      {% for r, lbl in l_roles %}<span class="rl-cell" title="{{ lbl }}">{{ head_short.get(r, lbl) }}</span>{% endfor %}</div>
+    {% for g in l_groups %}
+    <div class="rl-row rl-lrow rl-lgroup"><b class="rl-modname-plain">{{ g.name }}</b></div>
+    {% for row in g.rows %}
+    <div class="rl-row rl-lrow" data-lab="{{ row.key }}">
+      <span class="rl-item">{{ row.label }}{% if row.note %}<span class="muted small rl-unote">{{ row.note }}</span>{% endif %}</span>
+      {% for c in row.cells %}{% if c.mine %}<label class="rl-cell"><input type="checkbox" name="l_{{ row.key }}" value="1" {{ 'checked' if c.on }} aria-label="{{ dict(l_roles)[c.role] }}: {{ row.label }}"></label>{% else %}<span class="rl-cell rl-na" aria-hidden="true">&mdash;</span>{% endif %}{% endfor %}
+    </div>
+    {% endfor %}
+    {% endfor %}
+    <p class="muted small rl-note">"&mdash;" is not that seat's part of the year. A leader acts only on their own people: a line manager on their reports, an HOD on their department, a BU CEO on their units, a calibrator on their calibration group. AI insights for leaders follow Settings › AI.</p>
+    <div class="rl-foot"><span class="small" data-lroles-changes><b>{{ 'All on, as before' if not l_off_n else (l_off_n ~ ' switched off') }}</b></span>
+      <a class="btn-link" href="{{ url_for('admin_roles', tab='leader') }}">Cancel</a>
+      <button type="submit" class="primary">Save leader roles</button></div>
+  </form>
+</section>
+<script>
+(function () {
+  var f = document.querySelector('[data-lroles-form]');
+  if (!f) return;
+  var boxes = [].slice.call(f.querySelectorAll('input[type=checkbox]')), start = boxes.map(function (b) { return b.checked; });
+  f.addEventListener('change', function () {
+    var ch = [];
+    boxes.forEach(function (b, i) {
+      if (b.checked !== start[i]) ch.push((b.checked ? '+ ' : '− ') + b.getAttribute('aria-label'));
+    });
+    var el = f.querySelector('[data-lroles-changes]');
+    el.textContent = ch.length ? ch.length + ' change' + (ch.length === 1 ? '' : 's') + ' not saved: ' + ch.join(' · ') : 'No changes';
+    f.setAttribute('data-confirm', ch.length ? 'Save these leader roles? ' + ch.join('; ') + '. It applies to every leader in those seats from their next click, and goes in the audit log. You can change it back.'
+                                              : 'Save the leader roles? Nothing has changed.');
+  });
+})();
+</script>

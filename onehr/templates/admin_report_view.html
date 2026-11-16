@@ -1,0 +1,102 @@
+{% extends "base.html" %}
+{% block title %}{{ v.title }} · {{ v.module }}{% endblock %}
+{% block body %}
+{# One on-screen report (Chris, 2026-10-19; option A of canvas [design canvas link removed]): the
+   place you are in, its rows one level down (business group, unit, department), counts only. Print, and Download this
+   view (the table, as Excel). Built by _hr_view. #}
+{# a stacked bar's labels sit inside only the segments wide enough for them at the person's text size (8% at Standard and Small,
+   12% at Larger, 14% at XL); the narrower ones keep their numbers in the title and the bar's aria-label #}
+{% macro cell(c) -%}
+  {%- if c.t == 'bar' -%}
+  <td class="rptv-barc"><span class="rptv-bar" aria-hidden="true"><span style="width:{{ c.v }}%"></span></span><b>{{ c.v }}%</b></td>
+  {%- elif c.t == 'stack' -%}
+  <td class="rptv-stackc">{% if c.n %}<span class="rptv-stack" role="img" aria-label="{% for s in c.segs %}{{ s.label }} {{ s.pct }}%{{ ', ' if not loop.last }}{% endfor %}">{% for s in c.segs if s.n %}<span style="width:{{ s.pct }}%;background:{{ s.bg }};color:{{ s.fg }}" title="{{ s.label }}: {{ s.n }} ({{ s.pct }}%)">{{ (s.pct ~ '%') if s.pct >= (c.lab or {'l': 12, 'xl': 14}.get(ui_text_size, 8)) else '' }}</span>{% endfor %}</span>{% else %}<span class="muted small">none yet</span>{% endif %}</td>
+  {%- elif c.t == 'div' -%}
+  <td class="rptv-divc"><span class="rptv-div" role="img" aria-label="{{ c.down }} moved down, {{ c.up }} moved up">
+    <span class="rptv-div-l"><em>{{ c.down }}</em><i style="width:{{ (100 * c.down / c.n) | round | int if c.n else 0 }}%"></i></span>
+    <span class="rptv-div-r"><i style="width:{{ (100 * c.up / c.n) | round | int if c.n else 0 }}%"></i><em>{{ c.up }}</em></span></span></td>
+  {%- elif c.t == 'pct' -%}<td class="num">{{ c.v }}%</td>
+  {%- elif c.t == 'net' -%}<td class="num"><b>{{ ('%+d' % c.v) if c.v else '0' }}</b></td>
+  {%- else -%}<td class="num{{ ' muted' if c.muted }}">{{ c.v }}</td>{%- endif -%}
+{%- endmacro %}
+<div class="rptv">
+  <p class="rptv-crumb"><a href="{{ url_for('admin_reports_all') }}">Reports</a> &rsaquo; {{ v.module }}</p>
+  <div class="rptv-head">
+    <div>
+      <h1>{{ v.title }}</h1>
+      <p class="adm-lede">{{ v.cycle.name }} · as at {{ now.strftime('%-d %b %Y, %-I:%M %p').replace('AM', 'am').replace('PM', 'pm') }} · {{ v.what }}</p>
+    </div>
+    <div class="rptv-acts">
+      <button type="button" class="adm-rep-dl" data-rptv-print>Print</button>
+      <a class="adm-rep-dl" href="{{ v.xlsx }}">Download this view</a>
+    </div>
+  </div>
+  <section class="admin-card rptv-bar-row">
+    <nav class="rptv-path" aria-label="Where you are">
+      {% for c in v.crumbs %}{% if c.href %}<a href="{{ c.href }}">{{ c.label }}</a>{% else %}<b>{{ c.label }}</b>{% endif %}{% if not loop.last %}<span aria-hidden="true">&rsaquo;</span>{% endif %}{% endfor %}
+      {% if not v.crumbs %}<b>Your scope</b>{% endif %}
+    </nav>
+    <span class="rptv-grow"></span>
+    {% if v.toggle %}
+    <span class="rptv-k">{{ v.toggle.label }}</span>
+    <span class="rptv-chips">{% for o in v.toggle.opts %}<a href="{{ o.href }}" class="rptv-chip{{ ' is-on' if o.on }}"{% if o.on %} aria-current="true"{% endif %}>{{ o.label }}</a>{% endfor %}</span>
+    {% endif %}
+    {% if v.levels | length > 1 %}
+    <span class="rptv-k">Rows are</span>
+    <span class="rptv-chips">{% for l in v.levels %}<a href="{{ l.href }}" class="rptv-chip{{ ' is-on' if l.on }}"{% if l.on %} aria-current="true"{% endif %}>{{ l.label }}</a>{% endfor %}</span>
+    {% endif %}
+  </section>
+  <div class="rptv-tiles" style="grid-template-columns: repeat({{ v.tiles | length }}, minmax(0, 1fr))">
+    {% for t in v.tiles %}
+    <div class="admin-card rptv-tile{{ ' is-key' if t.key }}{{ ' is-alert' if t.alert }}{{ ' is-warm' if t.warm }}">
+      <span>{{ t.label }}</span><b>{{ t.v }}{% if t.sub %} <small>{{ t.sub }}</small>{% endif %}</b>
+    </div>
+    {% endfor %}
+  </div>
+  <div class="rptv-body{{ ' has-box' if v.box }}">
+    {% if v.box %}
+    <section class="admin-card rptv-box" aria-label="The talent box">
+      <h2>The talent box · {{ v.box.placed }} placed of {{ v.box.of }}</h2>
+      <div class="rptv-box-grid">
+        {% for row in v.box.rows %}
+        <span class="rptv-box-y">{{ row.pot }}</span>
+        {% for c in row.cells %}<span class="rptv-box-c" style="background:{{ c.bg }};color:{{ c.fg }}"><b>{{ c.n }}</b><small>{{ c.cat or '' }}</small></span>{% endfor %}
+        {% endfor %}
+        <span></span>{% for p in v.box.perf %}<span class="rptv-box-x">{{ p }}</span>{% endfor %}
+      </div>
+      <p class="muted small">Across: final performance band. Up: final potential band.</p>
+    </section>
+    {% endif %}
+    <section class="admin-card rptv-tablec">
+      {% if v.key_legend %}<p class="rptv-legend">{% for k in v.key_legend %}<span><i style="background:{{ k.bg }}" aria-hidden="true"></i>{{ k.label }}</span>{% endfor %}</p>{% endif %}
+      {% if v.rows or v.ref %}
+      <div class="table-scroll"><table class="admin-table rptv-table no-auto-table{{ ' ' ~ v.table_class if v.table_class }}">
+        <thead><tr>{% set s = head_short.get(v.row_head) %}<th scope="col"{% if s %} title="{{ v.row_head }}"{% endif %}>{{ s or v.row_head }}</th>{% for label, t in v.cols %}{% set s = head_short.get(label) %}<th scope="col" class="{{ 'num' if t in ('n', 'pct', 'net') else ('rptv-wide' if t in ('stack', 'bar', 'div') else '') }}"{% if s %} title="{{ label }}"{% endif %}>{{ s or label }}</th>{% endfor %}</tr></thead>
+        <tbody>
+          {% if v.ref %}
+          <tr class="rptv-ref"><th scope="row">{{ v.ref.label }}<span class="muted small">{{ v.ref.sub }}</span></th><td class="num muted">guide</td>{{ cell(v.ref.stack) }}<td class="num muted">{{ v.ref.stack.segs[3].pct + v.ref.stack.segs[4].pct }}%</td>{% if v.cols | length > 3 %}<td></td>{% endif %}</tr>
+          {% endif %}
+          {% for r in v.rows %}
+          <tr><th scope="row">{% if r.href %}<a href="{{ r.href }}">{{ r.label }}</a>{% else %}{{ r.label }}{% endif %}</th>{% for c in r.cells %}{{ cell(c) }}{% endfor %}</tr>
+          {% endfor %}
+        </tbody>
+        {% if v.total and v.rows | length > 1 %}
+        <tfoot><tr><th scope="row">{{ v.crumbs[-1].label if v.crumbs else 'Total' }}</th>{% for c in v.total %}{{ cell(c) }}{% endfor %}</tr></tfoot>
+        {% endif %}
+      </table></div>
+      {% else %}
+      <p class="muted pp-none">Nobody to count here yet.</p>
+      {% endif %}
+      {% if v.legend %}<p class="rptv-note muted small">{% for l in v.legend %}<b>{{ l.label }}</b>: {{ l.what }}{{ '. ' if not loop.last else '.' }}{% endfor %}</p>{% endif %}
+      {% if v.note %}<p class="rptv-note muted small">{{ v.note }}</p>{% endif %}
+      <p class="rptv-note muted small">{% if v.levels | length > 1 or v.rows_lvl != 'dept' %}Click a row to go down a level. {% endif %}Counts only: names stay on {{ v.names_at or 'Progress and in the data downloads' }}.</p>
+    </section>
+  </div>
+</div>
+<script>
+(function () {
+  var b = document.querySelector('[data-rptv-print]');
+  if (b) b.addEventListener('click', function () { window.print(); });
+})();
+</script>
+{% endblock %}

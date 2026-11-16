@@ -1,0 +1,58 @@
+{# Remarks and files for an admin who holds People › Remarks and files (Chris, 2026-11-07, canvas "Remarks and files for admins",
+   [design canvas link removed]). Everything is drawn from the server's rf context (_rf_ctx): this file works
+   nothing out. `block` is one part's Remarks card (the 360's lists its raters with an "N more" fold); `files` is one KPI line's
+   file lines under its name and category (Add a file and Remove only where the server says so: k.rf.can_add / can_remove). #}
+{% macro one(r, narrow=False) -%}
+  <div class="pp-rmk{{ ' pp-rmk-narrow' if narrow }}"><div class="pp-rmk-who"><b>{{ r.who }}</b>{% if r.sub %}<span>{{ r.sub }}</span>{% endif %}</div>
+    <div class="pp-rmk-body">{% if r.text %}<p>{{ r.text }}</p>{% else %}<p class="pp-rmk-none">{{ r.none }}</p>{% endif %}{{ caller() if caller else '' }}</div></div>
+{%- endmacro %}
+{% macro block(b, label=None) -%}
+  {% if b %}
+  <section class="admin-card pp-card pp-rmks" aria-label="{{ label or b.title }}">
+    <div class="pp-h-row"><h2 class="pp-h">{{ b.title }}</h2><span class="muted small">{{ b.sub }}</span></div>
+    {% for r in b.rows %}{{ one(r) }}{% endfor %}
+    {% if b.more %}<details class="fold pp-rmk-fold"><summary>{{ b.more | length }} more</summary>
+      {% for r in b.more %}{{ one(r) }}{% endfor %}<button type="button" class="fold-less" data-fold-less>Show less</button></details>{% endif %}
+  </section>
+  {% endif %}
+{%- endmacro %}
+{% macro files(k, person) -%}
+  {% set rf = k.rf %}
+  <span class="pp-files">
+    {% for f in rf.files %}
+    <span class="pp-file">
+      <span class="pp-file-main"><svg class="pp-file-ic" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M21 12.5l-8.5 8.5a6 6 0 01-8.5-8.5l9-9a4 4 0 015.7 5.7l-9 9a2 2 0 01-2.8-2.8l8.3-8.3"/></svg>
+      <a class="pp-file-name" href="{{ f.dl }}" data-fpv-src="{{ f.url }}" data-fpv-name="{{ f.name }}" data-fpv-kpi="{{ k.base or k.name }}" data-fpv-size="{{ f.size }}"{% if f.gp %} data-fpv-gp="1"{% endif %} title="Open {{ f.name }}">{{ f.name }}</a></span>
+      <span class="pp-file-meta">
+      {% if f.gp %}<span class="pp-file-tag" title="Added by Group People{% if f.why %}: {{ f.why }}{% endif %}">Group People</span>{% endif %}
+      <span class="pp-file-sz">{{ f.size }}</span>
+      {% if rf.can_remove %}
+      <form method="post" action="{{ rf.remove_url }}" class="pp-file-rmf"
+            data-confirm="Remove “{{ f.name }}” from {{ k.base or k.name }}, {{ person['full_name'] }}'s KPI? They, their managers and the AI check stop seeing it. It's kept for the audit trail. They aren't told.{% if rf.files | length == 1 and k.band_now in ('AE', 'OU') %} This KPI is rated {{ k.band_now }} and will have no supporting file. It shows under Needs attention.{% endif %}"
+            data-confirm-title="Remove this file?" data-confirm-ok="Remove file" data-confirm-tone="danger"
+            data-confirm-reason="Why it goes" data-confirm-reason-max="500" data-confirm-reason-placeholder="Required: it goes in the audit trail">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}"><input type="hidden" name="kind" value="{{ f.kind }}"><input type="hidden" name="fid" value="{{ f.id }}">
+        <button type="submit" class="pp-file-rm">Remove</button>
+      </form>
+      {% endif %}
+      </span>
+    </span>
+    {% endfor %}
+    {% for g in rf.gone %}
+    <span class="pp-file-gone"><s>{{ g.name }}</s> removed by {{ g.by }}, {{ g.day }}{% if g.reason %}: {{ g.reason }}{% endif %}</span>
+    {% endfor %}
+    {% if not rf.files and not rf.gone %}<span class="pp-file-gone">No file</span>{% endif %}
+    {% if rf.can_add %}
+    {# the box that asks is static/kpi_files.js's (the file and why, in OneHR's own dialog); it sends this form by script, so the
+       data-confirm below, which the admin standard asks of every POST form, is never shown a second time #}
+    <form method="post" action="{{ rf.add_url }}" enctype="multipart/form-data" class="pp-fadd" hidden
+          data-confirm="Add a file to {{ k.base or k.name }} for {{ person['full_name'] }}? It is tagged Group People; they and their managers see it, and AI+ reads it again."
+          data-confirm-title="Add a file?" data-confirm-ok="Add file"
+          data-fadd-name="{{ k.base or k.name }}" data-fadd-who="{{ person['full_name'] }}" data-fadd-max="{{ rf.max_bytes }}">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}"><input type="hidden" name="line" value="{{ k.id }}">
+      <input type="file" name="file" accept=".pdf,.png,.jpg,.jpeg,.gif,.webp,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.csv,.txt"><input type="hidden" name="reason" value="">
+    </form>
+    <button type="button" class="pp-file-add" data-fadd-open>+ Add a file</button>
+    {% endif %}
+  </span>
+{%- endmacro %}

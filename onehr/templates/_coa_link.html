@@ -1,0 +1,61 @@
+{# A KPI's data link (the Chart of KPI, piece C, the canvas board 6; ONEHR_COA=1, the super admin). The editor for one node: the
+   system, its measure's ID, the period, whose figure, what it is matched on, the unit it sends, the factor, then Test (a fixed
+   answer until a system is connected) and the read-only preview of what a pull would fill (Employee IDs, never names). Import it
+   with context. #}
+{% from "_kpi_unit.html" import unit_select with context %}
+{% macro link_editor(node, lv, d, kpi_key, is_test) -%}
+{% set lk = lv.link %}
+{% set fid = 'coa-lk-%d' % node.id %}
+{% set cur_whose = lk.whose if lk else ('unit' if d.bu else 'person') %}
+{% set cur_mo = (lk.matched_on or '') if lk else ('unit_code' if d.bu else 'employee_id') %}
+{% if not d.systems and not lk %}
+<p class="muted">No system has been added yet. <a href="{{ url_for('admin_kpi_systems') }}">Add one on the Systems tab</a>, then link {{ node.code }} to one of its measures.</p>
+{% else %}
+<div class="coa-edit" data-coa-linkbox>
+  <form method="post" id="{{ fid }}" class="coa-lkform" data-no-busy data-coa-link
+        data-confirm="Save the data link for {{ node.code }} {{ node.name }}? It says which measure of the system fills it, for whom, and how people or units are found there. Nothing is pulled yet, and no line changes."
+        data-confirm-title="Save the link?" data-confirm-ok="Save the link">
+    <input type="hidden" name="action" value="chart_link_save"><input type="hidden" name="kpi" value="{{ kpi_key }}"><input type="hidden" name="node_id" value="{{ node.id }}">
+    <div class="coa-f"><span class="k">Source system</span>
+      <select name="system_id" class="modern-select" aria-label="Source system">
+        {% if lk and lk.system_retired %}<option value="{{ lk.system_id }}" selected>{{ lk.system_name }} (retired)</option>{% elif not lk %}<option value="" selected>Pick a system&hellip;</option>{% endif %}
+        {% for s in d.systems %}<option value="{{ s.id }}"{{ ' selected' if lk and lk.system_id == s.id and not lk.system_retired }}>{{ s.name }}</option>{% endfor %}
+      </select></div>
+    <div class="coa-f"><span class="k">Its measure there</span><input type="text" name="metric_id" maxlength="120" required value="{{ lk.metric_id if lk else '' }}" aria-label="The measure's ID in the source system" autocomplete="off"></div>
+    <div class="coa-f"><span class="k">Period</span>
+      <select name="period" class="modern-select" aria-label="Period">{% for v, lab in coa_link_periods %}<option value="{{ v }}"{{ ' selected' if lk and lk.period == v }}>{{ lab }}</option>{% endfor %}</select></div>
+    <div class="coa-f"><span class="k">Whose figure</span>
+      <span class="coa-seg" role="radiogroup" aria-label="Whose figure">{% for v, lab in coa_link_whose %}<label{% if d.bu and v != 'unit' %} title="A BU-level KPI's figure is the business unit's"{% endif %}><input type="radio" name="whose" value="{{ v }}"{{ ' checked' if cur_whose == v }}{{ ' disabled' if d.bu and v != 'unit' }}><span>{{ lab }}</span></label>{% endfor %}</span>
+      {% if d.bu %}<span class="muted small">A BU-level KPI: one figure per unit, filled once in BU KPI setup.</span>{% endif %}</div>
+    <div class="coa-f"><span class="k">Matched on</span>
+      <select name="matched_on" class="modern-select" aria-label="Matched on" data-coa-mo>
+        <option value="" data-for="group"{{ ' selected' if cur_mo == '' }}>Nothing to match</option>
+        {% for v in ('employee_id', 'system_person_code', 'unit_code') %}<option value="{{ v }}" data-for="{{ 'unit' if v == 'unit_code' else 'person' }}"{{ ' selected' if cur_mo == v }}>{{ coa_link_match_words[v] }}</option>{% endfor %}
+      </select><span class="muted small">A person's ID there is set on their Account panel, a unit's code on the Systems tab.</span></div>
+    <div class="coa-f"><span class="k">Unit it sends</span>{{ unit_select('unit', lk.unit if lk else '', label='', blank='Same as the KPI') }}</div>
+    <div class="coa-f"><span class="k">Multiply by</span><input type="number" name="factor" step="any" min="0" value="{{ '%g' % lk.factor if lk else '1' }}" aria-label="Factor"><span class="muted small">1 leaves the figure as the system sends it; 0.000001 turns RM into RM m.</span></div>
+  </form>
+  {% if is_test and lk %}<div class="coa-answer" role="status">{{ coa_link_test }}</div>{% endif %}
+  {% if lk %}
+  <div class="coa-test" aria-label="What a pull would fill">
+    <b>What a pull would fill</b>
+    <div class="coa-tr h"><span>Employee ID</span><span>ID in {{ lk.system_name }}</span><span>Unit and its code</span></div>
+    {% for r in lv.preview.rows %}
+    <div class="coa-tr"><span>{{ r.eid }}</span>
+      <span{% if lk.matched_on == 'system_person_code' and not r.ext %} class="muted"{% endif %}>{% if lk.matched_on == 'system_person_code' %}{{ r.ext or 'No ID yet' }}{% elif lk.matched_on == 'employee_id' %}<span class="muted" title="The Employee ID is the key">Employee ID</span>{% else %}<span class="muted">not used</span>{% endif %}</span>
+      <span title="{{ r.unit }}">{{ r.unit }}{% if lk.matched_on == 'unit_code' or lk.whose == 'unit' %} &middot; {% if r.code %}{{ r.code }}{% else %}<span class="muted">No code yet</span>{% endif %}{% endif %}</span></div>
+    {% else %}<span class="muted small">Nobody holds {{ node.code }} on a scorecard yet.</span>{% endfor %}
+    <span class="muted small">{% if lv.preview.total > lv.preview.rows | length %}{{ lv.preview.rows | length }} of {{ lv.preview.total }} people who hold it, by Employee ID. {% elif lv.preview.total %}{{ lv.preview.total }} {{ 'person holds' if lv.preview.total == 1 else 'people hold' }} it. {% endif %}A test only reads. Nothing is saved to any line.</span>
+  </div>
+  {% endif %}
+  <div class="coa-acts">
+    {% if lk %}<a class="btn-link" href="{{ url_for('admin_kpi_library', kpi=kpi_key, panel=('kpi' if node.id == d.node_id else 'link'), link=(None if node.id == d.node_id else node.id), link_test=node.id) }}">Test the link</a>
+    <form method="post" data-no-busy data-confirm="Remove the data link from {{ node.code }} {{ node.name }}? It stops reading {{ lk.system_name }} once a system is connected. You can set it up again."
+          data-confirm-title="Remove the link?" data-confirm-ok="Remove" data-confirm-tone="danger">
+      <input type="hidden" name="action" value="chart_link_remove"><input type="hidden" name="kpi" value="{{ kpi_key }}"><input type="hidden" name="node_id" value="{{ node.id }}">
+      <button type="submit" class="btn-link danger-link">Remove the link</button></form>{% endif %}
+    <button type="submit" form="{{ fid }}" class="primary">Save the link</button>
+  </div>
+</div>
+{% endif %}
+{%- endmacro %}

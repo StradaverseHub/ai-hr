@@ -1,0 +1,45 @@
+{% extends "base.html" %}
+{% block title %}Clear panels{% endblock %}
+{% block body %}
+{% from "_mode_switch.html" import panel_modes with context %}
+{{ panel_modes('clear') }}
+<p class="adm-lede">Empty the panels of a list of people in the active review: feedback not given yet is removed,
+  feedback already given is archived.</p>
+
+{% if not v and not done %}{# how it works and the template: step 1 only #}
+<div class="admin-card">
+  <h2>How it works</h2>
+  <ul class="bullets">
+    <li>Upload a file with one <strong>Employee ID</strong> column — the <em>subjects</em> whose panels you want to clear.</li>
+    <li><strong>Pending</strong> assessors (no feedback yet) are <strong>removed</strong>.</li>
+    <li><strong>Submitted</strong> assessors are <strong>archived</strong> — their feedback is preserved and can be restored from the panel editor. Nothing is lost.</li>
+    <li>Affects the <strong>active cycle</strong> only.</li>
+  </ul>
+  <p class="note">
+    <strong>Four steps, all or nothing.</strong> If any Employee ID is unknown, nothing is changed and every issue is
+    listed so you can fix the file and choose it again. Then OneHR shows each panel, you answer for anyone whose raters
+    have already given feedback, and you apply that same file.
+  </p>
+</div>
+
+<a class="template-dl" href="{{ url_for('admin_clear_panels_template') }}" download>
+  <svg class="tdl-ic" viewBox="0 0 24 24" width="32" height="32" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+    <path d="M14 3v4a1 1 0 0 0 1 1h4"/>
+    <path d="M17 21H7a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h7l5 5v11a2 2 0 0 1-2 2z"/>
+    <path d="M12 11v6"/><path d="M9.5 14.5 12 17l2.5-2.5"/>
+  </svg>
+  <span class="tdl-main">
+    <span class="tdl-title">Download the clear-panels template (Excel)</span>
+    <span class="tdl-sub">One Employee ID per row — the subjects whose panels to clear.</span>
+  </span>
+  <span class="tdl-cta">Download</span>
+</a>
+
+{% endif %}
+{% import "_import_steps.html" as imp with context %}
+{% call imp.page(v, done, {'page': 'admin_clear_panels', 'changes': 'What it clears',
+                           'final': 'The panels after you apply this file'},
+                 {'changes': 'each panel, and your answers'}) %}
+{{ imp.upload("Nothing changes yet. OneHR checks the file, shows each panel and asks about anyone whose raters have already given feedback. Then you apply that same file.") }}
+{% endcall %}
+{% endblock %}

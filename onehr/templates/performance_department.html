@@ -1,0 +1,98 @@
+{% extends "base.html" %}
+{% from "_table_tools.html" import colth, colmenu, colmenu_script %}
+{% block title %}My Department — Performance{% endblock %}
+{% block body %}
+<div class="page-head">
+  <div>
+    <h1>My Department</h1>
+    {% if period %}
+    <p class="muted">{{ period['name'] }} &middot; whole department, direct and indirect reports. Read-only oversight — act on a KPI line from the Team page.</p>
+    {% else %}
+    <p class="muted">No active performance period yet.</p>
+    {% endif %}
+  </div>
+</div>
+
+{% if period and flat_rows %}
+<div class="admin-card" id="pm-dist-box">
+  <h2>Final rating spread</h2>
+  {% set total = distribution.values() | sum %}
+  {% for label in ['UA', 'BE', 'ME', 'AE', 'OU'] %}
+    {% set n = distribution[label] %}
+    {% set pct = (n / total * 100) if total else 0 %}
+    <div class="calib-dist-row">
+      <span class="calib-dist-label">{{ label }}</span>
+      <div class="calib-dist-bar">
+        <span class="calib-dist-fill calib-dist-{{ label|lower }}" style="width: {{ pct }}%"></span>
+      </div>
+      <span class="calib-dist-pct">{{ n }} &middot; {{ '%.0f' | format(pct) }}%</span>
+    </div>
+  {% endfor %}
+  <p class="muted small" style="margin:8px 0 0">{{ total }} of {{ flat_rows|length }} finalized this period (every KPI line locked); the rest are still in progress.</p>
+</div>
+
+<div class="as-controls" style="margin-bottom:10px">
+  <label class="as-search">
+    Search
+    <input type="search" id="pm-dept-search" placeholder="Filter by name, department, or job title..." autocomplete="off">
+  </label>
+</div>
+<div class="table-scroll table-scroll-capped"><table class="admin-table" id="pm-dept-table">
+  <thead><tr>{{ colth('name', 'Name') }}{{ colth('dept', 'Department') }}{{ colth('title', 'Job Title') }}{{ colth('rel', 'Relationship') }}{{ colth('band', 'Overall Rating') }}</tr></thead>
+  <tbody>
+    {% for row in flat_rows %}
+    <tr class="data-row"
+        data-name="{{ row['user']['full_name'] }}"
+        data-dept="{{ row['user']['department'] or '-' }}"
+        data-title="{{ row['user']['job_title'] or '-' }}"
+        data-rel="{{ 'Direct' if row['is_direct'] else 'Indirect' }}"
+        data-band="{% if row['overall'] %}{{ label_names[row['overall']['label']] }}{% else %}Pending{% endif %}">
+      <td>{{ row['user']['full_name'] }}</td>
+      <td>{{ row['user']['department'] | proper or '-' }}</td>
+      <td>{{ row['user']['job_title'] | proper or '-' }}</td>
+      <td><span class="rel-chip {{ 'hod-direct' if row['is_direct'] else 'hod-indirect' }}">{{ 'Direct' if row['is_direct'] else 'Indirect' }}</span></td>
+      <td>
+        {% if row['overall'] %}
+          <span class="potential-pill" data-band="{{ row['overall']['label'] }}">
+            {% if row['overall']['mechanism'] == 'A' %}{{ '%.2f' | format(row['overall']['value']) }}{% else %}{{ '%.1f' | format(row['overall']['value']) }}%{% endif %}
+            &middot; {{ label_names[row['overall']['label']] }}
+          </span>
+        {% else %}
+          <span class="muted small">Pending</span>
+        {% endif %}
+      </td>
+    </tr>
+    {% endfor %}
+    <tr class="no-filter-match" hidden><td colspan="5" class="muted">No rows match the filters.</td></tr>
+  </tbody>
+</table></div>
+{{ colmenu('pm-dept-table', {
+     'name':  {'mode': 'clientFilter', 'type': 'text', 'sortAttr': 'name'},
+     'dept':  {'mode': 'clientFilter', 'type': 'text', 'sortAttr': 'dept'},
+     'title': {'mode': 'clientFilter', 'type': 'text', 'sortAttr': 'title'},
+     'rel':   {'mode': 'clientFilter', 'type': 'text', 'sortAttr': 'rel'},
+     'band':  {'mode': 'clientFilter', 'type': 'text', 'sortAttr': 'band'} }) }}
+{{ colmenu_script(asset_v) }}
+<script>
+(function () {
+  // Registered as a colmenu PREDICATE rather than writing row.style.display
+  // itself. Both used to write that one property, so a search and a column
+  // filter overwrote each other; as a predicate the two are ANDed and narrow
+  // together.
+  var input = document.getElementById('pm-dept-search');
+  if (!input) return;
+  var q = '';
+  window.colMenuAddPredicate('pm-dept-table', function (row) {
+    return !q || row.textContent.toLowerCase().indexOf(q) !== -1;
+  });
+  input.addEventListener('input', function () {
+    q = input.value.trim().toLowerCase();
+    window.colMenuRefresh('pm-dept-table');
+  });
+})();
+</script>
+
+{% elif period %}
+<div class="admin-card"><p class="muted">No one in your department has KPI targets set for them yet this period.</p></div>
+{% endif %}
+{% endblock %}

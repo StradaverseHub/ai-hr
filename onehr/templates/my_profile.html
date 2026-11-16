@@ -1,0 +1,209 @@
+{% extends "base.html" %}
+{% block title %}My record{% endblock %}
+{% block body %}
+
+{# The record, in full. Deliberately not the dashboard: that page answers
+   "what needs me now" and is read daily; this answers "what is my track
+   record" and is read at a career conversation. #}
+
+<div class="dash-head">
+  <div>
+    <p class="dash-eyebrow">My record</p>
+    <h1 style="margin:2px 0 0">{{ user['full_name'] | title }}</h1>
+    <p class="muted" style="font-size:.88rem;margin:6px 0 0">
+      {{ user['job_title'] | proper or 'Employee' }}
+      {%- if user['department'] %} &middot; {{ user['department'] | proper }}{% endif %}
+      {%- if user['job_grade'] %} &middot; JG {{ user['job_grade'] }}{% endif %}
+      {%- if user['employee_id'] %} &middot; {{ user['employee_id'] }}{% endif %}
+    </p>
+  </div>
+  <a class="dash-go" href="{{ url_for('dashboard') }}">
+    <svg class="dash-ico sm" viewBox="0 0 24 24" aria-hidden="true"><path d="M19 12H6M11 18l-6-6 6-6"></path></svg>
+    Back to dashboard</a>
+</div>
+
+{# ---- where you're heading ------------------------------------------- #}
+<div class="admin-card">
+  <div class="dash-card-head">
+    <div class="t">
+      <svg class="dash-ico" viewBox="0 0 24 24" aria-hidden="true">
+        <path d="M12 3v18M5 10l7-7 7 7"></path>
+      </svg>
+      <h2 style="margin:0;font-size:1.02rem">Where you're heading</h2>
+    </div>
+    <p class="muted small" style="margin:0">
+      <a href="{{ url_for('idp_career_view') }}">Edit your career profile</a>
+    </p>
+  </div>
+  <div class="dash-card-body">
+    <div class="dash-stats">
+      <div class="dash-stat">
+        <p class="k">Target role</p>
+        {% if target %}
+        <p class="v" style="font-size:1.05rem">{{ target['job_title'] | proper }}</p>
+        <p class="n">{{ target['department'] | proper or '' }}{% if target['job_grade'] %} &middot; JG {{ target['job_grade'] }}{% endif %}</p>
+        {% else %}
+        <p class="v is-pending">
+          <svg class="dash-ico sm" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"></circle><path d="M12 8v5M12 16h.01"></path></svg>
+          Not set yet</p>
+        <p class="n">Pick one on the career map</p>
+        {% endif %}
+      </div>
+      <div class="dash-stat">
+        <p class="k">Technical competency</p>
+        {% if tc %}
+        <p class="v is-pending" style="color:var(--ink)">{{ tc['status'] | replace('_',' ') | title }}</p>
+        <p class="n"><a href="{{ url_for('technical_my_view') }}">Open your assessment</a></p>
+        {% else %}
+        <p class="v is-pending">
+          <svg class="dash-ico sm" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"></circle><path d="M12 8v5M12 16h.01"></path></svg>
+          Not assigned</p>
+        <p class="n">Your role isn't mapped to a job profile yet</p>
+        {% endif %}
+      </div>
+      <div class="dash-stat">
+        <p class="k">Development plan</p>
+        <p class="v is-pending" style="color:var(--ink)">
+          {{ record[0]['goals'] if record and record[0]['goals'] else 0 }} goal(s) this cycle</p>
+        <p class="n"><a href="{{ url_for('idp_view') }}">Open your plan</a></p>
+      </div>
+    </div>
+
+    {% if profile and (profile['aspiration_mid'] or profile['strengths']) %}
+    <div style="margin-top:16px;display:grid;gap:14px;grid-template-columns:repeat(auto-fit,minmax(260px,1fr))">
+      {% if profile['aspiration_mid'] %}
+      <div>
+        <p class="k" style="font-size:.72rem;font-weight:700;letter-spacing:.05em;text-transform:uppercase;color:var(--d-fg-8a90a6);margin:0 0 4px">Where you want to be</p>
+        <p class="resp-comment" style="margin:0">{{ profile['aspiration_mid'] }}</p>
+      </div>
+      {% endif %}
+      {% if profile['strengths'] %}
+      <div>
+        <p class="k" style="font-size:.72rem;font-weight:700;letter-spacing:.05em;text-transform:uppercase;color:var(--d-fg-8a90a6);margin:0 0 4px">What you're building on</p>
+        <p class="resp-comment" style="margin:0">{{ profile['strengths'] }}</p>
+      </div>
+      {% endif %}
+    </div>
+    {% endif %}
+  </div>
+</div>
+
+{# ---- the record itself ------------------------------------------------ #}
+<div class="admin-card" style="margin-top:16px">
+  <div class="dash-card-head">
+    <div class="t">
+      <svg class="dash-ico" viewBox="0 0 24 24" aria-hidden="true">
+        <circle cx="12" cy="12" r="9"></circle><path d="M12 7v5l3 2"></path>
+      </svg>
+      <h2 style="margin:0;font-size:1.02rem">Cycle by cycle</h2>
+    </div>
+    {% set rated = record | selectattr('overall') | list %}
+    {% if rated | length > 1 %}
+    {# The trajectory is the argument for reading downward, so it's drawn once:
+       area fill, faint baseline, latest point marked. Oldest on the left, so
+       it reads left-to-right in time even though the table is newest-first. #}
+    {% set vals = (rated | map(attribute='overall') | map(attribute='value') | list) | reverse | list %}
+    {% set lo = vals | min %}{% set hi = vals | max %}
+    {% set span = (hi - lo) if (hi - lo) > 0 else 1 %}
+    <div class="dash-spark">
+      <svg width="118" height="34" viewBox="0 0 118 34" role="img"
+           aria-label="Performance rating across {{ vals | length }} cycles">
+        <line x1="0" y1="30.5" x2="118" y2="30.5" stroke="var(--d-fg-e4e7ef)" stroke-width="1"></line>
+        <polyline fill="none" stroke="var(--navy)" stroke-width="2"
+                  stroke-linecap="round" stroke-linejoin="round"
+                  points="{% for v in vals %}{{ (6 + loop.index0 * (106 / ((vals|length - 1) if vals|length > 1 else 1))) | round(1) }},{{ (26 - ((v - lo) / span) * 19) | round(1) }} {% endfor %}"></polyline>
+        <circle cx="112" cy="{{ (26 - ((vals[-1] - lo) / span) * 19) | round(1) }}" r="3.4"
+                fill="var(--navy)" stroke="var(--on-fill)" stroke-width="2"></circle>
+      </svg>
+      <span class="cap">latest<b>{{ '%.2f' | format(rated[0]['overall']['value']) if rated[0]['overall']['mechanism'] == 'A' else '%.1f%%' | format(rated[0]['overall']['value']) }}</b></span>
+    </div>
+    {% endif %}
+  </div>
+  <div class="dash-card-body">
+    {% if record %}
+    <div class="table-scroll">
+      <table class="admin-table dash-record">
+        <thead><tr>
+          <th style="padding-left:16px">Cycle</th>
+          <th>Performance</th>
+          <th>Potential</th>
+          <th>Talent status</th>
+          <th>Development plan</th>
+          {# Stated, not hidden: neither has a data source in the system yet. #}
+          <th class="dash-nosrc">Training<span>no source yet</span></th>
+          <th class="dash-nosrc">Movement<span>no source yet</span></th>
+        </tr></thead>
+        <tbody>
+          {% for r in record %}
+          <tr class="{{ 'is-now' if r['open'] else 'is-done' }}">
+            <td class="dash-per">{% if not r['open'] or r['final_pm'] or r['band'] or r['talent'] %}<a href="{{ url_for('dashboard', record=(r['period_id'] or r['cycle_id'])) }}" title="Open {{ r['name'] }}">{{ r['name'] }}</a>{% else %}{{ r['name'] }}{% endif %}
+              <span class="st">{% if r['open'] %}In progress{% elif r['closed_on'] %}Closed {{ r['closed_on'] }}{% else %}Closed{% endif %}</span>
+            </td>
+            {# A past cycle is its FINAL band after calibration, once released -- never its KPI table, which shows results
+               that differ from the calibrated outcome (Chris, 2026-10-08). This cycle stops at the line manager's level. #}
+            <td>
+              {%- if not r['open'] -%}
+                {%- if r['final_pm'] %}<span class="potential-pill" data-band="{{ r['final_pm'] }}">{{ label_names[r['final_pm']] if r['final_pm'] in label_names else r['final_pm'] }}</span>
+                {%- elif r['talent'] and r['talent']['imported'] %}<span class="dash-dash" title="No performance band was recorded that year (before OneHR)">&mdash;</span>
+                {%- else %}<span class="dash-dash">Not released</span>{% endif -%}
+              {%- else -%}
+              {%- if r['kpi_url'] %}<button type="button" class="dash-open rec-report-btn" data-kind="kpi"
+                      data-url="{{ url_for('performance_summary', period=r['period_id']) }}"
+                      data-full="{{ r['kpi_url'] }}"
+                      title="View your KPIs for {{ r['name'] }}">{% endif -%}
+              {%- if r['overall'] -%}
+                <strong>{{ '%.2f' | format(r['overall']['value']) if r['overall']['mechanism'] == 'A' else '%.1f%%' | format(r['overall']['value']) }}</strong>
+                <span class="potential-pill" data-band="{{ r['overall']['label'] }}">{{ label_names[r['overall']['label']] }}</span>
+              {%- else -%}<span class="dash-dash">&mdash;</span>{%- endif -%}
+              {%- if r['kpi_url'] %}</button>{% endif -%}
+              {%- if r['final_pm'] %}<span class="rec-final">Final <span class="potential-pill" data-band="{{ r['final_pm'] }}">{{ label_names[r['final_pm']] if r['final_pm'] in label_names else r['final_pm'] }}</span></span>{% endif -%}
+              {%- endif -%}
+            </td>
+            <td>
+              {#- A pop-out, not a trip into the Feedback module: reading an old
+                  season is a glance, and navigating away loses your place in
+                  the record. See _record_report_modal.html. -#}
+              {%- if r['report_url'] -%}
+                <button type="button" class="dash-open rec-report-btn"
+                        data-url="{{ url_for('my_report_summary', cycle=r['cycle_id']) }}"
+                        data-full="{{ r['report_url'] }}"
+                        title="View your feedback report for {{ r['name'] }}">
+                  {%- if r['band'] %}<span class="potential-pill" data-band="{{ r['band'] }}">{{ r['band'] }}</span>
+                  {%- else %}<span class="rec-report-txt">View report</span>{% endif -%}
+                </button>
+              {%- elif r['band'] -%}<span class="potential-pill" data-band="{{ r['band'] }}">{{ r['band'] }}</span>
+              {%- elif r['talent'] and r['talent']['imported'] -%}<span class="dash-dash" title="No potential band was recorded that year (before OneHR)">&mdash;</span>
+              {%- else -%}<span class="dash-dash">Not released</span>{%- endif -%}
+            </td>
+            <td>
+              {%- if r['talent'] -%}<span class="tcat-pill tbox-cat-{{ r['talent']['slug'] }}"{% if r['talent']['imported'] %} title="From Group People's records before OneHR"{% endif %}>{{ r['talent']['name'] }}</span>
+              {%- else -%}<span class="dash-dash">Not released</span>{%- endif -%}
+            </td>
+            <td>
+              {%- if r['idp_url'] -%}<a href="{{ r['idp_url'] }}">{{ r['goals'] }} goal{{ '' if r['goals'] == 1 else 's' }}</a>
+              {%- else -%}<span class="dash-dash">&mdash;</span>{%- endif -%}
+            </td>
+            <td class="dash-dash">&mdash;</td>
+            <td class="dash-dash">&mdash;</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% if record | length == 1 %}
+    <p class="muted small" style="margin:12px 0 0">
+      This is your first cycle. Once it closes, the next one sits below it and
+      you'll be able to read your record downward.
+    </p>
+    {% endif %}
+    {% else %}
+    <p class="muted small" style="margin:0">
+      Nothing here yet. Your record starts with your first completed review cycle.
+    </p>
+    {% endif %}
+  </div>
+</div>
+
+{% include "_record_popout.html" %}
+
+{% endblock %}

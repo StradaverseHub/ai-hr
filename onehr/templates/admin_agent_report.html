@@ -1,0 +1,24 @@
+{% extends "base.html" %}
+{% block title %}{{ rep.title }}{% endblock %}
+{% block body %}
+{# A report the Admin Agent built (2026-10-10), as a page: built again from its parameters on every open, in this
+   admin's scope -- so it is today's data, never a stored copy. #}
+<div class="page-head">
+  <div>
+    <p class="adm-cal-eyebrow"><span class="adm-agent-mark is-sm" aria-hidden="true">&#10022;</span> Built by the Admin Agent</p>
+    <h1>{{ rep.title }}</h1>
+    <p class="muted">{{ rep.total | thousands }} row{{ '' if rep.total == 1 else 's' }}, from today's data and only what
+      you can see.</p>
+  </div>
+  <div class="page-head-right"><a class="adm-rep-dl" href="{{ xlsx }}">Download Excel</a></div>
+</div>
+<section class="admin-card">
+  {% if rep.rows %}
+  <div class="table-scroll table-scroll-capped"><table class="admin-table">
+    <thead><tr>{% for c in rep.columns %}<th>{{ c }}</th>{% endfor %}</tr></thead>
+    <tbody>{% for r in rep.rows[:2000] %}<tr>{% for v in r %}<td>{{ v }}</td>{% endfor %}</tr>{% endfor %}</tbody>
+  </table></div>
+  {% if rep.total > 2000 %}<p class="muted small">The first 2,000 rows; the Excel file has all {{ rep.total | thousands }}.</p>{% endif %}
+  {% else %}<p class="muted pp-none">Nothing matches: the report is empty for what you can see.</p>{% endif %}
+</section>
+{% endblock %}

@@ -1,0 +1,170 @@
+{% extends "base.html" %}
+{% block title %}Everyone's reminder{% endblock %}
+{% from "_adm_panel.html" import list_peek %}
+{% block body %}
+{# Email › Schedule › Everyone's reminder (canvas [design canvas link removed], board "Everyone's
+   reminder, set up in sentences"; was Cycle › Reminders): when it goes, as four sentences (the day a part opens, then a
+   repeat until each part closes or a date, a last call before a part closes, the time), the templates it uses (edited on
+   Email › Emails and templates), who is waiting now (counted in the background), and every day it would send (right).
+   The super admin's only, as the whole Email menu is (Chris, 2026-10-24). #}
+{% set ro = not is_super %}
+{% set saved_before = rules.days_before | reject('in', before_opts | map(attribute=0) | list) | list %}
+{% set custom_every = rules.every_days and rules.every_days not in (freqs | map(attribute=0) | list) %}
+{% set until_date = rules.every_from or rules.every_to %}
+<div class="rm eml">
+  {% include "_reminder_tabs.html" %}
+  <p class="adm-lede">One email a person a day, listing everything waiting on them in the parts open that day, whatever roles
+    they hold{% if scope %}. You see and send for {{ scope }}{% endif %}.
+    {% if not status['configured'] %}<span class="rm-off">Email isn't set up on this server, so nothing is sent from here.</span>{% endif %}</p>
+
+  <div class="eml-grid">
+    <div class="eml-main">
+      <section class="admin-card eml-card" aria-labelledby="rm-when-h">
+        <form method="post" id="rm-rules" class="eml-when"
+              data-confirm="Save when everyone's reminder goes? If “Sends on its own” is on, everyone with something waiting is emailed on these rules from the next send day; if it's off, nothing goes out unless someone presses Send now. Whether their line manager is copied is saved with it. You can change it again."
+              data-confirm-title="Save when it goes?" data-confirm-ok="Save">
+          <input type="hidden" name="action" value="save_schedule">
+          <div class="eml-when-h">
+            <h2 id="rm-when-h">When it goes</h2>
+            <label class="switch eml-own"><input type="checkbox" name="enabled" {{ 'checked' if rules.enabled }} {{ 'disabled' if ro }}>
+              <span class="track" aria-hidden="true"></span><span class="switch-label">Sends on its own</span></label>
+          </div>
+          <fieldset {{ 'disabled' if ro }}>
+            <legend class="sr-only">The rules</legend>
+            <div class="eml-sent"><span class="eml-step" aria-hidden="true">1</span>
+              <label class="eml-tick"><input type="checkbox" name="on_open" {{ 'checked' if rules.on_open }}> On the day a part opens</label>
+              <span class="muted small">everyone it opens for, that morning</span></div>
+            <div class="eml-sent"><span class="eml-step" aria-hidden="true">2</span>
+              <span>Then remind</span>
+              <select name="every_days" id="rm-every" class="eml-sel" aria-label="How often">
+                {% for n, words in freqs %}<option value="{{ n }}" {{ 'selected' if (rules.every_days or 0) == n }}>{{ words }}</option>{% endfor %}
+                {% if custom_every %}<option value="{{ rules.every_days }}" selected>every {{ rules.every_days }} days</option>{% endif %}
+              </select>
+              <span class="eml-until" id="rm-until-w">until
+                <select name="until" id="rm-until" class="eml-sel" aria-label="Until">
+                  <option value="close" {{ 'selected' if not until_date }}>each part closes</option>
+                  <option value="date" {{ 'selected' if until_date }}>dates I pick</option>
+                </select></span>
+              <span class="eml-range" id="rm-range">from <input type="date" name="range_from" value="{{ rules.every_from or '' }}" class="eml-sel" aria-label="First day it repeats">
+                to <input type="date" name="range_to" value="{{ rules.every_to or '' }}" class="eml-sel" aria-label="Last day it repeats"></span>
+            </div>
+            <div class="eml-sent"><span class="eml-step" aria-hidden="true">3</span>
+              <span>Also, before a part closes:</span>
+              {% for n, words in before_opts %}<label class="eml-tick"><input type="checkbox" name="day_before" value="{{ n }}" {{ 'checked' if n in rules.days_before }}> {{ words }}</label>{% endfor %}
+              {% for n in saved_before %}<input type="hidden" name="day_before" value="{{ n }}">{% endfor %}
+              {% if saved_before %}<span class="muted small">and {{ saved_before | join(', ') }} days before, kept as saved</span>{% endif %}
+              <span class="muted small" id="rm-covered" {{ 'hidden' if rules.every_days != 1 }}>already covered by every day</span>
+            </div>
+            <div class="eml-sent"><span class="eml-step" aria-hidden="true">4</span>
+              <span>At</span>
+              <input type="time" name="send_time" value="{{ rules.send_time }}" step="900" class="eml-sel eml-time" aria-label="Send at">
+              <span class="muted small">Malaysia time{% if waves.on %}, in waves of {{ waves.size | thousands }} every {{ waves.gap }} minutes{% endif %}</span>
+            </div>
+            <div class="eml-sent">
+              <label class="eml-tick"><input type="checkbox" name="cc_lm" {{ 'checked' if rules.cc_lm }}> Copy their line manager</label>
+              <span class="muted small">only while their own part or 360 ratings are still waiting; never the Executive Chairman or a BG CEO</span>
+            </div>
+          </fieldset>
+          <p class="small rm-note rm2-cad{{ ' is-warn' if cadence == 'daily' and rules.send_time != '09:00' }}">
+            {% if cadence == 'often' %}The server checks every 15 minutes and sends at this time, at most once a day.
+            {% elif cadence == 'daily' %}{% if rules.send_time != '09:00' %}The server still checks once a day, at 09:00, so this time takes effect once its 15-minute timer is installed.{% else %}The server checks once a day, at 09:00.{% endif %}
+            {% else %}This server has no reminder timer, so nothing goes out on its own here.{% endif %}</p>
+        </form>
+      </section>
+
+      <section class="admin-card eml-card" aria-labelledby="rm-words-h">
+        <div class="eml-card-h"><h2 id="rm-words-h">The words</h2>
+          {% if is_super %}<a class="btn-link" href="{{ url_for('admin_emails', email='reminder') }}">Edit in Emails and templates</a>{% else %}<span class="muted small">Set by the super admin</span>{% endif %}</div>
+        <div class="eml-words">
+          {% for t in words.templates %}
+          <span><span class="eml-tpl{{ ' is-dated' if not t.usual and t.mode == 'dates' }}">{{ t.name }}</span>{% if t.in_use %} <span class="muted small">· in use today</span>{% endif %}</span>
+          <span class="small">{{ 'every other day (the usual one)' if t.usual else t.when ~ (' · over' if t.past else '') }}</span>
+          {% endfor %}
+        </div>
+        <p class="muted small eml-foot">A day no dated template covers uses the usual one. Each person's list of what's waiting, and when it closes, is written by OneHR from what is open that day.</p>
+      </section>
+
+      <section class="admin-card eml-card" id="waiting" data-url="{{ url_for('admin_reminders_waiting') }}" data-optout-list="{{ url_for('admin_list_view', key='email-optout', kind='reminder', fragment=1) }}" aria-labelledby="rm-who-h">
+        <h2 id="rm-who-h">Who gets it</h2>
+        <p class="eml-who-p">Only people with something waiting on them in a part that's open: their own check-in, a 360 to give, their team's reviews, a department review, a calibration. Nobody else.</p>
+        <div id="rm-who-body" class="eml-tiles"><span class="muted small">Counting…</span></div>
+        <p class="small rm-total" id="rm-total">{% if not cycle %}There is no active cycle.{% endif %}</p>
+        <p class="muted small rm-note">{% if next_send %}Next on its own: <b>{{ next_send }}</b>, because {{ next_why | join('; ') }}.{% elif rules.enabled %}No automatic send in the next 90 days: no part opens or closes on a rule's day.{% else %}It doesn't send on its own now.{% endif %}</p>
+        {% if bulk_running %}<p class="rm-off small">A send is running: started by {{ bulk_meta.get('started_by', '?') }} at {{ bulk_meta.get('started_at', '?') }} MYT, {{ bulk_meta.get('total', '?') }} people to check.</p>{% endif %}
+      </section>
+
+      <div class="eml-acts">
+        {% if is_super and status['configured'] %}
+        <form method="post" {% if me_email %}data-confirm="Send yourself the reminder in the template in use today, with “[Test]” in front of the subject? It goes to {{ me_email }} only, addressed to you, with made-up parts and counts." data-confirm-ok="Send the test"
+              {% else %}data-prompt="The address to send the test to (your account has none)" data-prompt-field="test_to" data-confirm-ok="Send the test"{% endif %}>
+          <input type="hidden" name="action" value="test_sample">{% if not me_email %}<input type="hidden" name="test_to" value="">{% endif %}
+          <button type="submit" class="rm2-btn2">Send me a test</button>
+        </form>
+        {% endif %}
+        {% if cycle %}
+        <form method="post" data-confirm="Send the reminder now to everyone{{ ' in ' ~ scope if scope }} with something waiting? Anyone emailed in the last day is skipped.{% if waves.on %} It goes out in waves of {{ waves.size | thousands }}, {{ waves.gap }} minutes apart, the first now.{% endif %}" data-confirm-ok="Send now">
+          <input type="hidden" name="action" value="send_now">
+          <button type="submit" class="rm2-btn2" id="rm-send" {{ 'disabled' if bulk_running or not status['configured'] }}>Send now</button>
+        </form>
+        {% endif %}
+        {% if is_super %}<button type="submit" class="primary" form="rm-rules">Save</button>{% endif %}
+      </div>
+    </div>
+
+    <aside class="admin-card eml-glance" aria-labelledby="rm-sends-h">
+      <h2 id="rm-sends-h">What this sends</h2>
+      {% if plan %}
+      <p class="muted small">From the calendar, as saved{% if not rules.enabled %}, if it were on{% endif %}. {{ plan | length }} line{{ '' if plan | length == 1 else 's' }}, {{ plan[0].day.split(' – ')[0] }} to {{ plan[-1].day.split(' – ')[-1] }}, at {{ rules.send_time }}.</p>
+      {% for r in plan %}
+      <div class="eml-day"><b>{{ r.day }}</b><span><span class="eml-tpl{{ ' is-dated' if r.dated }}">{{ r.tpl or 'OneHR’s own words' }}</span> {{ r.words | lower if r.kind == 'every' else r.words }}</span></div>
+      {% endfor %}
+      {% else %}
+      <p class="muted small">{% if not cycle %}There is no active cycle.{% else %}No send day: give the parts their dates on Cycle › Calendar, or choose a rule.{% endif %}</p>
+      {% endif %}
+    </aside>
+  </div>
+</div>
+<script>
+(function () {
+  // the sentences follow what is picked: no repeat hides "until", "dates I pick" shows the dates
+  var every = document.getElementById('rm-every'), until = document.getElementById('rm-until');
+  var untilW = document.getElementById('rm-until-w'), range = document.getElementById('rm-range'), covered = document.getElementById('rm-covered');
+  function sync() {
+    var none = every.value === '0', dates = !none && until.value === 'date';
+    untilW.hidden = none; until.disabled = none || every.closest('fieldset').disabled;
+    range.hidden = !dates;
+    range.querySelectorAll('input').forEach(function (i) { i.disabled = !dates || every.closest('fieldset').disabled; });
+    covered.hidden = every.value !== '1';
+  }
+  if (every && until) { every.addEventListener('change', sync); until.addEventListener('change', sync); sync(); }
+
+  // who's waiting, counted in the background, a tile a role
+  var card = document.getElementById('waiting');
+  if (!card) return;
+  var body = document.getElementById('rm-who-body'), total = document.getElementById('rm-total');
+  function esc(s) { return String(s).replace(/[&<>"]/g, function (c) { return {'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;'}[c]; }); }
+  function draw(d) {
+    var w = d.waiting;
+    if (w) {
+      body.innerHTML = w.roles.map(function (r) {
+        return '<div class="eml-tile" title="' + esc(r.what) + '"><span>' + esc(r.label) + '</span><b>' + r.n.toLocaleString() + '</b></div>';
+      }).join('');
+      total.innerHTML = 'One email each to <b>' + w.total.toLocaleString() + '</b> ' + (w.total === 1 ? 'person' : 'people') +
+        ' if it went now.' + (w.opted_out ? ' <a class="oo-lnk" href="#" data-list-open="' + esc(card.getAttribute('data-optout-list')) + '">' +
+          w.opted_out.toLocaleString() + ' opted out &rsaquo;</a> get none.' : '') +
+        (w.no_email ? ' ' + w.no_email + ' have no email on file.' : '') +
+        (w.at ? ' <span class="muted">Counted at ' + esc(w.at.slice(11)) + (d.counting ? ', recounting…' : '') + '</span>' : '');
+    } else {
+      body.innerHTML = '<span class="muted small">Counting everyone who has something waiting… this takes a minute.</span>';
+    }
+    if (d.counting) setTimeout(poll, 4000);
+  }
+  function poll() {
+    fetch(card.getAttribute('data-url'), {credentials: 'same-origin'}).then(function (r) { return r.json(); })
+      .then(draw).catch(function () { body.innerHTML = '<span class="muted small">Couldn\'t count just now. Reload to try again.</span>'; });
+  }
+  poll();
+})();
+</script>
+{% if is_super %}{{ list_peek() }}{% endif %}
+{% endblock %}

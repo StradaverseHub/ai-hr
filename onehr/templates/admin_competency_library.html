@@ -1,0 +1,513 @@
+{% extends "base.html" %}
+{% from "_adm_panel.html" import panel %}
+{% block title %}Competency library{% endblock %}
+{% block body %}
+{# Competency > Library (2026-10-18, the libraries canvas boards 7 and 8): admin_competency_library. The tree is every
+   job by business group (or job family first); the right side, one job's five and its specialisation's ladder; a
+   competency opens in the side panel with its levels and every job using it. The super admin edits (and, 6 Nov 2026,
+   adds a job, corrects its title and scope, retires it); a BG or unit admin proposes a new competency for a job. #}
+{% set qs = {'by': by if by != 'bg' else None, 'q': q or None} %}
+<p class="adm-crumb"><a href="{{ url_for('admin_module_settings', key='competency') }}">Competency</a> &rsaquo; Library</p>
+<div class="adm-headrow">
+  <p class="adm-lede">Every job (job code and grade) carries five competencies at the level it needs now, and the same
+    five one level up. A job held in more than one business group is one profile: an edit applies everywhere it is
+    held.</p>
+</div>
+<nav class="adm-tabs kl-tabs" aria-label="Competency library">
+  <a class="is-active" href="{{ url_for('admin_competency_library') }}">Library</a>
+  <a href="{{ url_for('admin_competency_catalogue') }}">Catalogue</a>
+  <a href="{{ url_for('admin_competency_requests') }}">{{ 'Requests' if sup else 'My proposals' }} · {{ n_wait }}</a>
+</nav>
+
+<form method="get" class="kl-filters cl-filters" role="search">
+  <span class="adm-frow-pills" role="group" aria-label="Arrange the jobs">
+    <a class="adm-frow-pill{{ ' is-on' if by == 'bg' }}" href="{{ url_for('admin_competency_library', job=job.id if job else None, q=q or None) }}">By business group</a>
+    <a class="adm-frow-pill{{ ' is-on' if by == 'jf' }}" href="{{ url_for('admin_competency_library', by='jf', job=job.id if job else None, q=q or None) }}">{{ 'All groups, job family first' if sup else 'Job family first' }}</a>
+  </span>
+  {% if by != 'bg' %}<input type="hidden" name="by" value="{{ by }}">{% endif %}
+  {% if sup %}<a class="wiz-btn cl-add" href="{{ url_for('admin_competency_library', panel='addjob', job=job.id if job else None, g=g or None, **qs) }}"><span aria-hidden="true">+</span> Add a job</a>{% endif %}
+  <label class="kl-q"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="11" cy="11" r="7"></circle><path d="m20 20-3.5-3.5"></path></svg>
+    <input type="search" name="q" value="{{ q }}" placeholder="Find a job by title or job code" aria-label="Find a job" autocomplete="off" aria-autocomplete="list" aria-expanded="false" data-suggest="jobs" data-suggest-src="library" data-suggest-url="{{ url_for('search_suggest') }}" data-no-qin="jobs, not people"></label>
+  <span class="muted small">{{ n_jobs }} job{{ 's' if n_jobs != 1 }}</span>
+</form>
+
+<div class="kl-grid cl-grid">
+  <section class="admin-card kl-tree cl-tree" aria-label="The jobs">
+    {% for b in tree %}
+      {% if by == 'bg' %}
+      {% set b_open = q or (job and b.bg == g) %}
+      {% if not b_open %}
+      {# a closed group is a link: its jobs render only once it's opened (the page stays light with 600 jobs) #}
+      <a class="kl-tn cl-bgl" href="{{ url_for('admin_competency_library', job=b.fams[0].specs[0].jobs[0].id, g=b.bg or '-', **qs) }}"><span>{{ display_bg(b.bg) if b.bg else 'Held by nobody yet' }}</span><span class="kl-n">{{ b.n }} job{{ 's' if b.n != 1 }}</span></a>
+      {% else %}
+      <details class="cl-bg" open>
+        <summary class="kl-tn"><span>{{ display_bg(b.bg) if b.bg else 'Held by nobody yet' }}</span><span class="kl-n">{{ b.n }} job{{ 's' if b.n != 1 }}</span></summary>
+        <div class="kl-sub">
+      {% endif %}
+      {% endif %}
+      {% if by != 'bg' or b_open %}
+      {% for f in b.fams %}
+        {% set f_open = job and job.sub == f.code and (by != 'bg' or b.bg == g) %}
+        <details class="cl-fam"{{ ' open' if q or f_open }}>
+          <summary class="kl-tn kl-tn2"><span>{{ f.name }}</span><span class="kl-n">{{ f.n }}</span></summary>
+          {% for sp in f.specs %}
+          {% set s_open = f_open and job.spec == sp.code %}
+          <details class="cl-spec"{{ ' open' if q or s_open }}>
+            <summary class="kl-tn cl-tn3"><span>{{ sp.name }}</span><span class="kl-n">{{ sp.jobs | length }}</span></summary>
+            {% for p in sp.jobs %}
+            <a class="cl-job{{ ' is-on' if job and p.id == job.id and (by != 'bg' or b.bg == g) }}" href="{{ url_for('admin_competency_library', job=p.id, g=b.bg or None, **qs) }}"{% if job and p.id == job.id %} aria-current="true"{% endif %}><span title="{{ p.title }}">{{ p.short or p.title }} · JG {{ p.grade }}</span><span class="muted small">{{ p.code }}</span></a>
+            {% endfor %}
+          </details>
+          {% endfor %}
+        </details>
+      {% endfor %}
+      {% endif %}
+      {% if by == 'bg' and b_open %}</div></details>{% endif %}
+    {% else %}
+      <p class="muted pp-pad">{% if q %}No job matches “{{ q }}”. <a href="{{ url_for('admin_competency_library', by=by if by != 'bg' else None) }}">Clear it</a>.{% else %}No jobs with competencies yet: the job architecture's profiles load here.{% endif %}</p>
+    {% endfor %}
+  </section>
+
+  <section class="admin-card cl-jobcard" aria-label="The job">
+    {% if job %}
+    <span class="muted small">{{ job.sub_name }}{% if job.spec_name and job.spec_name != job.sub_name %} &rsaquo; {{ job.spec_name }}{% endif %} · {{ job.code }}</span>
+    <div class="cl-jhead">
+      <div class="cl-jtitle">
+        <b>{{ job.title }} · JG {{ job.grade }}</b>
+        <span class="muted small">{{ job.people }} {{ 'person' if job.people == 1 else 'people' }}{% if job.bgs | length > 1 %} · held in {% for bg_, n_ in job.bgs | dictsort(by='value', reverse=true) %}{{ display_bg(bg_) or '—' }} ({{ n_ }}){{ ' and ' if loop.revindex == 2 else (', ' if not loop.last) }}{% endfor %}: one profile for all{% elif job.bgs %} · held in {{ display_bg((job.bgs | list)[0]) }}{% else %} · nobody holds it now{% endif %}</span>
+      </div>
+      <div class="cl-jacts">
+        <span class="pp-chip{{ ' is-ok' if job.status != 'draft' }}">{{ 'Draft · with P&R for review' if job.status == 'draft' else 'Signed off by P&R' }}</span>
+        {% if job.admin_at %}<span class="pp-chip" title="Changed in OneHR on {{ job.admin_at | myt_day }}. It is on P&amp;R's list for their next job architecture file.">Changed in OneHR</span>{% endif %}
+        {% if job.target %}<span class="pp-chip" title="A grade nobody holds yet, added to complete the job's ladder: its five are the grade below's, at this grade's level">Target role</span>{% endif %}
+        {% if by == 'bg' %}{% for bg_ in job.bgs | sort if bg_ != g and bg_ %}<span class="pp-chip">Also in {{ display_bg(bg_) }}</span>{% endfor %}{% endif %}
+        {% if sup %}
+        <a class="wiz-btn" href="{{ url_for('admin_competency_library', job=job.id, g=g or None, panel='fixjob', **qs) }}">Correct the job</a>
+        <a class="wiz-btn" href="{{ url_for('admin_competency_library', job=job.id, g=g or None, panel='five', **qs) }}">Edit the five</a>
+        {% elif g %}
+        <a class="wiz-btn" href="{{ url_for('admin_competency_library', job=job.id, g=g or None, panel='propose', **qs) }}" data-panel-open="propose">Propose a competency</a>
+        {% endif %}
+      </div>
+    </div>
+    {% if job.five %}
+    <div class="cl-row cl-head" role="row"><span>Competency</span><span>Source</span><span>Now &rarr; next</span><span></span></div>
+    {% for f in job.five %}
+    <div class="cl-row{{ ' is-open' if opened and opened.sk.key == f.key }}">
+      <span class="cl-name"><b>{{ f.title }}</b><span class="muted small">{{ f.category }}</span></span>
+      <span><span class="cl-src{{ ' is-ch' if f.source == 'Chin Hin' }}">{{ f.source }}</span></span>
+      <span class="cl-lv">L{{ f.now }} &rarr; {% if f.next %}L{{ f.next }}{% else %}<span class="muted">top</span>{% endif %}</span>
+      <a class="small" href="{{ url_for('admin_competency_library', job=job.id, g=g or None, skill=f.key, panel='skill', **qs) }}">Open</a>
+    </div>
+    {% endfor %}
+    <p class="muted small cl-legend"><b>Now</b> the level the job needs now · <b>next</b> the next level, its future ·
+      <span class="cl-src is-ch">Chin Hin</span> written in SkillsFuture's shape where SSG has no good fit, coded CHG-</p>
+    {% else %}
+    <p class="muted pp-pad">No competencies on this job yet.{% if sup %} Add them with Edit the five.{% endif %}</p>
+    {% endif %}
+    {% if ladder | length > 1 %}
+    <div class="cl-ladder">
+      <span class="wiz-k">The ladder in this specialisation</span>
+      <div class="cl-rungs">
+        {% for p in ladder %}<a class="cl-rung{{ ' is-on' if p.id == job.id }}" href="{{ url_for('admin_competency_library', job=p.id, g=g or None, **qs) }}" title="{{ p.title }}">JG {{ p.grade }} · {{ ('L%d' % p.level) if p.level else '—' }}</a>{% endfor %}
+      </div>
+      <span class="muted small">{{ ladder_note }}</span>
+    </div>
+    {% endif %}
+    {% else %}
+    <p class="muted pp-pad">Pick a job on the left.</p>
+    {% endif %}
+  </section>
+</div>
+
+{# a competency opened (board 8): its levels, the jobs that use it, and, for the super admin, Edit #}
+{% if opened %}
+{% set o = opened %}
+{% set srcs = o.rows | map(attribute='source') | list %}
+{% call panel("skill", "Competency · " ~ o.sk.category, o.sk.title, ('SkillsFuture throughout' if 'Chin Hin' not in srcs else ('Written by Chin Hin in SkillsFuture\'s shape' if 'SkillsFuture' not in srcs else 'SkillsFuture, with levels written by Chin Hin')) ~ ' · used by ' ~ o.n_now ~ (' job' if o.n_now == 1 else ' jobs') ~ ' now' ~ ((', ' ~ o.n_next ~ ' more as their next level') if o.n_next else '') ~ ((' · added on ' ~ (o.added | myt_day)) if not o.sk.active and o.added else ''), wide=True, open=True, params="skill edit") %}
+{% if edit %}
+<form method="post" class="adm-panel-form cl-skform" data-confirm="Save {{ o.sk.title }}? It changes for all {{ o.uses | length }} job{{ 's' if o.uses | length != 1 }} that use it, in every business group that holds them. It goes in the trail." data-confirm-ok="Save the competency">
+  <input type="hidden" name="action" value="skill"><input type="hidden" name="key" value="{{ o.sk.key }}">
+  {% if job %}<input type="hidden" name="job" value="{{ job.id }}">{% endif %}
+  <div class="adm-panel-body">
+    <div class="cl-p2">
+      <label>Name<input name="title" value="{{ o.sk.title }}" required maxlength="120"></label>
+      <label data-choose-new-box>Category<select name="category" class="modern-select" data-choose-new data-new-required>
+        <option value="">Not set</option>{% for c in cats %}<option value="{{ c }}" {{ 'selected' if o.sk.category and c | lower == (o.sk.category) | lower }}>{{ c }}</option>{% endfor %}
+        {% if o.sk.category and (o.sk.category) | lower not in cats | map('lower') | list %}<option value="{{ o.sk.category }}" selected>{{ o.sk.category }}</option>{% endif %}
+        <option value="__new__">A new category…</option></select>
+        <input name="category_new" maxlength="120" placeholder="The new category" aria-label="The new category" data-new-input hidden></label>
+    </div>
+    {% for r in o.rows %}
+    <section class="cl-lvedit">
+      <span class="wiz-k">L{{ r.level }} · {{ r.skill_code }}{% if r.source == 'Chin Hin' %} · <span class="cl-src is-ch">Chin Hin</span>{% endif %}</span>
+      <label>What it is at this level<textarea name="desc_{{ r.id }}" rows="2" required maxlength="2000">{{ r.proficiency_description or '' }}</textarea></label>
+      <div class="cl-p2">
+        <label><span>Abilities <span class="muted small">one a line</span></span><textarea name="abil_{{ r.id }}" rows="5">{{ r.abilities | join('\n') }}</textarea></label>
+        <label><span>Knowledge <span class="muted small">one a line</span></span><textarea name="know_{{ r.id }}" rows="5">{{ r.knowledge | join('\n') }}</textarea></label>
+      </div>
+    </section>
+    {% endfor %}
+  </div>
+  <footer class="adm-panel-foot">
+    <a class="btn-link adm-panel-grow" href="{{ url_for('admin_competency_library', job=job.id if job else None, g=g or None, skill=o.sk.key, panel='skill', **qs) }}">Cancel</a>
+    <button type="submit" class="primary">Save the competency</button>
+  </footer>
+</form>
+{% else %}
+<div class="adm-panel-body cl-panel">
+  {% if not o.sk.active %}
+  <p class="wiz-note"><b>Waiting for P&amp;R sign-off.</b> It is in the catalogue but off, so Edit the five doesn't offer it yet. Sign it off here once P&amp;R have approved the wording.{% if o.req %} Proposed by {{ o.req.who or 'an admin' }} for {{ o.req_pl.job_title | proper }}.{% endif %}</p>
+  {% endif %}
+  <section class="cl-psec">
+    <span class="wiz-k">Its levels</span>
+    {% for r in o.rows %}
+    <details class="cl-level"{{ ' open' if loop.first }}>
+      <summary><b>L{{ r.level }}</b> <span class="muted small">{{ r.skill_code }} · {{ r.abilities | length }} abilit{{ 'y' if r.abilities | length == 1 else 'ies' }} · {{ r.knowledge | length }} knowledge item{{ 's' if r.knowledge | length != 1 }}</span>{% if r.source == 'Chin Hin' %} <span class="cl-src is-ch">Chin Hin</span>{% endif %}{% if not r.active %} <span class="pp-chip">Inactive</span>{% endif %}</summary>
+      <p>{{ r.proficiency_description or '' }}</p>
+      {% if r.abilities %}<span class="wiz-k">Abilities</span><ul class="cl-list">{% for x in r.abilities %}<li>{{ x }}</li>{% endfor %}</ul>{% endif %}
+      {% if r.knowledge %}<span class="wiz-k">Knowledge</span><ul class="cl-list">{% for x in r.knowledge %}<li>{{ x }}</li>{% endfor %}</ul>{% endif %}
+    </details>
+    {% endfor %}
+  </section>
+  <section class="cl-psec">
+    <span class="wiz-k">Jobs that use it</span>
+    {% macro use_row(u) %}<a class="cl-use" href="{{ url_for('admin_competency_library', job=u.p.id, **qs) }}"><span>{{ u.p.title }} · JG {{ u.p.grade }}</span><span class="muted small">{% if u.now %}L{{ u.now }} now{% endif %}{% if u.now and u.next %} · {% endif %}{% if u.next %}L{{ u.next }} next{% endif %}</span></a>{% endmacro %}
+    {% for u in o.uses[:12] %}{{ use_row(u) }}{% else %}<p class="muted small">{% if not o.sk.active %}None yet. Once it is signed off, put it on a job with Edit the five.{% else %}No job uses it yet.{% endif %}</p>{% endfor %}
+    {% if o.uses | length > 12 %}
+    <details class="cl-more fold"><summary class="small">{{ o.uses | length - 12 }} more</summary>
+      {% for u in o.uses[12:] %}{{ use_row(u) }}{% endfor %}
+      <button type="button" class="fold-less" data-fold-less>Show less</button>
+    </details>
+    {% endif %}
+  </section>
+</div>
+{% if sup %}
+<footer class="adm-panel-foot">
+  {% set edit_url = url_for('admin_competency_library', job=job.id if job else None, g=g or None, skill=o.sk.key, panel='skill', edit=1, **qs) %}
+  {% if not o.sk.active %}
+  <span class="muted small adm-panel-grow">Sign off only on P&amp;R's approval: it goes in the audit trail.</span>
+  <a class="btn-link" href="{{ edit_url }}">Edit</a>
+  <form method="post" data-confirm="Mark {{ o.sk.title }} as signed off by P&amp;R? It goes into use: you can put it on a job with Edit the five. It goes in the trail." data-confirm-ok="P&amp;R signed it off">
+    <input type="hidden" name="action" value="signoff"><input type="hidden" name="key" value="{{ o.sk.key }}">{% if job %}<input type="hidden" name="job" value="{{ job.id }}">{% endif %}
+    <button type="submit" class="primary">P&amp;R signed it off</button>
+  </form>
+  {% else %}
+  <span class="muted small adm-panel-grow">An edit here changes it for all {{ o.uses | length }} job{{ 's' if o.uses | length != 1 }}, in every business group that holds them.</span>
+  <a class="primary" href="{{ edit_url }}">Edit</a>
+  {% endif %}
+</footer>
+{% endif %}
+{% endif %}
+{% endcall %}
+{% endif %}
+
+{# The five's rows, shared by Edit the five and Add a job (the same pickers): `cur` is the job's five, or none #}
+{% macro five_rows(cur) %}
+<div class="cl-five">
+  <div class="cl-frow cl-fhead"><span>#</span><span>Competency</span><span>Now</span><span>Next</span></div>
+  {% for i in range(1, 6) %}
+  {% set f = cur[i - 1] if cur and cur | length >= i else none %}
+  <div class="cl-frow" data-five-row>
+    <span class="cl-fn">{{ i }}</span>
+    <select name="skill_{{ i }}" class="modern-select" required aria-label="Competency {{ i }}" data-five-skill data-cur="{{ f.key if f else '' }}"><option value="">Choose…</option></select>
+    <select name="level_{{ i }}" class="modern-select" required aria-label="Level now for competency {{ i }}" data-five-level data-cur="{{ f.now if f else '' }}"></select>
+    <span class="cl-fnext muted small" data-five-next>—</span>
+  </div>
+  {% endfor %}
+</div>
+{% endmacro %}
+
+{# Edit the five (super admin, board 7): five competencies at the level the job needs now; the next is one up #}
+{% if five_opts is not none and job and not addjob %}
+{% call panel("five", "Competency library · edit the five", job.title ~ " · JG " ~ job.grade, job.code ~ " · " ~ job.people ~ (" person" if job.people == 1 else " people") ~ ((" in " ~ job.bgs | length ~ " business groups") if job.bgs | length > 1 else ""), wide=True, open=True, params="panel") %}
+<form method="post" class="adm-panel-form" id="cl-five"
+      data-confirm="Change the five for {{ job.title }}, JG {{ job.grade }}?{% if job.bgs | length > 1 %} It is one profile, so it changes in all {{ job.bgs | length }} business groups that hold it.{% endif %}{% if job.status != 'draft' %} P&amp;R signed it off, so it goes back to them as a draft.{% endif %} It goes in the trail."
+      data-confirm-ok="Save the five">
+  <input type="hidden" name="action" value="five"><input type="hidden" name="profile_id" value="{{ job.id }}">
+  {% if by != 'bg' %}<input type="hidden" name="by" value="{{ by }}">{% endif %}
+  <div class="adm-panel-body">
+    <p class="muted small">Each competency at the level the job needs now. The next level is the same competency one level up, where it is written; at L6 there is none.</p>
+    {{ five_rows(job.five) }}
+    {% if act %}
+    <label class="company-opt cl-refresh"><input type="checkbox" name="refresh" value="1" checked>
+      <span>Also give the new five to the {{ holders_now }} {{ 'person' if holders_now == 1 else 'people' }} holding it, for {{ act['name'] }}. Anyone who has started their self-assessment keeps theirs.</span></label>
+    {% endif %}
+    <p class="kpi-scale-msg" data-five-msg hidden></p>
+  </div>
+  <footer class="adm-panel-foot">
+    <a class="btn-link adm-panel-grow" href="{{ url_for('admin_competency_library', job=job.id, g=g or None, **qs) }}">Cancel</a>
+    <button type="submit" class="primary">Save the five</button>
+  </footer>
+</form>
+{% endcall %}
+{% endif %}
+
+{% if five_opts is not none %}
+<script type="application/json" id="cl-five-opts">{{ five_opts | tojson }}</script>
+<script>
+/* The five's pickers (Edit the five and Add a job): each competency select lists the catalogue by category; its level
+   select, the levels that competency has; Next is the level above, where written. Five different competencies before
+   Save. window.clFiveInit(form, onCheck) wires one form and returns {rows, set(i, key, level), dup(), LV}; onCheck, when
+   given, replaces the Save button's own on/off (Add a job has more to check). */
+window.clFiveInit = function (form, onCheck) {
+  var OPTS = JSON.parse(document.getElementById('cl-five-opts').textContent), LV = {};
+  Object.keys(OPTS).forEach(function (cat) { OPTS[cat].forEach(function (o) { LV[o.key] = o.levels; }); });
+  var rows = [].slice.call(form.querySelectorAll('[data-five-row]')), msg = form.querySelector('[data-five-msg]');
+  var save = form.querySelector('.adm-panel-foot button[type="submit"]'), isDup = false;
+  function fill(sel) {
+    Object.keys(OPTS).forEach(function (cat) {
+      var g = document.createElement('optgroup'); g.label = cat;
+      OPTS[cat].forEach(function (o) { var op = document.createElement('option'); op.value = o.key; op.textContent = o.title; g.appendChild(op); });
+      sel.appendChild(g);
+    });
+    if (sel.getAttribute('data-cur') && LV[sel.getAttribute('data-cur')]) sel.value = sel.getAttribute('data-cur');
+  }
+  function levels(row, keep) {
+    var sk = row.querySelector('[data-five-skill]').value, lv = row.querySelector('[data-five-level]');
+    var want = keep || lv.value, have = LV[sk] || [];
+    lv.textContent = '';
+    have.forEach(function (n) { var op = document.createElement('option'); op.value = n; op.textContent = 'L' + n; lv.appendChild(op); });
+    if (have.indexOf(+want) >= 0) lv.value = want;
+    next(row);
+  }
+  function next(row) {
+    var sk = row.querySelector('[data-five-skill]').value, n = +row.querySelector('[data-five-level]').value;
+    var have = LV[sk] || [], out = row.querySelector('[data-five-next]');
+    out.textContent = !sk ? '—' : (n >= 6 ? 'top level' : (have.indexOf(n + 1) >= 0 ? 'L' + (n + 1) : 'L' + (n + 1) + ' not written'));
+  }
+  function check() {
+    var seen = {}, dup = false;
+    rows.forEach(function (r) { var v = r.querySelector('[data-five-skill]').value; if (v) { if (seen[v]) dup = true; seen[v] = 1; } });
+    isDup = dup;
+    msg.textContent = dup ? 'The five must be five different competencies.' : '';
+    msg.hidden = !dup;
+    if (onCheck) onCheck(); else if (save) save.disabled = dup;
+  }
+  rows.forEach(function (r) {
+    var sk = r.querySelector('[data-five-skill]'), lv = r.querySelector('[data-five-level]');
+    fill(sk); levels(r, lv.getAttribute('data-cur'));
+    sk.addEventListener('change', function () { levels(r); check(); });
+    lv.addEventListener('change', function () { next(r); });
+  });
+  check();
+  return {rows: rows, LV: LV, dup: function () { return isDup; },
+          set: function (i, key, lvl) {
+            var r = rows[i], sk = r.querySelector('[data-five-skill]');
+            sk.value = (key && LV[key]) ? key : '';
+            levels(r, lvl); check();
+          }};
+};
+(function () { var f = document.getElementById('cl-five'); if (f) window.clFiveInit(f); })();
+</script>
+{% endif %}
+
+{# Add a job (super admin; canvas boards A2 and A3): where it sits, grade, its code (built, never typed), title, scope, its five #}
+{% if addjob is not none %}
+{% set pre = addjob.pre %}
+{% call panel("addjob", "Competency library · add a job", "Add a job", "A job is a job code at one grade, one profile in every business group that holds it. It starts as a draft with P&R for review.", wide=True, open=True, params="panel aj_spec aj_unit aj_grade aj_title aj_scope") %}
+<form method="post" class="adm-panel-form cl-form" id="cl-addjob" data-confirm="Add this job? It starts as Draft · with P&amp;R for review. Nobody holds it until someone is placed on it." data-confirm-title="Add this job?" data-confirm-ok="Add the job">
+  <input type="hidden" name="action" value="addjob">
+  {% if by != 'bg' %}<input type="hidden" name="by" value="{{ by }}">{% endif %}
+  <div class="adm-panel-body">
+    <div class="cl-p2 cl-p2e">
+      <label>Where it sits <small>Specialisation, from the job architecture</small><select name="spec" class="modern-select" required data-aj-spec></select></label>
+      <label>Unit <small>Only where the specialisation splits by unit</small><select name="unit" class="modern-select" data-aj-unit></select></label>
+    </div>
+    <div class="cl-p3">
+      <label>Job grade <small data-aj-help>JG {{ addjob.gmin }} to JG {{ addjob.gmax }}</small><select name="grade" class="modern-select" required data-aj-grade></select></label>
+      <div class="cl-lbl">Job code <small>Made from the two above</small><span class="cl-ro" data-aj-code>—</span></div>
+      <label>Job title <small>As it should read everywhere</small><input type="text" name="title" required maxlength="120" value="{{ pre.title }}" autocomplete="off" data-aj-title></label>
+    </div>
+    <label>Job scope <small>Optional. Only when one job code holds jobs with different scopes</small><input type="text" name="scope" maxlength="120" value="{{ pre.scope }}" placeholder="e.g. Steam plant" autocomplete="off" data-aj-scope></label>
+    <section class="cl-aj-five">
+      <div class="cl-sechead">
+        <span class="wiz-k">Its five</span>
+        <label class="cl-start">Start from<select class="modern-select" data-aj-start aria-label="Start its five from another job"></select></label>
+      </div>
+      {{ five_rows(none) }}
+      <p class="kpi-scale-msg" data-five-msg hidden></p>
+      <p class="kpi-scale-msg" data-aj-msg hidden></p>
+    </section>
+    <p class="wiz-note">Nobody holds it until a person is placed on it: their page &rsaquo; Competency &rsaquo; Place a job, or Run &rsaquo; Import job codes. It goes on P&amp;R's list for their next job architecture file.</p>
+  </div>
+  <footer class="adm-panel-foot">
+    <a class="btn-link adm-panel-grow" href="{{ url_for('admin_competency_library', job=job.id if job else None, g=g or None, **qs) }}">Cancel</a>
+    <button type="submit" class="primary">Add the job</button>
+  </footer>
+</form>
+<script type="application/json" id="cl-addjob-data">{{ addjob | tojson }}</script>
+<script>
+/* Add a job: the specialisation's units, the grades that exist there, the code built from them (the server builds the
+   real one again), the five started from another job at the same place at the level this grade needs (the ladder:
+   D.need; where that level isn't written, the nearest written), and the confirm box's words kept current. */
+(function () {
+  var form = document.getElementById('cl-addjob'); if (!form) return;
+  var D = JSON.parse(document.getElementById('cl-addjob-data').textContent), P = D.pre || {};
+  var spec = form.querySelector('[data-aj-spec]'), unit = form.querySelector('[data-aj-unit]'), grade = form.querySelector('[data-aj-grade]');
+  var codeOut = form.querySelector('[data-aj-code]'), help = form.querySelector('[data-aj-help]'), start = form.querySelector('[data-aj-start]');
+  var title = form.querySelector('[data-aj-title]'), scope = form.querySelector('[data-aj-scope]'), msg = form.querySelector('[data-aj-msg]');
+  var save = form.querySelector('.adm-panel-foot button[type="submit"]'), dirty = false, chosen = false, five;
+  function opt(sel, v, t) { var o = document.createElement('option'); o.value = v; o.textContent = t; sel.appendChild(o); return o; }
+  function curSpec() { return D.specs.filter(function (s) { return s.code === spec.value; })[0]; }
+  function base() { return unit.value || spec.value; }
+  function bs() { return D.bases[base()] || {grades: [], codes: {}, starts: []}; }
+  D.specs.forEach(function (s) { opt(spec, s.code, s.label); });
+  if (P.spec && D.specs.some(function (s) { return s.code === P.spec; })) spec.value = P.spec;
+  opt(grade, '', 'Choose…');
+  for (var g = D.gmin; g <= D.gmax; g++) opt(grade, g, 'JG ' + g);
+  if (P.grade) grade.value = P.grade;
+  function units(keep) {
+    var s = curSpec(); unit.textContent = '';
+    opt(unit, '', "None: the specialisation's own job");
+    ((s && s.units) || []).forEach(function (u) { opt(unit, u, u); });
+    if (keep) unit.value = keep;
+  }
+  function exists() { var c = bs().codes[grade.value] || []; return !!grade.value && c.indexOf((scope.value || '').trim().toUpperCase()) >= 0; }
+  function starts() {
+    var g = +grade.value, list = bs().starts.slice(), prev = start.value;
+    start.textContent = '';
+    if (!list.length) { opt(start, '', 'No other job here: pick the five yourself'); return; }
+    function rank(x) { var d = x.grade - g; return !g ? Math.abs(d) : (d === 0 ? 0 : (d > 0 ? d : 100 - d)); }
+    list.sort(function (a, b) { return rank(a) - rank(b) || a.id - b.id; });
+    list.forEach(function (x) {
+      var d = x.grade - g, rel = !g ? '' : (d === 0 ? ', same grade' : (d > 0 ? (d === 1 ? ', one level up' : ', ' + d + ' levels up') : (d === -1 ? ', one level down' : ', ' + (-d) + ' levels down')));
+      opt(start, x.id, 'JG ' + x.grade + ' · ' + x.title + (x.scope ? ' (' + x.scope + ')' : '') + rel);
+    });
+    // the nearest grade above, else below (the same grade, another scope, last)
+    var def = list.filter(function (x) { return x.grade > g; })[0] || list.filter(function (x) { return x.grade < g; })[0] || list[0];
+    var pick = !g ? list[0] : def;
+    if (chosen && prev && list.some(function (x) { return String(x.id) === prev; })) start.value = prev; else start.value = pick.id;   // the person's own choice is kept; a default follows the grade
+  }
+  function nearest(levels, want) {
+    if (!levels || !levels.length) return 0;
+    return levels.slice().sort(function (a, b) { return Math.abs(a - want) - Math.abs(b - want) || b - a; })[0];
+  }
+  function apply() {
+    var g = grade.value, s = bs().starts.filter(function (x) { return String(x.id) === start.value; })[0];
+    if (!g || !s) return;
+    var want = D.need[g];
+    for (var i = 0; i < 5; i++) {
+      var f = s.five[i];
+      if (f && five.LV[f.key]) five.set(i, f.key, nearest(five.LV[f.key], want)); else five.set(i, '', 0);
+    }
+  }
+  function words() {
+    if (!five) return '';
+    var s = curSpec(), lv = {}, top = 0, n = 0;
+    five.rows.forEach(function (r) { var v = r.querySelector('[data-five-level]').value; if (v) { lv[v] = (lv[v] || 0) + 1; if (lv[v] > n) { n = lv[v]; top = v; } } });
+    var where = (s ? s.label : '') + (unit.value ? ', unit ' + unit.value : '');
+    return 'Add ' + (title.value.trim() || 'this job') + ' · JG ' + grade.value + ' (' + codeOut.textContent + '), under ' + where + ', with five competencies at L' + (top || '?') +
+      '? It starts as Draft · with P&R for review. Nobody holds it until someone is placed on it.';
+  }
+  function refresh() {
+    if (!five) return;   // clFiveInit calls back once before it returns
+    var ok = !!spec.value && !!grade.value && !!title.value.trim() && !five.dup() && five.rows.every(function (r) { return r.querySelector('[data-five-skill]').value; });
+    var ex = exists(), b = bs(), gs = b.grades;
+    codeOut.textContent = grade.value ? base() + '-' + grade.value : base() + '-…';
+    help.textContent = gs.length ? 'JG ' + gs[0] + ' to ' + gs[gs.length - 1] + ' exist here' : 'No job exists here yet';
+    msg.hidden = !ex;
+    msg.textContent = ex ? codeOut.textContent + ((scope.value || '').trim() ? ' with that scope' : '') + ' is already a job: open it in the Library, or give this one a job scope.' : '';
+    save.disabled = !ok || ex;
+    form.setAttribute('data-confirm', words());
+  }
+  five = window.clFiveInit(form, refresh);
+  units(P.unit); starts(); refresh();
+  if (P.grade) apply();
+  spec.addEventListener('change', function () { units(''); chosen = false; starts(); if (!dirty) apply(); refresh(); });
+  unit.addEventListener('change', function () { chosen = false; starts(); if (!dirty) apply(); refresh(); });
+  grade.addEventListener('change', function () { starts(); if (!dirty) apply(); refresh(); });
+  start.addEventListener('change', function () { chosen = true; dirty = false; apply(); refresh(); });
+  [title, scope].forEach(function (e) { e.addEventListener('input', refresh); });
+  five.rows.forEach(function (r) { r.addEventListener('change', function () { dirty = true; refresh(); }); });
+})();
+</script>
+{% endcall %}
+{% endif %}
+
+{# Correct the job (super admin; canvas board A4): title and scope; the specialisation, grade and code say who holds it, so they are read-only #}
+{% if fixjob and job %}
+{% set fj_sub %}{% if job.bgs %}{{ job.people }} {{ 'person holds' if job.people == 1 else 'people hold' }} it, in {% for bg_, n_ in job.bgs | dictsort(by='value', reverse=true) %}{{ display_bg(bg_) or '—' }} ({{ n_ }}){{ ' and ' if loop.revindex == 2 else (', ' if not loop.last) }}{% endfor %}. A correction applies everywhere it is held.{% else %}Nobody holds it now. A correction applies everywhere it is held.{% endif %}{% endset %}
+{% call panel("fixjob", "Competency library · correct the job", job.title ~ " · JG " ~ job.grade, fj_sub, wide=True, open=True, params="panel") %}
+<form method="post" class="adm-panel-form cl-form" id="cl-fixjob"
+      data-confirm="Save the correction to {{ job.title }}, JG {{ job.grade }} ({{ job.code }})? {{ holders_now }} {{ 'person holds' if holders_now == 1 else 'people hold' }} it now. It applies in every business group that holds it; a different job scope can change who holds it. It goes in the audit trail and on P&amp;R's list, and stays when they load their next job architecture file."
+      data-confirm-title="Save this correction?" data-confirm-ok="Save the correction">
+  <input type="hidden" name="action" value="fixjob"><input type="hidden" name="profile_id" value="{{ job.id }}">
+  {% if by != 'bg' %}<input type="hidden" name="by" value="{{ by }}">{% endif %}
+  <div class="adm-panel-body">
+    <div class="cl-p2 cl-p2e">
+      <label>Job title <small>Reads this way in the Library, Career Plan and development goals</small><input type="text" name="title" required maxlength="120" value="{{ job.title }}" autocomplete="off"></label>
+      <label>Job scope <small>Optional. Empty = everyone on this job code</small><input type="text" name="scope" maxlength="120" value="{{ job.scope }}" placeholder="e.g. Steam plant" autocomplete="off"></label>
+    </div>
+    <section class="cl-aj-five">
+      <span class="wiz-k">Set by where it sits</span>
+      <div class="cl-p3 cl-p3e">
+        <div class="cl-lbl">Specialisation<span class="cl-ro is-plain">{{ job.spec }}{% if job.spec_name and job.spec_name != job.spec %} &middot; {{ job.spec_name }}{% endif %}</span></div>
+        <div class="cl-lbl">Job grade<span class="cl-ro is-plain">JG {{ job.grade }}</span></div>
+        <div class="cl-lbl">Job code<span class="cl-ro is-plain">{{ job.code }}</span></div>
+      </div>
+      <p class="wiz-note">These decide who holds the job: each person's specialisation and their own grade. A wrong one is really a different job, so: <b>Add a job</b> with the right code or grade, place its people on it (their page &rsaquo; Competency &rsaquo; Place a job, or Run &rsaquo; Import job codes), then retire this one.</p>
+    </section>
+    <label>Why it's corrected <small>Required. It goes in the audit trail and on P&amp;R's list</small><textarea name="reason" rows="2" required maxlength="500"></textarea></label>
+    <section class="cl-retire">
+      <div>
+        <span class="wiz-k">Retire the job</span>
+        {% if holders_now %}<span class="muted small">{{ holders_now }} {{ 'person holds' if holders_now == 1 else 'people hold' }} it. Place them on another job first; then it can be retired. Career Plans that aim at it keep it, marked retired.</span>
+        {% else %}<span class="muted small">Nobody holds it. Retiring takes it out of the Library and out of Edit the five; Career Plans that aim at it keep it, marked retired.</span>{% endif %}
+      </div>
+      <button type="submit" form="cl-retire" class="danger" {{ 'disabled' if holders_now }}>Retire the job</button>
+    </section>
+  </div>
+  <footer class="adm-panel-foot">
+    <a class="btn-link adm-panel-grow" href="{{ url_for('admin_competency_library', job=job.id, g=g or None, **qs) }}">Cancel</a>
+    <button type="submit" class="primary">Save the correction</button>
+  </footer>
+</form>
+{# the retire form sits outside the correction form (forms don't nest); its button is in the panel above (form="cl-retire") #}
+<form method="post" id="cl-retire" hidden
+      data-confirm="Retire {{ job.title }}, JG {{ job.grade }} ({{ job.code }})? Nobody holds it. It leaves the Library and Edit the five, and a retired job's code can't be used again. A Career Plan that aims at it keeps it, marked retired. It goes in the audit trail and on P&amp;R's list."
+      data-confirm-title="Retire this job?" data-confirm-ok="Retire the job" data-confirm-tone="danger"
+      data-confirm-reason="Why it is retired (it goes in the audit trail)" data-confirm-reason-max="500">
+  <input type="hidden" name="action" value="retire"><input type="hidden" name="profile_id" value="{{ job.id }}">
+  {% if by != 'bg' %}<input type="hidden" name="by" value="{{ by }}">{% endif %}
+</form>
+{% endcall %}
+{% endif %}
+
+{# a BG or unit admin proposes a new competency for this job (the Requests board) #}
+{% if not sup and job and g %}
+{% set lv_now = job.level or 3 %}
+{% call panel("propose", "Competency library · propose", "Propose a competency", "For " ~ job.title ~ " · JG " ~ job.grade ~ ". The super admin decides; approved, it is added as a Chin Hin competency, inactive until P&R sign it off.", wide=True) %}
+<form method="post" class="adm-panel-form" data-viewonly-ok
+      data-confirm="Send this competency to the super admin? They decide; you'll see the answer under My proposals, and by email."
+      data-confirm-ok="Send">
+  <input type="hidden" name="action" value="propose"><input type="hidden" name="profile_id" value="{{ job.id }}">
+  <div class="adm-panel-body">
+    <div class="cl-p2">
+      <label>Name<input name="title" required maxlength="120" placeholder="e.g. Showroom Sales Conversion"></label>
+      <label data-choose-new-box>Category<select name="category" class="modern-select" data-choose-new data-new-required required>
+        <option value="">Choose…</option>{% for c in cats %}<option value="{{ c }}" {{ 'selected' if (job.five[0].category if job.five else '') and c | lower == ((job.five[0].category if job.five else '')) | lower }}>{{ c }}</option>{% endfor %}
+        {% if (job.five[0].category if job.five else '') and ((job.five[0].category if job.five else '')) | lower not in cats | map('lower') | list %}<option value="{{ (job.five[0].category if job.five else '') }}" selected>{{ (job.five[0].category if job.five else '') }}</option>{% endif %}
+        <option value="__new__">A new category…</option></select>
+        <input name="category_new" maxlength="120" placeholder="The new category" aria-label="The new category" data-new-input hidden></label>
+    </div>
+    <p class="muted small">Written in SkillsFuture's shape: at each level, what it is, the abilities it shows and the knowledge behind it.</p>
+    {% for lvl in ([lv_now, lv_now + 1] if lv_now < 6 else [lv_now]) %}
+    <section class="cl-lvedit">
+      <span class="wiz-k">L{{ lvl }} · {{ 'the level the job needs now' if loop.first else 'the next level' }}</span>
+      <label>What it is at this level<textarea name="desc_{{ lvl }}" rows="2" required maxlength="2000"></textarea></label>
+      <div class="cl-p2">
+        <label><span>Abilities <span class="muted small">one a line</span></span><textarea name="abil_{{ lvl }}" rows="4" required></textarea></label>
+        <label><span>Knowledge <span class="muted small">one a line</span></span><textarea name="know_{{ lvl }}" rows="4" required></textarea></label>
+      </div>
+    </section>
+    {% endfor %}
+    <label>Why it's needed<textarea name="reason" rows="2" required maxlength="500" placeholder="What this job needs that no competency in the catalogue covers"></textarea></label>
+  </div>
+  <footer class="adm-panel-foot">
+    <button type="button" class="btn-link adm-panel-grow" data-panel-close>Cancel</button>
+    <button type="submit" class="primary">Send to the super admin</button>
+  </footer>
+</form>
+{% endcall %}
+{% endif %}
+{% endblock %}

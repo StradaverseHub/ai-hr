@@ -1,0 +1,58 @@
+{% extends "base.html" %}
+{% from "_filter_rows.html" import filter_rows %}
+{% from "_search_in.html" import search_in_box %}
+{% block title %}360 Feedback — Rater progress{% endblock %}
+{% block body %}
+{# 360 Feedback > Run > Rater progress (was "Assessor progress") on the admin page kit (the review, 2026-10-10): the people
+   GIVING feedback -- how much of what they were asked they've done, and whether they've signed in. A name opens their
+   page, where the 360 tab lists the feedback they give. #}
+<div class="adm-headrow">
+  <p class="adm-lede">Everyone asked to give 360 feedback: how many of their ratings are done, and whether they've signed in.</p>
+</div>
+
+<section class="admin-card adm-filters" aria-label="Filters">
+  {{ filter_rows(frows) }}
+  <form method="get" class="adm-fsearch">
+    {% for k in ('fbg', 'fcompany', 'fdept') %}{% if request.args.get(k) %}<input type="hidden" name="{{ k }}" value="{{ request.args.get(k) }}">{% endif %}{% endfor %}
+    {{ search_in_box(search_in, qin, q, 'Search raters') }}
+    <select name="scope" class="modern-select" onchange="this.form.submit()" aria-label="Show">
+      <option value="all" {{ 'selected' if scope == 'all' }}>Everyone asked</option>
+      <option value="incomplete" {{ 'selected' if scope == 'incomplete' }}>Not finished yet</option>
+    </select>
+    <span class="adm-count">{{ total | thousands }} {{ 'rater' if total == 1 else 'raters' }}</span>
+  </form>
+</section>
+
+<section class="admin-card" aria-label="Raters">
+  {% if rows %}
+  <div class="table-scroll"><table class="admin-table" id="assessors-table">
+    <thead><tr><th>Rater</th><th>Unit · department</th><th>Done</th><th>Status</th><th>Last signed in</th></tr></thead>
+    <tbody>
+    {% for r in rows %}
+    {% set assigned = r['assigned'] %}{% set done = r['done'] %}
+    {% set status = 'Done' if done == assigned else ('Not started' if done == 0 else 'In progress') %}
+    <tr>
+      <td><a href="{{ url_for('admin_person', uid=r['id'], tab='f360') }}"><b>{{ r['full_name'] }}</b></a>
+        <span class="muted small" style="display:block">{{ r['employee_id'] }}{% if r['email'] %} · {{ r['email'] }}{% endif %}</span></td>
+      <td>{{ display_company(r['business_group'], r['company']) or r['company'] or '—' }}{% if r['department'] %}<span class="muted small" style="display:block">{{ r['department'] | proper }}</span>{% endif %}</td>
+      <td><b>{{ done }}</b> of {{ assigned }}</td>
+      <td>{% if status == 'Done' %}<span class="status-pill status-reviewed">Done</span>
+        {% elif status == 'Not started' %}<span class="status-pill status-submitted">Not started</span>
+        {% else %}<span class="status-pill status-progress">In progress</span>{% endif %}</td>
+      <td>{% if r['last_login'] %}{{ r['last_login'] | myt_date }}{% else %}<span class="muted">Never</span>{% endif %}</td>
+    </tr>
+    {% endfor %}
+    </tbody>
+  </table></div>
+  {% if total_pages > 1 %}
+  <div class="pagination">
+    {% if page > 1 %}<a class="btn-link" data-scroll-top href="?{{ base_qs }}&page={{ page-1 }}">&larr; Previous</a>{% endif %}
+    <span class="muted small">Page {{ page }} of {{ total_pages }}</span>
+    {% if page < total_pages %}<a class="btn-link" data-scroll-top href="?{{ base_qs }}&page={{ page+1 }}">Next &rarr;</a>{% endif %}
+  </div>
+  {% endif %}
+  {% else %}
+  <p class="muted" style="margin:0">Nobody matches. Try another business group or unit, or clear the search.</p>
+  {% endif %}
+</section>
+{% endblock %}

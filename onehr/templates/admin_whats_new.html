@@ -1,0 +1,151 @@
+{% extends "base.html" %}
+{% from "_adm_panel.html" import panel %}
+{% from "_whatsnew.html" import wn_card %}
+{% block title %}What's new{% endblock %}
+{% block body %}
+{# Admin › Comms › What's new (Chris, 2026-11-03: "Approve, build it"; "Super admin only"; canvas
+   [design canvas link removed] boards S1-S3): the notes, and the right-hand panel that writes one. Who it is
+   for is picked from WN_AUDIENCES (each the feature's own gate) with today's count; a note is never deleted. Publish, Take down and
+   Put back are double-confirmed in OneHR's own box. static/whatsnew_admin.js drives the panel's preview and confirm words. #}
+<div class="adm-headrow">
+  <p class="adm-lede">A note pops out once after sign-in, only to people who can use the feature it's about. User-facing journey features and screens only; never admin or back-end changes.</p>
+</div>
+
+<section class="admin-card ntc-card" aria-labelledby="wn-notes-h">
+  <div class="ntc-head">
+    <h2 id="wn-notes-h">Notes <span class="wn-badge">Super admin</span></h2>
+    <button type="button" class="primary" data-panel-open="write">Write a note</button>
+  </div>
+  {% if rows %}
+  <div class="ntc-scroll">
+  <table class="ntc-table wn-table">
+    <thead><tr><th>Note</th><th>For</th><th>Shows from</th><th>Seen</th><th>State</th><th><span class="sr-only">Actions</span></th></tr></thead>
+    <tbody>
+    {% for r in rows %}
+      <tr>
+        <td class="wn-t-note"><b>{{ r.title }}</b><small>{{ r.excerpt }}</small></td>
+        <td>{{ r.audience }}</td>
+        <td>{{ r.from }}</td>
+        <td>{% if r.has_seen %}{{ '{:,}'.format(r.seen_n) }} of {{ '{:,}'.format(r.seen_m) }}{% else %}–{% endif %}</td>
+        <td><span class="ntc-state is-{{ r.key }}">{{ r.state }}</span></td>
+        <td class="ntc-acts">
+          <a href="{{ url_for('admin_whats_new', panel='write', edit=r.id) }}" class="ntc-link">Edit</a>
+          {% if r.key in ('live', 'sched') %}
+          <form method="post" action="{{ url_for('admin_whats_new') }}" class="ntc-inline"
+                data-confirm="It stops popping out and leaves everyone's What's new list. {{ '{:,}'.format(r.seen_n) }} of {{ '{:,}'.format(r.seen_m) }} have seen it. You can put it back; it won't pop out again for anyone who has seen it."
+                data-confirm-title="Take down “{{ r.title }}”?" data-confirm-ok="Take down" data-confirm-tone="danger">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+            <input type="hidden" name="action" value="takedown">
+            <input type="hidden" name="nid" value="{{ r.id }}">
+            <button type="submit" class="ntc-link is-danger">Take down</button>
+          </form>
+          {% elif r.key == 'down' %}
+          <form method="post" action="{{ url_for('admin_whats_new') }}" class="ntc-inline"
+                data-confirm="It shows in everyone's What's new list again. It won't pop out again for anyone who has already seen it."
+                data-confirm-title="Put “{{ r.title }}” back?" data-confirm-ok="Put it back">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+            <input type="hidden" name="action" value="putback">
+            <input type="hidden" name="nid" value="{{ r.id }}">
+            <button type="submit" class="ntc-link">Put back</button>
+          </form>
+          {% endif %}
+        </td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  </div>
+  {% else %}
+  <p class="muted small ntc-empty">No note yet. Write one when a user-facing feature ships.</p>
+  {% endif %}
+</section>
+
+{% set e = note %}
+{% set f = vals %}
+{% set published = e and e['published_at'] %}
+{% set started = e and e['state'] in ('live', 'down') and e['shows_from'] and e['shows_from'] <= now_utc %}
+{% set v_title = (f.get('title', '') if f else (e['title'] if e else '')) %}
+{% set v_body = (f.get('body', '') if f else (e['body'] if e else '')) %}
+{% set v_aud = (f.get('audience', '') if f else (e['audience'] if e else '')) %}
+{% set v_link = (f.get('link_target', '') if f else ((e['link_target'] or '') if e else '')) %}
+{% set v_shows = (f.get('shows', 'now') if f else ('at' if (e and e['shows_from']) else 'now')) %}
+{% set v_at = (f.get('shows_at', '') if f else (shows_at_input if e and e['shows_from'] else default_at)) %}
+{% set link_name = (link_targets | selectattr('key', 'equalto', v_link) | map(attribute='name') | first) if v_link else '' %}
+{% set link_words = (link_targets | selectattr('key', 'equalto', v_link) | map(attribute='words') | first) if v_link else '' %}
+{% call panel("write", "What's new", "Change the note" if published else ("Edit the draft" if e else "Write a note"),
+              "For a user-facing feature or screen. Never an admin or back-end change.",
+              open=panel_open, params="panel,edit") %}
+  <form method="post" action="{{ url_for('admin_whats_new') }}" class="adm-panel-body ntc-post wn-form" id="wn-form"
+        data-today="{{ today }}" data-published="{{ 1 if published else 0 }}" data-started="{{ 1 if started else 0 }}"
+        data-confirm="Save this note as a draft? It shows to nobody until you publish it." data-confirm-title="Save as a draft?" data-confirm-ok="Save draft">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    {% if e %}<input type="hidden" name="nid" value="{{ e['id'] }}">{% endif %}
+    <label class="wn-fld">Title <span class="muted small">up to {{ title_max }} characters</span>
+      <input type="text" name="title" maxlength="{{ title_max }}" required value="{{ v_title }}" placeholder="Who has submitted" autocomplete="off">
+    </label>
+    <label class="wn-fld">The words <span class="muted small">up to {{ body_max }} characters, plain text</span>
+      <textarea name="body" maxlength="{{ body_max }}" rows="5" required placeholder="New on your dashboard: ...">{{ v_body }}</textarea>
+      <span class="muted small wn-cnt" data-wn-cnt aria-live="polite">{{ v_body | length }} / {{ body_max }}</span>
+    </label>
+    <fieldset class="ntc-fs wn-fs">
+      <legend>Who it's for <span class="muted small">the feature it's about</span></legend>
+      <div class="wn-aud" role="radiogroup" aria-label="Who it's for">
+        {% for key, label, words, _pred, _count in audiences %}
+        <label class="wn-opt">
+          <input type="radio" name="audience" value="{{ key }}" required data-icon="{{ icons.get(key, 'mega') }}" data-label="{{ label }}" data-n="{{ '{:,}'.format(counts[key].n) }}"
+                 {{ 'checked' if v_aud == key }}{{ ' disabled' if published and v_aud != key }}>
+          <span class="wn-rad" aria-hidden="true"></span>
+          <span class="wn-opt-t"><b>{{ label }}</b><small>{{ words }}</small></span>
+          <span class="wn-opt-n">{{ '{:,}'.format(counts[key].n) }}{{ ' · module off' if counts[key].off else ' now' }}</span>
+        </label>
+        {% endfor %}
+      </div>
+      {% if published %}<p class="muted small wn-note-fix">Who it's for can't change once a note is published. To reach more people, write a new note.</p>{% endif %}
+    </fieldset>
+    <div class="wn-fld">
+      <span class="wn-lbl">A button <span class="muted small">optional, opens the feature</span></span>
+      <span class="pick wn-pagepick" id="wn-page">
+        <input type="text" class="pick-q" autocomplete="off" aria-label="The page the button opens" placeholder="Who has submitted, What's new, the dashboard…" value="{{ link_name }}">
+        <input type="hidden" class="pick-val" name="link_target" value="{{ v_link }}">
+      </span>
+      <span class="muted small wn-words" data-wn-words{% if not link_words %} hidden{% endif %}>Its words: “<span data-wn-words-t>{{ link_words }}</span>”</span>
+    </div>
+    <script type="application/json" id="wn-link-targets">{{ link_targets | tojson }}</script>
+    <fieldset class="ntc-fs wn-fs">
+      <legend>Shows from</legend>
+      {% if started %}
+      <p class="muted small wn-note-fix">It has been showing since {{ e_from }} (Malaysia time). That time stays, so no one is shown it afresh.</p>
+      {% else %}
+      <div class="wn-radios">
+        <label class="wn-radio"><input type="radio" name="shows" value="now" {{ 'checked' if v_shows != 'at' }}><span>When I publish</span></label>
+        <label class="wn-radio"><input type="radio" name="shows" value="at" {{ 'checked' if v_shows == 'at' }}><span>A date and time</span></label>
+      </div>
+      <div class="wn-at" data-wn-at{% if v_shows != 'at' %} hidden{% endif %}>
+        <input type="datetime-local" name="shows_at" value="{{ v_at }}" aria-label="Shows from, Malaysia time"><span class="muted small">Malaysia time</span>
+      </div>
+      {% endif %}
+    </fieldset>
+    <div class="wn-fld">
+      <span class="wn-lbl">As they'll see it</span>
+      <div class="wn-prev"><div class="kpi-dlg wn-dlg-prev" data-wn-prev data-day="{{ day }}">
+        {{ wn_card(preview_notes, day, live=False) }}
+      </div></div>
+    </div>
+  </form>
+  <footer class="adm-panel-foot wn-foot">
+    <span class="muted small adm-panel-grow">{{ "The words and button can be corrected; it won't pop out again." if published else "You can correct the words later." }}</span>
+    <button type="button" class="btn-link" data-panel-close>Cancel</button>
+    {% if published %}
+    <button type="submit" form="wn-form" name="action" value="save" class="primary"
+            data-confirm="Change this note? It reads the new way for everyone it is for, and it does not pop out again."
+            data-confirm-title="Change the note?" data-confirm-ok="Change the note">Save changes</button>
+    {% else %}
+    <button type="submit" form="wn-form" name="action" value="save" class="btn-link">Save as draft</button>
+    <button type="submit" form="wn-form" name="action" value="publish" class="primary" data-wn-publish
+            data-confirm="It pops out once for the people it is for, at their next visit, and stays in their What's new. You can correct the words later. Who it's for can't change once it's published."
+            data-confirm-title="Publish this note?" data-confirm-ok="Publish">Publish…</button>
+    {% endif %}
+  </footer>
+{% endcall %}
+<script src="{{ url_for('static', filename='whatsnew_admin.js') }}?v={{ asset_v }}"></script>
+{% endblock %}

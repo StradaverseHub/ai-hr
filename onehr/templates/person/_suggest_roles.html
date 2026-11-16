@@ -1,0 +1,42 @@
+{# Roles suggested for ONE person's Career Plan (Chris, 2026-11-07, canvas Nb3NYF8C9W5X3F3Pcr6drX boards A1 and A2): the
+   super admin's alone (pl.suggest is None for anyone else, so this renders nothing). Rows come from tc_person_routes;
+   "+ Suggest a role" opens the strict picker in place (static/admin.js, data-rpick) over the active architecture roles
+   from their grade to two up; both writes are admin_person_plan's suggest_add / suggest_remove, double-confirmed. #}
+{% set sg = pl.suggest %}
+{% if sg %}
+<div class="sg" id="pp-suggest" data-rpick-block>
+  <div class="sg-hd"><h3 class="sg-t">Roles suggested for {{ sg.first }}</h3>
+    <button type="button" class="btn-link sg-open" data-rpick-open aria-expanded="false" aria-controls="pp-suggest-add">+ Suggest a role</button></div>
+  {% if sg.rows %}
+  <p class="sg-lede">They show in their Career Plan as Suggested by Group People. Their job and competencies stay as they are. A suggested role one grade up from their grade is their recommended next step.</p>
+  {% for r in sg.rows %}
+  <div class="sg-row{{ ' is-off' if r.off }}">
+    <div class="sg-who"><b>{{ r.title | proper }}{% if r.choice %}<span class="sg-chip">Their choice</span>{% endif %}</b>
+      <span class="muted small">JG {{ r.grade }} · {{ r.match }} · {{ r.by }}, {{ r.when | myt_day }}{% if r.off %} · {{ r.off }}{% endif %}</span></div>
+    <form method="post" action="{{ url_for('admin_person_plan', uid=person['id']) }}" class="sg-rm"
+          data-confirm="Take {{ r.title | proper }} (JG {{ r.grade }}) off {{ person['full_name'] }}'s suggested roles? {{ 'It is their role choice: their choice stays, but the role is no longer offered to pick again.' if r.choice else 'It no longer shows in their Career Plan.' }}"
+          data-confirm-title="Remove this suggested role?" data-confirm-ok="Remove role" data-confirm-tone="danger">
+      <input type="hidden" name="action" value="suggest_remove">
+      <input type="hidden" name="profile_id" value="{{ r.pid }}">
+      <button type="submit" class="danger sg-btn" aria-label="Remove {{ r.title | proper }}">Remove</button>
+    </form>
+  </div>
+  {% endfor %}
+  {% else %}
+  <p class="sg-none">None yet. A role you suggest shows in their Career Plan as Suggested by Group People, for them alone.</p>
+  {% endif %}
+  <form method="post" action="{{ url_for('admin_person_plan', uid=person['id']) }}" class="sg-add" id="pp-suggest-add" hidden data-rpick-form
+        data-confirm="Add the role you picked to {{ person['full_name'] }}'s Career Plan? It shows to them as Suggested by Group People, for them alone. Their job, their competencies and everyone else's plan stay as they are."
+        data-confirm-title="Suggest this role?" data-confirm-ok="Suggest role" data-name="{{ person['full_name'] }}">
+    <input type="hidden" name="action" value="suggest_add">
+    <h3 class="sg-t">Suggest a role for {{ sg.first }}</h3>
+    <span class="pick" data-rpick>
+      <input type="text" class="pick-q" placeholder="Search by title or job code" aria-label="Role to suggest for {{ sg.first }}" autocomplete="off">
+      <input type="hidden" class="pick-val" name="profile_id" value="">
+    </span>
+    <script type="application/json" class="sg-data">{{ {'range': sg.range, 'roles': sg.pick} | tojson }}</script>
+    <div class="sg-foot"><button type="button" class="btn-link" data-rpick-cancel>Cancel</button>
+      <button type="submit" class="primary" data-rpick-go disabled>Suggest</button></div>
+  </form>
+</div>
+{% endif %}

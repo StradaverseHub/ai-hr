@@ -1,0 +1,23 @@
+{# The admin page kit's filter rows (canvas K2; Chris, 2026-10-10: "always go by order of BG, BU, then department, each
+   in one row, and apply navigation button if there are more than the display allowed"). `rows` comes from
+   admin_filter_rows(): business group (super admin only), then unit (once a group is picked, or a BG admin's own), then
+   department (once a unit is picked). Each option is a link, so the page reloads filtered; static/admin.js shows the
+   < > only when a row overflows and brings the picked one into view. #}
+{% macro filter_rows(rows) %}
+{% if rows %}
+<div class="adm-frows">
+  {% for r in rows %}
+  <div class="adm-frow">
+    <span class="adm-frow-lbl">{{ r.label }}</span>
+    <div class="adm-frow-track">
+      <button type="button" class="adm-frow-nav is-prev" aria-label="Earlier: {{ r.label | lower }}"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="15 18 9 12 15 6"/></svg></button>
+      <div class="adm-frow-pills" role="group" aria-label="{{ r.label }}">
+        {% for o in r.opts %}<a class="adm-frow-pill{{ ' is-on' if o.on }}" href="{{ o.href }}"{% if o.on %} aria-current="true"{% endif %}>{{ o.label }}{% if o.n is not none %}<span>{{ o.n | thousands }}</span>{% endif %}</a>{% endfor %}
+      </div>
+      <button type="button" class="adm-frow-nav is-next" aria-label="More: {{ r.label | lower }}"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="9 18 15 12 9 6"/></svg></button>
+    </div>
+  </div>
+  {% endfor %}
+</div>
+{% endif %}
+{% endmacro %}

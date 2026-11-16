@@ -1,0 +1,18 @@
+{% extends "base.html" %}
+{% block title %}AI+ conversation - {{ s['full_name'] }}{% endblock %}
+{% block body %}
+{# A person's AI+ conversation as a page (the super admin's; the person page's panel shows the same partial). #}
+<div class="pp">
+<div class="pp-crumb muted small"><a href="{{ url_for('admin_users') }}">People</a> &rsaquo;
+  <a href="{{ url_for('admin_person', uid=s['id']) }}">{{ s['full_name'] }}</a> &rsaquo; AI+ conversation</div>
+<section class="admin-card pp-head" aria-label="{{ s['full_name'] }}">
+  <div class="pp-who">
+    <div class="pp-name-row"><h1 class="pp-name">AI+ conversation · {{ s['full_name'] }}</h1>
+      <span class="muted small">{{ s['employee_id'] or '' }}{% if s['job_title'] %} · {{ s['job_title'] | proper }}{% endif %}{% if s['job_grade'] %} · JG {{ s['job_grade'] }}{% endif %}{% if s['department'] %} · {{ s['department'] | proper }}{% endif %} · {{ display_bg(s['business_group']) }}</span></div>
+  </div>
+</section>
+<section class="admin-card pp-card pp-convo-page">
+  {% include "person/_conversation.html" %}
+</section>
+</div>
+{% endblock %}

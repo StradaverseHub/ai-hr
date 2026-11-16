@@ -1,0 +1,46 @@
+# Runtime dependencies for the Leadership 360 app.
+# Flask brings in Werkzeug + Jinja2. openpyxl reads/writes the .xlsx files
+# (HR master import + assessor review export). gunicorn is for production only.
+# reportlab renders the Reports page's per-company PDF export.
+#
+# PINNED (2026-10-14, the production rollout plan) to what the staging VM ran (`pip freeze`, Python 3.10.12),
+# so production installs the versions staging was tested on -- an unpinned `pip install` on deploy day could pull a
+# release nobody has run. To move a version: change it here, deploy to staging, test, then production.
+#
+# pillow 13 needs Python 3.11+ (2026-10-31, security: pillow 12.3.0 has open JPEG / JPEG 2000 advisories). Until every
+# server's venv is 3.11 the pin is split by Python version, so this one file installs on a 3.10 venv (12.3.0) and a
+# 3.11 venv (13.0.0) alike and the deploy order does not matter. See deploy/PY311.md.
+Flask==3.1.3
+Werkzeug==3.1.9
+Jinja2==3.1.6
+MarkupSafe==3.0.3
+itsdangerous==2.2.0
+click==8.4.2
+blinker==1.9.0
+openpyxl==3.1.5
+et_xmlfile==2.0.0
+gunicorn==26.0.0
+packaging==26.2
+reportlab==5.0.0
+pillow==13.0.0; python_version >= "3.11"
+pillow==12.3.0; python_version < "3.11"   # drop this line once production runs 3.11 (deploy/PY311.md)
+charset-normalizer==3.4.9
+# PM attachments -> Blob once PM_BLOB_ACCOUNT_NAME is set (blob_storage.py)
+azure-storage-blob==12.30.0
+azure-core==1.41.0
+isodate==0.7.2
+typing_extensions==4.16.0
+cryptography==50.0.0
+cffi==2.1.0
+pycparser==3.0
+# DefaultAzureCredential -- azure-storage-blob does not bundle this; required separately
+azure-identity==1.25.3
+msal==1.37.0
+msal-extensions==1.3.1
+PyJWT==2.15.0
+requests==2.34.2
+urllib3==2.8.0
+idna==3.18
+certifi==2026.10.18
+# reads a supporting PDF's text so the manager's performance summary can check it (pure Python)
+pypdf==6.21.4

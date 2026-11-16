@@ -1,0 +1,13 @@
+{# The compliment / justification prompt. Its text becomes a SHARED evidence item
+   (cited to the KPI when `ev` is a KPI). Optional -- "Not now" advances without
+   writing. Posts to /review/kpi-evidence, then the client re-fetches the turn. #}
+<div class="rv-evprompt" data-url="{{ url_for('review_kpi_evidence') }}"
+     {% if ev %}data-kpi="{{ ev['id'] }}"{% endif %}>
+  <textarea class="rv-evbody" rows="3"
+            placeholder="A sentence or two -- what you did, and what it led to."
+            aria-label="Add to your record"></textarea>
+  <div class="rv-evprompt-actions">
+    <button type="button" class="primary" data-ev-save>Add to my record</button>
+    <button type="button" class="btn-link" data-ev-skip>Not now</button>
+  </div>
+</div>

@@ -1,0 +1,91 @@
+{% extends "base.html" %}
+{% from "_adm_panel.html" import list_peek %}
+{% block title %}Learning needs{% endblock %}
+{% block body %}
+{# Learning › Needs (AI+ Learning phase 1, 2026-10-20; canvas [design canvas link removed] boards 7, 7B):
+   the live learning-needs analysis. Who needs which competency, from their shared Career Plan's goals, the gaps their
+   competency assessment showed and the interest they marked, by business group (by unit within one), how many are Stars,
+   and what the published calendar covers. Counts only; the AI read is written from these counts and checked against them. #}
+<div class="adm-headrow">
+  <p class="adm-lede">Live, from <b>shared Career Plans</b>, <b>competency assessments</b> and the <b>interest</b> people mark
+    in their Learning panel. A person counts once per competency, however many places it comes from.</p>
+</div>
+{# View by (Chris, 2026-10-22, board 7B): business group, business unit or job family; a group's admin has no group view #}
+<nav class="lm-viewby" aria-label="View by"><span class="lm-viewby-k">View by</span>
+  {% for k, lab in views %}<a class="{{ 'is-active' if k == lna.view }}" href="{{ url_for('admin_learning_needs', **lms_lna_url_args(lna, view=(k if k != lna.default_view else None))) }}"{{ ' aria-current="page"' if k == lna.view }}>{{ lab }}</a>{% endfor %}
+</nav>
+<form method="get" class="lm-filters" aria-label="Filter the needs">
+  {% if lna.view != lna.default_view %}<input type="hidden" name="view" value="{{ lna.view }}">{% endif %}
+  {% if not lna.own_bg %}
+  <label>Business group<select name="bg" class="modern-select" onchange="this.form.company && (this.form.company.value=''); this.form.submit()">
+    <option value="">All</option>{% for b in bgs %}<option value="{{ b }}"{{ ' selected' if b == lna.bg }}>{{ display_bg(b) }}</option>{% endfor %}</select></label>
+  {% endif %}
+  {% if lna.bg %}
+  <label>Business unit<select name="company" class="modern-select" onchange="this.form.submit()">
+    <option value="">All</option>{% for c in units %}<option value="{{ c }}"{{ ' selected' if c == lna.company }}>{{ display_company(lna.bg, c) }}</option>{% endfor %}</select></label>
+  {% endif %}
+  <label>Job family<select name="jf" class="modern-select" onchange="this.form.submit()">
+    <option value="">All</option>{% for code, name in lna.jf_opts %}<option value="{{ code }}"{{ ' selected' if code == lna.jf }}>{{ name }}</option>{% endfor %}
+    <option value="{{ jf_none }}"{{ ' selected' if lna.jf == jf_none }}>{{ no_jf }}</option></select></label>
+  <label>Grade<select name="band" class="modern-select" onchange="this.form.submit()">
+    <option value="">All</option>{% for k, lab, _a, _b in bands %}<option value="{{ k }}"{{ ' selected' if k == lna.band }}>{{ lab }}</option>{% endfor %}</select></label>
+  <noscript><button type="submit" class="primary">Show</button></noscript>
+</form>
+{# a count opens its people in the list panel (the super admin's, as every count list; 2026-10-23) #}
+{% set la = lms_lna_url_args(lna) %}
+{% macro tile_n(n, key, la) -%}
+{%- if nav_is_super and n %}<a class="lm-tile-n" href="{{ url_for('admin_list_view', key=key, **la) }}" data-list-open="{{ url_for('admin_list_view', key=key, fragment=1, **la) }}">{{ n }}</a>{% else %}{{ n }}{% endif -%}
+{%- endmacro %}
+<div class="lm-tiles">
+  <div class="lm-tile"><b>{{ tile_n(lna.tiles.with_need, 'lms-need', la) }}</b><span>of {{ lna.tiles.people }} people have a learning need</span></div>
+  <div class="lm-tile"><b>{{ tile_n(lna.tiles.plan, 'lms-plan', la) }}</b><span>with a goal in a shared Career Plan</span></div>
+  {% if lna.view == 'jf' %}<div class="lm-tile"><b>{{ lna.tiles.jfs }}</b><span>job families with a need</span></div>
+  {% else %}<div class="lm-tile"><b>{{ tile_n(lna.tiles.stars, 'lms-stars', la) }}</b><span>Stars and Super Stars among them</span></div>{% endif %}
+  <div class="lm-tile"><b>{{ lna.tiles.uncovered }}</b><span>of {{ lna.tiles.families }} competencies have no programme</span></div>
+</div>
+<div class="lm-lna">
+  <section class="admin-card lm-read" aria-labelledby="lm-read-h">
+    <h2 id="lm-read-h" class="lm-h lm-ai-k"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2l2.4 7.6L22 12l-7.6 2.4L12 22l-2.4-7.6L2 12l7.6-2.4z"></path></svg>What stands out</h2>
+    {% if read %}
+      <ul class="lm-finds">{% for f in read.findings %}<li>{{ f }}</li>{% endfor %}</ul>
+      <p class="muted small">Written by AI from the counts on this page, {{ read.at | myt }}.{% if not read.fresh %} The counts have changed since: write it again for today's.{% endif %}</p>
+    {% else %}
+      <p class="muted small">A short read of where the biggest needs are, where Stars need something and what nothing covers, written by AI from these counts only.</p>
+    {% endif %}
+    {% if ai_ok and lna.rows and is_su %}
+    <form method="post" action="{{ url_for('admin_learning_needs_read') }}" data-confirm="Write the AI read of these learning needs ({{ lna.scope }})? It uses the counts on this page only, and replaces the read kept for this view." data-confirm-ok="Write the read">
+      {% for k, v in lms_lna_url_args(lna).items() %}<input type="hidden" name="{{ k }}" value="{{ v }}">{% endfor %}
+      <button type="submit" class="od-btn-ai is-outline is-sm lm-ai-btn"><svg class="od-spark" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2.5l2.3 6.2 6.2 2.3-6.2 2.3L12 19.5l-2.3-6.2L3.5 11l6.2-2.3z"></path></svg>{{ 'Write it again' if read else 'Write the read' }}</button>
+    </form>
+    {% elif not ai_ok %}<p class="muted small">AI isn't set up on this server.</p>
+    {% elif not is_su %}<p class="muted small">The super admin writes the read for each view.</p>{% endif %}
+  </section>
+  <section class="admin-card lm-heat-card" aria-labelledby="lm-heat-h">
+    <h2 id="lm-heat-h" class="lm-h">People who need each competency, by {{ lna.view_label | lower }}</h2>
+    {% if lna.rows %}
+    <div class="table-scroll"><table class="admin-table no-auto-table lm-heat">
+      <thead><tr><th scope="col">Competency</th>
+        {% for c in lna.shown_cols %}<th scope="col" class="lm-num lm-colh">{{ c.label }}</th>{% endfor %}
+        <th scope="col" class="lm-num">All</th>{% if lna.view != 'jf' %}<th scope="col" class="lm-num">Stars</th>{% endif %}<th scope="col" class="lm-cal">On the calendar</th></tr></thead>
+      <tbody>
+      {% for a in lna.rows[:rows_shown] %}
+      <tr>
+        <th scope="row" class="lm-comp">{{ a.title }}<span class="muted small">{% if a.plan %}{{ a.plan }} plan{% endif %}{% if a.assessed %}{{ ' · ' if a.plan }}{{ a.assessed }} assessed{% endif %}{% if a.interest %}{{ ' · ' if a.plan or a.assessed }}{{ a.interest }} interested{% endif %}</span></th>
+        {% for c in lna.shown_cols %}{% set n = a.cells.get(c.key, 0) %}<td class="lm-num lm-cell t{{ lms_cell_tone(n, lna.peak) }}">{{ n if n else '·' }}</td>{% endfor %}
+        <td class="lm-num"><b>{{ a.n }}</b></td>
+        {% if lna.view != 'jf' %}<td class="lm-num">{{ a.stars or '·' }}</td>{% endif %}
+        <td class="lm-cal">{% if a.cover.programmes %}<span class="lm-ok">{{ a.cover.programmes }} programme{{ '' if a.cover.programmes == 1 else 's' }}{% if a.cover.seats %} · {{ a.cover.seats }} seats{% endif %}</span>{% else %}<span class="lm-gap">Not covered</span>{% endif %}</td>
+      </tr>
+      {% endfor %}
+      </tbody>
+    </table></div>
+    {% if lna.rows | length > rows_shown %}<p class="muted small lm-note">The {{ rows_shown }} most needed of {{ lna.rows | length }} competencies. The Learning needs download under Reports has them all.</p>{% endif %}
+    {% if lna.view == 'jf' %}<p class="muted small lm-note">Job family is the job architecture's sub-family, as in the KPI and competency libraries. "{{ no_jf }}": below JG 12, or not mapped in the architecture yet.{% if lna.shown_cols | selectattr('key', 'equalto', '__other__') | list %} The {{ cols_cap }} with the most need are shown; the download has every one.{% endif %}</p>
+    {% elif lna.shown_cols | selectattr('key', 'equalto', '__other__') | list %}<p class="muted small lm-note">The {{ 'units' if lna.view == 'bu' else 'groups' }} with the most need are shown; "Other" adds up the rest, and the download has every one.</p>{% endif %}
+    {% else %}
+    <p class="muted" style="margin:0">Nobody in this scope has a learning need yet. Needs appear as people share Career Plans, submit competency assessments or mark interest.</p>
+    {% endif %}
+  </section>
+</div>
+{% if nav_is_super %}{{ list_peek() }}{% endif %}
+{% endblock %}

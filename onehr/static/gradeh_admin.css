@@ -1,0 +1,236 @@
+/* Grade H Appraisal, the super admin's pages (piece 6, 2026-10-28; canvases A1-A5). Navy #252A59 accent, status in colour, thin borders. */
+.gh-tiles { display: grid; gap: 10px; margin: 14px 0; }
+.gh-tiles-6 { grid-template-columns: repeat(6, minmax(0, 1fr)); }
+.gh-tiles-5 { grid-template-columns: repeat(5, minmax(0, 1fr)); }
+.gh-tiles-7 { grid-template-columns: repeat(4, minmax(0, 1fr)); }   /* seven tiles: four and three, so no label wraps at 1280 or the largest text size */
+@media (min-width: 1700px) { .gh-tiles-7 { grid-template-columns: repeat(7, minmax(0, 1fr)); } }
+.gh-tile { display: flex; flex-direction: column; gap: 2px; background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 12px 14px; color: inherit; text-decoration: none; min-width: 0; }
+.gh-tile:hover { border-color: var(--line-strong); text-decoration: none; }
+.gh-tile b { font-size: 1.25rem; color: var(--accent-ink); line-height: 1.2; }
+.gh-tile span { font-size: .8rem; color: var(--muted); }
+.gh-tile.is-need { background: var(--be-bg); border-color: var(--line-strong); }
+.gh-tile.is-need b, .gh-tile.is-need span { color: var(--warn-ink); }
+.gh-filters { margin-bottom: 12px; }
+.gh-tablecard { padding: 0; overflow: hidden; }
+.gh-table th { white-space: nowrap; }
+.gh-table th, .gh-table td { padding: 10px; }
+.gh-table td:first-child, .gh-table th:first-child { padding-left: 14px; min-width: 150px; }
+.gh-nowrap { white-space: nowrap; }
+.gh-chip { display: inline-block; border-radius: 999px; padding: 3px 10px; font-size: .78rem; font-weight: 600; white-space: nowrap; }
+.gh-chip.is-kpi { background: var(--info-tint); color: var(--info-ink); }
+.gh-chip.is-lm { background: var(--ok-tint); color: var(--ok-ink); }
+.gh-chip.is-warn { background: var(--be-bg); color: var(--warn-ink); }
+.gh-chip.is-shared { background: var(--surface-3); color: var(--accent-ink); border: 1px solid var(--line); }
+.gh-lead-sh { margin-top: 0.3125rem; }
+.gh-warn { color: var(--warn-ink); font-weight: 600; }
+.gh-status { font-size: .86rem; color: var(--ink-2); }
+.gh-status.is-blocked { color: var(--warn-ink); font-weight: 600; }
+.gh-status.is-released, .gh-status.is-signed { color: var(--ok-ink); font-weight: 600; }
+.gh-act { text-align: right; white-space: nowrap; padding-right: 14px !important; }
+.gh-act form { display: inline; }
+.gh-act-links { display: flex; flex-wrap: wrap; gap: 6px 12px; justify-content: flex-end; margin-top: 6px; }   /* wraps when the column is squeezed (largest text), so the table never scrolls sideways */
+.gh-act-top { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 6px 0.75rem; }   /* Appraiser and HOD share the top line: Actions stays as wide as before the HOD link */
+.gh-btn { display: inline-flex; align-items: center; height: 32px; padding: 0 12px; border-radius: 8px; background: var(--accent); color: var(--on-fill); font-weight: 600; font-size: .82rem; text-decoration: none; }
+.gh-btn:hover { background: var(--accent-hover); color: var(--on-fill); text-decoration: none; }
+.gh-chain i { font-style: normal; color: var(--faint); padding: 0 2px; }
+.gh-tag { font-size: .72rem; color: var(--warn-ink); margin-left: 4px; }
+.gh-pager { display: flex; gap: 14px; align-items: center; padding: 10px 14px; border-top: 1px solid var(--line-soft); }
+.gh-foot { margin: 10px 2px 0; max-width: 880px; }
+.gh-table tr.is-sel td { background: var(--surface-3); }
+/* Settings */
+.gh-set { display: grid; grid-template-columns: minmax(0, 1fr) 320px; gap: 14px; align-items: start; margin-top: 14px; }
+.gh-set-main { display: flex; flex-direction: column; gap: 14px; min-width: 0; }
+.gh-set-side { display: flex; flex-direction: column; gap: 14px; }
+.gh-card { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 16px 18px; display: flex; flex-direction: column; gap: 12px; margin: 0; }
+.gh-card h2 { margin: 0; font-size: 1rem; color: var(--accent-ink); }
+.gh-card h3 { margin: 0; font-size: .95rem; color: var(--accent-ink); }
+.gh-card-h p { margin: 4px 0 0; color: var(--ink-2); }
+.gh-fs { border: 0; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+.gh-fs legend { font-size: .85rem; font-weight: 600; margin-bottom: 6px; padding: 0; }
+.gh-opt { display: flex; align-items: center; flex-wrap: wrap; gap: 8px 10px; border: 1px solid var(--line-strong); border-radius: 10px; padding: 10px 12px; font-size: .9rem; }
+button.gh-opt { background: var(--surface); color: inherit; font: inherit; font-size: .9rem; width: 100%; text-align: left; cursor: pointer; }   /* `font: inherit` reset the .9rem above to 16px (2026-10-31) */
+button.gh-opt:disabled { cursor: default; opacity: 1; color: inherit; }
+.gh-opt.is-on { border: 2px solid var(--accent-line); background: var(--surface-3); padding: 9px 11px; }
+.gh-opt input[type="radio"] { margin: 0; accent-color: var(--accent); }
+.gh-opt-in { margin-left: auto; display: inline-flex; align-items: center; gap: 8px; flex-wrap: wrap; justify-content: flex-end; }
+.gh-opt-in input[type="date"], .gh-opt-in input[type="time"] { height: 32px; width: auto; }
+.gh-opt-in .odp-trig { height: 32px; width: 170px; }   /* the OneHR date picker, level with the time box beside it (2026-10-28) */
+.gh-num { width: 70px !important; max-width: 70px !important; height: 32px; padding: 0 8px; text-align: right; }
+.gh-note { display: flex; flex-direction: column; gap: 6px; }
+.gh-note p { margin: 0; }
+.gh-amber { background: var(--be-bg); border-radius: 10px; padding: 9px 12px; color: var(--warn-ink); font-size: .86rem; line-height: 1.5; }
+.gh-amber span { font-weight: 700; margin-right: 6px; }
+.gh-save { display: flex; justify-content: flex-end; align-items: center; gap: 12px; border-top: 1px solid var(--line-soft); padding-top: 12px; }
+.gh-bandtable td, .gh-bandtable th { padding: 8px 12px; vertical-align: middle; }   /* the label, "from" and the box sit on one line */
+.gh-potrow { display: flex; gap: 12px; flex-wrap: wrap; }
+.gh-potrow > div { flex: 1 1 200px; border: 1px solid var(--line-strong); border-radius: 10px; padding: 10px 12px; display: flex; flex-direction: column; gap: 6px; font-size: .9rem; }
+.gh-potrow > div span { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; color: var(--ink-2); }
+.gh-check { border: 1.5px solid var(--accent-line); }
+/* Potential points per answer (2026-11-09, canvas C1): the .pts-* rules are style.css's (the 360 and Competency cards use them too) */
+.gh-card .rl-status { margin: 0; }
+.gh-card .pts-grid, .gh-card .pts-now { margin: 0; }
+.gh-check .pts-when { margin: 0; }
+.gh-kv { display: flex; justify-content: space-between; gap: 12px; padding: 4px 0; border-bottom: 1px solid var(--line-soft); font-size: .9rem; }
+.gh-kv:last-of-type { border-bottom: 0; }
+.gh-link { font-size: .85rem; color: var(--link); font-weight: 600; }
+/* Release card (Cycle > Release results) */
+.gh-rel { margin: 0 0 14px; }
+.gh-rel .gh-kv b { white-space: nowrap; }
+.gh-rel-units td, .gh-rel-units th { padding: 8px 12px; }
+.gh-rel-act { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; border-top: 1px solid var(--line-soft); padding-top: 12px; }
+.gh-rel-grid { display: grid; grid-template-columns: minmax(0, 1fr) 320px; gap: 14px; align-items: start; }
+.gh-rel-side { background: var(--surface-2); border: 1px dashed var(--line-strong); border-radius: 10px; padding: 12px 14px; }
+@media (max-width: 1100px) { .gh-tiles-6 { grid-template-columns: repeat(3, minmax(0, 1fr)); } .gh-tiles-5 { grid-template-columns: repeat(3, minmax(0, 1fr)); } .gh-set, .gh-rel-grid { grid-template-columns: minmax(0, 1fr); } }
+
+/* the two side panels (Set appraiser, Change a final band) */
+.gh-panel-form { display: flex; flex-direction: column; gap: 14px; flex: none; align-items: stretch; }
+.gh-panel-form > label { display: flex !important; flex: none !important; flex-direction: column; gap: 5px; font-size: .85rem; font-weight: 600; max-width: none !important; }
+.gh-panel-form select, .gh-panel-form textarea, .gh-panel-form .pick, .gh-panel-form .pick-q { width: 100%; max-width: none !important; font-weight: 400; box-sizing: border-box; }
+.gh-panel-form textarea { min-height: 110px; }
+.adm-panel-foot .primary { white-space: nowrap; }
+#pnl-hod .adm-panel-foot button { flex: none; white-space: nowrap; }   /* Set HOD: Cancel, Use their OneHR HOD and the solid button each stay on one line */
+.gh-panel-form .pick { flex: none; align-items: flex-start; }
+.gh-panel-form .pick-q { height: 38px; }
+
+/* People & progress, Leaders (2026-10-31, canvas A1 / A1b / R2): the Leaders line, the LEADERS column */
+.gh-leaders { display: flex; align-items: center; flex-wrap: wrap; gap: 8px 12px; padding: 12px 16px; font-size: .8rem; border: 1.5px solid var(--accent-line); margin: 0 0 12px; }
+.gh-lead-k { font-size: .75rem; font-weight: 700; letter-spacing: .08em; color: var(--muted); }
+.gh-lead-n { font-weight: 700; color: var(--accent-ink); text-decoration: none; }
+.gh-lead-m { color: var(--muted); }
+.gh-lead-div { width: 1px; height: 18px; background: var(--line); }
+.gh-lead-bu { display: inline-flex; align-items: center; flex-wrap: wrap; gap: 6px 8px; }
+.gh-pill-amber { background: var(--be-bg); border: 1px solid var(--line-strong); color: var(--warn-ink); font-weight: 700; border-radius: 999px; padding: 3px 10px; text-decoration: none; white-space: nowrap; }
+.gh-lead-go { color: var(--accent-ink); font-weight: 600; text-decoration: none; }
+.gh-leads { line-height: 1.35; }
+.gh-lead-l { font-size: .78rem; color: var(--ink-2); }
+.gh-lead-l.is-gap { color: var(--warn-ink); font-weight: 700; }
+.gh-rel-units tr.gh-rel-nobu td { background: var(--be-bg); }   /* Release results: a unit with no BU CEO seated (canvas A2) */
+/* picking several people: the tick column, the bar above the table, the bulk Set appraiser panel */
+.gh-bar { display: flex; align-items: center; gap: 14px; background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 8px 16px; margin: 0 0 12px; font-size: .88rem; min-height: 50px; box-sizing: border-box; }
+.gh-bar.is-on { border: 1.5px solid var(--accent-line); }
+.gh-bar-idle { color: var(--muted); }
+.gh-bar-on { display: inline-flex; align-items: center; gap: 14px; }
+.gh-bar-on[hidden], .gh-bar-idle[hidden] { display: none; }
+.gh-bar-go { height: 34px; padding: 0 14px; border: 0; border-radius: 7px; background: var(--accent); color: var(--on-fill); font-size: .85rem; font-weight: 700; cursor: pointer; }
+.gh-bar-go:hover { background: var(--accent-hover); }
+.gh-bar-clear { border: 0; background: none; padding: 0; color: var(--ink-2); font: inherit; cursor: pointer; }
+.gh-bar-clear:hover { color: var(--accent-ink); }
+.gh-table th.gh-tick, .gh-table td.gh-tick { width: 36px; min-width: 36px; padding: 10px 0 10px 14px; }
+.gh-table td.gh-tick input, .gh-table th.gh-tick input { margin: 0; accent-color: var(--accent); }
+.gh-bulk-list { list-style: none; margin: 0; padding: 0; border: 1px solid var(--line); border-radius: 10px; }
+.gh-bulk-list li { display: flex; justify-content: space-between; gap: 14px; padding: 10px 12px; border-top: 1px solid var(--line-soft); }
+.gh-bulk-list li:first-child { border-top: 0; }
+.gh-bulk-list li > span:first-child { display: flex; flex-direction: column; min-width: 0; }
+.gh-bulk-now { text-align: right; max-width: 220px; }
+.gh-bulk-now.is-out { color: var(--warn-ink); font-weight: 700; }
+/* a BG or BU admin's view (canvas R2): the View only pill */
+.gh-h1row { display: flex; align-items: center; gap: 10px; }
+.gh-h1row h1 { margin: 0; }
+.gh-viewonly { background: var(--surface-3); color: var(--ink-2); font-size: .78rem; font-weight: 700; border-radius: 999px; padding: 3px 10px; white-space: nowrap; }
+/* People & progress, By person (2026-11-03, board H6a): one line a person, as People > Users (.adm-users: fixed layout, nowrap, the cut words in the cell's
+   title). Every column that holds a pill or a fixed phrase has a width in rem that fits its longest one (the pill is nowrap, never cut, never an ellipsis);
+   Person and Unit share what is left and may end in "..." (their full words are the cell's title). Each cell has 0.875rem (14px; 17.5px at the largest text
+   size) on its left and nothing on its right: 14px or more between one cell's text and the next, and nothing between the last cell and the card's edge
+   but the Open column's own 0.875rem. The row is People > Users' (7px above and below the text). The table never goes narrower than --gh-min, so the pills
+   keep their room and Person and Unit stay readable: where the card is narrower than that (the larger text sizes) the card scrolls inside itself, as
+   People > Users does. At 1280 Standard the table is 63rem wide: the columns need 43.7rem, Unit 5.5rem and Person the rest (13.8rem); 56rem is exactly the card at the Larger text size (1008px). */
+#gh-people { --gh-min: 56rem; min-width: var(--gh-min); }
+#gh-people th, #gh-people td { padding-left: 0.875rem; padding-right: 0; }
+#gh-people td { padding-top: 7px; padding-bottom: 7px; }
+#gh-people th { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+#gh-people col.gh-w-tick { width: 2.25rem; }
+#gh-people col.gh-w-unit { width: 5.5rem; }
+#gh-people col.gh-w-route { width: 7.4rem; }
+#gh-people col.gh-w-appr { width: 9.2rem; }
+#gh-people col.gh-w-hod { width: 8.7rem; }
+#gh-people col.gh-w-stage { width: 6.2rem; }
+#gh-people col.gh-w-sign { width: 4.5rem; }
+#gh-people col.gh-w-open { width: 5.45rem; }
+#gh-people td.gh-act, #gh-people th.gh-c-act { text-align: right; padding-right: 0.875rem; overflow: visible; }
+#gh-people td .gh-chip, #gh-people td .gh-dis-tag, #gh-people td .gh-warn, #gh-people td .gh-status, #gh-people td.gh-act .btn-link { white-space: nowrap; }
+#gh-people td .gh-chip { vertical-align: baseline; }
+.gh-rel-units .gh-rel-go { display: block; margin-top: 2px; }   /* the link on its own line (Release results, canvas A2) */
+.gh-rel-units th, .gh-rel-units td { padding-left: 8px; padding-right: 8px; }
+.gh-rel-units th:nth-child(5) { min-width: 170px; }
+.gh-rel-units th:last-child, .gh-rel-units td.gh-act { width: 1%; padding-left: 0; padding-right: 8px !important; }   /* the Action column takes room only when a unit has a Take back */
+.gh-rel-units th:first-child, .gh-rel-units td:first-child { min-width: 110px; padding-left: 12px; }
+
+/* "I do not agree" (2 Nov 2026): the Disagrees tag, amber (the colour that already means "needs attention" here), and its ticket reference */
+.gh-dis-row { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; margin-top: 0.25rem; }
+.gh-dis-tag { display: inline-flex; align-items: center; min-height: 1.4rem; padding: 0 0.6rem; border-radius: 999px; font-size: max(10px, 0.75rem); font-weight: 700; white-space: nowrap; background: var(--warn-tint); color: var(--warn-ink); border: 1px solid var(--warn-fill); }
+.gh-dis-ref { font-size: max(10px, 0.78rem); font-weight: 600; white-space: nowrap; color: var(--link); }
+.gh-dis-ref:hover { background: var(--surface-3); }
+
+/* the HOD panel with a second HOD (2026-11-03, canvas H1) */
+.gh-panel-form .gh-chosen { display: flex; align-items: baseline; flex-wrap: wrap; gap: 0.25rem 0.5rem; border: 1px solid var(--line); border-radius: 0.5rem; padding: 0.4375rem 0.625rem; margin: 0.25rem 0; font-size: 0.8125rem; font-weight: 400; }
+.gh-panel-form .gh-split select { min-width: 6rem; margin-top: 0.25rem; }
+.gh-panel-form .gh-how { background: var(--surface-2); border: 1px solid var(--line-soft); border-radius: 0.625rem; padding: 0.625rem 0.75rem; font-size: 0.8rem; line-height: 1.5; }
+
+/* People & progress, By person | By HOD (2026-11-03, board H5): the switch, the By HOD table, the HOD chip, the second button in the pick bar.
+   The switch is the Talent Box's own tray (.rv-tbox-views), sized to the filter card's controls. Tokens and rem only. */
+.gh-seg.rv-tbox-views { padding: 0.1875rem; border-radius: 0.5625rem; gap: 0.125rem; align-self: center; }
+.gh-seg .rv-tbox-view { min-height: 2rem; padding: 0 0.75rem; border-radius: 0.4375rem; font-size: 0.84375rem; text-decoration: none; white-space: nowrap; }
+.gh-seg .rv-tbox-view:hover { text-decoration: none; background: var(--surface-3); }
+.gh-seg .rv-tbox-view[aria-pressed="true"]:hover { background: var(--surface); }
+.gh-hodfilter { display: flex; align-items: center; gap: 0.75rem; margin: 0 0 0.75rem; }
+/* the text cells (HOD, Unit · departments) wrap; the pills never do; People holds the count with its button under it, so the table fits the card at the
+   largest text size too (no inner scroll), 20px or more between columns */
+.gh-hods { width: 100%; }
+.gh-hods td:first-child, .gh-hods th:first-child { min-width: 0; }
+.gh-hods td { overflow-wrap: anywhere; }
+/* Larger and XL at 1024 (polish list, 9 Nov 2026): the HOD column was squeezed to 61px and "Northwind" / "Materials" were split mid-word; it keeps 8rem and the table scrolls inside its card, as tables may */
+html:is([data-text=l], [data-text=xl]) .gh-hods td:first-child, html:is([data-text=l], [data-text=xl]) .gh-hods th:first-child { min-width: 8rem; }
+.gh-hods td .gh-chip { overflow-wrap: normal; }
+.gh-pcell { white-space: nowrap; }
+.gh-pcell .gh-cnt { vertical-align: middle; }
+.gh-picon { display: inline-flex; align-items: center; justify-content: center; vertical-align: middle; box-sizing: border-box; width: 1.625rem; height: 1.625rem; margin-left: 0.5rem; border: 1px solid var(--line); border-radius: 0.4375rem; background: var(--surface); color: var(--accent-ink); text-decoration: none; }
+.gh-picon:hover { background: var(--surface-3); border-color: var(--line-strong); text-decoration: none; }
+.gh-picon svg { display: block; flex: none; }
+.gh-hods td { vertical-align: top; }
+.gh-hods .gh-depts { margin-top: 0.125rem; }
+.gh-hods .gh-depts-fold { display: block; margin-top: 0.125rem; }
+.gh-hods .gh-depts-fold > summary { cursor: pointer; color: var(--accent-ink); font-weight: 600; }
+.gh-cnt { font-weight: 700; color: var(--accent-ink); text-decoration: none; border-bottom: 1px dotted var(--accent-ink); }
+.gh-cnt:hover { background: var(--surface-3); text-decoration: none; }
+.gh-chip.is-ok { background: var(--ok-tint); color: var(--ok-ink); }
+.gh-chip.is-grey { background: var(--surface-3); color: var(--ink-2); }
+.gh-hods .gh-chip { font-size: max(10px, 0.72rem); padding: 0.125rem 0.5rem; }
+.gh-hods td .gh-chip + .muted { margin-top: 0.125rem; }
+.gh-pbtn { display: inline-flex; align-items: center; min-height: 2rem; padding: 0 0.75rem; border: 1px solid var(--line); border-radius: 0.4375rem; background: var(--surface); color: var(--ink); font-size: 0.85rem; font-weight: 600; text-decoration: none; white-space: nowrap; }
+.gh-pbtn:hover { background: var(--surface-3); border-color: var(--line-strong); text-decoration: none; }
+.gh-hods tr.gh-hods-none td { background: var(--surface-2); }
+/* Set HOD for several: the tick that takes a second HOD away */
+.gh-panel-form > label.gh-tick2 { flex-direction: row; align-items: flex-start; gap: 0.5rem; font-weight: 400; }
+.gh-panel-form .gh-tick2 input { margin-top: 0.1875rem; width: auto; accent-color: var(--accent); }
+
+/* the filter row wraps as groups: the picker with its box, and the Show select with Search (and Download), never one orphan button (largest text size) */
+.gh-fgroup { display: flex; align-items: center; gap: 0.5rem; flex-wrap: nowrap; min-width: 0; }
+.gh-fgroup-main { flex: 1 1 22rem; }
+.gh-fgroup-main input[type=search], html[data-text=l] .gh-fgroup-main input[type=search], html[data-text=xl] .gh-fgroup-main input[type=search] { flex: 1 1 10rem; min-width: 8rem; }   /* the page's wide box at the larger sizes would push the group onto a row of its own */
+.gh-fgroup-end { flex: 0 0 auto; }
+/* People & progress: the Stage words stay on one line (short words, the full ones in the title); the table's own 8px + 8px cell padding sits between Sign-in and Actions */
+.gh-status:not(.is-blocked) { white-space: nowrap; }
+
+/* People & progress, the person's panel (2026-11-03, board H6b): the People > Users peek's panel, 720 wide, with Grade H's own body. Tokens and rem only. */
+.gh-pan { display: flex; flex-direction: column; gap: 0.75rem; min-width: 0; }
+.adm-panel:has([data-nopage]) [data-person-page] { display: none; }   /* a viewer whose role cannot open the person page has no "Open their full page" */
+.gh-chips { display: flex; flex-wrap: wrap; align-items: center; gap: 0.375rem; }
+.gh-pan .admin-card { margin: 0; }
+.gh-lr { display: grid; grid-template-columns: 7.5rem minmax(0, 1fr) auto; gap: 0.75rem; align-items: start; padding: 0.5rem 0; border-top: 1px solid var(--line-soft); }
+.gh-who .pp-h-row + .gh-lr { border-top: 0; }
+.gh-lk { font-size: max(10px, 0.6875rem); font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); padding-top: 0.125rem; }
+.gh-lv { font-size: 0.875rem; font-weight: 700; color: var(--ink); min-width: 0; overflow-wrap: anywhere; display: flex; flex-direction: column; gap: 0.25rem; }
+.gh-lh { display: flex; flex-direction: column; }
+.gh-lsm { display: block; font-size: 0.78rem; font-weight: 400; color: var(--muted); margin-top: 0.125rem; }
+.gh-lr .gh-pbtn { align-self: start; }
+.gh-back { margin: 0 0 -0.25rem; }
+.gh-back .btn-link { padding-left: 0; }
+.gh-chv { gap: 0.75rem; }
+.gh-chv .gh-panel-form { margin: 0; }
+.gh-chfoot { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 0.5rem 0.75rem; border-top: 1px solid var(--line-soft); padding-top: 0.75rem; }
+.gh-chfoot-grow { margin-right: auto; }
+.gh-chfoot .primary { white-space: nowrap; }
+.gh-chfoot form { display: inline; margin: 0; }
+.gh-reopen { flex-direction: row; justify-content: space-between; align-items: center; gap: 1rem; }
+.gh-reopen-h { font-size: 0.875rem; color: var(--ink); }
+.gh-reopen form { flex: none; margin: 0; }

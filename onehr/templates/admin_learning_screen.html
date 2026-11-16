@@ -1,0 +1,150 @@
+{# The room's screen (AI+ Learning phase 2, 2026-10-20; canvas [design canvas link removed] boards
+   Clockin-Screen and, since 2026-10-22, Clockout-Screen 3C): the QR people scan to clock in, or at the end to clock out
+   and rate it, a 6-digit code to type instead, both new every 30 seconds, and how many are in and out. The switch
+   between the two is the trainer's (it turns to clock-out by itself 15 minutes before the end). Shown from L&D's admin
+   page or, with `trainer`, from the trainer's link with no sign-in. No base.html: it fills a projector. It polls
+   qr.json; nothing on it is a person's name. #}
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>Clock in · {{ s.title }}</title>
+<style>
+:root{--navy:#252A59;--red:#D61923;--ink:#1f2330;--muted:#5f6678;--soft:#e4e7ef;--ok:#1d6b43}
+*{box-sizing:border-box}
+html,body{height:100%}
+body{margin:0;font:1rem/1.4 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;color:var(--ink);background:#fff;
+     display:flex;flex-direction:column}
+.sc-top{display:flex;align-items:center;gap:12px;padding:20px 36px;border-bottom:1px solid var(--soft);flex-wrap:wrap}
+.sc-pill{background:var(--navy);color:#fff;font-weight:700;font-size:0.8125rem;border-radius:999px;padding:4px 12px;letter-spacing:.02em}
+.sc-title{font-size:1.375rem;font-weight:700;margin:0}
+.sc-line{color:var(--muted);font-size:0.9375rem}
+.sc-sw{margin-left:auto;display:inline-flex;border:1px solid #c3c8d6;border-radius:999px;overflow:hidden;background:#fff}
+.sc-sw button{border:0;background:#fff;color:var(--navy);font:inherit;font-size:0.875rem;font-weight:700;padding:8px 18px;min-height:40px;cursor:pointer}
+.sc-sw button[aria-pressed="true"]{background:var(--navy);color:#fff}
+.sc-sw button:focus-visible{outline:3px solid #8e96c4;outline-offset:-3px}
+.sc-main{flex:1;display:flex;align-items:center;justify-content:center;gap:64px;padding:24px 36px}
+.sc-qr{width:min(52vh,460px);aspect-ratio:1;display:flex;align-items:center;justify-content:center;border:1px solid var(--soft);
+       border-radius:16px;padding:12px;transition:opacity .2s}
+.sc-qr svg{width:100%;height:100%}
+.sc-qr.is-off{opacity:.18}
+.sc-side{display:flex;flex-direction:column;gap:18px;max-width:460px}
+.sc-k{font-size:0.8125rem;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
+.sc-k.is-out{color:var(--ok)}
+.sc-big{font-size:2.125rem;font-weight:700;margin:0;color:var(--navy)}
+.sc-sub{font-size:1rem;color:var(--muted);margin:-8px 0 0}
+.sc-code{font:700 4rem/1 ui-monospace,SFMono-Regular,Menlo,monospace;letter-spacing:.14em;color:var(--navy)}
+.sc-bar{height:6px;border-radius:3px;background:var(--soft);overflow:hidden}
+.sc-bar i{display:block;height:100%;background:var(--navy);transition:width 1s linear}
+.sc-url{font-size:0.9375rem;color:var(--muted)}
+.sc-url b{color:var(--ink)}
+.sc-count{font-size:1.25rem;margin:0}
+.sc-count b{font-size:2.5rem;color:var(--navy)}
+.sc-msg{font-size:1.125rem;font-weight:600;color:var(--red)}
+[hidden],.sc-main[hidden],.sc-shut[hidden],.sc-sw[hidden]{display:none}
+.sc-foot{padding:10px 36px 16px;font-size:0.875rem;color:var(--muted);border-top:1px solid var(--soft)}
+.sc-shut{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;text-align:center;padding:24px}
+.sc-shut p{margin:0;font-size:1.125rem;color:var(--muted);max-width:620px}
+@media (max-width:860px){.sc-main{flex-direction:column;gap:24px}.sc-code{font-size:2.75rem}.sc-big{font-size:1.625rem}}
+</style>
+</head>
+<body>
+<header class="sc-top"><span class="sc-pill">AI+ Learning</span><h1 class="sc-title">{{ s.title }}</h1><span class="sc-line">{{ line }}</span>
+  <div class="sc-sw" role="group" aria-label="What the screen shows" id="sc-sw" hidden>
+    <button type="button" data-mode="in" aria-pressed="true">Clock in</button><button type="button" data-mode="out" aria-pressed="false">Clock out</button>
+  </div>
+</header>
+<main class="sc-main" id="sc-main">
+  <div class="sc-qr is-off" id="sc-qr" aria-label="Clock-in QR code"></div>
+  <div class="sc-side">
+    <span class="sc-k" id="sc-kind">Clock in</span>
+    <p class="sc-big" id="sc-big">Scan with your phone's camera</p>
+    <p class="sc-sub" id="sc-sub" hidden></p>
+    <p class="sc-msg" id="sc-msg" hidden></p>
+    <span class="sc-k">Or type this code</span>
+    <div class="sc-code" id="sc-code" aria-live="polite">······</div>
+    <div class="sc-bar" aria-hidden="true"><i id="sc-left" style="width:100%"></i></div>
+    <p class="sc-url">at <b id="sc-path">{{ request.host }}{{ url_for('learning_checkin', sid=s.id) }}</b>. It changes every 30 seconds.</p>
+    <p class="sc-count" id="sc-count"><b id="sc-n">0</b> <span id="sc-nk">clocked in</span><span id="sc-of"></span></p>
+  </div>
+</main>
+<div class="sc-shut" id="sc-shut" hidden>
+  <p><b>This screen opens on the session's days</b>, from an hour before the start to half an hour after the end.</p>
+  <p>{{ line }}</p>
+</div>
+<footer class="sc-foot" id="sc-foot">{% if trainer %}For the trainer: switch to <b>Clock out</b> when you finish teaching. If you don't, it switches by itself 15 minutes before the end, and clock-out stays open until half an hour after it. Came in late? Switch back to Clock in.{% else %}The trainer's switch: <b>Clock out</b> when teaching ends (by itself 15 minutes before the end). Clock-out stays open until half an hour after the end.{% endif %}</footer>
+<script>
+(function () {
+  var url = {{ qr_url | tojson }}, modeUrl = {{ mode_url | tojson }}, key = {{ (key or '') | tojson }};
+  var csrf = {{ csrf_token | tojson }}, host = {{ request.host | tojson }};
+  var $ = function (id) { return document.getElementById(id); };
+  var qr = $("sc-qr"), code = $("sc-code"), bar = $("sc-left"), msg = $("sc-msg"), sw = $("sc-sw");
+  var left = 0, mode = "in", busy = false;
+  function show(d) {
+    var shut = !!d.closed;
+    $("sc-main").hidden = shut; $("sc-shut").hidden = !shut; $("sc-foot").hidden = shut; sw.hidden = shut;
+    if (shut) { left = 60; return; }
+    mode = d.mode || "in";
+    var out = mode === "out";
+    Array.prototype.forEach.call(sw.querySelectorAll("button"), function (b) {
+      b.setAttribute("aria-pressed", b.getAttribute("data-mode") === mode ? "true" : "false");
+    });
+    document.title = (out ? "Clock out · " : "Clock in · ") + {{ s.title | tojson }};
+    qr.setAttribute("aria-label", out ? "Clock-out QR code" : "Clock-in QR code");
+    $("sc-kind").textContent = out ? "Clock out" : "Clock in";
+    $("sc-kind").classList.toggle("is-out", out);
+    $("sc-big").textContent = out ? (d.last ? "Scan to clock out and rate the course" : "Scan to clock out for today")
+                                  : "Scan with your phone's camera";
+    $("sc-sub").hidden = !(out && d.last);
+    $("sc-sub").textContent = "About a minute: four questions and a comment. Sending it clocks you out.";
+    $("sc-path").textContent = host + (d.path || "");
+    qr.innerHTML = d.svg;               // OneHR's own SVG, built on the server from the clock-in or clock-out address
+    code.textContent = d.code;
+    left = d.left;
+    bar.style.width = Math.max(0, left / 30 * 100) + "%";
+    qr.classList.toggle("is-off", !d.open);
+    msg.hidden = !!d.open;
+    msg.textContent = d.open ? "" : "Clock-in opens an hour before the start and closes half an hour after the end.";
+    $("sc-n").textContent = out ? d.out : d["in"];
+    $("sc-nk").textContent = out ? "clocked out" : "clocked in";
+    $("sc-of").textContent = out ? " of " + d["in"] + " in today" : (d.of ? " of " + d.of + " confirmed" : "");
+  }
+  function tick() {
+    left -= 1;
+    bar.style.width = Math.max(0, left / 30 * 100) + "%";
+    if (left <= 0 || left % 6 === 0) load();     // a new code when it runs out; the counts every few seconds
+  }
+  function load() {
+    fetch(url, {credentials: "same-origin", cache: "no-store"}).then(function (r) {
+      if (!r.ok) throw new Error(r.status);
+      return r.json();
+    }).then(show).catch(function () {
+      msg.hidden = false;
+      msg.textContent = "Lost the connection. Trying again…";
+      left = 5;
+    });
+  }
+  sw.addEventListener("click", function (e) {
+    var b = e.target.closest("button[data-mode]");
+    if (!b || busy || b.getAttribute("data-mode") === mode) return;
+    busy = true;
+    var f = new FormData();
+    f.append("csrf_token", csrf); f.append("mode", b.getAttribute("data-mode"));
+    if (key) f.append("k", key);
+    fetch(modeUrl, {method: "POST", body: f, credentials: "same-origin"}).then(function (r) {
+      if (!r.ok) throw new Error(r.status);
+      return r.json();
+    }).then(function () { busy = false; load(); }).catch(function () {
+      busy = false;
+      msg.hidden = false;
+      msg.textContent = "The switch didn't save. Try again.";
+    });
+  });
+  load();
+  setInterval(tick, 1000);
+})();
+</script>
+</body>
+</html>

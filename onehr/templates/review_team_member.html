@@ -1,0 +1,77 @@
+{# The manager's pack for one report. Everything here is visible to the subject:
+   the endorse/dispute verdicts land on their own ledger, and the note the
+   manager records is a shared item on it. There is no private manager evidence
+   -- that stays in the moderation drafts, which this page never touches. #}
+{% extends "base.html" %}
+{% block title %}{{ subject['full_name'] }} — review{% endblock %}
+{% block body %}
+<input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+<div class="page-head">
+  <div>
+    <h1>{{ subject['full_name'] }}</h1>
+    <p class="muted">What they put on the record this period. Endorse or dispute each, and add
+      what you saw &mdash; they see all of it.</p>
+  </div>
+  <div><a class="btn" href="{{ url_for('review_team') }}">&larr; Your team</a></div>
+</div>
+
+<style>
+.rv-team-item{border:1px solid var(--line);border-radius:11px;background:var(--surface);padding:13px 15px;margin-bottom:11px}
+.rv-team-verdicts{display:flex;gap:8px;margin-top:8px}
+.rv-chip{border:1px solid var(--d-bd-cdd1dd);background:var(--surface);border-radius:16px;padding:4px 13px;font:inherit;
+  font-size:.84rem;cursor:pointer}
+.rv-chip-on{background:var(--d-bg-111827);color:var(--on-fill);border-color:var(--d-bd-111827)}
+.rv-team-note{border:1px solid var(--line);border-radius:11px;background:var(--d-bg-fbfcfe);padding:14px 16px}
+.rv-agent{font-weight:600;margin:0 0 8px}
+</style>
+
+<div id="rv-team-pack">
+  {% if items %}
+    {% for e in items %}
+      <div class="rv-team-item" data-evid="{{ e['id'] }}">
+        <p class="muted small" style="margin:0">{{ e['occurred_on'] }} &middot; {{ e['kind'] | replace('_',' ') }}
+          {%- if e['author_role'] == 'manager' %} &middot; <strong>you wrote this</strong>{% endif %}</p>
+        {% if e['title'] %}<strong>{{ e['title'] }}</strong><br>{% endif %}
+        <span>{{ e['body'] }}</span>
+        {% if e['author_role'] != 'manager' %}
+        <div class="rv-team-verdicts">
+          {% set mine = (reviews[e['id']] | selectattr('reviewer_id', 'equalto', me_id) | list) %}
+          {% set verdict = mine[0]['verdict'] if mine else '' %}
+          <button type="button" class="rv-chip{{ ' rv-chip-on' if verdict == 'endorse' }}"
+                  data-review="{{ e['id'] }}" data-verdict="endorse"
+                  data-url="{{ url_for('evidence_review', eid=e['id']) }}">Endorse</button>
+          <button type="button" class="rv-chip{{ ' rv-chip-on' if verdict == 'dispute' }}"
+                  data-review="{{ e['id'] }}" data-verdict="dispute"
+                  data-url="{{ url_for('evidence_review', eid=e['id']) }}">Dispute</button>
+        </div>
+        {% endif %}
+        {% for rv in reviews[e['id']] %}
+          <p class="muted small" style="margin:4px 0 0">
+            {{ rv['reviewer_name'] or 'A reviewer' }} {{ rv['verdict'] }}d this{% if rv['note'] %} &mdash; {{ rv['note'] }}{% endif %}</p>
+        {% endfor %}
+      </div>
+    {% endfor %}
+  {% else %}
+    <p class="muted">They have not put anything on the record yet.</p>
+  {% endif %}
+</div>
+
+<div class="rv-team-note" style="margin-top:18px">
+  <p class="rv-agent">What did you see? This goes on {{ subject['full_name'].split()[0] }}'s record,
+    and they can add their own account beside it.</p>
+  <textarea id="rv-note-body" rows="3" placeholder="What happened, and when"
+            style="width:100%;box-sizing:border-box"></textarea>
+  <p class="muted small" style="margin:6px 0 0">The person can see this note.</p>
+  <div style="margin-top:8px;display:flex;gap:12px;align-items:center;flex-wrap:wrap">
+    <label class="muted small">Was this raised with them at the time?
+      <select id="rv-note-raised" class="modern-select">
+        <option value="written">Yes, in writing</option>
+        <option value="discussed">Yes, discussed</option>
+        <option value="no">No</option>
+      </select></label>
+    <button type="button" class="primary" id="rv-note-save"
+            data-url="{{ url_for('review_team_note', subject_id=subject['id']) }}">Record it</button>
+  </div>
+</div>
+<script src="{{ url_for('static', filename='review.js') }}?v={{ asset_v }}" defer></script>
+{% endblock %}

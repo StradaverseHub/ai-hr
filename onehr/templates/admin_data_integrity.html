@@ -1,0 +1,193 @@
+{# Read-only diagnostic. Two states in one template: the landing page (a count
+   per check, grouped) and one check's drill-down. Deliberately never offers a
+   fix button -- every row links to the page that already does the fixing. #}
+{% extends "base.html" %}
+{% from "_adm_panel.html" import list_peek %}
+{# a department picked from the list, or named as new (2026-10-19): never typed free #}
+{% macro dept_select(name, aria, req=False) %}<select name="{{ name }}" class="modern-select dc-dept" data-choose-new data-new-required aria-label="{{ aria }}"{% if req %} required{% endif %}>
+  <option value="">Choose…</option>{% for d in depts %}<option value="{{ d }}">{{ d }}</option>{% endfor %}<option value="__new__">A new department…</option>
+</select><input name="{{ name }}_new" maxlength="80" placeholder="The new department" aria-label="The new department" data-new-input hidden>{% endmacro %}
+{% from "_table_tools.html" import colth, colmenu, colmenu_script %}
+{% from "_filter_rows.html" import filter_rows %}
+{% block title %}Data integrity{% endblock %}
+{% block body %}
+
+{% if check %}
+<div class="page-head">
+  <div>
+    <h1>{{ check['label'] }}</h1>
+    <p class="muted">{{ check['why'] }}</p>
+    <p class="small" style="margin:6px 0 0"><b>To fix:</b> {% if fix == 'lm' %}set the line manager in a person's row below, or tick several and set one for all of them.{% elif fix == 'dept' %}set the department in a person's row below, or tick several and set one for all of them.{% else %}{{ check['fix'] }}{% endif %}</p>
+  </div>
+  <div class="page-head-right">
+    <a class="btn-link" href="{{ url_for('admin_data_integrity') }}">&larr; All checks</a>
+    {% if fix_allowed and not fix %}<a class="primary" href="{{ fix_href }}">Open {{ fix_page }}</a>{% endif %}
+  </div>
+</div>
+
+{# business group and unit as rows (the admin table standard, 2026-10-11); the export follows them #}
+{% if frows %}
+<section class="admin-card adm-filters" aria-label="Filters">
+  {{ filter_rows(frows) }}
+</section>
+{% endif %}
+
+{% if rows and fix %}
+{# Fix them here (admin round 4, canvas D2): a line manager picked by name on each row, or ticked rows all given the
+   same one; or a department. Each posts to admin_data_integrity_fix and comes back to this list. #}
+<form method="post" action="{{ url_for('admin_data_integrity_fix') }}" id="dc-bulk" class="admin-card dc-bulk"
+      data-confirm="{{ 'Give every ticked person this line manager? Each change is made as on their page: their KPI lines nobody has moderated move to the new line manager, and their 360 panel stays as filed.' if fix == 'lm' else 'Set this department for every ticked person?' }}"
+      data-confirm-ok="{{ 'Set line manager' if fix == 'lm' else 'Set department' }}">
+  <input type="hidden" name="check" value="{{ check['key'] }}">
+  <input type="hidden" name="next" value="{{ request.full_path }}">
+  <span class="dc-bulk-n" aria-live="polite"><b id="dc-n">0</b> ticked</span>
+  {% if fix == 'lm' %}
+  <label>Give them all the same line manager:
+    <span class="pick" data-pick><input type="text" class="pick-q" placeholder="Name, ID or job" aria-label="Line manager for the ticked people" autocomplete="off">
+      <input type="hidden" name="lm_eid" class="pick-val"></span></label>
+  {% else %}
+  <label data-choose-new-box>Give them all the same department: {{ dept_select('department', 'Department for everyone ticked') }}</label>
+  {% endif %}
+  <button type="submit" class="primary" id="dc-bulk-go" disabled>Set for the ticked</button>
+  <p class="muted small" style="margin:6px 0 0;flex-basis:100%">{{ 'Pick their line manager on the row, or tick several and give them the same one.' if fix == 'lm' else 'Pick their department on the row, or tick several and give them the same one.' }}</p>
+</form>
+
+<section class="admin-card">
+{% if capped %}<p class="muted small"><strong>Showing the first {{ cap | thousands }}.</strong> There are more &mdash; export to Excel to see every one.</p>{% endif %}
+<div class="table-scroll table-scroll-capped">
+<table class="admin-table no-auto-table" id="dc-fix-table">
+  <thead><tr><th scope="col"><input type="checkbox" id="dc-all" aria-label="Tick everyone listed"></th><th scope="col">Person</th>
+    <th scope="col">Department · job</th><th scope="col">{{ 'Line manager' if fix == 'lm' else 'Department' }}</th></tr></thead>
+  <tbody>
+    {% for r in rows %}{% set i = info.get(r['eid']) %}
+    <tr class="data-row">
+      <td>{% if i %}<input type="checkbox" class="dc-tick" form="dc-bulk" name="uid" value="{{ i.id }}" aria-label="Tick {{ r['name'] }}">{% endif %}</td>
+      <td>{% if links.get(r['eid']) %}<a href="{{ links[r['eid']] }}"><b>{{ r['name'] }}</b></a>{% else %}<b>{{ r['name'] }}</b>{% endif %}
+        <span class="muted small" style="display:block">{{ r['eid'] }} &middot; {{ display_company(r['bg'], r['bu']) or '' }}</span></td>
+      <td class="small">{% if i %}{{ i.department | proper or '—' }}{% if i.job_title %} &middot; {{ i.job_title | proper }}{% endif %}{% if i.job_grade %} &middot; JG {{ i.job_grade }}{% endif %}{% endif %}
+        <span class="muted" style="display:block">{{ r['detail'] }}</span></td>
+      <td>{% if i %}
+        <form method="post" action="{{ url_for('admin_data_integrity_fix') }}" class="dc-row-fix"
+              data-confirm="{{ ('Make the person you picked ' ~ r['name'] ~ '\'s line manager? Their KPI lines nobody has moderated move to them, as on their page.') if fix == 'lm' else ('Set ' ~ r['name'] ~ '\'s department to the one you picked?') }}"
+              data-confirm-ok="{{ 'Set line manager' if fix == 'lm' else 'Set department' }}">
+          <input type="hidden" name="check" value="{{ check['key'] }}"><input type="hidden" name="uid" value="{{ i.id }}">
+          <input type="hidden" name="next" value="{{ request.full_path }}">
+          {% if fix == 'lm' %}
+          <span class="pick" data-pick><input type="text" class="pick-q" placeholder="Name, ID or job" aria-label="Line manager for {{ r['name'] }}" required autocomplete="off">
+            <input type="hidden" name="lm_eid" class="pick-val"></span>
+          {% else %}<span data-choose-new-box>{{ dept_select('department', 'Department for ' ~ r['name'], True) }}</span>{% endif %}
+          <button type="submit" class="btn-link">Save</button>
+        </form>{% endif %}</td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+</div>
+</section>
+<script>
+(function () {
+  var all = document.getElementById("dc-all"), n = document.getElementById("dc-n"), go = document.getElementById("dc-bulk-go");
+  function count() { var k = document.querySelectorAll(".dc-tick:checked").length; n.textContent = k; go.disabled = !k;
+    go.textContent = k ? "Set for the " + k : "Set for the ticked"; }
+  if (all) all.addEventListener("change", function () { document.querySelectorAll(".dc-tick").forEach(function (c) { c.checked = all.checked; }); count(); });
+  document.querySelectorAll(".dc-tick").forEach(function (c) { c.addEventListener("change", count); });
+  count();
+})();
+</script>
+{% elif rows %}
+<section class="admin-card">
+{% if capped %}
+<p class="muted small"><strong>Showing the first {{ cap | thousands }}.</strong>
+  There are more &mdash; export to Excel to see every one.</p>
+{% endif %}
+<div class="table-scroll table-scroll-capped">
+<table class="admin-table" id="dc-table">
+  <thead><tr>
+    {{ colth('person', 'Person') }}
+    {{ colth('bg', 'Business group') }}
+    {{ colth('bu', 'Business unit') }}
+    <th>What is wrong</th>
+  </tr></thead>
+  <tbody>
+    {% for r in rows %}
+    <tr class="data-row" data-person="{{ r['name'] }}" data-bg="{{ display_bg(r['bg']) or '' }}"
+        data-bu="{{ display_company(r['bg'], r['bu']) or '' }}">
+      <td>{% if links.get(r['eid']) %}<a href="{{ links[r['eid']] }}"><b>{{ r['name'] }}</b></a>{% else %}<b>{{ r['name'] }}</b>{% endif %}
+        <span class="muted small" style="display:block">{{ r['eid'] }}</span></td>
+      <td class="muted">{{ display_bg(r['bg']) or '' }}</td>
+      <td class="muted">{{ display_company(r['bg'], r['bu']) or '' }}</td>
+      <td class="muted small">{{ r['detail'] }}</td>
+    </tr>
+    {% endfor %}
+    <tr class="no-filter-match" hidden><td colspan="4" class="muted">No rows match the filters.</td></tr>
+  </tbody>
+</table>
+</div>
+</section>
+{{ colmenu('dc-table', {
+     'person': {'mode': 'clientFilter', 'type': 'text', 'sortAttr': 'person'},
+     'bg':     {'mode': 'sort', 'type': 'text', 'sortAttr': 'bg'},
+     'bu':     {'mode': 'clientFilter', 'type': 'text', 'sortAttr': 'bu'} }) }}
+{{ colmenu_script(asset_v) }}
+{% else %}
+<section class="admin-card"><p class="muted">Nothing found &mdash; this check is clear.</p></section>
+{% endif %}
+
+{% else %}
+<p class="adm-lede">What is wrong in the data right now, and why it matters. This page only
+  reports; each finding links to the page that fixes it.</p>
+
+<div class="adm-tiles">
+  {# the super admin's numbers open their findings in the list panel (2026-10-20); Checks clear has nobody behind it #}
+  <a class="admin-card adm-tile adm-tile-link" href="#checks"{% if nav_is_super %} data-list-open="{{ url_for('admin_list_view', key='check', severity='high', fragment=1) }}"{% endif %}><span class="muted small">High severity</span><b>{{ high | thousands }}</b></a>
+  <a class="admin-card adm-tile adm-tile-link" href="#checks"{% if nav_is_super %} data-list-open="{{ url_for('admin_list_view', key='check', fragment=1) }}"{% endif %}><span class="muted small">Findings in total</span><b>{{ total | thousands }}</b></a>
+  <div class="admin-card adm-tile" data-no-list="nobody is behind a clear check"><span class="muted small">Checks clear</span>
+    <b>{{ checks | selectattr('count', 'equalto', 0) | list | length }}</b>
+    <span class="muted small">of {{ checks | length }}</span></div>
+</div>
+
+{% for g in groups %}
+{% set items = checks | selectattr('group', 'equalto', g) | list %}
+{% if items %}
+<section class="admin-card">
+  <h2>{{ g }}</h2>
+  <div class="table-scroll">
+  <table class="admin-table">
+    <thead><tr><th>Check</th><th>Findings</th><th>Severity</th><th></th></tr></thead>
+    <tbody>
+      {% for c in items %}
+      <tr>
+        <td>
+          <strong>{{ c['label'] }}</strong>
+          <br><span class="muted small">{{ c['why'] }}</span>
+        </td>
+        <td class="nowrap">
+          {% if c['count'] %}{% if nav_is_super %}<a href="{{ url_for('admin_data_integrity', check=c['key']) }}" data-list-open="{{ url_for('admin_list_view', key='check', check=c['key'], fragment=1) }}"><strong>{{ c['count'] | thousands }}</strong></a>{% else %}<strong>{{ c['count'] | thousands }}</strong>{% endif %}
+          {% else %}<span class="muted">clear</span>{% endif %}
+        </td>
+        <td>
+          {% if c['count'] %}
+            <span class="status-pill status-{{ {'high':'submitted','medium':'pending','low':'progress'}[c['severity']] }}">{{ c['severity'] }}</span>
+          {% else %}<span class="muted small">&mdash;</span>{% endif %}
+        </td>
+        <td class="nowrap">
+          {% if c['count'] %}
+          <a class="btn-link" href="{{ url_for('admin_data_integrity', check=c['key']) }}">View {{ c['count'] | thousands }}</a>
+          {% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  </div>
+</section>
+{% endif %}
+{% endfor %}
+
+<p class="muted small">
+  Panel and report checks read the <strong>active cycle</strong>. Roster and org checks read the
+  whole live roster, ignoring leavers and demo accounts.
+</p>
+{% endif %}
+{% if nav_is_super %}{{ list_peek() }}{% endif %}
+{% endblock %}

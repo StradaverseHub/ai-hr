@@ -1,0 +1,252 @@
+{# The top module switcher for the unified journey. The ACTIVE module EXPANDS: it carries the
+   module's FULL name ("Performance Management") and, pushed to the right edge, its steps -- for
+   the PM KPI check-in its 3 steps (Results ring -> Justification -> Confirm), each with its state
+   (done / current / to-do); for an active TM/IDP module its own live stages as steps. INACTIVE (or
+   locked) modules MINIMIZE to icon + the SHORT code (PM / TM / IDP), the full name as a tooltip.
+   On a narrow screen the expanded tab also falls back to the short code (CSS). Rendered from
+   live_stages + kpi_steps (or, for TM, tm_steps: 360 and competency each as Rate -> Remark -> Submit)
+   and swapped each turn, so the ring/steps stay live. A ring shows n/total, or just n from a total of
+   10 up (two-digit pairs don't fit its 18px hole; the tooltip carries "n of total"). A tab links back
+   into the journey (?stage=), so it is the module chooser; the left navigator handles items
+   within the active stage. #}
+{% from "_review_icons.html" import rvicon %}
+{# an HOD's Dept view is a Department Review, not a calibration (Chris, 2026-09-30) #}
+{% set _dept = (view is defined and view == 'dept') %}
+{# An HOD for Grade H only has the Grade H tab on Mine / Team (Chris, 2026-11-02): at the largest text size the row wraps it to its own line rather than squeeze the expanded tab #}
+{% set _ghonly = (view is defined and view in ('mine', 'team') and gradeh_hod_only()) %}
+{% set MODULES = [('pm','PM','Performance Management','target'),
+                  ('tm','TM','Talent Management','users'),
+                  ('idp','IDP','Individual Development Plan','trending-up'),
+                  ('cal', 'DR' if _dept else 'CAL', 'Department Review' if _dept else 'Calibration',
+                   'clipboard-check' if _dept else 'sliders')] %}
+{# the Executive Chairman's read-only Group Talent Box is not a calibration (2026-10-29) #}
+{% if view is defined and view == 'chairgrp' %}{% set MODULES = [('cal', 'TB', 'Group Talent Box', 'sliders')] %}{% endif %}
+{% set active_mod = (live_stages | selectattr('key','equalto',active_stage)
+                     | map(attribute='module') | first) %}
+<div class="rv-modtabs{{ ' rv-modtabs-wrap' if _ghonly }}" role="tablist" aria-label="Review modules">
+  {% for mkey, mlabel, mfull, micon in (MODULES if not not_required else []) %}
+    {% set kids = live_stages | selectattr('module','equalto',mkey) | list %}
+    {% if kids %}
+      {# The stage a tab links to: the first still-open stage, else the first live stage,
+         else the module's first stage (the module chooser -- unchanged from before). #}
+      {% set open_kids = kids | selectattr('n_open') | list %}
+      {% set live_open = kids | rejectattr('state','equalto','done')
+                              | rejectattr('state','equalto','later')
+                              | rejectattr('state','equalto','off') | list %}
+      {% set target = (open_kids[0]['key'] if open_kids else (live_open[0]['key'] if live_open else kids[0]['key'])) %}
+      {% set is_locked = (mkey == 'idp' and idp_locked) %}
+      {% set is_active = (mkey == active_mod) %}
+      {% if is_locked %}
+        {# Minimized + locked: icon + short code only, with the lock glyph. #}
+        <span class="rv-modtab rv-mt-min rv-modtab-locked" aria-label="{{ mfull }} (locked)"
+              title="{{ mfull }} — opens once your KPI check-in and competency assessment are done">
+          <span class="rv-mt-name">{{ rvicon(micon) }}{{ mlabel }}</span>
+          <span class="rv-mt-lock" aria-label="locked">&#128274;</span>
+        </span>
+      {% elif is_active and tm_steps and tm_steps|length > 1 %}
+        {# TM with both parts (the UX review's F8, 2026-10-08): the part names are real tabs, each with its count
+           ("360 Feedback 2/2", "Competency 0/10"), and the active part's 3 steps sit on the right. Before, only the
+           left panel's small menu switched, and "Competency" here looked like a step but did nothing when clicked.
+           The tab itself isn't a link (links can't nest); each part is, and switches in place like a module tab. #}
+        <div class="rv-modtab rv-mt-on rv-mt-exp rv-mt-tmsteps rv-mt-tmparts" role="group"
+             aria-label="{{ mfull }} (the module you're in)">
+          <span class="rv-mt-name">{{ rvicon(micon) }}<span class="rv-mt-full">{{ mfull }}</span><span class="rv-mt-short" aria-hidden="true">{{ mlabel }}</span></span>
+          <span class="rv-mt-parts">
+            {% for g in tm_steps %}
+              <a class="rv-mt-part{% if g.active %} is-on{% endif %}{% if g.done %} is-done{% endif %}"
+                 href="{{ url_for('review_journey', stage=g.key) }}" data-stage="{{ g.key }}"
+                 {% if g.active %}aria-current="page"{% endif %}
+                 title="{{ g.full }} — {{ g.n_done }} of {{ g.n_all }} {{ 'colleagues submitted' if g.key == 'feedback' else 'answered' }}{% if g.done %}, submitted{% endif %}">
+                {% if g.done %}<span class="rv-mt-part-tick" aria-hidden="true">&#10003;</span>{% endif %}
+                <span class="rv-mt-part-name">{{ g.label }}</span>
+                <span class="rv-mt-part-n">{{ g.n_done }}/{{ g.n_all }}</span>
+              </a>
+            {% endfor %}
+          </span>
+          <span class="rv-mt-steps">
+            {% for g in tm_steps if g.active %}
+              {% if g.done %}
+                <span class="rv-mt-step rv-mt-done" title="{{ g.full }} — submitted">
+                  <span class="rv-mt-dot">&#10003;</span><span class="rv-mt-steplabel">Submitted</span>
+                </span>
+              {% else %}
+                {% for s in g.steps %}
+                  {% if not loop.first %}<span class="rv-mt-sep"></span>{% endif %}
+                  <span class="rv-mt-step rv-mt-{{ 'done' if s.done else ('cur' if s.current else 'todo') }}"
+                        title="{{ g.label }} · {{ s.label }} — {{ s.tip }}">
+                    {% if s.ring %}
+                      <span class="rv-mt-ring" style="--frac: {{ s.frac }}" aria-hidden="true">
+                        <span class="rv-mt-ringnum">{% if s.done %}&#10003;{% elif s.total >= 10 %}{{ s.n }}{% else %}{{ s.n }}/{{ s.total }}{% endif %}</span>
+                      </span>
+                    {% else %}
+                      <span class="rv-mt-dot">{% if s.done %}&#10003;{% else %}{{ loop.index }}{% endif %}</span>
+                    {% endif %}
+                    <span class="rv-mt-steplabel">{{ s.label }}</span>
+                  </span>
+                {% endfor %}
+              {% endif %}
+            {% endfor %}
+          </span>
+        </div>
+      {% elif is_active and tb_rounds %}
+        {# The BG CEO's Talent Box after Group People pushed Round 2 to them (Chris, 2026-11-14, canvas boards G / G2: "Calibration round 1 and
+           Calibration round 2 respectively"; "round 2 bar will only show after admin pushes to BGCEO"): the two steps stand where "1 Talent Box"
+           stood, each a real tab (a button, not a link: the tab itself is not one), the green tick = locked, the navy ring = open. The picked one
+           is the server's (?rtab=): the page is re-read when one is clicked (static/journey_chat.js, data-tb-rtab). #}
+        <div class="rv-modtab rv-mt-on rv-mt-exp rv-mt-rounds" role="group" aria-label="{{ mfull }} (the module you're in)">
+          <span class="rv-mt-name">{{ rvicon(micon) }}<span class="rv-mt-full">{{ mfull }}</span><span class="rv-mt-short" aria-hidden="true">{{ mlabel }}</span></span>
+          <span class="rv-mt-steps" role="tablist" aria-label="Calibration rounds">
+            <button type="button" class="rv-mt-step rv-mt-done rv-mt-rtab{% if tb_rounds.tab == '1' %} is-sel{% endif %}" role="tab" data-tb-rtab="1"
+                    aria-selected="{{ 'true' if tb_rounds.tab == '1' else 'false' }}"{% if not tb_rounds.has_r1 %} disabled{% endif %}
+                    title="Calibration round 1: your Talent Box as you locked it on the forecast PAT, read only">
+              <span class="rv-mt-dot">&#10003;</span><span class="rv-mt-steplabel">Calibration round 1</span>
+            </button>
+            <span class="rv-mt-sep"></span>
+            <button type="button" class="rv-mt-step rv-mt-{{ 'done' if tb_rounds.r2_done else 'cur' }} rv-mt-rtab{% if tb_rounds.tab == '2' %} is-sel{% endif %}" role="tab" data-tb-rtab="2"
+                    aria-selected="{{ 'true' if tb_rounds.tab == '2' else 'false' }}"
+                    title="Calibration round 2: {{ 'locked' if tb_rounds.r2_done else 'your Talent Box on the updated PAT' }}{% if tb_rounds.lock_by and not tb_rounds.r2_done %}, lock by {{ tb_rounds.lock_by }}{% endif %}">
+              <span class="rv-mt-dot">{% if tb_rounds.r2_done %}&#10003;{% else %}2{% endif %}</span><span class="rv-mt-steplabel">Calibration round 2</span>
+            </button>
+          </span>
+        </div>
+      {% elif is_active %}
+        {# Expanded active module: icon + FULL name, then the steps strip (right-aligned). #}
+        <a class="rv-modtab rv-mt-on rv-mt-exp{% if tm_steps %} rv-mt-tmsteps{% endif %}" role="tab"
+           href="{{ url_for('review_journey', stage=target) }}" data-stage="{{ target }}"
+           aria-current="true" aria-label="{{ mfull }}">
+          <span class="rv-mt-name">{{ rvicon(micon) }}<span class="rv-mt-full">{{ mfull }}</span><span class="rv-mt-short" aria-hidden="true">{{ mlabel }}</span></span>
+          <span class="rv-mt-steps">
+            {% if kpi_steps %}
+              {# The PM KPI check-in: Results (a progress ring, keyed/total) -> Justification -> Confirm. #}
+              {% for s in kpi_steps %}
+                {% if not loop.first %}<span class="rv-mt-sep"></span>{% endif %}
+                <span class="rv-mt-step rv-mt-{{ 'done' if s.done else ('cur' if s.current else 'todo') }}"
+                      title="{{ s.label }}{% if s.key == 'results' and not s.done %} — {{ s.keyed }} of {{ s.total }} results in{% endif %}">
+                  {% if s.key == 'results' %}
+                    <span class="rv-mt-ring" style="--frac: {{ s.frac }}" aria-hidden="true">
+                      <span class="rv-mt-ringnum">{% if s.done %}&#10003;{% elif s.total >= 10 %}{{ s.keyed }}{% else %}{{ s.keyed }}/{{ s.total }}{% endif %}</span>
+                    </span>
+                  {% else %}
+                    <span class="rv-mt-dot">{% if s.done %}&#10003;{% else %}{{ loop.index }}{% endif %}</span>
+                  {% endif %}
+                  <span class="rv-mt-steplabel">{{ s.label }}</span>
+                </span>
+              {% endfor %}
+            {% elif idp_steps %}
+              {# The Career Plan's three items: Goals -> Direction -> Mobility (Chris, 2026-09-24). #}
+              {% for s in idp_steps %}
+                {% if not loop.first %}<span class="rv-mt-sep"></span>{% endif %}
+                <span class="rv-mt-step rv-mt-{{ 'done' if s.done else ('cur' if s.current else 'todo') }}"
+                      title="{{ s.name }} — {{ s.meta }}">
+                  <span class="rv-mt-dot">{% if s.done %}&#10003;{% else %}{{ loop.index }}{% endif %}</span>
+                  <span class="rv-mt-steplabel">{{ s.label }}</span>
+                </span>
+              {% endfor %}
+            {% elif tm_steps %}
+              {# The TM module: each stage (360, competency) as a GROUP of the same 3 steps
+                 (Rate ring -> Remark -> Submit). Only the ACTIVE stage shows its steps (Chris,
+                 2026-09-25: "only show the active steps"); another open stage is MINIMIZED to its
+                 name (its progress in the tooltip), and a finished one to a tick + its name. #}
+              {% for g in tm_steps %}
+                {% if not loop.first %}<span class="rv-mt-gsep" aria-hidden="true"></span>{% endif %}
+                {% if g.done %}
+                  <span class="rv-mt-step rv-mt-done" title="{{ g.full }} — done">
+                    <span class="rv-mt-dot">&#10003;</span>
+                    <span class="rv-mt-steplabel">{{ g.full }}</span>
+                  </span>
+                {% elif not g.active %}
+                  <span class="rv-mt-grp rv-mt-mini" title="{{ g.full }} — {{ g.steps[0].tip if g.steps else '' }}">
+                    <span class="rv-mt-grplbl">{{ g.label }}</span>
+                  </span>
+                {% else %}
+                  <span class="rv-mt-grp" title="{{ g.full }}">
+                    <span class="rv-mt-grplbl">{{ g.label }}</span>
+                    {% for s in g.steps %}
+                      {% if not loop.first %}<span class="rv-mt-sep"></span>{% endif %}
+                      <span class="rv-mt-step rv-mt-{{ 'done' if s.done else ('cur' if s.current else 'todo') }}"
+                            title="{{ g.label }} · {{ s.label }} — {{ s.tip }}">
+                        {% if s.ring %}
+                          <span class="rv-mt-ring" style="--frac: {{ s.frac }}" aria-hidden="true">
+                            <span class="rv-mt-ringnum">{% if s.done %}&#10003;{% elif s.total >= 10 %}{{ s.n }}{% else %}{{ s.n }}/{{ s.total }}{% endif %}</span>
+                          </span>
+                        {% else %}
+                          <span class="rv-mt-dot">{% if s.done %}&#10003;{% else %}{{ loop.index }}{% endif %}</span>
+                        {% endif %}
+                        <span class="rv-mt-steplabel">{{ s.label }}</span>
+                      </span>
+                    {% endfor %}
+                  </span>
+                {% endif %}
+              {% endfor %}
+            {% elif team_status and mkey in team_status %}
+              {# The Team view: where this part stands (the UX review's F10, 2026-10-08) -- a tick only when everyone
+                 is done; else how many are waiting on you, or how many you're waiting on. #}
+              {% set ts = team_status[mkey] %}
+              {% if ts.done %}
+                <span class="rv-mt-step rv-mt-done" title="{{ kids[0].short }} — everyone done">
+                  <span class="rv-mt-dot">&#10003;</span><span class="rv-mt-steplabel">All {{ ts.total }} done</span>
+                </span>
+              {% elif ts.turn %}
+                <span class="rv-mt-status is-turn" title="{{ kids[0].short }} — {{ ts.turn }} waiting on you{% if ts.wait %}, {{ ts.wait }} not ready yet{% endif %}">{{ ts.turn }} waiting on you</span>
+              {% elif ts.wait %}
+                <span class="rv-mt-status" title="{{ kids[0].short }} — nothing for you yet; waiting on {{ ts.wait }}">Waiting on {{ ts.wait }}</span>
+              {% else %}
+                <span class="rv-mt-status">No one to review</span>
+              {% endif %}
+            {% else %}
+              {# An active TM/IDP module (or PM with no keyable lines): its own live stages as steps. #}
+              {% for k in kids %}
+                {% if not loop.first %}<span class="rv-mt-sep"></span>{% endif %}
+                {% set kstate = 'done' if k.state == 'done' else ('cur' if k.key == active_stage else 'todo') %}
+                <span class="rv-mt-step rv-mt-{{ kstate }}" title="{{ k.short }}">
+                  <span class="rv-mt-dot">{% if k.state == 'done' %}&#10003;{% else %}{{ loop.index }}{% endif %}</span>
+                  <span class="rv-mt-steplabel">{{ k.short }}</span>
+                </span>
+              {% endfor %}
+            {% endif %}
+          </span>
+        </a>
+      {% else %}
+        {# Minimized inactive module: icon + short code only (the full name as a tooltip). In the Team view it also
+           carries where the part stands (F10): a count of who's waiting on you, "waiting on N", or a tick. #}
+        {% set ts = team_status[mkey] if (team_status and mkey in team_status) else none %}
+        {% set ts_text = none if not ts else ('everyone done' if ts.done else (ts.turn ~ ' waiting on you') if ts.turn
+                                               else ('waiting on ' ~ ts.wait) if ts.wait else 'no one to review') %}
+        <a class="rv-modtab rv-mt-min" role="tab" aria-label="{{ mfull }}{% if ts_text %} — {{ ts_text }}{% endif %}"
+           title="{{ mfull }}{% if ts_text %} — {{ ts_text }}{% endif %}"
+           href="{{ url_for('review_journey', stage=target) }}" data-stage="{{ target }}">
+          <span class="rv-mt-name">{{ rvicon(micon) }}{{ mlabel }}</span>
+          {% if ts %}
+            {% if ts.done %}<span class="rv-mt-mintick" aria-hidden="true">&#10003;</span>
+            {% elif ts.turn %}<span class="rv-mt-badge" aria-hidden="true">{{ ts.turn }}</span>
+            {% elif ts.wait %}<span class="rv-mt-minwait" aria-hidden="true">waiting on {{ ts.wait }}</span>{% endif %}
+          {% endif %}
+        </a>
+      {% endif %}
+    {% endif %}
+  {% endfor %}
+  {# The Grade H tab (2026-10-30; canvas 42gRB6b3xwPm7YHSH3BQWK): an HOD on Dept, a BU CEO on BU, who has Grade H people. A minimised tab (the
+     CSF tab's family) AFTER the expanded Department Review / Calibration tab, linking to /calibration/gradeh/...; the badge is the people
+     still to review (99+ from 100), a green tick once every Grade H stage is signed off, nothing when it is zero but not signed off. #}
+  {# An HOD for Grade H only (the Grade H list names them; they have no Department Review, Chris 2026-11-02) has no Dept view: the same minimised tab sits on Mine / Team. #}
+  {% set _ghd = gradeh_cal_door('hod' if view == 'dept' else 'unit') if (view is defined and view in ('dept', 'bu')) else (gradeh_cal_door('hod') if _ghonly else none) %}
+  {% if _ghd %}
+    <a class="rv-modtab rv-mt-min rv-mt-gradeh" href="{{ _ghd.url }}" role="tab" aria-label="Grade H{% if _ghd.done %} (signed off){% elif _ghd.badge %} ({{ _ghd.n_open }} to review){% endif %}"
+       title="{{ _ghd.title }}">
+      <span class="rv-mt-name">Grade H</span>
+      {% if _ghd.done %}<span class="rv-mt-ghtick" aria-hidden="true">&#10003;</span>
+      {% elif _ghd.badge %}<span class="rv-mt-ghbadge" aria-hidden="true">{{ _ghd.badge }}</span>{% endif %}
+    </a>
+  {% endif %}
+  {% if not_required %}
+    {# Not taking part in their own review this round (2026-09-28): the modules are still there, and each one answers
+       the same way -- "you're not required to take part in this round". #}
+    {% for mkey, mlabel, mfull, micon in MODULES if mkey in ('pm', 'tm') or (mkey == 'idp' and year_end) %}
+      <a class="rv-modtab rv-mt-min rv-mt-nr" role="tab" aria-label="{{ mfull }} (not required this round)"
+         title="{{ mfull }} — not required this round" href="{{ url_for('review_journey', stage=mkey) }}"
+         data-stage="{{ mkey }}">
+        <span class="rv-mt-name">{{ rvicon(micon) }}{{ mlabel }}</span>
+      </a>
+    {% endfor %}
+  {% endif %}
+</div>

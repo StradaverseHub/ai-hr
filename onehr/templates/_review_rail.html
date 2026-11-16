@@ -1,0 +1,57 @@
+{# Where you are. The stages in calendar order, the current one marked, a
+   switched-off module ABSENT rather than greyed. Two sections: "Yours" (your own
+   review, sub-grouped by module PM / TM / IDP so the module name isn't restated
+   in every row) and, for a line manager, "Your team" -- the review handoffs to
+   the team pages. #}
+{% from "_review_icons.html" import rvicon %}
+{% set self_stages = st['stages'] | selectattr('group', 'equalto', 'self') | list %}
+{% set team_stages = st['stages'] | selectattr('group', 'equalto', 'team') | list %}
+{% set MODULES = [('pm', 'PM', 'target'), ('tm', 'TM', 'users'), ('idp', 'IDP', 'trending-up')] %}
+<nav class="rv-rail" aria-label="Your review">
+  {% with active = 'mine' %}{% include "_review_viewtabs.html" %}{% endwith %}
+  {% for mkey, mlabel, micon in MODULES %}
+    {% set kids = self_stages | selectattr('module', 'equalto', mkey) | rejectattr('state', 'equalto', 'off') | list %}
+    {% if kids %}
+    <div class="rv-rail-group rv-mod-{{ mkey }}">
+      <p class="rv-rail-grouphead">{{ rvicon(micon) }}<span>{{ mlabel }}</span></p>
+      <ol class="rv-rail-sub">
+        {% for x in kids %}
+          {# The dot carries the status; the old subline's info (count / who a step
+             waits on) moves to a hover tooltip so the row stays a single line. #}
+          {% set tip = 'Done' if x['state'] == 'done'
+             else 'With ' ~ (x['blocked_on'] or 'your manager') if x['state'] == 'waiting'
+             else x['n_open'] ~ ' of ' ~ x['n_total'] ~ ' still yours' if (x['state'] == 'open' and x['n_total'])
+             else 'Still yours' if x['state'] == 'open'
+             else 'Not started yet' if x['state'] == 'later'
+             else '' %}
+          <li class="rv-{{ x['state'] }}{{ ' rv-here' if x['key'] == stage['key'] }}"
+              {% if tip %}title="{{ tip }}"{% endif %}>
+            {% if x['key'] == stage['key'] or x['state'] in ('later', 'done') %}
+              <span class="rv-label">{{ x['short'] }}</span>
+            {% else %}
+              <a class="rv-label" href="{{ url_for(x['endpoint']) }}">{{ x['short'] }}</a>
+            {% endif %}
+          </li>
+        {% endfor %}
+      </ol>
+    </div>
+    {% endif %}
+  {% endfor %}
+
+  {% set team_live = team_stages | rejectattr('state', 'equalto', 'off') | list %}
+  {% if team_live %}
+  <p class="rv-rail-head rv-rail-head-team">Your team</p>
+  <ol>
+    {% for x in team_live %}
+      <li class="rv-team-door{{ ' rv-here' if x['key'] == stage['key'] }}">
+        {% if x['key'] == stage['key'] %}
+          <span class="rv-label">{{ x['label'] }}</span>
+        {% else %}
+          <a class="rv-label" href="{{ url_for(x['endpoint']) }}">{{ x['label'] }}</a>
+        {% endif %}
+        {% if x['n_open'] %}<span class="rv-team-count">{{ x['n_open'] }}</span>{% endif %}
+      </li>
+    {% endfor %}
+  </ol>
+  {% endif %}
+</nav>

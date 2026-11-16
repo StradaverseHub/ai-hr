@@ -1,0 +1,350 @@
+/* Grade H Appraisal, the HOD and BU CEO calibration pages (2026-10-28, piece 5; canvases C1b, C1, C2, C2b).
+   The AI+ journey's look: a 230px side column of stage cards and one white main card, navy #252A59, colour = status. The curve and the
+   Talent Box use the leaders' own classes (rv-calib-dist, calib-dist-*, rv-tbox-*); this file adds the shell, the table, the forms and
+   the person page, all keyed on #ghc-page / .ghc-* so no shared rule is touched. Desktop look (QC at 1280x800). */
+#ghc-page { color: var(--ink); font-size: 0.875rem; }
+body:has(#ghc-page) main.container { max-width: none; margin: 24px 24px 20px 24px; padding: 0; }   /* 24px top and sides: the journey's own (.container), so the top row lands at the same y */
+body:has(#ghc-page) #main > .mod-tabs { display: none; }   /* base.html's Dashboard / review toggle; the journey's own view tray sits in .ghc-topbar */
+.ghc { display: flex; gap: 16px; align-items: flex-start; }
+.ghc-side { width: 230px; flex: none; display: flex; flex-direction: column; gap: 12px; }
+.ghc-sidecard { background: var(--surface); border: 1px solid var(--d-bd-e6e8ef); border-radius: 12px; padding: 12px 14px; display: flex; flex-direction: column; gap: 6px; box-sizing: border-box; min-width: 0; }
+.ghc-sidecard b { font-size: 0.875rem; }
+.ghc-sidecard.is-on { border: 1.5px solid var(--accent-line); padding: 11.5px 13.5px; gap: 8px; }
+.ghc-sidecard.is-off b, .ghc-sidecard.is-off .ghc-sm { color: var(--muted); }
+.ghc-sidebtn { margin-top: 4px; height: 34px; border: 1px solid var(--accent-line); border-radius: 8px; display: flex; align-items: center; justify-content: center;
+  font-size: 0.8125rem; font-weight: 600; color: var(--accent-ink); text-decoration: none; background: var(--surface); }
+.ghc-sidebtn:hover { background: var(--d-bg-f1f3f8); }
+.ghc-bar { height: 6px; background: var(--surface-3); border-radius: 999px; overflow: hidden; }
+.ghc-bar > div { height: 6px; background: var(--d-bg-f0a500); border-radius: 999px; }
+.ghc-ok { font-size: 0.78125rem; color: var(--ok-ink); font-weight: 600; }
+.ghc-sm { font-size: 0.78125rem; color: var(--muted); line-height: 1.45; }
+.ghc-foot { line-height: 1.45; }
+.ghc-link { color: var(--d-fg-2557d6); font-size: 0.78125rem; font-weight: 600; text-decoration: none; }
+.ghc-link:hover { color: var(--d-fg-1d2249); background: var(--d-bg-eef1fa); box-shadow: 0 0 0 3px var(--d-bg-eef1fa); border-radius: 4px; }
+.ghc-link.is-on { color: var(--accent-ink); text-decoration: underline; }
+.ghc-upnext { display: flex; flex-direction: column; gap: 8px; padding: 4px 2px; }
+.ghc-who { display: flex; gap: 8px; align-items: center; font-size: 0.8125rem; }
+.ghc-who > span:last-child { display: flex; flex-direction: column; min-width: 0; }
+.ghc-av { width: 26px; height: 26px; flex: none; border-radius: 999px; background: var(--d-bg-e7e9f1); color: var(--accent-ink); font-size: max(10px, 0.6875rem); font-weight: 700; display: flex; align-items: center; justify-content: center; }
+.ghc-fold summary { font-size: 0.78125rem; color: var(--d-fg-2557d6); font-weight: 600; cursor: pointer; }
+.ghc-main { flex: 1 1 0; min-width: 0; background: var(--surface); border: 1px solid var(--d-bd-e6e8ef); border-radius: 14px; display: flex; flex-direction: column; }
+.ghc-head { min-height: 52px; padding: 8px 18px; border-bottom: 1px solid var(--line-soft); display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
+.ghc-title { font-size: 0.9375rem; color: var(--accent-ink); white-space: nowrap; }
+/* The top row is the journey's own (.rv-topbar, .rv-viewtabs, .rv-modtab, .rv-mt-step in style.css); a step here is a link, so it
+   drops the link underline and keeps the journey's colours. */
+.ghc-topbar { margin-bottom: 12px; }
+.ghc-topbar a.rv-mt-step, .ghc-topbar a.rv-mt-step:hover { text-decoration: none; }
+.ghc-topbar a.rv-mt-step:hover .rv-mt-steplabel { color: var(--accent-ink); }
+.ghc-topbar .rv-mt-step.rv-mt-todo { opacity: .72; }
+.ghc-body { padding: 16px 18px; display: flex; flex-direction: column; gap: 14px; min-width: 0; }
+.ghc-say { margin: 0; background: var(--d-bg-f2f4f9); border-radius: 14px 14px 14px 4px; padding: 12px 15px; font-size: 0.90625rem; line-height: 1.55; max-width: 820px; }
+.ghc-curve { border: 1px solid var(--d-bd-e6e8ef); border-radius: 12px; padding: 14px 16px; display: flex; flex-direction: column; gap: 4px; }
+.ghc-curve-h { display: flex; justify-content: space-between; gap: 12px; margin-bottom: 6px; flex-wrap: wrap; }
+.ghc-curve a.calib-dist-row { color: inherit; text-decoration: none; }
+.ghc-curve .calib-dist-row { margin: 3px 0; padding: 2px 6px; border-radius: 6px; }
+.ghc-curve .calib-dist-band, .ghc-curve .calib-dist-pct, .ghc-curve .calib-dist-gap { font-size: 0.8125rem; }
+.ghc-curve .calib-dist-bar { flex: 1 1 0; min-width: 120px; }
+.ghc-curve .calib-dist-pct { flex: none; min-width: 170px; white-space: nowrap; }   /* min-width: the words grow with the Text size and must not run into the gap text */
+.ghc-curve .calib-dist-gap { flex: none; min-width: 170px; white-space: nowrap; text-align: right; }
+.ghc-curve .calib-dist-row.is-empty { opacity: .55; }
+.ghc-pick { margin: 0; }
+/* table */
+.ghc-tablewrap { border: 1px solid var(--d-bd-e6e8ef); border-radius: 12px; overflow: visible; }
+.ghc-table { width: 100%; border-collapse: collapse; font-size: 0.84375rem; }
+.ghc-table th { text-align: left; background: var(--d-bg-f7f8fc); color: var(--muted); font-size: 0.75rem; font-weight: 600; padding: 10px 14px; white-space: nowrap; text-transform: uppercase; letter-spacing: .02em; }
+.ghc-table th:first-child { border-radius: 12px 0 0 0; }
+.ghc-table th:last-child { border-radius: 0 12px 0 0; }
+.ghc-table td { padding: 10px 14px; border-top: 1px solid var(--line-soft); vertical-align: middle; }
+.ghc-table .c-tick { width: 20px; padding-right: 0; }
+.ghc-table .c-person b { display: block; }
+.ghc-table .c-person .ghc-sm { display: block; }
+.ghc-table .c-person .ghc-nolm { margin-top: 4px; }
+.ghc-table .c-act { text-align: right; white-space: nowrap; position: relative; }
+.ghc-table .c-lm, .ghc-table .c-hod, .ghc-table .c-pot, .ghc-table .c-score, .ghc-table .c-route, .ghc-table .c-ack { white-space: nowrap; }
+.ghc-empty { color: var(--muted); font-size: 0.8125rem; padding: 16px; margin: 0; }
+.ghc-dash { color: var(--faint); }
+.ghc-chip { display: inline-block; font-size: 0.75rem; font-weight: 600; color: var(--accent-ink); background: var(--d-bg-eef1fb); border-radius: 6px; padding: 2px 8px; white-space: nowrap; }
+.ghc-nolm { display: inline-block; font-size: max(10px, 0.6875rem); font-weight: 500; color: var(--d-fg-5b6178); background: var(--d-bg-f4f5f8); border: 1px solid var(--line); border-radius: 6px; padding: 2px 8px; white-space: nowrap; line-height: 1.4; }
+.ghc-late { display: block; font-size: max(10px, 0.6875rem); font-weight: 500; color: var(--d-fg-8a6500); margin-top: 2px; }
+.ghc-moved { font-size: max(10px, 0.6875rem); font-weight: 600; color: var(--d-fg-8a6500); margin-left: 6px; }
+.ghc-band { margin: 0 4px; }   /* with the space before it: 8px from the number, 4px+ from what follows */
+/* buttons and forms */
+.ghc-btn { height: 34px; padding: 0 14px; border-radius: 8px; background: var(--accent); color: var(--on-fill); font: 600 0.78125rem/1 inherit; font-family: inherit; display: inline-flex; align-items: center;
+  justify-content: center; text-decoration: none; border: 1px solid var(--accent-line); cursor: pointer; white-space: nowrap; box-sizing: border-box; list-style: none; }
+.ghc-btn:hover { background: var(--d-bg-1b1f48); color: var(--on-fill); }
+.ghc-btn.is-outline { background: var(--surface); color: var(--accent-ink); }
+.ghc-btn.is-outline:hover { background: var(--d-bg-f1f3f8); }
+.ghc-btn:disabled { opacity: .45; cursor: not-allowed; }
+.ghc-actions { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.ghc-inline { display: inline-flex; margin: 0; }
+.ghc-footbar { display: flex; align-items: center; justify-content: space-between; gap: 16px; border-top: 1px solid var(--line-soft); padding-top: 12px; flex-wrap: wrap; }
+.ghc-mv { display: inline-block; }
+.ghc-mv > summary::-webkit-details-marker { display: none; }
+.ghc-mv[open] > summary { background: var(--d-bg-f1f3f8); }
+.ghc-mvform { position: absolute; right: 12px; top: calc(100% - 6px); z-index: 20; width: 300px; background: var(--surface); border: 1px solid var(--d-bd-d7dbe6); border-radius: 12px; padding: 14px;
+  box-shadow: 0 8px 24px var(--d-sh-1f2330-a16); display: flex; flex-direction: column; gap: 10px; text-align: left; white-space: normal; }
+.ghc-mvform label, .ghc-callform label { display: flex; flex-direction: column; gap: 4px; font-size: 0.78125rem; color: var(--muted); font-weight: 600; }
+.ghc-mvform select, .ghc-callform select, .ghc-mvform textarea, .ghc-callform textarea { font: inherit; font-size: 0.84375rem; font-weight: 400; color: var(--ink); border: 1px solid var(--d-bd-d7dbe6); border-radius: 8px; padding: 7px 9px; background: var(--surface); box-sizing: border-box; width: 100%; }
+.ghc-mvform textarea, .ghc-callform textarea { resize: vertical; min-height: 64px; }
+.ghc-pillrow { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.ghc-pillrow .rv-tbox-bus { flex: 1 1 auto; min-width: 0; }
+.ghc-pillrow a.rv-tbox-bu { text-decoration: none; color: var(--d-fg-262b45); white-space: nowrap; }
+.ghc-pillrow a.rv-tbox-bu.is-on { color: var(--on-fill); }
+a.rv-tbox-view { text-decoration: none; }
+.ghc-box { gap: 12px; }
+.ghc-box a.rv-tbox-cell { text-decoration: none; cursor: pointer; }
+.ghc-box a.rv-tbox-cell[data-cat="super-star"] { color: var(--on-fill); }
+.ghc-box .rv-tbox-axbtn { cursor: default; }
+.ghc-box .rv-tbox-num, .ghc-box .rv-tbox-axin { gap: 8px; }   /* the leaders' 6px is under the 8px between side-by-side text */
+.ghc-box .rv-tbox-axbtn:hover { background: var(--surface); border-color: var(--d-bd-d7dbe8); }
+.ghc-box a.rv-tbox-pname { text-decoration: none; }
+.ghc-box a.rv-tbox-pname:hover { color: var(--d-fg-1d2249); background: var(--d-bg-eef1fa); box-shadow: 0 0 0 3px var(--d-bg-eef1fa); border-radius: 4px; }
+.ghc-arrow { flex: none; width: 28px; height: 28px; display: inline-flex; align-items: center; justify-content: center; border-radius: 8px; color: var(--accent-ink); text-decoration: none; font-size: 1.125rem; }
+.ghc-arrow:hover { background: var(--d-bg-eef0f8); }
+.ghc-fold-d summary { padding: 8px 12px; font-size: 0.78125rem; color: var(--d-fg-2557d6); font-weight: 600; cursor: pointer; }
+.ghc-fold-d .fold-less { margin: 6px 12px 10px; }
+.ghc-listsearch { margin: 10px 12px; max-width: 320px; }
+.ghc-listsearch input { flex: 1; border: 0; outline: 0; background: transparent; font: inherit; font-size: 0.8125rem; }
+.ghc-listsearch input:focus, .ghc-listsearch input:focus-visible { outline: none; box-shadow: none; border: 0; }   /* one outline: the box's (.rv-tbox-search:focus-within), not a second on the input inside it */
+/* C2b: the box folds left, the person's page opens right */
+.ghc-pbody { display: flex; gap: 16px; align-items: flex-start; }
+.ghc-fold { width: 250px; flex: none; display: flex; flex-direction: column; gap: 8px; }
+.ghc-mini { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+.ghc-mini-cell { height: 44px; border-radius: 8px; border: 1px solid var(--d-bd-e1e4ee); background: var(--d-bg-f4f5f9); color: var(--d-fg-262b45); font-weight: 700; font-size: 0.9375rem; display: flex; align-items: center; justify-content: center; text-decoration: none; }
+.ghc-mini-cell[data-cat="super-star"] { background: var(--d-bg-262c63); border-color: var(--d-bd-262c63); color: var(--on-fill); }
+.ghc-mini-cell[data-cat="star"] { background: var(--d-bg-dfe3f7); border-color: var(--d-bd-c9cfee); color: var(--d-fg-1d2249); }
+.ghc-mini-cell[data-cat^="pip"] { background: var(--d-bg-fcefe5); border-color: var(--d-bd-f1d3bb); color: var(--d-fg-7f370a); }
+.ghc-mini-cell.is-on { box-shadow: 0 0 0 2px var(--surface), 0 0 0 4px var(--accent-line); }
+.ghc-mini-ax { display: flex; justify-content: space-between; gap: 8px; font-size: max(10px, 0.71875rem); color: var(--d-fg-5b6178); }
+.ghc-mini-h { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.ghc-mini-list { display: flex; flex-direction: column; border: 1px solid var(--line); border-radius: 10px; background: var(--d-bg-fbfbfd); overflow: hidden; }
+.ghc-mini-p { display: flex; flex-direction: column; padding: 8px 12px; border-bottom: 1px solid var(--line-soft); text-decoration: none; color: var(--d-fg-1f2335); font-size: 0.8125rem; }
+.ghc-mini-p.is-on { background: var(--d-bg-eef3ff); box-shadow: inset 3px 0 0 var(--accent-line); }
+.ghc-person { flex: 1 1 0; min-width: 0; border: 1px solid var(--d-bd-e6e8ef); border-radius: 12px; display: flex; flex-direction: column; }
+.ghc-phead { display: flex; justify-content: space-between; align-items: center; gap: 16px; padding: 12px 16px; border-bottom: 1px solid var(--line-soft); }
+.ghc-pwho { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.ghc-pwho b { font-size: 1rem; }
+.ghc-pager { display: flex; align-items: center; gap: 10px; font-size: 0.8125rem; color: var(--muted); white-space: nowrap; }
+.ghc-pager a, .ghc-pager .is-off { width: 26px; height: 26px; display: inline-flex; align-items: center; justify-content: center; border-radius: 6px; color: var(--accent-ink); text-decoration: none; font-size: 1.125rem; }
+.ghc-pager .is-off { color: var(--d-fg-b5bacb); }
+.ghc-pager a:hover { background: var(--d-bg-eef0f8); }
+.ghc-tabs { display: flex; gap: 6px; padding: 10px 16px 0; border-bottom: 1px solid var(--line-soft); }
+.ghc-tab { padding: 8px 12px; font-size: 0.8125rem; color: var(--muted); text-decoration: none; border-bottom: 2px solid transparent; margin-bottom: -1px; white-space: nowrap; }
+.ghc-tab.is-on { color: var(--accent-ink); font-weight: 700; border-bottom-color: var(--accent-line); }
+.ghc-pcontent { padding: 14px 16px; display: flex; flex-direction: column; gap: 12px; }
+.ghc-grid2 { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; align-items: stretch; }
+.ghc-pcard { border: 1px solid var(--d-bd-e6e8ef); border-radius: 12px; padding: 12px 14px; display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+.ghc-pk { font-size: 0.75rem; font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: .03em; }
+.ghc-chain { display: flex; justify-content: space-between; gap: 14px; font-size: 0.84375rem; align-items: center; }
+.ghc-chain > span:first-child { color: var(--muted); }
+.ghc-quote { margin: 0; font-size: 0.78125rem; color: var(--d-fg-465082); line-height: 1.45; }
+.ghc-p { margin: 0; font-size: 0.84375rem; line-height: 1.55; }
+.ghc-call { border: 1.5px solid var(--accent-line); padding: 11.5px 13.5px; }
+.ghc-callform { display: flex; flex-direction: column; gap: 10px; }
+.ghc-selects { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+.ghc-mini-table { width: 100%; border-collapse: collapse; font-size: 0.8125rem; }
+.ghc-mini-table th { text-align: left; font-size: 0.75rem; color: var(--muted); font-weight: 600; padding: 6px 14px 6px 0; white-space: nowrap; }
+.ghc-mini-table td { padding: 7px 14px 7px 0; border-top: 1px solid var(--line-soft); vertical-align: top; }
+.ghc-listtable td, .ghc-listtable th { white-space: nowrap; }
+.ghc-listtable .c-person { white-space: normal; }
+/* Larger and XL (polish list, 9 Nov 2026): the text now follows the Text size setting, so the BU list's eight nowrap columns need 1036 at XL in a 986 card. Their side padding is 10px
+   (20px between columns), and a card too narrow for them (1024) scrolls the table inside itself; no popover sits in this list, so nothing is clipped */
+.ghc-tablewrap:has(> .ghc-listtable) { overflow-x: auto; }
+html:is([data-text=l], [data-text=xl]) .ghc-listtable :is(th, td) { padding-left: 10px; padding-right: 10px; }
+@media (max-width: 1100px) { .ghc { flex-direction: column; } .ghc-main { align-self: stretch; max-width: 100%; }   /* stacked, the column's align-items:flex-start let the main card grow to its table (22px sideways at 1024 / largest text); the table scrolls inside its own wrap */ .ghc-side { width: 100%; } .ghc-pbody { flex-direction: column; } .ghc-fold { width: 100%; } }
+/* the box in one screen at 1280x800: three rows no taller than they need, the people panel scrolls inside its own room */
+.ghc-box .rv-tbox-grid { grid-template-rows: repeat(3, minmax(56px, 92px)) auto auto; align-content: start; }
+.ghc-box .rv-tbox-body:not(.is-fixed) .rv-tbox-plist { max-height: 300px; }
+.ghc-box .rv-tbox-drawer { align-self: flex-start; }
+
+/* "I do not agree" (2 Nov 2026): the Disagrees tag, the lock, the line over the curve and the fixed note. New rules use tokens and rem. */
+.ghc-dis-tag { display: inline-flex; align-items: center; align-self: flex-start; width: max-content; min-height: 1.375rem; padding: 0 0.625rem; border-radius: 999px; font-size: max(10px, 0.75rem); font-weight: 700; white-space: nowrap; background: var(--warn-tint); color: var(--warn-ink); border: 1px solid var(--warn-fill); }
+.c-person .ghc-dis-tag { margin-top: 0.25rem; }
+.ghc-pname-row { display: flex; align-items: center; flex-wrap: wrap; gap: 0.5rem; }
+.ghc-lock { display: inline-flex; align-items: center; gap: 0.375rem; font-size: 0.8125rem; color: var(--muted); white-space: nowrap; }
+.ghc-disline { margin: 0.5rem 0; font-size: 0.84375rem; line-height: 1.5; color: var(--ink); }
+.ghc-table tr.is-dis td { background: var(--surface-2); }
+.ghc-dis-note { font-size: 0.875rem; line-height: 1.5; }
+
+/* AI+ fit to curve (proposed). New CSS: tokens and rem only. */
+.ghf { position: fixed; left: 0; top: var(--topbar-h, 56px); bottom: 0; width: 27.5rem; z-index: 800; display: flex; flex-direction: column; box-sizing: border-box;
+  background: var(--surface); color: var(--ink); border-right: 1px solid var(--line); box-shadow: 10px 0 28px var(--shadow); font-size: 0.875rem; }
+.ghf *, .ghf *::before, .ghf *::after { box-sizing: border-box; }
+.ghf-head { padding: 14px 18px 12px; border-bottom: 1px solid var(--line-soft); display: flex; flex-direction: column; gap: 6px; }
+.ghf-top { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.ghf-head .rv-ai-kicker { margin: 0; }
+.ghf-x { width: 28px; height: 28px; border: 0; border-radius: 8px; background: transparent; color: var(--muted); font-size: 1.125rem; line-height: 1; cursor: pointer; }
+.ghf-x:hover { background: var(--surface-3); color: var(--accent-ink); }
+.ghf-title { margin: 0; font-size: 0.9375rem; font-weight: 700; color: var(--accent-ink); }
+.ghf-lede { margin: 0; font-size: 0.8125rem; line-height: 1.45; color: var(--ink-2); }
+.ghf-lede b { color: var(--ink); font-weight: 600; }
+.ghf-aim { margin: 0; font-size: 0.8125rem; line-height: 1.45; color: var(--muted); }
+.ghf-axis { margin-top: 2px; }
+.ghf-body { flex: 1 1 auto; overflow: auto; padding: 12px 18px; display: flex; flex-direction: column; gap: 10px; min-height: 0; }
+.ghf-count { font-size: 0.8125rem; font-weight: 700; color: var(--ink); display: flex; justify-content: space-between; gap: 8px; }
+.ghf-count span { font-weight: 500; color: var(--muted); }
+.ghf-row { border: 1px solid var(--line); border-radius: 12px; padding: 10px 12px; display: flex; flex-direction: column; gap: 8px; background: var(--surface); }
+.ghf-row.is-off { opacity: .6; }
+.ghf-r1 { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.ghf-r1 input[type=checkbox] { flex: none; }
+.ghf-who { font-weight: 700; font-size: 0.875rem; color: var(--ink); white-space: nowrap; }
+.ghf-mv { display: inline-flex; align-items: center; gap: 6px; margin-left: auto; flex: none; }
+.ghf-mv .ghc-band { margin: 0; }
+.ghf-arrow { color: var(--muted); }
+.ghf-dir { font-size: 0.75rem; font-weight: 600; min-width: 2.75rem; text-align: right; }
+.ghf-dir.is-down { color: var(--warn-ink); } .ghf-dir.is-up { color: var(--ok-ink); }
+.ghf-case { margin: 0; font-size: 0.8125rem; line-height: 1.4; color: var(--ink-2); }
+.ghf-lab { display: flex; flex-direction: column; gap: 4px; font-size: 0.78125rem; font-weight: 600; color: var(--muted); }
+.ghf-lab textarea { font: inherit; font-size: 0.8125rem; font-weight: 400; color: var(--ink); background: var(--surface); border: 1px solid var(--line-strong); border-radius: 8px; padding: 6px 9px; min-height: 3.25rem; resize: vertical; }
+.ghf-lab textarea::placeholder { color: var(--faint); }
+.ghf-lab textarea.is-need { border-color: var(--warn-fill); }
+.ghf-why > summary { font-size: 0.78125rem; font-weight: 600; color: var(--link); cursor: pointer; list-style: none; width: max-content; }
+.ghf-why > summary::-webkit-details-marker { display: none; }
+.ghf-why > summary::before { content: "\25B8\00a0"; }
+.ghf-why[open] > summary::before { content: "\25BE\00a0"; }
+.ghf-why ul { margin: 6px 0 0; padding: 0 0 0 1rem; font-size: 0.78125rem; line-height: 1.45; color: var(--ink-2); display: flex; flex-direction: column; gap: 3px; }
+.ghf-after { border: 1px solid var(--line); border-radius: 12px; padding: 10px 12px 8px; display: flex; flex-direction: column; gap: 4px; background: var(--surface-2); }
+.ghf-after h3 { margin: 0 0 2px; font-size: 0.8125rem; font-weight: 700; color: var(--ink); }
+.ghf-bar { display: flex; align-items: center; gap: 10px; font-size: 0.78125rem; color: var(--ink); }
+.ghf-bar .ghf-bl { width: 3.25rem; flex: none; font-weight: 600; }
+.ghf-bar .calib-dist-bar { flex: 1 1 0; min-width: 4rem; height: 10px; }
+.ghf-bar .ghf-bn { width: 8.5rem; flex: none; text-align: right; white-space: nowrap; color: var(--muted); }
+.ghf-bar .ghf-bn b { color: var(--ink); font-weight: 700; }
+.ghf-verdict { margin: 4px 0 0; font-size: 0.8125rem; font-weight: 600; color: var(--ok-ink); }
+.ghf-note { margin: 0; font-size: 0.78125rem; line-height: 1.45; color: var(--muted); }
+.ghf-foot { border-top: 1px solid var(--line-soft); padding: 10px 18px 14px; display: flex; flex-direction: column; gap: 8px; background: var(--surface); }
+.ghf-foot .ghf-need { margin: 0; font-size: 0.78125rem; color: var(--warn-ink); }
+.ghf .ghc-btn.is-outline { background: var(--surface); color: var(--ink); }   /* the page's outline button is a white hex: in the panel it follows the theme */
+.ghf .ghc-btn.is-outline:hover { background: var(--surface-2); }
+.ghf-acts { display: flex; align-items: center; justify-content: flex-end; gap: 12px; }
+.ghf-state { padding: 22px 6px; text-align: left; display: flex; flex-direction: column; gap: 10px; }
+.ghf-state p { margin: 0; font-size: 0.875rem; line-height: 1.5; color: var(--ink); }
+.ghf-spin { width: 16px; height: 16px; border-radius: 50%; border: 2px solid var(--ai-line); border-top-color: var(--ai); display: inline-block; vertical-align: -3px; margin-right: 8px; }
+
+.rv-tbox-titlebar .ghf-titlefit { margin-left: auto; flex: none; white-space: nowrap; }
+.rv-tbox-titlebar .ghf-titlefit + .rv-tbox-views { margin-left: 12px; }
+.ghf-axis .rv-tbox-view { cursor: pointer; }
+.ghf-x:focus-visible, .ghf-why > summary:focus-visible { outline: 2px solid var(--accent-line); outline-offset: 2px; }
+.ghf-title:focus { outline: none; }
+.ghf-spin { animation: ghf-spin 1s linear infinite; }
+@keyframes ghf-spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .ghf-spin { animation: none; } }
+
+/* two HODs on one person (2026-11-03, canvas H3): the share chip under the name, the line under the row with the other HOD's call and what the
+   HOD band will be, and the BU CEO's per-HOD lines. Colour tokens and rem; this page's own dark is a known, separate defect. */
+.ghc-table .c-person .ghc-shared { display: inline-block; align-self: flex-start; margin-top: 0.25rem; font-size: max(10px, 0.6875rem); font-weight: 700; color: var(--accent-ink); background: var(--surface-3); border: 1px solid var(--line); border-radius: 999px; padding: 0.0625rem 0.5rem; white-space: nowrap; line-height: 1.4; }
+.ghc-table tr.ghc-co td { padding-top: 0; padding-bottom: 0.5rem; border-top: 0; }
+.ghc-table tr.ghc-co .ghc-coline { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 0.25rem 1rem; background: var(--surface-2); border: 1px solid var(--line); border-radius: 0.5rem; padding: 0.375rem 0.75rem; font-size: 0.8125rem; color: var(--ink); }
+.ghc-co-who { display: inline-flex; align-items: center; flex-wrap: wrap; gap: 0.25rem 0.5rem; }
+.ghc-co-sum { align-items: baseline; }
+
+/* the Grade H list's Department column wraps like Person (2026-11-08, phone view piece E): the BU CEO's list no longer scrolls sideways at 1024 (25px before);
+   at 1280 nothing moves */
+.ghc-listtable td:nth-child(2) { white-space: normal; }
+
+/* ===== PHONE VIEW, PIECE E: the Grade H HOD and BU CEO screens (2026-11-08; canvas boards E4, E5) ==========================================
+   Under 1024px: a card a person (My Appraisal's pattern), the curve's counts wrapping, a two-button foot, the BU CEO's person page with the person first.
+   Same rule as pieces A to D: 1024px and up is the desktop, untouched, so every rule is inside this one query. This file is light by design (the page
+   stays light in dark mode, as today; Chris's pick 3), so its own hex colours are used and the cards stay white. The labels inside the cells are real
+   text (.ghc-pl, rendered hidden by the template and turned on here). Floor: 44px taps, 12px text, 8px between side-by-side text. */
+@media (max-width: 1023.98px) {
+  #ghc-page.ghc { align-items: stretch; }
+  #ghc-page .ghc-main { min-width: 0; }
+  #ghc-page .ghc-head { padding: 10px 14px; min-height: 0; }
+  #ghc-page .ghc-title { white-space: normal; font-size: 1.125rem; line-height: 1.3; }
+  #ghc-page .ghc-body { padding: 12px; gap: 12px; }
+  #ghc-page .ghc-say { font-size: 0.9375rem; }
+  #ghc-page .ghc-sm { font-size: 0.8125rem; }
+  #ghc-page .ghc-curve { padding: 12px; }
+  #ghc-page .ghc-curve .calib-dist-row { flex-wrap: wrap; row-gap: 2px; column-gap: 8px; }
+  #ghc-page .ghc-curve a.calib-dist-row { min-height: 44px; box-sizing: border-box; align-content: center; }
+  #ghc-page .ghc-curve .calib-dist-band { width: 3.5rem; font-size: 0.8125rem; }
+  #ghc-page .ghc-curve .calib-dist-bar { flex: 1 1 0; min-width: 0; }
+  #ghc-page .ghc-curve .calib-dist-pct { width: auto; flex: 1 1 auto; padding-left: calc(3.5rem + 8px); white-space: normal; font-size: 0.8125rem; }
+  #ghc-page .ghc-curve .calib-dist-gap { width: auto; flex: none; white-space: normal; font-size: 0.8125rem; }
+  #ghc-page .ghc-box .rv-tbox-titlebar { flex-wrap: wrap; row-gap: 8px; }
+
+  /* the table becomes cards */
+  #ghc-page .ghc-tablewrap { border: 0; border-radius: 0; }
+  #ghc-page .ghc-table, #ghc-page .ghc-table tbody { display: block; background: transparent; }
+  #ghc-page .ghc-table thead { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
+  #ghc-page .ghc-table tr { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px 10px; padding: 14px 16px; margin: 0 0 10px; background: var(--surface); color: var(--ink); border: 1px solid var(--d-bd-e6e8ef); border-radius: 12px; }
+  #ghc-page .ghc-table td { display: block; padding: 0; border: 0; white-space: normal; font-size: 0.875rem; min-width: 0; background: transparent; }
+  #ghc-page .ghc-table tr.is-dis td { background: transparent; }
+  #ghc-page .ghc-pl[hidden] { display: block; margin-bottom: 4px; font-size: 0.75rem; font-weight: 600; color: var(--muted); }
+  #ghc-page .ghc-table td.c-tick { grid-area: 1 / 1; z-index: 1; width: 44px; height: 44px; margin: -10px 0 0 -12px; display: flex; align-items: center; justify-content: center; }
+  #ghc-page .ghc-table td.c-tick input { width: 22px; height: 22px; margin: 0; }
+  #ghc-page .ghc-table td.c-person { grid-area: 1 / 1 / 2 / -1; }
+  #ghc-page .ghc-table tr:has(> td.c-tick) > td.c-person { padding-left: 40px; }
+  #ghc-page .ghc-table td.c-person b { font-size: 1rem; line-height: 1.3; }
+  #ghc-page .ghc-table td.c-score { white-space: nowrap; }
+  #ghc-page .ghc-table td.c-act { grid-column: 1 / -1; text-align: left; position: static; white-space: normal; }
+  #ghc-page .ghc-table .ghc-nolm { white-space: normal; }
+  #ghc-page .ghc-lock, #ghc-page .ghc-table td.c-act > .ghc-sm { min-height: 44px; display: inline-flex; align-items: center; white-space: normal; }
+  #ghc-page .ghc-mv { display: block; }
+  #ghc-page .ghc-mv > summary.ghc-btn { display: flex; align-items: center; justify-content: center; width: 100%; height: 44px; box-sizing: border-box; font-size: 0.9375rem; }
+  #ghc-page .ghc-mvform { position: static; width: auto; margin-top: 10px; box-shadow: none; }
+  #ghc-page .ghc-mvform select, #ghc-page .ghc-mvform textarea { min-height: 44px; box-sizing: border-box; width: 100%; font-size: 1rem; }
+  #ghc-page .ghc-mvform .ghc-btn { width: 100%; height: 48px; font-size: 0.9375rem; }
+  /* two HODs on one person: the line reads as the bottom of that person's card */
+  #ghc-page .ghc-table tr:has(+ tr.ghc-co) { margin-bottom: 0; border-bottom: 0; border-radius: 12px 12px 0 0; padding-bottom: 8px; }
+  #ghc-page .ghc-table tr.ghc-co { display: block; margin-top: 0; border-top: 0; border-radius: 0 0 12px 12px; padding: 0 16px 14px; }
+  #ghc-page .ghc-table tr.ghc-co td.c-tick { display: none; }
+  #ghc-page .ghc-table tr.ghc-co td { padding: 0; }
+  #ghc-page .ghc-table tr.ghc-co .ghc-coline { background: var(--d-bg-f7f8fc); border-color: var(--d-bd-e6e8ef); color: var(--ink); }
+
+  /* the BU CEO's list: no tick column, the department in grey under the name, two columns of values */
+  #ghc-page .ghc-listtable tr { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  #ghc-page .ghc-listtable td.c-person { grid-area: auto; grid-column: 1 / -1; }
+  #ghc-page .ghc-listtable td:nth-child(2) { grid-column: 1 / -1; grid-row: 2; margin-top: -8px; color: var(--muted); font-size: 0.8125rem; }
+  #ghc-page .ghc-listtable td.c-act { grid-column: 1 / -1; }
+  #ghc-page .ghc-listtable td.c-act .ghc-link { display: flex; align-items: center; justify-content: center; min-height: 44px; box-sizing: border-box; border: 1px solid var(--accent-line); border-radius: 10px; font-size: 0.9375rem; color: var(--accent-ink); }
+  #ghc-page .ghc-listtable td.ghc-empty { grid-column: 1 / -1; }
+  #ghc-page .ghc-listsearch { max-width: none; margin: 10px 0; }
+  #ghc-page .ghc-listsearch input { min-height: 44px; font-size: 1rem; width: 100%; box-sizing: border-box; }
+
+  /* the foot: the count line, then Save and Sign off side by side (one button alone spans) */
+  #ghc-page .ghc-footbar { flex-direction: column; align-items: stretch; gap: 10px; }
+  #ghc-page .ghc-footbar > .ghc-actions { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+  #ghc-page .ghc-footbar > .ghc-actions > *:only-child { grid-column: 1 / -1; }
+  #ghc-page .ghc-footbar .ghc-btn, #ghc-page .ghc-footbar .ghc-inline { width: 100%; height: 48px; font-size: 0.9375rem; }
+  #ghc-page .ghc-footbar .ghc-link { min-height: 44px; display: inline-flex; align-items: center; justify-content: center; }
+
+  /* the BU CEO's person page: the person first (the box and its list fold away; the x goes back to the box) */
+  #ghc-page .ghc-pbody > .ghc-fold { display: none; }
+  #ghc-page .ghc-person { width: 100%; }
+  #ghc-page .ghc-phead { flex-wrap: wrap; align-items: flex-start; padding: 12px 12px 8px 16px; }
+  #ghc-page .ghc-pager { margin-left: auto; gap: 2px; }
+  #ghc-page .ghc-pager a, #ghc-page .ghc-pager .is-off { width: 44px; height: 44px; font-size: 1.25rem; }
+  #ghc-page .ghc-tabs { overflow-x: auto; padding: 0 8px; scrollbar-width: none; }
+  #ghc-page .ghc-tab { min-height: 44px; display: inline-flex; align-items: center; font-size: 0.875rem; }
+  #ghc-page .ghc-pcontent { padding: 12px; }
+  #ghc-page .ghc-grid2 { grid-template-columns: minmax(0, 1fr); }
+  #ghc-page .ghc-chain { flex-wrap: wrap; row-gap: 4px; }
+  #ghc-page .ghc-nolm { white-space: normal; }
+  #ghc-page .ghc-pcard:has(> .ghc-mini-table) { overflow-x: auto; }
+  #ghc-page .ghc-mini-table { display: block; overflow-x: auto; max-width: 100%; }
+  #ghc-page .ghc-selects { grid-template-columns: minmax(0, 1fr); }
+  #ghc-page .ghc-callform select, #ghc-page .ghc-callform textarea { min-height: 44px; box-sizing: border-box; width: 100%; font-size: 1rem; }
+  #ghc-page .ghc-callform .ghc-btn { width: 100%; height: 48px; font-size: 0.9375rem; }
+  #ghc-page .ghc-nolm, #ghc-page .ghc-av { font-size: 0.75rem; }
+  #ghc-page .ghc-fold summary, #ghc-page .ghc-fold-d summary { min-height: 44px; display: flex; align-items: center; box-sizing: border-box; }
+  #ghc-page .ghc-fold .fold-less, #ghc-page .ghc-fold-d .fold-less, #ghc-page .rv-cal-fitbtn { min-height: 44px; box-sizing: border-box; }
+  #ghc-page .ghc-arrow { width: 44px; height: 44px; }
+  #ghc-page a.rv-tbox-pname { display: block; min-height: 44px; box-sizing: border-box; padding: 12px 0; }
+  #ghc-page .ghc-sidebtn { min-height: 44px; }
+  #ghc-page .ghc-moved { font-size: 0.75rem; }
+  #ghc-page .ghc-table .c-person .ghc-shared { font-size: 0.75rem; }
+}
+
+/* ---- PHONE VIEW, PIECE F (F6, 2026-11-08): the agree tick is a 44px tap. A native checkbox cannot take a bigger tap box, so the input itself is the 44x44 target (transparent) and the
+   22px box and its check are drawn on the cell, driven by :checked. Light only, like the page. ---- */
+@media (max-width: 1023.98px) {
+  #ghc-page .ghc-table td.c-tick { position: relative; }
+  #ghc-page .ghc-table td.c-tick input { position: absolute; inset: 0; width: 44px; height: 44px; margin: 0; opacity: 0; cursor: pointer; z-index: 2; }
+  #ghc-page .ghc-table td.c-tick:has(input)::before { content: ""; position: absolute; left: 11px; top: 11px; width: 22px; height: 22px; box-sizing: border-box; border: 2px solid var(--d-bd-8a90a2); border-radius: 6px; background: var(--surface); }
+  #ghc-page .ghc-table td.c-tick:has(input:checked)::before { background: var(--accent); border-color: var(--accent-line); }
+  #ghc-page .ghc-table td.c-tick:has(input:checked)::after { content: ""; position: absolute; left: 18px; top: 14px; width: 6px; height: 11px; border: solid var(--surface); border-width: 0 2.4px 2.4px 0; transform: rotate(45deg); }
+  #ghc-page .ghc-table td.c-tick:has(input:disabled)::before, #ghc-page .ghc-table td.c-tick:has(input:disabled)::after { opacity: 0.55; }
+  #ghc-page .ghc-table td.c-tick:has(input:focus-visible)::before { outline: 2px solid var(--accent-line); outline-offset: 2px; }
+}

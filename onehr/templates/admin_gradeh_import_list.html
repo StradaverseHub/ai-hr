@@ -1,0 +1,35 @@
+{% extends "base.html" %}
+{% block title %}Grade H list{% endblock %}
+{% block body %}
+<div class="page-head">
+  <div>
+    <h1>Import the Grade H list</h1>
+    <p class="muted">Who is on Grade H Appraisal, their route and their appraiser{% if n.cycle %}, for {{ n.cycle.name }}{% endif %}.</p>
+  </div>
+</div>
+{% if not v and not done %}{# how it works and the template: step 1 only #}
+<div class="admin-card">
+  <h2>How it works</h2>
+  <ul class="bullets">
+    <li>One row a person. Columns: {% for c in cols %}<strong>{{ c }}</strong>{{ ', ' if not loop.last }}{% endfor %}.</li>
+    <li><strong>Route</strong> is KPI or Line manager. <strong>Appraiser employee ID</strong> is optional: blank means their line manager on OneHR. <strong>HOD employee ID</strong> is optional too: it is the person's HOD for Grade H only, and blank means their HOD on OneHR. Their HOD in the main review is never changed.</li>
+    <li><strong>Second HOD employee ID</strong> and <strong>HOD split %</strong> are optional: fill them only when two HODs share the person. Both then calibrate them and their HOD band is the two bands weighted by the split. The split is the first HOD's share, 10 to 90 in steps of 10; blank with a second HOD means 50. A file without these columns never changes a second HOD set already; with them, a blank cell takes it away after you answer.</li>
+    <li><strong>Supervisor name</strong> is the supervisor in the source file. It is kept as text for a person with no line manager; OneHR never makes one up.</li>
+    <li>Only people already in OneHR at grade H go on. A row marked <strong>Private company</strong> (Yes) is skipped and counted, not loaded.</li>
+  </ul>
+  <p class="note"><strong>Four steps.</strong> A row that cannot go in stops the file and every issue is listed. Then OneHR shows who goes on, you answer for anyone whose route or appraiser changes after they have started, and you apply that same file.</p>
+</div>
+<a class="template-dl" href="{{ url_for('admin_gradeh_import_list_template') }}" download>
+  <svg class="tdl-ic" viewBox="0 0 24 24" width="32" height="32" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 3v4a1 1 0 0 0 1 1h4"/><path d="M17 21H7a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h7l5 5v11a2 2 0 0 1-2 2z"/><path d="M12 11v6"/><path d="M9.5 14.5 12 17l2.5-2.5"/></svg>
+  <span class="tdl-main"><span class="tdl-title">Download the Grade H list template (Excel)</span><span class="tdl-sub">Its example rows are placeholders OneHR refuses.</span></span>
+  <span class="tdl-cta">Download</span>
+</a>
+{% endif %}
+{% import "_import_steps.html" as imp with context %}
+{% call imp.page(v, done, {'page': 'admin_gradeh_import_list', 'changes': 'Who goes on the list',
+                           'final': 'The Grade H list after you apply this file'},
+                 {'changes': 'who goes on, and your answers'}) %}
+{{ imp.upload("Nothing changes yet. OneHR checks the file, shows who goes on the list and asks about anyone whose route or appraiser would change after they have started. Then you apply that same file.") }}
+{% endcall %}
+<p><a class="btn-link" href="{{ url_for('admin_gradeh', tab='imports') }}">Back to Grade H Appraisal</a></p>
+{% endblock %}

@@ -1,0 +1,145 @@
+{% extends "base.html" %}
+{% from "_table_tools.html" import colth, colmenu, colmenu_script %}
+{% block title %}My Team — Performance{% endblock %}
+{% block body %}
+<div class="page-head">
+  <div>
+    <h1>My Team</h1>
+    {% if period %}
+    <p class="muted">{{ period['name'] }} &middot; everyone with a KPI line routed through you this period.</p>
+    {% else %}
+    <p class="muted">No active performance period yet.</p>
+    {% endif %}
+  </div>
+</div>
+
+{% macro team_row(g) %}
+{# One macro, two tables (To review / Reviewed), so the sort keys are defined
+   once here. status is the WORD a reader sees, not status_kind's internal
+   token -- filtering on "Awaiting your review" is the question being asked. #}
+<tr class="pm-team-row data-row"
+    data-name="{{ g['subject']['full_name'] }}"
+    data-dept="{{ g['subject']['department'] or '-' }}"
+    data-jg="{{ g['subject']['job_grade'] or '' }}"
+    data-status="{% if g['status_kind'] == 'final' %}{{ label_names[g['overall']['label']] }}
+      {%- elif g['status_kind'] == 'action' %}Awaiting your review
+      {%- elif g['status_kind'] == 'progress' %}In progress
+      {%- else %}Not submitted yet{% endif %}">
+  <td>
+    <p style="font-weight:500;margin:0">{{ g['subject']['full_name'] }}</p>
+    <p class="muted small" style="margin:2px 0 0">{% if g['subject']['job_grade'] %}JG {{ g['subject']['job_grade'] }} &middot; {% endif %}{{ g['subject']['job_title'] | proper or '-' }} &middot; {{ g['subject']['department'] | proper or '-' }}</p>
+  </td>
+  <td>
+    {% if g['status_kind'] == 'final' %}
+      {% if g['self_overall'] and g['self_overall']['label'] != g['overall']['label'] %}
+        {# The manager's moderation moved this subject's overall band --
+           show self-rated -> moderated, same before/after as the drill-down
+           card. Equal bands (confirm-as-is, or an adjustment that stayed in
+           the same band) render a single pill, no redundant X->X. #}
+        <span class="potential-pill pm-band-self" data-band="{{ g['self_overall']['label'] }}">{{ label_names[g['self_overall']['label']] }}</span>
+        <span class="muted" aria-hidden="true" style="margin:0 4px">&rarr;</span>
+        <span class="potential-pill" data-band="{{ g['overall']['label'] }}">{{ label_names[g['overall']['label']] }}</span>
+      {% else %}
+        <span class="potential-pill" data-band="{{ g['overall']['label'] }}">{{ label_names[g['overall']['label']] }}</span>
+      {% endif %}
+    {% elif g['status_kind'] == 'action' %}
+      <span class="status-pill status-submitted">Awaiting your review</span>
+    {% elif g['status_kind'] == 'progress' %}
+      <span class="status-pill status-progress">In progress</span>
+    {% else %}
+      <span class="muted small">Not submitted yet</span>
+    {% endif %}
+  </td>
+  <td>
+    {% if g['submitted_count'] > 0 %}
+      <a class="btn-link" href="{{ url_for('performance_team_member_view', subject_id=g['subject']['id']) }}">View &rarr;</a>
+    {% else %}
+      <span class="muted small">&mdash;</span>
+    {% endif %}
+  </td>
+</tr>
+{% endmacro %}
+
+{% if period and groups %}
+{# Split into a "To review" (to-do) and "Reviewed" (done) table, mirroring
+   my_assessments.html's To-do/Submitted pattern. Within To review, surface the
+   manager's actionable rows ("Awaiting your review") first, then in-progress,
+   then not-submitted -- each sub-list is already name-sorted because `groups`
+   is. No app.py change: the split is pure Jinja over the existing groups. #}
+{% set todo_action = groups | selectattr('status_kind', 'equalto', 'action') | list %}
+{% set todo_progress = groups | selectattr('status_kind', 'equalto', 'progress') | list %}
+{% set todo_none = groups | selectattr('status_kind', 'equalto', 'none') | list %}
+{% set todo = todo_action + todo_progress + todo_none %}
+{% set done = groups | selectattr('status_kind', 'equalto', 'final') | list %}
+
+<div class="as-controls" style="margin-bottom:10px">
+  <label class="as-search">
+    Search
+    <input type="search" id="pm-team-search" placeholder="Filter by name, department, or job title..." autocomplete="off">
+  </label>
+</div>
+
+<h2 style="margin-top:8px">To review{% if todo_action %} <span class="todo-count">{{ todo_action | length }}</span>{% endif %}</h2>
+{% if todo %}
+<div class="table-scroll table-scroll-capped"><table class="admin-table pm-team-table" id="pm-team-todo">
+  <thead><tr>{{ colth('name', 'Direct Report') }}{{ colth('status', 'Status') }}
+    <th>Action</th></tr></thead>
+  <tbody>
+    {% for g in todo %}{{ team_row(g) }}{% endfor %}
+    <tr class="no-filter-match" hidden><td colspan="3" class="muted">
+      No rows match the filters.</td></tr>
+  </tbody>
+</table></div>
+{{ colmenu('pm-team-todo', {
+     'name':   {'mode': 'clientFilter', 'type': 'text', 'sortAttr': 'name'},
+     'status': {'mode': 'clientFilter', 'type': 'text', 'sortAttr': 'status'} }) }}
+{% else %}
+<p class="muted">All caught up — every report has been reviewed.</p>
+{% endif %}
+
+{% if done %}
+<h2 style="margin-top:26px">Reviewed</h2>
+<div class="table-scroll table-scroll-capped"><table class="admin-table pm-team-table" id="pm-team-done">
+  <thead><tr>{{ colth('name', 'Direct Report') }}{{ colth('status', 'Moderated Rating') }}
+    <th>Action</th></tr></thead>
+  <tbody>
+    {% for g in done %}{{ team_row(g) }}{% endfor %}
+    <tr class="no-filter-match" hidden><td colspan="3" class="muted">
+      No rows match the filters.</td></tr>
+  </tbody>
+</table></div>
+{{ colmenu('pm-team-done', {
+     'name':   {'mode': 'clientFilter', 'type': 'text', 'sortAttr': 'name'},
+     'status': {'mode': 'clientFilter', 'type': 'text', 'sortAttr': 'status'} }) }}
+{% endif %}
+
+{{ colmenu_script(asset_v) }}
+<script>
+(function () {
+  // One search box over TWO tables, so the predicate is registered on both --
+  // and as a predicate rather than a direct style.display write, which colmenu
+  // also owns and would otherwise undo on the next column filter.
+  var input = document.getElementById('pm-team-search');
+  if (input) {
+    var q = '';
+    var TABLES = ['pm-team-todo', 'pm-team-done'];
+    var match = function (row) {
+      return !q || row.textContent.toLowerCase().indexOf(q) !== -1;
+    };
+    TABLES.forEach(function (t) { window.colMenuAddPredicate(t, match); });
+    input.addEventListener('input', function () {
+      q = input.value.trim().toLowerCase();
+      TABLES.forEach(function (t) { window.colMenuRefresh(t); });
+    });
+  }
+  // If this page is restored from the browser's back-forward cache -- e.g. the
+  // manager drilled into a report, approved it, then hit the floating "Back"
+  // button -- re-fetch so the To-review / Reviewed split reflects the
+  // just-committed state instead of a stale "Awaiting your review".
+  window.addEventListener('pageshow', function (e) { if (e.persisted) location.reload(); });
+})();
+</script>
+{% elif period %}
+<div class="admin-card"><p class="muted">No one has a KPI line routed through you this period.</p></div>
+{% endif %}
+{% endblock %}

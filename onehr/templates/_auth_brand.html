@@ -1,0 +1,150 @@
+{# The sign-in brand panel (2026-10-15, from the canvas "OneHR AI+ Sign-in", Chin Hin's brand guide): Chin Hin Blue, the
+   Infinite Sail stripes, the AI+ mark, and -- on the sign-in page (ax_demo) -- the assistant playing the check-in flow
+   on a loop, with a pause button, standing still for anyone whose device asks for reduced motion. Elsewhere the three
+   lines that say the same. The Chin Hin logo is the official file (CHG Logo.ai, page 2: the reversed version). #}
+{% from "_signin_help_fields.html" import help_fields %}
+<section class="ax-brand" aria-label="About AI+ OneHR">
+  <span class="ax-sail ax-sail-1" aria-hidden="true"></span>
+  <span class="ax-sail ax-sail-2" aria-hidden="true"></span>
+
+  <div class="ax-lockup">
+    {# the app's mark: OneHR's spark on the red tile, as in the top bar (Chris, 2026-10-19) #}
+    <span class="ax-lockup-sq" aria-hidden="true"><svg width="15" height="15" viewBox="0 0 24 24"><path d="M12 2l2.4 7.6L22 12l-7.6 2.4L12 22l-2.4-7.6L2 12l7.6-2.4z" fill="currentColor"/></svg></span>
+    <span class="ax-lockup-name">OneHR</span>
+    <span class="ax-lockup-by">by Chin Hin</span>
+    {# five quick taps on it set off the easter egg (static/auth.js); it changes no words #}
+    <span class="ax-aiplus" data-egg><svg width="13" height="13" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2l2.4 7.6L22 12l-7.6 2.4L12 22l-2.4-7.6L2 12l7.6-2.4z" fill="currentColor"/></svg>AI+</span>
+  </div>
+
+  <div class="ax-brand-body">
+    <p class="ax-headline" id="ax-headline">One conversation for your whole review.</p>
+    <p class="ax-lede" id="ax-lede">AI+ OneHR walks you through your KPI check-in, 360 feedback and development plan, then calibration and your learning, one part at a time. Every decision stays yours.</p>
+
+    {% if ax_demo %}
+    <figure class="ax-demo ax-extra" id="ax-demo" aria-label="A short animation in three parts: the OneHR AI Agent takes you through your check-in (PM, TM and IDP), helps a leader fit results to the curve in calibration, and finds learning for your next step (LMS), with nothing done until you confirm">
+      <div class="ax-demo-head">
+        <span class="ax-spark-tile" aria-hidden="true"><svg width="15" height="15" viewBox="0 0 24 24"><path d="M12 2l2.4 7.6L22 12l-7.6 2.4L12 22l-2.4-7.6L2 12l7.6-2.4z" fill="currentColor"/></svg></span>
+        <span class="ax-demo-name" id="ax-demo-name">OneHR AI Agent at your service</span>
+        <button type="button" class="axh-link" id="axh-restart" hidden>Start over</button>
+        <button type="button" class="axh-link" id="axh-back" hidden>Back to the tour</button>
+        <button type="button" class="ax-demo-pause" id="ax-demo-pause" aria-pressed="false" aria-label="Pause the animation">
+          <svg class="ax-ico-pause" width="16" height="16" viewBox="0 0 24 24" aria-hidden="true"><path d="M7 5h3.5v14H7zM13.5 5H17v14h-3.5z" fill="currentColor"/></svg>
+          <svg class="ax-ico-play" width="16" height="16" viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5v14l11-7z" fill="currentColor"/></svg>
+        </button>
+      </div>
+      {# three parts, 12 seconds each (Chris, 2026-10-16: "add in calibration and learning management system (LMS) as well
+         to the description and the animation (to have 3 part, part one is PMTMIDP, part 2 is calibration, part 3 is
+         LMS)"): each scene runs the same 12-second steps; the scenes take turns over 36 seconds #}
+      <ol class="ax-parts" aria-hidden="true"><li class="ax-part ax-part-1">PM · TM · IDP</li><li class="ax-part ax-part-2">Calibration</li><li class="ax-part ax-part-3">LMS</li></ol>
+      <div class="ax-demo-feed ax-scenes" aria-hidden="true">
+        <div class="ax-scene ax-scene-1">
+          <div class="ax-a1 ax-demo-step">
+            <p class="ax-bub">Your Year-End check-in is open. Shall we start with your KPI results?</p>
+            <div class="ax-chips"><span class="ax-chip ax-tap">Start my check-in</span><span class="ax-chip ax-chip-quiet">What is due, and when?</span></div>
+          </div>
+          <p class="ax-a2 ax-bub ax-bub-me">Start my check-in</p>
+          <div class="ax-slot">
+            <span class="ax-typing ax-t3"><span class="ax-dot"></span><span class="ax-dot ax-dot2"></span><span class="ax-dot ax-dot3"></span></span>
+            <p class="ax-a3 ax-bub">Your results are saved. Next, one short remark in your own words, and I can help you word it.</p>
+          </div>
+          <div class="ax-slot">
+            <span class="ax-typing ax-t5"><span class="ax-dot"></span><span class="ax-dot ax-dot2"></span><span class="ax-dot ax-dot3"></span></span>
+            <div class="ax-a5 ax-bub ax-bub-done">
+              <div class="ax-done-row"><span><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg>KPI check-in</span><span><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg>360 feedback</span><span><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg>Competency</span></div>
+              <span>All done. Review and submit when you are ready: nothing is sent until you confirm.</span>
+            </div>
+          </div>
+        </div>
+        <div class="ax-scene ax-scene-2">
+          <div class="ax-a1 ax-demo-step">
+            <p class="ax-bub">Every result in your unit is in. Shall I fit them to the curve?</p>
+            <div class="ax-chips"><span class="ax-chip ax-tap">Fit the curve with AI</span><span class="ax-chip ax-chip-quiet">Who is still to review?</span></div>
+          </div>
+          <p class="ax-a2 ax-bub ax-bub-me">Fit the curve with AI</p>
+          <div class="ax-slot">
+            <span class="ax-typing ax-t3"><span class="ax-dot"></span><span class="ax-dot ax-dot2"></span><span class="ax-dot ax-dot3"></span></span>
+            <p class="ax-a3 ax-bub">Three moves would match the curve. Each one is yours to make, with your remark.</p>
+          </div>
+          <div class="ax-slot">
+            <span class="ax-typing ax-t5"><span class="ax-dot"></span><span class="ax-dot ax-dot2"></span><span class="ax-dot ax-dot3"></span></span>
+            <div class="ax-a5 ax-bub ax-bub-done">
+              <div class="ax-done-row"><span><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg>Performance</span><span><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg>Potential</span><span><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg>Ready to lock</span></div>
+              <span>Nothing moves until you say so, and you lock it when you are ready.</span>
+            </div>
+          </div>
+        </div>
+        <div class="ax-scene ax-scene-3">
+          <div class="ax-a1 ax-demo-step">
+            <p class="ax-bub">Your Career Plan points to Senior Manager. Shall I find learning that gets you there?</p>
+            <div class="ax-chips"><span class="ax-chip ax-tap">Show me</span><span class="ax-chip ax-chip-quiet">Maybe later</span></div>
+          </div>
+          <p class="ax-a2 ax-bub ax-bub-me">Show me</p>
+          <div class="ax-slot">
+            <span class="ax-typing ax-t3"><span class="ax-dot"></span><span class="ax-dot ax-dot2"></span><span class="ax-dot ax-dot3"></span></span>
+            <p class="ax-a3 ax-bub">Two courses fit your plan: Leading through change and Coaching for results.</p>
+          </div>
+          <div class="ax-slot">
+            <span class="ax-typing ax-t5"><span class="ax-dot"></span><span class="ax-dot ax-dot2"></span><span class="ax-dot ax-dot3"></span></span>
+            <div class="ax-a5 ax-bub ax-bub-done">
+              <div class="ax-done-row"><span><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg>Career Plan</span><span><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg>2 courses</span><span><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg>Reminders</span></div>
+              <span>Learn at your own pace; your progress shows on your dashboard.</span>
+            </div>
+          </div>
+        </div>
+      </div>
+      {# Get help turns this card into the sign-in help desk (2026-10-19, option C of canvas
+         [design canvas link removed]): scripted by static/auth.js, no AI model on a page nobody has
+         signed in to. It solves what it can here (a reset link, the lock-out) and raises the rest
+         as a request to /signin-help. The numbers come from the server's own rules. #}
+      <div class="axh" id="ax-help" hidden role="region" aria-label="Sign-in help"
+           data-fails="{{ LOGIN_MAX_FAILS }}" data-window="{{ LOGIN_WINDOW_MIN }}" data-ttl="{{ RESET_TTL_MIN }}"
+           data-reset="{{ 1 if reset_available else 0 }}" data-help="{{ url_for('signin_help') }}"
+           data-forgot="{{ url_for('forgot_password') }}">
+        <div class="axh-feed" id="axh-feed" aria-live="polite"></div>
+        <form class="axh-say" id="axh-say" novalidate>
+          <label class="ax-sr" for="axh-say-in">Or say it in your own words</label>
+          <input id="axh-say-in" maxlength="300" autocomplete="off" placeholder="Or say it in your own words…">
+          <button type="submit" aria-label="Send"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6"/></svg></button>
+        </form>
+        <template id="axh-ticket-tpl">
+          <form class="axh-card axh-ticket" method="post" action="{{ url_for('signin_help') }}" novalidate>
+            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+            {{ help_fields(help_issues or [], '', {}, help_max or 500, 'axh') }}
+            <p class="ax-err axh-err" role="alert" hidden></p>
+            <div class="axh-acts">
+              <button type="button" class="ax-btn ax-btn-quiet" data-axh-cancel>Cancel</button>
+              <button type="submit" class="ax-btn">Send to the People team</button>
+            </div>
+          </form>
+        </template>
+        {% if reset_available %}<template id="axh-forgot-tpl">
+          <form class="axh-card axh-forgot" method="post" action="{{ url_for('forgot_password') }}" novalidate>
+            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+            <div class="axh-two">
+              <div class="ax-field"><label for="axh-fu">Employee ID</label><input id="axh-fu" aria-describedby="axh-fu-hint" name="username" autocomplete="username" autocapitalize="characters" spellcheck="false" required><p class="ax-hint" id="axh-fu-hint">Employee ID is case-sensitive, it uses capital letters.</p></div>
+              <div class="ax-field"><label for="axh-fe">Work email</label><input id="axh-fe" type="email" name="email" autocomplete="email" spellcheck="false" required></div>
+            </div>
+            <p class="ax-err axh-err" role="alert" hidden></p>
+            <div class="axh-acts"><button type="submit" class="ax-btn">Email me a reset link</button></div>
+          </form>
+        </template>{% endif %}
+      </div>
+    </figure>
+    {% else %}
+    <ul class="ax-points ax-extra">
+      <li><svg width="18" height="18" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg>Guided, one part at a time</li>
+      <li><svg width="18" height="18" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg>Your remarks are saved in your own words</li>
+      <li><svg width="18" height="18" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg>Nothing is submitted until you confirm</li>
+    </ul>
+    {% endif %}
+  </div>
+
+  {# the official Chin Hin logo, reversed for a dark background, with its brand line set under it (Chris, 2026-10-15:
+     "One People, One Culture, One Chin Hin", below the logo), the pair kept clear of anything else by the height of
+     the wordmark's "H" #}
+  <div class="ax-brand-foot">
+    <img class="ax-chlogo" src="{{ url_for('static', filename='chin-hin-logo-white.svg') }}?v={{ asset_v }}" alt="Chin Hin"
+         width="248" height="40">
+    <p class="ax-tagline">One People · One Culture · One Chin Hin</p>
+  </div>
+</section>

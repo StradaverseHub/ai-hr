@@ -1,0 +1,1049 @@
+{% extends "base.html" %}
+{% block title %}{{ subject['full_name'] }} — Performance{% endblock %}
+{% block body %}
+<div class="page-head">
+  <div>
+    <h1>{{ subject['full_name'] }}</h1>
+    <p class="muted">{{ period['name'] }}{% if subject['job_grade'] %} &middot; JG {{ subject['job_grade'] }}{% endif %} &middot; {{ subject['job_title'] | proper or '-' }} &middot; {{ subject['department'] | proper or '-' }}
+      {% if targets|length < total_count %}&middot; showing {{ targets|length }} of {{ total_count }} KPI lines you review{% endif %}
+    </p>
+  </div>
+</div>
+
+{% set mech_a_targets = targets | selectattr('mechanism', 'equalto', 'A') | list %}
+{% set mech_b_targets = targets | rejectattr('mechanism', 'equalto', 'A') | list %}
+{% set is_excellence_variant = mech_b_targets and mech_b_targets[0]['excellence'] is not none %}
+
+{% macro pm_view_icon() %}<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7-10-7-10-7z"/><circle cx="12" cy="12" r="3"/></svg>{% endmacro %}
+
+{% macro pm_moderate_cell(t, me_id, ai_enabled, ai_limit) %}
+{# Multi-step approval chain stepper (Self -> approver -> approver ...) --
+   only rendered when a line actually has more than one approver, so every
+   single-approver line stays clean. Reads t['chain_display'] (already built
+   by attach_pm_chains) + the raw self value for the Self node; reuses the
+   pm-view-btn-remark popup for each acted step's justification, no new JS. #}
+{% if t['result'] and t['approver_chain'] | length > 1 %}
+<div class="pm-mchain">
+  <span class="pm-mchain-node">
+    <span class="pm-mchain-lbl">Self</span>
+    <span class="pm-mchain-val">{{ t['result']['actual_value'] | commas }}{% if t['unit'] %} {{ t['unit'] }}{% endif %}</span>
+  </span>
+  {% for s in t['chain_display'] %}
+  <span class="pm-mchain-arrow" aria-hidden="true">&rarr;</span>
+  <span class="pm-mchain-node pm-mchain-{{ s['status'] }}">
+    <span class="pm-mchain-lbl">{{ s['approver_name'] }}{% if s['status'] == 'pending' and actionable_by(t, me_id) %} &middot; your turn{% endif %}</span>
+    {% if s['status'] in ('done_confirm', 'done_adjust') %}
+    <span class="pm-mchain-val">{{ s['value'] | commas }}{% if t['unit'] %} {{ t['unit'] }}{% endif %} {{ '✎' if s['status'] == 'done_adjust' else '✓' }}</span>
+    {% if s['justification'] %}
+    <button type="button" class="pm-icon-btn pm-view-btn-remark" data-remark="{{ s['justification'] }}"
+            title="View {{ s['approver_name'] }}'s justification" aria-label="View {{ s['approver_name'] }}'s justification">{{ pm_view_icon() }}</button>
+    {% endif %}
+    {% else %}
+    <span class="pm-mchain-val muted">{{ 'pending' if s['status'] == 'pending' else 'not yet' }}</span>
+    {% endif %}
+  </span>
+  {% endfor %}
+</div>
+{% endif %}
+{% if not t['result'] %}
+  <span class="muted small">Not submitted yet</span>
+{% elif t['result']['admin_filled'] %}
+  <span class="status-pill status-reviewed">Set by admin — final</span>
+{% elif t['locked'] %}
+  {# For a multi-step line the stepper above already shows the whole chain,
+     ending in the final approver's node with the moderated value + its
+     justification -- so a separate bold value + popover here just repeats it.
+     Render this block ONLY for a single-approver locked line, which has no
+     stepper and needs it as its sole moderated display. #}
+  {% if t['approver_chain'] | length <= 1 %}
+  <p style="margin:0"><strong>{{ t['effective_value'] | commas }}</strong>{% if t['unit'] %} {{ t['unit'] }}{% endif %}</p>
+  {% set last_justification = t['approvals'][-1]['justification'] if t['approvals'] else none %}
+  {% if last_justification %}
+  <button type="button" class="pm-icon-btn pm-view-btn-remark" data-remark="{{ last_justification }}"
+          title="View justification" aria-label="View justification for {{ t['kpi_name'] }}">
+    {{ pm_view_icon() }}
+  </button>
+  {% endif %}
+  {% endif %}
+{% elif actionable_by(t, me_id) %}
+  <div class="pm-input-unit">
+    <input type="text" inputmode="decimal" class="pm-adjust-input" data-kpi="{{ t['id'] }}"
+           value="{{ t['draft_value'] | commas if t['draft_value'] is not none else '' }}">
+    {% if t['unit'] %}<span>{{ t['unit'] }}</span>{% endif %}
+  </div>
+  <div style="display:flex;gap:6px;margin-top:6px;align-items:center;flex-wrap:wrap">
+    <button type="button" class="pm-icon-btn pm-justification-toggle" title="Add justification" aria-label="Add justification for {{ t['kpi_name'] }}">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M21 11.5a8.38 8.38 0 0 1-8.5 8.4 8.5 8.5 0 0 1-4-1L3 20l1.1-5a8.4 8.4 0 0 1-1-4A8.38 8.38 0 0 1 11.5 3a8.5 8.5 0 0 1 9.5 8.5z"/></svg>
+    </button>
+    {% if t['result']['note'] or t['attachment'] %}
+    <button type="button" class="pm-icon-btn pm-view-btn" title="View {{ subject['full_name'] }}'s note/attachment" aria-label="View note/attachment for {{ t['kpi_name'] }}">
+      {{ pm_view_icon() }}
+    </button>
+    {% endif %}
+  </div>
+  <div class="pm-note-field"{% if not t['draft_justification'] %} hidden{% endif %}>
+    <textarea class="pm-justification-input" data-kpi="{{ t['id'] }}" rows="2" placeholder="Justification (optional)">{{ t['draft_justification'] or '' }}</textarea>
+    {% if ai_enabled %}
+    <div class="ai-draft" data-endpoint="{{ url_for('performance_kpi_justification_draft_ai', kpi_target_id=t['id']) }}"
+         data-limit="{{ ai_limit }}" data-remaining="{{ t['mgr_ai_remaining'] }}" data-reset="{{ t['mgr_ai_reset_seconds'] }}"
+         style="display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-top:6px">
+      <div class="ai-split">
+        <button type="button" class="ai-draft-btn btn-link" aria-haspopup="true" aria-expanded="false">✨ Draft with AI <span class="ai-caret" aria-hidden="true">▾</span></button>
+        <div class="ai-menu" role="menu" hidden>
+          <div class="ai-menu-head">Choose what AI should do</div>
+          <button type="button" class="ai-cmd is-default" role="menuitem" data-cmd="polish">
+            <span class="ai-cmd-ico">✨</span><span>Polish &amp; improve<small>Clearer, more specific</small></span></button>
+          <button type="button" class="ai-cmd" role="menuitem" data-cmd="shorter">
+            <span class="ai-cmd-ico">➖</span><span>Make it shorter</span></button>
+          <button type="button" class="ai-cmd" role="menuitem" data-cmd="longer">
+            <span class="ai-cmd-ico">➕</span><span>Make it longer / add detail</span></button>
+          <button type="button" class="ai-cmd" role="menuitem" data-cmd="formal">
+            <span class="ai-cmd-ico">👔</span><span>More formal</span></button>
+          <button type="button" class="ai-cmd" role="menuitem" data-cmd="casual">
+            <span class="ai-cmd-ico">🙂</span><span>More casual</span></button>
+          <div class="ai-sep"></div>
+          <button type="button" class="ai-cmd" role="menuitem" data-cmd="grammar">
+            <span class="ai-cmd-ico">✔️</span><span>Fix spelling &amp; grammar</span></button>
+        </div>
+      </div>
+      <span class="ai-quota small" aria-live="polite"></span>
+      <span class="ai-status muted small" aria-live="polite"></span>
+    </div>
+    {% endif %}
+  </div>
+  <span class="pm-autosave-status muted small" id="pm-mod-autosave-{{ t['id'] }}"></span>
+{% else %}
+  <span class="muted small">Awaiting {{ t['next_approver']['approver_name'] }}</span>
+{% endif %}
+{% endmacro %}
+
+{% if mech_a_targets %}
+<div class="pm-table-freeze"><table class="admin-table pm-kpi-table">
+  <thead><tr><th>KPI</th><th>Rating</th><th>Self-rated Result</th><th>Moderated Result</th></tr></thead>
+  <tbody>
+    {% for t in mech_a_targets %}
+    {% set self_val = t['self_score']['value'] if t['self_score'] and t['self_score']['mechanism'] == 'A' else none %}
+    {% set mod_val = t['score']['value'] if t['score'] and t['score']['mechanism'] == 'A' else none %}
+    <tr data-kpi="{{ t['id'] }}" data-mechanism="{{ t['mechanism'] }}" data-method="{{ t['method'] }}"
+        data-rate1="{{ t['rate1'] }}" data-rate2="{{ t['rate2'] }}" data-rate3="{{ t['rate3'] }}"
+        data-rate4="{{ t['rate4'] }}" data-rate5="{{ t['rate5'] }}"
+        data-self-value="{{ t['result']['actual_value'] if t['result'] else '' }}"
+        data-self-note="{{ (t['result']['note'] if t['result'] else none) or '' }}"
+        data-attachment-name="{{ t['attachment']['filename'] if t['attachment'] else '' }}"
+        data-attachment-url="{{ url_for('performance_kpi_attachment_download', kpi_target_id=t['id']) if t['attachment'] else '' }}">
+      <td>
+        <div class="pm-kpi-name-row">
+          <p class="pm-kpi-name">{{ t['kpi_name'] }}</p>
+          {% if t['description'] %}
+          <span class="pm-info-icon" tabindex="0" title="{{ t['description'] }}" aria-label="KPI info for {{ t['kpi_name'] }}: {{ t['description'] }}">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="12" cy="12" r="9"/><line x1="12" y1="11" x2="12" y2="16"/><circle cx="12" cy="7.5" r="0.6" fill="currentColor" stroke="none"/></svg>
+          </span>
+          {% endif %}
+        </div>
+        <p class="pm-kpi-meta">{{ t['category'] or '' }} &middot; weight {{ t['weightage'] | int }}%{% if t['unit'] %} &middot; unit {{ t['unit'] }}{% endif %}</p>
+      </td>
+      <td>
+        <table class="pm-ladder-h">
+          <thead><tr>
+            {% for i in range(1, 6) %}
+            <th>{{ i }}</th>
+            {% endfor %}
+          </tr></thead>
+          <tbody><tr>
+            {% set band_by_col = ['UA', 'BE', 'ME', 'AE', 'OU'] %}
+            {% for i in range(1, 6) %}
+            {% set cls = '' %}
+            {% if self_val is not none and mod_val is not none and self_val != mod_val %}
+              {% if i == self_val %}{% set cls = 'pm-current-self' %}{% elif i == mod_val %}{% set cls = 'pm-current-adjusted' %}{% endif %}
+            {% elif mod_val is not none and i == mod_val %}
+              {% set cls = 'pm-current' %}
+            {% elif self_val is not none and i == self_val %}
+              {% set cls = 'pm-current' %}
+            {% endif %}
+            <td data-band="{{ band_by_col[i - 1] }}" class="{{ cls }}">{{ '≥' if t['method'] == 'more' else '≤' }} {{ t['rate' ~ i] }}</td>
+            {% endfor %}
+          </tr></tbody>
+        </table>
+      </td>
+      <td>
+        {% if not t['result'] %}
+          <p class="muted small" style="margin:0">Waiting on {{ subject['full_name'] }} to submit a result.</p>
+        {% else %}
+          <div class="pm-result-cell">
+            <p style="margin:0"><strong>{{ t['result']['actual_value'] | commas }}</strong>{% if t['unit'] %} {{ t['unit'] }}{% endif %}</p>
+            {% if t['result']['note'] %}
+            <button type="button" class="pm-icon-btn pm-view-btn" title="View {{ subject['full_name'] }}'s note" aria-label="View note for {{ t['kpi_name'] }}">
+              {{ pm_view_icon() }}
+            </button>
+            {% endif %}
+            {% if t['attachment'] %}
+            <button type="button" class="pm-icon-btn pm-view-btn" title="View attachment" aria-label="View attachment for {{ t['kpi_name'] }}">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M21.44 11.05l-9.19 9.19a5.5 5.5 0 0 1-7.78-7.78l9.19-9.19a3.5 3.5 0 0 1 4.95 4.95l-9.2 9.19a1.5 1.5 0 0 1-2.12-2.12l8.49-8.48"/></svg>
+            </button>
+            {% endif %}
+          </div>
+        {% endif %}
+      </td>
+      <td id="pm-moderate-cell-{{ t['id'] }}">{{ pm_moderate_cell(t, me_id, ai_enabled, ai_limit) }}</td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table></div>
+{% endif %}
+
+{% if mech_b_targets %}
+<div class="pm-table-freeze"><table class="admin-table pm-kpi-table">
+  <thead><tr><th>KPI</th><th>Threshold</th><th>Target</th><th>{{ 'Excellence' if is_excellence_variant else 'Multiplier' }}</th><th>Self-rated Result</th><th>Self-rated Score</th><th>Moderated Result</th><th>Moderated Score</th></tr></thead>
+  <tbody>
+    {% for t in mech_b_targets %}
+    {% set self_b = t['self_score']['value'] if t['self_score'] else none %}
+    {% set mod_b = t['score']['value'] if t['score'] else none %}
+    <tr data-kpi="{{ t['id'] }}" data-mechanism="{{ t['mechanism'] }}" data-method="{{ t['method'] }}"
+        data-threshold="{{ t['threshold'] }}" data-target="{{ t['target'] }}"
+        data-multiple="{{ t['multiple'] if t['multiple'] is not none else '' }}"
+        data-excellence="{{ t['excellence'] if t['excellence'] is not none else '' }}"
+        data-self-value="{{ t['result']['actual_value'] if t['result'] else '' }}"
+        data-self-note="{{ (t['result']['note'] if t['result'] else none) or '' }}"
+        data-attachment-name="{{ t['attachment']['filename'] if t['attachment'] else '' }}"
+        data-attachment-url="{{ url_for('performance_kpi_attachment_download', kpi_target_id=t['id']) if t['attachment'] else '' }}">
+      <td>
+        <div class="pm-kpi-name-row">
+          <p class="pm-kpi-name">{{ t['kpi_name'] }}</p>
+          {% if t['description'] %}
+          <span class="pm-info-icon" tabindex="0" title="{{ t['description'] }}" aria-label="KPI info for {{ t['kpi_name'] }}: {{ t['description'] }}">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="12" cy="12" r="9"/><line x1="12" y1="11" x2="12" y2="16"/><circle cx="12" cy="7.5" r="0.6" fill="currentColor" stroke="none"/></svg>
+          </span>
+          {% endif %}
+        </div>
+        <p class="pm-kpi-meta">{{ t['category'] or '' }} &middot; weight {{ t['weightage'] | int }}%{% if t['unit'] %} &middot; unit {{ t['unit'] }}{% endif %}</p>
+      </td>
+      <td>{{ t['threshold'] | commas }}</td>
+      <td>{{ t['target'] | commas }}</td>
+      {% if is_excellence_variant %}
+      <td>{{ t['excellence'] | commas }}</td>
+      {% else %}
+      <td>{{ (t['multiple'] | commas ~ '%') if t['multiple'] is not none else '—' }}</td>
+      {% endif %}
+      <td>
+        {% if not t['result'] %}
+          <p class="muted small" style="margin:0">Waiting on {{ subject['full_name'] }} to submit a result.</p>
+        {% else %}
+          <div class="pm-result-cell">
+            <p style="margin:0"><strong>{{ t['result']['actual_value'] | commas }}</strong>{% if t['unit'] %} {{ t['unit'] }}{% endif %}</p>
+            {% if t['result']['note'] %}
+            <button type="button" class="pm-icon-btn pm-view-btn" title="View {{ subject['full_name'] }}'s note" aria-label="View note for {{ t['kpi_name'] }}">
+              {{ pm_view_icon() }}
+            </button>
+            {% endif %}
+            {% if t['attachment'] %}
+            <button type="button" class="pm-icon-btn pm-view-btn" title="View attachment" aria-label="View attachment for {{ t['kpi_name'] }}">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M21.44 11.05l-9.19 9.19a5.5 5.5 0 0 1-7.78-7.78l9.19-9.19a3.5 3.5 0 0 1 4.95 4.95l-9.2 9.19a1.5 1.5 0 0 1-2.12-2.12l8.49-8.48"/></svg>
+            </button>
+            {% endif %}
+          </div>
+        {% endif %}
+      </td>
+      <td><span id="pm-score-self-{{ t['id'] }}">{% if self_b is not none %}{{ '%.1f' | format(self_b) }}%{% else %}&mdash;{% endif %}</span></td>
+      <td id="pm-moderate-cell-{{ t['id'] }}">{{ pm_moderate_cell(t, me_id, ai_enabled, ai_limit) }}</td>
+      {# Gated on locked, not on "differs from self": a confirm-as-is line is
+         genuinely moderated and must show its score even though it equals the
+         self score -- mirroring the Moderated Result cell, which shows
+         effective_value whenever locked. The JS overwrites this span while the
+         manager types and again once the line commits. #}
+      <td><span id="pm-score-adj-{{ t['id'] }}">{% if t['locked'] and mod_b is not none %}{{ '%.1f' | format(mod_b) }}%{% else %}&mdash;{% endif %}</span></td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table></div>
+{% endif %}
+
+<div class="admin-card" id="pm-final-rating" style="margin-top:16px;padding:0.85rem 1rem;width:fit-content;margin-left:auto;white-space:nowrap">
+  {% if mine_preview and mine_preview['label'] is not none and mine_all_scored %}
+    {% set moderated_display = ('%.2f' | format(mine_preview['value'])) if mine_preview['mechanism'] == 'A' else ('%.1f' | format(mine_preview['value']) ~ '%') %}
+    <p class="muted small" style="margin:0">Moderated Rating</p>
+    <p style="margin:4px 0 0;display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+      {% if self_preview and self_preview['label'] is not none %}
+        {% set self_display = ('%.2f' | format(self_preview['value'])) if self_preview['mechanism'] == 'A' else ('%.1f' | format(self_preview['value']) ~ '%') %}
+        {% if self_display != moderated_display %}
+        <span>{{ self_display }} <span class="potential-pill" data-band="{{ self_preview['label'] }}">{{ label_names[self_preview['label']] }}</span></span>
+        <span aria-hidden="true">&rarr;</span>
+        {% endif %}
+      {% endif %}
+      <strong>{{ moderated_display }}</strong>
+      <span class="potential-pill" data-band="{{ mine_preview['label'] }}">{{ label_names[mine_preview['label']] }}</span>
+    </p>
+  {% elif not mine_all_scored %}
+    {# A rating computed from some of the lines is not this person's rating.
+       Say what's missing instead of showing a confident wrong number. #}
+    <p class="muted small" style="margin:0">Moderated Rating: not available yet</p>
+    <p class="muted small" style="margin:2px 0 0">{{ mine_scored }} of {{ mine_total }}
+      line(s) have a result so far.</p>
+  {% else %}
+    <p class="muted small" style="margin:0">Moderated Rating: not available yet</p>
+  {% endif %}
+</div>
+
+{# The development plan lives in its own module now (/idp/team) -- reviewing
+   someone's development is a different job from moderating their rating,
+   so it gets its own page rather than sitting under the scorecard. #}
+<p class="muted small" style="margin-top:16px">Development plan and career conversation: <a href="{{ url_for('idp_team_member_view', subject_id=subject['id']) }}">open in IDP &rarr;</a></p>
+
+<div class="admin-card" id="pm-mgr-remark" style="margin-top:16px">
+  {# One remark per approver, not one per subject -- in a matrix split every
+     approver writes their own, and the employee sees each attributed. #}
+  <label for="pm-mgr-remark-input" style="font-weight:500;font-size:0.84375rem;display:block;margin-bottom:6px">
+    Your remark <span class="muted small">(optional)</span>
+  </label>
+  {% if not all_locked %}
+    <textarea id="pm-mgr-remark-input" name="manager_remark" rows="3"
+              placeholder="Any overall comments on {{ subject['full_name'] }}'s performance this period..."
+              style="width:100%;box-sizing:border-box;padding:8px 10px;border:1px solid var(--d-bd-d7dbe6);border-radius:8px;font-family:inherit;font-size:0.84375rem;resize:vertical">{{ manager_remark['remark'] if manager_remark else '' }}</textarea>
+    {% if ai_enabled %}
+    <div class="ai-draft" data-endpoint="{{ url_for('performance_team_member_remark_draft_ai', subject_id=subject['id']) }}"
+         data-limit="{{ ai_limit }}" data-remaining="{{ remark_ai_remaining }}" data-reset="{{ remark_ai_reset_seconds }}"
+         style="display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-top:6px">
+      <div class="ai-split">
+        <button type="button" class="ai-draft-btn btn-link" aria-haspopup="true" aria-expanded="false">✨ Draft with AI <span class="ai-caret" aria-hidden="true">▾</span></button>
+        <div class="ai-menu" role="menu" hidden>
+          <div class="ai-menu-head">Choose what AI should do</div>
+          <button type="button" class="ai-cmd is-default" role="menuitem" data-cmd="polish">
+            <span class="ai-cmd-ico">✨</span><span>Polish &amp; improve<small>Clearer, more specific</small></span></button>
+          <button type="button" class="ai-cmd" role="menuitem" data-cmd="shorter">
+            <span class="ai-cmd-ico">➖</span><span>Make it shorter</span></button>
+          <button type="button" class="ai-cmd" role="menuitem" data-cmd="longer">
+            <span class="ai-cmd-ico">➕</span><span>Make it longer / add detail</span></button>
+          <button type="button" class="ai-cmd" role="menuitem" data-cmd="formal">
+            <span class="ai-cmd-ico">👔</span><span>More formal</span></button>
+          <button type="button" class="ai-cmd" role="menuitem" data-cmd="casual">
+            <span class="ai-cmd-ico">🙂</span><span>More casual</span></button>
+          <div class="ai-sep"></div>
+          <button type="button" class="ai-cmd" role="menuitem" data-cmd="grammar">
+            <span class="ai-cmd-ico">✔️</span><span>Fix spelling &amp; grammar</span></button>
+        </div>
+      </div>
+      <span class="ai-quota small" aria-live="polite"></span>
+      <span class="ai-status muted small" aria-live="polite"></span>
+    </div>
+    {% endif %}
+    <span id="pm-remark-autosave-status" class="muted small"></span>
+  {% else %}
+    <p class="muted small" style="margin:0">{{ manager_remark['remark'] if manager_remark and manager_remark['remark'] else 'No remark provided.' }}</p>
+  {% endif %}
+  {% if overall_remark %}
+  <div class="resp-comment" style="margin:16px 0 0">
+    <p class="resp-comment-head">Employee's remark</p>
+    <p>{{ overall_remark }}</p>
+  </div>
+  {% endif %}
+</div>
+
+{% if not all_locked %}
+<div class="actions" style="margin-top:14px;align-items:center;gap:10px">
+  <span id="pm-approve-status" class="muted small"></span>
+  <button type="button" class="primary" id="pm-approve-btn">Approve</button>
+</div>
+<p class="muted small" style="margin:6px 0 0;text-align:right">
+  Any line left blank above is confirmed as-is when you click Approve.
+</p>
+
+<div id="pm-approve-modal" class="modal-overlay" hidden>
+  <div class="modal-card" role="dialog" aria-modal="true" aria-labelledby="pm-approve-title">
+    <h2 id="pm-approve-title">Approve this review?</h2>
+    <p>You're about to finalise <strong><span id="pm-approve-count">0</span> KPI line(s)</strong> for {{ subject['full_name'] }}. Any line left blank is confirmed as-is.</p>
+    <div class="modal-warning">
+      <strong>You can't undo your own approval.</strong>
+      {% if has_later_step %}
+      <span> These lines then go to the next approver, who can still change the
+        numbers before they're final.</span>
+      {% else %}
+      <span> Once approved, these moderated ratings are final.</span>
+      {% endif %}
+    </div>
+    <label style="display:flex;gap:8px;align-items:flex-start;margin-top:12px;cursor:pointer">
+      <input type="checkbox" id="pm-approve-ack" style="margin-top:3px">
+      <span>{% if has_later_step %}I've reviewed these values and I'm passing them
+        to the next approver.{% else %}I've reviewed these moderated values and
+        confirm they're final.{% endif %}</span>
+    </label>
+    <div class="modal-actions">
+      <button type="button" class="btn-link" id="pm-approve-cancel">Cancel</button>
+      <button type="button" id="pm-approve-yes" class="primary" disabled>{% if has_later_step %}Yes, approve my step{% else %}Yes, approve (final){% endif %}</button>
+    </div>
+  </div>
+</div>
+{% endif %}
+
+<div id="pm-view-overlay" class="modal-overlay" hidden>
+  <div class="modal-card" role="dialog" aria-modal="true" aria-labelledby="pm-view-title" style="max-width:480px">
+    <h2 id="pm-view-title" style="margin:0"></h2>
+    <div id="pm-view-body" style="margin-top:10px"></div>
+    <div class="modal-actions">
+      <button type="button" class="btn-link" id="pm-view-close">Close</button>
+    </div>
+  </div>
+</div>
+
+
+<script>
+(function(){
+  function computeMechanismA(actual, method, r1, r2, r3, r4, r5){
+    var rates = [r1, r2, r3, r4, r5], rating = 1;
+    for (var i = 0; i < rates.length; i++){
+      var met = method === 'more' ? actual >= rates[i] : actual <= rates[i];
+      if (met) rating = i + 1;
+    }
+    return rating;
+  }
+  function computeMechanismB(actual, method, threshold, target, multiple, excellence){
+    // Port of pm_pct_mechanism_b_base / _excellence (pm_pct_b_transform): a negative target (a loss) reads the other
+    // way round (flip = less XOR target < 0), and a score is never below 0%.
+    if (method === 'more'){
+      if (actual <= threshold) return 0;
+    } else {
+      if (actual >= threshold) return 0;
+    }
+    var flip = (method !== 'more') !== (target < 0);
+    function tf(x){ return flip ? ((1 + (1 - x / target)) * 100) : (x / target * 100); }
+    var raw = tf(actual), out;
+    if (excellence !== null){
+      out = Math.min(raw, tf(excellence));
+    } else if (raw <= 100){
+      out = raw;
+    } else {
+      out = 100 + (raw - 100) * (multiple / 100);
+    }
+    return out > 0 ? out : 0;
+  }
+  function csrfToken(){
+    var meta = document.querySelector('meta[name="csrf-token"]');
+    return meta ? meta.content : '';
+  }
+
+  // Strip thousand separators before parsing so a formatted "13,500,000"
+  // reads as 13500000, not 13. Every reader of a .pm-adjust-input value
+  // (live score, draft-autosave, commit) goes through this.
+  function pmNum(s){ return parseFloat(String(s == null ? '' : s).replace(/,/g, '')); }
+  // Comma-group the field's value (applied on blur + on load); string-based
+  // so exact digits are preserved and a genuine decimal part is kept.
+  function pmFmt(el){
+    var raw = String(el.value == null ? '' : el.value).replace(/,/g, '').trim();
+    if (raw === '' || !isFinite(Number(raw))) return;
+    var neg = raw.charAt(0) === '-';
+    var parts = raw.replace(/^-/, '').split('.');
+    parts[0] = parts[0].replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+    el.value = (neg ? '-' : '') + parts.join('.');
+  }
+  function pmFmtStr(v){ var el = {value: v == null ? '' : v}; pmFmt(el); return el.value; }
+
+  // Instant client-side ladder/score preview while typing -- baseline is
+  // always the raw self value (data-self-value), matching self_score's own
+  // definition server-side, so the live preview and the committed result
+  // can never mean two different things by the same name.
+  function updateModerationVisual(row){
+    var mechanism = row.dataset.mechanism;
+    var method = row.dataset.method;
+    var input = row.querySelector('.pm-adjust-input');
+    var raw = input ? input.value.trim() : '';
+    var adjustedValue = pmNum(raw);
+    var hasAdjustment = raw !== '' && !isNaN(adjustedValue);
+    if (!hasAdjustment) adjustedValue = null;
+    var selfRaw = row.dataset.selfValue;
+    var selfValue = selfRaw === '' ? null : parseFloat(selfRaw);
+
+    if (mechanism === 'A'){
+      var ladderCells = row.querySelectorAll('.pm-ladder-h td');
+      var r1 = parseFloat(row.dataset.rate1), r2 = parseFloat(row.dataset.rate2),
+          r3 = parseFloat(row.dataset.rate3), r4 = parseFloat(row.dataset.rate4),
+          r5 = parseFloat(row.dataset.rate5);
+      var selfRating = selfValue !== null && !isNaN(selfValue) ?
+        computeMechanismA(selfValue, method, r1, r2, r3, r4, r5) : null;
+      var adjRating = hasAdjustment ? computeMechanismA(adjustedValue, method, r1, r2, r3, r4, r5) : null;
+      ladderCells.forEach(function(cell, idx){
+        var rung = idx + 1;
+        cell.classList.remove('pm-current', 'pm-current-self', 'pm-current-adjusted');
+        if (hasAdjustment && adjRating !== selfRating){
+          if (rung === selfRating) cell.classList.add('pm-current-self');
+          if (rung === adjRating) cell.classList.add('pm-current-adjusted');
+        } else if (selfRating !== null && rung === selfRating){
+          cell.classList.add('pm-current');
+        }
+      });
+    } else {
+      // Self-rated Score owns its own column now, so it's static -- only the
+      // Moderated Score span tracks what's being typed.
+      var kpi = row.getAttribute('data-kpi');
+      var adjEl = document.getElementById('pm-score-adj-' + kpi);
+      if (!adjEl) return;
+      if (hasAdjustment){
+        var excellence = row.dataset.excellence ? parseFloat(row.dataset.excellence) : null;
+        var multiple = row.dataset.multiple ? parseFloat(row.dataset.multiple) : 0;
+        var adjScore = computeMechanismB(adjustedValue, method, parseFloat(row.dataset.threshold),
+          parseFloat(row.dataset.target), multiple, excellence);
+        adjEl.textContent = adjScore.toFixed(1) + '%';
+      } else {
+        adjEl.textContent = '—';
+      }
+    }
+  }
+
+  // Final, server-confirmed self-vs-moderated visual once a line's autosave
+  // has actually committed -- replaces whatever the live-typing preview
+  // above showed, using the authoritative values the server just computed.
+  function updateCommittedScoreVisual(row, score, selfScore){
+    var mechanism = row.dataset.mechanism;
+    if (mechanism === 'A'){
+      var ladderCells = row.querySelectorAll('.pm-ladder-h td');
+      var selfVal = selfScore && selfScore.mechanism === 'A' ? selfScore.value : null;
+      var modVal = score && score.mechanism === 'A' ? score.value : null;
+      ladderCells.forEach(function(cell, idx){
+        var rung = idx + 1;
+        cell.classList.remove('pm-current', 'pm-current-self', 'pm-current-adjusted');
+        if (selfVal !== null && modVal !== null && selfVal !== modVal){
+          if (rung === selfVal) cell.classList.add('pm-current-self');
+          if (rung === modVal) cell.classList.add('pm-current-adjusted');
+        } else if (modVal !== null && rung === modVal){
+          cell.classList.add('pm-current');
+        } else if (selfVal !== null && rung === selfVal){
+          cell.classList.add('pm-current');
+        }
+      });
+    } else {
+      // Each score owns a labelled column, so both always render their own
+      // number -- including a confirm-as-is line, where the moderated score
+      // legitimately equals the self score.
+      var kpi = row.getAttribute('data-kpi');
+      var selfEl = document.getElementById('pm-score-self-' + kpi);
+      var adjEl = document.getElementById('pm-score-adj-' + kpi);
+      if (!selfEl || !adjEl) return;
+      var selfVal = selfScore ? selfScore.value : null;
+      var modVal = score ? score.value : null;
+      selfEl.textContent = selfVal !== null ? selfVal.toFixed(1) + '%' : '—';
+      adjEl.textContent = modVal !== null ? modVal.toFixed(1) + '%' : '—';
+    }
+  }
+
+  // Same gate the server-rendered card uses. Without it, typing into the one
+  // actionable line of a partially-submitted scorecard would repaint this card
+  // with a rating computed from the subset -- the exact thing the server-side
+  // fix exists to prevent, reintroduced by the live path.
+  var MINE_ALL_SCORED = {{ mine_all_scored | tojson }};
+  var MINE_SCORED = {{ mine_scored | tojson }}, MINE_TOTAL = {{ mine_total | tojson }};
+
+  function updateFinalRating(minePreview, selfPreview){
+    var box = document.getElementById('pm-final-rating');
+    if (!box) return;
+    box.innerHTML = '';
+    var label = document.createElement('p');
+    label.className = 'muted small';
+    label.style.margin = '0';
+    box.appendChild(label);
+    if (!MINE_ALL_SCORED){
+      label.textContent = 'Moderated Rating: not available yet';
+      var miss = document.createElement('p');
+      miss.className = 'muted small';
+      miss.style.margin = '2px 0 0';
+      miss.textContent = MINE_SCORED + ' of ' + MINE_TOTAL + ' line(s) have a result so far.';
+      box.appendChild(miss);
+      return;
+    }
+    if (minePreview && minePreview.label){
+      label.textContent = 'Moderated Rating';
+      var modDisplay = minePreview.mechanism === 'A' ? minePreview.value.toFixed(2) : (minePreview.value.toFixed(1) + '%');
+      var row = document.createElement('p');
+      row.style.cssText = 'margin:4px 0 0;display:flex;align-items:center;gap:8px;flex-wrap:wrap';
+      if (selfPreview && selfPreview.label){
+        var selfDisplay = selfPreview.mechanism === 'A' ? selfPreview.value.toFixed(2) : (selfPreview.value.toFixed(1) + '%');
+        if (selfDisplay !== modDisplay){
+          var selfSpan = document.createElement('span');
+          selfSpan.textContent = selfDisplay + ' ';
+          var selfPill = document.createElement('span');
+          selfPill.className = 'potential-pill';
+          selfPill.setAttribute('data-band', selfPreview.label);
+          selfPill.textContent = selfPreview.label_name;
+          selfSpan.appendChild(selfPill);
+          row.appendChild(selfSpan);
+          var arrow = document.createElement('span');
+          arrow.setAttribute('aria-hidden', 'true');
+          arrow.textContent = '→';
+          row.appendChild(arrow);
+        }
+      }
+      var strong = document.createElement('strong');
+      strong.textContent = modDisplay;
+      row.appendChild(strong);
+      var pill = document.createElement('span');
+      pill.className = 'potential-pill';
+      pill.setAttribute('data-band', minePreview.label);
+      pill.textContent = minePreview.label_name;
+      row.appendChild(pill);
+      box.appendChild(row);
+    } else {
+      label.textContent = 'Moderated Rating: not available yet';
+    }
+  }
+
+  // Swap a just-committed Moderate cell from its input/buttons into the
+  // read-only value + Justification popup, via document.createElement (the
+  // justification text is manager-typed, never innerHTML-interpolated).
+  function swapModerateCellToReadOnly(kpi, data){
+    var cell = document.getElementById('pm-moderate-cell-' + kpi);
+    if (!cell) return;
+    cell.innerHTML = '';
+    var p = document.createElement('p');
+    p.style.margin = '0';
+    var strong = document.createElement('strong');
+    strong.textContent = pmFmtStr(data.effective_value);
+    p.appendChild(strong);
+    if (data.unit) p.appendChild(document.createTextNode(' ' + data.unit));
+    cell.appendChild(p);
+    if (data.justification){
+      var btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'pm-icon-btn pm-view-btn-remark';
+      btn.setAttribute('data-remark', data.justification);
+      btn.title = 'View justification';
+      btn.setAttribute('aria-label', 'View justification');
+      btn.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7-10-7-10-7z"/><circle cx="12" cy="12" r="3"/></svg>';
+      cell.appendChild(btn);
+    }
+    var row = document.querySelector('tr[data-kpi="' + kpi + '"]');
+    if (row) updateCommittedScoreVisual(row, data.score, data.self_score);
+  }
+
+  // Debounced typing and the bottom page-level Approve button both funnel
+  // through this one function, which clears the row's own pending debounce
+  // timer and, while a request is already in flight for this row, returns
+  // that SAME pending promise (never a bare `undefined`) -- so any caller
+  // that awaits it (the Approve loop below, or a second debounce tick)
+  // always waits for the real commit instead of racing ahead of it. Always
+  // resolves, never rejects, even on a 409/400/network error, so a batched
+  // Approve loop can never be aborted early by one row's failure.
+  var moderateState = {};
+  function getModerateState(kpi){
+    if (!moderateState[kpi]) moderateState[kpi] = {timer: null, inFlight: false, promise: null};
+    return moderateState[kpi];
+  }
+  function moderateAutosave(kpi){
+    var st = getModerateState(kpi);
+    clearTimeout(st.timer);
+    if (st.inFlight) return st.promise;
+    var row = document.querySelector('tr[data-kpi="' + kpi + '"]');
+    if (!row) return Promise.resolve(null);
+    var input = row.querySelector('.pm-adjust-input');
+    var justInput = row.querySelector('.pm-justification-input');
+    var statusEl = document.getElementById('pm-mod-autosave-' + kpi);
+    st.inFlight = true;
+    if (statusEl) statusEl.textContent = 'Saving…';
+    var body = new FormData();
+    body.append('csrf_token', csrfToken());
+    body.append('adjusted_value', input ? input.value.replace(/,/g, '').trim() : '');
+    body.append('justification', justInput ? justInput.value.trim() : '');
+    var promise = fetch('/performance/kpi/' + kpi + '/moderate-autosave', {method: 'POST', body: body, credentials: 'same-origin'})
+      .then(function(r){ return r.json().then(function(data){ return {status: r.status, data: data}; }); })
+      .then(function(res){
+        st.inFlight = false;
+        st.promise = null;
+        if (res.data && res.data.ok){
+          swapModerateCellToReadOnly(kpi, res.data);
+          updateFinalRating(res.data.mine_preview, res.data.self_preview);
+        } else if (statusEl){
+          statusEl.textContent = (res.data && res.data.error) || 'Couldn’t save — please try again.';
+        }
+        return res;
+      })
+      .catch(function(){
+        st.inFlight = false;
+        st.promise = null;
+        if (statusEl) statusEl.textContent = 'Network error — please try again.';
+        return null;
+      });
+    st.promise = promise;
+    return promise;
+  }
+
+  // Typing a Moderate value (or a justification) AUTOSAVES it as an editable
+  // DRAFT (persist + live Moderated Rating) WITHOUT committing/locking -- the
+  // row stays an editable input; only the bottom Approve button finalises
+  // (blank -> confirm-as-is, typed -> adjust). The instant per-line
+  // ladder/score visual (updateModerationVisual) is separate and un-debounced.
+  var draftTimers = {};
+  function saveModerationDraft(kpi){
+    var row = document.querySelector('tr[data-kpi="' + kpi + '"]');
+    if (!row) return;
+    var input = row.querySelector('.pm-adjust-input');
+    var justInput = row.querySelector('.pm-justification-input');
+    var statusEl = document.getElementById('pm-mod-autosave-' + kpi);
+    if (statusEl) statusEl.textContent = 'Saving…';
+    var body = new FormData();
+    body.append('csrf_token', csrfToken());
+    body.append('adjusted_value', input ? input.value.replace(/,/g, '').trim() : '');
+    body.append('justification', justInput ? justInput.value.trim() : '');
+    fetch('/performance/kpi/' + kpi + '/moderate-draft-autosave', {method: 'POST', body: body, credentials: 'same-origin'})
+      .then(function(r){ return r.json().then(function(d){ return {status: r.status, data: d}; }); })
+      .then(function(res){
+        if (res.data && res.data.ok){
+          if (statusEl) statusEl.textContent = 'Draft saved';
+          updateFinalRating(res.data.mine_preview, res.data.self_preview);
+        } else if (statusEl){
+          statusEl.textContent = (res.data && res.data.error) || 'Couldn’t save — please try again.';
+        }
+      })
+      .catch(function(){ if (statusEl) statusEl.textContent = 'Network error — please try again.'; });
+  }
+  function scheduleDraft(kpi){
+    clearTimeout(draftTimers[kpi]);
+    draftTimers[kpi] = setTimeout(function(){ saveModerationDraft(kpi); }, 700);
+  }
+  document.querySelectorAll('.pm-adjust-input').forEach(function(input){
+    var row = input.closest('tr[data-kpi]');
+    if (!row) return;
+    var kpi = row.getAttribute('data-kpi');
+    input.addEventListener('input', function(){
+      updateModerationVisual(row);
+      scheduleDraft(kpi);
+    });
+    input.addEventListener('blur', function(){ pmFmt(input); });
+  });
+  document.querySelectorAll('.pm-justification-input').forEach(function(ta){
+    var row = ta.closest('tr[data-kpi]');
+    if (!row) return;
+    var kpi = row.getAttribute('data-kpi');
+    ta.addEventListener('input', function(){ scheduleDraft(kpi); });
+  });
+
+  // Bottom page-level Approve button: batches every row still showing an
+  // input (i.e. every row NOT already committed via typing autosave) into
+  // one sequential pass through moderateAutosave() -- deliberately
+  // sequential (.reduce()-chained), not Promise.all-parallel, so the LAST
+  // row processed always reflects every earlier row in this same batch
+  // already having committed server-side, and its all_locked/mine_preview/
+  // self_preview are therefore always the fully-accurate final state (no
+  // separate "refresh the aggregate" call needed). Reuses moderateAutosave()
+  // completely unchanged in its per-row behavior; this loop only supplies
+  // the sequencing plus the page-level in-flight/hide state on top. A row
+  // that 409s or 400s doesn't stop the batch -- moderateAutosave()'s promise
+  // always resolves, never rejects -- and that row's own per-row status span
+  // already surfaces its specific error inline.
+  (function(){
+    var approveBtn = document.getElementById('pm-approve-btn');
+    var modal = document.getElementById('pm-approve-modal');
+    if (!approveBtn || !modal) return;
+    var cancelBtn = document.getElementById('pm-approve-cancel');
+    var yesBtn = document.getElementById('pm-approve-yes');
+    var ackCheck = document.getElementById('pm-approve-ack');
+    var countEl = document.getElementById('pm-approve-count');
+    var statusEl = document.getElementById('pm-approve-status');
+
+    function closeModal(){
+      modal.hidden = true;
+      ackCheck.checked = false;
+      yesBtn.disabled = true;
+    }
+    cancelBtn.addEventListener('click', closeModal);
+    modal.addEventListener('click', function(e){ if (e.target === modal) closeModal(); });
+    document.addEventListener('keydown', function(e){ if (e.key === 'Escape' && !modal.hidden) closeModal(); });
+    ackCheck.addEventListener('change', function(){ yesBtn.disabled = !ackCheck.checked; });
+
+    // Approve no longer commits directly -- it opens a checkbox-gated confirm
+    // modal first (mirroring the employee's own "Submit all results"
+    // double-confirm). Only the modal's Yes runs the real commit loop.
+    approveBtn.addEventListener('click', function(){
+      var inputs = document.querySelectorAll('.pm-adjust-input');
+      if (!inputs.length){
+        if (statusEl) statusEl.textContent = 'Nothing to approve right now.';
+        return;
+      }
+      countEl.textContent = inputs.length;
+      modal.hidden = false;
+    });
+
+    yesBtn.addEventListener('click', function(){
+      closeModal();
+      runApprove();
+    });
+
+    function runApprove(){
+      var inputs = Array.prototype.slice.call(document.querySelectorAll('.pm-adjust-input'));
+      if (!inputs.length){
+        if (statusEl) statusEl.textContent = 'Nothing to approve right now.';
+        return;
+      }
+      approveBtn.disabled = true;
+      if (statusEl) statusEl.textContent = 'Approving…';
+      var kpis = inputs.map(function(input){
+        var row = input.closest('tr[data-kpi]');
+        return row ? row.getAttribute('data-kpi') : null;
+      }).filter(Boolean);
+      var failCount = 0;
+      var lastAllLocked = false;
+      kpis.reduce(function(chain, kpi){
+        return chain.then(function(){
+          return moderateAutosave(kpi).then(function(res){
+            if (res && res.data && res.data.ok){
+              lastAllLocked = !!res.data.all_locked;
+            } else {
+              failCount++;
+            }
+          });
+        });
+      }, Promise.resolve()).then(function(){
+        // On full success, send the manager back to the Team overview (a fresh
+        // server render) so the just-approved report visibly moves out of their
+        // "Awaiting your review" queue -- into Reviewed once the chain is fully
+        // locked, or "In progress" if a later approver still remains. This
+        // replaces reloading the drill-down + relying on a Back/bfcache refresh,
+        // which left the record stale in the to-do list. Stay in-page ONLY when
+        // there are real errors, so the per-row messages survive to be read.
+        if (failCount === 0){
+          window.location.href = '{{ url_for("performance_team_view") }}';
+          return;
+        }
+        approveBtn.disabled = false;
+        if (statusEl){
+          statusEl.textContent = 'Approved, but ' + failCount +
+            ' line(s) need attention — see the highlighted rows above.';
+        }
+      });
+    }
+  })();
+
+  // Justification icon-toggle: mirrors performance_my.html's own
+  // .pm-note-toggle/.pm-note-field reveal pattern verbatim, just aimed at
+  // the Moderate column's justification textarea instead of a self-note.
+  document.querySelectorAll('.pm-justification-toggle').forEach(function(btn){
+    btn.addEventListener('click', function(){
+      var field = btn.closest('td').querySelector('.pm-note-field');
+      if (field){
+        field.hidden = !field.hidden;
+        if (!field.hidden) field.querySelector('textarea').focus();
+      }
+    });
+  });
+
+  // Shared read-only popup: a row's note-icon or attachment-icon opens the
+  // SAME popup, showing whichever of {note, attachment} exist for that row
+  // -- data already server-rendered via data-* attributes, no fetch needed
+  // (unlike admin_reports.html's subject-drill-down popup, which this is
+  // otherwise structurally modeled on). A second, separate handler below
+  // covers the Moderate column's own "view Justification" button, which
+  // reads its own data-remark attribute (set directly on that button, not
+  // the row) rather than overloading this same data source.
+  (function(){
+    var overlay = document.getElementById('pm-view-overlay');
+    if (!overlay) return;
+    var titleEl = document.getElementById('pm-view-title');
+    var bodyEl = document.getElementById('pm-view-body');
+    function closeOverlay(){ overlay.hidden = true; }
+    document.getElementById('pm-view-close').addEventListener('click', closeOverlay);
+    overlay.addEventListener('click', function(e){ if (e.target === overlay) closeOverlay(); });
+    document.addEventListener('keydown', function(e){ if (e.key === 'Escape' && !overlay.hidden) closeOverlay(); });
+    document.addEventListener('click', function(e){
+      var btn = e.target.closest('.pm-view-btn');
+      if (!btn) return;
+      var row = btn.closest('tr[data-kpi]');
+      if (!row) return;
+      var nameEl = row.querySelector('.pm-kpi-name');
+      titleEl.textContent = nameEl ? nameEl.textContent : '';
+      bodyEl.innerHTML = '';
+      var note = row.dataset.selfNote;
+      if (note){
+        var h1 = document.createElement('p');
+        h1.className = 'muted small';
+        h1.style.margin = '0 0 2px';
+        h1.textContent = 'Remark';
+        var p1 = document.createElement('p');
+        p1.style.margin = '0 0 12px';
+        p1.textContent = note;
+        bodyEl.appendChild(h1);
+        bodyEl.appendChild(p1);
+      }
+      var attName = row.dataset.attachmentName;
+      if (attName){
+        var h2 = document.createElement('p');
+        h2.className = 'muted small';
+        h2.style.margin = '0 0 2px';
+        h2.textContent = 'Attachment';
+        var p2 = document.createElement('p');
+        p2.style.margin = '0';
+        var a = document.createElement('a');
+        a.href = row.dataset.attachmentUrl;
+        a.textContent = attName;
+        p2.appendChild(a);
+        bodyEl.appendChild(h2);
+        bodyEl.appendChild(p2);
+      }
+      if (!note && !attName){
+        var p3 = document.createElement('p');
+        p3.className = 'muted small';
+        p3.textContent = 'Nothing to show.';
+        bodyEl.appendChild(p3);
+      }
+      overlay.hidden = false;
+    });
+    document.addEventListener('click', function(e){
+      var btn = e.target.closest('.pm-view-btn-remark');
+      if (!btn) return;
+      var row = btn.closest('tr[data-kpi]');
+      var nameEl = row ? row.querySelector('.pm-kpi-name') : null;
+      titleEl.textContent = nameEl ? nameEl.textContent : 'Justification';
+      bodyEl.innerHTML = '';
+      var h1 = document.createElement('p');
+      h1.className = 'muted small';
+      h1.style.margin = '0 0 2px';
+      h1.textContent = 'Justification';
+      var p1 = document.createElement('p');
+      p1.style.margin = '0';
+      p1.textContent = btn.dataset.remark || '';
+      bodyEl.appendChild(h1);
+      bodyEl.appendChild(p1);
+      overlay.hidden = false;
+    });
+  })();
+
+  // Line Manager's Remark: same debounced-autosave shape as the employee's
+  // own remark on performance_my.html, just posting to this page's own
+  // subject-scoped route -- no draft/promote step, an autosaved remark is
+  // immediately live (see performance_team_member_remark_autosave()).
+  (function(){
+    var input = document.getElementById('pm-mgr-remark-input');
+    if (!input) return;
+    var timer;
+    function autosave(){
+      var body = new FormData();
+      body.append('csrf_token', csrfToken());
+      body.append('remark', input.value);
+      var statusEl = document.getElementById('pm-remark-autosave-status');
+      if (statusEl) statusEl.textContent = 'Saving…';
+      fetch('/performance/team/{{ subject["id"] }}/remark-autosave', {method: 'POST', body: body, credentials: 'same-origin'})
+        .then(function(r){ return r.json().then(function(data){ return {status: r.status, data: data}; }); })
+        .then(function(res){
+          if (statusEl) statusEl.textContent = res.data && res.data.ok ? 'Saved' : ((res.data && res.data.error) || 'Couldn’t save');
+        })
+        .catch(function(){ var s = document.getElementById('pm-remark-autosave-status'); if (s) s.textContent = 'Couldn’t save'; });
+    }
+    input.addEventListener('input', function(){
+      clearTimeout(timer);
+      timer = setTimeout(autosave, 700);
+    });
+  })();
+
+  // ---- Draft with AI (Azure OpenAI), copied verbatim from
+  // performance_my.html's own widget -- same COMMANDS presets and
+  // paint()/run() shape, parameterized by each widget's own data-endpoint
+  // (this page has 2: per-line Justification, manager's overall remark).
+  // This template's own csrfToken() (defined above) is reused as-is.
+  (function () {
+    var widgets = document.querySelectorAll('.ai-draft');
+    if (!widgets.length) return;
+    var COMMANDS = {
+      polish:  { label: 'Polish & improve', busy: 'Polishing…', done: 'Polished — please review',
+        instr: 'Improve this text: make it clearer, more specific and well written, ' +
+               'while keeping my original meaning and points.' },
+      shorter: { label: 'Make it shorter', busy: 'Shortening…', done: 'Shortened — please review',
+        instr: 'Make this text more concise while keeping the key points.' },
+      longer:  { label: 'Make it longer', busy: 'Expanding…', done: 'Expanded — please review',
+        instr: 'Expand this text slightly using ONLY what it already says -- fuller, clearer wording; ' +
+               'do not add facts, figures, examples or events.' },
+      formal:  { label: 'More formal', busy: 'Rewriting…', done: 'Rewritten — please review',
+        instr: 'Rewrite this text in a more formal, professional tone.' },
+      casual:  { label: 'More casual', busy: 'Rewriting…', done: 'Rewritten — please review',
+        instr: 'Rewrite this text in a warmer, more conversational tone, still professional.' },
+      grammar: { label: 'Fix spelling & grammar', busy: 'Fixing…', done: 'Fixed — please review',
+        instr: 'Fix only the spelling, grammar and punctuation. Keep the wording and meaning ' +
+               'as close to the original as possible.' }
+    };
+    function fmt(sec) {
+      sec = Math.max(0, parseInt(sec, 10) || 0);
+      var h = Math.floor(sec / 3600), m = Math.floor((sec % 3600) / 60);
+      if (h && m) return h + 'h ' + m + 'm';
+      if (h) return h + 'h';
+      if (m) return m + 'm';
+      return 'under a minute';
+    }
+    function closeAllMenus() {
+      document.querySelectorAll('.ai-draft .ai-menu').forEach(function (m) { m.hidden = true; });
+      document.querySelectorAll('.ai-draft .ai-draft-btn').forEach(function (b) { b.setAttribute('aria-expanded', 'false'); });
+    }
+    function initAiWidget(widget, textarea) {
+      var endpoint = widget.dataset.endpoint;
+      var mainBtn = widget.querySelector('.ai-draft-btn');
+      var menu = widget.querySelector('.ai-menu');
+      var status = widget.querySelector('.ai-status');
+      var quota = widget.querySelector('.ai-quota');
+      if (!mainBtn || !textarea || !endpoint) return;
+      var limit = parseInt(widget.dataset.limit, 10) || 5;
+      var remaining = parseInt(widget.dataset.remaining, 10);
+      if (isNaN(remaining)) remaining = limit;
+      var reset = parseInt(widget.dataset.reset, 10) || 0;
+      var busy = false;
+
+      function paint() {
+        var locked = remaining <= 0;
+        mainBtn.disabled = locked || busy;
+        quota.classList.remove('is-last', 'is-locked');
+        if (locked) {
+          quota.classList.add('is-locked');
+          quota.textContent = '⏱ Limit reached — resets in ' + fmt(reset);
+        } else if (remaining === 1) {
+          quota.classList.add('is-last');
+          quota.textContent = 'Last AI draft for today';
+        } else {
+          quota.textContent = remaining + ' of ' + limit + ' AI drafts left today';
+        }
+      }
+      paint();
+
+      function run(cmd) {
+        closeAllMenus();
+        if (remaining <= 0 || busy) return;
+        var spec = COMMANDS[cmd] || COMMANDS.polish;
+        if (!textarea.value.trim()) { status.textContent = 'Write a few words first, then let AI help.'; return; }
+        busy = true; var label = mainBtn.innerHTML; mainBtn.textContent = spec.busy;
+        status.textContent = ''; paint();
+        var body = new FormData();
+        body.append('csrf_token', csrfToken());
+        body.append('draft', textarea.value);
+        body.append('instruction', spec.instr);
+        body.append('command', cmd);
+        fetch(endpoint, { method: 'POST', body: body, credentials: 'same-origin' })
+          .then(function (r) { return r.json().then(function (d) { return { ok: r.ok, d: d }; }); })
+          .then(function (res) {
+            var d = res.d || {};
+            if (res.ok && d.ok) {
+              textarea.value = d.text;
+              textarea.dispatchEvent(new Event('input', { bubbles: true }));
+              status.textContent = '✓ ' + spec.done;
+              if (typeof d.remaining === 'number') remaining = d.remaining;
+              reset = d.reset_seconds || 0;
+            } else {
+              status.textContent = d.error || 'Something went wrong.';
+              if (d.limited) { remaining = 0; reset = d.reset_seconds || reset; }
+            }
+          })
+          .catch(function () { status.textContent = 'Network error — please try again.'; })
+          .finally(function () { busy = false; mainBtn.innerHTML = label; paint(); });
+      }
+
+      mainBtn.addEventListener('click', function (e) {
+        e.stopPropagation();
+        if (remaining <= 0 || busy) return;
+        var open = menu.hidden;
+        closeAllMenus();
+        menu.hidden = !open;
+        mainBtn.setAttribute('aria-expanded', open ? 'true' : 'false');
+      });
+      menu.querySelectorAll('.ai-cmd').forEach(function (item) {
+        item.addEventListener('click', function () { run(item.dataset.cmd); });
+      });
+    }
+
+    widgets.forEach(function (widget) {
+      var textarea = widget.parentElement.querySelector('textarea');
+      initAiWidget(widget, textarea);
+    });
+    document.addEventListener('click', closeAllMenus);
+    document.addEventListener('keydown', function (e) { if (e.key === 'Escape') closeAllMenus(); });
+  })();
+})();
+</script>
+{% endblock %}

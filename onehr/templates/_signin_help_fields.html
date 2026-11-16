@@ -1,0 +1,25 @@
+{# Sign-in help's request fields (2026-10-19, canvas [design canvas link removed]): what's happening
+   (one of the six, already ticked from what they chose), their name, Employee ID and work email, and what they see. The
+   one field people never see (website) catches scripts. Used by the assistant's request card and by /signin-help. #}
+{% macro help_fields(issues, pick='', form={}, max_text=500, p='axh') %}
+<fieldset class="axh-issues">
+  <legend>What's happening</legend>
+  <div class="axh-chips">
+    {% for k, label in issues %}<label class="axh-chip"><input type="radio" name="issue" value="{{ k }}" required {{ 'checked' if (form.get('issue') or pick) == k }}><span>{{ label }}</span></label>{% endfor %}
+  </div>
+</fieldset>
+<div class="axh-two">
+  <div class="ax-field"><label for="{{ p }}-name">Your name</label>
+    <input id="{{ p }}-name" name="full_name" autocomplete="name" maxlength="120" required value="{{ form.get('full_name', '') }}"></div>
+  <div class="ax-field"><label for="{{ p }}-id">Employee ID</label>
+    <input id="{{ p }}-id" aria-describedby="{{ p }}-id-hint" name="employee_id" autocomplete="username" autocapitalize="characters" spellcheck="false" maxlength="40" required value="{{ form.get('employee_id', '') }}">
+    <p class="ax-hint" id="{{ p }}-id-hint">Employee ID is case-sensitive, it uses capital letters.</p></div>
+</div>
+<div class="ax-field"><label for="{{ p }}-email">Work email, for the reply</label>
+  <input id="{{ p }}-email" type="email" name="email" autocomplete="email" spellcheck="false" maxlength="200" required value="{{ form.get('email', '') }}"></div>
+<div class="ax-field"><label for="{{ p }}-detail">Tell us more <span class="axh-hint">what you see, and since when</span></label>
+  <textarea id="{{ p }}-detail" name="detail" rows="2" maxlength="{{ max_text }}" data-count>{{ form.get('detail', '') }}</textarea>
+  <span class="axh-count" aria-hidden="true"><span data-count-n>{{ (form.get('detail') or '') | length }}</span> / {{ max_text }}</span></div>
+<div class="axh-hp" aria-hidden="true"><label>Website <input name="website" tabindex="-1" autocomplete="off"></label></div>
+<p class="axh-note">It goes to the People team who run OneHR. You get a copy if this is the email on your OneHR account.</p>
+{% endmacro %}

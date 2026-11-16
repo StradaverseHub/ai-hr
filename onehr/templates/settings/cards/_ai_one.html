@@ -1,0 +1,29 @@
+{# Settings card: one AI drafting switch (2026-10-10), on its own module's Settings page. It posts `ai_module` with
+   just its key, so the other modules' switches keep their value. #}
+{% set _ai = ai_labels.get(sec.ai_key, ('', '')) %}
+<p class="muted small">The &ldquo;Draft with AI&rdquo; button here covers {{ _ai[1] if _ai[1][:3].isupper() else (_ai[1][:1] | lower) ~ _ai[1][1:] }}.
+  {% if not ai_configured %}<br><strong>No AI model is configured on this server</strong>, so nothing is offered
+  whatever this says.{% endif %}</p>
+<details class="muted small">
+  <summary>Why this matters</summary>
+  <p>It sends the person's own draft to the AI model and returns a rewrite. Switched off, the button is hidden and the
+    feature stops working even if someone tries to reach it directly.</p>
+</details>
+<form method="post" action="{{ url_for('admin_settings') }}" class="admin-form adm-set-form"
+      data-confirm="Save this setting? It decides whether everyone sees the Draft with AI button for {{ _ai[0] }}. Drafts already written are kept."
+      data-confirm-ok="Save">
+  <input type="hidden" name="action" value="ai_module">
+  <input type="hidden" name="key" value="{{ sec.ai_key }}">
+  <input type="hidden" name="next" value="{{ settings_next ~ '#' ~ sec.id }}">
+  <label class="switch">
+    <input type="checkbox" name="on" value="1" {{ 'checked' if ai_settings.get(sec.ai_key, True) }}>
+    <span class="track" aria-hidden="true"></span>
+    <span class="switch-label">Offer Draft with AI for {{ _ai[0] }}</span>
+  </label>
+  <div class="actions"><button type="submit" class="primary">Save</button></div>
+</form>
+{% if sec.ai_key == 'ai_review' %}
+<p class="muted small">Drafts flagged as suspicious: <strong>{{ ai_flag_count | thousands }}</strong>
+  recorded. These are drafts whose text looked like an attempt to steer the AI off its task; the draft still goes
+  through and the attempt is logged.</p>
+{% endif %}

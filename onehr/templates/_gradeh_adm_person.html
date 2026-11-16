@@ -1,0 +1,83 @@
+{# One Grade H person in the People & progress list's side panel (2026-11-03, board H6b; canvas [design canvas link removed]).
+   admin.js loads this (?fragment=1) into the page's one person panel (_adm_panel.html person_peek), the People > Users peek's own mechanism:
+   data-name / data-sub head the panel, ‹ › step through the list's rows, and a form's `next` (this address) is turned into the list with the
+   panel open on this person, so a save comes back here. READ ONLY to draw: where it stands and their appraisal are the person page's Grade H tab's
+   own blocks (person/_gradeh_blocks.html), the Change forms are the Set appraiser / Set HOD panels' own (_gradeh_adm_forms.html), and every
+   write posts to today's routes. Change (?view=appraiser | hod) and Reopen are the super admin's; a role with gradeh.read sees the same panel
+   without them. `data-nopage` hides "Open their full page" for a viewer whose role cannot open the person page. #}
+{% from "_gradeh_adm_forms.html" import appraiser_form, appraiser_extra, hod_form, hod_extra, reopen_form with context %}
+{% from "person/_gradeh_blocks.html" import steps_block, route_block with context %}
+{% set G = gh.g %}
+<div class="gh-pan" data-person="{{ g.uid }}" data-name="{{ g.name }}" data-sub="{{ sub }}"{% if not can_open %} data-nopage{% endif %}>
+{% if view == 'appraiser' %}
+  <div class="gh-back"><a class="btn-link" href="{{ self_url }}?tab=overview">&lsaquo; Back to {{ g.name }}</a></div>
+  <section class="admin-card pp-card gh-chv" aria-label="Set the appraiser">
+    <h2 class="pp-h">Set the appraiser</h2>
+    {{ appraiser_form(g, self_url) }}
+    <div class="gh-chfoot">
+      <a class="btn-link gh-chfoot-grow" href="{{ self_url }}?tab=overview">Cancel</a>
+      {{ appraiser_extra(g, self_url) }}
+      <button type="submit" form="gh-appr-form" class="primary"{% if g.submitted %} disabled{% endif %}>Set appraiser</button>
+    </div>
+  </section>
+{% elif view == 'hod' %}
+  <div class="gh-back"><a class="btn-link" href="{{ self_url }}?tab=overview">&lsaquo; Back to {{ g.name }}</a></div>
+  <section class="admin-card pp-card gh-chv" aria-label="Set the Grade H HODs">
+    <h2 class="pp-h">Set the Grade H HODs</h2>
+    {{ hod_form(g, self_url) }}
+    <div class="gh-chfoot">
+      <a class="btn-link gh-chfoot-grow" href="{{ self_url }}?tab=overview">Cancel</a>
+      {{ hod_extra(g, self_url) }}
+      <button type="submit" form="gh-hod-form" class="primary">Set Grade H HODs</button>
+    </div>
+  </section>
+{% else %}
+  <div class="gh-chips">
+    <span class="gh-chip {{ 'is-kpi' if gh.route == 'A' else 'is-lm' }}">{{ gh.route_word }}{% if gh.route == 'A' %} · {{ G.kpi_n }} line{{ 's' if G.kpi_n != 1 }}{% endif %}</span>
+    {% if G.shared %}<span class="gh-chip is-shared" title="Both HODs calibrate them: their HOD band is the two bands weighted by the split">Shared by two HODs</span>{% endif %}
+    {% if G.dis %}<span class="gh-dis-tag" title="Told us they do not agree with their result: not calibrated">Disagrees</span>{% endif %}
+  </div>
+
+  <section class="admin-card pp-card" aria-label="Where it stands">
+    <div class="pp-h-row"><h2 class="pp-h">Where it stands</h2></div>
+    {{ steps_block(gh) }}
+  </section>
+
+  <section class="admin-card pp-card gh-who" aria-label="Who appraises them">
+    <div class="pp-h-row"><h2 class="pp-h">Who appraises them</h2></div>
+    <div class="gh-lr">
+      <span class="gh-lk">Appraiser</span>
+      <span class="gh-lv">{% if G.appr.kind == 'none' %}<span class="gh-warn">None yet</span><span class="gh-lsm">Nobody can appraise them until one is set.</span>
+        {% else %}{{ G.appr.name }}<span class="gh-lsm">{% if G.appr.eid %}{{ G.appr.eid }} · {% endif %}{% if G.appr.kind == 'sup' %}the supervisor named in the file: no line manager and no OneHR account, so they cannot appraise{% elif G.appr.kind == 'set' %}named for Grade H (the list, or set by hand){% else %}their line manager on OneHR{% endif %}</span>{% endif %}</span>
+      {% if can_write and not G.released %}<a class="gh-pbtn" href="{{ self_url }}?view=appraiser&amp;tab=overview" aria-label="{{ 'Set' if G.need else 'Change' }} the appraiser of {{ G.name }}">{{ 'Set one' if G.need else 'Change' }}</a>{% else %}<span></span>{% endif %}
+    </div>
+    <div class="gh-lr">
+      <span class="gh-lk">HOD{{ 's' if G.shared }}</span>
+      <span class="gh-lv">{% if G.hods %}{% for h in G.hods %}
+        <span class="gh-lh"><span>{{ h.name }}{% if G.shared %} · {{ h.share }}%{% endif %}</span><span class="gh-lsm">{% if h.eid %}{{ h.eid }} · {% endif %}{% if loop.first and G.hod_listed %}from the Grade H list{% elif loop.first and not G.shared %}their HOD{% elif G.shared %}Grade H HOD{% endif %}{% if G.submitted %} · {% if h.signed.pot and h.signed.perf %}signed off potential and performance{% elif h.signed.pot %}signed off potential{% elif h.signed.perf %}signed off performance{% else %}not signed off yet{% endif %}{% endif %}</span></span>
+        {% endfor %}
+        {% else %}<span class="gh-warn">None: the BU CEO covers them</span><span class="gh-lsm">{% if G.hod_set %}The Grade H list names an HOD for them who cannot take the stage now (they have left, or hold a BU CEO or BG CEO seat).{% else %}They have no HOD stage.{% endif %}</span>{% endif %}</span>
+      {% if can_write and not G.released %}<a class="gh-pbtn" href="{{ self_url }}?view=hod&amp;tab=overview" aria-label="{{ 'Change' if G.hods else 'Set' }} the Grade H HODs of {{ G.name }}">{{ 'Change' if G.hods else 'Set one' }}</a>{% else %}<span></span>{% endif %}
+    </div>
+    <div class="gh-lr">
+      <span class="gh-lk">BU CEO</span>
+      <span class="gh-lv">{% if G.bu_seated %}{{ G.bu_name }}<span class="gh-lsm">{% if G.bu_eid %}{{ G.bu_eid }} · {% endif %}their unit's, seated on Leaders &rsaquo; BU CEOs</span>
+        {% else %}<span class="gh-warn">No BU CEO seated</span><span class="gh-lsm">Nobody can sign their unit off, so it cannot be released.</span>{% endif %}</span>
+      <span></span>
+    </div>
+  </section>
+
+  <section class="admin-card pp-card" aria-label="Their appraisal">
+    {{ route_block(gh) }}
+  </section>
+
+  {% if can_write and G.submitted and not G.released %}
+  <section class="admin-card pp-card gh-reopen" aria-label="Reopen">
+    <div><b class="gh-reopen-h">Submitted by the line manager{% if lm_when %} on {{ lm_when }}{% endif %}</b>
+      <span class="gh-lsm">Reopen sends it back to them as a draft and clears the acknowledgement. A reason is asked.</span></div>
+    {{ reopen_form(g, self_url) }}
+  </section>
+  {% endif %}
+{% endif %}
+</div>
+<script>if (window.onehrGradehWire) window.onehrGradehWire(document.querySelector('[data-panel="person"] .gh-pan'));</script>

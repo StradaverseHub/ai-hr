@@ -1,0 +1,63 @@
+{% extends "base.html" %}
+{% block title %}{{ mod.label }} — Overview{% endblock %}
+{% block body %}
+{# One page per module, built from the module's own state function -- the same one the Progress page and the person
+   page read, so the three can never disagree. Everyone taking part is counted, Not started included (admin round 4,
+   canvas row 1). #}
+{% from "_filter_rows.html" import filter_rows %}
+{% from "_adm_panel.html" import list_peek %}
+<div class="adm-headrow">
+  <p class="adm-lede">{{ mod.blurb }}{% if view_cycle %} <b>{{ in_scope | thousands }}
+    {{ 'person' if in_scope == 1 else 'people' }}</b> taking part in {{ view_cycle['name'] }}.{% endif %}</p>
+</div>
+{% if frows %}<section class="admin-card adm-filters" aria-label="Filters">{{ filter_rows(frows) }}</section>{% endif %}
+{% include "_admin_needs.html" %}
+{% if split_n %}<p class="adm-note-line" id="adm-transferred"><a href="{{ url_for('admin_list_view', key='transferred') }}" data-list-open="{{ url_for('admin_list_view', key='transferred', fragment=1) }}">{{ split_n | thousands }} transferred</a>: their Year-End KPI result blends their Mid-Year score, with the weights you set.</p>{% endif %}
+
+{% if note %}
+<div class="admin-card"><p class="muted" style="margin:0">{{ note }}</p></div>
+{% elif not covered %}
+<div class="admin-card"><p class="muted" style="margin:0">Nobody in your scope is taking part yet.</p></div>
+{% else %}
+{% if mod.key == 'competency' and counts.get('not_assigned', 0) == covered %}
+<p class="adm-note-line">No competencies are assigned yet. <a href="{{ url_for('admin_competency_profiles') }}">Assign them
+  from the job profiles &rsaquo;</a></p>
+{% endif %}
+<div class="adm-stage-tiles" style="--n: {{ stages | length }}">
+  {% for st in stages %}
+  {# the super admin's tile opens its people in the list panel (2026-10-20: the count lists are the super admin's for
+     now); everyone's href is the Progress page #}
+  <a class="admin-card adm-stage-tile" href="{{ progress_href }}{{ '&' if '?' in progress_href else '?' }}fstage={{ st[0] }}"{% if nav_is_super %} data-list-open="{{ url_for('admin_list_view', key='mod-' ~ mod.key, fstage=st[0], fragment=1, **list_keep) }}"{% endif %}>
+    <span class="adm-stage-k"><i style="background: {{ st[3] }}"></i>{{ st[1] }}</span>
+    <b>{{ counts.get(st[0], 0) | thousands }}</b>
+    <span class="muted small">{{ st[2] }}</span>
+  </a>
+  {% endfor %}
+</div>
+
+{% if group_rows %}
+{% set lvl_label = {'bg': 'business group', 'bu': 'business unit', 'dept': 'department'}[level] %}
+<section class="admin-card">
+  <div class="adm-needs-head"><h2>By {{ lvl_label }}</h2>
+    <span class="muted small">Each number opens Progress with that {{ lvl_label }} and stage picked.</span></div>
+  <div class="table-scroll"><table class="admin-table adm-stage-table no-auto-table">
+    <thead><tr>{% set lv = lvl_label | capitalize %}<th scope="col"{% if head_short.get(lv) %} title="{{ lv }}"{% endif %}>{{ head_short.get(lv) or lv }}</th><th scope="col" class="num">Taking part</th>
+      {% for st in stages %}<th scope="col" class="num"{% if head_short.get(st[1]) %} title="{{ st[1] }}"{% endif %}><span class="adm-stage-k"><i style="background: {{ st[3] }}"></i>{{ head_short.get(st[1]) or st[1] }}</span></th>{% endfor %}
+      <th scope="col" title="Where they are">Stage</th></tr></thead>
+    <tbody>
+      {% for r in group_rows %}
+      <tr>
+        <th scope="row">{% if r.href %}<a href="{{ r.href }}">{{ r.label }}</a>{% else %}{{ r.label }}{% endif %}</th>
+        <td class="num">{% if r.n and r.href and nav_is_super %}<a href="{{ r.href }}" data-list-open="{{ r.list }}">{{ r.n | thousands }}</a>{% else %}{{ r.n | thousands }}{% endif %}</td>
+        {% for c in r.cells %}<td class="num">{% if c.n and c.href %}<a href="{{ c.href }}"{% if nav_is_super %} data-list-open="{{ c.list }}"{% endif %}>{{ c.n | thousands }}</a>{% else %}{{ c.n | thousands }}{% endif %}</td>{% endfor %}
+        <td><span class="adm-stage-bar" role="img" aria-label="{% for c in r.cells %}{{ c.n }} {{ c.label | lower }}{{ ', ' if not loop.last }}{% endfor %}">
+          {% for c in r.cells %}{% if c.n %}<i style="width: {{ '%.1f' | format(c.pct) }}%; background: {{ c.color }}" title="{{ c.label }}: {{ c.n }}"></i>{% endif %}{% endfor %}</span></td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table></div>
+</section>
+{% endif %}
+{% endif %}
+{% if nav_is_super %}{{ list_peek() }}{% endif %}
+{% endblock %}

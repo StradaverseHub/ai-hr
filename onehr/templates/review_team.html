@@ -1,0 +1,24 @@
+{% extends "base.html" %}
+{% block title %}Your team's records{% endblock %}
+{% block body %}
+{# The My Review / Team Review switch, so a manager can toggle back to their own
+   check-in. Only managers reach this page, so both segments always show. #}
+{% with manages = True, active = 'team' %}{% include "_review_viewtabs.html" %}{% endwith %}
+<div class="page-head">
+  <div>
+    <h1>Your team's records</h1>
+    <p class="muted">The people whose ratings you moderate. Open one to see what they put on the
+      record, endorse or dispute it, and add what you saw.</p>
+  </div>
+</div>
+{% if reports %}
+  <ul class="rv-team-list">
+    {% for r in reports %}
+      <li><a href="{{ url_for('review_team_member', subject_id=r['id']) }}">{{ r['full_name'] }}</a>
+        <span class="muted small">{{ r['job_title'] | proper or '' }}{% if r['department'] %} &middot; {{ r['department'] | proper }}{% endif %}</span></li>
+    {% endfor %}
+  </ul>
+{% else %}
+  <p class="muted">No reports to review this period.</p>
+{% endif %}
+{% endblock %}

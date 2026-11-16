@@ -1,0 +1,38 @@
+{# The review view switch, at the top of the review left panel and on the team
+   page, so the views can't drift. Short labels ("Mine" / "Team" / "Dept" / "BU" /
+   "BG") so the pill fits side by side in ONE row in the narrow rail; the full name
+   is the tooltip. Everyone gets the SAME pill (just "Mine" when that's all they
+   have) -- same height, so switching never shifts the layout. Caller sets `active`
+   (the view key); `manages` from page context. #}
+{# `journey` (default false): inside the unified journey every view stays in the
+   journey (?view=team | dept | bu | bg -- the leader views carry calibration,
+   Chris 2026-09-30), from the `views` the route passes; on the standalone pages
+   Mine / Team point at review_home / review_team as before. #}
+{% set journey = journey|default(false) %}
+{% if journey and views is defined and views %}
+<div class="mod-tabs rv-viewtabs rv-viewtabs-n{{ views|length }}" role="tablist" aria-label="Review view">
+  {% for v in views %}
+  {# Mine carries ?view=mine too: the bare page sends a BG CEO with no 360 waiting to their first leader view, so a
+     bare Mine link bounced them off their own tab (Chris, 2026-10-13: "the demo BGCEO Mine tab cannot be opened") #}
+  {# A view whose window hasn't opened is greyed, not a link; its title is the open date (Chris, 2026-11-04) #}
+  {% if v.off %}
+  <span class="rv-vt-off" aria-disabled="true" title="{{ v.off }}">{{ v.short }}</span>
+  {% else %}
+  <a class="{{ 'active' if active == v.key else '' }}"
+     href="{{ url_for('review_journey', view=v.key) }}"
+     title="{{ v.title }}">{{ v.short }}</a>
+  {% endif %}
+  {% endfor %}
+</div>
+{% else %}
+<div class="mod-tabs rv-viewtabs" role="tablist" aria-label="Review view">
+  <a class="{{ 'active' if active == 'mine' else '' }}"
+     href="{{ url_for('review_journey') if journey else url_for('review_home') }}"
+     title="My Review">Mine</a>
+  {% if manages %}
+  <a class="{{ 'active' if active == 'team' else '' }}"
+     href="{{ url_for('review_journey', view='team') if journey else url_for('review_team') }}"
+     title="Team Review">Team</a>
+  {% endif %}
+</div>
+{% endif %}

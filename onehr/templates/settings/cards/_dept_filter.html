@@ -1,0 +1,81 @@
+{# Settings card: dept_filter (Chris, 2026-10-17, canvas "OneHR Calibration Filters"). The department pill row on a BU
+   CEO's calibration (both axes) and on the BG CEO's Talent Box, unit by unit: hidden unless switched on here. One
+   business group at a time; it posts to admin_settings (action dept_filter), and the confirm box names every change. #}
+{% set df = dept_filter %}
+<p class="muted small">Hidden everywhere by default. Switch it on for a unit whose BU CEO or BG CEO calibrates department
+  by department; where it shows, the row carries a DEPT label.</p>
+{% if not df or not df.bgs %}
+  <p class="note">No business units in Org structure yet.</p>
+{% else %}
+<nav class="df-bgtabs" aria-label="Business group">
+  {% for g in df.bgs %}
+  <a href="{{ url_for('admin_module_settings', key='calibration', dfbg=g.key) }}#dept-filter"
+     class="df-bgtab{{ ' is-on' if g.key == df.bg }}"{% if g.key == df.bg %} aria-current="page"{% endif %}
+     title="{{ display_bg(g.key) }}">{{ g.label }}</a>
+  {% endfor %}
+</nav>
+<form method="post" action="{{ url_for('admin_settings') }}" class="df-form" data-df-form
+      data-df-bg="{{ df.bg_label }}"
+      data-confirm-title="Change the department filter?" data-confirm-ok="Save department filter"
+      data-confirm="Nothing has changed for {{ df.bg_label }}.">
+  <input type="hidden" name="next" value="{{ (settings_next ~ '#dept-filter') if settings_next else '' }}">
+  <input type="hidden" name="action" value="dept_filter">
+  <input type="hidden" name="bg" value="{{ df.bg }}">
+  <div class="table-scroll"><table class="admin-table df-table">
+    <thead><tr><th>Business unit</th><th>BU CEO calibration</th><th>BG CEO Talent Box</th></tr></thead>
+    <tbody>
+    {% for r in df.rows %}{% set i = loop.index0 %}
+      <tr>
+        <td><input type="hidden" name="unit_{{ i }}" value="{{ r.company }}">{% if r.short %}<b>{{ r.short }}</b> {% endif %}<span class="muted">{{ r.full }}</span></td>
+        {% for v, vl in (('bu', 'BU CEO calibration'), ('tb', 'BG CEO Talent Box')) %}
+        <td><label class="df-sw"><input type="checkbox" role="switch" name="{{ v }}_{{ i }}" value="1"
+               data-df-was="{{ 1 if r[v] else 0 }}" data-df-unit="{{ r.short or r.full }}" data-df-view="{{ vl }}"
+               aria-label="Department filter for {{ r.short or r.full }} in the {{ vl }}"{{ ' checked' if r[v] }}>
+          <span class="df-sw-txt">{{ 'Shown' if r[v] else 'Hidden' }}</span></label></td>
+        {% endfor %}
+      </tr>
+    {% else %}
+      <tr><td colspan="3" class="muted">No business units in {{ df.bg_label }}.</td></tr>
+    {% endfor %}
+    </tbody>
+  </table></div>
+  <div class="actions df-actions">
+    <span class="df-status small" data-df-status role="status">All changes saved</span>
+    <button type="submit" class="primary">Save department filter</button>
+  </div>
+</form>
+<script>
+  // The confirm box names every change before anything is saved (every admin action is double-confirmed: Chris,
+  // 2026-10-11, 2026-10-16), and the row and the status line say what is still unsaved.
+  (function () {
+    var f = document.querySelector("[data-df-form]");
+    if (!f) return;
+    var bg = f.getAttribute("data-df-bg") || "this business group", st = f.querySelector("[data-df-status]");
+    function sync() {
+      var ch = [];
+      f.querySelectorAll("tbody tr").forEach(function (tr) {
+        var moved = false;
+        tr.querySelectorAll("input[data-df-was]").forEach(function (cb) {
+          var t = cb.parentNode.querySelector(".df-sw-txt");
+          if (t) t.textContent = cb.checked ? "Shown" : "Hidden";
+          if (cb.checked !== (cb.getAttribute("data-df-was") === "1")) {
+            moved = true;
+            ch.push((cb.checked ? "Shown" : "Hidden") + " in the " + cb.getAttribute("data-df-view") + ": "
+                    + cb.getAttribute("data-df-unit"));
+          }
+        });
+        tr.classList.toggle("is-changed", moved);
+      });
+      st.textContent = ch.length ? ch.length + (ch.length === 1 ? " change" : " changes") + " not saved"
+        : "All changes saved";
+      st.classList.toggle("is-dirty", ch.length > 0);
+      f.setAttribute("data-confirm", ch.length
+        ? bg + ": " + ch.join("; ") + ". Who sees it: that unit's BU CEO or BG CEO, the next time they open the view. "
+          + "No band, lock or move changes. You can switch it back here at any time."
+        : "Nothing has changed for " + bg + ".");
+    }
+    f.addEventListener("change", sync);
+    sync();
+  })();
+</script>
+{% endif %}

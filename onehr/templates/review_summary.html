@@ -1,0 +1,13 @@
+{% extends "base.html" %}
+{% block title %}Your scorecard{% endblock %}
+{% block body %}
+<div class="page-head">
+  <div>
+    <h1>Your scorecard so far</h1>
+    <p class="muted">Every KPI line for {{ st['period']['name'] if st['period'] else 'this period' }},
+      and what is keyed against it.</p>
+  </div>
+  <div><a class="btn" href="{{ url_for('review_account') }}">Back to the conversation</a></div>
+</div>
+{% include "_review_summary.html" %}
+{% endblock %}

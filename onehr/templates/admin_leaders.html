@@ -1,0 +1,1104 @@
+{% extends "base.html" %}
+{% from "_table_tools.html" import colth, colmenu, colmenu_script %}
+{% from "_adm_panel.html" import panel, list_peek %}
+{% block title %}Leaders{% endblock %}
+{% block body %}
+{#- Leader roles (Chris, 2026-09-29): the HOD of each department, the BU CEO of each business unit, the BG CEO of each
+    business group. HOD is a previewed bulk write of each person's HOD; the CEO roles are one holder per unit. -#}
+<div class="adm-headrow">
+  {% if tab == 'bgceo' %}<p class="adm-lede">Who heads each business group: its BG CEO. With the HODs and BU CEOs, they
+    decide who calibrates whom.</p>
+  {% else %}<p class="adm-lede">Who heads what in <b>{{ display_bg(bg) }}</b>: the HOD of each department, the BU CEO of each
+    business unit, and the BG CEO. They decide who calibrates whom.</p>{% endif %}
+</div>
+{% from "_filter_rows.html" import filter_rows %}
+{#- The role tabs come first (Chris, 2026-10-20: "kinda weird to have the BG filter above of the HOD setting toggle";
+    canvas [design canvas link removed], option A), then the business group as the kit's own row
+    under them (Chris, the same day: "use back the BG selection row"). -#}
+<div class="adm-headrow ld-head">
+  <div class="seg-toggle" role="tablist" aria-label="Leader role">
+    <a role="tab" aria-selected="{{ 'true' if tab == 'hod' else 'false' }}" class="{{ 'active' if tab == 'hod' else '' }}" href="{{ url_for('admin_leaders', bg=bg, tab='hod') }}">HODs</a>
+    <a role="tab" aria-selected="{{ 'true' if tab == 'buceo' else 'false' }}" class="{{ 'active' if tab == 'buceo' else '' }}" href="{{ url_for('admin_leaders', bg=bg, tab='buceo') }}">BU CEOs</a>
+    <a role="tab" aria-selected="{{ 'true' if tab == 'bgceo' else 'false' }}" class="{{ 'active' if tab == 'bgceo' else '' }}" href="{{ url_for('admin_leaders', bg=bg, tab='bgceo') }}">BG CEOs</a>{% if chair_on() and can_ceo %}<a role="tab" aria-selected="false" href="{{ url_for('admin_leaders_chair') }}">Executive Chairman</a>{% endif %}
+  </div>
+</div>
+{#- ...for HODs and BU CEOs only: the BG CEOs' table already lists every business group (Chris, 2026-10-20: "there is no
+    need to have the BG filter since the list already shows all the BG") -#}
+{% if frows and tab != 'bgceo' %}<section class="admin-card adm-filters ld-bgrow" aria-label="Business group">{{ filter_rows(frows) }}</section>{% endif %}
+
+{#- the HOD drawer's People they head: one table's rows -#}
+{% macro ppl_rows(rows, dname) %}{% for p in rows %}<tr data-ldp-row data-n="{{ (p.full_name or '') | lower }}" data-e="{{ (p.employee_id or '') | lower }}" data-t="{{ ((p.job_title or '') | proper | lower) }}" data-d="{{ (dname or '') | lower }}">
+              <td>{{ p.full_name }}</td><td>{{ p.employee_id or '-' }}</td><td>{{ p.job_grade or '-' }}</td><td>{{ (p.job_title | proper) or '-' }}</td></tr>{% endfor %}{% endmacro %}
+
+{% macro person_pick(field, chosen=None, label='Person') %}
+<div class="ld-pick" data-bg="{{ bg }}">
+  <label class="ld-lab"><span class="ld-labtext">{{ label }}</span>
+    <input type="search" class="ld-q" placeholder="Search by name or employee ID" autocomplete="off"
+           aria-autocomplete="list" value="">
+  </label>
+  <input type="hidden" name="{{ field }}" class="ld-id" value="{{ chosen['id'] if chosen else '' }}">
+  <div class="ld-chosen muted small" aria-live="polite">{% if chosen %}Chosen: <strong>{{ chosen['full_name'] }}</strong> ({{ chosen['employee_id'] }}){% else %}<span class="ld-none">Nobody chosen yet.</span>{% endif %}</div>
+  <ul class="ld-results" role="listbox" hidden></ul>
+</div>
+{% endmacro %}
+
+{#- A calibration panel, calibrators first (Chris, 2026-10-26; canvas [design canvas link removed]): step 1
+    the units (one or several), the calibrators (people of those units, or the whole business group) and whose PAT curve;
+    step 2 who each calibrator calibrates (departments of those units, or people by name; a department or a person can go
+    to several, a name wins over the department); step 3 the weights where calibrators share people. One form: steps 1-2
+    are drawn here and by the script below, step 3 from the server's own plan of the form (bu_panel_preview). -#}
+{#- step 3's note, per tag (BGCFO tag, 2026-11-04; canvas board 2): drawn for the stored tag, and as two <template>s that the form's script swaps in when the tag is picked on step 1 -#}
+{% macro bp_note(k) %}
+        <p>{% if k == 'BGCFO' %}<span class="adm-role is-cg" title="{{ panel_tags[k].full }}">{{ panel_tags[k].short }}</span>They become a Calibrator, tagged {{ panel_tags[k].full }}. They get the Calibrator role's abilities on Roles &amp; access &rsaquo; Leader roles: see the group's curve, move a band, fit with AI, lock the group. Their AI+ check-in shows a BGCFO tab, and the BGCFO tag shows beside their name. Taking them off this panel ends the role.{% else %}<span class="adm-role is-cg" title="{{ panel_tags['CG'].full }}">{{ panel_tags['CG'].short }}</span>They become a Calibrator (CG). They get the role's abilities on Roles &amp; access &rsaquo; Leader roles: see the group's curve, move a band, fit with AI, lock the group. Their AI+ check-in shows a CG tab, and the CG tag shows beside their name. Taking them off this panel ends the role.{% endif %}</p>
+        <p class="muted small">The calibrators' window is the BU CEO's on the calendar.</p>
+{% endmacro %}
+{% macro bp_form(p=None) %}
+{% set pid = p.id if p else 'new' %}
+{% set cur_tag = p.role_tag if p else 'CG' %}
+{% set taken = {} %}{% for o in bgroups if not p or o.id != p.id %}{% for c in o.cals %}{% for k in c.dept_keys %}{% set _ = taken.update({k: o.name}) %}{% endfor %}{% endfor %}{% endfor %}
+<form method="post" class="adm-panel-form bp-form" data-bp-form data-confirm="{% if p %}Save {{ p.name }}? Each calibrator calibrates the people given to them at BU level (by department, by name, or everyone left in a unit, including whoever joins later), on the curve you picked, with their own lock; where they share someone, the BU-level band is their bands by the weights. Anyone you take out goes back to their BU CEO.{% else %}Add this calibration panel to {{ display_bg(bg) }}? The people given to its calibrators (by department, by name, or everyone left in a unit, including whoever joins later) leave their BU CEOs' calibration: each calibrator calibrates them at BU level on the curve you picked, with their own lock, and shared people get their bands by the weights. Each BU CEO still reads them.{% endif %}" data-confirm-ok="{{ 'Save the panel' if p else 'Add the panel' }}">
+  <div class="adm-panel-body adm-psecs">
+    <input type="hidden" name="action" value="bu_panel_save"><input type="hidden" name="bg" value="{{ bg }}">
+    <input type="hidden" name="tab" value="buceo">
+    {% if p %}<input type="hidden" name="panel_id" value="{{ p.id }}">{% endif %}
+    <ol class="bp-steps" aria-label="Steps">
+      <li data-bp-dot="1" class="is-on" aria-current="step">1 · Calibrators</li>
+      <li data-bp-dot="2">2 · Who each calibrates</li>
+      <li data-bp-dot="3">3 · How the band is decided</li>
+    </ol>
+    <p class="bp-err" role="alert" data-bp-err hidden></p>
+    <div class="bp-pane" data-bp-pane="1">
+      <section class="adm-psec"><h3 class="adm-ph">Business units</h3>
+        <p class="muted small bp-hint">One, or several for calibrators across units.</p>
+        <div class="bp-units">
+          {% for co, ds in unit_depts %}
+          <label class="bp-unit"><input type="checkbox" name="panel_unit" value="{{ co }}"{% if p and co in p.units %} checked{% endif %}> <span>{{ display_company(bg, co) }}</span></label>
+          {% endfor %}
+        </div>
+      </section>
+      <section class="adm-psec"><h3 class="adm-ph" id="bp-cl-{{ pid }}">Calibrators</h3>
+        <p class="muted small bp-hint" data-bp-pickwhere>Search the people of the units ticked above; add as many as you need.</p>
+        <span class="pick pick-multi bp-calpick" data-pick data-pick-multi data-pick-bg="{{ bg }}" data-pick-units="" data-bp-calpick data-pick-init='{{ (p.chips if p else []) | tojson }}'>
+          <input type="text" class="pick-q" placeholder="Search by name or Employee ID…" autocomplete="off" aria-labelledby="bp-cl-{{ pid }}">
+          <input type="hidden" class="pick-val" name="cal_eids">
+        </span>
+        <button type="button" class="btn-link bp-anyone" data-bp-anyone aria-pressed="false">Search the whole business group instead</button>
+      </section>
+      <section class="adm-psec bp-two">
+        <div class="adm-pform"><label>Whose PAT curve they follow
+          <select name="curve_of" data-bp-curve>
+            <option value="">Pick a business unit…</option>
+            {% for co, ds in unit_depts %}<option value="{{ co }}"{% if p and p.company == co %} selected{% endif %}>{{ display_company(bg, co) }}</option>{% endfor %}
+          </select></label></div>
+        <div class="adm-pform"><label>Name of this panel <input type="text" name="name" maxlength="60" value="{{ p.name if p else '' }}" placeholder="e.g. Sales and shared services"></label></div>
+      </section>
+      {# the panel's tag (BGCFO tag, 2026-11-04): a label, the abilities are the Calibrator role's either way #}
+      <section class="adm-psec"><h3 class="adm-ph">Their tag</h3>
+        <p class="muted small bp-hint">What shows beside the calibrators' names and on their AI+ check-in tab. Same abilities either way: Roles &amp; access &rsaquo; Leader roles &rsaquo; Calibrator.</p>
+        <div class="bp-units" role="radiogroup" aria-label="Their tag">
+          {% for k, t in panel_tags.items() %}
+          <label class="bp-unit"><input type="radio" name="panel_tag" value="{{ k }}"{% if cur_tag == k %} checked{% endif %}> <span>{{ t.word }}</span> <span class="adm-role is-cg" title="{{ t.full }}">{{ t.short }}</span></label>
+          {% endfor %}
+        </div>
+        <p class="muted small bp-hint">BG CFO is for a business group's CFO calibrating that group's finance people.</p>
+      </section>
+    </div>
+    <div class="bp-pane" data-bp-pane="2" hidden>
+      <p class="muted small bp-hint">Tick departments, pick people by name, or give a calibrator everyone left in a unit. A department or a person can go to more than one calibrator. A name picked wins over their department, and a department wins over everyone left: people go only to the calibrators of the first one that holds them.</p>
+      <div class="bp-cards" data-bp-cards></div>
+    </div>
+    <div class="bp-pane" data-bp-pane="3" hidden>
+      <p class="muted small bp-hint">Someone with one calibrator gets that calibrator's band. Where people share calibrators, set each one's weight; they add up to 100. Each band counts as its place (UA 1 to OU 5; Low 1 to High 3), the weighted average is rounded, and exactly halfway takes the lower band.</p>
+      <div data-bp-plan></div>
+      {# the Calibrator (CG) role the panel gives (Chris, 2026-10-26; canvas [design canvas link removed]) #}
+      <div class="bp-cg-note" data-bp-cg-note>{{ bp_note(cur_tag) }}</div>
+      {% for k in panel_tags %}<template data-bp-cg-tpl="{{ k }}">{{ bp_note(k) }}</template>{% endfor %}
+    </div>
+    {% if p %}
+    <section class="adm-psec"><h3 class="adm-ph">Locks this cycle</h3>
+      {% for c in p.cals %}
+      {# one Unlock for both axes (2026-11-07), under the performance row; a tier above that locked says why #}
+      {% set U = unlock_box('bugrp', bg, p.company, c.gid) if nav_is_super else none %}
+      {% for ax, label in (('pm', 'Performance'), ('pot', 'Potential')) %}{% set at = c['locks'][ax] %}
+      <div class="ld-lockrow"><span class="ld-lockrow-k">{{ c.name }} · {{ label }}</span>
+        {% if at %}<span class="adm-lock is-locked">Locked {{ at | myt_day }}</span>
+          {%- if U and U.locked %}{% if loop.first and U.blocked %}<span class="muted small">{{ U.blocked }}</span>
+          {%- elif loop.first %}<button type="submit" class="btn-link" form="ld-grp-un-{{ c.gid }}">Unlock both&hellip;</button>
+          {%- elif not U.blocked %}<span class="muted small">Unlocks together</span>{% endif %}{% endif %}
+        {% elif U and U['pass'] %}<span class="adm-lock is-pass">{{ U['pass'] }}</span>
+        {% else %}<span class="adm-lock is-open">Open</span>{% endif %}</div>
+      {% endfor %}
+      {% endfor %}
+      <p class="muted small" style="margin:6px 0 0">Only the super admin unlocks. The calibrator can then move people and lock again; what they moved stays. Once any calibrator has locked, only the panel's name and tag can change this cycle.</p>
+    </section>
+    <div class="adm-danger"><span><b>Remove the panel</b><br>Its people go back to their BU CEOs.</span>
+      <button type="submit" class="btn-link" form="ld-bp-rm-{{ p.id }}">Remove&hellip;</button></div>
+    {% endif %}
+    <script type="application/json" data-bp-init>{{ (p.init if p else {"cals": [], "weights": {}}) | tojson }}</script>
+    <script type="application/json" data-bp-taken>{{ taken | tojson }}</script>
+    <script type="application/json" data-bp-nc-url>{{ url_for('admin_leaders_not_covered', bg=bg) | tojson }}</script>
+    <script type="application/json" data-bp-dp-url>{{ url_for('admin_leaders_dept_people', bg=bg) | tojson }}</script>
+  </div>
+  <footer class="adm-panel-foot">
+    <button type="button" class="btn-link" data-panel-close>Cancel</button>
+    <button type="button" class="btn-link" data-bp-back hidden>Back</button>
+    <button type="button" class="primary" data-bp-next>Next: who each calibrates</button>
+    <button type="submit" class="primary" data-bp-save hidden>{{ 'Save the panel' if p else 'Add the panel' }}</button>
+  </footer>
+</form>
+{% if p %}
+<form method="post" id="ld-bp-rm-{{ p.id }}" class="adm-pform-x" data-confirm="Remove {{ p.name }}? Its people go back to their BU CEOs. Refused once anyone has moved someone in it or locked this cycle." data-confirm-ok="Remove the panel" data-confirm-tone="danger">
+  <input type="hidden" name="action" value="bu_panel_remove"><input type="hidden" name="bg" value="{{ bg }}">
+  <input type="hidden" name="tab" value="buceo"><input type="hidden" name="panel_id" value="{{ p.id }}">
+</form>
+{% if nav_is_super %}{% for c in p.cals %}{% set U = unlock_box('bugrp', bg, p.company, c.gid) %}{% if U and U.locked and not U.blocked %}
+<form method="post" id="ld-grp-un-{{ c.gid }}" class="adm-pform-x" action="{{ U.url }}" data-confirm="{{ U.box.msg }}"{{ unlock_attrs(U.box) }}>
+  <input type="hidden" name="next" value="{{ url_for('admin_leaders', tab='buceo', bg=bg, panel='bp-' ~ p.id) }}">
+</form>
+{% endif %}{% endfor %}{% endif %}
+{% endif %}
+{% endmacro %}
+
+{#- By HOD | By department (Chris, 2026-10-21: "there should be a view to see all the HOD and department they being
+    assigned to"); the tab opens on By HOD -#}
+{% macro view_switch() %}
+<span class="ld-view" role="group" aria-label="View">
+  <a href="{{ url_for('admin_leaders', bg=bg, tab='hod', view='hod') }}" class="{{ 'is-on' if view == 'hod' }}"{% if view == 'hod' %} aria-current="page"{% endif %}>By HOD</a>
+  <a href="{{ url_for('admin_leaders', bg=bg, tab='hod', view='dept') }}" class="{{ 'is-on' if view == 'dept' }}"{% if view == 'dept' %} aria-current="page"{% endif %}>By department</a>
+</span>
+{% endmacro %}
+
+{#- The HOD tab's header, the SAME on both views (Chris, 2026-10-21: "the by hod and by department toggle should be
+    fixated at a same spot"): the group and its counts with the view switch at the top right, then the coverage chips,
+    the search and Add an HOD. On By department the chips and the search filter the departments in place; on By HOD
+    the chips open By department with that state and the search narrows the cards. -#}
+{% macro hod_cover(dept_view) %}
+<section class="admin-card ld-cover" aria-label="{{ 'Departments and their HODs' if dept_view else 'HODs and their departments' }}">
+  <div class="ld-cover-top">
+    <span class="ld-cover-t"><b>{{ display_bg(bg) }}</b> · {{ cover.n_units or 0 }} unit{{ 's' if cover.n_units != 1 }} · {{ cover.n_depts or 0 }} department{{ 's' if cover.n_depts != 1 }} · {{ hod_cards|length }} HOD{{ 's' if hod_cards|length != 1 }}</span>
+    {{ view_switch() }}
+  </div>
+  <div class="ld-cover-row">
+    <div class="ld-cover-chips">
+      {% for k, words in (('set', 'with an HOD'), ('none', 'without an HOD'), ('left', 'whose HOD has left'), ('split', 'split between HODs')) %}
+      {% if dept_view %}<button type="button" class="ld-chip is-{{ k }}" data-ld-show="{{ k }}" aria-pressed="false">{{ cover[k] or 0 }} {{ words }}</button>
+      {% else %}<a class="ld-chip is-{{ k }}" href="{{ url_for('admin_leaders', bg=bg, tab='hod', view='dept', show=k) }}">{{ cover[k] or 0 }} {{ words }}</a>{% endif %}
+      {% endfor %}
+    </div>
+    <div class="ld-cover-acts">
+      <label class="ld-search"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg>
+        <span class="sr-only">{{ 'Find a department or HOD' if dept_view else 'Find an HOD or department' }}</span>
+        <input type="search" class="ld-find" placeholder="{{ 'Find a department or HOD' if dept_view else 'Find an HOD or department' }}"{% if not dept_view %} data-ld-cardfind{% endif %} autocomplete="off"></label>
+      {% if can_hod and depts %}<button type="button" class="btn primary ld-add-btn" data-panel-open="ld-add">Add an HOD</button>{% endif %}
+    </div>
+  </div>
+</section>
+{% endmacro %}
+
+{#- one department's HOD state in words, for the Add a department lists -#}
+{% macro dept_words(d) -%}
+{%- if d.state == 'none' %}No HOD{% elif d.state == 'split' %}split between HODs{% elif d.state == 'left' %}HOD has left{% else %}{% for h in d.hods if h.id %}{{ h.name }}{% endfor %}{% endif -%}
+{%- endmacro %}
+
+{% if tab == 'hod' %}
+  {% if plan %}
+  {# the preview opens beside the departments (phase 3 of the admin side panels): who moves, the checks, Make HOD #}
+  {% set rm = plan_kind == 'remove' %}
+  {% call panel("ld-plan", "Leaders · HOD preview", "Remove the HOD" if rm else hod['full_name'] ~ " as HOD", "Nothing is written until you remove it." if rm else "Nothing is written until you make them HOD.", mid=True, open=True) %}
+    <form method="post" class="adm-panel-form" {% if rm %}data-confirm="Remove the HOD of the ticked people? They have no HOD until you assign one, and the audit log keeps who it was.{% if plan.follows %} Grade H Appraisal follows the latest change, unless it is locked for them (the notes above say which).{% endif %}" data-confirm-ok="Remove HOD" data-confirm-tone="danger"{% else %}data-confirm="Make {{ hod['full_name'] }} the HOD of the ticked people?{% if plan.follows %} Grade H Appraisal follows the latest change, unless it is locked for them (the notes above say which).{% endif %}" data-confirm-ok="Make HOD"{% endif %}>
+      <div class="adm-panel-body ld-pbody">
+      {% if rm %}<p class="ld-plan-lede"><strong>{{ plan.rows|length }}</strong> {{ 'person loses their HOD' if plan.rows|length == 1 else 'people lose their HOD' }} and will have no HOD until you assign one. Nothing else about them changes, and nothing is written until you remove it.</p>
+      {% else %}<p class="ld-plan-lede">{% if plan.rows %}<strong>{{ plan.rows|length }}</strong> {{ 'person moves' if plan.rows|length == 1 else 'people move' }} to {{ hod['full_name'] }}{% else %}Nobody moves{% endif %}{% if plan.unchanged %}; {{ plan.unchanged }} already report to them{% endif %}{% if plan.self_excluded %}; {{ hod['full_name'] }} is in one of these departments and keeps their own HOD{% endif %}. Nothing is written until you apply.</p>{% endif %}
+
+      <input type="hidden" name="action" value="{{ 'hod_remove_apply' if rm else 'hod_apply' }}">
+      <input type="hidden" name="bg" value="{{ bg }}">
+      <input type="hidden" name="tab" value="hod">
+      <input type="hidden" name="view" value="{{ view }}">
+      <input type="hidden" name="only" value="{{ only }}">
+      <input type="hidden" name="from_hod" value="{{ from_hod }}">
+      {% if not rm %}<input type="hidden" name="hod_id" value="{{ hod['id'] }}">{% endif %}
+      <input type="hidden" name="scope" value="{{ scope }}">
+      <input type="hidden" name="company" value="{{ scope_co }}">
+      <input type="hidden" name="fingerprint" value="{{ plan.fingerprint }}">
+      {% for v in picked %}<input type="hidden" name="dept" value="{{ v }}">{% endfor %}
+      {% for w in plan.follows or [] %}<p class="muted small">{{ w }}</p>{% endfor %}
+      {% if plan.blockers %}
+      <div class="ld-blockers" role="alert">
+        <strong>A review is already submitted or locked for some of these people:</strong>
+        <ul>{% for b in plan.blockers %}<li>{{ b }}</li>{% endfor %}</ul>
+        {% if can_ceo %}
+        <label class="ld-reason">Reason to apply it anyway (logged)
+          <textarea name="override_reason" rows="2" required placeholder="e.g. the department moved to Ms Tan on 1 Oct; the HOD will re-lock"></textarea></label>
+        {% else %}<p class="small">A super admin can apply this with a reason.</p>{% endif %}
+      </div>
+      {% endif %}
+      {% if plan.warnings %}
+      <div class="ld-warnings">
+        <ul>{% for w in plan.warnings %}<li>{{ w }}</li>{% endfor %}</ul>
+        <label class="ld-ack"><input type="checkbox" name="ack" value="1" required> I've read these</label>
+      </div>
+      {% endif %}
+      {% if plan.rows %}
+      <div class="table-scroll table-scroll-capped">
+      <table class="admin-table" id="ld-plan-table">
+        <thead><tr><th><span class="sr-only">Include</span></th>{{ colth('name', 'Person') }}{{ colth('bu', 'Business unit') }}{{ colth('dept', 'Department') }}{{ colth('old', 'HOD now') }}<th>Becomes</th></tr></thead>
+        <tbody>
+          {% for r in plan.rows %}
+          <tr class="data-row" data-name="{{ r.name }}" data-bu="{{ display_company(bg, r.company) }}" data-dept="{{ r.dept }}" data-old="{{ r.old_name }}">
+            <td><input type="checkbox" name="uid" value="{{ r.id }}" checked aria-label="Include {{ r.name }}"></td>
+            <td>{{ r.name }}</td><td>{{ display_company(bg, r.company) if r.company else '-' }}</td><td>{{ r.dept | proper }}</td>
+            <td>{{ r.old_name }}</td><td><strong>{{ 'No HOD' if rm else hod['full_name'] }}</strong></td>
+          </tr>
+          {% endfor %}
+          <tr class="no-filter-match" hidden><td colspan="6" class="muted">No one matches the filters.</td></tr>
+        </tbody>
+      </table>
+      {{ colmenu('ld-plan-table', {
+           'name': {'mode': 'clientFilter', 'type': 'text', 'sortAttr': 'name'},
+           'bu':   {'mode': 'clientFilter', 'type': 'text', 'sortAttr': 'bu'},
+           'dept': {'mode': 'sort', 'type': 'text', 'sortAttr': 'dept'},
+           'old':  {'mode': 'clientFilter', 'type': 'text', 'sortAttr': 'old'} }) }}
+      </div>
+      <p class="muted small">Untick anyone who should keep {{ 'their HOD' if rm else 'their own HOD' }}.</p>
+      {% endif %}
+      </div>
+      <footer class="adm-panel-foot">
+        <a class="btn-link adm-panel-grow" href="{{ url_for('admin_leaders', bg=bg, tab='hod', view=view) }}">Cancel</a>
+        {% if plan.rows %}{% if rm %}<button type="submit" class="danger">Remove HOD</button>{% else %}<button type="submit" class="primary">Make HOD</button>{% endif %}{% endif %}
+      </footer>
+    </form>
+
+  {% endcall %}
+  {% endif %}
+
+  {% if view == 'hod' %}
+  {#- By HOD (Chris, 2026-10-21, option B of canvas [design canvas link removed]): a card for each
+      person who heads anyone in the business group, with the departments they head. Manage opens their panel: change a
+      department's HOD, add a department, hand them all on; removing an HOD is the super admin's. -#}
+  {{ hod_cover(False) }}
+  {% if not hod_cards %}
+  <div class="admin-card ld-empty"><p><b>Nobody heads a department in {{ display_bg(bg) }} yet.</b></p>
+    <p class="muted small">{% if can_hod and depts %}Add an HOD, or tick departments on <a href="{{ url_for('admin_leaders', bg=bg, tab='hod', view='dept') }}">By department</a> and give them one HOD.{% else %}The super admin assigns them.{% endif %}</p></div>
+  {% else %}
+  <div class="admin-card ld-empty ld-nocards" hidden><p class="muted">No HOD or department matches.</p></div>
+  <div class="ld-cards">
+    {% for c in hod_cards %}
+    <article class="admin-card ld-card" id="hod-{{ c.id }}" aria-label="{{ c.name }}, HOD"
+             data-find="{{ (c.name ~ ' ' ~ c.eid ~ ' ' ~ (c.depts | map(attribute='label') | join(' '))) | lower }}">
+      <div class="ld-card-h">
+        <div><span class="ld-card-n">{{ c.name }}</span>
+          <span class="ld-card-m">{{ c.eid }}{% if c.jg %} · JG {{ c.jg }}{% endif %}{% if c.company %} · {{ display_company(c.bg, c.company) }}{% endif %}</span></div>
+        {% if c.left %}<span class="ld-chip is-left">Has left</span>{% elif c.other_bg %}<span class="ld-chip is-split">From {{ display_bg(c.other_bg) }}</span>{% endif %}
+      </div>
+      <span class="ld-card-k">{{ c.depts|length }} department{{ 's' if c.depts|length != 1 }} · {{ c.people }} {{ 'person' if c.people == 1 else 'people' }}</span>
+      <ul class="ld-card-d">
+        {% for d in c.depts %}
+        <li><span class="ld-card-dn"><b>{{ d.label }}</b>{% if d.company != c.company %}<span class="ld-card-du">{{ display_company(bg, d.company) if d.company else '(No unit)' }}</span>{% endif %}</span>
+          <span class="ld-card-dr">{{ (d.n ~ ' of ' ~ d.total) if d.part else d.n }}{% if d.part %} <span class="ld-chip is-split ld-part">part</span>{% endif %}
+            {% if can_ceo and c.depts|length > 1 %}<form method="post" class="ld-x">
+              <input type="hidden" name="action" value="hod_remove_preview"><input type="hidden" name="bg" value="{{ bg }}">
+              <input type="hidden" name="tab" value="hod"><input type="hidden" name="view" value="hod">
+              <input type="hidden" name="from_hod" value="{{ c.id }}"><input type="hidden" name="dept" value="{{ d.value }}">
+              <button type="submit" class="ld-xbtn" aria-label="Remove {{ c.name }} as HOD of {{ d.label }}" title="Remove from this department">&times;</button>
+            </form>{% endif %}</span></li>
+        {% endfor %}
+      </ul>
+      <div class="ld-card-f">
+        <a class="btn" href="{{ url_for('admin_leaders', bg=bg, tab='hod', view='hod', hod=c.id, panel='ld-hod') }}">Manage</a>
+        {% if can_ceo %}<form method="post">
+          <input type="hidden" name="action" value="hod_remove_preview"><input type="hidden" name="bg" value="{{ bg }}">
+          <input type="hidden" name="tab" value="hod"><input type="hidden" name="view" value="hod">
+          <input type="hidden" name="from_hod" value="{{ c.id }}">
+          {% for d in c.depts %}<input type="hidden" name="dept" value="{{ d.value }}">{% endfor %}
+          <button type="submit" class="btn-link ld-red">Remove as HOD</button>
+        </form>{% endif %}
+      </div>
+    </article>
+    {% endfor %}
+  </div>
+  {% endif %}
+
+  {% if open_hod %}
+  {% set oh = open_hod %}
+  {% set whole = oh.depts|rejectattr('part')|map(attribute='value')|list %}
+  {% call panel("ld-hod", "Leaders · HOD", oh.name, oh.eid ~ (" · JG " ~ oh.jg if oh.jg else "") ~ " · heads " ~ oh.people ~ (" person" if oh.people == 1 else " people") ~ " in " ~ oh.depts|length ~ (" department" if oh.depts|length == 1 else " departments"), mid=True, open=True, params="hod") %}
+    <div class="adm-panel-body ld-pbody adm-psecs">
+      <section class="adm-psec" aria-labelledby="ld-h-depts">
+        <h3 class="adm-ph" id="ld-h-depts">Departments they head</h3>
+        {% for d in oh.depts %}
+        <div class="ld-hrow">
+          <div><span><b>{{ d.label }}</b> <span class="muted">· {{ display_company(bg, d.company) if d.company else '(No unit)' }}</span></span>
+            <span class="small muted">{% if d.part %}<span class="ld-chip is-split ld-part">part</span> {{ d.n }} of {{ d.total }} people{% for o in d.others[:3] %} · {{ o.name or 'no HOD' }} {{ o.n }}{% endfor %}{% if d.others|length > 3 %} · and {{ d.others|length - 3 }} other HODs{% endif %}{% else %}<span class="ld-chip is-set ld-part">whole department</span> {{ d.n }} {{ 'person' if d.n == 1 else 'people' }}{% endif %}</span></div>
+          <div class="ld-hrow-a">
+            {% if can_hod %}<button type="button" class="btn-link" data-ld-change="ld-chg-{{ loop.index }}" aria-expanded="false" aria-controls="ld-chg-{{ loop.index }}">Change HOD</button>{% endif %}
+            {% if can_ceo %}<form method="post">
+              <input type="hidden" name="action" value="hod_remove_preview"><input type="hidden" name="bg" value="{{ bg }}">
+              <input type="hidden" name="tab" value="hod"><input type="hidden" name="view" value="hod">
+              <input type="hidden" name="from_hod" value="{{ oh.id }}"><input type="hidden" name="dept" value="{{ d.value }}">
+              <button type="submit" class="btn-link ld-red" aria-label="Remove {{ oh.name }} as HOD of {{ d.label }}">Remove</button>
+            </form>{% endif %}
+          </div>
+          {% if can_hod %}
+          <form method="post" class="adm-pform ld-chg" id="ld-chg-{{ loop.index }}" hidden>
+            <input type="hidden" name="action" value="hod_preview"><input type="hidden" name="bg" value="{{ bg }}">
+            <input type="hidden" name="tab" value="hod"><input type="hidden" name="view" value="hod">
+            <input type="hidden" name="only" value="{{ oh.id }}"><input type="hidden" name="dept" value="{{ d.value }}">
+            {{ person_pick('hod_id', None, 'The new HOD for their ' ~ d.n ~ ' ' ~ ('person' if d.n == 1 else 'people') ~ ' here') }}
+            <div class="adm-pacts"><button type="submit" class="btn">Preview who moves</button>
+              <button type="button" class="btn-link" data-ld-chg-cancel="ld-chg-{{ loop.index }}">Cancel</button></div>
+          </form>
+          {% endif %}
+        </div>
+        {% endfor %}
+        <p class="muted small">Remove takes {{ oh.name }} off that department only: their people there have no HOD until you assign one. To give {{ oh.name }} another department, tick it on <a href="{{ url_for('admin_leaders', bg=bg, tab='hod', view='dept') }}">By department</a>.</p>
+      </section>
+      <section class="adm-psec ld-ppl" aria-labelledby="ld-h-ppl">
+        <h3 class="adm-ph" id="ld-h-ppl">People they head <span class="ld-ppl-n muted small" data-ldp-count data-total="{{ hod_people.total }}">{{ hod_people.total }}</span></h3>
+        {% if not hod_people.total %}<p class="muted small">Nobody in {{ display_bg(bg) }} has {{ oh.name }} as their HOD.</p>
+        {% else %}
+        {% set multi_co = oh.depts|map(attribute='company')|unique|list|length > 1 %}
+        <div class="adm-fsearch ld-ppl-s" role="search">
+          <select class="modern-select adm-qin" aria-label="Search in" data-ldp-in>
+            <option value="all" data-ph="Name, employee ID, job title, department" selected>All fields</option>
+            <option value="n" data-ph="Name">Name</option>
+            <option value="e" data-ph="Employee ID">Employee ID</option>
+            <option value="t" data-ph="Job title">Job title</option>
+            <option value="d" data-ph="Department">Department</option>
+          </select>
+          <input type="search" placeholder="Name, employee ID, job title, department" aria-label="Search the people they head" autocomplete="off" data-ldp-q>
+        </div>
+        <p class="muted small ld-ppl-none" data-ldp-none hidden>Nobody matches.</p>
+        {% for g in hod_people.groups %}{% set d = oh.depts[loop.index0] %}{% if g.rows %}
+        <div class="ld-ppl-g" data-ldp-group>
+          <div class="ld-ppl-gh"><b>{{ d.label | proper }}</b> · <span data-ldp-gn data-total="{{ g.rows|length }}" data-orig="{{ g.rows|length }}{% if d.part %} of {{ d.total }}{% endif %}">{{ g.rows|length }}{% if d.part %} of {{ d.total }}{% endif %}</span>{% if multi_co %} <span class="muted">· {{ display_company(bg, d.company) if d.company else '(No unit)' }}</span>{% endif %}</div>
+          <table class="admin-table no-auto-table ld-ptbl">
+            <colgroup><col class="c-n"><col class="c-e"><col class="c-g"><col class="c-t"></colgroup>
+            <thead><tr><th>Name</th><th>Employee ID</th><th>JG</th><th>Job title</th></tr></thead>
+            <tbody>{{ ppl_rows(g.rows[:5], d.label | proper) }}</tbody>
+          </table>
+          {% if g.rows|length > 5 %}
+          <details class="fold ld-ppl-fold">
+            <summary>{{ g.rows|length - 5 }} more</summary>
+            <table class="admin-table no-auto-table ld-ptbl">
+              <colgroup><col class="c-n"><col class="c-e"><col class="c-g"><col class="c-t"></colgroup>
+              <tbody>{{ ppl_rows(g.rows[5:], d.label | proper) }}</tbody>
+            </table>
+            <button type="button" class="fold-less" data-fold-less>Show less</button>
+          </details>
+          {% endif %}
+        </div>
+        {% endif %}{% endfor %}
+        {% endif %}
+      </section>
+    </div>
+    <footer class="adm-panel-foot">
+      <a class="btn-link adm-panel-grow" href="{{ url_for('admin_leaders', bg=bg, tab='hod', view='hod') }}">Close</a>
+    </footer>
+  {% endcall %}
+  {% endif %}
+
+  {% else %}
+  {#- Option A of the HOD redesign (Chris, 2026-10-20, "go with A"): the group's coverage on top, its business units down
+      the left (those with something to fix first), the chosen unit's departments on the right. Every department of the
+      group is on the page, so a unit, a coverage chip or the search narrows it in place and ticks carry across units;
+      the Assign panel names the HOD and sends the ticked departments to the preview (who moves, the checks, Make HOD). -#}
+  <form method="post" class="ld-hodform ld-hodx" id="ld-hodform" data-sel-unit="{{ sel_unit }}" data-sel-show="{{ sel_show }}">
+    <input type="hidden" name="action" value="hod_preview">
+    <input type="hidden" name="view" value="dept">
+    <input type="hidden" name="bg" value="{{ bg }}">
+    <input type="hidden" name="tab" value="hod">
+    <input type="hidden" name="scope" value="bg">
+    {% if not depts %}
+    <div class="admin-card"><p class="muted">No departments found in {{ display_bg(bg) }}.</p></div>
+    {% else %}
+    {{ hod_cover(True) }}
+    <div class="ld-split">
+      <aside class="admin-card ld-units" aria-label="Business units">
+        <span class="ld-units-h">Business units</span>
+        {% for u in hod_units %}
+        <button type="button" class="ld-unit" data-ld-unit="{{ u.company }}" data-label="{{ u.label }}"
+                data-sub="{{ u.n_depts }} department{{ 's' if u.n_depts != 1 }} · {{ u.n_people }} people · BU CEO: {{ u.ceo or 'vacant' }}">
+          <span class="ld-unit-n">{{ u.label }}</span>
+          {% if u.left %}<span class="ld-chip is-left">{{ u.left }} left</span>
+          {% elif u.none %}<span class="ld-chip is-none">{{ u.none }} without</span>
+          {% elif u.split %}<span class="ld-chip is-split">{{ u.split }} split</span>
+          {% else %}<span class="ld-allset">All set</span>{% endif %}
+        </button>
+        {% endfor %}
+        <span class="muted small ld-units-foot">Units with something to fix come first.</span>
+      </aside>
+      <section class="admin-card ld-depts" aria-labelledby="ld-depts-h">
+        <div class="ld-depts-head">
+          <div><h2 id="ld-depts-h">Departments</h2><span class="muted small" id="ld-depts-sub"></span></div>
+          <button type="button" class="btn-link ld-tickall" data-ld-tickall hidden>One HOD for every department here…</button>
+        </div>
+        <div class="table-scroll">
+        <table class="admin-table no-auto-table" id="ld-dept-table">
+          <thead><tr><th class="ld-tick"><input type="checkbox" data-ld-all aria-label="Tick every department shown"></th>
+            <th>Department</th><th class="ld-col-unit">Business unit</th><th class="num">People</th><th>HOD</th>
+            <th><span class="sr-only">Assign</span></th></tr></thead>
+          <tbody>
+            {% for d in depts %}
+            {% set ulab = display_company(bg, d.company) if d.company else '(No unit)' %}
+            <tr class="ld-dept" data-company="{{ d.company }}" data-state="{{ d.state }}"
+                data-find="{{ (d.label ~ ' ' ~ ulab ~ ' ' ~ (d.hods | map(attribute='name') | join(' '))) | lower }}">
+              <td class="ld-tick"><input type="checkbox" name="dept" value="{{ d.value }}" {{ 'checked' if d.value in picked else '' }}
+                  data-n="{{ d.n }}" data-label="{{ d.label }}" data-unit="{{ ulab }}" aria-label="Tick {{ d.label }} ({{ ulab }})"></td>
+              <td class="ld-dname">{{ d.label }}</td>
+              <td class="ld-col-unit">{{ ulab }}</td>
+              <td class="num">{{ d.n }}</td>
+              <td>{% if d.state == 'none' %}<span class="ld-chip is-none">No HOD</span>
+                {% elif d.state == 'split' %}<span class="ld-chip is-split">Split</span> {% for h in d.hods %}{{ h.name }} ({{ h.n }}){{ ' · ' if not loop.last }}{% endfor %}
+                {% else %}{% set multi = d.hods|length > 1 %}{# an HOD has left from a department split between HODs: each with their count, like Split #}{% for h in (d.hods if multi else d.hods|selectattr('id')|list) %}{{ h.name }}{% if multi %} ({{ h.n }}){% endif %}{% if h.left %} <span class="ld-chip is-left">Has left</span>{% endif %}{% if h.other_bg %} <span class="muted small">· from {{ display_bg(h.other_bg) }}</span>{% endif %}{{ ' · ' if multi and not loop.last }}{% endfor %}{% endif %}</td>
+              <td class="ld-act"><button type="button" class="btn-link" data-ld-one aria-label="{{ 'Assign' if d.state == 'none' else 'Change' }} the HOD of {{ d.label }} ({{ ulab }})">{{ 'Assign' if d.state == 'none' else 'Change' }}</button>{% if can_ceo and d.state != 'none' %}<button type="button" class="btn-link ld-red" data-ld-rm aria-label="Remove the HOD of {{ d.label }} ({{ ulab }})">Remove</button>{% endif %}</td>
+            </tr>
+            {% endfor %}
+            <tr class="ld-nomatch" hidden><td colspan="6" class="muted">No departments match.</td></tr>
+          </tbody>
+        </table>
+        </div>
+      </section>
+    </div>
+    <div class="ld-bar" role="region" aria-label="Ticked departments" hidden>
+      <span><b data-ld-count>0 departments</b> ticked · <span data-ld-people>0 people</span></span>
+      <button type="button" class="ld-bar-btn" data-panel-open="ld-assign">Assign an HOD…</button>
+      {% if can_ceo %}<button type="button" class="ld-bar-btn ld-bar-rm" data-ld-rmall>Remove their HOD…</button>{% endif %}
+    </div>
+    {% call panel("ld-assign", "Leaders · HOD", "Assign an HOD", "Nothing is written until you make them HOD.") %}
+      <div class="adm-panel-body ld-pbody">
+        {{ person_pick('hod_id', hod, 'The HOD') }}
+        <div class="ld-picked-h"><b>Their departments</b> <span class="muted small" data-ld-sum></span></div>
+        <ul class="ld-picked" data-ld-picked></ul>
+        <p class="muted small">Tick more on the page to add them: any unit in {{ display_bg(bg) }}. Next you'll see who moves,
+          and nothing is written until you make them HOD.</p>
+      </div>
+      <footer class="adm-panel-foot">
+        <button type="button" class="btn-link adm-panel-grow" data-panel-close>Cancel</button>
+        <button type="submit" class="primary" data-ld-preview>Preview who moves</button>
+      </footer>
+    {% endcall %}
+    {#- the panel's "HOD now" lines and people, once, keyed by the department's value (By department only, for who can assign) -#}
+    {% if dept_data %}<script type="application/json" id="ld-dept-data">{{ dept_data | tojson }}</script>{% endif %}
+    {% endif %}
+  </form>
+  {% endif %}
+  {% if can_hod and depts %}
+  {% call panel("ld-add", "Leaders · HOD", "Add an HOD", "Nothing is written until you make them HOD.") %}
+    <form method="post" class="adm-panel-form">
+      <div class="adm-panel-body ld-pbody">
+        <input type="hidden" name="action" value="hod_preview"><input type="hidden" name="bg" value="{{ bg }}">
+        <input type="hidden" name="tab" value="hod"><input type="hidden" name="view" value="hod">
+        {{ person_pick('hod_id', None, 'The HOD') }}
+        <div class="adm-pform">
+          <label>Department in {{ display_bg(bg) }}
+            <select name="dept" required>
+              <option value="">Pick a department…</option>
+              {% for co, ds in depts|groupby('company') %}<optgroup label="{{ display_company(bg, co) if co else '(No unit)' }}">
+                {% for d in ds %}<option value="{{ d.value }}">{{ d.label }} · {{ d.n }} {{ 'person' if d.n == 1 else 'people' }} · {{ dept_words(d) }}</option>{% endfor %}
+              </optgroup>{% endfor %}
+            </select></label>
+          <fieldset class="ld-who"><legend>Who in it gets them as HOD</legend>
+            <label class="adm-ptick"><input type="radio" name="only" value="" checked> Everyone in it</label>
+            <label class="adm-ptick"><input type="radio" name="only" value="unset"> Only people with no HOD now</label>
+          </fieldset>
+          <p class="muted small">More departments for the same person: tick several on By department.</p>
+        </div>
+      </div>
+      <footer class="adm-panel-foot">
+        <button type="button" class="btn-link adm-panel-grow" data-panel-close>Cancel</button>
+        <button type="submit" class="primary">Preview who moves</button>
+      </footer>
+    </form>
+  {% endcall %}
+  {% endif %}
+
+{% elif tab == 'buceo' %}
+  <div class="admin-card">
+    <div class="ld-bu-head"><h2>BU CEOs in {{ display_bg(bg) }}</h2>
+      {% if can_join or (can_grp and unit_depts) %}<div class="ld-bu-acts">
+        {% if can_join %}<button type="button" class="btn" data-panel-open="bu-join">+ Join units</button>{% endif %}
+        {% if can_grp and unit_depts %}<button type="button" class="btn primary" data-panel-open="bp-new">+ Add a calibrator</button>{% endif %}
+      </div>{% endif %}</div>
+    <p class="muted small">One BU CEO per business unit. One person can lead several units: each unit keeps its own
+      calibration and its own lock. Assigning someone replaces whoever holds that unit; the units they already lead stay
+      theirs unless you tick "move them instead". The unit's calibration stays with the unit, so a new BU CEO takes over
+      what was done, locks included.{% if not can_bu %} Only the super admin changes these, unless your admin role has Appoint a BU or BG CEO ticked on Roles &amp; access.{% endif %}
+      A <b>calibration panel</b> gives departments or people, from one BU or several, to other calibrators at BU level,
+      e.g. Sales to the Head of Sales and Finance to the CFO; calibrators can share people, by weights. A panel over one unit shows under that unit;
+      one over several units shows as its own line below. Never an official unit.{% if not can_grp %} Only the super admin sets panels up.{% endif %}
+      {% if can_join %}<b>Units calibrated together</b> merge two or more units into one population for this cycle: one curve on
+      the PAT of the unit you pick, one lock, one unit on the BG CEO's Talent Box, calibrated by one of their BU CEOs. A unit
+      with a calibration panel can't be joined. Only the super admin sets up panels and joins.{% endif %}</p>
+{% macro people_n(n, sp) %}{% if not sp %}{{ n }}{% else %}<span class="ld-pn">{{ n }}<span class="info-tip ld-pn-tip" tabindex="0" role="button" aria-label="Who is in this count: {{ sp.parts | join(', ') }}, total {{ sp.total }}"><svg class="info-icon-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 16v-4"/><path d="M12 8h.01"/></svg><span class="info-tip-body">{% for x in sp.parts %}<span class="ld-pn-part">{{ x }}</span> &middot; {% endfor %}<span class="ld-pn-part"><b>Total {{ sp.total }}</b></span></span></span></span>{% endif %}{% endmacro %}
+    <div class="table-scroll table-scroll-capped">
+    <table class="admin-table" id="ld-bu-table">
+      <thead><tr>{{ colth('bu', 'Business unit') }}{{ colth('n', 'People') }}{{ colth('ceo', 'BU CEO / calibrator') }}<th><span class="sr-only">Change</span></th></tr></thead>
+      <tbody>
+        {% for u in units %}
+        {% set peek_url = url_for('admin_list_view', key='bu-people', bg=bg, co=u.company, fragment=1) %}
+        <tr class="data-row{{ ' ld-bu-row' if peek_url }}{{ ' ld-has-subs' if u.subs }}" data-bu="{{ display_company(bg, u.company) }}" data-n="{{ u.n }}" data-ceo="{{ u.ceo_key }}"{% if peek_url %} data-list-open="{{ peek_url }}"{% endif %}>
+          <td>{% if peek_url %}<button type="button" class="btn-link ld-bu-name" data-list-open="{{ peek_url }}" title="Who is in {{ display_company(bg, u.company) }}">{{ display_company(bg, u.company) }}</button>{% else %}{{ display_company(bg, u.company) }}{% endif %}{% if u.shared %} <span class="status-pill status-pending ld-shared-pill" title="A business unit with this name also exists in another business group. Their BU CEO calibration shares one session.">name also in another business group</span>{% endif %}{% if u.joined_with %}<span class="ld-sub">Calibrated with {{ u.joined_with }} this cycle</span>{% endif %}</td>
+          <td>{{ people_n(u.n, u.split) }}</td>
+          <td>{% if not u.holders %}{% if u.covered %}<span class="muted" title="Everyone here has a calibrator">&mdash;</span>{% else %}<span class="ld-chip is-none" title="Nobody calibrates this unit at BU level; the BG CEO decides its people on the Talent Box">Vacant</span>{% endif %}{% else %}{% for h in u.holders %}{{ h['full_name'] }} <span class="ld-eid">{{ h['employee_id'] }}</span>{% if h['n_units'] and h['n_units'] > 1 %} <span class="ld-chip is-split">leads {{ h['n_units'] }} units</span>{% endif %}{% if h['left_at'] %} <span class="ld-chip is-left">Has left</span>{% endif %}{{ ' · ' if not loop.last else '' }}{% endfor %}{% if u.subs %} <span class="muted small" title="People of this unit in no calibration panel: the BU CEO calibrates them">&middot; {{ u.left }} {{ 'person' if u.left == 1 else 'people' }}</span>{% endif %}{% if u.holders|length > 1 %} <span class="ld-chip is-none">Two holders</span>{% endif %}{% endif %}</td>
+          <td>{% if can_bu and u.company in can_bu %}<button type="button" class="btn-link" data-panel-open="bu-{{ u.company | slug }}" aria-label="Change the BU CEO of {{ display_company(bg, u.company) }}">{{ 'Change' if u.holders else 'Set' }}</button>
+            {% elif can_bu %}<span class="muted small">Outside the units you manage</span>{% endif %}</td>
+        </tr>
+        {# a unit's panel lines travel with it when the table is sorted or filtered (colmenu.js: plain rows after a data-row) #}
+        {% for sb in u.subs %}{% set tm = '&#9492;' if loop.last else '&#9500;' %}
+        {% if sb.kind == 'panel' %}{% set p = sb.p %}
+        <tr class="ld-subrow" id="bu-panel-{{ p.id }}">
+          <td>{% if p.role_tag == 'BGCFO' %}<span class="ld-pl-keep">{% endif %}<span class="ld-tree" aria-hidden="true">{{ tm | safe }}</span><b><button type="button" class="btn-link ld-bu-name" data-list-open="{{ url_for('admin_list_view', key='bu-panel-people', bg=bg, pid=p.id, fragment=1) }}" title="Who is in {{ p.name }}">{{ p.name }}</button></b> <span class="ld-chip is-grp">Calibration panel</span>{% if p.role_tag == 'BGCFO' %} <span class="adm-role is-cg ld-ptag" title="{{ panel_tags['BGCFO'].full }}">{{ panel_tags['BGCFO'].short }}</span>{% endif %}{% if p.role_tag == 'BGCFO' %}</span>{% endif %}
+            <span class="ld-sub">Curve: {{ display_company(bg, p.company) }}'s PAT</span></td>
+          <td>{{ people_n(p.n, p.split) }}</td>
+          <td>{% for c in p.cals %}<span class="bp-cal">{{ c.name }}{% if c.tag != c.name %} <span class="ld-chip is-grp">{{ c.tag }}</span>{% endif %} <span class="ld-eid">{{ c.n }}</span>{% if c.left_units %} <span class="muted small bp-cal-left">everyone left in {{ c.left_names }}</span>{% endif %}</span>{{ ' · ' if not loop.last }}{% endfor %}
+            {% if p.shared %}<span class="ld-sub">Shared: {% for sh in p.shared %}{{ sh.n }} by {% for x in sh.cals %}{{ x.tag }} {{ x.weight }}{{ ' : ' if not loop.last }}{% endfor %}{{ '; ' if not loop.last }}{% endfor %}</span>{% endif %}
+            {% if p.locked %}<span class="ld-sub">Locked by a calibrator this cycle</span>{% endif %}</td>
+          <td>{% if can_grp %}<button type="button" class="btn-link" data-panel-open="bp-{{ p.id }}" aria-label="Manage {{ p.name }}">Manage</button>{% endif %}</td>
+        </tr>
+        {% elif sb.kind == 'in' %}{% set p = sb.p %}
+        <tr class="ld-subrow">
+          <td>{% if p.role_tag == 'BGCFO' %}<span class="ld-pl-keep">{% endif %}<span class="ld-tree" aria-hidden="true">{{ tm | safe }}</span>In the <button type="button" class="btn-link ld-bu-name" data-list-open="{{ url_for('admin_list_view', key='bu-panel-people', bg=bg, pid=p.id, co=u.company, fragment=1) }}" title="Who is in {{ p.name }}">{{ p.name }}</button> panel{% if p.role_tag == 'BGCFO' %} <span class="adm-role is-cg ld-ptag ld-ptag-gap" title="{{ panel_tags['BGCFO'].full }}">{{ panel_tags['BGCFO'].short }}</span>{% endif %}{% if p.role_tag == 'BGCFO' %}</span>{% endif %}</td>
+          <td>{{ people_n(sb.n, sb.split) }}</td>
+          <td>{% for c in p.cals %}<span class="bp-cal">{{ c.name }}{% if c.tag != c.name %} <span class="ld-chip is-grp">{{ c.tag }}</span>{% endif %}</span>{{ ' · ' if not loop.last }}{% endfor %}</td>
+          <td></td>
+        </tr>
+        {% else %}
+        <tr class="ld-subrow">
+          <td><span class="ld-tree" aria-hidden="true">{{ tm | safe }}</span><span class="ld-chip is-none" title="Nobody calibrates these people at BU level; the BG CEO decides them on the Talent Box">Vacant</span> in no panel and no BU CEO</td>
+          <td>{{ people_n(sb.n, sb.split) }}</td>
+          <td><span class="muted small">No BU-level calibration; the BG CEO decides them on the Talent Box</span></td>
+          <td></td>
+        </tr>
+        {% endif %}
+        {% endfor %}
+        {% endfor %}
+        <tr class="no-filter-match" hidden><td colspan="4" class="muted">No business units match the filters.</td></tr>
+      </tbody>
+      {% set multi_panels = bgroups | rejectattr('single') | list %}
+      {% if multi_panels or joins %}
+      <tbody class="ld-grp-body">
+        {% for j in joins %}
+        <tr class="ld-grp-row" id="bu-join-{{ j.lead | slug }}">
+          <td><b>{{ j.plus }}</b> <span class="ld-chip is-grp">Units calibrated together</span>
+            <span class="ld-sub">{{ join_cycle }} only · Curve: {{ j.curve_label }}'s PAT · {{ ('Locked ' ~ j.locked_at) if j.locked_at else ('Locked' if j.locked else 'Not locked') }}</span></td>
+          <td>{{ j.people }}</td>
+          <td>{% if j.ceo %}{{ j.ceo }} calibrates{% else %}<span class="ld-chip is-none" title="The lead unit has no BU CEO">Vacant</span>{% endif %}
+            <span class="ld-sub">One curve, one lock, one unit on the Talent Box</span></td>
+          <td><button type="button" class="btn-link" data-panel-open="bj-{{ j.lead | slug }}" aria-label="Manage {{ j.plus }}">Manage</button></td>
+        </tr>
+        {% endfor %}
+        {% for p in multi_panels %}
+        <tr class="ld-grp-row" id="bu-panel-{{ p.id }}">
+          <td>{% if p.role_tag == 'BGCFO' %}<span class="ld-pl-keep">{% endif %}<b><button type="button" class="btn-link ld-bu-name" data-list-open="{{ url_for('admin_list_view', key='bu-panel-people', bg=bg, pid=p.id, fragment=1) }}" title="Who is in {{ p.name }}">{{ p.name }}</button></b> <span class="ld-chip is-grp">Calibration panel</span>{% if p.role_tag == 'BGCFO' %} <span class="adm-role is-cg ld-ptag ld-ptag-gap" title="{{ panel_tags['BGCFO'].full }}">{{ panel_tags['BGCFO'].short }}</span>{% endif %}{% if p.role_tag == 'BGCFO' %}</span>{% endif %}
+            <span class="ld-sub">{% for co, k in p.unit_counts %}{{ display_company(bg, co) }} {{ k }}{{ ', ' if not loop.last }}{% endfor %} · Curve: {{ display_company(bg, p.company) }}'s PAT</span></td>
+          <td>{{ people_n(p.n, p.split) }}</td>
+          <td>{% for c in p.cals %}<span class="bp-cal">{{ c.name }}{% if c.tag != c.name %} <span class="ld-chip is-grp">{{ c.tag }}</span>{% endif %} <span class="ld-eid">{{ c.n }}</span>{% if c.left_units %} <span class="muted small bp-cal-left">everyone left in {{ c.left_names }}</span>{% endif %}</span>{{ ' · ' if not loop.last }}{% endfor %}
+            {% if p.shared %}<span class="ld-sub">Shared: {% for sh in p.shared %}{{ sh.n }} by {% for x in sh.cals %}{{ x.tag }} {{ x.weight }}{{ ' : ' if not loop.last }}{% endfor %}{{ '; ' if not loop.last }}{% endfor %}</span>{% endif %}
+            {% if p.locked %}<span class="ld-sub">Locked by a calibrator this cycle</span>{% endif %}</td>
+          <td>{% if can_grp %}<button type="button" class="btn-link" data-panel-open="bp-{{ p.id }}" aria-label="Manage {{ p.name }}">Manage</button>{% endif %}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+      {% endif %}
+    </table>
+    {{ colmenu('ld-bu-table', {
+         'bu':  {'mode': 'clientFilter', 'type': 'text', 'sortAttr': 'bu'},
+         'n':   {'mode': 'sort', 'type': 'num', 'sortAttr': 'n'},
+         'ceo': {'mode': 'clientFilter', 'type': 'text', 'sortAttr': 'ceo'} }) }}
+    </div>
+  </div>
+  {% if can_grp %}
+    {% for p in bgroups %}
+    {% call panel("bp-" ~ p.id, "Leaders · Calibration panel", p.name, (p.cals | length) ~ (" calibrator" if p.cals | length == 1 else " calibrators") ~ " · " ~ (p.units | length) ~ (" BU" if p.units | length == 1 else " BUs"), wide=True) %}{{ bp_form(p) }}{% endcall %}
+    {% endfor %}
+    {% if unit_depts %}
+    {% call panel("bp-new", "Leaders · Calibration panel", "Add a calibrator", display_bg(bg) ~ " · calibrators first, then who each calibrates, then how shared people's bands are weighted", wide=True) %}{{ bp_form() }}{% endcall %}
+    {% endif %}
+    <script type="application/json" id="bp-units">{{ bp_units | tojson }}</script>
+    <script src="{{ url_for('static', filename='bu_panel.js') }}?v={{ asset_v }}"></script>
+  {% endif %}
+
+  {% if can_join %}{% include "_leaders_joins.html" %}{% endif %}
+  {# a unit's row opens the people in it, for every admin who can read this tab (Chris, 2026-10-27: "all admins can view"); the builder scopes it to their own units #}
+  {{ list_peek() }}
+
+  {# each unit's BU CEO in its own side panel (phase 3): who holds it, the new one picked by name, Remove #}
+  {% for u in units if can_bu and u.company in can_bu %}
+  {% call panel("bu-" ~ (u.company | slug), "Leaders · BU CEO", display_company(bg, u.company), display_bg(bg) ~ " · " ~ u.n ~ (" person" if u.n == 1 else " people")) %}
+    <form method="post" class="adm-panel-form" data-confirm="Make this person BU CEO of {{ display_company(bg, u.company) }}?{% if u.holders %} {{ u.holders[0]['full_name'] }} stops being its BU CEO.{% endif %} They take over its calibration, locks included. If they already lead another unit they lead both, each locked on its own, unless you ticked move them instead." data-confirm-ok="Make BU CEO">
+      <div class="adm-panel-body adm-psecs">
+        <input type="hidden" name="action" value="set_buceo"><input type="hidden" name="bg" value="{{ bg }}">
+        <input type="hidden" name="tab" value="buceo"><input type="hidden" name="company" value="{{ u.company }}">
+        <section class="adm-psec"><h3 class="adm-ph">Now</h3>
+          <div class="adm-prow"><span><span class="pp-prof-k">BU CEO</span><span class="pp-prof-v">{% if u.holders %}{% for h in u.holders %}{{ h['full_name'] }} <code>{{ h['employee_id'] }}</code>{% if h['n_units'] and h['n_units'] > 1 %} · leads {{ h['n_units'] }} units{% endif %}{% if h['left_at'] %} · <span class="pp-out">left</span>{% endif %}{{ ' · ' if not loop.last }}{% endfor %}{% else %}<em class="pp-none-v">Vacant: nobody calibrates this unit</em>{% endif %}</span></span></div>
+        </section>
+        {% if u.join_short %}
+        <section class="adm-psec bj-short"><h3 class="adm-ph">Calibrate as one?</h3>
+          <p class="muted small">{{ u.holders[0]['full_name'] }} also leads {{ u.join_short.others }}. Today each unit has its own curve and its own lock. Joining them gives one population on one PAT curve for this cycle.</p>
+          <button type="button" class="btn bj-short-go" data-panel-open="bu-join" data-join-ticks='{{ u.join_short.ticks | tojson }}' data-join-lead='{{ u.company | tojson }}'>Join these units&hellip;</button>
+          <p class="muted small">Opens Join units with {{ 'both' if u.join_short.n == 1 else 'all' }} ticked and {{ u.holders[0]['full_name'] }} calibrating. Shown to the super admin only, and only while {{ 'neither unit has' if u.join_short.n == 1 else 'none of the units has' }} started calibrating.</p>
+        </section>
+        {% endif %}
+        <section class="adm-psec"><h3 class="adm-ph">{{ 'Change to' if u.holders else 'Set' }}</h3>
+          {{ person_pick('person_id', None, 'New BU CEO') }}
+          <label class="adm-ptick"><input type="checkbox" name="move" value="1"> Move them instead: leave the units they lead now without a BU CEO</label>
+          <p class="muted small">The unit's calibration stays with the unit, so a new BU CEO takes over what was done, locks included.</p>
+        </section>
+        {% if u.holders %}
+        <div class="adm-danger"><span><b>Remove the BU CEO</b><br>The unit is left vacant: nobody calibrates it at BU level, and the BG CEO decides its people on the Talent Box.</span>
+          <button type="submit" class="btn-link" form="ld-clr-bu-{{ u.company | slug }}">Remove&hellip;</button></div>
+        {% endif %}
+      </div>
+      <footer class="adm-panel-foot">
+        <button type="button" class="btn-link" data-panel-close>Cancel</button>
+        <button type="submit" class="primary">Make BU CEO</button>
+      </footer>
+    </form>
+    {% if u.holders %}
+    <form method="post" id="ld-clr-bu-{{ u.company | slug }}" class="adm-pform-x" data-confirm="Remove the BU CEO of {{ display_company(bg, u.company) }}? The unit is left vacant: the BG CEO decides its people on the Talent Box." data-confirm-ok="Remove" data-confirm-tone="danger">
+      <input type="hidden" name="action" value="clear_buceo"><input type="hidden" name="bg" value="{{ bg }}">
+      <input type="hidden" name="tab" value="buceo"><input type="hidden" name="company" value="{{ u.company }}">
+    </form>
+    {% endif %}
+  {% endcall %}
+  {% endfor %}
+{% else %}
+  <div class="admin-card">
+    <div class="ld-bu-head"><h2>BG CEOs</h2>
+      {% if can_ceo %}<button type="button" class="btn primary" data-panel-open="grp-new">+ Add a Group Chief group</button>{% endif %}</div>
+    <p class="muted small">One BG CEO per business group. They agree the final ratings on the Talent Box and take over its locks.{% if not can_bg %} Only the super admin or the business group's admin can change these.{% endif %}
+      A <b>Group Chief group</b> takes people across business groups to a Group Chief, beside each BG CEO's Talent Box: it
+      shows as its own line below, never an official business group.{% if not can_ceo %} Only the super admin sets them up.{% endif %}</p>
+    <div class="table-scroll table-scroll-capped">
+    <table class="admin-table" id="ld-bg-table">
+      <thead><tr>{{ colth('bg', 'Business group') }}{{ colth('ceo', 'BG CEO') }}<th><span class="sr-only">Change</span></th></tr></thead>
+      <tbody>
+        {% for r in bgrows %}
+        <tr class="data-row" data-bg="{{ display_bg(r.bg) }}" data-ceo="{{ r.holders[0]['full_name'] if r.holders else 'Vacant' }}">
+          <td>{{ display_bg(r.bg) }}</td>
+          <td>{% if not r.holders %}<span class="ld-chip is-none">Vacant</span>{% else %}{% for h in r.holders %}{{ h['full_name'] }} <span class="ld-eid">{{ h['employee_id'] }}</span>{% if h['left_at'] %} <span class="ld-chip is-left">Has left</span>{% endif %}{{ ' · ' if not loop.last else '' }}{% endfor %}{% if r.holders|length > 1 %} <span class="ld-chip is-none">Two holders</span>{% endif %}{% endif %}</td>
+          <td>{% if can_bg and r.bg in can_bg %}<button type="button" class="btn-link" data-panel-open="bg-{{ r.bg | slug }}" aria-label="Change the BG CEO of {{ display_bg(r.bg) }}">{{ 'Change' if r.holders else 'Set' }}</button>
+            {% elif can_bg %}<span class="muted small">Outside the data you manage</span>{% endif %}</td>
+        </tr>
+        {% endfor %}
+        <tr class="no-filter-match" hidden><td colspan="3" class="muted">No business groups match the filters.</td></tr>
+      </tbody>
+      {% if groups %}
+      <tbody class="ld-grp-body">
+        {% for row in groups %}{% set g = row.g %}
+        <tr class="ld-grp-row" id="gc-group-{{ g['id'] }}">
+          <td><b>{{ g['name'] }}</b> <span class="ld-chip is-grp">Group Chief group</span>
+            <span class="ld-sub">{{ row.members | length }} {{ 'person' if row.members | length == 1 else 'people' }}{% if row.bgs %} in {% for b in row.bgs %}{{ display_bg(b) }}{{ ', ' if not loop.last }}{% endfor %}{% endif %}{% if row.rules %} · follows {% for r in row.rules %}{{ r.dept | proper }}{{ ', ' if not loop.last }}{% endfor %}{% endif %}</span></td>
+          <td>{{ g['calibrator_name'] or '—' }} <span class="ld-chip is-grp">Group Chief</span>
+            <span class="ld-sub">Split Group Chief {{ row.share }} : BG CEO {{ 100 - row.share }} · the super admin's Final bands decide</span></td>
+          <td>{% if can_ceo %}<button type="button" class="btn-link" data-panel-open="grp-{{ g['id'] }}" aria-label="Manage {{ g['name'] }}">Manage</button>{% endif %}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+      {% endif %}
+    </table>
+    {{ colmenu('ld-bg-table', {
+         'bg':  {'mode': 'sort', 'type': 'text', 'sortAttr': 'bg'},
+         'ceo': {'mode': 'clientFilter', 'type': 'text', 'sortAttr': 'ceo'} }) }}
+    </div>
+  </div>
+  {% for r in bgrows if can_bg and r.bg in can_bg %}
+  {% call panel("bg-" ~ (r.bg | slug), "Leaders · BG CEO", display_bg(r.bg), "Owns the Talent Box and its locks") %}
+    <form method="post" class="adm-panel-form" data-confirm="Make this person BG CEO of {{ display_bg(r.bg) }}?{% if r.holders %} {{ r.holders[0]['full_name'] }} stops being its BG CEO.{% endif %} They take over the Talent Box, its locks and the decisions on improvement plans and promotions." data-confirm-ok="Make BG CEO">
+      <div class="adm-panel-body adm-psecs">
+        <input type="hidden" name="action" value="set_bgceo"><input type="hidden" name="bg" value="{{ bg }}">
+        <input type="hidden" name="tab" value="bgceo"><input type="hidden" name="target_bg" value="{{ r.bg }}">
+        <section class="adm-psec"><h3 class="adm-ph">Now</h3>
+          <div class="adm-prow"><span><span class="pp-prof-k">BG CEO</span><span class="pp-prof-v">{% if r.holders %}{% for h in r.holders %}{{ h['full_name'] }} <code>{{ h['employee_id'] }}</code>{% if h['left_at'] %} · <span class="pp-out">left</span>{% endif %}{{ ' · ' if not loop.last }}{% endfor %}{% else %}<em class="pp-none-v">Vacant</em>{% endif %}</span></span></div>
+        </section>
+        <section class="adm-psec"><h3 class="adm-ph">{{ 'Change to' if r.holders else 'Set' }}</h3>
+          {{ person_pick('person_id', None, 'New BG CEO') }}
+        </section>
+        {% if r.holders %}
+        <div class="adm-danger"><span><b>Remove the BG CEO</b><br>The group is left without one until you set another.</span>
+          <button type="submit" class="btn-link" form="ld-clr-bg-{{ r.bg | slug }}">Remove&hellip;</button></div>
+        {% endif %}
+      </div>
+      <footer class="adm-panel-foot">
+        <button type="button" class="btn-link" data-panel-close>Cancel</button>
+        <button type="submit" class="primary">Make BG CEO</button>
+      </footer>
+    </form>
+    {% if r.holders %}
+    <form method="post" id="ld-clr-bg-{{ r.bg | slug }}" class="adm-pform-x" data-confirm="Remove the BG CEO of {{ display_bg(r.bg) }}? The group is left without one until you set another." data-confirm-ok="Remove" data-confirm-tone="danger">
+      <input type="hidden" name="action" value="clear_bgceo"><input type="hidden" name="bg" value="{{ bg }}">
+      <input type="hidden" name="tab" value="bgceo"><input type="hidden" name="target_bg" value="{{ r.bg }}">
+    </form>
+    {% endif %}
+  {% endcall %}
+  {% endfor %}
+  {% if can_ceo %}{% with gc_return_bg=bg %}{% include "_gc_panels.html" %}{% endwith %}{% endif %}
+{% endif %}
+
+<script>
+(function () {
+  // the person picker: a GET search (no form is built here -- the server renders every form and its token)
+  var URL_PEOPLE = "{{ url_for('admin_leaders_people') }}";
+  document.querySelectorAll(".ld-pick").forEach(function (box) {
+    var q = box.querySelector(".ld-q"), id = box.querySelector(".ld-id"), out = box.querySelector(".ld-results"),
+        chosen = box.querySelector(".ld-chosen"), bg = box.getAttribute("data-bg"), t = null, seq = 0;
+    // Inside a capped, scrolling table the list would be clipped by the table's own box, so there it sits on the
+    // page (fixed) under the input -- or above it when there's no room below -- and closes on any scroll outside it.
+    var inTable = !!box.closest(".table-scroll");
+    var place = function () {
+      if (!inTable) return;
+      var r = q.getBoundingClientRect(), below = window.innerHeight - r.bottom - 8, above = r.top - 8;
+      out.style.position = "fixed"; out.style.left = r.left + "px"; out.style.right = "auto"; out.style.width = r.width + "px";
+      if (below < 160 && above > below) {
+        out.style.top = "auto"; out.style.bottom = (window.innerHeight - r.top + 2) + "px";
+        out.style.maxHeight = Math.min(260, above) + "px";
+      } else {
+        out.style.bottom = "auto"; out.style.top = (r.bottom + 2) + "px";
+        out.style.maxHeight = Math.min(260, below) + "px";
+      }
+    };
+    var close = function () { out.hidden = true; };
+    document.addEventListener("click", function (e) { if (!box.contains(e.target)) close(); });
+    box.addEventListener("keydown", function (e) { if (e.key === "Escape" && !out.hidden) { close(); q.focus(); } });
+    window.addEventListener("scroll", function (e) { if (inTable && !out.hidden && !out.contains(e.target)) close(); }, true);
+    window.addEventListener("resize", function () { if (inTable) close(); });
+    q.addEventListener("input", function () {
+      clearTimeout(t);
+      var v = q.value.trim();
+      if (v.length < 2) { out.hidden = true; out.innerHTML = ""; return; }
+      t = setTimeout(function () {
+        var mine = ++seq;
+        fetch(URL_PEOPLE + "?bg=" + encodeURIComponent(bg) + "&q=" + encodeURIComponent(v), { credentials: "same-origin" })
+          .then(function (r) { return r.json(); })
+          .then(function (j) {
+            if (mine !== seq) return;
+            out.innerHTML = "";
+            (j.people || []).forEach(function (p) {
+              var li = document.createElement("li"); li.setAttribute("role", "option"); li.tabIndex = 0;
+              li.textContent = p.name + " · " + p.eid + " · " + (p.company || p.bg) + (p.department ? " · " + p.department : "")
+                + (p.in_bg ? "" : " (another business group)");
+              var pick = function () {
+                id.value = p.id; out.hidden = true; q.value = "";
+                chosen.innerHTML = ""; chosen.appendChild(document.createTextNode("Chosen: "));
+                var b = document.createElement("strong"); b.textContent = p.name; chosen.appendChild(b);
+                chosen.appendChild(document.createTextNode(" (" + p.eid + ")"));
+                id.dispatchEvent(new CustomEvent("ld:pick", { bubbles: true }));   // the Assign panel marks what is already theirs
+              };
+              li.addEventListener("click", pick);
+              li.addEventListener("keydown", function (e) { if (e.key === "Enter") { e.preventDefault(); pick(); } });
+              out.appendChild(li);
+            });
+            if (!(j.people || []).length) { var none = document.createElement("li"); none.className = "muted"; none.textContent = "No one found."; out.appendChild(none); }
+            place();
+            out.hidden = false;
+          })
+          .catch(function () { out.hidden = true; });
+      }, 220);
+    });
+  });
+  // the business group menu goes on a pick
+  // the HOD tab, option A: one unit, one coverage state, or a search narrows the departments in place
+  var form = document.getElementById("ld-hodform");
+  if (form && form.querySelector("tr.ld-dept")) {
+    var rows = Array.prototype.slice.call(form.querySelectorAll("tr.ld-dept"));
+    var units = Array.prototype.slice.call(form.querySelectorAll("[data-ld-unit]"));
+    var chips = Array.prototype.slice.call(form.querySelectorAll("[data-ld-show]"));
+    var find = form.querySelector(".ld-find"), table = form.querySelector("#ld-dept-table");
+    var head = form.querySelector("#ld-depts-h"), sub = form.querySelector("#ld-depts-sub");
+    var tickall = form.querySelector("[data-ld-tickall]"), all = form.querySelector("[data-ld-all]");
+    var bar = form.querySelector(".ld-bar"), picked = form.querySelector("[data-ld-picked]");
+    var view = { unit: null, show: null, q: "" };
+    var shown = function () { return rows.filter(function (r) { return !r.hidden; }); };
+    var paint = function () {
+      var q = view.q.toLowerCase(), n = 0;
+      rows.forEach(function (r) {
+        var ok = q ? r.getAttribute("data-find").indexOf(q) >= 0
+          : view.show ? r.getAttribute("data-state") === view.show
+          : r.getAttribute("data-company") === view.unit;
+        r.hidden = !ok;
+        if (ok) n++;
+      });
+      form.querySelector(".ld-nomatch").hidden = n > 0;
+      var across = !!(q || view.show);
+      table.classList.toggle("is-across", across);
+      units.forEach(function (u) { u.classList.toggle("is-on", !across && u.getAttribute("data-ld-unit") === view.unit); });
+      chips.forEach(function (c) { c.setAttribute("aria-pressed", String(!q && c.getAttribute("data-ld-show") === view.show)); });
+      var cur = units.filter(function (u) { return u.getAttribute("data-ld-unit") === view.unit; })[0];
+      if (q) { head.textContent = "Matching “" + view.q + "”"; sub.textContent = n + " department" + (n === 1 ? "" : "s"); }
+      else if (view.show) {
+        var c = chips.filter(function (x) { return x.getAttribute("data-ld-show") === view.show; })[0];
+        head.textContent = c ? c.textContent.replace(/^\d+\s*/, "Departments ") : "Departments"; sub.textContent = "across the business group";
+      } else if (cur) { head.textContent = cur.getAttribute("data-label"); sub.textContent = cur.getAttribute("data-sub"); }
+      tickall.hidden = !(cur && !across);
+      if (all) all.checked = n > 0 && shown().every(function (r) { return r.querySelector('input[name="dept"]').checked; });
+      // the box holds 15 rows of what is showing NOW: measured at load from the whole list, it once kept only the
+      // header of a unit whose rows sat further down (Chris, 2026-10-20: "when i select 91 without an HOD, nothing appears")
+      if (window.onehrTableStandard) window.onehrTableStandard(table);
+    };
+    // The Assign panel's rows: each department's "HOD now" line (a details.fold, its people built the first time it opens)
+    // from #ld-dept-data. Every name goes in as text, never as markup.
+    var DD = {}, openKeys = {};
+    try { var ddEl = document.getElementById("ld-dept-data"); if (ddEl) DD = JSON.parse(ddEl.textContent) || {}; } catch (e) { DD = {}; }
+    var mk = function (tag, cls, text) {
+      var e = document.createElement(tag);
+      if (cls) e.className = cls;
+      if (text != null) e.textContent = text;
+      return e;
+    };
+    var chipOf = function (kind, text) { return mk("span", "ld-chip is-" + kind, text); };
+    var peopleWords = function (n) { return n + " " + (n === 1 ? "person" : "people"); };
+    var chevron = function () {
+      var NS = "http://www.w3.org/2000/svg", s = document.createElementNS(NS, "svg"), p = document.createElementNS(NS, "path");
+      s.setAttribute("viewBox", "0 0 24 24"); s.setAttribute("fill", "none"); s.setAttribute("stroke", "currentColor");
+      s.setAttribute("stroke-width", "2.4"); s.setAttribute("stroke-linecap", "round"); s.setAttribute("stroke-linejoin", "round");
+      s.setAttribute("aria-hidden", "true"); p.setAttribute("d", "M6 9l6 6 6-6"); s.appendChild(p);
+      return s;
+    };
+    var peopleRows = function (grid, list) {
+      list.forEach(function (p) {
+        grid.appendChild(mk("span", null, p[0])); grid.appendChild(mk("span", "m", p[1])); grid.appendChild(mk("span", "m", p[2]));
+      });
+    };
+    var peopleBlock = function (key, d) {
+      var wrap = mk("div", "ld-now-ppl");
+      d.hods.forEach(function (h, gi) {
+        var g = mk("div", "ld-grp"), gh = mk("div", "ld-gh");
+        if (!h.id) gh.appendChild(chipOf("none", "No HOD"));
+        else { gh.appendChild(mk("b", null, h.name)); if (h.left) gh.appendChild(chipOf("left", "Has left")); }
+        gh.appendChild(mk("span", "ld-gh-n", peopleWords(h.people.length)));
+        g.appendChild(gh);
+        var grid = mk("div", "ld-pt");
+        if (gi === 0) ["Name", "Employee ID", "Grade"].forEach(function (w) { grid.appendChild(mk("span", "th", w)); });
+        peopleRows(grid, h.people.slice(0, 5));
+        g.appendChild(grid);
+        var rest = h.people.slice(5);
+        if (rest.length) {
+          var more = mk("details", "fold ld-more"), mkey = key + "#" + gi, g2 = mk("div", "ld-pt");
+          more.appendChild(mk("summary", null, rest.length + " more"));
+          peopleRows(g2, rest); more.appendChild(g2);
+          var less = mk("button", "fold-less", "Show less"); less.type = "button"; less.setAttribute("data-fold-less", "");
+          more.appendChild(less);
+          more.open = !!openKeys[mkey];
+          more.addEventListener("toggle", function () { openKeys[mkey] = more.open; });
+          g.appendChild(more);
+        }
+        wrap.appendChild(g);
+      });
+      return wrap;
+    };
+    var hodNow = function (key, d, chosenId) {
+      var det = mk("details", "fold ld-now"), sm = mk("summary"), hs = d.hods, total = 0;
+      hs.forEach(function (h) { total += h.people.length; });
+      sm.appendChild(mk("span", "ld-now-k", "HOD now"));
+      if (hs.length === 1) {
+        var h = hs[0];
+        if (!h.id) sm.appendChild(chipOf("none", "No HOD"));
+        else {
+          sm.appendChild(mk("span", "ld-now-h", h.name));
+          if (h.bg) sm.appendChild(mk("span", "ld-now-k", "· from " + h.bg));
+          if (h.left) sm.appendChild(chipOf("left", "Has left"));
+          if (chosenId && h.id === chosenId) sm.appendChild(chipOf("set", "Already theirs"));
+        }
+      } else {
+        sm.appendChild(chipOf("split", "Split"));
+        var shown = hs.slice(0, 3);
+        if (chosenId && shown.every(function (h) { return h.id !== chosenId; })) {
+          var ci = -1; hs.forEach(function (h, i) { if (h.id === chosenId) ci = i; });
+          if (ci >= 3) shown[2] = hs[ci];   // the chosen person's part is never folded into "and N more"
+        }
+        var rest = hs.length - shown.length;
+        shown.forEach(function (h, i) {
+          var mine = !!chosenId && h.id === chosenId, sep = (i === shown.length - 1 && !rest) ? "" : " ·";
+          var label = (h.id ? h.name : "No HOD") + " (" + h.n + (mine ? ", already theirs" : "") + ")";
+          if (h.left) {   // the Has left chip sits right after their name, the dot after the chip
+            var it = mk("span", "ld-now-h");
+            it.appendChild(document.createTextNode(label)); it.appendChild(chipOf("left", "Has left"));
+            if (sep) it.appendChild(document.createTextNode("·"));
+            sm.appendChild(it);
+          } else sm.appendChild(mk("span", "ld-now-h" + (mine ? " is-theirs" : ""), label + sep));
+        });
+        if (rest) sm.appendChild(mk("span", "ld-now-h", "and " + rest + " more"));
+      }
+      var tog = mk("span", "ld-now-tog");
+      tog.appendChild(mk("span", "t-see", total === 1 ? "See the person" : "See the " + total + " people"));
+      tog.appendChild(mk("span", "t-hide", "Hide the people"));
+      tog.appendChild(chevron());
+      sm.appendChild(tog); det.appendChild(sm);
+      var built = false, ensure = function () { if (!built) { built = true; det.appendChild(peopleBlock(key, d)); } };
+      det.addEventListener("toggle", function () { openKeys[key] = det.open; if (det.open) ensure(); });
+      if (openKeys[key]) { ensure(); det.open = true; }
+      return det;
+    };
+    var count = function () {
+      var boxes = rows.map(function (r) { return r.querySelector('input[name="dept"]'); }).filter(function (b) { return b.checked; });
+      var people = boxes.reduce(function (s, b) { return s + (parseInt(b.getAttribute("data-n"), 10) || 0); }, 0);
+      bar.hidden = boxes.length === 0;
+      form.querySelector("[data-ld-count]").textContent = boxes.length + " department" + (boxes.length === 1 ? "" : "s");
+      form.querySelector("[data-ld-people]").textContent = people + " " + (people === 1 ? "person" : "people");
+      var sum = form.querySelector("[data-ld-sum]");
+      // who is chosen (the picker's hidden id): a department's HOD entry equal to them is "already theirs"
+      var idEl = picked ? picked.closest(".ld-pbody").querySelector(".ld-id") : null;
+      var chosenId = idEl ? (parseInt(idEl.value, 10) || null) : null;
+      var chosenEl = picked ? picked.closest(".ld-pbody").querySelector(".ld-chosen strong") : null;
+      var have = 0;
+      if (chosenId) boxes.forEach(function (b) {
+        ((DD[b.value] || { hods: [] }).hods).forEach(function (h) { if (h.id === chosenId) have += h.n; });
+      });
+      if (sum) sum.textContent = boxes.length + " · " + people + " " + (people === 1 ? "person" : "people")
+        + (have > 0 ? " · " + have + " have " + (chosenEl ? chosenEl.textContent : "them") + " already" : "");
+      if (picked) {
+        picked.textContent = "";
+        boxes.forEach(function (b) {
+          var li = document.createElement("li");
+          var t = document.createElement("span");
+          t.appendChild(document.createElement("b")).textContent = b.getAttribute("data-label");
+          t.appendChild(document.createTextNode(" · " + b.getAttribute("data-unit") + " · " + b.getAttribute("data-n") + " people"));
+          var x = document.createElement("button");
+          x.type = "button"; x.className = "btn-link"; x.textContent = "Remove";
+          x.setAttribute("aria-label", "Remove " + b.getAttribute("data-label"));
+          x.addEventListener("click", function () { b.checked = false; count(); paint(); });
+          var d = DD[b.value];
+          if (d && d.hods && d.hods.length) {
+            var box = mk("div", "ld-pk-txt");
+            box.appendChild(t); box.appendChild(hodNow(b.value, d, chosenId));
+            li.appendChild(box);
+          } else li.appendChild(t);
+          li.appendChild(x); picked.appendChild(li);
+        });
+        if (!boxes.length) { var none = document.createElement("li"); none.className = "muted"; none.textContent = "None ticked yet."; picked.appendChild(none); }
+      }
+      var pv = form.querySelector("[data-ld-preview]");
+      if (pv) pv.disabled = boxes.length === 0;
+    };
+    form.addEventListener("ld:pick", function () { count(); });
+    units.forEach(function (u) { u.addEventListener("click", function () {
+      view = { unit: u.getAttribute("data-ld-unit"), show: null, q: "" }; if (find) find.value = ""; paint();
+    }); });
+    chips.forEach(function (c) { c.addEventListener("click", function () {
+      var k = c.getAttribute("data-ld-show");
+      view.q = ""; if (find) find.value = "";
+      view.show = view.show === k ? null : k; paint();
+    }); });
+    if (find) find.addEventListener("input", function () { view.q = find.value.trim(); paint(); });
+    if (all) all.addEventListener("change", function () {
+      shown().forEach(function (r) { r.querySelector('input[name="dept"]').checked = all.checked; }); count();
+    });
+    // Remove (the super admin's, 2026-10-21): the same form, sent to the removal's preview instead
+    var act = form.querySelector('input[name="action"]');
+    var removeNow = function () { act.value = "hod_remove_preview"; if (form.requestSubmit) form.requestSubmit(); else form.submit(); };
+    var pvb = form.querySelector("[data-ld-preview]");
+    if (pvb) pvb.addEventListener("click", function () { act.value = "hod_preview"; });
+    window.addEventListener("pageshow", function () { act.value = "hod_preview"; });
+    var rmall = form.querySelector("[data-ld-rmall]");
+    if (rmall) rmall.addEventListener("click", removeNow);
+    rows.forEach(function (r) {
+      var rm = r.querySelector("[data-ld-rm]");
+      if (rm) rm.addEventListener("click", function () {
+        rows.forEach(function (x) { x.querySelector('input[name="dept"]').checked = x === r; });
+        removeNow();
+      });
+      r.querySelector('input[name="dept"]').addEventListener("change", function () { count(); paint(); });
+      var one = r.querySelector("[data-ld-one]");
+      if (one) one.addEventListener("click", function () {
+        rows.forEach(function (x) { x.querySelector('input[name="dept"]').checked = x === r; });
+        count(); paint();
+        var b = form.querySelector('[data-panel-open="ld-assign"]'); if (b) b.click();
+      });
+    });
+    if (tickall) tickall.addEventListener("click", function () {
+      shown().forEach(function (r) { r.querySelector('input[name="dept"]').checked = true; });
+      count(); paint();
+      var b = form.querySelector('[data-panel-open="ld-assign"]'); if (b) b.click();
+    });
+    // the first view: the unit asked for, else the one holding a ticked department, else the first (fix-first order)
+    var want = form.getAttribute("data-sel-unit");
+    var tick = rows.filter(function (r) { return r.querySelector('input[name="dept"]').checked; })[0];
+    view.unit = (units.some(function (u) { return u.getAttribute("data-ld-unit") === want; }) && want)
+      || (tick && tick.getAttribute("data-company")) || (units[0] && units[0].getAttribute("data-ld-unit"));
+    var sh = form.getAttribute("data-sel-show");   // a coverage chip on By HOD links here with ?show=
+    if (sh && chips.some(function (c) { return c.getAttribute("data-ld-show") === sh; })) view.show = sh;
+    count(); paint();
+  }
+  // By HOD: the header's search narrows the cards (name, Employee ID, department)
+  var cardFind = document.querySelector("[data-ld-cardfind]");
+  if (cardFind) {
+    var cards = Array.prototype.slice.call(document.querySelectorAll(".ld-card"));
+    var none = document.querySelector(".ld-nocards");
+    cardFind.addEventListener("input", function () {
+      var q = cardFind.value.trim().toLowerCase(), n = 0;
+      cards.forEach(function (c) { var ok = !q || c.getAttribute("data-find").indexOf(q) >= 0; c.hidden = !ok; if (ok) n++; });
+      if (none) none.hidden = n > 0 || !cards.length;
+    });
+  }
+  // By HOD, an HOD's drawer: a department's Change HOD opens its own inline form; Cancel closes it
+  function chgToggle(id, show) {
+    var f = document.getElementById(id);
+    if (!f) return;
+    f.hidden = !show;
+    var b = document.querySelector('[data-ld-change="' + id + '"]');
+    if (b) b.setAttribute("aria-expanded", show ? "true" : "false");
+    if (show) { var q = f.querySelector(".ld-q"); if (q) q.focus(); }
+  }
+  document.querySelectorAll("[data-ld-change]").forEach(function (b) {
+    b.addEventListener("click", function () {
+      var id = b.getAttribute("data-ld-change"), f = document.getElementById(id);
+      if (f) chgToggle(id, f.hidden);
+    });
+  });
+  document.querySelectorAll("[data-ld-chg-cancel]").forEach(function (b) {
+    b.addEventListener("click", function () { chgToggle(b.getAttribute("data-ld-chg-cancel"), false); });
+  });
+  // the drawer's People they head: the search runs in place over the rows (the field picked beside it); a search
+  // opens every fold, clearing it puts the folds back
+  var ppl = document.querySelector(".ld-ppl");
+  if (ppl) {
+    var pq = ppl.querySelector("[data-ldp-q]"), pin = ppl.querySelector("[data-ldp-in]"),
+        pcount = ppl.querySelector("[data-ldp-count]"), pnone = ppl.querySelector("[data-ldp-none]"),
+        groups = ppl.querySelectorAll("[data-ldp-group]"), pwas = {};
+    var pfilter = function () {
+      var q = pq.value.trim().toLowerCase(), f = pin.value, total = 0, shown = 0;
+      pq.placeholder = pin.options[pin.selectedIndex].getAttribute("data-ph");
+      groups.forEach(function (g, gi) {
+        var n = 0, det = g.querySelector("details.fold");
+        g.querySelectorAll("[data-ldp-row]").forEach(function (r) {
+          total++;
+          var hay = f === "all" ? [r.dataset.n, r.dataset.e, r.dataset.t, r.dataset.d].join("\n") : r.dataset[f];
+          var ok = !q || hay.indexOf(q) >= 0;
+          r.hidden = !ok;
+          if (ok) n++;
+        });
+        shown += n;
+        g.hidden = !!q && !n;
+        g.classList.toggle("is-filtering", !!q);
+        if (det) {
+          if (q) { if (!(gi in pwas)) pwas[gi] = det.open; det.open = true; }
+          else if (gi in pwas) { det.open = pwas[gi]; delete pwas[gi]; }
+        }
+        var gn = g.querySelector("[data-ldp-gn]");
+        if (gn) gn.firstChild.nodeValue = q ? n + " of " + gn.getAttribute("data-total") : gn.getAttribute("data-orig");
+      });
+      pcount.textContent = q ? shown + " of " + pcount.getAttribute("data-total") : pcount.getAttribute("data-total");
+      if (pnone) pnone.hidden = !q || shown > 0;
+    };
+    pq.addEventListener("input", pfilter);
+    pin.addEventListener("change", function () { if (pq.value.trim()) pfilter(); else { pfilter(); pq.focus(); } });
+  }
+})();
+// the People count's breakdown tip: fixed beside its icon so the capped table never clips it
+(function () {
+  document.querySelectorAll(".ld-pn-tip").forEach(function (t) {
+    var body = t.querySelector(".info-tip-body");
+    function place() {
+      var r = t.getBoundingClientRect(), w = 300, h = body.offsetHeight || 80;
+      var left = Math.min(r.left, window.innerWidth - w - 12);
+      var top = r.bottom + 8;
+      if (top + h > window.innerHeight - 8) top = Math.max(8, r.top - h - 8);
+      body.style.left = Math.max(8, left) + "px"; body.style.top = top + "px";
+    }
+    t.addEventListener("mouseenter", place); t.addEventListener("focus", place);
+    t.addEventListener("click", function (e) { e.stopPropagation(); });   // never opens the row's people list
+  });
+})();
+</script>
+{{ colmenu_script(asset_v) }}
+{% endblock %}

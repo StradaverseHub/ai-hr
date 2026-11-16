@@ -1,0 +1,186 @@
+{% extends "base.html" %}
+{% from "_table_tools.html" import colth, colmenu, colmenu_script %}
+{% from "_paste_chip.html" import paste_chip %}
+{% block title %}360 Results - {{ s['full_name'] }}{% endblock %}
+{% block body %}
+{# One person's 360 results, on the person page's frame (the review, 2026-10-10, canvas K7): People › name › 360 results;
+   their panel, answers and the feedback they give live on their page's 360 tab. #}
+<div class="pp">
+<div class="pp-crumb muted small"><a href="{{ url_for('admin_users') }}">People</a> &rsaquo;
+  <a href="{{ url_for('admin_person', uid=s['id'], tab='f360') }}" title="Their page's 360 tab: their panel and answers">{{ s['full_name'] }}</a> &rsaquo; 360 results</div>
+<section class="admin-card pp-head" aria-label="{{ s['full_name'] }}">
+  <div class="pp-who">
+    <div class="pp-name-row"><h1 class="pp-name">{{ s['full_name'] }}</h1>
+      <span class="muted small">{{ s['employee_id'] }}{% if s['job_title'] %} · {{ s['job_title'] | proper }}{% endif %}{% if s['department'] %} · {{ s['department'] | proper }}{% endif %}{% if s['job_grade'] %} · JG {{ s['job_grade'] }}{% endif %}</span></div>
+    <div class="pp-badges">
+      {% if s['job_grade'] %}{% set tr = tier_for_grade(s['job_grade']) %}<span class="tier-pill" data-tier="{{ tr['n'] }}" title="Rated against {{ tr['name'] }} behaviours ({{ tr['grades'] }})">{{ tr['name'] }}</span>{% endif %}
+      {% if released %}<span class="pp-in" title="They can view this report">Released to them · {{ released_at | myt_date }}</span>{% endif %}
+      {% if view_cycle %}<span class="muted small">{{ view_cycle['name'] }}{% if not viewing_active %} · read-only{% endif %}</span>{% endif %}
+    </div>
+  </div>
+  {# the AI+ conversation moved to the person page, the super admin's only (2026-10-20) #}
+</section>
+
+<div class="result-hero">
+  <div>
+    <div class="hero-sub">360 score (avg of submitted)</div>
+    <div class="big-score">
+      {% if res['score_valid'] and res['avg_score'] is not none %}{{ '%.1f'|format(res['avg_score']) }}<span class="muted" style="font-size:1rem"> / {{ '%g'|format(res['max_score']) }}</span>{% else %}—{% endif %}
+    </div>
+    {% if res['adjustment'] %}
+    <p class="muted small" style="margin:4px 0 0" title="Raw average before the extreme-assessor correction">
+      Raw {{ '%.1f'|format(res['avg_score_raw']) }} {{ '%+.1f'|format(res['adjustment']) }} extreme-assessor adjustment
+    </p>
+    {% endif %}
+  </div>
+  <div>
+    <div class="hero-sub">Potential band</div>
+    <div class="potential-pill big-band" data-band="{{ res['band'] if res['score_valid'] else 'None' }}">
+      <strong>{% if res['score_valid'] and res['band'] %}{{ res['band'] }} Potential{% else %}Pending{% endif %}</strong>
+    </div>
+  </div>
+  <div>
+    <div class="hero-sub">Panel completion</div>
+    <div class="panel-meter" style="margin-top:6px">
+      <span class="panel-bar {{ 'full' if res['submitted'] == res['panel_size'] and res['panel_size'] else '' }}">
+        <span style="width: {{ (100 * res['submitted'] / res['panel_size'])|round(0,'floor') if res['panel_size'] else 0 }}%"></span>
+      </span>
+      <span class="panel-count">{{ res['submitted'] }} / {{ res['panel_size'] }} submitted</span>
+    </div>
+    {% if res['target_panel_size'] and res['panel_size'] != res['target_panel_size'] %}<p class="small panel-short" style="margin:6px 0 0">Panel has {{ res['panel_size'] }} assessor(s); target is {{ res['target_panel_size'] }}{% if res['target_panel_size'] == 1 %} (JG H — line manager only){% endif %}.</p>{% endif %}
+  </div>
+</div>
+{% if not res['score_valid'] %}
+<p class="muted small" style="margin:-6px 0 16px">
+  The potential score &amp; band appear once at least <strong>{{ res['min_valid'] }}</strong> assessor(s) have submitted
+  (currently {{ res['submitted'] }}). This is a guideline for a reliable read, not a hard limit — the averaged score is still included in the Excel export.
+</p>
+{% endif %}
+
+<div class="admin-card">
+  <h2>Assessor panel</h2>
+  {% if res['assessors'] %}
+  <div class="table-scroll table-scroll-capped">
+  <table class="admin-table" id="subject-panel-table">
+    <thead>
+      <tr>{{ colth('assessor', 'Assessor') }}{{ colth('rel', 'Relationship') }}
+        {{ colth('status', 'Status') }}{% if raters_named %}{{ colth('score', 'Score') }}<th></th>{% endif %}</tr>
+    </thead>
+    <tbody>
+      {% for a in res['assessors'] %}
+      <tr class="data-row" data-assessor="{{ a['assessor_name'] }}"
+          data-rel="{{ REL_LABEL[a['relationship']] }}"
+          data-status="{{ 'Submitted' if a['status'] == 'submitted' else 'Pending' }}"{% if raters_named %}
+          data-score="{{ a['score'] if a['score'] is not none else '' }}"{% endif %}>
+        <td><strong>{{ a['assessor_name'] }}</strong><br><span class="muted small"><code>{{ a['assessor_eid'] }}</code> {{ a['assessor_title'] or '' }}</span>
+          {% if raters_named and a['assessor_id'] in extremes_bonus_ids %}<br><span class="status-pill status-pending" title="This assessor's entire submitted panel this cycle is 100% No -- their subjects get the configured bonus">Always No · bonus applied</span>
+          {% elif raters_named and a['assessor_id'] in extremes_penalty_ids %}<br><span class="status-pill status-pending" title="This assessor's entire submitted panel this cycle is 100% Yes -- their subjects get the configured penalty">Always Yes · penalty applied</span>{% endif %}
+        </td>
+        <td><span class="rel-chip rel-{{ a['relationship'] }}">{{ REL_LABEL[a['relationship']] }}</span></td>
+        <td>
+          {% if a['status'] == 'submitted' %}<span class="status-pill status-reviewed">Submitted</span>
+          {% elif a['reset_at'] %}<span class="status-pill status-pending">Pending</span> <span class="resubmit-chip" title="An earlier submission was reset — awaiting the assessor's resubmission">resubmit</span>
+          {% else %}<span class="status-pill status-pending">Pending</span>{% endif %}
+        </td>
+        {% if raters_named %}<td>{% if a['score'] is not none %}{{ '%g'|format(a['score']) }} / {{ '%g'|format(res['max_score']) }}{% else %}<span class="muted">—</span>{% endif %}</td>
+        <td>{% if a['status'] == 'submitted' %}<a class="btn-link" href="{{ url_for('admin_view_responses', uid=s['id'], assignment_id=a['assignment_id']) }}">View answers</a>{% endif %}</td>{% endif %}
+      </tr>
+      {% endfor %}
+          <tr class="no-filter-match" hidden><td colspan="{{ 5 if raters_named else 3 }}" class="muted">No assessors match the filters.</td></tr>
+    </tbody>
+  </table>
+  </div>
+  {{ colmenu('subject-panel-table', {
+       'assessor': {'mode': 'clientFilter', 'type': 'text', 'sortAttr': 'assessor'},
+       'rel':      {'mode': 'clientFilter', 'type': 'text', 'sortAttr': 'rel'},
+       'status':   {'mode': 'clientFilter', 'type': 'text', 'sortAttr': 'status'}
+     } if not raters_named else {
+       'assessor': {'mode': 'clientFilter', 'type': 'text', 'sortAttr': 'assessor'},
+       'rel':      {'mode': 'clientFilter', 'type': 'text', 'sortAttr': 'rel'},
+       'status':   {'mode': 'clientFilter', 'type': 'text', 'sortAttr': 'status'},
+       'score':    {'mode': 'sort', 'type': 'num', 'sortAttr': 'score'} }) }}
+  {{ colmenu_script(asset_v) }}
+  {% else %}
+    <p class="muted">Nobody gives them feedback yet. <a href="{{ url_for('admin_person', uid=s['id'], tab='f360') }}">Add people on their page</a>.</p>
+  {% endif %}
+</div>
+
+{% if can_release %}
+<div class="admin-card">
+  <div class="adm-headrow" style="margin:0">
+    <div>
+      <h2>Report release</h2>
+      <p class="muted small">
+        {% if released %}{{ s['full_name'] }} can currently view their <strong>{{ view_cycle['name'] if view_cycle else '' }}</strong> report (released {{ released_at | myt_date }}). Revoking hides it from them again.
+        {% else %}Release the anonymized <strong>{{ view_cycle['name'] if view_cycle else '' }}</strong> report so {{ s['full_name'] }} can view their feedback. Names of the people who gave it are never shown.{% endif %}
+        Many at once: <a href="{{ url_for('admin_talent_release') }}">Cycle &rsaquo; Release results</a>.
+      </p>
+    </div>
+    <form method="post" action="{{ url_for('admin_release') }}"
+      {% if released %}data-confirm="Revoke this report from {{ s['full_name'] }}? They can no longer view it." data-confirm-ok="Revoke" data-confirm-tone="danger"
+      {% else %}data-confirm="Release this report to {{ s['full_name'] }}? They can view their anonymized feedback; no names are shown." data-confirm-ok="Release"{% endif %}>
+      <input type="hidden" name="id" value="{{ s['id'] }}">
+      <input type="hidden" name="next" value="{{ request.path }}">
+      {% if released %}
+        <input type="hidden" name="action" value="revoke">
+        <button type="submit" class="danger">Revoke report</button>
+      {% else %}
+        <input type="hidden" name="action" value="release">
+        <button type="submit" class="primary">Release to them</button>
+      {% endif %}
+    </form>
+  </div>
+</div>
+{% endif %}
+
+<div class="admin-card">
+  <h2>Behaviour agreement</h2>
+  <p class="muted small">How many of the {{ n_submitted }} submitted assessor(s) saw each behaviour as <strong>Demonstrated</strong>.</p>
+  {% if n_submitted == 0 %}
+    <p class="muted">No submitted feedback yet.</p>
+  {% else %}
+    {% for crit in agreement %}
+      <h3 class="skill-group-head">{{ loop.index }}. {{ crit['name'] }}</h3>
+      <table class="agree-table">
+        <tbody>
+          {% for st in crit['statements'] %}
+          <tr>
+            <td class="stmt-text">{{ st['text'] }}</td>
+            <td style="text-align:right;width:240px">
+              <span class="agree-bar-wrap">
+                <span class="agree-bar"><span style="width: {{ (100 * st['yes'] / st['total'])|round(0,'floor') if st['total'] else 0 }}%"></span></span>
+                <span class="agree-num">{{ st['yes'] }} / {{ st['total'] }}</span>
+              </span>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      {% if crit['comments'] %}
+      <div class="crit-feedback">
+        <div class="crit-feedback-head">Assessor comments ({{ crit['comments']|length }})</div>
+        {% for c in crit['comments'] %}
+        <div class="feedback-item">
+          <div class="muted small"><strong>{{ c['assessor_name'] if raters_named else c['rater'] }}</strong>{% if raters_named %} &middot; {{ REL_LABEL[c['relationship']] }}{% endif %}</div>
+          <p>{{ c['comment'] }}</p>
+        </div>
+        {% endfor %}
+      </div>
+      {% endif %}
+    {% endfor %}
+  {% endif %}
+  {% if overall_remarks_named %}
+  <div class="crit-feedback" style="margin-top:14px">
+    <div class="crit-feedback-head">Assessors' overall remarks ({{ overall_remarks_named|length }})</div>
+    {% for r in overall_remarks_named %}
+    <div class="feedback-item">
+      <div class="muted small"><strong>{{ r['assessor_name'] if raters_named else r['rater'] }}</strong>{% if raters_named %} &middot; {{ REL_LABEL[r['relationship']] }}{{ paste_chip(r['paste']) }}{% endif %}</div>
+      <p>{{ r['remark'] }}</p>
+    </div>
+    {% endfor %}
+  </div>
+  {% endif %}
+</div>
+
+</div>
+{% endblock %}

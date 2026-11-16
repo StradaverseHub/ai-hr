@@ -1,0 +1,105 @@
+{% extends "base.html" %}
+{% block title %}Approve KPIs{% endblock %}
+{% block body %}
+<div class="page-head">
+  <div>
+    <h1>Approve KPIs</h1>
+    <p class="muted">
+      {% if period %}{{ period['name'] }} &middot; {% endif %}
+      Scorecards your team has proposed and that are waiting on you.
+    </p>
+  </div>
+</div>
+
+{% if not period %}
+<div class="admin-card"><p class="note">No active performance period.</p></div>
+{% elif not groups %}
+<div class="admin-card">
+  <p class="muted" style="margin:0">Nothing waiting on you right now. Proposals appear
+    here once a direct report submits their KPIs for approval.</p>
+</div>
+{% else %}
+{% for g in groups %}
+<div class="admin-card" style="margin-top:16px">
+  <h2 style="margin-bottom:2px">{{ g['subject']['subject_name'] }}</h2>
+  <p class="muted small" style="margin:0 0 10px">
+    {{ g['subject']['subject_eid'] }}
+    {% if g['subject']['subject_title'] %}&middot; {{ g['subject']['subject_title'] }}{% endif %}
+    {% if g['subject']['subject_dept'] %}&middot; {{ g['subject']['subject_dept'] }}{% endif %}
+    &middot; {{ g['targets'] | length }} KPI(s) &middot; total weight
+    <strong>{{ g['total_weight'] }}%</strong>
+  </p>
+  {% macro num(t, field) %}
+    {%- if t[field] is none -%}<span class="muted">—</span>
+    {%- elif t['earlier'] and field in t['changed'] -%}
+      <strong title="Different from last year's figure">{{ t[field] }}</strong>
+      {%- if t['earlier'][field] is not none %} <span class="muted small">last year {{ t['earlier'][field] }}</span>{% endif %}
+    {%- else -%}{{ t[field] }}
+      {%- if t['earlier'] and t['earlier'][field] is not none %} <span class="muted small">last year {{ t['earlier'][field] }}</span>{% endif %}{%- endif -%}
+  {% endmacro %}
+  {% set mech_a = g['targets'][0]['rate1'] is not none %}
+  <div class="table-scroll">
+  <table class="admin-table">
+    <thead>
+      <tr>
+        <th>KPI</th>
+        {% if mech_a %}
+        <th>Target</th><th>Rate 1</th><th>Rate 2</th><th>Rate 3</th><th>Rate 4</th><th>Rate 5</th>
+        {% else %}
+        <th>Threshold</th><th>Target</th><th>Multiple / Excellence</th>
+        {% endif %}
+        <th>Weight %</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for t in g['targets'] %}
+      <tr>
+        <td>
+          <p style="margin:0;font-weight:500">{{ t['kpi_name'] }}</p>
+          <p class="muted small" style="margin:2px 0 0">
+            {{ 'Higher is better' if t['method'] == 'more' else 'Lower is better' }}
+            {%- if t['unit'] %} &middot; {{ t['unit'] }}{% endif %}
+            {%- if t['category'] %} &middot; {{ t['category'] }}{% endif %}
+          </p>
+          {% if t['description'] %}<p class="muted small" style="margin:2px 0 0">{{ t['description'] }}</p>{% endif %}
+        </td>
+        {% if mech_a %}
+        <td>{{ num(t, 'target') }}</td>
+        {% for i in range(1, 6) %}<td>{{ num(t, 'rate' ~ i) }}</td>{% endfor %}
+        {% else %}
+        <td>{{ num(t, 'threshold') }}</td>
+        <td>{{ num(t, 'target') }}</td>
+        <td>{% if t['excellence'] is not none %}{{ num(t, 'excellence') }}{% else %}{{ num(t, 'multiple') }}{% endif %}</td>
+        {% endif %}
+        <td>{{ t['weightage'] }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  </div>
+  {% set any_changed = g['targets'] | selectattr('changed') | list %}
+  {% if any_changed %}
+  <p class="muted small" style="margin:8px 0 0">
+    A bold figure is one {{ g['subject']['subject_name'] }} set differently from last year's line of the same KPI, shown beside it.
+  </p>
+  {% endif %}
+
+  <form method="post" action="{{ url_for('performance_kpi_setting_act', subject_id=g['subject_id']) }}"
+        style="margin-top:12px">
+    <label style="display:block;font-size:0.84375rem;font-weight:500;margin-bottom:6px">
+      Comment <span class="muted small">(optional — required in spirit when sending back)</span>
+      <textarea name="comment" rows="2" placeholder="Why are you sending this back, or any note on approval…"
+                style="width:100%;box-sizing:border-box;padding:8px 10px;border:1px solid var(--d-bd-d7dbe6);border-radius:8px;font-family:inherit;font-size:0.84375rem;resize:vertical"></textarea>
+    </label>
+    <div class="actions" style="gap:10px">
+      <button type="submit" name="action" value="return" class="btn-link">Send back for changes</button>
+      <button type="submit" name="action" value="approve" class="primary"
+              data-confirm="Approve this scorecard? {{ g['subject']['subject_name'] }} can then enter results against it." data-confirm-ok="Approve">
+        Approve scorecard
+      </button>
+    </div>
+  </form>
+</div>
+{% endfor %}
+{% endif %}
+{% endblock %}

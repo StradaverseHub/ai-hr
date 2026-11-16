@@ -1,0 +1,1017 @@
+{% extends "base.html" %}
+{% from "_filter_rows.html" import filter_rows %}
+{% from "_kpi_unit.html" import unit_select with context %}
+{% from "_adm_panel.html" import panel, list_peek %}
+{% block title %}BU KPI setup{% endblock %}
+{% block keep_place %} data-keep-place="own"{% endblock %}
+{% block body %}
+{# Performance > BU KPI setup (2026-10-18, the libraries canvas board 4): a business group, then a unit; its BU-level KPIs
+   from the library; for each, its one target on the group's scale, who carries it and its weight. Saving puts the line
+   on each carrier's scorecard (admin_bu_kpis, _bu_kpi_apply). Open in an Early Year, and elsewhere until the HOD
+   Department Review starts (Chris, 2026-11-03; it was the results check-in), then only on those who carry the KPI now at
+   their own weight; a save reaches lines with results too; the super admin adds any of the group's
+   library KPIs for this unit only (2026-10-23, canvas SZxWbP8ej2mvHgdijDq83J). #}
+{% set mech = cfg['mechanism'] if cfg else None %}
+{% set mech_word = {'A': 'the 5-point rating (Rate 1 to 5)'}.get(mech) or ('achievement against target' ~ (', with excellence' if cfg and cfg['variant'] == 'excellence' else '')) %}
+{% set uname = display_company(bg, co) or co %}
+{# "N carry it" opens who they are in the list panel, the super admin's (Chris, 2026-10-23); everyone else reads the number #}
+{% macro carry(n, kpi, words) -%}
+{% if sup and n %}<a href="#" class="bk-carry-link" data-list-open="{{ url_for('admin_list_view', key='bu-kpi-holders', fragment=1, bg=bg, co=co, kpi=kpi) }}">{{ n }} {{ words }}</a>{% else %}{{ n }} {{ words }}{% endif %}
+{%- endmacro %}
+<div class="adm-headrow">
+  <p class="adm-lede">Pick the business group, then the unit. Open one BU KPI at a time to see or set its target, who in
+    the unit carries it, and its weight; each is saved on its own. Everyone who carries a BU KPI reads the same target, and its result is entered
+    once for the unit on Fill BU result.</p>
+</div>
+{{ filter_rows(frows) }}
+{% if note and open_ %}
+<p class="bk-open" role="status"><svg width="16" height="16" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>
+  <span><b>{{ note }}</b> From then it reads only, and a line is changed on the person's Performance page.</span></p>
+{% elif late_note %}
+<p class="wiz-note bk-note" role="status" data-bk-late-warn>{{ late_warning }} Their results: <a href="{{ url_for('admin_performance_bu_fill') }}">Fill BU result</a>.</p>
+{% elif note %}
+<p class="wiz-note bk-note">{{ note }} To change a line now, use the person's Performance page. Their results: <a href="{{ url_for('admin_performance_bu_fill') }}">Fill BU result</a>.</p>
+{% endif %}
+
+{% if not bg %}
+<p class="muted">Pick a business group.</p>
+{% elif not co %}
+<p class="muted">Pick a unit of {{ display_bg(bg) }}.</p>
+{% else %}
+<div class="bk-unit">
+  <b>{{ uname }}</b>
+  <span class="muted small">{{ people | length }} {{ 'person' if people | length == 1 else 'people' }} taking part{% if act %} in {{ act['name'] }}{% endif %} ·
+    {% if cfg %}{{ display_bg(bg) }} scores on {{ mech_word }}, set by the super admin{% else %}{{ display_bg(bg) }} has no scoring set yet{% endif %}</span>
+</div>
+{% set can_add = sup and open_ and cfg and lib_total %}
+{% set rl = rail %}
+{% if not rl.saved and not rl.new and not rl.add and not can_add %}
+<p class="muted">{{ display_bg(bg) }}'s KPI library has no BU-level KPIs yet. A KPI is marked BU-level in the <a href="{{ url_for('admin_kpi_library') }}">KPI library</a>.</p>
+{% else %}
+{% set dis = 'disabled' if not open_ or not cfg else '' %}
+{% set dis_new = 'disabled' if not early else dis %}
+{# the weight rule is the super admin's (Chris, 2026-10-26: "super admin to define and decide") #}
+{% set dis_w = dis_new if sup else 'disabled' %}{% set dis_wo = dis if sup or not early else 'disabled' %}
+{% set editing = mode in ('edit', 'new', 'late') %}
+{% macro railrow(x, on) -%}
+{% if x.heading %}<div class="bk2-row bk2-head"><span class="bk2-rowh"><b>{{ x.name }}</b></span><span class="bk2-sum">{{ x.n }} variant{{ '' if x.n == 1 else 's' }}</span></div>{% else %}<a class="bk2-row{{ ' is-on' if on }}{{ ' is-dim' if editing and not on }}{{ ' is-sub' if x.sub }}" href="{{ url_for('admin_bu_kpis', fbg=bg, fbu=co, kpi=x.lid, add=add_ids or None) }}"{% if on %} aria-current="true"{% endif %}>
+  <span class="bk2-rowh"><b>{{ x.name }}</b><span class="bk2-pill {{ 'is-ok' if x.state == 'saved' else 'is-warn' }}">{{ 'Saved' if x.state == 'saved' else 'Not saved yet' }}</span></span>
+  <span class="bk2-sum">{{ x.summary }}</span>
+</a>{% endif %}
+{%- endmacro %}
+<div class="bk-grid" data-bk-unit="{{ uname }}" data-bk-early="{{ 1 if early else 0 }}">
+  <section class="admin-card bk-lib" aria-label="BU KPIs of this unit">
+    <span class="wiz-k">Saved BU KPIs · {{ rl.saved | length }}</span>
+    {% for x in rl.saved_view %}{{ railrow(x, sel and not x.heading and sel.lid == x.lid and sel.state == 'saved') }}{% else %}
+    <span class="muted small">None saved for {{ uname }} yet.</span>{% endfor %}
+    {% if rl.new %}
+    <span class="wiz-k bk2-gap">Being set up · {{ rl.new | length }}</span>
+    {% for x in rl.new %}{{ railrow(x, sel and sel.lid == x.lid and sel.state == 'new') }}{% endfor %}
+    {% endif %}
+    <span class="wiz-k bk2-gap">Add a BU KPI</span>
+    <span class="muted small">{{ display_bg(bg) }}'s BU-level KPIs not yet on {{ uname }}.</span>
+    {% for x in rl.add %}
+    <div class="bk2-add"><span class="bk2-addt"><b>{{ x.name }}</b><span class="muted small">{{ x.summary }}</span></span>
+      {% if x.disabled %}<button type="button" class="bk2-addb" disabled title="{{ x.disabled }}">Add</button>
+      {% else %}<a class="bk2-addb" href="{{ url_for('admin_bu_kpis', fbg=bg, fbu=co, add=x.ids, kpi=x.lid, edit=1) }}">Add</a>{% endif %}</div>
+    {% else %}<span class="muted small">Every BU-level KPI of the library is on the list.</span>{% endfor %}
+    {% if can_add %}
+    <div class="bk-addlib">
+      <button type="button" class="bk-addbtn" data-panel-open="bklib">+ Add a KPI from the library</button>
+      <span class="muted small">Any KPI in {{ display_bg(bg) }}'s library, with how many in {{ uname }} carry it now.</span>
+    </div>
+    {% endif %}
+  </section>
+  <div class="bk-cards">
+  {% if not sel %}
+    <p class="muted bk-empty">Pick a KPI on the left, or add one, to see or set its target, who carries it and its weight.</p>
+  {% elif mode == 'read' %}
+    {% set r = read %}{% set st = sel.st %}
+    <section class="admin-card bk-card bk2-card" aria-label="{{ sel.name }}">
+      <div class="bk2-head">
+        <div class="bk2-title">{% if kick %}<span class="wiz-k bk2-kick">Variant of {{ kick }}</span>{% endif %}
+          <span class="bk2-titleh"><b>{{ sel.name }}</b><span class="bk2-pill is-ok">Saved</span></span>
+          <span class="muted small">{{ r.unit or 'No unit' }} · {{ 'higher' if r.more else 'lower' }} is better · saved {{ r.at }} by {{ r.by }}</span></div>
+        <div class="bk2-acts">
+          {% if open_ and cfg %}
+          <form method="post" class="bk2-form" data-no-busy
+                data-confirm="Take {{ sel.name }} off as a BU KPI of {{ uname }}? {{ r.n_bu }} line{{ '' if r.n_bu == 1 else 's' }} come{{ 's' if r.n_bu == 1 }} off the BU KPI: a line it put on is removed, a line it adopted goes back to its holder as it was. A line someone has already acted on is left as it is.{% if r.n_gh %} {{ r.n_gh }} Grade H line{{ '' if r.n_gh == 1 else 's' }} go{{ 'es' if r.n_gh == 1 }} back to {{ 'its' if r.n_gh == 1 else 'their' }} own, and any shared figure on {{ 'it' if r.n_gh == 1 else 'them' }} is cleared.{% endif %} It goes in the trail."
+                data-confirm-title="Take off {{ sel.name }}?" data-confirm-ok="Take off as BU KPI" data-confirm-tone="danger">
+            <input type="hidden" name="action" value="take_off"><input type="hidden" name="setup" value="{{ st['id'] }}">
+            {% for a_ in add_ids %}<input type="hidden" name="add" value="{{ a_ }}">{% endfor %}
+            <button type="submit" class="bk2-btn bk2-off">Take off as BU KPI</button>
+          </form>
+          {% if r.editable %}<a class="bk2-btn bk2-edit" href="{{ url_for('admin_bu_kpis', fbg=bg, fbu=co, kpi=sel.lid, edit=1, add=add_ids or None) }}">Edit</a>{% endif %}
+          {% elif late and st %}<a class="bk2-btn bk2-edit" href="{{ url_for('admin_bu_kpis', fbg=bg, fbu=co, kpi=sel.lid, edit=1) }}" title="The Department Review has started: change this KPI's target, unit and method until results are released">Amend target</a>
+          {% endif %}
+        </div>
+      </div>
+      <div class="bk2-tiles">
+        <div class="bk2-tile"><span class="wiz-k">Target</span>
+          <span class="bk2-pairs">{% for lbl, v in r.pairs %}<span>{{ lbl }} <b>{{ v }}</b></span>{% endfor %}</span></div>
+        <div class="bk2-tile"><span class="wiz-k">Carried by</span>
+          <span class="bk2-tw"><b>{{ r.carried[0] }}</b> {{ r.carried[1] }}{% if r.keep %} · {{ r.keep }} keep their own line{% endif %}{% if r.n_gh %} <span class="bk2-pill is-gh">{{ r.n_gh }} Grade H</span>{% endif %}</span>
+          {% if r.n_guest %}<span class="bk2-tsub bk2-guestn">{{ r.n_guest }} from other units</span>{% endif %}
+          {% if var %}<button type="button" class="bk2-lk" data-panel-open="bkvar">Move some to a variant</button>
+          <span class="bk2-tsub">{% if var.back %}or back to {{ var.back }}{% else %}Their own name and target, for this unit{% endif %}</span>{% endif %}</div>
+        <div class="bk2-tile"><span class="wiz-k">Weight</span>
+          <span class="bk2-tw">{{ r.weight.head }}{% if r.weight.big %} · <b>{{ r.weight.big }}</b>{% endif %}{% if r.weight.tail %} {{ r.weight.tail }}{% endif %}</span></div>
+      </div>
+      <div class="bk-sec">
+        <div class="bk2-who-h"><span class="wiz-k">Who carries it · {{ r.n_all }}</span>
+          <span class="bk2-sin"><select aria-label="Search in" data-bk2-in class="modern-select adm-qin"><option value="all">All fields</option><option value="name">Name</option><option value="eid">Employee ID</option><option value="dept">Department</option><option value="unit">Unit</option></select>
+            <input type="search" placeholder="Search by name, ID, department or unit" aria-label="Search who carries it" data-bk2-q></span></div>
+        <div class="table-scroll">
+        <table class="admin-table no-auto-table bk2-t{{ ' bk2-hasg' if r.n_guest }}" data-bk2-t>
+          <thead><tr><th>Name</th><th title="ID · JG · Department">ID · JG · Dept</th><th class="bk-num">Weight</th><th class="bk-num">Target</th><th>Carries it as</th></tr></thead>
+          {% macro who_row(p) -%}
+          <tr data-bk2-row data-name="{{ p.name | lower }}" data-eid="{{ p.eid | lower }}" data-dept="{{ p.dept | lower }}" data-unit="{{ p.unit | lower }}">
+            <td class="bk2-nm">{% if p.guest %}<a class="bk2-pl" href="{{ url_for('admin_person', uid=p.uid, tab='performance') }}">{{ p.name }}</a>{% else %}{{ p.name }}{% endif %}</td>
+            <td class="bk2-id">{{ p.eid }}{% if p.g is not none %} · JG {{ p.g }}{% endif %}{% if p.dept %}<small>{{ p.dept | proper }}</small>{% endif %}</td>
+            <td class="bk-num">{{ p.w }}</td><td class="bk-num bk2-tg" title="{{ p.t }}">{{ p.ts }}</td>
+            <td>{% if p.gh %}<span class="bk2-pill is-gh">Grade H line</span>{% else %}<span class="bk2-as"><span class="bk2-pill {{ 'is-navy' if p.bu else 'is-warn' }}">{{ 'BU KPI' if p.bu else 'Keeps their own' }}</span>{% if p.earlier %}<span class="bk2-pill is-grey" title="This line still holds earlier figures, unit or method ({{ p.t }}): the saved setup reads {{ r.unit or 'no unit' }} with other figures. A save leaves a line alone when the person's own result would mean something else in a new unit.">Earlier figures</span>{% endif %}{% if p.guest %}<span class="bk2-pill is-unit" title="Works in {{ p.unit }}, another unit of the group">From {{ p.unit }}</span>{% endif %}</span>{% endif %}</td>
+          </tr>
+          {%- endmacro %}
+          <tbody>{% for p in r.rows[:6] %}{{ who_row(p) }}{% endfor %}</tbody>
+          {% if r.rows | length > 6 %}
+          <tbody class="bk2-more-body"><tr><td colspan="5" class="bk2-foldrow"><details class="fold bk2-fold"><summary>{{ r.rows | length - 6 }} more</summary>
+            <table class="admin-table no-auto-table bk2-t bk2-t2"><tbody>{% for p in r.rows[6:] %}{{ who_row(p) }}{% endfor %}</tbody></table>
+            <button type="button" class="fold-less" data-fold-less>Show less</button></details></td></tr></tbody>
+          {% endif %}
+        </table>
+        </div>
+        <p class="muted small bk2-none" data-bk2-none hidden>Nobody matches.</p>
+        {% if r.n_earlier %}
+        <div class="bk2-held">
+          <span class="muted small">{{ r.n_earlier }} still {{ 'holds' if r.n_earlier == 1 else 'hold' }} the earlier figures, so Fill BU result and their scores read those, not this setup.</span>
+          {% if sup %}
+          <form method="post" class="bk2-form" data-no-busy
+                data-confirm="Bring {{ r.n_earlier }} {{ 'person' if r.n_earlier == 1 else 'people' }} onto the saved {{ sel.name }} setup for {{ uname }}? Each line takes this setup's figures, unit and method. Their results are never changed; a line a moderator had signed off goes back to its moderators. Nobody is added or taken off, and anyone whose result is released or who is calibrated is left as they are. It goes in the trail."
+                data-confirm-title="Bring them onto this setup?" data-confirm-ok="Bring them onto this setup"{{ super_remark_attrs() }}>
+            <input type="hidden" name="action" value="bring_held"><input type="hidden" name="setup" value="{{ st['id'] }}">
+            <button type="submit" class="bk2-btn bk2-edit">Bring them onto this setup</button>
+          </form>
+          {% endif %}
+        </div>
+        {% endif %}
+      </div>
+      <div class="bk2-strip">
+        <span>Its result is entered once for {{ uname }}{% if r.n_guest %} and reaches all {{ r.n_all }}, the {{ r.n_guest }} from other units too{% endif %}.{% if r.n_gh %} It also reaches {{ r.n_gh }} Grade H appraisal{{ '' if r.n_gh == 1 else 's' }}.{% endif %}
+          {% if r.filled %}<b>Entered {{ r.filled.value }}</b> on {{ r.filled.when }}{% else %}<b>Not entered yet.</b>{% endif %}</span>
+        <a href="{{ url_for('admin_performance_bu_fill', business_group=bg, company=co, kpi_name=sel.name) }}">Fill BU result →</a>
+      </div>
+    </section>
+  {% elif mode == 'late' and late_card %}
+    {# The super admin's late amendment (2026-11-14): after the Department Review started, a saved KPI's target figures, unit and method
+       only; who carries it, the weight and the library link stay as saved (the server takes them from the saved row). #}
+    {% set r = read %}{% set st = sel.st %}{% set lc = late_card %}{% set rc = lc.reach %}
+    <form method="post" id="bk-late-form" class="bk-cards bk2-editform" data-no-busy
+          data-confirm="Amend {{ sel.name }} for {{ uname }}? The Department Review has started. The new target, unit and method go on {{ rc.reach }} {{ 'line' if rc.reach == 1 else 'lines' }}, those with results and moderated lines too: the results themselves are never changed and a moderated line keeps its moderation. {{ rc.calibrated }} {{ 'person is' if rc.calibrated == 1 else 'people are' }} calibrated: a band a calibrator moved stays, a band nobody moved follows the new score. {{ rc.released }} {{ 'person is' if rc.released == 1 else 'people are' }} released and left as they are. Who carries it and the weights are not changed. Your remark is asked, and it goes in the trail."
+          data-confirm-title="Amend {{ sel.name }}?" data-confirm-ok="Amend {{ sel.name }}"{{ super_remark_attrs() }}>
+      <input type="hidden" name="action" value="save_kpi_late"><input type="hidden" name="setup" value="{{ st['id'] }}">
+      <section class="admin-card bk-card bk2-card bk2-editing" aria-label="{{ sel.name }}">
+        <div class="bk2-head">
+          <div class="bk2-title"><span class="bk2-titleh"><b>{{ sel.name }}</b><span class="bk2-pill is-warn">Amending after the review started</span></span>
+            <span class="muted small">{{ lc.unit or 'No unit' }} · {{ 'higher' if lc.more else 'lower' }} is better · {{ rc.n }} {{ 'person carries' if rc.n == 1 else 'people carry' }} it on {{ act['name'] }}</span></div>
+        </div>
+        <div class="bk-sec">
+          <span class="wiz-k">Target · {{ '5-point rating' if mech == 'A' else 'achievement against target' }}</span>
+          <div class="bk-rates bk-late-rates">
+            {{ unit_select('unit', lc.unit) }}
+            {% if mech == 'A' %}
+              {% for i in range(1, 6) %}{% set fld = 'rate%d' % i %}<label>Rate {{ i }}<input name="{{ fld }}" inputmode="decimal" autocomplete="off" value="{{ '%g' | format(st[fld]) if st[fld] is not none else '' }}"></label>{% endfor %}
+            {% else %}
+              {% for fld, lbl in [('threshold', 'Threshold'), ('target', 'Target')] + ([('excellence', 'Excellence')] if lc.excl else [('multiple', 'Multiplier')]) %}
+              <label>{{ lbl }}<input name="{{ fld }}" inputmode="decimal" autocomplete="off" value="{{ '%g' | format(st[fld]) if st[fld] is not none else '' }}"></label>
+              {% endfor %}
+            {% endif %}
+            <label class="ku-pick">Method
+              <select name="method" class="modern-select">
+                <option value="more"{{ ' selected' if lc.more }}>Higher is better</option>
+                <option value="less"{{ ' selected' if not lc.more }}>Lower is better</option>
+              </select>
+            </label>
+          </div>
+          <span class="muted small">{{ 'Rate 1 lowest to Rate 5 highest' if lc.more and mech == 'A' else ('Rate 1 highest to Rate 5 lowest' if mech == 'A' else 'The scale follows the method') }}, no two the same. Only the target, unit and method change; who carries it, the weights and the library link stay as saved.</span>
+        </div>
+        <p class="bk-late-reach">A save reaches {{ rc.reach }} of the {{ rc.n }} {{ 'line' if rc.n == 1 else 'lines' }}: {{ rc.calibrated }} calibrated (a band a calibrator moved stays), {{ rc.released }} released (left as they are).</p>
+        <div class="bk2-foot">
+          <span class="muted small">Saving changes this KPI only. Other KPIs of {{ uname }} are not touched.</span>
+          <span class="bk2-btns">
+            <a class="bk2-btn bk2-cancel" href="{{ url_for('admin_bu_kpis', fbg=bg, fbu=co, kpi=sel.lid) }}">Cancel</a>
+            <button type="submit" class="bk2-btn bk2-edit">Amend {{ sel.name }}</button>
+          </span>
+        </div>
+      </section>
+    </form>
+  {% else %}
+    {% set c = card %}
+    {% set l, st, f, pre = c.l, c.st, c.f, c.pre %}
+    {% set k = 'k%d_' % l['id'] %}
+    {% set nh = f.n or 0 %}
+    <form method="post" id="bk-form" class="bk-cards bk2-editform" data-no-busy
+          data-confirm="Save {{ l['kpi_name'] }}? Each carrier's line takes the target set here, at once. Lines with results take it too: any a moderator had signed off go back to their moderators, and the results themselves are never changed. A line whose method or unit differs is left as it is. It goes in the trail."
+          data-confirm-ok="Save {{ l['kpi_name'] }}">
+      <input type="hidden" name="action" value="save_kpi"><input type="hidden" name="kpi" value="{{ l['id'] }}">
+      {% for a_ in add_ids %}{% if a_ != l['id'] %}<input type="hidden" name="add" value="{{ a_ }}">{% endif %}{% endfor %}
+      <section class="admin-card bk-card bk2-card bk2-editing" data-bk-card="{{ l['id'] }}" data-bk-name="{{ l['kpi_name'] }}" data-bk-pick="{{ 1 if c.pick else 0 }}" data-kpi-scale="{{ mech or '' }}" aria-label="{{ l['kpi_name'] }}">
+        <div class="bk2-head">
+          <div class="bk2-title"><span class="bk2-titleh"><b>{{ l['kpi_name'] }}</b><span class="bk2-pill is-warn">{{ 'Editing' if st else 'Not saved yet' }}</span></span>
+            <span class="muted small">{{ kpi_unit_normalise(c.unit) or 'No unit' }} · {{ 'higher' if l['method'] == 'more' else 'lower' }} is better{% if nh %} · {{ carry(nh, l['kpi_name'], 'person carries' if nh == 1 else 'people carry') }} it on {{ act['name'] }}{% endif %}</span></div>
+        </div>
+        <script type="application/json" data-bk-holders>{{ c.holders | tojson }}</script>
+      <input type="hidden" data-kpi-f="method" value="{{ l['method'] }}">
+      <div class="bk-sec">
+        <span class="wiz-k">Target · {{ '5-point rating' if mech == 'A' else 'achievement against target' }}</span>
+        <div class="bk-rates">
+          {{ unit_select(k ~ 'unit', c.unit or '', extra=dis) }}
+          {% if mech == 'A' %}
+            {% for i in range(1, 6) %}{% set fld = 'rate%d' % i %}<label>Rate {{ i }}<input name="{{ k }}{{ fld }}" data-kpi-f="{{ fld }}" inputmode="decimal" value="{{ '%g' | format(pre[fld]) if pre[fld] is not none else '' }}" placeholder="{{ l['unit'] or '' }}" {{ dis }}></label>{% endfor %}
+          {% else %}
+            {% for fld, lbl in [('threshold', 'Threshold'), ('target', 'Target')] + ([('excellence', 'Excellence')] if cfg and cfg['variant'] == 'excellence' else [('multiple', 'Multiplier')]) %}
+            <label>{{ lbl }}<input name="{{ k }}{{ fld }}" data-kpi-f="{{ fld }}" inputmode="decimal" value="{{ '%g' | format(pre[fld]) if pre[fld] is not none else '' }}" {{ dis }}></label>
+            {% endfor %}
+          {% endif %}
+        </div>
+        <span class="muted small">{{ 'Higher' if l['method'] == 'more' else 'Lower' }} is better{% if mech == 'A' %}: Rate 1 {{ 'lowest to Rate 5 highest' if l['method'] == 'more' else 'highest to Rate 5 lowest' }}, no two the same{% endif %}.
+          {%- if not st and nh and f.n_keys == 1 %} Filled from what the {{ nh }} who carry it hold today: they all hold this one target.
+          {%- elif not st and nh and f.major %} Filled from the target {{ f.major.n }} of the {{ nh }} who carry it hold today. The one set here replaces their lines' targets; untick anyone who should keep their own line.
+          {%- elif not st and nh %} The {{ nh }} who carry it hold {{ f.n_keys }} different targets, none held by most: enter the unit's target. The one set here replaces them all.{% endif %}</span>
+      </div>
+      <div class="bk-sec bk-two">
+        {% set cm = st['carriers'] if st else ('everyone' if early else 'holders') %}
+        <div><span class="wiz-k">Carried by</span>
+          <div class="bk-seg" role="radiogroup" aria-label="Carried by">
+            {% for v, lbl, d in [('holders', 'Those who carry it now · %d' % nh, dis), ('everyone', 'Everyone · %d' % people | length, dis_new), ('departments', 'Departments', dis_new), ('grade', 'Grade', dis_new), ('pick', 'Pick people', dis_new)] %}
+            <label class="bk-segb"><input type="radio" name="{{ k }}carriers" value="{{ v }}" data-bk-mode {{ 'checked' if cm == v }} {{ d }}><span>{{ lbl }}</span></label>
+            {% endfor %}
+          </div>
+          {% if not early %}<span class="muted small">{% if c.add is not none %}Everyone, a department or a grade is for an Early Year, where KPIs are set. In {{ act['name'] }} you can add, below, someone whose KPIs don't add up to 100% yet.{% else %}Putting it on someone new is for an Early Year, where KPIs are set: in {{ act['name'] }} their KPIs already add up to 100%.{% endif %}</span>{% endif %}
+        </div>
+        <div class="bk-who">
+          <div data-bk-for="holders">{% if nh %}<button type="button" class="bk-hn" data-bk-hjump title="Show who carries it">{{ nh }}</button> <span class="muted small">{{ 'carries' if nh == 1 else 'carry' }} it now{% if c.depts %} · {{ c.depts | map('proper') | join(', ') if c.depts | length <= 3 else (c.depts | length) ~ ' departments' }}{% endif %}. Their line is kept and takes this target. Untick anyone who should keep their own line as it is.</span>
+            {% set hchosen = (st['data'].get('people') or []) if st and st['carriers'] == 'holders' else c.holders %}
+            <input type="hidden" name="{{ k }}holder_set" value="1" {{ dis }}>
+            <div class="bk-pick">
+              <input type="search" placeholder="Search by name or Employee ID" data-bk-q data-bk-hq aria-label="Search those who carry it" {{ dis }}>
+              <div class="bk-picklist" data-bk-hlist>
+                <div class="bk-pp bk-hh" aria-hidden="true"><span></span><span>Name</span><span title="Employee ID · JG · Department">ID · JG · Department</span><span class="bk-num">Weight</span><span class="bk-num">Target today</span></div>
+                {% for p in pick if p.eid in c.holders %}{% set hc = c.hcells.get(p.eid) or ('—', '—') %}<label class="bk-pp bk-hp" data-bk-row="{{ (p.name ~ ' ' ~ p.eid) | lower }}"><input type="checkbox" name="{{ k }}holder" value="{{ p.eid }}" {{ 'checked' if p.eid in hchosen }} {{ dis }}><span title="{{ p.name }}">{{ p.name }}</span><span class="muted small" title="{{ p.eid }}{% if p.g is not none %} · JG {{ p.g }}{% endif %}{% if p.dept %} · {{ p.dept | proper }}{% endif %}">{{ p.eid }}{% if p.g is not none %} · JG {{ p.g }}{% endif %}{% if p.dept %} · {{ p.dept | proper }}{% endif %}</span><span class="bk-num" data-bk-w>{{ hc[0] }}</span><span class="bk-num" data-bk-t title="{{ hc[1] }}">{{ hc[1] }}</span></label>{% endfor %}
+              </div>
+            </div>{% else %}<span class="muted small">Nobody in {{ uname }} carries it now.</span>{% endif %}</div>
+          <div data-bk-for="everyone"><b data-bk-n></b> <span class="muted small">everyone in {{ uname }} taking part</span></div>
+          <div data-bk-for="departments" class="bk-deps">
+            {% for d, n in depts %}<label class="bk-dep"><input type="checkbox" name="{{ k }}dept" value="{{ d }}" {{ 'checked' if st and st['carriers'] == 'departments' and d in (st['data'].get('departments') or []) }} {{ dis_new }}> {{ d | proper }} · {{ n }}</label>{% endfor %}
+            {% if not depts %}<span class="muted small">Nobody in the unit has a department on record.</span>{% endif %}
+          </div>
+          <div data-bk-for="grade" class="bk-grade">
+            <label>From JG<input name="{{ k }}gmin" inputmode="numeric" value="{{ st['data'].get('min') if st and st['carriers'] == 'grade' and st['data'].get('min') is not none else '' }}" {{ dis_new }}></label>
+            <label>to JG<input name="{{ k }}gmax" inputmode="numeric" value="{{ st['data'].get('max') if st and st['carriers'] == 'grade' and st['data'].get('max') is not none else '' }}" {{ dis_new }}></label>
+            <span class="muted small">leave one blank for "and above" or "and below"</span>
+          </div>
+          <div data-bk-for="pick" class="bk-pick">
+            <input type="search" placeholder="Search by name or Employee ID" data-bk-q aria-label="Search the unit's people" {{ dis_new }}>
+            <div class="bk-picklist" data-bk-list>
+              {% set chosen = (st['data'].get('people') or []) if st and st['carriers'] == 'pick' else [] %}
+              {% for p in pick %}<label class="bk-pp" data-bk-row="{{ (p.name ~ ' ' ~ p.eid) | lower }}"><input type="checkbox" name="{{ k }}people" value="{{ p.eid }}" {{ 'checked' if p.eid in chosen }} {{ dis_new }}><span>{{ p.name }}</span><span class="muted small">{{ p.eid }}{% if p.g is not none %} · JG {{ p.g }}{% endif %}</span></label>{% endfor %}
+            </div>
+          </div>
+          <b class="bk-count" data-bk-count></b>
+          {% if c.add is not none %}{% set ad = c.add %}{# the super admin outside an Early Year (2026-11-06, canvas MYkFfimk8GjcFJ4unL8nDv board A1): add someone who does not carry it yet #}
+          <div class="bk-add" data-bk-add>
+            <div class="wiz-k bk-add-h">Add someone who doesn't carry it yet <span class="pp-chip bk-add-chip">Super admin</span></div>
+            <p class="muted small bk-add-p">People in {{ uname }} taking part in {{ act['name'] }} whose KPIs don't add up to 100% yet. Give each a weight: it goes on their new line, and it can't take them over 100%.</p>
+            {% if ad.rows %}
+            <div class="bk-pick">
+              <input type="search" placeholder="Search by name or Employee ID" data-bk-aq aria-label="Search the people you can add" {{ dis }}>
+              <div class="bk-picklist" data-bk-alist>
+                <div class="bk-pp bk-ah" aria-hidden="true"><span></span><span>Name</span><span title="Employee ID · JG · Department">ID · JG · Department</span><span class="bk-num">KPIs today</span><span class="bk-num">Weight</span></div>
+                {% for r in ad.rows %}{% set rid = 'bk-ap-%d-%d' % (l['id'], loop.index) %}{% set rid_meta = r.eid ~ (' · JG %s' % r.g if r.g is not none else '') ~ (' · ' ~ (r.dept | proper) if r.dept else '') %}
+                <div class="bk-pp bk-ap" data-bk-arow="{{ (r.name ~ ' ' ~ r.eid) | lower }}" data-bk-an="{{ r.name }}" data-bk-aw0="{{ '%g' | format(r.w) }}" data-bk-ar="{{ '%g' | format(r.room) }}">
+                  <input type="checkbox" id="{{ rid }}" name="{{ k }}addp" value="{{ r.eid }}" data-bk-ap {{ dis }}>
+                  <label for="{{ rid }}" title="{{ r.name }}">{{ r.name }}</label>
+                  <span class="muted small" title="{{ rid_meta }}">{{ rid_meta }}</span>
+                  <span class="bk-num" title="{{ r.n }} KPI{{ '' if r.n == 1 else 's' }} adding up to {{ '%g' | format(r.w) }}%">{{ r.n }} KPI{{ '' if r.n == 1 else 's' }} · {{ '%g' | format(r.w) }}%</span>
+                  <span class="bk-aw"><span class="bk-wbox"><input name="{{ k }}addw_{{ r.eid }}" inputmode="decimal" placeholder="≤ {{ '%g' | format(r.room) }}" title="At most {{ '%g' | format(r.room) }}" aria-label="Weight for {{ r.name }}, %" data-bk-aw disabled></span><span aria-hidden="true">%</span></span>
+                </div>{% endfor %}
+              </div>
+            </div>
+            {% endif %}
+            <p class="muted small bk-add-p" {{ 'hidden' if not ad.rows or not ad.full }}>{{ ad.full }} other{{ '' if ad.full == 1 else 's' }} in the unit already add{{ 's' if ad.full == 1 }} up to 100% and {{ "isn't" if ad.full == 1 else "aren't" }} listed.</p>
+            {% if not ad.rows %}<p class="muted small bk-add-p">{% if ad.full %}Everyone in {{ uname }} taking part already adds up to 100%.{% else %}Everyone in {{ uname }} taking part already carries it.{% endif %}</p>{% endif %}
+            <b class="bk-count bk-add-live" data-bk-alive hidden></b>
+          </div>
+          {% endif %}
+          {% if c.gadd %}{% set ga = c.gadd %}{# "From another unit in <group>" (2026-11-07, canvas B2): guest carriers, a strict people search, never a typed ID #}
+          <div class="bk-add bk-gadd" data-bk-gadd data-bk-gk="{{ k }}" data-bk-gn="{{ ga.n }}">
+            <div class="wiz-k bk-add-h">From another unit in {{ ga.group }}</div>
+            <p class="muted small bk-add-p">Someone in another unit of the group who follows this unit's figure: a strict search over the group's people taking part, not in {{ ga.unit }}. They join at this unit's target with a weight of their own; their manager and BU CEO stay theirs.{% if ga.n %} {{ ga.n }} from other units {{ 'carries' if ga.n == 1 else 'carry' }} it already: take one off on their own KPI page.{% endif %}</p>
+            <div class="bk-pick">
+              <span class="pick bk-gpick" data-pick data-pick-xbu="{{ ga.sid }}"><input type="search" class="pick-q" placeholder="Search {{ ga.group }} by name, Employee ID or unit" aria-label="Search the people of {{ ga.group }} to add from another unit" autocomplete="off" {{ dis }}><input type="hidden" class="pick-val"></span>
+              <div class="bk-picklist bk-glist" data-bk-glist hidden>
+                <div class="bk-pp bk-ah bk-gp" aria-hidden="true"><span></span><span>Name</span><span title="Employee ID · JG · Department">ID · JG · Department</span><span>Unit</span><span class="bk-num bk-gk">KPIs today</span><span class="bk-num">Weight</span></div>
+              </div>
+            </div>
+            <b class="bk-count bk-add-live" data-bk-glive hidden></b>
+          </div>
+          {% endif %}
+          {% if c.gh %}{# the unit's Grade H people with a line of this name (2026-11-03): tick the lines that follow this result; the rest greyed with why #}
+          <div class="bk-gh">
+            <input type="hidden" name="{{ k }}ghset" value="1">
+            <span class="wiz-k">Grade H lines <span class="bk2-pill is-gh">Grade H</span></span>
+            <span class="muted small">Tick the Grade H lines that follow this result. Group People fills it once for everyone who shares it.</span>
+            <div class="bk-picklist">
+              {% for g in c.gh %}<label class="bk-pp{{ ' is-dis' if not g.ok }}"><input type="checkbox" name="{{ k }}ghline" value="{{ g.line.id if g.line else '' }}" {{ 'checked' if g.linked == 'this' }} {{ 'disabled' if not g.ok }}><span title="{{ g.name }}">{{ g.name }} <span class="bk2-pill is-gh">Grade H</span></span><span class="muted small">{% if g.ok %}{{ g.eid }} · JG {{ g.grade }}{% else %}{{ g.why }}{% endif %}</span></label>{% endfor %}
+            </div>
+          </div>
+          {% endif %}
+        </div>
+      </div>
+      <div class="bk-sec bk-two">
+        {% set wm = st['weight_mode'] if st else ('grade' if early else 'own') %}
+        <div><span class="wiz-k">Weight on their scorecard</span>
+          <div class="bk-seg" role="radiogroup" aria-label="Weight">
+            <label class="bk-segb"><input type="radio" name="{{ k }}wmode" value="own" data-bk-wmode {{ 'checked' if wm == 'own' }} {{ dis_wo }}><span>Each keeps their own{% if f.wmin is defined and f.wmin is not none %} · {{ '%g' | format(f.wmin) }}{% if f.wmax != f.wmin %} to {{ '%g' | format(f.wmax) }}{% endif %}% today{% endif %}</span></label>
+            <label class="bk-segb"><input type="radio" name="{{ k }}wmode" value="one" data-bk-wmode {{ 'checked' if wm == 'one' }} {{ dis_w }}><span>One weight for all</span></label>
+            <label class="bk-segb"><input type="radio" name="{{ k }}wmode" value="grade" data-bk-wmode {{ 'checked' if wm == 'grade' }} {{ dis_w }}><span>By grade</span></label>
+          </div></div>
+        <div>
+          {% if early and not sup %}<p class="muted small bk-wnote">The super admin sets each BU KPI's weight: it follows the person's grade.</p>{% endif %}
+          <div data-bk-wfor="own"><span class="muted small">Each person keeps the weight on their line now, so their KPIs still add up to 100%. Goes with those who carry it now.{% if c.add is not none %} Someone you add takes the weight you gave them above.{% endif %}</span></div>
+          <div data-bk-wfor="one" class="bk-one"><label>Weight<input name="{{ k }}weight" inputmode="decimal" value="{{ '%g' | format(st['weight']) if st and st['weight'] is not none else '' }}" {{ dis_w }}> %</label></div>
+          <div data-bk-wfor="grade">
+            <div class="bk-bands" data-bk-bands>
+              {% for b in (st['bands'] if st and st['bands'] else bands_default) %}
+              <div class="bk-band">
+                <label>From JG<input name="{{ k }}bmin" inputmode="numeric" value="{{ b.min if b.min is not none else '' }}" placeholder="lowest" {{ dis_w }}></label>
+                <label>to JG<input name="{{ k }}bmax" inputmode="numeric" value="{{ b.max if b.max is not none else '' }}" placeholder="highest" {{ dis_w }}></label>
+                <span class="muted small" data-bk-bn></span>
+                <label class="bk-bw"><input name="{{ k }}bw" inputmode="decimal" value="{{ '%g' | format(b.w) if b.w is defined and b.w is not none else '' }}" aria-label="Weight for this band, %" {{ dis_w }}> %</label>
+                {% if early and open_ and cfg and sup %}<button type="button" class="btn-link" data-bk-unband aria-label="Remove this band">Remove</button>{% endif %}
+              </div>
+              {% endfor %}
+            </div>
+            <div class="bk-band-foot"><span class="muted small">The bands cover every grade with no overlap: leave the lowest band's "from" and the highest band's "to" blank.</span>
+              {% if early and open_ and cfg and sup %}<button type="button" class="btn-link" data-bk-addband>Add a band</button>{% endif %}</div>
+          </div>
+        </div>
+      </div>
+      <p class="bk-what">{% if c.pick or c.unit_only %}A BU KPI for {{ uname }} only: the same KPI in the group's other units stays each holder's own. {% endif %}Its result is Group People's: the people carrying it no longer enter it or attach a file, and Fill BU result enters one figure for {{ uname }}. {% if early %}Saving puts the line on each carrier's {{ act['name'] }} scorecard, moderated by their line manager; anyone left out of Those who carry it now keeps their own line. Each person's lines still have to add up to 100%.{% else %}Saving gives each carrier's line the unit's target, at once; their weights stay as they are.{% if c.add is not none %} Someone added gets a new line at the unit's target and the weight you gave.{% endif %}{% endif %}{% if not early %} Unticked before the Department Review starts, each line goes back to its holder as it was.{% endif %}</p>
+        <div class="bk2-foot">
+          <span class="muted small">Saving changes this KPI only. Other KPIs of {{ uname }} are not touched.</span>
+
+          <span class="bk2-btns">
+            {% if st %}<a class="bk2-btn bk2-cancel" href="{{ url_for('admin_bu_kpis', fbg=bg, fbu=co, kpi=l['id'], add=add_ids or None) }}">Cancel</a>
+            {% else %}<a class="bk2-btn bk2-cancel" href="{{ url_for('admin_bu_kpis', fbg=bg, fbu=co, add=(add_ids | reject('equalto', l['id']) | list) or None) }}">Discard</a>{% endif %}
+            {% if open_ and cfg %}<button type="submit" class="bk2-btn bk2-edit" data-bk-save>{{ ('Save ' ~ l['kpi_name']) if st else 'Save as BU KPI' }}</button>{% endif %}
+          </span>
+        </div>
+      </section>
+    </form>
+  {% endif %}
+  </div>
+</div>
+{% if can_add %}
+{% call panel("bklib", "BU KPI setup · From the library", "Add a BU KPI for " ~ uname, display_bg(bg) ~ "'s library, " ~ lib_total ~ " KPIs. Most carried in " ~ uname ~ " first, counted on " ~ act['name'] ~ "'s scorecards.", mid=True) %}
+  <div class="adm-panel-body bk-lp" data-bk-libpanel data-bk-addurl="{{ url_for('admin_bu_kpis', fbg=bg, fbu=co, add=add_ids) }}" data-bk-uname="{{ uname }}">
+    <div data-bk-lplist>
+      <input type="search" class="bk-lp-q" placeholder="Search by KPI name" aria-label="Search the library" data-bk-lpq>
+      <div class="bk-lp-fams" role="group" aria-label="Family">
+        <button type="button" class="bk-fam is-on" data-bk-fam="">All · {{ lib_rows | length }}</button>
+        {% for fm, n in fams %}<button type="button" class="bk-fam" data-bk-fam="{{ fm }}">{{ fm }} · {{ n }}</button>{% endfor %}
+      </div>
+      <table class="bk-lp-t">
+        <thead><tr><th>KPI</th><th class="bk-lp-n">Carry it</th><th>Where · their targets today</th><th aria-label="Add"></th></tr></thead>
+        <tbody>
+          {% for r in lib_rows %}
+          <tr data-bk-lprow="{{ r.id }}" data-fam="{{ r.family }}" data-q="{{ r.name | lower }}">
+            <td><b>{{ r.name }}</b><small>{{ r.family }}{% if r.group %} · {{ r.group }}{% endif %}</small></td>
+            <td class="bk-lp-n"><b>{{ r.unit_n }}</b><small>{{ r.bg_n }} in the group</small></td>
+            <td>{% if not r.unit_n %}<span class="muted small">Nobody here</span>{% else %}{% if r.depts | length == 1 %}{{ r.depts[0] | proper }}{% else %}{{ r.depts | length }} departments{% endif %}
+              <small class="{{ 'bk-amb' if r.n_scales > 1 }}">{{ 'one target for all' if r.n_scales == 1 else r.n_scales ~ ' different targets: likely their own' }}</small>{% endif %}</td>
+            <td>{% if r.added %}<span class="muted small">On the list</span>{% else %}<button type="button" class="bk-lp-add" data-bk-lpadd="{{ r.id }}" data-name="{{ r.name }}" data-cat="{{ r.family }}{% if r.group %} · {{ r.group }}{% endif %}" data-n="{{ r.unit_n }}" data-bgn="{{ r.bg_n }}" data-depts="{{ r.depts | map('proper') | join(', ') }}" data-ndepts="{{ r.depts | length }}" data-scales="{{ r.n_scales }}" data-w="{% if r.wmin is not none %}{{ '%g' | format(r.wmin) }}{% if r.wmax != r.wmin %} to {{ '%g' | format(r.wmax) }}{% endif %}{% endif %}" data-unit="{{ r.unit }}" data-more="{{ 1 if r.more else 0 }}"{% if not r.unit_n and not early %} disabled title="Nobody in {{ uname }} carries it, and outside an Early Year a BU KPI goes only on those who carry it now"{% endif %}>Add</button>{% endif %}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      <p class="muted small bk-lp-none" data-bk-lpnone hidden>No KPI matches.</p>
+    </div>
+    <div data-bk-lpdetail hidden>
+      <button type="button" class="btn-link bk-lp-back" data-bk-lpback>‹ The library</button>
+      <h3 class="bk-lp-h" data-bk-d="name"></h3>
+      <p class="muted small" data-bk-d="sub"></p>
+      <div class="bk-facts">
+        <div><b data-bk-d="n"></b><span>carry it in {{ uname }}</span></div>
+        <div><b data-bk-d="nd"></b><span data-bk-d="ndw"></span></div>
+        <div><b data-bk-d="ns"></b><span data-bk-d="nsw"></span></div>
+        <div><b data-bk-d="bgn"></b><span>carry it across {{ display_bg(bg) }}</span></div>
+      </div>
+      <div class="bk-scope"><span class="wiz-k">A BU KPI for {{ uname }} only</span>
+        <span class="muted small">Its carriers here read the unit's one target. The same KPI in {{ display_bg(bg) }}'s other units stays each holder's own. To make it BU-level for every unit, mark it in the <a href="{{ url_for('admin_kpi_library') }}">KPI library</a>.</span></div>
+      <div class="bk-changes"><span class="wiz-k">What changes for them, once you save that KPI</span>
+        <ul>
+          <li>Their line stays on their scorecard{{ ', at their own weight' if not early }}.</li>
+          <li>It takes {{ uname }}'s one target, set on its card.</li>
+          <li>They no longer enter its result or attach a file for it: Group People enters one figure for the unit on Fill BU result.</li>
+          <li>A line with results takes the target too; one a moderator had signed off goes back to its moderators. The result itself is never changed.</li>
+          <li>A line whose method or unit differs stays as it is.</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+  <footer class="adm-panel-foot">
+    <span class="muted small bk-lp-foot" data-bk-lpfoot>Adds it to {{ uname }}'s list. Nothing changes on a scorecard until you save that KPI.</span>
+    <button type="button" class="btn-link" data-panel-close>Cancel</button>
+    <a class="primary bk-lp-go" data-bk-lpgo href="#" hidden>Add as a BU KPI</a>
+  </footer>
+{% endcall %}
+{% endif %}
+{% if var %}
+{# Move some of this BU KPI's carriers to a variant (2026-10-29, canvas [design canvas link removed], boards 2-5):
+   the super admin's. One form, one POST (admin_bu_kpis, move_variant); the script below fills the target from the
+   people ticked, writes the "What changes" box and the confirm box live. The server checks everything again. #}
+{% call panel("bkvar", "BU KPI setup · Variant", "Move some off " ~ var.name, var.uname ~ " · " ~ var.n ~ " carry it at " ~ var.line ~ " · in " ~ var.cycle ~ " " ~ var.wsub, mid=True) %}
+<form method="post" id="bkv-form" class="bkv-form" data-no-busy
+      data-confirm="Move the people ticked off {{ var.name }} to a variant? It goes in the trail." data-confirm-title="Move people to a variant?" data-confirm-ok="Move people">
+  <input type="hidden" name="action" value="move_variant"><input type="hidden" name="setup" value="{{ sel.st['id'] }}">
+  <input type="hidden" name="src_n" value="{{ var.n }}"><input type="hidden" name="src_sig" value="{{ var.sig }}">{% if var.gh %}<input type="hidden" name="src_gh" value="{{ var.gh_sig }}">{% endif %}
+  <input type="hidden" data-kpi-f="method" value="{{ 'more' if var.more else 'less' }}">
+  <div class="adm-panel-body bkv-body">
+    <div class="bkv-sec">
+      <span class="wiz-k">Move them to</span>
+      <div class="bk-seg" role="radiogroup" aria-label="Move them to">
+        {% for x in var.sibs %}<label class="bk-segb"><input type="radio" name="dest" value="{{ x.id }}" data-bkv-dest data-name="{{ x.name }}" data-n="{{ x.n }}" data-line="{{ x.line }}" data-root="{{ 1 if x.root else 0 }}" {{ 'checked' if loop.first }}><span>{{ x.name }} · {{ x.n }} · {{ x.line }}</span></label>{% endfor %}
+        <label class="bk-segb"><input type="radio" name="dest" value="new" data-bkv-dest {{ 'checked' if not var.sibs }}><span>A new variant</span></label>
+      </div>
+      <span class="muted small">{% if var.sibs %}Every variant of {{ var.root }} in this unit is listed, the parent first. Moving into one takes its target: no target boxes to fill.{% else %}Other variants of {{ var.root }} in this unit show here once there are any.{% endif %}</span>
+    </div>
+    <div class="bkv-sec" data-bkv-for="new">{# Name it after (2026-11-07, canvas C1): picked, never typed; the server builds the name (_bu_variant_qualifier) #}
+      <span class="wiz-k">Name it after</span>
+      <div class="bk-seg" role="radiogroup" aria-label="Name it after">
+        <label class="bk-segb"><input type="radio" name="name_by" value="unit" data-bkv-by checked><span>{{ var.uname }}</span></label>
+        <label class="bk-segb" data-bkv-units-pill title="Offered when someone ticked works in another unit"><input type="radio" name="name_by" value="units" data-bkv-by disabled><span>Their units</span></label>
+        <label class="bk-segb"><input type="radio" name="name_by" value="role" data-bkv-by><span>A role</span></label>
+      </div>
+      <div class="bkv-nm" data-bkv-byfor="role" hidden>
+        <span class="bkv-fix">{{ var.root }}:</span>
+        <select name="name_role" class="bkv-inp bkv-sel" aria-label="Role" data-bkv-role>{% for r_ in var.roles %}<option value="{{ r_ }}">{{ r_ }}</option>{% endfor %}<option value="__new__">A new role label&hellip;</option></select>
+        <input type="text" name="name_role_new" class="bkv-inp bkv-q" maxlength="20" autocomplete="off" placeholder="New role label" aria-label="New role label: letters, digits, spaces, &amp; and -, 20 characters at most" data-bkv-rolenew hidden>
+      </div>
+      <span class="muted small" data-bkv-byhint>Named after {{ var.uname }}. Pick "Their units" when someone from another unit moves, or "A role" for a name like GCEO.</span>
+      <span class="bkv-full">New name: <b data-bkv-full>{{ var.root }}:</b> <span data-bkv-after>&middot; a BU KPI for {{ var.uname }} only</span></span>
+    </div>
+    <div class="bkv-sec">
+      <div class="bkv-cnt"><span class="wiz-k">Who moves</span><b data-bkv-k>0 of {{ var.n + var.ngh }}</b><span class="muted small" data-bkv-stay>{{ var.n + var.ngh }} stay on {{ var.name }}</span>
+        <span class="bkv-cntl"><button type="button" class="bk2-lk" data-bkv-all>Tick all shown</button><button type="button" class="bk2-lk" data-bkv-clear>Clear</button></span></div>
+      <input type="search" class="bkv-inp bkv-find" placeholder="Search by name, Employee ID or unit" aria-label="Search those who carry it" data-bkv-find>
+      <div class="bkv-list" data-bkv-list>
+        <div class="bkv-pp bkv-hh" aria-hidden="true"><span></span><span>Name</span><span>ID · JG · Department</span><span class="r">Weight</span><span class="r">Target today</span></div>
+        {% for p in var.people %}
+        <label class="bkv-pp{{ ' is-dis' if p.lock }}" data-bkv-row data-k="{{ p.eid }}" data-i="{{ loop.index0 }}" data-q="{{ (p.name ~ ' ' ~ p.eid ~ ' ' ~ p.unit) | lower }}">
+          <input type="checkbox" name="who" value="{{ p.eid }}" data-bkv-who {{ 'disabled' if p.lock }}>
+          <span class="bkv-nmc"><span class="bkv-nmt" title="{{ p.name }}">{{ p.name }}</span>{% if p.lock %}<span class="bkv-lock">{{ p.lock }}</span>{% endif %}</span>
+          <span class="bkv-id" title="{{ p.idl }}">{{ p.idl }}</span>
+          <span class="r" data-bkv-w>{{ p.w }}</span><span class="r bkv-t" title="{{ p.t }}">{{ p.t }}</span>
+        </label>
+        {% endfor %}
+        {% for p in var.gh %}{# Grade H people of the unit with a line of this name (2026-11-03): the purple chip, greyed when the line cannot follow #}
+        <label class="bkv-pp{{ ' is-dis' if not p.ok }}" data-bkv-row data-gh data-k="{{ p.key }}" data-i="{{ var.people | length + loop.index0 }}" data-q="{{ (p.name ~ ' ' ~ p.eid) | lower }}">
+          <input type="checkbox" name="ghwho" value="{{ p.lid }}" data-bkv-who {{ 'disabled' if not p.ok }}>
+          <span class="bkv-nmc"><span class="bkv-nmt" title="{{ p.name }}">{{ p.name }}</span><span class="bk2-pill is-gh">Grade H</span></span>
+          <span class="bkv-id" title="{{ p.idl }}{% if not p.ok %} · {{ p.why }}{% endif %}">{{ p.why if not p.ok else p.idl }}</span>
+          <span class="r" data-bkv-w>{{ p.w }}</span><span class="r bkv-t" title="{{ p.t }}">{{ p.t }}</span>
+        </label>
+        {% endfor %}
+        <p class="muted small bkv-none" data-bkv-none hidden>Nobody matches.</p>
+      </div>
+      <span class="muted small">Ticked first, then the rest. A line someone has acted on (moderated, a check-in or a result) stays where it is: Reopen it first.</span>
+    </div>
+    <div class="bkv-sec" data-bkv-for="new" data-kpi-scale="{{ var.mech or '' }}">
+      <span class="wiz-k">Its target · {{ '5-point rating' if var.mech == 'A' else 'achievement against target' }}</span>
+      <div class="bkv-rates">
+        {{ unit_select('v_unit', var.unit, extra='data-bkv-unit') }}
+        {% if var.mech == 'A' %}
+          {% for i in range(1, 6) %}<label>Rate {{ i }}<input name="v_rate{{ i }}" data-kpi-f="rate{{ i }}" data-bkv-f="rate{{ i }}" inputmode="decimal" autocomplete="off"></label>{% endfor %}
+        {% else %}
+          {% for fld, lbl in [('threshold', 'Threshold'), ('target', 'Target')] + ([('excellence', 'Excellence')] if var.excl else [('multiple', 'Multiplier')]) %}
+          <label>{{ lbl }}<input name="v_{{ fld }}" data-kpi-f="{{ fld }}" data-bkv-f="{{ fld }}" inputmode="decimal" autocomplete="off"></label>
+          {% endfor %}
+        {% endif %}
+      </div>
+      <span class="muted small" data-bkv-hint>{{ 'Higher' if var.more else 'Lower' }} is better.</span>
+    </div>
+    <div class="bkv-sec" data-bkv-for="new">
+      <span class="wiz-k">Weight on their scorecard</span>
+      <div class="bk-seg" role="radiogroup" aria-label="Weight">
+        <label class="bk-segb"><input type="radio" name="v_wmode" value="own" data-bkv-wm checked><span data-bkv-own>Each keeps their own</span></label>
+        <label class="bk-segb"><input type="radio" name="v_wmode" value="one" data-bkv-wm {{ 'disabled' if not var.early }}><span>One weight for all</span></label>
+        <label class="bk-segb"><input type="radio" name="v_wmode" value="grade" data-bkv-wm {{ 'disabled' if not var.early }}><span>By grade</span></label>
+      </div>
+      <div data-bkv-wfor="one" class="bkv-one" hidden><label>Weight<input name="v_weight" inputmode="decimal" value="{{ '%g' | format(var.weight) if var.weight is not none else '' }}" autocomplete="off"> %</label></div>
+      <div data-bkv-wfor="grade" class="bkv-bands" hidden>
+        {% for b in var.bands %}
+        <div class="bkv-band"><label>From JG<input name="v_bmin" inputmode="numeric" value="{{ b.min if b.min is not none else '' }}" placeholder="lowest"></label>
+          <label>to JG<input name="v_bmax" inputmode="numeric" value="{{ b.max if b.max is not none else '' }}" placeholder="highest"></label>
+          <label>Weight %<input name="v_bw" inputmode="decimal" value="{{ '%g' | format(b.w) }}"></label></div>
+        {% endfor %}
+      </div>
+      <span class="muted small">{% if var.early %}Each person's lines still have to add up to 100%.{% else %}In {{ var.cycle }} their KPIs already add up to 100%, so each keeps the weight on their line. An Early Year opens the other two.{% endif %}</span>
+    </div>
+    <div class="bkv-chg" aria-live="polite">
+      <span class="wiz-k">What changes, once you move them</span>
+      <ul data-bkv-chg></ul>
+    </div>
+  </div>
+  <footer class="adm-panel-foot">
+    <span class="muted small adm-panel-grow">Super admin only. Touches only these two KPIs.</span>
+    <button type="button" class="bk2-btn bk2-cancel" data-panel-close>Cancel</button>
+    <button type="submit" class="bk2-btn bk2-edit" data-bkv-go formnovalidate disabled>Move people</button>
+  </footer>
+</form>
+{% endcall %}
+<script type="application/json" id="bkv-data">{{ var | tojson }}</script>
+<script>
+/* Move some to a variant (the super admin's): tick who moves, say where; the target fills from the people ticked, the
+   "What changes" box and the confirm box are written as you go. The server checks it all again (_bu_kpi_move). */
+(function () {
+  var el = document.getElementById('bkv-data'), form = document.getElementById('bkv-form');
+  if (!el || !form) return;
+  var D; try { D = JSON.parse(el.textContent); } catch (e) { return; }
+  var $ = function (s) { return form.querySelector(s); }, $$ = function (s) { return [].slice.call(form.querySelectorAll(s)); };
+  var rows = $$('[data-bkv-row]'), list = $('[data-bkv-list]'), go = $('[data-bkv-go]'), find = $('[data-bkv-find]');
+  var unitSel = $('[data-bkv-unit]'), hint = $('[data-bkv-hint]'), chg = $('[data-bkv-chg]');
+  var roleSel = $('[data-bkv-role]'), roleNew = $('[data-bkv-rolenew]'), unitsRadio = $('[data-bkv-by][value="units"]');
+  var fields = $$('[data-bkv-f]'), dirty = false;
+  var NAMES = ['rate1', 'rate2', 'rate3', 'rate4', 'rate5', 'threshold', 'target', 'multiple', 'excellence'];
+  var byEid = {}; D.people.forEach(function (p) { byEid[p.eid] = p; }); (D.gh || []).forEach(function (p) { byEid[p.key] = p; });
+  function esc(t) { return String(t).replace(/[&<>"]/g, function (c) { return {'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;'}[c]; }); }
+  function plural(n, one, many) { return n + ' ' + (n === 1 ? one : many); }
+  function sfx(u) { return u ? (u === '%' ? u : ' ' + u) : ''; }
+  function destEl() { return $('[data-bkv-dest]:checked'); }
+  function isNew() { var d = destEl(); return !d || d.value === 'new'; }
+  function ticked() { return rows.filter(function (r) { var c = r.querySelector('input'); return c.checked && !c.disabled; }); }
+  function eidOf(r) { return r.getAttribute('data-k'); }
+  function tgt(vals, unit) {
+    var u = sfx(unit), f = function (k) { return vals[k] === '' || vals[k] == null ? '…' : vals[k]; };
+    if (D.mech === 'A') return 'Rates ' + [1, 2, 3, 4, 5].map(function (i) { return f('rate' + i); }).join(' / ') + u;
+    return 'Threshold ' + f('threshold') + ' / Target ' + f('target') + ' / ' + (D.excl ? 'Excellence ' + f('excellence') : 'Multiplier ' + f('multiple')) + u;
+  }
+  function majority(ps) {
+    var c = {}, best = null, top = 0, tie = false;
+    ps.forEach(function (p) { if (!p.fig) return; var k = JSON.stringify(p.fig); (c[k] = c[k] || {n: 0, fig: p.fig}).n++; });   // a Grade H line holds no target of its own
+    Object.keys(c).forEach(function (k) {
+      if (c[k].n > top) { top = c[k].n; best = c[k]; tie = false; } else if (c[k].n === top) tie = true;
+    });
+    return {best: tie ? null : best, top: top, kinds: Object.keys(c).length};
+  }
+  function setVal(inp, v) {
+    if (inp.value === v) return;
+    inp.value = v; inp.dispatchEvent(new Event('input', {bubbles: true}));
+  }
+  function prefill(ps) {   // the target most of those ticked hold (a tie leaves the boxes empty), unless it was typed over
+    var m = ps.length ? majority(ps) : null, fig = m && m.best ? m.best.fig : null;
+    fields.forEach(function (f) { var i = NAMES.indexOf(f.getAttribute('data-bkv-f')); setVal(f, fig && fig[i + 1] !== null ? String(+fig[i + 1]) : ''); });
+    if (unitSel) {
+      var u = fig ? fig[0] : '';
+      if (![].some.call(unitSel.options, function (o) { return o.value === u; })) u = '';
+      if (unitSel.value !== u) { unitSel.value = u; unitSel.dispatchEvent(new Event('change', {bubbles: true})); }
+    }
+  }
+  function hintText(ps) {
+    var base = (D.more ? 'Higher' : 'Lower') + ' is better. ', n = ps.length;
+    if (dirty) return base + "The one set here replaces their lines' targets.";
+    if (!n) return base + 'Tick who moves: the boxes fill from the target most of them hold today.';
+    var m = majority(ps);
+    if (m.kinds === 1) return base + 'Filled from what the ' + n + ' moving hold today: they all hold this one target. The one set here replaces their lines\' targets.';
+    if (m.best) return base + 'Filled from the target ' + m.top + ' of the ' + n + ' moving hold today; a tie leaves the boxes empty. The one set here replaces their lines\' targets.';
+    return base + 'The ' + n + ' moving hold ' + m.kinds + ' different targets, none held by most: enter the target. The one set here replaces their lines\' targets.';
+  }
+  function reorder() {   // ticked first, then the rest (done when the pointer leaves the list, so rows don't move under a click)
+    var none = $('[data-bkv-none]');
+    rows.slice().sort(function (a, b) {
+      var ta = a.querySelector('input').checked ? 0 : 1, tb = b.querySelector('input').checked ? 0 : 1;
+      return ta - tb || (+a.getAttribute('data-i')) - (+b.getAttribute('data-i'));
+    }).forEach(function (r) { list.insertBefore(r, none); });
+  }
+  function filter() {
+    var q = (find.value || '').trim().toLowerCase(), shown = 0;
+    rows.forEach(function (r) { var ok = !q || r.getAttribute('data-q').indexOf(q) >= 0; r.hidden = !ok; if (ok) shown++; });
+    $('[data-bkv-none]').hidden = shown > 0;
+  }
+  function wtoday(ps) {
+    var ws = (ps.length ? ps : rows).map(function (r) { var t = r.querySelector('[data-bkv-w]'); return parseFloat(t ? t.textContent : ''); }).filter(function (x) { return isFinite(x); });
+    if (!ws.length) return '';
+    var lo = Math.min.apply(null, ws), hi = Math.max.apply(null, ws);
+    return ' · ' + lo + (hi === lo ? '' : ' to ' + hi) + '% today';
+  }
+  /* What the new name says after "<root>: ", from the pick (the server builds it again, _bu_variant_qualifier; nothing typed reaches it
+     bar a new role label of letters, digits, spaces, & and -, 20 characters). */
+  function byVal() { var r = $('[data-bkv-by]:checked'); return r ? r.value : 'unit'; }
+  function guestUnits(pp) {
+    var s = {}; pp.forEach(function (p) { if (p && p.guest && p.unit && p.unit.toLowerCase() !== D.uname.toLowerCase()) s[p.unit] = 1; });
+    return Object.keys(s).sort(function (a, b) { return a.toLowerCase() < b.toLowerCase() ? -1 : 1; });
+  }
+  function joinUnits(a) { return a.length < 2 ? (a[0] || '') : a.slice(0, -1).join(', ') + ' & ' + a[a.length - 1]; }
+  var ROLE_RE = /^[A-Za-z0-9 &-]{1,20}$/;
+  function nameQ(ppn) {
+    var by = byVal();
+    if (by === 'units') { var g = guestUnits(ppn); return g.length ? joinUnits([D.uname].concat(g)) : ''; }
+    if (by === 'role') {
+      if (roleSel.value === '__new__') { var n = roleNew.value.replace(/\s+/g, ' ').trim(); return ROLE_RE.test(n) ? n : ''; }
+      return roleSel.value;
+    }
+    return D.uname;
+  }
+  function update(fromTick) {
+    var ps = ticked(), pp = ps.map(function (r) { return byEid[eidOf(r)]; }), k = ps.length, n = D.n, nw = isNew(), d = destEl();
+    var kg = ps.filter(function (r) { return r.hasAttribute('data-gh'); }).length, kn = k - kg, ngh = D.ngh || 0, left = n - kn;   // Grade H lines are counted beside the people, never in who is left on the source
+    var ppn = pp.filter(function (p) { return !p.gh; });
+    var gu = guestUnits(ppn);   // "Their units" is offered only while someone ticked works in another unit
+    unitsRadio.disabled = !gu.length;
+    if (!gu.length && byVal() === 'units') { var ur = $('[data-bkv-by][value="unit"]'); ur.checked = true; }
+    var by = byVal(), ng = ppn.filter(function (p) { return p.guest; }).length;
+    $$('[data-bkv-byfor]').forEach(function (e) { e.hidden = by !== 'role'; });
+    roleNew.hidden = by !== 'role' || roleSel.value !== '__new__';
+    var q = nameQ(ppn), name = nw ? D.root + ': ' + (q || '…') : (d ? d.getAttribute('data-name') : '');
+    $('[data-bkv-byhint]').textContent = by === 'unit' ? 'Named after ' + D.uname + '. Pick "Their units" when someone from another unit moves, or "A role" for a name like GCEO.'
+      : (by === 'units' ? 'Named after the units the people ticked come from: ' + joinUnits([D.uname].concat(gu)) + '. Over 80 characters it is refused.'
+        : (roleSel.value === '__new__' ? 'A new role label: letters, digits, spaces, & and -, up to 20 characters.' : 'Named after the role. The list is the labels already in use in the group, GCEO and CEO.'));
+    $('[data-bkv-after]').textContent = by === 'units' ? '· kept in ' + D.uname + (gu.length ? '; ' + (ng === 1 ? 'the one' : 'those') + ' from ' + joinUnits(gu) + ' move' + (ng === 1 ? 's' : '') + ' with it' : '')
+      : '· a BU KPI for ' + D.uname + ' only';
+    $$('[data-bkv-for]').forEach(function (e) { e.hidden = !nw; });
+    $('[data-bkv-k]').textContent = k + ' of ' + (n + ngh);
+    $('[data-bkv-stay]').textContent = (left + ngh - kg) + ' stay on ' + D.name;
+    $('[data-bkv-full]').textContent = D.root + ':' + (q ? ' ' + q : '');
+    var wm = ($('[data-bkv-wm]:checked') || {}).value || 'own';
+    $$('[data-bkv-wfor]').forEach(function (e) { e.hidden = !nw || e.getAttribute('data-bkv-wfor') !== wm; });
+    $('[data-bkv-own]').textContent = 'Each keeps their own' + wtoday(ps);
+    if (nw && !dirty && fromTick !== false) prefill(ppn);
+    if (nw) hint.textContent = hintText(ppn);
+    var tv = {}; fields.forEach(function (f) { tv[f.getAttribute('data-bkv-f')] = f.value.trim(); });
+    var unit = unitSel ? unitSel.value : '', tt = tgt(tv, unit), srcl = D.line;
+    var wtxt = wm === 'one' ? 'Each takes the weight set here.' : (wm === 'grade' ? 'Their weights follow the grade bands.' : 'Their weights stay.');
+    var li = [], ghw = kg ? plural(kg, 'Grade H line', 'Grade H lines') + (kg === 1 ? ' shows as ' : ' show as ') + '<b>' + esc(name) + '</b> and take' + (kg === 1 ? 's' : '') + ' its result once Group People fills it.' : '';
+    if (!k) li.push('Tick the people who move.');
+    else if (nw && !left && kn) li.push('All ' + n + ' are ticked. That renames the whole KPI and leaves <b>' + esc(D.name) + '</b> with nobody. To change its target for all of them, use <b>Edit</b>.');
+    else if (nw && !kn) {
+      li.push('A new BU KPI, <b>' + esc(name) + '</b>, held by ' + plural(kg, 'Grade H line', 'Grade H lines') + ' and no one else, at ' + esc(tt) + '.');
+      li.push(ghw);
+      li.push('<b>' + esc(D.name) + '</b> keeps its ' + plural(n, 'holder', 'holders') + ' and its result.');
+    } else if (nw) {
+      li.push(plural(kn, 'line is', 'lines are') + ' renamed <b>' + esc(name) + '</b> and take ' + esc(tt) + ', at once. ' + wtxt);
+      li.push(left + ' stay on <b>' + esc(D.name) + '</b> at ' + esc(srcl) + '. Nothing else of theirs changes.');
+      var ab = (D.root.match(/\(([^)]+)\)\s*$/) || [])[1];
+      li.push('Fill BU result enters a figure for each: ' + esc(D.uname) + ' then has two ' + (ab ? esc(ab) + ' figures' : 'figures for ' + esc(D.root)) + ' to enter.');
+    } else if (!kn) {
+      li.push(ghw); li.push('<b>' + esc(D.name) + '</b> keeps its ' + plural(n, 'holder', 'holders') + ' and its result.');
+    } else {
+      var back = d.getAttribute('data-root') === '1' && D.name !== D.root, dl = d.getAttribute('data-line');
+      var dw = (D.sibs.filter(function (x) { return String(x.id) === d.value; })[0] || {}).wmode;
+      li.push(plural(k, 'line goes', 'lines go') + (back ? ' back to the name ' : ' to ') + '<b>' + esc(name) + '</b> and take' + (k === 1 ? 's ' : ' ') + esc(dl) + '. ' + (dw && dw !== 'own' ? 'Their weights follow ' + esc(name) + "'s weight rule." : 'Their weights stay.'));
+      if (left) li.push(left + ' stay on <b>' + esc(D.name) + '</b> at ' + esc(srcl) + '.');
+      else li.push('All ' + n + ' ticked: <b>' + esc(D.name) + '</b> is left with nobody and comes off as a BU KPI' + (D.made ? ', with its library row' : '') + '. That is the merge, for when the targets turn out the same.');
+    }
+    if (ghw && kn) li.push(ghw);
+    if (k && !(nw && !left && kn)) li.push((D.early ? 'You can' : 'Until the Department Review starts, you can') + ' move them back, or take ' + (nw ? 'the variant' : 'it') + ' off: each line goes back to how it was before it became a BU KPI.');
+    chg.innerHTML = li.map(function (t) { return '<li>' + t + '</li>'; }).join('');
+    var bad = nw && !!form.querySelector('[data-kpi-scale-bad]');
+    var need = nw ? fields.every(function (f) { return f.value.trim() !== '' || f.getAttribute('data-bkv-f') === 'multiple'; }) : true;
+    var ok = k > 0 && !bad && (!nw || (q && q.length <= 80 && (left > 0 || !kn) && need));
+    go.disabled = !ok;
+    go.textContent = k ? 'Move ' + plural(k, 'person', 'people') : 'Move people';
+    var msg, title;
+    if (!kn && kg) {   // Grade H lines alone: no line is renamed, nobody of the normal review moves
+      title = (nw ? 'Make a new variant?' : 'Move ' + plural(kg, 'Grade H line', 'Grade H lines') + ' to ' + name + '?');
+      msg = (nw ? 'Make a new BU KPI, ' + name + ', for ' + D.uname + ', at ' + tt + '. ' : 'Move ' + plural(kg, 'Grade H line', 'Grade H lines') + ' of ' + D.uname + ' to ' + name + '. ') + plural(kg, 'Grade H line follows', 'Grade H lines follow') + ' it and wait' + (kg === 1 ? 's' : '') + ' for its figure, filled on Fill BU result. ' + D.name + ' keeps its ' + plural(n, 'holder', 'holders') + ' and its result. It goes in the trail.';
+    } else if (nw) {
+      title = 'Move ' + plural(k, 'person', 'people') + ' to a new variant?';
+      msg = 'Move ' + plural(k, 'person', 'people') + ' of ' + D.uname + ' off ' + D.name + ' to a new BU KPI, ' + name + '. ' + (k === 1 ? 'Their line is' : 'Their lines are') + ' renamed and ' + (k === 1 ? 'takes ' : 'take ') + tt + ' at once; ' + (wm === 'own' ? 'each keeps their weight' : (wm === 'one' ? 'each takes the weight set here' : 'their weights follow the grade bands')) + '. ' + (left === 1 ? 'The other 1 stays' : 'The other ' + left + ' stay') + ' at ' + srcl + '.' + (kg ? ' ' + plural(kg, 'Grade H line follows', 'Grade H lines follow') + ' it too and wait' + (kg === 1 ? 's' : '') + ' for its figure.' : '') + ' Its result is entered on its own on Fill BU result. It goes in the trail.';
+    } else {
+      title = 'Move ' + plural(k, 'person', 'people') + ' to ' + name + '?';
+      msg = 'Move ' + plural(k, 'person', 'people') + ' of ' + D.uname + ' off ' + D.name + ' to ' + name + '. ' + (k === 1 ? 'Their line is' : 'Their lines are') + ' renamed and ' + (k === 1 ? 'takes ' : 'take ') + d.getAttribute('data-line') + ' at once; their weights stay. ' + (left ? (left === 1 ? 'The other 1 stays' : 'The other ' + left + ' stay') + ' on ' + D.name + ' at ' + srcl + '.' : 'All ' + n + ' are moved, so ' + D.name + ' comes off as a BU KPI of ' + D.uname + '.') + ' It goes in the trail.';
+    }
+    form.setAttribute('data-confirm', msg); form.setAttribute('data-confirm-title', title);
+    form.setAttribute('data-confirm-ok', 'Move ' + plural(k, 'person', 'people'));
+  }
+  form.addEventListener('change', function (e) {
+    var t = e.target;
+    if (t.matches('[data-bkv-who],[data-bkv-dest],[data-bkv-wm]')) update();
+    else if (t.matches('[data-bkv-by],[data-bkv-role]')) update(false);
+    else if (t.matches('[data-bkv-unit]')) { if (e.isTrusted) dirty = true; update(false); }
+  });
+  form.addEventListener('input', function (e) {
+    var t = e.target;
+    if (t === find) { filter(); reorder(); return; }
+    if (t.matches('[data-bkv-f]') && e.isTrusted) dirty = true;   // typed over: stop filling the boxes
+    setTimeout(function () { update(false); }, 0);   // after kpi_scale.js has checked the scale
+  });
+  var rt = null;   // ticked rows move up a moment after the pointer leaves the list, never under a click
+  list.addEventListener('mouseleave', function () { clearTimeout(rt); rt = setTimeout(reorder, 500); });
+  list.addEventListener('mouseenter', function () { clearTimeout(rt); });
+  $('[data-bkv-all]').addEventListener('click', function () {
+    rows.forEach(function (r) { var c = r.querySelector('input'); if (!r.hidden && !c.disabled) c.checked = true; });
+    reorder(); update();
+  });
+  $('[data-bkv-clear]').addEventListener('click', function () {
+    rows.forEach(function (r) { r.querySelector('input').checked = false; });
+    reorder(); update();
+  });
+  update();
+})();
+</script>
+{% endif %}
+<script type="application/json" id="bk-people">{{ pick | tojson }}</script>
+{% if sup %}{{ list_peek() }}{% endif %}
+<script>
+/* BU KPI setup: one KPI at a time. The edit form shows who it covers and each grade band's headcount as you choose; the
+   save's confirm box names the KPI and how many lines take the target. The read view's table searches in place. The
+   server checks everything again (_bu_kpi_parse). */
+(function () {
+  var P = []; try { P = JSON.parse(document.getElementById('bk-people').textContent || '[]'); } catch (e) { P = []; }
+  function num(v) { v = (v || '').trim(); if (v === '') return null; var n = Number(v); return isFinite(n) ? n : null; }
+  var form = document.getElementById('bk-form');
+  var card = form && form.querySelector('[data-bk-card]');
+  function holders() {
+    var h = {}, el = card.querySelector('[data-bk-holders]');
+    try { JSON.parse(el ? el.textContent : '[]').forEach(function (x) { h[x] = 1; }); } catch (e) {}
+    var hb = card.querySelectorAll('[data-bk-for="holders"] input[type=checkbox]');
+    if (hb.length) { var t = {}; hb.forEach(function (i) { if (i.checked) t[i.value] = 1; }); h = t; }
+    return P.filter(function (p) { return h[p.eid]; });
+  }
+  function allHolders() {
+    var el = card.querySelector('[data-bk-holders]'), n = 0;
+    try { n = JSON.parse(el ? el.textContent : '[]').length; } catch (e) {}
+    return n;
+  }
+  function covered() {
+    var mode = (card.querySelector('[data-bk-mode]:checked') || {}).value || 'everyone';
+    if (mode === 'holders') return holders();
+    if (mode === 'everyone') return P.slice();
+    if (mode === 'departments') {
+      var ds = {}; card.querySelectorAll('[data-bk-for="departments"] input:checked').forEach(function (i) { ds[i.value] = 1; });
+      return P.filter(function (p) { return ds[(p.dept || '').trim()]; });
+    }
+    if (mode === 'grade') {
+      var lo = num(card.querySelector('[name$="gmin"]').value), hi = num(card.querySelector('[name$="gmax"]').value);
+      if (lo === null && hi === null) return [];
+      return P.filter(function (p) { return p.g !== null && (lo === null || p.g >= lo) && (hi === null || p.g <= hi); });
+    }
+    var ids = {}; card.querySelectorAll('[data-bk-for="pick"] input[type=checkbox]:checked').forEach(function (i) { ids[i.value] = 1; });
+    return P.filter(function (p) { return ids[p.eid]; });
+  }
+  /* The super admin's Add block (outside an Early Year): who is ticked, at what weight. A weight box is live only while its
+     row is ticked, so an unticked row posts nothing; the server checks every ticked one again (_bu_kpi_added). */
+  var addBox = card ? card.querySelector('[data-bk-add]') : null;
+  function pc(v) { return String(Math.round(v * 100) / 100); }
+  function adds() {
+    var out = [];
+    if (!addBox) return out;
+    addBox.querySelectorAll('[data-bk-arow]').forEach(function (r) {
+      var cb = r.querySelector('[data-bk-ap]'), wi = r.querySelector('[data-bk-aw]');
+      if (wi.disabled === cb.checked) wi.disabled = !cb.checked;
+      if (!cb.checked) return;
+      out.push({eid: cb.value, name: r.getAttribute('data-bk-an'), w: num(wi.value.replace('%', '')),
+                today: Number(r.getAttribute('data-bk-aw0')) || 0, room: Number(r.getAttribute('data-bk-ar')) || 0});
+    });
+    return out;
+  }
+  /* The "From another unit" part (2026-11-07): a strict people search (.pick, ?xbu=) puts a row here for each person picked, with
+     their unit and a weight box; a ticked row posts k<id>gadd + k<id>gaddw_<eid>, an unticked one is taken away. The server
+     (_bu_kpi_add_guests -> _bu_kpi_add_guest) decides everything again. */
+  var gBox = card ? card.querySelector('[data-bk-gadd]') : null;
+  function gadds() {
+    var out = [];
+    if (!gBox) return out;
+    gBox.querySelectorAll('[data-bk-grow]').forEach(function (r) {
+      var cb = r.querySelector('[data-bk-gp]'), wi = r.querySelector('[data-bk-gw]');
+      out.push({eid: cb.value, name: r.getAttribute('data-bk-an'), unit: r.getAttribute('data-bk-au'), w: num(wi.value.replace('%', '')),
+                today: Number(r.getAttribute('data-bk-aw0')) || 0, room: Number(r.getAttribute('data-bk-ar')) || 0});
+    });
+    return out;
+  }
+  function drawG() {
+    if (!gBox) return;
+    var mode = (card.querySelector('[data-bk-mode]:checked') || {}).value || 'holders';
+    gBox.hidden = mode !== 'holders';
+    var a = gadds(), live = gBox.querySelector('[data-bk-glive]'), bad = false, parts = [];
+    a.forEach(function (x) {
+      var who = x.name + ' (' + x.unit + ')';
+      if (x.w === null || x.w <= 0) { bad = true; parts.push(who + ' (give a weight)'); }
+      else if (x.w > x.room + 0.001) { bad = true; parts.push(who + ' at ' + pc(x.w) + '%: at most ' + pc(x.room) + '%'); }
+      else parts.push(who + ' at ' + pc(x.w) + '%' + (a.length === 1 ? ', so their KPIs add up to ' + pc(x.today + x.w) + '%' : ''));
+    });
+    live.hidden = !a.length;
+    live.classList.toggle('is-bad', bad);
+    live.textContent = a.length ? a.length + ' to add from another unit · ' + parts.join(', ') : '';
+    gBox.querySelector('[data-bk-glist]').hidden = !a.length;
+  }
+  if (gBox) {
+    var gk = gBox.getAttribute('data-bk-gk'), gl = gBox.querySelector('[data-bk-glist]');
+    gBox.addEventListener('pick', function (e) {
+      var p = e.detail || {}, pk = gBox.querySelector('[data-pick]');
+      var q = pk.querySelector('.pick-q'), v = pk.querySelector('.pick-val');
+      q.value = ''; v.value = ''; q.setCustomValidity('');
+      if (!p.eid || p.why || gl.querySelector('[data-bk-gp][value="' + String(p.eid).replace(/"/g, '') + '"]')) return;
+      var r = document.createElement('div'); r.className = 'bk-pp bk-ap bk-gp';
+      r.setAttribute('data-bk-grow', ''); r.setAttribute('data-bk-an', p.name); r.setAttribute('data-bk-au', p.unit || '');
+      r.setAttribute('data-bk-aw0', String(p.w || 0)); r.setAttribute('data-bk-ar', String(p.room === undefined ? 100 : p.room));
+      var meta = p.eid + (p.jg ? ' · ' + p.jg : '') + (p.dept ? ' · ' + p.dept : ''), kpis = p.kn + ' · ' + pc(p.w || 0) + '%';
+      function cell(tag, txt, cls, title) { var c = document.createElement(tag); if (cls) c.className = cls; c.textContent = txt; c.title = title === undefined ? txt : title; return c; }
+      var cb = document.createElement('input'); cb.type = 'checkbox'; cb.checked = true; cb.name = gk + 'gadd'; cb.value = p.eid; cb.setAttribute('data-bk-gp', '');
+      cb.setAttribute('aria-label', 'Take ' + p.name + ' off this list');
+      // at the larger text sizes the KPIs-today column folds under the ID cell (style.css .bk-gp), so six columns never outgrow the card
+      var mc = cell('span', '', 'muted small', meta + ' · ' + kpis); mc.appendChild(cell('span', meta, 'bk-gm1', meta)); mc.appendChild(cell('span', kpis, 'bk-gm2', kpis));
+      r.appendChild(cb); r.appendChild(cell('span', p.name)); r.appendChild(mc);
+      r.appendChild(cell('span', p.unit || '', 'muted small')); r.appendChild(cell('span', kpis, 'bk-num bk-gk'));
+      var aw = document.createElement('span'); aw.className = 'bk-aw';
+      aw.innerHTML = '<span class="bk-wbox"><input inputmode="decimal" data-bk-gw></span><span aria-hidden="true">%</span>';
+      var wi = aw.querySelector('input'); wi.name = gk + 'gaddw_' + p.eid; wi.placeholder = '\u2264 ' + pc(p.room === undefined ? 100 : p.room);
+      wi.title = 'At most ' + pc(p.room === undefined ? 100 : p.room); wi.setAttribute('aria-label', 'Weight for ' + p.name + ', %');
+      r.appendChild(aw); gl.appendChild(r);
+      drawG(); confirmText(); wi.focus();
+    });
+    gBox.addEventListener('change', function (e) {
+      var cb = e.target.closest('[data-bk-gp]');
+      if (cb && !cb.checked) { cb.closest('[data-bk-grow]').remove(); }
+    });
+  }
+  function drawAdd() {
+    drawG();
+    if (!addBox) return;
+    var mode = (card.querySelector('[data-bk-mode]:checked') || {}).value || 'holders';
+    addBox.hidden = mode !== 'holders';
+    var a = adds(), live = addBox.querySelector('[data-bk-alive]'), bad = false, parts = [];
+    a.forEach(function (x) {
+      if (x.w === null || x.w <= 0) { bad = true; parts.push(x.name + ' (give a weight)'); }
+      else if (x.w > x.room + 0.001) { bad = true; parts.push(x.name + ' at ' + pc(x.w) + '%: at most ' + pc(x.room) + '%'); }
+      else parts.push(x.name + ' at ' + pc(x.w) + '%' + (a.length === 1 ? ', so their KPIs add up to ' + pc(x.today + x.w) + '%' : ''));
+    });
+    live.hidden = !a.length;
+    live.classList.toggle('is-bad', bad);
+    live.textContent = a.length ? a.length + ' to add · ' + parts.join(', ') : '';
+  }
+  function draw() {
+    drawAdd();
+    var mode = (card.querySelector('[data-bk-mode]:checked') || {}).value || 'everyone';
+    card.querySelectorAll('[data-bk-for]').forEach(function (el) { el.hidden = el.getAttribute('data-bk-for') !== mode; });
+    var wm = (card.querySelector('[data-bk-wmode]:checked') || {}).value || 'grade';
+    card.querySelectorAll('[data-bk-wfor]').forEach(function (el) { el.hidden = el.getAttribute('data-bk-wfor') !== wm; });
+    var cov = covered(), n = cov.length;
+    var c = card.querySelector('[data-bk-count]');
+    c.textContent = (mode === 'everyone' || mode === 'holders') ? '' : n + (n === 1 ? ' person' : ' people');
+    if (mode === 'holders') {
+      var all = allHolders();
+      if (all && n < all) c.textContent = n + (n === 1 ? ' carries' : ' carry') + ' it as a BU KPI · ' + (all - n) + ' keep their own';
+    }
+    var e = card.querySelector('[data-bk-n]'); if (e) e.textContent = P.length + (P.length === 1 ? ' person' : ' people');
+    card.querySelectorAll('.bk-band').forEach(function (b) {
+      var lo = num(b.querySelector('[name$="bmin"]').value), hi = num(b.querySelector('[name$="bmax"]').value);
+      var k = cov.filter(function (p) { return p.g !== null && (lo === null || p.g >= lo) && (hi === null || p.g <= hi); }).length;
+      b.querySelector('[data-bk-bn]').textContent = k + (k === 1 ? ' person' : ' people');
+    });
+  }
+  function confirmText() {
+    var unit = document.querySelector('[data-bk-unit]').getAttribute('data-bk-unit'), name = card.getAttribute('data-bk-name');
+    var ad = adds(), ga = gadds(), eg = gBox ? Number(gBox.getAttribute('data-bk-gn')) || 0 : 0, n = covered().length + ad.length + ga.length + eg, all = allHolders();   // eg: the guests it already has, who take the target too
+    var msg = 'Save ' + name + ' for ' + unit + '? ' + n + (n === 1 ? ' line takes' : ' lines take') + ' its target' +
+      (card.getAttribute('data-bk-pick') === '1' ? ', and it becomes a BU KPI for this unit only' : '') + '.';
+    var mode = (card.querySelector('[data-bk-mode]:checked') || {}).value;
+    if (mode === 'holders' && all && n - ad.length - ga.length - eg < all) msg += ' ' + (all - (n - ad.length - ga.length - eg)) + ' who carry it now keep their own line.';
+    if (ad.length) msg += ' ' + ad.length + ' added: ' + ad.map(function (x) { return x.name + ' (' + x.eid + ') at ' + (x.w === null ? '?' : pc(x.w)) + '%'; }).join(', ') + '. Each gets a new line at the unit\'s target and that weight.';
+    if (ga.length) msg += ' ' + ga.length + ' added from another unit: ' + ga.map(function (x) { return x.name + ' (' + x.unit + ', ' + x.eid + ') at ' + (x.w === null ? '?' : pc(x.w)) + '%'; }).join(', ') + '. Each joins at the unit\'s target with that weight; their line manager and BU CEO stay theirs.';
+    msg += ' No other KPI of ' + unit + ' changes. Its result is entered once for the unit on Fill BU result. Lines with results take the target too: any a moderator had signed off go back to their moderators, and the results themselves are never changed. A line whose method or unit differs is left as it is. It goes in the trail.';
+    form.setAttribute('data-confirm', msg);
+  }
+  if (form && card) {
+    form.querySelectorAll('[disabled]').forEach(function (i) { i.setAttribute('data-bk-ro', ''); });
+    form.addEventListener('change', function () { draw(); confirmText(); });
+    form.addEventListener('input', function (e) {
+      var aq = e.target.closest('[data-bk-aq]');
+      if (aq) {
+        var as = aq.value.trim().toLowerCase();
+        addBox.querySelectorAll('[data-bk-arow]').forEach(function (r) { r.hidden = !!as && r.getAttribute('data-bk-arow').indexOf(as) < 0; });
+        return;
+      }
+      var q = e.target.closest('[data-bk-q]');
+      if (q) {
+        var s = q.value.trim().toLowerCase();
+        q.closest('[data-bk-for]').querySelectorAll('[data-bk-row]').forEach(function (r) { r.hidden = !!s && r.getAttribute('data-bk-row').indexOf(s) < 0; });
+        return;
+      }
+      draw(); confirmText();
+      var bad = !!form.querySelector('[data-kpi-scale-bad]');
+      form.querySelectorAll('button[type="submit"]').forEach(function (b) { b.disabled = bad; });
+    });
+    form.addEventListener('click', function (e) {
+      var hj = e.target.closest('[data-bk-hjump]');
+      if (hj) {
+        var hq = hj.closest('[data-bk-for]').querySelector('[data-bk-hq]');
+        if (hq) { hq.scrollIntoView({block: 'center'}); hq.focus(); }
+        return;
+      }
+      var add = e.target.closest('[data-bk-addband]');
+      if (add) {
+        var box = add.closest('[data-bk-wfor]').querySelector('[data-bk-bands]'), last = box.lastElementChild;
+        var nb = last.cloneNode(true); nb.querySelectorAll('input').forEach(function (i) { i.value = ''; });
+        box.appendChild(nb); draw(); return;
+      }
+      var rm = e.target.closest('[data-bk-unband]');
+      if (rm) {
+        var bx = rm.closest('[data-bk-bands]');
+        if (bx.children.length > 1) { rm.closest('.bk-band').remove(); draw(); }
+      }
+    });
+    draw(); confirmText();
+  }
+
+  /* The read view's table: Search in (all fields, name, Employee ID or department) narrows the rows, the folded ones
+     included; a search opens the fold so nothing matches out of sight. */
+  var tb = document.querySelector('[data-bk2-t]');
+  if (tb) {
+    var qi = document.querySelector('[data-bk2-q]'), sel = document.querySelector('[data-bk2-in]'), none = document.querySelector('[data-bk2-none]');
+    function run() {
+      var s = qi.value.trim().toLowerCase(), f = sel.value, n = 0;
+      tb.querySelectorAll('[data-bk2-row]').forEach(function (r) {
+        var hay = f === 'all' ? (r.dataset.name + ' ' + r.dataset.eid + ' ' + r.dataset.dept + ' ' + (r.dataset.unit || '')) : (r.dataset[f] || '');
+        var ok = !s || hay.indexOf(s) >= 0; r.hidden = !ok; if (ok) n++;
+      });
+      var d = tb.querySelector('details.fold'); if (d && s) d.open = true;
+      none.hidden = n > 0;
+    }
+    qi.addEventListener('input', run); sel.addEventListener('change', run);
+  }
+
+  /* The library panel (the super admin's): search and family narrow the list; Add opens the KPI's facts and what
+     changes; "Add as a BU KPI" reloads the page with it as a card, ticked and not saved yet. */
+  var lp = document.querySelector('[data-bk-libpanel]'); if (!lp) return;
+  var list = lp.querySelector('[data-bk-lplist]'), det = lp.querySelector('[data-bk-lpdetail]');
+  var go = document.querySelector('[data-bk-lpgo]'), foot = document.querySelector('[data-bk-lpfoot]'), fam = '';
+  function filter() {
+    var q = (lp.querySelector('[data-bk-lpq]').value || '').trim().toLowerCase(), n = 0;
+    lp.querySelectorAll('[data-bk-lprow]').forEach(function (r) {
+      var ok = (!fam || r.getAttribute('data-fam') === fam) && (!q || r.getAttribute('data-q').indexOf(q) >= 0);
+      r.hidden = !ok; if (ok) n++;
+    });
+    lp.querySelector('[data-bk-lpnone]').hidden = n > 0;
+  }
+  function d(k, v) { var el = lp.querySelector('[data-bk-d="' + k + '"]'); if (el) el.textContent = v; }
+  function view(b) {
+    list.hidden = !!b; det.hidden = !b; go.hidden = !b;
+    if (!b) return;
+    var n = +b.getAttribute('data-n'), nd = +b.getAttribute('data-ndepts'), ns = +b.getAttribute('data-scales');
+    d('name', b.getAttribute('data-name') + ' as a BU KPI');
+    d('sub', b.getAttribute('data-cat') + (b.getAttribute('data-unit') ? ' · ' + b.getAttribute('data-unit') : '') + ' · ' + (b.getAttribute('data-more') === '1' ? 'higher' : 'lower') + ' is better');
+    d('n', n); d('bgn', b.getAttribute('data-bgn'));
+    d('nd', nd); d('ndw', nd === 1 ? 'department: ' + b.getAttribute('data-depts') : (nd ? 'departments' : 'departments: nobody here carries it'));
+    d('ns', ns); d('nsw', ns === 1 ? 'target among them today' : (ns ? 'different targets today: the unit\'s one replaces them' : 'targets held today'));
+    var u = new URL(lp.getAttribute('data-bk-addurl'), location.href);
+    u.searchParams.append('add', b.getAttribute('data-bk-lpadd')); u.searchParams.set('kpi', b.getAttribute('data-bk-lpadd')); u.searchParams.set('edit', '1');
+    go.href = u.pathname + u.search;
+    if (foot) foot.textContent = 'Adds it to ' + lp.getAttribute('data-bk-uname') + "'s list. Nothing changes on a scorecard until you save that KPI.";
+    det.scrollTop = 0;
+  }
+  lp.addEventListener('input', function (e) { if (e.target.hasAttribute('data-bk-lpq')) filter(); });
+  lp.addEventListener('click', function (e) {
+    var f = e.target.closest('[data-bk-fam]');
+    if (f) { fam = f.getAttribute('data-bk-fam'); lp.querySelectorAll('[data-bk-fam]').forEach(function (x) { x.classList.toggle('is-on', x === f); }); filter(); return; }
+    var a = e.target.closest('[data-bk-lpadd]'); if (a) { view(a); return; }
+    if (e.target.closest('[data-bk-lpback]')) view(null);
+  });
+})();
+</script>
+{% endif %}
+{% endif %}
+{# Keep the scroll position when a link reloads this same page (Chris 2026-10-31: switching KPI in the rail dropped him
+   at the top). Outside the {% if not locked %} blocks so it runs on every render. #}
+<script>
+/* bk-scroll-keep */
+(function () {
+  "use strict";
+  // The rail's links (KPI, Add, Edit, Cancel, Discard) are full reloads of this page; save the scroll on click and put it
+  // back on the way in. Keyed by unit (not KPI) so switching unit starts at the top; 30 s so a stale entry never hijacks a visit.
+  var TTL = 30000;
+  function key(u) { return "bkscroll:" + u.pathname + "|" + (u.searchParams.get("fbg") || "") + "|" + (u.searchParams.get("fbu") || ""); }
+  document.addEventListener("click", function (e) {
+    if (e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+    var a = e.target.closest ? e.target.closest("a[href]") : null;
+    if (!a || a.hasAttribute("data-list-open") || a.hasAttribute("download") || (a.target && a.target !== "_self")) return;
+    if ((a.getAttribute("href") || "").charAt(0) === "#") return;
+    var u;
+    try { u = new URL(a.href, location.href); } catch (err) { return; }
+    if (u.origin !== location.origin || u.pathname !== location.pathname) return;
+    try { sessionStorage.setItem(key(u), JSON.stringify({y: window.scrollY || window.pageYOffset || 0, at: Date.now()})); } catch (err) {}
+  }, true);
+  var v = null;
+  try {
+    var k = key(new URL(location.href)), raw = sessionStorage.getItem(k);
+    sessionStorage.removeItem(k);
+    v = raw ? JSON.parse(raw) : null;
+  } catch (err) { return; }
+  if (!v || !v.y || Date.now() - (v.at || 0) > TTL) return;
+  // re-applied on load: the document can still grow, and a scrollTo on a shorter page is clamped
+  var go = function () { window.scrollTo(0, v.y); };
+  requestAnimationFrame(go);
+  window.addEventListener("load", go, {once: true});
+})();
+</script>
+{% endblock %}

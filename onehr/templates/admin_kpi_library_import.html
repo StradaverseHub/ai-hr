@@ -1,0 +1,61 @@
+{% extends "base.html" %}
+{% block title %}Import KPIs{% endblock %}
+{% block body %}
+<p class="adm-crumb"><a href="{{ url_for('admin_module_settings', key='pm') }}">Settings</a> &rsaquo;
+  <a href="{{ url_for('admin_kpi_library') }}">KPI library</a> &rsaquo; Import</p>
+<p class="adm-lede">Add many reusable KPIs to the library from one file. Importing a row that matches an
+  existing KPI (same business group, business unit, department, grade band, job grade and KPI name) updates it in place.</p>
+
+{% if not v and not done %}{# how it works and the template: step 1 only #}
+<details class="admin-card">
+  <summary><strong>How it works</strong></summary>
+  <ul class="bullets">
+    <li>Each row is one reusable KPI. Its scope comes from the file's columns
+      <strong>Business Group</strong>, <strong>Company</strong>, <strong>Department</strong>,
+      <strong>Tier</strong> and <strong>Job Grade</strong> (the library isn't per person).
+      Leave Company, Department, Tier and Job Grade <strong>blank</strong> to mean &ldquo;any&rdquo;:
+      a row blank on all four is the business group's fallback. The most specific match wins for a
+      given employee (job grade, then grade band, then department, then business unit).</li>
+    <li>Each row says what the KPI is: <strong>KPI</strong>, <strong>Strategic Thrust / Category</strong>,
+      <strong>KPI Description</strong>, <strong>Unit of Measure</strong> and <strong>Method</strong>
+      (More or Less: which way is better). <strong>Perspective</strong> (optional) is Financial, Customer,
+      Internal Process or Learning &amp; Growth; blank leaves it as it is.</li>
+    <li><strong>No targets, rates or weights.</strong> They are set on each person's line, and a unit's in BU KPI setup.
+      A file that still has Rate, Threshold, Target, Multiple, Excellence, Weightage or Spread columns goes in,
+      and those columns are ignored.</li>
+    <li><strong>BU Level</strong> (optional): Yes marks the KPI as one figure Group People fills for the whole unit,
+      No as personal; blank leaves it as it is (a new KPI is personal).</li>
+  </ul>
+  <p class="note">
+    <strong>Four steps, all or nothing.</strong> The file is checked first and stops (nothing
+    changes) if any row names a business group you don't manage, has an invalid grade band, or is missing its KPI name or method. Then OneHR shows
+    what each KPI does and asks about a new name close to one the library has, or a BU-level change on a
+    KPI people carry; then you apply that same file.
+  </p>
+</details>
+
+<a class="template-dl" href="{{ url_for('admin_kpi_library_template') }}" download>
+  <svg class="tdl-ic" viewBox="0 0 24 24" width="32" height="32" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+    <path d="M14 3v4a1 1 0 0 0 1 1h4"/>
+    <path d="M17 21H7a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h7l5 5v11a2 2 0 0 1-2 2z"/>
+    <path d="M12 11v6"/><path d="M9.5 14.5 12 17l2.5-2.5"/>
+  </svg>
+  <span class="tdl-main">
+    <span class="tdl-title">Download the KPI library template (Excel)</span>
+    <span class="tdl-sub">Who it applies to and what the KPI is: no target or weight columns.</span>
+  </span>
+  <span class="tdl-cta">Download</span>
+</a>
+
+{% endif %}
+{% if is_super %}
+{% import "_import_steps.html" as imp with context %}
+{% call imp.page(v, done, {'page': 'admin_kpi_library_import', 'changes': 'What it changes in the library',
+                           'final': 'The library after you apply this file'},
+                 {'changes': 'each KPI, and your answers'}) %}
+{{ imp.upload("Nothing changes yet. OneHR checks the file, shows what each KPI does to the library and asks about a new name close to a KPI it has, or a BU-level change on a KPI people carry. Then you apply that same file.") }}
+{% endcall %}
+{% else %}
+<p class="note">The super admin imports to the library. You can propose a KPI on the <a href="{{ url_for('admin_kpi_library') }}">KPI library</a> page.</p>
+{% endif %}
+{% endblock %}

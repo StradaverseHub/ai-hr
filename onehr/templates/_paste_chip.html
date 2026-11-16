@@ -1,0 +1,3 @@
+{#- The super admin's grey "Pasted" chip beside a remark (2026-11-01). `c` comes from app._paste_chip, which gives one ONLY to
+    the super admin, so a page that is given nothing draws nothing. Never passed to an agent, an email or an export. -#}
+{% macro paste_chip(c) -%}{% if c %}<span class="rm-pasted" title="{{ c.title }}">Pasted</span>{% endif %}{%- endmacro %}

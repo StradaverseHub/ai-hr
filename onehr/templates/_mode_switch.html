@@ -1,0 +1,18 @@
+{# One page with modes (the review, 2026-10-10, canvas K3/K5): pages that do one job three ways -- Panels (build,
+   import, clear), Import (people, passwords), Calendar (calendar, list) -- share this switch at their top, so the menu
+   holds one entry. `items`: [(label, href, on)]. Import these macros WITH CONTEXT: they read nav_is_super, which an
+   import without context can't see -- so the super admin's Passwords and Clear panels modes never showed (2026-10-13). #}
+{% macro mode_switch(items, label) %}
+<nav class="adm-modes" aria-label="{{ label }}">{% for it in items %}{% set lbl, href, on = it[0], it[1], it[2] %}<a href="{{ href }}" class="{{ 'is-on' if on }}"{% if on %} aria-current="page"{% endif %}>{{ lbl }}{% if it|length > 3 and it[3] %}<span class="adm-mode-n">{{ it[3] }}</span>{% endif %}</a>{% endfor %}</nav>
+{% endmacro %}
+{% macro panel_modes(cur) %}{{ mode_switch([('Build from the rules', url_for('admin_panel_build'), cur == 'build'),
+  ('Import a file', url_for('admin_import'), cur == 'import')] + ([('Clear panels', url_for('admin_clear_panels'), cur == 'clear')] if nav_is_super else []),
+  'Panels') }}{% endmacro %}
+{% macro import_modes(cur) %}{% if nav_is_super %}{{ mode_switch([('People', url_for('admin_import_roster'), cur == 'people'),
+  ('Passwords', url_for('admin_import_passwords'), cur == 'passwords')], 'Import') }}{% endif %}{% endmacro %}
+{# the list is where a super admin edits all the dates at once (admin round 4, canvas C3); a BG admin reads the calendar. Late
+   passes (2026-10-31, canvas C1) is its third segment, with how many are open. #}
+{% macro calendar_modes(cur, cycle_id=None) %}{% if nav_is_super %}{{ mode_switch([('Calendar', url_for('admin_cycle_home', cycle=cycle_id) if cycle_id else url_for('admin_cycle_home'), cur == 'calendar'),
+  ('Edit all dates', url_for('admin_windows', cycle=cycle_id) if cycle_id else url_for('admin_windows'), cur == 'list'),
+  ('Late passes', url_for('admin_late_passes', cycle=cycle_id) if cycle_id else url_for('admin_late_passes'), cur == 'late',
+   ('%d open' % late_open_n(cycle_id)) if late_open_n(cycle_id) else '')], 'View') }}{% endif %}{% endmacro %}

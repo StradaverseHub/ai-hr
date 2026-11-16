@@ -1,0 +1,17 @@
+{# The module's two surfaces. .mod-tabs is the in-page pill pair every other
+   module uses (My PM / Team PM, and the calibration tabs) -- NOT the older
+   .nav-seg, which was the dark-topbar version and no longer has styling.
+   Each pill is gated on the flag the page's own query sets, so a visible
+   toggle can never land on a 403. #}
+{% if nav_is_tc or nav_is_tc_manager %}
+<div class="mod-tabs">
+  {% if nav_is_tc %}
+  <a id="nav-tc-my" class="{{ 'active' if request.path == '/technical' else '' }}"
+     href="{{ url_for('technical_my_view') }}">My assessment</a>
+  {% endif %}
+  {% if nav_is_tc_manager %}
+  <a id="nav-tc-team" class="{{ 'active' if request.path.startswith('/technical/team') else '' }}"
+     href="{{ url_for('technical_team_view') }}">Team view</a>
+  {% endif %}
+</div>
+{% endif %}

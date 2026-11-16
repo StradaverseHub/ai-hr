@@ -1,0 +1,53 @@
+{% extends "base.html" %}
+{% block title %}Import job codes{% endblock %}
+{% block body %}
+{#- Competency > Run > Import job codes (Chris, 2026-10-21): the person page's Place a job for many at once, from a file
+    of Employee ID + job code. The People with no competencies download is its pre-filled file. -#}
+<p class="adm-lede">
+  {% if act %}Places each person's job and gives them that job's competencies for <b>{{ act['name'] }}</b>, the active cycle.
+  {% else %}<b>There is no active cycle</b>: start one first.{% endif %}
+  Rows are matched on <b>Employee ID</b>.
+</p>
+
+{% if not v and not done %}{# how it works and the template: step 1 only #}
+<details class="admin-card">
+  <summary><b>How it works</b></summary>
+  <ul class="bullets">
+    <li>One row a person: their <strong>Employee ID</strong> and the <strong>job code</strong> of the job they hold,
+      at their own job grade (a JG 14 takes a code ending -14).
+      <a href="{{ url_for('admin_competency_profiles') }}">Assign competencies</a> lists the jobs and their codes.</li>
+    <li><strong>Job scope</strong> only where a code has more than one. Left blank, it's the scope of their own
+      placement, else the job with none; the import says when it can't tell.</li>
+    <li>Their job is placed in the job architecture and they get that job's competencies, as
+      <strong>Place a job</strong> on their page does. Someone who has started their self-assessment, whose manager has
+      reviewed it, or whose potential result is out keeps their list as it is; their job is still placed.</li>
+    <li>A row with only an Employee ID is skipped, so a file filled in part goes in. Columns headed
+      <strong>Reference:</strong> aren't read.</li>
+  </ul>
+  <p class="note"><strong>Four steps, all or nothing.</strong> Choose the file; OneHR checks it (a row it can't place
+    stops the file until you fix it); it shows what changes and asks the super admin about anyone whose competency list
+    is already held; then the final picture, and you apply that same file.</p>
+</details>
+
+<a class="template-dl" href="{{ url_for('admin_export_no_competency') }}" download>
+  <svg class="tdl-ic" viewBox="0 0 24 24" width="32" height="32" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+    <path d="M14 3v4a1 1 0 0 0 1 1h4"/>
+    <path d="M17 21H7a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h7l5 5v11a2 2 0 0 1-2 2z"/>
+    <path d="M12 11v6"/><path d="M9.5 14.5 12 17l2.5-2.5"/>
+  </svg>
+  <span class="tdl-main">
+    <span class="tdl-title">Download the people with no competencies (Excel)</span>
+    <span class="tdl-sub">Everyone taking part with no competencies yet, in this import's columns: fill in each job code and upload it here.</span>
+  </span>
+  <span class="tdl-cta">Download</span>
+</a>
+<p class="muted small">Or start from the <a href="{{ url_for('admin_import_jobs_template') }}" download>blank template</a>.</p>
+
+{% endif %}
+{% import "_import_steps.html" as imp with context %}
+{% call imp.page(v, done, {'page': 'admin_import_jobs', 'changes': 'What it changes in people\'s jobs and competencies',
+                           'final': 'People\'s jobs after you apply this file'},
+                 {'changes': 'jobs placed or moved, and your answers'}) %}
+{{ imp.upload("Nothing changes yet. OneHR checks the file, shows each person's job now and the file's, and asks the super admin about anyone whose competency list is already held. Then you apply that same file.") }}
+{% endcall %}
+{% endblock %}

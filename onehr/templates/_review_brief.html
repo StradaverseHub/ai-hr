@@ -1,0 +1,22 @@
+{# The on-demand brief. `said` is the model's prose when the AI is on and up;
+   otherwise it is None and this shows the item list itself -- the primary path.
+   Either way the [n] tags are the contract, so a reader who distrusts the prose
+   can open each item. Nothing here is stored. #}
+<div class="rv-brief">
+  {% if said %}
+    <p class="rv-agent rv-said">{{ said }}</p>
+    <p class="muted small">A summary of what you wrote, in the reviewer's view. Nothing here has
+      been rewritten &mdash; the numbers refer to your own items below.</p>
+  {% elif items %}
+    <p class="rv-agent">Here is what you wrote this period:</p>
+  {% else %}
+    <p class="rv-agent">You haven't logged anything yet this period.</p>
+  {% endif %}
+  {% if items %}
+    <ol class="rv-brief-items">
+      {% for n, text, eid in items %}
+        <li><span class="rv-brief-n">[{{ n }}]</span> {{ text[:180] }}</li>
+      {% endfor %}
+    </ol>
+  {% endif %}
+</div>

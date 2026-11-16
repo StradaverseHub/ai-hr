@@ -1,0 +1,11 @@
+{# One tab of the person page on its own, for a side panel (2026-10-17, the admin side panels): what's submitted this
+   cycle with its Reopen, then the tab itself -- the same partials, forms and routes as the tab page; admin.js keeps a
+   save or a search in it inside the panel. The Overview's fragment is the person in brief (person/_summary.html), for a
+   list's panel. data-name / data-sub head the panel. #}
+<div class="pp pp-in-panel" data-person="{{ person['id'] }}" data-name="{{ person['full_name'] }}"
+     data-sub="{{ person['employee_id'] or '' }}{% if person['job_grade'] %} · JG {{ person['job_grade'] }}{% endif %}{% if person['company'] %} · {{ display_company(person['business_group'], person['company']) }}{% endif %}{% if person['department'] %} · {{ person['department'] | proper }}{% endif %}{% if person['left_at'] %} · left{% endif %}">
+  {% if cyc and not editable %}<p class="pp-past">Viewing <b>{{ cyc['name'] }}</b>, a past cycle: read-only.</p>{% endif %}
+  {% if subs or subs_bu_note %}{% include "person/_submissions.html" %}{% endif %}
+  {% if late %}{% include "person/_late.html" %}{% endif %}
+  {% include "person/_summary.html" if tab == "overview" else "person/_%s.html" % tab %}
+</div>

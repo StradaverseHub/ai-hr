@@ -1,0 +1,453 @@
+{% extends "base.html" %}
+{% from "_talent_decision_head.html" import view_icon, history_icon, pencil_icon %}
+{% block title %}{{ page['title'] }}{% endblock %}
+{% block body %}
+
+<div class="page-head">
+  <div>
+    <h1 class="calib-title">{{ page['title'] }}</h1>
+    <div class="calib-chips">
+      {% if kind == 'cycle' %}
+      <span class="calib-chip"><strong>{{ auto_count }} recommended</strong> by the record</span>
+      {% endif %}
+      <span class="calib-chip">{{ people|length }} you can nominate</span>
+      <span class="calib-chip"><strong>{{ nominated_count }}
+        {{ 'raised' if kind == 'off_cycle' else 'nominated' }}</strong></span>
+      <span class="calib-chip">{{ period['name'] }}</span>
+    </div>
+  </div>
+</div>
+
+<p class="tdec-notice">
+  {{ page['blurb'] }}
+  {% if kind == 'cycle' %}
+  Your case is stronger for being specific: propose the grade and title you mean.
+  {% else %}
+  It lands on the same Business Group CEO's list as the season's nominations,
+  flagged with its occasion so it is read as the exception it is.
+  {% endif %}
+</p>
+
+{% macro nom_row(u, needs_case=none, show_proposed=false) %}
+{% set r = rows.get(u['id']) %}
+{% set n = mine.get(u['id']) %}
+{% set shut = u['business_group'] in closed %}
+{# Nominated people are listed on their own at the top, away from the list they
+   came from, so the row can no longer read the bar off which table it sits in.
+   Derive it from the person instead: off-cycle always needs a case, and so does
+   anyone the standing rules didn't already argue for. Passing it explicitly
+   still wins, which is what the two source lists do. #}
+{% set needs = needs_case if needs_case is not none
+               else (kind == 'off_cycle' or not auto.get(u['id'])) %}
+{# The row states WHO and WHETHER. Everything about the proposal itself -- grade,
+   title, case -- lives in the dialog, because it is only ever relevant for the
+   handful of people actually being put forward, and inlining it made every row
+   carry the weight of a form nobody was filling in. #}
+<tr data-nom="{{ u['id'] }}" class="{{ 'is-nominated' if n else '' }}"
+    data-name="{{ u['full_name'] }}"
+    data-role="{{ role_names[roles[u['id']]] }}"
+    data-jg="{{ u['job_grade'] or '' }}"
+    data-title="{{ u['job_title'] or '' }}"
+    data-grades='{{ grade_opts.get(u['id'], [])|tojson }}'
+    data-titles='{{ title_opts.get(u['id'], [])|tojson }}'
+    data-kind="{{ kind }}"
+    data-shut="{{ '1' if shut else '' }}"
+    data-needs-case="{{ '1' if needs else '' }}"
+    data-grade="{{ n['proposed_job_grade'] if n and n['proposed_job_grade'] else '' }}"
+    data-new-title="{{ n['proposed_job_title'] if n and n['proposed_job_title'] else '' }}"
+    data-reason="{{ n['off_cycle_reason'] if n and n['off_cycle_reason'] else '' }}"
+    data-rationale="{{ n['rationale'] if n and n['rationale'] else '' }}">
+  <td>
+    <p style="margin:0;font-weight:500">{{ u['full_name'] }}</p>
+    <p class="muted small" style="margin:2px 0 0">
+      {{ display_company(u['business_group'], u['company']) or '—' }}
+      &middot; {{ u['department'] | proper or '—' }}</p>
+    <p class="muted small" style="margin:2px 0 0">as their
+      {{ role_names[roles[u['id']]] }}</p>
+  </td>
+  <td>
+    <p style="margin:0">{{ u['job_title'] | proper or '—' }}</p>
+    <p class="muted small" style="margin:2px 0 0">JG {{ u['job_grade'] or '—' }}</p>
+  </td>
+  <td class="tdec-status-cell">
+    {% if r and r['category'] %}
+    <span class="tdec-cat tdec-cat--{{ category_slug[r['category']] }}">{{ r['category'] }}</span>
+    {% set pp = [{'label': 'Performance band',
+                  'value': label_names.get(r['perf_band'], r['perf_band'] or 'not set')},
+                 {'label': 'Potential band', 'value': r['pot_band'] or 'not set'},
+                 {'label': 'Talent status', 'value': r['category']}] %}
+    <button type="button" class="tdec-icon tdec-view"
+            title="Performance &amp; potential"
+            aria-label="Performance and potential for {{ u['full_name'] }}"
+            data-title="{{ u['full_name'] }} — performance &amp; potential"
+            data-json='{{ pp|tojson }}'>{{ view_icon() }}</button>
+    {% else %}
+    <span class="muted small">not calibrated yet</span>
+    {% endif %}
+    {% set hist = [] %}
+    {% for year, cat in history.get(u['id'], []) %}{% set _ = hist.append({'label': year|string, 'value': cat}) %}{% endfor %}
+    <button type="button" class="tdec-icon tdec-view"
+            title="Talent status, last {{ history_years }} years"
+            aria-label="Talent status history for {{ u['full_name'] }}"
+            data-title="{{ u['full_name'] }} — talent status, last {{ history_years }} years"
+            data-json='{{ hist|tojson }}'>{{ history_icon() }}</button>
+  </td>
+  <td>
+    {# The whole interaction: tick to open the dialog, untick to withdraw. #}
+    <label class="tdec-toggle">
+      <input type="checkbox" class="nom-tick" {{ 'checked' if n else '' }}
+             aria-label="Nominate {{ u['full_name'] }}">
+      <span class="nom-state">{{ 'Nominated' if n else 'Not nominated' }}</span>
+    </label>
+    {% if shut and kind == 'cycle' %}
+    <p class="muted small" style="margin:4px 0 0">Season closed —
+      <a href="{{ url_for('promotion_nomination_off_cycle') }}">raise it off-cycle</a></p>
+    {% endif %}
+    {% if other_kind.get(u['id']) %}
+    <p class="muted small" style="margin:4px 0 0">
+      {% if kind == 'cycle' %}You have a live off-cycle case for them
+      {%- else %}You already nominated them this cycle{% endif %}</p>
+    {% endif %}
+    {% if others.get(u['id']) %}
+    <p class="muted small" style="margin:4px 0 0">
+      {{ others[u['id']] }} other{{ '' if others[u['id']] == 1 else 's' }} also
+      nominated them</p>
+    {% endif %}
+  </td>
+  {% if show_proposed %}
+  <td class="nom-summary">
+    {% if n %}
+    {# A pencil rather than the word, sitting at the end of the proposal itself:
+       the cell then reads as one thing with a control on it, in the same icon
+       family as the two already in the row. #}
+    <p style="margin:0">{{ 'JG ' ~ n['proposed_job_grade'] if n['proposed_job_grade'] else 'grade not stated' }}
+      {%- if n['proposed_job_title'] %} &middot; {{ n['proposed_job_title'] }}{% endif %}
+      <button type="button" class="tdec-icon nom-edit" title="Edit this nomination"
+              aria-label="Edit the nomination for {{ u['full_name'] }}">{{ pencil_icon() }}</button></p>
+    {% if n['off_cycle_reason'] %}
+    <p class="muted small" style="margin:2px 0 0">{{ off_cycle_reasons.get(n['off_cycle_reason'], n['off_cycle_reason']) }}</p>
+    {% endif %}
+    {% else %}
+    <span class="muted small">—</span>
+    {% endif %}
+  </td>
+  {% endif %}
+</tr>
+{% endmacro %}
+
+{# Proposed only for the nominations table at the top. Everywhere else every
+   row is by definition un-nominated -- a nominated person has been moved out of
+   those lists -- so the column could never hold anything but a dash. #}
+{% macro nom_table(rows_in, needs_case=none, show_proposed=false) %}
+<div class="table-scroll">
+<table class="admin-table tdec-table">
+  <thead><tr>
+    <th>Employee</th><th>Role</th><th>Talent status</th>
+    <th>Nomination</th>{% if show_proposed %}<th>Proposed</th>{% endif %}
+  </tr></thead>
+  <tbody>{% for u in rows_in %}{{ nom_row(u, needs_case, show_proposed) }}{% endfor %}</tbody>
+</table>
+</div>
+{% endmacro %}
+
+{% if not people %}
+<div class="admin-card">
+  <p class="muted" style="margin:0">Nobody reports to you in this period, so there
+    is nobody for you to nominate.</p>
+</div>
+{% else %}
+
+{# ---- What you have put forward -------------------------------------------
+   Leads the page, and the people in it are removed from the lists below, so a
+   nomination sits where you can see it rather than at whatever alphabetical
+   position its subject happens to occupy inside a collapsed hundred-name list.
+   One row per person across the whole page: two checkboxes over one record
+   would leave the second stale the moment the first was used. #}
+{% if nominated %}
+<h2 class="hub-section-title" style="margin-top:0">
+  {{ 'Raised off-cycle' if kind == 'off_cycle' else 'Your nominations' }}
+  <span class="muted small">({{ nominated|length }})</span>
+</h2>
+<p class="muted small" style="margin:0 0 10px">
+  On the Business Group CEO's list for {{ period['name'] }}. Edit the proposal, or
+  untick to withdraw — that removes only yours, never anyone else's.
+</p>
+<div class="admin-card" style="padding:0">
+  {{ nom_table(nominated, show_proposed=true) }}
+</div>
+{% endif %}
+
+{% if kind == 'off_cycle' %}
+{# One flat list. An exception arrives for whoever it arrives for -- the
+   standing rules have nothing to say about a counteroffer, so there is no
+   "recommended" half to lead with and everybody writes their case. #}
+<div class="admin-card" style="padding:0{{ ';margin-top:22px' if nominated else '' }}">
+  <div style="padding:14px 18px 0">
+    <input type="search" id="nom-search" class="modern-select"
+           style="width:100%;max-width:340px;margin-bottom:10px"
+           placeholder="Search name, department or job title" aria-label="Search people">
+  </div>
+  {{ nom_table(rest, true) }}
+</div>
+<p class="muted small" style="margin-top:8px">
+  Off-cycle cases stay open after the season's promotion list is confirmed —
+  that is what they are for. Each one needs its occasion and its argument.
+</p>
+
+{% else %}
+
+{# ---- Recommended by the record ------------------------------------------
+   The same standing rules the BGCEO's promotion page applies, run over your own
+   people: a sustained run nobody has acted on. These are the cases the record
+   already argues for, so they open first and need no extra justification. #}
+<h2 class="hub-section-title" style="margin-top:{{ '22px' if nominated else '0' }}">Recommended</h2>
+<p class="muted small" style="margin:0 0 10px">
+  Sustained performance with no promotion — {{ recommended|length }}
+  {{ 'person' if recommended|length == 1 else 'people' }} your record argues for
+  and you haven't acted on yet.{% if auto_count and not recommended %} They're
+  in your nominations above.{% endif %}
+</p>
+{% if recommended %}
+<div class="admin-card" style="padding:0">
+  {{ nom_table(recommended, false) }}
+</div>
+<p class="muted small" style="margin-top:8px">
+  Each row's clock icon shows the years behind the recommendation.
+</p>
+{% else %}
+<div class="admin-card">
+  {# Empty for two different reasons now: the rules found nobody, or they found
+     someone and you already put them forward. Saying the first when the second
+     is true would read as the record having gone quiet. #}
+  <p class="muted" style="margin:0">
+    {% if auto_count %}You've nominated everyone the record argues for.
+    {%- else %}Nobody in your team currently meets the standing rules —
+    {{ history_years }} years of recorded talent status are needed before they
+    can fire.{% endif %}</p>
+</div>
+{% endif %}
+
+{# ---- Everyone else --------------------------------------------------------
+   Collapsed, because opening with a hundred names would bury the handful the
+   record actually points at. Still fully available: the rules are a starting
+   point, not the whole judgement -- they just don't do the arguing for you. #}
+<details class="admin-card nom-rest" style="margin-top:18px">
+  <summary>
+    <span>Everyone else you can nominate
+      <span class="muted small">({{ rest|length }})</span></span>
+    <span class="muted small">Nominating from here needs a written case</span>
+  </summary>
+  <div style="margin-top:12px">
+    <input type="search" id="nom-search" class="modern-select"
+           style="width:100%;max-width:340px;margin-bottom:10px"
+           placeholder="Search name, department or job title" aria-label="Search people">
+    {{ nom_table(rest, true) }}
+  </div>
+</details>
+{% endif %}{# kind #}
+
+{# ONE form for the whole page now, not one per person. The dialog is what fills
+   it in, so there is exactly one nomination in flight at a time and the fields
+   have a single home rather than a hidden copy per row. #}
+<form method="post" id="nom-form" hidden action="{{ url_for('promotion_nomination_save') }}">
+  <input type="hidden" name="subject_id" id="nom-subject">
+  <input type="hidden" name="nominate" id="nom-nominate" value="1">
+  <input type="hidden" name="nomination_kind" value="{{ kind }}">
+  <input type="hidden" name="proposed_job_grade" id="nom-grade-val">
+  <input type="hidden" name="proposed_job_title" id="nom-title-val">
+  <input type="hidden" name="off_cycle_reason" id="nom-reason-val">
+  <input type="hidden" name="rationale" id="nom-rationale-val">
+</form>
+
+{# The dialog. Same .modal-overlay/.modal-card component every other confirm in
+   this app uses -- nothing new to learn, and no new CSS. #}
+<div id="nom-modal" class="modal-overlay" hidden>
+  <div class="modal-card" role="dialog" aria-modal="true" aria-labelledby="nom-modal-title"
+       style="max-width:520px">
+    <h2 id="nom-modal-title" style="margin:0">Nominate</h2>
+    <p class="muted small" id="nom-modal-sub" style="margin:4px 0 14px"></p>
+
+    <label class="nom-field">
+      <span>Proposed job grade</span>
+      {# Their own grade through +3. Own grade included on purpose: a promotion is
+         sometimes a title and scope change at the same grade. #}
+      <select id="nom-grade" class="modern-select"></select>
+    </label>
+
+    <label class="nom-field">
+      <span>Proposed job title</span>
+      {# A datalist, not a closed dropdown: the suggestions are the next rung of
+         their own title plus titles people really hold at the grades on offer,
+         but the org is bigger than the ladder we can infer, so anything can be
+         typed. #}
+      <input id="nom-title" class="modern-select" list="nom-title-list" autocomplete="off"
+             placeholder="Start typing, or pick a suggestion">
+      <datalist id="nom-title-list"></datalist>
+      <span class="muted small" id="nom-title-hint"></span>
+    </label>
+
+    <label class="nom-field" id="nom-reason-field" hidden>
+      <span>Occasion</span>
+      <select id="nom-reason" class="modern-select">
+        <option value="">Occasion…</option>
+        {% for key, label in off_cycle_reasons.items() %}
+        <option value="{{ key }}">{{ label }}</option>
+        {% endfor %}
+      </select>
+    </label>
+
+    <label class="nom-field">
+      <span>Justification</span>
+      <textarea id="nom-rationale" rows="4" maxlength="2000"
+                placeholder="Why they're ready"></textarea>
+      <span class="muted small" id="nom-rationale-hint"></span>
+    </label>
+
+    <div class="modal-actions">
+      <button type="button" class="btn-link" id="nom-cancel">Cancel</button>
+      <button type="button" class="primary" id="nom-save">Save nomination</button>
+    </div>
+  </div>
+</div>
+
+<p class="muted small" style="margin-top:10px">
+  Unticking and saving withdraws your nomination — it removes only yours, never
+  anyone else's. Once a business group's promotion list is confirmed the season
+  closes, but an off-cycle case can still be raised.
+</p>
+{% endif %}
+
+{% include "_talent_view_modal.html" %}
+<script>
+(function () {
+  var MIN_CASE = {{ min_rationale }};
+  var form   = document.getElementById('nom-form');
+  var modal  = document.getElementById('nom-modal');
+  if (!form || !modal) return;
+  var elSubject = document.getElementById('nom-subject');
+  var elNominate = document.getElementById('nom-nominate');
+  var grade  = document.getElementById('nom-grade');
+  var title  = document.getElementById('nom-title');
+  var list   = document.getElementById('nom-title-list');
+  var reason = document.getElementById('nom-reason');
+  var reasonField = document.getElementById('nom-reason-field');
+  var why    = document.getElementById('nom-rationale');
+  var whyHint = document.getElementById('nom-rationale-hint');
+  var titleHint = document.getElementById('nom-title-hint');
+  var sub    = document.getElementById('nom-modal-sub');
+  var saveBtn = document.getElementById('nom-save');
+  var openRow = null;
+
+  function close() {
+    modal.hidden = true;
+    // A cancelled dialog must leave the tick exactly as the record has it --
+    // otherwise closing looks like it nominated somebody.
+    if (openRow) {
+      var cb = openRow.querySelector('.nom-tick');
+      if (cb) cb.checked = openRow.classList.contains('is-nominated');
+    }
+    openRow = null;
+  }
+
+  function fill(row) {
+    var grades = JSON.parse(row.getAttribute('data-grades') || '[]');
+    var titles = JSON.parse(row.getAttribute('data-titles') || '[]');
+    var cur = row.getAttribute('data-jg') || '';
+    grade.innerHTML = '';
+    grades.forEach(function (g) {
+      var o = document.createElement('option');
+      o.value = g;
+      o.textContent = 'JG ' + g + (g === cur ? ' (current — title change only)' : '');
+      grade.appendChild(o);
+    });
+    var chosen = row.getAttribute('data-grade');
+    grade.value = (chosen && grades.indexOf(chosen) !== -1) ? chosen
+                : (grades.length > 1 ? grades[1] : (grades[0] || ''));
+
+    list.innerHTML = '';
+    titles.forEach(function (t) {
+      var o = document.createElement('option'); o.value = t; list.appendChild(o);
+    });
+    title.value = row.getAttribute('data-new-title') || '';
+    titleHint.textContent = titles.length
+      ? 'Suggestions: ' + titles.slice(0, 3).join(' · ')
+      : 'No suggestion for this role — type the title you mean.';
+
+    var offCycle = row.getAttribute('data-kind') === 'off_cycle';
+    reasonField.hidden = !offCycle;
+    reason.value = row.getAttribute('data-reason') || '';
+    why.value = row.getAttribute('data-rationale') || '';
+    whyHint.textContent = row.getAttribute('data-needs-case')
+      ? 'Needs ' + MIN_CASE + '+ characters — the record doesn\'t already argue for this one.'
+      : 'Optional, but a specific case carries further.';
+    sub.textContent = row.getAttribute('data-name') + ' · currently '
+      + (row.getAttribute('data-title') || 'no title on record')
+      + ' · JG ' + (cur || '—') + ' · as their ' + row.getAttribute('data-role');
+    document.getElementById('nom-modal-title').textContent =
+      offCycle ? 'Off-cycle nomination' : 'Nominate for promotion';
+  }
+
+  function open(row) {
+    openRow = row;
+    fill(row);
+    modal.hidden = false;
+    grade.focus();
+  }
+
+  document.addEventListener('click', function (e) {
+    var edit = e.target.closest && e.target.closest('.nom-edit');
+    if (edit) { open(edit.closest('tr[data-nom]')); return; }
+    if (e.target === modal) close();
+  });
+
+  document.querySelectorAll('.nom-tick').forEach(function (cb) {
+    cb.addEventListener('change', function () {
+      var row = cb.closest('tr[data-nom]');
+      if (cb.checked) { open(row); return; }
+      // Unticking withdraws. Straight to the server -- there is nothing to ask.
+      elSubject.value = row.getAttribute('data-nom');
+      elNominate.value = '';
+      form.submit();
+    });
+  });
+
+  document.getElementById('nom-cancel').addEventListener('click', close);
+  document.addEventListener('keydown', function (e) {
+    if (e.key === 'Escape' && !modal.hidden) close();
+  });
+
+  saveBtn.addEventListener('click', function () {
+    if (!openRow) return;
+    // The same two rules the route enforces, said here first so a refusal is a
+    // sentence in the dialog rather than a round trip and a flash.
+    if (!reasonField.hidden && !reason.value) {
+      whyHint.textContent = 'Say what kind of off-cycle case this is.';
+      reason.focus(); return;
+    }
+    if (openRow.getAttribute('data-needs-case') && why.value.trim().length < MIN_CASE) {
+      whyHint.textContent = 'The case needs ' + MIN_CASE + '+ characters (currently '
+                          + why.value.trim().length + ').';
+      why.focus(); return;
+    }
+    elSubject.value = openRow.getAttribute('data-nom');
+    elNominate.value = '1';
+    document.getElementById('nom-grade-val').value = grade.value;
+    document.getElementById('nom-title-val').value = title.value.trim();
+    document.getElementById('nom-reason-val').value = reasonField.hidden ? '' : reason.value;
+    document.getElementById('nom-rationale-val').value = why.value;
+    form.submit();
+  });
+
+  // Plain text filter over the rendered rows -- a business unit's list can run
+  // to a hundred people and the useful question is usually about one of them.
+  var q = document.getElementById('nom-search');
+  if (q) q.addEventListener('input', function () {
+    var needle = q.value.trim().toLowerCase();
+    var scope = q.closest('details') || document;
+    scope.querySelectorAll('tbody tr').forEach(function (tr) {
+      tr.hidden = needle && tr.textContent.toLowerCase().indexOf(needle) === -1;
+    });
+  });
+})();
+</script>
+{% endblock %}

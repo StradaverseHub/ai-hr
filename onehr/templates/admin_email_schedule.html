@@ -1,0 +1,133 @@
+{% extends "base.html" %}
+{% from "_adm_panel.html" import list_peek %}
+{% block title %}Email{% endblock %}
+{% block body %}
+{# Email › Schedule (Chris, 2026-10-24: "merge reminder and email into email ... this email eventually will serve all
+   modules at any time (including learning)"; 2026-11-09: "we should have toggle for all schedules", "can we have a calendar view for
+   email"; canvas [design canvas link removed], "Yes, as drawn"): the top card, "On their own schedule" (a row an
+   email with its own switch, its next send and Set it up), then the calendar (a month from ONE plan, email_cal_plan; a day opens in the
+   list panel) and "Not on a date" under it. The day list and At a glance card are retired.
+   Writes nothing itself: each switch posts to /admin/email/switch, Send now to Everyone's reminder, a day's Skip to /admin/email/skip. #}
+<div class="eml">
+  <p class="adm-lede">Every email OneHR sends to many people, from every module: when it goes, who gets it and the words it uses.
+    {% if not status['configured'] %}<span class="rm-off">Email isn't set up on this server, so nothing is sent from here.</span>{% endif %}</p>
+
+  <section class="admin-card eml-own" aria-labelledby="eml-own-h">
+    <div class="eml-hd"><h2 id="eml-own-h">On their own schedule</h2>
+      <span class="muted small">Each with its own rules and its own switch. Counts only, never a name.</span></div>
+    {% for r in sched_rows %}
+    {% set verb = ('Stop' if r.on else 'Start') %}
+    {% set words = (r.stop if r.on else r.start).split('? ', 1) %}
+    <div class="eml-own-row{{ ' is-off' if not r.on }}" data-eml-row="{{ r.key }}">
+      <div class="eml-own-name">
+        {% if is_super %}
+        <form method="post" action="{{ url_for('admin_email_switch') }}" class="eml-own-sw"
+              data-confirm="{{ words[1] }}" data-confirm-title="{{ words[0] }}?" data-confirm-ok="{{ words[0] }}">
+          <input type="hidden" name="email" value="{{ r.key }}">
+          <input type="hidden" name="enabled" value="{{ 'off' if r.on else 'on' }}">
+          <button type="submit" class="eml-switch{{ ' is-on' if r.on }}" role="switch" aria-checked="{{ 'true' if r.on else 'false' }}"><span class="eml-track" aria-hidden="true"></span>{{ r.name }}</button>
+        </form>
+        {% else %}
+        <span class="eml-switch{{ ' is-on' if r.on }} is-ro" role="switch" aria-checked="{{ 'true' if r.on else 'false' }}" aria-disabled="true" title="Set by the super admin"><span class="eml-track" aria-hidden="true"></span>{{ r.name }}</span>
+        {% endif %}
+      </div>
+      <div class="eml-own-when"><b>{{ r.when }}</b>{% for line in r.sub %}<span class="muted small">{{ line }}</span>{% endfor %}{% if r.warn %}<span class="small eml-warn">{{ r.warn }}</span>{% endif %}</div>
+      <div class="eml-own-act">
+        <a class="rm2-btn2 eml-setup" href="{{ r.setup }}">{{ 'Set it up' if is_super else 'How it’s set' }}</a>
+        {% if r.send_now %}
+        <form method="post" action="{{ url_for('admin_reminders') }}" class="eml-now"
+              data-confirm="Send everyone's reminder now to everyone{{ ' in your groups' if not is_super }} with something waiting? Anyone emailed in the last day is skipped." data-confirm-ok="Send now">
+          <input type="hidden" name="action" value="send_now">
+          <button type="submit" class="rm2-btn2" {{ 'disabled' if bulk_running or not status['configured'] }}>Send now…</button>
+        </form>
+        {% endif %}
+      </div>
+    </div>
+    {% endfor %}
+    <div class="eml-lr-foot"><a class="eml-lnk" href="{{ url_for('admin_email_sent') }}">What went out: Email › Sent ›</a></div>
+  </section>
+
+  {# the calendar (canvas A1, C1, C2): a month, Monday first, one chip an email, state by form; a day opens the panel #}
+  <section class="admin-card ecal" id="ecal" aria-labelledby="ecal-h" data-today="{{ today }}">
+    <div class="ecal-hd">
+      <div class="ecal-nav">
+        <a class="ecal-arw" href="{{ url_for('admin_email_schedule', m=prev_m, **({'show': show} if show != 'all' else {})) }}" aria-label="Previous month">&lsaquo;</a>
+        <h2 id="ecal-h">{{ month_label }}</h2>
+        <a class="ecal-arw" href="{{ url_for('admin_email_schedule', m=next_m, **({'show': show} if show != 'all' else {})) }}" aria-label="Next month">&rsaquo;</a>
+        <a class="rm2-btn2 ecal-today" href="{{ url_for('admin_email_schedule', **({'show': show} if show != 'all' else {})) }}"{% if is_cur %} aria-current="date"{% endif %}>Today</a>
+        <span class="muted small ecal-cyc">{{ cycle.name if cycle else 'No active cycle' }}</span>
+      </div>
+      <nav class="ecal-chips" aria-label="Show">
+        {% for k, lab in chips %}{% if k != 'gradeh' or gh %}<a class="ecal-chip{{ ' is-on' if show == k }}" href="{{ url_for('admin_email_schedule', m=first.strftime('%Y-%m'), **({'show': k} if k != 'all' else {})) }}"{% if show == k %} aria-current="true"{% endif %}>{{ lab }} <b>{{ plan.counts[k] }}</b></a>{% endif %}{% endfor %}
+      </nav>
+    </div>
+    {% if parts %}<p class="eml-parts">{% for p in parts %}<span><b>{{ p.who }}</b> {{ p.span }}</span>{% endfor %}</p>{% endif %}
+    {% if gh and gh_parts %}
+    <p class="eml-parts">{% for p in gh_parts %}<span><b>{{ p.who }}</b> {{ p.span }}</span>{% endfor %}</p>
+    <p class="eml-parts muted">Grade H appraisers get theirs inside Everyone's reminder. Grade H HODs and BU CEOs get Grade H progress instead: the day it opens for them, 3 days before it closes and on its last day.</p>
+    {% endif %}
+    {% if not cycle %}<p class="muted small eml-none">There is no active cycle, so there are no send days. Anything that already went is shown.</p>
+    {% elif not rules.enabled %}<p class="muted small eml-none">Everyone's reminder is off: its days show grey, as the days it would go.</p>{% endif %}
+
+    <div class="ecal-grid" role="grid" aria-label="{{ month_label }}">
+      {% for d in ('Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun') %}<div class="ecal-dow" role="columnheader">{{ d }}</div>{% endfor %}
+      {% for wk in weeks %}{% for c in wk %}
+      {% if c.out %}<div class="ecal-day is-out" role="gridcell" aria-hidden="true"><span class="ecal-dn"><span class="ecal-num">{{ c.n }}{{ ' ' ~ c.day.strftime('%b') if c.n == 1 }}</span></span></div>
+      {% else %}{% set sk = c.events | selectattr('state', 'equalto', 'skipped') | list %}
+      <a class="ecal-day{{ ' is-past' if c.past }}{{ ' is-today' if c.today }}" role="gridcell" data-day="{{ c.iso }}"
+         href="{{ url_for('admin_list_view', key='email-day', day=c.iso) }}" data-list-open="{{ url_for('admin_list_view', key='email-day', day=c.iso, fragment=1) }}"
+         aria-label="{{ c.day.strftime('%A') }} {{ c.n }} {{ c.day.strftime('%B') }}: {{ c.total }} email{{ '' if c.total == 1 else 's' }}">
+        <span class="ecal-dn"><span class="ecal-num{{ ' is-today' if c.today }}">{{ c.n }}{{ ' ' ~ c.day.strftime('%b') if c.n == 1 }}</span>{% if sk %}<span class="ecal-why" title="{{ sk[0].skip.reason }}">{{ sk[0].skip.reason }}</span>{% endif %}</span>
+        <span class="ecal-evs">{% for e in c.events %}<span class="ecal-ev is-{{ e.state }} g-{{ e.group }}" data-key="{{ e.key }}" title="{{ e.name }}{{ ' · ' ~ e.time if e.time }} · {{ {'to_go': 'to go', 'sent': 'sent', 'skipped': 'skipped', 'off': 'off, nothing goes on its own'}[e.state] }}{{ ' · ' ~ e.skip.reason if e.skip }}"><span class="ecal-evn">{{ e.short }}</span>{% if e.n is not none and e.state != 'skipped' %}<b>{{ e.n | thousands }}</b>{% endif %}</span>{% endfor %}{% if c.total > 3 %}<em class="ecal-more is-m">+{{ c.total - 3 }} more</em>{% endif %}{% if c.total > 2 %}<em class="ecal-more is-xl">+{{ c.total - 2 }} more</em>{% endif %}</span>
+      </a>{% endif %}
+      {% endfor %}{% endfor %}
+    </div>
+
+    <div class="ecal-legend" aria-label="Key">
+      <span class="ecal-ev is-to_go g-reminder"><span class="ecal-evn">To go</span></span>
+      {% if gh %}<span class="ecal-ev is-to_go g-gradeh"><span class="ecal-evn">Grade H</span></span>{% endif %}
+      <span class="ecal-ev is-to_go g-leaders"><span class="ecal-evn">Leader email</span></span>
+      <span class="ecal-ev is-to_go g-own"><span class="ecal-evn">Your own</span></span>
+      <span class="ecal-ev is-sent g-reminder"><span class="ecal-evn">Sent</span></span>
+      <span class="ecal-ev is-skipped g-reminder"><span class="ecal-evn">Skipped</span></span>
+      <span class="muted small">Click a day to see its emails, skip one or add one.</span>
+      {% if cycle %}<span class="ecal-sp"></span>
+      <a class="primary ecal-add" href="{{ url_for('admin_list_view', key='email-own', day=today) }}" data-list-open="{{ url_for('admin_list_view', key='email-own', day=today, fragment=1) }}">+ Add an email</a>{% endif %}
+    </div>
+    <p class="muted small eml-foot">One email a person a day: when two parts touch someone on the same day, it's one email listing both.{% if gh %} Grade H staff get theirs in the language they picked.{% endif %} Nobody with nothing waiting gets one.</p>
+  </section>
+
+  {# "Not on a date" (canvas A1): what goes when something happens, not on a day #}
+  <section class="admin-card ecal-strip" aria-labelledby="ecal-strip-h">
+    <div class="eml-hd"><h2 id="ecal-strip-h">Not on a date</h2><span class="muted small">These go when something happens, not on a day.</span></div>
+    {% for r in strip %}
+    <div class="ecal-sr">
+      <b class="ecal-sk">{{ r.when }}</b>
+      <div class="ecal-si">{% for i in r.emails %}<a class="eml-tpl{{ ' is-gh' if i.gh }}" href="{{ url_for('admin_emails', email=i.kind) }}" title="Edit its words">{{ i.name }}</a>{% endfor %}<span class="small muted">{{ r.note }}</span></div>
+      <a class="rm2-btn2 ecal-edit" href="{{ url_for('admin_emails', email=r['emails'][0].kind) }}">Edit words</a>
+    </div>
+    {% endfor %}
+    {% if lms %}
+    <div class="ecal-sr">
+      <b class="ecal-sk">AI+ Learning</b>
+      <div class="ecal-si"><span class="eml-tpl">Each on its own trigger</span><span class="small muted">{{ lms_n }} emails: a confirmed place, a request to approve, the 1- and 3-month check-ins…</span></div>
+      <a class="rm2-btn2 ecal-edit" href="{{ url_for('admin_learning_emails') }}">Edit words</a>
+    </div>
+    {% endif %}
+  </section>
+</div>
+{% if is_super %}{{ list_peek() }}{% endif %}
+<script>
+(function () {
+  // the open day is marked on the grid, and stays marked as the panel steps a day (the panel's own script calls this)
+  window.ecalMark = function (iso) {
+    document.querySelectorAll('.ecal-day[data-day]').forEach(function (d) { d.classList.toggle('is-sel', d.getAttribute('data-day') === iso); });
+  };
+  try {
+    var ls = new URL(location.href).searchParams.get('ls') || '';
+    var m = /[?&]day=(\d{4}-\d{2}-\d{2})/.exec(ls);
+    if (m) window.ecalMark(m[1]);
+  } catch (e) {}
+})();
+</script>
+{% endblock %}

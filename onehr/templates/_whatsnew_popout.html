@@ -1,0 +1,10 @@
+{# What's new's pop-out (2026-11-03, canvas board P1): OneHR's own dialog, the KPI "Read all" shape. Drawn only on the dashboard and
+   admin Home, only for the real account's unseen notes (wn_popout: never a demo persona, never while the first sign-in steps are
+   due, never the AI+ check-in). static/whatsnew.js opens it on load, traps the focus and posts "seen" however it closes
+   (Got it, the ×, Esc, the dark around it, or a note's button). #}
+{% from "_whatsnew.html" import wn_card %}
+{% if wn_popout %}
+<div class="modal-overlay kpi-dlg wn-dlg" data-wn-dlg data-wn-ids="{{ wn_popout.ids }}" data-wn-url="{{ url_for('whats_new_seen') }}">
+  {{ wn_card(wn_popout.notes, wn_popout.date) }}
+</div>
+{% endif %}

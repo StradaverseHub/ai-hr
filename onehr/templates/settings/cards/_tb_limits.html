@@ -1,0 +1,122 @@
+{# Settings card: tb_limits (Calibration). The Talent Box limits, 2026-11-03: two limits, one Save, off until switched on. It
+   posts to admin_settings (action tb_limits), which sends you back to `settings_next`; the confirm box lists what changes, old to
+   new, and asks for the remark the audit trail keeps (super_remark_attrs, SUPER_BAND_ENDPOINTS). #}
+  {% set tl = tb_limits %}
+  <details class="muted small">
+    <summary>Why this matters</summary>
+    <p>A calibration can quietly turn into re-banding most of a unit, or leave a unit with far more Stars than its
+      results support. These limits keep the spread honest. The moves limit counts people whose talent <strong>category</strong>
+      changes in a session; a move inside a category, or back to where someone started, is free. The Stars limit counts who
+      sits in Star and Super Star now, against the figures for the PAT curve the unit follows. When a limit is on it is
+      hard: the box shows it to BG CEOs and Group Chiefs, refuses a move past it, and won't lock a unit over its Star or
+      Super Star limit. You can change any figure here.</p>
+  </details>
+  <form method="post" action="{{ url_for('admin_settings') }}" class="admin-form adm-set-form tbl-form" id="tbl-form"
+        data-confirm="A Talent Box move past these limits will be refused, for every BG CEO and Group Chief."
+        data-confirm-title="Save the Talent Box limits?" data-confirm-ok="Save limits" data-confirm-list="[]"
+        data-tbl-was="{{ tb_was | tojson | forceescape }}"
+        {{ super_remark_attrs() }}>
+    <input type="hidden" name="next" value="{{ (settings_next ~ '#tb-limits') if settings_next else '' }}">
+    <input type="hidden" name="action" value="tb_limits">
+
+    <span class="tbl-sec">1 &middot; MOVES</span>
+    <label class="switch ex-switch">
+      <input type="checkbox" name="tb_moves_on" value="1" {% if tl.moves_on %}checked{% endif %} id="tbl-moves-on">
+      <span class="track" aria-hidden="true"></span>
+      <span class="switch-label">Limit how many people move category</span>
+      <span class="ex-tag{{ ' is-on' if tl.moves_on }}" id="tbl-moves-tag">{{ 'On' if tl.moves_on else 'Off' }}</span>
+    </label>
+    <div class="ex-box tbl-moves{{ '' if tl.moves_on else ' is-off' }}" id="tbl-moves-box">
+      <div class="ex-head">
+        <label for="tbl-moves-pct" class="ex-lbl">Share of the unit's people</label>
+        <input id="tbl-moves-pct" name="tb_moves_pct" type="number" step="0.01" min="0.01" max="100" inputmode="decimal"
+               value="{{ '%g'|format(tl.moves_pct) }}" required>
+        <span class="ex-sign" aria-hidden="true">%</span>
+      </div>
+      <p class="muted small">Never less than one person. A unit of 86 may move 9. A move inside a category, or back to where someone started, is always free.</p>
+    </div>
+
+    <div class="tbl-div"></div>
+    <span class="tbl-sec">2 &middot; STARS AND SUPER STARS</span>
+    <label class="switch ex-switch">
+      <input type="checkbox" name="tb_stars_on" value="1" {% if tl.stars_on %}checked{% endif %} id="tbl-stars-on">
+      <span class="track" aria-hidden="true"></span>
+      <span class="switch-label">Limit Stars and Super Stars</span>
+      <span class="ex-tag{{ ' is-on' if tl.stars_on }}" id="tbl-stars-tag">{{ 'On' if tl.stars_on else 'Off' }}</span>
+    </label>
+    <p class="muted small">The most one unit's Talent Box may hold. Each unit follows its own PAT curve; the figures start from the performance curve &times; the potential curve (15-70-15).</p>
+    <div class="tbl-tab{{ '' if tl.stars_on else ' is-off' }}" id="tbl-stars-tab" role="table" aria-label="Stars and Super Stars limit by PAT curve">
+      <div class="tbl-row tbl-hd" role="row">
+        <span role="columnheader">PAT CURVE</span><span role="columnheader">SUPER STAR</span><span role="columnheader">STAR</span><span role="columnheader">FROM THE CURVES</span>
+      </div>
+      {% for key, name, rng in tb_curve_rows %}
+      {% set fig = tb_curve_figs[key] %}
+      {% set cur = tl.stars[key] %}
+      <div class="tbl-row" role="row" data-curve="{{ key }}">
+        <div class="tbl-cv" role="cell"><b>{{ name }}</b><span class="muted small">{{ rng }}</span></div>
+        <span class="tbl-in" role="cell"><input type="number" step="0.01" min="0.01" max="100" inputmode="decimal" name="tb_{{ key }}_super"
+               value="{{ '%g'|format(cur.super) }}" data-curve-val="{{ '%g'|format(fig.super) }}" aria-label="{{ name }}: Super Star %" required
+               class="{{ 'is-changed' if cur.super != fig.super }}"><span class="muted" aria-hidden="true">%</span></span>
+        <span class="tbl-in" role="cell"><input type="number" step="0.01" min="0.01" max="100" inputmode="decimal" name="tb_{{ key }}_star"
+               value="{{ '%g'|format(cur.star) }}" data-curve-val="{{ '%g'|format(fig.star) }}" aria-label="{{ name }}: Star %" required
+               class="{{ 'is-changed' if cur.star != fig.star }}"><span class="muted" aria-hidden="true">%</span></span>
+        <span class="tbl-fig muted small" role="cell">{{ '%g'|format(fig.super) }}% &middot; {{ '%g'|format(fig.star) }}%
+          <span class="ex-tag tbl-chg" {% if cur.super == fig.super and cur.star == fig.star %}hidden{% endif %}>Changed</span></span>
+      </div>
+      {% endfor %}
+    </div>
+    <p class="muted small">Rounded to the nearest person, never less than one. A unit of 86 on the Normal curve may hold 2 Super Stars and 18 Stars. Moving someone out of Star or Super Star is always free.</p>
+    <div class="actions">
+      <button type="button" class="tbl-reset" id="tbl-reset">Use the curves' figures</button>
+      <button type="submit" class="primary">Save</button>
+    </div>
+  </form>
+  <script>
+  // dim a part while its switch is off (its inputs stay enabled and are still posted); mark a figure that is not the curves'; build
+  // the confirm box's list of what changes, old to new, as they edit (base.html reads data-confirm-list when it opens)
+  (function () {
+    var f = document.getElementById('tbl-form');
+    if (!f) return;
+    var was = {};
+    try { was = JSON.parse(f.getAttribute('data-tbl-was') || '{}'); } catch (e) { was = {}; }
+    var mOn = document.getElementById('tbl-moves-on'), sOn = document.getElementById('tbl-stars-on');
+    var mPct = document.getElementById('tbl-moves-pct');
+    function g(n) { return String(Number(n)); }   // 21 -> "21", 0.75 -> "0.75"
+    function num(el) { return Number(String(el.value).trim()); }
+    function tag(id, on) { var t = document.getElementById(id); if (t) { t.textContent = on ? 'On' : 'Off'; t.classList.toggle('is-on', on); } }
+    function sync() {
+      document.getElementById('tbl-moves-box').classList.toggle('is-off', !mOn.checked);
+      document.getElementById('tbl-stars-tab').classList.toggle('is-off', !sOn.checked);
+      tag('tbl-moves-tag', mOn.checked); tag('tbl-stars-tag', sOn.checked);
+      [].forEach.call(f.querySelectorAll('.tbl-row[data-curve]'), function (row) {
+        var ins = row.querySelectorAll('input[data-curve-val]'), any = false;
+        [].forEach.call(ins, function (i) {
+          var diff = num(i) !== Number(i.getAttribute('data-curve-val'));
+          i.classList.toggle('is-changed', diff); any = any || diff;
+        });
+        var chip = row.querySelector('.tbl-chg'); if (chip) chip.hidden = !any;
+      });
+      var L = [];
+      var mp = num(mPct), mpWas = was.moves_pct;
+      L.push('Moves: ' + (mOn.checked ? 'on, ' + g(mp) + '% of each unit' : 'off')
+        + (mOn.checked !== was.moves_on ? ' (was ' + (was.moves_on ? 'on, ' + g(mpWas) + '%' : 'off') + ')'
+          : (mOn.checked && mp !== mpWas ? ' (was ' + g(mpWas) + '%)' : '')));
+      L.push('Stars and Super Stars: ' + (sOn.checked ? 'on' : 'off') + (sOn.checked !== was.stars_on ? ' (was ' + (was.stars_on ? 'on' : 'off') + ')' : ''));
+      if (sOn.checked) {
+        [].forEach.call(f.querySelectorAll('.tbl-row[data-curve]'), function (row) {
+          var k = row.getAttribute('data-curve'), sp = row.querySelector('input[name$="_super"]'), st = row.querySelector('input[name$="_star"]');
+          var w = (was.stars || {})[k] || {}, a = num(sp), b = num(st), cs = a !== w.super, ct = b !== w.star;
+          L.push((was.names || {})[k] + ': Super Star ' + g(a) + '% · Star ' + g(b) + '%'
+            + (cs && ct ? ' (was ' + g(w.super) + '% · ' + g(w.star) + '%)' : cs ? ' (Super Star was ' + g(w.super) + '%)' : ct ? ' (was ' + g(w.star) + '%)' : ''));
+        });
+      }
+      f.setAttribute('data-confirm-list', JSON.stringify(L));
+    }
+    f.addEventListener('input', sync); f.addEventListener('change', sync);
+    document.getElementById('tbl-reset').addEventListener('click', function () {
+      [].forEach.call(f.querySelectorAll('input[data-curve-val]'), function (i) { i.value = i.getAttribute('data-curve-val'); });
+      sync();
+    });
+    sync();
+  })();
+  </script>

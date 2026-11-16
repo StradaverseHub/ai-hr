@@ -1,0 +1,64 @@
+{# AI+ OneHR, the Executive Chairman's talent chat in the dashboard's left panel (Chris, 2026-10-30; canvas
+   [design canvas link removed] boards 1 to 6). Drawn in place of Ask OneHR's panel when ec_pa is set (ONEHR_EC_PA=1,
+   his seat only). Same ids as Ask OneHR (#ask-panel, #ask-log, #ask-form, #gp-fold, #gp-rail, #gp-open) so the folding, the first sign-in
+   tour and the page's rules key on the same things; the class "ecp" marks it (the tour stop keys on #ask-panel.ecp). Static/ec_pa.js
+   drives it: it posts to /ec/talent (the contract is the comment block above ec_talent in app.py) and draws each render type. The grip
+   on the right edge drags it from 320px (pushing the page up to 560px, then floating over it up to 60% of the window), Expand jumps to
+   768px floating, Fold goes to today's 56px rail. The page is pushed only while it keeps 640px (so on a 1024px window the push stops near 344px
+   and wider floats; on a 1280px window it is the canvas's 560px). Everything it writes is set as text, never HTML, and what it writes is never red. #}
+{% set P = ec_pa %}
+<aside class="gp ecp{{ ' is-offline' if not P.available else '' }}" id="ask-panel" aria-labelledby="gp-title"
+       data-endpoint="{{ P.endpoint }}" data-available="{{ '1' if P.available else '0' }}">
+  <div class="gp-head ecp-head">
+    <span class="gp-mark" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M12 2l2.4 7.6L22 12l-7.6 2.4L12 22l-2.4-7.6L2 12l7.6-2.4z"></path></svg></span>
+    <div class="gp-ht"><h2 id="gp-title"><span class="ec-aip">AI+</span> OneHR</h2><p>{{ P.tagline }}</p></div>
+    {% if not P.available %}<span class="gp-pill" title="The assistant is off right now: key people still work">Assistant off</span>{% endif %}
+    <button type="button" class="ecp-ibtn" id="ecp-new" aria-label="New conversation" title="New conversation" hidden>
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"></path></svg><span class="ecp-bt">New</span></button>
+    <button type="button" class="ecp-ibtn" id="ecp-expand" aria-label="Expand the panel" title="Expand" aria-pressed="false">
+      <svg class="ecp-i-out" viewBox="0 0 24 24" aria-hidden="true"><path d="M14 4h6v6M10 20H4v-6M20 4l-7 7M4 20l7-7"></path></svg>
+      <svg class="ecp-i-in" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 14h6v6M20 10h-6V4M14 10l7-7M3 21l7-7"></path></svg>
+      <span class="ecp-bt ecp-bt-x">Collapse</span></button>
+    <button type="button" class="gp-fold" id="gp-fold" aria-label="Fold AI+ OneHR away" title="Fold away">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M11 17l-5-5 5-5M18 17l-5-5 5-5"></path></svg></button>
+  </div>
+  <div class="gp-log ecp-log" id="ask-log" aria-live="polite">
+    <div class="gp-rest" id="gp-rest">
+      <p class="gp-lead">{{ P.greeting }}</p>
+      {% if P.chips %}
+      <p class="gp-try-h">Try</p>
+      <div class="gp-chips" id="ask-try">{% for q in P.chips %}<button type="button" class="gp-chip ask-sugg" data-q="{{ q }}">{{ q }}</button>{% endfor %}</div>
+      {% endif %}
+    </div>
+  </div>
+  <form class="gp-form ecp-form" id="ask-form" autocomplete="off">
+    <label for="ask-input" class="sr-only">Ask AI+ OneHR</label>
+    <div class="gp-box">
+      <input id="ask-input" type="text" maxlength="600" placeholder="Ask about your talent…">
+      <button type="submit" class="gp-send" aria-label="Ask">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6"></path></svg></button>
+    </div>
+    <p class="gp-foot">Suggestions to weigh, never a decision. Every question is kept in the audit log.</p>
+  </form>
+  <button type="button" class="ecp-grip" id="ecp-grip" aria-label="Drag to widen the panel. Left and Right arrow keys also resize it"
+          title="Drag to widen"><i></i><i></i></button>
+  <span class="ecp-wtip" id="ecp-wtip" hidden aria-hidden="true"></span>
+</aside>
+<aside class="gp-rail" id="gp-rail" aria-label="AI+ OneHR, folded" hidden>
+  <button type="button" class="gp-open" id="gp-open" aria-label="Open AI+ OneHR">
+    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2l2.4 7.6L22 12l-7.6 2.4L12 22l-2.4-7.6L2 12l7.6-2.4z"></path></svg>
+  </button>
+  <span class="gp-rail-lab" aria-hidden="true">AI+ OneHR</span>
+</aside>
+<script>
+  /* folded or open, and how wide, as this person left it, before the page paints (this browser only; blocked storage = 320px) */
+  (function () { try {
+    var de = document.documentElement, W = parseInt(localStorage.getItem("onehr.ecp.w"), 10) || 320, x = localStorage.getItem("onehr.ecp.x") === "1";
+    var max = Math.max(320, Math.floor(window.innerWidth * 0.6));
+    W = x ? Math.min(768, max) : Math.max(320, Math.min(W, max));
+    de.style.setProperty("--ecp-w", W + "px"); de.style.setProperty("--ecp-push", Math.min(W, Math.max(320, Math.min(560, window.innerWidth - 680))) + "px");
+    if (localStorage.getItem("onehr.guide.folded") === "1") {
+      document.getElementById("ask-panel").hidden = true; document.getElementById("gp-rail").hidden = false; }
+  } catch (e) {} })();
+</script>
+<script src="{{ url_for('static', filename='ec_pa.js') }}?v={{ asset_v }}"></script>

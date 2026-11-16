@@ -1,0 +1,126 @@
+{% extends "base.html" %}
+{% from "_filter_rows.html" import filter_rows %}
+{% block title %}Rater extremes{% endblock %}
+{% block body %}
+{% set n_flagged = always_no|length + always_yes|length %}
+<div class="adm-headrow">
+  <p class="adm-lede">Raters who gave the same answer to every question for everyone they rated this cycle, all Yes or all No. It can point to careless rating, but it is not proof by itself.</p>
+  <div class="adm-headrow-acts">
+    <form method="get" action="{{ url_for('admin_export_assessor_extremes') }}"
+          data-confirm="Export the {{ n_flagged }} flagged {{ 'rater' if n_flagged == 1 else 'raters' }} matching the current filters, one row per person they rated?"
+          data-confirm-ok="Export">
+      {% for k, v in base_pairs %}<input type="hidden" name="{{ k }}" value="{{ v }}">{% endfor %}
+      <button type="submit" class="btn-link">Export Excel</button>
+    </form>
+  </div>
+</div>
+
+{% set n_filters = (active_fbg|length) + (active_fcompany|length) + (active_fdept|length) %}
+<section class="admin-card">
+  <div class="rm-inline">
+  {% if extremes_enabled %}
+    <span class="status-pill status-reviewed">Score correction is on</span>
+    <span class="muted small">Raters who always say No have their own score for each person they rated raised by +{{ '%g'|format(extremes_bonus) }} before that person's panel average is worked out. Raters who always say Yes have it lowered by {{ '%g'|format(extremes_penalty) }}. This applies everywhere a score or band is shown, including the person's own report.</span>
+  {% else %}
+    <span class="status-pill status-submitted">Score correction is off</span>
+    <span class="muted small">The raters flagged below are shown, but their scores are not being adjusted.</span>
+  {% endif %}
+    <a class="btn-link" href="{{ url_for('admin_module_settings', key='f360') }}#extremes-adjust">Change settings</a>
+  </div>
+</section>
+
+<section class="admin-card adm-filters" aria-label="Filters">
+  {{ filter_rows(frows) }}
+  {% if n_filters %}<p class="muted small" style="margin:8px 0 0">Both tables below follow this choice.</p>{% endif %}
+</section>
+
+<section class="admin-card">
+  <h2>Always says No <span class="muted small">({{ always_no|length }})</span></h2>
+  <p class="muted small">Developing on every question for every person they rated (0% Demonstrate).
+    {% if extremes_enabled %}Their own score for each person listed is currently raised by +{{ '%g'|format(extremes_bonus) }} before that person's average is worked out.{% endif %}</p>
+  <div class="table-scroll table-scroll-capped">
+  <table class="admin-table extremes-table" id="no-table">
+    <thead>
+      <tr>
+        <th title="Employee ID" data-full="Employee ID">ID</th>
+        <th>Name</th>
+        <th title="Business group"><span class="hd-f">Business group</span><span class="hd-s" aria-hidden="true">BG</span></th>
+        <th title="Business unit"><span class="hd-f">Business unit</span><span class="hd-s" aria-hidden="true">BU</span></th>
+        <th>Department</th>
+        <th>People rated</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for r in always_no %}
+        {% set subs = subj_links.get(r['id'], []) %}
+        {% set rows = subs if subs else [None] %}
+        {% for s in rows %}
+        <tr class="data-row">
+          {% if loop.first %}
+          <td rowspan="{{ rows|length }}"><code>{{ r['employee_id'] }}</code></td>
+          <td rowspan="{{ rows|length }}"><a href="{{ url_for('admin_subject_assessing', uid=r['id']) }}" title="Who they give feedback on">{{ r['full_name'] }}</a></td>
+          <td rowspan="{{ rows|length }}">{{ display_bg(r['business_group']) or '-' }}</td>
+          <td rowspan="{{ rows|length }}">{{ display_company(r['business_group'], r['company']) or '-' }}</td>
+          <td rowspan="{{ rows|length }}">{{ r['department'] | proper or '-' }}</td>
+          {% endif %}
+          {% if s %}
+          <td><a class="btn-link" href="{{ url_for('admin_view_responses', uid=s['subject_id'], assignment_id=s['assignment_id']) }}">{{ s['subject_name'] }}</a></td>
+          {% else %}
+          <td>-</td>
+          {% endif %}
+        </tr>
+        {% endfor %}
+      {% else %}
+      <tr><td colspan="6" class="muted">Nobody matches. No rater has answered No to everything this cycle.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  </div>
+</section>
+
+<section class="admin-card">
+  <h2>Always says Yes <span class="muted small">({{ always_yes|length }})</span></h2>
+  <p class="muted small">Demonstrate on every question for every person they rated (100% Demonstrate).
+    {% if extremes_enabled %}Their own score for each person listed is currently lowered by {{ '%g'|format(extremes_penalty) }} before that person's average is worked out.{% endif %}</p>
+  <div class="table-scroll table-scroll-capped">
+  <table class="admin-table extremes-table" id="yes-table">
+    <thead>
+      <tr>
+        <th title="Employee ID" data-full="Employee ID">ID</th>
+        <th>Name</th>
+        <th title="Business group"><span class="hd-f">Business group</span><span class="hd-s" aria-hidden="true">BG</span></th>
+        <th title="Business unit"><span class="hd-f">Business unit</span><span class="hd-s" aria-hidden="true">BU</span></th>
+        <th>Department</th>
+        <th>People rated</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for r in always_yes %}
+        {% set subs = subj_links.get(r['id'], []) %}
+        {% set rows = subs if subs else [None] %}
+        {% for s in rows %}
+        <tr class="data-row">
+          {% if loop.first %}
+          <td rowspan="{{ rows|length }}"><code>{{ r['employee_id'] }}</code></td>
+          <td rowspan="{{ rows|length }}"><a href="{{ url_for('admin_subject_assessing', uid=r['id']) }}" title="Who they give feedback on">{{ r['full_name'] }}</a></td>
+          <td rowspan="{{ rows|length }}">{{ display_bg(r['business_group']) or '-' }}</td>
+          <td rowspan="{{ rows|length }}">{{ display_company(r['business_group'], r['company']) or '-' }}</td>
+          <td rowspan="{{ rows|length }}">{{ r['department'] | proper or '-' }}</td>
+          {% endif %}
+          {% if s %}
+          <td><a class="btn-link" href="{{ url_for('admin_view_responses', uid=s['subject_id'], assignment_id=s['assignment_id']) }}">{{ s['subject_name'] }}</a></td>
+          {% else %}
+          <td>-</td>
+          {% endif %}
+        </tr>
+        {% endfor %}
+      {% else %}
+      <tr><td colspan="6" class="muted">Nobody matches. No rater has answered Yes to everything this cycle.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  </div>
+</section>
+
+
+{% endblock %}

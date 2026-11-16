@@ -1,0 +1,154 @@
+{# The stage toggle, on all three pages of the flow.
+
+   One scope, three stages, in the order they happen: calibrate the box, confirm
+   the PIP list, confirm the promotion list. It's a view switcher, not a wizard
+   -- every tab is reachable at any time, and the two decision lists populate
+   from the live calibration so you can see who WOULD be on them while the
+   bands are still moving. Only ACTING is gated on the box being locked.
+
+   Each tab carries its own state dot: open (amber) or confirmed (green), so
+   the strip doubles as "where is this scope up to". #}
+{# `carry` is the business-unit filter, threaded through the tabs so switching
+   stage keeps the unit you were looking at rather than dumping you back to the
+   whole scope. Empty at BUCEO tier, where the company is part of the route. #}
+{% macro stage_tabs(tier, scope_kwargs, current, box_locked, locks, carry={}) %}
+{% set kw = dict(scope_kwargs, **carry) %}
+<div class="tdec-tabs" role="tablist" aria-label="Calibration stage">
+  <a class="tdec-tab {{ 'is-active' if current == 'box' else '' }}"
+     href="{{ url_for('talent_box_' ~ tier, **kw) }}">
+    Talent box
+    <span class="tdec-dot {{ 'is-done' if box_locked else 'is-open' }}"
+          title="{{ 'Calibration locked' if box_locked else 'Calibration open' }}"
+          aria-hidden="true"></span>
+  </a>
+  <a class="tdec-tab {{ 'is-active' if current == 'pip' else '' }}"
+     href="{{ url_for('talent_pip_' ~ tier, **kw) }}">
+    PIP
+    <span class="tdec-dot {{ 'is-done' if locks.get('pip') else 'is-open' }}"
+          title="{{ 'PIP list confirmed' if locks.get('pip') else 'PIP list open' }}"
+          aria-hidden="true"></span>
+  </a>
+  <a class="tdec-tab {{ 'is-active' if current == 'promotion' else '' }}"
+     href="{{ url_for('talent_promotion_' ~ tier, **kw) }}">
+    Promotion
+    <span class="tdec-dot {{ 'is-done' if locks.get('promotion') else 'is-open' }}"
+          title="{{ 'Promotion list confirmed' if locks.get('promotion') else 'Promotion list open' }}"
+          aria-hidden="true"></span>
+  </a>
+</div>
+{% endmacro %}
+
+
+{# The business-unit filter, the same scrolling pill row the calibration pages
+   and the box use -- you scan units rather than opening a dropdown to find out
+   what's in one. Plain links, because the filter is server-side: it re-measures
+   the header's percentage over that unit's own headcount rather than just
+   hiding rows from an unchanged answer. #}
+{% macro bu_row(tier, scope_kwargs, bu) %}
+{% if bu['all_companies'] | length > 1 %}
+<div class="calib-burow">
+  <span class="calib-burow__label">Business unit</span>
+  <div class="calib-bu-scroller">
+    <button type="button" class="bu-nav bu-nav--left" aria-label="Previous business units" hidden>&#8249;</button>
+    <div class="calib-bu-pills">
+      <a class="bu-pill {{ 'is-on' if not bu['f_company'] else '' }}"
+         href="{{ url_for(request.endpoint, **scope_kwargs) }}">All</a>
+      {% for c in bu['all_companies'] %}
+      <a class="bu-pill {{ 'is-on' if c == bu['f_company'] else '' }}" title="{{ c }}"
+         href="{{ url_for(request.endpoint, company=c, **scope_kwargs) }}">{{ bu['company_labels'][c] }}</a>
+      {% endfor %}
+    </div>
+    <button type="button" class="bu-nav bu-nav--right" aria-label="More business units" hidden>&#8250;</button>
+  </div>
+</div>
+{% endif %}
+{% endmacro %}
+
+
+{# Shared header for the two post-lock decision pages.
+
+   One header shape across the Talent Box and both decision pages, so a
+   calibrator moving between them reads the same three things in the same
+   places: where they are, which scope, and whether it is still open. #}
+{% macro decision_head(ctx, tier, scope_kwargs, box_url, page, stat, considered_label, bu) %}
+{% set TIER_NAME = {'buceo': 'Business unit', 'bgceo': 'Business group',
+                    'group': 'Calibration group'} %}
+<div class="page-head">
+  <div>
+    <div class="calib-breadcrumb">
+      <a href="{{ url_for('talent_box_home') }}">Talent Box</a>
+      &#9656; {{ TIER_NAME[tier] }}
+    </div>
+    <h1 class="calib-title">{{ ctx['scope_label'] }}</h1>
+    <div class="calib-chips">
+      <span class="calib-chip">{{ stat['considered'] }} {{ considered_label }}</span>
+      {# The number that matters is the RATE, not the count: "4 selected" only
+         means something against the population it was chosen from -- which is
+         the filtered business unit when one is picked, not the whole scope. #}
+      <span class="calib-chip"><strong>{{ stat['selected'] }} selected</strong>
+        &middot; {{ stat['pct'] }}% of
+        {{ bu['company_labels'][bu['f_company']] if bu['f_company'] else 'the scope' }}
+        ({{ stat['headcount'] }})</span>
+      {% if ctx['locked'] %}<span class="calib-chip calib-chip--locked">&#9679; Calibration locked</span>
+      {% else %}<span class="calib-chip calib-chip--open">&#9679; Calibration still open</span>{% endif %}
+      {% if ctx['locks'].get(page) %}<span class="calib-chip calib-chip--locked">&#9679;
+        {{ 'PIP' if page == 'pip' else 'Promotion' }} list confirmed</span>{% endif %}
+    </div>
+  </div>
+</div>
+
+{{ stage_tabs(tier, scope_kwargs, page, ctx['locked'], ctx['locks'],
+              {'company': bu['f_company']} if bu['f_company'] else {}) }}
+{{ bu_row(tier, scope_kwargs, bu) }}
+
+{% if not ctx['locked'] %}
+{# The list still SHOWS -- who would be on it is exactly what a calibrator wants
+   to see while they're still moving people. Only acting on it waits. #}
+<p class="tdec-notice tdec-notice--warn">Preview — the calibration for this scope
+  isn't locked yet, so these bands can still move and this list will change with
+  them. Decisions open once the box is locked.</p>
+{% elif ctx['locks'].get(page) %}
+<p class="tdec-notice">This list is confirmed{% if ctx['locks'][page]['locked_at'] %}
+  ({{ ctx['locks'][page]['locked_at'] | myt }}){% endif %} and read-only.
+  {% if ctx['can_decide'] %}Reopen it below to make changes.{% endif %}</p>
+{% elif not ctx['can_decide'] %}
+<p class="tdec-notice">Read-only — these decisions are the Business Group CEO's
+  to record.</p>
+{% endif %}
+{% endmacro %}
+
+
+{# Three icons, three meanings, one visual family -- all line-drawn SVGs at the
+   same weight rather than a mix of SVG and text glyphs, so a row of them reads
+   as one set of controls. #}
+{% macro view_icon() %}
+<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+     aria-hidden="true" width="16" height="16">
+  <path d="M1.5 12S5 5.5 12 5.5 22.5 12 22.5 12 19 18.5 12 18.5 1.5 12 1.5 12z"/>
+  <circle cx="12" cy="12" r="3"/>
+</svg>
+{% endmacro %}
+
+{# History: a clock, for "what this person was in each of the last N years". #}
+{% macro history_icon() %}
+<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+     aria-hidden="true" width="16" height="16">
+  <circle cx="12" cy="12" r="9"/><path d="M12 7v5l3.5 2"/>
+</svg>
+{% endmacro %}
+
+{# Edit: a pencil, for "change what you proposed for this person". #}
+{% macro pencil_icon() %}
+<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+     aria-hidden="true" width="16" height="16">
+  <path d="M4 20h4L19.5 8.5a2.1 2.1 0 0 0-3-3L5 17v3z"/><path d="M14.5 6.5l3 3"/>
+</svg>
+{% endmacro %}
+
+{# Info: who recommended this person, and what they proposed. #}
+{% macro info_icon() %}
+<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+     aria-hidden="true" width="16" height="16">
+  <circle cx="12" cy="12" r="9"/><path d="M12 11v5"/><circle cx="12" cy="7.6" r="1.1" fill="currentColor" stroke="none"/>
+</svg>
+{% endmacro %}

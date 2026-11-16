@@ -1,0 +1,54 @@
+{# Settings card: extremes. Split out of the old General page (2026-10-10) so it lives on its module's settings page;
+   it posts to admin_settings, which sends you back to `settings_next` when the including page sets it. #}
+  <p class="muted small">A rater who gave their whole panel the same answer this cycle is flagged on
+    <a href="{{ url_for('admin_assessor_extremes') }}">Assessor extremes</a>. Turn this on to correct their scores
+    before each panel average is worked out.</p>
+  <details class="muted small">
+    <summary>Why this matters</summary>
+    <p>When this is on, a rater who always said <strong>No</strong> has <strong>their own score</strong> raised by
+      the bonus (up to the highest possible score), and a rater who always said <strong>Yes</strong> has theirs
+      lowered by the penalty (down to zero). The correction is made <strong>before</strong> the person's panel
+      average is worked out. If several flagged raters sit on one panel, each is corrected separately, so the
+      effect adds up. Once on, it applies live everywhere a score or band is shown, including the person's own
+      report, Team view and HOD view.</p>
+  </details>
+  <form method="post" action="{{ url_for('admin_settings') }}" class="admin-form adm-set-form"
+        data-confirm="Save the correction settings? Turning this on changes scores and bands wherever they are shown, including people's own reports."
+        data-confirm-ok="Save"{{ super_remark_attrs() }}>
+    <input type="hidden" name="next" value="{{ (settings_next ~ '#extremes-adjust') if settings_next else '' }}">
+    <input type="hidden" name="action" value="extremes">
+    <label class="switch ex-switch">
+      <input type="checkbox" name="extremes_enabled" value="1" {% if extremes_enabled %}checked{% endif %} id="ex-on">
+      <span class="track" aria-hidden="true"></span>
+      <span class="switch-label">Correct the scores of raters who always give the same answer</span>
+      <span class="ex-tag" id="ex-tag">{{ 'On' if extremes_enabled else 'Off' }}</span>
+    </label>
+    <div class="ex-grid{{ '' if extremes_enabled else ' is-off' }}" id="ex-grid">
+      <div class="ex-box">
+        <div class="ex-head">
+          <label for="ex-bonus" class="ex-lbl">Always said No: bonus points</label>
+          <span class="ex-sign" aria-hidden="true">+</span>
+          <input id="ex-bonus" name="extremes_bonus_points" type="number" step="0.1" min="0" value="{{ '%g'|format(extremes_bonus) }}" required>
+        </div>
+        <p class="muted small">Raises that rater's own score, up to the highest possible.</p>
+      </div>
+      <div class="ex-box">
+        <div class="ex-head">
+          <label for="ex-pen" class="ex-lbl">Always said Yes: penalty points</label>
+          <span class="ex-sign" aria-hidden="true">&minus;</span>
+          <input id="ex-pen" name="extremes_penalty_points" type="number" step="0.1" min="0" value="{{ '%g'|format(extremes_penalty) }}" required>
+        </div>
+        <p class="muted small">Lowers that rater's own score, down to zero.</p>
+      </div>
+    </div>
+    <div class="actions"><button type="submit" class="primary">Save</button></div>
+  </form>
+  <script>
+  // dim the two boxes while the switch is off; the inputs stay enabled so they are still posted
+  (function () {
+    var on = document.getElementById('ex-on'), grid = document.getElementById('ex-grid'), tag = document.getElementById('ex-tag');
+    if (!on || !grid) return;
+    function sync() { grid.classList.toggle('is-off', !on.checked); if (tag) { tag.textContent = on.checked ? 'On' : 'Off'; tag.classList.toggle('is-on', on.checked); } }
+    on.addEventListener('change', sync); sync();
+  })();
+  </script>

@@ -1,0 +1,10 @@
+{% extends "base.html" %}
+{% block title %}{{ settings_tab_label }} settings{% endblock %}
+{% block body %}
+
+{# A module's settings page. The admin shell above (section, tabs, pills) already says where you are, so this
+   wrapper prints no heading and no sentence of its own: each panel opens with its own crumb and one plain
+   sentence. Each page keeps its own URL, so bookmarks and existing links still work. #}
+{% include settings_panel %}
+
+{% endblock %}

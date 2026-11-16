@@ -1,0 +1,79 @@
+{# Shared report viewer for every calibration surface: the performance and
+   potential calibration tables, and the Talent Box. Include it once per page;
+   any button carrying data-report-url opens it.
+
+   One include rather than five copies so the two report types always look and
+   behave the same wherever a calibrator opens them from -- and so a fix lands
+   everywhere at once. #}
+<div id="calib-rep-overlay" class="modal-overlay" hidden>
+  {# aria-label, not aria-labelledby: the heading lives inside the fetched
+     fragment, so there is nothing stable on the page to point at. #}
+  <div class="modal-card calib-rep-card" role="dialog" aria-modal="true"
+       aria-label="Calibration report">
+    <div id="calib-rep-body"><p class="muted">Loading&hellip;</p></div>
+    <div class="modal-actions">
+      <button type="button" class="btn-link" id="calib-rep-close">Close</button>
+    </div>
+  </div>
+</div>
+
+<script>
+(function () {
+  var overlay = document.getElementById('calib-rep-overlay');
+  if (!overlay) return;
+  var body = document.getElementById('calib-rep-body');
+  var inflight = null;
+
+  function close() { overlay.hidden = true; body.innerHTML = ''; }
+  document.getElementById('calib-rep-close').addEventListener('click', close);
+  overlay.addEventListener('click', function (e) { if (e.target === overlay) close(); });
+  document.addEventListener('keydown', function (e) {
+    if (e.key === 'Escape' && !overlay.hidden) close();
+  });
+
+  document.addEventListener('click', function (e) {
+    var btn = e.target.closest('[data-report-url]');
+    if (!btn) return;
+    e.preventDefault();
+    // A drag handle sits on the same cards as these buttons in the Talent Box;
+    // stop the click bubbling on so opening a report can't also open the
+    // calibrate panel underneath it.
+    e.stopPropagation();
+    var url = btn.getAttribute('data-report-url');
+    body.innerHTML = '<p class="muted">Loading&hellip;</p>';
+    overlay.hidden = false;
+    body.scrollTop = 0;
+    // Latest click wins: clicking a second name while the first is still in
+    // flight must not paint the first person's report over the second's.
+    var token = {};
+    inflight = token;
+    fetch(url, { credentials: 'same-origin' })
+      .then(function (r) {
+        if (!r.ok) {
+          // a 403 that says why in a plain sentence (the person is out of that part of the review) shows it
+          return r.text().then(function (t) {
+            var why = (t || '').trim();
+            throw new Error(r.status === 403
+              ? (why && why.length < 200 && why.indexOf('<') < 0 ? why : "You don't have access to this person's report.")
+              : 'That report could not be loaded.');
+          });
+        }
+        return r.text();
+      })
+      .then(function (html) {
+        if (inflight !== token) return;
+        // Server-rendered Jinja (autoescaped), same trust level as the page
+        // itself -- deliberately not client-assembled from raw field values.
+        body.innerHTML = html;
+      })
+      .catch(function (err) {
+        if (inflight !== token) return;
+        var p = document.createElement('p');
+        p.className = 'muted';
+        p.textContent = err.message || 'That report could not be loaded.';
+        body.innerHTML = '';
+        body.appendChild(p);
+      });
+  });
+})();
+</script>

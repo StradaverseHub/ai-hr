@@ -1,0 +1,134 @@
+{% extends "base.html" %}
+{% block title %}Requests{% endblock %}
+{% block body %}
+{# Requests (2026-10-18, the libraries canvas board 11): the KPI library's (admin_library_requests) and the competency
+   library's (admin_competency_requests, lib='comp'), one page with a switch between them. #}
+{% set lib = lib or 'kpi' %}
+{% set here = 'admin_competency_requests' if lib == 'comp' else 'admin_library_requests' %}
+{% if lib == 'comp' %}
+<p class="adm-crumb"><a href="{{ url_for('admin_module_settings', key='competency') }}">Competency</a> &rsaquo; <a href="{{ url_for('admin_competency_library') }}">Library</a> &rsaquo; {{ 'Requests' if sup else 'My proposals' }}</p>
+{% else %}
+<p class="adm-crumb"><a href="{{ url_for('admin_module_settings', key='pm') }}">Performance</a> &rsaquo; <a href="{{ url_for('admin_kpi_library') }}">KPI library</a> &rsaquo; {{ 'Requests' if sup else 'My proposals' }}</p>
+{% endif %}
+<div class="adm-headrow">
+  <p class="adm-lede">{% if sup %}BG and unit admins propose; you decide. Approving runs the same change the library page
+    makes, in one step, and the proposer gets one email either way. Competency proposals come here too.{% else %}What
+    you've proposed to the libraries, and the super admin's answer. You get one email when they decide.{% endif %}</p>
+</div>
+{% if lib == 'comp' %}
+<nav class="adm-tabs kl-tabs" aria-label="Competency library">
+  <a href="{{ url_for('admin_competency_library') }}">Library</a>
+  <a href="{{ url_for('admin_competency_catalogue') }}">Catalogue</a>
+  <a class="is-active" href="{{ url_for('admin_competency_requests') }}">{{ 'Requests' if sup else 'My proposals' }}</a>
+</nav>
+{% else %}
+<nav class="adm-tabs kl-tabs" aria-label="KPI library">
+  <a href="{{ url_for('admin_kpi_library') }}">Library</a>
+  <a href="{{ url_for('admin_kpi_merges') }}">Merge queue</a>{% if coa_on() and sup %}
+  <a href="{{ url_for('admin_kpi_chart_match') }}">Match lines</a>
+  <a href="{{ url_for('admin_kpi_systems') }}">Systems</a>{% endif %}
+  <a class="is-active" href="{{ url_for('admin_library_requests') }}">{{ 'Requests' if sup else 'My proposals' }}</a>
+  <a href="{{ url_for('admin_bu_kpis') }}">BU KPI setup</a>
+</nav>
+{% endif %}
+<div class="rq-top">
+  <span class="adm-frow-pills" role="group" aria-label="Which library">
+    <a class="adm-frow-pill{{ ' is-on' if lib == 'kpi' }}" href="{{ url_for('admin_library_requests') }}">KPI library<span>{{ n_wait if lib == 'kpi' else (n_other or 0) }}</span></a>
+    <a class="adm-frow-pill{{ ' is-on' if lib == 'comp' }}" href="{{ url_for('admin_competency_requests') }}">Competency<span>{{ n_wait if lib == 'comp' else (n_other or 0) }}</span></a>
+  </span>
+  <span class="adm-frow-pills mq-tabs" role="group" aria-label="Which">
+    <a class="adm-frow-pill{{ ' is-on' if tab == 'waiting' }}" href="{{ url_for(here) }}">Waiting<span>{{ n_wait }}</span></a>
+    <a class="adm-frow-pill{{ ' is-on' if tab == 'decided' }}" href="{{ url_for(here, tab='decided') }}">Decided<span>{{ n_done }}</span></a>
+  </span>
+</div>
+<section class="admin-card mq-list" aria-label="Proposals">
+  {% for r in rows %}
+  {% set pl = r.pl %}
+  {% if lib == 'comp' %}
+  <div class="rq">
+    <div class="rq-what">
+      <div class="rq-k">
+        <span class="{{ {'waiting': 'jn-wait', 'approved': 'jn-ok', 'rejected': 'rq-no'}[r.status] }}">{{ {'waiting': 'Waiting', 'approved': 'Approved for P&R', 'rejected': 'Rejected'}[r.status] }}</span>
+        <span class="wiz-k">New competency · job</span></div>
+      <b>{{ pl.title }}</b>
+      <span class="small">For {{ pl.job_title | proper }} · JG {{ pl.grade }} ({{ pl.job_code }}) · {{ pl.category }} · written in SkillsFuture's shape (levels, knowledge, abilities).{% if r.status == 'waiting' %} Approved, it is added as a Chin Hin competency (CHG-), inactive until P&amp;R sign it off.{% endif %}</span>
+      {% for lv in pl.levels %}
+      <details class="rq-lv"><summary class="small"><b>L{{ lv.level }}</b> · {{ lv.description[:90] }}{{ '…' if lv.description | length > 90 }}</summary>
+        <p class="small">{{ lv.description }}</p>
+        <span class="wiz-k">Abilities</span><ul class="cl-list">{% for x in lv.abilities %}<li>{{ x }}</li>{% endfor %}</ul>
+        <span class="wiz-k">Knowledge</span><ul class="cl-list">{% for x in lv.knowledge %}<li>{{ x }}</li>{% endfor %}</ul>
+      </details>
+      {% endfor %}
+      {% if r.status == 'approved' and r.result_key %}<a class="small" href="{{ url_for('admin_competency_library', skill=r.result_key, panel='skill') }}">Open it in the library</a>{% endif %}
+    </div>
+    <div class="rq-who">
+      <span class="wiz-k">From</span><span class="small">{{ r.who or '—' }} · {{ display_bg(r.business_group) }} · {{ r.created_at | myt_day }}</span>
+      <span class="wiz-k">Their reason</span><span class="small">{{ r.reason }}</span>
+      {% if r.status != 'waiting' %}<span class="wiz-k">Answer</span><span class="small">{{ r.decider or '—' }} · {{ r.decided_at | myt_day }}{% if r.decision_note %} · “{{ r.decision_note }}”{% endif %}</span>{% endif %}
+    </div>
+    {% if sup and r.status == 'waiting' %}
+    <div class="rq-acts">
+      <form method="post" data-confirm="Approve “{{ pl.title }}” for P&amp;R? It is added to the catalogue as a Chin Hin competency, inactive until P&amp;R sign it off. The proposer gets one email. It goes in the trail." data-confirm-ok="Approve for P&amp;R">
+        <input type="hidden" name="request_id" value="{{ r.id }}"><input type="hidden" name="action" value="approve">
+        <button type="submit" class="primary">Approve for P&amp;R</button>
+      </form>
+      <details class="rq-more"><summary class="wiz-btn">Reject, with a reason</summary>
+        <form method="post" data-confirm="Reject this proposal? The proposer reads your reason, in one email. It goes in the trail." data-confirm-ok="Reject">
+          <input type="hidden" name="request_id" value="{{ r.id }}"><input type="hidden" name="action" value="reject">
+          <textarea name="note" rows="2" required maxlength="500" aria-label="Why it's rejected" placeholder="Why: the proposer reads it"></textarea>
+          <button type="submit" class="wiz-btn">Reject</button>
+        </form></details>
+    </div>
+    {% endif %}
+  </div>
+  {% else %}
+  <div class="rq">
+    <div class="rq-what">
+      <div class="rq-k">
+        <span class="{{ {'waiting': 'jn-wait', 'approved': 'jn-ok', 'merged': 'jn-ok', 'rejected': 'rq-no'}[r.status] }}">{{ {'waiting': 'Waiting', 'approved': 'Approved', 'merged': 'Pointed to a KPI', 'rejected': 'Rejected'}[r.status] }}</span>
+        <span class="wiz-k">{{ 'New KPI · ' ~ {'bg': 'the whole group', 'unit': 'a unit', 'jf': 'a job family'}[pl.scope] if r.kind == 'new_kpi' else 'Change a definition' }}</span></div>
+      <b>{{ pl.name or pl.kpi_name }}</b>
+      {% if r.kind == 'new_kpi' %}
+      <span class="small">{{ pl.definition }}</span>
+      <span class="muted small">{{ pl.unit or 'no unit' }} · {{ 'higher' if pl.method == 'more' else 'lower' }} is better{% if pl.perspective %} · {{ pl.perspective }}{% endif %}{% if pl.category %} · {{ pl.category }}{% endif %}{% if pl.bu_level %} · BU-level{% endif %} · {{ r.where }}</span>
+      {% else %}
+      <div class="rq-diff"><span class="wiz-k">Now</span><span class="small">{{ pl.now or 'no definition' }}</span>
+        <span class="wiz-k">Proposed</span><span class="small">{{ pl.definition }}</span></div>
+      <span class="muted small">In {{ pl.bgs | length }} group{{ 's' if pl.bgs | length != 1 }}' {{ 'libraries' if pl.bgs | length != 1 else 'library' }}: everyone reads the new definition at once</span>
+      {% endif %}
+    </div>
+    <div class="rq-who">
+      <span class="wiz-k">From</span><span class="small">{{ r.who or '—' }} · {{ r.created_at | myt_day }}</span>
+      <span class="wiz-k">Their reason</span><span class="small">{{ r.reason }}</span>
+      {% if r.kind == 'new_kpi' and pl.close_to %}<span class="wiz-k">Close to</span><span class="small">{{ pl.close_to | join(', ') }}</span>{% endif %}
+      {% if r.status != 'waiting' %}<span class="wiz-k">Answer</span><span class="small">{{ r.decider or '—' }} · {{ r.decided_at | myt_day }}{% if r.decision_note %} · “{{ r.decision_note }}”{% endif %}</span>{% endif %}
+    </div>
+    {% if sup and r.status == 'waiting' %}
+    <div class="rq-acts">
+      <form method="post" data-confirm="{{ ('Add “' ~ pl.name ~ '” to ' ~ r.business_group ~ '’s library?') if r.kind == 'new_kpi' else ('Change the definition of “' ~ pl.kpi_name ~ '” in every library that has it?') }} The proposer gets one email. It goes in the trail." data-confirm-ok="Approve">
+        <input type="hidden" name="request_id" value="{{ r.id }}"><input type="hidden" name="action" value="approve">
+        <button type="submit" class="primary">{{ 'Approve and add' if r.kind == 'new_kpi' else 'Approve the change' }}</button>
+      </form>
+      {% if r.kind == 'new_kpi' %}
+      <details class="rq-more"><summary class="wiz-btn">Merge into an existing KPI</summary>
+        <form method="post" data-confirm="Point the proposer to the KPI you chose? Nothing is added; they use that KPI, with a Focus if it's about one thing. They get one email." data-confirm-ok="Point to it">
+          <input type="hidden" name="request_id" value="{{ r.id }}"><input type="hidden" name="action" value="merge">
+          <select name="into" class="modern-select" required aria-label="The library KPI it's the same as"><option value="">The same as…</option>{% for o in r.options %}<option {{ 'selected' if pl.close_to and o == pl.close_to[0] }}>{{ o }}</option>{% endfor %}</select>
+          <button type="submit" class="wiz-btn">Point to it</button>
+        </form></details>
+      {% endif %}
+      <details class="rq-more"><summary class="wiz-btn">Reject, with a reason</summary>
+        <form method="post" data-confirm="Reject this proposal? The proposer reads your reason, in one email. It goes in the trail." data-confirm-ok="Reject">
+          <input type="hidden" name="request_id" value="{{ r.id }}"><input type="hidden" name="action" value="reject">
+          <textarea name="note" rows="2" required maxlength="500" aria-label="Why it's rejected" placeholder="Why: the proposer reads it"></textarea>
+          <button type="submit" class="wiz-btn">Reject</button>
+        </form></details>
+    </div>
+    {% endif %}
+  </div>
+  {% endif %}
+  {% else %}
+  <p class="muted pp-pad">{% if tab == 'waiting' %}Nothing waiting.{% else %}Nothing decided yet.{% endif %}</p>
+  {% endfor %}
+</section>
+{% endblock %}

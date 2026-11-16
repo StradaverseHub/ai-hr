@@ -1,0 +1,57 @@
+{% extends "base.html" %}
+{% block title %}Clock out · {{ s.title }}{% endblock %}
+{% block body %}
+{# Clock out (2026-10-22; canvas [design canvas link removed] board 3D): the page the room's
+   clock-out QR opens on a phone, or where its 6-digit code is typed. Other days: one tap. The last day: the rating, and
+   sending it clocks them out (Chris: "clock out together with the post training evaluation"). Then: they're out, and
+   what comes next. #}
+<main class="ck" aria-labelledby="ck-h">
+  <span class="ls-pill">AI+ Learning</span>
+  {% if ctx and state in ('tap', 'rate') %}<span class="ck-k">Clock out · day {{ ctx.n }} of {{ ctx.of }}{% if state == 'rate' %} · how was it?{% endif %}</span>{% endif %}
+  <h1 id="ck-h" class="ck-title">{{ s.title }}</h1>
+  <p class="ck-line">{{ line }}{% if ctx %} · clocked in {{ (ctx.att.created_at | myt)[11:16] }}{% endif %}</p>
+  {% if ok and state in ('out', 'again') %}
+  <div class="ck-done" role="status">
+    <span class="ck-tick" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg></span>
+    <b>{{ msg }}</b>
+    {% if ctx and ctx.att.out_at %}<span>Clocked out {{ (ctx.att.out_at | myt)[11:16] }}{% if ctx.of > 1 %} · day {{ ctx.n }} of {{ ctx.of }}{% endif %}</span>{% endif %}
+  </div>
+  {% if ctx and ctx.last %}
+  <p class="ck-card">Your hours and XP count when L&amp;D closes the session, usually within a week.</p>
+  {% if ctx.reg %}<p class="ck-card"><b>In one month:</b> a short check-in on what you've used. It goes to your line manager to confirm at 3 months.</p>{% endif %}
+  {% elif ctx %}
+  <p class="ck-card">See you on day {{ ctx.n + 1 }}. Clock in the same way, from the room's QR. The rating comes when you clock out on the last day.</p>
+  {% endif %}
+  {% elif state == 'tap' %}
+  <form method="post" action="{{ url_for('learning_checkout', sid=s.id) }}" class="ck-form">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}"><input type="hidden" name="hold" value="{{ hold }}">
+    <button type="submit" class="primary ck-big">Clock out · {{ now_hm }}</button>
+  </form>
+  {% if ctx.last %}<p class="ck-card">You've rated it already, so clocking out is all that's left.</p>
+  {% else %}<p class="ck-card">The rating comes at the end of day {{ ctx.of }}, when you clock out for the last time.</p>{% endif %}
+  {% elif state == 'rate' %}
+  {% if msg and not ok %}<p class="ck-msg" role="alert">{{ msg }}</p>{% endif %}
+  <form method="post" action="{{ url_for('learning_checkout', sid=s.id) }}" class="ck-form ls-rate ck-rate">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}"><input type="hidden" name="hold" value="{{ hold }}">
+    <span class="ck-note">1 = not at all · 5 = very much</span>
+    {% for k, q in questions %}
+    <fieldset class="ls-scale"><legend>{{ q }}</legend>
+      {% for v in range(1, 6) %}<label><input type="radio" name="{{ k }}" value="{{ v }}" required{{ ' checked' if form.get(k) == v|string }}><span>{{ v }}</span></label>{% endfor %}</fieldset>
+    {% endfor %}
+    <label class="ls-full"><span>Anything to add? <span class="ls-opt">(optional)</span></span><textarea name="comment" rows="3" maxlength="500">{{ form.get('comment', '') }}</textarea></label>
+    <p class="ck-note">L&amp;D sees the averages and the comments, never with your name.</p>
+    <button type="submit" class="primary ck-big">Send and clock out · +10 XP</button>
+  </form>
+  {% else %}
+  {% if msg %}<p class="ck-msg" role="alert">{{ msg }}</p>{% endif %}
+  <form method="post" action="{{ url_for('learning_checkout', sid=s.id) }}" class="ck-form">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <label for="ck-c">Type the 6-digit code on the room's screen</label>
+    <input id="ck-c" name="c" inputmode="numeric" autocomplete="one-time-code" pattern="[0-9]{6}" maxlength="6" required placeholder="000000">
+    <button type="submit" class="primary">Clock out</button>
+    <p class="ck-note">The code changes every 30 seconds. If your phone won't scan, type it here.</p>
+  </form>
+  {% endif %}
+  <a class="ck-back" href="{{ url_for('learning_home') }}">Your learning</a>
+</main>
+{% endblock %}

@@ -1,0 +1,33 @@
+{% extends "base.html" %}
+{% from "_transcript.html" import transcript %}
+{% block title %}My review history{% endblock %}
+{% block body %}
+<div class="page-head">
+  <div>
+    <h1>My review history</h1>
+    <p class="muted small" style="margin:0">A read-only record of your review conversation, saved
+      exactly as you wrote it.</p>
+    <p class="muted small" style="margin:4px 0 0"><a href="{{ url_for('dashboard') }}">&larr; Back to dashboard</a></p>
+  </div>
+</div>
+
+{% if cycles %}
+  {% if cycles|length > 1 %}
+  <div class="rv-cycle-switch">
+    {% for c in cycles %}
+      <a class="rv-cycle-pill {{ 'on' if sel_cycle and c['id'] == sel_cycle['id'] }}"
+         href="{{ url_for('review_history', cycle=c['id']) }}">
+        {{ c['name'] }}{% if c['is_active'] %} · current{% endif %}
+      </a>
+    {% endfor %}
+  </div>
+  {% endif %}
+  <div class="card">
+    <p class="muted small" style="margin:0 0 10px">{{ sel_cycle['name'] if sel_cycle }}</p>
+    {{ transcript(messages) }}
+  </div>
+{% else %}
+  <p class="muted">You have no saved review conversation yet — it will appear here once you start your
+    review.</p>
+{% endif %}
+{% endblock %}

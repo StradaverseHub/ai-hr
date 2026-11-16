@@ -1,0 +1,83 @@
+{% extends "base.html" %}
+{% from "_adm_panel.html" import panel %}
+{% block title %}Learning · HRDC levy balance{% endblock %}
+{% block body %}
+{# Learning › Run › HRDC › Levy balance by entity (2026-10-24; LMS canvas [design canvas link removed]
+   boards 21A-21B; Chris: "we also should add in the HRDC balance for each entities/BU for L&D admin"). The balance is
+   eTRiS's as L&D last entered it; the rest is what this year's learning takes from it, from OneHR's own records. L&D
+   and the super admin enter balances; a BG or BU admin reads their own entities. #}
+{% set t = lb.tiles %}
+<div class="adm-headrow">
+  <p class="adm-lede">The balance is eTRiS's, as Group People L&amp;D last entered it. What OneHR adds is what this year's learning will take from it{% if not can %}; you read your own entities{% endif %}.</p>
+  {% if can %}<div class="lm-head-acts"><a class="btn-link" href="{{ url_for('admin_learning_hrdc', view='levy', template=1) }}">Download the template</a><a class="primary" href="{{ url_for('admin_learning_hrdc', view='levy', panel='levy-upload') }}" data-panel-open="levy-upload">Upload balances…</a></div>{% endif %}
+</div>
+<nav class="lm-viewsw" aria-label="HRDC views"><a href="{{ url_for('admin_learning_hrdc') }}">Filings by business group</a><a href="{{ url_for('admin_learning_hrdc', view='levy') }}" class="is-on" aria-current="page">Levy balance by entity</a></nav>
+{% if v or done %}{# an uploaded file in the four steps (2026-10-26): checked, what it saves, the final preview, Apply #}
+{% import "_import_steps.html" as imp with context %}
+{% call imp.page(v, done, {'page': 'admin_learning_hrdc', 'pa': {'view': 'levy'}, 'changes': 'What the file saves',
+                           'final': 'The balances after you apply this file'}, {}) %}{% endcall %}
+{% endif %}
+<div class="lm-tiles" role="list">
+  <div class="lm-tile" role="listitem"><b>RM {{ '{:,.0f}'.format(t.balance) }}</b><span>levy balance, {{ t.n_bal }} entit{{ 'y' if t.n_bal == 1 else 'ies' }}, as last entered</span></div>
+  <div class="lm-tile" role="listitem"><b>RM {{ '{:,.0f}'.format(t.approved) }}</b><span>approved grants this year</span></div>
+  <div class="lm-tile" role="listitem"><b>RM {{ '{:,.0f}'.format(t.pending) }}</b><span>filed or planned, not approved yet</span></div>
+  <div class="lm-tile{{ ' is-flag' if t.flagged }}" role="listitem"><b>{{ t.flagged }}</b><span>short, or under {{ lb.low_pct }}% left after what's planned</span></div>
+</div>
+<section class="admin-card" aria-labelledby="lm-lv-h">
+  <h2 id="lm-lv-h" class="lm-h">Entities</h2>
+  {% if lb.rows %}
+  <div class="table-scroll"><table class="admin-table no-auto-table lm-levy">
+    <thead><tr><th scope="col">Entity</th><th scope="col" title="Business group">Group</th><th scope="col" class="lm-num" title="Levy balance in eTRiS, as last entered">Balance</th><th scope="col" class="lm-num">Approved</th><th scope="col" class="lm-num">Filed</th><th scope="col" class="lm-num">Planned</th><th scope="col" class="lm-num" title="Left after what's approved, filed and planned">Left after all</th><th scope="col"><span class="sr-only">State</span></th></tr></thead>
+    <tbody>
+    {% for r in lb.rows %}
+    <tr>
+      <td><a href="{{ url_for('admin_learning_hrdc', view='levy', panel='levy-%d' % loop.index) }}" data-panel-open="levy-{{ loop.index }}"><b>{{ r.label }}</b></a><span class="muted small lm-sub">{% if r.bal %}as at {{ r.bal.as_of | lms_day }}{% if r.age and r.age > lb.stale_days %} · {{ r.age }} days old{% endif %}{% else %}no balance entered yet{% endif %}</span></td>
+      <td class="small">{{ r.bg_label }}</td>
+      <td class="lm-num">{{ ('RM {:,.0f}'.format(r.bal.balance)) if r.bal else '–' }}</td>
+      <td class="lm-num">{{ '{:,.0f}'.format(r.approved) }}</td><td class="lm-num">{{ '{:,.0f}'.format(r.filed) }}</td><td class="lm-num">{{ '{:,.0f}'.format(r.planned) }}</td>
+      <td class="lm-num{{ ' lm-levy-neg' if r.left is not none and r.left < 0 }}">{% if r.left is not none %}<b>{{ '{:,.0f}'.format(r.left) }}</b>{% if r.bal.balance %}<span class="lm-levy-bar" aria-hidden="true">{% set B = r.bal.balance %}<i class="a" style="width:{{ [100, (100 * r.approved / B) | round | int] | min }}%"></i><i class="f" style="width:{{ [100, (100 * r.filed / B) | round | int] | min }}%"></i><i class="p{{ ' is-over' if r.left < 0 }}" style="width:{{ [100, (100 * r.planned / B) | round | int] | min }}%"></i></span>{% endif %}{% else %}<span class="muted">–</span>{% endif %}</td>
+      <td>{% if r.state == 'short' %}<span class="lm-rst lm-levy-st is-short">Short RM {{ '{:,.0f}'.format(-r.left) }}</span>{% elif r.state == 'low' %}<span class="lm-rst lm-levy-st is-low">{{ r.pct }}% left</span>{% elif r.state == 'stale' %}<span class="lm-rst lm-levy-st is-stale">Update it</span>{% elif r.state == 'none' %}{% if can %}<a class="btn-link" href="{{ url_for('admin_learning_hrdc', view='levy', panel='levy-%d' % loop.index) }}" data-panel-open="levy-{{ loop.index }}">Add it…</a>{% else %}<span class="muted small">None yet</span>{% endif %}{% else %}<span class="lm-rst lm-levy-st is-ok">{{ r.pct }}% left</span>{% endif %}</td>
+    </tr>
+    {% endfor %}
+    </tbody>
+  </table></div>
+  {% else %}<p class="muted small">No balances entered and no HRDC-claimable learning this year yet.</p>{% endif %}
+  {% if lb.quiet %}<details class="fold lm-levy-quiet"><summary>{{ lb.quiet | length }} other entit{{ 'y' if lb.quiet | length == 1 else 'ies' }}, with no balance and no HRDC-claimable learning this year</summary>
+    <ul class="lm-levy-ql">{% for r in lb.quiet %}<li>{{ r.label }} <span class="muted small">· {{ r.bg_label }}</span>{% if can %} <a class="btn-link" href="{{ url_for('admin_learning_hrdc', view='levy', panel='levyq-%d' % loop.index) }}" data-panel-open="levyq-{{ loop.index }}">Add…</a>{% endif %}</li>{% endfor %}</ul>
+    <button type="button" class="btn-link" data-fold-less>Show less</button></details>{% endif %}
+  <p class="muted small"><b>What OneHR counts</b>, from its own records: each HRDC-claimable place (confirmed, not absent) at its cost, under the entity the person belongs to. <b>Approved</b>: their business group's filing approved. <b>Filed</b>: filed or under query. <b>Planned</b>: not filed yet, and approved external courses ticked HRDC-claimable that HRDC hasn't approved. A rejected filing is the business group's to pay, so it isn't counted. A balance older than {{ lb.stale_days }} days asks to be updated.</p>
+</section>
+
+{% macro levy_panel(key, r) %}
+{% call panel(key, "HRDC levy · " ~ r.bg_label, r.label, ((("Short by RM {:,.0f} once what's filed and planned is approved.".format(-r.left)) if r.left < 0 else ("RM {:,.0f} left after what's filed and planned.".format(r.left))) if r.left is not none else "No balance entered yet.")) %}
+<form method="post" class="adm-panel-form" data-confirm="Save {{ r.label }}'s HRDC levy balance? It's kept with your name and the date, beside the ones before it." data-confirm-ok="Save the balance">
+  <input type="hidden" name="action" value="levy"><input type="hidden" name="bg" value="{{ r.bg }}"><input type="hidden" name="company" value="{{ r.company }}">
+  <div class="adm-panel-body lm-levy-panel">
+    {% if can %}
+    <div class="lm-levy-f"><label>Levy balance in eTRiS (RM)<input name="balance" inputmode="decimal" required value="{{ ('%.2f' % r.bal.balance) if r.bal else '' }}" placeholder="e.g. 41250.00"></label>
+      <label>As at<input type="date" name="as_of" required max="{{ today }}" value="{{ today }}"></label></div>
+    <label class="lm-levy-n"><span>Note <span class="muted small">(optional)</span></span><input name="note" maxlength="200" placeholder="e.g. eTRiS employer statement, October"></label>
+    {% endif %}
+    {% if r['items'] %}<p class="lm-k">What takes from it this year</p>
+    <ul class="lm-levy-items">{% for it in r['items'][:8] %}<li><span class="s">{{ it.state | capitalize }}</span><span class="t">{{ it.title }}{% if it.run %} · {{ it.run }}{% endif %} · {{ it.n }} {{ 'person' if it.n == 1 else 'people' }}</span><b>RM {{ '{:,.0f}'.format(it.rm) }}</b></li>{% endfor %}</ul>
+    {% if r['items'] | length > 8 %}<p class="muted small">and {{ r['items'] | length - 8 }} others</p>{% endif %}{% endif %}
+    {% if r.history %}<p class="lm-k">Balances entered</p>
+    <ul class="lm-levy-items">{% for h in r.history %}<li><span class="s">{{ h.as_of | lms_day }}</span><span class="t">RM {{ '{:,.2f}'.format(h.balance) }} · {{ h.by_name or '' }}{% if h.note %} · {{ h.note }}{% endif %}</span></li>{% endfor %}</ul>{% endif %}
+  </div>
+  {% if can %}<footer class="adm-panel-foot"><button type="button" class="btn-link adm-panel-grow" data-panel-close>Cancel</button><button type="submit" class="primary">Save the balance…</button></footer>{% endif %}
+</form>
+{% endcall %}
+{% endmacro %}
+{% for r in lb.rows %}{{ levy_panel("levy-%d" % loop.index, r) }}{% endfor %}
+{% if can %}{% for r in lb.quiet %}{{ levy_panel("levyq-%d" % loop.index, r) }}{% endfor %}
+{% call panel("levy-upload", "HRDC levy · every entity", "Upload balances", "From the template: one row an entity, its balance and the date eTRiS showed it.") %}
+<form method="post" enctype="multipart/form-data" class="adm-panel-form">
+  <input type="hidden" name="action" value="levy_upload"><input type="hidden" name="preview" value="1">
+  <div class="adm-panel-body lm-levy-panel">
+    <p class="small">Start from <a href="{{ url_for('admin_learning_hrdc', view='levy', template=1) }}">the template</a>: every entity of yours with its balance as it stands. Change the balance and the date (YYYY-MM-DD) where eTRiS has a newer one; leave a balance blank to skip it. Nothing is saved yet: OneHR checks the file and shows what it saves, then you apply it.</p>
+    <label class="lm-levy-n">The file (.xlsx)<input type="file" name="file" accept=".xlsx" required></label>
+  </div>
+  <footer class="adm-panel-foot"><button type="button" class="btn-link adm-panel-grow" data-panel-close>Cancel</button><button type="submit" class="primary">Check the file</button></footer>
+</form>
+{% endcall %}{% endif %}
+{% endblock %}

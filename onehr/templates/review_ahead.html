@@ -1,0 +1,47 @@
+{# THE DEVELOPMENT PLAN as a CONVERSATION. The employee names each goal and its
+   70:20:10 actions by talking to the assistant; the server validates every write
+   through the same gate the /idp page uses, and only the employee's explicit
+   Share sends it to their manager. Same shell as the competency/setting/check-in
+   chat, a different agent. #}
+{% extends "base.html" %}
+{% block title %}Development Plan{% endblock %}
+{% block back_button %}{% endblock %}
+{% block body %}
+{% from "_review_icons.html" import rvicon %}
+
+{# The demo controls live in the navy banner (base.html), so the body is all
+   panel + chat. Top band mirrors .rv-wrap (224px 1fr): the Dashboard / AI toggle
+   above the rail, the plan summary row above the chat. #}
+<div class="rv-topbar">
+  <div class="rv-topbar-nav">{% include "_nav_toggle.html" %}</div>
+  <div class="rv-topbar-main">
+    <div class="rv-kpi-pin" id="rv-kpi-pin"></div>
+  </div>
+</div>
+
+<div class="rv-wrap">
+  <div class="rv-railcol">
+    {% include "_review_rail.html" %}
+  </div>
+
+  <div class="rv-main">
+    <div class="rv-chat" id="rv-chat"
+         data-history-url="{{ url_for('review_ahead_chat_history') }}"
+         data-send-url="{{ url_for('review_ahead_chat') }}"
+         {% set _wn = chat_window_note('idp_self') %}{% if _wn %}data-window-closed="{{ _wn }}"{% endif %}
+         data-submit-url="{{ url_for('review_ahead_submit') }}"
+         {% if not agent_available %}data-unavailable="1"{% endif %}>
+      <div class="rv-chat-log" id="rv-chat-log" aria-live="polite"></div>
+      <div class="rv-chat-quick" id="rv-chat-quick"></div>
+      <form class="rv-composer" id="rv-chat-form" autocomplete="off" onsubmit="return false">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+        <textarea id="rv-chat-input" rows="1" placeholder="Type your reply…"
+                  aria-label="Message the development-plan assistant"></textarea>
+        <button type="submit" class="rv-send" id="rv-chat-send" aria-label="Send" title="Send">{{ rvicon('send') }}</button>
+      </form>
+    </div>
+  </div>
+</div>
+
+<script src="{{ url_for('static', filename='ahead_chat.js') }}?v={{ asset_v }}" defer></script>
+{% endblock %}

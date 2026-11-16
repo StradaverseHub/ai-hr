@@ -1,0 +1,119 @@
+{% extends "base.html" %}
+{% block title %}Match lines{% endblock %}
+{% block body %}
+{# Performance > KPI library > Match lines (the Chart of KPI, piece B, the canvas board 5; ONEHR_COA=1, the super admin):
+   admin_kpi_chart_match. Every uncoded KPI name with the code OneHR suggests; Confirm adds one row to the name map. #}
+{% macro codetext(r, scope) -%}
+{{ r.lines }} line{{ '' if r.lines == 1 else 's' }}
+{%- endmacro %}
+<p class="adm-crumb"><a href="{{ url_for('admin_module_settings', key='pm') }}">Performance</a> &rsaquo; <a href="{{ url_for('admin_kpi_library') }}">KPI library</a> &rsaquo; Match lines</p>
+<div class="adm-headrow">
+  <p class="adm-lede">Every KPI line on a scorecard carries a code from the chart. When a line's name does not lead to one on its
+    own, OneHR suggests the code and you confirm. Lines keep their own names, targets and results; only the code is added.</p>
+</div>
+<nav class="adm-tabs kl-tabs" aria-label="KPI library">
+  <a href="{{ url_for('admin_kpi_library') }}">Library</a>
+  <a href="{{ url_for('admin_kpi_merges') }}">Merge queue</a>
+  <a class="is-active" href="{{ url_for('admin_kpi_chart_match') }}">Match lines &middot; {{ d.n_names }}</a>
+  <a href="{{ url_for('admin_kpi_systems') }}">Systems</a>
+  <a href="{{ url_for('admin_library_requests') }}">Requests</a>
+  <a href="{{ url_for('admin_bu_kpis') }}">BU KPI setup</a>
+</nav>
+
+<div class="ri-tiles">
+  <div class="ri-tile" style="--c:var(--d-cv-1a7a54)"><b>{{ d.coded }}</b><span>lines with a code{% if d.cycle %} on {{ d.cycle['name'] }}{% endif %}</span></div>
+  <div class="ri-tile" style="--c:var(--d-cv-9aa1b5)"><b>{{ d.uncoded }}</b><span>lines without</span></div>
+  <div class="ri-tile" style="--c:var(--d-cv-e0a84a)"><b>{{ d.t_sugg }}</b><span>names with a suggestion</span></div>
+  <div class="ri-tile" style="--c:var(--d-cv-d0716a)"><b>{{ d.t_none }}</b><span>names with no match</span></div>
+</div>
+
+<div class="coa-bar">
+  <div class="adm-frow-pills mq-tabs" role="group" aria-label="Which names">
+    <a class="adm-frow-pill{{ ' is-on' if not kind }}" href="{{ url_for('admin_kpi_chart_match', q=q or None) }}">All<span>{{ d.n_all }}</span></a>
+    <a class="adm-frow-pill{{ ' is-on' if kind == 'sugg' }}" href="{{ url_for('admin_kpi_chart_match', kind='sugg', q=q or None) }}">A suggestion<span>{{ d.n_sugg }}</span></a>
+    <a class="adm-frow-pill{{ ' is-on' if kind == 'none' }}" href="{{ url_for('admin_kpi_chart_match', kind='none', q=q or None) }}">No match<span>{{ d.n_none }}</span></a>
+  </div>
+  <form method="get" class="kl-filters coa-m-search" role="search">
+    {% if kind %}<input type="hidden" name="kind" value="{{ kind }}">{% endif %}
+    <label class="kl-q"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="11" cy="11" r="7"></circle><path d="m20 20-3.5-3.5"></path></svg>
+      <input type="search" name="q" value="{{ q }}" placeholder="Search a name or a group" aria-label="Search the names" autocomplete="off" aria-autocomplete="list" aria-expanded="false" data-suggest="kpis" data-suggest-url="{{ url_for('search_suggest') }}" data-no-qin="KPI names, not people"></label>
+  </form>
+  {% if n_confirm %}
+  <form method="post" action="{{ url_for('admin_kpi_chart_match') }}" class="coa-m-all"
+        data-confirm="Give {{ n_confirm }} name{{ '' if n_confirm == 1 else 's' }} ({{ n_confirm_lines }} line{{ '' if n_confirm_lines == 1 else 's' }}) the code OneHR suggests? Each name takes its suggested code in every business group. Lines keep their own names, targets and results. It goes in the trail."
+        data-confirm-title="Confirm all {{ n_confirm }} suggestion{{ '' if n_confirm == 1 else 's' }}?" data-confirm-ok="Confirm all {{ n_confirm }}">
+    <input type="hidden" name="action" value="confirm_all">
+    {% if kind %}<input type="hidden" name="kind" value="{{ kind }}">{% endif %}{% if q %}<input type="hidden" name="q" value="{{ q }}">{% endif %}
+    {% for p in pairs %}<input type="hidden" name="pair" value="{{ p }}">
+    {% endfor %}<button type="submit" class="wiz-btn">Confirm all {{ n_confirm }} suggestion{{ '' if n_confirm == 1 else 's' }}</button>
+  </form>
+  {% endif %}
+</div>
+
+<section class="admin-card mq-list coa-m-list" aria-label="Names to match">
+  {% for r in rows %}
+  {% set fid = 'coa-mf-%d' % loop.index %}{% set sg = r.sugg %}
+  {% set label = (sg.node.code ~ ' ' ~ sg.node.name) if sg else '' %}
+  <div class="mq coa-m">
+    <div class="mq-from">
+      <span class="wiz-k">{{ 'Suggested' if sg else 'No match' }} &middot; {{ display_bg(r.bg) if r.bg else 'No business group' }}</span>
+      <div class="mq-chips"><span class="pp-chip">{{ r.name }}</span><span class="coa-lines" {% if not r.lines %}title="In the library; no line holds it yet"{% endif %}>{{ r.lines }} line{{ '' if r.lines == 1 else 's' }}</span></div>
+    </div>
+    <span class="mq-arrow" aria-hidden="true">&rarr;</span>
+    <div class="mq-to">
+      <select name="code_node" form="{{ fid }}" class="modern-select" aria-label="Its code" data-coa-codes>
+        {% if sg %}<option value="{{ sg.node.id }}" selected>{{ label }}</option>{% else %}<option value="" selected>Pick a code&hellip;</option>{% endif %}
+      </select>
+      <span class="coa-why"{% if sg %} title="Matched with “{{ sg.via }}”"{% endif %}>{{ sg.reason if sg else 'No KPI in the chart reads like it' }}</span>
+      {% if r.bg %}<label class="coa-scope"><input type="checkbox" name="scope_bg" value="1" form="{{ fid }}"> This group only</label>{% endif %}
+    </div>
+    <div class="mq-acts">
+      <a class="wiz-btn" href="{{ r.new_url }}">New KPI</a>
+      <form method="post" action="{{ url_for('admin_kpi_chart_match') }}" id="{{ fid }}" class="coa-m-one"
+            data-name="{{ r.name }}" data-lines="{{ r.lines }}" data-bg="{{ display_bg(r.bg) if r.bg else '' }}"
+            data-confirm="{% if sg %}Give the {{ r.lines }} line{{ '' if r.lines == 1 else 's' }} called “{{ r.name }}” the code {{ label }}? The code is added to the name in every business group; lines keep their own names, targets and results. It goes in the trail.{% else %}Pick a code first.{% endif %}"
+            data-confirm-title="Give it this code?" data-confirm-ok="Confirm">
+        <input type="hidden" name="action" value="confirm"><input type="hidden" name="key" value="{{ r.key }}"><input type="hidden" name="bg" value="{{ r.bg }}">
+        {% if kind %}<input type="hidden" name="kind" value="{{ kind }}">{% endif %}{% if q %}<input type="hidden" name="q" value="{{ q }}">{% endif %}
+        <button type="submit" class="primary"{% if not sg %} disabled{% endif %}>Confirm</button>
+      </form>
+    </div>
+  </div>
+  {% else %}
+  <p class="muted pp-pad">{% if d.n_names == 0 %}Every KPI name has a code.{% else %}No names{% if q %} match that search{% endif %}{% if kind == 'sugg' %} with a suggestion{% elif kind == 'none' %} without a match{% endif %}.{% endif %}</p>
+  {% endfor %}
+</section>
+<p class="muted small">A confirm asks you, names how many lines it codes, and goes in the trail. Lines added from the library get their code straight away and never come here.</p>
+<template id="coa-m-opts">{% for n, lab in d.options %}<option value="{{ n.id }}">{{ lab }}</option>{% endfor %}</template>
+<script>
+(function () {
+  var tpl = document.getElementById('coa-m-opts'), list = document.querySelector('.coa-m-list');
+  if (!tpl || !list) return;
+  function fill(sel) {   // the codes are listed once on the page; a row's select takes them when it is first used
+    if (sel.getAttribute('data-filled')) return;
+    sel.setAttribute('data-filled', '1');
+    var cur = sel.value, blank = !!sel.querySelector('option[value=""]');
+    sel.innerHTML = (blank ? '<option value="">Pick a code…</option>' : '') + tpl.innerHTML;
+    sel.value = cur;
+  }
+  function sync(form) {
+    var sel = document.querySelector('select[form="' + form.id + '"]'), box = document.querySelector('input[name="scope_bg"][form="' + form.id + '"]'),
+        btn = form.querySelector('button[type=submit]'), n = parseInt(form.getAttribute('data-lines'), 10) || 0;
+    var ok = !!(sel && sel.value);
+    if (btn) btn.disabled = !ok;
+    form.setAttribute('data-confirm', !ok ? 'Pick a code first.' :
+      'Give the ' + n + ' line' + (n === 1 ? '' : 's') + ' called “' + form.getAttribute('data-name') + '” the code ' +
+      sel.options[sel.selectedIndex].text + '? The code is added to the name ' +
+      (box && box.checked ? 'in ' + form.getAttribute('data-bg') + ' only' : 'in every business group') +
+      '; lines keep their own names, targets and results. It goes in the trail.');
+  }
+  list.addEventListener('pointerenter', function (e) { if (e.target.matches && e.target.matches('select[data-coa-codes]')) fill(e.target); }, true);
+  list.addEventListener('focusin', function (e) { if (e.target.matches('select[data-coa-codes]')) fill(e.target); });
+  list.addEventListener('change', function (e) {
+    var id = e.target.getAttribute('form'), f = id && document.getElementById(id);
+    if (f) sync(f);
+  });
+  list.querySelectorAll('form.coa-m-one').forEach(sync);
+})();
+</script>
+{% endblock %}

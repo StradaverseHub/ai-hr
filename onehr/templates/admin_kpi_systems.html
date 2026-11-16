@@ -1,0 +1,100 @@
+{% extends "base.html" %}
+{% block title %}Systems{% endblock %}
+{% block body %}
+{# Performance > KPI library > Systems (the Chart of KPI, piece C; ONEHR_COA=1, the super admin): the other systems a KPI's figure can
+   come from, a name each and never a credential, how many KPIs, people and units use each, and each unit's code in a system. #}
+<p class="adm-crumb"><a href="{{ url_for('admin_module_settings', key='pm') }}">Performance</a> &rsaquo; <a href="{{ url_for('admin_kpi_library') }}">KPI library</a> &rsaquo; Systems</p>
+<div class="adm-headrow">
+  <p class="adm-lede">The systems a KPI's result can come from. A system here is only a name: a KPI's data link says which of its
+    measures fills it, a person's Account panel holds their ID there, and each unit's code is set below. Nothing is pulled yet.</p>
+</div>
+<nav class="adm-tabs kl-tabs" aria-label="KPI library">
+  <a href="{{ url_for('admin_kpi_library') }}">Library</a>
+  <a href="{{ url_for('admin_kpi_merges') }}">Merge queue</a>
+  <a href="{{ url_for('admin_kpi_chart_match') }}">Match lines</a>
+  <a class="is-active" href="{{ url_for('admin_kpi_systems') }}">Systems &middot; {{ n_systems }}</a>
+  <a href="{{ url_for('admin_library_requests') }}">Requests</a>
+  <a href="{{ url_for('admin_bu_kpis') }}">BU KPI setup</a>
+</nav>
+
+<section class="admin-card coa-sys-card" aria-label="Systems">
+  <span class="wiz-k">Systems &middot; {{ n_systems }}</span>
+  {% if d.systems %}
+  <div class="coa-sys h"><span>System</span><span>KPIs linked</span><span>People with an ID</span><span>Units with a code</span><span></span></div>
+  {% for s in d.systems %}
+  <div class="coa-sys{{ ' is-off' if s.retired_at }}">
+    <b title="{{ s.name }}">{{ s.name }}{% if s.retired_at %} <span class="pp-chip">Retired</span>{% endif %}</b>
+    <span>{{ s.n_kpis }}</span><span>{{ s.n_people }}</span><span>{{ s.n_units }}</span>
+    <span class="coa-sysact">
+      <form method="post" data-no-busy
+            {% if s.retired_at -%}
+            data-confirm="Bring {{ s.name }} back? It can be picked for new links, IDs and codes again."
+            data-confirm-title="Bring it back?" data-confirm-ok="Bring back"
+            {%- else -%}
+            data-confirm="Retire {{ s.name }}? It is hidden from new links, IDs and codes. What already uses it ({{ s.n_kpis }} KPI link{{ '' if s.n_kpis == 1 else 's' }}, {{ s.n_people }} ID{{ '' if s.n_people == 1 else 's' }}, {{ s.n_units }} unit code{{ '' if s.n_units == 1 else 's' }}) stays and stays readable."
+            data-confirm-title="Retire this system?" data-confirm-ok="Retire"
+            {%- endif %}>
+        <input type="hidden" name="action" value="{{ 'system_restore' if s.retired_at else 'system_retire' }}"><input type="hidden" name="system_id" value="{{ s.id }}">
+        <button type="submit" class="btn-link">{{ 'Bring back' if s.retired_at else 'Retire' }}</button></form></span>
+  </div>
+  {% endfor %}
+  {% else %}<p class="muted">No system yet. Add the first one below.</p>{% endif %}
+  <form method="post" class="coa-addrow" data-no-busy
+        data-confirm="Add this system? It is only a name, so KPIs, people and units can be linked to it. OneHR stores no login, key or password for it."
+        data-confirm-title="Add a system?" data-confirm-ok="Add the system">
+    <input type="hidden" name="action" value="system_add">
+    <label>System name<input type="text" name="system_name" maxlength="{{ max_sys }}" required autocomplete="off" aria-label="System name" placeholder="e.g. the name people call it"></label>
+    <button type="submit" class="primary">Add a system</button>
+  </form>
+  <span class="muted small">Only the name. Never type a password, key, token or address with a login here: OneHR stores none of them. A KPI's figure is connected to a system separately.</span>
+</section>
+
+<section class="admin-card coa-sys-card" aria-label="Unit codes">
+  <span class="wiz-k">Unit codes &middot; {{ d.codes | length }}</span>
+  <span class="muted small">What a unit is called in a system, set once per unit. A BU-level KPI's figure is found by it.</span>
+  {% if d.codes %}
+  <div class="coa-uc-list">
+    <div class="coa-uc h"><span>Business group &rsaquo; unit</span><span>System</span><span>Code there</span><span></span></div>
+    {% for c in d.codes %}
+    <div class="coa-uc">
+      <span title="{{ display_bg(c.business_group) }} &rsaquo; {{ c.unit_shown }}"><b>{{ display_bg(c.business_group) }}</b> &rsaquo; {{ c.unit_shown }}</span>
+      <span title="{{ c.sname }}">{{ c.sname }}{% if c.sretired %} <span class="muted">(retired)</span>{% endif %}</span>
+      <span title="{{ c.ext_code }}"><b>{{ c.ext_code }}</b></span>
+      <span class="coa-sysact">
+        <form method="post" data-no-busy data-confirm="Take {{ c.ext_code }} off {{ c.unit_shown }} in {{ c.sname }}? A BU-level KPI that reads {{ c.sname }} can no longer find the unit. You can set a code again later."
+              data-confirm-title="Remove the code?" data-confirm-ok="Remove">
+          <input type="hidden" name="action" value="unitcode_remove"><input type="hidden" name="code_id" value="{{ c.id }}">
+          <button type="submit" class="btn-link">Remove</button></form></span>
+    </div>
+    {% endfor %}
+  </div>
+  {% endif %}
+  {% if live and d.org %}
+  <form method="post" class="coa-addrow" data-no-busy data-coa-unitcode
+        data-confirm="Set this unit's code in the system? A code belongs to one unit in a system, and a unit has one code per system."
+        data-confirm-title="Set the unit's code?" data-confirm-ok="Set the code">
+    <input type="hidden" name="action" value="unitcode_add">
+    <label>Business group<select name="business_group" class="modern-select" aria-label="Business group" data-coa-bg>{% for b, us in d.org %}<option value="{{ b }}">{{ display_bg(b) }}</option>{% endfor %}</select></label>
+    <label>Unit<select name="company" class="modern-select" aria-label="Unit" data-coa-co>{% for b, us in d.org %}{% for co, lab in us %}<option value="{{ co }}" data-bg="{{ b }}">{{ lab }}</option>{% endfor %}{% endfor %}</select></label>
+    <label>System<select name="system_id" class="modern-select" aria-label="System">{% for s in live %}<option value="{{ s.id }}">{{ s.name }}</option>{% endfor %}</select></label>
+    <label>Its code there<input type="text" name="ext_code" maxlength="{{ max_ext }}" required autocomplete="off" aria-label="The unit's code in the system"></label>
+    <button type="submit" class="primary">Set the code</button>
+  </form>
+  {% elif not live %}<span class="muted small">Add a system first, then set each unit's code in it.</span>{% endif %}
+</section>
+<script>
+// the unit list follows the business group picked (the server takes only a unit of that group)
+(function () {
+  var f = document.querySelector('form[data-coa-unitcode]'); if (!f) return;
+  var bg = f.querySelector('[data-coa-bg]'), co = f.querySelector('[data-coa-co]');
+  function draw() {
+    Array.prototype.forEach.call(co.options, function (o) { var ok = o.getAttribute('data-bg') === bg.value; o.hidden = !ok; o.disabled = !ok; });
+    if (co.selectedOptions[0] && co.selectedOptions[0].disabled) {
+      var first = Array.prototype.find.call(co.options, function (o) { return !o.disabled; });
+      co.value = first ? first.value : '';
+    }
+  }
+  bg.addEventListener('change', draw); draw();
+})();
+</script>
+{% endblock %}

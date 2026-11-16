@@ -1,0 +1,455 @@
+{% extends "base.html" %}
+{% from "_table_tools.html" import colth, colmenu, colmenu_script %}
+{% block title %}Set my KPIs{% endblock %}
+{% block body %}
+<div class="page-head">
+  <div>
+    <h1>Set my KPIs</h1>
+    <p class="muted">
+      {{ period['name'] }} &middot; {{ tier['name'] }} ({{ tier['grades'] }})
+      {% if cfg %}&middot; Mechanism {{ cfg['mechanism'] }}{% endif %}
+    </p>
+  </div>
+  <div class="page-head-right">
+    {% if state == 'proposed' %}
+      <span class="status-pill status-submitted">Awaiting approval</span>
+    {% elif state == 'returned' %}
+      <span class="status-pill status-progress">Returned for changes</span>
+    {% endif %}
+  </div>
+</div>
+
+{% if not cfg %}
+<div class="admin-card">
+  <p class="note">Your Business Group has no scoring mechanism configured yet, so KPIs
+    can't be set here. Please ask Group People to set it up.</p>
+</div>
+{% else %}
+
+{% if approved_n and state == 'none' %}
+{# Setting is done for the period, so this page becomes the record of what was
+   agreed rather than a dead end. Read-only by construction: no inputs, no
+   propose button, no library -- the same numbers, greyed, so "what did I sign
+   up to?" has an answer all period long. A mid-period change goes through HR,
+   which is why there is nothing to click here. #}
+<div class="admin-card pm-set-agreed">
+  <div style="display:flex;justify-content:space-between;align-items:baseline;gap:12px;flex-wrap:wrap">
+    <h2 style="margin:0">My scorecard <span class="muted small">(agreed)</span></h2>
+    <span class="muted small">Agreed for {{ period['name'] }} &middot;
+      <a href="{{ url_for('performance_my_view') }}">enter your results in My PM</a></span>
+  </div>
+  <p class="muted small" style="margin:6px 0 0">
+    These KPIs are locked for the period. To change one, talk to Group People.
+  </p>
+  <div class="table-scroll" style="margin-top:12px">
+  <table class="admin-table pm-set-table">
+    <thead><tr>
+      <th>KPI</th>
+      {% if cfg and cfg['mechanism'] == 'A' %}
+      <th>Target</th><th>Rate 1</th><th>Rate 2</th><th>Rate 3</th><th>Rate 4</th><th>Rate 5</th>
+      {% else %}
+      <th>Threshold</th><th>Target</th>
+      <th>{{ 'Excellence' if agreed and agreed[0]['excellence'] is not none else 'Multiplier' }}</th>
+      {% endif %}
+      <th>Weight %</th>
+    </tr></thead>
+    <tbody>
+      {% for t in agreed %}
+      <tr>
+        <td>
+          <strong>{{ t['kpi_name'] }}</strong>
+          <p class="muted small" style="margin:2px 0 0">
+            {{ 'Higher is better' if t['method'] == 'more' else 'Lower is better' }}
+            {%- if t['unit'] %} &middot; {{ t['unit'] }}{% endif %}
+            {%- if t['category'] %} &middot; {{ t['category'] }}{% endif %}</p>
+          {% if t['description'] %}
+          <p class="muted small" style="margin:2px 0 0">{{ t['description'] }}</p>{% endif %}
+        </td>
+        {% if cfg and cfg['mechanism'] == 'A' %}
+        <td>{{ t['target'] | commas if t['target'] is not none else '—' }}</td>
+        {% for i in range(1, 6) %}
+        <td>{{ t['rate' ~ i] | commas if t['rate' ~ i] is not none else '—' }}</td>
+        {% endfor %}
+        {% else %}
+        <td>{{ t['threshold'] | commas if t['threshold'] is not none else '—' }}</td>
+        <td>{{ t['target'] | commas if t['target'] is not none else '—' }}</td>
+        <td>{% if t['excellence'] is not none %}{{ t['excellence'] | commas }}
+            {%- elif t['multiple'] is not none %}{{ t['multiple'] }}%
+            {%- else %}—{% endif %}</td>
+        {% endif %}
+        <td>{{ t['weightage'] | round | int }}%</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+    <tfoot><tr>
+      <td colspan="{{ 7 if cfg and cfg['mechanism'] == 'A' else 4 }}" style="text-align:right">
+        <strong>Total weight</strong></td>
+      <td><strong>{{ agreed_weight }}</strong>%</td>
+    </tr></tfoot>
+  </table>
+  </div>
+</div>
+{% else %}
+
+{% if state == 'returned' %}
+<div class="admin-card" style="border-left:4px solid var(--d-bd-d19a5c)">
+  <h2 style="margin-top:0">Sent back for changes</h2>
+  {% for t in mine if t['return_comment'] %}
+  <p class="muted small" style="margin:0 0 4px"><strong>{{ t['kpi_name'] }}:</strong> {{ t['return_comment'] }}</p>
+  {% else %}
+  <p class="muted small" style="margin:0">Your approver asked for changes. Adjust your KPIs below and propose again.</p>
+  {% endfor %}
+</div>
+{% endif %}
+
+<!-- ---------------- chosen scorecard ---------------- -->
+<div class="admin-card" style="margin-top:16px">
+  <h2>My scorecard</h2>
+  {% if not mine %}
+  <p class="muted small" style="margin:0">Nothing chosen yet. Pick KPIs from the library below.</p>
+  {% else %}
+  {% set mech = cfg['mechanism'] %}
+  {% set precols = 7 if mech == 'A' else 4 %}
+  {% set src_label = {'history': 'from your last period', 'spread': 'from the Group People ladder',
+                      'ai': 'AI-suggested target', 'library': 'library default'} %}
+  <div class="table-scroll">
+  <table class="admin-table">
+    <thead>
+      <tr>
+        <th>KPI</th>
+        {% if mech == 'A' %}
+        <th style="width:120px">Target</th>
+        <th>Rate 1</th><th>Rate 2</th><th>Rate 3</th><th>Rate 4</th><th>Rate 5</th>
+        {% else %}
+        <th style="width:110px">Threshold</th>
+        <th style="width:110px">Target</th>
+        <th style="width:110px">{{ 'Excellence' if cfg['variant'] == 'excellence' else 'Multiple %' }}</th>
+        {% endif %}
+        <th style="width:100px">Weight %</th>
+        <th></th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for t in mine %}
+      <tr data-target="{{ t['id'] }}">
+        <td>
+          <p style="margin:0;font-weight:500">{{ t['kpi_name'] }}</p>
+          <p class="muted small" style="margin:2px 0 0">
+            {{ 'Higher is better' if t['method'] == 'more' else 'Lower is better' }}
+            {%- if t['unit'] %} &middot; {{ t['unit'] }}{% endif %}
+            {%- if t['category'] %} &middot; {{ t['category'] }}{% endif %}
+            {%- if t['number_source'] == 'blank' %} &middot; <em>{{ "last year's figures in grey" if t['last_figures'] else 'set by you' }}</em>
+            {%- elif t['number_source'] %} &middot; <em>{{ src_label.get(t['number_source'], t['number_source']) }}</em>{% endif %}
+          </p>
+          {% if t['description'] %}<p class="muted small" style="margin:2px 0 0">{{ t['description'] }}</p>{% endif %}
+        </td>
+        {% if mech == 'A' %}
+        <td>
+          {% if editable %}
+          <div style="display:flex;gap:4px;align-items:center">
+            <input type="number" step="any" class="pm-set-num" data-field="target" placeholder="{{ (t['last_figures']['target'] | commas) if t['last_figures'] and t['last_figures']['target'] is not none else '' }}"
+                   value="{{ t['target'] if t['target'] is not none else '' }}" style="width:82px">
+          </div>
+          {% else %}{{ t['target'] if t['target'] is not none else '—' }}{% endif %}
+        </td>
+        {% for i in range(1, 6) %}
+        <td>
+          {% if editable %}
+          <input type="number" step="any" class="pm-set-num pm-set-rate" data-field="rate{{ i }}" placeholder="{{ (t['last_figures']['rate' ~ i] | commas) if t['last_figures'] and t['last_figures']['rate' ~ i] is not none else '' }}"
+                 value="{{ t['rate' ~ i] if t['rate' ~ i] is not none else '' }}" style="width:74px">
+          {% else %}{{ t['rate' ~ i] if t['rate' ~ i] is not none else '—' }}{% endif %}
+        </td>
+        {% endfor %}
+        {% else %}
+        <td>
+          {% if editable %}
+          <input type="number" step="any" class="pm-set-num" data-field="threshold" placeholder="{{ (t['last_figures']['threshold'] | commas) if t['last_figures'] and t['last_figures']['threshold'] is not none else '' }}"
+                 value="{{ t['threshold'] if t['threshold'] is not none else '' }}" style="width:96px">
+          {% else %}{{ t['threshold'] if t['threshold'] is not none else '—' }}{% endif %}
+        </td>
+        <td>
+          {% if editable %}
+          <div style="display:flex;gap:4px;align-items:center">
+            <input type="number" step="any" class="pm-set-num" data-field="target" placeholder="{{ (t['last_figures']['target'] | commas) if t['last_figures'] and t['last_figures']['target'] is not none else '' }}"
+                   value="{{ t['target'] if t['target'] is not none else '' }}" style="width:96px">
+          </div>
+          {% else %}{{ t['target'] if t['target'] is not none else '—' }}{% endif %}
+        </td>
+        <td>
+          {% set third = 'excellence' if cfg['variant'] == 'excellence' else 'multiple' %}
+          {% if editable %}
+          <input type="number" step="any" class="pm-set-num{{ ' pm-set-rate' if third == 'excellence' else '' }}"
+                 data-field="{{ third }}" placeholder="{{ (t['last_figures'][third] | commas) if t['last_figures'] and t['last_figures'][third] is not none else '' }}"
+                 value="{{ t[third] if t[third] is not none else '' }}" style="width:96px">
+          {% else %}{{ t[third] if t[third] is not none else '—' }}{% endif %}
+        </td>
+        {% endif %}
+        <td>
+          {% if editable %}
+          <input type="number" step="any" min="0" max="100" class="pm-set-weight"
+                 value="{{ t['weightage'] if t['weightage'] else '' }}" style="width:82px">
+          {% else %}{{ t['weightage'] }}%{% endif %}
+        </td>
+        <td style="white-space:nowrap">
+          {% if editable %}
+          <button type="button" class="btn-link pm-set-remove" style="color:var(--d-fg-bb0000)">Remove</button>
+          {% elif t['next_approver_name'] %}
+          <span class="muted small">Awaiting {{ t['next_approver_name'] }}</span>
+          {% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+    <tfoot>
+      <tr>
+        <td colspan="{{ precols }}" style="text-align:right"><strong>Total weight</strong></td>
+        <td><strong id="pm-set-total">{{ total_weight }}</strong>%</td>
+        <td><span id="pm-set-total-note" class="muted small"></span></td>
+      </tr>
+    </tfoot>
+  </table>
+  </div>
+  {% endif %}
+
+  {% if editable %}
+  <div class="actions" style="margin-top:12px;align-items:center;gap:10px">
+    <span id="pm-set-status" class="muted small"></span>
+    <form method="post" action="{{ url_for('performance_kpi_setting_propose') }}"
+          data-confirm="Propose this scorecard? You can't edit it while your moderator reviews it." data-confirm-ok="Propose">
+      <button type="submit" class="primary" id="pm-set-propose">Propose for approval</button>
+    </form>
+  </div>
+  <p class="muted small" style="margin:6px 0 0;text-align:right">
+    Weightages must total exactly 100% before you can propose.</p>
+  {% endif %}
+</div>
+
+<!-- ---------------- the library ---------------- -->
+{% if editable %}
+<div class="admin-card" style="margin-top:16px">
+  <h2>KPI library for {{ tier['name'] }}</h2>
+  <p class="muted small" style="margin:0 0 10px">
+    Curated for your company, department, tier and job grade — the Scope column
+    shows how specifically each KPI was targeted. Add the ones that fit your
+    role, then set each one's figures and weight; the weights total 100%.
+  </p>
+  {% if ai_enabled %}
+  <div class="ai-draft" style="display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin-bottom:12px"
+       id="pm-set-ai" data-endpoint="{{ url_for('performance_kpi_setting_draft_ai') }}"
+       data-limit="{{ ai_limit }}" data-remaining="{{ ai_remaining if ai_remaining is not none else ai_limit }}"
+       data-reset="{{ ai_reset_seconds or 0 }}">
+    <button type="button" class="ai-draft-btn" id="pm-set-ai-btn">&#10024; Suggest a scorecard with AI</button>
+    <span class="ai-quota" id="pm-set-ai-quota"></span>
+    <span class="ai-status" id="pm-set-ai-status"></span>
+  </div>
+  <p class="muted small" style="margin:-4px 0 10px">
+    The suggestion only ever picks from the library below — it never invents a KPI.
+    You can change or remove anything it adds before proposing.
+  </p>
+  {% endif %}
+  {% if not library %}
+  <p class="muted small" style="margin:0">No library KPIs have been curated for your
+    scope yet. Please ask Group People to add some.</p>
+  {% else %}
+  <div class="table-scroll table-scroll-capped">
+  <table class="admin-table" id="kpi-picker-table">
+    <thead><tr>{{ colth('kpi', 'KPI') }}{{ colth('scope', 'Scope') }}
+      {{ colth('dir', 'Direction') }}<th></th></tr></thead>
+    <tbody>
+      {% for r in library %}
+      {# data-library is kept: the page's own JS keys off it to add a KPI, and
+         it is unrelated to sorting. #}
+      <tr class="data-row" data-library="{{ r['id'] }}"
+          data-kpi="{{ r['kpi_name'] }}" data-scope="{{ r['scope_label'] }}"
+          data-dir="{{ 'More' if r['method'] == 'more' else 'Less' }}">
+        <td>
+          <p style="margin:0;font-weight:500">{{ r['kpi_name'] }}</p>
+          {% if r['category'] %}<p class="muted small" style="margin:2px 0 0">{{ r['category'] }}</p>{% endif %}
+          {% if r['description'] %}<p class="muted small" style="margin:2px 0 0">{{ r['description'] }}</p>{% endif %}
+        </td>
+        <td class="muted small">{{ r['scope_label'] }}</td>
+        <td>{{ 'More' if r['method'] == 'more' else 'Less' }}</td>
+        <td style="white-space:nowrap">
+          {% if r['already_chosen'] %}
+          <span class="muted small">Added</span>
+          {% else %}
+          <button type="button" class="btn-link pm-set-add">Add</button>
+          {% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+      <tr class="no-filter-match" hidden><td colspan="4" class="muted">No library KPIs match the filters.</td></tr>
+    </tbody>
+  </table>
+  </div>
+  {{ colmenu('kpi-picker-table', {
+       'kpi':    {'mode': 'clientFilter', 'type': 'text', 'sortAttr': 'kpi'},
+       'scope':  {'mode': 'clientFilter', 'type': 'text', 'sortAttr': 'scope'},
+       'dir':    {'mode': 'clientFilter', 'type': 'text', 'sortAttr': 'dir'} }) }}
+  {{ colmenu_script(asset_v) }}
+  {% endif %}
+</div>
+{% endif %}
+
+{% endif %}{# approved_n / state #}
+{% endif %}{# cfg #}
+
+<script>
+(function () {
+  var statusEl = document.getElementById('pm-set-status');
+  function csrfToken() {
+    var m = document.querySelector('meta[name="csrf-token"]');
+    return m ? m.content : '';
+  }
+  function say(msg) { if (statusEl) statusEl.textContent = msg || ''; }
+
+  function post(body) {
+    body.append('csrf_token', csrfToken());
+    return fetch('{{ url_for("performance_kpi_setting_autosave") }}',
+                 { method: 'POST', body: body, credentials: 'same-origin' })
+      .then(function (r) { return r.json().then(function (d) { return { status: r.status, data: d }; }); });
+  }
+
+  function recalcTotal() {
+    // Once the set is proposed the weights render as text, not inputs -- so
+    // there is nothing to sum and the live total would read 0%, contradicting
+    // the rows right above it and claiming the scorecard is invalid at exactly
+    // the moment it has been accepted for review. The server already rendered
+    // the real figure; leave it alone.
+    var inputs = document.querySelectorAll('.pm-set-weight');
+    if (!inputs.length) return null;
+    var total = 0;
+    inputs.forEach(function (inp) {
+      var v = parseFloat(inp.value);
+      if (!isNaN(v)) total += v;
+    });
+    total = Math.round(total * 100) / 100;
+    var el = document.getElementById('pm-set-total');
+    if (el) el.textContent = total;
+    var note = document.getElementById('pm-set-total-note');
+    var btn = document.getElementById('pm-set-propose');
+    var ok = Math.abs(total - 100) < 0.01;
+    if (note) note.textContent = ok ? '' : 'must total 100%';
+    if (btn) btn.disabled = !ok;
+    return total;
+  }
+
+  // Add from the library.
+  document.querySelectorAll('.pm-set-add').forEach(function (btn) {
+    btn.addEventListener('click', function () {
+      var row = btn.closest('tr[data-library]');
+      var body = new FormData();
+      body.append('action', 'add');
+      body.append('library_id', row.getAttribute('data-library'));
+      btn.disabled = true;
+      say('Adding…');
+      post(body).then(function (res) {
+        if (res.data && res.data.ok) { location.reload(); }
+        else { btn.disabled = false; say((res.data && res.data.error) || 'Could not add that KPI.'); }
+      }).catch(function () { btn.disabled = false; say('Could not add that KPI.'); });
+    });
+  });
+
+  // Remove a chosen line.
+  document.querySelectorAll('.pm-set-remove').forEach(function (btn) {
+    btn.addEventListener('click', function () {
+      var row = btn.closest('tr[data-target]');
+      var body = new FormData();
+      body.append('action', 'remove');
+      body.append('target_id', row.getAttribute('data-target'));
+      btn.disabled = true;
+      say('Removing…');
+      post(body).then(function (res) {
+        if (res.data && res.data.ok) { location.reload(); }
+        else { btn.disabled = false; say((res.data && res.data.error) || 'Could not remove that KPI.'); }
+      }).catch(function () { btn.disabled = false; say('Could not remove that KPI.'); });
+    });
+  });
+
+  // Debounced weight autosave.
+  document.querySelectorAll('.pm-set-weight').forEach(function (inp) {
+    var timer;
+    inp.addEventListener('input', function () {
+      recalcTotal();
+      clearTimeout(timer);
+      timer = setTimeout(function () {
+        var row = inp.closest('tr[data-target]');
+        var body = new FormData();
+        body.append('action', 'weightage');
+        body.append('target_id', row.getAttribute('data-target'));
+        body.append('weightage', inp.value);
+        say('Saving…');
+        post(body).then(function (res) {
+          say(res.data && res.data.ok ? 'Saved' : ((res.data && res.data.error) || 'Could not save'));
+        }).catch(function () { say('Could not save'); });
+      }, 700);
+    });
+  });
+
+  // ---- target numbers: debounced autosave, one field at a time ----
+
+  document.querySelectorAll('.pm-set-num').forEach(function (inp) {
+    var timer;
+    inp.addEventListener('input', function () {
+      var row = inp.closest('tr[data-target]');
+      clearTimeout(timer);
+      timer = setTimeout(function () {
+        var body = new FormData();
+        body.append('action', 'numbers');
+        body.append('target_id', row.getAttribute('data-target'));
+        body.append(inp.getAttribute('data-field'), inp.value);
+        say('Saving…');
+        post(body).then(function (res) {
+          say(res.data && res.data.ok ? 'Saved' : ((res.data && res.data.error) || 'Could not save'));
+        }).catch(function () { say('Could not save'); });
+      }, 700);
+    });
+  });
+
+  // "Suggest a scorecard with AI" -- grounded in the library; the server
+  // whitelists every id it returns and re-weights to exactly 100, so the
+  // worst case is a selection the employee edits or clears.
+  var aiBox = document.getElementById('pm-set-ai');
+  if (aiBox) {
+    var aiBtn = document.getElementById('pm-set-ai-btn');
+    var aiStatus = document.getElementById('pm-set-ai-status');
+    var aiQuota = document.getElementById('pm-set-ai-quota');
+    function paintQuota(remaining, limit) {
+      if (!aiQuota) return;
+      if (remaining === null || remaining === undefined) { aiQuota.textContent = ''; return; }
+      aiQuota.textContent = remaining + ' of ' + limit + ' left today';
+      if (aiBtn) aiBtn.disabled = remaining <= 0;
+    }
+    paintQuota(parseInt(aiBox.dataset.remaining, 10), parseInt(aiBox.dataset.limit, 10));
+    aiBtn.addEventListener('click', function () {
+      var hasRows = document.querySelectorAll('tr[data-target]').length > 0;
+      function go() {
+        var body = new FormData();
+        body.append('csrf_token', csrfToken());
+        body.append('instruction', '');
+        aiBtn.disabled = true;
+        if (aiStatus) aiStatus.textContent = 'Thinking…';
+        fetch(aiBox.dataset.endpoint, { method: 'POST', body: body, credentials: 'same-origin' })
+          .then(function (r) { return r.json().then(function (d) { return { status: r.status, data: d }; }); })
+          .then(function (res) {
+            var d = res.data || {};
+            if (d.ok) { location.reload(); return; }
+            aiBtn.disabled = false;
+            if (aiStatus) aiStatus.textContent = d.error || 'Could not get a suggestion.';
+            if (d.remaining !== undefined) paintQuota(d.remaining, parseInt(aiBox.dataset.limit, 10));
+          })
+          .catch(function () {
+            aiBtn.disabled = false;
+            if (aiStatus) aiStatus.textContent = 'Could not get a suggestion.';
+          });
+      }
+      if (hasRows) window.askConfirm('Replace your current selection with an AI suggestion? You can still edit or remove '
+                                     + 'anything afterwards.', 'Replace', go);
+      else go();
+    });
+  }
+
+  recalcTotal();
+})();
+</script>
+{% endblock %}

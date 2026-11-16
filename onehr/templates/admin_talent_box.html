@@ -1,0 +1,199 @@
+{% extends "base.html" %}
+{% block title %}Talent Box{% endblock %}
+{% block body %}
+{# Calibration & Talent > Run > Talent Box (canvas J2, 2026-10-10; redrawn 2026-10-30, canvas board F: "use the design of BGCEO, and
+   also the potential and performance calibration curves"). The admin's Business group row stays; under it is the BG CEO's own
+   Talent Box card, from the same builder (_journey_talent_box_overview) and the same classes and CSS (.rv-tbox-*), then both
+   curves. READ ONLY: no Move, no Lock; the foot says the lock state.
+   The grid, the unit pills and the foot are drawn here; the Filter line, the people panel, the list and the curves are drawn by
+   static/admin_talent_box.js from the one JSON below, with the filter line and the curve rows from static/calib_shared.js --
+   the same code the BG CEO's card runs. #}
+{% from "_filter_rows.html" import filter_rows %}
+{% macro ico(inner) -%}<svg class="rv-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false">{{ inner | safe }}</svg>{%- endmacro %}
+{# Talent Box Round 2 (Chris, 2026-11-14, canvas boards A-E, I, J; piece 2): the title bar's "Round 1 · Forecast | Round 2 · Actual" toggle (left of
+   Grid / List). Round 1 is the box as the BG CEO locked it on the forecast PAT, today's page. Round 2 reads the ACTUAL PAT: the strip under
+   the unit pills enters it (the super admin), then chooses Do Round 2 here / Push to BG CEO for a unit whose curve shifted, shows a pushed
+   round read only (lock-by date, Remind), or the round locked. An admin round is the one place this card is editable (a per-person Move on the
+   panel and the list, Suggest with AI, Apply all, Lock Round 2), for the super admin alone; BG and unit admins read Round 2. #}
+{% macro reason(label, ph) -%}data-confirm-reason="{{ label }}" data-confirm-reason-field="remark" data-confirm-reason-max="{{ remark_max }}" data-confirm-reason-placeholder="{{ ph }}"{%- endmacro %}
+{% macro fig(label, value) -%}<span class="atb-r2-fig"><span class="atb-r2-v">{{ value or '\u2014' }}</span><span class="atb-r2-c">{{ label }}</span></span>{%- endmacro %}
+{% macro form_ids(r2) -%}<input type="hidden" name="csrf_token" value="{{ csrf_token }}"><input type="hidden" name="bg" value="{{ r2.bg }}">{%- endmacro %}
+<div class="adm-headrow">
+  {% if round_n == 2 %}<p class="adm-lede">Round 2 reads each business unit's actual PAT against the placements the BG CEO locked on the forecast. {% if r2 and r2.sup %}You enter the
+    actual PAT and, where the curve shifts, choose how Round 2 is done.{% else %}Group People enter the actual PAT and choose how Round 2 is done.{% endif %}</p>
+  {% else %}<p class="adm-lede">The BG CEO's own box, as it stands{% if ceo %} ({{ ceo | join(', ') }}){% endif %}. You read it; the
+    BG CEO places and locks.</p>{% endif %}
+</div>
+{% if frows %}<section class="admin-card adm-filters" aria-label="Filters">{{ filter_rows(frows) }}</section>{% endif %}
+
+{% if not data %}
+<div class="admin-card"><p class="muted" style="margin:0">{{ why or "Nothing to show yet." }}</p></div>
+{% else %}
+{% set cmap = {} %}{% for c in payload.cells %}{% set _ = cmap.update({c.key: c}) %}{% endfor %}
+<section class="atb-card rv-tbox notranslate" id="atb" translate="no" aria-label="The Talent Box" data-bg="{{ bg }}" data-company="{{ company }}">
+  <div class="rv-cal-titlebar rv-tbox-titlebar">
+    <span class="rv-cal-title">Talent Box Calibration</span>
+    <span class="rv-cal-count" id="atb-count">{{ data.company_label }} &middot; {{ payload.placed }} placed</span>
+    <div class="rv-tbox-views is-rounds" role="group" aria-label="Round">
+      <a class="rv-tbox-view" href="{{ round_hrefs[1] }}"{% if round_n == 1 %} aria-current="page"{% endif %} title="The box as the BG CEO locked it, on the forecast PAT">Round 1 &middot; Forecast</a>
+      <a class="rv-tbox-view" href="{{ round_hrefs[2] }}"{% if round_n == 2 %} aria-current="page"{% endif %} title="The actual PAT, and Round 2 where the curve shifted">Round 2 &middot; Actual</a>
+    </div>
+    <div class="rv-tbox-views" role="group" aria-label="View">
+      <button type="button" class="rv-tbox-view" data-view="grid" aria-pressed="true">{{ ico('<rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/>') }}Grid</button>
+      <button type="button" class="rv-tbox-view" data-view="list" aria-pressed="false">{{ ico('<line x1="9" y1="6" x2="21" y2="6"/><line x1="9" y1="12" x2="21" y2="12"/><line x1="9" y1="18" x2="21" y2="18"/><line x1="4" y1="6" x2="4.01" y2="6"/><line x1="4" y1="12" x2="4.01" y2="12"/><line x1="4" y1="18" x2="4.01" y2="18"/>') }}List</button>
+    </div>
+  </div>
+  <div class="rv-tbox-busrow" id="atb-busrow">
+    <span class="rv-grp-flbl rv-tbox-rowlbl">BU</span>
+    <button type="button" class="rv-tbox-busnav is-prev" aria-label="Earlier business units">{{ ico('<polyline points="15 18 9 12 15 6"/>') }}</button>
+    <div class="rv-tbox-bus" role="group" aria-label="Business unit">
+      {% for u in pills %}<a class="rv-tbox-bu{{ ' is-on' if u.on }}" href="{{ u.href }}"{% if u.on %} aria-current="true"{% endif %} title="{{ u.label }} &middot; {{ u.pat_title }}{% if u.locked %} &middot; locked by the BG CEO{% endif %}">{{ u.label }}{% if u.locked %}<span class="rv-tbox-bulock is-mine">{{ ico('<rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/>') }}</span>{% endif %}<span class="rv-tbox-pat">{{ u.pat }}</span>{% if u.tag %}<span class="atb-tag is-{{ u.tag_cls }}">{{ u.tag }}</span>{% endif %}</a>{% endfor %}
+    </div>
+    <button type="button" class="rv-tbox-busnav is-next" aria-label="More business units">{{ ico('<polyline points="9 18 15 12 9 6"/>') }}</button>
+  </div>
+  {% if round_n == 1 and r2 and r2.state != 'none' %}
+  <div class="atb-r2 is-grey" id="atb-r2" role="note"><span class="atb-r2-k">Round 1</span>
+    <span class="atb-r2-say">As the BG CEO locked it{% if r2.forecast %}, on the forecast PAT <b>{{ r2.forecast }}</b>{% if r2.before %} ({{ r2.before }} curve){% endif %}{% endif %}. Read only: the record Round 2 starts from. <a href="{{ round_hrefs[2] }}">Open Round 2 &middot; Actual</a></span></div>
+  {% elif round_n == 2 and r2 %}
+  {% set st = r2.state %}
+  <div class="atb-r2{% if st in ('none',) and not (r2.can_write and r2.bg_locked and not r2.released) %} is-grey{% endif %}{% if r2.editable %} is-edit{% endif %}" id="atb-r2" role="region" aria-label="Round 2 &middot; Actual" data-state="{{ st }}">
+    {% if st == 'none' %}
+      {% if not r2.bg_locked %}
+        <span class="atb-r2-k">Round 2</span><span class="atb-r2-say">Round 2 starts after the BG CEO locks <b>{{ r2.unit }}</b> on the Talent Box. Until then its PAT is the forecast.</span>
+      {% elif r2.released %}
+        <span class="atb-r2-k">Actual PAT</span><span class="atb-r2-say">Results are released for people of <b>{{ r2.unit }}</b>, so its PAT can't change now.</span>
+      {% elif r2.can_write %}
+        <span class="atb-r2-k">Actual PAT</span>
+      {% else %}
+        <span class="atb-r2-k">Actual PAT</span><span class="atb-r2-say">Actual PAT not entered yet. Group People enter it here once the year's result is in.</span>
+      {% endif %}
+    {% else %}
+      <span class="atb-r2-k">{% if st == 'locked' %}Round 2{% elif st in ('open', 'due') %}{% if r2.mode == 'bgceo' %}Round 2 &middot; BG CEO{% elif r2.sup %}Round 2 &middot; you{% else %}Round 2 &middot; Group People{% endif %}{% else %}Actual PAT{% endif %}</span>
+    {% endif %}
+
+    {# the figures, once an actual PAT is in #}
+    {% if st != 'none' %}{{ fig('Forecast · ' ~ r2.before, r2.forecast) }}<span class="atb-r2-arrow" aria-hidden="true">&rarr;</span>{{ fig('Actual · ' ~ r2.after, r2.actual) }}
+      {% if st == 'same' %}<span class="atb-tag is-ok">Same curve</span>{% elif st == 'waiting' %}<span class="atb-tag is-warn">Curve shifted</span>{% endif %}{% endif %}
+
+    {# the actual PAT form: the first save, and (hidden behind Change) a correction before Round 2 opens #}
+    {% if r2.can_write and r2.bg_locked and not r2.released and st in ('none', 'same', 'waiting') %}
+    <form method="post" action="{{ url_for('admin_tb_round_actual') }}" class="atb-r2-form" id="atb-actual" {% if st != 'none' %}hidden{% endif %}
+      data-confirm="Save the actual PAT for {{ r2.unit }}? The curve may change. Nothing in the box moves yet."
+      data-confirm-title="Save the actual PAT for {{ r2.unit }}?" data-confirm-ok="Save actual PAT"
+      {{ reason('Your remark (required): why, for the audit trail', 'e.g. FY2026 audited PAT from Group Finance, 2 Dec') }}
+      data-unit="{{ r2.unit }}" data-forecast="{{ r2.forecast }}" data-before="{{ r2.before }}" data-cuts="70,130">
+      {{ form_ids(r2) }}<input type="hidden" name="company" value="{{ r2.company }}">
+      {% if st == 'none' %}{{ fig('Forecast · ' ~ r2.before, r2.forecast) }}<span class="atb-r2-arrow" aria-hidden="true">&rarr;</span>{% else %}<span class="atb-r2-c">Change it to</span>{% endif %}
+      <label class="atb-inp"><span class="rv-sr">Actual PAT, percent</span><input type="number" step="any" min="0" name="actual_pct" inputmode="decimal" placeholder="e.g. 62" autocomplete="off"><span class="atb-inp-u" aria-hidden="true">%</span></label>
+      <span class="atb-r2-say" id="atb-live" aria-live="polite">Type the actual PAT: under 70% is Negatively skewed, 70 to 130% Normal, over 130% Positively skewed.</span>
+      <span class="atb-r2-acts"><button type="submit" class="atb-btn is-navy" id="atb-actual-save">Save actual PAT</button></span>
+    </form>
+    {% endif %}
+
+    {# what each state says, and its buttons #}
+    {% if st == 'same' %}
+      <span class="atb-r2-say">Same curve: Round 1 stands. Nothing to redo for this unit.</span>
+      {% if r2.can_write and r2.bg_locked and not r2.released %}<span class="atb-r2-acts"><button type="button" class="atb-btn is-out" data-atb-change aria-controls="atb-actual">Change actual PAT</button></span>{% endif %}
+    {% elif st == 'waiting' %}
+      <span class="atb-r2-say"><span id="atb-gap-s">Round 1 sits against the {{ r2.before }} curve; the actual PAT moves this unit to {{ r2.after }}.</span>{% if r2.released %} Results are released for people of <b>{{ r2.unit }}</b>, so Round 2 can't open now.{% elif r2.hold %} Results for {{ r2.bg_label }} can't be released until Round 2 is locked.{% endif %}</span>
+      {% if r2.can_write and not r2.released %}
+      <span class="atb-r2-acts">
+        <button type="button" class="atb-btn is-out" data-atb-change aria-controls="atb-actual">Change actual PAT</button>
+        <form method="post" action="{{ url_for('admin_tb_round_open') }}" class="atb-r2-form" data-confirm="You place this unit against the {{ r2.after }} curve on this page, starting from the BG CEO's placements. The BG CEO is not emailed. Your remark goes on every move and the lock."
+          data-confirm-title="Do Round 2 for {{ r2.unit }} here?" data-confirm-ok="Do Round 2 here" {{ reason('Your remark (required)', 'e.g. Actual PAT ' ~ r2.actual ~ '; agreed with the BG CEO') }}>
+          {{ form_ids(r2) }}<input type="hidden" name="company" value="{{ r2.key }}"><input type="hidden" name="mode" value="admin">
+          <button type="submit" class="atb-btn is-out">Do Round 2 here</button></form>
+        <form method="post" action="{{ url_for('admin_tb_round_open') }}" class="atb-r2-form" id="atb-push"
+          data-confirm="{{ (r2.ceo | join(', ')) if r2.ceo else 'The BG CEO' }} gets an email and their Talent Box reopens on {{ r2.unit }} only, with their earlier placements kept."
+          data-confirm-title="Push Round 2 to the BG CEO?" data-confirm-ok="Push to BG CEO" data-unit="{{ r2.unit }}" data-ceo="{{ r2.ceo | join(', ') }}"
+          {{ reason('Your remark (required)', 'e.g. Actual PAT ' ~ r2.actual ~ ' moves the unit to the ' ~ r2.after ~ ' curve') }}>
+          {{ form_ids(r2) }}<input type="hidden" name="company" value="{{ r2.key }}"><input type="hidden" name="mode" value="bgceo">
+          <label class="atb-lockby"><span>Lock by</span><input type="date" name="due_on" value="{{ r2.due_default }}" min="{{ r2.due_min }}" required></label>
+          <button type="submit" class="atb-btn is-navy"{% if not r2.ceo %} disabled title="Nobody holds the BG CEO seat: seat someone, or do Round 2 here"{% endif %}>Push to BG CEO</button></form>
+      </span>
+      {% endif %}
+    {% elif st == 'open' and r2.mode == 'admin' %}
+      <span class="atb-r2-say">{% if r2.sup %}Started by you{% else %}Started by {{ r2.opened_by or 'Group People' }}{% endif %}{% if r2.opened %}, {{ r2.opened }}{% endif %}. {% if r2.editable %}Move people to fit the new curve, then lock.{% else %}Group People are placing this unit against the {{ r2.after }} curve.{% endif %}</span>
+      {% if r2.editable %}<span class="atb-r2-acts"><button type="button" class="rv-ai-action atb-btn" id="atb-suggest"><svg class="rv-ico-spark" viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M12 2l2.2 6.6L21 11l-6.8 2.4L12 20l-2.2-6.6L3 11l6.8-2.4z"/></svg>Suggest with AI</button></span>{% endif %}
+    {% elif st == 'open' %}
+      <span class="atb-r2-say">Pushed to <b>{{ (r2.ceo | join(', ')) or 'the BG CEO' }}</b>{% if r2.opened %}, {{ r2.opened }}{% endif %}{% if r2.emailed %} &middot; email sent{% endif %} &middot; lock by <b>{{ r2.due_text }}</b>.{% if r2.moved_n %} {{ r2.moved_n }} moved so far.{% endif %}{% if r2.reminded %} Reminded {{ r2.reminded }}.{% endif %}</span>
+      {% if r2.can_write %}<span class="atb-r2-acts"><form method="post" action="{{ url_for('admin_tb_round_remind') }}" class="atb-r2-form" data-confirm="Send {{ (r2.ceo | join(', ')) or 'the BG CEO' }} the Round 2 email again? It asks them to lock {{ r2.unit }} by {{ r2.due_text }}." data-confirm-title="Remind the BG CEO?" data-confirm-ok="Send reminder">
+        {{ form_ids(r2) }}<input type="hidden" name="company" value="{{ r2.key }}"><button type="submit" class="atb-btn is-out">Remind</button></form></span>{% endif %}
+    {% elif st == 'due' %}
+      <span class="atb-r2-say">Pushed to <b>{{ (r2.ceo | join(', ')) or 'the BG CEO' }}</b>; the lock-by day, <b>{{ r2.due_text }}</b>, has passed.{% if r2.editable %} You can finish it now: move people on this card, then lock.{% else %} Group People finish it.{% endif %}</span>
+      {% if r2.editable %}<span class="atb-r2-acts"><button type="button" class="rv-ai-action atb-btn" id="atb-suggest"><svg class="rv-ico-spark" viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M12 2l2.2 6.6L21 11l-6.8 2.4L12 20l-2.2-6.6L3 11l6.8-2.4z"/></svg>Suggest with AI</button></span>{% endif %}
+    {% elif st == 'locked' %}
+      <span class="atb-r2-say">Locked by <b>{% if r2.mode == 'admin' or r2.locked_gp %}Group People{% else %}the BG CEO{% endif %}</b>{% if r2.locked %}, {{ r2.locked }}{% endif %}. <b>This is the result that is released.</b> Round 1 &middot; Forecast still shows the box as the BG CEO first locked it.</span>
+    {% endif %}
+  </div>
+  {% if r2.editable %}
+  <div class="atb-r2 is-ai" id="atb-ai" hidden role="status" aria-label="AI+ suggestion">
+    <span class="atb-r2-say" id="atb-ai-say"></span>
+    <span class="atb-r2-acts"><button type="button" class="atb-btn is-out" id="atb-ai-dismiss">Dismiss</button><button type="button" class="atb-btn is-navy" id="atb-ai-apply">Apply all</button></span>
+    <ol class="atb-ailist" id="atb-ai-list"></ol>
+  </div>
+  {% endif %}
+  {% endif %}
+  <div class="rv-tbox-filter" id="atb-filter"></div>
+
+  <div class="rv-tbox-body is-grid" id="atb-body">
+    <div class="rv-tbox-grid" id="atb-grid">
+      <button type="button" class="rv-tbox-axbtn is-y" data-axis="pot" title="Show the potential distribution curve" aria-label="Show the potential distribution curve (potential, low to high)"><span class="rv-tbox-axin">{{ ico('<path d="M3 20h18"/><path d="M4 18c3.5 0 4.5-12 8-12s4.5 12 8 12"/>') }}<span class="rv-tbox-axbtn-t">Potential</span><span class="rv-tbox-axbtn-a">&rarr;</span></span></button>
+      {% for rw in payload.rows %}
+      <div class="rv-tbox-rowh"><span class="rv-tbox-axt"><b>{{ rw.key }}</b></span><span class="rv-tbox-axn">{{ rw.n }} &middot; {{ pct_of(rw.n, payload.placed) }}%</span></div>
+      {% for c in payload.cols %}{% set cell = cmap[c.key ~ '|' ~ rw.key] %}
+      <button type="button" class="rv-tbox-cell" data-key="{{ cell.key }}" data-cat="{{ cell.cat }}" aria-pressed="false"
+        aria-label="{{ cell.label }}: {{ cell.pot | lower }} potential, {{ c.label | lower }} performance, {{ cell.n }} {{ 'person' if cell.n == 1 else 'people' }}, {{ pct_of(cell.n, payload.placed) }}%{% if cell.moved %}, {{ cell.moved }} moved here{% endif %}">
+        <span class="rv-tbox-cellh"><span class="rv-tbox-cat">{{ cell.label }}</span>{% if cell.moved %}<span class="rv-tbox-mv">{{ cell.moved }} moved</span>{% endif %}</span>
+        {% if r2 and r2.editable %}<span class="atb-sgrow" hidden></span>{% endif %}
+        <span class="rv-tbox-num"><span class="rv-tbox-big">{{ cell.n }}</span><span class="rv-tbox-pct">{{ pct_of(cell.n, payload.placed) }}%</span></span>
+        <span class="rv-tbox-faces" aria-hidden="true">{% for f in cell.faces %}<span class="rv-tbox-face">{{ f }}</span>{% endfor %}{% if cell.n > 4 %}<span class="rv-tbox-fmore">+{{ cell.n - 4 }}</span>{% endif %}</span>
+      </button>
+      {% endfor %}
+      {% endfor %}
+      <div class="rv-tbox-corner"></div>
+      {% for c in payload.cols %}
+      <div class="rv-tbox-colf"><span class="rv-tbox-axt"><b>{{ c.label }}</b> &middot; {{ c.bands | join(' · ') }}</span><span class="rv-tbox-axn">{{ c.n }} &middot; {{ pct_of(c.n, payload.placed) }}%</span></div>
+      {% endfor %}
+      <div class="rv-tbox-xaxis"><button type="button" class="rv-tbox-axbtn is-x" data-axis="perf" title="Show the performance distribution curve" aria-label="Show the performance distribution curve (performance, low to high)"><span class="rv-tbox-axin">{{ ico('<path d="M3 20h18"/><path d="M4 18c3.5 0 4.5-12 8-12s4.5 12 8 12"/>') }}<span class="rv-tbox-axbtn-t">Performance</span><span class="rv-tbox-axbtn-a">&rarr;</span></span></button></div>
+    </div>
+    <aside class="rv-tbox-drawer" id="atb-drawer" aria-label="People in the box or category you picked"></aside>
+    <div class="rv-tbox-listwrap" id="atb-list" hidden></div>
+  </div>
+  {% if payload.unplaced %}
+  <details class="rv-tbox-unplaced">
+    <summary>Not placed yet ({{ payload.unplaced | length }}) &mdash; missing a band on one axis</summary>
+    <ul>{% for x in payload.unplaced %}<li>{{ x.name }}{% if x.missing %} &mdash; {{ x.missing | join('; ') }}{% endif %}</li>{% endfor %}</ul>
+  </details>
+  {% endif %}
+  <div class="rv-cal-foot rv-tbox-foot">
+    <button type="button" class="rv-tbox-showmoved" id="atb-moved" aria-pressed="false"{% if not payload.moved_n %} disabled title="Nobody&rsquo;s band has been moved here yet"{% endif %}><span class="rv-tbox-catmv" aria-hidden="true">&#8597;</span>Show moved<span class="rv-tbox-catn">{{ payload.moved_n }}</span></button>
+    {% if round_n == 2 and r2 and r2.editable %}
+    <form method="post" action="{{ url_for('admin_tb_round_lock') }}" class="rv-cal-lockform" id="atb-lockform"
+      data-confirm="{% if r2.moved_n and not r2.picked %}{{ r2.moved_n }} {{ 'person' if r2.moved_n == 1 else 'people' }} moved from Round 1. {% else %}Whoever you moved from Round 1 stays where they are. {% endif %}These become the final bands, released with {{ r2.bg_label }}. Round 1 is kept for the record."
+      data-confirm-title="Lock Round 2 for {{ r2.unit }}?" data-confirm-ok="Lock Round 2">
+      {{ form_ids(r2) }}<input type="hidden" name="company" value="{{ r2.key }}"><input type="hidden" name="round_id" value="{{ r2.round_id }}">
+      <button type="submit" class="rv-confirm-yes rv-cal-lock">Lock Round 2</button></form>
+    {% else %}
+    {% set ft = r2.foot if (round_n == 2 and r2 and r2.foot) else None %}
+    <span class="atb-lockpill{% if ft and ft[0] %} is-{{ ft[0] }}{% endif %}" id="atb-lock" role="status">{{ ft[1] if ft else lock_text }}</span>
+    {% endif %}
+  </div>
+</section>
+
+{# both curves, always in view (canvas board F): rows drawn by the shared curve box #}
+<div class="atb-curves" id="atb-curves">
+  <section class="admin-card atb-curve" aria-labelledby="atb-curve-perf-h">
+    <div class="atb-curve-h"><b id="atb-curve-perf-h">Performance distribution</b><span class="atb-curve-sub" id="atb-curve-perf-s"></span></div>
+    <div id="atb-curve-perf"></div>
+  </section>
+  <section class="admin-card atb-curve" aria-labelledby="atb-curve-pot-h">
+    <div class="atb-curve-h"><b id="atb-curve-pot-h">Potential distribution</b><span class="atb-curve-sub" id="atb-curve-pot-s"></span></div>
+    <div id="atb-curve-pot"></div>
+  </section>
+</div>
+<script type="application/json" id="atb-data">{{ payload | tojson }}</script>
+<script src="{{ url_for('static', filename='calib_shared.js') }}?v={{ asset_v }}"></script>
+<script src="{{ url_for('static', filename='admin_talent_box.js') }}?v={{ asset_v }}"></script>
+{% endif %}
+{% endblock %}

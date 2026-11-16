@@ -1,0 +1,134 @@
+{% extends "base.html" %}
+{% from "_table_tools.html" import colth, colmenu, colmenu_script %}
+{% block title %}Ratings record{% endblock %}
+{% block body %}
+
+{# The rating record (Chris, 2026-09-28): every score and band as it stood at each person's last sign-off or
+   calibration lock. Everything else in OneHR computes these on read, through live config and live org, so a later
+   config edit or a transfer would quietly restate a past cycle. This page reads the RECORD and never recomputes. #}
+
+<div class="adm-headrow">
+  <p class="adm-lede">Each person's performance and potential scores and bands, recorded at every sign-off and calibration lock,
+    so a past cycle reads the same whatever changes later. Archiving a cycle freezes its record.</p>
+  {% if cyc %}
+  <div class="adm-headrow-acts">
+    <a class="btn-link" href="{{ url_for('admin_export_ratings', cycle=cyc['id'], bg=fbg or None, company=fco or None) }}">Download Excel</a>
+  </div>
+  {% endif %}
+</div>
+
+{% from "_filter_rows.html" import filter_rows %}
+{# business group, then unit, one row each (the review, 2026-10-10); the cycle stays a select #}
+<section class="admin-card adm-filters" aria-label="Filters">
+  {{ filter_rows(frows) }}
+  <form method="get" class="adm-fsearch">
+    {% for k in ('bg', 'company') %}{% if request.args.get(k) %}<input type="hidden" name="{{ k }}" value="{{ request.args.get(k) }}">{% endif %}{% endfor %}
+    <label class="adm-field">Cycle
+      <select name="cycle" class="modern-select" onchange="this.form.submit()">
+        {% for c in cycles %}
+        <option value="{{ c['id'] }}" {% if cyc and c['id'] == cyc['id'] %}selected{% endif %}>
+          {{ c['name'] }}{% if c['is_active'] %} &middot; active{% endif %}</option>
+        {% endfor %}
+      </select>
+    </label>
+  </form>
+</section>
+
+{% if cyc %}
+<section class="admin-card rm-inline">
+  <div class="small">
+    <strong>{{ rows|length }}</strong> recorded
+    {% if missing %}&middot; <strong>{{ missing }}</strong> in this cycle not recorded yet{% endif %}
+    {% if frozen %}&middot; <span class="muted">frozen &mdash; the cycle is archived</span>{% endif %}
+  </div>
+  {% if missing and not frozen %}
+  <form method="post" action="{{ url_for('admin_rating_records_capture') }}" class="rm-inline"
+        data-confirm="Record today's scores and bands for the {{ missing }} {{ 'person' if missing == 1 else 'people' }} in {{ cyc['name'] }}{% if fbg or fco %} (this selection){% endif %} who have no record yet? It saves them as they stand now, one batch per click (click again for the rest). A cycle's records are frozen once it is archived."
+        data-confirm-title="Record these scores now?" data-confirm-ok="Capture">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <input type="hidden" name="cycle" value="{{ cyc['id'] }}">
+    <input type="hidden" name="bg" value="{{ fbg }}">
+    <input type="hidden" name="company" value="{{ fco }}">
+    <button type="submit" class="primary">Capture now</button>
+  </form>
+  {% endif %}
+</section>
+{% endif %}
+
+{% if not cyc %}
+<section class="admin-card"><p class="muted small pp-none">No cycle exists yet. Create one on <a href="{{ url_for('admin_cycles') }}">All cycles</a>.</p></section>
+{% elif not rows %}
+<section class="admin-card">
+  <p class="muted small pp-none">
+    Nobody has a record for {{ cyc['name'] }} yet. Records are written at each sign-off and calibration lock;
+    {% if missing and not frozen %}use <strong>Capture now</strong> to record everyone in this cycle today.{% else %}nothing to capture.{% endif %}
+  </p>
+</section>
+{% else %}
+<section class="admin-card">
+<div class="table-scroll table-scroll-capped">
+  <table class="admin-table" id="rr-table">
+    <thead><tr>
+      {{ colth('person', 'Person') }}
+      {{ colth('unit', 'Business unit') }}
+      {{ colth('pself', 'Performance (self)') }}
+      {{ colth('pmgr', 'Performance (manager)') }}
+      {{ colth('pfinal', 'Performance (final)') }}
+      {{ colth('pscore', 'Potential score') }}
+      {{ colth('praw', 'Potential (calculated)') }}
+      {{ colth('pofinal', 'Potential (final)') }}
+      {{ colth('when', 'Recorded') }}
+    </tr></thead>
+    <tbody>
+      {% for r in rows %}
+      {% set mech = r['pm_mechanism'] %}
+      <tr class="data-row" data-person="{{ r['full_name'] or '' }}" data-unit="{{ display_company(r['business_group'], r['company']) or '' }}"
+          data-pself="{{ r['pm_self_band'] or '' }}" data-pmgr="{{ r['pm_mgr_band'] or '' }}"
+          data-pfinal="{{ r['pm_final_band'] or '' }}" data-pscore="{{ (r['pot_score'] / (r['pot_max'] if r['pot_max'] is not none else r['f360_max'])) if (r['pot_score'] is not none and (r['pot_max'] or r['f360_max'])) else '' }}"
+          data-praw="{{ r['pot_raw_band'] or '' }}" data-pofinal="{{ r['pot_final_band'] or '' }}"
+          data-when="{{ r['updated_at'] }}">
+        <td><strong>{{ r['full_name'] }}</strong><div class="muted small">{{ r['employee_id'] }}{% if r['job_grade'] %} &middot; JG{{ r['job_grade'] }}{% endif %}</div></td>
+        <td>{{ display_company(r['business_group'], r['company']) or '—' }}<div class="muted small">{{ display_bg(r['business_group']) or '' }}</div></td>
+        <td>{% if r['pm_self_band'] %}{{ fig(r['pm_self_value'], mech) }}{% if mech == 'B' %}%{% endif %}
+            <span class="potential-pill" data-band="{{ r['pm_self_band'] }}">{{ r['pm_self_band'] }}</span>
+            {% if r['pm_weight_total'] and r['pm_weight_covered'] is not none and r['pm_weight_covered'] < r['pm_weight_total'] %}
+            <div class="muted small">covering {{ (100 * r['pm_weight_covered'] / r['pm_weight_total'])|round|int }}%</div>{% endif %}
+            {% else %}<span class="muted">—</span>{% endif %}</td>
+        <td>{% if r['pm_mgr_band'] %}{{ fig(r['pm_mgr_value'], mech) }}{% if mech == 'B' %}%{% endif %}
+            <span class="potential-pill" data-band="{{ r['pm_mgr_band'] }}">{{ r['pm_mgr_band'] }}</span>
+            {% else %}<span class="muted">—</span>{% endif %}</td>
+        <td>{% if r['pm_final_band'] %}<span class="potential-pill" data-band="{{ r['pm_final_band'] }}">{{ r['pm_final_band'] }}</span>
+            <div class="muted small">{{ source_label.get(r['pm_final_source'], r['pm_final_source']) }}</div>
+            {% else %}<span class="muted">—</span>{% endif %}</td>
+        <td>{% if r['pot_score'] is not none %}{{ fig(r['pot_score']) }}{% set pmx = r['pot_max'] if r['pot_max'] is not none else r['f360_max'] %}{% if pmx %}<span class="muted small"> / {{ fig(pmx) }}</span>{% endif %}
+            {% else %}<span class="muted">—</span>{% endif %}</td>
+        <td>{{ r['pot_raw_band'] or '—' }}</td>
+        <td>{% if r['pot_final_band'] %}<strong>{{ r['pot_final_band'] }}</strong>
+            <div class="muted small">{{ pot_source_label.get(r['pot_final_source'], r['pot_final_source']) }}</div>
+            {% else %}<span class="muted">—</span>{% endif %}</td>
+        <td class="small">{{ r['updated_at']|myt }}<div class="muted small">{{ r['last_event'] or '' }}</div></td>
+      </tr>
+      {% endfor %}
+      <tr class="no-filter-match" hidden><td colspan="9" class="muted">No rows match the filters.</td></tr>
+    </tbody>
+  </table>
+</div>
+{{ colmenu('rr-table', {
+     'person':  {'mode': 'clientFilter', 'type': 'text', 'sortAttr': 'person'},
+     'unit':    {'mode': 'clientFilter', 'type': 'text', 'sortAttr': 'unit'},
+     'pself':   {'mode': 'clientFilter', 'type': 'text', 'sortAttr': 'pself', 'order': band_order},
+     'pmgr':    {'mode': 'clientFilter', 'type': 'text', 'sortAttr': 'pmgr', 'order': band_order},
+     'pfinal':  {'mode': 'clientFilter', 'type': 'text', 'sortAttr': 'pfinal', 'order': band_order},
+     'pscore':  {'mode': 'clientFilter', 'type': 'num',  'sortAttr': 'pscore'},
+     'praw':    {'mode': 'clientFilter', 'type': 'text', 'sortAttr': 'praw', 'order': ['Low', 'Mid', 'High']},
+     'pofinal': {'mode': 'clientFilter', 'type': 'text', 'sortAttr': 'pofinal', 'order': ['Low', 'Mid', 'High']},
+     'when':    {'mode': 'sort', 'sortAttr': 'when'} }) }}
+<p class="muted small">
+  The Excel download carries every column: the self and manager scores, the band after each calibration tier,
+  the 360 and competency scores behind the potential band, and who decided each final band.
+</p>
+</section>
+{% endif %}
+
+{{ colmenu_script(asset_v) }}
+{% endblock %}

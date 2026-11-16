@@ -1,0 +1,16 @@
+{# How the product says hello. One block, so the Hub and the dashboard greet a
+   person identically -- two hand-rolled versions had drifted into different
+   markup, a different subtitle and (on the dashboard) a name that was
+   title-cased in the template rather than by the same rule everywhere.
+
+   Deliberately NOT time-of-day. "Good evening" is wrong for anyone working
+   late, wrong across time zones, and it dates a page that may sit open for
+   hours. A plain hello is right at any hour. #}
+
+<div class="welcome-id">
+  <span class="welcome-avatar" aria-hidden="true">{{ welcome['initials'] }}</span>
+  <div class="welcome-who">
+    <h1 class="welcome-hi">{{ welcome['greeting'] }}, {{ welcome['first_name'] }}</h1>
+    {% if welcome['subtitle'] %}<p class="welcome-role">{{ welcome['subtitle'] }}</p>{% endif %}
+  </div>
+</div>

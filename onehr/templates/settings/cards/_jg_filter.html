@@ -1,0 +1,243 @@
+{# Settings card: jg_filter (Chris, 2026-10-21, canvas "OneHR JG Filter", [design canvas link removed]).
+   How one business group's job grades are grouped on the JG pill row (named bands, or each grade on its own), and the
+   units where that row shows on a BU CEO's calibration and the BG CEO's Talent Box: hidden unless switched on here. It
+   posts to admin_settings (action jg_filter); the card checks the bands as they're typed (the server again), and the
+   confirm box names every change. #}
+{% set jf = jg_filter %}
+<p class="muted small">How this business group's job grades are grouped on the Job grade filter. Where that filter shows is set
+  unit by unit on Filters at BU level, above. It only narrows what a leader sees: no band, lock or move changes.</p>
+{% if not jf or not jf.bgs %}
+  <p class="note">No business units in Org structure yet.</p>
+{% else %}
+<nav class="df-bgtabs" aria-label="Business group">
+  {% for g in jf.bgs %}
+  <a href="{{ url_for('admin_module_settings', key='calibration', jgbg=g.key) }}#jg-filter"
+     class="df-bgtab{{ ' is-on' if g.key == jf.bg }}"{% if g.key == jf.bg %} aria-current="page"{% endif %}
+     title="{{ display_bg(g.key) }}">{{ g.label }}</a>
+  {% endfor %}
+</nav>
+<form method="post" action="{{ url_for('admin_settings') }}" class="df-form jg-form" data-jg-form
+      data-jg-bg="{{ jf.bg_label }}" data-jg-floor="{{ jf.floor if jf.floor is not none else '' }}"
+      data-jg-max="{{ jf.max_bands }}" data-jg-was-mode="{{ jf.mode }}" data-jg-was-set="{{ 1 if jf.set else 0 }}"
+      data-jg-was="{{ jf.bands|map(attribute='label')|join(' · ') }}"
+      data-jg-grades='{{ jf.by_grade|tojson }}' data-jg-other="{{ jf.other }}"
+      data-confirm-title="Change the job grade filter?" data-confirm-ok="Save job grade filter"
+      data-confirm="Nothing has changed for {{ jf.bg_label }}.">
+  <input type="hidden" name="next" value="{{ (settings_next ~ '#jg-filter') if settings_next else '' }}">
+  <input type="hidden" name="action" value="jg_filter">
+  <input type="hidden" name="bg" value="{{ jf.bg }}">
+
+  <div class="jg-sec">
+    <div class="jg-sec-h"><b>How {{ jf.bgs|selectattr('key', 'equalto', jf.bg)|map(attribute='label')|first }}'s grades are grouped</b>
+      <span class="muted small">{% if jf.floor is not none %}From JG {{ jf.floor }}, the active cycle's minimum{% else %}The active cycle has no minimum grade{% endif %}</span></div>
+    <div class="jg-seg" role="radiogroup" aria-label="How grades are grouped">
+      <label><input type="radio" name="jg_mode" value="bands"{{ ' checked' if jf.mode == 'bands' }}> Named bands</label>
+      <label><input type="radio" name="jg_mode" value="each"{{ ' checked' if jf.mode == 'each' }}> Each grade on its own</label>
+    </div>
+    <div class="jg-bands" data-jg-bands>
+      <div class="table-scroll no-auto-table-zone"><table class="admin-table jg-table">
+        <thead><tr><th>Name on the pill</th><th>From</th><th>To</th><th class="jg-th-n" title="People now" data-full="People now">People</th><th><span class="sr-only">Remove</span></th></tr></thead>
+        <tbody>
+        {% for i in range(jf.max_bands) %}{% set b = jf.bands[i] if i < jf.bands|length else none %}
+          <tr data-jg-row{% if not b %} hidden{% endif %}>
+            <td><div class="jg-namecell"><span class="jg-sw is-b{{ i % 3 }}" data-jg-sw aria-hidden="true"></span><input type="text" name="band_name_{{ i }}" maxlength="{{ jf.name_max }}" value="{{ b.name if b else '' }}"
+                       placeholder="{{ b.label if b else 'JG …' }}" aria-label="Name of band {{ i + 1 }}" class="jg-name"{% if not b %} disabled{% endif %}></div></td>
+            <td><span class="jg-sel"><select name="band_lo_{{ i }}" aria-label="Band {{ i + 1 }} from" class="jg-lo"{% if not b %} disabled{% endif %}>
+              {% for g in jf.grades %}<option value="{{ g }}"{{ ' selected' if b and b.lo == g }}>JG {{ g }}</option>{% endfor %}
+            </select><svg class="jg-chev" width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="var(--d-fg-6b7186)" stroke-width="1.6" aria-hidden="true"><path d="M3 4.5l3 3 3-3"></path></svg></span></td>
+            <td><span class="jg-sel"><select name="band_hi_{{ i }}" aria-label="Band {{ i + 1 }} to" class="jg-hi"{% if not b %} disabled{% endif %}>
+              {% for g in jf.grades %}<option value="{{ g }}"{{ ' selected' if b and b.hi == g }}>JG {{ g }}</option>{% endfor %}
+              <option value=""{{ ' selected' if b and b.hi is none }}>and above</option>
+            </select><svg class="jg-chev" width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="var(--d-fg-6b7186)" stroke-width="1.6" aria-hidden="true"><path d="M3 4.5l3 3 3-3"></path></svg></span></td>
+            <td class="jg-n" data-jg-n>–</td>
+            <td><button type="button" class="jg-rm" data-jg-rm>Remove</button></td>
+          </tr>
+        {% endfor %}
+        </tbody>
+      </table></div>
+      <div class="jg-add"><button type="button" class="jg-addbtn" data-jg-add>+ Add a band</button>
+        <span class="muted small">Up to {{ jf.max_bands }} bands. A new band starts after the last one.</span></div>
+      <div class="jg-ladder" data-jg-ladder aria-hidden="true"></div>
+      <p class="jg-check small" data-jg-check role="status"></p>
+    </div>
+    <p class="muted small jg-each-note" data-jg-each{% if jf.mode != 'each' %} hidden{% endif %}>Each grade held in the unit
+      gets its own pill, lowest first; a grade nobody holds has none.</p>
+    <p class="muted small">A grade that isn't a number (H, GM) shows as "Other", only when someone on screen holds one.
+      Under 10 people a picked grade's curve shows counts, never "fewer / more than expected".</p>
+    <label class="jg-all"><input type="checkbox" name="jg_all_bgs" value="1" data-jg-all> Use this grouping for every
+      business group</label>
+  </div>
+
+  <div class="actions df-actions">
+    <span class="df-status small" data-jg-status role="status">All changes saved</span>
+    <button type="submit" class="primary" data-jg-save>Save job grade filter</button>
+  </div>
+</form>
+<script>
+  // The card checks the bands as they change (the server checks them again: calib_jg_bands_error), counts each band's
+  // people from the business group's grade counts, draws the grade ladder, and names every change in the confirm box
+  // (every admin action is double-confirmed: Chris, 2026-10-11, 2026-10-16).
+  (function () {
+    var f = document.querySelector("[data-jg-form]");
+    if (!f) return;
+    var bg = f.getAttribute("data-jg-bg") || "this business group", st = f.querySelector("[data-jg-status]");
+    var floorA = f.getAttribute("data-jg-floor"), floor = floorA === "" ? null : parseInt(floorA, 10);
+    var maxB = parseInt(f.getAttribute("data-jg-max"), 10) || 6;
+    var byGrade = {}; try { byGrade = JSON.parse(f.getAttribute("data-jg-grades") || "{}"); } catch (e) { byGrade = {}; }
+    var rows = [].slice.call(f.querySelectorAll("[data-jg-row]"));
+    var save = f.querySelector("[data-jg-save]"), chk = f.querySelector("[data-jg-check]");
+    function mode() { var r = f.querySelector('input[name="jg_mode"]:checked'); return r ? r.value : "bands"; }
+    function live() { return rows.filter(function (tr) { return !tr.hidden; }); }
+    function bandOf(tr) {
+      var lo = parseInt(tr.querySelector(".jg-lo").value, 10), hv = tr.querySelector(".jg-hi").value;
+      return { tr: tr, lo: lo, hi: hv === "" ? null : parseInt(hv, 10), name: tr.querySelector(".jg-name").value.trim() };
+    }
+    function label(b) {
+      if (b.name) return b.name;
+      return b.hi == null ? "JG " + b.lo + " and above" : b.hi === b.lo ? "JG " + b.lo : "JG " + b.lo + "–" + b.hi;
+    }
+    function check(bs) {   // calib_jg_bands_error's rules, in its order
+      if (bs.length < 2) return "Give at least two bands, or pick Each grade on its own.";
+      var s = bs.slice().sort(function (a, b) { return a.lo - b.lo; });
+      for (var i = 0; i < s.length; i++) {
+        var b = s[i];
+        if (b.hi != null && b.hi < b.lo) return label(b) + " ends below where it starts.";
+        if (b.hi == null && i < s.length - 1) return "Only the last band can run “and above”.";
+        if (i) {
+          var p = s[i - 1];
+          if (b.lo <= p.hi) return "JG " + b.lo + " is in two bands, " + label(p) + " and " + label(b) + ".";
+          if (b.lo > p.hi + 1) return (b.lo === p.hi + 2 ? "JG " + (p.hi + 1) : "JG " + (p.hi + 1) + " to " + (b.lo - 1))
+            + " is in no band. Stretch a band to cover it.";
+        }
+      }
+      if (s[s.length - 1].hi != null) return "The last band stops at JG " + s[s.length - 1].hi + ": let it run “and above”.";
+      if (floor != null && s[0].lo > floor) return "The first band starts at JG " + s[0].lo + ", above the cycle's minimum JG "
+        + floor + ": start it at JG " + floor + ".";
+      return null;
+    }
+    function ladder(bs, err) {
+      var box = f.querySelector("[data-jg-ladder]"); box.textContent = "";
+      var s = bs.slice().sort(function (a, b) { return a.lo - b.lo; });
+      var lo = floor != null ? floor : (s.length ? Math.min(12, s[0].lo) : 12), hi = 23;
+      s.forEach(function (b) { if (b.hi != null && b.hi > hi) hi = b.hi; if (b.lo > hi) hi = b.lo; });
+      var head = document.createElement("span"); head.className = "jg-lad-h"; head.textContent = "How the grades fall";
+      var wrap = document.createElement("div"); wrap.className = "jg-lad-groups";
+      box.appendChild(head); box.appendChild(wrap);
+      var cur = null;
+      function people(a, z) {   // people holding a grade from a to z (z null = and above)
+        var n = 0;
+        Object.keys(byGrade).forEach(function (g) { var k = parseInt(g, 10); if (k >= a && (z == null || k <= z)) n += byGrade[g]; });
+        return n;
+      }
+      for (var g = lo; g <= hi; g++) {
+        var at = [];
+        s.forEach(function (b, i) { if (b.lo <= g && (b.hi == null || g <= b.hi)) at.push(i); });
+        var key = at.length > 1 ? "twice" : !at.length ? "none" : "b" + at[0];
+        if (!cur || cur.key !== key) {
+          var gp = document.createElement("div"); gp.className = "jg-lad-grp";
+          var chips = document.createElement("div"); chips.className = "jg-lad-chips";
+          var cap = document.createElement("span"); cap.className = "jg-lad-cap";
+          gp.appendChild(chips); gp.appendChild(cap); wrap.appendChild(gp);
+          cur = { key: key, chips: chips, cap: cap, first: g, last: g, at: at };
+          cur.cap._cur = cur;
+        }
+        cur.last = g;
+        var c = document.createElement("span");
+        c.className = "jg-lad " + (at.length > 1 ? "is-twice" : !at.length ? "is-none" : "is-b" + (at[0] % 3));
+        c.textContent = String(g); c.title = at.length > 1 ? "In two bands" : !at.length ? "In no band" : label(s[at[0]]);
+        cur.chips.appendChild(c);
+      }
+      [].forEach.call(wrap.children, function (gp) {
+        var cap = gp.querySelector(".jg-lad-cap"), c = cap._cur, n = 0;
+        var hiG = c.last;
+        if (c.key === "none" || c.key === "twice") {
+          // grades in no band / two bands: count those grades' people
+          n = people(c.first, c.last);
+          cap.textContent = c.key === "none" ? "In no band · " + n : "In two bands";
+          cap.classList.add("is-err");
+        } else {
+          var b = s[c.at[0]];
+          n = people(b.lo, b.hi);
+          cap.textContent = label(b) + " · " + n;
+        }
+      });
+    }
+    function sync() {
+      var each = mode() === "each";
+      f.querySelector("[data-jg-bands]").hidden = each;
+      f.querySelector("[data-jg-each]").hidden = !each;
+      rows.forEach(function (tr) {
+        [].forEach.call(tr.querySelectorAll("input, select"), function (x) { x.disabled = tr.hidden || each; });
+      });
+      var bs = live().map(bandOf), err = each ? null : check(bs);
+      var order = bs.slice().sort(function (a, b) { return a.lo - b.lo; });
+      bs.forEach(function (b) {
+        var n = 0;
+        var sw = b.tr.querySelector("[data-jg-sw]");
+        if (sw) sw.className = "jg-sw is-b" + (order.indexOf(b) % 3);
+        Object.keys(byGrade).forEach(function (g) { var k = parseInt(g, 10); if (k >= b.lo && (b.hi == null || k <= b.hi)) n += byGrade[g]; });
+        b.tr.querySelector("[data-jg-n]").textContent = String(n);
+        b.tr.querySelector(".jg-name").placeholder = label({ lo: b.lo, hi: b.hi, name: "" });
+      });
+      if (!each) ladder(bs, err);
+      chk.textContent = each ? "" : err || "✓ Every grade from JG " + Math.min.apply(null, bs.map(function (b) { return b.lo; }))
+        + " up is in exactly one band.";
+      chk.className = "jg-check small " + (err ? "is-err" : "is-ok");
+      f.querySelector("[data-jg-add]").disabled = live().length >= maxB;
+      // what changed, for the status line and the confirm box
+      var ch = [];
+      var nowWords = each ? "each grade on its own" : bs.slice().sort(function (a, b) { return a.lo - b.lo; }).map(label).join(" · ");
+      var wasWords = f.getAttribute("data-jg-was-mode") === "each" ? "each grade on its own" : f.getAttribute("data-jg-was");
+      var allOn = f.querySelector("[data-jg-all]").checked;
+      var bandDirty = nowWords !== wasWords || bs.some(function (b) {
+        return b.name !== (b.tr.querySelector(".jg-name").defaultValue || "").trim(); });
+      if (bandDirty || allOn) ch.push((allOn ? "Every business group" : bg) + "'s grades group as " + nowWords
+        + (f.getAttribute("data-jg-was-set") === "1" ? " (before: " + wasWords + ")" : " (before: not set, the default)"));
+      f.querySelectorAll("[data-jg-unitrow]").forEach(function (tr) {
+        var moved = false;
+        tr.querySelectorAll("input[data-jg-was]").forEach(function (cb) {
+          var t = cb.parentNode.querySelector(".df-sw-txt");
+          if (t) t.textContent = cb.checked ? "Shown" : "Hidden";
+          if (cb.checked !== (cb.getAttribute("data-jg-was") === "1")) {
+            moved = true;
+            ch.push((cb.checked ? "Shown" : "Hidden") + " in the " + cb.getAttribute("data-jg-view") + ": " + cb.getAttribute("data-jg-unit"));
+          }
+        });
+        tr.classList.toggle("is-changed", moved);
+      });
+      st.textContent = err ? "Fix the bands to save" : ch.length ? ch.length + (ch.length === 1 ? " change" : " changes") + " not saved"
+        : "All changes saved";
+      st.classList.toggle("is-dirty", ch.length > 0 || !!err);
+      st.classList.toggle("is-err", !!err);
+      save.disabled = !!err;
+      f.setAttribute("data-confirm", ch.length
+        ? ch.join(". ") + ". Who sees it: that unit's BU CEO or BG CEO, the next time they open the view. No band, lock or "
+          + "move changes. You can change it back here at any time."
+        : "Nothing has changed for " + bg + ".");
+    }
+    f.querySelector("[data-jg-add]").addEventListener("click", function () {
+      var on = live(), next = rows.filter(function (tr) { return tr.hidden; })[0];
+      if (!next || on.length >= maxB) return;
+      var last = on.length ? bandOf(on[on.length - 1]) : null;
+      next.hidden = false; sync();
+      var lo = last ? (last.hi == null ? last.lo + 1 : last.hi + 1) : (floor != null ? floor : 12);
+      if (last && last.hi == null) last.tr.querySelector(".jg-hi").value = String(last.lo);
+      next.querySelector(".jg-lo").value = String(lo); next.querySelector(".jg-hi").value = "";
+      next.querySelector(".jg-name").value = "";
+      sync(); next.querySelector(".jg-name").focus();
+    });
+    rows.forEach(function (tr) {
+      tr.querySelector("[data-jg-rm]").addEventListener("click", function () {
+        var on = live(), wasLast = on[on.length - 1] === tr;
+        tr.hidden = true;
+        var rest = live();
+        if (wasLast && rest.length) rest[rest.length - 1].querySelector(".jg-hi").value = "";   // the new last runs on
+        sync();
+      });
+    });
+    f.addEventListener("change", sync);
+    f.addEventListener("input", sync);
+    sync();
+  })();
+</script>
+{% endif %}

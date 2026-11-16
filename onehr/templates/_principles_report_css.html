@@ -1,0 +1,225 @@
+{# Styling for the Leadership Principle report. Deliberately a template partial
+   rather than a block in style.css: the standalone export must carry its own
+   CSS to work offline, and one copy included by both surfaces is the only way
+   the page and the downloaded file cannot drift apart. #}
+<style>
+.lp-head-row{display:flex;justify-content:space-between;align-items:flex-start;gap:20px;flex-wrap:wrap}
+.lp-sec{font-size:.74rem;text-transform:uppercase;letter-spacing:.6px;color:var(--d-fg-6b7186, #6b7186);font-weight:700}
+
+/* One row of pills, horizontally scrollable, arrows either side. BG and BU use
+   the same control so the two read as one idea. */
+.lp-pillrow{display:flex;align-items:center;gap:8px}
+.lp-pillrow .lp-arrow{flex:none;width:30px;height:30px;border:1px solid var(--d-bd-cdd1dd, #cdd1dd);background:var(--surface, #ffffff);
+  border-radius:8px;cursor:pointer;color:var(--d-fg-4a5066, #4a5066);font-size:1rem;line-height:1;
+  display:flex;align-items:center;justify-content:center}
+.lp-pillrow .lp-arrow:hover:not(:disabled){background:var(--d-bg-f2f4fa, #f2f4fa)}
+.lp-pillrow .lp-arrow:disabled{opacity:.3;cursor:default}
+.lp-chk{display:flex;gap:6px;overflow-x:auto;scroll-behavior:smooth;padding:2px 1px 6px;
+        flex:1 1 auto;scrollbar-width:thin}
+.lp-chk button{border:1px solid var(--d-bd-cdd1dd, #cdd1dd);background:var(--surface, #ffffff);border-radius:999px;padding:6px 14px;
+  font-size:.84rem;cursor:pointer;color:var(--d-fg-4a5066, #4a5066);white-space:nowrap;flex:none}
+.lp-chk button.on{background:var(--accent, #252a59);border-color:var(--accent-line, #252a59);color:var(--on-fill, #ffffff)}
+.lp-scope{margin:10px 0 0;font-size:.88rem;color:var(--d-fg-6b7186, #6b7186)}
+
+/* list + breakdown share ONE column grid so Score and Band align in both --
+   which only holds while the detail cell has no horizontal padding. */
+#lp-table{table-layout:fixed;width:100%;border-collapse:collapse}
+#lp-table col.w-name{width:22%} #lp-table col.w-dept{width:17%}
+#lp-table col.w-title{width:22%} #lp-table col.w-jg{width:10%}
+#lp-table col.w-score{width:17%} #lp-table col.w-band{width:12%}
+#lp-table col.w-princ{width:71%}
+#lp-table th,#lp-table td{padding:9px 11px;border-bottom:1px solid var(--line-soft, #eef0f5);text-align:left;
+  font-size:.9rem;vertical-align:top}
+#lp-table thead th{font-size:.74rem;text-transform:uppercase;letter-spacing:.5px;
+  color:var(--d-fg-6b7186, #6b7186);font-weight:600;background:var(--d-bg-f8fafd, #f8fafd)}
+#lp-table tbody tr.lp-person{cursor:pointer}
+#lp-table tbody tr.lp-person:hover{background:var(--d-bg-f8fafd, #f8fafd)}
+#lp-table tbody tr.lp-person.open{background:var(--d-bg-eef2fb, #eef2fb)}
+.lp-colbtn{background:none;border:0;padding:0;font:inherit;color:inherit;cursor:pointer;
+  text-transform:inherit;letter-spacing:inherit;display:inline-flex;gap:5px;align-items:center}
+.lp-colbtn .caret{opacity:.45;font-size:max(10px, .7rem)}
+/* The literal glyphs, not CSS escapes: "\\25BC" is an escaped BACKSLASH
+   followed by text, and it printed \25BC in the column header. */
+.lp-colbtn .caret::after{content:" ▾";opacity:.5}
+.lp-colbtn.asc .caret::after{content:" ▲";opacity:1;color:var(--d-fg-2557d6, #2557d6)}
+.lp-colbtn.desc .caret::after{content:" ▼";opacity:1;color:var(--d-fg-2557d6, #2557d6)}
+.lp-colbtn.has-filter{color:var(--d-fg-2557d6, #2557d6)}
+.lp-colbtn.has-filter .lp-cm-label::after{content:" \2261";font-size:.85em;opacity:.8}
+
+/* The Excel-style column menu. Styled to match .col-menu in style.css so it is
+   the same control users already know -- but reimplemented here rather than
+   reusing colmenu.js, because that file sorts by reordering <tr>s (which would
+   strand an open detail row) and because an external script cannot travel
+   inside the standalone export. */
+.lp-cm{position:absolute;z-index:1000;width:250px;max-width:92vw;background:var(--surface, #ffffff);
+  border:1px solid var(--d-bd-cdd1dd, #cdd1dd);border-radius:10px;box-shadow:0 8px 28px var(--d-sh-000000-a18, rgba(0, 0, 0, .18));
+  padding:8px;font-weight:400;color:var(--ink, #1f2330);text-align:left;text-transform:none;
+  letter-spacing:normal}
+.lp-cm[hidden]{display:none}
+.lp-cm .cm-sort{display:flex;flex-direction:column;gap:2px;margin-bottom:4px}
+.lp-cm .cm-sort button{text-align:left;background:var(--surface, #ffffff);border:0;padding:7px 8px;
+  border-radius:6px;font-size:.85rem;color:var(--ink, #1f2330);cursor:pointer;width:100%}
+.lp-cm .cm-sort button:hover{background:var(--d-bg-eef3ff, #eef3ff)}
+.lp-cm .cm-search{margin:4px 0}
+.lp-cm .cm-search input{width:100%;box-sizing:border-box;padding:6px 8px;font-size:.83rem;
+  border:1px solid var(--d-bd-cdd1dd, #cdd1dd);border-radius:6px}
+.lp-cm .cm-all{display:block;padding:6px;font-size:.84rem;border-top:1px solid var(--line-soft, #eef0f5);
+  border-bottom:1px solid var(--line-soft, #eef0f5);cursor:pointer}
+.lp-cm .cm-list{max-height:220px;overflow:auto;padding:4px 0}
+.lp-cm .cm-list label{display:block;padding:4px 6px;font-size:.84rem;cursor:pointer;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.lp-cm .cm-list label:hover{background:var(--d-bg-f5f7fb, #f5f7fb)}
+.lp-cm .cm-foot{display:flex;justify-content:space-between;gap:8px;padding-top:8px;
+  border-top:1px solid var(--line-soft, #eef0f5)}
+.lp-cm .cm-foot button{border:1px solid var(--d-bd-cdd1dd, #cdd1dd);background:var(--surface, #ffffff);border-radius:7px;
+  padding:5px 12px;font-size:.82rem;cursor:pointer;color:var(--d-fg-4a5066, #4a5066)}
+.lp-cm .cm-foot button.primary{background:var(--accent, #252a59);border-color:var(--accent-line, #252a59);color:var(--on-fill, #ffffff)}
+
+/* Top-2 / bottom-2 cards. Mirrors .rpt-principles-grid on /admin/reports so the
+   two pages read as one product. */
+.lp-cards{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px}
+@media (max-width:820px){.lp-cards{grid-template-columns:1fr}}
+.lp-card h3{margin:0 0 2px;font-size:1rem}
+.lp-card .lp-card-note{margin:0 0 10px;font-size:.78rem;color:var(--d-fg-6b7186, #6b7186)}
+.lp-prow{display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--d-bd-e6e8f0, #e6e8f0)}
+.lp-prow:last-child{border-bottom:none}
+.lp-badge{width:22px;height:22px;border-radius:50%;flex:none;display:flex;align-items:center;
+  justify-content:center;font-size:max(10px, .7rem);font-weight:700}
+.lp-badge.strong{background:var(--d-bg-e3f6ee, #e3f6ee);color:var(--d-fg-1b7a55, #1b7a55)}
+.lp-badge.weak{background:var(--d-bg-fcf1de, #fcf1de);color:var(--d-fg-8a5a10, #8a5a10)}
+.lp-pname{flex:1;font-size:.9rem;min-width:0}
+.lp-ptag{display:block;font-size:.78rem;color:var(--muted, #5f6678);font-style:italic;margin-top:2px}
+.lp-pscore{font-size:.9rem;font-weight:600;font-variant-numeric:tabular-nums;white-space:nowrap}
+.lp-num{text-align:right;font-variant-numeric:tabular-nums}
+/* The name cell's phone-only subline. Rendered always, shown only under the
+   breakpoint, so the row renderer has one code path and not a mobile branch. */
+.lp-sub{display:none}
+
+/* #lp-table-prefixed: the generic "#lp-table td{padding:9px 11px}" above wins
+   on specificity otherwise, and 11px of cell padding is exactly enough to push
+   the breakdown out of alignment with the list it sits under. */
+#lp-table tr.lp-detail>td{background:var(--d-bg-fbfcfe, #fbfcfe);border-top:1px solid var(--d-bd-dfe4f0, #dfe4f0);
+  border-bottom:2px solid var(--line, #e4e7ef);padding:0}
+.lp-detail-inner{padding:2px 0 4px}
+.lp-detail-inner .lp-assessors{padding:0 11px;margin:12px 2px 6px;font-size:.88rem;line-height:1.6}
+table.lp-inner{border-top:1px solid var(--line, #e4e7ef);width:100%;table-layout:fixed;border-collapse:collapse}
+table.lp-inner th,table.lp-inner td{border-bottom:1px solid var(--line-soft, #eef0f5);font-size:.86rem;
+  padding:7px 11px;text-align:left}
+table.lp-inner thead th{font-size:.74rem;text-transform:uppercase;letter-spacing:.5px;
+  color:var(--d-fg-6b7186, #6b7186);font-weight:600}
+
+/* Title, bar and % on one line. The bar is a fixed 180px: stretched across the
+   whole column it read as a loading meter, and seven bars are only comparable
+   when they all start at the same x -- so the title flexes and truncates, the
+   bar never moves. */
+.lp-pcell{display:flex;align-items:center;gap:14px}
+.lp-pcell .lp-ptitle{flex:1 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;
+  white-space:nowrap}
+.lp-barwrap{flex:none;display:flex;align-items:center;gap:9px}
+.lp-bar{position:relative;height:5px;border-radius:3px;background:var(--d-bg-e9ecf4, #e9ecf4);width:180px}
+.lp-bar i{display:block;height:100%;border-radius:3px;background:var(--d-bg-7f8db5, #7f8db5)}
+.lp-bar i[data-band="Low"]{background:var(--d-bg-e08a34, #e08a34)}
+.lp-bar i[data-band="Mid"]{background:var(--d-bg-4a7ad6, #4a7ad6)}
+.lp-bar i[data-band="High"]{background:var(--d-bg-3aa257, #3aa257)}
+.lp-barwrap b{flex:none;width:34px;text-align:right;font-size:.72rem;font-weight:700;
+  color:var(--d-fg-6b7186, #6b7186);font-variant-numeric:tabular-nums}
+
+.lp-pill{display:inline-flex;align-items:center;padding:4px 11px;border-radius:999px;
+  font-size:.8rem;font-weight:600;background:var(--d-bg-eef0f6, #eef0f6);color:var(--d-fg-4a5066, #4a5066);border:1px solid var(--d-bd-d8dbe6, #d8dbe6)}
+.lp-pill[data-band="Low"]{background:var(--d-bg-fde6cc, #fde6cc);color:var(--d-fg-8a4500, #8a4500);border-color:var(--d-bd-f3c186, #f3c186)}
+.lp-pill[data-band="Mid"]{background:var(--info-tint, #e0e9fb);color:var(--info-ink, #1b46b3);border-color:var(--d-bd-bcd0f3, #bcd0f3)}
+.lp-pill[data-band="High"]{background:var(--ok-tint, #d4f5dc);color:var(--ok-ink, #1d6b34);border-color:var(--d-bd-a8e2b5, #a8e2b5)}
+.lp-pill[data-band="None"]{background:var(--d-bg-ece7fb, #ece7fb);color:var(--d-fg-5b3fa6, #5b3fa6);border-color:var(--d-bd-cdbdf0, #cdbdf0)}
+.lp-withheld{background:var(--d-bg-f4f1fd, #f4f1fd);border:1px solid var(--d-bd-cdbdf0, #cdbdf0);border-left:4px solid var(--d-bd-7a5fc4, #7a5fc4);
+  border-radius:8px;padding:12px 15px;margin:10px 11px 4px}
+
+/* export */
+.lp-exp-wrap{position:relative}
+.lp-exp-panel{position:absolute;right:0;top:calc(100% + 8px);z-index:40;width:430px;max-width:92vw;
+  background:var(--surface, #ffffff);border:1px solid var(--line, #e4e7ef);border-radius:12px;
+  box-shadow:0 14px 40px var(--d-sh-111827-a16, rgba(17, 24, 39, .16));padding:16px 18px 18px;text-align:left}
+.lp-exp-panel[hidden]{display:none}
+.lp-exp-grp{margin-bottom:13px}
+.lp-exp-panel select{width:100%;padding:8px 11px;border:1px solid var(--d-bd-cdd1dd, #cdd1dd);border-radius:8px;
+  font-size:.9rem;background:var(--surface, #ffffff)}
+.lp-exp-opts{display:flex;flex-wrap:wrap;gap:5px;max-height:118px;overflow-y:auto;margin-top:6px}
+.lp-exp-opts button{border:1px solid var(--d-bd-cdd1dd, #cdd1dd);background:var(--surface, #ffffff);border-radius:7px;padding:4px 10px;
+  font-size:.8rem;cursor:pointer;color:var(--d-fg-4a5066, #4a5066)}
+.lp-exp-opts button.on{background:var(--info-tint, #e0e9fb);border-color:var(--d-bd-8fb0ec, #8fb0ec);color:var(--info-ink, #1b46b3);font-weight:600}
+.lp-exp-foot{display:flex;justify-content:space-between;align-items:center;gap:12px;
+  border-top:1px solid var(--line, #e4e7ef);padding-top:12px;margin-top:4px}
+.lp-fname{margin-top:3px;color:var(--d-fg-4a5066, #4a5066);font-family:ui-monospace,SFMono-Regular,Menlo,monospace;
+  font-size:.74rem;word-break:break-all}
+.lp-foot{margin-top:26px;padding-top:16px;border-top:1px solid var(--line, #e4e7ef);
+  font-size:.82rem;color:var(--d-fg-6b7186, #6b7186)}
+.lp-foot code{background:var(--surface-3, #eef0f5);padding:1px 5px;border-radius:4px}
+/* Export only. Sits in the header slot the Export button occupies on the page,
+   so the two surfaces have the same shape. Same red as the full-width banner it
+   replaces. */
+.lp-confidential{display:inline-block;background:var(--d-bg-fff4f4, #fff4f4);border:1px solid var(--danger-line, #f3c0bb);
+  color:var(--d-fg-8a1017, #8a1017);border-radius:999px;padding:6px 14px;font-size:.75rem;font-weight:700;
+  text-transform:uppercase;letter-spacing:.06em;white-space:nowrap}
+
+/* ---------------- phone: <=768px, the breakpoint style.css already uses most
+   Two things broke at phone width, and the second one is not cosmetic:
+
+   - six fixed columns crushed to 30-76px, so the headers overlapped into
+     "DEPARTMENTJOB TITLE" and "JOBSCORE GRADE / 35.00";
+   - the 180px bar plus the 34px % label left the flexing .lp-ptitle exactly
+     0px of room, so the breakdown rendered as seven ANONYMOUS bars -- which is
+     the entire content of the report, unreadable.
+
+   table-layout:fixed is KEPT and the grid re-weighted rather than released to
+   auto. The list and the breakdown share one column grid, and that sharing is
+   the only reason Score and Band line up between them; auto would also let one
+   long department string set the shape of the whole table. ---------------- */
+@media (max-width:768px){
+  /* Department, job title and job grade leave the grid and come back as a
+     subline under the name. Their column menus go with them: sorting by
+     department on a phone is the price of readable headers.
+
+     They are collapsed to a ZERO-WIDTH clipped cell rather than display:none,
+     which is the third thing tried here and the only one that holds. Under
+     table-layout:fixed a display:none cell is removed from its row, so the
+     remaining cells re-map onto the first <col>s in order and the three
+     abandoned columns still take their share of the table -- 84 of 321px went
+     to columns that rendered nothing. Keeping the cell in place keeps the
+     mapping 1:1, so the <col> widths mean what they say. */
+  #lp-table>colgroup>col.w-dept,#lp-table>colgroup>col.w-title,
+  #lp-table>colgroup>col.w-jg{width:0}
+  #lp-table>colgroup>col.w-name{width:55%}
+  #lp-table>colgroup>col.w-score{width:24%}
+  #lp-table>colgroup>col.w-band{width:21%}
+  #lp-table>thead>tr>th:nth-child(n+2):nth-child(-n+4),
+  #lp-table>tbody>tr.lp-person>td:nth-child(n+2):nth-child(-n+4){
+    padding:0;font-size:0;line-height:0;overflow:hidden;white-space:nowrap}
+  /* The breakdown matched to the same three widths so the two tables stay on
+     one grid at phone width too. #lp-table-prefixed because the desktop
+     "#lp-table col.w-princ{width:71%}" carries an id and would otherwise win,
+     leaving the breakdown on the desktop grid while the list had moved off it.
+     Also note table.lp-inner is nested INSIDE #lp-table, which is why every
+     selector in this block uses child combinators -- a descendant selector like
+     "#lp-table thead th:nth-child(2)" collapses the breakdown's own Score
+     column as well. */
+  #lp-table table.lp-inner>colgroup>col.w-princ{width:55%}
+  #lp-table table.lp-inner>colgroup>col.w-score{width:24%}
+  #lp-table table.lp-inner>colgroup>col.w-band{width:21%}
+  .lp-sub{display:block;font-weight:400;font-size:.76rem;color:var(--d-fg-6b7186, #6b7186);
+    margin-top:3px;line-height:1.35}
+
+  #lp-table th,#lp-table td{padding:8px 7px;font-size:.86rem}
+  #lp-table thead th{font-size:max(10px, .68rem);letter-spacing:.3px}
+  table.lp-inner th,table.lp-inner td{padding:7px 7px;font-size:.82rem}
+  .lp-detail-inner .lp-assessors{padding:0 7px}
+  .lp-withheld{margin:10px 7px 4px}
+  .lp-pill{padding:3px 8px;font-size:.74rem}
+
+  /* The title gets its own line back and the bar stops being fixed-width. This
+     is deliberately the pre-"one line" layout: one line was asked for to make
+     the desktop view compact, and it is exactly what starves the title here. */
+  .lp-pcell{display:block}
+  .lp-pcell .lp-ptitle{display:block;white-space:normal;overflow:visible}
+  .lp-barwrap{display:flex;margin-top:5px}
+  .lp-bar{width:auto;flex:1 1 auto}
+}
+</style>

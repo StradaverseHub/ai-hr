@@ -1,0 +1,56 @@
+{% extends "base.html" %}
+{% from "_table_tools.html" import colth, colmenu, colmenu_script %}
+{% from "_filter_rows.html" import filter_rows %}
+{% block title %}Ask OneHR questions{% endblock %}
+{% block body %}
+{# Audit and usage > Ask OneHR (the canvas "OneHR Ask Agent and Admin Standard", B1; 2026-10-11): what people asked Ask
+   OneHR that their dashboard and the guide couldn't answer. Never who asked: people ask freely, and HR uses this to fix
+   the page or the guide. Business group, unit and department are the rows above, not column filters. #}
+<div class="adm-headrow">
+  <p class="adm-lede">What people asked Ask OneHR that their dashboard and the guide couldn't answer, over the last 90
+    days. Names are never shown, so people ask freely; use it to fix the page or the guide.</p>
+</div>
+
+<div class="adm-tiles">
+  <div class="admin-card adm-tile"><span class="muted small">Questions this week</span><b>{{ total | thousands }}</b>
+    <span class="muted small">{{ people | thousands }} {{ 'person' if people == 1 else 'people' }} asked</span></div>
+  <div class="admin-card adm-tile"><span class="muted small">Couldn't answer</span><b>{{ unanswered | thousands }}</b>
+    <span class="muted small">{% if total %}{{ (100 * unanswered / total) | round | int }}% of this week's{% else %}none this week{% endif %}</span></div>
+  <div class="admin-card adm-tile"><span class="muted small">Declined by the rules</span><b>{{ declined | thousands }}</b>
+    <span class="muted small">raters, scoring, anything outside OneHR</span></div>
+</div>
+
+<section class="admin-card adm-filters" aria-label="Filters">
+  {{ filter_rows(frows) }}
+</section>
+
+<section class="admin-card" aria-label="Questions it couldn't answer">
+  {% if rows %}
+  <div class="table-scroll table-scroll-capped">
+  <table class="admin-table" id="ask-log-table">
+    <thead><tr>{{ colth('when', 'When (MYT)') }}{{ colth('q', 'Question') }}{{ colth('bg', 'Business group') }}
+      {{ colth('unit', 'Unit · department') }}</tr></thead>
+    <tbody>
+      {% for r in rows %}
+      <tr class="data-row" data-when="{{ loop.index }}" data-q="{{ r.q }}" data-bg="{{ r.bg }}" data-unit="{{ r.unit }} {{ r.dept }}">
+        <td class="muted small" style="white-space:nowrap">{{ r.when }}</td>
+        <td>{{ r.q }}</td>
+        <td>{{ r.bg }}</td>
+        <td>{{ r.unit }}{% if r.dept %}<span class="muted small" style="display:block">{{ r.dept | proper }}</span>{% endif %}</td>
+      </tr>
+      {% endfor %}
+      <tr class="no-filter-match" hidden><td colspan="4" class="muted">No questions match the filters.</td></tr>
+    </tbody>
+  </table>
+  </div>
+  {{ colmenu('ask-log-table', {
+       'when': {'mode': 'sort', 'type': 'num', 'sortAttr': 'when'},
+       'q':    {'mode': 'clientFilter', 'type': 'text', 'sortAttr': 'q'},
+       'bg':   {'mode': 'sort', 'type': 'text', 'sortAttr': 'bg'},
+       'unit': {'mode': 'clientFilter', 'type': 'text', 'sortAttr': 'unit'} }) }}
+  {{ colmenu_script(asset_v) }}
+  {% else %}
+  <p class="muted" style="margin:0">Nothing Ask OneHR couldn't answer in the last 90 days{% if frows %} for this choice{% endif %}.</p>
+  {% endif %}
+</section>
+{% endblock %}

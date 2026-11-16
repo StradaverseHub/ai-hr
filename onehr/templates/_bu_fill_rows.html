@@ -1,0 +1,19 @@
+{# Fill BU result: who gets this result (2026-10-27). One partial for the page and for the live calc's reply, so what you
+   see as you type is what the server scored. Columns line up between the table and its fold (fixed widths). #}
+{% macro fill_row(r) -%}
+<tr data-bf-row data-name="{{ r.name | lower }}" data-eid="{{ r.eid | lower }}" data-dept="{{ r.dept | lower }}">
+  <td class="bk2-nm">{{ r.name }}{% if r.gh %} <span class="bk2-pill is-gh">Grade H</span>{% endif %}{% if r.cal %}<span class="bk2-pill is-warn is-cal" title="A calibrator has acted on them. The new figure replaces this line's; a band a calibrator moved stays.">Calibrated</span>{% endif %}</td>
+  <td class="bk2-id">{{ r.eid }}{% if r.g is not none %} · JG&nbsp;{{ r.g }}{% endif %}{% if r.dept %}<small>{{ r.dept | proper }}</small>{% endif %}</td>
+  <td class="bk-num">{{ r.w }}</td><td class="bk-num">{{ r.rt }}</td>
+  <td><span class="bk2-pill {{ r.cls }}" title="{{ r.label }}">{{ r.label }}</span>{% if r.sub %}<small class="bf-stage">{{ r.sub }}</small>{% endif %}</td>
+</tr>
+{%- endmacro %}
+<table class="admin-table no-auto-table bk2-t bf-t" data-bf-t>
+  <thead><tr><th title="Name">Name</th><th title="ID · JG · Department">ID · JG · Dept</th><th class="bk-num" title="Weight">Weight</th><th class="bk-num" title="Rating">Rating</th><th title="Status">Status</th></tr></thead>
+  <tbody>{% for r in rows[:5] %}{{ fill_row(r) }}{% endfor %}</tbody>
+  {% if rows | length > 5 %}
+  <tbody><tr><td colspan="5" class="bk2-foldrow"><details class="fold bk2-fold"><summary>{{ rows | length - 5 }} more</summary>
+    <table class="admin-table no-auto-table bk2-t bk2-t2 bf-t"><tbody>{% for r in rows[5:] %}{{ fill_row(r) }}{% endfor %}</tbody></table>
+    <button type="button" class="fold-less" data-fold-less>Show less</button></details></td></tr></tbody>
+  {% endif %}
+</table>

@@ -1,0 +1,26 @@
+{# Settings card: review_pilot. Split out of the old General page (2026-10-10) so it lives on its module's settings page;
+   it posts to admin_settings, which sends you back to `settings_next` when the including page sets it. #}
+  {# one switch since 2026-10-11: the per-business-group pilot list is retired (Chris approved) #}
+  <p class="muted small">The review runs as one conversation with the AI agent, and the classic module pages send people
+    to it. It is for everyone, or switched off for everyone.</p>
+  <details class="muted small">
+    <summary>Why this matters</summary>
+    <p>The conversation covers the KPI check-in, 360 feedback, competency and Career Plan, the team reviews and the
+      leaders' calibration. A page with no AI version yet stays as it is, and every classic page comes back on its own
+      whenever the guided review isn't available (no AI model, or the review switched off).</p>
+  </details>
+  <form method="post" action="{{ url_for('admin_settings') }}" class="admin-form adm-set-form"
+        data-confirm="Change the guided AI review for everyone? Off sends everyone to the classic module pages." data-confirm-ok="Save">
+    <input type="hidden" name="next" value="{{ (settings_next ~ '#review-pilot') if settings_next else '' }}">
+    <input type="hidden" name="action" value="review_all">
+    <label class="switch">
+      <input type="checkbox" name="review_all" value="1" {% if review_unified_all %}checked{% endif %}>
+      <span class="track" aria-hidden="true"></span>
+      <span class="switch-label">Guided AI review for everyone</span>
+    </label>
+    <div class="actions"><button type="submit" class="primary">Save</button></div>
+  </form>
+  {% if not review_unified_all %}
+  <p class="muted small">It is <strong>off</strong>: everyone uses the classic module pages (the demo accounts keep the
+    guided review).</p>
+  {% endif %}

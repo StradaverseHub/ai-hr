@@ -1,0 +1,141 @@
+{% from "_adm_panel.html" import panel %}
+{#- Units calibrated together, on Leaders › BU CEOs (Chris, 2026-10-26: "Build it as drawn, with the shortcut, super admin
+    only"; canvas boards Main, JoinPanel, ManageJoin, Shortcut). The Join units panel holds the form the Settings page used
+    to hold, and each join has a Manage panel with Separate. Both post to admin_calibration_joins, which sends the answer
+    back to this page. The shortcut in a unit's BU CEO panel opens Join units with its holder's units ticked. -#}
+{% call panel("bu-join", "Leaders · Units calibrated together", "Join units", display_bg(bg) ~ " · for " ~ join_cycle ~ " only", wide=True) %}
+  {% if join_units %}
+  <form method="post" action="{{ url_for('admin_calibration_joins') }}" class="adm-panel-form adm-join-form"
+        data-confirm="Calibrate the ticked units together this cycle? The BU CEO you chose calibrates them all on one curve, the PAT curve of the unit you chose, and one lock covers them. They can be separated until they're locked."
+        data-confirm-ok="Join the units">
+    <div class="adm-panel-body adm-psecs">
+      <input type="hidden" name="action" value="join">
+      <input type="hidden" name="business_group" value="{{ bg }}">
+      <section class="adm-psec"><h3 class="adm-ph">1 &middot; The units</h3>
+        <table class="admin-table no-auto-table adm-join-tbl">
+          <thead><tr><th scope="col" class="adm-join-tick"><span class="sr-only">Tick</span></th><th scope="col">Unit</th>
+            <th scope="col" class="num">People</th><th scope="col">BU CEO</th></tr></thead>
+          <tbody>
+          {% for x in join_units %}
+          <tr{% if not x.can %} class="is-off"{% endif %}>
+            <td class="adm-join-tick"><input type="checkbox" name="company" value="{{ x.company }}" id="jc{{ loop.index }}"
+              {% if not x.can %}disabled{% endif %} aria-label="Calibrate {{ x.label }} together"></td>
+            <th scope="row"><label for="jc{{ loop.index }}">{{ x.label }}</label>
+              {% if x.joined %}<span class="muted small adm-join-why">With {{ x.joined }} this cycle</span>
+              {% elif x.why %}<span class="muted small adm-join-why">{{ x.why }}</span>{% endif %}</th>
+            <td class="num">{{ x.people | thousands }}</td>
+            <td>{{ x.ceo or 'Vacant' }}</td>
+          </tr>
+          {% endfor %}
+          </tbody>
+        </table>
+      </section>
+      <section class="adm-psec adm-join-who"><h3 class="adm-ph">2 &middot; Who calibrates them</h3>
+        <label for="adm-join-lead" class="sr-only">Who calibrates them</label>
+        <select name="lead" id="adm-join-lead" class="modern-select" required>
+          <option value="">Choose a BU CEO…</option>
+          {% for x in join_units if x.can and x.ceo %}<option value="{{ x.company }}" data-co="{{ x.company }}">{{ x.ceo }}, BU CEO of {{ x.label }}</option>{% endfor %}
+        </select>
+        <span class="muted small" data-join-empty>Tick the units first: only their BU CEOs are listed.</span>
+        <span class="muted small" data-join-ro hidden>Only the ticked units' BU CEOs. Any other BU CEO of these units sees the joined curve, read only.</span>
+      </section>
+      <section class="adm-psec adm-join-who"><h3 class="adm-ph">3 &middot; Whose PAT curve they follow</h3>
+        <label for="adm-join-curve" class="sr-only">Whose PAT curve they follow</label>
+        <select name="curve_of" id="adm-join-curve" class="modern-select" required>
+          <option value="">Choose a unit…</option>
+          {% for x in join_units if x.can %}<option value="{{ x.company }}" data-co="{{ x.company }}">{{ x.label }} · {{ x.curve }}</option>{% endfor %}
+        </select>
+        <span class="muted small">The joined people are one population, so they follow one PAT curve. It starts on the calibrator's own unit.</span>
+      </section>
+      <ul class="adm-join-notes muted small">
+        <li>The expected spread is the PAT curve of the unit you choose, for everyone in the joined units.</li>
+        <li>For {{ join_cycle }} only: next cycle they start separate again unless joined again.</li>
+        <li>Join before the BU CEO's first move. Once locked, they can't be separated this cycle.</li>
+        <li>HOD department reviews don't change: each department still reviews on its own.</li>
+      </ul>
+    </div>
+    <footer class="adm-panel-foot">
+      <button type="button" class="btn-link" data-panel-close>Cancel</button>
+      <button type="submit" class="primary">Join the units</button>
+    </footer>
+  </form>
+  <script>
+  (function () {
+    // only the ticked units' BU CEOs, and only the ticked units' PAT curves, are offered (Chris, 2026-10-20); the shortcut
+    // in a unit's BU CEO panel ticks its holder's units and picks that unit to lead (2026-10-26)
+    var form = document.querySelector(".adm-join-form");
+    if (!form) return;
+    var lead = form.querySelector("#adm-join-lead"), curve = form.querySelector("#adm-join-curve");
+    function ticked() {
+      return Array.prototype.map.call(form.querySelectorAll('input[name="company"]:checked'), function (b) { return b.value; });
+    }
+    function narrow(sel, on) {
+      Array.prototype.forEach.call(sel.querySelectorAll("option[data-co]"), function (o) {
+        var keep = on.indexOf(o.getAttribute("data-co")) >= 0;
+        o.hidden = !keep; o.disabled = !keep;
+        if (!keep && o.selected) sel.value = "";
+      });
+    }
+    function sync() {
+      var on = ticked();
+      narrow(lead, on);
+      narrow(curve, on);
+      if (!curve.value && lead.value) curve.value = lead.value;   // the BU CEO's own unit, until the admin picks another
+      form.querySelector("[data-join-empty]").hidden = on.length > 0;
+      form.querySelector("[data-join-ro]").hidden = on.length === 0;
+    }
+    form.addEventListener("change", sync);
+    document.addEventListener("click", function (e) {
+      var b = e.target.closest && e.target.closest("[data-join-ticks]");
+      if (!b) return;
+      var want = [], who = "";
+      try { want = JSON.parse(b.getAttribute("data-join-ticks")); who = JSON.parse(b.getAttribute("data-join-lead")); } catch (er) { return; }
+      Array.prototype.forEach.call(form.querySelectorAll('input[name="company"]'), function (c) { c.checked = !c.disabled && want.indexOf(c.value) >= 0; });
+      lead.value = ""; curve.value = "";
+      sync();
+      lead.value = who; curve.value = who;
+      sync();
+    });
+    sync();
+  })();
+  </script>
+  {% else %}
+  <div class="adm-panel-body"><p class="muted">No unit of this business group has anyone taking part this cycle.</p></div>
+  <footer class="adm-panel-foot"><button type="button" class="btn-link" data-panel-close>Close</button></footer>
+  {% endif %}
+{% endcall %}
+
+{% for j in joins %}
+{% call panel("bj-" ~ (j.lead | slug), "Leaders · Units calibrated together", j.plus, (j.members | length) ~ " units · " ~ j.people ~ (" person" if j.people == 1 else " people") ~ " · " ~ join_cycle, wide=True) %}
+  <div class="adm-panel-body adm-psecs">
+    <section class="adm-psec"><h3 class="adm-ph">Now</h3>
+      <dl class="bj-now">
+        <dt>Units</dt><dd>{% for c in j.counts %}{{ c.label }} ({{ c.n | thousands }}){{ ' · ' if not loop.last }}{% endfor %}</dd>
+        <dt>Calibrated by</dt><dd>{% if j.ceo %}{{ j.ceo }}, BU CEO of {{ j.lead_label }}{% else %}Nobody: the lead unit has no BU CEO{% endif %}</dd>
+        <dt>Curve</dt><dd>{{ j.follows_label or (j.curve_label ~ "'s PAT") }}</dd>
+        <dt>Expected spread</dt><dd>{% if j.spread %}{% for b in j.spread %}{{ b.band }} {{ b.pct }}%{{ ' · ' if not loop.last }}{% endfor %}{% else %}Not worked out yet{% endif %}</dd>
+        <dt>Lock</dt><dd>{% if j.locked_at %}Locked {{ j.locked_at }}{% if j.ceo %} by {{ j.ceo }}{% endif %}{% elif j.locked %}Locked{% else %}Not locked{% endif %}</dd>
+      </dl>
+    </section>
+    <section class="adm-psec"><h3 class="adm-ph">To change who calibrates or the curve</h3>
+      <p class="muted small">Separate them and join them again, before the BU CEO's first move.</p>
+    </section>
+    {% if not j.locked %}
+    <div class="adm-danger"><span><b>Separate the units</b><br>Each unit calibrates on its own again. Moves already made stay with each person's own unit.</span>
+      <button type="submit" class="btn-link" form="bj-sep-{{ j.lead | slug }}">Separate&hellip;</button></div>
+    {% else %}
+    <p class="muted">Locked: can't be separated this cycle.</p>
+    {% endif %}
+  </div>
+  <footer class="adm-panel-foot"><button type="button" class="btn-link" data-panel-close>Close</button></footer>
+  {% if not j.locked %}
+  <form method="post" id="bj-sep-{{ j.lead | slug }}" action="{{ url_for('admin_calibration_joins') }}" class="adm-pform-x"
+        data-confirm="Calibrate {{ j.label }} separately again? Any moves already made stay with each person's own unit."
+        data-confirm-ok="Separate" data-confirm-tone="danger">
+    <input type="hidden" name="action" value="separate">
+    <input type="hidden" name="business_group" value="{{ j.business_group }}">
+    <input type="hidden" name="lead" value="{{ j.lead }}">
+  </form>
+  {% endif %}
+{% endcall %}
+{% endfor %}

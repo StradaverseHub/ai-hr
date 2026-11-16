@@ -1,0 +1,64 @@
+{% extends "base.html" %}
+{% from "_adm_panel.html" import panel %}
+{% block title %}Nomination rounds{% endblock %}
+{% block body %}
+{# Learning › Nominations (AI+ Learning phase 2, 2026-10-20; canvas [design canvas link removed]
+   boards HOD-Nominate and Admin-6): L&D opens a round over some sessions; every HOD then sees it in AI+ Learning, Dept,
+   with their own people suggested first (those the programme builds a need for, Stars first) and ticks who goes. Here:
+   the rounds and how far each business group's HODs have got. Counts only. #}
+<div class="adm-headrow">
+  <p class="adm-lede">A <b>nomination round</b> asks every HOD to pick who goes to a set of sessions, before a closing date.
+    They see it in AI+ Learning, with their people whose plan or gaps the programme builds suggested first. Their pick
+    counts as the line manager's approval where the chain says so.</p>
+  {% if can %}<div class="lm-head-acts"><a class="primary" href="{{ url_for('admin_learning_rounds', panel='new') }}" data-panel-open="new">Open a round</a></div>{% endif %}
+</div>
+
+{% for rd in rounds %}
+<section class="admin-card" aria-labelledby="lm-rd-{{ rd.r.id }}">
+  <div class="lm-cardhead">
+    <h2 id="lm-rd-{{ rd.r.id }}" class="lm-h">{{ rd.r.title }}</h2>
+    <span class="lm-st {{ 'is-published' if rd.r.status == 'open' else 'is-archived' }}">{{ 'Open' if rd.r.status == 'open' else 'Closed' }} · closes {{ rd.r.closes_on | lms_day }}</span>
+    <span class="lm-grow"></span>
+    {% if can and rd.r.status == 'open' %}
+    <form method="post" class="lm-inline" data-confirm="Close “{{ rd.r.title }}” now? HODs can't nominate in it any more; the {{ rd.n }} already nominated keep their requests." data-confirm-ok="Close the round">
+      <input type="hidden" name="action" value="close"><input type="hidden" name="round_id" value="{{ rd.r.id }}">
+      <button type="submit" class="btn-link">Close now</button></form>
+    {% endif %}
+  </div>
+  <ul class="lm-rdsess">{% for x in rd.sessions %}<li><b>{{ x.title }}</b> <span class="muted">· {{ x.line }}</span></li>{% endfor %}</ul>
+  <p class="muted small">{{ rd.n }} nominated so far.</p>
+  {% if rd.bgs %}
+  <div class="table-scroll"><table class="admin-table no-auto-table lm-rdtable">
+    <thead><tr><th scope="col">Business group</th><th scope="col" class="lm-num">HODs who answered <span class="muted small">(nominated, or nobody)</span></th><th scope="col">Progress</th></tr></thead>
+    <tbody>
+    {% for b in rd.bgs %}
+    <tr><td>{{ display_bg(b.bg) if b.bg != '(no group)' else 'No group' }}</td><td class="lm-num">{{ b.done }} of {{ b.of }}</td>
+      <td><span class="lm-bar" aria-hidden="true"><i style="width:{{ (100 * b.done / b.of) | round | int if b.of else 0 }}%"></i></span></td></tr>
+    {% endfor %}
+    </tbody>
+  </table></div>
+  {% endif %}
+</section>
+{% else %}
+<section class="admin-card"><p class="muted" style="margin:0">No rounds yet.{% if can %} Open one before each training calendar.{% endif %}</p></section>
+{% endfor %}
+
+{% if can %}
+{% call panel("new", "Learning · Nominations", "Open a nomination round", "Every HOD sees it in AI+ Learning, Dept, until it closes.") %}
+<form method="post" class="adm-panel-form" data-confirm="Open this round? Every HOD sees it in AI+ Learning straight away." data-confirm-ok="Open the round">
+  <input type="hidden" name="action" value="create">
+  <div class="adm-panel-body">
+    <section class="wiz-sec lm-form">
+      <label>Name<input name="title" required maxlength="120" placeholder="e.g. Q1 2027 calendar"></label>
+      <label>Closes on<input type="date" name="closes_on" required></label>
+      <fieldset class="lm-fs"><legend>Sessions in it</legend>
+        {% for o in open_sessions %}<label class="lm-check lm-rdpick"><input type="checkbox" name="session_ids" value="{{ o.id }}"><span><b>{{ o.title }}</b><span class="muted small lm-sub">{{ o.line }}{% if o.seats %} · {{ o.taken }} of {{ o.seats }} places taken{% endif %}</span></span></label>
+        {% else %}<p class="muted small">No session is open for registration. Add sessions on their programme first.</p>{% endfor %}
+      </fieldset>
+    </section>
+  </div>
+  <footer class="adm-panel-foot"><button type="button" class="btn-link adm-panel-grow" data-panel-close>Cancel</button><button type="submit" class="primary"{{ ' disabled' if not open_sessions }}>Open the round</button></footer>
+</form>
+{% endcall %}
+{% endif %}
+{% endblock %}

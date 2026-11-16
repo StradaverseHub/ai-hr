@@ -1,0 +1,68 @@
+{% extends "base.html" %}
+{% from "_adm_panel.html" import list_peek %}
+{% block title %}360 Feedback — Overview{% endblock %}
+{% block body %}
+{# 360 Feedback > Overview on the admin page kit (canvas K5, 2026-10-10): what needs you, four numbers, where people
+   are with their 360, and where the ratings are outstanding. The coloured banners and the "Quick actions" tiles went:
+   they repeated the menu. The potential bands are on Reports > Results analysis. #}
+<p class="adm-lede">Where the 360 is{% if admin_bg %} in {{ display_bg(admin_bg) }}{% else %} across the organisation{% endif %}:
+  who has a panel, how many ratings are in, and what needs you.</p>
+{% include "_admin_needs.html" %}
+
+<div class="adm-tiles">
+  {# each number opens the people behind it in the list panel (Chris, 2026-10-20); the href is the full page #}
+  <a class="admin-card adm-tile adm-tile-link" href="{{ url_for('admin_subjects') }}"{% if nav_is_super %} data-list-open="{{ url_for('admin_list_view', key='f360-rated', fragment=1) }}"{% endif %}><span class="muted small">People being rated</span>
+    <b>{{ subjects | thousands }}</b><span class="muted small">of {{ people | thousands }} {{ 'person' if people == 1 else 'people' }}</span></a>
+  <a class="admin-card adm-tile adm-tile-link" href="{{ url_for('admin_subjects', scope='incomplete') }}"{% if nav_is_super %} data-list-open="{{ url_for('admin_list_view', key='f360-short', fragment=1) }}"{% endif %}><span class="muted small">{{ 'Short of a full panel' if panel_target else 'Below the scoring minimum' }}</span>
+    <b>{{ incomplete | thousands }}</b><span class="muted small">{{ 'everyone confirmed has one' if not incomplete else 'need people added' }}</span></a>
+  <a class="admin-card adm-tile adm-tile-link" href="{{ url_for('admin_assessors') }}"{% if nav_is_super %} data-list-open="{{ url_for('admin_list_view', key='f360-owing', fragment=1) }}"{% endif %}><span class="muted small">Ratings in</span>
+    <b>{{ assignments_done | thousands }}</b><span class="muted small">of {{ assignments_total | thousands }} asked{% if assignments_total %} · {{ (100 * assignments_done / assignments_total) | round | int }}%{% endif %}</span></a>
+  <a class="admin-card adm-tile adm-tile-link" href="{{ url_for('admin_talent_release') if nav_is_super else url_for('admin_subjects') }}"{% if nav_is_super %} data-list-open="{{ url_for('admin_list_view', key='f360-released', fragment=1) }}"{% endif %}><span class="muted small">Reports released</span>
+    <b>{{ released | thousands }}</b><span class="muted small">{{ 'none yet' if not released else 'people can read theirs' }}</span></a>
+</div>
+
+{% set sp_total = complete + stage1 + in_progress + not_started %}
+{% if sp_total %}
+<section class="admin-card" aria-label="Where people are with their 360">
+  <h2>Where people are with their 360</h2>
+  <div class="rpt-cut-bar" style="height:28px">
+    {% for n, cls, lbl in ((complete, 'done', 'Every rating in'), (stage1, 'active', 'Enough to count'), (in_progress, 'active', 'Some in'), (not_started, 'pending', 'None in yet')) %}
+      {% if n %}{% set pct = (100 * n / sp_total) | round(1) %}
+      <div class="rpt-seg seg-{{ cls }}" style="width:{{ pct }}%" title="{{ lbl }}: {{ n }}"><span class="rpt-seg-label">{{ pct | round(0) | int }}%</span></div>
+      {% endif %}
+    {% endfor %}
+  </div>
+  <div class="adm-stage-key">
+    {% for n, st, cls, lbl in ((complete, 'complete', 'status-reviewed', 'Every rating in'), (stage1, 'stage1', 'status-progress', 'Enough to count (%d+)' % min_valid), (in_progress, 'in_progress', 'status-progress', 'Some in'), (not_started, 'not_started', 'status-submitted', 'None in yet')) %}
+    <a class="adm-stage-link" href="{{ url_for('admin_subjects') }}"{% if nav_is_super %} data-list-open="{{ url_for('admin_list_view', key='f360-stage', stage=st, fragment=1) }}"{% endif %}><span class="status-pill {{ cls }}">{{ lbl }}</span> {{ n | thousands }}</a>
+    {% endfor %}
+  </div>
+  <p class="muted small" style="margin:8px 0 0">Among people with a panel. A score counts once {{ min_valid }} ratings are in; someone graded H is rated by their line manager only.</p>
+</section>
+{% endif %}
+
+<section class="admin-card" aria-label="Where the ratings are outstanding">
+  <div class="adm-headrow" style="margin:0 0 8px"><h2 style="margin:0">Where the ratings are outstanding</h2>
+    <span class="muted small">by department, most still to come first</span></div>
+  {% if dept_rows %}
+  <div class="table-scroll"><table class="admin-table">
+    <thead><tr><th>Department</th><th>People</th><th>Ratings in</th><th></th></tr></thead>
+    <tbody>
+    {% for d in dept_rows %}
+    <tr>
+      <td><b>{{ d.dept | proper or 'No department' }}</b><span class="muted small" style="display:block">{{ display_company(d.bg, d.bu) or display_bg(d.bg) }}</span></td>
+      <td>{{ d.people | thousands }}</td>
+      <td><span class="adm-bar"><span style="width:{{ d.pct }}%" class="{{ 'is-ok' if d.pct >= 90 else ('is-mid' if d.pct >= 50 else 'is-low') }}"></span></span>
+        <span class="small">{{ d.done | thousands }} of {{ d.asked | thousands }} · {{ d.pct }}%</span></td>
+      <td><a class="btn-link" href="{{ d.href }}">Open &rsaquo;</a></td>
+    </tr>
+    {% endfor %}
+    </tbody>
+  </table></div>
+  {% else %}
+  <p class="muted" style="margin:0">{{ 'Every rating asked for is in.' if assignments_total else 'Nobody has a panel yet: build them on Run › Panels.' }}</p>
+  {% endif %}
+</section>
+{# the count lists are the super admin's only for now (Chris, 2026-10-20); everyone else's count opens its page #}
+{% if nav_is_super %}{{ list_peek() }}{% endif %}
+{% endblock %}

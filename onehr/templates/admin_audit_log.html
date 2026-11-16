@@ -1,0 +1,94 @@
+{% extends "base.html" %}
+{% from "_table_tools.html" import colth, colmenu, colmenu_script %}
+{% block title %}Audit log{% endblock %}
+{% block body %}
+<div class="adm-headrow">
+  <p class="adm-lede">{{ total | thousands }} admin {{ 'action' if total == 1 else 'actions' }}{% if q %} matching &ldquo;{{ q }}&rdquo;{% endif %}:
+    every change to a user or to the organisation, and every other action an admin took, across all business groups. Times are Malaysia time.</p>
+</div>
+
+<section class="admin-card adm-filters">
+  <form method="get" class="adm-fsearch">
+    <input type="search" name="q" value="{{ q }}" placeholder="Search by admin, target, ID or detail" autofocus autocomplete="off" aria-autocomplete="list" aria-expanded="false" data-suggest="audit" data-suggest-url="{{ url_for('search_suggest') }}" data-no-qin="the log's actions, not a list of people">
+    <span class="adm-field adm-field-date" role="group" aria-label="Dates">
+      <span data-odp-range data-odp-label="Dates" data-odp-cycle-start="{{ cycle_start }}">
+        <input type="date" name="date_from" value="{{ date_from }}" max="{{ odp_today }}" aria-label="From date">
+        <input type="date" name="date_to" value="{{ date_to }}" max="{{ odp_today }}" aria-label="To date">
+      </span>
+    </span>
+    {% for v in active_faction %}<input type="hidden" name="faction" value="{{ v }}">{% endfor %}
+    {% for v in active_factor %}<input type="hidden" name="factor" value="{{ v }}">{% endfor %}
+    {% if show_sys %}<label class="adm-field adm-field-check"><input type="checkbox" name="fsys" value="1"{{ ' checked' if active_fsys else '' }}> System admin actions only</label>{% endif %}
+    <button type="submit" class="btn-link">Search</button>
+    {% if q or date_from or date_to %}<a class="btn-link" href="?{{ filt_qs }}">Clear</a>{% endif %}
+    {% if n_filters %}
+    <span class="adm-count"><strong>{{ total | thousands }}</strong> {{ 'action' if total == 1 else 'actions' }} match {{ n_filters }} {{ 'filter' if n_filters == 1 else 'filters' }}, across all pages.
+      <a class="btn-link" href="{{ url_for('admin_audit_log') }}">Clear all filters</a></span>
+    {% endif %}
+  </form>
+</section>
+
+<section class="admin-card">
+<div class="table-scroll table-scroll-capped">
+<table class="admin-table" id="audit-table">
+  <thead>
+    <tr>
+      <th>When (MYT)</th>
+      <th>Admin</th>
+      {{ colth('action', 'Action') }}
+      <th>Target</th>
+      <th>Detail</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for r in rows %}
+    <tr class="data-row">
+      <td class="nowrap">{{ r['created_at'] | myt }}</td>
+      <td>
+        {% if r['actor_name'] %}<strong>{{ r['actor_name'] }}</strong>
+          {% if r['actor_bg'] %}<br><span class="muted small">{{ display_bg(r['actor_bg']) }}</span>{% endif %}
+        {% elif r['action'].startswith('password_reset') or r['action'] == 'login_locked' %}<span class="muted">Nobody signed in</span>
+        {% else %}<span class="muted">(deleted admin)</span>{% endif %}
+      </td>
+      <td><span class="act-pill act-{{ r['action'] }}" title="{{ r['action'] }}">{{ r['action'] | action_label }}</span></td>
+      <td>
+        {% if r['target_name'] %}{{ r['target_name'] }}{% if r['target_eid'] %} <span class="muted small"><code>{{ r['target_eid'] }}</code></span>{% endif %}
+        {% elif r['target_username'] %}{{ r['target_username'] }}
+        {% else %}<span class="muted">&mdash;</span>{% endif %}
+      </td>
+      <td>{{ r['detail'] or '' }}</td>
+    </tr>
+    {% else %}
+    <tr><td colspan="5" class="muted">No admin actions match.{% if n_filters or q %} Widen the dates or clear the search.{% endif %}</td></tr>
+    {% endfor %}
+  </tbody>
+</table>
+</div>
+
+<div class="pagination">
+  {% if total_pages > 1 %}
+    {% if page > 1 %}<a class="btn-link" data-scroll-top href="?{{ base_qs }}&page={{ page-1 }}">&larr; Previous</a>{% endif %}
+    <span class="muted">Page {{ page }} of {{ total_pages }}</span>
+    {% if page < total_pages %}<a class="btn-link" data-scroll-top href="?{{ base_qs }}&page={{ page+1 }}">Next &rarr;</a>{% endif %}
+  {% endif %}
+  <form method="get" class="per-page">
+    <input type="hidden" name="q" value="{{ q }}">
+    <input type="hidden" name="date_from" value="{{ date_from }}">
+    <input type="hidden" name="date_to" value="{{ date_to }}">
+    {% for v in active_faction %}<input type="hidden" name="faction" value="{{ v }}">{% endfor %}
+    {% for v in active_factor %}<input type="hidden" name="factor" value="{{ v }}">{% endfor %}{% if active_fsys %}<input type="hidden" name="fsys" value="1">{% endif %}
+    <label>Show
+      <select name="per_page" onchange="this.form.submit()">
+        {% for n in per_page_options %}<option value="{{ n }}" {{ 'selected' if n == per_page else '' }}>{{ n }}</option>{% endfor %}
+      </select> per page</label>
+  </form>
+</div>
+</section>
+
+<div id="col-menu" class="col-menu" hidden></div>
+
+{{ colmenu('audit-table', {
+     'action': {'mode': 'server', 'param': 'faction', 'type': 'text', 'values': filt_actions, 'active': active_faction}
+   }, base_pairs) }}
+{{ colmenu_script(asset_v) }}
+{% endblock %}

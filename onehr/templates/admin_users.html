@@ -1,0 +1,264 @@
+{% extends "base.html" %}
+{% from "_pick_list.html" import unit_list %}
+{% from "_filter_rows.html" import filter_rows %}
+{% from "_search_in.html" import search_in_box %}
+{% from "_adm_panel.html" import panel, person_peek %}
+{% block title %}Users{% endblock %}
+{% block body %}
+{# People > Users on the admin page kit (canvas K4, 2026-10-10): business group, unit and department rows, one search,
+   one status choice; every row opens the person page, where their lines, roles, KPIs, plan and account change. The
+   row menu is gone: changing a line manager or HOD here skipped the calibration checks the person page makes. #}
+<div class="adm-headrow">
+  <p class="adm-lede">Everyone in OneHR{% if my_bg %} in {{ display_bg(my_bg) }}{% endif %}. Open a person to change their
+    lines, roles, KPIs, plan or account.</p>
+  <div class="adm-headrow-acts">
+    <a class="btn-link" href="{{ url_for('admin_users', view='inactivate') }}">Mark several as left</a>
+    <a class="btn-link" href="{{ url_for('admin_users', view='activate') }}">Bring people back</a>
+    {% if nav_is_super %}<a class="btn-link" href="{{ url_for('admin_users', view='urole') }}">Give a user role</a>{% endif %}
+    <a class="primary" href="{{ url_for('admin_users', view='add') }}" data-panel-open="add">Add a person</a>
+  </div>
+</div>
+
+{% macro keep_inputs(skip=()) %}{% for k in ('fbg', 'fbu', 'fdept', 'q', 'qin', 'show', 'role') if k not in skip and request.args.get(k) %}<input type="hidden" name="{{ k }}" value="{{ request.args.get(k) }}">{% endfor %}{% if 'unit' not in skip %}{% for v in f_units %}<input type="hidden" name="unit" value="{{ v }}">{% endfor %}{% endif %}{% if 'dept_f' not in skip %}{% for v in f_depts %}<input type="hidden" name="dept_f" value="{{ v }}">{% endfor %}{% endif %}{% endmacro %}
+{# an Excel-style menu on a column: tick several, Apply; server-side, so it filters every page (admin round 4, row 8) #}
+{% macro colf(label, name, opts, picked) %}
+<details class="adm-colf{{ ' is-on' if picked }}">
+  <summary aria-label="Filter {{ label | lower }}">{{ label }}{% if picked %} · {{ picked | length }}{% endif %} <span aria-hidden="true">&#9662;</span></summary>
+  <form method="get" class="adm-colf-pop">
+    {{ keep_inputs(skip=(name,)) }}
+    {% if opts | length > 8 %}<input type="search" class="adm-colf-q" placeholder="Search {{ label | lower }}" aria-label="Search {{ label | lower }}" data-colf-q>{% endif %}
+    <div class="adm-colf-list">
+      {% for o in opts %}<label class="adm-colf-opt"><input type="checkbox" name="{{ name }}" value="{{ o.key }}" {{ 'checked' if o.on }}><span>{{ o.label }}</span><b>{{ o.n | thousands }}</b></label>{% endfor %}
+      {% if not opts %}<span class="muted small">Nothing to pick.</span>{% endif %}
+    </div>
+    <div class="adm-colf-acts"><a class="btn-link" href="{{ url_for('admin_users', **(request.args.to_dict(flat=False) | dict_drop(name))) }}">Clear</a><button type="submit" class="primary">Apply</button></div>
+  </form>
+</details>
+{% endmacro %}
+<section class="admin-card adm-filters" aria-label="Filters">
+  {{ filter_rows(frows) }}
+  {# what they lead today (admin round 4, row 8; canvas R2): the kit's own row, under the group / unit / department #}
+  {{ filter_rows([{'label': 'Role', 'opts': role_opts}]) }}
+  <form method="get" class="adm-fsearch">
+    {{ keep_inputs(skip=('q', 'qin', 'show')) }}
+    {{ search_in_box(search_in, qin, q) }}
+    <select name="show" class="modern-select" onchange="this.form.submit()" aria-label="Show">
+      {% for v, lbl in (('active', 'Active'), ('unconfirmed', 'Not confirmed'), ('noemail', 'No work email'), ('linked', 'Has linked IDs'), ('left', 'Left'), ('all', 'Everyone')) %}
+      <option value="{{ v }}" {{ 'selected' if show == v }}>{{ lbl }}</option>{% endfor %}
+    </select>
+    <span class="adm-count">{{ total | thousands }} {{ 'person' if total == 1 else 'people' }}</span>
+  </form>
+</section>
+
+<section class="admin-card" aria-label="People">
+  {% if users %}
+  <div class="table-scroll"><table class="admin-table adm-users no-auto-table">
+    <colgroup><col style="width:16%"><col style="width:11%"><col style="width:13%"><col style="width:14%"><col><col class="adm-col-status"><col class="adm-col-open"></colgroup>
+    <thead><tr><th>Person</th><th>{{ colf('Unit', 'unit', unit_opts, f_units) }}</th><th>{{ colf('Department', 'dept_f', dept_opts, f_depts) }}</th><th>Line manager</th><th>Roles</th><th>Status</th><th></th></tr></thead>
+    <tbody>
+    {% for u in users %}
+    {# one line a row, so 15 rows sit in about a screen (Chris, 2026-10-12, as the canvas's B2): the full text of a cut
+       cell is its tooltip, and the job title lives there (the search still finds it) #}
+    {% set unit_ = display_company(u['business_group'], u['company']) or display_bg(u['business_group']) or '—' %}
+    <tr>
+      <td title="{{ u['full_name'] }} · {{ u['employee_id'] or '' }}{% if u['job_grade'] %} · JG {{ u['job_grade'] }}{% endif %}{% if u['job_title'] %} · {{ u['job_title'] | proper }}{% endif %}{% if u['also_ids'] %} · also {{ u['also_ids'] | join(', ') }}{% endif %}"><a href="{{ url_for('admin_person', uid=u['id']) }}" data-person-open="{{ u['id'] }}"><b>{{ u['full_name'] }}</b></a>
+        <span class="muted small">{{ u['employee_id'] or '' }}{% if u['job_grade'] %} · JG {{ u['job_grade'] }}{% endif %}</span>{% if u['also_ids'] %}
+        <span class="muted small adm-also">Also {{ u['also_ids'] | join(', ') }}</span>{% endif %}</td>
+      <td title="{{ unit_ }}">{{ unit_ }}</td>
+      <td title="{{ u['department'] | proper or '' }}">{{ u['department'] | proper or '—' }}</td>
+      <td title="{{ u['manager_name'] or '' }}">{{ u['manager_name'] or '—' }}</td>
+      <td class="adm-roles">{% for r in u['roles'] %}<span class="adm-role is-{{ r[1] }}" title="{{ r[2] }}">{{ r[0] }}</span>{% endfor %}</td>
+      <td><span class="status-pill {{ {'ok': 'status-reviewed', 'warn': 'status-submitted', 'gone': 'adm-status-gone'}[u['tone']] }}">{{ u['status'] }}</span></td>
+      <td><a class="btn-link" href="{{ url_for('admin_person', uid=u['id']) }}" data-person-open="{{ u['id'] }}">Open &rsaquo;</a></td>
+    </tr>
+    {% endfor %}
+    </tbody>
+  </table></div>
+  {% if total_pages > 1 %}
+  <div class="pagination">
+    {% if page > 1 %}<a class="btn-link" data-scroll-top href="{{ prev_href }}">&larr; Previous</a>{% endif %}
+    <span class="muted small">Page {{ page }} of {{ total_pages }}</span>
+    {% if page < total_pages %}<a class="btn-link" data-scroll-top href="{{ next_href }}">Next &rarr;</a>{% endif %}
+  </div>
+  {% endif %}
+  {% else %}
+  <p class="muted" style="margin:0">Nobody matches. Try another business group or unit, or clear the search.</p>
+  {% endif %}
+</section>
+{# Add a person opens in a panel over the list (phase 2 of the admin side panels, 2026-10-17); ?view=add opens it on
+   load, as a failed add comes back. In four steps since 2026-10-18 (the libraries canvas, boards 15-18; Chris: "instead
+   of add the person button, it should ask whether the admin wants to go next directly to set KPIs then assign
+   competencies, in the right panel"): their details here, then their KPIs, their job and its competencies, and what's
+   in place (admin_add_steps.html, ?step=kpis|job|done&uid=). Their line manager and HOD must already be in OneHR. #}
+{% if wiz %}
+{% set _wsub = [wiz.p['job_title'] | proper, ('JG ' ~ wiz.p['job_grade']) if wiz.p['job_grade'] else None, display_bg(wiz.p['business_group']), display_company(wiz.p['business_group'], wiz.p['company']) if wiz.p['company'] else None, wiz.p['department']] | select | join(' · ') %}
+{% call panel("add", "People · Add a person", (wiz.p['full_name'] ~ ' is set up') if wiz.step == 'done' else wiz.p['full_name'], _wsub, wide=True, open=True) %}
+{% include "admin_add_steps.html" %}
+{% endcall %}
+{% else %}
+{% call panel("add", "People · Add a person", "Add a person", "Their line manager and HOD must already be in OneHR: search by Employee ID or name.", wide=True, open=(view == 'add')) %}
+<form method="post" class="admin-form adm-add-user adm-panel-form" id="add-user-form"
+      data-confirm="Add this person?"
+      data-confirm-ok="Add">
+  <div class="adm-panel-body">
+  <input type="hidden" name="action" value="add_user">
+  <ol class="adm-steps" aria-label="Steps">
+    <li class="is-on"><span class="adm-step-n">1</span>Details</li><li><span class="adm-step-n">2</span>KPIs</li>
+    <li><span class="adm-step-n">3</span>Competencies</li><li><span class="adm-step-n">4</span>Done</li>
+  </ol>
+  <section class="wiz-sec" aria-label="Who they are">
+    <span class="wiz-k">Who they are</span>
+    <div class="pp-fields">
+      <label><span class="wiz-lbl">Employee ID <span class="wiz-req" aria-hidden="true">*</span></span><input name="employee_id" required placeholder="As in HRIS" value="{{ (add_pre or {}).get('eid', '') }}"></label>
+      <label><span class="wiz-lbl">Full name <span class="wiz-req" aria-hidden="true">*</span></span><input name="full_name" required placeholder="As in HRIS" value="{{ (add_pre or {}).get('name', '') }}"></label>
+      <label>Work email<input name="email" type="email" placeholder="name@example.com" value="{{ (add_pre or {}).get('email', '') }}"></label>
+      <label>Employment type
+        <select name="employment_type" class="modern-select"><option value="">Choose…</option><option>Permanent</option><option>Contract</option><option>Probation</option></select></label>
+    </div>
+  </section>
+  <section class="wiz-sec" aria-label="Where they sit">
+    <span class="wiz-k">Where they sit</span>
+    <div class="pp-fields">
+      <label><span class="wiz-lbl">Business group <span class="wiz-req" aria-hidden="true">*</span></span>
+        {% if my_bg %}
+          <input value="{{ display_bg(my_bg) }}" disabled>
+          <input type="hidden" name="business_group" value="{{ my_bg }}">
+        {% else %}
+          <select name="business_group" id="bg-select" class="modern-select" required>
+            <option value="">Choose…</option>
+            {% for bg in bgs %}<option value="{{ bg }}">{{ display_bg(bg) }}</option>{% endfor %}
+          </select>
+        {% endif %}
+      </label>
+      <label>Business unit
+        <select name="company" id="company-select" class="modern-select">
+          <option value="">Choose a business group first</option>
+        </select>
+      </label>
+      {# picked from the unit's lists, or named as new (2026-10-19) #}
+      {{ unit_list('department', 'Department', 'add-dept-map', '#company-select') }}
+      {{ unit_list('job_title', 'Job title', 'add-title-map', '#company-select', what='job title', maxlen=120) }}
+      <label><span class="wiz-lbl">Job grade <span class="wiz-req" aria-hidden="true">*</span></span>
+        <select name="job_grade" id="add-grade" class="modern-select" required>
+          <option value="">Choose…</option>
+          {% for g in add_grades %}<option value="{{ g }}">{{ g }}</option>{% endfor %}
+        </select></label>
+      <script type="application/json" id="add-dept-map">{{ add_depts | tojson }}</script>
+      <script type="application/json" id="add-title-map">{{ add_titles | tojson }}</script>
+      <label>Work location<input name="work_location" placeholder="e.g. the plant or office"></label>
+      <label>Cost centre<input name="cost_center" placeholder="As in HRIS"></label>
+    </div>
+  </section>
+  <section class="wiz-sec" aria-label="Their dates">
+    <span class="wiz-k">Their dates</span>
+    <div class="pp-fields">
+      <label><span class="wiz-lbl">Joined date <span class="wiz-req" aria-hidden="true">*</span></span><input name="joined_date" id="add-joined" type="date" required></label>
+      {# confirming someone and a user role by hand are the super admin's (Chris, 2026-10-20) #}
+      {% if is_super %}<label><span class="wiz-lbl">Confirmation date <span class="muted small">blank until they're confirmed: they start as Basic</span></span><input name="confirmation_date" id="add-conf" type="date"></label>
+      <label><span class="wiz-lbl">User role <span class="muted small">Automatic: Basic until confirmed, then Full</span></span><select name="user_role_id" class="modern-select">
+        <option value="">Automatic</option>{% for r in urole_options if not r.builtin %}<option value="{{ r.id }}">{{ r.name }}</option>{% endfor %}</select></label>
+      {% else %}<input type="hidden" id="add-conf" value="">{% endif %}
+      <label><span class="wiz-lbl">Years of service <span class="muted small" id="add-yos-from">counted from the joined date</span></span><input id="add-yos" value="" readonly tabindex="-1" aria-describedby="add-yos-from"></label>
+      <label class="adm-add-check"><input type="checkbox" name="group_transfer" id="add-transfer" value="1"> A group transfer: their joined date and full service go from their original hire date</label>
+      <label id="add-orig-wrap" hidden><span class="wiz-lbl">Original hire date <span class="wiz-req" aria-hidden="true">*</span></span><input name="original_hire_date" id="add-orig" type="date"></label>
+    </div>
+    {% if add_cycle %}<p class="wiz-note" id="add-take" role="status" hidden></p>{% endif %}
+  </section>
+  <section class="wiz-sec" aria-label="Who they report to">
+    <span class="wiz-k">Who they report to</span>
+    <div class="pp-fields">
+      {# picked from the people already in OneHR (Chris, 2026-10-16: "it should be search by employee ID from our user
+         base, if can't find then it shouldn't be allowed to create the user"); the server refuses anyone it can't find #}
+      <label><span class="wiz-lbl">Line manager <span class="wiz-req" aria-hidden="true">*</span></span>
+        <span class="pick" data-pick><input type="text" class="pick-q" placeholder="Search by Employee ID or name"
+          aria-label="Line manager: search by Employee ID or name" required autocomplete="off">
+          <input type="hidden" class="pick-val" name="manager_eid"></span></label>
+      <label><span class="wiz-lbl">HOD <span class="wiz-req" aria-hidden="true">*</span></span>
+        <span class="pick" data-pick><input type="text" class="pick-q" placeholder="Search by Employee ID or name"
+          aria-label="HOD: search by Employee ID or name" required autocomplete="off">
+          <input type="hidden" class="pick-val" name="hod_eid"></span></label>
+    </div>
+    <p class="muted small">Sign-in follows the main AI-HR app.</p>
+  </section>
+  </div>
+  <footer class="adm-panel-foot">
+    <button type="button" class="btn-link adm-panel-grow" data-panel-close>Cancel</button>
+    <button type="submit" name="then" value="stop" class="wiz-btn">Add, and stop here</button>
+    <button type="submit" name="then" value="kpis" class="primary">Add, then set their KPIs</button>
+  </footer>
+</form>
+{% endcall %}
+{% endif %}
+<script>
+(function () {
+  var MAP = {{ org_companies | tojson }};
+  var fixedBg = {{ (my_bg or '') | tojson }};
+  var bgSel = document.getElementById('bg-select');
+  var coSel = document.getElementById('company-select');
+  if (!coSel) return;
+  function fill(bg) {
+    var list = MAP[bg] || [];
+    coSel.textContent = '';
+    var first = document.createElement('option'); first.value = '';
+    first.textContent = bg ? (list.length ? 'Choose, or leave blank' : 'No business units listed') : 'Choose a business group first';
+    coSel.appendChild(first);
+    list.forEach(function (c) { var o = document.createElement('option'); o.value = c[0]; o.textContent = c[1]; coSel.appendChild(o); });
+    coSel.dispatchEvent(new Event('change'));   // the department and job title lists follow the unit
+  }
+  if (fixedBg) fill(fixedBg);
+  if (bgSel) bgSel.addEventListener('change', function () { fill(bgSel.value); });
+})();
+</script>
+{% if add_cycle and not wiz %}
+<script>
+/* Add a person's dates: years of service as they're typed, and whether they start as Full (taking part in the active
+   cycle) or Basic -- the user-role rule urole_allows_sql applies (Roles & access, 2026-10-20: a confirmation date that
+   has come, or, while the super admin keeps it on, over a year's service; at or above the cycle's lowest grade). */
+(function () {
+  var C = {{ add_cycle | tojson }};
+  var $ = function (id) { return document.getElementById(id); };
+  var j = $('add-joined'), c = $('add-conf'), t = $('add-transfer'), o = $('add-orig'), ow = $('add-orig-wrap'),
+      y = $('add-yos'), yf = $('add-yos-from'), g = $('add-grade'), note = $('add-take');
+  if (!j || !note) return;
+  function years(d) {
+    if (!d) return null;
+    var ms = Date.now() - new Date(d + 'T00:00:00').getTime();
+    return Math.max(0, Math.round(ms / (365.25 * 864e5) * 10) / 10);
+  }
+  function day(d) {
+    try { return new Date(d + 'T00:00:00').toLocaleDateString('en-GB', {day: 'numeric', month: 'short', year: 'numeric'}); }
+    catch (e) { return d; }
+  }
+  function draw() {
+    ow.hidden = !t.checked; o.required = t.checked; o.max = j.value || '';
+    var from = t.checked ? o.value : j.value, yos = years(from);
+    y.value = yos === null ? '' : yos.toFixed(1);
+    yf.textContent = t.checked ? 'counted from the original hire date' : 'counted from the joined date';
+    if (!j.value) { note.hidden = true; return; }
+    var gr = parseFloat((g.value || '').replace(/^JG\s*/i, '')), msg, ok;
+    if (C.min_grade && (!isFinite(gr) || gr < C.min_grade)) {
+      ok = false;
+      msg = (isFinite(gr) ? 'JG ' + gr : 'This grade') + " is below " + C.name + "'s lowest job grade (JG " + C.min_grade + "), so they don't take part in it.";
+    } else if (C.cutoff && c.value && c.value > C.cutoff) {
+      // after the cycle's confirmation cut-off (2 Nov 2026): the next step asks whether they take part in it
+      ok = false;
+      msg = day(c.value) + ' is after ' + C.name + "'s confirmation cut-off (" + C.cutoff_day + '). In the next step you choose whether they take part in it.';
+    } else if ((c.value && c.value <= C.today) || (C.service && yos !== null && yos > 1)) {
+      ok = true; msg = 'They start as Full and take part in ' + C.name + '.';
+    } else {
+      ok = false;
+      msg = (c.value ? 'They start as Basic and move to Full on ' + day(c.value) + ', when they join ' + C.name + '.'
+             : 'They start as Basic: dashboard{{ ', Career Plan and AI+ Learning' if lms_on() else ' and Career Plan' }}. They move to Full, and into ' + C.name +
+               ', on the confirmation date the super admin enters.') + ' You can still add them to this cycle in the next step.';
+    }
+    note.textContent = msg; note.hidden = false;
+    note.classList.toggle('is-ok', ok);
+  }
+  [j, c, t, o, g].forEach(function (el) { el.addEventListener('input', draw); el.addEventListener('change', draw); });
+  draw();
+})();
+</script>
+{% endif %}
+{# a person opens beside the list: who they are, where each module stands, Previous / Next down the page #}
+{{ person_peek("Person") }}
+{% endblock %}

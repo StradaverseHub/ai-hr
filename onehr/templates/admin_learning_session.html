@@ -1,0 +1,451 @@
+{% extends "base.html" %}
+{% from "_adm_panel.html" import panel %}
+{% block title %}{{ s.title }} · session{% endblock %}
+{% block body %}
+{# One session (AI+ Learning phase 2, 2026-10-20; canvas [design canvas link removed] boards
+   Admin-4/5): the day's clock-ins beside the signed paper T3 (HRDC still needs it, Chris's decision 7) with what doesn't
+   match, who's coming, closing it to give outcomes and hours, and the day-0 ratings. Writes: the super admin or an L&D
+   admin. Every write is double-confirmed in OneHR's own box. Since 2026-10-22 (boards 3C / 9B): the trainer's link to
+   the room's screen, and on a session added since then each day's clock-out, with anyone in but not out to settle. #}
+<div class="adm-headrow">
+  <div class="lm-shead">
+    <span class="lm-kick">{{ s.run_label or 'Session' }}{% if s.status == 'cancelled' %} · cancelled{% elif s.closed_at %} · closed{% endif %}</span>
+    <h2 class="lm-stitle">{{ s.title }}</h2>
+    <p class="muted small">{{ line }}{{ ' · HRDC-claimable' if s.hrdc_claimable }}</p>
+  </div>
+  <div class="lm-head-acts">
+    <a class="btn-link" href="{{ url_for('admin_learning_sessions') }}">All sessions</a>
+    {% if can and s.status == 'planned' and not elearn %}<a class="primary" href="{{ url_for('admin_learning_screen', sid=s.id) }}" target="_blank" rel="noopener">Open the room screen</a>{% endif %}
+  </div>
+</div>
+
+{% if elearn %}
+{# e-learning (2026-10-23, the LMS gap check): no room, no QR, no T3; L&D marks who completed it, with one reason #}
+<section class="admin-card" aria-labelledby="lm-el-h">
+  <h3 id="lm-el-h" class="lm-h">Who completed it <span class="muted small">e-learning: no room, QR or T3</span></h3>
+  {% set confirmed = regs | selectattr('status', 'equalto', 'approved') | list %}
+  {% if confirmed %}
+  <form method="post" id="lm-el" data-confirm="Mark the ticked people as having completed {{ s.title }}? Closing then credits their hours." data-confirm-ok="Mark them" data-confirm-reason="Why (e.g. the platform's completion report)">
+    <input type="hidden" name="action" value="mark_done">
+    <div class="table-scroll"><table class="admin-table no-auto-table">
+      <thead><tr>{% if can %}<th scope="col"><span class="sr-only">Tick</span></th>{% endif %}<th scope="col">Who</th><th scope="col">Completed</th></tr></thead>
+      <tbody>{% for r in confirmed %}<tr>{% if can %}<td>{% if r.user_id not in done_ids %}<input type="checkbox" name="uid" value="{{ r.user_id }}" aria-label="Tick {{ r.full_name }}">{% endif %}</td>{% endif %}<td>{{ r.full_name }}</td><td>{{ 'Marked' if r.user_id in done_ids else 'Not yet' }}</td></tr>{% endfor %}</tbody>
+    </table></div>
+    {% if can %}<div class="lm-formfoot"><button type="submit" class="primary">Mark the ticked completed</button></div>{% endif %}
+  </form>
+  {% else %}<p class="muted small" style="margin:0">Nobody is confirmed on it yet.</p>{% endif %}
+</section>
+{% endif %}
+
+{% if can and s.status == 'planned' and not s.closed_at and not elearn %}
+<section class="admin-card" aria-labelledby="lm-room-h">
+  <h3 id="lm-room-h" class="lm-h">The trainer's link</h3>
+  <p class="small lm-roomnote">The trainer runs the room{% if s.trainer %} ({{ s.trainer }}){% endif %}. This link opens the room's screen on any laptop with no OneHR sign-in: the clock-in and clock-out QR, the switch between them, and the counts, never a name. It works on the session's days only, from an hour before the start to half an hour after the end.</p>
+  {% if room_url %}
+  <div class="lm-roomlink">
+    <input type="text" readonly value="{{ room_url }}" aria-label="The trainer's link" id="lm-room-url">
+    <button type="button" class="primary" id="lm-room-copy">Copy the link</button>
+    <form method="post" class="lm-inline" data-confirm="Make a new link for the trainer? The old one stops working at once, so send them the new one." data-confirm-ok="Make a new link">
+      <input type="hidden" name="action" value="room_key"><input type="hidden" name="renew" value="1"><input type="hidden" name="day" value="{{ day or '' }}">
+      <button type="submit" class="btn-link">Make a new link…</button></form>
+  </div>
+  <script>
+  (function () {
+    var b = document.getElementById("lm-room-copy"), i = document.getElementById("lm-room-url");
+    b.addEventListener("click", function () {
+      function done() { b.textContent = "Copied"; setTimeout(function () { b.textContent = "Copy the link"; }, 2000); }
+      if (navigator.clipboard && window.isSecureContext) { navigator.clipboard.writeText(i.value).then(done, function () { i.select(); }); }
+      else { i.select(); try { document.execCommand("copy"); done(); } catch (e) {} }
+    });
+  })();
+  </script>
+  {% else %}
+  <form method="post" data-confirm="Make the trainer's link for {{ s.title }}? Whoever has it can show the room's screen on the session's days." data-confirm-ok="Make the link">
+    <input type="hidden" name="action" value="room_key"><input type="hidden" name="day" value="{{ day or '' }}">
+    <button type="submit" class="primary">Make the trainer's link</button></form>
+  {% endif %}
+</section>
+{% endif %}
+
+{% if clock %}
+{# its clock and documents (S14, 2026-10-22, board 10B): the days from Learning › Settings, changed for this session
+   only; the documents in OneHR's formats until L&D's arrive #}
+<section class="admin-card lm-docs" id="lm-docs" aria-label="The clock and documents">
+  <div class="lm-docs-col">
+    <h3 class="lm-h">The clock · from day one, {{ s.starts_on | lms_day }}</h3>
+    <p class="muted small lm-docs-lede">The days come from Learning › Settings{% if clock | selectattr('own') | list %}; this session has its own{% endif %}.</p>
+    {% for c in clock %}
+    <div class="lm-dl">
+      <b>{{ c.label }}</b>
+      <span class="lm-dl-v"><span class="lm-dl-d">D-{{ c.days }} · {{ c.on.isoformat() | lms_day }}{% if c.own %} <span class="muted small">· this session's own</span>{% endif %}</span>{% if c.chip %}<span class="lm-chip{{ ' is-' ~ c.tone if c.tone }}">{{ c.chip }}</span>{% endif %}
+        {% if c.note %}<span class="muted small lm-dl-n">{{ c.note }}</span>{% endif %}</span>
+    </div>
+    {% endfor %}
+    {% if can %}
+    <details class="lm-fold">
+      <summary>Change the clock for this session</summary>
+      <form method="post" class="admin-form lm-clockform" data-confirm="Give {{ s.title }} its own clock? Only this session changes." data-confirm-ok="Save its clock">
+        <input type="hidden" name="action" value="clock"><input type="hidden" name="day" value="{{ day or '' }}">
+        <label>HRDC pack ready, days before<input type="number" name="pack" min="0" max="365" value="{{ clock_days.pack }}"></label>
+        <label>BG filing due, days before<input type="number" name="file" min="0" max="365" value="{{ clock_days.file }}"></label>
+        <label>Grant approved by, days before<input type="number" name="approve" min="0" max="365" value="{{ clock_days.approve }}"></label>
+        <div class="actions"><span class="muted small">Registration closes on the session's own cut-off: change it with the session.</span><button type="submit" class="primary">Save its clock</button></div>
+      </form>
+      {% if clock | selectattr('own') | list %}
+      <form method="post" data-confirm="Put {{ s.title }}'s clock back to Learning's settings?" data-confirm-ok="Put it back">
+        <input type="hidden" name="action" value="clock"><input type="hidden" name="reset" value="1"><input type="hidden" name="day" value="{{ day or '' }}">
+        <button type="submit" class="btn-link">Back to Learning's settings</button></form>
+      {% endif %}
+    </details>
+    {% endif %}
+  </div>
+  <div class="lm-docs-col">
+    <h3 class="lm-h">Documents <span class="lm-chip is-amber">OneHR's formats until L&amp;D's arrive</span></h3>
+    <div class="lm-doc">
+      <span><b>Cost-sharing letter</b><span class="muted small">{% if cost.varies %}Each business group's people, each place at its own cost{% else %}Each business group's people × RM {{ '{:,.0f}'.format(cost.each) }}{% endif %}</span></span>
+      {% if can %}<a class="btn-link" href="{{ url_for('admin_learning_costletter', sid=s.id) }}" target="_blank" rel="noopener">Print</a>{% endif %}
+    </div>
+    {% if cost.rows %}
+    <table class="admin-table no-auto-table lm-cost"><thead><tr><th scope="col">Business group</th><th scope="col" class="lm-num">Pax</th><th scope="col" class="lm-num">Cost</th><th scope="col">HRDC</th></tr></thead>
+      <tbody>{% for r in cost.rows %}<tr><td>{{ display_bg(r.bg) }}</td><td class="lm-num">{{ r.pax }}</td><td class="lm-num">RM {{ '{:,.0f}'.format(r.cost) }}</td><td>{{ r.hrdc }}</td></tr>{% endfor %}</tbody></table>
+    {% endif %}
+    <div class="lm-doc">
+      <span><b>HRDC document pack</b><span class="muted small">{{ docs | length }} of {{ doc_pack | length }} ready</span></span>
+    </div>
+    <ul class="lm-pack">
+      {% for k, lab in doc_pack %}
+      <li>{% if can %}<form method="post" class="lm-inline" data-confirm="{{ 'Mark ' ~ lab ~ ' not ready?' if k in docs else 'Mark ' ~ lab ~ ' ready?' }}" data-confirm-ok="{{ 'Not ready' if k in docs else 'Ready' }}">
+          <input type="hidden" name="action" value="doc"><input type="hidden" name="item" value="{{ k }}"><input type="hidden" name="on" value="{{ '0' if k in docs else '1' }}"><input type="hidden" name="day" value="{{ day or '' }}">
+          <button type="submit" class="lm-tick{{ ' is-on' if k in docs }}" aria-label="{{ lab }}: {{ 'ready' if k in docs else 'not ready' }}">{{ '✓' if k in docs }}</button></form>{% else %}<span class="lm-tick{{ ' is-on' if k in docs }}" aria-hidden="true">{{ '✓' if k in docs }}</span>{% endif %}
+        <span>{{ lab }}{% if k in docs %} <span class="muted small">· {{ docs[k].by or 'L&D' }}, {{ docs[k].on }}</span>{% endif %}</span></li>
+      {% endfor %}
+    </ul>
+    <div class="lm-doc">
+      <span><b>Final pax list</b><span class="muted small">{{ cost.pax }} {{ 'person' if cost.pax == 1 else 'people' }} · name, Employee ID, unit, group (the IC column stays blank: OneHR never holds it)</span></span>
+      <a class="btn-link" href="{{ url_for('admin_learning_paxlist', sid=s.id) }}">Excel</a>
+    </div>
+    {% if can %}
+    <div class="lm-doc">
+      <span><b>HRDC T3</b><span class="muted small">Pre-filled for each day</span></span>
+      <span class="lm-doc-acts">{% for d in days %}<a class="btn-link" href="{{ url_for('admin_learning_t3', sid=s.id, day=d) }}" target="_blank" rel="noopener">Print day {{ loop.index }}</a>{% endfor %}<a class="btn-link" href="{{ url_for('admin_learning_t3_xlsx', sid=s.id, day=day or days[0]) }}">Excel</a></span>
+    </div>
+    {% endif %}
+  </div>
+</section>
+{% endif %}
+
+{% if days | length > 1 and not elearn %}
+<nav class="adm-tabs" aria-label="Day">
+  {% for d in days %}<a class="{{ 'is-active' if d == day }}" href="{{ url_for('admin_learning_session', sid=s.id, day=d) }}">Day {{ loop.index }} · {{ d | lms_day }}</a>{% endfor %}
+</nav>
+{% endif %}
+
+{% if sheet %}
+<section class="admin-card" aria-labelledby="lm-day-h">
+  <div class="lm-cardhead">
+    <h3 id="lm-day-h" class="lm-h">{{ day | lms_day }}: who came</h3>
+    <a class="btn-link" href="{{ url_for('admin_learning_t3', sid=s.id, day=day) }}" target="_blank" rel="noopener">Print the T3</a>
+  </div>
+  <div class="lm-tiles is-3">
+    <div class="lm-tile"><b>{{ sheet.n_in }}</b><span>clocked in{% if sheet.n_confirmed %}, of {{ sheet.n_confirmed }} confirmed{% endif %}{% if sheet.needs_out %} · {{ sheet.n_out }} clocked out{% endif %}</span></div>
+    <div class="lm-tile"><b>{{ 'Uploaded' if sheet.t3 and sheet.t3.stored_path else 'Not yet' }}</b><span>signed T3 scan</span></div>
+    <div class="lm-tile{{ ' is-flag' if sheet.mismatch }}"><b>{{ sheet.mismatch | length }}</b><span>to check{% if not sheet.signed_known %} (tick who signed first){% endif %}</span></div>
+  </div>
+
+  {% if sheet.mismatch %}
+  <div class="lm-mism" role="region" aria-label="To check">
+    {% for m in sheet.mismatch %}
+    <div class="lm-mrow">
+      <span><b>{{ m.name }}</b> · {% if m.kind == 'signed_no_clock' %}signed the T3 but didn't clock in{% elif m.kind == 'clock_no_sign' %}clocked in but didn't sign the T3{% elif m.kind == 'in_no_out' %}clocked in but didn't clock out: mark them out, or the day counts as missed{% else %}clocked in as a walk-in: not on the list{% endif %}</span>
+      {% if can %}
+        {% if m.kind == 'signed_no_clock' %}
+        <form method="post" class="lm-inline" data-confirm="Mark {{ m.name }} in for {{ day | lms_day }}? They signed the T3 but have no clock-in." data-confirm-ok="Mark in"
+              data-confirm-reason="Why you're marking them in" data-confirm-reason-placeholder="e.g. signed the T3, phone not working">
+          <input type="hidden" name="action" value="mark_uid"><input type="hidden" name="user_id" value="{{ m.uid }}"><input type="hidden" name="day" value="{{ day }}">
+          <button type="submit" class="btn-link">Mark in</button></form>
+        {% elif m.kind == 'in_no_out' %}
+        <form method="post" class="lm-inline" data-confirm="Mark {{ m.name }} out for {{ day | lms_day }}? They clocked in but didn't clock out." data-confirm-ok="Mark out"
+              data-confirm-reason="Why you're marking them out" data-confirm-reason-placeholder="e.g. left early with leave, phone went flat">
+          <input type="hidden" name="action" value="mark_out"><input type="hidden" name="user_id" value="{{ m.uid }}"><input type="hidden" name="day" value="{{ day }}">
+          <button type="submit" class="btn-link">Mark out</button></form>
+        {% elif m.kind == 'walkin' %}
+        <a class="btn-link" href="{{ url_for('admin_learning_session', sid=s.id, day=day, panel='walkin-%d' % m.uid) }}" data-panel-open="walkin-{{ m.uid }}">Confirm attending…</a>
+        {% else %}<span class="muted small">Check the scan, then tick them if they signed.</span>{% endif %}
+      {% endif %}
+    </div>
+    {% endfor %}
+    {% set n_no_out = sheet.mismatch | selectattr('kind', 'equalto', 'in_no_out') | list | length %}
+    {% if can and n_no_out > 1 %}
+    <div class="lm-mrow"><span class="muted small">The clock-out screen wasn't shown at the end?</span>
+    <form method="post" class="lm-inline" data-confirm="Mark all {{ n_no_out }} who didn't clock out as out for {{ day | lms_day }}?" data-confirm-ok="Mark them out"
+          data-confirm-reason="Why you're marking them out" data-confirm-reason-placeholder="e.g. the clock-out screen wasn't shown">
+      <input type="hidden" name="action" value="mark_all_out"><input type="hidden" name="day" value="{{ day }}">
+      <button type="submit" class="btn-link">Mark all {{ n_no_out }} out…</button></form></div>
+    {% endif %}
+  </div>
+  {% endif %}
+
+  {% if sheet.rows %}
+  {% if can %}<form method="post" id="lm-signed" data-confirm="Save who signed the T3 for {{ day | lms_day }}? OneHR checks it against the clock-ins." data-confirm-ok="Save">
+    <input type="hidden" name="action" value="signed"><input type="hidden" name="day" value="{{ day }}"></form>{% endif %}
+  <div class="table-scroll"><table class="admin-table no-auto-table lm-daytable">
+    <thead><tr><th scope="col">Name</th><th scope="col">Employee ID</th><th scope="col">Unit</th><th scope="col">Clocked in</th>{% if sheet.needs_out %}<th scope="col">Clocked out</th>{% endif %}
+      <th scope="col" class="lm-num">Signed T3</th><th scope="col"><span class="sr-only">Mark in</span></th></tr></thead>
+    <tbody>
+    {% for r in sheet.rows %}
+    <tr>
+      <td>{{ r.name }}</td><td>{{ r.eid or '' }}</td><td class="small">{{ r.unit or '' }}</td>
+      <td class="small">{% if r['in'] %}{{ (r['in'].created_at | myt)[11:16] }} · {{ {'qr': 'QR', 'code': 'typed the code', 'manual': 'by hand'}[r['in'].method] }}{% if r['in'].reason %}<span class="muted lm-sub">{{ r['in'].reason }}</span>{% endif %}{% else %}<span class="muted">Not yet</span>{% endif %}</td>
+      {% if sheet.needs_out %}<td class="small">{% if r['in'] and r['in'].out_at %}{{ (r['in'].out_at | myt)[11:16] }} · {{ {'qr': 'QR', 'code': 'typed the code', 'manual': 'by hand'}.get(r['in'].out_method, '') }}{% if r['in'].out_reason and r['in'].out_method == 'manual' and r['in'].method != 'manual' %}<span class="muted lm-sub">{{ r['in'].out_reason }}</span>{% endif %}{% elif r['in'] %}<span class="muted">Not yet</span>{% else %}–{% endif %}</td>{% endif %}
+      <td class="lm-num">{% if can %}<input type="checkbox" name="signed" value="{{ r.uid }}" form="lm-signed" aria-label="{{ r.name }} signed"{{ ' checked' if r.signed }}>{% else %}{{ 'Yes' if r.signed else ('No' if r.signed is not none else '–') }}{% endif %}</td>
+      <td>{% if can and not r['in'] %}
+        <form method="post" class="lm-inline" data-confirm="Mark {{ r.name }} in for {{ day | lms_day }}?" data-confirm-ok="Mark in"
+              data-confirm-reason="Why you're marking them in" data-confirm-reason-placeholder="e.g. signed the T3, phone not working">
+          <input type="hidden" name="action" value="mark_uid"><input type="hidden" name="user_id" value="{{ r.uid }}"><input type="hidden" name="day" value="{{ day }}">
+          <button type="submit" class="btn-link">Mark in</button></form>
+        {% elif can and sheet.needs_out and not r['in'].out_at %}
+        <form method="post" class="lm-inline" data-confirm="Mark {{ r.name }} out for {{ day | lms_day }}?" data-confirm-ok="Mark out"
+              data-confirm-reason="Why you're marking them out" data-confirm-reason-placeholder="e.g. left early with leave, phone went flat">
+          <input type="hidden" name="action" value="mark_out"><input type="hidden" name="user_id" value="{{ r.uid }}"><input type="hidden" name="day" value="{{ day }}">
+          <button type="submit" class="btn-link">Mark out</button></form>{% endif %}</td>
+    </tr>
+    {% endfor %}
+    </tbody>
+  </table></div>
+  {% if can %}<div class="lm-formfoot"><button type="submit" form="lm-signed" class="primary">Save who signed</button></div>{% endif %}
+  {% else %}
+  <p class="muted small">Nobody is confirmed for this session yet.</p>
+  {% endif %}
+
+  {% if can %}
+  <div class="lm-two lm-dayacts">
+    <form method="post" enctype="multipart/form-data" class="lm-upl" data-confirm="Upload this as the signed T3 for {{ day | lms_day }}?{{ ' It replaces the scan uploaded before.' if sheet.t3 and sheet.t3.stored_path else '' }}" data-confirm-ok="Upload">
+      <input type="hidden" name="action" value="t3"><input type="hidden" name="day" value="{{ day }}">
+      <label>The signed T3 scan <span class="muted small">PDF, JPG or PNG, up to 10 MB</span><input type="file" name="scan" accept=".pdf,.jpg,.jpeg,.png" required></label>
+      {% if sheet.t3 and sheet.t3.stored_path %}<a class="btn-link" href="{{ url_for('admin_learning_t3_scan', sid=s.id, day=day) }}" target="_blank" rel="noopener">See the scan ({{ sheet.t3.filename }})</a>{% endif %}
+      <div class="lm-formfoot"><button type="submit" class="primary">Upload the scan</button></div>
+    </form>
+    <form method="post" class="lm-upl" data-confirm="Mark this person in for {{ day | lms_day }}? Someone not on the list shows as a walk-in to confirm." data-confirm-ok="Mark in">
+      <input type="hidden" name="action" value="mark"><input type="hidden" name="day" value="{{ day }}">
+      <label>Mark someone else in
+        <span class="pick" data-pick><input type="text" class="pick-q" placeholder="Name, ID or job" aria-label="Who to mark in" required autocomplete="off">
+          <input type="hidden" name="employee_id" class="pick-val"></span></label>
+      <label>Why<input name="reason" required maxlength="200" placeholder="e.g. signed the T3, phone not working"></label>
+      <div class="lm-formfoot"><button type="submit" class="primary">Mark in</button></div>
+    </form>
+  </div>
+  {% endif %}
+</section>
+{% endif %}
+
+<section class="admin-card" aria-labelledby="lm-regs-h">
+  <div class="lm-cardhead">
+    <h3 id="lm-regs-h" class="lm-h">Attendees and invites</h3>
+    {% if can and upcoming and s.status == 'planned' and n_uninvited %}
+    <form method="post" class="lm-inline" data-confirm="Send the calendar invite to the {{ n_uninvited }} confirmed who don't have one yet? It goes by itself when a place is confirmed; this is for anyone it missed.{{ '' if mail_on else ' This server sends no email: it shows on their page for them to add.' }}" data-confirm-ok="Send invites">
+      <input type="hidden" name="action" value="invite_all"><input type="hidden" name="day" value="{{ day or '' }}">
+      <button type="submit" class="primary">Send invites to the {{ n_uninvited }}…</button></form>
+    {% endif %}
+  </div>
+  {% if regs %}
+  <div class="table-scroll"><table class="admin-table no-auto-table lm-regtable">
+    <thead><tr><th scope="col">Name</th><th scope="col">Employee ID</th><th scope="col">How</th><th scope="col">Where it is</th>
+      <th scope="col">Calendar invite</th><th scope="col">Absences</th>
+      {% if s.closed_at %}<th scope="col">Result</th><th scope="col" class="lm-num">Hours</th>{% endif %}<th scope="col"><span class="sr-only">Cancel</span></th></tr></thead>
+    <tbody>
+    {% for r in regs %}
+    {% set inv = invites.get(r.id) %}
+    <tr>
+      <td>{{ r.full_name }}</td><td>{{ r.employee_id or '' }}</td>
+      <td class="small">{{ {'self': 'Registered', 'manager': 'Line manager nominated', 'hod': 'HOD nominated', 'hr': 'Added by L&D', 'walkin': 'Walk-in'}[r.nomination] }}</td>
+      <td><span class="lm-rst is-{{ r.status }}">{{ r.status_label }}</span>{% if r.remark and r.status in ('cancelled', 'returned', 'withdrawn') %}<span class="muted small lm-sub">{% if r.status == 'withdrawn' and r.withdraw_kind %}{{ withdraw_labels.get(r.withdraw_kind, '') }}: {% endif %}{{ r.remark }}</span>{% endif %}{% if seats.in_place.get(r.id) %}<span class="muted small lm-sub">In place of {{ seats.in_place[r.id] }}{% if r.seat_note %}: “{{ r.seat_note }}”{% endif %}</span>{% endif %}
+        {% for x in seats.sources if x.reg.id == r.id %}{% if x.given %}<span class="muted small lm-sub">Seat given to {{ x.given_name }}</span>{% elif can and seats.open and seats.can_give %}<a class="btn-link lm-seat-btn" href="{{ url_for('admin_learning_session', sid=s.id, day=day, panel='seat-%d' % r.id) }}" data-panel-open="seat-{{ r.id }}">Give the seat…</a>{% elif can and seats.open %}<span class="muted small lm-sub">The run is full again</span>{% endif %}{% endfor %}</td>
+      <td class="small">{% if inv and inv.status == 'sent' %}<span class="lm-rst is-approved">Sent {{ (inv.sent_at | myt)[:10] | lms_day }}</span>{% if inv.via == 'page' %}<span class="muted lm-sub">on their page (no email here)</span>{% endif %}{% elif inv and inv.status == 'cancelled' %}<span class="lm-rst is-cancelled">Cancelled</span>{% elif r.status == 'approved' %}<span class="muted">Not sent</span>{% if can and upcoming %}
+        <form method="post" class="lm-inline" data-confirm="Send {{ r.full_name }} the calendar invite for {{ s.title }}?" data-confirm-ok="Send">
+          <input type="hidden" name="action" value="invite"><input type="hidden" name="registration_id" value="{{ r.id }}"><input type="hidden" name="day" value="{{ day or '' }}">
+          <button type="submit" class="btn-link">Send</button></form>{% endif %}{% else %}–{% endif %}</td>
+      <td class="small">{% for a in absent.get(r.id, []) %}<span class="lm-rst is-{{ 'approved' if a.status == 'excused' else 'cancelled' }}">{{ a.on_date | lms_day }}{{ ' · excused' if a.status == 'excused' }}</span>{% if a.reason %}<span class="muted lm-sub">“{{ a.reason }}”</span>{% endif %}{% if can and a.status in ('open', 'explained') %}
+        <form method="post" class="lm-inline" data-confirm="Excuse {{ r.full_name }}'s absence on {{ a.on_date | lms_day }}? It stays on the record but no longer counts." data-confirm-ok="Excuse" data-confirm-reason="Why (they and their line manager read it)" data-confirm-reason-placeholder="e.g. medical leave, MC on file">
+          <input type="hidden" name="action" value="excuse"><input type="hidden" name="absence_id" value="{{ a.id }}"><input type="hidden" name="day" value="{{ day or '' }}">
+          <button type="submit" class="btn-link">Excuse…</button></form>{% endif %}{% else %}–{% endfor %}</td>
+      {% if s.closed_at %}<td class="small">{{ {'attended': 'Attended', 'partial': 'Part of it', 'absent': 'Absent'}.get(r.outcome, '–') }}</td><td class="lm-num">{{ '%g' % r.hours if r.hours else '–' }}</td>{% endif %}
+      <td>{% if can and r.id in seats.noshow_ok %}
+        <form method="post" class="lm-inline" data-confirm="Mark {{ r.full_name }} a no-show for {{ day | lms_day }}? Their place frees for someone else and the day counts as their absence (unless it's excused). They and their line manager read your reason." data-confirm-ok="Mark a no-show" data-confirm-tone="danger"
+              data-confirm-reason="Why (they and their line manager read it)" data-confirm-reason-placeholder="e.g. didn't come on day 1, no word by 10:00">
+          <input type="hidden" name="action" value="noshow"><input type="hidden" name="registration_id" value="{{ r.id }}"><input type="hidden" name="on_day" value="{{ day }}"><input type="hidden" name="day" value="{{ day or '' }}">
+          <button type="submit" class="btn-link lm-danger">Mark no-show…</button></form>{% endif %}
+        {% if can and r.status in ('pending', 'waitlisted', 'approved', 'returned') and not s.closed_at %}
+        <form method="post" class="lm-inline" data-confirm="Cancel {{ r.full_name }}'s place on {{ s.title }}? They read your reason; the next person waiting moves up. To bring them back, add them again." data-confirm-ok="Cancel their place" data-confirm-tone="danger"
+              data-confirm-reason="Why (they read this)" data-confirm-reason-placeholder="e.g. the session moved to another site">
+          <input type="hidden" name="action" value="cancel"><input type="hidden" name="registration_id" value="{{ r.id }}"><input type="hidden" name="day" value="{{ day or '' }}">
+          <button type="submit" class="btn-link lm-danger">Cancel</button></form>{% endif %}</td>
+    </tr>
+    {% endfor %}
+    </tbody>
+  </table></div>
+  <p class="muted small">The calendar invite goes by itself when a place is confirmed: {% if mail_on %}an Outlook meeting request to their work email, straight into their calendar.{% else %}this server sends no email, so it's ready on their page for them to add.{% endif %} A change of date, time or venue updates it; cancelling a place, their withdrawing, or the session being cancelled removes it. An absence is a confirmed place with no clock-in and no withdrawal before it: the person, their line manager and L&amp;D see it. <b>Mark no-show…</b> is there from the day before the run: their place frees and the day counts as their absence. A freed place goes to the waiting list through its approval as before; when there's no time for that, <b>Give the seat…</b> confirms someone at once.</p>
+  {% else %}
+  <p class="muted small">No requests yet.</p>
+  {% endif %}
+  {% if can and s.status == 'planned' and not s.closed_at %}
+  <form method="post" class="lm-add" data-confirm="Add this person to {{ s.title }}? They get a confirmed place straight away (no approval step), even after registration has closed." data-confirm-ok="Add them">
+    <input type="hidden" name="action" value="add"><input type="hidden" name="day" value="{{ day or '' }}">
+    <label>Add someone
+      <span class="pick" data-pick><input type="text" class="pick-q" placeholder="Name, ID or job" aria-label="Who to add" required autocomplete="off">
+        <input type="hidden" name="employee_id" class="pick-val"></span></label>
+    <label>Why<input name="reason" required maxlength="300" placeholder="e.g. registered late with the HOD's agreement"></label>
+    <button type="submit" class="primary">Add</button>
+  </form>
+  {% endif %}
+</section>
+
+{% if log or flagged %}
+<section class="admin-card lm-split" aria-label="Withdrawals and absences">
+  <div>
+    <h3 class="lm-h">Withdrawals and the waiting list</h3>
+    {% for l in log %}<p class="small lm-logline"><span class="muted">{{ (l.created_at | myt)[:10] | lms_day }}</span> <b>{{ l.full_name }}</b> {{ {'withdrawn': 'withdrew', 'cancelled': 'was taken off by L&D', 'promoted': 'moved up from the waiting list'}[l.action] }}{% if l.remark %}: “{{ l.remark }}”{% endif %}</p>
+    {% else %}<p class="muted small">None yet.</p>{% endfor %}
+  </div>
+  <div>
+    <h3 class="lm-h">Two or more absences this year <span class="muted small">not excused, every session</span></h3>
+    {% for f in flagged %}<p class="small lm-logline"><b>{{ f[0] }}</b> · {{ f[1] or '' }} · {{ f[2] }} this year</p>
+    {% else %}<p class="muted small">Nobody.</p>{% endfor %}
+  </div>
+</section>
+{% endif %}
+
+{% if can and s.status == 'planned' %}
+<section class="admin-card" aria-labelledby="lm-close-h">
+  <h3 id="lm-close-h" class="lm-h">{{ 'Closed' if s.closed_at else 'Close the session' }}</h3>
+  {% if not ended %}
+  <p class="muted small" style="margin:0">{% if elearn %}After its last day, close it here: everyone marked completed gets Attended and the hours; anyone not marked isn't counted, never absent.{% else %}After its last day, close it here: everyone confirmed gets Attended, Part of it or Absent from their clock-ins, and their hours.{% endif %}</p>
+  {% else %}
+  <p class="small" style="margin:0 0 10px">{% if s.closed_at %}Closed {{ s.closed_at | myt_day }}. Closing again recounts{{ ' from who is marked completed' if elearn else ' from the clock-ins, after a late mark-in' }}.{% elif elearn %}Everyone marked completed gets <b>Attended</b> and the hours; anyone not marked isn't counted, never absent.{% else %}Each person confirmed gets <b>Attended</b> (every day), <b>Part of it</b> or <b>Absent</b> from their clock-ins, and the hours for the days they came. Check the T3 above first.{% endif %}</p>
+  {% set cc = cert_close %}
+  {% set gives = cc and cc.mode in ('close', 'held') and cc.would %}
+  <form method="post" class="lm-close-form" data-confirm="{{ 'Recount' if s.closed_at else 'Close' }} {{ s.title }}? Each person confirmed gets their result and hours from the clock-ins, and those who came are asked to rate it.{% if gives %} About {{ cc.would }} who came every day get their course badge and their CHART certificate (issued now, or held if you ticked it), each emailed with it. A certificate can be revoked later, with a reason they read.{% elif cc and cc.would %} About {{ cc.would }} who came every day get their course badge ({{ cc.label | lower }}).{% endif %}" data-confirm-ok="{{ 'Recount' if s.closed_at else ('Close and issue the certificates' if gives else 'Close the session') }}">
+    <input type="hidden" name="action" value="close"><input type="hidden" name="day" value="{{ day or '' }}">
+    {% if gives %}<label class="lm-check"><input type="checkbox" name="hold" value="1"{{ ' checked' if cc.mode == 'held' }}> Hold the certificates: I'll release them (an assessed course)</label>{% endif %}
+    <button type="submit" class="primary">{{ 'Recount' if s.closed_at else 'Close the session' }}</button>
+  </form>
+  {% if cc and not s.closed_at %}<p class="muted small" style="margin:8px 0 0">Certificate: {{ cc.label }}. Change it on the programme.</p>{% endif %}
+  {% endif %}
+</section>
+{% endif %}
+
+{% if s.closed_at and (certs.rows or certs.n.revoked) %}
+<section class="admin-card" id="lm-certs" aria-labelledby="lm-certs-h">
+  <div class="lm-cardhead">
+    <h3 id="lm-certs-h" class="lm-h">Certificates <span class="muted small">{{ certs.mode_label }} · under CHART</span></h3>
+    {% if certs.n.issued %}<a class="btn-link" href="{{ url_for('admin_learning_session_certs', sid=s.id) }}" target="_blank" rel="noopener">Download all (one PDF)</a>{% endif %}
+  </div>
+  <div class="lm-tiles lm-cert-tiles">
+    <div class="lm-tile"><b>{{ certs.n.issued }}</b><span>issued</span></div>
+    <div class="lm-tile"><b>{{ certs.n.held }}</b><span>held for you to release</span></div>
+    <div class="lm-tile"><b>{{ certs.n.none }}</b><span>came, none yet</span></div>
+    <div class="lm-tile"><b>{{ certs.n.revoked }}</b><span>revoked</span></div>
+  </div>
+  {% if can and certs.n.held %}<form method="post" id="lm-cert-rel" data-confirm="Release the ticked certificates for {{ s.title }}? Each person gets theirs, their course badge and the email." data-confirm-ok="Release them"><input type="hidden" name="action" value="cert_release"><input type="hidden" name="day" value="{{ day or '' }}"></form>{% endif %}
+  <div class="table-scroll"><table class="admin-table no-auto-table lm-certtable">
+    <thead><tr>{% if can and certs.n.held %}<th scope="col"><span class="sr-only">Tick</span></th>{% endif %}<th scope="col">Name</th><th scope="col">Employee ID</th><th scope="col">Came</th><th scope="col" class="lm-num">Hours</th><th scope="col">Certificate</th><th scope="col"><span class="sr-only">Act</span></th></tr></thead>
+    <tbody>
+    {% for r in certs.rows %}{% set c = r.cert %}
+    <tr>
+      {% if can and certs.n.held %}<td>{% if c and c.status == 'held' %}<input type="checkbox" name="cid" value="{{ c.id }}" form="lm-cert-rel" aria-label="Release {{ r.full_name }}'s certificate" checked>{% endif %}</td>{% endif %}
+      <td>{{ r.full_name }}</td><td>{{ r.employee_id or '' }}</td>
+      <td class="small">{{ {'attended': 'Every day', 'partial': 'Part of it', 'absent': 'Absent'}.get(r.outcome, '–') }}</td>
+      <td class="lm-num">{{ '%g' % r.hours if r.hours else '–' }}</td>
+      <td class="small">{% if c %}<span class="lm-rst is-{{ 'approved' if c.status == 'issued' else 'pending' }}">{{ c.number }}{{ ' · held' if c.status == 'held' }}</span><span class="muted lm-sub">{{ {'close': 'with the close', 'hand': 'by hand', 'provider': "the provider's"}[c.how] }}{% if c.issued_at %} · {{ (c.issued_at | myt)[:10] | lms_day }}{% endif %}{% if c.reason %} · “{{ c.reason }}”{% endif %}</span> <a href="{{ url_for('learning_certificate', cid=c.id) }}" target="_blank" rel="noopener" class="small">Open</a>{% elif r.outcome in ('attended', 'partial') %}<span class="muted">None{{ ' yet' if certs.mode == 'provider' else '' }}</span>{% else %}–{% endif %}
+        {% for v in r.revoked %}<span class="muted lm-sub">{{ v.number }} revoked {{ (v.revoked_at | myt)[:10] | lms_day }}: “{{ v.revoke_reason }}”</span>{% endfor %}</td>
+      <td class="small">{% if can %}
+        {% if c %}
+        <form method="post" class="lm-inline" data-confirm="Revoke {{ r.full_name }}'s certificate {{ c.number }}? They read your reason, and their course badge goes with it. The number is never used again." data-confirm-ok="Revoke it" data-confirm-tone="danger" data-confirm-reason="Why (they read it)" data-confirm-reason-placeholder="e.g. attendance corrected: day 2 was missed">
+          <input type="hidden" name="action" value="cert_revoke"><input type="hidden" name="cert_id" value="{{ c.id }}"><input type="hidden" name="day" value="{{ day or '' }}">
+          <button type="submit" class="btn-link lm-danger">Revoke…</button></form>
+        {% elif r.outcome in ('attended', 'partial') %}
+        <form method="post" class="lm-inline" data-confirm="Issue {{ r.full_name }} a CHART certificate for {{ s.title }} by hand? It states the programme as it is; their hours and XP stay what they came to. They read your reason." data-confirm-ok="Issue it" data-confirm-reason="Why (they read it)" data-confirm-reason-placeholder="e.g. made up day 2 in the next run">
+          <input type="hidden" name="action" value="cert_hand"><input type="hidden" name="registration_id" value="{{ r.id }}"><input type="hidden" name="day" value="{{ day or '' }}">
+          <button type="submit" class="btn-link">Issue by hand…</button></form>
+        {% endif %}
+        {% if certs.mode == 'provider' and r.outcome in ('attended', 'partial') %}
+        <form method="post" class="lm-inline lm-cert-up" enctype="multipart/form-data" data-confirm="Upload this PDF as {{ r.full_name }}'s certificate from the provider? It's theirs to download, with their course badge{{ ', and replaces the one there' if c }}." data-confirm-ok="Upload">
+          <input type="hidden" name="action" value="cert_upload"><input type="hidden" name="registration_id" value="{{ r.id }}"><input type="hidden" name="day" value="{{ day or '' }}">
+          <input type="file" name="file" accept=".pdf,application/pdf" required aria-label="{{ r.full_name }}'s certificate (PDF)"><button type="submit" class="btn-link">{{ 'Replace' if c else 'Upload' }}</button></form>
+        {% endif %}{% endif %}</td>
+    </tr>
+    {% endfor %}
+    </tbody>
+  </table></div>
+  {% if can and certs.n.held %}<div class="lm-formfoot"><button type="submit" class="primary" form="lm-cert-rel">Release the ticked…</button></div>{% endif %}
+  <p class="muted small">Everyone who came every day gets a course badge. The certificate is never the HRDC attendance record: the signed T3 is. {% if can %}The template is on <a href="{{ url_for('admin_learning_certificates') }}">Settings › Certificates</a>.{% endif %}</p>
+</section>
+{% endif %}
+
+<section class="admin-card" aria-labelledby="lm-rate-h">
+  <h3 id="lm-rate-h" class="lm-h">How they rated it <span class="muted small">day 0 · 1 to 5</span></h3>
+  {% if ratings and ratings[4] and ratings[4] >= rate_min %}
+  <div class="lm-tiles">
+    {% for k, q in questions %}<div class="lm-tile"><b>{{ '%.1f' % ratings[loop.index0] }}</b><span>{{ q }}</span></div>{% endfor %}
+  </div>
+  <p class="muted small">{{ ratings[4] }} ratings. Comments are shown without names{% if n_comments and not comments %}, once {{ quote_min }} people have written one ({{ n_comments }} so far){% endif %}.</p>
+  {% if comments %}<ul class="lm-comments">{% for c in comments %}<li>“{{ c }}”</li>{% endfor %}</ul>{% endif %}
+  {% elif ratings and ratings[4] %}
+  <p class="muted small" style="margin:0">{{ ratings[4] }} rating{{ '' if ratings[4] == 1 else 's' }} so far. The averages show once {{ rate_min }} people have rated it, so nobody's own answers can be read.</p>
+  {% else %}
+  <p class="muted small" style="margin:0">No ratings yet. Once the session is closed, everyone who came is asked in their AI+ Learning space.</p>
+  {% endif %}
+</section>
+{% if can and sheet %}
+{% for w in sheet.walkins %}
+{% call panel("walkin-%d" % w.user_id, "Walk-in · " ~ (day | lms_day), "Confirm " ~ w.full_name ~ " as attending", "Clocked in " ~ ((w.created_at | myt)[11:16]) ~ ". The run has " ~ seats.taken ~ (" of " ~ seats.seats if seats.seats else "") ~ " places taken.") %}
+<form method="post" class="adm-panel-form" data-confirm="Confirm {{ w.full_name }} as attending {{ s.title }}?" data-confirm-ok="Confirm attending">
+  <input type="hidden" name="action" value="walkin"><input type="hidden" name="user_id" value="{{ w.user_id }}"><input type="hidden" name="day" value="{{ day }}">
+  <div class="adm-panel-body lm-seat-panel">
+    <p class="lm-seat-q">In whose place?</p>
+    {% for c in seats.stand_in %}
+    <label class="lm-opt"><input type="radio" name="replace_rid" value="{{ c.id }}"{{ ' checked' if loop.first }}><span><b>{{ c.name }}</b> · {{ c.bg or '' }}<small>Confirmed, no clock-in {{ day | lms_day }}. Their place ends here: the day counts as their absence, flagged to them, their line manager and L&amp;D.</small></span></label>
+    {% endfor %}
+    <label class="lm-opt"><input type="radio" name="replace_rid" value=""{{ ' checked' if not seats.stand_in }}><span><b>Nobody: an extra place</b><small>The run goes over its seats. The room's and HRDC's numbers are yours to check.</small></span></label>
+    <label class="lm-seat-why">Why <span class="muted small">(in the record; the no-show's line manager reads it)</span><input name="reason" maxlength="300" placeholder="e.g. came with their HOD's agreement; the no-show is on MC"></label>
+    <ul class="lm-what">
+      <li class="is-ok">{{ w.full_name }} gets the place for the rest of the run: their hours, the rating and their check-ins as anyone's. No approval waits; their line manager is told.</li>
+      <li class="is-no">In someone's place, that person's absence still counts: on their record, toward two or more in a year, unless excused.</li>
+      <li>The pax list and the T3 show who they stand in for; the HRDC board flags the filing to update in eTRiS.</li>
+    </ul>
+  </div>
+  <footer class="adm-panel-foot"><button type="button" class="btn-link adm-panel-grow" data-panel-close>Cancel</button><button type="submit" class="primary">Confirm attending…</button></footer>
+</form>
+{% endcall %}
+{% endfor %}
+{% endif %}
+{% if can and seats.open and seats.can_give %}
+{% for x in seats.sources if not x.given %}
+{% call panel("seat-%d" % x.reg.id, "Give a seat · " ~ (s.run_label or s.title), "Give " ~ x.name ~ "'s seat to someone", ("They withdrew: “" ~ (x.reg.remark or '') ~ "”") if x.kind == 'withdrew' else ("Marked a no-show: “" ~ (x.reg.remark or '') ~ "”")) %}
+<form method="post" class="adm-panel-form" data-confirm="Give {{ x.name }}'s seat on {{ s.title }} to the person picked? They're confirmed at once, with your reason, and their line manager is told." data-confirm-ok="Give the seat">
+  <input type="hidden" name="action" value="seat_give"><input type="hidden" name="source_id" value="{{ x.reg.id }}"><input type="hidden" name="day" value="{{ day or '' }}">
+  <div class="adm-panel-body lm-seat-panel">
+    {% if seats.waiting %}<p class="lm-seat-q">The waiting list first</p>{% endif %}
+    {% for w in seats.waiting %}
+    <label class="lm-opt"><input type="radio" name="to" value="{{ w.id }}"{{ ' checked' if loop.first }}><span><b>{{ w.name }}</b> · {{ (w.person.business_group if w.person else '') or '' }} · {{ 'on the waiting list' if w.status == 'waitlisted' else 'waiting for approval' }} since {{ w.since | lms_day }}<small>{% if w.lm_ok %}Their line manager has approved.{% else %}Not approved yet: giving them the seat confirms it without their line manager's step.{% endif %}</small></span></label>
+    {% endfor %}
+    {% if seats.full %}<p class="muted small">The run is full ({{ seats.taken }} of {{ seats.seats }}): the waiting list has taken the freed seat, so only someone already waiting for approval can be confirmed in it.</p>
+    {% else %}
+    <p class="lm-seat-q">{{ 'Or anyone else' if seats.waiting else 'Anyone' }}</p>
+    <label class="lm-opt"><input type="radio" name="to" value="other"{{ ' checked' if not seats.waiting }}><span class="lm-opt-pick">
+      <span class="pick" data-pick><input type="text" class="pick-q" placeholder="Search a name or Employee ID" aria-label="Who gets the seat" autocomplete="off"><input type="hidden" name="employee_id" class="pick-val"></span>
+      <small>Someone the programme isn't open to is marked so; your reason covers it, as a nomination's does.</small></span></label>
+    {% endif %}
+    <label class="lm-seat-why">Why <span class="muted small">(they and their line manager read it)</span><input name="reason" required maxlength="300" placeholder="e.g. a seat came free the evening before; you were next on the waiting list"></label>
+    <ul class="lm-what">
+      <li class="is-ok">Confirmed at once, in place of {{ x.name }}: Group People L&amp;D's call, with the reason, so no approval step waits.</li>
+      <li class="is-ok">The calendar invite goes now; they and their line manager are told by email and on the dashboard.</li>
+      <li>The pax list and the T3 show who they stand in for; the HRDC board flags the filing to update in eTRiS.</li>
+      <li class="is-no">{% if x.kind == 'noshow' %}{{ x.name }}'s absence still counts.{% else %}{{ x.name }}'s withdrawal stays a withdrawal.{% endif %}</li>
+    </ul>
+  </div>
+  <footer class="adm-panel-foot"><button type="button" class="btn-link adm-panel-grow" data-panel-close>Cancel</button><button type="submit" class="primary">Give the seat…</button></footer>
+</form>
+{% endcall %}
+{% endfor %}
+{% endif %}
+{% endblock %}

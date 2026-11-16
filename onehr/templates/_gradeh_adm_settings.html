@@ -1,0 +1,294 @@
+{# Grade H Appraisal > Settings (piece 6; canvas A3-Settings). Five saves, each double-confirmed. A save that re-works bands (the
+   performance and potential cut-offs) is checked first with a GET that counts what it would change; the confirm then says how
+   many, and asks the super admin's remark. #}
+{% set d = deemed %}
+{% set pv = preview %}
+{% from "_adm_panel.html" import list_peek with context %}
+<div class="gh-set">
+  <div class="gh-set-main">
+
+    <div class="gh-card gh-deemed">
+      <div class="gh-card-h"><h2>Deemed acknowledged</h2>
+        <p class="small">When staff have not acknowledged by the deadline, OneHR records their appraisal as agreed. Staff see the deadline on their page from the moment their line manager submits. Switch it off and there is no deadline at all.</p></div>
+      <form method="post" action="{{ url_for('admin_gradeh_settings') }}" class="gh-deemed-switch" data-confirm="Change the deemed-acknowledged switch?" data-confirm-ok="Change">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}"><input type="hidden" name="action" value="deemed_on">
+        <fieldset class="gh-fs">
+          <legend>Deemed acknowledgement</legend>
+          <button type="submit" name="on" value="1" class="gh-opt{{ ' is-on' if d.on }}" {{ 'disabled aria-pressed=true' if d.on else 'aria-pressed=false' }}
+            data-confirm="Switch deemed acknowledgement ON? A result not acknowledged by the deadline is treated as acknowledged. It applies to the {{ touch }} {{ 'person' if touch == 1 else 'people' }} who have not acknowledged yet, and to everyone whose line manager submits later." data-confirm-ok="Switch on"><span><b>On:</b> a result not acknowledged by the deadline is treated as acknowledged</span></button>
+          <button type="submit" name="on" value="0" class="gh-opt{{ ' is-on' if not d.on }}" {{ 'disabled aria-pressed=true' if not d.on else 'aria-pressed=false' }}
+            data-confirm="Switch deemed acknowledgement OFF? There is no deadline: a result waits until the person acknowledges, or their line manager records it in person. Staff no longer see a deadline, and nobody is marked as agreed from now on. Appraisals already deemed stay as recorded." data-confirm-ok="Switch off"><span><b>Off:</b> no deadline; a result waits until the person acknowledges, or their line manager records it in person</span></button>
+        </fieldset>
+      </form>
+      <form method="post" action="{{ url_for('admin_gradeh_settings') }}" class="gh-deemed-form" data-confirm="Save the deemed-acknowledged deadline? {% if d.on %}It applies to the {{ touch }} {{ 'person' if touch == 1 else 'people' }} who have not acknowledged yet, and to everyone whose line manager submits later.{% else %}Deemed acknowledgement is switched off, so it is kept for when you switch it on.{% endif %}" data-confirm-ok="Save deadline">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}"><input type="hidden" name="action" value="deemed">
+      <fieldset class="gh-fs"{{ ' disabled' if not d.on }}>
+        <legend>Deadline{% if not d.on %} <span class="muted small">(not used while the switch is off)</span>{% endif %}</legend>
+        <label class="gh-opt{{ ' is-on' if d.mode == 'fixed' }}"><input type="radio" name="mode" value="fixed" {{ 'checked' if d.mode == 'fixed' }}> A fixed date and time
+          <span class="gh-opt-in"><input type="date" name="fixed_date" value="{{ d.date }}" aria-label="Deadline date"> <input type="time" name="fixed_time" value="{{ d.time }}" aria-label="Deadline time (MYT)"> <span class="muted small">MYT</span></span></label>
+        <label class="gh-opt{{ ' is-on' if d.mode == 'days' }}"><input type="radio" name="mode" value="days" {{ 'checked' if d.mode == 'days' }}> A number of days after the line manager submits
+          <span class="gh-opt-in"><input type="number" name="days" min="1" max="60" value="{{ d.days }}" aria-label="Days" class="gh-num"> <span>days</span></span></label>
+        <p class="muted small">Pick a time before the BU CEO signs off, so their list is complete. The deadline is checked in MYT.</p>
+      </fieldset>
+      {% if d.on %}<div class="gh-note"><b>What staff read</b>
+        <p class="gh-amber"><span>EN</span> {{ note.en }}</p>
+        <p class="gh-amber"><span>BM</span> {{ note.bm }}</p>
+        <p class="muted small">Wording is fixed; only the date changes.</p></div>
+      {% else %}<div class="gh-note"><b>What staff read</b>
+        <p class="muted small">Nothing: with the switch off, staff see no deadline and no "treated as acknowledged" line. Appraisals already deemed stay as recorded.</p></div>{% endif %}
+      <div class="gh-save"><button type="submit" class="primary"{{ ' disabled' if not d.on }}>Save deadline</button></div>
+      </form>
+    </div>
+
+    <div class="gh-card gh-early">
+      <div class="gh-card-h"><h2>Early opening for HODs and BU CEOs</h2>
+        <p class="small">An HOD's Grade H review opens as soon as every Grade H person under them has acknowledged (own sign-in, in person or deemed), and at the latest on the HOD date. A BU CEO's sign-off for a unit opens as soon as every Grade H person in it has finished the HOD stage (or has none), and at the latest on the BU CEO date. Each is worked out per HOD and per unit. Neither opens before its part's first calendar day, and both still close on the calendar's closing day. Leave a date blank for no early opening: that part then opens on its calendar day alone.</p></div>
+      <form method="post" action="{{ url_for('admin_gradeh_settings') }}" class="gh-early-form" data-confirm="Save the early-opening dates? They apply at once to every HOD and BU CEO, including the ones whose part is open now." data-confirm-ok="Save dates">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}"><input type="hidden" name="action" value="early">
+        <fieldset class="gh-fs">
+          <legend>Latest opening date</legend>
+          {% for e in early %}
+          <label class="gh-opt"><span>{{ e.who }}{% if e.span %} <span class="muted small">(part dates {{ e.span }})</span>{% else %} <span class="muted small">(part not dated yet)</span>{% endif %}</span>
+            <span class="gh-opt-in"><input type="date" name="{{ e.key }}_date" value="{{ e.date }}" aria-label="{{ e.who }} fallback date"> <input type="time" name="{{ e.key }}_time" value="{{ e.time }}" aria-label="{{ e.who }} fallback time (MYT)"> <span class="muted small">MYT</span></span></label>
+          {% endfor %}
+          <p class="muted small">Clear both boxes of a row for no early opening. A date must sit inside its part's calendar dates.</p>
+        </fieldset>
+        <div class="gh-save"><button type="submit" class="primary">Save dates</button></div>
+      </form>
+    </div>
+
+    <form method="get" action="{{ url_for('admin_gradeh') }}" class="gh-card" id="gh-perf">
+      <input type="hidden" name="tab" value="settings"><input type="hidden" name="preview" value="perf">
+      <div class="gh-card-h"><h2>Performance bands</h2>
+        <p class="small">How a Grade H score becomes a rating from 1 to 5. Defaults are the Group P&amp;R form's. A boundary belongs to the higher band.</p></div>
+      <div class="table-scroll"><table class="admin-table gh-table gh-bandtable">
+        <thead><tr><th>Rating</th><th title="The average of the 8 attributes">8 attributes</th><th title="KPI achievement, FIAMMA scale (%)">KPI · FIAMMA</th><th title="KPI achievement, SIGNATURE scale (%)">KPI · SIGNATURE</th></tr></thead>
+        <tbody>
+        {% set names = {5: 'c_ou', 4: 'c_ae', 3: 'c_me', 2: 'c_be'} %}
+        {% for r, nm in rows %}
+        <tr><td><b>{{ r }}</b> {{ nm }}</td>
+          <td>{% if r > 1 %}from <input type="text" inputmode="decimal" name="{{ names[r] }}" value="{{ (pv.vals[names[r]] if pv and pv.kind == 'perf' else perf_cuts[r - 2]) }}" class="gh-num" aria-label="Lowest average for rating {{ r }}">{% else %}below {{ perf_cuts[0] }}{% endif %}</td>
+          <td>{{ fiamma[r] }}</td><td>{{ signature[r] }}</td></tr>
+        {% endfor %}
+        </tbody></table></div>
+      <p class="muted small">KPI staff on the FIAMMA and SIGNATURE scales use the form's own percentages (shown, not set here). KPI staff in other groups: the line manager rates each KPI 1 to 5, except a KPI that follows the unit's BU KPI: it takes that result's rating. The weighted average uses the attribute column. Saving re-works every rating not yet moved by a calibrator or by you; the next step says how many.</p>
+      <div class="gh-save"><button type="submit" class="primary">Check what it changes</button></div>
+    </form>
+    {% if pv and pv.kind == 'perf' %}
+    <section class="gh-card gh-check" aria-label="Check before saving the performance bands">
+      <h3>Before you save the performance bands</h3>
+      {% if pv.error %}<p class="gh-warn">{{ pv.error }}</p>
+      {% else %}
+      <p><b>{{ pv.perf }}</b> performance band{{ '' if pv.perf == 1 else 's' }}{% if pv.pot %} and <b>{{ pv.pot }}</b> potential band{{ '' if pv.pot == 1 else 's' }}{% endif %} would be re-worked, for <b>{{ pv.people }}</b> {{ 'person' if pv.people == 1 else 'people' }}. A band a calibrator or you have moved is never re-worked.</p>
+      <form method="post" action="{{ url_for('admin_gradeh_settings') }}" {{ super_remark_attrs("Save the Grade H performance bands (BE from " ~ pv.cuts[0] ~ ", ME from " ~ pv.cuts[1] ~ ", AE from " ~ pv.cuts[2] ~ ", OU from " ~ pv.cuts[3] ~ ")? " ~ pv.perf ~ " performance band" ~ ('' if pv.perf == 1 else 's') ~ " will be re-worked for " ~ pv.people ~ " " ~ ('person' if pv.people == 1 else 'people') ~ ".", "Save bands") }}>
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}"><input type="hidden" name="action" value="perf_cuts">
+        {% for k, v in pv.vals.items() %}<input type="hidden" name="{{ k }}" value="{{ v }}">{% endfor %}
+        <input type="hidden" name="expect_perf" value="{{ pv.perf }}"><input type="hidden" name="expect_pot" value="{{ pv.pot }}">
+        <div class="gh-save"><a class="btn-link" href="{{ url_for('admin_gradeh', tab='settings') }}">Cancel</a> <button type="submit" class="primary">Save bands</button></div>
+      </form>{% endif %}
+    </section>
+    {% endif %}
+
+    <form method="post" action="{{ url_for('admin_gradeh_settings') }}" class="gh-card" data-confirm="Use this as the reference line for Grade H performance calibration? It only moves the expected tick: no band changes." data-confirm-ok="Save curve">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}"><input type="hidden" name="action" value="perf_curve">
+      <div class="gh-card-h"><h2>Performance curve reference line</h2>
+        <p class="small">The "expected" tick on the HOD's and BU CEO's Grade H curve. A guide, not a quota.</p></div>
+      <fieldset class="gh-fs">
+        <legend>Curve</legend>
+        <label class="gh-opt{{ ' is-on' if curve_mode == 'normal' }}"><input type="radio" name="crv" value="normal" {{ 'checked' if curve_mode == 'normal' }}> <b>Normal</b> <span class="muted small">(default)</span> <span class="gh-opt-in muted small">UA {{ curve_normal[0] | round(1) | string | replace('.0','') }} · BE {{ curve_normal[1] | round(1) | string | replace('.0','') }} · ME {{ curve_normal[2] | round(1) | string | replace('.0','') }} · AE {{ curve_normal[3] | round(1) | string | replace('.0','') }} · OU {{ curve_normal[4] | round(1) | string | replace('.0','') }}</span></label>
+        <label class="gh-opt{{ ' is-on' if curve_mode == 'pat' }}"><input type="radio" name="crv" value="pat" {{ 'checked' if curve_mode == 'pat' }}> Follow each unit's PAT Ref <span class="gh-opt-in muted small">Negative, Normal or Positive by PAT</span></label>
+        <label class="gh-opt{{ ' is-on' if curve_mode == 'custom' }}"><input type="radio" name="crv" value="custom" {{ 'checked' if curve_mode == 'custom' }}> Custom
+          <span class="gh-opt-in">{% for k, lb, i in (('cv_ua','UA',0),('cv_be','BE',1),('cv_me','ME',2),('cv_ae','AE',3),('cv_ou','OU',4)) %}{{ lb }} <input type="text" inputmode="decimal" name="{{ k }}" value="{{ curve_custom[i] }}" class="gh-num" aria-label="{{ lb }} share"> {% endfor %}%</span></label>
+        <p class="muted small">Custom must total 100%. Leaders' calibration keeps its own curve; this one is for Grade H only.</p>
+      </fieldset>
+      <div class="gh-save"><button type="submit" class="primary">Save curve</button></div>
+    </form>
+
+    {# Potential points per answer (Chris, 9 Nov 2026; canvas "Points per answer" C1): what a Yes and a Not yet earn on the 14 statements, 7 at
+       their level and 7 at the next. Check what it changes (GET, writes nothing) opens the step "When it starts"; its own form saves. #}
+    {% set P = points %}
+    {% set pp = preview if (preview and preview.kind == 'points') else None %}
+    {% macro gh_pts_icon(kind) %}{% if kind == 'lock' %}<svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><rect x="3.5" y="7" width="9" height="6.5" rx="1.5"></rect><path d="M5.5 7V5a2.5 2.5 0 0 1 5 0v2"></path></svg>{% else %}<svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><circle cx="8" cy="8" r="6.5"></circle><path d="M8 7.2v4M8 4.8v.01" stroke-linecap="round"></path></svg>{% endif %}{% endmacro %}
+    <form method="get" action="{{ url_for('admin_gradeh') }}" class="gh-card" id="gh-points" aria-label="Potential points per answer"
+          data-ghpts='{{ {"nCur": P.n_cur, "nNext": P.n_next, "todayMax": P.max, "cuts": P.cuts, "base": [P.default.dc, P.default.dn, P.default.vc, P.default.vn]}|tojson }}'>
+      <input type="hidden" name="tab" value="settings"><input type="hidden" name="preview" value="points">
+      <div class="gh-card-h"><h2>Potential points per answer</h2>
+        <p class="small">What each answer on the 14 Leadership Principle statements earns toward the Grade H potential score. Grade H only; the 360 and the competency keep their own.</p></div>
+      {% if P.released_on %}
+      <div class="rl-status">{{ gh_pts_icon('lock') }}<span><b>{{ P.cycle }}</b> keeps {{ '%g'|format(P.today.dc) }} · {{ '%g'|format(P.today.dn) }} · {{ '%g'|format(P.today.vc) }} · {{ '%g'|format(P.today.vn) }}: a unit's result was released on {{ P.released_on }}. A change here applies from the next cycle.</span></div>
+      {% elif P.own %}
+      <div class="rl-status">{{ gh_pts_icon('info') }}<span><b>{{ P.cycle }}</b> keeps its own {{ '%g'|format(P.today.dc) }} · {{ '%g'|format(P.today.dn) }} · {{ '%g'|format(P.today.vc) }} · {{ '%g'|format(P.today.vn) }}; the default ({{ '%g'|format(P.default.dc) }} · {{ '%g'|format(P.default.dn) }} · {{ '%g'|format(P.default.vc) }} · {{ '%g'|format(P.default.vn) }}) applies from the next cycle. No unit's result is released yet.</span></div>
+      {% else %}
+      <div class="rl-status">{{ gh_pts_icon('info') }}<span><b>{{ P.cycle }}</b> uses {{ '%g'|format(P.today.dc) }} · {{ '%g'|format(P.today.dn) }} · {{ '%g'|format(P.today.vc) }} · {{ '%g'|format(P.today.vn) }}. No unit's result is released yet.</span></div>
+      {% endif %}
+      <div class="pts-grid">
+        <span></span>
+        <span class="pts-h">The {{ P.n_cur }} at their level</span>
+        <span class="pts-h">The {{ P.n_next }} at the next level</span>
+        <span class="pts-h">Yes</span>
+        <label class="pts-cell"><input type="number" class="gh-num" name="dc" min="0" max="10" step="0.1" required data-ghpts-in="dc" aria-label="Yes, at their level" value="{{ P.show.dc }}"><span>points</span></label>
+        <label class="pts-cell"><input type="number" class="gh-num" name="dn" min="0" max="10" step="0.1" required data-ghpts-in="dn" aria-label="Yes, at the next level" value="{{ P.show.dn }}"><span>points</span></label>
+        <span class="pts-h">Not yet</span>
+        <label class="pts-cell"><input type="number" class="gh-num" name="vc" min="0" max="10" step="0.1" required data-ghpts-in="vc" aria-label="Not yet, at their level" value="{{ P.show.vc }}"><span>points</span></label>
+        <label class="pts-cell"><input type="number" class="gh-num" name="vn" min="0" max="10" step="0.1" required data-ghpts-in="vn" aria-label="Not yet, at the next level" value="{{ P.show.vn }}"><span>points</span></label>
+      </div>
+      <div class="pts-err" role="alert" data-ghpts-err{% if not P.errors %} hidden{% endif %}>{% for e in P.errors %}<div>{{ e }}</div>{% endfor %}</div>
+      <dl class="pts-now">
+        <dt>The score runs</dt>
+        <dd><b>0 to <span data-ghpts-max>{{ '%g'|format(P.max) }}</span></b><span class="pts-was" data-ghpts-maxwas>(as today)</span></dd>
+        <dt>Lowest, every statement Not yet</dt>
+        <dd><b data-ghpts-min>{{ '%g'|format(P.min) }}</b></dd>
+        <dt>Potential bands</dt>
+        <dd><b>Mid from <span data-ghpts-mid>{{ '%g'|format(P.cuts[0]) }}</span> &middot; High from <span data-ghpts-high>{{ '%g'|format(P.cuts[1]) }}</span></b><span class="pts-was">&middot; keep their share, <span data-ghpts-sm>{{ P.shares[0] }}</span>% and <span data-ghpts-sh>{{ P.shares[1] }}</span>%</span></dd>
+      </dl>
+      <div class="pts-warn" data-ghpts-warn hidden>Everyone now scores at least <b data-ghpts-wmin></b>. Someone who answered Not yet on every statement lands in <b data-ghpts-wband></b>.</div>
+      <p class="muted small">0 to 10, one decimal. Not yet earns less than Yes, and the next level earns at least as much as their level. The next step says when it starts and how many it re-works.</p>
+      <div class="gh-save"><button type="submit" class="primary" data-ghpts-save>Check what it changes</button></div>
+    </form>
+    {% if pp and pp.step %}
+    {% set st = pp.step %}
+    <section class="gh-card gh-check" id="gh-points-step" aria-label="Before you save the points">
+      <h3>Before you save the points</h3>
+      <p>Yes <b>{{ '%g'|format(st.new.dc) }}</b> at their level and <b>{{ '%g'|format(st.new.dn) }}</b> at the next; Not yet <b>{{ '%g'|format(st.new.vc) }}</b> and <b>{{ '%g'|format(st.new.vn) }}</b>. Today {{ '%g'|format(st.old.dc) }} · {{ '%g'|format(st.old.dn) }} · {{ '%g'|format(st.old.vc) }} · {{ '%g'|format(st.old.vn) }}.</p>
+      <form method="post" action="{{ url_for('admin_gradeh_settings') }}" {{ super_remark_attrs("Save the Grade H potential points (Yes " ~ ('%g'|format(st.new.dc)) ~ " / " ~ ('%g'|format(st.new.dn)) ~ ", Not yet " ~ ('%g'|format(st.new.vc)) ~ " / " ~ ('%g'|format(st.new.vn)) ~ ")? If they start in the current cycle, the potential scores are re-worked now and the cut-offs move with them; a band a calibrator or you have moved stays as it is.", "Save points") }}>
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}"><input type="hidden" name="action" value="points">
+        <input type="hidden" name="dc" value="{{ '%g'|format(st.new.dc) }}"><input type="hidden" name="dn" value="{{ '%g'|format(st.new.dn) }}">
+        <input type="hidden" name="vc" value="{{ '%g'|format(st.new.vc) }}"><input type="hidden" name="vn" value="{{ '%g'|format(st.new.vn) }}">
+        <input type="hidden" name="expect_scores" value="{{ st.scores if st.scores is not none else '' }}"><input type="hidden" name="expect_pot" value="{{ st.pot if st.pot is not none else '' }}">
+        <fieldset class="pts-when">
+          <legend>When it starts</legend>
+          {% if st.now_open %}
+          <label class="pts-opt" data-ghpts-opt>
+            <input type="radio" name="when" value="current" required>
+            <span class="pts-opt-t"><b>From {{ st.cycle }}, the current cycle</b>
+              <span>No unit is released, so it is re-worked now: <b>{{ st.scores }}</b> Grade H potential score{{ '' if st.scores == 1 else 's' }}; <b>{{ st.pot }}</b> change{{ 's' if st.pot == 1 else '' }} band. A band a calibrator or you have moved is never re-worked. Its cut-offs move to Mid from {{ '%g'|format(st.cuts_after[0]) }}, High from {{ '%g'|format(st.cuts_after[1]) }}.</span></span>
+          </label>
+          {% else %}
+          <label class="pts-opt is-off">
+            <input type="radio" name="when" value="current" disabled>
+            <span class="pts-opt-t"><b>From {{ st.cycle }}, the current cycle</b>
+              <span>{% if st.released_on %}Not open: a unit's results were released on {{ st.released_on }}, so its points are fixed.{% else %}Not open: {{ st.now_error }}{% endif %}</span></span>
+          </label>
+          {% endif %}
+          {% if st.next_open %}
+          <label class="pts-opt" data-ghpts-opt>
+            <input type="radio" name="when" value="next"{{ ' checked' if not st.now_open }} required>
+            <span class="pts-opt-t"><b>From the next cycle on</b>
+              <span>{{ st.cycle }} keeps {{ '%g'|format(st.keeps.dc) }} · {{ '%g'|format(st.keeps.dn) }} · {{ '%g'|format(st.keeps.vc) }} · {{ '%g'|format(st.keeps.vn) }} and its cut-offs (Mid from {{ '%g'|format(st.keeps_cuts[0]) }}, High from {{ '%g'|format(st.keeps_cuts[1]) }}). Nobody's score changes now. The default cut-offs move with the new points, to Mid from {{ '%g'|format(st.org_cuts_after[0]) }}, High from {{ '%g'|format(st.org_cuts_after[1]) }}.</span></span>
+          </label>
+          {% else %}
+          <label class="pts-opt is-off">
+            <input type="radio" name="when" value="next" disabled>
+            <span class="pts-opt-t"><b>From the next cycle on</b><span>Not open: these are already the default points.</span></span>
+          </label>
+          {% endif %}
+        </fieldset>
+        <div class="gh-save"><a class="btn-link" href="{{ url_for('admin_gradeh', tab='settings') }}">Cancel</a> <button type="submit" class="primary">Save points</button></div>
+      </form>
+    </section>
+    {% elif pp and pp.errors %}
+    <section class="gh-card gh-check" aria-label="Before you save the points">
+      <h3>Before you save the points</h3>
+      {% for e in pp.errors %}<p class="gh-warn">{{ e }}</p>{% endfor %}
+    </section>
+    {% endif %}
+    <script>
+    // the card's numbers follow the four boxes as you type: the same rules as the server (gradeh_points_parse), the most and the least a
+    // person can score, the cut-offs that keep their share of the maximum and the warning when Not yet earns above 0
+    (function () {
+      var form = document.getElementById('gh-points');
+      if (!form) return;
+      var cfg = JSON.parse(form.getAttribute('data-ghpts')), inp = {};
+      ['dc', 'dn', 'vc', 'vn'].forEach(function (k) { inp[k] = form.querySelector('[data-ghpts-in="' + k + '"]'); });
+      var $ = function (s) { return form.querySelector(s); };
+      var errBox = $('[data-ghpts-err]'), warn = $('[data-ghpts-warn]'), save = $('[data-ghpts-save]');
+      var M = { range: 'Each value is 0 to 10, with at most one decimal.',
+        vc: 'Not yet must earn less than Yes at their level.', vn: 'Not yet must earn less than Yes at the next level.',
+        dn: 'Yes at the next level must earn at least as much as at their level.',
+        vnup: 'Not yet at the next level must earn at least as much as at their level.' };
+      function g(n) { return String(Math.round(n * 100) / 100); }
+      function num(el) { var v = el.value.trim(); return v === '' ? NaN : Number(v); }
+      function oneDecimal(v) { return Math.abs(v * 10 - Math.round(v * 10)) < 1e-9; }
+      function put(sel, text) { var e = $(sel); if (e) e.textContent = text; }
+      function sync() {
+        var dc = num(inp.dc), dn = num(inp.dn), vc = num(inp.vc), vn = num(inp.vn), errs = [];
+        if ([dc, dn, vc, vn].some(function (v) { return isNaN(v) || v < 0 || v > 10 || !oneDecimal(v); })) errs.push(M.range);
+        else {
+          if (vc >= dc) errs.push(M.vc);
+          if (vn >= dn) errs.push(M.vn);
+          if (dn < dc) errs.push(M.dn);
+          if (vn < vc) errs.push(M.vnup);
+        }
+        var ok = !errs.length;
+        errBox.hidden = ok;
+        while (errBox.firstChild) errBox.removeChild(errBox.firstChild);
+        errs.forEach(function (t) { var d = document.createElement('div'); d.textContent = t; errBox.appendChild(d); });
+        save.disabled = !ok;
+        var mx = ok ? cfg.nCur * dc + cfg.nNext * dn : cfg.todayMax, mn = ok ? cfg.nCur * vc + cfg.nNext * vn : 0;
+        var f = cfg.todayMax > 0 ? mx / cfg.todayMax : 1, mid = Math.round(cfg.cuts[0] * f * 100) / 100, high = Math.round(cfg.cuts[1] * f * 100) / 100;
+        put('[data-ghpts-max]', g(mx));
+        put('[data-ghpts-maxwas]', Math.abs(mx - cfg.todayMax) < 1e-9 ? '(as today)' : '(today ' + g(cfg.todayMax) + ')');
+        put('[data-ghpts-min]', g(mn)); put('[data-ghpts-mid]', g(mid)); put('[data-ghpts-high]', g(high));
+        put('[data-ghpts-sm]', String(mx ? Math.round(mid / mx * 100) : 0)); put('[data-ghpts-sh]', String(mx ? Math.round(high / mx * 100) : 0));
+        put('[data-ghpts-wmin]', g(mn));
+        put('[data-ghpts-wband]', mn >= high ? 'High' : (mn >= mid ? 'Mid' : 'Low, still'));
+        warn.hidden = !(ok && mn > 0);
+      }
+      Object.keys(inp).forEach(function (k) { inp[k].addEventListener('input', sync); });
+      sync();
+      var step = document.getElementById('gh-points-step');
+      if (step) {
+        step.querySelectorAll('input[name="when"]').forEach(function (r) {
+          r.addEventListener('change', function () { step.querySelectorAll('[data-ghpts-opt]').forEach(function (l) { l.classList.toggle('is-on', !!l.querySelector('input').checked); }); });
+        });
+        step.querySelectorAll('[data-ghpts-opt]').forEach(function (l) { l.classList.toggle('is-on', !!l.querySelector('input').checked); });
+        step.scrollIntoView({ block: 'center' });
+      }
+    })();
+    </script>
+
+    <form method="get" action="{{ url_for('admin_gradeh') }}" class="gh-card" id="gh-pot">
+      <input type="hidden" name="tab" value="settings"><input type="hidden" name="preview" value="pot">
+      <div class="gh-card-h"><h2>Potential bands and curve</h2>
+        <p class="small">The 14 Leadership Principle statements score 0 to {{ '%g'|format(pot_max) }}. These cut-offs turn the score into Low, Mid or High, and the curve is the "expected" tick on the Grade H potential calibration. Grade H only; the leaders keep their own.</p></div>
+      <div class="gh-potrow">
+        <div><b>Low</b><span>below <input type="text" inputmode="decimal" name="p_mid" value="{{ pv.vals.p_mid if pv and pv.kind == 'pot' else pot_cuts[0] }}" class="gh-num" aria-label="Lowest score for Mid"></span></div>
+        <div><b>Mid</b><span>from that to below <input type="text" inputmode="decimal" name="p_high" value="{{ pv.vals.p_high if pv and pv.kind == 'pot' else pot_cuts[1] }}" class="gh-num" aria-label="Lowest score for High"></span></div>
+        <div><b>High</b><span>from that up</span></div>
+      </div>
+      <div class="gh-potrow"><div><b>Potential curve (expected %)</b>
+        <span>Low <input type="text" inputmode="decimal" name="pc_low" value="{{ pv.vals.pc_low if pv and pv.kind == 'pot' else pot_curve[0] }}" class="gh-num" aria-label="Low share"> Mid <input type="text" inputmode="decimal" name="pc_mid" value="{{ pv.vals.pc_mid if pv and pv.kind == 'pot' else pot_curve[1] }}" class="gh-num" aria-label="Mid share"> High <input type="text" inputmode="decimal" name="pc_high" value="{{ pv.vals.pc_high if pv and pv.kind == 'pot' else pot_curve[2] }}" class="gh-num" aria-label="High share"> %</span></div></div>
+      <p class="muted small">Defaults: the form's 6.5 / 13 and the leaders' 15 · 70 · 15 curve. Changing a cut-off re-works every Grade H potential not yet moved by a calibrator or by you; the next step says how many.</p>
+      <div class="gh-save"><button type="submit" class="primary">Check what it changes</button></div>
+    </form>
+    {% if pv and pv.kind == 'pot' %}
+    <section class="gh-card gh-check" aria-label="Check before saving the potential bands">
+      <h3>Before you save the potential bands</h3>
+      {% if pv.error %}<p class="gh-warn">{{ pv.error }}</p>
+      {% else %}
+      <p><b>{{ pv.pot }}</b> potential band{{ '' if pv.pot == 1 else 's' }}{% if pv.perf %} and <b>{{ pv.perf }}</b> performance band{{ '' if pv.perf == 1 else 's' }}{% endif %} would be re-worked, for <b>{{ pv.people }}</b> {{ 'person' if pv.people == 1 else 'people' }}. A band a calibrator or you have moved is never re-worked.</p>
+      <form method="post" action="{{ url_for('admin_gradeh_settings') }}" {{ super_remark_attrs("Save the Grade H potential bands (Mid from " ~ pv.cuts[0] ~ ", High from " ~ pv.cuts[1] ~ ") and the curve " ~ pv.curve[0] ~ " · " ~ pv.curve[1] ~ " · " ~ pv.curve[2] ~ "? " ~ pv.pot ~ " potential band" ~ ('' if pv.pot == 1 else 's') ~ " will be re-worked for " ~ pv.people ~ " " ~ ('person' if pv.people == 1 else 'people') ~ ".", "Save potential") }}>
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}"><input type="hidden" name="action" value="pot">
+        {% for k, v in pv.vals.items() %}<input type="hidden" name="{{ k }}" value="{{ v }}">{% endfor %}
+        <input type="hidden" name="expect_pot" value="{{ pv.pot }}"><input type="hidden" name="expect_perf" value="{{ pv.perf }}">
+        <div class="gh-save"><a class="btn-link" href="{{ url_for('admin_gradeh', tab='settings') }}">Cancel</a> <button type="submit" class="primary">Save potential</button></div>
+      </form>{% endif %}
+    </section>
+    {% endif %}
+  </div>
+
+  <aside class="gh-set-side">
+    <section class="gh-card">
+      <h2>Who it would touch now</h2>
+      <div class="gh-kv"><span>Submitted, not yet acknowledged</span><b>{% if touch %}<a href="#" data-list-open="{{ list_url('ack:wait') }}">{{ touch }}</a>{% else %}0{% endif %}</b></div>
+      <div class="gh-kv"><span>Of them, no work email</span><b>{% if touch_noemail %}<a href="#" data-list-open="{{ list_url('ack_wait_noemail') }}">{{ touch_noemail }}</a>{% else %}0{% endif %}</b></div>
+      {% if touch %}<a class="gh-link" href="#" data-list-open="{{ list_url('ack:wait') }}">Open the {{ touch }} in the list panel</a>{% endif %}
+    </section>
+    <section class="gh-card">
+      <h2>How it shows</h2>
+      <p class="small">After the deadline the record reads "Deemed acknowledged, 18 Nov 2026", apart from "Acknowledged" and "Acknowledged in person". It shows that way for line managers, calibrators and in the Excel download, and every change is in the audit log.</p>
+    </section>
+    <p class="muted small">Super admin only.</p>
+  </aside>
+</div>
+{{ list_peek() }}

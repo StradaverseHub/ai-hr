@@ -1,0 +1,46 @@
+{# The LM of N list panel, STEP 2 of the bulk step (Chris, 2026-11-09, canvas v6 P3 / Q2 / P4 / Q2b): the same panel with its content swapped
+   (GET ?step=2&ids=&parts=; writes nothing). For each person ticked and each part chosen, what the server worked out for them now:
+   Reopen (blue), More time (amber) or Nothing to do (muted), and why. Past a chosen part's close the days are asked in OneHR's confirm
+   box, next (data-confirm-days); inside the window there are none. The reason is asked here (required, 500 at most). The foot's button is
+   the form's submit (form="lmt-form"); OneHR's own box confirms it. Every rule is _lm_team_apply's, server-side. #}
+<div class="clp lmt-s2" data-list-title="{{ lst.title }}" data-list-sub="{{ lst.sub }}" data-list-kicker="{{ lst.kicker }}"
+     data-list-full="{{ lst.full }}" data-list-n="">
+  {% if lst.error %}
+  <template data-list-foot data-list-foot-replace><a class="btn-link lmt-back" href="{{ lst.back }}" data-list-reload>&lsaquo; Back</a></template>
+  <p class="muted">{{ lst.error }}</p>
+  {% else %}
+  {% set plan = lst.plan %}{% set cf = lst.confirm %}
+  <template data-list-foot data-list-foot-replace>
+    <a class="btn-link lmt-back" href="{{ lst.back }}" data-list-reload>&lsaquo; Back</a>
+    <span class="adm-panel-grow muted small lmt-note">Super admin only. One email to {{ lst.lm.full_name }}.</span>
+    <button type="submit" class="primary lmt-send" form="lmt-form" data-lmt-send{% if cf.ok == 'Nothing to do' %} data-lmt-none{% endif %} disabled>{{ cf.ok }}</button>
+  </template>
+  <form id="lmt-form" method="post" action="{{ lst.post }}" data-lmt-form
+        data-confirm="{{ cf.msg }}" data-confirm-title="{{ cf.title }}" data-confirm-ok="{{ cf.ok }}" data-confirm-tone="danger"
+        data-confirm-list='{{ cf["items"] | tojson }}' data-confirm-list-label="What else changes"
+        {%- if cf.days %} data-confirm-days="{{ cf.days.default }}" data-confirm-days-label="{{ cf.days.label }}" data-confirm-days-help="{{ cf.days.help }}"{% endif %}>
+    <input type="hidden" name="ids" value="{{ lst.ids }}"><input type="hidden" name="parts" value="{{ lst.parts }}">
+    <input type="hidden" name="panel_back" value="{{ lst.panel_back }}">
+    <fieldset class="pp-late-parts"><legend>Parts chosen</legend>
+      <div class="lmt-chips-ro">{% for part in plan.parts %}<span class="clp-chip is-on">{{ lst.labels[part] }}</span>{% endfor %}</div></fieldset>
+    <p class="muted small lmt-lede">What happens for each person and part, worked out from where each one stands.</p>
+    <div class="lmt-plist">
+      {% for pp in plan.people %}
+      <div class="lmt-pp"><b>{{ pp.name }}</b>
+        <div class="lmt-grid">
+          {% for it in pp.its %}
+          <span class="muted small">{{ lst.labels[it.part] }}</span>
+          <span class="small"><span class="clp-pill is-{{ 'info' if it.outcome == 'reopen' else 'mid' if it.outcome == 'time' else 'off' }}">{{ 'Reopen' if it.outcome == 'reopen' else 'More time' if it.outcome == 'time' else 'Nothing to do' }}</span><span class="muted small clp-sub">{{ it.why }}</span></span>
+          {% endfor %}
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+    {% if plan.past %}<p class="muted small lmt-days-note">Past the deadline: you choose how many days (1 to 14) in the confirm box, next.</p>{% endif %}
+    <div class="pp-late-f"><label for="lmt-why"><b>Why</b> <span class="muted">({{ lst.first }} sees it, in the one email)</span></label>
+      <textarea id="lmt-why" name="reason" rows="3" maxlength="500" required placeholder="e.g. figures keyed against the wrong unit; please re-check"></textarea>
+      <span class="muted small pp-late-count"><span data-lmt-count>0</span> / 500</span></div>
+  </form>
+  {% endif %}
+</div>
+<script>window.lmTeamBoot2 && window.lmTeamBoot2();</script>

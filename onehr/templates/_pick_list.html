@@ -1,0 +1,15 @@
+{# A value picked from a list, or named as new (Chris, 2026-10-19: "any field that requires a fill in ... should run as
+   dropdown for selection to ensure data validation"). The options follow a business unit select (unit_sel) from a JSON
+   map ({unit: [[name, people]]}, map_id); static/admin.js builds them, and the server takes only a listed value, the one
+   held now, or "__new__" with <name>_new (_admin_list_choice). #}
+{% macro unit_list(name, label, map_id, unit_sel, current='', what='department', maxlen=80, req=False) %}
+<label data-choose-new-box>{% if req %}<span class="wiz-lbl">{{ label }} <span class="wiz-req" aria-hidden="true">*</span></span>{% else %}{{ label }}{% endif %}
+  <select name="{{ name }}" class="modern-select" data-choose-new data-new-required data-list-for="{{ unit_sel }}"
+          data-list-map="#{{ map_id }}" data-list-what="{{ what }}" data-current="{{ current or '' }}"{% if req %} required{% endif %}>
+    {% if current %}<option value="{{ current }}" selected>{{ current }}</option>{% endif %}
+    <option value="">None</option>
+    <option value="__new__">A new {{ what }}…</option>
+  </select>
+  <input name="{{ name }}_new" maxlength="{{ maxlen }}" placeholder="The new {{ what }}" aria-label="The new {{ what }}" data-new-input hidden>
+</label>
+{% endmacro %}

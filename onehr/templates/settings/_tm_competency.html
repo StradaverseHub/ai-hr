@@ -1,0 +1,117 @@
+{% from "_table_tools.html" import colth, colmenu, colmenu_script %}
+{# Panel: tm. Extracted from admin_career_routes.html so the settings section is ONE page with
+   switchable content rather than seven separate pages wearing a tab strip.
+   Rendered by _settings_shell(); its own POST endpoints are unchanged.
+   The page is hidden from the pills, so its crumb is the only thing that names it. #}
+<p class="adm-crumb"><a href="{{ url_for('admin_module_settings', key='idp') }}">Settings</a> &rsaquo; Career routes</p>
+<p class="adm-lede">Which roles the career map offers from a given role. Use this page only where the
+  suggested list needs correcting.</p>
+<details class="muted small adm-lede">
+  <summary>How the list is worked out</summary>
+  <p>It is read from the job architecture &mdash; shared competencies, job grade and track &mdash; so it
+    stays current when the architecture is re-imported.</p>
+</details>
+
+<div class="admin-card">
+  <form method="get" class="inline-when">
+    <label for="cr-profile"><strong>Routes from</strong></label>
+    <select id="cr-profile" name="profile" class="modern-select" style="min-width:360px"
+            onchange="this.form.submit()">
+      <option value="">Choose a role…</option>
+      {% for p in profiles %}
+      <option value="{{ p.id }}" {{ 'selected' if frm and p.id == frm.id }}>
+        {{ p.job_title | proper }} — {{ p.department | proper or 'Any department' }} (JG {{ p.job_grade }})</option>
+      {% endfor %}
+    </select>
+    {% if not profiles %}
+    <span class="muted small">No job architecture has been imported yet.</span>
+    {% endif %}
+  </form>
+</div>
+
+{% if frm %}
+<div class="admin-card">
+  <h2>Offered from {{ frm.job_title | proper }}</h2>
+  <p class="muted small">
+    JG {{ frm.job_grade }} &middot; {{ frm.department | proper or '—' }}
+    {% if frm.ssg_track %}&middot; {{ frm.ssg_track }} track{% endif %}
+  </p>
+
+  {% if routes %}
+  <div class="table-scroll table-scroll-capped"><table class="admin-table" id="tm-routes-table">
+    <thead><tr>{{ colth('role', 'Role') }}{{ colth('jg', 'JG') }}{{ colth('overlap', 'Overlap') }}
+      {{ colth('status', 'Status') }}<th>Action</th></tr></thead>
+    <tbody>
+      {% for r in routes %}
+      <tr class="data-row" data-role="{{ r.profile.job_title }}"
+          data-jg="{{ r.profile.job_grade }}" data-overlap="{{ r.overlap }}"
+          data-status="{{ 'Always shown' if r.pinned else 'Suggested by the data' }}">
+        <td><strong>{{ r.profile.job_title | proper }}</strong>
+          <br><span class="muted small">{{ r.profile.department | proper or '—' }}
+            {% if r.profile.ssg_track %}&middot; {{ r.profile.ssg_track }}{% endif %}</span></td>
+        <td>{{ r.profile.job_grade }}<br><span class="muted small">{{ 'a grade up' if r.step == 'up' else 'same grade' }}</span></td>
+        <td>{{ r.overlap }}%<br><span class="muted small">{{ r.shared }} shared &middot; {{ r.new }} new</span></td>
+        <td>
+          {% if r.pinned %}<span class="status-pill status-reviewed">Always shown</span>
+          {% else %}<span class="muted small">Suggested by the data</span>{% endif %}
+        </td>
+        <td>
+          {# Three states, one row: leave it to the derivation, force it on, or
+             take it off. "Clear" is what returns a curated route to being
+             derived, so a correction is never one-way. #}
+          <form method="post" class="inline-when">
+            <input type="hidden" name="from_profile_id" value="{{ frm.id }}">
+            <input type="hidden" name="to_profile_id" value="{{ r.profile.id }}">
+            {% if r.pinned %}
+            <button type="submit" name="kind" value="clear" class="btn-link"
+                    data-confirm="Return {{ r.profile.job_title | proper }} to the suggested list for {{ frm.job_title | proper }}? It then shows on their career map only while the skills data supports it."
+                    data-confirm-ok="Back to suggested">Back to suggested</button>
+            {% else %}
+            <button type="submit" name="kind" value="pinned" class="btn-link"
+                    data-confirm="Always offer {{ r.profile.job_title | proper }} from {{ frm.job_title | proper }}? Everyone in the {{ frm.job_title | proper }} role sees it on their career map, whatever the skills data says."
+                    data-confirm-ok="Always show">Always show</button>
+            {% endif %}
+            <button type="submit" name="kind" value="hidden" class="btn-link"
+                    data-confirm="Hide {{ r.profile.job_title | proper }} from the career map of {{ frm.job_title | proper }}? Nobody in that role sees it until you bring it back under Add a route."
+                    data-confirm-ok="Hide">Hide</button>
+          </form>
+        </td>
+      </tr>
+      {% endfor %}
+          <tr class="no-filter-match" hidden><td colspan="5" class="muted">No routes match the filters.</td></tr>
+    </tbody>
+  </table>
+  {{ colmenu('tm-routes-table', {
+       'role':    {'mode': 'clientFilter', 'type': 'text', 'sortAttr': 'role'},
+       'jg':      {'mode': 'clientFilter', 'type': 'text', 'sortAttr': 'jg'},
+       'overlap': {'mode': 'sort', 'type': 'num', 'sortAttr': 'overlap'},
+       'status':  {'mode': 'clientFilter', 'type': 'text', 'sortAttr': 'status'} }) }}</div>
+  {% else %}
+  <p class="muted pp-none">Nothing is offered from this role yet &mdash;
+    either it has no competencies mapped, or no other role shares enough of them.
+    Add a route below to offer one anyway.</p>
+  {% endif %}
+</div>
+
+<div class="admin-card">
+  <h2>Add a route the data didn't suggest</h2>
+  <p class="muted small">For a move people genuinely make that the
+    competencies don't show &mdash; a role change that trades on experience rather than
+    an overlapping skill set.</p>
+  <form method="post" class="inline-when"
+        data-confirm="Always offer the role you picked from {{ frm.job_title | proper }}? Everyone in the {{ frm.job_title | proper }} role sees it on their career map; you can hide or reset it later."
+        data-confirm-ok="Add route">
+    <input type="hidden" name="from_profile_id" value="{{ frm.id }}">
+    <input type="hidden" name="kind" value="pinned">
+    <select name="to_profile_id" class="modern-select" style="min-width:340px" required>
+      <option value="">Choose a role…</option>
+      {% for p in others %}
+      <option value="{{ p.id }}">{{ p.job_title | proper }} — {{ p.department | proper or 'Any department' }} (JG {{ p.job_grade }})</option>
+      {% endfor %}
+    </select>
+    <button type="submit" class="primary">Add route</button>
+  </form>
+</div>
+{% endif %}
+
+{{ colmenu_script(asset_v) }}

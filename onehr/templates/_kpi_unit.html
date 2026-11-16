@@ -1,0 +1,16 @@
+{# The KPI unit picker (Chris, 2026-10-18, the libraries canvas board 23): the standard units by group
+   (KPI_UNIT_GROUPS), a line's own unit kept when it is off the list ("as entered"), and Other to type one, which
+   static/kpi_units.js adds (it swaps the name onto the typed box, so the server only ever reads `name`). Each unit on a
+   scale carries its family and step, which the script's suggestion reads: "These figures are in the millions. Show
+   them in RM (mil)?". Import it with context. #}
+{% macro unit_select(name='unit', current='', label='Unit', cls='', blank='No unit', extra='') %}
+{% set cur = kpi_unit_normalise(current) or '' %}
+<label class="ku-pick {{ cls }}">{{ label }}
+  <select name="{{ name }}" class="modern-select" data-kpi-unit {{ extra | safe }}>
+    <option value="" {{ 'selected' if not cur }}>{{ blank }}</option>
+    {% if cur and cur not in kpi_units %}<option value="{{ cur }}" selected>{{ cur }} (as entered)</option>{% endif %}
+    {% for g, us in kpi_unit_groups %}<optgroup label="{{ g }}">{% for u in us %}<option value="{{ u }}"{% if u in kpi_unit_step %} data-ku-fam="{{ kpi_unit_step[u][0] }}" data-ku-step="{{ kpi_unit_step[u][1] }}"{% endif %}{{ ' selected' if u == cur }}>{{ u }}</option>{% endfor %}</optgroup>{% endfor %}
+  </select>
+  <input class="ku-other" maxlength="40" placeholder="Type the unit" aria-label="The unit, typed" hidden>
+</label>
+{% endmacro %}

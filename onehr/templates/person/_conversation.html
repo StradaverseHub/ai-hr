@@ -1,0 +1,29 @@
+{# A person's own AI+ check-in conversation, word for word (Chris, 2026-10-20: "put it on the person page itself, and
+   only allow access by super admin"). The super admin's only: the route is @super_required and the person page shows
+   its card to the super admin alone. Loaded into the person page's side panel (in_panel) or shown as a page
+   (admin_review_transcript.html). Every open is one audit row. #}
+{% from "_transcript.html" import transcript %}
+<div class="pp-convo">
+  {% if sel_cycle %}
+  <div class="pp-convo-head">
+    <span><b>{{ sel_cycle['name'] }}</b>{% if convo %}{% if convo.mgr and convo.mgr.n %} · {{ convo.n }} message{{ 's' if convo.n != 1 }} as an employee ({{ convo.mine }} from them), {{ convo.mgr.n }} as a manager ({{ convo.mgr.mine }} from them){% else %} · {{ convo.n }} message{{ 's' if convo.n != 1 }}, {{ convo.mine }} from them{% endif %}{% if convo.last %} · last on {{ convo.last | myt_day }}{% endif %}{% endif %}</span>
+    {% if convo and (convo.parts or (convo.mgr and convo.mgr.parts)) %}<span class="pp-convo-parts">{% for p_ in convo.parts %}<span class="pp-convo-part">{{ p_ }}</span>{% endfor %}{% if convo.mgr %}{% for p_ in convo.mgr.parts %}<span class="pp-convo-part">{{ p_ }} (manager)</span>{% endfor %}{% endif %}</span>{% endif %}
+  </div>
+  {% else %}
+  <p class="pp-convo-head">No AI+ conversation on record for them{% if asked_cycle %} in <b>{{ asked_cycle['name'] }}</b>{% endif %}.</p>
+  {% endif %}
+  <p class="muted small pp-convo-note">Their own check-in with OneHR AI, saved as they wrote it: what they typed, what the AI replied, and the cards it showed.{% if mgr_messages %} Below it, what they typed to OneHR AI as a manager, grouped by part and by the person it was about.{% endif %} Read only. Only the super admin can open it, and each time it opens goes in the audit log.</p>
+  {% set others = cycles | rejectattr('id', 'equalto', sel_cycle['id'] if sel_cycle else 0) | list %}
+  {% if others %}
+  <p class="small pp-convo-more"><span class="muted">Also on record:</span>
+    {% for c in others %}<a href="{{ url_for('admin_person', uid=s['id'], cycle=c['id'], panel='conversation') if in_panel else url_for('admin_review_transcript', uid=s['id'], cycle=c['id']) }}">{{ c['name'] }}{% if c['is_active'] %} · current{% endif %}</a>{{ ' · ' if not loop.last }}{% endfor %}</p>
+  {% endif %}
+  {% if sel_cycle and mgr_messages %}
+  <p class="pp-convo-head"><span><b>As an employee</b>{% if convo %} · {{ convo.n }} message{{ 's' if convo.n != 1 }}, {{ convo.mine }} from them{% endif %}</span></p>
+  {% endif %}
+  {% if sel_cycle and (messages or not mgr_messages) %}{{ transcript(messages, who={'user': 'Employee', 'agent': 'OneHR AI'}) }}{% endif %}
+  {% if sel_cycle and mgr_messages %}
+  <p class="pp-convo-head"><span><b>As a manager</b>{% if convo and convo.mgr %} · {{ convo.mgr.n }} message{{ 's' if convo.mgr.n != 1 }}, {{ convo.mgr.mine }} from them{% endif %}</span></p>
+  {{ transcript(mgr_messages, who={'user': 'Manager', 'agent': 'OneHR AI'}) }}
+  {% endif %}
+</div>

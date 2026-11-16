@@ -1,0 +1,13 @@
+{# A person's AI insight, loaded into the person page's panel (admin_person_insight ?fragment=1; Chris, 2026-11-06, canvas board 4).
+   Read only: the cache, never the model. The part tabs reload this block (static/admin.js, data-ais-tab); the seat switch shows
+   blocks already drawn here. data-open-* tell the panel's foot which tab "Open the ... tab" goes to. #}
+{% from "person/_ai_insight.html" import body %}
+<div class="ais-panel" data-ais-root data-person="{{ person['id'] }}" data-name="{{ person['full_name'] }}"
+     data-open-href="{{ url_for('admin_person', uid=person['id'], tab={'pm': 'performance', 'tc': 'competency', 'idp': 'plan', 'pot': 'f360'}[part], cycle=cyc['id']) }}"
+     data-open-label="Open the {{ {'pm': 'Performance', 'tc': 'Competency', 'idp': 'Career Plan', 'pot': '360 Feedback'}[part] }} tab">
+  <nav class="ais-tabs" aria-label="Part">
+    {% for k, lbl in parts %}<button type="button" class="{{ 'is-on' if k == part }}" data-ais-tab="{{ url_for('admin_person_insight', uid=person['id'], part=k, cycle=cyc['id'], fragment=1) }}"{% if k == part %} aria-current="true"{% endif %}>{{ lbl }}</button>{% endfor %}
+  </nav>
+  {{ body(res, true) }}
+  <p class="muted small ais-note">{% if res.state == 'ok' %}Exactly what the reviewer sees on their page. {% endif %}Read only: AI+ is not asked again from here.{% if res.state == 'ok' %} This read goes in the audit log as "Read {{ person['full_name'] }}'s AI insight ({{ res.label }}, ...)".{% endif %}</p>
+</div>

@@ -1,0 +1,157 @@
+{% extends "base.html" %}
+{% from "_adm_panel.html" import panel %}
+{% block title %}Competency catalogue{% endblock %}
+{% block body %}
+{# Competency > Library > Catalogue (2026-10-18, the libraries canvas board 9): admin_competency_catalogue. Every
+   competency by category with how many jobs use it; Used by one job and Similar names point at what may need tidying.
+   A name opens its panel on the library page. The super admin adds a competency here (6 Nov 2026): it starts off, with a
+   "Waiting for P&R" pill and chip until its panel's sign-off. #}
+<p class="adm-crumb"><a href="{{ url_for('admin_module_settings', key='competency') }}">Competency</a> &rsaquo; <a href="{{ url_for('admin_competency_library') }}">Library</a> &rsaquo; Catalogue</p>
+<div class="adm-headrow">
+  <p class="adm-lede">Every competency by category, with how many jobs use it: where two names may be one, and where a
+    competency serves a single job.</p>
+</div>
+<nav class="adm-tabs kl-tabs" aria-label="Competency library">
+  <a href="{{ url_for('admin_competency_library') }}">Library</a>
+  <a class="is-active" href="{{ url_for('admin_competency_catalogue') }}">Catalogue</a>
+  <a href="{{ url_for('admin_competency_requests') }}">Requests</a>
+</nav>
+<div class="cc-top">
+  <span class="cc-count"><b>{{ '{:,}'.format(counts.comps) }}</b> competencies · <b>{{ '{:,}'.format(counts.rows) }}</b> level rows · <b>{{ '{:,}'.format(counts.jobs) }}</b> jobs</span>
+  <span class="adm-frow-pills" role="group" aria-label="Which competencies">
+    <a class="adm-frow-pill{{ ' is-on' if show == 'all' }}" href="{{ url_for('admin_competency_catalogue', q=q or None) }}">All</a>
+    <a class="adm-frow-pill{{ ' is-on' if show == 'one' }}" href="{{ url_for('admin_competency_catalogue', show='one', q=q or None) }}">Used by one job<span>{{ counts.one }}</span></a>
+    <a class="adm-frow-pill{{ ' is-on' if show == 'similar' }}" href="{{ url_for('admin_competency_catalogue', show='similar', q=q or None) }}">Similar names<span>{{ counts.similar }}</span></a>
+    {% if counts.inactive or show == 'waiting' %}<a class="adm-frow-pill{{ ' is-on' if show == 'waiting' }}" href="{{ url_for('admin_competency_catalogue', show='waiting', q=q or None) }}">Waiting for P&amp;R<span>{{ counts.inactive }}</span></a>{% endif %}
+  </span>
+  {% if sup %}<button type="button" class="wiz-btn cc-add" data-panel-open="addcomp"><span aria-hidden="true">+</span> Add a competency</button>{% endif %}
+  {# the search (2026-10-27): a name or a code, combined with the pills; plain GET, no script needed #}
+  <form method="get" class="cc-search" role="search" data-no-busy>
+    {% if show != 'all' %}<input type="hidden" name="show" value="{{ show }}">{% endif %}
+    <label class="sr-only" for="cc-q">Search the catalogue</label>
+    <input id="cc-q" type="search" name="q" value="{{ q }}" maxlength="80" placeholder="Search a competency or code" autocomplete="off" aria-autocomplete="list" aria-expanded="false" data-suggest="competencies" data-suggest-url="{{ url_for('search_suggest') }}" data-no-qin="competencies, not people">
+    <button type="submit" class="btn-link">Search</button>
+  </form>
+</div>
+{% if q and cats %}
+<p class="cc-bar" role="status"><span><b>{{ n_match }}</b> match{{ 'es' if n_match != 1 }} for &ldquo;{{ q }}&rdquo; in <b>{{ cats | length }}</b> categor{{ 'ies' if cats | length != 1 else 'y' }}{% if show != 'all' %} · {{ 'Used by one job' if show == 'one' else 'Similar names' }}{% endif %}</span>
+  <a href="{{ url_for('admin_competency_catalogue', show=show if show != 'all' else None) }}">Clear the search</a></p>
+{% endif %}
+<section class="admin-card cc-list" aria-label="The catalogue by category">
+  {% if cats %}
+  <div class="cc-row cc-head" role="row"><span>Category</span><span>Competencies</span><span>Jobs</span><span>Used by one job</span></div>
+  {% for c in cats %}
+  {% if loop.index == 13 and not q %}<details class="cc-more fold"{{ ' open' if open_cat in (cats[12:] | map(attribute='name') | list) }}><summary class="cc-row cc-moresum"><span>{{ cats | length - 12 }} more categories</span></summary>{% endif %}
+  {% if c.name != open_cat and not q %}
+  {# a closed category is a link: its competencies render once it's opened (the page stays light with 250 categories) #}
+  <a class="cc-row cc-catl" href="{{ url_for('admin_competency_catalogue', show=show if show != 'all' else None, cat=c.name) }}"><span class="cc-cname">{{ c.name }}</span><span>{{ c.comps | length }}</span><span>{{ c.jobs | length }}</span><span>{{ c.one }}</span></a>
+  {% else %}
+  <details class="cc-cat" open{{ '' if q else ' id=cat-open' }}>
+    <summary class="cc-row"><span class="cc-cname">{{ c.name }}</span><span>{{ c.comps | length }}</span><span>{{ c.jobs | length }}</span><span>{{ c.one }}</span></summary>
+    <div class="cc-items">
+      <div class="cc-irow cc-ihead"><span>Competency</span><span>Levels</span><span>Jobs</span></div>
+      {% for it in c.comps %}
+      {% if loop.index == 9 and not q %}<details class="cc-imore fold"><summary class="small">{{ c.comps | length - 8 }} more in this category</summary>{% endif %}
+      <div class="cc-irow">
+        <span><a href="{{ url_for('admin_competency_library', skill=it.key, panel='skill') }}">{{ it.label }}</a>{% if it.hit %} <span class="muted small cc-hit">{{ it.hit }}</span>{% endif %}{% if it.ch %} <span class="cl-src is-ch" title="A level written by Chin Hin in SkillsFuture's shape">Chin Hin</span>{% endif %}{% if not it.active %} <span class="pp-chip is-low" title="Added in OneHR: off until P&amp;R sign it off in its panel">Waiting for P&amp;R sign-off</span>{% endif %}
+          {% if it.similar %}<span class="cc-sim">Similar to {{ it.similar[:2] | join(', ') }}{% if it.similar | length > 2 %} and {{ it.similar | length - 2 }} more{% endif %}</span>{% endif %}</span>
+        <span class="small">{% if it.levels %}L{{ it.levels[0] }}{% if it.levels | length > 1 %} to L{{ it.levels[-1] }}{% endif %}{% else %}—{% endif %}</span>
+        <span class="small">{{ it.jobs }}</span>
+      </div>
+      {% if loop.last and loop.index >= 9 and not q %}<button type="button" class="fold-less" data-fold-less>Show less</button></details>{% endif %}
+      {% endfor %}
+    </div>
+  </details>
+  {% endif %}
+  {% if loop.last and loop.index >= 13 and not q %}<button type="button" class="fold-less cc-less" data-fold-less>Show less</button></details>{% endif %}
+  {% endfor %}
+  {% else %}
+  {% if q %}<p class="muted pp-pad cc-none" role="status">No competency matches &ldquo;{{ q }}&rdquo;. Try part of the name, or a code such as HRS-HRM-010.
+    <a href="{{ url_for('admin_competency_catalogue', show=show if show != 'all' else None) }}">Clear the search</a></p>
+  {% else %}
+  <p class="muted pp-pad">{% if show == 'all' %}No competencies yet: they load with the job architecture's profiles.{% elif show == 'waiting' %}Nothing is waiting for P&amp;R.{% else %}None here.{% endif %}</p>{% endif %}
+  {% endif %}
+  <p class="muted small cc-foot">Jobs counts a job code at its grade and scope, now or as its next level. A level written by Chin Hin in SkillsFuture's shape carries the Chin Hin mark.</p>
+</section>
+
+{# Add a competency (super admin; canvas board B2): a Chin Hin competency in SkillsFuture's shape, written for the levels chosen,
+   off until P&R sign it off. Posts to the library route (one writer: _tc_add_competency, the Requests approval's too). #}
+{% if addcomp %}
+{% call panel("addcomp", "Competency library · add a competency", "Add a competency", "Added as a Chin Hin competency, off until P&R sign it off. Then it can go on a job with Edit the five.", wide=True, open=addcomp.open, params="panel") %}
+<form method="post" action="{{ url_for('admin_competency_library') }}" class="adm-panel-form cl-form" id="cl-addcomp"
+      data-confirm="Add this competency? It is added as a Chin Hin competency, off until P&amp;R sign it off. It goes in the audit trail." data-confirm-title="Add this competency?" data-confirm-ok="Add the competency">
+  <input type="hidden" name="action" value="addcomp">
+  <div class="adm-panel-body">
+    <div class="cl-p2 cl-p2e">
+      <label>Name<input type="text" name="title" required maxlength="120" autocomplete="off" data-ac-title></label>
+      <label data-choose-new-box>Category<select name="category" class="modern-select" data-choose-new data-new-required required data-ac-cat>
+        <option value="">Choose…</option>{% for c in addcomp.cats %}<option value="{{ c }}">{{ c }}</option>{% endfor %}
+        <option value="__new__">A new category…</option></select>
+        <input type="text" name="category_new" maxlength="120" placeholder="The new category" aria-label="The new category" data-new-input hidden></label>
+    </div>
+    <div class="cl-p2 cl-p2e">
+      <label>Code group <small>The job family part of its code</small><select name="sub" class="modern-select" required data-ac-sub>
+        <option value="">Choose…</option>{% for g in addcomp.groups %}<option value="{{ g.code }}" data-next="{{ g.next }}">{{ g.label }}</option>{% endfor %}</select></label>
+      <div class="cl-lbl">Its code <small>Made by OneHR, one per level</small><span class="cl-ro" data-ac-code>CHG-…</span></div>
+    </div>
+    <div class="cl-lbl">Levels to write <small>A job needs the level it needs now and the next one. More can be added later from its panel.</small>
+      <div class="cl-lvs" role="group" aria-label="Levels to write">
+        {% for n in range(1, 7) %}<label class="cl-lvb"><input type="checkbox" name="lv" value="{{ n }}"{{ ' checked' if n in (3, 4) }} data-ac-lv><span>L{{ n }}</span></label>{% endfor %}
+      </div>
+    </div>
+    <p class="muted small">Written in SkillsFuture's shape: at each level, what it is, the abilities it shows and the knowledge behind it.</p>
+    {% for n in range(1, 7) %}
+    <section class="cl-lvedit" data-ac-sec="{{ n }}"{{ '' if n in (3, 4) else ' hidden' }}>
+      <span class="wiz-k" data-ac-seclabel>L{{ n }} · CHG-…</span>
+      <label>What it is at this level<textarea name="desc_{{ n }}" rows="2" maxlength="2000" {{ 'required' if n in (3, 4) else 'disabled' }}></textarea></label>
+      <div class="cl-p2">
+        <label><span>Abilities <span class="muted small">one a line</span></span><textarea name="abil_{{ n }}" rows="4" {{ 'required' if n in (3, 4) else 'disabled' }}></textarea></label>
+        <label><span>Knowledge <span class="muted small">one a line</span></span><textarea name="know_{{ n }}" rows="4" {{ 'required' if n in (3, 4) else 'disabled' }}></textarea></label>
+      </div>
+    </section>
+    {% endfor %}
+    <p class="kpi-scale-msg" data-ac-msg hidden></p>
+  </div>
+  <footer class="adm-panel-foot">
+    <button type="button" class="btn-link adm-panel-grow" data-panel-close>Cancel</button>
+    <button type="submit" class="primary">Add the competency</button>
+  </footer>
+</form>
+<script>
+/* Add a competency: the levels chosen show their sections (an unchosen level's fields are disabled, so they neither post
+   nor block); the code preview follows the code group's next free number (OneHR makes the real one on save); the confirm
+   box's words are kept current. */
+(function () {
+  var form = document.getElementById('cl-addcomp'); if (!form) return;
+  var sub = form.querySelector('[data-ac-sub]'), codeOut = form.querySelector('[data-ac-code]'), title = form.querySelector('[data-ac-title]');
+  var cat = form.querySelector('[data-ac-cat]'), newcat = form.querySelector('[data-new-input]'), msg = form.querySelector('[data-ac-msg]');
+  var lvs = form.querySelectorAll('[data-ac-lv]'), save = form.querySelector('.adm-panel-foot button[type="submit"]');
+  function on() { var out = []; lvs.forEach(function (c) { if (c.checked) out.push(+c.value); }); return out; }
+  function nnn() {
+    var o = sub.options[sub.selectedIndex], n = o && o.getAttribute('data-next');
+    return n ? ('000' + n).slice(-3) : '';
+  }
+  function code(l) { return sub.value && nnn() ? l + nnn() : '…'; }
+  function refresh() {
+    var ls = on(), n = nnn();
+    form.querySelectorAll('[data-ac-sec]').forEach(function (sec) {
+      var l = +sec.getAttribute('data-ac-sec'), show = ls.indexOf(l) >= 0;
+      sec.hidden = !show;
+      sec.querySelectorAll('textarea').forEach(function (t) { t.disabled = !show; t.required = show; });
+      sec.querySelector('[data-ac-seclabel]').textContent = 'L' + l + ' · CHG-' + (sub.value || '…') + '-' + code(l);
+    });
+    codeOut.textContent = ls.length ? 'CHG-' + (sub.value || '…') + '-' + ls.map(code).join(' · ') : 'CHG-…';
+    var cname = cat.value === '__new__' ? newcat.value.trim() : cat.value;
+    msg.hidden = ls.length > 0; msg.textContent = ls.length ? '' : 'Choose at least one level to write.';
+    save.disabled = !ls.length;
+    form.setAttribute('data-confirm', 'Add ' + (title.value.trim() || 'this competency') + (cname ? ' (' + cname + ')' : '') + ' to the catalogue as a Chin Hin competency, with ' + (ls.length ? ls.map(function (l) { return 'L' + l; }).join(', ') : 'no levels') + '? It is off until P&R sign it off, so it can\'t go on a job yet. It goes in the audit trail.');
+  }
+  lvs.forEach(function (c) { c.addEventListener('change', refresh); });
+  [sub, cat].forEach(function (e) { e.addEventListener('change', refresh); });
+  [title, newcat].forEach(function (e) { e.addEventListener('input', refresh); });
+  refresh();
+})();
+</script>
+{% endcall %}
+{% endif %}
+{% endblock %}

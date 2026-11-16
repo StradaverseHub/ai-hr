@@ -1,0 +1,10 @@
+{# one person in the BU CEO's box panel (C2): name, bands, department, where it came from, and the way to their page #}
+<div class="rv-tbox-prow">
+  <span class="rv-tbox-av" aria-hidden="true">{{ i.initials }}</span>
+  <span class="rv-tbox-who">
+    <span class="ghc-pname-row"><a class="rv-tbox-pname" href="{{ url_for('calib_gradeh_unit', unit=v.unit, p=i.id, box=v.sel, dept=v.dept) }}" title="Open {{ i.name }}'s page">{{ i.name }}</a>{% if i.dis %}<span class="ghc-dis-tag" title="Told us they do not agree with their result: not calibrated">Disagrees</span>{% endif %}</span>
+    <span class="rv-tbox-psub"><span class="rv-tbox-bands">{{ i.perf_t }} · {{ i.pot }}</span><span class="rv-tbox-where" title="{{ i.title }} · {{ i.dept | proper }}">{{ i.title }} · {{ i.dept | proper }}</span></span>
+    {% if i.moved_by %}<span class="rv-tbox-ptag">moved by {{ i.moved_by }}</span>{% elif i.nolm %}<span class="ghc-nolm">No line manager input</span>{% elif i.hod_open %}<span class="rv-tbox-ptag is-default">HOD not signed off</span>{% endif %}
+  </span>
+  <a class="ghc-arrow" href="{{ url_for('calib_gradeh_unit', unit=v.unit, p=i.id, box=v.sel, dept=v.dept) }}" aria-label="Open {{ i.name }}'s page">›</a>
+</div>

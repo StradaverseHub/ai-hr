@@ -1,0 +1,188 @@
+{% extends "base.html" %}
+{% from "_adm_panel.html" import panel %}
+{% block title %}Admins{% endblock %}
+{% block body %}
+{# Leaders and admins > Admins (canvas K8, 2026-10-10): one page for what were BG admins and Sub-admins. Since Roles &
+   access (2026-10-20, canvas [design canvas link removed] board C) each admin has a ROLE, which says
+   what they may do (set once, on Roles & access), and a scope, where they act. Row changes post to the routes that always
+   made them; all come back here. #}
+<div class="adm-headrow">
+  <p class="adm-lede">Everyone who can open this admin area, and what they can see.
+    {% if not sup %}You add and manage the admins of business units in {{ display_bg(own) }}.{% endif %}</p>
+  {% if sup %}<div class="adm-headrow-acts"><a class="btn-link" href="{{ url_for('admin_roles') }}">Roles &amp; access &rsaquo;</a>
+    <button type="button" class="primary" data-panel-open="adm-new">Add an admin</button></div>{% endif %}
+</div>
+
+<section class="admin-card" aria-label="Admins">
+  {% if not rows %}
+  <p class="muted" style="margin:0">No admins to show yet. Add one with Add an admin.</p>
+  {% else %}
+  <div class="table-scroll"><table class="admin-table adm-admins">
+    <thead><tr><th>Admin</th><th>Can see</th><th>Role</th><th>Last signed in</th><th></th></tr></thead>
+    <tbody>
+    {% for r in rows %}
+    <tr>
+      <td><b>{{ r.username }}</b><span class="muted small" style="display:block">{{ ('system admin' if r.system else 'super admin') if r.kind == 'super' else (r.role.name if r.role else 'admin') }}{% if r.is_me %} · you{% endif %}</span></td>
+      <td>
+        {% if r.kind == 'super' %}<span class="status-pill adm-scope-super">Everything</span>
+        {% elif r.kind == 'company' %}<span class="status-pill status-progress">The whole company</span>
+        {% elif r.kind == 'lnd' %}<span class="status-pill status-progress">AI+ Learning, the whole company</span>
+        {% elif r.kind == 'bg' %}<span class="status-pill status-progress">All of {{ display_bg(r.bg) }}</span>
+        {% else %}<span class="status-pill status-submitted">{{ display_bg(r.bg) }}: {{ r.units | length }} business {{ 'unit' if r.units | length == 1 else 'units' }}</span>
+          <span class="muted small adm-admins-units">{{ r.unit_labels | join(' · ') }}</span>{% endif %}
+        {% if not r.known_bg %}<span class="muted small" style="display:block">This business group no longer exists: move them to a current one.</span>{% endif %}
+      </td>
+      <td class="adm-acc-cell">
+        {% if r.system %}<span class="status-pill adm-scope-super">System admin</span>
+        {% elif r.kind == 'super' %}<span class="status-pill adm-scope-super">Everything</span>
+        {% elif r.role %}{% if sup and r.kind != 'lnd' %}<a class="status-pill acc-chip acc-role-chip" href="{{ url_for('admin_roles', show=r.role.id) }}">{{ r.role.name }}</a>{% else %}<span class="status-pill acc-chip">{{ r.role.name }}</span>{% endif %}
+          <span class="muted small acc-bits">{{ r.role.summary }}</span>{% endif %}
+      </td>
+      <td class="muted small">{{ r.last_in }}</td>
+      <td class="adm-admins-acts">{% if r.system and not viewer_system %}<span class="muted small">Only a system admin can change this account</span>
+        {% elif (r.kind in ('bg', 'company') and sup) or r.kind == 'units' %}<button type="button" class="btn-link" data-panel-open="adm-{{ r.id }}" aria-label="Manage {{ r.username }}">Manage</button>
+        {% elif r.kind == 'lnd' %}<span class="muted small">On AI+ Learning › Settings</span>
+        {% elif r.is_me %}{# your own addresses are set on your account's page (2026-10-19: Chris couldn't find them here) #}<a class="btn-link" href="{{ url_for('admin_notify') }}">Notification emails</a>
+          <span class="muted small adm-own-ne">{{ (notify.get(r.id, []) | length ~ ' set') if notify.get(r.id) else 'None set: no email reaches you' }}</span>{% endif %}</td>
+    </tr>
+    {% endfor %}
+    </tbody>
+  </table></div>
+  {% endif %}
+</section>
+
+{% if sup %}
+{% call panel("adm-new", "Admins · New", "Add an admin", "Their role says what they can do; where they act is set here.") %}
+  <form method="post" action="{{ url_for('admin_admins') }}" class="adm-add-admin adm-panel-form" data-role-form
+        data-confirm="Add this admin? They can sign in to the admin area straight away and do what their role gives, where you've set. You can change their role or remove them later." data-confirm-ok="Add admin">
+    <div class="adm-panel-body">
+    <div class="pp-fields">
+      <label>Username<input name="username" autocomplete="off" required></label>
+      <label>Password<input name="password" type="password" autocomplete="new-password" minlength="8" required placeholder="At least 8 characters"></label>
+      <label>Role<select name="role_id" class="modern-select" data-role-pick required>
+        {% for ro in pick_roles %}<option value="{{ ro.id }}" data-scope="{{ ro.scope }}">{{ ro.name }} · {{ ro.scope_label | lower }}</option>{% endfor %}</select></label>
+      <label data-scope-only="group units">Business group<select name="business_group" class="modern-select" data-bg-pick>
+        {% for b in bgs %}<option value="{{ b }}">{{ display_bg(b) }}</option>{% endfor %}</select></label>
+    </div>
+    <fieldset class="adm-units" data-scope-only="units"><legend class="muted small">Business units they act in (at least one)</legend>
+      {% for b in bgs %}
+      <div class="adm-units-group" data-bg="{{ b }}"{% if not loop.first %} hidden{% endif %}>
+        {% for c, lbl in units.get(b, []) %}<label><input type="checkbox" name="companies" value="{{ c }}"> {{ lbl }}</label>{% else %}<span class="muted small">No business units in {{ display_bg(b) }} yet.</span>{% endfor %}
+      </div>
+      {% endfor %}
+    </fieldset>
+    <p class="muted small" data-scope-only="company">They act on the whole company: every business group and unit.</p>
+    </div>
+    <footer class="adm-panel-foot">
+      <a class="btn-link adm-panel-grow" href="{{ url_for('admin_roles') }}">What each role can do &rsaquo;</a>
+      <button type="button" class="btn-link" data-panel-close>Cancel</button>
+      <button type="submit" class="primary">Add the admin</button>
+    </footer>
+  </form>
+{% endcall %}
+{% endif %}
+
+{# each admin in a side panel (phase 3 of the admin side panels, 2026-10-17): what they see, their password, removing them;
+   the forms post to the routes that always made these changes #}
+{% for r in rows if (r.kind in ('bg', 'company') and sup) or r.kind == 'units' %}
+{% call panel("adm-" ~ r.id, "Admins · " ~ (r.role.name if r.role else 'Admin'), r.username,
+   'The whole company' if r.kind == 'company' else (('All of ' ~ display_bg(r.bg)) if r.kind == 'bg' else (display_bg(r.bg) ~ ': ' ~ (r.units | length) ~ ' business unit' ~ ('' if r.units | length == 1 else 's')))) %}
+  <div class="adm-panel-body adm-psecs">
+    {% if sup %}
+    {# their role: what they may do is the role's, set once on Roles & access (Chris, 2026-10-20: "role only, no
+       exception"); changing it here can change where they act too #}
+    <section class="adm-psec" id="role-{{ r.id }}"><h3 class="adm-ph">Role</h3>
+      <p class="muted small">{{ r.role.name if r.role else 'No role' }}: {{ r.role.summary if r.role else '' }}. <a href="{{ url_for('admin_roles', show=r.role.id) if r.role else url_for('admin_roles') }}">What it can do &rsaquo;</a></p>
+      <form method="post" action="{{ url_for('admin_admin_role', aid=r.id) }}" class="adm-pform adm-role-form" data-role-form
+            data-confirm="Change {{ r.username }}'s role? From their next click they can do what the new role gives, where you've set; it goes in the audit log. You can change it back." data-confirm-ok="Change role">
+        <label>Role <select name="role_id" class="modern-select" data-role-pick>
+          {% for ro in pick_roles %}<option value="{{ ro.id }}" data-scope="{{ ro.scope }}" {{ 'selected' if r.role and ro.id == r.role.id }}>{{ ro.name }} · {{ ro.scope_label | lower }}</option>{% endfor %}</select></label>
+        <label data-scope-only="group units">Business group <select name="business_group" class="modern-select" data-bg-pick>
+          {% for b in bgs %}<option value="{{ b }}" {{ 'selected' if b == r.bg }}>{{ display_bg(b) }}</option>{% endfor %}</select></label>
+        <fieldset class="adm-units adm-punits" data-scope-only="units"><legend class="muted small">Business units they act in</legend>
+          {% for b in bgs %}
+          <div class="adm-units-group" data-bg="{{ b }}"{% if b != (r.bg or bgs[0]) %} hidden{% endif %}>
+            {% for c, lbl in units.get(b, []) %}<label class="adm-ptick"><input type="checkbox" name="companies" value="{{ c }}" {{ 'checked' if b == r.bg and c in r.units }}> {{ lbl }}</label>{% else %}<span class="muted small">No business units in {{ display_bg(b) }} yet.</span>{% endfor %}
+          </div>
+          {% endfor %}
+        </fieldset>
+        <span class="adm-pacts"><button type="submit" class="btn-link">Save role</button></span>
+      </form>
+    </section>
+    {% endif %}
+    {# the super admin sets where they act with their role, above; a BG admin sets their own unit admins' units here #}
+    {% if r.kind == 'units' and not sup %}
+    <section class="adm-psec"><h3 class="adm-ph">Business units they see</h3>
+      {% if r.known_bg %}
+      <form method="post" action="{{ url_for('admin_subadmins', bg=r.bg) }}" class="adm-pform"
+            data-confirm="Change the business units {{ r.username }} can see in {{ display_bg(r.bg) }}? They lose access to any unit you have unticked. You can change it again." data-confirm-ok="Save units">
+        <input type="hidden" name="action" value="set_companies"><input type="hidden" name="admin_id" value="{{ r.id }}">
+        <fieldset class="adm-units adm-punits"><legend class="sr-only">Business units they see</legend>
+          {% for c, lbl in units.get(r.bg, []) %}<label class="adm-ptick"><input type="checkbox" name="companies" value="{{ c }}" {{ 'checked' if c in r.units }}> {{ lbl }}</label>{% endfor %}
+        </fieldset>
+        <span class="adm-pacts"><button type="submit" class="btn-link">Save units</button></span>
+      </form>
+      {% else %}<p class="muted small">{{ display_bg(r.bg) }} no longer exists: the super admin moves them to a current business group.</p>{% endif %}
+    </section>
+    {% endif %}
+    {% set nl = notify.get(r.id, []) %}
+    <section class="adm-psec"><h3 class="adm-ph">Notification emails</h3>
+      <p class="muted small">Their pending tasks go to every address here{% if not nl %}; with none, they get no email{% endif %}. Up to {{ notify_max }}.</p>
+      {% if nl %}<div class="ne-chips">{% for e in nl %}<span class="ne-chip">{{ e.email }}<button type="submit" form="ne-rm-{{ e.id }}" aria-label="Remove {{ e.email }}">×</button></span>{% endfor %}</div>{% endif %}
+      {% if nl | length < notify_max %}
+      <form method="post" action="{{ url_for('admin_notify', aid=r.id, _method='POST') }}" class="adm-pform ne-add"
+            data-confirm="Send {{ r.username }}'s pending tasks to this address too? It goes in the trail." data-confirm-ok="Add address">
+        <input type="hidden" name="action" value="add"><input type="hidden" name="next" value="{{ url_for('admin_admins', panel='adm-' ~ r.id) }}">
+        <label class="sr-only" for="ne-in-{{ r.id }}">Add an address</label>
+        <input type="email" id="ne-in-{{ r.id }}" name="email" required maxlength="200" placeholder="Add an address, e.g. a shared mailbox">
+        <span class="adm-pacts"><button type="submit" class="btn-link">Add address</button></span>
+      </form>
+      {% endif %}
+    </section>
+    <section class="adm-psec"><h3 class="adm-ph">Password</h3>
+      <div class="adm-prow"><span class="muted small">Last signed in {{ r.last_in }}</span>
+        <button type="submit" class="btn-link" form="adm-pw-{{ r.id }}">Reset password</button></div>
+    </section>
+    <div class="adm-danger"><span><b>Remove {{ r.username }}</b><br>They can no longer open the admin area. What they did stays in the audit log.</span>
+      <button type="submit" class="btn-link" form="adm-rm-{{ r.id }}">Remove&hellip;</button></div>
+  </div>
+  {% set route = url_for('admin_subadmins', bg=r.bg) if r.kind == 'units' else url_for('admin_bg_admins') %}
+  <form method="post" action="{{ route }}" id="adm-pw-{{ r.id }}" class="adm-pform-x" data-prompt="New password for {{ r.username }} (at least 8 characters)" data-prompt-field="new_password" data-prompt-type="password" data-confirm-ok="Set password">
+    <input type="hidden" name="action" value="reset_pw"><input type="hidden" name="admin_id" value="{{ r.id }}"><input type="hidden" name="new_password" value=""></form>
+  <form method="post" action="{{ route }}" id="adm-rm-{{ r.id }}" class="adm-pform-x" data-confirm="Remove {{ r.username }}? They can no longer open the admin area. What they did stays in the audit log." data-confirm-ok="Remove" data-confirm-tone="danger">
+    <input type="hidden" name="action" value="remove"><input type="hidden" name="admin_id" value="{{ r.id }}"></form>
+  {% for e in notify.get(r.id, []) %}
+  <form method="post" action="{{ url_for('admin_notify', aid=r.id, _method='POST') }}" id="ne-rm-{{ e.id }}" class="adm-pform-x"
+        data-confirm="Stop sending {{ r.username }}'s pending tasks to {{ e.email }}? It goes in the trail." data-confirm-ok="Remove">
+    <input type="hidden" name="action" value="remove"><input type="hidden" name="row_id" value="{{ e.id }}">
+    <input type="hidden" name="next" value="{{ url_for('admin_admins', panel='adm-' ~ r.id) }}"></form>
+  {% endfor %}
+  <footer class="adm-panel-foot"><button type="button" class="primary" data-panel-close>Done</button></footer>
+{% endcall %}
+{% endfor %}
+<script>
+// a role form (Add an admin, a Manage panel's Role): the fields its scope needs show, the rest switch off so they never
+// post; the units shown are the chosen business group's
+(function () {
+  document.querySelectorAll('[data-role-form]').forEach(function (f) {
+    var role = f.querySelector('[data-role-pick]'), bg = f.querySelector('[data-bg-pick]');
+    function sync() {
+      var opt = role && role.options[role.selectedIndex], sc = opt ? opt.getAttribute('data-scope') : 'group';
+      f.querySelectorAll('[data-scope-only]').forEach(function (el) {
+        var on = el.getAttribute('data-scope-only').split(' ').indexOf(sc) >= 0;
+        el.hidden = !on;
+        el.querySelectorAll('input, select').forEach(function (x) { x.disabled = !on; });
+      });
+      f.querySelectorAll('.adm-units-group').forEach(function (g) {
+        var on = sc === 'units' && bg && g.getAttribute('data-bg') === bg.value;
+        g.hidden = !on;
+        g.querySelectorAll('input').forEach(function (x) { x.disabled = !on; if (!on) x.checked = false; });
+      });
+    }
+    if (role) role.addEventListener('change', sync);
+    if (bg) bg.addEventListener('change', sync);
+    sync();
+  });
+})();
+</script>
+{% endblock %}

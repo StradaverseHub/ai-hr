@@ -1,0 +1,41 @@
+{# Grade H Appraisal's step on Cycle > Release results (piece 6; canvas A2-Results). Released BY UNIT, after the BU CEO signed the unit off
+   and every person has a final band on both axes; double-confirmed; a release locks the unit and shows staff their final result; the
+   result email goes out in waves to people with an address; a take-back never emails. #}
+{% set g = gh_release %}
+<link rel="stylesheet" href="{{ url_for('static', filename='gradeh_admin.css') }}?v={{ asset_v }}">
+<section class="admin-card gh-rel" id="gh-release" aria-labelledby="gh-rel-h">
+  <div class="gh-rel-grid">
+    <div class="gh-card" style="border:0;padding:0">
+      <h2 id="gh-rel-h">Grade H Appraisal &middot; ready to release?</h2>
+      <div class="gh-kv"><span>Units signed off by the BU CEO</span><b>{{ g.n_signed }} of {{ g.n_units }}</b></div>
+      <div class="gh-kv"><span>Submitted by line managers</span><b>{{ g.submitted | thousands }} of {{ g.people | thousands }}</b></div>
+      <div class="gh-kv"><span>Acknowledged (own sign-in, in person or deemed)</span><b>{{ g.acked | thousands }} of {{ g.submitted | thousands }}</b></div>
+      <div class="gh-kv"><span>Final bands changed by the super admin</span><b>{{ g.changed }} · <a href="{{ url_for('admin_gradeh', tab='bands') }}">open Final bands</a></b></div>
+      <div class="gh-kv"><span>Units released</span><b>{{ g.n_released }}</b></div>
+      <p class="small muted">Release goes unit by unit, once that unit is signed off and every person in it has a final band. Staff then see their final rating on their page, and those with a work email get one (sent in waves). Nothing in a released unit changes after that.{% if not g.mail_on %} This server sends no email.{% endif %}</p>
+      <div class="table-scroll"><table class="admin-table gh-table gh-rel-units">
+        <thead><tr><th>Unit</th><th>People</th><th>Submitted</th><th>Signed off</th><th>Where it is</th><th><span class="sr-only">Action</span></th></tr></thead>
+        <tbody>
+        {% for u in g.units %}
+        {% set nobu = u.no_bu and not u.signed and not u.released %}
+        <tr{% if nobu %} class="gh-rel-nobu"{% endif %}><td><b>{{ u.label }}</b></td><td>{{ u.people }}</td><td>{{ u.submitted }}</td>
+          <td>{{ (u.signed_at | myt_day) if u.signed else ("Can't" if nobu else 'Not yet') }}</td>
+          <td>{% if u.released %}<span class="gh-status is-released">Released {{ u.released_at | myt_day }}</span>{% elif u.ready %}<span class="gh-status is-signed">Ready to release</span>{% elif nobu %}<span class="gh-warn">No BU CEO seated</span><span class="muted small">: nobody can sign it off, so it can't be released. </span><a class="gh-lead-go gh-rel-go small" href="{{ url_for('admin_leaders', tab='buceo') }}">Seat one on Leaders › BU CEOs</a>{% else %}<span class="muted small">{{ u.why }}</span>{% endif %}</td>
+          <td class="gh-act">{% if u.released %}
+            <form method="post" action="{{ url_for('admin_gradeh_release') }}" data-confirm="Take back the release of {{ u.label }}? Its {{ u.people }} {{ 'person stops' if u.people == 1 else 'people stop' }} seeing their final result, and everything in the unit can change again. No email goes out for this." data-confirm-ok="Take it back" data-confirm-tone="danger">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token }}"><input type="hidden" name="action" value="revoke"><input type="hidden" name="unit" value="{{ u.unit }}"><input type="hidden" name="next" value="{{ url_for('admin_talent_release') }}">
+              <button type="submit" class="btn-link">Take back</button></form>{% endif %}</td></tr>
+        {% endfor %}
+        </tbody></table></div>
+      <form method="post" action="{{ url_for('admin_gradeh_release') }}" class="gh-rel-act"
+            {% if g.ready %}data-confirm="Release Grade H results for {{ g.ready | length }} {{ 'unit' if g.ready | length == 1 else 'units' }} ({% for u in g.ready %}{{ u.label }}{{ ', ' if not loop.last }}{% endfor %}), {{ g.ready_people | thousands }} {{ 'person' if g.ready_people == 1 else 'people' }}? They see their final result from now on, {{ g.ready_email | thousands }} with a work email get an email (in waves), and nothing in these units can change afterwards." data-confirm-ok="Release"{% else %}data-confirm="Nothing is ready to release yet."{% endif %}>
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}"><input type="hidden" name="action" value="release"><input type="hidden" name="expect" value="{{ g.ready | length }}"><input type="hidden" name="next" value="{{ url_for('admin_talent_release') }}">
+        {% for u in g.ready %}<input type="hidden" name="unit" value="{{ u.unit }}">{% endfor %}
+        <button type="submit" class="primary"{% if not g.ready %} disabled{% endif %}>Release {{ g.ready | length }} signed-off {{ 'unit' if g.ready | length == 1 else 'units' }}</button>
+        <span class="muted small">Opens OneHR's confirm box naming the units and the number of staff.</span>
+      </form>
+    </div>
+    <aside class="gh-rel-side"><h3 style="margin:0 0 6px;font-size:.95rem">Talent rating</h3>
+      <p class="small muted" style="margin:0">Waiting on Group P&amp;R. Until their own grid (SSTAR, STAR, IMPRO, SCORE, PIP) is set, the Excel uses OneHR's 9-box labels.</p></aside>
+  </div>
+</section>

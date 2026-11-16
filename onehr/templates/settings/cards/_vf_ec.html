@@ -1,0 +1,22 @@
+{# Filters card › Executive Chairman (canvas board E; shown only while ONEHR_CHAIR=1). His Group Talent Box covers every business group; he
+   keeps the business group and unit pills he has, and the filters ticked here appear once he picks a business group, counted within
+   it. One list, one save (calib_viewer_filter, kind 'ec'). #}
+{% set ec = vf.ec %}
+<p class="muted small vf-sub vf-sub-ec">His box covers every business group. He keeps the business group and unit pills he has today; the filters below appear once he
+  picks a business group, and count within it.</p>
+<form method="post" action="{{ url_for('admin_calib_viewer_filter') }}" class="vf-ecform" data-no-busy data-vf-form data-vf-inline
+      data-vf-who="the Executive Chairman" data-vf-set="{{ 1 if ec.set_here else 0 }}"
+      data-confirm="Nothing has changed for the Executive Chairman." data-confirm-title="Save filters?" data-confirm-ok="Save filters">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+  <input type="hidden" name="kind" value="ec">
+  <input type="hidden" name="viewer_id" value="">
+  <input type="hidden" name="action" value="save">
+  {% from "settings/cards/_vf_macros.html" import filter_rows %}
+  {{ filter_rows(ec.rows) }}
+  <p class="vf-note">A group where no one has a value draws no chip for it, as on every other screen.</p>
+  <div class="vf-ecfoot">
+    <span class="muted small adm-panel-grow" data-vf-status role="status">Nothing changed yet.</span>
+    <button type="submit" class="primary" data-vf-save disabled>Save filters</button>
+  </div>
+</form>
+<script src="{{ url_for('static', filename='calib_viewer_filters.js') }}?v={{ asset_v }}"></script>

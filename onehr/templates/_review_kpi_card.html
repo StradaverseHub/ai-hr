@@ -1,0 +1,56 @@
+{# One KPI line, ALWAYS visible -- never hidden behind a turn.
+
+   The whole point of putting entry inside the conversation is that the person
+   can see what they are being asked about while they answer it: the weight, the
+   target, the direction, and the ladder their number will land on. A chat that
+   asks "what did Sales Revenue come in at?" with the target off-screen is a
+   worse form, not a better one.
+
+   The ladder branches on the MECHANISM that pm_score_targets() attached. It is
+   never re-derived here -- performance_my.html branches the same way, off the
+   same helper, so the two cannot disagree about which ladder a person is on. #}
+<div class="rv-kpi" data-kpi="{{ t['id'] }}">
+  <div class="rv-kpi-head">
+    <strong>{{ t['kpi_name'] }}</strong>
+    <span class="muted small">Weight {{ t['weightage'] }}%</span>
+  </div>
+  {% if t['description'] %}<p class="rv-kpi-desc muted small">{{ t['description'] }}</p>{% endif %}
+  <div class="rv-kpi-facts muted small">
+    <span>Target {% if t['target'] is not none %}{{ t['target'] | commas }}{% else %}&mdash;{% endif %}{{ ' ' ~ t['unit'] if t['unit'] }}</span>
+    <span>{{ 'Higher is better' if t['method'] == 'more' else 'Lower is better' }}</span>
+  </div>
+  {# t['mechanism'] is set by pm_score_targets() whether or not a value has been
+     keyed yet; t['score'] is None until one is. Branch on the mechanism, or the
+     ladder disappears exactly when the person needs it most -- before they answer. #}
+  {% if t['mechanism'] == 'A' %}
+    <ol class="rv-ladder">
+      {% for i in range(1, 6) %}
+        {% if t['rate' ~ i] is not none %}<li><span class="n">{{ i }}</span>{{ t['rate' ~ i] | commas }}</li>{% endif %}
+      {% endfor %}
+    </ol>
+  {% elif t['threshold'] is not none or t['excellence'] is not none %}
+    <ol class="rv-ladder">
+      {% if t['threshold'] is not none %}<li><span class="n">&ndash;</span>Threshold {{ t['threshold'] | commas }}</li>{% endif %}
+      {% if t['target'] is not none %}<li><span class="n">&ndash;</span>Target {{ t['target'] | commas }}</li>{% endif %}
+      {% if t['excellence'] is not none %}<li><span class="n">&ndash;</span>Excellence {{ t['excellence'] | commas }}</li>{% endif %}
+    </ol>
+  {% endif %}
+
+  {% if t['bu_level'] %}
+    {# HR's figure to enter. Say so rather than showing a box that refuses. #}
+    <p class="muted small" style="margin:8px 0 0">{{ phrase('account.bu_level', kpi=t['kpi_name']) }}</p>
+  {% elif t['can_edit'] %}
+    <div class="rv-kpi-entry">
+      <input class="rv-actual" inputmode="decimal" autocomplete="off"
+             aria-label="Actual for {{ t['kpi_name'] }}"
+             value="{{ t['result']['actual_value'] if t['result'] and t['result']['actual_value'] is not none }}">
+      {% if t['unit'] %}<span class="muted small">{{ t['unit'] }}</span>{% endif %}
+      <button type="button" class="primary" data-save-kpi="{{ t['id'] }}"
+              data-url="{{ url_for('performance_kpi_autosave', kpi_target_id=t['id']) }}">Save</button>
+    </div>
+  {% else %}
+    <p class="muted small" style="margin:8px 0 0">
+      {{ t['result']['actual_value'] | commas if t['result'] and t['result']['actual_value'] is not none else 'Not yours to edit now.' }}
+    </p>
+  {% endif %}
+</div>

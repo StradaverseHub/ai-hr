@@ -1,0 +1,72 @@
+{% extends "base.html" %}
+{% block title %}{{ prog.title }} · page{% endblock %}
+{% block body %}
+{# A programme's page, edited by L&D (2026-10-22; canvas [design canvas link removed] board 15B):
+   the photo, the brochure (its text kept for the agent), the details staff see, and the AI's proposals from the
+   brochure, red until kept. #}
+<div class="adm-headrow">
+  <div class="lm-shead">
+    <a class="btn-link" href="{{ url_for('admin_learning_programmes', pid=prog.id) }}">‹ Programmes</a>
+    <span class="lm-kick">Programme · {{ prog.status }}</span>
+    <h2 class="lm-stitle">{{ prog.title }}</h2>
+  </div>
+  <div class="lm-head-acts"><a class="btn-link" href="{{ url_for('learning_programme', pid=prog.id) }}" target="_blank" rel="noopener">See it as staff do</a></div>
+</div>
+
+<div class="lm-split lm-pp">
+  <section class="admin-card" aria-labelledby="lm-pp-media">
+    <h3 id="lm-pp-media" class="lm-h">Photo and brochure</h3>
+    <div class="lm-pp-photo{{ ' is-empty' if not prog.photo_path }}">{% if prog.photo_path %}<img src="{{ url_for('learning_programme_file', pid=prog.id, kind='photo') }}" alt="The programme's photo">{% else %}<span class="muted small">No photo yet</span>{% endif %}</div>
+    {% if can %}
+    <form method="post" enctype="multipart/form-data" class="lm-upl" data-confirm="Upload this as {{ prog.title }}'s photo?{{ ' It replaces the one there.' if prog.photo_path else '' }}" data-confirm-ok="Upload">
+      <input type="hidden" name="action" value="photo">
+      <label>Photo <span class="muted small">JPG, PNG or WebP, up to 5 MB; shown wide (16:9)</span><input type="file" name="file" accept=".jpg,.jpeg,.png,.webp" required></label>
+      <div class="lm-formfoot">{% if prog.photo_path %}<button type="submit" form="lm-pp-rmphoto" class="btn-link lm-danger">Remove</button>{% endif %}<button type="submit" class="primary">Upload the photo</button></div>
+    </form>
+    {% if prog.photo_path %}<form method="post" id="lm-pp-rmphoto" data-confirm="Remove the photo?" data-confirm-ok="Remove"><input type="hidden" name="action" value="photo_remove"></form>{% endif %}
+    {% endif %}
+    <div class="lm-pp-doc">
+      {% if prog.brochure_path %}<span class="lm-pp-pdf" aria-hidden="true">PDF</span><span><a href="{{ url_for('learning_programme_file', pid=prog.id, kind='brochure') }}" target="_blank" rel="noopener"><b>{{ prog.brochure_name or 'Brochure' }}</b></a><br>{% if prog.brochure_flag %}<span class="small lm-danger">Not read by the AI: it has words written to the AI ("{{ prog.brochure_flag }}"). Open it to check, and upload a clean copy.</span>{% else %}<span class="muted small">{{ 'Its text is read for the agent' if prog.brochure_text else 'No text could be read from it (a scanned PDF)' }}</span>{% endif %}</span>
+      {% else %}<span class="muted small">No brochure yet</span>{% endif %}
+    </div>
+    {% if can %}
+    <form method="post" enctype="multipart/form-data" class="lm-upl" data-confirm="Upload this as {{ prog.title }}'s brochure?{{ ' It replaces the one there.' if prog.brochure_path else '' }}" data-confirm-ok="Upload">
+      <input type="hidden" name="action" value="brochure">
+      <label>Brochure <span class="muted small">PDF, up to 10 MB</span><input type="file" name="file" accept=".pdf" required></label>
+      <div class="lm-formfoot">{% if prog.brochure_path %}<button type="submit" form="lm-pp-rmbro" class="btn-link lm-danger">Remove</button>{% endif %}<button type="submit" class="primary">Upload the brochure</button></div>
+    </form>
+    {% if prog.brochure_path %}<form method="post" id="lm-pp-rmbro" data-confirm="Remove the brochure? The agent stops answering from it." data-confirm-ok="Remove"><input type="hidden" name="action" value="brochure_remove"></form>{% endif %}
+    {% endif %}
+    <p class="muted small">Staff see the photo on the calendar and the programme's page, and download the brochure. The coach answers their questions from the brochure's text.</p>
+  </section>
+
+  <section class="admin-card" aria-labelledby="lm-pp-det">
+    <div class="lm-cardhead">
+      <h3 id="lm-pp-det" class="lm-h">The details staff see</h3>
+      {% if can and ai_on and (prog.brochure_text or prog.description) %}
+      <form method="post" class="lm-inline" data-confirm="Have the AI propose the details from {{ 'the brochure' if prog.brochure_text else 'the description' }}? Each one stays red until you keep it." data-confirm-ok="Propose">
+        <input type="hidden" name="action" value="ai_fill">
+        <button type="submit" class="btn-ai"><svg width="12" height="12" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2C12.6 7.4 16.6 11.4 22 12C16.6 12.6 12.6 16.6 12 22C11.4 16.6 7.4 12.6 2 12C7.4 11.4 11.4 7.4 12 2Z" fill="var(--d-fg-d61923)"></path></svg>Fill from the {{ 'brochure' if prog.brochure_text else 'description' }}</button></form>
+      {% endif %}
+    </div>
+    {% for k, lab, cap in fields if proposed.get(k) %}
+    <div class="lm-pp-prop">
+      <span class="lm-pp-from">{{ lab }} · proposed from the brochure, check it</span>
+      <div class="lm-pp-ptext">{{ proposed[k] | e | replace('\n', '<br>' | safe) }}</div>
+      {% if can %}<form method="post" class="lm-inline"><input type="hidden" name="field" value="{{ k }}">
+        <button type="submit" name="action" value="keep" class="primary" data-confirm="Keep the AI's text as the {{ lab | lower }}? It replaces what's there; staff see it." data-confirm-ok="Keep">Keep</button>
+        <button type="submit" name="action" value="drop" class="btn-link" data-confirm="Drop the AI's {{ lab | lower }}?" data-confirm-ok="Drop">Drop</button></form>{% endif %}
+    </div>
+    {% endfor %}
+    <form method="post" class="admin-form" data-confirm="Save the details staff see on {{ prog.title }}'s page?" data-confirm-ok="Save">
+      <input type="hidden" name="action" value="details">
+      {% for k, lab, cap in fields %}
+      <label class="lm-fld">{{ lab }}{% if k in ('outcomes', 'outline') %} <span class="muted small">one per line</span>{% endif %}
+        {% if k in ('summary', 'outcomes', 'outline') %}<textarea name="{{ k }}" rows="{{ 4 if k != 'summary' else 3 }}" maxlength="{{ cap }}"{{ ' disabled' if not can }}>{{ prog[k] or '' }}</textarea>
+        {% else %}<input name="{{ k }}" maxlength="{{ cap }}" value="{{ prog[k] or '' }}"{{ ' disabled' if not can }}>{% endif %}</label>
+      {% endfor %}
+      {% if can %}<div class="actions"><span class="muted small">AI proposals stay above until you keep them. Nothing reaches staff until you save.</span><button type="submit" class="primary">Save</button></div>{% endif %}
+    </form>
+  </section>
+</div>
+{% endblock %}

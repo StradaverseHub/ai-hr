@@ -1,0 +1,1188 @@
+{% from "_review_icons.html" import rvicon %}
+<!doctype html>
+<html lang="{{ html_lang|default('en') }}" data-text="{{ ui_text_size|default('m') }}" data-theme="{{ ui_theme|default('light') }}">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="csrf-token" content="{{ csrf_token }}">
+  <title>{% block title %}OneHR by Chin Hin{% endblock %}</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}?v={{ asset_v }}">
+  {# arriving from the dashboard's hand-over: the module fades in (2026-10-16); in <head>, so before the first paint #}
+  <script src="{{ url_for('static', filename='move_in.js') }}?v={{ asset_v }}"></script>
+<script src="{{ url_for('static', filename='kpi_line.js') }}?v={{ asset_v }}"></script>
+<script src="{{ url_for('static', filename='file_preview.js') }}?v={{ asset_v }}"></script>
+<script src="{{ url_for('static', filename='kpi_units.js') }}?v={{ asset_v }}"></script>
+<script src="{{ url_for('static', filename='fold.js') }}?v={{ asset_v }}"></script>
+<script src="{{ url_for('static', filename='proper.js') }}?v={{ asset_v }}"></script>
+</head>
+<body data-today="{{ odp_today }}"{% block keep_place %}{% endblock %}>
+<a href="#main" class="skip-link">Skip to main content</a>
+{# the sign-in, forgot-password and reset pages are full-screen, with no top bar, and show their own messages
+   (the sign-in redesign, 2026-10-15) #}
+{% set auth_page = request.endpoint in ('login', 'forgot_password', 'reset_password', 'signin_help') %}
+{% set p = request.path %}
+{% macro demo_persona_form() %}
+    {% if nav_demo_personas %}
+    <form method="post" action="{{ url_for('demo_switch') }}" class="demo-switch">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <input type="hidden" name="next" value="{{ request.full_path if request.query_string else request.path }}">
+      <span class="demo-switch__label" title="Demo only: view the product as each role">Viewing as</span>
+      <select name="persona" class="demo-switch__select" onchange="this.form.submit()">
+        {% for p in nav_demo_personas %}
+        <option value="{{ p['demo_persona'] }}"
+                {{ 'selected' if nav_demo_as == p['id'] else '' }}{% if nav_demo_titles.get(p['demo_persona']) %} title="{{ nav_demo_titles[p['demo_persona']] }}"{% endif %}>{{ nav_demo_labels.get(p['demo_persona'], p['demo_persona']) }}</option>
+        {% endfor %}
+      </select>
+    </form>
+    {% endif %}
+{% endmacro %}
+{% macro demo_cycle_form() %}
+    {% if nav_demo_dash_cycles %}
+    <form method="post" action="{{ url_for('demo_dash_cycle') }}" class="demo-switch">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <span class="demo-switch__label" title="Demo only: see the dashboard between cycles, after a past cycle">Cycle</span>
+      <select name="cycle" class="demo-switch__select" onchange="this.form.submit()">
+        <option value="">{{ active_cycle['name'] ~ ' · running' if active_cycle else 'Now' }}</option>
+        <optgroup label="Between cycles">
+          {% for c in nav_demo_dash_cycles %}
+          <option value="{{ c['id'] }}" {{ 'selected' if nav_demo_dash_as == c['id'] else '' }}>After {{ c['name'] }}</option>
+          {% endfor %}
+        </optgroup>
+      </select>
+    </form>
+    {% endif %}
+{% endmacro %}
+{% macro demo_lms_form() %}
+    {# AI+ Learning for this demo session (2026-10-20): No = the platform with no Learning, as production reads it #}
+    {% if nav_demo_lms %}
+    <form method="post" action="{{ url_for('demo_lms') }}" class="demo-switch">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <span class="demo-switch__label" title="Demo only: show or hide AI+ Learning for this session">LMS</span>
+      <select name="lms" class="demo-switch__select" onchange="this.form.submit()">
+        <option value="on" {{ 'selected' if nav_demo_lms == 'on' else '' }}>Yes</option>
+        <option value="off" {{ 'selected' if nav_demo_lms == 'off' else '' }}>No</option>
+      </select>
+    </form>
+    {% endif %}
+{% endmacro %}
+{% macro demo_gradeh_reset_form() %}
+    {# the Grade H demo people back to their seeded start (2026-10-28); the Grade H demo login's card only (2026-10-29), the demo's own people only #}
+    {% if nav_demo_gradeh %}
+    <form method="post" action="{{ url_for('demo_gradeh_reset_route') }}" class="tb-demo-onb"
+          data-confirm="Put the Grade H demo back to its start? Every Grade H demo person's answers, ratings, moves and sign-offs are cleared and the seeded demo states come back. Real accounts are not touched.">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <button type="submit" class="rv-demoreset-btn" title="Demo only: put the Grade H demo people back as they were seeded">Reset Grade H demo</button>
+    </form>
+    {% endif %}
+{% endmacro %}
+{# THE staging demo card (2026-10-28): one macro for every bar a demo login can be on -- the employee bar, the admin bar (the HR
+   admin persona) and the Grade H staff page's bar -- so no persona's bar can lose it. It was written out in the employee bar
+   alone, and the admin bar carried three loose controls instead: switching to the HR admin persona dropped the card, with the
+   Learning switch and the first sign-in restart in it. #}
+{% macro demo_card() %}
+  {% if nav_demo_personas or nav_demo_dash_cycles or nav_review_demo or nav_demo_onboard %}
+  {% set _dp = (nav_demo_personas | selectattr('id', 'equalto', nav_demo_as) | list | first) if nav_demo_personas else none %}
+  {% set _dc = (nav_demo_dash_cycles | selectattr('id', 'equalto', nav_demo_dash_as) | list | first) if nav_demo_dash_cycles else none %}
+  <div class="acct tb-demo-wrap{{ ' gh-demo' if gh_bar is defined and gh_bar else '' }}">
+    <button type="button" class="tb-demo js-dd" id="tb-demo-trigger" aria-haspopup="true" aria-expanded="false" aria-controls="tb-demo-menu">
+      <span class="tb-demo-ico" hidden aria-hidden="true"><svg width="18" height="18" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 3h6M10 3v6l-5 9a2 2 0 0 0 1.8 3h10.4a2 2 0 0 0 1.8-3l-5-9V3"/><path d="M7.5 14h9"/></svg></span>
+      <b>STAGING DEMO</b><span>{{ nav_demo_labels.get(_dp['demo_persona'], _dp['demo_persona']) if _dp else 'You' }} &middot; {{ ('After ' ~ _dc['name']) if _dc else 'Live' }}{{ ' · No LMS' if nav_demo_lms == 'off' else '' }}</span>
+      <svg width="12" height="12" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"></path></svg>
+    </button>
+    <div class="acct-menu tb-demo-menu" id="tb-demo-menu" hidden role="menu" aria-label="Staging demo">
+      <p class="tb-demo-h">Staging demo &middot; not on production</p>
+      {{ demo_persona_form() }}
+      {{ demo_cycle_form() }}
+      {{ demo_lms_form() }}
+      {{ demo_onboard_form() }}
+      {{ demo_gradeh_reset_form() }}
+      {{ review_demo_bar() }}
+    </div>
+  </div>
+  {% endif %}
+{% endmacro %}
+{% macro demo_onboard_form() %}
+    {# the first sign-in, again (2026-10-16): the name, the picture and the tour start over for this demo account #}
+    {% if nav_demo_onboard %}
+    <form method="post" action="{{ url_for('demo_onboarding_reset') }}" class="tb-demo-onb"
+          data-confirm="Start the first sign-in over? The name OneHR calls you, your picture and the tour reset for this demo account, and the dashboard asks again.">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <button type="submit" class="rv-demoreset-btn" title="Demo only: say your name, pick a picture and take the tour again">Restart first sign-in</button>
+    </form>
+    {% endif %}
+{% endmacro %}
+{% macro review_demo_bar() %}
+    {% if nav_review_demo %}
+    <div class="rv-demobar rv-demobar-nav" role="region" aria-label="Demo controls">
+      <span class="rv-demobar-lbl">Demo</span>
+      <form method="post" action="{{ url_for('review_demo_mechanism') }}" class="demo-switch">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+        <span class="demo-switch__label" title="Demo only: the appraisal mechanism">Mechanism</span>
+        <select name="mech" class="demo-switch__select" onchange="this.form.submit()">
+          {% for key, label in [('a', '5-rating'), ('fiamma', 'FIAMMA'), ('signature', 'SIGNATURE')] %}
+          <option value="{{ key }}" {{ 'selected' if nav_review_demo_mech == key else '' }}>{{ label }}</option>
+          {% endfor %}
+        </select>
+      </form>
+      {# The reset follows the view (Chris, 2026-09-28): under Mine it rewinds this ZZ demo account's OWN review
+         (check-in, competency, plan, career, the 360 they give); under Team only what they did as a reviewer. #}
+      {# the view the page SHOWS (review_journey passes it) -- not the ?view= left in the address after a persona
+         switch, which falls back to Mine for someone with no team #}
+      {# ...and in a leader view (Dept / BU / BG, 2026-09-30) only that view's calibration #}
+      {% set _rv_view = view if (request.path.startswith('/review/journey') and view is defined and view) else 'mine' %}
+      {% set _rv_team = _rv_view == 'team' %}
+      {% set _rv_cal = _rv_view in ('dept', 'bu', 'bg') %}
+      <form method="post" action="{{ url_for('review_demo_reset_team') if _rv_team else (url_for('review_demo_reset_calibration') if _rv_cal else url_for('review_demo_reset_all')) }}"
+            class="rv-demoreset">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+        {% if _rv_cal %}<input type="hidden" name="view" value="{{ _rv_view }}">{% endif %}
+        <button type="submit" class="rv-demoreset-btn"
+                title="{{ 'Reset your team review (your reports go back to awaiting review)' if _rv_team else (('Reset this department review (your bands, remarks and submit here)' if _rv_view == 'dept' else 'Reset this calibration (your moves and your lock here)') if _rv_cal else 'Reset your own review') }}">{{ 'Reset team' if _rv_team else (('Reset department review' if _rv_view == 'dept' else 'Reset calibration') if _rv_cal else 'Reset') }}</button>
+      </form>
+    </div>
+    {% endif %}
+{% endmacro %}
+{% macro acct_menu() %}
+      <div class="acct-menu" id="acct-menu" hidden role="menu">
+        {# phone view (2026-11-07): the bar shows only the picture, so the menu opens with the name, role and JG; hidden everywhere else (static/style.css, the phone section) #}
+        {% if nav_me and not nav_is_admin %}<div class="acct-me" hidden><b>{{ nav_me['name'] }}</b>{% if nav_me['role'] %}<span>{{ nav_me['role'] }}</span>{% endif %}</div>{% endif %}
+        <div class="acct-id">{{ user['full_name'] }}{% if not nav_is_admin %}<span class="acct-id-sub">Your name on your records</span>{% endif %}{% if nav_is_super %} <span class="who-tag who-tag-admin">super admin</span>{% elif nav_is_admin %} <span class="who-tag who-tag-admin" title="{{ nav_admin_bg }}">BGHR</span>{% endif %}</div>
+        {# While a persona is active the name above is the PERSONA's, not the
+           account's -- say so, or a demo reads it as who they logged in as. #}
+        {% if nav_demo_personas and nav_demo_as %}
+        <div class="acct-id" style="font-weight:400;font-size:0.78rem;color:var(--d-fg-9aa0b0);padding-top:0">
+          demo persona &middot; switch role in the top bar
+        </div>
+        {% endif %}
+        {% if not nav_is_admin %}<a href="{{ url_for('my_settings') }}" role="menuitem">Profile</a>{% endif %}
+        {% if nav_is_admin %}<a href="{{ url_for('admin_notify') }}" role="menuitem">Notification emails</a>{% endif %}
+        {# an employee's opens their Profile's panel (2026-10-22); an admin's is the page #}
+        <a href="{{ url_for('change_password') if nav_is_admin else url_for('my_settings', panel='password') }}" role="menuitem">Change password</a>
+        {# No "Show me around" (Chris, 2026-10-12): it replayed the classic 360 page's tour; Ask OneHR on the dashboard
+           answers "where is..." now. The menu is the name, Change password, My record and Log out. #}
+        {% if not nav_is_admin %}
+        {# The record is reachable from anywhere: it opens the dashboard's Full record panel (2026-10-09), never the
+           classic /me page. #}
+        <a href="{{ url_for('dashboard', panel='records') }}" role="menuitem">My record</a>
+        {% endif %}
+        {# Text size (Chris, 2026-11-01, canvas [design canvas link removed] board A1): the person's own
+           setting, saved to their account (POST /me/display); static/display.js applies it at once and saves. The Theme row
+           (Light / Dark / Device, boards A1 and A2) is the same control under it, the same save. #}
+        <div class="acct-disp" role="group" aria-labelledby="acct-disp-l">
+          <div class="acct-disp-l" id="acct-disp-l">Text size</div>
+          <div class="acct-seg" role="radiogroup" aria-labelledby="acct-disp-l" data-display-text>
+            {% for k, lab, pct in (('s', 'Small', '87.5%'), ('m', 'Standard', '100%'), ('l', 'Larger', '112.5%'), ('xl', 'XL', '125%')) %}
+            <button type="button" class="acct-seg-b{{ ' on' if k == ui_text_size }}" role="radio" aria-checked="{{ 'true' if k == ui_text_size else 'false' }}" data-text-size="{{ k }}" data-label="{{ lab }}" title="{{ lab }}: {{ pct }}" tabindex="{{ 0 if k == ui_text_size else -1 }}">{{ lab }}</button>
+            {% endfor %}
+          </div>
+          <div class="acct-disp-l acct-disp-l2" id="acct-theme-l">Theme</div>
+          <div class="acct-seg" role="radiogroup" aria-labelledby="acct-theme-l" data-display-theme>
+            {# sun, moon, monitor: stroke 1.8, 14px, the colour of the button's text #}
+            {% for k, lab, tip in (('light', 'Light', 'Light'), ('dark', 'Dark', 'Dark'), ('auto', 'Device', "Follows your computer's light or dark setting")) %}
+            <button type="button" class="acct-seg-b acct-seg-t{{ ' on' if k == ui_theme }}" role="radio" aria-checked="{{ 'true' if k == ui_theme else 'false' }}" data-theme-pick="{{ k }}" data-label="{{ lab }}" title="{{ tip }}" tabindex="{{ 0 if k == ui_theme else -1 }}">
+              {%- if k == 'light' -%}<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg>
+              {%- elif k == 'dark' -%}<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 14.5A8 8 0 1 1 9.5 4a6.5 6.5 0 0 0 10.5 10.5z"/></svg>
+              {%- else -%}<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="12" rx="2"/><path d="M8 20h8M12 16v4"/></svg>{%- endif -%}{{ lab }}</button>
+            {% endfor %}
+          </div>
+          <div class="acct-disp-n">Saved to your account, on any computer.</div>
+          <div class="acct-disp-err flash flash-error" id="acct-disp-err" role="status" aria-live="polite" hidden></div>
+        </div>
+        {# Help (2026-10-22, canvas [design canvas link removed] board A): on every page; it opens
+           the Help panel (_help_panel.html, static/help.js) #}
+        {# What's new (2026-11-03, canvas [design canvas link removed] board M1): above Get Help, in Get Help's row shape
+           and divider block; the megaphone is the notice bar's own icon. The navy count shows only while notes are unseen
+           (wn_unseen_n: the context processor's one cheap query); static/whatsnew.js opens the panel (_whatsnew_panel.html). #}
+        <div class="acct-blk">
+        <a href="#" role="menuitem" class="acct-help acct-wn" data-wn-open>
+          <svg width="18" height="18" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 10v4a1 1 0 0 0 1 1h2l6 4V5L6 9H4a1 1 0 0 0-1 1z"/><path d="M16 9a3.5 3.5 0 0 1 0 6"/><path d="M19 6a8 8 0 0 1 0 12"/></svg>
+          <span class="acct-help-t"><span class="acct-help-n">What's new</span><span class="acct-help-s" data-wn-sub>{{ (wn_unseen_n ~ ' new for you') if wn_unseen_n else "What changed in AI+ OneHR" }}</span></span>
+          <span class="acct-wn-n" data-wn-count{% if not wn_unseen_n %} hidden{% endif %}>{{ wn_unseen_n }}</span></a>
+        <a href="#" role="menuitem" class="acct-help" data-help-open="home">
+          <svg width="18" height="18" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9.5"/><path d="M9.5 9.5a2.6 2.6 0 0 1 5 1c0 1.8-2.5 2.3-2.5 4"/><circle class="acct-help-dot" cx="12" cy="17.6" r="1.2"/></svg>
+          <span class="acct-help-t"><span class="acct-help-n">Get Help</span><span class="acct-help-s">Answers, or report a problem</span></span></a>
+        </div>
+        {# Log out is a POST with the form's token (security test 2-14, 2026-10-31): a link on another site can't sign anyone out #}
+        <form method="post" action="{{ url_for('logout') }}" class="logout-form" role="none"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><button type="submit" class="logout" role="menuitem">Log out</button></form>
+      </div>
+{% endmacro %}
+{% macro notice_pill() %}<button type="button" class="sn-pill" id="site-notice-pill" hidden><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg><span class="sn-pill-t"></span></button>{% endmacro %}
+{% if user and not auth_page and nav_is_admin %}
+<nav class="topbar">
+  {# On the user's own home/landing page a "back to home" flip is pointless,
+     so the wordmark stays static there. Home = the Dashboard for everyone
+     (staff and admins); the all-modules Hub was retired. #}
+  {% set on_home = (request.path == '/dashboard' and not nav_is_admin) or (nav_is_admin and request.path in ['/admin', '/admin/']) %}
+  <div class="brand">
+    <a href="{{ url_for('home') }}" class="brand-wordmark{{ ' is-home' if on_home }}" aria-label="Back to Dashboard">
+      <span class="brand-face brand-face-front">
+        <span class="brand-name">OneHR</span>
+        <span class="brand-by">by Chin Hin</span>
+      </span>
+      <span class="brand-face brand-face-back" aria-hidden="true">
+        <span class="brand-back-arrow">&larr;</span>Dashboard
+      </span>
+    </a>
+  </div>
+  {# PHONE VIEW, PIECE E (2026-11-08): under 1024px the side menu is a bottom sheet and this button opens it (static/admin.js); rendered hidden, drawn only by the phone rules #}
+  <button type="button" class="adm-menu-btn" id="adm-menu-open" aria-haspopup="dialog" aria-controls="adm-menu" aria-expanded="false" hidden><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h16"/></svg><span>Menu</span></button>
+  {{ notice_pill() }}
+  <div class="nav-links">
+      {# The admin shell (2026-10-10, the "OneHR Admin Revamp" canvas): the menus moved to the sidebar
+         (_admin_side.html), so the top bar keeps the search, the cycle you are viewing, and Account. #}
+      <button type="button" class="adm-search-trigger" id="adm-search-open" aria-haspopup="dialog"
+              aria-controls="adm-search">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+             stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7"></circle><path d="M20 20l-4-4"></path></svg>
+        <span>Search pages, settings, reports</span><kbd aria-hidden="true">&#8984;K</kbd>
+      </button>
+      {# the Admin Agent is a floating icon at the bottom right now (2026-10-12, canvas board A3): _admin_agent.html #}
+      {% if view_cycle %}
+      <div class="acct cycle-switch">
+        <button type="button" class="nav-dd-trigger js-dd cycle-trigger {{ 'cycle-past' if not viewing_active else '' }}" id="cycle-trigger" aria-haspopup="true" aria-expanded="false" aria-controls="cycle-menu" title="Review cycle you are viewing">
+          <span class="cycle-dot" aria-hidden="true"></span>{{ view_cycle['name'] }}{% if not viewing_active %} <span class="cycle-ro">read-only</span>{% endif %} <span class="acct-caret" aria-hidden="true">▾</span>
+        </button>
+        <div class="acct-menu" id="cycle-menu" hidden role="menu">
+          <div class="menu-sec">Review cycle</div>
+          {% for c in nav_cycles %}
+            <a class="{{ 'active' if c['id'] == view_cycle['id'] else '' }}" role="menuitem"
+               href="{{ url_for('admin_cycle_select', cycle=c['id'], next=request.full_path) }}">
+              {{ c['name'] }}{% if c['is_active'] %} <span class="cycle-live">active</span>{% elif c['archived_at'] %} <span class="cycle-arch">archived</span>{% endif %}
+            </a>
+          {% endfor %}
+        </div>
+      </div>
+      {% endif %}
+    {{ demo_card() }}
+    <div class="acct">
+      <button type="button" class="acct-trigger js-dd" id="acct-trigger" aria-haspopup="true" aria-expanded="false" aria-controls="acct-menu">Account <span class="acct-caret" aria-hidden="true">▾</span></button>
+      {{ acct_menu() }}
+    </div>
+  </div>
+</nav>
+{% elif user and not auth_page and gh_bar is defined and gh_bar %}
+{# Grade H Appraisal's staff page (My Appraisal / Penilaian Saya, 2026-10-28; canvases H2-H8): a plain bar, the wordmark and
+   one account button that holds the language (BM / EN) and Log out. A <details>, so it works with no script. #}
+<nav class="gh-bar" aria-label="OneHR">
+  <a class="gh-brand" href="{{ url_for('my_appraisal') }}">
+    <span class="gh-mark" aria-hidden="true"><svg width="15" height="15" viewBox="0 0 24 24"><path d="M12 2C12.8 8 16 11.2 22 12C16 12.8 12.8 16 12 22C11.2 16 8 12.8 2 12C8 11.2 11.2 8 12 2Z" fill="var(--on-fill)"></path></svg></span>
+    <span class="gh-brand-n">OneHR</span><span class="gh-brand-by">by Chin Hin</span>
+  </a>
+  {{ notice_pill() }}
+  {{ demo_card() }}{# a demo login on a Grade H persona keeps its demo card (2026-10-28) #}
+  <details class="gh-acct" id="gh-acct">
+    <summary class="gh-acct-btn" aria-label="{{ T('acct_aria') }}">
+      {% if me['avatar'] %}<img class="gh-av" src="{{ me['avatar'] }}" alt="" width="34" height="34">{% else %}<span class="gh-av" aria-hidden="true">{{ me['initials'] }}</span>{% endif %}
+      <span class="gh-acct-name">{{ me['name'] }}</span>
+      <span class="gh-lang-code">{{ me['lang_code'] }}</span>
+      <svg class="gh-caret" width="12" height="12" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 9l6 6 6-6" fill="none" stroke="currentColor" stroke-width="2.5"></path></svg>
+    </summary>
+    <div class="gh-acct-panel">
+      <div class="gh-acct-who">
+        {% if me['avatar'] %}<img class="gh-av gh-av-lg" src="{{ me['avatar'] }}" alt="" width="44" height="44">{% else %}<span class="gh-av gh-av-lg" aria-hidden="true">{{ me['initials'] }}</span>{% endif %}
+        <span><b>{{ me['name'] }}</b><span>{{ me['eid'] }}{% if me['title'] %} · {{ me['title'] }}{% endif %}</span></span>
+      </div>
+      <form method="post" action="{{ url_for('my_appraisal_language') }}" class="gh-acct-lang">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">{% if gh_next is defined and gh_next %}<input type="hidden" name="next" value="{{ gh_next }}">{% endif %}
+        <b>{{ T('lang_h') }}</b>
+        <div role="radiogroup" aria-label="{{ T('lang_h') }}" class="gh-lang-pair">
+          <button type="submit" name="lang" value="bm" role="radio" aria-checked="{{ 'true' if lang == 'bm' else 'false' }}" class="gh-lang-b{{ ' is-on' if lang == 'bm' }}">Bahasa Melayu</button>
+          <button type="submit" name="lang" value="en" role="radio" aria-checked="{{ 'true' if lang == 'en' else 'false' }}" class="gh-lang-b{{ ' is-on' if lang == 'en' }}">English</button>
+        </div>
+        <span class="gh-acct-note">{{ T('lang_note') }}</span>
+      </form>
+      {# Log out is a POST with the token, like every Log out (security test 2-14) #}
+      <form method="post" action="{{ url_for('logout') }}" class="gh-acct-out"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><button type="submit" class="gh-logout">{{ T('logout') }}</button></form>
+    </div>
+  </details>
+</nav>
+{% elif user and not auth_page %}
+{# The top bar, direction A (Chris, 2026-10-15: "Go with A panel"; the "Ask OneHR guide panel and top bar" canvas): one
+   navy bar -- the wordmark, the cycle pill (the cycle and where it is), then on staging one dashed demo button holding
+   every demo control, then who is signed in on the Account button. The dashboard's own header row is gone. #}
+<nav class="topbar tb-a"{% if ob is defined and ob %} inert{% endif %}>
+  {# phone view (2026-11-07): on the check-in the bar's left is a back chevron to the Dashboard and the view's name; the
+     wordmark and the floating Dashboard button are not drawn there. Hidden on a desktop (the phone section of style.css shows them). #}
+  {% if request.path.startswith('/review/journey') and view is defined and view %}
+  {% set _vt = (views | selectattr('key', 'equalto', view) | map(attribute='title') | first) if (views is defined and views) else none %}
+  <a class="tb-back" href="{{ url_for('dashboard') }}" aria-label="Back to your dashboard" hidden><svg width="22" height="22" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M15 5l-7 7 7 7"/></svg></a>
+  {# PHONE VIEW, PIECE F (F1): a title too long for the bar beside the date chip has a short form on a phone only, and a shorter one at the largest text size; every form is drawn and the
+     phone rules show one (the full words stay in `title` and for a screen reader). No script swaps text. #}
+  {% set _ttl = 'My check-in' if view == 'mine' else (_vt or 'Review') %}
+  {% set _ttl_s = {'Business unit calibration': ['BU calibration', 'BU calibration'], 'Business group Talent Box': ['BG Talent Box', 'BG Talent Box'], "Your leaders' Talent Box": ["Leaders' Talent Box", "Leaders' box"],
+                   'Department Review': ['Department Review', 'Dept Review'], 'Group Talent Box': ['Group Talent Box', 'Group box']}.get(_ttl) %}
+  <span class="tb-ttl" hidden title="{{ _ttl }}">{% if _ttl_s %}<span class="tb-ttl-f">{{ _ttl }}</span><span class="tb-ttl-s" aria-hidden="true" hidden>{{ _ttl_s[0] }}</span><span class="tb-ttl-x" aria-hidden="true" hidden>{{ _ttl_s[1] }}</span>{% else %}{{ _ttl }}{% endif %}</span>
+  {% elif tb_title is defined and tb_title and not nav_is_admin %}
+  {# PHONE VIEW, PIECE F (F5): a staff page outside the check-in (Profile, Learning) carries its own back arrow and name in the bar; the floating Back is not drawn
+     under 1024px (the phone section of style.css). The arrow goes where the floating button goes and steps back the same way (the script at the foot). #}
+  <a class="tb-back" href="{{ tb_back_href if tb_back_href is defined and tb_back_href else url_for('home') }}" data-fab-back aria-label="Go back to the previous page" hidden><svg width="22" height="22" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M15 5l-7 7 7 7"/></svg></a>
+  <span class="tb-ttl" hidden title="{{ tb_title }}">{{ tb_title }}</span>
+  {% endif %}
+  {# On the user's own home/landing page a "back to home" flip is pointless,
+     so the wordmark stays static there. Home = the Dashboard for everyone
+     (staff and admins); the all-modules Hub was retired. #}
+  {% set on_home = (request.path == '/dashboard' and not nav_is_admin) or (nav_is_admin and request.path in ['/admin', '/admin/']) %}
+  <div class="brand">
+    <a href="{{ url_for('home') }}" class="brand-wordmark{{ ' is-home' if on_home }}" aria-label="Back to Dashboard">
+      <span class="brand-face brand-face-front">
+        <span class="brand-name">OneHR</span>
+        <span class="brand-by">by Chin Hin</span>
+      </span>
+      <span class="brand-face brand-face-back" aria-hidden="true">
+        <span class="brand-back-arrow">&larr;</span>Dashboard
+      </span>
+    </a>
+  </div>
+  {% if nav_pill %}
+  {# the short pill for a phone ("Year-End · 31 Dec": the deadline date only; the full words in its title): the cycle's name without its year, the date after "closes" (or "Opens 16 Nov"). Hidden on a desktop. #}
+  {% set _pn = nav_pill['name'] %}{% set _pt = nav_pill['note'] or '' %}
+  {% set _pns = (_pn.split(' ', 1)[1] if (_pn[:4].isdigit() and ' ' in _pn) else _pn) %}
+  {% set _pds = (_pt.split('closes', 1)[1].strip() if 'closes' in _pt else (_pt.rsplit(' ', 1)[0] if (_pt.startswith('Opens') and _pt[-4:].isdigit()) else _pt)) %}
+  <span class="tb-cycle is-{{ nav_pill['state'] }}" title="The review cycle">
+    <span class="tb-cycle-dot" aria-hidden="true"></span><b>{{ nav_pill['name'] }}</b>{% if nav_pill['note'] %}<span class="tb-cycle-sep" aria-hidden="true">&middot;</span><span class="tb-cycle-note">{{ nav_pill['note'] }}</span>{% endif %}
+    <span class="tb-cs" hidden title="{{ _pn }}{{ ' · ' ~ _pt if _pt }}"><span class="tb-cs-n">{{ _pns }}</span>{% if _pds %}<span class="tb-cs-sep" aria-hidden="true"> &middot; </span><span class="tb-cs-d">{{ _pds }}</span>{% endif %}</span>
+  </span>
+  {% endif %}
+  {{ notice_pill() }}
+  <span class="tb-sp"></span>
+  {# staging only: a demo login's persona, the dashboard's past-cycle view and the review demo controls, in one menu #}
+  {{ demo_card() }}
+  <div class="acct">
+    <button type="button" class="acct-trigger tb-acct js-dd" id="acct-trigger" aria-haspopup="true" aria-expanded="false" aria-controls="acct-menu" aria-label="Account: {{ nav_me['full'] if nav_me else 'you' }}"{% if nav_me %} title="{{ nav_me['full'] }}"{% endif %}>
+      {% if nav_me %}{% if nav_me['avatar'] %}<img class="tb-av tb-av-img" src="{{ nav_me['avatar'] }}" alt="" width="32" height="32">{% else %}<span class="tb-av" aria-hidden="true">{{ nav_me['initials'] }}</span>{% endif %}
+      <span class="tb-who"><b>{{ nav_me['name'] }}</b>{% if nav_me['role'] %}<small>{{ nav_me['role'] }}</small>{% endif %}</span>{% else %}Account{% endif %}
+      <svg width="12" height="12" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"></path></svg>
+    </button>
+    {{ acct_menu() }}
+  </div>
+</nav>
+{% endif %}
+
+{% include "_site_notice.html" %}
+{% set adm_shell = user and nav_is_admin and not auth_page %}
+{% if adm_shell %}<div class="adm-shell">{% include "_admin_side.html" %}{% endif %}
+<main id="main" class="{{ 'auth-shell' if auth_page else ('adm-main' if adm_shell else 'container') }}"{% if adm_shell and nav_viewonly %} data-adm-viewonly{% elif adm_shell and nav_access %} data-adm-access{% endif %}>
+  {% if adm_shell and admin_head %}{% include "_admin_head.html" %}{% endif %}
+  {# no note about an admin's access on their pages (Chris, 2026-10-20, Roles & access board D): the pages show what
+     their role gives and nothing else; admin.js switches off what it doesn't #}
+  {% if adm_shell and nav_access %}<script>window.ADM_ACCESS = {{ nav_access.client|tojson }};</script>{% endif %}
+  {% if not auth_page and user and not nav_is_admin %}
+  {# Module tabs live IN the module, not in the top bar: switching between your
+     own view and your team's is a move inside the module you're already in,
+     so it belongs next to that content rather than in global chrome. The
+     top bar keeps only what's genuinely global -- wordmark, cycle, Account. #}
+  {% set in_360 = p in ('/my-assessments', '/my-report', '/team', '/hod') or p.startswith('/rate/') or p.startswith('/report/') %}
+  {# Calibration is its own module even though several of its pages live
+     outside /calibration -- /performance/calibration, /talent-box and
+     /succession. What you're doing on all of them is calibrating a
+     population, not managing your own performance. Claim those paths for the
+     calibration tab bar and exclude them from PM's, so neither module's tabs
+     show up in the middle of the other's work. #}
+  {% set in_calib = p.startswith('/calibration') or p.startswith('/performance/calibration') or p.startswith('/talent-box') or p.startswith('/succession') %}
+  {% set in_pm = p.startswith('/performance') and not p.startswith('/performance/calibration') %}
+  {# Settings owns its own tab strip now -- it lives in admin_settings_shell.html
+     alongside the panel it belongs to, rendered from the one SETTINGS_TABS
+     registry in app.py. Keeping a second copy of that list here is what let the
+     two drift, so this branch is deliberately gone rather than kept in sync. #}
+  {% set in_idp = p == '/idp' or p.startswith('/idp/') %}
+  {% set in_promo = p.startswith('/promotion-nomination') %}
+  {% if in_360 %}
+    <div class="mod-tabs">
+      <a id="nav-my-assessments" class="{{ 'active' if p == '/my-assessments' else '' }}" href="{{ url_for('my_assessments') }}">My Assessments</a>
+      {% if nav_has_report or nav_is_manager or nav_is_hod %}
+      <a id="nav-feedback"
+         class="{{ 'active' if p in ('/my-report', '/team', '/hod') or p.startswith('/report/') else '' }}"
+         href="{{ url_for('my_report') if nav_has_report else (url_for('team_view') if nav_is_manager else url_for('hod_view')) }}">Feedback</a>
+      {% endif %}
+    </div>
+  {% elif in_idp %}
+    {# IDP is its own module: an employee's plan and career profile, and a
+       manager's view of their people's development -- deliberately not a
+       pill inside Performance, since reviewing someone's development is a
+       different job from moderating their rating. #}
+    <div class="mod-tabs">
+      <a id="nav-idp-my" class="{{ 'active' if p == '/idp' else '' }}" href="{{ url_for('idp_view') }}">My plan</a>
+      <a id="nav-idp-career" class="{{ 'active' if p == '/idp/career' else '' }}" href="{{ url_for('idp_career_view') }}">Career profile</a>
+      {% if nav_is_pm_approver %}<a id="nav-idp-team" class="{{ 'active' if p.startswith('/idp/team') else '' }}" href="{{ url_for('idp_team_view') }}">My team</a>{% endif %}
+    </div>
+  {% elif in_promo %}
+    {# The season round and the off-cycle exception are separate jobs arriving at
+       different times -- one on the calendar, one when a counteroffer lands --
+       so they get tabs rather than a toggle that quietly changes what the form
+       in front of you means. #}
+    <div class="mod-tabs">
+      <a id="nav-promo-cycle" class="{{ 'active' if p == '/promotion-nomination' else '' }}"
+         href="{{ url_for('promotion_nomination') }}">This cycle</a>
+      <a id="nav-promo-offcycle" class="{{ 'active' if p.startswith('/promotion-nomination/off-cycle') else '' }}"
+         href="{{ url_for('promotion_nomination_off_cycle') }}">Off-cycle</a>
+    </div>
+  {% elif in_calib and nav_calib_tiers %}
+    <div class="mod-tabs">
+      {# Performance before potential -- same order as the Hub card's doors. #}
+      <a id="nav-pm-calib" class="{{ 'active' if p.startswith('/performance/calibration') else '' }}" href="{{ url_for('pm_calibration_home') }}">Performance</a>
+      <a id="nav-calibration" class="{{ 'active' if p.startswith('/calibration') else '' }}" href="{{ url_for('calibration_home') }}">Potential</a>
+      {# Box scopes are BUCEO/BGCEO/group only -- an HOD holds neither, and
+         talent_box_home() 403s them, so the tab must not render for them. #}
+      {% if nav_has_talent_box %}<a id="nav-talent-box" class="{{ 'active' if p.startswith('/talent-box') else '' }}" href="{{ url_for('talent_box_home') }}">Talent box</a>{% endif %}
+      {# One tab, covering /succession/trc too: the council session is a mode of
+         succession planning, not a module beside it, so it is reached from
+         inside the page (where the count of confirmed seats is already known)
+         rather than from a second tab up here. #}
+    </div>
+  {% elif p == '/me' or p.startswith('/review') %}
+    {# The all-modules Hub was retired 2026-08-29: the dashboard is the one home.
+       During an active cycle the guided review is the to-do surface, so it gets
+       the second segment -- the chat's only nav entry (it had none before).
+       NOT on /dashboard: the Dashboard|Check-in toggle was dropped there
+       (2026-09-07, Chris) -- the dashboard's "Your review" card is the way into the
+       review. On /review* this base copy stays hidden by CSS (:has(.rv-wrap)); the
+       journey renders its own toggle in the rail. /me and /review/team still use it. #}
+    {% include "_nav_toggle.html" %}
+  {% elif in_pm and (nav_is_pm or nav_is_pm_setting or nav_is_pm_setting_review or nav_is_pm_team or nav_is_pm_hod) %}
+    <div class="mod-tabs">
+      {% if nav_is_pm_setting %}<a id="nav-pm-setting" class="{{ 'active' if p == '/performance/setting' else '' }}" href="{{ url_for('performance_kpi_setting_view') }}">Set my KPIs</a>{% endif %}
+      {% if nav_is_pm %}<a id="nav-pm-my" class="{{ 'active' if p == '/performance' else '' }}" href="{{ url_for('performance_my_view') }}">My PM</a>{% endif %}
+      {% if nav_is_pm_setting_review %}<a id="nav-pm-setting-review" class="{{ 'active' if p.startswith('/performance/setting/review') else '' }}" href="{{ url_for('performance_kpi_setting_review') }}">Approve KPIs</a>{% endif %}
+      {# startswith, not ==: opening one direct report (/performance/team/<id>)
+         is still Team PM, and an exact match unlit the whole strip there. #}
+      {% if nav_is_pm_team %}<a id="nav-pm-team" class="{{ 'active' if p.startswith('/performance/team') else '' }}" href="{{ url_for('performance_team_view') }}">Team PM</a>{% endif %}
+    </div>
+  {% endif %}
+  {% endif %}
+  {% if not auth_page %}
+  {% with messages = get_flashed_messages(with_categories=true) %}
+    {% for category, msg in messages %}
+      <div class="flash flash-{{ category }}"
+           role="{{ 'alert' if category in ['error', 'warn'] else 'status' }}"
+           aria-live="{{ 'assertive' if category in ['error', 'warn'] else 'polite' }}">{{ msg }}</div>
+    {% endfor %}
+  {% endwith %}
+  {% endif %}
+  {% block body %}{% endblock %}
+</main>
+{% if adm_shell %}</div>{% include "_admin_agent.html" %}{% include "_admin_search.html" %}{% endif %}
+
+{% block back_button %}
+  {# never on the dashboard: it IS home, so Back there only stepped out of the app (the UX review's F20, 2026-10-08).
+     Admin pages have it too, bottom left, except on Home (Chris, 2026-10-13: "admin page need a back button on the bottom
+     left to go back to previous view"); its fallback is the admin's Home. #}
+  {% if user and not auth_page and request.endpoint not in ('login', 'home', 'my_assessments', 'admin_dashboard', 'dashboard', 'admin_overview') %}
+    <a href="{{ url_for('admin_overview') if nav_is_admin else url_for('home') }}" id="floating-back" class="fab-back{{ ' is-admin' if nav_is_admin }}"
+       aria-label="Go back to the previous page">
+      <span class="fab-back-arrow" aria-hidden="true">&larr;</span>
+      <span class="fab-back-label">Back</span>
+    </a>
+    <script>
+      (function () {
+        var fab = document.getElementById('floating-back');
+        if (!fab) return;
+        var step = function (e) {
+          if (e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+          if (window.history.length > 1) { e.preventDefault(); window.history.back(); }
+        };
+        fab.addEventListener('click', step);
+        var bar = document.querySelector('.tb-back[data-fab-back]');   // the phone bar's arrow (piece F): the same step
+        if (bar) bar.addEventListener('click', step);
+      })();
+    </script>
+  {% endif %}
+{% endblock %}
+
+<script>
+(function () {
+  // CSRF: stamp every same-origin POST form with the session token so the
+  // server-side check passes. (Dynamically-built forms add their own token.)
+  var m = document.querySelector('meta[name="csrf-token"]');
+  var tok = m ? m.getAttribute('content') : '';
+  Array.prototype.forEach.call(document.forms, function (f) {
+    // the ATTRIBUTE, not f.method: a field named "method" (a KPI's More / Less) shadows the property, and the form
+    // then went out with no token -- "Session expired" (2026-10-10, the person page's KPI forms)
+    if ((f.getAttribute('method') || '').toLowerCase() !== 'post') return;
+    if (f.querySelector('input[name="csrf_token"]')) return;
+    var i = document.createElement('input');
+    i.type = 'hidden'; i.name = 'csrf_token'; i.value = tok;
+    f.appendChild(i);
+  });
+})();
+(function () {
+  // Auto-dismiss success flashes after 5s (errors/warnings stay put).
+  setTimeout(function () {
+    document.querySelectorAll('.flash-ok').forEach(function (el) {
+      el.style.transition = 'opacity .4s'; el.style.opacity = '0';
+      setTimeout(function () { el.remove(); }, 400);
+    });
+  }, 5000);
+
+  // data-confirm: a quote-safe confirmation prompt. The message lives in an
+  // attribute (read via getAttribute, never parsed as JS), so names with
+  // apostrophes — e.g. "'AIN", "SAM'ON" — can't break it the way an inline
+  // onsubmit="confirm('…name…')" does. Capture phase so it runs first.
+  document.addEventListener('submit', function (e) {
+    var f = e.target;
+    if (!(f instanceof HTMLFormElement)) return;
+    // A confirm can sit on one submit button (an import's "Import" beside its "Preview"): only that button asks, and
+    // the replay below submits through the same button, so its name/value still posts (2026-10-10).
+    var sub = (e.submitter && e.submitter.hasAttribute && e.submitter.hasAttribute('data-confirm')) ? e.submitter : null;
+    var msg = sub ? sub.getAttribute('data-confirm') : f.getAttribute('data-confirm');
+    if (msg && !f.__confirmed) {
+      // Styled dialog rather than window.confirm(): locking a calibration or
+      // removing an admin is a weighty, irreversible action, and a bare OS
+      // alert reads like a browser warning rather than part of the product.
+      // Async, so we stop this submit and re-fire it once confirmed --
+      // requestSubmit() replays the whole submit event, so data-prompt and
+      // the busy-button handler below still run exactly as before.
+      e.preventDefault(); e.stopPropagation();
+      // replay through the button that was clicked, as the browser would have sent it: its name/value posts and the
+      // busy handler below dims it (2026-10-11; a form-level confirm used to replay with no button)
+      var by = sub || (e.submitter && e.submitter.form === f ? e.submitter : null);
+      // data-confirm-reason: the box also asks why, in a required box under its list, and writes it into the form
+      // (data-confirm-reason-field, default "reason") -- an admin's Reopen, whose reason the person sees (2026-10-16)
+      var src = sub || f, rlab = src.getAttribute('data-confirm-reason'), ropts = null;
+      if (rlab) {
+        ropts = {reason: {label: rlab, field: src.getAttribute('data-confirm-reason-field') || 'reason',
+                          placeholder: src.getAttribute('data-confirm-reason-placeholder') || '',
+                          max: parseInt(src.getAttribute('data-confirm-reason-max'), 10) || 0, withList: true}};
+      }
+      openConfirmDialog(src, msg, function () {
+        f.__confirmed = true;
+        if (f.requestSubmit) {
+          try { if (by) f.requestSubmit(by); else f.requestSubmit(); } catch (err) { f.requestSubmit(); }
+        }
+        else { HTMLFormElement.prototype.submit.call(f); }
+      }, ropts);
+      return;
+    }
+    f.__confirmed = false;
+    // data-prompt: ask for a value (e.g. a new password) and stash it in the
+    // named hidden field before submitting. Cancel aborts the submit. Read via
+    // getAttribute, so apostrophes in the message can't break it.
+    var pmsg = f.getAttribute('data-prompt');
+    var promptedVal = null;
+    if (pmsg) {
+      var fieldName = f.getAttribute('data-prompt-field') || 'value';
+      // Date prompts get a real calendar picker (guarantees YYYY-MM-DD) instead
+      // of a free-text box. Native <input type="date"> enforces the format.
+      if (f.getAttribute('data-prompt-type') === 'date') {
+        e.preventDefault(); e.stopPropagation();
+        // data-cycle-choice (the confirmation cut-off, 2 Nov 2026): once a date is picked the box also asks Add them to the
+        // cycle / Not this cycle, and the answer rides in the form's cycle_choice field
+        var cyCfg = null;
+        try { cyCfg = JSON.parse(f.getAttribute('data-cycle-choice') || 'null'); } catch (er) { cyCfg = null; }
+        openDatePrompt(pmsg, f.getAttribute('data-prompt-default') || '', function (val, pick) {
+          var fld = f.querySelector('[name="' + fieldName + '"]');
+          if (fld) fld.value = val;
+          var cf = f.querySelector('[name="cycle_choice"]');
+          if (cf) cf.value = pick || '';
+          f.submit();   // bypasses this handler (no event) — submits once, no loop
+        }, cyCfg);
+        return;
+      }
+      // Every other prompt is the app's own dialog too (the admin page kit, canvas K2, 2026-10-10: no browser
+      // prompt boxes). Async: the value lands in the field, then the line-manager check below or the submit.
+      e.preventDefault(); e.stopPropagation();
+      openTextPrompt(pmsg, f.getAttribute('data-prompt-default') || '', f.getAttribute('data-prompt-type') || 'text',
+                     f.getAttribute('data-confirm-ok') || 'Save', function (pv) {
+        var fld = f.querySelector('[name="' + fieldName + '"]');
+        if (fld) fld.value = pv;
+        var lmS = f.getAttribute('data-lm-subject');
+        var relF = f.getAttribute('data-lm-rel-field');
+        var relV = relF ? ((f.querySelector('[name="' + relF + '"]') || {}).value) : 'line_manager';
+        if (lmS && relV === 'line_manager' && pv.trim()) { runLineManagerCheck(f, lmS, pv.trim()); return; }
+        f.submit();   // bypasses this handler (no event), like the date prompt
+      });
+      return;
+    }
+
+    // Line-manager conflict check: opt a form in with data-lm-subject (the
+    // subject's user id). The candidate manager's Employee ID comes from
+    // whatever was just typed via data-prompt above, or a static data-lm-eid
+    // attribute (panel-editor forms that already know the EID). Only runs
+    // when the relationship being set is 'line_manager' — data-lm-rel-field
+    // names the field to read that from; omit it if the form always sets a
+    // line manager (e.g. the Users page "Change line manager" action).
+    var lmSubject = f.getAttribute('data-lm-subject');
+    if (lmSubject) {
+      var relField = f.getAttribute('data-lm-rel-field');
+      var rel = relField ? ((f.querySelector('[name="' + relField + '"]') || {}).value) : 'line_manager';
+      if (rel === 'line_manager') {
+        var lmEid = promptedVal || f.getAttribute('data-lm-eid');
+        if (lmEid) {
+          e.preventDefault(); e.stopPropagation();
+          runLineManagerCheck(f, lmSubject, lmEid);
+          return;
+        }
+      }
+    }
+  }, true);
+
+  // Checks whether setting `newEid` as `subjectId`'s line manager would
+  // displace someone already in that role; if so, lets the admin choose to
+  // reassign them to Matrix manager or remove them, before finally
+  // submitting the form (which carries the outcome in a `disposition` field).
+  function runLineManagerCheck(f, subjectId, newEid) {
+    var url = '/admin/line-manager-conflict?subject_id=' + encodeURIComponent(subjectId)
+            + '&new_manager_eid=' + encodeURIComponent(newEid);
+    fetch(url, { credentials: 'same-origin' })
+      .then(function (r) { return r.json(); })
+      .then(function (data) {
+        if (!data.ok) { restoreWas(f); openNotice(data.error || 'Could not check for a line manager conflict.'); return; }
+        if (!data.conflict) { f.submit(); return; }
+        showLineManagerConflictModal(data.conflict, function (disposition) {
+          if (!disposition) { restoreWas(f); return; }   // cancelled: nothing saved, so a changed select goes back
+          var d = f.querySelector('[name="disposition"]');
+          if (!d) { d = document.createElement('input'); d.type = 'hidden'; d.name = 'disposition'; f.appendChild(d); }
+          d.value = disposition;
+          f.submit();
+        });
+      })
+      .catch(function () { restoreWas(f); openNotice('Could not check for a line manager conflict — please try again.'); });
+  }
+  // an auto-submitting select (data-was) shows its saved value again when its change didn't go through
+  function restoreWas(f) {
+    Array.prototype.forEach.call(f.querySelectorAll('select[data-was]'), function (sel) { sel.value = sel.getAttribute('data-was'); });
+  }
+
+  function showLineManagerConflictModal(conflict, onChoice) {
+    var ov = document.createElement('div'); ov.className = 'dp-overlay';
+    var card = document.createElement('div'); card.className = 'dp-card';
+    var p = document.createElement('p');
+    var note = conflict.status === 'submitted'
+      ? ' They have already SUBMITTED their assessment, so this affects the recorded result. ' +
+        '“Remove” archives (not deletes) their feedback; “Reassign” keeps everything exactly as-is, just relabelled.'
+      : ' They have not submitted yet.';
+    p.textContent = conflict.name + ' (' + conflict.eid + ') is currently this person’s line manager.' + note
+      + ' What would you like to do with them?';
+    var acts = document.createElement('div'); acts.className = 'dp-actions';
+    var cancel = document.createElement('button'); cancel.type = 'button';
+    cancel.className = 'btn-link'; cancel.textContent = 'Cancel';
+    var reassign = document.createElement('button'); reassign.type = 'button';
+    reassign.className = 'primary'; reassign.textContent = 'Reassign to Matrix manager';
+    var remove = document.createElement('button'); remove.type = 'button';
+    remove.className = 'danger'; remove.textContent = 'Remove entirely';
+    acts.appendChild(cancel); acts.appendChild(reassign); acts.appendChild(remove);
+    card.appendChild(p); card.appendChild(acts);
+    ov.appendChild(card); document.body.appendChild(ov);
+    function close() { ov.remove(); }
+    cancel.addEventListener('click', function () { close(); onChoice(null); });
+    ov.addEventListener('click', function (ev) { if (ev.target === ov) { close(); onChoice(null); } });
+    reassign.addEventListener('click', function () { close(); onChoice('reassign'); });
+    remove.addEventListener('click', function () { close(); onChoice('remove'); });
+  }
+
+  // Lightweight modal date picker used by data-prompt-type="date" forms.
+  // Shared confirmation dialog for every data-confirm form in the app --
+  // calibration locks (potential, performance, talent box), admin removals,
+  // cycle/period activation. One implementation so a lock in one module never
+  // looks different from a lock in another. Reuses the existing
+  // .modal-overlay/.modal-card components; no new CSS families.
+  //   data-confirm-title : heading (default "Please confirm")
+  //   data-confirm-ok    : primary button label (default "Confirm")
+  //   data-confirm-cancel: secondary button label (default "Cancel"); a page in Bahasa Melayu sets title, ok and cancel
+  //   data-confirm-tone  : "danger" for destructive/irreversible actions
+  //   opts.reason        : {label, field, placeholder} -> a required textarea
+  //                        whose value is written to a hidden form field on OK
+  function openConfirmDialog(form, message, onOk, opts) {
+    var title = form.getAttribute('data-confirm-title') || 'Please confirm';
+    var okLabel = form.getAttribute('data-confirm-ok') || 'Confirm';
+    var cancelLabel = form.getAttribute('data-confirm-cancel') || 'Cancel';
+    var danger = form.getAttribute('data-confirm-tone') === 'danger';
+
+    var ov = document.createElement('div');
+    ov.className = 'modal-overlay confirm-dialog';
+    var card = document.createElement('div');
+    card.className = 'modal-card';
+    card.setAttribute('role', 'dialog');
+    card.setAttribute('aria-modal', 'true');
+
+    var head = document.createElement('div');
+    head.className = 'confirm-dialog__head';
+    var icon = document.createElement('span');
+    icon.className = 'confirm-dialog__icon' + (danger ? ' is-danger' : '');
+    icon.setAttribute('aria-hidden', 'true');
+    icon.innerHTML = danger
+      ? '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 8v5"/><path d="M12 16.5v.01"/><path d="M10.3 3.9 2.4 18a2 2 0 0 0 1.7 3h15.8a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/></svg>'
+      : '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M12 7.5v5.5"/><path d="M12 16.5v.01"/></svg>';
+    var h = document.createElement('h2');
+    h.id = 'confirm-dialog-title';
+    h.textContent = title;
+    card.setAttribute('aria-labelledby', h.id);
+    head.appendChild(icon); head.appendChild(h);
+
+    var p = document.createElement('p');
+    p.className = 'confirm-dialog__msg';
+    p.textContent = message;          // textContent: names with quotes stay safe
+
+    // Optional reason field: opts.reason = {label, field, placeholder}. When
+    // present the dialog captures a required, non-empty note and writes it into
+    // a hidden <input name=field> on the form before onOk. Used by the
+    // calibration "Lock with override" affordance. Absent opts = unchanged.
+    var reason = opts && opts.reason;
+    var ta = null, lab = null;
+    if (reason) {
+      lab = document.createElement('label');
+      lab.className = 'confirm-dialog__reason';
+      lab.textContent = reason.label || 'Reason';
+      ta = document.createElement('textarea');
+      ta.rows = 3;
+      if (reason.placeholder) ta.placeholder = reason.placeholder;
+      if (reason.max) ta.maxLength = reason.max;
+      lab.appendChild(ta);
+      if (!reason.withList) p.appendChild(lab);   // a reason asked with a list sits under the list (below)
+    }
+
+    // Optional list under the message: data-confirm-list (a JSON array) with
+    // data-confirm-list-label as its lead line, so a run of names reads one
+    // per line (2026-09-30). Not on the override's reason dialog, which carries its own
+    // message; a data-confirm-reason box shows its list, then the reason. Absent = unchanged.
+    var listEl = null, items = [];
+    if (!reason || reason.withList) {
+      try { items = JSON.parse(form.getAttribute('data-confirm-list') || '[]') || []; } catch (e) { items = []; }
+    }
+    if (items.length) {
+      listEl = document.createElement('div');
+      listEl.className = 'confirm-dialog__listwrap';
+      var ll = form.getAttribute('data-confirm-list-label');
+      if (ll) {
+        var lp = document.createElement('p');
+        lp.className = 'confirm-dialog__listlabel';
+        lp.textContent = ll;
+        listEl.appendChild(lp);
+      }
+      var ul = document.createElement('ul');
+      ul.className = 'confirm-dialog__list';
+      items.forEach(function (t) {
+        var li = document.createElement('li'); li.textContent = String(t); ul.appendChild(li);
+      });
+      listEl.appendChild(ul);
+    }
+
+    var acts = document.createElement('div');
+    acts.className = 'modal-actions';
+    var cancel = document.createElement('button');
+    cancel.type = 'button'; cancel.className = 'btn-link'; cancel.textContent = cancelLabel;
+    var ok = document.createElement('button');
+    ok.type = 'button';
+    ok.className = 'primary' + (danger ? ' is-danger' : '');
+    ok.textContent = okLabel;
+    if (reason) {
+      ok.disabled = true;
+      ta.addEventListener('input', function () { ok.disabled = !ta.value.trim() || !!(dInp && !dOk()); });
+    }
+    acts.appendChild(cancel); acts.appendChild(ok);
+
+    card.appendChild(head); card.appendChild(p);
+    // data-confirm-body: the id of an element on the page whose contents are copied into the box under the message (tiles,
+    // a fold of who changes): the band starts' save shows what it will change (2026-10-29). Absent = unchanged.
+    var bodyId = form.getAttribute('data-confirm-body'), bodySrc = bodyId ? document.getElementById(bodyId) : null;
+    if (bodySrc && bodySrc.firstChild) {
+      var bodyEl = document.createElement('div');
+      bodyEl.className = 'confirm-dialog__body';
+      Array.prototype.forEach.call(bodySrc.childNodes, function (n) { bodyEl.appendChild(n.cloneNode(true)); });
+      card.appendChild(bodyEl);
+      ov.classList.add('confirm-dialog--wide');
+    }
+    if (listEl) card.appendChild(listEl);
+    // data-confirm-days (the default, a whole number; on the form or the button): "Open for them for [- 2 +] days until 9 Nov
+    // 2026, 23:59 MYT" -- how long a reopen, an extend or an unlock stays open for the person once the part's deadline has passed
+    // (2026-11-07). -label, -min, -max, -help and -field (default "days") adjust it. The line is the page's own guess from the
+    // clock (23:59 MYT on today + days); the server's date is the one that counts. OK writes the whole number into the form.
+    var dDef = form.getAttribute('data-confirm-days'), dInp = null, dFoot = null, dOk = null;
+    if (dDef !== null && dDef !== undefined && dDef !== '') {
+      var dMin = parseInt(form.getAttribute('data-confirm-days-min'), 10) || 1;
+      var dMax = parseInt(form.getAttribute('data-confirm-days-max'), 10) || 14;
+      var dWrap = document.createElement('div'); dWrap.className = 'confirm-dialog__days';
+      var dLab = document.createElement('label'); dLab.className = 'confirm-dialog__days-l';
+      dLab.textContent = form.getAttribute('data-confirm-days-label') || 'Open for them for';
+      var dRow = document.createElement('div'); dRow.className = 'confirm-dialog__days-row';
+      var dStep = document.createElement('div'); dStep.className = 'confirm-dialog__stepper';
+      var dLess = document.createElement('button'); dLess.type = 'button'; dLess.textContent = '\u2212';
+      dLess.setAttribute('aria-label', 'One day less');
+      var dMore = document.createElement('button'); dMore.type = 'button'; dMore.textContent = '+';
+      dMore.setAttribute('aria-label', 'One day more');
+      dInp = document.createElement('input'); dInp.type = 'text'; dInp.inputMode = 'numeric';
+      dInp.value = String(parseInt(dDef, 10) || 2); dInp.id = 'confirm-days-input'; dLab.setAttribute('for', dInp.id);
+      dInp.setAttribute('aria-label', dLab.textContent);
+      var dUnit = document.createElement('span'); dUnit.className = 'confirm-dialog__days-unit'; dUnit.textContent = 'days';
+      var dUntil = document.createElement('span'); dUntil.className = 'confirm-dialog__days-until';
+      dStep.appendChild(dLess); dStep.appendChild(dInp); dStep.appendChild(dMore);
+      dRow.appendChild(dStep); dRow.appendChild(dUnit); dRow.appendChild(dUntil);
+      dWrap.appendChild(dLab); dWrap.appendChild(dRow);
+      var dHelpT = form.getAttribute('data-confirm-days-help');
+      if (dHelpT) {
+        var dHelp = document.createElement('span'); dHelp.className = 'confirm-dialog__days-help'; dHelp.textContent = dHelpT;
+        dWrap.appendChild(dHelp);
+      }
+      var dMon = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+      dOk = function () { var n = parseInt(dInp.value, 10); return /^\d+$/.test(dInp.value.trim()) && n >= dMin && n <= dMax; };
+      var dRefresh = function () {
+        if (dOk()) {
+          var t = new Date(Date.now() + 8 * 3600 * 1000);   // the Malaysian clock, read through the UTC fields
+          t.setUTCDate(t.getUTCDate() + parseInt(dInp.value, 10));
+          dUntil.textContent = 'until ' + t.getUTCDate() + ' ' + dMon[t.getUTCMonth()] + ' ' + t.getUTCFullYear() + ', 23:59 MYT';
+          dWrap.classList.remove('is-bad');
+        } else {
+          dUntil.textContent = dMin + ' to ' + dMax + ' days';
+          dWrap.classList.add('is-bad');
+        }
+        dLess.disabled = !(dOk() && parseInt(dInp.value, 10) > dMin);
+        dMore.disabled = !(dOk() && parseInt(dInp.value, 10) < dMax);
+        ok.disabled = !!((reason && !ta.value.trim()) || !dOk());   // the days must be right, and the reason given
+      };
+      dLess.addEventListener('click', function () { if (dOk()) { dInp.value = String(parseInt(dInp.value, 10) - 1); dRefresh(); } });
+      dMore.addEventListener('click', function () { if (dOk()) { dInp.value = String(parseInt(dInp.value, 10) + 1); dRefresh(); } });
+      dInp.addEventListener('input', dRefresh);
+      card.appendChild(dWrap);
+      dRefresh();
+    }
+    if (lab && reason.withList) card.appendChild(lab);
+    // data-confirm-foot: a muted line under the reason (what the person gets), the Extend box's
+    var fText = form.getAttribute('data-confirm-foot');
+    if (fText) {
+      dFoot = document.createElement('span'); dFoot.className = 'confirm-dialog__foot'; dFoot.textContent = fText;
+      card.appendChild(dFoot);
+    }
+    // data-confirm-notify (the label; on the form or the submit button, as the reason is): an "Email them" tick under the
+    // message, list and reason, ticked by default. data-confirm-notify-sub is its sub-line when ticked, -off when unticked;
+    // on OK the form gets a hidden data-confirm-notify-field (default notify_person) of "1" or "0". Cancel writes nothing.
+    // Absent = the box is unchanged (2026-11-07, the admin's "Email them" tick).
+    var nLabel = form.getAttribute('data-confirm-notify'), nBox = null, nWrap = null;
+    if (nLabel) {
+      var nOn = form.getAttribute('data-confirm-notify-sub') || '', nOff = form.getAttribute('data-confirm-notify-off') || '';
+      nWrap = document.createElement('label');
+      nWrap.className = 'confirm-dialog__notify';
+      nBox = document.createElement('input');
+      nBox.type = 'checkbox'; nBox.checked = true;
+      var nT = document.createElement('span'); nT.className = 'confirm-dialog__notify-t';
+      var nB = document.createElement('b'); nB.textContent = nLabel;
+      var nS = document.createElement('span'); nS.className = 'confirm-dialog__notify-s'; nS.textContent = nOn;
+      nT.appendChild(nB); nT.appendChild(nS);
+      nWrap.appendChild(nBox); nWrap.appendChild(nT);
+      nBox.addEventListener('change', function () { nS.textContent = nBox.checked ? nOn : nOff; });
+      card.appendChild(nWrap);
+    }
+    card.appendChild(acts);
+    ov.appendChild(card); document.body.appendChild(ov);
+
+    var lastFocus = document.activeElement;
+    setTimeout(function () { (ta || ok).focus(); }, 30);
+    // the phone's back gesture is Cancel (static/move_in.js, onehrBackLayer); OK lets the entry go BEFORE it submits or posts
+    var bk = (typeof window.onehrBackLayer === 'function') ? window.onehrBackLayer(function () { cancelled(); }) : null;
+    function close(keepEntry) {
+      ov.remove();
+      document.removeEventListener('keydown', onKey);
+      if (bk && !keepEntry) bk.done();
+      if (lastFocus && lastFocus.focus) lastFocus.focus();
+    }
+    // Cancelled: a select that submits on change goes back to what it was (data-was), so the page never shows a change
+    // that wasn't made (2026-10-11, the double confirmation for anything that changes a person)
+    function cancelled() {
+      close();
+      if (form && form.querySelectorAll) {
+        Array.prototype.forEach.call(form.querySelectorAll('select[data-was]'), function (sel) {
+          sel.value = sel.getAttribute('data-was');
+        });
+      }
+      if (opts && opts.onCancel) opts.onCancel();
+    }
+    function onKey(ev) { if (ev.key === 'Escape') cancelled(); }
+    document.addEventListener('keydown', onKey);
+    cancel.addEventListener('click', cancelled);
+    ov.addEventListener('click', function (ev) { if (ev.target === ov) cancelled(); });
+    ok.addEventListener('click', function () {
+      if (dInp) {
+        if (!dOk()) { dInp.focus(); return; }
+        var dName = form.getAttribute('data-confirm-days-field') || 'days';
+        var dTf = (form.tagName === 'FORM') ? form : (form.form || (form.closest && form.closest('form')) || form);
+        var dFld = dTf.querySelector('input[type="hidden"][name="' + dName + '"]');
+        if (!dFld) { dFld = document.createElement('input'); dFld.type = 'hidden'; dFld.name = dName; dTf.appendChild(dFld); }
+        dFld.value = String(parseInt(dInp.value, 10));
+      }
+      if (reason) {
+        var val = ta.value.trim();
+        if (!val) { ta.focus(); return; }
+        var fld = form.querySelector('[name="' + reason.field + '"]');
+        if (!fld) {
+          fld = document.createElement('input');
+          fld.type = 'hidden'; fld.name = reason.field; form.appendChild(fld);
+        }
+        fld.value = val;
+      }
+      if (nBox) {
+        var tf = (form.tagName === 'FORM') ? form : (form.form || (form.closest && form.closest('form')) || form);
+        var nf = tf.querySelector('input[type="hidden"][name="' + (form.getAttribute('data-confirm-notify-field') || 'notify_person') + '"]');
+        if (!nf) {
+          nf = document.createElement('input');
+          nf.type = 'hidden'; nf.name = form.getAttribute('data-confirm-notify-field') || 'notify_person'; tf.appendChild(nf);
+        }
+        nf.value = nBox.checked ? '1' : '0';
+      }
+      close(true); if (bk) bk.done(onOk); else onOk();   // a phone's entry goes first: a form this submits would be cancelled by the traversal
+    });
+  }
+
+  // "Lock with override" affordance on the four calibration lock forms. A
+  // deliberate second action: the primary Lock is refused server-side when the
+  // spread is off-framework (the guardrail), and this lets a HOD/BUCEO close a
+  // genuine edge case with a recorded, audited reason. Keyed on the button
+  // class (not the form) so it also reaches talent_box.html, which carries no
+  // calib-lock-form class and does not load calibration.js.
+  document.addEventListener('click', function (e) {
+    var btn = e.target.closest && e.target.closest('.calib-override-btn');
+    if (!btn) return;
+    e.preventDefault();
+    var f = btn.closest('form');
+    if (!f) return;
+    var msg = btn.getAttribute('data-override-msg')
+      || 'This spread is outside the calibration framework. To lock it anyway, record why — it will be shown at calibration review.';
+    openConfirmDialog(f, msg, function () {
+      f.__confirmed = true;
+      if (f.requestSubmit) { f.requestSubmit(); }
+      else { HTMLFormElement.prototype.submit.call(f); }
+    }, {reason: {
+      field: 'override_reason',
+      label: 'Reason for locking off-framework',
+      placeholder: 'e.g. team of 3 — one genuine Star, evidence in the KPI notes'
+    }});
+  });
+
+  // A one-field question in the app's own dialog (canvas K2): a reason, a new email, a password. type: text | email |
+  // password. Enter saves; Esc or Cancel aborts.
+  function openTextPrompt(message, def, type, okLabel, onOk) {
+    var ov = document.createElement('div'); ov.className = 'dp-overlay';
+    var card = document.createElement('div'); card.className = 'dp-card';
+    card.setAttribute('role', 'dialog'); card.setAttribute('aria-modal', 'true');
+    var p = document.createElement('p'); p.textContent = message;
+    var inp = document.createElement('input');
+    inp.type = (type === 'password' || type === 'email') ? type : 'text';
+    inp.value = def || ''; inp.setAttribute('aria-label', message);
+    var acts = document.createElement('div'); acts.className = 'dp-actions';
+    var cancel = document.createElement('button'); cancel.type = 'button';
+    cancel.className = 'btn-link'; cancel.textContent = 'Cancel';
+    var ok = document.createElement('button'); ok.type = 'button';
+    ok.className = 'primary'; ok.textContent = okLabel || 'Save';
+    acts.appendChild(cancel); acts.appendChild(ok);
+    card.appendChild(p); card.appendChild(inp); card.appendChild(acts);
+    ov.appendChild(card); document.body.appendChild(ov);
+    setTimeout(function () { inp.focus(); if (inp.select) inp.select(); }, 30);
+    var bk = (typeof window.onehrBackLayer === 'function') ? window.onehrBackLayer(function () { close(); }) : null;   // the phone's back gesture is Cancel
+    function close(keepEntry) { ov.remove(); document.removeEventListener('keydown', onKey); if (bk && keepEntry !== true) bk.done(); }
+    function onKey(ev) { if (ev.key === 'Escape') close(); }
+    document.addEventListener('keydown', onKey);
+    cancel.addEventListener('click', function () { close(); });
+    ov.addEventListener('click', function (ev) { if (ev.target === ov) close(); });
+    ok.addEventListener('click', function () { var v = inp.value; close(true); if (bk) bk.done(function () { onOk(v); }); else onOk(v); });
+    inp.addEventListener('keydown', function (ev) { if (ev.key === 'Enter') { ev.preventDefault(); ok.click(); } });
+  }
+  // A message with one OK, in place of window.alert().
+  function openNotice(message) {
+    var ov = document.createElement('div'); ov.className = 'dp-overlay';
+    var card = document.createElement('div'); card.className = 'dp-card'; card.setAttribute('role', 'alertdialog');
+    var p = document.createElement('p'); p.textContent = message;
+    var acts = document.createElement('div'); acts.className = 'dp-actions';
+    var ok = document.createElement('button'); ok.type = 'button'; ok.className = 'primary'; ok.textContent = 'OK';
+    acts.appendChild(ok); card.appendChild(p); card.appendChild(acts);
+    ov.appendChild(card); document.body.appendChild(ov);
+    setTimeout(function () { ok.focus(); }, 30);
+    var bk = (typeof window.onehrBackLayer === 'function') ? window.onehrBackLayer(function () { ov.remove(); }) : null;   // the phone's back gesture is OK
+    ok.addEventListener('click', function () { ov.remove(); if (bk) bk.done(); });
+  }
+  window.openNotice = openNotice;
+  // A page script's own "are you sure" in the app's dialog, never the browser's confirm() (2026-10-11):
+  // askConfirm(message, okLabel, onOk, danger) runs onOk only on the dialog's OK.
+  // `extra` (optional, 2026-11-08): {title, cancel} -- the box's heading and its Cancel button's words ("Leave without saving?" with
+  // Stay / Leave on the KPI reorder); absent = the box as it always was.
+  window.askConfirm = function (message, okLabel, onOk, danger, extra) {
+    var attrs = {"data-confirm-ok": okLabel || "Confirm", "data-confirm-tone": danger ? "danger" : null};
+    if (extra && extra.title) attrs["data-confirm-title"] = extra.title;
+    if (extra && extra.cancel) attrs["data-confirm-cancel"] = extra.cancel;
+    openConfirmDialog({getAttribute: function (k) { return attrs[k] || null; }}, message, onOk);
+  };
+
+  // A band change that saves without a submit (calibration.js's rows), made by the super admin: the same box asks their
+  // remark first (data-confirm-reason on the form), writes it into the form, then onOk posts; Cancel runs onCancel
+  // (2026-10-18, the super admin's remark on every band action). A form without data-confirm-reason posts at once.
+  window.askFormReason = function (form, message, onOk, onCancel) {
+    var rlab = form.getAttribute('data-confirm-reason');
+    if (!rlab) { onOk(); return; }
+    openConfirmDialog(form, message, onOk, {onCancel: onCancel, reason: {
+      label: rlab, field: form.getAttribute('data-confirm-reason-field') || 'reason',
+      placeholder: form.getAttribute('data-confirm-reason-placeholder') || '',
+      max: parseInt(form.getAttribute('data-confirm-reason-max'), 10) || 0, withList: true}});
+  };
+
+  // cfg (optional, the confirmation cut-off, 2 Nov 2026): {cycle, cutoff, cutoff_day, refuse, kpis, panel, current, today}. Once a
+  // date is picked the box adds the cycle's block: one line saying where the date falls against the cut-off and two radios, Add
+  // them to <cycle> / Not this cycle, pre-selected (a standing take-out or add, else by the cut-off, else Add them); below the
+  // lowest grade or in a unit left out, one line and no choice. onOk gets (date, 'add' | 'out' | '').
+  function openDatePrompt(message, def, onOk, cfg) {
+    var ov = document.createElement('div'); ov.className = 'dp-overlay';
+    var card = document.createElement('div'); card.className = 'dp-card';
+    card.setAttribute('role', 'dialog'); card.setAttribute('aria-modal', 'true');
+    var p = document.createElement('p'); p.textContent = message;
+    var inp = document.createElement('input'); inp.type = 'date'; inp.required = true; inp.value = def || '';
+    var acts = document.createElement('div'); acts.className = 'dp-actions';
+    var cancel = document.createElement('button'); cancel.type = 'button';
+    cancel.className = 'btn-link'; cancel.textContent = 'Cancel';
+    var ok = document.createElement('button'); ok.type = 'button';
+    ok.className = 'primary'; ok.textContent = 'Confirm';
+    acts.appendChild(cancel); acts.appendChild(ok);
+    card.appendChild(p); card.appendChild(inp);
+    var pick = '', touched = false, block = null;
+    if (cfg) {
+      block = document.createElement('fieldset'); block.className = 'wiz-sec dp-cyc'; block.hidden = true;
+      card.appendChild(block);
+    }
+    card.appendChild(acts);
+    ov.appendChild(card); document.body.appendChild(ov);
+    setTimeout(function () { inp.focus(); }, 30);
+    var MON = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    function dayText(iso) {
+      var m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(iso || '');
+      return m ? (+m[3]) + ' ' + MON[+m[2] - 1] + ' ' + m[1] : iso;
+    }
+    function many(n, one, more) { return n + ' ' + (n === 1 ? one : more); }
+    function drawChoice() {
+      if (!cfg) return;
+      var v = inp.value || '';
+      block.textContent = '';
+      if (!v) { block.hidden = true; pick = ''; return; }
+      block.hidden = false;
+      var lg = document.createElement('legend'); lg.className = 'wiz-k'; lg.textContent = cfg.cycle; block.appendChild(lg);
+      function line(t) { var s = document.createElement('span'); s.className = 'dp-cyc-line'; s.textContent = t; block.appendChild(s); }
+      if (cfg.refuse) { pick = ''; line(cfg.refuse); return; }
+      var after = !!(cfg.cutoff && v > cfg.cutoff);
+      if (cfg.cutoff) line(dayText(v) + (after ? ' is after' : ' is on or before') + " the cycle\u2019s confirmation cut-off (" + cfg.cutoff_day + ").");
+      if (!touched) pick = cfg.current || (cfg.cutoff && after ? 'out' : 'add');
+      var k = cfg.kpis || 0, n = cfg.panel || 0;
+      var lead = (after || v > cfg.today) ? 'They take part from ' + dayText(v) + '.' : 'They take part at once.';
+      var have = (!k && !n) ? 'No KPI lines or 360 panel yet: set them up after.'
+        : 'They have ' + (k ? many(k, 'KPI line', 'KPI lines') : 'no KPI lines yet') + ' and ' + (n ? 'a 360 panel of ' + n : 'no 360 panel yet') + '.';
+      var outT = 'No review of their own in ' + cfg.cycle + '. They keep their Career Plan, still rate colleagues on the 360 and review their team.' + (n
+        ? ' Their ' + n + ' 360 ' + (n === 1 ? 'row' : 'rows') + ' as the person rated ' + (n === 1 ? 'is' : 'are') + ' archived.'
+        : '');
+      [['add', 'Add them to ' + cfg.cycle, lead + ' ' + have], ['out', 'Not this cycle', outT]].forEach(function (o) {
+        var lab = document.createElement('label'); lab.className = 'wiz-opt';
+        var r = document.createElement('input'); r.type = 'radio'; r.name = 'dp_cycle'; r.value = o[0]; r.checked = pick === o[0];
+        r.addEventListener('change', function () { pick = o[0]; touched = true; });
+        var sp = document.createElement('span'), b = document.createElement('b'), sub = document.createElement('span');
+        b.textContent = o[1]; sub.className = 'dp-cyc-sub'; sub.textContent = o[2];
+        sp.appendChild(b); sp.appendChild(document.createElement('br')); sp.appendChild(sub);
+        lab.appendChild(r); lab.appendChild(sp); block.appendChild(lab);
+      });
+    }
+    if (cfg) { ['input', 'change'].forEach(function (e) { inp.addEventListener(e, drawChoice); }); drawChoice(); }
+    var bk = (typeof window.onehrBackLayer === 'function') ? window.onehrBackLayer(function () { close(); }) : null;   // the phone's back gesture is Cancel
+    function close(keepEntry) { ov.remove(); if (bk && keepEntry !== true) bk.done(); }
+    cancel.addEventListener('click', function () { close(); });
+    ov.addEventListener('click', function (ev) { if (ev.target === ov) close(); });
+    ok.addEventListener('click', function () {
+      if (!inp.value) { inp.focus(); inp.reportValidity && inp.reportValidity(); return; }
+      var v = inp.value, pk = pick; close(true); if (bk) bk.done(function () { onOk(v, pk); }); else onOk(v, pk);
+    });
+    inp.addEventListener('keydown', function (ev) { if (ev.key === 'Enter') ok.click(); });
+  }
+
+  // Submit feedback: dim the clicked button on real submits. Skip forms with an
+  // onsubmit handler or that opt out (data-no-busy), and bail if a handler
+  // already cancelled the submit, so we never dim a cancelled action. A
+  // data-confirm form dims too, on the replay after OK: the first submit is
+  // stopped before it gets here (2026-10-11; it used to be skipped outright,
+  // so a confirmed import or lock could be clicked twice while it ran).
+  document.addEventListener('submit', function (e) {
+    var f = e.target;
+    if (!(f instanceof HTMLFormElement)) return;
+    if (e.defaultPrevented) return;
+    if (f.hasAttribute('onsubmit') || f.hasAttribute('data-no-busy')) return;
+    if (e.submitter) e.submitter.classList.add('btn-busy');
+  });
+
+  // Show/hide toggle (light-grey eye icon) on every password field.
+  var EYE = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7-11-7-11-7z"/><circle cx="12" cy="12" r="3"/></svg>';
+  var EYEOFF = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-7-11-7a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 7 11 7a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg>';
+  document.querySelectorAll('input[type="password"]').forEach(function (inp) {
+    var wrap = document.createElement('span'); wrap.className = 'pw-field';
+    inp.parentNode.insertBefore(wrap, inp); wrap.appendChild(inp);
+    var btn = document.createElement('button');
+    btn.type = 'button'; btn.className = 'pw-toggle'; btn.innerHTML = EYE;
+    btn.setAttribute('aria-label', 'Show password');
+    btn.addEventListener('click', function () {
+      var hidden = inp.type === 'password';
+      inp.type = hidden ? 'text' : 'password';
+      btn.innerHTML = hidden ? EYEOFF : EYE;
+      btn.setAttribute('aria-label', hidden ? 'Hide password' : 'Show password');
+    });
+    wrap.appendChild(btn);
+  });
+})();
+(function () {
+  // Dropdown menus (Account, Manage): toggle, close on outside-click / Escape /
+  // scroll. position:fixed + JS coords so they're never clipped by the mobile
+  // nav's overflow scroll strip.
+  var triggers = Array.prototype.slice.call(document.querySelectorAll('.js-dd'));
+  if (!triggers.length) return;
+  var pairs = triggers.map(function (t) {
+    return { t: t, m: document.getElementById(t.getAttribute('aria-controls')) };
+  }).filter(function (p) { return p.m; });
+  function closeAll(except) {
+    pairs.forEach(function (p) {
+      if (p.m !== except) { p.m.hidden = true; p.t.setAttribute('aria-expanded', 'false'); }
+    });
+  }
+  // Where an open menu sits: under its trigger, inside the window. Run again whenever the menu or the window changes
+  // size (Chris, 2026-11-01: a Text size picked inside the open Account menu widened it past the right edge until it was
+  // reopened), and capped to the window's height with its own scroll.
+  function place(p) {
+    var r = p.t.getBoundingClientRect();
+    var mw = p.m.offsetWidth || 210;
+    var left = Math.min(r.left, window.innerWidth - mw - 8);
+    p.m.style.left = Math.max(8, left) + 'px';
+    p.m.style.right = 'auto';
+    p.m.style.top = (r.bottom + 6) + 'px';
+    p.m.style.maxHeight = Math.max(160, window.innerHeight - r.bottom - 14) + 'px';
+    p.m.style.overflowY = 'auto';
+  }
+  var ro = window.ResizeObserver ? new ResizeObserver(function () {
+    pairs.forEach(function (p) { if (!p.m.hidden) place(p); });
+  }) : null;
+  pairs.forEach(function (p) {
+    p.t.addEventListener('click', function (e) {
+      e.stopPropagation();
+      if (!p.m.hidden) { closeAll(null); return; }
+      closeAll(p.m);
+      p.m.hidden = false;                       // show to measure width
+      place(p);
+      p.t.setAttribute('aria-expanded', 'true');
+    });
+    p.m.addEventListener('click', function (e) { e.stopPropagation(); });
+    if (ro) { ro.observe(p.m); ro.observe(p.t); }
+  });
+  window.addEventListener('resize', function () {
+    pairs.forEach(function (p) { if (!p.m.hidden) place(p); });
+  });
+  document.addEventListener('click', function () { closeAll(null); });
+  document.addEventListener('keydown', function (e) { if (e.key === 'Escape') closeAll(null); });
+  // The page scrolling closes a menu; a menu's OWN scroll (it is capped to the window's height) must not, or its last
+  // items (Log out) could never be reached in a short window.
+  window.addEventListener('scroll', function (e) {
+    var t = e.target;
+    if (t && t.nodeType === 1 && pairs.some(function (p) { return p.m === t || p.m.contains(t); })) return;
+    closeAll(null);
+  }, true);
+})();
+</script>
+<script src="{{ url_for('static', filename='keep_place.js') }}?v={{ asset_v }}"></script>
+<script src="{{ url_for('static', filename='datepicker.js') }}?v={{ asset_v }}"></script>
+<script src="{{ url_for('static', filename='kpi_scale.js') }}?v={{ asset_v }}"></script>
+<script src="{{ url_for('static', filename='notice.js') }}?v={{ asset_v }}"></script>
+{% if user %}<script src="{{ url_for('static', filename='suggest.js') }}?v={{ asset_v }}"></script>{% endif %}
+{% if user and not auth_page %}<script src="{{ url_for('static', filename='display.js') }}?v={{ asset_v }}"></script>{% endif %}
+{% if user and not auth_page %}{% if not (gh_bar is defined and gh_bar) %}{% include "_help_panel.html" %}
+<script src="{{ url_for('static', filename='help.js') }}?v={{ asset_v }}"></script>
+{% include "_whatsnew_panel.html" %}
+<script src="{{ url_for('static', filename='whatsnew.js') }}?v={{ asset_v }}"></script>{% endif %}
+{# the inactivity box (2026-11-02): only for who the idle limit covers (idle_signout_on is the gate's own helper: not the super admin or system admin, nor an admin whose role has Inactivity sign-out off) #}
+{% set idle_on = idle_signout_on() %}{% if idle_on %}<script src="{{ url_for('static', filename='session_alive.js') }}?v={{ asset_v }}" data-idle-sec="{{ idle_on.idle }}" data-warn-sec="{{ idle_on.warn }}" data-alive="{{ url_for('session_alive') }}" data-logout="{{ url_for('logout') }}" data-login="{{ url_for('login') }}"></script>{% endif %}{% endif %}
+{% if user and not nav_is_admin %}<script src="{{ url_for('static', filename='tour.js') }}?v={{ asset_v }}"></script>{% endif %}
+{% block tour %}{% endblock %}
+</body>
+</html>

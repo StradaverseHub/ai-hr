@@ -1,0 +1,288 @@
+{% extends "base.html" %}
+{% from "_adm_panel.html" import panel %}
+{% from "_filter_rows.html" import filter_rows %}
+{% block title %}Org structure{% endblock %}
+{% block body %}
+{# One business group's or unit's side panel (phase 3 of the admin side panels, 2026-10-17; canvas frame "Org structure ·
+   one row a unit, Edit opens the panel"): what was the row's "…" menu and its inline rows -- rename, display name, add a
+   unit, its people, remove -- with who leads it, its admins and its departments. The forms, routes and confirmations
+   are the ones the menu had. #}
+{% macro org_panel(g, c) %}
+{% set key = 'org-' ~ g.slug ~ ('-' ~ c.slug if c else '') %}
+{% set name = c.name if c else g.bg %}
+{% set n = c.emp if c else g.emp %}
+{% set sub = ((display_bg(g.bg) ~ ' · ') if c else '') ~ ('{:,}'.format(n)) ~ (' person' if n == 1 else ' people') ~ ((' · ' ~ (c.depts | length) ~ ' department' ~ ('' if c.depts | length == 1 else 's')) if c else (' · ' ~ (g.companies | length) ~ ' unit' ~ ('' if g.companies | length == 1 else 's'))) %}
+{% call panel(key, 'Org structure · ' ~ ('Business unit' if c else 'Business group'), name, sub) %}
+  <div class="adm-panel-body adm-psecs">
+    <section class="adm-psec" aria-label="Name">
+      <h3 class="adm-ph">Name</h3>
+      <form method="post" class="adm-pform"
+            data-confirm="Rename {{ name }} to the name you typed? Its settings move with it{% if c %}: KPI library, PAT, positions and reward pools{% else %}: scoring, rating bands, KPI library, PAT, positions and reward{% endif %}. If the box is ticked, its {{ n }} active {{ 'person' if n == 1 else 'people' }}, their records and calibration, and any admin scopes move too. Imports must then use the new name. Renaming it back undoes it. To change only how it's shown, set a display name instead."
+            data-confirm-ok="Rename" data-confirm-title="Rename this {{ 'business unit' if c else 'business group' }}?">
+        <input type="hidden" name="action" value="{{ 'rename_company' if c else 'rename_bg' }}">
+        {% if c %}<input type="hidden" name="business_group" value="{{ g.bg }}">{% endif %}
+        <input type="hidden" name="old" value="{{ name }}">
+        <label>New name <input type="text" name="new" required placeholder="{{ name }}" autocomplete="off"></label>
+        <label class="adm-ptick"><input type="checkbox" name="cascade" value="1" checked> Move its {{ n | thousands }} {{ 'person' if n == 1 else 'people' }}, their records and their admins' scopes with it (its settings always move)</label>
+        <span class="adm-pacts"><button type="submit" class="btn-link">Rename</button></span>
+      </form>
+    </section>
+    <section class="adm-psec" aria-label="Shown as">
+      <h3 class="adm-ph">Shown as</h3>
+      <form method="post" class="adm-pform"
+            data-confirm="Change how {{ name }} is named across the app? The display name you typed replaces the official name in menus, filters and reports for everyone (not in exports or import templates). Leave it blank to go back to the official name."
+            data-confirm-title="Change this display name?" data-confirm-ok="Save name">
+        <input type="hidden" name="action" value="{{ 'set_company_display' if c else 'set_bg_display' }}">
+        <input type="hidden" name="business_group" value="{{ g.bg }}">{% if c %}<input type="hidden" name="company" value="{{ c.name }}">{% endif %}
+        <label>Display name <input type="text" name="preferred_name" value="{{ c.preferred_name if c else g.preferred_name }}" placeholder="Leave blank for the official name"></label>
+        <span class="muted small">Shown everywhere but exports and import templates.</span>
+        <span class="adm-pacts"><button type="submit" class="btn-link">Save name</button></span>
+      </form>
+    </section>
+    {% if c %}
+    {# Move the unit to another business group (2026-11-06, canvas board 1): the super admin's alone (this page's panels are only built for
+       them); "Preview the move" fetches the preview into this panel, whose primary posts action=move_company. #}
+    <section class="adm-psec" aria-label="Business group" data-move data-move-url="{{ url_for('admin_org_move_preview') }}"
+             data-bg="{{ g.bg }}" data-company="{{ c.name }}">
+      <h3 class="adm-ph">Business group</h3>
+      <span class="adm-mv-belongs"><span class="pp-prof-k">Belongs to</span><span class="pp-prof-v">{{ display_bg(g.bg) }}</span></span>
+      <div class="adm-pform">
+        <label>Move it to
+          <select data-move-pick>
+            <option value="">Pick a business group</option>
+            {% for b in all_bgs if b != g.bg %}<option value="{{ b }}">{{ display_bg(b) }}</option>{% endfor %}
+          </select></label>
+        <p class="adm-mv-err" role="alert" data-move-err hidden></p>
+        <span class="muted small adm-mv-hint">Its people, BU CEO seat and BU KPI lines go with it. It takes the new group's scoring rule, bands, KPI library and BG CEO. You can move it back the same way.</span>
+        <span class="adm-pacts"><button type="button" class="btn-link" data-move-go disabled>Preview the move</button></span>
+      </div>
+    </section>
+    {% endif %}
+    {% if not c %}
+    <section class="adm-psec" aria-label="Add a business unit">
+      <h3 class="adm-ph">Add a business unit</h3>
+      <form method="post" class="adm-pform"
+            data-confirm="Add the business unit you typed to {{ g.bg }}? It becomes available in dropdowns, filters and imports for this group. You can remove it later; people keep their data."
+            data-confirm-title="Add this business unit?" data-confirm-ok="Add unit">
+        <input type="hidden" name="action" value="add_company"><input type="hidden" name="business_group" value="{{ g.bg }}">
+        <label>New business unit in {{ g.bg }} <input type="text" name="company" required autocomplete="off"></label>
+        <span class="adm-pacts"><button type="submit" class="btn-link">Add unit</button></span>
+      </form>
+    </section>
+    {% endif %}
+    <section class="adm-psec" aria-label="Who leads it">
+      <h3 class="adm-ph">Who leads it</h3>
+      <div class="adm-prow"><span><span class="pp-prof-k">{{ 'BU CEO' if c else 'BG CEO' }}</span>
+        <span class="pp-prof-v">{% set lead = c.lead if c else g.lead %}{% if lead %}{{ lead }}{% else %}<em class="pp-none-v">None yet</em>{% endif %}</span></span>
+        <a class="btn-link" href="{{ url_for('admin_leaders', bg=g.bg, tab=('buceo' if c else 'bgceo'), panel=(('bu-' ~ c.slug) if c else ('bg-' ~ g.slug))) }}">{{ 'Change' if lead else 'Set' }} on Leaders &rsaquo;</a></div>
+      {% set adm = c.admins if c else g.admins %}
+      <div class="adm-prow"><span><span class="pp-prof-k">{{ 'Unit admins' if c else 'BG admins' }}</span>
+        <span class="pp-prof-v">{{ adm if adm else 'None' }}</span></span>
+        <a class="btn-link" href="{{ url_for('admin_admins') }}">Admins &rsaquo;</a></div>
+    </section>
+    {% if c %}
+    <section class="adm-psec" aria-label="Departments">
+      <h3 class="adm-ph">Departments</h3>
+      {% if c.depts %}<p class="org-depts">{% for d, k in c.depts[:14] %}{{ d }} <b>{{ k }}</b>{{ ' · ' if not loop.last }}{% endfor %}{% if c.depts | length > 14 %} · and {{ c.depts | length - 14 }} more{% endif %}</p>
+      {% else %}<p class="muted small">Nobody is in it yet.</p>{% endif %}
+    </section>
+    {% endif %}
+    <a class="adm-plink" href="{{ url_for('admin_users', fbg=g.bg, fbu=(c.name if c else None)) }}">Open its {{ n | thousands }} {{ 'person' if n == 1 else 'people' }} &rsaquo;</a>
+    <div class="adm-danger">
+      <span><b>Remove this {{ 'business unit' if c else 'business group' }}</b><br>{% if n %}{{ n | thousands }} {{ 'person is' if n == 1 else 'people are' }} in it: you'll type its name to confirm.{% else %}Nobody is in it.{% endif %} You can restore it from Removed.</span>
+      <form method="post"
+        {% if n %}data-prompt="{{ n }} {{ 'person is' if n == 1 else 'people are' }} in {{ name }}. They keep all their data, but until they're moved they show as 'unit not in Org structure', an import skips their rows{% if c %}, and {{ c.name }} has no BU CEO calibration{% endif %}. Type {{ name }} to remove it anyway; you can restore it from Removed at any time." data-prompt-field="confirm_name"
+        {% else %}data-confirm="Remove {{ name }}{% if c %} from {{ g.bg }}{% endif %}? Nobody is in it. You can restore it from Removed at any time." data-confirm-ok="Remove" data-confirm-tone="danger"{% endif %}>
+        <input type="hidden" name="action" value="{{ 'remove_company' if c else 'remove_bg' }}">
+        <input type="hidden" name="business_group" value="{{ g.bg }}">{% if c %}<input type="hidden" name="old" value="{{ c.name }}">{% endif %}
+        <input type="hidden" name="confirm_name" value="">
+        <button type="submit" class="btn-link adm-danger-btn">Remove&hellip;</button>
+      </form>
+    </div>
+  </div>
+  <footer class="adm-panel-foot"><button type="button" class="primary" data-panel-close>Done</button></footer>
+{% endcall %}
+{% endmacro %}
+
+{# Org structure as one table (admin round 4, canvas O2-O3): each business group with its units, the people in each,
+   how it is shown, who leads it and who administers it. Each row's Edit opens its side panel (phase 3); removing one
+   that still has people asks for its name typed; Removed lists what can come back. #}
+{% set n_groups = groups | length %}
+<div class="adm-headrow">
+  <p class="adm-lede">What people and imports are checked against. A display name changes what the app shows, never
+    exports or templates.</p>
+  <div class="adm-headrow-acts">
+    <label class="sr-only" for="org-find">Find a group or unit</label>
+    <input type="search" id="org-find" placeholder="Find" class="org-find" autocomplete="off">
+    <button type="button" class="primary" data-panel-open="org-add-bg">Add a business group</button>
+  </div>
+</div>
+<nav class="adm-modes" aria-label="Show">
+  <a href="{{ url_for('admin_org') }}" class="{{ 'is-on' if show != 'removed' }}"{% if show != 'removed' %} aria-current="page"{% endif %}>Active · {{ n_groups }} group{{ '' if n_groups == 1 else 's' }}, {{ n_units }} unit{{ '' if n_units == 1 else 's' }}</a>
+  <a href="{{ url_for('admin_org', show='removed') }}" class="{{ 'is-on' if show == 'removed' }}"{% if show == 'removed' %} aria-current="page"{% endif %}>Removed · {{ removed | length }}</a>
+</nav>
+{% if show != 'removed' and groups %}
+{% set want = request.args.get('bg', '') %}
+{% set ns = namespace(opts=[], tot=0, hit=false) %}
+{% for g in groups %}{% set ns.tot = ns.tot + g.emp %}{% if g.slug == want %}{% set ns.hit = true %}{% endif %}{% endfor %}
+{% set _a = ns.opts.append({"label": "All", "n": ns.tot, "on": not ns.hit, "href": url_for('admin_org')}) %}
+{% for g in groups %}{% set _b = ns.opts.append({"label": display_bg(g.bg), "n": g.emp, "on": ns.hit and g.slug == want, "href": url_for('admin_org', bg=g.slug)}) %}{% endfor %}
+<div id="org-bgrow">{{ filter_rows([{"label": "Business group", "opts": ns.opts}]) }}</div>
+{% endif %}
+
+{% call panel("org-add-bg", "Org structure · New", "Add a business group", "It becomes available in dropdowns, filters and imports.") %}
+  <form method="post" class="adm-panel-form"
+        data-confirm="Add this business group to the org structure? It becomes available in dropdowns, filters and imports. You can remove it later; people keep their data."
+        data-confirm-title="Add this business group?" data-confirm-ok="Add">
+    <div class="adm-panel-body pp-pfields">
+      <input type="hidden" name="action" value="add_bg">
+      <label>Business group <input name="business_group" required autocomplete="off"></label>
+      <label>First business unit (optional) <input name="company" placeholder="e.g. FIAMMA SDN BHD" autocomplete="off"></label>
+    </div>
+    <footer class="adm-panel-foot">
+      <button type="button" class="btn-link" data-panel-close>Cancel</button>
+      <button type="submit" class="primary">Add the group</button>
+    </footer>
+  </form>
+{% endcall %}
+
+{% if show == 'removed' %}
+<section class="admin-card">
+  <h2>Removed</h2>
+  <p class="muted small">Nothing here was deleted: restoring brings it back as it was, people and settings included.</p>
+  {% if removed %}
+  <div class="table-scroll"><table class="admin-table no-auto-table">
+    <thead><tr><th scope="col">Name</th><th scope="col">In</th><th scope="col">Removed</th><th scope="col" class="num">People still in it</th><th scope="col"></th></tr></thead>
+    <tbody>{% for r in removed %}
+      <tr><th scope="row">{{ r.name }}</th><td class="small">{{ 'a business group' if r.whole else display_bg(r.bg) }}</td>
+        <td class="small">{{ (r.at | myt_day) if r.at else '—' }}</td><td class="num">{{ r.people | thousands }}</td>
+        <td><form method="post" data-confirm="Bring back {{ r.name }}{% if not r.whole %} in {{ display_bg(r.bg) }}{% endif %}? It shows again in dropdowns, filters and imports, as it was." data-confirm-ok="Restore">
+          <input type="hidden" name="action" value="{{ 'restore_bg' if r.whole else 'restore_company' }}">
+          <input type="hidden" name="business_group" value="{{ r.bg }}"><input type="hidden" name="company" value="{{ r.company }}">
+          <button type="submit" class="btn-link">Restore</button></form></td></tr>
+    {% endfor %}</tbody></table></div>
+  {% else %}<p class="muted">Nothing has been removed.</p>{% endif %}
+</section>
+{% else %}
+<section class="admin-card">
+  {% if groups %}
+  <div class="table-scroll"><table class="admin-table no-auto-table org-table" id="org-table">
+    <thead><tr><th scope="col">Name</th><th scope="col">Shown as</th><th scope="col" class="num">People</th>
+      <th scope="col">Leader</th><th scope="col">Admins</th><th scope="col"><span class="sr-only">Edit</span></th></tr></thead>
+    {% for g in groups %}
+    <tbody class="org-grp" data-bg="{{ g.slug }}" data-find="{{ (g.bg ~ ' ' ~ g.preferred_name) | lower }}">
+      <tr class="org-g" id="bg-{{ g.slug }}">
+        <th scope="row">{{ g.bg }}</th>
+        <td>{{ g.preferred_name or '—' }}</td>
+        <td class="num">{{ g.emp | thousands }}</td>
+        <td>{% if g.lead %}{{ g.lead }} <span class="muted small">· BG CEO</span>{% else %}<span class="org-none">No BG CEO</span>{% endif %}</td>
+        <td class="small">{{ (g.admins ~ ' BG admin' ~ ('' if g.admins == 1 else 's')) if g.admins else '—' }}</td>
+        <td><button type="button" class="btn-link org-edit-btn" data-panel-open="org-{{ g.slug }}" aria-label="Edit {{ g.bg }}">Edit</button></td>
+      </tr>
+      {% for c in g.companies %}
+      <tr class="org-u" id="co-{{ g.slug }}-{{ c.slug }}" data-find="{{ (c.name ~ ' ' ~ c.preferred_name) | lower }}">
+        <th scope="row">{{ c.name }}</th>
+        <td>{{ c.preferred_name or '—' }}</td>
+        <td class="num">{{ c.emp | thousands }}</td>
+        <td>{% if c.lead %}{{ c.lead }} <span class="muted small">· BU CEO</span>{% else %}<span class="org-none">No BU CEO</span>{% endif %}</td>
+        <td class="small">{{ (c.admins ~ ' unit admin' ~ ('' if c.admins == 1 else 's')) if c.admins else '—' }}</td>
+        <td><button type="button" class="btn-link org-edit-btn" data-panel-open="org-{{ g.slug }}-{{ c.slug }}" aria-label="Edit {{ c.name }}">Edit</button></td>
+      </tr>
+      {% endfor %}
+    </tbody>
+    {% endfor %}
+  </table></div>
+  <p class="muted small" id="org-nomatch" hidden>Nothing matches.</p>
+  {% else %}<p class="muted">No business groups yet. Add one above.</p>{% endif %}
+</section>
+{% for g in groups %}{{ org_panel(g, none) }}{% for c in g.companies %}{{ org_panel(g, c) }}{% endfor %}{% endfor %}
+{% endif %}
+
+<script>
+(function () {
+  // Move a business unit (2026-11-06): "Preview the move" puts the server's preview in this unit's panel in place of its body and foot;
+  // Back (or closing the panel) puts them back. A refusal shows in the section and changes nothing.
+  function unstash(panel) {
+    var st = panel && panel._mvStash; if (!st) return;
+    var b = panel.querySelector("[data-move-body]"), f = panel.querySelector("[data-move-foot]");
+    if (b) b.replaceWith(st.body); if (f) f.replaceWith(st.foot);
+    panel._mvStash = null;
+  }
+  document.addEventListener("change", function (e) {
+    var sel = e.target.closest ? e.target.closest("[data-move-pick]") : null; if (!sel) return;
+    var sec = sel.closest("[data-move]");
+    sec.querySelector("[data-move-go]").disabled = !sel.value;
+    var er = sec.querySelector("[data-move-err]"); er.hidden = true; er.textContent = "";
+  });
+  document.addEventListener("click", function (e) {
+    var go = e.target.closest("[data-move-go]");
+    if (go) {
+      var sec = go.closest("[data-move]"), panel = go.closest(".adm-panel-in"), sel = sec.querySelector("[data-move-pick]");
+      var er = sec.querySelector("[data-move-err]"); er.hidden = true; er.textContent = "";
+      if (!sel.value) return;
+      go.disabled = true;
+      var u = new URL(sec.getAttribute("data-move-url"), location.href);
+      u.searchParams.set("business_group", sec.getAttribute("data-bg")); u.searchParams.set("company", sec.getAttribute("data-company"));
+      u.searchParams.set("to", sel.value);
+      fetch(u.toString(), {credentials: "same-origin", headers: {"X-Requested-With": "fetch"}}).then(function (r) {
+        return r.text().then(function (t) { return {status: r.status, text: t}; });
+      }).then(function (r) {
+        go.disabled = !sel.value;
+        if (r.status === 409) { var tp = document.createElement('template'); tp.innerHTML = r.text; er.textContent = tp.content.textContent.trim(); er.hidden = false; return; }
+        if (r.status !== 200) { er.textContent = "The preview didn't load. Nothing was changed."; er.hidden = false; return; }
+        var t = document.createElement("template"); t.innerHTML = r.text;
+        var nb = t.content.querySelector("[data-move-body]"), nf = t.content.querySelector("[data-move-foot]");
+        var body = panel.querySelector(".adm-panel-body"), foot = panel.querySelector(".adm-panel-foot");
+        if (!nb || !nf || !body || !foot) return;
+        panel._mvStash = {body: body, foot: foot};
+        body.replaceWith(nb); foot.replaceWith(nf); nb.scrollTop = 0;
+      }).catch(function () { go.disabled = !sel.value; er.textContent = "The preview didn't load. Nothing was changed."; er.hidden = false; });
+      return;
+    }
+    if (e.target.closest("[data-move-back]")) { unstash(e.target.closest(".adm-panel-in")); return; }
+    if (e.target.closest("[data-panel-close]")) { var pn = e.target.closest(".adm-panel"); if (pn) unstash(pn.querySelector(".adm-panel-in")); }
+  });
+  document.addEventListener("keydown", function (e) {
+    if (e.key === "Escape") document.querySelectorAll(".adm-panel-in").forEach(unstash);
+  });
+})();
+
+(function () {
+  // Business group filter row and Find, applied together (8 Nov 2026)
+  var q = document.getElementById("org-find"), row = document.getElementById("org-bgrow"); if (!q) return;
+  function slugOf(a) {
+    try { return new URL(a.href, window.location.href).searchParams.get("bg") || ""; } catch (e) { return ""; }
+  }
+  function curBg() {
+    var on = row ? row.querySelector(".adm-frow-pill.is-on") : null;
+    return on ? slugOf(on) : "";
+  }
+  function apply() {
+    var v = q.value.trim().toLowerCase(), bg = curBg(), any = false;
+    document.querySelectorAll("tbody.org-grp").forEach(function (tb) {
+      var inbg = !bg || tb.getAttribute("data-bg") === bg;
+      var gm = !v || tb.getAttribute("data-find").indexOf(v) >= 0, um = false;
+      tb.querySelectorAll("tr.org-u").forEach(function (tr) { var m = gm || tr.getAttribute("data-find").indexOf(v) >= 0; tr.hidden = !m; um = um || m; });
+      var show = inbg && (gm || um); tb.hidden = !show; any = any || show;
+    });
+    document.getElementById("org-nomatch").hidden = any;
+  }
+  q.addEventListener("input", apply);
+  if (row) {
+    row.addEventListener("click", function (e) {
+      var a = e.target.closest ? e.target.closest("a.adm-frow-pill") : null; if (!a || !row.contains(a)) return;
+      e.preventDefault();
+      row.querySelectorAll(".adm-frow-pill").forEach(function (p) { p.classList.remove("is-on"); p.removeAttribute("aria-current"); });
+      a.classList.add("is-on"); a.setAttribute("aria-current", "true");
+      try {
+        var u = new URL(window.location.href), s = slugOf(a);
+        if (s) u.searchParams.set("bg", s); else u.searchParams.delete("bg");
+        history.replaceState(null, "", u.pathname + u.search + u.hash);
+      } catch (err) {}
+      apply();
+    });
+    if (curBg()) apply();
+  }
+})();
+</script>
+{% endblock %}

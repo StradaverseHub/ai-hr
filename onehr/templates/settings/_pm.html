@@ -1,0 +1,422 @@
+{% from "_table_tools.html" import colth, colmenu, colmenu_script %}
+{% from "_adm_panel.html" import panel, list_peek with context %}
+{# Panel: pm. Scoring (Performance > Settings > Scoring). One row per business group, one decision per row; below it ONLY
+   the picked group's settings (?bg=), drawn on the canvas Chris approved 2026-10-29
+   ([design canvas link removed]): an Achievement % group's bands with the unit and department rules
+   under them, a 5-point group's read-only table, or a nudge when no method is chosen yet.
+
+   The first version of this page was a stack of per-BG cards each carrying TWO dropdowns, Mechanism and MBO variant.
+   That made a meaningless fourth combination reachable: choosing the 5-point table still showed an MBO variant, and
+   whatever it said was then discarded on save. The scoring engine has exactly three states, so the form offers three.
+   Storage is unchanged (mechanism A / B, variant excellence / base).
+   The page is hidden from the pills, so its crumb is the only thing that names it. #}
+{% set LAB = band_labels %}
+{# BAND STARTS ARE PER CYCLE (Chris, 2026-10-29; canvas [design canvas link removed]): everything in
+   section 2 is the cycle in the top bar (`cyc`). `ed` = the super admin AND that cycle's starts may still change (not archived,
+   no result released to leaders); otherwise the section is read only, with a grey "Fixed" chip and the reason. #}
+{% set ed = can_edit and cyc.open %}
+{% macro cyc_chips() %}<span class="br-chip-m br-chip-c" title="The cycle in the top bar">{{ cyc.name }}</span>{% if not cyc.open %}<span class="br-chip-m br-chip-g br-chip-fixed">{% if cyc.why == 'released' %}Fixed: results released {{ cyc.released_on }}{% else %}Fixed: archived{% endif %}</span>{% endif %}{% endmacro %}
+{% macro fixed_line() %}{% if not cyc.open %}<p class="br-fixed muted small">{% if cyc.why == 'released' %}{{ cyc.name }}'s results are released, so its band starts are fixed.{% else %}{{ cyc.name }} is archived, so its band starts are fixed.{% endif %}{% if cyc.other_active %} To change the starts for {{ cyc.active_name }}, pick it in the top bar.{% endif %}</p><p class="br-fixed muted small">{{ changed_line() }}</p>{% endif %}{% endmacro %}
+{% macro changed_line() %}<span class="br-changed muted small">{% if cyc_changed %}Changed {{ cyc_changed.at }}{% if cyc_changed.by %}, {{ cyc_changed.by }}{% endif %}{% else %}Unchanged since the cycle was made{% endif %}</span>{% endmacro %}
+{% macro other_cycles(title, five) %}
+{% if cyc_others %}
+<details class="fold br-others"><summary>{{ title }} ({{ cyc_others | length }})</summary>
+  <div class="br-others-tbl"><table class="admin-table br-otable">
+    <thead><tr><th>Cycle</th><th>{{ 'Starts' if five else 'Group default' }}</th>{% if not five %}<th>Rules</th>{% endif %}<th>Can change</th></tr></thead>
+    <tbody>
+    {% for o in cyc_others %}
+    <tr><td class="br-nowrap"><strong>{{ o.name }}</strong></td><td class="muted small br-nowrap">{{ o.words }}</td>{% if not five %}<td class="br-nowrap">{{ ('%d %s' % (o.rules, 'rule' if o.rules == 1 else 'rules')) if o.rules else 'None' }}</td>{% endif %}<td class="br-nowrap">{{ o.can }}</td></tr>
+    {% endfor %}
+    </tbody>
+  </table></div>
+  <button type="button" class="btn-link" data-fold-less>Show less</button>
+</details>
+{% endif %}
+{% endmacro %}
+{% set method_word = {'A': '5-point rating', 'B_excellence': 'Achievement %, capped at excellence', 'B_base': 'Achievement %, scales above target'} %}
+<p class="adm-crumb"><a href="{{ url_for('admin_module_settings', key='pm') }}">Settings</a> &rsaquo; Scoring</p>
+<p class="adm-lede">How each business group scores a KPI, and which band a score falls in. Pick a group to see its settings.
+  A group uses one method, never a mix. Where each band starts belongs to a cycle: this page shows the cycle in the top bar.</p>
+{% if not can_edit %}
+<div class="admin-card" style="margin-top:14px">
+  <p class="note" style="margin:0"><strong>Read only for you.</strong>
+    Scoring rules are the super admin's: changing a method or a cut-off re-scores every scorecard in the group.
+    They are shown here because they score your people.</p>
+</div>
+{% endif %}
+<details class="muted small adm-lede">
+  <summary>How the three methods differ</summary>
+  <p><strong>5-point rating:</strong> every KPI carries its own Rate 1&ndash;5 table, and the weighted
+    average maps to a label through one table shared by every 5-point group (its starts are the cycle's own).</p>
+  <p><strong>Achievement&nbsp;%:</strong> every KPI carries a threshold and a target, and the weighted
+    achievement&nbsp;% maps to a label through that business group's own cutoff table, set below for the cycle.
+    The two forms differ only above target: one keeps scaling, the other stops at the excellence figure.
+    A unit, or chosen departments of it, can start the bands elsewhere (a rule); a department's rule wins over its
+    unit's, and a unit's over the group's.</p>
+</details>
+
+<div class="admin-card br-card" style="padding:0;overflow:hidden">
+  <div class="br-h1"><h2>1. Scoring method</h2><span class="muted small">One method per business group, never a mix.</span></div>
+  <div class="table-scroll table-scroll-capped"><table class="admin-table br-table" id="pm-bg-table" style="margin:0">
+    <thead>
+      <tr><th class="br-dotc" aria-label="Shown below"></th>{{ colth('bg', 'Business group') }}{{ colth('people', 'People') }}
+          {{ colth('cards', 'Scorecards') }}
+          {{ colth('mech', 'Scoring method') }}</tr>
+    </thead>
+    <tbody>
+      {% for bg in bgs %}
+      {% set cfg = configs.get(bg) %}
+      {% set c = counts.get(bg, {}) %}
+      {% set cur = 'A' if cfg and cfg['mechanism'] == 'A'
+                   else ('B_excellence' if cfg and cfg['variant'] == 'excellence'
+                   else ('B_base' if cfg else '')) %}
+      {# mech carries "Not set" as a real value, because the whole reason to sort
+         this column is to bring the business groups that score nobody together. #}
+      <tr class="data-row br-row{{ ' is-picked' if bg == pick }}" data-bg="{{ display_bg(bg) }}" data-pick="{{ url_for('admin_performance_config', bg=bg) }}"
+          data-people="{{ c.get('people', 0) }}" data-cards="{{ c.get('targets', 0) }}"
+          data-mech="{% if not cfg %}Not set{% elif cfg['mechanism'] == 'A' %}5-point rating
+            {%- elif cfg['variant'] == 'excellence' %}Achievement % · capped{% else %}Achievement % · scales above target{% endif %}">
+        <td class="br-dotc"><span class="br-radio" aria-hidden="true"></span></td>
+        <td><a class="br-grp" href="{{ url_for('admin_performance_config', bg=bg) }}"{% if bg == pick %} aria-current="true"{% endif %}>{{ display_bg(bg) }}</a></td>
+        <td>{{ c.get('people', 0) | thousands }}</td>
+        <td>{{ c.get('targets', 0) | thousands }}</td>
+        <td>
+          {% if not can_edit %}
+          {% if not cfg %}<span class="muted">Not set</span>{% elif cfg['mechanism'] == 'A' %}5-point rating
+          {%- elif cfg['variant'] == 'excellence' %}Achievement %, capped at excellence{% else %}Achievement %, scales above target{% endif %}
+          {% else %}
+          <form method="post" class="br-meth" data-no-busy
+                {% if c.get('targets') %}
+                {# Changing this re-scores every agreed scorecard in the BG, so
+                   the confirmation names how many rather than saying "are you
+                   sure". #}
+                data-confirm="Change how {{ display_bg(bg) }} scores? {{ c.get('targets') | thousands }} KPI {{ 'line' if c.get('targets') == 1 else 'lines' }} already agreed this cycle will be re-scored under the new method."
+                data-confirm-title="Re-score {{ c.get('targets') | thousands }} KPI {{ 'line' if c.get('targets') == 1 else 'lines' }}?"
+                data-confirm-ok="Change method"
+                data-confirm-tone="danger"
+                {% else %}
+                {# No agreed KPI lines yet: nothing is re-scored now, but the method still decides how every KPI added from here is scored. #}
+                data-confirm="{{ 'Change how' if cfg else 'Set how' }} {{ display_bg(bg) }} scores KPIs? No KPI lines are agreed this cycle yet, so none are re-scored now; every KPI added from here is scored the new way."
+                data-confirm-ok="Save method"
+                data-confirm-tone="danger"
+                {% endif %}{{ super_remark_attrs() }}>
+            <input type="hidden" name="action" value="set_mechanism">
+            <input type="hidden" name="business_group" value="{{ bg }}">
+            <select name="mechanism" class="modern-select" required style="min-width:240px" aria-label="Scoring method for {{ display_bg(bg) }}">
+              {% if not cfg %}<option value="" selected disabled>Choose a method&hellip;</option>{% endif %}
+              <option value="A" {{ 'selected' if cur == 'A' }}>5-point rating</option>
+              <option value="B_excellence" {{ 'selected' if cur == 'B_excellence' }}>Achievement %, capped at excellence</option>
+              <option value="B_base" {{ 'selected' if cur == 'B_base' }}>Achievement %, scales above target</option>
+            </select>
+            <button type="submit" class="btn-link">Save</button>
+            {% if not cfg %}<span class="status-pill status-submitted">Not set</span>{% endif %}
+          </form>
+          {% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+      <tr class="no-filter-match" hidden><td colspan="5" class="muted">No business groups match the filters.</td></tr>
+    </tbody>
+  </table></div>
+  {{ colmenu('pm-bg-table', {
+       'bg':     {'mode': 'sort', 'type': 'text', 'sortAttr': 'bg'},
+       'people': {'mode': 'sort', 'type': 'num', 'sortAttr': 'people'},
+       'cards':  {'mode': 'sort', 'type': 'num', 'sortAttr': 'cards'},
+       'mech':   {'mode': 'clientFilter', 'type': 'text', 'sortAttr': 'mech'} }) }}
+</div>
+
+{# ---- Section 2: only the picked group ---- #}
+{% if pick and pcfg and pcfg['mechanism'] == 'B' %}
+{% set existing = bands.get(pick, []) %}
+{% set st = {} %}{% for r in existing %}{% set _ = st.update({r['label']: r['min_value']}) %}{% endfor %}
+{% set defaults = [] %}{% for l in LAB %}{% if st.get(l) is not none %}{% set _ = defaults.append(st.get(l)) %}{% endif %}{% endfor %}
+{% set has_default = defaults | length == 5 %}
+<div class="br-h2"><h2>2. {{ display_bg(pick) }}: Achievement % bands</h2>
+  <span class="muted small">Each band starts where you say and runs to the next one's start.</span></div>
+<section class="admin-card br-card br-pct" id="br-root" data-bg="{{ pick }}" data-edit="{{ 1 if ed else 0 }}"
+         data-defaults="{{ defaults | tojson if has_default else '[]' }}">
+  <div class="br-top">
+    <span class="br-chip-m">{{ method_word['B_excellence' if pcfg['variant'] == 'excellence' else 'B_base'] }}</span>
+    {{ cyc_chips() }}
+    <span class="br-grow"></span>
+    {% if cyc.open %}{{ changed_line() }}{% endif %}
+    <span class="muted small br-nowrap">{% if rules %}{{ rules | length }} {{ 'rule' if rules | length == 1 else 'rules' }} &middot; {{ rules | sum(attribute='people') | thousands }} {{ 'person' if (rules | sum(attribute='people')) == 1 else 'people' }} on a rule{% else %}No rules{% endif %}</span>
+  </div>
+
+  {{ fixed_line() }}
+  {% if ed %}
+  <form method="post" class="br-bands" data-no-busy id="br-default-form"
+        data-confirm="Save the achievement % bands for {{ display_bg(pick) }} in {{ cyc.name }}? Every KPI result of this business group in {{ cyc.name }} is re-labelled, UA to OU, against the new starts, except a unit or department that has a rule of its own. Other cycles keep their own starts."
+        data-confirm-title="Re-label {{ display_bg(pick) }}'s results in {{ cyc.name }}?"
+        data-confirm-ok="Save for {{ cyc.name }}" data-confirm-tone="danger"{{ super_remark_attrs() }}>
+    <input type="hidden" name="action" value="set_bands">
+    <input type="hidden" name="business_group" value="{{ pick }}">
+    <input type="hidden" name="cycle_id" value="{{ cyc.id }}">
+  {% else %}
+  <div class="br-bands" id="br-default-form">
+  {% endif %}
+    <div class="br-split">
+      <div class="br-left">
+        <span class="br-kick">Group default</span>
+        {% if has_default %}
+        <div class="br-bar" data-bar="pct" data-starts="{{ defaults | join(',') }}" aria-hidden="true"></div>
+        <div class="br-axis" aria-hidden="true"><span style="left:0">0%</span><span class="br-axis-t" style="left:66.67%">100% = target</span><span style="right:0">150%+</span></div>
+        {% else %}
+        <p class="muted small" style="margin:0">No cut-offs set yet. Enter where each band starts.</p>
+        {% endif %}
+        <div class="br-starts">
+          {% for l in LAB %}
+          <label class="br-start" data-band="{{ l }}">
+            <span><strong>{{ l }}</strong> starts at</span>
+            {% if ed %}
+            <span class="br-inp"><input type="number" step="any" class="br-num" name="min_{{ l }}" data-start="{{ l }}"
+                value="{{ '0' if l == 'UA' else (('%g' % st.get(l)) if st.get(l) is not none else '') }}"{% if l == 'UA' %} disabled{% else %} required{% endif %}><span>%</span></span>
+            {% else %}
+            <span class="br-inp"><span class="br-num br-ro" data-start="{{ l }}">{{ ('%g' % st.get(l)) if st.get(l) is not none else '&ndash;' }}</span><span>%</span></span>
+            {% endif %}
+          </label>
+          {% endfor %}
+        </div>
+      </div>
+      <div class="br-check">
+        <span class="br-kick">Check a score</span>
+        <div class="br-check-row">
+          <input type="number" step="any" class="br-num" value="100" aria-label="Achievement %" data-check><span>%</span>
+          <span>reads</span><span class="br-band" data-check-band></span>
+        </div>
+        <span class="muted small" data-check-range></span>
+      </div>
+    </div>
+    {% if ed %}<div class="br-foot"><button type="submit" class="primary">Save group default for {{ cyc.name }}</button></div>{% endif %}
+  {% if ed %}</form>{% else %}</div>{% endif %}
+
+  <div class="br-rules">
+    <div class="br-rules-h">
+      <span class="br-rules-t">Rules for units and departments in {{ cyc.name }}</span>
+      <span class="muted small">A named person's rule wins over their department's; a department's over its unit's; a unit's over the group default.</span>
+      <span class="br-grow"></span>
+      {% if ed and has_default %}<button type="button" class="btn-link br-add" data-band-add data-panel-open="rule"><span aria-hidden="true">+</span> Add a rule</button>{% endif %}
+    </div>
+    {% if rules %}
+    <div class="br-rules-tbl"><table class="admin-table br-rtable">
+      <thead><tr><th class="br-c-applies">Applies to</th><th class="br-r br-c-people">People</th><th class="br-c-bands">Bands</th><th class="br-c-changed">Changed</th>{% if ed %}<th class="br-c-acts" aria-label="Edit or remove"></th>{% endif %}</tr></thead>
+      <tbody>
+      {% for r in rules %}
+      <tr data-rule-row="{{ r.id }}">
+        <td class="br-applies"><strong>{{ r.unit }}</strong><br>
+          {% if r.people_only %}<span class="br-npill">{{ r.named }} named {{ 'person' if r.named == 1 else 'people' }}</span>{% if r.named_depts %} <span class="muted small">in {{ r.named_depts | join(', ') }}</span>{% endif %}
+          {% else %}<span class="muted small">{% if r.whole %}All departments{% else %}{{ r.depts_label | join(', ') }}{% endif %}</span>{% if r.named %} <span class="br-npill">+ {{ r.named }} named {{ 'person' if r.named == 1 else 'people' }}</span>{% endif %}{% endif %}
+          {% if r.moved %}<br><span class="br-moved" title="{% for m in r.moved %}{{ m.name }} ({{ m.eid }}) {{ m.where }}{% if not loop.last %}; {% endif %}{% endfor %}">{{ r.moved | length }} named {{ 'person' if r.moved | length == 1 else 'people' }} moved out of {{ r.unit }}</span>{% endif %}</td>
+        <td class="br-r">{% if can_edit and r.people %}<a href="#" class="br-people" data-list-open="{{ url_for('admin_list_view', key='band-rule-people', fragment=1, bg=pick, rule=r.id) }}">{{ r.people | thousands }}</a>{% else %}{{ r.people | thousands }}{% endif %}</td>
+        <td class="br-bandcell"><div class="br-bar br-bar-s" data-bar="pct" data-starts="{{ r.starts | map(attribute=1) | join(',') }}" aria-hidden="true"></div>
+          <div class="muted small br-nowrap">{{ r.words }}</div></td>
+        <td class="muted small br-changed-c" title="{{ r.changed }}{% if r.by %}, {{ r.by }}{% endif %}">{{ r.changed }}{% if r.by %}, {{ r.by }}{% endif %}</td>
+        {% if ed %}
+        <td class="br-acts">
+          {% if has_default %}
+          <button type="button" class="btn-link" data-band-edit data-panel-open="rule" data-rule='{{ {"id": r.id, "company": r.company, "whole": r.whole, "scope": ("unit" if r.whole else ("people" if r.people_only else "depts")), "depts": r.depts, "people": r.named_people | map(attribute="eid") | list, "same": r.same, "starts": r.starts | map(attribute=1) | list, "remark": r.remark} | tojson }}'>Edit</button>
+          {% endif %}
+          <form method="post" class="br-rm" data-no-busy
+                data-confirm="Remove the rule for {{ r.unit }} &middot; {{ 'all departments' if r.whole else ((r.depts_label | join(', ')) if r.depts_label else (r.named ~ ' named people')) }}? Its {{ r.people | thousands }} {{ 'person' if r.people == 1 else 'people' }}{% if r.named %}, {{ r.named }} of them named,{% endif %} go back to {{ display_bg(pick) }}'s bands, and their results are re-labelled. A band already moved in a Department Review or Talent Box, or released, stays as it is."
+                data-confirm-title="Remove this rule?" data-confirm-ok="Remove rule" data-confirm-tone="danger"{{ super_remark_attrs() }}>
+            <input type="hidden" name="action" value="rule_remove">
+            <input type="hidden" name="business_group" value="{{ pick }}">
+            <input type="hidden" name="cycle_id" value="{{ cyc.id }}">
+            <input type="hidden" name="rule_id" value="{{ r.id }}">
+            <button type="submit" class="btn-link br-danger">Remove</button>
+          </form>
+        </td>
+        {% endif %}
+      </tr>
+      {% endfor %}
+      </tbody>
+    </table></div>
+    {% else %}
+    <p class="br-empty">No rules yet in {{ cyc.name }}. Everyone in {{ display_bg(pick) }} uses the group default.</p>
+    {% endif %}
+  </div>
+  {{ other_cycles(display_bg(pick) ~ "'s bands in other cycles", false) }}
+</section>
+
+{% if ed and has_default %}
+{% call panel("rule", display_bg(pick) ~ " · Achievement % bands · " ~ cyc.name, "Add a rule", "") %}
+<form method="post" class="adm-panel-form br-pform" id="br-rule-form" data-no-busy
+      data-confirm="Save this rule for {{ cyc.name }}?" data-confirm-title="Save this rule?" data-confirm-ok="Save rule" data-confirm-body="br-rule-body"{% if draft %} data-draft='{{ draft | tojson }}'{% endif %}>
+  <input type="hidden" name="action" value="rule_save">
+  <input type="hidden" name="business_group" value="{{ pick }}">
+  <input type="hidden" name="cycle_id" value="{{ cyc.id }}">
+  <input type="hidden" name="rule_id" value="">
+  <div class="adm-panel-body">
+    <section class="br-sec">
+      <span class="br-lbl">1. Applies to</span>
+      <label class="br-fld"><span>Unit</span>
+        <select name="rule_unit" class="modern-select" id="br-unit" required>
+          <option value="">Pick a unit</option>
+          {% for u in rule_units %}<option value="{{ u.company }}">{{ u.label }} &middot; {{ u.n | thousands }}</option>{% endfor %}
+        </select></label>
+      <div class="br-scope">
+        <label><input type="radio" name="rule_scope" value="unit" checked> All departments in this unit</label>
+        <label><input type="radio" name="rule_scope" value="depts"> Chosen departments</label>
+        <div class="br-chips" id="br-chips" hidden></div>
+        <label><input type="radio" name="rule_scope" value="people"> Only named people</label>
+        <p class="muted small" id="br-scope-note" hidden></p>
+      </div>
+      {# the people a rule names (2026-11-02): a strict multi-pick of the unit's active people, fed from the page (br-data), so
+         no route is needed; band_rules.js keeps the chosen ones as rule_person fields #}
+      <div class="br-pbox" id="br-people" hidden>
+        <div class="br-people-h"><label class="br-lbl2" for="br-pick-q" id="br-people-lbl">Named people</label><span class="br-grey" id="br-people-n"></span></div>
+        <p class="muted small br-people-help" id="br-people-help1"></p>
+        <span class="pick pick-multi br-pick" id="br-pick">
+          <input type="text" class="pick-q" id="br-pick-q" autocomplete="off" placeholder="Search by name, Employee ID or job">
+        </span>
+        <p class="muted small br-people-help" id="br-people-help2"></p>
+      </div>
+    </section>
+
+    <section class="br-info" id="br-reach" hidden>
+      <span class="br-i" aria-hidden="true">i</span><span id="br-reach-t"></span>
+    </section>
+    <section class="br-info" id="br-highest" hidden>
+      <span class="br-i" aria-hidden="true">i</span><span id="br-highest-t"></span>
+    </section>
+
+    <section class="br-sec">
+      <div class="br-sec-h"><span class="br-lbl">2. Where each band starts</span><span class="br-grow"></span>
+        <button type="button" class="btn-link" id="br-fill">Start from the group default</button></div>
+      <div class="br-pstarts">
+        {% for l in LAB %}
+        <label class="br-start" data-band="{{ l }}"><strong>{{ l }}</strong>
+          <span class="br-inp"><input type="number" step="any" class="br-num" name="min_{{ l }}" data-pstart="{{ l }}"{% if l == 'UA' %} value="0" disabled{% else %} required{% endif %}><span>%</span></span></label>
+        {% endfor %}
+      </div>
+      <div class="br-cmp">
+        <span>Group default</span><div class="br-bar br-bar-s br-bar-dim" id="br-bar-def" data-bar="pct" data-starts="{{ defaults | join(',') }}" aria-hidden="true"></div>
+        <span class="br-cmp-me">This rule</span><div class="br-bar br-bar-m" id="br-bar-rule" data-bar="pct" data-labels="1" data-starts="" aria-hidden="true"></div>
+        <span></span><div class="br-axis br-axis-s" aria-hidden="true"><span style="left:0">0%</span><span class="br-axis-t" style="left:66.67%">100%</span><span style="right:0">150%+</span></div>
+      </div>
+      <p class="br-err" id="br-starts-err" role="alert" hidden></p>
+      {# O1 (2026-11-02): on an edit whose starts differ from the saved ones, the rules that start where this one did #}
+      <div class="br-o1" id="br-o1" hidden>
+        <label class="br-o1-h"><input type="checkbox" id="br-o1-all" checked> <strong id="br-o1-t"></strong></label>
+        <p class="muted small br-o1-note" id="br-o1-note"></p>
+        <div class="br-o1-rows" id="br-o1-rows"></div>
+      </div>
+    </section>
+
+    <section class="br-sec">
+      <span class="br-lbl">3. What changes now</span>
+      <div class="br-tiles">
+        <div class="br-tile"><div class="br-tn" id="br-n-people">&ndash;</div><div class="muted small" id="br-n-people-l">people on this rule</div></div>
+        <div class="br-tile"><div class="br-tn" id="br-n-res">&ndash;</div><div class="muted small">with KPI results so far</div></div>
+        <div class="br-tile"><div class="br-tn" id="br-n-chg">&ndash;</div><div class="muted small">change band</div></div>
+      </div>
+      <p class="muted small" id="br-moves" style="margin:0"></p>
+      <details class="fold br-fold" id="br-fold" hidden><summary id="br-fold-s"></summary><ul id="br-fold-l"></ul><button type="button" class="btn-link" data-fold-less>Show less</button></details>
+      <p class="muted small" style="margin:0">A band already moved in a Department Review or Talent Box, or released, stays as it is.</p>
+      <p class="br-err" id="br-place-err" role="alert" hidden></p>
+    </section>
+
+    <section class="br-sec">
+      <label for="br-remark" class="br-lbl">4. Remark (required)</label>
+      <textarea id="br-remark" name="remark" rows="3" maxlength="{{ remark_max }}" class="br-ta" required
+                placeholder="Why this unit, department or these people need their own bands"></textarea>
+    </section>
+  </div>
+  <footer class="adm-panel-foot">
+    <span class="muted small adm-panel-grow" id="br-foot-note">Pick a unit to see what changes.</span>
+    <button type="button" class="btn-link" data-panel-close>Cancel</button>
+    <button type="submit" class="primary" id="br-save" disabled>Save rule</button>
+  </footer>
+  <div id="br-rule-body" hidden></div>
+</form>
+{% endcall %}
+{% endif %}
+{% if can_edit %}{{ list_peek() }}{% endif %}
+
+{% elif pick and pcfg %}
+{# a 5-point group: nothing to set for the group; the table is the organisation's, read only #}
+<div class="br-h2"><h2>2. {{ display_bg(pick) }}: 5-point rating</h2>
+  <span class="muted small">Two steps: each KPI is rated 1 to 5, then the weighted average picks the band.</span></div>
+<section class="admin-card br-card br-five" id="br-root" data-bg="{{ pick }}" data-edit="0">
+  <div class="br-step">
+    <span class="br-n">a</span><span class="br-step-t">Each KPI is rated 1 to 5 against its own table</span><span class="br-grow"></span>
+    {% if can_edit %}<a class="btn-link" href="{{ url_for('admin_kpi_library') }}">Open the KPI library</a>{% endif %}
+  </div>
+  <p class="muted br-p">Every KPI line carries Rate 1 to Rate 5, set in the KPI library or on the person's KPI line. A result is rated at the highest rate it reaches. Nothing to set here for the group.</p>
+</section>
+<section class="admin-card br-card br-five" id="br-five-card" data-cycle="{{ cyc.id }}">
+  <div class="br-step">
+    <span class="br-n">b</span><span class="br-step-t">The weighted average picks the band</span>
+    <span class="br-chip-m br-chip-g">Shared by every 5-point group</span>
+    {{ cyc_chips() }}
+    <span class="br-grow"></span>
+    {% if cyc.open %}{{ changed_line() }}{% endif %}
+  </div>
+  {% if ed %}
+  <form method="post" class="br-fivef" id="br-five-form" data-no-busy data-saved="{{ five | map(attribute='min_value') | list | tojson }}"
+        data-cycle-name="{{ cyc.name }}"
+        data-confirm="Every group on the 5-point rating reads these starts in {{ cyc.name }}. Other cycles keep their own."
+        data-confirm-title="Change the 5-point band starts for {{ cyc.name }}?" data-confirm-ok="Save for {{ cyc.name }}"
+        data-confirm-tone="danger" data-confirm-body="br-five-body"{{ super_remark_attrs() }}>
+    <input type="hidden" name="action" value="set_five">
+    <input type="hidden" name="business_group" value="{{ pick }}">
+    <input type="hidden" name="cycle_id" value="{{ cyc.id }}">
+  {% else %}
+  <div class="br-fivef" id="br-five-form">
+  {% endif %}
+    <div class="br-split">
+      <div class="br-left">
+        <div class="br-bar" data-bar="five" data-starts="{{ five | map(attribute='min_value') | join(',') }}" aria-hidden="true"></div>
+        <div class="br-axis br-axis-five" aria-hidden="true"><span>1.00</span><span>2.00</span><span>3.00</span><span>4.00</span><span>5.00</span></div>
+        <div class="br-starts">
+          {% for r in five %}
+          <label class="br-start" data-band="{{ r['label'] }}" data-start-five="{{ r['min_value'] }}"><span><strong>{{ r['label'] }}</strong> starts at</span>
+            {% if ed %}
+            <input type="number" class="br-num" step="0.01" min="1" max="5" data-start-in="{{ r['label'] }}"
+                   value="{{ '%.2f' | format(r['min_value']) }}"{% if r['label'] == 'UA' %} disabled aria-label="UA always starts at 1.00"{% else %} name="min_{{ r['label'] }}" required aria-label="{{ r['label'] }} starts at"{% endif %}>
+            {% else %}
+            <span class="br-num br-ro">{{ '%.2f' | format(r['min_value']) }}</span>
+            {% endif %}
+          </label>
+          {% endfor %}
+        </div>
+        <p class="br-err" id="br-five-err" role="alert" hidden></p>
+        {% if ed %}
+        <p class="muted small br-help">These starts are for {{ cyc.name }} only, for every group on the 5-point rating. Other cycles keep their own. UA always starts at 1.00. You can change them until {{ cyc.name }}'s results go to leaders.</p>
+        {% elif cyc.open %}
+        <p class="muted small br-help">These starts are for {{ cyc.name }} only, for every group on the 5-point rating. Other cycles keep their own. Only the super admin changes them.</p>
+        {% else %}{{ fixed_line() }}{% endif %}
+      </div>
+      <div class="br-check">
+        <span class="br-kick">Check a score</span>
+        <div class="br-check-row">
+          <input type="number" step="any" class="br-num" value="3.40" aria-label="Weighted rating" data-check><span>reads</span>
+          <span class="br-band" data-check-band></span>
+        </div>
+        <span class="muted small" data-check-range></span>
+      </div>
+    </div>
+  {% if ed %}
+    <div class="br-ffoot">
+      <span class="muted small br-fstatus" id="br-five-status" aria-live="polite">No change yet.</span>
+      <button type="button" class="btn-link" id="br-five-undo" hidden>Put back</button>
+      <button type="submit" class="primary" id="br-five-save" disabled>Save for {{ cyc.name }}</button>
+    </div>
+    <div id="br-five-body" hidden></div>
+  </form>
+  {% else %}</div>{% endif %}
+  {{ other_cycles('Band starts in other cycles', true) }}
+</section>
+<p class="br-empty">Unit and department band rules are for Achievement % groups only. On the 5-point rating every KPI can reach Rate 5, so nobody is held at ME by a cap.</p>
+
+{% elif pick %}
+<section class="admin-card br-card">
+  <p class="muted" style="margin:0">{{ display_bg(pick) }} has no scoring method yet. Choose one in the table above and its settings appear here.</p>
+</section>
+{% endif %}
+
+{% if pick and pcfg %}
+<script type="application/json" id="br-data">{{ {"bg": pick, "bgLabel": display_bg(pick), "previewUrl": url_for('admin_performance_rule_preview'), "fiveUrl": url_for('admin_performance_five_preview'), "cycle": cyc.id, "cycleName": cyc.name, "units": rule_units, "labelNames": label_names, "top": 5 if pcfg['mechanism'] == 'A' else 150, "mech": pcfg['mechanism'], "canEdit": ed} | tojson }}</script>
+<script src="{{ url_for('static', filename='band_rules.js') }}?v={{ asset_v }}"></script>
+{% endif %}
+{{ colmenu_script(asset_v) }}

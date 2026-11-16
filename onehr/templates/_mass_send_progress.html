@@ -1,0 +1,31 @@
+{# How far each mass send has got (Chris, 2026-10-21: "a status bar to let super admin knows the status of the email
+   sent? like XXX/2000"; canvas [design canvas link removed], option A, the super admin's only):
+   each send still going, newest first, else the latest one. Counts only, never a name. Email › Sent redraws it
+   from admin_reminders_progress every 20 s while one is going (data-live). #}
+{# a reminder's counts open its people in the list panel (2026-11-03): "2,188 / 2,191 sent ›" the whole run, "3 failed ›" the
+   failed. The panel is the page's own (Email › Sent and Cycle › Reminders both draw it). #}
+{% for x in sends %}
+{% set lo = url_for('admin_list_view', key='email-run', batch=x.batch, fragment=1) if x.reminder else '' %}
+<div class="rm-send"{% if x.live %} data-live="1"{% endif %}>
+  <div class="rm-send-head">
+    <span class="rm-send-what">{{ x.label }} <span class="muted">· {{ x.sub }}</span></span>
+    <span class="rm-send-n">{% if lo %}<a class="rm-send-link" href="{{ url_for('admin_list_view', key='email-run', batch=x.batch) }}" data-list-open="{{ lo }}">{% endif %}{{ x.sent | thousands }} <span class="muted">/ {{ x.total | thousands }} sent</span>{% if lo %} &rsaquo;</a>{% endif %}</span>
+  </div>
+  <div class="rm-send-bar" role="img" aria-label="{{ x.aria }}">
+    <span class="is-sent" style="width: {{ x.pct.sent }}%"></span>{% if x.failed %}<span class="is-failed" style="width: max(4px, {{ x.pct.failed }}%)"></span>{% endif %}{% if x.now %}<span class="is-now" style="width: {{ x.pct.now }}%"></span>{% endif %}
+  </div>
+  {% if x.live %}
+  <div class="rm-send-key">
+    <span><i class="is-sent" aria-hidden="true"></i>{{ x.sent | thousands }} sent</span>
+    {% if x.failed %}<span class="rm-send-bad"><i class="is-failed" aria-hidden="true"></i>{% if lo %}<a class="rm-send-link rm-send-bad" href="{{ url_for('admin_list_view', key='email-run', batch=x.batch, show='failed') }}" data-list-open="{{ url_for('admin_list_view', key='email-run', batch=x.batch, show='failed', fragment=1) }}">{{ x.failed | thousands }} failed &rsaquo;</a>{% else %}{{ x.failed | thousands }} failed{% endif %}</span>{% endif %}
+    {% if x.now %}<span><i class="is-now" aria-hidden="true"></i>{{ x.now | thousands }} going out now</span>{% endif %}
+    {% if x.later %}<span><i class="is-later" aria-hidden="true"></i>{{ x.later | thousands }} waiting for their wave · next wave {{ x.next }}</span>{% endif %}
+    <span>All sent by about {{ x.finish }}</span>
+  </div>
+  {% else %}
+  <div class="rm-send-key"><span class="rm-send-done">{% if x.failed %}<b class="rm-send-bad">{% if lo %}<a class="rm-send-link rm-send-bad" href="{{ url_for('admin_list_view', key='email-run', batch=x.batch, show='failed') }}" data-list-open="{{ url_for('admin_list_view', key='email-run', batch=x.batch, show='failed', fragment=1) }}">{{ x.failed | thousands }} failed &rsaquo;</a>{% else %}{{ x.failed | thousands }} failed{% endif %}</b>{% if x.reminder %}: they get the next reminder{% endif %} · finished {{ x.finished }}{% else %}All sent · finished {{ x.finished }}{% endif %}</span></div>
+  {% endif %}
+</div>
+{% else %}
+<span class="muted small">No mass email has gone out yet. The next one shows here as it goes.</span>
+{% endfor %}

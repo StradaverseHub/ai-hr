@@ -1,0 +1,65 @@
+{% extends "base.html" %}
+{% from "_filter_rows.html" import filter_rows %}
+{% from "_search_in.html" import search_in_box %}
+{% from "_adm_panel.html" import person_peek %}
+{% block title %}360 Feedback — People{% endblock %}
+{% block body %}
+{# 360 Feedback > Run > People (was "Subjects & results") on the admin page kit (canvas K5, 2026-10-10): business group,
+   unit and department rows; who has a panel, how much of it is in, their score; a name opens their page (panel, the
+   feedback they give), Results their 360 results. Reports release on Cycle > Release results. #}
+<div class="adm-headrow">
+  <p class="adm-lede">Everyone being rated in the 360: their panel, how many ratings are in and their score. Open someone for
+    their panel and the feedback they give.</p>
+  {% if is_super %}<div class="adm-headrow-acts">
+    <a class="btn-link" href="{{ url_for('admin_talent_release') }}">Release reports &rsaquo;</a>
+  </div>{% endif %}
+</div>
+
+<section class="admin-card adm-filters" aria-label="Filters">
+  {{ filter_rows(frows) }}
+  <form method="get" class="adm-fsearch">
+    {% for k in ('fbg', 'fcompany', 'fdept') %}{% if request.args.get(k) %}<input type="hidden" name="{{ k }}" value="{{ request.args.get(k) }}">{% endif %}{% endfor %}
+    {{ search_in_box(search_in, qin, q) }}
+    <select name="scope" class="modern-select" onchange="this.form.submit()" aria-label="Show">
+      <option value="with_panel" {{ 'selected' if scope == 'with_panel' and not incomplete }}>With a panel</option>
+      <option value="incomplete" {{ 'selected' if incomplete }}>{{ 'Short of a full panel' if panel_target else 'Below the scoring minimum' }}</option>
+      <option value="all" {{ 'selected' if scope == 'all' and not incomplete }}>Everyone</option>
+    </select>
+    <span class="adm-count">{{ total | thousands }} {{ 'person' if total == 1 else 'people' }}</span>
+  </form>
+</section>
+
+<section class="admin-card" aria-label="People">
+  {% if rows %}
+  <div class="table-scroll"><table class="admin-table" id="subjects-table">
+    <thead><tr><th>Person</th><th>Unit · department</th><th>Panel</th><th>Score</th><th>Potential</th><th>Report</th><th></th></tr></thead>
+    <tbody>
+    {% for r in rows %}
+    {% set res = r['res'] %}{% set u = r['user'] %}
+    <tr>
+      <td><a href="{{ url_for('admin_person', uid=u['id'], tab='f360') }}" data-person-open="{{ u['id'] }}"><b>{{ u['full_name'] }}</b></a>
+        <span class="muted small" style="display:block">{{ u['employee_id'] }}{% if u['job_grade'] %} · JG {{ u['job_grade'] }}{% endif %}{% if u['job_title'] %} · {{ u['job_title'] | proper }}{% endif %}</span></td>
+      <td>{{ display_company(u['business_group'], u['company']) or display_bg(u['business_group']) or '—' }}{% if u['department'] %}<span class="muted small" style="display:block">{{ u['department'] | proper }}</span>{% endif %}</td>
+      <td>{% if res['panel_size'] %}{{ res['submitted'] }} of {{ res['panel_size'] }} in{% if res['target_panel_size'] and res['panel_size'] < res['target_panel_size'] %}<span class="muted small" style="display:block">target {{ res['target_panel_size'] }}</span>{% endif %}{% else %}<span class="muted">No panel</span>{% endif %}</td>
+      <td>{% if res['score_valid'] and res['avg_score'] is not none %}{{ '%.1f'|format(res['avg_score']) }} <span class="muted small">of {{ '%g'|format(res['max_score']) }}</span>{% else %}<span class="muted" title="Shown once {{ res['min_valid'] }} ratings are in">—</span>{% endif %}</td>
+      <td>{% if res['score_valid'] and res['band'] %}<span class="potential-pill" data-band="{{ res['band'] }}">{{ res['band'] }}</span>{% else %}<span class="muted">—</span>{% endif %}</td>
+      <td>{% if r['released'] %}<span class="status-pill status-reviewed">Released</span>{% else %}<span class="muted small">Not released</span>{% endif %}</td>
+      <td><a class="btn-link" href="{{ url_for('admin_subject_detail', uid=u['id']) }}">Results &rsaquo;</a></td>
+    </tr>
+    {% endfor %}
+    </tbody>
+  </table></div>
+  {% if total_pages > 1 %}
+  <div class="pagination">
+    {% if page > 1 %}<a class="btn-link" data-scroll-top href="?{{ base_qs }}&page={{ page-1 }}">&larr; Previous</a>{% endif %}
+    <span class="muted small">Page {{ page }} of {{ total_pages }}</span>
+    {% if page < total_pages %}<a class="btn-link" data-scroll-top href="?{{ base_qs }}&page={{ page+1 }}">Next &rarr;</a>{% endif %}
+  </div>
+  {% endif %}
+  {% else %}
+  <p class="muted" style="margin:0">Nobody matches. {% if scope != 'all' %}Choose “Everyone” to find someone without a panel yet.{% else %}Try another business group or unit, or clear the search.{% endif %}</p>
+  {% endif %}
+</section>
+{# a name opens their panel and the feedback they give beside the list (phase 2 of the admin side panels) #}
+{{ person_peek("360 Feedback") }}
+{% endblock %}

@@ -1,0 +1,18 @@
+# Data and secrets never go in this folder.
+*.db
+*.db-wal
+*.db-shm
+*.sqlite*
+*.csv
+*.xlsx
+*.xls
+.env
+.env.*
+!.env.example
+uploads/
+import-backups/
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.DS_Store

@@ -1,0 +1,44 @@
+{# The person page's History (canvas I6): every cycle they appear in, from the ratings record, and one opened in full
+   (read-only). HR sees the final bands whether or not they're released to the person yet; the row says which. #}
+{% set here = url_for('admin_person', uid=person['id'], tab='history') %}
+<section class="admin-card pp-kpis" aria-label="Every cycle">
+  <div class="pp-hrow pp-khead"><span>Cycle</span><span title="Performance · the final band">Performance</span><span>Potential</span><span>360</span><span>Competency</span><span>Talent status</span><span title="Released to them">Released</span><span></span></div>
+  {% for h in hist %}
+  {% set r = h.r %}
+  <div class="pp-hrow {{ 'is-on' if opened and opened.cycle['id'] == h.cycle['id'] }}">
+    <span class="pp-kname"><b>{{ h.cycle['name'] }}</b><span class="muted small">{{ 'current' if h.cycle['is_active'] else 'closed' }}{{ ' · recorded' if h.stored else ' · read live' }}</span></span>
+    <span>{% if r.get('pm_final_band') %}<span class="potential-pill" data-band="{{ r['pm_final_band'] }}">{{ r['pm_final_band'] }}</span>{% elif r.get('pm_mgr_band') %}<span class="muted">LM {{ r['pm_mgr_band'] }}</span>{% elif r.get('pm_self_band') %}<span class="muted">self {{ r['pm_self_band'] }}</span>{% else %}—{% endif %}</span>
+    <span>{{ r.get('pot_final_band') or '—' }}</span>
+    <span>{% if r.get('f360_avg') %}{{ '%.1f' | format(r['f360_avg']) }}{% else %}—{% endif %}</span>
+    <span class="small">{{ (r.get('tc_status') or '—') | replace('_', ' ') }}</span>
+    <span class="small">{{ h.talent['name'] if h.talent else '—' }}</span>
+    <span class="small">{% if h.imported %}<span class="muted">From Group People's records</span>{% elif h.pm_rel or h.pot_rel %}{{ 'Performance' if h.pm_rel }}{{ ' and ' if h.pm_rel and h.pot_rel }}{{ 'Potential' if h.pot_rel }}{% else %}<span class="muted">not yet</span>{% endif %}</span>
+    <span><a class="small" href="{{ here }}&rec={{ h.cycle['id'] }}#rec">Open &rsaquo;</a></span>
+  </div>
+  {% else %}
+  <p class="muted pp-none pp-pad">No cycle records for {{ person['full_name'] }} yet.</p>
+  {% endfor %}
+</section>
+
+{% if opened %}
+{% set r = opened.r %}
+<section class="admin-card pp-card pp-opened" id="rec" aria-label="{{ opened.cycle['name'] }}">
+  <div class="pp-h-row"><h2 class="pp-h">{{ opened.cycle['name'] }}</h2><span class="muted small">read-only{% if r.get('frozen_at') %} · recorded {{ r['frozen_at'] | myt_date }}{% endif %}</span></div>
+  <div class="pp-trail"><span class="pp-k">Performance, how the band was reached</span>
+    {% for lbl, b in opened.pm_trail %}<span class="pp-step">{{ lbl }} {{ b }}</span><span class="pp-arr">&rarr;</span>{% endfor %}
+    <span class="pp-step is-now">Final {{ r.get('pm_final_band') or '—' }}</span>
+    {% set by = {'self': 'their own', 'lm': 'the line manager', 'hod': 'the HOD', 'buceo': 'the BU CEO', 'bgceo': 'the BG CEO', 'group': 'the Group Chief', 'top': 'the group level', 'super': 'the super admin'} %}
+    {% if r.get('pm_final_source') %}<span class="muted small">decided by {{ by.get(r['pm_final_source'], r['pm_final_source']) }}</span>{% endif %}</div>
+  <div class="pp-trail"><span class="pp-k">Potential</span>
+    {% for lbl, b in opened.pot_trail %}<span class="pp-step">{{ lbl }} {{ b }}</span><span class="pp-arr">&rarr;</span>{% endfor %}
+    <span class="pp-step is-now">Final {{ r.get('pot_final_band') or '—' }}</span></div>
+  <div class="pp-facts">
+    <span><span class="pp-k">360 feedback</span>{% if r.get('f360_avg') %}{{ '%.2f' | format(r['f360_avg']) }}{% if r.get('f360_max') %} of {{ r['f360_max'] | int }}{% endif %} · {{ r.get('f360_submitted') or 0 }} responded{% else %}—{% endif %}</span>
+    <span><span class="pp-k">Competency</span>{{ (r.get('tc_status') or '—') | replace('_', ' ') }}{% if r.get('tc_approved_score') is not none and r.get('tc_max') %} · {{ '%g' | format(r['tc_approved_score']) }} of {{ '%g' | format(r['tc_max']) }}{% endif %}</span>
+    <span><span class="pp-k">Potential score</span>{% if r.get('pot_score') is not none %}{{ '%g' | format(r['pot_score']) }}{% else %}—{% endif %}</span>
+    <span><span class="pp-k">KPI weight covered</span>{% if r.get('pm_weight_total') %}{{ '%g' | format(r.get('pm_weight_covered') or 0) }} of {{ '%g' | format(r['pm_weight_total']) }}%{% else %}—{% endif %}</span>
+  </div>
+  {% if opened.plan %}<p class="small pp-none"><b>Development plan {{ opened.plan['year'] }}:</b> {{ opened.plan['goals'] | length }} goal{{ 's' if opened.plan['goals'] | length != 1 }} · {{ opened.plan['status_label'] }}</p>{% endif %}
+  <p class="muted small pp-none">A past cycle can't be edited here. A correction to a released band goes through calibration, so it is never silent.</p>
+</section>
+{% endif %}

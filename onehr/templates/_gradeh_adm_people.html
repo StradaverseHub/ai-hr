@@ -1,0 +1,183 @@
+{# Grade H Appraisal > People & progress (piece 6; canvas OneHR/JG H Appraisal/canvas/A1-List.dc.html). Every tile opens its people in
+   the list panel (ADMIN_LISTS "gh"); Search in and the Show choice narrow the table; Set appraiser opens a panel with a strict picker;
+   Reopen asks its reason in OneHR's own box. All of it is the super admin's. #}
+{% from "_adm_panel.html" import panel, list_peek, person_peek with context %}
+{% from "_gradeh_adm_forms.html" import appraiser_form, appraiser_extra, hod_form, hod_extra with context %}
+{% set keep = request.args.to_dict() %}{% set _x = keep.pop('panel', None) %}{% set _y = keep.pop('set', None) %}{% set _z = keep.pop('pick', None) %}{% set _w = keep.pop('pp', None) %}
+{% set back = url_for('admin_gradeh', **dict(keep, tab='people')) %}
+{% if byhod %}{% include "_gradeh_adm_byhod.html" %}{% else %}
+{% if hod_filter %}
+{# By HOD's People button (a viewer who cannot open the list panel): By person, narrowed to one HOD #}
+<div class="gh-hodfilter" role="status"><span class="gh-chip is-shared">HOD · {{ hod_filter.label }}</span><a class="btn-link" href="{{ hod_filter.clear_url }}">Clear</a></div>
+{% endif %}
+{% if can_write %}
+{# Picking several people (canvas A1, 2026-10-31): tick rows, then one Set appraiser, or (board H5, 2026-11-03) one Set HOD, for all; gradeh_admin.js draws the picked state #}
+<div class="gh-bar" id="gh-bar" data-gh-bar data-gh-bulk-url="{{ bulk_url }}" data-gh-bulk-hod-url="{{ bulk_hod_url }}" role="region" aria-label="Pick several people">
+  <span class="gh-bar-idle" data-gh-idle>Tick people to set one appraiser for several</span>
+  <span class="gh-bar-on" data-gh-on hidden>
+    <b data-gh-count>0 picked</b>
+    <button type="button" class="gh-bar-go" data-gh-go>Set appraiser for 0</button>
+    <button type="button" class="gh-bar-go" data-gh-go-hod>Set HOD for 0</button>
+    <button type="button" class="gh-bar-clear" data-gh-clear>Clear</button>
+  </span>
+</div>
+{% endif %}
+{% if not rows %}
+<div class="admin-card"><p class="muted small" style="margin:0">Nobody matches.</p></div>
+{% else %}
+<div class="admin-card gh-tablecard">
+  <div class="table-scroll">
+    {# one line a person, as People > Users (board H6a, 2026-11-03): 38px rows, a cut cell's full words in its title; the name or Open > opens the
+       person's panel (data-person-open, the Users peek's own mechanism; the row's href is the panel's address, which the page itself answers
+       with the person's full page) #}
+    <table class="admin-table gh-table gh-pp adm-users no-auto-table" id="gh-people">
+      <colgroup>{% if can_write %}<col class="gh-w-tick">{% endif %}<col class="gh-w-person"><col class="gh-w-unit"><col class="gh-w-route"><col class="gh-w-appr"><col class="gh-w-hod"><col class="gh-w-stage"><col class="gh-w-sign"><col class="gh-w-open"></colgroup>
+      <thead><tr>{% if can_write %}<th class="gh-tick"><input type="checkbox" data-gh-all aria-label="Pick everyone on this page"></th>{% endif %}<th>Person</th><th class="gh-c-unit">Unit</th><th class="gh-c-route">Route</th><th class="gh-c-appr">Appraiser</th><th class="gh-c-hod">HOD</th><th class="gh-c-where" title="Where it is">Stage</th><th class="gh-c-sign" title="Can sign in">Sign-in</th><th class="gh-c-act"><span class="sr-only">Open</span></th></tr></thead>
+      <tbody>
+      {% for p in rows %}
+      {% set href = url_for('admin_gradeh_person', pid=p.pid) %}
+      <tr>
+        {% if can_write %}<td class="gh-tick"><input type="checkbox" data-gh-pick value="{{ p.pid }}" aria-label="Pick {{ p.name }}"></td>{% endif %}
+        <td title="{{ p.name }} · {{ p.eid }}{% if p.title %} · {{ p.title }}{% endif %}"><a href="{{ href }}" data-person-open="{{ p.pid }}"><b>{{ p.name }}</b></a> <span class="muted small">{{ p.eid }}</span></td>
+        <td title="{{ p.unit }}">{{ p.unit }}</td>
+        <td title="{{ 'KPI route' if p.route == 'A' else 'Line manager route' }}{% if p.route == 'A' %}: {{ p.kpi_n }} KPI line{{ 's' if p.kpi_n != 1 }}{% endif %}{% if p.blocked and p.route == 'A' %}. {{ p.blocked }}{% endif %}"><span class="gh-chip {{ 'is-kpi' if p.route == 'A' else 'is-lm' }}{{ ' is-warn' if p.blocked and p.route == 'A' }}">{{ p.route_text }}</span></td>
+        {% if p.appr.kind in ('none', 'sup') %}
+        <td title="{% if p.appr.kind == 'sup' %}The file names {{ p.appr.name }} as supervisor, but they have no OneHR account, so they cannot appraise{% else %}No appraiser: the file names none and they have no line manager on OneHR{% endif %}"><span class="gh-warn">Needs an appraiser</span></td>
+        {% else %}
+        <td title="{{ p.appr.name }}{% if p.appr.eid %} · {{ p.appr.eid }}{% endif %} ({{ 'set for Grade H' if p.appr.kind == 'set' else 'their line manager on OneHR' }})">{{ p.appr.name }}</td>
+        {% endif %}
+        {% if p.shared %}
+        <td title="Both calibrate them: {% for h in p.hods %}{{ h.name }} {{ h.share }}%{{ ' · ' if not loop.last }}{% endfor %}"><span class="gh-chip is-shared">2 HODs · {{ p.hods[0].share }} : {{ p.hods[1].share }}</span></td>
+        {% elif p.hod_stage %}
+        <td title="{{ p.hod_name }}{% if p.hod_eid %} · {{ p.hod_eid }}{% endif %}{% if p.hod_listed %} (from the Grade H list; their OneHR HOD: {{ p.hod_main_name or 'none' }}){% endif %}">{{ p.hod_name }}</td>
+        {% else %}
+        <td title="No HOD stage: the BU CEO covers them"><span class="gh-warn">No HOD · BU CEO</span></td>
+        {% endif %}
+        <td title="{% if p.dis %}Told us they do not agree with their result: not calibrated. Stage: {{ p.status_text }}{% elif p.blocked %}Blocked: {{ p.blocked }}{% else %}{{ p.status_text }}{% endif %}{% if p.ack %} · {{ p.ack_text }}{% if p.ack_on %} · {{ p.ack_on }}{% endif %}{% endif %}">
+          {% if p.dis %}<span class="gh-dis-tag">Disagrees</span>
+          {% elif p.blocked %}<span class="gh-status is-blocked">Blocked</span>
+          {% else %}<span class="gh-status is-{{ p.status }}">{{ p.status_short }}</span>{% endif %}</td>
+        <td title="{{ 'Has a work email, so can sign in' if p.has_email else 'No work email on OneHR, so cannot sign in' }}">{{ 'Yes' if p.has_email else 'No email' }}</td>
+        <td class="gh-act" title="Open {{ p.name }}"><a class="btn-link" href="{{ href }}" data-person-open="{{ p.pid }}">Open &rsaquo;</a></td>
+      </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% if pg.last > 1 %}
+  <nav class="gh-pager" aria-label="Pages">
+    <span class="muted small">{{ pg.from }}–{{ pg.to }} of {{ pg.n | thousands }}</span>
+    {% if pg.page > 1 %}<a class="btn-link" data-scroll-top href="{{ url_for('admin_gradeh', **dict(keep, tab='people', page=pg.page - 1)) }}">&lsaquo; Previous</a>{% endif %}
+    {% if pg.page < pg.last %}<a class="btn-link" data-scroll-top href="{{ url_for('admin_gradeh', **dict(keep, tab='people', page=pg.page + 1)) }}">Next &rsaquo;</a>{% endif %}
+  </nav>
+  {% endif %}
+</div>
+{% endif %}
+{% endif %}
+{% if view_only %}<p class="muted small gh-foot">Changes (appraiser, Reopen, imports, final bands, release) are the super admin's.</p>
+{% else %}<p class="muted small gh-foot">Imports (four steps each): the Grade H list, which sets each person's route and appraiser, and the Strada8 KPI lines. Private-company staff in the source file are skipped and counted, not loaded. Super admin only.</p>{% endif %}
+
+{% if set_person %}
+{% set sp = set_person %}
+{% call panel("appraiser", "Grade H Appraisal · Appraiser", "Set the appraiser for " ~ sp.name, sp.eid ~ " · " ~ sp.unit, open=True, params="panel set") %}
+  <div class="adm-panel-body">
+    {{ appraiser_form(sp, back) }}
+  </div>
+  <footer class="adm-panel-foot">
+    <span class="muted small adm-panel-grow">Picked from OneHR's people: a typed name that is not a pick is refused.</span>
+    <button type="button" class="btn-link" data-panel-close>Cancel</button>
+    {{ appraiser_extra(sp, back) }}
+    <button type="submit" form="gh-appr-form" class="primary"{% if sp.submitted %} disabled{% endif %}>Set appraiser</button>
+  </footer>
+{% endcall %}
+{% endif %}
+{% if hod_person %}
+{% set hp = hod_person %}
+{% call panel("hod", "Grade H Appraisal · HOD", "Set the Grade H HODs for " ~ hp.name, hp.eid ~ " · " ~ hp.unit, open=True, params="panel set") %}
+  <div class="adm-panel-body">
+    {{ hod_form(hp, back) }}
+  </div>
+  <footer class="adm-panel-foot">
+    <button type="button" class="btn-link adm-panel-grow" data-panel-close>Cancel</button>
+    {{ hod_extra(hp, back) }}
+    <button type="submit" form="gh-hod-form" class="primary">Set Grade H HODs</button>
+  </footer>
+{% endcall %}
+{% endif %}
+{% if bulk %}
+{% set bk = bulk %}
+{% call panel("bulk", "Grade H Appraisal · Appraiser", "Set the appraiser for " ~ bk.n ~ (" person" if bk.n == 1 else " people"), ("All in " ~ bk.unit) if bk.n_units == 1 else ("In " ~ bk.n_units ~ " units"), open=True, params="panel pick") %}
+  <div class="adm-panel-body">
+    {% if not bk.n %}<p class="small">Nobody ticked is on this list. Close this and tick the people you want first.</p>{% else %}
+    <p class="small">The appraiser sees these {{ 'person' if bk.n == 1 else 'people' }} on their Grade H page and submits each appraisal. One pick for {{ 'this person' if bk.n == 1 else 'all ' ~ bk.n }}; you can still change one person later: open them and press Change.</p>
+    <ul class="gh-bulk-list">
+      {% for r in bk.people %}
+      <li><span><b>{{ r.name }}</b><span class="muted small">{{ r.eid }}{% if r.title %} · {{ r.title }}{% endif %}</span></span>
+        <span class="muted small gh-bulk-now{{ ' is-out' if r.left_out }}">{% if r.kind == 'submitted' %}Submitted · left out{% elif r.kind == 'released' %}Released · left out{% elif r.left_out %}Left out{% else %}Now: {{ r.now }}{% endif %}</span></li>
+      {% endfor %}
+    </ul>
+    <form method="post" action="{{ url_for('admin_gradeh_appraiser_bulk') }}" id="gh-bulk-form" class="adm-set-form gh-panel-form"
+          data-confirm-of="{{ bk.n_ok }} {{ 'person' if bk.n_ok == 1 else 'people' }} ({% for n_ in bk.names_ok[:10] %}{{ n_ }}{{ ', ' if not loop.last }}{% endfor %}{% if bk.names_ok | length > 10 %} and {{ bk.names_ok | length - 10 }} more{% endif %})"
+          data-confirm="Make the person you picked the appraiser of {{ bk.n_ok }} {{ 'person' if bk.n_ok == 1 else 'people' }} ({% for n_ in bk.names_ok[:10] %}{{ n_ }}{{ ', ' if not loop.last }}{% endfor %}{% if bk.names_ok | length > 10 %} and {{ bk.names_ok | length - 10 }} more{% endif %})? They will see them in their Grade H list." data-confirm-ok="Set appraiser for {{ bk.n_ok }}">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <input type="hidden" name="next" value="{{ back }}">
+      {% for r in bk.people %}<input type="hidden" name="pid" value="{{ r.pid }}">{% endfor %}
+      <label>Appraiser
+        <span class="pick" data-pick><input type="text" class="pick-q" placeholder="Name, ID or job" aria-label="Appraiser for {{ bk.n }} people" required autocomplete="off">
+          <input type="hidden" class="pick-val" name="appraiser_eid"></span>
+      </label>
+    </form>
+    {% for note in bk.notes %}<p class="gh-amber small" style="margin:0">{{ note }}{% if loop.last and bk.n_ok %} The confirm box names the other {{ bk.n_ok }} and the appraiser.{% endif %}</p>{% endfor %}
+    {% endif %}
+  </div>
+  <footer class="adm-panel-foot">
+    <span class="muted small adm-panel-grow">Picked from OneHR's people: a typed name that is not a pick is refused.</span>
+    <button type="button" class="btn-link" data-panel-close>Cancel</button>
+    {% if bk.n %}<button type="submit" form="gh-bulk-form" class="primary"{% if not bk.n_ok %} disabled{% endif %}>Set appraiser for {{ bk.n_ok }}</button>{% endif %}
+  </footer>
+{% endcall %}
+{% endif %}
+{% if bulkhod %}
+{% set bh = bulkhod %}
+{% call panel("bulkhod", "Grade H Appraisal · HOD", "Set the HOD for " ~ bh.n ~ (" person" if bh.n == 1 else " people"), ("All in " ~ bh.unit) if bh.n_units == 1 else ("In " ~ bh.n_units ~ " units"), open=True, params="panel pick") %}
+  <div class="adm-panel-body">
+    {% if not bh.n %}<p class="small">Nobody ticked is on this list. Close this and tick the people you want first.</p>{% else %}
+    <p class="small">The HOD sees {{ 'this person' if bh.n == 1 else 'these people' }} under Grade H and calibrates {{ 'them' if bh.n == 1 else 'each' }}. One pick for {{ 'this person' if bh.n == 1 else 'all ' ~ bh.n }}; you can still change one person later: open them and press Change. Their HOD on the main review is not changed.</p>
+    <ul class="gh-bulk-list">
+      {% for r in bh.people %}
+      <li><span><b>{{ r.name }}</b><span class="muted small">{{ r.eid }}{% if r.title %} · {{ r.title }}{% endif %}</span></span>
+        <span class="muted small gh-bulk-now{{ ' is-out' if r.left_out }}">{% if r.kind == 'locked' %}Unit signed off · left out{% elif r.kind == 'hod_signed' %}HOD has signed · left out{% elif r.kind == 'missing' %}Left out{% else %}Now: {{ r.now }}{% endif %}</span></li>
+      {% endfor %}
+    </ul>
+    <form method="post" action="{{ url_for('admin_gradeh_hods_bulk') }}" id="gh-bulkhod-form" class="adm-set-form gh-panel-form"
+          data-confirm-of="{{ bh.n_ok }} {{ 'person' if bh.n_ok == 1 else 'people' }} ({% for n_ in bh.names_ok[:10] %}{{ n_ }}{{ ', ' if not loop.last }}{% endfor %}{% if bh.names_ok | length > 10 %} and {{ bh.names_ok | length - 10 }} more{% endif %})"
+          data-confirm="Make the person you picked the Grade H HOD of {{ bh.n_ok }} {{ 'person' if bh.n_ok == 1 else 'people' }} ({% for n_ in bh.names_ok[:10] %}{{ n_ }}{{ ', ' if not loop.last }}{% endfor %}{% if bh.names_ok | length > 10 %} and {{ bh.names_ok | length - 10 }} more{% endif %})? They will see them under Grade H. Their HOD in the main review does not change." data-confirm-ok="Set HOD for {{ bh.n_ok }}">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <input type="hidden" name="next" value="{{ back }}">
+      {% for r in bh.people %}<input type="hidden" name="pid" value="{{ r.pid }}">{% endfor %}
+      <label>HOD
+        <span class="pick" data-pick data-gh-pick-1><input type="text" class="pick-q" placeholder="Name, ID or job" aria-label="Grade H HOD for {{ bh.n }} people" required autocomplete="off">
+          <input type="hidden" class="pick-val" name="hod_eid"></span>
+      </label>
+      <label class="gh-new">Second HOD <span class="muted small">(optional: only when two HODs share these people)</span>
+        <span class="pick" data-pick data-gh-pick-2><input type="text" class="pick-q" placeholder="Name, ID or job" aria-label="Second Grade H HOD for {{ bh.n }} people" autocomplete="off" data-gh-q2>
+          <input type="hidden" class="pick-val" name="hod2_eid"></span>
+      </label>
+      <label class="gh-split">Split <span class="muted small">(the first HOD's share : the second's)</span>
+        <select name="hod_split" data-gh-split aria-label="Split between the two HODs" disabled>{% for n in bh.splits | reverse %}<option value="{{ n }}"{% if n == 50 %} selected{% endif %}>{{ n }} : {{ 100 - n }}</option>{% endfor %}</select>
+      </label>
+      <label class="gh-tick2"><input type="checkbox" name="clear2" value="1" data-gh-clear2> <span>Take away any second HOD <span class="muted small">(off: a blank second HOD keeps each person's own second HOD{% if bh.n_has2 %}; {{ bh.n_has2 }} of the {{ bh.n_ok }} {{ 'has' if bh.n_has2 == 1 else 'have' }} one{% endif %})</span></span></label>
+    </form>
+    {% for note in bh.notes %}<p class="gh-amber small" style="margin:0">{{ note }}</p>{% endfor %}
+    {% endif %}
+  </div>
+  <footer class="adm-panel-foot">
+    <span class="muted small adm-panel-grow">Picked from OneHR's people: a typed name that is not a pick is refused.</span>
+    <button type="button" class="btn-link" data-panel-close>Cancel</button>
+    {% if bh.n %}<button type="submit" form="gh-bulkhod-form" class="primary"{% if not bh.n_ok %} disabled{% endif %}>Set HOD for {{ bh.n_ok }}</button>{% endif %}
+  </footer>
+{% endcall %}
+{% endif %}
+{% if can_write %}{{ list_peek() }}{% endif %}
+{% if not byhod and rows %}{{ person_peek("Grade H Appraisal") }}{% endif %}
+<script src="{{ url_for('static', filename='gradeh_admin.js') }}?v={{ asset_v }}"></script>

@@ -1,0 +1,174 @@
+{% extends "base.html" %}
+{% from "_filter_rows.html" import filter_rows %}
+{% from "_table_tools.html" import colth, colmenu, colmenu_script %}
+{% block title %}PAT Ref{% endblock %}
+{% block body %}
+{# Calibration & Talent > Run > PAT Ref (Chris, 2026-10-27; it was Settings > PAT achievement, canvas K1MvBr5HQApPBuRVXp4KZT):
+   ONE business group at a time (the filter row), its units in one table, ONE Save for the whole table. The save form sits
+   OUTSIDE the table (the AI-fit forms are forms inside it); every figure input joins it with form="pat-save". static/
+   pat_ref.js marks a changed row, shows old -> new curve, and fills the confirm box (data-confirm*) before it opens.
+   The table scrolls inside its card so the whole page fits one screen at 1280x800 with Save always in view. #}
+{% macro chip(key, dist=None) -%}<span{% if dist %} title="{% for b in band_order %}{{ b }} {{ dist[b] }}%{{ ' · ' if not loop.last }}{% endfor %}"{% endif %} class="status-pill {{ 'status-archived' if key == 'negative' else ('status-progress' if key == 'normal' else 'status-reviewed') }}">{{ curve_short[key] }}</span>{%- endmacro %}
+<div class="pat-intro"><p class="adm-lede pat-lede">Record each unit's profit after tax (PAT) achievement. It picks the curve its ratings are calibrated against; no figure means the normal curve.</p><details class="muted small pat-why">
+  <summary>Why this matters</summary>
+  <p>The curve shifts with how the unit actually performed: a unit that missed budget is calibrated against
+    a tighter spread than one that beat it. Leave a figure blank and that unit is calibrated against the
+    normal curve and flagged as not yet entered. Calibration goes business unit by business unit, so a business
+    group has no figure of its own. These curves are <strong>guidance, not a quota</strong>:
+    nothing is blocked for missing them.</p>
+</details></div>
+
+{% if not period %}
+<div class="admin-card"><p class="muted pp-none">No performance cycle is active yet, so there is nothing to record.</p></div>
+{% else %}
+{{ filter_rows(frows) }}
+
+<div class="admin-card pat-refs">
+  <h2>Reference curves</h2>
+  <span class="pat-ref-item">{{ chip('negative') }} <span class="muted small">under 70%</span></span>
+  <span class="pat-ref-item">{{ chip('normal') }} <span class="muted small">70 to 130%</span></span>
+  <span class="pat-ref-item">{{ chip('positive') }} <span class="muted small">over 130%</span></span>
+  <details class="fold pat-curves">
+    <summary>Show the three curves</summary>
+    {# Show less sits where the summary was, top right of the card (Chris, 2026-10-28) #}
+    <button type="button" class="fold-less pat-less" data-fold-less>Show less</button>
+    <div class="table-scroll">
+    <table class="admin-table">
+      <thead>
+        <tr>
+          <th title="PAT achievement">PAT</th><th>Curve</th>
+          {% for b in band_order %}<th style="text-align:right" title="{{ label_names[b] }}">{{ b }}</th>{% endfor %}
+        </tr>
+      </thead>
+      <tbody>
+        {% for key in ['negative', 'normal', 'positive'] %}
+        <tr>
+          <td>{{ '< 70%' if key == 'negative' else ('70 – 130%' if key == 'normal' else '> 130%') }}</td>
+          <td><strong>{{ curve_labels[key][0] }}</strong><br>
+              <span class="muted small">{{ curve_labels[key][1].split('·')[1] | trim }}</span></td>
+          {% for b in band_order %}
+          <td style="text-align:right">{{ curves[key][b] }}%</td>
+          {% endfor %}
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    </div>
+  </details>
+</div>
+
+{% if bg %}
+<div class="admin-card pat-card">
+  <div class="pat-cardhead">
+    <h2>{{ display_bg(bg) }}</h2>
+    <span class="pat-count small"><b>{{ n_entered }} of {{ n_in }}</b> unit{{ '' if n_in == 1 else 's' }} entered
+      <span class="muted">&middot; Normal {{ counts.normal }} &middot; Positively skewed {{ counts.positive }} &middot; Negatively skewed {{ counts.negative }}</span></span>
+  </div>
+  {% if units %}
+  <div class="table-scroll pat-box no-auto-table-zone" id="pat-box">
+  <table class="admin-table pat-table" id="calib-pbt" data-group="{{ display_bg(bg) }}" data-bands='{{ band_order | tojson }}'
+         data-curves='{{ {"negative": {"label": curve_short["negative"], "cls": "status-archived", "title": curves["negative"]},
+                          "normal": {"label": curve_short["normal"], "cls": "status-progress", "title": curves["normal"]},
+                          "positive": {"label": curve_short["positive"], "cls": "status-reviewed", "title": curves["positive"]}} | tojson }}'>
+    <thead>
+      <tr>{{ colth('unit', 'Business unit') }}{{ colth('pbt', 'PAT achievement') }}{{ colth('curve', 'Curve it picks') }}{{ colth('lock', 'BU CEO lock') }}</tr>
+    </thead>
+    <tbody>
+      {% for c in units %}
+      {% set unit_name = display_company(bg, c.name) %}
+      {% set lk = c.lock %}
+      {# pbt sorts on the NUMBER; a unit with no figure sorts as blank, since "not entered" is not "achieved 0%" #}
+      <tr class="data-row pat-row" data-unit="{{ unit_name }}" data-pbt="{{ c.curve.pct if c.curve.entered else '' }}"
+          data-curve="{{ c.curve.label }}" data-lock="{{ c.lock_short or '~' }}">
+        <td><strong class="pat-unit" title="{{ unit_name }}">{{ unit_name }}</strong></td>
+        <td class="pat-fig">
+          {% if c.tb_locked %}
+          {# once the BG CEO has locked the unit on the Talent Box, its figure is read only here (Talent Box Round 2, 2026-11-15): the forecast the BG CEO
+             calibrated on is never changed out of sight; the actual PAT goes in on the Talent Box's Round 2 view (_tb_round_actual_save) #}
+          <span class="pat-ro"><b>{{ ('%g%%' % c.curve.pct) if c.curve.entered else 'Not entered' }}</b>
+            <span class="muted small">{% if c.tb_round and c.tb_round.state != 'none' %}The actual PAT, entered on Round 2.{% else %}The BG CEO locked it on the Talent Box.{% endif %}
+              Change it on <a href="{{ url_for('admin_talent_box', bg=bg, company=c.name, round=2) }}">Talent Box &rsaquo; Round 2 &middot; Actual</a>.</span></span>
+          {% elif lk and not is_sup %}
+          {# once the BU CEO has locked, only the super admin changes the PAT its curve reads (Chris, 2026-10-17) #}
+          <span class="pat-ro"><b>{{ ('%g%%' % c.curve.pct) if c.curve.entered else 'Not entered' }}</b>
+            <span class="muted small">Its BU CEO locked calibration on {{ c.lock_full }}, so only the super admin changes it now.</span></span>
+          {% else %}
+          <input type="hidden" name="company" value="{{ c.name }}" form="pat-save">
+          <input type="number" step="any" min="0" name="achievement_pct" form="pat-save" class="pat-input"
+                 value="{{ ('%g' % c.curve.pct) if c.curve.entered else '' }}" data-orig="{{ ('%g' % c.curve.pct) if c.curve.entered else '' }}"
+                 data-unit-name="{{ unit_name }}" data-curve-key="{{ c.curve.key if c.curve.entered else '' }}"
+                 {% if lk %}data-locked="{{ c.lock_full }}" data-locked-curve="{{ c.curve.label }}"{% endif %}
+                 placeholder="e.g. 84" aria-label="PAT achievement % for {{ unit_name|e }}">
+          <span class="pat-pct muted small">%</span><span class="pat-was muted small" hidden></span>
+          {% endif %}
+        </td>
+        <td class="pat-curvecell">
+          {% if c.curve.entered %}
+          <span class="pat-chips">{{ chip(c.curve.key, c.curve.dist) }}</span>
+          {% else %}
+          <span class="muted small">Not entered &middot; normal curve</span>
+          {% endif %}
+        </td>
+        <td class="pat-lockcell">
+          {% if lk %}<span class="pat-lock" title="The BU CEO locked calibration on {{ c.lock_full }}">Locked {{ c.lock_short }}</span>
+          {% else %}<span class="muted small">Not yet</span>{% endif %}
+        </td>
+      </tr>
+      {% set f = c.flag %}
+      {% if f %}
+      <tr class="pat-flag-row"><td colspan="4">
+        <div class="pat-flag" role="status">
+          <span class="pat-flag-txt"><b>PAT changed after the BU CEO's lock.</b> They locked {{ unit_name }} on {{ f.lock.at | myt_date }} on the <b>{{ f.was }}</b> curve; {{ f.changed_by or 'an admin' }} changed the PAT on {{ f.changed_at | myt_date }}, so it now reads the <b>{{ f.now }}</b> curve and their locked result sits off it.
+            {% if f.fitted_at %}<br><span class="muted small">Fitted to it by {{ f.fitted_by or 'the super admin' }} on {{ f.fitted_at | myt_date }}: {{ f.fit_moves }} moved. Remark: &ldquo;{{ f.fit_remark }}&rdquo;</span>
+            {% elif f.bg_locked %}<br><span class="muted small">The BG CEO has already locked it on the Talent Box, so their bands are final; unlock it first to refit.</span>
+            {% elif is_sup and f.off is not none and not f.off %}<br><span class="muted small">Its bands already sit within the {{ f.now }} curve.</span>
+            {% elif not is_sup %}<br><span class="muted small">The super admin can fit it to the new curve.</span>{% endif %}</span>
+          {% if is_sup and f.moves %}
+          <form method="post" action="{{ url_for('admin_performance_pbt_fit') }}" class="pat-fit"
+                data-confirm="Fit {{ unit_name }} to the {{ f.now }} curve? These {{ f.moves | length }} {{ 'person moves' if f.moves | length == 1 else 'people move' }} one band each, the nearest score and the weakest (or strongest) case first, as the BU CEO's own AI fit would.{% if not f.within_after %} Some bands still sit outside the curve after it.{% endif %} The BU CEO's lock stays; each move is recorded as yours, with your remark, in the audit trail."
+                data-confirm-list='{{ f.list | tojson }}' data-confirm-list-label="What moves"
+                data-confirm-reason="Your remark (required): why these bands change" data-confirm-reason-field="remark"
+                data-confirm-reason-max="{{ remark_max }}" data-confirm-ok="Fit and lock">
+            <input type="hidden" name="business_group" value="{{ bg }}"><input type="hidden" name="company" value="{{ c.name }}">
+            <input type="hidden" name="fp" value="{{ f.fp }}"><input type="hidden" name="remark" value="">
+            <button type="submit" class="rv-ai-action pat-fit-btn"><svg class="rv-ico-spark" viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M12 2l2.2 6.6L21 11l-6.8 2.4L12 20l-2.2-6.6L3 11l6.8-2.4z"/></svg>Fit to the {{ f.now }} curve with AI &middot; {{ f.moves | length }} move{{ '' if f.moves | length == 1 else 's' }}</button>
+          </form>
+          {% endif %}
+        </div>
+      </td></tr>
+      {% endif %}
+      {% endfor %}
+      <tr class="no-filter-match" hidden><td colspan="4" class="muted">No units match the filters.</td></tr>
+    </tbody>
+  </table>
+  </div>
+  {# the one Save: a form of its own, outside the table. The inputs above join it with form="pat-save"; static/pat_ref.js
+     sets its confirm text and list from what changed, before the box opens. #}
+  <form method="post" id="pat-save" class="pat-foot" data-no-busy data-group="{{ display_bg(bg) }}"
+        data-confirm="Save the PAT achievement for these units in {{ display_bg(bg) }}? It picks the curve each unit's performance ratings are calibrated against. A blank figure clears it and the unit goes back to the normal curve."
+        data-confirm-list="[]" data-confirm-list-label="What changes" data-confirm-ok="Save">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <input type="hidden" name="business_group" value="{{ bg }}">
+    <span class="pat-foot-msg small" id="pat-foot-msg" aria-live="polite"><span class="muted">No changes yet</span></span>
+    <span class="pat-foot-acts">
+      <button type="button" class="btn-link" id="pat-discard" disabled>Discard</button>
+      <button type="submit" class="pat-save" id="pat-submit" disabled>Save changes</button>
+    </span>
+  </form>
+  {{ colmenu('calib-pbt', {
+       'unit':  {'mode': 'clientFilter', 'type': 'text', 'sortAttr': 'unit'},
+       'pbt':   {'mode': 'sort', 'type': 'num', 'sortAttr': 'pbt'},
+       'curve': {'mode': 'clientFilter', 'type': 'text', 'sortAttr': 'curve'},
+       'lock':  {'mode': 'sort', 'type': 'text', 'sortAttr': 'lock'} }) }}
+  {% else %}
+  <p class="muted pp-none">No business units in your scope.</p>
+  {% endif %}
+</div>
+{% else %}
+<div class="admin-card"><p class="muted pp-none">No business units in your scope.</p></div>
+{% endif %}
+{% endif %}
+
+{{ colmenu_script(asset_v) }}
+<script src="{{ url_for('static', filename='pat_ref.js') }}{% if asset_v %}?v={{ asset_v }}{% endif %}"></script>
+{% endblock %}

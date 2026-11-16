@@ -1,0 +1,317 @@
+{% extends "base.html" %}
+{% from "_adm_panel.html" import panel %}
+{% block title %}Learning programmes{% endblock %}
+{% block body %}
+{# Learning › Programmes (AI+ Learning phase 1, 2026-10-20; canvas [design canvas link removed] board 6):
+   the catalogue. A programme is matched to people through the competency FAMILIES it builds (a catalogue competency at
+   a level it has), so an AI-proposed one waits for a person to confirm it. Writes are the super admin's and the L&D
+   admin's (phase 2); a BG admin reads. #}
+{% macro details_form(p) -%}
+{% set aud = p.aud if p else {'grade_min': None, 'grade_max': None, 'bgs': [], 'companies': []} %}
+<section class="wiz-sec lm-form">
+  <label>Title<input name="title" required maxlength="160" value="{{ p.title if p else '' }}"></label>
+  <div class="lm-two">
+    <label>Kind<select name="kind" class="modern-select">{% for k, lab in kinds %}<option value="{{ k }}"{{ ' selected' if p and p.kind == k }}>{{ lab }}</option>{% endfor %}</select></label>
+    <label>Organiser<select name="organiser" class="modern-select"><option value="">Not set</option>{% for o in organisers %}<option value="{{ o }}"{{ ' selected' if p and p.organiser == o }}>{{ display_bg(o) if o in bgs else o }}</option>{% endfor %}</select></label>
+  </div>
+  <div class="lm-two">
+    <label data-choose-new-box>CHART category<select name="category" class="modern-select" data-choose-new>
+      <option value="">Not set</option>{% for c in cats.category %}<option value="{{ c }}"{{ ' selected' if p and p.category == c }}>{{ c }}</option>{% endfor %}<option value="__new__">A new category…</option></select>
+      <input name="category_new" maxlength="80" placeholder="e.g. Commercial Excellence" aria-label="The new category" data-new-input hidden></label>
+    <label data-choose-new-box>Sub-category<select name="sub_category" class="modern-select" data-choose-new>
+      <option value="">Not set</option>{% for c in cats.sub_category %}<option value="{{ c }}"{{ ' selected' if p and p.sub_category == c }}>{{ c }}</option>{% endfor %}<option value="__new__">A new sub-category…</option></select>
+      <input name="sub_category_new" maxlength="80" placeholder="e.g. Pricing and Negotiation" aria-label="The new sub-category" data-new-input hidden></label>
+  </div>
+  <label>What people learn and do<textarea name="description" rows="3" maxlength="1500">{{ p.description or '' if p else '' }}</textarea></label>
+  <div class="lm-two">
+    <label>Vendor<input name="vendor" maxlength="120" value="{{ p.vendor or '' if p else '' }}"></label>
+    <label>Trainer<input name="trainer" maxlength="120" value="{{ p.trainer or '' if p else '' }}"></label>
+    <label>Trainer's email <span class="muted small">(gets the room's screen link and the list 2 days before)</span><input name="trainer_email" type="email" maxlength="160" value="{{ p.trainer_email or '' if p else '' }}"></label>
+  </div>
+  <div class="lm-four">
+    <label>Days<input name="days" inputmode="decimal" value="{{ '%g' % p.days if p and p.days is not none else '' }}"></label>
+    <label>Hours<input name="hours" inputmode="decimal" value="{{ '%g' % p.hours if p and p.hours is not none else '' }}"></label>
+    <label>Cost per person (RM)<input name="cost_per_pax" inputmode="decimal" value="{{ '%.2f' % p.cost_per_pax if p and p.cost_per_pax is not none else '' }}"></label>
+    <label class="lm-check"><input type="checkbox" name="hrdc_claimable" value="1"{{ ' checked' if p and p.hrdc_claimable }}> HRDC-claimable</label>
+  </div>
+  <label class="lm-cert-mode">Certificate <span class="muted small">(everyone who comes every day gets a course badge too)</span>
+    <select name="cert_mode" class="modern-select">
+      <option value="">By its kind: CHART's with the close, none for a briefing</option>
+      {% for k, lbl in cert_modes %}<option value="{{ k }}"{{ ' selected' if p and p.cert_mode == k }}>{{ lbl }}</option>{% endfor %}
+    </select></label>
+  <fieldset class="lm-fs"><legend>Effectiveness, after the last day</legend>
+    {# every programme asks the same: the day-0 rating, then 1 and 3 months on (the 6-month tick is gone, Chris
+       2026-10-23) #}
+    <label class="lm-check"><input type="checkbox" checked disabled> Day 0 rating</label>
+    {% for m in ('1', '3') %}<label class="lm-check"><input type="checkbox" checked disabled> {{ m }} month{{ '' if m == '1' else 's' }}</label>{% endfor %}
+    <p class="muted small">Every programme asks these.</p>
+  </fieldset>
+  <fieldset class="lm-fs"><legend>Who it's for <span class="muted small">(blank is everyone)</span></legend>
+    <div class="lm-two">
+      <label>From grade<select name="grade_min" class="modern-select"><option value="">Any</option>{% for gr in range(10, 24) %}<option value="{{ gr }}"{{ ' selected' if aud.grade_min == gr }}>JG {{ gr }}</option>{% endfor %}</select></label>
+      <label>To grade<select name="grade_max" class="modern-select"><option value="">Any</option>{% for gr in range(10, 24) %}<option value="{{ gr }}"{{ ' selected' if aud.grade_max == gr }}>JG {{ gr }}</option>{% endfor %}</select></label>
+    </div>
+    <div class="lm-bgs">{% for b in bgs %}<label class="lm-check"><input type="checkbox" name="bgs" value="{{ b }}"{{ ' checked' if b in aud.bgs }}> {{ display_bg(b) }}</label>{% endfor %}</div>
+    {# the units it's for, under their groups (2026-10-23): a unit ticked narrows it to that unit #}
+    <p class="muted small lm-units-k">Or narrow it to units <span>(optional)</span></p>
+    <div class="lm-units">{% for b in bgs %}{% set us = units.get(b, []) %}{% if us %}{% set picked = us | select('in', aud.companies) | list %}
+      <details class="lm-unitpick"{{ ' open' if picked }}><summary>{{ display_bg(b) }}: units{% if picked %} · {{ picked | length }} picked{% endif %}</summary>
+        {% for c in us %}<label class="lm-check"><input type="checkbox" name="companies" value="{{ c }}"{{ ' checked' if c in aud.companies }}> {{ display_company(b, c) }}</label>{% endfor %}
+      </details>{% endif %}{% endfor %}</div>
+  </fieldset>
+</section>
+{%- endmacro %}
+
+<div class="adm-headrow">
+  <p class="adm-lede">The <b>catalogue</b>. A programme reaches the people who need it through the <b>competencies it builds</b>:
+    once it's published, it shows in their Learning panel beside the Career Plan goal or gap it fits.</p>
+  {% if is_su %}<div class="lm-head-acts">
+    {% if ai_ok %}<a class="od-btn-ai is-outline is-sm" href="{{ url_for('admin_learning_programmes', panel='read') }}" data-panel-open="read"><svg class="od-spark" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2.5l2.3 6.2 6.2 2.3-6.2 2.3L12 19.5l-2.3-6.2L3.5 11l6.2-2.3z"></path></svg>Read a proposal with AI</a>{% endif %}
+    <a class="primary" href="{{ url_for('admin_learning_programmes', panel='new') }}" data-panel-open="new">Add a programme</a>
+  </div>{% endif %}
+</div>
+<nav class="adm-tabs" aria-label="Which programmes">
+  {% for k, lab in (('published', 'Published'), ('draft', 'Drafts'), ('archived', 'Archived'), ('all', 'All')) %}
+  <a class="{{ 'is-active' if show == k }}" href="{{ url_for('admin_learning_programmes', show=k, q=q or None) }}">{{ lab }} · {{ counts[k] if k != 'all' else (counts.published + counts.draft + counts.archived) }}</a>
+  {% endfor %}
+  {% if counts.nocomp or show == 'nocomp' %}<a class="{{ 'is-active' if show == 'nocomp' }} lm-needs-tab" href="{{ url_for('admin_learning_programmes', show='nocomp', q=q or None) }}">Needs a competency · {{ counts.nocomp }}</a>{% endif %}
+</nav>
+<form method="get" class="adm-fsearch lm-fsearch" role="search">
+  <input type="hidden" name="show" value="{{ show }}">
+  <label class="sr-only" for="lm-pq">Search programmes</label>
+  <input id="lm-pq" type="search" name="q" value="{{ q }}" placeholder="Search a title, category or competency" maxlength="80" autocomplete="off" aria-autocomplete="list" aria-expanded="false" data-suggest="programmes" data-suggest-url="{{ url_for('search_suggest') }}" data-no-qin="programmes, not people">
+  <button type="submit" class="btn-link">Search</button>
+</form>
+<section class="admin-card" aria-label="Programmes">
+  {% if progs %}
+  <div class="table-scroll"><table class="admin-table no-auto-table lm-ptable">
+    <thead><tr><th scope="col">Programme</th><th scope="col">Competencies it builds</th><th scope="col">Who it's for</th>
+      <th scope="col">Next session</th><th scope="col">Status</th><th scope="col"><span class="sr-only">Open</span></th></tr></thead>
+    <tbody>
+    {% for p in progs %}
+    <tr{{ ' class="is-peek-row"' if pick and pick.id == p.id }}>
+      <td><b>{{ p.title }}</b><span class="muted small lm-sub">{{ p.kind_label }}{% if p.category %} · {{ p.category }}{% endif %}{% if p.source == 'proposal' %} · read from a proposal{% endif %}</span></td>
+      <td>{% for c in p.comps %}<span class="lm-cchip{{ ' is-ai' if not c.confirmed }}" title="{{ 'Proposed by AI: not confirmed' if not c.confirmed else 'Confirmed' }}">{{ c.title }} · L{{ c.level }}{% if not c.confirmed %} ?{% endif %}</span>{% else %}<span class="muted small">None yet</span>{% endfor %}</td>
+      <td class="small">{{ p.aud_text }}</td>
+      <td class="small">{% if p.next %}{{ p.next | lms_session }}{% else %}<span class="muted">None dated</span>{% endif %}</td>
+      <td><span class="lm-st is-{{ p.status }}">{{ p.status_label }}</span>{% if p.status == 'published' and p.no_comp %} <span class="lm-cchip is-ai">Needs a competency</span>{% endif %}</td>
+      <td><a class="btn-link" href="{{ url_for('admin_learning_programmes', programme=p.id, panel='prog', show=show) }}">Open</a></td>
+    </tr>
+    {% endfor %}
+    </tbody>
+  </table></div>
+  {% else %}
+  <p class="muted" style="margin:0">{% if q %}No programme here matches “{{ q }}”.{% elif show == 'published' %}Nothing is published yet.{% else %}No programmes here yet.{% endif %}{% if is_su %} Add one, or read a vendor's proposal with AI.{% endif %}</p>
+  {% endif %}
+</section>
+
+{% if is_su %}
+{% call panel("new", "Learning · Programmes", "Add a programme", "It starts as a draft. Add its competencies and sessions, then publish it.", wide=True) %}
+<form method="post" class="adm-panel-form" data-confirm="Add this programme as a draft? Nobody sees it until it's published." data-confirm-ok="Add the draft">
+  <input type="hidden" name="action" value="save">
+  <div class="adm-panel-body">{{ details_form(none) }}</div>
+  <footer class="adm-panel-foot"><button type="button" class="btn-link adm-panel-grow" data-panel-close>Cancel</button><button type="submit" class="primary">Add the draft</button></footer>
+</form>
+{% endcall %}
+{% if ai_ok %}
+{% call panel("read", "Learning · Programmes", "Read a vendor's proposal with AI", "The AI fills in a draft from the file, and proposes the competencies it builds from the catalogue. You check and confirm before anyone sees it.") %}
+<form method="post" action="{{ url_for('admin_learning_proposal_read') }}" enctype="multipart/form-data" class="adm-panel-form"
+      data-confirm="Read this proposal with AI and make a draft programme from it? Nothing is published; the competencies it proposes wait for you to confirm them." data-confirm-ok="Read it">
+  <div class="adm-panel-body">
+    <section class="wiz-sec">
+      <label>The proposal <span class="muted small">PDF, Word (.docx) or text, up to 5 MB</span><input type="file" name="proposal" accept=".pdf,.docx,.txt" required></label>
+      <p class="muted small">A scanned PDF has no text to read. Every figure the AI takes is shown for you to check.</p>
+    </section>
+  </div>
+  <footer class="adm-panel-foot"><button type="button" class="btn-link adm-panel-grow" data-panel-close>Cancel</button>
+    <button type="submit" class="od-btn-ai is-sm"><svg class="od-spark" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2.5l2.3 6.2 6.2 2.3-6.2 2.3L12 19.5l-2.3-6.2L3.5 11l6.2-2.3z"></path></svg>Read it</button></footer>
+</form>
+{% endcall %}
+{% endif %}
+{% endif %}
+
+{% if pick %}
+{% call panel("prog", "Learning · " ~ pick.kind_label ~ " · " ~ pick.status_label, pick.title, pick.aud_text ~ ((' · from ' ~ pick.source_file) if pick.source_file else ''), wide=True, params="programme") %}
+<div class="adm-panel-body lm-pbody">
+  {% if is_su %}
+  <form method="post" id="lm-details" data-confirm="Save the changes to {{ pick.title }}?{{ ' People it is for see them at once.' if pick.status == 'published' else '' }}" data-confirm-ok="Save">
+    <input type="hidden" name="action" value="save"><input type="hidden" name="programme_id" value="{{ pick.id }}">
+    {{ details_form(pick) }}
+    <div class="lm-formfoot"><button type="submit" class="primary">Save details</button></div>
+  </form>
+  {% else %}
+  <section class="wiz-sec"><dl class="lm-dl">
+    <dt>Kind</dt><dd>{{ pick.kind_label }}</dd><dt>Category</dt><dd>{{ pick.category or '—' }}{% if pick.sub_category %} › {{ pick.sub_category }}{% endif %}</dd>
+    <dt>Length</dt><dd>{% if pick.days %}{{ '%g' % pick.days }} days{% endif %}{% if pick.hours %} · {{ '%g' % pick.hours }} h{% endif %}</dd>
+    <dt>Cost per person</dt><dd>{{ ('RM %.2f' % pick.cost_per_pax) if pick.cost_per_pax is not none else '—' }}{{ ' · HRDC-claimable' if pick.hrdc_claimable }}</dd>
+    <dt>Certificate</dt><dd>{{ cert_label[pick.cert_mode or ('none' if pick.kind == 'briefing' else 'close')] }}</dd>
+    <dt>Who it's for</dt><dd>{{ pick.aud_text }}</dd></dl>
+    {% if pick.description %}<p>{{ pick.description }}</p>{% endif %}</section>
+  {% endif %}
+
+  <section class="wiz-sec" aria-labelledby="lm-comps-h">
+    {% set n_ai = pick.comps | rejectattr('confirmed') | list | length %}
+    <div class="lm-chead"><span class="wiz-k" id="lm-comps-h">Competencies it builds</span>
+      {% if is_su and ai_ok %}
+      <form method="post" class="lm-inline" data-confirm="Ask the L&amp;D AI agent to suggest {{ pick.title }}'s competencies again? It replaces the ones still waiting for you{{ '; the ones you confirmed stay' if n_ai < pick.comps | length else '' }}." data-confirm-ok="Suggest again">
+        <input type="hidden" name="action" value="comp_suggest"><input type="hidden" name="programme_id" value="{{ pick.id }}">
+        <button type="submit" class="btn-ai"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2l2.4 7.6L22 12l-7.6 2.4L12 22l-2.4-7.6L2 12l7.6-2.4z"></path></svg>{{ 'Suggest again' if pick.comps else 'Suggest with AI' }}</button></form>
+      {% endif %}</div>
+    {% if n_ai %}<p class="muted small lm-sugnote">The L&amp;D AI agent read the title, details and brochure against the competency library ({{ '{:,}'.format(n_lib) }} competencies) and proposed {{ 'this' if n_ai == 1 else 'these' }}. Pick the level each builds, from the library's own wording, then confirm.</p>{% endif %}
+    {% for c in pick.comps if not c.confirmed and is_su %}
+    <div class="lm-sug" data-lm-sug>
+      <div class="lm-sug-h"><b>{{ c.title }}</b>
+        <span class="lm-aitag"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2l2.4 7.6L22 12l-7.6 2.4L12 22l-2.4-7.6L2 12l7.6-2.4z"></path></svg>Proposed by AI{% if c.strength %} · {{ c.strength }}{% endif %}</span></div>
+      <form method="post" id="lm-sug-{{ loop.index }}" data-confirm="Confirm that {{ pick.title }} builds {{ c.title }} to L{{ c.level }}? People who need it will see the programme once it's published." data-confirm-ok="Confirm">
+        <input type="hidden" name="action" value="comp_confirm"><input type="hidden" name="programme_id" value="{{ pick.id }}">
+        <input type="hidden" name="comp_key" value="{{ c.comp_key }}">
+        <span class="lm-sug-k">Level it builds</span>
+        <div class="lm-lvpick" role="radiogroup" aria-label="Level {{ c.title }} builds">
+          {% for lv in c.levels %}<label><input type="radio" name="level" value="{{ lv }}" data-desc="{{ c.level_desc.get(lv, '') }}"{{ ' checked' if lv == c.level }}><span>L{{ lv }}</span></label>{% endfor %}
+        </div>
+        <p class="lm-lvdesc" data-lm-lvdesc><b>L{{ c.level }}:</b> {{ c.level_desc.get(c.level) or 'The library has no wording for this level.' }}</p>
+        {% if c.evidence %}<p class="muted small">Why: “{{ c.evidence }}”</p>{% endif %}
+      </form>
+      <div class="lm-sug-acts">
+        <button type="submit" class="primary" form="lm-sug-{{ loop.index }}" data-lm-confirm>Confirm at L{{ c.level }}</button>
+        <form method="post" class="lm-inline" data-confirm="Leave {{ c.title }} off {{ pick.title }}? The AI's proposal is dropped." data-confirm-ok="Leave it off">
+          <input type="hidden" name="action" value="comp_remove"><input type="hidden" name="programme_id" value="{{ pick.id }}">
+          <input type="hidden" name="comp_key" value="{{ c.comp_key }}">
+          <button type="submit" class="btn-link">Not this one</button></form>
+      </div>
+    </div>
+    {% endfor %}
+    {% for c in pick.comps if c.confirmed or not is_su %}
+    <div class="lm-crow{{ ' is-ai' if not c.confirmed }}">
+      <span class="lm-ct"><b>{{ c.title }}</b> · builds to L{{ c.level }}
+        {% if not c.confirmed %}<span class="lm-aitag"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2l2.4 7.6L22 12l-7.6 2.4L12 22l-2.4-7.6L2 12l7.6-2.4z"></path></svg>Proposed by AI{% if c.strength %} · {{ c.strength }}{% endif %}</span>{% endif %}
+        {% if c.evidence %}<span class="muted small lm-ev">“{{ c.evidence }}”</span>{% endif %}</span>
+      {% if is_su %}
+      {% if not c.confirmed %}
+      <form method="post" class="lm-inline" data-confirm="Confirm that {{ pick.title }} builds {{ c.title }} to L{{ c.level }}? People who need it will see the programme once it's published." data-confirm-ok="Confirm">
+        <input type="hidden" name="action" value="comp_confirm"><input type="hidden" name="programme_id" value="{{ pick.id }}">
+        <input type="hidden" name="comp_key" value="{{ c.comp_key }}"><input type="hidden" name="level" value="{{ c.level }}">
+        <button type="submit" class="btn-link">Confirm</button></form>
+      {% endif %}
+      <form method="post" class="lm-inline" data-confirm="Take {{ c.title }} off {{ pick.title }}? It won't be offered for that competency any more." data-confirm-ok="Take it off">
+        <input type="hidden" name="action" value="comp_remove"><input type="hidden" name="programme_id" value="{{ pick.id }}">
+        <input type="hidden" name="comp_key" value="{{ c.comp_key }}">
+        <button type="submit" class="btn-link lm-danger">Take off</button></form>
+      {% endif %}
+    </div>
+    {% else %}{% if not n_ai %}<p class="muted small">None yet. Without one, the programme is in the catalogue but matched to nobody's plan.</p>{% endif %}{% endfor %}
+    {% if is_su %}
+    {% if pick.comps %}<span class="lm-sug-k lm-own">Or add one yourself from the library</span>{% endif %}
+    <form method="post" class="lm-cadd" data-confirm="Add this competency to {{ pick.title }}? People who need it will see the programme once it's published." data-confirm-ok="Add">
+      <input type="hidden" name="action" value="comp_add"><input type="hidden" name="programme_id" value="{{ pick.id }}">
+      <label>Find a competency<input type="search" data-lm-compq placeholder="Type to narrow the list" autocomplete="off"></label>
+      <select name="comp_key" class="modern-select" size="6" required data-lm-complist aria-label="Competency">
+        {% for f in comp_opts %}<option value="{{ f.key }}" data-levels="{{ f.levels | join(',') }}">{{ f.title }} · L{{ f.levels[0] }}-L{{ f.levels[-1] }}</option>{% endfor %}</select>
+      <div class="lm-two"><label>Builds people to<select name="level" class="modern-select" data-lm-level>{% for l in range(1, 7) %}<option value="{{ l }}"{{ ' selected' if l == 4 }}>L{{ l }}</option>{% endfor %}</select></label>
+        <div class="lm-formfoot"><button type="submit" class="primary">Add the competency</button></div></div>
+    </form>
+    {% endif %}
+  </section>
+
+  <section class="wiz-sec" aria-labelledby="lm-sess-h">
+    <span class="wiz-k" id="lm-sess-h">Sessions</span>
+    {% for s in pick.sessions %}
+    <div class="lm-srow{{ ' is-off' if s.status == 'cancelled' }}">
+      <span><b>{{ s.run_label or 'Session' }}</b> · {{ s | lms_session }}{% if s.reg_cutoff %}<span class="muted small lm-ev">Registration closes {{ s.reg_cutoff | lms_day }}</span>{% endif %}{% if s.status == 'cancelled' %}<span class="muted small lm-ev">Cancelled</span>{% endif %}</span>
+      <a class="btn-link" href="{{ url_for('admin_learning_session', sid=s.id) }}">Run it</a>
+      {% if is_su and s.status == 'planned' %}
+      <form method="post" class="lm-inline" data-confirm="Cancel the {{ s.run_label or 'session' }} on {{ s.starts_on | lms_day }}? Everyone on it is told with your reason, and their places close. This can't be undone; add it again if it comes back." data-confirm-ok="Cancel the session" data-confirm-tone="danger" data-confirm-reason="Why it's cancelled (everyone on it reads it)">
+        <input type="hidden" name="action" value="session_cancel"><input type="hidden" name="programme_id" value="{{ pick.id }}"><input type="hidden" name="session_id" value="{{ s.id }}">
+        <button type="submit" class="btn-link lm-danger">Cancel</button></form>
+      {% endif %}
+    </div>
+    {% else %}<p class="muted small">No sessions yet.</p>{% endfor %}
+    {% if is_su %}
+    <form method="post" class="lm-sadd" data-confirm="Add this session to {{ pick.title }}?" data-confirm-ok="Add the session">
+      <input type="hidden" name="action" value="session_add"><input type="hidden" name="programme_id" value="{{ pick.id }}">
+      <div class="lm-four">
+        <label>Run<input name="run_label" maxlength="40" placeholder="e.g. Run 3"></label>
+        <label>First day<input type="date" name="starts_on" required></label>
+        <label>Last day<input type="date" name="ends_on"></label>
+        <label>Seats<input name="seats" inputmode="numeric"></label>
+      </div>
+      <div class="lm-four">
+        <label>Starts<input type="time" name="start_time" value="09:00"></label>
+        <label>Ends<input type="time" name="end_time" value="17:00"></label>
+        <label>Registration closes<input type="date" name="reg_cutoff" aria-describedby="lm-cut-n"></label>
+        <label>Venue<input name="venue" maxlength="120"></label>
+      </div>
+      <div class="lm-two"><label><span>Trainer <span class="muted small">(this run only)</span></span><input name="trainer_s" maxlength="120" placeholder="Programme's own"></label><label>Their email<input name="trainer_email_s" type="email" maxlength="160"></label></div>
+      <p class="muted small" id="lm-cut-n">Left blank, registration closes {{ cutoff_days }} days before the first day.</p>
+      <div class="lm-formfoot"><button type="submit" class="primary">Add the session</button></div>
+    </form>
+    {% endif %}
+  </section>
+</div>
+<footer class="adm-panel-foot">
+  <button type="button" class="btn-link adm-panel-grow" data-panel-close>Close</button>
+  {% if is_su %}
+    {% if pick.status != 'archived' %}
+    <form method="post" class="lm-inline" data-confirm="Archive {{ pick.title }}? It leaves the catalogue and people's Learning panels; you can bring it back as a draft." data-confirm-ok="Archive">
+      <input type="hidden" name="action" value="archive"><input type="hidden" name="programme_id" value="{{ pick.id }}"><button type="submit" class="btn-link lm-danger">Archive</button></form>
+    {% endif %}
+    <a class="btn-link" href="{{ url_for('admin_learning_programme_page', pid=pick.id) }}">Page: photo, brochure, details…</a>
+    {% if pick.status == 'published' %}
+    <a class="btn-link" href="{{ url_for('admin_learning_announce', pid=pick.id) }}">Announce…</a>
+    <form method="post" class="lm-inline" data-confirm="Withdraw {{ pick.title }} to a draft? It leaves people's Learning panels until you publish it again." data-confirm-ok="Withdraw">
+      <input type="hidden" name="action" value="draft"><input type="hidden" name="programme_id" value="{{ pick.id }}"><button type="submit" class="btn-link">Withdraw to draft</button></form>
+    {% else %}
+    {% set n_ok = pick.comps | selectattr('confirmed') | list | length %}
+    {% if n_ok %}
+    <form method="post" class="lm-inline" data-confirm="Publish {{ pick.title }}? It shows at once in the Learning panel of everyone it's for, beside the Career Plan goals and gaps of its {{ n_ok }} confirmed competenc{{ 'y' if n_ok == 1 else 'ies' }}." data-confirm-ok="Publish">
+      <input type="hidden" name="action" value="publish"><input type="hidden" name="programme_id" value="{{ pick.id }}"><button type="submit" class="primary">{{ 'Publish' if pick.status == 'draft' else 'Bring back and publish' }}</button></form>
+    {% else %}
+    <span class="muted small lm-hold">Confirm a competency, with its level, to publish</span><button type="button" class="primary" disabled>Publish</button>
+    {% endif %}
+    {% endif %}
+  {% endif %}
+</footer>
+{% endcall %}
+<script>
+(function () {
+  // an AI-proposed competency: the level picked shows the library's own wording, and Confirm says the level it confirms
+  Array.prototype.forEach.call(document.querySelectorAll('[data-lm-sug]'), function (box) {
+    var form = box.querySelector('form'), desc = box.querySelector('[data-lm-lvdesc]'),
+        btn = box.querySelector('[data-lm-confirm]');
+    if (!form || !desc || !btn) return;
+    var ask = form.getAttribute('data-confirm') || '';
+    box.addEventListener('change', function (e) {
+      var r = e.target;
+      if (!r || r.name !== 'level') return;
+      desc.textContent = '';
+      var b = document.createElement('b'); b.textContent = 'L' + r.value + ':';
+      desc.appendChild(b);
+      desc.appendChild(document.createTextNode(' ' + (r.getAttribute('data-desc') || 'The library has no wording for this level.')));
+      btn.textContent = 'Confirm at L' + r.value;
+      form.setAttribute('data-confirm', ask.replace(/ to L\d+\?/, ' to L' + r.value + '?'));
+    });
+  });
+})();
+(function () {
+  // the competency list narrows as you type, and the level list keeps only the levels the chosen competency has
+  var q = document.querySelector('[data-lm-compq]'), list = document.querySelector('[data-lm-complist]'),
+      lev = document.querySelector('[data-lm-level]');
+  if (!q || !list || !lev) return;
+  q.addEventListener('input', function () {
+    var t = q.value.trim().toLowerCase();
+    Array.prototype.forEach.call(list.options, function (o) { o.hidden = !!t && o.text.toLowerCase().indexOf(t) < 0; });
+  });
+  list.addEventListener('change', function () {
+    var o = list.options[list.selectedIndex]; if (!o) return;
+    var have = (o.getAttribute('data-levels') || '').split(',');
+    Array.prototype.forEach.call(lev.options, function (x) { x.disabled = have.indexOf(x.value) < 0; });
+    if (lev.options[lev.selectedIndex].disabled) {
+      var first = Array.prototype.find.call(lev.options, function (x) { return !x.disabled && Number(x.value) >= 4; })
+        || Array.prototype.find.call(lev.options, function (x) { return !x.disabled; });
+      if (first) lev.value = first.value;
+    }
+  });
+})();
+</script>
+{% endif %}
+{% endblock %}

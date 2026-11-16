@@ -1,0 +1,24 @@
+{% extends "base.html" %}
+{% block title %}Your review{% endblock %}
+{% block body %}
+<div class="page-head">
+  <div>
+    <h1>Nothing waiting on you</h1>
+    <p class="muted">Everything this period is either done or with somebody else.</p>
+  </div>
+</div>
+{% if module_on('evidence') %}
+  {# The brief, on demand -- never on page render, so no model call sits on the
+     critical path. AI off -> the item list; AI on -> prose over the same items,
+     stored nowhere. #}
+  <div class="rv-brief-panel" style="margin:16px 0">
+    <button type="button" class="btn" data-brief-url="{{ url_for('review_brief') }}"
+            data-brief-target="rv-brief-out">Summarise what I wrote</button>
+    <div id="rv-brief-out" style="margin-top:12px"></div>
+  </div>
+  <p class="muted">Something worth remembering happen today?
+    <a href="{{ url_for('evidence_home') }}">Log it</a> &mdash; it takes a sentence, and it is
+    yours to draw on when this comes round again.</p>
+{% endif %}
+<script src="{{ url_for('static', filename='review.js') }}?v={{ asset_v }}" defer></script>
+{% endblock %}

@@ -1,0 +1,49 @@
+{# The cost-sharing letter for a session (AI+ Learning S14, 2026-10-22; canvas board 10B): each business group's people
+   confirmed on it x the cost a person, with its HRDC filing, to print and sign. OneHR's format until L&D's arrives. No
+   base.html: it is a page to print. #}
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Cost-sharing letter · {{ s.title }}</title>
+<style>
+:root{--navy:#252A59;--ink:#1f2330;--line:#9aa0b4;--soft:#e4e7ef}
+*{box-sizing:border-box}
+body{margin:0;font:13px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;color:var(--ink);background:#f5f6fa}
+.cl-bar{display:flex;gap:12px;align-items:center;justify-content:flex-end;max-width:820px;margin:16px auto 0;padding:0 16px}
+.cl-bar button{font:inherit;font-weight:600;background:var(--navy);color:#fff;border:0;border-radius:8px;padding:8px 16px;cursor:pointer}
+.cl-bar a{color:var(--navy)}
+.cl{max-width:820px;margin:12px auto 40px;background:#fff;border:1px solid var(--soft);border-radius:10px;padding:28px 32px}
+.cl h1{font-size:18px;margin:0 0 2px}
+.cl .k{font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:#5f6678}
+.cl p{margin:10px 0}
+.cl table{width:100%;border-collapse:collapse;margin:14px 0}
+.cl th,.cl td{border:1px solid var(--line);padding:7px 9px;text-align:left}
+.cl th{background:#f1f2f7;font-size:12px}
+.cl .n{text-align:right;white-space:nowrap}
+.cl tfoot td{font-weight:700}
+.cl .sign{display:grid;grid-template-columns:1fr 1fr;gap:40px;margin-top:40px}
+.cl .sign div{border-top:1px solid var(--line);padding-top:6px;font-size:12px;color:#5f6678}
+@media print{body{background:#fff}.cl-bar{display:none}.cl{border:0;margin:0;max-width:none;padding:0}}
+</style>
+</head>
+<body>
+<div class="cl-bar"><a href="{{ url_for('admin_learning_session', sid=s.id) }}#lm-docs">Back to the session</a><button type="button" onclick="window.print()">Print</button></div>
+<main class="cl">
+  <span class="k">Group People L&amp;D · cost-sharing</span>
+  <h1>{{ s.title }}{% if s.run_label %} · {{ s.run_label }}{% endif %}</h1>
+  <p>{{ line }}. Dated {{ today | lms_day }}.</p>
+  <p>The cost of this run is shared by each business group for its own people confirmed on it, {% if cost.varies %}each place at its own cost (RM {{ '{:,.2f}'.format(cost.each) }} a person unless agreed otherwise){% else %}at RM {{ '{:,.2f}'.format(cost.each) }} a person{% endif %}{% if s.hrdc_claimable %}, claimable from each business group's HRDC levy once its grant is approved{% endif %}.</p>
+  <table>
+    <thead><tr><th scope="col">Business group</th><th scope="col" class="n">People</th><th scope="col" class="n">Cost (RM)</th>{% if s.hrdc_claimable %}<th scope="col">HRDC</th>{% endif %}</tr></thead>
+    <tbody>
+    {% for r in cost.rows %}<tr><td>{{ display_bg(r.bg) }}</td><td class="n">{{ r.pax }}</td><td class="n">{{ '{:,.2f}'.format(r.cost) }}</td>{% if s.hrdc_claimable %}<td>{{ r.hrdc }}</td>{% endif %}</tr>
+    {% else %}<tr><td colspan="4">Nobody is confirmed on this run yet.</td></tr>{% endfor %}
+    </tbody>
+    {% if cost.rows %}<tfoot><tr><td>Total</td><td class="n">{{ cost.pax }}</td><td class="n">{{ '{:,.2f}'.format(cost.total) }}</td>{% if s.hrdc_claimable %}<td></td>{% endif %}</tr></tfoot>{% endif %}
+  </table>
+  <div class="sign"><div>Prepared by, Group People L&amp;D</div><div>Agreed by, for each business group</div></div>
+</main>
+</body>
+</html>

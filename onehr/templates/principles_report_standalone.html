@@ -1,0 +1,34 @@
+{# The exported file. No base.html, no login, no server: everything it needs is
+   inlined so it opens from a desktop years from now and still sorts, filters
+   and drills down. The confidentiality banner lives in the shared body, gated
+   on `standalone`. #}
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Chin Hin Leadership Principle - 360 Review Report — {{ cyc['name'] }}</title>
+<style>
+:root{--navy:#252A59;--navy-700:#1d2249;--red:#D61923;--ink:#1f2330;--rl-line:#e4e7ef}
+*{box-sizing:border-box}
+body{margin:0;font:0.9375rem/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
+     color:var(--ink);background:#f5f6fa}
+.topbar{background:var(--navy);padding:0 24px;min-height:56px;display:flex;align-items:center;color:#fff}
+.brand{display:flex;align-items:center;font-weight:600}
+.brand::before{content:"";width:13px;height:13px;border-radius:3px;background:var(--red);margin-right:11px}
+.brand small{font-weight:400;color:#c3c7d6;margin-left:8px}
+.wrap{max-width:1400px;margin:0 auto;padding:22px 24px 60px}
+h1{font-size:1.45rem}
+.muted{color:#6b7186}
+.small{font-size:.85rem}
+.admin-card{background:#fff;border:1px solid var(--rl-line);border-radius:12px;padding:18px 20px}
+</style>
+{% include "_principles_report_css.html" %}
+</head>
+<body>
+<div class="topbar"><div class="brand">OneHR <small>by Chin Hin</small></div></div>
+<div class="wrap">
+{% include "_principles_report_body.html" %}
+</div>
+</body>
+</html>

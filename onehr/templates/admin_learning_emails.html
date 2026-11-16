@@ -1,0 +1,47 @@
+{% extends "base.html" %}
+{% block title %}Learning emails{% endblock %}
+{% block body %}
+{# Learning › Settings › Emails (2026-10-22; canvas [design canvas link removed] board 16A): every
+   email AI+ Learning sends, who gets it and when, on or off, in OneHR's wording or L&D's (a subject and an opening
+   line). Each goes once; each also has its row on the dashboard or in AI+ Learning. #}
+<div class="adm-headrow">
+  <p class="adm-lede">Every email AI+ Learning sends, who gets it and when. Each goes once, and each also shows on
+    their dashboard or in AI+ Learning, so nobody depends on email alone.
+    {% if mail_on %}Large sends go out in waves of {{ waves.size }} every {{ waves.gap }} minutes.{% else %}<b>This server sends no email</b>: the counts show what would have gone.{% endif %}</p>
+</div>
+
+<section class="admin-card" aria-label="Learning emails">
+  <div class="table-scroll"><table class="admin-table no-auto-table lm-emails">
+    <thead><tr><th scope="col">On</th><th scope="col">Email</th><th scope="col">To</th><th scope="col">When</th>
+      <th scope="col" class="lm-num">Last 7 days</th><th scope="col"><span class="sr-only">Wording and preview</span></th></tr></thead>
+    {% for g, glab in groups %}
+    <tbody>
+      <tr class="lm-egroup"><th colspan="6" scope="colgroup">{{ glab }}</th></tr>
+      {% for r in rows if r.group == g %}
+      <tr id="e-{{ r.kind }}">
+        <td>{% if can %}
+          <form method="post" class="lm-inline" data-confirm="Turn “{{ r.title }}” {{ 'off' if r.setting.enabled else 'on' }}?{{ ' Nobody gets it until you turn it back on; their dashboard row stays.' if r.setting.enabled else '' }}" data-confirm-ok="Turn it {{ 'off' if r.setting.enabled else 'on' }}">
+            <input type="hidden" name="action" value="toggle"><input type="hidden" name="kind" value="{{ r.kind }}">
+            <button type="submit" class="lm-switch{{ ' is-on' if r.setting.enabled }}" role="switch" aria-checked="{{ 'true' if r.setting.enabled else 'false' }}" aria-label="{{ r.title }}"><span></span></button></form>
+          {% else %}{{ 'On' if r.setting.enabled else 'Off' }}{% endif %}</td>
+        <td><b>{{ r.title }}</b> <span class="lm-rst is-{{ 'approved' if r.before else 'pending' }}">{{ 'Sends today' if r.before else 'New' }}</span>
+          {% if r.setting.subject or r.setting.intro %}<span class="muted small lm-sub">L&amp;D's wording{% if r.setting.subject %}: “{{ r.setting.subject }}”{% endif %}</span>{% endif %}</td>
+        <td class="small">{{ r.to }}</td><td class="small">{{ r.when }}</td>
+        <td class="lm-num">{{ r.sent[1] if mail_on else r.sent[0] }}</td>
+        <td class="small">{% if r.kind == 'announce' %}<span class="muted">From a programme</span>{% else %}
+          <div class="lm-wacts"><a class="btn-link" href="{{ url_for('admin_learning_email_preview', kind=r.kind) }}" target="_blank" rel="noopener">Preview</a>
+          {% if can %}<details class="lm-words"><summary class="btn-link">Wording…</summary>
+            <form method="post" class="admin-form" data-confirm="Save the wording of “{{ r.title }}”?" data-confirm-ok="Save">
+              <input type="hidden" name="action" value="words"><input type="hidden" name="kind" value="{{ r.kind }}">
+              <label>Subject <span class="muted small">(blank: OneHR's; {programme} for the programme)</span><input name="subject" maxlength="160" value="{{ r.setting.subject or '' }}"></label>
+              <label>Opening line <span class="muted small">(blank: none)</span><textarea name="intro" rows="2" maxlength="400">{{ r.setting.intro or '' }}</textarea></label>
+              <button type="submit" class="primary">Save</button>
+            </form></details>{% endif %}</div>{% endif %}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+    {% endfor %}
+  </table></div>
+  <p class="muted small">The wording is OneHR's until L&amp;D sends its own. A programme announcement is sent from the programme's page.</p>
+</section>
+{% endblock %}

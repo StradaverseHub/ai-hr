@@ -1,0 +1,56 @@
+{% extends "base.html" %}
+{% block title %}{{ mod_label }} settings{% endblock %}
+{% block body %}
+{# One module's every setting on one page (2026-10-10, the canvas's A2). A card per setting: its scope, when it last
+   changed and by whom, how it reads now -- and its own form where it is small enough, else the way to the page that
+   edits it. Every form posts to the route that always saved it, which brings you back to its card here. #}
+<div class="adm-set">
+  <nav class="adm-set-index" aria-label="Settings on this page">
+    {% for sec in sections %}
+    <a href="#{{ sec.id }}"><span>{{ sec.title }}</span><span class="adm-set-idx-scope">{{ sec.scope_label }}</span></a>
+    {% endfor %}
+    <p class="muted small">Each card saves on its own, and every save goes to the audit log with who and when.
+      {% if nav_is_super %}<a href="{{ url_for('admin_all_settings') }}">All settings on one sheet</a>{% endif %}</p>
+  </nav>
+  <div class="adm-set-cards">
+    {% for sec in sections %}
+    <section class="admin-card adm-set-card" id="{{ sec.id }}">
+      <div class="adm-set-head">
+        <h2>{{ sec.title }}</h2>
+        {% if sec.chip %}<span class="adm-set-chip">{{ sec.chip }}</span>{% endif %}
+        <span class="adm-scope is-{{ sec.scope }}">{{ sec.scope_label }}</span>
+        <span class="adm-set-last">{% if sec.last %}Changed {{ sec.last.when }} by {{ sec.last.who }}{% endif %}</span>
+        {% if sec.open %}<a class="adm-set-open" href="{{ sec.open.href }}">{{ sec.open.label }} &rsaquo;</a>{% endif %}
+        {% if sec.can_edit and sec.card == 'dept_filter' %}
+          {% set bulk_for = '[data-df-form]' %}
+          {% include "settings/cards/_bulk_views.html" %}
+        {% endif %}
+      </div>
+      {% if sec.desc %}<p class="muted small adm-set-desc">{{ sec.desc }}</p>{% endif %}
+      {% if sec.rows and (not sec.card or not sec.can_edit) %}
+      <dl class="adm-set-rows">
+        {% for r in sec.rows %}<div><dt>{{ r.label }}</dt><dd>{{ r.value }}</dd></div>{% endfor %}
+      </dl>
+      {% endif %}
+      {% if sec.date_rows %}
+      <div class="table-scroll"><table class="admin-table adm-dates">
+        <thead><tr><th>Who</th><th>What it covers</th><th>Opens</th><th>Closes</th><th>Now</th>{% if nav_is_super %}<th><span class="sr-only">Change</span></th>{% endif %}</tr></thead>
+        <tbody>
+          {% for d in sec.date_rows %}
+          <tr><td>{{ d.who }}</td><td>{{ d.what }}</td><td>{{ d.opens }}</td><td>{{ d.closes }}</td>
+            <td><span class="adm-now is-{{ d.state }}">{{ d.now }}</span></td>
+            {% if nav_is_super %}<td class="adm-sheet-open"><a href="{{ url_for('admin_cycle_home', cell=d.cell) }}">Change &rsaquo;</a></td>{% endif %}</tr>
+          {% endfor %}
+        </tbody>
+      </table></div>
+      {% endif %}
+      {% if sec.card %}
+        {% if sec.can_edit %}{% include "settings/cards/_" ~ sec.card ~ ".html" %}
+        {% else %}<p class="note adm-readonly">Only a super admin changes this. It applies across the organisation.</p>{% endif %}
+      {% endif %}
+      {% if sec.also and nav_is_super %}<p class="small adm-set-also"><a href="{{ url_for(sec.also[0]) }}">{{ sec.also[1] }} &rsaquo;</a></p>{% endif %}
+    </section>
+    {% endfor %}
+  </div>
+</div>
+{% endblock %}

@@ -1,0 +1,69 @@
+{# THE ADMIN SIDE PANEL (Chris, 2026-10-17, canvas "OneHR Admin Side Panels"): a summary stays on the page; the change or
+   the detail opens here, over its right side. One shape everywhere: the close bezel on its left edge (Esc too), a
+   kicker saying what it is, the title and who, then the caller's content -- an .adm-panel-body that scrolls on its own
+   and an .adm-panel-foot with Cancel and the one solid button. 560px for an item, `mid` 720px for a person opened from
+   a list, `wide` 880px for a module on the person page. `src` loads the body from that URL when it opens; `peek` (a
+   list's) leaves the page behind clickable, undimmed; `nav` puts Previous / Next in the head, to step through the list
+   behind; `params` names the query parameters that opened it (a preview's), dropped from the address when it closes.
+   Every panel has a Full width / Back to the side toggle in its head (2026-11-04; admin.js remembers it per panel in localStorage),
+   and a save from a form inside one comes back at the same scroll (sessionStorage; see the panel block in admin.js).
+   admin.js opens it from any [data-panel-open="<key>"], from ?panel=<key> or `open`, and from #<id> of anything in it.
+   Usage: {% call panel("details", "Person · Job details", title, sub) %}<div class="adm-panel-body">…</div>{% endcall %} #}
+{% macro panel(key, kicker, title, sub="", wide=False, open=False, src="", peek=False, mid=False, nav=False, params="") -%}
+<aside class="adm-panel{{ ' is-wide' if wide }}{{ ' is-mid' if mid }}" id="pnl-{{ key }}" data-panel="{{ key }}" role="dialog"
+       aria-modal="{{ 'false' if peek else 'true' }}" aria-labelledby="pnl-{{ key }}-h"
+       {%- if src %} data-panel-src="{{ src }}"{% endif %}{% if peek %} data-panel-peek{% endif %}{% if open %} data-panel-autoopen{% endif %}{% if params %} data-panel-params="{{ params }}"{% endif %} hidden>
+  <button type="button" class="od-bezel" data-panel-close aria-label="Close the panel">
+    <svg width="16" height="16" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg>
+  </button>
+  <div class="adm-panel-in">
+    <header class="adm-panel-head">
+      <div class="adm-panel-krow"><span class="adm-panel-k">{{ kicker }}{% if nav %}<span class="adm-panel-pos"></span>{% endif %}</span>
+        <span class="adm-panel-nav">
+          {% if nav %}<button type="button" class="adm-panel-step" data-panel-prev aria-label="Previous person" disabled><svg width="15" height="15" viewBox="0 0 24 24" aria-hidden="true"><path d="M15 18l-6-6 6-6"/></svg></button>
+          <button type="button" class="adm-panel-step" data-panel-next aria-label="Next person" disabled><svg width="15" height="15" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 18l6-6-6-6"/></svg></button>{% endif %}
+          {# Full width / Back to the side (Chris, 2026-11-04): every panel; admin.js flips it and remembers it per panel #}
+          <button type="button" class="adm-panel-step adm-panel-max" data-panel-max aria-pressed="false" aria-label="Full width" title="Full width">
+            <svg class="adm-max-out" width="15" height="15" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 4H4v5M15 4h5v5M9 20H4v-5M15 20h5v-5"/></svg>
+            <svg class="adm-max-in" width="15" height="15" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9h5V4M20 9h-5V4M4 15h5v5M20 15h-5v5"/></svg>
+          </button>
+        </span></div>
+      <h2 class="adm-panel-h" id="pnl-{{ key }}-h" tabindex="-1">{{ title }}</h2>
+      <span class="adm-panel-sub"{% if not sub %} hidden{% endif %}>{{ sub }}</span>
+    </header>
+    {{ caller() }}
+  </div>
+</aside>
+{%- endmacro %}
+
+{# A person opened from a list (phase 2, canvas frame "Competency › Run · open a person, stay on the list"): one panel
+   per list page, peeking (the list stays live), with Previous / Next through the rows on this page. A row's link
+   carries data-person-open="<id>" and its href is the person's tab, which loads here as a fragment
+   (?tab=<k>&fragment=1): the tab's own forms and Reopen, a save coming back to this list with the panel open. #}
+{% macro person_peek(kicker) -%}
+{% call panel("person", kicker, "", "", mid=True, peek=True, nav=True) %}
+  <div class="adm-panel-body" data-panel-slot><p class="muted">Pick someone on the list.</p></div>
+  <footer class="adm-panel-foot">
+    <a class="btn-link adm-panel-grow" href="#" data-person-page>Open their full page &#8599;</a>
+    <button type="button" class="primary" data-panel-close>Done</button>
+  </footer>
+{% endcall %}
+{%- endmacro %}
+
+
+{# A count opens its people (Chris, 2026-10-20, canvas "OneHR Admin Counts Open Panels"): one panel per page, peeking.
+   A tile / number carries data-list-open="<admin_list_view ?fragment=1>"; the list loads here, headed by what the
+   fragment says it is. A person in it opens in the SAME panel ("Back to the list"), Previous / Next stepping through
+   the list, their tab's forms coming back here with the list and the person open (?panel=list&ls=<list>&pp=<id>). #}
+{% macro list_peek() -%}
+{% call panel("list", "", "", "", mid=True, peek=True, nav=True) %}
+  <div class="adm-panel-back" data-list-backrow hidden>
+    <button type="button" class="btn-link" data-list-back>&lsaquo; <span data-list-backlabel>Back to the list</span></button>
+  </div>
+  <div class="adm-panel-body" data-panel-slot><p class="muted">Loading…</p></div>
+  <footer class="adm-panel-foot">
+    <a class="btn-link adm-panel-grow" href="#" data-list-page>Open as a full page &#8599;</a>
+    <button type="button" class="primary" data-panel-close>Done</button>
+  </footer>
+{% endcall %}
+{%- endmacro %}

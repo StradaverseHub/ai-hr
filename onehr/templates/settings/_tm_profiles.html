@@ -1,0 +1,355 @@
+{% from "_table_tools.html" import colth, colmenu, colmenu_script %}
+{% from "_adm_panel.html" import panel %}
+{# Panel: tm / profiles. Competency assignment -- what each role is assessed on,
+   and pushing that out to the people holding it. Rendered by _settings_shell()
+   from admin_competency_profiles().
+   The page is hidden from the pills, so its crumb is the only thing that names it. #}
+<p class="adm-crumb">Run &rsaquo; Assign competencies</p>
+<p class="adm-lede">Which competencies each role is assessed on. People are matched to a profile by their
+  department, job title and job grade, so you define a role once instead of picking competencies person by person.</p>
+<details class="muted small adm-lede">
+  <summary>Why this matters</summary>
+  <p>Each competency is assigned twice: at the level the job needs now, and at the level above it as the stretch.</p>
+</details>
+
+{# ---- Coverage: the honest state of the architecture, first ---------------- #}
+{% if preview %}
+{% set placed = preview.assign | length %}
+{% set total = placed + (preview.started | length) + (preview.empty | length) + (preview.unmapped | length) %}
+<div class="adm-tiles">
+  <div class="admin-card adm-tile"><span class="muted small">Ready to assign</span><b>{{ placed | thousands }}</b>
+    <span class="muted small">{{ preview.rows | thousands }} competencies</span></div>
+  <div class="admin-card adm-tile"><span class="muted small">Already started</span><b>{{ preview.started | length | thousands }}</b>
+    <span class="muted small">left untouched</span></div>
+  <div class="admin-card adm-tile"><span class="muted small">Profile has no competencies</span><b>{{ preview.empty | length | thousands }}</b>
+    <span class="muted small">pick some below</span></div>
+  <div class="admin-card adm-tile"><span class="muted small">No profile matches</span><b>{{ preview.unmapped | length | thousands }}</b>
+    <span class="muted small">of {{ total | thousands }} people</span></div>
+</div>
+
+<div class="admin-card">
+  <h2>Assign for {{ cyc.name }}</h2>
+  <p class="note">
+    Assigning replaces only what this page assigned before. Anyone who has already answered part of their
+    assessment is skipped entirely, so their answers are never at risk. Competencies set by hand are left alone.
+    {% if preview.released %}<strong>{{ preview.released | length | thousands }}</strong>
+    {{ "person's" if preview.released | length == 1 else "people's" }} potential result for {{ cyc.name }} is
+    already released, so {{ 'that set is' if preview.released | length == 1 else 'those sets are' }} final and left as they are.{% endif %}
+    {% if preview.not_part %}<strong>{{ preview.not_part | length | thousands }}</strong>
+    {{ "person isn't" if preview.not_part | length == 1 else "people aren't" }} taking part in {{ cyc.name }}
+    (not confirmed, or confirmed after it opened) and {{ 'is' if preview.not_part | length == 1 else 'are' }} left out
+    &mdash; <a href="{{ url_for('admin_participants') }}">add someone to this cycle</a>.{% endif %}
+    {% if preview.manual %}<strong>{{ preview.manual | length | thousands }}</strong>
+    {{ "person was" if preview.manual | length == 1 else "people were" }} matched to another job profile on
+    their person page, and {{ 'is' if preview.manual | length == 1 else 'are' }} left as set.{% endif %}
+  </p>
+  <form method="post" class="inline-when"
+        data-confirm="Assign {{ preview.rows | thousands }} competencies across {{ placed | thousands }} {{ 'person' if placed == 1 else 'people' }} for {{ cyc.name }}?"
+        data-confirm-ok="Assign">
+    <input type="hidden" name="action" value="generate">
+    <button type="submit" class="primary" {{ 'disabled' if not placed }}>
+      Assign competencies for {{ cyc.name }}</button>
+    {% if not placed %}
+    <span class="muted small">Nothing to assign yet &mdash; define a
+      profile and give it competencies first.</span>
+    {% endif %}
+  </form>
+</div>
+
+{% if top_gaps %}
+<div class="admin-card">
+  <h2>Roles still without a profile</h2>
+  <p class="muted small">The biggest gaps first &mdash; writing a
+    profile for one of these covers everyone listed against it.</p>
+  <div class="table-scroll"><table class="admin-table">
+    <thead><tr><th>Job title</th><th>Job grade</th><th>People</th></tr></thead>
+    <tbody>
+      {% for g in top_gaps %}
+      <tr>
+        <td>{{ g.job_title | proper }}</td>
+        <td>JG {{ g.job_grade }}</td>
+        <td>{{ g.n | thousands }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table></div>
+</div>
+{% endif %}
+{% else %}
+<div class="admin-card">
+  <p class="muted pp-none">No cycle is active, so there is nothing to assign to yet.</p>
+</div>
+{% endif %}
+
+{# ---- The profiles themselves --------------------------------------------- #}
+<div class="admin-card">
+  <div class="adm-headrow"><h2 style="margin:0">Job profiles</h2>{% if is_sup %}<div class="adm-headrow-acts"><button type="button" class="primary" data-panel-open="prof-new">Add a profile</button></div>{% endif %}</div>
+  <p class="muted small">
+    {{ profiles | length | thousands }} defined.
+    {% if not is_sup %}Profiles are shared across every business group, so only a super
+    admin can change them &mdash; you can still assign for your own people above.{% endif %}
+  </p>
+  {% if profiles %}
+  <div class="table-scroll table-scroll-capped"><table class="admin-table" id="tm-profiles-table">
+    <thead>
+      <tr>{{ colth('role', 'Role') }}{{ colth('dept', 'Department') }}{{ colth('jg', 'JG') }}
+          {{ colth('level', 'Level') }}{{ colth('nskills', 'Competencies') }}
+          {{ colth('status', 'Status') }}<th></th></tr>
+    </thead>
+    <tbody>
+      {% for p in profiles %}
+      <tr class="data-row" data-role="{{ p.job_title }}" data-dept="{{ p.department or '—' }}"
+          data-jg="{{ p.job_grade }}" data-level="{{ p.proficiency_level or '—' }}"
+          data-nskills="{{ p.n_skills }}"
+          data-status="{{ 'Active' if p.active else 'Inactive' }}">
+        <td><strong>{{ p.job_title | proper }}</strong></td>
+        <td>{{ p.department | proper or '—' }}</td>
+        <td>{{ p.job_grade }}</td>
+        <td>{{ p.proficiency_level or '—' }}</td>
+        <td>{{ p.n_skills }}</td>
+        <td>
+          {% if p.active %}<span class="status-pill status-reviewed">Active</span>
+          {% else %}<span class="status-pill status-archived">Inactive</span>{% endif %}
+        </td>
+        <td><a class="btn-link" href="{{ url_for('admin_competency_profiles', profile=p.id) }}">{{ 'Edit' if is_sup else 'Competencies' }}</a></td>
+      </tr>
+      {% endfor %}
+          <tr class="no-filter-match" hidden><td colspan="7" class="muted">No profiles match the filters.</td></tr>
+    </tbody>
+  </table>
+  {{ colmenu('tm-profiles-table', {
+       'role':    {'mode': 'clientFilter', 'type': 'text', 'sortAttr': 'role'},
+       'dept':    {'mode': 'sort', 'type': 'text', 'sortAttr': 'dept'},
+       'jg':      {'mode': 'clientFilter', 'type': 'text', 'sortAttr': 'jg'},
+       'level':   {'mode': 'clientFilter', 'type': 'text', 'sortAttr': 'level'},
+       'nskills': {'mode': 'sort', 'type': 'num', 'sortAttr': 'nskills'},
+       'status':  {'mode': 'clientFilter', 'type': 'text', 'sortAttr': 'status'} }) }}</div>
+  {% else %}
+  <p class="muted pp-none">No job profiles yet. Add the first one with Add a profile.</p>
+  {% endif %}
+</div>
+
+{% if is_sup %}
+{% call panel("prof-new", "Job profiles · New", "Add a profile", "People are matched to it by department, job title and job grade.") %}
+  <form method="post" class="stack-form adm-panel-form" data-no-busy
+        data-confirm="Add this profile? People whose department, job title and job grade match it are given its competencies at the next Assign, once you have picked some."
+        data-confirm-ok="Add profile">
+    <div class="adm-panel-body pp-pfields">
+    <p class="muted small">Department, job title and job grade are how
+    a person is matched to this profile &mdash; they should read exactly as they do on the
+    roster, so each is picked from it. The level is the one the role is expected to hold; the stretch half
+    of the assessment comes from the level above it.</p>
+    <input type="hidden" name="action" value="add_profile">
+      {# picked from the roster, so the profile reads exactly as the people it should match (2026-10-19) #}
+      <label>Department <select name="department" id="prof-dept" class="modern-select" required>
+        <option value="">Choose…</option>
+        {% for d, n in prof_lists.depts %}<option value="{{ d }}">{{ d }} · {{ n }}</option>{% endfor %}</select></label>
+      <label>Job title <select name="job_title" class="modern-select" required data-choose-new data-list-for="#prof-dept"
+          data-list-map="#prof-title-map" data-list-what="job title" data-list-nonew>
+        <option value="">Choose a department first</option></select></label>
+      <label>Job grade <select name="job_grade" class="modern-select" required>
+        <option value="">Choose…</option>
+        {% for g in prof_lists.grades %}<option value="{{ g }}">{{ g }}</option>{% endfor %}</select></label>
+      <script type="application/json" id="prof-title-map">{{ prof_lists.titles | tojson }}</script>
+      <label>Level
+        <input type="number" name="proficiency_level" min="1" max="6" value="3" required></label>
+    </div>
+    <footer class="adm-panel-foot">
+      <button type="button" class="btn-link" data-panel-close>Cancel</button>
+      <button type="submit" class="primary">Add profile</button>
+    </footer>
+  </form>
+{% endcall %}
+{% endif %}
+
+{# ---- one profile in its side panel (phase 3 of the admin side panels, 2026-10-17): its competencies, and Deactivate /
+   Remove. Its row's Edit reloads with ?profile=, which opens it; closing drops the parameter. #}
+{% if sel %}
+{% macro prof_count(cur, fut) -%}
+{% set t = cur + fut %}
+<div class="pf-count">
+  <div class="pf-count-t"><b data-pf-n>{{ t }} of {{ prof_max }} competencies</b><span class="muted small" data-pf-split>{{ cur }} current · {{ fut }} future</span></div>
+  <div class="pf-meter" data-pf-meter aria-hidden="true">{% for i in range(prof_max) %}<span class="{{ 'is-over' if t > prof_max else ('is-cur' if i < cur else ('is-fut' if i < t else '')) }}"></span>{% endfor %}</div>
+</div>
+{%- endmacro %}
+{% macro prof_state() -%}
+{% if is_sup %}
+<div class="adm-prow prof-state"><span><span class="pp-prof-k">Status</span>
+  <span class="pp-prof-v">{{ 'Active: people with this job are matched to it' if sel.active else 'Inactive: people with this job are skipped at the next Assign' }}</span></span>
+  <button type="submit" class="btn-link" form="prof-toggle">{{ 'Deactivate' if sel.active else 'Reactivate' }}</button></div>
+<div class="adm-danger"><span><b>Remove this profile</b><br>Its competency list goes with it; competencies already assigned to people stay.</span>
+  <button type="submit" class="btn-link" form="prof-remove">Remove&hellip;</button></div>
+{% endif %}
+{%- endmacro %}
+{% call panel("prof-" ~ sel.id, "Job profile", sel.job_title, (sel.department or '—') ~ ' · JG ' ~ sel.job_grade ~ ((' · ' ~ sel.job_code ~ ' · from the job architecture') if sel.job_code else (' · level ' ~ (sel.proficiency_level or '—'))) ~ ('' if sel.active else ' · inactive'), open=True, params="profile") %}
+  {% if sel.job_code %}
+  {# a job-architecture profile (Chris, 2026-10-19): its five as people are assessed on them, each current level with
+     its future; changed in the Competency library, where one edit applies in every business group holding the job #}
+  {% set nc = pairs | selectattr('cur') | list | length %}{% set nf = pairs | selectattr('fut') | list | length %}
+  <div class="adm-panel-body">
+    {{ prof_count(nc, nf) }}
+    <p class="muted small">This role's five come from the job architecture, each at the level it needs now and the level
+      above as its future. One profile serves every business group that holds the job, so its five are changed in the
+      Competency library.</p>
+    {% if pairs %}
+    <div class="pf-pairs" role="table" aria-label="Its competencies">
+      <div class="pf-prow is-head" role="row"><span role="columnheader">Competency</span><span role="columnheader">Current</span><span role="columnheader">Future</span></div>
+      {% for c in pairs %}
+      <div class="pf-prow" role="row">
+        <span class="pf-pname" role="cell"><b>{{ c.title }}</b>{% if c.category %}<span class="muted small">{{ c.category }}</span>{% endif %}</span>
+        <span role="cell">{% if c.cur %}<span class="pf-tag is-cur">Level {{ c.cur }}</span>{% else %}<span class="muted small">—</span>{% endif %}</span>
+        <span role="cell">{% if c.fut %}<span class="pf-tag is-fut">Level {{ c.fut }}</span>{% else %}<span class="muted small">top level</span>{% endif %}</span>
+      </div>
+      {% endfor %}
+    </div>
+    {% else %}
+    <p class="muted pp-none">No competencies on this job yet.</p>
+    {% endif %}
+    {{ prof_state() }}
+  </div>
+  <footer class="adm-panel-foot">
+    <a class="btn-link adm-panel-grow" href="{{ url_for('admin_competency_library', job=sel.id, panel='five' if is_sup else None) }}">{{ 'Change its five in the Competency library' if is_sup else 'Open it in the Competency library' }} &rsaquo;</a>
+    <button type="button" class="primary" data-panel-close>Done</button>
+  </footer>
+  {% elif skills %}
+  {# a hand-made profile (Chris, 2026-10-19): find a competency, the count of ten as people will be assessed, and each
+     pick tagged Current with the level above tagged Future. The script mirrors tc_pick_plan_size; set_skills refuses
+     more than ten. #}
+  <form method="post" class="adm-panel-form" id="prof-skills" data-pf-max="{{ prof_max }}"{% if not is_sup %} data-pf-readonly{% endif %}
+        data-confirm="Save the competencies for {{ sel.job_title | proper }}? Everyone whose job matches this profile gets exactly this list at the next Assign; nobody's current list changes until then."
+        data-confirm-ok="Save">
+    <div class="adm-panel-body">
+    <input type="hidden" name="action" value="set_skills">
+    <input type="hidden" name="profile_id" value="{{ sel.id }}">
+    <div class="pf-tools">
+      <p class="muted small">Tick the competencies at the level this role needs now. The level above is added as its
+        future level, where one exists.</p>
+      <label class="pf-q"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="11" cy="11" r="7"></circle><path d="m20 20-3.5-3.5"></path></svg>
+        <input type="search" data-pf-q placeholder="Find a competency or category" aria-label="Find a competency" autocomplete="off">
+        <span class="pf-q-n" data-pf-qn></span></label>
+      <div class="pf-row">
+        {{ prof_count(pick_n[0], pick_n[1]) }}
+        <span class="pf-show" role="group" aria-label="Show">
+          <button type="button" class="adm-frow-pill is-on" data-pf-show="all" aria-pressed="true">All</button>
+          <button type="button" class="adm-frow-pill" data-pf-show="sel" aria-pressed="false">Selected · <b data-pf-seln>{{ pick_n[0] + pick_n[1] }}</b></button>
+        </span>
+      </div>
+      <p class="pf-msg{{ ' is-over' if pick_n[0] + pick_n[1] > prof_max }}" data-pf-msg role="status"{% if pick_n[0] + pick_n[1] < prof_max %} hidden{% endif %}>{% if pick_n[0] + pick_n[1] > prof_max %}This profile has {{ pick_n[0] + pick_n[1] }}. Untick {{ pick_n[0] + pick_n[1] - prof_max }} before you save: a role has at most {{ prof_max }}.{% elif pick_n[0] + pick_n[1] == prof_max %}This role has its {{ prof_max }}. Untick one to choose another.{% endif %}</p>
+    </div>
+    <div class="company-pick pf-list">
+      {% for s in skills %}
+      {% if loop.first or s.skill_category != skills[loop.index0 - 1].skill_category %}
+      <div class="pf-cat" data-pf-cat="{{ s.skill_category or 'Uncategorised' }}">
+        <p class="muted small"><strong>{{ s.skill_category or 'Uncategorised' }}</strong></p>
+      {% endif %}
+        <label class="company-opt pf-opt" data-pf-opt data-key="{{ (s.title or '') | trim }}" data-lv="{{ s.level or 0 }}">
+          <input type="checkbox" name="skill" value="{{ s.id }}" {{ 'checked' if s.id in picked }}{{ ' disabled' if not is_sup }}>
+          <span class="pf-name">{{ s.title }} <span class="muted small">&middot; level {{ s.level }}</span></span>
+          <span class="pf-tag is-cur"{% if s.id not in picked %} hidden{% endif %}>Current</span>
+          <span class="pf-tag is-fut" hidden>Future</span><span class="muted small pf-from" hidden></span>
+        </label>
+      {% if loop.last or s.skill_category != skills[loop.index0 + 1].skill_category %}
+      </div>
+      {% endif %}
+      {% endfor %}
+      <p class="muted small pf-none" data-pf-none hidden></p>
+    </div>
+    {{ prof_state() }}
+    </div>
+    <footer class="adm-panel-foot">
+      {% if is_sup %}<span class="muted small adm-panel-grow">At most {{ prof_max }}: each pick is its level now plus the level above.</span><button type="button" class="btn-link" data-panel-close>Cancel</button><button type="submit" class="primary"{% if pick_n[0] + pick_n[1] > prof_max %} disabled{% endif %}>Save competencies</button>
+      {% else %}<span class="muted small adm-panel-grow">Only a super admin changes a profile's competencies.</span><button type="button" class="primary" data-panel-close>Done</button>{% endif %}
+    </footer>
+  </form>
+  <script>
+  /* The job profile panel (2026-10-19): a pick is a current competency, the same title one level up its future
+     (checked and fixed, as tc_pick_plan_size and tc_profile_plan derive it); the count of ten as people will be
+     assessed; a pick that would pass ten closed until one is unticked; Find and Selected filter the list. */
+  (function () {
+    var form = document.getElementById('prof-skills'); if (!form) return;
+    var MAX = +form.getAttribute('data-pf-max') || 10, ro = form.hasAttribute('data-pf-readonly');
+    var opts = [].slice.call(form.querySelectorAll('[data-pf-opt]')), by = {};
+    opts.forEach(function (o) { o._cb = o.querySelector('input[type="checkbox"]'); by[o.getAttribute('data-key') + '|' + o.getAttribute('data-lv')] = o; });
+    var q = form.querySelector('[data-pf-q]'), qn = form.querySelector('[data-pf-qn]'), none = form.querySelector('[data-pf-none]');
+    var nEl = form.querySelector('[data-pf-n]'), split = form.querySelector('[data-pf-split]');
+    var segs = [].slice.call(form.querySelectorAll('[data-pf-meter] span')), selN = form.querySelector('[data-pf-seln]');
+    var msg = form.querySelector('[data-pf-msg]'), only = false;
+    var save = form.querySelector('.adm-panel-foot button[type="submit"]');   // not Deactivate / Remove (form=…)
+    function nextOf(o) { return by[o.getAttribute('data-key') + '|' + (+o.getAttribute('data-lv') + 1)] || null; }
+    function tag(o, kind, from) {
+      o.querySelector('.pf-tag.is-cur').hidden = kind !== 'cur';
+      o.querySelector('.pf-tag.is-fut').hidden = kind !== 'fut';
+      var f = o.querySelector('.pf-from'); f.hidden = kind !== 'fut'; f.textContent = kind === 'fut' ? 'added with level ' + from : '';
+    }
+    function filter() {
+      var s = (q.value || '').trim().toLowerCase(), shown = 0;
+      form.querySelectorAll('[data-pf-cat]').forEach(function (g) {
+        var cat = (g.getAttribute('data-pf-cat') || '').toLowerCase(), any = false;
+        g.querySelectorAll('[data-pf-opt]').forEach(function (o) {
+          var hit = (!s || o.getAttribute('data-key').toLowerCase().indexOf(s) >= 0 || cat.indexOf(s) >= 0) && (!only || o._cb.checked);
+          o.hidden = !hit; if (hit) { any = true; shown++; }
+        });
+        g.hidden = !any;
+      });
+      qn.textContent = s ? shown + ' of ' + opts.length : '';
+      none.hidden = shown > 0;
+      none.textContent = s ? 'No competency matches “' + q.value.trim() + '”.' : 'Nothing is selected yet.';
+    }
+    function update() {
+      opts.forEach(function (o) { if (o._auto) { o._auto = false; o._cb.checked = false; if (!ro) o._cb.disabled = false; } });
+      var cur = opts.filter(function (o) { return o._cb.checked; }), claimed = new Set(cur), fut = 0;
+      opts.forEach(function (o) { tag(o, null); });
+      cur.forEach(function (o) {
+        tag(o, 'cur');
+        var n = nextOf(o);
+        if (n && !claimed.has(n)) { claimed.add(n); n._auto = true; n._cb.checked = true; n._cb.disabled = true; tag(n, 'fut', o.getAttribute('data-lv')); fut++; }
+      });
+      var c = cur.length, t = c + fut, over = t > MAX;
+      nEl.textContent = t + ' of ' + MAX + ' competencies';
+      split.textContent = c + ' current · ' + fut + ' future';
+      segs.forEach(function (sg, i) { sg.className = over ? 'is-over' : (i < c ? 'is-cur' : (i < t ? 'is-fut' : '')); });
+      if (selN) selN.textContent = t;
+      if (!ro) opts.forEach(function (o) {
+        if (o._cb.checked) return;
+        var n = nextOf(o), shut = t + 1 + (n && !claimed.has(n) ? 1 : 0) > MAX;
+        o._cb.disabled = shut; o.classList.toggle('is-shut', shut);
+        o.title = shut ? 'This role has its ' + MAX + '. Untick one to choose another.' : '';
+      });
+      msg.hidden = t < MAX; msg.classList.toggle('is-over', over);
+      msg.textContent = over ? 'This profile has ' + t + '. Untick ' + (t - MAX) + ' before you save: a role has at most ' + MAX + '.'
+        : (t === MAX ? 'This role has its ' + MAX + '. Untick one to choose another.' : '');
+      if (save) save.disabled = over;
+      filter();
+    }
+    form.addEventListener('change', function (e) { if (e.target.closest && e.target.closest('[data-pf-opt]')) update(); });
+    q.addEventListener('input', filter);
+    q.addEventListener('keydown', function (e) { if (e.key === 'Enter') e.preventDefault(); });   // Enter finds, never saves
+    form.querySelectorAll('[data-pf-show]').forEach(function (b) {
+      b.addEventListener('click', function () {
+        only = b.getAttribute('data-pf-show') === 'sel';
+        form.querySelectorAll('[data-pf-show]').forEach(function (x) { x.classList.toggle('is-on', x === b); x.setAttribute('aria-pressed', x === b ? 'true' : 'false'); });
+        filter();
+      });
+    });
+    update();
+  })();
+  </script>
+  {% else %}
+  <div class="adm-panel-body"><p class="muted pp-none">No competencies have been imported yet, so there is nothing to pick from.</p>
+    {{ prof_state() }}</div>
+  <footer class="adm-panel-foot"><button type="button" class="primary" data-panel-close>Done</button></footer>
+  {% endif %}
+{% endcall %}
+{% if is_sup %}
+<form method="post" id="prof-toggle" class="adm-pform-x" data-no-busy
+      data-confirm="{{ 'Deactivate' if sel.active else 'Reactivate' }} the {{ sel.job_title | proper }} profile? {{ 'People with this job are no longer matched to it, so the next Assign skips them; competencies already assigned stay.' if sel.active else 'People with this job are matched to it again at the next Assign.' }}"
+      data-confirm-ok="{{ 'Deactivate' if sel.active else 'Reactivate' }}">
+  <input type="hidden" name="action" value="toggle_active"><input type="hidden" name="profile_id" value="{{ sel.id }}"></form>
+<form method="post" id="prof-remove" class="adm-pform-x" data-no-busy
+      data-confirm="Remove the {{ sel.job_title | proper }} profile? Its competency list goes with it. Competencies already assigned to people are not deleted."
+      data-confirm-ok="Remove" data-confirm-tone="danger">
+  <input type="hidden" name="action" value="remove_profile"><input type="hidden" name="profile_id" value="{{ sel.id }}"></form>
+{% endif %}
+{% endif %}
+
+{{ colmenu_script(asset_v) }}

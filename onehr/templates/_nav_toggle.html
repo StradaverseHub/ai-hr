@@ -1,0 +1,16 @@
+{# The Dashboard / AI Check-in top toggle, icon-only. Rendered by base.html (on
+   /dashboard, /me, /review/team) AND by review.html's top bar (on /review, where
+   base's copy is hidden) AND by the journey rail (_journey_rail.html). Uses
+   request.path (NOT `p`, which only base.html sets) so it renders standalone too --
+   e.g. in the agent-turn rail_html; `active_cycle` (context processor) and
+   `module_on` (jinja global) are available everywhere. #}
+{% from "_review_icons.html" import rvicon %}
+{% set _p = request.path %}
+<div class="mod-tabs mod-tabs-icon">
+  <a id="nav-dashboard" class="{{ 'active' if _p in ['/dashboard', '/me'] else '' }}"
+     href="{{ url_for('dashboard') }}" aria-label="Dashboard" title="Dashboard">{{ rvicon('grid') }}</a>
+  {% if active_cycle and module_on('review') %}
+  <a id="nav-review" class="{{ 'active' if _p.startswith('/review') else '' }}"
+     href="{{ url_for('review_home') }}" aria-label="AI Check-in" title="AI Check-in">{{ rvicon('chat') }}</a>
+  {% endif %}
+</div>
