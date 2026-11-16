@@ -3554,6 +3554,7 @@
       "loading": "Loading…",
       "saved": "Information corrected. Completed transactions remain unchanged.",
       "unchanged": "Unchanged — this row will be skipped.",
+      "effectiveDateOnly": "Nothing to correct. The Effective Date only sets when corrected values apply. To change the date the employee’s records start ({date}), correct the Group Join Date.",
       "history": "Correction history",
       "noHistory": "No information-only corrections recorded.",
       "importHelp": "Company Code verifies the existing company. New Company Code is optional. Blank correction cells mean unchanged. Use the reference sheets for system codes. Maximum 200 rows.",
