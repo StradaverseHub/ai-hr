@@ -1,6 +1,9 @@
+import {createHash} from 'node:crypto';
 import {describe,it,expect} from 'vitest';
 import {resignationDefaults,RESIGNATION_DEFAULT_IDS as I,RESIGNATION_DEFAULT_ROUTINGS} from '../lib/resignation-defaults';
 import {parseV9Config} from '../lib/lifecycle-v9-validation';
+import {generateResignationLetter,resignationLetterPreview,resignationLetterMergeKeys} from '../lib/resignation-letter';
+import {merge} from '../lib/lifecycle-v9-model';
 import {v9Defaults} from '../lib/lifecycle-v9-defaults';
 import {OFFBOARDING_AUTOMATION_CATALOGUE} from '../lib/automation/catalogues/offboarding';
 import {automationWorkflowProblems} from '../lib/automation/workflow';
@@ -88,3 +91,22 @@ describe('explicit resignation defaults match handoff §14',()=>{
 });
 
 it('passes the actual V9 configuration parser before sender normalization or persistence',()=>{const previous=v9Defaults(),defaults=resignationDefaults(previous,'Configuration owner',at);expect(defaults.emails.map(email=>email.sender)).toEqual(['noreply','noreply','noreply']);const merged={...previous,groups:[...previous.groups,...defaults.groups],peopleOpsGroup:defaults.peopleOpsGroupId,templates:[...previous.templates,...defaults.templates],emails:[...previous.emails,...defaults.emails]};expect(()=>parseV9Config(merged,previous)).not.toThrow();expect(parseV9Config(merged,previous).emails.filter(email=>defaults.emails.some(expected=>expected.id===email.id)).map(email=>email.sender)).toEqual(['noreply','noreply','noreply']);});
+
+
+it('generates each installed document with real captured merge values and no unresolved PDF wording',()=>{
+ const defaults=make(),values={'employee.name':'Fictional Taylor','resignation.lastDay':'2027-02-18','employee.position':'Coordinator','retention.title':'Senior Coordinator','employee.grade':'G3','retention.grade':'G4','employee.salary':'5000.00','retention.salary':'5500.00','retention.effectiveDate':'2027-01-01'};
+ for(const template of defaults.templates){
+  const kind=template.id===I.retention?'retention':'acceptance';
+  const generated=generateResignationLetter({id:'generated-'+kind,kind,template,tenantId:'fictional-tenant',companyId:'fictional-company',subjectId:'fictional-case',employeeUserId:'fictional-employee',caseOwnerId:'fictional-gbs',generatedOn:'2026-11-16',generatedAt:at,values,facts:{caseType:'Resignation'},context:{employeeUserId:'fictional-employee',directSuperiorUserId:'fictional-manager',facts:{},routing:id=>({id,name:'Explicit fixture routing',rows:[{match:{},assignTo:{kind:'people',userIds:[id===I.bp?'fictional-bp':'fictional-ceo']}}]}),groupMembers:()=>['fictional-gbs'],choose:people=>people[0]??null,fallback:null,describe:who=>who.kind}},{fingerprint:content=>createHash('sha256').update(content).digest('hex'),newId:()=> 'fictional-id'});
+  const preview=resignationLetterPreview(generated.letter,'fictional-gbs');expect(preview.warnings).toEqual([]);expect(preview.document).not.toBeNull();
+  const document=preview.document!,keys=resignationLetterMergeKeys(document.blocks);
+  expect(document.mergeValues['employee.name']).toBe('Fictional Taylor');
+  for(const key of keys)expect(document.mergeValues[key]).toBe(values[key as keyof typeof values]);
+  const rendered=document.blocks.flatMap(block=>[block.text,block.rows??'',block.columns??'',block.label??'']).map(text=>merge(text,document.mergeValues));
+  expect(rendered.flatMap(part=>part.missing)).toEqual([]);const wording=rendered.map(part=>part.text).join('\n');expect(wording).toContain('Dear Fictional Taylor,');expect(wording).not.toMatch(/[{}]|\[Full name\]/);
+  if(kind==='acceptance'){expect(document.mergeValues['resignation.lastDay']).toBe('2027-02-18');expect(wording).toContain('Your agreed last working day is 2027-02-18.');}
+  else{expect(wording).toContain('Job title | Coordinator | Senior Coordinator');expect(wording).toContain('Grade | G3 | G4');expect(wording).toContain('Base salary | 5000.00 | 5500.00');expect(wording).toContain('These terms take effect on 2027-01-01.');}
+ }
+ // Email content belongs to its existing mail token adapter, not the document token parser.
+ expect(defaults.emails.find(email=>email.id===I.receivedEmail)?.body).toContain('{{employee.name}}');
+});

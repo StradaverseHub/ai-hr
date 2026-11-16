@@ -25,10 +25,10 @@ export function resignationDefaults(config:Config,actorName:string,at:string,exi
  const body=(kind:'acceptance'|'retention'):Block[]=>[
   {id:'letterhead',type:'letterhead',text:'',section:'main'},
   {id:'heading',type:'heading',text:kind==='retention'?'Offer of revised terms of employment':'Acceptance of resignation',section:'main'},
-  {id:'body',type:'text',text:kind==='retention'?'Dear {{employee.name}},\nFollowing our discussion, we offer the revised terms of employment below.':'Dear {{employee.name}},\nWe accept your resignation. Your agreed last working day is {{resignation.lastDay}}. Please complete your handover and clearance.',section:'main'},
+  {id:'body',type:'text',text:kind==='retention'?'Dear {employee.name},\nFollowing our discussion, we offer the revised terms of employment below.':'Dear {employee.name},\nWe accept your resignation. Your agreed last working day is {resignation.lastDay}. Please complete your handover and clearance.',section:'main'},
   ...(kind==='retention'?[
-   {id:'terms',type:'table' as const,text:'',section:'main',columns:'Term | Current | Offered',rows:'Job title | {{employee.position}} | {{retention.title}}\nGrade | {{employee.grade}} | {{retention.grade}}\nBase salary | {{employee.salary}} | {{retention.salary}}'},
-   {id:'closing',type:'text' as const,text:'These terms take effect on {{retention.effectiveDate}}. Please review and sign this letter to accept the offer.',section:'main'},
+   {id:'terms',type:'table' as const,text:'',section:'main',columns:'Term | Current | Offered',rows:'Job title | {employee.position} | {retention.title}\nGrade | {employee.grade} | {retention.grade}\nBase salary | {employee.salary} | {retention.salary}'},
+   {id:'closing',type:'text' as const,text:'These terms take effect on {retention.effectiveDate}. Please review and sign this letter to accept the offer.',section:'main'},
   ]:[]),
   {id:'hr-signature',type:'signature',text:'',section:'main',role:kind==='retention'?'step:ceo':'step:bp',label:kind==='retention'?'BU / BG CEO':'People Business Partner'},
   ...(kind==='retention'?[{id:'employee-signature',type:'signature' as const,text:'',section:'main',role:'step:employee',label:'Employee acceptance'}]:[]),
