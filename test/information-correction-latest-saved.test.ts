@@ -50,8 +50,11 @@ const correctionCount=async(id:string)=>(await owner.db.select({id:schema.domain
 
 type AtField='hiredOn'|'joinDate'|'companyId';
 const FALLBACK:Record<AtField,SQL>={hiredOn:sql`${schema.employment.hiredOn}`,joinDate:sql`${schema.employment.joinDate}`,companyId:sql`${schema.employment.companyId}`};
-/** Revision 3's reader, verbatim: the earliest-saved correction dated after the day gives its before value. */
-const legacyAt=(field:AtField,asOf:SQL)=>sql<string|null>`case when exists(select 1 from ${schema.domainEvent} ev where ev.tenant_id=app.current_tenant_id() and ev.subject_employment_id=${schema.employment.id} and ev.event_type='employment.information.corrected' and ev.payload->>'effectiveOn'>${asOf}::text) then (select ev.payload->'before'->>${field} from ${schema.domainEvent} ev where ev.tenant_id=app.current_tenant_id() and ev.subject_employment_id=${schema.employment.id} and ev.event_type='employment.information.corrected' and ev.payload->>'effectiveOn'>${asOf}::text order by ev.sequence limit 1) else ${FALLBACK[field]}::text end`;
+/** Revision 3's reader: the earliest-saved correction dated after the day gives its before value. The employment id
+ * is nested (`subject`) so drizzle qualifies it in a single-table select, as the revision 4 reader does; a bare top-level
+ * column renders as "id" there, which inside the subquery would bind to domain_event.id. */
+const subject=sql`${schema.employment.id}`;
+const legacyAt=(field:AtField,asOf:SQL)=>sql<string|null>`case when exists(select 1 from ${schema.domainEvent} ev where ev.tenant_id=app.current_tenant_id() and ev.subject_employment_id=${subject} and ev.event_type='employment.information.corrected' and ev.payload->>'effectiveOn'>${asOf}::text) then (select ev.payload->'before'->>${field} from ${schema.domainEvent} ev where ev.tenant_id=app.current_tenant_id() and ev.subject_employment_id=${subject} and ev.event_type='employment.information.corrected' and ev.payload->>'effectiveOn'>${asOf}::text order by ev.sequence limit 1) else ${FALLBACK[field]}::text end`;
 async function readAt(id:string,day:string){
  const asOf=sql`${day}::date`;
  const [row]=await withTenant(ctx(),tx=>tx.select({
