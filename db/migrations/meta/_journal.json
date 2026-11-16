@@ -6338,6 +6338,34 @@
       "breakpoints": true
     },
     {
+      "idx": 5226,
+      "version": "7",
+      "when": 1794841005826,
+      "tag": "5826_automation_shared_assignment_groups",
+      "breakpoints": true
+    },
+    {
+      "idx": 5227,
+      "version": "7",
+      "when": 1794841005827,
+      "tag": "5827_shared_automation_email_assets",
+      "breakpoints": true
+    },
+    {
+      "idx": 5228,
+      "version": "7",
+      "when": 1794841005828,
+      "tag": "5828_automation_email_test_self",
+      "breakpoints": true
+    },
+    {
+      "idx": 5229,
+      "version": "7",
+      "when": 1794841005829,
+      "tag": "5829_shared_automation_email_asset_delivery",
+      "breakpoints": true
+    },
+    {
       "idx": 5230,
       "version": "7",
       "when": 1794841005830,
@@ -6370,6 +6398,55 @@
       "version": "7",
       "when": 1794841005835,
       "tag": "5835_contract_shared_review_wording",
+      "breakpoints": true
+    },
+    {
+      "idx": 5240,
+      "version": "7",
+      "when": 1794841005840,
+      "tag": "5840_shared_email_test_asset_source",
+      "breakpoints": true
+    },
+    {
+      "idx": 5241,
+      "version": "7",
+      "when": 1794841005841,
+      "tag": "5841_shared_email_case_file_pages",
+      "breakpoints": true
+    },
+    {
+      "idx": 5242,
+      "version": "7",
+      "when": 1794841005842,
+      "tag": "5842_probation_shared_email_asset_proof",
+      "breakpoints": true
+    },
+    {
+      "idx": 5244,
+      "version": "7",
+      "when": 1794841005844,
+      "tag": "5844_shared_groups_preserve_members",
+      "breakpoints": true
+    },
+    {
+      "idx": 5245,
+      "version": "7",
+      "when": 1794841005845,
+      "tag": "5845_shared_groups_member_identity",
+      "breakpoints": true
+    },
+    {
+      "idx": 5246,
+      "version": "7",
+      "when": 1794841005846,
+      "tag": "5846_email_test_current_human",
+      "breakpoints": true
+    },
+    {
+      "idx": 5247,
+      "version": "7",
+      "when": 1794841005847,
+      "tag": "5847_email_test_authority_utf8",
       "breakpoints": true
     },
     {

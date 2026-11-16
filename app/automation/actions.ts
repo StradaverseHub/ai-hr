@@ -6,6 +6,9 @@ import {
   installAutomationDefaults,listAutomationRoutings,automationAssignmentGroups,resolveRoutingRow,
   saveAutomationEmailTemplate,saveAutomationRouting,saveAutomationWorkflow,searchAutomationPeople,
   saveAutomationDocumentTemplate,automationDocumentVersions,
+  saveAutomationAssignmentGroups,
+  testAutomationEmail,
+  searchAutomationGroupPeople,
   type AutomationDryRun,type AutomationEmailTemplate,type AutomationRecipient,type AutomationWorkflow,type Routing,
 } from '@/packs/automation/service';
 import {contractConfigurationDirectory} from '@/packs/contracts/service';
@@ -61,6 +64,15 @@ export async function documentTemplateVersionsAction(id:string){
 
 export async function saveRoutingAction(input: { routing: Routing; retired: boolean; expectedRevision: number; reason: string }) {
   return execute(async () => saveAutomationRouting(await requireScopedLifecycleModule(), input));
+}
+export async function saveAssignmentGroupsAction(input:unknown){
+ return execute(async()=>saveAutomationAssignmentGroups(await requireScopedLifecycleModule(),input));
+}
+export async function searchAssignmentGroupPeopleAction(query:string){
+ return execute(async()=>searchAutomationGroupPeople(await requireScopedLifecycleModule(),query));
+}
+export async function sendTestEmailAction(input:unknown){
+ return execute(async()=>testAutomationEmail(await requireScopedLifecycleModule(),input));
 }
 
 export async function searchPeopleAction(query: string) {

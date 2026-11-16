@@ -28,6 +28,7 @@ vi.mock('next/navigation',()=>({notFound:()=>{throw Error('not-found');},useRout
 vi.mock('@/db/client',async importOriginal=>({...await importOriginal<Record<string,unknown>>(),withBackgroundReadWork:async(_tenant:string,run:()=>unknown)=>run(),withSharedReadSnapshot:async(_s:unknown,work:()=>unknown)=>work()}));
 vi.mock('@/core/employee-home',()=>({HomeAccessError:fx.FixtureHomeAccessError}));
 vi.mock('@/components/today/today-page',()=>({GreetingWithName:async()=>'Good morning, Aisyah'}));
+vi.mock('@/components/today/contract-slot',()=>({TodayContracts:()=> <section data-contract-home>Contract signatures</section>}));
 vi.mock('@/components/performance-home/performance-home',()=>({PerformanceHomeSlot:async()=><section data-performance-home>Performance</section>}));
 vi.mock('@/components/today/employee/reads',()=>({
  moduleState:()=>{if(S.moduleError)throw S.moduleError;return 'on';},
@@ -66,6 +67,7 @@ afterEach(cleanup);
 async function show(){
  const tree=await resolveServerTree(await EmployeeTodayPage({session:SESSION,scopeIds:['co-a'],now:NOW}));
  const view=render(<NextIntlClientProvider locale="en" messages={messages} timeZone="Asia/Kuala_Lumpur">{tree}</NextIntlClientProvider>);
+ expect(view.container.querySelectorAll('[data-contract-home]')).toHaveLength(1);
  return {...view,panel:(id:string)=>view.container.querySelector(`[data-today-panel="${id}"]`)};
 }
 
