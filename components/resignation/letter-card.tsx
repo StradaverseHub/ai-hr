@@ -10,7 +10,7 @@ export function ResignationLetterCard({value,letter,busy,command}:{value:Resigna
  useEffect(()=>{if(!editing)setBlocks(letter.editableBlocks??[]);},[letter.editableBlocks,editing]);
  const caps=letter.capabilities,doc={documentId:letter.id,documentRevision:letter.revision};
  const retention=letter.kind==='retention'&&value.stage==='offer',opened=letter.opened;
- const sendBack=async()=>{if(!reason.trim()){setLocalError(t('sendBackRequired'));return;}setLocalError('');if(await command({type:'sendBack',...doc,reason:reason.trim()}))setReason('');};
+ const sendBack=()=>{if(!reason.trim()){setLocalError(t('sendBackRequired'));return;}setLocalError('');return command({type:'sendBack',...doc,reason:reason.trim()}).then(saved=>{if(saved)setReason('');});};
  return <section className="space-y-4" aria-label={letter.name}><header className="flex flex-wrap items-start justify-between gap-3"><div><h3 className="font-semibold">{letter.name}</h3><p className="mt-1 text-xs text-muted-foreground">{t('version',{revision:letter.revision,templateVersion:letter.templateVersion})}</p></div>{letter.downloadUrl&&<a className="text-sm font-medium text-primary underline" href={letter.downloadUrl}>{t('download')}</a>}</header>
  {letter.sentBack&&<p className="rounded-lg border bg-muted/30 p-3 text-sm">{letter.sentBack.recall?t('recalled'):t('returned',{by:letter.sentBack.by,reason:letter.sentBack.reason})}</p>}
  {letter.changes.length>0&&<div className="rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-950 dark:bg-amber-950 dark:text-amber-100"><strong>{t('signAgain')}</strong><ul className="mt-1 space-y-1">{letter.changes.map((change,i)=><li key={i}>{t('change',change)}</li>)}</ul></div>}
