@@ -34,7 +34,7 @@ export function PartEditor({view,part,actor,signerCandidates}:{view:ProbationCas
  // 5756: a Review step and an Approve step without a signature record a decision; every other step signs.
  const decision=allowedCandidate==='approve'&&step&&part.signing?signingStepAction(part.signing.document,step):'signed';
  const signatureCommand=decision==='signed'?allowedCandidate:null,decisionCommand=decision!=='signed'?allowedCandidate:null;
- const roleLabel=(p:{role:string;label?:string})=>p.label??(t.has('roles.'+p.role)?t('roles.'+p.role):p.role);
+ const roleLabel=(p:{role:string;label?:string})=>p.label??(t.has('roles.'+p.role)?t('roles.'+p.role):/^(routing:|group:)/.test(p.role)?t('roles.approver'):p.role);
  const missingAckComments=signatureCommand==='acknowledge'&&part.type!==1&&view.form.employeeCommentsRequired&&!part.employeeComments.trim();
  const issueLabel=(issue:string)=>{const[criterion,rawKind]=issue.split(':');const kind=rawKind==='evidence_required'?'evidence':rawKind==='invalid_rating'?'unrated':rawKind;const field=view.form.criteria.find(c=>c.id===criterion);return field&&['unrated','evidence'].includes(kind)?field.title+': '+t('issues.'+kind):t.has('issues.'+issue)?t('issues.'+issue):issue.replace(/_/g,' ');};
  const paperOnly=part.state==='completed_offline'&&!part.staffSubmittedAt&&!part.managerSubmittedAt,paper=part.offlineDecision,paperFile=view.files.find(file=>file.id===(paper?.fileId??part.offlinePdfId));

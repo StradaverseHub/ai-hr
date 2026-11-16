@@ -53,6 +53,22 @@ export function resolveRoutingRow(routing: Routing, facts: RoutingFacts): { row:
   return winner ? { row: winner.row, index: winner.index } : null;
 }
 
+/**
+ * The people a routed approval or signing step may choose (I8): those named on the step itself, and those named on the
+ * matching row of a routing the step uses. The assignment owner's eligibility facts must include them, or a row that
+ * names people never resolves. Group rows need nothing here: every group's members are already in the facts.
+ */
+export function routedStepPeople(steps: readonly {who: {kind: string; userIds?: readonly string[]; routingId?: string}}[], routing: (id: string) => Routing | null, facts: RoutingFacts): string[] {
+  const people = new Set<string>();
+  for (const step of steps) {
+    if (step.who.kind === 'people') for (const id of step.who.userIds ?? []) people.add(id);
+    if (step.who.kind === 'routing' && step.who.routingId) {
+      const found = routing(step.who.routingId), match = found ? resolveRoutingRow(found, facts) : null;
+      if (match?.row.assignTo.kind === 'people') for (const id of match.row.assignTo.userIds) people.add(id);
+    }
+  }
+  return [...people].slice(0, 200);
+}
 /** Everyone the routing reaches as a recipient: all members of the matched group, or all named people. */
 export function routingRecipients(routing: Routing, facts: RoutingFacts, groupMembers: (groupId: string) => readonly string[] | null): { userIds: string[]; missing: string | null } {
   const match = resolveRoutingRow(routing, facts);

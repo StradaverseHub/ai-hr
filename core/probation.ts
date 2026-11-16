@@ -8,6 +8,7 @@ import {withTenant,type SessionContext,type Tx} from '../db/client';
 import {isModuleEnabled,assertModuleEnabled} from './entitlements';
 export {withScopedLifecycleTenant as withProbationTenant} from './module-gate';
 export * from './probation-settings-scope';
+export type {ProbationAutomationHistoryRun} from './probation-automation';
 import {withScopedLifecycleTenant as withProbationTenant} from './module-gate';
 const companyGate=(ctx:SessionContext,companyId:string)=>{if(ctx.entitlementsExempt===undefined)assertModuleEnabled(ctx,'lifecycle',companyId);};
 import {workingDatesForSpan} from '../packs/leave/service';
@@ -34,8 +35,8 @@ export type ProbationCommand='submit_employee'|'submit_manager'|'acknowledge'|'a
 export type ProbationPartView=ProbationPart&{override?:boolean;scoreBand?:number|null;canAdjudicateOfflineDecision?:boolean;offlineDecision?:import('../lib/probation-intake-model').ProbationOfflineFinalDecision|null;allowedCommands:ProbationCommand[];storageRevision:number;contentRevision:number;submittedFacts?:ProbationPersonnel;submittedPeriod?:{startOn:string;endOn:string;gradeAtStart:string};acknowledgedKpis?:ProbationPart['kpis'];selfVisible:boolean;managerVisible:boolean;signing:{id:string;document:SigningDocument}|null;canEditEmployee:boolean;canEditSelfAssessment:boolean;canEditEmployeeComments:boolean;canEditManager:boolean;managerIssues:string[];employeeIssues:string[];route:SigningRoute};
 export type ProbationLetterTask={partId:string;label:string;state:string;waitingRole:string|null;waitingName:string|null};
 export type ProbationLegacyReconciliationView={canRequest:boolean;holdReason:string|null;request:{id:string;reason:string;requestedAt:string;approvedAt:string|null;appliedAt:string|null;canApprove:boolean}|null};
-export type ProbationCaseView={startStatus?:'waiting_for_start'|'did_not_join'|null;runtimeEnabled:boolean;sourceMoved:boolean;canRequestDateShift:boolean;canReconcileDates?:boolean;legacyReconciliation?:ProbationLegacyReconciliationView|null;letterTasks:ProbationLetterTask[];sourceChanged:boolean;dateAdjustments:{id:string;oldEndOn:string;newEndOn:string;reason:string;requestedAt:string;appliedAt:string|null;status:'awaiting_gbs'|'queued'|'applied'|'failed'|'superseded';canApprove:boolean;canSupersede:boolean;supersededAt:string|null;supersededReason:string|null;approvedAt:string|null;failure:string|null}[];record:ProbationCase&{facts:ProbationPersonnel};parts:ProbationPartView[];form:ProbationForm;roles:ProbationRole[];files:{id:string;kind:string;name:string;partId:string|null;revision:number;filingState:'pending'|'filed'|'not_required'}[];followups:{id:string;kind:string;note:string;at:string;actorId:string}[];outcomes:ProbationOutcomeView[];holderNames:Record<string,string>};
-export type ProbationOutcomeView={id:string;partId:string;outcome:string;state:string;revision:number;letterFileId:string|null;releasedAt:string|null;failure:string|null;sourceKey:string;filingState:'not_prepared'|'pending'|'filed'};
+export type ProbationCaseView={startStatus?:'waiting_for_start'|'did_not_join'|null;runtimeEnabled:boolean;sourceMoved:boolean;canRequestDateShift:boolean;canReconcileDates?:boolean;legacyReconciliation?:ProbationLegacyReconciliationView|null;letterTasks:ProbationLetterTask[];sourceChanged:boolean;dateAdjustments:{id:string;oldEndOn:string;newEndOn:string;reason:string;requestedAt:string;appliedAt:string|null;status:'awaiting_gbs'|'queued'|'applied'|'failed'|'superseded';canApprove:boolean;canSupersede:boolean;supersededAt:string|null;supersededReason:string|null;approvedAt:string|null;failure:string|null}[];record:ProbationCase&{facts:ProbationPersonnel};parts:ProbationPartView[];form:ProbationForm;roles:ProbationRole[];files:{id:string;kind:string;name:string;partId:string|null;revision:number;filingState:'pending'|'filed'|'not_required'}[];followups:{id:string;kind:string;note:string;at:string;actorId:string;partId?:string|null;contentRevision?:number}[];outcomes:ProbationOutcomeView[];holderNames:Record<string,string>};
+export type ProbationOutcomeView={id:string;partId:string;outcome:string;state:string;revision:number;extensionMonths?:number|null;letterFileId:string|null;releasedAt:string|null;failure:string|null;sourceKey:string;filingState:'not_prepared'|'pending'|'filed'};
 async function sourceTx(tx:Tx,id:string){const[row]=await tx.execute<{data:ProbationPersonnel}>(sql`select app.probation_personnel_source(${uuid(id)}::uuid) as data`);if(!row?.data)throw new ProbationError('forbidden','The employee is unavailable for probation.');return row.data;}
 async function setupTx(tx:Tx,ctx:SessionContext,companyId:string,grade?:string):Promise<ProbationSetup>{
  companyGate(ctx,companyId);
@@ -143,8 +144,8 @@ async function caseTx(tx:Tx,ctx:SessionContext,id:string,lock=false):Promise<Pro
  });
  const holders=await tx.execute<{user_id:string;name:string}>(sql`select user_id,name from app.probation_case_holder_names(${row.id}::uuid)`);
  const files=await tx.execute<{id:string;kind:string;name:string;partId:string|null;revision:number;filingState:'pending'|'filed'|'not_required'}>(sql`select id,kind,name,case when kind in('offline','completed_part','letter_released') then case when employee_document_id is null then 'pending' else 'filed' end else 'not_required' end as "filingState",part_id as "partId",revision from probation_file where case_id=${row.id}::uuid and tenant_id=${ctx.tenantId}::uuid order by created_at,id`);
- const followups=await tx.execute<{id:string;kind:string;note:string;at:string;actorId:string}>(sql`select id,kind,note,created_at::text as at,actor_user_id as "actorId" from probation_followup where case_id=${row.id}::uuid and tenant_id=${ctx.tenantId}::uuid order by created_at desc,id desc`);
- const outcomes=await tx.execute<ProbationOutcomeView>(sql`select id,part_id as "partId",outcome,state,revision,letter_file_id as "letterFileId",released_at::text as "releasedAt",failure,source_key as "sourceKey",case when letter_file_id is null then 'not_prepared' when exists(select 1 from probation_file f where f.id=letter_file_id and f.tenant_id=probation_outcome.tenant_id and f.employee_document_id is not null) then 'filed' else 'pending' end as "filingState" from probation_outcome where case_id=${row.id}::uuid and tenant_id=${ctx.tenantId}::uuid order by revision desc,id`);
+ const followups=await tx.execute<{id:string;kind:string;note:string;at:string;actorId:string;partId:string|null;contentRevision:number}>(sql`select id,kind,note,created_at::text as at,actor_user_id as "actorId",part_id as "partId",content_revision as "contentRevision" from probation_followup where case_id=${row.id}::uuid and tenant_id=${ctx.tenantId}::uuid order by created_at desc,id desc`);
+ const outcomes=await tx.execute<ProbationOutcomeView>(sql`select id,part_id as "partId",outcome,state,revision,extension_months as "extensionMonths",letter_file_id as "letterFileId",released_at::text as "releasedAt",failure,source_key as "sourceKey",case when letter_file_id is null then 'not_prepared' when exists(select 1 from probation_file f where f.id=letter_file_id and f.tenant_id=probation_outcome.tenant_id and f.employee_document_id is not null) then 'filed' else 'pending' end as "filingState" from probation_outcome where case_id=${row.id}::uuid and tenant_id=${ctx.tenantId}::uuid order by revision desc,id`);
  const letterTasks=await tx.execute<ProbationLetterTask>(sql`select * from app.probation_letter_tasks(${row.id}::uuid)`);
  const facts=row.source_moved?row.data.facts:await sourceTx(tx,row.employment_id),dateAdjustments=await tx.execute<{id:string;oldEndOn:string;newEndOn:string;reason:string;requestedAt:string;appliedAt:string|null;status:'awaiting_gbs'|'queued'|'applied'|'failed'|'superseded';canApprove:boolean;canSupersede:boolean;supersededAt:string|null;supersededReason:string|null;approvedAt:string|null;failure:string|null}>(sql`select id,old_end::text as "oldEndOn",new_end::text as "newEndOn",reason,created_at::text as "requestedAt",applied_at::text as "appliedAt",gbs_approved_at::text as "approvedAt",failure,superseded_at::text as "supersededAt",superseded_reason as "supersededReason",coalesce((actions.value->>'canApprove')::boolean,false) as "canApprove",coalesce((actions.value->>'canSupersede')::boolean,false) as "canSupersede",case when superseded_at is not null then 'superseded' when applied_at is not null then 'applied' when failure is not null then 'failed' when gbs_approved_at is not null then 'queued' else 'awaiting_gbs' end as status from probation_date_adjustment cross join lateral (select app.probation_date_request_actions(id) as value) actions where case_id=${row.id}::uuid and tenant_id=${ctx.tenantId}::uuid order by created_at desc,id`);
  const [dateRequest]=await tx.execute<{allowed:boolean;canReconcile:boolean;legacy:ProbationLegacyReconciliationView|null}>(sql`select app.probation_can_request_date_shift(${row.id}::uuid) as allowed,app.probation_can_reconcile_dates(${row.id}::uuid) as "canReconcile",app.probation_legacy_reconciliation_state(${row.id}::uuid) as legacy`);
@@ -152,6 +153,8 @@ async function caseTx(tx:Tx,ctx:SessionContext,id:string,lock=false):Promise<Pro
  return{startStatus,runtimeEnabled:row.runtime_enabled,sourceMoved:row.source_moved,canRequestDateShift:dateRequest.allowed,canReconcileDates:dateRequest.canReconcile,legacyReconciliation:dateRequest.legacy,letterTasks:[...letterTasks],sourceChanged:facts.startOn!==row.data.startOn||facts.endOn!==null&&facts.endOn!==row.data.endOn,dateAdjustments:[...dateAdjustments],record:{...row.data,facts,revision:row.revision,parts},parts,form:version.data,roles,files:[...files],followups:[...followups],outcomes:[...outcomes],holderNames:Object.fromEntries(holders.map(h=>[h.user_id,h.name]))};
 }
 export function probationCase(ctx:SessionContext,id:string){return withProbationTenant(ctx,tx=>caseTx(tx,ctx,id));}
+/** I5: the shared workflow run log of a case for its History (bounded; only for someone who can see the case). */
+export function probationAutomationHistory(ctx:SessionContext,id:string){return withProbationTenant(ctx,async tx=>{const[row]=await tx.execute<{companyId:string}>(sql`select company_id as "companyId" from probation_case where id=${uuid(id)}::uuid and tenant_id=${ctx.tenantId}::uuid`);if(!row)return[];companyGate(ctx,row.companyId);const{probationAutomationHistoryTx}=await import('./probation-automation');return probationAutomationHistoryTx(tx,uuid(id));});}
 export function probationCases(ctx:SessionContext){return withProbationTenant(ctx,async tx=>{
  const scoped=ctx.entitlementsExempt===undefined&&!isModuleEnabled(ctx,'lifecycle')?(ctx.entitlements?.scopedModules.lifecycle??[]):null;
  const ids=await tx.execute<{id:string}>(sql`select id from probation_case where tenant_id=${ctx.tenantId}::uuid ${scoped?sql`and company_id=any(array[${sql.join(scoped.map(id=>sql`${id}::uuid`),sql`, `)}]::uuid[])`:sql``} order by (data->>'endOn')::date,id limit 1000`);
@@ -216,23 +219,47 @@ export function actOnProbation(ctx:SessionContext,input:{caseId:string;partId:st
    const[outcome]=await tx.execute<{id:string;revision:number;outcome:string}>(sql`select id,revision,outcome from probation_outcome where part_id=${part.id}::uuid and tenant_id=${ctx.tenantId}::uuid`);
    // Shared workflows (W2, migrations 5748/5753): "The probation outcome is decided". A matching live workflow takes over
    // the letter, posting and offboarding; with none, the case keeps today's path (auto-drafted letter, else the PBP).
-   const decided=outcome?await decideOutcomeAutomationTx(tx,ctx,view,part,outcome):false;
-   if(outcome?.outcome==='other')await tx.execute(sql`select app.probation_outcome_failure(${outcome.id}::uuid,'The outcome is Other: no letter is prepared. Decide the next step for this case by hand.')`);
-   if(outcome&&outcome.outcome!=='other'&&!decided){
-    await tx.execute(sql`savepoint probation_letter_autodraft`);
-    try{const[choice]=await tx.execute<{data:{suggestedTemplateId:string|null;tie:boolean}}>(sql`select app.probation_letter_template_choices(${outcome.id}::uuid) as data`);if(!choice.data.suggestedTemplateId||choice.data.tie)throw new Error('Letter selection needs review');const{prepareProbationLetterTx}=await import('./probation-letter');await prepareProbationLetterTx(tx,ctx,{outcomeId:outcome.id,templateId:choice.data.suggestedTemplateId,revision:outcome.revision,edits:{}});await tx.execute(sql`release savepoint probation_letter_autodraft`);}
-    catch{await tx.execute(sql`rollback to savepoint probation_letter_autodraft`);await tx.execute(sql`release savepoint probation_letter_autodraft`);await tx.execute(sql`select app.probation_outcome_failure(${outcome.id}::uuid,'The review is recorded. Select and complete the approved outcome letter before signing and release.')`);}
-   }
+   // Other: workflows on "the outcome is decided" still run (e.g. to tell the PBP); no letter is prepared and the PBP
+   // chooses the real outcome (I3).
+   if(outcome?.outcome==='other'){await decideOutcomeAutomationTx(tx,ctx,view,part,outcome);await tx.execute(sql`select app.probation_outcome_failure(${outcome.id}::uuid,'The outcome is Other: no letter is prepared. The PBP chooses Confirm, Extend or Non-confirmation for this case.')`);}
+   else if(outcome)await proceedWithOutcomeTx(tx,ctx,view,part,outcome);
   }
  }
  await emitPartEventsTx(tx,ctx,view,part,input.command,override?override.overridden===true:null);
  return{revision:row.revision};
 });}
+/**
+ * A decided outcome (recorded Part 3, or an Other outcome the PBP decided): the matching live shared workflows take
+ * the letter, posting and offboarding (W2); with none, today's path drafts the single suggested letter, else the PBP is
+ * asked to choose one. The case is never left without a next step.
+ */
+async function proceedWithOutcomeTx(tx:Tx,ctx:SessionContext,view:ProbationCaseView,part:ProbationPartView,outcome:{id:string;revision:number;outcome:string;extensionMonths?:number|null}){
+ const decided=await decideOutcomeAutomationTx(tx,ctx,view,part,outcome);
+ if(decided)return;
+ try{await tx.transaction(async scope=>{const[choice]=await scope.execute<{data:{suggestedTemplateId:string|null;tie:boolean}}>(sql`select app.probation_letter_template_choices(${outcome.id}::uuid) as data`);if(!choice.data.suggestedTemplateId||choice.data.tie)throw new Error('Letter selection needs review');const{prepareProbationLetterTx}=await import('./probation-letter');await prepareProbationLetterTx(scope,ctx,{outcomeId:outcome.id,templateId:choice.data.suggestedTemplateId,revision:outcome.revision,edits:{}});});}
+ catch{await tx.execute(sql`select app.probation_outcome_failure(${outcome.id}::uuid,'The review is recorded. Select and complete the approved outcome letter before signing and release.')`);}
+}
+/**
+ * I3 (handoff B4, B5): the case's PBP (or GBS People Ops) chooses the real outcome of an Other outcome, with a reason
+ * (migration 5760: authorised, audited, a follow-up row). In the same transaction the outcome then proceeds as that
+ * outcome, so the case is never parked for good.
+ */
+export function decideProbationOtherOutcome(ctx:SessionContext,input:{caseId:string;outcomeId:string;revision:number;outcome:'confirm'|'extend'|'not_confirm';months?:3|6|null;reason:string}){return withProbationTenant(ctx,async tx=>{
+ if(!['confirm','extend','not_confirm'].includes(input.outcome))throw new ProbationError('invalid','Choose Confirm, Extend or Non-confirmation.');
+ const[row]=await tx.execute<{revision:number}>(sql`select app.probation_decide_other(${uuid(input.outcomeId)}::uuid,${input.revision},${input.outcome},${input.outcome==='extend'?input.months??null:null}::integer,${input.reason}) as revision`);
+ const view=await caseTx(tx,ctx,input.caseId);
+ const[outcome]=await tx.execute<{id:string;partId:string;revision:number;outcome:string;extensionMonths:number|null}>(sql`select id,part_id as "partId",revision,outcome,extension_months as "extensionMonths" from probation_outcome where id=${uuid(input.outcomeId)}::uuid and tenant_id=${ctx.tenantId}::uuid and case_id=${uuid(input.caseId)}::uuid`);
+ const part=view.parts.find(p=>p.id===outcome?.partId);if(!outcome||!part)throw new ProbationError('invalid','Outcome source review unavailable.');
+ await proceedWithOutcomeTx(tx,ctx,view,part,outcome);
+ return{revision:row.revision};
+});}
+/** I3: the PBP or GBS records the action taken with the Line Manager for a low result; the PBP's task then clears. */
+export function recordProbationLowResultAction(ctx:SessionContext,input:{partId:string;note:string}){return withProbationTenant(ctx,async tx=>{const[row]=await tx.execute<{id:string}>(sql`select app.probation_record_low_result_action(${uuid(input.partId)}::uuid,${input.note}) as id`);return row.id;});}
 export function logProbationFollowup(ctx:SessionContext,input:{caseId:string;partId?:string|null;kind:'followup'|'development'|'extension_recommendation'|'nonconfirmation_recommendation';note:string}){return withProbationTenant(ctx,async tx=>{const[row]=await tx.execute<{id:string}>(sql`select app.probation_followup_add(${uuid(input.caseId)}::uuid,${input.partId?uuid(input.partId):null}::uuid,${input.kind},${input.note}) as id`);return row.id;});}
 export function overrideProbationRoute(ctx:SessionContext,input:{partId:string;revision:number;route:SigningRoute;reason:string}){return withProbationTenant(ctx,async tx=>{await tx.execute(sql`select app.probation_route_override(${uuid(input.partId)}::uuid,${json(input.route)}::jsonb,${input.reason},${input.revision})`);});}
 export function replaceProbationSigner(ctx:SessionContext,input:{partId:string;stepId:string;holderId:string;kind:'delegation'|'holder_changed'|'missing_holder';validFrom:string;validTo:string|null;reason:string}){return withProbationTenant(ctx,async tx=>{await tx.execute(sql`select app.probation_delegate_add(${uuid(input.partId)}::uuid,${input.stepId},${uuid(input.holderId)}::uuid,${input.kind},${requireDay(input.validFrom)}::date,${input.validTo?requireDay(input.validTo):null}::date,${input.reason})`);});}
 export type ProbationTrackerFlag='overdue'|'end_passed'|'ending14'|'low_result'|'kpi_submit'|'kpi_ack'|'overridden';
-export type ProbationSummaryRow={letterWaiting:ProbationLetterTask|null;closure?:string|null;extensionMax?:number;startStatus?:'waiting_for_start'|'did_not_join'|null;action?:import('../lib/probation-tracker').ProbationRowAction;id:string;employmentId:string;companyId:string;revision:number;employeeName:string;employeeCode:string|null;title:string|null;businessGroupId:string|null;businessGroup:string|null;organisationMapping?:ProbationOrganisationMapping;organisationLegacy?:{businessGroupId:string|null;businessGroup:string|null;businessUnitId:string|null;businessUnit:string|null};businessUnitId:string|null;businessUnit:string|null;departmentId:string|null;department:string|null;pbpUserId:string|null;grade:string;startOn:string;endOn:string;planMonths:number;planFlag:boolean;extensionCount:number;state:string;kpiAcknowledged:boolean;parts:{id:string;type:1|2|3;cycle:number;state:string;dueOn:string;managerSubmittedAt:string|null;staffSubmittedAt:string|null;acknowledgedAt:string|null;scoreBand:number|null;override:boolean;waitingRole:string|null;waitingName:string|null;calendarDaysOverdue?:number}[];canOpen:true};
+export type ProbationSummaryRow={letterWaiting:ProbationLetterTask|null;closure?:string|null;extensionMax?:number;lowBand?:number|null;startStatus?:'waiting_for_start'|'did_not_join'|null;action?:import('../lib/probation-tracker').ProbationRowAction;id:string;employmentId:string;companyId:string;revision:number;employeeName:string;employeeCode:string|null;title:string|null;businessGroupId:string|null;businessGroup:string|null;organisationMapping?:ProbationOrganisationMapping;organisationLegacy?:{businessGroupId:string|null;businessGroup:string|null;businessUnitId:string|null;businessUnit:string|null};businessUnitId:string|null;businessUnit:string|null;departmentId:string|null;department:string|null;pbpUserId:string|null;grade:string;startOn:string;endOn:string;planMonths:number;planFlag:boolean;extensionCount:number;state:string;kpiAcknowledged:boolean;parts:{id:string;type:1|2|3;cycle:number;state:string;dueOn:string;managerSubmittedAt:string|null;staffSubmittedAt:string|null;acknowledgedAt:string|null;scoreBand:number|null;override:boolean;waitingRole:string|null;waitingName:string|null;waitingLabel?:string|null;calendarDaysOverdue?:number;lowResultActioned?:boolean}[];canOpen:true};
 type ProbationTrackerFacet={bg:string|null;bgName:string|null;bu:string|null;buName:string|null;department:string|null;departmentName:string|null;grade:string;pbp:string|null;pbpName:string|null;state:string};
 const trackerScope=(ctx:SessionContext)=>ctx.entitlementsExempt===undefined&&!isModuleEnabled(ctx,'lifecycle')?(ctx.entitlements?.scopedModules.lifecycle??[]):null;
 /** Facet columns over the visible tracker cases (migration 5746): the PBP is named from the case's own PBP holder in one join. */
@@ -254,7 +281,8 @@ export function probationSummaryRows(ctx:SessionContext,filters:{companyId?:stri
  overdue:anyPart(sql`p.data->>'state' not in('locked','completed_offline','cancelled') and (p.data->>'dueOn')::date<${today}::date`),
  end_passed:sql`(c.data->>'endOn')::date<${today}::date and c.data->>'state' not in('confirmed','not_confirmed','withdrawn')`,
  ending14:sql`(c.data->>'endOn')::date between ${today}::date and ${addDaysIso(today,14)}::date and c.data->>'state' not in('confirmed','not_confirmed','withdrawn')`,
- low_result:anyPart(sql`(p.data->>'scoreBand')::integer<=2 and p.data->>'state'<>'cancelled'`),
+ // I3: the case's pinned low band (default 2), not a fixed Band 2.
+ low_result:anyPart(sql`(p.data->>'scoreBand')::integer<=coalesce(case when c.data->'config'->>'lowBand' ~ '^[1-5]$' then (c.data->'config'->>'lowBand')::integer end,2) and p.data->>'state'<>'cancelled'`),
  kpi_submit:sql`(c.data->>'startOn')::date<=${today}::date and ${anyPart(sql`p.data->>'type'='1' and p.data->>'managerSubmittedAt' is null and p.data->>'state' not in('completed_offline','cancelled')`)}`,
  kpi_ack:anyPart(sql`p.data->>'type'='1' and p.data->>'managerSubmittedAt' is not null and p.data->>'acknowledgedAt' is null and p.data->>'state' not in('completed_offline','cancelled')`),
  overridden:anyPart(sql`p.data->>'override'='true' and p.data->>'state'<>'cancelled'`)};
@@ -263,13 +291,17 @@ export function probationSummaryRows(ctx:SessionContext,filters:{companyId?:stri
  type Counts={total:number;overdue:number;end_passed:number;ending14:number;low_result:number;kpi_submit:number;kpi_ack:number;overridden:number};
  const[result]=await tx.execute<{counts:Counts;rows:ProbationSummaryRow[];facets:ProbationTrackerFacet[]}>(sql`with vc as materialized (select * from app.probation_tracker_cases()),
   base as materialized (select c.* from vc c ${conditions}),
-  page as (select c.id,c.employment_id as "employmentId",c.company_id as "companyId",c.revision,c.data->'facts'->>'employeeName' as "employeeName",c.data->'facts'->>'employeeCode' as "employeeCode",c.data->'facts'->>'title' as title,c.data->'facts'->>'businessGroupId' as "businessGroupId",c.data->'facts'->>'businessGroup' as "businessGroup",c.data->'facts'->>'businessUnitId' as "businessUnitId",c.data->'facts'->>'businessUnit' as "businessUnit",c.data->'facts'->>'departmentId' as "departmentId",c.data->'facts'->>'department' as department,c.data->'facts'->'holders'->>'pbp' as "pbpUserId",c.data->>'gradeAtStart' as grade,c.data->>'startOn' as "startOn",c.data->>'endOn' as "endOn",(c.data->>'planMonths')::integer as "planMonths",(c.data->>'planFlag')::boolean as "planFlag",(c.data->>'extensionCount')::integer as "extensionCount",coalesce((c.data->'config'->>'maxExtensions')::integer,2) as "extensionMax",c.data->>'closure' as closure,c.data->>'state' as state,(c.data->>'kpiAcknowledged')::boolean as "kpiAcknowledged",true as "canOpen" from base c ${filters.flag?sql`where ${flagExpressions[filters.flag]}`:sql``} order by (c.data->>'endOn')::date,c.id limit ${limit} offset ${offset})
+  page as (select c.id,c.employment_id as "employmentId",c.company_id as "companyId",c.revision,c.data->'facts'->>'employeeName' as "employeeName",c.data->'facts'->>'employeeCode' as "employeeCode",c.data->'facts'->>'title' as title,c.data->'facts'->>'businessGroupId' as "businessGroupId",c.data->'facts'->>'businessGroup' as "businessGroup",c.data->'facts'->>'businessUnitId' as "businessUnitId",c.data->'facts'->>'businessUnit' as "businessUnit",c.data->'facts'->>'departmentId' as "departmentId",c.data->'facts'->>'department' as department,c.data->'facts'->'holders'->>'pbp' as "pbpUserId",c.data->>'gradeAtStart' as grade,c.data->>'startOn' as "startOn",c.data->>'endOn' as "endOn",(c.data->>'planMonths')::integer as "planMonths",(c.data->>'planFlag')::boolean as "planFlag",(c.data->>'extensionCount')::integer as "extensionCount",coalesce((c.data->'config'->>'maxExtensions')::integer,2) as "extensionMax",case when c.data->'config'->>'lowBand' ~ '^[1-5]$' then (c.data->'config'->>'lowBand')::integer end as "lowBand",c.data->>'closure' as closure,c.data->>'state' as state,(c.data->>'kpiAcknowledged')::boolean as "kpiAcknowledged",true as "canOpen" from base c ${filters.flag?sql`where ${flagExpressions[filters.flag]}`:sql``} order by (c.data->>'endOn')::date,c.id limit ${limit} offset ${offset})
   select (select jsonb_build_object('total',count(*) filter(where ${filters.flag?flagExpressions[filters.flag]:sql`true`}),'overdue',count(*) filter(where ${flagExpressions.overdue}),'end_passed',count(*) filter(where ${flagExpressions.end_passed}),'ending14',count(*) filter(where ${flagExpressions.ending14}),'low_result',count(*) filter(where ${flagExpressions.low_result}),'kpi_submit',count(*) filter(where ${flagExpressions.kpi_submit}),'kpi_ack',count(*) filter(where ${flagExpressions.kpi_ack}),'overridden',count(*) filter(where ${flagExpressions.overridden})) from base c) as counts,
    coalesce((select jsonb_agg(to_jsonb(page) order by (page."endOn")::date,page.id) from page),'[]'::jsonb) as rows,
    coalesce((select jsonb_agg(f) from (select distinct ${trackerFacetColumns} from vc c ${scoped}) f),'[]'::jsonb) as facets`);
  const counts=result.counts,rows=result.rows;
  const details=rows.length?await tx.execute<{case_id:string;parts:ProbationSummaryRow['parts'];letter:ProbationLetterTask|null;names:{role:string;name:string}[]}>(sql`select case_id,parts,letter,names from app.probation_tracker_page(array[${sql.join(rows.map(r=>sql`${r.id}::uuid`),sql`, `)}]::uuid[])`):[];
- for(const row of rows){const detail=details.find(d=>d.case_id===row.id);row.parts=detail?.parts??[];row.letterWaiting=detail?.letter??null;for(const part of row.parts)part.waitingName=detail?.names.find(n=>n.role===part.waitingRole)?.name??null;}
+ for(const row of rows){const detail=details.find(d=>d.case_id===row.id);row.parts=detail?.parts??[];row.letterWaiting=detail?.letter??null;for(const part of row.parts)part.waitingName=part.waitingName??detail?.names.find(n=>n.role===part.waitingRole)?.name??null;}
+ // I3: low results whose action the PBP recorded for the part's current content (one bounded read for this page).
+ const lowParts=rows.flatMap(row=>row.parts.filter(part=>part.scoreBand!==null).map(part=>part.id));
+ const actioned=new Set(lowParts.length?(await tx.execute<{id:string}>(sql`select distinct f.part_id as id from probation_followup f join probation_part p on p.id=f.part_id and p.tenant_id=f.tenant_id where f.tenant_id=${ctx.tenantId}::uuid and f.kind='low_result_action' and f.content_revision=p.content_revision and f.part_id=any(array[${sql.join(lowParts.map(id=>sql`${id}::uuid`),sql`, `)}]::uuid[])`)).map(r=>r.id):[]);
+ for(const row of rows)for(const part of row.parts)if(part.scoreBand!==null)part.lowResultActioned=actioned.has(part.id);
  // Working days overdue (KPI parts) come from the holiday owner, one resolution per company calendar: they are read
  // after the list by probationTrackerWorkingDays so the list never waits for them (72 companies: about 1 s).
  for(const row of rows)for(const part of row.parts){if(part.dueOn>=today||['locked','completed_offline','cancelled'].includes(part.state))continue;part.calendarDaysOverdue=Math.round((Date.parse(today+'T00:00:00Z')-Date.parse(part.dueOn+'T00:00:00Z'))/86400000);}
@@ -517,25 +549,26 @@ async function emitPartEventsTx(tx:Tx,ctx:SessionContext,view:ProbationCaseView,
   facts:{partId:part.id,partType:part.type,dueOn:part.dueOn??null,resultBand:score?.band??null,overridden,pendingStep:pending?.label??null}})));
 }
 /** Runs the outcome's shared workflows in a savepoint; any unexpected error leaves the outcome on today's path. */
-async function decideOutcomeAutomationTx(tx:Tx,ctx:SessionContext,view:ProbationCaseView,part:ProbationPartView,outcome:{id:string;revision:number;outcome:string}):Promise<boolean>{
+async function decideOutcomeAutomationTx(tx:Tx,ctx:SessionContext,view:ProbationCaseView,part:ProbationPartView,outcome:{id:string;revision:number;outcome:string;extensionMonths?:number|null}):Promise<boolean>{
  const score=scoreProbationForm(view.form,part.manager),suggestion=score?(score.band>=3?'confirm':score.band===2?'extend':'not_confirm'):null;
- await tx.execute(sql`savepoint probation_outcome_automation`);
  try{
   const{runProbationOutcomeDecidedTx}=await import('./probation-automation');
-  const result=await runProbationOutcomeDecidedTx(tx,ctx,{record:view.record,partId:part.id,dueOn:part.dueOn??null,outcome:{...outcome,extensionMonths:part.offlineDecision?.acceptedAt?part.offlineDecision.extensionMonths:part.extensionMonths},resultBand:score?.band??null,overridden:suggestion?suggestion!==outcome.outcome:null});
-  await tx.execute(sql`release savepoint probation_outcome_automation`);return result.matched;
- }catch{await tx.execute(sql`rollback to savepoint probation_outcome_automation`);await tx.execute(sql`release savepoint probation_outcome_automation`);return false;}
+  // A nested transaction (driver savepoint): a database error inside it does not doom the recording command.
+  const result=await tx.transaction(scope=>runProbationOutcomeDecidedTx(scope,ctx,{record:view.record,partId:part.id,dueOn:part.dueOn??null,outcome:{id:outcome.id,revision:outcome.revision,outcome:outcome.outcome,extensionMonths:outcomeExtensionMonths(part,outcome)},resultBand:score?.band??null,overridden:suggestion?suggestion!==outcome.outcome:null}));
+  return result.matched;
+ }catch{return false;}
 }
 /**
  * New path (W2): an outcome decided with shared workflows resumes their frozen remaining steps once its letter is
  * released and filed, then records the effect without writing the movement (a Personnel posting waits for approval).
  * Outcomes without a run (decided before this shipped, or no workflow matched) and outcomes whose run failed before it
- * created anything (handled by hand) keep the path below unchanged.
+ * created anything (handled by hand) take the default path in applyProbationOutcomeTx, which since I1 also creates the
+ * same Personnel posting (same values, group and idempotency key) instead of writing the movement.
  * F7: once a run has created a Personnel posting (or the offboarding hand-off), the outcome never falls back to writing
  * the movement directly. If a later step failed, the GBS retry records the effect with that posting (still pending
  * approval) instead, so the movement cannot be written twice; the failed step itself was asked to be checked by hand.
  */
-async function applyAutomatedOutcomeTx(tx:Tx,ctx:SessionContext,view:ProbationCaseView,part:ProbationPartView,outcome:{id:string;outcome:string}):Promise<{completed:boolean;waitingOn?:string}|null>{
+async function applyAutomatedOutcomeTx(tx:Tx,ctx:SessionContext,view:ProbationCaseView,part:ProbationPartView,outcome:{id:string;outcome:string;extensionMonths?:number|null}):Promise<{completed:boolean;waitingOn?:string}|null>{
  const{probationOutcomeAutomationTx,resumeProbationOutcomeTx}=await import('./probation-automation');
  // A run that failed before it created a posting or hand-off asked the PBP to check and release by hand: that outcome
  // then completes on the path below.
@@ -543,7 +576,7 @@ async function applyAutomatedOutcomeTx(tx:Tx,ctx:SessionContext,view:ProbationCa
  if(!before.runs||before.failed&&!failedWithEffect)return null;
  if(outcome.outcome==='confirm'&&view.record.endOn>todayInKualaLumpur())return{completed:false,waitingOn:view.record.endOn};
  const[letter]=await tx.execute<{id:string;revision:number}>(sql`select d.id,o.revision from probation_outcome o join document_signing_document d on d.tenant_id=o.tenant_id and d.subject_type='probation' and d.subject_id=o.letter_part_id where o.id=${outcome.id}::uuid and o.tenant_id=${ctx.tenantId}::uuid`);
- const extensionMonths=part.offlineDecision?.acceptedAt?part.offlineDecision.extensionMonths:part.extensionMonths;
+ const extensionMonths=outcomeExtensionMonths(part,outcome);
  if(letter&&!failedWithEffect)await resumeProbationOutcomeTx(tx,ctx,{record:view.record,partId:part.id,outcome:{id:outcome.id,revision:letter.revision,outcome:outcome.outcome,extensionMonths},documentId:letter.id});
  const after=await probationOutcomeAutomationTx(tx,outcome.id);
  if(after.waiting||after.failed&&!failedWithEffect)return{completed:false};
@@ -552,20 +585,30 @@ async function applyAutomatedOutcomeTx(tx:Tx,ctx:SessionContext,view:ProbationCa
  await tx.execute(sql`select app.probation_record_posting_effect(${outcome.id}::uuid,${after.postingId}::uuid,${outcome.outcome==='not_confirm'?after.handoffId:null}::uuid,${json(next)}::jsonb,${json(newPart)}::jsonb)`);
  return{completed:true};
 }
+/** The extension length an Extend outcome applies: the PBP's choice for an Other outcome, else the accepted offline decision, else the review's. */
+const outcomeExtensionMonths=(part:ProbationPartView,outcome:{extensionMonths?:number|null})=>part.outcome==='other'&&!part.offlineDecision?.acceptedAt&&outcome.extensionMonths?outcome.extensionMonths:part.offlineDecision?.acceptedAt?part.offlineDecision.extensionMonths:part.extensionMonths;
 async function applyProbationOutcomeTx(tx:Tx,ctx:SessionContext,outcomeId:string){
- const[outcome]=await tx.execute<{id:string;caseId:string;partId:string;outcome:string;state:string;releasedAt:string|null}>(sql`select id,case_id as "caseId",part_id as "partId",outcome,state,released_at::text as "releasedAt" from probation_outcome where tenant_id=${ctx.tenantId}::uuid and id=${uuid(outcomeId)}::uuid`);
+ const[outcome]=await tx.execute<{id:string;caseId:string;partId:string;outcome:string;state:string;releasedAt:string|null;extensionMonths:number|null}>(sql`select id,case_id as "caseId",part_id as "partId",outcome,state,released_at::text as "releasedAt",extension_months as "extensionMonths" from probation_outcome where tenant_id=${ctx.tenantId}::uuid and id=${uuid(outcomeId)}::uuid`);
  if(!outcome||!outcome.releasedAt)throw new ProbationError('invalid','Release the authorised signed letter before applying the outcome.');
  if(outcome.state==='completed')return{completed:true};const view=await caseTx(tx,ctx,outcome.caseId),part=view.parts.find(p=>p.id===outcome.partId);if(!part)throw new ProbationError('invalid','Outcome source review unavailable.');
  if(!view.runtimeEnabled||view.sourceMoved||view.sourceChanged||view.record.facts.resignationOn||view.record.facts.terminatedOn)throw new ProbationError('conflict','The current Personnel source requires outcome reconciliation.');
  const automated=await applyAutomatedOutcomeTx(tx,ctx,view,part,outcome);if(automated)return automated;
- let movement:string|null=null,handoff:string|null=null,next:{endOn:string}|null=null,newPart:ProbationPart|null=null;
+ let handoff:string|null=null,next:{endOn:string}|null=null,newPart:ProbationPart|null=null;
  if(outcome.outcome==='not_confirm'){const{createProbationOffboardingTx}=await import('../packs/lifecycle/service');handoff=await createProbationOffboardingTx(tx,ctx,view.record.id);}
  else if(outcome.outcome==='confirm'||outcome.outcome==='extend'){
   if(outcome.outcome==='confirm'&&view.record.endOn>todayInKualaLumpur())return{completed:false,waitingOn:view.record.endOn};
-  const{applyReleasedProbationMovementTx}=await import('./movement');await applyReleasedProbationMovementTx(tx,ctx,outcome.id);movement='probation:'+outcome.id;
-  if(outcome.outcome==='extend'){const extension=part.offlineDecision?.acceptedAt?part.offlineDecision.extensionMonths:part.extensionMonths;if(extension!==3&&extension!==6)throw new ProbationError('invalid','The actual PBP-approved extension length is required.');const start=addDaysIso(view.record.endOn,1),end=addDaysIso(addCalendarMonths(start,extension),-1);next={endOn:end};const working=new Set(await workingDatesForSpan(tx,view.record.employmentId,addDaysIso(end,-366),addDaysIso(end,366)));const{newProbationPart,probationDueDay}=await import('../lib/probation-model');newPart=newProbationPart(randomUUID(),3,view.record.extensionCount+1,probationDueDay(end,day=>working.has(day),view.record.config.nonWorkingDayRule),view.record.config.issueLeadDays);}
+  const extension=outcomeExtensionMonths(part,outcome);
+  if(outcome.outcome==='extend'){if(extension!==3&&extension!==6)throw new ProbationError('invalid','The actual PBP-approved extension length is required.');const start=addDaysIso(view.record.endOn,1),end=addDaysIso(addCalendarMonths(start,extension),-1);next={endOn:end};const working=new Set(await workingDatesForSpan(tx,view.record.employmentId,addDaysIso(end,-366),addDaysIso(end,366)));const{newProbationPart,probationDueDay}=await import('../lib/probation-model');newPart=newProbationPart(randomUUID(),3,view.record.extensionCount+1,probationDueDay(end,day=>working.has(day),view.record.config.nonWorkingDayRule),view.record.config.issueLeadDays);}
+  // I1 (decision 4): with no shared workflow either, Confirm and Extend still create the Personnel posting for the
+  // pinned "who approves Personnel postings" group (People Ops when unset) and record the posting effect: the case
+  // closes or extends with the posting pending. Only the posting's approval writes the movement, never this path.
+  const{probationAutomationContextTx,createProbationOutcomePostingTx}=await import('./probation-automation');
+  const context=await probationAutomationContextTx(tx,view.record.id);
+  if(!context.postingApproverGroupId){await tx.execute(sql`select app.probation_outcome_failure(${outcome.id}::uuid,'No group is set to approve Personnel postings. Choose one in Probation settings, then record a GBS retry.')`);return{completed:false};}
+  const posting=await createProbationOutcomePostingTx(tx,view.record,{id:outcome.id,outcome:outcome.outcome,extensionMonths:extension},context.postingApproverGroupId);
+  await tx.execute(sql`select app.probation_record_posting_effect(${outcome.id}::uuid,${posting.id}::uuid,${null}::uuid,${json(next)}::jsonb,${json(newPart)}::jsonb)`);return{completed:true};
  }else throw new ProbationError('invalid','PBP must adjudicate Other before an employment outcome can be applied.');
- await tx.execute(sql`select app.probation_record_effect(${outcome.id}::uuid,${movement},${handoff}::uuid,${json(next)}::jsonb,${json(newPart)}::jsonb)`);return{completed:true};
+ await tx.execute(sql`select app.probation_record_effect(${outcome.id}::uuid,${null},${handoff}::uuid,${json(next)}::jsonb,${json(newPart)}::jsonb)`);return{completed:true};
 }
 export function applyProbationOutcome(ctx:SessionContext,outcomeId:string){return withProbationTenant(ctx,async tx=>{const[row]=await tx.execute<{data:{completed:boolean;queued:boolean}}>(sql`select app.probation_request_outcome_retry(${uuid(outcomeId)}::uuid) as data`);return row.data;});}
 

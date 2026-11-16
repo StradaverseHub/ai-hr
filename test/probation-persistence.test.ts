@@ -4,9 +4,11 @@ import {PgDialect} from 'drizzle-orm/pg-core';
 import {randomUUID} from 'node:crypto';
 import {hireEmployee,setReportingLine} from '../core/org';
 import {saveMovementEventType} from '../core/movement-type';
+import {approvePersonnelPosting} from '../core/personnel-posting';
+import {movementHistory} from '../core/movement';
 import {createAppUser} from './harness';
 import {newProbationPart} from '../lib/probation-model';
-import {addCalendarMonths,todayInKualaLumpur} from '../lib/hr-date';
+import {todayInKualaLumpur} from '../lib/hr-date';
 import {addDaysIso} from '../lib/roster-month';
 import {startReview,pendingManagerReviewsFor} from '../core/employment-review';
 import {recordDocumentSigningActionTx,refreshCanonicalProbationSigningRouteTx} from '../packs/document-signing/service';
@@ -268,6 +270,8 @@ describe('real evaluation to signed letter custody',()=>{
   const[pending]=await owner.db.execute<{released:string|null;state:string}>(sql`select released_at::text as released,state from probation_outcome where id=${decision.id}::uuid`);expect(pending).toEqual({released:null,state:'release_requested'});expect((await readProbationLetter(admin,ids.caseId,prepared.partId)).canRelease).toBe(false);
   await expect(withTenant(admin,tx=>tx.execute(sql`select app.probation_file_save(${ids.caseId}::uuid,${ids.part}::uuid,'completed_part','forged.pdf',${Buffer.from('%PDF-forged')},1,'Forged completed source')`))).rejects.toThrow();
   if(outcome==='confirm')await saveMovementEventType(admin,{code:'confirmation',label:'Confirmation',fieldRules:[{field:'businessUnitId',included:true,editable:true,mustChange:false,document:'none'}]});
+  // I1: the outcome's Personnel posting is approved by the People Ops assignment group (an existing V9 group).
+  await owner.db.execute(sql`update lc_v9_config set data=data||jsonb_build_object('groups',jsonb_build_array(jsonb_build_object('id','probation-people','name','Canonical People Ops','members',jsonb_build_array(${admin.userId}::text),'limit',10))) where tenant_id=${b.tenantId}::uuid`);
   const assignmentBefore=await owner.db.execute(sql`select * from assignment where employment_id=${staff.employmentId}::uuid order by id`);
   const portQueries:string[]=[],dialect=new PgDialect();
   const fixedPortOwner={withTenant:async<T>(context:SessionContext,run:(tx:Tx)=>Promise<T>)=>owner.withTenant(context,tx=>run(new Proxy(tx,{get(target,key){
@@ -332,26 +336,43 @@ describe('real evaluation to signed letter custody',()=>{
    from probation_outcome outcome join probation_case c on c.id=outcome.case_id and c.tenant_id=outcome.tenant_id
    join employment e on e.id=c.employment_id and e.tenant_id=c.tenant_id where outcome.id=${decision.id}::uuid`);
   expect(effect.outcomeState).toBe('completed');
+  // I1 (decision 4): with no shared workflow the outcome still never writes the movement itself. It creates the
+  // Personnel posting and records the posting effect; only the posting's approval writes the movement, once.
+  const postings=await owner.db.execute<{id:string;status:string;event:string;group:string;revision:number}>(sql`select id,status,event_type as event,approver_group_id as group,revision from personnel_posting where source_ref=${ids.caseId}::uuid`);
   if(outcome==='confirm'){
-   expect(portQueries.some(query=>query.includes('app.probation_personnel_intent('))).toBe(true);
+   expect(portQueries.some(query=>query.includes('app.probation_personnel_intent('))).toBe(false);
+   expect(portQueries.some(query=>query.includes('app.personnel_posting_create('))).toBe(true);
    expect(portQueries.filter(query=>/app\.(?:company_organisation_tags|employment_organisation_tags|record_employment_organisation_tags)\(/.test(query))).toEqual([]);
    expect(await owner.db.execute(sql`select * from assignment where employment_id=${staff.employmentId}::uuid order by id`)).toEqual(assignmentBefore);
-   const written=await owner.db.execute<{fields:string[]}>(sql`select payload->'fields' as fields from domain_event where id=${effect.movement}::uuid`);
-   expect(written).toHaveLength(1);expect(written[0].fields).not.toContain('businessUnitId');
   }
-  if(outcome==='confirm')expect(effect).toMatchObject({caseState:'confirmed',movement:expect.any(String),handoff:null,confirmed:endOn,extended:null});
+  if(outcome==='confirm')expect(effect).toMatchObject({caseState:'confirmed',movement:'posting:'+postings[0]?.id,handoff:null,confirmed:null,extended:null});
   if(outcome==='extend'){
-   expect(effect).toMatchObject({caseState:'extended',movement:expect.any(String),handoff:null,confirmed:null,extended:addDaysIso(addCalendarMonths(addDaysIso(endOn,1),3),-1)});
+   expect(effect).toMatchObject({caseState:'extended',movement:'posting:'+postings[0]?.id,handoff:null,confirmed:null,extended:null});
    const later=await owner.db.execute<{cycle:number}>(sql`select (data->>'cycle')::integer as cycle from probation_part where case_id=${ids.caseId}::uuid and data->>'type'='3' and data->>'documentKind' is distinct from 'letter' order by cycle`);
    expect(later).toEqual([{cycle:0},{cycle:1}]);
+  }
+  if(outcome!=='not_confirm'){
+   expect(postings).toEqual([expect.objectContaining({status:'pending',event:outcome==='confirm'?'confirmation':'probationExtension',group:'probation-people'})]);
+   const[pending]=await owner.db.execute<{pending:{id:string}|null}>(sql`select data->'pendingPosting' as pending from probation_case where id=${ids.caseId}::uuid`);
+   expect(pending.pending).toMatchObject({id:postings[0].id});
+   expect(await owner.db.execute(sql`select 1 from domain_event where tenant_id=${b.tenantId}::uuid and aggregate_id=${staff.employmentId}::uuid and event_type='employment.info.updated'`)).toHaveLength(0);
+   // The group's member approves: the movement is written exactly once and the case's pending posting clears.
+   const approved=await approvePersonnelPosting(admin,{id:postings[0].id,revision:postings[0].revision});
+   await expect(approvePersonnelPosting(admin,{id:postings[0].id,revision:postings[0].revision})).rejects.toThrow();
+   const[dates]=await owner.db.execute<{confirmed:string|null;extended:string|null;pending:unknown}>(sql`select e.confirmation_date::text as confirmed,e.extended_confirmation_date::text as extended,c.data->'pendingPosting' as pending from employment e join probation_case c on c.employment_id=e.id where c.id=${ids.caseId}::uuid`);
+   const recorded=(await movementHistory(admin,staff.employmentId)).filter(row=>row.kind===(outcome==='confirm'?'confirmation':'probationExtension'));
+   expect(recorded.map(row=>row.id)).toEqual([approved.movementId]);
+   expect(dates.pending).toBeNull();
+   if(outcome==='confirm'){
+    expect(dates).toMatchObject({confirmed:endOn,extended:null});
+    const written=await owner.db.execute<{fields:string[]}>(sql`select payload->'fields' as fields from domain_event where tenant_id=${b.tenantId}::uuid and aggregate_id=${staff.employmentId}::uuid and event_type='employment.info.updated'`);
+    expect(written).toHaveLength(1);expect(written[0].fields).not.toContain('businessUnitId');
+   }
   }
   if(outcome==='not_confirm'){
    expect(effect).toMatchObject({caseState:'not_confirmed',movement:null,handoff:expect.any(String),confirmed:null});
    const handoffs=await owner.db.execute<{id:string;kind:string}>(sql`select id,data->'facts'->>'caseType' as kind from lc_v9_case where tenant_id=${b.tenantId}::uuid and data->>'probationSourceCaseId'=${ids.caseId}`);
    expect(handoffs).toEqual([{id:effect.handoff,kind:'Non-confirmation'}]);
-  }else{
-   const movement=await owner.db.execute<{id:string;actor:string|null}>(sql`select id,actor_id as actor from domain_event where tenant_id=${b.tenantId}::uuid and aggregate_id=${staff.employmentId}::uuid and event_type='employment.info.updated' and payload->'movement'->>'remarks'=${'probation:'+ids.caseId+':'+ids.part}`);
-   expect(movement).toEqual([{id:effect.movement,actor:null}]);
   }
   const[review]=await owner.db.execute<{count:number}>(sql`select count(*)::integer as count from probation_file where part_id=${ids.part}::uuid and kind='completed_part' and employee_document_id is not null`);expect(review.count).toBe(1);
  });

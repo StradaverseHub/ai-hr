@@ -35780,7 +35780,8 @@
       "admin": "指定准备人员",
       "system": "后台处理",
       "superior": "Direct Superior",
-      "people": "Named people"
+      "people": "Named people",
+      "approver": "Approver"
     },
     "columns": {
       "employee": "员工",
@@ -35945,7 +35946,9 @@
       "development": "发展行动",
       "extension_recommendation": "延长建议",
       "nonconfirmation_recommendation": "不予转正建议",
-      "refusal_request": "员工拒绝沟通记录"
+      "refusal_request": "员工拒绝沟通记录",
+      "low_result_action": "Low-result action",
+      "other_decided": "Other outcome decided"
     },
     "files": {
       "title": "已归档文件",
@@ -36645,6 +36648,36 @@
       },
       "missingChoice": "No longer available: choose another",
       "resolveNote": "A routing, an assignment group or named people gives the step to one person, chosen by the step’s rule when the Line Manager submits, and that person keeps it for the part. If nobody is available, the case’s fallback group takes it and the case records who it was meant for."
+    },
+    "lowResult": {
+      "title": "Low result",
+      "notice": "Part {part} scored Band {band}. Record the action taken with the Line Manager.",
+      "note": "Action taken with the Line Manager",
+      "save": "Record action",
+      "waiting": "Waiting for the People Business Partner to record the action taken."
+    },
+    "otherOutcome": {
+      "title": "Outcome “Other” · PBP decision",
+      "help": "No letter is generated automatically. Choose the outcome to apply. The case then continues as that outcome: the letter, its signatures, then the posting or the offboarding case.",
+      "choice": "Decision",
+      "months": "Extension length",
+      "monthsOption": "{months} months",
+      "reason": "Reason",
+      "save": "Apply this outcome",
+      "waiting": "Waiting for the People Business Partner to choose the outcome."
+    },
+    "automationHistory": {
+      "title": "Workflow history",
+      "empty": "No shared workflow has run for this case yet.",
+      "recipients": "{count, plural, one {# person} other {# people}} reached",
+      "unresolved": "Not reached: {who}. {reason}",
+      "status": {
+        "running": "Running",
+        "waiting": "Waiting for the letter",
+        "done": "Done",
+        "skipped": "Skipped",
+        "failed": "Failed"
+      }
     }
   },
   "templateEditor": {

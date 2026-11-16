@@ -13,6 +13,37 @@ employee without a case for the reviewed cut-over, or refuses with a code and wr
 No existing table, row, function, grant or purpose-owned object changes. The installed ledgers were not read; recheck
 watermarks and peer claims at admission. This allocation grants no installation authority.
 
+<!-- 5761_probation_automation_recipients_and_tracker_steps -->
+# Probation workflow recipients, readiness and routed tracker steps — 16 November 2026 MYT (unapplied, allocated)
+
+Branch `claude/probation-lane-gaps-20261116` (lane I of the Probation Confirmation build) appends
+`5761_probation_automation_recipients_and_tracker_steps` at idx 5161 / when 1793330005461 (assigned by the build
+coordinator). SHA256 `c39e471adb80e51b56466c264bc6546dc6ce48a354e30d8e9ef3629a82b2184b`. It adds two owner-owned functions
+granted to `ai_hr_app`: `app.probation_automation_active_users(uuid,uuid[])` (the case's workflow runner only; which
+named people are active users, bounded to 500) and `app.probation_shared_workflow_triggers()` (an active Probation
+user; the triggers of Live or moved shared Probation workflows, bounded). It re-creates in place, with the same
+signature, owner and grants, `app.probation_tracker_page` (5746) so a part waiting on a routed approver step also
+returns the step's label and the person holding it. No table, column, row, grant, policy or purpose-owned object
+changes. The installed ledgers were not read; recheck watermarks and peer claims at admission. This allocation grants
+no installation authority.
+
+<!-- 5760_probation_queue_kinds_and_pbp_tasks -->
+# Probation queues by step kind and the PBP's low-result and Other tasks — 16 November 2026 MYT (unapplied, allocated)
+
+Branch `claude/probation-lane-gaps-20261116` (lane I of the Probation Confirmation build) appends
+`5760_probation_queue_kinds_and_pbp_tasks` at idx 5160 / when 1793330005460 (assigned by the build coordinator). SHA256
+`c3ab5ddf4c702dd1ca947b3a350c7e852ab8699524c9da7fcad11f19887cdb59`. It adds the nullable column `probation_outcome.extension_months` (3 or 6; null on
+every existing row), widens the `probation_followup.kind` check with `low_result_action` and `other_decided` (every
+existing row passes; added NOT VALID, then validated), and adds three owner-owned functions:
+`app.probation_record_low_result_action(uuid,text)` and `app.probation_decide_other(uuid,integer,text,integer,text)`
+(granted to `ai_hr_app`; the case's PBP or GBS, under the probation write lock, audited) and
+`app.probation_pending_signer_kinds(uuid)` (owner only). It re-creates in place, with the same signatures, owners and
+grants, `app.probation_task_list` (5756: letter Review/Approve steps reach Approval Items, Sign steps the tasks; the PBP's
+low-result and Other-outcome tasks; the KPI-gate exception only once the gate holds a review back),
+`app.probation_evaluation_decision` (0949) and `app.probation_letter_values` (2111) so a PBP-decided Other outcome answers
+with its choice and length. No table, grant, policy or purpose-owned object changes otherwise. The installed ledgers
+were not read; recheck watermarks and peer claims at admission. This allocation grants no installation authority.
+
 # The Probation employee holds only their own steps — 16 November 2026 MYT (unapplied, allocated)
 
 Branch `claude/probation-lane-overrides-20261116` (lane H2 of the Probation Confirmation build) appends

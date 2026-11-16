@@ -14,7 +14,7 @@ import {createSigningDocumentTx,readSigningDocumentTx,recordDocumentSigningActio
 import {routedStepChooser,type RoutedAssignmentFacts} from '../lib/routed-step-assignment';
 import {documentRoutingSchema} from '../lib/document-signing-routing-schema';
 import {automationReferencesTx} from './automation-builder';
-import type {Routing} from '../lib/automation/routing';
+import {routedStepPeople,type Routing} from '../lib/automation/routing';
 const id=z.uuid(),json=(value:unknown)=>JSON.stringify(value);
 const base=v9ConfigSchema.shape.templates.element;
 const route=z.object({version:z.number().int().positive(),steps:z.array(z.object({id:z.string().min(1).max(120),role:z.enum(['lm','hod','pbp','employee']),kind:z.enum(['sign','acknowledge','approve']),stage:z.number().int().min(0).max(30),holderId:z.null(),holderPersonId:z.undefined().optional(),representedId:z.undefined().optional(),required:z.boolean()}).strict()).min(2).max(30)}).strict();
@@ -112,7 +112,8 @@ async function freezeLetterRoutingTx(tx:Tx,partId:string,routing:DocumentRouting
  const[context]=await tx.execute<{data:LetterRoutingContext}>(sql`select app.probation_letter_routing_context(${partId}::uuid) as data`);
  const c=context.data,groups=new Map(c.groups.map(g=>[g.id,g.members])),routings=new Map(c.routings.map(r=>[r.id,r]));
  const[part]=await tx.execute<{caseId:string}>(sql`select case_id as "caseId" from probation_part where id=${partId}::uuid and tenant_id=app.current_tenant_id()`);
- const chooser=await routedStepChooserTx(tx,part.caseId,[...groups.keys()],routing.flatMap(step=>step.who.kind==='people'?step.who.userIds:[]));
+ // I8: people named on the matching row of a routing are eligible facts too, not only people named on the step.
+ const chooser=await routedStepChooserTx(tx,part.caseId,[...groups.keys()],routedStepPeople(routing,id=>routings.get(id)??null,{businessGroup:[c.facts.businessGroup,c.facts.businessGroupCompany].filter((v):v is string=>!!v),company:c.facts.company,department:c.facts.department,jobTitle:c.facts.jobTitle}));
  const fallbackMembers=c.fallbackGroupId?groups.get(c.fallbackGroupId)??[]:[];
  const resolved=resolveDocumentRouting(routing,{employeeUserId:c.employeeUserId,directSuperiorUserId:c.directSuperiorUserId,facts:{businessGroup:[c.facts.businessGroup,c.facts.businessGroupCompany].filter((v):v is string=>!!v),company:c.facts.company,department:c.facts.department,jobTitle:c.facts.jobTitle},
   routing:id=>routings.get(id)??null,groupMembers:id=>groups.get(id)??null,choose:chooser.choose,choiceProblem:chooser.problem,fallback:c.fallbackGroupId?{groupId:c.fallbackGroupId,members:fallbackMembers}:null,describe:who=>describeWho(who,c.routings)});

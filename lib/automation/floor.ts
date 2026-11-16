@@ -32,6 +32,12 @@ export const AUTOMATION_FLOOR = {
     taskAssignees: ['group', 'manager', 'employee'],
     taskModes: ['rr', 'manual'],
     bpRuleFields: ['businessGroup', 'company', 'department'],
+    /** Email template options beside id, name, module, subject and body (v9ConfigSchema `emails`). */
+    emailOptions: ['active', 'sender', 'cc', 'files', 'images', 'links', 'attachments', 'slots', 'recipientReview', 'bodyDoc'],
+    /** Email merge fields: the Personnel fields (`lib/lifecycle-v9-personnel-merge-fields.ts`) and the run's own words. */
+    mergeFields: ['employee.empNo', 'employee.name', 'employee.icNo', 'race', 'religion', 'nationality', 'gender', 'marital', 'employee.passportNo',
+      'email', 'mobile', 'homePhone', 'personalEmail', 'address', 'company.name', 'employee.department', 'employee.position', 'employee.supervisor',
+      'joiner.joinDate', 'leaver.lastDay', 'owner.name', 'pending.tasks', 'pending.count'],
   },
   /** Contract staff (`lib/contract-management-workflow.ts` contractWorkflowSchema). Module `contract_staff`. */
   contractStaff: {

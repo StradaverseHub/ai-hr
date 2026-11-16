@@ -23,8 +23,10 @@
  */
 import {sql} from 'drizzle-orm';
 import type {SessionContext,Tx} from '../db/client';
-import {runAutomationEventTx,resumeAutomationRunsTx} from './automation-runtime';
-import {resolveAutomationRecipients,type AutomationExecutors,type AutomationRun,type AutomationRuntimeGuards,type AutomationStepContext,type AutomationStepOutcome} from '../lib/automation/runtime';
+import {randomUUID} from 'node:crypto';
+import {runAutomationEventTx,resumeAutomationRunsTx,liveAutomationWorkflowsTx,sqlAutomationRunStore} from './automation-runtime';
+import {pgSqlState} from '../lib/db-error';
+import {newAutomationRun,resolveAutomationRecipients,type AutomationExecutors,type AutomationRun,type AutomationRuntimeGuards,type AutomationStepContext,type AutomationStepOutcome} from '../lib/automation/runtime';
 import {conditionFieldsForTrigger} from '../lib/automation/catalogue';
 import {PROBATION_AUTOMATION_CATALOGUE,PROBATION_PART_LABELS} from '../lib/automation/catalogues/probation';
 import {fillAutomationMergeFields} from '../lib/automation/email';
@@ -149,7 +151,14 @@ export function probationMergeValues(record: ProbationAutomationCase, context: P
   };
 }
 
-function recipientsFor(list: readonly AutomationRecipient[], context: ProbationAutomationContext, facts: ProbationEventFacts, pending: string[] | null, withFallback = true, audience: ProbationLegacyAudience = NO_AUDIENCE) {
+/** I6: named people in these recipient lists who are active users of this tenant (bounded; the runner's authority). */
+export async function probationActivePeopleTx(tx: Tx, caseId: string, lists: readonly (readonly AutomationRecipient[])[]): Promise<ReadonlySet<string>> {
+  const ids = [...new Set(lists.flat().flatMap(r => r.kind === 'person' && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(r.userId) ? [r.userId] : []))].slice(0, 500);
+  if (!ids.length) return new Set();
+  const rows = await tx.execute<{id: string}>(sql`select u.id from app.probation_automation_active_users(${caseId}::uuid, ${`{${ids.join(',')}}`}::uuid[]) as u(id)`);
+  return new Set(rows.map(r => r.id));
+}
+function recipientsFor(list: readonly AutomationRecipient[], context: ProbationAutomationContext, facts: ProbationEventFacts, pending: string[] | null, withFallback = true, audience: ProbationLegacyAudience = NO_AUDIENCE, active: ReadonlySet<string> = new Set()) {
   const groups = new Map(context.groups.map(g => [g.id, g.members])), routings = new Map(context.routings.map(r => [r.id, r]));
   const fallback = withFallback && context.fallbackGroupId ? {groupId: context.fallbackGroupId, members: groups.get(context.fallbackGroupId) ?? []} : null;
   return resolveAutomationRecipients(list, {
@@ -158,7 +167,8 @@ function recipientsFor(list: readonly AutomationRecipient[], context: ProbationA
     // W5: a business group is the business unit (Personnel v2 mapping, the PBP rule) or its group company (builder options).
     facts: {businessGroup: [context.org.businessGroupId, context.org.businessGroupCompanyId].filter((v): v is string => !!v), company: context.org.companyId, department: context.org.departmentId, jobTitle: context.org.jobTitle},
     routing: id => routings.get(id) ?? null, groupMembers: id => groups.get(id) ?? null,
-    person: userId => /^[0-9a-f-]{36}$/i.test(userId),
+    // I6: a named person counts only while they are an active user of this tenant; otherwise the fallback group receives it.
+    person: userId => active.has(userId),
     pending: () => pending?.length ? {userIds: pending, label: facts.pendingStep ?? 'Pending step'} : null,
     fallback,
     describe: r => r.kind === 'role' ? (r.role === 'employee' ? 'The employee' : r.role === 'directSuperior' ? 'Their Direct Superior' : PROBATION_AUTOMATION_CATALOGUE.recipients.find(x => x.id === r.role)?.label ?? r.role) : r.kind === 'routing' ? `The routing “${routings.get(r.routingId)?.name ?? 'removed routing'}”` : r.kind === 'group' ? `The assignment group ${r.groupId}` : r.kind === 'person' ? 'A named person' : 'Whoever’s step is pending',
@@ -168,12 +178,12 @@ function recipientsFor(list: readonly AutomationRecipient[], context: ProbationA
  * The email's own To and CC (F1): To = the To recipients plus, when any recipient resolved to nobody, the fallback group;
  * CC = the CC recipients who are not already in To.
  */
-export function probationEmailAddressees(to: readonly AutomationRecipient[], cc: readonly AutomationRecipient[], context: ProbationAutomationContext, facts: ProbationEventFacts, pending: string[] | null, audience: ProbationLegacyAudience = NO_AUDIENCE, fallback = true) {
+export function probationEmailAddressees(to: readonly AutomationRecipient[], cc: readonly AutomationRecipient[], context: ProbationAutomationContext, facts: ProbationEventFacts, pending: string[] | null, audience: ProbationLegacyAudience = NO_AUDIENCE, fallback = true, active: ReadonlySet<string> = new Set()) {
   // A step moved from the notify-only engine (`legacy: true`, G2) drops a recipient nobody resolves for, exactly as that
   // engine did: no fallback group, nothing recorded as unresolved.
-  const resolved = recipientsFor([...to, ...cc], context, facts, pending, fallback, audience);
+  const resolved = recipientsFor([...to, ...cc], context, facts, pending, fallback, audience, active);
   const all = fallback ? resolved : {...resolved, unresolved: []};
-  const toIds = recipientsFor(to, context, facts, pending, false, audience).userIds, ccIds = recipientsFor(cc, context, facts, pending, false, audience).userIds;
+  const toIds = recipientsFor(to, context, facts, pending, false, audience, active).userIds, ccIds = recipientsFor(cc, context, facts, pending, false, audience, active).userIds;
   const fallbackMembers = all.fallbackUsed && context.fallbackGroupId ? context.groups.find(g => g.id === context.fallbackGroupId)?.members ?? [] : [];
   const toAll = [...new Set([...toIds, ...fallbackMembers])];
   return {all, to: toAll, cc: ccIds.filter(id => !toAll.includes(id))};
@@ -191,7 +201,10 @@ async function letterVersionsTx(tx: Tx, companyId: string): Promise<Map<string, 
 type ExecutorInput = {
   ctx: SessionContext; trigger: string; record: ProbationAutomationCase; context: ProbationAutomationContext; facts: ProbationEventFacts;
   letters: Map<string, {id: string; state: string}>; pending: string[] | null; effects: Effects; audience: ProbationLegacyAudience;
+  /** True only when resuming after the outcome's letter was signed, released and filed (resumeProbationOutcomeTx). */
+  released?: boolean;
 };
+const NOT_RELEASED = 'This step needs the signed, released letter, and the workflow has no Generate document step before it, so nothing was posted or started.';
 function probationRuntime(tx: Tx, input: ExecutorInput): {executors: AutomationExecutors; guards: AutomationRuntimeGuards} {
   const {ctx, record, context, facts, effects} = input;
   const templates = new Map(context.emailTemplates.map(t => [t.id, t]));
@@ -200,7 +213,8 @@ function probationRuntime(tx: Tx, input: ExecutorInput): {executors: AutomationE
   const emailMerge = {...merge, 'case.link': ''};
   /** In-app notice (5753) and the durable email intent (5754), in this transaction. */
   const deliver = async (run: AutomationRun, step: AutomationStep, to: readonly AutomationRecipient[], cc: readonly AutomationRecipient[], subject: string, body: string) => {
-    const addressees = probationEmailAddressees(to, cc, context, facts, input.pending, input.audience, step.params.legacy !== true), resolved = addressees.all;
+    const active = await probationActivePeopleTx(tx, record.id, [to, cc]);
+    const addressees = probationEmailAddressees(to, cc, context, facts, input.pending, input.audience, step.params.legacy !== true, active), resolved = addressees.all;
     if (!resolved.userIds.length) return {resolved, email: null};
     const key = run.id + ':' + step.id;
     await tx.execute(sql`select app.probation_automation_notify(${record.id}::uuid, ${facts.partId ?? null}::uuid, ${key}, ${input.trigger}, ${`{${resolved.userIds.join(',')}}`}::uuid[])`);
@@ -238,34 +252,31 @@ function probationRuntime(tx: Tx, input: ExecutorInput): {executors: AutomationE
       if (!outcome) return {status: 'failed', reason: 'A letter can only be generated for a decided outcome.'};
       const version = input.letters.get(text(step.params.letterTemplateId));
       if (!version || version.state !== 'published') return {status: 'failed', reason: 'This company has no published version of the chosen letter template.'};
-      await tx.execute(sql`savepoint probation_automation_letter`);
       try {
         const {prepareProbationLetterTx} = await import('./probation-letter');
-        const prepared = await prepareProbationLetterTx(tx, ctx, {outcomeId: outcome.id, templateId: version.id, revision: outcome.revision, edits: {}});
-        await tx.execute(sql`release savepoint probation_automation_letter`);
+        const prepared = await tx.transaction(scope => prepareProbationLetterTx(scope, ctx, {outcomeId: outcome.id, templateId: version.id, revision: outcome.revision, edits: {}}));
         effects.documentId = prepared.documentId;
         return {status: 'wait', documentId: prepared.documentId, message: 'The letter is prepared and waits for its signatures and release.'};
       } catch (error) {
-        await tx.execute(sql`rollback to savepoint probation_automation_letter`);await tx.execute(sql`release savepoint probation_automation_letter`);
         return {status: 'failed', reason: `The letter could not be prepared: ${error instanceof Error && error.name === 'ProbationError' ? error.message : 'the letter source or template needs review.'}`};
       }
     },
     createPosting: async ({step}) => {
+      // I7 (handoff B4 guardrail): a posting only follows a released letter. A workflow without a Generate document step
+      // before it stops here; the PBP is asked to check the case and release by hand, and nothing is posted.
+      if (!input.released) return {status: 'failed', reason: NOT_RELEASED};
       const outcome = facts.outcome, kind = text(step.params.eventType);
       const eventType = kind === 'Confirmation' ? 'confirmation' as const : kind === 'Probation Extension' ? 'probationExtension' as const : null;
       if (!outcome || !eventType || (eventType === 'confirmation') !== (outcome.outcome === 'confirm') || eventType === 'probationExtension' && outcome.outcome !== 'extend')
         return {status: 'failed', reason: 'The posting does not match the decided outcome.'};
       if (!context.postingApproverGroupId) return {status: 'failed', reason: 'No group is set to approve Personnel postings.'};
-      const extension = extensionFacts(record, outcome);
-      if (eventType === 'probationExtension' && !extension) return {status: 'failed', reason: 'The approved extension length is missing.'};
-      const {createPersonnelPostingTx} = await import('./personnel-posting');
-      const posting = await createPersonnelPostingTx(tx, {source: 'probation', sourceRef: record.id, employmentId: await employmentOf(tx, record.id), eventType,
-        proposed: eventType === 'confirmation' ? {effectiveDate: record.endOn, remarks: 'Probation outcome: Confirm'} : {effectiveDate: extension!.start, endDate: extension!.endOn, remarks: 'Probation outcome: Extend'},
-        approverGroupId: context.postingApproverGroupId, idempotencyKey: outcome.id});
+      if (eventType === 'probationExtension' && !extensionFacts(record, outcome)) return {status: 'failed', reason: 'The approved extension length is missing.'};
+      const posting = await createProbationOutcomePostingTx(tx, record, outcome, context.postingApproverGroupId);
       effects.postingId = posting.id;
       return {status: 'done', message: `Personnel posting PP-${posting.number} created; it waits for approval.`};
     },
     startOffboarding: async () => {
+      if (!input.released) return {status: 'failed', reason: NOT_RELEASED};
       if (facts.outcome?.outcome !== 'not_confirm') return {status: 'failed', reason: 'Only a Non-confirmation outcome starts offboarding.'};
       const {createProbationOffboardingTx} = await import('../packs/lifecycle/service');
       effects.handoffId = await createProbationOffboardingTx(tx, ctx, record.id);
@@ -281,6 +292,20 @@ function probationRuntime(tx: Tx, input: ExecutorInput): {executors: AutomationE
     documentTemplate: step => { const v = input.letters.get(text(step.params.letterTemplateId)); return !v ? 'missing' : v.state === 'retired' ? 'retired' : 'available'; },
   };
   return {executors, guards};
+}
+/**
+ * The Personnel posting of a released Confirm or Extend outcome (decision 4), for the shared workflow's Create posting
+ * step and for the default path when no workflow matched (I1) alike: the same proposed values, approver group and
+ * idempotency key (the outcome id), so the outcome never writes the movement itself; only the posting's approval does.
+ */
+export async function createProbationOutcomePostingTx(tx: Tx, record: ProbationAutomationCase, outcome: {id: string; outcome: string; extensionMonths?: number | null}, approverGroupId: string): Promise<{id: string; number: number}> {
+  const eventType = outcome.outcome === 'confirm' ? 'confirmation' as const : outcome.outcome === 'extend' ? 'probationExtension' as const : null;
+  const extension = extensionFacts(record, {revision: 0, ...outcome});
+  if (!eventType || eventType === 'probationExtension' && !extension) throw new Error('A Personnel posting needs a Confirm outcome or an approved extension length.');
+  const {createPersonnelPostingTx} = await import('./personnel-posting');
+  return createPersonnelPostingTx(tx, {source: 'probation', sourceRef: record.id, employmentId: await employmentOf(tx, record.id), eventType,
+    proposed: eventType === 'confirmation' ? {effectiveDate: record.endOn, remarks: 'Probation outcome: Confirm'} : {effectiveDate: extension!.start, endDate: extension!.endOn, remarks: 'Probation outcome: Extend'},
+    approverGroupId, idempotencyKey: outcome.id});
 }
 async function employmentOf(tx: Tx, caseId: string): Promise<string> {
   const [row] = await tx.execute<{id: string}>(sql`select employment_id as id from probation_case where id = ${caseId}::uuid and tenant_id = app.current_tenant_id()`);
@@ -325,7 +350,7 @@ export async function resumeProbationOutcomeTx(tx: Tx, ctx: SessionContext, inpu
   const facts: ProbationEventFacts = {partId: input.partId, partType: 3, outcome: input.outcome};
   const {read, aliases} = probationFactReader('outcomeDecided', input.record, context, facts);
   const audience = await probationLegacyAudienceTx(tx, input.record.id, input.partId);
-  const {executors, guards} = probationRuntime(tx, {ctx, trigger: 'outcomeDecided', record: input.record, context, facts, letters: new Map(), pending: null, effects, audience});
+  const {executors, guards} = probationRuntime(tx, {ctx, trigger: 'outcomeDecided', record: input.record, context, facts, letters: new Map(), pending: null, effects, audience, released: true});
   const runs = await resumeAutomationRunsTx(tx, {module: 'probation', subjectId: input.record.id, documentId: input.documentId, executors, guards, read, aliases});
   return {runs, effects};
 }
@@ -354,17 +379,47 @@ export async function liveProbationTriggersTx(tx: Tx, caseId: string, triggers: 
  */
 export async function emitProbationEventsSafelyTx(tx: Tx, ctx: SessionContext, caseId: string, events: {trigger: string; occurrence: string; facts: ProbationEventFacts; pending?: string[] | null; anchors?: Record<string, string | null>; today?: string}[], knownLive?: Set<string>): Promise<void> {
   if (!events.length || knownLive && !events.some(e => knownLive.has(e.trigger))) return;
-  await tx.execute(sql`savepoint probation_events`);
+  // Nested transactions (driver savepoints): a database error inside one is rolled back to its savepoint and does not
+  // doom the caller's transaction, which a plain SQL savepoint cannot promise with this driver.
+  let live: ReadonlySet<string> = new Set(), record: ProbationAutomationCase | null = null;
   try {
-    const live = knownLive ?? await liveProbationTriggersTx(tx, caseId, [...new Set(events.map(e => e.trigger))]);
-    const record = live.size ? await probationAutomationCaseTx(tx, caseId) : null;
-    if (record) for (const event of events) if (live.has(event.trigger)) {
-      await tx.execute(sql`savepoint probation_event`);
-      try { await emitProbationEventTx(tx, ctx, {...event, record}); await tx.execute(sql`release savepoint probation_event`); }
-      catch { await tx.execute(sql`rollback to savepoint probation_event`); await tx.execute(sql`release savepoint probation_event`); }
-    }
-    await tx.execute(sql`release savepoint probation_events`);
-  } catch { await tx.execute(sql`rollback to savepoint probation_events`); await tx.execute(sql`release savepoint probation_events`); }
+    [live, record] = await tx.transaction(async scope => {
+      const triggers = knownLive ?? await liveProbationTriggersTx(scope, caseId, [...new Set(events.map(e => e.trigger))]);
+      return [triggers, triggers.size ? await probationAutomationCaseTx(scope, caseId) : null] as const;
+    });
+  } catch (error) {
+    for (const event of events.slice(0, 20)) await recordProbationEventFailureTx(tx, caseId, event, error);
+    return;
+  }
+  if (record) for (const event of events) if (live.has(event.trigger)) {
+    try { await tx.transaction(scope => emitProbationEventTx(scope, ctx, {...event, record})); }
+    catch (error) { await recordProbationEventFailureTx(tx, caseId, event, error); }
+  }
+}
+/** The error's class only (never its message, which may carry data): e.g. `AutomationError`, `database 40001`. */
+export function automationErrorClass(error: unknown): string {
+  const state = pgSqlState(error);
+  if (state) return `database ${state}`;
+  return error instanceof Error ? (error.name || error.constructor?.name || 'Error').slice(0, 60) : typeof error;
+}
+/**
+ * I6: an event that could not be processed is no longer dropped silently. Each live workflow of its trigger records one
+ * failed run (key `failed|trigger|occurrence|day`, so a repeat on the same day is not recorded twice) with the error's
+ * class; the case History shows it. Recording is best effort in its own savepoint: it never fails the command.
+ */
+async function recordProbationEventFailureTx(tx: Tx, caseId: string, event: {trigger: string; occurrence: string; today?: string}, error: unknown): Promise<void> {
+  try {
+    await tx.transaction(async scope => {
+      const at = new Date().toISOString(), day = event.today ?? todayInKualaLumpur(), store = sqlAutomationRunStore(scope);
+      const reason = `This event could not be processed (${automationErrorClass(error)}). No step ran for it; check the case by hand.`;
+      for (const live of (await liveAutomationWorkflowsTx(scope, 'probation', event.trigger, caseId)).slice(0, 20)) {
+        const run = newAutomationRun({id: randomUUID(), workflow: live.workflow, revision: live.revision, subjectId: caseId, eventKey: `failed|${event.trigger}|${event.occurrence}|${day}`.slice(0, 300), skipped: null, at});
+        const started = await store.start(run);
+        if (!started.created) continue;
+        await store.save({...started.run, status: 'failed', failure: reason, log: [...started.run.log, {at, kind: 'failed', step: null, stepId: null, type: null, message: reason}]}, 'running');
+      }
+    });
+  } catch { /* Best effort: recording the failure never fails the command that raised the event. */ }
 }
 const PENDING_LABEL: Record<string, string> = {lm: 'Line Manager', employee: 'Employee', hod: 'HOD', pbp: 'PBP'};
 /** "Pending step" condition value and the users holding it, from a signing document's current pending steps. */
@@ -383,6 +438,34 @@ export async function probationNotifyPreviewTx(tx: Tx, input: {record: Probation
   const merge = probationMergeValues(input.record, context, input.facts, audience);
   const legacy = input.step.params.legacy === true, words = legacy ? legacyMergeValues(merge, audience) : merge;
   const fill = (value: string) => legacy ? fillLegacyMergeFields(value, words) : fillAutomationMergeFields(value, words);
-  const addressees = probationEmailAddressees(input.step.to, input.step.cc, context, input.facts, input.pending ?? null, audience, !legacy);
+  const active = await probationActivePeopleTx(tx, input.record.id, [input.step.to, input.step.cc]);
+  const addressees = probationEmailAddressees(input.step.to, input.step.cc, context, input.facts, input.pending ?? null, audience, !legacy, active);
   return {userIds: [...addressees.all.userIds].sort(), subject: fill(text(input.step.params.subject)), body: fill(text(input.step.params.body))};
+}
+
+/** One shared workflow run on a case, as the case History shows it (I5). Recipients are counts, never names. */
+export type ProbationAutomationHistoryRun = {
+  id: string; trigger: string; triggerLabel: string; status: 'running' | 'waiting' | 'done' | 'skipped' | 'failed';
+  startedAt: string; updatedAt: string; failure: string | null;
+  entries: {at: string; kind: string; message: string; recipients: number; unresolved: {meantFor: string; reason: string}[]}[];
+};
+export const MAX_HISTORY_RUNS = 50, MAX_HISTORY_ENTRIES = 30;
+/**
+ * I5: the shared automation run log of one case (runs, skipped steps with their reason, failures, recipients nobody
+ * resolved for and the fallback), newest first and bounded (50 runs, the last 30 entries each). Readable only by
+ * someone who can see the case: the case access rule is checked first (app.automation_run_subject_access), then the
+ * rows are read under the run table's own row security.
+ */
+export async function probationAutomationHistoryTx(tx: Tx, caseId: string): Promise<ProbationAutomationHistoryRun[]> {
+  const [allowed] = await tx.execute<{ok: boolean}>(sql`select app.automation_run_subject_access('probation', ${caseId}::uuid) as ok`);
+  if (allowed?.ok !== true) return [];
+  const rows = await tx.execute<{id: string; trigger: string; status: ProbationAutomationHistoryRun['status']; started: string; updated: string; failure: string | null; log: {at: string; kind: string; message: string; recipients?: string[]; unresolved?: {meantFor: string; reason: string}[]}[]}>(sql`
+    select id, trigger_event as trigger, status, started_at::text as started, updated_at::text as updated, failure,
+      (select coalesce(jsonb_agg(e order by n), '[]'::jsonb) from jsonb_array_elements(log) with ordinality x(e, n) where n > jsonb_array_length(log) - ${MAX_HISTORY_ENTRIES}) as log
+    from automation_run where tenant_id = app.current_tenant_id() and module = 'probation' and subject_id = ${caseId}::uuid
+    order by started_at desc, id limit ${MAX_HISTORY_RUNS}`);
+  const labels = new Map(PROBATION_AUTOMATION_CATALOGUE.triggers.map(t => [t.id, t.label]));
+  return rows.map(r => ({id: r.id, trigger: r.trigger, triggerLabel: labels.get(r.trigger) ?? r.trigger, status: r.status, startedAt: r.started, updatedAt: r.updated, failure: r.failure,
+    entries: (Array.isArray(r.log) ? r.log : []).map(e => ({at: text(e.at), kind: text(e.kind), message: text(e.message).slice(0, 1000), recipients: Array.isArray(e.recipients) ? e.recipients.length : 0,
+      unresolved: (Array.isArray(e.unresolved) ? e.unresolved : []).slice(0, 20).map(u => ({meantFor: text(u.meantFor).slice(0, 300), reason: text(u.reason).slice(0, 300)}))}))}));
 }
