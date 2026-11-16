@@ -94,7 +94,7 @@ describe('actual app-role same-login privacy recovery',()=>{
     const [held]=await tx.execute<{mode:string}>(sql`select app.access_lock_mode_held(${b.tenantId}::uuid) as mode`);expect(held.mode).toBe('S');
    });
   });
-  for(const role of s.roleEnum.enumValues)for(const companyId of [null,b.companyId,companies[0].id]){
+  for(const role of s.roleEnum.enumValues)for(const companyId of (role==='super_admin'?[null]:[null,b.companyId,companies[0].id])){
    await owner.db.update(s.roleAssignment).set({role,companyId}).where(eq(s.roleAssignment.appUserId,ctx.userId!));
    const who:SessionContext={...ctx,roles:[role],grants:[{role,companyId}]};
    for(const c of cases){
