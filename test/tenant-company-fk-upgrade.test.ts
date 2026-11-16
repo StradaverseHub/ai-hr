@@ -392,6 +392,8 @@ it('stops on a cross-tenant row, then validates every company/tenant key without
   // the roles that evaluate it (test/rewards-config-grants-lock.test.ts), so no added function is callable by PUBLIC.
   const publicFunctions:string[]=[];
   const addedFunctions=[
+   // Reverse-linked clearance template IDs: scoped native metadata, application EXECUTE only.
+   'app.resignation_offboarding_template_ids(uuid)',
    // HMAC-bound missing-decision repair audience: application entry point, never PUBLIC.
    'app.resignation_decision_repair_audience(uuid)',
    // Verified managed-V9 classification; a scoped native boolean, callable by the application only.
