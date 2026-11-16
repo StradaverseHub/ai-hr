@@ -1,9 +1,9 @@
 import {describe,expect,it} from 'vitest';
 import {automationCatalogueProblems,conditionFieldsForTrigger,mergeFieldsForTrigger} from '../lib/automation/catalogue';
-import {OFFBOARDING_AUTOMATION_CATALOGUE as O} from '../lib/automation/catalogues/offboarding';
+import {OFFBOARDING_AUTOMATION_CATALOGUE as O,OFFBOARDING_POSTING_EVENTS,OFFBOARDING_POSTING_FIELDS} from '../lib/automation/catalogues/offboarding';
 import {PROBATION_AUTOMATION_CATALOGUE as P} from '../lib/automation/catalogues/probation';
 import {offboardingSettings,offboardingSettingsProblems,offboardingStepParamProblems,offboardingReplyProblems,retentionRoutingProblems,type OffboardingStepReferences} from '../lib/automation/offboarding';
-import type {AutomationStep,AutomationWorkflow} from '../lib/automation/workflow';
+import {setAutomationWorkflowStatus,type AutomationStep,type AutomationWorkflow} from '../lib/automation/workflow';
 import type {Config} from '../lib/lifecycle-v9-model';
 import {documentRoutingProblems} from '../lib/document-signing-routing';
 import {parseV9Config,validateV9ConfigChange} from '../lib/lifecycle-v9-validation';
@@ -61,6 +61,20 @@ describe('Offer deadlines and posting validation',()=>{
   expect(problems('offerAccepted',{...s,params:{...s.params,fields:['allowance']}})).toContain('Step 1: Posting fields can only be Position, Job Grade and Basic salary.');
   expect(offboardingStepParamProblems(workflow('offerAccepted',[s]),{...refs,postingApproverGroupId:null})).toContain('Step 1: Choose the Personnel postings approver in Offboarding settings.');
   expect(problems('offerAccepted',{...s,params:{...s.params,approver:'ops'}})).toContain('Step 1: Offboarding posting approvers are set in Offboarding settings, not on this step.');
+ });
+ it('blocks an employment type change that cannot be represented by the Offboarding posting allowlist',()=>{
+  const message='Step 1: Employment Type Change requires an employment type, which Offboarding posting fields do not allow. Choose another event type.';
+  for(const fields of [[],['title','grade','salary']]){
+   const s=step('createPosting',{eventType:'Employment Type Change',dateFrom:'offerEff',fields});
+   const draft=workflow('offerAccepted',[s]),issues=offboardingStepParamProblems(draft,refs);
+   expect(issues).toContain(message);
+   expect(setAutomationWorkflowStatus(draft,'live',issues).ok).toBe(false);
+   expect(setAutomationWorkflowStatus(draft,'paused',issues).ok).toBe(true);
+   expect(offboardingStepParamProblems({...workflow('offerAccepted',[s]),module:'probation',status:'live'},refs)).toEqual([]);
+   expect(problems('offerAccepted',{...s,params:{...s.params,eventType:'Promotion',fields:['title']}})).toEqual([]);
+  }
+  expect(OFFBOARDING_POSTING_EVENTS).toContain('Employment Type Change');
+  expect(OFFBOARDING_POSTING_FIELDS).toEqual(['title','grade','salary']);
  });
  it('requires the employee to be the only last signer',()=>{
   const good=[{id:'review',order:1,action:'review' as const,owner:true,who:{kind:'group' as const,groupId:'ops'}},{id:'employee',order:2,action:'sign' as const,owner:false,who:{kind:'employee' as const}}];

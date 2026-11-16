@@ -100,6 +100,7 @@ export function offboardingStepParamProblems(workflow:AutomationWorkflow,refs:Of
   }
   if(step.type==='createPosting'){
    if(!includes(OFFBOARDING_POSTING_EVENTS,text(p.eventType)))add('Choose the Personnel posting event type.');
+   if(p.eventType==='Employment Type Change')add('Employment Type Change requires an employment type, which Offboarding posting fields do not allow. Choose another event type.');
    const fields=Array.isArray(p.fields)?p.fields:[];
    if(!Array.isArray(p.fields)||fields.some(f=>typeof f!=='string'||!includes(OFFBOARDING_POSTING_FIELDS,f))||new Set(fields).size!==fields.length)add('Posting fields can only be Position, Job Grade and Basic salary.');
    if(['Transfer','Promotion','Increment','Salary Adjustment'].includes(text(p.eventType))&&!fields.length)add('Choose at least one field to update.');
