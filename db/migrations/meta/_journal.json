@@ -6301,6 +6301,13 @@
       "when": 1794841005833,
       "tag": "5833_contract_shared_tracker_retained_cases",
       "breakpoints": true
+    },
+    {
+      "idx": 5248,
+      "version": "7",
+      "when": 1794841005848,
+      "tag": "5848_contract_shared_virtual_period",
+      "breakpoints": true
     }
   ]
 }

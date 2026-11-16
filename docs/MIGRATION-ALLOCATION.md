@@ -1,3 +1,8 @@
+<!-- 5848_contract_virtual_period -->
+# Contract read-only virtual periods — 17 November 2026 MYT
+
+Owner `codex/contract-tracker-owner-20261117`, delegated by Contract integration. Reserve **5848–5849**, idx **5248–5249**, when **1794841005848–1794841005849**. The integration owner verified all266registered worktrees and found no5848–5849claim. 5834 belongs to the root mail lane;5850–5865belong to Recruitment. This is source allocation only; refresh installation watermarks and ordered immutable hashes before release admission. 5848 adds a View-only virtual native period projection and an explicit native Contract/V9 initialization readiness message. No case, event or job is created by these readers.
+
 <!-- 5830_contract_tracker_system_defaults -->
 # Contract tracker, system morning jobs and setup — 17 November 2026 MYT
 
