@@ -287,6 +287,8 @@ it('stops on a cross-tenant row, then validates every company/tenant key without
    '5765_probation_letter_signers',
    // Release gate (16 November 2026): company deletion sees the reshape's owner-only company referrers.
    '5766_probation_reshape_company_in_use',
+   // Architecture/performance: shared Access for the existing assistant metadata index.
+   '5767_assistant_legacy_index_shared_access',
   ]);
   const stagingPrefix=journal.entries.slice(0,performanceStart);
   expect(stagingPrefix.filter(row=>row.tag==='3900_individual_transaction_calculation_method')).toHaveLength(1);

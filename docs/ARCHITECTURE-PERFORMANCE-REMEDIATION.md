@@ -16,7 +16,7 @@ Initial integration base: `59f06b08db014e01cd553a827c62ccf864d33f78`. Preserve t
 - AP-058 partial: a distinct preview lock joins shared Access and the existing workforce barrier. Confirm retains its original exclusive locks, fingerprint comparison, all-or-nothing compensation and audit. Remaining synchronous Cost Allocation/Bank reversals and per-item inspection work remain open.
 - AP-045 partial: Close, Reset and Remove use the effective-history header and exact SQL joined count, preserving RLS, module gating and the history barrier. Reprocess selection still needs its own paged contract.
 - Proof authored: shared-reader overlap, writer lock retention, previous-reader equivalence across every native role and group/company scopes, 70-company / 1,000-employment shapes, history-writer wait and count freshness, payload reduction. Hosted and staging results are pending.
-- AP-033 is confirmed in the installed staging definition (owner ai_hr_owner). Staging watermark read: 881 migrations, maximum 1793330005466. Direct and staging-proxied production watermark reads timed out; append-only SQL admission remains pending a fresh production ledger check. No migration or production change is included in batch 1.
+- AP-033 is confirmed in the installed staging definition (owner ai_hr_owner). Staging watermark read: 881 migrations, maximum 1793330005466. After VPN connection, production was read as its restricted migration owner: 853 entries, maximum 1793330005395; the new migration timestamp is above both installations. No migration or production change is included in batch 1.
 
 ## Consolidated dispositions
 
@@ -54,7 +54,7 @@ Initial integration base: `59f06b08db014e01cd553a827c62ccf864d33f78`. Preserve t
 | AP-030 | P1 | Security Center Users directory | Open; implementation pending |
 | AP-031 | P2 | Probation Tracker CSV export | Open; implementation pending |
 | AP-032 | P2 | Attendance Overtime Pattern detail and version history | Open; implementation pending |
-| AP-033 | P1 | AI Centre Find Reviews metadata lists | Batch 2 SQL and native proof authored; migration admission pending fresh production watermark |
+| AP-033 | P1 | AI Centre Find Reviews metadata lists | Batch 2 SQL and native proof authored; hosted and staging qualification pending; both installation watermarks verified |
 | AP-034 | P1 | System Labels Grades and Profile Options grid saves | Open; implementation pending |
 | AP-035 | P2 | Grades and Profile Options partial grid saves | Open; implementation pending |
 | AP-036 | P2 | Attendance Individual Day historical formula results | Open; implementation pending |
@@ -91,3 +91,10 @@ For each batch retain exact source/controller/base identities, hosted test and c
 ## Batch 2: assistant legacy metadata index (prepared separately)
 
 Migration 5767 changes only the index's advisory Access lock to shared. The installed ai_hr_owner ownership, own-login/current-person filters, allowed kinds, exact history windows, ordered 25-row packet and command locks are preserved. Native overlap, READ ONLY and revocation-order tests are authored; existing privacy, history, relink, isolation and retirement cases remain required. Source allocation is provisional until both installation watermarks and peer claims are rechecked. No staging installation or improvement is claimed.
+
+## Preserved development results and repair candidate
+
+- First read batch, c79d14da8, Actions 43879931148: 17 no-DB/DOM cases passed; native DB result 127 passed / 2 failed. New qualification code compared raw database error text for a denied employee and attempted an invalid company-scoped super administrator. The repaired candidate compares permission outcomes, uses only valid role scopes, and retains the administrator predicate explicitly without updating label epochs.
+- Separate SQL batch, 2c54bbde6, Actions 43880638088: 3 no-DB cases passed; native result 49 passed / 2 failed. The same invalid role fixture and the populated-upgrade fixture's explicit migration-tail inventory required repair. Restricted-owner migration rehearsal passed on that candidate. Original runs and source identities remain historical evidence, not re-labelled passing receipts.
+- The owner explicitly approved staging-only AI rebinding. Final provider source: 1123ea58cd92536fc2b41c6b269464bad2d478a6eb028d64ef2a0582db873a02; no new provider fields, purposes or transports. The source-binding review note records initial versus repaired identities.
+- Staging baseline verified read-only: 59f06b08db014e01cd553a827c62ccf864d33f78 / build AnZn7z2zdHpskbEoTnSzR. No remediation installation or verified staging improvement is claimed yet.

@@ -8,9 +8,10 @@ Only `app.assistant_legacy_reviews_index(text)` changes: its advisory Access acq
 Principal freshness, current-person binding, allowed kinds, history windows, deterministic ordering, 25-row cap,
 owner, grants and every command owner remain unchanged. Applied SQL is untouched.
 
-This allocation is not admission or installation authority. Fresh production ledger reads timed out both directly
-and through staging on 16 November. Recheck production's maximum, peer source allocations and both installed ledgers
-before admission; renumber this unapplied source if a higher watermark or conflicting claim appears.
+This allocation is not installation authority. After the owner connected the production VPN on 16 November,
+a restricted-owner READ ONLY aggregate verified production at 853 entries / maximum 1793330005395.
+The new when is above both fresh installation maxima. Recheck peer source allocations and both installed ledgers
+at release admission; renumber this unapplied source if a higher watermark or conflicting claim appears.
 Restricted-owner and native concurrency/equivalence checks are required before release.
 
 <!-- 5766_probation_reshape_company_in_use -->

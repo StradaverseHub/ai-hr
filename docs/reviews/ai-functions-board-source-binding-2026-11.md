@@ -645,3 +645,27 @@ reaches leave through `packs/leave/service`, `core/company-refs.ts` declares fou
 5766 adds their read-only in-use check. No provider transform, outbound field, purpose or transport changed. The 28
 approvals were carried forward to `e4fcddfb…` and the agent manifest regenerated (`943a1bee…`), under the owner's
 standing pre-approval for staging re-binds (12 November 2026). This binding grants no production authority.
+
+
+### Architecture and performance remediation: staging-only approval (16 November 2026)
+
+The repository owner explicitly answered "Approve staging-only rebinding" in the architecture/performance
+remediation chat on 16 November 2026. The release coordinator carries forward the same 28 continuing approvals
+for this performance batch, based on main/alpha `59f06b08db014e01cd553a827c62ccf864d33f78`.
+The approval question identified the initial `b8d54c6b…` fingerprint. During qualification the preview retained
+its native administrator predicate explicitly (previously enforced by the label-epoch write's RLS policy), so
+the repaired batch's final provider fingerprint is
+`1123ea58cd92536fc2b41c6b269464bad2d478a6eb028d64ef2a0582db873a02` over 1,623 files.
+This records batch-scoped staging rebinding authorization, not an owner inspection of that later exact digest.
+The standing 12 November staging rebinding approval recorded above also applies. The agent manifest is
+`07efeec802244fd835f2299a81cc506a99c35407ca179a2458185fdabf698ce9` over 494 files.
+
+Covered application changes are `core/import-history.ts` (distinct preview lock), `core/cost-allocation-import.ts`
+(shared Access plus preserved native administrator admission; unchanged exclusive compensation and complete
+stale-review checks), and `core/payroll.ts` (same effective-history header and exact SQL joined count).
+Migration 5767 changes only the assistant metadata index's Access advisory lock to shared, preserving its
+principal, current-person binding, history windows, ordering, packet and command owners.
+No provider transform, outbound field, approved purpose, transport, tool registration or action tier changes.
+Only the 28 active fingerprint literals change. Original review metadata, pending and historical approvals,
+and existing evaluation/promotion identities remain unchanged. This authorizes no production deployment.
+Hosted verification, production watermark admission and staging release/acceptance are separate requirements.
