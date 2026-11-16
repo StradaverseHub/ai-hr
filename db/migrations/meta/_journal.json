@@ -6294,6 +6294,13 @@
       "when": 1794841005829,
       "tag": "5829_shared_automation_email_asset_delivery",
       "breakpoints": true
+    },
+    {
+      "idx": 5240,
+      "version": "7",
+      "when": 1794841005840,
+      "tag": "5840_shared_email_test_asset_source",
+      "breakpoints": true
     }
   ]
 }
