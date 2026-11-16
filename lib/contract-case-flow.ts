@@ -36,8 +36,8 @@ export const DEFAULT_CONTRACT_FLOW_SETTINGS: ContractFlowSettings = {
   fallbackGroupId: 'g-peopleops', postingApproverGroupId: 'g-peopleops', stallEnabled: true, stallDays: 5,
   automaticSuperior: {enabled: true, permissions: ['view', 'decide']},
 };
-const refuse = (message: string): never => {throw new ContractManagementError('invalid', message);};
-const conflict = (message: string): never => {throw new ContractManagementError('conflict', message);};
+function refuse(message: string): never {throw new ContractManagementError('invalid', message);}
+function conflict(message: string): never {throw new ContractManagementError('conflict', message);}
 function actorCan(actor: ContractFlowActor, permission: ContractCasePermission) {
   if (!actor.userId || !actor.admin && !actor.permissions.includes(permission)) throw new ContractManagementError('forbidden', 'This Contract action is unavailable.');
 }

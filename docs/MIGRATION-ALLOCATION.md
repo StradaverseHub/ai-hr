@@ -1,3 +1,18 @@
+<!-- 5800_contract_shared_automation -->
+# Contract shared automation reservation — 16 November 2026 MYT
+
+Owner: `codex/contract-shared-automation-20261116`. Reserve tags **5800–5809**, idx **5200–5209**,
+`when` **1794841005800–1794841005809**, for the approved Contract/shared HR Automation build. This is a forward-only
+reservation, not release evidence. Fresh main/alpha both pointed to `59f06b08db014e01cd553a827c62ccf864d33f78`.
+A read-only survey of 236 registered worktrees found no competing 5800–5809 claim; the largest competing draft
+watermark observed was 1793330099340. The staging ledger was read through the private alias: 881 rows,
+maximum `created_at` 1793330005466, same source/build baseline. Refresh both refs, peer reservations and the complete
+ordered ledger at release admission; keep baseline SQL bytes unchanged.
+
+5800 adds Contract capabilities/scoped assignments/settings; 5801 adds explicit shared-flow adoption and legacy
+command fencing; 5802 registers Contract with the shared stores; 5803 adds immutable shared document template versions.
+No live migration has been applied and no existing case is automatically converted by these migrations.
+
 <!-- 5766_probation_reshape_company_in_use -->
 # Company deletion sees the Probation reshape's owner-only referrers — 16 November 2026 MYT (unapplied, allocated)
 

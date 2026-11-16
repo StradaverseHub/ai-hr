@@ -11,7 +11,7 @@ import type {AutomationFilter,AutomationPageAccess} from './types';
  */
 export async function automationPageAccess(ctx:SessionContext):Promise<AutomationPageAccess>{
  const [modules,store]=await Promise.all([lifecycleWorkflowAvailability(ctx),automationBuilderAccess(ctx)]);
- const access={legacy:modules.legacy===true,probation:store.probation,contractStaff:modules.contract_staff===true};
+ const access={legacy:modules.legacy===true,probation:store.probation,contractStaff:store.contractStaff};
  return {...access,any:access.legacy||access.probation||access.contractStaff||store.any};
 }
 /** The requested filter when it is one of ours, otherwise the first module the viewer configures. */

@@ -12,6 +12,8 @@ import {recipientKey,recipientOptions,recipientsFromKeys,type NamedOption} from 
 import {saveWorkflowAction} from '../actions';
 import {ConditionRows} from './condition-rows';
 import {DryRunPanel} from './dry-run-panel';
+import {CONTRACT_POSTING_KINDS,contractStepParamProblems,contractWorkflowWarnings,type ContractApprovalLayer} from '@/lib/contract-automation';
+import {ContractApprovalLayers} from './contract-approval-layers';
 
 export type WorkflowEditorReferences = {
   routings: (NamedOption & { retired?: boolean })[];
@@ -59,8 +61,8 @@ export function WorkflowEditor({catalogue,initial,revision:savedRevision,refs,on
  const setStep=(index:number,edit:(step:AutomationStep)=>void)=>change(w=>edit(w.steps[index]));
  const references:AutomationReferences={routingExists:id=>refs.routings.some(r=>r.id===id&&!r.retired),groupExists:id=>refs.groups.some(g=>g.id===id),personExists:id=>people.some(p=>p.id===id)};
  const stepReferences={emailTemplates:refs.emailTemplates,letterTemplateIds:refs.letterTemplates?.map(l=>l.id)??null};
- const problems=draft.status==='retired'?[]:[...automationWorkflowProblems(draft,catalogue,references),...probationStepParamProblems(draft,stepReferences)];
- const warnings=[...automationMergeWarnings(draft,catalogue),...probationStepParamWarnings(draft,stepReferences)];
+ const problems=draft.status==='retired'?[]:[...automationWorkflowProblems(draft,catalogue,references),...probationStepParamProblems(draft,stepReferences),...contractStepParamProblems(draft,stepReferences,references)];
+ const warnings=[...automationMergeWarnings(draft,catalogue),...probationStepParamWarnings(draft,stepReferences),...contractWorkflowWarnings(draft)];
  const trigger=catalogue.triggers.find(x=>x.id===draft.trigger.event);
  const recipients=recipientOptions(catalogue,{routings:refs.routings,groups:refs.groups,people},{routing:name=>t('recipients.routing',{name}),group:name=>t('recipients.group',{name})});
  const merge=mergeFieldsForTrigger(catalogue,draft.trigger.event),mergeGroups=[...new Set(merge.map(m=>m.group))];
@@ -94,6 +96,10 @@ export function WorkflowEditor({catalogue,initial,revision:savedRevision,refs,on
  const newStep=(type:string):AutomationStep=>({id:crypto.randomUUID(),type,conditions:[],to:type==='sendEmail'||type==='notify'?[{kind:'role',role:'employee'}]:[],cc:[],
   params:type==='notify'?{subject:'',body:''}:type==='sendEmail'?{emailTemplateId:''}:type==='generateDocument'?{letterTemplateId:''}:type==='createPosting'?{eventType:''}:type==='startOffboarding'?{exitReason:'Non-confirmation'}:{}});
  const stepBody=(step:AutomationStep,index:number)=>{
+  if(step.type==='requestApproval'&&draft.module==='contract_staff')return <ContractApprovalLayers disabled={readOnly}
+   layers={Array.isArray(step.params.layers)?step.params.layers as ContractApprovalLayer[]:[]}
+   options={recipients.filter(option=>option.value!=='pending')}
+   onChange={layers=>setStep(index,s=>{s.params.layers=layers;})}/>;
   if(step.type==='notify')return <div className="v9-stack">{toCc(index,step)}
    <div className="v9-field"><div className="automation-row automation-between"><label htmlFor={`automation-subject-${index}`}>{t('editor.subject')}</label>{picker(index,'subject')}</div>
     <input id={`automation-subject-${index}`} ref={element=>{fields.current[`${index}:subject`]=element;}} value={text(step.params.subject)} maxLength={500} disabled={readOnly} aria-invalid={!text(step.params.subject).trim()} onChange={e=>setStep(index,s=>{s.params.subject=e.target.value;})}/></div>
@@ -109,7 +115,8 @@ export function WorkflowEditor({catalogue,initial,revision:savedRevision,refs,on
    ?<WorkflowField label={t('editor.letterTemplate')}><select value={text(step.params.letterTemplateId)} disabled={readOnly} onChange={e=>setStep(index,s=>{s.params.letterTemplateId=e.target.value;})}><option value="">{t('editor.choose')}</option>{[...refs.letterTemplates,...(text(step.params.letterTemplateId)&&!refs.letterTemplates.some(l=>l.id===step.params.letterTemplateId)?[{id:text(step.params.letterTemplateId),name:t('notAvailable',{value:text(step.params.letterTemplateId)})}]:[])].map(l=><option key={l.id} value={l.id}>{l.name}</option>)}</select></WorkflowField>
    :<WorkflowField label={t('editor.letterTemplateId')}><input value={text(step.params.letterTemplateId)} disabled={readOnly} onChange={e=>setStep(index,s=>{s.params.letterTemplateId=e.target.value.trim();})}/></WorkflowField>}
    <p className="v9-muted">{t('editor.letterNote')}</p></div>;
-  if(step.type==='createPosting')return <div className="v9-stack"><WorkflowField label={t('editor.postingEvent')}><select value={text(step.params.eventType)} disabled={readOnly} onChange={e=>setStep(index,s=>{s.params.eventType=e.target.value;})}><option value="">{t('editor.choose')}</option>{PROBATION_POSTING_EVENTS.map(event=><option key={event} value={event}>{event}</option>)}</select></WorkflowField><p className="v9-muted">{t('editor.postingNote')}</p></div>;
+  if(step.type==='createPosting')return <div className="v9-stack"><WorkflowField label={t('editor.postingEvent')}><select value={text(step.params.eventType)} disabled={readOnly} onChange={e=>setStep(index,s=>{s.params.eventType=e.target.value;})}><option value="">{t('editor.choose')}</option>{(draft.module==='contract_staff'?CONTRACT_POSTING_KINDS:PROBATION_POSTING_EVENTS).map(event=><option key={event} value={event}>{event}</option>)}</select></WorkflowField><p className="v9-muted">{t(draft.module==='contract_staff'?'contract.postingHelp':'editor.postingNote')}</p></div>;
+  if(step.type==='startOffboarding'&&draft.module==='contract_staff')return <p className="v9-muted">{t('contract.offboardingHelp')}</p>;
   if(step.type==='startOffboarding')return <div className="v9-stack"><WorkflowField label={t('editor.exitReason')}><input value={text(step.params.exitReason)} maxLength={200} disabled={readOnly} onChange={e=>setStep(index,s=>{s.params.exitReason=e.target.value;})}/></WorkflowField><p className="v9-muted">{t('editor.offboardingNote')}</p></div>;
   return null;
  };

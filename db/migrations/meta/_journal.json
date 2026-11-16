@@ -6168,6 +6168,34 @@
       "when": 1793330005466,
       "tag": "5766_probation_reshape_company_in_use",
       "breakpoints": true
+    },
+    {
+      "idx": 5200,
+      "version": "7",
+      "when": 1794841005800,
+      "tag": "5800_contract_shared_access",
+      "breakpoints": true
+    },
+    {
+      "idx": 5201,
+      "version": "7",
+      "when": 1794841005801,
+      "tag": "5801_contract_shared_flows",
+      "breakpoints": true
+    },
+    {
+      "idx": 5202,
+      "version": "7",
+      "when": 1794841005802,
+      "tag": "5802_contract_shared_builders",
+      "breakpoints": true
+    },
+    {
+      "idx": 5203,
+      "version": "7",
+      "when": 1794841005803,
+      "tag": "5803_shared_document_templates",
+      "breakpoints": true
     }
   ]
 }

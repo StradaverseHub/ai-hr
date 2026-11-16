@@ -5,6 +5,7 @@ import {
   AutomationError,automationBuilderAccess,automationPeopleNames,conditionFieldsForTrigger,dryRunAutomationWorkflow,
   installAutomationDefaults,listAutomationRoutings,automationAssignmentGroups,resolveRoutingRow,
   saveAutomationEmailTemplate,saveAutomationRouting,saveAutomationWorkflow,searchAutomationPeople,
+  saveAutomationDocumentTemplate,automationDocumentVersions,
   type AutomationDryRun,type AutomationEmailTemplate,type AutomationRecipient,type AutomationWorkflow,type Routing,
 } from '@/packs/automation/service';
 import {probationCase,probationSummaryRows,moveProbationWorkflowsToShared} from '@/packs/probation/service';
@@ -33,6 +34,12 @@ export async function saveWorkflowAction(input: { workflow: AutomationWorkflow; 
 
 export async function saveEmailTemplateAction(input: { template: AutomationEmailTemplate; retired: boolean; expectedRevision: number; reason: string }) {
   return execute(async () => saveAutomationEmailTemplate(await requireScopedLifecycleModule(), input));
+}
+export async function saveDocumentTemplateAction(input:unknown){
+ return execute(async()=>saveAutomationDocumentTemplate(await requireScopedLifecycleModule(),input));
+}
+export async function documentTemplateVersionsAction(id:string){
+ return execute(async()=>automationDocumentVersions(await requireScopedLifecycleModule(),id));
 }
 
 export async function saveRoutingAction(input: { routing: Routing; retired: boolean; expectedRevision: number; reason: string }) {

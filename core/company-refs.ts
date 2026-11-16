@@ -80,6 +80,8 @@ export type CompanyRef = {
 };
 
 export const COMPANY_REFERRERS: readonly CompanyRef[] = [
+  {table:'contract_shared_settings',column:'company_id',disposition:'other',existsFunction:'app.contract_shared_company_in_use',note:'Retain Contract configuration and its audit references.'},
+  {table:'contract_access_member',column:'company_id',disposition:'other',existsFunction:'app.contract_shared_company_in_use',note:'Retain scoped Contract role assignment history.'},
   {table:'probation_activation_request',column:'company_id',disposition:'other',existsFunction:'app.approved_feedback_company_in_use',note:'Retain approved account, Rewards and organisation review/classification history without exposing private rows.'},
   {table:'reward_company_classification',column:'company_id',disposition:'other',existsFunction:'app.approved_feedback_company_in_use',note:'Retain approved account, Rewards and organisation review/classification history without exposing private rows.'},
   {table:'reward_company_classification',column:'canonical_company_id',disposition:'other',existsFunction:'app.approved_feedback_company_in_use',note:'Retain approved account, Rewards and organisation review/classification history without exposing private rows.'},
@@ -391,6 +393,7 @@ export type CompanyConfigDependent = {
 };
 
 export const COMPANY_CONFIG_DEPENDENTS: readonly CompanyConfigDependent[] = [
+  {table:'contract_access_member',column:'business_unit_id',references:'business_unit',effect:'blocks',existsFunction:'app.contract_shared_company_in_use',note:'Retain scoped Contract assignment history.'},
   {table:'company_organisation_mapping',column:'business_unit_id',references:'business_unit',effect:'blocks',existsFunction:'app.approved_feedback_company_in_use',note:'Reviewed dated company mappings retain the actual Business Unit identity, including shared units created by another company.'},
   {table:'contract_role_assignment',column:'business_unit_id',references:'business_unit',effect:'blocks',existsFunction:'app.replan_retained_company_in_use',note:'Retain scoped lifecycle role mappings.'},
   {table:'probation_access',column:'business_unit_id',references:'business_unit',effect:'blocks',existsFunction:'app.replan_retained_company_in_use',note:'Retain scoped lifecycle role mappings.'},

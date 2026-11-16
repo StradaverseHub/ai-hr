@@ -1,9 +1,10 @@
 import {notFound} from 'next/navigation';
 import {requireScopedLifecycleModule} from '@/lib/scoped-lifecycle-page';
-import {automationAssignmentGroups,automationPeopleNames,listAutomationEmailTemplates,listAutomationRoutings} from '@/packs/automation/service';
+import {automationAssignmentGroups,automationPeopleNames,automationRoutingOptions,listAutomationDocumentTemplates,listAutomationEmailTemplates,listAutomationRoutings} from '@/packs/automation/service';
 import {automationFilter,automationPageAccess} from '../access';
 import {probationLetterChoices} from '../letter-templates';
 import {TemplatesWorkspace,type LetterSection,type ListedEmailTemplate} from './templates-workspace';
+import type {ContractTemplatesData} from './contract-templates';
 
 export default async function Page({searchParams}:{searchParams:Promise<Record<string,string|string[]|undefined>>}){
  const ctx=await requireScopedLifecycleModule(),query=await searchParams,access=await automationPageAccess(ctx);
@@ -19,5 +20,12 @@ export default async function Page({searchParams}:{searchParams:Promise<Record<s
   refs.groups=groups;
   refs.people=await automationPeopleNames(ctx,stored.flatMap(e=>e.template.cc.flatMap(r=>r.kind==='person'?[r.userId]:[])));
  }
- return <TemplatesWorkspace filter={filter} access={access} emails={emails} letters={letters} refs={refs}/>;
+ let contract:ContractTemplatesData|undefined;
+ if(access.contractStaff&&(filter==='all'||filter==='contract_staff')){
+  const [documents,stored,routings]=await Promise.all([listAutomationDocumentTemplates(ctx,'contract_staff'),listAutomationEmailTemplates(ctx,{module:'contract_staff'}),listAutomationRoutings(ctx)]);
+  const [groups,options]=await Promise.all([automationAssignmentGroups(ctx),automationRoutingOptions(ctx)]);
+  const peopleIds=[...documents.flatMap(d=>d.template.routing.flatMap(s=>s.who.kind==='people'?s.who.userIds:[])),...stored.flatMap(e=>e.template.cc.flatMap(r=>r.kind==='person'?[r.userId]:[]))];
+  contract={documents,emails:stored.map(e=>({template:e.template,revision:e.revision,retired:e.retired})),refs:{routings:routings.map(r=>({id:r.routing.id,name:r.routing.name,retired:r.retired})),groups,people:await automationPeopleNames(ctx,peopleIds),conditions:{businessGroup:options.businessGroups.map(o=>({value:o.id,label:o.name})),company:options.companies.map(o=>({value:o.id,label:o.name})),department:options.departments.map(o=>({value:o.id,label:o.name})),jobTitle:options.jobTitles.map(value=>({value,label:value}))}}};
+ }
+ return <TemplatesWorkspace filter={filter} access={access} emails={emails} letters={letters} refs={refs} contract={contract}/>;
 }

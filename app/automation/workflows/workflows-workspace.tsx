@@ -12,13 +12,14 @@ import {installProbationDefaultsAction,moveProbationWorkflowsAction} from '../ac
 import type {ProbationWorkflowMoveResult} from '@/packs/probation/service';
 import {LEGACY_BUILDERS,type AutomationFilter,type AutomationPageAccess} from '../types';
 import {WorkflowEditor,type WorkflowEditorReferences} from './workflow-editor';
+import {ContractWorkflows} from './contract-workflows';
 
 export type ListedWorkflow = { workflow: AutomationWorkflow; revision: number };
 const catalogue = PROBATION_AUTOMATION_CATALOGUE;
 const blank = (): AutomationWorkflow => ({ id: crypto.randomUUID(), module: 'probation', name: '', description: '', status: 'paused', required: false, trigger: { event: catalogue.triggers[0].id, days: 0, workdays: false, repeat: false }, skipWhen: 'never', conditions: [], steps: [] });
 
 /** HR Automation › Workflows (prototype WorkflowsPage; mockups 12 and 13). Probation is on the shared engine; the other modules link to their builders. */
-export function WorkflowsWorkspace({filter,access,workflows,refs,defaultsMissing}:{filter:AutomationFilter;access:AutomationPageAccess;workflows:ListedWorkflow[];refs:WorkflowEditorReferences;defaultsMissing:number}){
+export function WorkflowsWorkspace({filter,access,workflows,refs,defaultsMissing,contract}:{filter:AutomationFilter;access:AutomationPageAccess;workflows:ListedWorkflow[];refs:WorkflowEditorReferences;defaultsMissing:number;contract?:{workflows:ListedWorkflow[];refs:WorkflowEditorReferences}}){
  const t=useTranslations('automation'),router=useRouter(),[busy,start]=useTransition();
  const [editing,setEditing]=useState<ListedWorkflow|null>(null),[notice,setNotice]=useState<{kind:'error'|'status';text:string}|null>(null);
  const [moveReason,setMoveReason]=useState(''),[moveResult,setMoveResult]=useState<ProbationWorkflowMoveResult|null>(null);
@@ -27,7 +28,7 @@ export function WorkflowsWorkspace({filter,access,workflows,refs,defaultsMissing
   setMoveResult(result.result);setMoveReason('');setNotice({kind:'status',text:t('move.done',{moved:result.result.moved.length,kept:result.result.kept.length,already:result.result.alreadyMoved})});router.refresh();});};
  const people=refs.people,references={routingExists:(id:string)=>refs.routings.some(r=>r.id===id&&!r.retired),groupExists:(id:string)=>refs.groups.some(g=>g.id===id),personExists:(id:string)=>people.some(p=>p.id===id)};
  const needsAttention=(w:AutomationWorkflow)=>w.status!=='retired'&&(automationWorkflowProblems(w,catalogue,references).length>0||probationStepParamProblems(w,{emailTemplates:refs.emailTemplates,letterTemplateIds:refs.letterTemplates?.map(l=>l.id)??null}).length>0);
- const showProbation=filter==='all'||filter==='probation',legacy=(['onb','off','contract_staff'] as const).filter(m=>filter==='all'||filter===m);
+ const showProbation=filter==='all'||filter==='probation',legacy=(['onb','off','contract_staff'] as const).filter(m=>(filter==='all'||filter===m)&&!(m==='contract_staff'&&contract));
  const install=()=>{if(!window.confirm(t('defaults.confirm')))return;setNotice(null);start(async()=>{const result=await installProbationDefaultsAction();if(!result.ok){setNotice({kind:'error',text:result.detail??t('errors.unavailable')});return;}
   setNotice({kind:'status',text:t('defaults.done',{workflows:result.result.installed.workflows,emails:result.result.installed.emailTemplates,routings:result.result.installed.routings})});router.refresh();});};
  if(editing)return <main className="v9-stack pcg"><p className="pcg-crumb">{t('crumb')} / {t('workflows.title')}</p>
@@ -72,6 +73,7 @@ export function WorkflowsWorkspace({filter,access,workflows,refs,defaultsMissing
     </div>
    </li>;})}</ul>
   </section>:filter==='probation'&&<p className="v9-notice">{t('workflows.probationNotAllowed')}</p>)}
+  {contract&&(filter==='all'||filter==='contract_staff')&&<ContractWorkflows workflows={contract.workflows} refs={contract.refs}/>}
   {legacy.map(module=><LegacyBuilderCard key={module} module={module} kind="workflows" href={LEGACY_BUILDERS.workflows[module]} allowed={module==='contract_staff'?access.contractStaff:access.legacy}/>)}
  </main>;
 }

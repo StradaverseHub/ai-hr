@@ -17,6 +17,7 @@ import {AUTOMATION_MODULES,type AutomationModule} from '../lib/automation/catalo
 import {automationMergeWarnings,automationWorkflowProblems,type AutomationReferences,type AutomationWorkflow} from '../lib/automation/workflow';
 import {routingProblems,type Routing,type RoutingRow} from '../lib/automation/routing';
 import {probationStepParamProblems} from '../lib/automation/email';
+import {contractStepParamProblems,contractWorkflowRecipients,contractWorkflowWarnings} from '../lib/contract-automation';
 
 export class AutomationError extends Error {
   constructor(public readonly code: 'forbidden' | 'invalid' | 'conflict' | 'not_found', message: string, public readonly problems: readonly string[] = []) { super(message); this.name = 'AutomationError'; }
@@ -80,12 +81,14 @@ export async function saveAutomationWorkflow(ctx: SessionContext, input: { workf
   const { workflow } = input, catalogue = automationCatalogue(workflow.module);
   if (!catalogue) throw new AutomationError('invalid', 'This module does not use the shared builders yet.');
   if (!UUID.test(workflow.id)) throw new AutomationError('invalid', 'Unknown workflow.');
-  const people = [...new Set([...workflow.steps.flatMap(s => [...s.to, ...s.cc])].flatMap(r => r.kind === 'person' ? [r.userId] : []))].filter(id => UUID.test(id));
+  const allRecipients = workflow.module === 'contract_staff' ? contractWorkflowRecipients(workflow) : workflow.steps.flatMap(s => [...s.to, ...s.cc]);
+  const people = [...new Set(allRecipients.flatMap(r => r.kind === 'person' ? [r.userId] : []))].filter(id => UUID.test(id));
   return withScopedLifecycleTenant(ctx, async tx => {
     // Authority first, so someone who cannot configure the module learns nothing from the catalogue checks.
     const [allowed] = await tx.execute<{ ok: boolean }>(sql`select app.automation_can_configure(${workflow.module}) as ok`);
     if (!allowed?.ok) throw new AutomationError('forbidden', 'You cannot configure this.');
-    const problems = workflow.status === 'retired' ? [] : automationWorkflowProblems(workflow, catalogue, await references(tx, people));
+    const refs = await references(tx, people);
+    const problems = workflow.status === 'retired' ? [] : automationWorkflowProblems(workflow, catalogue, refs);
     // Module step settings (which email template, letter, posting event) are checked here too, in the same
     // transaction, so every caller is held to "no Live with problems", not only the builder screen.
     if (workflow.module === 'probation' && workflow.status !== 'retired') {
@@ -94,11 +97,16 @@ export async function saveAutomationWorkflow(ctx: SessionContext, input: { workf
         where tenant_id = app.current_tenant_id() and module = 'probation' order by template_id, revision desc limit 500`);
       problems.push(...probationStepParamProblems(workflow, { emailTemplates: templates, letterTemplateIds: null }));
     }
+    if (workflow.module === 'contract_staff' && workflow.status !== 'retired') {
+      const templates = await tx.execute<{id: string; active: boolean; retired: boolean}>(sql`select distinct on (template_id) template_id as id,active,retired from automation_email_template_version where tenant_id=app.current_tenant_id() and module='contract_staff' order by template_id,revision desc limit 500`);
+      const documents = await tx.execute<{id: string}>(sql`select id from automation_document_template where tenant_id=app.current_tenant_id() and module='contract_staff' and not retired and live_version is not null order by id limit 500`);
+      problems.push(...contractStepParamProblems(workflow,{emailTemplates:templates,letterTemplateIds:documents.map(d=>d.id)},refs));
+    }
     if (workflow.status === 'live' && problems.length) throw new AutomationError('invalid', `Fix ${problems.length === 1 ? 'the problem' : `the ${problems.length} problems`} before making it live.`, problems);
     const { status, required, ...definition } = workflow;
     try {
       const [row] = await tx.execute<{ revision: number }>(sql`select app.automation_workflow_save(${workflow.id}::uuid, ${workflow.module}, ${status}, ${required}, ${JSON.stringify(definition)}::jsonb, ${input.expectedRevision}, ${input.reason}) as revision`);
-      return { revision: row.revision, problems, warnings: automationMergeWarnings(workflow, catalogue) };
+      return { revision: row.revision, problems, warnings: [...automationMergeWarnings(workflow, catalogue),...contractWorkflowWarnings(workflow)] };
     } catch (e) { mapDatabaseError(e); }
   });
 }

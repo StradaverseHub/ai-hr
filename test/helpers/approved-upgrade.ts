@@ -225,9 +225,17 @@ export const APPROVED_UPGRADE_TAIL=[
  {idx:5164,when:1793330005464,tag:'5764_probation_routed_holders'},
  {idx:5165,when:1793330005465,tag:'5765_probation_letter_signers'},
  {idx:5166,when:1793330005466,tag:'5766_probation_reshape_company_in_use'},
+ {idx:5200,when:1794841005800,tag:'5800_contract_shared_access'},
+ {idx:5201,when:1794841005801,tag:'5801_contract_shared_flows'},
+ {idx:5202,when:1794841005802,tag:'5802_contract_shared_builders'},
+ {idx:5203,when:1794841005803,tag:'5803_shared_document_templates'},
 ] as const;
 // Final pending 2109/2126 bytes reviewed from engine 128bc2539; no applied-prefix hashes change.
 const APPROVED_UPGRADE_HASHES:Record<string,string>={
+ '5800_contract_shared_access':'5e49150683fd19cd401e930de67dab96b03c40f08f226612b8513274dac9b4ca',
+ '5801_contract_shared_flows':'c615e42b835d815cfbe0bcff98948a3004bedd77264d48102ce8aa1479f338c5',
+ '5802_contract_shared_builders':'174ee40d0f80116d71ae1bafeddbb9e5eaa57de6852c7934d144e89b8124a346',
+ '5803_shared_document_templates':'0fab1cf185f4bde90d5ab8d43703a8a3b4336077f2c41bda426023d491a898f6',
  '5761_probation_automation_recipients_and_tracker_steps':'c39e471adb80e51b56466c264bc6546dc6ce48a354e30d8e9ef3629a82b2184b',
  '5760_probation_queue_kinds_and_pbp_tasks':'c3ab5ddf4c702dd1ca947b3a350c7e852ab8699524c9da7fcad11f19887cdb59',
  '5150_attendance_policy_dated_rounding':'f1549fefc467398d9701ba5428e238134a8ca248fb645046b4b23877280e3408',

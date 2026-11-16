@@ -1,6 +1,7 @@
 import {notFound} from 'next/navigation';
 import {requireScopedLifecycleModule} from '@/lib/scoped-lifecycle-page';
-import {automationAssignmentGroups,automationPeopleNames,automationRoutingOptions,listAutomationEmailTemplates,listAutomationRoutings,listAutomationWorkflows} from '@/packs/automation/service';
+import {automationAssignmentGroups,automationPeopleNames,automationRoutingOptions,listAutomationDocumentTemplates,listAutomationEmailTemplates,listAutomationRoutings,listAutomationWorkflows} from '@/packs/automation/service';
+import {contractWorkflowRecipients} from '@/lib/contract-automation';
 import {automationFilter,automationPageAccess} from '../access';
 import {probationLetterChoices} from '../letter-templates';
 import {PROBATION_DEFAULTS} from '../probation-defaults';
@@ -32,5 +33,15 @@ export default async function Page({searchParams}:{searchParams:Promise<Record<s
   const present=new Set([...stored.map(w=>w.workflow.id),...emails.map(e=>e.template.id),...routings.map(r=>r.routing.id)]);
   defaultsMissing=[...PROBATION_DEFAULTS.workflows,...PROBATION_DEFAULTS.emailTemplates,...PROBATION_DEFAULTS.routings].filter(d=>!present.has(d.id)).length;
  }
- return <WorkflowsWorkspace filter={filter} access={access} workflows={workflows} refs={refs} defaultsMissing={defaultsMissing}/>;
+ let contract:{workflows:ListedWorkflow[];refs:WorkflowEditorReferences}|undefined;
+ if(access.contractStaff&&(filter==='all'||filter==='contract_staff')){
+  const [stored,routings,emails]=await Promise.all([listAutomationWorkflows(ctx,{module:'contract_staff'}),listAutomationRoutings(ctx),listAutomationEmailTemplates(ctx,{module:'contract_staff'})]);
+  const [groups,options,documents]=await Promise.all([automationAssignmentGroups(ctx),automationRoutingOptions(ctx),listAutomationDocumentTemplates(ctx,'contract_staff')]);
+  const personIds=stored.flatMap(w=>contractWorkflowRecipients(w.workflow)).flatMap(r=>r.kind==='person'?[r.userId]:[]);
+  contract={workflows:stored.map(w=>({workflow:w.workflow,revision:w.revision})),refs:{routings:routings.map(r=>({id:r.routing.id,name:r.routing.name,retired:r.retired})),groups,people:await automationPeopleNames(ctx,personIds),
+   emailTemplates:emails.map(e=>({id:e.template.id,name:e.template.name,active:e.template.active,retired:e.retired,subject:e.template.subject})),
+   letterTemplates:documents.filter(d=>!d.retired&&d.liveVersion!==null).map(d=>({id:d.template.id,name:d.template.name})),
+   conditionValues:{businessGroup:options.businessGroups.map(o=>({value:o.id,label:o.name}))}}};
+ }
+ return <WorkflowsWorkspace filter={filter} access={access} workflows={workflows} refs={refs} defaultsMissing={defaultsMissing} contract={contract}/>;
 }

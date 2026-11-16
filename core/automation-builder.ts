@@ -24,7 +24,7 @@ export const MAX_ROUTING_OPTION_TITLES = 1000;
 export const MAX_PEOPLE_NAMES = 500;
 export const MAX_PEOPLE_SEARCH = 20;
 
-export type AutomationBuilderAccess = { probation: boolean; any: boolean };
+export type AutomationBuilderAccess = { probation: boolean; contractStaff: boolean; any: boolean };
 export type AutomationOption = { id: string; name: string };
 export type AutomationRoutingOptions = {
   businessGroups: AutomationOption[];
@@ -48,8 +48,8 @@ export async function automationReferencesTx(tx: Tx, people: readonly string[]):
 /** Who may configure what in the shared builders, as the database answers it (5740). */
 export function automationBuilderAccess(ctx: SessionContext): Promise<AutomationBuilderAccess> {
   return withScopedLifecycleTenant(ctx, async tx => {
-    const [row] = await tx.execute<AutomationBuilderAccess>(sql`select app.automation_can_configure('probation') as probation, app.automation_can_configure_any() as any`);
-    return { probation: !!row?.probation, any: !!row?.any };
+    const [row] = await tx.execute<AutomationBuilderAccess>(sql`select app.automation_can_configure('probation') as probation, app.automation_can_configure('contract_staff') as "contractStaff", app.automation_can_configure_any() as any`);
+    return { probation: !!row?.probation, contractStaff: !!row?.contractStaff, any: !!row?.any };
   });
 }
 
