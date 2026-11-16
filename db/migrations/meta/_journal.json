@@ -6301,6 +6301,13 @@
       "when": 1794841005840,
       "tag": "5840_shared_email_test_asset_source",
       "breakpoints": true
+    },
+    {
+      "idx": 5244,
+      "version": "7",
+      "when": 1794841005844,
+      "tag": "5844_shared_groups_preserve_members",
+      "breakpoints": true
     }
   ]
 }
