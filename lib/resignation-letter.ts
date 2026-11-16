@@ -162,8 +162,7 @@ export function generateResignationLetter(input: GenerateResignationLetterInput,
     personExists: (id: string) => Boolean(id),
   };
   // The shared check's Sign requirement remains Probation's rule. Retention has its own stronger final-step rule.
-  const problems = documentRoutingProblems(routing, references)
-    .filter(problem => problem !== 'At least one step must be a Sign step, or nobody signs the document.');
+  const problems = documentRoutingProblems(routing, references, {requireSign: input.kind === 'retention'});
   let blocks = structuredClone(version.blocks);
   if (!version.routing?.length) {
     // Legacy HR-signature choices remain template configuration. Link only this generated copy to its resolved steps.
