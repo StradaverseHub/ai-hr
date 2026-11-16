@@ -9,5 +9,5 @@ export default async function Page({params,searchParams}:{params:Promise<{id:str
  const [{id},query,s,t]=await Promise.all([params,searchParams,getSession(),getTranslations('resignationJourney')]);
  let value;
  try{value=await resignationCase(s,id);}catch(error){if(error&&typeof error==='object'&&'code'in error&&(error.code==='forbidden'||error.code==='not_found'))notFound();throw error;}
- return <main className="mx-auto max-w-5xl space-y-5"><PageHeader title={t('title')} description={value.number}/><ResignationCaseCard initial={value} today={todayInKualaLumpur()} fyi={value.tasks.some(task=>task.kind==='fyi')&&!value.capabilities.accept&&!value.capabilities.offer} documentId={query.document}/></main>;
+ return <div className="mx-auto max-w-5xl space-y-5"><PageHeader title={t('title')} description={value.number}/><ResignationCaseCard initial={value} today={todayInKualaLumpur()} fyi={value.tasks.some(task=>task.kind==='fyi')&&!value.capabilities.accept&&!value.capabilities.offer} documentId={query.document}/></div>;
 }

@@ -15,7 +15,7 @@ export default async function Page({searchParams}:{searchParams:Promise<Record<s
  const page=await listPersonnelPostings(ctx,{source:'offboarding',status,offset,limit:50}),today=todayInKualaLumpur();
  const href=(next:number,s=status)=>'/lifecycle/offboarding/postings?'+new URLSearchParams({status:s,offset:String(next)});
  const groups=[...new Set(page.rows.map(p=>p.approverGroupName).filter(Boolean))];
- return <main className="mx-auto max-w-7xl space-y-6"><p className="text-sm text-muted-foreground">{t('breadcrumb')}</p><PageHeader title={t('title')} description={t('intro')}/>
+ return <div className="mx-auto max-w-7xl space-y-6"><p className="text-sm text-muted-foreground">{t('breadcrumb')}</p><PageHeader title={t('title')} description={t('intro')}/>
   <ErrorBanner message={one(q.error)}/><p className="text-sm">{groups.length===1?t('approver',{group:groups[0]!}):t('approverPerPosting')}</p>
   <nav className="flex flex-wrap gap-2" aria-label={t('filters')} >{STATUSES.map(s=><Link key={s} className="rounded-lg border px-3 py-2 text-sm aria-[current=page]:bg-muted" aria-current={s===status?'page':undefined} href={href(0,s)}>{t('status.'+s)}</Link>)}</nav>
   <Card className="overflow-x-auto"><table className="w-full text-left text-sm"><thead className="bg-muted/40"><tr>{['posting','employee','source','change','created','status','due','actions'].map(k=><th key={k} className="px-4 py-3 font-medium">{t('columns.'+k)}</th>)}</tr></thead><tbody className="divide-y">
@@ -33,5 +33,5 @@ export default async function Page({searchParams}:{searchParams:Promise<Record<s
      </>}{p.status==='rejected'&&p.canRetry&&<form action={retryOffboardingPostingAction}><input type="hidden" name="postingId" value={p.id}/><ActionButton actionKind="saving" className="rounded-lg border px-3 py-2">{t('retry')}</ActionButton></form>}</div></td>
    </tr>)}
   </tbody></table></Card><p className="text-sm text-muted-foreground">{t('rule')}</p><div className="flex gap-4">{offset>0&&<Link href={href(Math.max(0,offset-page.limit))}>{common('previous')}</Link>}{page.hasMore&&<Link href={href(offset+page.limit)}>{common('next')}</Link>}</div>
- </main>;
+ </div>;
 }
