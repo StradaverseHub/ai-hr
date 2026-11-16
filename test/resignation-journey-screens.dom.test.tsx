@@ -9,7 +9,7 @@ import {ResignationCaseCard} from '../components/resignation/case-card';
 import {ResignationLetterCard} from '../components/resignation/letter-card';
 import {ResignationOffboardingDocuments} from '../components/resignation/offboarding-documents';
 import {ResignationBlockEditor} from '../components/resignation/block-editor';
-import {offerDifference} from '../components/resignation/common';
+import {money,offerDifference,PriorCases} from '../components/resignation/common';
 import {resignationTaskInFilter} from '../components/resignation/task-rows';
 import {ResignationTaskPanel} from '../components/resignation/task-panel';
 import {parseApprovalCategory} from '../lib/approvals-categories';
@@ -17,7 +17,7 @@ const actions=vi.hoisted(()=>({runResignationCommand:vi.fn(),reloadResignationCa
 vi.mock('../app/resignation/actions',()=>actions);
 vi.mock('next/navigation',()=>({useRouter:()=>({refresh:actions.refresh})}));
 const wrap=(node:ReactNode)=>render(<NextIntlClientProvider locale="en" messages={messages} onError={error=>{throw error;}}>{node}</NextIntlClientProvider>);
-const c=(patch:Partial<ResignationCaseView>={}):ResignationCaseView=>({id:'case-a',number:'RSN-42',revision:7,employmentId:'employment-a',employeeName:'Fictional Employee',employeeCode:'F42',companyId:'company-a',companyName:'Fictional Company',businessGroup:'Fictional Group',department:'Finance',position:'Analyst',jobGrade:'G3',currentBasicSalary:'6800.00',stage:'decision',submittedOn:'2026-11-16',lastWorkingDay:'2026-12-16',reason:'Closer to home',noticeLabel:'1 month',earliestLastDay:'2026-12-16',offer:null,offerReplyBy:null,offerRemindOn:null,offerBlock:null,offboardingCaseId:null,replacementNeeded:null,replacementRequest:null,deciders:[{id:'manager',name:'Fictional Manager'}],keptInLoop:[{id:'bp',name:'Fictional BP'}],decisionDueOn:'2026-11-19',comments:[],priorCases:[],attachments:[],letters:[],emails:[],tasks:[],blocked:[],capabilities:{withdraw:false,accept:true,offer:true,comment:false,retry:false},...patch});
+const c=(patch:Partial<ResignationCaseView>={}):ResignationCaseView=>({id:'case-a',number:'RSN-42',revision:7,employmentId:'employment-a',employeeName:'Fictional Employee',employeeCode:'F42',companyId:'company-a',companyName:'Fictional Company',businessGroup:'Fictional Group',department:'Finance',position:'Analyst',jobGrade:'G3',currentBasicSalary:'6800.00',currency:'MYR',stage:'decision',submittedOn:'2026-11-16',lastWorkingDay:'2026-12-16',reason:'Closer to home',noticeLabel:'1 month',earliestLastDay:'2026-12-16',offer:null,offerReplyBy:null,offerRemindOn:null,offerBlock:null,offboardingCaseId:null,replacementNeeded:null,replacementRequest:null,deciders:[{id:'manager',name:'Fictional Manager'}],keptInLoop:[{id:'bp',name:'Fictional BP'}],decisionDueOn:'2026-11-19',comments:[],priorCases:[],attachments:[],letters:[],emails:[],tasks:[],blocked:[],capabilities:{withdraw:false,accept:true,offer:true,comment:false,retry:false},...patch});
 const l=(patch:Partial<ResignationLetterView>={}):ResignationLetterView=>({id:'letter-a',kind:'retention',name:'Fictional retention letter',revision:2,templateVersion:1,generatedOn:'2026-11-16',state:'review',private:false,blocks:[],editableBlocks:null,mergeValues:{},routing:[],sentBack:null,changes:[],downloadUrl:null,opened:false,document:null,capabilities:{open:true,review:false,approve:false,sign:true,sendBack:true,recall:false,edit:false,correct:false,resend:false,withdrawOffer:false,regenerate:false},...patch});
 const task=(patch:Partial<ResignationTaskView>={}):ResignationTaskView=>({id:'task-a',caseId:'case-a',caseNumber:'RSN-42',revision:7,employeeName:'Fictional Employee',employeeCode:'F42',title:'Sign fictional retention letter',kind:'sign',documentId:'letter-a',dueOn:null,overdue:false,team:false,tagged:false,status:'todo',onIt:null,canComment:false,actionable:true,uploadLabel:null,...patch});
 afterEach(()=>{cleanup();vi.clearAllMocks();});
@@ -40,6 +40,11 @@ describe('employee resignation journey',()=>{
   wrap(<EmployeeResignation employmentId="employment-a" initial={{today:'2026-11-16',earliestLastDay:'2026-12-16',noticeLabel:'1 month',unavailableReason:'Ask HR to configure the resignation decision workflow.',canSubmit:false,cases:[]}}/>);
   expect(screen.getByText('Ask HR to configure the resignation decision workflow.')).toBeInTheDocument();expect(screen.queryByRole('button',{name:'Submit resignation'})).not.toBeInTheDocument();
  });
+ it('shows the employee retention comparison in the case currency',()=>{
+  const offer={position:'Analyst',jobGrade:'G4',basicSalary:'7600.00',effectiveDate:'2027-01-01',justification:'Revised terms'};
+  wrap(<EmployeeResignation employmentId="employment-a" initial={{today:'2026-11-16',earliestLastDay:'2026-12-16',noticeLabel:'1 month',unavailableReason:null,canSubmit:false,cases:[c({stage:'offer',currency:'SGD',offer,capabilities:{withdraw:false,accept:false,offer:false,comment:false,retry:false}})]}}/>);
+  expect(screen.getByText('SGD 6,800.00')).toBeInTheDocument();expect(screen.getByText('SGD 7,600.00')).toBeInTheDocument();expect(screen.getByText('Basic salary (per month) · SGD')).toBeInTheDocument();expect(screen.queryByText(/RM |MYR /)).not.toBeInTheDocument();
+ });
  it('allows a new case after retention without deleting earlier history',()=>{
   wrap(<EmployeeResignation employmentId="employment-a" initial={{today:'2026-11-16',earliestLastDay:'2026-12-16',noticeLabel:'1 month',unavailableReason:null,canSubmit:true,cases:[c({stage:'retained',capabilities:{withdraw:false,accept:false,offer:false,comment:false,retry:false}})]}}/>);
   fireEvent.click(screen.getByRole('button',{name:'Submit a new resignation'}));expect(screen.getByRole('button',{name:'Submit resignation'})).toBeInTheDocument();
@@ -58,9 +63,20 @@ describe('manager decision and BP information',()=>{
  });
  it('shows exact monthly difference, the percentage and no allowance field',()=>{
   wrap(<ResignationCaseCard initial={c()} today="2026-11-16"/>);
-  fireEvent.change(screen.getByLabelText('Basic salary (RM / month)'),{target:{value:'7600'}});
-  expect(screen.getByText('+RM 800.00')).toBeInTheDocument();expect(screen.getByText('+11.8%')).toBeInTheDocument();expect(screen.queryByText(/allowance/i)).not.toBeInTheDocument();
-  expect(offerDifference('100.01','100.02')).toEqual({monthly:'+RM 0.01',percent:'+0.0%'});
+  fireEvent.change(screen.getByLabelText('Basic salary (per month) · MYR'),{target:{value:'7600'}});
+  expect(screen.getByText('+MYR 800.00')).toBeInTheDocument();expect(screen.getByText('+11.8%')).toBeInTheDocument();expect(screen.queryByText(/allowance/i)).not.toBeInTheDocument();
+  expect(offerDifference('100.01','100.02','MYR')).toEqual({monthly:'+MYR 0.01',percent:'+0.0%'});
+ });
+ it('labels a foreign-company comparison and its monthly delta with the frozen case currency',()=>{
+  wrap(<ResignationCaseCard initial={c({currency:'SGD'})} today="2026-11-16"/>);fireEvent.change(screen.getByLabelText('Basic salary (per month) · SGD'),{target:{value:'7600'}});expect(screen.getByText('SGD 6,800.00')).toBeInTheDocument();expect(screen.getByText('+SGD 800.00')).toBeInTheDocument();expect(screen.queryByText(/RM |MYR /)).not.toBeInTheDocument();
+ });
+ it('shows bare amounts when currency is unknown and never guesses MYR',()=>{
+  wrap(<ResignationCaseCard initial={c({currency:null})} today="2026-11-16"/>);fireEvent.change(screen.getByLabelText('Basic salary (per month)'),{target:{value:'7600'}});expect(screen.getByText('6,800.00')).toBeInTheDocument();expect(screen.getByText('+800.00')).toBeInTheDocument();expect(screen.queryByText(/RM |MYR |SGD /)).not.toBeInTheDocument();expect(money('123.45',null)).toBe('123.45');expect(money(null,'SGD')).toBe('—');
+ });
+ it('keeps each historical offer in its own currency and does not aggregate different currencies',()=>{
+  const offer={position:'Prior position',jobGrade:'G2',basicSalary:'1000.00',effectiveDate:'2026-01-01',justification:''};
+  wrap(<PriorCases value={c({currency:'SGD',priorCases:[{id:'past-myr',number:'RSN-11',stage:'retained',submittedOn:'2025-01-01',closedOn:'2025-02-01',currency:'MYR',offer},{id:'past-sgd',number:'RSN-12',stage:'retained',submittedOn:'2025-04-01',closedOn:'2025-05-01',currency:'SGD',offer},{id:'past-unknown',number:'RSN-13',stage:'retained',submittedOn:'2025-07-01',closedOn:'2025-08-01',offer}]})}/>);
+  const rows=screen.getAllByRole('listitem');expect(rows[0]).toHaveTextContent('MYR 1,000.00');expect(rows[1]).toHaveTextContent('SGD 1,000.00');expect(rows[2]).toHaveTextContent('1,000.00');expect(rows[2]).not.toHaveTextContent(/MYR|SGD|RM/);expect(screen.queryByText(/3,000.00/)).not.toBeInTheDocument();
  });
  it('keeps FYI view separate from decisions, requires a current comment, and preserves text on failure',async()=>{
   actions.runResignationCommand.mockResolvedValue({ok:false,error:'Stale comment',conflict:true});

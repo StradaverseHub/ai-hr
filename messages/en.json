@@ -41094,7 +41094,8 @@
     "generateClearanceForm": "Generate clearance form",
     "sharedCommunications": "Shared journey communications",
     "sharedCommunicationsHint": "The resignation journey handles this case’s letters, emails and communication workflows. Clearance tasks and return items continue here.",
-    "openSharedConfiguration": "Open shared Configuration"
+    "openSharedConfiguration": "Open shared Configuration",
+    "salaryMonthly": "Basic salary (per month)"
   },
   "offboardingPostings": {
     "breadcrumb": "Onboarding & offboarding / Personnel postings",
