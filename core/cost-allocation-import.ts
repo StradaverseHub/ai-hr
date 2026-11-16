@@ -5,7 +5,7 @@ import {z} from 'zod';
 import {withTenant,type SessionContext,type Tx} from '../db/client';
 import {company,costCenter,employment,employmentCostAllocationHead,employmentCostAllocationSet as allocationSet,employmentCostAllocationRow as allocationRow} from '../db/schema';
 import {assertWorkforceCompanyTx,workforceEmploymentPredicate} from './workforce-access';
-import {accessLockModeHeldTx,inAccessDisplayRead,withAccessDisplayRead} from './access-configuration-lock';
+import {lockAccessConfigurationTx,accessLockModeHeldTx,inAccessDisplayRead,withAccessDisplayRead} from './access-configuration-lock';
 import {joinWorkforceBarrierTx} from './workforce-lock-mode';
 import {lockLabelCriteriaTx,visibleLabelIdsCondition} from './system-labels';
 import {provenCompanyDatesTx} from './employment-company';
@@ -236,6 +236,9 @@ async function lockAllocationWritersTx(tx:Tx,ctx:SessionContext){await tx.execut
 export const costAllocationRevertHandler:ImportRevertHandler={
  kind:'cost_allocations',
  lock:(tx,ctx)=>lockAllocationWritersTx(tx,ctx),
+ // Inspection writes nothing. Shared Access pins authority without serialising other readers.
+ // Confirm retains its exclusive lock and rechecks every revision and the complete preview hash.
+ async previewLock(tx,ctx){await lockAccessConfigurationTx(tx,ctx.tenantId);await joinWorkforceBarrierTx(tx,ctx.tenantId);},
  async inspect(tx,_ctx,items){
   const byEmployment=new Map<string,ImportAttemptItemRow[]>();
   for(const i of items){const list=byEmployment.get(i.employmentId!)??[];list.push(i);byEmployment.set(i.employmentId!,list);}

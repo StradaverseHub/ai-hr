@@ -3,7 +3,7 @@ import { payrollRunLabel } from '@/core/payslip-cycle-label';
 import { notFound } from 'next/navigation';
 import { getLocale, getTranslations } from 'next-intl/server';
 import { requireAdmin } from '@/lib/authz';
-import { batchDetail, listBatches } from '@/core/payroll';
+import { batchSummary, listBatches } from '@/core/payroll';
 import { settingEnabledOrDefault } from '@/core/entitlements';
 import { Button, Card, ErrorBanner, PageHeader, SectionHeader, pageWideCls } from '@/components/ui';
 import { formatMoney } from '@/lib/money';
@@ -98,9 +98,9 @@ export default async function ResetPayrollPage({
   const back = payrollListReturnTo(sp.from);
   const from = back === '/payroll' ? null : back;
 
-  const data = await batchDetail(s, batchId);
+  const data = await batchSummary(s, batchId);
   if (!data) notFound();
-  const { batch, slips } = data;
+  const { batch, slipCount } = data;
 
   // The setting is resolved HERE, not in a reader, and the app/ idiom is deliberate: an
   // entitlements-resolution failure must degrade to the catalog default rather than 500 a route with no
@@ -133,7 +133,7 @@ export default async function ResetPayrollPage({
         : `${tl(`runType.${batch.runType}`)}${batch.remarks ? ` — ${batch.remarks}` : ''}`,
     },
     { label: t('summaryPaymentDate'), value: paymentDate },
-    { label: tl('colEmployees'), value: String(slips.length) },
+    { label: tl('colEmployees'), value: String(slipCount) },
     { label: t('totalNet'), value: formatMoney(totals.net, currency) },
   ];
 

@@ -108,6 +108,38 @@ describe('import history foundation and Cost Center Allocation import (c4055300)
   }finally{await owner.db.execute(sql`DROP TRIGGER import_history_refuse ON employment_cost_allocation_row`);await owner.db.execute(sql`DROP FUNCTION public.import_history_refuse()`);}
  });
 
+ it('reviews the identical revert under shared Access without weakening compensation locks',async()=>{
+  const {attemptId}=await importFile(a,[row('ACME','AC001','ACME-OPS','100')]);
+  const companies=await owner.db.insert(s.company).values(Array.from({length:68},(_,i)=>({tenantId:b.tenantId,legalName:'Fictional revert group '+i}))).returning({id:s.company.id});
+  for(let start=0;start<1000;start+=100){
+   const people=await owner.db.insert(s.person).values(Array.from({length:100},(_,i)=>({tenantId:b.tenantId,fullName:'Fictional revert background '+(start+i),primaryEmail:`revert-${start+i}@example.invalid`}))).returning({id:s.person.id});
+   await owner.db.insert(s.employment).values(people.map((p,i)=>({tenantId:b.tenantId,personId:p.id,companyId:companies[(start+i)%companies.length].id,hiredOn:hireDate})));
+  }
+  const legacy={...costAllocationRevertHandler,previewLock:undefined};
+  const original=await previewImportRevert(a,attemptId,legacy);expect(original.items).toHaveLength(1);expect(original.eligible).toBe(true);
+  const epochs=()=>owner.db.select().from(s.systemLabelCriteriaEpoch).where(eq(s.systemLabelCriteriaEpoch.tenantId,b.tenantId)).orderBy(s.systemLabelCriteriaEpoch.labelKind);
+  const beforeEpochs=await epochs();
+  await owner.db.transaction(async tx=>{
+   await tx.execute(sql`select pg_advisory_xact_lock_shared(hashtextextended(${'access-configuration:'+b.tenantId},0))`);
+   // The old preview tried to upgrade behind this other shared holder and hit the Access wait bound.
+   expect(await previewImportRevertForAttempt(a,attemptId)).toEqual(original);
+   await withTenant(a,async reader=>{
+    await costAllocationRevertHandler.previewLock!(reader,a);
+    const [mode]=await reader.execute<{mode:string}>(sql`select app.access_lock_mode_held(${b.tenantId}::uuid) as mode`);expect(mode.mode).toBe('S');
+   });
+  });
+  expect(await epochs()).toEqual(beforeEpochs);
+  for(const role of s.roleEnum.enumValues)for(const companyId of [null,b.companyId,betaId]){
+   const userId=await createAppUser(b.tenantId,null,'employee');
+   await owner.db.update(s.roleAssignment).set({role,companyId}).where(eq(s.roleAssignment.appUserId,userId));
+   const who:SessionContext={...a,userId,personId:null,roles:[role],grants:[{role,companyId}]};
+   const outcome=async(handler:typeof legacy|typeof costAllocationRevertHandler)=>{try{return{value:await previewImportRevert(who,attemptId,handler)};}catch(e){return{error:String(e)};}};
+   expect(await outcome(costAllocationRevertHandler),`${role}:${companyId??'all'}`).toEqual(await outcome(legacy));
+  }
+  await withTenant(a,async tx=>{await costAllocationRevertHandler.lock!(tx,a);const [mode]=await tx.execute<{mode:string}>(sql`select app.access_lock_mode_held(${b.tenantId}::uuid) as mode`);expect(mode.mode).toBe('X');});
+  expect(await revertImportForAttempt(a,attemptId,{previewHash:original.previewHash,reason:'Fictional reviewed restore'})).toEqual({attemptId,restored:1});
+ },180000);
+
  it('shows before and after per employee, reverts once with a reason, and keeps the audit trail',async()=>{
   const input={employmentId:acmeEmp,effectiveDate:earlier,expectedRevision:0,operation:'replace' as const,rows:[{costCenterId:ccA,percentage:'25'}]};
   await saveEmploymentCostAllocations(a,input,{digest:(await previewEmploymentCostAllocations(a,input)).digest});

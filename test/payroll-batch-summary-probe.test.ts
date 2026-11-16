@@ -5,9 +5,8 @@ import {join} from 'node:path';
 import {afterAll,beforeAll,expect,it,vi} from 'vitest';
 import {and,eq,sql} from 'drizzle-orm';
 import * as s from '../db/schema';
-import {withPayrollTenant} from '../core/module-gate';
 import {lockPayrollHistoryWriteTx} from '../core/payroll-history-lock';
-import {batchDetail,batchHeader,createBatch,generatePayslips,listBatchRecalcPayslipIdentities,payrollRunRegisterPage} from '../core/payroll';
+import {batchDetail,batchHeader,batchSummary,createBatch,generatePayslips,listBatchRecalcPayslipIdentities,payrollRunRegisterPage} from '../core/payroll';
 import {GET as exportRun} from '../app/payroll/[batchId]/export/route';
 import {rowsForRun,transactionDetailReport} from '../app/payroll/[batchId]/transaction-detail-report';
 import {listPayrollRegisterAcross} from '../core/payroll-view';
@@ -23,18 +22,6 @@ import {adminCtx,closeAll,createAppUser,migrateTestDb,owner,resetDb,seedBase} fr
 const auth=vi.hoisted(()=>({current:null as {s:SessionContext;scopeIds:string[]}|null}));
 vi.mock('@/lib/scope',()=>({scopedAdmin:async()=>auth.current}));
 beforeAll(migrateTestDb);afterAll(closeAll);
-
-function countProbe(ctx:SessionContext,batchId:string){
- return withPayrollTenant(ctx,async tx=>{
-  const [batch]=await tx.select().from(s.payrollHistoryEffectiveBatch).where(eq(s.payrollBatch.id,batchId)).limit(1);
-  if(!batch)return null;
-  const [row]=await tx.select({slipCount:sql<number>`count(*)::int`}).from(s.payslip)
-   .innerJoin(s.employment,eq(s.employment.id,s.payslip.employmentId))
-   .innerJoin(s.person,eq(s.person.id,s.employment.personId))
-   .where(eq(s.payslip.batchId,batchId));
-  return{batch,slipCount:row.slipCount};
- });
-}
 
 it('reads the exact effective header and visible slip count without exporting discarded payroll detail',async()=>{
  await resetDb();const b=await seedBase(),root=adminCtx(b),foreign=adminCtx(await seedBase());
@@ -58,6 +45,8 @@ it('reads the exact effective header and visible slip count without exporting di
  await owner.db.update(s.employment).set({voidedAt:new Date(),voidedBy:b.adminUserId,voidReason:'Fictional retained join fixture',voidedImportAttemptId:randomUUID()}).where(eq(s.employment.id,extra[0].employmentId));
  for(const name of ['person','employment','payslip','payroll_batch','role_assignment'])await owner.client.unsafe('analyze public.'+name);
  const worker:SessionContext={...root,userId:await createAppUser(b.tenantId,target.personId,'employee'),personId:target.personId,roles:['employee'],grants:[{role:'employee',companyId:null}]};
+ // Group shape: the count stays SQL-side even when the tenant has seventy companies.
+ await owner.db.insert(s.company).values(Array.from({length:69},(_,i)=>({tenantId:b.tenantId,legalName:'Fictional summary group '+i})));
  const [otherCompany]=await owner.db.insert(s.company).values({tenantId:b.tenantId,legalName:'Fictional out-of-scope company'}).returning({id:s.company.id});
  const [scopedUser]=await owner.db.insert(s.appUser).values({tenantId:b.tenantId,workosUserId:randomUUID()}).returning({id:s.appUser.id});
  await owner.db.insert(s.roleAssignment).values({tenantId:b.tenantId,appUserId:scopedUser.id,role:'hr_admin',companyId:otherCompany.id});
@@ -65,9 +54,18 @@ it('reads the exact effective header and visible slip count without exporting di
  for(const [ctx,id]of [[root,draftId],[root,randomUUID()],[foreign,batchId],[worker,batchId],[scoped,batchId]]as const){
   const old=await batchDetail(ctx,id);
   expect(await batchHeader(ctx,id)).toEqual(old?{batch:old.batch}:null);
-  expect(await countProbe(ctx,id)).toEqual(old?{batch:old.batch,slipCount:old.slips.length}:null);
+  expect(await batchSummary(ctx,id)).toEqual(old?{batch:old.batch,slipCount:old.slips.length}:null);
   const page=parsePageQuery();
   expect(await payrollRunRegisterPage(ctx,id,page)).toEqual(old?{batch:old.batch,closeCycleName:old.batch.status==='processed'?cycle.name:null,runPayslipCount:old.slips.length,slipPage:paginateRows(old.slips.map(({totalDeductions:_d,employerCost:_c,...row})=>row),page)}:null);
+ }
+ // Exercise every native role, group-wide and company-scoped, with real matching assignments.
+ for(const role of s.roleEnum.enumValues)for(const companyId of [null,b.companyId,otherCompany.id]){
+  const userId=await createAppUser(b.tenantId,null,'employee');
+  await owner.db.update(s.roleAssignment).set({role,companyId}).where(eq(s.roleAssignment.appUserId,userId));
+  const who:SessionContext={...root,userId,personId:null,roles:[role],grants:[{role,companyId}]};
+  const outcome=async(read:()=>Promise<unknown>)=>{try{return{value:await read()};}catch(e){return{error:String(e)};}};
+  const old=await outcome(async()=>{const d=await batchDetail(who,batchId);return d?{batch:d.batch,slipCount:d.slips.length}:null;});
+  expect(await outcome(()=>batchSummary(who,batchId)),`${role}:${companyId??'all'}`).toEqual(old);
  }
  const exact=await batchDetail(root,batchId);expect(exact?.slips.length).toBe(1000);expect(exact).not.toBeNull();
  const list=exact!.slips;
@@ -94,8 +92,8 @@ it('reads the exact effective header and visible slip count without exporting di
  const phases=[];
  for(const [name,read,statements]of [
   ['original',()=>batchDetail(root,batchId),2],['register-page',()=>payrollRunRegisterPage(root,batchId,parsePageQuery()),2],['header',()=>batchHeader(root,batchId),1],
-  ['header-warm',()=>batchHeader(root,batchId),1],['count',()=>countProbe(root,batchId),2],
-  ['count-warm',()=>countProbe(root,batchId),2],
+  ['header-warm',()=>batchHeader(root,batchId),1],['count',()=>batchSummary(root,batchId),2],
+  ['count-warm',()=>batchSummary(root,batchId),2],
   ['register-page-repeat',()=>payrollRunRegisterPage(root,batchId,parsePageQuery()),2],['restored-original',()=>batchDetail(root,batchId),2],
  ] as const){
   let elapsedMs=0,bytes=0;
@@ -122,6 +120,7 @@ it('reads the exact effective header and visible slip count without exporting di
  // The ordinary tenant bootstrap runs before the History lock. A queued register read must
  // use the snapshot after the holder commits, including the joined count and the displayed page.
  let waitingRead: ReturnType<typeof payrollRunRegisterPage> | undefined;
+ let waitingSummary: ReturnType<typeof batchSummary> | undefined;
  try {
   await owner.db.transaction(async tx => {
    await lockPayrollHistoryWriteTx(tx, b.tenantId);
@@ -130,6 +129,8 @@ it('reads the exact effective header and visible slip count without exporting di
     voidedAt:new Date(), voidedBy:b.adminUserId, voidReason:'Fictional concurrent history change', voidedImportAttemptId:randomUUID(),
    }).where(eq(s.employment.id, firstPage[0].employmentId));
    waitingRead = payrollRunRegisterPage(root, batchId, parsePageQuery());
+   waitingSummary = batchSummary(root,batchId);
+   void waitingSummary.catch(() => undefined);
    void waitingRead.catch(() => undefined);
    const deadline = performance.now() + 7_000;
    let blocked = false;
@@ -144,10 +145,13 @@ it('reads the exact effective header and visible slip count without exporting di
    expect(blocked, 'register read must wait for the history writer').toBe(true);
   });
   expect((await waitingRead)?.slipPage).toEqual(paginateRows(registerRows.slice(1), parsePageQuery()));
+  expect((await waitingSummary)?.slipCount).toBe(registerRows.length-1);
  } finally {
   await waitingRead?.catch(() => undefined);
+  await waitingSummary?.catch(() => undefined);
  }
+ expect(phases.find(p=>p.name==='count')!.bytes).toBeLessThan(phases.find(p=>p.name==='original')!.bytes/10);
  const bestBeforeMs = Math.min(...phases.filter(p => p.name === 'original' || p.name === 'restored-original').map(p => p.elapsedMs));
  const worstAfterMs = Math.max(...phases.filter(p => p.name.startsWith('register-page')).map(p => p.elapsedMs));
- if(process.env.AIHR_FOCUSED_EVIDENCE_DIR)writeFileSync(join(process.env.AIHR_FOCUSED_EVIDENCE_DIR,'payroll-batch-summary-probe.json'),JSON.stringify({kind:'NATIVE_PAYROLL_BATCH_SUMMARY',releaseEligible:false,physicalMembers:1001,visibleDetailRows:exact?.slips.length,readsPerPhase:5,phases,comparison:{bestBeforeMs,worstAfterMs,noRegression:worstAfterMs<=bestBeforeMs},numericalPayrollCalculationClaim:false},null,2));
+ if(process.env.AIHR_FOCUSED_EVIDENCE_DIR)writeFileSync(join(process.env.AIHR_FOCUSED_EVIDENCE_DIR,'payroll-batch-summary-probe.json'),JSON.stringify({kind:'NATIVE_PAYROLL_BATCH_SUMMARY',releaseEligible:false,physicalMembers:1001,groupCompanies:71,visibleDetailRows:exact?.slips.length,readsPerPhase:5,phases,comparison:{bestBeforeMs,worstAfterMs,noRegression:worstAfterMs<=bestBeforeMs},numericalPayrollCalculationClaim:false},null,2));
 },600000);
