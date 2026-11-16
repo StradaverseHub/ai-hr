@@ -14,7 +14,7 @@ async function main(){
  const {createDb,client}=await import('../db/client'),s=await import('../db/schema');
  const {createAdminChain}=await import('../db/provision'),{completeOnboarding}=await import('../core/onboarding');
  const {resolveEntitlementsTx}=await import('../core/entitlements'),{assignRole,createDepartment,createPosition,createJobGrade}=await import('../core/admin'),{hireEmployee,setEmploymentGrade}=await import('../core/org'),{setCompensation}=await import('../core/comp');
- const {v9Setup,v9SaveConfig,v9Configuration,v9CaseDetail,v9Command,onboardingSaveConfig,resignationEmployeeView,resignationCase,installResignationDefaults}=await import('../packs/lifecycle/service');
+ const {v9Setup,v9SaveConfig,v9Configuration,v9CaseDetail,v9Command,onboardingRegisterContext,onboardingSaveConfig,resignationEmployeeView,resignationCase,installResignationDefaults}=await import('../packs/lifecycle/service');
  const {saveAutomationWorkflow,listAutomationWorkflows,listAutomationRoutings,saveAutomationRouting}=await import('../packs/automation/service');
  const {resignationDefaults,RESIGNATION_DEFAULT_IDS}=await import('../lib/resignation-defaults');
  const {resignationRuntimeKey}=await import('../lib/resignation-runtime-proof');
@@ -59,7 +59,7 @@ async function main(){
    }
    const [configured]=await owner.db.execute<{present:boolean}>(sql`select exists(select 1 from lc_v9_config where tenant_id=${tenantId}::uuid) as present`);if(!configured.present)await v9Setup(root);
    await installResignationDefaults(root);
-   const [native]=await owner.db.execute<{revision:number;data:import('../lib/onboarding-model').Config}>(sql`select revision,data from lc_onboarding_config where tenant_id=${tenantId}::uuid`);if(!native)throw Error('The canonical module access owner is unavailable.');const offboardingActors=actors.filter(actor=>['manager','gbs'].includes(actor.key)).map(actor=>actor.userId);await onboardingSaveConfig(root,native.revision,{...native.data,access:{...native.data.access,offboarding:[...new Set([...native.data.access.offboarding,...offboardingActors])]}});
+   const native=await onboardingRegisterContext(root);if(!native.revision||!native.actor.master)throw Error('The canonical module access owner is unavailable.');const offboardingActors=actors.filter(actor=>['manager','gbs'].includes(actor.key)).map(actor=>actor.userId);await onboardingSaveConfig(root,native.revision,{...native.config,access:{...native.config.access,offboarding:[...new Set([...native.config.access.offboarding,...offboardingActors])]}});
    const projection=await v9Configuration(root),config=structuredClone(projection.config!);if(!config)throw Error('Lifecycle configuration required.');
    const gbs=actors.find(actor=>actor.key==='gbs')!,ceo=actors.find(actor=>actor.key==='ceo')!,bp=actors.find(actor=>actor.key==='bp')!,groupId=config.peopleOpsGroup;
    if(!groupId)throw Error('The default installer must establish its configured GBS group.');
