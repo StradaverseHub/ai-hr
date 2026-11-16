@@ -1,0 +1,15 @@
+# Resignation runtime verifier
+
+Migration 9991 intentionally fails closed until the release operator provisions its verifier. Follow repository environment policy and the staging queue/lease; this file grants no production deployment authority.
+
+The application derives a dedicated `aihr-resignation-runtime-v1` HMAC key from the existing protected `AUTH_SESSION_KEY`. It does not reuse the organisation admission key, decrypt credentials, or give the application database role owner access. Native SQL authorizes each current actor and command; exact derived JSON is accepted only with a short-lived proof bound to that actor, tenant and database transaction. Private aggregate reads use separately signed scopes.
+
+After applying the reviewed migration, use the confirmed installation's protected operator environment containing `AUTH_SESSION_KEY`, `AUTH_PUBLIC_ORIGIN` and `MIGRATION_DATABASE_URL`, and its accepted checkout/runtime:
+
+```sh
+node --env-file=/absolute/path/to/protected-operator.env --import tsx scripts/provision-resignation-runtime.ts
+```
+
+Use no shell tracing or environment dumps. Never pass secret values on the command line. The helper runs as the restricted schema owner and prints only a success/refusal message. Repeating it with the same key is idempotent; a differing key is refused and requires a separately reviewed rotation. Keep owner credentials outside the web service.
+
+Capture candidate/migration identities and the provisioning exit status in the release receipt. Verify a real authorized command, unauthorized native app-role mutations, case privacy and the missing-verifier failure. A missing verifier is an installation configuration failure, never permission to fall back to an unsigned writer or reader. Key rotation must update the server key and dedicated verifier atomically with the installation's existing authentication rotation procedure.
