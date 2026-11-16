@@ -48,7 +48,7 @@ BEGIN
  PERFORM pg_advisory_xact_lock(hashtextextended('automation-email-template:'||t::text||':'||p_template::text,0));
  SELECT * INTO v FROM public.automation_email_template_version WHERE tenant_id=t AND template_id=p_template ORDER BY revision DESC LIMIT 1;
  IF v.revision IS DISTINCT FROM p_revision OR v.module IS DISTINCT FROM p_module OR v.retired THEN RAISE EXCEPTION 'The email template changed. Save and reload before uploading' USING ERRCODE='40001';END IF;
- IF p_kind NOT IN('file','image') OR length(p_name) NOT BETWEEN 1 AND 180 OR p_name~'[[:cntrl:]/\\:]' OR octet_length(p_bytes) NOT BETWEEN 1 AND CASE WHEN p_kind='image' THEN 1048576 ELSE 10485760 END THEN RAISE EXCEPTION 'Choose a supported file within the upload limit' USING ERRCODE='22023';END IF;
+ IF p_kind NOT IN('file','image') OR length(p_name) NOT BETWEEN 1 AND 180 OR p_name~'[[:cntrl:]/\\:]' OR octet_length(p_bytes) NOT BETWEEN 1 AND (CASE WHEN p_kind='image' THEN 1048576 ELSE 10485760 END) THEN RAISE EXCEPTION 'Choose a supported file within the upload limit' USING ERRCODE='22023';END IF;
  IF p_case IS NOT NULL THEN
   IF p_kind<>'file' OR NOT EXISTS(SELECT 1 FROM jsonb_array_elements(coalesce(v.file_slots,'[]'::jsonb)) slot WHERE slot->>'id'=p_slot) THEN RAISE EXCEPTION 'Choose a file slot from this email template' USING ERRCODE='22023';END IF;
   SELECT data->'period'->>'sourceRevision' INTO period FROM public.contract_shared_case WHERE tenant_id=t AND case_id=p_case;
