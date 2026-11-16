@@ -291,6 +291,7 @@ it('stops on a cross-tenant row, then validates every company/tenant key without
    '5770_attendance_workflow_approver_codes',
    // Architecture/performance: shared Access for the existing assistant metadata index.
    '5771_assistant_legacy_index_shared_access',
+   '5880_own_leave_shared_access',
   ]);
   const stagingPrefix=journal.entries.slice(0,performanceStart);
   expect(stagingPrefix.filter(row=>row.tag==='3900_individual_transaction_calculation_method')).toHaveLength(1);

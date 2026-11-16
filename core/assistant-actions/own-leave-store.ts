@@ -284,6 +284,8 @@ export async function confirmOwnLeaveReview(supplied: SessionContext, confirmati
 export async function listOwnLeaveReviewsTx(tx:Tx,supplied:SessionContext):Promise<z.infer<typeof OwnLeaveReviewIndexResult>>{
   const ctx=captureContext(supplied);
   try{
+    // This owner is metadata-only. Enforce the shared principal carrier for every caller.
+    await tx.execute(sql`set transaction read only`);
     await boundNativeOutcomeTransactionTx(tx);
     // Carrier tenant/login, read-committed isolation, live unblocked login, current roles/grants AND
     // u.person_id = ctx.personId, under the Access interval every relink/role writer joins.

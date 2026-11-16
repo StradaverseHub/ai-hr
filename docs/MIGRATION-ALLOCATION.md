@@ -1,3 +1,15 @@
+<!-- 5880_own_leave_shared_access -->
+# Own Leave shared discovery and privacy expiry — 17 November 2026 MYT (unapplied; release held)
+
+Branch `codex/performance-ownleave-payroll-20261117` reserves `5880_own_leave_shared_access` at idx 5280 / when 1794841005880.
+SHA256 `843ded0c0542c47360989ef70f54dd6eed10c1d9aa5abe7cfa3b191e6e5d1f0c`. Fresh read-only watermarks: staging883 /1793330005471, production853 /1793330005395.
+Thirty-five recently updated local/remote branch journals were checked for coordinate conflicts. The timestamp
+is above the observed Contract successor reservations (through1794841005812); idx follows the observed Recruitment
+reservation5277. Recheck all peer claims and both installations before release; this allocation grants no installation authority.
+The three ai_hr_owner functions retain exact custody, principal freshness, expiry limits/row locks and body deletion.
+A predecessor body/owner guard refuses unreviewed replacements. SQL metadata admission now permits read-only carriers;
+its Access lock and the two privacy-only expiry owners share Access. Prepare/reopen/confirm/retire authority is unchanged.
+
 <!-- 5771_assistant_legacy_index_shared_access -->
 # Assistant metadata discovery shares Access — 16 November 2026 MYT (source allocation; installation held)
 
