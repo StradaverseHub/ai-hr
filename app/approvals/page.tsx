@@ -178,13 +178,13 @@ function DecideButtons({
 export default async function ApprovalsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ error?: string; sort?: string; category?: string; leaveFilter?:string|string[]; claimsPage?:string;claimsSize?:string;task?:string|string[];requestId?:string|string[] }>;
+  searchParams: Promise<{ error?: string; sort?: string; category?: string; leaveFilter?:string|string[]; claimsPage?:string;claimsSize?:string;resignationPage?:string;resignationSize?:string;task?:string|string[];requestId?:string|string[] }>;
 
 }) {
   const { s, scopeIds } = await scopedSession();
   const admin=isAdmin(s),manager=(s.roles??[]).includes('manager');
   const attendanceOn=isModuleEnabledOrFalse(s,'attendance'),claimsOn=isModuleEnabledOrFalse(s,'claims');
-  const {error,sort:sortParam,category:categoryParam,claimsPage,claimsSize,task,requestId,leaveFilter}=await searchParams;
+  const {error,sort:sortParam,category:categoryParam,claimsPage,claimsSize,resignationPage,resignationSize,task,requestId,leaveFilter}=await searchParams;
 
   let focus:AssignedApprovalFocus|null;
   try{focus=parseAssignedApprovalFocus(task,requestId);}catch{notFound();}
@@ -199,23 +199,24 @@ export default async function ApprovalsPage({
   // very queue the Rewards provider projects — reading them again would admit a viewer to an inbox
   // with nothing on it, or count one Rewards unit twice.
   // Probation Approve steps: the same bounded owner the task list's Probation source reads (migration 5751).
+  const resignationQuery=parsePageQuery({page:resignationPage,size:['200','all'].includes(resignationSize??'')?'100':resignationSize});
   const probationOn=isModuleEnabledOrFalse(s,'lifecycle')||!!s.entitlements?.scopedModules.lifecycle?.length;
   const [rewardReviews,probationApprovals,assignedAttendance,assignedTasks,resignationWork]=await Promise.all([
     !focus&&isModuleEnabledOrFalse(s,'rewards')?pendingRewardReviews(s,scopeIds):Promise.resolve([]),
     !focus&&probationOn?probationTaskList(s,{category:'approval',companyIds:scopeIds}):Promise.resolve({count:0,capped:false,items:[]}),
     focus?Promise.resolve(focus.kind==='attendance'):attendanceOn?hasPendingAttendanceParticipantAssignment(s):Promise.resolve(false),
     !focus&&!admin&&!manager?listPendingTasks(s,scopeIds,{attendance:attendanceOn,claims:claimsOn,performance:false,rewards:false,probation:false},{noticeAcknowledgements:false}):Promise.resolve([]),
-    !focus&&probationOn?resignationInbox(s,{kind:'approvals',companyIds:scopeIds}):Promise.resolve({items:[],total:0,cases:[],actionableTotal:0,fyiTotal:0}),
+    !focus&&probationOn?resignationInbox(s,{kind:'approvals',companyIds:scopeIds,limit:resignationQuery.limit,offset:resignationQuery.offset}):Promise.resolve({items:[],total:0,cases:[],actionableTotal:0,fyiTotal:0}),
   ]);
-  if(!focus&&!admin&&!manager&&!resignationWork.items.length&&!rewardReviews.length&&!probationApprovals.items.length&&!assignedAttendance&&!assignedTasks.length)redirect('/');
-  const attendanceOnly=!admin&&!manager&&!resignationWork.items.length&&!rewardReviews.length&&!probationApprovals.items.length&&assignedAttendance&&assignedTasks.every(task=>task.kind==='attendance');
+  if(!focus&&!admin&&!manager&&!resignationWork.total&&!rewardReviews.length&&!probationApprovals.items.length&&!assignedAttendance&&!assignedTasks.length)redirect('/');
+  const attendanceOnly=!admin&&!manager&&!resignationWork.total&&!rewardReviews.length&&!probationApprovals.items.length&&assignedAttendance&&assignedTasks.every(task=>task.kind==='attendance');
   if(admin&&categoryParam==='profileChanges')redirect('/admin/personnel/profile-changes');
   // Approvals sort (09cda965): display-only ordering, read from ?sort= so it survives reload + bulk
   // selection. Default (latest-first) matches every loader's existing desc(createdAt).
   const sort = parseApprovalSort(sortParam);
   // Category panel (2dec6406): the selected approval area. Unknown values AND admin-only categories for a
   // non-admin viewer coerce to 'all' (the full inbox — today's page, unchanged).
-  const parsedCategory = parseApprovalCategory(focus?assignedApprovalCategory(focus.kind):categoryParam, { admin, resignationAccess:resignationWork.items.length>0 });
+  const parsedCategory = parseApprovalCategory(focus?assignedApprovalCategory(focus.kind):categoryParam, { admin, resignationAccess:resignationWork.total>0 });
   const category = attendanceOnly && !['all','attendance','overtime'].includes(parsedCategory) ? 'all' : parsedCategory;
   const t = await getTranslations('approvals');
   const tResignation=await getTranslations('resignationJourney');
@@ -492,7 +493,7 @@ export default async function ApprovalsPage({
       {/* 2dec6406: internal approval-task panel — INSIDE the page, between the main sidebar and the content.
           Sticky + independently scrollable on lg; below lg the same markup stacks above the content. */}
       {!focus&&<aside className="w-full shrink-0 lg:sticky lg:top-0 lg:max-h-screen lg:w-60 lg:overflow-y-auto">
-        <CategoryPanel category={category} sort={sortParam} counts={pendingCounts} allCount={allPending} admin={admin} attendanceOnly={attendanceOnly} resignationAccess={resignationWork.items.length>0} resignationFyiCount={resignationWork.fyiTotal} />
+        <CategoryPanel category={category} sort={sortParam} counts={pendingCounts} allCount={allPending} admin={admin} attendanceOnly={attendanceOnly} resignationAccess={resignationWork.total>0} resignationFyiCount={resignationWork.fyiTotal} />
       </aside>}
     <div className="min-w-0 flex-1 space-y-6">
       {/* 8cb7b089: on arrival at /approvals#approvals-leave(-cancellation) — the calendar pill deep-links —
@@ -1149,7 +1150,7 @@ export default async function ApprovalsPage({
       )}
 
 
-      {visible('resignations')&&resignationWork.items.length>0&&<section aria-label={t('resignations')} className="space-y-4"><div className="flex flex-wrap gap-3 text-sm text-muted-foreground"><span>{tResignation('decisionCount',{count:resignationWork.actionableTotal})}</span><span>{tResignation('fyiCount',{count:resignationWork.fyiTotal})}</span></div>{resignationWork.cases.map(value=><ResignationCaseCard key={value.id} initial={value} today={todayInKualaLumpur()} fyi={!resignationWork.items.some(item=>item.caseId===value.id&&item.kind!=='fyi'&&item.actionable)}/>)}{resignationWork.total>resignationWork.items.length&&<p className="text-sm text-muted-foreground">{tResignation('moreItems',{shown:resignationWork.items.length,total:resignationWork.total})}</p>}</section>}
+      {visible('resignations')&&resignationWork.total>0&&<section aria-label={t('resignations')} className="space-y-4"><div className="flex flex-wrap gap-3 text-sm text-muted-foreground"><span>{tResignation('decisionCount',{count:resignationWork.actionableTotal})}</span><span>{tResignation('fyiCount',{count:resignationWork.fyiTotal})}</span></div>{resignationWork.cases.map(value=><ResignationCaseCard key={value.id} initial={value} today={todayInKualaLumpur()} fyi={!resignationWork.items.some(item=>item.caseId===value.id&&item.kind!=='fyi'&&item.actionable)}/>)}<Pager maxPageSize={100} state={pageState(resignationQuery,resignationWork.total,resignationWork.items.length)} basePath="/approvals" params={{category,sort:sortParam,claimsPage,claimsSize}} paramNames={{page:"resignationPage",size:"resignationSize"}}/></section>}
       {admin && visible('resignations') && (resignations.length>0||!resignationWork.items.length) && (
         <Card className="overflow-hidden">
           <SectionHeader title={t('resignations')} count={resignations.length} />

@@ -40905,7 +40905,7 @@
     "reason": "เหตุผล",
     "reasonOptional": "เหตุผล (ไม่บังคับ)",
     "supporting": "เอกสารประกอบ (ไม่บังคับ)",
-    "fileHint": "PDF, JPG หรือ PNG ขนาดไม่เกินไฟล์ละ 10 MB",
+    "fileHint": "PDF, JPG or PNG, up to 10 MB in total.",
     "submit": "ส่งคำขอลาออก",
     "submitting": "กำลังส่ง…",
     "newCase": "ส่งคำขอลาออกใหม่",
@@ -41067,7 +41067,12 @@
     "saveEmail": "บันทึกอีเมล",
     "preview": "ดูตัวอย่าง",
     "missingFields": "ฟิลด์เหล่านี้ไม่มีค่า: {fields} โดยจะแสดงเป็น — ในจดหมาย",
-    "loading": "กำลังโหลดการลาออก…"
+    "loading": "กำลังโหลดการลาออก…",
+    "replacementRequested": "Replacement recruitment requested on {date}.",
+    "replacementCompleted": "Replacement recruitment recorded on {date}.",
+    "replacementReference": "Recruitment reference URL",
+    "replacementComplete": "Record recruitment handoff",
+    "replacementHint": "Arrange the replacement in your recruitment system, then add its reference URL to complete this handoff."
   },
   "offboardingPostings": {
     "breadcrumb": "การรับเข้าและออกจากงาน / รายการเปลี่ยนแปลงบุคลากร",

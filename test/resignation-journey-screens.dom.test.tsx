@@ -16,7 +16,7 @@ const actions=vi.hoisted(()=>({runResignationCommand:vi.fn(),reloadResignationCa
 vi.mock('../app/resignation/actions',()=>actions);
 vi.mock('next/navigation',()=>({useRouter:()=>({refresh:actions.refresh})}));
 const wrap=(node:ReactNode)=>render(<NextIntlClientProvider locale="en" messages={messages} onError={error=>{throw error;}}>{node}</NextIntlClientProvider>);
-const c=(patch:Partial<ResignationCaseView>={}):ResignationCaseView=>({id:'case-a',number:'RSN-42',revision:7,employmentId:'employment-a',employeeName:'Fictional Employee',employeeCode:'F42',companyId:'company-a',companyName:'Fictional Company',businessGroup:'Fictional Group',department:'Finance',position:'Analyst',jobGrade:'G3',currentBasicSalary:'6800.00',stage:'decision',submittedOn:'2026-11-16',lastWorkingDay:'2026-12-16',reason:'Closer to home',noticeLabel:'1 month',earliestLastDay:'2026-12-16',offer:null,offerReplyBy:null,offerRemindOn:null,offerBlock:null,offboardingCaseId:null,replacementNeeded:null,deciders:[{id:'manager',name:'Fictional Manager'}],keptInLoop:[{id:'bp',name:'Fictional BP'}],decisionDueOn:'2026-11-19',comments:[],priorCases:[],attachments:[],letters:[],emails:[],tasks:[],blocked:[],capabilities:{withdraw:false,accept:true,offer:true,comment:false,retry:false},...patch});
+const c=(patch:Partial<ResignationCaseView>={}):ResignationCaseView=>({id:'case-a',number:'RSN-42',revision:7,employmentId:'employment-a',employeeName:'Fictional Employee',employeeCode:'F42',companyId:'company-a',companyName:'Fictional Company',businessGroup:'Fictional Group',department:'Finance',position:'Analyst',jobGrade:'G3',currentBasicSalary:'6800.00',stage:'decision',submittedOn:'2026-11-16',lastWorkingDay:'2026-12-16',reason:'Closer to home',noticeLabel:'1 month',earliestLastDay:'2026-12-16',offer:null,offerReplyBy:null,offerRemindOn:null,offerBlock:null,offboardingCaseId:null,replacementNeeded:null,replacementRequest:null,deciders:[{id:'manager',name:'Fictional Manager'}],keptInLoop:[{id:'bp',name:'Fictional BP'}],decisionDueOn:'2026-11-19',comments:[],priorCases:[],attachments:[],letters:[],emails:[],tasks:[],blocked:[],capabilities:{withdraw:false,accept:true,offer:true,comment:false,retry:false},...patch});
 const l=(patch:Partial<ResignationLetterView>={}):ResignationLetterView=>({id:'letter-a',kind:'retention',name:'Fictional retention letter',revision:2,templateVersion:1,generatedOn:'2026-11-16',state:'review',private:false,blocks:[],editableBlocks:null,mergeValues:{},routing:[],sentBack:null,changes:[],downloadUrl:null,opened:false,document:null,capabilities:{open:true,review:false,approve:false,sign:true,sendBack:true,recall:false,edit:false,correct:false,resend:false,withdrawOffer:false},...patch});
 const task=(patch:Partial<ResignationTaskView>={}):ResignationTaskView=>({id:'task-a',caseId:'case-a',caseNumber:'RSN-42',revision:7,employeeName:'Fictional Employee',employeeCode:'F42',title:'Sign fictional retention letter',kind:'sign',documentId:'letter-a',dueOn:null,overdue:false,team:false,tagged:false,status:'todo',onIt:null,canComment:false,actionable:true,uploadLabel:null,...patch});
 afterEach(()=>{cleanup();vi.clearAllMocks();});
@@ -66,6 +66,24 @@ describe('manager decision and BP information',()=>{
   await waitFor(()=>expect(actions.runResignationCommand).toHaveBeenCalledWith({caseId:'case-a',revision:7,command:{type:'comment',text:'Latest comment'}}));expect(screen.getByLabelText('Add a comment')).toHaveValue('Latest comment');
   expect(screen.getByRole('button',{name:'Reload case'})).toBeInTheDocument();
  });
+ it('acts on an assigned general workflow approval without granting a letter decision',async()=>{
+  actions.runResignationCommand.mockResolvedValue({ok:true,value:c({tasks:[],capabilities:{withdraw:false,accept:false,offer:false,comment:false,retry:false}})});
+  wrap(<ResignationCaseCard initial={c({tasks:[task({kind:'approve',documentId:null,title:'Approval from configured workflow'})],capabilities:{withdraw:false,accept:false,offer:false,comment:false,retry:false}})} today="2026-11-16"/>);
+  expect(screen.queryByRole('radio')).not.toBeInTheDocument();fireEvent.click(screen.getByRole('button',{name:'Approve and pass on'}));
+  await waitFor(()=>expect(actions.runResignationCommand).toHaveBeenCalledWith({caseId:'case-a',revision:7,command:{type:'approvalTask',taskId:'task-a',action:'approve'}}));
+ });
+ it('requires a live rejection reason for an assigned approval',async()=>{
+  actions.runResignationCommand.mockResolvedValue({ok:false,error:'Keep the reason'});
+  wrap(<ResignationCaseCard initial={c({tasks:[task({kind:'approve',documentId:null})],capabilities:{withdraw:false,accept:false,offer:false,comment:false,retry:false}})} today="2026-11-16"/>);
+  const reject=screen.getByRole('button',{name:'Reject'});expect(reject).toBeDisabled();fireEvent.change(screen.getByLabelText('Rejection explanation (required)'),{target:{value:'The offered grade needs review'}});fireEvent.click(reject);
+  await waitFor(()=>expect(actions.runResignationCommand).toHaveBeenCalledWith({caseId:'case-a',revision:7,command:{type:'approvalTask',taskId:'task-a',action:'reject',comment:'The offered grade needs review'}}));expect(screen.getByLabelText('Rejection explanation (required)')).toHaveValue('The offered grade needs review');
+ });
+ it('saves the latest case email override and preserves its draft on refusal',async()=>{
+  actions.runResignationCommand.mockResolvedValue({ok:false,error:'Retry this email'});
+  wrap(<ResignationCaseCard initial={c({emails:[{id:'email-a',name:'Case email',subject:'Original',body:'Dear {employee.name}',editable:true}],capabilities:{withdraw:false,accept:false,offer:false,comment:false,retry:false}})} today="2026-11-16"/>);
+  fireEvent.click(screen.getByRole('button',{name:'Edit email for this person'}));fireEvent.change(screen.getByLabelText('Subject'),{target:{value:'Updated subject'}});fireEvent.change(screen.getByLabelText('Email body'),{target:{value:'Updated {employee.name}'}});fireEvent.click(screen.getByRole('button',{name:'Save email'}));
+  await waitFor(()=>expect(actions.runResignationCommand).toHaveBeenCalledWith({caseId:'case-a',revision:7,command:{type:'updateEmail',emailTemplateId:'email-a',subject:'Updated subject',body:'Updated {employee.name}'}}));expect(screen.getByLabelText('Subject')).toHaveValue('Updated subject');
+ });
  it('only enables the resignation category through explicit managed assignment access',()=>{
   expect(parseApprovalCategory('resignations',{admin:false})).toBe('all');expect(parseApprovalCategory('resignations',{admin:false,resignationAccess:true})).toBe('resignations');expect(parseApprovalCategory('hrReviews',{admin:false,resignationAccess:true})).toBe('all');
  });
@@ -85,6 +103,11 @@ describe('letter privacy and consent',()=>{
   fireEvent.change(screen.getByLabelText('Why does the letter need changes?'),{target:{value:'Change the latest effective date'}});fireEvent.click(screen.getByRole('button',{name:'Send back for changes'}));expect(command).toHaveBeenCalledWith({type:'sendBack',documentId:'letter-a',documentRevision:2,reason:'Change the latest effective date'});
   cleanup();wrap(<ResignationLetterCard value={view} letter={l({capabilities:{...l().capabilities,sendBack:false,sign:false,edit:true}})} busy={false} command={command}/>);expect(screen.queryByRole('button',{name:'Send back for changes'})).not.toBeInTheDocument();
  });
+ it('edits raw case blocks without replacing live merge tokens with displayed facts',()=>{
+  const command=vi.fn(async()=>true),source=[{id:'text-a',type:'text' as const,text:'Dear {employee.name}',section:''}];
+  wrap(<ResignationLetterCard value={c()} letter={l({blocks:[{...source[0],text:'Dear sampled name'}],editableBlocks:source,capabilities:{...l().capabilities,edit:true,sign:false,sendBack:false}})} busy={false} command={command}/>);
+  fireEvent.click(screen.getByRole('button',{name:'Update letter'}));expect(screen.getByLabelText('1. Text')).toHaveValue('Dear {employee.name}');fireEvent.click(screen.getByRole('button',{name:'Save letter changes'}));expect(command).toHaveBeenCalledWith({type:'updateLetter',documentId:'letter-a',documentRevision:2,blocks:source});
+ });
  it('does not render protected text when letter content is private',()=>{
   wrap(<ResignationLetterCard value={c()} letter={l({private:true,blocks:[{id:'secret',type:'text',text:'Private proposed terms',section:''}],capabilities:{...l().capabilities,open:false,sign:false,sendBack:false}})} busy={false} command={vi.fn(async()=>true)}/>);
   expect(screen.queryByText('Private proposed terms')).not.toBeInTheDocument();expect(screen.getByText('The letter is private until it reaches you.')).toBeInTheDocument();
@@ -98,6 +121,13 @@ describe('task rows and block editing',()=>{
  it('opens a labelled side panel and dismisses it through Escape/cancel',()=>{
   const close=vi.fn();wrap(<ResignationTaskPanel task={task()} initial={c()} today="2026-11-16" close={close} complete={vi.fn()}/>);
   const panel=screen.getByRole('dialog',{name:'Sign fictional retention letter'});expect(panel).toHaveAttribute('open');fireEvent(panel,new Event('cancel',{bubbles:false,cancelable:true}));expect(close).toHaveBeenCalledOnce();
+ });
+ it('records a permitted recruitment handoff and closes a completed task',async()=>{
+  const complete=vi.fn(),item=task({kind:'recruitment',documentId:null,title:'Arrange replacement recruitment'}),value=c({tasks:[item],replacementRequest:{id:'replacement-a',status:'requested',requestedOn:'2026-11-16',reference:null,completedOn:null},capabilities:{withdraw:false,accept:false,offer:false,comment:false,retry:false}});
+  actions.runResignationCommand.mockResolvedValue({ok:true,value:{...value,tasks:[],replacementRequest:{...value.replacementRequest!,status:'completed',reference:'https://recruitment.example.test/request/42',completedOn:'2026-11-17'}}});
+  wrap(<ResignationTaskPanel task={item} initial={value} today="2026-11-16" close={vi.fn()} complete={complete}/>);
+  expect(screen.getByRole('button',{name:'Record recruitment handoff'})).toBeDisabled();fireEvent.change(screen.getByLabelText('Recruitment reference URL'),{target:{value:'https://recruitment.example.test/request/42'}});fireEvent.submit(screen.getByRole('button',{name:'Record recruitment handoff'}).closest('form')!);
+  await waitFor(()=>expect(actions.runResignationCommand).toHaveBeenCalledWith({caseId:'case-a',revision:7,command:{type:'completeReplacement',taskId:'task-a',reference:'https://recruitment.example.test/request/42'}}));await waitFor(()=>expect(complete).toHaveBeenCalledOnce());
  });
  it('edits table cells and rows while leaving letterhead and signatures protected',()=>{
   const change=vi.fn();wrap(<ResignationBlockEditor busy={false} onChange={change} blocks={[{id:'head',type:'letterhead',text:'',section:''},{id:'table',type:'table',text:'',section:'',columns:'Term | Offered',rows:'Grade | G4'},{id:'sig',type:'signature',text:'',section:''}]}/>);

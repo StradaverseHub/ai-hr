@@ -40905,7 +40905,7 @@
     "reason": "Reason",
     "reasonOptional": "Reason (optional)",
     "supporting": "Supporting documents (optional)",
-    "fileHint": "PDF, JPG or PNG, up to 10 MB each.",
+    "fileHint": "PDF, JPG or PNG, up to 10 MB in total.",
     "submit": "Submit resignation",
     "submitting": "Submitting…",
     "newCase": "Submit a new resignation",
@@ -41067,7 +41067,12 @@
     "saveEmail": "Save email",
     "preview": "Preview",
     "missingFields": "These fields have no value: {fields}. They will appear as — in the letter.",
-    "loading": "Loading resignation…"
+    "loading": "Loading resignation…",
+    "replacementRequested": "Replacement recruitment requested on {date}.",
+    "replacementCompleted": "Replacement recruitment recorded on {date}.",
+    "replacementReference": "Recruitment reference URL",
+    "replacementComplete": "Record recruitment handoff",
+    "replacementHint": "Arrange the replacement in your recruitment system, then add its reference URL to complete this handoff."
   },
   "offboardingPostings": {
     "breadcrumb": "Onboarding & offboarding / Personnel postings",

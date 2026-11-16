@@ -40905,7 +40905,7 @@
     "reason": "காரணம்",
     "reasonOptional": "காரணம் (விருப்பத்தேர்வு)",
     "supporting": "ஆதார ஆவணங்கள் (விருப்பத்தேர்வு)",
-    "fileHint": "PDF, JPG அல்லது PNG; ஒவ்வொன்றும் அதிகபட்சம் 10 MB.",
+    "fileHint": "PDF, JPG or PNG, up to 10 MB in total.",
     "submit": "பணி விலகலைச் சமர்ப்பிக்கவும்",
     "submitting": "சமர்ப்பிக்கப்படுகிறது…",
     "newCase": "புதிய பணி விலகலைச் சமர்ப்பிக்கவும்",
@@ -41067,7 +41067,12 @@
     "saveEmail": "மின்னஞ்சலைச் சேமிக்கவும்",
     "preview": "முன்னோட்டம்",
     "missingFields": "இந்தப் புலங்களுக்கு மதிப்பு இல்லை: {fields}. கடிதத்தில் அவை — எனக் காட்டப்படும்.",
-    "loading": "பணி விலகல் ஏற்றப்படுகிறது…"
+    "loading": "பணி விலகல் ஏற்றப்படுகிறது…",
+    "replacementRequested": "Replacement recruitment requested on {date}.",
+    "replacementCompleted": "Replacement recruitment recorded on {date}.",
+    "replacementReference": "Recruitment reference URL",
+    "replacementComplete": "Record recruitment handoff",
+    "replacementHint": "Arrange the replacement in your recruitment system, then add its reference URL to complete this handoff."
   },
   "offboardingPostings": {
     "breadcrumb": "பணிச்சேர்க்கை & பணிவெளியேற்றம் / பணியாளர் மாற்றப் பதிவுகள்",
