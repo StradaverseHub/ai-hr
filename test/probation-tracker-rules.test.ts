@@ -21,6 +21,12 @@ describe('tracker row action',()=>{
   expect(probationRowAction(row({letterWaiting:{partId:'p'}}),today)).toBe('review_letter');
   expect(probationRowAction(row({parts:[{state:'locked',dueOn:'2026-11-01',scoreBand:2}]}),today)).toBe('record_action');
   expect(probationRowAction(row({parts:[{state:'locked',dueOn:'2026-11-01',scoreBand:3}]}),today)).toBe('open');
+  // I3: the case's own low band decides, and the action clears once the PBP records it.
+  expect(probationRowAction(row({lowBand:3,parts:[{state:'locked',dueOn:'2026-11-01',scoreBand:3}]}),today)).toBe('record_action');
+  expect(probationRowAction(row({lowBand:1,parts:[{state:'locked',dueOn:'2026-11-01',scoreBand:2}]}),today)).toBe('open');
+  expect(probationRowAction(row({parts:[{state:'pending_approval',dueOn:'2026-12-01',scoreBand:1}]}),today)).toBe('record_action');
+  expect(probationRowAction(row({parts:[{state:'locked',dueOn:'2026-11-01',scoreBand:2,lowResultActioned:true}]}),today)).toBe('open');
+  expect(probationRowAction(row({parts:[{state:'cancelled',dueOn:'2026-12-01',scoreBand:1}]}),today)).toBe('open');
   expect(probationRowAction(row({parts:[{state:'issued',dueOn:'2026-11-10',scoreBand:null}]}),today)).toBe('log_followup');
   expect(probationRowAction(row({endOn:'2026-11-10',parts:[]}),today)).toBe('log_followup');
   expect(probationRowAction(row({parts:[{state:'not_issued',dueOn:'2026-11-10',scoreBand:null}]}),today)).toBe('open');

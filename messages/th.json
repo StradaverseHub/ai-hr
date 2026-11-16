@@ -35945,7 +35945,9 @@
       "development": "การดำเนินการพัฒนา",
       "extension_recommendation": "คำแนะนำขยายเวลา",
       "nonconfirmation_recommendation": "คำแนะนำไม่ยืนยันผ่านทดลองงาน",
-      "refusal_request": "การพูดคุยเรื่องพนักงานปฏิเสธ"
+      "refusal_request": "การพูดคุยเรื่องพนักงานปฏิเสธ",
+      "low_result_action": "Low-result action",
+      "other_decided": "Other outcome decided"
     },
     "files": {
       "title": "เอกสารที่จัดเก็บแล้ว",
@@ -36556,6 +36558,23 @@
       },
       "missingChoice": "No longer available: choose another",
       "resolveNote": "A routing, an assignment group or named people gives the step to one person, chosen by the step’s rule when the Line Manager submits, and that person keeps it for the part. If nobody is available, the case’s fallback group takes it and the case records who it was meant for."
+    },
+    "lowResult": {
+      "title": "Low result",
+      "notice": "Part {part} scored Band {band}. Record the action taken with the Line Manager.",
+      "note": "Action taken with the Line Manager",
+      "save": "Record action",
+      "waiting": "Waiting for the People Business Partner to record the action taken."
+    },
+    "otherOutcome": {
+      "title": "Outcome “Other” · PBP decision",
+      "help": "No letter is generated automatically. Choose the outcome to apply. The case then continues as that outcome: the letter, its signatures, then the posting or the offboarding case.",
+      "choice": "Decision",
+      "months": "Extension length",
+      "monthsOption": "{months} months",
+      "reason": "Reason",
+      "save": "Apply this outcome",
+      "waiting": "Waiting for the People Business Partner to choose the outcome."
     }
   },
   "templateEditor": {

@@ -216,9 +216,11 @@ export const APPROVED_UPGRADE_TAIL=[
  {idx:5157,when:1793330005457,tag:'5757_probation_legacy_workflow_move'},
  {idx:5158,when:1793330005458,tag:'5758_probation_routed_overrides'},
  {idx:5159,when:1793330005459,tag:'5759_probation_employee_own_steps_only'},
+ {idx:5160,when:1793330005460,tag:'5760_probation_queue_kinds_and_pbp_tasks'},
 ] as const;
 // Final pending 2109/2126 bytes reviewed from engine 128bc2539; no applied-prefix hashes change.
 const APPROVED_UPGRADE_HASHES:Record<string,string>={
+ '5760_probation_queue_kinds_and_pbp_tasks':'c3ab5ddf4c702dd1ca947b3a350c7e852ab8699524c9da7fcad11f19887cdb59',
  '5150_attendance_policy_dated_rounding':'f1549fefc467398d9701ba5428e238134a8ca248fb645046b4b23877280e3408',
  '5145_ai_attendance_on_behalf_reads':'45f46d793d836371aebc7d7e20bcea000edef1a6e517367f8deffd59dd2ec9ff',
  '5144_attendance_lane_security_review':'a8b3b68d4ff8faa0f3f69f62089be537c1c8a7ba4522aefa5c3a5e8d314569ed',
@@ -418,6 +420,7 @@ export const COMBINED_RELEASE_NULL_COLUMNS:readonly {tag:string;table:string;col
  {tag:'5161_leave_team_minimum_present',table:'company',columns:['leave_team_minimum_present']},
  // Board 511aa74a (5695): no employment that predates it was rehired from another period.
  {tag:'5695_employment_rehire_link',table:'employment',columns:['rehired_from_employment_id']},
+ {tag:'5760_probation_queue_kinds_and_pbp_tasks',table:'probation_outcome',columns:['extension_months']},
  ...['department','position','cost_center','business_unit','label_company_assignment','profile_option','job_grade','grade_group','grade_group_member']
   .map(table=>({tag:'5070_system_label_import_staged_job',table,columns:['import_pending_attempt_id']})),
 ]);

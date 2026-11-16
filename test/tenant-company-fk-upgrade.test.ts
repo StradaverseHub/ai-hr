@@ -273,6 +273,7 @@ it('stops on a cross-tenant row, then validates every company/tenant key without
    '5757_probation_legacy_workflow_move',
    '5758_probation_routed_overrides',
    '5759_probation_employee_own_steps_only',
+   '5760_probation_queue_kinds_and_pbp_tasks',
   ]);
   const stagingPrefix=journal.entries.slice(0,performanceStart);
   expect(stagingPrefix.filter(row=>row.tag==='3900_individual_transaction_calculation_method')).toHaveLength(1);
@@ -301,6 +302,8 @@ it('stops on a cross-tenant row, then validates every company/tenant key without
   // callable by the application role, and none is callable by PUBLIC. The policy-side and trigger-WHEN helpers are
   // granted to exactly the roles their policies or the domain_event writers are (test/policy-helper-function-grants).
   const privateFunctions=[
+   // 5760: owner-only helpers.
+   'app.probation_pending_signer_kinds(uuid)',
    // Board 511aa74a (5695): the rehire link guard is a trigger function, owner only.
    'app.employment_rehire_link_guard()',
    // 5756: approver role, group membership, approver label and form route checks, owner only.
@@ -436,13 +439,14 @@ it('stops on a cross-tenant row, then validates every company/tenant key without
    'app.personnel_posting_people(uuid[])','app.personnel_posting_record_movement(uuid,text)','app.personnel_posting_values_ok(text,jsonb)',
    'app.personnel_posting_visible(text,uuid,text)','app.personnel_private_search_entries(text,uuid[])','app.personnel_search_candidates(uuid[],boolean,boolean,text,text,text,text,text[])',
    'app.probation_assignment_facts(uuid,text[],uuid[])','app.probation_automation_context(uuid)','app.probation_automation_notify(uuid,uuid,text,text,uuid[])',
-   'app.probation_company_ancestors(uuid[])','app.probation_config_write_company(uuid,text,jsonb,boolean,integer)','app.probation_did_not_join(uuid)',
-   'app.probation_form_approver_label(text)','app.probation_form_approver_role(text)','app.probation_form_freeze_approvers(uuid,jsonb)',
-   'app.probation_form_routing_context(uuid)','app.probation_general_delegate(uuid,uuid,text)','app.probation_holders_set(uuid[])',
-   'app.probation_legacy_audience(uuid,uuid)','app.probation_letter_freeze_route(uuid,jsonb,jsonb)','app.probation_letter_routed(jsonb)',
-   'app.probation_letter_routing_context(uuid)','app.probation_letter_routing_signatures_ok(jsonb)','app.probation_letter_routing_valid(jsonb)',
-   'app.probation_max_extensions(jsonb)','app.probation_outcome_automation(uuid)','app.probation_overdue_summary_cases(uuid,date)',
-   'app.probation_posting_approved()','app.probation_record_override(uuid)','app.probation_record_posting_effect(uuid,uuid,uuid,jsonb,jsonb)',
+   'app.probation_company_ancestors(uuid[])','app.probation_config_write_company(uuid,text,jsonb,boolean,integer)','app.probation_decide_other(uuid,integer,text,integer,text)',
+   'app.probation_did_not_join(uuid)','app.probation_form_approver_label(text)','app.probation_form_approver_role(text)',
+   'app.probation_form_freeze_approvers(uuid,jsonb)','app.probation_form_routing_context(uuid)','app.probation_general_delegate(uuid,uuid,text)',
+   'app.probation_holders_set(uuid[])','app.probation_legacy_audience(uuid,uuid)','app.probation_letter_freeze_route(uuid,jsonb,jsonb)',
+   'app.probation_letter_routed(jsonb)','app.probation_letter_routing_context(uuid)','app.probation_letter_routing_signatures_ok(jsonb)',
+   'app.probation_letter_routing_valid(jsonb)','app.probation_max_extensions(jsonb)','app.probation_outcome_automation(uuid)',
+   'app.probation_overdue_summary_cases(uuid,date)','app.probation_pending_signer_kinds(uuid)','app.probation_posting_approved()',
+   'app.probation_record_low_result_action(uuid,text)','app.probation_record_override(uuid)','app.probation_record_posting_effect(uuid,uuid,uuid,jsonb,jsonb)',
    'app.probation_settings_materialize(uuid[])','app.probation_settings_scope_admin()','app.probation_settings_scope_check(text,jsonb)',
    'app.probation_settings_scope_refresh(uuid)','app.probation_settings_scope_retire(uuid,integer,text)','app.probation_settings_scope_save(uuid,text,text,uuid[],jsonb,boolean,integer,text)',
    'app.probation_source_from_start(jsonb,uuid)','app.probation_task_list(text,integer)','app.probation_tracker_cases()',
