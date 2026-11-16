@@ -1,8 +1,8 @@
-<!-- 5767_assistant_legacy_index_shared_access -->
+<!-- 5771_assistant_legacy_index_shared_access -->
 # Assistant metadata discovery shares Access — 16 November 2026 MYT (source allocation; installation held)
 
-Branch `codex/architecture-performance-review-index-20261116` allocates `5767_assistant_legacy_index_shared_access` at idx 5167 /
-when 1793330005467, above main/alpha's 5766 and the freshly read staging watermark (881 entries,
+Branch `codex/architecture-performance-review-index-20261116` allocates `5771_assistant_legacy_index_shared_access` at idx 5171 /
+when 1793330005471, above main/alpha's 5766 and the freshly read staging watermark (881 entries,
 1793330005466). SHA256 `433dfd7549b496b034bdeaa2c06484b700b5dd5647213106d68487f0b485c7c0`. The installed function is owned by ai_hr_owner.
 Only `app.assistant_legacy_reviews_index(text)` changes: its advisory Access acquisition becomes shared.
 Principal freshness, current-person binding, allowed kinds, history windows, deterministic ordering, 25-row cap,
@@ -13,6 +13,8 @@ a restricted-owner READ ONLY aggregate verified production at 853 entries / maxi
 The new when is above both fresh installation maxima. Recheck peer source allocations and both installed ledgers
 at release admission; renumber this unapplied source if a higher watermark or conflicting claim appears.
 Restricted-owner and native concurrency/equivalence checks are required before release.
+
+Owner direction: merge Irwin f0443eaf27d3584f55b6a2e7d48558bd553d4149 and allocate after its 5770 (idx 5170 / when 1793330005470). Stop before release and wait for owner approval; Claude releases first. SQL bytes are unchanged by this source-only renumbering.
 
 <!-- 5766_probation_reshape_company_in_use -->
 # Company deletion sees the Probation reshape's owner-only referrers — 16 November 2026 MYT (unapplied, allocated)
