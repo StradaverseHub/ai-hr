@@ -345,8 +345,7 @@ export function ReprocessForm({
           this is a completed outcome, not a to-do: neutral colours, unticked, outside the pending count,
           with the run page's own reason sentence. Ticking one by hand still tries them again. */}
       {skippedAdditions.length > 0 && (
-        {paging&&<ClientPager state={paging.existing} note={t('selectionPagingNote')} rememberAs="payroll-reprocess-existing"/>}
-      <div className="overflow-x-auto rounded-xl border border-border">
+        <div className="overflow-x-auto rounded-xl border border-border">
           <table className="w-full min-w-[42rem] text-sm">
             <caption className="bg-muted px-3 py-2 text-left text-xs font-semibold text-foreground">
               {t('reprocessGroupSkippedTitle', { n: skippedAdditions.length })}
@@ -361,6 +360,7 @@ export function ReprocessForm({
         </div>
       )}
 
+      {paging&&<ClientPager state={paging.existing} note={t('selectionPagingNote')} rememberAs="payroll-reprocess-existing"/>}
       <div className="overflow-x-auto rounded-xl border border-border">
         <table className="w-full min-w-[42rem] text-sm">
           <thead className="bg-muted/50 text-left text-xs uppercase tracking-wide text-muted-foreground">

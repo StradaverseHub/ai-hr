@@ -40,7 +40,7 @@ vi.mock('../app/payroll/actions', () => ({ reprocessSelectedAction: vi.fn() }));
 import { reprocessSelectedAction } from '../app/payroll/actions';
 
 // Navigation is tested separately; these tests retain the real selection/review/form state.
-vi.mock('../components/client-pager', () => ({ ClientPager: () => null }));
+vi.mock('../components/client-pager', () => ({ ClientPager: ({rememberAs}:{rememberAs?:string}) => <nav aria-label={rememberAs}/> }));
 vi.mock('../app/payroll/selection-search', () => ({ PayrollSelectionSearch: () => null }));
 import { pageState, parsePageQuery } from '../lib/pagination';
 
@@ -642,6 +642,8 @@ describe('server-paged Reprocess defaults and selection', () => {
     const key=()=>new FormData(container.querySelector('form')!).get('idempotencyKey');
     const initialKey=key();expect(initialKey).toBeTruthy();
     rerender(view(PEOPLE.slice(1),[addition('n2')],1));
+    expect(screen.getByRole('navigation',{name:'payroll-reprocess-existing'})).toBeInTheDocument();
+    expect(screen.getByRole('navigation',{name:'payroll-reprocess-new'})).toBeInTheDocument();
     expect(posted(container).sort()).toEqual(['e1','n1']);
     expect(key()).toBe(initialKey);
     expect(screen.getByText('2 of 6 selected')).toBeInTheDocument();

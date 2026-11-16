@@ -101,7 +101,7 @@ Migration 5767 changes only the index's advisory Access lock to shared. The inst
 
 ## Additional end-to-end gap discovered during remediation
 
-AP-062 (P1, open): Own Leave's discovery GET runs a separately committed privacy-expiry command and a different
+AP-062 (P1, open): Own Leave's discovery POST list operation runs a separately committed privacy-expiry command and a different
 `assistant_own_leave_reviews_index()` owner, rather than the module compatibility index changed by 5767.
 Its neutral list carrier can still acquire exclusive Access through `assertAiPrincipalTx`; the separate legacy
 index and expiry owners need their own installed-definition and concurrency qualification. Preserve current-person
@@ -129,3 +129,15 @@ fingerprint is a39b180ee690c1f05e3a1ebe0c7236d616347baf80fd83f7e7d8d46e394d3cbc 
 not rebound or approved. Irwin's existing literal approvals remain unchanged and cannot authorize this merged
 fingerprint. Generated manifests are source descriptions, not release or provider authority. Functional native
 qualification and whole type checking of the merged candidate remain pending.
+
+
+## Current batch: Own Leave and Payroll selection paging (17 November)
+
+Base: accepted staging `9bdfb45969c4bff81a9b9830b52403a95e82bdc6`. AP-033 was accepted for all seven legacy metadata list owners in full gate43917317649; AP-045 header/count projections and AP-058 preview locking were accepted partially. Sixty of62 observations remain open; AP-038 was resolved externally. Earlier development and release snapshots above remain historical.
+
+- **AP-062, implementation awaiting verification:** Own Leave metadata uses an explicit READ ONLY shared Access interval; separate own/admin expiry commands use shared Access while retaining row locks and READ WRITE. Cleanup stays a separate committed privacy transaction before later refusals. Suspension, person relink, native roles, body deletion and competing shared holders are covered by authored tests. Unapplied migration5880 / idx5280 / when1794841005880 remains provisional pending shared migration ordering.
+- **AP-045, partial:** Remove/Reprocess native readers count/filter/page identity rows before money/department/later-period or eligibility/readiness hydration. Reprocess uses the effective summary instead of full discarded batch detail. Whole-run totals stay independent of search. Existing commands, period/permission guards, audit and financial arithmetic remain with their native owners.
+- **Selection contract:** ready New/Pending defaults cover only the initial displayed page. Already chosen rows, Remove reason and Reprocess idempotency persist through navigation. Reviewed rows each submit one hidden employment ID, independent of mounted checkboxes. Select this page replaces the selection with displayed existing payslips. Existing stale-payslip default scope is awaiting owner clarification.
+- **Remaining costs:** Reprocess history/disclosure and recorded job-result populations are separate unfinished paging work. Global overtime availability proof remains complete-cohort to preserve its existing refusal semantics; do not claim the entire Reprocess request is bounded.
+
+Preserved development check43931609323 at2858a55d3: native121passed/2failed (missing suspended-tenant refusal after READ ONLY change; incomplete scale fixture email), repaired in next source. Combined development candidate3342531271c095a825ad67a5df942e0f74e94e7a runs focused43934876702 with native tests, whole typecheck and Linux build. Independent standards/spec reviews both found invalid JSX and conditional pager placement; working source is repaired, frozen failed source retained. Hosted results and staging qualification are pending; no new finding is closed. AI binding literals remain unchanged pending approval of the final exact source fingerprint.

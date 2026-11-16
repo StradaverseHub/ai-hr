@@ -38,7 +38,7 @@ import { RemoveForm, type RemoveCandidate } from '../app/payroll/[batchId]/remov
 vi.mock('../app/payroll/actions', () => ({ removeEmployeePayrollAction: vi.fn() }));
 
 // Navigation is tested separately; these tests retain the real selection/review/form state.
-vi.mock('../components/client-pager', () => ({ ClientPager: () => null }));
+vi.mock('../components/client-pager', () => ({ ClientPager: ({rememberAs}:{rememberAs?:string}) => <nav aria-label={rememberAs}/> }));
 vi.mock('../app/payroll/selection-search', () => ({ PayrollSelectionSearch: () => null }));
 import { pageState, parsePageQuery } from '../lib/pagination';
 
@@ -233,6 +233,7 @@ describe('server-paged Remove selection', () => {
     await tick(user,'Alice Lim');
     await user.type(screen.getByRole('textbox',{name:/Reason/}),'correct this employee');
     rerender(view(PEOPLE.slice(2),1,'Devi'));
+    expect(screen.getByRole('navigation',{name:'payroll-remove'})).toBeInTheDocument();
     expect(posted(container)).toEqual(['e1']);
     expect(screen.getByRole('textbox',{name:/Reason/})).toHaveValue('correct this employee');
     expect(screen.getByText('1 of 4 selected')).toBeInTheDocument();
