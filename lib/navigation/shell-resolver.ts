@@ -4,7 +4,7 @@ import { navigationPlacement } from '@/lib/navigation-workspaces';
 import { isSecurityDestination, securityDestinationAllowed } from '@/lib/security-center-navigation';
 import { V9_AUTOMATION_NAVIGATION, V9_NAVIGATION, V9_SHARED_NAVIGATION, type V9NavigationPermissions } from '@/lib/lifecycle-v9-navigation';
 import {
-  ADDITIONAL_ROWS, AI_PROVIDER_HREF, AUTOMATION_NAVIGATION, GROUPS, MODULE_OF_HREF, MY_TEAM_ROW, ONBOARDING_NODE,
+  ADDITIONAL_ROWS, OFFBOARDING_POSTINGS_NAVIGATION, AI_PROVIDER_HREF, AUTOMATION_NAVIGATION, GROUPS, MODULE_OF_HREF, MY_TEAM_ROW, ONBOARDING_NODE,
   PERFORMANCE_ADMIN_ROW, SCOPED_LIFECYCLE_NAVIGATION, isAiAdministrationHref, isCollapsible, type ChildItem,
 } from './shell-inventory';
 
@@ -65,6 +65,7 @@ export type ShellNavigationFacts = {
   privateCaseHandler?: boolean;
   probationAccess?: {page:boolean;configure:boolean;intake?:boolean;access?:boolean};
   contractStaffAccess?: {page:boolean;configure:boolean;intake?:boolean};
+  offboardingPostingsAccess?:boolean;
   onboardingAccess?: boolean;
   onboardingV9Access?: boolean;
   onboardingV9Navigation?: V9NavigationPermissions;
@@ -100,6 +101,7 @@ export function resolveShellNavigation({
   performanceAdminHref,
   probationAccess = {page:false,configure:false},
   contractStaffAccess = {page:false,configure:false},
+  offboardingPostingsAccess = false,
   onboardingAccess = false,
   onboardingV9Access = false,
   onboardingV9Navigation,
@@ -152,11 +154,11 @@ export function resolveShellNavigation({
     .map(row => row === PERFORMANCE_ADMIN_ROW && performanceAdminHref ? {...row, href: performanceAdminHref} : row);
   // The old lifecycle addresses remain valid for existing records and links, but their old
   // hub/self-service/requisition presentation is replaced by the owner's explicit V9 hierarchy.
-  const lifecycleNavigation: ChildItem[] = V9_NAVIGATION.filter(item => onboardingV9Access &&
+  const lifecycleNavigation: ChildItem[] = [...(offboardingPostingsAccess?[OFFBOARDING_POSTINGS_NAVIGATION]:[]),...V9_NAVIGATION.filter(item => onboardingV9Access &&
     !!onboardingV9Navigation?.[item.permission] && !('automationLabelKey' in item)).map(item => ({
       href: item.href, labelKey: item.labelKey, submenuKey: item.submenuKey, icon: ONBOARDING_NODE.icon,
       exactHref: true, ...('ownedSubpaths' in item ? { ownedSubpaths: [...item.ownedSubpaths] } : {}),
-    } satisfies ChildItem)).filter(canSeeChild);
+    } satisfies ChildItem))].filter(canSeeChild);
   const lifecycleShared: ChildItem[] = V9_SHARED_NAVIGATION.filter(item => onboardingV9Access &&
     (item.view === 'tasks' || !!onboardingV9Navigation?.records)).map(item => ({href:item.href,labelKey:item.labelKey,icon:ONBOARDING_NODE.icon,exactHref:true})).filter(canSeeChild);
   // New module owners resolve both the actual purchased company and business-role visibility.

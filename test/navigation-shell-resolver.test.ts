@@ -191,3 +191,11 @@ describe('shared shell policy preserves the pre-extraction visibility contract',
     expect(sidebar).toContain('aria-disabled="true"');
   });
 });
+
+it('shows Offboarding Personnel postings only when the posting owner grants queue access',()=>{
+ const path='/lifecycle/offboarding/postings';
+ expect(hrefs({isAdmin:true,onboardingV9Access:true,onboardingV9Navigation:{onboarding:true,offboarding:true,administration:true}})).not.toContain(path);
+ expect(hrefs({offboardingPostingsAccess:true,enabledModules:['lifecycle']})).toContain(path);
+ expect(hrefs({offboardingPostingsAccess:false,enabledModules:['lifecycle']})).not.toContain(path);
+ expect(placeNavigation(resolve({offboardingPostingsAccess:true,enabledModules:['lifecycle']}).destinations).placed.some(row=>row.destination.href===path)).toBe(true);
+});

@@ -1,5 +1,5 @@
 /** Shell declaration metadata, never permission policy. See ADR 2026-11-07-navigation-coverage. */
-import {SIDEBAR_AUDIENCE_INVENTORY, ADDITIONAL_ROWS, AUTOMATION_NAVIGATION, isCollapsible, PERFORMANCE_ADMIN_ROW, ONBOARDING_NODE, SCOPED_LIFECYCLE_NAVIGATION, type ChildItem} from './shell-inventory';
+import {SIDEBAR_AUDIENCE_INVENTORY, ADDITIONAL_ROWS, OFFBOARDING_POSTINGS_NAVIGATION, AUTOMATION_NAVIGATION, isCollapsible, PERFORMANCE_ADMIN_ROW, ONBOARDING_NODE, SCOPED_LIFECYCLE_NAVIGATION, type ChildItem} from './shell-inventory';
 import {resolveShellNavigation, type ShellNavigationFacts} from './shell-resolver';
 import {V9_NAVIGATION, V9_SHARED_NAVIGATION} from '../lifecycle-v9-navigation';
 import {modulePackById} from '../../packs/registry';
@@ -165,6 +165,7 @@ export const REVIEWED_SHELL_BINDINGS:Readonly<Record<string,Binding>> = {
   "scoped/contracts/contractManagement": {"id": "shell.contractManagement", "sourceOwner": "lib/navigation/shell-inventory.ts", "sourceKey": "shell-slot:contractManagement", "status": "declared"},
   "scoped/probation/probationSettings": {"id": "shell.probationSettings", "sourceOwner": "lib/navigation/shell-inventory.ts", "sourceKey": "shell-slot:probationSettings", "status": "declared"},
   "scoped/probation/probationForms": {"id": "shell.probationForms", "sourceOwner": "lib/navigation/shell-inventory.ts", "sourceKey": "shell-slot:probationForms", "status": "declared"},
+  "offboarding/postings": {"id":"shell.offboardingPostings","sourceOwner":"lib/navigation/shell-inventory.ts","sourceKey":"shell-slot:offboardingPostings","status":"declared"},
   "scoped/probation/probationPostings": {"id": "shell.probationPostings", "sourceOwner": "lib/navigation/shell-inventory.ts", "sourceKey": "shell-slot:probationPostings", "status": "declared"},
   "automation/automationWorkflows": {"id": "shell.automationWorkflows", "sourceOwner": "lib/navigation/shell-inventory.ts", "sourceKey": "shell-slot:automationWorkflows", "status": "declared"},
   "automation/automationTemplates": {"id": "shell.automationTemplates", "sourceOwner": "lib/navigation/shell-inventory.ts", "sourceKey": "shell-slot:automationTemplates", "status": "declared"},
@@ -212,6 +213,7 @@ export function declaredNavigationCatalogue():NavigationCatalogue {
  for(const row of V9_SHARED_NAVIGATION)append(`v9Shared/${row.labelKey}`,{...row,icon:ONBOARDING_NODE.icon,exactHref:true});
  for(const row of modulePackById('rewards')!.navLinks??[])append(`rewards/${row.labelKey}`,row);
  for(const row of SCOPED_LIFECYCLE_NAVIGATION)append(`scoped/${row.module}/${row.labelKey}`,row);
+ append('offboarding/postings',OFFBOARDING_POSTINGS_NAVIGATION);
  for(const row of AUTOMATION_NAVIGATION)append(`automation/${row.labelKey}`,row);
  for(const key of ['id','sourceKey'] as const){const seen=new Set<string>();for(const row of declarations){
   if(seen.has(row[key]))issues.push({code:`duplicate-${key}`,detail:row[key]});seen.add(row[key]);

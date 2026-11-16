@@ -1,4 +1,5 @@
 import {offboardingSettings} from '@/lib/automation/offboarding';
+import {ContractWorkflowSection} from '../contract-configuration';
 import {LifecycleWorkflowSection} from '../lifecycle-configuration';
 import {v9Configuration} from '@/packs/lifecycle/service';
 import {notFound} from 'next/navigation';
@@ -42,5 +43,5 @@ export default async function Page({searchParams}:{searchParams:Promise<Record<s
   const configuration=lifecycle!,config=configuration.config;
   offboarding={workflows:stored.map(w=>({workflow:w.workflow,revision:w.revision})),editable:configuration.offboardingEditable,refs:{postingApproverGroupId:config?offboardingSettings(config).postingApproverGroupId:null,routings:routings.map(r=>({id:r.routing.id,name:r.routing.name,retired:r.retired})),groups:config?.groups??[],people:configuration.users,emailTemplates:(config?.emails??[]).filter(e=>e.module==='off').map(e=>({id:e.id,name:e.name,active:e.active,retired:false,subject:e.subject})),letterTemplates:(config?.templates??[]).filter(t=>t.module==='off'&&!t.retired).map(t=>({id:t.id,name:t.name})),conditionValues:{document:(config?.templates??[]).filter(t=>t.module==='off'&&!t.retired).map(t=>({value:t.id,label:t.name})),businessGroup:options.businessGroups.map(v=>({value:v.id,label:v.name})),company:options.companies.map(v=>({value:v.id,label:v.name})),department:options.departments.map(v=>({value:v.id,label:v.name})),jobTitle:options.jobTitles.map(v=>({value:v,label:v})),jobGrade:options.jobGrades.map(v=>({value:v,label:v}))}}};
  }
- return <WorkflowsWorkspace onboardingSection={lifecycle?<LifecycleWorkflowSection initial={lifecycle} filter={filter==='onb'?'onb':filter==='off'?'off':'all'} initialSelected={typeof query.workflow==='string'?query.workflow:undefined}/>:undefined} offboarding={offboarding} filter={filter} access={access} workflows={workflows} refs={refs} defaultsMissing={defaultsMissing}/>;
+ return <WorkflowsWorkspace contractSection={access.contractStaff&&(filter==='all'||filter==='contract_staff')?<ContractWorkflowSection ctx={ctx}/>:undefined} onboardingSection={lifecycle?<LifecycleWorkflowSection initial={lifecycle} filter={filter==='onb'?'onb':filter==='off'?'off':'all'} initialSelected={typeof query.workflow==='string'?query.workflow:undefined}/>:undefined} offboarding={offboarding} filter={filter} access={access} workflows={workflows} refs={refs} defaultsMissing={defaultsMissing}/>;
 }

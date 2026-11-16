@@ -7,6 +7,7 @@ import {
   saveAutomationEmailTemplate,saveAutomationRouting,saveAutomationWorkflow,searchAutomationPeople,
   type AutomationDryRun,type AutomationEmailTemplate,type AutomationRecipient,type AutomationWorkflow,type Routing,
 } from '@/packs/automation/service';
+import {contractConfigurationDirectory} from '@/packs/contracts/service';
 import {probationCase,probationSummaryRows,moveProbationWorkflowsToShared} from '@/packs/probation/service';
 import {resignationConfigurationCases,resignationWorkflowDryRun,installResignationDefaults} from '@/packs/lifecycle/resignation/service';
 import {PROBATION_AUTOMATION_CATALOGUE} from '@/lib/automation/catalogues/probation';
@@ -130,3 +131,5 @@ export async function dryRunOffboardingWorkflowAction(input:{workflow:Automation
 
 /** Explicit, idempotent setup. New defaults remain Draft until a configurer reviews and activates them. */
 export async function installOffboardingDefaultsAction(){return execute(async()=>installResignationDefaults(await requireScopedLifecycleModule()));}
+/** Selected-company Contract reviewer search, behind the module owner's exact authority. */
+export async function searchContractReviewersAction(input:{companyId:string;query:string;selectedUserIds:string[]}){return execute(async()=>contractConfigurationDirectory(await requireScopedLifecycleModule(),input));}

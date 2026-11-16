@@ -76,6 +76,7 @@ export function Sidebar({
   taskCount:baseTaskCount = 0,
   probationAccess,
   contractStaffAccess,
+  offboardingPostingsAccess,
   onboardingAccess,
   onboardingV9Access,
   onboardingV9Navigation,
@@ -191,7 +192,8 @@ export function Sidebar({
     canReviewProfileChanges, canAdministerAi, canAdministerSecurity, canConfigureAccess,
     canProvisionUsers, canConfigureAiProvider, canAccessTeam, letterDestinations,
     rewardDestinations, canAdministerOnehr, performanceAdminHref, probationAccess,
-    contractStaffAccess, onboardingAccess, onboardingV9Access, onboardingV9Navigation,
+    contractStaffAccess,
+  offboardingPostingsAccess, onboardingAccess, onboardingV9Access, onboardingV9Navigation,
     onboardingMaster, onboardingRequisitionsAccess, enabledModules, assistantAccess,
     feedbackAccess, privateCaseHandler,
   });

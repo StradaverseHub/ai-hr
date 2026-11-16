@@ -70,6 +70,7 @@ export function navigationPlacement(href:string):NavigationPlacement | undefined
   if(path==='/control-tower'||path.startsWith('/control-tower/'))return {area:'shared'};
   if(path.startsWith('/admin/lifecycle'))return modulePlacement('onboarding','config');
   if(path==='/me/lifecycle')return modulePlacement('onboarding','mine');
+  if(path.startsWith('/lifecycle/offboarding/postings'))return modulePlacement('onboarding','hr');
   if(path.startsWith('/lifecycle/v9'))return modulePlacement('onboarding','hr');
   if(path.startsWith('/lifecycle/onboarding')||path.startsWith('/lifecycle/requisitions'))return modulePlacement('onboarding','hr');
   if(path==='/lifecycle')return modulePlacement('onboarding','mine');

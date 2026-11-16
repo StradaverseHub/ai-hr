@@ -21,7 +21,7 @@ const catalogue = PROBATION_AUTOMATION_CATALOGUE;
 const blank = (): AutomationWorkflow => ({ id: crypto.randomUUID(), module: 'probation', name: '', description: '', status: 'paused', required: false, trigger: { event: catalogue.triggers[0].id, days: 0, workdays: false, repeat: false }, skipWhen: 'never', conditions: [], steps: [] });
 
 /** HR Automation › Workflows (prototype WorkflowsPage; mockups 12 and 13). Probation is on the shared engine; the other modules link to their builders. */
-export function WorkflowsWorkspace({filter,access,workflows,refs,defaultsMissing,offboarding,onboardingSection}:{onboardingSection?:ReactNode;offboarding?:OffboardingWorkspace;filter:AutomationFilter;access:AutomationPageAccess;workflows:ListedWorkflow[];refs:WorkflowEditorReferences;defaultsMissing:number}){
+export function WorkflowsWorkspace({filter,access,workflows,refs,defaultsMissing,offboarding,onboardingSection,contractSection}:{contractSection?:ReactNode;onboardingSection?:ReactNode;offboarding?:OffboardingWorkspace;filter:AutomationFilter;access:AutomationPageAccess;workflows:ListedWorkflow[];refs:WorkflowEditorReferences;defaultsMissing:number}){
  const t=useTranslations('automation'),router=useRouter(),[busy,start]=useTransition();
  const [editing,setEditing]=useState<ListedWorkflow|null>(null),[notice,setNotice]=useState<{kind:'error'|'status';text:string}|null>(null);
  const [moveReason,setMoveReason]=useState(''),[moveResult,setMoveResult]=useState<ProbationWorkflowMoveResult|null>(null);
@@ -30,7 +30,7 @@ export function WorkflowsWorkspace({filter,access,workflows,refs,defaultsMissing
   setMoveResult(result.result);setMoveReason('');setNotice({kind:'status',text:t('move.done',{moved:result.result.moved.length,kept:result.result.kept.length,already:result.result.alreadyMoved})});router.refresh();});};
  const people=refs.people,references={routingExists:(id:string)=>refs.routings.some(r=>r.id===id&&!r.retired),groupExists:(id:string)=>refs.groups.some(g=>g.id===id),personExists:(id:string)=>people.some(p=>p.id===id)};
  const needsAttention=(w:AutomationWorkflow)=>w.status!=='retired'&&(automationWorkflowProblems(w,catalogue,references).length>0||probationStepParamProblems(w,{emailTemplates:refs.emailTemplates,letterTemplateIds:refs.letterTemplates?.map(l=>l.id)??null}).length>0);
- const showProbation=filter==='all'||filter==='probation',legacy=(['onb','off','contract_staff'] as const).filter(m=>(filter==='all'||filter===m)&&(!offboarding||m!=='off')&&(!onboardingSection||m!=='onb'));
+ const showProbation=filter==='all'||filter==='probation',legacy=(['onb','off','contract_staff'] as const).filter(m=>(filter==='all'||filter===m)&&(!offboarding||m!=='off')&&(!onboardingSection||m!=='onb')&&(!contractSection||m!=='contract_staff'));
  const install=()=>{if(!window.confirm(t('defaults.confirm')))return;setNotice(null);start(async()=>{const result=await installProbationDefaultsAction();if(!result.ok){setNotice({kind:'error',text:result.detail??t('errors.unavailable')});return;}
   setNotice({kind:'status',text:t('defaults.done',{workflows:result.result.installed.workflows,emails:result.result.installed.emailTemplates,routings:result.result.installed.routings})});router.refresh();});};
  const installOffboarding=()=>{setNotice(null);start(async()=>{const result=await installOffboardingDefaultsAction();if(!result.ok){setNotice({kind:'error',text:result.detail??t('errors.unavailable')});return;}setNotice({kind:'status',text:`Resignation defaults ready: ${result.result.workflows} workflows, ${result.result.templates} document templates and ${result.result.emails} emails. Review the Draft workflows before making them live.`});router.refresh();});};
@@ -82,6 +82,7 @@ export function WorkflowsWorkspace({filter,access,workflows,refs,defaultsMissing
    {!offboarding.workflows.length&&<p className="pcg-card-extra v9-muted">No Offboarding workflows yet. Configure the resignation defaults before accepting employee submissions.</p>}
    <ul className="pcg-wl">{offboarding.workflows.map(item=>{const w=item.workflow,lines=workflowListLines(w,OFFBOARDING_AUTOMATION_CATALOGUE);return <li className="pcg-wi" key={w.id}><div className="pcg-wi-text"><h3>{w.name}</h3><p>{lines.trigger}</p><p className="pcg-wi-steps">{lines.steps}</p></div><div className="pcg-row"><span className="pcg-pill">Offboarding</span><span className={'pcg-pill '+(w.status==='live'?'pcg-pill-ok':w.status==='paused'?'pcg-pill-warn':'')}>{w.status==='paused'?'Draft':t('status.'+w.status)}</span><button type="button" className="v9-button" aria-label={'Edit '+w.name} onClick={()=>setEditing(item)}>{w.status==='retired'?'View':'Edit'}</button></div></li>;})}</ul>
   </section>}
+  {contractSection}
   {legacy.map(module=><LegacyBuilderCard key={module} module={module} kind="workflows" href={LEGACY_BUILDERS.workflows[module]} allowed={module==='contract_staff'?access.contractStaff:access.legacy}/>)}
  </main>;
 }

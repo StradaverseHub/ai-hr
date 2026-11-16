@@ -534,3 +534,6 @@ export const AUTOMATION_NAVIGATION: readonly ChildItem[] = [
   {href:'/automation/templates',labelKey:'automationTemplates',icon:Share2,ownedSubpaths:['/automation/templates']},
   {href:'/automation/groups',labelKey:'automationGroups',icon:Share2,ownedSubpaths:['/automation/groups']},
 ];
+
+/** Offboarding posting visibility comes from its posting owner, independently of case administration. */
+export const OFFBOARDING_POSTINGS_NAVIGATION:ChildItem={href:'/lifecycle/offboarding/postings',labelKey:'probationPostings',icon:Timer,exactHref:true,ownedSubpaths:['/lifecycle/offboarding/postings']};

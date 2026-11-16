@@ -20,9 +20,9 @@ type Refs = { routings: (NamedOption & { retired?: boolean })[]; groups: NamedOp
 const catalogue = PROBATION_AUTOMATION_CATALOGUE;
 
 /** HR Automation › Templates (prototype TemplatesPage and EmailDrawer; mockup 14). Document signing routing stays in the letter editor. */
-export function TemplatesWorkspace({filter,access,emails,letters,refs,lifecycleSection}:{lifecycleSection?:ReactNode;filter:AutomationFilter;access:AutomationPageAccess;emails:ListedEmailTemplate[];letters:LetterSection;refs:Refs}){
+export function TemplatesWorkspace({filter,access,emails,letters,refs,lifecycleSection,contractSection}:{contractSection?:ReactNode;lifecycleSection?:ReactNode;filter:AutomationFilter;access:AutomationPageAccess;emails:ListedEmailTemplate[];letters:LetterSection;refs:Refs}){
  const t=useTranslations('automation'),[editing,setEditing]=useState<ListedEmailTemplate|null>(null);
- const showProbation=filter==='all'||filter==='probation',legacy=(['onb','off','contract_staff'] as const).filter(m=>(filter==='all'||filter===m)&&(!lifecycleSection||m==='contract_staff'));
+ const showProbation=filter==='all'||filter==='probation',legacy=(['onb','off','contract_staff'] as const).filter(m=>(filter==='all'||filter===m)&&(!lifecycleSection||m==='contract_staff')&&(!contractSection||m!=='contract_staff'));
  const published=new Set(letters?.templates.filter(l=>l.state==='published').map(l=>l.outcome)??[]);
  // Prototype TemplatesPage (lane M3): head, module chips, the go-live check banner, Document templates rows (name,
  // module · signing summary, Probation / Letter / version pills, Edit), then Email templates rows.
@@ -65,6 +65,7 @@ export function TemplatesWorkspace({filter,access,emails,letters,refs,lifecycleS
    {editing&&<EmailEditor key={editing.template.id} initial={editing} refs={refs} onClose={()=>setEditing(null)}/>}
   </>}
   {lifecycleSection}
+  {contractSection}
   {legacy.map(module=><LegacyBuilderCard key={module} module={module} kind="templates" href={LEGACY_BUILDERS.templates[module]} allowed={module==='contract_staff'?access.contractStaff:access.legacy}/>)}
  </main>;
 }

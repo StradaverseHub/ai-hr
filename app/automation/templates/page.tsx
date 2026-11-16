@@ -1,4 +1,5 @@
 import {v9Configuration} from '@/packs/lifecycle/service';
+import {ContractTemplateSection} from '../contract-configuration';
 import {LifecycleTemplateSection} from '../lifecycle-configuration';
 import {FilterChips} from '../filter-chips';
 import {ConfigHead} from '@/app/lifecycle/probation/settings/config-head';
@@ -27,5 +28,5 @@ export default async function Page({searchParams}:{searchParams:Promise<Record<s
  const routes=lifecycle?await listAutomationRoutings(ctx):[];
  const lifecycleSection=lifecycle?<LifecycleTemplateSection initial={lifecycle} filter={filter==='onb'?'onb':filter==='off'?'off':'all'} choices={{routings:routes.filter(r=>!r.retired).map(r=>({id:r.routing.id,name:r.routing.name})),groups:lifecycle.config?.groups??[],people:lifecycle.users}}/>:null;
  if(filter==='onb'||filter==='off')return <main className="v9-stack pcg"><ConfigHead crumb="Configuration / Templates" title="Templates" sub="Document and email templates shared by the lifecycle modules."/><FilterChips path="/automation/templates" current={filter}/>{lifecycleSection??<p className="v9-notice">You cannot configure this module.</p>}</main>;
- return <TemplatesWorkspace lifecycleSection={lifecycleSection} filter={filter} access={access} emails={emails} letters={letters} refs={refs}/>;
+ return <TemplatesWorkspace contractSection={access.contractStaff&&(filter==='all'||filter==='contract_staff')?<ContractTemplateSection ctx={ctx}/>:undefined} lifecycleSection={lifecycleSection} filter={filter} access={access} emails={emails} letters={letters} refs={refs}/>;
 }
