@@ -3554,6 +3554,7 @@
       "loading": "Memuatkan…",
       "saved": "Maklumat dibetulkan. Transaksi selesai kekal.",
       "unchanged": "Tiada perubahan — baris ini akan dilangkau.",
+      "effectiveDateOnly": "Tiada apa untuk dibetulkan. Tarikh Berkuat Kuasa hanya menetapkan bila nilai yang dibetulkan mula terpakai. Untuk menukar tarikh rekod pekerja bermula ({date}), betulkan Tarikh Sertai Kumpulan.",
       "history": "Sejarah pembetulan",
       "noHistory": "Tiada pembetulan maklumat sahaja direkodkan.",
       "importHelp": "Kod Syarikat menyemak syarikat sedia ada. Kod Syarikat Baharu adalah pilihan. Sel pembetulan kosong mengekalkan nilai. Rujuk helaian kod sistem. Maksimum 200 baris.",
