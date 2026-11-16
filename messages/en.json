@@ -40753,7 +40753,8 @@
       "defaultSlot": "File for this person",
       "caseTitle": "Email files for this person",
       "requiredFile": "Upload this file before continuing the email.",
-      "noFile": "No file uploaded."
+      "noFile": "No file uploaded.",
+      "loadMore": "Show more email file templates"
     }
   },
   "personnelPostings": {
