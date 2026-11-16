@@ -75,6 +75,13 @@ async function setup(over: { endsOn?: string; status?: string } = {}) {
   await assignAgencyContract(admin, jobId, contractId);
   return { agencyId, contractId, consultantId, jobId };
 }
+/** Fixture: change a row past its audit guards (owner connection), as an administrator would in Settings › Agencies. */
+async function disable(table: 'recruitment_agency_contract' | 'recruitment_agency_consultant', id: string) {
+  await owner.client.begin(async (tx) => {
+    await tx`set local session_replication_role = replica`;
+    await tx.unsafe(`update ${table} set status = 'disabled' where id = $1::uuid`, [id]);
+  });
+}
 const submit = (cookie: string, jobId: string, contractId: string, values: Record<string, string> = {}) => jobPost(req(`${portalPath}/jobs/${jobId}`, {
   method: 'POST', cookie, body: form({ contractId, fullName: 'Fictional S25 Candidate', email: 's25.candidate@example.test', mobile: '', comments: 'Fictional note', ...values }),
 }), jobParams(jobId));
@@ -117,7 +124,7 @@ describe('case 163 — a code goes only to an active consultant on a usable cont
     const stranger = await asked('stranger.s25@example.test');
     expect(relay.sent).toHaveLength(1);
     expect(stranger.split('stranger.s25@example.test').join('X')).toBe(known.split(CONSULTANT).join('X'));
-    await owner.db.execute(sql`update recruitment_agency_contract set status = 'disabled' where id = ${f.contractId}::uuid`);
+    await disable('recruitment_agency_contract', f.contractId);
     await asked(CONSULTANT);
     expect(relay.sent).toHaveLength(1);
     // No address or code is stored in clear.
@@ -160,7 +167,7 @@ describe('case 164 — a session shows only the consultant\'s released jobs and 
     expect((await jobGet(req(`${portalPath}/jobs/${f.jobId}`, { cookie }), jobParams(f.jobId))).status).toBe(200);
     // The session is stored only as a hash.
     expect(JSON.stringify(await owner.db.execute(sql`select * from app.recruitment_agency_portal_session`))).not.toContain(cookie);
-    await owner.db.execute(sql`update recruitment_agency_consultant set status = 'disabled' where id = ${f.consultantId}::uuid`);
+    await disable('recruitment_agency_consultant', f.consultantId);
     const after = await portalGet(req(portalPath, { cookie }), params);
     expect(await after.text()).toContain('signed out');
     expect((await jobGet(req(`${portalPath}/jobs/${f.jobId}`, { cookie }), jobParams(f.jobId))).status).toBe(401);

@@ -34,6 +34,15 @@ const REVIEWED_DEFINERS: string[] = [
   // 5710: each reads one job opening by id in the caller's tenant (the check refuses unless the caller operates that job;
   // the submission guard checks the job's status for a row the caller may write).
   'app.recruitment_agency_check(uuid,uuid,text,text,text,text,uuid,boolean)',
+  // Slice 25 (5727): the agency portal's definers, reviewed: each reads only the company behind the careers address it was given,
+  // inside that company's portal context.
+  'app.recruitment_agency_portal_check_code(text,text,text,text,text)',
+  'app.recruitment_agency_portal_email_context(text)',
+  'app.recruitment_agency_portal_issue_code(text,text,text,text)',
+  'app.recruitment_agency_portal_session_at(text,text)',
+  'app.recruitment_agency_portal_site(text)',
+  'app.recruitment_agency_portal_submit(text,text,text,uuid,uuid,text,text,text,text,text,text,bytea,boolean)',
+  'app.recruitment_agency_portal_view(text,text)',
   // 5722 (slice 21a): the verified-applicant definers — each resolves the site by address and filters the job by the site's tenant
   // and company; they return statuses only, and the e-mail context returns the job title, company name and sender settings only.
   'app.recruitment_careers_apply(text,text,uuid,text,text,text,text,text,integer,boolean,text,text,bytea)',
