@@ -97,12 +97,12 @@ describe('Extend on the shared workflow, then Confirm (handoff §10 main paths)'
 
 describe('Non-confirmation on the shared workflow (handoff §10 main paths)',()=>{
  it('closes the case as Not confirmed with exactly one offboarding case and no posting, idempotently',async()=>{
-  const {ids,staff,decision,admin:pbp}=await fixture.recordedConfirm([],{outcome:'not_confirm',beforeRecord:async ctx=>{
+  const {ids,staff,decision,admin:pbp}=await fixture.recordedConfirm([],{outcome:'not_confirm',endInDays:30,beforeRecord:async ctx=>{
    const key=await letterTemplate(ctx,'not_confirm');
    await liveWorkflow('outcomeDecided',[{type:'generateDocument',params:{letterTemplateId:key}},{type:'startOffboarding',params:{exitReason:'Non-confirmation'}}],[{field:'outcome',op:'is',values:['Non-confirmation']}]);
   }});
   admin=pbp;
-  // Decided: nothing is started before the letter is released.
+  // The exit's last day is the probation end date, which must not be in the past. Nothing starts before the release.
   expect(await owner.db.execute(sql`select 1 from lc_v9_case where data->>'probationSourceCaseId'=${ids.caseId}`)).toHaveLength(0);
   await signAndRelease(ids.caseId,decision.id,staff);
   await sweep();

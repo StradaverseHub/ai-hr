@@ -18,7 +18,7 @@ async function person(name:string){
  return{...e,userId,ctx:{...admin,userId,personId:e.personId,roles:['employee'],grants:undefined} as SessionContext};
 }
 /** A native Part 3 with a recorded Confirm outcome; the admin is the case's PBP and GBS. */
-async function recordedConfirm(extraGroups:{id:string;name:string;members:string[];limit:number}[]=[],options:{outcome?:'confirm'|'extend'|'not_confirm'|'other';rating?:1|2|3|4|5;until?:'acknowledged';beforeRecord?:(admin:SessionContext)=>Promise<void>}={}){
+async function recordedConfirm(extraGroups:{id:string;name:string;members:string[];limit:number}[]=[],options:{outcome?:'confirm'|'extend'|'not_confirm'|'other';rating?:1|2|3|4|5;until?:'acknowledged';endInDays?:number;beforeRecord?:(admin:SessionContext)=>Promise<void>}={}){
  const chosen=options.outcome??'confirm';
  const[hrPerson]=await owner.db.execute<{id:string}>(sql`insert into person(tenant_id,full_name,primary_email) values(${b.tenantId}::uuid,'Fictional HR Partner',${randomUUID()+'@probation.example.test'}) returning id`);
  await owner.db.execute(sql`update app_user set person_id=${hrPerson.id}::uuid where id=${admin.userId}::uuid`);admin={...admin,personId:hrPerson.id};
@@ -27,7 +27,7 @@ async function recordedConfirm(extraGroups:{id:string;name:string;members:string
  await owner.db.execute(sql`insert into lc_v9_config(tenant_id,data) values(${b.tenantId}::uuid,${JSON.stringify({version:9,peopleOpsGroup:'probation-people',groups,bpRules:[{rules:{company:[b.companyId]},userId:admin.userId}]})}::jsonb)`);
  await owner.db.execute(sql`insert into lc_onboarding_config(tenant_id,data) values(${b.tenantId}::uuid,${JSON.stringify({groups})}::jsonb)`);
  await owner.db.execute(sql`update employment set probation_value=0,probation_months=0 where id in(${manager.employmentId}::uuid,${peer.employmentId}::uuid)`);
- const endOn=addDaysIso(todayInKualaLumpur(),-4);
+ const endOn=addDaysIso(todayInKualaLumpur(),options.endInDays??-4);
  await owner.db.execute(sql`update employment set probation_unit='month',probation_value=12,probation_months=12,probation_end_date=${endOn}::date where id=${staff.employmentId}::uuid`);
  const ids={caseId:randomUUID(),settings:randomUUID(),form:randomUUID(),route:randomUUID(),part:randomUUID()};
  const part={...newProbationPart(ids.part,3,0,endOn,30),state:'issued' as const};
