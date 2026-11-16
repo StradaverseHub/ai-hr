@@ -83,7 +83,7 @@ export async function editContractSharedLetter(ctx:SessionContext,raw:{id:string
  });}catch(error){return signingFailure(error);}
 }
 
-export async function activateContractSharedLetter(tx:SqlExecutor,ctx:SessionContext,input:{view:{id:string;companyId:string;employmentId:string;flow:ContractFlow|null};context:ContractAutomationContext;step:AutomationStepContext;templates:{template:AutomationDocumentTemplate;version:number}[];lastAssigned:Record<string,string>;today:string}){
+export async function activateContractSharedLetter(tx:SqlExecutor,ctx:SessionContext,input:{view:{id:string;companyId:string;employmentId:string;flow:ContractFlow|null};context:ContractAutomationContext;step:AutomationStepContext;templates:{template:AutomationDocumentTemplate;version:number}[];lastAssigned:Record<string,string|null>;today:string}){
  if(ctx.userId)throw new ContractManagementError('forbidden','A protected Contract event worker is required.');
  const chosen=input.templates.find(item=>item.template.id===input.step.step.params.letterTemplateId),decision=input.view.flow?.decision;
  if(!chosen||!decision)throw new ContractManagementError('conflict','A published outcome template and accepted decision are required.');
@@ -117,7 +117,7 @@ export async function actContractSharedApproval(ctx:SessionContext,raw:z.input<t
 }
 
 /** Internal executor. The native preparation and signing owners recheck the held event and frozen workflow step. */
-export async function activateContractSharedApproval(tx:SqlExecutor,ctx:SessionContext,input:{view:{id:string;companyId:string;employmentId:string;flow:ContractFlow|null};context:ContractAutomationContext;step:AutomationStepContext;lastAssigned:Record<string,string>;today:string}){
+export async function activateContractSharedApproval(tx:SqlExecutor,ctx:SessionContext,input:{view:{id:string;companyId:string;employmentId:string;flow:ContractFlow|null};context:ContractAutomationContext;step:AutomationStepContext;lastAssigned:Record<string,string|null>;today:string}){
  if(ctx.userId)throw new ContractManagementError('forbidden','A protected Contract event worker is required.');
  const flow=input.view.flow;
  if(!flow?.decision)throw new ContractManagementError('conflict','An accepted decision is required.');

@@ -4,7 +4,7 @@ import {contractAutomationApprovalTarget,type ContractAutomationContext} from '.
 import {routedStepChooser} from './routed-step-assignment';
 
 /** Shared preview/activation resolver. Basic Round robin uses verified assignment history; Any retains group identity. */
-export function contractApprovalAssignments(input:{layers:ContractApprovalLayer[];context:ContractAutomationContext;today:string;lastAssigned:Record<string,string>},chooser?:ReturnType<typeof routedStepChooser>):ContractApprovalAssignment[]{
+export function contractApprovalAssignments(input:{layers:ContractApprovalLayer[];context:ContractAutomationContext;today:string;lastAssigned:Record<string,string|null>},chooser?:ReturnType<typeof routedStepChooser>):ContractApprovalAssignment[]{
  const {context}=input;
  const select=chooser??routedStepChooser({today:input.today,groups:context.groups.map(group=>({...group,limit:0})),users:context.activePeople.map(id=>({id,load:0,lastAssigned:input.lastAssigned[id]??null,onLeave:false}))});
  return input.layers.map(layer=>{

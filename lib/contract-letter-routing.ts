@@ -9,7 +9,7 @@ export function describeContractLetterWho(who:DocumentRoutingWho,context:Contrac
  return who.kind==='employee'?'The employee':who.kind==='directSuperior'?'Their Direct Superior':who.kind==='group'?context.groups.find(group=>group.id===who.groupId)?.name??'Assignment group':who.kind==='routing'?context.routings.find(routing=>routing.id===who.routingId)?.name??'Routing':'Named people';
 }
 /** One resolver for consequence previews and actual generation. Missing employee sign-in stays held. */
-export function contractLetterAssignment(template:AutomationDocumentTemplate,context:ContractAutomationContext,input:{today:string;lastAssigned:Record<string,string>},chooser?:ReturnType<typeof routedStepChooser>){
+export function contractLetterAssignment(template:AutomationDocumentTemplate,context:ContractAutomationContext,input:{today:string;lastAssigned:Record<string,string|null>},chooser?:ReturnType<typeof routedStepChooser>){
  const active=new Set(context.activePeople.filter(id=>!!context.userPersonIds[id])),group=(id:string|null)=>context.groups.find(group=>group.id===id);
  const pick=chooser??routedStepChooser({today:input.today,groups:context.groups.map(group=>({...group,limit:0})),users:context.activePeople.map(id=>({id,load:0,lastAssigned:input.lastAssigned[id]??null,onLeave:false}))});
  const employee=context.employeeUserIds.filter(id=>active.has(id)),superior=context.superiorUserIds.filter(id=>active.has(id));
