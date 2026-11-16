@@ -522,3 +522,14 @@ movements; migration 5690) and `claude/fb-511aa74a-rehired` (the Rehired movemen
 are in the provider-data scope only through the import graph. No provider transform, outbound field, purpose or
 transport changed. The 28 approvals were carried forward to `c62cade8…` and the agent manifest regenerated
 (`d3afe9c7…`), under the owner's standing pre-approval for staging re-binds (12 November 2026). Staging only.
+
+### Re-binding for the Probation Confirmation reshape onto shared HR automation (16 November 2026)
+
+`claude/probation-confirmation-aihr-b81c70`, merged with main/alpha `8244cfa81` (binding `c62cade8…`), at `55e9ff7ac`, adds
+the shared HR Automation builders and runner, Personnel postings, document signing review routing and the Probation
+settings, queue, routing and outcome changes (ADR `docs/adr/2026-11-15-probation-shared-automation.md`, migrations
+5740–5757). The changed files reach the provider-data scope only through the import graph (message catalogues,
+company referrers, the approvals and Today task sources); no file under lib/ai, core/ai*, core/assistant*,
+core/teras* or core/loops changed. No provider transform, outbound field, purpose or transport changed. The 28 approvals
+were carried forward to `f1df923e…` and the agent manifest regenerated (`b46f0db0…`), under the owner's standing
+pre-approval for staging re-binds (12 November 2026). This binding grants no production authority.
