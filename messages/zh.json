@@ -39887,6 +39887,20 @@
           "title": "合同决定预览已取消",
           "body": "尚未提交合同决定。"
         }
+      },
+      "contractSetup": {
+        "completed": {
+          "title": "合同初始配置已就绪",
+          "body": "请在 HR Automation 中检查工作流和模板。"
+        },
+        "failed": {
+          "title": "合同初始配置需要处理",
+          "body": "请检查映射的组、路由和已记录的配置结果。"
+        },
+        "cancelled": {
+          "title": "合同初始配置已停止",
+          "body": "现有工作流和模板已保留。"
+        }
       }
     },
     "panel": {

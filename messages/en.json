@@ -39887,6 +39887,20 @@
           "title": "Decision preview cancelled",
           "body": "No Contract decision was submitted."
         }
+      },
+      "contractSetup": {
+        "completed": {
+          "title": "Contract starting setup ready",
+          "body": "Review the workflows and templates in HR Automation."
+        },
+        "failed": {
+          "title": "Contract starting setup needs attention",
+          "body": "Check the mapped groups, routings and recorded setup results."
+        },
+        "cancelled": {
+          "title": "Contract starting setup stopped",
+          "body": "Existing workflows and templates were preserved."
+        }
       }
     },
     "panel": {
