@@ -4,13 +4,14 @@ import {CONTRACT_AUTOMATION_CATALOGUE} from './automation/catalogues/contracts';
 import {automationWorkflowProblems,type AutomationWorkflow} from './automation/workflow';
 import {automationDocumentMatches,type AutomationDocumentTemplate} from './automation/document-template';
 import {contractApprovalLayersSchema,contractStepParamProblems,contractWorkflowWarnings} from './contract-automation';
-import {contractAutomationApprovalTarget,contractAutomationRead,contractAutomationRecipients,type ContractAutomationContext} from './contract-automation-context';
+import {contractAutomationRead,contractAutomationRecipients,type ContractAutomationContext} from './contract-automation-context';
+import {contractApprovalAssignments} from './contract-approval-assignment';
 import {resolveContractLetterRouting,contractLetterRoutingProblems} from './contract-letter-flow';
+import {contractLetterAssignment} from './contract-letter-routing';
 import {routedStepChooser} from './routed-step-assignment';
 import type {ContractApprovalAssignment} from './contract-approval-flow';
 import type {ContractFlowDecision} from './contract-case-flow';
 import type {SigningRoute} from './document-signing-model';
-import type {DocumentRoutingWho} from './document-signing-routing';
 
 export type ContractProposedDecision=Omit<ContractFlowDecision,'submittedBy'|'submittedAt'|'revision'>;
 export type ContractPreviewStep={id:string;type:string;label:string;to:string[];cc:string[];layers:{id:string;name:string;who:string;pick:'any'|'roundRobin'}[];letter:{name:string;version:number;steps:{label:string;action:string;who:string;owner:boolean}[]}|null};
@@ -43,7 +44,6 @@ export function buildContractDecisionPlan(input:{context:ContractAutomationConte
  const chooser=routedStepChooser({today,groups:context.groups.map(g=>({...g,limit:0})),users:context.activePeople.map(id=>({id,load:0,lastAssigned:definitions.lastAssigned[id]??null,onLeave:false}))});
  const group=(id:string|null)=>id?context.groups.find(g=>g.id===id):undefined;
  const names=(ids:readonly string[])=>ids.map(id=>context.names[id]??'A linked person');
- const describeWho=(who:DocumentRoutingWho)=>who.kind==='employee'?'The employee':who.kind==='directSuperior'?'Their Direct Superior':who.kind==='group'?group(who.groupId)?.name??'Assignment group':who.kind==='routing'?context.routings.find(r=>r.id===who.routingId)?.name??'Routing':'Named people';
  if(!group(context.fallbackGroupId))plan.blockers.push('Choose an existing Contract fallback group.');
  if(!group(context.postingApproverGroupId)?.members.some(id=>active.has(id)))plan.blockers.push('Choose a posting approver group with an active member.');
  const matched=definitions.workflows.filter(({workflow})=>workflow.status==='live'&&workflow.trigger.event==='decisionSubmitted'&&evaluateAutomationConditions(workflow.conditions,read).ok);
@@ -70,14 +70,12 @@ export function buildContractDecisionPlan(input:{context:ContractAutomationConte
    }else if(step.type==='requestApproval'){
     const parsed=contractApprovalLayersSchema.safeParse(step.params.layers);
     if(!parsed.success)continue; // The shared parameter validator has already reported the blocking problem.
-    const assignments:ContractApprovalAssignment[]=[];
-    for(const layer of parsed.data){
-     const target=contractAutomationApprovalTarget(layer.approver,context);
-     const selected=layer.pick==='roundRobin'?chooser.choose(target.userIds,layer.pick,target.groupId):null;
-     if(!target.userIds.length||layer.pick==='roundRobin'&&!selected)plan.blockers.push(at+layer.name+': no eligible approver or fallback member is available.');
-     if(target.fallbackUsed)plan.warnings.push(at+layer.name+': the fallback group takes this approval layer.');
-     assignments.push({layer,groupId:target.groupId,candidateUserIds:target.userIds,candidatePersonIds:Object.fromEntries(target.userIds.map(id=>[id,context.userPersonIds[id]])),selectedUserId:selected,fallbackUsed:target.fallbackUsed,missingReason:target.unresolved.map(r=>r.reason).join(' ')||null});
-     detail.layers.push({id:layer.id,name:layer.name,pick:layer.pick,who:selected?names([selected])[0]:group(target.groupId)?.name??names(target.userIds).join(', ')});
+    const assignments=contractApprovalAssignments({layers:parsed.data,context,today,lastAssigned:definitions.lastAssigned},chooser);
+    for(const assignment of assignments){
+     const {layer,selectedUserId:selected}=assignment;
+     if(!assignment.candidateUserIds.length||layer.pick==='roundRobin'&&!selected)plan.blockers.push(at+layer.name+': no eligible approver or fallback member is available.');
+     if(assignment.fallbackUsed)plan.warnings.push(at+layer.name+': the fallback group takes this approval layer.');
+     detail.layers.push({id:layer.id,name:layer.name,pick:layer.pick,who:selected?names([selected])[0]:group(assignment.groupId)?.name??names(assignment.candidateUserIds).join(', ')});
     }
     plan.approvalAssignments[key]=assignments;
    }else if(step.type==='generateDocument'){
@@ -89,17 +87,8 @@ export function buildContractDecisionPlan(input:{context:ContractAutomationConte
      plan.blockers.push(at+template.name+' does not match this decision and organisation.');continue;
     }
     plan.blockers.push(...contractLetterRoutingProblems(template.routing,refs).map(p=>at+template.name+': '+p));
-    const employeeIds=context.employeeUserIds.filter(id=>active.has(id)),superiorIds=context.superiorUserIds.filter(id=>active.has(id));
-    const resolved=resolveContractLetterRouting(template.routing,{
-     employeeUserId:employeeIds.length===1?employeeIds[0]:null,directSuperiorUserId:superiorIds.length===1?superiorIds[0]:null,
-     facts:{businessGroup:[context.businessGroupId,context.businessUnitId].filter((id):id is string=>!!id),company:context.companyId,department:context.departmentId,jobTitle:context.jobTitle},
-     routing:id=>{const routing=context.routings.find(r=>r.id===id);return routing?{...routing,rows:routing.rows.map(row=>row.assignTo.kind==='people'?{...row,assignTo:{...row.assignTo,userIds:row.assignTo.userIds.filter(id=>active.has(id))}}:row)}:null;},
-     groupMembers:id=>{const g=group(id);return g?g.members.filter(id=>active.has(id)):null;},
-     choose:chooser.choose,choiceProblem:chooser.problem,
-     fallback:context.fallbackGroupId?{groupId:context.fallbackGroupId,members:group(context.fallbackGroupId)?.members.filter(id=>active.has(id))??[]}:null,
-     describe:describeWho,
-    });
-    const route:SigningRoute={...resolved.route,steps:resolved.route.steps.map(s=>({...s,label:describeWho(template.routing.find(row=>row.id===s.id)!.who),...(s.holderId?{holderPersonId:context.userPersonIds[s.holderId]}:{})}))};
+    const resolved=contractLetterAssignment(template,context,{today,lastAssigned:definitions.lastAssigned},chooser);
+    const route=resolved.route;
     for(const issue of resolved.unresolved){
      if(issue.fallbackGroupId&&issue.holderId)plan.warnings.push(at+template.name+': the fallback group takes '+issue.meantFor+'.');
      else if(route.steps.find(s=>s.id===issue.stepId)?.role==='employee')plan.warnings.push('The employee has no unique active sign-in. Their signature will be held; nobody signs for them.');

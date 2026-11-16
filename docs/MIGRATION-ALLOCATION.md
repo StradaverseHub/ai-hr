@@ -1,4 +1,14 @@
 <!-- 5800_contract_shared_automation -->
+<!-- 5810_contract_shared_execution -->
+# Contract execution adapters reservation — 17 November 2026 MYT
+
+Owner: `codex/contract-shared-automation-20261116`. Reserve tags **5810–5829**, idx **5210–5229**,
+`when` **1794841005810–1794841005829**, for the remaining approved signing, execution, posting and shared-module
+adapters. A fresh read-only survey of all 242 registered worktrees found no competing 5810–5829 migration file.
+These append after the existing 5800–5809 reservation; existing SQL bytes and their approved hashes remain unchanged.
+This records source allocation only. Refresh installation watermarks at release admission. Every merge and
+installation remains on the owner's explicit approval hold.
+
 # Contract shared automation reservation — 16 November 2026 MYT
 
 Owner: `codex/contract-shared-automation-20261116`. Reserve tags **5800–5809**, idx **5200–5209**,

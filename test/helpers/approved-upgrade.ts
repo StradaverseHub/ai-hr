@@ -235,9 +235,11 @@ export const APPROVED_UPGRADE_TAIL=[
  {idx:5207,when:1794841005807,tag:'5807_contract_shared_commands'},
  {idx:5208,when:1794841005808,tag:'5808_contract_shared_signing'},
  {idx:5209,when:1794841005809,tag:'5809_contract_shared_decision_identity'},
+ {idx:5210,when:1794841005810,tag:'5810_contract_shared_execution_adapters'},
 ] as const;
 // Final pending 2109/2126 bytes reviewed from engine 128bc2539; no applied-prefix hashes change.
 const APPROVED_UPGRADE_HASHES:Record<string,string>={
+ '5810_contract_shared_execution_adapters':'f166257ff49068e15adda1a78a3070df1661fb65fd67e08e76d1b65643fd10f9',
  '5808_contract_shared_signing':'580fb0f986a84218b127dad7276954331eba90e1398b3b46a4ba4f2b47a68c9d',
  '5809_contract_shared_decision_identity':'5e83fffd290b7cdbceb5d01b17c1b64241228dd905ac4738a721f3798787772b',
  '5807_contract_shared_commands':'e8c5737b8b0757fd2e3ce5c84b572a0933770fac76c6774d799eabcee91699d2',
@@ -440,6 +442,9 @@ async function table(db:Database,name:string):Promise<Row[]>{return (await db.cl
  * may hold a value there. migrateApprovedUpgrade proves each column present and null on every row once its
  * migration is applied; a retained row is then compared without it (withoutCombinedReleaseNulls). */
 export const COMBINED_RELEASE_NULL_COLUMNS:readonly {tag:string;table:string;columns:readonly string[]}[]=Object.freeze([
+ {tag:'5808_contract_shared_signing',table:'contract_shared_letter',columns:['signing_document_id','decision_revision','workflow_run_id','workflow_step_id']},
+ {tag:'5809_contract_shared_decision_identity',table:'contract_shared_case_revision',columns:['actor_person_id','actor_name']},
+ {tag:'5810_contract_shared_execution_adapters',table:'contract_shared_event',columns:['root_event_id']},
  {tag:'5804_shared_email_rich_body',table:'automation_email_template_version',columns:['body_doc']},
  {tag:'5805_native_contract_counter_and_cutover',table:'employment',columns:['contract_number']},
  {tag:'5010_employee_import_staged_job',table:'employment',columns:['import_pending_attempt_id']},

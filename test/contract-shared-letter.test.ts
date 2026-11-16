@@ -90,6 +90,11 @@ describe('Contract document routing policy', () => {
     record = act(record, record.document.route.steps[2], 'returned', 'Please correct the terms.');
     expect(record.valuesFixed).toBe(false);
     expect(contractLetterCanEdit(record, 'ops-user')).toBe(true);
+    record={...record,document:{...record.document,routing:{...record.document.routing!,liveMergeReviews:true}}};
+    record=editContractLetterBlocks(record,{userId:'ops-user',blocks:{paragraph1:'Corrected agreed terms'},fingerprint:'c'.repeat(64)});
+    expect(record.document.contentRevision).toBe(2);
+    expect(pendingSigningSteps(record.document)).toEqual([]);
+    expect(contractLetterCanEdit(record,'ops-user')).toBe(true);
     record = resendContractLetter(record, {id: 'resend', actorId: 'ops-user', actorPersonId: 'person-ops', actorName: 'People Ops', at});
     expect(pendingSigningSteps(record.document).map(s => s.id)).toEqual(['review']);
     record = act(record, record.document.route.steps[0], 'reviewed');

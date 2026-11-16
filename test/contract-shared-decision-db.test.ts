@@ -6,7 +6,7 @@ import {closeAll,migrateTestDb,resetDb,seedBase,setModule,entitledCtx,createAppU
 import {hireEmployee,setEmploymentInfo} from '../core/org';
 import {setCompensation} from '../core/comp';
 import {v9Setup,v9Workspace,v9SaveConfig} from '../packs/lifecycle/service';
-import {adoptContractSharedCase,previewContractSharedDecision,readContractSharedDecisionPreview,submitContractSharedDecision,contractSharedHistory,contractSharedContext,contractPreviewJobHandler} from '../packs/contracts/service';
+import {adoptContractSharedCase,previewContractSharedDecision,readContractSharedDecisionPreview,submitContractSharedDecision,contractSharedHistory,contractSharedContext,contractPreviewJobHandler,contractAutomationJobHandler,readContractSharedApproval,actContractSharedApproval,readContractSharedLetter,actContractSharedLetter,renderContractSharedLetter} from '../packs/contracts/service';
 import {saveAutomationDocumentTemplate,saveAutomationWorkflow,automationBuilderAccess,type AutomationWorkflow} from '../packs/automation/service';
 import {runBulkJobTick} from '../core/bulk-job-worker';
 import {readBulkJob} from '../core/bulk-job';
@@ -55,10 +55,50 @@ async function finishPreview(id:string,as:SessionContext){
  }
  throw new Error('Protected Contract preview did not finish.');
 }
+async function finishAutomation(id:string,as:SessionContext){
+ let failure:unknown;
+ const diagnostic={...contractAutomationJobHandler,describeFailure:async(...args:Parameters<NonNullable<typeof contractAutomationJobHandler.describeFailure>>)=>{
+  failure=args[1];return contractAutomationJobHandler.describeFailure!(...args);
+ }};
+ for(let count=0;count<100;count++){
+  const job=await readBulkJob(as,id,'contract_automation');
+  if(job.state==='failed')throw failure??new Error(job.error??'Protected Contract automation failed.');
+  if(['completed','cancelled'].includes(job.state))return job;
+  await runBulkJobTick(owner.client,{handlers:[diagnostic]});
+ }
+ throw new Error('Protected Contract automation did not finish.');
+}
 const draft={kind:'renew' as const,months:6,payChanges:false,reason:'Continue the agreed role'};
 let f:Awaited<ReturnType<typeof fixture>>;
 beforeEach(async()=>{f=await fixture();});
 describe('protected Contract decision preview and submission',()=>{
+ it('executes the accepted workflow revision through real approval receipts and holds the employee letter step without touching Personnel or Payroll',async()=>{
+  const requested=await previewContractSharedDecision(f.proposer,{caseId:f.caseId,revision:1,draft});
+  await finishPreview(requested.jobId,f.proposer);
+  const accepted=await submitContractSharedDecision(f.proposer,{caseId:f.caseId,revision:1,previewId:requested.previewId});
+  await saveAutomationWorkflow(f.admin,{workflow:{...f.workflow,status:'paused'},expectedRevision:1,reason:'Already accepted work retains revision one'});
+  expect((await finishAutomation(accepted.jobId,f.proposer)).state).toBe('completed');
+  const [row]=await owner.db.execute<{id:string}>(sql`select id from contract_shared_approval where tenant_id=${f.b.tenantId}::uuid and case_id=${f.caseId}::uuid`);
+  const approval=await readContractSharedApproval(f.admin,row.id);
+  expect(approval.canAct).toBe(true);expect(approval.status).toBe('pending');expect(approval.layers.map(layer=>layer.label)).toEqual(['CEO']);
+  expect((await readContractSharedApproval(f.proposer,row.id)).canAct).toBe(false);
+  expect(JSON.stringify(approval)).not.toMatch(/497621|4976\.21|candidatePersonIds|holderPersonId|signingPolicy/);
+  const approve={id:row.id,actionId:randomUUID(),layerId:approval.pendingLayerId!,revision:approval.contentRevision,hash:approval.contentHash,action:'approve' as const,reason:'Agreed'};
+  expect((await actContractSharedApproval(f.admin,approve)).status).toBe('approved');
+  expect((await actContractSharedApproval(f.admin,approve)).history).toHaveLength(1);
+  const [released]=await owner.db.execute<{job:string}>(sql`select job_id as job from contract_shared_event where tenant_id=${f.b.tenantId}::uuid and case_id=${f.caseId}::uuid and trigger_event='approvalsComplete'`);
+  expect((await finishAutomation(released.job,f.admin)).state).toBe('completed');
+  const [generated]=await owner.db.execute<{id:string}>(sql`select id from contract_shared_letter where tenant_id=${f.b.tenantId}::uuid and case_id=${f.caseId}::uuid`);
+  const letter=await readContractSharedLetter(f.admin,generated.id);
+  expect(letter.canEdit).toBe(true);expect(letter.pendingAction?.kind).toBe('review');expect(letter.layers[1]).toMatchObject({kind:'sign',unavailable:true,assigneeName:null});
+  expect(renderContractSharedLetter(letter)?.blocks[0].text).toBe('Dear {employee.name}');
+  const hidden=await readContractSharedLetter(f.proposer,generated.id);expect(hidden.body).toBeNull();expect(hidden.contentHash).toBeNull();
+  const reviewed=await actContractSharedLetter(f.admin,{id:letter.id,actionId:randomUUID(),stepId:letter.pendingAction!.stepId,revision:letter.contentRevision,hash:letter.contentHash!,action:'reviewed'});
+  expect(reviewed.state).toBe('routing');expect(reviewed.pendingAction).toBeNull();expect(reviewed.valuesFixed).toBe(false);
+  const current=await contractSharedContext(f.proposer,f.caseId);expect(current.flow?.stage).toBe('document');expect(current.flow?.flags).toContain('employee_cannot_sign');expect(current.source.contractNumber).toBe(4);
+  const [native]=await owner.db.execute<{count:number;salary:string}>(sql`select (select count(*)::int from personnel_posting where tenant_id=${f.b.tenantId}::uuid) as count,c.basic_salary::text as salary from compensation c where c.tenant_id=${f.b.tenantId}::uuid and c.employment_id=${f.employee.employmentId}::uuid and c.superseded_at is null`);
+  expect(native.count).toBe(0);expect(Number(native.salary)).toBe(4976.21);
+ });
  it('lets a real manager without builder/pay access review the chain without reading private routing inputs or applying effects',async()=>{
   expect((await automationBuilderAccess(f.proposer)).any).toBe(false);
   const requested=await previewContractSharedDecision(f.proposer,{caseId:f.caseId,revision:1,draft});

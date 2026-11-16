@@ -98,6 +98,11 @@ export function currentRoundActions(document: SigningDocument): SigningAction[] 
 }
 /** The send-back that currently holds the document with its owner, or null. */
 export function signingSendBack(document: SigningDocument): SigningAction | null {
+  // Editing a returned Contract letter changes its content revision, but sending it round again stays explicit.
+  if(document.subjectType==='contract'&&document.routing?.liveMergeReviews){
+    const marker=[...document.actions].reverse().find(action=>action.action==='returned'||action.action==='resent');
+    if(marker?.action==='returned')return marker;
+  }
   return currentRoundActions(document).find(action=>action.action==='returned')??null;
 }
 function actionFulfilsStep(action:SigningAction,step:SigningStep):boolean{

@@ -39860,6 +39860,20 @@
           "body": "Không có gì thay đổi. Mở Lịch sử nhập để xem chi tiết."
         }
       },
+      "contractAutomation": {
+        "completed": {
+          "title": "Đã cập nhật quy trình hợp đồng",
+          "body": "Mở hợp đồng để xem tiến độ hiện tại."
+        },
+        "failed": {
+          "title": "Quy trình hợp đồng cần được xử lý",
+          "body": "Bộ phận vận hành nhân sự có thể kiểm tra hồ sơ và cấu hình hiện tại."
+        },
+        "cancelled": {
+          "title": "Đã dừng quy trình hợp đồng",
+          "body": "Mở hợp đồng để xem tiến độ đã ghi nhận."
+        }
+      },
       "contractPreview": {
         "completed": {
           "title": "Bản xem trước quyết định đã sẵn sàng",

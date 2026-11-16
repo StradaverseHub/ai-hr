@@ -39860,6 +39860,20 @@
           "body": "Nothing was changed. Open Import History for details."
         }
       },
+      "contractAutomation": {
+        "completed": {
+          "title": "Contract workflow updated",
+          "body": "Open the contract to review its current progress."
+        },
+        "failed": {
+          "title": "Contract workflow needs attention",
+          "body": "People Ops can review the case and its current setup."
+        },
+        "cancelled": {
+          "title": "Contract workflow stopped",
+          "body": "Open the contract to review the recorded progress."
+        }
+      },
       "contractPreview": {
         "completed": {
           "title": "Decision preview ready",

@@ -39860,6 +39860,20 @@
           "body": "Tiada apa-apa diubah. Buka Sejarah Import untuk butiran."
         }
       },
+      "contractAutomation": {
+        "completed": {
+          "title": "Aliran kerja kontrak dikemas kini",
+          "body": "Buka kontrak untuk menyemak kemajuan semasa."
+        },
+        "failed": {
+          "title": "Aliran kerja kontrak memerlukan perhatian",
+          "body": "People Ops boleh menyemak kes dan tetapan semasa."
+        },
+        "cancelled": {
+          "title": "Aliran kerja kontrak dihentikan",
+          "body": "Buka kontrak untuk menyemak kemajuan yang direkodkan."
+        }
+      },
       "contractPreview": {
         "completed": {
           "title": "Pratonton keputusan sedia",

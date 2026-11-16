@@ -39860,6 +39860,20 @@
           "body": "未作任何更改。打开导入历史查看详情。"
         }
       },
+      "contractAutomation": {
+        "completed": {
+          "title": "合同工作流已更新",
+          "body": "打开合同查看当前进度。"
+        },
+        "failed": {
+          "title": "合同工作流需要处理",
+          "body": "人事运营可检查此案例及当前设置。"
+        },
+        "cancelled": {
+          "title": "合同工作流已停止",
+          "body": "打开合同查看已记录的进度。"
+        }
+      },
       "contractPreview": {
         "completed": {
           "title": "合同决定预览已就绪",

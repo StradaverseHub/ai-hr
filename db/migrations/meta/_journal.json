@@ -6238,6 +6238,13 @@
       "when": 1794841005809,
       "tag": "5809_contract_shared_decision_identity",
       "breakpoints": true
+    },
+    {
+      "idx": 5210,
+      "version": "7",
+      "when": 1794841005810,
+      "tag": "5810_contract_shared_execution_adapters",
+      "breakpoints": true
     }
   ]
 }

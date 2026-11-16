@@ -1,9 +1,9 @@
 /** Protected decision preflight on the existing bulk-job kernel. Private routing inputs never become an app read API. */
-import {sql,type SQL} from 'drizzle-orm';
-import {PgDialect} from 'drizzle-orm/pg-core';
+import {sql} from 'drizzle-orm';
 import {z} from 'zod';
 import type postgres from 'postgres';
 import type {SessionContext} from '../db/client';
+import {reservedSqlExecutor} from '../db/sql-executor';
 import {withScopedLifecycleTenant} from './module-gate';
 import type {BulkJobHandler} from './bulk-job-worker';
 import type {ContractSharedContext} from './contract-shared-read';
@@ -19,27 +19,35 @@ import {todayInKualaLumpur} from '../lib/hr-date';
 
 const inputSchema=z.object({previewId:z.uuid()}).strict();
 const MAX_PREVIEW_PEOPLE=5000;
-const dialect=new PgDialect();
 const emptyPlan=(reason:string):ContractDecisionPlan=>({blockers:[reason],warnings:[],workflowVersions:[],workflows:[],approvalAssignments:{},letterAssignments:{}});
 
 /** The case reader and participant owner run as the actual proposer; private reference reads run only as the worker. */
-async function readPreviewInputs(owner:postgres.ReservedSql,ctx:SessionContext,caseId:string){
- await owner`select set_config('app.tenant_id',${ctx.tenantId},true),set_config('app.user_id',${ctx.userId??''},true),set_config('jit','off',true)`;
- // A kernel-reserved handle has no pool options and cannot be passed to drizzle().
- // Compile the same parameterised statements on the already fenced connection.
- const db={async execute<Row extends Record<string,unknown>=Record<string,unknown>>(statement:SQL){
-  const query=dialect.sqlToQuery(statement);
-  return owner.unsafe<Row[]>(query.sql,query.params);
- }};
- const [caseRow]=await db.execute<{view:ContractSharedContext;participants:ContractContextReferences['participants']}>(sql`select app.contract_shared_context(${caseId}::uuid) as view,app.contract_shared_participants(${caseId}::uuid) as participants`);
+async function readPreviewInputs(owner:postgres.ReservedSql,ctx:SessionContext,caseId:string,execution=false){
+ await owner`select set_config('app.tenant_id',${ctx.tenantId},true),set_config('app.user_id','',true),set_config('jit','off',true)`;
+ const db=reservedSqlExecutor(owner);
+ // The seal must precede every plan input read; finalization compares it again after all those reads.
+ const setup=execution?{revision:''}:(await db.execute<{revision:string}>(sql`select app.contract_shared_setup_revision(${caseId}::uuid) as revision`))[0];
+ if(!execution)await owner`select set_config('app.user_id',${ctx.userId??''},true)`;
+ type CaseInputs={view:ContractSharedContext;participants:ContractContextReferences['participants'];documents?:ContractContextReferences['documents']};
+ const caseRow=execution
+  ?(await db.execute<{bundle:CaseInputs}>(sql`select app.contract_shared_worker_context(${caseId}::uuid) as bundle`))[0]?.bundle
+  :(await db.execute<CaseInputs>(sql`select app.contract_shared_context(${caseId}::uuid) as view,app.contract_shared_participants(${caseId}::uuid) as participants`))[0];
  await owner`select set_config('app.user_id','',true)`;
  if(!caseRow?.view?.flow)throw new Error('Contract preview source is unavailable.');
- const [setup]=await db.execute<{revision:string}>(sql`select app.contract_shared_setup_revision(${caseId}::uuid) as revision`);
  const [configured]=await db.execute<{groups:ContractContextReferences['groups'];fallback:string|null;posting:string|null}>(sql`
   select coalesce(v.data->'groups','[]'::jsonb) as groups,coalesce(s.fallback_group_id,v.data->>'peopleOpsGroup') as fallback,coalesce(s.posting_group_id,v.data->>'peopleOpsGroup') as posting
   from contract_case c left join lc_v9_config v on v.tenant_id=c.tenant_id left join contract_shared_settings s on s.tenant_id=c.tenant_id and s.company_id=c.company_id
   where c.tenant_id=${ctx.tenantId}::uuid and c.id=${caseId}::uuid`);
- const workflows=await db.execute<{id:string;revision:number;required:boolean;definition:AutomationWorkflow}>(sql`
+ type WorkflowRow={id:string;revision:number;required:boolean;definition:AutomationWorkflow};
+ const workflows=execution?await db.execute<WorkflowRow>(sql`
+  select distinct v.workflow_id as id,v.revision,v.required,v.definition from contract_shared_event e
+  join automation_workflow_version v on v.tenant_id=e.tenant_id and v.module='contract_staff' and (
+   exists(select 1 from jsonb_array_elements(e.workflow_versions) x where x->>'workflowId'=v.workflow_id::text and x->>'revision'=v.revision::text)
+   or exists(select 1 from automation_run r where r.tenant_id=e.tenant_id and r.subject_id=e.case_id and r.module='contract_staff' and r.status='waiting'
+    and r.waiting_for::text=coalesce(e.data->>'approvalId',e.data->>'letterId') and r.workflow_id=v.workflow_id and r.workflow_revision=v.revision))
+  where e.tenant_id=${ctx.tenantId}::uuid and e.case_id=${caseId}::uuid and e.job_id::text=current_setting('app.bulk_job',true)
+  and e.id::text=current_setting('app.contract_event',true)
+  order by id,v.revision limit 251`):await db.execute<WorkflowRow>(sql`
   select workflow_id as id,revision,required,definition from(select distinct on(workflow_id) workflow_id,revision,status,required,definition from automation_workflow_version
    where tenant_id=${ctx.tenantId}::uuid and module='contract_staff' order by workflow_id,revision desc) latest
   where status='live' and definition->'trigger'->>'event'='decisionSubmitted' order by workflow_id limit 201`);
@@ -51,8 +59,8 @@ async function readPreviewInputs(owner:postgres.ReservedSql,ctx:SessionContext,c
   where h.tenant_id=${ctx.tenantId}::uuid and h.module='contract_staff' and not h.retired order by h.id limit 501`);
  const emails=await db.execute<{id:string;name:string;active:boolean;retired:boolean}>(sql`
   select distinct on(template_id) template_id as id,name,active,retired from automation_email_template_version where tenant_id=${ctx.tenantId}::uuid and module='contract_staff' order by template_id,revision desc limit 501`);
- if(workflows.length>200||routingRows.length>500||documents.length>500||emails.length>500)throw new Error('Contract preview reference limits exceeded.');
- const refs:ContractContextReferences={participants:caseRow.participants,groups:configured?.groups??[],fallbackGroupId:configured?.fallback??null,postingApproverGroupId:configured?.posting??null,routings:[...routingRows],people:[],documents:[]};
+ if(workflows.length>(execution?250:200)||routingRows.length>500||documents.length>500||emails.length>500)throw new Error('Contract automation reference limits exceeded.');
+ const refs:ContractContextReferences={participants:caseRow.participants,groups:configured?.groups??[],fallbackGroupId:configured?.fallback??null,postingApproverGroupId:configured?.posting??null,routings:[...routingRows],people:[],documents:caseRow.documents??[]};
  const definitions:ContractPreviewDefinitions={workflows:workflows.map(row=>({revision:row.revision,workflow:{...row.definition,id:row.id,module:'contract_staff',status:'live',required:row.required}})),documents:[...documents],emails:[...emails],lastAssigned:{}};
  const ids=new Set(refs.participants.map(p=>p.id));
  for(const group of refs.groups)for(const id of group.members)ids.add(id);
@@ -69,6 +77,11 @@ async function readPreviewInputs(owner:postgres.ReservedSql,ctx:SessionContext,c
   definitions.lastAssigned=Object.fromEntries(recent.map(row=>[row.id,row.last]));
  }
  return {view:caseRow.view,refs,definitions,setupRevision:setup.revision,db};
+}
+
+/** Private worker reuse; the native context adapter independently checks the held kernel event capability. */
+export function readContractSharedExecutionInputs(owner:postgres.ReservedSql,ctx:SessionContext,caseId:string){
+ return readPreviewInputs(owner,ctx,caseId,true);
 }
 
 export const contractPreviewJobHandler:BulkJobHandler<never>={
