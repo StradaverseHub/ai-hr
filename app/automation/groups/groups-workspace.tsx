@@ -23,7 +23,7 @@ export function GroupsWorkspace({access,groups,routings,options,people:initialPe
  // Groups, their members and open task limits stay in the On/Off Boarding configuration (ADR decision 2).
  const usedBy=(groupId:string)=>live.filter(r=>r.routing.rows.some(row=>row.assignTo.kind==='group'&&row.assignTo.groupId===groupId)).map(r=>t('groups.routingNamed',{name:r.routing.name}));
  return <main className="v9-stack pcg">
-  <ConfigHead crumb={t('crumb')+' / '+t('groups.title')} title={t('groups.title')} sub="Shared group membership and routing rules for HR workflows." actions={access.legacy&&!groupSection?<Link className="v9-button" href={LEGACY_BUILDERS.groups}>{t('groups.editGroups')}</Link>:undefined}/>
+  <ConfigHead crumb={t('crumb')+' / '+t('groups.title')} title={t('groups.title')} sub={t('sharedGroups.description')} actions={access.legacy&&!groupSection?<Link className="v9-button" href={LEGACY_BUILDERS.groups}>{t('groups.editGroups')}</Link>:undefined}/>
   {groupSection??<section className="v9-stack" aria-labelledby="automation-groups-title">
    <div><h2 id="automation-groups-title" className="sr-only">{t('groups.groups')}</h2><p className="pcg-hint">{t('groups.groupsIntro')}</p>{!access.legacy&&<p className="pcg-hint">{t('groups.groupsReadOnly')}</p>}</div>
    {groups.length===0?<p className="v9-muted">{t('groups.noGroups')}</p>:<ul className="pcg-grid2" style={{listStyle:'none',margin:0,padding:0}}>{groups.map(g=>{const used=usedBy(g.id);return <li key={g.id} className="pcg-card" aria-label={g.name}>
