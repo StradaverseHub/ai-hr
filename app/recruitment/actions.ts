@@ -41,6 +41,7 @@ import {
   saveCandidateEmailSettings, saveCandidateEmailTemplate, resetCandidateEmailTemplate, retryCandidateEmail,
   previewInterviewInvitation, sendOfferByEmail, type InvitationPreview, type InterviewEmailOutcome,
   suggestMatchSummary, updateMatchSummarySetting, type RecruitmentMatchSummary,
+  recordAgencyPortalSubmission, declineAgencyPortalSubmission, updateAgencyPortalSetting,
 } from '@/packs/recruitment/service';
 import { getLocale } from 'next-intl/server';
 
@@ -1080,4 +1081,21 @@ export async function suggestMatchSummaryAction(applicationId: string): Promise<
     const fields = e instanceof RecruitmentError && e.code === 'ai_identifier' ? [...(e.detail ?? [])] : undefined;
     return fields ? { problem: errorCode(e), fields } : { problem: errorCode(e) };
   }
+}
+
+// ── Slice 25: the agency portal inbox and switch ─────────────────────────────────────────────────────────────
+
+const inboxPage = (f: FormData) => back(f, '/recruitment/agency-portal');
+/** Record a portal submission through slice 10 (its outcome shows on the job; a slice 10 refusal leaves it waiting). */
+export async function recordAgencyPortalAction(f: FormData) {
+  const url = inboxPage(f);
+  return run(url, (s) => recordAgencyPortalSubmission(s, str(f, 'id')), withParam(url, 'notice', 'recorded'));
+}
+export async function declineAgencyPortalAction(f: FormData) {
+  const url = inboxPage(f);
+  return run(url, (s) => declineAgencyPortalSubmission(s, str(f, 'id'), str(f, 'reason')), withParam(url, 'notice', 'declined'));
+}
+/** Settings › Agency portal: an administrator turns the company's portal on or off. */
+export async function updateAgencyPortalSettingAction(f: FormData) {
+  return run(back(f, '/recruitment/settings?section=portal'), (s) => updateAgencyPortalSetting(s, str(f, 'companyId'), f.get('enabled') === 'on'));
 }

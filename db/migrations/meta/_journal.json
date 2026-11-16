@@ -6161,6 +6161,13 @@
       "when": 1793330005426,
       "tag": "5726_recruitment_ai_match_summary",
       "breakpoints": true
+    },
+    {
+      "idx": 5127,
+      "version": "7",
+      "when": 1793330005427,
+      "tag": "5727_recruitment_agency_portal",
+      "breakpoints": true
     }
   ]
 }

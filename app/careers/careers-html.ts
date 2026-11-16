@@ -86,11 +86,11 @@ export function link(view: Pick<CareersView, 'locale' | 'explicit'>, path: strin
   return q ? `${path}?${q}` : path;
 }
 
-const postedDate = (view: CareersView, iso: string) => new Intl.DateTimeFormat(view.locale, { dateStyle: 'medium', timeZone: HR_LOCAL_TZ }).format(new Date(iso));
-const employment = (view: CareersView, type: string) => view.employmentTypes[type] ?? type;
+export const postedDate = (view: CareersView, iso: string) => new Intl.DateTimeFormat(view.locale, { dateStyle: 'medium', timeZone: HR_LOCAL_TZ }).format(new Date(iso));
+export const employment = (view: CareersView, type: string) => view.employmentTypes[type] ?? type;
 
 /** The document: header (company name, language links), main content. No script, one stylesheet. */
-function documentHtml(view: CareersView, o: { title: string; brand?: { name: string; href: string }; here: string; params?: Record<string, string | number | null>; body: string }): string {
+export function documentHtml(view: CareersView, o: { title: string; brand?: { name: string; href: string }; here: string; params?: Record<string, string | number | null>; body: string }): string {
   const langs = locales.map((l) => {
     const search = new URLSearchParams();
     for (const [k, v] of Object.entries(o.params ?? {})) if (v !== null && v !== undefined && v !== '') search.set(k, String(v));

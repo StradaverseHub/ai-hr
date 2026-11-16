@@ -343,3 +343,14 @@ export type { RewardState, MyRewardState, RewardFacts, RewardHireFacts, RewardPa
 // the owner records the provider-data approval for recruitment_match_summary_v1; a company switch, default off (5726; D-063, D-069).
 export { suggestMatchSummary, matchSummarySetting, matchSummaryOffered, updateMatchSummarySetting, matchSummaryApproved } from './match-summary';
 export type { MatchSummarySetting, RecruitmentMatchSummary } from './match-summary';
+// Slice 25 — the agency portal: consultants sign in on the careers address with an e-mailed code, see the jobs released to their
+// contracts, submit candidates into HR's inbox and follow a coarse status; HR records each through slice 10 or declines it (5727; D-070).
+export {
+  requestAgencyPortalCode, checkAgencyPortalCode, agencyPortalAvailable, signOutAgencyPortal, agencyPortalView, submitAgencyPortal,
+  agencyPortalInbox, recordAgencyPortalSubmission, declineAgencyPortalSubmission, agencyPortalResume, agencyPortalSetting, updateAgencyPortalSetting,
+  AGENCY_PORTAL_SESSION_HOURS, AGENCY_PORTAL_DAILY_SUBMISSIONS, AGENCY_PORTAL_DECLINE_REASON_MAX, AGENCY_PORTAL_STATUSES,
+} from './agency-portal';
+export type {
+  AgencyPortalCodeRequest, AgencyPortalCodeCheck, AgencyPortalView, AgencyPortalJob, AgencyPortalField, AgencyPortalSubmitResult, AgencyPortalInboxRow,
+  AgencyPortalStatus,
+} from './agency-portal';

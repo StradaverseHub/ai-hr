@@ -1854,3 +1854,64 @@ contract `recruitment_match_summary_v1`. The details below that the owner did no
 159. Text holding an e-mail address or a phone number is refused, naming the field; nothing is recorded or sent.
 160. With no provider configured the request is refused and recorded without content; the AI Centre operation switch stops it.
 161. Rendered (after approval, on an installation with a provider): the settings section, the button, a reply and each refusal.
+
+## Slice 25 — Agency portal (owner: group 2, 2026-11-14; D-036, D-063, D-070; EV-049, EV-050)
+
+The owner decided (D-063) that agencies get a portal last, reusing the applicant verification design (slice 21a): no accounts.
+Moka gives consultants a headhunter platform where they submit to released jobs and HR accepts or rejects (EV-049, EV-050). AI HR
+builds a small portal on the company's careers address; the details below are this reconstruction's (D-070).
+
+### Who and where
+
+- Settings › Agency portal (recruitment administrators): a company switch, off by default. The portal is open only while the switch
+  is on, the careers page is published, and the company's candidate e-mail is on and this installation can send (the sign-in code
+  uses the company's sender and reply-to). Otherwise `/careers/<address>/agency` answers the careers Not found.
+- Signing in: an agency consultant (slice 10's contact record) enters their e-mail; a 6-digit code goes to it only when it belongs to
+  an Active consultant on a contract that is Enabled and within its period on today's Kuala Lumpur date; the page is the same either
+  way. Code wording is code-owned in six languages, with no link. Limits as slice 21a: 3 codes an hour and 10 a day per company and
+  address, 10 codes and 30 checks an hour per client; 10 minutes; 5 wrong entries.
+- A right code opens a session for 8 hours, held in an HttpOnly, SameSite=Strict cookie scoped to the portal's path (stored only as
+  a keyed hash). Every page re-checks access: when no Active consultant with that address remains on a usable contract, the session
+  ends. "Sign out" ends it at once.
+
+### What a consultant sees and does
+
+- Who they are (consultant, agency, contract), the Open positions released to their contracts (title, place, type, description and
+  the requirements for agencies), and their submissions — through the portal or recorded by HR for them — newest first, at most 200,
+  with a coarse status: Received, In process, Hired or Not taken forward. Never interview details, stages, reasons or whether another
+  channel protected the person.
+- Submit a candidate to a released position: full name, e-mail and/or mobile, comments (≤2,000), an optional résumé (PDF or Word,
+  ≤10 MB) with the candidate's permission confirmed. 20 submissions a Kuala Lumpur day per address at the company; the same person
+  (e-mail or mobile) already waiting for the same position from the same contract is refused.
+
+### HR's inbox
+
+- Recruitment › Agency inbox: the job's recruiter, assistants and the company's administrators see waiting portal submissions for the
+  jobs they operate (oldest first) and the last 50 decided.
+- **Record** runs slice 10's own submission as the recorder (contract usable by them, duplicates, protection, repeats, the daily
+  cap); the inbox row is marked recorded in the same transaction and keeps no personal data. A slice 10 refusal leaves it waiting.
+- **Decline** needs a reason, kept for HR; the agency sees "Not taken forward". A declined row keeps only the name for the agency's
+  list. Decided rows are deleted 180 days after the decision (when the portal is next used for that company).
+- Nothing from the portal creates a candidate or an application by itself.
+
+### Data (5727)
+
+- `recruitment_company_setting.agency_portal_enabled`; owner-only code, check, session and context tables (hashes only);
+  `recruitment_agency_portal_submission` (the inbox: forced row security; the job's operators read and decide once, guarded; no
+  insert or delete for the app role); owner read policies open only inside one company's portal context; definers that refuse a
+  signed-in caller.
+
+### Slice 25 acceptance cases
+
+162. The portal answers Not found unless the switch is on and candidate e-mail can be sent.
+163. A code goes only to an Active consultant on a usable contract; the page is the same for anyone; per-address and per-client
+     limits and 5 wrong entries hold; no address or code is stored in clear.
+164. A session cookie is HttpOnly, SameSite=Strict and scoped to the portal; it shows only the positions released to the consultant's
+     contracts and ends when the consultant or contract stops being usable, or on sign-out; it is stored only as a hash.
+165. A submission waits in the inbox and creates no candidate or application; repeats, invalid fields, unreleased positions and
+     signed-out posts are refused; the app role cannot insert or delete inbox rows.
+166. Recording creates the slice 10 submission in the same transaction and clears the inbox row; a second decision or a forged
+     recording is refused by the database; a decline's reason never reaches the agency, who sees a coarse status.
+167. The 21st submission of a Kuala Lumpur day for an address is refused.
+168. Only the job's operators read its inbox rows.
+169. Rendered: the sign-in and code steps, the portal, a position with its form, and the inbox, in a signed-out browser for the portal.

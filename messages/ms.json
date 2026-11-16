@@ -38712,7 +38712,8 @@
       "reports": "Laporan",
       "approvals": "Kelulusan",
       "screening": "Untuk disaring",
-      "rewards": "Ganjaran dan yuran"
+      "rewards": "Ganjaran dan yuran",
+      "agencyInbox": "Peti masuk agensi"
     },
     "errors": {
       "forbidden": "Anda tidak menguruskan pengambilan bagi syarikat ini.",
@@ -38847,7 +38848,8 @@
       "ai_not_active": "Ringkasan padanan AI hanya untuk permohonan aktif.",
       "ai_identifier": "Sesetengah teks yang akan dihantar mengandungi alamat e-mel, pautan atau nombor ID atau telefon. Buang dan cuba lagi.",
       "ai_unavailable": "Penyedia AI tidak tersedia atau menolak permintaan. Tiada apa-apa pada permohonan berubah.",
-      "ai_invalid": "Jawapan AI tidak dapat digunakan, jadi ia dibuang. Anda boleh cuba lagi."
+      "ai_invalid": "Jawapan AI tidak dapat digunakan, jadi ia dibuang. Anda boleh cuba lagi.",
+      "portal_decided": "Penyerahan agensi ini sudah direkodkan atau ditolak. Muat semula halaman untuk melihat statusnya."
     },
     "overview": {
       "purpose": "Kerja pengambilan hari ini merentas syarikat yang pengambilannya anda uruskan.",
@@ -39137,7 +39139,8 @@
         "questions": "Bank soalan",
         "places": "Alamat dan bilik",
         "email": "E-mel calon",
-        "ai": "Ringkasan padanan AI"
+        "ai": "Ringkasan padanan AI",
+        "portal": "Portal agensi"
       },
       "iv": {
         "rulesTitle": "Peraturan maklum balas",
@@ -41341,6 +41344,43 @@
       "sent": "Jawatan dan huraian jawatan, pengalaman, pendidikan dan kemahiran dalam permintaan, serta jawatan semasa calon, tahap pendidikan tertinggi, dan jawatan serta bilangan bulan dalam sejarah kerja dan pendidikan mereka. Teks panjang dipendekkan.",
       "neverSentTitle": "Apa yang tidak pernah dihantar",
       "neverSent": "Nama, e-mel, telefon, lokasi, majikan semasa, nama sekolah dan majikan, tempoh notis, sumber, ID, gaji, persetujuan, tag, fail dan medan tersuai calon. Teks yang mengandungi alamat e-mel, pautan atau nombor ID atau telefon ditolak."
+    },
+    "agencyInbox": {
+      "purpose": "Calon yang diserahkan oleh perunding agensi melalui portal agensi. Rekodkan setiap satu untuk menjalankan semakan agensi biasa, atau tolak.",
+      "company": "Syarikat",
+      "show": "Tunjuk",
+      "waitingTitle": "Menunggu",
+      "waitingNote": "Merekod menjalankan semakan biasa untuk pendua, permohonan terdahulu dan pengulangan, di bawah akses anda sendiri. Agensi hanya melihat status ringkas.",
+      "noWaiting": "Tiada penyerahan agensi yang menunggu.",
+      "from": "Daripada {agency} · {contract} · {consultant}",
+      "resume": "Resume: {name}",
+      "receivedAt": "Diterima {at}",
+      "record": "Rekodkan penyerahan",
+      "decline": "Tolak",
+      "reason": "Sebab",
+      "reasonNote": "Disimpan untuk HR sahaja. Agensi melihat “tidak diteruskan”.",
+      "confirmDecline": "Tolak penyerahan",
+      "decidedTitle": "Baru diputuskan",
+      "recordedName": "Direkodkan (butiran pada jawatan)",
+      "state": {
+        "waiting": "Menunggu",
+        "recorded": "Direkodkan",
+        "declined": "Ditolak"
+      },
+      "recorded": "Direkodkan. Hasilnya dipaparkan pada penyerahan agensi bagi jawatan itu.",
+      "declinedNotice": "Ditolak."
+    },
+    "agencyPortalSettings": {
+      "note": "Membolehkan perunding agensi log masuk pada alamat kerjaya anda dengan kod sekali guna yang dihantar ke e-mel mereka yang direkodkan di bawah Agensi, melihat jawatan yang dikeluarkan untuk kontrak mereka dan menyerahkan calon. Penyerahan menunggu dalam Peti masuk agensi sehingga pasukan anda merekod atau menolaknya.",
+      "label": "Buka portal agensi untuk syarikat ini",
+      "help": "Mati secara lalai. Hanya perunding aktif pada kontrak yang didayakan dan dalam tempohnya boleh log masuk.",
+      "on": "Hidup",
+      "off": "Mati",
+      "save": "Simpan",
+      "address": "Alamat portal: {path}",
+      "noCareersPage": "Terbitkan halaman kerjaya dahulu: portal menggunakan alamatnya.",
+      "noEmail": "E-mel calon dimatikan atau pemasangan ini tidak dapat menghantar, maka kod log masuk tidak dapat dihantar dan portal kekal ditutup.",
+      "how": "Agensi melihat setiap penyerahan sebagai Diterima, Dalam proses, Diambil bekerja atau Tidak diteruskan, tidak pernah butiran temu duga, sebab atau calon lain."
     }
   },
   "careersPublic": {
@@ -41483,6 +41523,69 @@
       "closedTitle": "Tinjauan ini telah ditutup",
       "closed": "Pautan tinjauan ini telah tamat tempoh atau telah digunakan.",
       "limited": "Terlalu banyak jawapan daripada sambungan ini. Cuba lagi kemudian."
+    },
+    "agency": {
+      "title": "Portal agensi",
+      "intro": "Untuk perunding agensi yang bekerja dengan syarikat ini. Masukkan alamat e-mel yang direkodkan syarikat untuk anda dan kami akan menghantar kod log masuk 6 digit.",
+      "email": "E-mel anda",
+      "emailInvalid": "Masukkan alamat e-mel yang sah.",
+      "sendCode": "Hantar kod kepada saya",
+      "sent": "Jika {email} milik perunding agensi syarikat ini, kami telah menghantar kod 6 digit kepadanya. Kod tamat tempoh dalam 10 minit.",
+      "codeLabel": "Kod daripada e-mel",
+      "codeHelp": "Masukkan 6 digit. Semak folder spam jika anda tidak menjumpai e-mel itu.",
+      "check": "Log masuk",
+      "resendNote": "Tiada e-mel selepas beberapa minit? Minta kod baharu.",
+      "resend": "Hantar kod baharu",
+      "wrongCode": "Kod itu tidak betul. Semak e-mel dan cuba lagi.",
+      "codeExpired": "Kod ini telah tamat tempoh atau digunakan terlalu banyak kali. Minta kod baharu.",
+      "codeInvalid": "Masukkan 6 digit daripada e-mel.",
+      "signedOutNotice": "Anda telah log keluar. Log masuk semula untuk meneruskan.",
+      "signOut": "Log keluar",
+      "signedInAs": "{consultant} · {agency} · {contract}",
+      "sessionNote": "Anda kekal log masuk sehingga 8 jam pada peranti ini.",
+      "jobsTitle": "Jawatan yang dikeluarkan untuk anda",
+      "noJobs": "Tiada jawatan terbuka yang dikeluarkan untuk kontrak anda buat masa ini.",
+      "submissionsTitle": "Penyerahan anda",
+      "statusNote": "Status sengaja dipendekkan: syarikat tidak berkongsi butiran temu duga atau sebab di sini.",
+      "noSubmissions": "Anda belum menyerahkan sesiapa.",
+      "candidate": "Calon",
+      "job": "Jawatan",
+      "received": "Diterima",
+      "statusLabel": "Status",
+      "status": {
+        "received": "Diterima",
+        "in_process": "Dalam proses",
+        "hired": "Diambil bekerja",
+        "not_progressed": "Tidak diteruskan"
+      },
+      "removed": "Butiran dibuang",
+      "receivedNotice": "Terima kasih. Pasukan pengambilan pekerja syarikat akan menyemak calon ini.",
+      "requirements": "Keperluan untuk agensi",
+      "submitTitle": "Serahkan calon",
+      "fields": {
+        "contract": "Serahkan di bawah",
+        "fullName": "Nama penuh calon",
+        "email": "E-mel calon",
+        "mobile": "Telefon bimbit calon",
+        "comments": "Komen untuk perekrut",
+        "resume": "Resume (pilihan)",
+        "permission": "Calon bersetuju saya berkongsi butiran dan resumenya dengan syarikat ini untuk jawatan ini."
+      },
+      "commentsHelp": "Sehingga 2,000 aksara. Jangan sertakan nombor ID atau butiran gaji.",
+      "resumeHelp": "PDF atau Word, sehingga 10 MB.",
+      "send": "Serahkan calon",
+      "errors": {
+        "fullName": "Masukkan nama penuh calon (sehingga 200 aksara).",
+        "email": "Masukkan alamat e-mel yang sah.",
+        "mobile": "Masukkan nombor telefon bimbit yang sah.",
+        "emailOrMobile": "Masukkan e-mel atau nombor telefon bimbit calon.",
+        "comments": "Hadkan komen kepada 2,000 aksara.",
+        "resume": "Lampirkan fail PDF atau Word sehingga 10 MB.",
+        "permission": "Sahkan bahawa calon bersetuju resumenya dikongsi."
+      },
+      "repeat": "Calon ini sudah menunggu semakan untuk jawatan ini daripada kontrak anda.",
+      "dailyLimit": "Anda telah mencapai had 20 penyerahan hari ini. Cuba lagi esok.",
+      "notAvailable": "Jawatan ini tidak lagi terbuka kepada kontrak anda."
     }
   },
   "bulkJobs": {
@@ -42335,6 +42438,12 @@
       "status": "Status",
       "problems": "Masalah",
       "truncated": "Senarai ini telah dipendekkan semasa import direkodkan. Muat turun Log Ralat sejurus selepas import untuk melihat semua masalah."
+    }
+  },
+  "agencyPortal": {
+    "codeEmail": {
+      "subject": "Kod log masuk portal agensi anda: {code}",
+      "body": "Kod anda untuk log masuk ke portal agensi {companyName} ialah:\n\n{code}\n\nKod tamat tempoh dalam 10 minit. Jika anda tidak meminta kod ini, anda boleh abaikan e-mel ini.\n\n{senderName}"
     }
   }
 }

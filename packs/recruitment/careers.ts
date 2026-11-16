@@ -209,7 +209,8 @@ export async function applicationCareers(s: SessionContext, applicationId: unkno
  */
 export const CAREERS_POOL_SIZE = 4;
 let careersPool: ReturnType<typeof postgres> | null = null;
-function careersDb() {
+/** Slice 25: the agency portal uses the same bounded anonymous pool. */
+export function careersDb() {
   careersPool ??= postgres(process.env.DATABASE_URL!, {
     max: CAREERS_POOL_SIZE, idle_timeout: 20, connect_timeout: 5,
     connection: { application_name: 'aihr-careers', statement_timeout: 5000, lock_timeout: 3000, idle_in_transaction_session_timeout: 5000 },

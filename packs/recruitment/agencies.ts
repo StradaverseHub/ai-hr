@@ -644,7 +644,9 @@ export type AgencySubmissionResult = { submissionId: string; outcome: Submission
  * against the recorder's 50 per Kuala Lumpur day (agency_daily_limit); a repeat or a refusal over the limit still commits
  * its attempt log, so it is thrown only after the transaction.
  */
-export async function recordAgencySubmission(s: SessionContext, input: AgencySubmissionInput): Promise<AgencySubmissionResult> {
+export async function recordAgencySubmission(s: SessionContext, input: AgencySubmissionInput,
+  /** Slice 25: runs in the same transaction once the submission is stored (the portal inbox row is decided with it). */
+  onStored?: (tx: Tx, submissionId: string) => Promise<void>): Promise<AgencySubmissionResult> {
   if (!isUuid(input.jobId)) throw new RecruitmentError('missing_fields', ['job']);
   if (!isUuid(input.contractId)) throw new RecruitmentError('missing_fields', ['contract']);
   if (!isUuid(input.consultantId)) throw new RecruitmentError('missing_fields', ['consultant']);
@@ -688,6 +690,7 @@ export async function recordAgencySubmission(s: SessionContext, input: AgencySub
       companyId: job.companyId, jobId: job.id, contractId: input.contractId, submissionId, outcome: stored.outcome, matchKind: stored.matchKind,
       applicationId: created?.applicationId ?? null, resume: !!resume,
     });
+    if (onStored) await onStored(tx, submissionId);
     return { submissionId, outcome: stored.outcome, applicationId: created?.applicationId ?? null };
   }));
   if (result === 'repeat') throw new RecruitmentError('repeat_submission');

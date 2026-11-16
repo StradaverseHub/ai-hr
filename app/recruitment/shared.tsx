@@ -56,6 +56,7 @@ const TABS = [
   { key: 'talentPool', href: '/recruitment/talent-pool', adminOnly: true },
   { key: 'reports', href: '/recruitment/reports', adminOnly: false },
   { key: 'approvals', href: '/recruitment/approvals', adminOnly: false },
+  { key: 'agencyInbox', href: '/recruitment/agency-portal', adminOnly: false },
   { key: 'rewards', href: '/recruitment/rewards', adminOnly: true },
   { key: 'settings', href: '/recruitment/settings', adminOnly: true },
 ] as const;
@@ -65,7 +66,7 @@ export type RecruitmentTabKey = (typeof TABS)[number]['key'];
  * The module's own sub-navigation (one menu entry, F1): Overview, Candidates, Interviews, Positions, Talent pool,
  * Reports, Approvals, Rewards and fees (slice 23, administrators) and Settings. A job-team member sees Candidates, Interviews and Positions (their own jobs); Reports
  * shows for administrators and for a job's recruiter, assistant or hiring manager (`reports`; never an interviewer
- * alone); Approvals shows when a step waits for the viewer; Talent pool and Settings are administrator-only. Overview
+ * alone); Approvals shows when a step waits for the viewer; Agency inbox (slice 25) shows as Reports does; Talent pool and Settings are administrator-only. Overview
  * shows for everyone with Recruitment access since slice 9 (its Tasks panel); its tiles stay administrator-only. To screen
  * (slice 11) shows, with its count, while the viewer has open screening requests (or is on it). Talent pool also shows for a
  * company's recruiters and assistants (`pools`, slice 13: the custom pools shared with them and the blocked list).
@@ -76,10 +77,11 @@ export async function RecruitmentTabs({ active, admin = true, approvals = 0, rep
   const t = await getTranslations('recruitment.tabs');
   const label: Record<RecruitmentTabKey, string> = {
     overview: t('overview'), candidates: t('candidates'), screening: t('screening'), interviews: t('interviews'), positions: t('positions'), talentPool: t('talentPool'),
-    reports: t('reports'), approvals: t('approvals'), rewards: t('rewards'), settings: t('settings'),
+    reports: t('reports'), approvals: t('approvals'), agencyInbox: t('agencyInbox'), rewards: t('rewards'), settings: t('settings'),
   };
   const shown = TABS.filter((tab) => (admin || !tab.adminOnly || (tab.key === 'talentPool' && pools)) && (tab.key !== 'approvals' || approvals > 0 || active === 'approvals')
-    && (tab.key !== 'reports' || admin || reports || active === 'reports') && (tab.key !== 'screening' || screening > 0 || active === 'screening'));
+    && (tab.key !== 'reports' || admin || reports || active === 'reports')
+    && (tab.key !== 'agencyInbox' || admin || reports || active === 'agencyInbox') && (tab.key !== 'screening' || screening > 0 || active === 'screening'));
   const count = (key: RecruitmentTabKey) => (key === 'approvals' ? approvals : key === 'screening' ? screening : 0);
   return (
     <nav aria-label={t('label')} className="flex flex-wrap gap-1 border-b border-border">

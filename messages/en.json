@@ -38712,7 +38712,8 @@
       "reports": "Reports",
       "approvals": "Approvals",
       "screening": "To screen",
-      "rewards": "Rewards and fees"
+      "rewards": "Rewards and fees",
+      "agencyInbox": "Agency inbox"
     },
     "errors": {
       "forbidden": "You do not manage recruitment for this company.",
@@ -38847,7 +38848,8 @@
       "ai_not_active": "AI match summaries are only for active applications.",
       "ai_identifier": "Some text that would be sent holds an e-mail address, a link or an ID or phone number. Remove it and try again.",
       "ai_unavailable": "The AI provider is unavailable or refused the request. Nothing on the application changed.",
-      "ai_invalid": "The AI reply could not be used, so it was discarded. You can try again."
+      "ai_invalid": "The AI reply could not be used, so it was discarded. You can try again.",
+      "portal_decided": "This agency submission was already recorded or declined. Reload the page to see where it stands."
     },
     "overview": {
       "purpose": "Today's hiring work across the companies whose recruitment you manage.",
@@ -39137,7 +39139,8 @@
         "questions": "Question bank",
         "places": "Addresses and rooms",
         "email": "Candidate e-mail",
-        "ai": "AI match summaries"
+        "ai": "AI match summaries",
+        "portal": "Agency portal"
       },
       "iv": {
         "rulesTitle": "Feedback rules",
@@ -41341,6 +41344,43 @@
       "sent": "The job title and description, the requisition’s experience, education and skills, and the candidate’s current title, highest education level, and the titles and month counts of their work and education history. Long text is cut short.",
       "neverSentTitle": "What is never sent",
       "neverSent": "The candidate’s name, e-mail, phone, location, current employer, school and employer names, notice period, source, ID, salary, consent, tags, files and custom fields. Text holding an e-mail address, a link or an ID or phone number is refused."
+    },
+    "agencyInbox": {
+      "purpose": "Candidates agency consultants submitted through the agency portal. Record each one to run the usual agency checks, or decline it.",
+      "company": "Company",
+      "show": "Show",
+      "waitingTitle": "Waiting",
+      "waitingNote": "Recording runs the usual checks for duplicates, earlier applications and repeats, under your own access. The agency sees only a short status.",
+      "noWaiting": "No agency submissions are waiting.",
+      "from": "From {agency} · {contract} · {consultant}",
+      "resume": "Résumé: {name}",
+      "receivedAt": "Received {at}",
+      "record": "Record submission",
+      "decline": "Decline",
+      "reason": "Reason",
+      "reasonNote": "Kept for HR only. The agency sees “not taken forward”.",
+      "confirmDecline": "Decline submission",
+      "decidedTitle": "Recently decided",
+      "recordedName": "Recorded (details on the job)",
+      "state": {
+        "waiting": "Waiting",
+        "recorded": "Recorded",
+        "declined": "Declined"
+      },
+      "recorded": "Recorded. The outcome shows on the job's agency submissions.",
+      "declinedNotice": "Declined."
+    },
+    "agencyPortalSettings": {
+      "note": "Lets agency consultants sign in on your careers address with a one-time code sent to their e-mail recorded under Agencies, see the positions released to their contracts and submit candidates. Submissions wait in the Agency inbox until your team records or declines them.",
+      "label": "Open the agency portal for this company",
+      "help": "Off by default. Only active consultants on contracts that are enabled and within their period can sign in.",
+      "on": "On",
+      "off": "Off",
+      "save": "Save",
+      "address": "Portal address: {path}",
+      "noCareersPage": "Publish the careers page first: the portal uses its address.",
+      "noEmail": "Candidate e-mail is off or this installation cannot send, so sign-in codes cannot be sent and the portal stays closed.",
+      "how": "Agencies see each submission as Received, In process, Hired or Not taken forward, never interview details, reasons or other candidates."
     }
   },
   "careersPublic": {
@@ -41483,6 +41523,69 @@
       "closedTitle": "This survey is closed",
       "closed": "This survey link has expired or was already used.",
       "limited": "Too many answers from this connection. Try again later."
+    },
+    "agency": {
+      "title": "Agency portal",
+      "intro": "For agency consultants working with this company. Enter the e-mail address the company recorded for you and we will send a 6-digit sign-in code.",
+      "email": "Your e-mail",
+      "emailInvalid": "Enter a valid e-mail address.",
+      "sendCode": "Send me a code",
+      "sent": "If {email} belongs to an agency consultant of this company, we have sent a 6-digit code to it. It expires in 10 minutes.",
+      "codeLabel": "Code from the e-mail",
+      "codeHelp": "Enter the 6 digits. Check your spam folder if you cannot find the e-mail.",
+      "check": "Sign in",
+      "resendNote": "No e-mail after a few minutes? Ask for a new code.",
+      "resend": "Send a new code",
+      "wrongCode": "That code is not right. Check the e-mail and try again.",
+      "codeExpired": "This code has expired or was used too many times. Ask for a new code.",
+      "codeInvalid": "Enter the 6 digits from the e-mail.",
+      "signedOutNotice": "You are signed out. Sign in again to continue.",
+      "signOut": "Sign out",
+      "signedInAs": "{consultant} · {agency} · {contract}",
+      "sessionNote": "You stay signed in for up to 8 hours on this device.",
+      "jobsTitle": "Positions released to you",
+      "noJobs": "No open positions are released to your contracts right now.",
+      "submissionsTitle": "Your submissions",
+      "statusNote": "Statuses are kept short on purpose: the company shares no interview details or reasons here.",
+      "noSubmissions": "You have not submitted anyone yet.",
+      "candidate": "Candidate",
+      "job": "Position",
+      "received": "Received",
+      "statusLabel": "Status",
+      "status": {
+        "received": "Received",
+        "in_process": "In process",
+        "hired": "Hired",
+        "not_progressed": "Not taken forward"
+      },
+      "removed": "Details removed",
+      "receivedNotice": "Thank you. The company's recruitment team will review this candidate.",
+      "requirements": "Requirements for agencies",
+      "submitTitle": "Submit a candidate",
+      "fields": {
+        "contract": "Submit under",
+        "fullName": "Candidate's full name",
+        "email": "Candidate's e-mail",
+        "mobile": "Candidate's mobile",
+        "comments": "Comments for the recruiter",
+        "resume": "Résumé (optional)",
+        "permission": "The candidate agreed that I share their details and résumé with this company for this position."
+      },
+      "commentsHelp": "Up to 2,000 characters. Do not include ID numbers or salary details.",
+      "resumeHelp": "PDF or Word, up to 10 MB.",
+      "send": "Submit candidate",
+      "errors": {
+        "fullName": "Enter the candidate's full name (up to 200 characters).",
+        "email": "Enter a valid e-mail address.",
+        "mobile": "Enter a valid mobile number.",
+        "emailOrMobile": "Enter the candidate's e-mail or mobile number.",
+        "comments": "Keep comments to 2,000 characters.",
+        "resume": "Attach a PDF or Word file of up to 10 MB.",
+        "permission": "Confirm that the candidate agreed to share their résumé."
+      },
+      "repeat": "This candidate is already waiting for review for this position from your contract.",
+      "dailyLimit": "You have reached today's limit of 20 submissions. Try again tomorrow.",
+      "notAvailable": "This position is no longer open to your contract."
     }
   },
   "bulkJobs": {
@@ -42335,6 +42438,12 @@
       "status": "Status",
       "problems": "Problems",
       "truncated": "This list was shortened when the import was recorded. Download the Error Log straight after an import to see every problem."
+    }
+  },
+  "agencyPortal": {
+    "codeEmail": {
+      "subject": "Your agency portal sign-in code: {code}",
+      "body": "Your code to sign in to the {companyName} agency portal is:\n\n{code}\n\nIt expires in 10 minutes. If you did not ask for this code, you can ignore this email.\n\n{senderName}"
     }
   }
 }

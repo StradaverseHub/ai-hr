@@ -20,6 +20,9 @@ const RESPONSE_TOKEN = '[A-Za-z0-9_-]{43}';
 const RESPONSE_PATH = new RegExp(`^/careers/r/(${RESPONSE_TOKEN})$`);
 /** Slice 22: a candidate's survey link `/careers/s/<token>` (the same token shape; "s" is no careers address either). */
 const SURVEY_PATH = new RegExp(`^/careers/s/(${RESPONSE_TOKEN})$`);
+/** Slice 25: the agency portal on a careers address, and one released job in it. */
+const AGENCY_PATH = new RegExp(`^/careers/(${CAREERS_ADDRESS_SOURCE})/agency$`);
+const AGENCY_JOB_PATH = new RegExp(`^/careers/(${CAREERS_ADDRESS_SOURCE})/agency/jobs/(${JOB_ID})$`);
 export const isCareersResponseToken = (value: unknown): value is string => typeof value === 'string' && new RegExp(`^${RESPONSE_TOKEN}$`).test(value);
 
 export const isCareersAddress = (value: unknown): value is string => typeof value === 'string' && ADDRESS.test(value);
@@ -32,6 +35,7 @@ export function isCareersRoute(path: string, method = 'GET'): boolean {
   if (JOB_PATH.test(path)) return m === 'GET' || m === 'HEAD' || m === 'POST';
   if (RESPONSE_PATH.test(path)) return m === 'GET' || m === 'HEAD' || m === 'POST';
   if (SURVEY_PATH.test(path)) return m === 'GET' || m === 'HEAD' || m === 'POST';
+  if (AGENCY_PATH.test(path) || AGENCY_JOB_PATH.test(path)) return m === 'GET' || m === 'HEAD' || m === 'POST';
   return false;
 }
 
@@ -42,3 +46,7 @@ export const CAREERS_BODY_MAX_BYTES = 11 * 1024 * 1024;
 
 export const careersPagePath = (address: string) => `/careers/${address}`;
 export const careersJobPath = (address: string, jobId: string) => `/careers/${address}/jobs/${jobId}`;
+export const agencyPortalPath = (address: string) => `/careers/${address}/agency`;
+export const agencyPortalJobPath = (address: string, jobId: string) => `/careers/${address}/agency/jobs/${jobId}`;
+/** The portal's session cookie: HttpOnly, SameSite=Strict, scoped to the portal's own path, 8 hours. */
+export const AGENCY_PORTAL_COOKIE = 'aihr_agency_portal';

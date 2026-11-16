@@ -1,3 +1,11 @@
+# Recruitment slice 25: agency portal — 16 November 2026 MYT (unapplied, allocated)
+
+Branch `claude/rea-web-app-reconstruction-2c12ee` appends `5727_recruitment_agency_portal` at idx 5127 / when 1793330005427, the next slot of
+the recruitment block directly after `5726`, after merging `origin/main` at `9d32dfab1` (no new migrations). SHA256 `2d505281bfddf04850541d8ac4333e704f9eec4c634e805c913b5af51cd94fc2` at
+allocation (the file may still change before it is applied anywhere). A scan of the committed journals on the 3,002 distinct origin head
+commits on 16 November 2026 found no claim on 5727 or when 1793330005427. The block still stops at 5739 (`claude/probation-*` claims
+5740–5750); the renumbering note under slice 23 applies to 5720–5727. The installed ledgers were not read. No installation authority.
+
 # Recruitment slice 24: AI match summary suggestions — 16 November 2026 MYT (unapplied, allocated)
 
 Branch `claude/rea-web-app-reconstruction-2c12ee` appends `5726_recruitment_ai_match_summary` at idx 5126 / when 1793330005426, the next

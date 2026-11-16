@@ -199,6 +199,8 @@ export const recruitmentCompanySetting = pgTable('recruitment_company_setting', 
   positionTemplatesEnabled: boolean('position_templates_enabled').notNull().default(false),
   // Slice 24 (5726): AI match summary suggestions are offered in the company (default off; administrators only).
   aiMatchSummaryEnabled: boolean('ai_match_summary_enabled').notNull().default(false),
+  // Slice 25 (5727): the agency portal on the company's careers address (default off; administrators only).
+  agencyPortalEnabled: boolean('agency_portal_enabled').notNull().default(false),
   ...audit,
 });
 
@@ -1095,4 +1097,37 @@ export const recruitmentAgencyFee = pgTable('recruitment_agency_fee', {
   decisionReason: text('decision_reason'),
   decidedByUserId: uuid('decided_by_user_id'),
   decidedAt: ts('decided_at'),
+});
+
+// ── Slice 25 (db/migrations/5727_recruitment_agency_portal.sql) ──────────────────────────────────────────────
+
+/**
+ * A candidate an agency consultant submitted through the portal, waiting in HR's inbox until the job's operators record it through
+ * slice 10 or decline it. Written only by the portal definers; HR updates the decision columns once (guarded). Deciding clears the
+ * contact details, comments and résumé; recording clears the name too.
+ */
+export const recruitmentAgencyPortalSubmission = pgTable('recruitment_agency_portal_submission', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  tenantId: uuid('tenant_id').notNull(),
+  companyId: uuid('company_id').notNull(),
+  jobId: uuid('job_id').notNull(),
+  contractId: uuid('contract_id').notNull(),
+  consultantId: uuid('consultant_id').notNull(),
+  fullName: text('full_name'),
+  email: text('email'),
+  mobile: text('mobile'),
+  comments: text('comments'),
+  resumeName: text('resume_name'),
+  resumeMime: text('resume_mime'),
+  resumeSize: integer('resume_size'),
+  /** Never selected by a list. */
+  resumeContent: bytea('resume_content'),
+  permissionConfirmed: boolean('permission_confirmed').notNull().default(false),
+  emailDigest: text('email_digest').notNull(),
+  receivedAt: ts('received_at').notNull().defaultNow(),
+  state: text('state').$type<'waiting' | 'recorded' | 'declined'>().notNull().default('waiting'),
+  decidedAt: ts('decided_at'),
+  decidedByUserId: uuid('decided_by_user_id'),
+  declineReason: text('decline_reason'),
+  submissionId: uuid('submission_id'),
 });

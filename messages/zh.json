@@ -38712,7 +38712,8 @@
       "reports": "报表",
       "approvals": "审批",
       "screening": "待筛选",
-      "rewards": "奖励与费用"
+      "rewards": "奖励与费用",
+      "agencyInbox": "机构收件箱"
     },
     "errors": {
       "forbidden": "您不负责该公司的招聘。",
@@ -38847,7 +38848,8 @@
       "ai_not_active": "AI 匹配摘要仅适用于进行中的申请。",
       "ai_identifier": "将要发送的部分文本包含电子邮件地址、链接或证件号码或电话号码。请删除后重试。",
       "ai_unavailable": "AI 提供商不可用或拒绝了请求。申请没有任何更改。",
-      "ai_invalid": "AI 回复无法使用，已被丢弃。您可以重试。"
+      "ai_invalid": "AI 回复无法使用，已被丢弃。您可以重试。",
+      "portal_decided": "此机构推荐已被录入或拒绝。请刷新页面查看最新状态。"
     },
     "overview": {
       "purpose": "您所管理招聘的各公司今天的招聘工作。",
@@ -39137,7 +39139,8 @@
         "questions": "题库",
         "places": "地址和会议室",
         "email": "候选人邮件",
-        "ai": "AI 匹配摘要"
+        "ai": "AI 匹配摘要",
+        "portal": "机构门户"
       },
       "iv": {
         "rulesTitle": "反馈规则",
@@ -41341,6 +41344,43 @@
       "sent": "职位名称和描述，招聘需求中的经验、学历和技能，以及候选人的当前职称、最高学历，以及其工作和教育经历中的职称和月数。较长文本会被截短。",
       "neverSentTitle": "绝不发送的内容",
       "neverSent": "候选人的姓名、电子邮件、电话、所在地、当前雇主、学校和雇主名称、通知期、来源、证件、薪资、同意记录、标签、文件和自定义字段。包含电子邮件地址、链接或证件号码或电话号码的文本会被拒绝。"
+    },
+    "agencyInbox": {
+      "purpose": "机构顾问通过机构门户推荐的候选人。录入每一位以执行常规的机构检查，或拒绝。",
+      "company": "公司",
+      "show": "显示",
+      "waitingTitle": "待处理",
+      "waitingNote": "录入时会以您自己的权限执行常规检查：重复、过往申请和重复推荐。机构只能看到简短的状态。",
+      "noWaiting": "没有待处理的机构推荐。",
+      "from": "来自 {agency} · {contract} · {consultant}",
+      "resume": "简历：{name}",
+      "receivedAt": "收到时间 {at}",
+      "record": "录入推荐",
+      "decline": "拒绝",
+      "reason": "原因",
+      "reasonNote": "仅供人力资源查看。机构只会看到“未推进”。",
+      "confirmDecline": "拒绝推荐",
+      "decidedTitle": "最近已处理",
+      "recordedName": "已录入（详情见职位）",
+      "state": {
+        "waiting": "待处理",
+        "recorded": "已录入",
+        "declined": "已拒绝"
+      },
+      "recorded": "已录入。结果显示在该职位的机构推荐中。",
+      "declinedNotice": "已拒绝。"
+    },
+    "agencyPortalSettings": {
+      "note": "让机构顾问使用发送到其在“猎头机构”中登记的电子邮件的一次性验证码，在您的招聘页面地址登录，查看开放给其合同的职位并推荐候选人。推荐会在机构收件箱中等待，直到您的团队录入或拒绝。",
+      "label": "为此公司开放机构门户",
+      "help": "默认关闭。只有合同已启用且在合同期内的在职顾问才能登录。",
+      "on": "开",
+      "off": "关",
+      "save": "保存",
+      "address": "门户地址：{path}",
+      "noCareersPage": "请先发布招聘页面：门户使用它的地址。",
+      "noEmail": "候选人邮件已关闭，或此安装无法发送邮件，因此无法发送登录验证码，门户保持关闭。",
+      "how": "机构看到的每条推荐状态只有：已收到、处理中、已录用或未推进，看不到面试详情、原因或其他候选人。"
     }
   },
   "careersPublic": {
@@ -41483,6 +41523,69 @@
       "closedTitle": "此调查已关闭",
       "closed": "此调查链接已过期或已被使用。",
       "limited": "此连接提交的回答过多，请稍后再试。"
+    },
+    "agency": {
+      "title": "机构门户",
+      "intro": "供与本公司合作的机构顾问使用。输入公司为您登记的电子邮件地址，我们将发送 6 位登录验证码。",
+      "email": "您的电子邮件",
+      "emailInvalid": "请输入有效的电子邮件地址。",
+      "sendCode": "给我发送验证码",
+      "sent": "如果 {email} 属于本公司的机构顾问，我们已向其发送 6 位验证码。验证码 10 分钟后失效。",
+      "codeLabel": "邮件中的验证码",
+      "codeHelp": "输入 6 位数字。找不到邮件请查看垃圾邮件文件夹。",
+      "check": "登录",
+      "resendNote": "几分钟后仍未收到邮件？请重新获取验证码。",
+      "resend": "发送新验证码",
+      "wrongCode": "验证码不正确。请检查邮件后重试。",
+      "codeExpired": "此验证码已过期或使用次数过多。请重新获取验证码。",
+      "codeInvalid": "请输入邮件中的 6 位数字。",
+      "signedOutNotice": "您已退出登录。请重新登录以继续。",
+      "signOut": "退出登录",
+      "signedInAs": "{consultant} · {agency} · {contract}",
+      "sessionNote": "在此设备上最长保持登录 8 小时。",
+      "jobsTitle": "开放给您的职位",
+      "noJobs": "目前没有开放给您合同的职位。",
+      "submissionsTitle": "您的推荐",
+      "statusNote": "状态刻意保持简短：公司在此不会分享面试详情或原因。",
+      "noSubmissions": "您还没有推荐任何人。",
+      "candidate": "候选人",
+      "job": "职位",
+      "received": "收到时间",
+      "statusLabel": "状态",
+      "status": {
+        "received": "已收到",
+        "in_process": "处理中",
+        "hired": "已录用",
+        "not_progressed": "未推进"
+      },
+      "removed": "详情已删除",
+      "receivedNotice": "谢谢。公司的招聘团队将审核该候选人。",
+      "requirements": "对机构的要求",
+      "submitTitle": "推荐候选人",
+      "fields": {
+        "contract": "所属合同",
+        "fullName": "候选人全名",
+        "email": "候选人电子邮件",
+        "mobile": "候选人手机号码",
+        "comments": "给招聘人员的备注",
+        "resume": "简历（可选）",
+        "permission": "候选人已同意我就此职位向本公司分享其详细信息和简历。"
+      },
+      "commentsHelp": "最多 2,000 个字符。请勿包含证件号码或薪资详情。",
+      "resumeHelp": "PDF 或 Word，不超过 10 MB。",
+      "send": "推荐候选人",
+      "errors": {
+        "fullName": "请输入候选人全名（最多 200 个字符）。",
+        "email": "请输入有效的电子邮件地址。",
+        "mobile": "请输入有效的手机号码。",
+        "emailOrMobile": "请输入候选人的电子邮件或手机号码。",
+        "comments": "备注请控制在 2,000 个字符以内。",
+        "resume": "请附上不超过 10 MB 的 PDF 或 Word 文件。",
+        "permission": "请确认候选人已同意分享其简历。"
+      },
+      "repeat": "此候选人已通过您的合同推荐到该职位，正在等待审核。",
+      "dailyLimit": "您已达到今天 20 条推荐的上限。请明天再试。",
+      "notAvailable": "此职位已不再向您的合同开放。"
     }
   },
   "bulkJobs": {
@@ -42335,6 +42438,12 @@
       "status": "状态",
       "problems": "问题",
       "truncated": "记录导入时此列表已被缩短。请在导入后立即下载错误日志以查看所有问题。"
+    }
+  },
+  "agencyPortal": {
+    "codeEmail": {
+      "subject": "您的机构门户登录验证码：{code}",
+      "body": "您登录 {companyName} 机构门户的验证码是：\n\n{code}\n\n验证码 10 分钟后失效。如果您没有请求此验证码，请忽略这封邮件。\n\n{senderName}"
     }
   }
 }

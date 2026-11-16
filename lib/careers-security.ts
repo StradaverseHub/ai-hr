@@ -4,7 +4,7 @@
  *
  * The pages are plain server-rendered HTML with no script at all. The Content-Security-Policy therefore allows nothing
  * but this exact inline stylesheet (by its SHA-256 hash), same-origin form posts and no framing; nothing is loaded from
- * any origin, ours included. No cookie is ever set (D-026) and the pages are not indexed until the owner decides (D-028).
+ * any origin, ours included. No cookie is set except the agency portal's own session cookie (slice 25, D-070), scoped to its path, and the pages are not indexed until the owner decides (D-028).
  */
 import { createHash } from 'node:crypto';
 export { CAREERS_BODY_MAX_BYTES } from './careers-route';
@@ -61,6 +61,11 @@ export const CAREERS_CSS = [
   // Slice 22: the survey's rating groups.
   'fieldset{border:0;padding:0;min-width:0}',
   'legend{font-weight:500;margin:0 0 .25rem;padding:0}',
+  // Slice 25: the agency portal's lists, its submissions table and its confirmation.
+  '.list{list-style:none;margin:0 0 .75rem;padding:0;display:grid;gap:.5rem}',
+  '.ok{border-color:#067647;background:#ecfdf3;color:#067647}',
+  'table{width:100%;border-collapse:collapse;font-size:.875rem;display:block;overflow-x:auto}',
+  'th,td{text-align:left;padding:.5rem .625rem;border-bottom:1px solid var(--line);vertical-align:top}th{font-weight:600;color:var(--muted)}',
 ].join('\n');
 
 export const CAREERS_STYLE_HASH = `sha256-${createHash('sha256').update(CAREERS_CSS, 'utf8').digest('base64')}`;

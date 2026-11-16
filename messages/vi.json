@@ -38712,7 +38712,8 @@
       "reports": "Báo cáo",
       "approvals": "Phê duyệt",
       "screening": "Cần sàng lọc",
-      "rewards": "Thưởng và phí"
+      "rewards": "Thưởng và phí",
+      "agencyInbox": "Hộp thư công ty tuyển dụng"
     },
     "errors": {
       "forbidden": "Bạn không quản lý tuyển dụng của công ty này.",
@@ -38847,7 +38848,8 @@
       "ai_not_active": "Tóm tắt mức phù hợp bằng AI chỉ dành cho hồ sơ ứng tuyển đang hoạt động.",
       "ai_identifier": "Một số văn bản sẽ được gửi có chứa địa chỉ e-mail, liên kết hoặc số giấy tờ hay số điện thoại. Hãy xóa và thử lại.",
       "ai_unavailable": "Nhà cung cấp AI không khả dụng hoặc đã từ chối yêu cầu. Hồ sơ ứng tuyển không thay đổi.",
-      "ai_invalid": "Không thể dùng câu trả lời của AI nên đã bỏ qua. Bạn có thể thử lại."
+      "ai_invalid": "Không thể dùng câu trả lời của AI nên đã bỏ qua. Bạn có thể thử lại.",
+      "portal_decided": "Hồ sơ này từ công ty tuyển dụng đã được ghi nhận hoặc từ chối. Hãy tải lại trang để xem trạng thái."
     },
     "overview": {
       "purpose": "Công việc tuyển dụng hôm nay tại các công ty mà bạn quản lý tuyển dụng.",
@@ -39137,7 +39139,8 @@
         "questions": "Ngân hàng câu hỏi",
         "places": "Địa chỉ và phòng",
         "email": "E-mail ứng viên",
-        "ai": "Tóm tắt mức phù hợp bằng AI"
+        "ai": "Tóm tắt mức phù hợp bằng AI",
+        "portal": "Cổng công ty tuyển dụng"
       },
       "iv": {
         "rulesTitle": "Quy tắc đánh giá",
@@ -41341,6 +41344,43 @@
       "sent": "Chức danh và mô tả công việc; kinh nghiệm, học vấn và kỹ năng trong yêu cầu tuyển dụng; chức danh hiện tại, trình độ học vấn cao nhất của ứng viên, cùng chức danh và số tháng trong quá trình làm việc và học tập. Văn bản dài sẽ bị rút ngắn.",
       "neverSentTitle": "Nội dung không bao giờ được gửi",
       "neverSent": "Tên, e-mail, điện thoại, địa điểm, nơi làm việc hiện tại, tên trường và nơi làm việc, thời gian báo trước, nguồn, giấy tờ, lương, sự đồng ý, thẻ, tệp và trường tùy chỉnh của ứng viên. Văn bản chứa địa chỉ e-mail, liên kết hoặc số giấy tờ hay số điện thoại sẽ bị từ chối."
+    },
+    "agencyInbox": {
+      "purpose": "Các ứng viên mà chuyên viên của công ty tuyển dụng đã gửi qua cổng. Ghi nhận từng hồ sơ để chạy các bước kiểm tra thông thường, hoặc từ chối.",
+      "company": "Công ty",
+      "show": "Hiển thị",
+      "waitingTitle": "Đang chờ",
+      "waitingNote": "Khi ghi nhận, hệ thống kiểm tra trùng lặp, đơn ứng tuyển trước đó và hồ sơ gửi lặp, theo quyền truy cập của chính bạn. Công ty tuyển dụng chỉ thấy một trạng thái ngắn.",
+      "noWaiting": "Không có hồ sơ nào từ công ty tuyển dụng đang chờ.",
+      "from": "Từ {agency} · {contract} · {consultant}",
+      "resume": "CV: {name}",
+      "receivedAt": "Nhận lúc {at}",
+      "record": "Ghi nhận hồ sơ",
+      "decline": "Từ chối",
+      "reason": "Lý do",
+      "reasonNote": "Chỉ lưu cho HR. Công ty tuyển dụng thấy “Không được tiếp tục”.",
+      "confirmDecline": "Từ chối hồ sơ",
+      "decidedTitle": "Mới xử lý",
+      "recordedName": "Đã ghi nhận (chi tiết trên vị trí)",
+      "state": {
+        "waiting": "Đang chờ",
+        "recorded": "Đã ghi nhận",
+        "declined": "Đã từ chối"
+      },
+      "recorded": "Đã ghi nhận. Kết quả hiển thị trong các hồ sơ từ công ty tuyển dụng của vị trí.",
+      "declinedNotice": "Đã từ chối."
+    },
+    "agencyPortalSettings": {
+      "note": "Cho phép chuyên viên của công ty tuyển dụng đăng nhập tại địa chỉ trang tuyển dụng của bạn bằng mã dùng một lần gửi tới e-mail của họ đã ghi trong mục Công ty tuyển dụng, xem các vị trí được mở cho hợp đồng của họ và gửi ứng viên. Hồ sơ nằm trong Hộp thư công ty tuyển dụng cho đến khi nhóm của bạn ghi nhận hoặc từ chối.",
+      "label": "Mở cổng công ty tuyển dụng cho công ty này",
+      "help": "Mặc định tắt. Chỉ chuyên viên đang hoạt động thuộc hợp đồng đã bật và còn trong thời hạn mới đăng nhập được.",
+      "on": "Bật",
+      "off": "Tắt",
+      "save": "Lưu",
+      "address": "Địa chỉ cổng: {path}",
+      "noCareersPage": "Hãy xuất bản trang tuyển dụng trước: cổng dùng địa chỉ của trang này.",
+      "noEmail": "E-mail ứng viên đang tắt hoặc hệ thống này không gửi được, nên không thể gửi mã đăng nhập và cổng vẫn đóng.",
+      "how": "Công ty tuyển dụng thấy mỗi hồ sơ ở trạng thái Đã nhận, Đang xử lý, Đã tuyển hoặc Không được tiếp tục, không bao giờ thấy chi tiết phỏng vấn, lý do hay các ứng viên khác."
     }
   },
   "careersPublic": {
@@ -41483,6 +41523,69 @@
       "closedTitle": "Khảo sát này đã đóng",
       "closed": "Liên kết khảo sát này đã hết hạn hoặc đã được sử dụng.",
       "limited": "Có quá nhiều câu trả lời từ kết nối này. Vui lòng thử lại sau."
+    },
+    "agency": {
+      "title": "Cổng công ty tuyển dụng",
+      "intro": "Dành cho chuyên viên của công ty tuyển dụng làm việc với công ty này. Nhập địa chỉ e-mail mà công ty đã ghi cho bạn, chúng tôi sẽ gửi mã đăng nhập gồm 6 chữ số.",
+      "email": "E-mail của bạn",
+      "emailInvalid": "Nhập địa chỉ e-mail hợp lệ.",
+      "sendCode": "Gửi mã cho tôi",
+      "sent": "Nếu {email} thuộc về một chuyên viên của công ty tuyển dụng làm việc với công ty này, chúng tôi đã gửi mã gồm 6 chữ số tới địa chỉ đó. Mã hết hạn sau 10 phút.",
+      "codeLabel": "Mã trong e-mail",
+      "codeHelp": "Nhập 6 chữ số. Kiểm tra thư rác nếu bạn không thấy e-mail.",
+      "check": "Đăng nhập",
+      "resendNote": "Sau vài phút vẫn chưa có e-mail? Hãy yêu cầu mã mới.",
+      "resend": "Gửi mã mới",
+      "wrongCode": "Mã không đúng. Kiểm tra e-mail và thử lại.",
+      "codeExpired": "Mã này đã hết hạn hoặc đã nhập sai quá nhiều lần. Hãy yêu cầu mã mới.",
+      "codeInvalid": "Nhập 6 chữ số trong e-mail.",
+      "signedOutNotice": "Bạn đã đăng xuất. Hãy đăng nhập lại để tiếp tục.",
+      "signOut": "Đăng xuất",
+      "signedInAs": "{consultant} · {agency} · {contract}",
+      "sessionNote": "Bạn giữ trạng thái đăng nhập tối đa 8 giờ trên thiết bị này.",
+      "jobsTitle": "Vị trí được mở cho bạn",
+      "noJobs": "Hiện không có vị trí nào đang mở cho các hợp đồng của bạn.",
+      "submissionsTitle": "Hồ sơ bạn đã gửi",
+      "statusNote": "Trạng thái được giữ ngắn gọn có chủ đích: công ty không chia sẻ chi tiết phỏng vấn hay lý do tại đây.",
+      "noSubmissions": "Bạn chưa gửi ứng viên nào.",
+      "candidate": "Ứng viên",
+      "job": "Vị trí",
+      "received": "Đã nhận",
+      "statusLabel": "Trạng thái",
+      "status": {
+        "received": "Đã nhận",
+        "in_process": "Đang xử lý",
+        "hired": "Đã tuyển",
+        "not_progressed": "Không được tiếp tục"
+      },
+      "removed": "Chi tiết đã bị xóa",
+      "receivedNotice": "Cảm ơn bạn. Nhóm tuyển dụng của công ty sẽ xem xét ứng viên này.",
+      "requirements": "Yêu cầu dành cho công ty tuyển dụng",
+      "submitTitle": "Gửi ứng viên",
+      "fields": {
+        "contract": "Gửi theo hợp đồng",
+        "fullName": "Họ và tên ứng viên",
+        "email": "E-mail của ứng viên",
+        "mobile": "Điện thoại di động của ứng viên",
+        "comments": "Ghi chú cho nhà tuyển dụng",
+        "resume": "CV (không bắt buộc)",
+        "permission": "Ứng viên đã đồng ý cho tôi chia sẻ thông tin và CV của họ với công ty này cho vị trí này."
+      },
+      "commentsHelp": "Tối đa 2.000 ký tự. Không ghi số giấy tờ tùy thân hoặc chi tiết lương.",
+      "resumeHelp": "PDF hoặc Word, tối đa 10 MB.",
+      "send": "Gửi ứng viên",
+      "errors": {
+        "fullName": "Nhập họ và tên ứng viên (tối đa 200 ký tự).",
+        "email": "Nhập địa chỉ e-mail hợp lệ.",
+        "mobile": "Nhập số điện thoại di động hợp lệ.",
+        "emailOrMobile": "Nhập e-mail hoặc số điện thoại di động của ứng viên.",
+        "comments": "Ghi chú tối đa 2.000 ký tự.",
+        "resume": "Đính kèm tệp PDF hoặc Word tối đa 10 MB.",
+        "permission": "Xác nhận rằng ứng viên đã đồng ý chia sẻ CV."
+      },
+      "repeat": "Ứng viên này đã đang chờ xem xét cho vị trí này từ hợp đồng của bạn.",
+      "dailyLimit": "Bạn đã đạt giới hạn 20 hồ sơ trong hôm nay. Hãy thử lại vào ngày mai.",
+      "notAvailable": "Vị trí này không còn mở cho hợp đồng của bạn."
     }
   },
   "bulkJobs": {
@@ -42335,6 +42438,12 @@
       "status": "Trạng thái",
       "problems": "Lỗi",
       "truncated": "Danh sách này đã được rút gọn khi ghi nhận lần nhập. Hãy tải Nhật ký lỗi ngay sau khi nhập để xem tất cả lỗi."
+    }
+  },
+  "agencyPortal": {
+    "codeEmail": {
+      "subject": "Mã đăng nhập cổng công ty tuyển dụng của bạn: {code}",
+      "body": "Mã để bạn đăng nhập vào cổng công ty tuyển dụng của {companyName} là:\n\n{code}\n\nMã hết hạn sau 10 phút. Nếu bạn không yêu cầu mã này, bạn có thể bỏ qua e-mail này.\n\n{senderName}"
     }
   }
 }
