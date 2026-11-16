@@ -41094,7 +41094,8 @@
     "generateClearanceForm": "Jana borang pelepasan",
     "sharedCommunications": "Komunikasi perjalanan bersama",
     "sharedCommunicationsHint": "Perjalanan peletakan jawatan mengendalikan surat, e-mel dan aliran kerja komunikasi kes ini. Tugas pelepasan dan item pemulangan diteruskan di sini.",
-    "openSharedConfiguration": "Buka Konfigurasi bersama"
+    "openSharedConfiguration": "Buka Konfigurasi bersama",
+    "salaryMonthly": "Gaji pokok (sebulan)"
   },
   "offboardingPostings": {
     "breadcrumb": "Pengurusan masuk & keluar pekerja / Catatan perjawatan",

@@ -41094,7 +41094,8 @@
     "generateClearanceForm": "Tạo biểu mẫu bàn giao",
     "sharedCommunications": "Thông tin liên lạc chung của hành trình",
     "sharedCommunicationsHint": "Hành trình nghỉ việc xử lý thư, email và các quy trình liên lạc của hồ sơ này. Nhiệm vụ bàn giao và các mục cần hoàn trả tiếp tục được xử lý tại đây.",
-    "openSharedConfiguration": "Mở Cấu hình dùng chung"
+    "openSharedConfiguration": "Mở Cấu hình dùng chung",
+    "salaryMonthly": "Lương cơ bản (mỗi tháng)"
   },
   "offboardingPostings": {
     "breadcrumb": "Tiếp nhận và nghỉ việc / Ghi nhận biến động nhân sự",

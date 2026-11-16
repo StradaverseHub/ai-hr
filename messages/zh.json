@@ -41094,7 +41094,8 @@
     "generateClearanceForm": "生成离职交接表单",
     "sharedCommunications": "共享流程通信",
     "sharedCommunicationsHint": "辞职流程负责本个案的函件、邮件和通信工作流。离职交接任务和归还事项仍在此处继续处理。",
-    "openSharedConfiguration": "打开共享配置"
+    "openSharedConfiguration": "打开共享配置",
+    "salaryMonthly": "基本工资（每月）"
   },
   "offboardingPostings": {
     "breadcrumb": "入职与离职 / 人事变动入账",
