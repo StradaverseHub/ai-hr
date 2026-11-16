@@ -2,7 +2,7 @@ import {Suspense} from 'react';
 import Link from 'next/link';
 import {getTranslations} from 'next-intl/server';
 import type {SessionContext} from '@/db/client';
-import {isModuleEnabledOrFalse} from '@/lib/authz';
+import {isModuleEnabledOrFalse} from '@/core/entitlements';
 import {contractSharedWorkPage} from '@/packs/contracts/service';
 import {PanelBoundary} from './employee/panel-boundary';
 import {PanelNote} from './employee/panel';

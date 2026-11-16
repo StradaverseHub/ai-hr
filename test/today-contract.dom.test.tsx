@@ -5,7 +5,7 @@ import {render,screen,within} from '@testing-library/react';
 import {ContractSection} from '../components/today/contract-section';
 const native=vi.hoisted(()=>({read:vi.fn(),enabled:true}));
 vi.mock('@/packs/contracts/service',()=>({contractSharedWorkPage:native.read}));
-vi.mock('@/lib/authz',()=>({isModuleEnabledOrFalse:()=>native.enabled}));
+vi.mock('@/core/entitlements',()=>({isModuleEnabledOrFalse:()=>native.enabled}));
 vi.mock('next-intl/server',async()=>{const {createTranslator}=await import('next-intl');const messages=(await import('../messages/en.json')).default;return {getTranslations:async(namespace:string)=>createTranslator({locale:'en',messages,namespace:namespace as never})};});
 const labels={title:'Contract signatures',signLabel:'Sign letter',allLabel:'View all 127',countLabel:'127 letters are waiting for your signature'};
 describe('Today Contract signatures',()=>{
