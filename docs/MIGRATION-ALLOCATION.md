@@ -1057,7 +1057,7 @@ claims and the exact installed ledger before release admission.
 # Board 3 after payroll — 9 November 2026 (unapplied reallocation)
 
 The agreed release order is the six-item Board batch, payroll PR236, then Board 3 PR238.
-Payroll reserves3900 at idx3200 / when 1793330003500, above Board 3's former
+Payroll reserves3900 at idx3200 / when1793330003500, above Board 3's former
 3800–3802 timestamps. To prevent those still-unapplied additions being skipped,
 branch codex/board3-staging-20261109 supersedes only its own reservations:
 
@@ -1070,7 +1070,7 @@ branch codex/board3-staging-20261109 supersedes only its own reservations:
 All three SQL payloads remain byte-identical; only filenames, journal allocations and
 one test's file reference change. The fresh read-only audit covered6645refs,
 1067committed journal blobs and811readable worktree journals, finding peer maximum
-3900 / idx3200 / when 1793330003500. The last independent installation observation
+3900 / idx3200 / when1793330003500. The last independent installation observation
 was healthy4ae7953 with710rows through1793330003000; earlier releases are still
 qualifying, not accepted here. Preserve every incoming applied SQL/hash/journal row.
 Refresh the actual accepted source, complete ledger and peer reservations at admission;
@@ -1079,7 +1079,7 @@ this allocation grants no lease, installation or acceptance authority.
 # Missed clock-out Prepare/review-only — 9 November 2026 (unapplied reservation)
 
 Branch codex/board3-loop-review-20261109 reserves 3802_attendance_prepare_review_only,
-idx3102 / when 1793330003402. The refreshed read-only audit scanned 6615 refs,
+idx3102 / when1793330003402. The refreshed read-only audit scanned 6615 refs,
 1063 committed journal blobs and 1086 worktrees (801 parseable plus two conflicted
 WIP journals), with peer maximum3801. The installed ledger contains710 entries
 through watermark1793330003000. Preserve the full current source prefix through
@@ -1089,20 +1089,20 @@ claims and the installed ledger before admission. It grants no deployment author
 # Attendance workflow lifecycle and scope — 9 November 2026 (unapplied reservation)
 
 Branch codex/board3-workflow-20261109 reserves 3800_attendance_workflow_lifecycle_scope,
-idx3100 / when 1793330003400. The coordinating Board 3 controller refreshed main/alpha,
+idx3100 / when1793330003400. The coordinating Board 3 controller refreshed main/alpha,
 all committed ref journals and readable registered worktree journals, and the read-only
 staging ledger. The peer six-item source reserves through3706 / idx3006 /
-when 1793330003306; the live ledger has710 entries with watermark1793330003000.
+when1793330003306; the live ledger has710 entries with watermark1793330003000.
 Preserve the complete integration and installed SQL/hash prefixes. Recheck peer claims
 and installed ledger before admission. This reservation grants no deployment authority.
 
 ## Personnel list Employment filters — 9 November 2026 (unapplied reservation)
 
-Branch codex/board3-personnel-20261109 reserves 3801_personnel_employment_filter_projection, idx3101 / when 1793330003401, after the coordinated refs/WIP survey found peers through3706 / idx3006 / when 1793330003306. The read-only live survey had710 applied rows through1793330003000. Preserve the full original journal prefix and every applied SQL byte. Workflow setup owns3800 / idx3100 / when 1793330003400. Recheck peer claims and installed ledger at admission; this reservation is not deployment authority.
+Branch codex/board3-personnel-20261109 reserves 3801_personnel_employment_filter_projection, idx3101 / when1793330003401, after the coordinated refs/WIP survey found peers through3706 / idx3006 / when1793330003306. The read-only live survey had710 applied rows through1793330003000. Preserve the full original journal prefix and every applied SQL byte. Workflow setup owns3800 / idx3100 / when1793330003400. Recheck peer claims and installed ledger at admission; this reservation is not deployment authority.
 
 # System Labels company scope — 8 November 2026 (unapplied reservation)
 
-Branch codex/board1-system-labels-plan-20261108 reserves 3400_system_label_company_scope, idx2700 / when 1793330003000. A fresh scan of 495 distinct committed journals and readable registered worktree journals found maximum idx2603 / when 1793330002903 through3303. A read-only live survey matched 709 applied entries with watermark1793330002801, below this reservation. Preserve the full current main/alpha prefix and the then-installed prefix. Recheck live ledger and peer claims before admission; this is source allocation only.
+Branch codex/board1-system-labels-plan-20261108 reserves 3400_system_label_company_scope, idx2700 / when1793330003000. A fresh scan of 495 distinct committed journals and readable registered worktree journals found maximum idx2603 / when1793330002903 through3303. A read-only live survey matched 709 applied entries with watermark1793330002801, below this reservation. Preserve the full current main/alpha prefix and the then-installed prefix. Recheck live ledger and peer claims before admission; this is source allocation only.
 
 # Coordinated migration reservations
 
@@ -1112,7 +1112,7 @@ This amendment supersedes ONLY the38 owned, independently proven uninstalled
 architecture reservation tuples listed below. Preserve their tags, filenames,
 whole SQL bytes and dependency order. The complete selected alpha
 e70686353134de3471f08fe7a27e937f14fdcc95 717-entry prefix remains whole;
-append this38-entry suffix at idx3400–3437 / when 1793330003700–1793330003737.
+append this38-entry suffix at idx3400–3437 / when1793330003700–1793330003737.
 The canonical result has755 rows and755 active SQL files. The superseded2301
 and3103 payloads remain whole historical fixture inputs outside the active
 migration directory; they are not extra canonical migrations.
@@ -1121,7 +1121,7 @@ Root's fresh successful origin fetch retained main00a27edbe and alphae7068635.
 The subsequent stable source-only namespace survey captured6683refs,
 1117registered worktrees,3626root trees,724migration trees,507committed journal
 blobs and345allocation document blobs. Prior maxima were tag4002,idx3302 and
-when 1793330003602. Malformed/foreign WIP and all readable literal claims were
+when1793330003602. Malformed/foreign WIP and all readable literal claims were
 preserved and included; no foreign reservation is rewritten or cancelled here.
 Actual read-only staging evidence records the whole710 ordered-id ledger through
 1793330003000, the two retained0180/0212 applied-hash identities and absence of
@@ -1182,8 +1182,8 @@ owned uninstalled tuples are superseded by this amendment.
 
 ## Architecture / AI Centre compatibility — 8 November 2026 (reserved, uninstalled)
 
-Reserve `3500_ai_centre_architecture_compatibility`, idx2800 / when 1793330003100,
-and `3501_ai_centre_mandate_write_order`, idx2801 / when 1793330003101.
+Reserve `3500_ai_centre_architecture_compatibility`, idx2800 / when1793330003100,
+and `3501_ai_centre_mandate_write_order`, idx2801 / when1793330003101.
 These are append-only source reservations; their SQL, exact guarded preimages
 and populated upgrade/native concurrency qualification are still pending.
 Preserve the complete canonical709 prefix, architecture36 suffix, all existing
@@ -1191,7 +1191,7 @@ SQL bytes and journal tuples. No installed migration is rewritten.
 
 A fresh full-origin fetch and stable read-only survey covered6460refs,
 3495root trees,708migration trees,496committed journals and752readable worktrees.
-Prior maxima were3400 / idx2700 / when 1793330003000; two foreign malformed
+Prior maxima were3400 / idx2700 / when1793330003000; two foreign malformed
 journals were preserved and their literal claims included. A subsequent stable
 document-reservation scan covered6462refs,336distinct allocation documents and
 726worktree documents; neither new tag, index nor timestamp was claimed.
@@ -1205,12 +1205,12 @@ Production remains held.
 ## Six board items after System Labels — 9 November 2026 (unapplied reallocation)
 
 The qualified, published System Labels source4ae7953eb owns incoming release
-lease67 and migration3400 (idx2700 / when 1793330003000). Preserve its710-row
+lease67 and migration3400 (idx2700 / when1793330003000). Preserve its710-row
 source prefix; actual installed arrival and complete ordered hashes still require
 independent confirmation before admission. No incoming acceptance is inferred here.
 
 This coordinator moves only its seven still-unapplied migrations3300–3303 and
-3600–3602 to3700–3706, idx3000–3006 / when 1793330003300–1793330003306, preserving
+3600–3602 to3700–3706, idx3000–3006 / when1793330003300–1793330003306, preserving
 their dependency order and every SQL payload byte. This supersedes those earlier
 source reservations below. The717-row candidate retains the incoming prefix;
 no applied file, journal row, hash or pending foreign reservation is rewritten.
@@ -1222,7 +1222,7 @@ actual live ledger before release. This reservation grants no lease or deploymen
 
 ## Attendance Formula overtime binding — 8 November 2026 (unapplied)
 
-Reserve3602_attendance_formula_overtime_binding, idx2902 / when 1793330003202.
+Reserve3602_attendance_formula_overtime_binding, idx2902 / when1793330003202.
 A fresh full origin fetch and survey found1056 journal blobs and809 readable
 worktrees, with maxima3601/2901/1793330003201, all owned by this coordinator.
 The new evidence remains below the existing overtime parent and settlement.
@@ -1233,10 +1233,10 @@ peer claims at release admission; this reservation grants no staging lease.
 ## Attendance Formula calculation evidence — 8 November 2026 (unapplied)
 
 The board coordinator reserves3600_attendance_formula_results at idx2900 /
-when 1793330003200, plus3601_attendance_formula_payroll_source at idx2901 /
-when 1793330003201. Both extend the existing Attendance/Payroll owners. Fresh main/alpha82859db9a preserve the709-row installed prefix.
+when1793330003200, plus3601_attendance_formula_payroll_source at idx2901 /
+when1793330003201. Both extend the existing Attendance/Payroll owners. Fresh main/alpha82859db9a preserve the709-row installed prefix.
 A read-only survey found1054 distinct journals,805 readable worktrees and
-maxima3501 / idx2801 / when 1793330003101. An independent live comparison
+maxima3501 / idx2801 / when1793330003101. An independent live comparison
 matched all709 ordered hashes through1793330002801. This is a reservation
 only; refresh peer claims and live ledger at release admission.
 
@@ -1244,9 +1244,9 @@ only; refresh peer claims and live ledger at release admission.
 ## Attendance Formula Builder — 8 November 2026 (unapplied source reservation)
 
 Branch `codex/board-staging-integration-20261108` reserves
-`3303_attendance_formula_versions`, idx2603 / when 1793330002903, after its existing
+`3303_attendance_formula_versions`, idx2603 / when1793330002903, after its existing
 3300–3302 reservations. A refreshed read-only survey found1049 distinct journal blobs,
-725 readable worktree journals and maxima3302 / idx2602 / when 1793330002902.
+725 readable worktree journals and maxima3302 / idx2602 / when1793330002902.
 Freshly fetched main and alpha remain29d9edcbc; the integrated incoming9dd3847b4
 prefix is preserved. An independent read-only staging ledger comparison matched all709
 ordered rows against9dd3847b4, through1793330002801. The foreign release lease remains
@@ -1273,11 +1273,11 @@ source allocation, not deployment authority.
 
 ## Closed staging architecture reconciliation — 8 November 2026 (draft, uninstalled)
 
-Root reserves36 suffix entries at idx2510–2545 / when 1793330002810–1793330002845,
+Root reserves36 suffix entries at idx2510–2545 / when1793330002810–1793330002845,
 following the exact707-entry reviewed staging feature/owner-repair prefix.
 The old36 architecture reservations retain their original source history;34 SQL
-files stay byte-identical. Superseding drafts3210 (idx2528/when 1793330002828)
-and3211 (idx2545/when 1793330002845) require separately reviewed native guards,
+files stay byte-identical. Superseding drafts3210 (idx2528/when1793330002828)
+and3211 (idx2545/when1793330002845) require separately reviewed native guards,
 respectively preserving3101 shared-company trigger behavior and the real Access
 native owner. Their source hashes and actual qualification remain pending.
 Do not install this draft or treat unfilled identities as accepted migrations.
@@ -1299,7 +1299,7 @@ and [the native-owner/history decision](adr/2026-11-08-staging-architecture-hist
 
 ## Access editor presentation — 8 November 2026 (uninstalled)
 
-Reserve `3103_access_editor_presentation`, idx2403 / when 1793330002703.
+Reserve `3103_access_editor_presentation`, idx2403 / when1793330002703.
 SQL SHA-256 `bb171333ef940c173ac9ca0a647398116dfd8ee8dd87d77c8f59e92b0281fe47`.
 Fresh main/alpha both identify109a046ef38f90514f1da458056aa09e015a47a4.
 An all-ref/tag/root-tree and captured-WIP scan covered5898 refs,3151 root trees,
@@ -1322,7 +1322,7 @@ integration/installation. Production remains on hold.
 
 ## Typed Personnel overview filters — 7 November 2026 (uninstalled)
 
-`2701_personnel_typed_overview_filter_fields`, idx2001 / when 1793330002301,
+`2701_personnel_typed_overview_filter_fields`, idx2001 / when1793330002301,
 SQL SHA-256 `87b1b0a0dd532eda1211dddcd5af2a8b14013a66615527cffa3c1be449d0daf8`.
 A fresh full origin fetch and scan covered3005 distinct heads,669 migration trees,
 476 journals and344 readable worktrees. Competing maxima were2700 /2000 /
@@ -1336,7 +1336,7 @@ Production remains held.
 
 ## Capability statement planning — 7 November 2026 (uninstalled)
 
-`2510_capability_statement_plan_reuse`, idx1830 / when 1793330002130,
+`2510_capability_statement_plan_reuse`, idx1830 / when1793330002130,
 SQL SHA-256 `e5689d9c6a71e21176506a0576bd635e7c8d05c63dc76c8c492a41e2e7086f9f`.
 Fresh origin refs and2991 distinct heads covered665 migration trees,473 journals
 and341 readable worktrees. Maxima were2509 /1829 /1793330002129, including
@@ -1450,10 +1450,10 @@ tail requires an ordinary populated upgrade rehearsal and does not authorize dep
 ## Non-admin approval subject visibility batch — 5 November 2026 (unapplied)
 
 `codex/performance-nonadmin-batch-migration-20261105` reserves
-`2141_approval_nonadmin_visibility_batch`, idx1394 / when 1793330001541 /
+`2141_approval_nonadmin_visibility_batch`, idx1394 / when1793330001541 /
 SHA256 `d25a2cc9c4c30e6941b15a203fdf869f60e2a7cc34853b0fb40007d5fbd309a1`.
 Fresh claims cover2430 heads,442 committed journals,605 migration trees and243 readable
-worktrees through2140 / idx1393 / when 1793330001540. Foreign malformed WIP and literal
+worktrees through2140 / idx1393 / when1793330001540. Foreign malformed WIP and literal
 claims remain untouched. Read-only staging matches all671 ordered canonical identities
 through1793330001502 on74db3bb7621c33de256372162a1961ee320baf6e.
 
@@ -1474,10 +1474,10 @@ remain required. Complete BOARD roles stays excluded. No deployment is authorize
 ## Probation navigation mapping probe — 5 November 2026 (unapplied)
 
 `codex/performance-probation-navigation-migration-20261105` reserves
-`2140_probation_navigation_mapping_probe`, idx1393 / when 1793330001540 /
+`2140_probation_navigation_mapping_probe`, idx1393 / when1793330001540 /
 SHA256 `45c65af3ce13c35d8adaa1f4cb0caf55b92268d6b03be3af46b78bc88c922a83`.
 Fresh claims cover2407 heads,441 committed journals,604 migration trees and234 readable
-worktrees through2139 / idx1392 / when 1793330001539. Foreign malformed WIP and its
+worktrees through2139 / idx1392 / when1793330001539. Foreign malformed WIP and its
 literal claims remain untouched. Read-only staging matches all671 ordered canonical
 identities through1793330001502 on74db3bb7621c33de256372162a1961ee320baf6e. Its native
 Probation navigation body matches8ca468e565496b3845dca9a10beed985 and retains ai_hr_owner
@@ -1500,10 +1500,10 @@ stays excluded. No deployment is authorized.
 ## Bounded Workforce access plan — 5 November 2026 (unapplied)
 
 `codex/performance-workforce-bounded-migration-20261105` reserves
-`2139_workforce_bounded_read_plan`, idx1392 / when 1793330001539 /
+`2139_workforce_bounded_read_plan`, idx1392 / when1793330001539 /
 SHA256 `da60091cd9f282910810fc493c3edc5fb124819899d3e91f1d2376f704f0ac75`.
 Fresh claims cover2403 heads,440 committed journals,603 migration trees and234 readable
-worktrees through2138 / idx1391 / when 1793330001538. Foreign malformed WIP and literal
+worktrees through2138 / idx1391 / when1793330001538. Foreign malformed WIP and literal
 bounds remain untouched. Fresh read-only staging inspection matches all671 ordered
 canonical identities through1793330001502 on74db3bb7621c33de256372162a1961ee320baf6e.
 
@@ -1523,10 +1523,10 @@ unchanged. Complete BOARD roles is excluded; no deployment is authorized.
 ## Necessary AI pause company discovery — 5 November 2026 (unapplied)
 
 `codex/performance-ai-pause-purpose-context-20261105` reserves
-`2138_ai_pause_company_discovery`, idx1391 / when 1793330001538 /
+`2138_ai_pause_company_discovery`, idx1391 / when1793330001538 /
 SHA256 `bc44d218c30fcaa1db8a2f92e661be228cc4638fdfeb4280be0cacef388e5574`.
 Fresh scan covers2396 heads,439 committed journals,602 migration trees and231 readable
-worktrees through2137 / idx1390 / when 1793330001537. Foreign malformed WIP and literal
+worktrees through2137 / idx1390 / when1793330001537. Foreign malformed WIP and literal
 claims remain untouched. Fresh read-only staging inspection matches671 ordered canonical
 identities through1793330001502 on74db3bb7621c33de256372162a1961ee320baf6e. Both existing
 control routines retain the same ai_hr_owner definer owner; the append preserves that owner.
@@ -1547,10 +1547,10 @@ remain required. Complete BOARD roles is excluded; no deployment is authorized.
 ## Home peer proof batching — 5 November 2026 (unapplied)
 
 `codex/performance-home-cohort-batch-migration-20261105` reserves
-`2137_home_peer_cohort_batch`, idx1390 / when 1793330001537 /
+`2137_home_peer_cohort_batch`, idx1390 / when1793330001537 /
 SHA256 `25b659236aa53f5dfd268eef64dfbda0315bfdc84aca122463d37cb943555597`.
 Fresh source scan covers2382 heads,438 committed journals,601 migration trees and231
-readable worktrees through2136 / idx1389 / when 1793330001536. Foreign malformed WIP
+readable worktrees through2136 / idx1389 / when1793330001536. Foreign malformed WIP
 and literal claims remain untouched. Fresh read-only staging inspection matches all671
 ordered canonical identities through1793330001502 on74db3bb7621c33de256372162a1961ee320baf6e.
 
@@ -1566,10 +1566,10 @@ is excluded; no deployment is authorized. This is component evidence, not500-use
 ## Administrator-role necessary precheck — 5 November 2026 (unapplied)
 
 `codex/performance-grant-admin-negative-precheck-20261105` reserves
-`2136_grant_admin_role_precheck`, idx1389 / when 1793330001536 /
+`2136_grant_admin_role_precheck`, idx1389 / when1793330001536 /
 SHA256 `c2c67726492e0aa45bb601fe6f0c0e61c54ca39bbfb2658cad476958ced6a027`.
 Fresh source scan covers2376 heads,437 committed journals,600 migration trees and231
-readable worktrees through2135 / idx1388 / when 1793330001535. Foreign malformed WIP
+readable worktrees through2135 / idx1388 / when1793330001535. Foreign malformed WIP
 and its literal claims remain untouched. Main/alpha remain74db3bb7621c33de256372162a1961ee320baf6e.
 Fresh read-only staging inspection again matches all671 ordered canonical identities
 through1793330001502. No applied or committed SQL is rewritten.
@@ -1586,10 +1586,10 @@ consumers require qualification. Complete BOARD roles is excluded; no deployment
 ## Profile display read barrier — 5 November 2026 (unapplied)
 
 `codex/performance-profile-display-read-lock-20261105` reserves
-`2135_profile_presentation_read_lock`, idx1388 / when 1793330001535 /
+`2135_profile_presentation_read_lock`, idx1388 / when1793330001535 /
 SHA256 `b05f44a52bce44559088003111d1cc36e734ed01971a3042766909128b2d82fd`.
 Fresh source scan covers2366 heads,436 committed journals,599 migration trees and231
-readable worktrees through2134 / idx1387 / when 1793330001534. Foreign malformed WIP
+readable worktrees through2134 / idx1387 / when1793330001534. Foreign malformed WIP
 and literal reservation bounds are preserved. Fresh main/alpha remain74db3bb7621c33de256372162a1961ee320baf6e.
 Read-only staging inspection matches all671 ordered canonical identities through1793330001502.
 
@@ -1604,10 +1604,10 @@ required. Complete BOARD roles is excluded; no deployment is authorized.
 ## Claims visibility membership plan — 5 November 2026 (unapplied)
 
 `codex/performance-claims-set-membership-20261105` reserves
-`2134_claim_visibility_set_membership`, idx1387 / when 1793330001534 /
+`2134_claim_visibility_set_membership`, idx1387 / when1793330001534 /
 SHA256 `a489a4293bc835003a0c6ee3f77f68d3847c618827949b54d541290563d3f2f6`.
 Fresh claims cover2363 heads,435 committed journals,598 migration trees and231 readable
-worktrees through2133 / idx1386 / when 1793330001533. Foreign malformed WIP and its literal bounds
+worktrees through2133 / idx1386 / when1793330001533. Foreign malformed WIP and its literal bounds
 remain untouched. Freshly fetched main/alpha are74db3bb7621c33de256372162a1961ee320baf6e.
 The read-only staging ledger matches all671 ordered canonical identities through1793330001502;
 its current Claim policy also matches the exact reviewed array-membership baseline.
@@ -1630,10 +1630,10 @@ Complete BOARD roles is excluded. No deployment is authorized.
 ## Composed read-only action pause barrier — 5 November 2026 (unapplied)
 
 `codex/performance-ai-action-read-lock-fix-20261105` appends
-`2133_ai_action_read_only_lock`, idx1386 / when 1793330001533 /
+`2133_ai_action_read_only_lock`, idx1386 / when1793330001533 /
 SHA256 `d22cc6aa2e0995a4b7368127ac4d0a2d0c8f18e4bc44a5ca31480ab5d144ea8f`.
 Fresh source claims covered2351 heads,434 committed journals,597 migration trees and231 readable
-worktrees through2132 / idx1385 / when 1793330001532. Foreign malformed WIP and its literal bounds
+worktrees through2132 / idx1385 / when1793330001532. Foreign malformed WIP and its literal bounds
 were preserved. Main/alpha remain74db3bb7621c33de256372162a1961ee320baf6e; read-only staging
 inspection matched all671 ordered canonical identities through1793330001502. Earlier SQL bytes,
 including2131/2132, are unchanged.
@@ -1655,11 +1655,11 @@ pass before acceptance. Complete BOARD roles remains excluded; no deployment is 
 ## Assigned/Rewards read metadata and Claims preview index — 5 November 2026 (unapplied)
 
 `codex/performance-ai-metadata-claims-index-20261105` appends
-`2132_ai_metadata_claim_preview_index`, idx1385 / when 1793330001532 /
+`2132_ai_metadata_claim_preview_index`, idx1385 / when1793330001532 /
 SHA256 `ea9d1a6ee283b0586a835d98ee4c5e75196615a5f51d22d643966fc519c97508`.
 Freshly fetched main/alpha remain74db3bb7621c33de256372162a1961ee320baf6e. The scan covered2343
 heads,432 committed journals,595 migration trees and230 readable worktrees, through2131 / idx1384 /
-when 1793330001531. Foreign malformed WIP was preserved and its literal bounds included.
+when1793330001531. Foreign malformed WIP was preserved and its literal bounds included.
 Read-only staging inspection matched all671 ordered canonical applied identities through
 1793330001502. No applied SQL bytes changed;2131 is retained unchanged.
 
@@ -1687,11 +1687,11 @@ binding refresh is authorized.
 ## Read-only AI metadata locks — 5 November 2026 (unapplied)
 
 `codex/performance-ai-shared-native-reads-20261105` appends
-`2131_ai_read_only_metadata_locks`, idx1384 / when 1793330001531 /
+`2131_ai_read_only_metadata_locks`, idx1384 / when1793330001531 /
 SHA256 `409262dd7b958eb8c2633556f9dba13ad637042efcb07b632a5bcea5c8131077`.
 Freshly fetched main/alpha remain74db3bb7621c33de256372162a1961ee320baf6e.
 The claim scan covered2337 heads,431 committed journals,593 migration trees and226 readable
-worktrees, through2130 / idx1383 / when 1793330001530. Foreign malformed WIP and its literal
+worktrees, through2130 / idx1383 / when1793330001530. Foreign malformed WIP and its literal
 bounds were preserved. Read-only staging inspection matched all671 ordered canonical applied
 identities through1793330001502 on the same main source; no applied bytes were changed.
 
@@ -1757,17 +1757,17 @@ the installed watermark. Recheck the installed ledger at release admission.
 
 Branch codex/movement-organization-feedback-20261105 provisionally reserves
 2250_rewards_whole_group_grants and 2251_company_display_group, journal
-idx1450–1451 and when 1793330001650–1793330001651.
+idx1450–1451 and when1793330001650–1793330001651.
 The fetched main journal ends at 2211, and readable worktree journals include
-peer claims through 2242 / idx1442 / when 1793330001642. Recheck peer journals,
+peer claims through 2242 / idx1442 / when1793330001642. Recheck peer journals,
 current integration refs and the installed watermark before integration.
 
 ## Approved expansion — 5 November 2026 (unapplied source reservation)
 
 Branch codex/approved-expansion-20261105 reserves 2200–2209, journal idx1400–1409,
-when 1793330001600–1793330001609 for the approved Job Architecture, Rewards libraries/PAT/plan,
+when1793330001600–1793330001609 for the approved Job Architecture, Rewards libraries/PAT/plan,
 and statutory-readiness work. The initial read-only audit found 2437 distinct branch heads,
-443 journal blobs and maximum file2141/idx1394/when 1793330001541; registered worktree
+443 journal blobs and maximum file2141/idx1394/when1793330001541; registered worktree
 journals were checked separately. No 2200-or-higher source claim was observed.
 The complete main prefix through 2102 is preserved. These are source reservations only:
 recheck current main/alpha, worktree WIP, peer claims and the actual installed ledger before
@@ -1892,7 +1892,7 @@ SECURITY DEFINER and no child schema CREATE. Full ledger/custody evidence is ret
 0935's old provisional idx757 is superseded by763 because Noveri's applied prefix now ends at762.
 Its filename, timestamp and SQL bytes remain unchanged.0946 retains its prior reservation and
 strictly increasing index gap; the existing validator permits gaps. A fresh read-only audit of1910
-heads,331journal blobs and325worktrees found maximum filename946/idx793/when 1793330000346 and no
+heads,331journal blobs and325worktrees found maximum filename946/idx793/when1793330000346 and no
 parse errors. This is source coordination, not installation or lease admission.
 
 0946 changes only the exact0859 restricted function's root-literal1 numeric exception, preserving
@@ -1908,8 +1908,8 @@ Optimization remain outside this nine-item scope. Recheck source claims and live
 ## Idle sign-out policy — 2 November 2026 (provisional source claim)
 
 `claude/idle-session-timeout` appends `0898_session_idle_timeout` (ADR-0171) as journal idx755 /
-when 1793330000298 on its own branch. Claims observed on 2 November 2026 ran to file0897, idx770 and
-when 1793330000297 across remote branches and registered worktrees, so the timestamp sits above all of them.
+when1793330000298 on its own branch. Claims observed on 2 November 2026 ran to file0897, idx770 and
+when1793330000297 across remote branches and registered worktrees, so the timestamp sits above all of them.
 This is unapplied source only: re-freeze above the then-live ordered ledger, relocate the idx with the
 competing claims and keep the timestamp above every earlier-applied migration before integration.
 
@@ -1917,11 +1917,11 @@ competing claims and keep the timestamp above every earlier-applied migration be
 
 The owner explicitly resumed this session, authorized merging V9 and deploying to staging, and appointed a release orchestrator. V9 is the next authorized application release after Board handback and the separate queue-guard verification window. No AI, MOBILE, performance or Bank feature payload is included. Production remains unauthorized.
 
-The fresh canonical/accepted baseline is `2ab4f6c120a28692857e93adeed072d463713ab6`: preserve its complete571-entry journal and every applied SQL byte, including0721/0722 atidx684–685/when 1793330000050–51. V9's earlier verification-only0713–0720/idx694–701/when42–49 positions were never installed and are superseded: those lower timestamps would now be skipped.
+The fresh canonical/accepted baseline is `2ab4f6c120a28692857e93adeed072d463713ab6`: preserve its complete571-entry journal and every applied SQL byte, including0721/0722 atidx684–685/when1793330000050–51. V9's earlier verification-only0713–0720/idx694–701/when42–49 positions were never installed and are superseded: those lower timestamps would now be skipped.
 
 The freeze audit inspected1887 refs/237 unique journals plus476 registered worktree journals. Known unapplied AI personnel claims end at54 and performance0726 at55; none of the inspected worktrees claimed56 or later. The release orchestrator and the AI, parity, performance, MOBILE and Bank owners were notified. Lower provisional AI0703–0712 and other uninstalled claims must be reallocated above the actual installed watermark before their later owning release; they are not silently included or replayed here. Bank's proposed successor64/idx694 remains provisional until this release's actual handback.
 
-V9 appends immediately after the installed prefix atidx686–693/when 1793330000056–63. Six SQL bodies remain byte-identical to verified435d6f7a7. The still-unapplied0714/0719 bodies now implement the HTML’s explicit self-test behavior for pending/closed cases: the frozen recipient must equal the initiating actor, CC must be empty and no onboarding contact is permitted; real delivery remains restricted to submitted cases. The installed571-entry prefix and these eight allocated positions are unchanged. Revalidate the current source/ledger and peer claims before admission. This allocation does not waive authenticated aggregate verification, migration rehearsals, scoped rendered acceptance, the shared lease or exact staging arrival.
+V9 appends immediately after the installed prefix atidx686–693/when1793330000056–63. Six SQL bodies remain byte-identical to verified435d6f7a7. The still-unapplied0714/0719 bodies now implement the HTML’s explicit self-test behavior for pending/closed cases: the frozen recipient must equal the initiating actor, CC must be empty and no onboarding contact is permitted; real delivery remains restricted to submitted cases. The installed571-entry prefix and these eight allocated positions are unchanged. Revalidate the current source/ledger and peer claims before admission. This allocation does not waive authenticated aggregate verification, migration rehearsals, scoped rendered acceptance, the shared lease or exact staging arrival.
 
 | Index | Timestamp | Filename | SQL SHA256 |
 | ---: | ---: | --- | --- |
@@ -1938,7 +1938,7 @@ V9 appends immediately after the installed prefix atidx686–693/when 1793330000
 ## Personnel compensation parity — 30 October 2026 (provisional source claim)
 
 `codex/ai-user-parity-personnel-comp-20261030` reserves
-`0715_assistant_compensation_maintenance`, idx696 / when 1793330000044. Position695/0714
+`0715_assistant_compensation_maintenance`, idx696 / when1793330000044. Position695/0714
 is another personnel package's provisional claim; composition must preserve both claims.
 This is unapplied source only, with no installation priority or deployment authority.
 Re-freeze above the then-live ordered ledger and coordinate competing allocations before integration.
@@ -1947,7 +1947,7 @@ All previously applied SQL bytes and journal identities remain immutable.
 ## Personnel qualification parity — 30 October 2026 (provisional source claim)
 
 `codex/ai-user-parity-personnel-custody-20261030` appends
-`0713_assistant_qualification_maintenance`, idx694 / when 1793330000042, after the ten
+`0713_assistant_qualification_maintenance`, idx694 / when1793330000042, after the ten
 unapplied AI reservations 0703–0712. This is a **provisional source claim only**. It does
 not establish installation priority, authorize a deployment, or override a later accepted
 ledger watermark. At integration freeze re-fetch the ordered accepted journal and live
@@ -1978,9 +1978,9 @@ application. These reservations grant no deployment.
 
 Branch `claude/feedback-menu-operator-toggle-616263` includes verified staging source
 `f752ac7f5d0323c5eae2280c3830af05b6da465f`. Its complete568-entry applied journal ends at
-`0698_information_only_corrections`, idx682 / when 1793330000030. The existing credential-free
+`0698_information_only_corrections`, idx682 / when1793330000030. The existing credential-free
 ordered ledger export was independently compared to every applied source identity.
-The owner explicitly approved appending Feedback at **idx683 / when 1793330000031**,
+The owner explicitly approved appending Feedback at **idx683 / when1793330000031**,
 preserving its `0696` filename and SQL bytes. This supersedes earlier idx681/…022 and
 idx682/…024 reservations, which would be skipped after Board's applied watermark.
 The complete installed prefix and applied SQL bytes are unchanged. AI migration allocations
@@ -2278,12 +2278,12 @@ allocated predecessors. This reservation authorizes no migration application or 
 
 The coordinated source register at `439587ea07912ef2254bf9774b16b792d643b300` supersedes
 the provisional WP4 journal position above. `0678_ai_connection_probe_ledger` appends at
-**idx668 / when 1793330000004**, followed by the reserved Board entries0679–0681 at
-idx669–671 / when 1793330000005–7. The old WP4 idx655/when1793300000000 and later
+**idx668 / when1793330000004**, followed by the reserved Board entries0679–0681 at
+idx669–671 / when1793330000005–7. The old WP4 idx655/when1793300000000 and later
 idx671 proposal are superseded; they are not additional migrations.
 
 Fresh canonical main/alpha at `2c15395691c584b6c82904bb15c732e3686b984b` retain the
-553-entry prefix through idx667/when 1793330000000. The full ordered live prefix was
+553-entry prefix through idx667/when1793330000000. The full ordered live prefix was
 independently checked before this append. Every existing journal entry and applied SQL byte
 is preserved. The0678 SQL SHA256 remains
 `e96851f0b09ba117f9cec03852b9c270da456c36b69a5199a588f483e1a9772a`.
@@ -2308,7 +2308,7 @@ ledger again before any installation; reconcile an intervening append rather tha
 
 ## Owner-approved WP5 Assistant quota allocation — 29 October 2026
 
-Claim `0687_assistant_question_budget`, **idx677 / when 1793330000013**. The owner approved this
+Claim `0687_assistant_question_budget`, **idx677 / when1793330000013**. The owner approved this
 conditional successor in AI Enhancement, after the expanded release's actual562-row handoff.
 Fresh main/alpha `968354c00a71df7baccd499eb60757a3307ed61e` match healthy staging source/build.
 The complete ordered live ledger was independently compared using the repository's historical-byte
@@ -2546,7 +2546,7 @@ The release coordinator authorized reversible source-only integration of Onboard
 AI DEV PR107, Security Center PR135 and Formula Builder PR140 from exact provisional predecessor
 6bdddf4f84b3ecb693d8fbf29409373e49c73ac9. That predecessor has not been declared accepted by this
 draft. Its complete581-entry journal prefix and all SQL bytes remain unchanged. Formula0800
-retains SQL SHA256 f8ba2919eb59346bc86453667cc7952a5671db88b740fcab3c41b4530802c322 and when 1793330000200;
+retains SQL SHA256 f8ba2919eb59346bc86453667cc7952a5671db88b740fcab3c41b4530802c322 and when1793330000200;
 the draft appends it at idx696 solely to make the cumulative source reviewable. This is not a
 reservation, installation allocation, live-ledger verification or release qualification. Before final
 freeze, refresh actual accepted source/build/ordered ledger, competing claims and the central allocation;
@@ -2589,7 +2589,7 @@ integration and the exclusive staging window remain required. Production is unto
 
 This table supersedes ALL earlier provisional AI review filenames/idx/when reservations. The existing credential-free Board post-install export at `information-correction-release-controller-20261030/scratchpad/board-40951321829-ordered-ledger.json` captured568 ordered applied rows at2026-10-29T21:09:26.134Z, source `f752ac7f5d0323c5eae2280c3830af05b6da465f`, build `Cvj9_lgd4fATCyUYRwWz_`. A subsequent read-only deploy-state check matched source/build, stale_build0 and exit0. All568 applied source SQL files and journal records are preserved exactly, including the canonical historical0180/0212 applied-identity mapping. The applied watermark is1793330000030.
 
-FEEDBACK independently verified the export and retains its separately approved idx683 / when 1793330000031. No confirmed competing0703–0712 reservation was reported; V9's eight drafts remain unallocated and are not included here. The unused idx683 in this AI-only journal is deliberate; do not invent or include Feedback source.
+FEEDBACK independently verified the export and retains its separately approved idx683 / when1793330000031. No confirmed competing0703–0712 reservation was reported; V9's eight drafts remain unallocated and are not included here. The unused idx683 in this AI-only journal is deliberate; do not invent or include Feedback source.
 
 Only unapplied AI files are renamed below; their complete SQL bytes, including historical comments/exception labels, remain unchanged. These are source-freeze allocations, not permission to install. Before installation, re-read the actual ledger and reconcile intervening appends without changing applied identities.
 
@@ -2610,24 +2610,24 @@ The isolated candidate must pass exact-SHA focused ordering and populated568→5
 
 ## Emergency contact maintenance parity — provisional 30 October 2026
 
-Source-only claim `0716_assistant_emergency_contact_maintenance`, idx697 / when 1793330000045.
+Source-only claim `0716_assistant_emergency_contact_maintenance`, idx697 / when1793330000045.
 This follows the parent-reserved sibling claims0714–0715; those packages are not silently included here.
 Every number/index/timestamp remains PROVISIONAL until integration freezes above the then-live ordered ledger.
 No installation priority, migration application, protected-ref move or deployment is authorized.
 The action uses the existing encrypted assigned ledger with person-keyed receipts and retains its selected employment binding.
 ## Personnel saved-draft activation — provisional source reservation
 
-0714_assistant_employee_draft_activation, idx695 / when 1793330000043, is UNAPPLIED and provisional. It follows qualification source0713 only in this isolated branch. Reallocate above the then-live accepted ordered ledger at integration freeze; source reservation is not deployment authority or installation priority. Historical SQL bytes are untouched.
+0714_assistant_employee_draft_activation, idx695 / when1793330000043, is UNAPPLIED and provisional. It follows qualification source0713 only in this isolated branch. Reallocate above the then-live accepted ordered ledger at integration freeze; source reservation is not deployment authority or installation priority. Historical SQL bytes are untouched.
 
 ## Positive Workforce profile parity — provisional 30 October 2026
 
-Source-only claim0717_assistant_workforce_profile_maintenance / idx698 / when 1793330000046.
+Source-only claim0717_assistant_workforce_profile_maintenance / idx698 / when1793330000046.
 Every number/index/timestamp is PROVISIONAL until integration freeze above the then-live ordered ledger.
 Preserve0713–0716 sibling kinds and all applied SQL bytes. This claims no installation priority, protected-ref move or deployment.
 
 ## Family maintenance parity — provisional 30 October 2026
 
-Source-only claim `0718_assistant_family_maintenance`, idx699 / when 1793330000047.
+Source-only claim `0718_assistant_family_maintenance`, idx699 / when1793330000047.
 The parent reserved0717/idx698 for a separately reviewed creation package; this checkout does not include it.
 All numbers remain PROVISIONAL until integration freezes above the then-live ordered ledger.
 No installation priority, migration application, protected-ref movement or deployment is authorized.
@@ -2636,38 +2636,38 @@ all predecessor checks, index predicates, verifier branches and dynamic outcome 
 
 ## Personnel Bank Information parity — provisional 30 October 2026
 
-Source-only claim `0719_assistant_bank_maintenance`, idx700 / when 1793330000048.
+Source-only claim `0719_assistant_bank_maintenance`, idx700 / when1793330000048.
 Sibling0714/0717/0718 claims are not included in this isolated package. Reconcile all reservations
 at integration freeze above the then-live ordered ledger. This is unapplied source, with no installation
 priority, deployment, protected-ref movement or release authority. Historical SQL/journal bytes remain unchanged.
 
 ## Ordinary document metadata parity — provisional 30 October 2026
 
-Source-only claim `0720_assistant_document_metadata`, idx701 / when 1793330000049, above frozen
+Source-only claim `0720_assistant_document_metadata`, idx701 / when1793330000049, above frozen
 wave3 source1f5eab65a1cff89acb5409bfa5e451e7b6d03c58. Sibling code maintenance owns0721 separately.
 All numbers remain PROVISIONAL until integration reconciles the then-live ordered ledger. No installation
 priority, migration application, protected-ref movement or deployment is authorized. This adds only one
 ordinary-document metadata action to the existing encrypted assigned ledger; every prior kind remains
 under its prior owner/constraints and the same dynamic outcome bounds.
 
-0721 / idx702 / when 1793330000050: employee-code Assistant maintenance, PROVISIONAL SOURCE CLAIM ONLY. Sibling0720 is separately owned; integration must reconcile the actual ordered ledger above the live watermark. No installation priority or deployment authority.
+0721 / idx702 / when1793330000050: employee-code Assistant maintenance, PROVISIONAL SOURCE CLAIM ONLY. Sibling0720 is separately owned; integration must reconcile the actual ordered ledger above the live watermark. No installation priority or deployment authority.
 
 ## Existing-profile MY passport review — provisional 30 October 2026
 
-0722_assistant_passport_maintenance / idx703 / when 1793330000051 is UNAPPLIED provisional source only.
+0722_assistant_passport_maintenance / idx703 / when1793330000051 is UNAPPLIED provisional source only.
 0720–0721 sibling packages are not included in this tree. Reconcile all claims above the then-live ordered
 ledger at integration freeze; no installation priority or deployment authority is granted.
 
 ### Personnel current payment method — provisional source claim
 
-0723_assistant_payment_method_maintenance / idx704 / when 1793330000052 is a PROVISIONAL
+0723_assistant_payment_method_maintenance / idx704 / when1793330000052 is a PROVISIONAL
 append-only source allocation above frozen wave4 eabfe797. No installation priority or release
 authority; reconcile against the accepted migration ledger at integration freeze. Historical SQL
 is unchanged. Only the new kind gains its nullable actor scope; every predecessor rule is retained.
 
 ### Existing recurring fixed-item archive — provisional source claim
 
-0724_assistant_fixed_item_archive / idx705 / when 1793330000053 is UNAPPLIED PROVISIONAL
+0724_assistant_fixed_item_archive / idx705 / when1793330000053 is UNAPPLIED PROVISIONAL
 source only over frozen47797e5. It adds one archive-only kind to the existing encrypted assigned
 ledger, retaining every predecessor scope/receipt/native-outcome branch and dynamic bounds.
 Reconcile against the actual accepted ordered installation ledger at integration freeze. No
@@ -2675,20 +2675,20 @@ installation priority, protected-ref movement or deployment is authorized.
 
 ### Personnel TP3 hand opening balances — provisional source claim
 
-0725_assistant_tp3_opening_maintenance / idx706 / when 1793330000054 is a PROVISIONAL source
+0725_assistant_tp3_opening_maintenance / idx706 / when1793330000054 is a PROVISIONAL source
 claim above47797e588.0724/idx705 belongs to the independent archive worker and is absent from this
 isolated tree. Reconcile both at integration freeze; no installation priority or release authority.
 No historical migration bytes are edited.
 
 ### Personnel Wave 5 composition — no installation priority
 
-The archive, MY TP3 opening and cost allocation source reservations 0724/0725/0726 (idx705/706/707, when 1793330000053/54/55) remain UNAPPLIED and PROVISIONAL. Incoming unverified coordination reports a competing performance 0726/when55 claim and V9 append proposals at when56–63. These are leads, not verified installed history or authority. Before integration freeze, reconcile and reallocate **all our unapplied 0713–0726** above the actual then-installed ordered ledger and timestamp watermark. No exclusive reservation, applied SQL rename, silent amendment of other claims, protected-ref movement or release action is authorized by this composition.
+The archive, MY TP3 opening and cost allocation source reservations 0724/0725/0726 (idx705/706/707, when1793330000053/54/55) remain UNAPPLIED and PROVISIONAL. Incoming unverified coordination reports a competing performance 0726/when55 claim and V9 append proposals at when56–63. These are leads, not verified installed history or authority. Before integration freeze, reconcile and reallocate **all our unapplied 0713–0726** above the actual then-installed ordered ledger and timestamp watermark. No exclusive reservation, applied SQL rename, silent amendment of other claims, protected-ref movement or release action is authorized by this composition.
 
 
 ## Personnel action navigation — 30 October 2026 (provisional source claim only)
 
 `codex/ai-user-parity-personnel-navigation-20261030` proposes
-`0727_assistant_personnel_review_navigation`, idx708 / when 1793330000064, for two boolean native
+`0727_assistant_personnel_review_navigation`, idx708 / when1793330000064, for two boolean native
 navigation witnesses only. This is UNAPPLIED and is not a canonical reservation or installation
 priority. Incoming V9 source reportedly proposes56–63, and performance0726/55 is a collision lead;
 no sibling package or applied SQL is edited. At integration freeze reallocate the complete unapplied
@@ -2709,20 +2709,20 @@ historical numbers remain unchanged; this allocation renames migration files and
 
 ## Personnel saved-draft discard — provisional development only
 
-Coordinator assigned `0752_assistant_employee_draft_discard_custody`, idx731/version7/when 1793330000089/breakpoints:true, for the closed native discard port, six private proof/admission fields, pending activation/discard cleanup and protected privacy hook. This is UNAPPLIED PROVISIONAL DEVELOPMENT identity only. Preserve all historical SQL; reconcile against the actual accepted ordered installation ledger before any future installation. The verified Lifecycle0746 remains separately owned. No live operator role provisioning, bootstrap change, protected merge or deployment is authorized.
+Coordinator assigned `0752_assistant_employee_draft_discard_custody`, idx731/version7/when1793330000089/breakpoints:true, for the closed native discard port, six private proof/admission fields, pending activation/discard cleanup and protected privacy hook. This is UNAPPLIED PROVISIONAL DEVELOPMENT identity only. Preserve all historical SQL; reconcile against the actual accepted ordered installation ledger before any future installation. The verified Lifecycle0746 remains separately owned. No live operator role provisioning, bootstrap change, protected merge or deployment is authorized.
 
 ## Performance check-in completion — provisional source reservation
 
-Coordinator allocated `0740_assistant_performance_checkin_complete_custody`, idx719 / version7 / when 1793330000077 / breakpoints:true on 30 October 2026. Development only, above the owned cancellation slice. The accepted installation ledger must be refreshed before integration/application. Same physical custody ledger, native same-transaction completion and exact captured native timestamp proof; ordinary native audit remains unchanged. No release or installation authorization.
+Coordinator allocated `0740_assistant_performance_checkin_complete_custody`, idx719 / version7 / when1793330000077 / breakpoints:true on 30 October 2026. Development only, above the owned cancellation slice. The accepted installation ledger must be refreshed before integration/application. Same physical custody ledger, native same-transaction completion and exact captured native timestamp proof; ordinary native audit remains unchanged. No release or installation authorization.
 
 ## Performance mounted check-in scheduling — provisional source reservation
 
-Coordinator allocated `0747_assistant_performance_checkin_schedule_custody`, idx726 / version7 / when 1793330000084 / breakpoints:true on 30 October 2026. Unapplied provisional development source only. The same ledger binds an employment creation intent and private prospective UUID; a protected physical INSERT witness records the actual created result. Refresh accepted journal/ledger ordering before integration or application. No installation, release or deployment authority.
+Coordinator allocated `0747_assistant_performance_checkin_schedule_custody`, idx726 / version7 / when1793330000084 / breakpoints:true on 30 October 2026. Unapplied provisional development source only. The same ledger binds an employment creation intent and private prospective UUID; a protected physical INSERT witness records the actual created result. Refresh accepted journal/ledger ordering before integration or application. No installation, release or deployment authority.
 
 
 ## Shared prepared review body parent — 31 October source reservation
 
-Root coordinator reserved `0861_assistant_review_body_pending_parent`, idx747 / version7 / when 1793330000261 / breakpoints:true, after0860 in the reconciled aggregate. Unapplied development source only; no installed-history priority or runtime-success claim. The exact independently reviewed SQL adds the same physical ledger body's pending-parent write invariant with sorted NOWAIT locks; existing native proof, expiry, cleanup, grants and RLS remain authoritative. Actual installed ledger and source hashes require root verification before any staging action.
+Root coordinator reserved `0861_assistant_review_body_pending_parent`, idx747 / version7 / when1793330000261 / breakpoints:true, after0860 in the reconciled aggregate. Unapplied development source only; no installed-history priority or runtime-success claim. The exact independently reviewed SQL adds the same physical ledger body's pending-parent write invariant with sorted NOWAIT locks; existing native proof, expiry, cleanup, grants and RLS remain authoritative. Actual installed ledger and source hashes require root verification before any staging action.
 
 
 ## Reviewed Bank and Organisation effect closure — 31 October source allocations
@@ -2738,7 +2738,7 @@ not installation, acceptance or runtime qualification.
 | Bank retained effect closure |0863_assistant_bank_effect_closure |748 |7 |1793330000263 |true |
 | Organisation catalogue effect closure |0864_assistant_catalogue_effect_closure |749 |7 |1793330000264 |true |
 
-Both append strictly after0861. Foreign0862/when 1793330000262 remains preserved and excluded
+Both append strictly after0861. Foreign0862/when1793330000262 remains preserved and excluded
 from this candidate; a numeric gap is intentional. Existing SQL bytes and the full journal prefix
 are immutable. Root must verify the then-current installation ledger and release evidence before
 any installation; neither source allocation nor focused development checks authorizes deployment.
@@ -2747,9 +2747,9 @@ any installation; neither source allocation nor focused development checks autho
 
 Owner-assigned next release after V9 (Claude release owner). Integrated onto V9 candidate
 `49c3d960da266b62b4f5f8f90b7f80afab6dc9ac`, whose journal is the installed 636-entry prefix through
-`0865_assistant_company_retention_references`, idx750 / when 1793330000265. A fresh scan of every local
+`0865_assistant_company_retention_references`, idx750 / when1793330000265. A fresh scan of every local
 and origin ref plus registered worktrees found unapplied foreign claims 0866–0872 (idx751–757,
-when 1793330000266–272, performance work) and nothing above.
+when1793330000266–272, performance work) and nothing above.
 
 | Index | Timestamp | Filename | SQL SHA256 | Former unapplied identity |
 | ---: | ---: | --- | --- | --- |
@@ -2765,8 +2765,8 @@ reservation grants no deployment or acceptance.
 ## Rewards access-request read policy fix — 1 November 2026
 
 Claude release owner, owner-accepted follow-up to the tax/movement bundle. The installed staging ledger is
-638 rows through `0874_payroll_tax_basis_corrections` (idx752 / when 1793330000274). This fix appends
-`0875_reward_access_request_read_role` at idx753 / when 1793330000275 (SQL SHA256
+638 rows through `0874_payroll_tax_basis_corrections` (idx752 / when1793330000274). This fix appends
+`0875_reward_access_request_read_role` at idx753 / when1793330000275 (SQL SHA256
 `06190afbe171fffa7baa1c27b6fc6417499c50f1e8a7ec9a702a536e5acb41a1`). Performance's unapplied 0866–0872
 claims are below the watermark and must be reallocated above the next accepted watermark. Re-verify the
 live ledger before installation; this reservation grants no deployment.
@@ -2774,7 +2774,7 @@ live ledger before installation; this reservation grants no deployment.
 ## EPF Manual (by percentage) 0% floor — 1 November 2026
 
 Approved board item 1058ced1 (PR #175). Integrated onto alpha `1a74336e6`, whose journal ends at the
-Rewards fix `0875_reward_access_request_read_role` (idx753 / when 1793330000275, in its staging window).
+Rewards fix `0875_reward_access_request_read_role` (idx753 / when1793330000275, in its staging window).
 A scan of every local and origin ref plus registered worktrees found no claim above when…275.
 
 | Index | Timestamp | Filename | SQL SHA256 |
@@ -2789,9 +2789,9 @@ script is needed. No table, grant or RLS change. Grants no installation or accep
 ## ADR-0170 step 5a (Teras outcome record and work-job mandates) — 1 November 2026 (provisional source claim)
 
 Branch `claude/teras-step5a-outcome-mandates` (cut from `claude/teras-step1-harness` a87dc418, journal ending
-`0874_payroll_tax_basis_corrections` idx752 / when 1793330000274). A scan of every local and origin ref plus
+`0874_payroll_tax_basis_corrections` idx752 / when1793330000274). A scan of every local and origin ref plus
 registered worktree journals found the highest claim at `0887_attendance_task_candidate_access`
-(when 1793330000287, performance work) and no Teras sibling migration; this claim starts above it with a
+(when1793330000287, performance work) and no Teras sibling migration; this claim starts above it with a
 small gap. Development source only: no installation priority, no deployment. The idx values below are this
 branch's own journal positions and must be re-frozen above the then-installed ledger at integration.
 
@@ -2806,7 +2806,7 @@ will need the integrator's usual tail update when these entries land.
 ## ADR-0170 step 5 (Teras recommendations, digest and agent registry) — 1 November 2026 (provisional source claim)
 
 Branch `claude/teras-step5-recommend-digest-registry` (cut from `claude/teras-integration` a2a39018, journal
-ending `0891_teras_rule_version_labels` idx754 / when 1793330000291). A scan of every origin ref found the highest
+ending `0891_teras_rule_version_labels` idx754 / when1793330000291). A scan of every origin ref found the highest
 claim at `0892_attendance_legacy_candidate_gate` (`codex/performance-attendance-candidate-profile-20261101`);
 0893–0894 are left for the parallel step 5c. Development source only: no installation priority, no deployment.
 The idx is this branch's own journal position and must be re-frozen above the then-installed ledger at integration.
@@ -2826,7 +2826,7 @@ the then-installed ledger at integration; this grants no installation.
 ## Entra workforce connector — 2 November 2026 (provisional)
 
 `codex/entra-integration-design-20261102` appends `0899_entra_workforce` at
-when 1793330000299, with the next index on its own source journal. A scan of all local/origin
+when1793330000299, with the next index on its own source journal. A scan of all local/origin
 committed journals (306 unique contents) found claims through0897/…297; registered worktree
 journals additionally include foreign0898/…298 (auto-logout). Those foreign claims remain excluded.
 Recheck competing reservations, the accepted journal and the live installation watermark before
@@ -2847,8 +2847,8 @@ migrations can require reallocation of both uninstalled identities. No lease or 
 ## Approved Password Policy manual unlock — 2 November 2026 (provisional)
 
 `codex/approved-board-security-20261102` appends `0935_password_account_unlock` at
-when 1793330000335, index757 on its own main0899 source journal. Parent coordination scanned
-local/origin journals and found claims through0934 / when 1793330000334; no other approved-item
+when1793330000335, index757 on its own main0899 source journal. Parent coordination scanned
+local/origin journals and found claims through0934 / when1793330000334; no other approved-item
 worker is allocating migrations. SQL SHA256 `3933f36ffe4ea3d4c0d47a2e0c27f6cf514dc8ba48942af7e241c60e829bafaa`.
 This helper preserves revoked raw identity access and checks current tenant/group-administration
 authority under the canonical access lock. Recheck all claims, aggregate journal and live watermark
@@ -2858,11 +2858,11 @@ with no deployment or installation authorization.
 ## Teras re-allocation above the Entra watermark — 2 November 2026 (provisional source claim)
 
 Branch `claude/teras-review-fixes`, after the normal merge of released main 50ea2471 (642 journal entries; the live
-ledger reported by the Entra hand-back has 642 applied rows, watermark when 1793330000299, with 0898
+ledger reported by the Entra hand-back has 642 applied rows, watermark when1793330000299, with 0898
 `0f7204555b6aad9819a43e9a00b04530593e1d137afa7941603ac02e8ecc8729` and 0899
 `c70afe9dac5c37ebd471230df02f9d824184affc5db50ab7d8c6163c0adf842b` verified byte-identical here). None of the Teras
 migrations is applied anywhere. A scan of every origin ref and open PR found claims through
-`0923_overtime_formula_candidate_plan` (when 1793330000323, performance work), so the Teras claims move above it.
+`0923_overtime_formula_candidate_plan` (when1793330000323, performance work), so the Teras claims move above it.
 SQL bytes are unchanged; only file names and journal positions move. The earlier entries for 0890/0891/0895 above
 are superseded by this table. Development source only: no installation priority, no deployment; re-freeze above
 the then-installed ledger at integration.
@@ -2880,27 +2880,27 @@ The SQL comments inside these files still name their original provisional number
 
 ## Approved feedback implementation — 3 November 2026 (provisional source only)
 
-Fresh main/alpha baseline dfbcf85b1, journal through0929 idx762/when 1793330000329. A full local/origin ref and registered worktree journal scan found competing claims through0946/when 1793330000346. Rewards owns0947/when347 on its independent branch. This lifecycle branch reserves0948_document_signing atidx763/when 1793330000348. Probation0949/when349 and Contract Management0950/when350 are coordinated subsequent independent builds; Payroll reserves0951/when351 only if needed. Aggregate integration must reindex the union and recheck current refs/live ordered ledger; none is applied by this reservation. Existing applied bytes and prefix remain unchanged.
+Fresh main/alpha baseline dfbcf85b1, journal through0929 idx762/when1793330000329. A full local/origin ref and registered worktree journal scan found competing claims through0946/when1793330000346. Rewards owns0947/when347 on its independent branch. This lifecycle branch reserves0948_document_signing atidx763/when1793330000348. Probation0949/when349 and Contract Management0950/when350 are coordinated subsequent independent builds; Payroll reserves0951/when351 only if needed. Aggregate integration must reindex the union and recheck current refs/live ordered ledger; none is applied by this reservation. Existing applied bytes and prefix remain unchanged.
 
 - 2026-11-03: Contract Management source reserves `0950_contract_management`, `when=1793330000350`, provisional branch journal idx764 after0948. Parent scanned registered and origin journals before reservation;0947 Rewards and0949 probation are separately owned. Reindex only journal positions at aggregate integration; recheck live ledger before any installation. No SQL applied by this branch.
 
 ## Approved Lifecycle effect boundary — 3 November 2026 (provisional source)
 
 A fresh scan of336 unique committed journals plus registered worktree journals found foreign
-0952_teras_chats/when 1793330000352 after the coordinated0947–0951 claims. This owned aggregate
-reserves0953_lifecycle_service_info_intents/when 1793330000353 for the fixed optional Probation/Contract
+0952_teras_chats/when1793330000352 after the coordinated0947–0951 claims. This owned aggregate
+reserves0953_lifecycle_service_info_intents/when1793330000353 for the fixed optional Probation/Contract
 service-info intent dispatcher. Module owners define private exact-transaction predicates; the ordinary
 0579 workforce path remains intact. This is uninstalled source, not ledger or release evidence.
 Reindex the final union and check freshly accepted refs plus the ordered live ledger before installation.
 
 ## Rewards access approval exemptions — 3 November 2026 (provisional)
 
-codex/approved-rewards-20261103 reserves 0947_rewards_access_approval_exemptions at idx763 / when 1793330000347, after the parent scan found all local/origin and registered-worktree claims through0946 / when346. Parent coordinates0948 signing,0949 probation and0950 contracts. Source reservation only; no installation priority or permission. Re-freeze the canonical journal and live applied ledger before integration/application; preserve applied bytes, reindex only this unapplied successor in the aggregate.
+codex/approved-rewards-20261103 reserves 0947_rewards_access_approval_exemptions at idx763 / when1793330000347, after the parent scan found all local/origin and registered-worktree claims through0946 / when346. Parent coordinates0948 signing,0949 probation and0950 contracts. Source reservation only; no installation priority or permission. Re-freeze the canonical journal and live applied ledger before integration/application; preserve applied bytes, reindex only this unapplied successor in the aggregate.
 
 ## AI Centre stored chats (issue 8) — 3 November 2026 (provisional source claim)
 
 Branch `claude/noveri-chats` (cut from `claude/noveri-staging-fix` 858c1d25b, journal ending
-`0929_teras_review_services` idx762 / when 1793330000329) appends `0952_teras_chats` as idx763 / when 1793330000352.
+`0929_teras_review_services` idx762 / when1793330000329) appends `0952_teras_chats` as idx763 / when1793330000352.
 The handoff's earlier number 0936 is taken (`0936_data_permission_profiles`). A fresh fetch on 3 November 2026 and a
 scan of every origin ref (1459 refs, 442 distinct migration trees) and every registered worktree (348, including their
 uncommitted files) found file claims through `0951_payroll_reprocess_correction_lineage` (with 0949 and 0950 present
@@ -2915,13 +2915,13 @@ integration.
 | ---: | ---: | --- | --- |
 |763|1793330000352|0952_teras_chats|e320362770eedfafd2e9260d82713b1c669f056a296db979a1f5295e785b401b|
 
-Superseded on 3 November 2026, before any application: renumbered to `2000_teras_chats` / when 1793330001400 in the AI Centre block
+Superseded on 3 November 2026, before any application: renumbered to `2000_teras_chats` / when1793330001400 in the AI Centre block
 2000–2019 (see that entry below). This identity is not an alternative installation path.
 
 ## AI v2 W11 protected case route — 3 November 2026 (provisional source claim)
 
-Branch `claude/aiv2-s2-case-route` (cut from `2702348f3`, journal ending `0952_teras_chats` idx763 / when 1793330000352)
-appends `0959_private_cases` as idx764 / when 1793330000359. A fresh fetch on 3 November 2026 and a scan of every origin
+Branch `claude/aiv2-s2-case-route` (cut from `2702348f3`, journal ending `0952_teras_chats` idx763 / when1793330000352)
+appends `0959_private_cases` as idx764 / when1793330000359. A fresh fetch on 3 November 2026 and a scan of every origin
 ref (1586 refs, 337 distinct migration trees), every local branch (1897) and every registered worktree (401, including
 their uncommitted files) found file claims through `0958_qualification_import_preview` (Codex branches hold 0948–0958;
 the Teras chats migration 0952 collides with `0952_financial_letter_actions` and is renumbered at integration) and
@@ -2931,21 +2931,21 @@ no installation priority, no deployment; the idx is this branch's own journal po
 then-installed ledger at integration. Sibling AI v2 slice branches cut from the same base may claim the same next
 number; reconcile at integration. The unapplied SQL was revised on this branch after review (fallback exclusions, notices,
 no self-designation); a re-scan the same day (1594 origin refs, every local branch and 401 worktrees) still found claims
-ending at 0958 / when 1793330000358, so the number and `when` stand. The hash below is the revised body's.
+ending at 0958 / when1793330000358, so the number and `when` stand. The hash below is the revised body's.
 
 | idx (branch) | when | Tag | SQL SHA256 |
 | ---: | ---: | --- | --- |
 |764|1793330000359|0959_private_cases|3016959b49532efbd6da16be168ad6ef764c66f5a0af35f50b9de40112ccf55f|
 
-Superseded on 3 November 2026, before any application: renumbered to `2001_private_cases` / when 1793330001401 in the AI Centre block
+Superseded on 3 November 2026, before any application: renumbered to `2001_private_cases` / when1793330001401 in the AI Centre block
 2000–2019 (see that entry below). This identity is not an alternative installation path.
 
 ## AI v2 W8 loops at the Prepare level — 3 November 2026 (provisional source claim)
 
-Branch `claude/aiv2-s3-loops` (cut from `32816437f`, journal ending `0959_private_cases` idx764 / when 1793330000359)
-appends `0960_teras_loops` as idx765 / when 1793330000360, the number and `when` the AI v2 coordinator assigned for this
+Branch `claude/aiv2-s3-loops` (cut from `32816437f`, journal ending `0959_private_cases` idx764 / when1793330000359)
+appends `0960_teras_loops` as idx765 / when1793330000360, the number and `when` the AI v2 coordinator assigned for this
 task. A fresh fetch on 3 November 2026 and a scan of every ref's migration files and journals and every registered
-worktree (including uncommitted files) found claims ending at 0959 / when 1793330000359. The coordinator holds `0961` for
+worktree (including uncommitted files) found claims ending at 0959 / when1793330000359. The coordinator holds `0961` for
 a parallel employee letter-request task. Development source only: no installation priority, no deployment; the idx is
 this branch's own journal position and must be re-frozen above the then-installed ledger at integration. Sibling AI v2
 slice branches cut from the same base may claim the same next number; reconcile at integration.
@@ -2954,19 +2954,19 @@ slice branches cut from the same base may claim the same next number; reconcile 
 | ---: | ---: | --- | --- |
 |765|1793330000360|0960_teras_loops|addec336da5a82869ab05d79c45bc9d884e92c3d877af6b073f3e892fdfda11d|
 
-Superseded on 3 November 2026, before any application: renumbered to `2002_teras_loops` / when 1793330001402 in the AI Centre block
+Superseded on 3 November 2026, before any application: renumbered to `2002_teras_loops` / when1793330001402 in the AI Centre block
 2000–2019 (see that entry below). This identity is not an alternative installation path.
 
 ## AI v2 Phase 1 slice 3 employee letter requests — 3 November 2026 (provisional source claim)
 
-Branch `claude/aiv2-s3-letter-request` (cut from `32816437f`, journal ending `0959_private_cases` idx764 / when 1793330000359)
-appends `0961_letter_requests` as idx765 / when 1793330000361 on its branch; at the Phase 1 final integration
+Branch `claude/aiv2-s3-letter-request` (cut from `32816437f`, journal ending `0959_private_cases` idx764 / when1793330000359)
+appends `0961_letter_requests` as idx765 / when1793330000361 on its branch; at the Phase 1 final integration
 (`claude/aiv2-phase1-final`, coordinator, 3 November 2026) it is re-frozen as **idx766** after `0960_teras_loops` idx765, the
-SQL unchanged. 0960 / when 1793330000360 is reserved by the coordinator for
+SQL unchanged. 0960 / when1793330000360 is reserved by the coordinator for
 the parallel loops branch (`0960_teras_loops`, present only in the `aiv2-s3-loops-20261103` worktree). A fresh fetch on
 3 November 2026 and a scan of every origin ref, every local branch and every registered worktree (407, including their
 uncommitted files and allocation documents) found file claims through 0960 and journal `when` values through
-1793330000360; nothing claims 0961 or when 1793330000361. This claim therefore takes 0961 with the `when` the coordinator
+1793330000360; nothing claims 0961 or when1793330000361. This claim therefore takes 0961 with the `when` the coordinator
 assigned. Development source only: no installation priority, no deployment; the idx is this branch's own journal position
 and must be re-frozen above the then-installed ledger at integration. Sibling AI v2 slice branches cut from the same base
 may claim the same idx; reconcile at integration. The SQL was revised in place on `claude/aiv2-phase1-final` (coordinator,
@@ -2979,18 +2979,18 @@ below is the revised body's.
 | ---: | ---: | --- | --- |
 |766|1793330000361|0961_letter_requests|86b91182f7f686d32fb37d5ab117198440aee24bad0abe029f5266cef1cbafc7|
 
-Superseded on 3 November 2026, before any application: renumbered to `2003_letter_requests` / when 1793330001403 in the AI Centre block
+Superseded on 3 November 2026, before any application: renumbered to `2003_letter_requests` / when1793330001403 in the AI Centre block
 2000–2019 (see that entry below). This identity is not an alternative installation path.
 
 ## AI v2 Phase 2 P2-4 HR capacity ledger baseline — 3 November 2026 (provisional source claim)
 
 Branch `claude/aiv2-p2-capacity-ledger` (cut from `360e7f065` on `claude/aiv2-phase1-final`, journal ending
-`0961_letter_requests` idx766 / when 1793330000361) appends `0966_teras_capacity_baseline` as idx767 / when 1793330000366, the
+`0961_letter_requests` idx766 / when1793330000361) appends `0966_teras_capacity_baseline` as idx767 / when1793330000366, the
 number and `when` the AI v2 coordinator reserved for P2-4 ("only if needed"). It is needed: the baseline (each company's own
 manual minutes per item and the period they describe) must be recorded, attributed and kept as history, and no existing
 store is per company and writable by that company's HR administrators. A fresh fetch on 3 November 2026 and a scan of every
 origin ref, every local branch and the registered Phase 2 worktrees (including uncommitted files) found no claim on 0962 to
-0966 or on when 1793330000362 to when 1793330000366; 0962 to 0965 stay reserved for the coordinator, P2-1, P2-2a and P2-2b.
+0966 or on when1793330000362 to when1793330000366; 0962 to 0965 stay reserved for the coordinator, P2-1, P2-2a and P2-2b.
 Development source only: no installation priority, no deployment; the idx is this branch's own journal position and must be
 re-frozen above the then-installed ledger at integration. Sibling Phase 2 branches cut from the same base claim idx767 for
 their own numbers; reconcile at integration, ordered by number.
@@ -2999,17 +2999,17 @@ their own numbers; reconcile at integration, ordered by number.
 | ---: | ---: | --- | --- |
 |767|1793330000366|0966_teras_capacity_baseline|0b2f62d07b398bc837909c31b27f2dcd5ee30276f5c84937d8d57440a4b5a67c|
 
-Superseded on 4 November 2026, before any application: renumbered to `2007_teras_capacity_baseline` / when 1793330001407 in the AI Centre block
+Superseded on 4 November 2026, before any application: renumbered to `2007_teras_capacity_baseline` / when1793330001407 in the AI Centre block
 2000–2019 (see the AI v2 Phase 2 integration entry below). This identity is not an alternative installation path.
 
 ## AI v2 Phase 2 P2-3, own payroll cut-off — 3 November 2026 (provisional source claim)
 
 Branch `claude/aiv2-p2-payroll-checklist` (cut from `360e7f065`, journal ending `0961_letter_requests` idx766 /
-when 1793330000361) appends `0967_own_payroll_cut_off` as idx767 / when 1793330000367, the number and `when` the AI v2
+when1793330000361) appends `0967_own_payroll_cut_off` as idx767 / when1793330000367, the number and `when` the AI v2
 coordinator assigned for "P2-3, own payroll cut-off". A fresh fetch on 3 November 2026 and a scan of every origin ref and
 every registered AI v2 worktree found Phase 2 claims 0963 (autonomy ladder), 0964 (payroll cycle loops), 0965 (audit loop)
 and 0966 (capacity baseline), each on its own branch and each the next journal idx after the same base, and nothing
-claiming 0967 or when 1793330000367. The migration adds one STABLE SECURITY DEFINER function,
+claiming 0967 or when1793330000367. The migration adds one STABLE SECURITY DEFINER function,
 `app.own_payroll_cut_off_day(uuid)`, returning only the calling login's own current employment's company cut-off day; no
 table, column, constraint or policy changes. Development source only: no installation priority, no deployment; idx767 is
 this branch's own journal position and is re-frozen with the sibling Phase 2 claims at integration.
@@ -3018,13 +3018,13 @@ this branch's own journal position and is re-frozen with the sibling Phase 2 cla
 | ---: | ---: | --- | --- |
 |767|1793330000367|0967_own_payroll_cut_off|b75a5bcd7c339cb2c9a2921bf7e4074b2908fe2f6f665e5ba3f77ea3520c3dca|
 
-Superseded on 4 November 2026, before any application: renumbered to `2008_own_payroll_cut_off` / when 1793330001408 in the AI Centre block
+Superseded on 4 November 2026, before any application: renumbered to `2008_own_payroll_cut_off` / when1793330001408 in the AI Centre block
 2000–2019 (see the AI v2 Phase 2 integration entry below). This identity is not an alternative installation path.
 
 ## AI v2 Phase 2 P2-2b payroll Audit loop — 3 November 2026 (provisional source claim)
 
-Branch `claude/aiv2-p2-audit-loop` (cut from `360e7f065`, journal ending `0961_letter_requests` idx766 / when 1793330000361)
-appends `0965_payroll_audit_loop` as idx767 / when 1793330000365, the number and `when` the Phase 2 coordinator reserved for this
+Branch `claude/aiv2-p2-audit-loop` (cut from `360e7f065`, journal ending `0961_letter_requests` idx766 / when1793330000361)
+appends `0965_payroll_audit_loop` as idx767 / when1793330000365, the number and `when` the Phase 2 coordinator reserved for this
 task (0962 renumbering reserve, 0963 P2-1, 0964 P2-2a, 0965 P2-2b, 0966 P2-4). A fresh fetch on 3 November 2026, a scan of
 every ref's history for `db/migrations/096[2-6]*` and of the registered Phase 2 worktrees (`aiv2-p2-autonomy-ladder`,
 `aiv2-p2-payroll-loops`, `aiv2-p2-capacity-ledger`, `aiv2-p2-payroll-checklist`, including uncommitted files) found no claim of
@@ -3037,13 +3037,13 @@ widens the same CHECKs must be merged as the union of both lists.
 | ---: | ---: | --- | --- |
 |767|1793330000365|0965_payroll_audit_loop|f7c68fa2a062470880715d70781a6c2c998de8afb821e580dca17b057f4f925e|
 
-Superseded on 4 November 2026, before any application: renumbered to `2006_payroll_audit_loop` / when 1793330001406 in the AI Centre block
+Superseded on 4 November 2026, before any application: renumbered to `2006_payroll_audit_loop` / when1793330001406 in the AI Centre block
 2000–2019 (see the AI v2 Phase 2 integration entry below). This identity is not an alternative installation path.
 
 ## AI v2 Phase 2 P2-2a payroll-cycle loops — 3 November 2026 (provisional source claim)
 
-Branch `claude/aiv2-p2-payroll-loops` (cut from `360e7f065`, journal ending `0961_letter_requests` idx766 / when 1793330000361)
-appends `0964_teras_payroll_cycle_loops` as idx767 / when 1793330000364, the number and `when` the AI v2 coordinator reserved
+Branch `claude/aiv2-p2-payroll-loops` (cut from `360e7f065`, journal ending `0961_letter_requests` idx766 / when1793330000361)
+appends `0964_teras_payroll_cycle_loops` as idx767 / when1793330000364, the number and `when` the AI v2 coordinator reserved
 for this task (0962 is reserved for renumbering `0952_teras_chats`, 0963 for P2-1, 0965 for P2-2b and 0966 for P2-4). A
 fresh fetch on 3 November 2026 found no origin ref claiming 0962 or above; the parallel Phase 2 worktrees hold 0963, 0965
 and 0966 only. Development source only: no installation priority, no deployment; the idx is this branch's own journal
@@ -3056,19 +3056,19 @@ teras_loop_run and, here, teras_loop_case): whichever is applied second must lis
 | ---: | ---: | --- | --- |
 |767|1793330000364|0964_teras_payroll_cycle_loops|0a38a5628362ac03b6eb4afe67c3b3d3e632be6e7e9bff6eec9f8a0f828407f3|
 
-Superseded on 4 November 2026, before any application: renumbered to `2005_teras_payroll_cycle_loops` / when 1793330001405 in the AI Centre block
+Superseded on 4 November 2026, before any application: renumbered to `2005_teras_payroll_cycle_loops` / when1793330001405 in the AI Centre block
 2000–2019 (see the AI v2 Phase 2 integration entry below). This identity is not an alternative installation path.
 
 
 ## AI v2 Phase 2 P2-1 autonomy ladder — 3 November 2026 (provisional source claim)
 
 Branch `claude/aiv2-p2-autonomy-ladder` (cut from `360e7f065` on `claude/aiv2-phase1-final`, journal ending
-`0961_letter_requests` idx766 / when 1793330000361) appends `0963_teras_loop_autonomy` as idx767 / when 1793330000363, the
+`0961_letter_requests` idx766 / when1793330000361) appends `0963_teras_loop_autonomy` as idx767 / when1793330000363, the
 number and `when` the AI v2 coordinator reserved for P2-1 (Phase 2 common rules: 0962 is held for renumbering
 `0952_teras_chats` at release, 0964–0966 for P2-2a, P2-2b and P2-4). A fresh fetch on 3 November 2026 and a scan of every
 origin ref's migration files and journals (1618 refs) and every registered worktree found file claims through 0961 and
 journal `when` values through 1793330000361 on origin, and only the reserved `0966_teras_capacity_baseline` in the P2-4
-worktree; nothing claims 0963 or when 1793330000363. Development source only: no installation priority, no deployment; the
+worktree; nothing claims 0963 or when1793330000363. Development source only: no installation priority, no deployment; the
 idx is this branch's own journal position and must be re-frozen above the then-installed ledger at integration (after
 0962 if the renumbered chats migration is placed first). Sibling Phase 2 branches cut from the same base may claim the
 same idx; reconcile at integration.
@@ -3077,14 +3077,14 @@ same idx; reconcile at integration.
 | ---: | ---: | --- | --- |
 |767|1793330000363|0963_teras_loop_autonomy|d093765e06101882dbb2b17df70fc070363b0939a1aa97e55b9059d35666f655|
 
-Superseded on 4 November 2026, before any application: renumbered to `2004_teras_loop_autonomy` / when 1793330001404 in the AI Centre block
+Superseded on 4 November 2026, before any application: renumbered to `2004_teras_loop_autonomy` / when1793330001404 in the AI Centre block
 2000–2019 (see the AI v2 Phase 2 integration entry below). This identity is not an alternative installation path.
 
 ## AI v2 Phase 2 wave 1 integration re-freeze — 3 November 2026 (provisional source claim)
 
 Branch `claude/aiv2-phase2-wave1` (cut from `ec2beecc0` on `claude/aiv2-phase1-final`, journal ending `0961_letter_requests`
-idx766 / when 1793330000361) merges P2-4, P2-3, P2-2b and P2-2a, then P2-1, each of which claimed idx767 on its own branch. The journal is re-frozen by
-number: a Phase 2 migration `09NN` takes **idx = 767 + (NN − 63)** and **when = 1793330000300 + NN**. idx767 / when 1793330000363
+idx766 / when1793330000361) merges P2-4, P2-3, P2-2b and P2-2a, then P2-1, each of which claimed idx767 on its own branch. The journal is re-frozen by
+number: a Phase 2 migration `09NN` takes **idx = 767 + (NN − 63)** and **when = 1793330000300 + NN**. idx767 / when1793330000363
 was first left free for `0963_teras_loop_autonomy` (P2-1 arrived last), so when it was merged it took idx767 and nothing
 shifted; the journal tests require only a strictly ascending idx and `when`, so the interim gap was allowed (the journal holds
 42 older gaps). 0963 is byte-identical to its branch (`e44303b90`). The four upgrade tests that pin the journal tail (`ai-dev-populated-upgrade`,
@@ -3102,7 +3102,7 @@ their branches.
 
 A fresh fetch on 3 November 2026 found competing **file numbers and `when` values** on other workstreams' origin branches:
 `codex/permissions-*-20261103` claim `0962_workforce_draft_binding_readiness` to `0966_profile_maintenance_binding_readiness` at
-when 1793330000362–366 (their idx809–813), and `claude/wonderful-mccarthy-2fb38f` claims 0968–0970 at when 1793330000368–370. The
+when1793330000362–366 (their idx809–813), and `claude/wonderful-mccarthy-2fb38f` claims 0968–0970 at when1793330000368–370. The
 AI v2 coordinator's Phase 2 reservations (0962–0967) were assigned before this scan; the overlap is reported to the
 coordinator and must be reconciled before either set integrates with the other (identical `when` values cannot both stand in
 one journal). Development source only: no installation priority, no deployment; re-freeze above the then-installed ledger at
@@ -3122,7 +3122,7 @@ Superseded on 4 November 2026, before any application: these five positions are 
 ## AI v2 Phase 2 P2-5 Living Handbook — 3 November 2026 (provisional source claim)
 
 Branch `claude/aiv2-p2-living-handbook` (cut from `9492a6b43` on `claude/aiv2-phase2-wave1`, journal ending `0967_own_payroll_cut_off`
-idx771 / when 1793330000367) appends `0971_teras_living_handbook` as idx775 / when 1793330000371: the number the AI v2 coordinator
+idx771 / when1793330000367) appends `0971_teras_living_handbook` as idx775 / when1793330000371: the number the AI v2 coordinator
 reserved for P2-5 (wave 2: 0968–0970 for the tenant-isolation hardening PR, 0972 learning loops, 0973 letters chat custody), placed
 by the wave 1 rule (idx = 767 + (NN − 63), when = 1793330000300 + NN), so idx772–774 stay free for 0968–0970. A fresh fetch on
 3 November 2026 found competing **file numbers** on other workstreams' origin branches: `codex/permissions-*-20261103` claim
@@ -3136,20 +3136,20 @@ only writer.
 | ---: | ---: | --- | --- |
 |775|1793330000371|0971_teras_living_handbook|7abaf32815d657b559e6550acf50ecde543bd99f857538889ec48a82920048f0|
 
-Superseded on 4 November 2026, before any application: renumbered to `2009_teras_living_handbook` / when 1793330001409 in the AI Centre block
+Superseded on 4 November 2026, before any application: renumbered to `2009_teras_living_handbook` / when1793330001409 in the AI Centre block
 2000–2019 (see the AI v2 Phase 2 integration entry below). This identity is not an alternative installation path.
 
 ## AI v2 Phase 2 wave 2 P2-6 learning loops — 3 November 2026 (provisional source claim)
 
 Branch `claude/aiv2-p2-learning-loops` (cut from `9492a6b43` on `claude/aiv2-phase2-wave1`, journal ending
-`0967_own_payroll_cut_off` idx771 / when 1793330000367) appends `0972_teras_learning_loops` at the place the wave 1 re-freeze
+`0967_own_payroll_cut_off` idx771 / when1793330000367) appends `0972_teras_learning_loops` at the place the wave 1 re-freeze
 rule gives its number: idx = 767 + (72 − 63) = 776, when = 1793330000300 + 72 = 1793330000372. 0972 is the number the AI v2
 coordinator reserved for the learning loops (wave 2: 0971 Living Handbook, 0972 learning loops, 0973 letters chat custody;
 0968–0970 are taken by `claude/wonderful-mccarthy-2fb38f`). The idx773–775 gap is left for 0968–0971; the journal tests
 require only a strictly ascending idx and `when`.
 
 A fresh fetch on 3 November 2026 found competing claims on other workstreams' origin branches: the `codex/permissions-*-20261103`
-series claims `0972_attendance_schedule_binding_readiness` at when 1793330000372 (its idx819), as part of its 0962–0978 run already
+series claims `0972_attendance_schedule_binding_readiness` at when1793330000372 (its idx819), as part of its 0962–0978 run already
 reported at wave 1 integration. Identical `when` values cannot both stand in one journal: reconcile before either set integrates
 with the other. Development source only: no installation priority, no deployment; re-freeze above the then-installed ledger at
 integration.
@@ -3165,14 +3165,14 @@ table grants UPDATE on its `reason` column only. Writers reviewed: `core/learnin
 | ---: | ---: | --- | --- |
 |776|1793330000372|0972_teras_learning_loops|f4b3574ce920a1e4336e105d0122e779c99a054b1e3db9b452d5d52dfc98294a|
 
-Superseded on 4 November 2026, before any application: renumbered to `2010_teras_learning_loops` / when 1793330001410 in the AI Centre block
+Superseded on 4 November 2026, before any application: renumbered to `2010_teras_learning_loops` / when1793330001410 in the AI Centre block
 2000–2019 (see the AI v2 Phase 2 integration entry below). This identity is not an alternative installation path.
 
 ## AI Centre block 2000–2019: AI v2 Phase 1 release — 3 November 2026 (unapplied source reservation)
 
 Branch `claude/aiv2-phase1-release` merges `origin/main` `848c7be36414a1a5216bb33d0ecd49429fcdd60f` (aligned with alpha; the
 AI v2 coordinator reports it as staging's `STAGING_DEPLOYED_SHA`; this session did not query the staging ledger). Main's
-journal has 656 entries ending idx799 / `0953_lifecycle_service_info_intents` / when 1793330000353, after main's 0950, 0951
+journal has 656 entries ending idx799 / `0953_lifecycle_service_info_intents` / when1793330000353, after main's 0950, 0951
 and 0953.
 
 The four AI v2 Phase 1 migrations move because `0952_teras_chats` (when…352) sits below main's 0953 (when…353), so the
@@ -3192,7 +3192,7 @@ when = 1793330000000 + (file number − 600). The block's values are 17933300014
 
 A fresh fetch and scan at 14:27 UTC on 3 November 2026 covered every local and origin ref (3681 refs, 554 distinct
 migration trees) and all 423 registered worktrees, including their uncommitted files. Claims run to
-`1015_rewards_command_port_status` / when 1793330000415 (Codex, uncommitted worktree); nothing claims a file at or above
+`1015_rewards_command_port_status` / when1793330000415 (Codex, uncommitted worktree); nothing claims a file at or above
 1990 or a `when` at or above 1793330001390.
 
 | Was | idx (branch) | when | Tag | SQL SHA256 |
@@ -3229,7 +3229,7 @@ Management (`/lifecycle/contracts…`) pages stay unlinkable, as before the merg
 ## AI Centre block 2000–2019: AI v2 Phase 2 integration — 4 November 2026 (unapplied source reservation)
 
 Branch `claude/aiv2-phase2-integration` (cut from `claude/aiv2-phase1-release` `2cee0e8b5`, whose journal has 660 entries
-ending idx803 / `2003_letter_requests` / when 1793330001403) merges, in order, `claude/aiv2-phase2-wave1` `2a036b43a`,
+ending idx803 / `2003_letter_requests` / when1793330001403) merges, in order, `claude/aiv2-phase2-wave1` `2a036b43a`,
 `claude/aiv2-p2-living-handbook` `b87335ba8`, `claude/aiv2-p2-learning-loops` `8e444bb9d` and `claude/aiv2-p2-letters-chat`
 `df3cbc08e` (which dropped its 0973 and adds no migration). Their seven migrations take 2004–2010, the next numbers of the
 block this record reserved for AI v2 Phase 2, in number order after Phase 1's 2000–2003: idx follows 803 and `when` follows
@@ -3242,7 +3242,7 @@ learning loops entries above.
 
 A fresh fetch and scan at about 18:40 UTC on 4 November 2026 covered every origin ref (1815 refs, 296 distinct journals) and
 the migration folders of all 420 registered worktrees, including their uncommitted files. File claims at or above 1000 run
-to `1015_rewards_command_port_status` (Codex) and `1500`–`1502` (`claude/wonderful-mccarthy-2fb38f`, when 1793330000900–…902),
+to `1015_rewards_command_port_status` (Codex) and `1500`–`1502` (`claude/wonderful-mccarthy-2fb38f`, when1793330000900–…902),
 plus this block's 2000–2003; nothing claims a file from 2004 to 2019 or a `when` at or above 1793330001404.
 
 | Was | idx (branch) | when | Tag | SQL SHA256 |
@@ -3293,7 +3293,7 @@ coordinator merges both pins.
 ## AI Centre block 2000–2019: AI v2 Phase 2 hardening, payroll loops — 4 November 2026 (unapplied source reservation)
 
 Branch `claude/aiv2-p2h-loops-hardening` (cut from `claude/aiv2-phase2-integration` `3a5273a02`, whose journal ends idx810 /
-`2010_teras_learning_loops` / when 1793330001410). Two kinds of change, both on files no installation has applied:
+`2010_teras_learning_loops` / when1793330001410). Two kinds of change, both on files no installation has applied:
 
 - **Edited in place** (allowed while unapplied, coordinator note of 4 November 2026): `2005_teras_payroll_cycle_loops` (a
   threshold never above 5000 bp; a `reminders_enabled` setting column; a proposal approved only by a group administrator who
@@ -3394,7 +3394,7 @@ and `when`.
 
 ## Approved Personnel formula registry — 4 November 2026 (unapplied)
 
-Coordinator reserved `2110_pay_formula_personnel_registry`, idx1357 / when 1793330001510,
+Coordinator reserved `2110_pay_formula_personnel_registry`, idx1357 / when1793330001510,
 after sibling Rewards2108/1355/1508 and Organization2109/1356/1509. This source branch preserves
 the complete b6077019c journal prefix through2011/811/1411. Registration metadata selects only
 closed typed source keys: it cannot supply executable SQL, table names, columns or source code.
@@ -3407,7 +3407,7 @@ and concurrent allocations before release admission.
 
 ## Approved Rewards entity picker — 4 November 2026 (unapplied)
 
-Coordinator reserved `2108_rewards_entity_classification`, idx1355 / when 1793330001508, above
+Coordinator reserved `2108_rewards_entity_classification`, idx1355 / when1793330001508, above
 the audited staging watermark1502 and sibling provisional claims through2105/idx1352/1505.
 The Rewards branch preserves the complete main/alpha b6077019c journal prefix through2011/idx811/1411.
 This additive Rewards-only designation stores explicitly reviewed company UUIDs and canonical alias
@@ -3416,32 +3416,32 @@ Recheck every then-applied prefix and competing claim at integration/release adm
 
 ### Approved Org Chart roots (4 November2026)
 
-Parent allocation reserves2109_org_chart_roots / idx1356 / when 1793330001509 above discovered main/live claims. This adds explicit effective-dated roots and guards their reporting-line consistency; no roots are inferred or backfilled. Source allocation grants no deployment or live application authority. SQL SHA256: `244664d78a5d54017e7c28b063bc627cc0af7d9a524ba6fc2d710d70d845dfdd`.
+Parent allocation reserves2109_org_chart_roots / idx1356 / when1793330001509 above discovered main/live claims. This adds explicit effective-dated roots and guards their reporting-line consistency; no roots are inferred or backfilled. Source allocation grants no deployment or live application authority. SQL SHA256: `244664d78a5d54017e7c28b063bc627cc0af7d9a524ba6fc2d710d70d845dfdd`.
 
 ## 2026-11-04 approved Security Center reservation
 
-`2106_account_management_subject`, journal idx `1353`, when `1793330001506`, reserved by root delivery coordinator after read-only ref/live-ledger audit. Canonical prefix is unchanged. Recent source tail2105/idx1352/when 1793330001505 and staging max1793330001502 precede this claim. No migration deployed. Live-ahead reconciliation remains a release prerequisite.
+`2106_account_management_subject`, journal idx `1353`, when `1793330001506`, reserved by root delivery coordinator after read-only ref/live-ledger audit. Canonical prefix is unchanged. Recent source tail2105/idx1352/when1793330001505 and staging max1793330001502 precede this claim. No migration deployed. Live-ahead reconciliation remains a release prerequisite.
 
 ## Approved Personnel organisation tagging and filters — 4 November 2026 (unapplied)
 
 Coordinator `codex/approved-ui-20261104` reserves `2126_company_organisation_tagging`, idx1373 /
-when 1793330001526, for the shared explicit dated mapping, independent structure/re-tag review and
-published classification owner; and `2127_personnel_filter_search`, idx1374 / when 1793330001527,
+when1793330001526, for the shared explicit dated mapping, independent structure/re-tag review and
+published classification owner; and `2127_personnel_filter_search`, idx1374 / when1793330001527,
 for the authorised Personnel projection and private sensitive-search state. The implementation worktrees
 are `codex/approved-organisation-owner-20261104`, `codex/approved-organisation-writers-20261104` and
 `codex/approved-personnel-filters-20261104`.
 
 A fresh read-only audit covered 4,256 local/remote heads, 429 distinct journals and every registered
 worktree, including uncommitted migration filenames. Competing source claims end at2125/idx1372/
-when 1793330001525. Main/alpha and the independently observed healthy staging source are
-74db3bb7621c33de256372162a1961ee320baf6e; its canonical journal ends at2102/idx1349/when 1793330001502.
+when1793330001525. Main/alpha and the independently observed healthy staging source are
+74db3bb7621c33de256372162a1961ee320baf6e; its canonical journal ends at2102/idx1349/when1793330001502.
 The candidate already preserves this complete prefix and reserves2106–2111. Gaps remain intentional;
 no competing unapplied branch is silently included. Recheck the actual ordered installation ledger,
 canonical refs and competing reservations at release admission. These reservations apply no live data
 or schema and do not execute the separately reviewed employee re-tag operation.
 
 The same coordinator additionally reserves `2128_organisation_account_admission`, idx1375 /
-when 1793330001528, for native account-availability reproof of the reviewed organisation operation.
+when1793330001528, for native account-availability reproof of the reviewed organisation operation.
 A refreshed 4,264-ref / 429-journal plus registered-worktree audit found no competing claim at2128
 or higher (2126/2127 are this coordinated source). This introduces no plaintext credential or
 employee re-tag. Its purpose-derived verifier requires explicit private technical provisioning;
@@ -3449,7 +3449,7 @@ the server authentication master key is neither moved nor rotated. Installation 
 independently verified at671rows / max1793330001502. Revalidate all identities at release admission.
 
 Final index reconciliation for this still-unapplied source: a later concurrent source claim
-`2129_personnel_native_paging` uses idx1373 / when 1793330001529. The approved Personnel coordinator
+`2129_personnel_native_paging` uses idx1373 / when1793330001529. The approved Personnel coordinator
 therefore reserves idx1380–1383 for2126,2127,2128 and new2130_approved_company_retention respectively,
 with timestamps1793330001526,1527,1528 and1530. These supersede the earlier provisional1373–1375
 indices above; no applied row changes. 2129 is not silently included. The2130 helper declares retention
@@ -3468,7 +3468,7 @@ Staging was verified at b84f6e269 with a 681-row ledger ending at 1793330001530.
 ## AI Centre block 2000–2019: payroll history learning, P1 — 4 November 2026 (unapplied source reservation)
 
 Branch `claude/payroll-history-learning` (from main `b6077019c`, the AI v2 release, whose journal has 668 entries ending idx811
-/ `2011_payroll_loops_hardening` / when 1793330001411) appends **`2012_payroll_learned_baseline`**, the next number of the block:
+/ `2011_payroll_loops_hardening` / when1793330001411) appends **`2012_payroll_learned_baseline`**, the next number of the block:
 idx 812, when 1793330001412 = 1793330000000 + (2012 − 600). The 2000–2011 files are left byte for byte as main has them.
 
 A fresh fetch at the start of this work covered every origin ref (2017 refs; `git log --all` over `db/migrations/2012*`,
@@ -3501,14 +3501,14 @@ Writers reviewed: unchanged (`core/payroll-learning/mode.ts`, `core/payroll-lear
 pins carry the new hash.
 
 Superseded on 4 November 2026, before any application: renumbered to `2013_payroll_learned_baseline` / idx1350 /
-when 1793330001503 (see the next entry). This identity is not an alternative installation path.
+when1793330001503 (see the next entry). This identity is not an alternative installation path.
 
 ## AI Centre block 2000–2019: payroll history learning renumbered after PR #218 — 4 November 2026 (unapplied source reservation)
 
 Branch `claude/aiv2-centre-restructure` merges `claude/payroll-history-learning` `7a6772d79` and then main
 `dc1c70debfce0314aac909202369584e3528c04c` (PR #218, which staging runs): main's journal has 671 entries ending
-`2102_company_tenant_fk_validate` / idx1349 / when 1793330001502, after 2100–2102 at idx1347–1349 / when 1793330001500–…502.
-Left as 2012 / when 1793330001412, the learning migration would sit below 2100–2102's `when` values in an installation that
+`2102_company_tenant_fk_validate` / idx1349 / when1793330001502, after 2100–2102 at idx1347–1349 / when1793330001500–…502.
+Left as 2012 / when1793330001412, the learning migration would sit below 2100–2102's `when` values in an installation that
 applied them first, and the ordinary migrator would silently skip it. The AI v2 coordinator assigns it **2013**, idx **1350**
 (the next after main's highest), when **1793330001503** (above main's 1793330001502), a number of the block this record
 reserved for the AI Centre.
@@ -3528,7 +3528,7 @@ key), the shape ADR-0174's catalogue guard (`test/tenant-company-fk.test.ts`) ac
 refs) on 4 November 2026 found, besides this block and main's 2100–2102, file claims 2103–2110 on `codex/performance-*`,
 `codex/approved-*` and related branches, and `2103_system_performance_read_guards` claims the **same idx 1350 and `when`
 1793330001503** (`codex/performance-ai-centre-*-20261104`, provisional, recorded on that branch as claiming no installation
-priority over main's later AI migrations); 2104–2110 take idx1351–1357 and when 1793330001504–…510. Identical `when` values
+priority over main's later AI migrations); 2104–2110 take idx1351–1357 and when1793330001504–…510. Identical `when` values
 cannot both stand in one journal. The coordinator's assignment is kept here and the overlap is reported. No other claim on a
 file 2012–2019.
 
@@ -3558,9 +3558,9 @@ It preserves earlier SQL and the original staging ledger.
 ## Performance authorization navigation plans — 4 November 2026 (uninstalled candidate)
 
 `codex/performance-authorization-navigation-20261104` reserves
-`2105_authorization_navigation_plans`, idx1352 / when 1793330001505.
+`2105_authorization_navigation_plans`, idx1352 / when1793330001505.
 The fresh scan covered2240 heads,416 committed journals and194 readable worktrees,
-with competing bounds through2104 / idx1351 / when 1793330001504. One foreign malformed
+with competing bounds through2104 / idx1351 / when1793330001504. One foreign malformed
 worktree journal was preserved and its literal bounds included. Read-only staging
 inspection found668 applied rows through1793330001411 on b6077019c; the canonical
 historical identities match every ordered row. This appends above all observed bounds;
@@ -3570,10 +3570,10 @@ No installation or deployment is authorized.
 ## AI control navigation candidates — 4 November 2026 (uninstalled candidate)
 
 `codex/performance-ai-control-navigation-20261104` reserves `2124_ai_control_navigation_candidates`,
-idx1371 / when 1793330001524 / SQL SHA256 `ed8666bfc29767ce266c362f07046dcd6b5b65b8434738bb9257daf5e328292c`.
+idx1371 / when1793330001524 / SQL SHA256 `ed8666bfc29767ce266c362f07046dcd6b5b65b8434738bb9257daf5e328292c`.
 A fresh fetch and source scan covered2291 distinct heads,427 committed journals,579
 committed migration trees and208 readable worktrees. The highest observed reservation
-was2123 / idx1370 / when 1793330001523, including uncommitted SQL filenames and literal
+was2123 / idx1370 / when1793330001523, including uncommitted SQL filenames and literal
 bounds from one foreign malformed worktree journal, which was preserved. Read-only
 staging inspection found671 applied rows through1793330001502 on dc1c70deb, build
 I-W31qYlpals6qfOyV0p1. All671 canonical ordered identities matched. No applied SQL changes.
@@ -3589,10 +3589,10 @@ Complete BOARD roles remains excluded. No deployment or provider approval is aut
 ## Bounded native approval-subject projection — 4 November 2026 (uninstalled candidate)
 
 `codex/performance-claims-native-batch-20261104` reserves `2125_approval_subject_batch`,
-idx1372 / when 1793330001525 / SQL SHA256 `46573298e6faa5545dccf3c7ac5fda930ac48860636630dc4d3bd14e546a5461`.
+idx1372 / when1793330001525 / SQL SHA256 `46573298e6faa5545dccf3c7ac5fda930ac48860636630dc4d3bd14e546a5461`.
 A fresh fetch and scan covered2300 distinct heads,428 committed journals,
 580 committed migration trees and211 readable worktrees, through
-2124 / idx1371 / when 1793330001524. The foreign malformed journal and its literal
+2124 / idx1371 / when1793330001524. The foreign malformed journal and its literal
 bounds were preserved and included. Read-only staging inspection again matched all671
 ordered canonical applied identities through1793330001502 on dc1c70deb, build
 I-W31qYlpals6qfOyV0p1. All previously applied SQL bytes remain unchanged.
@@ -3625,7 +3625,7 @@ installed ordered ledger before integration or release admission.
 
 The owner recombined Phases 1 and 2; the isolated Phase 1-only staging ticket was cancelled.
 Fresh main/alpha both identify `2b90f2e45ecafd732e9e772d8edc243ee98b09bc`, whose 704-entry
-journal appends `2600_onboarding_current_personnel` at idx1900 / when 1793330002200.
+journal appends `2600_onboarding_current_personnel` at idx1900 / when1793330002200.
 The previous architecture candidate's 32 unapplied entries included timestamps below that
 watermark. Installing them after PR 229 without reallocation would silently skip them.
 
@@ -3687,9 +3687,9 @@ not a test PASS or deployment; production remains on hold.
 
 Freshly fetched all-ref/WIP scan: 3,025 heads, 675 committed migration trees, 481
 committed journals and 354 readable worktrees. Maximum prior tag2902 / idx2234 /
-when 1793330002534; the unrelated malformed WIP journal remains untouched and its
+when1793330002534; the unrelated malformed WIP journal remains untouched and its
 literal bounds are included. Reserve `2903_notification_receipt_cycle_authority`
-at idx2235 / when 1793330002535, SHA256 `82711cacac3c69fc217fb9038ccc6a6000dc41c746e3751d8584499698471e22`.
+at idx2235 / when1793330002535, SHA256 `82711cacac3c69fc217fb9038ccc6a6000dc41c746e3751d8584499698471e22`.
 
 This appends the independently reviewed native event→recipient→run/cycle authority
 correction found during isolated correctness review. It changes no historical SQL
@@ -3699,7 +3699,7 @@ all allocations at admission. No installation or production authority is claimed
 
 ## Statement-local Employment membership — 7 November 2026 (uninstalled candidate)
 
-Reserve `3001_employment_membership_initplan`, idx2301 / when 1793330002601,
+Reserve `3001_employment_membership_initplan`, idx2301 / when1793330002601,
 SQL SHA-256 `cd25b675ca404c364d4aef1f436f2e8a89ddeff8d4c63c355cd1fb28dc1507d0`.
 Fresh origin fetch including tags and the all-ref/root-tree/captured-WIP scan covered
 5,778 refs, 3,085 distinct root trees, 675 migration trees, 481 committed journals and
@@ -3718,7 +3718,7 @@ actual ordered installed ledger/watermark before staging. Production remains on 
 
 ## Statement-local Assignment membership — 7 November 2026 (uninstalled candidate)
 
-Reserve `3102_assignment_membership_initplan`, idx2402 / when 1793330002702,
+Reserve `3102_assignment_membership_initplan`, idx2402 / when1793330002702,
 SQL SHA-256 `5cb2e363d5fb27d7de67c8317d1d0c59a5545d86dc835e0d4d1c4cfaa126c2d6`.
 Fresh main/alpha identify109a046ef38f90514f1da458056aa09e015a47a4. The all-ref
 and captured-WIP scan covered5826 refs,3112 distinct root trees,677 migration
@@ -3740,7 +3740,7 @@ refusal and integration qualification. It is not installed and grants no staging
 or production authority. Production remains on hold.
 ## Four approved feedback items — 7 November 2026 (unapplied)
 
-Branch codex/approved-four-20261107 reserves 3100_pay_formula_saved_availability at idx2400 / when 1793330002700 and 3101_attendance_shared_workflow at idx2401 / when 1793330002701. Fresh main/alpha are 4a5a9de8c. A scan of local/remote ref journals and readable registered worktree journals found highest competing timestamp1793330002601 (3001_employment_membership_initplan). Read-only staging reports704 applied entries through1793330002200. Preserve all existing SQL bytes and the canonical journal prefix; recheck the exact ordered installation ledger and peer reservations at integration/admission. Neither reservation grants installation priority or deployment authority.
+Branch codex/approved-four-20261107 reserves 3100_pay_formula_saved_availability at idx2400 / when1793330002700 and 3101_attendance_shared_workflow at idx2401 / when1793330002701. Fresh main/alpha are 4a5a9de8c. A scan of local/remote ref journals and readable registered worktree journals found highest competing timestamp1793330002601 (3001_employment_membership_initplan). Read-only staging reports704 applied entries through1793330002200. Preserve all existing SQL bytes and the canonical journal prefix; recheck the exact ordered installation ledger and peer reservations at integration/admission. Neither reservation grants installation priority or deployment authority.
 
 
 ## PR233 real-owner RLS forward repair — 8 November 2026 (unapplied)
@@ -3771,28 +3771,28 @@ Branch codex/open-feedback-20261108 reserves 3700_individual_transaction_calcula
 
 The earlier `3700_individual_transaction_calculation_method` reservation above is superseded and was never installed. OPEN BOARD and OPEN BOARD 2 coordinated six-item-first release order under the owner's explicit coordination approval. Preserve that owner's seven pending 3700–3706 receipts at timestamps 1793330003300–3306, plus peer OPEN BOARD 3 reservations 3800/3801 at 1793330003400–3401.
 
-A fresh full public-ref fetch followed by a read-only survey of 3,561 and 3,619 distinct repository heads, 504 unique committed journal blobs and 804 readable registered worktree journals found maximum tag3801 / idx3101 / when 1793330003401. Two conflicted journals were scanned conservatively for both sides; 283 missing registered paths were recorded rather than treated as current source. Independently, the live ledger still matches all710 ordered receipts of installed4ae7953eb, watermark1793330003000. Actual survey details and ledger proof are retained privately.
+A fresh full public-ref fetch followed by a read-only survey of 3,561 and 3,619 distinct repository heads, 504 unique committed journal blobs and 804 readable registered worktree journals found maximum tag3801 / idx3101 / when1793330003401. Two conflicted journals were scanned conservatively for both sides; 283 missing registered paths were recorded rather than treated as current source. Independently, the live ledger still matches all710 ordered receipts of installed4ae7953eb, watermark1793330003000. Actual survey details and ledger proof are retained privately.
 
-This branch reserves **3900_individual_transaction_calculation_method**, **idx3200 / when 1793330003500**. The four-line SQL payload is byte-identical to the prior unapplied file, SHA256 `f6f4a31109f66bc5c9038315e249829c2655b870db98a9cbb1ede9cfdab958d4`; only its path and owning journal/test pins move. The current710-entry applied prefix is unchanged. Recheck the actual accepted six-item source, newer peer claims and complete ordered live ledger before integration/admission. This is source allocation only; no migration or staging deployment has occurred.
+This branch reserves **3900_individual_transaction_calculation_method**, **idx3200 / when1793330003500**. The four-line SQL payload is byte-identical to the prior unapplied file, SHA256 `f6f4a31109f66bc5c9038315e249829c2655b870db98a9cbb1ede9cfdab958d4`; only its path and owning journal/test pins move. The current710-entry applied prefix is unchanged. Recheck the actual accepted six-item source, newer peer claims and complete ordered live ledger before integration/admission. This is source allocation only; no migration or staging deployment has occurred.
 ## Six approved board items — 8 November 2026 (unapplied)
 
 Branch codex/board-open-items-20261108 reserves 3300_pay_item_company_applicability
-at idx2600 / when 1793330002900. Fresh origin main/alpha remain 29d9edcbc.
+at idx2600 / when1793330002900. Fresh origin main/alpha remain 29d9edcbc.
 A full origin fetch and read-only survey of 1043 distinct historical journal blobs
 and 671 readable registered worktrees found highest competing file3211,
-idx2545 and when 1793330002845. Read-only staging had 706 applied migrations
+idx2545 and when1793330002845. Read-only staging had 706 applied migrations
 through1793330002701. The canonical journal prefix and applied SQL bytes remain
 unchanged. Refresh the exact ordered target ledger and peer reservations before
 integration or release; this reservation grants no installation priority.
 
 The same approved-item coordinator reserves 3301_rewards_unit_preparation at
-idx2601 / when 1793330002901, immediately after its owned 3300. Preparation
+idx2601 / when1793330002901, immediately after its owned 3300. Preparation
 extends the existing governance history. Existing reviews retain explicitly
 legacy visibility; no doer/checker history is manufactured. New annual review
 creation requires the preparation release. No live migration has been applied.
 
 The same coordinator reserves 3302_maybank_payment_arrangement at idx2602 /
-when 1793330002902. A fresh full fetch and survey of 1046 journals and 686
+when1793330002902. A fresh full fetch and survey of 1046 journals and 686
 readable registered worktrees found no higher competing reservation than its
 owned 3301/2601/1793330002901. This adds explicit Maybank arrangement metadata
 and a separate, nullable payee banking-residency fact; no tax residency is copied.

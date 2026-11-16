@@ -225,9 +225,17 @@ export const APPROVED_UPGRADE_TAIL=[
  {idx:5164,when:1793330005464,tag:'5764_probation_routed_holders'},
  {idx:5165,when:1793330005465,tag:'5765_probation_letter_signers'},
  {idx:5166,when:1793330005466,tag:'5766_probation_reshape_company_in_use'},
+ {idx:5167,when:1793330100101,tag:'9991_resignation_journey'},
+ {idx:5168,when:1793330100102,tag:'9992_resignation_configuration'},
+ {idx:5169,when:1793330100103,tag:'9993_resignation_postings'},
+ {idx:5171,when:1793330100105,tag:'9995_resignation_email_delivery'},
 ] as const;
 // Final pending 2109/2126 bytes reviewed from engine 128bc2539; no applied-prefix hashes change.
 const APPROVED_UPGRADE_HASHES:Record<string,string>={
+ '9991_resignation_journey':'baa1252c625b46bb5c45c09b991e5ed167e8e5d5db0a55ba49ea0d5a25c978d3',
+ '9992_resignation_configuration':'6e064c336c441fbbf01017debe9e1a748957976d3d6b2b96470747d07d7dacb5',
+ '9993_resignation_postings':'c6045c53dc2fae7dabbcdaae123e772570cbbd186b429a8426f0b9dbe1d3015d',
+ '9995_resignation_email_delivery':'2a0e7edff34afd7c6fb5c7fdccc9ba33af456882de7a70d5855db87a99c7f570',
  '5761_probation_automation_recipients_and_tracker_steps':'c39e471adb80e51b56466c264bc6546dc6ce48a354e30d8e9ef3629a82b2184b',
  '5760_probation_queue_kinds_and_pbp_tasks':'c3ab5ddf4c702dd1ca947b3a350c7e852ab8699524c9da7fcad11f19887cdb59',
  '5150_attendance_policy_dated_rounding':'f1549fefc467398d9701ba5428e238134a8ca248fb645046b4b23877280e3408',
@@ -436,6 +444,7 @@ export const COMBINED_RELEASE_NULL_COLUMNS:readonly {tag:string;table:string;col
  // Board 511aa74a (5695): no employment that predates it was rehired from another period.
  {tag:'5695_employment_rehire_link',table:'employment',columns:['rehired_from_employment_id']},
  {tag:'5760_probation_queue_kinds_and_pbp_tasks',table:'probation_outcome',columns:['extension_months']},
+ {tag:'9993_resignation_postings',table:'personnel_posting',columns:['rejected_by','rejected_at','rejection_reason','due_on','baseline_values']},
  ...['department','position','cost_center','business_unit','label_company_assignment','profile_option','job_grade','grade_group','grade_group_member']
   .map(table=>({tag:'5070_system_label_import_staged_job',table,columns:['import_pending_attempt_id']})),
 ]);

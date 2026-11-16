@@ -23,9 +23,13 @@ The handoff wins where its text and HTML differ: the decision form includes an e
 
 The public journey interface is `packs/lifecycle/resignation/service`; web and worker consumers use that boundary. Reads authorize and narrow the native set before detail projection, page/count in SQL, and preserve tenant/company isolation. Inboxes hydrate their case set in bounded set-based queries rather than one query per item. Mutation authorization, state changes, audit and delivery intent share a transaction.
 
+Private aggregate reads and derived state writes require short-lived, transaction-bound service proofs, following the organisation admission precedent. A domain-separated derived verifier is provisioned through the restricted owner; runtime SQL cannot read its key or mint proofs. Claims bind tenant, actor, operation, case and exact arguments. Native permission and transition checks still apply. Missing verifier material fails closed; provisioning and populated-upgrade checks are explicit release steps. Signed email intent binds exact recipients, content and released document snapshots, rather than trusting a reader's arbitrary JSON.
+
 ## Journey rules
 
 A submission opens Decision. The configured decider accepts or proposes retention; configured FYI people may comment without acquiring decision rights. The acceptance path creates one linked Offboarding case. The retention path reviews and signs an e-letter, whose sole final employee Sign step is acceptance. Acceptance closes the resignation as Retained and creates the configured pending Personnel posting.
+
+AIHR's existing requisition creates equipment/access requests for onboarding, not recruitment vacancies. Choosing a replacement therefore opens a durable HR follow-up in the resignation case, assigned to the configured People Ops recipients. HR records its recruitment request reference when complete. This does not create a fictitious replacement employee or claim an external recruitment integration.
 
 A decline or lapse returns the same case for an accept-only decision. Owner withdrawal/rejection is a distinct path that can reopen an offer. Send back and recall clear signatures and return the document to its owner; sending round again restarts at the first step. A future signer cannot read a private letter before their turn. Released values and the generated letter date remain frozen.
 

@@ -10,6 +10,7 @@ DECLARE t uuid:=app.current_tenant_id(); j public.resignation_journey%ROWTYPE;
   to_ids uuid[]; cc_ids uuid[]; unreachable uuid[]; queued integer:=0;
   content jsonb:=nullif(p_content,'null'::jsonb); doc jsonb; asset jsonb; file_ref jsonb; total_bytes bigint:=0;
 BEGIN
+  PERFORM app.resignation_runtime_consume('email',p_subject,jsonb_build_object('key',p_key,'to',to_jsonb(p_to),'cc',to_jsonb(coalesce(p_cc,'{}'::uuid[])),'subject',p_subject_line,'body',p_body,'content',p_content));
   IF app.automation_can_run('off',p_subject) IS NOT TRUE THEN RAISE EXCEPTION 'This workflow runner is not permitted here' USING ERRCODE='42501'; END IF;
   PERFORM app.access_workforce_write_lock();
   SELECT * INTO j FROM public.resignation_journey WHERE tenant_id=t AND id=p_subject;

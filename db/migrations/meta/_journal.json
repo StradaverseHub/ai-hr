@@ -6168,6 +6168,34 @@
       "when": 1793330005466,
       "tag": "5766_probation_reshape_company_in_use",
       "breakpoints": true
+    },
+    {
+      "idx": 5167,
+      "version": "7",
+      "when": 1793330100101,
+      "tag": "9991_resignation_journey",
+      "breakpoints": true
+    },
+    {
+      "idx": 5168,
+      "version": "7",
+      "when": 1793330100102,
+      "tag": "9992_resignation_configuration",
+      "breakpoints": true
+    },
+    {
+      "idx": 5169,
+      "version": "7",
+      "when": 1793330100103,
+      "tag": "9993_resignation_postings",
+      "breakpoints": true
+    },
+    {
+      "idx": 5171,
+      "version": "7",
+      "when": 1793330100105,
+      "tag": "9995_resignation_email_delivery",
+      "breakpoints": true
     }
   ]
 }
