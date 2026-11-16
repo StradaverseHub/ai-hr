@@ -6694,7 +6694,13 @@
         "running": "Reprocessing the selected employees",
         "progress": "{done} of {total} employees done",
         "help": "You can leave this page. Each employee is recalculated on its own, and the results appear here when the reprocess finishes."
-      }
+      },
+      "registerSearchLabel": "Search employees in this run",
+      "registerSearchPlaceholder": "Search by employee name or Employee ID",
+      "registerSearchSubmit": "Search",
+      "registerSearchClear": "Clear search",
+      "registerSearchSummary": "{n} of {total} employees match “{q}”",
+      "registerSearchEmpty": "No employee in this run matches “{q}”."
     },
     "reports": {
       "pageTitle": "Payroll",

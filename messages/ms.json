@@ -7418,7 +7418,13 @@
         "running": "Memproses semula pekerja yang dipilih",
         "progress": "{done} daripada {total} pekerja selesai",
         "help": "Anda boleh meninggalkan halaman ini. Setiap pekerja dikira semula secara berasingan, dan keputusan dipaparkan di sini apabila pemprosesan semula selesai."
-      }
+      },
+      "registerSearchLabel": "Cari pekerja dalam larian ini",
+      "registerSearchPlaceholder": "Cari mengikut nama pekerja atau ID Pekerja",
+      "registerSearchSubmit": "Cari",
+      "registerSearchClear": "Kosongkan carian",
+      "registerSearchSummary": "{n} daripada {total} pekerja sepadan dengan “{q}”",
+      "registerSearchEmpty": "Tiada pekerja dalam larian ini yang sepadan dengan “{q}”."
     },
     "transactions": {
       "title": "Kemasukan Transaksi",

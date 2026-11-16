@@ -37,12 +37,24 @@ export function overlayInformationDocument<T extends object>(row:T,document:Hist
 export async function informationPayslipDocument(tx:Tx,id:string):Promise<HistoricalDocument|null>{
  const [row]=await tx.execute<{document:HistoricalDocument|null}>(sql`select app.information_payslip_document(${id}::uuid) as document`);return row?.document??null;
 }
-export async function informationPayslipDocuments(tx:Tx,p:{companyIds:string[];year?:number;month?:number;cycle?:string;employmentId?:string;intendedCycle?:boolean}):Promise<HistoricalDocument[]>{
+/** Safety ceiling for an UNCAPPED read (exports, one employee's runs). The database function returns at most one row
+ * more than this per company chunk. */
+export const RETAINED_DOCUMENT_CEILING=5000;
+/**
+ * `limit` — a capped caller (Transaction View's History landing tab) wants only the newest `limit` documents, the
+ * same cap its live rows already have. Each company chunk then returns at most `limit` rows in the function's
+ * newest-period-first order, so the union always contains the newest `limit` of the whole scope, and the caller
+ * merges, sorts and slices exactly as it does for live rows. A capped read never throws: prod 2026-11-15, "All
+ * companies" with no period passed 5,000 retained documents and the landing tab became an error page.
+ * Without `limit` the ceiling still refuses rather than silently returning a partial set.
+ */
+export async function informationPayslipDocuments(tx:Tx,p:{companyIds:string[];year?:number;month?:number;cycle?:string;employmentId?:string;intendedCycle?:boolean;limit?:number}):Promise<HistoricalDocument[]>{
  const documents:HistoricalDocument[]=[],companies=[...new Set(p.companyIds)];
+ const limit=Number.isInteger(p.limit)&&p.limit!>0?Math.min(p.limit!,RETAINED_DOCUMENT_CEILING):undefined;
  for(let offset=0;offset<companies.length;offset+=100){
-  const rows=await tx.execute<{document:HistoricalDocument}>(sql`select document from app.information_payslip_documents(array[${sql.join(companies.slice(offset,offset+100).map(id=>sql`${id}::uuid`),sql`, `)}]::uuid[],${p.year??null}::integer,${p.month??null}::integer,${p.cycle??null}::text,${p.employmentId??null}::uuid,${p.intendedCycle??false}::boolean) as document`);
+  const rows=await tx.execute<{document:HistoricalDocument}>(sql`select d.document from app.information_payslip_documents(array[${sql.join(companies.slice(offset,offset+100).map(id=>sql`${id}::uuid`),sql`, `)}]::uuid[],${p.year??null}::integer,${p.month??null}::integer,${p.cycle??null}::text,${p.employmentId??null}::uuid,${p.intendedCycle??false}::boolean) with ordinality as d(document,ordinal) order by d.ordinal${limit?sql` limit ${limit}`:sql``}`);
   documents.push(...rows.map(r=>r.document));
-  if(documents.length>5000)throw new Error('Narrow the payroll period to view retained documents.');
+  if(!limit&&documents.length>RETAINED_DOCUMENT_CEILING)throw new Error('Narrow the payroll period to view retained documents.');
  }
  return documents;
 }
