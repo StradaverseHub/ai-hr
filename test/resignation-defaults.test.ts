@@ -3,6 +3,7 @@ import {resignationDefaults,RESIGNATION_DEFAULT_IDS} from '../lib/resignation-de
 import {v9Defaults} from '../lib/lifecycle-v9-defaults';
 import {OFFBOARDING_AUTOMATION_CATALOGUE} from '../lib/automation/catalogues/offboarding';
 import {automationWorkflowProblems} from '../lib/automation/workflow';
+import {documentRoutingSignatureProblems} from '../lib/document-signing-routing';
 import {offboardingStepParamProblems} from '../lib/automation/offboarding';
 
 describe('explicit resignation default configuration',()=>{
@@ -11,6 +12,7 @@ describe('explicit resignation default configuration',()=>{
   expect(defaults.workflows.map(w=>w.trigger.event)).toEqual(['submitted','retention','accepted','rejected','offerDue','offerAccepted','offerDeclined','withdrawn','signRequest','sentBack','released']);
   const references={routingExists:()=>true,groupExists:()=>true,personExists:()=>false};
   for(const workflow of defaults.workflows){expect(workflow.status).toBe('paused');expect(automationWorkflowProblems(workflow,OFFBOARDING_AUTOMATION_CATALOGUE,references)).toEqual([]);expect(offboardingStepParamProblems(workflow,{emailTemplates:defaults.emails.map(t=>({...t,retired:false})),letterTemplateIds:defaults.templates.map(t=>t.id),letterTemplates:defaults.templates.map(t=>({id:t.id,retired:false,published:true,routing:t.versions[0].routing})),postingApproverGroupId:config.peopleOpsGroup,references,generatedLetterIds:defaults.templates.map(t=>t.id)})).toEqual([]);}
+  for(const template of defaults.templates)expect(documentRoutingSignatureProblems(template.versions[0].routing!,template.versions[0].blocks)).toEqual([]);
   expect(defaults.routings[0].rows).toEqual([]);expect(new Set(defaults.workflows.map(w=>w.id)).size).toBe(11);
   expect(resignationDefaults(config,'Other owner','2026-11-17T00:00:00Z').workflows.map(w=>w.id)).toEqual(defaults.workflows.map(w=>w.id));
  });
