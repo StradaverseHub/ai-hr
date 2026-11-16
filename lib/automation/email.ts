@@ -80,7 +80,7 @@ export function automationEmailMergeWarnings(template: Pick<AutomationEmailTempl
 
 /** Fills merge tokens for a preview. Unknown or empty values stay visible as the token. */
 export function fillAutomationMergeFields(text: string, values: Readonly<Record<string, string | null | undefined>>): string {
-  return text.replace(MERGE_TOKEN, (token, key: string) => { const value = Object.hasOwn(values,key)?values[key]:undefined; return value ? value : token; });
+  return text.replace(MERGE_TOKEN, (token, key: string) => { const value = Object.hasOwn(values,key)?values[key]:undefined; return typeof value==='string'&&value?value:token; });
 }
 
 /** Personnel Management event types a Probation "Create posting" step can log (handoff A4, decision 4). */

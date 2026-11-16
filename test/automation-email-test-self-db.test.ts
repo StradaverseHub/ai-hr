@@ -44,11 +44,21 @@ describe('Saved email test addressed only to the actual template editor',()=>{
   await owner.db.execute(sql`select app.automation_email_finish(${deliveryId}::uuid,${token}::uuid,'uncertain','uncertain')`);
   await expect(owner.db.execute(sql`update automation_email_delivery set started_at=null,status='queued' where id=${deliveryId}::uuid`)).rejects.toThrow();
  });
- it('invalidates a queued test after permission revocation or account-to-person rebinding',async()=>{
+ it('invalidates a queued test after permission revocation',async()=>{
   const first=await queue(),token=await lease(first.deliveryId);expect(await target(first.deliveryId,token)).not.toBeNull();
   await owner.db.execute(sql`update contract_access_member set revoked_at=now() where tenant_id=${b.tenantId}::uuid and id=${memberId}::uuid`);
   expect(await target(first.deliveryId,token)).toBeNull();
   await expect(queue()).rejects.toMatchObject({code:'forbidden'});
+ });
+ it('cancels queued tests when the named human disappears or the account is rebound to another person',async()=>{
+  const first=await queue(),token=await lease(first.deliveryId);
+  await owner.db.execute(sql`update person set full_name='' where tenant_id=${b.tenantId}::uuid and id=${editor.personId}::uuid`);
+  expect(await target(first.deliveryId,token)).toBeNull();
+  await owner.db.execute(sql`update person set full_name='Fictional template editor' where tenant_id=${b.tenantId}::uuid and id=${editor.personId}::uuid`);
+  const second=await queue(),secondToken=await lease(second.deliveryId);
+  const [other]=await owner.db.execute<{id:string}>(sql`insert into person(tenant_id,full_name,primary_email) values(${b.tenantId}::uuid,'Different fictional person',${randomUUID()+'@template.invalid'}) returning id`);
+  await owner.db.execute(sql`update app_user set person_id=${other.id}::uuid where tenant_id=${b.tenantId}::uuid and id=${editor.userId}::uuid`);
+  expect(await target(second.deliveryId,secondToken)).toBeNull();
  });
  it('refuses stale revisions and arbitrary recipient inputs without creating mail',async()=>{
   await expect(testAutomationEmail(editor,{templateId,revision:2,sample:'complete',requestId:randomUUID()})).rejects.toMatchObject({code:'forbidden'});

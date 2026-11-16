@@ -2,6 +2,7 @@ import {describe,expect,it} from 'vitest';
 import {automationEmailPreview,automationEmailSampleValues} from '../lib/automation-email-preview';
 import {CONTRACT_AUTOMATION_CATALOGUE as catalogue} from '../lib/automation/catalogues/contracts';
 import type {AutomationEmailTemplate} from '../lib/automation/email';
+import {fillAutomationMergeFields} from '../lib/automation/email';
 const template:AutomationEmailTemplate={id:'fictional',module:'contract_staff',name:'Fictional preview',active:true,subject:'Contract for {{employee.name}}',body:'Dear {{employee.name}}\n\nNew start {{contract.newStart}}\nReason {{contract.reason}}',cc:[]};
 describe('Shared email preview examples',()=>{
  it('renders a complete fictional employee and identifies decision fields unavailable before a decision',()=>{
@@ -14,5 +15,10 @@ describe('Shared email preview examples',()=>{
   expect(automationEmailSampleValues(catalogue,'complete')['case.link']).toBe('#example-case');
   const output=automationEmailPreview({...template,body:'{{employee.name}} <script>alert(1)</script>'},catalogue,'complete');
   expect(output.html).not.toContain('<script>');expect(output.html).toContain('&lt;script&gt;');
+ });
+ it('leaves unknown and inherited-property macros exactly as typed in subjects and plain messages',()=>{
+  expect(fillAutomationMergeFields('{{constructor}} {{toString}} {{unknown.field}} {{employee.name}}',{'employee.name':'Fictional employee'})).toBe('{{constructor}} {{toString}} {{unknown.field}} Fictional employee');
+  const inherited=Object.create({'employee.name':'Inherited value'}) as Record<string,string>;
+  expect(fillAutomationMergeFields('{{employee.name}}',inherited)).toBe('{{employee.name}}');
  });
 });
