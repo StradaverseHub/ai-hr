@@ -5915,7 +5915,8 @@
     "probationDue": "due {date}",
     "probationOpen": "Open review",
     "probationCapped": "Showing the first {shown} approvals.",
-    "probationSeeAll": "See all in the Probation tracker"
+    "probationSeeAll": "See all in the Probation tracker",
+    "contracts": "Contracts"
   },
   "performance": {
     "list": {
@@ -41591,5 +41592,15 @@
     "searchLabels": "பதவி அல்லது பணித்தரத்தைத் தேடவும்",
     "search": "தேடவும்",
     "narrowSearch": "முதலில் பொருந்தும் 501 மதிப்புகள் காட்டப்படுகின்றன. தேர்வுகளைக் குறைக்கத் தேடவும்."
+  },
+  "contractWork": {
+    "title": "Contract work",
+    "approval": "Review contract decision",
+    "review": "Review contract letter",
+    "approve": "Approve contract letter",
+    "sign": "Sign contract document",
+    "resend": "Update and resend contract letter",
+    "open": "Open assigned step",
+    "viewAll": "View all contract tasks"
   }
 }

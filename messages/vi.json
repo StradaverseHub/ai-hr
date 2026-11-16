@@ -5915,7 +5915,8 @@
     "probationDue": "due {date}",
     "probationOpen": "Open review",
     "probationCapped": "Showing the first {shown} approvals.",
-    "probationSeeAll": "See all in the Probation tracker"
+    "probationSeeAll": "See all in the Probation tracker",
+    "contracts": "Contracts"
   },
   "performance": {
     "list": {
@@ -41591,5 +41592,15 @@
     "searchLabels": "Tìm Chức danh hoặc Cấp bậc công việc",
     "search": "Tìm kiếm",
     "narrowSearch": "Hiển thị 501 giá trị khớp đầu tiên. Tìm kiếm để thu hẹp lựa chọn."
+  },
+  "contractWork": {
+    "title": "Contract work",
+    "approval": "Review contract decision",
+    "review": "Review contract letter",
+    "approve": "Approve contract letter",
+    "sign": "Sign contract document",
+    "resend": "Update and resend contract letter",
+    "open": "Open assigned step",
+    "viewAll": "View all contract tasks"
   }
 }

@@ -4,6 +4,7 @@ import {requireScopedLifecycleModule} from '@/lib/scoped-lifecycle-page';
 import * as owner from '@/packs/contracts/service';
 import {ContractManagementError} from '@/lib/contract-management-model';
 import {ZodError} from 'zod';
+import {readBulkJob} from '@/core/bulk-job';
 
 async function perform<T>(work:(session:NonNullable<Awaited<ReturnType<typeof requireScopedLifecycleModule>>>)=>Promise<T>,invalidate=true){
  const session=await requireScopedLifecycleModule();
@@ -16,7 +17,7 @@ export async function actSharedLetter(input:Parameters<typeof owner.actContractS
 export async function editSharedLetter(input:Parameters<typeof owner.editContractSharedLetter>[1]){return perform(async s=>{const letter=await owner.editContractSharedLetter(s,input);return {letter,document:owner.renderContractSharedLetter(letter),capabilities:await owner.contractSharedLetterActions(s,letter.id)};});}
 export async function bindSharedEmployee(id:string){return perform(async s=>{const letter=await owner.bindContractSharedEmployee(s,id);return {letter,document:owner.renderContractSharedLetter(letter),capabilities:await owner.contractSharedLetterActions(s,letter.id)};});}
 export async function previewSharedDecision(input:Parameters<typeof owner.previewContractSharedDecision>[1]){return perform(s=>owner.previewContractSharedDecision(s,input));}
-export async function readSharedDecisionPreview(id:string){return perform(s=>owner.readContractSharedDecisionPreview(s,id),false);}
+export async function readSharedDecisionPreview(id:string){return perform(async s=>{const preview=await owner.readContractSharedDecisionPreview(s,id),job=await readBulkJob(s,preview.jobId,'contract_preview');return {...preview,jobState:job.state};},false);}
 export async function submitSharedDecision(input:Parameters<typeof owner.submitContractSharedDecision>[1]){return perform(s=>owner.submitContractSharedDecision(s,input));}
 export async function adoptSharedCase(id:string){return perform(s=>owner.adoptContractSharedCase(s,id));}
 export async function openSharedPeriod(input:Parameters<typeof owner.openContractSharedPeriod>[1]){return perform(s=>owner.openContractSharedPeriod(s,input));}
@@ -24,3 +25,6 @@ export async function saveSharedSettings(input:Parameters<typeof owner.saveContr
 export async function saveSharedRole(input:Parameters<typeof owner.saveContractSharedRole>[1]){return perform(s=>owner.saveContractSharedRole(s,input));}
 export async function saveSharedMember(input:Parameters<typeof owner.saveContractSharedMember>[1]){return perform(s=>owner.saveContractSharedMember(s,input));}
 export async function searchSharedPeople(search:string){return perform(s=>owner.contractSharedAccessPeople(s,search),false);}
+export async function readSharedPeriods(caseId:string,offset:number){return perform(s=>owner.contractSharedPeriods(s,caseId,offset),false);}
+export async function startSharedSetup(input:Parameters<typeof owner.startContractSharedSetup>[1]){return perform(s=>owner.startContractSharedSetup(s,input));}
+export async function readSharedSetup(companyId:string){return perform(s=>owner.contractSharedSetup(s,companyId),false);}

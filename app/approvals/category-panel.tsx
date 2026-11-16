@@ -48,6 +48,7 @@ const ICONS: Record<PanelCategory, LucideIcon> = {
   hrReviews: ShieldCheck,
   rewards: ShieldCheck,
   probation: UserCheck,
+  contracts: ScrollText,
 };
 
 /** Short panel labels — existing section-title keys where they read well; overtime gets its own key. */
@@ -63,6 +64,7 @@ const LABEL_KEY: Record<PanelCategory, string> = {
   hrReviews: 'hrReviews',
   rewards: 'rewards',
   probation: 'probation',
+  contracts: 'contracts',
 };
 
 const GROUP_LABEL_KEY: Record<ApprovalCategoryGroup, string> = {

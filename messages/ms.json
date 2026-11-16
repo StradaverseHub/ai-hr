@@ -5915,7 +5915,8 @@
     "probationDue": "due {date}",
     "probationOpen": "Open review",
     "probationCapped": "Showing the first {shown} approvals.",
-    "probationSeeAll": "See all in the Probation tracker"
+    "probationSeeAll": "See all in the Probation tracker",
+    "contracts": "Contracts"
   },
   "performance": {
     "list": {
@@ -41591,5 +41592,15 @@
     "searchLabels": "Cari Jawatan atau Gred jawatan",
     "search": "Cari",
     "narrowSearch": "Memaparkan 501 nilai sepadan yang pertama. Cari untuk memperincikan pilihan."
+  },
+  "contractWork": {
+    "title": "Contract work",
+    "approval": "Review contract decision",
+    "review": "Review contract letter",
+    "approve": "Approve contract letter",
+    "sign": "Sign contract document",
+    "resend": "Update and resend contract letter",
+    "open": "Open assigned step",
+    "viewAll": "View all contract tasks"
   }
 }

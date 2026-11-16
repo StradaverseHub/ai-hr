@@ -267,11 +267,11 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
     state:'ready',
     items:approvalSummary.items,
     total:approvalSummary.total,
-    approvalCount:approvalSummary.approvalCount,
+    approvalCount:approvalSummary.approvalCount+lifecycleInbox.approvalCount,
     claimTotal:approvalSummary.claimTotal,
     // Ordinary employees keep their native assignment eligibility without acquiring manager authority.
     hasAssignedAttendanceApproval:!canApprove&&approvalSummary.items.some(task=>task.kind==='attendance'),
-    hasAssignedApproval:!canApprove&&approvalSummary.approvalCount>0,
+    hasAssignedApproval:!canApprove&&(approvalSummary.approvalCount+lifecycleInbox.approvalCount)>0,
   }),():ShellApprovalResult=>{
     console.error('Shared shell approval facts unavailable');
     return {state:'unavailable'};
