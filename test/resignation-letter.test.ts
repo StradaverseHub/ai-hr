@@ -10,6 +10,7 @@ import {
 import {recordSigningAction, signingComplete, type SigningDocument} from '../lib/document-signing-model';
 import type {DocumentRouting, DocumentRoutingResolveContext} from '../lib/document-signing-routing';
 import type {Block} from '../lib/lifecycle-v9-model';
+import {v9PdfDocument} from '../lib/lifecycle-v9-pdf';
 
 const people = {owner: 'owner-user', bp: 'bp-user', ceo: 'ceo-user', employee: 'employee-user', stranger: 'stranger-user'};
 let sequence = 0;
@@ -420,6 +421,34 @@ describe('Offboarding signing-value reconciliation', () => {
     const changed = reconcileResignationLetter(letter, {...values(), 'resignation.lastDay': patch.lastWorkingDay!}, deps);
     expect(resignationLetterPendingSteps(changed.letter).map(step => step.id)).toEqual(['ceo-sign']);
     expect(changed.letter.revision).toBe(2);
+  });
+
+  it('blocks effective signatures on malformed document tokens while allowing the reviewer to correct them', () => {
+    const t = template(); t.versions[0].blocks[2].text = 'Dear {{employee.name}}, last working day {{resignation.lastDay}}.';
+    const generated = generate({template: t});
+    expect(generated.warnings).toContain('Document merge fields use single braces. Use the document field picker to correct double-brace tokens.');
+    const reviewed = complete(generated.letter, 'owner').letter, before = structuredClone(reviewed);
+    expect(() => complete(reviewed, 'ceo')).toThrow('Correct double-brace tokens before signing');
+    expect(reviewed).toEqual(before); expect(reviewed.document.actions.some(action => action.action === 'signed')).toBe(false);
+    const corrected = structuredClone(generated.letter.blocks); corrected[2].text = 'Dear {employee.name}, last working day {resignation.lastDay}.';
+    const edited = act(generated.letter, 'owner', {type:'complete',stepId:'owner-review',blocks:corrected}).letter;
+    expect(complete(edited, 'ceo').letter.document.actions.some(action => action.action === 'signed')).toBe(true);
+  });
+
+  it('exports the frozen released projection with resolved text, table values, dates and actual signatures', () => {
+    let letter = withEmployeeOffer(); letter = act(letter, 'employee', {type:'open'}).letter;
+    const released = complete(letter, 'employee').letter, before = structuredClone(released);
+    const document = resignationLetterPreview(released, people.employee).document!;
+    const rendered = v9PdfDocument(document, true), text = JSON.stringify(rendered);
+    expect(text).toContain('Dear Example employee, effective 2027-01-01. Last working day 2026-12-11. Date 2026-11-16.');
+    expect(text).toContain('6800'); expect(text).toContain('7600');
+    expect(text).not.toContain('{employee.name}'); expect(text).not.toContain('[Full name]');
+    expect(document.stepSignatures?.['ceo-sign']?.by.id).toBe(people.ceo);
+    expect(document.stepSignatures?.['employee-sign']?.by.id).toBe(people.employee);
+    expect(document.createdAt).toBe('2026-11-16T04:00:00Z');
+    expect(released).toEqual(before);
+    const changed = reconcileResignationLetter(released, {...values(),'employee.name':'Changed current employee','retention.salary':'9999'},deps).letter;
+    expect(v9PdfDocument(resignationLetterPreview(changed,people.employee).document!,true)).toEqual(rendered);
   });
 
   it('warns unknown merge fields while preserving them for a reviewer to correct', () => {

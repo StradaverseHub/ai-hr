@@ -111,10 +111,11 @@ export function resignationLetterMergeKeys(blocks: readonly Block[]): string[] {
   }
   return unique(keys);
 }
+const doubledDocumentTokens = (blocks: readonly Block[]) => blocks.some(block => [block.text, block.label, block.rows, block.columns].some(value => value && /\{\{[^{}]+\}\}/.test(value)));
 export function resignationLetterMergeWarnings(letter: Pick<ResignationLetter, 'blocks' | 'mergeValues'>): string[] {
   const unknown = resignationLetterMergeKeys(letter.blocks).filter(key => !Object.hasOwn(letter.mergeValues, key) && !Object.hasOwn(DEFAULT_LABELS, key))
     .map(key => `Unknown merge field {${key}}. Check the wording before completing the review.`);
-  const doubled = letter.blocks.some(block => [block.text, block.label, block.rows, block.columns].some(value => value && /\{\{[^{}]+\}\}/.test(value)));
+  const doubled = doubledDocumentTokens(letter.blocks);
   return [...unknown, ...(doubled ? ['Document merge fields use single braces. Use the document field picker to correct double-brace tokens.'] : [])];
 }
 function usedValues(letter: Pick<ResignationLetter, 'blocks' | 'mergeValues'> & {fields?: Field[]}): Record<string, string> {
@@ -424,6 +425,7 @@ export function actResignationLetter(letter: ResignationLetter, input: ActResign
         next = applyEdit(next, action.blocks, deps);
       }
       const expectedAction = signingStepAction(next.document, step);
+      if (expectedAction === 'signed' && doubledDocumentTokens(next.blocks)) invalid('Document merge fields use single braces. Correct double-brace tokens before signing this letter.');
       next.document = recordSigningAction(next.document, RULES, {id: input.id, actorId: actor.userId,
         actorPersonId: actor.personId, actorName: actor.name, stepId: step.id, revision: next.revision,
         hash: next.document.contentHash, action: expectedAction, comment: action.comment,
