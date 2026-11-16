@@ -8,7 +8,7 @@ import {v9Setup,v9Workspace,v9SaveConfig} from '../packs/lifecycle/service';
 import {adoptContractSharedCase,previewContractSharedDecision,submitContractSharedDecision,contractSharedContext,contractPreviewJobHandler,contractAutomationJobHandler,readContractSharedLetter,actContractSharedLetter} from '../packs/contracts/service';
 import {recordContractSharedDecline,readContractSharedEndingActions} from '../core/contract-shared-ending';
 import {reservedSqlExecutor} from '../db/sql-executor';
-import {recordDocumentSigningActionTx} from '../packs/document-signing/service';
+import {recordDocumentSigningActionTx,replaceDocumentSignerTx} from '../packs/document-signing/service';
 import {saveAutomationDocumentTemplate,saveAutomationWorkflow,type AutomationWorkflow} from '../packs/automation/service';
 import {runBulkJobTick} from '../core/bulk-job-worker';
 import {readBulkJob} from '../core/bulk-job';
@@ -61,6 +61,25 @@ async function review(f:Awaited<ReturnType<typeof fixture>>,id:string){
  for(const event of events)await finish(event.job,f.admin,'contract_automation');return after;
 }
 describe('shared Contract endings use native Offboarding without automatic Personnel termination',()=>{
+ it('requires the exact private native self-binding route, unchanged subject and one real employee account',async()=>{
+  const f=await fixture('renew');await submit(f,'renew');const [letter]=await letters(f);
+  await owner.db.execute(sql`update contract_shared_letter set purpose='email' where tenant_id=${f.b.tenantId}::uuid and id=${letter.id}::uuid`);await review(f,letter.id);
+  const userId=await createAppUser(f.b.tenantId,f.employee.personId,'employee');
+  const employee={...f.admin,userId,personId:f.employee.personId,roles:['employee'] as SessionContext['roles'],grants:undefined};
+  await owner.db.execute(sql`update employment set contract_number=4 where tenant_id=${f.b.tenantId}::uuid and id=${f.employee.employmentId}::uuid`);
+  async function held(actorId:string){return owner.client.begin(async tx=>{await tx`select set_config('app.tenant_id',${f.b.tenantId},true),set_config('app.user_id',${actorId},true)`;const [row]=await tx<{held:boolean}[]>`select app.contract_shared_email_self_binding_held(${letter.id}::uuid) as held`;return row.held;});}
+  const [native]=await owner.db.execute<{id:string;route:{version:number;steps:Record<string,unknown>[]}}>(sql`select d.id,d.data->'route' as route from contract_shared_letter l join document_signing_document d on d.tenant_id=l.tenant_id and d.id=l.signing_document_id where l.tenant_id=${f.b.tenantId}::uuid and l.id=${letter.id}::uuid`);
+  const employeeStep=native.route.steps.find(step=>step.role==='employee')!;expect(employeeStep.holderId).toBeNull();
+  expect(await held(userId)).toBe(false);
+  await expect(withTenant(employee,tx=>replaceDocumentSignerTx(tx,employee,{id:native.id,stepId:String(employeeStep.id),holderId:userId,kind:'missing_holder',reason:'Attempt through generic replacement, without the private native policy'}))).rejects.toThrow();
+  const exact={...native.route,steps:native.route.steps.map(step=>step.role==='employee'&&step.holderId===null?{...step,holderId:userId,holderPersonId:f.employee.personId}:step)};
+  await owner.db.execute(sql`update contract_shared_letter set data=jsonb_set(data,'{signingPolicy,route}',${JSON.stringify(exact)}::jsonb) where tenant_id=${f.b.tenantId}::uuid and id=${letter.id}::uuid`);
+  expect(await held(userId)).toBe(true);expect(await held(f.admin.userId!)).toBe(false);
+  const changed={...exact,steps:exact.steps.map((step,n)=>n===0?{...step,label:'Changed another step'}:step)};
+  await owner.db.execute(sql`update contract_shared_letter set data=jsonb_set(data,'{signingPolicy,route}',${JSON.stringify(changed)}::jsonb) where tenant_id=${f.b.tenantId}::uuid and id=${letter.id}::uuid`);expect(await held(userId)).toBe(false);
+  await owner.db.execute(sql`update contract_shared_letter set data=jsonb_set(data,'{signingPolicy,route}',${JSON.stringify(exact)}::jsonb) where tenant_id=${f.b.tenantId}::uuid and id=${letter.id}::uuid`);
+  await createAppUser(f.b.tenantId,f.employee.personId,'employee');expect(await held(userId)).toBe(false);
+ },120_000);
  it('keeps an email signing task independent after period posting and refuses a changed subject person',async()=>{
   const f=await fixture('renew');
   const userId=await createAppUser(f.b.tenantId,f.employee.personId,'employee');
