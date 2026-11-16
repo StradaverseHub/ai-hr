@@ -790,11 +790,13 @@ Branch `claude/rea-web-app-reconstruction-2c12ee` (Recruitment slices 1–25, mi
 baseline `9bdfb45968` (main/alpha/staging). Under the owner's standing staging re-bind pre-approval of 12 November 2026
 ("I approve fully on the rebinding and the AI approval, dont have to wait for my decision"), the same 28 already-approved
 records carry forward from `0b60766ac33a0418d98b24ff7da5aaab08d17c927ced7d9c7853b929bc35930b` to
-`ec4ca199a676cc1cb5fe0a5f2bb79efc7ad396522e8fee1c01caf7eabb36c85c` over 1,683 files. Statuses, purposes, reviewers and
+`ec4ca199a676cc1cb5fe0a5f2bb79efc7ad396522e8fee1c01caf7eabb36c85c` over 1,683 files, then, after classifying
+Recruitment's 144 entry points in `lib/ai/agent-capability-inventory.ts` (none registered with the agent; access grants, candidate
+erasure and the AI match summary are handoffs), to `5daef1d248124ec70149a4d112991d080ea8b6b2cd1fac67f1dbe306227c9e6b`. Statuses, purposes, reviewers and
 original approval evidence are unchanged; no existing contract gains a provider transform, outbound field, purpose or transport.
 
 The 59 additional covered files come from Recruitment slice 24's new contract `recruitment_match_summary_v1` (outbound field
 `authored_candidate_profile`). That contract is a NEW purpose: it has no approval record and stays pending, so the gateway refuses
 it; this re-binding does not approve it (owner decision D-069/D-071: legal review first). The agent manifest is
-`02eab39abae004848925dc964f4577b05aadad6300c5d79e013ecaa1c7299377` over 496 files, regenerated after the literal update.
+`8c6db202a11580765b434d34b86fadb37c4616d8c1592b46195edfc18f11568c` over 496 files, regenerated after the literal update.
 This binding grants no production authority.
