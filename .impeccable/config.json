@@ -1,0 +1,17 @@
+{
+  "detector": {
+    "ignoreRules": [],
+    "ignoreFiles": [],
+    "ignoreValues": [
+      {
+        "rule": "design-system-font",
+        "value": "segoe script",
+        "files": [
+          "app/lifecycle/v9/workspace.css"
+        ],
+        "createdAt": "2026-11-16T19:50:52.649Z",
+        "reason": "Existing V9 handwritten signature mark is a domain-specific signature presentation, preserved by the Contract HTML and existing signature component; it is not interface typography."
+      }
+    ]
+  }
+}

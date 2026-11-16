@@ -83,3 +83,15 @@ BEGIN
 END $$;
 REVOKE ALL ON FUNCTION app.contract_shared_access_people(text) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION app.contract_shared_access_people(text) TO ai_hr_app;
+--> statement-breakpoint
+CREATE FUNCTION app.contract_shared_letter_actions(p_letter uuid) RETURNS jsonb
+LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE can_bind boolean;
+BEGIN
+ IF app.document_signing_subject_access('contract',p_letter,'read') IS NOT TRUE THEN RAISE EXCEPTION 'This letter is unavailable' USING ERRCODE='42501';END IF;
+ SELECT app.contract_shared_letter_binding_actor(l.id) AND EXISTS(SELECT 1 FROM jsonb_array_elements(d.data->'route'->'steps') step WHERE step->>'role'='employee' AND step->>'kind'='sign' AND step->>'holderId' IS NULL AND NOT app.document_signing_step_fulfilled(d.data,step)) INTO can_bind
+ FROM public.contract_shared_letter l JOIN public.document_signing_document d ON d.tenant_id=l.tenant_id AND d.id=l.signing_document_id WHERE l.tenant_id=app.current_tenant_id() AND l.id=p_letter;
+ RETURN jsonb_build_object('canBindEmployee',coalesce(can_bind,false));
+END $$;
+REVOKE ALL ON FUNCTION app.contract_shared_letter_actions(uuid) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.contract_shared_letter_actions(uuid) TO ai_hr_app;
