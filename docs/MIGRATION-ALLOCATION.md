@@ -3,12 +3,12 @@
 
 Branch `codex/performance-ownleave-payroll-20261117` reserves `5787_own_leave_shared_access` at idx 5187 / when 1793330005487.
 SHA256 `843ded0c0542c47360989ef70f54dd6eed10c1d9aa5abe7cfa3b191e6e5d1f0c`, unchanged from the retired, never-applied
-provisional5880 / idx5280 / when1794841005880. The release coordinator freshly checked registered worktree journals
-and origin claims before assigning this free standard-offset position, after Resignation5783–5786 and below
-Contract5800+. Main/alpha remain9bdfb4596. Last verified read-only watermarks: staging883 /1793330005471,
+provisional 5880 / idx 5280 / when 1794841005880. The release coordinator freshly checked registered worktree journals
+and origin claims before assigning this free standard-offset position, after Resignation 5783–5786 and below
+Contract 5800+. Main/alpha remain 9bdfb4596. Last verified read-only watermarks: staging883 /1793330005471,
 production853 /1793330005395. Refresh exact ordered ledgers and peer claims before admission.
 
-The owner approved AI binding and migration ordering in the coordination chat on17November; the owner's subsequent
+The owner approved AI binding and migration ordering in the coordination chat on 17 November; the owner's subsequent
 instruction is that Movement releases first. Readiness and that ordering do not waive native rehearsal, the full gate,
 authenticated evidence or the guarded staging lease. If lower never-applied blocks remain, coordinate their safe
 reallocation before installing any higher watermark; never silently skip them or edit applied SQL.
