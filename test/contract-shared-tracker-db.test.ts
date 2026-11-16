@@ -8,6 +8,7 @@ import {setCompensation} from '../core/comp';
 import {v9Setup,v9Workspace,v9SaveConfig} from '../packs/lifecycle/service';
 import {contractSharedTracker,contractSharedPeriodContext,openContractSharedPeriod,contractSharedContext,saveContractSharedRole,saveContractSharedMember} from '../packs/contracts/service';
 import {todayInKualaLumpur} from '../lib/hr-date';
+import {addAutomationDays,type AutomationWorkflow} from '../lib/automation/workflow';
 
 let b:Base,admin:SessionContext;
 const year=Number(todayInKualaLumpur().slice(0,4)),start=`${year}-01-01`,end=`${year+1}-12-31`;
@@ -61,6 +62,7 @@ describe('Personnel-based Contract tracker and native case opening',()=>{
   const again=await openContractSharedPeriod(admin,{employmentId:employee.employmentId,sourceRevision:row.sourceRevision!});expect(again.caseId).toBe(opened.caseId);
   expect((await contractSharedTracker(admin)).rows.find(item=>item.id===employee.employmentId)!.canOpen).toBe(false);
   const detail=await contractSharedContext(admin,opened.caseId);expect(detail.flow?.period.number).toBe('4');expect(detail.flow?.stage).toBe('open');
+  expect(detail.caseNumber).toMatch(/^CT-\d{4}-\d{4,}$/);
   const [native]=await owner.db.execute<{kind:string;cases:number;events:number;postings:number}>(sql`select t.kind,(select count(*)::int from contract_case where tenant_id=${b.tenantId}::uuid and employment_id=${employee.employmentId}::uuid) as cases,(select count(*)::int from contract_shared_event where tenant_id=${b.tenantId}::uuid and case_id=${opened.caseId}::uuid and trigger_event='caseOpened') as events,(select count(*)::int from personnel_posting where tenant_id=${b.tenantId}::uuid) as postings from contract_term t where t.id=${detail.flow!.period.id}::uuid`);
   expect(native).toEqual({kind:'fixed_term',cases:1,events:1,postings:0});
   expect(JSON.stringify((await contractSharedTracker(admin)).rows)).not.toMatch(/salaryCents|allowanceCents|candidatePersonIds/);
@@ -68,6 +70,15 @@ describe('Personnel-based Contract tracker and native case opening',()=>{
   const changed=(await contractSharedTracker(admin)).rows.find(item=>item.id===employee.employmentId)!;
   expect(changed.caseId).toBe(opened.caseId);expect(changed.sourceIssue).toBe('period_changed');expect(changed.canOpen).toBe(false);
   await expect(openContractSharedPeriod(admin,{employmentId:employee.employmentId,sourceRevision:changed.sourceRevision!})).rejects.toMatchObject({code:'conflict'});
+ });
+ it('preserves native yearly case references past 9,999 and serializes concurrent opening of one period',async()=>{
+  const employee=await fixedTerm(),row=(await contractSharedTracker(admin)).rows[0];
+  await owner.db.execute(sql`insert into tenant_counter(tenant_id,kind,value) values(${b.tenantId}::uuid,${'contract-'+year},9999) on conflict(tenant_id,kind) do update set value=excluded.value`);
+  const opened=await Promise.all([openContractSharedPeriod(admin,{employmentId:employee.employmentId,sourceRevision:row.sourceRevision!}),openContractSharedPeriod(admin,{employmentId:employee.employmentId,sourceRevision:row.sourceRevision!})]);
+  expect(opened[0].caseId).toBe(opened[1].caseId);
+  const detail=await contractSharedContext(admin,opened[0].caseId);expect(detail.caseNumber).toBe(`CT-${year}-10000`);expect(detail.flow?.period.number).toBe('4');
+  const [count]=await owner.db.execute<{cases:number;events:number}>(sql`select (select count(*)::int from contract_case where tenant_id=${b.tenantId}::uuid and employment_id=${employee.employmentId}::uuid) as cases,(select count(*)::int from contract_shared_event where tenant_id=${b.tenantId}::uuid and case_id=${opened[0].caseId}::uuid and trigger_event='caseOpened') as events`);
+  expect(count).toEqual({cases:1,events:1});
  });
  it('checks current scoped authority and source revision, and preserves legacy work in progress without adoption',async()=>{
   const employee=await fixedTerm(),viewer=await ordinary();await grant(viewer,['view']);
@@ -145,6 +156,36 @@ describe('Personnel-based Contract tracker and native case opening',()=>{
   const newCase=await openContractSharedPeriod(admin,{employmentId:employee.employmentId,sourceRevision:next.sourceRevision!});expect(newCase.caseId).not.toBe(opened.caseId);
   const current=(await contractSharedTracker(admin)).rows[0];expect(current).toMatchObject({caseId:newCase.caseId,previousPayPending:true,payPendingCaseId:opened.caseId,canOpen:false});
  });
+ // The 70-company fixture measured 6.5 s on Actions. This date/condition matrix adds 128 live definitions;
+ // retain headroom for a cold hosted database while comparing the SQL projection to the shared date owner.
+ it('projects Upcoming and Decision needed from actual matching live reminder dates, including weekend offsets',async()=>{
+  const unconfigured=await fixedTerm('Fictional period without a matching reminder');
+  const points:{companyId:string;departmentId:string;personId:string;employmentId:string;end:string;days:number;workdays:boolean;workflowId:string;definition:unknown;paused:boolean}[]=[];
+  const anchors=[...Array.from({length:7},(_,i)=>`${year}-12-${24+i}`),todayInKualaLumpur()];
+  for(const anchor of anchors)for(const days of [0,1,4,5,7,30,90,365])for(const workdays of [false,true]){
+   const companyId=randomUUID(),workflowId=randomUUID();
+   const numericOp=points.length%3===0?'lt':points.length%3===1?'lte':'gte';
+   const workflow:AutomationWorkflow={id:workflowId,module:'contract_staff',name:'Fictional mapped reminder',description:'Date-owner equivalence fixture',status:'live',required:false,trigger:{event:'beforeContractEnd',days,workdays,repeat:false},skipWhen:'decided',conditions:[{field:'businessGroup',op:'is',values:[companyId]},{field:'daysToEnd',op:numericOp,values:[numericOp==='gte'?'-9999.5':'9999.5']}],steps:[{id:'notice',type:'notify',conditions:[],to:[{kind:'role',role:'directSuperior'}],cc:[],params:{subject:'Reminder',body:'Review the Contract case.'}}]};
+   const {status:_status,required:_required,...definition}=workflow;
+   points.push({companyId,departmentId:randomUUID(),personId:randomUUID(),employmentId:randomUUID(),end:anchor,days,workdays,workflowId,definition,paused:points.length===0});
+  }
+  await owner.db.execute(sql`with source as materialized(select * from jsonb_to_recordset(${JSON.stringify(points)}::jsonb) as row("companyId" uuid,"departmentId" uuid,"personId" uuid,"employmentId" uuid,"end" date,"workflowId" uuid,definition jsonb)),companies as(insert into company(id,tenant_id,legal_name) select "companyId",${b.tenantId}::uuid,'Reminder company '||"companyId"::text from source),departments as(insert into department(id,tenant_id,company_id,name) select "departmentId",${b.tenantId}::uuid,"companyId",'Reminder department' from source),people as(insert into person(id,tenant_id,full_name,primary_email) select "personId",${b.tenantId}::uuid,'Reminder employee '||"personId"::text,"personId"::text||'@reminder.test' from source),employments as(insert into employment(id,tenant_id,person_id,company_id,hired_on,contract_start_date,contract_end_date,contract_number) select "employmentId",${b.tenantId}::uuid,"personId","companyId",${start}::date,${start}::date,"end",4 from source),placements as(insert into assignment(id,tenant_id,employment_id,company_id,department_id,employment_type,valid_from) select gen_random_uuid(),${b.tenantId}::uuid,"employmentId","companyId","departmentId",'contract',${start}::date from source) insert into automation_workflow_version(tenant_id,workflow_id,revision,module,status,required,definition,saved_by) select ${b.tenantId}::uuid,"workflowId",1,'contract_staff','live',false,definition,${admin.userId}::uuid from source`);
+  const paused=points[0];await owner.db.execute(sql`insert into automation_workflow_version(tenant_id,workflow_id,revision,module,status,required,definition,saved_by) values(${b.tenantId}::uuid,${paused.workflowId}::uuid,2,'contract_staff','paused',false,${JSON.stringify(paused.definition)}::jsonb,${admin.userId}::uuid)`);
+  // Unavailable decision facts must not match even an isNot condition on a before-end trigger.
+  const invalid={id:randomUUID(),module:'contract_staff',name:'Unavailable condition fixture',description:'',trigger:{event:'beforeContractEnd',days:365,workdays:false,repeat:false},skipWhen:'never',conditions:[{field:'decision',op:'isNot',values:['Renew']}],steps:[]};
+  await owner.db.execute(sql`insert into automation_workflow_version(tenant_id,workflow_id,revision,module,status,required,definition,saved_by) values(${b.tenantId}::uuid,${invalid.id}::uuid,1,'contract_staff','live',false,${JSON.stringify(invalid)}::jsonb,${admin.userId}::uuid)`);
+  admin={...await entitledCtx(b),personId:admin.personId};
+  const first=await contractSharedTracker(admin,{limit:100}),second=await contractSharedTracker(admin,{limit:100,offset:100}),rows=[...first.rows,...second.rows];
+  expect(first.total).toBe(points.length+1);expect(rows).toHaveLength(points.length+1);
+  const byId=new Map(rows.map(row=>[row.id,row]));
+  for(const point of points){
+   const due=point.paused?null:addAutomationDays(point.end,-point.days,point.workdays),row=byId.get(point.employmentId)!;
+   expect(row.firstReminderOn).toBe(due);expect(row.decisionNeeded).toBe(due!==null&&due<=todayInKualaLumpur());
+  }
+  expect(byId.get(unconfigured.employmentId)).toMatchObject({firstReminderOn:null,decisionNeeded:false});
+  const upcoming=await contractSharedTracker(admin,{status:'upcoming',limit:100}),decision=await contractSharedTracker(admin,{status:'decision',limit:100});
+  expect(upcoming.total+decision.total).toBe(points.length+1);expect(upcoming.rows.every(row=>!row.decisionNeeded)).toBe(true);expect(decision.rows.every(row=>row.decisionNeeded)).toBe(true);
+ },90000);
  it('pages and counts 1,000 fixed-term employments across 70 companies without requiring 1,000 case records',async()=>{
   await owner.db.execute(sql`with companies as(insert into company(tenant_id,legal_name) select ${b.tenantId}::uuid,'Tracker company '||lpad(n::text,2,'0') from generate_series(1,70) n returning id,legal_name),departments as(insert into department(tenant_id,company_id,name) select ${b.tenantId}::uuid,id,'Tracker department' from companies returning id,company_id),numbered as materialized(select c.id,d.id as department_id,row_number() over(order by c.legal_name) as n from companies c join departments d on d.company_id=c.id),fixture as materialized(select series.n,gen_random_uuid() as person_id,gen_random_uuid() as employment_id,c.id as company_id,c.department_id from generate_series(1,1000) series(n) join numbered c on c.n=((series.n-1)%70)+1),people as(insert into person(id,tenant_id,full_name,primary_email) select person_id,${b.tenantId}::uuid,'Tracker employee '||lpad(n::text,4,'0'),'scale-'||n||'@tracker.test' from fixture),employments as(insert into employment(id,tenant_id,person_id,company_id,hired_on,employee_code,contract_start_date,contract_end_date,contract_number) select employment_id,${b.tenantId}::uuid,person_id,company_id,${start}::date,'SCALE-'||n,${start}::date,${end}::date,4 from fixture) insert into assignment(id,tenant_id,employment_id,company_id,department_id,employment_type,valid_from) select gen_random_uuid(),${b.tenantId}::uuid,employment_id,company_id,department_id,'contract',${start}::date from fixture`);
   admin={...await entitledCtx(b),personId:admin.personId};
