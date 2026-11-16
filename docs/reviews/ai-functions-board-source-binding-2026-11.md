@@ -830,3 +830,17 @@ metadata and pending records are preserved. The derived agent manifest is regene
 The owner's direct COORDINATOR request now authorizes staging after complete verification and guarded
 queue admission; the earlier release hold is superseded for staging only. No production installation
 or package publication is authorized. This binding itself is not a release witness or an installation.
+
+### Resignation strict document release correction — 17 November 2026
+
+The actual production walkthrough identified double-braced document defaults that the native
+single-braced document merger could not resolve. Independent source review of da66ff4da,
+6d80a1a83 and 7957dffd0 found no material issue in the corrected defaults and strict server
+release validation before signature persistence or workflow effects. Email syntax, required-field
+guards, frozen released values and native authorization remain unchanged. No AI payload,
+purpose, transport, tool or disclosure authority is added. Under the owner's recorded explicit
+same-purpose technical rebinding approval, the 29 already-approved records bind to
+`e5837992670b1e294b6d41bae623ec1d912e717a45e9b57250bb57b5e1972939`
+(1640 source files). Only sourceDigest changes; human metadata and pending statuses are preserved.
+The agent manifest is regenerated last. Hosted regression and actual PDF download verification
+remain required; this source binding is neither a test pass nor release authorization.
