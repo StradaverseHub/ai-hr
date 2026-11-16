@@ -118,3 +118,21 @@ it('enforces request/employment/company and clearance reference invariants',asyn
  await expect(owner.db.execute(sql`update resignation_journey set offboarding_case_id=${randomUUID()}::uuid where id=${id}::uuid`)).rejects.toThrow();
  await expect(withTenant(employee,async tx=>{const[row]=await tx.execute<{id:string}>(sql`select txid_current()::text id`);const p=signResignationRuntime({operation:'read',caseId:id,args:{mode:'case',caseId:id}},{tenantId:randomUUID(),userId:employee.userId!,personId:employee.personId!,transactionId:row.id},master);await tx.execute(sql`select app.resignation_journey_admit(${p.payload},${p.signature})`);})).rejects.toThrow();
 });
+
+it('classifies only reverse-linked managed clearance for native operators and real owner workers',async()=>{
+ const clearance=randomUUID(),impostor=randomUUID(),legacy=randomUUID();
+ const clearanceData=(caseId:string,managed:boolean)=>({version:9,id:caseId,module:'off',state:caseId===clearance?'pending':'closed',facts:{company:b.companyId,employmentId},...(managed?{resignationSourceCaseId:id}:{})});
+ for(const[caseId,managed]of[[clearance,true],[impostor,true],[legacy,false]] as const)await owner.db.execute(sql`insert into lc_v9_case(id,tenant_id,company_id,employment_id,module,number,data) values(${caseId}::uuid,${b.tenantId}::uuid,${b.companyId}::uuid,${employmentId}::uuid,'off',${'OFB9-'+caseId},${JSON.stringify(clearanceData(caseId,managed))}::jsonb)`);
+ await owner.db.execute(sql`update resignation_journey set offboarding_case_id=${clearance}::uuid where id=${id}::uuid`);
+ await owner.db.execute(sql`insert into lc_onboarding_config(tenant_id,data) values(${b.tenantId}::uuid,${JSON.stringify({version:1,groups:[],access:{onboarding:[],offboarding:[b.adminUserId]}})}::jsonb) on conflict(tenant_id) do update set data=excluded.data`);
+ const classified=(tx:Tx,caseId=clearance)=>tx.execute<{managed:boolean}>(sql`select app.resignation_offboarding_case_managed(${caseId}::uuid) managed`);
+ expect((await withTenant(adminCtx(b),tx=>classified(tx)))[0].managed).toBe(true);
+ for(const caseId of[impostor,legacy,randomUUID()])expect((await withTenant(adminCtx(b),tx=>classified(tx,caseId)))[0].managed).toBe(false);
+ expect((await withTenant(employee,tx=>classified(tx)))[0].managed).toBe(false);
+ expect((await withTenant(employee,async tx=>{await tx.execute(sql`select set_config('app.user_id','',true),set_config('app.resignation_handoff',${id},true)`);return classified(tx);}))[0].managed).toBe(false);
+ const worker:SessionContext={tenantId:b.tenantId,roles:[]};
+ expect((await owner.withTenant(worker,tx=>classified(tx)))[0].managed).toBe(true);
+ expect((await owner.withTenant(worker,async tx=>{await tx.execute(sql`set local role ai_hr_app`);return classified(tx);}))[0].managed).toBe(false);
+ await owner.db.execute(sql`delete from app.resignation_runtime_verifier`);
+ expect((await withTenant(adminCtx(b),tx=>classified(tx,legacy)))[0].managed).toBe(false);
+});

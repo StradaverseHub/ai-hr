@@ -418,3 +418,14 @@ END $$;
 REVOKE ALL ON FUNCTION app.resignation_managed_submission_enabled(uuid),app.resignation_submission_guard() FROM PUBLIC,ai_hr_app;
 GRANT EXECUTE ON FUNCTION app.resignation_managed_submission_enabled(uuid) TO ai_hr_app;
 CREATE TRIGGER resignation_submission_guard BEFORE INSERT ON public.resignation_request FOR EACH ROW EXECUTE FUNCTION app.resignation_submission_guard();
+--> statement-breakpoint
+-- Classify a canonical reverse-linked managed clearance without exposing its resignation aggregate.
+-- SECURITY DEFINER current_user is never proof of worker authority: check the real login AND selected role.
+CREATE FUNCTION app.resignation_offboarding_case_managed(p_case uuid) RETURNS boolean LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ WITH connection AS(SELECT session_user::text login,coalesce(nullif(nullif(current_setting('role',true),'none'),''),session_user::text) effective),
+ worker AS(SELECT app.current_user_id() IS NULL AND c.login<>'ai_hr_app' AND c.effective<>'ai_hr_app' AND EXISTS(SELECT 1 FROM pg_catalog.pg_roles login_role CROSS JOIN pg_catalog.pg_roles effective_role WHERE login_role.rolname=c.login AND effective_role.rolname=c.effective AND (login_role.rolname='ai_hr_owner' OR login_role.rolsuper) AND (effective_role.rolname='ai_hr_owner' OR effective_role.rolsuper)) allowed FROM connection c)
+ SELECT EXISTS(SELECT 1 FROM resignation_journey j JOIN lc_v9_case c ON c.tenant_id=j.tenant_id AND c.id=j.offboarding_case_id AND c.company_id=j.company_id AND c.employment_id=j.employment_id AND c.module='off' AND c.data->>'resignationSourceCaseId'=j.id::text CROSS JOIN worker w WHERE j.tenant_id=app.current_tenant_id() AND c.id=p_case AND (
+ w.allowed OR app.current_user_id() IS NOT NULL AND app.principal_snapshot_current() AND EXISTS(SELECT 1 FROM app_user u WHERE u.tenant_id=j.tenant_id AND u.id=app.current_user_id() AND u.archived_at IS NULL AND NOT app.login_blocked(u.id)) AND (app.lc_v9_off_access(c.company_id) OR app.resignation_runtime_intent(j.id))));
+$$;
+REVOKE ALL ON FUNCTION app.resignation_offboarding_case_managed(uuid) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.resignation_offboarding_case_managed(uuid) TO ai_hr_app;
