@@ -510,7 +510,7 @@ describe('case 64 — the bell lists the recruitment to-dos only for Recruitment
     await saveApprovalFlow(admin, base.companyId, 'offer', [p1.userId]);
     const { id: offerId } = await saveOffer(w.recruiter, w.c3.applicationId, await offerValues());
     await submitOffer(w.recruiter, offerId);
-    const plain = { attendance: false, claims: false, performance: false, rewards: false };
+    const plain = { attendance: false, claims: false, performance: false, rewards: false, probation: false };
     const recruitmentKinds = new Set<string>(RECRUITMENT_TASK_KINDS);
     const bell = (ctx: SessionContext) => listPendingTasks(ctx, undefined, { ...plain, recruitment: isModuleEnabled(ctx, 'recruitment') });
     // A non-recruitment bell task for the recruiter and the interviewer (a notice to acknowledge), so "unchanged" compares
@@ -570,7 +570,7 @@ describe('case 64 — My tasks lists what its badge counts; Home and the launche
     await saveApprovalFlow(admin, base.companyId, 'offer', [p1.userId]);
     const { id: offerId } = await saveOffer(w.recruiter, w.c3.applicationId, await offerValues());
     await submitOffer(w.recruiter, offerId);
-    const modules = { attendance: false, claims: false, performance: false, rewards: false, recruitment: true };
+    const modules = { attendance: false, claims: false, performance: false, rewards: false, probation: false, recruitment: true };
     for (const [who, scope] of [w.recruiter, w.i1, p1].flatMap((who) => [[base.companyId], [base.companyId, otherCompanyId], [otherCompanyId]].map((scope) => [who, scope] as const))) {
       // The root layout: the bell list, whose length (plus lifecycle work, none here) is the sidebar's My tasks badge.
       const bellList = await listPendingTasks(who, scope, modules);
@@ -581,7 +581,7 @@ describe('case 64 — My tasks lists what its badge counts; Home and the launche
       expect(recruitment(page)).toEqual(recruitment(bellList));
       expect(page.length).toBe(bellList.length);
       // The AI Centre launcher (it opens Home) counts the list without the recruitment kinds, as Home lists it.
-      expect(withoutRecruitmentTasks(bellList).length).toBe((await listPendingTasks(who, scope, { attendance: false, claims: false, performance: false, rewards: false })).length);
+      expect(withoutRecruitmentTasks(bellList).length).toBe((await listPendingTasks(who, scope, { attendance: false, claims: false, performance: false, rewards: false, probation: false })).length);
       // The shell's streamed summary (the bell and the sidebar's My tasks badge) and the page's summary carry the same items.
       const shell = await pendingTaskSummary(who, scope, modules, { deferClaimPreview: true });
       const pageSummary = await myTaskSummary(who, scope, modules);
@@ -589,7 +589,7 @@ describe('case 64 — My tasks lists what its badge counts; Home and the launche
       expect(recruitment(pageSummary.items)).toEqual(recruitment(bellList));
       expect(shell.total).toBe(bellList.length);
       expect(pageSummary.total).toBe(page.length);
-      expect(shell.approvalCount).toBe((await pendingTaskSummary(who, scope, { attendance: false, claims: false, performance: false, rewards: false }, { deferClaimPreview: true })).approvalCount);
+      expect(shell.approvalCount).toBe((await pendingTaskSummary(who, scope, { attendance: false, claims: false, performance: false, rewards: false, probation: false }, { deferClaimPreview: true })).approvalCount);
     }
     // Non-empty: feedback for the interviewer (in the selection only), the approval step for the approver (tenant-wide).
     expect((await listMyTasks(w.i1, [base.companyId], modules)).map((i) => i.kind).sort()).toEqual(['noticeAcknowledgement', 'recruitmentFeedback']);

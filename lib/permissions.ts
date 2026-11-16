@@ -207,6 +207,10 @@ export const SCREENS: readonly ScreenEntry[] = [
     // Slice 17 — a job's "Suggested to archive" list (the job's recruiters, assistants and the company's recruitment administrators;
     // the service asks app.can_operate_recruitment_job and row security decides).
     '/recruitment/suggested-archive',
+    // Slice 23 — referral rewards and agency fees (recruitment administrators decide; the receiving company's payroll
+    // administrators send approved rewards through ?view=payroll). Slice 25 — the agency portal inbox (the job's operators).
+    // The services and row security decide.
+    '/recruitment/rewards','/recruitment/agency-portal',
   ]},
   // 70d5e7c5: Configuration › Review Set-up. Group Rewards edits; CTRO and EC view; the review seat decides.
   { screenKey: 'rewardsReviewSetup', href: '/admin/rewards/review-setup', labelKey: 'nav.rewardsReviewSetup', guard: 'scopedSession', conditionalAccess: true, routes: ['/admin/rewards/review-setup', '/admin/rewards/review-setup/[unitId]'] },
