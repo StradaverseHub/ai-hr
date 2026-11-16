@@ -635,3 +635,13 @@ through the import graph; no file under lib/ai, core/ai*, core/assistant*, core/
 these manifests. No provider transform, outbound field, purpose or transport changed. The 28 approvals were carried
 forward to `06b5c60f…` and the agent manifest regenerated (`21404a12…`), under the owner's standing pre-approval for
 staging re-binds (12 November 2026). This binding grants no production authority.
+
+### Re-binding for the Probation release-gate inventory repairs (16 November 2026)
+
+`claude/probation-confirmation-aihr-b81c70` at binding `06b5c60f…` repairs what release gate 43850661612 (attempt 1,
+failed) found: `lib/ai/agent-capability-inventory.ts` classifies the 25 new Probation and HR Automation server actions and
+routes (backlog or handoff only; no action is registered for the agent and no tier is raised), `core/personnel-posting.ts`
+reaches leave through `packs/leave/service`, `core/company-refs.ts` declares four new company referrers, and migration
+5766 adds their read-only in-use check. No provider transform, outbound field, purpose or transport changed. The 28
+approvals were carried forward to `e4fcddfb…` and the agent manifest regenerated (`943a1bee…`), under the owner's
+standing pre-approval for staging re-binds (12 November 2026). This binding grants no production authority.

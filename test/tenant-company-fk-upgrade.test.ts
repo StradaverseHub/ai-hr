@@ -285,6 +285,8 @@ it('stops on a cross-tenant row, then validates every company/tenant key without
    '5764_probation_routed_holders',
    // Lane L (16 November 2026): letter signers for unsigned signature blocks and Required signers.
    '5765_probation_letter_signers',
+   // Release gate (16 November 2026): company deletion sees the reshape's owner-only company referrers.
+   '5766_probation_reshape_company_in_use',
   ]);
   const stagingPrefix=journal.entries.slice(0,performanceStart);
   expect(stagingPrefix.filter(row=>row.tag==='3900_individual_transaction_calculation_method')).toHaveLength(1);
@@ -474,7 +476,7 @@ it('stops on a cross-tenant row, then validates every company/tenant key without
    'app.probation_outcome_automation(uuid)','app.probation_overdue_summary_cases(uuid,date)','app.probation_pending_signer_kinds(uuid)',
    'app.probation_permitted(text,uuid)','app.probation_permitted_companies(uuid,text[])','app.probation_permitted_scope(text,uuid[])',
    'app.probation_posting_approved()','app.probation_postings_admin(uuid[])','app.probation_record_low_result_action(uuid,text)',
-   'app.probation_record_override(uuid)','app.probation_record_posting_effect(uuid,uuid,uuid,jsonb,jsonb)','app.probation_routed_holders(uuid[])',
+   'app.probation_record_override(uuid)','app.probation_record_posting_effect(uuid,uuid,uuid,jsonb,jsonb)','app.probation_reshape_company_in_use(uuid)','app.probation_routed_holders(uuid[])',
    'app.probation_routing_dimension(jsonb,text[])','app.probation_routing_weight(jsonb,integer)','app.probation_settings_materialize(uuid[])',
    'app.probation_settings_scope_admin()',
    'app.probation_settings_scope_check(text,jsonb)','app.probation_settings_scope_refresh(uuid)','app.probation_settings_scope_retire(uuid,integer,text)',

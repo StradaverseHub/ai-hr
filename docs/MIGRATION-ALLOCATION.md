@@ -1,3 +1,15 @@
+<!-- 5766_probation_reshape_company_in_use -->
+# Company deletion sees the Probation reshape's owner-only referrers — 16 November 2026 MYT (unapplied, allocated)
+
+Branch `claude/probation-confirmation-aihr-b81c70` (the Probation Confirmation integration branch; found by the release
+gate's company-referrer inventory) appends `5766_probation_reshape_company_in_use` at idx 5166 / when 1793330005466.
+SHA256 `5f47f0f77e115d29927b9c227b03ec79c5b726c051e31303f14cdb1ab70751dd`. It adds one read-only owner function granted
+to `ai_hr_app`, `app.probation_reshape_company_in_use(uuid)`, built like `app.replan_retained_company_in_use` (0953): a
+current administrator of the company learns only whether `probation_access_member` (company or business group),
+`probation_form_import` or `probation_settings_scope_member` still names it, so `core/company-refs.ts` can refuse a
+company delete before the foreign key does. No table, row, policy or existing grant changes. The installed ledgers
+were not read; recheck watermarks and peer claims at admission. This allocation grants no installation authority.
+
 <!-- 5765_probation_letter_signers -->
 # Probation letter signers — 16 November 2026 MYT (unapplied, allocated)
 

@@ -238,7 +238,7 @@ export async function approvePersonnelPosting(ctx: SessionContext, input: { id: 
   // Same follow-up as the New Event form: best-effort and idempotent, never fails the approval that committed.
   if (movementNeedsEntitlementReprojection(approved.behaviourKind)) {
     try {
-      const {reprojectEntitlementForEmployment} = await import('./leave');
+      const {reprojectEntitlementForEmployment} = await import('../packs/leave/service');
       await reprojectEntitlementForEmployment(ctx, { employmentId: approved.employmentId, trigger: 'movement_recorded', gradeBefore: approved.gradeBefore, changeEffectiveOn: approved.values.effectiveDate });
     } catch { /* re-runs on the next profile trigger or policy edit */ }
   }
