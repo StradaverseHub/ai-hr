@@ -390,5 +390,6 @@
   "employment.cost_center_allocation.cost_center_id",
   "employment.cost_center_allocation.percentage",
   "employment.cost_center_allocation.total_percentage",
-  "employment.cost_center_allocation.unallocated_percentage"
+  "employment.cost_center_allocation.unallocated_percentage",
+  "employment.employment_dates_and_service.contractnumber"
 ]

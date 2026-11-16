@@ -7,7 +7,7 @@ import {TemplatesWorkspace,type LetterSection,type ListedEmailTemplate} from './
 import type {ContractTemplatesData} from './contract-templates';
 
 export default async function Page({searchParams}:{searchParams:Promise<Record<string,string|string[]|undefined>>}){
- const ctx=await requireScopedLifecycleModule(),query=await searchParams,access=await automationPageAccess(ctx);
+ const ctx=await requireScopedLifecycleModule(),query=await searchParams,access=await automationPageAccess(ctx,'templates');
  if(!access.any)notFound();
  const filter=automationFilter(query.module,access);
  let emails:ListedEmailTemplate[]=[],letters:LetterSection=null;

@@ -22,8 +22,8 @@ ALTER TABLE public.automation_document_template_version FORCE ROW LEVEL SECURITY
 --> statement-breakpoint
 CREATE POLICY automation_document_template_owner ON public.automation_document_template FOR ALL TO ai_hr_owner USING(app.acting_as_owner()) WITH CHECK(app.acting_as_owner());
 CREATE POLICY automation_document_template_version_owner ON public.automation_document_template_version FOR ALL TO ai_hr_owner USING(app.acting_as_owner()) WITH CHECK(app.acting_as_owner());
-CREATE POLICY automation_document_template_read ON public.automation_document_template FOR SELECT TO ai_hr_app USING(tenant_id=app.current_tenant_id() AND app.automation_can_configure(module));
-CREATE POLICY automation_document_template_version_read ON public.automation_document_template_version FOR SELECT TO ai_hr_app USING(tenant_id=app.current_tenant_id() AND EXISTS(SELECT 1 FROM public.automation_document_template h WHERE h.tenant_id=automation_document_template_version.tenant_id AND h.id=automation_document_template_version.template_id AND app.automation_can_configure(h.module)));
+CREATE POLICY automation_document_template_read ON public.automation_document_template FOR SELECT TO ai_hr_app USING(tenant_id=app.current_tenant_id() AND app.automation_can_manage(module,'templates'));
+CREATE POLICY automation_document_template_version_read ON public.automation_document_template_version FOR SELECT TO ai_hr_app USING(tenant_id=app.current_tenant_id() AND EXISTS(SELECT 1 FROM public.automation_document_template h WHERE h.tenant_id=automation_document_template_version.tenant_id AND h.id=automation_document_template_version.template_id AND app.automation_can_manage(h.module,'templates')));
 --> statement-breakpoint
 REVOKE ALL ON public.automation_document_template,public.automation_document_template_version FROM PUBLIC,ai_hr_app;
 GRANT SELECT ON public.automation_document_template,public.automation_document_template_version TO ai_hr_app;
@@ -32,7 +32,7 @@ CREATE FUNCTION app.automation_document_template_save(p_template uuid,p_module t
 DECLARE t uuid:=app.current_tenant_id();h public.automation_document_template;n integer;
 BEGIN
  PERFORM app.access_workforce_write_lock();
- IF t IS NULL OR app.current_user_id() IS NULL OR app.automation_can_configure(p_module) IS NOT TRUE THEN RAISE EXCEPTION 'Document templates are unavailable' USING ERRCODE='42501';END IF;
+ IF t IS NULL OR app.current_user_id() IS NULL OR app.automation_can_manage(p_module,'templates') IS NOT TRUE THEN RAISE EXCEPTION 'Document templates are unavailable' USING ERRCODE='42501';END IF;
  IF p_template IS NULL OR p_definition IS NULL OR jsonb_typeof(p_definition) IS DISTINCT FROM 'object' OR p_definition->>'id' IS DISTINCT FROM p_template::text OR p_definition->>'module' IS DISTINCT FROM p_module
  OR length(btrim(coalesce(p_definition->>'name',''))) NOT BETWEEN 1 AND 200 OR octet_length(p_definition::text)>1048576 THEN RAISE EXCEPTION 'Invalid template' USING ERRCODE='22023';END IF;
  PERFORM pg_advisory_xact_lock(hashtextextended('document-template:'||t::text||':'||p_template::text,0));
@@ -49,3 +49,12 @@ END $$;
 --> statement-breakpoint
 REVOKE ALL ON FUNCTION app.automation_document_template_save(uuid,text,jsonb,integer,boolean,boolean) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION app.automation_document_template_save(uuid,text,jsonb,integer,boolean,boolean) TO ai_hr_app;
+
+--> statement-breakpoint
+CREATE OR REPLACE FUNCTION app.automation_template_choices(p_module text) RETURNS jsonb LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+BEGIN
+ IF app.automation_can_manage(p_module,'workflows') IS NOT TRUE AND app.automation_can_manage(p_module,'templates') IS NOT TRUE THEN RAISE EXCEPTION 'Template choices are unavailable' USING ERRCODE='42501';END IF;
+ RETURN jsonb_build_object(
+ 'emails',coalesce((SELECT jsonb_agg(to_jsonb(e)) FROM (SELECT DISTINCT ON(template_id) template_id AS id,name,active,retired,subject FROM public.automation_email_template_version WHERE tenant_id=app.current_tenant_id() AND module=p_module ORDER BY template_id,revision DESC LIMIT 500) e),'[]'::jsonb),
+ 'documents',coalesce((SELECT jsonb_agg(jsonb_build_object('id',id,'name',name,'version',live_version)) FROM (SELECT id,name,live_version FROM public.automation_document_template WHERE tenant_id=app.current_tenant_id() AND module=p_module AND NOT retired AND live_version IS NOT NULL ORDER BY lower(name),id LIMIT 500) d),'[]'::jsonb));
+END $$;

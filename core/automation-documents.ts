@@ -29,7 +29,7 @@ export function automationDocumentVersions(ctx:SessionContext,id:string){
 export async function saveAutomationDocumentTemplate(ctx:SessionContext,raw:unknown):Promise<{revision:number;warnings:string[]}>{
  const input=z.object({template:automationDocumentTemplateSchema,expectedRevision:z.number().int().min(0),publish:z.boolean(),retired:z.boolean()}).strict().parse(raw);
  return withScopedLifecycleTenant(ctx,async tx=>{
-  const [allowed]=await tx.execute<{ok:boolean}>(sql`select app.automation_can_configure(${input.template.module}) as ok`);
+  const [allowed]=await tx.execute<{ok:boolean}>(sql`select app.automation_can_manage(${input.template.module},'templates') as ok`);
   if(!allowed?.ok)throw new AutomationError('forbidden','Document templates are unavailable.');
   const people=input.template.routing.flatMap(step=>step.who.kind==='people'?step.who.userIds:[]);
   const problems=automationDocumentTemplateProblems(input.template,await automationReferencesTx(tx,people));

@@ -58,7 +58,7 @@ export async function saveAutomationEmailTemplate(ctx: SessionContext, input: { 
   const people = [...new Set(template.cc.flatMap(r => r.kind === 'person' ? [r.userId] : []))].filter(id => UUID.test(id));
   return withScopedLifecycleTenant(ctx, async tx => {
     // Authority first, so someone who cannot configure the module learns nothing from the catalogue checks.
-    const [allowed] = await tx.execute<{ ok: boolean }>(sql`select app.automation_can_configure(${template.module}) as ok`);
+    const [allowed] = await tx.execute<{ ok: boolean }>(sql`select app.automation_can_manage(${template.module},'templates') as ok`);
     if (!allowed?.ok) throw new AutomationError('forbidden', 'You cannot configure this.');
     if (!input.retired) {
       const problems = automationEmailTemplateProblems(template, catalogue, await automationReferencesTx(tx, people));

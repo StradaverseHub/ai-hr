@@ -41,6 +41,13 @@ behaviour; the reviewed navigation overrides its placement of shared builders un
 
 Preserve tenant, company, person, employment, case, document and period identities. Roles grant named capabilities;
 assignments scope them by company/business group and dates. Superior access defaults to own-team view/submit only.
+New business-group scopes use the same group-company identity as HR Automation and the existing Probation access
+editor (`coalesce(company.parent_company_id, company.id)`). The legacy Contract source's Business Unit alias remains
+available to match historical routing definitions; it does not determine a new business-group access grant.
+Workflow, Template and Assignment-group/routing permissions remain independent. Workflow editors may select template
+identities without template-edit permission. The owner explicitly chose the narrower access-administration boundary:
+only tenant-wide Contract Manage access grants and system Access administrators may administer Contract roles across
+companies. A company-scoped Manage access grant cannot do so. It can manage its own company's Contract settings.
 Current-pay visibility is independent of submitting proposed terms; a proposer may enter an agreed salary without
 receiving the protected current salary. The server omits current pay from every unauthorized projection.
 

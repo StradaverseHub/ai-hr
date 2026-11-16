@@ -11,6 +11,7 @@
  * and receipt commits on its own and the SMTP call happens outside every transaction, under no business lock. A message
  * whose send started and whose receipt was lost becomes `uncertain` and is never re-sent automatically.
  */
+import type {AutomationRichEmailBody} from '../lib/automation-email-content';
 import {randomUUID} from 'node:crypto';
 import {sql} from 'drizzle-orm';
 import type {SessionContext,Tx} from '../db/client';
@@ -20,9 +21,9 @@ import {automationEmailIpc,type AutomationDeliveryRequest,type AutomationDeliver
 
 export type AutomationEmailQueued = {queued: number; to: string[]; cc: string[]; unreachable: string[]};
 /** Records the email intent in the caller's transaction (idempotent on `key`). */
-export async function queueAutomationEmailTx(tx: Tx, input: {module: 'probation'; subjectId: string; key: string; to: readonly string[]; cc: readonly string[]; subject: string; body: string}): Promise<AutomationEmailQueued> {
+export async function queueAutomationEmailTx(tx: Tx, input: {module: 'probation'; subjectId: string; key: string; to: readonly string[]; cc: readonly string[]; subject: string; body: string;richBody?:AutomationRichEmailBody}): Promise<AutomationEmailQueued> {
   const array = (ids: readonly string[]) => `{${ids.join(',')}}`;
-  const [row] = await tx.execute<{data: AutomationEmailQueued}>(sql`select app.automation_email_queue(${input.module}, ${input.subjectId}::uuid, ${input.key}, ${array(input.to)}::uuid[], ${array(input.cc)}::uuid[], ${input.subject.slice(0, 500)}, ${input.body.slice(0, 20000)}) as data`);
+  const [row] = await tx.execute<{data: AutomationEmailQueued}>(sql`select app.automation_email_queue_rich(${input.module}, ${input.subjectId}::uuid, ${input.key}, ${array(input.to)}::uuid[], ${array(input.cc)}::uuid[], ${input.subject.slice(0, 500)}, ${input.body.slice(0, 20000)},${input.richBody?JSON.stringify(input.richBody):null}::jsonb) as data`);
   return row.data;
 }
 

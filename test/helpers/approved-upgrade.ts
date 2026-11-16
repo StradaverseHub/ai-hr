@@ -231,15 +231,17 @@ export const APPROVED_UPGRADE_TAIL=[
  {idx:5203,when:1794841005803,tag:'5803_shared_document_templates'},
  {idx:5204,when:1794841005804,tag:'5804_shared_email_rich_body'},
  {idx:5205,when:1794841005805,tag:'5805_native_contract_counter_and_cutover'},
+ {idx:5206,when:1794841005806,tag:'5806_contract_shared_projections'},
 ] as const;
 // Final pending 2109/2126 bytes reviewed from engine 128bc2539; no applied-prefix hashes change.
 const APPROVED_UPGRADE_HASHES:Record<string,string>={
- '5804_shared_email_rich_body':'e35260fa19bba07030b8a534064846cc3296dfd6bb9d04fb028c93c1118abbf1',
+ '5804_shared_email_rich_body':'96dd54e4b9bd66c015296ec0874b32c6de2af9af7c40b6f5812eaa7d3e408754',
  '5805_native_contract_counter_and_cutover':'f4480fd304085862acc004f58d6c8714221c147046536abe0d03036159802066',
- '5800_contract_shared_access':'541951b113d416047eda19b5d228e7d040a6f7918b187cb5a922a4c714514c70',
+ '5806_contract_shared_projections':'c15f8b76fc56cc6d10df186872acd230733f8e70a3d876855886f2e4a6cd41a7',
+ '5800_contract_shared_access':'502f7699066b0e0da792325a2c175e765b316d143a65f0a371263332c5e4ec79',
  '5801_contract_shared_flows':'c615e42b835d815cfbe0bcff98948a3004bedd77264d48102ce8aa1479f338c5',
- '5802_contract_shared_builders':'174ee40d0f80116d71ae1bafeddbb9e5eaa57de6852c7934d144e89b8124a346',
- '5803_shared_document_templates':'0fab1cf185f4bde90d5ab8d43703a8a3b4336077f2c41bda426023d491a898f6',
+ '5802_contract_shared_builders':'9b122da8c95df6684689ae9621efb8f86bad684ec0facac3ea34cc4392661d14',
+ '5803_shared_document_templates':'adce2251c00b32bb1913ef5c385f40782fdbb2c28274d3cc611c4305f77c0e12',
  '5761_probation_automation_recipients_and_tracker_steps':'c39e471adb80e51b56466c264bc6546dc6ce48a354e30d8e9ef3629a82b2184b',
  '5760_probation_queue_kinds_and_pbp_tasks':'c3ab5ddf4c702dd1ca947b3a350c7e852ab8699524c9da7fcad11f19887cdb59',
  '5150_attendance_policy_dated_rounding':'f1549fefc467398d9701ba5428e238134a8ca248fb645046b4b23877280e3408',

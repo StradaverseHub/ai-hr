@@ -21,6 +21,7 @@
  * Organisation conditions and routings use ids (labels shown in the builder). Condition values saved earlier as names
  * still match through the runner's aliases (one-off read-time compatibility).
  */
+import type {EmailBodyDoc} from '../lib/email-body/doc';
 import {sql} from 'drizzle-orm';
 import type {SessionContext,Tx} from '../db/client';
 import {randomUUID} from 'node:crypto';
@@ -54,7 +55,7 @@ export type ProbationAutomationContext = {
   employeeCode: string | null;
   fallbackGroupId: string | null; postingApproverGroupId: string | null;
   routings: Routing[]; groups: {id: string; members: string[]}[];
-  emailTemplates: {id: string; name: string; active: boolean; retired: boolean; subject: string; body: string; cc: AutomationRecipient[]}[];
+  emailTemplates: {id: string; name: string; active: boolean; retired: boolean; subject: string; body: string;bodyDoc?:EmailBodyDoc|null; cc: AutomationRecipient[]}[];
 };
 /** The case as the adapter needs it (a subset of ProbationCaseView.record). */
 export type ProbationAutomationCase = {
@@ -212,7 +213,7 @@ function probationRuntime(tx: Tx, input: ExecutorInput): {executors: AutomationE
   // The email keeps {{case.link}} as a token: the private sender makes it an absolute link for its installation.
   const emailMerge = {...merge, 'case.link': ''};
   /** In-app notice (5753) and the durable email intent (5754), in this transaction. */
-  const deliver = async (run: AutomationRun, step: AutomationStep, to: readonly AutomationRecipient[], cc: readonly AutomationRecipient[], subject: string, body: string) => {
+  const deliver = async (run: AutomationRun, step: AutomationStep, to: readonly AutomationRecipient[], cc: readonly AutomationRecipient[], subject: string, body: string,bodyDoc?:EmailBodyDoc|null) => {
     const active = await probationActivePeopleTx(tx, record.id, [to, cc]);
     const addressees = probationEmailAddressees(to, cc, context, facts, input.pending, input.audience, step.params.legacy !== true, active), resolved = addressees.all;
     if (!resolved.userIds.length) return {resolved, email: null};
@@ -220,7 +221,7 @@ function probationRuntime(tx: Tx, input: ExecutorInput): {executors: AutomationE
     await tx.execute(sql`select app.probation_automation_notify(${record.id}::uuid, ${facts.partId ?? null}::uuid, ${key}, ${input.trigger}, ${`{${resolved.userIds.join(',')}}`}::uuid[])`);
     const {queueAutomationEmailTx} = await import('./automation-email-delivery');
     const email = await queueAutomationEmailTx(tx, {module: 'probation', subjectId: record.id, key, to: addressees.to, cc: addressees.cc,
-      subject: fillAutomationMergeFields(subject, merge).replace(/\s+/g, ' ').trim() || 'Probation update', body: fillAutomationMergeFields(body, emailMerge).replace(/\{\{\s*case\.link\s*\}\}/g, '{{case.link}}')});
+      subject: fillAutomationMergeFields(subject, merge).replace(/\s+/g, ' ').trim() || 'Probation update', body: fillAutomationMergeFields(body, emailMerge).replace(/\{\{\s*case\.link\s*\}\}/g, '{{case.link}}'),...(bodyDoc?{richBody:{doc:bodyDoc,values:emailMerge}}:{})});
     return {resolved, email};
   };
   const unresolvedOf = (resolved: ReturnType<typeof recipientsFor>, email: {unreachable: string[]} | null) => [
@@ -243,7 +244,7 @@ function probationRuntime(tx: Tx, input: ExecutorInput): {executors: AutomationE
     sendEmail: async ({run, step}) => {
       const template = templates.get(text(step.params.emailTemplateId));
       if (!template) return {status: 'skipped', reason: 'the email template no longer exists.'};
-      const {resolved, email} = await deliver(run, step, step.to, [...step.cc, ...template.cc], template.subject, template.body);
+      const {resolved, email} = await deliver(run, step, step.to, [...step.cc, ...template.cc], template.subject, template.body,template.bodyDoc);
       if (!resolved.userIds.length) return {status: 'failed', reason: 'Nobody could receive the email, and the fallback group has no members.'};
       return {status: 'done', message: `Sent “${fillAutomationMergeFields(template.subject, merge)}” in AI-HR.${sent(email)}`, recipients: resolved.userIds, unresolved: unresolvedOf(resolved, email)};
     },

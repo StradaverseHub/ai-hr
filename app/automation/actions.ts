@@ -11,6 +11,7 @@ import {
 import {probationCase,probationSummaryRows,moveProbationWorkflowsToShared} from '@/packs/probation/service';
 import {PROBATION_AUTOMATION_CATALOGUE} from '@/lib/automation/catalogues/probation';
 import {PROBATION_DEFAULTS} from './probation-defaults';
+import {contractSharedPage,dryRunContractWorkflow,type ContractDryRunEvent} from '@/packs/contracts/service';
 import type {ActionResult,DryRunEventFacts} from './types';
 
 async function execute<T>(work: () => Promise<T>): Promise<ActionResult<T>> {
@@ -25,6 +26,20 @@ async function probationConfigurer() {
   const ctx = await requireScopedLifecycleModule();
   if (!(await automationBuilderAccess(ctx)).probation) throw new AutomationError('forbidden', 'You cannot configure this.');
   return ctx;
+}
+async function contractConfigurer(){
+ const ctx=await requireScopedLifecycleModule();
+ if(!(await automationBuilderAccess(ctx,'workflows')).contractStaff)throw new AutomationError('forbidden','Contract builders are unavailable.');
+ return ctx;
+}
+export async function searchContractCasesAction(search:string){
+ return execute(async()=>{
+  const page=await contractSharedPage(await contractConfigurer(),{search:String(search??'').slice(0,100),limit:20});
+  return page.rows.map(row=>({id:row.id,name:row.employeeName,detail:[row.employeeCode,row.company,row.businessGroup].filter(Boolean).join(' · ')}));
+ });
+}
+export async function dryRunContractWorkflowAction(input:{workflow:AutomationWorkflow;caseId:string;event:ContractDryRunEvent}){
+ return execute(async()=>dryRunContractWorkflow(await contractConfigurer(),input));
 }
 
 /** Saves a workflow. The store refuses Live with problems, Probation step settings included. */

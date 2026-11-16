@@ -1,6 +1,8 @@
+import {getTranslations} from 'next-intl/server';
+import {contractTerminationReasons} from '@/packs/contracts/service';
 import {notFound} from 'next/navigation';
 import {requireScopedLifecycleModule} from '@/lib/scoped-lifecycle-page';
-import {automationAssignmentGroups,automationPeopleNames,automationRoutingOptions,listAutomationDocumentTemplates,listAutomationEmailTemplates,listAutomationRoutings,listAutomationWorkflows} from '@/packs/automation/service';
+import {automationTemplateChoices,automationAssignmentGroups,automationPeopleNames,automationRoutingOptions,listAutomationDocumentTemplates,listAutomationEmailTemplates,listAutomationRoutings,listAutomationWorkflows} from '@/packs/automation/service';
 import {contractWorkflowRecipients} from '@/lib/contract-automation';
 import {automationFilter,automationPageAccess} from '../access';
 import {probationLetterChoices} from '../letter-templates';
@@ -9,7 +11,7 @@ import type {WorkflowEditorReferences} from './workflow-editor';
 import {WorkflowsWorkspace,type ListedWorkflow} from './workflows-workspace';
 
 export default async function Page({searchParams}:{searchParams:Promise<Record<string,string|string[]|undefined>>}){
- const ctx=await requireScopedLifecycleModule(),query=await searchParams,access=await automationPageAccess(ctx);
+ const ctx=await requireScopedLifecycleModule(),query=await searchParams,access=await automationPageAccess(ctx,'workflows');
  if(!access.any)notFound();
  const filter=automationFilter(query.module,access);
  const refs:WorkflowEditorReferences={routings:[],groups:[],people:[],emailTemplates:[],letterTemplates:null,conditionValues:{}};
@@ -35,13 +37,14 @@ export default async function Page({searchParams}:{searchParams:Promise<Record<s
  }
  let contract:{workflows:ListedWorkflow[];refs:WorkflowEditorReferences}|undefined;
  if(access.contractStaff&&(filter==='all'||filter==='contract_staff')){
-  const [stored,routings,emails]=await Promise.all([listAutomationWorkflows(ctx,{module:'contract_staff'}),listAutomationRoutings(ctx),listAutomationEmailTemplates(ctx,{module:'contract_staff'})]);
-  const [groups,options,documents]=await Promise.all([automationAssignmentGroups(ctx),automationRoutingOptions(ctx),listAutomationDocumentTemplates(ctx,'contract_staff')]);
+  const [stored,routings,choices]=await Promise.all([listAutomationWorkflows(ctx,{module:'contract_staff'}),listAutomationRoutings(ctx),automationTemplateChoices(ctx,'contract_staff')]);
+  const [groups,options,reasons,reasonCopy]=await Promise.all([automationAssignmentGroups(ctx),automationRoutingOptions(ctx),contractTerminationReasons(ctx),getTranslations('people.detail.movement.terminationReason')]);
+  const reasonChoices=reasons.map(reason=>({value:reason.code,label:reason.label??(reason.builtIn?reasonCopy(reason.code):reason.code)}));
   const personIds=stored.flatMap(w=>contractWorkflowRecipients(w.workflow)).flatMap(r=>r.kind==='person'?[r.userId]:[]);
   contract={workflows:stored.map(w=>({workflow:w.workflow,revision:w.revision})),refs:{routings:routings.map(r=>({id:r.routing.id,name:r.routing.name,retired:r.retired})),groups,people:await automationPeopleNames(ctx,personIds),
-   emailTemplates:emails.map(e=>({id:e.template.id,name:e.template.name,active:e.template.active,retired:e.retired,subject:e.template.subject})),
-   letterTemplates:documents.filter(d=>!d.retired&&d.liveVersion!==null).map(d=>({id:d.template.id,name:d.template.name})),
-   conditionValues:{businessGroup:options.businessGroups.map(o=>({value:o.id,label:o.name}))}}};
+   emailTemplates:choices.emails,
+   letterTemplates:choices.documents.map(d=>({id:d.id,name:d.name})),
+   conditionValues:{businessGroup:options.businessGroups.map(o=>({value:o.id,label:o.name})),endReason:reasonChoices,declineReason:reasonChoices}}};
  }
  return <WorkflowsWorkspace filter={filter} access={access} workflows={workflows} refs={refs} defaultsMissing={defaultsMissing} contract={contract}/>;
 }

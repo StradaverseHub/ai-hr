@@ -6210,6 +6210,13 @@
       "when": 1794841005805,
       "tag": "5805_native_contract_counter_and_cutover",
       "breakpoints": true
+    },
+    {
+      "idx": 5206,
+      "version": "7",
+      "when": 1794841005806,
+      "tag": "5806_contract_shared_projections",
+      "breakpoints": true
     }
   ]
 }

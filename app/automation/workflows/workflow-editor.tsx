@@ -12,7 +12,7 @@ import {recipientKey,recipientOptions,recipientsFromKeys,type NamedOption} from 
 import {saveWorkflowAction} from '../actions';
 import {ConditionRows} from './condition-rows';
 import {DryRunPanel} from './dry-run-panel';
-import {CONTRACT_POSTING_KINDS,contractStepParamProblems,contractWorkflowWarnings,type ContractApprovalLayer} from '@/lib/contract-automation';
+import {CONTRACT_POSTING_KINDS,contractApprovalLayersSchema,contractStepParamProblems,contractWorkflowWarnings,type ContractApprovalLayer} from '@/lib/contract-automation';
 import {ContractApprovalLayers} from './contract-approval-layers';
 
 export type WorkflowEditorReferences = {
@@ -97,7 +97,11 @@ export function WorkflowEditor({catalogue,initial,revision:savedRevision,refs,on
   params:type==='notify'?{subject:'',body:''}:type==='sendEmail'?{emailTemplateId:''}:type==='generateDocument'?{letterTemplateId:''}:type==='createPosting'?{eventType:''}:type==='startOffboarding'?{exitReason:'Non-confirmation'}:{}});
  const stepBody=(step:AutomationStep,index:number)=>{
   if(step.type==='requestApproval'&&draft.module==='contract_staff')return <ContractApprovalLayers disabled={readOnly}
-   layers={Array.isArray(step.params.layers)?step.params.layers as ContractApprovalLayer[]:[]}
+   layers={Array.isArray(step.params.layers)?step.params.layers.filter((layer:unknown):layer is ContractApprovalLayer=>{
+    if(!layer||typeof layer!=='object')return false;
+    const draft=layer as Record<string,unknown>;
+    return typeof draft.id==='string'&&typeof draft.name==='string'&&['any','roundRobin'].includes(String(draft.pick))&&contractApprovalLayersSchema.element.shape.approver.safeParse(draft.approver).success;
+   }):[]}
    options={recipients.filter(option=>option.value!=='pending')}
    onChange={layers=>setStep(index,s=>{s.params.layers=layers;})}/>;
   if(step.type==='notify')return <div className="v9-stack">{toCc(index,step)}
@@ -159,7 +163,7 @@ export function WorkflowEditor({catalogue,initial,revision:savedRevision,refs,on
    dryRun={<div className="v9-stack">
     {problems.length>0&&<section className="automation-issues" aria-label={t('editor.problems')}><b>{t('editor.problems')}</b><ul>{problems.map((p,i)=><li key={i}>{p}</li>)}</ul></section>}
     {warnings.length>0&&<section className="automation-notes" aria-label={t('editor.warnings')}><b>{t('editor.warnings')}</b><ul>{warnings.map((w,i)=><li key={i}>{w}</li>)}</ul></section>}
-    {draft.module==='probation'&&<DryRunPanel workflow={draft} catalogue={catalogue}/>}
+    {(draft.module==='probation'||draft.module==='contract_staff')&&<DryRunPanel workflow={draft} catalogue={catalogue} values={refs.conditionValues}/>}
    </div>}
    actions={<>
     {message&&<div className={message.kind==='error'?'v9-notice v9-error':'v9-notice'} role={message.kind==='error'?'alert':'status'}>{message.text}{message.problems?.length?<ul>{message.problems.map((p,i)=><li key={i}>{p}</li>)}</ul>:null}</div>}

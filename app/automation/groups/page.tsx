@@ -5,7 +5,7 @@ import {automationPageAccess} from '../access';
 import {GroupsWorkspace,type ListedRouting} from './groups-workspace';
 
 export default async function Page(){
- const ctx=await requireScopedLifecycleModule(),access=await automationPageAccess(ctx);
+ const ctx=await requireScopedLifecycleModule(),access=await automationPageAccess(ctx,'groups');
  if(!access.any)notFound();
  const [routings,groups,options]=await Promise.all([listAutomationRoutings(ctx),automationAssignmentGroups(ctx),automationRoutingOptions(ctx)]);
  // Workflows the viewer may read (row security): where each routing is used, for the "Used in" note.

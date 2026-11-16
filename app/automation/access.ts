@@ -9,8 +9,8 @@ import type {AutomationFilter,AutomationPageAccess} from './types';
  * On/Off Boarding V9 administration, the Probation module permission (as the shared store answers it, 5740) and
  * Contract staff configuration. Presentation only: every read and save checks again.
  */
-export async function automationPageAccess(ctx:SessionContext):Promise<AutomationPageAccess>{
- const [modules,store]=await Promise.all([lifecycleWorkflowAvailability(ctx),automationBuilderAccess(ctx)]);
+export async function automationPageAccess(ctx:SessionContext,kind?:'workflows'|'templates'|'groups'):Promise<AutomationPageAccess>{
+ const [modules,store]=await Promise.all([lifecycleWorkflowAvailability(ctx),automationBuilderAccess(ctx,kind)]);
  const access={legacy:modules.legacy===true,probation:store.probation,contractStaff:store.contractStaff};
  return {...access,any:access.legacy||access.probation||access.contractStaff||store.any};
 }

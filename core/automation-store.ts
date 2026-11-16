@@ -85,7 +85,7 @@ export async function saveAutomationWorkflow(ctx: SessionContext, input: { workf
   const people = [...new Set(allRecipients.flatMap(r => r.kind === 'person' ? [r.userId] : []))].filter(id => UUID.test(id));
   return withScopedLifecycleTenant(ctx, async tx => {
     // Authority first, so someone who cannot configure the module learns nothing from the catalogue checks.
-    const [allowed] = await tx.execute<{ ok: boolean }>(sql`select app.automation_can_configure(${workflow.module}) as ok`);
+    const [allowed] = await tx.execute<{ ok: boolean }>(sql`select app.automation_can_manage(${workflow.module},'workflows') as ok`);
     if (!allowed?.ok) throw new AutomationError('forbidden', 'You cannot configure this.');
     const refs = await references(tx, people);
     const problems = workflow.status === 'retired' ? [] : automationWorkflowProblems(workflow, catalogue, refs);
@@ -98,9 +98,8 @@ export async function saveAutomationWorkflow(ctx: SessionContext, input: { workf
       problems.push(...probationStepParamProblems(workflow, { emailTemplates: templates, letterTemplateIds: null }));
     }
     if (workflow.module === 'contract_staff' && workflow.status !== 'retired') {
-      const templates = await tx.execute<{id: string; active: boolean; retired: boolean}>(sql`select distinct on (template_id) template_id as id,active,retired from automation_email_template_version where tenant_id=app.current_tenant_id() and module='contract_staff' order by template_id,revision desc limit 500`);
-      const documents = await tx.execute<{id: string}>(sql`select id from automation_document_template where tenant_id=app.current_tenant_id() and module='contract_staff' and not retired and live_version is not null order by id limit 500`);
-      problems.push(...contractStepParamProblems(workflow,{emailTemplates:templates,letterTemplateIds:documents.map(d=>d.id)},refs));
+      const [choices]=await tx.execute<{value:{emails:{id:string;active:boolean;retired:boolean}[];documents:{id:string}[]}}>(sql`select app.automation_template_choices('contract_staff') as value`);
+      problems.push(...contractStepParamProblems(workflow,{emailTemplates:choices.value.emails,letterTemplateIds:choices.value.documents.map(d=>d.id)},refs));
     }
     if (workflow.status === 'live' && problems.length) throw new AutomationError('invalid', `Fix ${problems.length === 1 ? 'the problem' : `the ${problems.length} problems`} before making it live.`, problems);
     const { status, required, ...definition } = workflow;
@@ -125,7 +124,7 @@ export async function listAutomationRoutings(ctx: SessionContext): Promise<Store
 export async function saveAutomationRouting(ctx: SessionContext, input: { routing: Routing; retired: boolean; expectedRevision: number; reason: string }): Promise<{ revision: number }> {
   if (!UUID.test(input.routing.id)) throw new AutomationError('invalid', 'Unknown routing.');
   return withScopedLifecycleTenant(ctx, async tx => {
-    const [allowed] = await tx.execute<{ ok: boolean }>(sql`select app.automation_can_configure_any() as ok`);
+    const [allowed] = await tx.execute<{ ok: boolean }>(sql`select app.automation_can_manage_any('groups') as ok`);
     if (!allowed?.ok) throw new AutomationError('forbidden', 'You cannot configure this.');
     if (!input.retired) {
       const groups = new Set((await tx.execute<{ id: string }>(sql`select group_id as id from app.automation_assignment_groups()`)).map(r => r.id));

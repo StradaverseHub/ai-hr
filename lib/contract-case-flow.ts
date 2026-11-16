@@ -8,7 +8,7 @@ import {addDaysIso} from './roster-month';
 import {addCalendarMonths} from './hr-date';
 import {parseContractAmount, ContractManagementError} from './contract-management-model';
 
-export const CONTRACT_CASE_PERMISSIONS = ['view', 'seePay', 'decide', 'decline', 'manual', 'builders', 'access'] as const;
+export const CONTRACT_CASE_PERMISSIONS = ['view', 'seePay', 'decide', 'decline', 'manual', 'workflows', 'templates', 'groups', 'access'] as const;
 export type ContractCasePermission = typeof CONTRACT_CASE_PERMISSIONS[number];
 export type ContractFlowStage = 'open' | 'approval' | 'workflow' | 'document' | 'posting' | 'pay' | 'renewed' | 'converted' | 'offboarding';
 export type ContractDecisionKind = 'renew' | 'convert' | 'end';

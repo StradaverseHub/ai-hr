@@ -3,7 +3,7 @@
 CREATE TABLE public.contract_access_role (
  tenant_id uuid NOT NULL REFERENCES public.tenant(id), id uuid NOT NULL DEFAULT gen_random_uuid(),
  name text NOT NULL CHECK(length(btrim(name)) BETWEEN 1 AND 120),
- permissions text[] NOT NULL CHECK(permissions <@ ARRAY['view','seePay','decide','decline','manual','builders','access']::text[]),
+ permissions text[] NOT NULL CHECK(permissions <@ ARRAY['view','seePay','decide','decline','manual','workflows','templates','groups','access']::text[]),
  revision integer NOT NULL DEFAULT 1 CHECK(revision>0), updated_by uuid NOT NULL REFERENCES public.app_user(id), updated_at timestamptz NOT NULL DEFAULT now(),
  PRIMARY KEY(tenant_id,id), UNIQUE(tenant_id,name)
 );
@@ -12,14 +12,14 @@ CREATE UNIQUE INDEX contract_access_role_name ON public.contract_access_role(ten
 --> statement-breakpoint
 CREATE TABLE public.contract_access_member (
  tenant_id uuid NOT NULL REFERENCES public.tenant(id), id uuid NOT NULL DEFAULT gen_random_uuid(), role_id uuid NOT NULL,
- user_id uuid NOT NULL REFERENCES public.app_user(id), company_id uuid REFERENCES public.company(id), business_unit_id uuid REFERENCES public.business_unit(id),
+ user_id uuid NOT NULL REFERENCES public.app_user(id), company_id uuid REFERENCES public.company(id), business_group_id uuid REFERENCES public.company(id),
  valid_from date NOT NULL, valid_to date, revoked_at timestamptz,
  revision integer NOT NULL DEFAULT 1 CHECK(revision>0), created_by uuid NOT NULL REFERENCES public.app_user(id), created_at timestamptz NOT NULL DEFAULT now(),
  PRIMARY KEY(tenant_id,id), FOREIGN KEY(tenant_id,role_id) REFERENCES public.contract_access_role(tenant_id,id),
  CHECK(valid_to IS NULL OR valid_to>=valid_from)
 );
 --> statement-breakpoint
-CREATE INDEX contract_access_member_lookup ON public.contract_access_member(tenant_id,user_id,company_id,business_unit_id) WHERE revoked_at IS NULL;
+CREATE INDEX contract_access_member_lookup ON public.contract_access_member(tenant_id,user_id,company_id,business_group_id) WHERE revoked_at IS NULL;
 --> statement-breakpoint
 CREATE TABLE public.contract_shared_settings (
  tenant_id uuid NOT NULL REFERENCES public.tenant(id), company_id uuid NOT NULL REFERENCES public.company(id), revision integer NOT NULL DEFAULT 1 CHECK(revision>0),
@@ -32,14 +32,14 @@ CREATE TABLE public.contract_shared_settings (
  PRIMARY KEY(tenant_id,company_id)
 );
 --> statement-breakpoint
-CREATE FUNCTION app.contract_shared_permitted(p_permission text,p_company uuid,p_unit uuid DEFAULT NULL,p_employment uuid DEFAULT NULL)
+CREATE FUNCTION app.contract_shared_permitted(p_permission text,p_company uuid,p_group uuid DEFAULT NULL,p_employment uuid DEFAULT NULL)
 RETURNS boolean LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
  SELECT coalesce(app.contract_verified_human(app.current_user_id()) AND app.contract_company_entitled(p_company) AND (
   app.contract_hr_admin(p_company)
   OR app.contract_configure(p_company)
   OR EXISTS(SELECT 1 FROM public.contract_access_member m JOIN public.contract_access_role r ON r.tenant_id=m.tenant_id AND r.id=m.role_id
    WHERE m.tenant_id=app.current_tenant_id() AND m.user_id=app.current_user_id() AND m.revoked_at IS NULL
-   AND (m.company_id IS NULL OR m.company_id=p_company) AND (m.business_unit_id IS NULL OR m.business_unit_id=p_unit)
+   AND (p_permission IN('workflows','templates','groups') OR (m.company_id IS NULL OR m.company_id=p_company) AND (m.business_group_id IS NULL OR m.business_group_id=(SELECT coalesce(co.parent_company_id,co.id) FROM public.company co WHERE co.tenant_id=m.tenant_id AND co.id=p_company)))
    AND m.valid_from<=(now() AT TIME ZONE 'Asia/Kuala_Lumpur')::date AND (m.valid_to IS NULL OR m.valid_to>=(now() AT TIME ZONE 'Asia/Kuala_Lumpur')::date)
    AND p_permission=ANY(r.permissions))
   OR (p_employment IS NOT NULL AND p_permission IN('view','seePay','decide','decline','manual')
@@ -52,13 +52,13 @@ $$;
 --> statement-breakpoint
 CREATE FUNCTION app.contract_shared_case_permitted(p_case uuid,p_permission text) RETURNS boolean LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
  SELECT EXISTS(SELECT 1 FROM public.contract_case c WHERE c.tenant_id=app.current_tenant_id() AND c.id=p_case AND app.contract_case_company_current(c.id)
- AND app.contract_shared_permitted(p_permission,c.company_id,app.contract_business_unit(c.employment_id),c.employment_id))
+ AND app.contract_shared_permitted(p_permission,c.company_id,(SELECT coalesce(co.parent_company_id,co.id) FROM public.company co WHERE co.tenant_id=c.tenant_id AND co.id=c.company_id),c.employment_id))
 $$;
 --> statement-breakpoint
 CREATE FUNCTION app.contract_shared_access_admin() RETURNS boolean LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
  SELECT coalesce(app.contract_verified_human(app.current_user_id()) AND
  (app.access_capability_allowed('access.system_admin',NULL) OR app.access_capability_allowed('access.configure',NULL)
- OR EXISTS(SELECT 1 FROM public.contract_access_member m JOIN public.contract_access_role r ON r.tenant_id=m.tenant_id AND r.id=m.role_id WHERE m.tenant_id=app.current_tenant_id() AND m.user_id=app.current_user_id() AND m.revoked_at IS NULL AND m.company_id IS NULL AND m.business_unit_id IS NULL AND 'access'=ANY(r.permissions) AND m.valid_from<=(now() AT TIME ZONE 'Asia/Kuala_Lumpur')::date AND (m.valid_to IS NULL OR m.valid_to>=(now() AT TIME ZONE 'Asia/Kuala_Lumpur')::date))),false)
+ OR EXISTS(SELECT 1 FROM public.contract_access_member m JOIN public.contract_access_role r ON r.tenant_id=m.tenant_id AND r.id=m.role_id WHERE m.tenant_id=app.current_tenant_id() AND m.user_id=app.current_user_id() AND m.revoked_at IS NULL AND m.company_id IS NULL AND m.business_group_id IS NULL AND 'access'=ANY(r.permissions) AND m.valid_from<=(now() AT TIME ZONE 'Asia/Kuala_Lumpur')::date AND (m.valid_to IS NULL OR m.valid_to>=(now() AT TIME ZONE 'Asia/Kuala_Lumpur')::date))),false)
 $$;
 --> statement-breakpoint
 REVOKE ALL ON FUNCTION app.contract_shared_permitted(text,uuid,uuid,uuid),app.contract_shared_case_permitted(uuid,text),app.contract_shared_access_admin() FROM PUBLIC;
@@ -83,14 +83,14 @@ CREATE POLICY contract_shared_settings_read ON public.contract_shared_settings F
 REVOKE ALL ON public.contract_access_role,public.contract_access_member,public.contract_shared_settings FROM PUBLIC,ai_hr_app;
 GRANT SELECT ON public.contract_access_role,public.contract_access_member,public.contract_shared_settings TO ai_hr_app;
 --> statement-breakpoint
--- Tenant-level named roles/assignments require tenant access administration; a scoped company editor must not grant
+-- Tenant-level named roles/assignments require Access administration or a tenant-wide Contract Manage access grant; a scoped company editor must not grant
 -- themselves a tenant-wide role. Per-company settings retain that company's configure authority.
 CREATE FUNCTION app.contract_shared_role_save(p_id uuid,p_name text,p_permissions text[],p_expected integer) RETURNS integer LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
 DECLARE t uuid:=app.current_tenant_id();r integer;
 BEGIN
  PERFORM app.access_workforce_write_lock();
  IF app.contract_shared_access_admin() IS NOT TRUE THEN RAISE EXCEPTION 'Contract access administration is unavailable' USING ERRCODE='42501';END IF;
- IF p_id IS NULL OR p_name IS NULL OR length(btrim(p_name)) NOT BETWEEN 1 AND 120 OR p_permissions IS NULL OR NOT p_permissions<@ARRAY['view','seePay','decide','decline','manual','builders','access']::text[] THEN RAISE EXCEPTION 'Invalid role' USING ERRCODE='22023';END IF;
+ IF p_id IS NULL OR p_name IS NULL OR length(btrim(p_name)) NOT BETWEEN 1 AND 120 OR p_permissions IS NULL OR NOT p_permissions<@ARRAY['view','seePay','decide','decline','manual','workflows','templates','groups','access']::text[] THEN RAISE EXCEPTION 'Invalid role' USING ERRCODE='22023';END IF;
  PERFORM pg_advisory_xact_lock(hashtextextended('contract-role:'||t::text||':'||p_id::text,0));
  SELECT revision INTO r FROM public.contract_access_role WHERE tenant_id=t AND id=p_id;
  IF coalesce(r,0) IS DISTINCT FROM p_expected THEN RAISE EXCEPTION 'Role changed; reload' USING ERRCODE='40001';END IF;
@@ -100,7 +100,7 @@ BEGIN
  RETURN coalesce(r,0)+1;
 END $$;
 --> statement-breakpoint
-CREATE FUNCTION app.contract_shared_member_save(p_id uuid,p_role uuid,p_user uuid,p_company uuid,p_unit uuid,p_from date,p_to date,p_revoke boolean,p_expected integer DEFAULT 0) RETURNS uuid LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+CREATE FUNCTION app.contract_shared_member_save(p_id uuid,p_role uuid,p_user uuid,p_company uuid,p_group uuid,p_from date,p_to date,p_revoke boolean,p_expected integer DEFAULT 0) RETURNS uuid LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
 DECLARE t uuid:=app.current_tenant_id();prior public.contract_access_member;
 BEGIN
  PERFORM app.access_workforce_write_lock();
@@ -108,17 +108,18 @@ BEGIN
  IF p_id IS NULL OR NOT EXISTS(SELECT 1 FROM public.contract_access_role WHERE tenant_id=t AND id=p_role) OR NOT app.contract_verified_human(p_user)
  OR p_from IS NULL OR p_to<p_from
  OR p_company IS NOT NULL AND NOT EXISTS(SELECT 1 FROM public.company WHERE tenant_id=t AND id=p_company)
- OR p_unit IS NOT NULL AND NOT EXISTS(SELECT 1 FROM public.business_unit WHERE tenant_id=t AND id=p_unit)
+ OR p_group IS NOT NULL AND NOT EXISTS(SELECT 1 FROM public.company WHERE tenant_id=t AND id=p_group)
+ OR p_group IS NOT NULL AND p_company IS NOT NULL AND NOT EXISTS(SELECT 1 FROM public.company co WHERE co.tenant_id=t AND co.id=p_company AND coalesce(co.parent_company_id,co.id)=p_group)
  THEN RAISE EXCEPTION 'Invalid role assignment' USING ERRCODE='22023';END IF;
  PERFORM pg_advisory_xact_lock(hashtextextended('contract-member:'||t::text||':'||p_id::text,0));
  SELECT * INTO prior FROM public.contract_access_member WHERE tenant_id=t AND id=p_id FOR UPDATE;
  IF coalesce(prior.revision,0) IS DISTINCT FROM p_expected THEN RAISE EXCEPTION 'Assignment changed; reload' USING ERRCODE='40001';END IF;
  PERFORM pg_advisory_xact_lock(hashtextextended('contract-member-scope:'||t::text||':'||p_role::text||':'||p_user::text,0));
- IF NOT p_revoke AND EXISTS(SELECT 1 FROM public.contract_access_member m WHERE m.tenant_id=t AND m.id<>p_id AND m.role_id=p_role AND m.user_id=p_user AND m.revoked_at IS NULL AND m.company_id IS NOT DISTINCT FROM p_company AND m.business_unit_id IS NOT DISTINCT FROM p_unit AND daterange(m.valid_from,m.valid_to+1,'[)') && daterange(p_from,p_to+1,'[)')) THEN RAISE EXCEPTION 'This person already has an overlapping assignment for this scope' USING ERRCODE='22023';END IF;
+ IF NOT p_revoke AND EXISTS(SELECT 1 FROM public.contract_access_member m WHERE m.tenant_id=t AND m.id<>p_id AND m.role_id=p_role AND m.user_id=p_user AND m.revoked_at IS NULL AND m.company_id IS NOT DISTINCT FROM p_company AND m.business_group_id IS NOT DISTINCT FROM p_group AND daterange(m.valid_from,m.valid_to+1,'[)') && daterange(p_from,p_to+1,'[)')) THEN RAISE EXCEPTION 'This person already has an overlapping assignment for this scope' USING ERRCODE='22023';END IF;
  IF EXISTS(SELECT 1 FROM public.contract_access_member WHERE tenant_id=t AND id=p_id AND (role_id<>p_role OR user_id<>p_user)) THEN RAISE EXCEPTION 'Assignment identity cannot change' USING ERRCODE='22023';END IF;
- INSERT INTO public.contract_access_member(tenant_id,id,role_id,user_id,company_id,business_unit_id,valid_from,valid_to,revoked_at,created_by)
- VALUES(t,p_id,p_role,p_user,p_company,p_unit,p_from,p_to,CASE WHEN p_revoke THEN now() END,app.current_user_id())
- ON CONFLICT(tenant_id,id) DO UPDATE SET company_id=excluded.company_id,business_unit_id=excluded.business_unit_id,valid_from=excluded.valid_from,valid_to=excluded.valid_to,revoked_at=excluded.revoked_at,revision=contract_access_member.revision+1;
+ INSERT INTO public.contract_access_member(tenant_id,id,role_id,user_id,company_id,business_group_id,valid_from,valid_to,revoked_at,created_by)
+ VALUES(t,p_id,p_role,p_user,p_company,p_group,p_from,p_to,CASE WHEN p_revoke THEN now() END,app.current_user_id())
+ ON CONFLICT(tenant_id,id) DO UPDATE SET company_id=excluded.company_id,business_group_id=excluded.business_group_id,valid_from=excluded.valid_from,valid_to=excluded.valid_to,revoked_at=excluded.revoked_at,revision=contract_access_member.revision+1;
  INSERT INTO public.domain_event(tenant_id,aggregate_type,aggregate_id,event_type,actor_type,actor_id,payload) VALUES(t,'contract_access_member',p_id,'contract.access.assignment.saved','user',app.current_user_id(),jsonb_build_object('before',to_jsonb(prior),'after',(SELECT to_jsonb(m) FROM public.contract_access_member m WHERE m.tenant_id=t AND m.id=p_id)));
  RETURN p_id;
 END $$;
@@ -161,7 +162,7 @@ CREATE FUNCTION app.contract_shared_company_in_use(p_company uuid) RETURNS boole
  SELECT coalesce(app.contract_hr_admin(p_company) AND (
  EXISTS(SELECT 1 FROM public.contract_shared_settings s WHERE s.tenant_id=app.current_tenant_id() AND s.company_id=p_company)
  OR EXISTS(SELECT 1 FROM public.contract_access_member m WHERE m.tenant_id=app.current_tenant_id() AND (m.company_id=p_company
- OR m.business_unit_id IN(SELECT b.id FROM public.business_unit b WHERE b.tenant_id=m.tenant_id AND b.company_id=p_company)))
+ OR m.business_group_id=p_company))
  ),false)
 $$;
 --> statement-breakpoint

@@ -3466,6 +3466,7 @@ export function employeeDetail(ctx: SessionContext, employmentId: string,purpose
         // instead of a second copy. provisionalEndOn stays — it is the display fallback for a contract
         // employee hired before this shipped, and full_time/intern still depend on it elsewhere.
         contractStartDate: employment.contractStartDate,
+        contractNumber: employment.contractNumber,
         contractEndDate: employment.contractEndDate,
         contractRemark: employment.contractRemark,
         // 2260a06b — the Intern twin of the contract group: the Employment tab shows and re-saves it.
