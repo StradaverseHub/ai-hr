@@ -29913,7 +29913,8 @@
         "lateOffset": "Tolak kelewatan sekali",
         "approval": "Mod kelulusan",
         "autoMethod": "Kaedah kelulusan Auto",
-        "rounding": "Pembundaran tempoh"
+        "rounding": "Pembundaran tempoh",
+        "backdate": "Had tarikh terdahulu kerja lebih masa"
       },
       "days": {
         "normal": "Hari biasa",
@@ -29921,7 +29922,8 @@
         "rest": "Hari rehat",
         "publicHoliday": "Cuti umum",
         "replacementHoliday": "Cuti umum gantian"
-      }
+      },
+      "backdateDays": "{count, plural, other {# hari}}"
     },
     "positionSearch": "Cari jawatan",
     "loadMorePositions": "Muatkan lebih banyak jawatan",
@@ -39303,7 +39305,26 @@
     "systemReason": "Tetapan Kerja Lebih Masa Kumpulan Jadual disimpan",
     "on": "Hidup",
     "off": "Mati",
-    "payrollNote": "Gaji menerima angka kerja lebih masa akhir daripada tetapan ini, sama seperti ia menerima kerja lebih masa hari ini."
+    "payrollNote": "Gaji menerima angka kerja lebih masa akhir daripada tetapan ini, sama seperti ia menerima kerja lebih masa hari ini.",
+    "approvalIntro": "Menentukan sama ada Kehadiran mengira kerja lebih masa yang dibayar, dan minit mana yang digunakan.",
+    "roundingIntro": "Menentukan sama ada minit kerja lebih masa yang layak dibundarkan ke atas, dibundarkan ke bawah atau tidak dibundarkan.",
+    "roundNone": "Tiada",
+    "roundingNoneHint": "Tidak berkenaan apabila Tiada dipilih. Minit kerja lebih masa layak yang sebenar dikekalkan.",
+    "notApplicable": "Tidak berkenaan",
+    "minutesValue": "{n} minit",
+    "roundingExampleTitle": "Contoh pengiraan",
+    "roundingExampleActual": "Kerja lebih masa layak sebenar",
+    "roundingExampleMethod": "Kaedah Pembundaran",
+    "roundingExampleInterval": "Selang",
+    "roundingExampleFinal": "Kerja lebih masa akhir",
+    "backdateTitle": "Kawalan Tarikh Terdahulu Kerja Lebih Masa",
+    "backdateIntro": "Menentukan sejauh mana permohonan kerja lebih masa boleh ditarikhkan ke belakang. Benarkan Permohonan Kerja Lebih Masa Terdahulu Tanpa Perakaman Waktu adalah berasingan: ia hanya menentukan sama ada perakaman waktu diperlukan.",
+    "backdateControl": "Dayakan Kawalan Tarikh Terdahulu Kerja Lebih Masa",
+    "backdateControlHint": "Terpakai kepada permohonan kerja lebih masa pekerja sendiri di web dan aplikasi mudah alih, permohonan melalui pembantu AI, dan Mohon Bagi Pihak. Pentadbir HR tertakluk kepada had yang sama.",
+    "backdateDays": "Benarkan Permohonan Terdahulu Dalam Tempoh (Hari)",
+    "backdateDaysHint": "Nombor bulat dari 1 hingga {max}, dikira ke belakang dari hari permohonan dihantar. Dengan 3 hari, permohonan yang dihantar pada 16-Nov-2026 boleh dibuat untuk 13 hingga 16-Nov-2026.",
+    "backdateDaysValue": "{n, plural, other {# hari}}",
+    "backdateRefused": "Permohonan kerja lebih masa boleh ditarikhkan paling lama {days, plural, other {# hari}} ke belakang. Pilih {date} atau tarikh yang lebih lewat."
   },
   "attendanceOnBehalf": {
     "requestTitle": "Mohon Bagi Pihak",
