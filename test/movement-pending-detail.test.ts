@@ -80,7 +80,7 @@ describe('pending Movement View shows saved intent separately from applied histo
       ['EMP-0004','promotion',day(14),b.deptA,3000],
     ]);
     const preview = await previewMovementImport(ctx,{companyId:b.companyId,csv});
-    expect(preview.valid).toBe(2);
+    expect(preview.valid,JSON.stringify(preview)).toBe(2);
     const result = await commitMovementImport(ctx,{companyId:b.companyId,csv,selection:preview.selection,inputHash:preview.inputHash,
       fingerprints:Object.fromEntries(preview.employees.filter(row=>row.fingerprint).map(row=>[row.employeeCode,row.fingerprint!])),acknowledgeExcluded:true});
     expect(result).toMatchObject({imported:2,failed:0});

@@ -449,7 +449,7 @@ async function lifecycleTx(tx:Tx,id:string){
 /** `organisationWarnings` are the record's own organisation warnings (part of view.warnings), kept apart so the lean
  * commit can record Import History items exactly as the rehearse-then-apply commit did. */
 type RehearsedRow={view:MovementImportRow;input:CreateMovementInput;changedFields:string[];references:MovementManagerEvidence[];rawAfter:Record<string,string|null>;organisationWarnings?:string[]};
-async function subjectStateTx(tx:Tx,id:string){return{...await movementCurrentStateTx(tx,id),...await lifecycleTx(tx,id)};}
+async function subjectStateTx(tx:Tx,id:string,asOf?:string){return{...await movementCurrentStateTx(tx,id,asOf),...await lifecycleTx(tx,id)};}
 type SubjectState=Awaited<ReturnType<typeof subjectStateTx>>;
 function readable(values:Record<string,string|null>,catalog:MovementImportCatalog):Record<string,string|null>{
  return Object.fromEntries(Object.entries(values).map(([key,value])=>{
@@ -497,7 +497,7 @@ async function applyRowTx(tx:Tx,ctx:SessionContext,record:MovementImportRecord,i
  // The committed pass records the original future intent and never runs this branch.
  if(scheduled&&rehearsal)await applyDueMovementsTx(tx,ctx,id,input.effectiveDate);
  if(movementNeedsEntitlementReprojection(result.behaviourKind))await reprojectEntitlementForEmployment(ctx,{employmentId:id,trigger:scheduled&&rehearsal?'movement_applied':'movement_recorded',gradeBefore:{gradeId:before.gradeId},changeEffectiveOn:input.effectiveDate,...(scheduled&&rehearsal?{asOf:input.effectiveDate}:{})},tx);
- const after=await subjectStateTx(tx,id);
+ const after=await subjectStateTx(tx,id,scheduled&&rehearsal?input.effectiveDate:undefined);
  if(reads){await refreshManagerEntryTx(tx,ctx,reads,id);reads.state={employmentId:id,value:{...after}};}
  const afterValues:Record<string,string|null>=after;
  const changedFields=Object.entries(before).filter(([key,value])=>afterValues[key]!==value).map(([key])=>key);

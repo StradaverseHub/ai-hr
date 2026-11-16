@@ -1,3 +1,6 @@
+import {movementPayrollWindows} from '../lib/movement-payroll-windows';
+import {withMovementPayrollWindowsTx} from './workforce-payroll-invalidation';
+import {movementInformationEvidence,type MovementInformationField,type MovementInformationFact} from '../lib/movement-information-evidence';
 import {conflictingMovementFields} from '../lib/movement-sequence-conflict';
 import {employmentPaymentMethodOnTx} from './employment-payment-method';
 import {PAYMENT_METHODS,type PaymentMethod} from '../lib/payment-methods';
@@ -347,6 +350,7 @@ export type MovementSnapshot = {
   joinDate?: string | null;
   paymentMethod?:string|null;
   salaryPayrollFrom?:string;
+  informationEvidence?:Record<MovementInformationField,MovementInformationFact>;
   salaryAmount?: string | null;
   currency?: string | null;
 };
@@ -972,6 +976,7 @@ async function projectRows(tx: Tx, tenantId: string, employmentId: string, today
           effectiveDate: p.effectiveDate ?? occDate,
           endDate: p.endDate ?? null,
           remarks: p.remarks ?? null,
+          fields:Array.isArray(p.fields)?p.fields:[],
         });
         break;
       case 'employment.movement.scheduled':
@@ -1229,6 +1234,11 @@ const STATE_CHANGING_EVENT_TYPES = new Set(
   ),
 );
 
+/** A retained later decision is a logical boundary even when an earlier correction made its write redundant. */
+function eventChangesMovementState(event:RawEvent){
+ return STATE_CHANGING_EVENT_TYPES.has(event.eventType)||event.eventType==='employment.movement.recorded'&&(event.payload as {retainedDecision?:boolean}|null)?.retainedDecision===true;
+}
+
 /**
  * 3ced1040 — the LIFECYCLE dates an `employment.info.updated` leg may carry and still be undone from
  * Employment History. Only the confirmation pair, and only because Confirmation is now a comparison kind:
@@ -1312,7 +1322,7 @@ type Correctability = { canReverse: boolean; canEdit: boolean; stateChanging: bo
  *  in-place rule: an edit replays through the SAME writers, and those act on the OPEN dated row, so a
  *  state-changing movement can only be corrected while it is still the most recent one. */
 function correctabilityOf(row: ProjectedRow, group: RawEvent[], isLatest: boolean, behaviour:string|null): Correctability {
-  const stateChanging = group.some((e) => STATE_CHANGING_EVENT_TYPES.has(e.eventType));
+  const stateChanging = group.some((e) => eventChangesMovementState(e));
   if (!group.length || !behaviour) return { canReverse: false, canEdit: false, stateChanging };
   // Board 511aa74a — a Rehired event created an employment; only its own Roll Back (core/rehire.ts) can undo it.
   if (behaviour === 'rehire') return { canReverse: false, canEdit: false, stateChanging };
@@ -1346,7 +1356,7 @@ function latestStateChangingSpanEnd(events: RawEvent[], rows: ProjectedRow[]): n
   let end = -1;
   for (const r of rows) {
     const g = groupEventsOf(events, r);
-    if (r.reversed || !g.some((e) => STATE_CHANGING_EVENT_TYPES.has(e.eventType))) continue;
+    if (r.reversed || !g.some((e) => eventChangesMovementState(e))) continue;
     end = Math.max(end, ...g.map((e) => e.sequence));
   }
   return end;
@@ -2102,6 +2112,15 @@ async function projectMovementDetailTx(tx:Tx,ctx:SessionContext,employmentId:str
         ? null
         : correctionView.apply(row.id+':before',await snapshotAt(tx, emp, dayBefore(row.effectiveDate), gradeEvents, beforeBound, false, companyEvents, hasDatedCompanyHistory(events)));
 
+    after.informationEvidence=movementInformationEvidence(events,row.effectiveDate,afterBound,true);
+    if(row.kind==='hired')for(const event of events){
+      const payload=event.payload as {source?:string;fields?:string[];after?:Record<string,unknown>};
+      if(event.eventType!=='employment.information.corrected'||payload?.source!=='original-hire')continue;
+      for(const field of payload.fields??[])if(field in after.informationEvidence){
+        const value=payload.after?.[field];if(value===null||typeof value==='string')after.informationEvidence[field as MovementInformationField]={known:true,value,eventId:event.id};
+      }
+    }
+    if(before)before.informationEvidence=movementInformationEvidence(events,dayBefore(row.effectiveDate),beforeBound,false);
     return {
       row: {
         id: row.id,
@@ -2289,8 +2308,8 @@ export function movementCurrentState(
 }
 
 /** Same canonical state read inside a caller-owned movement transaction. */
-export function movementCurrentStateTx(tx:Tx,employmentId:string):Promise<MovementCurrentState>{
-  return currentStateTx(tx,employmentId);
+export function movementCurrentStateTx(tx:Tx,employmentId:string,asOf?:string):Promise<MovementCurrentState>{
+  return currentStateTx(tx,employmentId,asOf);
 }
 
 export type CreateMovementInput = {
@@ -4081,7 +4100,7 @@ async function assertMovementDateOrderTx(tx:Tx,ctx:SessionContext,p:CreateMoveme
 }
 
 /** 646355e5 — one later movement to put back after an older one is corrected. */
-type ReplayStep = { movementId: string; label: string; effectiveDate: string; sequence: number; behaviour: string; input: CreateMovementInput; terminationType?: TerminationType };
+type ReplayStep = { salaryReferenceId?:string;fields?:string[];movementId: string; label: string; effectiveDate: string; sequence: number; behaviour: string; input: CreateMovementInput; terminationType?: TerminationType };
 
 /**
  * 646355e5 — the later applied movements an older correction steps back over, with the values each one
@@ -4103,7 +4122,7 @@ async function laterReplayPlanTx(
   for (const r of rows) {
     if (r.id === target?.id || (!target && r.effectiveDate <= correctedDate) || r.reversed || r.scheduled && statusOf(r) !== 'applied') continue;
     const g = groupEventsOf(events, r);
-    if (!g.some((e) => STATE_CHANGING_EVENT_TYPES.has(e.eventType))) continue;
+    if (!g.some((e) => eventChangesMovementState(e))) continue;
     const end = Math.max(...g.map((e) => e.sequence));
     if (end <= targetSpanEnd) continue;
     const behaviour = resolvedTypes.get(recordedMovementKind(r, g))?.behaviourKind ?? null;
@@ -4126,13 +4145,43 @@ async function laterReplayPlanTx(
     const exit = g.find(event => event.eventType === 'employment.terminated')?.payload as {terminationType?:unknown} | undefined;
     const terminationType = typeof exit?.terminationType === 'string' && ['voluntary','involuntary','retired','contract_end','death','other'].includes(exit.terminationType) ? exit.terminationType as TerminationType : undefined;
     if(behaviour==='termination' && !terminationType) throw new MovementNotCorrectableError(`The later ${label} event on ${when} has no verified exit classification. Review it before correcting this event.`);
-    steps.push({ movementId: r.id, label, effectiveDate: when, sequence: r.sequence, behaviour, input: await replayInputOfTx(tx, r, g, behaviour), terminationType });
+    steps.push({salaryReferenceId:[...g].reverse().find(event=>event.eventType==='compensation.set')?.aggregateId??(g.find(event=>event.eventType==='employment.movement.recorded')?.payload as {salaryReferenceId?:string}|undefined)?.salaryReferenceId,fields:changedMovementFields(r,events), movementId: r.id, label, effectiveDate: when, sequence: r.sequence, behaviour, input: await replayInputOfTx(tx, r, g, behaviour), terminationType });
   }
   return steps.sort((a, b) => (a.effectiveDate === b.effectiveDate ? a.sequence - b.sequence : a.effectiveDate < b.effectiveDate ? -1 : 1));
 }
 
 /** Insert before later movements without letting the most recently written row win. */
-async function recordComparisonInEffectiveOrderTx(tx: Tx, ctx: SessionContext, input: CreateMovementInput, behaviour: string, captureGradeBefore?: boolean) {
+/** One set of ledger inputs plans the final payroll intervals before any inverse/replay writes. */
+async function withMovementRecalcPlanTx<T>(tx:Tx,ctx:SessionContext,employmentId:string,movementId:string|null,input:CreateMovementInput|null,work:()=>Promise<T>){
+ const {events,rows,statusOf,resolvedTypes}=await projectRows(tx,ctx.tenantId,employmentId);
+ const original=movementId?rows.find(row=>row.id===movementId):null;
+ const decisions=rows.filter(row=>statusOf(row)==='applied'&&!row.reversed).map(row=>({id:row.id,date:row.effectiveDate,fields:changedMovementFields(row,events)}));
+ let fields=input?MOVEMENT_PENDING_COMPARISON_FIELDS.filter(field=>input[field as keyof CreateMovementInput]!==undefined):[];
+ let sourceFields=original?changedMovementFields(original,events):[];
+ if(original&&input&&original.effectiveDate===input.effectiveDate){
+  const group=groupEventsOf(events,original),type=resolvedTypes.get(recordedMovementKind(original,group));
+  if(type&&isComparisonKind(type.behaviourKind)){
+   const prior=await replayInputOfTx(tx,original,group,type.behaviourKind);
+   const differs=(field:string)=>{const next=input[field as keyof CreateMovementInput];return next!==undefined&&String(next??'')!==String(prior[field as keyof CreateMovementInput]??'');};
+   fields=fields.filter(differs);sourceFields=sourceFields.filter(differs);
+  }
+ }else if(!original&&input&&isComparisonKind(input.kind)){
+  const delta=movementDeltas(input,await currentStateTx(tx,employmentId,input.effectiveDate));
+  fields=fields.filter(field=>delta.fields.includes(field));
+ }
+ const changes=[];
+ if(original&&statusOf(original)==='applied')changes.push({date:original.effectiveDate,fields:sourceFields});
+ if(input&&input.effectiveDate<=todayInKualaLumpur())changes.push({date:input.effectiveDate,fields:[...new Set([...sourceFields,...fields])]});
+ // Lifecycle dates can change employment coverage even when their comparison field list is empty.
+ if(input&&['resignation','termination','groupJoinDateCorrection','joinDateChange'].includes(input.kind))changes.push({date:input.effectiveDate,fields:['employmentCoverage']});
+ const windows=movementPayrollWindows(decisions,changes,movementId??undefined);
+ return withMovementPayrollWindowsTx(tx,ctx,employmentId,windows,work);
+}
+
+async function recordComparisonInEffectiveOrderTx(tx:Tx,ctx:SessionContext,input:CreateMovementInput,behaviour:string,captureGradeBefore?:boolean){
+ return withMovementRecalcPlanTx(tx,ctx,input.employmentId,null,input,()=>recordComparisonInEffectiveOrderBodyTx(tx,ctx,input,behaviour,captureGradeBefore));
+}
+async function recordComparisonInEffectiveOrderBodyTx(tx: Tx, ctx: SessionContext, input: CreateMovementInput, behaviour: string, captureGradeBefore?: boolean) {
   assertMovementAdmin(ctx, 'record a backdated movement');
   await lockEmploymentStatutoryOwnerTx(tx, input.employmentId);
   const { emp, events, rows, statusOf, resolvedTypes } = await projectRows(tx, ctx.tenantId, input.employmentId);
@@ -4170,6 +4219,16 @@ async function replayInputOfTx(tx: Tx, r: ProjectedRow, g: RawEvent[], behaviour
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const p = (e.payload ?? {}) as Record<string, any>;
     switch (e.eventType) {
+      case 'employment.movement.recorded':
+        if(p.retainedDecision===true){
+          for(const field of MOVEMENT_PENDING_COMPARISON_FIELDS)if(Object.hasOwn(p.input??{},field))input[field]=(p.input??{})[field];
+          if(typeof p.salaryReferenceId==='string'){
+            const [terms]=await tx.select({basicSalary:compensation.basicSalary,currency:compensation.currency,payMode:compensation.payMode,paymentTerm:compensation.paymentTerm}).from(compensation).where(eq(compensation.id,p.salaryReferenceId));
+            if(!terms)throw new MovementNotCorrectableError('The retained salary decision has no readable source record.');
+            input.basicSalary=Number(terms.basicSalary);input.currency=terms.currency;input.payMode=terms.payMode;input.paymentTerm=terms.paymentTerm;
+          }
+        }
+        break;
       case 'employment.company.transferred':
         input.companyId=p.after?.companyId??null;
         break;
@@ -4230,7 +4289,7 @@ async function replayInputOfTx(tx: Tx, r: ProjectedRow, g: RawEvent[], behaviour
 }
 
 /** Re-apply the stepped-back movements, oldest first, through the writers that recorded them. A later
- *  movement that would no longer change anything, or that a writer now refuses, aborts the correction. */
+ *  redundant decision remains recorded with its original targets; an invalid later write aborts the correction. */
 async function replayLaterMovementsTx(tx: Tx, ctx: SessionContext, employmentId: string, steps: ReplayStep[]) {
   for (const step of steps) {
     const input = { ...step.input, employmentId };
@@ -4249,9 +4308,12 @@ async function replayLaterMovementsTx(tx: Tx, ctx: SessionContext, employmentId:
       else await applyComparisonMovementTx(tx, ctx, input, step.behaviour as ComparisonKind);
     } catch (e) {
       if (e instanceof MovementNoChangeError) {
-        throw new MovementNotCorrectableError(
-          `After this correction, the later ${step.label} event on ${step.effectiveDate} would no longer change anything. Roll it back first, then correct this event.`,
-        );
+        // Preserve the deliberate later decision, even when its target now equals the inherited value.
+        // Its source reference remains available if another older correction makes that target relevant again.
+        const {basicSalary:_amount,...retainedInput}=input;
+        await appendEvent(tx,{tenantId:ctx.tenantId,aggregateType:'employment',aggregateId:employmentId,eventType:'employment.movement.recorded',actor:actorOf(ctx),subjectEmploymentId:employmentId,
+          payload:{type:input.typeCode??input.kind,effectiveDate:input.effectiveDate,endDate:input.endDate??null,remarks:input.remarks??null,retainedDecision:true,input:retainedInput,salaryReferenceId:step.salaryReferenceId??null,fields:step.fields??[],replayOf:step.movementId}});
+        continue;
       }
       if (e instanceof Error && !isDatabaseError(e)) {
         throw new MovementNotCorrectableError(`The later ${step.label} event on ${step.effectiveDate} conflicts with this correction: ${e.message}`);
@@ -4627,6 +4689,9 @@ export async function reverseMovementForImportTx(tx: Tx, ctx: SessionContext, em
  * Internal inverses require no Delete grant; the two public delete doors check it before entering here.
  * Every source event remains in the ledger and each replay links back to the selected event. */
 async function deleteMovementInEffectiveOrderTx(tx:Tx,ctx:SessionContext,employmentId:string,movementId:string,reason:string){
+ return withMovementRecalcPlanTx(tx,ctx,employmentId,movementId,null,()=>deleteMovementInEffectiveOrderBodyTx(tx,ctx,employmentId,movementId,reason));
+}
+async function deleteMovementInEffectiveOrderBodyTx(tx:Tx,ctx:SessionContext,employmentId:string,movementId:string,reason:string){
  const {events,rows,statusOf,resolvedTypes}=await projectRows(tx,ctx.tenantId,employmentId);
  const row=rows.find(item=>item.id===movementId);
  if(!row)throw new MovementNotCorrectableError('Movement event not found.');
@@ -4709,7 +4774,7 @@ async function reversalGuardTx(tx: Tx, ctx: SessionContext, employmentId: string
   // service refuses it as well as the UI hiding it, so the affordance and the rule cannot drift apart
   // (the same posture as the payroll-lock guard below).
   const group = groupEventsOf(events,row);
-  const cancellableConflict=row.scheduled&&movementDateConflicts(rows,events).has(row.id)&&!group.some(event=>STATE_CHANGING_EVENT_TYPES.has(event.eventType));
+  const cancellableConflict=row.scheduled&&movementDateConflicts(rows,events).has(row.id)&&!group.some(event=>eventChangesMovementState(event));
   if (statusOf(row) === 'superseded'&&!cancellableConflict) {
     throw new MovementNotCorrectableError(
       'This movement was overtaken by a later one and never took effect, so there is nothing to roll back.',
@@ -4774,7 +4839,7 @@ async function reverseMovementTx(
   const { events, row, group, closedPayrollPeriods:sourceClosedPeriods } = await reversalGuardTx(tx, ctx, employmentId, movementId);
   const closedPayrollPeriods = [...new Set([...sourceClosedPeriods,...(opts?.additionalClosedPayrollPeriods ?? [])])].sort();
   if(closedPayrollPeriods.length && !hasClosedPayrollCorrectionAuthorityTx(tx,employmentId)) throw new MovementClosedPayrollAcknowledgementError(closedPayrollPeriods);
-  const snapshotCount = group.some(event => STATE_CHANGING_EVENT_TYPES.has(event.eventType))
+  const snapshotCount = group.some(event => eventChangesMovementState(event))
     ? await preserveClosedPayrollDocumentsTx(tx, employmentId) : null;
   // Undo the newest leg first: within one movement a later leg can sit on top of an earlier one.
   const tag: MovementTag = { type: row.kind, groupId: randomUUID(), secondary: true };
@@ -5228,7 +5293,7 @@ export async function editMovementEventTx(outerTx: Tx, ctx: SessionContext, rawE
       await replayLaterMovementsTx(tx, ctx, p.employmentId, replay);
       return corrected;
     };
-    const result = await withClosedPayrollCorrectionAuthorityTx(tx, p.employmentId, correctAndReplay);
+    const result = await withMovementRecalcPlanTx(tx,ctx,p.employmentId,p.movementId,p,()=>withClosedPayrollCorrectionAuthorityTx(tx, p.employmentId, correctAndReplay));
     return {...result,behaviourKind:p.kind,previousBehaviourKind,effectiveDate:p.effectiveDate,replayed:replay.length};
   })(outerTx);
 }

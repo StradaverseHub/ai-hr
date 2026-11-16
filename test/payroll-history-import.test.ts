@@ -397,11 +397,11 @@ describe('import payroll history — the long (seven-column) contract', () => {
       .where(eq(schema.employment.employeeCode, 'A1001'));
     await owner.db
       .update(schema.employment)
-      .set({ terminatedOn: '2023-12-31' })
+      .set({ terminatedOn: '2024-01-31' })
       .where(eq(schema.employment.id, emp.id));
     const after = await validatePayrollHistoryImport(a, {
       companyId: b.companyId,
-      records: file(...completeMonth('A1001', '202401')),
+      records: file(...completeMonth('A1001', '202402')),
     });
     expect(after.months[0].ok).toBe(true);
     expect(after.issues.some(i=>i.type==='Invalid Employee No')).toBe(false);

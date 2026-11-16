@@ -1,10 +1,11 @@
+import {correctHireDetails,hireCorrectionViewTx} from './hire-correction';
 import {and,eq,isNull} from 'drizzle-orm';
 import {withTenant,type SessionContext} from '../db/client';
 import {compensation,employment} from '../db/schema';
 import {appendEvent,actorOf} from '../db/events';
-import {setCompensation} from './comp';
+import {amendDatedCompensationTx} from './comp';
 import {setEmploymentPaymentMethod} from './org';
-import {createMovementEventTx,editMovementEventTx,movementHistoryTx,movementLedgerMarkerTx,movementRowsAfterSequenceTx,salaryStartAfterClosedPayrollTx} from './movement';
+import {createMovementEventTx,editMovementEventTx,movementHistoryTx,movementLedgerMarkerTx,movementRowsAfterSequenceTx} from './movement';
 import {resolveMovementEventTypeTx} from './movement-type';
 import {isComparisonKind} from './movement-kinds';
 import {assertWorkforceEmploymentTx} from './workforce-access';
@@ -66,15 +67,22 @@ export function recordPersonnelSalary(ctx:SessionContext,raw:PersonnelSalaryReco
    const selected=latest.find(row=>row.id===p.movementId);
    if(!selected)throw new Error('The latest applicable event changed. Reload and select the event again.');
    if(selected.effectiveDate!==p.effectiveDate)throw new Error(`This event is effective on ${selected.effectiveDate}. Keep that date, or choose a new event or salary amendment for another date.`);
+   if(selected.kind==='hired')return withProtectedMovementHistoryTx(tx,ctx,p.employmentId,async()=>{
+    const original=await hireCorrectionViewTx(tx,ctx,p.employmentId);
+    const amountChanged=!original.salaryAtHire||Number(original.salaryAtHire.amount)!==p.basicSalary;
+    const result=amountChanged?await correctHireDetails(ctx,{employmentId:p.employmentId,changes:{},basicSalary:p.basicSalary,reason:p.reason},tx):null;
+    const method=p.paymentMethod!==undefined?await setEmploymentPaymentMethod(ctx,{employmentId:p.employmentId,paymentMethod:p.paymentMethod,effectiveDate:p.effectiveDate,reason:p.reason},tx):null;
+    if(!result&&!method?.changed)throw new Error('Nothing to correct in the selected hire salary.');
+    return {employmentId:p.employmentId,choice:p.choice,result};
+   },message=>new Error(message));
    const type=await resolveMovementEventTypeTx(tx,ctx.tenantId,selected.correctionKind??selected.kind);
    if(!selected.canEdit||!type||!isComparisonKind(type.behaviourKind))throw new Error('This event cannot maintain salary through its current workflow. Choose a new event or a salary amendment.');
    const result=await editMovementEventTx(tx,ctx,{...pay,kind:type.code,movementId:selected.id,effectiveDate:selected.effectiveDate,reason:p.reason,remarks:p.remarks??selected.remarks});
    return {employmentId:p.employmentId,choice:p.choice,result};
   }
   return withProtectedMovementHistoryTx(tx,ctx,p.employmentId,async()=>{
-   const payrollEffectiveDate=await salaryStartAfterClosedPayrollTx(tx,p.employmentId,p.effectiveDate);
-   if(current&&payrollEffectiveDate<current.validFrom)throw new Error('This amendment predates the latest salary record. Correct the historical event, or choose a later Effective Date.');
-   const terms=await setCompensation(ctx,{employmentId:p.employmentId,basicSalary:p.basicSalary,effectiveFrom:payrollEffectiveDate,currency:p.currency,payMode:p.payMode,paymentTerm:p.paymentTerm,rateAmount:p.rateAmount,remarks:p.remarks||p.reason},tx);
+   const terms=await amendDatedCompensationTx(tx,ctx,{employmentId:p.employmentId,basicSalary:p.basicSalary,effectiveFrom:p.effectiveDate,currency:p.currency,payMode:p.payMode,paymentTerm:p.paymentTerm,rateAmount:p.rateAmount,remarks:p.remarks,reason:p.reason!});
+   const payrollEffectiveDate=terms.payrollFrom;
    if(p.paymentMethod!==undefined)await setEmploymentPaymentMethod(ctx,{employmentId:p.employmentId,paymentMethod:p.paymentMethod,effectiveDate:p.effectiveDate,reason:p.reason},tx);
    await appendEvent(tx,{tenantId:ctx.tenantId,aggregateType:'employment',aggregateId:p.employmentId,eventType:'employment.salary.amended',actor:actorOf(ctx),subjectEmploymentId:p.employmentId,
     payload:{effectiveDate:p.effectiveDate,payrollEffectiveDate,compensationId:terms.compensationId,sourceCompensationId:p.sourceCompensationId??null,reason:p.reason?.trim(),movementCreated:false}});

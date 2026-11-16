@@ -1708,6 +1708,7 @@
         },
         "detail": {
           "eventInformation": "Maklumat Acara",
+          "notRecorded": "Tidak direkodkan dalam sejarah peristiwa ini",
           "scheduledValues": "Nilai dijadualkan / dicadangkan",
           "scheduledValuesNote": "Ini ialah nilai sasaran yang disimpan untuk peristiwa berjadual ini. Nilai ini belum digunakan. Hanya medan yang dihantar secara nyata ditunjukkan.",
           "beforeChanges": "Sebelum Perubahan",

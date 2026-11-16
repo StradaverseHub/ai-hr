@@ -1,3 +1,4 @@
+import {MOVEMENT_INFORMATION_FIELDS} from '../lib/movement-information-evidence';
 import {markWorkforcePayrollInputsChangedTx} from './workforce-payroll-invalidation';
 import {lockEmploymentStatutoryOwnerTx} from './employment-statutory-owner-lock';
 export {lockEmploymentStatutoryOwnerTx} from './employment-statutory-owner-lock';
@@ -518,6 +519,7 @@ export async function hireEmployee(ctx: SessionContext, p: HireParams,
       }
     }
 
+    const [hireInformation]=await tx.select().from(employment).where(eq(employment.id,emp.id));
     await appendEvent(tx, {
       tenantId: ctx.tenantId,
       aggregateType: 'employment',
@@ -528,6 +530,7 @@ export async function hireEmployee(ctx: SessionContext, p: HireParams,
       // Backward-compat: the original keys (personId, companyId, departmentId, hiredOn) are PRESERVED
       // unrenamed (CP22/CP22A worklist + audit view read them). The hiring enhancement only ADDS keys.
       payload: {
+        employmentInformation:Object.fromEntries(MOVEMENT_INFORMATION_FIELDS.map(field=>[field,hireInformation[field]??null])),
         personId,
         companyId: p.companyId,
         departmentId: p.departmentId,

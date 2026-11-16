@@ -1,3 +1,10 @@
+# Bounded Movement payroll windows — 17 November 2026 MYT (unapplied candidate)
+
+Reserved 5778, idx 5178, when 1793330005478. SHA256 `789c93999e156c08f6cfac5a79f5f58071cd1f834778454238146809e1b55106`.
+The same limited invalidation owner now accepts a bounded union of intervals in one set-wise update.
+The existing date-window signature delegates to it; all Access, input-lock and maintenance proofs remain.
+No financial computation or closed-run writes. Admission checks still required.
+
 # Closed Movement payroll metadata — 17 November 2026 MYT (unapplied candidate)
 
 Reserved 5777, idx 5177, when 1793330005477. SHA256 `bb1ed221d194021c059392f21ad7c01c99cf9c0b05f6698b4ffff6579c2707f4`.

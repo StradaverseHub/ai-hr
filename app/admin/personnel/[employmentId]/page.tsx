@@ -1,3 +1,5 @@
+import {MOVEMENT_INFORMATION_FIELDS} from '@/lib/movement-information-evidence';
+import {personnelMaintenanceCompanyIds} from '@/core/workforce-access';
 import {movementTypeControls} from '@/core/movement-type-controls';
 import {SalaryRecordingChoices,type SalaryRecordingOptions} from '@/components/salary-recording-choices';
 import {latestApplicableMovementCandidates} from '@/lib/movement-latest-applicable';
@@ -637,9 +639,13 @@ export default async function EmployeePage({
           throw e;
         })
       : null;
+  const hireHeaderOptions=hireCorrection?await (async()=>{
+    const [managed,permitted,grades]=await Promise.all([adminCompanies(s),personnelMaintenanceCompanyIds(s),listJobGrades(s)]);
+    const allowed=new Set(permitted);return {companies:managed.filter(company=>allowed.has(company.id)),grades};
+  })():null;
   const hireCorrectionOptions = hireCorrection
     ? await (async () => {
-        const scope = [hireCorrection.companyId];
+        const scope = [...new Set([hireCorrection.companyId,...(hireHeaderOptions?.companies.map(company=>company.id)??[])])];
         const [deps, poss, bus, ccs, locs] = await Promise.all([
           listDepartments(s, { companyIds: scope }),
           listPositions(s, { companyIds: scope }),
@@ -2533,7 +2539,7 @@ export default async function EmployeePage({
       .filter(type=>!(typeControls(type.code).rules??[]).some(rule=>(rule.mustChange&&!['basicSalary','paymentMethod','currency','payMode','paymentTerm'].includes(rule.field))||(rule.document==='required'&&['basicSalary','paymentMethod'].includes(rule.field))||(['basicSalary','paymentMethod'].includes(rule.field)&&(!rule.included||!rule.editable))))
       .map(type=>({code:type.code,label:movementKindLabelOf(type.code,type.label,t)})),
     latest:latestApplicableMovementCandidates(movements,today).map(row=>({id:row.id,label:movementKindLabelOf(row.kind,movementTypeByCode.get(row.kind)?.label,t),effectiveDate:row.effectiveDate,
-      canUpdate:row.canEdit&&isComparisonKind(movementTypeByCode.get(row.correctionKind??row.kind)?.behaviourKind??row.kind),paymentMethod:methodAtSalaryDate(row.effectiveDate)})),
+      canUpdate:row.kind==='hired'||row.canEdit&&isComparisonKind(movementTypeByCode.get(row.correctionKind??row.kind)?.behaviourKind??row.kind),paymentMethod:methodAtSalaryDate(row.effectiveDate)})),
     closedPeriods:closedPayrollPeriods,
   };
   const salaryRowViews: SalaryRowView[] = salaryRows.map((r) => ({
@@ -3391,8 +3397,6 @@ export default async function EmployeePage({
   const movementComparisonRows = movementDetailData
     ? [
         { key: 'company', label: t('movement.field.company'), before: movementDetailData.before?.company, after: movementDetailData.after.company },
-        ...(movementDetailData.after.groupJoinDate!==undefined?[{key:'groupJoinDate',label:t('employmentInfo.groupJoinDate'),before:movementDetailData.before?.groupJoinDate,after:formatDmy(movementDetailData.after.groupJoinDate)}]:[]),
-        ...(movementDetailData.after.joinDate!==undefined?[{key:'joinDate',label:t('employmentInfo.joinDate'),before:movementDetailData.before?.joinDate,after:formatDmy(movementDetailData.after.joinDate)}]:[]),
         { key: 'businessUnit', label: t('movement.field.businessUnit'), before: movementDetailData.before?.businessUnit, after: movementDetailData.after.businessUnit },
         { key: 'department', label: t('movement.field.department'), before: movementDetailData.before?.department, after: movementDetailData.after.department },
         { key: 'position', label: t('movement.field.position'), before: movementDetailData.before?.position, after: movementDetailData.after.position },
@@ -3402,29 +3406,23 @@ export default async function EmployeePage({
         {key:'paymentMethod',label:t('paymentMethod'),before:movementDetailData.before?.paymentMethod?t(`paymentMethod_${movementDetailData.before.paymentMethod}` as 'paymentMethod_cash'):null,after:movementDetailData.after.paymentMethod?t(`paymentMethod_${movementDetailData.after.paymentMethod}` as 'paymentMethod_cash'):null},
         { key: 'salary', label: t('movement.field.salary'), before: movementDetailData.before?.salary, after: movementDetailData.after.salary },
         ...(movementDetailData.after.salaryPayrollFrom?[{key:'salaryPayrollFrom',label:t('salaryPayrollFrom'),before:null,after:formatDmy(movementDetailData.after.salaryPayrollFrom)}]:[]),
-        // 08913328 — the flat, non-dated columns THIS movement moved (Division … Category). They cannot be
-        // reconstructed as-of, so they appear only when the movement's own event recorded a before/after —
-        // never as today's value pretending to be part of a years-old change.
-        ...MOVEMENT_FLAT_FIELDS.flatMap((f) => {
-          const c = movementDetailData.flatChanges.find((x) => x.field === f);
-          return c ? [{ key: f, label: t(`movement.field.${f}` as 'movement.field.orgDivision'), before: c.before, after: c.after }] : [];
-        }),
-        ...MOVEMENT_EMPLOYMENT_PERIOD_FIELDS.flatMap(field => {
-          const change = movementDetailData.flatChanges.find(value => value.field === field);
-          if (!change) return [];
-          const display = (value: string | null) => value !== null && field.endsWith('Unit') && ['month', 'week', 'day'].includes(value)
-            ? t(`employmentInfo.unit_${value}` as 'employmentInfo.unit_month') : value;
-          return [{key: field, label: personnelLabel(MOVEMENT_FORM_IDS[field]), before: display(change.before), after: display(change.after)}];
-        }),
-        // 2260a06b — the contract period / internship end this movement set, from its own recorded diff.
-        ...([
-          ['confirmationDate', 'employment.employment_dates_and_service.confirmationdate'],
-          ['contractStartDate', 'employment.employment_dates_and_service.contractstartdate'],
-          ['contractEndDate', 'employment.employment_dates_and_service.contractenddate'],
-          ['internshipEndDate', 'employment.draft_only_employment_fields.internshipenddate'],
-        ] as const).flatMap(([f, id]) => {
-          const c = movementDetailData.flatChanges.find((x) => x.field === f);
-          return c ? [{ key: f, label: personnelLabel(id), before: c.before ? formatDmy(c.before) : null, after: c.after ? formatDmy(c.after) : null }] : [];
+        ...MOVEMENT_INFORMATION_FIELDS.map(field=>{
+          const ids:Partial<Record<typeof field,string>>={hiredOn:'employment.employment_dates_and_service.groupjoindate',joinDate:'employment.employment_dates_and_service.joindate',extendedConfirmationDate:'employment.employment_dates_and_service.extendedconfirmationdate',contractStartDate:'employment.employment_dates_and_service.contractstartdate',contractEndDate:'employment.employment_dates_and_service.contractenddate',internshipEndDate:'employment.draft_only_employment_fields.internshipenddate',tenderResignationDate:'employment.employment_dates_and_service.tenderresignationdate',resignationDate:'employment.employment_dates_and_service.resignationdate',lastWorkingDate:'employment.employment_dates_and_service.lastworkingdate'};
+          const label=field==='extendedConfirmationDate'?tPersonnel('people.import.movement.currentFields.extendedConfirmationDate'):field==='hiredOn'?t('employmentInfo.groupJoinDate'):field==='joinDate'?t('employmentInfo.joinDate'):ids[field]?personnelLabel(ids[field]!):field in MOVEMENT_FORM_IDS?personnelLabel(MOVEMENT_FORM_IDS[field as keyof typeof MOVEMENT_FORM_IDS]):t(`movement.field.${field}` as 'movement.field.orgDivision');
+          const diff=movementDetailData.flatChanges.find(change=>change.field===field);
+          const display=(side:'before'|'after')=>{
+            const snapshot=side==='before'?movementDetailData.before:movementDetailData.after;
+            if(!snapshot)return null;
+            const recorded=snapshot.informationEvidence?.[field];
+            const known=!!diff||recorded?.known;
+            if(!known)return t('movement.detail.notRecorded');
+            const value=diff?diff[side]:recorded?.value;
+            if(value===null||value===undefined)return null;
+            if(field.endsWith('Date')||field==='hiredOn')return formatDmy(value);
+            if(field.endsWith('Unit')&&['month','week','day'].includes(value))return t(`employmentInfo.unit_${value}` as 'employmentInfo.unit_month');
+            return value;
+          };
+          return {key:field,label,before:display('before'),after:display('after')};
         }),
       ]
     : [];
@@ -3832,9 +3830,16 @@ export default async function EmployeePage({
                 employmentId={employmentId}
                 heading={`${movementKindLabel('hired')} · ${formatDmy(hireCorrection.hiredOn)}`}
                 fields={fields}
+                information={[
+                  {field:'companyId',label:t('movement.field.company'),value:hireCorrection.companyId,display:hireCorrection.companyName??'—',type:'select',required:true,options:hireHeaderOptions?.companies},
+                  {field:'hiredOn',label:t('employmentInfo.groupJoinDate'),value:hireCorrection.groupJoinDate,display:formatDmy(hireCorrection.groupJoinDate),type:'date',required:true},
+                  {field:'joinDate',label:t('employmentInfo.joinDate'),value:hireCorrection.joinDate,display:formatDmy(hireCorrection.joinDate),type:'date'},
+                  {field:'gradeId',label:t('movement.field.grade'),value:hireCorrection.gradeId??null,display:hireCorrection.gradeName??'—',type:'select',options:hireHeaderOptions?.grades.map(grade=>({id:grade.id,name:grade.name}))},
+                  {field:'employmentType',label:t('movement.field.employmentType'),value:hireCorrection.employmentType,display:movementEmpTypeLabel(hireCorrection.employmentType)??'—',type:'select',required:true,options:['full_time','part_time','contract','intern'].map(value=>({id:value,name:movementEmpTypeLabel(value)??value}))},
+                ]}
                 salaryAtHire={hireCorrection.salaryAtHire}
                 endDate={hireCorrection.endDate ? { field: hireCorrection.endDate.field, value: hireCorrection.endDate.value } : undefined}
-                readOnly={readOnly}
+                readOnly={readOnly.filter(row=>row.key==='effectiveFrom')}
                 cancelHref={historyHref}
                 pageContext={movementPage?movementContext:undefined}
               /></HireCorrectionModes>

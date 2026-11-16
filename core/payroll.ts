@@ -1,3 +1,4 @@
+import {movementPayrollInvalidationDeferredTx} from './workforce-payroll-invalidation';
 import {employmentPaymentMethodOnSql} from './employment-payment-method';
 import {personnelGroupingReadinessTx} from './personnel-quality';
 import {payrollEmploymentPredicate,outstandingPaymentPredicate,payrollCompensationEffectiveOn,payrollEmploymentEnd,payrollRunContextsTx,type PayrollEligibilityRun} from './payroll-employment-eligibility';
@@ -940,10 +941,10 @@ export async function markRunsAffectedByEmploymentChangeTx(
   ctx: SessionContext,
   p: { employmentIds?: string[]; personId?: string; category: RecalcChangeCategory; from: string | null; until?:string|null },
 ): Promise<{ batchId: string; employmentIds: string[] }[]> {
-  const ids = asIdArray(p.employmentIds ?? []);
+  const ids = asIdArray(p.employmentIds ?? []).filter(id=>!movementPayrollInvalidationDeferredTx(tx,id));
   if (p.personId) {
     const rows = await tx.select({ id: employment.id }).from(employment).where(eq(employment.personId, p.personId));
-    ids.push(...rows.map((r) => r.id).filter((id) => !ids.includes(id)));
+    ids.push(...rows.map((r) => r.id).filter((id) => !ids.includes(id)&&!movementPayrollInvalidationDeferredTx(tx,id)));
   }
   if (ids.length === 0) return [];
   const fromPeriod = p.from && /^\d{4}-\d{2}/.test(p.from) ? p.from.slice(0, 7) : null;

@@ -431,7 +431,7 @@ describe('correcting and cancelling', () => {
     expect((await movementCurrentState(adminCtx(b), employmentId,{asOf:FUTURE})).departmentId).toBe(b.deptA);
     expect((await sweepDueMovements(adminCtx(b), { today: FUTURE })).applied).toBe(0);
     expect((await sweepDueMovements(adminCtx(b), { today: later })).applied).toBe(1);
-    expect((await movementCurrentState(adminCtx(b), employmentId,{asOf:FUTURE})).departmentId).toBe(b.deptB);
+    expect((await movementCurrentState(adminCtx(b), employmentId,{asOf:later})).departmentId).toBe(b.deptB);
   });
 
   /**

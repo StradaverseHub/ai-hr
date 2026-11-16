@@ -31,6 +31,13 @@ describe('salary recording choices share deterministic owners',()=>{
   expect((await movementHistory(ctx,id)).find(row=>row.id===selected.id)?.reversed).toMatchObject({corrected:true});
   expect(await movementCurrentState(ctx,id)).toMatchObject({basicSalary:'3600.00',paymentMethod:'cheque',departmentId:b.deptB});
  });
+ it('updates the Hired event when it is the latest applicable decision, atomically with its dated payment method',async()=>{
+  const ctx=adminCtx(b),hired=(await movementHistory(ctx,id)).find(row=>row.kind==='hired')!;
+  await recordPersonnelSalary(ctx,{employmentId:id,choice:'updateLatest',movementId:hired.id,effectiveDate:hired.effectiveDate,basicSalary:3250,paymentMethod:'cash',reason:'Fictional original hire correction from Salary History'});
+  expect((await movementHistory(ctx,id)).filter(row=>row.kind==='hired')).toHaveLength(1);
+  expect((await movementDetail(ctx,id,hired.id))?.after).toMatchObject({salaryAmount:'3250.00',paymentMethod:'cash'});
+  expect(await movementCurrentState(ctx,id)).toMatchObject({basicSalary:'3250.00',paymentMethod:'cash'});
+ });
  it('records an amendment with audit evidence and no new Employment History event',async()=>{
   const ctx=adminCtx(b),before=await movementHistory(ctx,id);
   await recordPersonnelSalary(ctx,{employmentId:id,choice:'amendment',effectiveDate:'2026-02-01',basicSalary:3400,paymentMethod:'cash',reason:'Fictional information amendment'});
@@ -40,6 +47,16 @@ describe('salary recording choices share deterministic owners',()=>{
   expect(audit).toEqual([{payload:expect.objectContaining({effectiveDate:'2026-02-01',movementCreated:false,reason:'Fictional information amendment',compensationId:expect.any(String)})}]);
   expect(audit[0].payload).not.toHaveProperty('basicSalary');
   expect(audit[0].payload).not.toHaveProperty('amount');
+ });
+ it('amends an earlier recorded interval while retaining the later salary and Employment History event identities',async()=>{
+  const ctx=adminCtx(b);
+  await createMovementEvent(ctx,{employmentId:id,kind:'increment',effectiveDate:'2026-03-01',basicSalary:4000});
+  const events=(await movementHistory(ctx,id)).map(row=>row.id);
+  await recordPersonnelSalary(ctx,{employmentId:id,choice:'amendment',effectiveDate:'2026-02-01',basicSalary:3400,paymentMethod:'cash',reason:'Fictional earlier salary amendment'});
+  expect((await movementHistory(ctx,id)).map(row=>row.id)).toEqual(events);
+  expect(await movementCurrentState(ctx,id)).toMatchObject({basicSalary:'4000.00'});
+  const rows=await owner.db.select({from:s.compensation.validFrom,to:s.compensation.validTo,amount:s.compensation.basicSalary,superseded:s.compensation.supersededAt}).from(s.compensation).orderBy(s.compensation.validFrom);
+  expect(rows.filter(row=>!row.superseded).map(({superseded,...row})=>row)).toEqual([{from:'2026-01-01',to:'2026-02-01',amount:'3000.00'},{from:'2026-02-01',to:'2026-03-01',amount:'3400.00'},{from:'2026-03-01',to:null,amount:'4000.00'}]);
  });
  it('rolls salary and audit back when the selected bank-transfer method is unpayable',async()=>{
   const ctx=adminCtx(b),before=await owner.db.select().from(s.compensation).where(eq(s.compensation.employmentId,id)).orderBy(s.compensation.id);

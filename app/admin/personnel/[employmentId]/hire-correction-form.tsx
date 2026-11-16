@@ -43,6 +43,8 @@ export type HireCorrectionFormField = {
   reachesCurrent: boolean;
 };
 
+export type HireInformationControl={field:'companyId'|'hiredOn'|'joinDate'|'gradeId'|'employmentType';label:string;value:string|null;display:string;type:'date'|'select';required?:boolean;options?:HireCorrectionOption[]};
+
 export type HireCorrectionReadOnlyRow = {
   key: string;
   label: string;
@@ -63,7 +65,8 @@ export function HireCorrectionForm({
   heading,
   fields,
   salaryAtHire,
-  endDate,
+  information=[],
+  endDate:savedEndDate,
   readOnly,
   cancelHref,
   pageContext,
@@ -73,13 +76,17 @@ export function HireCorrectionForm({
   heading: string;
   fields: HireCorrectionFormField[];
   salaryAtHire?: { amount: string; currency: string };
+  information?:HireInformationControl[];
   /** 2260a06b — the current Employee Type's end date (Contract End Date / Internship End Date). */
   endDate?: { field: 'contractEndDate' | 'internshipEndDate'; value: string | null };
   readOnly: HireCorrectionReadOnlyRow[];
   cancelHref: string;
   pageContext?:import('@/lib/personnel-movement-navigation').MovementPageContext;
 }) {
-  const derivedOrganisation=useDerivedOrganisation({employmentId});
+  const [informationValues,setInformationValues]=useState<Record<string,string>>(()=>Object.fromEntries(information.map(field=>[field.field,field.value??''])));
+  const informationChanged=information.filter(field=>(informationValues[field.field]||null)!==field.value);
+  const informationLabel=(field:HireInformationControl,value:string|null)=>field.options?.find(option=>option.id===value)?.name??value??'—';
+  const derivedOrganisation=useDerivedOrganisation({employmentId,companyId:informationValues.companyId||undefined,asOf:informationValues.hiredOn||undefined});
   const editableFields=fields.filter(field=>field.field!=='businessUnitId'||derivedOrganisation.data?.status==='legacy'&&!derivedOrganisation.data.managed);
   const t = useTranslations('people.detail.movement.hireCorrection');
   const tRoot=useTranslations();
@@ -94,8 +101,13 @@ export function HireCorrectionForm({
   const [salary, setSalary] = useState(salaryAtHire?.amount ?? '');
   const salaryChanged = !!salaryAtHire && salary !== '' && Number(salary) !== Number(salaryAtHire.amount);
   const salaryLabel = tRoot('people.detail.movement.field.basicSalary');
+  const chosenType=informationValues.employmentType;
+  const endField=chosenType==='contract'?'contractEndDate':chosenType==='intern'?'internshipEndDate':chosenType?null:savedEndDate?.field;
+  const endDate=endField?{field:endField,value:savedEndDate?.field===endField?savedEndDate.value:null}:undefined;
   const endDateId = endDate?.field === 'contractEndDate' ? 'employment.employment_dates_and_service.contractenddate' : 'employment.draft_only_employment_fields.internshipenddate';
-  const [endValue, setEndValue] = useState(endDate?.value ?? '');
+  const [endValues,setEndValues]=useState<Record<string,string>>(()=>savedEndDate?{[savedEndDate.field]:savedEndDate.value??''}:{});
+  const endValue=endField?endValues[endField]??'':'';
+  const setEndValue=(value:string)=>{if(endField)setEndValues(previous=>({...previous,[endField]:value}));};
   const endChanged = !!endDate && (endValue || null) !== endDate.value;
   const endLabel = endDate ? personnelFormLabel(endDateId,(key,fallback)=>tRoot.has(key)?tRoot(key):fallback) : '';
 
@@ -119,7 +131,7 @@ export function HireCorrectionForm({
     return [...byRecord.entries()].map(([record, labels]) => t('recordFields', { record, fields: labels.join(', ') }));
   }, [changed, t]);
 
-  const canReview = (changed.length > 0 || salaryChanged || endChanged) && reason.trim().length > 0;
+  const canReview = (changed.length > 0 || informationChanged.length>0 || salaryChanged || endChanged) && reason.trim().length > 0;
 
   return (
     <form ref={formRef} aria-busy={pagePending} action={pageContext?pageAction:correctHireDetailsAction}>
@@ -127,6 +139,7 @@ export function HireCorrectionForm({
       {pageError&&<p role="alert" className="px-4 py-3 text-sm text-destructive">{pageError}</p>}
       <input type="hidden" name="employmentId" value={employmentId} />
       <input {...personnelCarry('employment_history.original_hire_details_and_corrections.reason')} value={reason} />
+      {informationChanged.map(field=><input key={field.field} type="hidden" name={'hireInformation_'+field.field} value={informationValues[field.field]??''}/>)}
       {/* ONLY the changed fields are posted. An untouched select carries no name. */}
       {changed.map((f) => (
         <input key={f.field} {...personnelWorkflowCarry(hireField(f.field),'hireCorrection')} value={values[f.field] ?? ''} />
@@ -138,10 +151,22 @@ export function HireCorrectionForm({
 
       <div className="hidden bg-muted/50 px-4 py-2 text-xs uppercase tracking-wide text-muted-foreground sm:grid sm:grid-cols-[13rem_minmax(0,1fr)_minmax(0,1fr)] sm:gap-4">
         <div className="font-medium">{t('colField')}</div>
-        <div className="font-medium">{t('colOriginal')}</div>
-        <div className="font-medium">{t('colCorrected')}</div>
+        <div className="font-medium">{tRoot('people.detail.movement.detail.beforeChanges')}</div>
+        <div className="font-medium">{tRoot('people.detail.movement.detail.afterChanges')}</div>
       </div>
 
+      <div className="divide-y divide-border">
+        {information.map(field=><div key={field.field} className="grid gap-2 px-4 py-3 sm:grid-cols-[13rem_minmax(0,1fr)_minmax(0,1fr)] sm:items-center sm:gap-4">
+          <label htmlFor={'hire-information-'+field.field} className="text-sm text-muted-foreground">{field.label}</label>
+          <div className="text-sm">{field.display}</div>
+          {field.type==='date'?<input id={'hire-information-'+field.field} type="date" value={informationValues[field.field]??''} required={field.required} onChange={event=>setInformationValues(previous=>({...previous,[field.field]:event.target.value}))} className={selectCls}/>:
+          <select id={'hire-information-'+field.field} value={informationValues[field.field]??''} required={field.required} onChange={event=>setInformationValues(previous=>({...previous,[field.field]:event.target.value}))} className={selectCls}>
+            {!field.required&&<option value="">{t('none')}</option>}
+            {field.value&&!field.options?.some(option=>option.id===field.value)&&<option value={field.value}>{field.display}</option>}
+            {field.options?.map(option=><option key={option.id} value={option.id}>{option.name}</option>)}
+          </select>}
+        </div>)}
+      </div>
       <DerivedOrganisationFields state={derivedOrganisation}/>
       <div className="divide-y divide-border">
         {editableFields.map((f) => {
@@ -161,7 +186,7 @@ export function HireCorrectionForm({
                   </span>
                 )}
               </div>
-              <div className="text-sm text-foreground">{f.originalLabel ?? '—'}</div>
+              <div className="text-sm text-foreground">{f.currentLabel ?? '—'}</div>
               <select {...personnelControl(hireField(f.field),'draft')}
                 aria-label={fieldLabel(f.field)}
                 value={value}
@@ -276,6 +301,7 @@ export function HireCorrectionForm({
               <p className="mt-1 text-sm font-medium text-foreground">{heading}</p>
               <AlertDialog.Description asChild>
                 <div className="mt-4 divide-y divide-border rounded-md border border-border text-sm">
+                  {informationChanged.map(field=><div key={field.field} className="px-3 py-2">{field.label} · {field.display} → {informationLabel(field,informationValues[field.field]||null)}</div>)}
                   {salaryChanged && salaryAtHire && <div className="px-3 py-2">
                     {salaryLabel} ({salaryAtHire.currency}) · {salaryAtHire.amount} → {salary}
                   </div>}

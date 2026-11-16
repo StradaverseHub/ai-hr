@@ -146,6 +146,16 @@ export class HireCorrectionReasonRequiredError extends Error {
  * Absent = untouched; present-but-blank = clear. The form posts only the fields HR actually changed, so an
  * untouched field cannot overwrite a value someone else corrected after the form was rendered.
  */
+/** Only explicitly changed original-hire header controls enter the private correction owner. */
+export function parseHireInformationForm(formData:FormData):HireEmploymentInformation{
+ const out:HireEmploymentInformation={};
+ for(const field of ['companyId','hiredOn','joinDate','gradeId','employmentType'] as const){
+  const value=formData.get('hireInformation_'+field);
+  if(value!==null){if(typeof value!=='string')throw new HireCorrectionError('An invalid hire information value was supplied.');out[field]=value.trim()||null;}
+ }
+ return out;
+}
+
 export function parseHireCorrectionForm(formData: FormData): HireCorrectionChanges {
   const out: HireCorrectionChanges = {};
   for (const f of HIRE_CORRECTION_FIELDS) {
@@ -816,6 +826,7 @@ export type CorrectHireDetailsResult = {
 export async function correctHireDetails(
   ctx: SessionContext,
   input: CorrectHireDetailsInput,
+  outerTx?:Tx,
 ): Promise<CorrectHireDetailsResult> {
   const roles = ctx.roles ?? [];
   if (!(roles.includes('super_admin') || roles.includes('hr_admin'))) {
@@ -833,7 +844,7 @@ export async function correctHireDetails(
   }
   if (requested.departmentId === null) throw new HireCorrectionError('Department is required.');
 
-  return withTenant(ctx, async (tx) => {
+  const run=async(tx:Tx)=>{
     if (input.basicSalary !== undefined || Object.keys(input.hireInformation??{}).length) await tx.execute(sql`select app.access_configuration_write_lock()`);
     else {
       // Reader/writer lock. Correcting one hire's organisation fields: shared Access, and the Workforce check joins
@@ -867,7 +878,7 @@ export async function correctHireDetails(
     if (!locked) throw new Error('Employment not found');
 
     const informationChange=input.hireInformation&&Object.keys(input.hireInformation).length
-      ? await correctHireEmploymentInformationTx(tx,ctx,{employmentId:input.employmentId,changes:input.hireInformation,reason},()=>loadPlanTx(tx,ctx.tenantId,input.employmentId)) : null;
+      ? await correctHireEmploymentInformationTx(tx,ctx,{employmentId:input.employmentId,changes:input.hireInformation,reason,endDates:input.endDates},()=>loadPlanTx(tx,ctx.tenantId,input.employmentId)) : null;
     const plan = await loadPlanTx(tx, ctx.tenantId, input.employmentId);
 
     if(await organisationManagedTx(tx))delete requested.businessUnitId;
@@ -888,7 +899,7 @@ export async function correctHireDetails(
     // back to the Draft's provisional date), so re-posting the shown value is not a change.
     let endDateChange: CorrectHireDetailsResult['endDateChange'] = null;
     const postedEnd = Object.entries(input.endDates ?? {}).filter(([f, v]) =>
-      (HIRE_CORRECTION_END_DATE_FIELDS as readonly string[]).includes(f) && v !== undefined);
+      (HIRE_CORRECTION_END_DATE_FIELDS as readonly string[]).includes(f) && v !== undefined && informationChange?.endDate?.field!==f);
     if (postedEnd.length) {
       const current = await currentEndDateTx(tx, input.employmentId);
       for (const [f, v] of postedEnd) {
@@ -1090,5 +1101,6 @@ export async function correctHireDetails(
       endDateChange,
     };
     },message=>new HireCorrectionError(message));
-  });
+  };
+  return outerTx?run(outerTx):withTenant(ctx,run);
 }

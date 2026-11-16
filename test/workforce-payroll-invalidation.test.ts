@@ -1,3 +1,5 @@
+import {setCompensation} from '../core/comp';
+import {createMovementEvent,editMovementEvent,movementHistory,reverseMovementEvent} from '../core/movement';
 import {afterAll,beforeAll,beforeEach,describe,expect,it} from 'vitest';
 import {eq,sql} from 'drizzle-orm';
 import * as s from '../db/schema';
@@ -34,6 +36,31 @@ describe('Workforce invalidates only affected open payroll inputs',()=>{
   expect(runs.find(row=>row.id===february.id)).toMatchObject({recalcEmploymentIds:[subject],needsRecalcAt:expect.any(Date)});
   for(const original of [january,march,closed])expect(runs.find(row=>row.id===original.id)).toEqual(original);
   expect(await owner.db.select().from(s.payslip).orderBy(s.payslip.id)).toEqual(beforeSlips);
+ });
+ it('corrects an earlier salary without flagging replayed later salary months or peer payslips',async()=>{
+  const ctx=adminCtx(b);
+  await setCompensation(ctx,{employmentId:subject,basicSalary:3000,effectiveFrom:'2026-01-01'});
+  await createMovementEvent(ctx,{employmentId:subject,kind:'increment',effectiveDate:'2026-02-01',basicSalary:3500});
+  const original=(await movementHistory(ctx,subject)).find(row=>row.kind==='increment')!;
+  await createMovementEvent(ctx,{employmentId:subject,kind:'increment',effectiveDate:'2026-03-01',basicSalary:4000});
+  const february=await batch('2026-02'),march=await batch('2026-03'),april=await batch('2026-04');
+  const slips=await owner.db.select().from(s.payslip).orderBy(s.payslip.id);
+  await editMovementEvent(ctx,{employmentId:subject,movementId:original.id,kind:'increment',effectiveDate:'2026-02-01',basicSalary:3600,reason:'Fictional correction bounded by March salary'});
+  const runs=await owner.db.select().from(s.payrollBatch);
+  expect(runs.find(run=>run.id===february.id)).toMatchObject({needsRecalcAt:expect.any(Date),recalcEmploymentIds:[subject]});
+  for(const before of [march,april])expect(runs.find(run=>run.id===before.id)).toEqual(before);
+  expect(await owner.db.select().from(s.payslip).orderBy(s.payslip.id)).toEqual(slips);
+ });
+ it('deletes an older placement decision without flagging the period after the next deliberate placement',async()=>{
+  const ctx=adminCtx(b);
+  await createMovementEvent(ctx,{employmentId:subject,kind:'transfer',effectiveDate:'2026-02-01',departmentId:b.deptB});
+  const original=(await movementHistory(ctx,subject)).find(row=>row.kind==='transfer')!;
+  await createMovementEvent(ctx,{employmentId:subject,kind:'transfer',effectiveDate:'2026-03-01',departmentId:b.deptA});
+  const february=await batch('2026-02'),march=await batch('2026-03');
+  await reverseMovementEvent(ctx,{employmentId:subject,movementId:original.id,reason:'Fictional older placement deletion'});
+  const runs=await owner.db.select().from(s.payrollBatch);
+  expect(runs.find(run=>run.id===february.id)?.recalcEmploymentIds).toEqual([subject]);
+  expect(runs.find(run=>run.id===march.id)).toEqual(march);
  });
  it('refuses a direct call without the input-lock witness and a foreign tenant without exposing payroll',async()=>{
   const run=await batch('2026-02');

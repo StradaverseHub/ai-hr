@@ -8,6 +8,7 @@ import {hasClosedPayrollCorrectionAuthorityTx} from './closed-payroll-correction
 import {assertWorkforceEmploymentTx} from './workforce-access';
 import {markWorkforcePayrollInputsChangedTx} from './workforce-payroll-invalidation';
 import {todayInKualaLumpur} from '../lib/hr-date';
+import {alignHistoryToGroupJoinDateTx} from './movement-history';
 import {isCalendarDate} from '../lib/calendar-date';
 
 export const HIRE_EMPLOYMENT_INFORMATION_FIELDS=['companyId','hiredOn','joinDate','gradeId','employmentType'] as const;
@@ -44,7 +45,7 @@ const effectiveDay=(event:Event)=>typeof tag(event).effectiveDate==='string'?Str
 /** This is the hire correction's private information leg. It reuses the same assignment lineage and
  * supersedes/reinserts in one batch, carrying corrected values only through proven inherited versions.
  * The existing Hired event and every finalized payroll row remain untouched. */
-export async function correctHireEmploymentInformationTx(tx:Tx,ctx:SessionContext,input:{employmentId:string;changes:HireEmploymentInformation;reason:string},readPlan:()=>Promise<Plan>){
+export async function correctHireEmploymentInformationTx(tx:Tx,ctx:SessionContext,input:{employmentId:string;changes:HireEmploymentInformation;reason:string;endDates?:Partial<Record<'contractEndDate'|'internshipEndDate',string|null>>},readPlan:()=>Promise<Plan>){
  if(!hasClosedPayrollCorrectionAuthorityTx(tx,input.employmentId))throw new Error('Hire information correction requires the canonical preservation owner.');
  await assertWorkforceEmploymentTx(tx,ctx,input.employmentId,'maintain');
  if(Object.keys(input.changes).some(field=>!(HIRE_EMPLOYMENT_INFORMATION_FIELDS as readonly string[]).includes(field)))throw new Error('An unsupported hire information field was supplied.');
@@ -71,10 +72,23 @@ export async function correctHireEmploymentInformationTx(tx:Tx,ctx:SessionContex
  }
  const joinDates=joinEvents.map(effectiveDay).filter(date=>date>=plan.anchor).sort();
  if(after.joinDate&&joinDates[0]&&after.joinDate>joinDates[0])throw new Error('The corrected original Join Date falls after a later joining decision. Resolve that date conflict first.');
- if(fields.includes('hiredOn')||fields.includes('joinDate')&&!joinDates.length){
-  await setEmploymentInfo(ctx,{employmentId:input.employmentId,...(fields.includes('hiredOn')?{hiredOn:after.hiredOn!}:{}),...(fields.includes('joinDate')&&!joinDates.length?{joinDate:after.joinDate}:{})},tx);
-  plan=await readPlan();
+ if(fields.includes('hiredOn')){
+  await setEmploymentInfo(ctx,{employmentId:input.employmentId,hiredOn:after.hiredOn!,movement:{type:'groupJoinDateCorrection',groupId:randomUUID(),secondary:true,effectiveDate:after.hiredOn!,remarks:input.reason}},tx);
+  await alignHistoryToGroupJoinDateTx(tx,ctx,input.employmentId,'groupJoinDateCorrection',message=>new Error(message));
  }
+ if(fields.includes('joinDate')&&!joinDates.length){
+  await setEmploymentInfo(ctx,{employmentId:input.employmentId,joinDate:after.joinDate,movement:{type:'joinDateChange',groupId:randomUUID(),secondary:true,effectiveDate:plan.anchor,remarks:input.reason}},tx);
+ }else if(fields.includes('hiredOn')&&joinDates.length&&master.joinDate===master.hiredOn){
+  // A later independently recorded Join Date remains authoritative even when it coincidentally
+  // equals the previous Group Join Date (the native group-date owner normally carries that equality).
+  await setEmploymentInfo(ctx,{employmentId:input.employmentId,joinDate:master.joinDate,movement:{type:'joinDateChange',groupId:randomUUID(),secondary:true,effectiveDate:plan.anchor,remarks:input.reason}},tx);
+ }
+ if(fields.includes('hiredOn')||fields.includes('joinDate'))plan=await readPlan();
+
+ const hireEndField=after.employmentType==='contract'?'contractEndDate':after.employmentType==='intern'?'internshipEndDate':null;
+ const previousEnd=hireEndField?[...plan.events].reverse().map(event=>object(object(event.payload).endDate)).find(end=>end.field===hireEndField):null;
+ const hireEnd=hireEndField?(input.endDates?.[hireEndField]!==undefined?input.endDates[hireEndField]:previousEnd?.after??master[hireEndField]):null;
+ if(fields.includes('employmentType')&&hireEndField&&(!hireEnd||typeof hireEnd!=='string'||!isCalendarDate(hireEnd)||hireEnd<plan.anchor))throw new Error('The corrected original Employment Type requires a valid end date on or after the original joining date.');
  const until:Partial<Record<HireEmploymentInformationField,string|null>>={...(fields.includes('joinDate')?{joinDate:joinDates[0]??null}:{})};
  const spans=new Map<'companyId'|'employmentType',number>();
  const boundaries:{field:string;assignmentId:string;date:string;reason:string}[]=[];
@@ -109,14 +123,15 @@ export async function correctHireEmploymentInformationTx(tx:Tx,ctx:SessionContex
  if(currentCompanyChanges||fields.includes('gradeId')&&!gradeDates.length)await tx.update(employment).set({
   ...(currentCompanyChanges?{companyId:after.companyId!,payrollPolicyId:null,costAllocation:null}:{}),
   ...(fields.includes('gradeId')&&!gradeDates.length?{gradeId:after.gradeId}:{})}).where(eq(employment.id,input.employmentId));
- const assignmentProof=replacements.map(row=>({supersededId:row.version.row.id,replacementId:row.id,validFrom:row.version.row.validFrom,validTo:row.version.row.validTo,companyId:row.fields.includes('companyId')?after.companyId:row.version.companyId,fields:row.fields}));
+ const endDate=fields.includes('employmentType')&&hireEndField&&until.employmentType?{field:hireEndField,before:previousEnd?.after??null,after:hireEnd,until:until.employmentType}:null;
+ const assignmentProof=replacements.map(row=>({supersededId:row.version.row.id,replacementId:row.id,insertedId:row.id,validFrom:row.version.row.validFrom,validTo:row.version.row.validTo,companyId:row.fields.includes('companyId')?after.companyId:row.version.companyId,fields:row.fields}));
  const eventId=await appendEvent(tx,{tenantId:ctx.tenantId,aggregateType:'employment',aggregateId:input.employmentId,eventType:'employment.information.corrected',actor:actorOf(ctx),subjectEmploymentId:input.employmentId,
-  payload:{source:'original-hire',method:'manual',hiredEventId:hired?.id??null,fromJoinDate:true,dated:true,effectiveOn:plan.anchor,before,after,fields,reason:input.reason,until,assignment:assignmentProof,boundaries,
+  payload:{source:'original-hire',method:'manual',hiredEventId:hired?.id??null,fromJoinDate:true,dated:true,effectiveOn:plan.anchor,before,after,fields,reason:input.reason,until,endDate,assignment:assignmentProof,inserted:assignmentProof.map(row=>row.replacementId),boundaries,
    labelsNotCurrent:fields.includes('gradeId')&&gradeDates.length?['gradeId']:[],
    ...(currentCompanyChanges?{clearedPayrollPolicyId:master.payrollPolicyId,clearedLegacyCostAllocation:master.costAllocation}:{}),
    companyAssignmentReviewRequired:fields.includes('companyId')}},{returnId:true});
  const ends=fields.map(field=>until[field]??null),end=ends.some(value=>value===null)?null:ends.filter((value):value is string=>!!value).sort().at(-1)??null;
  const from=[before.hiredOn!,after.hiredOn!,plan.anchor].sort()[0];
  if(end===null||end>from)await markWorkforcePayrollInputsChangedTx(tx,ctx,{employmentId:input.employmentId,from,until:end});
- return {eventId,before,after,fields,until,boundaries,assignment:assignmentProof,companyAssignmentReviewRequired:fields.includes('companyId')};
+ return {eventId,before,after,fields,until,endDate,boundaries,assignment:assignmentProof,companyAssignmentReviewRequired:fields.includes('companyId')};
 }

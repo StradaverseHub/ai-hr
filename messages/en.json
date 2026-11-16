@@ -1708,6 +1708,7 @@
         },
         "detail": {
           "eventInformation": "Event Information",
+          "notRecorded": "Not recorded in this event’s history",
           "scheduledValues": "Scheduled / proposed values",
           "scheduledValuesNote": "These are the saved targets for this scheduled event. They have not been applied. Only explicitly submitted fields are shown.",
           "beforeChanges": "Before Changes",
