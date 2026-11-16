@@ -1,8 +1,7 @@
 import {describe,expect,it} from 'vitest';
 import {automationEmailPreview,automationEmailSampleValues} from '../lib/automation-email-preview';
 import {CONTRACT_AUTOMATION_CATALOGUE as catalogue} from '../lib/automation/catalogues/contracts';
-import type {AutomationEmailTemplate} from '../lib/automation/email';
-import {fillAutomationMergeFields} from '../lib/automation/email';
+import {fillAutomationMergeFields,type AutomationEmailTemplate} from '../lib/automation/email';
 const template:AutomationEmailTemplate={id:'fictional',module:'contract_staff',name:'Fictional preview',active:true,subject:'Contract for {{employee.name}}',body:'Dear {{employee.name}}\n\nNew start {{contract.newStart}}\nReason {{contract.reason}}',cc:[]};
 describe('Shared email preview examples',()=>{
  it('renders a complete fictional employee and identifies decision fields unavailable before a decision',()=>{

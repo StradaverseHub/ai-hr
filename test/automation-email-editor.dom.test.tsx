@@ -1,5 +1,5 @@
-import {beforeEach,describe,expect,it,vi} from 'vitest';
-import {render,screen,waitFor} from '@testing-library/react';
+import {afterAll,beforeAll,beforeEach,describe,expect,it,vi} from 'vitest';
+import {fireEvent,render,screen,waitFor} from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import {NextIntlClientProvider} from 'next-intl';
 import messages from '../messages/en.json';
@@ -16,9 +16,22 @@ vi.mock('../components/email-body-editor',async()=>{
 });
 const id='11111111-1111-4111-8111-111111111111',documentId='22222222-2222-4222-8222-222222222222';
 const base:AutomationEmailTemplate={id,module:'contract_staff',name:'Fictional contract email',active:true,subject:'Contract for {{employee.name}}',body:'New start {{contract.newStart}}',cc:[]};
-const show=(template=base,revision=1)=>render(<NextIntlClientProvider locale="en" messages={messages}><EmailEditor initial={{template,revision,retired:false}} refs={{groups:[],routings:[],people:[]}} documents={[{id:documentId,name:'Fictional renewal letter'}]} onClose={vi.fn()}/></NextIntlClientProvider>);
+const originalShowModal=Object.getOwnPropertyDescriptor(HTMLDialogElement.prototype,'showModal'),originalClose=Object.getOwnPropertyDescriptor(HTMLDialogElement.prototype,'close');
+beforeAll(()=>{Object.defineProperty(HTMLDialogElement.prototype,'showModal',{configurable:true,value:function(this:HTMLDialogElement){this.setAttribute('open','');}});Object.defineProperty(HTMLDialogElement.prototype,'close',{configurable:true,value:function(this:HTMLDialogElement){this.removeAttribute('open');}});});
+afterAll(()=>{if(originalShowModal)Object.defineProperty(HTMLDialogElement.prototype,'showModal',originalShowModal);else Reflect.deleteProperty(HTMLDialogElement.prototype,'showModal');if(originalClose)Object.defineProperty(HTMLDialogElement.prototype,'close',originalClose);else Reflect.deleteProperty(HTMLDialogElement.prototype,'close');});
+const show=(template=base,revision=1,onClose=vi.fn())=>render(<NextIntlClientProvider locale="en" messages={messages}><EmailEditor initial={{template,revision,retired:false}} refs={{groups:[],routings:[],people:[]}} documents={[{id:documentId,name:'Fictional renewal letter'}]} onClose={onClose}/></NextIntlClientProvider>);
 beforeEach(()=>{vi.clearAllMocks();mocks.save.mockResolvedValue({ok:true,result:{revision:2,warnings:[]}});mocks.test.mockResolvedValue({ok:true,result:{deliveryId:id}});});
 describe('Shared rich email editor host',()=>{
+ it('uses the native overlaid editor and preserves dirty changes when Escape or backdrop discard is declined',async()=>{
+  const close=vi.fn(),confirm=vi.spyOn(window,'confirm').mockReturnValue(false);show(base,1,close);
+  const dialog=screen.getByRole('dialog',{name:'Edit email template'});expect(dialog).toHaveClass('v9-email-drawer');
+  await userEvent.clear(screen.getByLabelText('Template name'));await userEvent.type(screen.getByLabelText('Template name'),'Changed fictional template');
+  const cancel=new Event('cancel',{cancelable:true});fireEvent(dialog,cancel);expect(cancel.defaultPrevented).toBe(true);expect(close).not.toHaveBeenCalled();
+  vi.spyOn(dialog,'getBoundingClientRect').mockReturnValue({x:400,y:0,left:400,right:1120,top:0,bottom:800,width:720,height:800,toJSON:()=>({})});
+  const down=new Event('pointerdown',{bubbles:true});Object.defineProperties(down,{clientX:{value:100},clientY:{value:100}});fireEvent(dialog,down);fireEvent.click(dialog,{clientX:100,clientY:100});
+  expect(confirm).toHaveBeenCalledTimes(2);expect(close).not.toHaveBeenCalled();expect(screen.getByLabelText('Template name')).toHaveValue('Changed fictional template');
+  confirm.mockReturnValue(true);await userEvent.click(screen.getByRole('button',{name:'Close'}));expect(close).toHaveBeenCalledTimes(1);confirm.mockRestore();
+ });
  it('shows a phone/plain-text preview with missing decision values and queues only an explicit saved-template self test',async()=>{
   show();await userEvent.click(screen.getByRole('tab',{name:'Preview'}));
   await userEvent.selectOptions(screen.getByLabelText('Sample person'),'noDecision');

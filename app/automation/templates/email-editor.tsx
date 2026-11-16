@@ -2,6 +2,7 @@
 import {EmailBodyEditor,type EmailBodyEditorHandle} from '@/components/email-body-editor';
 import {emptyTableCells,EMAIL_TABLE_WARN_COLUMNS,summariseEmailBody} from '@/lib/email-body/doc';
 import {AutomationEmailAssets,AutomationEmailFileSlots} from './automation-email-assets';
+import {TemplateSurface} from '@/components/lifecycle-v9/template-surface';
 import {emailHtmlNearLimit} from '@/lib/email-body/render';
 import {automationEmailPreview,type AutomationEmailSample} from '@/lib/automation-email-preview';
 import {automationEmailBodyDoc,automationEmailBodyText} from '@/lib/automation/email';
@@ -45,10 +46,10 @@ export function EmailEditor({initial,refs,onClose,documents=[]}:{initial:ListedE
   setMessage(result.ok?{kind:'status',text:p('queued')}:{kind:'error',text:result.detail??p('failed')});
   }catch{setMessage({kind:'error',text:p('failed')});}
  });
- return <section className="pcg-card automation-editor" aria-label={t('templates.editorTitle',{name:draft.name})}>
-  <div className="automation-row automation-between"><h2>{draft.name||t('templates.newName')}</h2><button type="button" className="v9-button" onClick={()=>{if(!dirty||window.confirm(t('editor.leaveUnsaved')))onClose();}}>{t('templates.close')}</button></div>
+ return <TemplateSurface kind="email" close={onClose} closeDisabled={busy} canClose={()=>!dirty||window.confirm(t('editor.leaveUnsaved'))} label={p('editorLabel')} closeLabel={t('templates.close')}
+  heading={<input className="v9-input v9-email-title" aria-label={t('templates.name')} value={draft.name} maxLength={200} disabled={readOnly} onChange={event=>change({name:event.target.value})}/>}>
+ <section className="v9-stack automation-editor" aria-label={t('templates.editorTitle',{name:draft.name})}>
   <div className="v9-fields">
-   <label className="v9-field"><span>{t('templates.name')}</span><input value={draft.name} maxLength={200} disabled={readOnly} onChange={e=>change({name:e.target.value})}/></label>
    <label className="automation-check"><input type="checkbox" checked={draft.active} disabled={readOnly} onChange={e=>change({active:e.target.checked})}/><span>{t('templates.active')}</span></label>
   </div>
   {!draft.active&&<p className="v9-notice">{t('templates.offNote')}</p>}
@@ -81,5 +82,5 @@ export function EmailEditor({initial,refs,onClose,documents=[]}:{initial:ListedE
    {revision>0&&<button type="button" className="v9-button" disabled={busy} onClick={()=>{if(window.confirm(t('templates.retireConfirm')))save(true);}}>{t('templates.retire')}</button>}
   </div>}
   {confirmEmpty&&<div className="v9-notice v9-warning" role="alert"><p>{p('emptyCells',{count:emptyCells.length})}</p><div className="automation-row"><button type="button" className="v9-button" onClick={()=>{setMode('edit');setConfirmEmpty(false);requestAnimationFrame(()=>editor.current?.focusTableCell(emptyCells[0]));}}>{p('show')}</button><button type="button" className="v9-button" disabled={busy} onClick={()=>save(false,true)}>{p('saveAnyway')}</button></div></div>}
- </section>;
+ </section></TemplateSurface>;
 }

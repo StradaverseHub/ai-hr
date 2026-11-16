@@ -40790,7 +40790,8 @@
       "documentUnavailable": "A selected document is no longer published or available. Select a current template before saving.",
       "removeDocumentLink": "Remove this document’s link from the email body before deselecting it.",
       "noDocuments": "Publish a Contract document template before adding it to an email.",
-      "senderHelp": "Workflow email uses the sender managed in Admin, Settings, Email delivery. Templates do not change the sender or SMTP settings."
+      "senderHelp": "Workflow email uses the sender managed in Admin, Settings, Email delivery. Templates do not change the sender or SMTP settings.",
+      "editorLabel": "Edit email template"
     },
     "emailAssets": {
       "imagesTitle": "Images in email",
