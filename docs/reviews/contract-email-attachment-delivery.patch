@@ -1,0 +1,42 @@
+diff --git a/lib/automation-email-ipc.ts b/lib/automation-email-ipc.ts
+--- a/lib/automation-email-ipc.ts
++++ b/lib/automation-email-ipc.ts
+@@
+ import type {AutomationRichEmailBody} from './automation-email-content';
++import type {AutomationEmailAsset} from './automation-email-assets';
++import type {AutomationEmailLinkedDocument} from './automation-email-content';
+@@
+- delivery: { version: 1; sender: string }
++ delivery: { version: 1; sender: string; assets?: AutomationEmailAsset[]; documents?: AutomationEmailLinkedDocument[] }
+diff --git a/lib/internal-auth/automation-mail.ts b/lib/internal-auth/automation-mail.ts
+--- a/lib/internal-auth/automation-mail.ts
++++ b/lib/internal-auth/automation-mail.ts
+@@
+ import {automationEmailContent} from '../automation-email-content';
++import {managedEmailAttachment, MANAGED_EMAIL_ATTACHMENT_MAX_BYTES, MANAGED_EMAIL_ATTACHMENTS_MAX_COUNT, type ManagedEmailAttachment} from '../managed-email-attachment';
++import {v9ImageCid} from '../lifecycle-v9-email-content';
+@@
+   const toAddresses = unique(addresses.slice(0, mail.to.length)), ccAddresses = unique(addresses.slice(mail.to.length));
++  // Only immutable receipts frozen by the native accepted-step owner are materialized.
++  const references = mail.delivery.assets ?? [], attachments: ManagedEmailAttachment[] = [];
++  const assets = references.length ? await withSystemWork(() => client`select * from app.automation_email_assets(${id}::uuid,${token}::uuid,${origin})`) : [];
++  if (assets.length !== references.length) return {outcome: 'skipped', error: 'notEligible'};
++  try {
++    for (const reference of references) {
++      const asset = assets.find(asset => asset.id === reference.id);
++      if (!asset) return {outcome: 'skipped', error: 'notEligible'};
++      attachments.push(managedEmailAttachment.parse({filename: asset.filename, contentType: asset.mime_type, bytes: Buffer.from(asset.bytes, 'base64'), ...(asset.kind === 'image' ? {cid: v9ImageCid(asset.id)} : {})}));
++    }
++  } catch { return {outcome: 'skipped', error: 'notEligible'}; }
++  if (attachments.length > MANAGED_EMAIL_ATTACHMENTS_MAX_COUNT || attachments.reduce((sum, file) => sum + file.bytes.byteLength, 0) > MANAGED_EMAIL_ATTACHMENT_MAX_BYTES) return {outcome: 'skipped', error: 'notEligible'};
++  const documents = mail.delivery.documents ?? [];
++  if (documents.length) {
++    const [{allowed}] = await withSystemWork(() => client`select app.automation_email_documents(${id}::uuid,${token}::uuid,${origin}) as allowed`);
++    if (!Array.isArray(allowed) || allowed.length !== documents.length) return {outcome: 'skipped', error: 'notEligible'};
++  }
+@@
+-  try { content=automationEmailContent({module:target.module,origin,linkPath:target.payload.linkPath,body:mail.body,richBody:mail.richBody}); } catch { return { outcome: 'skipped', error: 'notEligible' }; }
++  try { content=automationEmailContent({module:target.module,origin,linkPath:target.payload.linkPath,body:mail.body,richBody:mail.richBody,assets:references,documents,test:target.payload.purpose==='templateTest'}); } catch { return { outcome: 'skipped', error: 'notEligible' }; }
+@@
+-    await transport(active.relay, { to: toAddresses.length === 1 ? toAddresses[0] : toAddresses, cc: ccAddresses, subject: mail.subject, ...content, attachments: [], ...(active.senderName ? { senderName: active.senderName } : {}), messageId: `<automation.${id}@${new URL(origin).hostname}>` });
++    await transport(active.relay, { to: toAddresses.length === 1 ? toAddresses[0] : toAddresses, cc: ccAddresses, subject: mail.subject, ...content, attachments, ...(active.senderName ? { senderName: active.senderName } : {}), messageId: `<automation.${id}@${new URL(origin).hostname}>` });

@@ -1,6 +1,7 @@
 /** Shared HR automation boundary (workflows, routings, email templates): definitions, their store and the shared runner. Modules inject their step executors. */
 export * from '../../core/automation-store';
 export * from '../../core/automation-email';
+export * from '../../core/automation-email-assets';
 export * from '../../core/automation-documents';
 export * from '../../core/automation-builder';
 export * from '../../core/automation-groups';
