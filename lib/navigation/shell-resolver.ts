@@ -168,8 +168,10 @@ export function resolveShellNavigation({
       case 'configure': return access.configure;
       case 'configureOrIntake': return access.configure || access.intake === true;
       case 'intake': return access.intake === true;
-      // Probation Access (/lifecycle/probation/access): app.probation_access_admin through probationNavigationAccess().access. The page checks again.
-      case 'admin': return item.module === 'probation' && probationAccess.access === true;
+      // Probation Access (/lifecycle/probation/access): app.probation_access_admin through probationNavigationAccess().access.
+      // A viewer who configures Probation finds Access inside Probation settings (prototype; lane M3), so the row is only
+      // for access administrators without the settings row. The page and the settings section check again.
+      case 'admin': return item.module === 'probation' && probationAccess.access === true && !access.configure;
     }
   });
   // ADR 2026-11-15-probation-shared-automation, decision 1: the shared builders, for anyone who configures at least one

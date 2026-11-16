@@ -17,10 +17,12 @@ vi.mock('../packs/probation/service',()=>({
 }));
 vi.mock('../app/lifecycle/probation/access/actions',()=>({saveSuperiorRuleAction:vi.fn(),saveRoleAction:vi.fn(),retireRoleAction:vi.fn(),addMemberAction:vi.fn(),changeMemberAction:vi.fn(),revokeMemberAction:vi.fn()}));
 vi.mock('../app/lifecycle/probation/access/access.css',()=>({}));
+vi.mock('../app/automation/pcg.css',()=>({}));
 vi.mock('next/link',()=>({__esModule:true,
  // eslint-disable-next-line @typescript-eslint/no-explicit-any
  default:({href,children,prefetch:_prefetch,...rest}:any)=><a href={typeof href==='string'?href:String(href)} {...rest}>{children}</a>}));
 import Page from '../app/lifecycle/probation/access/page';
+import {AccessSection} from '../app/lifecycle/probation/access/section';
 
 afterEach(()=>{cleanup();vi.clearAllMocks();mocks.view=null;});
 const t=en.probationAccess;
@@ -69,5 +71,28 @@ describe('Probation access page',()=>{
   expect(document.querySelector('form')).toBeNull();expect(screen.queryByRole('checkbox')).toBeNull();
   // The people search is never asked for someone who may not open the page.
   expect(mocks.search).not.toHaveBeenCalled();
+ });
+
+ it('renders the same section inside Probation settings (prototype AccessSection), every form returning there',async()=>{
+  mocks.view=view;
+  render(await AccessSection({session:mocks.session as never,view,query:{},host:'settings'}));
+  // On the settings page the section carries its own Access heading and intro, as the prototype draws it.
+  expect(screen.getByRole('region',{name:t.title})).toHaveAttribute('id','access');
+  expect(screen.getByRole('heading',{level:2,name:t.title})).toBeInTheDocument();
+  expect(screen.getByText(t.intro)).toBeInTheDocument();
+  // No people search is open here, so every form on the section is a command form.
+  const forms=[...document.querySelectorAll('form')];
+  expect(forms.length).toBeGreaterThan(0);
+  for(const form of forms)expect(new FormData(form).get('returnTo')).toBe('settings');
+  expect(screen.getByRole('link',{name:t.roles.newRole})).toHaveAttribute('href','/lifecycle/probation/settings?new=1#new-role');
+  expect(screen.getByRole('link',{name:t.members.add})).toHaveAttribute('href','/lifecycle/probation/settings?find=00000000-0000-4000-8000-0000000000a1#role-00000000-0000-4000-8000-0000000000a1');
+ });
+
+ it('keeps its own page: one Access heading, and forms that return to /lifecycle/probation/access',async()=>{
+  mocks.view=view;
+  render(await Page({searchParams:Promise.resolve({})}));
+  expect(screen.getAllByRole('heading',{name:t.title})).toHaveLength(1);
+  expect(screen.getByText(t.breadcrumb)).toBeInTheDocument();
+  for(const form of document.querySelectorAll('form'))expect(new FormData(form).get('returnTo')).toBe('access');
  });
 });

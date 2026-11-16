@@ -500,7 +500,10 @@ export const ADDITIONAL_ROWS: ChildItem[] = [
 /** Shared scoped lifecycle declaration owner. Metadata names existing fact gates, never new grants. */
 export type ScopedLifecycleNavigationItem = ChildItem & {
   module: 'probation' | 'contracts';
-  /** `admin`: Probation Access (lane K's page). Until its guard is available here, a system administrator who configures Probation. */
+  /**
+   * `admin`: Probation Access (app.probation_access_admin) for a viewer who does not configure Probation. Viewers who
+   * configure Probation reach Access inside Probation settings, as the prototype draws it (lane M3).
+   */
   access: 'page' | 'configure' | 'configureOrIntake' | 'intake' | 'admin';
 };
 export const SCOPED_LIFECYCLE_NAVIGATION: readonly ScopedLifecycleNavigationItem[] = [
@@ -508,7 +511,8 @@ export const SCOPED_LIFECYCLE_NAVIGATION: readonly ScopedLifecycleNavigationItem
   // ADR 2026-11-15-probation-shared-automation, decision 4: postings approved by the posting-approver group (page fact).
   {module:'probation',access:'page',href:'/lifecycle/probation/postings',labelKey:'probationPostings',icon:Timer,exactHref:true,ownedSubpaths:['/lifecycle/probation/postings']},
   {module:'contracts',access:'page',href:'/lifecycle/contracts',labelKey:'contractManagement',icon:ScrollText,exactHref:true,ownedSubpaths:['/lifecycle/contracts']},
-  // Handoff B1: Probation Confirmation › Configuration › Probation settings, Form editor, Intake and activation, Access.
+  // Handoff B1: Probation Confirmation › Configuration › Probation settings (with Access inside), Form editor, Intake and
+  // activation. The Access row stays for access administrators who do not configure Probation.
   {module:'probation',access:'configure',href:'/lifecycle/probation/settings',labelKey:'probationSettings',icon:Timer,submenuKey:'sectionConfiguration'},
   {module:'probation',access:'configure',href:'/lifecycle/probation/forms',labelKey:'probationForms',icon:Timer,submenuKey:'sectionConfiguration'},
   // The Routes page retired (lane E): approval routing is set on each form version; /lifecycle/probation/routes redirects to Forms.
