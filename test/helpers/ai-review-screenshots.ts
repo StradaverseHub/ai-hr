@@ -120,7 +120,7 @@ export async function captureAiReviewScreenshots(html:string,locale:string,secti
   if(section==='followup-features'&&device==='mobile'){
    await page.evaluate(()=>{const holder=document.querySelector('table')?.parentElement;if(holder)holder.scrollLeft=holder.scrollWidth;});
    const controls=`${locale}-${section}-mobile-controls.png`;await page.screenshot({path:join(out,controls),fullPage:true});
-   rows.push({locale,section,device:'mobile-controls',width,height,overflow,file:controls,browser:browser.version(),candidate:process.env.AIHR_CI_HEAD,runId:process.env.GITHUB_RUN_ID,theme:'classic',fixture});
+   rows.push({locale,section,device:'mobile-controls',width,height,overflow,file:controls,browser:browser.version(),candidate:process.env.AIHR_CI_HEAD,runId:process.env.GITHUB_RUN_ID,theme:'classic',fixture,contractGeometry:null});
   }
   await page.close();
  }}finally{await browser.close();}
