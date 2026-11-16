@@ -41409,7 +41409,13 @@
     "c8511af76a0a1": "The decision could not be submitted. Your preview is still here. Try again.",
     "c20a655bc39aa": "Content fingerprint",
     "c6be4da29b88d": "The settings could not be saved. Your entries are still here. Try again.",
-    "c0785f1cffebf": "The starting configuration stopped before completion. Review the mapped groups, routings and permissions, then install again. Existing definitions are preserved."
+    "c0785f1cffebf": "The starting configuration stopped before completion. Review the mapped groups, routings and permissions, then install again. Existing definitions are preserved.",
+    "cc48dca43ba0d": "The decline could not be recorded. Your entries are still here. Try again.",
+    "cfd1218410ddb": "Employee declined renewal",
+    "c0157c2c17fad": "Record this only after the employee confirms they will not sign the renewal. The renewal routing is withdrawn, its history is retained, and the configured decline workflow continues.",
+    "cfe912d4ddc06": "Personnel termination reason",
+    "c540bd679e500": "Decline notes",
+    "c85b435be8744": "People Ops records termination manually in Personnel Management after the Offboarding handoff. This action does not terminate the Personnel record or update Payroll."
   },
   "resignationJourney": {
     "title": "பணி விலகல்",

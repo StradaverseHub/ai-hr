@@ -366,6 +366,12 @@ const keys:Record<string,string>={
   "The decision could not be submitted. Your preview is still here. Try again.": "c8511af76a0a1",
   "Content fingerprint": "c20a655bc39aa",
   "The settings could not be saved. Your entries are still here. Try again.": "c6be4da29b88d",
-  "The starting configuration stopped before completion. Review the mapped groups, routings and permissions, then install again. Existing definitions are preserved.": "c0785f1cffebf"
+  "The starting configuration stopped before completion. Review the mapped groups, routings and permissions, then install again. Existing definitions are preserved.": "c0785f1cffebf",
+  "The decline could not be recorded. Your entries are still here. Try again.": "cc48dca43ba0d",
+  "Employee declined renewal": "cfd1218410ddb",
+  "Record this only after the employee confirms they will not sign the renewal. The renewal routing is withdrawn, its history is retained, and the configured decline workflow continues.": "c0157c2c17fad",
+  "Personnel termination reason": "cfe912d4ddc06",
+  "Decline notes": "c540bd679e500",
+  "People Ops records termination manually in Personnel Management after the Offboarding handoff. This action does not terminate the Personnel record or update Payroll.": "c85b435be8744"
 };
 export function useContractSharedCopy(){const t=useTranslations('contractShared');return (text:string)=>{const caption=text.trim(),key=keys[caption];return key?text.slice(0,text.indexOf(caption))+t(key)+text.slice(text.indexOf(caption)+caption.length):text;};}

@@ -3,12 +3,13 @@ import {act,fireEvent,render,screen,waitFor} from '@testing-library/react';
 import {NextIntlClientProvider} from 'next-intl';
 import en from '../messages/en.json';
 import {SharedApprovalPage} from '../app/lifecycle/contracts/approvals/[approvalId]/review';
+import {ContractDecline} from '../app/lifecycle/contracts/record-decline';
 import {ContractStartingSetup} from '../app/lifecycle/contracts/settings/starting-setup';
 import {SharedLetterPage} from '../app/lifecycle/contracts/letters/[letterId]/review';
 import type {ContractSharedApproval,ContractSharedLetter} from '../packs/contracts/service';
 import {automationDocument} from '../lib/automation-document';
-const actions=vi.hoisted(()=>({approval:vi.fn(),letter:vi.fn(),edit:vi.fn(),bind:vi.fn(),setup:vi.fn(),startSetup:vi.fn()}));
-vi.mock('../app/lifecycle/contracts/shared-actions',()=>({actSharedApproval:actions.approval,actSharedLetter:actions.letter,editSharedLetter:actions.edit,bindSharedEmployee:actions.bind,readSharedSetup:actions.setup,startSharedSetup:actions.startSetup}));
+const actions=vi.hoisted(()=>({approval:vi.fn(),letter:vi.fn(),edit:vi.fn(),bind:vi.fn(),setup:vi.fn(),startSetup:vi.fn(),decline:vi.fn()}));
+vi.mock('../app/lifecycle/contracts/shared-actions',()=>({actSharedApproval:actions.approval,actSharedLetter:actions.letter,editSharedLetter:actions.edit,bindSharedEmployee:actions.bind,readSharedSetup:actions.setup,startSharedSetup:actions.startSetup,recordSharedDecline:actions.decline}));
 vi.mock('next/navigation',()=>({usePathname:()=>'/tasks',useRouter:()=>({refresh:vi.fn()})}));
 const caseId='b1fa7485-70d8-4403-9dab-815da20b2e01',id='aab5d59c-c75f-4dc2-9d4a-45865ea8ff81',hash='a'.repeat(64);
 function approval():ContractSharedApproval{return {id,caseId,decisionRevision:3,employeeName:'Fictional Contract Employee',employeeCode:'FC-7',company:'Fictional Company',decision:{kind:'renew',startOn:'2027-01-01',endOn:'2027-12-31',months:12,payChanges:true,salaryCents:'521012',reason:'Retain specialist work',endReason:null,submittedBy:'proposer',submittedAt:'2026-11-16T00:00:00Z',revision:3},period:{id:'period',startOn:'2026-01-01',endOn:'2026-12-31',number:'4',sourceRevision:hash},contentRevision:1,contentHash:hash,pendingLayerId:'ceo',canAct:true,status:'pending',layers:[{id:'ceo',label:'CEO',stage:1,assigneeName:'Fictional CEO',fulfilled:false}],history:[]};}
@@ -104,4 +105,16 @@ it('releases setup controls after a failed native job instead of showing install
   expect(screen.getByLabelText('Fallback / People Ops group')).toBeEnabled();
   expect(screen.queryByRole('button',{name:'Installing starting configuration…'})).not.toBeInTheDocument();
  }finally{vi.useRealTimers();}
+});
+
+it('records employee decline with the current case revision and retains notes after a rejected action',async()=>{
+ actions.decline.mockResolvedValue({ok:false,error:'The employee already signed. Reload the current case.'});
+ mount(<ContractDecline caseId={caseId} revision={9} reasons={[{code:'contract_expiry',label:'Contract expiry'}]}/>);
+ expect(screen.getByRole('button',{name:'Record employee decline'})).toBeDisabled();
+ fireEvent.change(screen.getByLabelText('Personnel termination reason'),{target:{value:'contract_expiry'}});
+ fireEvent.change(screen.getByLabelText('Decline notes'),{target:{value:'Employee confirmed they will leave.'}});
+ fireEvent.click(screen.getByRole('button',{name:'Record employee decline'}));
+ expect(await screen.findByRole('alert')).toHaveTextContent('already signed');
+ expect(actions.decline).toHaveBeenCalledWith({caseId,revision:9,reason:'contract_expiry',notes:'Employee confirmed they will leave.'});
+ expect(screen.getByLabelText('Decline notes')).toHaveValue('Employee confirmed they will leave.');
 });

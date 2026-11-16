@@ -7,6 +7,7 @@ import {contractSharedContextTx} from './contract-shared-read';
 import {terminationReasonCatalogueTx} from './termination-reason-catalog';
 import {lockAccessConfigurationReadTx} from './access-configuration-lock';
 import {ContractManagementError} from '../lib/contract-management-model';
+import type {ContractSharedEndingActions} from './contract-shared-ending';
 import {pgSqlState} from '../lib/db-error';
 export type ContractCaseWorkspace={
  approvals:{id:string;decisionRevision:number;createdAt:string;status:'pending'|'approved'|'rejected'|'cancelled';workflowName:string;stepId:string}[];
@@ -25,8 +26,9 @@ export function contractSharedWorkspace(ctx:SessionContext,caseId:string){
   const [row]=await tx.execute<{workspace:ContractCaseWorkspace}>(sql`select app.contract_shared_workspace(${caseId}::uuid) as workspace`);
   const reasons=view.permissions.includes('decide')||view.permissions.includes('decline')?(await terminationReasonCatalogueTx(tx,ctx.tenantId)).filter(r=>r.active).map(({code,label,category})=>({code,label,category})):[];
   const activity=await tx.execute<{revision:number;at:string;actorName:string|null;actorType:'system'|'user';stage:string;decisionRevision:number|null}>(sql`select (entry->>'revision')::integer as revision,entry->>'at' as at,entry->>'actorName' as "actorName",case when entry->>'actorId' is null then 'system' else 'user' end as "actorType",entry->'flow'->>'stage' as stage,(entry->'flow'->'decision'->>'revision')::integer as "decisionRevision" from app.contract_shared_history(${caseId}::uuid,2147483647) entry`);
+  const ending=view.flow?(await tx.execute<{actions:ContractSharedEndingActions}>(sql`select app.contract_shared_ending_actions(${caseId}::uuid) as actions`))[0].actions:null;
   const [pending]=await tx.execute<{waiting:ContractWaitingMetadata[]}>(sql`select app.contract_shared_tracker_waiting(ARRAY[${caseId}::uuid]) as waiting`);
-  return {view,...row.workspace,reasons,activity:[...activity],waiting:pending.waiting[0]??null,periods:await periodsTx(tx,caseId,0),legacyReadable:capabilities.legacyReadable,canOpenPersonnel:capabilities.canOpenPersonnel};
+  return {view,...row.workspace,ending,reasons,activity:[...activity],waiting:pending.waiting[0]??null,periods:await periodsTx(tx,caseId,0),legacyReadable:capabilities.legacyReadable,canOpenPersonnel:capabilities.canOpenPersonnel};
  });
 }
 export type ContractConfigurationChoices={accessAdmin:boolean;companies:{id:string;name:string}[];scopes:{id:string;name:string;parentId:string|null}[];people:{id:string;name:string}[];groups:{id:string;name:string}[]};

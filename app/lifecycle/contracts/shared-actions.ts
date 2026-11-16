@@ -28,3 +28,5 @@ export async function searchSharedPeople(search:string){return perform(s=>owner.
 export async function readSharedPeriods(caseId:string,offset:number){return perform(s=>owner.contractSharedPeriods(s,caseId,offset),false);}
 export async function startSharedSetup(input:Parameters<typeof owner.startContractSharedSetup>[1]){return perform(s=>owner.startContractSharedSetup(s,input));}
 export async function readSharedSetup(companyId:string){return perform(async s=>{const setup=await owner.contractSharedSetup(s,companyId),job=setup.jobId?await readBulkJob(s,setup.jobId,'contract_setup'):null;return {...setup,jobState:job?.state??null};},false);}
+
+export async function recordSharedDecline(input:Parameters<typeof owner.recordContractSharedDecline>[1]){return perform(s=>owner.recordContractSharedDecline(s,input));}
