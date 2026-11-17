@@ -10,7 +10,7 @@ import type {SessionContext} from '@/db/client';
 import {allowedCompanies} from '@/core/read';
 import {getScopeIds} from '@/lib/scope';
 import {isMobileOfflineDeploymentActiveForCompany,isMobileOfflineStorageReady} from '@/core/mobile-offline-rollout';
-import {countOfflineClaimsAwaitingReview,countOpenOfflineContexts,readOfflineClockingSettings} from '@/packs/attendance/service';
+import {readOfflineClockingSettingsAcross} from '@/packs/attendance/service';
 
 export type OfflineClockingCompanySettings={companyId:string;companyName:string;available:boolean;columns:boolean;canEdit:boolean;
  enabled:boolean;maxProvenWindowSeconds:number;waiting:number|null;phonesOffline:number|null};
@@ -20,9 +20,11 @@ export async function loadOfflineClockingSettings(s:SessionContext):Promise<Offl
  const companies=allowed.filter(c=>scope.includes(c.id));
  if(!companies.length)return [];
  const storage=await isMobileOfflineStorageReady(s);
- return Promise.all(companies.map(async c=>{
-  const [settings,waiting,phonesOffline]=await Promise.all([readOfflineClockingSettings(s,c.id),countOfflineClaimsAwaitingReview(s,[c.id]),countOpenOfflineContexts(s,c.id)]);
+ const packet=await readOfflineClockingSettingsAcross(s,companies.map(company=>company.id));
+ return companies.map(c=>{
+  const settings=packet.get(c.id);if(!settings)throw new Error('Offline clocking company packet unavailable');
+  const {waiting,phonesOffline}=settings;
   return {companyId:c.id,companyName:c.name,available:storage&&settings.columns&&isMobileOfflineDeploymentActiveForCompany(s.tenantId,c.id),columns:settings.columns,
    canEdit:settings.canEdit,enabled:settings.policy.enabled,maxProvenWindowSeconds:settings.policy.maxProvenWindowSeconds,waiting,phonesOffline};
- }));
+ });
 }

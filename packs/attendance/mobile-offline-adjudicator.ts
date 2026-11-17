@@ -32,6 +32,10 @@ export type OfflineClockingPolicy={enabled:boolean;maxProvenWindowSeconds:number
 export async function readOfflineClockingPolicyTx(tx:Tx,companyId:string):Promise<OfflineClockingPolicy>{
  const [row]=await tx.execute<{enabled:string|null;seconds:string|null}>(sql`select to_jsonb(p)->>'offline_clocking_enabled' enabled,to_jsonb(p)->>'offline_max_proven_window_seconds' seconds
   from attendance_policy p where p.company_id=${companyId}::uuid limit 1`);
+ return offlineClockingPolicyFromStored(row);
+}
+/** One decoder for single-company and group settings; missing storage keeps the engine default. */
+export function offlineClockingPolicyFromStored(row:{enabled:string|null;seconds:string|null}|undefined):OfflineClockingPolicy{
  const enabled=row?.enabled??'false',stored=row?.seconds??null,seconds=stored===null?OFFLINE_PROVEN_WINDOW_SECONDS.default:Number(stored);
  if(!['true','false'].includes(enabled)||!Number.isInteger(seconds)||seconds<OFFLINE_PROVEN_WINDOW_SECONDS.minimum||seconds>OFFLINE_PROVEN_WINDOW_SECONDS.maximum)throw unavailable();
  return {enabled:enabled==='true',maxProvenWindowSeconds:seconds};

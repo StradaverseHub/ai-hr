@@ -34,7 +34,7 @@ Initial integration base: `59f06b08db014e01cd553a827c62ccf864d33f78`. Preserve t
 | AP-008 | P1 | Personnel employee draft editor | Batch5 implemented: reuse native Criteria projections; qualification pending, not staged |
 | AP-009 | P1 | Personnel Import entry screen | Batch5 implemented: reuse native catalogue rows; qualification pending, not staged |
 | AP-010 | P2 | Personnel Profile Changes | Open; implementation pending |
-| AP-011 | P1 | Attendance Offline Clocking settings | Open; implementation pending |
+| AP-011 | P1 | Attendance Offline Clocking settings | Batch6 implemented: grouped settings/review counts and native context-count packet; qualification pending, not staged |
 | AP-012 | P2 | Attendance Company Policy Settings | Open; implementation pending |
 | AP-013 | P2 | Attendance Schedule Clock Policy editor | Open; implementation pending |
 | AP-014 | P2 | Attendance Work Schedule and Overtime Rates | Open; implementation pending |
@@ -172,3 +172,8 @@ Qualification is in progress:70companies/1000employments/3000requests, native te
 AP-008 reuses already authorized active catalogue Criteria to construct the draft wizard's exact company CSV stamps through the shared label-scope predicate. AP-009 derives company-specific workbook choices from the existing authorized catalogue rows, loading Business Units once. This removes four company-by-company readers from each request without redefining label availability, archive rules, code/label formatting, company defaulting or import validation. Global and explicitly assigned availability remain independent of creation company. Existing complete catalogue payloads are still required by these forms; no pagination or payload-size improvement is claimed. Native70-company/1000-employment qualification and hosted checks are pending. No migration or staging change.
 
 Independent Batch5 spec review found a lost archived-BU cascade relationship. One bounded native read now loads Criteria only for departments' referenced BU identities, including archived or picker-scope-omitted roots; these roots are not added to selectable options. The qualification creates an active department, archives its linked BU through the native owner, and asserts the legacy Criteria and actual cascade-filter result. Original frozen qualification remains preserved.
+
+
+## Batch6: Offline Clocking settings
+
+AP-011 replaces210company-level reader transactions with one group read under shared Access and READ ONLY. Policy defaults/validation share the existing decoder; settings-edit authority, correction authority and the actor-private context-count definer remain separate native owners. Missing storage/function yields null counts; an installed empty population yields zero. Context counts deliberately retain the existing per-company definer in one SQL packet because direct context-table reads would disclose the wrong population. No new definer or migration is added; its internal plan/latency still needs qualification, so one transaction alone is not a measured speed claim. Deployment eligibility and empty scope behavior stay with the page's existing owners. Native70-company/1000-employment, every-role/group/company, real signed held claim/context, and optional-storage absence coverage is authored; hosted and staging verification remain pending.

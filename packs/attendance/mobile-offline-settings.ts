@@ -10,12 +10,14 @@
  * Who may write: the attendance policy's own rule, can_admin_payroll_for(company) (attendance_policy_rls, 0099),
  * checked here so a refusal is typed rather than an RLS error; the screen adds requireAdmin. The upsert names only the
  * two offline columns: an existing row keeps every other column, and a new row takes the table defaults for them. */
+import {withIdempotentDatabaseRead} from '../../db/workload';
+import {lockAccessConfigurationReadTx} from '../../core/access-configuration-lock';
 import {sql} from 'drizzle-orm';
 import {z} from 'zod';
 import type {SessionContext,Tx} from '../../db/client';
 import {actorOf,appendEvent} from '../../db/events';
 import {withAttendanceTenant} from '../../core/module-gate';
-import {OFFLINE_PROVEN_WINDOW_SECONDS,readOfflineClockingPolicyTx,type OfflineClockingPolicy} from './mobile-offline-adjudicator';
+import {OFFLINE_PROVEN_WINDOW_SECONDS,offlineClockingPolicyFromStored,readOfflineClockingPolicyTx,type OfflineClockingPolicy} from './mobile-offline-adjudicator';
 
 export type OfflineClockingSettingsRefusal='invalid_input'|'forbidden'|'unavailable';
 /** invalid_input: not a company id, a boolean and a whole number of seconds from 60 to 86400 (the DB CHECK).
@@ -100,3 +102,36 @@ export async function countOpenOfflineContextsTx(tx:Tx,companyId:string):Promise
 export function countOpenOfflineContexts(ctx:SessionContext,companyId:string){return withAttendanceTenant(ctx,tx=>countOpenOfflineContextsTx(tx,companyId));}
 export function countOfflineClaimsAwaitingReview(ctx:SessionContext,companyIds:readonly string[]){return withAttendanceTenant(ctx,tx=>countOfflineClaimsAwaitingReviewTx(tx,companyIds));}
 export function readOfflineClockingSettings(ctx:SessionContext,companyId:string){return withAttendanceTenant(ctx,tx=>readOfflineClockingSettingsTx(tx,companyId));}
+
+export type OfflineClockingCompanyRead=OfflineClockingSettingsView&{waiting:number|null;phonesOffline:number|null};
+/** Group card read. Settings/correction/context permissions retain their native independent owners.
+ * Optional storage is probed once; absent tables/functions are never named by the following query.
+ * The actor-only context table stays private: its existing definer answers each company count. */
+export function readOfflineClockingSettingsAcross(ctx:SessionContext,companyIds:readonly string[]):Promise<Map<string,OfflineClockingCompanyRead>>{
+ const ids=[...new Set(companyIds)];
+ if(ids.some(id=>!z.string().uuid().safeParse(id).success))return Promise.reject(refuse('invalid_input'));
+ return withIdempotentDatabaseRead(()=>withAttendanceTenant(ctx,async tx=>{
+  await tx.execute(sql`set transaction read only`);
+  await lockAccessConfigurationReadTx(tx,ctx.tenantId);
+  const result=new Map<string,OfflineClockingCompanyRead>();if(!ids.length)return result;
+  const columns=await offlineClockingColumnsPresentTx(tx);
+  const [ready]=await tx.execute<{claims:boolean;contexts:boolean}>(sql`select to_regclass('public.mobile_offline_claim_resolution') is not null as claims,
+   to_regprocedure('app.mobile_offline_open_context_count(uuid)') is not null as contexts`);
+  const input=sql`array[${sql.join(ids.map(id=>sql`${id}::uuid`),sql`,`)}]::uuid[]`;
+  const policies=await tx.execute<{id:string;canEdit:boolean;enabled:string|null;seconds:string|null}>(sql`select requested.id,coalesce(app.can_admin_payroll_for(requested.id),false) as "canEdit",
+   to_jsonb(p)->>'offline_clocking_enabled' enabled,to_jsonb(p)->>'offline_max_proven_window_seconds' seconds
+   from unnest(${input}) requested(id) left join attendance_policy p on p.company_id=requested.id and p.tenant_id=app.current_tenant_id()`);
+  const waiting=ready?.claims?await tx.execute<{id:string;count:number}>(sql`select e.company_id id,count(*)::int as count from mobile_offline_claim c join employment e on e.id=c.employment_id
+   where c.tenant_id=app.current_tenant_id() and c.outcome='needs_review' and e.company_id=any(${input})
+    and app.can_correct_attendance(c.employment_id) and not exists(select 1 from mobile_offline_claim_resolution r where r.claim_id=c.id and r.tenant_id=c.tenant_id)
+   group by e.company_id`):[];
+  const contexts=ready?.contexts?await tx.execute<{id:string;count:number|null}>(sql`select requested.id,app.mobile_offline_open_context_count(requested.id) as count from unnest(${input}) requested(id)`):[];
+  const policyById=new Map(policies.map(row=>[row.id,row])),waitingById=new Map(waiting.map(row=>[row.id,Number(row.count)]));
+  const contextsById=new Map(contexts.map(row=>[row.id,row.count==null?null:Number(row.count)]));
+  for(const id of ids){const key=id.toLowerCase(),row=policyById.get(key);
+   result.set(id,{columns,canEdit:row?.canEdit===true,policy:offlineClockingPolicyFromStored(row),
+    waiting:ready?.claims?waitingById.get(key)??0:null,phonesOffline:contextsById.get(key)??null});
+  }
+  return result;
+ }));
+}
