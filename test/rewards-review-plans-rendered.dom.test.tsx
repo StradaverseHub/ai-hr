@@ -58,7 +58,7 @@ describe('Review Plans source-rendered journeys',()=>{
   const reviewReason=within(dialog).getByRole('textbox',{name:'Reason for this change'});await user.type(reviewReason,'Approved annual company plan choice.');
   ports.save.mockResolvedValueOnce({ok:false,error:'Fictional source revision changed. Reload before saving.'});await user.click(within(dialog).getByRole('button',{name:'Save changes'}));
   await waitFor(()=>expect(within(dialog).getByRole('alert')).toHaveTextContent('Fictional source revision changed'));
-  expect(reviewReason).toHaveValue('Approved annual company plan choice.');await capture(view,'rewards-review-plans-save-error');
+  expect(reviewReason).toHaveValue('Approved annual company plan choice.');await waitFor(()=>expect(within(dialog).getByRole('button',{name:'Refresh comparison'})).toBeEnabled());await capture(view,'rewards-review-plans-save-error');
   ports.refreshGrid.mockImplementation(async(input:any)=>({ok:true,review:{input:{...input,edits:input.edits.map((edit:any)=>({...edit,expectedRevision:5}))},summary:reviewSummary,digest:'c'.repeat(64)}}));
   await user.click(within(dialog).getByRole('button',{name:'Refresh comparison'}));await waitFor(()=>expect(ports.refreshGrid).toHaveBeenCalledTimes(1));expect(reviewReason).toHaveValue('Approved annual company plan choice.');
   await user.click(within(dialog).getByRole('button',{name:'Save changes'}));await screen.findByText('Review Plans saved.');expect(screen.queryByText('Fictional source revision changed. Reload before saving.')).toBeNull();
