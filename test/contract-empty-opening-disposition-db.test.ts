@@ -5,7 +5,7 @@ import {randomUUID} from 'node:crypto';
 import type postgres from 'postgres';
 import {sql} from 'drizzle-orm';
 import {beforeAll,afterAll,expect,it} from 'vitest';
-import {withTenant} from '../db/client';
+import {withTenant,type SessionContext} from '../db/client';
 import {owner,migrateTestDb,closeAll} from './harness';
 import {contractPostingFixture,releaseContractPosting,approveAppliedContractPosting,finishContractPostingJob} from './helpers/contract-posting-fixture';
 import {contractSharedTracker,openContractSharedPeriod,contractSharedContext,previewContractSharedDecision,submitContractSharedDecision,contractAutomationJobHandler} from '../packs/contracts/service';
@@ -15,16 +15,26 @@ import {addDaysIso} from '../lib/roster-month';
 import {addCalendarMonths} from '../lib/hr-date';
 import {pgSqlState} from '../lib/db-error';
 beforeAll(migrateTestDb);afterAll(closeAll);
-type Native=postgres.Sql;
+// Both real reserved owner handles and begin() transactions expose this canonical query interface.
+// Requiring connection-management methods would incorrectly exclude TransactionSql.
+type Native=postgres.ISql;
+function requiredIdentity(actor:SessionContext){
+ const {userId,personId}=actor;
+ if(!userId||!personId)throw Error('The native fixture requires an actual bound user and person.');
+ return {...actor,userId,personId};
+}
 async function setup(nonempty=false){
- const f=await contractPostingFixture({future:false,payChanges:false});
+ const fixture=await contractPostingFixture({future:false,payChanges:false});
+ const f={...fixture,admin:requiredIdentity(fixture.admin),proposer:requiredIdentity(fixture.proposer),approver:requiredIdentity(fixture.approver),employeeActor:requiredIdentity(fixture.employeeActor)};
  const posting=await releaseContractPosting(f);await approveAppliedContractPosting(f.approver,{id:posting.id,revision:posting.revision});
  if(nonempty){
   const emailId=randomUUID();await saveAutomationEmailTemplate(f.admin,{template:{id:emailId,module:'contract_staff',name:'Fictional real opening effect',active:true,subject:'Opening',body:'Actual native queued mail; no transport is run.',cc:[]},expectedRevision:0,retired:false,reason:'Exercise genuine started opening work'});
   await saveAutomationWorkflow(f.admin,{workflow:{id:randomUUID(),module:'contract_staff',name:'Actual nonempty opening',description:'',status:'live',required:false,trigger:{event:'caseOpened',days:0,workdays:false,repeat:false},skipWhen:'never',conditions:[],steps:[{id:randomUUID(),type:'sendEmail',conditions:[],to:[{kind:'role',role:'employee'}],cc:[],params:{emailTemplateId:emailId}}]},expectedRevision:0,reason:'A real nonempty opening must never use empty technical completion'});
  }
  const row=(await contractSharedTracker(f.proposer)).rows.find(row=>row.employmentId===f.employee.employmentId);if(!row?.sourceRevision)throw Error('Native new-period source required');
- const opened=await openContractSharedPeriod(f.proposer,{employmentId:f.employee.employmentId,sourceRevision:row.sourceRevision});
+ const result=await openContractSharedPeriod(f.proposer,{employmentId:f.employee.employmentId,sourceRevision:row.sourceRevision});
+ const jobId=result.jobId;if(!jobId)throw Error('A genuine new-period opening must return its queued job.');
+ const opened={...result,jobId};
  const[event]=await owner.db.execute<{id:string;versions:unknown;revision:number}>(sql`select id,workflow_versions as versions,decision_revision as revision from contract_shared_event where tenant_id=${f.b.tenantId}::uuid and job_id=${opened.jobId}::uuid`);
  expect(event.revision).toBe(0);expect(event.versions).toHaveLength(nonempty?1:0);
  const accept=async()=>{
