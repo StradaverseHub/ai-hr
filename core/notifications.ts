@@ -295,6 +295,7 @@ const webNotificationRecipients:NotificationRecipientReaders<Tx>={
   rewardPreparationInvalidated:(tx,event,payload)=>rewardPreparationNotificationRecipients(tx,event.aggregateId,payload?.to,false),
   rewardPoolChanged:(tx,event)=>rewardPoolNotificationRecipients(tx,event.aggregateId),
   rewardApproved:(tx, ev) => rewardNotificationRecipients(tx, ev.aggregateId, 'approved'),
+  rewardPlanCompanyAdded:async(tx,event)=>{if(!event.id)return[];return(await tx.execute<{id:string}>(sql`select app.reward_review_plan_company_recipients(${event.id}::uuid) as id`)).map(r=>r.id);},
   rewardConfigChanged:(tx,event)=>rewardConfigChangeRecipients(tx,event.aggregateId),
   rewardLimitsReapplied:(tx,event)=>rewardPoolNotificationRecipients(tx,event.aggregateId),
   leaveSubmitted:async (tx, ev) => {
