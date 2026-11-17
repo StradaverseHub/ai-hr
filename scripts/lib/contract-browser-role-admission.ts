@@ -2,7 +2,7 @@
 import {createHash} from 'node:crypto';
 import {isAbsolute,join,resolve} from 'node:path';
 export const CONTRACT_BROWSER_ROLE_MODE='contract_browser_disposable' as const;
-export const CONTRACT_BROWSER_BRANCH='codex/contract-handoff-current-base-20261117';
+export const CONTRACT_BROWSER_BRANCH='codex/contract-handoff-hotfix-base-20261117';
 export const CONTRACT_BROWSER_ROLE_SOURCE={helper:'test/helpers/personnel-draft-discard-ci-role-fixture.ts',admission:'scripts/lib/contract-browser-role-admission.ts',entry:'scripts/contract-browser-premigration.ts'} as const;
 export type ContractBrowserRoleEnvironment=Readonly<Record<string,string|undefined>>;
 export type ContractBrowserRoleHost={platform:string;cwd:string;realpath:(path:string)=>string;read:(path:string)=>string;git:(cwd:string,args:readonly string[])=>string};

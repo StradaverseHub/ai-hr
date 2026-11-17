@@ -6,6 +6,7 @@ on:
   # Existing bounded-profile coverage explicitly includes this Contract renderer admission.
   # Migrations, server and Chromium retain their normal heaps; ceilings and RSS budgets are unchanged.
   # Exact disposable role prerequisites are admitted before migration; production guards stay unchanged.
+  # Isolated role admission and the push controller bind this exact hotfix-base branch.
   # It has no release or installation credentials.
   push:
     branches: ['codex/contract-handoff-hotfix-base-20261117']
