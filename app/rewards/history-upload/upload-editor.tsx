@@ -51,7 +51,15 @@ export function RewardHistoryUploadEditor({companies,initialProgress}:{companies
   {jobId&&<Card className="space-y-3 p-5" aria-live="polite"><h2 className="text-base font-semibold">{t('progressTitle')}</h2>
    <p className="text-sm">{progress?t(`states.${progress.state}`):t('working')}</p>
    {progress&&<><p className="text-sm tabular-nums">{t('progress',{done:progress.stepsDone,total:progress.stepsTotal})}</p>{progress.error&&<p role="alert" className="text-sm text-destructive">{progress.error}</p>}{progress.errors.length>0&&<ul className="max-h-48 overflow-auto text-sm">{progress.errors.map((issue,i)=><li key={i}>{t('problem',{line:issue.rowNum,reason:issue.message})}</li>)}</ul>}</>}
-   {running&&<Button variant="outline" disabled={busy||progress?.cancelRequested} onClick={async()=>{setBusy(true);try{const result=await stopHistoryAction(jobId);if(result.ok){const fresh=await historyProgressAction(jobId);if(fresh.ok)setProgress(fresh.progress);}else setError(result.error);}catch{setError(t('error'));}finally{setBusy(false);}}>{t(progress?.cancelRequested?'stopping':'stop')}</Button>}
+   {running&&<Button variant="outline" disabled={busy||progress?.cancelRequested} onClick={async()=>{
+    setBusy(true);
+    try {
+     const result=await stopHistoryAction(jobId);
+     if(result.ok){const fresh=await historyProgressAction(jobId);if(fresh.ok)setProgress(fresh.progress);}
+     else setError(result.error);
+    } catch { setError(t('error')); }
+    finally { setBusy(false); }
+   }}>{t(progress?.cancelRequested?'stopping':'stop')}</Button>}
    <p className="text-sm text-muted-foreground">{t('checkpointHelp')}</p>
   </Card>}
  </div>;
