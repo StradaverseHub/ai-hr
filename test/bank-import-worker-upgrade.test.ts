@@ -10,7 +10,7 @@ it('preserves managed drain, production first activation, production update and 
 it('admits only the root-pinned live CI runtime and monotonic native finish, with unchanged quarantine',()=>{
  const result=spawnSync('python3',['-I','-B','test/fixtures/bank-import-worker-ci-runtime-tests.py'],{encoding:'utf8',maxBuffer:1024**2});
  expect(result.status,result.stdout+'\n'+result.stderr).toBe(0);
- expect(result.stderr).toContain('Ran 32 tests');
+ expect(result.stderr).toContain('Ran 33 tests');
 },120000);
 
 it('keeps the real all-kind heartbeat predicate and bounds only selected CI to the reviewed 600 seconds',async()=>{
