@@ -39,7 +39,8 @@ export async function historicalManualEmailFixture(origin:string,system=false,ma
  const post=async()=>{const posting=await releaseContractPosting(f);await approveAppliedContractPosting(f.admin,{id:posting.id,revision:posting.revision});const[receipt]=await owner.db.execute<{applied:boolean}>(sql`select applied_at is not null as applied from contract_shared_posting where tenant_id=${f.b.tenantId}::uuid and posting_id=${posting.id}::uuid`);expect(receipt.applied).toBe(true);};
  const completeHR=()=>actForm(f.admin,letter.id,'signed');
  const deliveries=()=>owner.db.execute<{id:string;payload:Record<string,unknown>}>(sql`select id,payload from automation_email_delivery where tenant_id=${f.b.tenantId}::uuid and payload->'mail'->>'templateId'=${emailId} order by id`);
- const settle=()=>awaitHistoricalContractWork(f.b.tenantId,'Original historical email job completion and input cleanup',tick,async()=>{const[job]=await owner.db.execute<{state:string;input:unknown}>(sql`select state,input from bulk_job where id=${admitted.jobId}::uuid`);return job.state==='completed'&&job.input===null;});
+ // Fixed SYSTEM jobs retain their private input/provenance; only human closeTerminal clears input.
+ const settle=()=>awaitHistoricalContractWork(f.b.tenantId,'Original historical email job canonical terminal state',tick,async()=>{const[job]=await owner.db.execute<{state:string;kind:string;input:unknown;settled:boolean;notified:boolean}>(sql`select state,kind,input,settled_at is not null as settled,notified_at is not null as notified from bulk_job where id=${admitted.jobId}::uuid`);return job.state==='completed'&&(system?job.kind==='contract_scheduled_automation'&&job.settled&&job.notified:job.input===null);});
  return {...f,start:admitted,pin,letter,workflowId,emailId,emailStep,tailStep,tick,firstDecision,post,completeHR,deliveries,settle};
 }
 

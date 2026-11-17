@@ -29,8 +29,8 @@ import {todayInKualaLumpur,addCalendarMonths} from '../lib/hr-date';
 import {addDaysIso} from '../lib/roster-month';
 import {historicalStartedCohortFixture} from './helpers/contract-historical-cohort-fixture';
 import {historicalTwoPeriodPostingFixture} from './helpers/contract-historical-two-period-fixture';
-import {releaseContractPosting,approveAppliedContractPosting,contractPostingFixture} from './helpers/contract-posting-fixture';
-import {contractSharedTracker,openContractSharedPeriod,readContractSharedLetter,actContractSharedLetter,contractSharedWorkspace,contractSharedEmailReconciliations,contractSharedContext,readContractSharedPosting,approveContractSharedPosting} from '../packs/contracts/service';
+import {releaseContractPosting,approveAppliedContractPosting,contractPostingFixture,finishContractPostingJob} from './helpers/contract-posting-fixture';
+import {previewContractSharedDecision,submitContractSharedDecision,contractSharedTracker,openContractSharedPeriod,readContractSharedLetter,actContractSharedLetter,contractSharedWorkspace,contractSharedEmailReconciliations,contractSharedContext,readContractSharedPosting,approveContractSharedPosting} from '../packs/contracts/service';
 beforeAll(migrateTestDb);afterAll(closeAll);
 async function assertStoppedSuffix(f:Awaited<ReturnType<typeof historicalManualEmailFixture>>){
  const[run]=await owner.db.execute<{status:string;remaining:{step:{id:string};index:number}[];failure:string}>(sql`select status,remaining_steps as remaining,failure from automation_run where tenant_id=${f.b.tenantId}::uuid and id=${f.pin.runId}::uuid`);
@@ -101,17 +101,37 @@ it('closes a genuine stale callback after its same email run already advanced, w
 
 it('recovers a genuine SYSTEM historical email after native posting without widening the ordinary system business guard',async()=>{
  const f=await historicalManualEmailFixture(auth.origin,true);await f.post();await f.completeHR();await f.settle();await assertStoppedSuffix(f);expect(await f.deliveries()).toHaveLength(1);
- const[job]=await owner.db.execute<{kind:string;creator:string|null;context:unknown;state:string}>(sql`select kind,created_by creator,context,state from bulk_job where id=${f.start.jobId}::uuid`);
- expect(job).toEqual({kind:'contract_scheduled_automation',creator:null,context:{tenantId:f.b.tenantId,roles:[]},state:'completed'});
+ const[job]=await owner.db.execute<{kind:string;creator:string|null;context:unknown;state:string;input:unknown;settled:boolean;notified:boolean}>(sql`select kind,created_by creator,context,state,input,settled_at is not null as settled,notified_at is not null as notified from bulk_job where id=${f.start.jobId}::uuid`);
+ expect(job).toEqual({kind:'contract_scheduled_automation',creator:null,context:{tenantId:f.b.tenantId,roles:[]},state:'completed',input:{eventId:f.start.eventId},settled:true,notified:true});
  const[event]=await owner.db.execute<{type:string;user:string|null;person:string|null}>(sql`select actor_type type,actor_user_id as "user",actor_person_id person from contract_shared_event where id=${f.start.eventId}::uuid`);expect(event).toEqual({type:'system',user:null,person:null});
  expect(await owner.db.execute(sql`select id from contract_shared_approval where tenant_id=${f.b.tenantId}::uuid and workflow_run_id=${f.pin.runId}::uuid`)).toEqual([]);
 },180_000);
+
+it('technically closes an actual empty caseOpened event when the next-period decision is submitted before its first worker tick',async()=>{
+ const f=await historicalManualEmailFixture(auth.origin,false,()=>historicalTwoPeriodPostingFixture({future:false,payChanges:false}));await f.post();
+ const row=(await contractSharedTracker(f.proposer)).rows.find(item=>item.employmentId===f.employee.employmentId);if(!row?.sourceRevision)throw Error('Actual new-period tracker source is unavailable');
+ const opened=await openContractSharedPeriod(f.proposer,{employmentId:f.employee.employmentId,sourceRevision:row.sourceRevision});if(!opened.jobId||!opened.eventId)throw Error('The genuinely new period did not return its actual opening admission');
+ const [before]=await owner.db.execute<{state:string;revision:number;refs:unknown[]}>(sql`select job.state,event.decision_revision as revision,event.workflow_versions as refs from contract_shared_event event join bulk_job job on job.tenant_id=event.tenant_id and job.id=event.job_id where event.id=${opened.eventId}::uuid`);expect(before).toEqual({state:'queued',revision:0,refs:[]});
+ const nextStart=addDaysIso(f.newEnd,1),nextEnd=addDaysIso(addCalendarMonths(nextStart,6),-1),revision=(await contractSharedContext(f.proposer,opened.caseId)).flow!.revision;
+ const preview=await previewContractSharedDecision(f.proposer,{caseId:opened.caseId,revision,draft:{...f.draft,startOn:nextStart,endOn:nextEnd,reason:'Actual immediate decision after opening'}});await finishContractPostingJob(preview.jobId,f.proposer,'contract_preview');
+ // Preview ticks only its real preview kind; no opening job is silently drained before this decision.
+ const [stillQueued]=await owner.db.execute<{state:string}>(sql`select state from bulk_job where id=${opened.jobId}::uuid`);expect(stillQueued.state).toBe('queued');
+ const accepted=await submitContractSharedDecision(f.proposer,{caseId:opened.caseId,revision,previewId:preview.previewId});
+ await awaitHistoricalContractWork(f.b.tenantId,'Immediate decision and empty opening technical closure',f.tick,async()=>{const jobs=await owner.db.execute<{state:string;input:unknown}>(sql`select state,input from bulk_job where id in(${opened.jobId}::uuid,${accepted.jobId}::uuid)`);return jobs.length===2&&jobs.every(job=>job.state==='completed'&&job.input===null);});
+ const [closed]=await owner.db.execute<{processed:boolean;refs:unknown[];revision:number;error:string|null;reconciliation:unknown}>(sql`select processed_at is not null as processed,workflow_versions as refs,decision_revision as revision,error,email_reconciliation as reconciliation from contract_shared_event where id=${opened.eventId}::uuid`);expect(closed).toEqual({processed:true,refs:[],revision:0,error:null,reconciliation:null});
+ expect(await owner.db.execute(sql`select id from automation_run where tenant_id=${f.b.tenantId}::uuid and subject_id=${opened.caseId}::uuid and trigger_event='caseOpened'`)).toEqual([]);
+ expect((await contractSharedContext(f.proposer,opened.caseId)).flow!.decision?.revision).toBe(1);
+},240_000);
 
 it('recovers the original email through two genuine canonical committed period edges while its independent Form remains current',async()=>{
  const f=await historicalManualEmailFixture(auth.origin,false,()=>historicalTwoPeriodPostingFixture({future:false,payChanges:false}));
  await f.post();
  const row=(await contractSharedTracker(f.proposer)).rows.find(item=>item.employmentId===f.employee.employmentId);if(!row?.sourceRevision)throw Error('Actual new-period tracker source is unavailable');
  const opened=await openContractSharedPeriod(f.proposer,{employmentId:f.employee.employmentId,sourceRevision:row.sourceRevision});expect(opened.caseId).not.toBe(f.caseId);
+ // Complete the genuine caseOpened event while its revision-zero period is current, before the next decision.
+ // This tests sequential committed edges; it does not claim the separate fast-submit opening-event race is safe.
+ if(!opened.jobId)throw Error('The genuinely new period did not return its native opening job');
+ await awaitHistoricalContractWork(f.b.tenantId,'New-period caseOpened completion before the second decision',f.tick,async()=>{const[job]=await owner.db.execute<{state:string;input:unknown}>(sql`select state,input from bulk_job where id=${opened.jobId}::uuid`);return job.state==='completed'&&job.input===null;});
  const nextStart=addDaysIso(f.newEnd,1),nextEnd=addDaysIso(addCalendarMonths(nextStart,6),-1);
  expect(nextEnd<todayInKualaLumpur()).toBe(true);
  const second={...f,caseId:opened.caseId,start:f.newStart,end:f.newEnd,newStart:nextStart,newEnd:nextEnd,draft:{...f.draft,startOn:nextStart,endOn:nextEnd,reason:'A second real retained six-month agreement'}};
@@ -182,7 +202,7 @@ it('projects a real waiting run for review without manufacturing a failure when 
 },180_000);
 
 
-it('does not treat real technical closure as posting approval readiness after an authorized Personnel correction is genuinely restored',async()=>{
+it('keeps the FIRST-producer posting pending until all actual frozen work finishes and refuses a direct contract-number correction',async()=>{
  const f=await contractPostingFixture({future:false,payChanges:false});await registerHistoricalEmailIdentities(auth.origin,f.b.tenantId,[f.admin.userId!,f.employeeActor.userId!]);const documentId=randomUUID(),emailId=randomUUID(),emailStep=randomUUID(),bId=randomUUID();
  await saveAutomationDocumentTemplate(f.admin,{template:{id:documentId,module:'contract_staff',name:'Actual producer email prerequisite',description:'',rules:{},blocks:[{id:'body',type:'text',text:'Review this actual producer acknowledgement.',section:''}],fields:[],routing:[{id:'hr',order:1,action:'review',owner:true,who:{kind:'people',userIds:[f.admin.userId!]}},{id:'sign',order:2,action:'sign',owner:false,who:{kind:'people',userIds:[f.admin.userId!]}}]},expectedRevision:0,publish:true,retired:false});
  await saveAutomationEmailTemplate(f.admin,{template:{id:emailId,module:'contract_staff',name:'Actual producer email',active:true,subject:'Actual producer acknowledgement',body:'Open the retained acknowledgement.',cc:[],documentIds:[documentId]},expectedRevision:0,retired:false,reason:'Actual current callback before source correction'});
@@ -206,17 +226,18 @@ it('does not treat real technical closure as posting approval readiness after an
  await awaitHistoricalContractWork(f.b.tenantId,'Actual FIRST producer email completion',tick,async()=>{const[run]=await owner.db.execute<{status:string}>(sql`select status from automation_run where tenant_id=${f.b.tenantId}::uuid and id=${pin!.runId}::uuid`);return run.status==='done';});
  // Stop on the genuine callback unit before ordinary current-event refs start; no plan/cursor is edited.
  expect(await owner.db.execute(sql`select id from automation_run where tenant_id=${f.b.tenantId}::uuid and workflow_id=${bId}::uuid`)).toEqual([]);
- await setEmploymentInfo(f.admin,{employmentId:f.employee.employmentId,contractNumber:91});
- await new Promise(resolve=>setTimeout(resolve,2100));
- for(let count=0;count<100;count++){await tick();const[job]=await owner.db.execute<{state:string}>(sql`select state from bulk_job where id=${posting.continuationJobId}::uuid`);if(job.state==='completed')break;}
- const[closed]=await owner.db.execute<{state:string;processed:boolean;metadata:{workflows:{id:string;stage:string}[]}}>(sql`select job.state,event.processed_at is not null as processed,event.email_reconciliation as metadata from contract_shared_event event join bulk_job job on job.tenant_id=event.tenant_id and job.id=event.job_id where event.id=${pin.originId}::uuid`);
- expect(closed.state).toBe('completed');expect(closed.processed).toBe(true);expect(closed.metadata.workflows).toEqual([{id:bId,revision:1,name:'Frozen unattempted release sibling',stage:'not_started'}]);
- await setEmploymentInfo(f.admin,{employmentId:f.employee.employmentId,contractNumber:4});
- const[current]=await owner.db.execute<{current:boolean;conflict:unknown;decision:number}>(sql`select app.contract_shared_decision_current(c.tenant_id,c.id,receipt.decision_revision) as current,c.source_conflict as conflict,receipt.decision_revision as decision from contract_case c join contract_shared_posting receipt on receipt.tenant_id=c.tenant_id and receipt.case_id=c.id where receipt.posting_id=${posting.id}::uuid`);
- expect(current).toEqual({current:true,conflict:null,decision:1});
+ // A pending accepted decision correctly excludes a direct Personnel contract-number rewrite.
+ await expect(setEmploymentInfo(f.admin,{employmentId:f.employee.employmentId,contractNumber:91})).rejects.toThrow('A contract decision is in progress. Update the contract number through its approved Personnel posting.');
+ const[current]=await owner.db.execute<{current:boolean;conflict:unknown;decision:number;number:number}>(sql`select app.contract_shared_decision_current(c.tenant_id,c.id,receipt.decision_revision) as current,c.source_conflict as conflict,receipt.decision_revision as decision,employment.contract_number as number from contract_case c join contract_shared_posting receipt on receipt.tenant_id=c.tenant_id and receipt.case_id=c.id join employment on employment.tenant_id=c.tenant_id and employment.id=c.employment_id where receipt.posting_id=${posting.id}::uuid`);
+ expect(current).toEqual({current:true,conflict:null,decision:1,number:4});
+ // Technical completion of the email alone is not completion of the original frozen dispatch manifest.
  expect(await readContractSharedPosting(f.approver,posting.id)).toMatchObject({status:'pending',sourceCurrent:true,workflowReady:false,canApprove:false});
  await expect(approveContractSharedPosting(f.approver,{id:posting.id,revision:posting.revision})).rejects.toThrow();
  expect(await owner.db.execute(sql`select id from automation_run where tenant_id=${f.b.tenantId}::uuid and workflow_id=${bId}::uuid`)).toEqual([]);
- expect(await owner.db.execute(sql`select id from automation_email_delivery where tenant_id=${f.b.tenantId}::uuid and payload->'mail'->>'subject'='Unattempted release sibling must not send'`)).toEqual([]);
  const[unchanged]=await owner.db.execute<{state:string;applied:boolean}>(sql`select posting.status as state,receipt.applied_at is not null as applied from personnel_posting posting join contract_shared_posting receipt on receipt.tenant_id=posting.tenant_id and receipt.posting_id=posting.id where posting.id=${posting.id}::uuid`);expect(unchanged).toEqual({state:'pending',applied:false});
+ // Continue actual current-authority work; do not manufacture reconciliation or an alternate native approval.
+ await awaitHistoricalContractWork(f.b.tenantId,'Actual FIRST producer and its frozen release sibling completion',tick,async()=>{const[job]=await owner.db.execute<{state:string;input:unknown}>(sql`select state,input from bulk_job where id=${posting.continuationJobId}::uuid`);return job.state==='completed'&&job.input===null;});
+ const siblings=await owner.db.execute<{status:string}>(sql`select status from automation_run where tenant_id=${f.b.tenantId}::uuid and workflow_id=${bId}::uuid`);expect(siblings).toEqual([{status:'done'}]);
+ const[closed]=await owner.db.execute<{state:string;processed:boolean;reconciliation:unknown}>(sql`select job.state,event.processed_at is not null as processed,event.email_reconciliation as reconciliation from contract_shared_event event join bulk_job job on job.tenant_id=event.tenant_id and job.id=event.job_id where event.id=${pin.originId}::uuid`);expect(closed).toEqual({state:'completed',processed:true,reconciliation:null});
+ expect(await readContractSharedPosting(f.approver,posting.id)).toMatchObject({status:'pending',sourceCurrent:true,workflowReady:true,canApprove:true});
 },240_000);

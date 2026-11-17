@@ -12,6 +12,35 @@ import {runBulkJobTick} from '../../core/bulk-job-worker';
 import {openImportWorkerOwner} from '../../db/worker-connection';
 import {todayInKualaLumpur,addCalendarMonths} from '../../lib/hr-date';
 import {addDaysIso} from '../../lib/roster-month';
+import {reportContractPostingTemporalDiagnostics} from './contract-posting-temporal-diagnostics';
+
+async function reportUnfinishedContractFixtureJob(id:string,actor:SessionContext,kind:string){
+ try{
+  const job=await readBulkJob(actor,id,kind);
+  const steps=await owner.db.execute(sql`select seq,kind,state,row_num from public.bulk_job_step
+   where tenant_id=${actor.tenantId}::uuid and job_id=${id}::uuid order by seq`);
+  console.error('CONTRACT_FIXTURE_JOB_DIAGNOSTICS '+JSON.stringify({id,kind,state:job.state,phase:job.phase,
+   notBefore:job.not_before,transientRetries:job.transient_retries,stepsDone:job.steps_done,stepsTotal:job.steps_total,
+   cancelRequested:job.cancel_requested_at!==null,leaseExpiresAt:job.lease_expires_at,steps:Array.from(steps)}));
+  if(kind==='contract_posting_apply'){
+   const source=await owner.db.execute<{employment_id:string}>(sql`select source.posting_id,source.posting_revision,source.company_id,source.employment_id,
+    source.case_id,source.decision_revision,source.letter_id,source.requester_user_id,source.requester_person_id,
+    source.requested_values->>'effectiveDate' as effective_day,posting.status as posting_status,
+    receipt.applied_at is not null as applied,receipt.source_revision=source.source_revision as receipt_source_matches,
+    producer.job_id as producer_job_id,producer.event_id as producer_event_id,producer.run_id as producer_run_id,
+    producer.step_id as producer_step_id,producer.workflow_revision as producer_workflow_revision
+    from app.contract_posting_job_source source
+    join public.personnel_posting posting on posting.tenant_id=source.tenant_id and posting.id=source.posting_id
+    join public.contract_shared_posting receipt on receipt.tenant_id=source.tenant_id and receipt.posting_id=source.posting_id
+    left join app.contract_posting_producer producer on producer.tenant_id=source.tenant_id and producer.posting_id=source.posting_id
+    where source.tenant_id=${actor.tenantId}::uuid and source.job_id=${id}::uuid`);
+   console.error('CONTRACT_FIXTURE_POSTING_SOURCE_DIAGNOSTICS '+JSON.stringify(Array.from(source)));
+   if(source.length===1)await reportContractPostingTemporalDiagnostics('CONTRACT_FIXTURE_POSTING_TIMELINE_DIAGNOSTICS',actor.tenantId,source[0].employment_id);
+  }
+ }catch{
+  console.error('CONTRACT_FIXTURE_JOB_DIAGNOSTICS diagnostic query failed; the original fixture failure is retained.');
+ }
+}
 
 export async function finishContractPostingJob(id:string,actor:SessionContext,kind:'contract_preview'|'contract_automation'|'contract_posting_apply'){
  const handler=kind==='contract_preview'?contractPreviewJobHandler:kind==='contract_automation'?contractAutomationJobHandler:contractPostingApplyJobHandler;let failure:unknown;
@@ -26,6 +55,7 @@ export async function finishContractPostingJob(id:string,actor:SessionContext,ki
   if(kind==='contract_posting_apply')await runContractPostingApplyTick();
   else await runBulkJobTick(owner.client,{handlers:[diagnostic]});
  }
+ await reportUnfinishedContractFixtureJob(id,actor,kind);
  throw new Error('Contract fixture job did not finish.');
 }
 /** Production-shaped plain owner transport, with one reserved backend and the fixed registered kind. */
