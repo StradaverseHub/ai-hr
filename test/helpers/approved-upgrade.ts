@@ -255,9 +255,15 @@ export const APPROVED_UPGRADE_TAIL=[
  {idx:5319,when:1794841005919,tag:'5919_contract_work_case_source_anchor'},
  {idx:5330,when:1794841005930,tag:'5930_contract_tracker_attention_summary'},
  {idx:5331,when:1794841005931,tag:'5931_contract_starting_setup_completion'},
+ {idx:5332,when:1794841005932,tag:'5932_contract_native_system_kernel'},
+ {idx:5333,when:1794841005933,tag:'5933_contract_system_period_events'},
+ {idx:5334,when:1794841005934,tag:'5934_contract_system_mail_digest'},
 ] as const;
 // Final pending 2109/2126 bytes reviewed from engine 128bc2539; no applied-prefix hashes change.
 const APPROVED_UPGRADE_HASHES:Record<string,string>={
+ '5934_contract_system_mail_digest':'00b49a69fbbb10ddc293b3135bc4e1e507cbd12998c5012a1b2e3bd71299477e',
+ '5933_contract_system_period_events':'81545741eed6091cecf3cbfdcfb4f051d2505f2f53a3a9c98137d33fbbcbc638',
+ '5932_contract_native_system_kernel':'28983d2af360ba36f4587506df918cc471b338ea0f520db990b2a8e8641c6753',
  '5902_shared_automation_permission_compatibility':'33a60c8951f539bf987f9ae5ecda727fbe9927083c6f35fdaf3a0025167a8ef5',
  '5931_contract_starting_setup_completion':'05ffef386dcc1c2f7612c700ce2d3be58185525f730659f4f507fbc29a78ce80',
  '5930_contract_tracker_attention_summary':'9446565465c8c8f1ec25cbef7f93df6672a03437a7b123b0237f7356e8cfa4a1',

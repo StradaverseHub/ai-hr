@@ -6658,6 +6658,27 @@
       "when": 1794841005931,
       "tag": "5931_contract_starting_setup_completion",
       "breakpoints": true
+    },
+    {
+      "idx": 5332,
+      "version": "7",
+      "when": 1794841005932,
+      "tag": "5932_contract_native_system_kernel",
+      "breakpoints": true
+    },
+    {
+      "idx": 5333,
+      "version": "7",
+      "when": 1794841005933,
+      "tag": "5933_contract_system_period_events",
+      "breakpoints": true
+    },
+    {
+      "idx": 5334,
+      "version": "7",
+      "when": 1794841005934,
+      "tag": "5934_contract_system_mail_digest",
+      "breakpoints": true
     }
   ]
 }
