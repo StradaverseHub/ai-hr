@@ -45,7 +45,7 @@ describe('Review Plans grid',()=>{
  it('sends exactly the reviewed payload, digest and reason and clears staged changes after success',async()=>{
   actions.preview.mockResolvedValue({ok:true,review:{summary:{area:'plan',itemLabel:'Review Plans 2026',lines:[],changedCount:1,affected:[],highImpact:[]},digest:'b'.repeat(64)}});actions.save.mockResolvedValue({ok:true});show();
   fireEvent.click(screen.getByRole('button',{name:'Accept all suggestions'}));await waitFor(()=>expect(screen.getByRole('button',{name:'Review changes'})).toBeEnabled());fireEvent.click(screen.getByRole('button',{name:'Review changes'}));
-  const reason=await screen.findByRole('textbox',{name:'Reason for this change'});fireEvent.change(reason,{target:{value:'Checked the annual library choices.'}});fireEvent.click(screen.getByRole('button',{name:'Save changes'}));
+  const reason=await screen.findByRole('textbox',{name:'Reason for this change'});fireEvent.change(reason,{target:{value:'Checked the annual library choices.'}});const submit=await screen.findByRole('button',{name:'Save changes'});await waitFor(()=>expect(submit).toBeEnabled());fireEvent.click(submit);
   await waitFor(()=>expect(actions.save).toHaveBeenCalledWith(actions.preview.mock.calls[0][0],'b'.repeat(64),'Checked the annual library choices.'));
   await waitFor(()=>expect(screen.getByText('Review Plans saved.')).toBeTruthy());expect(screen.getByRole('button',{name:'Review changes'})).toBeDisabled();
  });
