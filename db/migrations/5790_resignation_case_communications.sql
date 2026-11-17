@@ -51,6 +51,7 @@ ALTER TABLE public.resignation_communication_test FORCE ROW LEVEL SECURITY;
 CREATE POLICY resignation_communication_test_owner ON public.resignation_communication_test FOR ALL TO ai_hr_owner USING(app.acting_as_owner()) WITH CHECK(app.acting_as_owner());
 REVOKE ALL ON public.resignation_communication_test FROM PUBLIC,ai_hr_app;
 CREATE FUNCTION app.resignation_communication_test_immutable() RETURNS trigger LANGUAGE plpgsql SET search_path=pg_catalog,public,pg_temp AS $$ BEGIN RAISE EXCEPTION 'Message test receipts are immutable' USING ERRCODE='42501';END $$;
+REVOKE ALL ON FUNCTION app.resignation_communication_test_immutable() FROM PUBLIC,ai_hr_app;
 CREATE TRIGGER resignation_communication_test_immutable BEFORE UPDATE OR DELETE ON public.resignation_communication_test FOR EACH ROW EXECUTE FUNCTION app.resignation_communication_test_immutable();
 --> statement-breakpoint
 CREATE FUNCTION app.resignation_communication_test_receipt(p_case uuid,p_revision integer,p_run uuid,p_step text,p_request uuid,p_offboarding uuid DEFAULT NULL)
@@ -163,9 +164,16 @@ GRANT EXECUTE ON FUNCTION app.resignation_communication_offboarding_context(uuid
 --> statement-breakpoint
 CREATE FUNCTION app.resignation_communication_files(p_case uuid,p_offboarding uuid DEFAULT NULL)
 RETURNS TABLE(id uuid,slot text,name text,content_hash text) LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
- WITH scope AS MATERIALIZED(SELECT app.resignation_communication_case_scope(p_case,p_offboarding) AS data)
- SELECT DISTINCT ON(f.slot) f.id,f.slot,f.name,f.content_hash FROM resignation_journey_file f CROSS JOIN scope
- WHERE f.tenant_id=app.current_tenant_id() AND f.case_id=p_case AND f.document_id IS NULL AND (coalesce((scope.data->>'acceptance')::boolean,false) OR p_offboarding IS NULL AND (coalesce((scope.data->>'retention')::boolean,false) OR coalesce((scope.data->>'submitted')::boolean,false)))
+ WITH runs AS MATERIALIZED(SELECT * FROM app.resignation_communication_runs(p_case,p_offboarding) WHERE preview_available),
+ case_data AS MATERIALIZED(SELECT j.data FROM resignation_journey j WHERE j.tenant_id=app.current_tenant_id() AND j.id=p_case),
+ config AS MATERIALIZED(SELECT cfg.data FROM lc_v9_config cfg WHERE cfg.tenant_id=app.current_tenant_id()),
+ steps AS(SELECT r.id AS run_id,step FROM runs r CROSS JOIN LATERAL jsonb_array_elements(coalesce(r.definition->'steps','[]')) step WHERE step->>'type'='sendEmail'),
+ templates AS(
+  SELECT coalesce((SELECT wait->'email'->'template' FROM case_data c CROSS JOIN LATERAL jsonb_array_elements(coalesce(c.data->'waits','[]')) wait WHERE wait->>'runId'=steps.run_id::text AND wait->>'kind'='file' AND wait->'step'->>'id'=steps.step->>'id' AND wait->'email'->'template'->>'id'=steps.step->'params'->>'emailTemplateId' LIMIT 1),
+   (SELECT e FROM config cfg CROSS JOIN LATERAL jsonb_array_elements(coalesce(cfg.data->'emails','[]')) e WHERE e->>'id'=steps.step->'params'->>'emailTemplateId' AND e->>'module'='off' LIMIT 1)) AS template FROM steps
+ ), allowed_slots AS(SELECT DISTINCT (t.template->>'id')||':'||(slot->>'id') AS slot FROM templates t CROSS JOIN LATERAL jsonb_array_elements(coalesce(t.template->'slots','[]')) slot)
+ SELECT DISTINCT ON(f.slot) f.id,f.slot,f.name,f.content_hash FROM resignation_journey_file f JOIN allowed_slots allowed ON allowed.slot=f.slot
+ WHERE f.tenant_id=app.current_tenant_id() AND f.case_id=p_case AND f.document_id IS NULL
  ORDER BY f.slot,f.created_at DESC,f.id DESC LIMIT 200;
 $$;
 REVOKE ALL ON FUNCTION app.resignation_communication_files(uuid,uuid) FROM PUBLIC;

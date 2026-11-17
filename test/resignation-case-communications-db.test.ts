@@ -1,5 +1,5 @@
 /** Real service ownership and immutable actor-only message tests; no SMTP or transport mocking. */
-import {randomUUID} from 'node:crypto';
+import {randomUUID,createHash} from 'node:crypto';
 import {sql} from 'drizzle-orm';
 import {afterAll,afterEach,beforeAll,beforeEach,describe,expect,it,vi} from 'vitest';
 import {withTenant} from '../db/client';
@@ -89,4 +89,21 @@ it('preserves account-only submitted-decision message authority without granting
  const repaired=await commandResignationJourney(f.admin,{caseId:f.journey.id,revision:f.journey.revision,command:{type:'runWorkflowsAgain'}});const messages=await resignationCaseCommunications(f.admin,{caseId:repaired.id});expect(messages.items).toHaveLength(1);expect(messages.items[0].subject).toBe('Submitted Journey employee');
  await owner.db.execute(sql`insert into app_external_identity(issuer,subject,app_user_id) values(${origin+'/auth/'+f.base.tenantId},${randomUUID()},${f.managerUserId}::uuid)`);
  expect(await requestResignationMessageTest(f.admin,{caseId:repaired.id,revision:messages.revision,runId:messages.items[0].runId,stepId:'email',requestId:randomUUID()})).toMatchObject({status:'queued'});
+},90000);
+
+it('limits direct native file metadata to the admitted acceptance step and its exact frozen upload slots',async()=>{
+ const f=await fixture(true,false),operatorId=await createAppUser(f.base.tenantId,f.fyi.personId,'hr_admin'),operator={...f.admin,userId:operatorId,personId:f.fyi.personId};
+ await owner.db.execute(sql`update lc_onboarding_config set data=jsonb_set(data,'{access,offboarding}',(data->'access'->'offboarding')||${JSON.stringify([operatorId])}::jsonb) where tenant_id=${f.base.tenantId}::uuid`);
+ let current=await commandResignationJourney(f.admin,{caseId:f.current.id,revision:f.current.revision,command:{type:'letterAction',documentId:f.current.letters[0].id,documentRevision:f.current.letters[0].revision,action:'review'}});
+ current=await commandResignationJourney(f.watcher,{caseId:current.id,revision:current.revision,command:{type:'openLetter',documentId:current.letters[0].id,documentRevision:current.letters[0].revision}});
+ current=await commandResignationJourney(f.watcher,{caseId:current.id,revision:current.revision,command:{type:'letterAction',documentId:current.letters[0].id,documentRevision:current.letters[0].revision,action:'sign',signature:'Journey business partner',consent:true}});
+ const [stored]=await owner.db.execute<{waits:{kind:string;runId:string;step?:{id:string};email?:{template:{id:string;slots:{id:string}[]}}}[]}>(sql`select data->'waits' as waits from resignation_journey where id=${current.id}::uuid`);const held=stored.waits.find(w=>w.kind==='file'&&w.runId===f.item.runId&&w.step?.id==='email');expect(held?.email?.template.slots.map(s=>s.id)).toEqual(['evidence']);
+ const acceptanceSlot=f.item.emailTemplateId+':evidence',privateSlot=randomUUID()+':private-retention-evidence',unknownSlot=f.item.emailTemplateId+':unknown-slot';
+ const files=[{id:randomUUID(),slot:acceptanceSlot,name:'Acceptance handover.pdf'},{id:randomUUID(),slot:privateSlot,name:'PRIVATE retention salary evidence.pdf'},{id:randomUUID(),slot:unknownSlot,name:'PRIVATE unknown evidence.pdf'}].map(file=>{const bytes=Buffer.from('%PDF-fictional-'+file.id);return{...file,bytes,hash:createHash('sha256').update(bytes).digest('hex')};});
+ for(const file of files)await owner.db.execute(sql`insert into resignation_journey_file(tenant_id,id,case_id,slot,name,mime_type,size,content,content_hash,uploaded_by) values(${f.base.tenantId}::uuid,${file.id}::uuid,${current.id}::uuid,${file.slot},${file.name},'application/pdf',${file.bytes.length},${file.bytes},${file.hash},${f.managerUserId}::uuid)`);
+ // Changing current template slots must not erase or broaden the exact upload wait's frozen source.
+ const cfg=structuredClone(f.config);cfg.emails.find(e=>e.id===f.item.emailTemplateId)!.slots=[{id:'changed-later',label:'Different current slot',required:true}];await owner.db.execute(sql`update lc_v9_config set data=${JSON.stringify(cfg)}::jsonb where tenant_id=${f.base.tenantId}::uuid`);
+ const metadata=await withTenant(operator,tx=>tx.execute<{id:string;slot:string;name:string;content_hash:string}>(sql`select * from app.resignation_communication_files(${current.id}::uuid,${current.offboardingCaseId}::uuid)`));expect(metadata).toEqual([{id:files[0].id,slot:acceptanceSlot,name:files[0].name,content_hash:files[0].hash}]);expect(JSON.stringify(metadata)).not.toContain('PRIVATE');expect(JSON.stringify(metadata)).not.toContain(files[1].hash);expect(JSON.stringify(metadata)).not.toContain(files[2].hash);
+ expect(await withTenant(operator,tx=>tx.execute(sql`select * from app.resignation_communication_files(${current.id}::uuid,${randomUUID()}::uuid)`))).toEqual([]);
+ const[acl]=await owner.db.execute<{public:boolean;app:boolean}>(sql`select exists(select 1 from aclexplode(coalesce(p.proacl,acldefault('f',p.proowner))) a where a.grantee=0 and a.privilege_type='EXECUTE') as public,has_function_privilege('ai_hr_app',p.oid,'EXECUTE') as app from pg_proc p where p.oid='app.resignation_communication_test_immutable()'::regprocedure`);expect(acl).toEqual({public:false,app:false});
 },90000);
