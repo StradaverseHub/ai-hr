@@ -8,7 +8,7 @@ BEGIN
  THEN RAISE EXCEPTION 'Unexpected migration owner'; END IF;
  IF EXISTS(SELECT 1 FROM pg_roles WHERE rolname='ai_hr_mobile_offline_counter'
   AND (rolcanlogin OR rolsuper OR rolcreaterole OR rolcreatedb OR rolreplication OR rolbypassrls OR rolinherit))
-  OR EXISTS(SELECT 1 FROM pg_auth_members a JOIN pg_roles r ON r.oid=a.roleid
+  OR EXISTS(SELECT 1 FROM pg_auth_members a JOIN pg_roles r ON r.oid=a.roleid OR r.oid=a.member
    WHERE r.rolname='ai_hr_mobile_offline_counter')
  THEN RAISE EXCEPTION 'Unsafe preexisting offline counter role or membership'; END IF;
  IF EXISTS(SELECT 1 FROM pg_roles WHERE rolname='ai_hr_mobile_offline_counter') THEN

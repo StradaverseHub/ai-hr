@@ -29,6 +29,11 @@ it('applies the exact proposal as NOCREATEROLE/NOBYPASSRLS ai_hr_owner and count
   await tx.unsafe('alter table company owner to ai_hr_owner');
   await tx.unsafe('grant usage on schema public to ai_hr_owner');
   // Refuse unsafe role prerequisites before attempting any application DDL.
+  await expect(tx.savepoint(async hostile=>{
+   await hostile.unsafe('create role ai_hr_offline_counter_fixture_parent nologin noinherit nosuperuser nocreatedb nocreaterole noreplication nobypassrls');
+   await hostile.unsafe('grant ai_hr_offline_counter_fixture_parent to ai_hr_mobile_offline_counter with inherit true,set true,admin false');
+   await hostile.unsafe(script('deploy/runner-control/mobile-offline-counter-prerequisite.sql'));
+  })).rejects.toThrow('Unsafe preexisting offline counter role or membership');
   await tx.unsafe(script('deploy/runner-control/mobile-offline-counter-prerequisite.sql'));
   await tx.unsafe('set local role ai_hr_owner');
   await tx.unsafe(offlineGroupCountSql);
