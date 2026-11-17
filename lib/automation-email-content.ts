@@ -11,7 +11,8 @@ import {notificationEmailLink} from './notification-email-model';
 import {v9ImageCid} from './lifecycle-v9-email-content';
 import type {AutomationEmailAsset} from './automation-email-assets';
 export type AutomationRichEmailBody={doc:EmailBodyDoc;values:Record<string,string>;sourceTemplate?:{id:string;revision:number};sourceProof?:{payload:string;signature:string}};
-export type AutomationEmailLinkedDocument={id:string;templateId:string;name:string};
+/** Native queued legal metadata; historical snapshots are compared privately and never interpolated into mail. */
+export type AutomationEmailLinkedDocument={id:string;templateId:string;name:string;contentRevision?:number;contentHash?:string;snapshot?:Record<string,unknown>};
 type RichInput={module:AutomationModule;origin:string;linkPath:string;body:string;richBody?:AutomationRichEmailBody|null;assets?:readonly AutomationEmailAsset[];documents?:readonly AutomationEmailLinkedDocument[];test?:boolean};
 type StoredLoad={files:()=>Promise<AutomationStoredFile[]>;assets:()=>Promise<AutomationStoredFile[]>};
 export function automationEmailContent(input:RichInput):{text:string;html?:string};

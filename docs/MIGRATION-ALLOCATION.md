@@ -15,6 +15,21 @@ Root retains pending5900–5903/5905–5909 for manual commands/release evidence
 
 Root forward5960–5969 (idx5360–5369, when1794841005960–5969) reserved after a fresh288-worktree survey found no competing SQL or bounded numeric claims. This block follows the now-frozen5943 email pin owner and5932–5934 system owner in creation order. It completes the separately approved internal email-prerequisite event/worker/effect/canonical-document/private-upload callbacks, recoverable file waits and manual attention reconciliation. Unused5903 stays unused; do not create an early dependency on a later table. No prior frozen source or applied prefix may be rewritten.
 
+Root forward5970–5999 (idx5370–5399, when1794841005970–5999) reserved after a fresh308-worktree filename survey found no competing claims. 5970 belongs to the canonical live Form-source extraction; 5971–5999 remain reserved, not implemented. This is source allocation, with merge and release still awaiting the user's approval.
+
+|Root slot|Owner and bounded purpose|
+|---|---|
+|5960|Contract recovery: original live-job, same waiting Send email only|
+|5961|Root: resolve no-workflow flag after native manual admission|
+|5962|Shared Automation: exact pending-version required-file upload/read/proof|
+|5963|Contract documents: internal HR notice proposal; approval review hold|
+|5964|Contract documents: restore current shared email guards and qualified document alias|
+|5965|Contract recovery: historical one-email kernel/delivery proposal only|
+|5966|Contract documents: private canonical Form readiness and immutable-pin trigger repair|
+|5967|Contract intake: explicitly approved set-based paged read only|
+|5968|Contract recovery: strict cached guard identity, receipt RLS and original pin source|
+|5969|Contract recovery: current verified callback identity|
+
 <!-- 5919_contract_work_case_source_anchor -->
 # Contract native assigned-work case anchor — 17 November 2026 MYT
 

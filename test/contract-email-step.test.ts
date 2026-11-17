@@ -33,3 +33,10 @@ it('records actual unresolved notification routing when the current active fallb
  expect(mocks.fallback).toHaveBeenCalledWith(tx,notify,[{meantFor:'Their Direct Superior',reason:expect.any(String)}]);
  expect(mocks.queue.mock.calls[0][1]).toMatchObject({to:['ops'],cc:[],subject:'Review case'});
 });
+it('keeps the original case-open email from acquiring decision fields supplied by a later case decision',async()=>{
+ const original={...template,body:'{{contract.salary}} / {{employee.name}}'};
+ const executor=contractSharedEmailExecutors(tx,{context,today:'2026-11-17',templates:[],letterValues:{'contract.salary':'9999.00'},prepareTemplate:vi.fn().mockResolvedValue({template:original,reference:{id:'email',revision:1},waitingFor:null,waitingReason:null})});
+ expect(await executor.sendEmail!({...effect,run:{...effect.run,trigger:'caseOpened'}})).toMatchObject({status:'done'});
+ expect(mocks.queue.mock.calls[0][1].body).toBe('{{contract.salary}} / Fictional employee');
+ expect(mocks.queue.mock.calls[0][1].richBody.values).not.toHaveProperty('contract.salary');
+});

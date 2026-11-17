@@ -7,14 +7,18 @@ import type {AutomationExecutors,AutomationStepContext,AutomationStepOutcome} fr
 import {contractAutomationRecipients,contractAutomationMergeValues,type ContractAutomationContext} from '../lib/contract-automation-context';
 import {queueAutomationEmailTx} from './automation-email-delivery';
 import {recordContractSharedFallbackTx} from './contract-shared-fallback';
+import {CONTRACT_AUTOMATION_CATALOGUE} from '../lib/automation/catalogues/contracts';
 
 export type ContractEmailPreparation={template:AutomationEmailTemplate;reference:{id:string;revision:number};waitingFor:string|null;waitingReason:string|null};
 export function contractSharedEmailExecutors(tx:SqlExecutor,input:{context:ContractAutomationContext;today:string;templates:readonly {revision:number;retired:boolean;template:AutomationEmailTemplate}[];letterValues?:Readonly<Record<string,string>>;prepareTemplate:(step:AutomationStepContext,current:{revision:number;retired:boolean;template:AutomationEmailTemplate}|undefined)=>Promise<ContractEmailPreparation|null>}):Pick<AutomationExecutors,'notify'|'sendEmail'>{
  const templates=new Map<string,(typeof input.templates)[number]>();
  for(const item of input.templates)if(!templates.has(item.template.id)||templates.get(item.template.id)!.revision<item.revision)templates.set(item.template.id,item);
- const values={...contractAutomationMergeValues(input.context,input.today),...input.letterValues,'case.link':'{{case.link}}'};
+ const sourceValues={...contractAutomationMergeValues(input.context,input.today),...input.letterValues,'case.link':'{{case.link}}'};
  const deliver=async(effect:AutomationStepContext,cc:readonly AutomationRecipient[],subject:string,body:string,prepared?:ContractEmailPreparation):Promise<AutomationStepOutcome>=>{
   const {run,step}=effect;
+  // A waiting case-open/date email cannot acquire decision fields submitted later on the same case.
+  const allowedKeys=new Set(CONTRACT_AUTOMATION_CATALOGUE.mergeFields.filter(field=>!field.triggers||field.triggers.includes(run.trigger)).map(field=>field.key));
+  const values=Object.fromEntries(Object.entries(sourceValues).filter(([key])=>allowedKeys.has(key)));
   const to=contractAutomationRecipients(step.to,input.context),copy=contractAutomationRecipients(cc,input.context,{fallback:false});
   if(!to.userIds.length)return {status:'failed',reason:'Nobody could receive this email, and the fallback group has no active members.'};
   if(to.fallbackUsed)await recordContractSharedFallbackTx(tx,effect,to.unresolved.map(({meantFor,reason})=>({meantFor,reason})));

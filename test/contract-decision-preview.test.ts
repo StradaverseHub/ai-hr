@@ -38,10 +38,13 @@ describe('Contract consequence preflight',()=>{
  });
 });
 
-it('blocks an unsupported Form in preflight before accepting the decision',()=>{
+it('previews a canonical Form route without reading responses or substituting an employee signer',()=>{
  const defs=definitions();defs.documents[0].template.blocks.push({id:'answers',type:'fields',text:'',section:'answers'});
  const plan=buildContractDecisionPlan({context,decision,definitions:defs,today:'2026-11-17'});
- expect(plan.blockers.join(' ')).toContain('Form response capture and signing are on hold');expect(plan.letterAssignments).toEqual({});
+ expect(plan.blockers).toEqual([]);
+ expect(plan.letterAssignments[contractStepKey(id(14),id(17))].route.steps.map(step=>step.holderId)).toEqual([id(7),null]);
+ expect(plan.warnings.join(' ')).toContain('nobody signs for them');
+ expect(plan.workflows[0].steps[1].letter).toMatchObject({name:'Renewal letter',version:3});
 });
 
 it('accepts an unmatched or paused decision as a no-workflow outcome without inventing actions',()=>{

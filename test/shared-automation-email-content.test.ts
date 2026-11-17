@@ -12,7 +12,7 @@ describe('shared native private email content',()=>{
   expect(content.attachments).toEqual([{filename:asset.name,contentType:asset.mimeType,bytes}]);
  });
  it('adds the authorized personal document to HTML and plaintext, including when no body token was inserted',async()=>{
-  const t=target(),document={id:letter,templateId:template,name:'Your form'};t.payload.mail.delivery.documents=[document];t.payload.mail.richBody={doc:{type:'doc',content:[{type:'paragraph',content:[{type:'text',text:'Your information.'}]}]},values:{}};
+  const t=target(),document={id:letter,templateId:template,name:'Your form',contentRevision:2,contentHash:'a'.repeat(64),snapshot:{definition:{name:'Historical native letter'}}};t.payload.mail.delivery.documents=[document];t.payload.mail.richBody={doc:{type:'doc',content:[{type:'paragraph',content:[{type:'text',text:'Your information.'}]}]},values:{}};
   const content=await sharedAutomationEmailContent(t,'https://fictional.invalid',{assets:async()=>[row],documents:async()=>[document]});
   expect(content.html).toContain('https://fictional.invalid/lifecycle/contracts/letters/'+letter);expect(content.text).toContain('Your form:');
   delete t.payload.mail.richBody;expect((await sharedAutomationEmailContent(t,'https://fictional.invalid',{assets:async()=>[row],documents:async()=>[document]})).text).toContain('/letters/'+letter);

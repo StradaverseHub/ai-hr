@@ -555,6 +555,7 @@ async function processContractSystemClaimed(connection:postgres.ReservedSql,hand
   await connection`update bulk_job set notified_at=now(),settled_at=now() where id=${job.id}::uuid`;
  }catch(error){
   if(error instanceof LeaseLost)return;
+  if(error instanceof BulkJobWaiting)return waitLater(connection,c);
   if(isTransient(handler,error))return retryLater(connection,handler,c,error);
   return failJob(connection,handler,c,null,publicErrorMessage(error),[],error);
  }

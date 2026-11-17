@@ -6814,6 +6814,13 @@
       "breakpoints": true
     },
     {
+      "idx": 5349,
+      "version": "7",
+      "when": 1794841005949,
+      "tag": "5949_contract_published_form_email_source",
+      "breakpoints": true
+    },
+    {
       "idx": 5355,
       "version": "7",
       "when": 1794841005955,
@@ -6821,10 +6828,59 @@
       "breakpoints": true
     },
     {
+      "idx": 5357,
+      "version": "7",
+      "when": 1794841005957,
+      "tag": "5957_shared_email_explicit_tenant_start",
+      "breakpoints": true
+    },
+    {
+      "idx": 5360,
+      "version": "7",
+      "when": 1794841005960,
+      "tag": "5960_contract_email_prerequisite_recovery",
+      "breakpoints": true
+    },
+    {
       "idx": 5361,
       "version": "7",
       "when": 1794841005961,
       "tag": "5961_contract_manual_attention_reconciliation",
+      "breakpoints": true
+    },
+    {
+      "idx": 5362,
+      "version": "7",
+      "when": 1794841005962,
+      "tag": "5962_contract_email_required_files",
+      "breakpoints": true
+    },
+    {
+      "idx": 5364,
+      "version": "7",
+      "when": 1794841005964,
+      "tag": "5964_shared_email_guard_preservation",
+      "breakpoints": true
+    },
+    {
+      "idx": 5366,
+      "version": "7",
+      "when": 1794841005966,
+      "tag": "5966_contract_canonical_form_readiness",
+      "breakpoints": true
+    },
+    {
+      "idx": 5368,
+      "version": "7",
+      "when": 1794841005968,
+      "tag": "5968_contract_email_recovery_guard_identity",
+      "breakpoints": true
+    },
+    {
+      "idx": 5369,
+      "version": "7",
+      "when": 1794841005969,
+      "tag": "5969_contract_email_recovery_callback_identity",
       "breakpoints": true
     }
   ]

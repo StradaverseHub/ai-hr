@@ -3,6 +3,7 @@ import {randomUUID} from 'node:crypto';
 import {sql} from 'drizzle-orm';
 import {z} from 'zod';
 import type {BulkJobHandler,BulkJobUnit} from './bulk-job-worker';
+import {BulkJobWaiting} from './bulk-job-worker';
 import type {BulkJobRow} from './bulk-job';
 import type {SessionContext} from '../db/client';
 import type postgres from 'postgres';
@@ -17,6 +18,7 @@ import {activateContractSharedPosting} from './contract-shared-postings';
 import {activateContractSharedOffboarding} from './contract-shared-ending';
 import {contractSharedEmailExecutors} from './contract-shared-email';
 import {prepareContractSharedEmailStep} from './contract-shared-email-documents';
+import {beginContractEmailRecovery,retryContractEmailRecovery,continueContractEmailRecovery} from './contract-shared-email-recovery';
 import {CONTRACT_AUTOMATION_CATALOGUE} from '../lib/automation/catalogues/contracts';
 import {runAutomationEvent,resumeAutomationRun,sqlAutomationRunStore,type AutomationExecutors,type AutomationRuntimeGuards,type AutomationRun} from '../packs/automation/service';
 import {todayInKualaLumpur} from '../lib/hr-date';
@@ -38,6 +40,7 @@ export const contractAutomationJobHandler:BulkJobHandler<never>={
  async finalize(ctx,job,unit){
   await unit.verifySeal();
   const finished=await unit.ownerTx!(owner=>advanceContractSharedAutomationOwner(owner,ctx,job,unit));
+  if(finished==='waiting')throw new BulkJobWaiting('Waiting for the pinned email prerequisites.');
   return finished?{result:{processed:true}}:'more';
  },
  quietNotice:()=>true,
@@ -45,16 +48,18 @@ export const contractAutomationJobHandler:BulkJobHandler<never>={
 };
 
 /** Shared bounded unit; native provenance selects the fixed system mail-only executor boundary. */
-export async function advanceContractSharedAutomationOwner(owner:postgres.ReservedSql,ctx:SessionContext,job:BulkJobRow,unit:Pick<BulkJobUnit,'set'>,system=false):Promise<boolean>{
+export async function advanceContractSharedAutomationOwner(owner:postgres.ReservedSql,ctx:SessionContext,job:BulkJobRow,unit:Pick<BulkJobUnit,'set'>,system=false):Promise<boolean|'waiting'>{
   const {eventId:rootId}=inputSchema.parse(job.input),progress=progressSchema.parse(job.plan);
 
    await owner`select set_config('app.tenant_id',${ctx.tenantId},true),set_config('app.user_id','',true),set_config('jit','off',true)`;
    const db=reservedSqlExecutor(owner);
    const [event]=await db.execute<Event>(sql`select id,case_id,trigger_event,occurrence,decision_revision,workflow_versions,data from contract_shared_event
     where tenant_id=${ctx.tenantId}::uuid and job_id=${job.id}::uuid and coalesce(root_event_id,id)=${rootId}::uuid and processed_at is null
-    order by case when id=${rootId}::uuid then 0 else 1 end,created_at,id limit 1 for update`);
+    order by case when trigger_event='emailDocumentReady' then 0 when id=${rootId}::uuid then 1 else 2 end,created_at,id limit 1 for update`);
    if(!event)return true;
    await owner`select set_config('app.contract_event',${event.id},true)`;
+   const emailRecovery=event.trigger_event==='emailDocumentReady'?await beginContractEmailRecovery(db,event.id):null;
+   if(emailRecovery&&!emailRecovery.ready){await db.execute(sql`select app.contract_shared_email_prerequisite_finish(${event.id}::uuid)`);return false;}
    if(event.trigger_event==='approvalActionNeeded'){
     const after=progress.activeEventId===event.id?progress.mailAfter??null:null;
     const [row]=await db.execute<{page:{approvalId:string;revision:number;recipients:string[]}|null}>(sql`select app.contract_shared_approval_mail_page(${event.case_id}::uuid,${after}::uuid) as page`);
@@ -102,6 +107,7 @@ export async function advanceContractSharedAutomationOwner(owner:postgres.Reserv
     // Send email checks its immutable prepared version before considering the current on/off state.
     documentTemplate:step=>inputs.definitions.documents.some(item=>item.template.id===step.params.letterTemplateId)?'available':'missing',
    };
+   if(emailRecovery){await retryContractEmailRecovery(db,event.id,emailRecovery,executors.sendEmail,read);return false;}
    const waitingId=(event.trigger_event==='approvalsComplete'||event.trigger_event==='approvalRejected')?event.data.approvalId:event.trigger_event==='letterReleased'?event.data.letterId:null;
    if(typeof waitingId==='string'&&z.uuid().safeParse(waitingId).success){
     const [waiting]=await store.waiting('contract_staff',event.case_id,waitingId);
@@ -132,6 +138,11 @@ export async function advanceContractSharedAutomationOwner(owner:postgres.Reserv
     await unit.set(owner,{planMerge:{activeEventId:event.id,workflowCursor:cursor+1}});
     return false;
    }
+   const continuation=await continueContractEmailRecovery(db,event.id,async run=>{
+    const [original]=await db.execute<{facts:Record<string,unknown>}>(sql`select data->'conditionFacts' as facts from contract_shared_event where tenant_id=${ctx.tenantId}::uuid and case_id=${event.case_id}::uuid and trigger_event=${run.trigger} and (${run.eventKey}=trigger_event||'|'||occurrence or starts_with(${run.eventKey},trigger_event||'|'||occurrence||'|')) order by length(occurrence) desc,created_at,id limit 1`);
+    return {executors,guards,read:contractAutomationRead(context,run.trigger,today,original?.facts),now:()=>new Date().toISOString()};
+   });
+   if(continuation==='waiting')return 'waiting';if(continuation==='more')return false;
    if(event.trigger_event==='decisionSubmitted'&&!event.workflow_versions.length)await db.execute(sql`select app.contract_shared_execution_attention(${event.id}::uuid,'No live workflow matched this accepted decision. Publish a workflow or start one by hand.','no_workflow')`);
    await db.execute(sql`select app.contract_shared_event_finish(${event.id}::uuid,${job.id}::uuid)`);
    await unit.set(owner,{planMerge:{activeEventId:null,workflowCursor:0}});
