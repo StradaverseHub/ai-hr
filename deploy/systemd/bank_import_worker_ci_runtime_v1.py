@@ -15,13 +15,27 @@ import subprocess
 import sys
 import time
 
-POLICY = 'aihr-worker-ci-runtime/v1'
+POLICY = 'aihr-worker-ci-runtime/v2'
 SOURCE = Path('/opt/ai-hr')
 STATE = Path('/var/tmp/aihr-deploy')
 COORDINATOR = STATE / 'staging-release-queue/coordinator.py'
 BOOT_ID = Path('/proc/sys/kernel/random/boot_id')
 PROCESS_ROOT = Path('/proc')
+RUNTIME_ROOT = Path('/opt/node22')
 MAX_MANIFEST = 32 * 1024**2
+
+
+ACTIVE_OPERATION_GUARD = None
+FENCES = None  # Injected reviewed, root-pinned metadata primitive; never a source import.
+SLOT_DEADLINE = None
+ACTIVATION_FIELDS = {'format','kind','policy','target','issuedAt','expiresAt','identity','drainSha256','helperSha256','nodeSha256','install','grantSha256','activatedSha256','runtimeSha256','environmentSha256','dotenvSha256','ledger','bootIdSha256','webPid','webStartedMonotonicUs','lease','leaseFile','leaseFileSha256','coordinatorSha256','sourceManifest','sourceManifestSha256','priorLastOkSha256','launch','releaseAuthorized','firstStageApproval','firstStageApprovalSha256','readiness','operationsLock'}
+FIRST_APPROVAL_FIELDS = {'format','kind','policy','target','issuedAt','expiresAt','identity','helperSha256','nodeSha256','lease','leaseFile','leaseFileSha256','coordinatorSha256','sourceManifestSha256','environmentSha256','dotenvSha256','readiness','gate','releaseAuthorized','operationsLock'}
+
+
+def require_operation_guard(base):
+    base.check(ACTIVE_OPERATION_GUARD is not None and ACTIVE_OPERATION_GUARD.stage=='activate-ci-runtime','fixed root guarded activation invocation required')
+    ACTIVE_OPERATION_GUARD.verify()
+    return ACTIVE_OPERATION_GUARD
 
 
 def sha(raw):
@@ -37,6 +51,10 @@ def epoch(value):
 
 
 READINESS_PROBE = "process.stdout.write(JSON.stringify({kind:'CI_WORKER_READINESS_POLICY_V1',required:process.env.AIHR_IMPORT_WORKER_REQUIRED??null,waitSeconds:process.env.AIHR_IMPORT_WORKER_WAIT_SECONDS??null}))"
+FAST_PROBE = """import assert from 'node:assert/strict';import{execFileSync}from'node:child_process';import{readFileSync}from'node:fs';import{fingerprintStagingEnvironment}from'./.github/ci/staging-environment.mjs';import{collectMigrationLedger}from'./.github/ci/staging-migration-ledger.mjs';import{validateInstallGrant}from'./.github/ci/ci-install-grant.mjs';
+const directory=process.argv[1],grant=JSON.parse(readFileSync(directory+'/authorization.json'));validateInstallGrant(grant);const show=key=>execFileSync('/usr/bin/systemctl',['show','aihr','--property='+key,'--value'],{encoding:'utf8',timeout:3000}).trim();
+const pid=show('MainPID'),started=show('ExecMainStartTimestampMonotonic');assert(show('ActiveState')==='active');const port=process.env.PORT??'3000';assert(/^[1-9][0-9]{0,4}$/.test(port)&&Number(port)<=65535);const response=await fetch('http://127.0.0.1:'+port+'/health',{redirect:'manual',signal:AbortSignal.timeout(3000)});assert(response.status===200);await response.body?.cancel();
+const result={kind:'CI_WORKER_COMPLETE_FENCE_V2',pid,startedMonotonicUs:Number(started),bootId:readFileSync('/proc/sys/kernel/random/boot_id','utf8'),build:readFileSync('.next/BUILD_ID','utf8').trim(),environmentSha256:fingerprintStagingEnvironment('/opt/ai-hr'),migrationLedger:collectMigrationLedger('/opt/ai-hr'),healthStatus:200,readiness:{required:process.env.AIHR_IMPORT_WORKER_REQUIRED??null,waitSeconds:process.env.AIHR_IMPORT_WORKER_WAIT_SECONDS??null}};assert(show('MainPID')===pid&&show('ExecMainStartTimestampMonotonic')===started&&show('ActiveState')==='active');process.stdout.write(JSON.stringify(result));"""
 LEDGER_FIELDS = {'format','kind','rows','expectedSha256','actualSha256','releaseAuthorized'}
 
 
@@ -87,38 +105,55 @@ def canonical_filters(base,root):
 
 
 def source_inventory(base, root, filters, deadline=None):
-    """Complete included set, content, links and modes, including untracked canonical extras. Never follows links."""
+    """Canonical complete bytes, exact set, modes and links, through held no-follow descriptors."""
     base.check(filters and '.next' in filters and 'node_modules' in filters, 'canonical source filters required')
-    for p in filters:
-        base.check(isinstance(p, str) and not any(x in p for x in ('**', '?', '[')), 'unsupported canonical source filter')
-    rows = []
-    def walk(path, relative):
-        base.check(deadline is None or time.time()<deadline,'source inventory operation deadline exceeded')
-        base.check(len(rows) < 200000, 'source inventory exceeds bound')
-        before = path.lstat()
-        mode = stat.S_IMODE(before.st_mode)
-        if stat.S_ISDIR(before.st_mode):
-            row = {'path': relative, 'kind': 'directory', 'mode': mode}
-            rows.append(row)
-            names = sorted(os.listdir(path))
-            for name in names:
-                child = relative + '/' + name if relative else name
-                if not excluded(child, filters):
-                    walk(path / name, child)
-            base.check(names == sorted(os.listdir(path)), 'source directory changed during inventory')
-        elif stat.S_ISREG(before.st_mode):
-            raw = base.read_bounded(path, 256 * 1024**2)
-            rows.append({'path': relative, 'kind': 'file', 'mode': mode, 'sha256': sha(raw)})
-        elif stat.S_ISLNK(before.st_mode):
-            target = os.readlink(path)
-            base.check(not os.path.isabs(target) and (path.parent / target).resolve(strict=True) != root.resolve() and (path.parent / target).resolve(strict=True).is_relative_to(root.resolve()), 'source link escapes frozen tree')
-            rows.append({'path': relative, 'kind': 'link', 'mode': mode, 'target': target})
-        else:
-            base.check(False, 'source inventory contains a special node')
-        after = path.lstat()
-        base.check((before.st_dev, before.st_ino, before.st_mode, before.st_size, before.st_mtime_ns, before.st_ctime_ns) ==
-                   (after.st_dev, after.st_ino, after.st_mode, after.st_size, after.st_mtime_ns, after.st_ctime_ns), 'source node changed during inventory')
-    walk(root, '')
+    for pattern in filters:
+        base.check(isinstance(pattern,str) and not any(x in pattern for x in ('**','?','[')),'unsupported canonical source filter')
+    root=Path(root);base.check(root.resolve(strict=True)==root,'canonical source root required')
+    rows=[]
+    def clock():base.check(deadline is None or time.time()<deadline,'source inventory operation deadline exceeded')
+    def identity(info):return (info.st_dev,info.st_ino,info.st_mode,info.st_uid,info.st_gid,info.st_nlink,info.st_size,info.st_mtime_ns,info.st_ctime_ns)
+    def walk(fd,relative):
+        clock();before=os.fstat(fd);base.check(stat.S_ISDIR(before.st_mode),'source directory descriptor required')
+        rows.append({'path':relative,'kind':'directory','mode':stat.S_IMODE(before.st_mode)})
+        names=sorted(os.listdir(fd))
+        for name in names:
+            clock();base.check(len(rows)<200000,'source inventory exceeds bound')
+            child=relative+'/'+name if relative else name
+            if excluded(child,filters):continue
+            initial=os.stat(name,dir_fd=fd,follow_symlinks=False);mode=stat.S_IMODE(initial.st_mode)
+            if stat.S_ISDIR(initial.st_mode):
+                opened=os.open(name,os.O_RDONLY|os.O_DIRECTORY|os.O_NOFOLLOW,dir_fd=fd)
+                try:
+                    base.check(identity(initial)==identity(os.fstat(opened)),'source directory changed while opening')
+                    walk(opened,child)
+                    base.check(identity(initial)==identity(os.fstat(opened))==identity(os.stat(name,dir_fd=fd,follow_symlinks=False)),'source directory changed during content proof')
+                finally:os.close(opened)
+            elif stat.S_ISREG(initial.st_mode):
+                base.check(initial.st_nlink==1 and initial.st_size<=256*1024**2,'bounded non-linked source file required')
+                opened=os.open(name,os.O_RDONLY|os.O_NOFOLLOW,dir_fd=fd)
+                try:
+                    base.check(identity(initial)==identity(os.fstat(opened)),'source file changed while opening')
+                    digest=hashlib.sha256();total=0
+                    while True:
+                        clock();chunk=os.read(opened,1024**2)
+                        if not chunk:break
+                        total+=len(chunk);base.check(total<=256*1024**2,'source file exceeds bound');digest.update(chunk)
+                    base.check(total==initial.st_size and identity(initial)==identity(os.fstat(opened))==identity(os.stat(name,dir_fd=fd,follow_symlinks=False)),'source file changed during content proof')
+                    rows.append({'path':child,'kind':'file','mode':mode,'sha256':digest.hexdigest()})
+                finally:os.close(opened)
+            elif stat.S_ISLNK(initial.st_mode):
+                target=os.readlink(name,dir_fd=fd);resolved=(root/child).resolve(strict=True)
+                base.check(not os.path.isabs(target) and resolved!=root and resolved.is_relative_to(root),'source link escapes frozen tree')
+                rows.append({'path':child,'kind':'link','mode':mode,'target':target})
+                base.check(identity(initial)==identity(os.stat(name,dir_fd=fd,follow_symlinks=False)),'source link changed during content proof')
+            else:base.check(False,'source inventory contains a special node')
+        base.check(names==sorted(os.listdir(fd)) and identity(before)==identity(os.fstat(fd)),'source directory changed during complete enumeration')
+    opened=os.open(root,os.O_RDONLY|os.O_DIRECTORY|os.O_NOFOLLOW)
+    try:
+        before=os.fstat(opened);walk(opened,'')
+        base.check(identity(before)==identity(os.fstat(opened))==identity(root.lstat()),'source root named/descriptor identity changed')
+    finally:os.close(opened)
     return rows
 
 
@@ -183,10 +218,23 @@ def bounded_process(argv, **options):
             if pipe:pipe.close()
 
 
-def child(argv, identity, environment, *, input=None, timeout=600):
+def child(argv, identity, environment, *, input=None, timeout=600, operation_fd=None):
     """Fixed caller-owned argv only. Drop all supplementary groups/UID/GID BEFORE exec, never root JS."""
+    if '--env-file=.env.production' in argv:
+        # Hash pinning alone cannot establish loader coverage. Refuse even preexisting
+        # dotenv loader overrides before Node can interpret them; never print values.
+        dotenv=(SOURCE/'.env.production').read_bytes()
+        # Deliberately stricter than dotenv's grammar (including quoted/exported
+        # keys and comments): these loader tokens must be wholly absent.
+        if re.search(rb'\b(?:NODE_(?!ENV\b)[A-Za-z0-9_]*|LD_[A-Za-z0-9_]*|DYLD_[A-Za-z0-9_]*|PYTHON[A-Za-z0-9_]*|OPENSSL_CONF|OPENSSL_MODULES)\b',dotenv):
+            raise ValueError('CI runtime cutover refused: unreviewed dotenv loader input')
+    if any(re.fullmatch(r'NODE_(?!ENV$).*|LD_.*|DYLD_.*|PYTHON.*|OPENSSL_CONF|OPENSSL_MODULES',key)for key in environment):
+        raise ValueError('CI runtime cutover refused: unreviewed controlled loader environment')
+    fds=ACTIVE_OPERATION_GUARD.inherited_fds() if ACTIVE_OPERATION_GUARD is not None else (() if operation_fd is None else (operation_fd,))
+    if SLOT_DEADLINE is not None:timeout=min(timeout,SLOT_DEADLINE-time.monotonic())
+    if timeout<=0:raise ValueError('CI runtime cutover refused: aggregate proof slot expired')
     raw=bounded_process(argv,cwd=str(SOURCE),env=environment,user=identity.pw_uid,group=identity.pw_gid,
-                        extra_groups=[],input=input,timeout=timeout)
+                        extra_groups=[],input=input,timeout=timeout,pass_fds=fds)
     return json.loads(raw)
 
 
@@ -201,6 +249,24 @@ def protected_private(base,path):
     finally:os.close(fd)
 
 
+def worker_identity(base,report,source):
+    """Independent actual UID/cgroup/source/PID-start identity, never a PID number alone."""
+    base.check(report.get('ActiveState')=='active' and report.get('SubState')=='running' and report.get('NRestarts')=='0','owned worker is not the original running process')
+    pid=report.get('MainPID','');base.check(re.fullmatch('[1-9][0-9]*',pid),'owned worker PID required')
+    owner=pwd.getpwnam(base.USER);process=PROCESS_ROOT/pid
+    base.check(process.stat().st_uid==owner.pw_uid and (process/'cwd').resolve()==base.ROOT/'releases'/source,'owned worker UID/source differs')
+    base.check(base.read_bounded(process/'cmdline',65536).split(b'\0')[:-1]==[str(base.NODE).encode(),b'--import',b'tsx',b'scripts/bank-import-runner.ts'],'owned worker executable/argv differs')
+    status=base.read_bounded(process/'status',65536).decode()
+    ids=next((line.split()[1:]for line in status.splitlines()if line.startswith('Uid:')),[])
+    base.check(ids and all(value==str(owner.pw_uid)for value in ids),'owned worker effective/saved/fs UID differs')
+    group=base.command(['/usr/bin/systemctl','show','aihr-bank-import.service','--property=ControlGroup','--value']).stdout.strip()
+    memberships=[line.split(':',2)[-1]for line in base.read_bounded(process/'cgroup',65536).decode().splitlines()]
+    base.check(group.endswith('/aihr-bank-import.service') and group in memberships,'owned worker cgroup differs')
+    start=base.read_bounded(process/'stat',65536).decode().rsplit(')',1)[1].split()[19]
+    base.check(re.fullmatch('[1-9][0-9]*',start),'owned worker process start identity unavailable')
+    return {'pid':pid,'startTicks':start,'uid':owner.pw_uid,'source':source,'cgroup':group}
+
+
 class RuntimeObservation:
     def __init__(self, base, fmt, args, operation, drain_bytes):
         self.base, self.fmt, self.args, self.operation = base, fmt, args, operation
@@ -209,13 +275,13 @@ class RuntimeObservation:
         self.bytes = base.read_bounded(self.path, 65536)
         base.check(sha(self.bytes) == args.ci_runtime_authorization_sha256, 'root CI cutover authorization hash differs')
         a = self.auth = json.loads(self.bytes)
-        fields = {'format','kind','policy','target','issuedAt','expiresAt','identity','drainSha256','helperSha256','nodeSha256',
-                  'install','grantSha256','activatedSha256','runtimeSha256','environmentSha256','dotenvSha256','ledger',
-                  'bootIdSha256','webPid','webStartedMonotonicUs','lease','leaseFile','leaseFileSha256','coordinatorSha256',
-                  'sourceManifest','sourceManifestSha256','priorLastOkSha256','launch','releaseAuthorized','firstStageApproval','firstStageApprovalSha256','readiness'}
+        fields = ACTIVATION_FIELDS
         base.check(set(a) == fields and a['format'] == 1 and a['kind'] == 'ADMIN_AUTHORIZED_SINGLE_CI_WORKER_CUTOVER' and
                    a['policy'] == POLICY and a['target'] == 'alpha-staging' and a['releaseAuthorized'] is False,
                    'exact administrator CI cutover authority required')
+        self.guard=require_operation_guard(base)
+        base.check(self.guard.path==self.path and self.guard.bytes==self.bytes and self.guard.a['operationsLock']==a['operationsLock'],'exact guarded activation approval required')
+        self.guard.observer=self;self.start_intent=None;self.started_identity=None;self.started_sha=None;self.start_capture_pending=False
         self.first_path=Path(a['firstStageApproval'])
         self.first_identity=protected_private(base,self.first_path)
         self.first_bytes=base.read_bounded(self.first_path,65536)
@@ -246,10 +312,31 @@ class RuntimeObservation:
                             'AIHR_STAGING_BATCH':self.lease['batch'], 'AIHR_STAGING_EPOCH':str(self.lease['epoch']),
                             'AIHR_STAGING_CANDIDATE':args.source, 'AIHR_STAGING_TOKEN':self.lease['token']}
         self.last, self.transitions, self.last_lease_phase = None, [], None
+        self.slot_name=None;self.fence_count=0;self.audits=[];self.content_proofs=[];self.metadata=None;self.private_seen={};self.cleaned=set()
         self.check_authority()
+
+    def slot(self,name,seconds):
+        """One absolute deadline shared by every subprocess in a stage; never reset per child."""
+        global SLOT_DEADLINE
+        self.check_slot()
+        remaining=min(epoch(self.auth['expiresAt']),epoch(self.grant['expiresAt']))-time.time()
+        self.base.check(remaining>0,'success authority expired before stage')
+        self.slot_name=name;SLOT_DEADLINE=time.monotonic()+min(seconds,remaining)
+        self.base.VERIFIED_OPERATION_DEADLINE=SLOT_DEADLINE
+
+    def check_slot(self):
+        self.base.check(SLOT_DEADLINE is None or time.monotonic()<SLOT_DEADLINE,'aggregate cutover stage deadline exceeded')
+
+    def failure_deadline(self,seconds):
+        # Failure-only exact-owned-process quarantine is separately bounded. This
+        # resets no success slot and confers no activation/receipt/arrival authority.
+        global SLOT_DEADLINE
+        SLOT_DEADLINE=time.monotonic()+seconds
+        self.base.VERIFIED_OPERATION_DEADLINE=SLOT_DEADLINE
 
     def check_authority(self):
         b, a = self.base, self.auth
+        self.guard.verify_install()
         b.check(protected_private(b,self.path)==self.auth_identity,'administrator authority inode changed')
         b.check(protected_private(b,Path(a['leaseFile']))==self.lease_identity and sha(b.read_bounded(Path(a['leaseFile']),4096))==a['leaseFileSha256'],'held lease credential identity/content changed')
         b.check(b.read_bounded(self.path,65536) == self.bytes, 'CI cutover authority changed')
@@ -271,10 +358,10 @@ class RuntimeObservation:
         self.grant = g = json.loads(b.read_bounded(self.directory/'authorization.json',32768))
         b.check(protected_private(b,self.first_path)==self.first_identity and b.read_bounded(self.first_path,65536)==self.first_bytes,'pre-drain administrator approval identity/content changed')
         first=json.loads(self.first_bytes)
-        first_fields={'format','kind','policy','target','issuedAt','expiresAt','identity','helperSha256','nodeSha256','lease','leaseFileSha256','sourceManifestSha256','environmentSha256','dotenvSha256','readiness','gate','releaseAuthorized'}
+        first_fields=FIRST_APPROVAL_FIELDS
         gate_fields={'source','controller','runId','build','artifact','witnessFingerprint','policyVersion'}
         b.check(set(first)==first_fields and first['format']==1 and first['kind']=='ADMIN_REVIEWED_CI_WORKER_DRAIN_PINS' and first['policy']==POLICY and first['target']=='alpha-staging' and first['releaseAuthorized'] is False and set(first['gate'])==gate_fields,'closed pre-drain administrator approval required')
-        b.check(all(first[k]==a[k] for k in ('identity','helperSha256','nodeSha256','lease','leaseFileSha256','sourceManifestSha256','environmentSha256','dotenvSha256','readiness')),'pre-drain and activation administrator shared pins differ')
+        b.check(all(first[k]==a[k] for k in ('identity','helperSha256','nodeSha256','lease','leaseFileSha256','sourceManifestSha256','environmentSha256','dotenvSha256','readiness','operationsLock','leaseFile','coordinatorSha256')),'pre-drain and activation administrator shared pins differ')
         drain_time=(self.operation/'drained.json').stat().st_mtime
         b.check(epoch(first['issuedAt'])<=drain_time<=epoch(first['expiresAt']) and drain_time<=epoch(a['issuedAt']),'pre-drain approval was not valid when original drain completed or activation approval predates drain')
         i=a['install']
@@ -321,9 +408,107 @@ class RuntimeObservation:
         for path,key in [('scripts/improve/release.ts','releaseSha256'),('.github/ci/normal-cleanup-fences.mjs','filterOwnerSha256')]:
             b.check(sha(b.read_bounded(SOURCE/path,1024**2))==m[key],'canonical source filter owner differs')
         b.check(m['filters']==canonical_filters(b,SOURCE),'manifest filters differ from actual canonical deployment owner')
-        actual=source_inventory(b,SOURCE,m['filters'],deadline=epoch(a['expiresAt']))
+        deadline=min(epoch(a['expiresAt']),time.time()+max(0,SLOT_DEADLINE-time.monotonic())) if SLOT_DEADLINE is not None else epoch(a['expiresAt'])
+        actual=source_inventory(b,SOURCE,m['filters'],deadline=deadline)
         b.check(actual==m['entries'],'canonical full source content/link/mode/set differs')
         return {'manifestSha256':a['sourceManifestSha256'],'includedNodes':len(actual),'fullSourceChecksumVerified':True}
+
+    def content_audit(self):
+        self.base.check(len(self.content_proofs)<2,'exactly two source content slots permitted')
+        self.slot('S'+str(len(self.content_proofs)),60)
+        self.check_authority();proof=self.source_proof();self.check_slot()
+        self.content_proofs.append(proof)
+
+    def private_fence(self):
+        """Original bytes stay immutable; only exact native cleanup publications/removals progress."""
+        b=self.base;uid=self.owner.pw_uid
+        original={'authorization.json','store.json','verified.json','activated.json','runtime.json'}
+        allowed={'audit','normal-cleanup.lock','normal-cleanup-ready.json','normal-cleanup-commit.json','normal-cleanup-consumed.json','cleanup-authorized.json','cleanup-result.json','normal-cleanup-owned-cleanup.json'}
+        names=set(os.listdir(self.directory));b.check(names<=original|allowed|{'packet','next'} and original<=names,'unknown/missing private installation member')
+        previous=getattr(self,'private_names',None)
+        if previous is not None:
+            b.check(previous-names<=({'packet','next','normal-cleanup.lock'}),'native private publications backslid')
+            b.check(not self.cleaned.intersection(names),'removed native owned member reappeared')
+        records={}
+        def read(path,bound=MAX_MANIFEST):
+            private_install(b,path,uid)
+            fd=os.open(path,os.O_RDONLY|os.O_NOFOLLOW)
+            try:
+                before=os.fstat(fd);raw=os.read(fd,bound+1);after=os.fstat(fd);named=path.lstat()
+                b.check(len(raw)<=bound and FENCES.metadata(before)==FENCES.metadata(after)==FENCES.metadata(named),'private record changed during bounded read')
+                item={'sha256':sha(raw),'metadata':FENCES.metadata(after)}
+                key=str(path.relative_to(self.directory))
+                b.check(key not in self.private_seen or self.private_seen[key]==item,'immutable original/native cleanup record changed')
+                self.private_seen[key]=item;records[key]=item
+                return json.loads(raw)
+            finally:os.close(fd)
+        for name in original:read(self.directory/name)
+        store=json.loads(b.read_bounded(self.directory/'store.json',4096));activated=json.loads(b.read_bounded(self.directory/'activated.json',1024**2))
+        audit_members={'system-testing.json':'preparedSha256','successful-build.json':'successfulObservationSha256','build-provenance.json':'provenanceSha256','bytes/build-bundle-files.json':'manifestSha256'}
+        for folder in ('packet','audit'):
+            if folder not in names:continue
+            private_install(b,self.directory/folder,uid,True)
+            if folder=='packet':
+                st=(self.directory/folder).lstat();b.check({'device':st.st_dev,'inode':st.st_ino}==store['packetDirectory'],'native packet directory changed')
+            else:
+                audit_names=set(os.listdir(self.directory/folder));b.check(audit_names<=set(k for k in audit_members if '/'not in k)|{'bytes'},'unknown retained audit member')
+                if 'bytes'in audit_names:
+                    private_install(b,self.directory/folder/'bytes',uid,True)
+                    b.check(set(os.listdir(self.directory/folder/'bytes'))<={'build-bundle-files.json'},'unknown retained audit bytes')
+            for name,key in audit_members.items():
+                path=self.directory/folder/name
+                if folder=='audit' and not path.exists():continue
+                read(path);b.check(records[folder+'/'+name]['sha256']==self.grant['build'][key],'retained original audit byte integrity failed')
+        if 'next'in names:
+            st=private_install(b,self.directory/'next',uid,True)
+            b.check({'device':st.st_dev,'inode':st.st_ino}==activated['activation']['retainedDirectory'],'retained previous build directory changed')
+        for name in allowed-{'audit'}:
+            if name in names:read(self.directory/name)
+        if allowed.intersection(names):
+            stage,_=self.snapshot();b.check(stage=='O','normal cleanup only follows genuine successful native finish')
+        if 'normal-cleanup.lock'in names:
+            lock=json.loads(b.read_bounded(self.directory/'normal-cleanup.lock',4096))
+            b.check(set(lock)=={'source','installId','pid'} and lock['source']==self.args.source and lock['installId']==self.grant['installId'] and type(lock['pid'])is int and lock['pid']>0,'unknown native cleanup lock shape')
+        if 'normal-cleanup-ready.json'in names:
+            ready=json.loads(b.read_bounded(self.directory/'normal-cleanup-ready.json',65536))
+            selection={'source':self.args.source,'installId':self.grant['installId'],'buildRecordId':self.auth['install']['buildRecordId'],'nextBuildId':self.args.build_id,'authorizationSha256':self.auth['grantSha256']}
+            b.check(set(ready)=={'format','kind','selection','nonce','fencesSha256','readyAt'} and ready['format']==1 and ready['kind']=='NORMAL_VALID_GRANT_CLEANUP_READY' and ready['selection']==selection and all(re.fullmatch('[a-f0-9]{64}',ready[k])for k in ('nonce','fencesSha256')),'exact native cleanup READY required')
+        if 'normal-cleanup-commit.json'in names:
+            b.check('normal-cleanup-ready.json'in names,'cleanup commit precedes READY')
+            commit=json.loads(b.read_bounded(self.directory/'normal-cleanup-commit.json',65536))
+            b.check(set(commit)=={'format','kind','readySha256','nonce','proof'} and commit['format']==1 and commit['kind']=='NORMAL_VALID_GRANT_CLEANUP_COMMIT' and commit['readySha256']==sha(canonical(ready)) and commit['nonce']==ready['nonce'],'exact native cleanup commit required')
+            b.check(epoch(ready['readyAt'])<=epoch(commit['proof']['checkedAt'])<=epoch(ready['readyAt'])+180,'native cleanup READY was stale at commit')
+        if 'cleanup-authorized.json'in names:
+            b.check('normal-cleanup-commit.json'in names,'cleanup authorization precedes commit')
+            self.cleanup_authority()
+            authority=json.loads(b.read_bounded(self.directory/'cleanup-authorized.json',65536))
+            b.check(authority['sourceProof']==commit['proof'],'native cleanup checksum commit differs')
+            for name in audit_members:b.check('audit/'+name in records,'native cleanup lost retained original audit')
+        if 'normal-cleanup-consumed.json'in names:
+            b.check('cleanup-authorized.json'in names,'cleanup consumption precedes authority')
+            consumed=json.loads(b.read_bounded(self.directory/'normal-cleanup-consumed.json',65536))
+            b.check(consumed=={'kind':'NORMAL_CLEANUP_NONCE_CONSUMED','readySha256':sha(canonical(ready))},'native cleanup nonce differs')
+        absent={'packet','next'}-names
+        b.check(not absent or 'normal-cleanup-consumed.json'in names,'native owned bytes removed without exact cleanup commit')
+        self.cleaned|=absent
+        if 'cleanup-result.json'in names or 'normal-cleanup-owned-cleanup.json'in names:
+            b.check(absent=={'packet','next'},'native cleanup result precedes complete owned deletion')
+            result=json.loads(b.read_bounded(self.directory/('cleanup-result.json'if 'cleanup-result.json'in names else 'normal-cleanup-owned-cleanup.json'),65536))
+            expected={'format':1,'kind':'OWNED_INSTALL_BYTES_ABSENT_AUDIT_RETAINED','installId':self.grant['installId'],'authorizationSha256':self.auth['grantSha256'],'authoritySha256':records['cleanup-authorized.json']['sha256'],'source':self.args.source,'nextBuildId':self.args.build_id,'activeDirectory':activated['activation']['activeDirectory'],'verifiedAbsent':['next','packet'],'auditEvidenceRetained':True,'releaseHandbackVerified':False}
+            b.check(result==expected,'native owned cleanup result differs')
+            if 'normal-cleanup-owned-cleanup.json'in names:b.check(json.loads(b.read_bounded(self.directory/'normal-cleanup-owned-cleanup.json',65536))==expected,'native session cleanup result differs')
+        root_metadata=FENCES.metadata(self.directory.lstat())
+        if previous is not None:
+            prior_root=self.private_root
+            stable_fields={'device','inode','mode','uid','gid'}
+            b.check(all(prior_root[k]==root_metadata[k]for k in stable_fields),'native private directory identity/mode changed')
+            expected_nlink=int(prior_root['nlink'])+int('audit'in names and 'audit'not in previous)-sum(int(x in previous and x not in names)for x in ('next','packet'))
+            b.check(int(root_metadata['nlink'])==expected_nlink,'unexpected native private directory membership')
+            b.check(previous!=names or root_metadata==prior_root,'native private root metadata changed without legal membership publication')
+        b.check(set(os.listdir(self.directory))==names,'native cleanup publication changed during metadata fence')
+        self.private_root=root_metadata
+        self.private_names=names
+        return {'records':records,'members':sorted(names),'removed':sorted(self.cleaned)}
 
     def snapshot(self):
         b,a=self.base,self.auth
@@ -365,11 +550,60 @@ class RuntimeObservation:
             time.sleep(.05)
         raise ValueError('CI runtime cutover refused: no coherent native running/finish publication snapshot')
 
-    def cleanup_retry_authority(self):
-        """Authenticate only the unmodified normal operator's owned-cleanup shape; never authorizes a successful proof."""
+    def start_requested(self):
+        self.guard.verify_install()
+        self.start_intent={'source':self.args.source,'unitSha256':sha(self.base.service_unit(self.args.source).encode()),
+                           'bootIdSha256':self.auth['bootIdSha256'],'notBeforeTicks':int(time.monotonic()*os.sysconf('SC_CLK_TCK'))}
+        self.guard.file_mutation()
+        self.base.write_new(self.operation/'ci-worker-start-request.json',self.fmt.canonical(self.start_intent),0o400)
+
+    def record_started(self,report):
+        self.guard.verify_install()
+        self.base.check(self.guard.start_sent and self.start_intent is not None,'owned start command was not sent')
+        found=worker_identity(self.base,report,self.args.source)
+        self.base.check(int(found['startTicks'])>=self.start_intent['notBeforeTicks'],'worker predates this protected start operation')
+        self.started_identity=found
+        raw=self.fmt.canonical({'intent':self.start_intent,'process':found,'journeyVerified':False})
+        # Capturing the exact process we just started must survive a lost success
+        # lease. This narrow state permits only this immutable evidence write.
+        self.start_capture_pending=True
+        try:
+            self.guard.file_mutation(failure_only=True)
+            self.base.write_new(self.operation/'ci-worker-started.json',raw,0o400);self.started_sha=sha(raw)
+        finally:self.start_capture_pending=False
+
+    def quarantine_fence(self):
+        # Failure-only authority: no fresh lease PASS is inferred. Continuous SH+install EX and exact OWN process are mandatory.
+        self.guard.verify_install()
+        self.base.check(self.started_identity is not None and (self.started_sha is not None or self.start_capture_pending and self.guard.start_sent),'no protected owned-start evidence; do not touch an uncertain process')
+        self.base.root_protected(self.operation/'ci-worker-start-request.json',regular=True)
+        self.base.check(sha(self.base.read_bounded(self.operation/'ci-worker-start-request.json',65536))==sha(self.fmt.canonical(self.start_intent)), 'protected start intent changed')
+        if not self.start_capture_pending:
+            self.base.root_protected(self.operation/'ci-worker-started.json',regular=True)
+            self.base.check(sha(self.base.read_bounded(self.operation/'ci-worker-started.json',65536))==self.started_sha,'protected owned-start evidence changed')
+        candidate=self.base.service_unit(self.args.source)
+        quarantine=candidate.replace('Restart=on-failure\n','Restart=no\nSendSIGKILL=no\n')
+        self.base.check(sha(self.base.read_bounded(self.base.UNIT,65536))in(sha(candidate.encode()),sha(quarantine.encode())),'foreign unit; no quarantine permission')
+        report=self.base.service_properties()
+        self.base.validate_service(report,self.base.ROOT/'releases'/self.args.source)
+        self.base.check(worker_identity(self.base,report,self.args.source)==self.started_identity,'foreign/reused/restarted worker; no quarantine permission')
+        self.base.check(sha(self.base.read_bounded(BOOT_ID,4096))==self.start_intent['bootIdSha256'],'boot changed; no quarantine permission')
+
+    def authorize_quarantine(self):
+        self.quarantine_fence()
+        lease_failed=False
+        try:self.guard.native_lease()
+        except Exception:lease_failed=True
+        self.quarantine_fence()
+        self.guard.file_mutation(failure_only=True)
+        self.base.write_new(self.operation/'ci-worker-quarantine-authority.json',self.fmt.canonical({'ownedStartedProcess':self.started_identity,'freshLeaseAssertFailed':lease_failed,'failureOnly':True,'successAuthorized':False,'journeyVerified':False}),0o400)
+        self.guard.quarantine=True
+
+    def cleanup_authority(self):
+        """Validate one immutable normal cleanup authorization. Never retry a native byte failure."""
         b,a=self.base,self.auth
-        self.check_authority();stage,_=self.snapshot()
-        b.check(stage=='O','only strict successful deployment may retry a native owned-cleanup race')
+        stage,_=self.snapshot()
+        b.check(stage=='O','only strict successful deployment permits normal cleanup')
         path=self.directory/'cleanup-authorized.json';private_install(b,path,self.owner.pw_uid)
         raw=b.read_bounded(path,65536);c=json.loads(raw)
         fields={'format','kind','sourceDirectory','source','installId','buildRecordId','nextBuildId','authorizationSha256','witnessFingerprint','directory','activeDirectory','retainedDirectory','packetDirectory','sourceProof','sourceProofSha256','authorizedAt'}
@@ -390,44 +624,17 @@ class RuntimeObservation:
         approved=native_timestamp(b,c['authorizedAt'],epoch(self.grant['issuedAt']),time.time())
         checked=native_timestamp(b,proof['checkedAt'],epoch(self.grant['issuedAt']),time.time())
         b.check(checked<=approved<=checked+60,'native cleanup checksum was not fresh when authorized')
-        self.source_proof()
         return sha(raw)
 
-    def native_status(self):
-        i=self.auth['install'];retry_deadline=None
-        for attempt in range(3):
-            timeout=min(600,epoch(self.auth['expiresAt'])-time.time())
-            if retry_deadline is not None:timeout=min(timeout,retry_deadline-time.monotonic())
-            self.base.check(timeout>0,'bounded normal-cleanup native proof recovery expired')
-            try:
-                return child([str(self.base.NODE),'--env-file=.env.production','--import','tsx','.github/ci/staging-build-install.mjs',
-                              'status',self.args.source,i['id'],i['buildRecordId']],self.owner,self.environment,timeout=timeout),attempt+1
-            except ValueError:
-                if attempt==2:raise
-                cleanup_sha=self.cleanup_retry_authority()
-                if retry_deadline is None:retry_deadline=time.monotonic()+60
-                self.base.check(time.monotonic()<retry_deadline,'bounded normal-cleanup native proof recovery expired')
-                self.base.write_new(self.operation/('ci-runtime-native-retry-%03d-%d.json'%(len(self.transitions)+1,attempt+1)),
-                                    self.fmt.canonical({'policy':POLICY,'nativeProofAccepted':False,'retry':attempt+1,'cleanupAuthorizationSha256':cleanup_sha,
-                                                        'reason':'Native read-only status failed during authenticated same-install normal cleanup; no success inferred',
-                                                        'leasePhase':self.last_lease_phase,'journeyVerified':False}),0o400)
-                time.sleep(.1)
-        raise ValueError('fresh native proof required')
-
-    def observe(self):
-        started=time.monotonic()
-        self.check_authority()
-        source=self.source_proof()
-        before,_=self.snapshot()
-        i=self.auth['install']
-        # Exact canonical stagingInstallerCommand('status',...) argv, as the actual installation owner, no shell.
-        native,attempts=self.native_status()
-        self.check_authority()
-        self.source_proof()
-        stage,raw=self.snapshot()
+    def full_audit(self):
+        """Exactly two genuine, fatal-on-error native byte proofs; no metadata fallback/retry."""
         b,a=self.base,self.auth
-        b.check({'R0':0,'R1':1,'O':2}[stage]>={'R0':0,'R1':1,'O':2}[before], 'native CI finish backslid during proof')
-        b.check(self.last is None or {'R0':0,'R1':1,'O':2}[stage]>={'R0':0,'R1':1,'O':2}[self.last], 'native CI finish backslid')
+        b.check(len(self.audits)<2,'only two native audit slots permitted')
+        self.slot('A'+str(len(self.audits)),180)
+        self.check_authority();before,_=self.snapshot();i=a['install']
+        native=child([str(b.NODE),'--env-file=.env.production','--import','tsx','.github/ci/staging-build-install.mjs','status',self.args.source,i['id'],i['buildRecordId']],self.owner,self.environment,timeout=180)
+        self.check_authority();stage,raw=self.snapshot()
+        b.check({'R0':0,'R1':1,'O':2}[stage]>={'R0':0,'R1':1,'O':2}[before],'native finish backslid during full audit')
         b.check(set(native)=={'authorizationSha256','verified','activated','runtime','releaseAuthorized'},'closed native status record required')
         runtime=native.get('runtime',{})
         runtime_fields={'format','kind','source','installId','buildRecordId','nextBuildId','authorizationSha256','pid','startedMonotonicUs','healthStatus','compiledByteInventory','migrationLedger','verifiedAt','releaseAuthorized','fullSourceChecksumVerified','fullMigrationLedgerVerified'}
@@ -447,23 +654,74 @@ class RuntimeObservation:
         stable=runtime_identity(b,runtime,epoch(self.grant['issuedAt']),time.time(),fresh=True)
         original_stable=runtime_identity(b,original_runtime,epoch(self.grant['issuedAt']),time.time())
         b.check(stable['migrationLedger']==a['ledger'] and stable==original_stable,'original authenticated active-service/full-ledger identity changed')
-        readiness=child([str(self.base.NODE),'--env-file=.env.production','-e',READINESS_PROBE],self.owner,self.environment,timeout=15)
-        b.check(readiness=={'kind':'CI_WORKER_READINESS_POLICY_V1',**a['readiness']},'actual unchanged native REQUIRED/wait policy differs')
-        if self.last_lease_phase=='arrived':b.check(stage=='O','arrived proof requires exact successful candidate')
-        b.check(native.get('activated')==json.loads(b.read_bounded(self.directory/'activated.json',1024**2)),'fresh native activated record differs')
-        self.last=stage
-        observation={'policy':POLICY,'stage':stage,'native':native,'independentSourceContentProof':source,
-                     'currentSha256':sha(raw[0]),'lastOkSha256':sha(raw[1]),'observedAt':datetime.now(timezone.utc).isoformat(),
-                     'leasePhase':self.last_lease_phase,'timing':{'elapsedSeconds':time.monotonic()-started,'nativeStatusAttempts':attempts},'journeyVerified':False,'releaseAuthorized':False}
-        self.check_authority()
-        self.transitions.append(observation)
-        b.write_new(self.operation/('ci-runtime-observation-%03d.json'%len(self.transitions)),self.fmt.canonical(observation),0o400)
+        b.check(native['activated']==json.loads(b.read_bounded(self.directory/'activated.json',1024**2)),'native activation evidence differs')
+        b.check(native['verified']==json.loads(b.read_bounded(self.directory/'verified.json',1024**2)),'native staged verification evidence differs')
+        self.check_slot();self.guard.file_mutation()
+        b.write_new(self.operation/('ci-runtime-full-audit-%d.json'%len(self.audits)),self.fmt.canonical(native),0o400)
+        self.audits.append(native)
+        return native
+
+    def complete_fence(self,*,shared_stability_deadline=False):
+        b,a=self.base,self.auth;started=time.monotonic()
+        b.check(self.fence_count<10 and FENCES is not None,'reviewed complete metadata primitive and exactly ten fences required')
+        if shared_stability_deadline:
+            self.check_slot();self.slot_name='F'+str(self.fence_count)
+        else:self.slot('F'+str(self.fence_count),20)
+        self.check_authority();before,_=self.snapshot()
+        private=self.private_fence()
+        filters=canonical_filters(b,SOURCE)
+        roots=[SOURCE,SOURCE/'.next',SOURCE/'node_modules',RUNTIME_ROOT]
+        metadata={}
+        cache=SOURCE/'.next/cache'
+        cache_state={'present':cache.exists() or cache.is_symlink()}
+        if cache_state['present']:
+            st=cache.lstat()
+            b.check(stat.S_ISDIR(st.st_mode) and not stat.S_ISLNK(st.st_mode) and not st.st_mode&0o022 and st.st_uid==self.owner.pw_uid,'unsafe compiled runtime cache')
+            cache_state['metadata']=FENCES.metadata(st)
+        for name,root,exclude in [('source',roots[0],lambda rel:excluded(rel,filters)),('compiled',roots[1],lambda rel:rel=='cache'),('dependencies',roots[2],lambda rel:False),('runtime',roots[3],lambda rel:False)]:
+            metadata[name]=FENCES.capture_tree(str(root),exclude,[str(x)for x in roots],SLOT_DEADLINE)
+        covered={str(root/row['path'])for name,root in zip(('source','compiled','dependencies','runtime'),roots)for row in metadata[name]['entries']}
+        for name in ('source','compiled','dependencies','runtime'):
+            for row in metadata[name]['entries']:
+                if row['kind']=='link':b.check(row['resolvedTarget']['path']in covered,'link target is inside an excluded/unobserved subtree')
+        # Cache contents alone are excluded by the native policy. Membership and the
+        # cache directory identity/mode stay pinned; compiled ROOT metadata is never waived.
+        metadata['cache']=cache_state
+        b.check(self.metadata is None or metadata==self.metadata,'complete source/compiled/dependency/runtime metadata changed')
+        observed=child([str(b.NODE),'--env-file=.env.production','--input-type=module','-e',FAST_PROBE,str(self.directory)],self.owner,self.environment,timeout=20)
+        fields={'kind','pid','startedMonotonicUs','bootId','build','environmentSha256','migrationLedger','healthStatus','readiness'}
+        b.check(set(observed)==fields and observed['kind']=='CI_WORKER_COMPLETE_FENCE_V2' and observed['pid']==a['webPid'] and observed['startedMonotonicUs']==a['webStartedMonotonicUs'] and sha(observed['bootId'].encode())==a['bootIdSha256'] and observed['build']==self.args.build_id and observed['environmentSha256']==a['environmentSha256'] and observed['healthStatus']==200 and observed['readiness']==a['readiness'],'fresh complete native identity/environment/health differs')
+        ledger=observed['migrationLedger'];b.check(set(ledger)==LEDGER_FIELDS|{'verifiedAt'},'exact fresh full ordered ledger schema required')
+        native_timestamp(b,ledger['verifiedAt'],epoch(self.grant['issuedAt']),time.time(),fresh=True)
+        b.check({k:v for k,v in ledger.items()if k!='verifiedAt'}==a['ledger'],'fresh full ordered ledger differs')
+        self.check_authority();stage,raw=self.snapshot()
+        b.check({'R0':0,'R1':1,'O':2}[stage]>={'R0':0,'R1':1,'O':2}[before] and (self.last is None or {'R0':0,'R1':1,'O':2}[stage]>={'R0':0,'R1':1,'O':2}[self.last]),'native finish publication backslid')
+        self.check_slot();self.metadata=metadata;self.last=stage
+        observation={'policy':POLICY,'slot':self.slot_name,'stage':stage,'leasePhase':self.last_lease_phase,'metadataSha256':sha(canonical(metadata)),'private':private,'freshNativeIdentity':observed,'currentSha256':sha(raw[0]),'lastOkSha256':sha(raw[1]),'elapsedSeconds':time.monotonic()-started,'byteProof':False,'journeyVerified':False,'releaseAuthorized':False}
+        self.guard.file_mutation();self.check_slot()
+        b.write_new(self.operation/('ci-runtime-fence-%02d.json'%self.fence_count),self.fmt.canonical(observation),0o400)
+        self.transitions.append(observation);self.fence_count+=1
         return observation
 
+    def admit_mutation(self):
+        b=self.base;now=time.time()
+        original=json.loads(b.read_bounded(self.directory/'runtime.json',1024**2))
+        c=epoch(original['verifiedAt'])+600
+        remaining=min(epoch(self.auth['expiresAt']),epoch(self.grant['expiresAt']))-now
+        b.check(self.fence_count==3 and len(self.audits)==1 and len(self.content_proofs)==1,'pre-mutation proof graph incomplete')
+        b.check(remaining>=527 and c-now>=155,'insufficient mandatory helper/readiness opportunity before first mutation')
+        # The unchanged normal operator has its own larger per-command timeouts.
+        # 830s is explicitly a planning reservation, NOT an enforced branch cap.
+        estimated_normal=830
+        b.check(epoch(self.grant['expiresAt'])-now>=max(497,max(0,c+15-now)+estimated_normal)+30,'insufficient estimated global fork reservation; no mutation')
+        return {'helperRemainingRequiredSeconds':527,'readinessOpportunitySeconds':155,'estimatedNormalBranchSeconds':estimated_normal,'normalBranchHardCap':False}
+
     def receipt(self):
+        self.check_slot();self.check_authority()
+        self.base.check(self.fence_count==10 and len(self.audits)==2 and len(self.content_proofs)==2,'complete two-audit graph required before receipt')
         return {'mode':'activate-ci-runtime','policy':POLICY,'authorizationSha256':sha(self.bytes),
                 'installationAuthorizationSha256':self.auth['grantSha256'],'firstStageApprovalSha256':self.auth['firstStageApprovalSha256'],'installId':self.auth['install']['id'],
                 'transitionStages':[row['stage'] for row in self.transitions],
                 'leasePhases':[row['leasePhase'] for row in self.transitions],
                 'transitionSha256':sha(self.fmt.canonical(self.transitions)), 'nativeRuntimeVerified':True,
-                'fullSourceContentInventoryVerified':True,'journeyVerified':False}
+                'fullSourceContentInventoryVerified':True,'fullNativeAudits':2,'completeMetadataFences':10,'normalBranchReserveIsEstimate':True,'journeyVerified':False}

@@ -1,6 +1,7 @@
 """Actual temporary files and deterministic filesystem races; standard hosted Linux, no live target."""
 import hashlib
 import importlib.util
+import inspect
 import json
 import os
 from pathlib import Path
@@ -42,6 +43,31 @@ class FencesTests(unittest.TestCase):
         self.assertEqual(row['metadata'],expected);self.assertEqual(result['root']['inode'],str(self.tree.stat().st_ino))
         encoded=json.dumps(result['entries'],sort_keys=True,separators=(',',':'),ensure_ascii=True).encode('ascii')
         self.assertEqual(result['metadataSha256'],hashlib.sha256(encoded).hexdigest())
+    def test_raw_tuple_comparison_preserves_full_original_result_entries_and_digest(self):
+        (self.tree/'empty').mkdir();(self.tree/'internal').write_bytes(b'inside')
+        (self.tree/'inside-alias').symlink_to('internal');(self.targets/'second').symlink_to('target')
+        (self.tree/'external-alias').symlink_to('../dependencies/second')
+        with patch.object(fences,'same',side_effect=lambda a,b:fences.metadata(a)==fences.metadata(b)):
+            source=inspect.getsource(fences.enumerate_tree)
+            current="""                # Metadata only: no regular-file object is read, hashed or executed here.
+                # Two fresh names anchored to the held parent plus full directory/two-walk
+                # brackets preserve finite observations. Content consumers still need FDs.
+                observed=os.stat(name,dir_fd=fd,follow_symlinks=False)
+                require(stat.S_ISREG(observed.st_mode) and same(original,observed),'regular metadata changed between anchored name observations')
+                add(child,'file',original)
+"""
+            prior="""                opened=os.open(name,os.O_PATH|os.O_NOFOLLOW|os.O_CLOEXEC,dir_fd=fd)
+                try:
+                    require(same(original,os.fstat(opened)) and same(original,os.stat(name,dir_fd=fd,follow_symlinks=False)),'file named/descriptor identity differs')
+                    add(child,'file',original)
+                finally:os.close(opened)
+"""
+            self.assertEqual(source.count(current),1,'Frozen prior regular-FD reference requires explicit review after branch change')
+            namespace=dict(fences.__dict__);exec(compile(source.replace(current,prior),'prior:cebc821a7:regular-FD-reference','exec'),namespace)
+            with patch.object(fences,'enumerate_tree',namespace['enumerate_tree']):original=self.capture()
+        optimized=self.capture()
+        self.assertEqual(optimized,original)
+        self.assertEqual(optimized['entries'],original['entries']);self.assertEqual(optimized['metadataSha256'],original['metadataSha256'])
     def test_link_literal_and_real_resolved_target_metadata_without_implicit_traversal(self):
         (self.tree/'alias').symlink_to(self.targets/'target');r=self.capture()
         self.assertEqual(r['nodes'],3);self.assertEqual(r['links'],1)
@@ -92,15 +118,45 @@ class FencesTests(unittest.TestCase):
             return rows
         with patch.object(fences.os,'listdir',side_effect=listing):
             with self.assertRaisesRegex(ValueError,'membership'):self.capture()
-    def test_named_file_swapped_after_lstat_before_open_refuses(self):
-        original=fences.os.open;changed=False
-        def opening(path,flags,*args,**kwargs):
+    def test_named_file_swapped_between_two_anchored_stats_refuses(self):
+        original=fences.os.stat;changed=False
+        def observing(path,*args,**kwargs):
             nonlocal changed
+            info=original(path,*args,**kwargs)
             if path=='pay.dat' and kwargs.get('dir_fd')is not None and not changed:
                 changed=True;self.file.unlink();self.file.write_bytes(b'paid')
+            return info
+        with patch.object(fences.os,'stat',side_effect=observing):
+            with self.assertRaisesRegex(ValueError,'regular metadata changed'):self.capture()
+    def test_regular_metadata_does_not_open_read_hash_or_execute_file_objects(self):
+        original=fences.os.open
+        def opening(path,flags,*args,**kwargs):
+            self.assertNotEqual(path,'pay.dat','Regular metadata must not open a file object')
             return original(path,flags,*args,**kwargs)
-        with patch.object(fences.os,'open',side_effect=opening):
-            with self.assertRaisesRegex(ValueError,'named/descriptor'):self.capture()
+        with patch.object(fences.os,'open',side_effect=opening),patch('builtins.open',side_effect=AssertionError('No payload read')),patch.object(fences.os,'read',side_effect=AssertionError('No payload read')),patch.object(fences.os,'execve',side_effect=AssertionError('No execution')):
+            result=self.capture()
+        self.assertEqual(result['nodes'],2)
+    def test_regular_to_symlink_type_swap_between_stats_refuses(self):
+        original=fences.os.stat;changed=False
+        def observing(path,*args,**kwargs):
+            nonlocal changed
+            info=original(path,*args,**kwargs)
+            if path=='pay.dat' and kwargs.get('dir_fd')is not None and not changed:
+                changed=True;self.file.unlink();self.file.symlink_to(self.targets/'target')
+            return info
+        with patch.object(fences.os,'stat',side_effect=observing):
+            with self.assertRaisesRegex(ValueError,'regular metadata changed'):self.capture()
+    def test_ancestor_directory_rename_during_child_walk_refuses(self):
+        child=self.tree/'dir';child.mkdir();(child/'row').write_bytes(b'fixed');inode=child.stat().st_ino
+        original=fences.os.stat;changed=False
+        def observing(path,*args,**kwargs):
+            nonlocal changed
+            info=original(path,*args,**kwargs)
+            if path=='row' and kwargs.get('dir_fd')is not None and os.fstat(kwargs['dir_fd']).st_ino==inode and not changed:
+                changed=True;child.rename(self.tree/'renamed');child.mkdir()
+            return info
+        with patch.object(fences.os,'stat',side_effect=observing):
+            with self.assertRaisesRegex(ValueError,'directory.*changed'):self.capture()
     def test_directory_swap_to_symlink_before_descriptor_open_refuses(self):
         child=self.tree/'dir';child.mkdir();original=fences.os.open;changed=False
         def opening(path,flags,*args,**kwargs):

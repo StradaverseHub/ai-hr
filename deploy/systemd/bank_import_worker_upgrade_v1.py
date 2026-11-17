@@ -22,6 +22,16 @@ def digest(raw):
     return hashlib.sha256(raw).hexdigest()
 
 
+def file_fence(base, *, failure_only=False):
+    guard=getattr(base,'VERIFIED_OPERATION_GUARD',None)
+    if guard is not None:guard.file_mutation(failure_only=failure_only)
+
+
+def publish(base,path,raw,mode,*,failure_only=False):
+    file_fence(base,failure_only=failure_only)
+    base.write_new(path,raw,mode)
+
+
 def healthy_web_state(base, source, build):
     """Current service and bounded native DB health, bracketed by exact deployment identity."""
     state = base.deployment_state(source, build)
@@ -235,6 +245,8 @@ def atomic_unit(base, raw, expected_prior):
             stream.write(raw)
             stream.flush()
             os.fsync(stream.fileno())
+        guard=getattr(base,'VERIFIED_OPERATION_GUARD',None)
+        file_fence(base,failure_only=bool(guard and guard.quarantine))
         os.replace(name, base.UNIT)
         directory = os.open(base.UNIT.parent, os.O_RDONLY | os.O_DIRECTORY)
         try:
@@ -254,7 +266,7 @@ def quiesce_failed_activation(base, operation, source):
     result = {'source': source, 'accepted': False, 'stopped': False, 'disabled': False, 'forcedKill': False}
     candidate = base.service_unit(source).encode()
     try:
-        base.write_new(operation / 'activation-failed.json', json.dumps(result, sort_keys=True).encode(), 0o400)
+        publish(base,operation / 'activation-failed.json', json.dumps(result, sort_keys=True).encode(), 0o400,failure_only=True)
     except Exception:
         result['failureRecordUnavailable'] = True
     try:
@@ -294,7 +306,7 @@ def quiesce_failed_activation(base, operation, source):
     except Exception:
         result['quiescenceUnconfirmed'] = True
     try:
-        base.write_new(operation / 'activation-failure-observation.json', json.dumps(result, sort_keys=True).encode(), 0o400)
+        publish(base,operation / 'activation-failure-observation.json', json.dumps(result, sort_keys=True).encode(), 0o400,failure_only=True)
     except Exception:
         result['observationUnavailable'] = True
     return result
@@ -303,6 +315,7 @@ def quiesce_failed_activation(base, operation, source):
 def stage_release(base, fmt, archive, operation, args, manifest):
     """Extract authenticated bytes into a new immutable release; shared by activate and adopt-stopped."""
     staged = operation / 'activation-release'
+    file_fence(base)
     staged.mkdir(mode=0o700)
     fmt.extract_archive(archive, staged, args.source, args.lock_sha256, args.package_sha256)
     entries = {row['path']: row for row in manifest['entries']}
@@ -313,6 +326,7 @@ def stage_release(base, fmt, archive, operation, args, manifest):
     release = base.ROOT / 'releases' / args.source
     base.root_protected(release.parent)
     base.check(not release.exists() and not release.is_symlink(), 'immutable destination already exists')
+    file_fence(base)
     os.rename(staged, release)
     return release
 
@@ -323,17 +337,24 @@ def replace_and_start(base, fmt, args, operation, release, state, prior_unit_sha
     """
     try:
         if ci_observer:
-            ci_observer.observe()
+            ci_observer.slot('M0',45)
         atomic_unit(base, base.service_unit(args.source).encode(), prior_unit_sha256)
         base.command(['/usr/bin/systemctl', 'daemon-reload'])
         base.validate_service(properties(base), release)
         if ci_observer:
-            ci_observer.observe()
-        base.command(['/usr/bin/systemctl', 'start', 'aihr-bank-import.service'])
+            ci_observer.complete_fence()  # F3: reload -> start
+            ci_observer.slot('M1',45)
+        try:
+            base.command(['/usr/bin/systemctl', 'start', 'aihr-bank-import.service'])
+        finally:
+            if ci_observer and ci_observer.guard.start_sent:
+                try:ci_observer.record_started(properties(base))
+                except Exception:pass  # No ownership evidence means NO conditional quarantine permission.
         if ci_observer:
-            ci_observer.observe()
+            ci_observer.complete_fence()  # F4: exact owned start captured
         stable_pid = None
         for _ in range(3):
+            if ci_observer:ci_observer.slot('W/F'+str(_+1),24)
             time.sleep(4)
             report = properties(base)
             base.validate_service(report, release)
@@ -342,9 +363,13 @@ def replace_and_start(base, fmt, args, operation, release, state, prior_unit_sha
             base.check(stable_pid in (None, pid), 'updated worker PID changed')
             stable_pid = pid
             if ci_observer:
-                ci_observer.observe()
+                ci_observer.complete_fence(shared_stability_deadline=True)  # F5/F6/F7, SAME absolute24s end includes sleep
         if ci_observer:
-            ci_observer.observe()
+            ci_observer.content_audit()  # S1
+            ci_observer.complete_fence()  # F8
+            ci_observer.full_audit()  # A1: failure is fatal, no retry/fallback
+            ci_observer.complete_fence()  # F9
+            ci_observer.slot('receipt',15)
             receipt = {**receipt, **ci_observer.receipt()}
         else:
             base.check(healthy_web_state(base, args.source, args.build_id) == state, 'web changed before worker acceptance')
@@ -353,14 +378,24 @@ def replace_and_start(base, fmt, args, operation, release, state, prior_unit_sha
                     'selectedEnvironmentSha256': args.worker_env_sha256,
                     'unitSha256': digest(base.service_unit(args.source).encode()), 'workerPid': stable_pid,
                     'serviceStable': True, 'journeyVerified': False}
-        base.write_new(release / 'worker-install-v2.json', fmt.canonical(accepted), 0o444)
-        base.write_new(operation / 'activated.json', fmt.canonical(accepted), 0o400)
+        publish(base,release / 'worker-install-v2.json', fmt.canonical(accepted), 0o444)
+        publish(base,operation / 'activated.json', fmt.canonical(accepted), 0o400)
         print(json.dumps(accepted))
         return accepted
     except Exception:
         # Includes replacement/fsync, reload/start, process proof and receipt persistence failures.
         # Quarantine refuses any foreign/unchanged unit rather than touching another release.
-        observed = quiesce_failed_activation(base, operation, args.source)
+        if ci_observer:
+            try:
+                ci_observer.failure_deadline(30)
+                ci_observer.authorize_quarantine()
+                ci_observer.failure_deadline(330)
+                observed=quiesce_failed_activation(base,operation,args.source)
+            except Exception:
+                observed={'source':args.source,'accepted':False,'stopped':False,'disabled':False,'forcedKill':False,'quiescenceUnconfirmed':True,'ownedProcessQuarantineRefused':True}
+            finally:ci_observer.guard.quarantine=False
+        else:
+            observed = quiesce_failed_activation(base, operation, args.source)
         print(json.dumps({'workerActivationFailed': True, **observed}), file=sys.stderr)
         raise RuntimeError('Worker activation failed; retained packages and protected failure observations require explicit administrator recovery') from None
 
@@ -411,6 +446,7 @@ def upgrade(argv, fmt, base, ci=None):
         base.check((getattr(args,name) is not None) == conditional, 'CI runtime authority flags belong only to activate-ci-runtime')
     if conditional:
         base.check(ci is not None and re.fullmatch('[a-f0-9]{64}', args.ci_runtime_authorization_sha256 or ''), 'reviewed bundled CI runtime observer and authorization hash required')
+        ci.require_operation_guard(base)
     adopt = args.phase == 'adopt-stopped'
     rebind = args.previous_worker_env_sha256
     for name in common + (adopted if adopt else managed):
@@ -436,9 +472,12 @@ def upgrade(argv, fmt, base, ci=None):
     base.check(stat.S_ISREG(info.st_mode) and info.st_uid == 0 and info.st_nlink == 1 and not info.st_mode & 0o077, 'private administrator lock required')
     try:
         fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        guard=getattr(base,'VERIFIED_OPERATION_GUARD',None)
+        if guard is not None:guard.bind_install(fd,lock)
         base.root_protected(base.ROOT)
         operations = base.ROOT / 'upgrades'
         if not operations.exists():
+            file_fence(base)
             operations.mkdir(mode=0o700)
         base.root_protected(operations)
         operation = operations / args.source
@@ -455,17 +494,20 @@ def upgrade(argv, fmt, base, ci=None):
             if rebind is not None:
                 reviewed_environment(base, args.worker_env_sha256)
             base.check(not operation.exists() and not operation.is_symlink(), 'existing update attempt needs separate recovery review')
+            file_fence(base)
             operation.mkdir(mode=0o700)
             archive = operation / 'authenticated-worker.zip'
+            file_fence(base)
             base.snapshot_archive(args.archive, archive, args.archive_sha256, fmt.MAX_ARCHIVE)
             staged = operation / 'release'
+            file_fence(base)
             staged.mkdir(mode=0o700)
             manifest = fmt.extract_archive(archive, staged, args.source, args.lock_sha256, args.package_sha256)
             base.check(healthy_web_state(base, args.previous_web_source, args.previous_web_build) == state, 'web baseline changed before drain')
             base.check(validate_existing(base, args.previous_worker_source, args.unit_sha256, args.worker_env_sha256, rebind) == report,
                        'worker changed during preparation')
             result = drain(base, report, args.previous_worker_source)
-            base.write_new(operation / 'drained.json', fmt.canonical({'identity': identity, 'manifestSha256': fmt.digest(fmt.canonical(manifest)), 'drain': result}), 0o400)
+            publish(base,operation / 'drained.json', fmt.canonical({'identity': identity, 'manifestSha256': fmt.digest(fmt.canonical(manifest)), 'drain': result}), 0o400)
             print(json.dumps({'source': args.source, **result}))
             return
         base.root_protected(operation)
@@ -476,9 +518,9 @@ def upgrade(argv, fmt, base, ci=None):
         if conditional:
             base.check(not (operation / 'ci-runtime-started.json').exists() and not (operation / 'ci-runtime-started.json').is_symlink(), 'existing CI runtime attempt needs separate recovery review')
         observer = ci.RuntimeObservation(base, fmt, args, operation, drain_bytes) if conditional else None
-        state = observer.observe() if observer else healthy_web_state(base, args.source, args.build_id)
+        state = None if observer else healthy_web_state(base, args.source, args.build_id)
         if observer:
-            base.write_new(operation / 'ci-runtime-started.json', fmt.canonical({'authorizationSha256': digest(observer.bytes), 'journeyVerified': False}), 0o400)
+            publish(base,operation / 'ci-runtime-started.json', fmt.canonical({'authorizationSha256': digest(observer.bytes), 'journeyVerified': False}), 0o400)
         report = validate_existing(base, args.previous_worker_source, args.unit_sha256, args.worker_env_sha256, rebind)
         if rebind is not None:
             reviewed_environment(base, args.worker_env_sha256)
@@ -491,7 +533,12 @@ def upgrade(argv, fmt, base, ci=None):
         # Re-extract authenticated bytes instead of trusting an earlier unpacked tree.
         release = stage_release(base, fmt, archive, operation, args, manifest)
         if observer:
-            observer.observe()
+            observer.complete_fence()  # F0
+            observer.content_audit()  # S0
+            observer.complete_fence()  # F1
+            observer.full_audit()  # A0: genuine owner byte proof BEFORE unit/service mutation
+            observer.complete_fence()  # F2
+            observer.admit_mutation()
         else:
             base.check(healthy_web_state(base, args.source, args.build_id) == state, 'web changed before activation')
         replace_and_start(base, fmt, args, operation, release, state, args.unit_sha256,
