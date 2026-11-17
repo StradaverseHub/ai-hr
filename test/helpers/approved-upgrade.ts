@@ -252,6 +252,7 @@ export const APPROVED_UPGRADE_TAIL=[
  {idx:5317,when:1794841005917,tag:'5917_contract_work_exact_document_join'},
  {idx:5318,when:1794841005918,tag:'5918_contract_tracker_scheduled_period'},
  {idx:5319,when:1794841005919,tag:'5919_contract_work_case_source_anchor'},
+ {idx:5355,when:1794841005955,tag:'5955_shared_email_materialization_start'},
 ] as const;
 // Final pending 2109/2126 bytes reviewed from engine 128bc2539; no applied-prefix hashes change.
 const APPROVED_UPGRADE_HASHES:Record<string,string>={
@@ -286,6 +287,7 @@ const APPROVED_UPGRADE_HASHES:Record<string,string>={
  '5847_email_test_authority_utf8':'3ba274eada4346d5cfea1ac8dbb154e2f01374dab24325e45c9fabdd176a8186',
  '5846_email_test_current_human':'a3cd7270229682b341c50f05a7ef50fda655dcbc76d4deda66bc82b414318b0c',
  '5842_probation_shared_email_asset_proof':'b0deeef4ccebf79b41f57c8f44753c67a8039b50eea5414541ab87f81050bb15',
+ '5955_shared_email_materialization_start':'156a7948da7836d8e9e9bbfe9aff3063be26586c726b142d5f3836ce390ddc7b',
  '5910_contract_shared_work_page_null_guards':'51ecf59479ae4516b699ef3020b08bd1ea4aa6eaf9d4b7ac67ff80c1120a547d',
  '5834_contract_shared_email_compatibility':'73670275ddadbdfce99ec61ba758ab604afb841c3caa5650a1c8ffe95449138e',
  '5899_contract_shared_legacy_inbox_cutover':'7e03b54bd2375278e32aef835d2e88bf6fb017145bb3bf488ebffdd0a6dcc32e',
