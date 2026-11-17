@@ -965,3 +965,19 @@ Current4a21 whole compiler and production build passed, but only six actual view
 before the corrected measurement failure. No PDF or complete visual PASS is claimed. Hosted
 affected checks, all57 actual states, final visual review, accepted upstream integration, migration
 reallocation and authenticated release verification remain required.
+
+### Shared routing help clarification — 17 November 2026
+
+Actual rendered Routing rules help still described every signing step as yielding one person.
+Offboarding letters retain an initial assignee while every frozen eligible member can act.
+The six locale values now explain this exception and preserve other modules’ single-holder
+and To/CC recipient semantics. No signing engine, authority, provider payload or transport changed.
+
+Under the existing explicit same-purpose binding approval, only the same 29 approved
+sourceDigest values change from `f82fab1a3377ebe48b0cc958e0e5ee174d6697e83ae18a563a74de547ffa1d9f`
+to `cc818adf0cb26e2702f6707fe9c267f09e37130edd4dd65070dba969e57389aa` (1644 files).
+Human metadata and pending statuses remain unchanged; the derived agent manifest is regenerated last.
+Controller-only locator corrections preserve exact selected values, saved routing read-back,
+approver names/counts, privacy checks and all 57 required captures. Prior source-specific compiler
+and selected-test evidence is retained; the actual renderer still requires completion. No complete
+visual, PDF, staging or release PASS is claimed.
