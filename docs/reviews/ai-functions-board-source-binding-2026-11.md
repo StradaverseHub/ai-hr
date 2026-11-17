@@ -923,3 +923,15 @@ production permission is added. Exactly the same 28 active source approvals move
 registry byte for byte; pending and retired records and original review metadata stay unchanged.
 Agent manifest: `eacc4681aaed73c89ffeb78162e7ce1263e3699e8f42d60672cd9fcd9488ca55` (496 files).
 This records source binding only; verification and staging acceptance remain separate.
+
+### Approved-board final verification repair binding — 17 November 2026
+
+The owner’s current-chat authorization “Approve staging-only rebinding and verification repairs”
+covers this repaired source `e0843fd010cf6e16d1f4fa6924b0b8b3b81aafca`, including the accepted Movement baseline, native
+SMTP group delivery, consistent live history values, compiler repairs and rendered state/mobile fixes.
+No provider purpose, outbound field or production permission is added. The same 28 active approvals
+move from `785dac445b64de992e997f1ce1dfaa73f35679842cc1ea968cc987052a345acb` to `cfcab95ecec7fcfdc42604be3c2072d3c45a6c00e18b5cced3863535dcc0da2b` (1708 files). Reversing them reproduces the prior registry byte for byte;
+normalizing to current main’s active fingerprint also exactly reproduces its registry. Both pending
+records, the retired Attendance approval and every original reviewer/date/evidence field stay unchanged.
+Agent manifest: `cafbe0f78f9b32c19130fe97609f3fefa4ee9209b3931d5815cd381af97d01e7` (496 files).
+Source binding supplies no test, installation, staging acceptance or production claim.
