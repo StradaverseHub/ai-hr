@@ -40,11 +40,11 @@ const guarded = async <T>(work: () => Promise<T>): Promise<T> => { try { return 
 export function sqlAutomationRunStore(tx: SqlExecutor): AutomationRunStore {
   return {
     start: run => guarded(async () => {
-      const [row] = await tx.execute<{result: {created: boolean; run: RunRow}}>(sql`select app.automation_run_start(${run.id}::uuid, ${run.module}, ${run.workflowId}::uuid, ${run.workflowRevision}, ${run.subjectId}::uuid, ${run.eventKey}, ${run.trigger}, ${run.status}, ${JSON.stringify(run.remaining)}::jsonb, ${JSON.stringify(run.log)}::jsonb) as result`);
+      const [row] = await tx.execute<{result: {created: boolean; run: RunRow}}>(sql`select app.automation_run_start(${run.id}::uuid, ${run.module}, ${run.workflowId}::uuid, ${run.workflowRevision}, ${run.subjectId}::uuid, ${run.eventKey}, ${run.trigger}, ${run.status}, ${JSON.stringify(run.remaining)}::text::jsonb, ${JSON.stringify(run.log)}::text::jsonb) as result`);
       return {created: row.result.created, run: automationRunFromRow(row.result.run)};
     }),
     save: (run, expectedStatus) => guarded(async () => {
-      await tx.execute(sql`select app.automation_run_save(${run.id}::uuid, ${expectedStatus}, ${run.status}, ${run.cursor}, ${run.waitingFor}::uuid, ${JSON.stringify(run.remaining)}::jsonb, ${JSON.stringify(run.log)}::jsonb, ${run.failure})`);
+      await tx.execute(sql`select app.automation_run_save(${run.id}::uuid, ${expectedStatus}, ${run.status}, ${run.cursor}, ${run.waitingFor}::uuid, ${JSON.stringify(run.remaining)}::text::jsonb, ${JSON.stringify(run.log)}::text::jsonb, ${run.failure})`);
     }),
     waiting: (module, subjectId, documentId) => guarded(async () => {
       const rows = await tx.execute<{run: RunRow}>(sql`select r as run from app.automation_runner_waiting(${module}, ${subjectId}::uuid, ${documentId}::uuid) r`);

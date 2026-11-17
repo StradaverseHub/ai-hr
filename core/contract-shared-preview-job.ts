@@ -141,7 +141,7 @@ export const contractPreviewJobHandler:BulkJobHandler<never>={
      else plan=buildContractDecisionPlan({context:contractSharedAutomationContext(inputs.view,inputs.refs),decision:canonical,definitions:inputs.definitions,today:todayInKualaLumpur()});
     }catch(error){if(error instanceof Error&&error.name==='ContractManagementError')plan=emptyPlan(error.message);else throw error;}
    }
-   await inputs.db.execute(sql`select app.contract_shared_preview_finish(${previewId}::uuid,${job.id}::uuid,${inputs.setupRevision},${JSON.stringify(plan)}::jsonb)`);
+   await inputs.db.execute(sql`select app.contract_shared_preview_finish(${previewId}::uuid,${job.id}::uuid,${inputs.setupRevision},${JSON.stringify(plan)}::text::jsonb)`);
    return {previewId,blockers:plan.blockers.length,workflows:plan.workflows.length};
   });
   return {result:summary};

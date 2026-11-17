@@ -88,8 +88,8 @@ export async function actContractSharedLetter(ctx:SessionContext,raw:z.input<typ
   if(form)await lockContractSharedFormTx(tx,input.id);
   const signature=input.action==='signed'?{method:input.method,value:input.value,consent:input.consent}:null;
   const [prepared]=input.blocks!==undefined
-   ?await tx.execute<{result:{duplicate:boolean;signingDocumentId:string;revision:number;hash:string}}>(sql`select app.contract_shared_review_prepare(${input.id}::uuid,${input.stepId},${input.actionId}::uuid,${input.action},${input.comment},${input.hash},${input.revision},${JSON.stringify(input.blocks)}::jsonb) as result`)
-   :await tx.execute<{result:{duplicate:boolean;signingDocumentId:string;revision?:number;hash?:string}}>(sql`select app.contract_shared_letter_action_prepare(${input.id}::uuid,${input.stepId},${input.actionId},${input.action},${input.comment},${input.hash},${input.revision},${JSON.stringify(signature)}::jsonb) as result`);
+   ?await tx.execute<{result:{duplicate:boolean;signingDocumentId:string;revision:number;hash:string}}>(sql`select app.contract_shared_review_prepare(${input.id}::uuid,${input.stepId},${input.actionId}::uuid,${input.action},${input.comment},${input.hash},${input.revision},${JSON.stringify(input.blocks)}::text::jsonb) as result`)
+   :await tx.execute<{result:{duplicate:boolean;signingDocumentId:string;revision?:number;hash?:string}}>(sql`select app.contract_shared_letter_action_prepare(${input.id}::uuid,${input.stepId},${input.actionId},${input.action},${input.comment},${input.hash},${input.revision},${JSON.stringify(signature)}::text::jsonb) as result`);
   if(form)await prepareContractSharedFormActionTx(tx,ctx,{letterId:input.id,actionId:input.actionId,stepId:input.stepId,action:input.action,contentRevision:prepared.result.revision??input.revision,contentHash:prepared.result.hash??input.hash,responseRevision:input.responseRevision,responseHash:input.responseHash,signature});
   if(!prepared.result.duplicate){
    if(input.action==='resent')await resendSigningDocumentTx(tx,ctx,{id:prepared.result.signingDocumentId,actionId:input.actionId,comment:input.comment});
@@ -102,7 +102,7 @@ export async function editContractSharedLetter(ctx:SessionContext,raw:{id:string
  const input=z.object({id:z.uuid(),revision:z.number().int().positive(),hash:z.string().regex(/^[a-f0-9]{64}$/),blocks:z.record(z.string().min(1).max(200),z.string().max(1048576))}).strict().parse(raw);
  try{return await withScopedLifecycleTenant(ctx,async tx=>{
   const current=await readLetterTx(tx,input.id),fields=contractDocumentWordingFields(renderContractSharedLetter(current),Object.keys(current.body?.values??{}));input.blocks=Object.fromEntries(Object.entries(input.blocks).map(([key,value])=>[key,contractWordingKeys(value,fields)]));
-  await tx.execute(sql`select app.contract_shared_letter_edit(${input.id}::uuid,${input.revision},${input.hash},${JSON.stringify(input.blocks)}::jsonb)`);
+  await tx.execute(sql`select app.contract_shared_letter_edit(${input.id}::uuid,${input.revision},${input.hash},${JSON.stringify(input.blocks)}::text::jsonb)`);
   return readLetterTx(tx,input.id);
  });}catch(error){return signingFailure(error);}
 }
@@ -117,7 +117,7 @@ async function prepareContractSharedLetter(tx:SqlExecutor,ctx:SessionContext,inp
  const assignment=contractLetterAssignment(chosen.template,input.context,{today:input.today,lastAssigned:input.lastAssigned},input.chooser);
  if(assignment.unresolved.some(issue=>!issue.holderId&&assignment.route.steps.find(step=>step.id===issue.stepId)?.role!=='employee'))throw new ContractManagementError('conflict','A letter step has no eligible holder or fallback member.');
  const routing={templateId:chosen.template.id,templateVersion:chosen.version,caseOwnerId:assignment.route.steps.find(step=>step.owner)?.holderId??null,fallbackGroupId:input.context.fallbackGroupId,liveMergeReviews:true};
- const [prepared]=await tx.execute<{letter:{id:string;signingDocumentId:string;contentHash:string;state:string;existing:boolean}}>(sql`select app.contract_shared_prepare_letter(${input.view.id}::uuid,${input.step.run.id}::uuid,${input.step.step.id},${chosen.template.id}::uuid,${chosen.version},${JSON.stringify(assignment.route)}::jsonb,${JSON.stringify(routing)}::jsonb,${input.email?JSON.stringify(input.email.reference):null}::jsonb) as letter`);
+ const [prepared]=await tx.execute<{letter:{id:string;signingDocumentId:string;contentHash:string;state:string;existing:boolean}}>(sql`select app.contract_shared_prepare_letter(${input.view.id}::uuid,${input.step.run.id}::uuid,${input.step.step.id},${chosen.template.id}::uuid,${chosen.version},${JSON.stringify(assignment.route)}::text::jsonb,${JSON.stringify(routing)}::text::jsonb,${input.email?JSON.stringify(input.email.reference):null}::text::jsonb) as letter`);
  const letter=prepared.letter;
  if(!letter.existing){
   const contentHash=derivedDocumentKind(chosen.template.blocks)==='Form'?await initializeContractSharedFormTx(tx,ctx,letter.id):null;
@@ -159,7 +159,7 @@ export async function activateContractSharedApproval(tx:SqlExecutor,ctx:SessionC
  const assignments=contractApprovalAssignments({layers,context:input.context,today:input.today,lastAssigned:input.lastAssigned},input.chooser);
  if(assignments.some(item=>!item.candidateUserIds.length||item.layer.pick==='roundRobin'&&!item.selectedUserId))throw new ContractManagementError('conflict','An approval layer has no eligible approver or fallback member.');
  const route=newContractApprovalRequest({id:randomUUID(),caseId:input.view.id,tenantId:ctx.tenantId,companyId:input.view.companyId,decisionRevision:flow.decision.revision,subjectPersonId:input.context.subjectPersonId,fingerprint:'0'.repeat(64),assignments}).document.route;
- const [prepared]=await tx.execute<{approval:{id:string;signingDocumentId:string;contentHash:string;existing:boolean}}>(sql`select app.contract_shared_prepare_approval(${input.view.id}::uuid,${input.step.run.id}::uuid,${input.step.step.id},${JSON.stringify(assignments)}::jsonb,${JSON.stringify(route)}::jsonb) as approval`);
+ const [prepared]=await tx.execute<{approval:{id:string;signingDocumentId:string;contentHash:string;existing:boolean}}>(sql`select app.contract_shared_prepare_approval(${input.view.id}::uuid,${input.step.run.id}::uuid,${input.step.step.id},${JSON.stringify(assignments)}::text::jsonb,${JSON.stringify(route)}::text::jsonb) as approval`);
  const approval=prepared.approval;
  if(!approval.existing){
   await createSigningDocumentTx(tx,ctx,{id:approval.signingDocumentId,companyId:input.view.companyId,employmentId:input.view.employmentId,subjectId:approval.id,subjectType:'contract-approval',contentHash:approval.contentHash,route,guardrails:{requiredRoles:[]}});

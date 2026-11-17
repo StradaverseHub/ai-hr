@@ -27,7 +27,7 @@ export async function createSigningDocumentTx(tx:SqlExecutor,ctx:SessionContext,
   const route=await hydrateRoute(tx,ctx,input.route);
   validateSigningRoute(route,input.guardrails);
   const id=input.subjectType==='probation'?randomUUID():input.id??randomUUID(),document:SigningDocument={tenantId:ctx.tenantId,companyId:input.companyId,subjectId:input.subjectId,subjectType:input.subjectType,contentRevision:1,contentHash:input.contentHash,route,actions:[],...(input.routing?{routing:{templateId:input.routing.templateId,templateVersion:input.routing.templateVersion,caseOwnerId:input.routing.caseOwnerId??null,fallbackGroupId:input.routing.fallbackGroupId??null,...(input.subjectType==='contract'&&input.routing.liveMergeReviews?{liveMergeReviews:true}:{})}}:{})};
-  await tx.execute(sql`select app.document_signing_store(${id}::uuid,${input.employmentId}::uuid,${input.companyId}::uuid,${input.subjectId}::uuid,${JSON.stringify(document)}::jsonb,${JSON.stringify(input.guardrails)}::jsonb,0,'create','Created signing route')`);
+  await tx.execute(sql`select app.document_signing_store(${id}::uuid,${input.employmentId}::uuid,${input.companyId}::uuid,${input.subjectId}::uuid,${JSON.stringify(document)}::text::jsonb,${JSON.stringify(input.guardrails)}::text::jsonb,0,'create','Created signing route')`);
   return{id,document};
 }
 /** Sign, review, approve or send back (`returned`, with a comment) at the caller's pending step. */
@@ -40,7 +40,7 @@ export async function recordDocumentSigningActionTx(tx:SqlExecutor,ctx:SessionCo
   const next=recordSigningAction(row.data,row.guardrails,{...input,id:actionId,actorId:ctx.userId,actorPersonId:actor.person_id,actorName:actor.name,at:new Date().toISOString()});
   const action=next.actions.find(a=>a.id===actionId);
   if(!action)throw new SigningError('conflict','The signature could not be recorded.');
-  const [result]=await tx.execute<{document:SigningDocument}>(sql`select app.document_signing_act(${row.id}::uuid,${JSON.stringify(action)}::jsonb) as document`);
+  const [result]=await tx.execute<{document:SigningDocument}>(sql`select app.document_signing_act(${row.id}::uuid,${JSON.stringify(action)}::text::jsonb) as document`);
   return result.document;
 }
 export async function reviseSigningDocumentTx(tx:SqlExecutor,ctx:SessionContext,input:{id:string;hash:string;reason:string;route?:SigningRoute}):Promise<SigningDocument>{
@@ -65,7 +65,7 @@ export async function declineDocumentAcknowledgementTx(tx:SqlExecutor,ctx:Sessio
   const [actor]=await tx.execute<{name:string;person_id:string}>(sql`select p.full_name as name,p.id as person_id from app_user u join person p on p.id=u.person_id and p.tenant_id=u.tenant_id where u.id=${ctx.userId}::uuid and u.tenant_id=${ctx.tenantId}::uuid and u.archived_at is null and not app.login_blocked(u.id)`);
   if(!actor)throw new SigningError('forbidden','The verified confirmer is unavailable.');
   const next=recordAcknowledgementDecline(row.data,{...input,id:randomUUID(),actorId:ctx.userId,actorPersonId:actor.person_id,actorName:actor.name,at:new Date().toISOString()});
-  const [result]=await tx.execute<{document:SigningDocument}>(sql`select app.document_signing_act(${row.id}::uuid,${JSON.stringify(next.actions.at(-1))}::jsonb) as document`);
+  const [result]=await tx.execute<{document:SigningDocument}>(sql`select app.document_signing_act(${row.id}::uuid,${JSON.stringify(next.actions.at(-1))}::text::jsonb) as document`);
   return result.document;
 }
 /** The owner sends a returned template-routing document round again unchanged; the routing restarts at its first stage. */
@@ -78,7 +78,7 @@ export async function resendSigningDocumentTx(tx:SqlExecutor,ctx:SessionContext,
   const next=resendSigningDocument(row.data,{id:actionId,actorId:ctx.userId,actorPersonId:actor.person_id,actorName:actor.name,comment:input.comment,at:new Date().toISOString()});
   const action=next.actions.find(a=>a.id===actionId);
   if(!action)throw new SigningError('conflict','The document could not be sent round again.');
-  const [result]=await tx.execute<{document:SigningDocument}>(sql`select app.document_signing_act(${row.id}::uuid,${JSON.stringify(action)}::jsonb) as document`);
+  const [result]=await tx.execute<{document:SigningDocument}>(sql`select app.document_signing_act(${row.id}::uuid,${JSON.stringify(action)}::text::jsonb) as document`);
   return result.document;
 }
 /**
@@ -90,7 +90,7 @@ export async function signingContentVisibleTx(tx:SqlExecutor,id:string,released:
   return row?.visible===true;
 }
 async function store(tx:SqlExecutor,row:StoredDocument,next:SigningDocument,operation:'revise'|'reroute',reason:string):Promise<void>{
-  await tx.execute(sql`select app.document_signing_store(${row.id}::uuid,${row.employment_id}::uuid,${row.company_id}::uuid,${row.subject_id}::uuid,${JSON.stringify(next)}::jsonb,${JSON.stringify(row.guardrails)}::jsonb,${row.revision},${operation},${reason})`);
+  await tx.execute(sql`select app.document_signing_store(${row.id}::uuid,${row.employment_id}::uuid,${row.company_id}::uuid,${row.subject_id}::uuid,${JSON.stringify(next)}::text::jsonb,${JSON.stringify(row.guardrails)}::text::jsonb,${row.revision},${operation},${reason})`);
 }
 
 async function hydrateRoute(tx:SqlExecutor,ctx:SessionContext,route:SigningRoute):Promise<SigningRoute>{

@@ -76,7 +76,7 @@ export async function advanceContractSharedAutomationOwner(owner:postgres.Reserv
    const ordinaryChild=event.id!==rootId&&event.trigger_event!=='emailDocumentReady';
    const eventProgress=ordinaryChild?(await db.execute<{value:typeof progress}>(sql`select app.contract_shared_ordinary_event_progress(${event.id}::uuid) as value`))[0].value:progress;
    const saveProgress=async(planMerge:Record<string,unknown>)=>{
-    if(ordinaryChild)await db.execute(sql`select app.contract_shared_ordinary_event_progress(${event.id}::uuid,${JSON.stringify(planMerge)}::jsonb)`);
+    if(ordinaryChild)await db.execute(sql`select app.contract_shared_ordinary_event_progress(${event.id}::uuid,${JSON.stringify(planMerge)}::text::jsonb)`);
     else await unit.set(owner,{planMerge});
    };
    const rotate=()=>unit.set(owner,{planMerge:{rootParked:true,eventAfter:event.id}});

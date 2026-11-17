@@ -24,7 +24,7 @@ export type AutomationEmailQueued = {queued: number; to: string[]; cc: string[];
 /** Records the email intent in the caller's transaction (idempotent on `key`). */
 export async function queueAutomationEmailTx(tx: SqlExecutor, input: {module: 'probation'|'contract_staff'; subjectId: string; key: string; to: readonly string[]; cc: readonly string[]; subject: string; body: string;richBody?:AutomationRichEmailBody}): Promise<AutomationEmailQueued> {
   const array = (ids: readonly string[]) => `{${ids.join(',')}}`;
-  const [row] = await tx.execute<{data: AutomationEmailQueued}>(sql`select app.automation_email_queue_rich(${input.module}, ${input.subjectId}::uuid, ${input.key}, ${array(input.to)}::uuid[], ${array(input.cc)}::uuid[], ${input.subject.slice(0, 500)}, ${input.body.slice(0, 20000)},${input.richBody?JSON.stringify(input.richBody):null}::jsonb) as data`);
+  const [row] = await tx.execute<{data: AutomationEmailQueued}>(sql`select app.automation_email_queue_rich(${input.module}, ${input.subjectId}::uuid, ${input.key}, ${array(input.to)}::uuid[], ${array(input.cc)}::uuid[], ${input.subject.slice(0, 500)}, ${input.body.slice(0, 20000)},${input.richBody?JSON.stringify(input.richBody):null}::text::jsonb) as data`);
   return row.data;
 }
 

@@ -46,7 +46,7 @@ async function scheduleUnit(job:BulkJobRow,unit:BulkJobDiscardUnit){
     const assessment=decideAutomationRuns(CONTRACT_AUTOMATION_CATALOGUE,[{workflow,revision:definition.revision}],event).decisions[0];
     if(assessment?.outcome==='run'||assessment?.outcome==='skip'){
      const occurrence='workflow:'+definition.id+':period:'+source.data.period.id+':'+(workflow.trigger.repeat?day:assessment.dueDate??'no-date');
-     await db.execute(sql`select app.contract_shared_system_event(${plan.activeCase}::uuid,${workflow.trigger.event},${occurrence},${JSON.stringify([{workflowId:definition.id,revision:definition.revision}])}::jsonb)`);
+     await db.execute(sql`select app.contract_shared_system_event(${plan.activeCase}::uuid,${workflow.trigger.event},${occurrence},${JSON.stringify([{workflowId:definition.id,revision:definition.revision}])}::text::jsonb)`);
     }
    }
    await unit.set(owner,{planMerge:definitions.length===25?{workflowAfter:definitions.at(-1)!.id}:{activeCase:null,workflowAfter:null}});return 'more' as const;
@@ -61,7 +61,7 @@ async function scheduleUnit(job:BulkJobRow,unit:BulkJobDiscardUnit){
   const recipients=await db.execute<{id:string}>(sql`select app.contract_shared_digest_recipients(${job.tenant_id}::uuid,${plan.company}::uuid,${plan.recipientAfter}::uuid) as id`);
   const key=`digest:${day}:${plan.company}:${plan.digestAfter??'start'}:to:${plan.recipientAfter??'start'}`,first=rows[0],context={systemJobId:job.id,digestKey:key,digestCompanyId:plan.company,employmentId:null as string|null,cases:rows.map(row=>({caseId:row.caseId,personId:row.personId}))};
   const [employment]=await db.execute<{employmentId:string}>(sql`select employment_id as "employmentId" from contract_case where tenant_id=${job.tenant_id}::uuid and id=${first.caseId}::uuid`);context.employmentId=employment?.employmentId??null;
-  await db.execute(sql`insert into app.contract_system_digest(tenant_id,mail_key,job_id,company_id,case_id,source_date,context,recipient_ids) values(${job.tenant_id}::uuid,${key},${job.id}::uuid,${plan.company}::uuid,${first.caseId}::uuid,${day}::date,${JSON.stringify(context)}::jsonb,${'{'+recipients.map(row=>row.id).join(',')+'}'}::uuid[]) on conflict(tenant_id,mail_key) do nothing`);
+  await db.execute(sql`insert into app.contract_system_digest(tenant_id,mail_key,job_id,company_id,case_id,source_date,context,recipient_ids) values(${job.tenant_id}::uuid,${key},${job.id}::uuid,${plan.company}::uuid,${first.caseId}::uuid,${day}::date,${JSON.stringify(context)}::text::jsonb,${'{'+recipients.map(row=>row.id).join(',')+'}'}::uuid[]) on conflict(tenant_id,mail_key) do nothing`);
   if(recipients.length){
    const body='Contract cases needing attention on '+day+'\n\n'+rows.map(row=>row.name.slice(0,100)+' — '+[...row.flags.map(flag=>flag.replaceAll('_',' ')),...(row.stalledDays!==null?['Stalled '+row.stalledDays+' days']:[])].join('; ')).join('\n')+'\n\nOpen Contract Management to review these cases.\n{{case.link}}';
    await owner`select set_config('app.contract_digest',${key},true)`;
