@@ -117,6 +117,25 @@ describe('Rewards review desk (37f82412)', () => {
     expect((await view(actors.pbp!)).fullView).toBe(false);
   });
 
+  it('returns the same transaction projection with withholding and an allowlisted before/after audit', async () => {
+    const before = await view(), entry = before.rows[0];
+    const after = await saveRewardEntry(actors.bu!, unitId, before.unit.revision, entry.id, { ...entry.recommendation, withhold: { increase: 'Approved fictional salary hold' } }, undefined, true);
+    expect(after?.unit.revision).toBe(before.unit.revision + 1);
+    expect(after?.rows[0].newBasicCents).toBe(entry.source.basicCents);
+    expect(after?.flags).toContainEqual(expect.objectContaining({ code: 'WITHHOLD-01', severity: 'exception', entryId: entry.id }));
+    const [event] = await owner.db.select().from(schema.domainEvent).where(eq(schema.domainEvent.aggregateId, unitId)).orderBy(sql`${schema.domainEvent.sequence} desc`).limit(1);
+    expect(event.eventType).toBe('reward-unit.recommendation-updated');
+    expect(event.payload).toMatchObject({ reason: 'Approved fictional salary hold', changes: [{ field: 'withhold', before: null, after: { increase: 'Approved fictional salary hold' } }] });
+    const current = await view();
+    // Clearing uses the explicit empty map; old forms omitting withholding preserve the decision.
+    const { withhold: _withhold, ...oldForm } = current.rows[0].recommendation;
+    await saveRewardEntry(actors.bu!, unitId, current.unit.revision, entry.id, oldForm);
+    expect((await view()).rows[0].recommendation.withhold?.increase).toBe('Approved fictional salary hold');
+    const kept = await view();
+    await saveRewardEntry(actors.bu!, unitId, kept.unit.revision, entry.id, { ...kept.rows[0].recommendation, withhold: {} });
+    expect((await view()).rows[0].meritCents).toBe(entry.meritCents);
+  });
+
   it('keeps a saved note when a form does not send one, and stores it within its cap', async () => {
     const v = await view(), row = v.rows[0];
     await saveRewardEntry(actors.bu!, unitId, v.unit.revision, row.id, { ...row.recommendation, note: 'Fictional note for the BG CEO.' });

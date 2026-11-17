@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createTranslator } from 'next-intl';
 import en from '../messages/en.json';
 import { calculateRewards } from '../packs/rewards/engine';
@@ -21,13 +21,14 @@ function view(meritBp: number | null, status = 'draft', revision = 3) {
     rows: calc.rows.map(r => ({ ...r, crBeforeBp: null, crAfterBp: null, totalIncreaseBp: r.meritBp + r.promotionBp + r.specialBp })), flags: calc.flags,
     budgets: { standard: calc.budgets.standard, h: calc.budgets.h }, suggestedMultiplierBp: calc.suggestedMultiplierBp, suggestedLumpCents: calc.suggestedLumpCents, lumpUnitCents: calc.lumpUnitCents };
 }
+beforeEach(() => { ports.save.mockImplementation(async () => ports.read()); });
 afterEach(() => vi.clearAllMocks());
 
 describe('saveRewardCell', () => {
   it('stores the typed percentage as basis points and returns the recalculated row, tiles and Total row', async () => {
     ports.read.mockResolvedValueOnce(view(null)).mockResolvedValueOnce(view(625, 'draft', 4));
     const result = await saveRewardCell('unit', 3, 'a', 'meritBp', '6.25', { plan: 'standard' });
-    expect(ports.save).toHaveBeenCalledWith(expect.anything(), 'unit', 3, 'a', expect.objectContaining({ meritBp: 625 }));
+    expect(ports.save).toHaveBeenCalledWith(expect.anything(), 'unit', 3, 'a', expect.objectContaining({ meritBp: 625 }), undefined, true);
     expect(result.ok).toBe(true);
     if (!result.ok) return;
     expect(result.revision).toBe(4);
@@ -41,9 +42,9 @@ describe('saveRewardCell', () => {
   it('clears a promotion grade together with its percentage, and resets an override with an empty value', async () => {
     ports.read.mockResolvedValue(view(null));
     await saveRewardCell('unit', 3, 'a', 'promotionGrade', '');
-    expect(ports.save).toHaveBeenLastCalledWith(expect.anything(), 'unit', 3, 'a', expect.objectContaining({ promotionGrade: null, promotionBp: null }));
+    expect(ports.save).toHaveBeenLastCalledWith(expect.anything(), 'unit', 3, 'a', expect.objectContaining({ promotionGrade: null, promotionBp: null }), undefined, true);
     await saveRewardCell('unit', 3, 'a', 'meritBp', '');
-    expect(ports.save).toHaveBeenLastCalledWith(expect.anything(), 'unit', 3, 'a', expect.objectContaining({ meritBp: null }));
+    expect(ports.save).toHaveBeenLastCalledWith(expect.anything(), 'unit', 3, 'a', expect.objectContaining({ meritBp: null }), undefined, true);
   });
   it('refuses malformed values and cells the viewer cannot change, without saving', async () => {
     ports.read.mockResolvedValue(view(null));
@@ -56,6 +57,19 @@ describe('saveRewardCell', () => {
     ports.read.mockResolvedValue(view(null, 'bg'));
     expect(await saveRewardCell('unit', 3, 'a', 'meritBp', '5')).toEqual({ ok: false, stale: false, error: en.rewards.desk.cell.notEditable });
     expect(ports.save).not.toHaveBeenCalled();
+  });
+  it('saves award withholding and case decisions through the same owner and returns its projection', async () => {
+    const v = view(null); v.rows[0].facts.erCase = true;
+    ports.read.mockResolvedValue(v);
+    expect((await saveRewardCell('unit', 3, 'a', 'withhold', JSON.stringify({ award: 'increase', reason: 'Approved fictional withholding' }))).ok).toBe(true);
+    expect(ports.save).toHaveBeenLastCalledWith(expect.anything(), 'unit', 3, 'a', expect.objectContaining({ withhold: { increase: 'Approved fictional withholding' } }), undefined, true);
+    await saveRewardCell('unit', 3, 'a', 'erDecision', 'in');
+    expect(ports.save).toHaveBeenLastCalledWith(expect.anything(), 'unit', 3, 'a', expect.anything(), expect.objectContaining({ erDecision: 'in' }), true);
+    expect((await saveRewardCell('unit', 3, 'a', 'withhold', JSON.stringify({ award: 'bonus', reason: 'short' }))).ok).toBe(false);
+    const hidden = { ...v, capabilities: { figuresEdit: true, casesDecide: false, notesAdd: false } };
+    ports.read.mockResolvedValue(hidden);
+    expect((await saveRewardCell('unit', 3, 'a', 'erDecision', 'in')).ok).toBe(false);
+    expect((await saveRewardCell('unit', 3, 'a', 'note', 'A fictional note')).ok).toBe(false);
   });
   it('reports a save refused because the review changed elsewhere as stale', async () => {
     ports.read.mockResolvedValue(view(null));

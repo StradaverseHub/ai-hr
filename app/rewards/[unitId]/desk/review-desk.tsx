@@ -54,7 +54,7 @@ export function ReviewDeskProvider({ unitId, revision: initialRevision, summary:
         latest.current = result.revision; failed.current = null;
         setRevision(result.revision); setSummary(result.summary); setTotals(result.totals); setFlags(result.flags);
         const row = result.row;
-        if (row) setRows(previous => previous[row.id] ? { ...previous, [row.id]: row } : previous);
+        if (row) setRows(previous => ({ ...previous, [row.id]: row }));
         setSaveState('saved');
       } else {
         failed.current = result.stale ? null : { entryId, field, value };

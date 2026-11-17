@@ -25143,7 +25143,7 @@
         "previous": "Trước",
         "next": "Tiếp",
         "position": "{index} / {total}",
-        "openRecord": "Mở hồ sơ đầy đủ để chỉnh sửa",
+        "openRecord": "Mở hồ sơ đầy đủ",
         "noFlags": "Người này không có điểm cần xem.",
         "notes": "Ghi chú",
         "noNote": "Không có ghi chú.",
@@ -25231,7 +25231,44 @@
           "multiplier": "Nhập hệ số, ví dụ 1.25.",
           "amount": "Nhập số tiền bằng MYR với tối đa hai chữ số thập phân.",
           "grade": "Chọn một bậc công việc.",
-          "note": "Giữ ghi chú trong tối đa 2.000 ký tự."
+          "note": "Giữ ghi chú trong tối đa 2.000 ký tự.",
+          "withhold": "Nhập lý do ít nhất 10 ký tự.",
+          "decision": "Chọn quyết định hồ sơ hợp lệ."
+        }
+      },
+      "panel": {
+        "suggested": "Đề xuất {value}",
+        "useSuggested": "Dùng đề xuất",
+        "difference": "Chênh lệch {value}",
+        "range": {
+          "below": "Dưới khoảng",
+          "in": "Trong khoảng",
+          "above": "Trên khoảng"
+        },
+        "withheld": "Tạm giữ",
+        "withhold": "Tạm giữ {award}",
+        "award": {
+          "increase": "tăng lương",
+          "bonus": "thưởng",
+          "lump": "khoản trả một lần"
+        },
+        "withholdReason": "Lý do tạm giữ",
+        "withholdReasonRequired": "Nhập lý do ít nhất 10 ký tự.",
+        "withheldReason": "Tạm giữ: {reason}",
+        "viewOnly": "Đang ở {role} – chỉ xem",
+        "caseDecision": "Quyết định PIP / ER",
+        "history": "Lịch sử đãi ngộ",
+        "notFinal": "Kỳ xét này – chưa chốt",
+        "offcycle": "Ngoài kỳ",
+        "notOnRecord": "Chưa có hồ sơ",
+        "historyColumn": {
+          "year": "Năm",
+          "talent": "Tiềm năng",
+          "performance": "Hiệu suất",
+          "incrementPercent": "Tăng %",
+          "incrementMoney": "Tăng (MYR)",
+          "bonusMoney": "Thưởng (MYR)",
+          "bonusMonths": "Số tháng thưởng"
         }
       }
     },
@@ -25497,7 +25534,8 @@
         "merit": "tăng theo thành tích",
         "promotion": "tăng do thăng chức",
         "special": "điều chỉnh đặc biệt"
-      }
+      },
+      "withheldAward": "Tạm giữ: {reason}"
     },
     "limitControlsOwned": "Các giá trị này của năm khen thưởng do Kiểm soát giới hạn quản lý. Tại đây chỉ được xem và đợt xét duyệt dùng phiên bản Kiểm soát giới hạn.",
     "offcycle": {

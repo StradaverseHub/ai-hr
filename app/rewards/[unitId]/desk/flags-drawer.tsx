@@ -22,7 +22,7 @@ export function useFlagWording() {
     if (flag.code === 'UPL-02') return u(`warnings.${flag.message}`);
     const text = flagText(flag);
     if (!text) return flag.message;
-    return t(`flagText.${text.key}`, { plan: text.plan ? t(text.plan) : '', part: text.part ? t(`flagText.parts.${text.part}`) : '' });
+    return t(`flagText.${text.key}`, { plan: text.plan ? t(text.plan) : '', part: text.part ? t(`flagText.parts.${text.part}`) : '', reason: text.reason ?? '' });
   };
 }
 

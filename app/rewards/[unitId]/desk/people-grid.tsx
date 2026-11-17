@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from 'react';
 import { useLocale, useTranslations } from 'next-intl';
 import { formatMoney } from '@/lib/money';
 import type { DeskRow } from './desk-model';
-import type { RewardCellField } from '../../actions';
+import { EditCell, PromotionCell } from './fields';
 import { useReviewDesk } from './review-desk';
 
 /** Optional columns a viewer may hide so the table fits a laptop screen without scrolling sideways. */
@@ -26,58 +26,6 @@ function readHidden(): OptionalColumn[] {
 const money = (cents: number | null, locale: string) => cents == null ? '—' : formatMoney(cents === 0 ? 0 : cents / 100, 'MYR', locale);
 const pct = (bp: number | null, locale: string) => bp == null ? '—' : `${new Intl.NumberFormat(locale, { minimumFractionDigits: 1, maximumFractionDigits: 2 }).format(bp / 100)}%`;
 const decimal = (bp: number | null, locale: string) => bp == null ? '—' : new Intl.NumberFormat(locale, { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(bp / 10000);
-/** The stored override as the input shows it (percent, multiplier or MYR). */
-const inputText = (field: RewardCellField, value: number | string | null) => value == null ? '' : typeof value === 'string' ? value : String(value / (field === 'multiplierBp' ? 10000 : 100));
-
-/** One editable cell: the stored override (highlighted, with Reset) or the calculated value as a placeholder. */
-function EditCell({ row, field, label, placeholder, step }: { row: DeskRow; field: 'meritBp' | 'promotionBp' | 'specialBp' | 'multiplierBp' | 'lumpCents'; label: string; placeholder: string; step: string }) {
-  const { save } = useReviewDesk();
-  const t = useTranslations('rewards.desk.cell');
-  const stored = inputText(field, row.inputs[field]);
-  const [draft, setDraft] = useState(stored);
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState('');
-  useEffect(() => { setDraft(stored); }, [stored]);
-  const commit = async (value: string) => {
-    if (value === stored || busy) return;
-    setBusy(true); setError('');
-    const result = await save(row.id, field, value);
-    setBusy(false);
-    if (!result.ok) { setError(result.error); setDraft(stored); }
-  };
-  const edited = row.overrides[field];
-  return <span className="inline-flex flex-col items-end gap-0.5">
-    <input aria-label={`${label} · ${row.name}`} inputMode="decimal" type="text" value={draft} placeholder={placeholder} disabled={busy} aria-invalid={!!error || undefined}
-      onChange={event => setDraft(event.target.value)} onBlur={event => void commit(event.target.value.trim())}
-      onKeyDown={event => { if (event.key === 'Enter') { event.preventDefault(); event.currentTarget.blur(); } if (event.key === 'Escape') { setDraft(stored); } }}
-      data-step={step} className={`h-7 w-[4.5rem] rounded border px-1.5 text-right text-[13px] tabular-nums ${edited ? 'border-primary bg-amber-50 font-semibold dark:bg-amber-950' : 'border-border bg-background'}`} />
-    {edited && <button type="button" disabled={busy} onMouseDown={event => event.preventDefault()} onClick={() => void commit('')} className="text-[11px] text-primary underline">{t('reset')}</button>}
-    {error && <span role="alert" className="max-w-40 whitespace-normal text-[11px] text-destructive">{error}</span>}
-  </span>;
-}
-
-function PromotionCell({ row }: { row: DeskRow }) {
-  const { save } = useReviewDesk();
-  const t = useTranslations('rewards.desk.cell'), r = useTranslations('rewards');
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState('');
-  const change = async (grade: string) => {
-    setBusy(true); setError('');
-    const result = await save(row.id, 'promotionGrade', grade);
-    setBusy(false);
-    if (!result.ok) setError(result.error);
-  };
-  return <span className="inline-flex flex-col items-end gap-0.5">
-    <select aria-label={`${r('promotion')} · ${row.name}`} value={row.promotionGrade ?? ''} disabled={busy} onChange={event => void change(event.target.value)}
-      className={`h-7 rounded border px-1 text-[13px] ${row.overrides.promotionGrade ? 'border-primary bg-amber-50 font-semibold dark:bg-amber-950' : 'border-border bg-background'}`}>
-      <option value="">{t('noPromotion')}</option>
-      {[...new Set([...(row.promotionGrade ? [row.promotionGrade] : []), ...row.promotionGrades])].map(grade => <option key={grade} value={grade}>{t('toGrade', { grade })}</option>)}
-    </select>
-    {row.promotionGrade && <EditCell row={row} field="promotionBp" label={`${r('promotion')} %`} placeholder="10" step="0.01" />}
-    {error && <span role="alert" className="max-w-40 whitespace-normal text-[11px] text-destructive">{error}</span>}
-  </span>;
-}
-
 /**
  * 37f82412 — the full-width People table. Grouped headings (Employee, Pay now, Salary increase, Bonus, Flags),
  * a sticky header row and Employee column, a sticky Total row, 13 px text and right-aligned figures. Editable
@@ -86,7 +34,7 @@ function PromotionCell({ row }: { row: DeskRow }) {
  */
 export function PeopleGrid({ order, personHrefs, openId, emptyText, fullView }: { order: readonly string[]; personHrefs: Readonly<Record<string, string>>; openId: string | null; emptyText: string; fullView: boolean }) {
   const { rows, totals, setFlagsOpen } = useReviewDesk();
-  const t = useTranslations('rewards'), d = useTranslations('rewards.desk'), g = useTranslations('rewards.desk.grid');
+  const t = useTranslations('rewards'), d = useTranslations('rewards.desk'), g = useTranslations('rewards.desk.grid'), p = useTranslations('rewards.desk.panel');
   const locale = useLocale();
   const [hidden, setHidden] = useState<OptionalColumn[]>([...DEFAULT_HIDDEN]);
   const [menu, setMenu] = useState(false);
@@ -114,6 +62,7 @@ export function PeopleGrid({ order, personHrefs, openId, emptyText, fullView }: 
         {OPTIONAL_COLUMNS.map(column => <label key={column} className="flex items-center gap-2 text-sm"><input type="checkbox" checked={show(column)} onChange={() => toggle(column)} />{g(`column.${column}`)}</label>)}
       </fieldset>}
     </div>
+    {list[0]?.viewOnlyStage && <p className="text-sm text-muted-foreground">{p('viewOnly', { role: t(`stages.${list[0].viewOnlyStage}`) })}</p>}
     <div data-people-grid className="max-h-[70vh] overflow-auto rounded-lg border border-border bg-card">
       <table className="w-full border-separate border-spacing-0 text-[13px]">
         <caption className="sr-only">{t('people')}</caption>
@@ -158,12 +107,12 @@ export function PeopleGrid({ order, personHrefs, openId, emptyText, fullView }: 
             <td className={`${num} align-top`}>{row.editable.increase ? <EditCell row={row} field="meritBp" label={g('merit')} placeholder={pct(row.meritBp, locale).replace('%', '')} step="0.01" /> : pct(row.meritBp, locale)}</td>
             <td className={`${num} align-top`}>{row.editable.increase ? <PromotionCell row={row} /> : row.promotionGrade ? pct(row.promotionBp, locale) : '—'}</td>
             {show('special') && <td className={`${num} align-top`}>{row.editable.increase ? <EditCell row={row} field="specialBp" label={g('column.special')} placeholder={pct(row.specialBp, locale).replace('%', '')} step="0.01" /> : pct(row.specialBp, locale)}</td>}
-            <td className={`${num} align-top font-medium`}>{pct(row.totalIncreaseBp, locale)}</td>
+            <td className={`${num} align-top font-medium`}>{row.withhold?.increase ? p('withheld') : pct(row.totalIncreaseBp, locale)}</td>
             <td className={`${num} align-top font-medium`}>{money(row.newBasicCents, locale)}</td>
             {show('crAfter') && <td className={`${num} align-top`}>{pct(row.crAfterBp, locale)}</td>}
             {show('months') && <td className={`${num} align-top`}>{row.editable.bonus ? <span className="inline-flex flex-col items-end"><EditCell row={row} field="multiplierBp" label={g('multiplier')} placeholder={decimal(row.multiplierBp, locale)} step="0.01" /><span className="text-[11px] text-muted-foreground">{g('monthsValue', { months: decimal(row.bonusMonthsBp, locale) })}</span></span> : decimal(row.bonusMonthsBp, locale)}</td>}
-            <td className={`${num} align-top`}>{money(row.bonusCents, locale)}</td>
-            {show('lump') && <td className={`${num} align-top`}>{row.editable.lump ? <EditCell row={row} field="lumpCents" label={g('column.lump')} placeholder={(row.lumpCents / 100).toFixed(2)} step="0.01" /> : money(row.lumpCents, locale)}</td>}
+            <td className={`${num} align-top`}>{row.withhold?.bonus ? p('withheld') : money(row.bonusCents, locale)}</td>
+            {show('lump') && <td className={`${num} align-top`}>{row.editable.lump ? <EditCell row={row} field="lumpCents" label={g('column.lump')} placeholder={(row.lumpCents / 100).toFixed(2)} step="0.01" /> : row.withhold?.lump ? p('withheld') : money(row.lumpCents, locale)}</td>}
             <td className="px-2 py-1 text-center align-top">{row.flag ? <button type="button" onClick={() => setFlagsOpen(true)} aria-label={g('rowFlags', { count: row.flagCount, name: row.name })}
               className={`inline-block size-2.5 rounded-full ${row.flag === 'block' ? 'bg-destructive' : 'bg-amber-500'}`} /> : <span className="text-muted-foreground">—</span>}</td>
           </tr>)}

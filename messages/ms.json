@@ -25143,7 +25143,7 @@
         "previous": "Sebelumnya",
         "next": "Seterusnya",
         "position": "{index} daripada {total}",
-        "openRecord": "Buka rekod penuh untuk menyunting",
+        "openRecord": "Buka rekod penuh",
         "noFlags": "Tiada perkara untuk orang ini.",
         "notes": "Nota",
         "noNote": "Tiada nota.",
@@ -25231,7 +25231,44 @@
           "multiplier": "Masukkan pengganda seperti 1.25.",
           "amount": "Masukkan amaun dalam MYR dengan sehingga dua tempat perpuluhan.",
           "grade": "Pilih gred jawatan.",
-          "note": "Hadkan nota kepada 2,000 aksara atau kurang."
+          "note": "Hadkan nota kepada 2,000 aksara atau kurang.",
+          "withhold": "Masukkan sebab sekurang-kurangnya 10 aksara.",
+          "decision": "Pilih keputusan kes yang sah."
+        }
+      },
+      "panel": {
+        "suggested": "Cadangan {value}",
+        "useSuggested": "Guna cadangan",
+        "difference": "Perbezaan {value}",
+        "range": {
+          "below": "Di bawah julat",
+          "in": "Dalam julat",
+          "above": "Melebihi julat"
+        },
+        "withheld": "Ditahan",
+        "withhold": "Tahan {award}",
+        "award": {
+          "increase": "kenaikan gaji",
+          "bonus": "bonus",
+          "lump": "bayaran sekali gus"
+        },
+        "withholdReason": "Sebab penahanan",
+        "withholdReasonRequired": "Masukkan sebab sekurang-kurangnya 10 aksara.",
+        "withheldReason": "Ditahan: {reason}",
+        "viewOnly": "Dengan {role} – lihat sahaja",
+        "caseDecision": "Keputusan PIP / ER",
+        "history": "Sejarah ganjaran",
+        "notFinal": "Semakan ini – belum muktamad",
+        "offcycle": "Luar kitaran",
+        "notOnRecord": "Tiada dalam rekod",
+        "historyColumn": {
+          "year": "Tahun",
+          "talent": "Bakat",
+          "performance": "Prestasi",
+          "incrementPercent": "Kenaikan %",
+          "incrementMoney": "Kenaikan (MYR)",
+          "bonusMoney": "Bonus (MYR)",
+          "bonusMonths": "Bulan bonus"
         }
       }
     },
@@ -25497,7 +25534,8 @@
         "merit": "merit",
         "promotion": "kenaikan pangkat",
         "special": "pelarasan khas"
-      }
+      },
+      "withheldAward": "Ditahan: {reason}"
     },
     "limitControlsOwned": "Kawalan Had memiliki nilai ini bagi tahun ganjaran ini. Nilai ini baca sahaja di sini dan semakan menggunakan versi Kawalan Had.",
     "offcycle": {

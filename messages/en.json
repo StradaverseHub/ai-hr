@@ -25143,7 +25143,7 @@
         "previous": "Previous",
         "next": "Next",
         "position": "{index} of {total}",
-        "openRecord": "Open full record to edit",
+        "openRecord": "Open full record",
         "noFlags": "No flags for this person.",
         "notes": "Notes",
         "noNote": "No notes.",
@@ -25231,7 +25231,44 @@
           "multiplier": "Enter a multiplier such as 1.25.",
           "amount": "Enter an amount in MYR with up to two decimal places.",
           "grade": "Choose a job grade.",
-          "note": "Keep the note to 2,000 characters or fewer."
+          "note": "Keep the note to 2,000 characters or fewer.",
+          "withhold": "Enter a reason of at least 10 characters.",
+          "decision": "Choose a valid case decision."
+        }
+      },
+      "panel": {
+        "suggested": "Suggested {value}",
+        "useSuggested": "Use suggested",
+        "difference": "Difference {value}",
+        "range": {
+          "below": "Below range",
+          "in": "In range",
+          "above": "Above range"
+        },
+        "withheld": "Withheld",
+        "withhold": "Withhold {award}",
+        "award": {
+          "increase": "salary increase",
+          "bonus": "bonus",
+          "lump": "lump sum"
+        },
+        "withholdReason": "Reason for withholding",
+        "withholdReasonRequired": "Enter a reason of at least 10 characters.",
+        "withheldReason": "Withheld: {reason}",
+        "viewOnly": "With {role} – view only",
+        "caseDecision": "PIP / ER decision",
+        "history": "Reward history",
+        "notFinal": "This review – not final",
+        "offcycle": "Off-cycle",
+        "notOnRecord": "Not on record",
+        "historyColumn": {
+          "year": "Year",
+          "talent": "Talent",
+          "performance": "Performance",
+          "incrementPercent": "Increase %",
+          "incrementMoney": "Increase (MYR)",
+          "bonusMoney": "Bonus (MYR)",
+          "bonusMonths": "Bonus months"
         }
       }
     },
@@ -25497,7 +25534,8 @@
         "merit": "merit",
         "promotion": "promotion",
         "special": "special adjustment"
-      }
+      },
+      "withheldAward": "Withheld: {reason}"
     },
     "limitControlsOwned": "Limit Controls own these values for this reward year. They are read-only here and the review uses the Limit Controls version.",
     "offcycle": {

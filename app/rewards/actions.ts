@@ -9,7 +9,7 @@ import { publicErrorMessage } from '@/lib/public-error';
 import {rewardPolicyFromForm} from './policy-input';
 import { rewardCalendarStages, rewardOffcycleSlaStages, saveRewardCalendar, RewardMaintenanceError, previewRewardAccessChange, saveRewardAccessChange, deleteRewardReview, RewardPolicyGroupError, previewRewardSeniorMembership, saveRewardSeniorMembership, importOnehrRewardResults, createOffcycleReview, createRewardUnit, decideRewardUnit, getRewardUnit, getRewardConfiguration,importRewardFacts, postRewardUnit, saveRewardEntry, saveRewardPolicy, previewRewardMultiplier, saveRewardMultiplier, setRewardMember, setRewardUnitLump, previewRewardLump, setRewardPayWindowKeep, previewRewardSourceRefresh, saveRewardSourceRefresh } from '@/packs/rewards/service';
 import { emptyFacts, isSalaryReductionAttempt, performances, talents, REWARD_NOTE_MAX, type RewardRole } from '@/packs/rewards/model';
-import { deskCellsEditable, deskRow, deskSummary, deskTotals, filterDeskRows, parseDeskFilters, type DeskRow, type DeskSummary, type DeskTotals, type RewardView } from './[unitId]/desk/desk-model';
+import { deskRow, deskSummary, deskTotals, filterDeskRows, parseDeskFilters, type DeskRow, type DeskSummary, type DeskTotals, type RewardView } from './[unitId]/desk/desk-model';
 
 const str = (f: FormData, key: string) => String(f.get(key) ?? '').trim();
 const number = (f: FormData, key: string) => Number(str(f, key));
@@ -174,22 +174,27 @@ export async function deleteRewardAction(f:FormData){
 }
 
 /** 37f82412 — the People table cells and the person-panel note. */
-export type RewardCellField = 'meritBp' | 'promotionBp' | 'specialBp' | 'promotionGrade' | 'multiplierBp' | 'lumpCents' | 'note';
-const cellFields: readonly RewardCellField[] = ['meritBp', 'promotionBp', 'specialBp', 'promotionGrade', 'multiplierBp', 'lumpCents', 'note'];
+export type RewardCellField = 'meritBp' | 'promotionBp' | 'specialBp' | 'promotionGrade' | 'multiplierBp' | 'lumpCents' | 'note' | 'reason' | 'erDecision' | 'pipDecision' | 'caseReason' | 'withhold';
+const cellFields: readonly RewardCellField[] = ['meritBp', 'promotionBp', 'specialBp', 'promotionGrade', 'multiplierBp', 'lumpCents', 'note', 'reason', 'erDecision', 'pipDecision', 'caseReason', 'withhold'];
 export type RewardCellResult =
   | { ok: true; revision: number; row: DeskRow | null; summary: DeskSummary; totals: DeskTotals; flags: RewardView['flags'] }
   | { ok: false; stale: boolean; error: string };
 
 /** Parse one typed cell into the stored override. Percentages and amounts allow two decimals; the
  *  multiplier allows two decimals of a whole multiplier. Empty means "use the calculated value". */
-function cellValue(field: RewardCellField, value: string): number | string | null {
+function cellValue(field: RewardCellField, value: string): number | string | null | { award: 'increase' | 'bonus' | 'lump'; reason: string } {
+  if (field === 'withhold') {
+    try { const input = JSON.parse(value); if (!['increase','bonus','lump'].includes(input.award) || typeof input.reason !== 'string' || input.reason.length > 1000 || (input.reason.trim() && input.reason.trim().length < 10)) throw new Error(); return { award: input.award, reason: input.reason.trim() }; } catch { throw new RewardCellInputError('withhold'); }
+  }
+  if (field === 'reason' || field === 'caseReason') { if (value.length > (field === 'reason' ? 4000 : 3000)) throw new RewardCellInputError('note'); return value.trim(); }
+  if (field === 'erDecision' || field === 'pipDecision') { if (!(field === 'erDecision' ? ['pending','in','out'] : ['pending','lift','confirm']).includes(value)) throw new RewardCellInputError('decision'); return value; }
   if (field === 'note') { if (value.length > REWARD_NOTE_MAX) throw new RewardCellInputError('note'); return value.trim(); }
   if (value.trim() === '') return null;
   if (field === 'promotionGrade') { if (!/^[A-Za-z0-9]{1,30}$/.test(value.trim())) throw new RewardCellInputError('grade'); return value.trim(); }
   if (!/^\d{1,9}(?:\.\d{1,2})?$/.test(value.trim())) throw new RewardCellInputError(field === 'lumpCents' ? 'amount' : field === 'multiplierBp' ? 'multiplier' : 'percent');
   return Math.round(Number(value) * (field === 'multiplierBp' ? 10000 : 100));
 }
-class RewardCellInputError extends Error { constructor(readonly kind: 'note' | 'grade' | 'amount' | 'multiplier' | 'percent') { super(kind); } }
+class RewardCellInputError extends Error { constructor(readonly kind: 'note' | 'grade' | 'amount' | 'multiplier' | 'percent' | 'withhold' | 'decision') { super(kind); } }
 
 /**
  * A cell edit changes only its own override, through the one review owner (saveRewardEntry), which keeps
@@ -206,14 +211,33 @@ export async function saveRewardCell(unitId: string, revision: number, entryId: 
     const entry = view.rows.find(row => row.id === entryId);
     if (!entry) throw new Error(t('desk.cell.unavailable'));
     const row = deskRow(view, entry, view.flags);
-    const allowed = field === 'note' ? deskCellsEditable(view) : field === 'multiplierBp' ? row.editable.bonus : field === 'lumpCents' ? row.editable.lump : row.editable.increase;
+    const caseField = field === 'erDecision' || field === 'pipDecision' || field === 'caseReason';
+    const withholding = typeof parsed === 'object' && parsed !== null ? parsed : null;
+    const allowed = caseField ? row.casesEditable && (field === 'erDecision' ? row.erCase : field === 'pipDecision' ? row.pipCase : row.erCase || row.pipCase)
+      : field === 'note' || field === 'reason' ? row.notesEditable
+      : withholding ? row.editable[withholding.award] : field === 'multiplierBp' ? row.editable.bonus : field === 'lumpCents' ? row.editable.lump : row.editable.increase;
     if (!allowed) throw new Error(t('desk.cell.notEditable'));
-    const recommendation = field === 'promotionGrade' && parsed === null ? { ...entry.recommendation, promotionGrade: null, promotionBp: null } : { ...entry.recommendation, [field]: parsed };
-    await saveRewardEntry(session, unitId, revision, entryId, recommendation);
-    const after = await getRewardUnit(session, unitId);
+    if (field === 'promotionGrade' && parsed && !row.promotionGrades.includes(String(parsed))) throw new RewardCellInputError('grade');
+    let recommendation = { ...entry.recommendation };
+    let facts: typeof entry.facts | undefined;
+    if (caseField) facts = { ...entry.facts, [field]: parsed };
+    else if (withholding) {
+      const withhold = { ...entry.recommendation.withhold };
+      if (withholding.reason) withhold[withholding.award] = withholding.reason; else delete withhold[withholding.award];
+      recommendation = { ...recommendation, withhold };
+    } else if (field === 'promotionGrade') recommendation = { ...recommendation, promotionGrade: parsed as string | null, promotionBp: null };
+    else recommendation = { ...recommendation, [field]: parsed };
+    // Return the same transaction's recalculated projection; avoid loading the entire unit again here.
+    const after = await saveRewardEntry(session, unitId, revision, entryId, recommendation, facts, true);
+    if (!after) throw new Error(t('desk.cell.unavailable'));
     const filters = parseDeskFilters(rawFilters && typeof rawFilters === 'object' ? rawFilters as Record<string, unknown> : {});
     const updated = after.rows.find(r => r.id === entryId);
-    const filtered = filterDeskRows(after.rows, after.flags, filters).map(r => deskRow(after, r, after.flags));
+    const raw = rawFilters && typeof rawFilters === 'object' ? rawFilters as Record<string, unknown> : {};
+    const check = typeof raw.check === 'string' && raw.check.length <= 80 ? raw.check : undefined;
+    const flag = typeof raw.flag === 'string' && raw.flag.length <= 80 ? raw.flag : undefined;
+    const code = check ?? flag;
+    const flagged = code ? new Set(after.flags.filter(item => item.code === code && (!check || item.severity === 'exception')).map(item => item.entryId)) : null;
+    const filtered = filterDeskRows(after.rows, after.flags, filters).filter(item => !flagged || flagged.has(item.id)).map(r => deskRow(after, r, after.flags));
     return { ok: true, revision: after.unit.revision, row: updated ? deskRow(after, updated, after.flags) : null, summary: deskSummary(after), totals: deskTotals(filtered), flags: after.flags };
   } catch (error) {
     if (error instanceof RewardCellInputError) return { ok: false, stale: false, error: t(`desk.cell.invalid.${error.kind}`) };
