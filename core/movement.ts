@@ -1620,7 +1620,7 @@ async function personnelCorrectionViewTx(tx:Tx,events:RawEvent[],rows:ProjectedR
  const beforeRows=hasCorrections
   ? rows.filter(row=>row.kind!=='hired').map(row=>{
    const first=row.groupId?firstSequenceByGroup.get(row.groupId):undefined;
-   return {...row,id:row.id+':before',groupId:null,scheduled:false,appliedAt:null,sequence:Math.min(row.sequence,first??row.sequence)-.5};
+   return {...row,id:row.id+':before',effectiveDate:dayBefore(row.effectiveDate),groupId:null,scheduled:false,appliedAt:null,sequence:Math.min(row.sequence,first??row.sequence)-.5};
   })
   : [];
  const corrections=personnelInformationCorrections(events,[...rows,...beforeRows]);
@@ -1632,7 +1632,7 @@ async function personnelCorrectionViewTx(tx:Tx,events:RawEvent[],rows:ProjectedR
  return {corrections,apply:(id:string,snapshot:MovementSnapshot)=>{
   const after={...snapshot};
   for(const item of corrections.get(id)??[]){if(item.needsReview)continue;
-   if('companyId'in item.values)after.company=item.values.companyId?companyLabels.get(item.values.companyId)??null:null;
+   if('companyId'in item.values&&!hasDatedCompanyHistory(events))after.company=item.values.companyId?companyLabels.get(item.values.companyId)??null:null;
    if('gradeId'in item.values)after.grade=item.values.gradeId?gradeLabels.get(item.values.gradeId)??null:null;
    if('employmentType'in item.values)after.employmentType=item.values.employmentType??null;
    if('hiredOn'in item.values)after.groupJoinDate=item.values.hiredOn??null;

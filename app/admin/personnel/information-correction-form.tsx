@@ -18,8 +18,9 @@ function correctionValue<T extends object>(result: T | { correctionError: string
 }
 
 export function InformationChangesTable({preview}:{preview:InformationPreview}){
- const t=useTranslations('people.informationCorrection');
- return <div className="overflow-x-auto rounded-md border"><table className="w-full text-left text-sm"><thead className="bg-muted/50 text-muted-foreground"><tr><th className="p-3">{t('field')}</th><th className="p-3">{t('before')}</th><th className="p-3">{t('after')}</th></tr></thead><tbody>{preview.changed.map(field=><tr key={field} className="border-t"><th className="p-3 font-normal">{t(`fields.${field}`)}</th><td className="p-3">{preview.beforeLabels[field]??'—'}</td><td className="p-3 font-semibold">{preview.afterLabels[field]??'—'}</td></tr>)}</tbody></table></div>;
+ const t=useTranslations('people.informationCorrection'),all=useTranslations();
+ const fieldLabel=(field:string)=>t.has(`fields.${field}`)?t(`fields.${field}`):all(field==='extendedConfirmationDate'?'people.import.movement.currentFields.extendedConfirmationDate':`people.detail.employmentInfo.${field}`);
+ return <div className="overflow-x-auto rounded-md border"><table className="w-full text-left text-sm"><thead className="bg-muted/50 text-muted-foreground"><tr><th className="p-3">{t('field')}</th><th className="p-3">{t('before')}</th><th className="p-3">{t('after')}</th></tr></thead><tbody>{preview.changed.map(field=><tr key={field} className="border-t"><th className="p-3 font-normal">{fieldLabel(field)}</th><td className="p-3">{preview.beforeLabels?.[field]??'—'}</td><td className="p-3 font-semibold">{preview.afterLabels?.[field]??'—'}</td></tr>)}</tbody></table></div>;
 }
 /** The same audit presentation serves correction entry and read-only movement details. */
 export function InformationCorrectionAudit({history}:{history:CorrectionContext['history']}){
