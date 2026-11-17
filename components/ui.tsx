@@ -37,7 +37,7 @@ export const pageWideCls = 'w-full space-y-6';
 
 export const tableWrapCls = 'ui-table-wrap overflow-x-auto rounded-md border border-border';
 export const theadCls = 'bg-muted/50 text-left text-xs uppercase tracking-wide text-muted-foreground';
-export const thCls = 'px-4 py-3 align-middle font-medium';
+export const thCls = 'px-3 py-2 font-medium';
 /** Atomic values stay together; descriptions keep their natural wrapping. */
 export const tableDateCls = 'whitespace-nowrap tabular-nums';
 export const tableAmountCls = 'whitespace-nowrap text-right tabular-nums';

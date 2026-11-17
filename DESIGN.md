@@ -57,7 +57,7 @@ typography:
     fontSize: ".8125rem"
     fontWeight: 500
   table-label:
-    fontSize: ".78125rem"
+    fontSize: ".75rem"
     fontWeight: 500
     letterSpacing: "0"
 rounded:
