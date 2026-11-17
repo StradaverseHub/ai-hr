@@ -15,7 +15,7 @@ beforeEach(()=>{vi.clearAllMocks();native.usage.mockResolvedValue({ok:true,resul
 const show=()=>render(<NextIntlClientProvider locale="en" messages={en}><ContractDocuments templates={[{template,revision:3,currentVersion:2,liveVersion:1,retired:false}]} refs={{groups:[],people:[],routings:[],conditions:{}}}/></NextIntlClientProvider>);
 describe('Document display version and concurrency revision',()=>{
  it('shows the real latest content version and submits the separate native CAS token when publishing history',async()=>{
-  show();fireEvent.click(screen.getByRole('button',{name:'Edit'}));expect(await screen.findByText('Latest version 2 · In use: 1')).toBeVisible();fireEvent.click(screen.getByRole('tab',{name:'Version history'}));await screen.findByText('Reviewed wording');
+  show();fireEvent.click(screen.getByRole('button',{name:'Edit'}));expect(await screen.findByText('Latest version 2 · In use: 1')).toBeVisible();fireEvent.click(screen.getByRole('tab',{name:'Version history'}));await screen.findByText('Reviewed wording');await waitFor(()=>expect(screen.getByRole('button',{name:'Back to templates'})).toBeEnabled());
   native.usage.mockResolvedValue({ok:true,result:{...usage,versions:usage.versions.map(row=>({...row,state:row.version===2?'inUse':'published'}))}});fireEvent.click(screen.getAllByRole('button',{name:'Publish'})[1]);await waitFor(()=>expect(native.act).toHaveBeenCalledWith({id,expectedRevision:3,action:'publishVersion',version:2}));expect(await screen.findByText('Latest version 2 · In use: 2')).toBeVisible();
  });
  it('does not apply a delayed usage response after its document editor has closed',async()=>{
