@@ -49,7 +49,7 @@ async function prepared() {
     steps: [{ id: 'group-mail', type: 'notify', subject: 'Fictional shared notice', body: 'The same message for every group member.',
       to: ['group:large-recipient-group', 'address:MEMBER0@fixture.test'], cc: ['address:member1@fixture.test', 'address:archive@fixture.test'] }] }];
   await v9SaveConfig(admin, config.revision, config);
-  const subject = await hireEmployee(admin, { companyId: base.companyId, departmentId: base.deptA, employmentType: 'full_time', hiredOn: '2026-01-01', person: { fullName: 'Fictional fanout subject' } });
+  const subject = await hireEmployee(admin, { companyId: base.companyId, departmentId: base.deptA, employmentType: 'full_time', hiredOn: '2026-01-01', person: { fullName: 'Fictional fanout subject', primaryEmail: 'fanout-subject@fixture.test' } });
   const id = await v9CreateOffboarding(admin, { employmentId: subject.employmentId, type: 'Resignation', noticeDate: todayInKualaLumpur(), lastDay: addDays(todayInKualaLumpur(), 30) });
   await v9Command(admin, id, 1, { type: 'submit' });
   return { id, recipients };

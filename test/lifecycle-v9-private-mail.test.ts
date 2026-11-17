@@ -160,11 +160,16 @@ it('sends one message to several To recipients together and keeps every address 
   expect(transport).toHaveBeenCalledExactlyOnceWith(relay.relay, expect.objectContaining({ to: ['employee@fictional.invalid', 'work@fictional.invalid'], cc: ['copy@fictional.invalid'] }));
   const proof = JSON.parse(fixture.sql.mock.calls.find(call => call[0].join('?').includes('email_start'))!.at(-1));
   expect(proof.addresses).toEqual(['employee@fictional.invalid', 'work@fictional.invalid', 'copy@fictional.invalid']);
+  // Approved fanout: nine resolved addresses are valid; the editor's eight-choice limit is separate.
   target.payload.mail.to = Array.from({ length: 9 }, (_, index) => `address:to${index}@fictional.invalid`);
-  target.literals = target.payload.mail.to.map((key, index) => ({ key, email: key.slice(8), position: index + 2 }));
-  target.payload.mail.cc = [];
-  expect(await internalLifecycleV9Mail(request, transport)).toMatchObject({ outcome: 'skipped' });
-  expect(transport).toHaveBeenCalledOnce();
+  target.literals = target.payload.mail.to.map((key, index) => ({ key, email: key.slice(8), position: index + 1 }));
+  target.payload.mail.cc = []; target.bindings = [];
+  expect(await internalLifecycleV9Mail(request, transport)).toEqual({ outcome: 'sent', error: null });
+  expect(transport).toHaveBeenCalledTimes(2);
+  const expected = target.payload.mail.to.map(key => key.slice(8));
+  expect(transport).toHaveBeenLastCalledWith(relay.relay, expect.objectContaining({ to: expected, cc: [] }));
+  const secondProof = JSON.parse(fixture.sql.mock.calls.filter(call => call[0].join('?').includes('email_start')).at(-1)!.at(-1));
+  expect(secondProof.addresses).toEqual(expected);
 });
 
 it('sends twelve resolved group accounts in one email and deduplicates their mailboxes against literal To and CC', async () => {
