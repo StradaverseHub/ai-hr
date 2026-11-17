@@ -333,6 +333,12 @@ it('stops on a cross-tenant row, then validates every company/tenant key without
   // callable by the application role, and none is callable by PUBLIC. The policy-side and trigger-WHEN helpers are
   // granted to exactly the roles their policies or the domain_event writers are (test/policy-helper-function-grants).
   const privateFunctions=[
+   // Owner-only team admission, communication custody and immutable receipt trigger.
+   'app.resignation_letter_step_mine(jsonb,jsonb)',
+   'app.resignation_letter_owner_mine(jsonb)',
+   'app.resignation_communication_case_scope(uuid,uuid)',
+   'app.resignation_communication_test_immutable()',
+
    // Native managed-submission cutover: the insert trigger remains owner-only.
    'app.resignation_submission_guard()',
    // Resignation9991/9993: private command verifiers and revoked original Probation implementations.
@@ -406,6 +412,21 @@ it('stops on a cross-tenant row, then validates every company/tenant key without
   // the roles that evaluate it (test/rewards-config-grants-lock.test.ts), so no added function is callable by PUBLIC.
   const publicFunctions:string[]=[];
   const addedFunctions=[
+   // Handoff corrections: exact native team, date and case-communication entry points; never PUBLIC.
+   'app.resignation_letter_step_mine(jsonb,jsonb)',
+   'app.resignation_letter_owner_mine(jsonb)',
+   'app.resignation_communication_case_scope(uuid,uuid)',
+   'app.resignation_communication_test_immutable()',
+   'app.resignation_offboarding_date_intent(uuid,date,date)',
+   'app.resignation_offboarding_date_store(uuid,integer,date,date,jsonb)',
+   'app.resignation_communication_scope(uuid,uuid,uuid)',
+   'app.resignation_communication_test_receipt(uuid,integer,uuid,text,uuid,uuid)',
+   'app.resignation_communication_test_begin(uuid,integer,uuid,text,uuid,uuid,jsonb)',
+   'app.resignation_communication_test_queue(uuid,integer,uuid,text,uuid,jsonb)',
+   'app.resignation_communication_runs(uuid,uuid)',
+   'app.resignation_communication_offboarding_context(uuid,uuid,uuid)',
+   'app.resignation_communication_files(uuid,uuid)',
+
    // Scoped company-retention boolean; journey rows retain their existing custody-only RLS.
    'app.resignation_company_in_use(uuid)',
    // Reverse-linked clearance template IDs: scoped native metadata, application EXECUTE only.
@@ -807,6 +828,8 @@ it('stops on a cross-tenant row, then validates every company/tenant key without
   // policies it adds (5580's configuration-editor and owner policies and 5600's owner policies included) (qual/with_check as md5 digests, the migration owner written OWNER) and the one it retires
   // (5400 drops the second-person PAT confirmation policy). Nothing else in the privilege graph may change.
   const boardRelations:Record<string,{rls:boolean;force:boolean;acl:string|null}>={
+   // Actor-only test receipts remain owner-only and forced-RLS.
+   'resignation_communication_test':{rls:true,force:true,acl:'{OWNER=arwdDxt/OWNER}'},
    // Resignation9991: salary-sensitive state and uploaded receipts are forced-RLS; HMAC material stays owner-only.
    'resignation_journey':{rls:true,force:true,acl:'{OWNER=arwdDxt/OWNER,ai_hr_app=r/OWNER}'},
    'resignation_journey_number_seq':{rls:false,force:false,acl:null},
@@ -944,6 +967,7 @@ it('stops on a cross-tenant row, then validates every company/tenant key without
   expect(afterPerformancePrivileges.policies.filter(isBoardRetiredPolicy)).toEqual([]);
   // Resignation9991: exact new policies, parsed independently on their actual tables. No prefix exception.
   const resignationPolicies = [
+   {schema:'public',table:'resignation_communication_test',name:'resignation_communication_test_owner',cmd:'ALL',roles:'ai_hr_owner',using:'app.acting_as_owner()',check:'app.acting_as_owner()'},
   {
     "schema": "public",
     "table": "lc_v9_config",
