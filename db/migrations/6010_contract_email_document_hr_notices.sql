@@ -106,7 +106,7 @@ LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $
 DECLARE letter_id uuid;action jsonb;
 BEGIN
  IF NEW.subject_type<>'contract' OR jsonb_array_length(NEW.data->'actions')<>jsonb_array_length(OLD.data->'actions')+1
-  OR NEW.data->'actions'-((jsonb_array_length(NEW.data->'actions')-1)::integer) IS DISTINCT FROM OLD.data->'actions' THEN RETURN NEW;END IF;
+  OR (NEW.data->'actions') - ((jsonb_array_length(NEW.data->'actions')-1)::integer) IS DISTINCT FROM OLD.data->'actions' THEN RETURN NEW;END IF;
  SELECT id INTO letter_id FROM public.contract_shared_letter WHERE tenant_id=NEW.tenant_id AND id=NEW.subject_id AND signing_document_id=NEW.id AND purpose='email';
  IF letter_id IS NULL THEN RETURN NEW;END IF;
  action:=NEW.data->'actions'->-1;

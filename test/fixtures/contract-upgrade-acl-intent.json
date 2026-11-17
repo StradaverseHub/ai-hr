@@ -1,5 +1,5 @@
 {
-  "sourceBase": "69ba90700 original literal Contract intent; plus reviewed6000V3 SQL0e92e55257678ee5ceec522cb475ab56b2442059bff63457216bb1425266e9ec and root reviewed6001\u20136009 literal posting ACL additions (no observed database expectations); plus approved6010 literal private notice ACL intent at d29e5380d, SQLfd629cb52c55",
+  "sourceBase": "69ba90700 original literal Contract intent; plus reviewed6000V3 SQL0e92e55257678ee5ceec522cb475ab56b2442059bff63457216bb1425266e9ec and root reviewed6001\u20136009 literal posting ACL additions (no observed database expectations); plus approved6010 literal private notice ACL intent at d29e5380d, SQL71afc04f48fd (same literal ACL after append-expression correction)",
   "functionsAdded": [
     {
       "signature": "app.automation_assignment_group_people(text)",

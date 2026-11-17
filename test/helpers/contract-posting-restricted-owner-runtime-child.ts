@@ -13,6 +13,7 @@ type Prepared={version:1;fixture:ContractPostingFixture;posting:Awaited<ReturnTy
 const RESULT='CONTRACT_RESTRICTED_OWNER_RESULT ';
 
 async function main(){
+ assert.ok(process.execArgv.includes('--conditions=react-server'),'Use the canonical server runtime condition.');
  const phase=process.env.CONTRACT_POSTING_OWNER_RUNTIME_PHASE,database=process.env.CONTRACT_POSTING_OWNER_RUNTIME_DATABASE;
  const nonce=process.env.CONTRACT_POSTING_OWNER_RUNTIME_NONCE,folder=process.env.CONTRACT_POSTING_OWNER_RUNTIME_FOLDER,temp=process.env.RUNNER_TEMP;
  assert.ok(phase==='prepare'||phase==='apply');assert.ok(database&&/^ai_hr_test_w_aifocus[1-9][0-9]*$/.test(database));

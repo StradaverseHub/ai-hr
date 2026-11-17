@@ -1266,6 +1266,29 @@ it('stops on a cross-tenant row, then validates every company/tenant key without
    {schemaname:'public',tablename:'reward_unit_setup',policyname:'reward_unit_setup_pat_config_owner',permissive:'PERMISSIVE',roles:'{ai_hr_owner}',cmd:'ALL',qual:'f11a21eee98956088c3be9e2f59ebb19',with_check:'f11a21eee98956088c3be9e2f59ebb19'},
    {schemaname:'public',tablename:'reward_uploaded_award',policyname:'reward_uploaded_award_config_owner',permissive:'PERMISSIVE',roles:'{ai_hr_owner}',cmd:'SELECT',qual:'4094f5ce20f217ddbff264f02f20fd45',with_check:null},
   ];
+  // 5802 intentionally replaces only the two shared definition read predicates.
+  // Parse reviewed literal SQL independently; observed policy rows never define expected access.
+  const sharedDefinitionReadPolicies=[
+   {table:'automation_email_template_version',name:'automation_email_template_read',using:"tenant_id=app.current_tenant_id() AND app.automation_can_manage(module,'templates')"},
+   {table:'automation_workflow_version',name:'automation_workflow_read',using:"tenant_id=app.current_tenant_id() AND app.automation_can_manage(module,'workflows')"},
+  ];
+  const sharedDefinitionReadQuals=await storage.client.begin(async tx=>{
+   const parsed:(string|null)[]=[];
+   for(const policy of sharedDefinitionReadPolicies){
+    await tx.unsafe('create policy upgrade_expected_shared_definition_read on public.'+policy.table+' for select to ai_hr_app using ('+policy.using+')');
+    const [row]=await tx<{qual:string|null}[]>`select qual from pg_policies where schemaname='public' and tablename=${policy.table} and policyname='upgrade_expected_shared_definition_read'`;
+    parsed.push(row.qual);
+    await tx.unsafe('drop policy upgrade_expected_shared_definition_read on public.'+policy.table);
+   }
+   return parsed;
+  });
+  sharedDefinitionReadPolicies.forEach((policy,index)=>{
+   const expected=boardPolicies.find(row=>row.schemaname==='public'&&row.tablename===policy.table&&row.policyname===policy.name)!;
+   // Preserve the independently pinned 5740/5743 source predicate before its reviewed replacement.
+   expect(expected.qual,policy.name+' original source').toBe('bac4a95592bbda57aed591f6db313641');
+   expect(sharedDefinitionReadQuals[index],policy.name+' parsed replacement').not.toBeNull();
+   expected.qual=digest(sharedDefinitionReadQuals[index]);
+  });
   const boardRetiredPolicies=[
    {schemaname:'public',tablename:'reward_pat_version',policyname:'reward_pat_check',permissive:'PERMISSIVE',roles:'{public}',cmd:'UPDATE',qual:'c66ab0b91608107f679757a4c4f058a5',with_check:'48c95b77271b4a3fb728d587ca687b6e'},
   ];

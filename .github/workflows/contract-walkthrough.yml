@@ -1,7 +1,7 @@
 name: contract-walkthrough
 run-name: Contract production renderer · ${{ inputs.candidate_ref || github.ref_name }}
 on:
-  # Reviewed native source repair: 6000 exact5921 workspace extension, SQL cbfb44f6df28.
+  # Reviewed native source repair: 6010 canonical action append expression, SQL71afc04f48fd.
   # Temporary, development-only bootstrap. Exact compared file paths are verified through the read-only API.
   # This renderer keeps the canonical 6144 MB next-build heap on a standard hosted runner.
   # Exact disposable role prerequisites are admitted before migration; production guards stay unchanged.

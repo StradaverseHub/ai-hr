@@ -27,7 +27,7 @@ async function child(phase:'prepare'|'apply',database:string,nonce:string,folder
   MIGRATION_DATABASE_URL:connectionAt(base,database,phase==='apply'?'ai_hr_owner':'postgres')};
  delete env.VITEST_POOL_ID;delete env.VITEST_WORKER_ID;
  const output=await new Promise<string>((resolveChild,reject)=>{
-  const processChild=spawn(process.execPath,['--import','tsx','test/helpers/contract-posting-restricted-owner-runtime-child.ts'],{cwd:process.cwd(),env,stdio:['ignore','pipe','pipe']});
+  const processChild=spawn(process.execPath,['--conditions=react-server','--import','tsx','test/helpers/contract-posting-restricted-owner-runtime-child.ts'],{cwd:process.cwd(),env,stdio:['ignore','pipe','pipe']});
   let stdout='',stderr='';const timer=setTimeout(()=>{processChild.kill('SIGKILL');reject(Error('Restricted Contract runtime child exceeded its bounded fixture budget.'));},300_000);
   processChild.stdout.on('data',chunk=>{stdout+=String(chunk);if(stdout.length>8*1024*1024)processChild.kill('SIGKILL');});
   processChild.stderr.on('data',chunk=>{stderr+=String(chunk);if(stderr.length>8*1024*1024)processChild.kill('SIGKILL');});

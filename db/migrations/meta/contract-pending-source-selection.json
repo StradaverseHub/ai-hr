@@ -116,7 +116,7 @@
     "6007_contract_posting_admission_and_status_ports": "f94fd9292674b0084aa5331eeb5b5be45d6417c47ff707df520937b7c9aac57b",
     "6008_contract_posting_application_metadata": "9477f8b0f029ba475830d8174353b77e47ced60d0b7393a8d11d8df82092f422",
     "6009_contract_posting_reconciliation_and_authority": "d0ce6a32a101e8da9f87dc85da2a64158b720505cc36504a090cb9faf340b472",
-    "6010_contract_email_document_hr_notices": "fd629cb52c55f5cbc8c88567a9910ccde7d5ad2c365439e8da1a6a0f8fac2138"
+    "6010_contract_email_document_hr_notices": "71afc04f48fda2449becba50bd156b698a0f5ce5d2f0f4765c4211904d9389c4"
   },
   "forwardSourceReview": {
     "emailV4Source": "e73af9cec",
@@ -321,5 +321,13 @@
     "selectedSQL": "cbfb44f6df287476b7e42c93c69f2276f701808ce9cc429adcaa425db8fb09f2",
     "failedFocusedRun": "44052823298",
     "reason": "Bind unique exact5921 workspace declaration, delegated base call and whole fallback return. Preserve CaseView, fallbackPage, sameOID/ACL and bounded validated-offset reconciliation metadata. No new functions/grants; accepted919 SQL unchanged. Source inspection is not runtime proof."
+  },
+  "uninstalledHRNoticeAppendRevision": {
+    "originalFrozenSource": "00a2068d674ea0d24ed791d2d4dfa79d78b7ea3b",
+    "repairSource": "f98b7c3776eed3658f296aad4945f5fafbbdef2f",
+    "originalSQL": "fd629cb52c55f5cbc8c88567a9910ccde7d5ad2c365439e8da1a6a0f8fac2138",
+    "selectedSQL": "71afc04f48fda2449becba50bd156b698a0f5ce5d2f0f4765c4211904d9389c4",
+    "failedFocusedRun": "44054664619",
+    "reason": "Parenthesize JSONB extraction before removing last action. Preserve exact one-append, prefix, other-subject, actor and authority proofs. Add actual SMTP fixed text/Letter link assertion; no permission or predicate widening."
   }
 }

@@ -33,6 +33,7 @@ it('queues one native initial HR link, sends through the restricted real deliver
  expect(mail.payload.context.letterId).toBe(f.pin.letterId);expect(mail.payload.mail.delivery).toEqual({version:1,sender:'noreply',pdfDocumentIds:[],linkDocumentIds:[],assets:[]});
  const events=await f.snapshot();expect(events).toHaveLength(1);expect(events[0]).toMatchObject({trigger_event:'emailDocumentHRNotice',workflow_versions:[],actor_type:'user',actor_user_id:f.admin.userId,actor_person_id:f.admin.personId});
  const token=await lease(mail.id);expect(await internalAutomationMail({deliveryId:mail.id,leaseToken:token},auth.send)).toMatchObject({outcome:'sent'});expect(auth.send).toHaveBeenCalledOnce();
+ const smtpMessage=auth.send.mock.calls[0]?.[1];expect(smtpMessage?.text).toBe('A Contract document is waiting for your action.\n\n'+auth.origin+'/lifecycle/contracts/letters/'+f.pin.letterId);
  expect(await internalAutomationMail({deliveryId:mail.id,leaseToken:token},auth.send)).toMatchObject({outcome:'skipped'});expect(auth.send).toHaveBeenCalledOnce();
  await f.tick();expect(await actionNotices(f)).toHaveLength(1);await assertNoBusinessEffects(f);
  expect(JSON.stringify(events)).not.toContain('hrAnswer');expect(JSON.stringify(mail)).not.toContain('FICTIONAL-PRIVATE');
