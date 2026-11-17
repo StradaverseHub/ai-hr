@@ -255,11 +255,12 @@ employee who receives monthly wages of RM5,000.00 and below, and upon receiving 
 wages received for that month to exceed RM5,000.00, the employer's contribution shall be calculated at the
 rate of 13% of the amount of wages for the month."* With the schedule's rounding rule (*"total contribution
 which includes cents shall be rounded to the next ringgit"*), RM6,486.83 × 13% = RM843.2879 → **RM844**. The
-note names only the employer, so the employee share stays on the row for the month's total (RM715). Source
-status: the wording is taken from secondary publishers that reproduce it verbatim; the primary KWSP
-document could not be fetched by tooling and is **PENDING HUMAN CONFIRMATION** — see
-[STATUTORY-SOURCES.md](../architecture/STATUTORY-SOURCES.md) §1 (EPF bullet). That confirmation is a
-release gate.
+note names only the employer, so the employee share stays on the row for the month's total (RM715). The
+wording was initially sourced from secondary publishers because automated primary fetches failed. On
+17 November 2026 the owner confirmed the current primary Part A bonus note and rounding text on page 12
+of the official KWSP Third Schedule; see [STATUTORY-SOURCES.md](../architecture/STATUTORY-SOURCES.md)
+§1 (EPF bullet) for the reviewer, date and primary reference. The primary-wording gate is now resolved;
+the original staging-only approval and later confirmation remain distinct records below.
 
 **What changes in code.** One helper, `partABonusRetainedEmployer` in `localization/my/payroll.ts`, applies
 the note for Part A when the EPF bonus stream (EPF Bonus 2012 only, since 2026-11-13) is above zero, normal
@@ -305,6 +306,14 @@ Notes:          Given in the operator session that built board 7f5cc653, answeri
                 confirm the note's wording in the current KWSP Third Schedule and record it in
                 docs/architecture/STATUTORY-SOURCES.md (still PENDING HUMAN CONFIRMATION).
 ```
+
+**Later primary-wording confirmation — 17 November 2026.** zenlam, repository owner, confirmed
+personal verification of the current KWSP Third Schedule Part A bonus-note and rounding wording after
+being shown the official primary PDF, page 12. The exact note is quoted in this addendum and the source
+record is in [STATUTORY-SOURCES.md](../architecture/STATUTORY-SOURCES.md). This lifts the primary-wording
+condition for production; it does not relabel the 16 November approval or assert a licensed-accountant
+counter-signature. Confirmation followed publication and web/database installation, before worker
+activation resumed; the earlier missed gate is retained in the private release record.
 
 **Sign-off**
 
