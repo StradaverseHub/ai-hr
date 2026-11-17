@@ -2,6 +2,8 @@
  * Credentials/relay are programmatic encrypted fixtures, not a human enrollment or real SMTP claim.
  */
 import { randomUUID } from 'node:crypto';
+const smtp = vi.hoisted(() => ({ create: vi.fn(), send: vi.fn(), close: vi.fn() }));
+vi.mock('nodemailer', () => ({ default: { createTransport: smtp.create } }));
 import { afterAll, afterEach, beforeAll, beforeEach, expect, it, vi } from 'vitest';
 import { hireEmployee } from '../core/org';
 import { todayInKualaLumpur } from '../lib/hr-date';
@@ -11,7 +13,7 @@ import { DUMMY_PASSWORD_HASH } from '../lib/internal-auth/crypto';
 import { writeRecord } from '../lib/internal-auth/record-store';
 import { internalLifecycleV9Mail } from '../lib/internal-auth/lifecycle-v9-mail';
 import type { Credential } from '../lib/internal-auth/credential';
-import type { MailTransport } from '../lib/internal-auth/smtp';
+import { sendSmtp, type MailTransport } from '../lib/internal-auth/smtp';
 import { defaultEmailConfig } from '../lib/identity/email-model';
 import { v9Setup, v9Workspace, v9SaveConfig, v9CreateOffboarding, v9Command, v9CaseDetail, v9DeliverEmails, onboardingContext, onboardingSaveConfig } from '../packs/lifecycle/service';
 import { closeAll, migrateTestDb, resetDb, seedBase, setModule, entitledCtx, owner, createAppUser } from './harness';
@@ -20,6 +22,9 @@ import type { Base } from './harness';
 let base: Base, admin: SessionContext, system: SessionContext;
 beforeAll(migrateTestDb);
 beforeEach(async () => {
+  smtp.create.mockReset(); smtp.send.mockReset(); smtp.close.mockReset();
+  smtp.create.mockReturnValue({ sendMail: smtp.send, close: smtp.close });
+  smtp.send.mockImplementation(async (mail: { envelope: { to: string[] } }) => ({ accepted: mail.envelope.to }));
   await resetDb(); base = await seedBase(); await setModule(base.tenantId, 'lifecycle', 'active'); admin = await entitledCtx(base); system = { ...admin, userId: undefined, personId: null };
   vi.stubEnv('AUTH_PUBLIC_ORIGIN', 'https://fanout.fixture.test'); vi.stubEnv('AUTH_SESSION_KEY', '8'.repeat(64));
   await v9Setup(admin);
@@ -88,3 +93,17 @@ it('still holds the whole large group when one bound account is unavailable, and
   const [receipt] = await owner.client`select started_at,recipient_proof from lc_v9_email_delivery where case_id=${id}::uuid`;
   expect(receipt.started_at).toBeNull(); expect(receipt.recipient_proof).toBeNull();
 }, 90_000);
+
+it('traverses the real SMTP validator and relay preparation for all twelve group members before the network-only seam', async () => {
+  const { recipients } = await prepared();
+  const result = await v9DeliverEmails(system, owner, request => internalLifecycleV9Mail(request, sendSmtp));
+  expect(result).toEqual({ attempted: 1, sent: 1, held: 0, failed: 0 });
+  expect(smtp.create).toHaveBeenCalledOnce(); expect(smtp.send).toHaveBeenCalledOnce(); expect(smtp.close).toHaveBeenCalledOnce();
+  const delivered = smtp.send.mock.calls[0][0];
+  expect([...delivered.to].sort()).toEqual(recipients.map(user => user.email).sort());
+  expect(delivered.cc).toEqual(['archive@fixture.test']);
+  expect([...delivered.envelope.to].sort()).toEqual([...recipients.map(user => user.email), 'archive@fixture.test'].sort());
+  expect(delivered).toMatchObject({ disableFileAccess: true, disableUrlAccess: true, subject: 'Fictional shared notice' });
+  expect(smtp.create).toHaveBeenCalledWith(expect.objectContaining({ secure: true,
+    tls: { rejectUnauthorized: true, minVersion: 'TLSv1.2' }, disableFileAccess: true, disableUrlAccess: true }));
+}, 90_000); // Real capture/lease/Auth and actual sendSmtp validation; only Nodemailer's network boundary is mocked.
