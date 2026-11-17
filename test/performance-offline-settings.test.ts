@@ -48,6 +48,28 @@ it('retains independent native permissions, counts and unavailable states with o
  const root=(plan[0] as unknown as {'QUERY PLAN':{Plan:{'Actual Rows':number;'Actual Loops':number}}[]})['QUERY PLAN'][0].Plan;
  expect(root['Actual Rows']).toBe(70);expect(root['Actual Loops']).toBe(1);
  console.info('Fictional offline grouped-owner plan',JSON.stringify(plan));
+ // Explain the exact stored SQL body under its actual inert purpose role, with the
+ // real tenant-session settings. The outer Function Scan alone cannot prove scan count.
+ const settings=await database.withTenant(ctx,async tx=>{
+  const rows=await tx.execute<{name:string;value:string}>(sql`select name,current_setting(name,true) value
+   from unnest(array['app.tenant_id','app.user_id','app.roles','app.grants','app.agent_principal_id']) name`);
+  return rows.filter(row=>row.value!==null);
+ });
+ const [body]=await owner.client`select prosrc from pg_proc where oid='app.mobile_offline_open_context_counts(uuid[])'::regprocedure`;
+ const nested=await owner.client.begin(async tx=>{
+  for(const row of settings)await tx`select set_config(${row.name},${row.value},true)`;
+  await tx.unsafe('set local role ai_hr_mobile_offline_counter');
+  return tx.unsafe('explain (analyze,buffers,format json) '+body.prosrc.replaceAll('wanted_companies','$1::uuid[]'),['{'+companies.join(',')+'}']);
+ });
+ const scans:{relation:string;loops:number}[]=[];
+ const visit=(value:unknown)=>{if(!value||typeof value!=='object')return;
+  const node=value as Record<string,unknown>;
+  if(node['Relation Name']==='mobile_offline_context')scans.push({relation:String(node['Relation Name']),loops:Number(node['Actual Loops'])});
+  for(const child of Object.values(node)){if(Array.isArray(child))child.forEach(visit);else if(child&&typeof child==='object')visit(child);}
+ };
+ visit(nested);expect(scans).toEqual([{relation:'mobile_offline_context',loops:1}]);
+ console.info('Fictional private aggregate native body plan',JSON.stringify(nested));
+
  const foreign=await seedBase();expect(await readOfflineClockingSettingsAcross(adminCtx(foreign),companies)).toEqual(await legacy(adminCtx(foreign),companies));
  await expect(readOfflineClockingSettingsAcross(ctx,['invalid'])).rejects.toMatchObject({reason:'invalid_input'});
  // Deployment transition: old singleton remains available, new group owner is not yet installed.
