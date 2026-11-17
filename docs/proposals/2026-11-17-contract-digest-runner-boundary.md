@@ -15,3 +15,5 @@ There are no new kinds, application grants, people, roles, impersonated users or
 Proposed verification after approval: actual daily digest mail and private OneHR target; more than 100 recipients; group/access revocation; no grant without a genuine lease/provenance/receipt/key; tenant/case/key mismatch; unchanged human Contract and shared Offboarding/Probation sender regressions. The existing hosted failure is run43999497531: reminders, native 70-company/1,000-period opening and paused-decision acceptance pass; the two digest cases are refused by the current queue gate.
 
 Approval requested: authorize only this Contract daily-digest branch extension of the existing shared queue predicate. This does not authorize merging, installation, release or additional HR outcomes.
+
+Follow-up: the user specifically approved this exact Contract daily-digest gate. Forward migration5937 and the exact transaction-local mail-key binding are now implemented in the isolated candidate; the original rejection/proposal and failed hosted receipt are retained. No merge or release is authorized.

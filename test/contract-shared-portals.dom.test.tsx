@@ -98,7 +98,7 @@ it('uses company signature consent only for the current native company step',()=
 
 it('releases setup controls after a failed native job instead of showing installation forever',async()=>{
  vi.useFakeTimers();
- const setup={installed:false,v9Ready:true,jobId:id,canInstall:true,missing:[],groups:[{id:'ops',name:'Actual People Ops'}],routings:[]};
+ const setup={installed:false,v9Ready:true,accessReady:false,jobId:id,canInstall:true,missing:[],groups:[{id:'ops',name:'Actual People Ops'}],routings:[]};
  actions.setup.mockResolvedValue({ok:true,value:{...setup,jobState:'failed'}});
  try{
   mount(<ContractStartingSetup initial={setup} companyId={caseId} fallbackGroupId="ops" postingApproverGroupId="ops"/>);

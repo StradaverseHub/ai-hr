@@ -8,7 +8,7 @@ import {hireEmployee,setEmploymentInfo} from '../core/org';
 import {v9Setup,v9Workspace,v9SaveConfig} from '../packs/lifecycle/service';
 import {saveAutomationWorkflow,type AutomationWorkflow,automationEventKey} from '../packs/automation/service';
 import {contractScheduleJobHandler,contractScheduledAutomationJobHandler} from '../packs/contracts/service';
-import {runBulkJobTick,bulkJobContext} from '../core/bulk-job-worker';
+import {runBulkJobTick,bulkJobContext,type BulkJobHandler} from '../core/bulk-job-worker';
 import {enqueueBulkJobTx,type BulkJobRow} from '../core/bulk-job';
 import {todayInKualaLumpur,timeInKualaLumpur} from '../lib/hr-date';
 import {pgSqlState} from '../lib/db-error';
@@ -22,7 +22,7 @@ beforeEach(async()=>{await resetDb();b=await seedBase();await setModule(b.tenant
  await owner.db.execute(sql`insert into contract_shared_settings(tenant_id,company_id,fallback_group_id,posting_group_id,updated_by) values(${b.tenantId}::uuid,${b.companyId}::uuid,${groupId},${groupId},${admin.userId!}::uuid)`);
 });
 async function admit(){return owner.client.begin(async tx=>{await tx`select set_config('app.tenant_id',${b.tenantId},true),set_config('app.user_id','',true)`;const [row]=await tx<{id:string}[]>`select app.contract_shared_system_enqueue('contract_schedule',${randomUUID()}::uuid,jsonb_build_object('day',${today}::text),'morning',${today}::date) as id`;return row.id;});}
-async function finish(max=200){for(let n=0;n<max;n++){const [row]=await owner.client<{active:number;failed:number}[]>`select count(*) filter(where state in('queued','preparing','running','finalizing'))::int as active,count(*) filter(where state='failed')::int as failed from bulk_job where tenant_id=${b.tenantId}::uuid and kind in('contract_schedule','contract_scheduled_automation')`;if(row.failed){const failed=await owner.client`select kind,state,error from bulk_job where tenant_id=${b.tenantId}::uuid and state='failed'`;throw new Error(JSON.stringify(failed));}if(!row.active)return;if(!await runBulkJobTick(owner.client,{handlers:[contractScheduleJobHandler,contractScheduledAutomationJobHandler]}))await new Promise(resolve=>setTimeout(resolve,20));}throw new Error('Native system work did not finish');}
+async function finish(max=200,handlers:readonly BulkJobHandler[]=[contractScheduleJobHandler,contractScheduledAutomationJobHandler]){for(let n=0;n<max;n++){const [row]=await owner.client<{active:number;failed:number}[]>`select count(*) filter(where state in('queued','preparing','running','finalizing'))::int as active,count(*) filter(where state='failed')::int as failed from bulk_job where tenant_id=${b.tenantId}::uuid and kind in('contract_schedule','contract_scheduled_automation')`;if(row.failed){const failed=await owner.client`select kind,state,error from bulk_job where tenant_id=${b.tenantId}::uuid and state='failed'`;throw new Error(JSON.stringify(failed));}if(!row.active)return;if(!await runBulkJobTick(owner.client,{handlers}))await new Promise(resolve=>setTimeout(resolve,20));}throw new Error('Native system work did not finish');}
 async function employee(){const endDate=new Date(today+'T00:00:00Z');endDate.setUTCDate(endDate.getUTCDate()+7);const end=endDate.toISOString().slice(0,10);const e=await hireEmployee(admin,{person:{fullName:'Fictional fixed-term subject',primaryEmail:randomUUID()+'@system.test'},companyId:b.companyId,departmentId:b.deptA,employmentType:'contract',hiredOn:start,provisionalEndOn:end});await setEmploymentInfo(admin,{employmentId:e.employmentId,contractStartDate:start,contractEndDate:end,contractNumber:4});return e;}
 async function workflow(event='beforeContractEnd',days=7,repeat=false){const workflow:AutomationWorkflow={id:randomUUID(),module:'contract_staff',name:'Actual native reminder',description:'Fictional native timer fixture',status:'live',required:false,trigger:{event,days,repeat,workdays:false},skipWhen:'decided',conditions:[],steps:[{id:'actual-notice',type:'notify',to:[{kind:'group',groupId}],cc:[],conditions:[],params:{subject:'Contract reminder for {{employee.name}}',body:'Please review {{employee.name}}.\n{{case.link}}'}}]};await saveAutomationWorkflow(admin,{workflow,expectedRevision:0,reason:'Actual native timer fixture'});return workflow;}
 it('uses the HR date owner across UTC midnight and distinct idempotency keys for daily repeats',()=>{
@@ -84,8 +84,8 @@ it('processes a real 70-company/1,000-employment native morning cohort through t
  expect((await owner.client`select count(*)::int as count from contract_shared_event where tenant_id=${b.tenantId}::uuid and actor_type='system' and actor_user_id is null and actor_person_id is null`)[0].count).toBe(1000);
  expect((await owner.client`select count(*)::int as count from bulk_job where tenant_id=${b.tenantId}::uuid and kind='contract_scheduled_automation' and created_by is null`)[0].count).toBe(1000);
  expect(await owner.client`select id from personnel_posting where tenant_id=${b.tenantId}::uuid`).toHaveLength(0);
- // Hosted diagnostic: 2,000 bounded units plus native case/event receipts; 10 minutes leaves runner/migration headroom.
-},600000);
+ // Hosted43999497531 measured36.2s for1,000 native periods;120s gives more than3x headroom.
+},120000);
 
 it('pages more than 100 authorized digest recipients through the same native job without dropping people',async()=>{
  const records=await owner.client<{id:string}[]>`with fixture as materialized(select n,gen_random_uuid() as person_id,gen_random_uuid() as user_id from generate_series(1,105) n),people as(insert into person(id,tenant_id,full_name,primary_email) select person_id,${b.tenantId}::uuid,'Fictional digest operator '||n,'digest-'||n||'@system.test' from fixture),users as(insert into app_user(id,tenant_id,workos_user_id,person_id) select user_id,${b.tenantId}::uuid,'digest-fixture-'||user_id::text,person_id from fixture),roles as(insert into role_assignment(tenant_id,app_user_id,role,company_id) select ${b.tenantId}::uuid,user_id,'hr_admin',${b.companyId}::uuid from fixture),identities as(insert into app_external_identity(issuer,subject,app_user_id) select ${origin+'/auth/'+b.tenantId},user_id::text,user_id from fixture) select user_id as id from fixture order by user_id`;
@@ -109,4 +109,21 @@ it('holds already admitted scheduled automation when the actual native period ch
  await owner.client`update employment set contract_end_date=contract_end_date+1 where tenant_id=${b.tenantId}::uuid and id=${e.employmentId}::uuid`;
  await runBulkJobTick(owner.client,{handlers:[contractScheduledAutomationJobHandler]});expect((await owner.client`select count(*)::int as count from bulk_job where tenant_id=${b.tenantId}::uuid and kind='contract_scheduled_automation' and state='failed'`)[0].count).toBe(1);
  expect(await owner.client`select id from automation_email_delivery where tenant_id=${b.tenantId}::uuid`).toHaveLength(0);expect(await owner.client`select id from personnel_posting where tenant_id=${b.tenantId}::uuid`).toHaveLength(0);
+});
+
+it('admits digest mail only inside its genuine held tenant/case/receipt/exact-key frame',async()=>{
+ const e=await employee();await admit();let caseId:string|undefined;for(let n=0;n<10&&!caseId;n++){await runBulkJobTick(owner.client,{handlers:[contractScheduleJobHandler]});caseId=(await owner.client`select id from contract_case where tenant_id=${b.tenantId}::uuid and employment_id=${e.employmentId}::uuid`)[0]?.id;}
+ await owner.client`update contract_shared_case set revision=revision+1,data=jsonb_set(jsonb_set(data,'{flags}','["no_workflow"]'::jsonb),'{revision}',to_jsonb(revision+1)) where tenant_id=${b.tenantId}::uuid and case_id=${caseId}::uuid`;
+ let checked=0;
+ const handler:BulkJobHandler<never>={...contractScheduleJobHandler,systemOwner:{...contractScheduleJobHandler.systemOwner!,async finalize(job,unit){return contractScheduleJobHandler.systemOwner!.finalize(job,{...unit,ownerTx:fn=>unit.ownerTx(async tx=>{
+  const outcome=await fn(tx);const [key]=await tx<{key:string|null}[]>`select nullif(current_setting('app.contract_digest',true),'') as key`;
+  if(key.key){
+   const allowed=async(id:string)=>(await tx<{ok:boolean}[]>`select app.contract_shared_digest_held(${id}::uuid) as ok`)[0].ok;
+   expect(await allowed(caseId!)).toBe(true);expect(await allowed(randomUUID())).toBe(false);
+   await tx`select set_config('app.contract_digest','wrong-key',true)`;expect(await allowed(caseId!)).toBe(false);expect((await tx<{ok:boolean}[]>`select app.automation_can_run('contract_staff',${caseId}::uuid) as ok`)[0].ok).toBe(false);await tx`select set_config('app.contract_digest',${key.key},true)`;
+   await tx`select set_config('app.bulk_job',${randomUUID()},true)`;expect(await allowed(caseId!)).toBe(false);await tx`select set_config('app.bulk_job',${job.id},true)`;
+   expect(await allowed(caseId!)).toBe(true);checked++;
+  }return outcome;
+ })});}}};
+ await finish(200,[handler,contractScheduledAutomationJobHandler]);expect(checked).toBeGreaterThan(0);expect(await owner.client`select id from automation_email_delivery where tenant_id=${b.tenantId}::uuid`).toHaveLength(1);
 });
