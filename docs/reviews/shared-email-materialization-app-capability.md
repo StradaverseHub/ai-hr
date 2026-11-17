@@ -1,5 +1,7 @@
 # Restricted sender materialization capability approval
 
+The owner subsequently explicitly approved the exact SQL capability-function grant. Migration5957 now includes that source change and the four-argument document helpers validate the delivery ID, lease token, installation origin and actual document receipt internally. No installation or real email was performed. The earlier automatic rejection and unapplied proposal below are retained as historical evidence; the adjacent patch must not be reapplied over5957.
+
 The automatic permission review rejected the proposed ACL change: it persistently grants `ai_hr_app` EXECUTE on a private SMTP materialization function; general email-document authorization did not explicitly approve this security boundary and its blast radius. No grant was applied.
 
 The existing private OneHR sender imports the application's database singleton (`lib/internal-auth/automation-mail.ts`); `DATABASE_URL` uses `ai_hr_app`. The sweep creates a different owner connection, so successful owner-only fixture tests do not prove that the actual sender can call the new5955 helper. Current `REVOKE` prevents attachment-bearing mail from starting.
