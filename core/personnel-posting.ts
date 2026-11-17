@@ -23,7 +23,7 @@ import {createMovementEventTx,movementLedgerMarkerTx,movementRowsAfterSequenceTx
 import {decideResignation} from './offboarding';
 import {movementNeedsEntitlementReprojection} from './movement-kinds';
 import {
-  isPersonnelPostingEvent,normalisePostingValues,postingCurrentValues,postingDisplayStatus,postingLabel,
+  isPersonnelPostingEvent,normalisePostingValues,postingCurrentValues,postingDisplayStatus,postingLabel,OFFBOARDING_POSTING_APPROVER_REPAIR_MESSAGE,
   type PersonnelPostingDisplayStatus,type PersonnelPostingEvent,type PersonnelPostingSource,type PersonnelPostingStatus,type PersonnelPostingValues,
 } from '../lib/personnel-posting';
 
@@ -70,6 +70,12 @@ function mapDatabaseError(e: unknown): never {
       if(typeof message==='string'&&currencyConflicts.has(message))throw new PersonnelPostingError('conflict',message);
     }
     throw new PersonnelPostingError('conflict', 'This posting changed or was already approved. Reload the page and try again.');
+  }
+  if (state === '22023') {
+    // Match exactly; unknown SQL diagnostics remain private under the generic contract below.
+    for(let cause:unknown=e,depth=0;cause&&typeof cause==='object'&&depth<5;cause=(cause as {cause?:unknown}).cause,depth++){
+      if((cause as {message?:unknown}).message==='Configure a populated Offboarding posting approver group')throw new PersonnelPostingError('invalid',OFFBOARDING_POSTING_APPROVER_REPAIR_MESSAGE);
+    }
   }
   if (state === '22023' || state === '23514') throw new PersonnelPostingError('invalid', 'The posting details are incomplete or not allowed.');
   throw e;

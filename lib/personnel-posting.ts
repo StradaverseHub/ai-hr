@@ -10,6 +10,8 @@ export const OFFBOARDING_PERSONNEL_POSTING_EVENTS = ['transfer', 'promotion', 'i
 export const PERSONNEL_POSTING_EVENTS = [...PROBATION_PERSONNEL_POSTING_EVENTS, ...OFFBOARDING_PERSONNEL_POSTING_EVENTS] as const;
 export type PersonnelPostingEvent = (typeof PERSONNEL_POSTING_EVENTS)[number];
 export const PERSONNEL_POSTING_SOURCES = ['probation', 'offboarding'] as const;
+/** Fixed repair guidance for the one sanctioned native Offboarding approver-configuration diagnostic. */
+export const OFFBOARDING_POSTING_APPROVER_REPAIR_MESSAGE = 'Ask People Ops to choose a populated approver group in Onboarding & offboarding settings → Offboarding → Personnel postings, then retry.';
 export type PersonnelPostingSource = (typeof PERSONNEL_POSTING_SOURCES)[number];
 export type PersonnelPostingStatus = 'pending' | 'approved' | 'rejected';
 /** What the queue shows: a pending posting that someone corrected reads "Edited · waiting for approval". */

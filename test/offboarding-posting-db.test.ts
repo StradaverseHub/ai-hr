@@ -49,7 +49,9 @@ describe('Native Offboarding posting isolation',()=>{
 
  it('requires a matching pinned workflow/source/offer; repeated creation returns one frozen proposal',async()=>{
   const f=await retained(),create=(input=f.input)=>withTenant(admin,tx=>createPersonnelPostingTx(tx,input));
-  for(const input of [{...f.input,sourceRef:randomUUID()},{...f.input,employmentId:randomUUID()},{...f.input,idempotencyKey:'spoofed'},{...f.input,proposed:{...f.input.proposed,basicSalary:'999'}},{...f.input,approverGroupId:'unknown'}])await expect(create(input)).rejects.toThrow();
+  for(const input of [{...f.input,sourceRef:randomUUID()},{...f.input,employmentId:randomUUID()},{...f.input,idempotencyKey:'spoofed'},{...f.input,approverGroupId:'unknown'}])await expect(create(input)).rejects.toThrow();
+  // A different native validation diagnostic must not leak SQL detail or become approver repair guidance.
+  await expect(create({...f.input,proposed:{...f.input.proposed,basicSalary:'999'}})).rejects.toMatchObject({name:'PersonnelPostingError',code:'invalid',message:'The posting details are incomplete or not allowed.'});
   const p=await create();expect((await create()).id).toBe(p.id);expect(p.number).toBeGreaterThan(1000);
   expect((await listPersonnelPostings(admin,{source:'probation',status:'all'})).rows).toHaveLength(0);
   expect((await listPersonnelPostings(admin,{source:'offboarding',status:'all'})).rows.map(p=>p.id)).toEqual([p.id]);
