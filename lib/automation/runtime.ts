@@ -73,7 +73,7 @@ export type AutomationStepContext = {run: AutomationRun; step: AutomationStep; i
 export type AutomationStepOutcome =
   | {status: 'done'; message?: string; recipients?: string[]; unresolved?: AutomationUnresolvedRecipient[]}
   | {status: 'skipped'; reason: string}
-  | {status: 'wait'; documentId: string; message?: string}
+  | {status: 'wait'; documentId: string; message?: string; retryStep?:true}
   | {status: 'failed'; reason: string};
 export type AutomationStepExecutor = (context: AutomationStepContext) => Promise<AutomationStepOutcome>;
 /**
@@ -199,6 +199,9 @@ export async function advanceAutomationRun(current: AutomationRun, deps: Automat
     if (outcome.status === 'skipped') { append(run, {...entry, kind: 'stepSkipped', message: `Skipped: ${outcome.reason}`}); continue; }
     if (outcome.status === 'wait') {
       run.status = 'waiting'; run.waitingFor = outcome.documentId;
+      // Some effects must retry the same frozen step after their prerequisite becomes ready.
+      // Generated letters keep their existing advance-then-wait behaviour.
+      if(outcome.retryStep){run.remaining.unshift(next);run.cursor=index;}
       append(run, {...entry, kind: 'waiting', message: outcome.message ?? 'Waiting until the document is signed and released.'});
       return run;
     }

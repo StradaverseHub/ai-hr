@@ -1550,13 +1550,6 @@
       "breakpoints": true
     },
     {
-      "idx": 240,
-      "version": "7",
-      "when": 1781862219000,
-      "tag": "0240_employment_blacklist",
-      "breakpoints": true
-    },
-    {
       "idx": 225,
       "version": "7",
       "when": 1781862224000,
@@ -1568,6 +1561,13 @@
       "version": "7",
       "when": 1781862229000,
       "tag": "0230_delegation_scope_reason",
+      "breakpoints": true
+    },
+    {
+      "idx": 240,
+      "version": "7",
+      "when": 1781862219000,
+      "tag": "0240_employment_blacklist",
       "breakpoints": true
     },
     {
@@ -6569,10 +6569,38 @@
       "breakpoints": true
     },
     {
+      "idx": 5300,
+      "version": "7",
+      "when": 1794841005900,
+      "tag": "5900_contract_shared_manual_workflows",
+      "breakpoints": true
+    },
+    {
+      "idx": 5301,
+      "version": "7",
+      "when": 1794841005901,
+      "tag": "5901_contract_shared_release_evidence",
+      "breakpoints": true
+    },
+    {
+      "idx": 5302,
+      "version": "7",
+      "when": 1794841005902,
+      "tag": "5902_shared_automation_permission_compatibility",
+      "breakpoints": true
+    },
+    {
       "idx": 5304,
       "version": "7",
       "when": 1794841005904,
       "tag": "5904_contract_shared_native_intake_guard",
+      "breakpoints": true
+    },
+    {
+      "idx": 5305,
+      "version": "7",
+      "when": 1794841005905,
+      "tag": "5905_contract_shared_body_identity",
       "breakpoints": true
     },
     {
