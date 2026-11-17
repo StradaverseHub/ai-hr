@@ -40965,6 +40965,9 @@
     }
   },
   "resignationJourney": {
+    "signingFollowsRouting": "Tandatangan mengikut penghalaan di bawah.",
+    "initialAssigneeRule": "Peraturan penerima tugasan awal",
+    "letterTeamAssignmentHint": "Peraturan ini memilih penerima tugasan awal. Semua orang yang layak dan ditentukan untuk langkah ini boleh bertindak. Membuka atau memulakan tugasan menunjukkan siapa yang sedang mengendalikannya; tugasan tidak dikunci.",
     "signRelease": "Tandatangan dan keluarkan surat",
     "insertMergeField": "Masukkan medan gabungan",
     "unknownMergeField": "Medan gabungan tidak dikenali. Semak token ini sebelum semakan:",

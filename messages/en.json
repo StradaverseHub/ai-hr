@@ -40965,6 +40965,9 @@
     }
   },
   "resignationJourney": {
+    "signingFollowsRouting": "Signing follows the routing below.",
+    "initialAssigneeRule": "Initial assignee rule",
+    "letterTeamAssignmentHint": "This rule chooses the initial assignee. All eligible people resolved for this step can act. Opening or starting the task shows who is on it; it does not lock the task.",
     "signRelease": "Sign and release letter",
     "insertMergeField": "Insert merge field",
     "unknownMergeField": "Unknown merge field. Check this token before review:",

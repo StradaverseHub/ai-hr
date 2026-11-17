@@ -40965,6 +40965,9 @@
     }
   },
   "resignationJourney": {
+    "signingFollowsRouting": "Việc ký tuân theo quy trình bên dưới.",
+    "initialAssigneeRule": "Quy tắc người được giao ban đầu",
+    "letterTeamAssignmentHint": "Quy tắc này chọn người được giao ban đầu. Tất cả những người đủ điều kiện được xác định cho bước này đều có thể thực hiện. Mở hoặc bắt đầu công việc sẽ hiển thị người đang xử lý, nhưng không khóa công việc.",
     "signRelease": "Ký và phát hành thư",
     "insertMergeField": "Chèn trường trộn",
     "unknownMergeField": "Trường trộn không xác định. Kiểm tra mã này trước khi rà soát:",

@@ -40965,6 +40965,9 @@
     }
   },
   "resignationJourney": {
+    "signingFollowsRouting": "签署将遵循下方流程。",
+    "initialAssigneeRule": "初始受派人规则",
+    "letterTeamAssignmentHint": "此规则选择初始受派人。此步骤确定的所有符合条件人员均可操作。打开或开始任务会显示当前处理人，但不会锁定任务。",
     "signRelease": "签署并发布信函",
     "insertMergeField": "插入合并字段",
     "unknownMergeField": "未知的合并字段。审核前请检查此标记：",
