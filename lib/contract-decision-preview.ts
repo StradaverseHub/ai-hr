@@ -45,10 +45,10 @@ export function buildContractDecisionPlan(input:{context:ContractAutomationConte
  const chooser=routedStepChooser({today,groups:context.groups.map(g=>({...g,limit:0})),users:context.activePeople.map(id=>({id,load:0,lastAssigned:definitions.lastAssigned[id]??null,onLeave:false}))});
  const group=(id:string|null)=>id?context.groups.find(g=>g.id===id):undefined;
  const names=(ids:readonly string[])=>ids.map(id=>context.names[id]??'A linked person');
+ const matched=definitions.workflows.filter(({workflow})=>workflow.status==='live'&&workflow.trigger.event==='decisionSubmitted'&&evaluateAutomationConditions(workflow.conditions,read).ok);
+ if(!matched.length){plan.warnings.push('No workflow ran: no live workflow matches this decision. People Ops can publish a workflow or start one by hand.');return plan;}
  if(!group(context.fallbackGroupId))plan.blockers.push('Choose an existing Contract fallback group.');
  if(!group(context.postingApproverGroupId)?.members.some(id=>active.has(id)))plan.blockers.push('Choose a posting approver group with an active member.');
- const matched=definitions.workflows.filter(({workflow})=>workflow.status==='live'&&workflow.trigger.event==='decisionSubmitted'&&evaluateAutomationConditions(workflow.conditions,read).ok);
- if(!matched.length)plan.warnings.push('No workflow ran: no live workflow matches this decision. People Ops can publish a workflow or start one by hand.');
  for(const {workflow,revision} of matched){
   plan.workflowVersions.push({workflowId:workflow.id,revision});
   plan.blockers.push(...automationWorkflowProblems(workflow,CONTRACT_AUTOMATION_CATALOGUE,refs).map(p=>workflow.name+': '+p));

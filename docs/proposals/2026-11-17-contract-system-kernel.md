@@ -1,6 +1,6 @@
 # Contract morning automation: proposed system-job boundary
 
-Status: **proposal only; not applied**. Automatic approval review rejected implementation because allowing null
+Status: **exact boundary approved for isolated source implementation; no merge or release**. The initial automatic approval review rejected implementation because allowing null
 creators and a system-owner path changes a persistent security boundary beyond the general feature-build request.
 The adjacent patch is for review, not a migration or release artifact.
 
@@ -47,3 +47,5 @@ Required verification before integration:
 
 Approval requested: authorize this fixed Contract-only system-job boundary so it can be implemented, tested and
 reviewed. Approval would not authorize a merge, staging release, production deployment or package publication.
+
+Implementation follow-up: after the initial generic fix-all attempt was again rejected, the user explicitly approved this exact two-kind boundary. Candidate source now implements the private provenance, fixed kinds, lease/seal checks, native period opening and existing OneHR reminder/digest path in forward migrations 5932–5935. This is source preparation only; no merge, installation or release is authorized. Timer executors and native effect proof reject approvals, document generation, posting and offboarding effects. The daily digest uses the same morning kind and sends only to actual People Ops members who currently have company-wide case viewing authority. Verification is tracked by exact hosted candidate runs, including original failures.

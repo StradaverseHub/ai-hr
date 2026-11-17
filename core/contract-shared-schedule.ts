@@ -44,7 +44,7 @@ async function scheduleUnit(job:BulkJobRow,unit:BulkJobDiscardUnit){
      anchor:()=>source.data.period.endOn,skipReason:(kind:string)=>kind==='decided'&&source.data.decision?'A decision has been submitted.':kind==='caseClosed'&&['renewed','converted','offboarding','superseded'].includes(source.data.stage)?'The case is closed.':null};
     const assessment=decideAutomationRuns(CONTRACT_AUTOMATION_CATALOGUE,[{workflow,revision:definition.revision}],event).decisions[0];
     if(assessment?.outcome==='run'||assessment?.outcome==='skip'){
-     const occurrence='workflow:'+definition.id+':period:'+source.data.period.id+(workflow.trigger.repeat?':'+day:'');
+     const occurrence='workflow:'+definition.id+':period:'+source.data.period.id+':'+(workflow.trigger.repeat?day:assessment.dueDate??'no-date');
      await db.execute(sql`select app.contract_shared_system_event(${plan.activeCase}::uuid,${workflow.trigger.event},${occurrence},${JSON.stringify([{workflowId:definition.id,revision:definition.revision}])}::jsonb)`);
     }
    }

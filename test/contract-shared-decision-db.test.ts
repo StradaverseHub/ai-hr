@@ -228,3 +228,11 @@ describe('protected Contract decision preview and submission',()=>{
   const [unknown]=await owner.withTenant({...f.admin,userId:undefined},tx=>tx.execute<{offered:boolean}>(sql`select app.contract_shared_end_reason_offered('not-a-personnel-reason') as offered`));expect(unknown.offered).toBe(false);
  });
 });
+
+it('accepts a decision against paused workflows and records No workflow ran without starting a workflow',async()=>{
+ await saveAutomationWorkflow(f.admin,{workflow:{...f.workflow,status:'paused'},expectedRevision:1,reason:'Explicit paused workflow acceptance scenario'});
+ const requested=await previewContractSharedDecision(f.proposer,{caseId:f.caseId,revision:1,draft});await finishPreview(requested.jobId,f.proposer);
+ const accepted=await submitContractSharedDecision(f.proposer,{caseId:f.caseId,revision:1,previewId:requested.previewId});await finishAutomation(accepted.jobId,f.proposer);
+ const detail=await contractSharedContext(f.proposer,f.caseId);expect(detail.flow?.decision?.kind).toBe('renew');expect(detail.flow?.flags).toContain('no_workflow');
+ expect(await owner.db.execute(sql`select id from automation_run where tenant_id=${f.b.tenantId}::uuid and subject_id=${f.caseId}::uuid`)).toHaveLength(0);
+});

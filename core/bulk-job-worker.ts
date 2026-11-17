@@ -1,7 +1,8 @@
 /** Shared background bulk-job kernel, worker side (migrations 5011, 5013, 5014). The queue-owner connection claims,
  * leases and coordinates, and runs a kind's owner-only routines: discard always, finalize only for a kind that
  * declares it (handler.finalizeOwner and bulk_job_kind.finalize_owner). Every HR write runs through the app role under
- * the creator's freshly resolved authority, in short transactions that fence on the lease. The application role
+ * the creator's freshly resolved authority, in short transactions that fence on the lease. The explicitly approved
+ * fixed Contract system kinds use private native provenance and owner-only bounded units below; they never capture a human. The application role
  * cannot write the job store: the worker's own writes go through definers that require this claim's lease
  * capability, and what later privileged steps trust (input, plan, every step) is sealed and verified. A kind plugs in
  * with a BulkJobHandler (see the ADR section "Shared job kernel"). */

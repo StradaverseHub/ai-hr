@@ -45,5 +45,5 @@ it('blocks an unsupported Form in preflight before accepting the decision',()=>{
 });
 
 it('accepts an unmatched or paused decision as a no-workflow outcome without inventing actions',()=>{
- for(const kind of ['empty','paused'] as const){const defs=definitions();if(kind==='empty')defs.workflows=[];else defs.workflows[0].workflow.status='paused';const plan=buildContractDecisionPlan({context,decision,definitions:defs,today:'2026-11-17'});expect(plan.blockers).toEqual([]);expect(plan.workflowVersions).toEqual([]);expect(plan.workflows).toEqual([]);expect(plan.warnings.join(' ')).toContain('No workflow ran');}
+ for(const kind of ['empty','paused'] as const){const defs=definitions();if(kind==='empty')defs.workflows=[];else defs.workflows[0].workflow.status='paused';const plan=buildContractDecisionPlan({context:{...context,groups:[]},decision,definitions:defs,today:'2026-11-17'});expect(plan.blockers).toEqual([]);expect(plan.workflowVersions).toEqual([]);expect(plan.workflows).toEqual([]);expect(plan.warnings.join(' ')).toContain('No workflow ran');}
 });
