@@ -5,7 +5,7 @@ import {afterAll,afterEach,beforeAll,expect,it,vi} from 'vitest';
 import * as database from '../db/client';
 import type {SessionContext,Tx} from '../db/client';
 import * as s from '../db/schema';
-import {decideLetterTemplate,saveLetterTemplate} from '../core/letters';
+import {decideLetterTemplate,saveLetterPermission,saveLetterTemplate} from '../core/letters';
 import {listLetterRequestsForStaff,listLetterRequestsForStaffPage,saveLetterRequestOptions,type StaffLetterRequest} from '../core/letter-requests';
 import {parsePageQuery} from '../lib/pagination';
 import {todayInKualaLumpur} from '../lib/hr-date';
@@ -57,6 +57,30 @@ it('matches every role and scope, exact counts and ordered pages with one shared
    else {expect('value' in current).toBe(true);if('value' in current){expect(current.value!.rows).toEqual(old.value!.slice(0,25));expect(current.value!.state.total).toBe(old.value!.length);}}
   }
  }
+ // Capability-granted generator has no broad workforce role; native subject/template owners still decide disclosure.
+ await saveLetterPermission(ctx,{companyId:b.companyId,capability:'generate',role:'employee',allowed:true});
+ const generator={...ctx,userId:members[0].userId,personId:members[0].personId,roles:['employee'],grants:[{role:'employee',companyId:b.companyId}]} satisfies SessionContext;
+ const generatorOld=await listLetterRequestsForStaff(generator,{companyId:b.companyId});
+ expect((await listLetterRequestsForStaffPage(generator,{companyIds:[b.companyId],page:parsePageQuery({size:'all'})})).rows).toEqual(generatorOld);
+ expect(generatorOld.length).toBeGreaterThan(0);
+ await expect(listLetterRequestsForStaffPage(generator,{companyIds:[b.companyId,companies[1]],page:parsePageQuery()})).rejects.toMatchObject({code:'permission'});
+ const foreign=await seedBase();
+ await expect(listLetterRequestsForStaffPage(adminCtx(foreign),{companyIds:[b.companyId],page:parsePageQuery()})).rejects.toMatchObject({code:'permission'});
+ // Close a native template: the request stays readable but cannot start generation from an unpublished root.
+ await owner.db.update(s.letterTemplate).set({deactivated:true}).where(eq(s.letterTemplate.id,templates.get(b.companyId)![0]));
+ const unavailable=await listLetterRequestsForStaff(ctx,{companyId:b.companyId});
+ expect(unavailable.filter(row=>row.templateId===templates.get(b.companyId)![0]).every(row=>row.publishedVersionId===null)).toBe(true);
+ expect((await listLetterRequestsForStaffPage(ctx,{companyIds:[b.companyId],page:parsePageQuery({size:'all'})})).rows).toEqual(unavailable);
+ // Exceed the previous50/company ceiling; derive continuation identities independently from inserted rows.
+ const extra=await saveLetterTemplate(ctx,{companyId:b.companyId,code:'LATER',name:'Fictional later queue letter',category:'confirmation',effectiveFrom:todayInKualaLumpur(),document:{version:1,language:'en',blocks:[{type:'paragraph',content:[{type:'text',text:'Fictional continuation'}]}]},fieldVersionIds:[]});
+ await decideLetterTemplate(ctx,{versionId:extra.versionId,expectedStatus:'draft',action:'submit'});
+ await decideLetterTemplate(reviewer,{versionId:extra.versionId,expectedStatus:'submitted',action:'approve'});
+ await saveLetterRequestOptions(ctx,{companyId:b.companyId,changes:[{templateId:extra.templateId,requestable:true}]});
+ const added=await owner.db.insert(s.letterRequest).values(members.filter(m=>m.companyId===b.companyId).slice(0,10).map(m=>({tenantId:b.tenantId,companyId:b.companyId,employmentId:m.employmentId,requestedBy:m.userId,templateId:extra.templateId,letterTypeName:'Trigger owns name'}))).returning({id:s.letterRequest.id,createdAt:s.letterRequest.createdAt});
+ const expected=[...unavailable,...added].sort((a,b)=>a.createdAt.getTime()-b.createdAt.getTime()||a.id.localeCompare(b.id)).map(row=>row.id);
+ expect(expected).toHaveLength(55);expect(await listLetterRequestsForStaff(ctx,{companyId:b.companyId})).toHaveLength(50);
+ const later=await listLetterRequestsForStaffPage(ctx,{companyIds:[b.companyId],page:parsePageQuery({page:'2'})});
+ expect(later.state.total).toBe(55);expect(later.rows.map(row=>row.id)).toEqual(expected.slice(50));
  await expect(listLetterRequestsForStaffPage(ctx,{companyIds:['invalid'],page:parsePageQuery()})).rejects.toMatchObject({code:'invalid'});
  await expect(listLetterRequestsForStaffPage(ctx,{companyIds:companies,statuses:[],page:parsePageQuery()})).rejects.toMatchObject({code:'invalid'});
  // 210 templates use their full native approval lifecycle; every-role group oracle needs headroom.
