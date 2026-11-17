@@ -7,7 +7,7 @@ import {readRouteForMeasurement,routePools,wholeSystemRouteCount,additionalBrows
  nativePreflightRouteFor,nativePreflightReadiness,assertNativePreflightRedirect,assertNativeRenderedVisit,nativeRenderedVisitFailureRule,
  requireNativeRenderedUnion,readManifestRoute} from '../scripts/performance/system-route-manifest.mjs';
 it('counts the actual distinct route pools and binds every concrete path to its source route',()=>{
- const handlers=new Set(['/admin/claims/forms','/admin/locations','/admin/rewards']);
+ const handlers=new Set(['/admin/claims/forms','/admin/locations','/admin/rewards','/admin/rewards/plans','/admin/rewards/shared']);
  const unique=new Set(Object.values(routePools).flat());expect(wholeSystemRouteCount).toBe(unique.size);expect(unique.size).toBeGreaterThan(60);
  for(const [role,paths]of Object.entries(routePools)){
   expect(new Set(paths).size,role).toBe(paths.length);
@@ -20,15 +20,15 @@ const nativeRenderedRows=()=>nativePreflightRoutePlan().map(row=>({...row,status
  elapsedMs:100,failureCount:0,readiness:nativePreflightReadiness(row.witness)}));
 
 it('requires the complete current native role union on exactly the four primary actors',()=>{
- const plan=nativePreflightRoutePlan(),byRole=[['employee',4,30],['manager',2,16],['companyHR',1,71],['groupHR',0,74]]as const;
- expect(plan).toHaveLength(191);expect(new Set(plan.map(row=>row.requested)).size).toBe(93);
+ const plan=nativePreflightRoutePlan(),byRole=[['employee',4,30],['manager',2,16],['companyHR',1,73],['groupHR',0,76]]as const;
+ expect(plan).toHaveLength(195);expect(new Set(plan.map(row=>row.requested)).size).toBe(95);
  for(const [role,actor,count]of byRole){
   const rows=plan.filter(row=>row.role===role);expect(rows).toHaveLength(count);
   expect(rows.map(row=>row.requested)).toEqual(routePools[role]);expect(rows.every(row=>row.actorIndex===actor)).toBe(true);
  }
- const observed=nativeRenderedRows();expect(requireNativeRenderedUnion(observed)).toEqual({total:191,usable:17,scopedDenials:1,renderedOnly:173});
+ const observed=nativeRenderedRows();expect(requireNativeRenderedUnion(observed)).toEqual({total:195,usable:17,scopedDenials:1,renderedOnly:177});
  expect(observed.filter(row=>row.view!==null)).toHaveLength(14);
- expect(observed.filter(row=>row.redirectStatus!==null)).toHaveLength(6);
+ expect(observed.filter(row=>row.redirectStatus!==null)).toHaveLength(10);
  expect(()=>requireNativeRenderedUnion(observed.slice(1))).toThrow(/incomplete/);
  expect(()=>requireNativeRenderedUnion([...observed,observed[0]])).toThrow(/incomplete/);
  expect(()=>requireNativeRenderedUnion([observed[1],...observed.slice(1)])).toThrow(/Duplicate/);
@@ -72,8 +72,8 @@ it('binds cross-module content and the explicit AI scope denial to the existing 
   ['employee',4,'/attendance/individual','own-individual-attendance-picker','usable-content'],
   ['groupHR',0,'/control-tower/agents/runs','ai-runs-group-history-controls','usable-content'],
   ['companyHR',1,'/control-tower/agents/runs','ai-runs-company-scope','scope-denial'],
-  ['groupHR',0,'/admin/rewards/shared','rewards-shared-company-scope','usable-content'],
-  ['companyHR',1,'/admin/rewards/shared','rewards-shared-draft-grids','usable-content'],
+  ['groupHR',0,'/admin/rewards/review-plans','rewards-shared-company-scope','usable-content'],
+  ['companyHR',1,'/admin/rewards/review-plans','rewards-shared-draft-grids','usable-content'],
   ['employee',4,'/me','own-profile-identity','usable-content'],
  ] as const;
  for(const [role,actorIndex,requested,witness,readiness]of expected){
@@ -116,7 +116,7 @@ it('accepts only a canonical own payslip PDF address with one exact UUID',()=>{
 
 it('retains the exact HR compatibility requests and their canonical destinations',()=>{
  const aliases=[['/admin/claims/forms',308,'/admin/claims'],['/admin/locations',307,'/admin/work-locations/clocking'],
-  ['/admin/rewards',307,'/admin/rewards/plans']]as const;
+  ['/admin/rewards',307,'/admin/rewards/review-plans'],['/admin/rewards/plans',307,'/admin/rewards/review-plans'],['/admin/rewards/shared',307,'/admin/rewards/review-plans']]as const;
  for(const [requested,status,final]of aliases){
   const rows=nativeRenderedRows().filter(row=>row.requested===requested);
   expect(rows.map(row=>[row.role,row.final,row.redirectStatus,row.readiness])).toEqual([
@@ -140,8 +140,11 @@ it('reads each exact declared route once using its expected HTTP status without 
   ['/assistant?view=tools',200,undefined],
   ['/admin/claims/forms',308,'/admin/claims'],
   ['/admin/locations',307,'https://localhost:3443/admin/work-locations/clocking'],
-  ['/admin/rewards',307,'/admin/rewards/plans'],
-  ['/admin/rewards/plans',200,undefined],
+  ['/admin/rewards',307,'/admin/rewards/review-plans'],
+  ['/admin/rewards/plans',307,'/admin/rewards/review-plans'],
+  ['/admin/rewards/shared',307,'/admin/rewards/review-plans'],
+  ['/admin/rewards/review-plans',200,undefined],
+  ['/admin/rewards/earlier-plans',200,undefined],
   ['/rewards/reviews',200,undefined],
  ]as const){
   const response={status,headers:{location}};
@@ -150,12 +153,12 @@ it('reads each exact declared route once using its expected HTTP status without 
   expect(get).toHaveBeenCalledExactlyOnceWith(requested,status);
  }
  for(const [role,actor]of [['companyHR',1],['groupHR',0]]as const){
-  for(const route of ['/admin/rewards/plans','/rewards/reviews']){
+  for(const route of ['/admin/rewards/review-plans','/admin/rewards/earlier-plans','/rewards/reviews']){
    expect(nativePreflightRouteFor(role,actor,route)).toMatchObject({requested:route,final:route,redirectStatus:null});
   }
  }
  for(const [role,actor]of [['employee',4],['manager',2]]as const){
-  for(const route of ['/admin/rewards','/admin/rewards/plans','/rewards/reviews']){
+  for(const route of ['/admin/rewards','/admin/rewards/plans','/admin/rewards/shared','/admin/rewards/review-plans','/admin/rewards/earlier-plans','/rewards/reviews']){
    expect(()=>nativePreflightRouteFor(role,actor,route)).toThrow(/actor\/route/);
   }
  }
@@ -172,7 +175,7 @@ it('refuses unknown reads before issuing a request and propagates read and redir
  await expect(readManifestRoute('/claims',refused)).rejects.toBe(failure);
  expect(refused).toHaveBeenCalledExactlyOnceWith('/claims',200);
  for(const [status,location,reason]of [
-  [200,'/admin/rewards/plans',/status/],
+  [200,'/admin/rewards/review-plans',/status/],
   [307,'/rewards/reviews',/location/],
  ]as const){
   const get=vi.fn(async()=>({status,headers:{location}}));

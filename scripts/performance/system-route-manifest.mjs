@@ -17,7 +17,7 @@ export const hrRoutes=Object.freeze([
  '/letters/approval','/letters/templates','/letters/templates/new','/letters/fields','/letters/reports','/letters/settings',
  '/admin/claims','/admin/claims/forms','/admin/claims/limits','/admin/claims/mileage','/admin/claims/reimbursements',
  '/admin/notice-board','/admin/holidays','/admin/holidays/groups','/admin/settings/system-labels','/admin/settings/system-labels/profile-options','/leave/employee-balances','/leave/employee-records','/admin/locations','/admin/attendance/file-mappings','/admin/attendance/schedule',
- '/admin/rewards','/admin/rewards/plans','/admin/rewards/shared','/rewards/reviews','/rewards/approvals',
+ '/admin/rewards','/admin/rewards/plans','/admin/rewards/shared','/admin/rewards/review-plans','/admin/rewards/earlier-plans','/rewards/reviews','/rewards/approvals',
 ]);
 export const managerRoutes=Object.freeze([
  ...aiCentreRoutes,...attendanceReadRoutes,
@@ -40,7 +40,9 @@ const origin='https://localhost:3443';
 const compatibilityRoutes=new Map([
  ['/admin/claims/forms',{status:308,final:'/admin/claims'}],
  ['/admin/locations',{status:307,final:'/admin/work-locations/clocking'}],
- ['/admin/rewards',{status:307,final:'/admin/rewards/plans'}],
+ ['/admin/rewards',{status:307,final:'/admin/rewards/review-plans'}],
+ ['/admin/rewards/plans',{status:307,final:'/admin/rewards/review-plans'}],
+ ['/admin/rewards/shared',{status:307,final:'/admin/rewards/review-plans'}],
 ]);
 const assistantViews=new Map([
  ['/assistant?view=how','how'],['/assistant?view=privacy','privacy'],
@@ -57,14 +59,16 @@ const roleContentWitness=new Map([
  ['employee:/attendance/individual','own-individual-attendance-picker'],
  ['groupHR:/control-tower/agents/runs','ai-runs-group-history-controls'],
  ['companyHR:/control-tower/agents/runs',scopedDenialWitness],
- ['groupHR:/admin/rewards/shared','rewards-shared-company-scope'],
- ['companyHR:/admin/rewards/shared','rewards-shared-draft-grids'],
+ // Keep the existing substantive verifier mandatory. It deliberately refuses the retired
+ // benchmark fixture until its separate native grid/worker migration is completed.
+ ['groupHR:/admin/rewards/review-plans','rewards-shared-company-scope'],
+ ['companyHR:/admin/rewards/review-plans','rewards-shared-draft-grids'],
  ['employee:/me','own-profile-identity'],
 ]);
 export function nativePreflightContentWitness(role,requested){
  return roleContentWitness.get(role+':'+requested)??null;
 }
-const expectedCounts=Object.freeze({employee:30,manager:16,companyHR:71,groupHR:74});
+const expectedCounts=Object.freeze({employee:30,manager:16,companyHR:73,groupHR:76});
 const nativeRoutes=Object.freeze(Object.entries(routePools).flatMap(([role,routes])=>
  routes.map(requested=>{
   const compatibility=compatibilityRoutes.get(requested);
