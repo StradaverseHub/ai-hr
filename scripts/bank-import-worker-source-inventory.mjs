@@ -42,4 +42,7 @@ assert(entries.length>100,'Nonempty complete source required');
 const result={format:1,kind:'CANONICAL_FROZEN_SOURCE_CONTENT_INVENTORY',policy:'aihr-worker-ci-runtime/v1',source,filters,entries,
  releaseSha256:hash(readFileSync(join(root,'scripts/improve/release.ts'))),filterOwnerSha256:hash(readFileSync(join(root,'.github/ci/normal-cleanup-fences.mjs')))};
 const bytes=JSON.stringify(result)+'\n';writeFileSync(output,bytes,{mode:0o600,flag:'wx'});
-console.log(JSON.stringify({manifestSha256:hash(bytes),includedNodes:entries.length,releaseAuthorized:false}));
+// The canonical release owner may install idle clients while importing. This preparation
+// CLI has no ongoing work: flush its sole acknowledgement before a successful exit.
+await new Promise((done,fail)=>process.stdout.write(JSON.stringify({manifestSha256:hash(bytes),includedNodes:entries.length,releaseAuthorized:false})+'\n',error=>error?fail(error):done()));
+process.exit(0);
