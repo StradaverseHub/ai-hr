@@ -929,3 +929,20 @@ pending records, purposes and transport remain untouched. The derived agent mani
 regenerated last. Source review closure is not hosted PASS, actual UI/PDF verification or release
 authority. Exact accepted upstream integration and migration reallocation remain required after
 Recruitment’s accepted ledger.
+
+### Tenant publication recovery checkpoint — 17 November 2026
+
+The completed native owner-body check caught a later canonical5071 publication rule: waiting
+eligibility must read the tenant-effective capability catalogue. The derived human-only reader now
+reuses that inlined owner once per tenant, with actual-principal before/after publication regression
+coverage and current effective owner pins. No grant, provider payload, model tool or transport changes.
+Renderer admission test fixtures now describe the expanded12-actor/57-capture/six-mobile contract;
+validator, production-build, role, private-letter and actual-PDF guards stay unchanged. Test-compiler
+adapter corrections retain runtime message membership and actual localized accessible-name checks.
+
+These changes affect unapplied native SQL and tests only. The provider digest remains
+`e4e9247c94224549b19a5d278f8932af8b83972c795545a1fa80bdfa40902b73`; no approved record or
+pending status is changed. The agent manifest is checked/regenerated last. Original985 failed
+evidence and its unaffected passing scopes remain bound to that source. This checkpoint still
+requires hosted recovery, actual UI/PDF completion, accepted upstream integration and the final
+authenticated release process. It grants no staging admission or production/package authority.
