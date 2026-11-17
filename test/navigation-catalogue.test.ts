@@ -26,13 +26,13 @@ describe('stable shell metadata uses the canonical runtime policy',()=>{
   expect(actual.issues).toEqual([]);
   expect(actual.rows.map(entry=>entry.row)).toEqual(resolveShellNavigation(capabilities).destinations);
  });
- it('composes all eleven canonical scoped descriptors by reference without duplicating their visibility policy',()=>{
+ it('composes all twelve canonical scoped descriptors by reference without duplicating their visibility policy',()=>{
   const declared=declaredNavigationCatalogue().declarations.filter(row=>row.selector.startsWith('scoped/'));
-  expect(declared).toHaveLength(11);
+  expect(declared).toHaveLength(12);
   expect(declared.map(row=>row.descriptor)).toEqual(SCOPED_LIFECYCLE_NAVIGATION);
   expect(declared.every((row,index)=>row.descriptor===SCOPED_LIFECYCLE_NAVIGATION[index])).toBe(true);
   expect(declared.map(row=>row.id)).toEqual([
-   'shell.probationTracker','shell.probationPostings','shell.contractManagement','shell.probationSettings','shell.probationForms',
+   'shell.probationTracker','shell.probationPostings','shell.contractManagement','shell.contractPersonnelPostings','shell.probationSettings','shell.probationForms',
    'shell.probationIntake','shell.probationAccess',
    'shell.contractIntake','shell.contractSettings','shell.contractWorkflows','shell.contractTemplates',
   ]);

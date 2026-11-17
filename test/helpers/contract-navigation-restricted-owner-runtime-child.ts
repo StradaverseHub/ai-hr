@@ -64,15 +64,27 @@ async function main(){
   async function context(userId:string):Promise<SessionContext>{const[account]=await owner.db.execute<{person:string}>(sql`select person_id as person from app_user where tenant_id=${prepared.tenantId}::uuid and id=${userId}::uuid`);assert.ok(account?.person);const grants=await owner.db.execute<{role:string;companyId:string|null}>(sql`select role::text as role,company_id as "companyId" from role_assignment where tenant_id=${prepared.tenantId}::uuid and app_user_id=${userId}::uuid`);return {tenantId:prepared.tenantId,userId,personId:account.person,grants:Array.from(grants),roles:[...new Set(grants.map(g=>g.role))],entitlements:await owner.db.transaction(tx=>resolveEntitlementsTx(tx,prepared.tenantId))};}
   const snapshot=async()=>{const result:Record<string,string>={};for(const table of ['employment','assignment','compensation','contract_case','contract_shared_case','contract_shared_event','automation_run','personnel_posting','domain_event']){const rows=await owner.client.unsafe<{digest:string}[]>(`select md5(coalesce(string_agg(to_jsonb(t)::text,'|' order by to_jsonb(t)::text),'')) as digest from public.${table} t where tenant_id=$1::uuid`,[prepared.tenantId]);result[table]=rows[0].digest;}return result;};
   const before=await snapshot(),timings:RestrictedNavigationRuntimeReceipt['timings']={},plans:Record<string,unknown>={},outputs:Record<string,Right[]>={};
+  const backends:RestrictedNavigationRuntimeReceipt['backends']={},seenBackends=new Set<number>(),seenClients=new WeakSet<object>();
   const evidence=process.env.AIHR_FOCUSED_EVIDENCE_DIR??join(temp,'aihr-ci');assert.ok(resolve(evidence).startsWith(realpathSync(temp)+sep));mkdirSync(evidence,{recursive:true,mode:0o700});assert.equal(realpathSync(evidence),resolve(evidence));
   const evidenceFiles=['contract-navigation-owner-timings.json','contract-navigation-owner-plans.json'];let status:'running'|'complete'='running';
-  const flush=()=>{writeFileSync(join(evidence,evidenceFiles[0]),JSON.stringify({candidate,status,kind:'NATIVE_RESTRICTED_OWNER_READ_ONLY',identity,actors:Object.keys(prepared.users),timings},null,2),{mode:0o600});writeFileSync(join(evidence,evidenceFiles[1]),JSON.stringify({candidate,status,kind:'ACTUAL_RESTRICTED_OWNER_NESTED_SOURCE_PLANS',plans},null,2),{mode:0o600});};flush();
+  const flush=()=>{writeFileSync(join(evidence,evidenceFiles[0]),JSON.stringify({candidate,status,kind:'NATIVE_RESTRICTED_OWNER_READ_ONLY',identity,actors:Object.keys(prepared.users),timings,backends},null,2),{mode:0o600});writeFileSync(join(evidence,evidenceFiles[1]),JSON.stringify({candidate,status,kind:'ACTUAL_RESTRICTED_OWNER_NESTED_SOURCE_PLANS',plans},null,2),{mode:0o600});};flush();
   const sorted=(rows:Iterable<Right>)=>Array.from(rows).sort((a,b)=>a.employment_id.localeCompare(b.employment_id));
   for(const[key,userId]of Object.entries(prepared.users)){
-   const ctx=await context(userId),app=createDb(process.env.TEST_DATABASE_URL!,{max:1});
+   const ctx=await context(userId),actorUrl=new URL(process.env.TEST_DATABASE_URL!);
+   // createDb intentionally caches by URL. A supported startup label gives each actor
+   // its own canonical pool/backend instead of reopening a previously ended cached pool.
+   const applicationName='contract-nav:'+nonce.slice(0,8)+':'+key;assert.ok(Buffer.byteLength(applicationName,'utf8')<=63);
+   actorUrl.searchParams.set('application_name',applicationName);
+   const app=createDb(actorUrl.toString(),{max:1});
    try{
-    assert.equal((await app.client`select session_user::text as role`)[0].role,'ai_hr_app');
-    const read=()=>app.withSharedReadSnapshot(ctx,()=>app.withTenant(ctx,async tx=>{assert.equal((await tx.execute<{ro:string}>(sql`select current_setting('transaction_read_only') as ro`))[0].ro,'on');return (await tx.execute<{facts:{page:boolean;configure:boolean;intake:boolean;automation:boolean;postings:boolean}}>(sql`select app.contract_shared_navigation_access() as facts`))[0].facts;}));
+    assert.equal(app.client.options.max,1);assert.equal(seenClients.has(app.client),false);seenClients.add(app.client);
+    const[backend]=await app.client<{pid:number;applicationName:string;sessionUser:string;currentUser:string}[]>`select pg_backend_pid() as pid,current_setting('application_name') as "applicationName",session_user::text as "sessionUser",current_user::text as "currentUser"`;
+    assert.equal(backend.applicationName,applicationName);assert.equal(backend.sessionUser,'ai_hr_app');assert.equal(backend.currentUser,'ai_hr_app');assert.equal(seenBackends.has(backend.pid),false);seenBackends.add(backend.pid);backends[key]={...backend};flush();
+    const read=()=>app.withSharedReadSnapshot(ctx,()=>app.withTenant(ctx,async tx=>{
+     const[actual]=await tx.execute<{ro:string;pid:number;applicationName:string;sessionUser:string;currentUser:string}>(sql`select current_setting('transaction_read_only') as ro,pg_backend_pid() as pid,current_setting('application_name') as "applicationName",session_user::text as "sessionUser",current_user::text as "currentUser"`);
+     assert.deepEqual(actual,{ro:'on',...backend});
+     return (await tx.execute<{facts:{page:boolean;configure:boolean;intake:boolean;automation:boolean;postings:boolean}}>(sql`select app.contract_shared_navigation_access() as facts`))[0].facts;
+    }));
     const started=performance.now(),facts=await read(),coldMs=performance.now()-started,warmMs:number[]=[];for(let n=0;n<3;n++){const start=performance.now();assert.deepEqual(await read(),facts);warmMs.push(performance.now()-start);}timings[key]={coldMs,warmMs};flush();assert.ok(coldMs<3000,key+' cold navigation exceeded 3 seconds');assert.ok(Math.max(...warmMs)<1000,key+' warm navigation exceeded 1 second');
     if(key==='emptyViewer')assert.equal(facts.page,true);if(['outsider','expired','revoked','viewDisabledSuperior','disabledCompanyViewer','archivedActor'].includes(key))assert.equal(facts.page,false);if(key==='superior'||key==='pbp')assert.equal(facts.page,true);
     await owner.withSharedReadSnapshot(ctx,()=>owner.withTenant(ctx,async tx=>{
@@ -92,6 +104,7 @@ async function main(){
     });
    }finally{await app.client.end({timeout:5});}
   }
+  assert.equal(seenBackends.size,Object.keys(prepared.users).length);
   assert.equal(outputs.pbp.find(r=>r.employment_id===prepared.subjectEmploymentId)?.can_view,true);
   assert.equal(outputs.ambiguous.find(r=>r.employment_id===prepared.ambiguousEmploymentId)?.can_view,false);
   assert.ok(outputs.viewDisabledSuperior.some(r=>r.can_decide&&!r.can_view));assert.equal(outputs.expired.filter(r=>r.can_view).length,0);assert.equal(outputs.revoked.filter(r=>r.can_view).length,0);
@@ -99,7 +112,7 @@ async function main(){
   assert.deepEqual(await snapshot(),before,'Read-only navigation/equivalence/plan measurement changed business rows');
   const[counts]=await owner.db.execute<{companies:number;employments:number}>(sql`select (select count(*)::int from company where tenant_id=${prepared.tenantId}::uuid) companies,(select count(*)::int from employment where tenant_id=${prepared.tenantId}::uuid) employments`);assert.ok(counts.companies>=70&&counts.employments>=1000);
   status='complete';flush();
-  const receipt:RestrictedNavigationRuntimeReceipt={version:1,sessionUser:'ai_hr_owner',currentUser:'ai_hr_owner',superuser:false,bypassRls:false,createRole:false,actors:Object.keys(prepared.users).length,equivalentRights:true,readOnlyMeasurements:true,companies:counts.companies,employments:counts.employments,managedReports:managed.length,timings,evidenceFiles};console.log(RESULT+JSON.stringify(receipt));
+  const receipt:RestrictedNavigationRuntimeReceipt={version:1,sessionUser:'ai_hr_owner',currentUser:'ai_hr_owner',superuser:false,bypassRls:false,createRole:false,actors:Object.keys(prepared.users).length,equivalentRights:true,readOnlyMeasurements:true,companies:counts.companies,employments:counts.employments,managedReports:managed.length,timings,backends,evidenceFiles};console.log(RESULT+JSON.stringify(receipt));
  }finally{await closeAll();}
 }
 main().catch(error=>{console.error(error);process.exitCode=1;});

@@ -11,7 +11,7 @@ import {seedCatalogs} from '../../scripts/seed-catalogs';
 import {assertDraftDiscardRehearsalContext,isDraftDiscardFixtureDatabasePath,readDraftDiscardRoleCatalog,assertDraftDiscardRoleCatalog} from './personnel-draft-discard-ci-role-fixture';
 import {PROJECT_INSTALLED_OWNERSHIP} from './installed-owner-projection';
 
-export type RestrictedNavigationRuntimeReceipt={version:1;sessionUser:'ai_hr_owner';currentUser:'ai_hr_owner';superuser:false;bypassRls:false;createRole:false;actors:number;equivalentRights:true;readOnlyMeasurements:true;companies:number;employments:number;managedReports:number;timings:Record<string,{coldMs:number;warmMs:number[]}>;evidenceFiles:string[]};
+export type RestrictedNavigationRuntimeReceipt={version:1;sessionUser:'ai_hr_owner';currentUser:'ai_hr_owner';superuser:false;bypassRls:false;createRole:false;actors:number;equivalentRights:true;readOnlyMeasurements:true;companies:number;employments:number;managedReports:number;timings:Record<string,{coldMs:number;warmMs:number[]}>;backends:Record<string,{pid:number;applicationName:string;sessionUser:string;currentUser:string}>;evidenceFiles:string[]};
 const RESULT='CONTRACT_NAVIGATION_OWNER_RESULT ';
 const REFUSAL='Restricted Contract runtime requires the existing admitted hosted disposable fixture.';
 

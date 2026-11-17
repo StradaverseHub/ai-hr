@@ -105,7 +105,11 @@ it('discovers real group-only Personnel postings without Case View and never inf
  const posting=await releaseContractPosting(f);
  expect((await listContractSharedPostings(f.approver,{status:'pending'})).rows.map(row=>row.id)).toEqual([posting.id]);
  expect((await listContractSharedPostings(f.proposer,{status:'pending'})).rows).toEqual([]);
- await expect(approveContractSharedPosting(f.proposer,{id:posting.id,revision:posting.revision})).rejects.toMatchObject({code:'forbidden'});
+ // Pending admission deliberately conceals absent authority and stale source behind the same conflict.
+ const pendingBefore=await listContractSharedPostings(f.approver,{status:'pending'});
+ await expect(approveContractSharedPosting(f.proposer,{id:posting.id,revision:posting.revision})).rejects.toMatchObject({code:'conflict',message:'This posting or Personnel record changed. Reload before continuing.'});
+ expect(await listContractSharedPostings(f.approver,{status:'pending'})).toEqual(pendingBefore);
+ expect((await listContractSharedPostings(f.proposer,{status:'pending'})).rows).toEqual([]);
  // Native shared configuration changes the actual group, without editing any posting or access proof.
  const config=(await v9Workspace(f.admin)).config!;
  await v9SaveConfig(f.admin,config.revision,{...config,groups:config.groups.map(group=>group.id===f.groupId?{...group,members:[f.proposer.userId!]}:group)});
