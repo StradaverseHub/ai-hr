@@ -84,7 +84,7 @@ it('projects only bounded current waiting names for visible pending Offboarding 
  await terminateEmployment(admin,{employmentId:blocked.employmentId,terminationDate:'2026-01-02',terminationType:'voluntary',terminationReason:'Fictional completed exit'});
  const subjectUser=await createAppUser(b.tenantId,f.hire.personId,'employee');
  const foreign=await seedBase();await setModule(foreign.tenantId,'lifecycle','active');const foreignSubject=await hireEmployee(adminCtx(foreign),{person:{fullName:'Hidden foreign member',primaryEmail:randomUUID()+'@waiting.example.test'},companyId:foreign.companyId,departmentId:foreign.deptA,employmentType:'full_time',hiredOn:'2026-01-01'}),foreignUser=await createAppUser(foreign.tenantId,foreignSubject.personId,'hr_admin');
- const group={id:'waiting',name:'Configured waiting people',limit:10,members:[...active.map(person=>person.userId),active[0].userId,archived.userId,blocked.userId,subjectUser,foreignUser]};
+ const group={id:'waiting',name:'Configured waiting people',limit:10,members:[...active.map(person=>person.userId),active[0].userId,archived.userId,blocked.userId,subjectUser,foreignUser,'malformed historical member','123-not-a-uuid']};
  await owner.db.execute(sql`update lc_onboarding_config set data=jsonb_set(data,'{groups}',data->'groups'||${JSON.stringify([group])}::jsonb) where tenant_id=${b.tenantId}::uuid`);
  await owner.db.execute(sql`update lc_v9_config set data=jsonb_set(jsonb_set(data,'{groups}',data->'groups'||${JSON.stringify([group])}::jsonb),'{offboarding,postingApproverGroupId}','"waiting"'::jsonb) where tenant_id=${b.tenantId}::uuid`);
  const posting=await withTenant(admin,tx=>createPersonnelPostingTx(tx,{...f.input,approverGroupId:group.id}));

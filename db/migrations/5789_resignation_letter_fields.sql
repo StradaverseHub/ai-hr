@@ -311,20 +311,21 @@ LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp A
   SELECT coalesce((SELECT data->'groups' FROM public.lc_onboarding_config WHERE tenant_id=app.current_tenant_id()),
    (SELECT data->'groups' FROM public.lc_v9_config WHERE tenant_id=app.current_tenant_id()),'[]'::jsonb) AS groups
  ), configured_members AS MATERIALIZED (
-  SELECT DISTINCT wanted.id,member.value AS user_id
+  SELECT DISTINCT wanted.id,CASE WHEN member.value ~ '^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$' THEN member.value::uuid ELSE NULL END AS user_id
   FROM configuration cfg CROSS JOIN LATERAL jsonb_array_elements(CASE WHEN jsonb_typeof(cfg.groups)='array' THEN cfg.groups ELSE '[]'::jsonb END) g
   JOIN wanted_groups wanted ON wanted.id=g->>'id'
   CROSS JOIN LATERAL jsonb_array_elements_text(CASE WHEN jsonb_typeof(g->'members')='array' THEN g->'members' ELSE '[]'::jsonb END) member
- ), active_people AS MATERIALIZED (
+ ), wanted_users AS MATERIALIZED (SELECT DISTINCT user_id FROM configured_members WHERE user_id IS NOT NULL),
+ active_people AS MATERIALIZED (
   SELECT u.id,u.person_id,nullif(btrim(person.full_name),'') AS name
-  FROM public.app_user u LEFT JOIN public.person person ON person.tenant_id=u.tenant_id AND person.id=u.person_id
-  WHERE u.tenant_id=app.current_tenant_id() AND u.archived_at IS NULL AND NOT app.login_blocked(u.id)
-   AND EXISTS(SELECT 1 FROM configured_members m WHERE m.user_id=u.id::text)
+  FROM wanted_users wanted JOIN public.app_user u ON u.id=wanted.user_id AND u.tenant_id=app.current_tenant_id()
+  LEFT JOIN public.person person ON person.tenant_id=u.tenant_id AND person.id=u.person_id
+  WHERE u.archived_at IS NULL AND NOT app.login_blocked(u.id)
  ), ranked AS (
   SELECT v.id,u.name,row_number() OVER(PARTITION BY v.id ORDER BY u.name NULLS LAST,u.id) AS rank,
    count(*) OVER(PARTITION BY v.id)::integer AS total
   FROM visible v JOIN configured_members m ON m.id=v.approver_group_id
-  JOIN active_people u ON u.id::text=m.user_id AND u.person_id IS DISTINCT FROM v.person_id
+  JOIN active_people u ON u.id=m.user_id AND u.person_id IS DISTINCT FROM v.person_id
  )
  SELECT v.id,coalesce(array_agg(r.name ORDER BY r.rank) FILTER(WHERE r.rank<=3 AND r.name IS NOT NULL),'{}'::text[]),coalesce(max(r.total),0)
  FROM visible v LEFT JOIN ranked r ON r.id=v.id GROUP BY v.id;
