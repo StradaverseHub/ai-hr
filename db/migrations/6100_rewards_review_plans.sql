@@ -61,10 +61,15 @@ LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,app SET j
  EXISTS(SELECT 1 FROM company_organisation_run r WHERE r.tenant_id=app.current_tenant_id() AND r.state='published' AND r.kind<>'retag' AND r.effective_on<=wanted_day) AS activated
  ),tags AS MATERIALIZED(
  SELECT p.id,p.legal_name,app.company_org_resolve(p.id,o.mapping,o.activated) AS tags FROM population p CROSS JOIN org o
+ ),active_employments AS MATERIALIZED(
+ SELECT e.id,e.company_id FROM employment e WHERE e.tenant_id=app.current_tenant_id() AND e.import_pending_attempt_id IS NULL AND e.hired_on<=timezone('Asia/Kuala_Lumpur',now())::date AND(e.terminated_on IS NULL OR e.terminated_on>timezone('Asia/Kuala_Lumpur',now())::date)
+ ),assignments AS MATERIALIZED(
+ SELECT DISTINCT ON(a.employment_id) a.employment_id,a.company_id FROM assignment a JOIN active_employments e ON e.id=a.employment_id WHERE a.tenant_id=app.current_tenant_id() AND a.superseded_at IS NULL AND a.valid_from<=timezone('Asia/Kuala_Lumpur',now())::date AND(a.valid_to IS NULL OR a.valid_to>timezone('Asia/Kuala_Lumpur',now())::date) ORDER BY a.employment_id,a.valid_from DESC,a.id
+ ),corrections AS MATERIALIZED(
+ SELECT DISTINCT ON(ev.subject_employment_id)ev.subject_employment_id,nullif(ev.payload->'before'->>'companyId','')::uuid AS previous_company FROM domain_event ev JOIN active_employments e ON e.id=ev.subject_employment_id
+ WHERE ev.tenant_id=app.current_tenant_id() AND ev.event_type='employment.information.corrected' AND ev.payload->>'effectiveOn'>timezone('Asia/Kuala_Lumpur',now())::date::text ORDER BY ev.subject_employment_id,ev.sequence
  ),counts AS MATERIALIZED(
- SELECT e.company_id,count(*)::integer AS n FROM employment e JOIN population p ON p.id=e.company_id
- WHERE e.tenant_id=app.current_tenant_id() AND e.import_pending_attempt_id IS NULL AND e.hired_on<=timezone('Asia/Kuala_Lumpur',now())::date
- AND(e.terminated_on IS NULL OR e.terminated_on>timezone('Asia/Kuala_Lumpur',now())::date) GROUP BY e.company_id
+ SELECT coalesce(c.previous_company,a.company_id,e.company_id) AS company_id,count(*)::integer AS n FROM active_employments e LEFT JOIN assignments a ON a.employment_id=e.id LEFT JOIN corrections c ON c.subject_employment_id=e.id GROUP BY coalesce(c.previous_company,a.company_id,e.company_id)
  ) SELECT t.id,t.legal_name,nullif(t.tags->>'businessUnitId','')::uuid,b.name,coalesce(c.n,0)
  FROM tags t LEFT JOIN business_unit b ON b.tenant_id=app.current_tenant_id() AND b.id=nullif(t.tags->>'businessUnitId','')::uuid
  LEFT JOIN counts c ON c.company_id=t.id WHERE t.tags->>'status'='ready'
@@ -133,6 +138,10 @@ BEGIN
  OR jsonb_typeof(p_edits)<>'array' OR jsonb_array_length(p_edits)>500 OR p_policy->>'year' IS DISTINCT FROM p_year::text THEN RAISE EXCEPTION 'Invalid Review Plans command' USING ERRCODE='22023';END IF;
  PERFORM pg_advisory_xact_lock(hashtextextended('access-configuration:'||t::text,0));
  PERFORM pg_advisory_xact_lock(hashtextextended(t::text||':review-plan-year:'||p_year,2203));
+ IF NOT p_new_year THEN
+  SELECT settings,(settings-'snapshotDate')||jsonb_build_object('year',year) INTO p_settings,p_policy FROM reward_plan_year WHERE tenant_id=t AND year=p_year;
+  IF p_settings IS NULL THEN RAISE EXCEPTION 'Create the reward year first';END IF;
+ END IF;
  SELECT person_id INTO actor_person FROM app_user WHERE tenant_id=t AND id=actor AND archived_at IS NULL AND NOT app.login_blocked(id);
  IF actor_person IS NULL THEN RAISE EXCEPTION 'A person-backed configuration account is required' USING ERRCODE='42501';END IF;
  IF p_new_year THEN
@@ -539,3 +548,12 @@ BEGIN
  PERFORM set_config('app.reward_config_creating','',true);
  RETURN unit;
 END $$;
+
+--> statement-breakpoint
+CREATE OR REPLACE FUNCTION app.reward_role_level_options(wanted_role text,wanted_capability text) RETURNS text[] LANGUAGE sql IMMUTABLE SET search_path=pg_catalog,app AS $$
+ SELECT CASE WHEN d='none' THEN ARRAY['none']
+  WHEN wanted_capability='restricted.view' THEN ARRAY['step','view']
+  WHEN d='full' AND wanted_capability IN('salary.view','bonus.view','senior.manage','limits.view','plans.manage') THEN ARRAY['full','view','none']
+  ELSE ARRAY[d,'none'] END
+ FROM (SELECT app.reward_role_default_level(wanted_role,wanted_capability) AS d) x
+$$;

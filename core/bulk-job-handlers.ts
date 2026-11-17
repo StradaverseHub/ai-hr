@@ -1,6 +1,6 @@
 /** Every bulk operation the protected import worker runs on the shared kernel. A new kind adds its handler here,
  * its bulk_job_kind row in a migration and its completion-notice entry in lib/bulk-job.ts (ADR "Shared job kernel"). */
-import {rewardPlanReviewsJobHandler} from '../packs/rewards/review-plans-job';
+import {rewardPlanReviewsJobHandler} from '../packs/rewards/service';
 import type {BulkJobHandler} from './bulk-job-worker';
 import {employeeImportJobHandler} from './employee-import-worker';
 import {leaveImportJobHandler} from './leave-import-worker';

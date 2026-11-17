@@ -7,7 +7,7 @@ import './lib/stub-server-only';
 import {freshImportContext,runBankImportTick} from '../core/bank-import-worker';
 import {runIndividualImportTick} from '../core/individual-import-worker';
 import {retireBulkJobWorker,runBulkJobTick} from '../core/bulk-job-worker';
-import {runRewardPlanCompanyTick} from '../packs/rewards/review-plans-outbox';
+import {runRewardPlanCompanyTick} from '../packs/rewards/service';
 import {BULK_JOB_HANDLERS} from '../core/bulk-job-handlers';
 import {client} from '../db/client';
 import {openImportWorkerOwner} from '../db/worker-connection';
