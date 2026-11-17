@@ -682,9 +682,30 @@ receipt or release continuation. If all authority parents die, such a leaf canno
 the release. The uncertain nonexpiring lease remains retained; there is no automatic handback.
 
 All application JavaScript runs only as the actual private-install owner with supplementary groups cleared,
-fixed PATH/HOME and exact held lease environment. Dotenv loader tokens NODE_* (except NODE_ENV), LD_*, DYLD_*,
-PYTHON* and OPENSSL_CONF/OPENSSL_MODULES must be wholly absent, including quoted/commented
-occurrences; the helper refuses before Node interprets the dotenv. No environment file is edited. Coverage
+fixed PATH/HOME and exact held lease environment. Before any Node invocation with a dotenv, the pinned
+Node runs as that owner **without** a dotenv or application import and uses builtin `util.parseEnv` on the
+same bounded inode-bracketed private bytes. Only active key names, safe/CA booleans and the raw hash leave
+that parser. Quoted/multiline/exported values, duplicates and comments follow actual Node semantics;
+comments and ordinary NODE_ENV are allowed. Shared first/late
+`nodeOptions:{policy:"aihr-worker-node-options-memory/v1",sha256}` pins the exact unchanged active value.
+Only the anchored single `--max[-_]old[-_]space[-_]size=(\d+)` flag with numeric128..65536 is admitted;
+no leading/trailing whitespace, additional flag, quoted-value extension, import/require/inspect or other
+option is accepted. Absence may be pinned with the empty-value digest; an actively empty value refuses.
+The owner parser emits only the memory-policy boolean and digest; subsequent native Node reads the
+UNCHANGED dotenv, with no NODE_OPTIONS override/deletion. Hosted controls execute every accepted
+hyphen/underscore spelling through actual Node/V8. Active LD_*, DYLD_*, PYTHON*, NODE_PATH,
+NODE_V8_COVERAGE, NODE_COMPILE_CACHE, NODE_REDIRECT_WARNINGS, NODE_ICU_DATA,
+NODE_REPL_EXTERNAL_MODULE, OPENSSL_CONF/OPENSSL_MODULES refuse. NODE_EXTRA_CA_CERTS
+currently has no independently bounded external certificate pin, so its active presence also refuses
+rather than removing configuration or pretending coverage.
+
+Both administrator approvals also pin `python:{path,sha256,version}` for the root-protected resolved
+`/usr/bin/python3.N` binary, which must match fixed PATH resolution and actual version >=3.11. A fixed
+owner probe verifies version and actual safe_path/no_user_site flags. Subprocess environments alone add
+PYTHONNOUSERSITE=1/PYTHONSAFEPATH=1 after loader admission; native Node-to-Python verification inherits them.
+Host/private environment files, native argv, grant and native proof fields remain unchanged. This excludes
+user-site/current-directory Python customization; system Python/global packages remain under OS trust.
+No environment file is edited. Coverage
 is deliberately bounded to canonical source, active compiled tree, entire node_modules link-target graph
 and complete `/opt/node22`; it does not claim a systemwide dependency graph or replace OS loader trust.
 
@@ -701,10 +722,18 @@ complete enumerations of canonical source, compiled tree, dependencies including
 and the bounded Node runtime tree. It also rechecks immutable private original/audit record bytes, exact
 legal monotonic native cleanup publications/removals, current lease, full native environment fingerprint,
 web PID/start/boot/build/health and fresh full ordered ledger. Cache membership is pinned absent or safe
-existing; membership changes refuse. Only existing safe cache contents are excluded. Compiled root metadata
-is not broadly ignored. Original private records cannot change. Cleanup's wx sentinel is never precreated
+existing; membership changes refuse. The existing cache boundary pins device/inode/type/UID/GID/mode,
+while child changes within that sole native-excluded directory are permitted. Compiled parent-root and
+all non-cache metadata remain exact. Metadata-only regular entries use two complete anchored parent-FD
+no-follow stat observations; every directory retains opened/no-follow descriptor identity and membership
+brackets, links retain O_PATH, and actual byte consumers retain full opened-FD/named identity bridges. Original private records cannot change. Cleanup's wx sentinel is never precreated
 or treated as flock; native packet/retained removal is admitted only under the exact native successful O,
-commit/checksum/authority/consumption chain and retained original audit bytes.
+commit/checksum/authority/consumption chain and retained original audit bytes. The immutable cleanup-intent has the exact authority hash, directory
+identity and ordered children next/packet before either deletion. Native wx/write/fsync can expose a new
+known file before publication completes: only that typed metadata-publication outcome may re-observe,
+at most16 short attempts inside the SAME20/24-second slot, with fresh original pins/lease/strict O.
+Existing accepted record changes, wrong closed records, retained audit integrity errors and every genuine
+native byte-proof error are fatal; there is no generic exception retry or fallback.
 
 Only the same original `ci-build-health` launch may progress R0 (running with pinned old last-ok) → R1
 (native exit0/finished-at/last-ok publication) → O (strict normal success). Direct R0→O is allowed. The same

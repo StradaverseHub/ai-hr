@@ -156,8 +156,8 @@ class KernelTests(unittest.TestCase):
 class BoundaryTests(unittest.TestCase):
     def obj(self):
         o=guard.GuardedInvocation.__new__(guard.GuardedInvocation);o.base=SimpleNamespace(check=check);o.install_fd=9;o.events=[];o.stage='activate-ci-runtime'
-        o.verify=lambda:o.events.append('SH');o.verify_install=lambda:o.events.append('EX');o.a={'issuedAt':'start','expiresAt':'end','dotenvSha256':'web'}
-        o.ci=SimpleNamespace(epoch=lambda s:0 if s=='start'else 1000,SOURCE=Path('/web'),sha=lambda b:b.decode())
+        o.verify=lambda:o.events.append('SH');o.verify_install=lambda:o.events.append('EX');o.a={'issuedAt':'start','expiresAt':'end','dotenvSha256':'web','python':{'fixture':True},'nodeOptions':{'policy':'aihr-worker-node-options-memory/v1','sha256':hashlib.sha256(b'').hexdigest()}};o.owner=object();o.environment={}
+        o.ci=SimpleNamespace(epoch=lambda s:0 if s=='start'else 1000,SOURCE=Path('/web'),sha=lambda b:b.decode(),assert_python_runtime=lambda *a:None)
         o.identity={'worker_env_sha256':'worker'};o.base.ENV=Path('/worker');o.base.read_bounded=lambda path,limit:b'web'if str(path).startswith('/web')else b'worker'
         o.native_lease=lambda:o.events.append('native-lease');return o
     def test_before_mutation_requires_fresh_lease_and_both_locks(self):
@@ -177,7 +177,7 @@ class BoundaryTests(unittest.TestCase):
         result={'kind':'CI_WORKER_DRAIN_ENVIRONMENT_POLICY_V1','environmentSha256':'canonical','readiness':o.a['readiness']}
         seen=[]
         def child(argv,owner,environment,**options):
-            seen.append(argv);self.assertIs(owner,o.owner);self.assertEqual(environment,o.environment);self.assertEqual(options['operation_fd'],4);return result
+            seen.append(argv);self.assertIs(owner,o.owner);self.assertEqual(environment,o.environment);self.assertEqual(options['operation_fd'],4);self.assertEqual(options['node_options'],o.a['nodeOptions']);return result
         o.ci.child=child
         with patch.object(guard.time,'time',return_value=10):o.file_mutation()
         self.assertEqual(seen[0],['/node','--env-file=.env.production','--input-type=module','-e',guard.DRAIN_ENVIRONMENT_PROBE])
@@ -210,9 +210,9 @@ class BoundaryTests(unittest.TestCase):
             approval=r/'approval';approval.write_bytes(b'approval');lease=r/'lease';lease.write_bytes(b'lease')
             o=guard.GuardedInvocation.__new__(guard.GuardedInvocation);o.lock=SimpleNamespace(fd=3,verify=lambda:3)
             sha=lambda b:hashlib.sha256(b).hexdigest();o.base=SimpleNamespace(check=check,root_protected=lambda *a,**kw:None,NODE=node,read_bounded=lambda p,n:p.read_bytes())
-            o.ci=SimpleNamespace(sha=sha,COORDINATOR=coordinator,protected_private=lambda b,p:(p.stat().st_dev,p.stat().st_ino))
+            o.ci=SimpleNamespace(sha=sha,COORDINATOR=coordinator,protected_private=lambda b,p:(p.stat().st_dev,p.stat().st_ino),verify_python=lambda *a:None,verify_node_options_pins=lambda *a:None)
             o.path=approval;o.bytes=b'approval';o.approval_identity=o.ci.protected_private(None,approval);o.lease_path=lease;o.lease_identity=o.ci.protected_private(None,lease)
-            o.a={'leaseFileSha256':sha(b'lease'),'coordinatorSha256':sha(b'fixed-owner'),'nodeSha256':sha(node.read_bytes())}
+            o.a={'python':{'fixture':True},'nodeOptions':{'policy':'aihr-worker-node-options-memory/v1','sha256':sha(b'')},'leaseFileSha256':sha(b'lease'),'coordinatorSha256':sha(b'fixed-owner'),'nodeSha256':sha(node.read_bytes())}
             self.assertEqual(o.verify(),3);node.write_bytes(b'different-node-v22.23.3')
             with self.assertRaisesRegex(ValueError,'approved Node'):o.verify()
 
