@@ -52,7 +52,7 @@ it('returns bounded canonical account addresses, never PM email or sealed creden
   await expect(searchOnboardingRecipientUsers(admin, off, 'Fictional')).rejects.toThrow();
   expect(await searchOnboardingRecipientUsers(admin, caseId, 'F')).toEqual([]);
   await expect(searchOnboardingRecipientUsers(admin, caseId, 'x'.repeat(101))).rejects.toThrow();
-  await expect(addresses(Array.from({ length: 1025 }, randomUUID))).rejects.toThrow();
+  await expect(addresses(Array.from({ length: 1025 }, () => randomUUID()))).rejects.toThrow();
 });
 it('rechecks archived, blocked, revoked, ambiguous and missing bindings, plus credential account readiness', async () => {
   const users = await Promise.all(['Archived', 'Revoked', 'Missing', 'Disabled', 'Ambiguous'].map(name => account(`Fictional ${name}`)));
