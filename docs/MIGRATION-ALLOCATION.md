@@ -4086,3 +4086,9 @@ Contract screens forward block5896–5899 (idx5296–5299, when1794841005896–5
 Contract posting forward block5911–5913 (idx5311–5313, when1794841005911–5913) coordinated with Contract screens5910 after its fresh268-worktree survey and an immediate5911–13 filename refresh found no claims. Parent5900–5909 remains untouched. 5911 admits the canonical conversion assignment’s exact current-transaction recorded_at/created_at stamps while retaining every frozen business-field comparison;5912/5913 reserved for source-bound projection/completion refinements. Normal journal/hash registration only; no release authority.
 
 Contract posting forward5915 (idx5315/when1794841005915), coordinated with screens5914 after an immediate268-worktree refresh found no5915SQLclaims. Fixes5913readiness to use the durable native operation_key after kernel terminal input cleanup; all job/case/decision/letter/source bindings remain. 5913bytes/pinunchanged.
+
+## Contract handoff completion, 17 November 2026
+
+Root reserved 5930–5939 after scanning 276 registered worktrees: idx 5330–5339, timestamps 1794841005930–1794841005939. 5930 tracker attention/summary, 5931 complete mapped defaults/access readiness, 5932 explicitly approved fixed Contract system kernel, 5933 native period/event ports, 5934 protected system mail/digest. Preserve all frozen earlier bytes. No merge or release authorization.
+
+The first generic fix-all kernel attempt was rejected by automatic review. The user subsequently specifically approved null creators only for contract_schedule and contract_scheduled_automation, private DB provenance and bounded privileged reminder/case-opening transactions, excluding human decisions, approvals, signatures, posting, pay and termination authority. Only that exact boundary is implemented; the initial rejection remains part of the review history.

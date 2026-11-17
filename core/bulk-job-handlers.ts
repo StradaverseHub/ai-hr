@@ -19,10 +19,11 @@ import {payrollReprocessJobHandler} from './payroll-reprocess-job';
 import {movementImportJobHandler} from './movement-import-worker';
 import {movementCheckJobHandler} from './movement-import-check-worker';
 import {movementImportRevertJobHandler} from './movement-import-revert-job';
+import {contractScheduleJobHandler,contractScheduledAutomationJobHandler} from './contract-shared-schedule';
 import {contractPreviewJobHandler,contractAutomationJobHandler,contractSetupJobHandler} from '../packs/contracts/service';
 
 export const BULK_JOB_HANDLERS:readonly BulkJobHandler[]=[employeeImportJobHandler,leaveImportJobHandler,leaveGenerationJobHandler,
  earnedAccrualJobHandler,rosterBulkJobHandler,scheduleGroupBulkJobHandler,clockingImportJobHandler,attendanceRecomputePreviewJobHandler,
  attendanceRecomputeJobHandler,payrollProcessJobHandler,systemLabelImportJobHandler,employeeImportRevertJobHandler,sectionImportJobHandler,
  registerImportJobHandler,leaveRecalcJobHandler,leaveA2cJobHandler,toilExpiryJobHandler,toilYearCloseJobHandler,payrollHistoryJobHandler,
- payrollReprocessJobHandler,movementImportJobHandler,movementCheckJobHandler,movementImportRevertJobHandler,contractPreviewJobHandler,contractAutomationJobHandler,contractSetupJobHandler];
+ payrollReprocessJobHandler,movementImportJobHandler,movementCheckJobHandler,movementImportRevertJobHandler,contractPreviewJobHandler,contractAutomationJobHandler,contractSetupJobHandler,contractScheduleJobHandler,contractScheduledAutomationJobHandler];
