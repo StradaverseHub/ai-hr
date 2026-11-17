@@ -59,7 +59,7 @@ describe('Review Plans source-rendered journeys',()=>{
   ports.save.mockResolvedValueOnce({ok:false,error:'Fictional source revision changed. Reload before saving.'});await user.click(within(dialog).getByRole('button',{name:'Save changes'}));
   await waitFor(()=>expect(within(dialog).getByRole('alert')).toHaveTextContent('Fictional source revision changed'));
   expect(reviewReason).toHaveValue('Approved annual company plan choice.');await capture(view,'rewards-review-plans-save-error');
-  await user.click(within(dialog).getByRole('button',{name:'Save changes'}));await screen.findByText('Review Plans saved.');
+  await user.click(within(dialog).getByRole('button',{name:'Save changes'}));await screen.findByText('Review Plans saved.');expect(screen.queryByText('Fictional source revision changed. Reload before saving.')).toBeNull();
   expect(ports.save).toHaveBeenLastCalledWith(expect.objectContaining({year:2026,edits:[expect.objectContaining({companyId:alpha.companyId,planType:'uploaded',expectedRevision:4})]}),'a'.repeat(64),'Approved annual company plan choice.');
   const ready={...alpha,planType:'uploaded' as const,salarySuggestion:{...alpha.salarySuggestion,reviewed:true},bonusSuggestion:{...alpha.bonusSuggestion,reviewed:true},status:'ready' as const,revision:5};
   // The router refresh is represented by a new mocked owner projection; the native grid is not replaced by a sketch.
@@ -67,6 +67,9 @@ describe('Review Plans source-rendered journeys',()=>{
   expect(screen.getByText('Review Plans saved.')).toBeTruthy();await capture(view,'rewards-review-plans-saved');
   ports.create.mockResolvedValue({ok:true,jobId:id(50)});ports.progress.mockResolvedValue({ok:true,progress:{id:id(50),kind:'reward_plan_reviews',state:'completed',phase:'complete',sourceName:'Review Plans 2026',stepsTotal:1,stepsDone:1,counters:{created:1},error:null,errors:[],result:{created:1},cancelRequested:false,createdAt:'2026-11-17T10:00:00Z',updatedAt:'2026-11-17T10:00:01Z',finishedAt:'2026-11-17T10:00:01Z'}});
   await user.click(screen.getByRole('button',{name:'Create reviews for Ready companies'}));await screen.findByText('1 of 1 companies processed · Completed');
+  expect(screen.queryByText('Review creation is running in the background. You can keep working.')).toBeNull();
+  view.rerender(await element(projection({rows:[{...ready,status:'reviews-created',reviewUnitId:id(60)},beta],coverage:{...projection().coverage,reviewsCreated:1,unreviewed:1}})));
+  expect(screen.getByText('Reviews created')).toBeTruthy();expect(screen.getByRole('link',{name:'Open review'})).toHaveAttribute('href','/rewards/'+id(60));
   expect(ports.create).toHaveBeenCalledExactlyOnceWith(2026,undefined);expect(ports.progress).toHaveBeenCalledExactlyOnceWith(id(50));
   await capture(view,'rewards-review-plans-job-completed');
  },120_000);
