@@ -2,7 +2,7 @@ name: contract-walkthrough
 run-name: Contract production renderer · ${{ inputs.candidate_ref || github.ref_name }}
 on:
   # Temporary, development-only bootstrap. Exact compared file paths are verified through the read-only API.
-  # This renderer shares the exact approved 8192 MB hosted build admission roster.
+  # This renderer keeps the canonical 6144 MB next-build heap on a standard hosted runner.
   # Exact disposable role prerequisites are admitted before migration; production guards stay unchanged.
   # It has no release or installation credentials.
   push:
@@ -83,19 +83,8 @@ jobs:
         with:
           node: '20'
       - run: pnpm exec playwright install --with-deps chromium
-      # Same bounded next build heap profile as the canonical build: exactly 8192 MB for the contract renderer's
-      # `next build` child only (migrations, server and Chromium keep their normal heap), only on a GitHub-hosted
-      # 16 GB Linux runner; build-heap.mjs refuses anything else and any value above 8192. Raising the ceiling
-      # needs owner review (docs/reviews/build-capacity-8192-proposal.md). Rollback: revert restores 6144.
-      - name: Admit bounded next build heap
-        id: build-heap
-        run: node ../automation/.github/ci/build-heap.mjs admit
-        env: {AIHR_CI_BUILD_HEAP_MB: '8192'}
       - name: Build and walk through the actual production renderer on fresh fictional data
         run: node ../automation/.github/ci/contract-browser.mjs "$RUNNER_TEMP/contract-production-renderer"
-        env:
-          AIHR_CI_BUILD_HEAP_PROFILE: ${{ steps.build-heap.outputs.heap_profile }}
-          AIHR_CI_BUILD_HEAP_MEMTOTAL_KIB: ${{ steps.build-heap.outputs.memtotal_kib }}
       - name: Ensure owned database cleanup after interrupted walkthrough
         if: always()
         run: bash ../automation/.github/ci/postgres.sh stop
