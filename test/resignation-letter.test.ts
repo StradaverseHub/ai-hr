@@ -459,6 +459,36 @@ describe('Offboarding signing-value reconciliation', () => {
   });
 });
 
+describe('Offboarding-only frozen team letter steps',()=>{
+  const personIds=Object.fromEntries(Object.keys(people).map(key=>[people[key as keyof typeof people],`${key}-person`]));
+  function teamLetter(){const t=template();t.versions[0].routing![0].pick='roundRobin';return generate({template:t,personIds,context:{...context(),groupMembers:id=>id==='operations'?[people.owner,people.bp]:id==='ceos'?[people.ceo,people.stranger]:null,choose:(members,rule)=>rule==='roundRobin'?members[members.length-1]??null:members[0]??null}}).letter;}
+  it('keeps round-robin evidence pinned while another team member reviews and signs with their actual identity',()=>{
+    let letter=teamLetter();const pinned=structuredClone(letter.document.route);
+    expect(letter.document.route.steps[0].holderId).toBe(people.bp);
+    expect(letter.teamSteps?.['owner-review']).toMatchObject({memberIds:[people.owner,people.bp],team:true,personIds:{[people.owner]:'owner-person',[people.bp]:'bp-person'}});
+    expect(resignationLetterCapabilities(letter,people.stranger).contentVisible).toBe(false);
+    expect(()=>act(letter,'stranger',{type:'complete',stepId:'ceo-sign',signature:'stranger',consent:true})).toThrow();
+    letter=act(letter,'owner',{type:'complete',stepId:'owner-review'}).letter;
+    expect(letter.document.route).toEqual(pinned);expect(letter.history.at(-1)?.actorId).toBe(people.owner);
+    expect(resignationLetterCapabilities(letter,people.stranger).canSign).toBe(true);
+    letter=act(letter,'stranger',{type:'complete',stepId:'ceo-sign',signature:'Actual second CEO',consent:true}).letter;
+    expect(letter.document.route).toEqual(pinned);expect(letter.history.at(-1)).toMatchObject({actorId:people.stranger,actorPersonId:'stranger-person',action:'signed'});
+    expect(resignationLetterCapabilities(letter,people.ceo).canSign).toBe(false);
+    expect(resignationLetterPreview(letter,people.employee).document?.stepSignatures?.['ceo-sign']?.by.id).toBe(people.stranger);
+  });
+  it('rejects a relinked alternate member and excludes ineligible members without changing the generic single-holder engine',()=>{
+    let letter=teamLetter();letter=act(letter,'owner',{type:'complete',stepId:'owner-review'}).letter;
+    expect(()=>actResignationLetter(letter,{id:'relinked',documentRevision:letter.revision,actor:{...actor('stranger'),personId:'another-person'},action:{type:'complete',stepId:'ceo-sign',signature:'Wrong link',consent:true}},deps)).toThrow('Person identity');
+    const eligible=generate({personIds,context:{...context(),groupMembers:id=>id==='operations'?[people.owner,people.bp]:[people.ceo,people.stranger]},eligibleMembers:members=>members.filter(id=>id!==people.stranger)}).letter;
+    expect(eligible.teamSteps?.['ceo-sign'].memberIds).toEqual([people.ceo]);
+    expect(resignationLetterCapabilities(eligible,people.stranger).canOpen).toBe(false);
+  });
+  it('treats a singleton assignment group as a team without granting access to nonmembers',()=>{
+    const letter=generate({personIds}).letter;expect(letter.teamSteps?.['owner-review'].team).toBe(true);
+    expect(resignationLetterCapabilities(letter,people.stranger).canReview).toBe(false);
+  });
+});
+
 describe('existing signing subjects retain their behavior', () => {
   it('a non-routed legacy subject can still record its existing owner return action', () => {
     const doc: SigningDocument = {tenantId: 't', companyId: 'c', subjectId: 's', subjectType: 'probation', contentRevision: 1,

@@ -13,7 +13,7 @@ import {
   type SigningAction, type SigningDocument, type SigningStep,
 } from './document-signing-model';
 import {
-  documentRoutingProblems, documentRoutingSignatureProblems, resolveDocumentRouting,
+  documentRoutingProblems, documentRoutingSignatureProblems, resolveDocumentRouting, sortedDocumentRouting,
   type DocumentRouting, type DocumentRoutingResolveContext,
 } from './document-signing-routing';
 import {isCalendarDate} from './calendar-date';
@@ -32,6 +32,7 @@ export type ResignationLetter = {
   frozenValues?: Record<string, string>; edited: boolean;
   /** Shared signing document at this revision. Historical receipts retain their original signed fingerprints below. */
   document: SigningDocument;
+  teamSteps?: Record<string,{memberIds:string[];personIds:Record<string,string>;groupId:string|null;team:boolean}>;
   history: SigningAction[];
   signedValues: Record<string, Record<string, string>>;
   openedBy: Record<string, number>;
@@ -66,6 +67,7 @@ export type GenerateResignationLetterInput = {
   fieldLabels?: Record<string, string>;
   /** Authoritative Personnel display facts keyed by resolved user ID; omitted facts fall back to the routing label. */
   personIds?: Record<string, string>;
+  eligibleMembers?: (members:readonly string[],groupId:string|null)=>readonly string[];
   signers?: Record<string, {name: string | null; title?: string | null}>;
   /** Regeneration preserves the generated letter date, but resets signatures and pins the new template version. */
   previous?: ResignationLetter;
@@ -151,10 +153,14 @@ function result(before: ResignationLetter | null, letter: ResignationLetter, eve
     replyClock: was === now ? 'unchanged' : now ? 'start' : 'stop', released: letter.state === 'released',
     accepted: letter.kind === 'retention' && letter.state === 'released', warnings: resignationLetterMergeWarnings(letter)};
 }
+/** Frozen team membership belongs only to this Offboarding subject; generic routes remain single-holder. */
+export function resignationLetterStepMembers(letter:ResignationLetter,step:SigningStep):string[]{return letter.teamSteps?.[step.id]?.memberIds??(step.holderId?[step.holderId]:[]);}
+export function resignationLetterOwnerMembers(letter:ResignationLetter):string[]{const owner=signingDocumentOwner(letter.document),step=letter.document.route.steps.find(step=>step.id===owner.stepId);return step?resignationLetterStepMembers(letter,step):owner.userId?[owner.userId]:[];}
+function actingDocument(letter:ResignationLetter,userId:string|null):SigningDocument{if(!userId)return letter.document;return {...letter.document,route:{...letter.document.route,steps:letter.document.route.steps.map(step=>resignationLetterStepMembers(letter,step).includes(userId)?{...step,holderId:userId,...(letter.teamSteps?.[step.id]?.personIds[userId]?{holderPersonId:letter.teamSteps[step.id].personIds[userId]}:{})}:step)}};}
 function pendingEvents(before: ResignationLetter | null, letter: ResignationLetter): ResignationLetterEvent[] {
   const previous = new Set(before ? resignationLetterPendingSteps(before).map(step => step.id) : []);
   const added = resignationLetterPendingSteps(letter).filter(step => !previous.has(step.id));
-  return added.length ? [{type: 'pending', recipientIds: unique(added.flatMap(step => step.holderId ? [step.holderId] : [])), stepIds: added.map(step => step.id)}] : [];
+  return added.length ? [{type: 'pending', recipientIds: unique(added.flatMap(step => resignationLetterStepMembers(letter,step))), stepIds: added.map(step => step.id)}] : [];
 }
 
 /** Resolve through the shared route model, with no implicit fallback. The service supplies explicit HR fallback routing. */
@@ -193,7 +199,20 @@ export function generateResignationLetter(input: GenerateResignationLetterInput,
   }
   problems.push(...documentRoutingSignatureProblems(routing, blocks));
   if (problems.length) invalid(problems.join(' '));
-  const resolved = resolveDocumentRouting(routing, {...input.context, fallback: null});
+  const teamSteps:NonNullable<ResignationLetter['teamSteps']>={};
+  const fragments=sortedDocumentRouting(routing).map(definition=>{
+    let selected:{memberIds:string[];groupId:string|null}|null=null;
+    const fragment=resolveDocumentRouting([definition],{...input.context,fallback:null,choose:(members,rule,groupId)=>{
+      const eligible=unique([...(input.eligibleMembers?.(members,groupId)??members)]);
+      selected={memberIds:eligible,groupId};return input.context.choose(eligible,rule,groupId);
+    }});
+    const step=fragment.route.steps[0];
+    const choice=selected as {memberIds:string[];groupId:string|null}|null;
+    const memberIds=choice?.memberIds??(step.holderId?[step.holderId]:[]),groupId=choice?.groupId??null;
+    teamSteps[step.id]={memberIds,groupId,team:groupId!==null||memberIds.length>1,personIds:Object.fromEntries(memberIds.flatMap(id=>input.personIds?.[id]?[[id,input.personIds[id]]]:[]))};
+    return fragment;
+  });
+  const resolved={route:{version:1 as const,steps:fragments.flatMap(fragment=>fragment.route.steps)},unresolved:fragments.flatMap(fragment=>fragment.unresolved)};
   if (resolved.unresolved.length || resolved.route.steps.some(step => !step.holderId)) invalid(resolved.unresolved.map(step => `${step.meantFor}: ${step.reason}`).join(' ') || 'Nobody is assigned to a letter step.');
   for (const step of resolved.route.steps) if (step.holderId && input.personIds?.[step.holderId]) step.holderPersonId = input.personIds[step.holderId];
   validateSigningRoute(resolved.route, RULES);
@@ -212,7 +231,7 @@ export function generateResignationLetter(input: GenerateResignationLetterInput,
     id: input.id, kind: input.kind, name: template.name, templateId: template.id, templateVersion: version.version,
     revision, generatedOn, generatedAt: input.previous?.generatedAt ?? input.generatedAt, employeeUserId: input.employeeUserId,
     state: 'review', blocks, fields: structuredClone(version.fields), mergeValues: values,
-    edited: false, document: {tenantId: input.tenantId, companyId: input.companyId, subjectId: input.subjectId,
+    teamSteps, edited: false, document: {tenantId: input.tenantId, companyId: input.companyId, subjectId: input.subjectId,
       subjectType: 'resignation', contentRevision: revision, contentHash: '', route: resolved.route, actions: [],
       routing: {templateId: template.id, templateVersion: version.version, caseOwnerId: input.caseOwnerId}},
     history: input.previous ? structuredClone(input.previous.history) : [], signedValues: {}, openedBy: {},
@@ -249,12 +268,13 @@ export type ResignationLetterCapabilities = {
   canWithdrawOffer: boolean; canDecline: boolean; canRegenerate: boolean; requiresOpen: boolean;
 };
 export function resignationLetterCapabilities(letter: ResignationLetter, userId: string | null): ResignationLetterCapabilities {
-  const pending = resignationLetterPendingSteps(letter), mine = pending.filter(step => step.holderId === userId);
-  const owner = signingDocumentOwner(letter.document).userId, isOwner = Boolean(userId && owner === userId);
+  const pending = resignationLetterPendingSteps(letter), mine = pending.filter(step => !!userId&&resignationLetterStepMembers(letter,step).includes(userId));
+  const document=actingDocument(letter,userId);
+  const owner = signingDocumentOwner(document).userId, isOwner = Boolean(userId && owner === userId);
   const holding = isOwner && (letter.state === 'owner' || mine.length > 0);
   const employee = userId === letter.employeeUserId;
   const opened = Boolean(userId && letter.openedBy[userId] === letter.revision);
-  const contentVisible = signingContentVisible(letter.document, userId, {released: letter.state === 'released'})
+  const contentVisible = signingContentVisible(document, userId, {released: letter.state === 'released'})
     && (active(letter) || letter.state === 'released');
   const needsOpen = employee && mine.length > 0 && !opened;
   return {contentVisible, ownerUserId: owner, pendingSteps: pending, canOpen: contentVisible,
@@ -333,8 +353,8 @@ export function reconcileResignationLetter(letter: ResignationLetter, values: Re
       .map(field => ({field, label: next.fieldLabels[field] ?? field, before: snapshot[field] ?? '—', after: current[field] ?? '—'}));
     if (!diffs.length) continue;
     invalidated.add(stepId); next.changes[stepId] = diffs; delete next.signedValues[stepId];
-    const holder = next.document.route.steps.find(step => step.id === stepId)?.holderId;
-    events.push({type: 'signAgain', recipientIds: holder ? [holder] : [], stepIds: [stepId], changes: diffs});
+    const step = next.document.route.steps.find(step => step.id === stepId);
+    events.push({type: 'signAgain', recipientIds: step?resignationLetterStepMembers(next,step):[], stepIds: [stepId], changes: diffs});
   }
   const hash = contentFingerprint(next, deps);
   if (invalidated.size) {next.revision++; next.openedBy = {};}
@@ -377,7 +397,12 @@ export function actResignationLetter(letter: ResignationLetter, input: ActResign
   }
   if (input.documentRevision !== letter.revision) conflict('This letter changed. Open its current version before continuing.');
   const {actor, action} = input, caps = resignationLetterCapabilities(letter, actor.userId), events: ResignationLetterEvent[] = [];
-  let next = structuredClone(letter);
+  for(const step of letter.document.route.steps)if(resignationLetterStepMembers(letter,step).includes(actor.userId)){
+    const person=letter.teamSteps?.[step.id]?.personIds[actor.userId];
+    if(person&&person!==actor.personId||!person&&step.holderId!==actor.userId)forbidden('This letter assignment no longer matches your Person identity.');
+  }
+  const pinnedRoute=structuredClone(letter.document.route);
+  let next = structuredClone(letter);next.document=structuredClone(actingDocument(letter,actor.userId));
   if (action.type === 'open') {
     if (!caps.canOpen) forbidden('The letter is private until it reaches you.');
     next.openedBy[actor.userId] = next.revision; events.push({type: 'opened', recipientIds: [], by: actor.userId});
@@ -395,7 +420,7 @@ export function actResignationLetter(letter: ResignationLetter, input: ActResign
         hash: next.document.contentHash, action: 'returned', comment: action.reason, at: actor.at});
       next.history.push(next.document.actions[next.document.actions.length - 1]);
       next = returnToOwner(next, actor, action.reason.trim(), false, input.id);
-      events.push({type: 'sentBack', recipientIds: caps.ownerUserId ? [caps.ownerUserId] : [], by: actor.userId, reason: action.reason.trim()});
+      events.push({type: 'sentBack', recipientIds: resignationLetterOwnerMembers(letter), by: actor.userId, reason: action.reason.trim()});
     } else if (action.type === 'edit') {
       if (!caps.canEditContent) forbidden('Only a pending reviewer or the returned letter’s owner can edit before signing.');
       next = applyEdit(next, action.blocks, deps); events.push({type: 'edited', recipientIds: [], by: actor.userId});
@@ -441,6 +466,7 @@ export function actResignationLetter(letter: ResignationLetter, input: ActResign
       }
     }
   }
+  next.document.route=pinnedRoute;
   next.receipts.push({id: input.id, fingerprint: receipt});
   events.push(...pendingEvents(letter, next));
   return result(letter, next, events);
@@ -504,7 +530,7 @@ export function resignationLetterPreview(letter: ResignationLetter, userId: stri
     editableBlocks: capabilities.canEditContent ? structuredClone(letter.blocks) : null,
     routing: letter.document.route.steps.map(step => ({id: step.id, action: step.kind, order: step.stage, holderId: step.holderId,
       owner: Boolean(step.owner), status: letter.state !== 'owner' && done.has(step.id) ? 'done' : pending.has(step.id) ? 'pending' : 'waiting', queue: signingStepQueue(step)})),
-    changes: capabilities.contentVisible ? letter.document.route.steps.filter(step => step.holderId === userId).flatMap(step => letter.changes[step.id] ?? []) : [],
+    changes: capabilities.contentVisible ? letter.document.route.steps.filter(step => !!userId&&resignationLetterStepMembers(letter,step).includes(userId)).flatMap(step => letter.changes[step.id] ?? []) : [],
     warnings: capabilities.contentVisible ? resignationLetterMergeWarnings(letter) : [],
     sentBack: capabilities.contentVisible ? letter.sentBack : undefined};
 }
