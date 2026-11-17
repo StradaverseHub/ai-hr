@@ -2,7 +2,7 @@
 import {currentVersion,type Config,type Template} from './lifecycle-v9-model';
 import {sortedDocumentRouting,type DocumentRouting} from './document-signing-routing';
 import type {AutomationWorkflow} from './automation/workflow';
-export type TemplateListChoices={routings:{id:string;name:string;retired?:boolean}[];groups:{id:string;name:string}[];people:{id:string;name:string}[]};
+export type TemplateListChoices={routings:readonly {id:string;name:string;retired?:boolean}[];groups:readonly {id:string;name:string}[];people:readonly {id:string;name:string}[]};
 export type LifecycleTemplateListMetadata={documents:Record<string,{signing:string;uses:string[]}>;emails:Record<string,{uses:string[]}>};
 type Label=(key:string,values?:Record<string,string|number>)=>string;
 /** IDs and module ownership, never names, determine use. Step numbers retain the saved workflow's actual order. */

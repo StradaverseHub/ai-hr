@@ -9,7 +9,7 @@ import {ResignationJourneyError} from '../lib/resignation-journey';
 import {pgSqlState} from '../lib/db-error';
 import type {ResignationCommunicationSource,ResignationCommunications,ResignationMessageTestInput,ResignationMessageTestResult} from '../lib/resignation-communications';
 const uuid=(value:string)=>typeof value==='string'&&/^[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}$/i.test(value);
-const denied=()=>{throw new ResignationJourneyError('forbidden','This message is unavailable.');};
+function denied():never{throw new ResignationJourneyError('forbidden','This message is unavailable.');}
 async function mapped<T>(work:()=>Promise<T>):Promise<T>{try{return await work();}catch(error){const state=pgSqlState(error);if(state==='42501')denied();if(state==='40001'||state==='23505')throw new ResignationJourneyError('conflict','This case or message changed. Reload before acting.');if(state==='22023')throw new ResignationJourneyError('invalid','Resolve the message holds before sending a test.');throw error;}}
 function validate(input:{caseId:string;offboardingCaseId?:string}){if(!uuid(input.caseId)||input.offboardingCaseId&&!uuid(input.offboardingCaseId))denied();}
 export async function resignationCaseCommunications(ctx:SessionContext,input:{caseId:string;offboardingCaseId?:string}):Promise<ResignationCommunications>{validate(input);return mapped(()=>withScopedLifecycleTenant(ctx,async tx=>{
