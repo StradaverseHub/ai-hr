@@ -157,11 +157,18 @@ it('uses exact content identity and the latest matching re-send when deciding na
  route[0]!.who={kind:'people',userIds:[manager.userId!]};route.push({id:'parallel-review',order:2,action:'review',who:{kind:'people',userIds:[fyi.userId!]},owner:false});
  let signed=generateResignationLetter(input).letter;signed=act(signed,manager,{type:'complete',stepId:'owner-review'});signed=act(signed,fyi,{type:'complete',stepId:'team-sign',signature:'Verified CEO',consent:true});
  const recalled=act(signed,manager,{type:'recall'}),returned=structuredClone(recalled.document.actions.at(-1)!);
- const allowed=async(letter:ResignationLetter,ctx=fyi)=>{data={...data,decision:null,letters:[letter]};await seedJourney('retention');const [row]=await withTenant(ctx,tx=>tx.execute<{ok:boolean}>(sql`select app.resignation_command_allowed(${id}::uuid,${JSON.stringify({type:'updateLetter',documentId:letter.id,documentRevision:letter.revision,blocks:letter.blocks})}::jsonb) as ok`));return row.ok;};
- expect(await allowed({...signed,document:{...signed.document,actions:[...signed.document.actions,{...returned,contentHash:'different-content'}]}})).toBe(false);
- expect(await allowed({...signed,document:{...signed.document,actions:[...signed.document.actions,{...returned,contentRevision:signed.document.contentRevision+1}]}})).toBe(false);
+ const assertAdmission=async(letter:ResignationLetter,expected:boolean,ctx=fyi)=>{
+  data={...data,decision:null,letters:[letter]};await seedJourney('retention');const before=await persisted();
+  expect(resignationLetterCapabilities(letter,ctx.userId!,ctx.personId).canEditContent).toBe(expected);
+  const admission=withTenant(ctx,tx=>begin(tx,ctx,{type:'updateLetter',documentId:letter.id,documentRevision:letter.revision,blocks:letter.blocks}));
+  // Denials leave the failed app transaction before checking aggregate immutability.
+  if(expected)await admission;else await nativeRefusal(admission,'42501');
+  expect(await persisted()).toEqual(before);
+ };
+ await assertAdmission({...signed,document:{...signed.document,actions:[...signed.document.actions,{...returned,contentHash:'different-content'}]}},false);
+ await assertAdmission({...signed,document:{...signed.document,actions:[...signed.document.actions,{...returned,contentRevision:signed.document.contentRevision+1}]}},false);
  // An actual matching re-send excludes the old signed/returned round even without a content revision bump.
- const resent=act(recalled,manager,{type:'resend'});expect(resent.revision).toBe(signed.revision);expect(await allowed(resent,manager)).toBe(true);
- let fresh=act(resent,manager,{type:'complete',stepId:'owner-review'});fresh=act(fresh,fyi,{type:'complete',stepId:'team-sign',signature:'Fresh CEO signature',consent:true});expect(await allowed(fresh)).toBe(false);
+ const resent=act(recalled,manager,{type:'resend'});expect(resent.revision).toBe(signed.revision);await assertAdmission(resent,true,manager);
+ let fresh=act(resent,manager,{type:'complete',stepId:'owner-review'});fresh=act(fresh,fyi,{type:'complete',stepId:'team-sign',signature:'Fresh CEO signature',consent:true});await assertAdmission(fresh,false);
  expect(fresh.document.actions).toContainEqual(returned);expect(currentRoundActions(fresh.document).some(receipt=>receipt.action==='returned')).toBe(false);
 });

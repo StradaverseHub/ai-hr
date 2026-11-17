@@ -1,5 +1,6 @@
 /** Actual rendered journeys. Receipts describe this exact candidate and never imply staging acceptance. */
 import assert from 'node:assert/strict';
+import {expect} from 'playwright/test';
 import {createHash} from 'node:crypto';
 import {readFileSync,writeFileSync} from 'node:fs';
 import {join} from 'node:path';
@@ -67,7 +68,7 @@ export async function exerciseResignationBrowser({base,browser,fixture,observe,c
  async function waitConfigurationSaved(page){await page.locator('[role=status]:visible').filter({hasText:/^Changes save automatically$/}).waitFor();assert.equal(await page.locator('[role=alert]').filter({hasText:/Changes not saved|could not be saved/}).count(),0);}
  async function openTask(actorKey,employeeKey,kind,{dismiss=false,captureId}={}){
   const page=await login(actorKey);await visit(page,'/tasks');const employee=fixture.actors.find(a=>a.key===employeeKey),row=page.locator('[data-resignation-task]:visible').filter({hasText:employee.name}).filter({has:page.getByRole('button',{name:kind==='sign'?t.taskSign:kind==='upload'?t.taskUpload:t.taskUpdate,exact:true})});
-  await row.waitFor();assert.equal(await row.count(),1,'One actual '+kind+' task for '+employeeKey);
+  await expect(row,'One actual visible '+kind+' task for '+employeeKey).toHaveCount(1,{timeout:30000});
   const filters=page.getByRole('navigation',{name:'Task filters',exact:true});assert.equal(await filters.getByRole('button').count(),5);for(const label of ['All','Assigned to me','Tagged','Team items','Overdue'])await filters.getByRole('button',{name:new RegExp('^'+label+' \\d+$')}).waitFor();
   const status=row.getByRole('combobox');assert.deepEqual(await status.locator('option').evaluateAll(options=>options.map(o=>o.value)),['todo','progress']);
   if(captureId==='my-tasks-sign-panel'){await status.selectOption('progress');await row.getByText(t.onIt.replace('{name}',fixture.actors.find(a=>a.key===actorKey).name),{exact:false}).filter({visible:true}).waitFor();for(const [label,count]of [['All',1],['Assigned to me',1],['Tagged',0],['Team items',1],['Overdue',0]])await filters.getByRole('button',{name:label+' '+count,exact:true}).waitFor();report.inboxChecks??=[];report.inboxChecks.push({actor:actorKey,path:'/tasks',counts:{all:1,assigned:1,tagged:0,team:1,overdue:0}});await sectionCapture(page,'my-tasks-list',row);}
