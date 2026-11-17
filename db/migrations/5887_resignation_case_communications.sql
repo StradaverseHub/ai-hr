@@ -25,7 +25,12 @@ BEGIN
   letter_visible:=u.person_id IS NOT NULL AND l->>'state' IN('review','owner','released') AND (owner_mine OR mine OR l->>'state'='released' AND (seen OR l->>'employeeUserId'=u.id::text AND j.person_id=u.person_id) OR EXISTS(SELECT 1 FROM jsonb_array_elements(coalesce(l->'history','[]')) a WHERE a->>'actorId'=u.id::text AND a->>'actorPersonId'=u.person_id::text));
   IF p_offboarding IS NOT NULL AND l->>'kind'='acceptance' AND l->>'state'='released' THEN letter_visible:=true;END IF;
   IF l->>'kind'='acceptance' THEN acceptance_n:=acceptance_n+1;acceptance:=acceptance AND coalesce(letter_visible,false);ELSIF l->>'kind'='retention' THEN retention_n:=retention_n+1;retention:=retention AND coalesce(letter_visible,false);END IF;
-  editable:=editable OR (u.person_id IS NOT NULL AND owner_mine AND l->>'state' IN('review','owner') AND (l->>'state'='owner' OR mine) AND NOT EXISTS(SELECT 1 FROM jsonb_array_elements(coalesce(l->'document'->'actions','[]')) a WHERE a->>'action'='signed' AND a->>'contentRevision'=l->>'revision'));
+  editable:=editable OR (u.person_id IS NOT NULL AND owner_mine AND l->>'state' IN('review','owner') AND (l->>'state'='owner' OR mine) AND NOT (WITH content_actions AS (
+   SELECT receipt,n FROM jsonb_array_elements(coalesce(l->'document'->'actions','[]'::jsonb)) WITH ORDINALITY receipt_row(receipt,n)
+   WHERE receipt->>'contentRevision'=l->'document'->>'contentRevision' AND receipt->>'contentHash'=l->'document'->>'contentHash'
+  ), round_start AS (SELECT coalesce(max(n) FILTER(WHERE receipt->>'action'='resent'),0) AS n FROM content_actions), round_actions AS (
+   SELECT receipt FROM content_actions a,round_start r WHERE a.n>r.n
+  ) SELECT EXISTS(SELECT 1 FROM round_actions WHERE receipt->>'action'='signed') AND NOT EXISTS(SELECT 1 FROM round_actions WHERE receipt->>'action'='returned')));
  END LOOP;
  RETURN jsonb_build_object('admitted',true,'acceptanceCount',acceptance_n,'acceptance',acceptance_n>0 AND acceptance,'retention',p_offboarding IS NULL AND retention_n>0 AND retention,'submitted',p_offboarding IS NULL AND j.stage='decision' AND j.data->'decision'->'to' ? u.id::text,'editable',coalesce(editable,false),'offboarding',p_offboarding IS NOT NULL);
 END $$;

@@ -22,8 +22,14 @@ BEGIN
    IF layer->>'id'=p_command->>'taskId' AND layer->'to' ? u.id::text AND (layer->>'action'=p_command->>'action' OR p_command->>'action'='reject' AND length(btrim(coalesce(p_command->>'comment',''))) BETWEEN 1 AND 4000) THEN RETURN true;END IF;
   END LOOP;RETURN false;
  END IF;
+ -- Match the shared signing owner: only current content after its latest re-send can lock edits.
  IF k='updateEmail' THEN
-  RETURN EXISTS(SELECT 1 FROM jsonb_array_elements(coalesce(j.data->'letters','[]')) letter_email WHERE app.resignation_letter_owner_mine(letter_email) AND letter_email->>'state' IN('review','owner') AND (letter_email->>'state'='owner' OR EXISTS(SELECT 1 FROM app.resignation_pending_steps(letter_email) pending_email WHERE app.resignation_letter_step_mine(letter_email,pending_email))) AND NOT EXISTS(SELECT 1 FROM jsonb_array_elements(letter_email->'document'->'actions') email_receipt WHERE email_receipt->>'action'='signed' AND email_receipt->>'contentRevision'=letter_email->>'revision'));
+  RETURN EXISTS(SELECT 1 FROM jsonb_array_elements(coalesce(j.data->'letters','[]')) letter_email WHERE app.resignation_letter_owner_mine(letter_email) AND letter_email->>'state' IN('review','owner') AND (letter_email->>'state'='owner' OR EXISTS(SELECT 1 FROM app.resignation_pending_steps(letter_email) pending_email WHERE app.resignation_letter_step_mine(letter_email,pending_email))) AND NOT (WITH content_actions AS (
+   SELECT receipt,n FROM jsonb_array_elements(coalesce(letter_email->'document'->'actions','[]'::jsonb)) WITH ORDINALITY receipt_row(receipt,n)
+   WHERE receipt->>'contentRevision'=letter_email->'document'->>'contentRevision' AND receipt->>'contentHash'=letter_email->'document'->>'contentHash'
+  ), round_start AS (SELECT coalesce(max(n) FILTER(WHERE receipt->>'action'='resent'),0) AS n FROM content_actions), round_actions AS (
+   SELECT receipt FROM content_actions a,round_start r WHERE a.n>r.n
+  ) SELECT EXISTS(SELECT 1 FROM round_actions WHERE receipt->>'action'='signed') AND NOT EXISTS(SELECT 1 FROM round_actions WHERE receipt->>'action'='returned')));
  END IF;
  SELECT x INTO l FROM jsonb_array_elements(coalesce(j.data->'letters','[]')) x WHERE x->>'id'=p_command->>'documentId';
  IF l IS NULL OR l->>'revision' IS DISTINCT FROM p_command->>'documentRevision' THEN RETURN false;END IF;
@@ -35,7 +41,12 @@ BEGIN
  ELSIF k='letterAction' THEN RETURN mine AND l->>'state'='review' AND s->>'kind'=p_command->>'action' AND (l->>'employeeUserId'<>u.id::text OR opened) AND (p_command->>'action'<>'sign' OR p_command->>'consent'='true' AND length(coalesce(p_command->>'signature','')) BETWEEN 1 AND 100000);
  ELSIF k='sendBack' THEN RETURN mine AND NOT is_owner AND (l->>'employeeUserId'<>u.id::text OR opened) AND length(btrim(coalesce(p_command->>'reason',''))) BETWEEN 1 AND 4000;
  ELSIF k='recall' THEN RETURN is_owner AND NOT holding AND EXISTS(SELECT 1 FROM app.resignation_pending_steps(l));
- ELSIF k='updateLetter' THEN RETURN (holding OR mine AND s->>'kind'='review') AND (NOT(p_command ?| ARRAY['lastWorkingDay','reason']) OR holding) AND (NOT(p_command ? 'blocks') OR (l->>'state'='owner' AND is_owner OR mine AND s->>'kind'='review') AND NOT EXISTS(SELECT 1 FROM jsonb_array_elements(l->'document'->'actions') a WHERE a->>'action'='signed' AND a->>'contentRevision'=l->>'revision'));
+ ELSIF k='updateLetter' THEN RETURN (holding OR mine AND s->>'kind'='review') AND (NOT(p_command ?| ARRAY['lastWorkingDay','reason']) OR holding) AND (NOT(p_command ? 'blocks') OR (l->>'state'='owner' AND is_owner OR mine AND s->>'kind'='review') AND NOT (WITH content_actions AS (
+   SELECT receipt,n FROM jsonb_array_elements(coalesce(l->'document'->'actions','[]'::jsonb)) WITH ORDINALITY receipt_row(receipt,n)
+   WHERE receipt->>'contentRevision'=l->'document'->>'contentRevision' AND receipt->>'contentHash'=l->'document'->>'contentHash'
+  ), round_start AS (SELECT coalesce(max(n) FILTER(WHERE receipt->>'action'='resent'),0) AS n FROM content_actions), round_actions AS (
+   SELECT receipt FROM content_actions a,round_start r WHERE a.n>r.n
+  ) SELECT EXISTS(SELECT 1 FROM round_actions WHERE receipt->>'action'='signed') AND NOT EXISTS(SELECT 1 FROM round_actions WHERE receipt->>'action'='returned')));
  ELSIF k='regenerateLetter' THEN RETURN is_owner AND (l->>'state'='owner' OR NOT EXISTS(SELECT 1 FROM jsonb_array_elements(coalesce(l->'document'->'actions','[]')) WITH ORDINALITY a(receipt,n) WHERE receipt->>'action'='signed' AND receipt->>'contentRevision'=l->'document'->>'contentRevision' AND receipt->>'contentHash'=l->'document'->>'contentHash' AND n>coalesce((SELECT max(rn) FROM jsonb_array_elements(coalesce(l->'document'->'actions','[]')) WITH ORDINALITY r(ra,rn) WHERE ra->>'action'='resent' AND ra->>'contentRevision'=l->'document'->>'contentRevision' AND ra->>'contentHash'=l->'document'->>'contentHash'),0))) AND EXISTS(SELECT 1 FROM jsonb_array_elements(coalesce(j.data->'waits','[]')) regenerate_wait JOIN automation_run generating_run ON generating_run.tenant_id=j.tenant_id AND generating_run.id::text=regenerate_wait->>'runId' AND generating_run.module='off' AND generating_run.subject_id=j.id AND generating_run.status='waiting' AND generating_run.waiting_for::text=l->>'id' WHERE regenerate_wait->>'kind'='letter' AND regenerate_wait->>'documentId'=l->>'id');
  ELSIF k='resendLetter' THEN RETURN l->>'state'='owner' AND is_owner;
  ELSIF k='withdrawOffer' THEN RETURN l->>'state'='owner' AND l->>'kind'='retention' AND is_owner AND length(btrim(coalesce(p_command->>'reason',''))) BETWEEN 1 AND 4000;

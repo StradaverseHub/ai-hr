@@ -16,7 +16,7 @@ The reported original-version exceptions remain part of canonical applied identi
 Signed-in Recruitment screens were not independently verified in that handback; no such claim is made here.
 Recheck the actual ordered native prefix and fresh foreign claims at admission.
 
-Dependency order and current source-byte truth at Resignation `9d8a9a760a9e460f79295571836ca4d875bf7e9b`:
+Dependency order and current unapplied SQL byte identities (the initial reservation used source `9d8a9a760`):
 
 | Unapplied old tag | Reserved final tag | idx | when | Byte status | Current SQL SHA-256 |
 | --- | --- | --- | --- | --- | --- |
@@ -25,8 +25,15 @@ Dependency order and current source-byte truth at Resignation `9d8a9a760a9e460f7
 | `5785_resignation_postings` | `5883_resignation_postings` | 5283 | 1793330005583 | preserve original bytes | `5d26a0f446c3e72ed01861544af395690b08cdce47b9fc739f0b0d7d1b22a4f5` |
 | `5786_resignation_email_delivery` | `5884_resignation_email_delivery` | 5284 | 1793330005584 | preserve original bytes | `52bf3fa8f4430d37fd4dabd2164f00764e73245b38ee6520d2816dca7e03459b` |
 | `5788_resignation_letter_teams` | `5885_resignation_letter_teams` | 5285 | 1793330005585 | reviewed draft; final freeze pending | `b7769b4044d013cfb630d532d8cc5b7fd2c8635662cf05663a4dcf6746eae4f3` |
-| `5789_resignation_letter_fields` | `5886_resignation_letter_fields` | 5286 | 1793330005586 | reviewed draft; final freeze pending | `8fa27dfb8f35f526771c2823da8c2d8b2533ec539cf299ffb7856184e54fec49` |
-| `5790_resignation_case_communications` | `5887_resignation_case_communications` | 5287 | 1793330005587 | reviewed draft; final freeze pending | `ad6e4adf6ab022a548d1ff4f6bf9ca41f42554aa8e522058ccea495884e92df3` |
+| `5789_resignation_letter_fields` | `5886_resignation_letter_fields` | 5286 | 1793330005586 | reviewed draft; final freeze pending | `4bc7b4108976fe43d7909b6c4f7b8fa20076ff9aef6e3b4be34d24c0110e6025` |
+| `5790_resignation_case_communications` | `5887_resignation_case_communications` | 5287 | 1793330005587 | reviewed draft; final freeze pending | `3ddeecf73214d333678979e29d63a445b3841377e4e1f06d4f0a8d51aa001f65` |
+
+The still-unapplied 5886/5887 drafts were corrected after the f766 actual browser run
+found a native returned-owner admission mismatch. Their current hashes above include
+the reviewed exact content-round locking rule for recalled owner blocks and held-email drafts.
+No new slot, function identity or ACL is added; the accepted prefix and first four original
+Resignation SQL byte identities remain unchanged. Hosted verification of these corrections
+is required before final admission. Earlier draft hashes remain in Git history.
 
 The first four SQL files retain their original bytes, including historical header comments.
 The last three remain reviewed drafts until their final freeze; this record is not a claim that

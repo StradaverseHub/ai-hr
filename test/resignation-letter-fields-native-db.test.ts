@@ -123,3 +123,45 @@ it.each([{}, {exitReason:''}])('defaults an absent or empty pinned exit reason t
  await owner.db.execute(sql`insert into automation_run(tenant_id,id,module,workflow_id,workflow_revision,subject_id,event_key,trigger_event,status) values(${b.tenantId}::uuid,${runId}::uuid,'off',${workflowId}::uuid,1,${id}::uuid,'default-reason-fixture','accepted','running')`);
  await withTenant(manager,async tx=>{await begin(tx,manager,{type:'accept',lastWorkingDay:day,replacementNeeded:false});await save(tx,manager,{...data,decision:null,replacementNeeded:false,offboardingStart:{runId,stepId:'default-exit',exitReason:'Resignation'}},'accepted');const[row]=await tx.execute<{intent:{type:string}}>(sql`select app.resignation_offboarding_intent(${id}::uuid) intent`);expect(row.intent.type).toBe('Resignation');});
 });
+
+it('admits a recalled owner block edit and re-send without discarding an earlier signature or unlocking pending reviewers',async()=>{
+ const input=letterInput(),route=input.template.versions[0]!.routing!;
+ route[0]!.who={kind:'people',userIds:[manager.userId!]};
+ route.push({id:'parallel-review',order:2,action:'review',who:{kind:'people',userIds:[fyi.userId!]},owner:false});
+ let letter=generateResignationLetter(input).letter,revision=1;
+ data={...data,decision:null,letters:[letter]};await seedJourney('retention');
+ const commit=async(ctx:SessionContext,command:Record<string,unknown>,action:ResignationLetterAction)=>{
+  await withTenant(ctx,async tx=>{await begin(tx,ctx,{...command,documentId:letter.id,documentRevision:letter.revision},revision);const next=act(letter,ctx,action);const nextData={...data,letters:[next]};const nextRevision=await save(tx,ctx,nextData,'retention',revision);letter=next;data=nextData;revision=nextRevision;});
+ };
+ await commit(manager,{type:'letterAction',action:'review'},{type:'complete',stepId:'owner-review'});
+ await commit(fyi,{type:'letterAction',action:'sign',signature:'Verified CEO',consent:true},{type:'complete',stepId:'team-sign',signature:'Verified CEO',consent:true});
+ const signed=structuredClone(currentRoundActions(letter.document).find(receipt=>receipt.action==='signed')!);
+ expect(signed).toMatchObject({actorId:fyi.userId,actorPersonId:fyi.personId,stepId:'team-sign'});
+ const blocks=letter.blocks.map(block=>block.type==='text'?{...block,text:block.text+' Owner correction.'}:block),locked=await persisted();
+ // A still-pending Review holder cannot edit after a current-round signature lands.
+ await nativeRefusal(withTenant(fyi,tx=>begin(tx,fyi,{type:'updateLetter',documentId:letter.id,documentRevision:letter.revision,blocks},revision)),'42501');expect(await persisted()).toEqual(locked);
+ await commit(manager,{type:'recall'},{type:'recall'});
+ expect(letter.state).toBe('owner');expect(letter.document.actions).toContainEqual(signed);
+ const returned=await persisted();
+ await nativeRefusal(withTenant(fyi,tx=>begin(tx,fyi,{type:'updateLetter',documentId:letter.id,documentRevision:letter.revision,blocks},revision)),'42501');expect(await persisted()).toEqual(returned);
+ await nativeRefusal(withTenant(manager,tx=>tx.execute(sql`select app.resignation_journey_save(${id}::uuid,${revision},'runner','retention',${JSON.stringify({...data,letters:[act(letter,manager,{type:'edit',blocks})]})}::jsonb,${'{'+participants.join(',')+'}'}::uuid[],null)`)),'42501');expect(await persisted()).toEqual(returned);
+ await commit(manager,{type:'updateLetter',blocks},{type:'edit',blocks});
+ expect(letter.revision).toBe(2);expect(letter.state).toBe('owner');expect(letter.document.actions).toContainEqual(signed);expect(letter.history).toContainEqual(signed);
+ await commit(manager,{type:'resendLetter'},{type:'resend'});
+ expect(letter.state).toBe('review');expect(resignationLetterPendingSteps(letter).map(step=>step.id)).toEqual(['owner-review']);expect(currentRoundActions(letter.document)).toEqual([]);
+ expect(letter.document.actions).toContainEqual(signed);expect(letter.history).toContainEqual(signed);expect(await persisted()).toMatchObject({revision,data:{letters:[{state:'review',revision:2,blocks}]}});
+});
+
+it('uses exact content identity and the latest matching re-send when deciding native block edit locks',async()=>{
+ const input=letterInput(),route=input.template.versions[0]!.routing!;
+ route[0]!.who={kind:'people',userIds:[manager.userId!]};route.push({id:'parallel-review',order:2,action:'review',who:{kind:'people',userIds:[fyi.userId!]},owner:false});
+ let signed=generateResignationLetter(input).letter;signed=act(signed,manager,{type:'complete',stepId:'owner-review'});signed=act(signed,fyi,{type:'complete',stepId:'team-sign',signature:'Verified CEO',consent:true});
+ const recalled=act(signed,manager,{type:'recall'}),returned=structuredClone(recalled.document.actions.at(-1)!);
+ const allowed=async(letter:ResignationLetter,ctx=fyi)=>{data={...data,decision:null,letters:[letter]};await seedJourney('retention');const [row]=await withTenant(ctx,tx=>tx.execute<{ok:boolean}>(sql`select app.resignation_command_allowed(${id}::uuid,${JSON.stringify({type:'updateLetter',documentId:letter.id,documentRevision:letter.revision,blocks:letter.blocks})}::jsonb) as ok`));return row.ok;};
+ expect(await allowed({...signed,document:{...signed.document,actions:[...signed.document.actions,{...returned,contentHash:'different-content'}]}})).toBe(false);
+ expect(await allowed({...signed,document:{...signed.document,actions:[...signed.document.actions,{...returned,contentRevision:signed.document.contentRevision+1}]}})).toBe(false);
+ // An actual matching re-send excludes the old signed/returned round even without a content revision bump.
+ const resent=act(recalled,manager,{type:'resend'});expect(resent.revision).toBe(signed.revision);expect(await allowed(resent,manager)).toBe(true);
+ let fresh=act(resent,manager,{type:'complete',stepId:'owner-review'});fresh=act(fresh,fyi,{type:'complete',stepId:'team-sign',signature:'Fresh CEO signature',consent:true});expect(await allowed(fresh)).toBe(false);
+ expect(fresh.document.actions).toContainEqual(returned);expect(currentRoundActions(fresh.document).some(receipt=>receipt.action==='returned')).toBe(false);
+});
