@@ -521,6 +521,8 @@ async function table(db:Database,name:string):Promise<Row[]>{return (await db.cl
  * may hold a value there. migrateApprovedUpgrade proves each column present and null on every row once its
  * migration is applied; a retained row is then compared without it (withoutCombinedReleaseNulls). */
 export const COMBINED_RELEASE_NULL_COLUMNS:readonly {tag:string;table:string;columns:readonly string[]}[]=Object.freeze([
+ {tag:'5925_contract_template_lifecycle',table:'automation_document_template',columns:['deleted_at']},
+ {tag:'5925_contract_template_lifecycle',table:'automation_document_template_version',columns:['deleted_at']},
  {tag:'5808_contract_shared_signing',table:'contract_shared_letter',columns:['signing_document_id','decision_revision','workflow_run_id','workflow_step_id']},
  {tag:'5809_contract_shared_decision_identity',table:'contract_shared_case_revision',columns:['actor_person_id','actor_name']},
  {tag:'5810_contract_shared_execution_adapters',table:'contract_shared_event',columns:['root_event_id']},
@@ -546,6 +548,7 @@ export const COMBINED_RELEASE_NULL_COLUMNS:readonly {tag:string;table:string;col
  ...['department','position','cost_center','business_unit','label_company_assignment','profile_option','job_grade','grade_group','grade_group_member']
   .map(table=>({tag:'5070_system_label_import_staged_job',table,columns:['import_pending_attempt_id']})),
 ]);
+export const COMBINED_RELEASE_DEFAULT_COLUMNS=Object.freeze([{tag:'5925_contract_template_lifecycle',table:'automation_document_template_version',column:'note',value:''}] as const);
 // Snapshot keys that name a widened table by another word.
 const SNAPSHOT_TABLE_ALIASES:Readonly<Record<string,string>>={audit:'domain_event',people:'person'};
 /** A retained row of a widened table, compared without the combined release's columns. Each one the row carries
@@ -553,6 +556,7 @@ const SNAPSHOT_TABLE_ALIASES:Readonly<Record<string,string>>={audit:'domain_even
 export function withoutCombinedReleaseNulls(name:string,row:Row):Row{
  const tableName=name.replace(/^public\./,''),target=SNAPSHOT_TABLE_ALIASES[tableName]??tableName;
  let normalized=row;
+ for(const entry of COMBINED_RELEASE_DEFAULT_COLUMNS)if(entry.table===target&&Object.hasOwn(normalized,entry.column)){expect(normalized[entry.column],tableName+'.'+entry.column+' ('+entry.tag+') on a retained row').toBe(entry.value);const {[entry.column]:_added,...original}=normalized;normalized=original;}
  for(const entry of COMBINED_RELEASE_NULL_COLUMNS)if(entry.table===target)for(const column of entry.columns){
   if(!Object.hasOwn(normalized,column))continue;
   expect(normalized[column],tableName+'.'+column+' ('+entry.tag+') on a retained row').toBeNull();
@@ -563,6 +567,11 @@ export function withoutCombinedReleaseNulls(name:string,row:Row):Row{
 /** After the complete migrate: each column whose migration the applied journal holds exists, and no row holds a value. */
 async function assertCombinedReleaseNulls(db:Database,migrationsFolder:string){
  const applied=new Set((JSON.parse(readFileSync(join(migrationsFolder,'meta/_journal.json'),'utf8')).entries as {tag:string}[]).map(entry=>entry.tag));
+ for(const entry of COMBINED_RELEASE_DEFAULT_COLUMNS){
+  if(!applied.has(entry.tag))continue;
+  expect(await db.client`select 1 as present from information_schema.columns where table_schema='public' and table_name=${entry.table} and column_name=${entry.column}`,entry.table+'.'+entry.column+' added by '+entry.tag).toEqual([{present:1}]);
+  expect(await db.client.unsafe('select count(*)::int as held from public."'+entry.table+'" where "'+entry.column+'" is distinct from $1',[entry.value]),entry.table+'.'+entry.column+' has its default on every upgraded row').toEqual([{held:0}]);
+ }
  for(const entry of COMBINED_RELEASE_NULL_COLUMNS){
   if(!applied.has(entry.tag))continue;
   for(const column of entry.columns){
