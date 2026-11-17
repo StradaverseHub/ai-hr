@@ -50,14 +50,20 @@ function act(letter:ResignationLetter,ctx:SessionContext,action:ResignationLette
 
 function formLetter():ResignationLetter{
  const input=letterInput(),version=input.template.versions[0]!;
- version.fields=[{id:'hr-note',label:'HR note',type:'text',owner:'hr',pmKey:null,required:true,sensitive:false,options:[],section:'local',when:null},{id:'hr-detail',label:'HR detail',type:'text',owner:'hr',pmKey:null,required:false,sensitive:false,options:[],section:'local',when:{field:'hr-note',value:'Show'}},{id:'employee-note',label:'Employee note',type:'text',owner:'employee',pmKey:null,required:false,sensitive:false,options:[],section:'local',when:null},{id:'salary',label:'Salary',type:'number',owner:'pmLocked',pmKey:'employee.salary',required:false,sensitive:true,options:[],section:'local',when:null}];
+ input.values['employee.salary']='6400';version.fields=[{id:'hr-note',label:'HR note',type:'text',owner:'hr',pmKey:null,required:true,sensitive:false,options:[],section:'local',when:null},{id:'hr-detail',label:'HR detail',type:'text',owner:'hr',pmKey:null,required:false,sensitive:false,options:[],section:'local',when:{field:'hr-note',value:'Show'}},{id:'employee-note',label:'Employee note',type:'text',owner:'employee',pmKey:null,required:false,sensitive:false,options:[],section:'local',when:null},{id:'hr-source-check',label:'Check sourced salary',type:'text',owner:'hr',pmKey:null,required:false,sensitive:false,options:[],section:'local',when:{field:'salary',value:'6400'}},{id:'salary',label:'Salary',type:'number',owner:'pmLocked',pmKey:'employee.salary',required:false,sensitive:true,options:[],section:'local',when:null}];
  version.blocks.push({id:'local-fields',type:'fields',section:'local',text:''});return generateResignationLetter(input).letter;
 }
 it('admits assigned HR local fields and atomically enabled conditional values, preserving Personnel sources',async()=>{
  const letter=formLetter();data={...data,decision:null,letters:[letter]};await seedJourney('offer');
- const values={'hr-note':'Show','hr-detail':'A verified local detail'};
+ const values={'hr-note':'Show','hr-detail':'A verified local detail','hr-source-check':'Checked mapped source'};
  await withTenant(fyi,async tx=>{await begin(tx,fyi,{type:'saveLetterFields',documentId:letter.id,documentRevision:letter.revision,values});const changed=act(letter,fyi,{type:'fields',values});await save(tx,fyi,{...data,letters:[changed]},'offer');});
  expect(await persisted()).toMatchObject({revision:2,data:{letters:[{fieldValues:values,mergeValues:values}]}});
+});
+it('preserves earlier local edits and evaluates a later conditional edit against the old parent value',async()=>{
+ let letter=formLetter();data={...data,decision:null,letters:[letter]};await seedJourney('offer');
+ await withTenant(fyi,async tx=>{const values={'hr-note':'Show'};await begin(tx,fyi,{type:'saveLetterFields',documentId:letter.id,documentRevision:letter.revision,values});letter=act(letter,fyi,{type:'fields',values});data={...data,letters:[letter]};await save(tx,fyi,data,'offer');});
+ await withTenant(fyi,async tx=>{const values={'hr-detail':'Second edit retains the first'};await begin(tx,fyi,{type:'saveLetterFields',documentId:letter.id,documentRevision:letter.revision,values},2);letter=act(letter,fyi,{type:'fields',values});data={...data,letters:[letter]};await save(tx,fyi,data,'offer',2);});
+ expect(await persisted()).toMatchObject({revision:3,data:{letters:[{fieldValues:{'hr-note':'Show','hr-detail':'Second edit retains the first'}}]}});
 });
 it('denies unknown, mapped, wrong-owner, hidden and future-recipient form writes',async()=>{
  const letter=formLetter();data={...data,decision:null,letters:[letter]};await seedJourney('offer');const original=await persisted();
@@ -70,6 +76,10 @@ it('refuses field-definition, wrong-value and Personnel-source rewrites under a 
  const mutations=[(l:ResignationLetter)=>{l.fields[0]!.owner='employee';},(l:ResignationLetter)=>{l.fieldValues!['hr-note']='different';},(l:ResignationLetter)=>{l.mergeValues['employee.salary']='999999';}];
  for(const mutate of mutations){const changed=structuredClone(valid);mutate(changed);await nativeRefusal(withTenant(fyi,async tx=>{await begin(tx,fyi,{type:'saveLetterFields',documentId:letter.id,documentRevision:letter.revision,values});await save(tx,fyi,{...data,letters:[changed]},'offer');}),'42501');expect(await persisted()).toEqual(original);}
 });
+it('cannot turn a local field edit into a case decision or completed signature',async()=>{
+ const letter=formLetter();data={...data,decision:null,letters:[letter]};await seedJourney('offer');const original=await persisted(),values={'hr-note':'Show'},changed=act(letter,fyi,{type:'fields',values});
+ for(const stage of['retained','leaving','accepted','decision','retention']){await nativeRefusal(withTenant(fyi,async tx=>{await begin(tx,fyi,{type:'saveLetterFields',documentId:letter.id,documentRevision:letter.revision,values});await save(tx,fyi,{...data,letters:[changed]},stage);}),'42501',/cannot complete/);expect(await persisted()).toEqual(original);}
+});
 it('uses the pinned Start Offboarding reason and denies arbitrary reason, step or run overrides',async()=>{
  const workflowId=randomUUID(),runId=randomUUID(),definition={trigger:{event:'accepted'},steps:[{id:'start-exit',type:'startOffboarding',params:{exitReason:'Contract end'}}]};
  await owner.db.execute(sql`insert into automation_workflow_version(tenant_id,workflow_id,revision,module,status,required,definition,reason,saved_by) values(${b.tenantId}::uuid,${workflowId}::uuid,1,'off','live',true,${JSON.stringify(definition)}::jsonb,'Pinned exit reason',${b.adminUserId}::uuid),(${b.tenantId}::uuid,${workflowId}::uuid,2,'off','live',true,${JSON.stringify({trigger:definition.trigger,steps:[{id:'start-exit',type:'startOffboarding',params:{exitReason:'Termination'}}]})}::jsonb,'Later draft must not replace pinned reason',${b.adminUserId}::uuid)`);
@@ -77,4 +87,11 @@ it('uses the pinned Start Offboarding reason and denies arbitrary reason, step o
  const admitted={type:'accept',lastWorkingDay:day,replacementNeeded:false},baseNext={...data,decision:null,replacementNeeded:false},start={runId,stepId:'start-exit',exitReason:'Contract end'},original=await persisted();
  for(const invalid of[{...start,exitReason:'Termination'},{...start,stepId:'another-step'},{...start,runId:randomUUID()}]){await nativeRefusal(withTenant(manager,async tx=>{await begin(tx,manager,admitted);await save(tx,manager,{...baseNext,offboardingStart:invalid},'accepted');}),'42501',/pinned workflow step/);expect(await persisted()).toEqual(original);}
  await withTenant(manager,async tx=>{await begin(tx,manager,admitted);await save(tx,manager,{...baseNext,offboardingStart:start},'accepted');const[projection]=await tx.execute<{intent:{type:string;employmentId:string}}>(sql`select app.resignation_offboarding_intent(${id}::uuid) intent`);expect(projection.intent).toMatchObject({type:'Contract end',employmentId});});
+});
+it('allows offer to return to retention when employee local edits invalidate a prior signature',async()=>{
+ let letter=formLetter();letter=act(letter,fyi,{type:'fields',values:{'hr-note':'Show'}});letter=act(letter,manager,{type:'complete',stepId:'owner-review'});letter=act(letter,fyi,{type:'complete',stepId:'team-sign',signature:'Prior verified signature',consent:true});letter=act(letter,employee,{type:'open'});
+ data={...data,decision:null,letters:[letter]};await seedJourney('offer');const values={'employee-note':'New employee detail'},changed=act(letter,employee,{type:'fields',values});
+ expect(changed.revision).toBeGreaterThan(letter.revision);expect(changed.document.actions.some(a=>a.action==='signed')).toBe(false);
+ await withTenant(employee,async tx=>{await begin(tx,employee,{type:'saveLetterFields',documentId:letter.id,documentRevision:letter.revision,values});await save(tx,employee,{...data,letters:[changed]},'retention');});
+ expect(await persisted()).toMatchObject({revision:2,stage:'retention'});
 });
