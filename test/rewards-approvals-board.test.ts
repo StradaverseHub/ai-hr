@@ -207,10 +207,10 @@ describe('Rewards approvals board, posting authority and reward calendar', () =>
       const batch = await createBatch(admin, { companyId: b.companyId, payPeriod: today.slice(0, 7) });
       expect(await postRewardUnit(admin, id, v.unit.revision, batch.batchId)).toEqual({ alreadyPosted: false });
       expect((await getRewardUnit(admin, id)).unit.status).toBe('posted');
-      const stored=await owner.db.execute<{entry_id:string;talent:string;performance:string;increment_cents:string;total_increase_bp:number;bonus_cents:string}>(sql`
+      const stored=await owner.db.execute<{entry_id:string;talent:string;performance:string;increment_cents:string;total_increase_bp:string;bonus_cents:string}>(sql`
         select entry_id,talent,performance,increment_cents,total_increase_bp,bonus_cents from reward_person_history where unit_id=${id}::uuid order by entry_id`);
       expect(stored).toHaveLength(v.rows.length);
-      for(const row of v.rows){const history=stored.find(item=>item.entry_id===row.id)!;expect(history).toMatchObject({talent:'SCORE',performance:'ME',increment_cents:'22500',total_increase_bp:450,bonus_cents:String(row.bonusCents)});}
+      for(const row of v.rows){const history=stored.find(item=>item.entry_id===row.id)!;expect(history).toMatchObject({talent:'SCORE',performance:'ME',increment_cents:'22500',total_increase_bp:'450',bonus_cents:String(row.bonusCents)});}
       expect(await postRewardUnit(admin,id,v.unit.revision,batch.batchId)).toEqual({alreadyPosted:true});
       expect(await owner.db.execute(sql`select entry_id,talent,performance,increment_cents,total_increase_bp,bonus_cents from reward_person_history where unit_id=${id}::uuid order by entry_id`)).toEqual(stored);
     });

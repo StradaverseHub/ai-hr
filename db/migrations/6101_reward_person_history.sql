@@ -14,13 +14,27 @@ CREATE TABLE public.reward_person_history(
  created_at timestamptz NOT NULL DEFAULT now(),superseded_at timestamptz,
  CHECK((source='review' AND unit_id IS NOT NULL AND entry_id IS NOT NULL AND upload_batch_id IS NULL)
   OR(source='upload' AND unit_id IS NULL AND entry_id IS NULL AND upload_batch_id IS NOT NULL)),
- CHECK(source='upload' OR superseded_at IS NULL)
+ CHECK(source='upload' OR superseded_at IS NULL),
+ CONSTRAINT reward_person_history_company_tenant_fk FOREIGN KEY(company_id,tenant_id) REFERENCES public.company(id,tenant_id) ON DELETE NO ACTION
 );
+CREATE INDEX reward_person_history_company ON public.reward_person_history(tenant_id,company_id);
 CREATE UNIQUE INDEX reward_person_history_review ON public.reward_person_history(entry_id) WHERE source='review';
 CREATE UNIQUE INDEX reward_person_history_upload_current ON public.reward_person_history(tenant_id,company_id,employment_id,year,kind) WHERE source='upload' AND superseded_at IS NULL;
 CREATE INDEX reward_person_history_person_year ON public.reward_person_history(tenant_id,employment_id,year DESC,kind,created_at,id) WHERE superseded_at IS NULL;
 ALTER TABLE public.reward_person_history ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.reward_person_history FORCE ROW LEVEL SECURITY;
+--> statement-breakpoint
+-- Company deletion sees retained usage without granting the deleting administrator private award rows.
+CREATE FUNCTION app.reward_history_company_in_use(wanted_company uuid) RETURNS boolean
+ LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT CASE WHEN app.principal_snapshot_current() AND app.is_admin() AND EXISTS(
+  SELECT 1 FROM public.company c WHERE c.id=wanted_company AND c.tenant_id=app.current_tenant_id()
+   AND app.is_admin_for(coalesce(app.company_org_current_parent(c.id),c.id))
+ ) THEN EXISTS(SELECT 1 FROM public.reward_person_history h WHERE h.tenant_id=app.current_tenant_id() AND h.company_id=wanted_company)
+ ELSE false END
+$$;
+REVOKE ALL ON FUNCTION app.reward_history_company_in_use(uuid) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.reward_history_company_in_use(uuid) TO ai_hr_app;
 --> statement-breakpoint
 CREATE FUNCTION app.reward_history_upload_authorized(wanted_company uuid) RETURNS boolean
  LANGUAGE sql STABLE SET search_path=pg_catalog,public,app AS $$
