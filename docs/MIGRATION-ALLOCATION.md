@@ -1,3 +1,44 @@
+# Resignation forward reservation — 17 November 2026 (unapplied)
+
+The coordinator confirmed **5881–5887**, idx **5281–5287**, `when`
+**1793330005581–1793330005587**, for the seven unapplied Resignation migrations.
+This supersedes only Resignation's old 5783–5786 and 5788–5790 positions.
+The latest human queue direction puts Resignation next when verified and Audit last;
+Audit's still-unapplied 5880 timestamp must be reconciled before its later installation.
+This reservation does not claim a lease, install SQL, advance main/alpha or grant production authority.
+
+Freshly fetched main and alpha both resolve to Recruitment source
+`fc092e1adbe5f8f1cbfe730a17d1317f08625a7c`. The coordinator's read-only ordered-ledger
+receipt checked at `2026-11-17T08:26:24.159Z` records 919 rows and maximum
+`1793330005577`; receipt SHA-256
+`f97f7433ef332be9e6d0d453f7aa94ef94c40d2d0f2f41c881791a5b0f5ca557`.
+The reported original-version exceptions remain part of canonical applied identity.
+Signed-in Recruitment screens were not independently verified in that handback; no such claim is made here.
+Recheck the actual ordered native prefix and fresh foreign claims at admission.
+
+Dependency order and current source-byte truth at Resignation `9d8a9a760a9e460f79295571836ca4d875bf7e9b`:
+
+| Unapplied old tag | Reserved final tag | idx | when | Byte status | Current SQL SHA-256 |
+| --- | --- | --- | --- | --- | --- |
+| `5783_resignation_journey` | `5881_resignation_journey` | 5281 | 1793330005581 | preserve original bytes | `130c0b99586bc316ac5203d27a65bfc0a565c4f608b8ab1ac336a8e8d41d1216` |
+| `5784_resignation_configuration` | `5882_resignation_configuration` | 5282 | 1793330005582 | preserve original bytes | `6e064c336c441fbbf01017debe9e1a748957976d3d6b2b96470747d07d7dacb5` |
+| `5785_resignation_postings` | `5883_resignation_postings` | 5283 | 1793330005583 | preserve original bytes | `5d26a0f446c3e72ed01861544af395690b08cdce47b9fc739f0b0d7d1b22a4f5` |
+| `5786_resignation_email_delivery` | `5884_resignation_email_delivery` | 5284 | 1793330005584 | preserve original bytes | `52bf3fa8f4430d37fd4dabd2164f00764e73245b38ee6520d2816dca7e03459b` |
+| `5788_resignation_letter_teams` | `5885_resignation_letter_teams` | 5285 | 1793330005585 | reviewed draft; final freeze pending | `b7769b4044d013cfb630d532d8cc5b7fd2c8635662cf05663a4dcf6746eae4f3` |
+| `5789_resignation_letter_fields` | `5886_resignation_letter_fields` | 5286 | 1793330005586 | reviewed draft; final freeze pending | `8fa27dfb8f35f526771c2823da8c2d8b2533ec539cf299ffb7856184e54fec49` |
+| `5790_resignation_case_communications` | `5887_resignation_case_communications` | 5287 | 1793330005587 | reviewed draft; final freeze pending | `ad6e4adf6ab022a548d1ff4f6bf9ca41f42554aa8e522058ccea495884e92df3` |
+
+The first four SQL files retain their original bytes, including historical header comments.
+The last three remain reviewed drafts until their final freeze; this record is not a claim that
+their pending source has been installed. Preserve every applied SQL byte and the accepted prefix.
+Journal entries, filenames and upgrade pins will be updated together after the current frozen
+verification runs finish, then checked on the final integrated candidate. This documentation-only
+reservation is recorded separately so the active test candidate remains immutable.
+
+Preserve foreign Contract reservations, including 5990–5991 and 6000–6029
+(idx 5400–5429 / when 1794841006000–1794841006029 for the latter). Contract remains held.
+No peer range is taken here, and fresh claim verification remains mandatory.
+
 ## Movement staging handback and unused slots — 17 November 2026 MYT
 
 Movement completed its three-stage candidate at source `65ab4e868d43efe08e046c666051c13ccb61c76d`,
