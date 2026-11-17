@@ -44070,6 +44070,11 @@
       "structure": "Business Unit not confirmed"
     },
     "rebindNotificationTitle": "Rewards review updated",
-    "rebindNotificationBody": "The company salary structure or bonus matrix changed. As the current approver, review the recalculated recommendations before approving."
+    "rebindNotificationBody": "The company salary structure or bonus matrix changed. As the current approver, review the recalculated recommendations before approving.",
+    "viewOnlyHelp": "View only. You can inspect these plans, but your current access does not allow changes.",
+    "mixedViewOnly": "Some companies are view only. Their names are marked in the grid.",
+    "exclusionTooShort": "Enter at least 10 characters to explain why this company has no awards.",
+    "refreshComparison": "Refresh comparison",
+    "comparisonRefreshed": "Comparison refreshed from the current records. Your staged choices and reason are kept; check the new comparison before saving."
   }
 }

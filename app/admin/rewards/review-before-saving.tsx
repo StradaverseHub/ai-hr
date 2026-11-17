@@ -50,9 +50,9 @@ export function ReviewBeforeSaving({summary,digest,action,children,triggerLabel,
 }
 
 /** The same dialog driven by the caller (client pages that fetch the summary first, such as the PAT grid). */
-export function ReviewBeforeSavingDialog({open,summary,digest,onClose,onConfirm,submitLabel,pending,error,defaultReason,intro}:{
+export function ReviewBeforeSavingDialog({open,summary,digest,onClose,onConfirm,submitLabel,pending,error,defaultReason,intro,recoveryAction}:{
  open:boolean;summary:RewardConfigSummary|null;digest:string|null;onClose:()=>void;onConfirm:(reason:string,digest:string)=>void;submitLabel:string;pending?:boolean;error?:string;
- /** Prefills the reason (a page that already asked for it, such as the Role permissions save bar). */defaultReason?:string;/** One line above the summary. */intro?:string;
+ /** Prefills the reason (a page that already asked for it, such as the Role permissions save bar). */defaultReason?:string;/** One line above the summary. */intro?:string;recoveryAction?:ReactNode;
 }){
  const t=useTranslations('rewardConfig'),dialog=useRef<HTMLDialogElement>(null),reason=useRef<HTMLTextAreaElement>(null);
  useEffect(()=>{const d=dialog.current;if(!d)return;if(open&&!d.open){if(typeof d.showModal==='function')d.showModal();else d.setAttribute('open','');}if(!open&&d.open){if(typeof d.close==='function')d.close();else d.removeAttribute('open');}},[open]);
@@ -62,7 +62,7 @@ export function ReviewBeforeSavingDialog({open,summary,digest,onClose,onConfirm,
    <RewardChangeSummary summary={summary}/>
    <Field label={t('reason')}><textarea ref={reason} name="reason" required minLength={10} maxLength={2000} defaultValue={defaultReason} className={inputCls+' min-h-20'}/></Field>
    {error&&<p role="alert" className="text-sm text-destructive">{error}</p>}
-   <div className="flex flex-wrap justify-end gap-2"><Button type="button" variant="outline" onClick={onClose}>{t('cancel')}</Button><Button type="submit" disabled={pending} aria-busy={pending}>{pending?t('saving'):submitLabel}</Button></div>
+   <div className="flex flex-wrap justify-end gap-2">{recoveryAction}<Button type="button" variant="outline" onClick={onClose}>{t('cancel')}</Button><Button type="submit" disabled={pending} aria-busy={pending}>{pending?t('saving'):submitLabel}</Button></div>
   </form>}
  </dialog>;
 }

@@ -10,13 +10,13 @@ import en from '../messages/en.json';
 import type {RewardReviewPlans,RewardReviewPlanRow,RewardYearSettings} from '../packs/rewards/review-plans-model';
 import type {RewardConfigSummary} from '../packs/rewards/config-change-model';
 import {aiReviewDomHtml,captureAiReviewScreenshots} from './helpers/ai-review-screenshots';
-const ports=vi.hoisted(()=>{const refresh=vi.fn(),push=vi.fn();return{router:{refresh,push},read:vi.fn(),preview:vi.fn(),save:vi.fn(),copy:vi.fn(),accept:vi.fn(),create:vi.fn(),progress:vi.fn(),previewYear:vi.fn(),createYear:vi.fn(),classify:vi.fn(),refresh,push};});
+const ports=vi.hoisted(()=>{const refresh=vi.fn(),push=vi.fn();return{router:{refresh,push},read:vi.fn(),preview:vi.fn(),save:vi.fn(),copy:vi.fn(),accept:vi.fn(),create:vi.fn(),progress:vi.fn(),previewYear:vi.fn(),createYear:vi.fn(),classify:vi.fn(),refreshGrid:vi.fn(),refresh,push};});
 vi.mock('next/navigation',()=>({useRouter:()=>ports.router,notFound:()=>{throw new Error('not found');}}));
 vi.mock('next/link',()=>({default:({children,...props}:any)=><a {...props}>{children}</a>}));
 vi.mock('next-intl/server',()=>({getTranslations:async(namespace:any)=>createTranslator({locale:'en',messages:en,namespace})}));
 vi.mock('../lib/authz',()=>({requireModule:async()=>({tenantId:'11111111-1111-4111-8111-111111111111',userId:'11111111-1111-4111-8111-111111111112'})}));
 vi.mock('../packs/rewards/review-plans',()=>({rewardReviewPlans:ports.read}));
-vi.mock('../app/admin/rewards/review-plans/actions',()=>({previewGridAction:ports.preview,saveGridAction:ports.save,previousChoicesAction:ports.copy,acceptSuggestionsAction:ports.accept,createReviewsAction:ports.create,reviewJobAction:ports.progress,previewYearAction:ports.previewYear,createYearAction:ports.createYear,classifyCompanyAction:ports.classify}));
+vi.mock('../app/admin/rewards/review-plans/actions',()=>({previewGridAction:ports.preview,saveGridAction:ports.save,previousChoicesAction:ports.copy,acceptSuggestionsAction:ports.accept,createReviewsAction:ports.create,reviewJobAction:ports.progress,previewYearAction:ports.previewYear,createYearAction:ports.createYear,classifyCompanyAction:ports.classify,refreshGridAction:ports.refreshGrid}));
 import ReviewPlansPage from '../app/admin/rewards/review-plans/page';
 
 const id=(value:number)=>`10000000-0000-4000-8000-${String(value).padStart(12,'0')}`;
@@ -51,7 +51,7 @@ describe('Review Plans source-rendered journeys',()=>{
   await user.tab();const planType=screen.getByRole('combobox',{name:'Alpha Fictional Sdn Bhd: Plan type'});expect(planType).toHaveFocus();
   await user.selectOptions(planType,'no_awards');const reason=screen.getByRole('textbox',{name:'Alpha Fictional Sdn Bhd: Reason for no awards (at least 10 characters)'});await user.type(reason,'Short');
   const review=screen.getByRole('button',{name:'Review changes'});review.focus();await user.keyboard('[Enter]');
-  expect(screen.getByRole('alert')).toHaveTextContent('Give every excluded company a reason');expect(reason).toHaveValue('Short');expect(ports.preview).not.toHaveBeenCalled();
+  expect(screen.getByRole('alert')).toHaveTextContent('Give every excluded company a reason');expect(reason).toHaveValue('Short');expect(reason).toHaveAttribute('aria-invalid','true');expect(reason).toHaveAccessibleDescription('Enter at least 10 characters to explain why this company has no awards.');expect(ports.preview).not.toHaveBeenCalled();
   await capture(view,'rewards-review-plans-invalid-exclusion');
   await user.selectOptions(planType,'uploaded');review.focus();await user.keyboard('[Enter]');
   const dialog=await screen.findByRole('dialog',{name:'Review before saving'});expect(within(dialog).getByText('Uploaded awards')).toBeTruthy();
@@ -59,9 +59,11 @@ describe('Review Plans source-rendered journeys',()=>{
   ports.save.mockResolvedValueOnce({ok:false,error:'Fictional source revision changed. Reload before saving.'});await user.click(within(dialog).getByRole('button',{name:'Save changes'}));
   await waitFor(()=>expect(within(dialog).getByRole('alert')).toHaveTextContent('Fictional source revision changed'));
   expect(reviewReason).toHaveValue('Approved annual company plan choice.');await capture(view,'rewards-review-plans-save-error');
+  ports.refreshGrid.mockImplementation(async(input:any)=>({ok:true,review:{input:{...input,edits:input.edits.map((edit:any)=>({...edit,expectedRevision:5}))},summary:reviewSummary,digest:'c'.repeat(64)}}));
+  await user.click(within(dialog).getByRole('button',{name:'Refresh comparison'}));await waitFor(()=>expect(ports.refreshGrid).toHaveBeenCalledTimes(1));expect(reviewReason).toHaveValue('Approved annual company plan choice.');
   await user.click(within(dialog).getByRole('button',{name:'Save changes'}));await screen.findByText('Review Plans saved.');expect(screen.queryByText('Fictional source revision changed. Reload before saving.')).toBeNull();
-  expect(ports.save).toHaveBeenLastCalledWith(expect.objectContaining({year:2026,edits:[expect.objectContaining({companyId:alpha.companyId,planType:'uploaded',expectedRevision:4})]}),'a'.repeat(64),'Approved annual company plan choice.');
-  const ready={...alpha,planType:'uploaded' as const,salarySuggestion:{...alpha.salarySuggestion,reviewed:true},bonusSuggestion:{...alpha.bonusSuggestion,reviewed:true},status:'ready' as const,revision:5};
+  expect(ports.save).toHaveBeenLastCalledWith(expect.objectContaining({year:2026,edits:[expect.objectContaining({companyId:alpha.companyId,planType:'uploaded',expectedRevision:5})]}),'c'.repeat(64),'Approved annual company plan choice.');
+  const ready={...alpha,planType:'uploaded' as const,salarySuggestion:{...alpha.salarySuggestion,reviewed:true},bonusSuggestion:{...alpha.bonusSuggestion,reviewed:true},status:'ready' as const,revision:6};
   // The router refresh is represented by a new mocked owner projection; the native grid is not replaced by a sketch.
   view.rerender(await element(projection({rows:[ready,beta],coverage:{...projection().coverage,ready:1,unreviewed:1}})));
   expect(screen.getByText('Review Plans saved.')).toBeTruthy();await capture(view,'rewards-review-plans-saved');

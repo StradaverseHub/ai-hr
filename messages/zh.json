@@ -44070,6 +44070,11 @@
       "structure": "业务单元尚未确认"
     },
     "rebindNotificationTitle": "薪酬评审已更新",
-    "rebindNotificationBody": "公司薪资结构或奖金矩阵已更改。作为当前审批人，请在批准前查看重新计算的建议。"
+    "rebindNotificationBody": "公司薪资结构或奖金矩阵已更改。作为当前审批人，请在批准前查看重新计算的建议。",
+    "viewOnlyHelp": "仅供查看。您可以查看这些计划，但当前权限不允许修改。",
+    "mixedViewOnly": "部分公司仅供查看，其名称已在表格中标注。",
+    "exclusionTooShort": "请至少输入 10 个字符，说明此公司没有奖励的原因。",
+    "refreshComparison": "刷新比较",
+    "comparisonRefreshed": "已根据当前记录刷新比较。您暂存的选择和原因已保留；保存前请检查新比较。"
   }
 }
