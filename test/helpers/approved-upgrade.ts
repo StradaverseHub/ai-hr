@@ -281,9 +281,11 @@ export const APPROVED_UPGRADE_TAIL=[
  {idx:5361,when:1794841005961,tag:'5961_contract_manual_attention_reconciliation'},
  {idx:5349,when:1794841005949,tag:'5949_contract_published_form_email_source'},
  {idx:5364,when:1794841005964,tag:'5964_shared_email_guard_preservation'},
+ {idx:5366,when:1794841005966,tag:'5966_contract_canonical_form_readiness'},
 ] as const;
 // Final pending 2109/2126 bytes reviewed from engine 128bc2539; no applied-prefix hashes change.
 const APPROVED_UPGRADE_HASHES:Record<string,string>={
+ '5966_contract_canonical_form_readiness':'199588e0599c3478027e43f59c40a7606671bb30fe8245fff60652f6551c039f',
  '5964_shared_email_guard_preservation':'3d7f565347886acfe1ebeff78f1206a1d2bc61387de4e873bf7d86d05bf0cdfa',
  '5949_contract_published_form_email_source':'d658a65e037260f1864ede14b7c048ee93f7250b888524d593e89bd9346ab0d6',
  '5948_contract_form_current_proof':'44643617420c889b1f18743b99e3432a800020e8fc70db0b414b1599464532b1',

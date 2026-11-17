@@ -6840,6 +6840,13 @@
       "when": 1794841005964,
       "tag": "5964_shared_email_guard_preservation",
       "breakpoints": true
+    },
+    {
+      "idx": 5366,
+      "version": "7",
+      "when": 1794841005966,
+      "tag": "5966_contract_canonical_form_readiness",
+      "breakpoints": true
     }
   ]
 }
