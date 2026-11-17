@@ -1659,6 +1659,24 @@
       "salaryNegativeError": "Lương cơ bản không thể là số âm. Hãy để trống hoặc nhập 0 đối với nhân viên không có lương cơ bản.",
       "salaryNotANumberError": "Lương cơ bản phải là một số. Hãy để trống hoặc nhập 0 đối với nhân viên không có lương cơ bản.",
       "paymentMethod": "Phương thức thanh toán",
+      "salaryRecording": {
+        "title": "Ghi nhận thay đổi lương",
+        "choice": "Bạn muốn ghi nhận thế nào?",
+        "newEvent": "Tạo sự kiện mới",
+        "updateLatest": "Cập nhật sự kiện có hiệu lực gần nhất",
+        "amendment": "Điều chỉnh lương không tạo sự kiện",
+        "eventType": "Loại sự kiện",
+        "target": "Sự kiện cần cập nhật",
+        "selectTarget": "Chọn sự kiện",
+        "latestHint": "Sự kiện giữ nguyên ngày hiệu lực đang hiển thị. Với ngày khác, hãy tạo sự kiện mới hoặc điều chỉnh lương.",
+        "amendmentHint": "Lương và phương thức thanh toán được lưu cùng nhau. Nhật ký kiểm tra ghi nhận điều chỉnh mà không thêm sự kiện vào lịch sử việc làm."
+      },
+      "salaryPayrollFrom": "Lương áp dụng cho kỳ chưa khóa từ ngày",
+      "paymentMethodHistoryTitle": "Lịch sử phương thức thanh toán",
+      "paymentMethodEffectiveDate": "Ngày hiệu lực",
+      "paymentMethodRecordedAt": "Thời điểm ghi nhận",
+      "paymentMethodRevision": "Bản sửa đổi",
+      "paymentMethodLegacySnapshot": "Giá trị đã biết tại ngày cài đặt",
       "paymentMethodNotSet": "Chưa xác định",
       "paymentMethod_bank_transfer": "Chuyển khoản ngân hàng",
       "paymentMethod_cheque": "Séc",
@@ -1689,6 +1707,8 @@
         },
         "detail": {
           "eventInformation": "Thông tin sự kiện",
+          "companyReviewNeeded": "Kiểm tra các thiết lập này sau khi sửa công ty ban đầu:",
+          "notRecorded": "Không được ghi lại trong lịch sử sự kiện này",
           "scheduledValues": "Giá trị đã lên lịch / đề xuất",
           "scheduledValuesNote": "Đây là các giá trị mục tiêu đã lưu cho sự kiện được lên lịch này và chưa được áp dụng. Chỉ hiển thị các trường đã được gửi rõ ràng.",
           "beforeChanges": "Trước thay đổi",
@@ -1800,7 +1820,7 @@
           "pendingTargetUnavailable": "Giá trị đích đã lưu không còn nằm trong các lựa chọn hoặc phạm vi truy cập hiện tại của bạn. Không thể lưu bản chỉnh sửa này. Hãy kiểm tra thay đổi chưa có hiệu lực trước khi tiếp tục.",
           "resignationLifecycleHint": "Thông tin nghỉ việc có hiệu lực vào Ngày hiệu lực. Ghi riêng ngày nộp đơn, ngày nghỉ việc và ngày làm việc cuối cùng.",
           "closedPayrollTitle": "Bảng lương {periods} đã được khóa sổ.",
-          "closedPayrollBody": "Việc điều chỉnh này cập nhật hồ sơ nhân viên và các lần xử lý sau. Bảng lương đã khóa, phiếu lương đã phát hành và các hồ sơ nộp theo luật định giữ nguyên số liệu cuối cùng và sẽ không được tính lại. Nếu cần điều chỉnh số tiền, hãy dùng quy trình điều chỉnh lương. Mức lương đã điều chỉnh có hiệu lực từ tháng đầu tiên sau kỳ lương đã khóa.",
+          "closedPayrollBody": "Các thay đổi này cập nhật hồ sơ nhân viên và việc xử lý trong tương lai. Bảng lương đã khóa, phiếu lương đã phát hành và hồ sơ kê khai theo luật giữ nguyên như khi hoàn tất. Hãy dùng quy trình điều chỉnh lương nếu cần điều chỉnh số tiền đã trả.",
           "closedPayrollAcknowledge": "Tôi hiểu rằng bảng lương đã khóa sẽ không thay đổi.",
           "dateClosedPayrollOptional": "Nếu ngày này vượt qua tháng lương đã chốt, hãy đánh dấu bên dưới. Bảng lương đã chốt, phiếu lương và hồ sơ nộp theo luật định giữ nguyên như khi đã trả.",
           "mustChange": "Bắt buộc thay đổi",
@@ -1920,6 +1940,9 @@
         },
         "payrollClosedBadge": "Đã khóa lương: {periods}",
         "informationCorrected": "Thông tin đã được sửa",
+        "orderConflict": "Giải quyết thứ tự sự kiện",
+        "orderConflictHint": "Các sự kiện trong ngày này thay đổi cùng thông tin. Hãy sửa ngày hiệu lực hoặc hủy sự kiện đang chờ bị xung đột trước khi áp dụng.",
+        "payrollAdjustmentReview": "Kiểm tra việc điều chỉnh lương cần thiết sau khi sửa công ty hoặc mức lương. Kỳ lương đã khóa và chứng từ đã phát hành không thay đổi.",
         "informationNeedsReview": "Cần xem xét bản sửa đổi",
         "historyBadge": "Lịch sử",
         "rehire": {
@@ -2119,7 +2142,14 @@
         "emptySource": "Chưa ghi ngày",
         "unknownSource": "Không được ghi nhận trong sự kiện này"
       },
-      "costCenterAllocationTitle": "Phân bổ trung tâm chi phí"
+      "costCenterAllocationTitle": "Phân bổ trung tâm chi phí",
+      "salaryAmendments": {
+        "title": "Các điều chỉnh lương đã ghi nhận",
+        "amount": "Lương cơ bản",
+        "recordOnly": "Chỉ ghi nhận — bảng lương đã chốt không thay đổi",
+        "previous": "Trước",
+        "next": "Tiếp"
+      }
     },
     "import": {
       "title": "Nhập nhân viên",
@@ -2329,6 +2359,8 @@
       "exclusionsField": "Trường",
       "exclusionsReason": "Lý do và nơi xử lý",
       "exclusionReasons": {
+        "hireInformation": "Sửa thông tin tuyển dụng ban đầu bằng thao tác chỉnh sửa có nhật ký kiểm toán trong Lịch sử việc làm. Nhập nhân viên không thay đổi thông tin này.",
+        "paymentMethodDate": "Đặt ngày hiệu lực bằng thao tác phương thức thanh toán theo ngày trong mục Lương để giữ lại lịch sử.",
         "bankPayeeResidency": "Chọn tình trạng cư trú của người nhận tiền ngân hàng tại Nhân sự > Ngân hàng và thông tin theo luật > Thông tin ngân hàng. Nhập nhân viên không suy ra giá trị này từ tình trạng cư trú thuế hoặc quốc tịch.",
         "datedCalendar": "Thiết lập lịch theo ngày tại Nhân sự > Chấm công > Lịch ngày nghỉ để giữ lại lịch sử phân công trước đó. Nhập dữ liệu nhân viên không thể thay đổi lịch hoặc các ngày áp dụng.",
         "testRecord": "Phân loại an toàn nội bộ này được giữ lại. Mục Nhân sự và chức năng nhập nhân viên không thể sửa phân loại này.",
@@ -2663,7 +2695,7 @@
           "guideReason": "Lý do: vì sao biến động được sửa hoặc hoàn tác. Bắt buộc với Cập nhật và Xóa và được lưu trong lịch sử kiểm tra. Nếu bảng lương của kỳ đó đã đóng, bạn xác nhận điều đó trên màn hình trước khi lưu.",
           "closedPayrollRow": "Bảng lương kỳ {periods} đã đóng.",
           "closedPayrollTitle": "Một số chỉnh sửa thay đổi biến động thuộc kỳ lương đã đóng ({periods}).",
-          "closedPayrollBody": "Các chỉnh sửa này cập nhật hồ sơ nhân viên và việc xử lý về sau. Bảng lương đã đóng, phiếu lương đã phát hành và các tờ khai theo luật định giữ nguyên số liệu đã chốt và sẽ không được tính lại. Nếu không xác nhận, các nhân viên liên quan sẽ không được lưu.",
+          "closedPayrollBody": "Các thay đổi này cập nhật hồ sơ nhân viên và việc xử lý trong tương lai. Bảng lương đã khóa, phiếu lương đã phát hành và hồ sơ kê khai theo luật giữ nguyên như khi hoàn tất.",
           "closedPayrollAcknowledge": "Tôi hiểu rằng bảng lương đã đóng sẽ không thay đổi."
         },
         "historyRow": "Ghi nhận là lịch sử: {from} đến {to} nhận các giá trị Trước. Hồ sơ từ {date} không thay đổi."
@@ -7393,7 +7425,8 @@
         "hire_date": "ngày vào làm đã thay đổi",
         "transfer": "việc chuyển công ty đã thay đổi",
         "compensation": "lương đã thay đổi",
-        "statutory": "thiết lập theo luật định đã thay đổi"
+        "statutory": "thiết lập theo luật định đã thay đổi",
+        "employment_information": "thông tin việc làm đã thay đổi"
       },
       "closeConfirmNo": "Không",
       "closeBack": "Quay lại Xử lý lương",
@@ -31461,6 +31494,7 @@
       "configure": "Quản lý bảo mật và quyền",
       "workforceView": "Xem hồ sơ nhân viên",
       "workforceMaintain": "Duy trì hồ sơ nhân viên",
+      "movementDelete": "Xóa sự kiện thay đổi việc làm",
       "probationModule": "Quản lý Thử việc cho mọi công ty",
       "profileReview": "Xét duyệt thay đổi hồ sơ đủ điều kiện"
     },
@@ -32231,6 +32265,7 @@
     "emailLoginNote": "Đăng nhập là riêng: người dùng đăng nhập bằng mã tổ chức và tên người dùng, và vẫn không thể tạo hai tài khoản đăng nhập cho cùng một email."
   },
   "costAllocations": {
+    "replacementReview": "Lịch sử công ty đã thay đổi. Xem lại phân bổ được lưu giữ, sau đó lưu phân bổ thay thế hoặc xác nhận không cần phân bổ.",
     "title": "Phân bổ Trung tâm Chi phí",
     "description": "Ghi nhận phân bổ chi phí lao động riêng với trung tâm chi phí tổ chức chính. Cho phép phân bổ một phần; không chia tiền lương.",
     "effectiveDate": "Ngày hiệu lực",

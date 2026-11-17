@@ -125,24 +125,20 @@ describe('setEmploymentInfo — a closed payroll month refuses the dates it reli
     ).rejects.toThrow(/Reopen that payroll before correcting/i);
   });
 
-  it('refuses a resignation date that reaches back into a closed payroll month', async () => {
-    const id = await hire('2026-01-01');
-    await closedPayrollFor(id, '2026-01');
-    // Setting an end date of 2026-01-20 flips the derived status to Resigned from that day ONWARD — an
-    // open-ended window, and its first day sits inside the closed month.
-    await expect(
-      createMovementEvent(adminCtx(b),{employmentId:id,kind:'resignation',effectiveDate:todayInKualaLumpur(),tenderResignationDate:'2026-01-20',resignationEffectiveDate:'2026-01-20'}),
-    ).rejects.toThrow(/closed payroll run relied on this (?:date|movement)/i);
-    expect((await employmentRow(id)).resignationDate).toBeNull();
+  it('records a Movement resignation date while preserving every closed financial row', async () => {
+    const id=await hire('2026-01-01');await closedPayrollFor(id,'2026-01');
+    const before={periods:await owner.db.select().from(schema.payPeriod),batches:await owner.db.select().from(schema.payrollBatch),slips:await owner.db.select().from(schema.payslip)};
+    await createMovementEvent(adminCtx(b),{employmentId:id,kind:'resignation',effectiveDate:todayInKualaLumpur(),tenderResignationDate:'2026-01-20',resignationEffectiveDate:'2026-01-20'});
+    expect((await employmentRow(id)).resignationDate).toBe('2026-01-20');
+    expect({periods:await owner.db.select().from(schema.payPeriod),batches:await owner.db.select().from(schema.payrollBatch),slips:await owner.db.select().from(schema.payslip)}).toEqual(before);
   });
 
-  it('refuses a last working date that reaches back into a closed payroll month', async () => {
-    const id = await hire('2026-01-01');
-    await closedPayrollFor(id, '2026-01');
-    await expect(
-      createMovementEvent(adminCtx(b),{employmentId:id,kind:'resignation',effectiveDate:todayInKualaLumpur(),tenderResignationDate:'2026-01-31',endDate:'2026-01-31'}),
-    ).rejects.toThrow(/closed payroll run relied on this (?:date|movement)/i);
-    expect((await employmentRow(id)).lastWorkingDate).toBeNull();
+  it('records a Movement last working date while preserving every closed financial row', async () => {
+    const id=await hire('2026-01-01');await closedPayrollFor(id,'2026-01');
+    const before={periods:await owner.db.select().from(schema.payPeriod),batches:await owner.db.select().from(schema.payrollBatch),slips:await owner.db.select().from(schema.payslip)};
+    await createMovementEvent(adminCtx(b),{employmentId:id,kind:'resignation',effectiveDate:todayInKualaLumpur(),tenderResignationDate:'2026-01-31',endDate:'2026-01-31'});
+    expect((await employmentRow(id)).lastWorkingDate).toBe('2026-01-31');
+    expect({periods:await owner.db.select().from(schema.payPeriod),batches:await owner.db.select().from(schema.payrollBatch),slips:await owner.db.select().from(schema.payslip)}).toEqual(before);
   });
 });
 

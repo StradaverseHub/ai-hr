@@ -1646,6 +1646,7 @@
       "payMode_hourly": "时薪",
       "payMode_custom_period": "自定义周期",
       "paymentTerm": "支付周期",
+      "paymentMethod": "支付方式",
       "paymentTerm_monthly": "每月",
       "paymentTerm_weekly": "每周",
       "paymentTerm_biweekly": "每两周",
@@ -1658,7 +1659,24 @@
       "salaryRemarkRequiredError": "此薪资记录没有基本薪金金额，因此备注必须说明原因——例如按季度支付董事费。在没有任何应付款项的月份，薪资计算会将该员工排除在外。",
       "salaryNegativeError": "基本薪金不能为负数。对于没有基本薪金的员工，请留空或填 0。",
       "salaryNotANumberError": "基本薪金必须是数字。对于没有基本薪金的员工，请留空或填 0。",
-      "paymentMethod": "支付方式",
+      "salaryRecording": {
+        "title": "记录薪资变更",
+        "choice": "如何记录此变更？",
+        "newEvent": "创建新事件",
+        "updateLatest": "更新最近的已生效事件",
+        "amendment": "仅修订薪资，不创建事件",
+        "eventType": "事件类型",
+        "target": "要更新的事件",
+        "selectTarget": "选择事件",
+        "latestHint": "该事件保留所示的生效日期。其他日期请创建新事件或薪资修订。",
+        "amendmentHint": "薪资和付款方式将一并保存。审计记录此修订，不新增雇佣历史事件。"
+      },
+      "salaryPayrollFrom": "薪资自此日期起用于未结算工资",
+      "paymentMethodHistoryTitle": "付款方式历史",
+      "paymentMethodEffectiveDate": "生效日期",
+      "paymentMethodRecordedAt": "记录时间",
+      "paymentMethodRevision": "修订",
+      "paymentMethodLegacySnapshot": "安装日期的已知值",
       "paymentMethodNotSet": "未指定",
       "paymentMethod_bank_transfer": "银行转账",
       "paymentMethod_cheque": "支票",
@@ -1689,6 +1707,8 @@
         },
         "detail": {
           "eventInformation": "事件信息",
+          "companyReviewNeeded": "更正原入职公司后，请检查以下设置：",
+          "notRecorded": "此事件历史中未记录",
           "scheduledValues": "计划／拟议值",
           "scheduledValuesNote": "以下是为此计划事件保存的目标值，尚未生效。仅显示明确提交的字段。",
           "beforeChanges": "变更前",
@@ -1800,7 +1820,7 @@
           "pendingTargetUnavailable": "已保存的目标不再属于您当前可选的项目或访问范围，无法保存此次更正。请先检查尚未生效的变动记录，再继续操作。",
           "resignationLifecycleHint": "离职资料在生效日期开始适用。请分别记录提交辞呈日期、离职日期和最后工作日期。",
           "closedPayrollTitle": "{periods} 的薪资已关闭。",
-          "closedPayrollBody": "此更正会更新员工记录及之后的处理。已关闭的薪资、已发布的工资单和法定申报将保留最终数字，不会重新计算。如需调整金额，请使用薪资更正流程。更正后的工资自已关闭薪资之后的第一个月起生效。",
+          "closedPayrollBody": "这些变更会更新员工记录及未来处理。已结算的薪资、已发放的工资单及法定申报保持原状。如需调整已付金额，请使用薪资更正流程。",
           "closedPayrollAcknowledge": "我了解已关闭的薪资不会改变。",
           "dateClosedPayrollOptional": "如果此日期跨越已关闭的薪资月份，请在下方勾选。已关闭的薪资、工资单和法定申报将完全保持支付时的状态。",
           "mustChange": "必须更改",
@@ -1920,6 +1940,9 @@
         },
         "payrollClosedBadge": "薪资已关闭：{periods}",
         "informationCorrected": "资料已更正",
+        "orderConflict": "解决事件顺序冲突",
+        "orderConflictHint": "此日期的事件更改了相同信息。请修改生效日期或取消冲突的待生效事件，再使其生效。",
+        "payrollAdjustmentReview": "请核对更正公司或薪资后是否需要工资调整。已结算工资及已发出的文件保持不变。",
         "informationNeedsReview": "更正需要审核",
         "historyBadge": "历史",
         "rehire": {
@@ -2119,7 +2142,14 @@
         "emptySource": "未记录日期",
         "unknownSource": "此事件未记录"
       },
-      "costCenterAllocationTitle": "成本中心分配"
+      "costCenterAllocationTitle": "成本中心分配",
+      "salaryAmendments": {
+        "title": "已记录的薪资修订",
+        "amount": "基本薪资",
+        "recordOnly": "仅作记录 — 已关闭的薪资保持不变",
+        "previous": "上一页",
+        "next": "下一页"
+      }
     },
     "import": {
       "title": "导入员工",
@@ -2329,6 +2359,8 @@
       "exclusionsField": "字段",
       "exclusionsReason": "原因与处理位置",
       "exclusionReasons": {
+        "hireInformation": "请在任职历史中通过保留审计记录的更正操作修改最初入职信息。员工导入不会更改此信息。",
+        "paymentMethodDate": "请在薪资中通过带生效日期的付款方式操作设置日期，以保留付款方式历史。",
         "bankPayeeResidency": "请在人员 > 银行与法定资料 > 银行资料中选择银行收款人的居留身份。员工导入不会根据税务居民身份或国籍推断此项。",
         "datedCalendar": "请在员工管理 > 考勤 > 假日日历中设置有日期的日历分配，以保留既往分配历史。员工导入不能更改日历或其起止日期。",
         "testRecord": "此内部安全分类会保留。员工管理和员工导入均不能编辑此标记。",
@@ -2663,7 +2695,7 @@
           "guideReason": "原因：更正或撤销该异动的理由。更新和删除必须填写，并会保存在审计历史中。如该期间的薪资已关闭，您需在保存前于屏幕上确认。",
           "closedPayrollRow": "{periods} 的薪资已关闭。",
           "closedPayrollTitle": "部分更正涉及薪资已关闭期间的异动（{periods}）。",
-          "closedPayrollBody": "这些更正会更新员工记录及之后的处理。已关闭的薪资、已发放的工资单和法定申报将保留其最终数字，不会重新计算。未勾选此确认时，相关员工不会被保存。",
+          "closedPayrollBody": "这些变更会更新员工记录及未来处理。已结算的薪资、已发放的工资单及法定申报保持原状。",
           "closedPayrollAcknowledge": "我了解已关闭的薪资不会改变。"
         },
         "historyRow": "记录为历史：{from} 至 {to} 采用“之前”的值。{date} 起的记录不变。"
@@ -7393,7 +7425,8 @@
         "hire_date": "入职日期已更改",
         "transfer": "公司调动已更改",
         "compensation": "薪资已更改",
-        "statutory": "法定设置已更改"
+        "statutory": "法定设置已更改",
+        "employment_information": "雇佣信息已更改"
       },
       "closeConfirmNo": "否",
       "closeBack": "返回薪资处理",
@@ -31461,6 +31494,7 @@
       "configure": "管理安全与权限",
       "workforceView": "查看员工资料",
       "workforceMaintain": "维护员工资料",
+      "movementDelete": "删除员工异动事件",
       "probationModule": "管理所有公司的试用期",
       "profileReview": "审核符合条件的资料更改"
     },
@@ -32231,6 +32265,7 @@
     "emailLoginNote": "登录是分开的：用户使用组织代码和用户名登录，同一邮箱仍不能创建两个登录账户。"
   },
   "costAllocations": {
+    "replacementReview": "公司历史已更正。请审核保留的分配记录，然后保存新的分配，或确认无需分配。",
     "title": "成本中心分配",
     "description": "将雇佣成本分配与主要组织成本中心分别记录。允许部分分配；此设置不会拆分薪资。",
     "effectiveDate": "生效日期",

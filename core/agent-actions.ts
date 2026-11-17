@@ -1,3 +1,4 @@
+import {employmentPaymentMethodOnSql} from './employment-payment-method';
 /**
  * ADR-0083 §2.5 / §3 item 3 — THE ACTION LAYER. The first place in this system where an agent writes.
  *
@@ -40,7 +41,7 @@
  * about a finding; it cannot change a payslip, a rate or a statutory figure. ADR-0074's invariant is
  * untouched: the money is the deterministic kernel's, and an agent may not reach it.
  */
-import { and, eq, inArray, isNull } from 'drizzle-orm';
+import { and, eq, inArray, isNull, sql } from 'drizzle-orm';
 import { withTenant, type SessionContext } from '../db/client';
 import * as schema from '../db/schema';
 import { resolveAnomalyVerdict } from './payroll-anomaly';
@@ -148,7 +149,7 @@ export async function proposeActions(ctx: SessionContext): Promise<ActionProposa
         employmentId: schema.payrollAnomalyVerdict.employmentId,
         detectorId: schema.payrollAnomalyFinding.detectorId,
         name: schema.person.fullName,
-        paymentMethod: schema.employment.paymentMethod,
+        paymentMethod: employmentPaymentMethodOnSql(sql`${schema.employment.id}`),
         ic: schema.employeeStatutoryMy.icNumber,
         passport: schema.employeeStatutoryMy.passportNumber,
         taxNumber: schema.employeeStatutoryMy.taxNumber,
@@ -265,7 +266,7 @@ export async function executeAction(
         .select({
           verdictId: schema.payrollAnomalyVerdict.id,
           detectorId: schema.payrollAnomalyFinding.detectorId,
-          paymentMethod: schema.employment.paymentMethod,
+          paymentMethod: employmentPaymentMethodOnSql(sql`${schema.employment.id}`),
           ic: schema.employeeStatutoryMy.icNumber,
           passport: schema.employeeStatutoryMy.passportNumber,
           taxNumber: schema.employeeStatutoryMy.taxNumber,

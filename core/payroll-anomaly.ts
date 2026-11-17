@@ -1,3 +1,4 @@
+import {employmentPaymentMethodOnSql} from './employment-payment-method';
 import {assertAiPrincipalTx} from './ai-principal';
 import {resolveEntitlementsTx,assertModuleEnabled,isModuleEnabled,TENANT_STATUS_GOOD_STANDING} from './entitlements';
 import type { EntitlementSnapshot } from './entitlement-types';
@@ -389,7 +390,7 @@ async function gatherContext(tx: Tx, tenantId: string, batchId: string, entitlem
       personId: schema.employment.personId,
       hiredOn: schema.employment.hiredOn,
       terminatedOn: schema.employment.terminatedOn,
-      paymentMethod: schema.employment.paymentMethod,
+      paymentMethod: employmentPaymentMethodOnSql(sql`${schema.employment.id}`),
     })
     .from(schema.employment)
     .where(inArray(schema.employment.id, employmentIds));

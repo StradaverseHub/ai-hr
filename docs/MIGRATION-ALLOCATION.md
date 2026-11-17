@@ -1,3 +1,70 @@
+## Movement hire-company allocation reconciliation — 17 November 2026
+
+Reserved `5779_hire_company_allocation_review`, idx `5179`, when `1793330005479`, from the
+already held Movement 5772–5782 block. SQL SHA-256 `8a157b18ea8fe5ebaf5d86046f7ba03dd41e6532c03ef2cb7799beafeb4fc8dd`.
+This new allocation-owner command retains prior percentage rows and creates an explicit empty
+replacement for review after a proven original-hire company correction. The existing company-history
+constraint remains unchanged. Applied SQL is unchanged; 5780–5782 remain held and unused. Native
+permissions, populated/restricted-owner rehearsals, exact source binding and release admission remain
+required. Movement is first in the owner's 17 November coordinated staging release order.
+
+# Bounded Movement payroll windows — 17 November 2026 MYT (unapplied candidate)
+
+Reserved 5778, idx 5178, when 1793330005478. SHA256 `789c93999e156c08f6cfac5a79f5f58071cd1f834778454238146809e1b55106`.
+The same limited invalidation owner now accepts a bounded union of intervals in one set-wise update.
+The existing date-window signature delegates to it; all Access, input-lock and maintenance proofs remain.
+No financial computation or closed-run writes. Admission checks still required.
+
+# Closed Movement payroll metadata — 17 November 2026 MYT (unapplied candidate)
+
+Reserved 5777, idx 5177, when 1793330005477. SHA256 `bb1ed221d194021c059392f21ad7c01c99cf9c0b05f6698b4ffff6579c2707f4`.
+One private reconstruction implementation serves the unchanged Information-Only Correction wrapper and a
+closed-only Movement wrapper. System snapshots record a null human actor and explicit system metadata,
+authorized through the actual storage-owner predicate. No payroll money changes. Admission checks still required.
+
+# Subject-specific open payroll invalidation — 17 November 2026 MYT (unapplied candidate)
+
+Integrated candidate uses reserved 5776, idx 5176, when 1793330005476, SHA256 `28624ba957c14e02dfb7305c5d94b5627be11d4cc66f65e8903e5a921436589f`.
+Adds a limited Workforce invalidation function, checking current maintenance rights and held Access/payroll-input
+locks before marking only open runs with a payslip for that employment within the supplied date window.
+Returns a count, reads no amounts, appends native recalc audit and grants no processing/closing authority.
+Recheck admission watermarks and peer claims; no installation authority.
+
+# Movement payment method field — 17 November 2026 MYT (unapplied candidate)
+
+Integrated candidate uses reserved 5775, idx 5175, when 1793330005475, SHA256 `3841610ec8f01675b16ad51b9c9523d77146f8c048790565d9862510909d3155`.
+Widens the existing comparison-field and attachment vocabularies and applies existing salary-document
+RLS to payment-method documents. No data rows or grants change. Recheck admission watermarks; no installation authority.
+
+# Dated payment method — 17 November 2026 MYT (unapplied candidate)
+
+`codex/personnel-movement-comprehensive-20261117` uses reserved 5774, idx 5174, when 1793330005474,
+SHA256 `4e68e7aa1c2e66f605938fef0e59ce86a137ecdbd061c0f3e5a3e5a48ff6c5d8`. Adds one effective-dated employment payment-method owner with RLS,
+app SELECT/INSERT/UPDATE grants, tenant-linked employment FK, and an invoker dated reader.
+Existing undated non-null methods are recorded as known on installation day, without inventing prior dates.
+No payroll rows change. Recheck peer claims and installed ledgers before admission; no installation authority.
+
+# Comprehensive movement workflow — 17 November 2026 MYT (unapplied candidate)
+
+Branch `codex/personnel-movement-comprehensive-20261117` claims 5773–5782 for the integrated candidate.
+`5773_movement_payroll_protection_and_delete`, idx 5173, when 1793330005473, SHA256 `3f54dd21490e301f4c52131d449d32c883f482d67025df610fe5b84c83be1897`,
+extends the existing payroll-input lock-key resolver to former dated employers and issued-payroll owners,
+and introduces the separate company-scoped Movement Delete capability with an actual-principal predicate.
+Only existing System Administrator groups receive its default grant. No payroll money or employment rows change.
+Git-discovered peer worktrees had no 5773–5779 files at allocation; staging watermark was rechecked at
+1793330005470 on 16 November. Recheck peer claims and installation watermarks before admission.
+This claim grants no installation authority.
+
+# Movement employment-period fields — 16 November 2026 MYT (unapplied candidate)
+
+Branch `codex/personnel-movement-stage1-20261116` claims `5772_movement_employment_periods`, idx 5172,
+when 1793330005472. SHA256 `9a66595ca046bdf0bdaaf0b51e1b87cfd8811156093d37464ef854d36b7d4ef3`. It widens the existing field-name checks on
+`movement_type_field_rule` and `movement_attachment` to retain all existing names and admit the four
+probation/notice value-unit pairs plus Confirmation Date. No table, column, data, grant, policy or purpose-owned object changes.
+Fresh main/alpha and staging's migration ledger were checked on 16 November; their watermark was
+1793330005466. Git-discovered peer worktrees already claimed 5767, 5770 and 5771, so this candidate
+uses 5772. Production's watermark was not queried. Recheck both installed ledgers and peer claims
+before integration/admission; this claim grants no installation authority.
 <!-- 5771_assistant_legacy_index_shared_access -->
 # Assistant metadata discovery shares Access — 16 November 2026 MYT (source allocation; installation held)
 

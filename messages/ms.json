@@ -1646,6 +1646,7 @@
       "payMode_hourly": "Sejam",
       "payMode_custom_period": "Tempoh Tersuai",
       "paymentTerm": "Terma Pembayaran",
+      "paymentMethod": "Kaedah Pembayaran",
       "paymentTerm_monthly": "Bulanan",
       "paymentTerm_weekly": "Mingguan",
       "paymentTerm_biweekly": "Dua Minggu Sekali",
@@ -1658,7 +1659,24 @@
       "salaryRemarkRequiredError": "Rekod gaji ini tiada jumlah gaji asas, jadi Catatan mesti menyatakan sebabnya — contohnya, dibayar melalui fi pengarah setiap suku tahun. Penggajian akan mengecualikan pekerja ini daripada mana-mana bulan yang tiada apa-apa untuk dibayar.",
       "salaryNegativeError": "Gaji asas tidak boleh menjadi jumlah negatif. Biarkan kosong atau masukkan 0 bagi pekerja yang tiada gaji asas.",
       "salaryNotANumberError": "Gaji asas mesti satu nombor. Biarkan kosong atau masukkan 0 bagi pekerja yang tiada gaji asas.",
-      "paymentMethod": "Kaedah Pembayaran",
+      "salaryRecording": {
+        "title": "Rekod perubahan gaji",
+        "choice": "Bagaimanakah perubahan ini direkodkan?",
+        "newEvent": "Cipta peristiwa baharu",
+        "updateLatest": "Kemas kini peristiwa terkini yang berkuat kuasa",
+        "amendment": "Pindaan gaji tanpa peristiwa",
+        "eventType": "Jenis peristiwa",
+        "target": "Peristiwa untuk dikemas kini",
+        "selectTarget": "Pilih peristiwa",
+        "latestHint": "Peristiwa mengekalkan Tarikh Berkuat Kuasa yang ditunjukkan. Tarikh lain memerlukan peristiwa baharu atau pindaan.",
+        "amendmentHint": "Gaji dan kaedah pembayaran disimpan bersama. Audit merekodkan pindaan tanpa menambah peristiwa Sejarah Pekerjaan."
+      },
+      "salaryPayrollFrom": "Gaji berkuat kuasa untuk penggajian terbuka mulai",
+      "paymentMethodHistoryTitle": "Sejarah kaedah pembayaran",
+      "paymentMethodEffectiveDate": "Tarikh berkuat kuasa",
+      "paymentMethodRecordedAt": "Direkodkan pada",
+      "paymentMethodRevision": "Semakan",
+      "paymentMethodLegacySnapshot": "Diketahui pada tarikh pemasangan",
       "paymentMethodNotSet": "Tidak dinyatakan",
       "paymentMethod_bank_transfer": "Pindahan Bank",
       "paymentMethod_cheque": "Cek",
@@ -1689,6 +1707,8 @@
         },
         "detail": {
           "eventInformation": "Maklumat Acara",
+          "companyReviewNeeded": "Semak penetapan berikut selepas membetulkan syarikat asal:",
+          "notRecorded": "Tidak direkodkan dalam sejarah peristiwa ini",
           "scheduledValues": "Nilai dijadualkan / dicadangkan",
           "scheduledValuesNote": "Ini ialah nilai sasaran yang disimpan untuk peristiwa berjadual ini. Nilai ini belum digunakan. Hanya medan yang dihantar secara nyata ditunjukkan.",
           "beforeChanges": "Sebelum Perubahan",
@@ -1800,7 +1820,7 @@
           "pendingTargetUnavailable": "Sasaran yang disimpan tidak lagi tersedia dalam pilihan atau skop akses semasa anda. Pembetulan ini tidak boleh disimpan. Semak peristiwa yang belum berkuat kuasa sebelum meneruskan.",
           "resignationLifecycleHint": "Maklumat peletakan jawatan berkuat kuasa pada Tarikh Kuat Kuasa. Rekodkan tarikh penyerahan, tarikh peletakan jawatan dan tarikh terakhir bekerja secara berasingan.",
           "closedPayrollTitle": "Gaji bagi {periods} telah ditutup.",
-          "closedPayrollBody": "Pembetulan ini mengemas kini rekod pekerja dan pemprosesan akan datang. Gaji yang telah ditutup, slip gaji yang telah dikeluarkan dan penyerahan berkanun mengekalkan angka muktamad dan tidak akan dikira semula. Jika sesuatu amaun perlu diselaraskan, gunakan proses pembetulan gaji. Gaji yang dibetulkan berkuat kuasa mulai bulan pertama selepas gaji yang telah ditutup.",
+          "closedPayrollBody": "Perubahan ini mengemas kini rekod pekerja dan pemprosesan akan datang. Gaji yang ditutup, slip gaji yang dikeluarkan dan penyerahan berkanun kekal seperti dimuktamadkan. Gunakan proses pembetulan gaji jika amaun yang dibayar perlu dilaraskan.",
           "closedPayrollAcknowledge": "Saya faham bahawa gaji yang telah ditutup tidak akan berubah.",
           "dateClosedPayrollOptional": "Jika tarikh ini merentasi bulan gaji yang telah ditutup, tandakan di bawah. Gaji yang ditutup, slip gaji dan penyerahan berkanun kekal tepat seperti yang dibayar.",
           "mustChange": "Wajib diubah",
@@ -1920,6 +1940,9 @@
         },
         "payrollClosedBadge": "Gaji ditutup: {periods}",
         "informationCorrected": "Maklumat dibetulkan",
+        "orderConflict": "Selesaikan turutan peristiwa",
+        "orderConflictHint": "Peristiwa pada tarikh ini mengubah butiran yang sama. Edit Tarikh Berkuat Kuasa atau batalkan peristiwa tertunda yang bercanggah sebelum ia digunakan.",
+        "payrollAdjustmentReview": "Semak sebarang pelarasan gaji yang diperlukan untuk syarikat atau gaji yang dibetulkan. Penggajian yang ditutup dan dokumen yang dikeluarkan kekal tidak berubah.",
         "informationNeedsReview": "Pembetulan perlu disemak",
         "historyBadge": "Sejarah",
         "rehire": {
@@ -2119,7 +2142,14 @@
         "emptySource": "Tiada tarikh direkodkan",
         "unknownSource": "Tidak direkodkan dalam peristiwa ini"
       },
-      "costCenterAllocationTitle": "Peruntukan Pusat Kos"
+      "costCenterAllocationTitle": "Peruntukan Pusat Kos",
+      "salaryAmendments": {
+        "title": "Pindaan gaji yang direkodkan",
+        "amount": "Gaji pokok",
+        "recordOnly": "Rekod sahaja — gaji yang ditutup tidak berubah",
+        "previous": "Sebelumnya",
+        "next": "Seterusnya"
+      }
     },
     "import": {
       "title": "Import pekerja",
@@ -2329,6 +2359,8 @@
       "exclusionsField": "Medan",
       "exclusionsReason": "Sebab dan tempat untuk menguruskannya",
       "exclusionReasons": {
+        "hireInformation": "Betulkan maklumat Asal Pengambilan melalui tindakan pembetulan beraudit dalam Sejarah Pekerjaan. Import pekerja tidak mengubahnya.",
+        "paymentMethodDate": "Tetapkan tarikh kuat kuasa kaedah pembayaran melalui tindakan kaedah pembayaran bertarikh dalam Gaji untuk mengekalkan sejarahnya.",
         "bankPayeeResidency": "Pilih status pemastautin penerima bank dalam Personel > Bank & Berkanun > Maklumat Bank. Import pekerja tidak menentukannya daripada status pemastautin cukai atau kewarganegaraan.",
         "datedCalendar": "Tetapkan kalendar mengikut tarikh dalam Personel > Kehadiran > Kalendar Cuti supaya sejarah penetapan terdahulu dikekalkan. Import pekerja tidak boleh mengubah kalendar atau tarikhnya.",
         "testRecord": "Klasifikasi keselamatan dalaman ini dikekalkan. Personnel dan import pekerja tidak boleh mengubahnya.",
@@ -2663,7 +2695,7 @@
           "guideReason": "Sebab: mengapa pergerakan dibetulkan atau dibatalkan. Ia wajib untuk Kemas kini dan Padam dan disimpan dalam sejarah audit. Jika gaji bagi tempoh itu sudah ditutup, anda mengesahkannya pada skrin sebelum menyimpan.",
           "closedPayrollRow": "Gaji bagi {periods} sudah ditutup.",
           "closedPayrollTitle": "Sesetengah pembetulan mengubah pergerakan di sebalik gaji yang telah ditutup ({periods}).",
-          "closedPayrollBody": "Pembetulan ini mengemas kini rekod pekerja dan pemprosesan akan datang. Gaji yang ditutup, slip gaji yang telah dikeluarkan dan penyerahan berkanun mengekalkan angka muktamad dan tidak akan dikira semula. Tanpa pengesahan ini, pekerja berkenaan tidak disimpan.",
+          "closedPayrollBody": "Perubahan ini mengemas kini rekod pekerja dan pemprosesan akan datang. Gaji yang ditutup, slip gaji yang dikeluarkan dan penyerahan berkanun kekal seperti dimuktamadkan.",
           "closedPayrollAcknowledge": "Saya faham bahawa gaji yang telah ditutup tidak akan berubah."
         },
         "historyRow": "Direkodkan sebagai sejarah: {from} hingga {to} mengambil nilai Sebelum. Rekod dari {date} tidak berubah."
@@ -7393,7 +7425,8 @@
         "hire_date": "tarikh menyertai diubah",
         "transfer": "pertukaran syarikat diubah",
         "compensation": "gaji diubah",
-        "statutory": "tetapan berkanun diubah"
+        "statutory": "tetapan berkanun diubah",
+        "employment_information": "maklumat pekerjaan berubah"
       },
       "closeConfirmNo": "Tidak",
       "closeBack": "Kembali ke Proses Gaji",
@@ -31461,6 +31494,7 @@
       "configure": "Urus keselamatan dan kebenaran",
       "workforceView": "Lihat rekod pekerja",
       "workforceMaintain": "Selenggara rekod pekerja",
+      "movementDelete": "Padam peristiwa pergerakan pekerjaan",
       "probationModule": "Urus Percubaan untuk semua syarikat",
       "profileReview": "Semak perubahan profil yang layak"
     },
@@ -32231,6 +32265,7 @@
     "emailLoginNote": "Log masuk adalah berasingan: pengguna log masuk dengan kod organisasi dan nama pengguna, dan akaun log masuk masih tidak boleh dibuat dua kali untuk e-mel yang sama."
   },
   "costAllocations": {
+    "replacementReview": "Sejarah syarikat telah berubah. Semak agihan yang disimpan, kemudian simpan penggantian atau sahkan bahawa tiada agihan diperlukan.",
     "title": "Peruntukan Pusat Kos",
     "description": "Rekod agihan kos pekerjaan secara berasingan daripada pusat kos organisasi utama. Peruntukan separa dibenarkan; ini tidak membahagikan penggajian.",
     "effectiveDate": "Tarikh kuat kuasa",

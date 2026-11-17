@@ -1,3 +1,4 @@
+import {employmentPaymentMethodOnSql} from '../../core/employment-payment-method';
 import {DEFAULT_MAYBANK_PAYMENT_SETTINGS} from '../../lib/maybank-payment-settings';
 import {assertModuleEnabled} from '../../core/entitlements';
 /** Authorised OCBC export snapshots; never payroll calculations or bank submission. */
@@ -142,7 +143,7 @@ async function source(tx:Tx,ctx:SessionContext,p:BankPaymentRequest){
  }
  if(!batches.length)throw new OcbcFileError('No ready payroll runs exist for this selection. Imported history cannot initiate a bank payment.');
  if(batches.some(b=>b.stale))throw new OcbcFileError('Recalculate the selected payroll before generating its bank file.');
- const rows=await tx.select({employmentId:employment.id,personId:person.id,name:person.fullName,code:employment.employeeCode,method:employment.paymentMethod,net:payslip.netPay,statutory:payslip.statutory,runSeq:payrollBatch.runSeq,
+ const rows=await tx.select({employmentId:employment.id,personId:person.id,name:person.fullName,code:employment.employeeCode,method:employmentPaymentMethodOnSql(sql`${employment.id}`),net:payslip.netPay,statutory:payslip.statutory,runSeq:payrollBatch.runSeq,
   bank:employeeStatutoryMy.bankName,account:employeeStatutoryMy.bankAccountNo,ic:employeeStatutoryMy.icNumber,passport:employeeStatutoryMy.passportNumber,oldIc:employeeStatutoryMy.oldIcNumber,countryCode:employeeStatutoryMy.passportIssuingCountryCode,taxNumber:employeeStatutoryMy.taxNumber,socsoNumber:employeeStatutoryMy.socsoNumber,epfNumber:employeeStatutoryMy.epfNumber,
   resident:employeeStatutoryMy.bankPayeeResidency,citizenship:employeeStatutoryMy.epfCitizenship,
   customNameEnabled:employeeStatutoryMy.enableCustomHolderName,customName:employeeStatutoryMy.customHolderName,customIdEnabled:employeeStatutoryMy.enableCustomHolderId,customId:employeeStatutoryMy.customHolderId,

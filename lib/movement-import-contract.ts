@@ -103,9 +103,10 @@ export function movementImportCellIssues(record:MovementImportRecord,behaviour:s
   // An Update keeps every value it leaves blank (646355e5 slice C), so nothing is required of it here.
   if(!value&&record.action!=='update'&&movementImportRequired(field,behaviour))issues.push(`required:${field}`);
   if(!value)continue;
-  if(['effectiveDate','endDate','resignationDate','tenderResignationDate','resignationEffectiveDate'].includes(field)){if(!movementImportDate(value))issues.push(`invalid_date:${field}`);}
+  const descriptor=personnelFormField(MOVEMENT_FORM_IDS[field]);
+  if(descriptor.type==='date'){if(!movementImportDate(value))issues.push(`invalid_date:${field}`);}
   else if(!['kind','companyId','businessUnitId','departmentId','positionId','gradeId','locationId','managerEmploymentId'].includes(field)){
-   const issue=personnelScalarIssue(personnelFormField(MOVEMENT_FORM_IDS[field]),value);if(issue)issues.push(`invalid_${issue}:${field}`);
+   const issue=personnelScalarIssue(descriptor,value);if(issue)issues.push(`invalid_${issue}:${field}`);
   }
  }
  return issues;

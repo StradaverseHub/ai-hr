@@ -291,6 +291,14 @@ it('stops on a cross-tenant row, then validates every company/tenant key without
    '5770_attendance_workflow_approver_codes',
    // Architecture/performance: shared Access for the existing assistant metadata index.
    '5771_assistant_legacy_index_shared_access',
+   '5772_movement_employment_periods',
+   '5773_movement_payroll_protection_and_delete',
+   '5774_employment_payment_method_history',
+   '5775_movement_payment_method_field',
+   '5776_workforce_payroll_input_invalidation',
+   '5777_movement_closed_payroll_metadata',
+   '5778_movement_payroll_windows',
+   '5779_hire_company_allocation_review',
   ]);
   const stagingPrefix=journal.entries.slice(0,performanceStart);
   expect(stagingPrefix.filter(row=>row.tag==='3900_individual_transaction_calculation_method')).toHaveLength(1);
@@ -319,6 +327,8 @@ it('stops on a cross-tenant row, then validates every company/tenant key without
   // callable by the application role, and none is callable by PUBLIC. The policy-side and trigger-WHEN helpers are
   // granted to exactly the roles their policies or the domain_event writers are (test/policy-helper-function-grants).
   const privateFunctions=[
+   // Movement5777: shared metadata implementation is private; only the validated public wrappers execute it.
+   'app.preserve_payroll_metadata(uuid,boolean)',
    // 5763: Probation access helpers, owner only.
    'app.probation_access_scope_check(uuid,uuid,date,date)','app.probation_intake_admin_for(uuid,uuid,uuid)','app.probation_permitted_companies(uuid,text[])','app.probation_permitted_scope(text,uuid[])','app.probation_postings_admin(uuid[])','app.probation_superior_rule()',
    // 5764: the routed holder resolver and routing-rule helpers, owner only.
@@ -512,6 +522,9 @@ it('stops on a cross-tenant row, then validates every company/tenant key without
    'app.reward_unit_level(uuid,text)','app.reward_unit_limit_version(uuid)','app.sweep_swing_thresholds(uuid[])',
    'app.system_label_import_conflicts(uuid)','app.system_label_import_discard_batch(uuid,uuid,uuid,uuid,integer)','app.system_label_import_release_attempt(uuid,uuid)',
   ];
+  // Movement5773–5779: exact new function inventory, with no PUBLIC execute and one private implementation.
+  addedFunctions.push('app.access_movement_delete_employment(uuid)','app.cost_allocations_after_hire_company_correction(uuid,uuid,text)','app.employment_payment_method_on(uuid,date)','app.preserve_movement_payroll(uuid)','app.preserve_payroll_metadata(uuid,boolean)','app.workforce_payroll_inputs_changed(uuid,date,date,text)','app.workforce_payroll_inputs_changed_windows(uuid,jsonb,text)');
+  addedFunctions.sort();
   const beforeFunctions=new Set(beforePerformancePrivileges.functions.map(row=>row.fn));
   expect(afterPerformancePrivileges.functions.filter(row=>!beforeFunctions.has(row.fn)).map(row=>row.fn).sort()).toEqual(addedFunctions);
   for(const fn of addedFunctions){
@@ -668,6 +681,8 @@ it('stops on a cross-tenant row, then validates every company/tenant key without
   const ownerAcl=(acl:string|null)=>acl===null?null:acl.split(ownerRole).join('OWNER');
   const digest=(text:string|null)=>text===null?null:createHash('md5').update(text).digest('hex');
   const combinedRelations:Record<string,{rls:boolean;force:boolean;acl:string|null}>={
+   // Movement5774: only native routing maintenance writes; history is forced-RLS and never deletable by app.
+   'employment_payment_method_history':{rls:true,force:true,acl:'{OWNER=arwdDxt/OWNER,ai_hr_app=arw/OWNER}'},
    // Board window 4 (5124): stored Preview Assignment snapshots, append-only and forced RLS.
    'attendance_workflow_preview':{rls:true,force:true,acl:'{OWNER=arwdDxt/OWNER,ai_hr_app=ar/OWNER}'},
    // daa76ed4 (5141): immutable escalation history, read-only to the application role.
@@ -718,7 +733,20 @@ it('stops on a cross-tenant row, then validates every company/tenant key without
    {rel:'payroll_run_group',col:'result',acl:'{ai_hr_app=w/OWNER}'},
    {rel:'payroll_run_group',col:'sealed_at',acl:'{ai_hr_app=w/OWNER}'},
   ];
-  const combinedPolicies=[
+  type PolicyWitness={schemaname:string;tablename:string;policyname:string;permissive:string;roles:string;cmd:string;qual:string|null;with_check:string|null};
+  // Parse independently reviewed expressions on the real table, exactly as the Claim control above.
+  // These temporary comparison policies are removed in this owned disposable database transaction.
+  const methodPolicies=await storage.client.begin(async tx=>{
+   const names=['movement_expected_method_owner','movement_expected_method_read','movement_expected_method_write'];
+   await tx.unsafe("create policy movement_expected_method_owner on public.employment_payment_method_history for all using(current_user<>'ai_hr_app') with check(current_user<>'ai_hr_app')");
+   await tx.unsafe("create policy movement_expected_method_read on public.employment_payment_method_history for select using(tenant_id=app.current_tenant_id() and (app.can_admin_employment(employment_id) or exists(select 1 from public.employment e where e.id=employment_id and app.is_self_person(e.person_id))))");
+   await tx.unsafe("create policy movement_expected_method_write on public.employment_payment_method_history for all using(tenant_id=app.current_tenant_id() and app.can_admin_employment(employment_id) and app.access_workforce_employment(employment_id,'workforce.maintain')) with check(tenant_id=app.current_tenant_id() and app.can_admin_employment(employment_id) and app.access_workforce_employment(employment_id,'workforce.maintain'))");
+   const rows=await tx<PolicyWitness[]>`select schemaname,tablename,replace(policyname,'movement_expected_method_','employment_payment_method_history_') as policyname,permissive,roles::text,cmd,md5(qual) as qual,md5(with_check) as with_check from pg_policies where schemaname='public' and tablename='employment_payment_method_history' and policyname=any(${names}::text[]) order by policyname`;
+   expect(rows).toHaveLength(3);
+   for(const name of names)await tx.unsafe('drop policy '+name+' on public.employment_payment_method_history');
+   return rows;
+  });
+  const combinedPolicies:PolicyWitness[]=[
    {schemaname:'app',tablename:'movement_revert_capture',policyname:'movement_revert_capture_own_transaction',permissive:'PERMISSIVE',roles:'{ai_hr_app}',cmd:'SELECT',qual:'896d23c477ff98ba03c5f769806872cb',with_check:null},
    {schemaname:'app',tablename:'movement_revert_job_outcome',policyname:'movement_revert_job_outcome_read',permissive:'PERMISSIVE',roles:'{ai_hr_app}',cmd:'SELECT',qual:'dd91406dbf38ec27c75ca3c02598b2ad',with_check:null},
    {schemaname:'app',tablename:'movement_revert_job_outcome',policyname:'movement_revert_job_outcome_record',permissive:'PERMISSIVE',roles:'{ai_hr_app}',cmd:'INSERT',qual:null,with_check:'96504ac7df85a38ba60b8d60fb88d6e4'},
@@ -766,6 +794,8 @@ it('stops on a cross-tenant row, then validates every company/tenant key without
    {schemaname:'public',tablename:'profile_option',policyname:'profile_option_import_pending',permissive:'RESTRICTIVE',roles:'{public}',cmd:'ALL',qual:'9e82774b0d29ab4d626e9af1fff8806d',with_check:null},
    {schemaname:'public',tablename:'reporting_line',policyname:'reporting_line_import_pending',permissive:'RESTRICTIVE',roles:'{ai_hr_app}',cmd:'ALL',qual:'b1326dc10537d8076dc330a56c78bb62',with_check:null},
   ];
+  combinedPolicies.push(...methodPolicies);
+  combinedPolicies.sort((a,b)=>a.schemaname.localeCompare(b.schemaname)||a.tablename.localeCompare(b.tablename)||a.policyname.localeCompare(b.policyname));
   const isCombinedRelation=(rel:string)=>Object.hasOwn(combinedRelations,rel);
   expect(Object.fromEntries(afterPerformancePrivileges.relations.filter(row=>isCombinedRelation(row.rel)).map(row=>[row.rel,{rls:row.rls,force:row.force,acl:ownerAcl(row.acl)}])))
    .toEqual(combinedRelations);
@@ -905,6 +935,31 @@ it('stops on a cross-tenant row, then validates every company/tenant key without
   expect(beforePerformancePrivileges.policies.filter(isBoardPolicy)).toEqual([]);
   expect(beforePerformancePrivileges.policies.filter(isBoardRetiredPolicy).map(boardPolicyRow)).toEqual(boardRetiredPolicies);
   expect(afterPerformancePrivileges.policies.filter(isBoardRetiredPolicy)).toEqual([]);
+  // Movement5775 adds only Payment Method to the existing protected-document field set.
+  // Independently parse both exact predicates; every role, command and other field stays pinned.
+  const expectedAttachment=await storage.client.begin(async tx=>{
+   const read:{qual:string|null;with_check:string|null}[]=[],insert:{qual:string|null;with_check:string|null}[]=[];
+   for(const method of [false,true]){
+    const fields="'basicSalary','currency','payMode','paymentTerm'"+(method?",'paymentMethod'":"");
+    const scope="tenant_id=app.current_tenant_id()";
+    const protectedRead=`(field not in (${fields}) or app.can_admin_employment(employment_id) or app.can_admin_perfcomp_employment(employment_id) or app.can_admin_payroll_employment(employment_id))`;
+    const protectedWrite=`(field not in (${fields}) or app.can_admin_employment(employment_id) or app.can_admin_perfcomp_employment(employment_id))`;
+    for(const [kind,clause] of [['select',`using (${scope} and app.access_workforce_employment(employment_id,'workforce.view') and ${protectedRead})`],['insert',`with check (${scope} and app.is_admin() and app.access_workforce_employment(employment_id,'workforce.maintain') and ${protectedWrite})`]]){
+     await tx.unsafe('create policy movement_expected_attachment on public.movement_attachment for '+kind+' '+clause);
+     const [row]=await tx<{qual:string|null;with_check:string|null}[]>`select qual,with_check from pg_policies where schemaname='public' and tablename='movement_attachment' and policyname='movement_expected_attachment'`;
+     (kind==='select'?read:insert).push(row);
+     await tx.unsafe('drop policy movement_expected_attachment on public.movement_attachment');
+    }
+   }
+   return {read,insert};
+  });
+  const isAttachmentRead=(row:(typeof afterPerformancePrivileges.policies)[number])=>row.schemaname==='public'&&row.tablename==='movement_attachment'&&row.policyname==='movement_attachment_read';
+  const isAttachmentInsert=(row:(typeof afterPerformancePrivileges.policies)[number])=>row.schemaname==='public'&&row.tablename==='movement_attachment'&&row.policyname==='movement_attachment_insert';
+  for(const [predicate,expected] of [[isAttachmentRead,expectedAttachment.read],[isAttachmentInsert,expectedAttachment.insert]] as const){
+   const before=beforePerformancePrivileges.policies.find(predicate),after=afterPerformancePrivileges.policies.find(predicate);
+   expect(before).toBeDefined();expect(before).toMatchObject(expected[0]);
+   expect(after).toEqual({...before,...expected[1]});
+  }
   const terminalComparable={
    relations:afterPerformancePrivileges.relations.filter(row=>row.rel!==receiptTable&&!sealTables.includes(row.rel)&&!isCombinedRelation(row.rel)&&!Object.hasOwn(boardRelations,row.rel)).map(row=>
     row.rel===clockTable?{...row,acl:beforeClockTable?.acl}:row),
@@ -912,7 +967,8 @@ it('stops on a cross-tenant row, then validates every company/tenant key without
    functions:afterPerformancePrivileges.functions.filter(row=>!addedFunctions.includes(row.fn)),
    policies:afterPerformancePrivileges.policies.filter(row=>!receiptPolicies.includes(row)&&!clockAuditPolicy(row)&&!isCombinedPolicy(row)&&!isBoardPolicy(row)&&!isLanePolicy(row)).map(row=>
     isClaimPolicy(row)?{...row,qual:expectedClaimQuals[0]}:isEmploymentPolicy(row)?{...row,qual:expectedEmploymentQuals[0]}:
-     isAssignmentPolicy(row)?{...row,qual:expectedAssignmentQuals[0]}:row),
+     isAssignmentPolicy(row)?{...row,qual:expectedAssignmentQuals[0]}:
+      isAttachmentRead(row)?{...row,...expectedAttachment.read[0]}:isAttachmentInsert(row)?{...row,...expectedAttachment.insert[0]}:row),
   };
   expect(terminalComparable).toEqual({...beforePerformancePrivileges,policies:beforePerformancePrivileges.policies.filter(row=>!isBoardRetiredPolicy(row)&&!isLanePolicy(row))});
   const complete=await ledger();expect(complete).toHaveLength(671+APPROVED_UPGRADE_TAIL.length);expect(complete.slice(0,671)).toEqual(afterLedger);

@@ -138,8 +138,8 @@ describe('Personnel — Movement tab / Employment History (78853b97)', () => {
     }
     // Company is displayed but NOT editable here — moving legal entity is its own gated flow.
     expect(NEW_EVENT.includes("t('form.companyReadOnly')")).toBe(true);
-    expect(NEW_EVENT.includes("t('form.currentInformation')")).toBe(true);
-    expect(NEW_EVENT.includes("t('form.afterInformation')")).toBe(true);
+    expect(NEW_EVENT.includes("t('detail.beforeChanges')")).toBe(true);
+    expect(NEW_EVENT.includes("t('detail.afterChanges')")).toBe(true);
     // The grid is only for the change kinds; lifecycle kinds keep their dedicated inputs.
     //
     // 476f23ed moved the decision from the selected CODE to the BEHAVIOUR that code carries: the event-type
@@ -177,7 +177,7 @@ describe('Personnel — Movement tab / Employment History (78853b97)', () => {
 
   it('wires the real correction controls with independent correction authority and server action', () => {
     expect(PAGE).toContain('<MovementHistoryActions context={movementContext} employmentId={employmentId} row={m}');
-    expect(PAGE).toContain('canCorrect={canCorrectMovement} reverseAction={reverseMovementEventAction}');
+    expect(PAGE).toContain('canCorrect={canCorrectMovement} canDelete={canDeleteMovement} reverseAction={reverseMovementEventAction}');
     expect(PAGE).toContain("delete:t('movement.delete')");
     expect(PAGE).toContain("deleteTitle:t('movement.deleteTitle')");
     expect(PAGE).toContain('m.payrollLocked');

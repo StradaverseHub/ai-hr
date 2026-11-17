@@ -1,3 +1,4 @@
+import {employmentPaymentMethodOnSql} from './employment-payment-method';
 import {PERSONNEL_COLUMN_SOURCES,PERSONNEL_DATE_COLUMNS} from '../lib/personnel-list-controls';
 import {isEmployeeColumnKey,type EmployeeColumnKey} from '../lib/employee-columns';
 import {privateSearchHash} from './personnel-private-search';
@@ -3419,7 +3420,7 @@ export function employeeDetail(ctx: SessionContext, employmentId: string,purpose
         payrollPolicyName: payrollPolicy.name,
         payrollPolicyStatus: payrollPolicy.status,
         // R46 79eb7151 — HOW this employee is paid (bank transfer / cheque / cash). Null = not specified.
-        paymentMethod: employment.paymentMethod,
+        paymentMethod: employmentPaymentMethodOnSql(sql`${employment.id}`),
         // ec4cbf63: the employee's DEFAULT shift (null = company default schedule) — profile assignment.
         defaultShiftId: employment.defaultShiftId,
         // R17 3e8350db: the shift ARRANGEMENT — 'fixed' (follows defaultShiftId) or 'roster' (scheduled

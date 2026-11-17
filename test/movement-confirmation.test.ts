@@ -377,8 +377,8 @@ describe('3ced1040 — Confirmation behaves like Promotion', () => {
     expect(gridEnd).toBeGreaterThan(gridStart);
     const grid = src.slice(gridStart, gridEnd);
     expect(grid.length).toBeGreaterThan(100);
-    expect(grid).toContain("t('form.currentInformation')");
-    expect(grid).toContain("t('form.afterInformation')");
+    expect(grid).toContain("t('detail.beforeChanges')");
+    expect(grid).toContain("t('detail.afterChanges')");
     expect(grid).toContain('{comparisonRows}');
 
     const dateKinds = src.match(/const DATE_VALUE_KINDS[^=]*=\s*\[([\s\S]*?)\];/);

@@ -1,4 +1,7 @@
 'use client';
+import {EMPLOYMENT_INFORMATION_ROW,EMPLOYMENT_INFORMATION_HEADER} from '@/lib/employment-information-layout';
+import {formatDmy} from '@/lib/date-display';
+import { MOVEMENT_EMPLOYMENT_PERIODS, type MovementEmploymentPeriods, type MovementEmploymentPeriodField } from '@/lib/movement-employment-periods';
 import { ActionButton } from '@/components/ui/action-button';
 import {DerivedOrganisationFields,useDerivedOrganisation} from '@/components/derived-organisation-fields';
 
@@ -46,7 +49,14 @@ export type MovementOrgScope = {
 };
 
 /** The employee's current record, as the server read it — ids for pickers, text for the flat columns. */
-export type MovementCurrentValues = {
+export type MovementCurrentValues = MovementEmploymentPeriods & {
+  groupJoinDate?:string|null;
+  joinDate?:string|null;
+  contractStartDate?:string|null;
+  extendedConfirmationDate?:string|null;
+  tenderResignationDate?:string|null;
+  resignationDate?:string|null;
+  lastWorkingDate?:string|null;
   companyName: string | null;
   /** b7b22514 — the raw id, because Entity Transfer makes Company an editable field and a select needs a
    *  value, not a label. Every other kind still renders `companyName` read-only. */
@@ -62,6 +72,7 @@ export type MovementCurrentValues = {
   currency: string | null;
   payMode: string | null;
   paymentTerm: string | null;
+  paymentMethod?:string|null;
   orgDivision: string | null;
   employmentCategory: string | null;
   orgRegion: string | null;
@@ -71,6 +82,7 @@ export type MovementCurrentValues = {
   orgLine: string | null;
   orgBase: string | null;
   /** 2260a06b — the Employee Type end dates (optional: older callers may not supply them). */
+  confirmationDate?: string | null;
   contractEndDate?: string | null;
   internshipEndDate?: string | null;
 };
@@ -175,6 +187,7 @@ export function MovementNewEvent({
   today,
   isBlacklisted,
   current,
+  closedPayrollPeriods = [],
   departments,
   positions,
   businessUnits,
@@ -198,6 +211,7 @@ export function MovementNewEvent({
   today: string;
   isBlacklisted: boolean;
   current: MovementCurrentValues;
+  closedPayrollPeriods?: string[];
   departments: MovementOption[];
   positions: MovementOption[];
   businessUnits: MovementOption[];
@@ -253,7 +267,8 @@ export function MovementNewEvent({
 }) {
   const t = useTranslations('people.detail.movement');
   const tPay = useTranslations('people.detail');
-  const label=(id:string)=>personnelFormLabel(id,(key,fallback)=>key.startsWith('people.detail.')&&tPay.has(key.slice(14))?tPay(key.slice(14)):fallback);
+  const tRoot = useTranslations();
+  const label=(id:string)=>personnelFormLabel(id,(key,fallback)=>tRoot.has(key)?tRoot(key):fallback);
   // 476f23ed — the catalogue, with the built-in list as the fallback for a render that was given none.
   const catalog: NonNullable<typeof types> =
     types?.length ? types : KINDS.map((k) => ({ code: k, label: null, behaviourKind: k }));
@@ -264,11 +279,12 @@ export function MovementNewEvent({
   const behaviour = behaviourOf(kind);
   const [correctionDate, setCorrectionDate] = useState(posting?.effectiveDate ?? edit?.effectiveDate ?? today);
   const proposedMonth = (/^\d{4}-\d{2}-\d{2}$/.test(correctionDate) ? correctionDate : edit?.effectiveDate ?? today).slice(0,7);
-  const correctionClosedPeriods = edit ? [...new Set([
-    ...(edit.payrollClosedPeriods ?? []),
-    ...(edit.availableClosedPayrollPeriods ?? []).filter(period => period >= proposedMonth),
-  ])].sort() : [];
+  const correctionClosedPeriods = [...new Set([
+    ...(edit?.payrollClosedPeriods ?? []),
+    ...(edit?.availableClosedPayrollPeriods ?? closedPayrollPeriods).filter(period => period >= proposedMonth),
+  ])].sort();
   const saved = edit?.pendingInput;
+  const [lifecycleTargets,setLifecycleTargets]=useState<Record<string,string>>({});
   const after = {...current,...saved};
   // 2260a06b — the end-date row follows the Employee Type picked in this form (Contract → Contract End Date,
   // Intern → Internship End Date, Full-Time / Part-Time → neither), so the select is tracked here.
@@ -381,6 +397,12 @@ export function MovementNewEvent({
   const paymentTermLabel = (v: string | null): string | null =>
     v == null ? null : PAYMENT_TERM_OPTIONS.includes(v as 'monthly') ? tPay(`paymentTerm_${v}` as 'paymentTerm_monthly') : v;
 
+  const periodUnitLabel = (field: MovementEmploymentPeriodField, value: string | null | undefined): string | null => {
+    if (!value) return null;
+    const choice = personnelFormChoices(movementField(field)).find(option => option.value === value);
+    return choice ? tRoot(choice.labelKey) : value;
+  };
+
   const nameOf = (options: MovementOption[], id: string | null): string | null =>
     id ? (options.find((o) => o.id === id)?.name ?? null) : null;
   const dash = (v: string | null | undefined) => (v == null || v === '' ? '—' : v);
@@ -406,13 +428,13 @@ export function MovementNewEvent({
   const row = (field: MovementRuleField, key: string, label: string, currentDisplay: string | null, control: React.ReactNode) => {
     const rule = ruleFor(field);
     if (!rule.included) return null;
-    const readOnly = !rule.editable;
+    const readOnly = !rule.editable||!isComparison;
     return (
       <div
         key={key}
         data-field={field}
         data-must-change={rule.mustChange ? 'true' : undefined}
-        className="grid grid-cols-1 gap-1 border-b border-border px-4 py-2.5 last:border-b-0 sm:grid-cols-[11rem_minmax(0,1fr)_minmax(0,1fr)] sm:items-center sm:gap-4"
+        className={EMPLOYMENT_INFORMATION_ROW}
       >
         <div className="text-xs font-medium text-muted-foreground">
           {label}
@@ -502,7 +524,20 @@ export function MovementNewEvent({
       </select>
     </label>
   );
+  const dateContext=(field:string,title:string,before:string|null|undefined,afterValue=before)=>
+    <div key={field} data-employment-information={field} className={EMPLOYMENT_INFORMATION_ROW}>
+      <div className="text-xs font-medium text-muted-foreground">{title}</div>
+      <div className="text-sm">{before===undefined?t('detail.notRecorded'):before?formatDmy(before):'—'}</div>
+      <div className="text-sm">{afterValue===undefined?t('detail.notRecorded'):afterValue?formatDmy(afterValue):'—'}</div>
+    </div>;
   const comparisonRows: React.ReactNode[] = [
+    dateContext('groupJoinDate',tRoot('people.detail.employmentInfo.groupJoinDate'),current.groupJoinDate,behaviour==='groupJoinDateCorrection'?correctionDate:current.groupJoinDate),
+    dateContext('joinDate',tRoot('people.detail.employmentInfo.joinDate'),current.joinDate,['joinDateChange','entityTransfer'].includes(behaviour)?correctionDate:current.joinDate),
+    dateContext('contractStartDate',label('employment.employment_dates_and_service.contractstartdate'),current.contractStartDate,afterType==='contract'&&current.employmentType!=='contract'?correctionDate:current.contractStartDate),
+    dateContext('extendedConfirmationDate',tRoot('people.import.movement.currentFields.extendedConfirmationDate'),current.extendedConfirmationDate,behaviour==='probationExtension'?lifecycleTargets.endDate??edit?.endDate??null:current.extendedConfirmationDate),
+    dateContext('tenderResignationDate',label('employment.employment_dates_and_service.tenderresignationdate'),current.tenderResignationDate,behaviour==='resignation'?lifecycleTargets.tenderResignationDate??saved?.tenderResignationDate??edit?.effectiveDate??null:current.tenderResignationDate),
+    dateContext('resignationDate',label('employment.employment_dates_and_service.resignationdate'),current.resignationDate,behaviour==='resignation'?lifecycleTargets.resignationEffectiveDate??saved?.resignationEffectiveDate??null:current.resignationDate),
+    dateContext('lastWorkingDate',label('employment.employment_dates_and_service.lastworkingdate'),current.lastWorkingDate,['resignation','termination'].includes(behaviour)?lifecycleTargets.endDate??lifecycleTargets.lastWorkingDate??edit?.endDate??correctionDate:current.lastWorkingDate),
     /**
      * b7b22514 — THE ONE PLACE COMPANY IS EDITABLE, and only on this one event type. Everywhere else it
      * stays the read-only note it has always been: moving an employee between legal entities re-homes
@@ -561,18 +596,33 @@ export function MovementNewEvent({
           </option>
         ))}
       </select>),
-    afterType === 'contract' ? row('contractEndDate', 'contractEndDate', label(movementField('contractEndDate')), current.contractEndDate ?? null,
+    afterType === 'contract' ? row('contractEndDate', 'contractEndDate', label(movementField('contractEndDate')), current.contractEndDate ? formatDmy(current.contractEndDate) : null,
       <>
-        <input key={`contractEndDate-${typeChanges}`} {...personnelWorkflowInput(movementField('contractEndDate'), 'movement', 'edit')}
+        <DateField key={`contractEndDate-${typeChanges}`} {...personnelWorkflowControl(movementField('contractEndDate'), 'movement', 'edit')} label={label(movementField('contractEndDate'))}
           defaultValue={typeChanges ? (saved?.contractEndDate ?? '') : (after.contractEndDate ?? '')} className={inputCls} />
         {typeChanges && <p className="text-xs text-muted-foreground">{t('form.endDateRequiredContract')}</p>}
       </>) : null,
-    afterType === 'intern' ? row('internshipEndDate', 'internshipEndDate', label(movementField('internshipEndDate')), current.internshipEndDate ?? null,
+    afterType === 'intern' ? row('internshipEndDate', 'internshipEndDate', label(movementField('internshipEndDate')), current.internshipEndDate ? formatDmy(current.internshipEndDate) : null,
       <>
-        <input key={`internshipEndDate-${typeChanges}`} {...personnelWorkflowInput(movementField('internshipEndDate'), 'movement', 'edit')}
+        <DateField key={`internshipEndDate-${typeChanges}`} {...personnelWorkflowControl(movementField('internshipEndDate'), 'movement', 'edit')} label={label(movementField('internshipEndDate'))}
           defaultValue={typeChanges ? (saved?.internshipEndDate ?? '') : (after.internshipEndDate ?? '')} className={inputCls} />
         {typeChanges && <p className="text-xs text-muted-foreground">{t('form.endDateRequiredIntern')}</p>}
       </>) : null,
+    row('confirmationDate', 'confirmationDate', label(movementField('confirmationDate')), current.confirmationDate ? formatDmy(current.confirmationDate) : null,
+      behaviour === 'confirmation'
+        ? <span className="text-sm text-muted-foreground">{formatDmy(correctionDate)}</span>
+        : <DateField {...personnelWorkflowControl(movementField('confirmationDate'), 'movement')}
+            aria-label={label(movementField('confirmationDate'))} defaultValue={after.confirmationDate ?? ''} className={inputCls} />),
+    ...MOVEMENT_EMPLOYMENT_PERIODS.flatMap(period => [
+      row(period.value, period.value, label(movementField(period.value)), current[period.value] ?? null,
+        <input {...personnelWorkflowInput(movementField(period.value), 'movement')} className={inputCls}
+          aria-label={label(movementField(period.value))} defaultValue={after[period.value] ?? ''} />),
+      row(period.unit, period.unit, label(movementField(period.unit)),
+        periodUnitLabel(period.unit, current[period.unit]),
+        <select {...personnelWorkflowControl(movementField(period.unit), 'movement')} className={inputCls}
+          aria-label={label(movementField(period.unit))}
+          defaultValue={after[period.unit] ?? ''}><option value="">{tRoot('people.detail.employmentInfo.unit')}</option>{personnelFormChoices(movementField(period.unit)).map(option=><option key={option.value} value={option.value}>{tRoot(option.labelKey)}</option>)}</select>),
+    ]),
     row('managerEmploymentId', 'manager', label(movementField('managerEmploymentId')), nameOf(managers, current.managerEmploymentId),
       select('managerEmploymentId', after.managerEmploymentId, scopedManagers, t('form.none'))),
     row('basicSalary', 'basicSalary', label(movementField('basicSalary')), current.basicSalary,
@@ -581,6 +631,11 @@ export function MovementNewEvent({
         defaultValue={after.basicSalary ?? ''}
         className={inputCls}
       />),
+    row('paymentMethod','paymentMethod',label(movementField('paymentMethod')),current.paymentMethod?tRoot(`people.detail.paymentMethod_${current.paymentMethod}`):null,
+      <select {...personnelWorkflowControl(movementField('paymentMethod'),'movement','edit')} defaultValue={after.paymentMethod??''} className={inputCls}>
+        <option value="">{t('form.none')}</option>
+        {personnelFormChoices(movementField('paymentMethod')).map(choice=><option key={choice.value} value={choice.value}>{tRoot(choice.labelKey)}</option>)}
+      </select>),
     row('currency', 'currency', label(movementField('currency')), current.currency,
       <CurrencySelect name={personnelWorkflowControl(movementField('currency'), 'movement', 'edit').name} value={after.currency} />),
     // Labels via the KNOWN option lists only — a stored value outside them falls back to itself rather
@@ -675,8 +730,9 @@ export function MovementNewEvent({
         } else setRuleError(null);
       }}
       onChangeCapture={event=>{
-        if (!saved) return;
         const target: EventTarget = event.target;
+        if(target instanceof HTMLInputElement&&['tenderResignationDate','resignationEffectiveDate','resignationDate','endDate','lastWorkingDate'].includes(target.name))setLifecycleTargets(previous=>({...previous,[target.name]:target.value}));
+        if (!saved) return;
         if (target instanceof HTMLInputElement || target instanceof HTMLSelectElement || target instanceof HTMLTextAreaElement) {
           if (target.name) touched.current.add(target.name);
         }
@@ -714,28 +770,10 @@ export function MovementNewEvent({
           {t('form.payrollWarning')}
         </p>
       )}
-      {/* 646355e5 — a closed run no longer blocks the correction. HR confirms that closed payroll stays as
-          issued; the service refuses without this box (MovementClosedPayrollAcknowledgementError). */}
       {!!correctionClosedPeriods.length && (
         <div className="border-b border-border bg-amber-50 px-4 py-3 text-sm text-amber-900 dark:bg-amber-500/10 dark:text-amber-200">
           <p className="font-medium">{t('form.closedPayrollTitle', { periods: correctionClosedPeriods.join(', ') })}</p>
           <p className="mt-1">{t('form.closedPayrollBody')}</p>
-          <label className="mt-2 flex items-start gap-2">
-            <input type="checkbox" name="acknowledgeClosedPayroll" value="1" required className="mt-1" />
-            <span>{t('form.closedPayrollAcknowledge')}</span>
-          </label>
-        </div>
-      )}
-
-      {/* Board 4604dccc r3 — a Group Join Date Correction or Join Date Change no longer stops at closed payroll: HR
-          confirms it stays as paid. The service asks for this box only when a closed month lies in between. */}
-      {!edit && (behaviour === 'groupJoinDateCorrection' || behaviour === 'joinDateChange') && (
-        <div className="border-b border-border bg-amber-50 px-4 py-3 text-sm text-amber-900 dark:bg-amber-500/10 dark:text-amber-200">
-          <p>{t('form.dateClosedPayrollOptional')}</p>
-          <label className="mt-2 flex items-start gap-2">
-            <input type="checkbox" name="acknowledgeClosedPayroll" value="1" className="mt-1" />
-            <span>{t('form.closedPayrollAcknowledge')}</span>
-          </label>
         </div>
       )}
 
@@ -909,14 +947,19 @@ export function MovementNewEvent({
         </div>
       )}
 
+      {!isComparison&&!posting&&<section className="border-t border-border" aria-label={t('detail.eventInformation')}>
+        <div className={EMPLOYMENT_INFORMATION_HEADER}><div>{t('detail.field')}</div><div>{t('detail.beforeChanges')}</div><div>{t('detail.afterChanges')}</div></div>
+        {comparisonRows}
+      </section>}
+
       {isComparison && (posting ? null : (
         // Personnel postings carry only dates and remarks, so a posting offers no comparison grid.
         // Board 154511c4 — hidden (not unmounted) while recording history: the server ignores these After values then.
         <div className="border-t border-border" hidden={historyMode}>
-          <div className="hidden bg-muted/50 px-4 py-2 text-xs uppercase tracking-wide text-muted-foreground sm:grid sm:grid-cols-[11rem_minmax(0,1fr)_minmax(0,1fr)] sm:gap-4">
+          <div className={EMPLOYMENT_INFORMATION_HEADER}>
             <div className="font-medium">{t('detail.field')}</div>
-            <div className="font-medium">{t('form.currentInformation')}</div>
-            <div className="font-medium">{t('form.afterInformation')}</div>
+            <div className="font-medium">{t('detail.beforeChanges')}</div>
+            <div className="font-medium">{t('detail.afterChanges')}</div>
           </div>
           {comparisonRows}
           <p className="px-4 py-3 text-xs text-muted-foreground">

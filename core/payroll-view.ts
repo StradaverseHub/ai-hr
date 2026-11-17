@@ -1,3 +1,4 @@
+import {employmentPaymentMethodOnSql} from './employment-payment-method';
 import {recordedPayrollReconciliationItems} from '../lib/payroll-comparison-source';
 import { ALL_RECORDED_PAY_ITEMS } from '../lib/payroll-period-comparison';
 import {frozenPayslipInformation,informationPayslipDocument,informationPayslipDocuments,informationDocumentRow,overlayInformationDocument} from './information-correction-history';
@@ -1660,7 +1661,7 @@ export function payslipForReview(
         position: position.title,
         jobGrade: frozenPayslipInformation('grade',sql`${jobGrade.name}`),
         employmentType: frozenPayslipInformation('employmentType',sql`${assignment.employmentType}`),
-        paymentMethod: employment.paymentMethod,
+        paymentMethod: employmentPaymentMethodOnSql(sql`${employment.id}`),
         bankName: employeeStatutoryMy.bankName,
         bankAccountNo: employeeStatutoryMy.bankAccountNo,
         icNumber: employeeStatutoryMy.icNumber,

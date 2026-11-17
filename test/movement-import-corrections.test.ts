@@ -136,7 +136,7 @@ describe('Movement import Update and Delete (646355e5 slice C)',()=>{
   expect((await state(ac2)).departmentId).toBe(b.deptB);
  });
 
- it('a correction behind closed payroll fails without the confirmation and saves with it',async()=>{
+ it('a correction behind closed payroll saves without a confirmation and retains the issued evidence',async()=>{
   const effective=day(-2),period=effective.slice(0,7);
   await createMovementEvent(a,{employmentId:ac1,kind:'transfer',effectiveDate:effective,departmentId:b.deptB});
   const[transfer]=await live(ac1,'transfer');
@@ -144,16 +144,12 @@ describe('Movement import Update and Delete (646355e5 slice C)',()=>{
   const row=['ACME','AC001','','','','','','','Delete',transfer.id,'Fictional closed-payroll correction'];
   const first=await importRows([row],false);
   expect(first.checked.preview.employees[0].rows[0]).toMatchObject({status:'valid',closedPayrollPeriods:[period]});
-  expect(first.result).toMatchObject({imported:0,failed:1});
-  expect(first.result.employees[0].rows[0].errors.join(' ')).toMatch(/^closed_payroll_acknowledgement_required:/);
-  expect((await state(ac1)).departmentId).toBe(b.deptB);
-  const second=await importRows([row],true);
-  expect(second.result).toMatchObject({imported:1,failed:0});
+  expect(first.result).toMatchObject({imported:1,failed:0});
   expect((await state(ac1)).departmentId).toBe(b.deptA);
   const reversals=await owner.db.select({payload:s.domainEvent.payload}).from(s.domainEvent).where(and(eq(s.domainEvent.subjectEmploymentId,ac1),eq(s.domainEvent.eventType,'employment.movement.reversed')));
-  expect(reversals.map(r=>r.payload)).toEqual([expect.objectContaining({movementId:transfer.id,closedPayrollPeriods:[period],closedPayrollAcknowledged:true,reason:'Fictional closed-payroll correction'})]);
-  const confirmed=(await getImportAttempt(a,second.checked.attemptId))!.events.find(e=>e.kind==='confirmed');
-  expect(confirmed?.detail).toMatchObject({closedPayrollAcknowledged:true});
+  expect(reversals.map(r=>r.payload)).toEqual([expect.objectContaining({movementId:transfer.id,closedPayrollPeriods:[period],closedPayrollProtected:true,reason:'Fictional closed-payroll correction'})]);
+  const confirmed=(await getImportAttempt(a,first.checked.attemptId))!.events.find(e=>e.kind==='confirmed');
+  expect(confirmed?.detail).toMatchObject({closedPayrollProtected:true});
  });
 
  it('refuses the revert of an Update or a Delete after a later change touched the same movement, and changes nothing',async()=>{

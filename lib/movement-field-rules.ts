@@ -19,6 +19,7 @@
  * ENTITY TRANSFER'S COMPANY IS LOCKED included, editable and required to change: moving the legal entity is
  * what that event type IS. The grid shows it fixed and the normaliser below overrides any stored value.
  */
+import { MOVEMENT_EMPLOYMENT_PERIOD_FIELDS } from './movement-employment-periods';
 import { MOVEMENT_FLAT_FIELDS } from './movement-pending-input';
 
 export const MOVEMENT_RULE_FIELDS = [
@@ -31,6 +32,8 @@ export const MOVEMENT_RULE_FIELDS = [
   // 2260a06b — the end date of the (resulting) Employee Type. Migration 9750 widens the stored vocabulary.
   'contractEndDate',
   'internshipEndDate',
+  'confirmationDate',
+  ...MOVEMENT_EMPLOYMENT_PERIOD_FIELDS,
   'locationId',
   'managerEmploymentId',
   ...MOVEMENT_FLAT_FIELDS,
@@ -38,13 +41,14 @@ export const MOVEMENT_RULE_FIELDS = [
   'currency',
   'payMode',
   'paymentTerm',
+  'paymentMethod',
 ] as const;
 export type MovementRuleField = (typeof MOVEMENT_RULE_FIELDS)[number];
 export const isMovementRuleField = (v: string): v is MovementRuleField =>
   (MOVEMENT_RULE_FIELDS as readonly string[]).includes(v);
 
 /** The pay fields. Their documents follow the same access rule as the salary itself (migration 0722). */
-export const MOVEMENT_PAY_FIELDS: readonly MovementRuleField[] = ['basicSalary', 'currency', 'payMode', 'paymentTerm'];
+export const MOVEMENT_PAY_FIELDS: readonly MovementRuleField[] = ['basicSalary', 'currency', 'payMode', 'paymentTerm', 'paymentMethod'];
 
 export const MOVEMENT_DOCUMENT_MODES = ['none', 'optional', 'required'] as const;
 export type MovementDocumentMode = (typeof MOVEMENT_DOCUMENT_MODES)[number];
@@ -63,16 +67,17 @@ export type MovementFieldRule = {
 export const MOVEMENT_RULE_GROUPS: readonly { id: 'organisation' | 'labels' | 'salary'; fields: readonly MovementRuleField[] }[] = [
   {
     id: 'organisation',
-    fields: ['companyId', 'businessUnitId', 'departmentId', 'positionId', 'gradeId', 'employmentType', 'contractEndDate', 'internshipEndDate', 'locationId', 'managerEmploymentId'],
+    fields: ['companyId', 'businessUnitId', 'departmentId', 'positionId', 'gradeId', 'employmentType', 'contractEndDate', 'internshipEndDate', 'confirmationDate', ...MOVEMENT_EMPLOYMENT_PERIOD_FIELDS, 'locationId', 'managerEmploymentId'],
   },
   { id: 'labels', fields: [...MOVEMENT_FLAT_FIELDS] },
-  { id: 'salary', fields: ['basicSalary', 'currency', 'payMode', 'paymentTerm'] },
+  { id: 'salary', fields: ['basicSalary', 'currency', 'payMode', 'paymentTerm', 'paymentMethod'] },
 ];
 
 /** The fields a behaviour's grid offers. Company is part of Entity Transfer only; every other comparison
  *  type shows it as a read-only note and its writer ignores a submitted company. */
 export function movementRuleFieldsFor(behaviour: string): MovementRuleField[] {
-  return MOVEMENT_RULE_FIELDS.filter((f) => f !== 'companyId' || behaviour === 'entityTransfer');
+  return MOVEMENT_RULE_FIELDS.filter((f) => (f !== 'companyId' || behaviour === 'entityTransfer') &&
+    (f !== 'confirmationDate' || behaviour !== 'confirmation')); // Confirmation's own date is its Effective Date.
 }
 
 export const defaultMovementFieldRule = (field: MovementRuleField): MovementFieldRule => ({
