@@ -44,7 +44,7 @@ export const contractAutomationJobHandler:BulkJobHandler<never>={
 };
 
 /** Shared bounded runtime unit; the system wrapper supplies only truthful tenant context and its native capability. */
-export async function advanceContractSharedAutomationOwner(owner:postgres.ReservedSql,ctx:SessionContext,job:BulkJobRow,unit:BulkJobUnit,system=false):Promise<boolean>{
+export async function advanceContractSharedAutomationOwner(owner:postgres.ReservedSql,ctx:SessionContext,job:BulkJobRow,unit:Pick<BulkJobUnit,'set'>,system=false):Promise<boolean>{
    await owner`select set_config('app.tenant_id',${ctx.tenantId},true),set_config('app.user_id','',true),set_config('jit','off',true)`;
    const db=reservedSqlExecutor(owner);
    const [event]=await db.execute<Event>(sql`select id,case_id,trigger_event,occurrence,decision_revision,workflow_versions,data from contract_shared_event
