@@ -179,6 +179,17 @@ export const AGENT_CAPABILITY_INVENTORY:Readonly<Record<string,Readonly<Record<s
   "createManualPlanAction":"backlog:approve","planAction":"backlog:approve","planSettingsAction":"backlog:approve",
   "previewManualPlanAction":"backlog:automatic","uncoveredPlanAction":"backlog:approve","uniformPlanAction":"backlog:approve",
  },
+ "app/admin/rewards/review-plans/actions.ts":{
+  "previewYearAction":"backlog:automatic","createYearAction":"backlog:approve",
+  "previewGridAction":"backlog:automatic","saveGridAction":"backlog:approve",
+  "previousChoicesAction":"internal:session_and_presentation","acceptSuggestionsAction":"internal:session_and_presentation",
+  "createReviewsAction":"backlog:approve","reviewJobAction":"internal:session_and_presentation",
+  "classifyCompanyAction":"backlog:approve",
+ },
+ "app/rewards/history-upload/actions.ts":{
+  "previewHistoryAction":"backlog:automatic","importHistoryAction":"backlog:approve",
+  "historyProgressAction":"internal:session_and_presentation","stopHistoryAction":"backlog:confirm",
+ },
  "app/admin/rewards/setup-access/actions.ts":{"setupGrantAction":"handoff:access_and_authentication"},
  "app/admin/rewards/shared/actions.ts":{"classifySharedRewardCompanyAction":"backlog:approve","changeSharedRewardExclusionAction":"backlog:confirm","loadSharedRewardTakenAction":"backlog:automatic","saveSharedRewardPolicyAction":"backlog:confirm"},
  "app/admin/rewards/uploaded/actions.ts":{"createUploadedAction":"backlog:approve"},

@@ -1,4 +1,8 @@
 import { lockAccessConfigurationReadTx } from '../../core/access-configuration-lock';
+// Kernel and physical worker consumers enter Rewards through its public boundary.
+export {rewardPlanReviewsJobHandler} from './review-plans-job';
+export {rewardPersonHistoryJobHandler} from './person-history-worker';
+export {runRewardPlanCompanyTick} from './review-plans-outbox';
 import { applyRewardCell, parseRewardCellValue, type RewardCellField } from './review-cell';
 import { recordRewardPersonHistoryTx } from './person-history';
 import { formatMoney } from '../../lib/money';

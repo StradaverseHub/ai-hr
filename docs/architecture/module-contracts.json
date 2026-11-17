@@ -7,7 +7,7 @@
     "payroll": {"facade":"packs/payroll/service","boundaryProof":"test/payroll-pack-drift.test.ts","behaviorProofs":["test/payroll-pack.test.ts","test/payroll-claims-scope.test.ts"]},
     "performance": {"facade":"packs/performance/service","boundaryProof":"test/performance-pack-drift.test.ts","behaviorProofs":["test/performance-pack.test.ts"]},
     "recruitment": {"facade":"packs/recruitment/service","boundaryProof":"test/recruitment-pack-drift.test.ts","behaviorProofs":["test/recruitment-service.test.ts","test/recruitment-careers.test.ts"]},
-    "rewards": {"facade":"packs/rewards/service","boundaryProof":"test/rewards-pack-drift.test.ts","behaviorProofs":["test/rewards-setup-owner.test.ts"]},
+    "rewards": {"facade":"packs/rewards/service","boundaryProof":"test/rewards-pack-drift.test.ts","behaviorProofs":["test/rewards-setup-owner.test.ts","test/rewards-person-history-db.test.ts","test/rewards-review-desk-db.test.ts"]},
     "lifecycle": {"facade":"packs/lifecycle/service","boundaryProof":"test/lifecycle-pack-drift.test.ts","behaviorProofs":["test/lifecycle-v9-delivery-wire-db.test.ts"]}
   }
 }

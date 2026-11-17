@@ -21,7 +21,7 @@ export const rewardsPack: ModulePack = {
     { group: 'admin', href: '/admin/rewards/change-log', labelKey: 'rewardsChangeLog', icon: Gift },
     { group: 'admin', href: '/admin/rewards/access', ownedSubpaths: ['/admin/rewards/setup-access'], labelKey: 'rewardsAccess', icon: Gift },
   ],
-  satelliteTables: ['reward_cycle', 'reward_unit', 'reward_member', 'reward_entry', 'reward_decision', 'reward_calendar'].map(table => ({ table })),
+  satelliteTables: ['reward_cycle', 'reward_unit', 'reward_member', 'reward_entry', 'reward_decision', 'reward_calendar', 'reward_plan_year', 'reward_plan_year_company', 'reward_person_history', 'app.reward_review_plan_write_lease', 'app.reward_review_plan_company_outbox'].map(table => ({ table })),
 };
 registerPack(rewardsPack);
 
