@@ -9,6 +9,7 @@ import { admittedAuthSql, readRecord } from './store';
 import { assertActiveCredential, InternalAuthError, type Credential } from './service';
 import { readLifecycleRelayTx } from './active-relay';
 import { sendSmtp, type MailTransport } from './smtp';
+import {sharedAutomationEmailContent} from '../shared-automation-email-content';
 
 /**
  * Shared workflow email (migration 5754), sent the way On/Off Boarding V9 mail is (lib/internal-auth/lifecycle-v9-mail.ts):
@@ -22,10 +23,6 @@ export async function internalAutomationMail(input: AutomationDeliveryRequest, t
   if (!target) return { outcome: 'skipped', error: 'notEligible' };
   const { mail } = target.payload;
   if (!normaliseManagedEmailSender(mail.delivery?.sender) || mail.delivery?.version !== 1 || mail.to.length < 1 || mail.to.length > 8) return { outcome: 'skipped', error: 'notEligible' };
-  // Until the separately reviewed shared attachment adapter is authorized, fail closed rather than
-  // silently sending a message whose promised files or document links were omitted. Offboarding keeps its owner.
-  const heldDelivery=mail.delivery as {assets?:unknown;documents?:unknown};
-  if(target.module!=='off'&&[heldDelivery.assets,heldDelivery.documents].some(value=>value!=null&&(!Array.isArray(value)||value.length>0)))return {outcome:'skipped',error:'notEligible'};
   const active = await readLifecycleRelayTx(admittedAuthSql, target.tenantId);
   if (!active) return { outcome: 'skipped', error: 'relayUnavailable' };
   const byRecipient = new Map<string, string>();
@@ -49,12 +46,15 @@ export async function internalAutomationMail(input: AutomationDeliveryRequest, t
   const toAddresses = unique(addresses.slice(0, mail.to.length)), ccAddresses = unique(addresses.slice(mail.to.length));
   let content: Awaited<ReturnType<typeof automationEmailContent>>;
   try {
-    // Preserve the existing Offboarding transport. Shared Contract/Probation attachments remain disabled
-    // pending the separate, concrete attachment-transport approval; their existing text/rich body still renders.
+    // Every file/link is materialized privately from the frozen native delivery capability.
+    // Offboarding keeps its existing document/attachment owner and renderer.
     content=target.module==='off'?await automationEmailContent(target,origin,{
       files:async()=>await withSystemWork(()=>client`select * from app.resignation_email_files(${id}::uuid,${token}::uuid,${origin})`) as unknown as AutomationStoredFile[],
       assets:async()=>await withSystemWork(()=>client`select * from app.resignation_email_assets(${id}::uuid,${token}::uuid,${origin})`) as unknown as AutomationStoredFile[],
-    }):{...automationEmailContent({module:target.module,origin,linkPath:target.payload.linkPath,body:mail.body,richBody:mail.richBody}),attachments:[]};
+    }):await sharedAutomationEmailContent(target,origin,{
+      assets:async()=>await withSystemWork(()=>client`select * from app.automation_email_assets(${id}::uuid,${token}::uuid,${origin})`),
+      documents:async()=>(await withSystemWork(()=>client`select app.automation_email_documents(${id}::uuid,${token}::uuid,${origin}) as allowed`))[0]?.allowed,
+    });
   } catch { return { outcome: 'skipped', error: 'notEligible' }; }
   const currentRelay = await readLifecycleRelayTx(admittedAuthSql, target.tenantId);
   if (!currentRelay || currentRelay.revision !== active.revision || currentRelay.senderName !== active.senderName) return { outcome: 'skipped', error: 'relayUnavailable' };

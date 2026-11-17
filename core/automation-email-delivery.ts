@@ -37,7 +37,7 @@ export async function queueAutomationEmailTx(tx: SqlExecutor, input: {module: 'p
   return row.data;
 }
 
-type Job = {id: string; module: string; subject_id: string; status: string; lease_token: string | null; started_at: string | null; company_id: string | null};
+type Job = {id: string; module: string; subject_id: string; status: string; lease_token: string | null; started_at: string | null; company_id: string | null; purpose?:string | null};
 /** Durable transport worker for shared workflow email. Requires the owner connection (no signed-in user). */
 export async function deliverAutomationEmails(ctx: SessionContext, connection: NotificationSweepConnection, send: (request: AutomationDeliveryRequest) => Promise<AutomationDeliveryResult> = automationEmailIpc) {
   if (ctx.userId) throw new Error('Workflow email delivery requires the storage owner.');
@@ -52,10 +52,12 @@ export async function deliverAutomationEmails(ctx: SessionContext, connection: N
   for (const {id} of due) {
     try {
       const claim = await connection.withTenant(ctx, async tx => {
-        const [job] = await tx.execute<Job>(sql`select d.id,d.module,d.subject_id,d.status,d.lease_token,d.started_at,coalesce(c.company_id,contract.company_id,j.company_id) as company_id from automation_email_delivery d left join probation_case c on d.module='probation' and c.id=d.subject_id and c.tenant_id=d.tenant_id left join contract_case contract on d.module='contract_staff' and contract.id=d.subject_id and contract.tenant_id=d.tenant_id left join resignation_journey j on d.module='off' and j.id=d.subject_id and j.tenant_id=d.tenant_id where d.id=${id}::uuid and d.tenant_id=${ctx.tenantId}::uuid and d.status='queued' and d.next_attempt_at<=now() for update of d skip locked`);
+        const [job] = await tx.execute<Job>(sql`select d.id,d.module,d.subject_id,d.status,d.lease_token,d.started_at,d.payload->>'purpose' as purpose,coalesce(c.company_id,contract.company_id,j.company_id) as company_id from automation_email_delivery d left join probation_case c on d.module='probation' and c.id=d.subject_id and c.tenant_id=d.tenant_id left join contract_case contract on d.module='contract_staff' and contract.id=d.subject_id and contract.tenant_id=d.tenant_id left join resignation_journey j on d.module='off' and j.id=d.subject_id and j.tenant_id=d.tenant_id where d.id=${id}::uuid and d.tenant_id=${ctx.tenantId}::uuid and d.status='queued' and d.next_attempt_at<=now() for update of d skip locked`);
         if (!job) return null;
-        // The module must still be in use for the case's company; otherwise the message is cancelled, never sent.
-        if (!job.company_id || ctx.entitlementsExempt === undefined && !isModuleEnabled(ctx, 'lifecycle', job.company_id)) {
+        // A saved-template self-test has no employment case/company. Its native private target rechecks
+        // current module entitlement, template authority and actual sole author before start; purpose is
+        // only a dispatch distinction, never authorization to send. Case mail retains company admission.
+        if (job.purpose !== 'templateTest' && (!job.company_id || ctx.entitlementsExempt === undefined && !isModuleEnabled(ctx, 'lifecycle', job.company_id))) {
           await tx.execute(sql`update automation_email_delivery set status='cancelled',error_code='notEligible',updated_at=now() where id=${id}::uuid`);
           return 'cancelled' as const;
         }
