@@ -1,6 +1,6 @@
 import {beforeAll,afterAll,afterEach,it,expect,vi} from 'vitest';
 import {cleanup,render,screen,within,fireEvent} from '@testing-library/react';
-import {createTranslator,NextIntlClientProvider} from 'next-intl';
+import {createTranslator,NextIntlClientProvider,type AbstractIntlMessages} from 'next-intl';
 import messages from '../messages/en.json';
 import {v9Defaults} from '../lib/lifecycle-v9-defaults';
 import type {Template} from '../lib/lifecycle-v9-model';
@@ -19,7 +19,9 @@ beforeAll(()=>{
 });
 afterAll(()=>{dialogMethods.forEach((name,index)=>{const original=originalDialogMethods[index];if(original)Object.defineProperty(HTMLDialogElement.prototype,name,original);else Reflect.deleteProperty(HTMLDialogElement.prototype,name);});});
 afterEach(cleanup);
-const t=createTranslator({locale:'en',messages,namespace:'automation',onError:error=>{throw error;}});
+// The production metadata adapter accepts dynamic catalogue keys; missing keys still throw below.
+const catalogue:AbstractIntlMessages=messages;
+const t=createTranslator({locale:'en',messages:catalogue,namespace:'automation',onError:error=>{throw error;}});
 const template=(id:string,module:'onb'|'off'='off'):Template=>({id,name:'Acceptance letter',module,type:'Letter',rules:{},hrStep:'none',employeeAck:false,retired:false,currentVersion:1,versions:[{version:1,state:'published',at:'2026-11-17T00:00:00Z',by:'Fictional editor',blocks:[],fields:[],routing:[{id:'employee',order:2,action:'sign',who:{kind:'employee'},owner:false},{id:'review',order:1,action:'review',who:{kind:'group',groupId:'ops'},owner:true},{id:'approve',order:1,action:'approve',who:{kind:'people',userIds:['bp']},owner:false}]}]});
 function fixture(){
  const config=v9Defaults();config.templates=[template('shared'),template('legacy'),template('onboarding','onb'),template('unused')];config.groups=[{id:'ops',name:'Fictional People Ops',members:[],limit:5}];
