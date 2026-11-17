@@ -1,3 +1,26 @@
+## Completed email context and setup membership — 17 November 2026 (provisional source only)
+
+Registered `6017_contract_completed_email_child_context`, idx5417/when1794841006017,
+SQL SHA-256 `5248b84495325150a4fd07ba578b6398da937290cbc755e18fdd8cff3a380452`, and
+`6018_contract_setup_membership_fold`, idx5418/when1794841006018, SQL SHA-256
+`c62d082c718aa7944883ef5beba674bdfe52c3c130673e764f231df8af2f2d65`.
+Fresh raw source/journal survey covered all423 Git-discovered migration directories, with no
+prefix/index/timestamp collision or unreadable source. All131 pending Contract entries remain
+provisional until actual prior accepted releases and the ordered installation ledger determine
+final forward allocation. Earlier1048 SQL and journal entries are preserved.
+
+6017 retains the strict current worker/cursor gate and all historical recovery/executor guards.
+Only genuinely completed, successful email origins with canonical source proof, the actual consumed
+immutable workflow step and exact email version may be ignored when selecting historical recovery.
+A same-cohort reconciliation marker veto remains. No new context fallback, role, helper, grant or
+business authority is added. Pin immutability stays enabled in native negative tests.
+
+6018 preserves every existing setup fingerprint input, account payload and UUID ordering. Grouped
+account/membership contributions replace the actual rescan-prone membership semi join under bad
+row estimates. No planner setting or execution budget is changed. Source review passed; exact
+parity, measured5001-member preview, historical refusal and native restricted-owner proofs remain
+required. No runtime PASS, installation, merge or release is claimed.
+
 ## Set-based Contract setup fingerprint — 17 November 2026 (provisional source only)
 
 Registered `6016_contract_setup_fingerprint_setwise`, idx `5416`, when `1794841006016`,

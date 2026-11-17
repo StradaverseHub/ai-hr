@@ -55,6 +55,8 @@ async function finishPreview(id:string,as:SessionContext,statementTimeoutMs?:num
    if(!native)throw Error('Actual held preview/setup source unavailable for the performance diagnostic');
    // A plain EXPLAIN of the exact live SELECT is useful only under its actual definer identity.
    expect(native.role).toBe(native.owner);
+   // Exact live forward body: never let an old==old oracle mask a skipped migration.
+   expect(native.sourceHash).toBe('ed94a2c8c9982bf59bc45b4afaa87748b2fb0257abcc764b99619de345479f8a');
    expect(native.actorUserId).toBe(ctx.userId);expect(native.actorPersonId).toBeTruthy();expect(native.boundActorPersonId).toBe(native.actorPersonId);
    const query=native.body.trim().replace(/;$/, '').replace(/\bp_case\b/g,()=>'$1::uuid');
    const [planning]=await connection<{mode:string}[]>`select current_setting('plan_cache_mode') as mode`;
@@ -76,10 +78,10 @@ async function finishPreview(id:string,as:SessionContext,statementTimeoutMs?:num
  }
  throw new Error('Protected Contract preview did not finish.');
 }
-async function finishAutomation(id:string,as:SessionContext){
+async function finishAutomation(id:string,as:SessionContext,handler=contractAutomationJobHandler){
  let failure:unknown;
- const diagnostic={...contractAutomationJobHandler,describeFailure:async(...args:Parameters<NonNullable<typeof contractAutomationJobHandler.describeFailure>>)=>{
-  failure=args[1];return contractAutomationJobHandler.describeFailure!(...args);
+ const diagnostic={...handler,describeFailure:async(...args:Parameters<NonNullable<typeof contractAutomationJobHandler.describeFailure>>)=>{
+  failure=args[1];return handler.describeFailure!(...args);
  }};
  for(let count=0;count<100;count++){
   const job=await readBulkJob(as,id,'contract_automation');
@@ -158,6 +160,8 @@ describe('protected Contract decision preview and submission',()=>{
   const[unlinked]=await owner.db.execute<{id:string}>(sql`insert into app_user(tenant_id,workos_user_id) values(${f.b.tenantId}::uuid,${'unlinked-parity-'+randomUUID()}) returning id`);
   await owner.db.execute(sql`update lc_v9_config set data=jsonb_set(data,'{groups}',(data->'groups')||jsonb_build_array(jsonb_build_object('id','unrelated-parity','name','Still hashed','limit',0,'members',jsonb_build_array(${unlinked.id}::text)))) where tenant_id=${f.b.tenantId}::uuid`);
   expect(await compare('Unrelated group members remain hashed, including NULL Person')).not.toBe(baseline);
+  await owner.db.execute(sql`update lc_v9_config set data=jsonb_set(data,'{groups}',(data->'groups')||jsonb_build_array(jsonb_build_object('id','membership-fold-parity','name','Duplicates and missing accounts','limit',0,'members',jsonb_build_array(${unlinked.id}::text,${unlinked.id}::text,${randomUUID()}::text,'not-a-uuid')))) where tenant_id=${f.b.tenantId}::uuid`);
+  await compare('Duplicate membership, orphan UUID and malformed ID preserve the exact original account set');
   const duplicate=await createAppUser(f.b.tenantId,f.proposer.personId!,'employee');
   await compare('Manager uniqueness counts every active same-Person account');
   await owner.db.execute(sql`update app_user set archived_at=now() where id=${duplicate}::uuid`);await compare('Archived duplicate restores the canonical unique manager');
@@ -185,7 +189,52 @@ describe('protected Contract decision preview and submission',()=>{
   await saveAutomationWorkflow(f.admin,{workflow,expectedRevision:1,reason:'Include the shared decision receipt'});
   const requested=await previewContractSharedDecision(f.proposer,{caseId:f.caseId,revision:1,draft:{...draft,payChanges:true,basicSalary:'5200.12'}});await finishPreview(requested.jobId,f.proposer);
   const preview=await readContractSharedDecisionPreview(f.proposer,requested.previewId);expect(preview.plan?.blockers).toEqual([]);
-  const accepted=await submitContractSharedDecision(f.proposer,{caseId:f.caseId,revision:1,previewId:requested.previewId});expect((await finishAutomation(accepted.jobId,f.proposer)).state).toBe('completed');
+  const originalActorId=f.proposer.userId;if(!originalActorId)throw Error('The actual admitted decision actor is required.');
+  let checkedHeldCustody=false;
+  const guarded:typeof contractAutomationJobHandler={...contractAutomationJobHandler,async finalize(ctx,job,unit){
+   return contractAutomationJobHandler.finalize!(ctx,job,{...unit,ownerTx:callback=>unit.ownerTx!(async native=>{
+    await native`select set_config('app.tenant_id',${ctx.tenantId},true),set_config('app.user_id','',true)`;
+    const[child]=await native<{id:string;pin:string}[]>`select child.id,pin.id as pin from contract_shared_event child join app.contract_email_prerequisite_origin binding on binding.tenant_id=child.tenant_id and binding.job_id=child.job_id join contract_shared_event original on original.tenant_id=binding.tenant_id and original.id=binding.origin_event_id and original.processed_at is not null and original.error is null join contract_shared_email_document_step pin on pin.tenant_id=binding.tenant_id and pin.id=binding.pin_id where child.tenant_id=${ctx.tenantId}::uuid and child.job_id=${job.id}::uuid and child.trigger_event='approvalActionNeeded' and child.processed_at is null order by child.created_at,child.id limit 1`;
+    if(child&&!checkedHeldCustody){
+     await native`select set_config('app.contract_event',${child.id},true)`;
+     const baseline=async()=>{const[row]=await native<{source:boolean;handled:{handled:boolean}}[]>`select app.contract_shared_email_recovery_source(${ctx.tenantId}::uuid,${child.pin}::uuid) as source,app.contract_shared_email_recovery_original(${child.id}::uuid) as handled`;expect(row).toEqual({source:true,handled:{handled:false}});};
+     await baseline();
+     const[originalPin]=await native<{data:unknown}[]>`select to_jsonb(pin) as data from contract_shared_email_document_step pin where pin.tenant_id=${ctx.tenantId}::uuid and pin.id=${child.pin}::uuid`;
+     // Negative fault attempts run under the genuine held worker; native immutable custody stays enabled.
+     const faults=[
+      {name:'company',apply:()=>native`update contract_shared_email_document_step set company_id=${randomUUID()}::uuid where tenant_id=${ctx.tenantId}::uuid and id=${child.pin}::uuid`},
+      {name:'Person',apply:()=>native`update contract_shared_email_document_step set subject_person_id=${randomUUID()}::uuid where tenant_id=${ctx.tenantId}::uuid and id=${child.pin}::uuid`},
+      {name:'period',apply:()=>native`update contract_shared_email_document_step set source_period_revision='negative-custody-period' where tenant_id=${ctx.tenantId}::uuid and id=${child.pin}::uuid`},
+      {name:'decision',apply:()=>native`update contract_shared_email_document_step set decision_revision=decision_revision+1 where tenant_id=${ctx.tenantId}::uuid and id=${child.pin}::uuid`},
+      {name:'email revision',apply:()=>native`update contract_shared_email_document_step set email_revision=email_revision+1 where tenant_id=${ctx.tenantId}::uuid and id=${child.pin}::uuid`},
+     ];
+     for(const fault of faults){
+      await native`savepoint custody_negative`;let refusal:unknown;
+      try{await fault.apply();}catch(error){refusal=error;}finally{await native`rollback to savepoint custody_negative`;await native`release savepoint custody_negative`;}
+      expect(refusal,fault.name).toMatchObject({code:'23514',message:'Prepared email references and document bindings are immutable'});
+      const[unchanged]=await native<{data:unknown}[]>`select to_jsonb(pin) as data from contract_shared_email_document_step pin where pin.tenant_id=${ctx.tenantId}::uuid and pin.id=${child.pin}::uuid`;expect(unchanged).toEqual(originalPin);await baseline();
+     }
+     const sources=[
+      {name:'original actor archived',apply:()=>native`update app_user set archived_at=now() where tenant_id=${ctx.tenantId}::uuid and id=${originalActorId}::uuid`},
+      {name:'native company archived',apply:()=>native`update company set archived_at=now() where tenant_id=${ctx.tenantId}::uuid and id=(select company_id from contract_shared_email_document_step where tenant_id=${ctx.tenantId}::uuid and id=${child.pin}::uuid)`},
+     ];
+     for(const source of sources){
+      await native`savepoint source_negative`;
+      try{
+       await source.apply();const[proof]=await native<{source:boolean}[]>`select app.contract_shared_email_recovery_source(${ctx.tenantId}::uuid,${child.pin}::uuid) as source`;expect(proof.source,source.name).toBe(false);
+       // Refusal may occur at the exact current-event fence or the stricter original-frame fence.
+       let frameError:unknown;let result:{handled:boolean}|undefined;
+       try{const[row]=await native<{value:{handled:boolean}}[]>`select app.contract_shared_email_recovery_original(${child.id}::uuid) as value`;result=row.value;}catch(error){frameError=error;}
+       if(frameError)expect(frameError,source.name).toMatchObject({code:'42501'});else expect(result,source.name).toMatchObject({handled:true});
+      }finally{await native`rollback to savepoint source_negative`;await native`release savepoint source_negative`;}
+      await baseline();
+     }
+     checkedHeldCustody=true;
+    }
+    return callback(native);
+   })});
+  }};
+  const accepted=await submitContractSharedDecision(f.proposer,{caseId:f.caseId,revision:1,previewId:requested.previewId});expect((await finishAutomation(accepted.jobId,f.proposer,guarded)).state).toBe('completed');expect(checkedHeldCustody).toBe(true);
   const deliveries=await owner.db.execute<{id:string;key:string;payload:{linkPath:string;mail:{subject:string;body:string;to:string[];cc:string[];richBody:{values:Record<string,string>}}}}>(sql`select id,mail_key as key,payload from automation_email_delivery where tenant_id=${f.b.tenantId}::uuid order by mail_key`);
   const receipts=deliveries.length===2?null:{
    jobs:await owner.db.execute(sql`select id,state,phase,error from bulk_job where tenant_id=${f.b.tenantId}::uuid and id=${accepted.jobId}::uuid`),
@@ -193,6 +242,12 @@ describe('protected Contract decision preview and submission',()=>{
    runs:await owner.db.execute(sql`select id,trigger_event,status,step_cursor,waiting_for,failure from automation_run where tenant_id=${f.b.tenantId}::uuid and subject_id=${f.caseId}::uuid order by started_at,id`),
   };
   expect(deliveries,JSON.stringify({keys:deliveries.map(item=>item.key),receipts})).toHaveLength(2);
+  const events=await owner.db.execute<{trigger:string;processed:boolean;error:string|null;reconciliation:unknown}>(sql`select trigger_event as trigger,processed_at is not null as processed,error,email_reconciliation as reconciliation from contract_shared_event where tenant_id=${f.b.tenantId}::uuid and job_id=${accepted.jobId}::uuid order by created_at,id`);
+  expect(events.map(event=>event.trigger)).toContain('approvalActionNeeded');
+  expect(events.every(event=>event.processed&&event.error===null&&event.reconciliation===null),JSON.stringify(events)).toBe(true);
+  const consumed=await owner.db.execute<{status:string;cursor:number;waiting:string|null;pin:string;step:string;ordinal:number}>(sql`select run.status,run.step_cursor as cursor,run.waiting_for as waiting,pin.id as pin,pin.workflow_step_id as step,frozen.n::integer as ordinal from contract_shared_email_document_step pin join automation_run run on run.tenant_id=pin.tenant_id and run.id=pin.workflow_run_id join automation_workflow_version version on version.tenant_id=run.tenant_id and version.workflow_id=run.workflow_id and version.revision=run.workflow_revision cross join lateral jsonb_array_elements(version.definition->'steps') with ordinality frozen(step,n) where pin.tenant_id=${f.b.tenantId}::uuid and pin.case_id=${f.caseId}::uuid and frozen.step->>'id'=pin.workflow_step_id`);
+  expect(consumed).toHaveLength(1);const[emailStep]=consumed;if(!emailStep)throw Error('The actual consumed native email pin is missing');expect(emailStep).toMatchObject({status:'waiting',cursor:2,ordinal:1});expect(emailStep.waiting).not.toBe(emailStep.pin);
+
   const workflowMail=deliveries.find(item=>!item.key.startsWith('approval:'))!,assignment=deliveries.find(item=>item.key.startsWith('approval:'))!;
   expect(workflowMail.payload.mail).toMatchObject({subject:'Review Fictional Contract subject',to:[f.admin.userId],cc:[f.proposer.userId]});
   expect(workflowMail.payload.mail.body).toContain('{{case.link}}');expect(workflowMail.payload.mail.richBody.values['contract.salary']).toBe('5200.12');expect(JSON.stringify(workflowMail.payload)).not.toContain('4976.21');

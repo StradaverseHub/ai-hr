@@ -7337,6 +7337,20 @@
       "when": 1794841006016,
       "tag": "6016_contract_setup_fingerprint_setwise",
       "breakpoints": true
+    },
+    {
+      "idx": 5417,
+      "version": "7",
+      "when": 1794841006017,
+      "tag": "6017_contract_completed_email_child_context",
+      "breakpoints": true
+    },
+    {
+      "idx": 5418,
+      "version": "7",
+      "when": 1794841006018,
+      "tag": "6018_contract_setup_membership_fold",
+      "breakpoints": true
     }
   ]
 }

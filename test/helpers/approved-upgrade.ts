@@ -356,6 +356,8 @@ export const APPROVED_UPGRADE_TAIL=[
  {idx:5414,when:1794841006014,tag:'6014_contract_empty_opening_technical_finish'},
  {idx:5415,when:1794841006015,tag:'6015_automation_offboarding_configuration_compatibility'},
  {idx:5416,when:1794841006016,tag:'6016_contract_setup_fingerprint_setwise'},
+ {idx:5417,when:1794841006017,tag:'6017_contract_completed_email_child_context'},
+ {idx:5418,when:1794841006018,tag:'6018_contract_setup_membership_fold'},
 ] as const;
 // Final pending 2109/2126 bytes reviewed from engine 128bc2539; no applied-prefix hashes change.
 const APPROVED_UPGRADE_HASHES:Record<string,string>={
@@ -377,6 +379,8 @@ const APPROVED_UPGRADE_HASHES:Record<string,string>={
  '6014_contract_empty_opening_technical_finish':'4c121b4f3d8e35a1573aba4cb1a858492f6a035ec2b0981f31502e816841091d',
  '6015_automation_offboarding_configuration_compatibility':'e0c866f621440434fd45ba1c847b28c8defdf0d7cca57420295d36c1b18282c5',
  '6016_contract_setup_fingerprint_setwise':'0b51b7a40c7f76e2d23ca8f9d0c29be655e01fe52763f4b7c2c57dc0eded8dca',
+ '6018_contract_setup_membership_fold':'c62d082c718aa7944883ef5beba674bdfe52c3c130673e764f231df8af2f2d65',
+ '6017_contract_completed_email_child_context':'5248b84495325150a4fd07ba578b6398da937290cbc755e18fdd8cff3a380452',
  '5923_contract_letter_purpose_guidance':'d33fdacdaec8347bbd30d9cd27cfba9b7bbb289650440815f7bf8658a3ff1595',
  '5977_contract_email_current_set_source':'1d743062638fa9184c8afba5fbd3d9a4992fb1026ca2a3b5de2d3feebe2a2ae8',
  '5978_contract_email_work_archived_company':'6e0c37f61c66feb80f95a312a23d4f3910a2d7c91f79a0047acaebcdb6914523',
