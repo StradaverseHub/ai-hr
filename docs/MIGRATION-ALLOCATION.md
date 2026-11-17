@@ -1,3 +1,24 @@
+# Resignation handoff-audit correction reservation — 17 November 2026 (unapplied)
+
+The release coordinator confirmed, after a fresh registered-worktree journal and allocation-document survey,
+that Resignation reserves **5788–5790**, journal idx **5188–5190**, with `when` values
+**1793330005488–1793330005490**. These slots cover the additional native team-letter guards,
+authorized document fields/configured workflow details, and per-case communications corrections found
+in the renewed handoff audit. SQL drafts receive final tags only at their reviewed checkpoint; a reservation
+is not an applied migration or a verification result. Root owns journal entries and upgrade pins.
+
+Preserve the SQL bytes of 5783–5786 and foreign Audit 5787. Movement owns 5772–5782 and releases first;
+Resignation must integrate Movement's actual accepted source and recheck the ordered installed ledger
+before final release evidence and admission. No main/alpha advancement is authorized during Movement's
+frozen gate. This supersedes any older conditional suggestion that Resignation might release first.
+
+Foreign reservations: Recruitment **5850–5877**, idx5250–5277, `when`1793330005550–1793330005577;
+Contract **5800–5849 and5890–5909**, including its newly reserved5900–5909/idx5300–5309/
+`when`1794841005900–1794841005909. Preserve these ranges. Recruitment's lower timestamps must be
+reconciled before any higher-timestamp Contract installation; tag order alone does not establish ordering.
+Refresh remote claims and both target installation watermarks at admission. No lease or release readiness
+is claimed, and no production installation or package publication is authorized by this reservation.
+
 # Resignation final source allocation — 17 November 2026 (unapplied)
 
 The cross-session release coordinator reserves `5783_resignation_journey` (idx 5183 / when 1793330005483),
