@@ -249,6 +249,9 @@ CREATE FUNCTION app.reward_review_plan_metadata(wanted_year integer) RETURNS jso
  FROM company c LEFT JOIN company_registration_classification r ON r.tenant_id=c.tenant_id AND r.company_id=c.id LEFT JOIN reward_company_classification x ON x.tenant_id=c.tenant_id AND x.company_id=c.id
  WHERE c.tenant_id=app.current_tenant_id() AND app.reward_config_page_allowed(c.id,'plans.manage','library_view')
  AND(c.archived_at IS NOT NULL OR c.currency<>'MYR' OR coalesce(r.entity_kind,'legal_entity')<>'legal_entity' OR coalesce(r.is_test_entity,false) OR coalesce(x.disposition,'visible')<>'visible')),'[]'::jsonb),
+ 'classificationCompanies',coalesce((SELECT jsonb_agg(jsonb_build_object('id',c.id,'name',c.legal_name) ORDER BY c.legal_name,c.id) FROM company c WHERE c.tenant_id=app.current_tenant_id() AND app.reward_config_page_allowed(c.id,'plans.manage','library_view') AND app.reward_admin(c.id)),'[]'::jsonb),
+ 'classifications',coalesce((SELECT jsonb_agg(jsonb_build_object('companyId',c.company_id,'disposition',c.disposition,'canonicalCompanyId',CASE WHEN app.reward_admin(c.canonical_company_id) THEN c.canonical_company_id END,'reason',c.reason,'updatedAt',c.updated_at) ORDER BY c.company_id) FROM reward_company_classification c WHERE c.tenant_id=app.current_tenant_id() AND app.reward_config_page_allowed(c.company_id,'plans.manage','library_view') AND app.reward_admin(c.company_id)),'[]'::jsonb),
+ 'canClassify',EXISTS(SELECT 1 FROM company c WHERE c.tenant_id=app.current_tenant_id() AND app.reward_config_page_allowed(c.id,'plans.manage','library_view') AND app.reward_admin(c.id)),
  'canCreateYear',app.reward_config_page_allowed(NULL,'plans.manage','manage'),'canEdit',app.reward_config_editor_anywhere() AND app.reward_level_rank(app.reward_actor_page_level('plans.manage'))>=3,
  'canCreateReviews',app.reward_setup_allowed(NULL,'manage')) WHERE app.reward_config_page_allowed(NULL,'plans.manage','library_view')
 $$;
@@ -388,3 +391,60 @@ BEGIN
  RETURN NEW;
 END $$;
 REVOKE ALL ON FUNCTION app.reward_review_plan_target_available() FROM PUBLIC;DROP TRIGGER reward_policy_target_company_available ON reward_policy_group_target;CREATE TRIGGER reward_policy_target_company_available BEFORE INSERT ON reward_policy_group_target FOR EACH ROW EXECUTE FUNCTION app.reward_review_plan_target_available();
+--> statement-breakpoint
+-- Durable company-change outbox. Enqueue is in the source transaction; the continuous import worker
+-- processes at most one event and 100 company/year drafts per tick without holding a web request.
+ALTER TABLE reward_plan_year ADD COLUMN is_open boolean NOT NULL DEFAULT true;
+CREATE TABLE app.reward_review_plan_company_outbox(event_id uuid PRIMARY KEY REFERENCES public.domain_event(id),tenant_id uuid NOT NULL REFERENCES public.tenant(id),not_before timestamptz NOT NULL DEFAULT now(),created_at timestamptz NOT NULL DEFAULT now());
+ALTER TABLE app.reward_review_plan_company_outbox ENABLE ROW LEVEL SECURITY;ALTER TABLE app.reward_review_plan_company_outbox FORCE ROW LEVEL SECURITY;
+CREATE POLICY reward_review_plan_outbox_owner ON app.reward_review_plan_company_outbox TO ai_hr_owner USING(app.acting_as_owner()) WITH CHECK(app.acting_as_owner());
+REVOKE ALL ON app.reward_review_plan_company_outbox FROM PUBLIC,ai_hr_app;
+CREATE FUNCTION app.reward_review_plan_company_enqueue() RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+BEGIN
+ IF NEW.event_type IN('company.created','company.registration-classification.changed','reward.company-classified','organisation-tag-run.published') THEN
+  INSERT INTO app.reward_review_plan_company_outbox(event_id,tenant_id,not_before)VALUES(NEW.id,NEW.tenant_id,CASE WHEN NEW.event_type='organisation-tag-run.published' THEN greatest(now(),(NEW.payload->>'effectiveOn')::date::timestamp AT TIME ZONE 'Asia/Kuala_Lumpur') ELSE now() END) ON CONFLICT DO NOTHING;
+ END IF;RETURN NEW;
+END $$;
+REVOKE ALL ON FUNCTION app.reward_review_plan_company_enqueue() FROM PUBLIC;
+CREATE TRIGGER reward_review_plan_company_enqueue AFTER INSERT ON domain_event FOR EACH ROW EXECUTE FUNCTION app.reward_review_plan_company_enqueue();
+-- System-only maintenance accesses the owner rows, never as a captured human principal.
+CREATE POLICY reward_plan_year_system ON reward_plan_year TO ai_hr_owner USING(app.acting_as_owner()) WITH CHECK(app.acting_as_owner());
+CREATE POLICY reward_plan_year_company_system ON reward_plan_year_company TO ai_hr_owner USING(app.acting_as_owner()) WITH CHECK(app.acting_as_owner());
+CREATE POLICY reward_plan_registration_system ON company_registration_classification FOR SELECT TO ai_hr_owner USING(app.acting_as_owner());
+CREATE FUNCTION app.reward_review_plan_company_tick() RETURNS integer LANGUAGE plpgsql SET search_path=pg_catalog,public,app AS $$
+DECLARE item app.reward_review_plan_company_outbox%ROWTYPE;n integer;source_mapping jsonb;activated boolean;
+BEGIN
+ IF NOT app.acting_as_owner() THEN RAISE EXCEPTION 'Physical maintenance owner required' USING ERRCODE='42501';END IF;
+ SELECT * INTO item FROM app.reward_review_plan_company_outbox WHERE not_before<=now() ORDER BY not_before,created_at,event_id LIMIT 1 FOR UPDATE SKIP LOCKED;
+ IF item.event_id IS NULL THEN RETURN 0;END IF;
+ PERFORM set_config('app.tenant_id',item.tenant_id::text,true);PERFORM set_config('app.user_id','',true);PERFORM set_config('jit','off',true);
+ IF NOT pg_try_advisory_xact_lock(hashtextextended('access-configuration:'||item.tenant_id::text,0)) THEN RETURN 0;END IF;
+ SELECT app.company_org_mapping_at(timezone('Asia/Kuala_Lumpur',now())::date),EXISTS(SELECT 1 FROM company_organisation_run WHERE tenant_id=item.tenant_id AND state='published' AND kind<>'retag' AND effective_on<=timezone('Asia/Kuala_Lumpur',now())::date) INTO source_mapping,activated;
+ WITH eligible AS MATERIALIZED(
+ SELECT c.id,c.legal_name FROM company c LEFT JOIN company_registration_classification r ON r.tenant_id=c.tenant_id AND r.company_id=c.id LEFT JOIN reward_company_classification x ON x.tenant_id=c.tenant_id AND x.company_id=c.id
+ WHERE c.tenant_id=item.tenant_id AND c.archived_at IS NULL AND c.currency='MYR' AND coalesce(r.entity_kind,'legal_entity')='legal_entity' AND NOT coalesce(r.is_test_entity,false) AND coalesce(x.disposition,'visible')='visible'
+ AND app.company_org_resolve(c.id,source_mapping,activated)->>'status'='ready'
+ ),inserted AS(
+ INSERT INTO reward_plan_year_company(tenant_id,year,company_id)
+ SELECT y.tenant_id,y.year,c.id FROM reward_plan_year y CROSS JOIN eligible c
+ WHERE y.tenant_id=item.tenant_id AND y.is_open AND NOT EXISTS(SELECT 1 FROM reward_plan_year_company p WHERE p.tenant_id=y.tenant_id AND p.year=y.year AND p.company_id=c.id)
+ ORDER BY y.year,c.id LIMIT 100 ON CONFLICT DO NOTHING RETURNING tenant_id,year,company_id
+ ),events AS(
+ INSERT INTO domain_event(tenant_id,aggregate_type,aggregate_id,event_type,actor_type,payload)
+ SELECT i.tenant_id,'reward-plan',i.company_id,'reward-plan.company-added','system',jsonb_build_object('companyId',i.company_id,'company',c.legal_name,'year',i.year,'sourceEventId',item.event_id)
+ FROM inserted i JOIN eligible c ON c.id=i.company_id RETURNING id
+ )SELECT count(*)::integer INTO n FROM events;
+ IF n<100 THEN DELETE FROM app.reward_review_plan_company_outbox WHERE event_id=item.event_id;END IF;
+ RETURN n;
+END $$;
+REVOKE ALL ON FUNCTION app.reward_review_plan_company_tick() FROM PUBLIC,ai_hr_app;
+CREATE FUNCTION app.reward_review_plan_company_recipients(wanted_event uuid) RETURNS SETOF uuid LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,app AS $$
+ WITH event AS(SELECT tenant_id,(payload->>'companyId')::uuid AS company_id FROM domain_event WHERE tenant_id=app.current_tenant_id() AND id=wanted_event AND event_type='reward-plan.company-added'),
+ holders AS(
+ SELECT g.user_id FROM reward_group_role_grant g JOIN event e ON e.tenant_id=g.tenant_id WHERE g.role='gr' AND g.active
+ UNION SELECT s.user_id FROM reward_setup_grant s JOIN event e ON e.tenant_id=s.tenant_id WHERE s.role='gr' AND s.active AND(s.company_id IS NULL OR s.company_id=e.company_id) AND s.valid_from<=timezone('Asia/Kuala_Lumpur',now())::date AND(s.valid_to IS NULL OR s.valid_to>=timezone('Asia/Kuala_Lumpur',now())::date)
+ )SELECT DISTINCT employment.id FROM holders h JOIN event ev ON true JOIN app_user u ON u.tenant_id=ev.tenant_id AND u.id=h.user_id JOIN employment ON employment.tenant_id=u.tenant_id AND employment.person_id=u.person_id
+ WHERE u.archived_at IS NULL AND NOT app.login_blocked(u.id) AND employment.hired_on<=timezone('Asia/Kuala_Lumpur',now())::date AND(employment.terminated_on IS NULL OR employment.terminated_on>timezone('Asia/Kuala_Lumpur',now())::date)
+ AND app.is_admin() AND(app.current_user_id() IS NULL OR app.is_group_admin())
+$$;
+REVOKE ALL ON FUNCTION app.reward_review_plan_company_recipients(uuid) FROM PUBLIC;GRANT EXECUTE ON FUNCTION app.reward_review_plan_company_recipients(uuid) TO ai_hr_app;
