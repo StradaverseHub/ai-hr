@@ -21,6 +21,7 @@ const RESIGNATION_BOUNDARIES = [
   'core/resignation-clearance',
   'core/resignation-letter',
   'core/resignation-proof',
+  'core/resignation-communications',
 ] as const;
 
 /** Lifecycle-prefixed files are discovered; the resignation aggregate has explicit pack ownership. */
@@ -43,7 +44,7 @@ describe('ADR-0080 D9: lifecycle pack import ratchet', () => {
     expect(BOUNDARIES).toContain('core/lifecycle-cases');
     expect(BOUNDARIES).toContain('core/lifecycle-it');
     expect(BOUNDARIES).toEqual(expect.arrayContaining([...RESIGNATION_BOUNDARIES]));
-    expect(RESIGNATION_BOUNDARIES).toHaveLength(4);
+    expect(RESIGNATION_BOUNDARIES).toHaveLength(5);
   });
 
   const results = BOUNDARIES.map((boundary) =>
