@@ -21,13 +21,13 @@ beforeEach(async () => {
   await v9Setup(admin);
   const config = await onboardingContext(admin); config.config.access.onboarding = [admin.userId!]; config.config.access.offboarding = [admin.userId!];
   await onboardingSaveConfig(admin, config.revision, config.config);
-  const draft = await saveEmployeeDraft(admin, { currentStep: 1, data: { profile: { fullName: 'Fictional directory joiner' },
+  const draft = await saveEmployeeDraft(admin, { currentStep: 1, data: { profile: { fullName: 'Fictional directory joiner', primaryEmail: 'directory-joiner@fixture.test' },
     employment: { companyId: base.companyId, departmentId: base.deptA, positionId: base.positionId, hiredOn: todayInKualaLumpur() } } });
   caseId = (await onboardingList(admin)).find(row => row.case.sourceDraftId === draft.id)!.case.id;
 });
 afterEach(() => vi.unstubAllEnvs()); afterAll(closeAll);
 async function account(name = 'Fictional Recipient', tenantId = base.tenantId) {
-  const [person] = await owner.db.insert(schema.person).values({ tenantId, fullName: name, primaryEmail: 'personnel-field@fixture.test' }).returning();
+  const [person] = await owner.db.insert(schema.person).values({ tenantId, fullName: name, primaryEmail: `${randomUUID()}@personnel.fixture.test` }).returning();
   const id = await createAppUser(tenantId, person.id, 'employee');
   const subject = randomUUID(), issuer = internalIssuer(tenantId);
   const credential: Credential = { subject, tenantId, issuer, organization: 'fixture', username: subject,
@@ -46,7 +46,7 @@ it('returns bounded canonical account addresses, never PM email or sealed creden
   const user = await account();
   expect(await searchOnboardingRecipientUsers(admin, caseId, 'Fictional Recipient')).toEqual([{ id: user.id, name: 'Fictional Recipient', email: user.credential.email, department: '' }]);
   expect(await addresses([user.id, user.id])).toEqual({ [user.id]: user.credential.email });
-  const hired = await hireEmployee(admin, { companyId: base.companyId, departmentId: base.deptA, employmentType: 'full_time', hiredOn: '2026-01-01', person: { fullName: 'Fictional offboarding subject' } });
+  const hired = await hireEmployee(admin, { companyId: base.companyId, departmentId: base.deptA, employmentType: 'full_time', hiredOn: '2026-01-01', person: { fullName: 'Fictional offboarding subject', primaryEmail: 'directory-offboarding@fixture.test' } });
   const off = await v9CreateOffboarding(admin, { employmentId: hired.employmentId, type: 'Resignation', noticeDate: todayInKualaLumpur(), lastDay: '2027-01-01' });
   expect(await addresses([user.id], admin, off)).toEqual({ [user.id]: user.credential.email });
   await expect(searchOnboardingRecipientUsers(admin, off, 'Fictional')).rejects.toThrow();
@@ -66,7 +66,7 @@ it('rechecks archived, blocked, revoked, ambiguous and missing bindings, plus cr
   expect(await searchOnboardingRecipientUsers(admin, caseId, 'Fictional')).toEqual([]);
   const blocked = await account('Fictional blocked');
   await owner.db.insert(schema.employment).values({ tenantId: base.tenantId, personId: blocked.personId, companyId: base.companyId,
-    hiredOn: '2026-01-01', blacklistedAt: new Date() });
+    hiredOn: '2026-01-01', blacklistedAt: todayInKualaLumpur() });
   expect(await addresses([blocked.id])).toEqual({});
   const canonical = await owner.client`select app.login_blocked(${blocked.id}::uuid) as blocked`;
   expect(canonical[0].blocked).toBe(true);
@@ -99,7 +99,7 @@ it('refuses cross-tenant, unrelated-company and view-only case access without le
 it('a 70-company / 1,030-employment group stays bounded, ordered and equivalent under All companies and one company', async () => {
   const companies = Array.from({ length: 70 }, (_, i) => ({ id: randomUUID(), tenantId: base.tenantId, legalName: `Directory scale ${String(i).padStart(2, '0')}`, country: 'MY' }));
   await owner.db.insert(schema.company).values(companies);
-  const people = Array.from({ length: 1030 }, (_, i) => ({ id: randomUUID(), tenantId: base.tenantId, fullName: `Scale Recipient ${String(i).padStart(4, '0')}` }));
+  const people = Array.from({ length: 1030 }, (_, i) => ({ id: randomUUID(), tenantId: base.tenantId, fullName: `Scale Recipient ${String(i).padStart(4, '0')}`, primaryEmail: `scale-person${i}@fixture.test` }));
   await owner.db.insert(schema.person).values(people);
   const employments = people.map((person, i) => ({ id: randomUUID(), tenantId: base.tenantId, personId: person.id, companyId: companies[i % 70].id, hiredOn: '2026-01-01' }));
   await owner.db.insert(schema.employment).values(employments);
