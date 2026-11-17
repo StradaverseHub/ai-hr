@@ -37,6 +37,7 @@ import {
 } from 'drizzle-orm';
 import { alias } from 'drizzle-orm/pg-core';
 import { withTenant, type SessionContext, type Tx } from '../db/client';
+import {withIdempotentDatabaseRead} from '../db/workload';
 import { decodeJsonFieldRows, decodeJsonFields, jsonFieldsSql, jsonRowsSql } from '../db/json-fields';
 import { assertModuleGate } from './module-gate';
 import { assertAiPrincipalTx, assertAiPresentationPrincipalTx } from './ai-principal';
@@ -290,6 +291,22 @@ export function listEmployeesTx(tx: Tx, companyIds?: string[],purpose?:'workforc
       .leftJoin(businessUnit, eq(businessUnit.id, assignment.businessUnitId))
       .where(and(companyIds&&companyIds.length?inArray(employment.companyId,companyIds):undefined,purpose?workforceEmploymentPredicate(sql`${employment.id}`,'view',companyIds):undefined))
       .orderBy(person.fullName);
+}
+
+/** Exact membership of the legacy employee-list population, without hydrating the directory.
+ * Empty company scope retains listEmployees' established all-visible semantics. UUID string equality
+ * also stays exact: alternate spellings never matched the old JavaScript .some check. */
+export function employeeListContains(ctx:SessionContext,employmentId:string,companyIds?:readonly string[]):Promise<boolean>{
+  if(!/^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/.test(employmentId))return Promise.resolve(false);
+  const scope=companyIds?.slice();
+  return withIdempotentDatabaseRead(()=>withTenant(ctx,async tx=>{
+    await tx.execute(sql`set transaction read only`);
+    await lockAccessConfigurationReadTx(tx,ctx.tenantId);
+    const [row]=await tx.select({employmentId:employment.id}).from(employment)
+      .innerJoin(person,eq(person.id,employment.personId)).innerJoin(company,eq(company.id,employment.companyId))
+      .where(and(eq(employment.id,employmentId),scope?.length?inArray(employment.companyId,scope):undefined)).limit(1);
+    return row!==undefined;
+  }));
 }
 
 // Keep the Payroll actions on the legacy list's RLS-visible population and join multiplicity.
@@ -2680,10 +2697,7 @@ export function listLeaveApprovers(ctx: SessionContext, companyIds?: string[]) {
  *  via subject_employment_id (the leave_request_date policy), so a manager who can see the parent sees its
  *  dates and a non-manager sees nothing. An empty result means "no per-date breakdown" (the UI then shows the
  *  ordinary whole-request approve/reject) — no separate boolean on the inbox list is needed. */
-export function leaveRequestDateBreakdown(ctx: SessionContext, leaveRequestId: string) {
-  return withTenant(ctx, (tx) =>
-    tx
-      .select({
+const leaveDateBreakdownColumns = {
         id: leaveRequestDate.id,
         leaveDate: leaveRequestDate.leaveDate,
         days: leaveRequestDate.days,
@@ -2691,13 +2705,40 @@ export function leaveRequestDateBreakdown(ctx: SessionContext, leaveRequestId: s
         rejectReason: leaveRequestDate.rejectReason,
         decidedAt: leaveRequestDate.decidedAt,
         decidedBy: person.fullName,
-      })
+};
+
+export function leaveRequestDateBreakdown(ctx: SessionContext, leaveRequestId: string) {
+  return withTenant(ctx, (tx) =>
+    tx
+      .select(leaveDateBreakdownColumns)
       .from(leaveRequestDate)
       .leftJoin(employment, eq(employment.id, leaveRequestDate.decidedByEmploymentId))
       .leftJoin(person, eq(person.id, employment.personId))
       .where(eq(leaveRequestDate.leaveRequestId, leaveRequestId))
       .orderBy(leaveRequestDate.leaveDate),
   );
+}
+
+/** The same native date concerns for the displayed request IDs, in one read transaction/query.
+ * Every requested identity retains an empty bucket when no per-date rows are visible; ordinary
+ * whole-request controls therefore keep the same meaning. The dates retain their native RLS. */
+export async function leaveRequestDateBreakdowns(ctx:SessionContext,leaveRequestIds:readonly string[]){
+  type Row=Awaited<ReturnType<typeof leaveRequestDateBreakdown>>[number];
+  if(leaveRequestIds.length===0)return new Map<string,Row[]>();
+  const ids=[...new Set(leaveRequestIds)];
+  const rows=await withIdempotentDatabaseRead(()=>withTenant(ctx,async tx=>{
+    await tx.execute(sql`set transaction read only`);
+    await lockAccessConfigurationReadTx(tx,ctx.tenantId);
+    return tx.select({...leaveDateBreakdownColumns,leaveRequestId:leaveRequestDate.leaveRequestId})
+      .from(leaveRequestDate).leftJoin(employment,eq(employment.id,leaveRequestDate.decidedByEmploymentId))
+      .leftJoin(person,eq(person.id,employment.personId)).where(inArray(leaveRequestDate.leaveRequestId,ids))
+      .orderBy(leaveRequestDate.leaveRequestId,leaveRequestDate.leaveDate);
+  }));
+  const grouped=new Map<string,Row[]>();
+  for(const {leaveRequestId,...row} of rows){
+    const list=grouped.get(leaveRequestId)??[];list.push(row);grouped.set(leaveRequestId,list);
+  }
+  return new Map(ids.map(id=>[id,grouped.get(id.toLowerCase())??[]]));
 }
 
 /** Partial Leave Cancellation (ADR-0065): pending cancellation requests for the approvals inbox. Each card

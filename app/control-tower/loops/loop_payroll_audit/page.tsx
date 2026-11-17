@@ -4,7 +4,7 @@ import { requireAdminOrAuditReader } from '@/lib/authz';
 import { isAdmin, isGroupAdmin } from '@/lib/authz-model';
 import { todayInKualaLumpur } from '@/lib/hr-date';
 import { auditCompanies, auditLoopDetail, defaultAuditPeriod, type AuditFindingView } from '@/core/payroll-audit/status';
-import { recordPayrollAccess } from '@/core/payroll-audit/access-log';
+import { recordPayrollAccessBatch } from '@/core/payroll-audit/access-log';
 import { auditAdministration } from '@/core/payroll-audit/settings';
 import { auditorCompanies, auditorLoopDetail } from '@/core/payroll-audit/auditor-view';
 import { AUDIT_CONTROL_BOUNDS, AUDIT_DISPOSITIONS, AUDIT_ROOT_CAUSES, PREPARER_CLOSED_MODES, isPayPeriod } from '@/core/payroll-audit/types';
@@ -50,7 +50,7 @@ export default async function AuditLoopPage({ searchParams }: { searchParams: Pr
   const scope = companyId ? { companyIds: [companyId] } : {};
   const detail = auditor ? await auditorLoopDetail(s, { payPeriod, ...scope }) : await auditLoopDetail(s, { payPeriod, ...scope });
   const admin = auditor ? { companies: [], candidates: [] } : await auditAdministration(s, scope);
-  for (const item of detail.companies) await recordPayrollAccess(s, { surface: 'audit_view', action: 'view', companyId: item.companyId, payPeriod });
+  await recordPayrollAccessBatch(s,detail.companies.map(item=>({surface:'audit_view',action:'view',companyId:item.companyId,payPeriod})));
   const error = ERRORS.find(code => code === query.error), saved = SAVED.find(code => code === query.saved);
   const when = (date: Date | null) => (date ? f.dateTime(date, { dateStyle: 'medium', timeStyle: 'short', timeZone: 'Asia/Kuala_Lumpur' }) : '—');
   const day = (iso: string | null | undefined) => (iso && /^\d{4}-\d{2}-\d{2}/.test(iso) ? f.dateTime(new Date(`${iso.slice(0, 10)}T00:00:00Z`), { dateStyle: 'medium', timeZone: 'UTC' }) : '—');

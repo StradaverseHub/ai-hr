@@ -4,7 +4,7 @@ import { publicErrorMessage } from '@/lib/public-error';
 import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
 import { scopedAdmin } from '@/lib/scope';
-import { listEmployees } from '@/core/read';
+import { employeeListContains } from '@/core/read';
 import {
   FixedTransactionAmountError,
   FixedTransactionBackwardsError,
@@ -38,8 +38,7 @@ export async function createFixedTransactionAction(formData: FormData) {
   const employmentId = String(formData.get('employmentId') ?? '');
 
   // Scope-guard: the target employment must be in the admin's scoped list (mirror the page's guard).
-  const employees = await listEmployees(s, scopeIds);
-  if (!employmentId || !employees.some((e) => e.employmentId === employmentId)) {
+  if (!await employeeListContains(s,employmentId,scopeIds)) {
     return back(null, 'error=outOfScope');
   }
 
@@ -151,8 +150,7 @@ function fixedErrorQs(e: unknown): string {
  */
 async function requireScopedEmployment(employmentId: string) {
   const { s, scopeIds } = await scopedAdmin();
-  const employees = await listEmployees(s, scopeIds);
-  if (!employmentId || !employees.some((e) => e.employmentId === employmentId)) {
+  if (!await employeeListContains(s,employmentId,scopeIds)) {
     back(null, 'error=outOfScope');
     return null;
   }

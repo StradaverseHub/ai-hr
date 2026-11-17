@@ -12,10 +12,11 @@ import type {AssignedApprovalMetadata} from '../lib/assigned-work';
  * RLS (employment_review, mirrors resignation_request) scopes who can read/write; stage authorization
  * (manager-only stage 1, admin-only stage 2, never-self) lives here.
  */
-import { and, desc, eq, inArray, isNull, ne, or, sql, type SQL } from 'drizzle-orm';
+import { and, desc, eq, inArray, isNull, lte, ne, or, sql, type SQL } from 'drizzle-orm';
 import { withTenant, type SessionContext, type Tx } from '../db/client';
+import {withIdempotentDatabaseRead} from '../db/workload';
 import {assertWorkforceEmploymentTx} from './workforce-access';
-import {acquireBoundedAdvisoryLockTx,lockAccessConfigurationTx} from './access-configuration-lock';
+import {acquireBoundedAdvisoryLockTx,lockAccessConfigurationTx,lockAccessConfigurationReadTx} from './access-configuration-lock';
 import { actorOf, appendEvent } from '../db/events';
 import {
   assignment,
@@ -613,13 +614,7 @@ export function reviewProfile(ctx: SessionContext, employmentId: string): Promis
 }
 
 /** The manager queue — pending_manager reviews assigned to this manager employment. */
-export function pendingManagerReviewsFor(
-  ctx: SessionContext,
-  managerEmploymentId: string,
-): Promise<ReviewListRow[]> {
-  return withTenant(ctx, (tx) =>
-    tx
-      .select({
+const managerReviewColumns={
         id: employmentReview.id,
         employmentId: employmentReview.employmentId,
         personId: employmentReview.personId,
@@ -636,7 +631,16 @@ export function pendingManagerReviewsFor(
         extendToDate: employmentReview.extendToDate,
         hrComments: employmentReview.hrComments,
         createdAt: employmentReview.createdAt,
-      })
+
+};
+
+export function pendingManagerReviewsFor(
+  ctx: SessionContext,
+  managerEmploymentId: string,
+): Promise<ReviewListRow[]> {
+  return withTenant(ctx, (tx) =>
+    tx
+      .select(managerReviewColumns)
       .from(employmentReview)
       .innerJoin(employment, eq(employment.id, employmentReview.employmentId))
       .innerJoin(person, eq(person.id, employmentReview.personId))
@@ -650,6 +654,26 @@ export function pendingManagerReviewsFor(
       .orderBy(desc(employmentReview.createdAt))
       .limit(200),
   ) as Promise<ReviewListRow[]>;
+}
+
+/** Native union of the caller's manager-employment queues. Keep the legacy200-per-manager cap
+ * and first-manager/created-time ordering; a global LIMIT would silently lose later employments. */
+export function pendingManagerReviewsForEmployments(ctx:SessionContext,managerEmploymentIds:readonly string[]):Promise<ReviewListRow[]>{
+ const ids=[...new Set(managerEmploymentIds)];
+ if(ids.length===0)return Promise.resolve([]);
+ return withIdempotentDatabaseRead(()=>withTenant(ctx,async tx=>{
+  await tx.execute(sql`set transaction read only`);
+  await lockAccessConfigurationReadTx(tx,ctx.tenantId);
+  const ranked=tx.select({...managerReviewColumns,
+   queueRank:sql<number>`row_number() over(partition by ${employmentReview.managerEmploymentId} order by ${employmentReview.createdAt} desc)`.as('queue_rank'),
+  }).from(employmentReview).innerJoin(employment,eq(employment.id,employmentReview.employmentId))
+   .innerJoin(person,eq(person.id,employmentReview.personId))
+   .where(and(inArray(employmentReview.managerEmploymentId,ids),eq(employmentReview.status,'pending_manager'),
+    sql`(${employmentReview.reviewType}<>'probation' OR NOT app.probation_owns_legacy(${employmentReview.employmentId}))`)).as('manager_queues');
+  const rows=await tx.select().from(ranked).where(lte(ranked.queueRank,200))
+   .orderBy(sql`array_position(ARRAY[${sql.join(ids.map(id=>sql`${id}::uuid`),sql`, `)}]::uuid[],${ranked.managerEmploymentId})`,desc(ranked.createdAt));
+  return rows.map(({queueRank:_rank,...row})=>row) as ReviewListRow[];
+ }));
 }
 
 // ─── Sweep (cron) ───────────────────────────────────────────────────────────────────────────────────

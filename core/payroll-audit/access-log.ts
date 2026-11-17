@@ -11,11 +11,12 @@
  * Fail closed: a view or an export whose entry cannot be written does not proceed. One exception, stated rather than hidden:
  * a tenant out of good standing gets read-only transactions (ADR-0077 slice 9: read and export, never a lock-out on payroll),
  * so there the entry cannot be written and the read proceeds unrecorded; the result says so. */
-import {createHash} from 'node:crypto';
+import {createHash,randomUUID} from 'node:crypto';
 import {sql} from 'drizzle-orm';
 import {z} from 'zod';
 import {withTenant,type SessionContext,type Tx} from '../../db/client';
-import {actorOf,appendEvent} from '../../db/events';
+import {actorOf,appendEvent,appendEvents} from '../../db/events';
+import {lockAccessConfigurationReadTx} from '../access-configuration-lock';
 import {TENANT_STATUS_GOOD_STANDING} from '../entitlement-types';
 import {PAYROLL_ACCESS_EVENT,PAYROLL_ACCESS_SURFACES,PAYSLIP_OPENED_EVENT,type PayrollAccessSurface} from './types';
 
@@ -63,6 +64,29 @@ export async function recordPayrollAccess(ctx:SessionContext,entry:PayrollAccess
  const skipped=unrecorded(ctx);if(skipped)return skipped;
  const eventId=await withTenant(ctx,tx=>recordPayrollAccessTx(tx,ctx,parsed));
  return Object.freeze({recorded:true as const,eventId});
+}
+
+/** Records every required access event before disclosing a multi-company view. Validation precedes
+ * writes; one tenant transaction commits the complete batch or refuses the view. Bounded INSERT chunks
+ * preserve one event per entry, original order and the native event/hash-chain owner without per-company
+ * transactions. No-login/read-only exceptions remain explicit and agents remain refused. */
+export async function recordPayrollAccessBatch(ctx:SessionContext,entries:readonly PayrollAccessEntry[]):Promise<readonly AccessRecord[]>{
+ const parsed=entries.map(entry=>PayrollAccessEntrySchema.parse(entry));
+ if(parsed.length===0)return [];
+ const skipped=unrecorded(ctx);if(skipped)return parsed.map(()=>skipped);
+ const ids=parsed.map(()=>randomUUID()),actor=actorOf(ctx);
+ await withTenant(ctx,async tx=>{
+  await lockAccessConfigurationReadTx(tx,ctx.tenantId);
+  // At most200 events per statement, comfortably below the driver's parameter budget. No clipping:
+  // later chunks share this same transaction and roll back together on any required-event failure.
+  for(let offset=0;offset<parsed.length;offset+=200){
+   await appendEvents(tx,parsed.slice(offset,offset+200).map((entry,index)=>({
+    id:ids[offset+index],tenantId:ctx.tenantId,aggregateType:'payroll-access',aggregateId:entry.batchId??entry.companyId,
+    eventType:PAYROLL_ACCESS_EVENT,actor,payload:entry,
+   })));
+  }
+ });
+ return ids.map(eventId=>Object.freeze({recorded:true as const,eventId}));
 }
 
 /** The same, for a file handed over: its sha256, size and row count go with the entry. */

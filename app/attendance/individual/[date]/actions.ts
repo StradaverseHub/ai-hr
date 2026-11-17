@@ -10,7 +10,7 @@ import { redirect } from 'next/navigation';
 import { getTranslations } from 'next-intl/server';
 import { revalidatePath } from 'next/cache';
 import { scopedAdmin } from '@/lib/scope';
-import { listEmployees } from '@/core/read';
+import { employeeListContains } from '@/core/read';
 // ADR-0080 D11 — through the PACK FACADE. The page beside this file imports core/attendance directly as
 // audited kernel-contract debt (test/pack-drift-allowlist.json); a NEW file may not, and the drift ratchet
 // refuses one that tries.
@@ -34,8 +34,7 @@ async function overtimeRequestErrorMessage(error:unknown){
 export async function adminCorrectAttendanceDayAction(formData: FormData) {
   const {s,scopeIds}=await scopedAdmin();
   const employmentId=String(formData.get('employmentId')??''),date=String(formData.get('date')??'');
-  const employees=await listEmployees(s,scopeIds);
-  if(!employees.some(e=>e.employmentId===employmentId))return {ok:false as const,message:'The employee is outside your current company scope.'};
+  if(!await employeeListContains(s,employmentId,scopeIds))return {ok:false as const,message:'The employee is outside your current company scope.'};
   try {
     const stage=String(formData.get('stage')??'');
     const outcome=await amendExistingAttendanceApplication(s,{employmentId,date,correctionId:String(formData.get('correctionId')??''),
@@ -54,8 +53,7 @@ function refreshAttendanceDay(){
 export async function saveAttendanceDayChangesAction(formData:FormData){
   const {s,scopeIds}=await scopedAdmin();
   const employmentId=String(formData.get('employmentId')??''),date=String(formData.get('date')??'');
-  const employees=await listEmployees(s,scopeIds);
-  if(!employees.some(e=>e.employmentId===employmentId))return {ok:false as const,message:'The employee is outside your current company scope.'};
+  if(!await employeeListContains(s,employmentId,scopeIds))return {ok:false as const,message:'The employee is outside your current company scope.'};
   try{
     const base={employmentId,date,baseline:String(formData.get('baseline')??''),reason:String(formData.get('reason')??''),confirmPayrollRecalculation:formData.get('confirmPayrollRecalculation')==='on'};
     if(formData.get('kind')==='schedule')await saveAttendanceDayEdit(s,{...base,kind:'schedule',shiftId:String(formData.get('shiftId')??'')||null,
@@ -82,8 +80,7 @@ export async function saveAttendanceClockDataAction(formData: FormData) {
   const employmentId=String(formData.get('employmentId') ?? ''), date=String(formData.get('date') ?? '');
   const back=`/attendance/individual/${encodeURIComponent(date)}?emp=${encodeURIComponent(employmentId)}`;
   const fail=(key:string):never=>redirect(`${back}&error=${encodeURIComponent(key)}`);
-  const employees=await listEmployees(s,scopeIds);
-  if (!employees.some(e=>e.employmentId===employmentId)) fail('correctionForbidden');
+  if (!await employeeListContains(s,employmentId,scopeIds)) fail('correctionForbidden');
   if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) fail('correctionBadDate');
   const reason=String(formData.get('reason') ?? '').trim();
   if (!reason) fail('correctionReasonRequired');
@@ -122,8 +119,7 @@ export async function rejectAttendanceDayApplicationAction(formData:FormData){
 export async function submitUnclockedAttendanceWorkAction(formData:FormData){
  const {s,scopeIds}=await scopedAdmin();
  const employmentId=String(formData.get('employmentId')??''),date=String(formData.get('date')??'');
- const employees=await listEmployees(s,scopeIds);
- if(!employees.some(row=>row.employmentId===employmentId))return {ok:false as const,message:'The employee is outside your current company scope.'};
+ if(!await employeeListContains(s,employmentId,scopeIds))return {ok:false as const,message:'The employee is outside your current company scope.'};
  try{
   const starts=formData.getAll('workStart'),ends=formData.getAll('workEnd');
   if(starts.length!==ends.length||starts.length<1||starts.length>16||formData.get('completeWorkedDay')!=='on')

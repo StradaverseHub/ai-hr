@@ -16,7 +16,7 @@ import {isCurrentAssignedApproval} from '@/core/assigned-approval-focus';
 import { getLocale, getTranslations } from 'next-intl/server';
 import { scopedSession } from '@/lib/scope';
 import { isAdmin } from '@/lib/authz';
-import { listLeaveRequests, listPendingLeaveCancellations, leaveRequestDateBreakdown } from '@/core/read';
+import { listLeaveRequests, listPendingLeaveCancellations, leaveRequestDateBreakdowns } from '@/core/read';
 // 1e9145d4 adds dayTypesForPairs to this EXISTING direct import. app/approvals/page.tsx is already an
 // audited kernel-contract entry on the attendance pack's drift allowlist (the approvals inbox is
 // cross-module substrate awaiting an approvals contract, ADR-0080 open decision 6) — this widens no
@@ -35,7 +35,7 @@ import {
 } from '@/lib/profile-requestable-fields';
 import { listPendingClaims, listPendingClaimsPage } from '@/packs/claims/service';
 import { listResignationRequests } from '@/core/offboarding';
-import { listReviews, pendingManagerReviewsFor } from '@/core/employment-review';
+import { listReviews, pendingManagerReviewsForEmployments } from '@/core/employment-review';
 // 5ff7daff — the approver's queue for employee replacement-leave claims, reached through the leave-pack
 // facade (a core/ file may not import a pack implementation; this page reads the facade like every other
 // leave surface does). The service and its decide half have existed since 296fc027 with NO caller: the
@@ -305,7 +305,7 @@ export default async function ApprovalsPage({
   const tReview = await getTranslations('review');
   const own=!focus&&!attendanceOnly&&s.personId?await myOwnEmploymentSubjects(s,{profileEdit:true}):[];
   const [managerReviews,hrReviews]=await Promise.all([
-    focus?.kind==='managerReview'?listReviews(s,{status:'pending_manager',requestId:focus.id}):Promise.all(own.map(subject=>pendingManagerReviewsFor(s,subject.employmentId))).then(rows=>[...new Map(rows.flat().map(row=>[row.id,row])).values()]),
+    focus?.kind==='managerReview'?listReviews(s,{status:'pending_manager',requestId:focus.id}):pendingManagerReviewsForEmployments(s,own.map(subject=>subject.employmentId)),
     admin&&include('hrReview')?listReviews(s,{status:'pending_hr',requestId:focusedId('hrReview')}):Promise.resolve([]),
   ]);
 
@@ -314,11 +314,7 @@ export default async function ApprovalsPage({
   // means this is a per-date-approval request → render the per-date decision modal trigger instead of the
   // whole-request approve/reject. An empty result → the ordinary single control. RLS scopes each breakdown
   // to the viewer.
-  const breakdowns = new Map(
-    await Promise.all(
-      pendingLeave.map(async (r) => [r.id, await leaveRequestDateBreakdown(s, r.id)] as const),
-    ),
-  );
+  const breakdowns = await leaveRequestDateBreakdowns(s,pendingLeave.map(r=>r.id));
   // Partial Leave Approval — single-request model (ADR-0068): the per-date expander's label set.
   const locale = await getLocale();
   const dateBreakdownLabels = {
