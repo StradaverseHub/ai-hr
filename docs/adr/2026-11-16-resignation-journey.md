@@ -52,3 +52,35 @@ New stored fields are optional with backward-compatible defaults. Existing workf
 Offboarding-only triggers, decision/posting options and resignation/retention merge fields are scoped to their catalogue. A shared navigation destination does not rewrite other modules' engines or infer new authority. Keep Probation's mandatory-signature validation scoped to Probation.
 
 Before staging, retain affected-module baseline evidence, execute new journey/permission/concurrency tests and existing cross-module regressions on the required standard GitHub-hosted runners, rehearse the additive migrations as the restricted owner on a populated baseline, verify the final frozen candidate through the current release gate, and follow the shared staging queue/lease. Source merge, installed build, rendered journey verification and human staging acceptance are separate states. Production is outside this authorization.
+
+## Handoff fidelity corrections — 17 November 2026
+
+The renewed source and rendered review found gaps in the first implementation. Fixes remain subject to hosted
+behavior, compiler, migration and rendered verification; source integration alone is not a release witness.
+
+- Letter group assignments freeze eligible account IDs and their actual Person IDs when routing is generated.
+  A chosen routing holder remains immutable selection evidence. Any frozen eligible teammate can act on the
+  pending step with their own identity; the first person “on it” is advisory, never an exclusive lock. Read
+  projections and native effects both respect the frozen Person binding after an account is re-linked.
+- Required local document fields use explicit native-authorized field IDs. Mapped Personnel fields stay read-only.
+  Saves retain pinned field definitions, evaluate conditional visibility against the proposed values and preserve
+  drafts on unrelated case refreshes. Used-value changes invalidate affected signatures; completed released
+  values remain frozen. An incomplete draft may be saved, but required release checks are never bypassed.
+- The prototype's three no-routing HR-signature choices do not correspond one-to-one to AIHR's existing
+  `hrStep` enum. Optional Offboarding-only `offboardingHrSignature` represents PBP before release, HR before
+  employee, or named HR before release. Explicit version routing remains authoritative. Existing records without
+  the new field retain their prior `hrStep` behavior; no value is reinterpreted for another module.
+- Letter-step conditions represent Update and Released explicitly and match each pending action in a parallel
+  stage. The no-PBP skip uses the canonical company-scoped People BP resolver in execution and dry runs.
+- Per-case communications inspect pinned workflow runs and the canonical renderer. Authorized tests queue an
+  immutable copy only to the actual actor, with no CC. Request receipts provide idempotency and preserve
+  uncertain outcomes. Required files and exact released attachments remain guarded. No legacy communication
+  runner is restored, and SMTP remains outside the business transaction in the existing private worker.
+- Configured Offboarding exit classification comes from the exact pinned Start offboarding workflow step and
+  the linked native case. It is distinct from the resignation source and the employee's narrative; the existing
+  employment writer retains ownership of recorded employment and leave consequences.
+
+The correction migration reservation is 5788–5790. Existing 5783–5786 SQL bytes are preserved. Movement releases
+first; its accepted source and actual ordered ledger must be integrated before the final release evidence.
+The shared queue and staging lease remain mandatory. Contract's separate renewed hold and foreign migration
+reservations do not authorize any action in this branch. Production and package publication remain outside scope.
