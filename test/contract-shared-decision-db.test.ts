@@ -12,6 +12,7 @@ import {runBulkJobTick} from '../core/bulk-job-worker';
 import {readBulkJob} from '../core/bulk-job';
 import {todayInKualaLumpur} from '../lib/hr-date';
 import {TERMINATION_REASONS} from '../core/termination-reason';
+import {contractSharedManualWorkflows,startContractSharedManualWorkflow,readContractSharedReleaseProof,saveContractSharedRole,saveContractSharedMember} from '../packs/contracts/service';
 
 beforeAll(migrateTestDb);afterAll(closeAll);
 const year=Number(todayInKualaLumpur().slice(0,4));
@@ -72,6 +73,27 @@ const draft={kind:'renew' as const,months:6,payChanges:false,reason:'Continue th
 let f:Awaited<ReturnType<typeof fixture>>;
 beforeEach(async()=>{f=await fixture();});
 describe('protected Contract decision preview and submission',()=>{
+ it('checks manual conditions and scope before admission, then retains the selected version exactly once',async()=>{
+  const workflow:AutomationWorkflow={...f.workflow,id:randomUUID(),name:'Manual case follow-up',trigger:{event:'manual',days:0,workdays:false,repeat:false},conditions:[{field:'decision',op:'isNot',values:['Renew']},{field:'daysToEnd',op:'gte',values:['0']}],steps:[{id:randomUUID(),type:'notify',conditions:[],to:[{kind:'person',userId:f.admin.userId!}],cc:[],params:{subject:'Manual follow-up',body:'Review this Contract case.'}}]};
+  const unmatched={...workflow,id:randomUUID(),name:'Renew-only follow-up',conditions:[{field:'decision',op:'is' as const,values:['Renew']}]};
+  await saveAutomationWorkflow(f.admin,{workflow,expectedRevision:0,reason:'Real manual workflow fixture'});
+  await saveAutomationWorkflow(f.admin,{workflow:unmatched,expectedRevision:0,reason:'Does not match the current case'});
+  await expect(contractSharedManualWorkflows(f.proposer,f.caseId)).rejects.toMatchObject({code:'forbidden'});
+  const roleId=randomUUID();await saveContractSharedRole(f.admin,{id:roleId,name:'Manual Contract operator',permissions:['view','manual'],expectedRevision:0});
+  await saveContractSharedMember(f.admin,{id:randomUUID(),roleId,userId:f.proposer.userId!,companyId:f.b.companyId,businessGroupId:null,validFrom:start,validTo:null,revoked:false});
+  const choices=await contractSharedManualWorkflows(f.proposer,f.caseId);expect(choices.map(choice=>choice.id)).toEqual([workflow.id]);
+  await expect(startContractSharedManualWorkflow(f.proposer,{caseId:f.caseId,revision:1,workflowId:unmatched.id,workflowRevision:1,requestId:randomUUID()})).rejects.toMatchObject({code:'invalid'});
+  const [before]=await owner.db.execute<{events:number}>(sql`select count(*)::int as events from contract_shared_event where tenant_id=${f.b.tenantId}::uuid and trigger_event='manual'`);expect(before.events).toBe(0);
+  const command={caseId:f.caseId,revision:1,workflowId:workflow.id,workflowRevision:1,requestId:randomUUID()};
+  const accepted=await startContractSharedManualWorkflow(f.proposer,command);
+  expect(await startContractSharedManualWorkflow(f.proposer,command)).toEqual(accepted);
+  await expect(startContractSharedManualWorkflow(f.proposer,{...command,workflowId:unmatched.id})).rejects.toMatchObject({code:'conflict'});
+  await saveAutomationWorkflow(f.admin,{workflow:{...workflow,status:'paused'},expectedRevision:1,reason:'Accepted manual work keeps its version'});
+  expect((await finishAutomation(accepted.jobId,f.proposer)).state).toBe('completed');
+  const runs=await owner.db.execute<{workflow:string;revision:number;status:string}>(sql`select workflow_id as workflow,workflow_revision as revision,status from automation_run where tenant_id=${f.b.tenantId}::uuid and trigger_event='manual'`);
+  expect([...runs]).toEqual([{workflow:workflow.id,revision:1,status:'done'}]);
+  expect((await contractSharedContext(f.proposer,f.caseId)).source.contractNumber).toBe(4);
+ });
  it('cancels an automatic Any-group approval email when its actual recipient leaves the group',async()=>{
   const origin='https://contract-group-mail-fixture.invalid';
   await owner.db.execute(sql`insert into app_external_identity(issuer,subject,app_user_id) values(${origin+'/auth/'+f.b.tenantId},${randomUUID()},${f.admin.userId!}::uuid)`);
@@ -170,8 +192,17 @@ describe('protected Contract decision preview and submission',()=>{
   const refreshed=await readContractSharedLetter(employee,letter.id);expect(refreshed.body?.values['contract.salary']).toBe('5100.11');
   const signed=await actContractSharedLetter(employee,{...sign,hash:refreshed.contentHash!});
   expect(signed.state).toBe('released');expect(signed.valuesFixed).toBe(true);
+  const proof=await readContractSharedReleaseProof(employee,letter.id);
+  expect(proof).toMatchObject({protocol:'contract-release-v1',contentHash:signed.contentHash,contentRevision:signed.contentRevision});
+  expect(proof?.fingerprint).toMatch(/^[a-f0-9]{64}$/);expect(proof?.fingerprint).not.toBe(signed.contentHash);
+  const [evidence]=await owner.db.execute<{evidence:{document:{blocks:Record<string,string>};signatures:{actorId:string;actorPersonId:string;signature:{value:string}}[]}}>(sql`select evidence from contract_shared_release_receipt where tenant_id=${f.b.tenantId}::uuid and letter_id=${letter.id}::uuid`);
+  expect(evidence.evidence.document.blocks.intro).toBe('Reviewed wording for {employee.name}');
+  expect(evidence.evidence.signatures).toHaveLength(1);
+  expect(evidence.evidence.signatures[0]).toMatchObject({actorId:userId,actorPersonId:f.employee.personId,signature:{value:'Fictional Contract subject'}});
+  await expect(withTenant(employee,tx=>tx.execute(sql`update contract_shared_release_receipt set fingerprint=${'0'.repeat(64)} where letter_id=${letter.id}::uuid`))).rejects.toThrow();
   expect((await actContractSharedLetter(employee,{...sign,hash:refreshed.contentHash!})).history).toHaveLength(2);
   await setCompensation(f.admin,{employmentId:f.employee.employmentId,basicSalary:5200.12,effectiveFrom:start});
+  expect(await readContractSharedReleaseProof(employee,letter.id)).toEqual(proof);
   expect((await readContractSharedLetter(employee,letter.id)).body?.values['contract.salary']).toBe('5100.11');
   const current=await contractSharedContext(f.proposer,f.caseId);expect(current.flow?.stage).toBe('workflow');expect(current.flow?.flags).not.toContain('employee_cannot_sign');expect(current.source.contractNumber).toBe(4);
   const [native]=await owner.db.execute<{count:number;salary:string}>(sql`select (select count(*)::int from personnel_posting where tenant_id=${f.b.tenantId}::uuid) as count,c.basic_salary::text as salary from compensation c where c.tenant_id=${f.b.tenantId}::uuid and c.employment_id=${f.employee.employmentId}::uuid and c.superseded_at is null and c.valid_from<=${todayInKualaLumpur()}::date and (c.valid_to is null or c.valid_to>${todayInKualaLumpur()}::date) order by c.valid_from desc,c.id limit 1`);

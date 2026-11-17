@@ -6569,6 +6569,20 @@
       "breakpoints": true
     },
     {
+      "idx": 5300,
+      "version": "7",
+      "when": 1794841005900,
+      "tag": "5900_contract_shared_manual_workflows",
+      "breakpoints": true
+    },
+    {
+      "idx": 5301,
+      "version": "7",
+      "when": 1794841005901,
+      "tag": "5901_contract_shared_release_evidence",
+      "breakpoints": true
+    },
+    {
       "idx": 5302,
       "version": "7",
       "when": 1794841005902,
@@ -6580,6 +6594,13 @@
       "version": "7",
       "when": 1794841005904,
       "tag": "5904_contract_shared_native_intake_guard",
+      "breakpoints": true
+    },
+    {
+      "idx": 5305,
+      "version": "7",
+      "when": 1794841005905,
+      "tag": "5905_contract_shared_body_identity",
       "breakpoints": true
     },
     {
@@ -6643,6 +6664,34 @@
       "version": "7",
       "when": 1794841005919,
       "tag": "5919_contract_work_case_source_anchor",
+      "breakpoints": true
+    },
+    {
+      "idx": 5340,
+      "version": "7",
+      "when": 1794841005940,
+      "tag": "5940_contract_form_response_owner",
+      "breakpoints": true
+    },
+    {
+      "idx": 5341,
+      "version": "7",
+      "when": 1794841005941,
+      "tag": "5941_country_owned_document_sources",
+      "breakpoints": true
+    },
+    {
+      "idx": 5342,
+      "version": "7",
+      "when": 1794841005942,
+      "tag": "5942_contract_form_response_actions",
+      "breakpoints": true
+    },
+    {
+      "idx": 5344,
+      "version": "7",
+      "when": 1794841005944,
+      "tag": "5944_contract_letterhead_fallback_evidence",
       "breakpoints": true
     }
   ]

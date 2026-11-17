@@ -1,3 +1,4 @@
+import {MY_DOCUMENT_MERGE_KEYS} from './document-merge';
 import {replayMyTaxBasis} from './tax-basis-replay';
 import {ocbcBankPaymentFiles} from './ocbc-payment';
 import {childReliefTableHeadCount} from './statutory-tables';
@@ -77,6 +78,7 @@ import type { CountryPack } from '../country-pack';
 export const myPack: CountryPack = {
   eaReporting: MY_EA_REPORTING,
   country: 'MY' as const,
+  documentMerge:{keys:MY_DOCUMENT_MERGE_KEYS},
   displayClock: {timeZone:'Asia/Kuala_Lumpur',label:'MYT'},
   // Rung 5b (ADR-0080 D4) — the client-safe vocabulary slice, ALSO served to 'use client'
   // components by localization/registry.client.ts (this reference makes it contract-declared).
