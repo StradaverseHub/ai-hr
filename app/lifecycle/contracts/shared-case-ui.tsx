@@ -1,4 +1,5 @@
 'use client';
+import {useNavIndex} from '@/components/nav-index-context';
 import {useContractReasonLabel} from '@/lib/contract-reason-copy';
 import { useContractSharedCopy } from '@/lib/contract-shared-copy';
 import Link from 'next/link';
@@ -7,29 +8,18 @@ import type { ReactNode } from 'react';
 export function SharedContractNavigation() {
   const copy = useContractSharedCopy();
   const path = usePathname();
+  const {entries}=useNavIndex();
+  const permitted=new Set(entries.map(entry=>entry.href));
+  const links=[
+    {href:'/lifecycle/contracts',label:'Contract cases',active:path==='/lifecycle/contracts'},
+    {href:'/lifecycle/contracts/postings',label:'Personnel postings',active:path.includes('/postings')},
+    {href:'/lifecycle/contracts/settings',label:'Settings and access',active:path.includes('/settings')},
+    {href:'/automation/workflows',label:'HR Automation',active:false},
+  ].filter(link=>permitted.has(link.href));
+  if(!links.length)return <div className="v9-tabs" aria-hidden="true" style={{minHeight:44}}/>;
   return (
-    <nav className="v9-tabs" aria-label={copy('Contract Management')}>
-      <Link
-        className={'v9-button' + (path === '/lifecycle/contracts' ? ' v9-button-primary' : '')}
-        href="/lifecycle/contracts"
-      >
-        {copy('Contract cases')}
-      </Link>
-      <Link
-        className={'v9-button' + (path.includes('/postings') ? ' v9-button-primary' : '')}
-        href="/lifecycle/contracts/postings"
-      >
-        {copy('Personnel postings')}
-      </Link>
-      <Link
-        className={'v9-button' + (path.includes('/settings') ? ' v9-button-primary' : '')}
-        href="/lifecycle/contracts/settings"
-      >
-        {copy('Settings and access')}
-      </Link>
-      <Link className="v9-button" href="/automation/workflows?module=contract_staff">
-        {copy('HR Automation')}
-      </Link>
+    <nav className="v9-tabs" style={{minHeight:44}} aria-label={copy('Contract Management')}>
+      {links.map(link=><Link key={link.href} className={'v9-button'+(link.active?' v9-button-primary':'')} href={link.href}>{copy(link.label)}</Link>)}
     </nav>
   );
 }

@@ -46,7 +46,17 @@ export async function exerciseContractBrowser({base,browser,fixture,observe,tick
  async function advance(predicate,label){for(let n=0;n<40;n++){tick();const state=observe();if(await predicate(state))return state;await new Promise(resolve=>setTimeout(resolve,250));}throw Error('Native progression did not reach '+label);}
  const stateCase=state=>state.cases.find(c=>c.id===caseId);let caseId;
  try{
-  let page=await login('proposer');await visit(page,'/lifecycle/contracts');await page.getByText('Fictional Contract employee',{exact:true}).waitFor();await capture(page,'tracker');
+  let page=await login('proposer');await visit(page,'/');
+  assert.equal(observe().cases.length,0,'Contract navigation must be available before a case exists');
+  const workspace=page.getByRole('group',{name:messages.nav.workspaceSwitch,exact:true});
+  if(await workspace.count())await workspace.getByRole('button',{name:messages.nav.workspaceOps,exact:true}).click();
+  const contractModule=page.getByRole('button',{name:messages.nav.contractManagement,exact:true});
+  await contractModule.waitFor();
+  if(await contractModule.getAttribute('aria-expanded')!=='true')await contractModule.click();
+  await page.getByRole('navigation',{name:messages.nav.contractManagement,exact:true}).locator('a[href="/lifecycle/contracts"]').click();
+  await page.waitForURL(url=>url.pathname==='/lifecycle/contracts');
+  assert.equal(observe().cases.length,0,'Opening the actual Contract navigation leaf must not create a case');
+  await page.getByText('Fictional Contract employee',{exact:true}).waitFor();await capture(page,'tracker');
   await visit(page,'/lifecycle/contracts/periods/'+fixture.employmentId);await page.getByRole('button',{name:'Start contract case',exact:true}).waitFor();await capture(page,'period');
   await page.getByRole('button',{name:'Start contract case',exact:true}).click();await page.waitForURL(url=>/^\/lifecycle\/contracts\/[a-f0-9-]{36}$/.test(url.pathname));caseId=new URL(page.url()).pathname.split('/').at(-1);assert(caseId);
   await page.getByRole('button',{name:'Renew',exact:true}).click();await page.getByLabel('Renewal term (months)',{exact:true}).fill('6');await page.getByLabel('New start date',{exact:true}).fill(fixture.newStartOn);await page.getByLabel('New end date',{exact:true}).fill(fixture.newEndOn);
