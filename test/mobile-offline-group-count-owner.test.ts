@@ -40,8 +40,7 @@ it('applies the exact proposal as NOCREATEROLE/NOBYPASSRLS ai_hr_owner and count
    (select pg_get_userbyid(proowner) from pg_proc where oid='app.mobile_offline_open_context_counts(uuid[])'::regprocedure) owner,
    exists(select 1 from pg_proc p cross join lateral aclexplode(coalesce(p.proacl,acldefault('f',p.proowner))) a where p.oid='app.mobile_offline_open_context_counts(uuid[])'::regprocedure and a.grantee=0 and a.privilege_type='EXECUTE') public_execute`;
   expect(boundary).toEqual({owner_member:false,app_member:false,schema_create:false,owner:'ai_hr_mobile_offline_counter',public_execute:false});
-  await tx`select set_config('app.tenant_id',${ctx.tenantId},true),set_config('app.user_id',${ctx.userId},true),set_config('app.roles','hr_admin',true)`;
-  // Use the same actual application identity settings as withTenant (captured below), not fabricated grants.
+  // Use the same actual application identity settings as withTenant (captured above), not fabricated grants.
   for(const [key,value] of settings)await tx`select set_config(${key},${value},true)`;
   await tx.unsafe('set local role ai_hr_app');
   const counts=await tx`select * from app.mobile_offline_open_context_counts(array[${b.companyId}::uuid])`;expect(counts).toEqual([{company_id:b.companyId,open_count:1}]);
