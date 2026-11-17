@@ -50,7 +50,19 @@ async function finishPreview(id:string,as:SessionContext,statementTimeoutMs?:num
   if(statementTimeoutMs===undefined)return contractPreviewJobHandler.finalize!(ctx,job,unit);
   // The real held owner transaction awaits cancellation/rollback; Vitest must not abandon a live query.
   return contractPreviewJobHandler.finalize!(ctx,job,{...unit,ownerTx:run=>unit.ownerTx!(async connection=>{
-   await connection`select set_config('statement_timeout',${String(statementTimeoutMs)},true)`;return run(connection);
+   await connection`select set_config('statement_timeout',${String(statementTimeoutMs)},true),set_config('app.tenant_id',${ctx.tenantId},true),set_config('app.user_id','',true),set_config('jit','off',true)`;
+   const [native]=await connection<{body:string;sourceHash:string;owner:string;role:string;caseId:string;actorUserId:string;actorPersonId:string;boundActorPersonId:string|null}[]>`select p.prosrc as body,encode(sha256(convert_to(p.prosrc,'UTF8')),'hex') as "sourceHash",p.proowner::regrole::text as owner,current_user as role,preview.case_id as "caseId",preview.requested_by as "actorUserId",preview.requested_person_id as "actorPersonId",app.contract_actor_person(preview.requested_by) as "boundActorPersonId" from pg_proc p join contract_shared_preview preview on preview.tenant_id=${ctx.tenantId}::uuid and preview.job_id=${job.id}::uuid where p.oid='app.contract_shared_setup_revision(uuid)'::regprocedure`;
+   if(!native)throw Error('Actual held preview/setup source unavailable for the performance diagnostic');
+   // A plain EXPLAIN of the exact live SELECT is useful only under its actual definer identity.
+   expect(native.role).toBe(native.owner);
+   expect(native.actorUserId).toBe(ctx.userId);expect(native.actorPersonId).toBeTruthy();expect(native.boundActorPersonId).toBe(native.actorPersonId);
+   const query=native.body.trim().replace(/;$/, '').replace(/\bp_case\b/g,()=>'$1::uuid');
+   const [planning]=await connection<{mode:string}[]>`select current_setting('plan_cache_mode') as mode`;
+   await connection`select set_config('plan_cache_mode','force_generic_plan',true)`;
+   const plan=await connection.unsafe('explain (format json,verbose,costs) '+query,[native.caseId]);
+   await connection`select set_config('plan_cache_mode',${planning.mode},true)`;
+   console.info('[Actual native Contract setup source plan]',JSON.stringify({sourceHash:native.sourceHash,owner:native.owner,role:native.role,jobId:job.id,caseId:native.caseId,diagnosticPlanMode:'force_generic_plan',nativePlanMode:planning.mode,plan}));
+   return run(connection);
   })});
  },describeFailure:async(...args:Parameters<NonNullable<typeof contractPreviewJobHandler.describeFailure>>)=>{
   failure=args[1];return contractPreviewJobHandler.describeFailure!(...args);

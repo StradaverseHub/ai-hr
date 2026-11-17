@@ -28,6 +28,12 @@ async function setup(nonempty=false){
  const f={...fixture,admin:requiredIdentity(fixture.admin),proposer:requiredIdentity(fixture.proposer),approver:requiredIdentity(fixture.approver),employeeActor:requiredIdentity(fixture.employeeActor)};
  const posting=await releaseContractPosting(f);await approveAppliedContractPosting(f.approver,{id:posting.id,revision:posting.revision});
  if(nonempty){
+  // createAppUser establishes an actual account/role, not its reachable tenant sign-in identity.
+  // Keep the Employee recipient and install only this fictional identity; no SMTP worker runs.
+  const issuer='https://fictional-empty-opening.test/auth/'+f.b.tenantId;
+  await owner.db.execute(sql`insert into app_external_identity(issuer,subject,app_user_id) values(${issuer},${f.b.tenantId+'/'+f.employeeActor.userId},${f.employeeActor.userId}::uuid)`);
+  const [recipient]=await owner.db.execute<{userId:string;personId:string;issuer:string}>(sql`select account.id as "userId",account.person_id as "personId",identity.issuer from app_user account join app_external_identity identity on identity.app_user_id=account.id and identity.revoked_at is null where account.tenant_id=${f.b.tenantId}::uuid and account.id=${f.employeeActor.userId}::uuid and account.archived_at is null and not app.login_blocked(account.id)`);
+  expect(recipient).toEqual({userId:f.employeeActor.userId,personId:f.employee.personId,issuer});
   const emailId=randomUUID();await saveAutomationEmailTemplate(f.admin,{template:{id:emailId,module:'contract_staff',name:'Fictional real opening effect',active:true,subject:'Opening',body:'Actual native queued mail; no transport is run.',cc:[]},expectedRevision:0,retired:false,reason:'Exercise genuine started opening work'});
   await saveAutomationWorkflow(f.admin,{workflow:{id:randomUUID(),module:'contract_staff',name:'Actual nonempty opening',description:'',status:'live',required:false,trigger:{event:'caseOpened',days:0,workdays:false,repeat:false},skipWhen:'never',conditions:[],steps:[{id:randomUUID(),type:'sendEmail',conditions:[],to:[{kind:'role',role:'employee'}],cc:[],params:{emailTemplateId:emailId}}]},expectedRevision:0,reason:'A real nonempty opening must never use empty technical completion'});
  }
@@ -154,6 +160,8 @@ it('refuses the empty-opening finisher while existing native email recovery tech
  const deliveries=()=>owner.db.execute<{row:unknown}>(sql`select to_jsonb(d) as row from automation_email_delivery d where tenant_id=${f.b.tenantId}::uuid and module='contract_staff' and subject_id=${f.opened.caseId}::uuid order by id`);
  const beforeRuns=await runs(),beforeDeliveries=await deliveries();expect(beforeRuns).toHaveLength(1);
  expect(beforeRuns[0]).toMatchObject({status:'done',cursor:1,waiting:null,remaining:[]});expect(beforeRuns[0].log.length).toBeGreaterThan(0);expect(beforeDeliveries).toHaveLength(1);
+ const [recipientReceipt]=await owner.db.execute<{to:string[];people:Record<string,string>}>(sql`select payload->'mail'->'to' as "to",payload->'context'->'recipientPeople' as people from automation_email_delivery where tenant_id=${f.b.tenantId}::uuid and module='contract_staff' and subject_id=${f.opened.caseId}::uuid`);
+ expect(recipientReceipt).toEqual({to:[f.employeeActor.userId],people:{[f.employeeActor.userId]:f.employee.personId}});
  const origins=await owner.db.execute<{run:string;root:string;origin:string;documents:unknown}>(sql`select pin.workflow_run_id as run,binding.root_event_id as root,binding.origin_event_id as origin,pin.documents from app.contract_email_prerequisite_origin binding join contract_shared_email_document_step pin on pin.tenant_id=binding.tenant_id and pin.id=binding.pin_id where binding.tenant_id=${f.b.tenantId}::uuid and binding.job_id=${f.opened.jobId}::uuid`);
  expect(origins).toEqual([{run:beforeRuns[0].id,root:f.event.id,origin:f.event.id,documents:{}}]);
  await f.accept();const decisionBefore=await contractSharedContext(f.proposer,f.opened.caseId);

@@ -6,9 +6,10 @@ import {closeAll,migrateTestDb,resetDb,seedBase,setModule,entitledCtx,createAppU
 import {hireEmployee,setEmploymentInfo} from '../core/org';
 import {setCompensation} from '../core/comp';
 import {v9Setup,v9Workspace,v9SaveConfig} from '../packs/lifecycle/service';
-import {contractSharedTracker,contractSharedCaseAttention,contractSharedPeriodContext,openContractSharedPeriod,contractSharedContext,saveContractSharedRole,saveContractSharedMember} from '../packs/contracts/service';
+import {contractSharedTracker,contractSharedCaseAttention,contractSharedPeriodContext,openContractSharedPeriod,contractSharedContext,saveContractSharedRole,saveContractSharedMember,confirmContractSharedPay,readContractSharedPosting} from '../packs/contracts/service';
 import {todayInKualaLumpur} from '../lib/hr-date';
 import {addAutomationDays,type AutomationWorkflow} from '../lib/automation/workflow';
+import {contractPostingFixture,releaseContractPosting,approveAppliedContractPosting} from './helpers/contract-posting-fixture';
 
 let b:Base,admin:SessionContext;
 const year=Number(todayInKualaLumpur().slice(0,4)),start=`${year}-01-01`,end=`${year+1}-12-31`;
@@ -134,38 +135,55 @@ describe('Personnel-based Contract tracker and native case opening',()=>{
   const [native]=await withTenant(operator,tx=>tx.execute<{ok:boolean}>(sql`select app.contract_shared_permitted('view',${b.companyId}::uuid,null,${employee.employmentId}::uuid) as ok`));
   expect(native.ok).toBe(true);expect((await contractSharedTracker(operator)).rows.map(row=>row.id)).toEqual([employee.employmentId]);
  });
+ // These three reader scenarios use the same180s envelope as existing native posting journeys:
+ // real preview, human review/signature and protected application. No product/kernel budget is changed.
  it('classifies overdue periods without reminders and includes pay cases in shared stalled attention',async()=>{
-  const employee=await fixedTerm();await setEmploymentInfo(admin,{employmentId:employee.employmentId,contractStartDate:start,contractEndDate:`${year}-01-02`,contractNumber:4});
-  const row=(await contractSharedTracker(admin)).rows[0];expect(row).toMatchObject({firstReminderOn:null,decisionNeeded:true,endPassed:true,attention:true});expect((await contractSharedTracker(admin,{status:'upcoming'})).total).toBe(0);
-  const opened=await openContractSharedPeriod(admin,{employmentId:employee.employmentId,sourceRevision:row.sourceRevision!});
-  await owner.db.execute(sql`update contract_shared_case set revision=revision+1,data=jsonb_set(jsonb_set(data,'{stage}','"pay"'::jsonb),'{revision}',to_jsonb(revision+1)),updated_at=now()-interval '16 days' where tenant_id=${b.tenantId}::uuid and case_id=${opened.caseId}::uuid`);
-  const attention=await contractSharedCaseAttention(admin,[opened.caseId]);expect(attention).toEqual([{caseId:opened.caseId,stalledDays:16,attention:true,flags:['pay_pending']}]);
+  const f=await contractPostingFixture({kind:'convert',payChanges:true,endOn:`${year}-01-02`}),{b,admin}=f;
+  const row=(await contractSharedTracker(admin)).rows.find(row=>row.employmentId===f.employee.employmentId)!;
+  expect(row).toMatchObject({firstReminderOn:null,decisionNeeded:true,endPassed:true,attention:true});expect((await contractSharedTracker(admin,{status:'upcoming'})).total).toBe(0);
+  const posting=await releaseContractPosting(f);await approveAppliedContractPosting(f.approver,{id:posting.id,revision:posting.revision});
+  expect((await contractSharedContext(admin,f.caseId)).flow?.stage).toBe('pay');
+  // Backdate activity only after the actual signed conversion/posting produced native Pay pending.
+  // The revision/data revision advance is required by the existing audit owner, with no stage change.
+  await owner.db.execute(sql`update contract_shared_case set revision=revision+1,data=jsonb_set(data,'{revision}',to_jsonb(revision+1)),updated_at=now()-interval '16 days' where tenant_id=${b.tenantId}::uuid and case_id=${f.caseId}::uuid`);
+  const attention=await contractSharedCaseAttention(admin,[f.caseId]);expect(attention).toEqual([{caseId:f.caseId,stalledDays:16,attention:true,flags:['pay_pending']}]);
   const paying=await contractSharedTracker(admin,{status:'progress',attention:true});expect(paying.total).toBe(1);expect(paying.summary).toMatchObject({total:1,inProgress:1,attention:1});expect(paying.rows[0].stalledDays).toBe(16);
   await owner.db.execute(sql`insert into contract_shared_settings(tenant_id,company_id,stall_enabled,updated_by) values(${b.tenantId}::uuid,${b.companyId}::uuid,false,${admin.userId}::uuid) on conflict(tenant_id,company_id) do update set stall_enabled=false`);
-  expect((await contractSharedCaseAttention(admin,[opened.caseId]))[0]).toMatchObject({stalledDays:null,attention:true});
- });
+  expect((await contractSharedCaseAttention(admin,[f.caseId]))[0]).toMatchObject({stalledDays:null,attention:true});
+ },180_000);
  it('retains converted cases and their unfinished manual-pay confirmation in the tracker',async()=>{
-  const employee=await fixedTerm(),initial=(await contractSharedTracker(admin)).rows[0];
-  const opened=await openContractSharedPeriod(admin,{employmentId:employee.employmentId,sourceRevision:initial.sourceRevision!});
-  await owner.db.execute(sql`update contract_shared_case set revision=revision+1,data=jsonb_set(jsonb_set(data,'{stage}','"pay"'::jsonb),'{revision}',to_jsonb(revision+1)) where tenant_id=${b.tenantId}::uuid and case_id=${opened.caseId}::uuid`);
-  await owner.db.execute(sql`update assignment set employment_type='full_time' where tenant_id=${b.tenantId}::uuid and employment_id=${employee.employmentId}::uuid and superseded_at is null`);
-  await owner.db.execute(sql`update employment set contract_start_date=null,contract_end_date=null where tenant_id=${b.tenantId}::uuid and id=${employee.employmentId}::uuid`);
-  const pending=await contractSharedTracker(admin,{status:'progress'});expect(pending.total).toBe(1);expect(pending.rows[0]).toMatchObject({caseId:opened.caseId,stage:'pay',payPendingCaseId:opened.caseId,canOpen:false,sourceIssue:null});
+  const f=await contractPostingFixture({kind:'convert',payChanges:true}),{b,admin}=f;
+  const posting=await releaseContractPosting(f);await approveAppliedContractPosting(f.approver,{id:posting.id,revision:posting.revision});
+  const[personnel]=await owner.db.execute<{type:string;start:string|null;end:string|null}>(sql`select a.employment_type as type,e.contract_start_date::text as start,e.contract_end_date::text as end from employment e join assignment a on a.tenant_id=e.tenant_id and a.employment_id=e.id and a.superseded_at is null and a.valid_to is null where e.tenant_id=${b.tenantId}::uuid and e.id=${f.employee.employmentId}::uuid`);
+  expect(personnel).toEqual({type:'full_time',start:null,end:null});
+  const pending=await contractSharedTracker(admin,{status:'progress'});expect(pending.total).toBe(1);expect(pending.rows[0]).toMatchObject({caseId:f.caseId,stage:'pay',payPendingCaseId:f.caseId,canOpen:false,sourceIssue:null});
   expect(pending.companies.map(company=>company.id)).toEqual([b.companyId]);
-  await owner.db.execute(sql`update contract_shared_case set revision=revision+1,data=jsonb_set(jsonb_set(data,'{stage}','"converted"'::jsonb),'{revision}',to_jsonb(revision+1)) where tenant_id=${b.tenantId}::uuid and case_id=${opened.caseId}::uuid`);
-  const closed=await contractSharedTracker(admin,{status:'closed'});expect(closed.total).toBe(1);expect(closed.rows[0].caseId).toBe(opened.caseId);expect(closed.rows[0].stage).toBe('converted');
+  const agreed=await readContractSharedPosting(f.approver,posting.id);if(!agreed)throw Error('The actual approved posting is required for manual pay confirmation.');
+  expect(agreed).toMatchObject({status:'approved',canConfirmPay:true});
+  await expect(confirmContractSharedPay(f.proposer,{caseId:f.caseId,expectedRevision:agreed.caseRevision,confirmed:true})).rejects.toMatchObject({code:'forbidden'});
+  expect((await contractSharedTracker(admin,{status:'progress'})).rows[0].stage).toBe('pay');
+  expect(await confirmContractSharedPay(f.approver,{caseId:f.caseId,expectedRevision:agreed.caseRevision,confirmed:true})).toMatchObject({caseId:f.caseId,stage:'converted',confirmed:true});
+  const closed=await contractSharedTracker(admin,{status:'closed'});expect(closed.total).toBe(1);expect(closed.rows[0].caseId).toBe(f.caseId);expect(closed.rows[0].stage).toBe('converted');
   expect((await contractSharedTracker(admin,{status:'decision'})).total).toBe(0);
- });
+ },180_000);
  it('carries an older pay task onto the new native period, while holding conflicting unfinished work for reconciliation',async()=>{
+  // Preserve the original deliberate pre-decision Personnel drift negative independently.
   const employee=await fixedTerm(),initial=(await contractSharedTracker(admin)).rows[0];
   const opened=await openContractSharedPeriod(admin,{employmentId:employee.employmentId,sourceRevision:initial.sourceRevision!});
   await owner.db.execute(sql`update employment set contract_start_date=${`${year+2}-01-01`}::date,contract_end_date=${`${year+2}-12-31`}::date,contract_number=5 where tenant_id=${b.tenantId}::uuid and id=${employee.employmentId}::uuid`);
   const held=(await contractSharedTracker(admin)).rows[0];expect(held).toMatchObject({caseId:opened.caseId,canOpen:false,sourceIssue:'period_changed'});
-  await owner.db.execute(sql`update contract_shared_case set revision=revision+1,data=jsonb_set(jsonb_set(data,'{stage}','"pay"'::jsonb),'{revision}',to_jsonb(revision+1)) where tenant_id=${b.tenantId}::uuid and case_id=${opened.caseId}::uuid`);
-  const next=(await contractSharedTracker(admin)).rows[0];expect(next).toMatchObject({caseId:null,contractNumber:5,canOpen:true,previousPayPending:true,payPendingCaseId:opened.caseId,sourceIssue:null});
-  const newCase=await openContractSharedPeriod(admin,{employmentId:employee.employmentId,sourceRevision:next.sourceRevision!});expect(newCase.caseId).not.toBe(opened.caseId);
-  const current=(await contractSharedTracker(admin)).rows[0];expect(current).toMatchObject({caseId:newCase.caseId,previousPayPending:true,payPendingCaseId:opened.caseId,canOpen:false});
- });
+  // A separate native journey resets its fictional tenant and advances the period ONLY through approval.
+  const f=await contractPostingFixture({kind:'renew',payChanges:true}),posting=await releaseContractPosting(f);
+  await approveAppliedContractPosting(f.approver,{id:posting.id,revision:posting.revision});
+  expect((await contractSharedContext(f.admin,f.caseId)).flow?.stage).toBe('pay');
+  const[native]=await owner.db.execute<{start:string;end:string;counter:number}>(sql`select contract_start_date::text as start,contract_end_date::text as end,contract_number as counter from employment where tenant_id=${f.b.tenantId}::uuid and id=${f.employee.employmentId}::uuid`);
+  expect(native).toEqual({start:f.newStart,end:f.newEnd,counter:5});expect(native.end>todayInKualaLumpur()).toBe(true);
+  const next=(await contractSharedTracker(f.proposer)).rows.find(row=>row.employmentId===f.employee.employmentId)!;
+  expect(next).toMatchObject({caseId:null,contractNumber:5,canOpen:true,previousPayPending:true,payPendingCaseId:f.caseId,sourceIssue:null});
+  const newCase=await openContractSharedPeriod(f.proposer,{employmentId:f.employee.employmentId,sourceRevision:next.sourceRevision!});expect(newCase.caseId).not.toBe(f.caseId);
+  const current=(await contractSharedTracker(f.proposer)).rows.find(row=>row.employmentId===f.employee.employmentId)!;
+  expect(current).toMatchObject({caseId:newCase.caseId,previousPayPending:true,payPendingCaseId:f.caseId,canOpen:false});
+ },180_000);
  // The 70-company fixture measured 6.5 s on Actions. This date/condition matrix adds 128 live definitions;
  // retain headroom for a cold hosted database while comparing the SQL projection to the shared date owner.
  it('projects Upcoming and Decision needed from actual matching live reminder dates, including weekend offsets',async()=>{
