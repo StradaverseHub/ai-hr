@@ -97,3 +97,22 @@ export function v9RecipientReport(config: ConfigLike): RecipientReportRow[] {
   for (const email of config.emails) { const action = classify(email.cc); if (action) rows.push({ kind: 'email', id: email.id, name: email.name, module: email.module, ...(email.active === undefined ? {} : { status: email.active ? 'active' : 'inactive' }), cc: email.cc.filter(reportedRole), roles: email.cc.filter(reportedRole), action }); }
   return rows;
 }
+
+/** Email-only view redaction. Preserve immutable stored content and IDs while masking known private
+ * mailboxes wherever they occur in a receipt/preview, including text, HTML, contact and recipient names. */
+export function maskPersonalEmailView<T>(value: T, personalAddresses: readonly string[]): T {
+  const replacements = [...new Set(personalAddresses.map(key => v9LiteralAddress(key) ?? (key.startsWith('address:') ? key.slice(8) : key)).filter(address => address.includes('@')))];
+  const escape = (text: string) => text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const html = (text: string) => text.replace(/[&<>"']/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[char]!));
+  const walk = (item: unknown): unknown => {
+    if (typeof item === 'string') {
+      let text = item;
+      for (const address of replacements) for (const form of new Set([address, html(address)])) text = text.replace(new RegExp(escape(form), 'gi'), maskEmail(address));
+      return text;
+    }
+    if (Array.isArray(item)) return item.map(walk);
+    if (item && typeof item === 'object') return Object.fromEntries(Object.entries(item).map(([key, child]) => [key, walk(child)]));
+    return item;
+  };
+  return walk(value) as T;
+}
