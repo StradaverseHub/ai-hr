@@ -47,8 +47,8 @@ it('pages the exact active native picker population across roles and scopes, ret
  const single=await readWorkforceChoices(ctx,{subjectId,companyId:companies[1],selectedIds:[selectedId]});expect(single.rows.every(r=>r.companyId===companies[1])).toBe(true);expect(single.total).toBe(expected.filter(r=>r.companyId===companies[1]).length);
  const foreign=await seedBase();await expect(readWorkforceChoices(adminCtx(foreign),{subjectId})).rejects.toBeInstanceOf(WorkforceChoiceAccessError);
  // Observe the actual picker-owned carrier, not an unrelated generic read-only transaction.
- const native=database.withTenant,carriers:{ro:string;isolation:string;exclusive:boolean}[]=[];
- const spy=vi.spyOn(database,'withTenant').mockImplementation(<T>(who:SessionContext,read:(tx:Tx)=>Promise<T>,options?:Parameters<typeof database.withTenant>[2])=>native(who,async tx=>{
+ const nativeRead=database.withTenant,carriers:{ro:string;isolation:string;exclusive:boolean}[]=[];
+ const spy=vi.spyOn(database,'withTenant').mockImplementation(<T>(who:SessionContext,read:(tx:Tx)=>Promise<T>,options?:Parameters<typeof database.withTenant>[2])=>nativeRead(who,async tx=>{
   const result=await read(tx);const [mode]=await tx.execute<{ro:string;isolation:string;exclusive:boolean}>(sql`select current_setting('transaction_read_only') ro,current_setting('transaction_isolation') isolation,
    coalesce(app.access_lock_mode_held(${who.tenantId}::uuid)='X',false) exclusive`);carriers.push(mode);return result;
  },options));
