@@ -1,7 +1,7 @@
 /**
  * Statutory follow-ups to owner decisions A/B (2026-11-14). Through the kernel, on real payslips. Fictional
  * fixtures only. Owner rules: a PCB exemption reduces only the PCB base; only the EPF Bonus 2012 tick puts
- * money on the EPF bonus stream; SOCSO/EIS/SKBBK follow the SOCSO tick (EPF Bonus 2012 items stay out).
+ * money on the EPF bonus stream; SOCSO/EIS/SKBBK follow the SOCSO tick (including EPF Bonus 2012 after approved ffb6c2e0).
  *
  *   1. A PCB-exempt ONE-OFF keyed on an ADDITIONAL (bonus) run is paid by that run. Before this date the
  *      exempt slice went to the untaxed cash bucket, which an additional run does not pay, so a fully exempt
@@ -52,7 +52,7 @@ const item = (code: string, name: string, over: Partial<PayComponentInput> = {})
 const AWARD = item('A0097', 'LONG SERVICE AWARD (TAX EXEMPTED)', { pcbRemunerationType: 'additional', pcbExemptionCode: 'PCB_PERQUISITE' });
 /** An 'additional'-classified item ticked EPF, NOT EPF Bonus 2012, not SOCSO, fully taxable. */
 const PERF = item('PERF', 'Performance incentive', { includedInSocsoEis: false, pcbRemunerationType: 'additional' });
-/** A declared bonus: EPF Bonus 2012 (SOCSO ticked, still excluded by law). */
+/** A declared bonus: EPF Bonus 2012 (SOCSO ticked, independently of EPF classification). */
 const BNS = item('BNS', 'Bonus', { pcbRemunerationType: 'additional', epfBonus2012: true });
 /** A LEGACY item: no remuneration type, no exemption code, no EPF Bonus 2012; ticked EPF, not SOCSO. */
 const LEG = item('LEGINC', 'Legacy incentive', {
@@ -285,8 +285,8 @@ describe('item 2 — only EPF Bonus 2012 chooses the EPF bonus stream (legacy fl
     // Identical to an 'additional'-classified non-2012 item, for every agency including PCB.
     expect(monthTotal(L)).toEqual(monthTotal(P));
     // EPF Bonus 2012 is unchanged: the bonus EPF stream, and it differs here.
-    expect(B.bases).toMatchObject({ epf: 4800, epfAdditional: 400, socsoEis: 4800 });
-    expect(itemLine(B, 'BNS')).toMatchObject({ epfNormal: 0, epfBonus: 400, socsoEis: 0 });
+    expect(B.bases).toMatchObject({ epf: 4800, epfAdditional: 400, socsoEis: 5200 });
+    expect(itemLine(B, 'BNS')).toMatchObject({ epfNormal: 0, epfBonus: 400, socsoEis: 400 });
     expect(B.statutoryTrace!.run.own).toMatchObject({ epfAdditional: 400, epfWageExtra: 0 });
     expect(explainStatutory(L, 'regular').traceStatus).toBe('recorded');
   });

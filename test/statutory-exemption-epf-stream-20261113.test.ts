@@ -72,10 +72,10 @@ describe('the trace: per-item treatment follows the ticks', () => {
     expect(award).toMatchObject({ amount: 2500, epfNormal: 2500, epfBonus: 0, socsoEis: 2500 });
   });
 
-  it('EPF Bonus 2012: the exempt slice and the bonus stay on the bonus EPF stream, out of SOCSO/EIS', () => {
+  it('EPF Bonus 2012: exempt and taxable money stay on bonus EPF, while SOCSO follows its own tick', () => {
     const [bns] = lines([{ code: 'BNS', name: 'Bonus', epf: true, socso: true, exemptStatutory: true,
       buckets: [{ bucket: 'reimburse', amount: 300 }, { bucket: 'bonus', amount: 700 }] }], ['BNS']);
-    expect(bns).toMatchObject({ epfNormal: 0, epfBonus: 1000, socsoEis: 0 });
+    expect(bns).toMatchObject({ epfNormal: 0, epfBonus: 1000, socsoEis: 1000 });
   });
 
   it('an exempt slice ticked SOCSO but not EPF stays out of EPF', () => {

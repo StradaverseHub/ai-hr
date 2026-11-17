@@ -137,35 +137,35 @@ afterAll(async () => {
 });
 
 describe('69d6ed3c — the payslip carries the working that produced it', () => {
-  it('golden: EPF 4,600 → 506 / 598 at row 4,580.01–4,600.00; SOCSO 4,200 → 20.75 / 72.65; SKBBK 31.15; EIS 8.30', async () => {
+  it('golden: EPF 4,600 → 506 / 598 at row 4,580.01–4,600.00; SOCSO 5,000 → 24.75 / 86.65; SKBBK 37.15; EIS 9.90', async () => {
     await setup();
     const { e, batchId } = await goldenRun();
     const st = statOf(await slipOf(batchId, e.employmentId));
-    expect(money(st)).toEqual([506, 598, 20.75, 72.65, 31.15, 8.3, 8.3]);
+    expect(money(st)).toEqual([506, 598, 24.75, 86.65, 37.15, 9.9, 9.9]);
 
     const tr = st.statutoryTrace!;
     expect(tr, 'every newly processed payslip carries the trace').toBeDefined();
     expect(tr.epf).toMatchObject({ part: 'A', method: 'schedule_row', normalWage: 3800, bonusWage: 800, base: 4600, band: { from: 4580.01, upTo: 4600 }, employee: 506, employer: 598, employeeOnBonus: 88 });
     expect(tr.epf.normalOnly).toMatchObject({ band: { from: 3780.01, upTo: 3800 }, scheduleEmployee: 418 });
-    expect(tr.socso).toMatchObject({ category: 1, wage: 4200, band: { from: 4100.01, upTo: 4200 } });
-    expect(tr.skbbk).toMatchObject({ employee: 31.15 });
-    expect(tr.eis).toMatchObject({ employee: 8.3, employer: 8.3 });
+    expect(tr.socso).toMatchObject({ category: 1, wage: 5000, band: { from: 4900.01, upTo: 5000 } });
+    expect(tr.skbbk).toMatchObject({ employee: 37.15 });
+    expect(tr.eis).toMatchObject({ employee: 9.9, employer: 9.9 });
 
     // The items with their settings as THIS run read them, adding up to each wage.
     const byCode = Object.fromEntries(tr.items.filter((l) => l.code).map((l) => [l.code!, l]));
     expect(byCode.TRANSPORT).toMatchObject({ epf: true, epfNormal: 300, socsoEis: 300 });
     expect(byCode.PHONE).toMatchObject({ epf: false, epfNormal: 0, socsoEis: 150 });
     expect(byCode.OTX).toMatchObject({ epf: false, epfNormal: 0, socsoEis: 250 });
-    expect(byCode.BNS).toMatchObject({ epf: true, epfBonus2012: true, epfBonus: 800, socsoEis: 0 });
+    expect(byCode.BNS).toMatchObject({ epf: true, epfBonus2012: true, epfBonus: 800, socsoEis: 800 });
     const sum = (k: 'epfNormal' | 'epfBonus' | 'socsoEis') => tr.items.reduce((s, l) => Math.round((s + l[k]) * 100) / 100, 0);
-    expect([sum('epfNormal'), sum('epfBonus'), sum('socsoEis')]).toEqual([3800, 800, 4200]);
-    expect(tr.run).toMatchObject({ kind: 'single', own: { epfAdditional: 800, socsoWageExtra: 0 } });
+    expect([sum('epfNormal'), sum('epfBonus'), sum('socsoEis')]).toEqual([3800, 800, 5000]);
+    expect(tr.run).toMatchObject({ kind: 'single', own: { epfAdditional: 800, socsoWageExtra: 800 } });
 
     // And the Statutory Explanation reads it, having checked it against the payslip.
     const ex = explainStatutory(st, 'regular');
     expect(ex.traceStatus).toBe('recorded');
     // The r187 bases still agree with the trace.
-    expect((st as unknown as { bases: Record<string, number> }).bases).toMatchObject({ epf: 3800, epfAdditional: 800, socsoEis: 4200 });
+    expect((st as unknown as { bases: Record<string, number> }).bases).toMatchObject({ epf: 3800, epfAdditional: 800, socsoEis: 5000 });
   });
 
   it('untick EPF on Transport, then reprocess: EPF 4,300 → 473 / 559, following the latest saved setting', async () => {
@@ -282,7 +282,7 @@ describe('69d6ed3c — closed months stay exactly as they are', () => {
     const after = await slipOf(batchId, e.employmentId);
     expect(after.statutory).toEqual(before.statutory);
     expect(statOf(after).statutoryTrace).toBeUndefined();
-    expect(money(statOf(after))).toEqual([506, 598, 20.75, 72.65, 31.15, 8.3, 8.3]);
+    expect(money(statOf(after))).toEqual([506, 598, 24.75, 86.65, 37.15, 9.9, 9.9]);
     expect(explainStatutory(after.statutory, 'regular').traceStatus).toBe('absent');
   });
 });
