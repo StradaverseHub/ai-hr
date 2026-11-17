@@ -21,6 +21,7 @@ export async function rewardPersonHistory(ctx:SessionContext,unitId:string,entry
 /** Called inside the native payroll posting transaction after effects, before setting posted status.
  * This is a single set insert; no new employee query/write loop is introduced. */
 export async function recordRewardPersonHistoryTx(tx:Tx,ctx:SessionContext,unit:{id:string;companyId:string;kind:string;policy:{year:number}},rows:readonly CalculatedEntry[]){
+ if(!ctx.userId)throw Error('Sign in before recording reward history.');
  if(!rows.length)return;
  const values=rows.map(row=>({entryId:row.id,employmentId:row.source.employmentId,...rewardHistoryValues(row)}));
  const [recorded]=await tx.execute<{count:number}>(sql`select app.reward_record_person_history(${unit.id}::uuid,${JSON.stringify(values)}::jsonb) as count`);
