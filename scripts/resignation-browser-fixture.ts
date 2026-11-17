@@ -3,6 +3,7 @@ import {demoSeedRefusal,DEMO_TENANT_ID,SYSTEM_TENANT_ID} from '../db/seed-guard'
 import {demoSwitcherEnabled} from '../lib/demo-mode';
 import {todayInKualaLumpur,addCalendarMonths} from '../lib/hr-date';
 import type {SessionContext} from '../db/client';
+import {isDeepStrictEqual} from 'node:util';
 const refusal=demoSeedRefusal(process.env);if(refusal)throw Error(refusal);
 if(process.env.GITHUB_ACTIONS!=='true'||process.env.CI!=='true'||process.env.NODE_ENV==='production'||!demoSwitcherEnabled()||process.env.TEST_DB_NAMESPACE!=='resignationbrowser')throw Error('Hosted fictional resignation fixture only.');
 for(const value of [process.env.DATABASE_URL,process.env.MIGRATION_DATABASE_URL]){const url=new URL(value??'');if(!['postgres:','postgresql:'].includes(url.protocol)||!['127.0.0.1','localhost'].includes(url.hostname)||url.port!=='5433'||url.pathname!=='/ai_hr_resignation_browser'||url.search||url.hash)throw Error('Closed disposable resignation database required.');}
@@ -33,6 +34,11 @@ async function main(){
   if(existing){fixture=existing.payload as Fixture;if(fixture.version!==2)throw Error('A different fixture contract cannot be reused.');
    const configurer=fixture.actors.find(actor=>actor.key==='configurer');if(!configurer)throw Error('The persisted configuration administrator is unavailable.');
    root=await context(configurer);if(!root.grants?.some(g=>g.companyId===null&&g.role==='hr_admin'))throw Error('The actual configuration administrator lost group authority.');
+   if(requested==='prepare'){
+    const reusedConfig=(await v9Configuration(root)).config,gbs=fixture.actors.find(actor=>actor.key==='gbs');
+    const group=reusedConfig?.groups.find(item=>item.id===fixture.uploadGroupId),email=reusedConfig?.emails.find(item=>item.id===fixture.uploadEmailId);
+    if(!gbs||!group||!isDeepStrictEqual(group.members,[gbs.userId,configurer.userId])||!email?.slots.some(slot=>slot.required&&slot.by?.kind==='group'&&slot.by.groupId===group.id))throw Error('Reused preparation must retain the persisted upload group and its required email reference.');
+   }
   }
   else{
    if(requested!=='prepare')throw Error('Prepare synthetic identities first.');
@@ -64,15 +70,29 @@ async function main(){
    const [configured]=await owner.db.execute<{present:boolean}>(sql`select exists(select 1 from lc_v9_config where tenant_id=${tenantId}::uuid) as present`);if(!configured.present)await v9Setup(root);
    await installResignationDefaults(root);
    const native=await onboardingRegisterContext(root);if(!native.revision||!native.actor.master)throw Error('The canonical module access owner is unavailable.');const offboardingActors=actors.filter(actor=>['manager','gbs'].includes(actor.key)).map(actor=>actor.userId);await onboardingSaveConfig(root,native.revision,{...native.config,access:{...native.config.access,offboarding:[...new Set([...native.config.access.offboarding,...offboardingActors])]}});
-   const projection=await v9Configuration(root),config=structuredClone(projection.config!);if(!config)throw Error('Lifecycle configuration required.');
+   const projection=await v9Configuration(root);let config=structuredClone(projection.config!);if(!config)throw Error('Lifecycle configuration required.');
+   const preservedEmails=structuredClone(config.emails),preservedGroups=structuredClone(config.groups);
    const gbs=actors.find(actor=>actor.key==='gbs')!,ceo=actors.find(actor=>actor.key==='ceo')!,bp=actors.find(actor=>actor.key==='bp')!,groupId=config.peopleOpsGroup;
    if(!groupId)throw Error('The default installer must establish its configured GBS group.');
    for(const [id,userId]of [[groupId,gbs.userId],[RESIGNATION_DEFAULT_IDS.ceoGroup,ceo.userId],[RESIGNATION_DEFAULT_IDS.bpGroup,bp.userId]]){const group=config.groups.find(item=>item.id===id);if(!group)throw Error('A declared default group is unavailable.');group.members=[userId];group.limit=100;}
    config.groups.push({id:uploadGroupId,name:'Fictional required-file team',members:[gbs.userId,chain.appUserId],limit:100});
+   // Reference validation reads persisted shared groups. Introduce the group before its email slot,
+   // retaining every canonical group and foreign definition, as the default installer does.
+   const expectedGroups=structuredClone(config.groups);
+   await v9SaveConfig(root,config.revision,config);
+   const grouped=(await v9Configuration(root)).config;if(!grouped)throw Error('Lifecycle configuration disappeared after saving shared groups.');
+   if(!isDeepStrictEqual(grouped.groups,expectedGroups)||!isDeepStrictEqual(grouped.emails,preservedEmails))throw Error('The group-only save changed existing group records or email definitions.');
+   const reboundIds=new Set([groupId,RESIGNATION_DEFAULT_IDS.ceoGroup,RESIGNATION_DEFAULT_IDS.bpGroup]);
+   for(const group of preservedGroups)if(!grouped.groups.some(item=>item.id===group.id&&(reboundIds.has(group.id)||isDeepStrictEqual(item,group))))throw Error('The fixture must retain every existing shared group and all foreign group records.');
+   const uploadGroup=grouped.groups.find(group=>group.id===uploadGroupId);
+   if(!uploadGroup||!isDeepStrictEqual(uploadGroup.members,[gbs.userId,chain.appUserId]))throw Error('The canonical upload group did not retain its actual members.');
+   config=structuredClone(grouped);
    config.emails.push({id:uploadEmailId,name:'Fictional required-file email',module:'off',active:true,sender:'noreply',subject:'Fictional handover file received',body:'The fictional handover file for {{employee.name}} is attached.',cc:[],links:[],attachments:[],slots:[{id:'synthetic-handover',label:'Fictional handover attachment',required:true,by:{kind:'group',groupId:uploadGroupId}}]});
    config.offboarding={postingApproverGroupId:groupId,reofferMonths:12};config.bpRules.push({rules:{company:[company.id],department:[department.id,gapDepartment.id]},userId:bp.userId});
    const [leaveType]=await owner.db.execute<{id:string}>(sql`select id from leave_type where tenant_id=${tenantId}::uuid and archived_at is null order by case when code='AL' then 0 else 1 end,id limit 1`);if(leaveType&&config.settlementPolicy)config.settlementPolicy.leaveTypeIds=[leaveType.id];
    await v9SaveConfig(root,config.revision,config);
+   const configuredUpload=(await v9Configuration(root)).config;
+   if(!configuredUpload||!isDeepStrictEqual(configuredUpload.groups,expectedGroups)||preservedEmails.some(email=>!configuredUpload.emails.some(item=>item.id===email.id&&isDeepStrictEqual(item,email)))||!isDeepStrictEqual(configuredUpload.emails.find(email=>email.id===uploadEmailId),config.emails.find(email=>email.id===uploadEmailId)))throw Error('The upload email save must preserve canonical groups and every existing email definition.');
    const storedRoutings=await listAutomationRoutings(root);
    for(const [routeId,configuredGroup]of [[RESIGNATION_DEFAULT_IDS.bp,RESIGNATION_DEFAULT_IDS.bpGroup],[RESIGNATION_DEFAULT_IDS.ceo,RESIGNATION_DEFAULT_IDS.ceoGroup]]){const existingRoute=storedRoutings.find(item=>item.routing.id===routeId);if(!existingRoute)throw Error('The default installer did not establish its explicit routing.');await saveAutomationRouting(root,{routing:{...existingRoute.routing,rows:[{match:{},assignTo:{kind:'group',groupId:configuredGroup}}]},retired:false,expectedRevision:existingRoute.revision,reason:'Bind the exact synthetic BP and CEO groups through the actual routing owner'});}
    const current=(await v9Configuration(root)).config!;for(const [id,userId]of [[groupId,gbs.userId],[RESIGNATION_DEFAULT_IDS.ceoGroup,ceo.userId],[RESIGNATION_DEFAULT_IDS.bpGroup,bp.userId]] as const){const members=current.groups.find(group=>group.id===id)?.members;if(!members||members.length!==1||members[0]!==userId)throw Error('The canonical group writer did not retain the actual role binding.');}const defaults=resignationDefaults(current,'Fixture configuration administrator',new Date().toISOString(),storedRoutings.map(item=>item.routing)),storedWorkflows=await listAutomationWorkflows(root,{module:'off'});
