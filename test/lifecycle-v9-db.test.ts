@@ -5,7 +5,7 @@ import { withTenant, type SessionContext } from '../db/client';
 import { hireEmployee, setEmploymentInfo, setReportingLine, updatePersonProfilePartial } from '../core/org';
 import { saveEmployeeDraft, completeEmployeeDraft } from '../core/employee-draft';
 import { todayInKualaLumpur } from '../lib/hr-date';
-import { addDays } from '../lib/lifecycle-v9-model';
+import { addDays, type Workflow } from '../lib/lifecycle-v9-model';
 import { currentReq } from '../lib/onboarding-model';
 import { v9UploadEmailAsset, v9DownloadEmailAsset, v9Setup, v9Sweep, v9DeliverEmails, v9DownloadDocument, v9CaseDetail, v9PreviewUpdatedEmail, v9PreviewWorkflow, v9Workspace, v9PreviewEmail, v9SaveConfig, v9CreateOffboarding, v9Command, v9OwnWork, v9OwnTask, v9OwnItem, onboardingRecoverHoldingTx, registerAsset, returnAssetTx, issueAssetTx, getAsset, assetHistory, v9OwnDocument, v9ReportOwnReturn, v9OwnEquipmentReceipt, v9UploadFile, v9DownloadFile, onboardingContext, onboardingSaveConfig, onboardingList, onboardingCommand, onboardingAssignmentLoadsTx, onboardingHoldingsTx } from '../packs/lifecycle/service';
 import { closeAll, resetDb, seedBase, setModule, entitledCtx, owner, createAppUser, type Base } from './harness';
@@ -1465,7 +1465,7 @@ it('resolves an offboarding email manager from current PM reporting lines withou
   }
   await setReportingLine(admin,{subordinateEmploymentId:employmentId,managerEmploymentId:managers[0].employmentId,lineType:'administrative',validFrom:'2026-01-01'});
   const config=(await v9Workspace(admin)).config!;config.checklists=config.checklists.filter(checklist=>checklist.module==='onb');
-  const workflow={id:'current-supervisor',name:'Current PM manager',module:'off' as const,status:'published' as const,trigger:{event:'manual' as const,days:0,workdays:false,repeat:false,skipIf:''},conditions:[],steps:[{id:'manager-notice',type:'notify' as const,to:['supervisor' as const],cc:[],subject:'Current manager notice',body:'For {employee.supervisor}'}],description:''};
+  const workflow:Workflow={id:'current-supervisor',name:'Current PM manager',module:'off' as const,status:'published' as const,trigger:{event:'manual' as const,days:0,workdays:false,repeat:false,skipIf:''},conditions:[],steps:[{id:'manager-notice',type:'notify' as const,to:['supervisor' as const],cc:[],subject:'Current manager notice',body:'For {employee.supervisor}'}],description:''};
   config.workflows=[workflow];await v9SaveConfig(admin,config.revision,config);
   const caseId=await v9CreateOffboarding(admin,{employmentId,type:'Resignation',noticeDate:todayInKualaLumpur(),lastDay:addDays(todayInKualaLumpur(),30)});
   expect((await v9CaseDetail(admin,caseId)).case.facts.supervisorUserId).toBe(managers[0].userId);
