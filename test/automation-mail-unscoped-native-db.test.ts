@@ -15,6 +15,7 @@ import {saveAutomationWorkflow,saveAutomationEmailTemplate,uploadAutomationEmail
 import {readContractSharedLetter,actContractSharedLetter} from '../packs/contracts/service';
 import {internalAutomationMail} from '../lib/internal-auth/automation-mail';
 let f:Awaited<ReturnType<typeof fixture>>,employee:SessionContext;
+const deliver=(request:{deliveryId:string;leaseToken:string})=>internalAutomationMail({deliveryId:request.deliveryId,leaseToken:request.leaseToken},auth.send);
 beforeAll(migrateTestDb);afterAll(closeAll);
 beforeEach(()=>{vi.clearAllMocks();auth.changedUser=false;auth.send.mockResolvedValue(undefined);});
 async function ready(){
@@ -37,19 +38,19 @@ async function ready(){
 describe('actual unscoped restricted OneHR sender',()=>{
  it('delivers the real queued full native document metadata and uploaded bytes without tenant GUC or owner credentials',async()=>{
   const request=await ready();const [role]=await client`select current_user as role,app.current_tenant_id() as tenant`;expect(role).toEqual({role:'ai_hr_app',tenant:null});
-  expect(await internalAutomationMail(request,auth.send)).toEqual({outcome:'sent',error:null});
+  expect(await deliver(request)).toEqual({outcome:'sent',error:null});
   expect(auth.send).toHaveBeenCalledWith(expect.anything(),expect.objectContaining({to:employee.userId+'@private-mail.example.test',html:expect.stringContaining('/lifecycle/contracts/letters/'+request.letterId),attachments:[expect.objectContaining({filename:'information.txt',bytes:Buffer.from('Fictional actual native file')})]}));
-  expect(await internalAutomationMail(request,auth.send)).toMatchObject({outcome:'skipped'});expect(auth.send).toHaveBeenCalledOnce();
+  expect(await deliver(request)).toMatchObject({outcome:'skipped'});expect(auth.send).toHaveBeenCalledOnce();
  },120000);
  it('refuses bad, stale, foreign, changed-user, changed-person and changed-route capabilities before SMTP',async()=>{
   const request=await ready();
-  for(const bad of [{...request,leaseToken:randomUUID()},{...request,deliveryId:randomUUID()}]){expect(await internalAutomationMail(bad,auth.send)).toMatchObject({outcome:'skipped'});expect((await client`select app.automation_email_materialization(${bad.deliveryId}::uuid,${bad.leaseToken}::uuid,${auth.origin}) as proof`)[0].proof).toBeNull();}
+  for(const bad of [{...request,leaseToken:randomUUID()},{...request,deliveryId:randomUUID()}]){expect(await deliver(bad)).toMatchObject({outcome:'skipped'});expect((await client`select app.automation_email_materialization(${bad.deliveryId}::uuid,${bad.leaseToken}::uuid,${auth.origin}) as proof`)[0].proof).toBeNull();}
   expect((await client`select app.automation_email_materialization(${request.deliveryId}::uuid,${request.leaseToken}::uuid,'https://foreign.example.test') as proof`)[0].proof).toBeNull();
-  auth.changedUser=true;expect(await internalAutomationMail(request,auth.send)).toMatchObject({error:'recipientChanged'});auth.changedUser=false;
-  await owner.db.execute(sql`update automation_email_delivery set lease_until=now()-interval '1 second' where id=${request.deliveryId}::uuid`);expect(await internalAutomationMail(request,auth.send)).toMatchObject({outcome:'skipped'});
+  auth.changedUser=true;expect(await deliver(request)).toMatchObject({error:'recipientChanged'});auth.changedUser=false;
+  await owner.db.execute(sql`update automation_email_delivery set lease_until=now()-interval '1 second' where id=${request.deliveryId}::uuid`);expect(await deliver(request)).toMatchObject({outcome:'skipped'});
   await owner.db.execute(sql`update automation_email_delivery set lease_until=now()+interval '2 minutes' where id=${request.deliveryId}::uuid`);
   const [other]=await owner.db.execute<{id:string}>(sql`insert into person(tenant_id,full_name,primary_email) values(${f.b.tenantId}::uuid,'Fictional changed identity',${randomUUID()+'@private-mail.example.test'}) returning id`);
-  await owner.db.execute(sql`update app_user set person_id=${other.id}::uuid where id=${employee.userId}::uuid`);expect(await internalAutomationMail(request,auth.send)).toMatchObject({outcome:'skipped'});
+  await owner.db.execute(sql`update app_user set person_id=${other.id}::uuid where id=${employee.userId}::uuid`);expect(await deliver(request)).toMatchObject({outcome:'skipped'});
   await owner.db.execute(sql`update app_user set person_id=${employee.personId}::uuid where id=${employee.userId}::uuid`);
   // The application cannot rewrite a released canonical route to bypass recipient checks.
   await expect(withTenant(employee,tx=>tx.execute(sql`update document_signing_document set data=jsonb_set(data,'{route,steps}','[]'::jsonb) where tenant_id=${f.b.tenantId}::uuid and subject_id=${request.letterId}::uuid`))).rejects.toThrow();
