@@ -14,7 +14,7 @@ export const POST=capacityAwareRoute(async function POST(request:Request,context
   if(!['scoped','active','loans'].includes(purpose))throw new EmployeeChoiceInputError();
   const s=await getSession(),input=await employeeChoiceRequestBody(request);
   const scope=purpose==='loans'?[]:(await companyContextForPage(s)).scopeIds;
-  return Response.json(await sharedEmployeePickerPage(s,scope,purpose as SharedEmployeePickerPurpose,input),{headers});
+  return Response.json(await sharedEmployeePickerPage(s,scope,purpose as SharedEmployeePickerPurpose,input,request.signal),{headers});
  }catch(error){
   const status=error instanceof AuthRequiredError?401:error instanceof EmployeeChoiceInputError?400:error instanceof EmployeeChoiceAccessError?403:503;
   return Response.json({error:status===401?'authentication':status===400?'invalid':status===403?'forbidden':'unavailable'},{status,headers});

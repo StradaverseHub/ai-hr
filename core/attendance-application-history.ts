@@ -227,12 +227,12 @@ export function attendanceApplicationFilterOptions(ctx: SessionContext, companyI
 
 /** The history selector has dated Assignment and department→Business Unit fallback semantics.
  * Derive administered companies here; neither browser filters nor the generic directory widen them. */
-export function attendanceApplicationEmployeeChoices(ctx:SessionContext,companyIds:readonly string[],input:EmployeeChoiceInput={}){
+export function attendanceApplicationEmployeeChoices(ctx:SessionContext,companyIds:readonly string[],input:EmployeeChoiceInput={},signal?:AbortSignal){
  admin(ctx);const scope=companyIds.slice(),asOf=todayInKualaLumpur();
  return withTenant(ctx,async tx=>{
   const companies=scope.length?await tx.select({id:company.id}).from(company)
    .where(and(inArray(company.id,scope),sql`app.is_admin_for(${company.id})`)):[];
   return readEmployeeChoicesTx(tx,ctx,{...input,limit:25,labelMode:'names',companyIds:companies.map(row=>row.id),
-   ...(companies.length?{}:{employmentIds:[]}),assignmentAsOf:asOf});
- },{readOnlySnapshot:true});
+   ...(companies.length?{}:{employmentIds:[]}),assignmentAsOf:asOf},signal);
+ },{readOnlySnapshot:true,readSignal:signal});
 }

@@ -4,7 +4,8 @@ import Link from 'next/link';
 import { cookies } from 'next/headers';
 import { getTranslations } from 'next-intl/server';
 import { scopedAdmin } from '@/lib/scope';
-import { listCompanies } from '@/core/read';
+import { EmployeeChoiceField } from '@/components/employee-choice-field';
+import { employeePickerSubject, listCompanies } from '@/core/read';
 import { listZakatElections, listZakatTxnsAcross } from '@/core/payroll-view';
 import { getStatutoryProfileMY } from '@/localization/my/statutory';
 import { Button, Card, EmployeeName, ErrorBanner, Field, PageHeader, SectionHeader, inputCls, pageWideCls } from '@/components/ui';
@@ -126,8 +127,8 @@ export default async function ZakatTransactionPage({
   // Scope-guard every history ?param (mirror transaction-view/page.tsx): an out-of-scope value ⇒ ignored.
   const hCompanyId = sp.hCompanyId && scopeIds.includes(sp.hCompanyId) ? sp.hCompanyId : undefined;
   const historyCompanyIds = hCompanyId ? [hCompanyId] : scopeIds;
-  const hEmploymentId =
-    sp.hEmploymentId && allEmployees.some((e) => e.employmentId === sp.hEmploymentId) ? sp.hEmploymentId : undefined;
+  const historyEmployee = await employeePickerSubject(s, sp.hEmploymentId, scopeIds);
+  const hEmploymentId = historyEmployee?.employmentId;
   const hYear = intParam(sp.hYear, 2000, 2100);
   const hMonth = intParam(sp.hMonth, 1, 12);
   const hCycle = CYCLES.includes(sp.hCycle as (typeof CYCLES)[number]) ? sp.hCycle : undefined;
@@ -318,15 +319,8 @@ export default async function ZakatTransactionPage({
                 hEmploymentId && <input type="hidden" name="hEmploymentId" value={hEmploymentId} />
               ) : (
                 <Field label={t('zakat.history.employee')}>
-                  <select name="hEmploymentId" defaultValue={hEmploymentId ?? ''} className={inputCls}>
-                    <option value="">{t('zakat.history.all')}</option>
-                    {allEmployees.map((e) => (
-                      <option key={e.employmentId} value={e.employmentId}>
-                        {e.name}
-                        {e.employeeCode ? ` (${e.employeeCode})` : ''} · {e.company}
-                      </option>
-                    ))}
-                  </select>
+                  <EmployeeChoiceField name="hEmploymentId" label={t('zakat.history.employee')}
+                    allLabel={t('zakat.history.all')} selectedId={hEmploymentId} selected={historyEmployee} />
                 </Field>
               )}
               <Field label={t('zakat.history.year')}>

@@ -13,7 +13,7 @@ export const POST=capacityAwareRoute(async function POST(request:Request){
   const {s,scopeIds}=await scopedSession();if(!isAdmin(s))throw new EmployeeChoiceAccessError();
   const input=await employeeChoiceRequestBody(request);
   if(input.limit!==undefined&&input.limit!==25||input.labelMode!==undefined&&input.labelMode!=='names')throw new EmployeeChoiceInputError();
-  return Response.json(await attendanceApplicationEmployeeChoices(s,scopeIds,input),{headers});
+  return Response.json(await attendanceApplicationEmployeeChoices(s,scopeIds,input,request.signal),{headers});
  }catch(error){
   const status=error instanceof AuthRequiredError?401:error instanceof EmployeeChoiceInputError?400:error instanceof EmployeeChoiceAccessError?403:503;
   return Response.json({error:status===401?'authentication':status===400?'invalid':status===403?'forbidden':'unavailable'},{status,headers});

@@ -21,7 +21,7 @@ export const POST=capacityAwareRoute(async function POST(request:Request){
  if(!isSameOriginBrowserRequest(request))return Response.json({error:'origin'},{status:403,headers});
  try{
   const {s,scopeIds}=await scopedSession();
-  return Response.json(await draftManagerChoices(s,scopeIds,await body(request)),{headers});
+  return Response.json(await draftManagerChoices(s,scopeIds,await body(request),request.signal),{headers});
  }catch(error){
   const status=error instanceof AuthRequiredError?401:error instanceof WorkforceChoiceInputError?400:error instanceof WorkforceChoiceAccessError?403:503;
   return Response.json({error:status===401?'authentication':status===400?'invalid':status===403?'forbidden':'unavailable'},{status,headers});

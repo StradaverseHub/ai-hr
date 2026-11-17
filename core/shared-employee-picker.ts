@@ -16,8 +16,8 @@ export async function sharedEmployeePicker(ctx:SessionContext,companyIds:readonl
  },{readOnlySnapshot:true});
 }
 /** Later pages need no rich selected header or person identity. */
-export async function sharedEmployeePickerPage(ctx:SessionContext,companyIds:readonly string[],purpose:SharedEmployeePickerPurpose,input:EmployeeChoiceInput){
+export async function sharedEmployeePickerPage(ctx:SessionContext,companyIds:readonly string[],purpose:SharedEmployeePickerPurpose,input:EmployeeChoiceInput,signal?:AbortSignal){
  if(!isAdmin(ctx))throw new EmployeeChoiceAccessError('Administration access required');
  if(input.limit!==undefined&&input.limit!==25)throw new EmployeeChoiceInputError('Invalid picker page size');
- return withTenant(ctx,tx=>readEmployeeChoicesTx(tx,ctx,{...input,companyIds:purpose==='loans'?[]:companyIds.slice(),...(purpose==='active'?{activeOnly:true as const}:{}),limit:25}),{readOnlySnapshot:true});
+ return withTenant(ctx,tx=>readEmployeeChoicesTx(tx,ctx,{...input,companyIds:purpose==='loans'?[]:companyIds.slice(),...(purpose==='active'?{activeOnly:true as const}:{}),limit:25},signal),{readOnlySnapshot:true,readSignal:signal});
 }

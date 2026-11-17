@@ -133,9 +133,11 @@ describe('3e3d3fb2 — the TP1 screen’s employmentId, against the database', (
       validFrom: '2020-01-01',
     });
 
+    await owner.db.insert(schema.roleAssignment).values({tenantId:b.tenantId,appUserId:mgrUser.id,role:'hr_admin',companyId:b.companyId});
     const mgrCtx: SessionContext = {
       tenantId: b.tenantId,
       userId: mgrUser.id,
+      personId: mgrPerson.id,
       roles: ['hr_admin'],
       grants: [{ role: 'hr_admin', companyId: b.companyId }],
       entitlements: harnessSnapshot(b.tenantId), // r292 — see scopedToBase above.
