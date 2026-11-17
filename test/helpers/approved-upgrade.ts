@@ -238,9 +238,9 @@ export const APPROVED_UPGRADE_TAIL=[
 ] as const;
 // Final pending 2109/2126 bytes reviewed from engine 128bc2539; no applied-prefix hashes change.
 const APPROVED_UPGRADE_HASHES:Record<string,string>={
- '5790_resignation_case_communications':'33672971b20e35975d25cfd840f0c31d5b6ab61c8a7d472bf0bbe975b4356517',
+ '5790_resignation_case_communications':'6793781c613a9223a29d19267caf598a955ca5ee48c95f8931601ce497b6e5dd',
  '5788_resignation_letter_teams':'b7769b4044d013cfb630d532d8cc5b7fd2c8635662cf05663a4dcf6746eae4f3',
- '5789_resignation_letter_fields':'6ff09ccafb1fe4aedcec24c19724a622bb9f03d7db62743e5c7938fc37f00430',
+ '5789_resignation_letter_fields':'e7daffafd003c0e1c5576a0092d8b93a2f282ad1df7ed05f652e862851c70786',
 
  '5770_attendance_workflow_approver_codes':'f71cf33a9ced5f4e1007de02388a858bd31c64006a422352193bd7c14e367ec0',
  '5771_assistant_legacy_index_shared_access':'433dfd7549b496b034bdeaa2c06484b700b5dd5647213106d68487f0b485c7c0',
