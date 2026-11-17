@@ -18,6 +18,8 @@ describe('Contract template native version lifecycle',()=>{
   expect(await actAutomationDocumentTemplate(admin,{id:doc.id,expectedRevision:2,action:'publishVersion',version:2})).toEqual({revision:3});
   expect((await listAutomationDocumentTemplates(admin,'contract_staff'))[0]).toMatchObject({revision:3,currentVersion:2,liveVersion:2});
   expect((await automationDocumentUsage(admin,doc.id)).versions).toMatchObject([{version:2,state:'inUse'},{version:1,state:'published'}]);
+  await expect(actAutomationDocumentTemplate(admin,{id:doc.id,expectedRevision:3,action:'publishVersion',version:1})).rejects.toMatchObject({code:'invalid'});
+  await expect(withTenant(admin,tx=>tx.execute(sql`select app.automation_document_template_action(${doc.id}::uuid,3,'publishVersion',1)`))).rejects.toThrow();
   await expect(actAutomationDocumentTemplate(admin,{id:doc.id,expectedRevision:2,action:'deleteVersion',version:1})).rejects.toMatchObject({code:'conflict'});
   expect(await actAutomationDocumentTemplate(admin,{id:doc.id,expectedRevision:3,action:'deleteVersion',version:1})).toEqual({revision:4});
   expect((await automationDocumentUsage(admin,doc.id)).versions.map(v=>v.version)).toEqual([2]);
