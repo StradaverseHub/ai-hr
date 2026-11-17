@@ -12,7 +12,7 @@ const cases = [false, true].flatMap(epfBonus2012 => [false, true].map(socso => (
 
 describe('ffb6c2e0 — independent non-EPF item inclusion', () => {
   it.each(cases)('taxable/exempt, EPF Bonus 2012 $epfBonus2012, SOCSO/EIS $socso', ({ epfBonus2012, socso }) => {
-    const source = { code: 'AWARD', name: 'Award', epf: true, socso, exemptStatutory: true,
+    const source = { code: 'AWARD', name: 'Award', epf: true, socso, exemptStatutory: true as const,
       epfNormalStream: true as const, buckets: [{ bucket: 'bonus' as const, amount: 700 }, { bucket: 'reimburse' as const, amount: 300 }] };
     const wage = socso ? 1000 : 0;
     const items = buildStatutoryTraceLines({ basic: 4000, lines: [source], bonus2012Codes: new Set(epfBonus2012 ? ['AWARD'] : []),
