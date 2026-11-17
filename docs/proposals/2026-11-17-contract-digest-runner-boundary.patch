@@ -1,0 +1,34 @@
+--- /dev/null
++++ b/db/migrations/5937_contract_digest_queue_capability.sql
+@@ -0,0 +1,20 @@
++-- REVIEW ONLY: NOT REGISTERED OR APPLIED. Requires specific approval of the shared Contract digest mail gate.
++CREATE FUNCTION app.contract_shared_digest_held(p_case uuid) RETURNS boolean
++LANGUAGE sql STABLE SET search_path=pg_catalog,public,pg_temp AS $$
++ SELECT app.contract_shared_system_job_held(nullif(current_setting('app.bulk_job',true),'')::uuid) AND EXISTS(
++ SELECT 1 FROM app.contract_system_digest digest JOIN public.bulk_job job ON job.id=digest.job_id AND job.tenant_id=digest.tenant_id AND job.kind='contract_schedule' AND job.created_by IS NULL
++ WHERE digest.tenant_id=app.current_tenant_id() AND digest.case_id=p_case AND digest.job_id::text=current_setting('app.bulk_job',true)
++ AND digest.mail_key=current_setting('app.contract_digest',true))
++$$;
++REVOKE ALL ON FUNCTION app.contract_shared_digest_held(uuid) FROM PUBLIC,ai_hr_app;
++--> statement-breakpoint
++DO $repair$
++DECLARE definition text:=pg_get_functiondef('app.automation_can_run(text,uuid)'::regprocedure);
++ before text:=$before$ WHEN 'contract_staff' THEN EXISTS(SELECT 1 FROM public.contract_shared_event e WHERE e.tenant_id=app.current_tenant_id() AND e.case_id=p_subject AND e.id::text=current_setting('app.contract_event',true)
++ AND app.contract_shared_worker_event_held(e.case_id,e.decision_revision))$before$;
++ after text:=$after$ WHEN 'contract_staff' THEN (app.contract_shared_digest_held(p_subject) OR EXISTS(SELECT 1 FROM public.contract_shared_event e WHERE e.tenant_id=app.current_tenant_id() AND e.case_id=p_subject AND e.id::text=current_setting('app.contract_event',true)
++ AND app.contract_shared_worker_event_held(e.case_id,e.decision_revision)))$after$;
++BEGIN
++ IF strpos(definition,before)=0 THEN RAISE EXCEPTION 'Unreviewed shared Contract runner guard preimage';END IF;
++ EXECUTE replace(definition,before,after);
++END $repair$;
+
+--- a/core/contract-shared-schedule.ts
++++ b/core/contract-shared-schedule.ts
+@@ -63,6 +63,7 @@
+   await db.execute(sql`insert into app.contract_system_digest(tenant_id,mail_key,job_id,company_id,case_id,source_date,context,recipient_ids) values(${job.tenant_id}::uuid,${key},${job.id}::uuid,${plan.company}::uuid,${first.caseId}::uuid,${day}::date,${JSON.stringify(context)}::jsonb,${'{'+recipients.map(row=>row.id).join(',')+'}'}::uuid[]) on conflict(tenant_id,mail_key) do nothing`);
+   if(recipients.length){
+    const body='Contract cases needing attention on '+day+'\n\n'+rows.map(row=>row.name.slice(0,100)+' — '+[...row.flags.map(flag=>flag.replaceAll('_',' ')),...(row.stalledDays!==null?['Stalled '+row.stalledDays+' days']:[])].join('; ')).join('\n')+'\n\nOpen Contract Management to review these cases.\n{{case.link}}';
++   await owner`select set_config('app.contract_digest',${key},true)`;
+    await queueAutomationEmailTx(db,{module:'contract_staff',subjectId:first.caseId,key,to:recipients.map(row=>row.id),cc:[],subject:'Daily Contract cases needing attention · '+day,body});
+   }
+   await unit.set(owner,{planMerge:recipients.length===100?{recipientAfter:recipients.at(-1)!.id}:{digestAfter:rows.at(-1)!.caseId,recipientAfter:null},countersAdd:{digestCases:recipients.length===100?0:rows.length,digestPages:recipients.length?1:0}});return 'more' as const;
