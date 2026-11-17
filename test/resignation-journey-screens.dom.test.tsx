@@ -213,8 +213,11 @@ describe('task rows and block editing',()=>{
   await waitFor(()=>expect(actions.runResignationCommand).toHaveBeenCalledWith({caseId:'case-a',revision:7,command:{type:'completeReplacement',taskId:'task-a',reference:'https://recruitment.example.test/request/42'}}));await waitFor(()=>expect(complete).toHaveBeenCalledOnce());
  });
  it('edits table cells and rows while leaving letterhead and signatures protected',async()=>{
-  const change=vi.fn();wrap(<ResignationBlockEditor busy={false} onChange={change} blocks={[{id:'head',type:'letterhead',text:'',section:''},{id:'table',type:'table',text:'',section:'',columns:'Term | Offered',rows:'Grade | G4'},{id:'sig',type:'signature',text:'',section:''}]}/>);
-  expect(screen.getAllByText(/This block is supplied/)).toHaveLength(2);fireEvent.focus(await screen.findByRole('textbox',{name:'Offered, Row 1'}));await waitFor(()=>expect(screen.getByRole('textbox',{name:'Offered, Row 1'})).toHaveAttribute('contenteditable','true'));fireEvent.paste(screen.getByRole('textbox',{name:'Offered, Row 1'}),{clipboardData:{getData:()=> 'Revised '}});await waitFor(()=>expect(change.mock.calls[0][0][1].rows).toBe('Grade | G4Revised '));fireEvent.click(screen.getByRole('button',{name:'Add row'}));expect(change.mock.calls[1][0][1].rows).toBe('Grade | G4\n | ');
+  const source:Block[]=[{id:'head',type:'letterhead',text:'',section:''},{id:'table',type:'table',text:'',section:'',columns:'Term | Offered',rows:'Grade | G4'},{id:'sig',type:'signature',text:'',section:''}],change=vi.fn();
+  function Table(){const[blocks,setBlocks]=useState(source);return <ResignationBlockEditor busy={false} blocks={blocks} onChange={next=>{change(next);setBlocks(next);}}/>;}
+  wrap(<Table/>);expect(screen.getAllByText(/This block is supplied/)).toHaveLength(2);fireEvent.focus(await screen.findByRole('textbox',{name:'Offered, Row 1'}));await waitFor(()=>expect(screen.getByRole('textbox',{name:'Offered, Row 1'})).toHaveAttribute('contenteditable','true'));fireEvent.paste(screen.getByRole('textbox',{name:'Offered, Row 1'}),{clipboardData:{getData:()=> 'Revised '}});
+  await waitFor(()=>expect(change).toHaveBeenLastCalledWith([source[0],{...source[1],rows:'Grade | G4Revised '},source[2]]));expect(screen.getByRole('textbox',{name:'Offered, Row 1'})).toHaveTextContent('G4Revised');
+  fireEvent.click(screen.getByRole('button',{name:'Add row'}));expect(change).toHaveBeenLastCalledWith([source[0],{...source[1],rows:'Grade | G4Revised\n | '},source[2]]);expect(screen.getByRole('textbox',{name:'Offered, Row 2'})).toBeInTheDocument();
  });
 });
 
@@ -303,7 +306,7 @@ describe('inline letter review and final signing labels',()=>{
   fireEvent.focus(await screen.findByRole('textbox',{name:'2. Text'}));await waitFor(()=>expect(screen.getByRole('textbox',{name:'2. Text'})).toHaveAttribute('contenteditable','true'));const body=screen.getByRole('textbox',{name:'2. Text'});expect(body.querySelector('[data-letter-field]')).toHaveAttribute('contenteditable','false');
   expect(screen.queryByRole('button',{name:'Save letter changes'})).not.toBeInTheDocument();fireEvent.paste(body,{clipboardData:{getData:()=> 'Reviewed '}});await waitFor(()=>expect(screen.getByText('Your letter edits will be saved when you complete Review.')).toBeInTheDocument());
   ui.rerender(<NextIntlClientProvider locale="en" messages={messages}><ResignationLetterCard value={{...value,revision:8}} letter={JSON.parse(JSON.stringify(letter))} busy={false} command={command}/></NextIntlClientProvider>);
-  expect(screen.getByRole('textbox',{name:'2. Text'})).toHaveTextContent('Dear {Full name}Reviewed');fireEvent.click(screen.getByRole('button',{name:'Review'}));
+  expect(screen.getByRole('textbox',{name:'2. Text'})).toHaveTextContent('Dear {Full name}Reviewed');fireEvent.click(screen.getByRole('button',{name:messages.resignationJourney.review}));
   await waitFor(()=>expect(command).toHaveBeenCalledOnce());expect(command).toHaveBeenCalledWith({type:'letterAction',documentId:'letter-a',documentRevision:2,action:'review',blocks:[source[0],{...source[1],text:'Dear {employee.name}Reviewed '},source[2]]});
   expect(screen.getByRole('textbox',{name:'2. Text'})).toHaveTextContent('Dear {Full name}Reviewed');expect(source[1].text).toBe('Dear {employee.name}');
  });
@@ -330,11 +333,11 @@ it('keeps an invalid local editor draft and blocks Review until that actual draf
  fireEvent.click(screen.getByRole('button',{name:'Update letter'}));fireEvent.focus(screen.getByRole('textbox',{name:'1. Text'}));await waitFor(()=>expect(screen.getByRole('textbox',{name:'1. Text'})).toHaveAttribute('contenteditable','true'));
  const getEditor=()=>(screen.getByRole('textbox',{name:'1. Text'}) as HTMLElement&{editor:Editor}).editor;
  act(()=>{getEditor().commands.setContent({type:'doc',content:[{type:'paragraph',content:[{type:'text',text:'Unsaved first paragraph'}]},{type:'paragraph',content:[{type:'text',text:'Unsaved second paragraph'}]}]});});
- await waitFor(()=>expect(screen.getByRole('button',{name:'Review'})).toBeDisabled());expect(screen.getByRole('alert')).toHaveTextContent('Use plain text and merge fields only.');expect(command).not.toHaveBeenCalled();
+ await waitFor(()=>expect(screen.getByRole('button',{name:messages.resignationJourney.review})).toBeDisabled());expect(screen.getByRole('alert')).toHaveTextContent('Use plain text and merge fields only.');expect(command).not.toHaveBeenCalled();
  screen.getByRole('button',{name:'Open letter'}).focus();await waitFor(()=>expect(screen.getByRole('textbox',{name:'1. Text'})).not.toHaveAttribute('contenteditable','true'));
- expect(screen.getByRole('textbox',{name:'1. Text'})).toHaveTextContent('Unsaved second paragraph');expect(screen.getByRole('button',{name:'Review'})).toBeDisabled();
- screen.getByRole('textbox',{name:'1. Text'}).focus();await waitFor(()=>expect(screen.getByRole('textbox',{name:'1. Text'})).toHaveAttribute('contenteditable','true'));expect(getEditor().getJSON().content).toHaveLength(2);expect(screen.getByRole('button',{name:'Review'})).toBeDisabled();
- act(()=>{getEditor().commands.setContent({type:'doc',content:[{type:'paragraph',content:[{type:'text',text:'Corrected local wording'}]}]});});await waitFor(()=>expect(screen.getByRole('button',{name:'Review'})).toBeEnabled());fireEvent.click(screen.getByRole('button',{name:'Review'}));expect(command).toHaveBeenCalledWith({type:'letterAction',documentId:'letter-a',documentRevision:2,action:'review',blocks:[{...source[0],text:'Corrected local wording'}]});
+ expect(screen.getByRole('textbox',{name:'1. Text'})).toHaveTextContent('Unsaved second paragraph');expect(screen.getByRole('button',{name:messages.resignationJourney.review})).toBeDisabled();
+ screen.getByRole('textbox',{name:'1. Text'}).focus();await waitFor(()=>expect(screen.getByRole('textbox',{name:'1. Text'})).toHaveAttribute('contenteditable','true'));expect(getEditor().getJSON().content).toHaveLength(2);expect(screen.getByRole('button',{name:messages.resignationJourney.review})).toBeDisabled();
+ act(()=>{getEditor().commands.setContent({type:'doc',content:[{type:'paragraph',content:[{type:'text',text:'Corrected local wording'}]}]});});await waitFor(()=>expect(screen.getByRole('button',{name:messages.resignationJourney.review})).toBeEnabled());fireEvent.click(screen.getByRole('button',{name:messages.resignationJourney.review}));expect(command).toHaveBeenCalledWith({type:'letterAction',documentId:'letter-a',documentRevision:2,action:'review',blocks:[{...source[0],text:'Corrected local wording'}]});
 });
 
 it('preserves a blank single-column row through add, fill and clear, and removes only the selected row',async()=>{
