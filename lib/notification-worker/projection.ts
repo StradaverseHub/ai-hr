@@ -35,6 +35,7 @@ const nativeReaders:NotificationRecipientReaders<Reader>={
  rewardPoolChanged:(r,e)=>ids(r,e,'rewards-audience'),
  rewardApproved:(r,e)=>ids(r,e,'rewards-audience'),
  // Configuration notices have no native fact owner yet.
+ rewardPlanCompanyAdded:unsupported,
  rewardConfigChanged:unsupported,
  rewardLimitsReapplied:unsupported,
  leaveSubmitted:unsupported,
@@ -78,6 +79,7 @@ export const nativeNotificationReaderSupport:Readonly<Record<keyof NotificationR
  rewardPreparationInvalidated:false,
  rewardPoolChanged:true,
  rewardApproved:true,
+ rewardPlanCompanyAdded:false,
  rewardConfigChanged:false,
  rewardLimitsReapplied:false,
  leaveSubmitted:false,
