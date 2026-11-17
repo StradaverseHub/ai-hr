@@ -476,6 +476,8 @@ describe('Offboarding-only frozen team letter steps',()=>{
     expect(letter.document.route).toEqual(pinned);expect(letter.history.at(-1)).toMatchObject({actorId:people.stranger,actorPersonId:'stranger-person',action:'signed'});
     expect(resignationLetterCapabilities(letter,people.ceo).canSign).toBe(false);
     expect(resignationLetterPreview(letter,people.employee).document?.stepSignatures?.['ceo-sign']?.by.id).toBe(people.stranger);
+    letter=act(letter,'employee',{type:'open'}).letter;letter=complete(letter,'employee').letter;expect(letter.state).toBe('released');
+    expect(resignationLetterPreview(letter,people.stranger,'relinked-person').document).toBeNull();expect(resignationLetterCapabilities(letter,people.stranger,'relinked-person')).toMatchObject({contentVisible:false,canOpen:false,canSign:false,canEditContent:false});
   });
   it('rejects a relinked alternate member and excludes ineligible members without changing the generic single-holder engine',()=>{
     let letter=teamLetter();letter=act(letter,'owner',{type:'complete',stepId:'owner-review'}).letter;

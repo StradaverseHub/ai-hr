@@ -5,7 +5,7 @@ import {sql} from 'drizzle-orm';
 import {withTenant} from '../db/client';
 import {owner,migrateTestDb,resetDb,closeAll} from './harness';
 import {resignationJourneyFixture} from './helpers/resignation-journey-fixture';
-import {commandResignationJourney,resignationCase,resignationInbox,resignationEmployeeView,submitResignationJourney,installResignationDefaults,resignationWorkflowDryRun} from '../packs/lifecycle/service';
+import {commandResignationJourney,resignationCase,resignationInbox,resignationEmployeeView,submitResignationJourney,installResignationDefaults,resignationWorkflowDryRun,downloadResignationLetter} from '../packs/lifecycle/service';
 import {myResignation,listResignationRequests,decideResignation,submitResignation} from '../core/offboarding';
 
 beforeAll(migrateTestDb);beforeEach(resetDb);afterEach(()=>vi.unstubAllEnvs());afterAll(closeAll);
@@ -126,11 +126,22 @@ describe('managed resignation service composes one workflow authority',()=>{
   f.config.templates.push({id:templateId,name:'Identity-bound private offer',module:'off',type:'Letter',rules:{caseType:['Resignation']},hrStep:'none',employeeAck:true,retired:false,currentVersion:1,versions:[{version:1,state:'published',at:new Date().toISOString(),by:'Fixture owner',blocks:[{id:'terms',type:'text',text:'New salary {retention.salary}.',section:''},{id:'employee',type:'signature',text:'',role:'step:employee',section:''}],fields:[],routing:[{id:'review',order:1,action:'review',who:{kind:'people',userIds:[f.fyiUserId]},owner:true},{id:'employee',order:2,action:'sign',who:{kind:'employee'},owner:false}]}]});
   await owner.db.execute(sql`update lc_v9_config set data=${JSON.stringify(f.config)}::jsonb where tenant_id=${f.base.tenantId}::uuid`);await f.workflow('retention',[{id:'letter',type:'generateDocument',conditions:[],to:[],cc:[],params:{letterTemplateId:templateId}}]);
   const offered=await commandResignationJourney(f.admin,{caseId:f.journey.id,revision:f.journey.revision,command:{type:'offer',offer:{position:'New position',jobGrade:'M1',basicSalary:'8123.45',effectiveDate:f.lastWorkingDay,justification:'Private identity test'}}});
-  const before=await resignationCase(f.watcher,offered.id);expect(before.offer?.basicSalary).toBe('8123.45');expect(before.letters[0].document).toBeTruthy();
+  let current=offered;const email=f.config.emails.find(email=>email.module==='off')!;
+  current=await commandResignationJourney(f.watcher,{caseId:current.id,revision:current.revision,command:{type:'updateEmail',emailTemplateId:email.id,subject:'Private override 8123.45',body:'Private message for this offer'}});
+  const before=await resignationCase(f.watcher,offered.id);expect(before.offer?.basicSalary).toBe('8123.45');expect(before.letters[0].document).toBeTruthy();expect(before.emails.some(email=>email.subject==='Private override 8123.45')).toBe(true);
   await owner.db.execute(sql`update app_user set person_id=${f.manager.personId}::uuid where tenant_id=${f.base.tenantId}::uuid and id=${f.fyiUserId}::uuid`);
   const relinked={...f.watcher,personId:f.manager.personId},hidden=await resignationCase(relinked,offered.id);
   expect(hidden.offer).toBeNull();expect(hidden.currentBasicSalary).toBeNull();expect(hidden.letters[0]).toMatchObject({private:true,document:null,editableFieldIds:[]});expect(hidden.tasks.filter(task=>task.documentId).every(task=>!task.actionable)).toBe(true);expect(JSON.stringify(hidden)).not.toContain('8123.45');
+  expect(hidden.emails).toEqual([]);
+  const inbox=await resignationInbox(relinked,{kind:'approvals'}),letterItems=inbox.items.filter(task=>task.documentId);expect(letterItems).toHaveLength(1);expect(letterItems.every(task=>!task.actionable)).toBe(true);expect(JSON.stringify(inbox.cases)).not.toContain('8123.45');
   expect((await resignationCase(f.admin,offered.id)).offer?.basicSalary).toBe('8123.45');
+  await owner.db.execute(sql`update app_user set person_id=${f.fyi.personId}::uuid where tenant_id=${f.base.tenantId}::uuid and id=${f.fyiUserId}::uuid`);
+  let letter=current.letters[0];current=await commandResignationJourney(f.watcher,{caseId:current.id,revision:current.revision,command:{type:'letterAction',documentId:letter.id,documentRevision:letter.revision,action:'review'}});
+  letter=current.letters[0];current=await commandResignationJourney(f.staff,{caseId:current.id,revision:current.revision,command:{type:'openLetter',documentId:letter.id,documentRevision:letter.revision}});
+  current=await commandResignationJourney(f.staff,{caseId:current.id,revision:current.revision,command:{type:'letterAction',documentId:letter.id,documentRevision:letter.revision,action:'sign',signature:'Journey employee',consent:true}});expect(current.stage).toBe('retained');
+  await owner.db.execute(sql`update app_user set person_id=${f.manager.personId}::uuid where tenant_id=${f.base.tenantId}::uuid and id=${f.fyiUserId}::uuid`);
+  const released=await resignationCase(relinked,current.id);expect(released.letters[0]).toMatchObject({private:true,document:null,editableFieldIds:[],downloadUrl:null});expect(released.offer).toBeNull();expect(released.emails).toEqual([]);expect(JSON.stringify(released)).not.toContain('8123.45');
+  await expect(downloadResignationLetter(relinked,{caseId:current.id,documentId:letter.id})).rejects.toMatchObject({code:'not_found'});
  },90000);
  it('an own withdrawal closes only this managed case and preserves history; cross-case readers remain denied',async()=>{
   const f=await resignationJourneyFixture(),other=await resignationJourneyFixture();await expect(resignationCase(other.staff,f.journey.id)).rejects.toMatchObject({code:'not_found'});

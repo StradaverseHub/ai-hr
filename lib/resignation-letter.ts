@@ -268,15 +268,19 @@ export type ResignationLetterCapabilities = {
   canRecall: boolean; canEditContent: boolean; canCorrectDetails: boolean; canResend: boolean;
   canWithdrawOffer: boolean; canDecline: boolean; canRegenerate: boolean; requiresOpen: boolean;
 };
+export function resignationLetterIdentityMatches(letter:ResignationLetter,userId:string|null,currentPersonId?:string|null):boolean{
+ if(!userId)return false;if(currentPersonId===undefined)return true;
+ return !Object.values(letter.teamSteps??{}).some(team=>team.memberIds.includes(userId)&&team.personIds[userId]!==currentPersonId)&&!letter.document.route.steps.some(step=>step.holderId===userId&&step.holderPersonId&&step.holderPersonId!==currentPersonId);
+}
 export function resignationLetterCapabilities(letter: ResignationLetter, userId: string | null,currentPersonId?:string|null): ResignationLetterCapabilities {
-  if(currentPersonId!==undefined&&userId&&(Object.values(letter.teamSteps??{}).some(team=>team.memberIds.includes(userId!)&&team.personIds[userId!]!==currentPersonId)||letter.document.route.steps.some(step=>step.holderId===userId&&step.holderPersonId&&step.holderPersonId!==currentPersonId)))userId=null;
+  const identityAllowed=resignationLetterIdentityMatches(letter,userId,currentPersonId);if(!identityAllowed)userId=null;
   const pending = resignationLetterPendingSteps(letter), mine = pending.filter(step => !!userId&&resignationLetterStepMembers(letter,step).includes(userId));
   const document=actingDocument(letter,userId);
   const owner = signingDocumentOwner(document).userId, isOwner = Boolean(userId && owner === userId);
   const holding = isOwner && (letter.state === 'owner' || mine.length > 0);
   const employee = userId === letter.employeeUserId;
   const opened = Boolean(userId && letter.openedBy[userId] === letter.revision);
-  const contentVisible = signingContentVisible(document, userId, {released: letter.state === 'released'})
+  const contentVisible = identityAllowed&&signingContentVisible(document, userId, {released: letter.state === 'released'})
     && (active(letter) || letter.state === 'released');
   const needsOpen = employee && mine.length > 0 && !opened;
   return {contentVisible, ownerUserId: owner, pendingSteps: pending, canOpen: contentVisible,
