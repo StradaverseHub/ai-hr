@@ -6,6 +6,7 @@ describe('Contract Personnel posting values',()=>{
  it('keeps a renewal period and native counter together, without monetary fields',()=>{
   expect(normalisePostingValues('contractRenewal',renew)).toEqual({ok:true,values:renew});
   expect(nativeValues('contractRenewal',renew,'probation').ok).toBe(false);
+  // @ts-expect-error Offboarding is outside this source API; untyped runtime callers must also deny it.
   expect(nativeValues('contractRenewal',renew,'offboarding').ok).toBe(false);
   expect(normalisePostingValues('contractRenewal',{...renew,basicSalary:9000})).toEqual({ok:false,problem:'fields'});
   expect(normalisePostingValues('contractRenewal',{...renew,employmentType:'full_time'})).toEqual({ok:false,problem:'fields'});

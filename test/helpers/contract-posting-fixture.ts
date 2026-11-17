@@ -82,7 +82,7 @@ export async function contractPostingFixture(options:{kind?:'renew'|'convert';pa
  return {b,admin,proposer:proposer.ctx,approver:approver.ctx,employeeActor,employee,caseId,groupId,workflow,draft,today,start,end,newStart,newEnd,kind};
 }
 export type ContractPostingFixture=Awaited<ReturnType<typeof contractPostingFixture>>;
-export async function releaseContractPosting(f:ContractPostingFixture,options:{returnAtPosting?:boolean}={}){
+export async function releaseContractPosting(f:Pick<ContractPostingFixture,'b'|'proposer'|'admin'|'employeeActor'|'approver'|'draft'>&{caseId:string},options:{returnAtPosting?:boolean}={}){
  const revision=(await contractSharedContext(f.proposer,f.caseId)).flow!.revision;
  const preview=await previewContractSharedDecision(f.proposer,{caseId:f.caseId,revision,draft:f.draft});
  await finishContractPostingJob(preview.jobId,f.proposer,'contract_preview');

@@ -31,7 +31,7 @@ it('discovers the exact historical pinned Form after actual posting and links on
  await bindContractSharedEmployee(employee,email.id);
  const bound=await readContractSharedLetter(employee,email.id),answers=await readContractSharedForm(employee,email.id);expect(bound.pendingAction?.kind).toBe('sign');if(!answers?.visible)throw new Error('Bound employee Form body is unavailable');
  expect((await contractSharedWorkPage(employee,{category:'tasks',limit:1,offset:0})).items).toEqual([expect.objectContaining({id:email.id,action:'sign'})]);
- const saved=await saveContractSharedForm(employee,{id:email.id,contentRevision:bound.contentRevision,contentHash:bound.contentHash!,responseRevision:answers.responseRevision,responseHash:answers.responseHash,values:{ack:'true'}});if(!saved.visible)throw new Error('Saved employee response is unavailable');
+ const saved=await saveContractSharedForm(employee,{id:email.id,contentRevision:bound.contentRevision,contentHash:bound.contentHash!,responseRevision:answers.responseRevision,responseHash:answers.responseHash,values:{ack:'true'}});expect(saved?.visible).toBe(true);if(!saved?.visible)throw new Error('Saved employee response is unavailable');
  const latest=await readContractSharedLetter(employee,email.id);await actContractSharedLetter(employee,{id:email.id,actionId:randomUUID(),stepId:latest.pendingAction!.stepId,revision:latest.contentRevision,hash:latest.contentHash!,responseRevision:saved.responseRevision,responseHash:saved.responseHash,action:'signed',method:'typed',value:'Fictional employee',consent:true});
  expect((await contractSharedWorkPage(employee,{category:'tasks',limit:1,offset:0})).total).toBe(0);
 },120_000);
