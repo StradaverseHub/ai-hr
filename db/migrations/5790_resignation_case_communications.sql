@@ -15,7 +15,7 @@ BEGIN
   mine:=false;seen:=false;owner_mine:=false;owner_step:=NULL;
   SELECT value INTO owner_step FROM jsonb_array_elements(coalesce(l->'document'->'route'->'steps','[]')) WITH ORDINALITY s(value,n) ORDER BY CASE WHEN value->>'owner'='true' THEN 0 WHEN value->>'kind'='review' THEN 1 ELSE 2 END,(value->>'stage')::integer,n LIMIT 1;
   FOR step IN SELECT value FROM jsonb_array_elements(coalesce(l->'document'->'route'->'steps','[]')) LOOP
-   IF CASE WHEN l->'teamSteps' ? (step->>'id') THEN l->'teamSteps'->(step->>'id')->'memberIds' ? u.id::text AND l->'teamSteps'->(step->>'id')->'personIds'->>u.id::text=u.person_id::text ELSE step->>'holderId'=u.id::text AND (NOT(step ? 'holderPersonId') OR step->>'holderPersonId'=u.person_id::text) END THEN
+   IF (CASE WHEN l->'teamSteps' ? (step->>'id') THEN l->'teamSteps'->(step->>'id')->'memberIds' ? u.id::text AND l->'teamSteps'->(step->>'id')->'personIds'->>u.id::text=u.person_id::text ELSE step->>'holderId'=u.id::text AND (NOT(step ? 'holderPersonId') OR step->>'holderPersonId'=u.person_id::text) END) THEN
     seen:=true;
     IF step=owner_step AND (owner_step->>'owner'='true' OR owner_step->>'kind'='review') THEN owner_mine:=true;END IF;
     IF EXISTS(SELECT 1 FROM app.resignation_pending_steps(l) pending WHERE pending->>'id'=step->>'id') THEN mine:=true;END IF;
