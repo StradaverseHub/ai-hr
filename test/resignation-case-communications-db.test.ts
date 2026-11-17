@@ -8,6 +8,7 @@ import {resignationJourneyFixture} from './helpers/resignation-journey-fixture';
 import {commandResignationJourney} from '../packs/lifecycle/service';
 import {resignationCaseCommunications,resignationOffboardingCommunications,requestResignationMessageTest} from '../core/resignation-communications';
 import {prepareResignationProofTx} from '../core/resignation-proof';
+import {pgSqlState} from '../lib/db-error';
 import type {Template} from '../lib/lifecycle-v9-model';
 const origin='https://case-message.example.test';
 beforeAll(migrateTestDb);beforeEach(resetDb);afterEach(()=>vi.unstubAllEnvs());afterAll(closeAll);
@@ -45,6 +46,15 @@ describe('managed case message inspection and actor-only test intents',()=>{
   const f=await fixture(opts.requiredFile,opts.attachedLetter);expect(f.item.holds.join(' ')).toContain(opts.hold);
   await expect(requestResignationMessageTest(f.admin,{caseId:f.current.id,revision:f.messages.revision,runId:f.item.runId,stepId:f.item.stepId,requestId:randomUUID()})).rejects.toMatchObject({code:'invalid'});
   expect(await owner.db.execute(sql`select request_id from resignation_communication_test`)).toEqual([]);
+ },90000);
+ it('requires the exact native upload slot and queues the actor-only test once that case file exists',async()=>{
+  const f=await fixture(true),requestId=randomUUID(),mail={subject:'Hello Journey employee',body:'Your case is RSN-0001.',content:{number:'RSN-0001',emailTemplateId:f.item.emailTemplateId,documents:[],pdfDocumentIds:[],linkDocumentIds:[],assets:[],files:[]},holds:[]};
+  let rejected:unknown;try{await withTenant(f.admin,async tx=>{await prepareResignationProofTx(tx,f.admin,{operation:'context',caseId:f.current.id,args:{mode:'communicationTest',caseId:f.current.id,revision:f.messages.revision,runId:f.item.runId,stepId:'email',requestId,offboardingCaseId:null,mail}});await tx.execute(sql`select app.resignation_communication_test_begin(${f.current.id}::uuid,${f.messages.revision},${f.item.runId}::uuid,'email',${requestId}::uuid,null,${JSON.stringify(mail)}::jsonb)`);});}catch(error){rejected=error;}expect(pgSqlState(rejected)).toBe('22023');
+  const fileId=randomUUID(),bytes=Buffer.from('Actual handover evidence'),hash=createHash('sha256').update(bytes).digest('hex');
+  await owner.db.execute(sql`insert into resignation_journey_file(tenant_id,id,case_id,slot,name,mime_type,size,content,content_hash,uploaded_by) values(${f.base.tenantId}::uuid,${fileId}::uuid,${f.current.id}::uuid,${f.item.emailTemplateId+':evidence'},'Handover evidence.txt','text/plain',${bytes.length},${bytes},${hash},${f.managerUserId}::uuid)`);
+  const refreshed=await resignationCaseCommunications(f.admin,{caseId:f.current.id});expect(refreshed.items[0].holds).toEqual([]);expect(refreshed.items[0].attachments).toContain('Handover evidence.txt');
+  expect(await requestResignationMessageTest(f.admin,{caseId:f.current.id,revision:refreshed.revision,runId:f.item.runId,stepId:'email',requestId})).toMatchObject({status:'queued',replayed:false});
+  const [delivery]=await owner.db.execute<{payload:{mail:{to:string[];cc:string[]};content:{files:{id:string;contentHash:string}[]}}}>(sql`select payload from automation_email_delivery where tenant_id=${f.base.tenantId}::uuid and mail_key like 'case-test:%'`);expect(delivery.payload.mail.to).toEqual([f.managerUserId]);expect(delivery.payload.mail.cc).toEqual([]);expect(delivery.payload.content.files).toMatchObject([{id:fileId,contentHash:hash}]);
  },90000);
  it('requires exact native signed context and refuses a swapped payload after admission',async()=>{
   const f=await fixture(),request=randomUUID(),mail={subject:'Hello Journey employee',body:'Your case is '+f.current.number+'.',content:{number:f.current.number,emailTemplateId:f.item.emailTemplateId,documents:[],pdfDocumentIds:[],linkDocumentIds:[],assets:[],files:[]},holds:[]};
