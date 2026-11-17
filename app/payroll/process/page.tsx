@@ -7,7 +7,7 @@ import { batchHeader, listBatches } from '@/core/payroll';
 import { listBusinessUnits, listCostCenters, listPositions } from '@/core/admin';
 import { listCompanies, listDepartments, listJobGrades } from '@/core/read';
 import { listPayrollConfigs } from '@/core/payroll-config';
-import { listPayrollCycles } from '@/core/payroll-cycle';
+import { listPayrollCyclesAcross } from '@/packs/payroll/service';
 import { Wizard, type ResumeBatch } from './wizard';
 // 7076f8af — the draft adjustment panel, rendered HERE (on the server) and handed to the client wizard as
 // a node. See app/payroll/adjustments-panel.tsx for why the panel moved and why it was not deleted.
@@ -113,10 +113,10 @@ export default async function PayrollProcessPage({
   // step-period.tsx (an admin can pre-configure custom cycles on a flag-off company without risk).
   // A resumed draft only uses its own cycle options. Keep the original active-scope fence.
   const cycleCompanyIds = resumeError ? [] : resumeBatch ? scopeIds.filter(id => id === resumeBatch.companyId) : scopeIds;
-  const cycleLists = await Promise.all(cycleCompanyIds.map((id) => listPayrollCycles(s, id, { activeOnly: true })));
+  const cycleLists = await listPayrollCyclesAcross(s,cycleCompanyIds,{activeOnly:true});
   const cyclesByCompany: Record<string, CycleOption[]> = {};
-  cycleCompanyIds.forEach((id, i) => {
-    cyclesByCompany[id] = cycleLists[i].map((c) => ({ id: c.id, name: c.name, runType: c.runType, remarks: c.remarks, description: c.description }));
+  cycleCompanyIds.forEach((id) => {
+    cyclesByCompany[id] = (cycleLists.get(id)??[]).map((c) => ({ id: c.id, name: c.name, runType: c.runType, remarks: c.remarks, description: c.description }));
   });
 
   // Organization Module (361e3b15): each company's SAVED default cycle name, so the wizard's Step-1 pre-select

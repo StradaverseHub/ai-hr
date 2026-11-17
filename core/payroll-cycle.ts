@@ -12,8 +12,10 @@ import {assertReviewedPayrollScopeCompanyTx} from './payroll-run-selection';
  * Every state-changing method appends a DomainEvent inline in the same withTenant transaction (substrate
  * discipline). RLS confines reads to the tenant and writes to a payroll admin for the row's company.
  */
-import { and, asc, eq, isNull, ne, sql } from 'drizzle-orm';
+import { and, asc, eq, inArray, isNull, ne, sql } from 'drizzle-orm';
 import { withTenant, type SessionContext, type Tx } from '../db/client';
+import {withIdempotentDatabaseRead} from '../db/workload';
+import {lockAccessConfigurationReadTx} from './access-configuration-lock';
 import { actorOf, appendEvent } from '../db/events';
 import { employmentPayComponent, payrollBatch, payrollCycle, payrollIndividualTxn } from '../db/schema';
 
@@ -230,6 +232,26 @@ export function listPayrollCycles(
       }),
     );
   });
+}
+
+/** Same cycle catalogue for the already scoped companies, resolved once. Input company order and
+ * empty buckets are retained; the client still owns existing run-type/default/resume presentation. */
+export function listPayrollCyclesAcross(ctx:SessionContext,companyIds:readonly string[],opts:{activeOnly?:boolean}={}){
+ const ids=[...new Set(companyIds)],activeOnly=opts.activeOnly===true;
+ if(ids.length===0)return Promise.resolve(new Map<string,PayrollCycleRow[]>());
+ return withIdempotentDatabaseRead(()=>withTenant(ctx,async tx=>{
+  await tx.execute(sql`set transaction read only`);
+  await lockAccessConfigurationReadTx(tx,ctx.tenantId);
+  const rows=await tx.select({id:payrollCycle.id,companyId:payrollCycle.companyId,name:payrollCycle.name,code:payrollCycle.code,
+   runType:payrollCycle.runType,remarks:payrollCycle.remarks,description:payrollCycle.description,sortOrder:payrollCycle.sortOrder,
+   archivedAt:payrollCycle.archivedAt,updatedAt:payrollCycle.updatedAt,
+  }).from(payrollCycle).where(and(inArray(payrollCycle.companyId,ids),activeOnly?isNull(payrollCycle.archivedAt):undefined))
+   .orderBy(payrollCycle.companyId,asc(payrollCycle.sortOrder),asc(payrollCycle.name));
+  const identityKey=(id:string)=>id.replace(/[{}-]/g,'').toLowerCase();
+  const grouped=new Map<string,PayrollCycleRow[]>(ids.map(id=>[identityKey(id),[]]));
+  for(const row of rows)grouped.get(identityKey(row.companyId))?.push(row);
+  return new Map(ids.map(id=>[id,grouped.get(identityKey(id))??[]]));
+ }));
 }
 
 /** Minimal same-Tx active ADDITIONAL catalogue, after actual reviewed native company authority.

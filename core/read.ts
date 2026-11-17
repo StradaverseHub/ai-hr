@@ -2734,11 +2734,12 @@ export async function leaveRequestDateBreakdowns(ctx:SessionContext,leaveRequest
       .leftJoin(person,eq(person.id,employment.personId)).where(inArray(leaveRequestDate.leaveRequestId,ids))
       .orderBy(leaveRequestDate.leaveRequestId,leaveRequestDate.leaveDate);
   }));
+  const identityKey=(id:string)=>id.replace(/[{}-]/g,'').toLowerCase();
   const grouped=new Map<string,Row[]>();
   for(const {leaveRequestId,...row} of rows){
-    const list=grouped.get(leaveRequestId)??[];list.push(row);grouped.set(leaveRequestId,list);
+    const key=identityKey(leaveRequestId),list=grouped.get(key)??[];list.push(row);grouped.set(key,list);
   }
-  return new Map(ids.map(id=>[id,grouped.get(id.toLowerCase())??[]]));
+  return new Map(ids.map(id=>[id,grouped.get(identityKey(id))??[]]));
 }
 
 /** Partial Leave Cancellation (ADR-0065): pending cancellation requests for the approvals inbox. Each card

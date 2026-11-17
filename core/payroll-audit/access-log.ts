@@ -15,7 +15,7 @@ import {createHash,randomUUID} from 'node:crypto';
 import {sql} from 'drizzle-orm';
 import {z} from 'zod';
 import {withTenant,type SessionContext,type Tx} from '../../db/client';
-import {actorOf,appendEvent,appendEvents} from '../../db/events';
+import {actorOf,appendEvent,appendEvents,type AppendEventArgs} from '../../db/events';
 import {lockAccessConfigurationReadTx} from '../access-configuration-lock';
 import {TENANT_STATUS_GOOD_STANDING} from '../entitlement-types';
 import {PAYROLL_ACCESS_EVENT,PAYROLL_ACCESS_SURFACES,PAYSLIP_OPENED_EVENT,type PayrollAccessSurface} from './types';
@@ -52,10 +52,18 @@ const unrecorded=(ctx:SessionContext):AccessRecord|null=>{
  return null;
 };
 
+/** One native event shape for the single and batch owners. Preallocated UUIDs do not require
+ * SELECT on the event: a granted auditor can record access while its unsubjected audit row stays private. */
+function accessEvent(ctx:SessionContext,entry:PayrollAccessEntry,id:string):AppendEventArgs{
+ return {id,tenantId:ctx.tenantId,aggregateType:'payroll-access',aggregateId:entry.batchId??entry.companyId,
+  eventType:PAYROLL_ACCESS_EVENT,actor:actorOf(ctx),payload:entry};
+}
+
 export async function recordPayrollAccessTx(tx:Tx,ctx:SessionContext,entry:PayrollAccessEntry):Promise<string>{
- const parsed=PayrollAccessEntrySchema.parse(entry);
- return appendEvent(tx,{tenantId:ctx.tenantId,aggregateType:'payroll-access',aggregateId:parsed.batchId??parsed.companyId,eventType:PAYROLL_ACCESS_EVENT,
-  actor:actorOf(ctx),payload:parsed},{returnId:true});
+ const parsed=PayrollAccessEntrySchema.parse(entry),eventId=randomUUID();
+ await lockAccessConfigurationReadTx(tx,ctx.tenantId);
+ await appendEvent(tx,accessEvent(ctx,parsed,eventId));
+ return eventId;
 }
 
 /** Records one view or export by the signed-in person. Throws (and so stops the read) when it cannot be written. */
@@ -74,16 +82,13 @@ export async function recordPayrollAccessBatch(ctx:SessionContext,entries:readon
  const parsed=entries.map(entry=>PayrollAccessEntrySchema.parse(entry));
  if(parsed.length===0)return [];
  const skipped=unrecorded(ctx);if(skipped)return parsed.map(()=>skipped);
- const ids=parsed.map(()=>randomUUID()),actor=actorOf(ctx);
+ const ids=parsed.map(()=>randomUUID());
  await withTenant(ctx,async tx=>{
   await lockAccessConfigurationReadTx(tx,ctx.tenantId);
   // At most200 events per statement, comfortably below the driver's parameter budget. No clipping:
   // later chunks share this same transaction and roll back together on any required-event failure.
   for(let offset=0;offset<parsed.length;offset+=200){
-   await appendEvents(tx,parsed.slice(offset,offset+200).map((entry,index)=>({
-    id:ids[offset+index],tenantId:ctx.tenantId,aggregateType:'payroll-access',aggregateId:entry.batchId??entry.companyId,
-    eventType:PAYROLL_ACCESS_EVENT,actor,payload:entry,
-   })));
+   await appendEvents(tx,parsed.slice(offset,offset+200).map((entry,index)=>accessEvent(ctx,entry,ids[offset+index])));
   }
  });
  return ids.map(eventId=>Object.freeze({recorded:true as const,eventId}));

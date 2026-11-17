@@ -4,7 +4,7 @@ import { scopedAdmin } from '@/lib/scope';
 import { listBatches } from '@/core/payroll';
 import { listCompanies, listEmployees } from '@/core/read';
 import { listPayComponents } from '@/core/pay-components';
-import { listPayrollCycles } from '@/core/payroll-cycle';
+import { listPayrollCyclesAcross } from '@/packs/payroll/service';
 import { payRuleAllowsDayByDay, payRuleDerivesAmount, payRuleInputUnit, payRuleReadsOperand, type PayRule } from '@/core/pay-rule';
 import { todayInKualaLumpur } from '@/lib/hr-date';
 import { payrollLeavingDate } from '@/lib/payroll-leaving-date';
@@ -102,11 +102,9 @@ export default async function IndividualTransactionPage({
    * process wizard and the payroll-readiness check use — one catalogue, not a second view of it. RLS
    * fences the tenant; `scopedCompanies` is the already-authorised set, so this cannot widen it.
    */
-  const cyclesByCompany = await Promise.all(
-    scopedCompanies.map(async (c) => ({ companyId: c.id, cycles: await listPayrollCycles(s, c.id, { activeOnly: true }) })),
-  );
-  const payrollCycles: TxnPayrollCycle[] = cyclesByCompany.flatMap(({ companyId, cycles }) =>
-    cycles.map((c) => ({ id: c.id, companyId, name: c.name, runType: c.runType })),
+  const cyclesByCompany = await listPayrollCyclesAcross(s,scopedCompanies.map(c=>c.id),{activeOnly:true});
+  const payrollCycles: TxnPayrollCycle[] = scopedCompanies.flatMap(company =>
+    (cyclesByCompany.get(company.id)??[]).map(c=>({id:c.id,companyId:company.id,name:c.name,runType:c.runType})),
   );
 
   const today = todayInKualaLumpur();

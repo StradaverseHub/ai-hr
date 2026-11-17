@@ -29,8 +29,8 @@ Initial integration base: `59f06b08db014e01cd553a827c62ccf864d33f78`. Preserve t
 | AP-003 | P1 | New Lifecycle Requisition | Open; implementation pending |
 | AP-004 | P2 | Probation Tracker | Open; implementation pending |
 | AP-005 | P1 | Generate Letters all-company request queue | Open; implementation pending |
-| AP-006 | P1 | AI Centre Payroll Audit loop | Open; implementation pending |
-| AP-007 | P1 | Approvals leave queue | Open; implementation pending |
+| AP-006 | P1 | AI Centre Payroll Audit loop | Batch3 implemented: atomic native access-event chunks; qualification in progress, not staged |
+| AP-007 | P1 | Approvals leave queue | Batch3 implemented: native date-packet and per-manager queue batches; qualification in progress, not staged |
 | AP-008 | P1 | Personnel employee draft editor | Open; implementation pending |
 | AP-009 | P1 | Personnel Import entry screen | Open; implementation pending |
 | AP-010 | P2 | Personnel Profile Changes | Open; implementation pending |
@@ -38,7 +38,7 @@ Initial integration base: `59f06b08db014e01cd553a827c62ccf864d33f78`. Preserve t
 | AP-012 | P2 | Attendance Company Policy Settings | Open; implementation pending |
 | AP-013 | P2 | Attendance Schedule Clock Policy editor | Open; implementation pending |
 | AP-014 | P2 | Attendance Work Schedule and Overtime Rates | Open; implementation pending |
-| AP-015 | P1 | Payroll Process wizard and Individual Transactions | Open; implementation pending |
+| AP-015 | P1 | Payroll Process wizard and Individual Transactions | Batch3 implemented: scoped cycle catalogue batch; qualification pending, not staged |
 | AP-016 | P1 | Payroll Settings full readiness report | Open; implementation pending |
 | AP-017 | P1 | Contract Management Intake Settings and Workflows | Open; implementation pending |
 | AP-018 | P1 | Loans listing | Open; implementation pending |
@@ -49,7 +49,7 @@ Initial integration base: `59f06b08db014e01cd553a827c62ccf864d33f78`. Preserve t
 | AP-023 | P1 | Shift Card Pay Item Fixed Transaction and standalone Cost Allocation imports | Open; implementation pending |
 | AP-024 | P1 | Income Tax Recalculation Confirm and Continue | Open; implementation pending |
 | AP-025 | P2 | Statutory Adjustment Save and Revert | Open; implementation pending |
-| AP-026 | P1 | Shared employee selection and selected-subject guards | Open; implementation pending |
+| AP-026 | P1 | Shared employee selection and selected-subject guards | Batch3 partial: exact selected-ID guards implemented; full directory pickers and bulk selection remain open |
 | AP-027 | P2 | Leave Inquiry and balance detail hydration | Open; implementation pending |
 | AP-028 | P1 | Approvals Bulk Approve and Reject | Open; implementation pending |
 | AP-029 | P1 | Onboarding and Offboarding V9 workspace | Open; implementation pending |
@@ -143,3 +143,16 @@ Base: accepted staging `9bdfb45969c4bff81a9b9830b52403a95e82bdc6`. AP-033 was ac
 - **Remaining costs:** Reprocess history/disclosure and recorded job-result populations are separate unfinished paging work. Global overtime availability proof remains complete-cohort to preserve its existing refusal semantics; do not claim the entire Reprocess request is bounded.
 
 Preserved development check43931609323 at2858a55d3: native121passed/2failed (missing suspended-tenant refusal after READ ONLY change; incomplete scale fixture email), repaired in next source. Combined development candidate3342531271c095a825ad67a5df942e0f74e94e7a runs focused43934876702 with native tests, whole typecheck and Linux build. Independent standards/spec reviews both found invalid JSX and conditional pager placement; working source is repaired, frozen failed source retained. Development qualification is now complete: repaired run43935883124 passed368selected cases, whole typecheck and Linux build; final application source6350cacc0 passed105affected cases, whole typecheck and Linux build in43937314461. Allocation/binding source38339d5f5 passed114affected cases in43939945809. Original failures remain preserved. The final release gate awaits Movement’s accepted baseline; staging qualification is pending and no new finding is closed. The same28 AI approval literals now carry forward under the directly verified17November owner decision; see the exact dated source-binding record. Movement releases first.
+
+
+## Remaining work: batched request concerns
+
+The owner asked to continue building the remaining gaps before release. The next owned source continues from prepared05bac05a6 and preserves main/alpha47d956a77's owner-confirmed statutory wording through a normal merge. Shared integration refs and staging remain untouched; Movement releases first. No migration is required by this batch.
+
+AP-006 now writes exactly one access event per required company through the existing append-only/hash-chain owner in bounded INSERT chunks within one transaction. Any required-event failure rolls back the complete new batch and prevents the view from returning. A native qualification found a related existing failure: granted auditors may INSERT an unsubjected access event but may not SELECT it via RETURNING. Single and batch audit owners now use preallocated event UUIDs, retaining native write policy and keeping those event rows unreadable to the auditor; no read permission is granted. Read-only/no-login exceptions and agent refusal remain explicit.
+
+AP-007 reads the displayed Leave-date packets once, preserving ordinary empty packets versus per-date controls, native RLS and date order. The manager queue union retains the legacy200-per-manager bound and input-manager/time ordering. AP-026's six Attendance/Fixed Transaction action guards now query exact legacy membership instead of reading names, emails and organization columns for every employee. Empty-scope and canonical-string semantics are retained; all commands still adjudicate through their native services. Directory pickers remain a separate open part ofAP-026.
+
+AP-015 reads the already scoped Payroll Cycle catalogues once, preserving active/archive rules, company order and narrowed resumed-draft scope. Run-type gates, saved defaults, labels and financial behavior remain unchanged. Group-scale fixtures cover70companies/1,000employments, every native role, exact ordered rows, actual transaction/statement traces, concurrent event writes, rollback across chunk boundaries and committed privacy change while a read waits for Access.
+
+Original development run43995516324 at51923f859 has120unit/source cases passed and1failed (the old source test required the per-request loader),82native cases passed and1failed (auditor RETURNING path). Both are preserved; the source assertion and native event identity owner are repaired in working source. Independent review identified missing concurrency/hidden-person tests and pending ledger states; those are now authored/updated. Compiler/build results and repaired hosted qualification remain pending. No new finding is closed before staged acceptance.
