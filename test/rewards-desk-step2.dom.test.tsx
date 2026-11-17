@@ -3,15 +3,17 @@ import {afterEach,beforeEach,describe,expect,it,vi} from 'vitest';
 import {act,cleanup,fireEvent,render,screen,within} from '@testing-library/react';
 import {NextIntlClientProvider,createTranslator} from 'next-intl';
 import en from '../messages/en.json';
+import {aiReviewDomHtml,captureAiReviewScreenshots} from './helpers/ai-review-screenshots';
+import {deskRow,deskSummary,deskTotals} from '../app/rewards/[unitId]/desk/desk-model';
 import {defaultPolicy} from '../packs/rewards/model';
 // 5d34d00d Step 2 / 37f82412 — the full-width People table, the person panel, paging and in-cell editing.
-const ports=vi.hoisted(()=>({read:vi.fn(),replace:vi.fn(),save:vi.fn(),redirect:vi.fn((href:string)=>{throw new Error(href);})}));
+const ports=vi.hoisted(()=>({read:vi.fn(),history:vi.fn(),replace:vi.fn(),save:vi.fn(),redirect:vi.fn((href:string)=>{throw new Error(href);})}));
 vi.mock('next/link',()=>({default:({children,scroll:_s,replace:_r,...props}:any)=><a {...props}>{children}</a>}));
 vi.mock('next/navigation',()=>({redirect:ports.redirect,notFound:()=>{throw new Error('not-found');},useRouter:()=>({replace:ports.replace,refresh:vi.fn()}),usePathname:()=>'/rewards/unit',useSearchParams:()=>new URLSearchParams('person=b')}));
 vi.mock('next-intl/server',()=>({getLocale:async()=>'en',getTranslations:async(namespace:string)=>createTranslator({locale:'en',messages:en,namespace:namespace as 'rewards'})}));
 vi.mock('../lib/scope',()=>({scopedSession:async()=>({s:{tenantId:'t',userId:'actor'},scopeIds:['company']})}));
 vi.mock('../lib/authz',()=>({requireModule:vi.fn()}));
-vi.mock('../packs/rewards/service',async()=>({getRewardUnit:ports.read,getRewardPreparationStatus:async()=>({required:false,released:true,setupVisible:false,isGr:false,preparation:null}),rewardPayrollChoices:async()=>[],rewardPersonHistory:async()=>[],rewardSetupChoices:async()=>({companies:[]})}));
+vi.mock('../packs/rewards/service',async()=>({getRewardUnit:ports.read,getRewardPreparationStatus:async()=>({required:false,released:true,setupVisible:false,isGr:false,preparation:null}),rewardPayrollChoices:async()=>[],rewardPersonHistory:ports.history,rewardSetupChoices:async()=>({companies:[]})}));
 vi.mock('../app/rewards/actions',()=>({importOnehrAction:vi.fn(),decideAction:vi.fn(),importFactsAction:vi.fn(),offcycleAction:vi.fn(),postAction:vi.fn(),saveRewardCell:ports.save}));
 vi.mock('../app/rewards/[unitId]/lump-sum',()=>({UnitLumpSum:()=> <div>Existing lump-sum owner</div>}));
 vi.mock('../app/rewards/[unitId]/unit-multiplier',()=>({UnitMultiplier:()=> <div>Existing multiplier owner</div>}));
@@ -29,7 +31,7 @@ const view=(over:Record<string,unknown>={})=>({unit:{id:'unit',companyId:'compan
   decisions:[],budgets:{standard:budget,h:budget},bonusCounts:{standard:null,h:null},payWindow:{standard:null,h:null},lumpDecision:null,suggestedLumpCents:0,lumpUnitCents:0,lumpWorking:[],suggestedMultiplierBp:10000,suggestion:null,returned:null,due:null,hiddenCount:2,ec:null,canEdit:true,canConfigure:false,posting:'not-approved',seniorAmountsVisible:false,fullView:false,...over});
 const show=async(searchParams:Record<string,string>={},over:Record<string,unknown>={})=>{ports.read.mockResolvedValue(view(over));const element=await RewardUnitPage({params:Promise.resolve({unitId:'unit'}),searchParams:Promise.resolve(searchParams)});return render(<NextIntlClientProvider locale="en" messages={en}>{element}</NextIntlClientProvider>);};
 const grid=()=>within(document.querySelector('[data-people-grid]') as HTMLElement);
-beforeEach(()=>{window.localStorage.clear();});
+beforeEach(()=>{window.localStorage.clear();ports.history.mockResolvedValue([]);});
 afterEach(()=>{cleanup();vi.clearAllMocks();});
 
 describe('Review tab People table (37f82412)',()=>{
@@ -165,6 +167,33 @@ describe('Review tab People table (37f82412)',()=>{
   render(<NextIntlClientProvider locale="en" messages={en}>{element}</NextIntlClientProvider>);
   expect(screen.getByRole('heading',{name:'Fictional Bravo'})).toBeTruthy();
  });
+
+ it.each(['bu','bg','gr'] as const)('renders and edits the real panel as %s at their own step with desktop and mobile evidence',async role=>{
+  ports.history.mockResolvedValue([
+   {id:'past-annual',year:2025,kind:'annual',source:'review',talent:'STAR',performance:'AE',meritBp:500,promotionBp:0,specialBp:0,incrementCents:25000,totalIncreaseBp:500,promoted:false,promotionGrade:null,bonusCents:500000,bonusMonthsBp:10000,lumpCents:0,withheld:{}},
+   {id:'past-offcycle',year:2025,kind:'offcycle',source:'review',talent:'STAR',performance:'AE',meritBp:100,promotionBp:0,specialBp:0,incrementCents:5000,totalIncreaseBp:100,promoted:false,promotionGrade:null,bonusCents:0,bonusMonthsBp:0,lumpCents:0,withheld:{}},
+   {id:'past-upload',year:2024,kind:'annual',source:'upload',talent:'SCORE',performance:'ME',meritBp:400,promotionBp:0,specialBp:0,incrementCents:20000,totalIncreaseBp:400,promoted:false,promotionGrade:null,bonusCents:400000,bonusMonthsBp:8000,lumpCents:0,withheld:{}},
+  ]);
+  const initial=view({roles:[role],fullView:role==='gr',unit:{...view().unit,status:role==='bg'?'bg':role==='gr'?'gr':'draft'},canEdit:true,approvalStageEdit:role==='gr',budgets:{standard:{...budget,payrollCents:1000000,pools:[100000,20000,50000],used:[50000,0,25000],bonusPayrollCents:1000000,bonusPoolCents:3000000,bonusUsedCents:2400000,standardBonusCents:2400000},h:budget}});
+  await show({person:'b'},initial);
+  const panel=within(screen.getByRole('dialog'));
+  expect(panel.getByRole('heading',{name:en.rewards.desk.panel.history})).toBeTruthy();
+  expect(panel.getByText('Off-cycle')).toBeTruthy();
+  const changed=row('b','Fictional Bravo',{...initial.rows[1],recommendation:{...initial.rows[1].recommendation,meritBp:600},meritBp:600,meritCents:30000,totalIncreaseBp:850,newBasicCents:542500,crAfterBp:10314});
+  const next={...initial,unit:{...initial.unit,revision:5},rows:[initial.rows[0],changed,initial.rows[2]],budgets:{...initial.budgets,standard:{...initial.budgets.standard,used:[55000,0,25000]}}};
+  const rows=next.rows.map(item=>deskRow(next as any,item as any,next.flags as any));
+  ports.save.mockResolvedValueOnce({ok:true,revision:5,row:rows[1],summary:deskSummary(next as any),totals:deskTotals(rows),flags:next.flags});
+  const merit=panel.getByRole('textbox',{name:'Merit % · Fictional Bravo'});
+  await act(async()=>{fireEvent.change(merit,{target:{value:'6'}});fireEvent.blur(merit);});
+  expect((grid().getByRole('textbox',{name:'Merit % · Fictional Bravo'}) as HTMLInputElement).value).toBe('6');
+  expect(panel.getByText('MYR 5,425.00')).toBeTruthy();
+  if(role==='gr')expect(panel.getByRole('link',{name:en.rewards.desk.person.openRecord})).toBeTruthy();
+  else expect(panel.queryByRole('link',{name:en.rewards.desk.person.openRecord})).toBeNull();
+  const content=document.querySelector<HTMLElement>('[data-reward-person-panel="b"]')!;
+  expect(content).not.toBeNull();
+  await captureAiReviewScreenshots('<section class="mx-auto max-w-3xl">'+aiReviewDomHtml(content)+'</section>','en',`rewards-person-panel-${role}`,'Actual editable Rewards person panel after shared table/panel save; fictional service projection and history; DB authority checked separately; no installed application acceptance.','atelier');
+  await captureAiReviewScreenshots(aiReviewDomHtml(document.body),'en',`rewards-person-drawer-${role}`,'Actual Rewards page and portaled person drawer at the reviewer’s own step, after a shared-state edit; fictional data owners; no installed application acceptance.','atelier');
+ },120000); // Two bounded source-rendered captures per role use hosted Chrome and real application CSS/fonts.
  it('ignores a ?person the viewer cannot see',async()=>{
   await show({person:'not-visible'});expect(screen.queryByRole('dialog')).toBeNull();
  });

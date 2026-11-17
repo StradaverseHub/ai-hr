@@ -2670,3 +2670,4 @@ export { rewardPersonHistory } from './person-history';
 export type { RewardPersonHistoryRow } from './person-history';
 export { previewRewardPersonHistoryImport, importRewardPersonHistory, rewardPersonHistoryImportProgress, latestRewardPersonHistoryImport, rewardHistoryUploadCompanies, REWARD_HISTORY_IMPORT_KIND } from './person-history-upload';
 export { backfillRewardPersonHistory } from './person-history-backfill';
+export { rewardPersonHistoryJobHandler } from './person-history-worker';
