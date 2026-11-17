@@ -182,6 +182,37 @@ export const NATIVE_SCOPE_ONLY_PAGES:ReadonlySet<string>=new Set([
  '/rewards/offcycle/settings',
  '/rewards/promotions',
  '/rewards/rules',
+ // ADR-0049 — Recruitment admits HR administrators and the company-scoped Recruiting Partner per company
+ // (app.can_admin_recruitment_for); neither the coarse admin role nor the manage group says who that is.
+ '/recruitment',
+ '/recruitment/candidates',
+ '/recruitment/positions',
+ '/recruitment/positions/new',
+ '/recruitment/settings',
+ '/recruitment/interviews',
+ '/recruitment/requisitions',
+ '/recruitment/requisitions/new',
+ '/recruitment/talent-pool',
+ '/recruitment/approvals',
+ '/recruitment/reports',
+ // Recruitment slice 11 — To screen lists a hiring manager's own screening requests; being a hiring manager of a
+ // job is a per-job team membership, not a role or tenant-wide module.
+ '/recruitment/screening',
+ // Recruitment slice 16 — Import candidates and the To assign list admit recruitment administrators and the recruiters and
+ // assistants of some job in the company (app.recruitment_operates_in_company); a per-job team membership, not a role.
+ '/recruitment/candidates/import',
+ '/recruitment/to-assign',
+ // Recruitment slice 17 — a job's "Suggested to archive" list admits the job's recruiters, assistants and the company's recruitment
+ // administrators (app.can_operate_recruitment_job); a per-job team membership, not a role.
+ '/recruitment/suggested-archive',
+ // Recruitment slices 23 and 25 — referral rewards (the company's recruitment administrators; the receiving company's payroll
+ // administrators through ?view=payroll) and the agency portal inbox (the job's operators): per-company and per-job, not a role.
+ '/recruitment/rewards',
+ '/recruitment/agency-portal',
+ // Recruitment slice 7 — referrals admit a person by their own active employment in a company with Recruitment
+ // (app.recruitment_referral_eligible); no role or tenant-wide module says who that is.
+ '/me/referrals',
+ '/me/referrals/mine',
 ]);
 export function classifyPage(route:string,source:string):Readonly<{audience:DestinationAudience;module:string|null}>|null{
  if(NOT_LINKABLE.some(area=>under(route,area))||FORWARD_STUBS.has(route)||NATIVE_SCOPE_ONLY_PAGES.has(route))return null;

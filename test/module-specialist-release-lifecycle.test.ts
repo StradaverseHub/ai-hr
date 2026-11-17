@@ -87,7 +87,7 @@ describe('shared Assistant specialist selection',()=>{
    expect(job.specialists).toMatchObject([{module,work:{mode:'baseline',candidateVersion:0,playbook:'canonical_domain_v1'}}]);
    const view=await loadCanonicalModuleJob(author,{module});expect(view).toMatchObject({state:'ready',specialist:{module},specialistVersion:{mode:'baseline',candidateVersion:0}});
   }
-  expect(await counts()).toEqual({jobs:20,used:0,rollbacks:0});expect(await hrEvents()).toEqual(before);
+  expect(await counts()).toEqual({jobs:21,used:0,rollbacks:0});expect(await hrEvents()).toEqual(before);
  });
  it('shares the actual promoted version across a multi-module plan and the offered chat tool, preserves facts and spends once per command nonce',async()=>{
   await promoted(3);const plan={version:1,modules:['employees','org']},nonce=randomUUID(),before=await hrEvents();

@@ -1,3 +1,4 @@
+import {employmentPaymentMethodOnSql} from './employment-payment-method';
 /**
  * Board 511aa74a — REHIRED: a resigned employee comes back (docs/adr/2026-11-15-rehired-movement.md).
  *
@@ -115,7 +116,7 @@ async function sourceTx(tx: Tx, employmentId: string): Promise<SourceRow | null>
       lastWorkingDate: employment.lastWorkingDate, resignationDate: employment.resignationDate,
       blacklistedAt: employment.blacklistedAt, confirmationDate: employment.confirmationDate,
       finalConfirmationDate: employment.finalConfirmationDate, probationEndDate: employment.probationEndDate,
-      provisionalEndOn: employment.provisionalEndOn, gradeId: employment.gradeId, paymentMethod: employment.paymentMethod,
+      provisionalEndOn: employment.provisionalEndOn, gradeId: employment.gradeId, paymentMethod: employmentPaymentMethodOnSql(sql`${employment.id}`),
     })
     .from(employment)
     .where(and(eq(employment.id, employmentId), isNull(employment.voidedAt)))
@@ -366,7 +367,7 @@ export async function rehireEmploymentTx(tx: Tx, supplied: SessionContext, input
     effectiveFrom: effectiveDate,
   }, tx);
   if (source.paymentMethod) {
-    await setEmploymentPaymentMethod(ctx, { employmentId, paymentMethod: source.paymentMethod as Parameters<typeof setEmploymentPaymentMethod>[1]['paymentMethod'] }, tx);
+    await setEmploymentPaymentMethod(ctx, { employmentId, effectiveDate, paymentMethod: source.paymentMethod as Parameters<typeof setEmploymentPaymentMethod>[1]['paymentMethod'] }, tx);
   }
 
   // The link, through its guard (5695): the marker names the employment this command is linking.

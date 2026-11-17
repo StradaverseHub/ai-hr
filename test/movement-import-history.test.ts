@@ -138,14 +138,17 @@ describe('single-sheet Movement import, history and revert (ac6645ec)',()=>{
   const detail=(await getImportAttempt(a,checked.attemptId))!;expect(detail.events.at(-1)?.kind).toBe('revert_failed');
  });
 
- it('refuses the revert when a closed payroll relied on a movement, and admits a Join Date Change through its verified inverse',async()=>{
+ it('preserves closed payroll while reverting an import and admits a Join Date Change through its verified inverse',async()=>{
   const effective=day(-2),period=effective.slice(0,7);
   const{checked}=await importRows(a,[['ACME','AC001','',effective,'transfer','departmentId','Finance','Operations']]);
   const[pp]=await owner.db.insert(s.payPeriod).values({tenantId:b.tenantId,companyId:b.companyId,period,status:'closed'}).returning({id:s.payPeriod.id});
   const[batch]=await owner.db.insert(s.payrollBatch).values({tenantId:b.tenantId,companyId:b.companyId,payPeriodId:pp.id,payPeriod:period,batchDate:period+'-25',status:'closed'}).returning({id:s.payrollBatch.id});
   await owner.db.insert(s.payslip).values({tenantId:b.tenantId,batchId:batch.id,employmentId:ac1,basicSalary:'3000.00',grossPay:'3000.00',statutory:{},totalDeductions:'0.00',netPay:'3000.00',employerCost:'3000.00'});
   const closed=await previewImportRevertForAttempt(a,checked.attemptId);
-  expect(closed.eligible).toBe(false);expect(closed.blockers[0].reason).toMatch(/closed payroll/);
+  expect(closed.eligible).toBe(true);expect(closed.blockers).toEqual([]);
+  const paid=await owner.db.select().from(s.payslip).where(eq(s.payslip.batchId,batch.id)),issued=await owner.db.select().from(s.payrollBatch).where(eq(s.payrollBatch.id,batch.id));
+  await revertMovementByJob(a,checked.attemptId,{previewHash:closed.previewHash,reason:'Fictional incorrect imported placement'});
+  expect(await owner.db.select().from(s.payslip).where(eq(s.payslip.batchId,batch.id))).toEqual(paid);expect(await owner.db.select().from(s.payrollBatch).where(eq(s.payrollBatch.id,batch.id))).toEqual(issued);
   const joinDate=day(-30);
   const{checked:join,result}=await importRows(a,[['ACME','AC002','',joinDate,'joinDateChange','remarks','','Fictional join date correction']]);
   expect(result.imported).toBe(1);

@@ -71,7 +71,7 @@ const int8multirange=customType<{data:string;driver:string}>({dataType(){return 
 
 // Partner roles (ADR-0049) are ADDITIVE specialist roles beside hr_admin: each administers only
 // its function's data (payroll, or performance+comp) within its company subtree. Company-scopable
-// like hr_admin. Recruiting Partner is deferred to the ATS PR.
+// like hr_admin. Recruiting Partner shipped with the recruitment pack (5850/5851).
 export const roleEnum = pgEnum('role', [
   'employee',
   'manager',
@@ -89,6 +89,10 @@ export const roleEnum = pgEnum('role', [
   // company subtree WITHOUT any compensation, payroll, Rewards, HR or generic-cycle authority. Appended
   // after operator because ALTER TYPE … ADD VALUE appends; enum order is NOT authority order (0312).
   'performance_partner',
+  // ADR-0049 §2 (5850/5851) — Recruiting Partner: administers Recruitment (jobs, candidates, applications and
+  // recruitment settings) for its company subtree via app.can_admin_recruitment_for, and nothing else. It
+  // shipped with the recruitment tables (packs/recruitment), never as an inert label.
+  'recruiting_partner',
 ]);
 export const employmentTypeEnum = pgEnum('employment_type', PERSONNEL_EMPLOYMENT_TYPES);
 /**
@@ -759,7 +763,7 @@ export const appInvitation = pgTable(
     // database, the way role_assignment's check above does.
     check(
       'app_invitation_role_customer_set',
-      sql`${t.role} IN ('employee', 'manager', 'hr_admin', 'super_admin', 'payroll_partner', 'performance_comp_partner', 'performance_partner')`,
+      sql`${t.role} IN ('employee', 'manager', 'hr_admin', 'super_admin', 'payroll_partner', 'performance_comp_partner', 'performance_partner', 'recruiting_partner')`,
     ),
     // 0312 — the table-level mirror of role_assignment_super_admin_group_wide. Without it an
     // invitation for a company-scoped super_admin was writable and simply un-consumable.
@@ -1307,6 +1311,20 @@ export const employment = pgTable(
 );
 
 // assignment = effective-dated version of an Employment (CLOSE + INSERT on change).
+/** Dated disbursement method. Null is an explicit clear; prior revisions remain as audit evidence. */
+export const employmentPaymentMethodHistory = pgTable('employment_payment_method_history', {
+ id:id(),tenantId:tenantId(),employmentId:uuid('employment_id').notNull().references(()=>employment.id),
+ effectiveOn:date('effective_on').notNull(),paymentMethod:text('payment_method'),
+ recordedAt:timestamp('recorded_at',{withTimezone:true}).notNull().defaultNow(),
+ recordedBy:uuid('recorded_by').references(()=>appUser.id),supersededAt:timestamp('superseded_at',{withTimezone:true}),
+ source:text('source').notNull(),
+},t=>[
+ foreignKey({name:'employment_payment_method_history_employment_tenant_fk',columns:[t.employmentId,t.tenantId],foreignColumns:[employment.id,employment.tenantId]}),
+ foreignKey({name:'employment_payment_method_history_actor_tenant_fk',columns:[t.recordedBy,t.tenantId],foreignColumns:[appUser.id,appUser.tenantId]}),
+ uniqueIndex('employment_payment_method_history_effective_uq').on(t.employmentId,t.effectiveOn).where(sql`${t.supersededAt} IS NULL`),
+ index('employment_payment_method_history_date_idx').on(t.tenantId,t.employmentId,t.effectiveOn.desc()).where(sql`${t.supersededAt} IS NULL`),
+]);
+
 export const assignment = pgTable(
   'assignment',
   {
@@ -11804,7 +11822,7 @@ export const payrollTxnImportAttempt=pgTable('payroll_txn_import_attempt',{
 export const informationPayslipSnapshot=pgTable('information_payslip_snapshot',{
  payslipId:uuid('payslip_id').primaryKey(),tenantId:tenantId(),employmentId:uuid('employment_id').notNull().references(()=>employment.id),
  companyId:uuid('company_id').notNull().references(()=>company.id),grade:text('grade'),employmentType:text('employment_type'),hiredOn:date('hired_on').notNull(),joinDate:date('join_date'),documentMetadata:jsonb('document_metadata').notNull().$type<Record<string,unknown>>(),
- recordedBy:uuid('recorded_by').notNull().references(()=>appUser.id),recordedAt:createdAt(),
+ recordedBy:uuid('recorded_by').references(()=>appUser.id),recordedAt:createdAt(),
 });
 
 // Reusable formula identities; revisions, tests and lifecycle facts remain append-only.

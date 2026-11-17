@@ -70,6 +70,9 @@ export function presentCanonicalModuleData(module:AgentModuleCode,data:unknown):
     push({title:{kind:'module',module:row.module},facts:row.module==='assistant'?facts:[],
      ...(row.module==='assistant'&&status?.managementHref?{href:'/control-tower/agents/features#ai-features',linkPurpose:'human_review' as const}:{})});});break;}
 
+  // Counts only: a company name plus whole-number counts. A non-count value refuses rather than renders.
+  case 'recruitment':rows(data).forEach((row,index)=>{const count=(key:string,field:JobFactField):JobFact=>{const n=row[key];if(typeof n!=='number'||!Number.isSafeInteger(n)||n<0)throw Error('Canonical recruitment count unavailable.');return{field,value:n,format:'number'};};
+   push({title:title(row,'company',index),facts:[count('openJobs','openPositions'),count('onHoldJobs','onHoldPositions'),count('activeApplications','activeApplications'),count('toScreen','screeningApplications'),count('interview','interviewApplications'),count('offer','offerApplications'),count('onboarding','onboardingApplications'),count('hired','hiredApplications'),count('archived','archivedApplications')]});});break;
   default:throw Error('Unsupported canonical module job.');
  }
  return Object.freeze({module,cards:Object.freeze(cards),truncated,...(hasEmployment===undefined?{}:{hasEmployment})});

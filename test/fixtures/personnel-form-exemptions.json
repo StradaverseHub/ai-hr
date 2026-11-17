@@ -557,14 +557,6 @@
     {
       "tag": "input",
       "context": "MovementNewEvent",
-      "name": "acknowledgeClosedPayroll",
-      "hidden": false,
-      "occurrences": 2,
-      "reason": "646355e5 (ADR-0164) closed-payroll acknowledgement on a movement correction: an instruction to the correction service (MovementClosedPayrollAcknowledgementError), not a Personnel fact. The checkbox shipped with 646355e5 without an exemption entry. Board 4604dccc r3 adds the second occurrence: the same confirmation on a new Group Join Date Correction / Join Date Change."
-    },
-    {
-      "tag": "input",
-      "context": "MovementNewEvent",
       "name": "recordHistory",
       "hidden": false,
       "occurrences": 1,
@@ -970,6 +962,22 @@
       "occurrences": 1,
       "name": "employeeIdMode",
       "reason": "Auto Running Number or Manual Key In, derived from the company's Employee ID setup and whether HR kept the suggested number; core/rehire.ts re-resolves the live setup and refuses a manual ID the setup does not allow. It carries no Personnel fact."
+    }
+  ],
+  "components/salary-recording-choices.tsx": [
+    {
+      "tag": "select",
+      "name": "salaryRecordingChoice",
+      "context": "SalaryRecordingChoices",
+      "occurrences": 1,
+      "reason": "Native command operation selector: chooses new event, update or amendment; it is not an employee fact. The command validates the exact finite operation."
+    },
+    {
+      "tag": "select",
+      "name": "salaryMovementId",
+      "context": "SalaryRecordingChoices",
+      "occurrences": 1,
+      "reason": "Guarded record pointer selecting the latest applicable native movement; the salary command repeats current subject scope and applicable-event checks."
     }
   ]
 }

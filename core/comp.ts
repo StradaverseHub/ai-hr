@@ -1,3 +1,6 @@
+import {withPersonnelRead} from './personnel-read-bounds';
+import {assertWorkforceEmploymentTx} from './workforce-access';
+import {isCalendarDate} from '../lib/calendar-date';
 import {contractCompensationAuthorityTx} from './contract-record-authority';
 /**
  * Compensation — generic, jurisdiction-neutral, effective-dated (ADR-0008 #5).
@@ -13,6 +16,7 @@ import {
   appUser,
   compensation,
   domainEvent,
+  employment,
   payrollBatch,
   payrollPolicyTypeEnum,
   payslip,
@@ -320,39 +324,86 @@ async function markPayrollRunsForCompensationTx(
   return markRunsAffectedByEmploymentChangeTx(tx, ctx, p);
 }
 
-/** Replace only the dated salary interval established at hire. The prior row is audit evidence. */
-export async function correctHireBasicSalaryTx(tx: Tx, ctx: SessionContext, input: {
-  employmentId: string; hireDate: string; basicSalary: number; reason: string;
-}) {
-  if (!Number.isFinite(input.basicSalary) || input.basicSalary < 0 || input.basicSalary > 9_999_999_999.99) {
-    throw Error('Enter a valid Basic Salary amount.');
-  }
-  await ownCompensationDependenciesTx(tx, ctx, input.employmentId);
-  const [previous] = await tx.select().from(compensation)
-    .where(and(eq(compensation.tenantId, ctx.tenantId), eq(compensation.employmentId, input.employmentId),
-      eq(compensation.validFrom, input.hireDate), isNull(compensation.supersededAt)))
-    .for('update');
-  if (!previous) throw Error('The dated salary at hire is unavailable.');
-  const amount = money(input.basicSalary);
-  if (previous.basicSalary === amount) return null;
-  const paid = await processedPeriodsTx(tx, input.employmentId);
-  if (overlapsClosedPeriod(paid, previous.validFrom, previous.validTo)) {
-    throw Error('Payroll already used this salary. Use the payroll adjustment process to amend the result.');
-  }
+/** First physical payroll day after closed evidence overlapping [from,to); no closed month returns null. */
+export async function firstOpenDayAfterClosedTx(tx:Tx,employmentId:string,from:string,to:string|null):Promise<string|null>{
+ const closed=(await closedPeriodsTx(tx,employmentId)).filter(period=>overlapsClosedPeriod([period],from,to)).sort();
+ return closed.length?nextMonthStart(closed[closed.length-1]):null;
+}
 
-  await tx.update(compensation).set({ supersededAt: new Date() }).where(eq(compensation.id, previous.id));
-  const [replacement] = await tx.insert(compensation).values({
-    tenantId: previous.tenantId, employmentId: previous.employmentId,
-    basicSalary: amount, currency: previous.currency, monthlyAllowance: previous.monthlyAllowance,
-    payMode: previous.payMode, paymentTerm: previous.paymentTerm, rateAmount: previous.rateAmount,
-    validFrom: previous.validFrom, validTo: previous.validTo, remarks: input.reason,
-  }).returning({ id: compensation.id });
-  await appendEvent(tx, {
-    tenantId: ctx.tenantId, aggregateType: 'compensation', aggregateId: replacement.id,
-    eventType: 'compensation.hire-corrected', actor: actorOf(ctx), subjectEmploymentId: input.employmentId,
-    payload: { supersededId: previous.id, effectiveFrom: previous.validFrom, fieldsChanged: ['basicSalary'] },
-  });
-  return { supersededId: previous.id, replacementId: replacement.id, validFrom: previous.validFrom };
+/** Correct the salary asserted at hire. Consumed closed records remain physical payroll evidence;
+ * a correction applies only over its remaining open interval, bounded by the next intentional salary.
+ * A wholly closed interval keeps a superseded reference as information evidence, never a payroll input. */
+export async function correctHireBasicSalaryTx(tx:Tx,ctx:SessionContext,input:{employmentId:string;hireDate:string;basicSalary:number;reason:string}){
+ if(!Number.isFinite(input.basicSalary)||input.basicSalary<0||input.basicSalary>9_999_999_999.99)throw Error('Enter a valid Basic Salary amount.');
+ await ownCompensationDependenciesTx(tx,ctx,input.employmentId);
+ const [previous]=await tx.select().from(compensation).where(and(eq(compensation.tenantId,ctx.tenantId),eq(compensation.employmentId,input.employmentId),or(eq(compensation.validFrom,input.hireDate),sql`${compensation.id}=(select (h.payload->'salaryKept'->>'compensationId')::uuid from domain_event h where h.tenant_id=${ctx.tenantId}::uuid and h.subject_employment_id=${input.employmentId}::uuid and h.event_type='employment.history.start.aligned' and h.payload->'alignedStart'->>'to'=${input.hireDate} and h.payload->'salaryKept'->>'compensationId' is not null order by h.sequence desc limit 1)`),isNull(compensation.supersededAt))).for('update');
+ if(!previous)throw Error('The dated salary at hire is unavailable.');
+ const [prior]=await tx.select({payload:domainEvent.payload,terms:compensation}).from(domainEvent).innerJoin(compensation,eq(compensation.id,domainEvent.aggregateId))
+  .where(and(eq(domainEvent.tenantId,ctx.tenantId),eq(domainEvent.subjectEmploymentId,input.employmentId),eq(domainEvent.eventType,'compensation.hire-corrected'))).orderBy(desc(domainEvent.sequence)).limit(1);
+ const semantic=prior?.terms??previous,amount=money(input.basicSalary);
+ if(semantic.basicSalary===amount)return null;
+ const paid=await processedPeriodsTx(tx,input.employmentId);
+ if(overlapsClosedPeriod(paid,input.hireDate,previous.validTo)&&!hasClosedPayrollCorrectionAuthorityTx(tx,input.employmentId))throw Error('Payroll already used this salary. Use the payroll adjustment process to amend the result.');
+ const priorPayload=(prior?.payload??{}) as {until?:string|null};
+ const recordedUntil=Object.hasOwn(priorPayload,'until')?priorPayload.until??null:previous.validTo;
+ const [nextIntent]=await tx.select({from:compensation.validFrom}).from(compensation).where(and(eq(compensation.employmentId,input.employmentId),isNull(compensation.supersededAt),gt(compensation.validFrom,input.hireDate),ne(compensation.id,previous.id),sql`not exists(select 1 from domain_event h where h.tenant_id=${ctx.tenantId}::uuid and h.subject_employment_id=${input.employmentId}::uuid and h.event_type='compensation.hire-corrected' and h.aggregate_id=${compensation.id})`)).orderBy(compensation.validFrom).limit(1);
+ const until=nextIntent&&(recordedUntil===null||nextIntent.from<recordedUntil)?nextIntent.from:recordedUntil;
+ const protectedUntil=await firstOpenDayAfterClosedTx(tx,input.employmentId,input.hireDate,until);
+ const payrollFrom=protectedUntil&&protectedUntil>input.hireDate?protectedUntil:input.hireDate;
+ const informationOnly=until!==null&&payrollFrom>=until;
+ let supersededId:string|null=null;
+ if(!informationOnly){
+  const [cover]=await tx.select().from(compensation).where(and(eq(compensation.employmentId,input.employmentId),isNull(compensation.supersededAt),sql`${compensation.validFrom}<=${payrollFrom}::date`,sql`(${compensation.validTo} is null or ${compensation.validTo}>${payrollFrom}::date)`)).for('update');
+  if(cover){
+   if(cover.validFrom===payrollFrom){await tx.update(compensation).set({supersededAt:new Date()}).where(eq(compensation.id,cover.id));supersededId=cover.id;}
+   else await tx.update(compensation).set({validTo:payrollFrom}).where(eq(compensation.id,cover.id));
+  }
+ }
+ const [replacement]=await tx.insert(compensation).values({tenantId:semantic.tenantId,employmentId:semantic.employmentId,basicSalary:amount,currency:semantic.currency,monthlyAllowance:semantic.monthlyAllowance,
+  payMode:semantic.payMode,paymentTerm:semantic.paymentTerm,rateAmount:semantic.rateAmount,validFrom:informationOnly?input.hireDate:payrollFrom,validTo:until,
+  ...(informationOnly?{supersededAt:new Date()}:{}),remarks:input.reason}).returning({id:compensation.id});
+ await appendEvent(tx,{tenantId:ctx.tenantId,aggregateType:'compensation',aggregateId:replacement.id,eventType:'compensation.hire-corrected',actor:actorOf(ctx),subjectEmploymentId:input.employmentId,
+  payload:{supersededId,sourceId:previous.id,hireDate:input.hireDate,effectiveFrom:input.hireDate,payrollEffectiveFrom:informationOnly?null:payrollFrom,until,informationOnly,paidSourcePreserved:protectedUntil!==null,fieldsChanged:['basicSalary']}});
+ if(!informationOnly)await markPayrollRunsForCompensationTx(tx,ctx,{employmentIds:[input.employmentId],category:'compensation',from:payrollFrom,until});
+ return{supersededId,sourceId:previous.id,replacementId:replacement.id,validFrom:input.hireDate,payrollFrom:informationOnly?null:payrollFrom,until,informationOnly};
+}
+
+/** Salary History amendment over one recorded interval. Later salary decisions retain their own
+ * windows. Closed outputs retain their physical source; a wholly paid interval gets an information
+ * reference. The canonical compensation validators and dependency owner are shared with normal set/edit. */
+export async function amendDatedCompensationTx(tx:Tx,ctx:SessionContext,p:{employmentId:string;effectiveFrom:string;basicSalary:number;currency?:string;payMode?:string;paymentTerm?:string;rateAmount?:number|null;remarks?:string;reason:string}){
+ if(!hasClosedPayrollCorrectionAuthorityTx(tx,p.employmentId))throw new Error('Salary amendment requires the canonical preservation owner.');
+ if(!isCalendarDate(p.effectiveFrom))throw new Error('Enter a valid salary Effective Date.');
+ await ownCompensationDependenciesTx(tx,ctx,p.employmentId);
+ const [subject]=await tx.select({hiredOn:employment.hiredOn}).from(employment).where(eq(employment.id,p.employmentId));
+ if(!subject||p.effectiveFrom<subject.hiredOn)throw new Error('The salary Effective Date must be on or after Group Join Date.');
+ const [source]=await tx.select().from(compensation).where(and(eq(compensation.employmentId,p.employmentId),isNull(compensation.supersededAt),lte(compensation.validFrom,p.effectiveFrom),or(isNull(compensation.validTo),gt(compensation.validTo,p.effectiveFrom)))).for('update');
+ if(!source)throw new Error('No recorded salary covers this Effective Date. Correct the salary history gap before amending it.');
+ const [prior]=await tx.select({terms:compensation,payload:domainEvent.payload}).from(domainEvent).innerJoin(compensation,eq(compensation.id,domainEvent.aggregateId)).where(and(eq(domainEvent.tenantId,ctx.tenantId),eq(domainEvent.subjectEmploymentId,p.employmentId),eq(domainEvent.eventType,'compensation.amended'),sql`${domainEvent.payload}->>'effectiveFrom'=${p.effectiveFrom}`)).orderBy(desc(domainEvent.sequence)).limit(1);
+ const semantic=prior?.terms??source;
+ const priorUntil=(prior?.payload as {until?:string|null}|undefined)?.until;
+ let until=prior?priorUntil??null:source.validTo;
+ const [nextIntent]=await tx.select({from:compensation.validFrom}).from(compensation).where(and(eq(compensation.employmentId,p.employmentId),isNull(compensation.supersededAt),gt(compensation.validFrom,p.effectiveFrom),ne(compensation.id,source.id),sql`not exists(select 1 from domain_event a where a.tenant_id=${ctx.tenantId}::uuid and a.subject_employment_id=${p.employmentId}::uuid and a.event_type='compensation.amended' and a.aggregate_id=${compensation.id} and a.payload->>'effectiveFrom'=${p.effectiveFrom})`)).orderBy(compensation.validFrom).limit(1);
+ if(nextIntent&&(until===null||nextIntent.from<until))until=nextIntent.from;
+ const amount=money(p.basicSalary),currency=p.currency===undefined?semantic.currency:normalizeCurrency(p.currency),mode=p.payMode===undefined?semantic.payMode:normalizePayMode(p.payMode),term=p.paymentTerm===undefined?semantic.paymentTerm:normalizePaymentTerm(p.paymentTerm),rate=p.rateAmount===undefined?semantic.rateAmount:p.rateAmount===null?null:money(p.rateAmount);
+ assertFinite('Basic salary',p.basicSalary);assertNotNegative('Basic salary',p.basicSalary);assertFinite('Rate',p.rateAmount??null);assertRateForMode(mode as PayMode,rate);
+ const remarks=p.remarks?.trim()||p.reason.trim();
+ if(unpayableSalaryLeg(mode as PayMode,p.basicSalary,rate)==='no_monthly_basic'&&!remarks)throw new SalaryRemarkRequiredError();
+ if(mode!==source.payMode&&!isPeriodBoundary(p.effectiveFrom))throw new PayModePeriodBoundaryError();
+ if(amount===semantic.basicSalary&&currency===semantic.currency&&mode===semantic.payMode&&term===semantic.paymentTerm&&rate===semantic.rateAmount)return{compensationId:semantic.id,sourceId:source.id,changed:false,payrollFrom:null,until,informationOnly:prior?.payload!=null&&(prior.payload as {informationOnly?:boolean}).informationOnly===true};
+ const protectedUntil=await firstOpenDayAfterClosedTx(tx,p.employmentId,p.effectiveFrom,until),payrollFrom=protectedUntil??p.effectiveFrom;
+ const informationOnly=until!==null&&payrollFrom>=until;
+ if(!informationOnly){
+  const [physical]=await tx.select().from(compensation).where(and(eq(compensation.employmentId,p.employmentId),isNull(compensation.supersededAt),lte(compensation.validFrom,payrollFrom),or(isNull(compensation.validTo),gt(compensation.validTo,payrollFrom)))).for('update');
+  if(!physical)throw new Error('The open salary interval needs reconciliation before amendment.');
+  if(physical.validFrom===payrollFrom)await tx.update(compensation).set({supersededAt:new Date()}).where(eq(compensation.id,physical.id));
+  else await tx.update(compensation).set({validTo:payrollFrom}).where(eq(compensation.id,physical.id));
+ }
+ const [revision]=await tx.insert(compensation).values({tenantId:ctx.tenantId,employmentId:p.employmentId,basicSalary:amount,currency,monthlyAllowance:source.monthlyAllowance,payMode:mode,paymentTerm:term,rateAmount:rate,remarks,validFrom:informationOnly?p.effectiveFrom:payrollFrom,validTo:until,supersededAt:informationOnly?new Date():null}).returning({id:compensation.id});
+ await appendEvent(tx,{tenantId:ctx.tenantId,aggregateType:'compensation',aggregateId:revision.id,eventType:'compensation.amended',actor:actorOf(ctx),subjectEmploymentId:p.employmentId,
+  payload:{sourceId:source.id,effectiveFrom:p.effectiveFrom,payrollEffectiveFrom:informationOnly?null:payrollFrom,until,informationOnly,reason:p.reason.trim()}});
+ if(!informationOnly)await markPayrollRunsForCompensationTx(tx,ctx,{employmentIds:[p.employmentId],category:'compensation',from:payrollFrom,until});
+ return{compensationId:revision.id,sourceId:source.id,changed:true,payrollFrom:informationOnly?null:payrollFrom,until,informationOnly};
 }
 
 export async function setCompensation(
@@ -504,6 +555,7 @@ export async function setCompensation(
           ? {
               movement: {
                 type: p.movement.type,
+                ...(p.movement.effectiveDate ? {effectiveDate:p.movement.effectiveDate} : {}),
                 ...(p.movement.secondary ? { secondary: true } : {}),
                 ...(p.movement.groupId ? { groupId: p.movement.groupId } : {}),
               },
@@ -937,6 +989,30 @@ export type CompensationHistoryRow = {
  * stored columns). The former second query resolving "Last Updated By" was removed with the on-screen
  * audit columns (7c7c2f80) — that detail belongs to the Audit Trail (compensation.updated events).
  */
+export type CompensationAmendmentHistoryRow={
+ id:string;compensationId:string;basicSalary:string;currency:string;rateAmount:string|null;
+ effectiveFrom:string;payrollFrom:string|null;until:string|null;informationOnly:boolean;reason:string|null;
+};
+/** HR business-date references are separate from physical paid salary windows. In particular, a wholly
+ * closed amendment deliberately has a superseded native compensation reference: readers of paid salary
+ * keep their unchanged basis, while HR can still see the correction. One subject-scoped bounded SQL page. */
+export function compensationAmendmentHistory(ctx:SessionContext,employmentId:string,page=1){
+ if(!Number.isSafeInteger(page)||page<1||page>100000)throw new Error('Invalid salary amendment page.');
+ const pageSize=50;
+ return withPersonnelRead(ctx,async tx=>{
+  await assertWorkforceEmploymentTx(tx,ctx,employmentId,'view');
+  const found=await tx.select({id:domainEvent.id,compensationId:compensation.id,basicSalary:compensation.basicSalary,
+   currency:compensation.currency,rateAmount:compensation.rateAmount,
+   effectiveFrom:sql<string>`${domainEvent.payload}->>'effectiveFrom'`,payrollFrom:sql<string|null>`${domainEvent.payload}->>'payrollEffectiveFrom'`,
+   until:sql<string|null>`${domainEvent.payload}->>'until'`,informationOnly:sql<boolean>`${domainEvent.payload}->>'informationOnly'='true'`,
+   reason:sql<string|null>`${domainEvent.payload}->>'reason'`})
+   .from(domainEvent).innerJoin(compensation,and(eq(compensation.id,domainEvent.aggregateId),eq(compensation.tenantId,ctx.tenantId),eq(compensation.employmentId,employmentId)))
+   .where(and(eq(domainEvent.tenantId,ctx.tenantId),eq(domainEvent.subjectEmploymentId,employmentId),eq(domainEvent.aggregateType,'compensation'),eq(domainEvent.eventType,'compensation.amended')))
+   .orderBy(desc(domainEvent.sequence)).limit(pageSize+1).offset((page-1)*pageSize);
+  return {page,hasMore:found.length>pageSize,rows:found.slice(0,pageSize)};
+ });
+}
+
 export function compensationHistoryDetailed(
   ctx: SessionContext,
   employmentId: string,

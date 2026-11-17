@@ -97,6 +97,9 @@ export const MODULE_CATALOG: ModuleCatalogEntry[] = [
   { code: 'performance', name: 'Performance', category: 'hr', description: 'Review cycles, goals and compensation recommendations.', dependsOn: ['employees'], billable: true, isCore: false, parentModule: null, packBacked: true, sortOrder: 130 },
   { code: 'rewards', name: 'Rewards', category: 'hr', description: 'Salary and bonus budgets, confidential reward review, approvals and payroll handoff.', dependsOn: ['employees'], billable: true, isCore: false, parentModule: null, packBacked: true, sortOrder: 135 },
   { code: 'lifecycle', name: 'Onboarding, Offboarding & IT Assets', category: 'hr', description: 'New-employee onboarding and leaver offboarding checklists, IT requisitions, the asset register and asset requests.', dependsOn: ['employees'], billable: true, isCore: false, parentModule: null, packBacked: true, sortOrder: 140 },
+  // ADR-0080 D10 — the first module born a pack (packs/recruitment). Jobs, candidates, applications and the hiring
+  // pipeline. Default OFF: its gate below names a reserved, unset variable (never null).
+  { code: 'recruitment', name: 'Recruitment', category: 'hr', description: 'Job openings, candidates and the hiring pipeline from application to hire.', dependsOn: ['employees'], billable: true, isCore: false, parentModule: null, packBacked: true, sortOrder: 150 },
 
   // ── Billable sub-modules: a behaviour inside a parent pack's service, with NO pack of its own ───
   { code: 'toil', name: 'Time Off In Lieu', category: 'hr', description: 'Bank overtime as replacement leave instead of cash.', dependsOn: ['leave', 'attendance'], billable: true, isCore: false, parentModule: 'leave', packBacked: false, sortOrder: 200 },
@@ -450,6 +453,14 @@ export const LEGACY_MODULE_ENV_GATES: Readonly<Record<string, string | null>> = 
    */
   lifecycle: 'LIFECYCLE_ENABLED',
   rewards: 'REWARDS_ENABLED',
+  /**
+   * ADR-0080 D10 — Recruitment, NEW, so it never had a legacy gate. Same idiom as `system_explorer`:
+   * `RECRUITMENT_ENABLED` is a RESERVED name that no tracked env file sets and no application source reads.
+   * `null` would be wrong for the reason stated on `system_explorer` (it would force the code into the parity
+   * set pinned to migration 0313 and grant the module to every existing tenant). A missing `tenant_module`
+   * row is disabled (C7), so a customer gets Recruitment only when it is sold to them.
+   */
+  recruitment: 'RECRUITMENT_ENABLED',
 };
 
 /** The env var that gates each catalogued SETTING today. Same coverage rule, same drift assertion. */

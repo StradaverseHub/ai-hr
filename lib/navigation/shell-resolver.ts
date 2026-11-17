@@ -5,7 +5,7 @@ import { isSecurityDestination, securityDestinationAllowed } from '@/lib/securit
 import { V9_AUTOMATION_NAVIGATION, V9_NAVIGATION, V9_SHARED_NAVIGATION, type V9NavigationPermissions } from '@/lib/lifecycle-v9-navigation';
 import {
   ADDITIONAL_ROWS, OFFBOARDING_POSTINGS_NAVIGATION, AI_PROVIDER_HREF, AUTOMATION_NAVIGATION, GROUPS, MODULE_OF_HREF, MY_TEAM_ROW, ONBOARDING_NODE,
-  PERFORMANCE_ADMIN_ROW, SCOPED_LIFECYCLE_NAVIGATION, isAiAdministrationHref, isCollapsible, type ChildItem,
+  PERFORMANCE_ADMIN_ROW, RECRUITMENT_ROW, SCOPED_LIFECYCLE_NAVIGATION, isAiAdministrationHref, isCollapsible, type ChildItem,
 } from './shell-inventory';
 
 /** Existing shell facts, already resolved by their server capability owners. */
@@ -41,6 +41,9 @@ export type ShellNavigationFacts = {
    * The ONLY gate of the Performance admin entry (D-P1-32 PT-X5); it never opens the admin rail, approvals or My Team.
    */
   canAdministerOnehr?: boolean;
+  /** ADR-0049 — Recruitment access: administrators (HR administrators and Recruiting Partners) and, since slice 2, job-team
+   *  members, interviewers and pending approvers (app/layout.tsx asks the database). The ONLY role gate of the entry. */
+  canAdministerRecruitment?: boolean;
   /**
    * D-P1-32 PT-X5 — where Performance admin opens: the admin area's first tab for the latest cycle the viewer
    * administers (app/layout.tsx). Absent means the pack's own address, /performance (no cycle yet).
@@ -63,6 +66,8 @@ export type ShellNavigationFacts = {
   /** AI v2 W11 — the login handles private cases (a current handler grant, or a case it may handle). Only then is the
    * "Private cases" queue row offered; /cases still shows each login only what row security returns. */
   privateCaseHandler?: boolean;
+  /** Recruitment slice 7: the viewer may refer candidates (an active employment in a company with Recruitment). */
+  referralPortal?: boolean;
   probationAccess?: {page:boolean;configure:boolean;intake?:boolean;access?:boolean};
   contractStaffAccess?: {page:boolean;configure:boolean;intake?:boolean};
   offboardingPostingsAccess?:boolean;
@@ -98,6 +103,7 @@ export function resolveShellNavigation({
   letterDestinations = [],
   rewardDestinations = [],
   canAdministerOnehr = false,
+  canAdministerRecruitment = false,
   performanceAdminHref,
   probationAccess = {page:false,configure:false},
   contractStaffAccess = {page:false,configure:false},
@@ -111,6 +117,7 @@ export function resolveShellNavigation({
   assistantAccess = true,
   feedbackAccess = true,
   privateCaseHandler = false,
+  referralPortal = false,
 }: ShellNavigationFacts): ShellNavigationResolution {
   /**
    * Is this row's owning module on the tenant's plan? (ADR-0077 slice 4.)
@@ -131,7 +138,7 @@ export function resolveShellNavigation({
   // administrator (whose requireAdmin pages those are) keeps it without the Assistant grant or module; /assistant
   // then shows its unavailable home with the centre's tabs, and every page still checks for itself.
   const canSeeChild = (c: ChildItem) => (c.href === '/assistant' && canAdministerAi) ||
-    (!isSecurityDestination(c.href)||securityDestinationAllowed(c.href,securityAccess)) && moduleAllows(c.href) && (c.href !== '/lifecycle/v9'||onboardingV9Access) && (c.href !== '/assistant' || assistantAccess) && (c.href !== '/feedback' || feedbackAccess) && (c.href !== '/cases' || privateCaseHandler) && (!c.href.startsWith('/letters/')||letterDestinations.includes(c.href)) && (!c.href.startsWith('/lifecycle/onboarding')||onboardingAccess) && (c.href!=='/lifecycle/requisitions/onboarding'||onboardingRequisitionsAccess) && (c.href!=='/admin/lifecycle/onboarding'||onboardingAccess) && (c.href!=='/admin/lifecycle/onboarding/groups'||onboardingAccess||onboardingMaster) && (c.href!=='/admin/lifecycle/onboarding/access'||onboardingMaster) && (c.loginPresentationOnly ? canConfigureLoginPresentation : c.identityEmailOnly ? canPreviewIdentityEmail || canConfigureIdentityEmail : c.href === MY_TEAM_ROW.href ? canAccessTeam : c.href === PERFORMANCE_ADMIN_ROW.href ? canAdministerOnehr : c.href === '/admin/personnel/profile-changes' ? canReviewProfileChanges : c.href === AI_PROVIDER_HREF ? canConfigureAiProvider : isAiAdministrationHref(c.href) ? canAdministerAi : c.adminOnly ? isAdmin : c.managerUp ? isAdmin || canApprove || c.href === '/approvals' && (hasAssignedAttendanceApproval||hasAssignedApproval) : true);
+    (!isSecurityDestination(c.href)||securityDestinationAllowed(c.href,securityAccess)) && moduleAllows(c.href) && (c.href !== '/lifecycle/v9'||onboardingV9Access) && (c.href !== '/assistant' || assistantAccess) && (c.href !== '/feedback' || feedbackAccess) && (c.href !== '/cases' || privateCaseHandler) && (c.href !== '/me/referrals' || referralPortal) && (!c.href.startsWith('/letters/')||letterDestinations.includes(c.href)) && (!c.href.startsWith('/lifecycle/onboarding')||onboardingAccess) && (c.href!=='/lifecycle/requisitions/onboarding'||onboardingRequisitionsAccess) && (c.href!=='/admin/lifecycle/onboarding'||onboardingAccess) && (c.href!=='/admin/lifecycle/onboarding/groups'||onboardingAccess||onboardingMaster) && (c.href!=='/admin/lifecycle/onboarding/access'||onboardingMaster) && (c.loginPresentationOnly ? canConfigureLoginPresentation : c.identityEmailOnly ? canPreviewIdentityEmail || canConfigureIdentityEmail : c.href === MY_TEAM_ROW.href ? canAccessTeam : c.href === PERFORMANCE_ADMIN_ROW.href ? canAdministerOnehr : c.href === RECRUITMENT_ROW.href ? canAdministerRecruitment : c.href === '/admin/personnel/profile-changes' ? canReviewProfileChanges : c.href === AI_PROVIDER_HREF ? canConfigureAiProvider : isAiAdministrationHref(c.href) ? canAdministerAi : c.adminOnly ? isAdmin : c.managerUp ? isAdmin || canApprove || c.href === '/approvals' && (hasAssignedAttendanceApproval||hasAssignedApproval) : true);
   // The former audience inventory still supplies its original visibility boundaries.
   // Only authorized rows are handed to the workspace placement owner below.
   const authorizedGroups = GROUPS

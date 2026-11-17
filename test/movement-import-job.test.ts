@@ -253,7 +253,7 @@ describe('movement import background job (bulk-job kernel)',()=>{
   // Row-level outcome as before: AC006 failed at commit (stale review), AC003 was refused by the check.
   const detail=(await getImportAttempt(f.a,a2.preview.attemptId))!;
   expect(detail.items.filter(i=>i.status==='failed').map(i=>i.label).sort()).toEqual(['AC003 · Fictional AC003','AC006 · Fictional AC006']);
-  expect(detail.events.find(e=>e.kind==='confirmed')?.detail).toEqual({succeeded:4,failed:2});
+  expect(detail.events.find(e=>e.kind==='confirmed')?.detail).toEqual({succeeded:4,failed:2,closedPayrollProtected:true});
  },300_000);
 
  it('retries a lock refusal instead of failing the employee, and saves each employee once',async()=>{

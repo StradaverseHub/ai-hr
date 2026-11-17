@@ -1,3 +1,4 @@
+import {projectEmploymentPaymentMethodTx} from './employment-payment-method';
 /**
  * 941c9dac — the overnight pass that puts FUTURE-DATED movements into effect on the morning of their
  * effective date.
@@ -25,7 +26,7 @@
 import { and, eq, sql } from 'drizzle-orm';
 import { withTenant, type SessionContext } from '../db/client';
 import { actorOf, appendEvent } from '../db/events';
-import { domainEvent, employment } from '../db/schema';
+import { domainEvent, employment,employmentPaymentMethodHistory } from '../db/schema';
 import { applyDueMovementsTx } from './movement';
 import { lockLeaveDependencyConfigurationTx } from './leave-dependency-lock';
 // Workforce authorizes the actual transaction principal; the dated intent remains a ledger fact.
@@ -83,7 +84,11 @@ export async function sweepDueMovements(
               and r.payload ->> 'movementId' = ${domainEvent.id}::text
           )`,
         ),
-      ),
+      ).union(tx.selectDistinct({employmentId:employment.id}).from(employment)
+       .innerJoin(employmentPaymentMethodHistory,eq(employmentPaymentMethodHistory.employmentId,employment.id))
+       .where(and(eq(employment.tenantId,ctx.tenantId),sql`${employmentPaymentMethodHistory.supersededAt} is null`,
+        sql`${employmentPaymentMethodHistory.effectiveOn}<=${today}::date`,
+        sql`${employment.paymentMethod} is distinct from app.employment_payment_method_on(${employment.id},${today}::date)::payment_method`))),
   );
 
   let applied = 0;
@@ -102,6 +107,7 @@ export async function sweepDueMovements(
         await lockLeaveDependencyConfigurationTx(tx, ctx.tenantId);
         const [before]=await tx.select({gradeId:employment.gradeId}).from(employment).where(eq(employment.id,c.employmentId!)).limit(1);
         const r=await applyDueMovementsTx(tx,ctx,c.employmentId!,today);
+        await projectEmploymentPaymentMethodTx(tx,ctx,c.employmentId!,today);
         return {r,gradeBefore:{gradeId:before?.gradeId??null}};
       });
       applied += r.applied;

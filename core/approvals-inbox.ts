@@ -19,6 +19,11 @@
  * awaiting you" queue, OneHR assessment work and career plans awaiting their reviewer) and Rewards (units at
  * the viewer's approval stage). They deep-link to their own screens, so the layout's /approvals badge,
  * which counts only /approvals links, is unchanged by them.
+ *
+ * Recruitment slice 9 joins the same table with live recruitment to-dos (packs/recruitment/tasks.ts), but ONLY for a
+ * surface that asks for them with `recruitment` (see InboxModulesWithRecruitment): the bell and My tasks (`listMyTasks`),
+ * whose badge is the bell's count. Home, the AI Centre launcher's count and the mobile task contract do not carry them
+ * (D-034); `withoutRecruitmentTasks` takes them out of a list that has them.
  */
 import {assignedApprovalHref,type AssignedApprovalKind} from '../lib/assigned-approval-focus';
 import {settleReadGroup} from '../lib/settle-read-group';
@@ -35,8 +40,9 @@ import {pendingNoticeAcknowledgementTasks} from './notice';
 import {pendingReviewCandidatesExistSql,pendingReviewTaskMetadata} from './employment-review';
 import {pendingPerformanceTasks} from '../packs/performance/service';
 import {pendingRewardTasks} from '../packs/rewards/service';
+import {pendingRecruitmentTasks} from '../packs/recruitment/service';
 import {pendingProbationTasks} from '../packs/probation/service';
-import type {PackTaskAction,PackTaskItem,PackTaskKind,PackTaskProvider} from '../lib/assigned-work';
+import {RECRUITMENT_TASK_KINDS,type PackTaskAction,type PackTaskItem,type PackTaskKind,type PackTaskProvider,type RecruitmentTaskKind} from '../lib/assigned-work';
 import type {AccountTaskBundle,AccountTaskModules,AccountTaskRead} from './account-task-bundle';
 
 /** The account task statement, loaded on first use: this file is reached from the root layout and from narrow unit
@@ -100,6 +106,14 @@ export type PendingTaskItem = {
 export type InboxModules = { attendance: boolean; claims: boolean; performance: boolean; rewards: boolean;
   /** Probation (Lifecycle): on for the tenant or for any scoped company. Mobile callers pass false (published kinds). */
   probation: boolean };
+/**
+ * Recruitment slice 9 — the caller ALSO answers whether Recruitment is enabled, which is how a surface asks for the
+ * recruitment to-dos at all. Required on this type for the same reason as the flags above; a surface that passes plain
+ * `InboxModules` has not asked and gets no recruitment kind (the overloads below type its result without them). Only the
+ * bell (app/layout.tsx) and My tasks (app/tasks/page.tsx through listMyTasks) ask: Home's task kinds (lib/employee-home.ts)
+ * and the mobile v2 task enum do not carry them (D-034).
+ */
+export type InboxModulesWithRecruitment = InboxModules & { recruitment: boolean };
 
 /**
  * Module-owned task sources (WP-A1) — the extension point for packs whose work belongs in this list.
@@ -120,28 +134,58 @@ const PACK_TASK_SOURCES:readonly {module:'performance'|'rewards'|'probation';loa
   // Probation: one bounded, set-based read of the caller's Approve steps and tasks (migration 5751).
   {module:'probation',load:pendingProbationTasks},
 ];
+/**
+ * Recruitment slice 9: the viewer's personal to-dos only — requisition and offer approval steps waiting for them,
+ * interview feedback due and the later slices' kinds — read live under their own row security. Per-job counts stay on
+ * the Overview (D-035). Not a PACK_TASK_SOURCES row: the account task statement (core/account-task-bundle.ts) and Home's
+ * count never carry it, so it joins only the lists whose caller asked with `recruitment: true` (withRecruitmentTasks).
+ */
+const RECRUITMENT_TASK_SOURCE:PackTaskProvider=pendingRecruitmentTasks;
+type InboxResult<T extends {kind:string}=PendingTaskItem>={items:T[];claimTotal:number;total:number;approvalCount:number};
+/** Adds the recruitment to-dos to an inbox result when asked. Their links open /recruitment, so approvalCount is unchanged. */
+async function withRecruitmentTasks(ctx:SessionContext,scopeIds:string[]|undefined,recruitment:boolean|undefined,inbox:Promise<InboxResult<InboxTaskItem>>):Promise<InboxResult>{
+  if(recruitment!==true)return inbox;
+  const [result,recruitmentTasks]=await settleReadGroup([()=>inbox,()=>RECRUITMENT_TASK_SOURCE(ctx,scopeIds)]);
+  const extra=recruitmentTasks.map(({id,kind,subjectName,createdAt,linkPath})=>({id,kind,subjectName,createdAt,linkPath}));
+  return {...result,items:[...result.items,...extra].sort(inboxOrder),total:result.total+extra.length};
+}
 
 type ApprovalOnlyTaskItem=Omit<PendingTaskItem,'kind'>&{kind:Exclude<PendingTaskKind,'noticeAcknowledgement'>};
-export function listPendingTasks(ctx:SessionContext,scopeIds:string[]|undefined,modules:InboxModules,
+/** What a surface that did not ask for recruitment work receives: every kind except the recruitment ones. */
+export type InboxTaskItem=Omit<PendingTaskItem,'kind'>&{kind:Exclude<PendingTaskKind,RecruitmentTaskKind>};
+type InboxApprovalOnlyTaskItem=Omit<PendingTaskItem,'kind'>&{kind:Exclude<PendingTaskKind,'noticeAcknowledgement'|RecruitmentTaskKind>};
+// The overloads that ask for recruitment come first (they need the `recruitment` key); the last one is what
+// ReturnType<typeof listPendingTasks> names, so every existing reader of that type keeps its kinds.
+export function listPendingTasks(ctx:SessionContext,scopeIds:string[]|undefined,modules:InboxModulesWithRecruitment,
   options:{noticeAcknowledgements:false}):Promise<ApprovalOnlyTaskItem[]>;
-export function listPendingTasks(ctx:SessionContext,scopeIds:string[]|undefined,modules:InboxModules,
+export function listPendingTasks(ctx:SessionContext,scopeIds:string[]|undefined,modules:InboxModulesWithRecruitment,
   options?:{noticeAcknowledgements?:boolean}):Promise<PendingTaskItem[]>;
+export function listPendingTasks(ctx:SessionContext,scopeIds:string[]|undefined,modules:InboxModules,
+  options:{noticeAcknowledgements:false}):Promise<InboxApprovalOnlyTaskItem[]>;
+export function listPendingTasks(ctx:SessionContext,scopeIds:string[]|undefined,modules:InboxModules,
+  options?:{noticeAcknowledgements?:boolean}):Promise<InboxTaskItem[]>;
 export async function listPendingTasks(
   ctx: SessionContext,
   scopeIds: string[] | undefined,
-  modules: InboxModules,
+  modules: InboxModules & { recruitment?: boolean },
   options:{noticeAcknowledgements?:boolean}={},
 ): Promise<PendingTaskItem[]> {
-  return (await loadPendingTasks(ctx,scopeIds,modules,options)).items;
+  const {recruitment,...inbox}=modules;
+  return (await withRecruitmentTasks(ctx,scopeIds,recruitment,loadPendingTasks(ctx,scopeIds,inbox,options))).items;
 }
 
-export function pendingTaskSummary(ctx:SessionContext,scopeIds:string[]|undefined,modules:InboxModules,options:{noticeAcknowledgements?:boolean;deferClaimPreview?:true}={}){
+/** The bell's preview (app/layout.tsx). With `recruitment: true` it also carries the recruitment to-dos (D-034); a caller
+ * that passes plain InboxModules (Home, Today, the pre-salary items) gets a result typed without the recruitment kinds. */
+export function pendingTaskSummary(ctx:SessionContext,scopeIds:string[]|undefined,modules:InboxModulesWithRecruitment,options?:{noticeAcknowledgements?:boolean;deferClaimPreview?:true}):Promise<InboxResult>;
+export function pendingTaskSummary(ctx:SessionContext,scopeIds:string[]|undefined,modules:InboxModules,options?:{noticeAcknowledgements?:boolean;deferClaimPreview?:true}):Promise<InboxResult<InboxTaskItem>>;
+export function pendingTaskSummary(ctx:SessionContext,scopeIds:string[]|undefined,modules:InboxModules&{recruitment?:boolean},options:{noticeAcknowledgements?:boolean;deferClaimPreview?:true}={}):Promise<InboxResult>{
+  const {recruitment,...inbox}=modules;
   const preview={...options,preview:true} as const;
   // The same owners through one account task statement with this list's company filter (core/account-task-bundle.ts).
   const read:AccountTaskRead={companyIds:scopeIds,personal:false,notices:options.noticeAcknowledgements!==false};
-  const bundle=startAccountTaskBundle(ctx,{...modules,lifecycle:false},read);
-  return loadPendingTasks(ctx,scopeIds,modules,preview,loadBundledCommonTaskSources(ctx,scopeIds,modules,preview,bundle),
-    loadBundledClaimTaskSource(ctx,scopeIds,modules,preview,bundle));
+  const bundle=startAccountTaskBundle(ctx,{...inbox,lifecycle:false},read);
+  return withRecruitmentTasks(ctx,scopeIds,recruitment,loadPendingTasks(ctx,scopeIds,inbox,preview,loadBundledCommonTaskSources(ctx,scopeIds,inbox,preview,bundle),
+    loadBundledClaimTaskSource(ctx,scopeIds,inbox,preview,bundle)));
 }
 
 type DecisionHeaders=Pick<AccountTaskBundle,'cancellations'|'resignations'|'managerReviews'|'hrReviews'>;
@@ -278,7 +322,7 @@ export async function pendingBellClaimPreview(ctx:SessionContext,scopeIds:string
 }
 
 async function loadPendingTasks(ctx:SessionContext,scopeIds:string[]|undefined,modules:InboxModules,
-  options:TaskSourceOptions,common?:CommonTaskSources,claimPreview?:ClaimTaskSource){
+  options:TaskSourceOptions,common?:CommonTaskSources,claimPreview?:ClaimTaskSource):Promise<InboxResult<InboxTaskItem>>{
   const [[leave,[cancellations,resignations,managerReviews,hrReviews],replacement,attendance,profile,noticeAcknowledgements,packTaskLists],claimResult]=
     await settleReadGroup([
       ()=>common??loadCommonTaskSources(ctx,scopeIds,modules,options),
@@ -297,10 +341,38 @@ async function loadPendingTasks(ctx:SessionContext,scopeIds:string[]|undefined,m
     ...projectTasks(managerReviews,'managerReview'),...projectTasks(hrReviews,'hrReview'),
     ...packTasks.map(({id,kind,subjectName,createdAt,linkPath,action})=>({id,kind,subjectName,createdAt,linkPath,...(action?{action:{code:action.code,part:action.part}}:{})})),
   ];
-  items.sort((a,b)=>a.createdAt<b.createdAt?1:a.createdAt>b.createdAt?-1:a.kind.localeCompare(b.kind)||a.id.localeCompare(b.id));
+  items.sort(inboxOrder);
   const omittedClaims=Math.max(0,claimResult.total-claimResult.items.length);
-  return {items,claimTotal:claimResult.total,total:items.length+omittedClaims,
+  // No recruitment provider runs here (PACK_TASK_SOURCES has none; withRecruitmentTasks adds them when asked).
+  return {items:items as InboxTaskItem[],claimTotal:claimResult.total,total:items.length+omittedClaims,
     approvalCount:items.filter(task=>task.linkPath.split(/[?#]/,1)[0]==='/approvals').length+omittedClaims};
+}
+
+/** The inbox's one order: newest first, then kind, then id. */
+export const inboxOrder=(a:Pick<PendingTaskItem,'createdAt'|'kind'|'id'>,b:Pick<PendingTaskItem,'createdAt'|'kind'|'id'>)=>
+  a.createdAt<b.createdAt?1:a.createdAt>b.createdAt?-1:a.kind.localeCompare(b.kind)||a.id.localeCompare(b.id);
+
+const RECRUITMENT_KINDS:ReadonlySet<string>=new Set<string>(RECRUITMENT_TASK_KINDS);
+/** A list without the recruitment kinds: what Home and the AI Centre launcher count (D-034). */
+export function withoutRecruitmentTasks<T extends {kind:string}>(items:readonly T[]):T[]{
+  return items.filter(item=>!RECRUITMENT_KINDS.has(item.kind));
+}
+
+/**
+ * My tasks (app/tasks/page.tsx): the inbox as that page has always read it (every company), plus — when the caller says
+ * Recruitment is on — the recruitment to-dos for the SAME company selection the root layout gives the bell, so the
+ * sidebar's My tasks badge (the bell's count) and the page list the same recruitment items. One provider call, the
+ * inbox's order.
+ */
+export async function listMyTasks(ctx:SessionContext,scopeIds:string[]|undefined,modules:InboxModulesWithRecruitment):Promise<PendingTaskItem[]>{
+  const {recruitment,...rest}=modules;
+  const [inbox,recruitmentTasks]=await Promise.all([listPendingTasks(ctx,undefined,rest),recruitment?pendingRecruitmentTasks(ctx,scopeIds):Promise.resolve([])]);
+  return [...inbox,...recruitmentTasks].sort(inboxOrder);
+}
+/** My tasks' page summary: pendingTaskSummary for every company (as the page reads it) with listMyTasks' recruitment to-dos. */
+export function myTaskSummary(ctx:SessionContext,scopeIds:string[]|undefined,modules:InboxModulesWithRecruitment):Promise<InboxResult>{
+  const {recruitment,...rest}=modules;
+  return withRecruitmentTasks(ctx,scopeIds,recruitment,pendingTaskSummary(ctx,undefined,rest));
 }
 
 export async function pendingApprovalsCount(

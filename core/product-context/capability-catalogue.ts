@@ -49,7 +49,7 @@ export type CatalogueEntry=Readonly<{id:string;kind:CapabilityKind;mode:Capabili
 export const MODULE_AREA:Readonly<Record<string,CapabilityArea>>=Object.freeze({
  employees:'people',org:'organisation',leave:'leave',toil:'leave',ess:'self_service',approvals:'approvals',knowledge_base:'knowledge',
  payroll:'payroll',multi_cycle_payroll:'payroll',typed_pay_components:'payroll','country-my':'payroll',attendance:'attendance',claims:'claims',
- performance:'performance',rewards:'rewards',lifecycle:'lifecycle',notifications:'notifications',system_testing:'testing',system_explorer:'settings',assistant:'ai',
+ performance:'performance',rewards:'rewards',recruitment:'people',lifecycle:'lifecycle',notifications:'notifications',system_testing:'testing',system_explorer:'settings',assistant:'ai',
 });
 /** Pages without a module, by path prefix; the first match wins. */
 const PATH_AREA:readonly (readonly [string,CapabilityArea])[]=[
@@ -139,6 +139,12 @@ export const IMPORT_SUPPORT_FILES:Readonly<Record<string,string>>=Object.freeze(
  'core/personnel-import-assistance.ts':'Header-mapping assistance of the employee import.',
  'core/personnel-import-evaluation.ts':'Evaluation custody of the employee import.',
  'core/personnel-import-operations.ts':'Operational field writes inside the employee import.',
+ // Recruitment slice 16: candidates are imported per company by recruitment administrators and the company's recruiters (the
+ // recruitment service decides, not an admin guard). Kept out of the AI Centre's import catalogue on purpose: the AI Centre's
+ // recruitment read stays counts only (docs/recruitment-reconstruction slice 16 case 113).
+ 'core/recruitment-candidate-import-worker.ts':'Bulk-job worker of the Recruitment candidate import (slice 16); not offered by the AI Centre.',
+ 'packs/recruitment/import.ts':'Recruitment candidate import and To assign list (slice 16), admitted per company by the recruitment service; not offered by the AI Centre.',
+ 'packs/recruitment/import-model.ts':'Pure file rules of the Recruitment candidate import (slice 16).',
  'core/personnel-register-import.ts':'Register sections inside the employee and section imports.',
  'core/register-import-worker.ts':'Background worker of the register section imports: captured writes applied in one release.',
  'core/section-import-job.ts':'Background admission and progress of the section and register imports.',

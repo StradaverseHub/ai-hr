@@ -12,7 +12,7 @@ const labels:MovementActionLabels={view:m.view,edit:m.edit,delete:m.delete,delet
 const row={id:'fictional-exit',kind:'resignation',status:'applied' as const,canEdit:true,canReverse:true,payrollLocked:false,payrollWarning:false};
 const action=vi.fn(async(_data:FormData)=>{});
 function mount(overrides:Partial<Parameters<typeof MovementHistoryActions>[0]>={}){
- return render(<NextIntlClientProvider locale="en" messages={messages}><MovementHistoryActions employmentId="fictional-subject" row={row} eventLabel="Resignation · 13 Oct 2026" canCorrect={movementScreenAccess({admin:true,canMaintainWorkforce:true,terminatedOn:'2026-10-13'}).canCorrectMovement} labels={labels} reverseAction={action} {...overrides}/></NextIntlClientProvider>);
+ return render(<NextIntlClientProvider locale="en" messages={messages}><MovementHistoryActions employmentId="fictional-subject" row={row} eventLabel="Resignation · 13 Oct 2026" canCorrect={movementScreenAccess({admin:true,canMaintainWorkforce:true,terminatedOn:'2026-10-13'}).canCorrectMovement} canDelete labels={labels} reverseAction={action} {...overrides}/></NextIntlClientProvider>);
 }
 afterEach(()=>{cleanup();vi.clearAllMocks()});
 describe('actual Movement history correction actions',()=>{
@@ -22,14 +22,17 @@ describe('actual Movement history correction actions',()=>{
   expect(screen.getByRole('link',{name:m.edit})).toHaveAttribute('href',expect.stringContaining('/movement/edit/fictional-exit'));
   expect(screen.getByRole('button',{name:m.delete})).toBeInTheDocument();
  });
- it('requires reason and closed-payroll acknowledgement on the actual Delete form',async()=>{
+ it('requires a reason and displays automatic preservation on the actual Delete form',async()=>{
   const user=userEvent.setup(),{container}=mount({row:{...row,payrollLocked:true}});
   await user.click(screen.getByRole('button',{name:m.delete}));
   const dialog=screen.getByRole('alertdialog'),confirm=within(dialog).getByRole('button',{name:m.delete});
-  expect(confirm).toBeDisabled();expect(within(dialog).getByText(m.deleteDescription)).toBeInTheDocument();
-  await user.type(within(dialog).getByRole('textbox'),'Fictional incorrect resignation');expect(confirm).toBeDisabled();
-  await user.click(within(dialog).getByRole('checkbox',{name:m.form.closedPayrollAcknowledge}));expect(confirm).toBeEnabled();
-  const data=new FormData(container.querySelector('form')!);expect(data.get('employmentId')).toBe('fictional-subject');expect(data.get('movementId')).toBe('fictional-exit');expect(data.get('reason')).toBe('Fictional incorrect resignation');expect(data.get('acknowledgeClosedPayroll')).toBe('1');
+  expect(confirm).toBeDisabled();expect(within(dialog).getByText(m.deleteDescription+' '+labels.closedWarning)).toBeInTheDocument();
+  await user.type(within(dialog).getByRole('textbox'),'Fictional incorrect resignation');expect(confirm).toBeEnabled();
+  expect(within(dialog).queryByRole('checkbox')).toBeNull();
+  const data=new FormData(container.querySelector('form')!);expect(data.get('employmentId')).toBe('fictional-subject');expect(data.get('movementId')).toBe('fictional-exit');expect(data.get('reason')).toBe('Fictional incorrect resignation');expect(data.has('acknowledgeClosedPayroll')).toBe(false);
+ });
+ it('keeps Edit available when the separate Delete permission is denied',()=>{
+  mount({canDelete:false});expect(screen.getByRole('link',{name:m.edit})).toBeInTheDocument();expect(screen.queryByRole('button',{name:m.delete})).toBeNull();
  });
  it('explains a pending Delete as cancellation before it takes effect',async()=>{
   mount({row:{...row,status:'pending'}});await userEvent.setup().click(screen.getByRole('button',{name:m.delete}));

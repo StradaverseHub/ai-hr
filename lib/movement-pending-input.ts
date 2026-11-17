@@ -1,3 +1,4 @@
+import { MOVEMENT_EMPLOYMENT_PERIOD_FIELDS } from './movement-employment-periods';
 /** Client-safe field vocabulary shared by canonical Movement and its form projections. */
 export const MOVEMENT_FLAT_FIELDS = [
   'orgDivision','employmentCategory','orgRegion','orgBranch','orgTeam','orgSection','orgLine','orgBase',
@@ -13,8 +14,8 @@ export const movementEndDateFieldFor = (employmentType: string | null | undefine
 /** Names of saved scheduling inputs; absence stays distinct from an explicit clear. */
 export const MOVEMENT_PENDING_COMPARISON_FIELDS = [
   'companyId','departmentId','positionId','businessUnitId','locationId','gradeId',
-  'employmentType','managerEmploymentId','basicSalary','currency','payMode','paymentTerm',
-  ...MOVEMENT_FLAT_FIELDS,...MOVEMENT_END_DATE_FIELDS,
+  'employmentType','managerEmploymentId','basicSalary','currency','payMode','paymentTerm','paymentMethod',
+  ...MOVEMENT_FLAT_FIELDS,...MOVEMENT_END_DATE_FIELDS,...MOVEMENT_EMPLOYMENT_PERIOD_FIELDS,'confirmationDate',
 ] as const;
 export const MOVEMENT_PENDING_INPUT_FIELDS = [...MOVEMENT_PENDING_COMPARISON_FIELDS,
   'blacklisted','terminationReasonCode','terminationNoticeDays','resignationDate','tenderResignationDate','resignationEffectiveDate',

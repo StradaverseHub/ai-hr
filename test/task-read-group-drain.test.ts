@@ -11,6 +11,7 @@ vi.mock('../core/performance',()=>({managerPendingReviews:io.manager}));
 vi.mock('../packs/performance/onehr/calibration-list',()=>({pendingCalibrationTasks:io.calibration}));
 vi.mock('../packs/performance/service',async()=>({pendingPerformanceTasks:(await import('../packs/performance/onehr/tasks')).pendingPerformanceTasks}));
 vi.mock('../packs/rewards/service',()=>({pendingRewardTasks:async()=>[]}));
+vi.mock('../packs/recruitment/service',()=>({pendingRecruitmentTasks:async()=>[]}));
 vi.mock('../packs/leave/service',()=>({pendingLeaveTaskMetadata:async()=>[],pendingLeaveCancellationTaskMetadata:async()=>[],pendingLeaveCancellationCandidatesExistSql:()=>false,listPendingReplacementLeaveTasks:async()=>[]}));
 vi.mock('../packs/claims/service',()=>({countPendingClaimTasks:async()=>0,pendingClaimTaskMetadata:async()=>[],pendingClaimTaskSummary:async()=>({items:[],total:0})}));
 vi.mock('../packs/attendance/service',()=>({pendingAttendanceTaskMetadata:async()=>[]}));

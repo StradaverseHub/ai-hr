@@ -214,10 +214,9 @@ describe('c063eea9 — the correction follows inheritance, and stops at an expli
   });
 
   it('a record whose value no longer matches its predecessor is not overwritten, even if its event said "inherited"', async () => {
-    // Hired (Finance) → Transfer to Operations (explicit) → an assignment change that INHERITED Operations.
-    // Rolling the Transfer back leaves the third record holding Operations right after the hire record —
-    // its event still says before == after. The hire's Finance must not be carried over a value that is
-    // not Finance.
+    // Delete replays the later Position decision against the restored hire department. A separately
+    // repaired legacy row can nevertheless disagree with its recorded inherited field; the hire walk
+    // must detect that mismatch and stop before overwriting the repaired value.
     const hr = await dept('Human Resources');
     const p3 = await pos('Lead Executive');
     const { employmentId: id } = await hireOne();
@@ -225,6 +224,9 @@ describe('c063eea9 — the correction follows inheritance, and stops at an expli
     await createMovementEvent(ctx(), { employmentId: id, kind: 'orgAssignmentChange', effectiveDate: '2025-06-01', positionId: p3 });
     const transfer = (await movementHistory(ctx(), id)).find((r) => r.kind === 'transfer')!;
     await reverseMovementEvent(ctx(), { employmentId: id, movementId: transfer.id, reason: 'Transfer keyed on the wrong person.' });
+    expect((await liveVersions(id)).map(v=>v.departmentId)).toEqual([b.deptA,b.deptA]);
+    const laterVersion=(await liveVersions(id)).find(row=>row.validFrom==='2025-06-01')!;
+    await owner.db.update(schema.assignment).set({departmentId:b.deptB}).where(eq(schema.assignment.id,laterVersion.id));
     expect((await liveVersions(id)).map((v) => [v.validFrom, v.departmentId])).toEqual([
       ['2025-01-01', b.deptA],
       ['2025-06-01', b.deptB],
@@ -792,18 +794,14 @@ describe('c063eea9 (2), board 4604dccc r3 — a join date moving across payslips
 
   // Board 4604dccc r3 — payroll history no longer refuses a join-date correction. A closed month in between needs HR's
   // confirmation and stays exactly as paid (each payslip's details are fixed first); an open run is not a block.
-  it('a Group Join Date Correction back across a prorated, closed payslip needs the confirmation, and closed payroll is unchanged', async () => {
+  it('a Group Join Date Correction automatically preserves prorated closed payroll', async () => {
     const { employmentId: id } = await hireOne({ hiredOn: '2025-01-15' });
     await payslipFor(id, '2025-01', 'closed', ['2025-01-15', '2025-01-31']);
     await payslipFor(id, '2025-02', 'closed');
     const slips = () => owner.db.select().from(schema.payslip).where(eq(schema.payslip.employmentId, id)).orderBy(schema.payslip.id);
     const batches = () => owner.db.select().from(schema.payrollBatch).where(eq(schema.payrollBatch.companyId, b.companyId)).orderBy(schema.payrollBatch.id);
     const [slipsBefore, batchesBefore] = [await slips(), await batches()];
-    await expect(
-      createMovementEvent(ctx(), { employmentId: id, kind: 'groupJoinDateCorrection', effectiveDate: '2025-01-01' }),
-    ).rejects.toThrow('Payroll for 2025-01 is already closed.');
-    expect(await datesOf(id)).toEqual({ hiredOn: '2025-01-15', joinDate: '2025-01-15' });
-    await createMovementEvent(ctx(), { employmentId: id, kind: 'groupJoinDateCorrection', effectiveDate: '2025-01-01', acknowledgeClosedPayroll: true });
+    await createMovementEvent(ctx(), {employmentId:id,kind:'groupJoinDateCorrection',effectiveDate:'2025-01-01'});
     expect(await datesOf(id)).toEqual({ hiredOn: '2025-01-01', joinDate: '2025-01-01' });
     expect(await slips()).toEqual(slipsBefore);
     expect(await batches()).toEqual(batchesBefore);
@@ -835,16 +833,15 @@ describe('c063eea9 (2), board 4604dccc r3 — a join date moving across payslips
     expect(await datesOf(id)).toEqual({ hiredOn: '2025-01-02', joinDate: '2025-01-02' });
   });
 
-  it('a Join Date Change across a processed payroll goes through; across a closed one it needs the confirmation', async () => {
+  it('a Join Date Change works across processed and closed payroll without an acknowledgement', async () => {
     const { employmentId: id } = await hireOne({ hiredOn: '2025-01-15' });
     await payslipFor(id, '2025-03', 'processed');
     await createMovementEvent(ctx(), { employmentId: id, kind: 'joinDateChange', effectiveDate: '2025-04-01' });
     expect((await datesOf(id)).joinDate).toBe('2025-04-01');
     await payslipFor(id, '2025-05', 'closed');
-    await expect(
-      createMovementEvent(ctx(), { employmentId: id, kind: 'joinDateChange', effectiveDate: '2025-06-01' }),
-    ).rejects.toThrow('Payroll for 2025-05 is already closed.');
-    await createMovementEvent(ctx(), { employmentId: id, kind: 'joinDateChange', effectiveDate: '2025-06-01', acknowledgeClosedPayroll: true });
+    const before=await owner.db.select().from(schema.payslip).where(eq(schema.payslip.employmentId,id)).orderBy(schema.payslip.id);
+    await createMovementEvent(ctx(),{employmentId:id,kind:'joinDateChange',effectiveDate:'2025-06-01'});
+    expect(await owner.db.select().from(schema.payslip).where(eq(schema.payslip.employmentId,id)).orderBy(schema.payslip.id)).toEqual(before);
     expect((await datesOf(id)).joinDate).toBe('2025-06-01');
   });
 });

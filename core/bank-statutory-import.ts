@@ -1,3 +1,4 @@
+import {employmentPaymentMethodOnSql} from './employment-payment-method';
 /**
  * 0db97f14 — Bank & Statutory import: the MERGED statutory writer, the file-level history wrapper and the
  * revert handler (ADR-0155 kind `bank_statutory`).
@@ -98,7 +99,7 @@ export async function readTaxResidenciesTx(tx:Tx,ctx:SessionContext,items:readon
 /** The employee's Bank & Statutory values as the tab presents them, read inside the caller's transaction. */
 export async function readBankStatutoryStateTx(tx:Tx,ctx:SessionContext,subject:BankStatutorySubject,options:{lock?:boolean}={}):Promise<{state:BankStatutoryState;row:Awaited<ReturnType<CountryPack['statutory']['get']>>}>{
  const row=await subject.pack.statutory.get(ctx,subject.personId,tx,{forUpdate:options.lock});
- const[e]=await tx.select({paymentMethod:employment.paymentMethod}).from(employment).where(eq(employment.id,subject.employmentId));
+ const[e]=await tx.select({paymentMethod:employmentPaymentMethodOnSql(sql`${employment.id}`)}).from(employment).where(eq(employment.id,subject.employmentId));
  return{row,state:bankStatutoryStateFrom(row as unknown as Record<string,unknown>|null,{taxResidency:await readTaxResidencyTx(tx,ctx,subject,row),paymentMethod:e?.paymentMethod??null})};
 }
 export async function bankStatutorySubjectTx(tx:Tx,employmentId:string):Promise<BankStatutorySubject|null>{

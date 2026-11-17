@@ -26,6 +26,7 @@ export const SPECIALIST_FINDINGS=[
  'statutory_gap_not_rate_decision','statutory_readiness_not_filing','notification_unread_not_delivery_proof','notification_read_recorded',
  'schema_inventory_not_record_access','schema_partly_withheld','catalogue_not_permission','human_confirmation_owns_effects',
  'human_test_pass_not_independent_verification','human_test_failure_needs_native_followup','test_work_incomplete','test_not_applicable_not_pass',
+ 'recruitment_counts_not_candidate_records','recruitment_applications_in_progress','recruitment_no_active_applications',
 ] as const;
 export type SpecialistFinding=typeof SPECIALIST_FINDINGS[number];
 export type SpecialistAssessment=Readonly<{version:1;module:AgentModuleCode;coverage:'canonical_domain_guidance_only';findings:readonly SpecialistFinding[];presentation:JobPresentation;humanActions:ReturnType<typeof moduleHumanActionHandoffs>;effects:readonly [];requiresFreshNativeReview:true;diagnostic?:SpecialistDiagnostic}>;
@@ -66,6 +67,8 @@ export function executeCanonicalSpecialist(candidateValue:unknown,source:{module
   case'system_explorer':{const row=object(data);add('schema_inventory_not_record_access');if(positive(row.withheldTables))add('schema_partly_withheld');break;}
   case'assistant':add('catalogue_not_permission');add('human_confirmation_owns_effects');break;
   case'system_testing':for(const row of bounded(data)){if(row.status==='passed')add('human_test_pass_not_independent_verification');else if(['failed','blocked','retest_required'].includes(String(row.status)))add('human_test_failure_needs_native_followup');else if(row.status==='not_applicable')add('test_not_applicable_not_pass');else add('test_work_incomplete');}break;
+  // Counts only: a count describes the pipeline, never a candidate, and in-progress is not a hiring decision.
+  case'recruitment':for(const row of bounded(data)){const active=number(row.activeApplications);if(active===null||!Number.isSafeInteger(active)||active<0)return fail();add('recruitment_counts_not_candidate_records');add(active>0?'recruitment_applications_in_progress':'recruitment_no_active_applications');}break;
   default:{const unsupported:never=module;void unsupported;return fail();}
  }
  return Object.freeze({version:1,module,coverage:'canonical_domain_guidance_only',findings:Object.freeze([...findings].sort()),presentation,humanActions:moduleHumanActionHandoffs(module),effects:Object.freeze([]) as readonly [],requiresFreshNativeReview:true,...(candidate.playbook==='canonical_followup_v1'?{diagnostic:canonicalSpecialistFollowup(module,data,presentation)}:{})});

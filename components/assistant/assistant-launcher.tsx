@@ -7,12 +7,14 @@ import { useTranslations } from 'next-intl';
 import { ArrowUp, ChevronRight, Inbox, Maximize2, Minimize2, Sparkles, X } from 'lucide-react';
 import { resolvePageContext, type PageArea } from '@/lib/ai/page-context';
 import {useShellApprovalFacts} from '@/components/shell-approval-facts';
+import {RECRUITMENT_TASK_KINDS} from '@/lib/assigned-work';
 import {AssistantChatBoundary} from './chat-reply-boundary';
 import {ThinkingIndicator} from './thinking-indicator';
 import { askFromLauncherAction } from '@/app/assistant/launcher-actions';
 import { aiCentreName } from '@/lib/ai-centre/brand';
 import { ASK_AI_CENTRE_EVENT, unclaimedAskQuestion } from '@/lib/command-bar-events';
 
+const RECRUITMENT_KINDS:ReadonlySet<string>=new Set<string>(RECRUITMENT_TASK_KINDS);
 type Turn = { id: number; question: string; area: PageArea | null; stale?: true; reply?: { ok: true; exchangeId: string; answer: React.ReactNode; conversationToken?: string; clarificationRequired?:true; chatId?: string } | { ok: false; message: string } };
 
 /** The floating Assistant. Rendered only when the shell decided this login may see it (see
@@ -23,7 +25,9 @@ type Turn = { id: number; question: string; area: PageArea | null; stale?: true;
  * launcher links to the Inbox and never reads anything itself. */
 export function AssistantLauncher({ position, hiddenAreas, inboxCount:baseInboxCount }: { position: 'bottom-right' | 'bottom-left'; hiddenAreas: readonly PageArea[]; inboxCount?: number }) {
  const approvals=useShellApprovalFacts()?.result;
- const inboxCount=approvals?.state==='ready'?approvals.items.length:baseInboxCount;
+ // Recruitment slice 9 (D-034): the bell's list carries the recruitment to-dos; the launcher opens Home, which does
+ // not list them, so its count leaves them out (core/approvals-inbox.ts withoutRecruitmentTasks, the same kinds).
+ const inboxCount=approvals?.state==='ready'?approvals.items.filter(item=>!RECRUITMENT_KINDS.has(item.kind)).length:baseInboxCount;
  const chatCopy=useTranslations('assistant.workspace.chat'),privacyNotice=chatCopy('privacy');
   const t = useTranslations('assistant.launcher'), areas = useTranslations('assistant.launcher.areas'), tCentre = useTranslations('aiCentre.launcher'), centreName = aiCentreName(useTranslations('aiCentre')('genericName'));
   const pathname = usePathname() ?? '/';

@@ -49,7 +49,7 @@ import { viewerIdentity } from '@/lib/viewer';
 import { visibleModuleCodes } from '@/lib/nav-entitlements';
 import { AuthRequiredError } from '@/lib/auth-errors';
 import { isAuthRoute as isAuthRoutePath } from '@/lib/auth-routes';
-import { canAdminOnehr, canManagePayroll, canManagePerfComp, hasTeamAccess, isAdmin, isGroupAdmin, isOperator, requireAdmin, requireModule } from '@/lib/authz';
+import { canAdminOnehr, canAdminRecruitment, canManagePayroll, canManagePerfComp, hasTeamAccess, isAdmin, isGroupAdmin, isOperator, requireAdmin, requireModule } from '@/lib/authz';
 import { listPrincipals } from '@/lib/principals';
 import { demoSwitcherEnabled, isDemoDeployment } from '@/lib/demo-mode';
 import {readShellNavigationAccess} from '@/core/shell-navigation-access';
@@ -64,6 +64,7 @@ import {offboardingPostingAccess} from '@/packs/personnel-postings/service';
 import {lifecycleModuleNavigation} from './lifecycle/workflow-availability';
 import { onboardingTasks, onboardingNavigation } from '@/packs/lifecycle/service';
 import { adminSectionHref, latestOnehrAdminCycleId } from '@/packs/performance/service';
+import { recruitmentTeamPresence, referralEligible } from '@/packs/recruitment/service';
 import type { NotificationTaskItem } from '@/components/notification-center';
 import { ShellNotificationCenter } from './shell-notification-center';
 import { onboardingNotificationTask } from '@/lib/onboarding-notification-task';
@@ -246,9 +247,17 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
   const lifecycleTasks:NotificationTaskItem[]=[...onboardingQueue.map(onboardingNotificationTask),...lifecycleInbox.items];
   const lifecycleTaskCount=onboardingQueue.length+lifecycleInbox.count;
   // Navigation and the floating launcher share the current Assistant grant read.
-  const [{launcher,allowed:assistantAccess},privateCaseHandler] = await Promise.all([
+  // Recruitment slice 2 — the menu also shows for a job-team member, an interviewer or a pending approver who does not
+  // administer recruitment. The database answers from the viewer's own membership rows; a failure hides the row only.
+  // Recruitment slice 7 — "Refer a candidate" shows for a person with an active employment in a company with Recruitment
+  // (a tenant-wide grant, as for every HR screen; the service gate refuses a tenant without one before any SQL). Failure hides it.
+  const [{launcher,allowed:assistantAccess},privateCaseHandler,recruitmentTeam,referralPortal] = await Promise.all([
     assistantShellFor(session),
     handlesPrivateCases(session).catch(() => false),
+    isModuleEnabledOrFalse(session, 'recruitment') && !canAdminRecruitment(session)
+      ? recruitmentTeamPresence(session).catch((e) => { console.error('recruitment team presence failed', e); return false; })
+      : Promise.resolve(false),
+    referralEligible(session).catch(() => false),
   ]);
   // 0696 — an operator can hide the Feedback menu for this customer. Nav fails open; /feedback fails closed.
   const feedbackAccess = settingEnabledOrDefault(session, 'feedback.menu_enabled');
@@ -262,6 +271,10 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
     claims: claimsEnabled,
     performance: isModuleEnabledOrFalse(session, 'performance'),
     rewards: isModuleEnabledOrFalse(session, 'rewards'),
+    // Recruitment slice 9: the bell (and the sidebar's My tasks badge, which is this total) asks for the recruitment
+    // to-dos — live, under the viewer's own access; nothing for a viewer with no recruitment role, and no call at all
+    // while the module is off. The AI Centre launcher's count leaves them out: it opens Home, which does not list them (D-034).
+    recruitment: isModuleEnabledOrFalse(session, 'recruitment'),
     probation: isModuleEnabledOrFalse(session, 'lifecycle') || !!session.entitlements?.scopedModules.lifecycle?.length,
   }, { deferClaimPreview: true }),undefined,requestReadScope())).then((approvalSummary):ShellApprovalResult=>({
     state:'ready',
@@ -321,6 +334,9 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
               // ADR-0142 — the OneHR performance partner gets the Performance admin entry only, NOT the admin rail:
               // it is deliberately absent from isAdmin above, because it can enter no admin screen.
               canAdministerOnehr={canAdminOnehr(session)}
+              // ADR-0049 — Recruitment administration: HR administrators and the company-scoped Recruiting Partner; and,
+              // since slice 2, job-team members, interviewers and pending approvers (their pages admit them per job).
+              canAdministerRecruitment={canAdminRecruitment(session) || recruitmentTeam}
               // D-P1-32 PT-X5 — Performance & Talent needs no flag (the module gate is its gate); calibration,
               // talent and development are tabs inside the area, so the rail no longer reads the worklist.
               performanceAdminHref={performanceAdminPath}
@@ -344,6 +360,7 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
               assistantAccess={assistantAccess}
               feedbackAccess={feedbackAccess}
               privateCaseHandler={privateCaseHandler}
+              referralPortal={referralPortal}
               // 82748f92 — the People › Settings General search alias only (command bar). Same function as the page guard.
               canConfigurePeopleGeneral={peopleGeneralConfigurable===true}
               defaultCollapsed={railCollapsed}

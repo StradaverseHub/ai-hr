@@ -28,6 +28,7 @@ import {
   Smartphone,
   Target,
   UserRound,
+  UserRoundPlus,
   Users,
   Wallet,
   type LucideIcon,
@@ -147,6 +148,10 @@ const ONBOARDING_REQUISITIONS_NODE:CollapsibleGroupItem={collapsible:true,labelK
 // The former My Performance, Performance, Calibration, Talent and Development rows retired into the area's tabs.
 const PERFORMANCE_TALENT_ROW: ChildItem = modulePackById('performance')!.navLinks!.find((l) => l.group === 'main' && l.labelKey === 'performanceTalent')!;
 export const PERFORMANCE_ADMIN_ROW: ChildItem = modulePackById('performance')!.navLinks!.find((l) => l.group === 'manage' && l.labelKey === 'performanceAdmin')!;
+// ADR-0080 D10 — the Recruitment pack's ONE row (packs/recruitment/index.ts). Gated twice, like every module row:
+// by the `recruitment` entitlement (MODULE_OF_HREF) and by canAdministerRecruitment (HR administrators and the
+// company-scoped Recruiting Partner, ADR-0049). Every /recruitment page and the service refuse on their own.
+export const RECRUITMENT_ROW: ChildItem = modulePackById('recruitment')!.navLinks!.find((l) => l.group === 'manage')!;
 
 // Leave nav rows (ADR-0080 rung 6): two flat rows the leave pack contributes (packs/leave/index.ts,
 // LEAVE_NAV_LINKS — provenance comments moved with them), placed at their pre-rung-6 positions below:
@@ -209,6 +214,7 @@ export const MODULE_OF_HREF: ReadonlyMap<string, string> = new Map([
   // section tabs (lib/ai-centre/centre-nav.ts CENTRE_SECTIONS, `payroll: true`).
   ...(modulePackById('payroll')!.navLinks ?? []).map((l) => [l.href, 'payroll'] as const),
   ...(modulePackById('performance')!.navLinks ?? []).map((l) => [l.href, 'performance'] as const),
+  ...(modulePackById('recruitment')!.navLinks ?? []).map((l) => [l.href, 'recruitment'] as const),
   // deec1691 — the ONE hand-written entry, and it has to be: `system_explorer` is a catalog module
   // with no pack (it owns no tables and contributes no service of its own), so there is no descriptor
   // to derive it from. The drift risk the comment above warns about is closed a different way here —
@@ -404,6 +410,7 @@ export const GROUPS: Group[] = [
       MY_TEAM_ROW,
       { href: '/approvals', labelKey: 'approvals', icon: ListChecks, tour: 'nav-approvals', managerUp: true },
       PERFORMANCE_ADMIN_ROW,
+      RECRUITMENT_ROW,
       // a324a4b3 rev3: Roster + Import come back here as FLAT rows. rev2 put them inside the Attendance
       // node, which was safe while that node sat in the ungated group; it is not safe now the node has
       // moved into admin-gated Administration, because the group gate would hide them from every
@@ -492,6 +499,9 @@ export const ADDITIONAL_ROWS: ChildItem[] = [
     {href:'/admin/personnel/profile-changes',labelKey:'profileChanges',icon:ListChecks,adminOnly:true},
     {href:'/me/payslip',labelKey:'myPayslips',icon:Wallet,ownedSubpaths:['/me/payslip']},
     {href:'/me/letters',labelKey:'myLetters',icon:FileBarChart,ownedSubpaths:['/me/letters']},
+    // Recruitment slice 7: Refer a candidate, for a person with an active employment in a company with Recruitment
+    // (canSeeChild reads referralPortal from app/layout.tsx, answered by app.recruitment_referral_eligible).
+    {href:'/me/referrals',labelKey:'myReferrals',icon:UserRoundPlus,ownedSubpaths:['/me/referrals']},
     {href:'/me/tax-relief',labelKey:'taxRelief',icon:Receipt},
     {href:'/me/tp3',labelKey:'myTp3',icon:Receipt},
     {href:'/me/ea',labelKey:'myEa',icon:Receipt,ownedSubpaths:['/me/ea']},

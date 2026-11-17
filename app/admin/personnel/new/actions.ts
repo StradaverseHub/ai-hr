@@ -12,6 +12,7 @@ import { revalidatePath } from 'next/cache';
 import {randomBytes} from 'node:crypto';
 import type {DraftActivateActionResult,DraftDeleteActionResult} from '@/lib/draft-action-result';
 import { requireAdmin } from '@/lib/authz';
+import { pgSqlState } from '@/lib/db-error';
 import {
   saveAndCompleteEmployeeDraft,
   draftActivationValidation,
@@ -21,6 +22,7 @@ import {
   saveEmployeeDraft,
 } from '@/core/employee-draft';
 import { normalizeEmployeeCode } from '@/lib/employee-code';
+import { hireHandoffPrefill, linkHireDraft } from '@/packs/recruitment/service';
 import type { EmployeeDraftData } from '@/lib/employee-draft-schema';
 
 /**
@@ -37,9 +39,28 @@ export async function createDraftAction(p: {
   primaryEmail: string;
   employeeIdMode?: string;
   employeeCode?: string;
+  /** Recruitment slice 3 — the application this draft starts the hire for. Re-checked here, never trusted. */
+  recruitmentApplicationId?: string;
 }): Promise<{ id: string; employeeCode: string }> {
   const s = await requireAdmin();
-  const out = await createEmployeeDraftWithReservedCode(s, p);
+  const { recruitmentApplicationId, ...draft } = p;
+  if (recruitmentApplicationId) {
+    // Before anything is created: this administrator may start the hire, the application is at Onboarding or hired and
+    // not yet linked, and the draft is for the application's own company (the link refuses any other company).
+    const hire = await hireHandoffPrefill(s, recruitmentApplicationId);
+    if (hire.companyId !== draft.companyId) throw new Error('Keep the company of the application this new hire comes from.');
+  }
+  // The employee draft is created ONLY here, by the existing personnel writer, when HR saves.
+  const out = await createEmployeeDraftWithReservedCode(s, draft);
+  if (recruitmentApplicationId) {
+    try {
+      await linkHireDraft(s, recruitmentApplicationId, out.id, out.employeeCode);
+    } catch (error) {
+      // The draft is HR's record and stays; only the back-link failed (for example a concurrent second hand-off).
+      // Kind and SQLSTATE only: a database error's message carries its bound values.
+      console.error('[Recruitment hire hand-off: draft created, link refused]', error instanceof Error ? error.name : typeof error, pgSqlState(error) ?? '');
+    }
+  }
   revalidatePath('/admin/personnel');
   revalidatePath('/admin/personnel/new');
   return out;

@@ -4,7 +4,7 @@ import { getSession } from './session';
 import { isModuleEnabled } from '@/core/entitlements';
 import { hasAuditReaderGrant } from '@/core/payroll-audit/reader-grant';
 import {isAdmin,hasTeamAccess,canManagePayroll,canManagePerfComp,canAdminOnehr} from './authz-model';
-export {isAdmin,hasTeamAccess,isGroupAdmin,isOperator,hasGrantFor,canManagePayroll,canManagePerfComp,isPayrollPartner,withEffectiveGrants,isPerfCompPartner,canAdminOnehr,isOnehrOnlyPerformanceAdmin} from './authz-model';
+export {isAdmin,hasTeamAccess,isGroupAdmin,isOperator,hasGrantFor,canManagePayroll,canManagePerfComp,isPayrollPartner,withEffectiveGrants,isPerfCompPartner,canAdminOnehr,isOnehrOnlyPerformanceAdmin,canAdminRecruitment} from './authz-model';
 
 /** Page-level team gate; scopedSession and the model enforce fresh company/report/module scope. */
 export async function requireTeamAccess(s?: SessionContext): Promise<SessionContext> {

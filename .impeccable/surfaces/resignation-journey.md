@@ -29,7 +29,7 @@ RESPONSIVE: At desktop size preserve compact tables and the app navigation. At p
 
 The approved artifact is the page-by-page `resignation-review/product-mockup.html` with its walkthrough screenshots, reviewed before implementation. Those screenshots are mockups, not built-app evidence. Hosted production-renderer captures of the real employee, manager, BP/CEO/GBS, Configuration and posting pages establish the implemented view. Desktop and mobile are reviewed together. Behavioral, security and scale evidence is separate from the visual verdict.
 
-Finish requires a fresh independent finish review and the ordinary-extension documentation comparison. Preserve DESIGN.md and its sidecar; report pre-existing drift without repairing it. No new raster asset is required. Release is held pending the owner's explicit approval.
+Finish requires a fresh independent finish review and the ordinary-extension documentation comparison. Preserve DESIGN.md and its sidecar; report pre-existing drift without repairing it. No new raster asset is required. The owner authorized staging only after successful verification and guarded coordinator admission. The staging-investigation hotfix goes first; Resignation must integrate its accepted handback. Audit remains last and Contract held. Production and package publication require separate authority.
 
 Naming clarification: the cross-session coordinator verified the owner’s explicit “Use HR Automation”
 name and Resignation’s one-shared-configuration approval. The top-level label is HR Automation;

@@ -414,6 +414,11 @@ echo "▸ Running online post-migration steps…"
 dstate phase migrate-online
 node --env-file=.env.production --import tsx scripts/post-migrate-online.ts
 
+# Dedicated owner prerequisite. A refusal must stop before either CI activation or an ordinary restart.
+echo "▸ Provisioning the resignation runtime verifier…"
+dstate phase resignation-runtime-verifier
+node --env-file=.env.production --import tsx scripts/provision-resignation-runtime.ts
+
 # ADR-0077 C11 — UNCONDITIONAL, and deliberately above the demo-seed `if` below: that branch is skipped
 # on every normal update, so seeding the catalogs inside it would leave an updated deployment with an
 # empty module catalog and every entitlement lookup failing closed. Idempotent (ON CONFLICT DO UPDATE).

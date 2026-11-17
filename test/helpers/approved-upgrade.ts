@@ -228,26 +228,100 @@ export const APPROVED_UPGRADE_TAIL=[
  // Board 237c31e6: request-bound Attendance approval progress readers.
  {idx:5170,when:1793330005470,tag:'5770_attendance_workflow_approver_codes'},
  {idx:5171,when:1793330005471,tag:'5771_assistant_legacy_index_shared_access'},
- {idx:5183,when:1793330005483,tag:'5783_resignation_journey'},
- {idx:5184,when:1793330005484,tag:'5784_resignation_configuration'},
- {idx:5185,when:1793330005485,tag:'5785_resignation_postings'},
- {idx:5186,when:1793330005486,tag:'5786_resignation_email_delivery'},
- {idx:5188,when:1793330005488,tag:'5788_resignation_letter_teams'},
- {idx:5189,when:1793330005489,tag:'5789_resignation_letter_fields'},
- {idx:5190,when:1793330005490,tag:'5790_resignation_case_communications'},
+ // Comprehensive Movement workflow: exact appended, unapplied forward SQL.
+ {idx:5172,when:1793330005472,tag:'5772_movement_employment_periods'},
+ {idx:5173,when:1793330005473,tag:'5773_movement_payroll_protection_and_delete'},
+ {idx:5174,when:1793330005474,tag:'5774_employment_payment_method_history'},
+ {idx:5175,when:1793330005475,tag:'5775_movement_payment_method_field'},
+ {idx:5176,when:1793330005476,tag:'5776_workforce_payroll_input_invalidation'},
+ {idx:5177,when:1793330005477,tag:'5777_movement_closed_payroll_metadata'},
+ {idx:5178,when:1793330005478,tag:'5778_movement_payroll_windows'},
+ {idx:5179,when:1793330005479,tag:'5779_hire_company_allocation_review'},
+ // Recruitment slices 1–25 (renumbered 5700–5727 → 5850–5877 on 17 Nov 2026; docs/MIGRATION-ALLOCATION.md).
+ {idx:5250,when:1793330005550,tag:'5850_recruiting_partner_role'},
+ {idx:5251,when:1793330005551,tag:'5851_recruitment_core'},
+ {idx:5252,when:1793330005552,tag:'5852_recruitment_team_interviews'},
+ {idx:5253,when:1793330005553,tag:'5853_recruitment_offers_hire_handoff'},
+ {idx:5254,when:1793330005554,tag:'5854_recruitment_requisitions'},
+ {idx:5255,when:1793330005555,tag:'5855_recruitment_candidate_privacy'},
+ {idx:5256,when:1793330005556,tag:'5856_recruitment_report_indexes'},
+ {idx:5257,when:1793330005557,tag:'5857_recruitment_referrals'},
+ {idx:5258,when:1793330005558,tag:'5858_recruitment_careers_page'},
+ {idx:5259,when:1793330005559,tag:'5859_recruitment_tasks'},
+ {idx:5260,when:1793330005560,tag:'5860_recruitment_agencies'},
+ {idx:5261,when:1793330005561,tag:'5861_recruitment_screening'},
+ {idx:5262,when:1793330005562,tag:'5862_recruitment_background_checks'},
+ {idx:5263,when:1793330005563,tag:'5863_recruitment_talent_pools_blocked_list'},
+ {idx:5264,when:1793330005564,tag:'5864_recruitment_consume_invitation_access_lock'},
+ {idx:5265,when:1793330005565,tag:'5865_recruitment_custom_fields'},
+ {idx:5266,when:1793330005566,tag:'5866_recruitment_position_templates'},
+ {idx:5267,when:1793330005567,tag:'5867_recruitment_import_export'},
+ {idx:5268,when:1793330005568,tag:'5868_recruitment_waiting_limits'},
+ {idx:5269,when:1793330005569,tag:'5869_recruitment_interview_setup'},
+ {idx:5270,when:1793330005570,tag:'5870_recruitment_candidate_email'},
+ {idx:5271,when:1793330005571,tag:'5871_recruitment_candidate_email_interviews_offers'},
+ {idx:5272,when:1793330005572,tag:'5872_recruitment_careers_verified_applicants'},
+ {idx:5273,when:1793330005573,tag:'5873_recruitment_candidate_response_links'},
+ {idx:5274,when:1793330005574,tag:'5874_recruitment_candidate_survey'},
+ {idx:5275,when:1793330005575,tag:'5875_recruitment_referral_rewards_agency_fees'},
+ {idx:5276,when:1793330005576,tag:'5876_recruitment_ai_match_summary'},
+ {idx:5277,when:1793330005577,tag:'5877_recruitment_agency_portal'},
+ {idx:5281,when:1793330005581,tag:'5881_resignation_journey'},
+ {idx:5282,when:1793330005582,tag:'5882_resignation_configuration'},
+ {idx:5283,when:1793330005583,tag:'5883_resignation_postings'},
+ {idx:5284,when:1793330005584,tag:'5884_resignation_email_delivery'},
+ {idx:5285,when:1793330005585,tag:'5885_resignation_letter_teams'},
+ {idx:5286,when:1793330005586,tag:'5886_resignation_letter_fields'},
+ {idx:5287,when:1793330005587,tag:'5887_resignation_case_communications'},
 ] as const;
 // Final pending 2109/2126 bytes reviewed from engine 128bc2539; no applied-prefix hashes change.
 const APPROVED_UPGRADE_HASHES:Record<string,string>={
- '5790_resignation_case_communications':'ad6e4adf6ab022a548d1ff4f6bf9ca41f42554aa8e522058ccea495884e92df3',
- '5788_resignation_letter_teams':'b7769b4044d013cfb630d532d8cc5b7fd2c8635662cf05663a4dcf6746eae4f3',
- '5789_resignation_letter_fields':'8fa27dfb8f35f526771c2823da8c2d8b2533ec539cf299ffb7856184e54fec49',
+ '5887_resignation_case_communications':'ad6e4adf6ab022a548d1ff4f6bf9ca41f42554aa8e522058ccea495884e92df3',
+ '5885_resignation_letter_teams':'b7769b4044d013cfb630d532d8cc5b7fd2c8635662cf05663a4dcf6746eae4f3',
+ '5886_resignation_letter_fields':'8fa27dfb8f35f526771c2823da8c2d8b2533ec539cf299ffb7856184e54fec49',
 
+ '5779_hire_company_allocation_review':'8a157b18ea8fe5ebaf5d86046f7ba03dd41e6532c03ef2cb7799beafeb4fc8dd',
+ '5772_movement_employment_periods':'9a66595ca046bdf0bdaaf0b51e1b87cfd8811156093d37464ef854d36b7d4ef3',
+ '5773_movement_payroll_protection_and_delete':'3f54dd21490e301f4c52131d449d32c883f482d67025df610fe5b84c83be1897',
+ '5774_employment_payment_method_history':'4e68e7aa1c2e66f605938fef0e59ce86a137ecdbd061c0f3e5a3e5a48ff6c5d8',
+ '5775_movement_payment_method_field':'3841610ec8f01675b16ad51b9c9523d77146f8c048790565d9862510909d3155',
+ '5776_workforce_payroll_input_invalidation':'28624ba957c14e02dfb7305c5d94b5627be11d4cc66f65e8903e5a921436589f',
+ '5777_movement_closed_payroll_metadata':'bb1ed221d194021c059392f21ad7c01c99cf9c0b05f6698b4ffff6579c2707f4',
+ '5778_movement_payroll_windows':'789c93999e156c08f6cfac5a79f5f58071cd1f834778454238146809e1b55106',
+ '5850_recruiting_partner_role':'eebd1f2ca17bdab497c749fe618dd97cc19bc84c13214970924d9b895e503162',
+ '5851_recruitment_core':'50ade8ad665ff40990fe01f82a2bf69ab09bba9093adf38fedfd543557fe20a7',
+ '5852_recruitment_team_interviews':'2b929096989e751e6a16a099e6ee234bc53f48e11b769ad112fecba8abaed056',
+ '5853_recruitment_offers_hire_handoff':'e97d87dd5fc141ca3c529a03653612ad64ab10af50e128a970a03e6f8fc26817',
+ '5854_recruitment_requisitions':'87315d09532f209ee171f1c006f3bbbe317afffa7c178419cc47a3e05021fcd4',
+ '5855_recruitment_candidate_privacy':'d96180028d4f297b8bca24559371a31c0cacf8536dce17d787a6f952b455fd74',
+ '5856_recruitment_report_indexes':'b9ec7362f649324d4289b04c3571f3a2c26fdc40d35755301438f2d600fa9f31',
+ '5857_recruitment_referrals':'52268ed1b6025e4748d788f5fd2a34bb17a6e67d45c19a9fee4f08c2c27668b4',
+ '5858_recruitment_careers_page':'98c5e6ebdce10aa7d6876e95649cb97a823e53393a5961b0e1dfeb6954ad3501',
+ '5859_recruitment_tasks':'83d93ff216193d0c366e40d7f8f2766502da896691cf47acf2606a808bcf054d',
+ '5860_recruitment_agencies':'0cbd79be27f4d9237b76fcf7371ed4b576056d0320899a98d3afc32e40fde681',
+ '5861_recruitment_screening':'4634b96c652e9af3c93c2d851df15167224f002bc077619c15b34f74fc717f27',
+ '5862_recruitment_background_checks':'0d0f78f4b2772fd2a56b800994c12a8564685e54de308619cdfdfb05b823df21',
+ '5863_recruitment_talent_pools_blocked_list':'35ac5bc84226ce430b6eb0fda5292dbede0b80bf0b44dd36ff45f678365223ab',
+ '5864_recruitment_consume_invitation_access_lock':'63bffaa21c801d211f8fc08e8b4a2e58b9e98c621398cced8e0acf49a5163180',
+ '5865_recruitment_custom_fields':'c81897b94de393def5bf89139fedacec1b9042b81750d89bee19caa46ef8ea7d',
+ '5866_recruitment_position_templates':'2f088777563f7f2053f9cbb5d0a311bb7ccd7b988465648621850e0e15947825',
+ '5867_recruitment_import_export':'a0421e162e797b31ca1057992cdadb4c225c98058b960b10c2e4ef2ce202ae61',
+ '5868_recruitment_waiting_limits':'0bf8c8d9d7561cf1d5ea5b6aa0bc31aa549c216466696f52e84a520371c423ab',
+ '5869_recruitment_interview_setup':'e7faa04d5e1e842e72a286922aaf0a9da6cce3ce2d2abddea806eef3a73886d8',
+ '5870_recruitment_candidate_email':'275b56b2154860753dbeb809e93c1382aa9441038eaa7be96e7c3fb3bb945a5a',
+ '5871_recruitment_candidate_email_interviews_offers':'e8933904fb9beaf918f210bd9726ada6540ae9eb6ebe615a54c389d6c6494581',
+ '5872_recruitment_careers_verified_applicants':'f8c4281e296559a7fa4a631bed7d0561b47c69f095cf157c1ed4acb071dfc205',
+ '5873_recruitment_candidate_response_links':'0f85a5648dc481f172caa26c6291d48d9146ae8b1489513ce2e495a91a307f4b',
+ '5874_recruitment_candidate_survey':'f7476efba283525ad916f21ca502f8e0dcbebf192e2b1569a9fdad5a6ab931f0',
+ '5875_recruitment_referral_rewards_agency_fees':'39cdc06b4fff3afaedf50e8061a22420e40fb1bcae89bb42545e1d8246ff4575',
+ '5876_recruitment_ai_match_summary':'d23289bec17b303e15f1ea36c2e4f0b72b14fd3d6580885485b167ba00dd8c47',
+ '5877_recruitment_agency_portal':'f92d2277433ba41add69ab9574e7f7309be68a9c699524488dcb7ffabb7a62d3',
  '5770_attendance_workflow_approver_codes':'f71cf33a9ced5f4e1007de02388a858bd31c64006a422352193bd7c14e367ec0',
  '5771_assistant_legacy_index_shared_access':'433dfd7549b496b034bdeaa2c06484b700b5dd5647213106d68487f0b485c7c0',
- '5783_resignation_journey':'130c0b99586bc316ac5203d27a65bfc0a565c4f608b8ab1ac336a8e8d41d1216',
- '5784_resignation_configuration':'6e064c336c441fbbf01017debe9e1a748957976d3d6b2b96470747d07d7dacb5',
- '5785_resignation_postings':'5d26a0f446c3e72ed01861544af395690b08cdce47b9fc739f0b0d7d1b22a4f5',
- '5786_resignation_email_delivery':'52bf3fa8f4430d37fd4dabd2164f00764e73245b38ee6520d2816dca7e03459b',
+ '5881_resignation_journey':'130c0b99586bc316ac5203d27a65bfc0a565c4f608b8ab1ac336a8e8d41d1216',
+ '5882_resignation_configuration':'6e064c336c441fbbf01017debe9e1a748957976d3d6b2b96470747d07d7dacb5',
+ '5883_resignation_postings':'5d26a0f446c3e72ed01861544af395690b08cdce47b9fc739f0b0d7d1b22a4f5',
+ '5884_resignation_email_delivery':'52bf3fa8f4430d37fd4dabd2164f00764e73245b38ee6520d2816dca7e03459b',
  '5761_probation_automation_recipients_and_tracker_steps':'c39e471adb80e51b56466c264bc6546dc6ce48a354e30d8e9ef3629a82b2184b',
  '5760_probation_queue_kinds_and_pbp_tasks':'c3ab5ddf4c702dd1ca947b3a350c7e852ab8699524c9da7fcad11f19887cdb59',
  '5150_attendance_policy_dated_rounding':'f1549fefc467398d9701ba5428e238134a8ca248fb645046b4b23877280e3408',
@@ -456,7 +530,7 @@ export const COMBINED_RELEASE_NULL_COLUMNS:readonly {tag:string;table:string;col
  // Board 511aa74a (5695): no employment that predates it was rehired from another period.
  {tag:'5695_employment_rehire_link',table:'employment',columns:['rehired_from_employment_id']},
  {tag:'5760_probation_queue_kinds_and_pbp_tasks',table:'probation_outcome',columns:['extension_months']},
- {tag:'5785_resignation_postings',table:'personnel_posting',columns:['rejected_by','rejected_at','rejection_reason','due_on','baseline_values']},
+ {tag:'5883_resignation_postings',table:'personnel_posting',columns:['rejected_by','rejected_at','rejection_reason','due_on','baseline_values']},
  ...['department','position','cost_center','business_unit','label_company_assignment','profile_option','job_grade','grade_group','grade_group_member']
   .map(table=>({tag:'5070_system_label_import_staged_job',table,columns:['import_pending_attempt_id']})),
 ]);
@@ -538,6 +612,7 @@ export async function migrateApprovedUpgrade(db:Database, migrationsFolder = 'db
    expect(after).toEqual({...before,generation:Number(before.generation)+(configs.some(row=>row.tenant_id===before.tenant_id)?1:0)});return {before,after};
   });
   expect(await table(db,'public.access_group')).toEqual(groups);expect(await table(db,'public.app_user')).toEqual(users);
+  const [movementClock]=await db.client`select clock_timestamp()::text at`;
   await migrate(db.db,{migrationsFolder});
   expect(await db.client`select id from public.company where display_group_field is not null or display_group_option_id is not null`).toEqual([]);
   expect(await db.client`select user_id from public.reward_group_role_grant`).toEqual([]);
@@ -545,9 +620,17 @@ export async function migrateApprovedUpgrade(db:Database, migrationsFolder = 'db
   // present and null on every upgraded row, and only then is a retained event compared without it.
   await assertCombinedReleaseNulls(db,migrationsFolder);
   expect((await table(db,'public.domain_event')).map(row=>withoutCombinedReleaseNulls('domain_event',row))).toEqual(eventsAfter);
-  expect(await table(db,'public.access_group_grant')).toEqual(groupAfter);expect(await table(db,'public.access_user_override')).toEqual(overrideAfter);
+  const finalGroups=await table(db,'public.access_group_grant'),movementGrants=newRows(groupAfter,finalGroups);
+  expect(ordered(finalGroups.filter(row=>groupAfter.some(prior=>prior.id===row.id)))).toEqual(ordered(groupAfter));
+  const requestedJournal=JSON.parse(readFileSync(join(migrationsFolder,'meta/_journal.json'),'utf8')) as {entries:{tag:string}[]};
+  const includesMovement=requestedJournal.entries.some(row=>row.tag==='5773_movement_payroll_protection_and_delete');
+  const movementHolders=includesMovement?groups.filter(row=>row.legacy_key==='system_administrator'&&row.retired_at===null):[];
+  expect(ordered(movementGrants.map(({tenant_id,group_id,capability_id,company_id,retired_at})=>({tenant_id,group_id,capability_id,company_id,retired_at})))).toEqual(ordered(movementHolders.map(group=>({tenant_id:group.tenant_id,group_id:group.id,capability_id:'workforce.movement.delete',company_id:null,retired_at:null}))));
+  for(const grant of movementGrants){expect(String(grant.id)).toMatch(/^[0-9a-f-]{36}$/);expect(Date.parse(String(grant.created_at))).toBeGreaterThanOrEqual(Date.parse(String(movementClock.at)));}
+  expect((await table(db,'public.access_capability')).filter(row=>row.id==='workforce.movement.delete')).toEqual(includesMovement?[{id:'workforce.movement.delete',scope:'company',supported:true,bindings:[{owner:'core/movement.ts:reverseMovementEvent',operation:'delete'},{owner:'core/movement.ts:reverseMovementForImportTx',operation:'import-delete-revert'},{owner:'app/admin/personnel/[employmentId]/movement-history-actions.tsx',operation:'delete-affordance'}]}]:[]);
+  expect(await table(db,'public.access_user_override')).toEqual(overrideAfter);
   expect(await table(db,'public.access_configuration')).toEqual(configsAfter);expect(await table(db,'app.access_profile_write_generation')).toEqual(generationsAfter);
-  return {events,eventsRaw:eventsRaw.filter(row=>events.some(event=>event.id===row.id)),grants,overrides,configurations,generations:generationPairs};
+  return {events,eventsRaw:eventsRaw.filter(row=>events.some(event=>event.id===row.id)),grants:[...grants,...movementGrants],overrides,configurations,generations:generationPairs};
  }finally{rmSync(folder,{recursive:true,force:true});}
 }
 /** Remove ONLY exact independently validated new rows, or restore ONLY exact independently

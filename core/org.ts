@@ -1,3 +1,11 @@
+import {assertEmploymentInformationDateOrder} from '../lib/employment-information-date-order';
+import {MOVEMENT_INFORMATION_FIELDS} from '../lib/movement-information-evidence';
+import {markWorkforcePayrollInputsChangedTx} from './workforce-payroll-invalidation';
+import {lockEmploymentStatutoryOwnerTx} from './employment-statutory-owner-lock';
+export {lockEmploymentStatutoryOwnerTx} from './employment-statutory-owner-lock';
+import {preserveMovementPayrollTx} from './movement-payroll-protection';
+import {employmentPaymentMethodOnTx,employmentPaymentMethodOnSql} from './employment-payment-method';
+import {lockPayrollInputsTx} from './payroll-inputs-lock';
 import {withSystemLabelCompanyTx} from './system-label-selection';
 import {organisationManagedTx,organisationBusinessUnit} from './organisation-write-policy';
 import {deriveCompanyOrganisationTx,recordEmploymentOrganisationTagsTx,type OrganisationTagTrigger} from './company-organisation';
@@ -512,6 +520,7 @@ export async function hireEmployee(ctx: SessionContext, p: HireParams,
       }
     }
 
+    const [hireInformation]=await tx.select().from(employment).where(eq(employment.id,emp.id));
     await appendEvent(tx, {
       tenantId: ctx.tenantId,
       aggregateType: 'employment',
@@ -522,6 +531,7 @@ export async function hireEmployee(ctx: SessionContext, p: HireParams,
       // Backward-compat: the original keys (personId, companyId, departmentId, hiredOn) are PRESERVED
       // unrenamed (CP22/CP22A worklist + audit view read them). The hiring enhancement only ADDS keys.
       payload: {
+        employmentInformation:Object.fromEntries(MOVEMENT_INFORMATION_FIELDS.map(field=>[field,hireInformation[field]??null])),
         personId,
         companyId: p.companyId,
         departmentId: p.departmentId,
@@ -1369,7 +1379,10 @@ export async function editDelegation(
 type NativeReportingLineInput=Parameters<typeof setReportingLine>[1];
 async function reportingLinePreflightTx(tx:Tx,ctx:SessionContext,p:NativeReportingLineInput,noWait=false){
     // Delegation retains its independent relationship/decision owner. Structural edges do not.
-    if(p.lineType!=='delegate')await assertWorkforceEmploymentTx(tx,ctx,p.subordinateEmploymentId,'maintain');
+    if(p.lineType!=='delegate'){
+      await assertWorkforceEmploymentTx(tx,ctx,p.subordinateEmploymentId,'maintain');
+      await lockPayrollInputsTx(tx,{employmentIds:[p.subordinateEmploymentId]});
+    }
     if (p.subordinateEmploymentId === p.managerEmploymentId) throw new ReportingCycleError();
     // Window guard (ADR-0052 Step 4 rule #3): valid_to may not precede valid_from. Applies to every
     // line type but is the load-bearing guard for a delegation window.
@@ -1441,6 +1454,7 @@ async function writeStructuralReportingLineTx(tx:Tx,ctx:SessionContext,p:NativeR
       subjectEmploymentId: p.subordinateEmploymentId,
       payload: { ...p },
     },{returnId:reviewed});
+    await markWorkforcePayrollInputsChangedTx(tx,ctx,{employmentId:p.subordinateEmploymentId,from:p.validFrom});
     return { reportingLineId: row.id,setEventId };
 }
 
@@ -2123,6 +2137,7 @@ export async function setEmploymentGrade(
     // A movement holding the exclusive lock keeps the exclusive configuration lock it always took.
     await lockAccessConfigurationTx(tx, ctx.tenantId);
     await lockEmploymentLeaveDependenciesTx(tx, ctx.tenantId, [p.employmentId], { configuration: true });
+    await lockPayrollInputsTx(tx,{employmentIds:[p.employmentId]});
     const [before] = await tx
       .select({ gradeId: employment.gradeId })
       .from(employment)
@@ -2142,6 +2157,13 @@ export async function setEmploymentGrade(
       subjectEmploymentId: p.employmentId,
       payload: { before: before.gradeId, after: p.gradeId, ...(p.movement ? { movement: p.movement } : {}) },
     });
+    if(p.movement)await markWorkforcePayrollInputsChangedTx(tx,ctx,{employmentId:p.employmentId,from:p.movement.effectiveDate??todayInKualaLumpur()});
+    else {
+      // Approved Rewards and other independent grade owners retain their existing authority.
+      // Their canonical write uses the financial owner's ordinary RLS, rather than borrowing Workforce.
+      const {markRunsAffectedByEmploymentChangeTx}=await import('../packs/payroll/service');
+      await markRunsAffectedByEmploymentChangeTx(tx,ctx,{employmentIds:[p.employmentId],from:todayInKualaLumpur(),category:'employment_information'});
+    }
     return { id: p.employmentId, changed: true as const };
   };
   return outerTx ? run(outerTx) : withTenant(ctx, run);
@@ -2230,6 +2252,7 @@ export async function setEmploymentAssignment(
     }
     await assertWorkforceEmploymentTx(tx,ctx,p.employmentId,'maintain');
     if(p.companyId)await assertWorkforceCompanyTx(tx,ctx,p.companyId,'maintain');
+    await lockPayrollInputsTx(tx,{employmentIds:[p.employmentId],companyIds:p.companyId?[p.companyId]:[]});
     const [cur] = await tx
       .select()
       .from(assignment)
@@ -2435,6 +2458,7 @@ export async function setEmploymentAssignment(
       },
     });
     await recordEmploymentOrganisationTagsTx(tx,ctx,{employmentId:p.employmentId,companyId:nextCompanyId,asOf:p.effectiveDate,trigger:p.movement?'movement':'assignment'});
+    await markWorkforcePayrollInputsChangedTx(tx,ctx,{employmentId:p.employmentId,from:p.effectiveDate});
     return { assignmentId: next.id, changed: true as const };
   };
   return outerTx ? run(outerTx) : withTenant(ctx, run);
@@ -2474,14 +2498,6 @@ export async function setEmploymentAssignment(
  * is validated directly (labelUsableByCompany has no 'location' kind): an HR-supplied location must belong to
  * the destination; a stored old-company location is cleared.
  */
-/** Serialize the existing person statutory owner before employment changes can hold row locks.
- * Employment identity is immutable; tenant RLS still scopes both reads. Absent profiles need no lock.
- * Core/org already owns this table edge; no country data is copied into employment history. */
-export async function lockEmploymentStatutoryOwnerTx(tx:Tx,employmentId:string){
-  const [identity]=await tx.select({personId:employment.personId}).from(employment).where(eq(employment.id,employmentId)).limit(1);
-  if(identity)await tx.select({id:employeeStatutoryMy.id}).from(employeeStatutoryMy).where(eq(employeeStatutoryMy.personId,identity.personId)).limit(1).for('update');
-}
-
 export async function changeEmploymentCompany(
   ctx: SessionContext,
   p: {
@@ -3072,6 +3088,17 @@ const EMPLOYMENT_INFO_UNIT_FIELDS = [
   'noticeAfterConfirmationUnit',
 ] as const;
 
+/** Shared catalog adjudication for current information and original-hire assertions. */
+export async function assertEmploymentInformationLabelsTx(tx:Tx,changes:Record<string,unknown>,before:Record<string,unknown>,companyId:string|null){
+ for(const field of EMPLOYMENT_INFO_TEXT_FIELDS){
+  if(!(field in changes))continue;
+  const category=EMPLOYMENT_INFO_FIELD_CATEGORY[field];if(!category)continue;
+  const next=changes[field],prior=before[field];
+  if(next!==null&&typeof next!=='string')throw new Error('An invalid employment information label was supplied.');
+  await assertProfileValueAllowed(tx,category,next as string|null,typeof prior==='string'?prior:null,companyId);
+ }
+}
+
 export { EMPLOYMENT_PERIOD_UNITS } from '../lib/employment-period';
 
 const EMPLOYMENT_INFO_DATE_FIELDS = [
@@ -3387,18 +3414,7 @@ export async function setEmploymentInfo(
     // 1001ff61 — the org/job fields are now catalog-backed dropdowns. Reject a value that is not an ACTIVE
     // profile_option for its category (empty-catalog tenants keep free-text; the unchanged legacy value is
     // always tolerated). Runs in this tx so it shares the RLS session; a violation aborts before the write.
-    for (const f of EMPLOYMENT_INFO_TEXT_FIELDS) {
-      if (!(f in set)) continue;
-      const category = EMPLOYMENT_INFO_FIELD_CATEGORY[f];
-      if (!category) continue;
-      await assertProfileValueAllowed(
-        tx,
-        category,
-        set[f] as string | null,
-        (before as Record<string, string | null>)[f],
-        labelEmployment?.companyId??null,
-      );
-    }
+    await assertEmploymentInformationLabelsTx(tx,set,before as unknown as Record<string,unknown>,labelEmployment?.companyId??null);
 
     // 89ea527b — a Group Join Date Correction on an employment whose two dates are still SYNCHRONISED carries
     // the Join Date with it. The dates start identical (hireEmployee seeds joinDate = hiredOn) and only
@@ -3422,49 +3438,10 @@ export async function setEmploymentInfo(
     const join = 'joinDate' in set ? (set.joinDate as string | null) : before.joinDate;
     const confirmation = 'confirmationDate' in set ? (set.confirmationDate as string | null) : before.confirmationDate;
     const resignation = 'resignationDate' in set ? (set.resignationDate as string | null) : before.resignationDate;
-    // The current-company Join Date can never precede the Group Join Date (you cannot join a company inside the
-    // group before joining the group). Resolves against the RESULTING values so a save of either date is checked.
-    if (join && hire && join < hire) {
-      throw new Error('Join date cannot be earlier than the group join date.');
-    }
-    if (confirmation && hire && confirmation < hire) {
-      throw new Error('Confirmation date cannot be earlier than the hire date.');
-    }
-    if (resignation && hire && resignation < hire) {
-      throw new Error('Resignation date cannot be earlier than the hire date.');
-    }
-
-    // 955c7de4 — lifecycle date-ordering, all resolved against the RESULTING values (incoming override →
-    // existing), so a save of any single date is still validated against the stored siblings.
-    const extendedConfirmation =
-      'extendedConfirmationDate' in set
-        ? (set.extendedConfirmationDate as string | null)
-        : before.extendedConfirmationDate;
-    const tender =
-      'tenderResignationDate' in set ? (set.tenderResignationDate as string | null) : before.tenderResignationDate;
-    const lastWorking = 'lastWorkingDate' in set ? (set.lastWorkingDate as string | null) : before.lastWorkingDate;
-
-    // An extended confirmation (after a probation extension) can never precede the normal confirmation date.
-    if (extendedConfirmation && confirmation && extendedConfirmation < confirmation) {
-      throw new Error('Extended confirmation date cannot be earlier than the confirmation date.');
-    }
-    // Resignation lifecycle ordering: tender ≤ resignation ≤ last working (only pairs that are both present).
-    if (tender && resignation && tender > resignation) {
-      throw new Error('Tender resignation date cannot be later than the resignation date.');
-    }
-    if (resignation && lastWorking && resignation > lastWorking) {
-      throw new Error('Resignation date cannot be later than the last working date.');
-    }
-    if (tender && lastWorking && tender > lastWorking) {
-      throw new Error('Tender resignation date cannot be later than the last working date.');
-    }
-    // Tender/last-working, like the other lifecycle dates, cannot precede the group join date.
-    if (tender && hire && tender < hire) {
-      throw new Error('Tender resignation date cannot be earlier than the hire date.');
-    }
-    if (lastWorking && hire && lastWorking < hire) {
-      throw new Error('Last working date cannot be earlier than the hire date.');
-    }
+    const extendedConfirmation='extendedConfirmationDate' in set?(set.extendedConfirmationDate as string|null):before.extendedConfirmationDate;
+    const tender='tenderResignationDate' in set?(set.tenderResignationDate as string|null):before.tenderResignationDate;
+    const lastWorking='lastWorkingDate' in set?(set.lastWorkingDate as string|null):before.lastWorkingDate;
+    assertEmploymentInformationDateOrder({hire,join,confirmation,extendedConfirmation,tender,resignation,lastWorking});
 
     // 8590615a — the contract period, resolved against the RESULTING values like every check above.
     const contractStart =
@@ -3592,7 +3569,7 @@ export async function setEmploymentInfo(
       const closed = [...new Set((await Promise.all(crossing.map(([from, to]) => payslipPeriodsBetweenTx(tx, p.employmentId, from, to, 'closed')))).flat())].sort();
       if (closed.length) {
         if (!hasClosedPayrollCorrectionAuthorityTx(tx, p.employmentId)) throw new MovementClosedPayrollAcknowledgementError(closed);
-        try { await tx.execute(sql`select app.preserve_information_payroll(${p.employmentId}::uuid)`); }
+        try { await preserveMovementPayrollTx(tx,p.employmentId,message=>new Error(message)); }
         catch (error) { const refusal = payrollPreservationRefusal(error); if (refusal) throw new Error(refusal); throw error; }
       }
     }
@@ -3777,7 +3754,7 @@ export async function prepareEmploymentPaymentMethodTx(tx:Tx,ctx:SessionContext,
  if(!(ctx.roles??[]).some(role=>role==='hr_admin'||role==='super_admin'))throw Error('Payment method unavailable');
  await tx.execute(sql`select app.access_configuration_write_lock()`);await lockProfileValueWritesTx(tx,ctx.tenantId);
  await assertWorkforceEmploymentTx(tx,ctx,p.employmentId,'maintain');
- const [row]=await tx.select({employmentId:employment.id,personId:employment.personId,companyId:employment.companyId,paymentMethod:employment.paymentMethod,terminatedOn:employment.terminatedOn,revision:sql<string>`xmin::text`}).from(employment).where(and(eq(employment.id,p.employmentId),eq(employment.tenantId,ctx.tenantId))).for('update');
+ const [row]=await tx.select({employmentId:employment.id,personId:employment.personId,companyId:employment.companyId,paymentMethod:employmentPaymentMethodOnSql(sql`${employment.id}`),terminatedOn:employment.terminatedOn,revision:sql<string>`xmin::text`}).from(employment).where(and(eq(employment.id,p.employmentId),eq(employment.tenantId,ctx.tenantId))).for('update');
  if(!row||row.terminatedOn)throw Error('Payment method unavailable');
  const [scope]=await tx.execute<{allowed:boolean;country:string}>(sql`select app.is_admin_for(c.id) as allowed,c.country from company c where c.id=${row.companyId}::uuid and c.tenant_id=${ctx.tenantId}::uuid for share`);
  if(scope?.allowed!==true||scope.country!=='MY')throw Error('Payment method unavailable');
@@ -3802,7 +3779,7 @@ export async function prepareEmploymentPaymentMethodTx(tx:Tx,ctx:SessionContext,
  */
 export async function setEmploymentPaymentMethod(
   ctx: SessionContext,
-  p: { employmentId: string; paymentMethod: PaymentMethod | null },
+  p: { employmentId: string; paymentMethod: PaymentMethod | null; effectiveDate?:string; movement?:MovementTag; reason?:string|null },
   outerTx?:Tx,
 ) {
   const roles = ctx.roles ?? [];
@@ -3814,14 +3791,23 @@ export async function setEmploymentPaymentMethod(
     throw new Error('Payment method is invalid.');
   }
   const run=async(tx:Tx)=>{
+    await assertWorkforceEmploymentTx(tx,ctx,p.employmentId,'maintain');
+    await lockLeaveDependencyConfigurationTx(tx,ctx.tenantId);
+    await lockPayrollInputsTx(tx,{employmentIds:[p.employmentId]});
+    await lockEmploymentStatutoryOwnerTx(tx,p.employmentId);
     const [before] = await tx
-      .select({ paymentMethod: employment.paymentMethod, personId: employment.personId })
+      .select({ paymentMethod: employment.paymentMethod, personId: employment.personId, hiredOn:employment.hiredOn })
       .from(employment)
       .where(eq(employment.id, p.employmentId))
-      .limit(1);
+      .limit(1).for('update');
     if (!before) throw new Error('Employment not found');
-    // Idempotent — no write, no event, when nothing moved.
-    if ((before.paymentMethod ?? null) === (next ?? null)) {
+    const today=todayInKualaLumpur();
+    const effectiveDate=p.effectiveDate??(before.hiredOn>today?before.hiredOn:today);
+    if(!isCalendarDate(effectiveDate)||effectiveDate<before.hiredOn)throw new Error('Payment method effective date must be on or after Group Join Date.');
+    const previous=await employmentPaymentMethodOnTx(tx,p.employmentId,effectiveDate);
+    const [previousRevision]=await tx.execute<{id:string;effective_on:string}>(sql`select id,effective_on::text from employment_payment_method_history where tenant_id=${ctx.tenantId}::uuid and employment_id=${p.employmentId}::uuid and superseded_at is null and effective_on<=${effectiveDate}::date order by effective_on desc limit 1`);
+    // A dated no-op emits no revision or ledger event.
+    if (previous === (next ?? null)) {
       return { id: p.employmentId, paymentMethod: next, changed: false as const };
     }
 
@@ -3829,7 +3815,11 @@ export async function setEmploymentPaymentMethod(
       throw new MissingBankForTransferError();
     }
 
-    await tx.update(employment).set({ paymentMethod: next }).where(eq(employment.id, p.employmentId));
+    await preserveMovementPayrollTx(tx,p.employmentId,message=>new Error(message));
+    await tx.execute(sql`update employment_payment_method_history set superseded_at=now() where tenant_id=${ctx.tenantId}::uuid and employment_id=${p.employmentId}::uuid and effective_on=${effectiveDate}::date and superseded_at is null`);
+    const [revision]=await tx.execute<{id:string}>(sql`insert into employment_payment_method_history(tenant_id,employment_id,effective_on,payment_method,recorded_by,source) values(${ctx.tenantId}::uuid,${p.employmentId}::uuid,${effectiveDate}::date,${next},${ctx.userId??null}::uuid,${p.movement?'movement':'maintenance'}) returning id`);
+    const projected=await employmentPaymentMethodOnTx(tx,p.employmentId,today);
+    await tx.update(employment).set({ paymentMethod: projected }).where(eq(employment.id,p.employmentId));
     const eventId=await appendEvent(tx, {
       tenantId: ctx.tenantId,
       aggregateType: 'employment',
@@ -3839,11 +3829,36 @@ export async function setEmploymentPaymentMethod(
       subjectEmploymentId: p.employmentId,
       // How someone is paid is a disbursement-routing decision an auditor must be able to reconstruct —
       // same rationale as the bank/custom-holder before/after on employee.bank.updated.
-      payload: { before: before.paymentMethod ?? null, after: next },
+      payload: { before:previous, after:next, effectiveDate, revisionId:revision.id, previousRevisionId:previousRevision?.id??null, reason:p.reason?.trim()||null, ...(p.movement?{movement:p.movement}:{}) },
     },{returnId:true});
     return { id: p.employmentId, paymentMethod: next, changed: true as const, eventId };
   };
   return outerTx?run(outerTx):withTenant(ctx,run);
+}
+
+/** Canonical compensating deletion of a Movement method decision. Removing its live revision allows
+ * the actual dated predecessor (including a corrected hire method) to govern again. Writing a new
+ * same-date copy of the old value would invent a boundary and block subsequent inherited corrections. */
+export async function reverseEmploymentPaymentMethodTx(tx:Tx,ctx:SessionContext,p:{employmentId:string;revisionId:string;previousRevisionId:string|null;eventId:string;reason:string|null}){
+ if(!hasClosedPayrollCorrectionAuthorityTx(tx,p.employmentId))throw new Error('Payment-method reversal requires the Movement correction owner.');
+ await assertWorkforceEmploymentTx(tx,ctx,p.employmentId,'maintain');
+ await lockLeaveDependencyConfigurationTx(tx,ctx.tenantId);
+ await lockPayrollInputsTx(tx,{employmentIds:[p.employmentId]});
+ await lockEmploymentStatutoryOwnerTx(tx,p.employmentId);
+ const [subject]=await tx.select({personId:employment.personId}).from(employment).where(eq(employment.id,p.employmentId)).for('update');
+ if(!subject)throw new Error('Employment not found');
+ const [source]=await tx.execute<{id:string;effective_on:string;payment_method:PaymentMethod|null;superseded_at:Date|null}>(sql`select id,effective_on::text,payment_method,superseded_at from employment_payment_method_history where id=${p.revisionId}::uuid and tenant_id=${ctx.tenantId}::uuid and employment_id=${p.employmentId}::uuid for update`);
+ if(!source||source.superseded_at)throw new Error('A later payment-method decision must be reviewed before this event can be changed.');
+ const [prior]=p.previousRevisionId?await tx.execute<{id:string;effective_on:string;payment_method:PaymentMethod|null}>(sql`select id,effective_on::text,payment_method from employment_payment_method_history where id=${p.previousRevisionId}::uuid and tenant_id=${ctx.tenantId}::uuid and employment_id=${p.employmentId}::uuid for update`):[];
+ if(p.previousRevisionId&&!prior)throw new Error('The previous payment-method decision cannot be verified.');
+ await preserveMovementPayrollTx(tx,p.employmentId,message=>new Error(message));
+ await tx.execute(sql`update employment_payment_method_history set superseded_at=now() where id=${source.id}::uuid`);
+ if(prior?.effective_on===source.effective_on)await tx.execute(sql`update employment_payment_method_history set superseded_at=null where id=${prior.id}::uuid`);
+ const restored=await employmentPaymentMethodOnTx(tx,p.employmentId,source.effective_on);
+ if(restored==='bank_transfer'&&!(await paymentMethodBankReadinessTx(tx,ctx,subject.personId)).ready)throw new MissingBankForTransferError();
+ const projected=await employmentPaymentMethodOnTx(tx,p.employmentId,todayInKualaLumpur());
+ await tx.update(employment).set({paymentMethod:projected}).where(eq(employment.id,p.employmentId));
+ await appendEvent(tx,{tenantId:ctx.tenantId,aggregateType:'employment',aggregateId:p.employmentId,eventType:'employment.payment-method.reverted',actor:actorOf(ctx),subjectEmploymentId:p.employmentId,payload:{before:source.payment_method,after:restored,effectiveDate:source.effective_on,revisionId:source.id,restoredRevisionId:prior?.effective_on===source.effective_on?prior.id:null,reversalOf:p.eventId,reason:p.reason}});
 }
 
 /**
@@ -3851,6 +3866,7 @@ export async function setEmploymentPaymentMethod(
  * remuneration runs for PCB when they hold concurrent employments across the group. The paymaster must be
  * one of the person's own ACTIVE employments. Pass `null` to clear. App-validated soft reference (no DB FK).
  */
+
 export async function setDesignatedPaymaster(
   ctx: SessionContext,
   p: { personId: string; designatedPaymasterEmploymentId: string | null },

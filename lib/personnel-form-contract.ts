@@ -90,17 +90,22 @@ export function personnelOwnedChoices<T>(id:string,owner:string,choices:readonly
 }
 
 /** A dedicated workflow may submit the same fact under its own explicitly declared action name. */
-export function personnelWorkflowControl(id:string,workflow:'movement'|'hireCorrection'|'companyCorrection'|'delegationEnd'|'informationCorrection',mode:PersonnelFormMode='edit',context:PersonnelFormContext={}) {
+type PersonnelWorkflow='movement'|'hireCorrection'|'companyCorrection'|'delegationEnd'|'informationCorrection'|'hireInformation'|'salaryRecording';
+type PersonnelControlProps=ReturnType<typeof personnelControl>;
+export function personnelWorkflowControl(id:string,workflow:PersonnelWorkflow,mode:'draft',context?:PersonnelFormContext):Omit<PersonnelControlProps,'name'>;
+export function personnelWorkflowControl(id:string,workflow:PersonnelWorkflow,mode?:Exclude<PersonnelFormMode,'draft'>,context?:PersonnelFormContext):PersonnelControlProps&{name:string};
+export function personnelWorkflowControl(id:string,workflow:PersonnelWorkflow,mode:PersonnelFormMode,context?:PersonnelFormContext):PersonnelControlProps;
+export function personnelWorkflowControl(id:string,workflow:PersonnelWorkflow,mode:PersonnelFormMode='edit',context:PersonnelFormContext={}) {
   const name=personnelFormField(id).form!.workflowNames?.[workflow];
   if(!name)throw new Error(`Personnel workflow binding is missing: ${workflow}:${id}`);
-  return {...personnelControl(id,mode,context),name};
+  return {...personnelControl(id,mode,context),...(mode==='draft'?{}:{name})};
 }
-export function personnelWorkflowInput(id:string,workflow:'movement'|'hireCorrection'|'companyCorrection'|'delegationEnd'|'informationCorrection',mode:PersonnelFormMode='edit',context:PersonnelFormContext={}) {
+export function personnelWorkflowInput(id:string,workflow:'movement'|'hireCorrection'|'companyCorrection'|'delegationEnd'|'informationCorrection'|'hireInformation'|'salaryRecording',mode:PersonnelFormMode='edit',context:PersonnelFormContext={}) {
   const widget=personnelFormField(id).form!.workflowWidgets?.[workflow]??personnelFormWidget(id);
   return {...personnelInputPresentation(id,widget,mode,context),...personnelWorkflowControl(id,workflow,mode,context)};
 }
 
-export function personnelWorkflowCarry(id:string,workflow:'movement'|'hireCorrection'|'companyCorrection'|'delegationEnd'|'informationCorrection') {
+export function personnelWorkflowCarry(id:string,workflow:'movement'|'hireCorrection'|'companyCorrection'|'delegationEnd'|'informationCorrection'|'hireInformation'|'salaryRecording') {
   return {...personnelWorkflowControl(id,workflow),type:'hidden',required:false};
 }
 

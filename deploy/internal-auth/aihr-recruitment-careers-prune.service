@@ -1,0 +1,19 @@
+[Unit]
+Description=Prune expired AI HR careers page submission records (client hashes older than two days)
+After=network-online.target
+Wants=network-online.target
+ConditionPathExists=/etc/aihr/auth-maintenance.pg_service.conf
+
+[Service]
+Type=oneshot
+User=root
+Environment=PGSERVICEFILE=/etc/aihr/auth-maintenance.pg_service.conf
+ExecStart=/usr/bin/psql service=aihr_auth_maintenance -v ON_ERROR_STOP=1 -c "select app.recruitment_careers_prune()"
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+PrivateDevices=true
+RestrictSUIDSGID=true
+LockPersonality=true
+UMask=0077

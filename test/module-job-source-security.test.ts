@@ -43,7 +43,9 @@ describe('actual canonical module-job carrier and independent authorization cont
   // timestamp or UUID in the view happened to contain the same four digits.
   expect(text).not.toMatch(/(?<![0-9a-fA-F])9999(?![0-9a-fA-F])/);
   // Rewards/schema/case metadata are permitted administrative scopes, not an invented own-record claim.
-  if(!['rewards','system_explorer','system_testing'].includes(module))expect(text).not.toContain('PRIVATE_OTHER_COMPANY_SENTINEL');
+  // Recruitment counts list every company the caller administers recruitment for (this caller is a group HR
+  // admin); company scoping and candidate absence are proven in test/recruitment-service.test.ts.
+  if(!['rewards','system_explorer','system_testing','recruitment'].includes(module))expect(text).not.toContain('PRIVATE_OTHER_COMPANY_SENTINEL');
   const [runs]=await owner.db.execute<{n:number}>(sql`select count(*)::int as n from public.ai_model_run`);expect(runs.n).toBe(0);
  });
  it.each(AGENT_MODULE_CODES)('%s enforces current principal and its canonical core or optional module policy',async module=>{

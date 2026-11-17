@@ -71,6 +71,7 @@ export function Sidebar({
   letterDestinations,
   rewardDestinations,
   canAdministerOnehr,
+  canAdministerRecruitment,
   performanceAdminHref,
   approvalCount:baseApprovalCount = 0,
   taskCount:baseTaskCount = 0,
@@ -88,6 +89,7 @@ export function Sidebar({
   assistantAccess,
   feedbackAccess,
   privateCaseHandler,
+  referralPortal,
   canConfigurePeopleGeneral = false,
   defaultCollapsed,
   viewerName = null,
@@ -191,11 +193,10 @@ export function Sidebar({
     canPreviewIdentityEmail, canApprove, hasAssignedAttendanceApproval, hasAssignedApproval,
     canReviewProfileChanges, canAdministerAi, canAdministerSecurity, canConfigureAccess,
     canProvisionUsers, canConfigureAiProvider, canAccessTeam, letterDestinations,
-    rewardDestinations, canAdministerOnehr, performanceAdminHref, probationAccess,
-    contractStaffAccess,
-  offboardingPostingsAccess, onboardingAccess, onboardingV9Access, onboardingV9Navigation,
+    rewardDestinations, canAdministerOnehr, canAdministerRecruitment, performanceAdminHref, probationAccess,
+    contractStaffAccess, offboardingPostingsAccess, onboardingAccess, onboardingV9Access, onboardingV9Navigation,
     onboardingMaster, onboardingRequisitionsAccess, enabledModules, assistantAccess,
-    feedbackAccess, privateCaseHandler,
+    feedbackAccess, privateCaseHandler, referralPortal,
   });
   const navigation = placeNavigation(destinations);
   const availableWorkspaces = (['ops','strata'] as const).filter(workspace =>

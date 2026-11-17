@@ -101,7 +101,7 @@ describe('actual independent prompt-to-plan evaluation custody',()=>{
  // Two complete paired evaluations perform hundreds of real database writes.
  },60_000);
  it('refuses equal perfect baseline/candidate plans after two authentic independent paired evaluations, regardless of zero reported tokens',async()=>{
-  const a=await candidate();await transport(a.author);for(const ctx of [a.reviewer,a.second]){const report=await completeEvaluation(ctx,{candidateId:a.candidateId,consent:consent()});expect(report.comparison).toMatchObject({qualityImproved:false,baseline:{correct:144,tokens:0,costCredits:null},candidate:{correct:144,tokens:0,costCredits:null}});}
+  const a=await candidate();await transport(a.author);for(const ctx of [a.reviewer,a.second]){const report=await completeEvaluation(ctx,{candidateId:a.candidateId,consent:consent()});expect(report.comparison).toMatchObject({qualityImproved:false,baseline:{correct:150,tokens:0,costCredits:null},candidate:{correct:150,tokens:0,costCredits:null}});}
   await expect(promotePromptAgentCandidate(a.promoter,{candidateId:a.candidateId,maxJobs:1,hours:1})).rejects.toThrow();const[rows]=await owner.db.execute<{n:number}>(sql`select count(*)::int as n from public.ai_agent_promotion`);expect(rows.n).toBe(0);
   // Two paired evaluations perform the same bounded database work as the neighboring promotion case.
  },60_000);

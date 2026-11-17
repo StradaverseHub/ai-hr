@@ -4,6 +4,7 @@ import { z } from 'zod';
 import { EmailSettingsError } from '../identity/email-model';
 import { xlsxEmailAttachment, type XlsxEmailAttachment } from '../email-attachment';
 import {prepareSmtpRelay} from './smtp-credentials';
+import { canonicalEmailAddress } from '../email-address';
 import type {EmailRelay} from '../identity/email-relay';
 import { validManagedEmailSenderName } from '../managed-email-policy';
 import { managedEmailAttachment, MANAGED_EMAIL_ATTACHMENT_MAX_BYTES, MANAGED_EMAIL_ATTACHMENTS_MAX_COUNT, type ManagedEmailAttachment } from '../managed-email-attachment';
@@ -14,20 +15,25 @@ export type Mail=TextMail&(
   | {to:string;attachment?:undefined;messageId?:string;attachments?:never;cc?:never;senderName?:never}
   | {to:string;attachment:XlsxEmailAttachment;messageId:string;attachments?:never;cc?:never;senderName?:never}
   /** Managed delivery: one message to everyone in To (at most eight) and CC together. */
-  | {to:string|string[];attachment?:never;attachments:ManagedEmailAttachment[];cc?:string[];senderName?:string;messageId:string}
+  | {to:string|string[];attachment?:never;attachments:ManagedEmailAttachment[];cc?:string[];senderName?:string;messageId:string;
+     /** Optional per-message reply-to (recruitment candidate e-mail, slice 19); absent, the relay's reply-to as before. */
+     replyTo?:string}
 );
-export type MailTransport=(relay:Relay,message:Mail)=>Promise<void>;
+/** Optional observer for a caller that must know whether a failure happened before any SMTP connection was attempted (validation and
+ * relay preparation) — nothing can have been sent then. Existing callers pass nothing and behave exactly as before. */
+export type MailObserver={connecting?:()=>void};
+export type MailTransport=(relay:Relay,message:Mail,observer?:MailObserver)=>Promise<void>;
 
 // The delivery owner constructs this deterministically from its durable occurrence. Validate safe
 // header syntax here; the transport never invents or replaces a provided delivery identity.
 const messageId=z.string().max(320).regex(/^<[A-Za-z0-9][A-Za-z0-9._-]{0,119}@[A-Za-z0-9.-]{1,253}>$/)
   .refine(value=>value.slice(value.indexOf('@')+1,-1).split('.').every(label=>
     label.length<=63&&/^[A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?$/.test(label)));
-const canonicalAddress=z.email().max(320).regex(/^[\x21-\x7e]+$/);
+const canonicalAddress=canonicalEmailAddress;
 const message=z.object({to:z.union([z.string(),z.array(z.string()).min(1).max(8)]),subject:z.string(),text:z.string(),html:z.string().max(1000000).optional(),
   messageId:messageId.optional(),attachment:xlsxEmailAttachment.optional(),
   attachments:z.array(managedEmailAttachment).max(MANAGED_EMAIL_ATTACHMENTS_MAX_COUNT).optional(),
-  cc:z.array(canonicalAddress).max(1004).optional(),senderName:z.string().refine(value=>validManagedEmailSenderName(value)===value,'Invalid sender name.').optional(),
+  cc:z.array(canonicalAddress).max(1004).optional(),senderName:z.string().refine(value=>validManagedEmailSenderName(value)===value,'Invalid sender name.').optional(),replyTo:canonicalAddress.optional(),
 }).strict().superRefine((mail,ctx)=>{
   if(Array.isArray(mail.to)&&mail.attachments===undefined)ctx.addIssue({code:'custom',message:'Several To recipients require managed delivery.'});
   if(mail.attachment&&(!mail.messageId||typeof mail.to!=='string'||!z.email().max(320).regex(/^[\x21-\x7e]+$/).safeParse(mail.to).success))
@@ -36,10 +42,10 @@ const message=z.object({to:z.union([z.string(),z.array(z.string()).min(1).max(8)
     const to=Array.isArray(mail.to)?mail.to:[mail.to],addresses=[...to,...mail.cc??[]], unique=new Set(addresses.map(address=>address.toLowerCase()));
     if(mail.attachment||!mail.messageId||to.some(address=>!canonicalAddress.safeParse(address).success)||unique.size!==addresses.length||mail.attachments.reduce((sum,attachment)=>sum+attachment.bytes.byteLength,0)>MANAGED_EMAIL_ATTACHMENT_MAX_BYTES)
       ctx.addIssue({code:'custom',message:'Managed delivery requires an identity, unique canonical recipients and bounded attachments.'});
-  }else if(mail.cc!==undefined||mail.senderName!==undefined)ctx.addIssue({code:'custom',message:'CC and sender names require managed delivery.'});
+  }else if(mail.cc!==undefined||mail.senderName!==undefined||mail.replyTo!==undefined)ctx.addIssue({code:'custom',message:'CC, sender names and reply-to require managed delivery.'});
 });
 
-export const sendSmtp:MailTransport=async(relay,input)=>{
+export const sendSmtp:MailTransport=async(relay,input,observer)=>{
   const parsed=message.safeParse(input);
   if(!parsed.success)throw new EmailSettingsError('invalid');
   const mail=parsed.data,delivery=await prepareSmtpRelay(relay),c=delivery.config;
@@ -51,8 +57,9 @@ export const sendSmtp:MailTransport=async(relay,input)=>{
     tls:{rejectUnauthorized:true,minVersion:'TLSv1.2'},connectionTimeout:10_000,greetingTimeout:8_000,socketTimeout:15_000,
     disableFileAccess:true,disableUrlAccess:true});
   try{
+    observer?.connecting?.();
     const result=await transport.sendMail({from:{name:mail.senderName??c.fromName,address:c.from},to:mail.to,...(mail.cc?.length?{cc:mail.cc}:{}),
-      replyTo:c.replyTo||undefined,envelope:{from:c.from,to:recipients},subject:mail.subject,text:mail.text,...(mail.html?{html:mail.html}:{}),
+      replyTo:mail.replyTo??(c.replyTo||undefined),envelope:{from:c.from,to:recipients},subject:mail.subject,text:mail.text,...(mail.html?{html:mail.html}:{}),
       ...(mail.messageId?{messageId:mail.messageId}:{}),
       ...(attachments.length?{attachments:attachments.map(attachment=>({filename:attachment.filename,
         content:Buffer.isBuffer(attachment.bytes)?attachment.bytes:Buffer.from(attachment.bytes),

@@ -79,13 +79,18 @@ describe('884ea42d one resignation information owner',()=>{
   const corrected=await resignation(employmentId);expect((await row(employmentId)).resignationDate).toBe(day(-9));const history=await movementHistory(ctx,employmentId);expect(history.find(r=>r.id===original.id)?.reversed?.corrected).toBe(true);expect(history.find(r=>r.id===original.id)?.recordedResignation?.resignationDate).toEqual({known:true,value:day(-10)});expect(history.find(r=>r.id===corrected.id)?.recordedResignation?.resignationDate).toEqual({known:true,value:day(-9)});
   await reverseMovementEvent(ctx,{employmentId,movementId:corrected.id,reason:'Restore prior historical record'});expect(dates(await row(employmentId))).toEqual(legacy);expect((await resignationInformation(ctx,employmentId)).resignationDate.source.kind).toBe('legacy');
  });
- it('blocks a closed-payroll create, correction and rollback while preserving issued financial values',async()=>{
+ it('permits closed-payroll correction, rollback and create while retaining every issued financial value',async()=>{
   const {employmentId}=await hire();await createMovementEvent(ctx,input(employmentId));const history=await resignation(employmentId);
-  await closePayroll(employmentId,today.slice(0,7));const before=dates(await row(employmentId));
-  await expect(reverseMovementEvent(ctx,{employmentId,movementId:history.id,reason:'Forbidden financial change'})).rejects.toThrow(/closed payroll/);
-  await expect(editMovementEvent(ctx,{...input(employmentId),movementId:history.id,endDate:day(-3),reason:'Forbidden financial correction'})).rejects.toThrow(/closed payroll/);
-  await expect(createMovementEvent(ctx,{...input(employmentId),resignationEffectiveDate:day(-9)})).rejects.toThrow(/closed payroll/);
-  expect(dates(await row(employmentId))).toEqual(before);const slips=await owner.db.select().from(schema.payslip).where(eq(schema.payslip.employmentId,employmentId));expect(slips[0].netPay).toBe('4000.00');
+  await closePayroll(employmentId,today.slice(0,7));
+  const slips=await owner.db.select().from(schema.payslip).where(eq(schema.payslip.employmentId,employmentId));
+  const batches=await owner.db.select().from(schema.payrollBatch).orderBy(schema.payrollBatch.id);
+  await editMovementEvent(ctx,{...input(employmentId),movementId:history.id,endDate:day(-3),reason:'Correct fictional exit information'});
+  const corrected=await resignation(employmentId);expect((await row(employmentId)).lastWorkingDate).toBe(day(-3));
+  await reverseMovementEvent(ctx,{employmentId,movementId:corrected.id,reason:'Remove fictional incorrect exit'});
+  await createMovementEvent(ctx,{...input(employmentId),resignationEffectiveDate:day(-9)});
+  expect((await row(employmentId)).resignationDate).toBe(day(-9));
+  expect(await owner.db.select().from(schema.payslip).where(eq(schema.payslip.employmentId,employmentId))).toEqual(slips);
+  expect(await owner.db.select().from(schema.payrollBatch).orderBy(schema.payrollBatch.id)).toEqual(batches);
  });
  it('a tender-only Movement remains display metadata and can be corrected without repricing closed payroll',async()=>{
   const {employmentId}=await hire();await closePayroll(employmentId,today.slice(0,7));

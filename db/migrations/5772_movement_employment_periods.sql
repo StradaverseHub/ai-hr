@@ -1,0 +1,8 @@
+-- Board 8cff7fef, Stage 1: existing employment periods in Movement field controls and supporting documents.
+-- No employment, payroll, grant, policy or ledger rows change. Existing fields remain admitted.
+ALTER TABLE "movement_type_field_rule" DROP CONSTRAINT "movement_type_field_rule_field_check";--> statement-breakpoint
+ALTER TABLE "movement_type_field_rule" ADD CONSTRAINT "movement_type_field_rule_field_check" CHECK ("field" IN (
+  'companyId','businessUnitId','departmentId','positionId','gradeId','employmentType','locationId','managerEmploymentId','basicSalary','currency','payMode','paymentTerm','orgDivision','employmentCategory','orgRegion','orgBranch','orgTeam','orgSection','orgLine','orgBase','contractEndDate','internshipEndDate','confirmationDate','probationValue','probationUnit','extendedProbationValue','extendedProbationUnit','noticeBeforeConfirmationValue','noticeBeforeConfirmationUnit','noticeAfterConfirmationValue','noticeAfterConfirmationUnit'));--> statement-breakpoint
+ALTER TABLE "movement_attachment" DROP CONSTRAINT "movement_attachment_field_check";--> statement-breakpoint
+ALTER TABLE "movement_attachment" ADD CONSTRAINT "movement_attachment_field_check" CHECK ("field" IN (
+  'companyId','businessUnitId','departmentId','positionId','gradeId','employmentType','locationId','managerEmploymentId','basicSalary','currency','payMode','paymentTerm','orgDivision','employmentCategory','orgRegion','orgBranch','orgTeam','orgSection','orgLine','orgBase','contractEndDate','internshipEndDate','confirmationDate','probationValue','probationUnit','extendedProbationValue','extendedProbationUnit','noticeBeforeConfirmationValue','noticeBeforeConfirmationUnit','noticeAfterConfirmationValue','noticeAfterConfirmationUnit'));--> statement-breakpoint

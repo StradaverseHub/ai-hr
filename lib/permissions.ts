@@ -56,6 +56,10 @@ export const MATRIX_ROLES: readonly Role[] = [
   // reaches; /performance and its cycle children admit it for OneHR-native cycles inside the page
   // (requireOnehrAdminAccess + notFound for a generic cycle), and no requireAdmin/scopedAdmin screen.
   'performance_partner',
+  // ADR-0049 §2 (5850/5851) — Recruiting Partner. Reaches the scopedSession screens every role reaches; the
+  // /recruitment screens admit it inside the page (canAdministerRecruitment, then app.can_admin_recruitment_for
+  // per company in the service and RLS), and no requireAdmin/scopedAdmin screen.
+  'recruiting_partner',
 ] as const;
 
 /** The page guard each screen is gated by — the single source of the access truth for that screen. */
@@ -174,6 +178,40 @@ export const SCREENS: readonly ScreenEntry[] = [
   { screenKey: 'rewardsApprovals', href: '/rewards/approvals', labelKey: 'rewards.board.title', guard: 'scopedSession', routes: ['/rewards/approvals'] },
   { screenKey: 'rewardsAdmin', href: '/admin/rewards', labelKey: 'rewards.adminTitle', guard: 'scopedAdmin', routes: ['/admin/rewards','/admin/rewards/shared'] },
   { screenKey: 'rewardsPolicy', href: '/admin/rewards/[unitId]', labelKey: 'rewards.configuration', guard: 'scopedSession', routes: ['/admin/rewards/[unitId]'] },
+  // ADR-0080 D10 / ADR-0049 — Recruitment. Every page calls requireModule('recruitment') + scopedSession and then admits
+  // recruitment administrators (canAdminRecruitment: HR administrators and the company-scoped Recruiting Partner) for
+  // the companies app.can_admin_recruitment_for answers true, and — slice 2 — job-team members and interviewers for
+  // their own jobs and interviews (app.can_*_recruitment_job, 5852), and approvers for their own pending steps.
+  // Overview, Settings, Requisitions and Talent pool stay administrator-only inside the page; Reports (slice 6) admits
+  // administrators and a job's recruiter, assistant or hiring manager for their own jobs, its Team view administrators only. The service and row
+  // security refuse independently. A capability gate inside the page, not a role grant at the boundary — hence
+  // conditionalAccess.
+  // Recruitment slice 7 — employee referrals. Every signed-in person reaches the address; the pages show the referral portal
+  // and My referrals only to a person with an active employment in a company with Recruitment (app.recruitment_referral_*,
+  // 5857), and only their own referrals. Referring grants no other Recruitment access.
+  {screenKey:'myReferrals',href:'/me/referrals',labelKey:'nav.myReferrals',guard:'scopedSession',hasScopeNote:true,conditionalAccess:true,
+    routes:['/me/referrals','/me/referrals/jobs/[jobId]','/me/referrals/mine']},
+  {screenKey:'recruitment',href:'/recruitment',labelKey:'nav.recruitment',guard:'scopedSession',hasScopeNote:true,conditionalAccess:true,routes:[
+    '/recruitment','/recruitment/positions','/recruitment/positions/new','/recruitment/positions/[id]','/recruitment/candidates','/recruitment/settings',
+    '/recruitment/applications/[id]','/recruitment/interviews','/recruitment/interviews/[id]/feedback','/recruitment/scorecards/[id]',
+    '/recruitment/requisitions','/recruitment/requisitions/new','/recruitment/requisitions/[id]','/recruitment/talent-pool','/recruitment/approvals',
+    '/recruitment/reports',
+    // Slice 10 — an agency contract's page (recruitment administrators only, inside the page and by row security) and an
+    // agency submission's review (administrators only).
+    '/recruitment/settings/agencies/contracts/[id]','/recruitment/agency-submissions/[id]',
+    // Slice 11 — the hiring manager's To screen list (their own open screening requests; row security returns nothing else).
+    '/recruitment/screening',
+    // Slice 16 — candidate import and the To assign list (administrators and the company's recruiters and assistants;
+    // the service and row security decide).
+    '/recruitment/candidates/import','/recruitment/to-assign',
+    // Slice 17 — a job's "Suggested to archive" list (the job's recruiters, assistants and the company's recruitment administrators;
+    // the service asks app.can_operate_recruitment_job and row security decides).
+    '/recruitment/suggested-archive',
+    // Slice 23 — referral rewards and agency fees (recruitment administrators decide; the receiving company's payroll
+    // administrators send approved rewards through ?view=payroll). Slice 25 — the agency portal inbox (the job's operators).
+    // The services and row security decide.
+    '/recruitment/rewards','/recruitment/agency-portal',
+  ]},
   // 70d5e7c5: Configuration › Review Set-up. Group Rewards edits; CTRO and EC view; the review seat decides.
   { screenKey: 'rewardsReviewSetup', href: '/admin/rewards/review-setup', labelKey: 'nav.rewardsReviewSetup', guard: 'scopedSession', conditionalAccess: true, routes: ['/admin/rewards/review-setup', '/admin/rewards/review-setup/[unitId]'] },
   // ── Everyday screens (scopedSession: every role reaches, data is scoped) ──

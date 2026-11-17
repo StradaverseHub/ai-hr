@@ -48,6 +48,7 @@ export const AI_CENTRE_OPERATIONS=Object.freeze([
  {id:'provider_readiness',label:'Verify a provider candidate',owner:'core/ai-provider-readiness.ts#evaluateProviderCandidate'},
  {id:'provider_baseline',label:'Run a legacy provider baseline',owner:'core/ai-provider-baseline.ts#runProviderBaseline'},
  {id:'rewards_advice',label:'Generate a Rewards advisor suggestion',owner:'packs/rewards/advisor.ts#generateRewardAdvisor'},
+ {id:'recruitment_match_summary',label:'Suggest a recruitment match summary',owner:'packs/recruitment/match-summary.ts#suggestMatchSummary'},
  {id:'architecture_advice',label:'Generate Job Architecture advice',owner:'packs/job-architecture/owner.ts#generateArchitectureAdvice'},
  {id:'architecture_position',label:'Suggest a position mapping',owner:'packs/job-architecture/owner.ts#generateArchitectureAdvice'},
  {id:'architecture_description',label:'Draft a job description',owner:'packs/job-architecture/owner.ts#generateArchitectureAdvice'},

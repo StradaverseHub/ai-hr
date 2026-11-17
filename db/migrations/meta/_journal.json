@@ -6184,52 +6184,304 @@
       "breakpoints": true
     },
     {
-      "idx": 5183,
+      "idx": 5172,
       "version": "7",
-      "when": 1793330005483,
-      "tag": "5783_resignation_journey",
+      "when": 1793330005472,
+      "tag": "5772_movement_employment_periods",
       "breakpoints": true
     },
     {
-      "idx": 5184,
+      "idx": 5173,
       "version": "7",
-      "when": 1793330005484,
-      "tag": "5784_resignation_configuration",
+      "when": 1793330005473,
+      "tag": "5773_movement_payroll_protection_and_delete",
       "breakpoints": true
     },
     {
-      "idx": 5185,
+      "idx": 5174,
       "version": "7",
-      "when": 1793330005485,
-      "tag": "5785_resignation_postings",
+      "when": 1793330005474,
+      "tag": "5774_employment_payment_method_history",
       "breakpoints": true
     },
     {
-      "idx": 5186,
+      "idx": 5175,
       "version": "7",
-      "when": 1793330005486,
-      "tag": "5786_resignation_email_delivery",
+      "when": 1793330005475,
+      "tag": "5775_movement_payment_method_field",
       "breakpoints": true
     },
     {
-      "idx": 5188,
+      "idx": 5176,
       "version": "7",
-      "when": 1793330005488,
-      "tag": "5788_resignation_letter_teams",
+      "when": 1793330005476,
+      "tag": "5776_workforce_payroll_input_invalidation",
       "breakpoints": true
     },
     {
-      "idx": 5189,
+      "idx": 5177,
       "version": "7",
-      "when": 1793330005489,
-      "tag": "5789_resignation_letter_fields",
+      "when": 1793330005477,
+      "tag": "5777_movement_closed_payroll_metadata",
       "breakpoints": true
     },
     {
-      "idx": 5190,
+      "idx": 5178,
       "version": "7",
-      "when": 1793330005490,
-      "tag": "5790_resignation_case_communications",
+      "when": 1793330005478,
+      "tag": "5778_movement_payroll_windows",
+      "breakpoints": true
+    },
+    {
+      "idx": 5179,
+      "version": "7",
+      "when": 1793330005479,
+      "tag": "5779_hire_company_allocation_review",
+      "breakpoints": true
+    },
+    {
+      "idx": 5250,
+      "version": "7",
+      "when": 1793330005550,
+      "tag": "5850_recruiting_partner_role",
+      "breakpoints": true
+    },
+    {
+      "idx": 5251,
+      "version": "7",
+      "when": 1793330005551,
+      "tag": "5851_recruitment_core",
+      "breakpoints": true
+    },
+    {
+      "idx": 5252,
+      "version": "7",
+      "when": 1793330005552,
+      "tag": "5852_recruitment_team_interviews",
+      "breakpoints": true
+    },
+    {
+      "idx": 5253,
+      "version": "7",
+      "when": 1793330005553,
+      "tag": "5853_recruitment_offers_hire_handoff",
+      "breakpoints": true
+    },
+    {
+      "idx": 5254,
+      "version": "7",
+      "when": 1793330005554,
+      "tag": "5854_recruitment_requisitions",
+      "breakpoints": true
+    },
+    {
+      "idx": 5255,
+      "version": "7",
+      "when": 1793330005555,
+      "tag": "5855_recruitment_candidate_privacy",
+      "breakpoints": true
+    },
+    {
+      "idx": 5256,
+      "version": "7",
+      "when": 1793330005556,
+      "tag": "5856_recruitment_report_indexes",
+      "breakpoints": true
+    },
+    {
+      "idx": 5257,
+      "version": "7",
+      "when": 1793330005557,
+      "tag": "5857_recruitment_referrals",
+      "breakpoints": true
+    },
+    {
+      "idx": 5258,
+      "version": "7",
+      "when": 1793330005558,
+      "tag": "5858_recruitment_careers_page",
+      "breakpoints": true
+    },
+    {
+      "idx": 5259,
+      "version": "7",
+      "when": 1793330005559,
+      "tag": "5859_recruitment_tasks",
+      "breakpoints": true
+    },
+    {
+      "idx": 5260,
+      "version": "7",
+      "when": 1793330005560,
+      "tag": "5860_recruitment_agencies",
+      "breakpoints": true
+    },
+    {
+      "idx": 5261,
+      "version": "7",
+      "when": 1793330005561,
+      "tag": "5861_recruitment_screening",
+      "breakpoints": true
+    },
+    {
+      "idx": 5262,
+      "version": "7",
+      "when": 1793330005562,
+      "tag": "5862_recruitment_background_checks",
+      "breakpoints": true
+    },
+    {
+      "idx": 5263,
+      "version": "7",
+      "when": 1793330005563,
+      "tag": "5863_recruitment_talent_pools_blocked_list",
+      "breakpoints": true
+    },
+    {
+      "idx": 5264,
+      "version": "7",
+      "when": 1793330005564,
+      "tag": "5864_recruitment_consume_invitation_access_lock",
+      "breakpoints": true
+    },
+    {
+      "idx": 5265,
+      "version": "7",
+      "when": 1793330005565,
+      "tag": "5865_recruitment_custom_fields",
+      "breakpoints": true
+    },
+    {
+      "idx": 5266,
+      "version": "7",
+      "when": 1793330005566,
+      "tag": "5866_recruitment_position_templates",
+      "breakpoints": true
+    },
+    {
+      "idx": 5267,
+      "version": "7",
+      "when": 1793330005567,
+      "tag": "5867_recruitment_import_export",
+      "breakpoints": true
+    },
+    {
+      "idx": 5268,
+      "version": "7",
+      "when": 1793330005568,
+      "tag": "5868_recruitment_waiting_limits",
+      "breakpoints": true
+    },
+    {
+      "idx": 5269,
+      "version": "7",
+      "when": 1793330005569,
+      "tag": "5869_recruitment_interview_setup",
+      "breakpoints": true
+    },
+    {
+      "idx": 5270,
+      "version": "7",
+      "when": 1793330005570,
+      "tag": "5870_recruitment_candidate_email",
+      "breakpoints": true
+    },
+    {
+      "idx": 5271,
+      "version": "7",
+      "when": 1793330005571,
+      "tag": "5871_recruitment_candidate_email_interviews_offers",
+      "breakpoints": true
+    },
+    {
+      "idx": 5272,
+      "version": "7",
+      "when": 1793330005572,
+      "tag": "5872_recruitment_careers_verified_applicants",
+      "breakpoints": true
+    },
+    {
+      "idx": 5273,
+      "version": "7",
+      "when": 1793330005573,
+      "tag": "5873_recruitment_candidate_response_links",
+      "breakpoints": true
+    },
+    {
+      "idx": 5274,
+      "version": "7",
+      "when": 1793330005574,
+      "tag": "5874_recruitment_candidate_survey",
+      "breakpoints": true
+    },
+    {
+      "idx": 5275,
+      "version": "7",
+      "when": 1793330005575,
+      "tag": "5875_recruitment_referral_rewards_agency_fees",
+      "breakpoints": true
+    },
+    {
+      "idx": 5276,
+      "version": "7",
+      "when": 1793330005576,
+      "tag": "5876_recruitment_ai_match_summary",
+      "breakpoints": true
+    },
+    {
+      "idx": 5277,
+      "version": "7",
+      "when": 1793330005577,
+      "tag": "5877_recruitment_agency_portal",
+      "breakpoints": true
+    },
+    {
+      "idx": 5281,
+      "version": "7",
+      "when": 1793330005581,
+      "tag": "5881_resignation_journey",
+      "breakpoints": true
+    },
+    {
+      "idx": 5282,
+      "version": "7",
+      "when": 1793330005582,
+      "tag": "5882_resignation_configuration",
+      "breakpoints": true
+    },
+    {
+      "idx": 5283,
+      "version": "7",
+      "when": 1793330005583,
+      "tag": "5883_resignation_postings",
+      "breakpoints": true
+    },
+    {
+      "idx": 5284,
+      "version": "7",
+      "when": 1793330005584,
+      "tag": "5884_resignation_email_delivery",
+      "breakpoints": true
+    },
+    {
+      "idx": 5285,
+      "version": "7",
+      "when": 1793330005585,
+      "tag": "5885_resignation_letter_teams",
+      "breakpoints": true
+    },
+    {
+      "idx": 5286,
+      "version": "7",
+      "when": 1793330005586,
+      "tag": "5886_resignation_letter_fields",
+      "breakpoints": true
+    },
+    {
+      "idx": 5287,
+      "version": "7",
+      "when": 1793330005587,
+      "tag": "5887_resignation_case_communications",
       "breakpoints": true
     }
   ]

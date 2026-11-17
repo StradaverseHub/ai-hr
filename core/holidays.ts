@@ -715,6 +715,47 @@ export async function holidayDatesByEmployment(tx: Tx, p: { employmentIds: reado
   return new Map([...facts.holidays].map(([id, dates]) => [id, new Set([...dates, ...(facts.replacements.get(id) ?? [])])]));
 }
 
+/**
+ * Recruitment slice 17 — a COMPANY's public holidays, for counts that are not about one employment (how long an application has
+ * waited in a stage, in working days). The same precedence as `originalCalendarForYear` for a person of the company who has no
+ * work state and no holiday group of their own:
+ *   Step 1 — any company-scoped row of the company's chain (app.is_company_descendant, as above) in a calendar YEAR makes those
+ *            rows that year's whole calendar;
+ *   Step 2 — otherwise the gazette of the company's country: national rows, plus the company's default work state's rows when it
+ *            has one (company.default_work_state), never a company- or group-scoped row.
+ * No filter on active, tentative or type (the resolver reads none). No replacement days (those are per employee). ONE statement
+ * for every company and year asked, under the caller's own row security (the holiday table is tenant-readable): callers ask once
+ * per request, never per company. Companies without any resolved day are absent from the map ("no calendar configured").
+ */
+export async function companyHolidayDatesByCompany(tx: Tx, p: { companyIds: readonly string[]; startDate: string; endDate: string }): Promise<Map<string, Set<string>>> {
+  const out = new Map<string, Set<string>>();
+  const ids = [...new Set(p.companyIds)];
+  if (!ids.length || p.endDate < p.startDate) return out;
+  const yearFrom = `${p.startDate.slice(0, 4)}-01-01`, yearTo = `${p.endDate.slice(0, 4)}-12-31`;
+  const rows = await tx.execute<{ company_id: string; d: string }>(sql`
+    with co as (
+      select c.id, c.tenant_id, c.country, c.default_work_state::text as ws from company c where c.id = any(${`{${ids.join(',')}}`}::uuid[])
+    ), override as (
+      select co.id as company_id, h.holiday_date as d from co join holiday h on h.tenant_id = co.tenant_id and h.country = co.country and h.company_id is not null
+        and app.is_company_descendant(co.id, h.company_id)
+      where h.holiday_date between ${yearFrom}::date and ${yearTo}::date
+    ), override_years as (
+      select distinct company_id, extract(year from d)::int as y from override
+    )
+    select company_id, to_char(d, 'YYYY-MM-DD') as d from override where d between ${p.startDate}::date and ${p.endDate}::date
+    union
+    select co.id, to_char(h.holiday_date, 'YYYY-MM-DD') from co join holiday h on h.tenant_id = co.tenant_id and h.country = co.country
+      and h.company_id is null and h.holiday_group_id is null and (h.state is null or (co.ws is not null and h.state::text = co.ws))
+    where h.holiday_date between ${p.startDate}::date and ${p.endDate}::date
+      and not exists (select 1 from override_years o where o.company_id = co.id and o.y = extract(year from h.holiday_date)::int)`);
+  for (const r of rows) {
+    const set = out.get(r.company_id) ?? new Set<string>();
+    set.add(r.d);
+    out.set(r.company_id, set);
+  }
+  return out;
+}
+
 // ──────────────────────────────────────────────────────────────────────────────────────────────────
 // 0e276da0 (r269) — CALENDAR COVERAGE: what a named holiday calendar would cost the staff of a
 // location attached to it. A PURE, PRESENTATIONAL READ. Nothing above this line changes.

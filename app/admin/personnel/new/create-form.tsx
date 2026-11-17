@@ -61,6 +61,8 @@ export function CreateEmployeeFields({
   framed = true,
   onCreated,
   onCancel,
+  initial,
+  recruitmentApplicationId,
 }: {
   companies: Option[];
   /** Item bd271009 — the Employee ID rule per company, PLAIN DATA (see the page's boundary note). */
@@ -72,13 +74,17 @@ export function CreateEmployeeFields({
   /** Rendered as a Cancel button when supplied — requirement 9 of item 034a5080. The standalone route
    *  omits it: it has the PageHeader's "Back to Personnel Management" and no modal to dismiss. */
   onCancel?: () => void;
+  /** Recruitment slice 3 — values the SERVER read from an application ("Start new hire"); HR reviews them here. */
+  initial?: { companyId: string; fullName: string; primaryEmail: string };
+  /** The application the draft is linked back to once it exists (the action re-checks it on the server). */
+  recruitmentApplicationId?: string;
 }) {
   const t = useTranslations('people.wizard');
-  const [companyId, setCompanyId] = useState('');
+  const [companyId, setCompanyId] = useState(initial?.companyId ?? '');
   const [employeeIdMode, setEmployeeIdMode] = useState<string | undefined>(undefined);
   const [employeeCode, setEmployeeCode] = useState('');
-  const [fullName, setFullName] = useState('');
-  const [primaryEmail, setPrimaryEmail] = useState('');
+  const [fullName, setFullName] = useState(initial?.fullName ?? '');
+  const [primaryEmail, setPrimaryEmail] = useState(initial?.primaryEmail ?? '');
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
 
@@ -138,6 +144,7 @@ export function CreateEmployeeFields({
           primaryEmail,
           employeeIdMode,
           employeeCode,
+          ...(recruitmentApplicationId ? { recruitmentApplicationId } : {}),
         });
         // `res.employeeCode` IS THE ISSUED ID and the previewed sample is not — see the read-only field
         // below. Whatever the caller does with this, it must show the server's answer.
@@ -335,15 +342,21 @@ export function CreateEmployeeFields({
 export function CreateEmployeeForm({
   companies,
   employeeIdRules,
+  initial,
+  recruitmentApplicationId,
 }: {
   companies: Option[];
   employeeIdRules: Record<string, EmployeeIdRule>;
+  initial?: { companyId: string; fullName: string; primaryEmail: string };
+  recruitmentApplicationId?: string;
 }) {
   const router = useRouter();
   return (
     <CreateEmployeeFields
       companies={companies}
       employeeIdRules={employeeIdRules}
+      initial={initial}
+      recruitmentApplicationId={recruitmentApplicationId}
       onCreated={(created) => router.push(`/admin/personnel/new?draft=${created.id}`)}
     />
   );

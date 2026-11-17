@@ -1,3 +1,5 @@
+import {isCalendarDate} from '../lib/calendar-date';
+import { MOVEMENT_EMPLOYMENT_PERIOD_FIELDS, type MovementEmploymentPeriodField } from '../lib/movement-employment-periods';
 import {organisationManagedTx,organisationBusinessUnit} from './organisation-write-policy';
 import {deriveCompanyOrganisationTx} from './company-organisation';
 import {organisationImportWarningsTx} from './derived-organisation-display';
@@ -267,7 +269,7 @@ async function inputTx(tx:Tx,ctx:SessionContext,record:MovementImportRecord,empl
   if(field==='businessUnitId'&&(managed||tags.status!=='legacy'))continue;
   if(field==='companyId')input.companyId=targetCompanyId;
   else if(field==='departmentId'||field==='positionId'||field==='businessUnitId'||field==='locationId'||field==='gradeId'||field==='managerEmploymentId')input[field]=lookup(raw,(catalog.fields[field]??[]).map(option=>({...option,aliases:[...(option.aliases??[]),...(source.companies.find(c=>c.value===targetCompanyId)?[option.label,...option.codes??[],...option.aliases??[]].map(alias=>source.companies.find(c=>c.value===targetCompanyId)!.label+' · '+alias):[])]})),field);
-  else if(field==='endDate'||field==='resignationDate'||field==='tenderResignationDate'||field==='resignationEffectiveDate'||field==='contractEndDate'||field==='internshipEndDate')input[field]=movementImportDate(raw)!;
+  else if(field==='endDate'||field==='resignationDate'||field==='tenderResignationDate'||field==='resignationEffectiveDate'||field==='contractEndDate'||field==='internshipEndDate'||field==='confirmationDate')input[field]=movementImportDate(raw)!;
   else if(field==='basicSalary'||field==='terminationNoticeDays'){
    if(!/^(?:0|[1-9][0-9]*)(?:\.[0-9]+)?$/.test(raw)||!Number.isFinite(Number(raw)))throw new Error('invalid_number:'+field);
    input[field]=Number(raw);
@@ -278,7 +280,9 @@ async function inputTx(tx:Tx,ctx:SessionContext,record:MovementImportRecord,empl
    if(!allowed.includes(raw))throw new Error('invalid_choice:employmentType');input.employmentType=raw as NonNullable<CreateMovementInput['employmentType']>;
   }else if(field in fieldKinds){
    const options=catalog.fields[field]??[];input[field as keyof typeof fieldKinds]=options.length?lookup(raw,options,field):raw;
-  }else if(field==='remarks'||field==='currency'||field==='payMode'||field==='paymentTerm'||field==='terminationReasonCode')input[field]=raw;
+  }else if((MOVEMENT_EMPLOYMENT_PERIOD_FIELDS as readonly string[]).includes(field))input[field as MovementEmploymentPeriodField]=raw;
+  else if(field==='paymentMethod')input.paymentMethod=raw||null;
+  else if(field==='remarks'||field==='currency'||field==='payMode'||field==='paymentTerm'||field==='terminationReasonCode')input[field]=raw;
  }
  if(managed||tags.status!=='legacy'){const state=known?{businessUnitId:known.businessUnitId??null}:await movementCurrentStateTx(tx,employmentId);input.businessUnitId=organisationBusinessUnit(tags,managed,input.businessUnitId,resolved.behaviourKind==='entityTransfer'&&targetCompanyId!==currentCompanyId?null:state.businessUnitId);}
  return {input,source,catalog,behaviour:resolved.behaviourKind};
@@ -446,7 +450,7 @@ async function lifecycleTx(tx:Tx,id:string){
 /** `organisationWarnings` are the record's own organisation warnings (part of view.warnings), kept apart so the lean
  * commit can record Import History items exactly as the rehearse-then-apply commit did. */
 type RehearsedRow={view:MovementImportRow;input:CreateMovementInput;changedFields:string[];references:MovementManagerEvidence[];rawAfter:Record<string,string|null>;organisationWarnings?:string[]};
-async function subjectStateTx(tx:Tx,id:string){return{...await movementCurrentStateTx(tx,id),...await lifecycleTx(tx,id)};}
+async function subjectStateTx(tx:Tx,id:string,asOf?:string){return{...await movementCurrentStateTx(tx,id,asOf),...await lifecycleTx(tx,id)};}
 type SubjectState=Awaited<ReturnType<typeof subjectStateTx>>;
 function readable(values:Record<string,string|null>,catalog:MovementImportCatalog):Record<string,string|null>{
  return Object.fromEntries(Object.entries(values).map(([key,value])=>{
@@ -469,7 +473,8 @@ function assertSequence(previous:RehearsedRow[],next:RehearsedRow){
 async function applyRowTx(tx:Tx,ctx:SessionContext,record:MovementImportRecord,id:string,rehearsal:boolean,resolvedInput?:CreateMovementInput,create?:MovementSequenceCreate,policy?:RehearsedRow,reads?:MovementChunkReads):Promise<RehearsedRow>{
  if(record.history)return applyHistoryRowTx(tx,ctx,record,id,reads);
  const cached=reads?.state?.employmentId===id?reads.state.value as SubjectState:null;
- const before:SubjectState=cached?{...cached}:await subjectStateTx(tx,id);
+ const proposedDay=movementImportDate(record.cells.effectiveDate??'');
+ const before:SubjectState=cached?{...cached}:await subjectStateTx(tx,id,rehearsal&&typeof proposedDay==='string'&&isCalendarDate(proposedDay)&&proposedDay>todayInKualaLumpur()?proposedDay:undefined);
  const prepared=resolvedInput?null:await inputTx(tx,ctx,record,id,before.companyId,false,reads,reads?before:undefined);
  const resolved=resolvedInput??prepared!.input;
  const behaviour=prepared?.behaviour??(await resolveMovementEventTypeTx(tx,ctx.tenantId,resolved.typeCode??resolved.kind))?.behaviourKind;
@@ -494,7 +499,7 @@ async function applyRowTx(tx:Tx,ctx:SessionContext,record:MovementImportRecord,i
  // The committed pass records the original future intent and never runs this branch.
  if(scheduled&&rehearsal)await applyDueMovementsTx(tx,ctx,id,input.effectiveDate);
  if(movementNeedsEntitlementReprojection(result.behaviourKind))await reprojectEntitlementForEmployment(ctx,{employmentId:id,trigger:scheduled&&rehearsal?'movement_applied':'movement_recorded',gradeBefore:{gradeId:before.gradeId},changeEffectiveOn:input.effectiveDate,...(scheduled&&rehearsal?{asOf:input.effectiveDate}:{})},tx);
- const after=await subjectStateTx(tx,id);
+ const after=await subjectStateTx(tx,id,scheduled&&rehearsal?input.effectiveDate:undefined);
  if(reads){await refreshManagerEntryTx(tx,ctx,reads,id);reads.state={employmentId:id,value:{...after}};}
  const afterValues:Record<string,string|null>=after;
  const changedFields=Object.entries(before).filter(([key,value])=>afterValues[key]!==value).map(([key])=>key);
@@ -697,6 +702,7 @@ async function checkEmployeeTx(tx:Tx,ctx:SessionContext,c:MovementCheckEmployee,
  const baseFingerprint=employee.fingerprint;const rows:MovementImportRow[]=[];const previous:RehearsedRow[]=[];const corrected:CorrectedRow[]=[];
  // Board 154511c4 — the new rows are classified once the corrections have acted (history newest first).
  let ordered=employeeOrder(records),classified=false;
+ const checkRows=async(tx:Tx,create?:MovementSequenceCreate)=>{
  for(let index=0;index<ordered.length;index++){
   const record=ordered[index];
   budget(employeeDeadline);
@@ -715,10 +721,16 @@ async function checkEmployeeTx(tx:Tx,ctx:SessionContext,c:MovementCheckEmployee,
   }
   // A row's reads change with its writes; they are kept only when its savepoint commits.
   const own=reads?forkReads(reads):undefined;
-  try{const next=await tx.transaction(async rowTx=>{const value=await applyRowTx(rowTx,ctx,{...record,acknowledgeClosedPayroll:true},subject.id,true,undefined,undefined,undefined,own);assertSequence(previous,value);return value;});previous.push(next);rows.push(next.view);if(reads&&own)adoptReads(reads,own);}
+  try{const next=await tx.transaction(async rowTx=>{const value=await applyRowTx(rowTx,ctx,{...record,acknowledgeClosedPayroll:true},subject.id,true,undefined,create,undefined,own);assertSequence(previous,value);return value;});previous.push(next);rows.push(next.view);if(reads&&own)adoptReads(reads,own);}
   catch(error){rows.push({...rowView(record),status:'invalid',errors:[message(error)]});}
   budget(employeeDeadline);
  }
+ };
+ const hasFuture=records.some(record=>selection.includes(record.row)&&!isCorrection(record)&&recordDay(record)>todayInKualaLumpur());
+ if(hasFuture){
+  try{await rehearseMovementSequenceTx(tx,ctx,(shadow,create)=>checkRows(shadow,create));}
+  catch(error){if(!rows.some(row=>row.status==='invalid'))throw error;}
+ }else await checkRows(tx);
  const invalid=rows.some(row=>row.status==='invalid');
  if(invalid)for(const row of rows)if(row.status==='valid'){row.status='invalid';row.errors.push('employee_sequence_invalid');}
  const references=[...corrected.flatMap(row=>row.references),...previous.flatMap(row=>row.references)];
@@ -875,7 +887,7 @@ async function commitEmployeeTx(tx:Tx,ctx:SessionContext,p:MovementCommitEmploye
      }
     }
     await appendEvent(tx,{tenantId:ctx.tenantId,aggregateType:'movement-import',aggregateId:result.batchId!,eventType:'movement-import.employee.applied',actor:actorOf(ctx),subjectEmploymentId:subject.id,payload:{companyId,eventCount:chosen.length,sourceRows:chosen.map(row=>({key:row.row,sheet:row.source?.sheet??'CSV',row:row.source?.row??row.row})),eventTypes:[...new Set(chosen.map(row=>row.cells.kind).filter(Boolean))],
-     ...(corrected.length?{corrections:corrected.map(row=>({action:row.action,movementId:row.originalId,closedPayrollPeriods:row.closedPayrollPeriods})),closedPayrollAcknowledged:p.acknowledgeClosedPayroll===true}:{})}});
+     ...(corrected.length?{corrections:corrected.map(row=>({action:row.action,movementId:row.originalId,closedPayrollPeriods:row.closedPayrollPeriods})),closedPayrollProtected:true}:{})}});
     return {...employee,employmentId:subject.id,name:subject.name,rows,fingerprint:combined};
 }
 /** An employee the lean path does not cover, raised before it wrote anything or inside its own savepoint. */

@@ -30,7 +30,7 @@ import { defaultPolicy } from '../packs/performance/onehr/model';
 import framework from '../packs/performance/onehr/framework.json';
 import { createRewardUnit, decideRewardUnit, getRewardUnit, returnedRewardUnits, saveRewardEntry } from '../packs/rewards/service';
 import { emptyFacts } from '../packs/rewards/model';
-import { PACK_TASK_KINDS } from '../lib/assigned-work';
+import { PACK_TASK_KINDS, RECRUITMENT_TASK_KINDS } from '../lib/assigned-work';
 import { HOME_TASK_KINDS, validateEmployeeHomeConfiguration } from '../lib/employee-home';
 import { defaultEmployeeHomeConfiguration } from '../lib/employee-home-defaults';
 import { closeAll, createAppUser, entitledCtx, owner, resetDb, seedBase, setModule, type Base } from './harness';
@@ -243,7 +243,9 @@ describe('(b) calibration in the shared task list', () => {
 describe('(c) the task vocabulary', () => {
   it('calibration is a pack kind and a Home kind, and Home effort configuration accepts it', () => {
     expect(PACK_TASK_KINDS).toContain('calibration');
-    for (const kind of PACK_TASK_KINDS) expect(HOME_TASK_KINDS as readonly string[]).toContain(kind);
+    // Recruitment slice 9's kinds are bell-only: Home asks listPendingTasks without `recruitment`, so it never receives them
+    // (core/approvals-inbox.ts overloads type that result without them).
+    for (const kind of PACK_TASK_KINDS.filter((k) => !(RECRUITMENT_TASK_KINDS as readonly string[]).includes(k))) expect(HOME_TASK_KINDS as readonly string[]).toContain(kind);
     const config = defaultEmployeeHomeConfiguration();
     expect(validateEmployeeHomeConfiguration({ ...config, effortMinutes: { calibration: 15, rewardReview: 30 } }).effortMinutes).toEqual({ calibration: 15, rewardReview: 30 });
     expect(() => validateEmployeeHomeConfiguration({ ...config, effortMinutes: { calibrations: 15 } })).toThrow();
