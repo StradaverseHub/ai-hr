@@ -6688,6 +6688,69 @@
       "breakpoints": true
     },
     {
+      "idx": 5330,
+      "version": "7",
+      "when": 1794841005930,
+      "tag": "5930_contract_tracker_attention_summary",
+      "breakpoints": true
+    },
+    {
+      "idx": 5331,
+      "version": "7",
+      "when": 1794841005931,
+      "tag": "5931_contract_starting_setup_completion",
+      "breakpoints": true
+    },
+    {
+      "idx": 5332,
+      "version": "7",
+      "when": 1794841005932,
+      "tag": "5932_contract_native_system_kernel",
+      "breakpoints": true
+    },
+    {
+      "idx": 5333,
+      "version": "7",
+      "when": 1794841005933,
+      "tag": "5933_contract_system_period_events",
+      "breakpoints": true
+    },
+    {
+      "idx": 5334,
+      "version": "7",
+      "when": 1794841005934,
+      "tag": "5934_contract_system_mail_digest",
+      "breakpoints": true
+    },
+    {
+      "idx": 5335,
+      "version": "7",
+      "when": 1794841005935,
+      "tag": "5935_contract_system_provenance_rechecks",
+      "breakpoints": true
+    },
+    {
+      "idx": 5336,
+      "version": "7",
+      "when": 1794841005936,
+      "tag": "5936_contract_accept_no_matching_workflow",
+      "breakpoints": true
+    },
+    {
+      "idx": 5337,
+      "version": "7",
+      "when": 1794841005937,
+      "tag": "5937_contract_digest_queue_capability",
+      "breakpoints": true
+    },
+    {
+      "idx": 5338,
+      "version": "7",
+      "when": 1794841005938,
+      "tag": "5938_contract_system_private_row_security",
+      "breakpoints": true
+    },
+    {
       "idx": 5340,
       "version": "7",
       "when": 1794841005940,

@@ -30,3 +30,5 @@ export const contractConfigurationTemplates: ConfigurationService['contractConfi
 export {listContractSharedPostings,readContractSharedPosting,readContractSharedPostingSummary,approveContractSharedPosting,editContractSharedPosting,confirmContractSharedPay,contractSharedPostingWorkPage,type ContractSharedPosting,type ContractSharedPostingPage,type ContractSharedPostingSummary} from '../../core/contract-shared-postings';
 
 export * from '../../core/contract-shared-template-preview';
+
+export * from '../../core/contract-shared-schedule';

@@ -13,7 +13,7 @@ export class BulkJobError extends Error{constructor(message:string,readonly stat
 export const BULK_JOB_ALREADY_RUNNING='bulk-job-already-running';
 
 export type BulkJobRow={
- id:string;tenant_id:string;kind:string;created_by:string;context:SessionContext;operation_key:string;exclusive_key:string;
+ id:string;tenant_id:string;kind:string;created_by:string|null;context:SessionContext;operation_key:string;exclusive_key:string;
  company_ids:string[];source_name:string;source_hash:string|null;source_bytes:number;source_content:Buffer|null;
  input:unknown;plan:unknown;attempt_id:string|null;state:BulkJobState;outcome:'failed'|'cancelled'|null;phase:string|null;
  steps_total:number;steps_done:number;counters:Record<string,number>;metrics:Record<string,number|string>;result:unknown;

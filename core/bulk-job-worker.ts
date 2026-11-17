@@ -1,7 +1,8 @@
 /** Shared background bulk-job kernel, worker side (migrations 5011, 5013, 5014). The queue-owner connection claims,
  * leases and coordinates, and runs a kind's owner-only routines: discard always, finalize only for a kind that
  * declares it (handler.finalizeOwner and bulk_job_kind.finalize_owner). Every HR write runs through the app role under
- * the creator's freshly resolved authority, in short transactions that fence on the lease. The application role
+ * the creator's freshly resolved authority, in short transactions that fence on the lease. The explicitly approved
+ * fixed Contract system kinds use private native provenance and owner-only bounded units below; they never capture a human. The application role
  * cannot write the job store: the worker's own writes go through definers that require this claim's lease
  * capability, and what later privileged steps trust (input, plan, every step) is sealed and verified. A kind plugs in
  * with a BulkJobHandler (see the ADR section "Shared job kernel"). */
@@ -64,6 +65,8 @@ export type BulkJobSettleUnit=Omit<BulkJobUnit,'ownerTx'>&{ownerTx<T>(fn:(owner:
 export type BulkJobFinalized={result:unknown;counters?:Record<string,number>};
 export type BulkJobHandler<P=any>={
  kind:string;
+ /** Fixed Contract timer consumers only; no app-role transaction or captured human identity. */
+ systemOwner?:{prepare(job:BulkJobRow,unit:BulkJobDiscardUnit):Promise<unknown>;finalize(job:BulkJobRow,unit:BulkJobDiscardUnit):Promise<'more'|BulkJobFinalized>};
  /** 'atomic': a refused step stops the job and the kind's discard undoes the staged work (all-or-nothing).
   *  'per-step': a refused step is recorded on the job and the others continue (each step commits on its own). */
  mode:'atomic'|'per-step';
@@ -169,6 +172,7 @@ export async function runBulkJobTick(owner:postgres.Sql,options:BulkJobWorkerOpt
   const [proof]=await connection<{ok:boolean}[]>`select exists(select 1 from pg_roles r join pg_class c on c.oid='public.bulk_job'::regclass where r.rolname=current_user and (r.rolsuper or c.relowner=r.oid)) as ok`;
   if(!proof?.ok)throw new Error('The bulk job worker requires the physical queue owner connection.');
   await beatBulkJobWorker(connection,kinds,options.workerId??processWorker);
+  if(handlers.has('contract_schedule'))await connection`select app.contract_shared_schedule_admit()`;
   const token=randomUUID();
   // Active work first, through the partial queue index (literal state list so the index predicate applies); then a
   // terminal job whose completion notice is still owed (its own partial index). History rows are never scanned.
@@ -205,6 +209,7 @@ export async function runBulkJobTick(owner:postgres.Sql,options:BulkJobWorkerOpt
 /** The creator's session as the web had it: database-captured grants with freshly resolved entitlements, and the
  * person currently linked to the login (the canonical principal checks bind a session to that person). */
 export async function bulkJobContext(connection:postgres.ReservedSql|postgres.Sql,job:Pick<BulkJobRow,'context'|'created_by'|'tenant_id'>):Promise<SessionContext>{
+ if(job.created_by===null)throw new BulkJobAuthorityLost();
  const ctx=await freshImportContext(job.context);
  if(!ctx.personId){
   const [user]=await connection<{person_id:string|null}[]>`select person_id from app_user where id=${job.created_by}::uuid and tenant_id=${job.tenant_id}::uuid`;
@@ -277,6 +282,8 @@ async function jobTx<T>(ctx:SessionContext,c:Claimed,unit:BulkJobUnit,phase:stri
 
 async function processClaimed(connection:postgres.ReservedSql,handler:BulkJobHandler,c:Claimed){
  const job=c.job;const unit=unitOf(connection,c);
+ if(job.created_by===null)return processContractSystemClaimed(connection,handler,c,unit);
+ if(handler.systemOwner)return failJob(connection,handler,c,null,'System jobs cannot use a captured human principal.',[],new BulkJobConfigurationError('Invalid system principal.'));
  if(TERMINAL.includes(job.state)){
   // A settle that failed on an earlier tick resumes here (afterTerminal already ran once; its clearPlan answer is
   // kept on the job's metrics).
@@ -518,4 +525,37 @@ async function notifyFinished(connection:postgres.ReservedSql,c:Claimed,job:Bulk
   if(done)return;
  }catch(error){if(error instanceof LeaseLost||isTransientBulkJobError(error))return; /* retried by a later tick while unnotified */}
  await connection`update bulk_job set notified_at=now() where id=${job.id}::uuid and notified_at is null`;
+}
+
+/** Explicitly approved fixed Contract boundary: private native provenance and the existing lease/seal capability.
+ * Declaring a handler option or clearing a user never grants execution. Existing human fences remain above. */
+async function processContractSystemClaimed(connection:postgres.ReservedSql,handler:BulkJobHandler,c:Claimed,unit:BulkJobUnit){
+ const job=c.job;
+ if(!['contract_schedule','contract_scheduled_automation'].includes(job.kind)||!handler.systemOwner||!handler.finalizeOwner)
+  return failJob(connection,handler,c,null,'The system job has no registered native owner.',[],new BulkJobConfigurationError('Invalid system job kind.'));
+ const systemUnit:BulkJobDiscardUnit={metric:unit.metric,set:unit.set,verifySeal:unit.verifySeal,step:async()=>{throw new BulkJobConfigurationError('System work has no application-role steps.');},ownerTx:fn=>ownerTransaction(connection,c,'contractSystem',async owner=>{
+  await owner`select set_config('app.tenant_id',${job.tenant_id},true),set_config('app.user_id','',true),set_config('app.roles','',true),set_config('app.grants','[]',true),set_config('jit','off',true)`;
+  const [proof]=await owner<{ok:boolean}[]>`select app.contract_shared_system_job_held(${job.id}::uuid) as ok`;
+  if(!proof?.ok)throw new BulkJobAuthorityLost();
+  return fn(owner);
+ })};
+ try{
+  if(TERMINAL.includes(job.state)){await connection`update bulk_job set notified_at=coalesce(notified_at,now()),settled_at=coalesce(settled_at,now()) where id=${job.id}::uuid`;return;}
+  await verifySealOf(connection,c,job.state==='queued'?'header':'full');
+  if(job.state==='queued'||job.state==='preparing'){
+   await systemUnit.ownerTx(owner=>unit.set(owner,{state:'preparing',expectState:['queued','preparing']}));
+   const plan=await handler.systemOwner.prepare(job,systemUnit);
+   await systemUnit.ownerTx(owner=>unit.set(owner,{state:'finalizing',expectState:['preparing'],plan,stepsTotal:0,stepsDone:0}));
+   return;
+  }
+  if(job.state!=='finalizing')throw new BulkJobConfigurationError('Invalid system job state.');
+  const result=await handler.systemOwner.finalize(job,systemUnit);
+  if(result==='more')return;
+  await systemUnit.ownerTx(owner=>unit.set(owner,{state:'completed',expectState:['finalizing'],finished:true,result:result.result,countersMerge:result.counters??{},resetTransientRetries:true}));
+  await connection`update bulk_job set notified_at=now(),settled_at=now() where id=${job.id}::uuid`;
+ }catch(error){
+  if(error instanceof LeaseLost)return;
+  if(isTransient(handler,error))return retryLater(connection,handler,c,error);
+  return failJob(connection,handler,c,null,publicErrorMessage(error),[],error);
+ }
 }

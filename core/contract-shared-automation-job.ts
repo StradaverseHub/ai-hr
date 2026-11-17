@@ -2,7 +2,10 @@
 import {randomUUID} from 'node:crypto';
 import {sql} from 'drizzle-orm';
 import {z} from 'zod';
-import type {BulkJobHandler} from './bulk-job-worker';
+import type {BulkJobHandler,BulkJobUnit} from './bulk-job-worker';
+import type {BulkJobRow} from './bulk-job';
+import type {SessionContext} from '../db/client';
+import type postgres from 'postgres';
 import {withScopedLifecycleTenant} from './module-gate';
 import {reservedSqlExecutor} from '../db/sql-executor';
 import {readContractSharedExecutionInputs} from './contract-shared-preview-job';
@@ -34,8 +37,17 @@ export const contractAutomationJobHandler:BulkJobHandler<never>={
  async applyStepTx(){throw new Error('Contract automation advances through bounded shared-runtime finalize units.');},
  async finalize(ctx,job,unit){
   await unit.verifySeal();
+  const finished=await unit.ownerTx!(owner=>advanceContractSharedAutomationOwner(owner,ctx,job,unit));
+  return finished?{result:{processed:true}}:'more';
+ },
+ quietNotice:()=>true,
+ async describeFailure(){return {error:'The Contract workflow could not continue. People Ops can review the case and its current setup.'};},
+};
+
+/** Shared bounded unit; native provenance selects the fixed system mail-only executor boundary. */
+export async function advanceContractSharedAutomationOwner(owner:postgres.ReservedSql,ctx:SessionContext,job:BulkJobRow,unit:Pick<BulkJobUnit,'set'>,system=false):Promise<boolean>{
   const {eventId:rootId}=inputSchema.parse(job.input),progress=progressSchema.parse(job.plan);
-  const finished=await unit.ownerTx!(async owner=>{
+
    await owner`select set_config('app.tenant_id',${ctx.tenantId},true),set_config('app.user_id','',true),set_config('jit','off',true)`;
    const db=reservedSqlExecutor(owner);
    const [event]=await db.execute<Event>(sql`select id,case_id,trigger_event,occurrence,decision_revision,workflow_versions,data from contract_shared_event
@@ -85,6 +97,7 @@ export const contractAutomationJobHandler:BulkJobHandler<never>={
      await db.execute(sql`select app.contract_shared_execution_attention(${event.id}::uuid,${reason.slice(0,1000)})`);
     },
    };
+   if(system){const refused=async()=>({status:'failed' as const,reason:'Morning automation can send reminders only. Employment decisions and effects require their authorized human workflow.'});executors.requestApproval=refused;executors.generateDocument=refused;executors.createPosting=refused;executors.startOffboarding=refused;}
    const guards:AutomationRuntimeGuards={
     // Send email checks its immutable prepared version before considering the current on/off state.
     documentTemplate:step=>inputs.definitions.documents.some(item=>item.template.id===step.params.letterTemplateId)?'available':'missing',
@@ -119,12 +132,9 @@ export const contractAutomationJobHandler:BulkJobHandler<never>={
     await unit.set(owner,{planMerge:{activeEventId:event.id,workflowCursor:cursor+1}});
     return false;
    }
+   if(event.trigger_event==='decisionSubmitted'&&!event.workflow_versions.length)await db.execute(sql`select app.contract_shared_execution_attention(${event.id}::uuid,'No live workflow matched this accepted decision. Publish a workflow or start one by hand.','no_workflow')`);
    await db.execute(sql`select app.contract_shared_event_finish(${event.id}::uuid,${job.id}::uuid)`);
    await unit.set(owner,{planMerge:{activeEventId:null,workflowCursor:0}});
    return false;
-  });
-  return finished?{result:{processed:true}}:'more';
- },
- quietNotice:()=>true,
- async describeFailure(){return {error:'The Contract workflow could not continue. People Ops can review the case and its current setup.'};},
-};
+
+}

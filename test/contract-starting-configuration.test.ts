@@ -10,7 +10,7 @@ const refs={groupExists:(id:string)=>['actual-ops','actual-postings'].includes(i
 describe('Contract starting configuration over mapped native identities',()=>{
  it('produces live valid workflows and routed documents without inventing named people or groups',()=>{
   const setup=contractStartingConfiguration(mapping);
-  expect(setup.documents).toHaveLength(5);expect(setup.emails).toHaveLength(4);expect(setup.workflows).toHaveLength(12);
+  expect(setup.documents).toHaveLength(5);expect(setup.emails).toHaveLength(6);expect(setup.workflows).toHaveLength(12);
   for(const doc of setup.documents){expect(automationDocumentTemplateSchema.safeParse(doc).success).toBe(true);expect(automationDocumentTemplateProblems(doc,refs)).toEqual([]);}
   for(const email of setup.emails)expect(automationEmailTemplateProblems(email,CONTRACT_AUTOMATION_CATALOGUE,refs)).toEqual([]);
   for(const workflow of setup.workflows){
@@ -29,6 +29,7 @@ describe('Contract starting configuration over mapped native identities',()=>{
   for(const document of setup.documents){expect(document.routing[0]).toMatchObject({order:1,action:'review',owner:true,who:{kind:'group',groupId:mapping.fallbackGroupId}});expect(document.routing[1]).toMatchObject({order:2,action:'sign',who:{kind:'routing',routingId:mapping.bpRoutingId}});}
   expect(setup.documents.filter(doc=>doc.routing.some(step=>step.who.kind==='employee')).map(doc=>doc.id)).toEqual([contractDefaultId(1),contractDefaultId(2)]);
   expect(setup.documents[1].blocks.some(block=>/probation/i.test(block.text))).toBe(false);
+  for(const workflow of setup.workflows.filter(w=>w.steps.some(s=>s.id==='released-letter-email')))expect(workflow.steps.find(s=>s.id==='released-letter-email')?.cc).toEqual([{kind:'role',role:'directSuperior'},{kind:'routing',routingId:mapping.bpRoutingId}]);
   expect(setup.emails.every(email=>!email.body.includes('contract.salary'))).toBe(true);
  });
  it('refuses missing mappings and keeps definition identities stable for idempotent installation',()=>{
