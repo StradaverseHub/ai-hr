@@ -277,11 +277,11 @@ class RuntimeObservation:
         b.check(all(first[k]==a[k] for k in ('identity','helperSha256','nodeSha256','lease','leaseFileSha256','sourceManifestSha256','environmentSha256','dotenvSha256','readiness')),'pre-drain and activation administrator shared pins differ')
         drain_time=(self.operation/'drained.json').stat().st_mtime
         b.check(epoch(first['issuedAt'])<=drain_time<=epoch(first['expiresAt']) and drain_time<=epoch(a['issuedAt']),'pre-drain approval was not valid when original drain completed or activation approval predates drain')
-        b.check(first['gate']=={k:g[k] for k in gate_fields},'later CI grant differs from the original pre-drain full-gate/build provenance tuple')
         i=a['install']
         grant_fields={'format','kind','policyVersion','target','installId','source','controller','controllerBranch','baseline','baselineBuildId','environmentSha256','runId','runAttempt','runCreatedAt','issuedAt','expiresAt','producerStartedAt','producerCompletedAt','witnessFingerprint','artifact','build'}
         build_fields={'format','capacityProfile','nextBuildId','buildRecordId','buildSourcePath','runtime','provenanceSha256','archiveSha256','archiveBytes','manifestSha256','preparedSha256','successfulObservationSha256','lockSha256','packageSha256'}
         b.check(set(g)==grant_fields and set(g.get('build',{}))==build_fields and set(g.get('artifact',{}))=={'digest','id'},'closed original CI grant selection shape required; native status owns full validation')
+        b.check(first['gate']=={k:g[k] for k in gate_fields},'later CI grant differs from the original pre-drain full-gate/build provenance tuple')
         b.check(set(a['launch'])=={'current','processStartTicks','cmdlineSha256'} and set(a['launch']['current'])=={'ref','pid','log','started_at','phase','build_id','built_at'},'closed original launch identity required')
         b.check(set(a['readiness'])=={'required','waitSeconds'} and a['readiness']['required']=='1' and a['readiness']['waitSeconds'] in (None,'600'),'source-bound REQUIRED1 and WAIT unset/exact600 policy required')
         b.check(set(a['ledger'])=={'format','kind','rows','expectedSha256','actualSha256','releaseAuthorized'} and a['ledger']['format']==1 and a['ledger']['releaseAuthorized'] is False,'closed full-ledger identity required')
@@ -410,7 +410,7 @@ class RuntimeObservation:
                 self.base.write_new(self.operation/('ci-runtime-native-retry-%03d-%d.json'%(len(self.transitions)+1,attempt+1)),
                                     self.fmt.canonical({'policy':POLICY,'nativeProofAccepted':False,'retry':attempt+1,'cleanupAuthorizationSha256':cleanup_sha,
                                                         'reason':'Native read-only status failed during authenticated same-install normal cleanup; no success inferred',
-                                                        'journeyVerified':False}),0o400)
+                                                        'leasePhase':self.last_lease_phase,'journeyVerified':False}),0o400)
                 time.sleep(.1)
         raise ValueError('fresh native proof required')
 

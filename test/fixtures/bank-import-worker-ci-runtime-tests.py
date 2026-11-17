@@ -10,6 +10,7 @@ import json
 import os
 from pathlib import Path
 import sys
+import subprocess
 import tempfile
 import time
 from types import ModuleType,SimpleNamespace
@@ -23,13 +24,16 @@ update=old.update
 spec=importlib.util.spec_from_file_location('ci_runtime',ROOT/'deploy/systemd/bank_import_worker_ci_runtime_v1.py')
 ci=importlib.util.module_from_spec(spec);spec.loader.exec_module(ci)
 check=old.check
+# Import immutable build/runtime contract data from its actual native owner, not a copied selector schema.
+contract=subprocess.run(['node','--input-type=module','-e',"import {STAGING_BUILD_RUNTIME,BUILD_CAPACITY_PROFILE} from './.github/ci/build-production.mjs';console.log(JSON.stringify({runtime:STAGING_BUILD_RUNTIME,capacity:BUILD_CAPACITY_PROFILE}))"],cwd=ROOT,capture_output=True,text=True,check=True)
+NATIVE_CONTRACT=json.loads(contract.stdout)
 
 def encoded(value):return json.dumps(value,sort_keys=True,separators=(',',':')).encode()+b'\n'
 
 class Fixture(old.UpgradeFlowFixture):
     def __init__(self,root):
         super().__init__(root)
-        self.invoke('drain');os.utime(self.operation/'drained.json',(1794873602,1794873602));self.web=self.source;self.native_calls=0;self.finish_at=None;self.fault_at=None;self.native_fault=None;self.held_phase='installing';self.arrive_at=None;self.cleanup_at=None;self.cleanup_failures=0;self.cleanup_persistent=False;self.lease_backslide_at=None;self.probe_override=None
+        self.invoke('drain');os.utime(self.operation/'drained.json',(1794873602,1794873602));self.web=self.source;self.native_calls=0;self.finish_at=None;self.fault_at=None;self.native_fault=None;self.held_phase='installing';self.arrive_at=None;self.cleanup_at=None;self.cleanup_failures=0;self.cleanup_persistent=False;self.lease_backslide_at=None;self.probe_override=None;self.cleanup_arrival_pending=False
         self.webroot=root/'web';self.webroot.mkdir();(self.webroot/'.next').mkdir();(self.webroot/'.next/BUILD_ID').write_text(self.new_build)
         (self.webroot/'.env.production').write_text('AIHR_IMPORT_WORKER_REQUIRED=1\n')
         for name in ['scripts/improve/release.ts','.github/ci/normal-cleanup-fences.mjs']:
@@ -48,7 +52,7 @@ class Fixture(old.UpgradeFlowFixture):
         uid=self.directory.stat().st_uid;self.owner=SimpleNamespace(pw_uid=uid,pw_gid=self.directory.stat().st_gid,pw_dir=str(self.home),pw_name='installation-owner')
         self.grant={'kind':'OPERATOR_AUTHORIZED_STAGING_CI_BUILD_INSTALL','format':2,'target':'alpha-staging','installId':self.install_id,'source':self.source,'controller':'3'*40,'runId':77,'baseline':self.previous_web,'baselineBuildId':self.old_build,'environmentSha256':'c'*64,'expiresAt':'2099-01-01T00:00:00Z','build':{'buildRecordId':self.build_record,'nextBuildId':self.new_build,'lockSha256':'a'*64,'packageSha256':'b'*64}}
         self.grant.update(policyVersion='aihr-staging-ci/v17',controllerBranch='alpha',runAttempt=1,runCreatedAt='2026-11-17T00:00:00Z',issuedAt='2026-11-17T00:00:00Z',expiresAt='2026-11-17T00:20:00Z',producerStartedAt='2026-11-17T00:00:00Z',producerCompletedAt='2026-11-17T00:00:00Z',witnessFingerprint='9'*64,artifact={'digest':'sha256:'+'8'*64,'id':1})
-        self.grant['build'].update(format=2,capacityProfile={},buildSourcePath='/frozen',runtime={},provenanceSha256='1'*64,archiveSha256='2'*64,archiveBytes=1,manifestSha256='3'*64,preparedSha256='4'*64,successfulObservationSha256='5'*64)
+        self.grant['build'].update(format=2,capacityProfile=copy.deepcopy(NATIVE_CONTRACT['capacity']),buildSourcePath='/frozen',runtime=copy.deepcopy(NATIVE_CONTRACT['runtime']),provenanceSha256='1'*64,archiveSha256='2'*64,archiveBytes=1,manifestSha256='3'*64,preparedSha256='4'*64,successfulObservationSha256='5'*64)
         self.activated={'activation':{'activeDirectory':{'device':1,'inode':11},'retainedDirectory':{'device':1,'inode':12}},'kind':'CI_BUILD_BYTES_ACTIVATED_NOT_FULL_ARRIVAL','source':self.source,'installId':self.install_id,'buildRecordId':self.build_record,'nextBuildId':self.new_build,'bootIdSha256':ci.sha(self.boot.read_bytes())}
         self.ledger={'format':1,'kind':'READ_ONLY_EXACT_MIGRATION_LEDGER_NOT_RELEASE','rows':919,'expectedSha256':'d'*64,'actualSha256':'e'*64,'releaseAuthorized':False}
         self.runtime={'kind':'CI_BUILD_ACTIVE_SERVICE_VERIFIED_NOT_FULL_ARRIVAL','format':1,'source':self.source,'installId':self.install_id,'buildRecordId':self.build_record,'nextBuildId':self.new_build,'authorizationSha256':ci.sha(encoded(self.grant)),'pid':'999','startedMonotonicUs':2000000,'healthStatus':200,'fullMigrationLedgerVerified':True,'fullSourceChecksumVerified':False,'releaseAuthorized':False,'migrationLedger':{**self.ledger,'verifiedAt':'2026-11-17T00:00:00.000Z'},'compiledByteInventory':{'format':2,'files':12000},'verifiedAt':'2026-11-17T00:00:00.000Z'}
@@ -78,7 +82,7 @@ class Fixture(old.UpgradeFlowFixture):
         if phase=='O':self.current['result']='ok'
         self.write_records()
     def begin_cleanup(self):
-        self.finish();self.held_phase='arrived'
+        self.finish();self.cleanup_arrival_pending=True
         audit=self.directory/'audit';audit.mkdir(mode=0o700);(audit/'bytes').mkdir(mode=0o700)
         # Same real ordering as retainNormalCleanupAudit -> durable marker -> packet/retained removal.
         (audit/'source-contract-retained').write_text('original frozen source/provenance audit bytes')
@@ -110,6 +114,7 @@ class Fixture(old.UpgradeFlowFixture):
             elif self.native_fault=='lease-inode':
                 p=self.root/'replacement-lease';p.write_bytes(self.leasefile.read_bytes());p.chmod(0o600);os.replace(p,self.leasefile)
             elif self.native_fault=='backslide':self.current.update(result='',exit_code='');self.current.pop('finished_at',None);self.prior={'ref':self.previous_web,'pid':'666','log':'/private/previous-deploy.log','started_at':'2026-11-16T00:00:00Z','phase':'restart','result':'','exit_code':'0','build_id':self.old_build,'built_at':'2026-11-16T00:01:00Z','finished_at':'2026-11-16T00:02:00Z'};self.write_records()
+        if self.cleanup_arrival_pending:self.held_phase='arrived';self.cleanup_arrival_pending=False
         result={'authorizationSha256':self.auth['grantSha256'],'releaseAuthorized':False,'runtime':copy.deepcopy(self.runtime),'verified':{},'activated':copy.deepcopy(self.activated)}
         result['runtime']['migrationLedger']['verifiedAt']='2026-11-17T00:00:%02d.000Z'%self.native_calls
         result['runtime']['verifiedAt']='2026-11-17T00:00:%02d.001Z'%self.native_calls
@@ -146,6 +151,11 @@ class Fixture(old.UpgradeFlowFixture):
         with self.ports(),contextlib.redirect_stdout(io.StringIO()),contextlib.redirect_stderr(io.StringIO()):update.upgrade(args,self.fmt,self.base,ci)
 
 class ConditionalRuntimeTests(unittest.TestCase):
+    def test_fixture_original_grant_obeys_the_real_native_closed_validator(self):
+        with tempfile.TemporaryDirectory()as tmp:
+            f=Fixture(Path(tmp));program="import {readFileSync} from 'node:fs';import {validateInstallGrant} from './.github/ci/ci-install-grant.mjs';validateInstallGrant(JSON.parse(readFileSync(process.argv[1])),{now:1794873610000});console.log('native-grant-valid')"
+            result=subprocess.run(['node','--input-type=module','-e',program,str(f.directory/'authorization.json')],cwd=ROOT,capture_output=True,text=True)
+            self.assertEqual(result.returncode,0,result.stderr);self.assertIn('native-grant-valid',result.stdout)
     def test_running_ci_retains_old_last_ok_and_honest_partial_receipt(self):
         with tempfile.TemporaryDirectory()as tmp:
             f=Fixture(Path(tmp));old_last=(f.state/'last-ok').read_bytes();environment=f.env.read_bytes();dotenv=(f.webroot/'.env.production').read_bytes();f.conditional()
@@ -168,7 +178,8 @@ class ConditionalRuntimeTests(unittest.TestCase):
                     if cleanup:f.cleanup_at=boundary
                     else:f.arrive_at=boundary
                     f.conditional();r=json.loads((f.operation/'activated.json').read_text());self.assertEqual(r['transitionStages'][-1],'O');self.assertEqual(r['leasePhases'][-1],'arrived');self.assertFalse(r['journeyVerified'])
-                    if cleanup:self.assertTrue(list(f.operation.glob('ci-runtime-native-retry-*.json')));self.assertFalse((f.directory/'packet').exists())
+                    if cleanup:
+                        retries=list(f.operation.glob('ci-runtime-native-retry-*.json'));self.assertTrue(retries);self.assertEqual(json.loads(retries[0].read_bytes())['leasePhase'],'installing');self.assertFalse((f.directory/'packet').exists())
     def test_arrived_requires_strict_ok_and_lease_never_backslides(self):
         for stage in ['R0','R1','wrong-build']:
             with self.subTest(stage=stage),tempfile.TemporaryDirectory()as tmp:
@@ -227,7 +238,7 @@ class ConditionalRuntimeTests(unittest.TestCase):
                 if defect=='unknown-current':f.current['unapproved']='extra';f.auth['launch']['current']['unapproved']='extra';f.write_records()
                 if defect=='unknown-last-ok':f.prior['unapproved']='extra';f.write_records()
                 if defect=='filter-drift':
-                    m=json.loads(f.source_manifest_file.read_text());m['filters'].append('source-000');m['entries']=[row for row in m['entries']if row['path']!='source-000'];f.source_manifest_file.write_bytes(encoded(m));f.auth['sourceManifestSha256']=ci.sha(f.source_manifest_file.read_bytes())
+                    m=json.loads(f.source_manifest_file.read_text());m['filters'].append('source-000');m['entries']=[row for row in m['entries']if row['path']!='source-000'];f.source_manifest_file.write_bytes(encoded(m));f.auth['sourceManifestSha256']=ci.sha(f.source_manifest_file.read_bytes());f.first=copy.deepcopy(f.first);f.first['sourceManifestSha256']=f.auth['sourceManifestSha256'];f.firstfile.write_bytes(encoded(f.first));f.auth['firstStageApprovalSha256']=ci.sha(f.firstfile.read_bytes())
                 if defect in ['wrong-first-gate','wrong-first-artifact','wrong-first-helper','postdated-first-approval','expired-at-drain']:
                     f.first=copy.deepcopy(f.first)
                     if defect=='wrong-first-gate':f.first['gate']['runId']=78
