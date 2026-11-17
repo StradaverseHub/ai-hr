@@ -127,3 +127,14 @@ it('admits digest mail only inside its genuine held tenant/case/receipt/exact-ke
  })});}}};
  await finish(200,[handler,contractScheduledAutomationJobHandler]);expect(checked).toBeGreaterThan(0);expect(await owner.client`select id from automation_email_delivery where tenant_id=${b.tenantId}::uuid`).toHaveLength(1);
 });
+
+it('keeps system provenance and digest receipts row-secured without application table grants',async()=>{
+ const rows=await owner.client<{name:string;rls:boolean;readable:boolean;writable:boolean}[]>`select c.relname as name,c.relrowsecurity as rls,has_table_privilege('ai_hr_app',c.oid,'SELECT') as readable,has_table_privilege('ai_hr_app',c.oid,'INSERT') as writable from pg_class c join pg_namespace n on n.oid=c.relnamespace where n.nspname='app' and c.relname in('contract_system_job_source','contract_system_digest') order by c.relname`;
+ expect(rows).toEqual([{name:'contract_system_digest',rls:true,readable:false,writable:false},{name:'contract_system_job_source',rls:true,readable:false,writable:false}]);
+});
+it('agrees with PostgreSQL on the actual MY morning date when the UTC date differs',async()=>{
+ for(const instant of ['2026-11-16T15:59:00Z','2026-11-16T16:00:00Z','2026-11-16T23:59:00Z','2026-11-17T00:00:00Z']){
+  const [clock]=await owner.client<{day:string;time:string;morning:boolean}[]>`select (${instant}::timestamptz at time zone 'Asia/Kuala_Lumpur')::date::text as day,to_char(${instant}::timestamptz at time zone 'Asia/Kuala_Lumpur','HH24:MI') as time,(${instant}::timestamptz at time zone 'Asia/Kuala_Lumpur')::time>='08:00'::time as morning`;
+  expect(clock.day).toBe(todayInKualaLumpur(new Date(instant)));expect(clock.time).toBe(timeInKualaLumpur(new Date(instant)));expect(clock.morning).toBe(timeInKualaLumpur(new Date(instant))>='08:00');
+ }
+});
