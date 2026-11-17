@@ -499,6 +499,8 @@ describe('Offboarding local form fields',()=>{
     expect(resignationLetterPreview(letter,people.employee).editableFieldIds).toEqual(['note']);
     expect(()=>act(letter,'stranger',{type:'fields',values:{note:'Private edit'}})).toThrow();
     expect(()=>act(letter,'employee',{type:'fields',values:{locked:'99999'}})).toThrow('editable document fields');
+    const forged=structuredClone(letter);forged.fields.push({...forged.fields[0],id:'retention.salary',required:false});forged.blocks.push({id:'salary-collision',type:'field',fieldId:'retention.salary',text:'',section:'form'});
+    expect(resignationLetterPreview(forged,people.employee).editableFieldIds).not.toContain('retention.salary');expect(()=>act(forged,'employee',{type:'fields',values:{'retention.salary':'1'}})).toThrow('editable document fields');
     const revision=letter.revision,changed=act(letter,'employee',{type:'fields',values:{note:'Employee supplied statement'}});letter=changed.letter;
     expect(letter.revision).toBe(revision+1);expect(letter.fieldValues).toEqual({note:'Employee supplied statement'});expect(letter.signedValues).not.toHaveProperty('ceo-sign');
     expect(changed.events.some(event=>event.type==='signAgain')).toBe(true);expect(resignationLetterPendingSteps(letter).map(step=>step.id)).toEqual(['ceo-sign']);

@@ -304,7 +304,7 @@ export function resignationLetterEditableFields(letter:ResignationLetter,userId:
  const holding=caps.pendingSteps.some(step=>resignationLetterStepMembers(letter,step).includes(userId))||letter.state==='owner'&&resignationLetterOwnerMembers(letter).includes(userId);
  if(!caps.contentVisible||!holding)return[];
  const byId=Object.fromEntries(letter.fields.map(field=>[field.id,values[field.pmKey??field.id]??'']));
- return visibleFields(letter).filter(field=>field.pmKey===null&&field.owner!=='pmLocked'&&(!field.when||byId[field.when.field]===field.when.value)&&(field.owner==='employee'?userId===letter.employeeUserId:userId!==letter.employeeUserId)).map(field=>field.id);
+ return visibleFields(letter).filter(field=>field.pmKey===null&&!/^(employee|retention|resignation|company|org|letter|signer)\./.test(field.id)&&!['today','companyName','acknowledgedBy','acknowledgedOn','__proto__','prototype','constructor'].includes(field.id)&&field.owner!=='pmLocked'&&(!field.when||byId[field.when.field]===field.when.value)&&(field.owner==='employee'?userId===letter.employeeUserId:userId!==letter.employeeUserId)).map(field=>field.id);
 }
 function editedBlocks(letter: ResignationLetter, proposed: Block[]): Block[] {
   if (!Array.isArray(proposed) || proposed.length !== letter.blocks.length || proposed.length > 500) invalid('Keep the letter’s existing content blocks and structure.');
