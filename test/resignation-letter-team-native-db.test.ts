@@ -71,13 +71,16 @@ it('rejects frozen team, Person and pinned route rewrites even with a valid deri
  const mutations=[(l:ResignationLetter)=>{l.teamSteps!['owner-review'].memberIds.push(employee.userId!);},(l:ResignationLetter)=>{l.teamSteps!['owner-review'].personIds[fyi.userId!]=employee.personId!;},(l:ResignationLetter)=>{l.document.route.steps[0]!.holderId=fyi.userId!;}];
  for(const mutate of mutations){const changed=structuredClone(letter);mutate(changed);await nativeRefusal(withTenant(fyi,async tx=>{await begin(tx,fyi,{type:'openLetter',documentId:letter.id,documentRevision:letter.revision});await save(tx,fyi,{...data,letters:[changed]},'offer');}),'42501');expect(await persisted()).toEqual(original);}
 });
-it('keeps first-on-it advisory: another frozen member may act but cannot replace the first actor',async()=>{
- const letter=realLetter(),taskId=letter.id+':owner-review';data={...data,decision:null,letters:[letter],tasks:[{id:taskId,userIds:[manager.userId,fyi.userId],team:true}],progress:{[taskId]:{status:'progress',onIt:{id:manager.userId,name:'First teammate'}}}};await seedJourney('offer');const original=await persisted();
- await nativeRefusal(withTenant(fyi,async tx=>{await begin(tx,fyi,{type:'taskProgress',taskId,status:'progress'});await save(tx,fyi,{...data,progress:{[taskId]:{status:'progress',onIt:{id:fyi.userId,name:'Replacement'}}}},'offer');}),'42501');expect(await persisted()).toEqual(original);
- await withTenant(fyi,async tx=>{await begin(tx,fyi,{type:'letterAction',documentId:letter.id,documentRevision:letter.revision,action:'review'});const reviewed=act(letter,fyi,{type:'complete',stepId:'owner-review'});await save(tx,fyi,{...data,letters:[reviewed]},'offer');});
- expect((await persisted())?.data.progress).toEqual(data.progress);
+it('sets first-on-it on Open, preserves it on another Open and still lets the teammate act',async()=>{
+ let letter=realLetter();const taskId=letter.id+':owner-review';data={...data,decision:null,letters:[letter],tasks:[{id:taskId,userIds:[manager.userId,fyi.userId],team:true}],progress:{}};await seedJourney('offer');
+ const progress={[taskId]:{status:'progress',onIt:{id:manager.userId,name:'First teammate'}}};
+ await withTenant(manager,async tx=>{await begin(tx,manager,{type:'openLetter',documentId:letter.id,documentRevision:letter.revision});letter=act(letter,manager,{type:'open'});data={...data,letters:[letter],progress};await save(tx,manager,data,'offer');});
+ await withTenant(fyi,async tx=>{await begin(tx,fyi,{type:'openLetter',documentId:letter.id,documentRevision:letter.revision},2);letter=act(letter,fyi,{type:'open'});data={...data,letters:[letter]};await save(tx,fyi,data,'offer',2);});
+ const original=await persisted();expect(original?.data.progress).toEqual(progress);
+ await nativeRefusal(withTenant(fyi,async tx=>{await begin(tx,fyi,{type:'taskProgress',taskId,status:'progress'},3);await save(tx,fyi,{...data,progress:{[taskId]:{status:'progress',onIt:{id:fyi.userId,name:'Replacement'}}}},'offer',3);}),'42501');expect(await persisted()).toEqual(original);
+ await withTenant(fyi,async tx=>{await begin(tx,fyi,{type:'letterAction',documentId:letter.id,documentRevision:letter.revision,action:'review'},3);const reviewed=act(letter,fyi,{type:'complete',stepId:'owner-review'});await save(tx,fyi,{...data,letters:[reviewed]},'offer',3);});
+ expect((await persisted())?.data.progress).toEqual(progress);
 });
-
 it('rejects relinked member identities and invented signature actors without changing stored evidence',async()=>{
  let letter=act(realLetter(),manager,{type:'complete',stepId:'owner-review'});data={...data,decision:null,letters:[letter],tasks:[{id:letter.id+':team-sign',userIds:[manager.userId,fyi.userId],team:true}]};await seedJourney('offer');const original=await persisted();
  const completed=act(letter,fyi,{type:'complete',stepId:'team-sign',signature:'Verified teammate',consent:true});const forged=structuredClone(completed);forged.history.at(-1)!.actorPersonId=employee.personId!;
