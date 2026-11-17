@@ -74,6 +74,17 @@ it('refuses cross-tenant, unrelated-company and view-only case access without le
   const user = await account();
   const otherBase = await seedBase(); await setModule(otherBase.tenantId, 'lifecycle', 'active'); const foreign = await entitledCtx(otherBase);
   await expect(addresses([user.id], foreign)).rejects.toThrow();
+  const foreignAccount = await account('Fictional Recipient', otherBase.tenantId);
+  expect((await searchOnboardingRecipientUsers(admin, caseId, 'Fictional Recipient')).map(row => row.id)).toEqual([user.id]);
+  expect(await addresses([foreignAccount.id])).toEqual({});
+  const [otherCompany] = await owner.db.insert(schema.company).values({ tenantId: base.tenantId, legalName: 'Fictional unrelated company', country: 'MY' }).returning();
+  const wrongCompanyId = await createAppUser(base.tenantId, null, 'hr_admin');
+  await owner.client`update role_assignment set company_id=${otherCompany.id}::uuid where app_user_id=${wrongCompanyId}::uuid`;
+  const permittedModule = await onboardingContext(admin); permittedModule.config.access.onboarding.push(wrongCompanyId);
+  await onboardingSaveConfig(admin, permittedModule.revision, permittedModule.config);
+  const wrongCompany: SessionContext = { ...admin, userId: wrongCompanyId, personId: null, roles: ['hr_admin'], grants: [{ role: 'hr_admin', companyId: otherCompany.id }] };
+  await expect(searchOnboardingRecipientUsers(wrongCompany, caseId, 'Fictional')).rejects.toThrow();
+  await expect(addresses([user.id], wrongCompany)).rejects.toThrow();
   const outsider = await account('Fictional outsider');
   const other: SessionContext = { ...admin, userId: outsider.id, personId: outsider.personId, roles: ['employee'], grants: [{ role: 'employee', companyId: null }] };
   await expect(searchOnboardingRecipientUsers(other, caseId, 'Fictional')).rejects.toThrow();
