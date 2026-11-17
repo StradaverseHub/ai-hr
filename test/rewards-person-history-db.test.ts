@@ -42,10 +42,10 @@ describe('Person reward history custody and upload',()=>{
    const userId=await createAppUser(b.tenantId,person.id,'employee');actors[role]={...admin,userId,personId:person.id,roles:['employee'],grants:undefined};
    await setRewardMember(admin,unitId,(await getRewardUnit(admin,unitId)).unit.revision,userId,role);
   }
-  const [cycle]=await owner.db.insert(schema.rewardCycle).values({tenantId:b.tenantId,name:'Fictional earlier reward history',year:year-1,createdBy:admin.userId!}).returning();
-  const [past]=await owner.db.insert(schema.rewardUnit).values({tenantId:b.tenantId,companyId:b.companyId,businessUnitId:bu.id,cycleId:cycle.id,createdBy:admin.userId!,snapshotDate:`${year-1}-12-31`,policy:defaultPolicy(year-1)}).returning();pastUnitId=past.id;
-  await owner.db.execute(sql`update reward_unit set preparation_required=false where id=${pastUnitId}::uuid`);
-  const [pastEntry]=await owner.db.insert(schema.rewardEntry).values({tenantId:b.tenantId,unitId:past.id,employmentId,source,facts:{...emptyFacts(),reviewed:true,talent:'SCORE',performance:'ME'},recommendation:entry.recommendation}).returning();pastEntryId=pastEntry.id;
+  pastUnitId=await createApprovedRewardUnit(admin,{name:'Fictional earlier reward history',year:year-1,companyId:b.companyId,businessUnitId:bu.id,snapshotDate:`${year-1}-12-31`});
+  const past=await getRewardUnit(admin,pastUnitId),pastEntry=past.rows.find(row=>row.source.employmentId===employmentId);
+  expect(pastEntry).toBeDefined();pastEntryId=pastEntry!.id;
+  await owner.db.update(schema.rewardEntry).set({facts:{...emptyFacts(),reviewed:true,talent:'SCORE',performance:'ME'}}).where(eq(schema.rewardEntry.id,pastEntryId));
   await owner.db.execute(sql`insert into reward_person_history(tenant_id,company_id,employment_id,year,kind,source,unit_id,entry_id,talent,performance,merit_bp,promotion_bp,special_bp,increment_cents,total_increase_bp,promoted,bonus_cents,bonus_months_bp,lump_cents,created_by)
    values(${b.tenantId}::uuid,${b.companyId}::uuid,${employmentId}::uuid,${year-1},'annual','review',${pastUnitId}::uuid,${pastEntryId}::uuid,'SCORE','ME',450,0,0,22500,450,false,750000,15000,0,${admin.userId}::uuid)`);
  },120000); // Approved setup fixtures use independently checked libraries and organization evidence.
