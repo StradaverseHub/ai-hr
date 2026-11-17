@@ -1,4 +1,7 @@
 'use client';
+import {useTranslations} from 'next-intl';
+import {lifecycleTemplateListMetadata} from '@/lib/lifecycle-template-list';
+import type {AutomationWorkflow} from '@/lib/automation/workflow';
 import {PeopleSearch} from './people-search';
 import {useState} from 'react';
 import {useRouter} from 'next/navigation';
@@ -13,13 +16,14 @@ import type {RoutingChoices} from '@/app/lifecycle/probation/templates/routing-e
 export type LifecycleConfigurationData=Awaited<ReturnType<typeof v9Configuration>>;
 
 /** Existing V9 document and rich email editors, hosted in the shared Configuration destination. */
-export function LifecycleTemplateSection({initial,filter,choices}:{initial:LifecycleConfigurationData;filter:Module|'all';choices:RoutingChoices}){
+export function LifecycleTemplateSection({initial,filter,choices,sharedWorkflows=[],summaryRoutings=choices.routings}:{initial:LifecycleConfigurationData;filter:Module|'all';choices:RoutingChoices;sharedWorkflows?:AutomationWorkflow[];summaryRoutings?:{id:string;name:string;retired?:boolean}[]}){
+ const t=useTranslations('automation');
  const router=useRouter(),configuration=useV9Configuration(initial.config,saveV9Config,()=>router.refresh());
  const[selected,select]=useState(''),[module,setModule]=useState<Module>(filter==='off'?'off':'onb'),[users,setUsers]=useState(initial.users);
  if(!configuration.draft)return <p className="v9-notice">Set up Onboarding &amp; Offboarding before creating its templates.</p>;
  return <ActorContext.Provider value={initial.actor}><RuleLabels.Provider value={initial.labels}>
   <SaveState configuration={configuration}/><details><summary>Find named people for templates</summary><PeopleSearch known={users} disabled={!initial.editable} onAdd={user=>setUsers(current=>current.some(person=>person.id===user.id)?current:[...current,user])}/></details>
-  <TemplateEditor key={filter} previewCases={[]} users={users} config={configuration.draft} selected={selected} select={select} module={module} setModule={setModule} edit={configuration.edit} editable={initial.editable} saved={configuration.state==='saved'} usage={initial.usage} references={initial.references} routingChoices={{...choices,people:users}} initialFilter={filter} showModuleFilter={false}/>
+  <TemplateEditor listMetadata={lifecycleTemplateListMetadata(configuration.draft,sharedWorkflows,{...choices,routings:summaryRoutings,people:users},(key,values)=>t(key,values))} key={filter} previewCases={[]} users={users} config={configuration.draft} selected={selected} select={select} module={module} setModule={setModule} edit={configuration.edit} editable={initial.editable} saved={configuration.state==='saved'} usage={initial.usage} references={initial.references} routingChoices={{...choices,people:users}} initialFilter={filter} showModuleFilter={false}/>
  </RuleLabels.Provider></ActorContext.Provider>;
 }
 function SaveState({configuration}:{configuration:ReturnType<typeof useV9Configuration>}){
