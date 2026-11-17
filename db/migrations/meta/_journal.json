@@ -6693,6 +6693,13 @@
       "when": 1794841005936,
       "tag": "5936_contract_accept_no_matching_workflow",
       "breakpoints": true
+    },
+    {
+      "idx": 5337,
+      "version": "7",
+      "when": 1794841005937,
+      "tag": "5937_contract_digest_queue_capability",
+      "breakpoints": true
     }
   ]
 }
