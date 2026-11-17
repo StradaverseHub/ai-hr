@@ -41,3 +41,33 @@ it('keeps the real all-kind heartbeat predicate and bounds only selected CI to t
   }
  }finally{rmSync(dir,{recursive:true,force:true});}
 },60000);
+
+it('executes the real inventory CLI against a clean frozen Git checkout and actual canonical filter owners',async()=>{
+ const fs=await import('node:fs'),path=await import('node:path'),os=await import('node:os'),crypto=await import('node:crypto');
+ const dir=fs.mkdtempSync(path.join(os.tmpdir(),'aihr-worker-inventory-cli-')),source=path.join(dir,'frozen'),out=path.join(dir,'private');fs.mkdirSync(out,{mode:0o700});
+ const git=(...args:string[])=>{const r=spawnSync('git',['-c','core.hooksPath=/dev/null',...args],{encoding:'utf8',maxBuffer:4*1024**2});expect(r.status,r.stderr).toBe(0);return r.stdout.trim();};
+ const env:NodeJS.ProcessEnv={...process.env};for(const name of ['AIHR_SSH_CONFIG','IMPROVE_SSH_HOST','IMPROVE_SSH_USER','IMPROVE_SSH_PORT'])delete env[name];
+ try{
+  git('clone','--shared','--no-hardlinks','--quiet',process.cwd(),source);
+  fs.symlinkSync(path.join(process.cwd(),'node_modules'),path.join(source,'node_modules'),'dir');
+  fs.appendFileSync(path.join(source,'.gitignore'),'\n/canonical-ignored-extra/\n/fixture-nested/\n/mobile/fixture-secret.p8\n/mobile/fixturedeep/\n');
+  git('-C',source,'add','.gitignore');git('-C',source,'-c','user.name=Fictional worker fixture','-c','user.email=worker-fixture@example.invalid','commit','-qm','Isolated ignored canonical source fixtures');
+  const head=git('-C',source,'rev-parse','HEAD');
+  for(const [name,body]of [['canonical-ignored-extra/included.txt','ignored but canonical'],['.improve/private.txt','excluded root fixture'],['fixture-nested/node_modules/private.txt','excluded component'],['mobile/fixture-secret.p8','excluded anchored pattern'],['mobile/fixturedeep/included.p8','included exact owner depth']]as const){const target=path.join(source,name);fs.mkdirSync(path.dirname(target),{recursive:true});fs.writeFileSync(target,body);}
+  fs.symlinkSync('included.txt',path.join(source,'canonical-ignored-extra/link'));
+  expect(git('-C',source,'status','--porcelain')).toBe('');
+  const cli=path.join(source,'scripts/bank-import-worker-source-inventory.mjs'),file=path.join(out,'inventory.json');
+  const invoke=(output:string)=>spawnSync(process.execPath,['--import','tsx',cli,source,head,output],{cwd:process.cwd(),env,encoding:'utf8',maxBuffer:4*1024**2});
+  const first=invoke(file);expect(first.status,first.stderr).toBe(0);
+  const raw=fs.readFileSync(file),inventory=JSON.parse(raw.toString()),ack=JSON.parse(first.stdout);
+  expect(ack.manifestSha256).toBe(crypto.createHash('sha256').update(raw).digest('hex'));expect(fs.statSync(file).mode&0o777).toBe(0o600);expect(inventory.source).toBe(head);
+  const originalOwner=await import('../scripts/improve/release');const owner=originalOwner.deploymentRsyncArgs;
+  expect(inventory.filters).toEqual(owner!(source,'unused:/').flatMap((v:string,i:number,a:string[])=>v==='--exclude'?[a[i+1]]:[]));
+  expect(inventory.entries.length).toBeGreaterThan(100);const nodes=new Map<string,{kind:string;sha256?:string;target?:string}>(inventory.entries.map((r:{path:string;kind:string;sha256?:string;target?:string})=>[r.path,r]));
+  expect(nodes.get('canonical-ignored-extra/included.txt')?.sha256).toBe(crypto.createHash('sha256').update('ignored but canonical').digest('hex'));expect(nodes.get('canonical-ignored-extra/link')).toMatchObject({kind:'link',target:'included.txt'});expect(nodes.has('mobile/fixturedeep/included.p8')).toBe(true);
+  for(const key of ['.git','node_modules','.improve','fixture-nested/node_modules','mobile/fixture-secret.p8'])expect(nodes.has(key)).toBe(false);
+  const again=invoke(file);expect(again.status).not.toBe(0);expect(fs.readFileSync(file)).toEqual(raw);
+  const outside=path.join(dir,'outside');fs.writeFileSync(outside,'must remain outside');const escape=path.join(source,'canonical-ignored-extra/escape');fs.symlinkSync('../../outside',escape);const escaped=invoke(path.join(out,'escape.json'));expect(escaped.status).not.toBe(0);expect(escaped.stderr).toContain('Source link');fs.unlinkSync(escape);
+  fs.appendFileSync(path.join(source,'.gitignore'),'\n# Tracked WIP must refuse\n');const dirty=invoke(path.join(out,'dirty.json'));expect(dirty.status).not.toBe(0);expect(dirty.stderr).toContain('cleanHead');
+ }finally{fs.rmSync(dir,{recursive:true,force:true});}
+},120000);

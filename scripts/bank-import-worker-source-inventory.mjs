@@ -12,7 +12,9 @@ assert(isAbsolute(output)&&resolve(output)===output&&realpathSync(parent)===pare
 assert(process.argv.length===5&&/^[a-f0-9]{40}$/.test(source),'Exact frozen checkout, full source and private output required');
 assert(execFileSync('git',['rev-parse','HEAD'],{cwd:root,encoding:'utf8'}).trim()===source,'Frozen checkout HEAD differs');
 assert(execFileSync('git',['status','--porcelain'],{cwd:root,encoding:'utf8',maxBuffer:4*1024**2}).trim()==='','Frozen checkout must satisfy normal cleanHead; ignored canonical extras are still inventoried');
-const {deploymentRsyncArgs}=await import(pathToFileURL(join(root,'scripts/improve/release.ts')).href);
+const official=await import(pathToFileURL(join(root,'scripts/improve/release.ts')).href);
+const deploymentRsyncArgs=official.deploymentRsyncArgs??official.default?.deploymentRsyncArgs;
+assert(typeof deploymentRsyncArgs==='function','Canonical deployment owner export missing');
 const {canonicalSourceExclusions}=await import(pathToFileURL(join(root,'.github/ci/normal-cleanup-fences.mjs')).href);
 const args=deploymentRsyncArgs(root,'unused:/'),filters=args.flatMap((v,i)=>v==='--exclude'?[args[i+1]]:[]),excluded=canonicalSourceExclusions(args);
 const relOutput=relative(root,resolve(output));
