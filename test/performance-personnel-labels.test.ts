@@ -40,12 +40,15 @@ it('retains native per-company availability/order for all roles, shared/global/a
   for(let index=0;index<4;index++){
    const read=readers[index],kind=kinds[index];
    const rows=await read(ctx);const csv=labelCompanyCsv(rows,companies);
+   const completeCriteria=index===3?await businessUnitCriteriaForIds(ctx,(await listBusinessUnits(ctx,{includeArchived:true})).map(row=>row.id)):[];
+   const completeCsv=labelCompanyCsv(completeCriteria,companies);
    spy.mockClear();
    for(const companyId of companies){
     const old=await read(ctx,{companyIds:[companyId]});
     expect(labelsInCompanyScope(rows,new Set([companyId]))).toEqual(old);
     const legacyIds=new Set(await labelIdsForCompany(ctx,kind,companyId));
     for(const row of rows)expect(csv.get(row.id)?.split(',').includes(companyId)??false).toBe(legacyIds.has(row.id));
+    for(const row of completeCriteria)expect(completeCsv.get(row.id)?.split(',').includes(companyId)??false).toBe(legacyIds.has(row.id));
    }
    expect(spy).toHaveBeenCalledTimes(140);spy.mockClear();
    const catalogue=await read(ctx);for(const companyId of companies)labelsInCompanyScope(catalogue,new Set([companyId]));labelCompanyCsv(catalogue,companies);
