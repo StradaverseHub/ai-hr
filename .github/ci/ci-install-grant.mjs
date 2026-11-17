@@ -7,6 +7,7 @@ import {BUILD_ARTIFACT,BUILD_ARCHIVE_MAX} from './build-artifact.mjs';
 import {STAGING_BUILD_RUNTIME,assertBuildCapacityProfile} from './build-production.mjs';
 import {validateBrowserRecoveryGrantEvidence,BROWSER_RECOVERY_POLICY} from './browser-recovery-policy.mjs';
 import {validateRecoveryGrantEvidence} from './focused-recovery-policy.mjs';
+import {validateExactRecoveryGrantEvidence,EXACT_RECOVERY_POLICY} from './exact-recovery-policy.mjs';
 import {validateRepairGrantEvidence,REPAIR_RECOVERY_POLICY} from './repair-recovery-policy.mjs';
 export const installHash=bytes=>createHash('sha256').update(bytes).digest('hex');
 export function installJson(value){
@@ -44,7 +45,7 @@ export function createInstallGrant({evidence,run,producer,baselineBuildId,enviro
   &&evidence.build.source===evidence.sha&&evidence.build.controller===evidence.controller&&evidence.build.runId===evidence.runId,'Complete authenticated current CI evidence required');
  const recovered=evidence.recovery!==undefined;
  const repaired=evidence.recovery?.recoveryPolicy===REPAIR_RECOVERY_POLICY;
- if(recovered)(repaired?validateRepairGrantEvidence:evidence.recovery?.recoveryPolicy===BROWSER_RECOVERY_POLICY?validateBrowserRecoveryGrantEvidence:validateRecoveryGrantEvidence)(evidence,run);
+ if(recovered)(repaired?validateRepairGrantEvidence:evidence.recovery?.recoveryPolicy===BROWSER_RECOVERY_POLICY?validateBrowserRecoveryGrantEvidence:evidence.recovery?.recoveryPolicy===EXACT_RECOVERY_POLICY?validateExactRecoveryGrantEvidence:validateRecoveryGrantEvidence)(evidence,run);
  assert(run.id===evidence.runId&&run.head_sha===evidence.controller&&run.status==='completed'&&run.conclusion===(recovered&&!repaired?'failure':'success')&&run.run_attempt===1
   &&run.repository?.id===1333414856&&run.head_repository?.id===1333414856
   &&producer.name==='build'&&producer.run_id===run.id&&producer.run_attempt===1&&producer.head_sha===run.head_sha&&producer.conclusion==='success','Original authenticated successful run/build required');
