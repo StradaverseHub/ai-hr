@@ -231,7 +231,7 @@ export const PROVIDER_DATA_REVIEW_RECORDS:readonly ProviderDataReviewRecord[]=Ob
 {
   "contractId": "authored_attendance_formula_v1",
   "status": "approved",
-  "sourceDigest": "062f69ffc55c585eea1246779ebd8d50bd3bed7076d3d7c67ec2ed41a5b3b74a",
+  "sourceDigest": "ffd2e1fec9fd42740bdd1cda8b4859237c78327bdca9471b17c9406b44eb58ce",
   "reviewer": "human:zenlam repository-owner provisional",
   "evidence": "docs/reviews/board-six-attendance-provider-review-20261109.md#attendance-authoring-purpose",
   "reviewedAt": "2026-11-08T16:58:14Z"

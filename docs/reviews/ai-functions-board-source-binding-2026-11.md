@@ -1130,16 +1130,27 @@ retains its Personnel correction/history repairs alongside Resignation; there is
 migration delta in the accepted hotfix. The canonical employment writer and existing
 provider payloads, transforms, purposes and transports are unchanged.
 
-Under the recorded same-purpose staging rebinding approval, the same 29 approved
-digest literals carry from `b87b678e58667959a981ff67c85b7a37134b6959a87881cd68ebee7bc9349c22`
-to `062f69ffc55c585eea1246779ebd8d50bd3bed7076d3d7c67ec2ed41a5b3b74a`
-over 1714 covered files. A static comparison confirms all 31 human metadata/status
-records are identical across both parents; pending contracts remain pending.
-The agent manifest is regenerated last: 496 files,
-`92cca6aef1724ab6f55f59cee7099029bf1aa7d9726e1ce3f94d9efdaa9f928b`.
+Under the recorded same-purpose staging rebinding approval, the same **28 active**
+approval digests carry to
+`062f69ffc55c585eea1246779ebd8d50bd3bed7076d3d7c67ec2ed41a5b3b74a`
+over 1714 covered files. The initial `3a12835c5` branch checkpoint incorrectly carried
+one retired record with these active bindings. Independent coordinator review identified
+that error. The corrected registry restores the entire historical
+`authored_attendance_formula_v1` record to its accepted `12098` identity, including
+fingerprint `ffd2e1fec9fd42740bdd1cda8b4859237c78327bdca9471b17c9406b44eb58ce`,
+original 8 November review timestamp and Board-six evidence. Its historical status stays
+approved; it gains no current-source admission or reactivation. Both pending records
+remain byte-identical. Reversing only the 28 active digest substitutions reproduces the
+accepted registry **byte-for-byte**. A regression pins the historical record and requires
+its current-source disclosure admission to fail.
 
-Earlier source-specific evidence remains at its producing identities. Resignation's
-complete rendered walkthrough, corrected edge-case admission test and final release
-verification remain required on the composed candidate. This merge does not claim
-a lease, target ledger verification or installation. Audit remains last; Contract
-remains held. No production deployment or package publication is authorized.
+The agent manifest is regenerated last: 496 files,
+`7bb7e6078c22b01680efa0e140d215f93194df169293432930555f88bba3e862`.
+The provider digest is unchanged by this historical-record correction. All prior failed
+and successful runs retain their original source identities; none is relabelled.
+
+The owner's newer release order puts the approved Board items first. Resignation must
+integrate their actual accepted source and ordered ledger, reconcile its seven unapplied
+migration positions above that watermark, and complete its remaining rendered and final
+release checks. This preparation claims no lease or installation. Audit remains last;
+Contract remains held. No production deployment or package publication is authorized.

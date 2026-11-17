@@ -1,3 +1,19 @@
+# Approved Board release precedes Resignation — 17 November 2026
+
+The owner now directs the approved Board-items session to release first. Its five
+unapplied migrations are 6100–6104, idx 5500–5504, with `when`
+1794841006100–1794841006104. None was installed when this priority was confirmed.
+After their accepted handback, Resignation must integrate that actual source and
+ordered ledger, obtain a fresh seven-slot forward allocation and update filenames,
+journal identities and upgrade pins together. The still-unapplied 5881–5887 positions
+below will lie below that future watermark and are not an installation-ready suffix.
+Preserve all seven current SQL bytes, including the first four original identities;
+no lower-gap or prematurely assumed watermark is permitted. Foreign claims must be
+surveyed again. No lease, shared-ref advancement or installation is authorized before
+the Board handback and Resignation's completed verification.
+
+The reservation and accepted-hotfix observations below retain their original context.
+
 # Resignation forward reservation — 17 November 2026 (unapplied)
 
 The coordinator confirmed **5881–5887**, idx **5281–5287**, `when`
