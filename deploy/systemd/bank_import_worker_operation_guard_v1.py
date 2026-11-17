@@ -58,11 +58,7 @@ class QueueOperationLock:
                         (named.st_dev,named.st_ino,named.st_uid,named.st_gid,named.st_mode,named.st_nlink),
                         'opened native operation lock differs from its path')
         if require_held:
-            # An inherited duplicate can LOCK_UN this same open-file description without changing
-            # the named inode. Verify the actual kernel READ lock, not only our acquisition flag.
-            locks=Path('/proc/self/fdinfo/'+str(self.fd)).read_text().splitlines()
-            held_shared=any(line.startswith('lock:') and line.split()[2:5]==['FLOCK','ADVISORY','READ'] for line in locks)
-            self.base.check(self.acquired and held_shared,'native shared operation lock is not held')
+            self.base.check(self.acquired and any(line.split()[2:5]==['FLOCK','ADVISORY','READ'] for line in Path('/proc/self/fdinfo/'+str(self.fd)).read_text().splitlines()if line.startswith('lock:')),'native shared operation lock is not held')
         return self.fd
 
     def close(self):
@@ -170,10 +166,10 @@ def launch(argv,fmt,base,ci,update):
     parser.add_argument('--approval',required=True);parser.add_argument('--approval-sha256',required=True)
     args=parser.parse_args(argv);base.check(os.geteuid()==0,'fixed root launcher must run after the privilege boundary')
     stage='drain'if args.mode=='guarded-drain' else 'activate-ci-runtime'
-    guard=None;previous=base.command;previous_fds=getattr(base,'VERIFIED_OPERATION_FDS',())
+    guard=None;previous=base.command;previous_fds=getattr(base,'VERIFIED_OPERATION_FDS',());previous_guard=getattr(base,'VERIFIED_OPERATION_GUARD',None)
     try:
         guard=GuardedInvocation(base,ci,stage,args.approval,args.approval_sha256)
-        ci.ACTIVE_OPERATION_GUARD=guard;base.VERIFIED_OPERATION_FDS=(guard.lock.fd,)
+        ci.ACTIVE_OPERATION_GUARD=guard;base.VERIFIED_OPERATION_GUARD=guard;base.VERIFIED_OPERATION_FDS=(guard.lock.fd,)
         def fenced_command(command,**options):
             guard.verify()
             # The verified EX appears after upgrade acquires it; never inherit a stale/closed fd.
@@ -195,5 +191,5 @@ def launch(argv,fmt,base,ci,update):
         if stage=='activate-ci-runtime':managed+=['--ci-runtime-authorization',str(guard.path),'--ci-runtime-authorization-sha256',args.approval_sha256]
         update.upgrade(managed,fmt,base,ci)
     finally:
-        base.command=previous;base.VERIFIED_OPERATION_FDS=previous_fds;ci.ACTIVE_OPERATION_GUARD=None
+        base.command=previous;base.VERIFIED_OPERATION_FDS=previous_fds;base.VERIFIED_OPERATION_GUARD=previous_guard;ci.ACTIVE_OPERATION_GUARD=None
         if guard:guard.close()

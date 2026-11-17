@@ -29,6 +29,7 @@ ENV_KEYS={'DATABASE_URL','MIGRATION_DATABASE_URL','AUDIT_HASH_CHAIN_ENABLED','NO
 def check(ok,message):
     if not ok: raise ValueError('Worker installation refused: '+message)
 
+VERIFIED_OPERATION_GUARD=None  # Fixed launcher only; normal installer paths have no queue dependency.
 VERIFIED_OPERATION_FDS=()  # Set only by the fixed root-owned staging launcher; default behavior is unchanged.
 
 def command(argv,*,input=None,env=None,allow_failure=False):
