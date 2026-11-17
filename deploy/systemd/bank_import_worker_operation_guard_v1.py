@@ -15,6 +15,7 @@ import time
 QUEUE = Path('/var/tmp/aihr-deploy/staging-release-queue')
 LOCK = QUEUE / 'operations.lock'
 GUARD_POLICY = 'aihr-worker-native-operation-lock/v1'
+DRAIN_ENVIRONMENT_PROBE = "import {fingerprintStagingEnvironment} from './.github/ci/staging-environment.mjs';process.stdout.write(JSON.stringify({kind:'CI_WORKER_DRAIN_ENVIRONMENT_POLICY_V1',environmentSha256:fingerprintStagingEnvironment('/opt/ai-hr'),readiness:{required:process.env.AIHR_IMPORT_WORKER_REQUIRED??null,waitSeconds:process.env.AIHR_IMPORT_WORKER_WAIT_SECONDS??null}}))"
 
 
 class QueueOperationLock:
@@ -145,7 +146,12 @@ class GuardedInvocation:
         b.check(self.ci.epoch(a['issuedAt'])<=time.time()<self.ci.epoch(a['expiresAt']),'root invocation authority expired')
         b.check(self.ci.sha(b.read_bounded(self.ci.SOURCE/'.env.production',1024**2))==a['dotenvSha256'] and
                 self.ci.sha(b.read_bounded(b.ENV,1024**2))==self.identity['worker_env_sha256'],'approved web/worker environment changed')
-        return self.native_lease()
+        if self.stage=='drain':
+            observed=self.ci.child([str(b.NODE),'--env-file=.env.production','--input-type=module','-e',DRAIN_ENVIRONMENT_PROBE],self.owner,self.environment,timeout=30,operation_fd=self.lock.fd)
+            b.check(observed=={'kind':'CI_WORKER_DRAIN_ENVIRONMENT_POLICY_V1','environmentSha256':a['environmentSha256'],'readiness':a['readiness']},'actual native drain environment/readiness differs')
+        held=self.native_lease()
+        b.check(self.ci.epoch(a['issuedAt'])<=time.time()<self.ci.epoch(a['expiresAt']),'root invocation authority expired before mutation')
+        return held
 
     def file_mutation(self,*,failure_only=False):
         # Call immediately before publishing an owned file/unit/success record, not before preparing bytes.

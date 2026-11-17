@@ -45,7 +45,7 @@ it('keeps the real all-kind heartbeat predicate and bounds only selected CI to t
 it('executes the real inventory CLI against a clean frozen Git checkout and actual canonical filter owners',async()=>{
  const fs=await import('node:fs'),path=await import('node:path'),os=await import('node:os'),crypto=await import('node:crypto');
  const dir=fs.mkdtempSync(path.join(os.tmpdir(),'aihr-worker-inventory-cli-')),source=path.join(dir,'frozen'),out=path.join(dir,'private');fs.mkdirSync(out,{mode:0o700});
- const git=(...args:string[])=>{const r=spawnSync('git',['-c','core.hooksPath=/dev/null',...args],{encoding:'utf8',maxBuffer:4*1024**2});expect(r.status,r.stderr).toBe(0);return r.stdout.trim();};
+ const git=(...args:string[])=>{const r=spawnSync('git',['-c','core.hooksPath=/dev/null',...args],{encoding:'utf8',maxBuffer:4*1024**2,timeout:60000});expect(r.signal).toBeNull();expect(r.status,r.stderr).toBe(0);return r.stdout.trim();};
  const env:NodeJS.ProcessEnv={...process.env};for(const name of ['AIHR_SSH_CONFIG','IMPROVE_SSH_HOST','IMPROVE_SSH_USER','IMPROVE_SSH_PORT'])delete env[name];
  try{
   git('clone','--shared','--no-hardlinks','--quiet',process.cwd(),source);
@@ -57,7 +57,7 @@ it('executes the real inventory CLI against a clean frozen Git checkout and actu
   fs.symlinkSync('included.txt',path.join(source,'canonical-ignored-extra/link'));
   expect(git('-C',source,'status','--porcelain')).toBe('');
   const cli=path.join(source,'scripts/bank-import-worker-source-inventory.mjs'),file=path.join(out,'inventory.json');
-  const invoke=(output:string)=>spawnSync(process.execPath,['--import','tsx',cli,source,head,output],{cwd:process.cwd(),env,encoding:'utf8',maxBuffer:4*1024**2});
+  const invoke=(output:string)=>{const result=spawnSync(process.execPath,['--import','tsx',cli,source,head,output],{cwd:process.cwd(),env,encoding:'utf8',maxBuffer:4*1024**2,timeout:60000});expect(result.signal,'Inventory CLI must finish without timeout termination').toBeNull();return result;};
   const first=invoke(file);expect(first.status,first.stderr).toBe(0);
   const raw=fs.readFileSync(file),inventory=JSON.parse(raw.toString()),ack=JSON.parse(first.stdout);
   expect(ack.manifestSha256).toBe(crypto.createHash('sha256').update(raw).digest('hex'));expect(fs.statSync(file).mode&0o777).toBe(0o600);expect(inventory.source).toBe(head);

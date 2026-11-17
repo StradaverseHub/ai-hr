@@ -10,11 +10,12 @@ import sys
 root=Path(__file__).resolve().parents[1]
 output=Path(sys.argv[1]).absolute()
 PHASES=['drain','activate','adopt-stopped','activate-ci-runtime','guarded-drain','guarded-activate-ci-runtime']
-modules=[('fmt','deploy/systemd/bank_import_worker_format.py'),('base','deploy/systemd/bank_import_worker_installer_v2.py'),('ci','deploy/systemd/bank_import_worker_ci_runtime_v1.py'),('guard','deploy/systemd/bank_import_worker_operation_guard_v1.py'),('update','deploy/systemd/bank_import_worker_upgrade_v1.py')]
+modules=[('fmt','deploy/systemd/bank_import_worker_format.py'),('base','deploy/systemd/bank_import_worker_installer_v2.py'),('fences','deploy/systemd/bank_import_worker_fences_v1.py'),('ci','deploy/systemd/bank_import_worker_ci_runtime_v1.py'),('guard','deploy/systemd/bank_import_worker_operation_guard_v1.py'),('update','deploy/systemd/bank_import_worker_upgrade_v1.py')]
 body='import sys,types\nsys.dont_write_bytecode=True\n'
 for name,path in modules:
     text=(root/path).read_text()
     body+=name+'=types.ModuleType('+repr(name)+')\nexec('+repr(text)+','+name+'.__dict__)\n'
+body+="ci.FENCES=fences\n"
 body+="guard.launch(sys.argv[1:],fmt,base,ci,update) if sys.argv[1:2] in (['guarded-drain'],['guarded-activate-ci-runtime']) else update.upgrade(sys.argv[1:],fmt,base,ci)\n"
 with output.open('x') as stream: stream.write(body)
 output.chmod(0o600)

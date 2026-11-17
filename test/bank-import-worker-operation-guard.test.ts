@@ -4,7 +4,7 @@ import {expect,it} from 'vitest';
 it('holds native SH and worker EX through direct mutating children and fences exact fixed authority',()=>{
  const result=spawnSync('python3',['-I','-B','test/fixtures/bank-import-worker-operation-guard-tests.py'],{encoding:'utf8',maxBuffer:1024**2,timeout:90000});
  expect(result.status,result.stdout+'\n'+result.stderr).toBe(0);
- expect(result.stderr).toContain('Ran 13 tests');
+ expect(result.stderr).toContain('Ran 14 tests');
 },100000);
 
 it('drops actual root to the installation owner with controlled env/groups and both kernel lock descriptions',()=>{
