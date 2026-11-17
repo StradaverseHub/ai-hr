@@ -102,9 +102,9 @@ export default async function IndividualTransactionPage({
    * process wizard and the payroll-readiness check use — one catalogue, not a second view of it. RLS
    * fences the tenant; `scopedCompanies` is the already-authorised set, so this cannot widen it.
    */
-  const cyclesByCompany = await listPayrollCyclesAcross(s,scopedCompanies.map(c=>c.id),{activeOnly:true});
+  const cycleCatalogueByCompany = await listPayrollCyclesAcross(s,scopedCompanies.map(c=>c.id),{activeOnly:true});
   const payrollCycles: TxnPayrollCycle[] = scopedCompanies.flatMap(company =>
-    (cyclesByCompany.get(company.id)??[]).map(c=>({id:c.id,companyId:company.id,name:c.name,runType:c.runType})),
+    (cycleCatalogueByCompany.get(company.id)??[]).map(c=>({id:c.id,companyId:company.id,name:c.name,runType:c.runType})),
   );
 
   const today = todayInKualaLumpur();
@@ -193,7 +193,7 @@ export default async function IndividualTransactionPage({
         // 5c65367d — Import Excel + Download Template, the same pair as Fixed Transaction and the same
         // component. In the page header rather than beside Add, because Add belongs to ONE selected
         // employee and an import does not.
-        actions={<IndividualImportButtons reference={importReference} cycles={cyclesByCompany.flatMap(({companyId,cycles})=>cycles.map(c=>({name:c.name,code:c.code??c.name,company:scopedCompanies.find(co=>co.id===companyId)?.name??''})))} />}
+        actions={<IndividualImportButtons reference={importReference} cycles={scopedCompanies.flatMap(company=>(cycleCatalogueByCompany.get(company.id)??[]).map(c=>({name:c.name,code:c.code??c.name,company:company.name})))} />}
       />
 
       {!typedComponentsOn && (

@@ -59,7 +59,7 @@ it('matches complete legacy membership, date breakdowns and per-manager queues w
  const reviews=Array.from({length:215},(_,i)=>({id:randomUUID(),tenantId:b.tenantId,employmentId:members[300+i].employmentId,personId:members[300+i].personId,
   reviewType:'contract' as const,endDate:'2026-02-28',dueDate:'2026-01-28',managerEmploymentId:members[i<205?0:1].employmentId,createdAt:new Date(Date.UTC(2026,0,1,0,0,i))}));
  await owner.db.update(s.employment).set({personId:members[0].personId}).where(eq(s.employment.id,members[1].employmentId));
- await owner.db.insert(s.reportingLine).values(reviews.map(row=>({tenantId:b.tenantId,subordinateEmploymentId:row.employmentId,managerEmploymentId:row.managerEmploymentId!,lineType:'admin' as const,validFrom:'2020-01-01'})));
+ await owner.db.insert(s.reportingLine).values(reviews.map(row=>({tenantId:b.tenantId,subordinateEmploymentId:row.employmentId,managerEmploymentId:row.managerEmploymentId!,lineType:'administrative' as const,validFrom:'2020-01-01'})));
  await owner.db.insert(s.employmentReview).values(reviews);
  const native=database.withTenant;
  const carriers:{readOnly:string;mode:string}[]=[];
