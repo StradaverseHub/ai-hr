@@ -1,6 +1,6 @@
 # Architecture and performance remediation
 
-Current status, 17 November: the first batch was accepted on staging at `9bdfb4596`; AP-033 is closed and AP-038 was resolved externally. Sixty observations remain open. Own Leave and Payroll selection paging are implemented and development-qualified, with migration5787 and owner-approved staging source binding. Movement must release first. This batch must then integrate its accepted baseline, pass the full release gate and complete staging acceptance before any further closure. Earlier prepared/held snapshots below are historical.
+Current status,17November: the first batch was accepted on staging at9bdfb4596; AP-033 is closed and AP-038 was resolved externally. Sixty observations remain open. Own Leave/Payroll selection paging is development-qualified and held before its next staging release. Query batches3–7 are development-qualified with retained affected-area evidence; batch8 Movement destination choices is under qualification. Accepted Movement is preserved by current main/alpha2a4132204. Recruitment is the next release by owner order; migration5787 remains unchanged and unapplied, awaiting allocation above Recruitment's actual accepted watermark and fresh claim checks. The5780 proposal was never confirmed. Final source integration, exact approved binding, authenticated release gates and staging acceptance remain separate requirements. No new finding is closed. Earlier prepared/held snapshots below are historical.
 
 Scope: the completed 16 November 2026 assessment, revalidated per fix against current main. This is the consolidated disposition ledger; an implementation is not a verified improvement until its native and staging evidence is recorded. Production is outside this task.
 
@@ -28,13 +28,13 @@ Initial integration base: `59f06b08db014e01cd553a827c62ccf864d33f78`. Preserve t
 | AP-002 | P1 | Personnel profile and Movement manager choices | Open; implementation pending |
 | AP-003 | P1 | New Lifecycle Requisition | Open; implementation pending |
 | AP-004 | P2 | Probation Tracker | Open; implementation pending |
-| AP-005 | P1 | Generate Letters all-company request queue | Batch4 implemented: global SQL page/count; native qualification in progress, not staged |
+| AP-005 | P1 | Generate Letters all-company request queue | Batch4 development-qualified: global SQL page/count and request-template correlation; staging pending |
 | AP-006 | P1 | AI Centre Payroll Audit loop | Batch3 implemented: atomic native access-event chunks; development-qualified; staging pending |
 | AP-007 | P1 | Approvals leave queue | Batch3 implemented: native date-packet and per-manager queue batches; development-qualified; staging pending |
-| AP-008 | P1 | Personnel employee draft editor | Batch5 implemented: reuse native Criteria projections; qualification pending, not staged |
-| AP-009 | P1 | Personnel Import entry screen | Batch5 implemented: reuse native catalogue rows; qualification pending, not staged |
+| AP-008 | P1 | Personnel employee draft editor | Batch5 development-qualified: native Criteria/reference metadata reuse; staging pending |
+| AP-009 | P1 | Personnel Import entry screen | Batch5 development-qualified: native catalogue reuse; staging pending |
 | AP-010 | P2 | Personnel Profile Changes | Open; implementation pending |
-| AP-011 | P1 | Attendance Offline Clocking settings | Batch6 partial: settings/review counts grouped; native context-count internals still per company; qualification pending, not staged |
+| AP-011 | P1 | Attendance Offline Clocking settings | Batch6 partial, development-qualified: settings/review counts grouped; native context-count internals still per company; staging pending |
 | AP-012 | P2 | Attendance Company Policy Settings | Open; implementation pending |
 | AP-013 | P2 | Attendance Schedule Clock Policy editor | Open; implementation pending |
 | AP-014 | P2 | Attendance Work Schedule and Overtime Rates | Open; implementation pending |
@@ -43,7 +43,7 @@ Initial integration base: `59f06b08db014e01cd553a827c62ccf864d33f78`. Preserve t
 | AP-017 | P1 | Contract Management Intake Settings and Workflows | Open; implementation pending |
 | AP-018 | P1 | Loans listing | Open; implementation pending |
 | AP-019 | P2 | Claims Configuration and employee claim choices | Open; implementation pending |
-| AP-020 | P2 | Leave Approval Workflow and readout | Batch7 implemented: native policy catalogue batch; qualification pending, not staged |
+| AP-020 | P2 | Leave Approval Workflow and readout | Batch7 development-qualified: native policy catalogue batch; staging pending |
 | AP-021 | P2 | Rewards shared policy history | Open; implementation pending |
 | AP-022 | P1 | EA PCB2II and CP22 batch PDF generation | Open; implementation pending |
 | AP-023 | P1 | Shift Card Pay Item Fixed Transaction and standalone Cost Allocation imports | Open; implementation pending |
@@ -193,3 +193,6 @@ AP-020 loads escalation policy metadata once for the company choices already aut
 ## Batch8: Movement destination organization choices
 
 AP-001's destination fanout remains present in freshly fetched accepted Movement source2a4132204; acceptance of that feature is not evidence that this older performance gap was removed. The owned repair replaces the69additional destination transactions at70companies with one native catalogue read. Shared/Global/explicit Criteria and each company's native visibility remain authoritative, locations retain their own company/admin owner, and display-label disambiguation happens after per-company narrowing. The current-company form reuses its original scoped options. Commands, destination authorization and the separate full Workforce manager-picker gapAP-002 remain unchanged. Native70-company/1000-employment, every-role/group/company, invisible/unknown/foreign scopes and duplicate-caption fixtures are authored; hosted qualification and later integration with accepted Movement remain pending. No migration or staging change.
+
+
+Combined application source1b74b8ca9 passed Linux build in44006495617. Native Letters/Personnel fixtures passed onfaf2c4a8e in44007073271 after complete native archive commands repaired the fixtures; the same final source passed whole typecheck in44007752994. Offline group/role/absence and malformed-decoder cases passed in the combined run. Application bytes were unchanged by these later test/doc repairs. Original failed workflows remain failed, with their valid compiler/build portions retained separately. Batch7 source055d3581c passed93selected cases, whole typecheck and Linux build in44008297446. These are development witnesses, not a release gate or staging acceptance.
