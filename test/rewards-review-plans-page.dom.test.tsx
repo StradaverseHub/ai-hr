@@ -8,6 +8,7 @@ vi.mock('next/navigation',()=>({notFound:()=>{throw new Error('not found');}}));
 vi.mock('../lib/authz',()=>({requireModule:async()=>({tenantId:'tenant',userId:'user'})}));
 vi.mock('../packs/rewards/review-plans',()=>({rewardReviewPlans:read}));
 vi.mock('../app/admin/rewards/review-plans/new-year',()=>({NewRewardYear:()=>null}));
+vi.mock('../app/admin/rewards/review-plans/actions',()=>({classifyCompanyAction:vi.fn()}));
 vi.mock('../app/admin/rewards/review-plans/editor',()=>({ReviewPlanGrid:()=>null}));
 import ReviewPlansPage from '../app/admin/rewards/review-plans/page';
 const settings={effectiveFrom:'2026-04-01',joinedBefore:'2025-12-31',confirmedBy:'2026-03-31',activeAsOf:'2026-04-01',blockedFrom:'2025-10-01',blockedTo:'2026-03-31',snapshotDate:'2026-03-31'};

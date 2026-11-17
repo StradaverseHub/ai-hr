@@ -44112,7 +44112,16 @@
     },
     "pollRetry": "无法读取进度。正在重试状态查询；后台评审创建仍在继续。",
     "newCompanyTitle": "新公司已加入评审计划",
-    "newCompanyBody": "请为新公司选择薪资结构和奖金矩阵。"
+    "newCompanyBody": "请为新公司选择薪资结构和奖金矩阵。",
+    "leftOutReasons": {
+      "archived": "公司已归档",
+      "currency": "不以 MYR 支付",
+      "grouping": "分组记录",
+      "test": "测试或演示公司",
+      "test_demo": "测试或演示公司",
+      "alias": "其他公司的别名",
+      "structure": "业务单元尚未确认"
+    }
   },
   "rewardsPersonHistoryUpload": {
     "title": "上传奖励历史",

@@ -44112,7 +44112,16 @@
     },
     "pollRetry": "Progress could not be read. Retrying the status check; review creation continues in the background.",
     "newCompanyTitle": "New company added to Review Plans",
-    "newCompanyBody": "Choose a salary structure and bonus matrix for the new company."
+    "newCompanyBody": "Choose a salary structure and bonus matrix for the new company.",
+    "leftOutReasons": {
+      "archived": "Archived company",
+      "currency": "Not paid in MYR",
+      "grouping": "Grouping record",
+      "test": "Test or demo company",
+      "test_demo": "Test or demo company",
+      "alias": "Alias of another company",
+      "structure": "Business Unit not confirmed"
+    }
   },
   "rewardsPersonHistoryUpload": {
     "title": "Reward history upload",

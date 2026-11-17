@@ -19,3 +19,5 @@ export async function createReviewsAction(year:number,companyIds?:string[]){try{
 export async function reviewJobAction(id:string){try{const {readBulkJob,bulkJobProgress}=await import('@/core/bulk-job');return{ok:true as const,progress:bulkJobProgress(await readBulkJob(await session(),id))};}catch(error){return{ok:false as const,error:await errorMessage(error)};}}
 
 export async function acceptSuggestionsAction(year:number){try{return{ok:true as const,edits:await rewardPlanBulkEdits(await session(),{year,operation:'accept-suggestions'})};}catch(error){return{ok:false as const,error:await errorMessage(error)};}}
+/** The moved designation control retains its native company-administrator authority. */
+export async function classifyCompanyAction(form:FormData):Promise<{ok:boolean}>{try{if(form.get('verified')!=='on')return{ok:false};const {classifyRewardCompany}=await import('@/packs/rewards/company-classification');await classifyRewardCompany(await session(),{companyId:form.get('companyId'),disposition:form.get('disposition'),canonicalCompanyId:form.get('canonicalCompanyId')||null,reason:form.get('reason')});refresh();return{ok:true};}catch{return{ok:false};}}
