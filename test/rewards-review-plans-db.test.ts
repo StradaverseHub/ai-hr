@@ -8,7 +8,7 @@ import {businessUnit,company,employment,person,roleAssignment} from '../db/schem
 import {setupChecker,setupCompanyStructureFixture,setupRewardLibrariesFixture,confirmFixturePat} from './rewards-setup-fixture';
 import {changeCompanyRegistrationClassification} from '../core/company-registration-readiness';
 import {defaultPolicy} from '../packs/rewards/model';
-import {rewardReviewPlans,previewRewardYear,createRewardYear,previewRewardPlanGrid,saveRewardPlanGrid,rewardPlanBulkEdits,enqueueRewardPlanReviews,type RewardPlanGridEdit} from '../packs/rewards/review-plans';
+import {rewardReviewPlans,previewRewardYear,createRewardYear,previewRewardPlanGrid,refreshRewardPlanGridReview,saveRewardPlanGrid,rewardPlanBulkEdits,enqueueRewardPlanReviews,type RewardPlanGridEdit} from '../packs/rewards/review-plans';
 import {rewardPlanReviewsJobHandler} from '../packs/rewards/review-plans-job';
 let b:Base,bu:string;
 const reason='Approved annual configuration for fictional companies';
@@ -24,6 +24,7 @@ it('creates one draft including an incomplete choice, refuses duplicate years an
  await expect(createYear()).rejects.toThrow(/already exists/);
  const edit={...toEdit(view.rows[0]),planType:'no_awards' as const,reason:'This legal entity has no awards this year'};const raw={year:2026,edits:[edit]},preview=await previewRewardPlanGrid(adminCtx(b),raw);await saveRewardPlanGrid(adminCtx(b),raw,preview.digest,reason);
  await expect(saveRewardPlanGrid(adminCtx(b),raw,preview.digest,reason)).rejects.toThrow(/changed/);
+ const beforeRefresh=await rewardReviewPlans(adminCtx(b),{year:2026}),refreshed=await refreshRewardPlanGridReview(adminCtx(b),raw);expect(refreshed.input).toEqual({...raw,edits:[{...edit,expectedRevision:beforeRefresh.rows[0].revision}]});expect((await rewardReviewPlans(adminCtx(b),{year:2026})).rows).toEqual(beforeRefresh.rows);
  const stored=await owner.db.execute<{plan_type:string;award_type:string}>(sql`select p.plan_type,e.award_type from reward_plan_year_company p join reward_company_exclusion e on e.tenant_id=p.tenant_id and e.company_id=p.company_id and e.year=p.year and e.ended_at is null where p.tenant_id=${b.tenantId}::uuid`);expect(stored).toEqual([{plan_type:'no_awards',award_type:'no_awards'}]);
  const events=await owner.db.execute<{actor_id:string;event_type:string}>(sql`select actor_id,event_type from domain_event where tenant_id=${b.tenantId}::uuid and event_type in('reward-plan.created','reward-plan.changed') order by sequence`);expect(events).toEqual([{actor_id:b.adminUserId,event_type:'reward-plan.created'},{actor_id:b.adminUserId,event_type:'reward-plan.changed'}]);
 });
