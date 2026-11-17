@@ -1,4 +1,4 @@
-import {movementOrganisationChoices} from '@/core/movement-organisation-choices';
+import {movementOrganisationChoices,type MovementOrganisationChoices} from '@/core/movement-organisation-choices';
 import {DerivedOrganisationControl} from '@/components/derived-organisation-fields';
 import { ActionButton } from '@/components/ui/action-button';
 import { ExportDownloadLink } from '@/components/export-download-link';
@@ -699,7 +699,7 @@ export default async function EmployeePage({
         })()
       : [];
   const destinationOrganisationOptions=await movementOrganisationChoices(s,movementCompanies.filter(company=>company.id!==emp.companyId).map(company=>company.id));
-  const movementOrgByCompany=Object.fromEntries(movementCompanies.map(company=>{
+  const movementOrgByCompany=Object.fromEntries(movementCompanies.map((company):readonly [string,MovementOrganisationChoices]=>{
     if(company.id!==emp.companyId)return [company.id,destinationOrganisationOptions.get(company.id)!];
     // Reuse the current-company form's original scoped population and display-label disambiguation.
     const [deps,poss,bus,locs]=currentOrganisationOptions;
