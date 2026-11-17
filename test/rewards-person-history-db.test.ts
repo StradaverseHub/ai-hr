@@ -25,10 +25,10 @@ describe('Person reward history custody and upload',()=>{
  beforeAll(migrateTestDb);afterAll(closeAll);
  beforeEach(async()=>{
   await resetDb();b=await seedBase();await setModule(b.tenantId,'rewards','active');admin=await entitledCtx(b);
-  const [adminPerson]=await owner.db.insert(schema.person).values({tenantId:b.tenantId,fullName:'Fictional history operator'}).returning();
+  const [adminPerson]=await owner.db.insert(schema.person).values({tenantId:b.tenantId,fullName:'Fictional history operator',primaryEmail:`operator-${b.tenantId}@history.test`}).returning();
   await owner.db.update(schema.appUser).set({personId:adminPerson.id}).where(eq(schema.appUser.id,admin.userId!));admin={...admin,personId:adminPerson.id};
   const [bu]=await owner.db.insert(schema.businessUnit).values({tenantId:b.tenantId,companyId:b.companyId,code:'HISTORY',name:'Fictional history unit'}).returning();
-  const hired=await hireEmployee(admin,{person:{fullName:'Fictional history subject'},companyId:b.companyId,departmentId:b.deptA,employmentType:'full_time',employeeCode:'HIST-100',hiredOn:`${year-3}-01-01`});
+  const hired=await hireEmployee(admin,{person:{fullName:'Fictional history subject',primaryEmail:`subject-${b.tenantId}@history.test`},companyId:b.companyId,departmentId:b.deptA,employmentType:'full_time',employeeCode:'HIST-100',hiredOn:`${year-3}-01-01`});
   employmentId=hired.employmentId;personId=hired.personId;
   const [grade]=await owner.db.insert(schema.jobGrade).values({tenantId:b.tenantId,code:'12',name:'Fictional history grade'}).returning();
   await owner.db.update(schema.employment).set({gradeId:grade.id,confirmationDate:`${year-3}-04-01`}).where(eq(schema.employment.id,employmentId));
@@ -38,7 +38,7 @@ describe('Person reward history custody and upload',()=>{
   const current=await getRewardUnit(admin,unitId),entry=current.rows.find(row=>row.source.employmentId===employmentId)!;entryId=entry.id;source=entry.source;
   await owner.db.update(schema.rewardEntry).set({facts:{...emptyFacts(),reviewed:true,talent:'STAR',performance:'OU'}}).where(eq(schema.rewardEntry.id,entryId));
   for(const role of ['bu','bg','pbp','ctro','ec'] as const){
-   const [person]=await owner.db.insert(schema.person).values({tenantId:b.tenantId,fullName:`Fictional history ${role}`}).returning();
+   const [person]=await owner.db.insert(schema.person).values({tenantId:b.tenantId,fullName:`Fictional history ${role}`,primaryEmail:`${role}-${b.tenantId}@history.test`}).returning();
    const userId=await createAppUser(b.tenantId,person.id,'employee');actors[role]={...admin,userId,personId:person.id,roles:['employee'],grants:undefined};
    await setRewardMember(admin,unitId,(await getRewardUnit(admin,unitId)).unit.revision,userId,role);
   }
@@ -149,7 +149,7 @@ describe('Person reward history custody and upload',()=>{
   // All three populations are created in set statements before approval. These are real selected
   // unit entries, not repeated fabricated IDs; no fixture query or service call runs per person.
   const [added]=await owner.db.execute<{count:number}>(sql`with people as (
-   insert into person(tenant_id,full_name) select ${b.tenantId}::uuid,'Fictional native history capacity person '||n from generate_series(1,10000) n returning id
+   insert into person(tenant_id,full_name,primary_email) select ${b.tenantId}::uuid,'Fictional native history capacity person '||n,'capacity-'||n::text||'-'||${b.tenantId}||'@history.test' from generate_series(1,10000) n returning id
   ), employments as (
    insert into employment(tenant_id,person_id,company_id,employee_code,hired_on)
    select ${b.tenantId}::uuid,p.id,${b.companyId}::uuid,'NHC-'||p.id::text,${`${year-3}-01-01`}::date from people p returning id,person_id,employee_code
@@ -176,7 +176,7 @@ describe('Person reward history custody and upload',()=>{
  it('keeps the same indexed person projection with 70 companies and 1,000 unrelated employments',async()=>{
   const before=await rewardPersonHistory(actors.bu!,unitId,entryId);
   const companies=await owner.db.insert(schema.company).values(Array.from({length:70},(_,i)=>({tenantId:b.tenantId,legalName:`Fictional history scale company ${i}`}))).returning({id:schema.company.id});
-  const people=await owner.db.insert(schema.person).values(Array.from({length:1000},(_,i)=>({tenantId:b.tenantId,fullName:`Fictional history scale person ${i}`}))).returning({id:schema.person.id});
+  const people=await owner.db.insert(schema.person).values(Array.from({length:1000},(_,i)=>({tenantId:b.tenantId,fullName:`Fictional history scale person ${i}`,primaryEmail:`scale-${i}-${b.tenantId}@history.test`}))).returning({id:schema.person.id});
   await owner.db.insert(schema.employment).values(people.map((person,i)=>({tenantId:b.tenantId,companyId:companies[i%70].id,personId:person.id,employeeCode:`HS-${i}`,hiredOn:`${year-3}-01-01`})));
   expect(await rewardPersonHistory(actors.bu!,unitId,entryId)).toEqual(before);
   expect(await rewardPersonHistory(admin,unitId,entryId)).toEqual(before);
