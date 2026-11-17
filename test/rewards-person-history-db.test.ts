@@ -16,6 +16,7 @@ import {setRewardMember} from './rewards-access-fixture';
 import {closeAll,createAppUser,entitledCtx,owner,resetDb,seedBase,setModule,migrateTestDb,type Base} from './harness';
 import {todayInKualaLumpur} from '../lib/hr-date';
 import {toCsv} from '../lib/csv';
+import {pgErrorChain,pgSqlState} from '../lib/db-error';
 
 const today=todayInKualaLumpur(),year=Number(today.slice(0,4));
 describe('Person reward history custody and upload',()=>{
@@ -52,8 +53,11 @@ describe('Person reward history custody and upload',()=>{
 
  it('returns independently expected prior awards under the current review and denies direct table reads to reviewers',async()=>{
   for(const role of ['bu','bg','pbp','ctro','ec'] as const){
+   const native=await getRewardUnit(actors[role]!,unitId);
+   expect(native.roles,`${role} must hold the native review role`).toContain(role);
+   expect(native.rows.some(row=>row.id===entryId),`${role} must see the subject in the native review`).toBe(true);
    const rows=await rewardPersonHistory(actors[role]!,unitId,entryId);
-   expect(rows).toHaveLength(1);expect(rows[0]).toMatchObject({year:year-1,talent:'SCORE',performance:'ME',incrementCents:22500,totalIncreaseBp:450,bonusCents:750000,bonusMonthsBp:15000});
+   expect(rows,`History must match the native ${role} review authority`).toHaveLength(1);expect(rows[0]).toMatchObject({year:year-1,talent:'SCORE',performance:'ME',incrementCents:22500,totalIncreaseBp:450,bonusCents:750000,bonusMonthsBp:15000});
   }
   const direct=await withTenant(actors.bu!,tx=>tx.execute(sql`select id from reward_person_history`));expect(direct).toHaveLength(0);
  });
@@ -82,7 +86,9 @@ describe('Person reward history custody and upload',()=>{
   await owner.db.execute(sql`delete from reward_member where unit_id=${unitId}::uuid and user_id=${actors.bg!.userId}::uuid`);
   expect(await rewardPersonHistory(actors.bg!,unitId,entryId)).toEqual([]);
   const other=await seedBase();await setModule(other.tenantId,'rewards','active');expect(await rewardPersonHistory(await entitledCtx(other),unitId,entryId)).toEqual([]);
-  await expect(owner.db.execute(sql`update reward_person_history set bonus_cents=1 where entry_id=${pastEntryId}::uuid`)).rejects.toThrow(/append only/);
+  const refused=await owner.db.execute(sql`update reward_person_history set bonus_cents=1 where entry_id=${pastEntryId}::uuid`).then(()=>null,error=>error);
+  expect(pgSqlState(refused)).toBe('42501');
+  expect(pgErrorChain(refused).some(cause=>cause.code==='42501'&&/append only/.test(cause.message??''))).toBe(true);
   expect((await rewardPersonHistory(admin,unitId,entryId))[0].bonusCents).toBe(750000);
  });
  it('binds upload preview to company identities, reports all invalid rows, and supersedes through the bulk job identity',async()=>{
