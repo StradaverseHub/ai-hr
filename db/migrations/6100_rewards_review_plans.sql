@@ -29,6 +29,7 @@ CREATE POLICY reward_plan_year_company_write ON reward_plan_year_company FOR ALL
 GRANT SELECT,INSERT ON reward_plan_year TO ai_hr_app;
 GRANT SELECT,INSERT,UPDATE ON reward_plan_year_company TO ai_hr_app;
 --> statement-breakpoint
+CREATE POLICY reward_year_backfill_exclusion ON reward_company_exclusion FOR SELECT TO ai_hr_owner USING(true);
 CREATE POLICY reward_year_backfill_setup ON reward_plan_setup FOR SELECT TO ai_hr_owner USING(true);
 CREATE POLICY reward_year_backfill_year ON reward_plan_year FOR INSERT TO ai_hr_owner WITH CHECK(true);
 CREATE POLICY reward_year_backfill_company ON reward_plan_year_company FOR INSERT TO ai_hr_owner WITH CHECK(true);
@@ -37,11 +38,12 @@ INSERT INTO reward_plan_year(tenant_id,year,settings,created_by,created_by_perso
  SELECT DISTINCT ON(p.tenant_id,p.year) p.tenant_id,p.year,(v.policy-ARRAY['year'])||jsonb_build_object('snapshotDate',p.snapshot_date),p.created_by,p.created_by_person_id
  FROM reward_plan_setup p JOIN reward_policy_group_version v ON v.id=p.version_id AND v.tenant_id=p.tenant_id
  ORDER BY p.tenant_id,p.year,p.updated_at DESC,p.version_id DESC;
-INSERT INTO reward_plan_year_company(tenant_id,year,company_id,plan_version_id,salary_version_id,bonus_version_id,salary_reviewed,bonus_reviewed)
- SELECT DISTINCT ON(p.tenant_id,p.year,c.company_id) p.tenant_id,p.year,c.company_id,p.version_id,(b->>'salaryVersionId')::uuid,(b->>'bonusVersionId')::uuid,true,true
- FROM reward_plan_setup p CROSS JOIN LATERAL unnest(p.company_ids)c(company_id) CROSS JOIN LATERAL jsonb_array_elements(p.bindings)b
+INSERT INTO reward_plan_year_company(tenant_id,year,company_id,plan_version_id,salary_version_id,bonus_version_id,salary_reviewed,bonus_reviewed,branch_acknowledged,plan_type,reason)
+ SELECT DISTINCT ON(p.tenant_id,p.year,c.company_id) p.tenant_id,p.year,c.company_id,p.version_id,(b->>'salaryVersionId')::uuid,(b->>'bonusVersionId')::uuid,true,true,coalesce((b->>'branchAcknowledged')::boolean,false),coalesce(exclusion.award_type,'standard'),coalesce(exclusion.reason,'')
+ FROM reward_plan_setup p CROSS JOIN LATERAL unnest(p.company_ids)c(company_id) CROSS JOIN LATERAL jsonb_array_elements(p.bindings)b LEFT JOIN reward_company_exclusion exclusion ON exclusion.tenant_id=p.tenant_id AND exclusion.company_id=c.company_id AND exclusion.year=p.year AND exclusion.ended_at IS NULL
  WHERE b->>'companyId'=c.company_id::text ORDER BY p.tenant_id,p.year,c.company_id,(p.state='approved') DESC,p.updated_at DESC,p.version_id DESC;
 --> statement-breakpoint
+DROP POLICY reward_year_backfill_exclusion ON reward_company_exclusion;
 DROP POLICY reward_year_backfill_setup ON reward_plan_setup;
 DROP POLICY reward_year_backfill_year ON reward_plan_year;
 DROP POLICY reward_year_backfill_company ON reward_plan_year_company;
@@ -82,7 +84,7 @@ LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,app SET j
  pat AS MATERIALIZED(SELECT DISTINCT ON(company_id) company_id,inputs FROM reward_pat_version WHERE tenant_id=app.current_tenant_id() AND year=wanted_year AND state='confirmed' ORDER BY company_id,revision DESC),
  rows AS MATERIALIZED(
  SELECT p.company_id AS "companyId",p.company_name AS company,p.business_unit_id AS "businessUnitId",p.business_unit_name AS "businessUnit",coalesce(c.revision,0) AS revision,
- c.plan_version_id AS "planVersionId",coalesce(c.plan_type,'standard') AS "planType",coalesce(c.reason,'') AS reason,c.salary_version_id AS "salaryVersionId",c.bonus_version_id AS "bonusVersionId",
+ c.plan_version_id AS "planVersionId",coalesce(c.plan_type,exclusion.award_type,'standard') AS "planType",coalesce(c.reason,exclusion.reason,'') AS reason,c.salary_version_id AS "salaryVersionId",c.bonus_version_id AS "bonusVersionId",
  jsonb_build_object('versionId',c.salary_version_id,'source',coalesce(c.salary_source,'none'),'reviewed',coalesce(c.salary_reviewed,false)) AS "salarySuggestion",
  jsonb_build_object('versionId',c.bonus_version_id,'source',coalesce(c.bonus_source,'none'),'reviewed',coalesce(c.bonus_reviewed,false)) AS "bonusSuggestion",
  p.headcount,coalesce(((pat.inputs->>'targetCents')::numeric>0 AND coalesce(pat.inputs->>'actualCents',pat.inputs->>'forecastCents') IS NOT NULL),false) AS "patEntered",
@@ -90,6 +92,7 @@ LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,app SET j
  app.reward_config_page_allowed(p.company_id,'plans.manage','manage') AS "canEdit",review.unit_id AS "reviewUnitId",coalesce(c.branch_acknowledged,false) AS "branchAcknowledged"
  FROM app.reward_review_plan_population(wanted_year,coalesce((SELECT (settings->>'snapshotDate')::date FROM year_settings),timezone('Asia/Kuala_Lumpur',now())::date))p
  LEFT JOIN reward_plan_year_company c ON c.tenant_id=app.current_tenant_id() AND c.year=wanted_year AND c.company_id=p.company_id
+ LEFT JOIN reward_company_exclusion exclusion ON exclusion.tenant_id=app.current_tenant_id() AND exclusion.company_id=p.company_id AND exclusion.year=wanted_year AND exclusion.ended_at IS NULL
  LEFT JOIN pat ON pat.company_id=p.company_id LEFT JOIN reward_company_year_review review ON review.tenant_id=app.current_tenant_id() AND review.year=wanted_year AND review.company_id=p.company_id
  ) SELECT * FROM rows
 $$;
@@ -258,6 +261,7 @@ CREATE FUNCTION app.reward_review_plan_metadata(wanted_year integer) RETURNS jso
  FROM company c LEFT JOIN company_registration_classification r ON r.tenant_id=c.tenant_id AND r.company_id=c.id LEFT JOIN reward_company_classification x ON x.tenant_id=c.tenant_id AND x.company_id=c.id
  WHERE c.tenant_id=app.current_tenant_id() AND app.reward_config_page_allowed(c.id,'plans.manage','library_view')
  AND(c.archived_at IS NOT NULL OR c.currency<>'MYR' OR coalesce(r.entity_kind,'legal_entity')<>'legal_entity' OR coalesce(r.is_test_entity,false) OR coalesce(x.disposition,'visible')<>'visible')),'[]'::jsonb),
+ 'activePlanTypes',coalesce((SELECT jsonb_agg(jsonb_build_object('companyId',company_id,'planType',award_type,'reason',reason)) FROM reward_company_exclusion WHERE tenant_id=app.current_tenant_id() AND year=wanted_year AND ended_at IS NULL AND app.reward_config_page_allowed(company_id,'plans.manage','library_view')),'[]'::jsonb),
  'classificationCompanies',coalesce((SELECT jsonb_agg(jsonb_build_object('id',c.id,'name',c.legal_name) ORDER BY c.legal_name,c.id) FROM company c WHERE c.tenant_id=app.current_tenant_id() AND app.reward_config_page_allowed(c.id,'plans.manage','library_view') AND app.reward_admin(c.id)),'[]'::jsonb),
  'classifications',coalesce((SELECT jsonb_agg(jsonb_build_object('companyId',c.company_id,'disposition',c.disposition,'canonicalCompanyId',CASE WHEN app.reward_admin(c.canonical_company_id) THEN c.canonical_company_id END,'reason',c.reason,'updatedAt',c.updated_at) ORDER BY c.company_id) FROM reward_company_classification c WHERE c.tenant_id=app.current_tenant_id() AND app.reward_config_page_allowed(c.company_id,'plans.manage','library_view') AND app.reward_admin(c.company_id)),'[]'::jsonb),
  'canClassify',EXISTS(SELECT 1 FROM company c WHERE c.tenant_id=app.current_tenant_id() AND app.reward_config_page_allowed(c.id,'plans.manage','library_view') AND app.reward_admin(c.id)),
@@ -434,8 +438,8 @@ BEGIN
  WHERE c.tenant_id=item.tenant_id AND c.archived_at IS NULL AND c.currency='MYR' AND coalesce(r.entity_kind,'legal_entity')='legal_entity' AND NOT coalesce(r.is_test_entity,false) AND coalesce(x.disposition,'visible')='visible'
  AND app.company_org_resolve(c.id,source_mapping,activated)->>'status'='ready'
  ),inserted AS(
- INSERT INTO reward_plan_year_company(tenant_id,year,company_id)
- SELECT y.tenant_id,y.year,c.id FROM reward_plan_year y CROSS JOIN eligible c
+ INSERT INTO reward_plan_year_company(tenant_id,year,company_id,plan_type,reason)
+ SELECT y.tenant_id,y.year,c.id,coalesce(exclusion.award_type,'standard'),coalesce(exclusion.reason,'') FROM reward_plan_year y CROSS JOIN eligible c LEFT JOIN reward_company_exclusion exclusion ON exclusion.tenant_id=y.tenant_id AND exclusion.year=y.year AND exclusion.company_id=c.id AND exclusion.ended_at IS NULL
  WHERE y.tenant_id=item.tenant_id AND y.is_open AND NOT EXISTS(SELECT 1 FROM reward_plan_year_company p WHERE p.tenant_id=y.tenant_id AND p.year=y.year AND p.company_id=c.id)
  ORDER BY y.year,c.id LIMIT 100 ON CONFLICT DO NOTHING RETURNING tenant_id,year,company_id
  ),events AS(
@@ -575,3 +579,16 @@ BEGIN
 END $$;
 REVOKE ALL ON FUNCTION app.reward_review_plan_track_legacy_setup() FROM PUBLIC;
 CREATE TRIGGER reward_review_plan_track_legacy_setup AFTER INSERT OR UPDATE ON reward_plan_setup FOR EACH ROW EXECUTE FUNCTION app.reward_review_plan_track_legacy_setup();
+
+--> statement-breakpoint
+CREATE FUNCTION app.reward_review_plan_track_legacy_participation() RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,app AS $$
+DECLARE participation text;why text;
+BEGIN
+ IF app.reward_review_plan_writing() THEN RETURN NEW;END IF;
+ SELECT award_type,reason INTO participation,why FROM reward_company_exclusion WHERE tenant_id=NEW.tenant_id AND company_id=NEW.company_id AND year=NEW.year AND ended_at IS NULL;
+ UPDATE reward_plan_year_company SET plan_type=coalesce(participation,'standard'),reason=coalesce(why,''),revision=revision+1,updated_at=now()
+ WHERE tenant_id=NEW.tenant_id AND company_id=NEW.company_id AND year=NEW.year AND(plan_type IS DISTINCT FROM coalesce(participation,'standard') OR reason IS DISTINCT FROM coalesce(why,''));
+ RETURN NEW;
+END $$;
+REVOKE ALL ON FUNCTION app.reward_review_plan_track_legacy_participation() FROM PUBLIC;
+CREATE TRIGGER reward_review_plan_track_legacy_participation AFTER INSERT OR UPDATE ON reward_company_exclusion FOR EACH ROW EXECUTE FUNCTION app.reward_review_plan_track_legacy_participation();
