@@ -116,7 +116,7 @@ export async function captureAiReviewScreenshots(html:string,locale:string,secti
    const style=getComputedStyle(heading);
    return {heading:{text:heading.textContent,fontSize:Number.parseFloat(style.fontSize),fontFamily:style.fontFamily},bodyFontFamily:getComputedStyle(document.body).fontFamily,fontsReady:document.fonts.status==='loaded',decisionButtons:Array.from(document.querySelectorAll<HTMLButtonElement>('.contract-decision-choice>button')).map(button=>({label:button.textContent,width:button.clientWidth,height:button.getBoundingClientRect().height,scrollWidth:button.scrollWidth,clipped:button.scrollWidth>button.clientWidth+1}))};
   }):null;
-  const file=`${locale}-${section}-${device}.png`;await page.screenshot({path:join(out,file),fullPage:true});
+  const file=`${locale}-${section}-${device}.png`;const nativeDialogViewport=section.startsWith('automation-')&&await page.locator('dialog[open]').count()>0;await page.screenshot({path:join(out,file),fullPage:!nativeDialogViewport});
   if(section==='security-functions')await page.screenshot({path:join(out,`${locale}-${section}-${device}-viewport.png`),fullPage:false});
   rows.push({locale,section,device,width,height,overflow,file,browser:browser.version(),candidate:process.env.AIHR_CI_HEAD,runId:process.env.GITHUB_RUN_ID,theme,scrollRegions,fixture,scriptFontProof,chartGeometry,trackerGeometry,contractGeometry,automationGeometry,...(section==='chat-card-rewards-calendar'?{cellsVisible:!clippedCalendarCells}:{})});
   if(clippedCalendarCells)throw Error('Calendar before/after value is clipped; inspect the captured evidence.');
