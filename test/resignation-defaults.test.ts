@@ -56,7 +56,7 @@ describe('explicit resignation defaults match handoff §14',()=>{
   ]);
   expect(version.blocks.filter(block=>block.type==='signature').map(block=>block.role)).toEqual(['step:ceo','step:employee']);
   expect(version.blocks.some(block=>block.type==='letterhead')).toBe(true);expect(version.blocks.find(block=>block.type==='heading')?.text).toBe('Offer of revised terms of employment');
-  expect(version.blocks.find(block=>block.type==='table')).toMatchObject({columns:'Term | Current | Offered',rows:expect.stringContaining('{{employee.salary}} | {{retention.salary}}')});
+  expect(version.blocks.find(block=>block.type==='table')).toMatchObject({columns:'Term | Current | Offered',rows:expect.stringContaining('{employee.salary} | {retention.salary}')});
   expect(documentRoutingSignatureProblems(version.routing!,version.blocks)).toEqual([]);
  });
  it('routes acceptance through GBS Review ownership then BP signature, with no employee or GBS signature',()=>{
@@ -100,6 +100,7 @@ it('generates each installed document with real captured merge values and no unr
   const generated=generateResignationLetter({id:'generated-'+kind,kind,template,tenantId:'fictional-tenant',companyId:'fictional-company',subjectId:'fictional-case',employeeUserId:'fictional-employee',caseOwnerId:'fictional-gbs',generatedOn:'2026-11-16',generatedAt:at,values,facts:{caseType:'Resignation'},context:{employeeUserId:'fictional-employee',directSuperiorUserId:'fictional-manager',facts:{},routing:id=>({id,name:'Explicit fixture routing',rows:[{match:{},assignTo:{kind:'people',userIds:[id===I.bp?'fictional-bp':'fictional-ceo']}}]}),groupMembers:()=>['fictional-gbs'],choose:people=>people[0]??null,fallback:null,describe:who=>who.kind}},{fingerprint:content=>createHash('sha256').update(content).digest('hex'),newId:()=> 'fictional-id'});
   const preview=resignationLetterPreview(generated.letter,'fictional-gbs');expect(preview.warnings).toEqual([]);expect(preview.document).not.toBeNull();
   const document=preview.document!,keys=resignationLetterMergeKeys(document.blocks);
+  if(!document.mergeValues)throw new Error('Generated default document must capture merge values');
   expect(document.mergeValues['employee.name']).toBe('Fictional Taylor');
   for(const key of keys)expect(document.mergeValues[key]).toBe(values[key as keyof typeof values]);
   const rendered=document.blocks.flatMap(block=>[block.text,block.rows??'',block.columns??'',block.label??'']).map(text=>merge(text,document.mergeValues));
