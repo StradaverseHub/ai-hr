@@ -8,7 +8,7 @@ on:
   # Exact disposable role prerequisites are admitted before migration; production guards stay unchanged.
   # It has no release or installation credentials.
   push:
-    branches: ['codex/contract-handoff-current-base-20261117']
+    branches: ['codex/contract-handoff-hotfix-base-20261117']
     paths: ['.github/workflows/contract-walkthrough.yml']
   workflow_dispatch:
     inputs:
@@ -36,7 +36,7 @@ env:
   AIHR_CI_PG_JIT: 'on'
 jobs:
   resolve:
-    if: ${{ github.repository == 'StradaverseHub/ai-hr' && (github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && github.ref == 'refs/heads/codex/contract-handoff-current-base-20261117')) }}
+    if: ${{ github.repository == 'StradaverseHub/ai-hr' && (github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && github.ref == 'refs/heads/codex/contract-handoff-hotfix-base-20261117')) }}
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     outputs:

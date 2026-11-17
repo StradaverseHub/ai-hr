@@ -12,3 +12,5 @@ test('refuses a moved or dirty checkout independently of event metadata',()=>{as
 test('refuses the former candidate branch after the exact review-branch binding changes',()=>{const value=event();value.ref='refs/heads/codex/contract-handoff-completion-20261117';assert.throws(()=>contractBrowserPushSource(value,env(),sha,'',changed));});
 
 test('refuses missing or unrelated API file evidence even when the push identity is otherwise correct',()=>{for(const files of [undefined,[],['app/me/page.tsx']])assert.throws(()=>contractBrowserPushSource(event(),env(),sha,'',files));});
+
+test('refuses the preserved prior candidate branch after the hotfix-base binding',()=>{const value=event();value.ref='refs/heads/codex/contract-handoff-current-base-20261117';assert.throws(()=>contractBrowserPushSource(value,env(),sha,'',changed));});

@@ -4,7 +4,7 @@ import {execFileSync} from 'node:child_process';
 import {appendFileSync,readFileSync} from 'node:fs';
 import {resolve} from 'node:path';
 import {fileURLToPath} from 'node:url';
-export const CONTRACT_BROWSER_BRANCH='codex/contract-handoff-current-base-20261117';
+export const CONTRACT_BROWSER_BRANCH='codex/contract-handoff-hotfix-base-20261117';
 export const CONTRACT_BROWSER_WORKFLOW='.github/workflows/contract-walkthrough.yml';
 export function contractBrowserPushSource(event,env,checkoutSha,dirty,changedFiles){
  const repo='StradaverseHub/ai-hr',ref='refs/heads/'+CONTRACT_BROWSER_BRANCH,sha=event.after;
