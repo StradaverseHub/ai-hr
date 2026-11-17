@@ -853,6 +853,8 @@ export function planWorkflow(c: Case, config: Config, workflow: Workflow, env: P
   const matches = workflowMatches(c, workflow, env.today), lines: { text: string; ok: boolean }[] = [];
   if (!matches) return { matches, lines: [{ text: 'Skipped: this record does not match the conditions.', ok: false }] };
   lines.push({ text: 'Conditions match.', ok: true });
+  const skipped = skipReason(c, workflow, config);
+  if (skipped) return { matches, lines: [...lines, { text: `Would skip: ${skipped}`, ok: true }] };
   const lookup = { eligibleUser: env.eligibleUser ?? (() => true), userName: env.userName, mergeValues: env.mergeValues ?? {}, onboardingContact: env.onboardingContact, supervisorUserId: env.supervisorUserId };
   // A selected personal mailbox stays protected when another role resolves to the same address.
   const protectedPersonal = literalEmail(env.mergeValues?.personalEmail)?.toLowerCase();

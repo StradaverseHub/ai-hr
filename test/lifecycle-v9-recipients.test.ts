@@ -138,6 +138,14 @@ describe('recipients changed for this case', () => {
 });
 
 describe('dry run', () => {
+  it('uses the runtime skip rule before missing-recipient resolution, with no false hold for quiet reminders', () => {
+    const { c, config, environment } = fixture();
+    const definition=notify(['taskOwners'],['pbp'],'off','noPre');
+    expect(M.planWorkflow(c,config,definition,environment).lines.at(-1)).toEqual({text:'Would skip: Nothing pending before the anchor date.',ok:true});
+    expect(M.runWorkflow(c,config,definition,environment,'manual')?.status).toBe('skipped');
+    expect(c.mails).toEqual([]);
+  });
+
   it('uses canonical account destinations, dedupes by address with To winning and retains personal masking across roles', () => {
     const { c, config, environment } = fixture();
     const definition = notify(['supervisor'], ['address:manager.account@fictional.invalid', 'employeePersonal']);
