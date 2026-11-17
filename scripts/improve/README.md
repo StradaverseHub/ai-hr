@@ -122,3 +122,14 @@ feedback cycle. Recording a new staging build replaces current progress; audit e
 Replanning, reopening or changing the build cannot carry old production evidence into the new cycle.
 Legacy `mark-deployed` clears current release evidence and therefore returns to **Deployment unverified**.
 No release controls or drag-to-deploy actions are exposed to reporters.
+
+## Workflow recipient pre-release inventory
+
+`node --import tsx scripts/improve/cli.ts recipient-report` reads the selected installation using the
+same private operator SSH settings. It enforces a read-only database session and lists saved workflow
+To/CC and template Default CC uses of PBP, Whoever started it, legacy/current Employee email choices,
+TA, GBS People Ops and Task owners, with workflow/template state. No case facts, email addresses or
+message bodies are printed. GBS People Ops and Task owners are information, not removed recipients.
+The report does not convert or save definitions. Retain each environment's output privately and check
+PBP uses in published workflows and active templates before removing PBP routing (board 42f2b8a9).
+Production reads require the authorized production connection; a staging report proves nothing about it.
