@@ -215,6 +215,8 @@ export type Environment = {
   userName: (userId: string) => string;
   /** Auth-owned actual account destination, provided only by the server's bounded preview read. */
   userEmail?: (userId: string) => string | null;
+  /** Current PM supervisor account; null deliberately overrides an obsolete case snapshot. */
+  supervisorUserId?: string | null;
   mergeValues: Record<string, string>;
   signatoryUserId?: string | null;
   actorSignatoryTitle?: string;
@@ -547,7 +549,7 @@ export type ResolvedRecipient = { key: string; name: string; personal?: true };
 export type StepRecipients = { to: ResolvedRecipient[]; cc: ResolvedRecipient[]; missing: RecipientMissing[]; contact?: { email: string; sourceRevision: string } };
 const literalEmail = (value: string | undefined) => { const email = value?.trim() ?? ''; return email && v9LiteralAddress('address:' + email) ? email : null; };
 /** One role, looked up now: Employee and Line manager come from the current Personnel facts, never the case's creation. */
-function resolveRole(c: Case, config: Config, role: Role, env: Pick<Environment, 'eligibleUser' | 'userName' | 'mergeValues' | 'onboardingContact'>): { found: ResolvedRecipient[]; reason: string | null; contact?: { email: string; sourceRevision: string } } {
+function resolveRole(c: Case, config: Config, role: Role, env: Pick<Environment, 'eligibleUser' | 'userName' | 'mergeValues' | 'onboardingContact' | 'supervisorUserId'>): { found: ResolvedRecipient[]; reason: string | null; contact?: { email: string; sourceRevision: string } } {
   const user = (id: string | null | undefined, none: string, inactive = 'no longer has an active account') => !id ? { found: [], reason: none } : env.eligibleUser(id) ? { found: [{ key: id, name: recipientName(id, env) }], reason: null } : { found: [], reason: inactive };
   if (role.startsWith('address:')) return v9LiteralAddress(role) ? { found: [{ key: role, name: v9LiteralAddress(role)! }], reason: null } : { found: [], reason: 'not a valid email address' };
   if (role.startsWith('person:')) return user(role.slice(7), 'no person is chosen');
@@ -567,7 +569,7 @@ function resolveRole(c: Case, config: Config, role: Role, env: Pick<Environment,
     const contact = c.module === 'onb' ? env.onboardingContact : undefined;
     return contact ? { found: [{ key: contact.email, name: c.facts.name }], reason: null, contact } : { found: [], reason: 'Employee login is not linked' };
   }
-  if (role === 'supervisor') return user(c.facts.supervisorUserId, 'no supervisor on the Personnel record', 'the line manager has no active account');
+  if (role === 'supervisor') return user(env.supervisorUserId === undefined ? c.facts.supervisorUserId : env.supervisorUserId, 'no supervisor on the Personnel record', 'the line manager has no active account');
   if (role === 'ta') return user(c.facts.taUserId && env.eligibleUser(c.facts.taUserId) ? c.facts.taUserId : null, 'the TA is not linked to a user');
   if (role === 'hrSignatory') return user(config.companies?.find(company => company.companyId === c.facts.company)?.signatoryUserId, 'no HR signatory is set for the company');
   if (role === 'taskOwners') {
@@ -585,7 +587,7 @@ function resolveRole(c: Case, config: Config, role: Role, env: Pick<Environment,
   return { found: [], reason: 'this recipient is unavailable' };
 }
 /** To and CC for one email, with every missing recipient named. One copy per address; To wins over CC. */
-export function resolveStepRecipients(c: Case, config: Config, roles: { to: Role[]; cc: Role[] }, env: Pick<Environment, 'eligibleUser' | 'userName' | 'mergeValues' | 'onboardingContact'>): StepRecipients {
+export function resolveStepRecipients(c: Case, config: Config, roles: { to: Role[]; cc: Role[] }, env: Pick<Environment, 'eligibleUser' | 'userName' | 'mergeValues' | 'onboardingContact' | 'supervisorUserId'>): StepRecipients {
   const missing: RecipientMissing[] = [], seen = new Set<string>(), out: StepRecipients = { to: [], cc: [], missing };
   for (const position of ['to', 'cc'] as const) for (const role of roles[position]) {
     const result = resolveRole(c, config, role, env);
@@ -846,12 +848,12 @@ export function testWorkflowMessages(c: Case, config: Config, workflowId: string
   }
 }
 /** Source dry run: inspect every step against current data, independent of submission/date eligibility. */
-export type PlanEnvironment = Pick<Environment, 'today' | 'userName'> & Partial<Pick<Environment, 'eligibleUser' | 'mergeValues' | 'onboardingContact' | 'userEmail'>> & { revealPersonal?: boolean; workflowId?: string | null };
+export type PlanEnvironment = Pick<Environment, 'today' | 'userName'> & Partial<Pick<Environment, 'eligibleUser' | 'mergeValues' | 'onboardingContact' | 'userEmail' | 'supervisorUserId'>> & { revealPersonal?: boolean; workflowId?: string | null };
 export function planWorkflow(c: Case, config: Config, workflow: Workflow, env: PlanEnvironment): { matches: boolean; lines: { text: string; ok: boolean }[] } {
   const matches = workflowMatches(c, workflow, env.today), lines: { text: string; ok: boolean }[] = [];
   if (!matches) return { matches, lines: [{ text: 'Skipped: this record does not match the conditions.', ok: false }] };
   lines.push({ text: 'Conditions match.', ok: true });
-  const lookup = { eligibleUser: env.eligibleUser ?? (() => true), userName: env.userName, mergeValues: env.mergeValues ?? {}, onboardingContact: env.onboardingContact };
+  const lookup = { eligibleUser: env.eligibleUser ?? (() => true), userName: env.userName, mergeValues: env.mergeValues ?? {}, onboardingContact: env.onboardingContact, supervisorUserId: env.supervisorUserId };
   // A selected personal mailbox stays protected when another role resolves to the same address.
   const protectedPersonal = literalEmail(env.mergeValues?.personalEmail)?.toLowerCase();
   // Each person and the address they are reached at. Personal email is masked unless the viewer may see it.

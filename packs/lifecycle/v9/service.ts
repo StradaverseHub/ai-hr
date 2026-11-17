@@ -164,10 +164,11 @@ async function environment(tx: Tx, ctx: SessionContext, c: M.Case, config: M.Con
   const [personnel] = await tx.execute<{ position: string | null; department: string | null; business_group: string | null }>(sql`select (select title from position where id::text=${c.facts.title} and tenant_id=${ctx.tenantId}::uuid) as position,(select name from department where id::text=${c.facts.department} and tenant_id=${ctx.tenantId}::uuid) as department,(select name from business_unit where id::text=${c.facts.businessGroup} and tenant_id=${ctx.tenantId}::uuid) as business_group`);
   const native = c.module === 'onb' ? await onboardingV9ReadTx(ctx, tx, c.id) : null;
   const nf = native ? nativeFacts(native.c) : null;
-  const source = c.facts.employmentId
+  const source: Record<string,string> = c.facts.employmentId
     ? await readV9PersonnelTx(tx, ctx, c.facts.employmentId)
     : { email: nf?.email ?? '', icNo: nf?.ic ?? '', passportNo: nf?.passport ?? '',
         ...(native ? await onboardingV9DraftEmailFieldsTx(ctx, tx, native) : {}) };
+  const supervisorUserId = native ? native.supervisorUserId : source.supervisorUserId || null;
   const currentBusinessUnit = native?.personnelLabels.businessGroup;
   const [unit] = !native && ctx.userId && c.facts.employmentId
     ? await tx.execute<{ name: string | null }>(sql`
@@ -182,7 +183,7 @@ async function environment(tx: Tx, ctx: SessionContext, c: M.Case, config: M.Con
   const fmt = (value: string) => M.validDate(value) ? value.slice(8) + '/' + value.slice(5, 7) + '/' + value.slice(0, 4) : '';
   const values: Record<string, string> = { ...source,
     'employee.name': c.facts.name, 'employee.empNo': c.facts.employeeNo, 'employee.position': personnel?.position ?? c.facts.title, 'employee.department': personnel?.department ?? c.facts.department,
-    'employee.icNo': source.icNo ?? '', 'employee.passportNo': source.passportNo ?? '', 'employee.supervisor': users.find(u => u.id === c.facts.supervisorUserId)?.name ?? native?.personnelLabels.supervisor ?? '',
+    'employee.icNo': source.icNo ?? '', 'employee.passportNo': source.passportNo ?? '', 'employee.supervisor': users.find(u => u.id === supervisorUserId)?.name ?? native?.personnelLabels.supervisor ?? '',
     'employee.businessUnit': currentBusinessUnit ?? (unit ? unit.name ?? '' : personnel?.business_group ?? ''),
     'company.name': company[0]?.name ?? '', 'joiner.joinDate': fmt(c.facts.joinDate), 'leaver.lastDay': fmt(c.facts.lastDay),
     'leaver.noticeDate': fmt(c.facts.noticeDate), 'leaver.type': c.facts.caseType, 'today.date': fmt(today), today: fmt(today),
@@ -196,11 +197,11 @@ async function environment(tx: Tx, ctx: SessionContext, c: M.Case, config: M.Con
   values['company.color'] = signatory?.letterhead?.color ?? '#4F46E5';
   values['employee.company']=company[0]?.name??'';values['employee.businessGroup']=personnel?.business_group??'';
   const caseFields=resolveV9CaseFields(c.module,config.caseForms?.[c.module],true),caseValues=native?nativeCaseFormValues(native.c):offCaseFormValues(c);
-  const caseLabels: Record<string,string>={name:c.facts.name,company:company[0]?.name??'',group:personnel?.business_group??'',dept:personnel?.department??'',position:personnel?.position??'',supervisor:users.find(user=>user.id===c.facts.supervisorUserId)?.name??'',ta:users.find(user=>user.id===c.facts.taUserId)?.name??''};
+  const caseLabels: Record<string,string>={name:c.facts.name,company:company[0]?.name??'',group:personnel?.business_group??'',dept:personnel?.department??'',position:personnel?.position??'',supervisor:users.find(user=>user.id===supervisorUserId)?.name??'',ta:users.find(user=>user.id===c.facts.taUserId)?.name??''};
   for(const field of caseFields) values['case.'+field.key]=field.key in caseLabels?caseLabels[field.key]:field.type==='date'?fmt(caseValues[field.key]??''):caseValues[field.key]??'';
 
   if (calculation?.ready) Object.assign(values, { 'leave.remaining': String(calculation.remainingLeave), 'leave.encashDays': String(calculation.encashDays), 'leave.encashAmount': `${calculation.currency} ${calculation.amount!.toFixed(2)}`, 'leave.dailyRate': `${calculation.currency} ${calculation.dailyRate!.toFixed(2)}`, 'pay.finalPayDate': fmt(calculation.payDate) });
-  return { today, now: new Date().toISOString(), actor: who, nextId: randomUUID,
+  return { today, now: new Date().toISOString(), actor: who, supervisorUserId, nextId: randomUUID,
     onLeave: (id, date) => unavailable.some(r => r.user_id === id && r.on_date === date),
     openLoad: id => Number(sharedLoads.find(load => load.user_id === id)?.task_load ?? 0),
     lastAssigned: id => { const last = sharedLoads.find(load => load.user_id === id)?.last_auto; return last ? Date.parse(last) || 0 : 0; },

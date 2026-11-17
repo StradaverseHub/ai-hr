@@ -81,7 +81,7 @@ describe('V9 calendar and matching parity', () => {
   });
   it('treats a legacy PBP recipient as missing after routing removal', () => {
     const { c, config, environment } = fixture();
-    const legacy = workflow({ steps: [{ id: 'legacy', type: 'notify', to: ['pbp'], cc: [], subject: 'Legacy', body: '' }] });
+    const legacy = workflow({ trigger: { event: 'manual', days: 0, workdays: false, repeat: false, skipIf: '' }, steps: [{ id: 'legacy', type: 'notify', to: ['pbp'], cc: [], subject: 'Legacy', body: '' }] });
     expect(M.runWorkflow(c, config, legacy, environment, 'manual')?.hold?.missing).toEqual([{ role: 'pbp', label: 'PBP', reason: 'PBP routing has been removed; replace this recipient' }]);
     expect(c.mails.filter(mail => mail.workflowId !== null)).toEqual([]);
   });
