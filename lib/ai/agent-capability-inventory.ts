@@ -181,7 +181,7 @@ export const AGENT_CAPABILITY_INVENTORY:Readonly<Record<string,Readonly<Record<s
  },
  "app/admin/rewards/review-plans/actions.ts":{
   "previewYearAction":"backlog:automatic","createYearAction":"backlog:approve",
-  "previewGridAction":"backlog:automatic","saveGridAction":"backlog:approve",
+  "previewGridAction":"backlog:automatic","refreshGridAction":"backlog:automatic","saveGridAction":"backlog:approve",
   "previousChoicesAction":"internal:session_and_presentation","acceptSuggestionsAction":"internal:session_and_presentation",
   "createReviewsAction":"backlog:approve","reviewJobAction":"internal:session_and_presentation",
   "classifyCompanyAction":"backlog:approve",
