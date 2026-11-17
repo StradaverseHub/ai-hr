@@ -1154,3 +1154,34 @@ integrate their actual accepted source and ordered ledger, reconcile its seven u
 migration positions above that watermark, and complete its remaining rendered and final
 release checks. This preparation claims no lease or installation. Audit remains last;
 Contract remains held. No production deployment or package publication is authorized.
+
+### Resignation approver repair guidance source binding — 17 November 2026
+
+The coordinator applies the owner's direct instruction in the release coordination chat,
+“I approve all the AI binding and migration ordering,” to isolated frozen Resignation source
+`9d567849d67113a1f6523bd3b19085b926115637`. The Resignation owner requested this exact technical
+carry-forward. Board remains the first release; this binding grants no staging arrival or acceptance.
+
+The reviewed covered-source repair since `4165f574b` changes only the known Offboarding posting
+approver diagnostic into fixed repair guidance. It requires both the exact native SQL state 22023
+and the sanctioned diagnostic on the same nested error, then maps only the fixed domain error into
+Resignation's safe error contract. The message asks People Ops to choose a populated approver group
+in Offboarding Personnel postings settings and retry. No permission, financial calculation, SQL,
+provider purpose, outbound payload, transport or execution authority changes in this repair.
+Native rollback, retry, privacy and rendered behavior checks remain independently required.
+
+Only the 28 continuing approved sourceDigest literals move from
+`062f69ffc55c585eea1246779ebd8d50bd3bed7076d3d7c67ec2ed41a5b3b74a` to
+`551e2a070a015a594f7f48af8f12bce7acc0fdb309163b4419b808b85c121c2b` over 1,714 files.
+Reversing these 28 substitutions reproduces the frozen approval registry byte for byte. Both
+pending records and the entire retired Attendance Formula historical row retain their original
+status, digest, reviewer, evidence and date. Existing agent evaluations/promotions retain their
+original source identities; no new provider purpose is approved.
+
+The module-agent manifest was regenerated last and binds 496 files to
+`eda2ab508f301dcc659e239cb120f648f36f06217f5d2d7a00e129426bc67edf`.
+Both static manifest checks and registry reversal pass; no application test, compiler, provider
+call, full gate, shared-ref advancement, lease, deployment or acceptance is implied by this
+isolated checkpoint. Later Board integration and forward allocation of the seven unapplied
+Resignation migrations must use the actual accepted staging source and complete ordered ledger.
+Further covered-source repairs require a fresh exact-source binding review.
