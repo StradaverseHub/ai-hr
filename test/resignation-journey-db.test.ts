@@ -121,6 +121,17 @@ describe('managed resignation service composes one workflow authority',()=>{
   expect(await owner.db.execute(sql`select id from automation_run where subject_id=${current.id}::uuid and trigger_event='offerAccepted'`)).toHaveLength(0);
   expect(await owner.db.execute(sql`select id from personnel_posting where source='offboarding' and source_ref=${current.id}::uuid`)).toHaveLength(0);
  },90000);
+ it('does not expose a private letter or salary through a frozen teammate account relinked to another Person',async()=>{
+  const f=await resignationJourneyFixture(),templateId=randomUUID();
+  f.config.templates.push({id:templateId,name:'Identity-bound private offer',module:'off',type:'Letter',rules:{caseType:['Resignation']},hrStep:'none',employeeAck:true,retired:false,currentVersion:1,versions:[{version:1,state:'published',at:new Date().toISOString(),by:'Fixture owner',blocks:[{id:'terms',type:'text',text:'New salary {retention.salary}.',section:''},{id:'employee',type:'signature',text:'',role:'step:employee',section:''}],fields:[],routing:[{id:'review',order:1,action:'review',who:{kind:'people',userIds:[f.fyiUserId]},owner:true},{id:'employee',order:2,action:'sign',who:{kind:'employee'},owner:false}]}]});
+  await owner.db.execute(sql`update lc_v9_config set data=${JSON.stringify(f.config)}::jsonb where tenant_id=${f.base.tenantId}::uuid`);await f.workflow('retention',[{id:'letter',type:'generateDocument',conditions:[],to:[],cc:[],params:{letterTemplateId:templateId}}]);
+  const offered=await commandResignationJourney(f.admin,{caseId:f.journey.id,revision:f.journey.revision,command:{type:'offer',offer:{position:'New position',jobGrade:'M1',basicSalary:'8123.45',effectiveDate:f.lastWorkingDay,justification:'Private identity test'}}});
+  const before=await resignationCase(f.watcher,offered.id);expect(before.offer?.basicSalary).toBe('8123.45');expect(before.letters[0].document).toBeTruthy();
+  await owner.db.execute(sql`update app_user set person_id=${f.manager.personId}::uuid where tenant_id=${f.base.tenantId}::uuid and id=${f.fyiUserId}::uuid`);
+  const relinked={...f.watcher,personId:f.manager.personId},hidden=await resignationCase(relinked,offered.id);
+  expect(hidden.offer).toBeNull();expect(hidden.currentBasicSalary).toBeNull();expect(hidden.letters[0]).toMatchObject({private:true,document:null,editableFieldIds:[]});expect(hidden.tasks.filter(task=>task.documentId).every(task=>!task.actionable)).toBe(true);expect(JSON.stringify(hidden)).not.toContain('8123.45');
+  expect((await resignationCase(f.admin,offered.id)).offer?.basicSalary).toBe('8123.45');
+ },90000);
  it('an own withdrawal closes only this managed case and preserves history; cross-case readers remain denied',async()=>{
   const f=await resignationJourneyFixture(),other=await resignationJourneyFixture();await expect(resignationCase(other.staff,f.journey.id)).rejects.toMatchObject({code:'not_found'});
   const withdrawn=await commandResignationJourney(f.staff,{caseId:f.journey.id,revision:f.journey.revision,command:{type:'withdraw'}});expect(withdrawn.stage).toBe('withdrawn');expect((await resignationInbox(f.admin,{kind:'approvals'})).total).toBe(0);

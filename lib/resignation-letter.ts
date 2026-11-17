@@ -18,7 +18,7 @@ import {
 } from './document-signing-routing';
 import {isCalendarDate} from './calendar-date';
 import {probationLetterDocument, validateProbationLetterFields} from './probation-letter-document';
-import type {Block, Document, Field, RuleField, Template} from './lifecycle-v9-model';
+import {validateFieldValue,type Block,type Document,type Field,type RuleField,type Template} from './lifecycle-v9-model';
 
 export type ResignationLetterState = 'review' | 'owner' | 'released' | 'declined' | 'lapsed' | 'withdrawn';
 export type ResignationLetterKind = 'retention' | 'acceptance';
@@ -29,7 +29,7 @@ export type ResignationLetter = {
   id: string; kind: ResignationLetterKind; name: string; templateId: string; templateVersion: number;
   revision: number; generatedOn: string; generatedAt: string; employeeUserId: string;
   state: ResignationLetterState; blocks: Block[]; fields: Field[]; mergeValues: Record<string, string>;
-  frozenValues?: Record<string, string>; edited: boolean;
+  frozenValues?: Record<string, string>; fieldValues?:Record<string,string>; edited: boolean;
   /** Shared signing document at this revision. Historical receipts retain their original signed fingerprints below. */
   document: SigningDocument;
   teamSteps?: Record<string,{memberIds:string[];personIds:Record<string,string>;groupId:string|null;team:boolean}>;
@@ -74,6 +74,7 @@ export type GenerateResignationLetterInput = {
 };
 export type ResignationLetterAction =
   | {type: 'open'}
+  | {type:'fields';values:Record<string,string>}
   | {type: 'complete'; stepId: string; signature?: string; consent?: boolean; comment?: string; blocks?: Block[]}
   | {type: 'sendBack'; stepId: string; reason: string}
   | {type: 'recall'}
@@ -102,8 +103,8 @@ function fingerprint(value: unknown, deps: ResignationLetterDependencies): strin
   if (!/^[a-f0-9]{64}$/.test(result)) invalid('A verified SHA-256 document fingerprint is required.');
   return result;
 }
-const fixedValues = (letter: Pick<ResignationLetter, 'mergeValues' | 'generatedOn'>, values: Record<string, string>) =>
-  ({...values, today: letter.mergeValues.today ?? letter.generatedOn});
+const fixedValues = (letter: Pick<ResignationLetter, 'mergeValues' | 'generatedOn' | 'fieldValues'>, values: Record<string, string>) =>
+  ({...values,...letter.fieldValues, today: letter.mergeValues.today ?? letter.generatedOn});
 
 /** Document templates use single-brace fields; shared workflow double-brace tokens are not silently converted. */
 export function resignationLetterMergeKeys(blocks: readonly Block[]): string[] {
@@ -267,7 +268,8 @@ export type ResignationLetterCapabilities = {
   canRecall: boolean; canEditContent: boolean; canCorrectDetails: boolean; canResend: boolean;
   canWithdrawOffer: boolean; canDecline: boolean; canRegenerate: boolean; requiresOpen: boolean;
 };
-export function resignationLetterCapabilities(letter: ResignationLetter, userId: string | null): ResignationLetterCapabilities {
+export function resignationLetterCapabilities(letter: ResignationLetter, userId: string | null,currentPersonId?:string|null): ResignationLetterCapabilities {
+  if(currentPersonId!==undefined&&userId&&(Object.values(letter.teamSteps??{}).some(team=>team.memberIds.includes(userId!)&&team.personIds[userId!]!==currentPersonId)||letter.document.route.steps.some(step=>step.holderId===userId&&step.holderPersonId&&step.holderPersonId!==currentPersonId)))userId=null;
   const pending = resignationLetterPendingSteps(letter), mine = pending.filter(step => !!userId&&resignationLetterStepMembers(letter,step).includes(userId));
   const document=actingDocument(letter,userId);
   const owner = signingDocumentOwner(document).userId, isOwner = Boolean(userId && owner === userId);
@@ -292,6 +294,13 @@ export function resignationLetterCapabilities(letter: ResignationLetter, userId:
     requiresOpen: needsOpen};
 }
 
+export function resignationLetterEditableFields(letter:ResignationLetter,userId:string|null,values:Record<string,string>=letter.mergeValues):string[]{
+ if(!userId||!active(letter))return[];const caps=resignationLetterCapabilities(letter,userId);
+ const holding=caps.pendingSteps.some(step=>resignationLetterStepMembers(letter,step).includes(userId))||letter.state==='owner'&&resignationLetterOwnerMembers(letter).includes(userId);
+ if(!caps.contentVisible||!holding)return[];
+ const byId=Object.fromEntries(letter.fields.map(field=>[field.id,values[field.pmKey??field.id]??'']));
+ return visibleFields(letter).filter(field=>field.pmKey===null&&field.owner!=='pmLocked'&&(!field.when||byId[field.when.field]===field.when.value)&&(field.owner==='employee'?userId===letter.employeeUserId:userId!==letter.employeeUserId)).map(field=>field.id);
+}
 function editedBlocks(letter: ResignationLetter, proposed: Block[]): Block[] {
   if (!Array.isArray(proposed) || proposed.length !== letter.blocks.length || proposed.length > 500) invalid('Keep the letter’s existing content blocks and structure.');
   let characters = 0;
@@ -343,7 +352,7 @@ function applyEdit(letter: ResignationLetter, blocks: Block[], deps: Resignation
  * Live merge values reconcile before an action under the journey's transaction. Only signed fields used by this
  * letter invalidate signatures. The generated date stays fixed; released content never follows live Personnel data.
  */
-export function reconcileResignationLetter(letter: ResignationLetter, values: Record<string, string>, deps: ResignationLetterDependencies): ResignationLetterResult {
+export function reconcileResignationLetter(letter: ResignationLetter, values: Record<string, string>, deps: ResignationLetterDependencies,options:{forceRevision?:boolean}={}): ResignationLetterResult {
   if (!active(letter)) return result(letter, letter, []);
   let next = structuredClone(letter);
   next.mergeValues = fixedValues(letter, values);
@@ -357,7 +366,7 @@ export function reconcileResignationLetter(letter: ResignationLetter, values: Re
     events.push({type: 'signAgain', recipientIds: step?resignationLetterStepMembers(next,step):[], stepIds: [stepId], changes: diffs});
   }
   const hash = contentFingerprint(next, deps);
-  if (invalidated.size) {next.revision++; next.openedBy = {};}
+  if (invalidated.size||options.forceRevision&&hash!==letter.document.contentHash) {next.revision++; next.openedBy = {};}
   if (hash !== next.document.contentHash) {
     const reviews = currentRoundActions(letter.document).filter(action => action.action !== 'signed' && action.action !== 'returned' && action.action !== 'resent');
     const retainedSigns = currentRoundActions(letter.document).filter(action => action.action === 'signed' && !invalidated.has(action.stepId));
@@ -408,7 +417,17 @@ export function actResignationLetter(letter: ResignationLetter, input: ActResign
     next.openedBy[actor.userId] = next.revision; events.push({type: 'opened', recipientIds: [], by: actor.userId});
   } else {
     if (!active(letter)) conflict('This letter is already closed.');
-    if (action.type === 'recall') {
+    if(action.type==='fields'){
+      if(!action.values||typeof action.values!=='object'||Array.isArray(action.values)||Object.keys(action.values).length>100)invalid('Enter valid letter field values.');
+      const prospective={...next.mergeValues,...action.values},allowed=new Set(resignationLetterEditableFields(next,actor.userId,prospective));
+      for(const[id,value]of Object.entries(action.values)){
+        if(typeof value!=='string'||!allowed.has(id))forbidden('Only your currently editable document fields can be changed.');
+        const field=next.fields.find(field=>field.id===id)!;validateFieldValue(field,value);
+      }
+      next.fieldValues={...next.fieldValues,...action.values};
+      const update=reconcileResignationLetter(next,prospective,deps,{forceRevision:true});next=update.letter;
+      events.push({type:'edited',recipientIds:[],by:actor.userId},...update.events.filter(event=>event.type!=='pending'));
+    } else if (action.type === 'recall') {
       if (!caps.canRecall) forbidden('Only the owner can recall a letter while another person holds it.');
       next = returnToOwner(next, actor, 'Recalled to edit', true, input.id);
       events.push({type: 'recalled', recipientIds: [], by: actor.userId});
@@ -500,15 +519,15 @@ export function resignationLetterCorrection(letter: ResignationLetter, input: {
 }
 
 /** Authorize the enclosing case first. A private preview contains no blocks, values or signed document payload. */
-export function resignationLetterPreview(letter: ResignationLetter, userId: string | null): {
+export function resignationLetterPreview(letter: ResignationLetter, userId: string | null,currentPersonId?:string|null): {
   id: string; name: string; state: ResignationLetterState; revision: number; templateVersion: number;
   contentVisible: boolean; document: Document | null; capabilities: ResignationLetterCapabilities;
   /** The editable source keeps merge tokens; the read-only projection may resolve e.g. table headings. */
-  editableBlocks: Block[] | null;
+  editableBlocks: Block[] | null;editableFieldIds:string[];
   routing: {id: string; action: string; order: number; holderId: string | null; owner: boolean; status: 'done' | 'pending' | 'waiting'; queue: 'approvals' | 'tasks'}[];
   changes: ResignationLetterChange[]; warnings: string[]; sentBack: ResignationLetter['sentBack'];
 } {
-  const capabilities = resignationLetterCapabilities(letter, userId), pending = new Set(capabilities.pendingSteps.map(step => step.id));
+  const capabilities = resignationLetterCapabilities(letter, userId,currentPersonId), pending = new Set(capabilities.pendingSteps.map(step => step.id));
   const effective = currentRoundActions(letter.document), done = new Set(effective.filter(action => ['signed', 'reviewed', 'approved'].includes(action.action)).map(action => action.stepId));
   const shownSigning = {...letter.document, actions: letter.state === 'owner' ? [] : effective};
   const merge = displayedValues(letter);
@@ -527,7 +546,7 @@ export function resignationLetterPreview(letter: ResignationLetter, userId: stri
   }
   return {id: letter.id, name: letter.name, state: letter.state, revision: letter.revision, templateVersion: letter.templateVersion,
     contentVisible: capabilities.contentVisible, document, capabilities,
-    editableBlocks: capabilities.canEditContent ? structuredClone(letter.blocks) : null,
+    editableBlocks: capabilities.canEditContent ? structuredClone(letter.blocks) : null,editableFieldIds:capabilities.contentVisible?resignationLetterEditableFields(letter,userId):[],
     routing: letter.document.route.steps.map(step => ({id: step.id, action: step.kind, order: step.stage, holderId: step.holderId,
       owner: Boolean(step.owner), status: letter.state !== 'owner' && done.has(step.id) ? 'done' : pending.has(step.id) ? 'pending' : 'waiting', queue: signingStepQueue(step)})),
     changes: capabilities.contentVisible ? letter.document.route.steps.filter(step => !!userId&&resignationLetterStepMembers(letter,step).includes(userId)).flatMap(step => letter.changes[step.id] ?? []) : [],

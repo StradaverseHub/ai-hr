@@ -471,6 +471,7 @@ describe('Offboarding-only frozen team letter steps',()=>{
     letter=act(letter,'owner',{type:'complete',stepId:'owner-review'}).letter;
     expect(letter.document.route).toEqual(pinned);expect(letter.history.at(-1)?.actorId).toBe(people.owner);
     expect(resignationLetterCapabilities(letter,people.stranger).canSign).toBe(true);
+    expect(resignationLetterCapabilities(letter,people.stranger,'relinked-person').contentVisible).toBe(false);expect(resignationLetterPreview(letter,people.stranger,'relinked-person').document).toBeNull();
     letter=act(letter,'stranger',{type:'complete',stepId:'ceo-sign',signature:'Actual second CEO',consent:true}).letter;
     expect(letter.document.route).toEqual(pinned);expect(letter.history.at(-1)).toMatchObject({actorId:people.stranger,actorPersonId:'stranger-person',action:'signed'});
     expect(resignationLetterCapabilities(letter,people.ceo).canSign).toBe(false);
@@ -486,6 +487,32 @@ describe('Offboarding-only frozen team letter steps',()=>{
   it('treats a singleton assignment group as a team without granting access to nonmembers',()=>{
     const letter=generate({personIds}).letter;expect(letter.teamSteps?.['owner-review'].team).toBe(true);
     expect(resignationLetterCapabilities(letter,people.stranger).canReview).toBe(false);
+  });
+});
+
+describe('Offboarding local form fields',()=>{
+  const withFields=()=>{const t=template();t.versions[0].fields=[{id:'note',label:'Employee note',type:'text',owner:'employee',pmKey:null,required:true,sensitive:false,options:[],section:'form',when:null},{id:'locked',label:'Personnel salary',type:'number',owner:'pmLocked',pmKey:'employee.salary',required:false,sensitive:false,options:[],section:'form',when:null}];t.versions[0].blocks.push({id:'form',type:'fields',text:'',section:'form'});return t;};
+  it('accepts only the current actor’s local fields, invalidates affected signatures, and freezes completed values',()=>{
+    let letter=generate({template:withFields()}).letter;letter=complete(letter,'owner').letter;letter=complete(letter,'ceo').letter;letter=act(letter,'employee',{type:'open'}).letter;
+    expect(resignationLetterPreview(letter,people.employee).editableFieldIds).toEqual(['note']);
+    expect(()=>act(letter,'stranger',{type:'fields',values:{note:'Private edit'}})).toThrow();
+    expect(()=>act(letter,'employee',{type:'fields',values:{locked:'99999'}})).toThrow('editable document fields');
+    const revision=letter.revision,changed=act(letter,'employee',{type:'fields',values:{note:'Employee supplied statement'}});letter=changed.letter;
+    expect(letter.revision).toBe(revision+1);expect(letter.fieldValues).toEqual({note:'Employee supplied statement'});expect(letter.signedValues).not.toHaveProperty('ceo-sign');
+    expect(changed.events.some(event=>event.type==='signAgain')).toBe(true);expect(resignationLetterPendingSteps(letter).map(step=>step.id)).toEqual(['ceo-sign']);
+    letter=reconcileResignationLetter(letter,values(),deps).letter;expect(letter.mergeValues.note).toBe('Employee supplied statement');
+    letter=complete(letter,'ceo').letter;letter=act(letter,'employee',{type:'open'}).letter;letter=complete(letter,'employee').letter;
+    expect(letter.state).toBe('released');expect(resignationLetterPreview(letter,people.employee).document?.values.note).toBe('Employee supplied statement');
+    expect(()=>act(letter,'employee',{type:'fields',values:{note:'After release'}})).toThrow('closed');
+  });
+  it('saves incomplete drafts but retains required/type/conditional completion rules',()=>{
+    const t=withFields();t.versions[0].fields[0].owner='hr';t.versions[0].fields.push({id:'mode',label:'Mode',type:'select',owner:'hr',pmKey:null,required:false,sensitive:false,options:['yes','no'],section:'form',when:null},{id:'detail',label:'Detail',type:'text',owner:'hr',pmKey:null,required:false,sensitive:false,options:[],section:'form',when:{field:'mode',value:'yes'}});
+    let letter=generate({template:t}).letter;letter=act(letter,'owner',{type:'fields',values:{note:'',mode:'yes',detail:'Atomic dependent value'}}).letter;
+    expect(letter.fieldValues?.detail).toBe('Atomic dependent value');
+    expect(()=>act(letter,'owner',{type:'fields',values:{mode:'no',detail:'Not visible now'}})).toThrow('editable document fields');
+    expect(()=>act(letter,'owner',{type:'fields',values:{mode:'invalid'}})).toThrow('valid option');
+    letter=complete(letter,'owner').letter;letter=complete(letter,'ceo').letter;letter=act(letter,'employee',{type:'open'}).letter;
+    expect(()=>complete(letter,'employee')).toThrow('required visible letter field');
   });
 });
 
