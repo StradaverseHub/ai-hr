@@ -877,3 +877,36 @@ registry byte-for-byte. No contract gains a provider transform, outbound field, 
 `recruitment_match_summary_v1` stays pending and unapproved (D-069/D-071). Agent manifest
 `103074e0809a534418f710f018221416559b000e9c962d6523e991ace764d182` over 496 files. No gate result, staging acceptance or
 production authority is granted by this binding.
+
+### Contract coordinator source-binding preparation — 17 November 2026
+
+The coordinator prepared this binding on an isolated follow-up to Contract source
+`159369300414627524ccda422fcdb8ef8d519839`, whose accepted integration base is Recruitment
+`fc092e1adbe5f8f1cbfe730a17d1317f08625a7c`. It uses the owner's direct 17 November instruction in
+the COORDINATOR chat: “I approve all the AI binding and migration ordering.” The Contract owner
+requested this exact source-binding preparation; Contract's separate merge and release hold remains in force.
+
+Only the same 28 active, previously approved `sourceDigest` literals move from
+`a092a7cb98254676eee275f1687618f858d06d778e0a836d28844a60281acc39` to
+`b5a5602b84d2d212f704ffc5d62fb53a770a7049530cebd3cfd5e17b5073a1be` over 1,755 covered files.
+Reversing those 28 substitutions reproduces the frozen source's approval registry byte-for-byte.
+The two pending rows, retired `authored_attendance_formula_v1` approval, original reviewers, evidence
+references and review dates remain unchanged. `recruitment_match_summary_v1` remains unapproved;
+this carry-forward creates no new provider approval or purpose.
+
+The inspected source delta leaves the provider contract, protocol, review validators, serializers,
+transports and Assistant tool implementations unchanged. The added `contractNumber` in the native
+employee-detail projection is excluded by the unchanged explicit ten-field Assistant profile projection.
+Capability inventory additions remain backlog or human-handoff classifications, not automatic execution
+grants. The native Contract, Personnel and shared automation changes require their own behavior,
+permission, upgrade and disclosure-boundary verification; this note does not claim that those checks passed.
+
+After the literal carry-forward, the regenerated 496-file module-agent fingerprint is
+`fbba57f2e8d4a5da01afed56d51906c10532f4893562820756ebb6deec2578e4`.
+Both static manifest checks and registry-preservation checks pass. No compiler, application test,
+provider call, gate, installation or staging acceptance is implied. Further covered-source integration
+or fixes require regenerated manifests and another source-specific binding record under actual owner
+authority. This isolated preparation does not authorize publishing new scopes, merging, releasing,
+claiming a staging lease, publishing a production package or installing production.
+
+The owner also directly approved applying this exact three-file, 28-record source-binding packet in the Contract chat on 17 November 2026: “Approve this exact AI source binding.” No new provider use, provider call, purpose, payload, recipient, transport, merge or release was authorized.
