@@ -13,6 +13,7 @@ import {PDFDocument} from 'pdf-lib';
 import {renderLetterPdf} from '../lib/letter-pdf';
 import {applyAcceptedContractRecordsTx,applyContractMaternityEndTx} from './org';
 import {fileAcceptedContractDocumentTx} from './employee-documents';
+import {lockAccessConfigurationReadTx} from './access-configuration-lock';
 
 const uuid=z.uuid(),revision=z.number().int().positive();
 const unavailable=():never=>{throw new ContractManagementError('forbidden','This contract record or permission is unavailable.');};
@@ -69,6 +70,11 @@ export async function contractSettings(ctx:SessionContext){return withLifecycleT
  });}
 export async function saveContractConfiguration(ctx:SessionContext,raw:unknown){const p=z.object({companyId:uuid,expectedRevision:revision,data:contractConfigurationSchema,runtimeEnabled:z.boolean(),activationOn:z.iso.date().nullable(),effectPrincipalId:uuid.nullable()}).strict().parse(raw);validateContractSettings(p.data);return withLifecycleTenant(ctx,async tx=>{const [r]=await tx.execute<{revision:number}>(sql`select app.contract_save_configuration(${p.companyId}::uuid,${p.expectedRevision},${JSON.stringify(p.data)}::jsonb,${p.runtimeEnabled},${p.effectPrincipalId}::uuid,${p.activationOn}::date) as revision`);return r;});}
 export async function assignContractRole(ctx:SessionContext,raw:unknown){const p=z.object({companyId:uuid,businessUnitId:uuid.nullable(),userId:uuid,role:z.enum(['pbp','gbs','rewards','legal','template_approver']),from:z.iso.date(),to:z.iso.date().nullable(),reason:z.string().trim().min(10).max(2000)}).strict().parse(raw);return withLifecycleTenant(ctx,async tx=>{const [r]=await tx.execute<{id:string}>(sql`select app.contract_assign_role(${p.companyId}::uuid,${p.businessUnitId}::uuid,${p.userId}::uuid,${p.role},${p.from}::date,${p.to}::date,${p.reason}) as id`);return r;});}
+export type ContractAdmissionPage={companies:Awaited<ReturnType<typeof contractCompanies>>[number][];rows:{companyId:string;id:string;name:string;employeeId:string;startOn:string|null;endOn:string|null}[];total:number;limit:number;offset:number};
+export async function contractAdmissionPage(ctx:SessionContext,raw:unknown={}){
+ const p=z.object({search:z.string().max(100).default(''),companyId:uuid.nullable().default(null),limit:z.number().int().min(1).max(100).default(50),offset:z.number().int().min(0).max(100000).default(0)}).strict().parse(raw);
+ return withLifecycleTenant(ctx,async tx=>{await lockAccessConfigurationReadTx(tx,ctx.tenantId);const [row]=await tx.execute<{page:ContractAdmissionPage}>(sql`select app.contract_admission_page(${p.search},${p.companyId}::uuid,${p.limit},${p.offset}) as page`);return row.page;});
+}
 export async function contractAdmissionChoices(ctx:SessionContext,companyId:string){uuid.parse(companyId);return withLifecycleTenant(ctx,tx=>tx.execute<{id:string;name:string;employeeId:string;startOn:string|null;endOn:string|null}>(sql`select * from app.contract_admission_choices(${companyId}::uuid)`));}
 export async function contractDirectory(ctx:SessionContext,companyId:string){uuid.parse(companyId);return withLifecycleTenant(ctx,tx=>tx.execute<{id:string;name:string;employeeId:string|null}>(sql`select * from app.contract_directory(${companyId}::uuid)`));}
 export async function previewContractIntake(ctx:SessionContext,employmentId:string){uuid.parse(employmentId);return withLifecycleTenant(ctx,async tx=>{const [r]=await tx.execute<{source:ContractSource}>(sql`select app.contract_intake_source(${employmentId}::uuid) as source`);if(!r?.source)unavailable();return r.source;});}
