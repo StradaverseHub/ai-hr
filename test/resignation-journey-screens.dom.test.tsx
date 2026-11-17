@@ -319,7 +319,7 @@ describe('inline letter review and final signing labels',()=>{
  });
  it.each([[false,'Sign letter'],[true,'Sign and release letter']] as const)('uses the canonical final-sign capability %s for acceptance letters',(releaseOnSign,label)=>{
   wrap(<ResignationLetterCard value={c()} letter={l({kind:'acceptance',opened:true,capabilities:{...l().capabilities,releaseOnSign}})} busy={false} command={vi.fn(async()=>true)}/>);
-  expect(screen.getByRole('button',{name:label,exact:true})).toBeInTheDocument();
+  expect(screen.getByRole('button',{name:label})).toBeInTheDocument();
  });
  it('keeps retention employee consent and acceptance distinct even if a malformed DTO supplies a release label flag',()=>{
   wrap(<ResignationLetterCard value={c({stage:'offer'})} letter={l({opened:true,capabilities:{...l().capabilities,releaseOnSign:true}})} busy={false} command={vi.fn(async()=>true)}/>);
