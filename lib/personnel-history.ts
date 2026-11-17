@@ -40,16 +40,28 @@ export function personnelInformationCorrections(events:readonly Event[],rows:rea
   for(const field of INFORMATION_FIELDS){
    if(!fields.includes(field)||!(typeof after[field]==='string'||after[field]===null))continue;
    const writers=ordered.filter(event=>sets(event,field));
-   const source=writers.filter(event=>event.sequence<correction.sequence).at(-1);
+   // An original-hire correction writes secondary native legs before its audit event.
+   // Those legs are implementation evidence, not new movement owners.
+   const original=p.source==='original-hire';
+   const source=original
+    ? ordered.find(event=>event.eventType==='employment.hired'&&(typeof p.hiredEventId!=='string'||event.id===p.hiredEventId))
+    : writers.filter(event=>event.sequence<correction.sequence).at(-1);
    const sourceRow=source?owner(source):rows.find(row=>row.kind==='hired');
    if(!sourceRow||sourceRow.reversed||(sourceRow.scheduled&&!sourceRow.appliedAt)){
     const marker=rows.find(row=>row.kind==='hired')??rows[0];
     if(marker){const list=result.get(marker.id)??[];list.push({eventId:correction.id,fields:[field],values:{},needsReview:true});result.set(marker.id,list);}continue;
    }
-   const from=source?source.sequence:0,next=writers.find(event=>event.sequence>from&&event.sequence!==source?.sequence),until=next?.sequence??Infinity;
+   const from=source?source.sequence:0,next=writers.find(event=>event.sequence>from&&event.sequence!==source?.sequence),until=original?Infinity:next?.sequence??Infinity;
+   const laterDates=original?writers.flatMap(writer=>{
+    const decision=owner(writer);
+    return decision&&decision.kind!=='hired'&&!decision.reversed&&decision.effectiveDate&&typeof p.effectiveOn==='string'&&decision.effectiveDate>p.effectiveOn?[decision.effectiveDate]:[];
+   }):[];
+   const explicitUntil=dated?.until[field];
+   const dateUntil=[...(typeof explicitUntil==='string'?[explicitUntil]:[]),...laterDates].sort()[0];
    for(const row of rows){
     if(row.reversed||(row.scheduled&&!row.appliedAt)||span(row)<from||span(row)>=until)continue;
-    if(dated&&row.effectiveDate&&(row.effectiveDate<dated.from||(typeof dated.until[field]==='string'&&row.effectiveDate>=(dated.until[field] as string))))continue;
+    // The Hired row's old date must itself be corrected, even when the new date is later.
+    if(row.effectiveDate&&((dated&&(row.kind!=='hired'||!original)&&row.effectiveDate<dated.from)||(dateUntil&&row.effectiveDate>=dateUntil)))continue;
     const list=result.get(row.id)??[];
     let item=list.find(item=>item.eventId===correction.id&&!item.needsReview);
     if(!item){item={eventId:correction.id,fields:[],values:{},needsReview:false};list.push(item);}

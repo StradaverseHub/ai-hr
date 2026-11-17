@@ -878,6 +878,21 @@ registry byte-for-byte. No contract gains a provider transform, outbound field, 
 `103074e0809a534418f710f018221416559b000e9c962d6523e991ace764d182` over 496 files. No gate result, staging acceptance or
 production authority is granted by this binding.
 
+
+### Movement correction-history hotfix binding (17 November 2026)
+
+The repository owner explicitly approved carrying forward the 28 existing AI source approvals
+to `e7f9a66a837dd19dfa996048309c8df1e04b4a428243be9f0a5db99582a1d648` in the staging investigation chat on 17 November 2026
+("Approve source rebinding"). The release coordinator carries forward only the same 28 active
+digest literals from `a092a7cb98254676eee275f1687618f858d06d778e0a836d28844a60281acc39` over 1694 covered files.
+Pre-binding repair source is `357ce78c8089056793fb06067e0e5615016658d3`. The covered changes attach original-hire
+corrections to their recorded hire, preserve later deliberate field boundaries and read company
+history from the canonical dated assignments. No provider contract, purpose, outbound field,
+serializer or transport changes. Reversing the 28 substitutions reproduces the prior approval
+registry byte-for-byte; pending, retired, reviewer and historical evidence metadata are retained.
+The derived agent manifest is regenerated after binding. This grants no passing verification,
+staging acceptance or production authority.
+
 ### Approved-board combined development binding — 17 November 2026
 
 The repository owner explicitly authorized this five-item candidate and necessary verification
