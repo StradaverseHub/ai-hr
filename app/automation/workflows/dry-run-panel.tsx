@@ -29,14 +29,14 @@ export function DryRunPanel({workflow,catalogue,values={}}:{workflow:AutomationW
  return <section className="automation-dry v9-stack" aria-label={t('dry.title')}>
   <div><h3>{t('dry.title')}</h3><p className="v9-muted">{t('dry.intro')}</p></div>
   <div className="automation-row">
-   <input aria-label={t('dry.searchCase')} placeholder={t('dry.searchPlaceholder')} value={query} onChange={e=>setQuery(e.target.value)} onKeyDown={e=>{if(e.key==='Enter'){e.preventDefault();find();}}}/>
+   <input className="v9-input" aria-label={t('dry.searchCase')} placeholder={t('dry.searchPlaceholder')} value={query} onChange={e=>setQuery(e.target.value)} onKeyDown={e=>{if(e.key==='Enter'){e.preventDefault();find();}}}/>
    <button type="button" className="v9-button" disabled={busy} onClick={find}>{t('dry.findCases')}</button>
   </div>
   {cases&&(cases.length?<label className="v9-field"><span>{t('dry.testCase')}</span><select value={caseId} onChange={e=>{setCaseId(e.target.value);setResult(null);}}>{cases.map(c=><option key={c.id} value={c.id}>{c.name}{c.detail?' · '+c.detail:''}</option>)}</select></label>:<p className="v9-muted">{t('dry.noCases')}</p>)}
   <div className="v9-fields">
    {select('decision','decision',choices('decision'))}
    {select('payChanges','payChanges',choices('payChanges'))}
-   {available.has('termMonths')&&<label className="v9-field"><span>{label('termMonths')}</span><input type="number" min={3} max={120} step={1} value={event.termMonths??''} onChange={e=>{setEvent({...event,termMonths:e.target.value});setResult(null);}}/></label>}
+   {available.has('termMonths')&&<label className="v9-field"><span>{label('termMonths')}</span><input className="v9-input" type="number" min={3} max={120} step={1} value={event.termMonths??''} onChange={e=>{setEvent({...event,termMonths:e.target.value});setResult(null);}}/></label>}
    {(['endReason','declineReason'] as const).filter(key=>available.has(key)).map(key=><label className="v9-field" key={key}><span>{label(key)}</span><select value={event[key]??''} onChange={e=>{setEvent({...event,[key]:e.target.value});setResult(null);}}><option value="">—</option>{(values[key]??[]).map(option=><option key={option.value} value={option.value}>{option.label}</option>)}</select></label>)}
    {select('part','part',choices('part'))}
    {select('outcome','outcome',OUTCOMES)}

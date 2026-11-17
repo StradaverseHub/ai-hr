@@ -128,7 +128,7 @@ export function WorkflowEditor({catalogue,initial,revision:savedRevision,refs,on
    onChange={layers=>setStep(index,s=>{s.params.layers=layers;})}/>;
   if(step.type==='notify')return <div className="v9-stack">{toCc(index,step)}
    <div className="v9-field"><div className="automation-row automation-between"><label htmlFor={`automation-subject-${index}`}>{t('editor.subject')}</label>{picker(index,'subject')}</div>
-    <input id={`automation-subject-${index}`} ref={element=>{fields.current[`${index}:subject`]=element;}} value={text(step.params.subject)} maxLength={500} disabled={readOnly} aria-invalid={!text(step.params.subject).trim()} onChange={e=>setStep(index,s=>{s.params.subject=e.target.value;})}/></div>
+    <input className="v9-input" id={`automation-subject-${index}`} ref={element=>{fields.current[`${index}:subject`]=element;}} value={text(step.params.subject)} maxLength={500} disabled={readOnly} aria-invalid={!text(step.params.subject).trim()} onChange={e=>setStep(index,s=>{s.params.subject=e.target.value;})}/></div>
    <div className="v9-field"><div className="automation-row automation-between"><label htmlFor={`automation-message-${index}`}>{t('editor.message')}</label>{picker(index,'body')}</div>
     <textarea id={`automation-message-${index}`} ref={element=>{fields.current[`${index}:body`]=element;}} value={text(step.params.body)} maxLength={5000} rows={4} disabled={readOnly} onChange={e=>setStep(index,s=>{s.params.body=e.target.value;})}/></div>
    <p className="v9-muted">{t('editor.mergeHelp',{example:'{{employee.name}}'})}</p>
@@ -139,19 +139,19 @@ export function WorkflowEditor({catalogue,initial,revision:savedRevision,refs,on
   </div>;}
   if(step.type==='generateDocument')return <div className="v9-stack">{refs.letterTemplates
    ?<WorkflowField label={t('editor.letterTemplate')}><select value={text(step.params.letterTemplateId)} disabled={readOnly} onChange={e=>setStep(index,s=>{s.params.letterTemplateId=e.target.value;})}><option value="">{t('editor.choose')}</option>{[...refs.letterTemplates,...(text(step.params.letterTemplateId)&&!refs.letterTemplates.some(l=>l.id===step.params.letterTemplateId)?[{id:text(step.params.letterTemplateId),name:t('notAvailable',{value:text(step.params.letterTemplateId)})}]:[])].map(l=><option key={l.id} value={l.id}>{l.name}</option>)}</select></WorkflowField>
-   :<WorkflowField label={t('editor.letterTemplateId')}><input value={text(step.params.letterTemplateId)} disabled={readOnly} onChange={e=>setStep(index,s=>{s.params.letterTemplateId=e.target.value.trim();})}/></WorkflowField>}
-   <p className="v9-muted">{t('editor.letterNote')}</p></div>;
+   :<WorkflowField label={t('editor.letterTemplateId')}><input className="v9-input" value={text(step.params.letterTemplateId)} disabled={readOnly} onChange={e=>setStep(index,s=>{s.params.letterTemplateId=e.target.value.trim();})}/></WorkflowField>}
+   <p className="v9-muted">{t(draft.module==='probation'?'editor.letterNote':'editor.sharedLetterNote')}</p></div>;
   if(step.type==='createPosting')return <div className="v9-stack"><WorkflowField label={t('editor.postingEvent')}><select value={text(step.params.eventType)} disabled={readOnly} onChange={e=>setStep(index,s=>{s.params.eventType=e.target.value;})}><option value="">{t('editor.choose')}</option>{(draft.module==='contract_staff'?CONTRACT_POSTING_KINDS:draft.module==='off'?OFFBOARDING_POSTING_EVENTS:PROBATION_POSTING_EVENTS).map(event=><option key={event} value={event}>{event}</option>)}</select></WorkflowField><p className="v9-muted">{t(draft.module==='contract_staff'?'contract.postingHelp':'editor.postingNote')}</p></div>;
   if(step.type==='startOffboarding'&&draft.module==='contract_staff')return <p className="v9-muted">{t('contract.offboardingHelp')}</p>;
-  if(step.type==='startOffboarding')return <div className="v9-stack"><WorkflowField label={t('editor.exitReason')}><input value={text(step.params.exitReason)} maxLength={200} disabled={readOnly} onChange={e=>setStep(index,s=>{s.params.exitReason=e.target.value;})}/></WorkflowField><p className="v9-muted">{t('editor.offboardingNote')}</p></div>;
+  if(step.type==='startOffboarding')return <div className="v9-stack"><WorkflowField label={t('editor.exitReason')}><input className="v9-input" value={text(step.params.exitReason)} maxLength={200} disabled={readOnly} onChange={e=>setStep(index,s=>{s.params.exitReason=e.target.value;})}/></WorkflowField><p className="v9-muted">{t('editor.offboardingNote')}</p></div>;
   return null;
  };
 
  return <div className="v9-stack">
   <WorkflowEditorShell title={draft.name||t('editor.untitled')} moduleLabel={catalogue.label} stateLabel={draft.module==='off'&&draft.status==='paused'?'Draft':t('status.'+draft.status)} required={draft.required}
    description={<div className="v9-fields">
-    <WorkflowField label={t('editor.name')}><input value={draft.name} maxLength={200} disabled={readOnly} aria-invalid={!draft.name.trim()} onChange={e=>change(w=>{w.name=e.target.value;})}/></WorkflowField>
-    <label className="automation-check"><input type="checkbox" checked={draft.required} disabled={readOnly} onChange={e=>change(w=>{w.required=e.target.checked;})}/><span>{t('editor.required')}</span></label>
+    <WorkflowField label={t('editor.name')}><input className="v9-input" value={draft.name} maxLength={200} disabled={readOnly} aria-invalid={!draft.name.trim()} onChange={e=>change(w=>{w.name=e.target.value;})}/></WorkflowField>
+    {draft.module==='probation'&&<label className="automation-check"><input type="checkbox" checked={draft.required} disabled={readOnly} onChange={e=>change(w=>{w.required=e.target.checked;})}/><span>{t('editor.required')}</span></label>}
    </div>}
    when={<div className="v9-stack">
     <WorkflowField label={t('editor.whatStarts')}><select value={draft.trigger.event} disabled={readOnly} onChange={e=>{const next=catalogue.triggers.find(x=>x.id===e.target.value);change(w=>{w.trigger=next?.dated?{event:e.target.value,days:w.trigger.days||1,workdays:w.trigger.workdays,repeat:w.trigger.repeat}:{event:e.target.value,days:0,workdays:false,repeat:false};});}}>
@@ -159,7 +159,7 @@ export function WorkflowEditor({catalogue,initial,revision:savedRevision,refs,on
      {catalogue.triggers.map(x=><option key={x.id} value={x.id}>{x.label}</option>)}
     </select></WorkflowField>
     {trigger?.dated&&<div className="automation-row">
-     <WorkflowField label={trigger.label}><input type="number" min={0} max={3660} step={1} value={draft.trigger.days} disabled={readOnly} onChange={e=>change(w=>{w.trigger.days=Math.max(0,Math.floor(Number(e.target.value)||0));})}/></WorkflowField>
+     <WorkflowField label={trigger.label}><input className="v9-input" type="number" min={0} max={3660} step={1} value={draft.trigger.days} disabled={readOnly} onChange={e=>change(w=>{w.trigger.days=Math.max(0,Math.floor(Number(e.target.value)||0));})}/></WorkflowField>
      <label className="automation-check"><input type="checkbox" checked={draft.trigger.workdays} disabled={readOnly} onChange={e=>change(w=>{w.trigger.workdays=e.target.checked;})}/><span>{t('editor.workdays')}</span></label>
      <label className="automation-check"><input type="checkbox" checked={draft.trigger.repeat} disabled={readOnly} onChange={e=>change(w=>{w.trigger.repeat=e.target.checked;})}/><span>{t('editor.repeat')}</span></label>
     </div>}
@@ -192,7 +192,7 @@ export function WorkflowEditor({catalogue,initial,revision:savedRevision,refs,on
     {message&&<div className={message.kind==='error'?'v9-notice v9-error':'v9-notice'} role={message.kind==='error'?'alert':'status'}>{message.text}{message.problems?.length?<ul>{message.problems.map((p,i)=><li key={i}>{p}</li>)}</ul>:null}</div>}
     {editable&&initial.status!=='retired'&&<>
      <p className="v9-muted" role="status">{autoSaving?'Saving…':dirty?'Changes waiting to save':'Changes save automatically'}</p>
-    <WorkflowField label={t('editor.note')}><input value={note} maxLength={500} disabled={readOnly} placeholder={t('editor.notePlaceholder')} onChange={e=>setNote(e.target.value)}/></WorkflowField>
+    <WorkflowField label={t('editor.note')}><input className="v9-input" value={note} maxLength={500} disabled={readOnly} placeholder={t('editor.notePlaceholder')} onChange={e=>setNote(e.target.value)}/></WorkflowField>
      <div className="automation-row">
       {draft.status==='live'
        ?<button type="button" className="v9-button v9-button-primary" disabled={busy||autoSaving} onClick={()=>save('paused',t('editor.reasonPause'))}>{t('editor.pause')}</button>

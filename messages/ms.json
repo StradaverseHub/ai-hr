@@ -40607,7 +40607,8 @@
       "fixFirst": "Fix the problems above first",
       "retireConfirm": "Retire this workflow? It stops for good. Runs already waiting keep their steps.",
       "leaveUnsaved": "Leave without saving your changes?",
-      "runsKeep": "Changes are saved when you press a button. Runs already waiting keep the steps they started with.",
+      "sharedLetterNote": "The document is generated from the selected template. This step waits for its review and signing route to finish.",
+      "runsKeep": "Changes save automatically. Runs already waiting keep the steps they started with.",
       "retiredReadOnly": "This workflow is retired and can no longer change.",
       "isLive": "“{name}” is live.",
       "paused": "“{name}” is paused. Nothing new starts; runs already waiting keep their steps.",
@@ -40827,7 +40828,7 @@
       "removeLabel": "Remove {person} from {group}",
       "noMembers": "No members. Work that needs this group will need attention.",
       "discardNew": "Discard new group",
-      "behavior": "Existing memberships are retained here. Open task limits keep their existing Onboarding and Offboarding behavior; Contract approvals use the selected assignment method. Group deletion and member removal stay with the existing authorized lifecycle group flow.",
+      "behavior": "Existing memberships are retained here. Open task limits keep their native Onboarding and Offboarding behavior. Contract round robin selects the least recently assigned eligible member; leave and open-task limits are not applied. Group deletion and member removal are not available here.",
       "invalid": "Use a different name for each group and a whole task limit between 0 and 1,000.",
       "saved": "Assignment groups saved.",
       "failed": "Groups could not be saved. Your changes are kept here; try again.",
@@ -40872,7 +40873,7 @@
       "documentUnavailable": "A selected document is no longer published or available. Select a current template before saving.",
       "removeDocumentLink": "Remove this document’s link from the email body before deselecting it.",
       "noDocuments": "Publish a Contract document template before adding it to an email.",
-      "senderHelp": "Workflow email uses the sender managed in Admin, Settings, Email delivery. Templates do not change the sender or SMTP settings.",
+      "senderHelp": "Sent from OneHR. The sender is managed centrally.",
       "editorLabel": "Edit email template"
     },
     "emailAssets": {

@@ -10,7 +10,7 @@ export function PeopleSearch({known,onAdd,disabled=false,searchPeople=searchPeop
  const search=()=>{setError('');start(async()=>{const result=await searchPeople(query);if(!result.ok){setError(result.detail??t('errors.unavailable'));setFound(null);return;}setFound(result.result);});};
  return <div className="automation-people-search v9-stack">
   <div className="automation-row">
-   <input aria-label={t('people.search')} placeholder={t('people.placeholder')} value={query} disabled={disabled} onChange={e=>setQuery(e.target.value)} onKeyDown={e=>{if(e.key==='Enter'){e.preventDefault();search();}}}/>
+   <input className="v9-input" aria-label={t('people.search')} placeholder={t('people.placeholder')} value={query} disabled={disabled} onChange={e=>setQuery(e.target.value)} onKeyDown={e=>{if(e.key==='Enter'){e.preventDefault();search();}}}/>
    <button type="button" className="v9-button" disabled={disabled||busy||query.trim().length<2} onClick={search}>{t('people.find')}</button>
   </div>
   {error&&<p className="v9-notice v9-error" role="alert">{error}</p>}

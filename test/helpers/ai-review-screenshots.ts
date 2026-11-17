@@ -101,6 +101,10 @@ export async function captureAiReviewScreenshots(html:string,locale:string,secti
    if(overlaps)throw Error('Mobile Probation case fields overlap.');
    return{caseFieldsDoNotOverlap:true};
   }):null;
+  if(section==='automation-contract-content')await page.locator('dialog [aria-label="Template version"]').scrollIntoViewIfNeeded();
+  if(section==='automation-contract-preview')await page.locator('dialog .v9-document').scrollIntoViewIfNeeded();
+  if(section==='automation-version-history')await page.locator('dialog .v9-panel').last().scrollIntoViewIfNeeded();
+  const automationGeometry=section.startsWith('automation-')?await page.evaluate(()=>({fontsReady:document.fonts.status==='loaded',pickers:Array.from(document.querySelectorAll<HTMLElement>('.v9-field>.automation-multiselect')).map(node=>({height:node.getBoundingClientRect().height})),inputs:Array.from(document.querySelectorAll<HTMLInputElement>('.automation input.v9-input')).map(node=>({label:node.getAttribute('aria-label')??'',borderWidth:Number.parseFloat(getComputedStyle(node).borderTopWidth)}))})):null;
   const overflow=await page.evaluate(()=>document.documentElement.scrollWidth>window.innerWidth+1);
   const scrollRegions=await page.locator('[data-function-access-scroll]').evaluateAll(nodes=>nodes.map(node=>({width:node.clientWidth,content:node.scrollWidth,scrollable:getComputedStyle(node).overflowX==='auto'})));
   if(width===390&&scrollRegions.some(region=>!region.scrollable||region.width>=region.content))throw Error('The wide function guide must remain horizontally scrollable on a phone.');
@@ -114,18 +118,19 @@ export async function captureAiReviewScreenshots(html:string,locale:string,secti
   }):null;
   const file=`${locale}-${section}-${device}.png`;await page.screenshot({path:join(out,file),fullPage:true});
   if(section==='security-functions')await page.screenshot({path:join(out,`${locale}-${section}-${device}-viewport.png`),fullPage:false});
-  rows.push({locale,section,device,width,height,overflow,file,browser:browser.version(),candidate:process.env.AIHR_CI_HEAD,runId:process.env.GITHUB_RUN_ID,theme,scrollRegions,fixture,scriptFontProof,chartGeometry,trackerGeometry,contractGeometry,...(section==='chat-card-rewards-calendar'?{cellsVisible:!clippedCalendarCells}:{})});
+  rows.push({locale,section,device,width,height,overflow,file,browser:browser.version(),candidate:process.env.AIHR_CI_HEAD,runId:process.env.GITHUB_RUN_ID,theme,scrollRegions,fixture,scriptFontProof,chartGeometry,trackerGeometry,contractGeometry,automationGeometry,...(section==='chat-card-rewards-calendar'?{cellsVisible:!clippedCalendarCells}:{})});
   if(clippedCalendarCells)throw Error('Calendar before/after value is clipped; inspect the captured evidence.');
   // This existing table intentionally scrolls horizontally on small screens. Capture its action
   // column too, so the mobile evidence shows the real controls rather than only the left-hand labels.
   if(section==='followup-features'&&device==='mobile'){
    await page.evaluate(()=>{const holder=document.querySelector('table')?.parentElement;if(holder)holder.scrollLeft=holder.scrollWidth;});
    const controls=`${locale}-${section}-mobile-controls.png`;await page.screenshot({path:join(out,controls),fullPage:true});
-   rows.push({locale,section,device:'mobile-controls',width,height,overflow,file:controls,browser:browser.version(),candidate:process.env.AIHR_CI_HEAD,runId:process.env.GITHUB_RUN_ID,theme:'classic',fixture,contractGeometry:null});
+   rows.push({locale,section,device:'mobile-controls',width,height,overflow,file:controls,browser:browser.version(),candidate:process.env.AIHR_CI_HEAD,runId:process.env.GITHUB_RUN_ID,theme:'classic',fixture,contractGeometry:null,automationGeometry:null});
   }
   await page.close();
  }}finally{await browser.close();}
  writeFileSync(join(out,`${locale}-${section}.json`),JSON.stringify(rows,null,2)+'\n');
+ if(rows.some(row=>row.automationGeometry&&(!row.automationGeometry.fontsReady||row.automationGeometry.pickers.some(picker=>picker.height>72)||row.automationGeometry.inputs.some(input=>input.borderWidth<1))))throw Error('Actual shared builder fonts, picker height or native input borders need review; inspect PNG and geometry.');
  if(rows.some(row=>row.contractGeometry&&(row.contractGeometry.heading.fontSize<22||!row.contractGeometry.fontsReady||row.contractGeometry.decisionButtons.some(button=>button.clipped))))throw Error('Rendered Contract heading, fonts or decision labels need review; inspect captured PNG and geometry.');
  if(rows.some(row=>row.overflow))throw Error('Rendered fixture overflows its viewport; inspect the captured evidence.');
 }
