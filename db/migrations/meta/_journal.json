@@ -6210,6 +6210,20 @@
       "when": 1793330005486,
       "tag": "5786_resignation_email_delivery",
       "breakpoints": true
+    },
+    {
+      "idx": 5188,
+      "version": "7",
+      "when": 1793330005488,
+      "tag": "5788_resignation_letter_teams",
+      "breakpoints": true
+    },
+    {
+      "idx": 5189,
+      "version": "7",
+      "when": 1793330005489,
+      "tag": "5789_resignation_letter_fields",
+      "breakpoints": true
     }
   ]
 }
