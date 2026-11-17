@@ -332,11 +332,18 @@ LANGUAGE plpgsql SECURITY INVOKER SET search_path=pg_catalog,public,pg_temp AS $
 DECLARE binding jsonb; expected_policy jsonb; year_value integer; uploaded boolean:=false;
 BEGIN
  IF TG_OP='UPDATE' THEN
-  IF app.reward_review_plan_writing() AND NEW.tenant_id=OLD.tenant_id AND NEW.id=OLD.id AND NEW.company_id=OLD.company_id AND NEW.business_unit_id IS NOT DISTINCT FROM OLD.business_unit_id AND NEW.cycle_id=OLD.cycle_id AND NEW.kind=OLD.kind AND NEW.policy->'year'=OLD.policy->'year' AND NEW.status=OLD.status AND OLD.status NOT IN('approved','posted','withdrawn','rejected') AND EXISTS(SELECT 1 FROM reward_plan_company c WHERE c.tenant_id=NEW.tenant_id AND c.company_id=NEW.company_id AND c.year=(NEW.policy->>'year')::integer AND c.plan_version_id=NEW.policy_group_version_id) THEN RETURN NEW;END IF;
   IF NEW.policy_group_version_id IS DISTINCT FROM OLD.policy_group_version_id OR
    (OLD.policy_group_version_id IS NOT NULL AND (NEW.company_id IS DISTINCT FROM OLD.company_id
     OR NEW.business_unit_id IS DISTINCT FROM OLD.business_unit_id OR NEW.kind IS DISTINCT FROM OLD.kind
     OR NEW.cycle_id IS DISTINCT FROM OLD.cycle_id OR NEW.policy->'year' IS DISTINCT FROM OLD.policy->'year')) THEN
+   -- Native digest/status publishers have purpose roles with no plan-table access.
+   -- Separate PL/pgSQL branches are required: SQL AND does not fence ACL checks.
+   -- Bind the real function owner (ai_hr_owner installed; the fixture's migration owner in CI).
+   IF current_user=pg_catalog.pg_get_userbyid((SELECT proowner FROM pg_catalog.pg_proc WHERE oid='app.reward_review_plan_rebind(integer,jsonb,text)'::regprocedure)) THEN
+    IF app.reward_review_plan_writing() THEN
+     IF NEW.tenant_id=OLD.tenant_id AND NEW.id=OLD.id AND NEW.company_id=OLD.company_id AND NEW.business_unit_id IS NOT DISTINCT FROM OLD.business_unit_id AND NEW.cycle_id=OLD.cycle_id AND NEW.kind=OLD.kind AND NEW.policy->'year'=OLD.policy->'year' AND NEW.status=OLD.status AND OLD.status NOT IN('approved','posted','withdrawn','rejected') AND EXISTS(SELECT 1 FROM reward_plan_company c WHERE c.tenant_id=NEW.tenant_id AND c.company_id=NEW.company_id AND c.year=(NEW.policy->>'year')::integer AND c.plan_version_id=NEW.policy_group_version_id) THEN RETURN NEW;END IF;
+    END IF;
+   END IF;
    RAISE EXCEPTION 'reward policy lineage is immutable' USING ERRCODE='23514'; END IF;
  ELSIF NEW.kind='annual' THEN
   IF COALESCE(NEW.policy->>'year','') !~ '^(20[0-9]{2}|21[0-9]{2}|2200)$' THEN RAISE EXCEPTION 'reward policy year is invalid' USING ERRCODE='23514'; END IF;
@@ -611,3 +618,19 @@ CREATE FUNCTION app.reward_review_plan_rebind_recipients(wanted_event uuid) RETU
  WHERE a.archived_at IS NULL AND NOT app.login_blocked(a.id) AND e.hired_on<=timezone('Asia/Kuala_Lumpur',now())::date AND(e.terminated_on IS NULL OR e.terminated_on>timezone('Asia/Kuala_Lumpur',now())::date)
 $$;
 REVOKE ALL ON FUNCTION app.reward_review_plan_rebind_recipients(uuid) FROM PUBLIC;GRANT EXECUTE ON FUNCTION app.reward_review_plan_rebind_recipients(uuid) TO ai_hr_app;
+
+--> statement-breakpoint
+-- Company deletion asks only whether retained year choices exist, through the same
+-- canonical administrator/parent guard as the existing retention owners. No plan or pay data leaves it.
+CREATE INDEX reward_plan_year_company_retention ON public.reward_plan_year_company(tenant_id,company_id);
+CREATE FUNCTION app.reward_plan_company_in_use(wanted_company uuid) RETURNS boolean
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT CASE WHEN app.principal_snapshot_current() AND app.is_admin() AND EXISTS(
+  SELECT 1 FROM public.company c WHERE c.tenant_id=app.current_tenant_id() AND c.id=wanted_company
+   AND app.is_admin_for(coalesce(app.company_org_current_parent(c.id),c.id))
+ ) THEN EXISTS(
+  SELECT 1 FROM public.reward_plan_year_company p WHERE p.tenant_id=app.current_tenant_id() AND p.company_id=wanted_company
+ ) ELSE false END
+$$;
+REVOKE ALL ON FUNCTION app.reward_plan_company_in_use(uuid) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.reward_plan_company_in_use(uuid) TO ai_hr_app;

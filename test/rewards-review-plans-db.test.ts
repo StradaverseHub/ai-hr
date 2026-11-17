@@ -95,3 +95,21 @@ it('captures an existing mapped company becoming eligible and creates its open-y
  const view=await rewardReviewPlans(adminCtx(b),{year:2026});expect(view.rows.map(r=>[r.companyId,r.status])).toEqual([[b.companyId,'draft']]);
  const notices=await owner.db.execute<{payload:{sourceEventId:string;companyId:string;year:number}}>(sql`select payload from domain_event where tenant_id=${b.tenantId}::uuid and event_type='reward-plan.company-added'`);expect(notices.map(n=>[n.payload.sourceEventId,n.payload.companyId,n.payload.year])).toEqual([[event.id,b.companyId,2026]]);
 },90_000);
+
+it('retains company year choices through a bounded administrator-only boolean even when setup rows are hidden',async()=>{
+ await createYear();
+ const adminUser=await createAppUser(b.tenantId,null,'hr_admin'),employeeUser=await createAppUser(b.tenantId,null,'employee');
+ const genericAdmin:SessionContext={...adminCtx(b),userId:adminUser,personId:null,roles:['hr_admin'],grants:[{role:'hr_admin',companyId:null}]};
+ const employee:SessionContext={...adminCtx(b),userId:employeeUser,personId:null,roles:['employee'],grants:[{role:'employee',companyId:null}]};
+ await owner.db.execute(sql`insert into reward_role_permission(tenant_id,role,capability,allowed,level,changed_by,reason)values(${b.tenantId}::uuid,'hr_admin','plans.manage',false,'none',${b.adminUserId}::uuid,'Fictional deletion admin has no Rewards setup page')`);
+ const foreign=await seedBase();
+ await owner.db.execute(sql`insert into reward_plan_year(tenant_id,year,settings)values(${foreign.tenantId}::uuid,2026,'{}'::jsonb)`);
+ await owner.db.execute(sql`insert into reward_plan_year_company(tenant_id,year,company_id)values(${foreign.tenantId}::uuid,2026,${foreign.companyId}::uuid)`);
+ const read=(ctx:SessionContext,id:string)=>withTenant(ctx,async tx=>(await tx.execute<{used:boolean}>(sql`select app.reward_plan_company_in_use(${id}::uuid) as used`))[0].used);
+ expect(await withTenant(genericAdmin,tx=>tx.execute(sql`select company_id from reward_plan_year_company where tenant_id=app.current_tenant_id()`))).toEqual([]);
+ expect(await read(genericAdmin,b.companyId)).toBe(true);expect(await read(employee,b.companyId)).toBe(false);
+ expect(await read(genericAdmin,foreign.companyId)).toBe(false);expect(await read(genericAdmin,randomUUID())).toBe(false);
+ expect(await withTenant(genericAdmin,tx=>tx.execute(sql`select current_user as caller`))).toEqual([{caller:'ai_hr_app'}]);
+ const [helper]=await owner.db.execute<{app:boolean;public:boolean}>(sql`select has_function_privilege('ai_hr_app','app.reward_plan_company_in_use(uuid)','EXECUTE') as app,exists(select 1 from aclexplode(p.proacl)a where a.grantee=0) as public from pg_proc p where p.oid='app.reward_plan_company_in_use(uuid)'::regprocedure`);
+ expect(helper).toEqual({app:true,public:false});
+});

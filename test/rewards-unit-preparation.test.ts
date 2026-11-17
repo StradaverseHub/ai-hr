@@ -97,6 +97,15 @@ describe('native checked preparation of new annual Rewards reviews',()=>{
 
  it('withdraws release and appends one bounded invalidation event when a native source owner changes facts',async()=>{
   await confirmAll();await change(checker,{kind:'release'});
+  const [purpose]=await owner.db.execute<{fn_owner:string;plan_read:boolean;lease_execute:boolean;digest_write:boolean;lineage_write:boolean}>(sql`select
+   pg_get_userbyid(p.proowner) as fn_owner,
+   has_table_privilege('ai_hr_reward_preparation_invalidator','public.reward_plan_company','SELECT') as plan_read,
+   has_function_privilege('ai_hr_reward_preparation_invalidator','app.reward_review_plan_writing()','EXECUTE') as lease_execute,
+   has_column_privilege('ai_hr_reward_preparation_invalidator','public.reward_unit','approved_digest','UPDATE') as digest_write,
+   has_column_privilege('ai_hr_reward_preparation_invalidator','public.reward_unit','policy_group_version_id','UPDATE') as lineage_write
+   from pg_proc p where p.oid='app.reward_preparation_source_changed()'::regprocedure`);
+  expect(purpose).toEqual({fn_owner:'ai_hr_reward_preparation_invalidator',plan_read:false,lease_execute:false,digest_write:true,lineage_write:false});
+
   // Model an independently authorized native source publisher, outside the setup form.
   await owner.db.transaction(async tx=>{
    await tx.execute(sql`select set_config('app.tenant_id',${base.tenantId},true),set_config('app.user_id',${gr.userId!},true)`);
