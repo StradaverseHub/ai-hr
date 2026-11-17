@@ -1,13 +1,13 @@
 import 'server-only';
 import {sql} from 'drizzle-orm';
 import type {SessionContext} from '../../db/client';
-import {withRewardReviewExtension} from './service';
+import {withRewardHistoryBackfill} from './service';
 import {recordRewardPersonHistoryTx} from './person-history';
 
 /** One explicitly selected posted review per transaction. Dry run is the default; no historical
  * recommendation, compensation, payroll input, limit version or stored trace is rewritten. */
 export async function backfillRewardPersonHistory(ctx:SessionContext,unitId:string,apply=false){
- return withRewardReviewExtension(ctx,unitId,apply,async(tx,{unit,roles},calculated,commands)=>{
+ return withRewardHistoryBackfill(ctx,unitId,apply,async(tx,{unit,roles},calculated,commands)=>{
   const [authority]=await tx.execute<{allowed:boolean}>(sql`select app.reward_admin(${unit.companyId}::uuid) and app.reward_not_viewing_as() as allowed`);
   if(!authority?.allowed||!roles.includes('payroll'))throw Error('The review’s payroll seat and company administrator authority are required.');
   if(unit.status!=='posted')throw Error('Backfill only a posted review.');
