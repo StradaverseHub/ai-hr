@@ -862,3 +862,20 @@ records' sourceDigest changes from
 `19b66c2622f1bc2aca20958057e73cfaaa29871181601a49103520f4cc987098` (1644 source files).
 Human reviewer identities, dates, evidence and pending statuses are unchanged. The derived agent manifest
 is regenerated last. This is development source preparation, not a release witness or installation.
+
+### Handoff correction recovery source binding — 17 November 2026
+
+The correction batch now includes named same-transaction synchronization of admitted last-working-day
+changes through the canonical Offboarding store and date calculator. Native purpose proofs preserve
+identity, company, reverse-link, CAS, history and immutable fields, with no new financial read grant.
+Private communication metadata is filtered before exposure, and narrow compiler/SQL parsing fixes
+preserve the reviewed authorization. These are deterministic human operations; no provider payload,
+disclosure purpose, model tool or transport is broadened. Original failed development evidence is retained.
+
+Under the existing explicit owner approval for same-purpose technical binding, the same 29 approved
+records carry only sourceDigest from
+`19b66c2622f1bc2aca20958057e73cfaaa29871181601a49103520f4cc987098` to
+`edd791f7f899755cc18f273331127108b0fa7c0fb9e73de53990de1c847c0aab` (1644 source files).
+Human metadata and pending statuses remain unchanged. The agent manifest is regenerated last.
+Hosted recovery, the actual 56-state renderer, accepted Movement integration and the release gate
+remain required. This source record grants no release witness, production or package publication.
