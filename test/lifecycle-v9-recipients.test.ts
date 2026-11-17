@@ -19,6 +19,15 @@ const workflowMails = (c: M.Case) => c.mails.filter(mail => mail.workflowId !== 
 const alerts = (c: M.Case) => c.mails.filter(mail => mail.key.startsWith('hold-alert:'));
 
 describe('hold when anyone is missing', () => {
+  it('uses the current PM supervisor for later emails and never falls back to an obsolete case manager after removal', () => {
+    const { c, config, environment } = fixture();
+    environment.supervisorUserId='hr2';
+    expect(M.resolveStepRecipients(c,config,{to:['supervisor'],cc:[]},environment).to).toEqual([{key:'hr2',name:'Name hr2'}]);
+    expect(c.facts.supervisorUserId).toBe('manager');
+    environment.supervisorUserId=null;
+    expect(M.resolveStepRecipients(c,config,{to:['supervisor'],cc:[]},environment).missing).toEqual([{role:'supervisor',label:'Line manager',reason:'no supervisor on the Personnel record'}]);
+  });
+
   it('queues nothing, not even CC, names who is missing and alerts Full case view users once', () => {
     const { c, config, environment } = fixture(); c.facts.supervisorUserId = null;
     const run = M.runWorkflow(c, config, notify(['employeeWork'], ['supervisor', 'hrSignatory']), environment, 'manual');

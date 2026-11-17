@@ -2,7 +2,7 @@ import { afterAll, beforeAll, beforeEach, expect, it } from 'vitest';
 import { randomUUID } from 'node:crypto';
 import { sql } from 'drizzle-orm';
 import { withTenant, type SessionContext } from '../db/client';
-import { hireEmployee, setEmploymentInfo, updatePersonProfilePartial } from '../core/org';
+import { hireEmployee, setEmploymentInfo, setReportingLine, updatePersonProfilePartial } from '../core/org';
 import { saveEmployeeDraft, completeEmployeeDraft } from '../core/employee-draft';
 import { todayInKualaLumpur } from '../lib/hr-date';
 import { addDays } from '../lib/lifecycle-v9-model';
@@ -1455,4 +1455,23 @@ it('previews the saved draft contact fields and organisation names without sendi
   expect(preview.body).toBe('Fictional Business Unit · Finance · V9 subject · preview-personal@example.test · +60121234567 · 100 Fixture Road');
   expect((await v9CaseDetail(admin, row.case.id)).case.mails).toHaveLength(0);
   await expect(v9PreviewEmail(other, row.case.id, 'draft-field-preview')).rejects.toThrow();
+});
+
+it('resolves an offboarding email manager from current PM reporting lines without rewriting the case snapshot', async () => {
+  const managers=[];
+  for(const name of ['Original manager','New manager']){
+    const person=await hireEmployee(admin,{companyId:base.companyId,departmentId:base.deptA,positionId:base.positionId,employmentType:'full_time',hiredOn:'2026-01-01',person:{fullName:'Fictional '+name,primaryEmail:name==='Original manager'?'original.manager@test.invalid':'new.manager@test.invalid'}});
+    managers.push({...person,userId:await createAppUser(base.tenantId,person.personId,'employee')});
+  }
+  await setReportingLine(admin,{subordinateEmploymentId:employmentId,managerEmploymentId:managers[0].employmentId,lineType:'administrative',validFrom:'2026-01-01'});
+  const config=(await v9Workspace(admin)).config!;config.checklists=config.checklists.filter(checklist=>checklist.module==='onb');
+  const workflow={id:'current-supervisor',name:'Current PM manager',module:'off' as const,status:'published' as const,trigger:{event:'manual' as const,days:0,workdays:false,repeat:false,skipIf:''},conditions:[],steps:[{id:'manager-notice',type:'notify' as const,to:['supervisor' as const],cc:[],subject:'Current manager notice',body:'For {employee.supervisor}'}],description:''};
+  config.workflows=[workflow];await v9SaveConfig(admin,config.revision,config);
+  const caseId=await v9CreateOffboarding(admin,{employmentId,type:'Resignation',noticeDate:todayInKualaLumpur(),lastDay:addDays(todayInKualaLumpur(),30)});
+  expect((await v9CaseDetail(admin,caseId)).case.facts.supervisorUserId).toBe(managers[0].userId);
+  await setReportingLine(admin,{subordinateEmploymentId:employmentId,managerEmploymentId:managers[1].employmentId,lineType:'administrative',validFrom:todayInKualaLumpur()});
+  await v9Command(admin,caseId,1,{type:'submit'});let current=(await v9CaseDetail(admin,caseId)).case;
+  await v9Command(admin,caseId,current.revision,{type:'startWorkflow',workflowId:workflow.id});current=(await v9CaseDetail(admin,caseId)).case;
+  expect(current.mails.filter(mail=>mail.workflowId===workflow.id)).toMatchObject([{to:[managers[1].userId],body:'For Fictional New manager'}]);
+  expect(current.facts.supervisorUserId).toBe(managers[0].userId);
 });
