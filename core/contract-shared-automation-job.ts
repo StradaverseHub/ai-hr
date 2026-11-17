@@ -35,7 +35,6 @@ export const contractAutomationJobHandler:BulkJobHandler<never>={
  async applyStepTx(){throw new Error('Contract automation advances through bounded shared-runtime finalize units.');},
  async finalize(ctx,job,unit){
   await unit.verifySeal();
-  const {eventId:rootId}=inputSchema.parse(job.input),progress=progressSchema.parse(job.plan);
   const finished=await unit.ownerTx!(owner=>advanceContractSharedAutomationOwner(owner,ctx,job,unit));
   return finished?{result:{processed:true}}:'more';
  },
@@ -45,6 +44,7 @@ export const contractAutomationJobHandler:BulkJobHandler<never>={
 
 /** Shared bounded runtime unit; the system wrapper supplies only truthful tenant context and its native capability. */
 export async function advanceContractSharedAutomationOwner(owner:postgres.ReservedSql,ctx:SessionContext,job:BulkJobRow,unit:Pick<BulkJobUnit,'set'>,system=false):Promise<boolean>{
+ const {eventId:rootId}=inputSchema.parse(job.input),progress=progressSchema.parse(job.plan);
    await owner`select set_config('app.tenant_id',${ctx.tenantId},true),set_config('app.user_id','',true),set_config('jit','off',true)`;
    const db=reservedSqlExecutor(owner);
    const [event]=await db.execute<Event>(sql`select id,case_id,trigger_event,occurrence,decision_revision,workflow_versions,data from contract_shared_event
@@ -59,8 +59,7 @@ export async function advanceContractSharedAutomationOwner(owner:postgres.Reserv
      await queueAutomationEmailTx(db,{module:'contract_staff',subjectId:event.case_id,key:`approval:${row.page.approvalId}:${row.page.revision}:${after??'start'}`,to:row.page.recipients,cc:[],subject:'Contract decision approval is waiting',body:'A Contract decision is waiting for your approval. Open your assigned approval to review the agreed terms.\n\n{{case.link}}'});
      await unit.set(owner,{planMerge:{activeEventId:event.id,workflowCursor:0,mailAfter:row.page.recipients.at(-1)!}});
     }else{
-     if(event.trigger_event==='decisionSubmitted'&&!event.workflow_versions.length)await db.execute(sql`select app.contract_shared_execution_attention(${event.id}::uuid,'No live workflow matched this accepted decision. Publish a workflow or start one by hand.','no_workflow')`);
-   await db.execute(sql`select app.contract_shared_event_finish(${event.id}::uuid,${job.id}::uuid)`);
+     await db.execute(sql`select app.contract_shared_event_finish(${event.id}::uuid,${job.id}::uuid)`);
      await unit.set(owner,{planMerge:{activeEventId:null,workflowCursor:0,mailAfter:null}});
     }
     return false;
