@@ -1,5 +1,6 @@
 import type { getRewardUnit } from '@/packs/rewards/service';
 import { isSeniorPlanMember, type RewardFlag, type Recommendation } from '@/packs/rewards/model';
+import { rewardHistoryValues } from '@/packs/rewards/person-history-model';
 import { payWindowReasons, sum } from '@/packs/rewards/engine';
 
 /**
@@ -51,7 +52,7 @@ export type DeskRow = {
   promotionGrades: string[];
   suggested: { meritBp: number | null; promotionBp: number | null; specialBp: number | null; multiplierBp: number | null; lumpCents: number | null };
   differences: { meritBp: number | null; promotionBp: number | null; specialBp: number | null; multiplierBp: number | null; lumpCents: number | null };
-  rangePosition: 'below' | 'in' | 'above'; bonusBasicCents: number | null; paidBonusMonthsBp: number | null;
+  rangePosition: 'below' | 'in' | 'above'; bonusBasicCents: number | null; paidBonusMonthsBp: number | null; historyIncreaseBp: number | null;
   meritCents: number | null; promotionCents: number | null; specialCents: number | null; incrementCents: number | null;
   incrementReason: string; bonusReason: string; businessCase: string; note: string; withhold: NonNullable<Recommendation['withhold']>;
   erCase: boolean; pipCase: boolean; erDecision: string; pipDecision: string; caseReason: string;
@@ -73,6 +74,7 @@ export function deskRow(v: RewardView, r: ViewRow, flags: readonly RewardFlag[])
   const cells = permitted && r.plan !== 'ec';
   const own = flags.filter(flag => flag.entryId === r.id);
   const rec = r.recommendation;
+  const history = hidden ? null : rewardHistoryValues(r);
   const grades = r.allowedPromotionGrades ?? [];
   return {
     id: r.id, name: r.source.name, employeeCode: r.source.employeeCode, grade: r.source.grade, promotionGrade: rec.promotionGrade,
@@ -92,7 +94,7 @@ export function deskRow(v: RewardView, r: ViewRow, flags: readonly RewardFlag[])
     promotionGrades: grades,
     suggested: { meritBp: hidden ? null : r.suggestedMeritBp, promotionBp: hidden ? null : r.suggestedPromotionBp, specialBp: hidden ? null : r.suggestedSpecialBp, multiplierBp: hidden ? null : r.suggestedMultiplierBp, lumpCents: hidden ? null : r.suggestedLumpCents },
     differences: { meritBp: hidden ? null : r.meritBp - r.suggestedMeritBp, promotionBp: hidden ? null : r.promotionBp - r.suggestedPromotionBp, specialBp: hidden ? null : r.specialBp - r.suggestedSpecialBp, multiplierBp: hidden ? null : r.bonusMultiplierBp - r.suggestedMultiplierBp, lumpCents: hidden ? null : r.lumpCents - r.suggestedLumpCents },
-    rangePosition: r.rangePosition ?? 'in', bonusBasicCents: hidden ? null : r.bonusBasicCents, paidBonusMonthsBp: hidden ? null : r.paidBonusMonthsBp,
+    rangePosition: r.rangePosition ?? 'in', bonusBasicCents: hidden ? null : r.bonusBasicCents, paidBonusMonthsBp: history?.bonusMonthsBp ?? null, historyIncreaseBp: history?.totalIncreaseBp ?? null,
     meritCents: hidden ? null : r.meritCents, promotionCents: hidden ? null : r.promotionCents, specialCents: hidden ? null : r.specialCents, incrementCents: hidden ? null : r.newBasicCents - r.source.basicCents,
     incrementReason: r.incrementReason, bonusReason: r.bonusReason, businessCase: hidden ? '' : rec.reason, note: hidden ? '' : rec.note ?? '', withhold: hidden ? {} : rec.withhold ?? {},
     erCase: !!r.facts.erCase, pipCase: !!r.facts.pipCase, erDecision: r.facts.erDecision, pipDecision: r.facts.pipDecision, caseReason: hidden ? '' : r.facts.caseReason,
