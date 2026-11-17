@@ -23987,7 +23987,17 @@
       "view": "View"
     },
     "workflowRecipients": {
-      "setupNeeded": "Choose a To recipient for this step. The ready-made workflow leaves it for your company group to choose. Until then, this email is held whenever it runs."
+      "setupNeeded": "Choose a To recipient for this step. The ready-made workflow leaves it for your company group to choose. Until then, this email is held whenever it runs.",
+      "taUnavailable": "Selected TA is unavailable. Choose another active user.",
+      "clearTa": "Clear TA",
+      "taNotLinked": "{name} is not linked to a user. Choose the TA.",
+      "taNotSelected": "TA not selected.",
+      "searchTa": "Search for a TA",
+      "searchTaHint": "Type at least two letters of a name",
+      "searchingTa": "Searching active users…",
+      "taSearchFailed": "TA search could not load. Try typing the name again.",
+      "taNoMatches": "No active users match this name.",
+      "taMatches": "Matching active users"
     }
   },
   "clockingFile": {

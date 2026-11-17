@@ -129,6 +129,24 @@ describe('recipients changed for this case', () => {
 });
 
 describe('dry run', () => {
+  it('uses canonical account destinations, dedupes by address with To winning and retains personal masking across roles', () => {
+    const { c, config, environment } = fixture();
+    const definition = notify(['supervisor'], ['address:manager.account@fictional.invalid', 'employeePersonal']);
+    const plan = M.planWorkflow(c, config, definition, { ...environment, userEmail: id => id === 'manager' ? 'manager.account@fictional.invalid' : null });
+    expect(plan.lines.at(-1)?.text).toBe(`Would send "Reminder for {employee.name}" to Name manager <manager.account@fictional.invalid>, CC Fictional Person <${maskEmail('person.home@fictional.invalid')}>`);
+    const sameMailbox = M.planWorkflow(c, config, notify(['supervisor'], ['employeePersonal']), { ...environment, userEmail: () => 'person.home@fictional.invalid' });
+    expect(sameMailbox.lines.at(-1)?.text).toBe(`Would send "Reminder for {employee.name}" to Name manager <${maskEmail('person.home@fictional.invalid')}>`);
+    expect(JSON.stringify(sameMailbox)).not.toContain('person.home@fictional.invalid');
+  });
+  it('names an unavailable verified account destination and still shows the found masked recipients without sending', () => {
+    const { c, config, environment } = fixture();
+    const plan = M.planWorkflow(c, config, notify(['employeePersonal'], ['supervisor']), { ...environment, userEmail: () => null });
+    expect(plan.lines.at(-1)).toMatchObject({ ok: false });
+    expect(plan.lines.at(-1)?.text).toContain('Name manager: no verified account email is available');
+    expect(plan.lines.at(-1)?.text).toContain(`Fictional Person <${maskEmail('person.home@fictional.invalid')}>`);
+    expect(c.mails).toEqual([]);
+  });
+
   it('shows each person and address, masks personal email unless permitted, and shows holds', () => {
     const { c, config, environment } = fixture(); const definition = notify(['employeePersonal'], ['supervisor']);
     expect(M.planWorkflow(c, config, definition, environment).lines.at(-1)?.text).toBe(`Would send "Reminder for {employee.name}" to Fictional Person <${maskEmail('person.home@fictional.invalid')}>, CC Name manager (account email)`);

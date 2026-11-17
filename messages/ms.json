@@ -23987,7 +23987,17 @@
       "view": "Lihat"
     },
     "workflowRecipients": {
-      "setupNeeded": "Pilih penerima Kepada untuk langkah ini. Aliran kerja sedia ada membiarkannya untuk dipilih oleh kumpulan syarikat anda. Sehingga itu, e-mel ini ditahan setiap kali ia dijalankan."
+      "setupNeeded": "Pilih penerima Kepada untuk langkah ini. Aliran kerja sedia ada membiarkannya untuk dipilih oleh kumpulan syarikat anda. Sehingga itu, e-mel ini ditahan setiap kali ia dijalankan.",
+      "taUnavailable": "TA yang dipilih tidak tersedia. Pilih pengguna aktif lain.",
+      "clearTa": "Kosongkan TA",
+      "taNotLinked": "{name} tidak dipautkan kepada pengguna. Pilih TA.",
+      "taNotSelected": "TA belum dipilih.",
+      "searchTa": "Cari TA",
+      "searchTaHint": "Taip sekurang-kurangnya dua huruf nama",
+      "searchingTa": "Sedang mencari pengguna aktif…",
+      "taSearchFailed": "Carian TA tidak dapat dimuatkan. Cuba taip nama sekali lagi.",
+      "taNoMatches": "Tiada pengguna aktif sepadan dengan nama ini.",
+      "taMatches": "Pengguna aktif yang sepadan"
     }
   },
   "clockingFile": {

@@ -22,7 +22,7 @@ const fact = z.string().max(500);
 export const onboardingPatchSchema = z.object({
     caseValues: z.record(id,z.string().max(10000)).refine(value => Object.keys(value).length <= 100).optional(), caseContactEmail: z.union([z.literal(''),z.email().max(254)]).optional(),
     equipmentOverrides: z.record(id, z.object({ group: id.optional(), method: z.enum(['rr','manual']).optional(), due: z.number().int().min(-999).max(9999).optional() }).strict()).refine(value => Object.keys(value).length <= 500).optional(),
-    local: z.object({ fullName: fact, employeeId: fact, joinDate: fact, title: fact, department: fact, company: fact, businessGroup: fact, grade: fact, employmentType: fact, supervisor: fact, gbsTa: fact, email: fact, costCentre: fact, ic: fact, passport: fact }).partial().strict().optional(),
+    local: z.object({ fullName: fact, employeeId: fact, joinDate: fact, title: fact, department: fact, company: fact, businessGroup: fact, grade: fact, employmentType: fact, supervisor: fact, gbsTa: fact, taUserId: z.union([z.uuid(), z.literal('')]), email: fact, costCentre: fact, ic: fact, passport: fact }).partial().strict().optional(),
     hiring: z.enum(['', 'new_hire', 'replacement']).optional(), replacedEmployee: fact.optional(), deviceType: fact.optional(), floor: fact.optional(), notes: z.string().max(10000).optional(),
     selected: z.array(id).max(500).optional(), extras: z.array(z.object({ catalogueId: id, reason: z.string().max(2000), approval: z.boolean() }).strict()).max(500).optional(), checklistOverride: z.string().max(100).nullable().optional(),
 }).strict();
