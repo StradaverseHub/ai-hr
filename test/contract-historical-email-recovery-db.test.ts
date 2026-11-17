@@ -11,7 +11,7 @@ vi.mock('../lib/internal-auth/service',async original=>({...await original<typeo
 vi.mock('../lib/internal-auth/smtp',()=>({sendSmtp:auth.send}));
 import {client,withTenant} from '../db/client';
 import {closeAll,migrateTestDb,owner} from './harness';
-import {historicalManualEmailFixture,unrelatedReconciliationCases} from './helpers/contract-historical-email-fixture';
+import {historicalManualEmailFixture,unrelatedReconciliationCases,historicalContractTick,awaitHistoricalContractWork,registerHistoricalEmailIdentities} from './helpers/contract-historical-email-fixture';
 import {saveAutomationDocumentTemplate,saveAutomationEmailTemplate,saveAutomationWorkflow} from '../packs/automation/service';
 import {internalAutomationMail} from '../lib/internal-auth/automation-mail';
 import {setEmploymentInfo} from '../core/org';
@@ -47,14 +47,19 @@ it('recovers an actual Manual0 email after decision1 before posting, with truthf
  await f.completeHR();await f.settle();expect(await f.deliveries()).toHaveLength(1);await assertStoppedSuffix(f);
  const[event]=await owner.db.execute<{error:string}>(sql`select error from contract_shared_event where id=${f.start.eventId}::uuid`);expect(event.error).toContain('workflow authority changed');expect(event.error).not.toContain('period changed');
 },180_000);
-it.each(['renew','convert'] as const)('after actual native %s posting, admits one restricted fake SMTP delivery after kernel input/seal cleanup and refuses its replay',async kind=>{
+it.each(['renew','convert'] as const)('after actual native %s posting, admits one restricted fake SMTP delivery after kernel input cleanup and lease-capability release and refuses its replay',async kind=>{
  auth.send.mockReset();auth.send.mockResolvedValue(undefined);
  const f=await historicalManualEmailFixture(auth.origin,false,()=>contractPostingFixture({kind,future:false,payChanges:false}));await f.post();
  const[before]=await owner.db.execute<{current:boolean}>(sql`select app.contract_shared_delivery_period_current(${f.b.tenantId}::uuid,${f.caseId}::uuid) as current`);expect(before.current).toBe(false);
  await f.completeHR();await f.settle();await assertStoppedSuffix(f);
  const deliveries=await f.deliveries();expect(deliveries).toHaveLength(1);
  const[job]=await owner.db.execute<{state:string;input:unknown}>(sql`select state,input from bulk_job where id=${f.start.jobId}::uuid`);expect(job.state).toBe('completed');expect(job.input).toBeNull();
- expect(await owner.db.execute(sql`select job_id from app.bulk_job_seal where job_id=${f.start.jobId}::uuid`)).toEqual([]);
+ // Canonical 5013 cleanup retains the seal as an audit receipt, resetting its input digest and step count.
+ const seals=await owner.db.execute<{inputCleared:boolean;stepsSealed:number;leaseReleased:boolean;capabilityReleased:boolean}>(sql`select input_digest=app.bulk_job_value_digest(NULL) as "inputCleared",steps_sealed as "stepsSealed",lease_token is null as "leaseReleased",capability_digest is null as "capabilityReleased" from app.bulk_job_seal where job_id=${f.start.jobId}::uuid`);
+ expect(seals).toEqual([{inputCleared:true,stepsSealed:0,leaseReleased:true,capabilityReleased:true}]);
+ expect(await owner.db.execute(sql`select seq from bulk_job_step where job_id=${f.start.jobId}::uuid`)).toEqual([]);
+ expect(await owner.db.execute(sql`select seq from app.bulk_job_step_seal where job_id=${f.start.jobId}::uuid`)).toEqual([]);
+ const[lease]=await owner.db.execute<{released:boolean}>(sql`select lease_token is null and lease_expires_at is null as released from bulk_job where id=${f.start.jobId}::uuid`);expect(lease.released).toBe(true);
  const[receipt]=await owner.db.execute<{deliveryId:string;hash:string}>(sql`select delivery_id as "deliveryId",encode(payload_hash,'hex') hash from app.contract_email_delivery_receipt where tenant_id=${f.b.tenantId}::uuid`);expect(receipt.deliveryId).toBe(deliveries[0].id);expect(receipt.hash).toMatch(/^[a-f0-9]{64}$/);
  const token=randomUUID();await owner.db.execute(sql`update automation_email_delivery set status='leased',lease_token=${token}::uuid,lease_until=now()+interval '3 minutes' where id=${receipt.deliveryId}::uuid`);
  expect((await client`select current_user role,app.current_tenant_id() tenant`)[0]).toEqual({role:'ai_hr_app',tenant:null});
@@ -128,12 +133,11 @@ it('keeps every newly introduced recovery port private and both orchestration ta
 });
 
 it('retains a genuinely started non-email sibling after email-only A completes, including old-case links, counts and scope after native posting',async()=>{
- const f=await historicalStartedCohortFixture();
+ const f=await historicalStartedCohortFixture(auth.origin);
  const[bBefore]=await owner.db.execute<{image:Record<string,unknown>}>(sql`select to_jsonb(run) as image from automation_run run where tenant_id=${f.b.tenantId}::uuid and id=${f.cohort.bRunId}::uuid`);
  expect(bBefore.image.status).toBe('waiting');expect(bBefore.image.remaining_steps).toEqual([]);
  await f.post();expect((await contractSharedContext(f.admin,f.caseId)).flow!.stage).toBe('renewed');await f.complete();
- await new Promise(resolve=>setTimeout(resolve,2100));
- for(let count=0;count<100;count++){await f.tick();const[job]=await owner.db.execute<{state:string}>(sql`select state from bulk_job where id=${f.startEvent.jobId}::uuid`);if(job.state==='completed')break;}
+ await awaitHistoricalContractWork(f.b.tenantId,'Original no-tail cohort email completion',f.tick,async()=>{const[job]=await owner.db.execute<{state:string}>(sql`select state from bulk_job where id=${f.startEvent.jobId}::uuid`);return job.state==='completed';});
  const[bAfter]=await owner.db.execute<{image:Record<string,unknown>}>(sql`select to_jsonb(run) as image from automation_run run where tenant_id=${f.b.tenantId}::uuid and id=${f.cohort.bRunId}::uuid`);expect(bAfter.image).toEqual(bBefore.image);
  const[a]=await owner.db.execute<{status:string;remaining:unknown[]}>(sql`select status,remaining_steps remaining from automation_run where tenant_id=${f.b.tenantId}::uuid and id=${f.cohort.runId}::uuid`);expect(a).toEqual({status:'done',remaining:[]});
  const[deliveries]=await owner.db.execute<{count:number}>(sql`select count(*)::integer count from automation_email_delivery where tenant_id=${f.b.tenantId}::uuid and payload->'mail'->>'templateId'=${f.emailId}`);expect(deliveries.count).toBe(1);
@@ -179,12 +183,12 @@ it('projects a real waiting run for review without manufacturing a failure when 
 
 
 it('does not treat real technical closure as posting approval readiness after an authorized Personnel correction is genuinely restored',async()=>{
- const f=await contractPostingFixture({future:false,payChanges:false});const documentId=randomUUID(),emailId=randomUUID(),emailStep=randomUUID(),bId=randomUUID();
+ const f=await contractPostingFixture({future:false,payChanges:false});await registerHistoricalEmailIdentities(auth.origin,f.b.tenantId,[f.admin.userId!,f.employeeActor.userId!]);const documentId=randomUUID(),emailId=randomUUID(),emailStep=randomUUID(),bId=randomUUID();
  await saveAutomationDocumentTemplate(f.admin,{template:{id:documentId,module:'contract_staff',name:'Actual producer email prerequisite',description:'',rules:{},blocks:[{id:'body',type:'text',text:'Review this actual producer acknowledgement.',section:''}],fields:[],routing:[{id:'hr',order:1,action:'review',owner:true,who:{kind:'people',userIds:[f.admin.userId!]}},{id:'sign',order:2,action:'sign',owner:false,who:{kind:'people',userIds:[f.admin.userId!]}}]},expectedRevision:0,publish:true,retired:false});
  await saveAutomationEmailTemplate(f.admin,{template:{id:emailId,module:'contract_staff',name:'Actual producer email',active:true,subject:'Actual producer acknowledgement',body:'Open the retained acknowledgement.',cc:[],documentIds:[documentId]},expectedRevision:0,retired:false,reason:'Actual current callback before source correction'});
  await saveAutomationWorkflow(f.admin,{workflow:{...f.workflow,steps:[...f.workflow.steps,{id:emailStep,type:'sendEmail',conditions:[],to:[{kind:'role',role:'employee'}],cc:[],params:{emailTemplateId:emailId}}]},expectedRevision:1,reason:'Actual FIRST producer followed by no-tail email'});
  await saveAutomationWorkflow(f.admin,{workflow:{...f.workflow,id:bId,name:'Frozen unattempted release sibling',trigger:{event:'letterReleased',days:0,workdays:false,repeat:false},conditions:[],steps:[{id:'must-not-send',type:'notify',conditions:[],to:[{kind:'person',userId:f.admin.userId!}],cc:[],params:{subject:'Unattempted release sibling must not send',body:'Retain this authored reference.'}}]},expectedRevision:0,reason:'Actual later dispatch manifest reference'});
- const posting=await releaseContractPosting(f,{returnAtPosting:true});const tick=()=>runBulkJobTick(owner.client,{handlers:[contractAutomationJobHandler]});
+ const posting=await releaseContractPosting(f,{returnAtPosting:true});const tick=historicalContractTick(f.b.tenantId,[contractAutomationJobHandler]);
  let pin:{id:string;runId:string;letterId:string;originId:string}|undefined;
  for(let count=0;count<100&&!pin;count++){
   [pin]=await owner.db.execute<{id:string;runId:string;letterId:string;originId:string}>(sql`select pin.id,pin.workflow_run_id as "runId",pin.documents->>${documentId} as "letterId",binding.origin_event_id as "originId" from contract_shared_email_document_step pin join automation_run run on run.tenant_id=pin.tenant_id and run.id=pin.workflow_run_id and run.status='waiting' and run.waiting_for=pin.id join app.contract_email_prerequisite_origin binding on binding.tenant_id=pin.tenant_id and binding.pin_id=pin.id where pin.tenant_id=${f.b.tenantId}::uuid and pin.email_template_id=${emailId}::uuid`);
@@ -199,10 +203,7 @@ it('does not treat real technical closure as posting approval readiness after an
   await actContractSharedLetter(f.admin,{id:letter.id,actionId:randomUUID(),stepId:letter.pendingAction!.stepId,revision:letter.contentRevision,hash:letter.contentHash!,action,...(action==='signed'?{method:'typed' as const,value:'Fictional verified signer',consent:true}:{})});
  }
  expect((await readContractSharedLetter(f.admin,pin.letterId)).state).toBe('released');
- await new Promise(resolve=>setTimeout(resolve,2100));
- let completedEmail=false;
- for(let count=0;count<100&&!completedEmail;count++){await tick();const[run]=await owner.db.execute<{status:string}>(sql`select status from automation_run where tenant_id=${f.b.tenantId}::uuid and id=${pin.runId}::uuid`);completedEmail=run.status==='done';}
- expect(completedEmail).toBe(true);
+ await awaitHistoricalContractWork(f.b.tenantId,'Actual FIRST producer email completion',tick,async()=>{const[run]=await owner.db.execute<{status:string}>(sql`select status from automation_run where tenant_id=${f.b.tenantId}::uuid and id=${pin!.runId}::uuid`);return run.status==='done';});
  // Stop on the genuine callback unit before ordinary current-event refs start; no plan/cursor is edited.
  expect(await owner.db.execute(sql`select id from automation_run where tenant_id=${f.b.tenantId}::uuid and workflow_id=${bId}::uuid`)).toEqual([]);
  await setEmploymentInfo(f.admin,{employmentId:f.employee.employmentId,contractNumber:91});
