@@ -7,11 +7,12 @@ import {workforceChoiceInput,WorkforceChoiceAccessError,type WorkforceChoiceInpu
  * Undefined company scope means all native-visible companies; [] means none. */
 export function readWorkforceChoices(ctx:SessionContext,input:WorkforceChoiceInput,companyIds?:readonly string[]):Promise<WorkforceChoicePage>{
  const p=workforceChoiceInput(input),captured=structuredClone(ctx),scope=companyIds?.slice();
+ const narrowed=p.companyId?(scope===undefined||scope.some(id=>id.toLowerCase()===p.companyId!.toLowerCase())?[p.companyId]:[]):scope;
  const query=p.query?.trim()??'',pattern='%'+query.replace(/[\\%_]/g,c=>'\\'+c)+'%';
  return withPersonnelRead(captured,async tx=>{
   const [access]=await tx.execute<{allowed:boolean}>(sql`select app.access_workforce_employment(${p.subjectId}::uuid,'workforce.view') as allowed`);
   if(!access?.allowed)throw new WorkforceChoiceAccessError();
-  const wanted=scope===undefined?sql`null::uuid[]`:sql`array[${sql.join(scope.map(id=>sql`${id}::uuid`),sql`, `)}]::uuid[]`;
+  const wanted=narrowed===undefined?sql`null::uuid[]`:sql`array[${sql.join(narrowed.map(id=>sql`${id}::uuid`),sql`, `)}]::uuid[]`;
   const selected=sql`array[${sql.join((p.selectedIds??[]).map(id=>sql`${id}::uuid`),sql`, `)}]::uuid[]`;
   const [page]=await tx.execute<WorkforceChoicePage>(sql`
    with population as materialized (
