@@ -90,7 +90,7 @@ describe('manager decision and BP information',()=>{
   const inputs=['Position','Job Grade','Basic salary (per month) · MYR'].map(label=>screen.getByLabelText(label));
   for(const input of inputs)expect(input).toHaveAccessibleDescription('Proposed');
   const descriptions=inputs.map(input=>input.getAttribute('aria-describedby'));expect(new Set(descriptions).size).toBe(3);for(const id of descriptions){expect(id).toBeTruthy();expect(document.getElementById(id!)).toHaveTextContent('Proposed');}
-  const current=screen.getAllByRole('group',{name:'Current',exact:true});expect(current).toHaveLength(3);expect(current[0]).toHaveTextContent('Analyst');expect(current[1]).toHaveTextContent('G3');expect(current[2]).toHaveTextContent('MYR 6,800.00');
+  const current=screen.getAllByRole('group',{name:/^Current$/});expect(current).toHaveLength(3);expect(current[0]).toHaveTextContent('Analyst');expect(current[1]).toHaveTextContent('G3');expect(current[2]).toHaveTextContent('MYR 6,800.00');
  });
  it('hides retention only for an explicit accept-only workflow while preserving a cooldown explanation',()=>{
   const base=c({decisionChoices:'accept',offerBlock:'This workflow step allows accept only.',capabilities:{...c().capabilities,offer:false}});wrap(<ResignationCaseCard initial={base} today="2026-11-16"/>);expect(screen.getByRole('radio',{name:'Accept resignation'})).toBeInTheDocument();expect(screen.queryByRole('radio',{name:messages.resignationJourney.retain})).not.toBeInTheDocument();
