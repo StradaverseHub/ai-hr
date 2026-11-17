@@ -877,3 +877,22 @@ registry byte-for-byte. No contract gains a provider transform, outbound field, 
 `recruitment_match_summary_v1` stays pending and unapproved (D-069/D-071). Agent manifest
 `103074e0809a534418f710f018221416559b000e9c962d6523e991ace764d182` over 496 files. No gate result, staging acceptance or
 production authority is granted by this binding.
+
+### Approved-board combined development binding — 17 November 2026
+
+The repository owner explicitly authorized this five-item candidate and necessary verification
+repairs in the current board-work chat: "Approve staging-only rebinding and verification repairs".
+The source is pre-binding `a6f6b446e38bfbf013977dd5eb445e91ec6edff4`. Its changes remain native
+lifecycle, Rewards and payroll behavior; new entry points are unregistered backlog or internal
+presentation. Human case-authorized address previews do not add a provider payload or purpose.
+No provider transform, outbound field, purpose or transport is added by this carry-forward.
+
+Only the same 28 active approval digest literals move from
+`a092a7cb98254676eee275f1687618f858d06d778e0a836d28844a60281acc39` to
+`a74c1244a428f20b2ad47a2f0ac9fa99894153078ede89567550b39c249335e9`
+(1,708 covered files). Reversing those substitutions reproduces the prior committed registry
+byte-for-byte. Reviewers, evidence, original dates and all pending/retired records remain unchanged.
+The regenerated agent manifest is `d891d9a840db52288399432d5e88e9e78dabfa5b2ade3f848f717a7f776bb9b6`
+(496 files). This is staging-only source approval: no gate result, installation, staging
+acceptance or production authority is asserted. Later source repairs require another exact
+fingerprint record under the same expressly authorized verification-repair scope.
