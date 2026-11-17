@@ -1,3 +1,4 @@
+import { lockAccessConfigurationReadTx } from '../../core/access-configuration-lock';
 import { applyRewardCell, parseRewardCellValue, type RewardCellField } from './review-cell';
 import { recordRewardPersonHistoryTx } from './person-history';
 import { formatMoney } from '../../lib/money';
@@ -456,7 +457,7 @@ async function reviewProjectionTx(tx: Tx, ctx: SessionContext, unitId: string,ca
         const position=(cents:number)=>hiddenSenior||!midpoint?null:ratio(cents,10000,midpoint,'nearest');
         // b945f0cc: position in range (below / within / above) before and after, for the single-person off-cycle view.
         const range=hiddenSenior?null:offcyclePayPosition(unit.policy,e);
-        return {...safe,restrictedReadOnly:!!_readOnly,crBeforeBp:position(e.source.basicCents),crAfterBp:position(e.newBasicCents),rangeBefore:range?.before.position??null,rangeAfter:range?.after.position??null,totalIncreaseBp:hiddenSenior?null:e.meritBp+e.promotionBp+e.specialBp};}), flags, hiddenCount: entries.length - visible.length,
+        return {...safe,restrictedReadOnly:!!_readOnly && (e.facts.confidentiality === 'ec' || !!_groupEc),crBeforeBp:position(e.source.basicCents),crAfterBp:position(e.newBasicCents),rangeBefore:range?.before.position??null,rangeAfter:range?.after.position??null,totalIncreaseBp:hiddenSenior?null:e.meritBp+e.promotionBp+e.specialBp};}), flags, hiddenCount: entries.length - visible.length,
       // b945f0cc: the company off-cycle balance this request is checked against (aggregates only).
       offcycleBalance: 'offcycleBalance' in calculated ? calculated.offcycleBalance : null,
       budgets: { standard: calculated.budgets.standard, h: calculated.budgets.h },
@@ -929,7 +930,7 @@ export async function saveRewardEntry(ctx: SessionContext, unitId: string, revis
     const entry = entries.find(e => e.id === entryId);
     if (!entry || !visibleEntry(entry, roles, ctx.personId)) throw new RewardError('This reward record is not available to you.');
     if (cellPatch) {
-      if (unit.kind !== 'annual' || isSeniorPlanMember(unit.policy, entry.facts, entry.source.grade) || entry.source.leftOn || entry.restrictedReadOnly) throw new RewardError('This value cannot be changed here at this step.');
+      if (unit.kind !== 'annual' || isSeniorPlanMember(unit.policy, entry.facts, entry.source.grade) || entry.source.leftOn || ((entry.facts.confidentiality === 'ec' || entry.groupEcDirectReport) && entry.restrictedReadOnly)) throw new RewardError('This value cannot be changed here at this step.');
       const parsed = parseRewardCellValue(cellPatch.field, cellPatch.value);
       const calculated = await calculateUnit(tx, unit, entries);
       const row = calculated.rows.find(item => item.id === entryId)!;
@@ -2084,6 +2085,15 @@ export async function adoptConfirmedCompanyPat(ctx:SessionContext,unitId:string,
 /** Internal extension seam: scoped read or locked mutation with native state/calculation ownership. */
 export async function withRewardReviewExtension<T>(ctx:SessionContext,unitId:string,mutating:boolean,fn:(tx:Tx,state:Awaited<ReturnType<typeof load>>,calculated:Awaited<ReturnType<typeof calculateUnit>>,commands:{recalculate:(entries:RewardEntry[])=>ReturnType<typeof calculateUnit>;touch:()=>Promise<void>;stamp:(action:string,payload:Record<string,unknown>)=>Promise<unknown>})=>Promise<T>):Promise<T>{
  return withRewardsTenant(ctx,async tx=>{if(mutating&&aiCentreActivity(ctx.tenantId))await assertAiCentreRunningTx(tx,ctx);if(mutating)await tx.execute(sql`select app.access_configuration_write_lock()`);const state=await load(tx,unitId,mutating);const calculated=await calculateUnit(tx,state.unit,state.entries);return fn(tx,state,calculated,{recalculate:(entries)=>calculateUnit(tx,state.unit,entries),touch:()=>touch(tx,unitId),stamp:(action,payload)=>stamp(tx,ctx,unitId,action,payload)});});
+}
+/** History capture mutates no access graph. Hold shared access authority and only the selected review row. */
+export async function withRewardHistoryBackfill<T>(ctx: SessionContext, unitId: string, apply: boolean, fn: (tx: Tx, state: Awaited<ReturnType<typeof load>>, calculated: Awaited<ReturnType<typeof calculateUnit>>, commands: { stamp: (action: string, payload: Record<string,unknown>) => Promise<unknown> }) => Promise<T>): Promise<T> {
+  return withRewardsTenant(ctx, async tx => {
+    await lockAccessConfigurationReadTx(tx, ctx.tenantId);
+    const state = await load(tx, unitId, apply);
+    const calculated = await calculateUnit(tx, state.unit, state.entries);
+    return fn(tx, state, calculated, { stamp: (action,payload) => stamp(tx,ctx,unitId,action,payload) });
+  });
 }
 /** Read-only extension projection; unlike getRewardUnit it performs no access-observation write. */
 export function readOnlyRewardProjection(ctx:SessionContext,unitId:string){return withRewardsTenant(ctx,async tx=>{await tx.execute(sql`SET TRANSACTION READ ONLY`);return reviewProjectionTx(tx,ctx,unitId);});}
