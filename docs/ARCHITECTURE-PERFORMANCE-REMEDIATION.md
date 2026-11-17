@@ -28,9 +28,9 @@ Initial integration base: `59f06b08db014e01cd553a827c62ccf864d33f78`. Preserve t
 | AP-002 | P1 | Personnel profile and Movement manager choices | Open; implementation pending |
 | AP-003 | P1 | New Lifecycle Requisition | Open; implementation pending |
 | AP-004 | P2 | Probation Tracker | Open; implementation pending |
-| AP-005 | P1 | Generate Letters all-company request queue | Open; implementation pending |
-| AP-006 | P1 | AI Centre Payroll Audit loop | Batch3 implemented: atomic native access-event chunks; qualification in progress, not staged |
-| AP-007 | P1 | Approvals leave queue | Batch3 implemented: native date-packet and per-manager queue batches; qualification in progress, not staged |
+| AP-005 | P1 | Generate Letters all-company request queue | Batch4 implemented: global SQL page/count; native qualification in progress, not staged |
+| AP-006 | P1 | AI Centre Payroll Audit loop | Batch3 implemented: atomic native access-event chunks; development-qualified; staging pending |
+| AP-007 | P1 | Approvals leave queue | Batch3 implemented: native date-packet and per-manager queue batches; development-qualified; staging pending |
 | AP-008 | P1 | Personnel employee draft editor | Open; implementation pending |
 | AP-009 | P1 | Personnel Import entry screen | Open; implementation pending |
 | AP-010 | P2 | Personnel Profile Changes | Open; implementation pending |
@@ -38,7 +38,7 @@ Initial integration base: `59f06b08db014e01cd553a827c62ccf864d33f78`. Preserve t
 | AP-012 | P2 | Attendance Company Policy Settings | Open; implementation pending |
 | AP-013 | P2 | Attendance Schedule Clock Policy editor | Open; implementation pending |
 | AP-014 | P2 | Attendance Work Schedule and Overtime Rates | Open; implementation pending |
-| AP-015 | P1 | Payroll Process wizard and Individual Transactions | Batch3 implemented: scoped cycle catalogue batch; qualification pending, not staged |
+| AP-015 | P1 | Payroll Process wizard and Individual Transactions | Batch3 implemented: scoped cycle catalogue batch; development-qualified, staging pending |
 | AP-016 | P1 | Payroll Settings full readiness report | Open; implementation pending |
 | AP-017 | P1 | Contract Management Intake Settings and Workflows | Open; implementation pending |
 | AP-018 | P1 | Loans listing | Open; implementation pending |
@@ -156,3 +156,12 @@ AP-007 reads the displayed Leave-date packets once, preserving ordinary empty pa
 AP-015 reads the already scoped Payroll Cycle catalogues once, preserving active/archive rules, company order and narrowed resumed-draft scope. Run-type gates, saved defaults, labels and financial behavior remain unchanged. Group-scale fixtures cover70companies/1,000employments, every native role, exact ordered rows, actual transaction/statement traces, concurrent event writes, rollback across chunk boundaries and committed privacy change while a read waits for Access.
 
 Original development run43995516324 at51923f859 has120unit/source cases passed and1failed (the old source test required the per-request loader),82native cases passed and1failed (auditor RETURNING path). Both are preserved; the source assertion and native event identity owner are repaired in working source. Independent review identified missing concurrency/hidden-person tests and pending ledger states; those are now authored/updated. Compiler/build results and repaired hosted qualification remain pending. No new finding is closed before staged acceptance.
+
+
+Batch3 development qualification completed at `edffc689e73d35badfe1bc484aa65e0c7d333a53`: [43998539528](https://github.com/StradaverseHub/ai-hr/actions/runs/43998539528) passed92selected cases, whole-repository typecheck and Linux build. Preserved run43997209374 also exposed an Individual import consumer still treating the new cycle Map as an array, plus an invalid native reporting-line fixture enum; both are repaired. Earlier failures remain part of the evidence. These are development results, not release or staging acceptance.
+
+## Batch4: Generate Letters request queue
+
+AP-005 replaces per-company request transactions and in-memory flatten/sort with one globally ordered native SQL page/count. Permission admission covers every requested company; a denied company refuses the whole packet. Native request-subject and published-template disclosure remains after the selected page identities. Standard25/50/100/200/All choices use the shared2000-row ceiling with an explicit continuation message. Decline retains page context, request identity, private reason, employee message and native version check. The original single-company reader and every command owner remain unchanged.
+
+Qualification is in progress:70companies/1000employments/3000requests, native template approval/requestable lifecycle, every role/group and company scope, ordered legacy equivalence, exact totals, bounded All/out-of-range pages, shared read-only transaction, rendered controls and decline redirects. No migration, integration-ref change or staging release is included. All60open observations retain their original IDs and acceptance requirements.

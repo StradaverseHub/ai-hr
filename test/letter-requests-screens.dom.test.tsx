@@ -7,8 +7,10 @@ import {afterEach,beforeEach,describe,expect,it,vi} from 'vitest';
 import {cleanup,render,screen,within} from '@testing-library/react';
 import {createTranslator} from 'next-intl';
 import en from '../messages/en.json';
+import {pageState,parsePageQuery} from '../lib/pagination';
+vi.mock('../components/pager',()=>({Pager:({state}:any)=><nav aria-label="Request pages" data-total={state.total} data-page={state.page}/> }));
 
-const svc=vi.hoisted(()=>({mine:vi.fn(),requestable:vi.fn(),staff:vi.fn(),one:vi.fn(),options:vi.fn(),letters:vi.fn(),access:vi.fn(),templates:vi.fn(),batches:vi.fn(),
+const svc=vi.hoisted(()=>({mine:vi.fn(),requestable:vi.fn(),staff:vi.fn(),total:null as number|null,one:vi.fn(),options:vi.fn(),letters:vi.fn(),access:vi.fn(),templates:vi.fn(),batches:vi.fn(),
  template:vi.fn(),policies:vi.fn(),assets:vi.fn(),session:{current:{} as Record<string,unknown>,scope:null as string[]|null}}));
 vi.mock('next/link',()=>({default:({children,prefetch:_prefetch,...props}:any)=><a {...props}>{children}</a>}));
 vi.mock('next/navigation',()=>({notFound:()=>{throw new Error('NOT_FOUND');},redirect:(url:string)=>{throw new Error('REDIRECT:'+url);},usePathname:()=>'/me/letters',
@@ -19,7 +21,7 @@ vi.mock('../lib/scope',()=>({scopedSession:async()=>({s:svc.session.current,scop
 vi.mock('../core/letters',()=>({listMyLetters:svc.letters,letterCompanyAccess:svc.access,listLetterTemplates:svc.templates,listLetterGenerationBatches:svc.batches,
  getLetterTemplate:svc.template,getStaffLetter:vi.fn(),listLetterPolicies:svc.policies,listLetterSettingAssets:svc.assets}));
 vi.mock('../core/letter-requests',()=>({LETTER_REQUEST_LIMITS:{purposeChars:300,reasonChars:500,messageChars:500,list:50,options:200},listMyLetterRequests:svc.mine,
- listRequestableLetterTypes:svc.requestable,listLetterRequestsForStaff:svc.staff,getLetterRequestForStaff:svc.one,listLetterRequestOptions:svc.options}));
+ listRequestableLetterTypes:svc.requestable,listLetterRequestsForStaffPage:async(ctx:unknown,input:any)=>{const rows=await svc.staff(ctx,input);return {rows,state:pageState(input.page,svc.total??rows.length,rows.length)};},getLetterRequestForStaff:svc.one,listLetterRequestOptions:svc.options}));
 vi.mock('../app/me/letters/actions',()=>({openMyLetter:vi.fn(),confirmMyLetter:vi.fn(),requestLetterAction:vi.fn()}));
 vi.mock('../app/letters/generate/actions',()=>({createGeneration:vi.fn(),updateGeneration:vi.fn(),declineLetterRequestAction:vi.fn()}));
 vi.mock('../app/letters/settings/actions',()=>({savePolicySettings:vi.fn(),uploadLetterAsset:vi.fn()}));
@@ -43,7 +45,7 @@ const staff=(over:Record<string,unknown>={})=>({id:REQUEST,companyId:COMPANY,emp
  employeeCode:'LR-0001',publishedVersionId:VERSION,...over});
 
 beforeEach(()=>{
- vi.clearAllMocks();svc.session.current=employee;svc.session.scope=null;
+ vi.clearAllMocks();svc.total=null;svc.session.current=employee;svc.session.scope=null;
  svc.letters.mockResolvedValue({rows:[],nextCursor:null});svc.mine.mockResolvedValue([]);svc.requestable.mockResolvedValue([]);
  svc.access.mockResolvedValue([{id:COMPANY,name:'Fictional Sdn Bhd',read:true,generate:true,settings:true,approve:false}]);
  svc.templates.mockResolvedValue({rows:[],nextCursor:null});svc.batches.mockResolvedValue({rows:[],nextCursor:null});svc.staff.mockResolvedValue([]);
@@ -140,7 +142,7 @@ describe('Letter requests on the generate page (HR holding generate)',()=>{
   const reason=within(first).getByLabelText(staffCopy.declineReason) as HTMLTextAreaElement;
   expect(reason.required).toBe(true);expect(reason.maxLength).toBe(500);
   const form=reason.closest('form')!;
-  expect(Object.fromEntries([...form.querySelectorAll<HTMLInputElement>('input[type="hidden"]')].map(input=>[input.name,input.value]))).toEqual({companyId:COMPANY,requestId:REQUEST,expectedVersion:'1'});
+  expect(Object.fromEntries([...form.querySelectorAll<HTMLInputElement>('input[type="hidden"]')].map(input=>[input.name,input.value]))).toEqual({companyId:COMPANY,requestId:REQUEST,expectedVersion:'1',requestPage:'0',requestSize:'25'});
   expect(within(first).getByRole('button',{name:staffCopy.declineSubmit,hidden:true})).toBeTruthy();
   expect(within(first).getByText(staffCopy.declineHelp)).toBeTruthy();
   // An optional message to the employee, in the same form, labelled as shown to the employee.
@@ -152,30 +154,37 @@ describe('Letter requests on the generate page (HR holding generate)',()=>{
   expect(within(second).getByText(staffCopy.status.in_progress)).toBeTruthy();expect(within(second).getByText(staffCopy.inProgress)).toBeTruthy();
   expect(within(second).queryByRole('link',{name:staffCopy.prepare})).toBeNull();expect(within(second).getByText(staffCopy.prepareUnavailable)).toBeTruthy();
   expect(second.textContent).toContain(staffCopy.employee+': Badrul Fictional');
-  expect(svc.staff).toHaveBeenCalledExactlyOnceWith(hrAdmin,{companyId:COMPANY});
+  expect(svc.staff).toHaveBeenCalledExactlyOnceWith(hrAdmin,{companyIds:[COMPANY],page:parsePageQuery()});
  });
  it('from Today (requests=all): the waiting requests of every company the user handles, each naming its company, oldest first',async()=>{
   const OTHER='00000000-0000-4000-8000-00000000c0bb',THIRD='00000000-0000-4000-8000-0000000000b3';
   svc.session.scope=[COMPANY,OTHER];
   svc.access.mockResolvedValue([{id:COMPANY,name:'Fictional Sdn Bhd',read:true,generate:true,settings:true,approve:false},
    {id:OTHER,name:'Fictional Other Sdn Bhd',read:true,generate:true,settings:false,approve:false}]);
-  svc.staff.mockImplementation(async(_s:unknown,input:{companyId:string})=>input.companyId===COMPANY?[staff()]
-   :[staff({id:THIRD,companyId:OTHER,createdAt:new Date('2026-11-01T02:00:00Z'),employeeName:'Chong Fictional',employeeCode:null,purpose:null})]);
+  svc.staff.mockResolvedValue([staff({id:THIRD,companyId:OTHER,createdAt:new Date('2026-11-01T02:00:00Z'),employeeName:'Chong Fictional',employeeCode:null,purpose:null}),staff()]);
   render(await GeneratePage({searchParams:Promise.resolve({requests:'all'})}));
-  expect(svc.staff.mock.calls.map(call=>call[1])).toEqual([{companyId:COMPANY},{companyId:OTHER}]);
+  expect(svc.staff.mock.calls.map(call=>call[1])).toEqual([{companyIds:[COMPANY,OTHER],page:parsePageQuery()}]);
   const rows=[...screen.getByRole('region',{name:staffCopy.title}).querySelectorAll<HTMLElement>('[data-letter-request]')];
   expect(rows.map(row=>row.querySelector('[data-letter-request-company]')?.textContent)).toEqual(['Company: Fictional Other Sdn Bhd','Company: Fictional Sdn Bhd']);
   expect(rows[0].textContent).toContain(staffCopy.employee+': Chong Fictional');
   // Decline names the request's own company and returns to the same list.
   const hidden=(row:HTMLElement)=>Object.fromEntries([...row.querySelectorAll<HTMLInputElement>('input[type="hidden"]')].map(input=>[input.name,input.value]));
-  expect(hidden(rows[0])).toEqual({companyId:OTHER,requestId:THIRD,expectedVersion:'1',requests:'all'});
-  expect(hidden(rows[1])).toEqual({companyId:COMPANY,requestId:REQUEST,expectedVersion:'1',requests:'all'});
+  expect(hidden(rows[0])).toEqual({companyId:OTHER,requestId:THIRD,expectedVersion:'1',requestPage:'0',requestSize:'25',requests:'all'});
+  expect(hidden(rows[1])).toEqual({companyId:COMPANY,requestId:REQUEST,expectedVersion:'1',requestPage:'0',requestSize:'25',requests:'all'});
   cleanup();
   // Without it, the page keeps the one company's list and names no company.
   svc.staff.mockClear();
   render(await GeneratePage({searchParams:Promise.resolve({companyId:OTHER})}));
-  expect(svc.staff.mock.calls.map(call=>call[1])).toEqual([{companyId:OTHER}]);
+  expect(svc.staff.mock.calls.map(call=>call[1])).toEqual([{companyIds:[OTHER],page:parsePageQuery()}]);
   expect(screen.getByRole('region',{name:staffCopy.title}).querySelector('[data-letter-request-company]')).toBeNull();
+ });
+ it('keeps the exact total and out-of-range message separate from an empty queue',async()=>{
+  svc.total=75;
+  render(await GeneratePage({searchParams:Promise.resolve({companyId:COMPANY,requestPage:'9',requestSize:'50'})}));
+  const section=screen.getByRole('region',{name:staffCopy.title});
+  expect(within(section).getByText(staffCopy.pageEmpty)).toBeTruthy();expect(within(section).queryByText(staffCopy.empty)).toBeNull();
+  expect(screen.getByRole('navigation',{name:'Request pages'}).getAttribute('data-total')).toBe('75');
+  expect(svc.staff).toHaveBeenCalledExactlyOnceWith(hrAdmin,{companyIds:[COMPANY],page:parsePageQuery({page:'9',size:'50'})});
  });
  it('says when nothing is waiting, when the list is unavailable, and what a decline did',async()=>{
   render(await GeneratePage({searchParams:Promise.resolve({companyId:COMPANY,requestNotice:'declined'})}));

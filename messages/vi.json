@@ -33639,6 +33639,8 @@
       },
       "requests": {
         "title": "Yêu cầu thư",
+        "pageLimit": "Tất cả chỉ hiển thị một phạm vi giới hạn. Chọn trang được đánh số để xem các yêu cầu tiếp theo.",
+        "pageEmpty": "Không có yêu cầu trên trang này. Dùng điều khiển phân trang để xem các yêu cầu còn lại.",
         "intro": "Các thư nhân viên đã yêu cầu. Chuẩn bị thư sẽ mở bản nháp cho nhân viên đó; bạn phê duyệt và phát hành như thường lệ.",
         "empty": "Không có yêu cầu thư nào đang chờ.",
         "unavailable": "Hiện không thể hiển thị các yêu cầu thư.",

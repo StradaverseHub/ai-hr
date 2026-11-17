@@ -18,6 +18,9 @@
 import {createHash,randomUUID} from 'node:crypto';
 import {and,asc,eq,inArray,sql,type SQL} from 'drizzle-orm';
 import {withTenant,type SessionContext,type Tx} from '../db/client';
+import {withIdempotentDatabaseRead} from '../db/workload';
+import {lockAccessConfigurationReadTx} from './access-configuration-lock';
+import {parsePageQuery,pageState,type PageQuery} from '../lib/pagination';
 import {actorOf,appendEvent} from '../db/events';
 import {letterRequest,letterRequestOption} from '../db/schema';
 import {assertModuleGate} from './module-gate';
@@ -171,6 +174,42 @@ export function listLetterRequestsForStaff(ctx:SessionContext,input:{companyId:s
   return Object.freeze(rows.map(row=>Object.freeze(row)));
  });
 }
+/** Globally ordered queue for the supplied authorized companies. Permission admission, exact count
+ * and page identities share one statement; native subject/template hydration follows that page only.
+ * Any refused company makes the whole queue unavailable, like the former per-company Promise.all. */
+export function listLetterRequestsForStaffPage(ctx:SessionContext,input:{companyIds:readonly string[];statuses?:readonly LetterRequestStatus[];page:PageQuery}){
+ const companyIds=input.companyIds.slice(),requestedStatuses=input.statuses?.slice();
+ const page=parsePageQuery({page:String(input.page.page),size:String(input.page.size)});
+ return withIdempotentDatabaseRead(()=>requests(ctx,async tx=>{
+  const ids=[...new Set(companyIds.map(uuid))],statuses=[...(requestedStatuses??LETTER_REQUEST_OPEN)];
+  if(!statuses.length||statuses.some(status=>!LETTER_REQUEST_STATUSES.includes(status)))throw new LetterRequestError('invalid');
+  if(!ids.length)return {rows:Object.freeze([]) as readonly StaffLetterRequest[],state:pageState(page,0,0)};
+  await tx.execute(sql`set transaction read only`);
+  await lockAccessConfigurationReadTx(tx,ctx.tenantId);
+  const authority=tx.$with('letter_queue_authority').as(tx.select({
+   allowed:sql<boolean>`coalesce(bool_and(app.letter_permission(request_company.id,'generate')),false)`.as('allowed'),
+  }).from(sql`unnest(ARRAY[${sql.join(ids.map(id=>sql`${id}::uuid`),sql`, `)}]::uuid[]) AS request_company(id)`));
+  const matching=tx.$with('letter_queue_matching').as(tx.select({id:letterRequest.id,createdAt:letterRequest.createdAt})
+   .from(letterRequest).crossJoin(authority).where(and(eq(authority.allowed,true),inArray(letterRequest.companyId,ids),inArray(letterRequest.status,statuses),
+    sql`app.letter_permission(${letterRequest.companyId},'generate')`)));
+  const totals=tx.$with('letter_queue_totals').as(tx.select({total:sql<number>`count(*)::int`.as('total')}).from(matching));
+  const selected=tx.$with('letter_queue_page').as(tx.select().from(matching).orderBy(asc(matching.createdAt),asc(matching.id))
+   .limit(page.limit).offset(Math.min(page.offset,Number.MAX_SAFE_INTEGER)));
+  const columns=staffColumns();
+  const packet=await tx.with(authority,matching,totals,selected).select({allowed:authority.allowed,total:totals.total,row:{...columns,
+   employeeName:sql<string|null>`case when ${letterRequest.id} is not null then ${columns.employeeName} end`,
+   employeeCode:sql<string|null>`case when ${letterRequest.id} is not null then ${columns.employeeCode} end`,
+   publishedVersionId:sql<string|null>`case when ${letterRequest.id} is not null then ${columns.publishedVersionId} end`,
+  }}).from(authority).crossJoin(totals).leftJoin(selected,sql`true`).leftJoin(letterRequest,eq(letterRequest.id,selected.id))
+   .orderBy(asc(selected.createdAt),asc(selected.id));
+  if(packet[0]?.allowed!==true)throw new LetterRequestError('permission');
+  // The nullable join represents an empty page; a present primary key means this same native
+  // request supplies every NOT NULL column. No missing value is synthesized or disclosed.
+  const rows=packet.flatMap(entry=>entry.row?.id?[Object.freeze(entry.row) as StaffLetterRequest]:[]);
+  return {rows:Object.freeze(rows),state:pageState(page,packet[0].total,rows.length)};
+ }));
+}
+
 /** One request for a caller holding `generate` for its company; null when there is none they may handle. */
 export function getLetterRequestForStaff(ctx:SessionContext,requestId:string):Promise<StaffLetterRequest|null>{
  return requests(ctx,async tx=>{

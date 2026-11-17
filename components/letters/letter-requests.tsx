@@ -1,9 +1,11 @@
+import type {ReactNode} from 'react';
+import type {PageState} from '@/lib/pagination';
 import Link from 'next/link';
 import {Button,Card,Field,StatusBadge,btnPrimary,inputCls} from '@/components/ui';
 import {LETTER_REQUEST_LIMITS,type LetterRequestOption,type RequestableLetterType,type StaffLetterRequest} from '@/core/letter-requests';
 import {declineLetterRequestAction} from '@/app/letters/generate/actions';
 
-export type LetterRequestQueueLabels=Readonly<{title:string;intro:string;empty:string;unavailable:string;employee:string;purpose:string;requestedOn:(date:string)=>string;
+export type LetterRequestQueueLabels=Readonly<{title:string;intro:string;empty:string;emptyPage?:string;unavailable:string;employee:string;purpose:string;requestedOn:(date:string)=>string;
  prepare:string;prepareUnavailable:string;decline:string;declineReason:string;declineHelp:string;employeeMessage:string;employeeMessageHelp:string;declineSubmit:string;inProgress:string;
  status:Readonly<Record<StaffLetterRequest['status'],string>>}>;
 
@@ -14,13 +16,14 @@ export type LetterRequestQueueLabels=Readonly<{title:string;intro:string;empty:s
  * server; every action re-checks. */
 /** `all` (Today's link, `requests=all`): the requests of every company the user may handle; each names its company when
  * there is more than one (`companyNames`), and Decline returns to the same list. */
-export function LetterRequestQueue({companyId,requests,labels,formatDate,all=false,companyNames,companyLabel}:{companyId:string;requests:readonly StaffLetterRequest[]|null;labels:LetterRequestQueueLabels;formatDate:(date:Date)=>string;
- all?:boolean;companyNames?:ReadonlyMap<string,string>;companyLabel?:string}){
+export function LetterRequestQueue({companyId,requests,labels,formatDate,all=false,companyNames,companyLabel,pager,page}:{companyId:string;requests:readonly StaffLetterRequest[]|null;labels:LetterRequestQueueLabels;formatDate:(date:Date)=>string;
+ all?:boolean;companyNames?:ReadonlyMap<string,string>;companyLabel?:string;pager?:ReactNode;page?:PageState}){
  return <section id="letter-requests" className="space-y-3" aria-labelledby="letter-requests-title">
   <h2 id="letter-requests-title" className="font-semibold">{labels.title}</h2>
   <p className="text-sm text-muted-foreground">{labels.intro}</p>
+  {pager}
   {requests===null?<Card role="note" className="p-5 text-sm text-muted-foreground">{labels.unavailable}</Card>
-   :requests.length===0?<Card className="p-5 text-sm text-muted-foreground">{labels.empty}</Card>
+   :requests.length===0?<Card className="p-5 text-sm text-muted-foreground">{page&&page.total>0?(labels.emptyPage??labels.empty):labels.empty}</Card>
    :<ul className="space-y-3">{requests.map(request=><li key={request.id}><Card className="space-y-3 p-4" data-letter-request={request.status}>
     <div className="flex flex-wrap items-start justify-between gap-3"><div className="min-w-0 space-y-1">
      <h3 className="break-words font-semibold">{request.letterTypeName}</h3>
@@ -38,6 +41,7 @@ export function LetterRequestQueue({companyId,requests,labels,formatDate,all=fal
       <form action={declineLetterRequestAction} className="mt-3 space-y-3">
        <input type="hidden" name="companyId" value={all?request.companyId:companyId}/><input type="hidden" name="requestId" value={request.id}/><input type="hidden" name="expectedVersion" value={request.version}/>
        {all&&<input type="hidden" name="requests" value="all"/>}
+       {page&&<><input type="hidden" name="requestPage" value={page.page}/><input type="hidden" name="requestSize" value={page.size}/></>}
        <Field label={labels.declineReason}><textarea name="reason" required maxLength={LETTER_REQUEST_LIMITS.reasonChars} rows={3} className={inputCls+' h-auto min-h-20 py-2'}/></Field>
        <p className="text-xs text-muted-foreground">{labels.declineHelp}</p>
        <Field label={labels.employeeMessage}><textarea name="employeeMessage" maxLength={LETTER_REQUEST_LIMITS.messageChars} rows={3} aria-describedby={'letter-request-message-help-'+request.id} className={inputCls+' h-auto min-h-20 py-2'}/></Field>

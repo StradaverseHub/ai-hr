@@ -3,6 +3,8 @@ import {render,screen,cleanup,within,waitFor} from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import {createTranslator} from 'next-intl';
 import en from '../messages/en.json';import ms from '../messages/ms.json';import zh from '../messages/zh.json';import ta from '../messages/ta.json';import th from '../messages/th.json';import viMessages from '../messages/vi.json';
+import {pageState} from '../lib/pagination';
+vi.mock('../components/pager',()=>({Pager:()=>null}));
 import {todayInKualaLumpur} from '../lib/hr-date';
 const mocks=vi.hoisted(()=>({locale:'en' as 'en'|'ms'|'zh'|'ta'|'th'|'vi',access:vi.fn(),templates:vi.fn(),batches:vi.fn(),template:vi.fn(),batch:vi.fn(),create:vi.fn(),update:vi.fn(),detail:vi.fn()}));
 const catalogues={en,ms,zh,ta,th,vi:viMessages};
@@ -11,7 +13,7 @@ vi.mock('../lib/scope',()=>({scopedSession:async()=>({s:{tenantId:'fixture',user
 vi.mock('../core/letters',()=>({letterCompanyAccess:mocks.access,listLetterTemplates:mocks.templates,listLetterGenerationBatches:mocks.batches,getLetterTemplate:mocks.template,getLetterGenerationBatch:mocks.batch,getStaffLetter:mocks.detail}));
 vi.mock('../app/letters/generate/actions',()=>({createGeneration:mocks.create,updateGeneration:mocks.update,declineLetterRequestAction:vi.fn()}));
 // AI v2 Phase 1 slice 3: no employee letter requests here (test/letter-requests-screens.dom.test.tsx covers them).
-vi.mock('../core/letter-requests',()=>({LETTER_REQUEST_LIMITS:{purposeChars:300,reasonChars:500,messageChars:500,list:50,options:200},listLetterRequestsForStaff:async()=>[],getLetterRequestForStaff:async()=>null}));
+vi.mock('../core/letter-requests',()=>({LETTER_REQUEST_LIMITS:{purposeChars:300,reasonChars:500,messageChars:500,list:50,options:200},listLetterRequestsForStaffPage:async(_ctx:unknown,input:any)=>({rows:[],state:pageState(input.page,0,0)}),getLetterRequestForStaff:async()=>null}));
 vi.mock('next-intl/server',()=>({getLocale:async()=>mocks.locale,getTranslations:async(namespace:'letters.automation'|'letters.generate'|'letters.templates'|'letters.fields'|'letters.reports')=>{const c=catalogues[mocks.locale];return createTranslator({locale:mocks.locale,messages:{letters:{automation:c.letters.automation,generate:c.letters.generate,templates:c.letters.templates,fields:c.letters.fields,reports:{states:c.letters.reports.states}}},namespace});}}));
 import GeneratePage from '../app/letters/generate/page';
 import NewPage from '../app/letters/generate/new/page';

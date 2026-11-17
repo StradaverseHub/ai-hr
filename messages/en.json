@@ -33639,6 +33639,8 @@
       },
       "requests": {
         "title": "Letter requests",
+        "pageLimit": "All shows a limited range. Choose a numbered page to reach later requests.",
+        "pageEmpty": "No requests on this page. Use the page controls to view the remaining requests.",
         "intro": "Letters employees asked for. Prepare letter opens a draft for that employee; you approve and issue it as usual.",
         "empty": "No letter requests are waiting.",
         "unavailable": "Letter requests could not be shown just now.",
