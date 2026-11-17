@@ -6224,6 +6224,13 @@
       "when": 1793330005489,
       "tag": "5789_resignation_letter_fields",
       "breakpoints": true
+    },
+    {
+      "idx": 5190,
+      "version": "7",
+      "when": 1793330005490,
+      "tag": "5790_resignation_case_communications",
+      "breakpoints": true
     }
   ]
 }

@@ -297,6 +297,7 @@ it('stops on a cross-tenant row, then validates every company/tenant key without
    '5786_resignation_email_delivery',
    '5788_resignation_letter_teams',
    '5789_resignation_letter_fields',
+   '5790_resignation_case_communications',
   ]);
   const stagingPrefix=journal.entries.slice(0,performanceStart);
   expect(stagingPrefix.filter(row=>row.tag==='3900_individual_transaction_calculation_method')).toHaveLength(1);

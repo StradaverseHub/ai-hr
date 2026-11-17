@@ -234,11 +234,13 @@ export const APPROVED_UPGRADE_TAIL=[
  {idx:5186,when:1793330005486,tag:'5786_resignation_email_delivery'},
  {idx:5188,when:1793330005488,tag:'5788_resignation_letter_teams'},
  {idx:5189,when:1793330005489,tag:'5789_resignation_letter_fields'},
+ {idx:5190,when:1793330005490,tag:'5790_resignation_case_communications'},
 ] as const;
 // Final pending 2109/2126 bytes reviewed from engine 128bc2539; no applied-prefix hashes change.
 const APPROVED_UPGRADE_HASHES:Record<string,string>={
+ '5790_resignation_case_communications':'33672971b20e35975d25cfd840f0c31d5b6ab61c8a7d472bf0bbe975b4356517',
  '5788_resignation_letter_teams':'b7769b4044d013cfb630d532d8cc5b7fd2c8635662cf05663a4dcf6746eae4f3',
- '5789_resignation_letter_fields':'f0fc7cec67513f892165854561c277d3de7d8b86e08dba095a7e5acefe71a95e',
+ '5789_resignation_letter_fields':'6ff09ccafb1fe4aedcec24c19724a622bb9f03d7db62743e5c7938fc37f00430',
 
  '5770_attendance_workflow_approver_codes':'f71cf33a9ced5f4e1007de02388a858bd31c64006a422352193bd7c14e367ec0',
  '5771_assistant_legacy_index_shared_access':'433dfd7549b496b034bdeaa2c06484b700b5dd5647213106d68487f0b485c7c0',
