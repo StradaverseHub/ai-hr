@@ -300,14 +300,23 @@ GRANT EXECUTE ON FUNCTION app.resignation_offboarding_date_intent(uuid,date,date
 CREATE FUNCTION app.offboarding_posting_waiting_members(p_postings uuid[])
 RETURNS TABLE(posting_id uuid,names text[],total_members integer)
 LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
- WITH RECURSIVE visible AS MATERIALIZED (
-  SELECT p.id,p.approver_group_id,e.person_id,e.company_id
+ WITH RECURSIVE visible_postings AS MATERIALIZED (
+  SELECT p.id,p.approver_group_id,e.id AS employment_id,e.tenant_id,e.person_id,e.company_id,e.voided_at,e.import_pending_attempt_id
   FROM public.personnel_posting p JOIN public.employment e ON e.tenant_id=p.tenant_id AND e.id=p.employment_id
   WHERE coalesce(cardinality(p_postings),0) BETWEEN 1 AND 100 AND app.principal_snapshot_current()
    AND p.tenant_id=app.current_tenant_id() AND p.id=ANY(p_postings) AND p.source='offboarding' AND p.status='pending'
    AND app.personnel_posting_visible(p.approver_group_id,p.employment_id,p.source)
-   -- Employment state is the canonical inline owner predicate in the CURRENT READER's import context.
-   AND app.access_workforce_employment_permitted(e.tenant_id,e.company_id,e.voided_at,e.import_pending_attempt_id,ARRAY[e.company_id])
+ ), employment_sources AS MATERIALIZED (
+  SELECT DISTINCT employment_id,tenant_id,company_id,voided_at,import_pending_attempt_id FROM visible_postings
+ ), public_sources AS MATERIALIZED (
+  SELECT e.employment_id FROM employment_sources e
+  -- The canonical inline state predicate keeps the CURRENT READER's normal row visibility and void exclusion.
+  WHERE app.access_workforce_employment_permitted(e.tenant_id,e.company_id,e.voided_at,e.import_pending_attempt_id,ARRAY[e.company_id])
+   -- Reader-owned import custody does not establish custody for OTHER prospective approvers.
+   -- Evaluate publication once per distinct source, before any candidate expansion.
+   AND (e.import_pending_attempt_id IS NULL OR app.import_marker_released(e.import_pending_attempt_id))
+ ), visible AS MATERIALIZED (
+  SELECT v.id,v.approver_group_id,v.person_id,v.company_id FROM visible_postings v JOIN public_sources e ON e.employment_id=v.employment_id
  ), wanted_groups AS MATERIALIZED (SELECT DISTINCT approver_group_id AS id FROM visible),
  configuration AS MATERIALIZED (
   SELECT coalesce((SELECT data->'groups' FROM public.lc_onboarding_config WHERE tenant_id=app.current_tenant_id()),
