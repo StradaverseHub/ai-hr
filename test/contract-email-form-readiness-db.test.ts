@@ -8,13 +8,14 @@ import {fixture,finish,visible,actForm} from './helpers/contract-document-fixtur
 import {saveAutomationDocumentTemplate,saveAutomationEmailTemplate,saveAutomationWorkflow} from '../packs/automation/service';
 import {startContractSharedManualWorkflow} from '../core/contract-shared-manual';
 import {readContractSharedForm} from '../core/contract-shared-form';
-import {readContractSharedLetter} from '../packs/contracts/service';
+import {readContractSharedLetter,approveContractSharedPosting,contractSharedContext} from '../packs/contracts/service';
+import {contractPostingFixture,releaseContractPosting} from './helpers/contract-posting-fixture';
 import type {Field} from '../lib/lifecycle-v9-model';
 import {automationEmailBodyDoc} from '../lib/automation/email';
 beforeAll(migrateTestDb);afterAll(closeAll);
 const origin='https://fictional-native-form.example.test';
-async function emailForm(bank:string|null){
- const f=await fixture('renew'),userId=await createAppUser(f.b.tenantId,f.employee.personId,'employee');
+async function emailForm(bank:string|null,base?:Awaited<ReturnType<typeof contractPostingFixture>>){
+ const f=base??await fixture('renew'),userId=base?.employeeActor.userId??await createAppUser(f.b.tenantId,f.employee.personId,'employee');
  const employee:SessionContext={...f.admin,userId,personId:f.employee.personId,roles:['employee'],grants:undefined};
  for(const user of [userId,f.admin.userId!])await owner.db.execute(sql`insert into app_external_identity(issuer,subject,app_user_id) values(${origin+'/auth/'+f.b.tenantId},${f.b.tenantId+'/'+user},${user}::uuid)`);
  await owner.db.execute(sql`insert into employee_statutory_my(tenant_id,person_id,ic_number,bank_account_no) values(${f.b.tenantId}::uuid,${f.employee.personId}::uuid,'990101011234',${bank})`);
@@ -35,6 +36,17 @@ describe('native Employee-only Form prerequisites',()=>{
   await owner.db.execute(sql`update employee_statutory_my set bank_account_no='FICTIONAL-CORRECTED-BANK' where tenant_id=${f.b.tenantId}::uuid and person_id=${f.employee.personId}::uuid`);
   const after=await owner.client.begin(async tx=>{await tx`select set_config('app.tenant_id',${f.b.tenantId},true)`;return (await tx<{ready:{ready:boolean;reason:string}}[]>`select app.contract_shared_email_document_readiness(${f.letterId}::uuid) as ready`)[0].ready;});expect(after).toEqual({ready:true,reason:'employee'});
   const [run]=await owner.db.execute<{waiting:string}>(sql`select waiting_for as waiting from automation_run where tenant_id=${f.b.tenantId}::uuid and subject_id=${f.caseId}::uuid and waiting_for=${f.pinId}::uuid`);expect(run.waiting).toBe(f.pinId);
+ },120000);
+ it('keeps the original predecision Form independent after actual approved posting closes the business case',async()=>{
+  const posting=await contractPostingFixture({payChanges:false}),f=await emailForm('FICTIONAL-ORIGINAL-PERIOD-BANK',posting);
+  const original=await readContractSharedLetter(f.employee,f.letterId),before=visible(await readContractSharedForm(f.employee,f.letterId));expect(before.values.bank).toBe('FICTIONAL-ORIGINAL-PERIOD-BANK');
+  const nativePosting=await releaseContractPosting(posting);await approveContractSharedPosting(posting.approver,{id:nativePosting.id,revision:nativePosting.revision});
+  const closed=await contractSharedContext(posting.proposer,posting.caseId);expect(closed.flow?.stage).toBe('renewed');
+  await owner.db.execute(sql`update employee_statutory_my set bank_account_no='FICTIONAL-NEW-PERIOD-BANK' where tenant_id=${f.b.tenantId}::uuid and person_id=${f.employee.personId}::uuid`);
+  const historical=visible(await readContractSharedForm(f.employee,f.letterId));expect(historical.values.bank).toBe('FICTIONAL-ORIGINAL-PERIOD-BANK');expect((await readContractSharedLetter(f.employee,f.letterId)).body?.values).not.toHaveProperty('contract.newStart',posting.newStart);
+  await actForm(f.employee,f.letterId,'signed');expect((await readContractSharedLetter(f.employee,f.letterId)).state).toBe('released');
+  const after=await contractSharedContext(posting.proposer,posting.caseId);expect(after.flow).toEqual(closed.flow);
+  const [source]=await owner.db.execute<{revision:number;pinRevision:number}>(sql`select letter.decision_revision as revision,pin.decision_revision as "pinRevision" from contract_shared_letter letter join contract_shared_email_document_step pin on pin.tenant_id=letter.tenant_id and pin.case_id=letter.case_id and pin.documents->>(letter.data->>'templateId')=letter.id::text where letter.tenant_id=${f.b.tenantId}::uuid and letter.id=${f.letterId}::uuid`);expect(source).toEqual({revision:0,pinRevision:0});expect(original.body?.definition.fields).toHaveLength(2);
  },120000);
  it('rechecks current source after queue without tenant scope, and respects actual first-signature freezing',async()=>{
   const f=await emailForm('FICTIONAL-INITIAL-BANK');
