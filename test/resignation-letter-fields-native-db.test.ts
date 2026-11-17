@@ -6,9 +6,10 @@ import {withTenant,type SessionContext,type Tx} from '../db/client';
 import {adminCtx,closeAll,createAppUser,migrateTestDb,owner,resetDb,seedBase,setModule,type Base} from './harness';
 import {hireEmployee} from '../core/org';
 import {pgErrorChain,pgSqlState} from '../lib/db-error';
+import {currentRoundActions} from '../lib/document-signing-model';
 import {prepareResignationProofTx} from '../core/resignation-proof';
 import {resignationRuntimeKey,signResignationRuntime} from '../lib/resignation-runtime-proof';
-import {actResignationLetter,generateResignationLetter,regenerateResignationLetter,reconcileResignationLetter,resignationLetterCapabilities,type ResignationLetter,type ResignationLetterAction,type GenerateResignationLetterInput} from '../core/resignation-letter';
+import {actResignationLetter,generateResignationLetter,regenerateResignationLetter,reconcileResignationLetter,resignationLetterCapabilities,resignationLetterPendingSteps,resignationLetterEmployeePending,type ResignationLetter,type ResignationLetterAction,type GenerateResignationLetterInput} from '../core/resignation-letter';
 let b:Base,employee:SessionContext,manager:SessionContext,fyi:SessionContext,id:string,employmentId:string,data:Record<string,unknown>,participants:string[];
 const master='6'.repeat(64),day='2027-06-30';
 beforeAll(migrateTestDb);afterAll(closeAll);afterEach(()=>vi.unstubAllEnvs());
@@ -104,8 +105,15 @@ it('uses the pinned Start Offboarding reason and denies arbitrary reason, step o
 });
 it('allows offer to return to retention when employee local edits invalidate a prior signature',async()=>{
  let letter=formLetter();letter=act(letter,fyi,{type:'fields',values:{'hr-note':'Show'}});letter=act(letter,manager,{type:'complete',stepId:'owner-review'});letter=act(letter,fyi,{type:'complete',stepId:'team-sign',signature:'Prior verified signature',consent:true});letter=act(letter,employee,{type:'open'});
+ const originalHistory=JSON.stringify(letter.history),originalSign=structuredClone(currentRoundActions(letter.document).find(action=>action.action==='signed'));
+ expect(originalSign).toMatchObject({stepId:'team-sign',actorId:fyi.userId,action:'signed'});
+ expect(letter.signedValues['team-sign']).toMatchObject({'employee-note':'—'});expect(resignationLetterEmployeePending(letter)).toBe(true);
  data={...data,decision:null,letters:[letter]};await seedJourney('offer');const values={'employee-note':'New employee detail'},changed=act(letter,employee,{type:'fields',values});
- expect(changed.revision).toBeGreaterThan(letter.revision);expect(changed.document.actions.some(a=>a.action==='signed')).toBe(false);
+ expect(changed.revision).toBeGreaterThan(letter.revision);expect(currentRoundActions(changed.document).some(action=>action.action==='signed')).toBe(false);
+ expect(JSON.stringify(changed.history)).toBe(originalHistory);expect(changed.document.actions).toContainEqual(originalSign);
+ expect(changed.signedValues).not.toHaveProperty('team-sign');
+ expect(changed.changes['team-sign']).toEqual(expect.arrayContaining([expect.objectContaining({field:'employee-note',before:'—',after:values['employee-note']})]));
+ expect(resignationLetterPendingSteps(changed).map(step=>step.id)).toEqual(['team-sign']);expect(resignationLetterEmployeePending(changed)).toBe(false);
  await withTenant(employee,async tx=>{await begin(tx,employee,{type:'saveLetterFields',documentId:letter.id,documentRevision:letter.revision,values});await save(tx,employee,{...data,letters:[changed]},'retention');});
  expect(await persisted()).toMatchObject({revision:2,stage:'retention'});
 });
