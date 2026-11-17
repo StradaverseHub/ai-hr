@@ -266,9 +266,19 @@ export const APPROVED_UPGRADE_TAIL=[
  {idx:5275,when:1793330005575,tag:'5875_recruitment_referral_rewards_agency_fees'},
  {idx:5276,when:1793330005576,tag:'5876_recruitment_ai_match_summary'},
  {idx:5277,when:1793330005577,tag:'5877_recruitment_agency_portal'},
+ {idx:5500,when:1794841006100,tag:'6100_rewards_review_plans'},
+ {idx:5501,when:1794841006101,tag:'6101_reward_person_history'},
+ {idx:5502,when:1794841006102,tag:'6102_lifecycle_recipient_directory'},
+ {idx:5503,when:1794841006103,tag:'6103_lifecycle_pbp_removal'},
+ {idx:5504,when:1794841006104,tag:'6104_lifecycle_recipient_fanout'},
 ] as const;
 // Final pending 2109/2126 bytes reviewed from engine 128bc2539; no applied-prefix hashes change.
 const APPROVED_UPGRADE_HASHES:Record<string,string>={
+ '6100_rewards_review_plans':'393f6e5ebe298db30bdc82be152fc40a8cb59045286510e1bfb818fcbd306fbd',
+ '6101_reward_person_history':'07e19bdfe627b50da5324ed6761f9c3c3e8fd7c361386c1c19bfb7307c55e6f8',
+ '6102_lifecycle_recipient_directory':'b7ba294ffdf0a95439995c61730407dfda7b204d07ba32f2adc15b94a3f7e2e3',
+ '6103_lifecycle_pbp_removal':'3cbe38c2aee6fc1297991d4af368bd1f1176cc33872767068a5d3f332cd973a1',
+ '6104_lifecycle_recipient_fanout':'130469c2b2f94235223b767c49bffaab6aa062d5d052605d0e34d5d1db99de9f',
  '5779_hire_company_allocation_review':'8a157b18ea8fe5ebaf5d86046f7ba03dd41e6532c03ef2cb7799beafeb4fc8dd',
  '5772_movement_employment_periods':'9a66595ca046bdf0bdaaf0b51e1b87cfd8811156093d37464ef854d36b7d4ef3',
  '5773_movement_payroll_protection_and_delete':'3f54dd21490e301f4c52131d449d32c883f482d67025df610fe5b84c83be1897',

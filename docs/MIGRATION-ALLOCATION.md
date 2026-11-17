@@ -8,11 +8,12 @@ Coordinator `codex/approved-board-controller-20261117` reserves:
 | `6101_reward_person_history` | 5501 | 1794841006101 | Rewards person history |
 | `6102_lifecycle_recipient_directory` | 5502 | 1794841006102 | Bounded authenticated recipient directory |
 | `6103_lifecycle_pbp_removal` | 5503 | 1794841006103 | PBP removal |
+| `6104_lifecycle_recipient_fanout` | 5504 | 1794841006104 | Full group delivery; eight choices does not limit expanded members |
 
 Fresh origin fetch and read-only survey covered 4,583 distinct local/origin ref heads,
 721 distinct committed journals and 380 readable registered worktree journals. The
 highest observed competing timestamp was 1794841006029. Existing historical high
-numbered files remain reserved; these four tags, indexes and timestamps have no
+numbered files remain reserved; these five tags, indexes and timestamps have no
 observed collision. Staging independently reported source `fc092e1adbe5f8f1cbfe730a17d1317f08625a7c`,
 build `DZ2pCq8fJrQO8QOlmFL-K`, and 919 applied rows through 1793330005577.
 Production was subsequently reached after the owner connected the VPN. Its installed
