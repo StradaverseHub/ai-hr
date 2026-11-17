@@ -23,9 +23,10 @@ beforeAll(migrateTestDb);afterAll(closeAll);
 async function fixture(){
  await resetDb();const b=await seedBase(),ctx=adminCtx(b);
  const companies=[b.companyId,...(await owner.db.insert(s.company).values(Array.from({length:69},(_,i)=>({tenantId:b.tenantId,legalName:'Detail company '+i}))).returning({id:s.company.id})).map(r=>r.id)];
+ const departments=(await owner.db.insert(s.department).values(companies.map((companyId,i)=>({tenantId:b.tenantId,companyId,name:'Detail department '+i}))).returning({id:s.department.id})).map(row=>row.id);
  const people=await owner.db.insert(s.person).values(Array.from({length:1000},(_,i)=>({tenantId:b.tenantId,fullName:'Detail employee '+String(i).padStart(4,'0'),primaryEmail:randomUUID()+'@fixture.invalid'}))).returning({id:s.person.id});
  const employees=await owner.db.insert(s.employment).values(people.map((p,i)=>({tenantId:b.tenantId,personId:p.id,companyId:companies[i%70],employeeCode:'DETAIL-'+i,hiredOn:'2020-01-01',terminatedOn:i===999?'2099-01-01':i%17===0?'2025-01-01':null}))).returning({id:s.employment.id});
- await owner.db.insert(s.assignment).values(employees.map((e,i)=>({tenantId:b.tenantId,employmentId:e.id,companyId:companies[i%70],employmentType:'full_time' as const,validFrom:'2020-01-01'})));
+ await owner.db.insert(s.assignment).values(employees.map((e,i)=>({tenantId:b.tenantId,employmentId:e.id,companyId:companies[i%70],departmentId:departments[i%70],employmentType:'full_time' as const,validFrom:'2020-01-01'})));
  scope={s:ctx,scopeIds:companies};return {b,ctx,companies,people,employees};
 }
 const header=(row:Awaited<ReturnType<typeof listEmployees>>[number])=>Object.fromEntries(['employmentId','name','employeeCode','personId','companyId','company','department','position','hiredOn','terminatedOn'].map(key=>[key,row[key as keyof typeof row]]));

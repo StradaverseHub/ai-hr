@@ -7,7 +7,7 @@ vi.mock('../core/read',()=>({employeePickerSubject:m.subject,employeeListContain
 vi.mock('../core/payroll-view',()=>({listProcessedPayslipsAcross:m.payslips,exportIndividualTxnsCsv:m.individual,exportZakatTxnsCsv:m.zakat,INDIVIDUAL_TXN_STATUS_FILTERS:['draft','processed']}));
 vi.mock('../core/pay-components',()=>({listPayComponents:async()=>[]}));
 vi.mock('../core/payroll-audit/access-log',()=>({recordPayrollExportAcross:m.audit}));
-vi.mock('../localization/registry',()=>({packFor:()=>({companyStatutory:{list:async()=>[]}})}));
+vi.mock('../localization/registry',async original=>({...await original<typeof import('../localization/registry')>(),packFor:()=>({companyStatutory:{list:async()=>[]}})}));
 vi.mock('next-intl/server',()=>({getLocale:async()=> 'en',getTranslations:async()=> (key:string)=>key}));
 import {GET as history} from '../app/payroll/transaction-view/history-export/route';
 import {GET as grid} from '../app/payroll/transaction-view/grid-export/route';
@@ -19,7 +19,8 @@ it('keeps XLSX current/all populations independent from exact employee lookup an
  for(const route of [history,grid]){
   const response=await route(request('employmentId=employee-a&companyId=trusted-a&year=2026&month=7'));
   expect(m.subject).toHaveBeenLastCalledWith(ctx,'employee-a',ids);expect(m.payslips).toHaveBeenLastCalledWith(ctx,expect.objectContaining({companyIds:['trusted-a'],employmentId:'employee-a',year:2026}));
-  expect([...new Uint8Array(await response.arrayBuffer()).slice(0,2)]).toEqual([80,75]);
+  expect(response.headers.get('content-type')).toContain('application/vnd.ms-excel');
+  const workbook=await response.text();expect(workbook).toContain('<x:ExcelWorkbook>');expect(workbook).toContain('<thead>');
  }
  m.subject.mockResolvedValue(null);m.payslips.mockClear();await grid(request('employmentId=foreign&companyId=foreign&year=2026'));expect(m.payslips).not.toHaveBeenCalled();
  await history(request('scope=current&employmentId=foreign&companyId=foreign&year=2026'));expect(m.payslips).toHaveBeenLastCalledWith(ctx,expect.objectContaining({companyIds:ids,employmentId:undefined}));
