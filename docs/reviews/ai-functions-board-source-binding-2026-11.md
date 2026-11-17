@@ -914,3 +914,18 @@ Human metadata and pending records are unchanged. The agent manifest is regenera
 a frozen development checkpoint for independent affected UI checks; native eligibility, compiler,
 actual57-state UI/PDF verification, accepted upstream integration and authenticated release checks
 remain outstanding. No provider disclosure purpose, model tool or transport authority is broadened.
+
+### Native waiting eligibility source closure — 17 November 2026
+
+The human-only waiting-member reader now derives current Workforce eligibility set-wise from canonical
+role, scope, capability, override and effective-group sources. Tests pin the effective Access owner
+bodies/attributes and compare real admitted principals; this reader grants no authority and native
+approval remains the adjudicator. Unpublished employment sources yield no candidate names even if
+the current reader owns a temporary import context. Private model-facing posting DTOs stay unchanged.
+
+This repair changes only unapplied native SQL and test sources. The provider source digest remains
+`e4e9247c94224549b19a5d278f8932af8b83972c795545a1fa80bdfa40902b73`; approved record metadata,
+pending records, purposes and transport remain untouched. The derived agent manifest is checked or
+regenerated last. Source review closure is not hosted PASS, actual UI/PDF verification or release
+authority. Exact accepted upstream integration and migration reallocation remain required after
+Recruitment’s accepted ledger.
