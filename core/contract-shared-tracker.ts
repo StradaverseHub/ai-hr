@@ -14,17 +14,18 @@ export type ContractTrackerRow={
  startOn:string|null;endOn:string|null;contractNumber:number|null;sourceRevision:string|null;
  stage:ContractFlowStage|null;legacyState:string|null;sharedRevision:number|null;flags:ContractFlowFlag[];lastActivityAt:string|null;
  payChanges:boolean;payConfirmed:boolean;previousPayPending:boolean;payPendingCaseId:string|null;canOpen:boolean;sourceIssue:'verify_period'|'legacy_in_progress'|'period_changed'|'native_intake_required'|null;
- firstReminderOn:string|null;decisionNeeded:boolean;endPassed:boolean;stalledDays:number|null;
+ attention:boolean;firstReminderOn:string|null;decisionNeeded:boolean;endPassed:boolean;stalledDays:number|null;
  scheduledPeriod?:{postingId:string;label:string;eventType:'contractRenewal'|'contractConversion';startOn:string;endOn:string|null;contractNumber:number|null;status:'scheduled'|'awaiting_application'}|null;
 };
-export type ContractTrackerQuery={search?:string;companyId?:string|null;status?:'all'|'attention'|'upcoming'|'decision'|'progress'|'closed';limit?:number;offset?:number};
+export type ContractTrackerSummary={total:number;upcoming:number;decision:number;inProgress:number;closed:number;attention:number};
+export type ContractTrackerQuery={search?:string;companyId?:string|null;status?:'all'|'attention'|'upcoming'|'decision'|'progress'|'closed';attention?:boolean;limit?:number;offset?:number};
 export async function contractSharedTracker(ctx:SessionContext,raw:ContractTrackerQuery={}){
- const input=z.object({search:z.string().max(100).default(''),companyId:z.uuid().nullable().default(null),status:z.enum(['all','attention','upcoming','decision','progress','closed']).default('all'),limit:z.number().int().min(1).max(100).default(50),offset:z.number().int().min(0).max(100000).default(0)}).strict().parse(raw);
+ const input=z.object({search:z.string().max(100).default(''),companyId:z.uuid().nullable().default(null),status:z.enum(['all','attention','upcoming','decision','progress','closed']).default('all'),attention:z.boolean().default(false),limit:z.number().int().min(1).max(100).default(50),offset:z.number().int().min(0).max(100000).default(0)}).strict().parse(raw);
  return withScopedLifecycleTenant(ctx,async tx=>{
   await lockAccessConfigurationReadTx(tx,ctx.tenantId);
-  const [result]=await tx.execute<{page:{rows:ContractTrackerRow[];total:number}}>(sql`select app.contract_shared_tracker(${input.search},${input.companyId}::uuid,${input.status},${input.limit},${input.offset}) as page`);
+  const [result]=await tx.execute<{page:{rows:ContractTrackerRow[];total:number;summary:ContractTrackerSummary}}>(sql`select app.contract_shared_tracker(${input.search},${input.companyId}::uuid,${input.status},${input.limit},${input.offset},${input.attention}) as page`);
   const [choices]=await tx.execute<{value:{companies:{id:string;name:string}[];businessGroups:{id:string;name:string}[]}}>(sql`select app.contract_shared_tracker_choices() as value`);
-  const page=result?.page??{rows:[],total:0};
+  const page=result?.page??{rows:[],total:0,summary:{total:0,upcoming:0,decision:0,inProgress:0,closed:0,attention:0}};
   return {...page,...(choices?.value??{companies:[],businessGroups:[]}),hasMore:input.offset+page.rows.length<page.total,limit:input.limit,offset:input.offset};
  });
 }
@@ -40,4 +41,10 @@ export async function openContractSharedPeriod(ctx:SessionContext,raw:{employmen
   if(state==='22023')throw new ContractManagementError('invalid','Verify the contract number and dates in Personnel Management before opening a case.');
   throw error;
  }
+}
+
+export type ContractCaseAttention={caseId:string;stalledDays:number|null;attention:boolean;flags:ContractFlowFlag[]};
+export function contractSharedCaseAttention(ctx:SessionContext,caseIds:readonly string[]):Promise<ContractCaseAttention[]>{
+ const ids=z.array(z.uuid()).max(100).parse(caseIds);
+ return withScopedLifecycleTenant(ctx,async tx=>{await lockAccessConfigurationReadTx(tx,ctx.tenantId);return [...await tx.execute<ContractCaseAttention>(sql`select * from app.contract_shared_case_attention(${ids.length?sql`ARRAY[${sql.join(ids.map(id=>sql`${id}::uuid`),sql`, `)}]::uuid[]`:sql`'{}'::uuid[]`})`)]});
 }

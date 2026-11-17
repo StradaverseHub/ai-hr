@@ -16,6 +16,7 @@ import {contractSharedEmailExecutors} from './contract-shared-email';
 import {CONTRACT_AUTOMATION_CATALOGUE} from '../lib/automation/catalogues/contracts';
 import {runAutomationEvent,resumeAutomationRun,sqlAutomationRunStore,type AutomationExecutors,type AutomationRuntimeGuards,type AutomationRun} from '../packs/automation/service';
 import {todayInKualaLumpur} from '../lib/hr-date';
+import {contractRoutingChooser} from '../lib/contract-routing-chooser';
 
 const inputSchema=z.object({eventId:z.uuid()}).strict();
 const progressSchema=z.object({activeEventId:z.uuid().nullable(),workflowCursor:z.number().int().min(0).max(200),mailAfter:z.uuid().nullable().optional()}).strict();
@@ -55,6 +56,7 @@ export const contractAutomationJobHandler:BulkJobHandler<never>={
    }
    const inputs=await readContractSharedExecutionInputs(owner,ctx,event.case_id),today=todayInKualaLumpur();
    const context=contractSharedAutomationContext(inputs.view,inputs.refs),workerCtx={...ctx,userId:undefined};
+   const chooser=contractRoutingChooser(context,today,inputs.definitions.lastAssigned);
    const facts=event.data.conditionFacts;
    const read=contractAutomationRead(context,event.trigger_event,today,facts&&typeof facts==='object'&&!Array.isArray(facts)?facts as Record<string,unknown>:undefined),store=sqlAutomationRunStore(db);
    const letterId=typeof event.data.letterId==='string'&&z.uuid().safeParse(event.data.letterId).success?event.data.letterId:null;
@@ -63,8 +65,8 @@ export const contractAutomationJobHandler:BulkJobHandler<never>={
    const letterValues=letter?{'letter.documentName':letter.name,'letter.signingStep':context.pending?.label??'','letter.sentBackBy':typeof event.data.sentBackBy==='string'?event.data.sentBackBy:'','letter.sentBackReason':typeof event.data.sentBackReason==='string'?event.data.sentBackReason:''}:undefined;
    const executors:AutomationExecutors={
     ...contractSharedEmailExecutors(db,{context,today,templates:inputs.runtimeEmails,letterValues}),
-    requestApproval:step=>activateContractSharedApproval(db,workerCtx,{view:inputs.view,context,step,lastAssigned:inputs.definitions.lastAssigned,today}),
-    generateDocument:step=>activateContractSharedLetter(db,workerCtx,{view:inputs.view,context,step,templates:inputs.definitions.documents,lastAssigned:inputs.definitions.lastAssigned,today}),
+    requestApproval:step=>activateContractSharedApproval(db,workerCtx,{view:inputs.view,context,step,lastAssigned:inputs.definitions.lastAssigned,today,chooser}),
+    generateDocument:step=>activateContractSharedLetter(db,workerCtx,{view:inputs.view,context,step,templates:inputs.definitions.documents,lastAssigned:inputs.definitions.lastAssigned,today,chooser}),
     createPosting:async step=>{
      const posting=await activateContractSharedPosting(db,{caseId:event.case_id,runId:step.run.id,stepId:step.step.id});
      return posting.skipped?{status:'skipped',reason:posting.reason??'This decision creates no Personnel posting.'}:{status:'done',message:`Personnel posting PP-${posting.number} is waiting for approval.`};

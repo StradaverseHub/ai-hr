@@ -11,9 +11,10 @@ import type {ContractSharedPostingSummary} from './contract-shared-postings';
 import type {ContractSharedEndingActions} from './contract-shared-ending';
 import {pgSqlState} from '../lib/db-error';
 export type ContractCaseWorkspace={
+ configuredFallbackGroup?:string|null;
  approvals:{id:string;decisionRevision:number;createdAt:string;status:'pending'|'approved'|'rejected'|'cancelled';workflowName:string;stepId:string}[];
  letters:{id:string;decisionRevision:number;name:string;state:'routing'|'released'|'withdrawn';generatedOn:string;releasedAt:string|null;templateVersion:number;valuesFixed:boolean;returned:boolean}[];
- runs:{id:string;name:string;revision:number;trigger:string;status:'running'|'waiting'|'done'|'skipped'|'failed';cursor:number;waitingFor:string|null;startedAt:string;updatedAt:string;steps:{id:string;type:string;name:string}[];log:{at:string;kind:string;stepId:string|null;type:string|null}[]}[];
+ runs:{id:string;name:string;revision:number;trigger:string;status:'running'|'waiting'|'done'|'skipped'|'failed';cursor:number;waitingFor:string|null;startedAt:string;updatedAt:string;steps:{id:string;type:string;name:string}[];log:{at:string;kind:string;stepId:string|null;type:string|null;message?:string|null;fallbackCount?:number}[]}[];
 };
 export type ContractPeriodHistoryPage={total:number;rows:{id:string;caseNumber:string;startOn:string;endOn:string;contractNumber:number|null;stage:string|null;legacyState:string;shared:boolean;current:boolean}[]};
 async function periodsTx(tx:Tx,caseId:string,offset:number){const [row]=await tx.execute<{page:ContractPeriodHistoryPage}>(sql`select app.contract_shared_period_history(${caseId}::uuid,50,${offset}) as page`);return row.page;}
@@ -29,8 +30,9 @@ export function contractSharedWorkspace(ctx:SessionContext,caseId:string){
   const activity=await tx.execute<{revision:number;at:string;actorName:string|null;actorType:'system'|'user';stage:string;decisionRevision:number|null}>(sql`select (entry->>'revision')::integer as revision,entry->>'at' as at,entry->>'actorName' as "actorName",case when entry->>'actorId' is null then 'system' else 'user' end as "actorType",entry->'flow'->>'stage' as stage,(entry->'flow'->'decision'->>'revision')::integer as "decisionRevision" from app.contract_shared_history(${caseId}::uuid,2147483647) entry`);
   const postingSummary=view.flow?(await tx.execute<{summary:ContractSharedPostingSummary|null}>(sql`select app.contract_shared_posting_case_summary(${caseId}::uuid) as summary`))[0].summary:null;
   const ending=view.flow?(await tx.execute<{actions:ContractSharedEndingActions}>(sql`select app.contract_shared_ending_actions(${caseId}::uuid) as actions`))[0].actions:null;
+  const attention=await tx.execute<{caseId:string;stalledDays:number|null;attention:boolean;flags:string[]}>(sql`select * from app.contract_shared_case_attention(ARRAY[${caseId}::uuid])`);
   const [pending]=await tx.execute<{waiting:ContractWaitingMetadata[]}>(sql`select app.contract_shared_tracker_waiting(ARRAY[${caseId}::uuid]) as waiting`);
-  return {view,...row.workspace,ending,postingSummary,reasons,activity:[...activity],waiting:pending.waiting.at(0)??null,periods:await periodsTx(tx,caseId,0),legacyReadable:capabilities.legacyReadable,canOpenPersonnel:capabilities.canOpenPersonnel};
+  return {view,...row.workspace,attention:attention.at(0)??null,ending,postingSummary,reasons,activity:[...activity],waiting:pending.waiting.at(0)??null,periods:await periodsTx(tx,caseId,0),legacyReadable:capabilities.legacyReadable,canOpenPersonnel:capabilities.canOpenPersonnel};
  });
 }
 export type ContractConfigurationChoices={accessAdmin:boolean;companies:{id:string;name:string}[];scopes:{id:string;name:string;parentId:string|null}[];people:{id:string;name:string}[];groups:{id:string;name:string}[]};

@@ -84,6 +84,19 @@ it('projects the actual approval group and current letter step without granting 
  const currentGroups=(await v9Workspace(admin)).config!;await v9SaveConfig(admin,currentGroups.revision,{...currentGroups,groups:currentGroups.groups.map(g=>g.id===f.ceo?{...g,members:[]}:g)});
  expect(await pendingContractSharedTasks(outsider,undefined)).toEqual([]);
 },180000);
+it('projects classified failure and fallback explanations without exposing raw operational payloads',async()=>{
+ const f=await routedCase();
+ const requested=await previewContractSharedDecision(f.proposer,{caseId:f.caseId,revision:1,draft:{kind:'renew',months:12,payChanges:false,reason:'Continue specialist work'}});
+ await tickToDone(requested.jobId,f.proposer,'contract_preview');
+ const submitted=await submitContractSharedDecision(f.proposer,{caseId:f.caseId,revision:1,previewId:requested.previewId});await tickToDone(submitted.jobId,f.proposer,'contract_automation');
+ const run=(await contractSharedWorkspace(admin,f.caseId)).runs[0];
+ const log=[{at:new Date().toISOString(),kind:'stepFailed',stepId:run.steps[0].id,type:'sendEmail',message:'PRIVATE smtp-token-EXAMPLE salary 497621',unresolved:['PRIVATE-UID-1','PRIVATE-PID-2']}];
+ await owner.db.execute(sql`update automation_run set log=${JSON.stringify(log)}::jsonb where tenant_id=${b.tenantId}::uuid and id=${run.id}::uuid`);
+ const workspace=await contractSharedWorkspace(admin,f.caseId);
+ expect(workspace.runs[0].log[0]).toMatchObject({kind:'stepFailed',type:'sendEmail',fallbackCount:2,message:'The email step is held. People Ops must check template publication, required files and recipient routing before starting a live manual workflow.'});
+ expect(JSON.stringify(workspace)).not.toMatch(/smtp-token-EXAMPLE|497621|PRIVATE-UID|PRIVATE-PID/);
+ const outsider=await ordinary('Fictional unauthorised case reader');await expect(contractSharedWorkspace(outsider,f.caseId)).rejects.toMatchObject({code:'forbidden'});
+},180000);
 it('limits configuration and person choices to the real access administrator',async()=>{
  const viewer=await ordinary('Fictional company access delegate'),roleId=randomUUID();
  await saveContractSharedRole(admin,{id:roleId,name:'Company configuration only',permissions:['access'],expectedRevision:0});await saveContractSharedMember(admin,{id:randomUUID(),roleId,userId:viewer.userId!,companyId:b.companyId,businessGroupId:null,validFrom:start,validTo:null,revoked:false});

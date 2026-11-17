@@ -15,13 +15,13 @@ import {ContractManagementError} from '../lib/contract-management-model';
 import {pgSqlState} from '../lib/db-error';
 const mappingSchema=z.object({companyId:z.uuid(),fallbackGroupId:z.string().min(1).max(200),postingApproverGroupId:z.string().min(1).max(200),bpRoutingId:z.uuid(),ceoRoutingId:z.uuid()}).strict();
 const jobInput=z.object({companyId:z.uuid(),mapping:mappingSchema}).strict().refine(input=>input.companyId===input.mapping.companyId);
-export type ContractSharedSetup={installed:boolean;v9Ready:boolean;jobId:string|null;canInstall:boolean;missing:string[];groups:{id:string;name:string}[];routings:{id:string;name:string}[]};
+export type ContractSharedSetup={installed:boolean;v9Ready:boolean;accessReady:boolean;jobId:string|null;canInstall:boolean;missing:string[];groups:{id:string;name:string}[];routings:{id:string;name:string}[]};
 export function contractSharedSetup(ctx:SessionContext,companyId:string):Promise<ContractSharedSetup>{
  z.uuid().parse(companyId);
  return withScopedLifecycleTenant(ctx,async tx=>{
   await lockAccessConfigurationReadTx(tx,ctx.tenantId);
   const [row]=await tx.execute<{value:ContractSharedSetup}>(sql`select app.contract_shared_setup_read(${companyId}::uuid) as value`);
-  return {...row.value,missing:row.value.installed?[]:row.value.missing};
+  return {...row.value,missing:row.value.installed&&row.value.accessReady?[]:row.value.missing};
  });
 }
 export async function startContractSharedSetup(ctx:SessionContext,raw:ContractStartingMappings):Promise<{jobId:string}>{
@@ -73,6 +73,7 @@ export const contractSetupJobHandler:BulkJobHandler<z.infer<typeof payload>>={
    }
   }else{
    const [prior]=await tx.execute<{revision:number}>(sql`select revision from contract_shared_settings where tenant_id=app.current_tenant_id() and company_id=${mapping.companyId}::uuid`);
+   await tx.execute(sql`select app.contract_shared_setup_access_role()`);
    if(!prior)await tx.execute(sql`select app.contract_shared_settings_save(${mapping.companyId}::uuid,0,${JSON.stringify({fallbackGroupId:mapping.fallbackGroupId,postingApproverGroupId:mapping.postingApproverGroupId,stallEnabled:true,stallDays:5,automaticSuperior:{enabled:true,permissions:['view','decide']}})}::jsonb)`);
   }
   return {counters:{configured:1}};

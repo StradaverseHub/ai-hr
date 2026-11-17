@@ -252,6 +252,7 @@ export function SharedContractSettings({
           </button>
         </ContractPanel>
       )}
+      <div id="contract-access" />
       {access && (
         <>
           <ContractPanel title={copy('Roles and permissions')}>

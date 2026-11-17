@@ -121,6 +121,7 @@ export function ContractStartingSetup({
   return (
     <ContractPanel title={copy('Starting configuration')}>
       <ContractFeedback error={error} />
+      {!setup.accessReady&&<p className="v9-notice">{copy('People BP case access still needs an explicit business-group assignment. Signing routing does not grant case access.')} <Link href="#contract-access">{copy('Review Contract access')}</Link></p>}
       {setup.installed ? (
         <p>
           {copy(

@@ -9,8 +9,8 @@ import {ContractStartingSetup} from '../app/lifecycle/contracts/settings/startin
 import {SharedLetterPage} from '../app/lifecycle/contracts/letters/[letterId]/review';
 import type {ContractSharedApproval,ContractSharedLetter} from '../packs/contracts/service';
 import {automationDocument} from '../lib/automation-document';
-const actions=vi.hoisted(()=>({approval:vi.fn(),letter:vi.fn(),edit:vi.fn(),bind:vi.fn(),setup:vi.fn(),startSetup:vi.fn(),decline:vi.fn(),pay:vi.fn()}));
-vi.mock('../app/lifecycle/contracts/shared-actions',()=>({actSharedApproval:actions.approval,actSharedLetter:actions.letter,editSharedLetter:actions.edit,bindSharedEmployee:actions.bind,readSharedSetup:actions.setup,startSharedSetup:actions.startSetup,recordSharedDecline:actions.decline,confirmSharedPay:actions.pay}));
+const actions=vi.hoisted(()=>({approval:vi.fn(),letter:vi.fn(),edit:vi.fn(),bind:vi.fn(),setup:vi.fn(),startSetup:vi.fn(),decline:vi.fn(),pay:vi.fn(),saveForm:vi.fn()}));
+vi.mock('../app/lifecycle/contracts/shared-actions',()=>({actSharedApproval:actions.approval,actSharedLetter:actions.letter,editSharedLetter:actions.edit,bindSharedEmployee:actions.bind,readSharedSetup:actions.setup,startSharedSetup:actions.startSetup,recordSharedDecline:actions.decline,confirmSharedPay:actions.pay,readSharedLetterState:vi.fn(),saveSharedForm:actions.saveForm}));
 vi.mock('next/navigation',()=>({usePathname:()=>'/tasks',useRouter:()=>({refresh:vi.fn()})}));
 const caseId='b1fa7485-70d8-4403-9dab-815da20b2e01',id='aab5d59c-c75f-4dc2-9d4a-45865ea8ff81',hash='a'.repeat(64);
 function approval():ContractSharedApproval{return {id,caseId,decisionRevision:3,employeeName:'Fictional Contract Employee',employeeCode:'FC-7',company:'Fictional Company',decision:{kind:'renew',startOn:'2027-01-01',endOn:'2027-12-31',months:12,payChanges:true,salaryCents:'521012',reason:'Retain specialist work',endReason:null,submittedBy:'proposer',submittedAt:'2026-11-16T00:00:00Z',revision:3},period:{id:'period',startOn:'2026-01-01',endOn:'2026-12-31',number:'4',sourceRevision:hash},contentRevision:1,contentHash:hash,pendingLayerId:'ceo',canAct:true,status:'pending',layers:[{id:'ceo',label:'CEO',stage:1,assigneeName:'Fictional CEO',fulfilled:false}],history:[]};}
@@ -33,11 +33,11 @@ it('keeps the employee portal focused on the assigned letter and requires signat
  const value=letter();actions.letter.mockResolvedValue({ok:true,value:{letter:{...value,state:'released',valuesFixed:true,pendingAction:null,releasedAt:'2026-11-17T00:00:00Z'},document}});
  mount(<SharedLetterPage letter={value} document={document}/>);
  expect(screen.queryByRole('link',{name:'Open Personnel record'})).not.toBeInTheDocument();
- expect(screen.getByRole('button',{name:'Accept and sign contract'})).toBeDisabled();
+ expect(screen.getByRole('button',{name:'Sign and release letter'})).toBeDisabled();
  fireEvent.change(screen.getByLabelText('Type your full name'),{target:{value:'Fictional Employee'}});
- expect(screen.getByRole('button',{name:'Accept and sign contract'})).toBeDisabled();
+ expect(screen.getByRole('button',{name:'Sign and release letter'})).toBeDisabled();
  fireEvent.click(screen.getByRole('checkbox',{name:'I confirm this is my signature and agree to sign this contract.'}));
- fireEvent.click(screen.getByRole('button',{name:'Accept and sign contract'}));
+ fireEvent.click(screen.getByRole('button',{name:'Sign and release letter'}));
  await waitFor(()=>expect(actions.letter).toHaveBeenCalledOnce());
  expect(actions.letter).toHaveBeenCalledWith(expect.objectContaining({id,stepId:'employee',revision:1,hash,action:'signed',method:'typed',value:'Fictional Employee',consent:true}));
  expect(await screen.findByText(/Released 17\/11\/2026/)).toBeInTheDocument();
@@ -58,7 +58,7 @@ it('requires a send-back reason and offers owner resend only after the native ow
 it('does not expose wording or actions while the body is held for a later routing step',()=>{
  mount(<SharedLetterPage letter={{...letter(),pendingAction:null,contentHash:null}} document={null}/>);
  expect(screen.getByText(/body becomes available when your routing step is active/)).toBeInTheDocument();
- expect(screen.queryByRole('button',{name:'Accept and sign contract'})).not.toBeInTheDocument();
+ expect(screen.queryByRole('button',{name:'Sign and release letter'})).not.toBeInTheDocument();
  expect(screen.queryByRole('button',{name:'Edit wording for this case'})).not.toBeInTheDocument();
  expect(screen.queryByRole('link',{name:'Download PDF'})).not.toBeInTheDocument();
 });
@@ -93,12 +93,12 @@ it('submits wording and completing review as one command and retains both after 
 it('uses company signature consent only for the current native company step',()=>{
  mount(<SharedLetterPage letter={{...letter(),pendingAction:{stepId:'bp',kind:'sign'},layers:[{id:'bp',label:'People BP',stage:1,kind:'sign',owner:true,assigneeName:'Fictional BP',fulfilled:false,unavailable:false}]}} document={document} capabilities={{canBindEmployee:false,pendingRole:'company'}}/>);
  expect(screen.getByRole('checkbox',{name:'I confirm this is my signature and approve this letter on behalf of the company.'})).not.toBeChecked();
- expect(screen.getByRole('button',{name:'Sign letter'})).toBeDisabled();expect(screen.getByText('Fictional BP',{selector:'strong'})).toBeInTheDocument();
+ expect(screen.getByRole('button',{name:'Sign and release letter'})).toBeDisabled();expect(screen.getByText('Fictional BP',{selector:'strong'})).toBeInTheDocument();
 });
 
 it('releases setup controls after a failed native job instead of showing installation forever',async()=>{
  vi.useFakeTimers();
- const setup={installed:false,v9Ready:true,jobId:id,canInstall:true,missing:[],groups:[{id:'ops',name:'Actual People Ops'}],routings:[]};
+ const setup={installed:false,accessReady:false,v9Ready:true,jobId:id,canInstall:true,missing:[],groups:[{id:'ops',name:'Actual People Ops'}],routings:[]};
  actions.setup.mockResolvedValue({ok:true,value:{...setup,jobState:'failed'}});
  try{
   mount(<ContractStartingSetup initial={setup} companyId={caseId} fallbackGroupId="ops" postingApproverGroupId="ops"/>);
@@ -125,8 +125,8 @@ it('records employee decline with the current case revision and retains notes af
 it('holds Form completion while the real response and receipt owner is unavailable',()=>{
  const value:ContractSharedLetter={...letter(),canEdit:true,body:{definition:{name:'Held Form',blocks:[{id:'answers',type:'fields',text:'',section:''}],fields:[]},blocks:{},values:{},receipts:[],fingerprintSource:'native'}};
  mount(<SharedLetterPage letter={value} document={document}/>);
- expect(screen.getByText('Form response capture and signing are on hold. This Form cannot be completed yet.')).toBeInTheDocument();
- expect(screen.queryByRole('button',{name:'Accept and sign contract'})).not.toBeInTheDocument();expect(screen.queryByRole('button',{name:'Edit wording for this case'})).not.toBeInTheDocument();
+ expect(screen.getByText('This Form is not available to your current routing step. Its authorised owner must prepare it before you can continue.')).toBeInTheDocument();
+ expect(screen.queryByRole('button',{name:'Sign and release letter'})).not.toBeInTheDocument();expect(screen.queryByRole('button',{name:'Edit wording for this case'})).not.toBeInTheDocument();
 });
 
 it('requires manual Payroll attestation and uses the exact native case receipt revision',async()=>{
@@ -139,4 +139,23 @@ it('requires manual Payroll attestation and uses the exact native case receipt r
  fireEvent.click(screen.getByRole('button',{name:'Confirm manual Payroll update'}));
  expect(await screen.findByRole('alert')).toHaveTextContent('posting changed');expect(actions.pay).toHaveBeenCalledWith({caseId,expectedRevision:14,confirmed:true});
  expect(screen.getByRole('checkbox')).toBeChecked();
+});
+
+it('uses only native Form answers and editable IDs, then binds the saved response proof to signing',async()=>{
+ const fields=[{id:'answer',label:'Emergency contact',type:'text' as const,owner:'hr' as const,pmKey:null,required:true,sensitive:false,options:[],section:'',when:null},{id:'locked',label:'Personnel reference',type:'text' as const,owner:'employee' as const,pmKey:null,required:false,sensitive:false,options:[],section:'',when:null}];
+ const blocks=[{id:'answers',type:'fields' as const,text:'',section:''}];
+ const value:ContractSharedLetter={...letter(),body:{definition:{name:'Contact Form',blocks,fields},blocks:{},values:{answer:'SHOULD NOT LEAK',locked:'SHOULD NOT LEAK'},receipts:[],fingerprintSource:'native'}};
+ const body=automationDocument({id,name:'Contact Form',templateId:'template',templateVersion:2,blocks,fields,merge:{},createdAt:'2026-11-17T00:00:00Z'});
+ const form={letterId:id,kind:'Form' as const,visible:true as const,responseRevision:1,responseHash:'b'.repeat(64),legalBaseHash:hash,values:{answer:'Fictional contact',locked:'Native reference'},editableFieldIds:['answer'],missingLockedFields:[],receipts:[]};
+ actions.saveForm.mockResolvedValue({ok:true,value:{...form,responseRevision:2,responseHash:'c'.repeat(64),values:{...form.values,answer:'Updated contact'}}});
+ actions.letter.mockResolvedValue({ok:false,error:'Recorded proof already checked.'});
+ mount(<SharedLetterPage letter={value} document={body} form={form} capabilities={{canBindEmployee:false,pendingRole:'employee'}}/>);
+ expect(screen.getByLabelText('Emergency contact *')).toBeEnabled();expect(screen.getByLabelText('Personnel reference')).toBeDisabled();expect(screen.queryByDisplayValue('SHOULD NOT LEAK')).not.toBeInTheDocument();
+ fireEvent.change(screen.getByLabelText('Emergency contact *'),{target:{value:'Updated contact'}});
+ expect(screen.getByRole('button',{name:'Sign and release letter'})).toBeDisabled();
+ fireEvent.click(screen.getByRole('button',{name:'Save form answers'}));
+ await waitFor(()=>expect(actions.saveForm).toHaveBeenCalledWith({id,contentRevision:1,contentHash:hash,responseRevision:1,responseHash:'b'.repeat(64),values:{answer:'Updated contact'}}));
+ await waitFor(()=>expect(screen.getByRole('button',{name:'Save form answers'})).toBeDisabled());
+ fireEvent.change(screen.getByLabelText('Type your full name'),{target:{value:'Fictional Employee'}});fireEvent.click(screen.getByRole('checkbox',{name:'I confirm this is my signature and agree to sign this contract.'}));fireEvent.click(screen.getByRole('button',{name:'Sign and release letter'}));
+ await waitFor(()=>expect(actions.letter).toHaveBeenCalledWith(expect.objectContaining({responseRevision:2,responseHash:'c'.repeat(64)})));
 });
