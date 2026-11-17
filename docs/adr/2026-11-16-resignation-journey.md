@@ -1,10 +1,10 @@
 # Resignation journey on shared Configuration
 
-Status: accepted direction, 16 November 2026; updated 17 November. Staging is conditional on complete verification, Movement-first integration and guarded queue admission. Production is not authorized.
+Status: accepted direction, 16 November 2026; updated 17 November. Staging is conditional on complete verification, accepted Board-first integration and guarded queue admission. Production is not authorized.
 
 ## Decisions
 
-The owner reviewed the supplied resignation HTML and AIHR merge mockups and authorized implementation, then held release for approval. The later direct coordination approval permits staging only after the work is complete and verified, with Movement releasing first. The renewed handoff review and latest engineering-convention checks must finish before that admission; no readiness is inferred from this approval. Configuration is shared: reuse Workflows, Templates (documents and emails), Assignment groups and named routing rules. Keep operational Leavers, checklists and source-filtered Personnel postings in Offboarding. Existing module and company permissions remain authoritative.
+The owner reviewed the supplied resignation HTML and AIHR merge mockups and authorized implementation, then held release for approval. The later direct coordination approval permits staging only after the work is complete and verified, with Movement releasing first. Movement is now accepted; the current owner-directed order releases the approved Board items before Resignation, then Audit, with Contract held. The renewed handoff review and latest engineering-convention checks must finish before that admission; no readiness is inferred from this approval. Configuration is shared: reuse Workflows, Templates (documents and emails), Assignment groups and named routing rules. Keep operational Leavers, checklists and source-filtered Personnel postings in Offboarding. Existing module and company permissions remain authoritative.
 
 The owner explicitly chose **termination at completed clearance**, following the handoff. For new managed resignation journeys, accepting a resignation starts the configured acceptance-letter and Offboarding workflow; it does not call the old acceptance/termination command or freeze leave. Completed clearance raises one Termination posting. Authorized approval applies the existing employment movement and required leave/final-pay consequences atomically. There is one writer of employment truth, and a repeated clearance or posting approval cannot repeat it.
 
@@ -43,7 +43,7 @@ The reply clock starts when the offer reaches the employee. Use the repository H
 
 An employee may submit a new resignation after Retained or Withdrawn. Each case and its pending posting retain their own snapshots. The Offboarding setting defaults to no second retention offer within 12 months of earlier acceptance (blank means no limit; explicit values are integers 1–60). This restricts offers, never the ability to resign again.
 
-The Offboarding posting approver is a separate setting from Probation's. A change to a populated group moves pending Offboarding postings to that group. An empty group retains existing assignments with a warning and blocks new postings. Visibility is restricted to authorized, company-scoped People Ops and the posting approver group; only authorized People Ops can retry blocked runs. Group membership never bypasses the Personnel movement writer's permission.
+The Offboarding posting approver is a separate setting from Probation's. A change to a populated group moves pending Offboarding postings to that group. An empty group retains existing assignments with a warning and blocks new postings. A failed new posting points People Ops to the Offboarding Personnel postings setting; the failed signing transaction remains uncommitted until the configuration is repaired and the action is retried. Visibility is restricted to authorized, company-scoped People Ops and the posting approver group; only authorized People Ops can retry blocked runs. Group membership never bypasses the Personnel movement writer's permission.
 
 ## Compatibility and release
 
