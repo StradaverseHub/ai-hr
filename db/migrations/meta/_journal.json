@@ -7323,6 +7323,13 @@
       "when": 1794841006014,
       "tag": "6014_contract_empty_opening_technical_finish",
       "breakpoints": true
+    },
+    {
+      "idx": 5415,
+      "version": "7",
+      "when": 1794841006015,
+      "tag": "6015_automation_offboarding_configuration_compatibility",
+      "breakpoints": true
     }
   ]
 }

@@ -117,6 +117,27 @@
       "when": 1794841006012,
       "tag": "6012_contract_shared_navigation_access",
       "breakpoints": true
+    },
+    {
+      "idx": 5413,
+      "version": "7",
+      "when": 1794841006013,
+      "tag": "6013_contract_email_form_binding_order",
+      "breakpoints": true
+    },
+    {
+      "idx": 5414,
+      "version": "7",
+      "when": 1794841006014,
+      "tag": "6014_contract_empty_opening_technical_finish",
+      "breakpoints": true
+    },
+    {
+      "idx": 5415,
+      "version": "7",
+      "when": 1794841006015,
+      "tag": "6015_automation_offboarding_configuration_compatibility",
+      "breakpoints": true
     }
   ],
   "forwardSourceSqlSha256": {
@@ -132,7 +153,10 @@
     "6009_contract_posting_reconciliation_and_authority": "d0ce6a32a101e8da9f87dc85da2a64158b720505cc36504a090cb9faf340b472",
     "6010_contract_email_document_hr_notices": "71afc04f48fda2449becba50bd156b698a0f5ce5d2f0f4765c4211904d9389c4",
     "6012_contract_shared_navigation_access": "8da44c0a2a09dd09681ce5b839f3ed1b4c46f218e1ad76ef432d9fa6c98aa146",
-    "6011_contract_posting_org_snapshot_owner": "ba157898e5a35bfa08931aba91362ac43d985ef6e4c2293cd2cf9f49eeefabc2"
+    "6011_contract_posting_org_snapshot_owner": "ba157898e5a35bfa08931aba91362ac43d985ef6e4c2293cd2cf9f49eeefabc2",
+    "6013_contract_email_form_binding_order": "a693631009b659dcabc5654eb205e65df9a05585fed617362488303a9df4d364",
+    "6014_contract_empty_opening_technical_finish": "4c121b4f3d8e35a1573aba4cb1a858492f6a035ec2b0981f31502e816841091d",
+    "6015_automation_offboarding_configuration_compatibility": "e0c866f621440434fd45ba1c847b28c8defdf0d7cca57420295d36c1b18282c5"
   },
   "forwardSourceReview": {
     "emailV4Source": "e73af9cec",
@@ -204,6 +228,11 @@
       "currentTarget6012Sha256": "8da44c0a2a09dd09681ce5b839f3ed1b4c46f218e1ad76ef432d9fa6c98aa146",
       "historicalPreparation6012Sha256": "6ab7c4d51c3beb606a1dddcf88bde26281556a5b93e179148db04afa88e7d461",
       "unionInstruction": "Preserve current target6012 source/helpers/entry/hash; append only6011 literals and keyed ACL delta. Historical177d preservation evidence is not relabeled onto d39."
+    },
+    "offboardingConfigureRestoration": {
+      "tag": "6015_automation_offboarding_configuration_compatibility",
+      "scope": "Only previously user-approved native Offboarding configure conjunction restored. Current Contract/Probation branches and later execution owners unchanged. Original5902 remains archived; no Resignation branch selected.",
+      "nativeEvidence": "Authored native grant/revocation/ordinary-account fixture unrun; original failing44104737922 retained."
     }
   },
   "archivedExcludedSources": [

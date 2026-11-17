@@ -1,3 +1,20 @@
+## Shared Offboarding configure compatibility — 17 November 2026 (provisional source only)
+
+Registered `6015_automation_offboarding_configuration_compatibility`, idx `5415`, when
+`1794841006015`, SQL SHA-256 `e0c866f621440434fd45ba1c847b28c8defdf0d7cca57420295d36c1b18282c5`.
+Fresh source-only survey read all 419 Git-discovered migration trees/journals, with no collision
+or unreadable journal. All 128 pending Contract entries await final forward allocation from the
+actual accepted prior sources and ordered installation ledger; this grants no installation position.
+
+This restores only the previously user-approved Offboarding configuration conjunction omitted
+from the assembled candidate: actual current user, group administrator and native Offboarding
+access. Existing Contract/Probation branches are byte-identical. The earlier archived5902 is not
+restored wholesale; later execution owners and Resignation branches stay unchanged. Function OID,
+owner and ACL are preserved, with no new object or grant. Independent source review passed;
+native grant/revocation and restricted upgrade checks remain required. Prior1046 SQL/journal
+entries remain unchanged. Source-selection metadata now also includes registered6013 and6014.
+No passing gate, merge or release is claimed.
+
 ## Contract empty opening technical completion — 17 November 2026 (provisional source only)
 
 Registered `6014_contract_empty_opening_technical_finish`, idx `5414`, when `1794841006014`,

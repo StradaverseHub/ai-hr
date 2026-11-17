@@ -3,7 +3,7 @@ import {afterAll,beforeAll,beforeEach,describe,expect,it} from 'vitest';
 import {sql} from 'drizzle-orm';
 import {withTenant,type SessionContext} from '../db/client';
 import {closeAll,migrateTestDb,resetDb,seedBase,setModule,entitledCtx,createAppUser,owner,type Base} from './harness';
-import {v9Setup} from '../packs/lifecycle/service';
+import {v9Setup,onboardingRegisterContext,onboardingSaveConfig} from '../packs/lifecycle/service';
 import {actAutomationDocumentTemplate,automationDocumentUsage,automationDocumentVersions,listAutomationDocumentTemplates,saveAutomationDocumentTemplate,saveAutomationWorkflow,type AutomationWorkflow} from '../packs/automation/service';
 import type {AutomationDocumentTemplate} from '../lib/automation/document-template';
 let b:Base,admin:SessionContext;
@@ -24,12 +24,30 @@ describe('Contract template native version lifecycle',()=>{
   await expect(saveAutomationDocumentTemplate(admin,{template:doc,expectedRevision:2,publish:false,retired:false})).rejects.toMatchObject({code:'conflict'});
  });
 
- it('preserves the generic version reader for existing non-Contract module definitions',async()=>{
-  for(const module of ['probation','off'] as const){
-   const doc={...template(),module};await saveAutomationDocumentTemplate(admin,{template:doc,expectedRevision:0,publish:false,retired:false});
-   expect((await listAutomationDocumentTemplates(admin,module)).map(row=>row.template.id)).toContain(doc.id);
-   expect((await automationDocumentVersions(admin,doc.id)).map(row=>({version:row.version,template:row.template}))).toEqual([{version:1,template:doc}]);
-  }
+ it('preserves generic version history for Probation and native-authorized Offboarding without granting access to other administrators',async()=>{
+  const probation={...template(),module:'probation' as const};await saveAutomationDocumentTemplate(admin,{template:probation,expectedRevision:0,publish:false,retired:false});
+  expect((await listAutomationDocumentTemplates(admin,'probation')).map(row=>row.template.id)).toContain(probation.id);
+  expect((await automationDocumentVersions(admin,probation.id)).map(row=>({version:row.version,template:row.template}))).toEqual([{version:1,template:probation}]);
+  const allowed=async()=> (await withTenant(admin,tx=>tx.execute<{groupAdmin:boolean;nativeOff:boolean;templates:boolean}>(sql`select app.is_group_admin() as "groupAdmin",app.lc_v9_off_access() as "nativeOff",app.automation_can_manage('off','templates') as templates`)))[0];
+  const doc={...template(),module:'off' as const};
+  const native=await onboardingRegisterContext(admin);expect(native.actor.master).toBe(true);
+  await onboardingSaveConfig(admin,native.revision,{...native.config,access:{...native.config.access,offboarding:native.config.access.offboarding.filter(id=>id!==admin.userId)}});
+  expect(await allowed()).toEqual({groupAdmin:true,nativeOff:false,templates:false});
+  await expect(saveAutomationDocumentTemplate(admin,{template:doc,expectedRevision:0,publish:false,retired:false})).rejects.toMatchObject({code:'forbidden'});
+  const access=await onboardingRegisterContext(admin);
+  await onboardingSaveConfig(admin,access.revision,{...access.config,access:{...access.config.access,offboarding:[...new Set([...access.config.access.offboarding,admin.userId!])]}});
+  expect(await allowed()).toEqual({groupAdmin:true,nativeOff:true,templates:true});
+  await saveAutomationDocumentTemplate(admin,{template:doc,expectedRevision:0,publish:false,retired:false});
+  expect((await listAutomationDocumentTemplates(admin,'off')).map(row=>row.template.id)).toContain(doc.id);
+  expect((await automationDocumentVersions(admin,doc.id)).map(row=>({version:row.version,template:row.template}))).toEqual([{version:1,template:doc}]);
+  const[p]=await owner.db.execute<{id:string}>(sql`insert into person(tenant_id,full_name,primary_email) values(${b.tenantId}::uuid,'Fictional non-administrator template reader',${randomUUID()+'@template.invalid'}) returning id`);if(!p)throw Error('Actual ordinary account identity is required.');
+  const userId=await createAppUser(b.tenantId,p.id,'employee'),plain:SessionContext={...admin,userId,personId:p.id,roles:['employee'],grants:undefined};
+  expect((await listAutomationDocumentTemplates(plain,'off'))).toEqual([]);expect(await automationDocumentVersions(plain,doc.id)).toEqual([]);
+  await expect(saveAutomationDocumentTemplate(plain,{template:{...doc,id:randomUUID()},expectedRevision:0,publish:false,retired:false})).rejects.toMatchObject({code:'forbidden'});
+  const remove=await onboardingRegisterContext(admin);
+  await onboardingSaveConfig(admin,remove.revision,{...remove.config,access:{...remove.config.access,offboarding:remove.config.access.offboarding.filter(id=>id!==admin.userId)}});
+  expect(await allowed()).toEqual({groupAdmin:true,nativeOff:false,templates:false});expect(await listAutomationDocumentTemplates(admin,'off')).toEqual([]);expect(await automationDocumentVersions(admin,doc.id)).toEqual([]);
+  await expect(saveAutomationDocumentTemplate(admin,{template:doc,expectedRevision:1,publish:false,retired:false})).rejects.toMatchObject({code:'forbidden'});
  });
  it('publishes an existing draft without rewriting bytes; CAS stays monotonic through metadata changes and future saves',async()=>{
   const doc=template();await save(doc,0,true,'Original published wording');await save({...doc,name:'Reviewed wording'},1,false,'People Ops revision');
