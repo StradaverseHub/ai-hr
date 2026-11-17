@@ -319,7 +319,7 @@ BEGIN
  FROM reward_unit u JOIN reward_company_year_review r ON r.unit_id=u.id AND r.tenant_id=u.tenant_id JOIN reward_plan_year_company c ON c.tenant_id=r.tenant_id AND c.year=r.year AND c.company_id=r.company_id
  WHERE binding.tenant_id=t AND binding.unit_id=u.id AND u.id=ANY(coalesce(changed,'{}'::uuid[]));
  INSERT INTO domain_event(tenant_id,aggregate_type,aggregate_id,event_type,actor_type,actor_id,payload)
- SELECT t,'reward-unit',u.id,'reward-unit.final-pool-changed','user',app.current_user_id(),jsonb_build_object('year',wanted_year,'revision',u.revision,'reason',p_reason,'planVersionId',u.policy_group_version_id,'libraryRebind',true)
+ SELECT t,'reward-unit',u.id,'reward-unit.plan-rebound','user',app.current_user_id(),jsonb_build_object('year',wanted_year,'revision',u.revision,'reason',p_reason,'planVersionId',u.policy_group_version_id,'libraryRebind',true)
  FROM reward_unit u WHERE u.tenant_id=t AND u.id=ANY(coalesce(changed,'{}'::uuid[])) AND u.status<>'draft';
  DELETE FROM app.reward_review_plan_write_lease WHERE tenant_id=t AND xact_id=txid_current();
  RETURN QUERY SELECT unnest(coalesce(changed,'{}'::uuid[]));
@@ -592,3 +592,22 @@ BEGIN
 END $$;
 REVOKE ALL ON FUNCTION app.reward_review_plan_track_legacy_participation() FROM PUBLIC;
 CREATE TRIGGER reward_review_plan_track_legacy_participation AFTER INSERT OR UPDATE ON reward_company_exclusion FOR EACH ROW EXECUTE FUNCTION app.reward_review_plan_track_legacy_participation();
+--> statement-breakpoint
+-- The current approver is not a configuration editor. Only the protected acknowledgement may clear
+-- an exact outstanding marker; immutable library/plan columns remain guarded by reward_review_plan_links.
+CREATE POLICY reward_review_plan_consume_owner ON reward_unit_setup FOR UPDATE TO ai_hr_owner
+ USING(tenant_id=app.current_tenant_id() AND library_rebind_revision IS NOT NULL AND app.reward_not_viewing_as() AND app.reward_access(unit_id) AND(app.reward_capability(unit_id,'figures.edit') OR app.reward_capability(unit_id,'review.decide')))
+ WITH CHECK(tenant_id=app.current_tenant_id() AND library_rebind_revision IS NULL AND app.reward_not_viewing_as() AND app.reward_access(unit_id) AND(app.reward_capability(unit_id,'figures.edit') OR app.reward_capability(unit_id,'review.decide')));
+--> statement-breakpoint
+CREATE FUNCTION app.reward_review_plan_rebind_recipients(wanted_event uuid) RETURNS SETOF uuid LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,app AS $$
+ WITH target AS MATERIALIZED(
+ SELECT u.id,u.tenant_id,u.status FROM domain_event ev JOIN reward_unit u ON u.tenant_id=ev.tenant_id AND u.id=ev.aggregate_id
+ WHERE ev.tenant_id=app.current_tenant_id() AND ev.id=wanted_event AND ev.event_type='reward-unit.plan-rebound' AND u.deleted_at IS NULL AND u.status IN('bg','gr','ctro','ec')
+ AND app.is_admin() AND(app.current_user_id() IS NULL OR app.reward_admin(u.company_id))
+ ),holders AS(
+ SELECT m.user_id FROM reward_member m JOIN target u ON u.id=m.unit_id AND u.tenant_id=m.tenant_id WHERE(m.role=u.status OR u.status='bg' AND m.role='proxy_bg')AND app.reward_member_eligible_internal(m.id)
+ UNION SELECT g.user_id FROM reward_group_role_grant g JOIN target u ON u.tenant_id=g.tenant_id AND g.role=u.status WHERE g.active AND app.reward_group_person_eligible(g.user_id)
+ )SELECT DISTINCT e.id FROM holders h JOIN app_user a ON a.id=h.user_id AND a.tenant_id=app.current_tenant_id() JOIN employment e ON e.tenant_id=a.tenant_id AND e.person_id=a.person_id
+ WHERE a.archived_at IS NULL AND NOT app.login_blocked(a.id) AND e.hired_on<=timezone('Asia/Kuala_Lumpur',now())::date AND(e.terminated_on IS NULL OR e.terminated_on>timezone('Asia/Kuala_Lumpur',now())::date)
+$$;
+REVOKE ALL ON FUNCTION app.reward_review_plan_rebind_recipients(uuid) FROM PUBLIC;GRANT EXECUTE ON FUNCTION app.reward_review_plan_rebind_recipients(uuid) TO ai_hr_app;
