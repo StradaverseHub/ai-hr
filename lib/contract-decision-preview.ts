@@ -48,7 +48,7 @@ export function buildContractDecisionPlan(input:{context:ContractAutomationConte
  if(!group(context.fallbackGroupId))plan.blockers.push('Choose an existing Contract fallback group.');
  if(!group(context.postingApproverGroupId)?.members.some(id=>active.has(id)))plan.blockers.push('Choose a posting approver group with an active member.');
  const matched=definitions.workflows.filter(({workflow})=>workflow.status==='live'&&workflow.trigger.event==='decisionSubmitted'&&evaluateAutomationConditions(workflow.conditions,read).ok);
- if(!matched.length)plan.blockers.push('No live workflow matches this decision. People Ops can set one up in HR Automation.');
+ if(!matched.length)plan.warnings.push('No workflow ran: no live workflow matches this decision. People Ops can publish a workflow or start one by hand.');
  for(const {workflow,revision} of matched){
   plan.workflowVersions.push({workflowId:workflow.id,revision});
   plan.blockers.push(...automationWorkflowProblems(workflow,CONTRACT_AUTOMATION_CATALOGUE,refs).map(p=>workflow.name+': '+p));

@@ -6,7 +6,7 @@ import {closeAll,migrateTestDb,resetDb,seedBase,setModule,entitledCtx,createAppU
 import {hireEmployee,setEmploymentInfo} from '../core/org';
 import {setCompensation} from '../core/comp';
 import {v9Setup,v9Workspace,v9SaveConfig} from '../packs/lifecycle/service';
-import {contractSharedTracker,contractSharedPeriodContext,openContractSharedPeriod,contractSharedContext,saveContractSharedRole,saveContractSharedMember} from '../packs/contracts/service';
+import {contractSharedTracker,contractSharedCaseAttention,contractSharedPeriodContext,openContractSharedPeriod,contractSharedContext,saveContractSharedRole,saveContractSharedMember} from '../packs/contracts/service';
 import {todayInKualaLumpur} from '../lib/hr-date';
 import {addAutomationDays,type AutomationWorkflow} from '../lib/automation/workflow';
 
@@ -134,6 +134,16 @@ describe('Personnel-based Contract tracker and native case opening',()=>{
   const [native]=await withTenant(operator,tx=>tx.execute<{ok:boolean}>(sql`select app.contract_shared_permitted('view',${b.companyId}::uuid,null,${employee.employmentId}::uuid) as ok`));
   expect(native.ok).toBe(true);expect((await contractSharedTracker(operator)).rows.map(row=>row.id)).toEqual([employee.employmentId]);
  });
+ it('classifies overdue periods without reminders and includes pay cases in shared stalled attention',async()=>{
+  const employee=await fixedTerm();await setEmploymentInfo(admin,{employmentId:employee.employmentId,contractStartDate:start,contractEndDate:`${year}-01-02`,contractNumber:4});
+  const row=(await contractSharedTracker(admin)).rows[0];expect(row).toMatchObject({firstReminderOn:null,decisionNeeded:true,endPassed:true,attention:true});expect((await contractSharedTracker(admin,{status:'upcoming'})).total).toBe(0);
+  const opened=await openContractSharedPeriod(admin,{employmentId:employee.employmentId,sourceRevision:row.sourceRevision!});
+  await owner.db.execute(sql`update contract_shared_case set data=jsonb_set(data,'{stage}','"pay"'::jsonb),updated_at=now()-interval '16 days' where tenant_id=${b.tenantId}::uuid and case_id=${opened.caseId}::uuid`);
+  const attention=await contractSharedCaseAttention(admin,[opened.caseId]);expect(attention).toEqual([{caseId:opened.caseId,stalledDays:16,attention:true,flags:['pay_pending']}]);
+  const paying=await contractSharedTracker(admin,{status:'progress',attention:true});expect(paying.total).toBe(1);expect(paying.summary).toMatchObject({total:1,inProgress:1,attention:1});expect(paying.rows[0].stalledDays).toBe(16);
+  await owner.db.execute(sql`insert into contract_shared_settings(tenant_id,company_id,stall_enabled,updated_by) values(${b.tenantId}::uuid,${b.companyId}::uuid,false,${admin.userId}::uuid) on conflict(tenant_id,company_id) do update set stall_enabled=false`);
+  expect((await contractSharedCaseAttention(admin,[opened.caseId]))[0]).toMatchObject({stalledDays:null,attention:true});
+ });
  it('retains converted cases and their unfinished manual-pay confirmation in the tracker',async()=>{
   const employee=await fixedTerm(),initial=(await contractSharedTracker(admin)).rows[0];
   const opened=await openContractSharedPeriod(admin,{employmentId:employee.employmentId,sourceRevision:initial.sourceRevision!});
@@ -180,7 +190,7 @@ describe('Personnel-based Contract tracker and native case opening',()=>{
   const byId=new Map(rows.map(row=>[row.id,row]));
   for(const point of points){
    const due=point.paused?null:addAutomationDays(point.end,-point.days,point.workdays),row=byId.get(point.employmentId)!;
-   expect(row.firstReminderOn).toBe(due);expect(row.decisionNeeded).toBe(due!==null&&due<=todayInKualaLumpur());
+   expect(row.firstReminderOn).toBe(due);expect(row.decisionNeeded).toBe(point.end<todayInKualaLumpur()||due!==null&&due<=todayInKualaLumpur());
   }
   expect(byId.get(unconfigured.employmentId)).toMatchObject({firstReminderOn:null,decisionNeeded:false});
   const upcoming=await contractSharedTracker(admin,{status:'upcoming',limit:100}),decision=await contractSharedTracker(admin,{status:'decision',limit:100});
@@ -190,7 +200,7 @@ describe('Personnel-based Contract tracker and native case opening',()=>{
   await owner.db.execute(sql`with companies as(insert into company(tenant_id,legal_name) select ${b.tenantId}::uuid,'Tracker company '||lpad(n::text,2,'0') from generate_series(1,70) n returning id,legal_name),departments as(insert into department(tenant_id,company_id,name) select ${b.tenantId}::uuid,id,'Tracker department' from companies returning id,company_id),numbered as materialized(select c.id,d.id as department_id,row_number() over(order by c.legal_name) as n from companies c join departments d on d.company_id=c.id),fixture as materialized(select series.n,gen_random_uuid() as person_id,gen_random_uuid() as employment_id,c.id as company_id,c.department_id from generate_series(1,1000) series(n) join numbered c on c.n=((series.n-1)%70)+1),people as(insert into person(id,tenant_id,full_name,primary_email) select person_id,${b.tenantId}::uuid,'Tracker employee '||lpad(n::text,4,'0'),'scale-'||n||'@tracker.test' from fixture),employments as(insert into employment(id,tenant_id,person_id,company_id,hired_on,employee_code,contract_start_date,contract_end_date,contract_number) select employment_id,${b.tenantId}::uuid,person_id,company_id,${start}::date,'SCALE-'||n,${start}::date,${end}::date,4 from fixture) insert into assignment(id,tenant_id,employment_id,company_id,department_id,employment_type,valid_from) select gen_random_uuid(),${b.tenantId}::uuid,employment_id,company_id,department_id,'contract',${start}::date from fixture`);
   admin={...await entitledCtx(b),personId:admin.personId};
   const first=await contractSharedTracker(admin,{limit:100}),second=await contractSharedTracker(admin,{limit:100,offset:100}),last=await contractSharedTracker(admin,{limit:100,offset:900});
-  expect(first.total).toBe(1000);expect(first.rows).toHaveLength(100);expect(first.hasMore).toBe(true);expect(last.hasMore).toBe(false);
+  expect(first.summary).toEqual({total:1000,upcoming:1000,decision:0,inProgress:0,closed:0,attention:0});expect((await contractSharedTracker(admin,{attention:true})).total).toBe(0);expect(first.total).toBe(1000);expect(first.rows).toHaveLength(100);expect(first.hasMore).toBe(true);expect(last.hasMore).toBe(false);
   expect(first.companies).toHaveLength(70);expect(first.businessGroups).toHaveLength(70);
   expect(first.rows.map(row=>row.employeeName)).toEqual(Array.from({length:100},(_,i)=>'Tracker employee '+String(i+1).padStart(4,'0')));
   expect(new Set([...first.rows,...second.rows].map(row=>row.id)).size).toBe(200);expect(first.rows.every(row=>row.caseId===null&&row.contractNumber===4)).toBe(true);

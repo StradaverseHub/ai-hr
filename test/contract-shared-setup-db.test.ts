@@ -47,8 +47,8 @@ describe('Mapped Contract starting setup on the existing human kernel',()=>{
  });
  it('installs the reviewed definitions with an actual creator, and retries without overwriting custom changes or applying HR effects',async()=>{
   const {jobId}=await startContractSharedSetup(admin,mapping);const finished=await finish(jobId);
-  expect(finished.created_by).toBe(admin.userId);expect(finished.steps_done).toBe(22);
-  const state=await contractSharedSetup(admin,b.companyId);expect(state.installed).toBe(true);expect(state.missing).toEqual([]);
+  expect(finished.created_by).toBe(admin.userId);expect(finished.steps_done).toBe(24);
+  const state=await contractSharedSetup(admin,b.companyId);expect(state.installed).toBe(true);expect(state.accessReady).toBe(false);expect(state.missing.join(' ')).toContain('explicitly assign');
   const documents=await listAutomationDocumentTemplates(admin,'contract_staff');expect(documents).toHaveLength(5);
   const workflows=await listAutomationWorkflows(admin,{module:'contract_staff'});expect(workflows).toHaveLength(12);
   const renew=workflows.find(item=>item.workflow.id===contractDefaultId(204))!;
