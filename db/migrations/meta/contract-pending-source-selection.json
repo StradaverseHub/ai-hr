@@ -124,7 +124,7 @@
     "6008_contract_posting_application_metadata": "9477f8b0f029ba475830d8174353b77e47ced60d0b7393a8d11d8df82092f422",
     "6009_contract_posting_reconciliation_and_authority": "d0ce6a32a101e8da9f87dc85da2a64158b720505cc36504a090cb9faf340b472",
     "6010_contract_email_document_hr_notices": "71afc04f48fda2449becba50bd156b698a0f5ce5d2f0f4765c4211904d9389c4",
-    "6012_contract_shared_navigation_access": "6ab7c4d51c3beb606a1dddcf88bde26281556a5b93e179148db04afa88e7d461"
+    "6012_contract_shared_navigation_access": "8da44c0a2a09dd09681ce5b839f3ed1b4c46f218e1ad76ef432d9fa6c98aa146"
   },
   "forwardSourceReview": {
     "emailV4Source": "e73af9cec",
@@ -148,7 +148,7 @@
     "navigationBoundary": "Reviewed navigation hints only: one canonical shared tracker subject cohort, one extracted private configuration company owner, distinct Automation capability. Native page/action guards and legacy role owners unchanged; no task-only tracker grant. A fifth postings boolean reuses only the existing set-based Contract posting scope, independent of Case View, for the canonical Personnel postings leaf.",
     "navigationRegistration": {
       "tag": "6012_contract_shared_navigation_access",
-      "sqlSha256": "6ab7c4d51c3beb606a1dddcf88bde26281556a5b93e179148db04afa88e7d461",
+      "sqlSha256": "8da44c0a2a09dd09681ce5b839f3ed1b4c46f218e1ad76ef432d9fa6c98aa146",
       "provisionalIdx": 5412,
       "provisionalWhen": 1794841006012,
       "status": "Source registration preparation only; not SQL execution, test approval, installation or release.",
@@ -353,5 +353,17 @@
     "originalSQL": "b2174ca4b5acd7d433a6a1407778d67c8cbfd4a307b1a8d45e4dbbc62c43834d",
     "selectedSQL": "6ab7c4d51c3beb606a1dddcf88bde26281556a5b93e179148db04afa88e7d461",
     "reason": "Never-applied 6012 gains a fifth navigation-only posting-scope boolean; existing native source and command guards, function identities and ACL remain unchanged. No runtime or release claim."
+  },
+  "uninstalledNavigationOwnerExtraction": {
+    "originalSQL": "6ab7c4d51c3beb606a1dddcf88bde26281556a5b93e179148db04afa88e7d461",
+    "selectedSQL": "8da44c0a2a09dd09681ce5b839f3ed1b4c46f218e1ad76ef432d9fa6c98aa146",
+    "canonical5818BodySha256": "2205d31871034e13ef046ed9f22922a1bbc26a2f54b42e3a634a4bb5643d53f6",
+    "reason": "Inactive owner-preserving extraction: same tracker OID and rights; private company and managed-report owners shared by tracker and navigation. Explicit Case View may enter an empty tracker; automatic Superior requires an actual eligible report/history. No permission grant or runtime claim.",
+    "hostedProof": "Authored only: disposable native preparation, installed-owner projection, literal ai_hr_owner read-only measurement with real actor contexts; frozen5818 row-equivalence, 70 companies/1000 employments and manager with one report, cold/warm app timings and native nested-source plans. No local execution.",
+    "hostedEvidenceFiles": [
+      "contract-navigation-owner-timings.json",
+      "contract-navigation-owner-plans.json"
+    ],
+    "hostedEvidenceStatus": "Authored and unexecuted. Partial running evidence is retained outside the disposable database bootstrap folder; complete status is emitted only after identity, rights equivalence and no-business-write assertions pass."
   }
 }

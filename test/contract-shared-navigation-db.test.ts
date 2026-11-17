@@ -92,7 +92,9 @@ it('uses the same bounded visibility and configuration company owner for 1,000 e
 it('does not invoke a generic case, document or directory fallback from the new native hint',async()=>{
  const[row]=await owner.db.execute<{body:string}>(sql`select prosrc as body from pg_proc where oid='app.contract_shared_navigation_access()'::regprocedure`);
  for(const forbidden of ['app.contract_navigation_access(', 'app.contract_case_access(', 'app.contract_document_access(', 'app.contract_shared_configuration_choices('])expect(row.body).not.toContain(forbidden);
- expect(row.body.match(/app\.contract_shared_tracker_subjects\(\)/g)).toHaveLength(1);
+ expect(row.body).not.toContain('app.contract_shared_tracker_subjects(');
+ expect(row.body.match(/app\.contract_shared_tracker_company_scope\(\)/g)).toHaveLength(1);
+ expect(row.body.match(/app\.contract_shared_tracker_managed_subjects\(\)/g)).toHaveLength(1);
 });
 
 it('discovers real group-only Personnel postings without Case View and never infers posting authority from a tracker role',async()=>{
