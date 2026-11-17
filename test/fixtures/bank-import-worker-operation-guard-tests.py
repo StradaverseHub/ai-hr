@@ -154,7 +154,7 @@ class KernelTests(unittest.TestCase):
 
 class BoundaryTests(unittest.TestCase):
     def obj(self):
-        o=guard.GuardedInvocation.__new__(guard.GuardedInvocation);o.base=SimpleNamespace(check=check);o.install_fd=9;o.events=[]
+        o=guard.GuardedInvocation.__new__(guard.GuardedInvocation);o.base=SimpleNamespace(check=check);o.install_fd=9;o.events=[];o.stage='activate-ci-runtime'
         o.verify=lambda:o.events.append('SH');o.verify_install=lambda:o.events.append('EX');o.a={'issuedAt':'start','expiresAt':'end','dotenvSha256':'web'}
         o.ci=SimpleNamespace(epoch=lambda s:0 if s=='start'else 1000,SOURCE=Path('/web'),sha=lambda b:b.decode())
         o.identity={'worker_env_sha256':'worker'};o.base.ENV=Path('/worker');o.base.read_bounded=lambda path,limit:b'web'if str(path).startswith('/web')else b'worker'
@@ -170,6 +170,19 @@ class BoundaryTests(unittest.TestCase):
             with patch.object(guard.time,'time',return_value=1001 if failure=='expiry'else 10):
                 with self.assertRaises(ValueError):o.file_mutation();writes.append('success')
             self.assertEqual(writes,[])
+    def test_guarded_drain_uses_native_owner_environment_and_readiness_before_mutation(self):
+        o=self.obj();o.stage='drain';o.base.NODE=Path('/node');o.owner=object();o.environment={'controlled':'yes'};o.lock=SimpleNamespace(fd=4)
+        o.a.update(environmentSha256='canonical',readiness={'required':'1','waitSeconds':None})
+        result={'kind':'CI_WORKER_DRAIN_ENVIRONMENT_POLICY_V1','environmentSha256':'canonical','readiness':o.a['readiness']}
+        seen=[]
+        def child(argv,owner,environment,**options):
+            seen.append(argv);self.assertIs(owner,o.owner);self.assertEqual(environment,o.environment);self.assertEqual(options['operation_fd'],4);return result
+        o.ci.child=child
+        with patch.object(guard.time,'time',return_value=10):o.file_mutation()
+        self.assertEqual(seen[0],['/node','--env-file=.env.production','--input-type=module','-e',guard.DRAIN_ENVIRONMENT_PROBE])
+        result['environmentSha256']='changed-service-config'
+        with patch.object(guard.time,'time',return_value=10):
+            with self.assertRaisesRegex(ValueError,'environment/readiness differs'):o.file_mutation()
     def test_failure_only_requires_owned_start_without_fresh_lease_pass(self):
         o=self.obj();o.observer=SimpleNamespace(quarantine_fence=lambda:o.events.append('own-start'))
         o.native_lease=lambda:(_ for _ in()).throw(AssertionError('must not claim failed lease PASS'))
