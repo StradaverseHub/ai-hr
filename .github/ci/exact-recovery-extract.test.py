@@ -28,6 +28,15 @@ class ExactExtraction(unittest.TestCase):
     def test_selected_source_diagnostic(self):
         value={'kind':'CLAIMS_APPROVAL_QUEUE_SCALE_V1'}
         self.assertEqual(self.invoke(True,files=['test/claims-approval-queue-scale.test.ts'],extra=[('claims-approval-queue-100k.json',json.dumps(value))]),(0,['db.vitest.json','focused.json']))
+    def test_label_diagnostics_stay_in_original_zip(self):
+        extra=[('system-label-browser-results.json',json.dumps({'source':'a'*40})),('system-label-browser-resources.json','{}'),('system-label-browser-server.log','log'),('system-label-dev-server-heap/heap-123.json','{}'),('system-label-exchange-zh-mobile.png',b'PNG'),('system-label-profile-options-empty.png',b'PNG')]
+        self.assertEqual(self.invoke(True,files=['test/system-label-exchange-browser.test.ts'],extra=extra),(0,['db.vitest.json','focused.json']))
+    def test_label_undeclared_refused(self):self.assertNotEqual(self.invoke(True,extra=[('system-label-browser-server.log','log')])[0],0)
+    def test_label_nodb_refused(self):self.assertNotEqual(self.invoke(files=['test/system-label-exchange-browser.test.ts'],extra=[('system-label-browser-server.log','log')])[0],0)
+    def test_label_source_refused(self):self.assertNotEqual(self.invoke(True,files=['test/system-label-exchange-browser.test.ts'],extra=[('system-label-browser-results.json',json.dumps({'source':'f'*40}))])[0],0)
+    def test_label_json_bound(self):self.assertNotEqual(self.invoke(True,files=['test/system-label-exchange-browser.test.ts'],extra=[('system-label-browser-resources.json','x'*65537)])[0],0)
+    def test_label_unknown_locale_refused(self):self.assertNotEqual(self.invoke(True,files=['test/system-label-exchange-browser.test.ts'],extra=[('system-label-exchange-fr-mobile.png',b'PNG')])[0],0)
+    def test_label_traversal_refused(self):self.assertNotEqual(self.invoke(True,files=['test/system-label-exchange-browser.test.ts'],extra=[('system-label-dev-server-heap/../heap-123.json','{}')])[0],0)
     def test_undeclared_source_diagnostic(self):self.assertNotEqual(self.invoke(True,extra=[('claims-approval-queue-100k.json','{}')])[0],0)
     def test_source_diagnostic_wrong_kind(self):self.assertNotEqual(self.invoke(True,files=['test/personnel-page-projection.test.ts'],extra=[('personnel-page-projection.json','{}')])[0],0)
     def test_nodb(self):self.assertEqual(self.invoke(),(0,['focused.json','nodb.vitest.json']))
