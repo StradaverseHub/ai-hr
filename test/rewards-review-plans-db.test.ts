@@ -6,6 +6,7 @@ import {adminCtx,createAppUser,setModule,owner,migrateTestDb,resetDb,seedBase,cl
 import {withTenant,type SessionContext} from '../db/client';
 import {businessUnit,company,employment,person,roleAssignment} from '../db/schema';
 import {setupChecker,setupCompanyStructureFixture,setupRewardLibrariesFixture,confirmFixturePat} from './rewards-setup-fixture';
+import {changeCompanyRegistrationClassification} from '../core/company-registration-readiness';
 import {defaultPolicy} from '../packs/rewards/model';
 import {rewardReviewPlans,previewRewardYear,createRewardYear,previewRewardPlanGrid,saveRewardPlanGrid,rewardPlanBulkEdits,enqueueRewardPlanReviews,type RewardPlanGridEdit} from '../packs/rewards/review-plans';
 import {rewardPlanReviewsJobHandler} from '../packs/rewards/review-plans-job';
@@ -79,4 +80,17 @@ it('consumes company-change nominations once and refuses a forged native rebind 
  const events=await owner.db.execute<{payload:{companyId:string;year:number}}>(sql`select payload from domain_event where tenant_id=${b.tenantId}::uuid and event_type='reward-plan.company-added'`);expect(events.map(e=>[e.payload.companyId,e.payload.year])).toEqual([[next.id,2026]]);
  await withTenant(adminCtx(b),async tx=>{await tx.execute(sql`select set_config('app.reward_review_plan_writing',txid_current()::text,true)`);const[r]=await tx.execute<{allowed:boolean}>(sql`select app.reward_review_plan_writing() as allowed`);expect(r.allowed).toBe(false);});
  await expect(withTenant(adminCtx(b),tx=>tx.execute(sql`insert into app.reward_review_plan_write_lease values(app.current_tenant_id(),txid_current())`))).rejects.toThrow();
+},90_000);
+
+it('captures an existing mapped company becoming eligible and creates its open-year draft from that exact committed event',async()=>{
+ await changeCompanyRegistrationClassification(adminCtx(b),{companyId:b.companyId,entityKind:'legal_entity',isTestEntity:true,expectedRevision:0});
+ const input={year:2026,settings},preview=await previewRewardYear(adminCtx(b),input);expect(await createRewardYear(adminCtx(b),input,preview.digest,reason)).toEqual({year:2026,created:0});
+ for(let i=0;i<4;i++)await owner.client.begin(tx=>tx`select app.reward_review_plan_company_tick()`);
+ expect((await rewardReviewPlans(adminCtx(b),{year:2026})).rows).toEqual([]);
+ await changeCompanyRegistrationClassification(adminCtx(b),{companyId:b.companyId,entityKind:'legal_entity',isTestEntity:false,expectedRevision:1});
+ const[event]=await owner.db.execute<{id:string}>(sql`select id from domain_event where tenant_id=${b.tenantId}::uuid and event_type='company.registration-classification.changed' and payload->'after'->>'isTestEntity'='false' order by sequence desc limit 1`);
+ expect(event).toBeTruthy();expect(await owner.db.execute(sql`select event_id from app.reward_review_plan_company_outbox where event_id=${event.id}::uuid`)).toHaveLength(1);
+ for(let i=0;i<3;i++)await owner.client.begin(tx=>tx`select app.reward_review_plan_company_tick()`);
+ const view=await rewardReviewPlans(adminCtx(b),{year:2026});expect(view.rows.map(r=>[r.companyId,r.status])).toEqual([[b.companyId,'draft']]);
+ const notices=await owner.db.execute<{payload:{sourceEventId:string;companyId:string;year:number}}>(sql`select payload from domain_event where tenant_id=${b.tenantId}::uuid and event_type='reward-plan.company-added'`);expect(notices.map(n=>[n.payload.sourceEventId,n.payload.companyId,n.payload.year])).toEqual([[event.id,b.companyId,2026]]);
 },90_000);
