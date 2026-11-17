@@ -2,6 +2,7 @@
 import {sql} from 'drizzle-orm';
 import {z} from 'zod';
 import type {BulkJobHandler,BulkJobDiscardUnit} from './bulk-job-worker';
+import {BulkJobWaiting} from './bulk-job-worker';
 import type {BulkJobRow} from './bulk-job';
 import {reservedSqlExecutor} from '../db/sql-executor';
 import {advanceContractSharedAutomationOwner} from './contract-shared-automation-job';
@@ -16,7 +17,7 @@ export const contractScheduleJobHandler:BulkJobHandler<never>={kind:'contract_sc
  systemOwner:{async prepare(job,unit){z.object({day:z.iso.date()}).strict().parse(job.input);await unit.ownerTx(async()=>undefined);return initial();},async finalize(job,unit){return scheduleUnit(job,unit);}}
 };
 export const contractScheduledAutomationJobHandler:BulkJobHandler<never>={kind:'contract_scheduled_automation',mode:'per-step',finalizeOwner:true,prepare:forbidden,applyStepTx:forbidden,quietNotice:()=>true,
- systemOwner:{async prepare(job,unit){z.object({eventId:z.uuid()}).strict().parse(job.input);await unit.ownerTx(async()=>undefined);return {activeEventId:null,workflowCursor:0};},async finalize(job,unit){await unit.verifySeal();const done=await unit.ownerTx(owner=>advanceContractSharedAutomationOwner(owner,{tenantId:job.tenant_id,userId:undefined,roles:[]},job,unit,true));return done?{result:{processed:true,actorType:'system'}}:'more';}}
+ systemOwner:{async prepare(job,unit){z.object({eventId:z.uuid()}).strict().parse(job.input);await unit.ownerTx(async()=>undefined);return {activeEventId:null,workflowCursor:0};},async finalize(job,unit){await unit.verifySeal();const done=await unit.ownerTx(owner=>advanceContractSharedAutomationOwner(owner,{tenantId:job.tenant_id,userId:undefined,roles:[]},job,unit,true));if(done==='waiting')throw new BulkJobWaiting('Waiting for the pinned email prerequisites.');return done?{result:{processed:true,actorType:'system'}}:'more';}}
 };
 async function scheduleUnit(job:BulkJobRow,unit:BulkJobDiscardUnit){
  await unit.verifySeal();const plan=progress.parse(job.plan),day=z.object({day:z.iso.date()}).parse(job.input).day;

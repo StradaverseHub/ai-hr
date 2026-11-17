@@ -6821,6 +6821,13 @@
       "breakpoints": true
     },
     {
+      "idx": 5360,
+      "version": "7",
+      "when": 1794841005960,
+      "tag": "5960_contract_email_prerequisite_recovery",
+      "breakpoints": true
+    },
+    {
       "idx": 5361,
       "version": "7",
       "when": 1794841005961,
