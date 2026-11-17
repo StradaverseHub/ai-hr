@@ -8,6 +8,7 @@ import pwd
 from pathlib import Path
 import select
 import signal
+import stat
 import subprocess
 import sys
 import tempfile
