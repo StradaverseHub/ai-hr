@@ -946,3 +946,22 @@ pending status is changed. The agent manifest is checked/regenerated last. Origi
 evidence and its unaffected passing scopes remain bound to that source. This checkpoint still
 requires hosted recovery, actual UI/PDF completion, accepted upstream integration and the final
 authenticated release process. It grants no staging admission or production/package authority.
+
+### Rendered routing-context correction — 17 November 2026
+
+The first current built screens exposed stale one-person wording for Offboarding team letter steps
+and an unused HR-signature fallback selector beside an explicit routing. Off-Letter-only context
+copy now describes the initial assignee rule and nonlocking eligible membership; the edited
+version’s routing hides its unused fallback control without mutating the legacy value. Other
+modules keep their existing labels and behavior. No engine, proposal, permission or provider
+payload change. A browser-only geometry collector separately corrects native top-layer clipping
+measurement, retaining thresholds and five real-browser qualification cases distinct from app captures.
+
+Under the existing explicit same-purpose binding approval, only the same29 approved sourceDigest
+values change from `e4e9247c94224549b19a5d278f8932af8b83972c795545a1fa80bdfa40902b73` to
+`f82fab1a3377ebe48b0cc958e0e5ee174d6697e83ae18a563a74de547ffa1d9f` (1644 source files).
+Human metadata and pending statuses stay unchanged; the derived agent manifest is regenerated last.
+Current4a21 whole compiler and production build passed, but only six actual views were captured
+before the corrected measurement failure. No PDF or complete visual PASS is claimed. Hosted
+affected checks, all57 actual states, final visual review, accepted upstream integration, migration
+reallocation and authenticated release verification remain required.
