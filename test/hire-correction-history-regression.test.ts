@@ -7,6 +7,7 @@ import {hireEmployee} from '../core/org';
 import {correctHireDetails} from '../core/hire-correction';
 import {informationCorrectionHistory} from '../core/information-correction';
 import {createMovementEvent,movementDetail,movementHistory} from '../core/movement';
+import {correctionAuditLabelsTx} from '../core/information-correction-audit';
 import {recordHistoryMovementTx} from '../core/movement-history';
 let b:Base,id:string;
 beforeAll(migrateTestDb);
@@ -15,6 +16,15 @@ afterAll(closeAll);
 const correct=(hireInformation:Parameters<typeof correctHireDetails>[1]['hireInformation'])=>correctHireDetails(adminCtx(b),{employmentId:id,changes:{},hireInformation,reason:'Correct original fictional hire facts'});
 
 describe('saved hire corrections agree across readers',()=>{
+ it('resolves a full audit page in sets while preserving captured labels and explicit nulls',async()=>{
+  const companies=await owner.db.insert(s.company).values(Array.from({length:70},(_,n)=>({tenantId:b.tenantId,legalName:'Fictional Audit Employer '+n}))).returning();
+  const records=Array.from({length:100},(_,n)=>({payload:{fields:['companyId','gradeId','probationValue'],before:{companyId:companies[n%70].id,gradeId:null,probationValue:3},after:{companyId:companies[(n+1)%70].id,gradeId:null,probationValue:4},...(n===0?{beforeLabels:{companyId:'Captured former name',gradeId:null},afterLabels:{companyId:null}}:{})}}));
+  const rows=await withTenant(adminCtx(b),tx=>correctionAuditLabelsTx(tx,b.tenantId,records));
+  expect(rows).toHaveLength(100);
+  expect(rows[0].payload).toMatchObject({beforeLabels:{companyId:'Captured former name',gradeId:null,probationValue:'3'},afterLabels:{companyId:null,gradeId:null,probationValue:'4'}});
+  for(let n=1;n<100;n++)expect(rows[n].payload).toMatchObject({beforeLabels:{companyId:companies[n%70].legalName},afterLabels:{companyId:companies[(n+1)%70].legalName}});
+  expect(records[1].payload).not.toHaveProperty('beforeLabels');
+ });
  it('shows earlier and later corrected Group Join Dates on the Hired row and resolves old audit labels',async()=>{
   await correct({hiredOn:'2025-12-01',joinDate:'2025-12-01'});
   let hire=(await movementHistory(adminCtx(b),id)).find(row=>row.kind==='hired')!;
@@ -47,7 +57,9 @@ describe('saved hire corrections agree across readers',()=>{
   await correct({gradeId:original.id});
   const rows=await movementHistory(adminCtx(b),id),hire=rows.find(row=>row.kind==='hired')!,promotion=rows.find(row=>row.kind==='promotion')!;
   expect((await movementDetail(adminCtx(b),id,hire.id))?.after.grade).toBe(original.name);
-  expect((await movementDetail(adminCtx(b),id,promotion.id))?.after.grade).toBe(later.name);
+  const promotionDetail=await movementDetail(adminCtx(b),id,promotion.id);
+  expect(promotionDetail?.after.grade).toBe(later.name);
+  expect(promotionDetail?.before?.grade).toBe(original.name);
   expect((await informationCorrectionHistory(adminCtx(b),id))[0].payload).toMatchObject({afterLabels:{gradeId:original.name}});
  });
  it('retains original contract type and end date without replacing the later type',async()=>{
@@ -57,6 +69,8 @@ describe('saved hire corrections agree across readers',()=>{
   const detail=await movementDetail(adminCtx(b),id,hire.id);
   expect(detail?.after.employmentType).toBe('contract');
   expect(detail?.after.informationEvidence?.contractEndDate.value).toBe('2026-02-28');
-  expect((await movementDetail(adminCtx(b),id,later.id))?.after.employmentType).toBe('part_time');
+  const laterDetail=await movementDetail(adminCtx(b),id,later.id);
+  expect(laterDetail?.after.employmentType).toBe('part_time');
+  expect(laterDetail?.before?.employmentType).toBe('contract');
  });
 });
