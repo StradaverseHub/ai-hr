@@ -44059,6 +44059,15 @@
     },
     "pollRetry": "Kemajuan tidak dapat dibaca. Semakan status dicuba semula; penciptaan semakan diteruskan di latar belakang.",
     "newCompanyTitle": "Syarikat baharu ditambah ke Pelan Semakan",
-    "newCompanyBody": "Pilih struktur gaji dan matriks bonus untuk syarikat baharu."
+    "newCompanyBody": "Pilih struktur gaji dan matriks bonus untuk syarikat baharu.",
+    "leftOutReasons": {
+      "archived": "Syarikat diarkibkan",
+      "currency": "Bukan dibayar dalam MYR",
+      "grouping": "Rekod pengelompokan",
+      "test": "Syarikat ujian atau demo",
+      "test_demo": "Syarikat ujian atau demo",
+      "alias": "Alias syarikat lain",
+      "structure": "Unit Perniagaan belum disahkan"
+    }
   }
 }

@@ -44059,6 +44059,15 @@
     },
     "pollRetry": "Không đọc được tiến độ. Đang kiểm tra lại trạng thái; việc tạo đánh giá vẫn tiếp tục ở nền.",
     "newCompanyTitle": "Đã thêm công ty mới vào Kế hoạch đánh giá",
-    "newCompanyBody": "Chọn cơ cấu lương và ma trận thưởng cho công ty mới."
+    "newCompanyBody": "Chọn cơ cấu lương và ma trận thưởng cho công ty mới.",
+    "leftOutReasons": {
+      "archived": "Công ty đã lưu trữ",
+      "currency": "Không thanh toán bằng MYR",
+      "grouping": "Bản ghi nhóm",
+      "test": "Công ty thử nghiệm hoặc minh họa",
+      "test_demo": "Công ty thử nghiệm hoặc minh họa",
+      "alias": "Bí danh của công ty khác",
+      "structure": "Chưa xác nhận đơn vị kinh doanh"
+    }
   }
 }
