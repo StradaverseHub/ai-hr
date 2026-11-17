@@ -8,11 +8,18 @@ import {fixture,finish,letters,saveAnswers,actForm} from './helpers/contract-doc
 import {saveAutomationEmailTemplate,saveAutomationDocumentTemplate,saveAutomationWorkflow} from '../packs/automation/service';
 import {previewContractSharedDecision,submitContractSharedDecision,contractAutomationJobHandler,readContractSharedLetter} from '../packs/contracts/service';
 import {runBulkJobTick} from '../core/bulk-job-worker';
+import {v9Workspace,v9SaveConfig} from '../packs/lifecycle/service';
 const origin='https://contract-recovery-fixture.invalid';
 beforeAll(migrateTestDb);afterAll(closeAll);
 
-it('uses actual first-prepared Form, HR completion and immutable template to retry only its email before original approval tail',async()=>{
+async function actualRecovery(callbackChange?:'archive'|'relink'){
  const f=await fixture('renew'),employeeId=await createAppUser(f.b.tenantId,f.employee.personId,'employee');
+ let callbackActor=f.admin;
+ if(callbackChange){
+  const [person]=await owner.db.execute<{id:string}>(sql`insert into person(tenant_id,full_name,primary_email) values(${f.b.tenantId}::uuid,'Fictional independent HR reviewer',${randomUUID()+'@recovery.test'}) returning id`);
+  const userId=await createAppUser(f.b.tenantId,person.id,'hr_admin');callbackActor={...f.admin,userId,personId:person.id};
+  const config=(await v9Workspace(f.admin)).config!;await v9SaveConfig(f.admin,config.revision,{...config,groups:config.groups.map(group=>group.id===f.groupId?{...group,members:[...group.members,userId]}:group)});
+ }
  for(const userId of[f.admin.userId!,employeeId])await owner.db.execute(sql`insert into app_external_identity(issuer,subject,app_user_id) values(${origin+'/auth/'+f.b.tenantId},${randomUUID()},${userId}::uuid)`);
  const documentId=f.workflow.steps[0].params.letterTemplateId as string;
  await saveAutomationDocumentTemplate(f.admin,{template:{id:documentId,module:'contract_staff',name:'Fictional recovery Form',description:'Actual native HR evidence',rules:{},blocks:[{id:'intro',type:'text',text:'For {Full name}.',section:''},{id:'fields',type:'fields',text:'',section:'main'}],fields:[{id:'hrChoice',label:'HR decision',type:'select',owner:'hr',pmKey:null,required:true,sensitive:false,options:['Yes','No'],section:'main',when:null}],routing:[{id:'hr-review',order:1,action:'review',owner:true,who:{kind:'group',groupId:f.groupId}},{id:'hr-sign',order:2,action:'sign',owner:false,who:{kind:'group',groupId:f.groupId}},{id:'employee-sign',order:3,action:'sign',owner:false,who:{kind:'employee'}}]},expectedRevision:1,publish:true,retired:false});
@@ -29,12 +36,12 @@ it('uses actual first-prepared Form, HR completion and immutable template to ret
    const [child]=await native<{id:string;revision:number;run:string;step:string}[]>`select id,decision_revision as revision,data->>'runId' as run,data->>'stepId' as step from contract_shared_event where tenant_id=${f.b.tenantId}::uuid and job_id=${job.id}::uuid and trigger_event='emailDocumentReady' and processed_at is null order by created_at,id limit 1`;
    if(child&&!checkedHeldGuards){
     await native`select set_config('app.contract_event',${child.id},true)`;
-    const [start]=await native<{value:{ready:boolean}}[]>`select app.contract_shared_email_prerequisite_begin(${child.id}::uuid) as value`;expect(start.value.ready).toBe(true);
+    const [start]=await native<{value:{ready:boolean}}[]>`select app.contract_shared_email_prerequisite_begin(${child.id}::uuid) as value`;expect(start.value.ready).toBe(!callbackChange);
     for(const type of['sendEmail','notify','generateDocument','requestApproval','createPosting','startOffboarding']){
      const [held]=await native<{current:boolean;cached:boolean}[]>`select app.contract_shared_effect_held(${f.caseId}::uuid,${child.run}::uuid,${child.step},${type}) as current,app.contract_shared_effect_held_before_email_recovery(${f.caseId}::uuid,${child.run}::uuid,${child.step},${type}) as cached`;
-     expect(held).toEqual({current:type==='sendEmail',cached:type==='sendEmail'});
+     expect(held).toEqual({current:!callbackChange&&type==='sendEmail',cached:!callbackChange&&type==='sendEmail'});
     }
-    const [worker]=await native<{current:boolean;cached:boolean}[]>`select app.contract_shared_worker_event_held(${f.caseId}::uuid,${child.revision}) as current,app.contract_shared_worker_event_held_before_email_recovery(${f.caseId}::uuid,${child.revision}) as cached`;expect(worker).toEqual({current:true,cached:true});checkedHeldGuards=true;
+    const [worker]=await native<{current:boolean;cached:boolean}[]>`select app.contract_shared_worker_event_held(${f.caseId}::uuid,${child.revision}) as current,app.contract_shared_worker_event_held_before_email_recovery(${f.caseId}::uuid,${child.revision}) as cached`;expect(worker).toEqual({current:!callbackChange,cached:!callbackChange});checkedHeldGuards=true;
    }
    return callback(native);
   })});
@@ -45,16 +52,27 @@ it('uses actual first-prepared Form, HR completion and immutable template to ret
  expect(pin).toBeTruthy();expect(pin!.revision).toBe(1);const [letter]=await letters(f);expect(letter.purpose).toBe('email');
  const [job]=await owner.db.execute<{state:string}>(sql`select state from bulk_job where id=${accepted.jobId}::uuid`);expect(job.state).toBe('finalizing');
  expect(await owner.db.execute(sql`select id from automation_email_delivery where tenant_id=${f.b.tenantId}::uuid`)).toHaveLength(0);
- await saveAnswers(f.admin,letter.id,{hrChoice:'Yes'});await actForm(f.admin,letter.id,'reviewed');
+ await saveAnswers(callbackActor,letter.id,{hrChoice:'Yes'});await actForm(callbackActor,letter.id,'reviewed');
  expect(await owner.db.execute(sql`select event_id from app.contract_email_prerequisite_resume where tenant_id=${f.b.tenantId}::uuid`)).toHaveLength(0);
  await saveAutomationEmailTemplate(f.admin,{template:{...email,active:false,subject:'Later wording',body:'Later body',cc:[],documentIds:[]},expectedRevision:1,retired:false,reason:'The waiting email keeps its actual immutable version'});
- await actForm(f.admin,letter.id,'signed');expect((await readContractSharedLetter({...f.admin,userId:employeeId,personId:f.employee.personId,roles:['employee'],grants:undefined},letter.id)).pendingAction?.kind).toBe('sign');
+ await actForm(callbackActor,letter.id,'signed');expect((await readContractSharedLetter({...f.admin,userId:employeeId,personId:f.employee.personId,roles:['employee'],grants:undefined},letter.id)).pendingAction?.kind).toBe('sign');
  const receipts=await owner.db.execute<{eventId:string;actor:string;jobId:string}>(sql`select r.event_id as "eventId",e.actor_user_id as actor,e.job_id as "jobId" from app.contract_email_prerequisite_resume r join contract_shared_event e on e.tenant_id=r.tenant_id and e.id=r.event_id where r.tenant_id=${f.b.tenantId}::uuid`);
- expect(receipts).toHaveLength(1);expect(receipts[0]).toMatchObject({actor:f.admin.userId,jobId:accepted.jobId});
+ expect(receipts).toHaveLength(1);expect(receipts[0]).toMatchObject({actor:callbackActor.userId,jobId:accepted.jobId});
  await expect(withTenant(f.admin,tx=>tx.execute(sql`select app.contract_shared_email_prerequisite_signal(${pin!.id}::uuid)`))).rejects.toThrow();
+ if(callbackChange==='archive')await owner.db.execute(sql`update app_user set archived_at=now() where tenant_id=${f.b.tenantId}::uuid and id=${callbackActor.userId}::uuid`);
+ if(callbackChange==='relink'){
+  const [replacement]=await owner.db.execute<{id:string}>(sql`insert into person(tenant_id,full_name,primary_email) values(${f.b.tenantId}::uuid,'Fictional replacement identity',${randomUUID()+'@recovery.test'}) returning id`);
+  await owner.db.execute(sql`update app_user set person_id=${replacement.id}::uuid where tenant_id=${f.b.tenantId}::uuid and id=${callbackActor.userId}::uuid`);
+ }
  // The durable wait uses the kernel's genuine not-before delay; no local admission/proof bypass.
  await new Promise(resolve=>setTimeout(resolve,2100));await tick();
  const deliveries=await owner.db.execute<{id:string;payload:{mail:{subject:string;body:string;cc:string[]}}}>(sql`select id,payload from automation_email_delivery where tenant_id=${f.b.tenantId}::uuid`);
+ if(callbackChange){
+  expect(checkedHeldGuards).toBe(true);expect(deliveries).toHaveLength(0);
+  expect(await owner.db.execute(sql`select id from contract_shared_approval where tenant_id=${f.b.tenantId}::uuid`)).toHaveLength(0);
+  const [waiting]=await owner.db.execute<{status:string;waiting:string}>(sql`select status,waiting_for as waiting from automation_run where tenant_id=${f.b.tenantId}::uuid and id=${pin!.runId}::uuid`);expect(waiting).toEqual({status:'waiting',waiting:pin!.id});
+  expect(await owner.db.execute(sql`select event_id from app.contract_email_prerequisite_resume where tenant_id=${f.b.tenantId}::uuid and completed_at is not null`)).toHaveLength(0);return;
+ }
  expect(deliveries).toHaveLength(1);expect(deliveries[0].payload.mail).toMatchObject({subject:'Original recovery for Fictional ending subject',body:'Original frozen wording',cc:[f.admin.userId]});
  expect(checkedHeldGuards).toBe(true);
  expect(await owner.db.execute(sql`select id from contract_shared_approval where tenant_id=${f.b.tenantId}::uuid`)).toHaveLength(0);
@@ -63,4 +81,8 @@ it('uses actual first-prepared Form, HR completion and immutable template to ret
  expect(await owner.db.execute(sql`select id from contract_shared_approval where tenant_id=${f.b.tenantId}::uuid`)).toHaveLength(1);
  expect(await letters(f)).toHaveLength(1);expect(await owner.db.execute(sql`select event_id from app.contract_email_prerequisite_resume where tenant_id=${f.b.tenantId}::uuid and completed_at is not null and continued_at is not null`)).toHaveLength(1);
  expect(await owner.db.execute(sql`select id from personnel_posting where tenant_id=${f.b.tenantId}::uuid`)).toHaveLength(0);
-},120_000);
+}
+// The hosted genuine kernel/Signing/Form path takes several seconds; allow migration/load headroom.
+it('uses actual first-prepared Form, HR completion and immutable template to retry only its email before original approval tail',()=>actualRecovery(),120_000);
+it('refuses an archived actual HR callback while the original workflow owner remains active',()=>actualRecovery('archive'),120_000);
+it('refuses a relinked actual HR callback while retaining the same pending email and untouched tail',()=>actualRecovery('relink'),120_000);

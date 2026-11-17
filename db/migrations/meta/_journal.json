@@ -6882,6 +6882,13 @@
       "when": 1794841005969,
       "tag": "5969_contract_email_recovery_callback_identity",
       "breakpoints": true
+    },
+    {
+      "idx": 5371,
+      "version": "7",
+      "when": 1794841005971,
+      "tag": "5971_contract_email_prerequisite_state_binding",
+      "breakpoints": true
     }
   ]
 }
