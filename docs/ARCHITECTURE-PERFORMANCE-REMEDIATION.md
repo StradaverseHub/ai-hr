@@ -56,7 +56,7 @@ Initial integration base: `59f06b08db014e01cd553a827c62ccf864d33f78`. Preserve t
 | AP-030 | P1 | Security Center Users directory | Open; implementation pending |
 | AP-031 | P2 | Probation Tracker CSV export | Open; implementation pending |
 | AP-032 | P2 | Attendance Overtime Pattern detail and version history | Open; implementation pending |
-| AP-033 | P1 | AI Centre Find Reviews metadata lists | Batch 2 SQL and native proof authored; hosted and staging qualification pending; both installation watermarks verified |
+| AP-033 | P1 | AI Centre Find Reviews metadata lists | Closed: seven legacy metadata list owners qualified and accepted on staging in the first batch; Own Leave AP-062 remains separate |
 | AP-034 | P1 | System Labels Grades and Profile Options grid saves | Open; implementation pending |
 | AP-035 | P2 | Grades and Profile Options partial grid saves | Open; implementation pending |
 | AP-036 | P2 | Attendance Individual Day historical formula results | Open; implementation pending |

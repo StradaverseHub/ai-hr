@@ -2,7 +2,7 @@ vi.mock('../components/derived-organisation-fields',()=>({useDerivedOrganisation
 import fs from 'node:fs';
 import path from 'node:path';
 import {afterEach,describe,it,expect,vi} from 'vitest';
-import {cleanup,fireEvent,render,screen,waitFor} from '@testing-library/react';
+import {cleanup,fireEvent,render,screen,waitFor,within} from '@testing-library/react';
 import {NextIntlClientProvider} from 'next-intl';
 import {MovementNewEvent,type MovementCurrentValues} from '../app/admin/personnel/[employmentId]/movement-new-event';
 import {PERSONNEL_FIELDS} from '../lib/personnel-field-registry';
@@ -67,10 +67,12 @@ it('uses remote manager choices with exact hidden submission and resets company-
   expect(posted()).toBe(managerB.id);
   const picker=container.querySelector('input[name="managerEmploymentId"]')!.parentElement!;
   fireEvent.click(picker.querySelector('button')!);await screen.findByRole('option',{name:'New destination manager'});fireEvent.mouseDown(screen.getByRole('option',{name:'New destination manager'}));expect(posted()).toBe('manager-new-b');
-  fireEvent.change(container.querySelector('select[name="companyId"]')!,{target:{value:'company-a'}});expect(posted()).toBe(managerA.id);
+  // The legacy select restores the saved `after` manager, not the pre-pending current manager.
+  fireEvent.change(container.querySelector('select[name="companyId"]')!,{target:{value:'company-a'}});expect(posted()).toBe(managerB.id);
   fireEvent.change(container.querySelector('select[name="companyId"]')!,{target:{value:'company-b'}});expect(posted()).toBe(managerB.id);
-  fireEvent.click(container.querySelector('input[name="managerEmploymentId"]')!.parentElement!.querySelector('button')!);
-  fireEvent.mouseDown(screen.getByRole('option',{name:messages.people.detail.movement.form.none}));expect(posted()).toBe('');
+  const changedPicker=container.querySelector('input[name="managerEmploymentId"]')!.parentElement!;
+  fireEvent.click(changedPicker.querySelector('button')!);
+  fireEvent.mouseDown(within(changedPicker).getByRole('option',{name:messages.people.detail.movement.form.none}));expect(posted()).toBe('');
   const data=await submit(container);expect(data.get('managerEmploymentId')).toBe('');
  }finally{vi.unstubAllGlobals();}
 });
