@@ -137,11 +137,12 @@ def enumerate_tree(root,excluded,approved,deadline):
                     require(same(original,os.fstat(opened)) and same(original,os.stat(name,dir_fd=fd,follow_symlinks=False)),'directory changed during enumeration')
                 finally:os.close(opened)
             elif stat.S_ISREG(original.st_mode):
-                opened=os.open(name,os.O_PATH|os.O_NOFOLLOW|os.O_CLOEXEC,dir_fd=fd)
-                try:
-                    require(same(original,os.fstat(opened)) and same(original,os.stat(name,dir_fd=fd,follow_symlinks=False)),'file named/descriptor identity differs')
-                    add(child,'file',original)
-                finally:os.close(opened)
+                # Metadata only: no regular-file object is read, hashed or executed here.
+                # Two fresh names anchored to the held parent plus full directory/two-walk
+                # brackets preserve finite observations. Content consumers still need FDs.
+                observed=os.stat(name,dir_fd=fd,follow_symlinks=False)
+                require(stat.S_ISREG(observed.st_mode) and same(original,observed),'regular metadata changed between anchored name observations')
+                add(child,'file',original)
             elif stat.S_ISLNK(original.st_mode):
                 opened=os.open(name,os.O_PATH|os.O_NOFOLLOW|os.O_CLOEXEC,dir_fd=fd)
                 try:
