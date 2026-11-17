@@ -166,6 +166,27 @@ describe('workflow and template validation', () => {
 });
 
 describe('one-off conversion and pre-release report', () => {
+  it('lists GBS People Ops, every Task owners use and modern Employee choices for information without flagging or converting them', () => {
+    const config = v9Defaults();
+    config.workflows = [
+      { ...notify(['peopleOps', 'address:private@fictional.invalid'], ['taskOwners', 'person:fictional-user', 'group:fictional-group'], 'off'), id: 'ops', name: 'GBS and owners' },
+      { ...notify(['employeePersonal'], ['employeeWork'], 'onb'), id: 'employee', name: 'Employee addresses' },
+      { ...notify(['taskOwners'], ['pbp'], 'off'), id: 'replace', name: 'Owners and removed PBP' },
+    ];
+    config.emails = [{ ...config.emails[0], cc: ['peopleOps', 'taskOwners'], active: false }];
+    const before = structuredClone(config);
+    expect(v9RecipientReport(config).map(row => [row.id, row.status, row.action, row.roles])).toEqual([
+      ['ops', 'published', 'information', ['peopleOps', 'taskOwners']],
+      ['employee', 'published', 'information', ['employeePersonal', 'employeeWork']],
+      ['replace', 'published', 'replace', ['taskOwners', 'pbp']],
+      [config.emails[0].id, 'inactive', 'information', ['peopleOps', 'taskOwners']],
+    ]);
+    expect(config).toEqual(before);
+    expect(JSON.stringify(v9RecipientReport(config))).not.toContain('private@fictional.invalid');
+    expect(JSON.stringify(v9RecipientReport(config))).not.toContain('fictional-user');
+    expect(JSON.stringify(v9RecipientReport(config))).not.toContain('fictional-group');
+    expect(convertV9Recipients(config).changes).toEqual([]);
+  });
   it('maps pre-start Employee choices to personal email, the rest to work email, flags them and reports removed roles', () => {
     const config = v9Defaults();
     config.workflows = [
@@ -173,7 +194,7 @@ describe('one-off conversion and pre-release report', () => {
       { ...notify(['employee'], ['employee', 'pbp'], 'off'), id: 'leaver', name: 'Leaver reminder' },
       { ...notify(['ta'], [], 'onb'), id: 'ta-only', name: 'TA note' },
     ];
-    config.emails[0].cc = ['employee'];
+    config.emails = [config.emails[0]]; config.emails[0].cc = ['employee'];
     const { config: converted, changes } = convertV9Recipients(config);
     expect(converted.workflows[0].steps[0]).toMatchObject({ to: ['employeePersonal'], cc: ['supervisor'], recipientReview: true });
     expect(converted.workflows[1].steps[0]).toMatchObject({ to: ['employeeWork'], cc: ['pbp'], recipientReview: true });

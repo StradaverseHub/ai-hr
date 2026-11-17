@@ -7,7 +7,7 @@ it('imports the complete supplied definitions without fixture users or cases', (
   expect(config.templates).toHaveLength(7); expect(config.emails).toHaveLength(8);
   expect(config.checklists).toHaveLength(6); expect(config.workflows).toHaveLength(15);
   expect(config.groups.every(g => g.members.length === 0)).toBe(true);
-  expect(config.workflows.filter(w => w.status === 'draft')).toHaveLength(2);
+  expect(config.workflows.filter(w => w.status === 'draft')).toHaveLength(4);
   expect(config.workflows.find(w => w.id === 'w4')?.steps.map(s => s.type)).toEqual(['doc', 'waitSign']);
   expect(config.emails.find(e => e.id === 'e3')?.cc).toEqual(['supervisor']);
   // Board 4a60b3ec: the ready-made recipients are pinned in test/lifecycle-v9-default-recipients.test.ts.

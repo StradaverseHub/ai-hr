@@ -54,7 +54,7 @@ export function maskEmail(email: string): string {
   return email[0] + '•••••' + email.slice(at);
 }
 
-type ConfigLike = { workflows: { id: string; name: string; module: Module; status: string; trigger: { event: string }; steps: ({ id: string; type: string; to?: Role | Role[]; cc?: Role[]; recipientReview?: true })[] }[]; emails: { id: string; name: string; module: Module; cc: Role[]; recipientReview?: true }[] };
+type ConfigLike = { workflows: { id: string; name: string; module: Module; status: string; trigger: { event: string }; steps: ({ id: string; type: string; to?: Role | Role[]; cc?: Role[]; recipientReview?: true })[] }[]; emails: { id: string; name: string; module: Module; active?: boolean; cc: Role[]; recipientReview?: true }[] };
 export type RecipientChange = { kind: 'workflow' | 'email'; id: string; name: string; stepId?: string; before: Role[]; after: Role[] };
 /** Employee choices that run before the join date reach the personal email; new joiners rarely have a work email yet. */
 export const preStartWorkflow = (workflow: { module: Module; trigger: { event: string } }) => workflow.module === 'onb' && ['beforeJoin', 'submitted'].includes(workflow.trigger.event);
@@ -80,16 +80,20 @@ export function convertV9Recipients<T extends ConfigLike>(config: T): { config: 
   }
   return { config: next, changes };
 }
-export type RecipientReportRow = { kind: 'workflow' | 'email'; id: string; name: string; module: Module; status?: string; stepId?: string; roles: Role[]; action: 'replace' | 'converted' | 'information' };
-/** Pre-release report: every workflow and template using PBP, Whoever started it or Employee; TA for information. */
+export type RecipientReportRow = { kind: 'workflow' | 'email'; id: string; name: string; module: Module; status?: string; stepId?: string; to?: Role[]; cc?: Role[]; roles: Role[]; action: 'replace' | 'converted' | 'information' };
+const informationRoles: readonly Role[] = ['employeeWork', 'employeePersonal', 'ta', 'peopleOps', 'taskOwners'];
+export const recipientReportRoles: readonly Role[] = [...removedRoles, legacyEmployeeRole, ...informationRoles];
+const reportedRole = (role: Role) => recipientReportRoles.includes(role);
+/** Pre-release report includes the reporter's answers: GBS People Ops stays, and all Task owners uses are listed.
+ * It reports saved definitions only; it never converts them or reveals literal personal addresses. */
 export function v9RecipientReport(config: ConfigLike): RecipientReportRow[] {
   const rows: RecipientReportRow[] = [];
-  const classify = (roles: Role[]): RecipientReportRow['action'] | null => roles.some(isRemovedRole) ? 'replace' : roles.includes(legacyEmployeeRole) ? 'converted' : roles.includes('ta') ? 'information' : null;
+  const classify = (roles: Role[]): RecipientReportRow['action'] | null => roles.some(isRemovedRole) ? 'replace' : roles.includes(legacyEmployeeRole) ? 'converted' : roles.some(role => informationRoles.includes(role)) ? 'information' : null;
   for (const workflow of config.workflows) for (const step of workflow.steps) {
     if (step.to === undefined || !step.cc) continue;
     const roles = [...toRoles(step.to), ...step.cc], action = classify(roles);
-    if (action) rows.push({ kind: 'workflow', id: workflow.id, name: workflow.name, module: workflow.module, status: workflow.status, stepId: step.id, roles: roles.filter(role => isRemovedRole(role) || role === legacyEmployeeRole || role === 'ta'), action });
+    if (action) rows.push({ kind: 'workflow', id: workflow.id, name: workflow.name, module: workflow.module, status: workflow.status, stepId: step.id, to: toRoles(step.to).filter(reportedRole), cc: step.cc.filter(reportedRole), roles: roles.filter(reportedRole), action });
   }
-  for (const email of config.emails) { const action = classify(email.cc); if (action) rows.push({ kind: 'email', id: email.id, name: email.name, module: email.module, roles: email.cc.filter(role => isRemovedRole(role) || role === legacyEmployeeRole || role === 'ta'), action }); }
+  for (const email of config.emails) { const action = classify(email.cc); if (action) rows.push({ kind: 'email', id: email.id, name: email.name, module: email.module, ...(email.active === undefined ? {} : { status: email.active ? 'active' : 'inactive' }), cc: email.cc.filter(reportedRole), roles: email.cc.filter(reportedRole), action }); }
   return rows;
 }
