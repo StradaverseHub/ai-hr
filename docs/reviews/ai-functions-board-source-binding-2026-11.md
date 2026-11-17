@@ -892,3 +892,47 @@ serializer or transport changes. Reversing the 28 substitutions reproduces the p
 registry byte-for-byte; pending, retired, reviewer and historical evidence metadata are retained.
 The derived agent manifest is regenerated after binding. This grants no passing verification,
 staging acceptance or production authority.
+
+### Contract focused-development binding proposal — 17 November 2026 (a87b3ab3)
+
+This isolated review packet proposes a source-specific carry-forward for frozen Contract source
+`a87b3ab3baa03cc557b6e296cef0ac476dd9cc00`, compared with accepted source
+`12098e9c56c95bf2d9441ad74e81ae04f2d2980a`. Direct approval to apply this exact packet remains
+pending in the Contract chat. Earlier binding approvals do not establish approval of this source.
+
+Only the 28 continuing, previously approved sourceDigest literals move from
+`e7f9a66a837dd19dfa996048309c8df1e04b4a428243be9f0a5db99582a1d648` to
+`1118bbd6ebd930d3f1e207a81d5dd3894c2d9c7ec5f21b21e82f5792492dcf66` over 1,755 covered files.
+Reversing the 28 substitutions reproduces the frozen and accepted approval registries byte for byte.
+The two pending rows and retired Attendance Formula row, their statuses, source identities,
+reviewers, evidence references and review dates are preserved. No new purpose is approved.
+
+Against the accepted source, provider protocol, policies, review validation, transports and
+Assistant tool implementations are unchanged. Capability inventory additions remain backlog or
+human handoff classifications. The native employee-detail contractNumber addition is excluded by
+the unchanged explicit ten-field employee_profile tool projection. The incremental native changes
+since the earlier 15936930 review concern Contract posting organisation/history owner checks,
+read-only navigation, a reconciliation phase identifier and dated Movement history corrections;
+they introduce no new provider serializer or transport. These observations do not establish that
+native behavior, permissions, migration or rendered checks pass.
+
+The proposed regenerated module-agent fingerprint is
+`c204be31d1c2520432f791be965f8516f6b4ff6b3c77a069acc875f2a237b875` over 496 files, replacing
+pre-binding `0edaf29821229cb0e74cbb366a95f94d063d0fb06baf760dccee4eb23a9c2cf3`.
+Static manifest checks and registry reversal checks pass in the isolated preparation checkout.
+This packet grants no provider-use, evaluation/promotion, gate, merge, staging lease, deployment,
+acceptance or production authority. Contract remains on release hold. Its 125 unapplied migration
+identities remain provisional; later accepted Board/Resignation integration requires fresh source
+review and forward migration allocation from the actual ordered staging ledger.
+
+### Direct Contract owner approval — 17 November 2026 (69b160cc3d01)
+
+The Contract owner directly approved this exact current-source binding in the Contract chat,
+answering both source-specific requests for packet
+`69b160cc3d01993ccb21d7b5a6e53ca101e111fccdd2299d5e9a8030aa26da34`
+with “Approve this exact source binding” and “Approve this exact current-source binding”.
+This supersedes the pending application status of the proposal above, for source
+`a87b3ab3baa03cc557b6e296cef0ac476dd9cc00` only. The reviewed three-file packet is applied
+without changing its approval-registry or module-manifest content. The 28 fingerprint-only
+substitutions retain all other registry bytes. The proposal's earlier chronology is retained.
+No provider call, new AI use, passing gate, merge or release is authorized by this approval.
