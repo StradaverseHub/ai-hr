@@ -28,9 +28,9 @@ export function contractRoutingCheck(ctx:SessionContext,routing:Routing,caseId:s
   const matched=resolveRoutingRow(routing,{businessGroup:[source.businessGroupId??'',source.businessUnitId??'',source.businessGroup],company:[view.companyId,source.company],department:[source.departmentId??'',source.department??''],jobTitle:source.jobTitle??source.designation});
   const [row]=await tx.execute<{data:AutomationGroupWorkspace|null}>(sql`select app.automation_assignment_group_workspace() as data`),data=row?.data;
   if(!data)throw new AutomationError('forbidden','Routing checks are unavailable.');
-  const target=matched?.row.assignTo,ids=target?.kind==='group'?data.groups.find(group=>group.id===target.groupId)?.members??[]:target?.userIds??[];
-  const active=ids.length?await tx.execute<{id:string;name:string}>(sql`select u.id,p.full_name as name from app.automation_active_users(${`{${ids.join(',')}}`}::uuid[]) as permitted(id) join app_user u on u.id=permitted.id and u.tenant_id=app.current_tenant_id() join person p on p.id=u.person_id and p.tenant_id=u.tenant_id`):[];
-  const names=ids.flatMap(id=>{const person=active.find(person=>person.id===id);return person?[person.name]:[];});
+  const target=matched?.row.assignTo,ids=(target?.kind==='group'?data.groups.find(group=>group.id===target.groupId)?.members??[]:target?.userIds??[]).slice(0,500);
+  const active=ids.length?target?.kind==='group'?await tx.execute<{id:string;name:string}>(sql`select permitted.id,''::text as name from app.automation_active_users(${`{${ids.join(',')}}`}::uuid[]) permitted(id)`):await tx.execute<{id:string;name:string}>(sql`select id,name from app.automation_routing_check_names(${`{${ids.join(',')}}`}::uuid[])`):[];
+  const names=ids.flatMap(id=>{const person=active.find(person=>person.id===id);return person?[target?.kind==='group'?data.people.find(member=>member.id===id)?.name??'Unavailable member':person.name]:[];});
   return {employee:source.name,row:matched?matched.index+1:null,people:names};
  });
 }

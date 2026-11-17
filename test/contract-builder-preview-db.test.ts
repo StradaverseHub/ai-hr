@@ -58,7 +58,8 @@ describe('Native Contract builder preview authority and source values',()=>{
  it('checks only the selected matching routing row and real active named people, without simulating a fallback',async()=>{
   await seedScale();admin={...await entitledCtx(b),personId:admin.personId};const cases=await contractSharedPage(admin,{limit:1}),named=await ordinary();
   const routing:Routing={id:randomUUID(),name:'Fictional matching row',rows:[{match:{company:[cases.rows[0].companyId]},assignTo:{kind:'people',userIds:[named.userId!]}},{match:{},assignTo:{kind:'people',userIds:[admin.userId!]}}]};
-  expect(await contractRoutingCheck(admin,routing,cases.rows[0].id)).toEqual({employee:'Contract scale employee 0001',row:1,people:['Fictional Contract operator']});
+  const checker=await ordinary(),roleId=randomUUID();await saveContractSharedRole(admin,{id:roleId,name:'Scoped routing checker',permissions:['view','groups'],expectedRevision:0});await saveContractSharedMember(admin,{id:randomUUID(),roleId,userId:checker.userId,companyId:cases.rows[0].companyId,businessGroupId:null,validFrom:'2020-01-01',validTo:null,revoked:false});
+  expect(await contractRoutingCheck(checker,routing,cases.rows[0].id)).toEqual({employee:'Contract scale employee 0001',row:1,people:['Fictional Contract operator']});
   await owner.db.execute(sql`update app_user set archived_at=now() where tenant_id=${b.tenantId}::uuid and id=${named.userId}::uuid`);
   expect(await contractRoutingCheck(admin,routing,cases.rows[0].id)).toEqual({employee:'Contract scale employee 0001',row:1,people:[]});
  });
