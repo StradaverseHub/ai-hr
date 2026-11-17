@@ -6,19 +6,25 @@ Coordinator `codex/approved-board-controller-20261117` reserves:
 | --- | --- | --- | --- |
 | `6100_rewards_review_plans` | 5500 | 1794841006100 | Review Plans backend |
 | `6101_reward_person_history` | 5501 | 1794841006101 | Rewards person history |
-| `6102_lifecycle_pbp_removal` | 5502 | 1794841006102 | PBP removal, held on approved prerequisites |
+| `6102_lifecycle_recipient_directory` | 5502 | 1794841006102 | Bounded authenticated recipient directory |
+| `6103_lifecycle_pbp_removal` | 5503 | 1794841006103 | PBP removal |
 
 Fresh origin fetch and read-only survey covered 4,583 distinct local/origin ref heads,
 721 distinct committed journals and 380 readable registered worktree journals. The
 highest observed competing timestamp was 1794841006029. Existing historical high
-numbered files remain reserved; these three tags, indexes and timestamps have no
+numbered files remain reserved; these four tags, indexes and timestamps have no
 observed collision. Staging independently reported source `fc092e1adbe5f8f1cbfe730a17d1317f08625a7c`,
 build `DZ2pCq8fJrQO8QOlmFL-K`, and 919 applied rows through 1793330005577.
-Production access timed out, so its ledger freshness is unknown. These are provisional
-source allocations only: refresh exact ordered target ledgers and competing claims
-before integration/admission. Preserve the canonical journal prefix and applied SQL
-bytes. PBP Stage 2 additionally waits for its approved live-recipient and production
-report prerequisites. No installation, acceptance or deployment authority is granted.
+Production was subsequently reached after the owner connected the VPN. Its installed
+manifest identifies `prod-2026-11-17.1`, source `9bdfb45969c4bff81a9b9830b52403a95e82bdc6`,
+build `E5aGh2w5q52mdv9ieVWAY`; its ledger has 883 rows through 1793330005471.
+These are source allocations only: refresh exact ordered target ledgers and competing
+claims before integration/admission. Preserve the canonical journal prefix and applied SQL
+bytes. The production PBP report was independently checked with unrestricted row visibility
+and attached to the approved board plan without changing its revision. Demo Group has
+no remaining PBP recipients. The owner explicitly allowed the fictional staging tenant
+to retain its five legacy uses, knowing those emails will be held; that exception
+satisfies the remaining Stage 2 prerequisite without rewriting those saved recipients. No installation, acceptance or deployment authority is granted.
 
 ## Movement staging handback and unused slots — 17 November 2026 MYT
 
