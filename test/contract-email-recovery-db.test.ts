@@ -81,6 +81,12 @@ async function actualRecovery(callbackChange?:'archive'|'relink',requiredFile?:'
  expect(deliveries).toHaveLength(1);expect(deliveries[0].payload.mail).toMatchObject({subject:'Original recovery for Fictional ending subject',body:'Original frozen wording',cc:[f.admin.userId]});
  expect(checkedHeldGuards).toBe(true);
  const completed=await receipts();expect(completed).toHaveLength(1);expect(completed[0]).toMatchObject({actor:callbackActor.userId,jobId:accepted.jobId});
+ const token=randomUUID();await owner.db.execute(sql`update automation_email_delivery set status='leased',lease_token=${token}::uuid,lease_until=now()+interval '3 minutes' where id=${deliveries[0].id}::uuid`);
+ const target=async()=>(await owner.db.execute<{value:unknown}>(sql`select app.automation_email_target(${deliveries[0].id}::uuid,${token}::uuid,${origin}) as value`))[0].value;
+ expect(await target()).not.toBeNull();
+ const [foreignPerson]=await owner.db.execute<{id:string}>(sql`insert into person(tenant_id,full_name,primary_email) values(${f.b.tenantId}::uuid,'Fictional unrelated recipient identity',${randomUUID()+'@recovery.test'}) returning id`);
+ await owner.db.execute(sql`update app_user set person_id=${foreignPerson.id}::uuid where tenant_id=${f.b.tenantId}::uuid and id=${employeeId}::uuid`);expect(await target()).toBeNull();
+ await owner.db.execute(sql`update app_user set person_id=${f.employee.personId}::uuid where tenant_id=${f.b.tenantId}::uuid and id=${employeeId}::uuid`);expect(await target()).not.toBeNull();
  expect(await owner.db.execute(sql`select id from contract_shared_approval where tenant_id=${f.b.tenantId}::uuid`)).toHaveLength(0);
  const [run]=await owner.db.execute<{status:string;cursor:number;tail:string}>(sql`select status,step_cursor as cursor,remaining_steps->0->'step'->>'id' as tail from automation_run where tenant_id=${f.b.tenantId}::uuid and id=${pin!.runId}::uuid`);expect(run).toEqual({status:'running',cursor:1,tail:tailStep});
  for(let n=0;n<10;n++)await tick();
