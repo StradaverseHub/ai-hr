@@ -13,6 +13,7 @@ import {previewRewardPersonHistoryImport,importRewardPersonHistory,applyRewardPe
 import {rewardHistoryValues,rewardHistoryUploadHeaders} from '../packs/rewards/person-history-model';
 import {createApprovedRewardUnit} from './rewards-setup-fixture';
 import {setRewardMember} from './rewards-access-fixture';
+import {initializeRewardGovernanceFixture} from './rewards-governance-fixture';
 import {closeAll,createAppUser,entitledCtx,owner,resetDb,seedBase,setModule,migrateTestDb,type Base} from './harness';
 import {todayInKualaLumpur} from '../lib/hr-date';
 import {toCsv} from '../lib/csv';
@@ -52,6 +53,8 @@ describe('Person reward history custody and upload',()=>{
  },120000); // Approved setup fixtures use independently checked libraries and organization evidence.
 
  it('returns independently expected prior awards under the current review and denies direct table reads to reviewers',async()=>{
+  // Native BU access requires an active Senior selection, including this intentionally empty roster.
+  await initializeRewardGovernanceFixture(admin,unitId);
   for(const role of ['bu','bg','pbp','ctro','ec'] as const){
    const native=await getRewardUnit(actors[role]!,unitId);
    expect(native.roles,`${role} must hold the native review role`).toContain(role);
