@@ -173,6 +173,10 @@ def launch(argv,fmt,base,ci,update):
     args=parser.parse_args(argv);base.check(os.geteuid()==0,'fixed root launcher must run after the privilege boundary')
     stage='drain'if args.mode=='guarded-drain' else 'activate-ci-runtime'
     guard=None;previous=base.command;previous_fds=getattr(base,'VERIFIED_OPERATION_FDS',());previous_guard=getattr(base,'VERIFIED_OPERATION_GUARD',None)
+    previous_deadline=getattr(base,'VERIFIED_OPERATION_DEADLINE',None);previous_slot=getattr(ci,'SLOT_DEADLINE',None)
+    if stage=='activate-ci-runtime':
+        initial_deadline=min([time.monotonic()+30,*[value for value in (previous_deadline,previous_slot)if value is not None]])
+        base.VERIFIED_OPERATION_DEADLINE=initial_deadline;ci.SLOT_DEADLINE=initial_deadline
     try:
         guard=GuardedInvocation(base,ci,stage,args.approval,args.approval_sha256)
         ci.ACTIVE_OPERATION_GUARD=guard;base.VERIFIED_OPERATION_GUARD=guard;base.VERIFIED_OPERATION_FDS=(guard.lock.fd,)
@@ -197,5 +201,5 @@ def launch(argv,fmt,base,ci,update):
         if stage=='activate-ci-runtime':managed+=['--ci-runtime-authorization',str(guard.path),'--ci-runtime-authorization-sha256',args.approval_sha256]
         update.upgrade(managed,fmt,base,ci)
     finally:
-        base.command=previous;base.VERIFIED_OPERATION_FDS=previous_fds;base.VERIFIED_OPERATION_GUARD=previous_guard;ci.ACTIVE_OPERATION_GUARD=None
+        base.command=previous;base.VERIFIED_OPERATION_FDS=previous_fds;base.VERIFIED_OPERATION_GUARD=previous_guard;base.VERIFIED_OPERATION_DEADLINE=previous_deadline;ci.SLOT_DEADLINE=previous_slot;ci.ACTIVE_OPERATION_GUARD=None
         if guard:guard.close()
