@@ -97,6 +97,8 @@ it('projects only bounded current waiting names for visible pending Offboarding 
  expect(await native(admin,[])).toEqual([]);expect(await native(admin,[posting.id,...Array.from({length:100},()=>randomUUID())])).toEqual([]);
  const subject={...admin,userId:subjectUser,personId:f.hire.personId,roles:['employee'],grants:undefined};
  expect(await native(subject,[posting.id])).toEqual([]);expect(await native(adminCtx(foreign),[posting.id])).toEqual([]);
+ const managerUser=await createAppUser(b.tenantId,null,'manager');await owner.db.execute(sql`update lc_onboarding_config set data=jsonb_set(data,'{access,offboarding}',data->'access'->'offboarding'||${JSON.stringify([managerUser])}::jsonb) where tenant_id=${b.tenantId}::uuid`);
+ const manager:SessionContext={...admin,userId:managerUser,personId:null,roles:['manager']};expect((await listPersonnelPostings(manager,{source:'offboarding',status:'all'})).rows).toEqual([]);expect(await native(manager,[posting.id])).toEqual([]); // Module access alone is not queue membership.
  const company=randomUUID(),restricted=await createAppUser(b.tenantId,null,'hr_admin');await owner.db.execute(sql`insert into company(id,tenant_id,legal_name) values(${company}::uuid,${b.tenantId}::uuid,'Fictional other company')`);
  await owner.db.execute(sql`update role_assignment set company_id=${company}::uuid where tenant_id=${b.tenantId}::uuid and app_user_id=${restricted}::uuid`);
  const scoped:SessionContext={...admin,userId:restricted,personId:null,grants:[{role:'hr_admin',companyId:company}]};expect(await native(scoped,[posting.id])).toEqual([]);

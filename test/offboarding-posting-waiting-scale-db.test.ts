@@ -48,6 +48,7 @@ it('keeps waiting labels and the existing queue equivalent across 70 companies a
   expect(got,actor.name+' complete ordering/count').toEqual(actor.wanted.map(row=>row.id));
  }
  const ids=fixture.slice(0,50).map(row=>row.id),singleIds=fixture.filter(row=>row.companyId===single).map(row=>row.id);
+ expect(await loadOffboardingPostingApprovers(f.admin,ids)).toEqual(Object.fromEntries(fixture.slice(0,50).filter(row=>row.source==='offboarding'&&row.status==='pending').map(row=>[row.id,{names:['Scale Aina','Scale Bala','Scale Chen'],total:4}]))); // Explicit approved and Probation IDs never disclose waiting names.
  expect(await loadOffboardingPostingApprovers(scoped,ids)).toEqual(Object.fromEntries(fixture.slice(0,50).filter(row=>row.companyId===single&&row.source==='offboarding'&&row.status==='pending').map(row=>[row.id,{names:['Scale Aina','Scale Bala','Scale Chen'],total:4}])));
  expect(Object.keys(await loadOffboardingPostingApprovers(f.admin,singleIds)).sort()).toEqual(pending.filter(row=>row.companyId===single).map(row=>row.id).sort());
  const probe=observeNativeRead({captureQueries:true});try{const page=await listPersonnelPostings(f.admin,{source:'offboarding',status:'pending',limit:50});expect(page.rows).toHaveLength(50);expect(Object.keys(await loadOffboardingPostingApprovers(f.admin,page.rows.map(row=>row.id)))).toHaveLength(50);}finally{probe.restore();}
