@@ -99,11 +99,16 @@ it('refuses cross-tenant, unrelated-company and view-only case access without le
 it('a 70-company / 1,030-employment group stays bounded, ordered and equivalent under All companies and one company', async () => {
   const companies = Array.from({ length: 70 }, (_, i) => ({ id: randomUUID(), tenantId: base.tenantId, legalName: `Directory scale ${String(i).padStart(2, '0')}`, country: 'MY' }));
   await owner.db.insert(schema.company).values(companies);
+  // Keep the real company-criteria owner active: each company gets its own scoped department,
+  // whose normal insert trigger records that company in label_company_assignment.
+  const departments = companies.map((company, i) => ({ id: randomUUID(), tenantId: base.tenantId, companyId: company.id, name: `Directory Department ${String(i).padStart(2, '0')}` }));
+  await owner.db.insert(schema.department).values(departments);
+  const departmentByCompany = new Map(departments.map(department => [department.companyId, department.id]));
   const people = Array.from({ length: 1030 }, (_, i) => ({ id: randomUUID(), tenantId: base.tenantId, fullName: `Scale Recipient ${String(i).padStart(4, '0')}`, primaryEmail: `scale-person${i}@fixture.test` }));
   await owner.db.insert(schema.person).values(people);
   const employments = people.map((person, i) => ({ id: randomUUID(), tenantId: base.tenantId, personId: person.id, companyId: companies[i % 70].id, hiredOn: '2026-01-01' }));
   await owner.db.insert(schema.employment).values(employments);
-  await owner.db.insert(schema.assignment).values(employments.map(e => ({ tenantId: base.tenantId, employmentId: e.id, companyId: e.companyId, departmentId: base.deptA, employmentType: 'full_time' as const, validFrom: '2026-01-01' })));
+  await owner.db.insert(schema.assignment).values(employments.map(e => ({ tenantId: base.tenantId, employmentId: e.id, companyId: e.companyId, departmentId: departmentByCompany.get(e.companyId)!, employmentType: 'full_time' as const, validFrom: '2026-01-01' })));
   const users = people.map(person => ({ id: randomUUID(), tenantId: base.tenantId, personId: person.id, workosUserId: `fixture-${randomUUID()}` }));
   await owner.db.insert(schema.appUser).values(users);
   const issuer = internalIssuer(base.tenantId), subjects = users.map(() => randomUUID());
