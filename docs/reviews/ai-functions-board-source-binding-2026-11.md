@@ -1105,3 +1105,41 @@ lease or installation result. Source-specific earlier compiler, selected-check a
 rendered/PDF evidence remain historical evidence; composed-candidate checks and complete
 rendered acceptance are still required. No production deployment or package publication
 is authorized.
+
+### Movement correction-history hotfix binding (17 November 2026)
+
+The repository owner explicitly approved carrying forward the 28 existing AI source approvals
+to `e7f9a66a837dd19dfa996048309c8df1e04b4a428243be9f0a5db99582a1d648` in the staging investigation chat on 17 November 2026
+("Approve source rebinding"). The release coordinator carries forward only the same 28 active
+digest literals from `a092a7cb98254676eee275f1687618f858d06d778e0a836d28844a60281acc39` over 1694 covered files.
+Pre-binding repair source is `357ce78c8089056793fb06067e0e5615016658d3`. The covered changes attach original-hire
+corrections to their recorded hire, preserve later deliberate field boundaries and read company
+history from the canonical dated assignments. No provider contract, purpose, outbound field,
+serializer or transport changes. Reversing the 28 substitutions reproduces the prior approval
+registry byte-for-byte; pending, retired, reviewer and historical evidence metadata are retained.
+The derived agent manifest is regenerated after binding. This grants no passing verification,
+staging acceptance or production authority.
+
+
+### Resignation composition with accepted staging hotfix — 17 November 2026
+
+The hotfix owner handed back accepted staging source
+`12098e9c56c95bf2d9441ad74e81ae04f2d2980a`, build `gC3FFxt6m-WhRuTTJNCm9`,
+with a closed lease. Fresh main/alpha fetches agree at that source. A normal merge
+retains its Personnel correction/history repairs alongside Resignation; there is no
+migration delta in the accepted hotfix. The canonical employment writer and existing
+provider payloads, transforms, purposes and transports are unchanged.
+
+Under the recorded same-purpose staging rebinding approval, the same 29 approved
+digest literals carry from `b87b678e58667959a981ff67c85b7a37134b6959a87881cd68ebee7bc9349c22`
+to `062f69ffc55c585eea1246779ebd8d50bd3bed7076d3d7c67ec2ed41a5b3b74a`
+over 1714 covered files. A static comparison confirms all 31 human metadata/status
+records are identical across both parents; pending contracts remain pending.
+The agent manifest is regenerated last: 496 files,
+`92cca6aef1724ab6f55f59cee7099029bf1aa7d9726e1ce3f94d9efdaa9f928b`.
+
+Earlier source-specific evidence remains at its producing identities. Resignation's
+complete rendered walkthrough, corrected edge-case admission test and final release
+verification remain required on the composed candidate. This merge does not claim
+a lease, target ledger verification or installation. Audit remains last; Contract
+remains held. No production deployment or package publication is authorized.

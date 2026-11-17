@@ -7,7 +7,14 @@ The latest human queue direction puts the staging-investigation hotfix first, th
 Audit's still-unapplied 5880 timestamp must be reconciled before its later installation.
 This reservation does not claim a lease, install SQL, advance main/alpha or grant production authority.
 
-Freshly fetched main and alpha both resolve to Recruitment source
+Latest source composition: the staging-investigation hotfix was handed back as accepted
+at `12098e9c56c95bf2d9441ad74e81ae04f2d2980a`, build `gC3FFxt6m-WhRuTTJNCm9`,
+and freshly fetched main/alpha agree at that source. Its source delta contains no migration
+change. Resignation integrates it through a normal merge; current target ledger, queue vacancy
+and foreign claims still require independent admission checks. No lease or installation is
+claimed by this source composition.
+
+At reservation creation, freshly fetched main and alpha both resolved to Recruitment source
 `fc092e1adbe5f8f1cbfe730a17d1317f08625a7c`. The coordinator's read-only ordered-ledger
 receipt checked at `2026-11-17T08:26:24.159Z` records 919 rows and maximum
 `1793330005577`; receipt SHA-256

@@ -79,3 +79,21 @@ describe('the review of a correction that replaces earlier ones',()=>{
   expect(container.textContent).toContain(`${en.people.informationCorrection.effectiveDate}: 2025-11-01`);
  });
 });
+
+describe('correction audit payload compatibility',()=>{
+ it('renders an unlabeled legacy correction without crashing and never substitutes undefined values',()=>{
+  const history=[{id:'legacy-hire',at:new Date('2026-11-17T02:00:00Z'),actorId:'actor',actorName:'Fictional Administrator',payload:{source:'original-hire',fields:['companyId','hiredOn'],before:{companyId:'hidden-id',hiredOn:'2026-01-01'},after:{companyId:'hidden-id-2',hiredOn:'2025-12-01'},reason:'Original hire correction',method:'manual',effectiveOn:'2025-12-01'}}];
+  const {container}=render(<NextIntlClientProvider locale="en" messages={en}><InformationCorrectionAudit history={history as Parameters<typeof InformationCorrectionAudit>[0]['history']}/></NextIntlClientProvider>);
+  expect(container.textContent).toContain('Original hire correction');
+  expect(container.textContent).not.toContain('hidden-id');
+  expect(container.querySelectorAll('tbody tr')).toHaveLength(2);
+ });
+ it('renders original-hire scalar fields with their existing translated labels',()=>{
+  const history=[{id:'original-scalars',at:new Date('2026-11-17T02:00:00Z'),actorId:'actor',actorName:null,payload:{fields:['contractStartDate','extendedConfirmationDate','lastWorkingDate'],beforeLabels:{contractStartDate:null,extendedConfirmationDate:null,lastWorkingDate:null},afterLabels:{contractStartDate:'2026-01-01',extendedConfirmationDate:'2026-04-01',lastWorkingDate:null},reason:'Fictional original dates',method:'manual',effectiveOn:'2026-01-01'}}];
+  render(<NextIntlClientProvider locale="en" messages={en}><InformationCorrectionAudit history={history as Parameters<typeof InformationCorrectionAudit>[0]['history']}/></NextIntlClientProvider>);
+  fireEvent.click(screen.getByText(en.people.informationCorrection.history));
+  expect(screen.getByRole('columnheader',{name:'Contract Start Date'})).toBeInTheDocument();
+  expect(screen.getByRole('columnheader',{name:'Extended confirmation date'})).toBeInTheDocument();
+  expect(screen.getByRole('columnheader',{name:'Last Working Date'})).toBeInTheDocument();
+ });
+});
