@@ -33,6 +33,6 @@ export function ResignationCaseCard({initial,today,fyi=false,onChanged,documentI
  {value.viewerIsEmployee&&<ResignationOfferSummary value={value}/>}
  {value.letters.map(letter=><div key={letter.id+':'+letter.revision} id={'letter-'+letter.id} className="scroll-mt-6 border-t pt-4" data-selected-letter={letter.id===documentId||undefined}><ResignationLetterCard value={value} letter={letter} busy={busy} command={command}/></div>)}
  {value.capabilities.withdraw&&<Button variant="outline" disabled={busy} onClick={()=>command({type:'withdraw'})}>{t('withdraw')}</Button>}
- <BlockedRuns value={value} busy={busy} onRetry={()=>void command({type:'retry'})} onRunAgain={()=>void command({type:'runWorkflowsAgain'})}/>{value.letters.some(letter=>letter.capabilities.open)&&<ResignationCaseCommunications caseId={value.id}/>}{error&&<p role="alert" className="text-sm text-destructive">{error}</p>}{conflict&&<Button variant="outline" disabled={busy} onClick={reload}>{t('reload')}</Button>}
+ <BlockedRuns value={value} busy={busy} onRetry={()=>void command({type:'retry'})} onRunAgain={()=>void command({type:'runWorkflowsAgain'})}/>{value.letters.some(letter=>letter.capabilities.open)&&<ResignationCaseCommunications caseId={value.id} refreshKey={value.revision} onSaved={reload}/>}{error&&<p role="alert" className="text-sm text-destructive">{error}</p>}{conflict&&<Button variant="outline" disabled={busy} onClick={reload}>{t('reload')}</Button>}
  </Card>;
 }

@@ -41255,6 +41255,9 @@
     "narrowSearch": "Memaparkan 501 nilai sepadan yang pertama. Cari untuk memperincikan pilihan."
   },
   "resignationCommunications": {
+    "previewHint": "Pratonton ini menggunakan nilai aliran kerja yang ditetapkan untuk kes dan templat mesej semasa. Ini bukan pengesahan penghantaran.",
+    "sourceChanged": "Mesej ini berubah semasa anda mengedit. Draf anda dikekalkan. Gunakan mesej terkini untuk menggantikan draf sebelum menyimpan.",
+    "useLatest": "Gunakan mesej terkini",
     "title": "Komunikasi kes",
     "intro": "Semak mesej untuk kes ini. Ujian dihantar hanya ke e-mel anda yang telah disahkan.",
     "loading": "Memuatkan komunikasi kes…",

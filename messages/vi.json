@@ -41255,6 +41255,9 @@
     "narrowSearch": "Hiển thị 501 giá trị khớp đầu tiên. Tìm kiếm để thu hẹp lựa chọn."
   },
   "resignationCommunications": {
+    "previewHint": "Bản xem trước dùng các giá trị quy trình đã cố định cho hồ sơ và mẫu thư hiện tại. Đây không phải xác nhận chuyển thư.",
+    "sourceChanged": "Thư đã thay đổi trong lúc bạn chỉnh sửa. Bản nháp của bạn được giữ lại. Dùng thư mới nhất để thay bản nháp trước khi lưu.",
+    "useLatest": "Dùng thư mới nhất",
     "title": "Trao đổi trong hồ sơ",
     "intro": "Kiểm tra các thư của hồ sơ này. Thư thử chỉ gửi tới email đã xác minh của bạn.",
     "loading": "Đang tải các thư trong hồ sơ…",

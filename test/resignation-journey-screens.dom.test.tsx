@@ -285,3 +285,10 @@ it('loads owner case communications only when an existing letter capability admi
  wrap(<ResignationCaseCard initial={c({letters:[l({private:true,capabilities:{...l().capabilities,open:false,sign:false,sendBack:false}})]})} today="2026-11-16"/>);expect(actions.loadResignationCommunications).not.toHaveBeenCalled();
  cleanup();wrap(<ResignationCaseCard initial={c({letters:[l({capabilities:{...l().capabilities,open:true,sign:false,sendBack:false}})]})} today="2026-11-16"/>);expect(await screen.findByRole('heading',{name:'Case communications'})).toBeInTheDocument();expect(actions.loadResignationCommunications).toHaveBeenCalledWith({caseId:'case-a',offboardingCaseId:undefined});
 });
+
+it('refreshes managed acceptance documents on a sibling source change and emits one source refresh after a successful command',async()=>{
+ const letter=l({kind:'acceptance',capabilities:{...l().capabilities,sign:false,sendBack:false,regenerate:true}}),first={caseId:'case-a',caseNumber:'RSN-42',revision:7,letters:[letter]},next={...first,revision:8,letters:[{...letter,revision:3}]},changed=vi.fn();
+ actions.loadResignationOffboarding.mockResolvedValueOnce({ok:true,value:first}).mockResolvedValueOnce({ok:true,value:next});actions.runResignationCommand.mockResolvedValue({ok:true,value:c({revision:8,letters:next.letters})});
+ const ui=wrap(<ResignationOffboardingDocuments offboardingCaseId="offboarding-a" refreshKey={1} onChanged={changed}/>);fireEvent.click(await screen.findByRole('button',{name:'Regenerate from current template'}));await waitFor(()=>expect(changed).toHaveBeenCalledTimes(1));
+ ui.rerender(<NextIntlClientProvider locale="en" messages={messages}><ResignationOffboardingDocuments offboardingCaseId="offboarding-a" refreshKey={2} onChanged={changed}/></NextIntlClientProvider>);await waitFor(()=>expect(actions.loadResignationOffboarding).toHaveBeenCalledTimes(2));await screen.findByText(/Version 3 · template version 1/);expect(changed).toHaveBeenCalledTimes(1);
+});

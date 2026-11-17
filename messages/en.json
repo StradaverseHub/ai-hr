@@ -41255,6 +41255,9 @@
     "narrowSearch": "Showing the first 501 matching values. Search to narrow the choices."
   },
   "resignationCommunications": {
+    "previewHint": "This preview uses the case’s pinned workflow values and current message template. It is not a delivery receipt.",
+    "sourceChanged": "This message changed while you were editing. Your draft is kept. Use the latest message to replace the draft before saving.",
+    "useLatest": "Use latest message",
     "title": "Case communications",
     "intro": "Inspect the messages for this case. Tests go only to your verified email.",
     "loading": "Loading case communications…",
