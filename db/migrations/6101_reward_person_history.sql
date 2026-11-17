@@ -39,11 +39,11 @@ GRANT EXECUTE ON FUNCTION app.reward_history_upload_subject(uuid,uuid) TO ai_hr_
 CREATE POLICY reward_history_owner_read ON public.reward_person_history FOR SELECT TO ai_hr_owner USING(tenant_id=app.current_tenant_id());
 CREATE POLICY reward_history_owner_insert ON public.reward_person_history FOR INSERT TO ai_hr_owner WITH CHECK(tenant_id=app.current_tenant_id() AND source='review' AND created_by=app.current_user_id());
 CREATE POLICY reward_history_upload_read ON public.reward_person_history FOR SELECT TO ai_hr_app USING(tenant_id=app.current_tenant_id() AND source='upload' AND app.reward_history_upload_authorized(company_id) AND app.reward_history_upload_subject(employment_id,company_id));
+-- Native review rows enter only through the set-authorized owner writer below. The ordinary role
+-- keeps INSERT solely for independently checked upload checkpoints.
 CREATE POLICY reward_history_insert ON public.reward_person_history FOR INSERT TO ai_hr_app WITH CHECK(
  tenant_id=app.current_tenant_id() AND created_by=app.current_user_id() AND app.reward_not_viewing_as()
- AND((source='upload' AND app.reward_history_upload_authorized(company_id)) OR(source='review' AND EXISTS(
-  SELECT 1 FROM public.reward_unit u WHERE u.id=unit_id AND u.tenant_id=reward_person_history.tenant_id AND u.company_id=reward_person_history.company_id
-   AND u.status IN('approved','posted') AND app.reward_admin(u.company_id) AND 'payroll'=ANY(ARRAY(SELECT app.reward_roles(u.id)))))));
+ AND source='upload' AND app.reward_history_upload_authorized(company_id));
 CREATE POLICY reward_history_supersede ON public.reward_person_history FOR UPDATE TO ai_hr_app
  USING(tenant_id=app.current_tenant_id() AND source='upload' AND superseded_at IS NULL AND app.reward_history_upload_authorized(company_id) AND app.reward_history_upload_subject(employment_id,company_id))
  WITH CHECK(tenant_id=app.current_tenant_id() AND source='upload' AND superseded_at IS NOT NULL AND app.reward_history_upload_authorized(company_id) AND app.reward_history_upload_subject(employment_id,company_id));
@@ -75,12 +75,10 @@ BEGIN
    RAISE EXCEPTION 'Reward history is append only' USING ERRCODE='42501';
   END IF;RETURN NEW;
  END IF;
+ -- Native bindings are adjudicated as a complete set by the owner writer, with no query per inserted row.
+ IF NEW.source='review' THEN RETURN NEW;END IF;
  IF NOT EXISTS(SELECT 1 FROM public.employment e WHERE e.id=NEW.employment_id AND e.tenant_id=NEW.tenant_id AND e.company_id=NEW.company_id) THEN
   RAISE EXCEPTION 'Reward history employment binding is invalid' USING ERRCODE='23514';END IF;
- IF NEW.source='review' AND NOT EXISTS(SELECT 1 FROM public.reward_entry e JOIN public.reward_unit u ON u.id=e.unit_id AND u.tenant_id=e.tenant_id
-  WHERE e.id=NEW.entry_id AND e.unit_id=NEW.unit_id AND e.employment_id=NEW.employment_id AND u.tenant_id=NEW.tenant_id AND u.company_id=NEW.company_id
-   AND (u.policy->>'year')::integer=NEW.year AND NEW.kind=CASE WHEN u.kind='annual' THEN 'annual' ELSE 'offcycle' END) THEN
-  RAISE EXCEPTION 'Reward history review binding is invalid' USING ERRCODE='23514';END IF;
  IF NEW.source='upload' AND (NEW.year>=extract(year from timezone('Asia/Kuala_Lumpur',now()))::integer OR NOT EXISTS(SELECT 1 FROM public.bulk_job j WHERE j.id=NEW.upload_batch_id AND j.tenant_id=NEW.tenant_id
   AND j.kind='reward_person_history' AND j.created_by=app.current_user_id() AND j.input->>'companyId'=NEW.company_id::text)
   OR EXISTS(SELECT 1 FROM public.reward_unit u WHERE u.tenant_id=NEW.tenant_id AND u.company_id=NEW.company_id AND u.status='posted' AND u.deleted_at IS NULL AND (u.policy->>'year')::integer<=NEW.year)
@@ -90,20 +88,58 @@ BEGIN
 END $$;
 REVOKE ALL ON FUNCTION app.reward_history_shape() FROM PUBLIC;
 CREATE TRIGGER reward_history_shape BEFORE INSERT OR UPDATE ON public.reward_person_history FOR EACH ROW EXECUTE FUNCTION app.reward_history_shape();
-CREATE TRIGGER reward_history_readonly BEFORE INSERT OR UPDATE OR DELETE ON public.reward_person_history FOR EACH ROW EXECUTE FUNCTION app.reward_view_as_write_guard();
+CREATE FUNCTION app.reward_history_write_guard() RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,app AS $$
+BEGIN
+ IF NOT app.reward_not_viewing_as() THEN RAISE EXCEPTION 'Rewards View as is read-only' USING ERRCODE='42501';END IF;
+ RETURN NULL;
+END $$;
+REVOKE ALL ON FUNCTION app.reward_history_write_guard() FROM PUBLIC;
+CREATE TRIGGER reward_history_readonly BEFORE INSERT OR UPDATE OR DELETE ON public.reward_person_history FOR EACH STATEMENT EXECUTE FUNCTION app.reward_history_write_guard();
 --> statement-breakpoint
 -- Payroll posters have no general SELECT policy on stored history. The writer returns a count,
 -- preventing INSERT RETURNING from requiring an overly broad disclosure policy for that role.
 CREATE FUNCTION app.reward_record_person_history(wanted_unit uuid,wanted_rows jsonb) RETURNS integer
  LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
-DECLARE u public.reward_unit;n integer;
+DECLARE u public.reward_unit;n integer;submitted bigint;unique_entries bigint;bound_entries bigint;
 BEGIN
  SELECT * INTO u FROM public.reward_unit WHERE id=wanted_unit AND tenant_id=app.current_tenant_id() AND deleted_at IS NULL FOR UPDATE;
  IF u.id IS NULL OR u.status NOT IN('approved','posted') OR NOT app.principal_snapshot_current() OR NOT app.reward_not_viewing_as()
   OR NOT app.reward_admin(u.company_id) OR NOT 'payroll'=ANY(ARRAY(SELECT app.reward_roles(u.id))) THEN
   RAISE EXCEPTION 'Reward history posting authority is required' USING ERRCODE='42501';END IF;
- IF jsonb_typeof(wanted_rows)<>'array' OR jsonb_array_length(wanted_rows)>10000 OR octet_length(wanted_rows::text)>16000000 THEN
+ -- Native review capacity is the selected unit's actual entry set, never an unrelated upload-file cap.
+ IF jsonb_typeof(wanted_rows) IS DISTINCT FROM 'array' THEN
   RAISE EXCEPTION 'Invalid reward history rows' USING ERRCODE='23514';END IF;
+ IF EXISTS(SELECT 1 FROM jsonb_array_elements(wanted_rows) r(value) WHERE
+  jsonb_typeof(r.value) IS DISTINCT FROM 'object'
+  OR NOT(r.value ?& ARRAY['entryId','employmentId','talent','performance','meritBp','promotionBp','specialBp','incrementCents','totalIncreaseBp','promoted','promotionGrade','bonusCents','bonusMonthsBp','lumpCents','withheld'])
+  OR jsonb_typeof(r.value->'entryId') IS DISTINCT FROM 'string'
+  OR jsonb_typeof(r.value->'employmentId') IS DISTINCT FROM 'string'
+  OR coalesce(r.value->>'entryId','') !~ '^[0-9a-fA-F]{8}-([0-9a-fA-F]{4}-){3}[0-9a-fA-F]{12}$'
+  OR coalesce(r.value->>'employmentId','') !~ '^[0-9a-fA-F]{8}-([0-9a-fA-F]{4}-){3}[0-9a-fA-F]{12}$'
+  OR jsonb_typeof(r.value->'talent') NOT IN('string','null')
+  OR jsonb_typeof(r.value->'performance') NOT IN('string','null')
+  OR jsonb_typeof(r.value->'promotionGrade') NOT IN('string','null')
+  OR jsonb_typeof(r.value->'promoted') IS DISTINCT FROM 'boolean'
+  OR jsonb_typeof(r.value->'withheld') IS DISTINCT FROM 'object'
+  OR EXISTS(SELECT 1 FROM unnest(ARRAY['meritBp','promotionBp','specialBp','incrementCents','totalIncreaseBp','bonusCents','bonusMonthsBp','lumpCents']) f(key)
+   WHERE jsonb_typeof(r.value->f.key) IS DISTINCT FROM 'number' OR coalesce(r.value->>f.key,'') !~ '^[0-9]+$')
+  OR EXISTS(SELECT 1 FROM jsonb_each(CASE WHEN jsonb_typeof(r.value->'withheld')='object' THEN r.value->'withheld' ELSE '{}'::jsonb END) w(key,value)
+   WHERE w.key NOT IN('increase','bonus','lump') OR jsonb_typeof(w.value) IS DISTINCT FROM 'string' OR length(w.value#>>'{}') NOT BETWEEN 10 AND 1000)) THEN
+  RAISE EXCEPTION 'Invalid reward history row types' USING ERRCODE='23514';END IF;
+ WITH wanted AS(SELECT (r.value->>'entryId')::uuid AS entry_id,(r.value->>'employmentId')::uuid AS employment_id FROM jsonb_array_elements(wanted_rows) r(value))
+ SELECT count(*),count(DISTINCT w.entry_id),count(p.id) INTO submitted,unique_entries,bound_entries
+ FROM wanted w LEFT JOIN public.reward_entry e ON e.id=w.entry_id AND e.employment_id=w.employment_id AND e.unit_id=u.id AND e.tenant_id=u.tenant_id
+ LEFT JOIN public.employment p ON p.id=e.employment_id AND p.tenant_id=u.tenant_id AND p.company_id=u.company_id;
+ IF submitted=0 OR submitted<>unique_entries OR submitted<>bound_entries
+  OR (u.status='approved' AND submitted<>(SELECT count(*) FROM public.reward_entry e WHERE e.unit_id=u.id AND e.tenant_id=u.tenant_id)) THEN
+  RAISE EXCEPTION 'Reward history must match the selected review entry set' USING ERRCODE='23514';END IF;
+ -- A historical backfill may contain only the proven subset. SQL independently checks the enacted
+ -- basic identity; the Rewards service remains the sole owner of the complete recalculation.
+ IF u.status='posted' AND EXISTS(SELECT 1 FROM jsonb_array_elements(wanted_rows) r(value)
+  JOIN public.reward_entry e ON e.id=(r.value->>'entryId')::uuid AND e.unit_id=u.id AND e.tenant_id=u.tenant_id
+  LEFT JOIN public.compensation c ON c.id=e.enacted_compensation_id AND c.employment_id=e.employment_id AND c.tenant_id=e.tenant_id
+  WHERE c.id IS NULL OR c.basic_salary*100 IS DISTINCT FROM (e.source->>'basicCents')::numeric+(r.value->>'incrementCents')::numeric) THEN
+  RAISE EXCEPTION 'Reward history needs matching enacted compensation evidence' USING ERRCODE='23514';END IF;
  INSERT INTO public.reward_person_history(tenant_id,company_id,employment_id,year,kind,source,unit_id,entry_id,talent,performance,
   merit_bp,promotion_bp,special_bp,increment_cents,total_increase_bp,promoted,promotion_grade,bonus_cents,bonus_months_bp,lump_cents,withheld,created_by)
  SELECT u.tenant_id,u.company_id,v."employmentId",(u.policy->>'year')::integer,CASE WHEN u.kind='annual' THEN 'annual' ELSE 'offcycle' END,'review',u.id,v."entryId",
