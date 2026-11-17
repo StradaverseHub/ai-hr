@@ -4,6 +4,8 @@ import {NextIntlClientProvider} from 'next-intl';
 import type {ReactNode} from 'react';
 import messages from '../messages/en.json';
 import type {ResignationCaseView,ResignationLetterView,ResignationTaskView} from '../lib/resignation-journey';
+import {DocumentBody} from '../components/lifecycle-v9/document-body';
+import type {Document,Field} from '../lib/lifecycle-v9-model';
 import {EmployeeResignation} from '../components/resignation/employee';
 import {ResignationCaseCard} from '../components/resignation/case-card';
 import {ResignationLetterCard} from '../components/resignation/letter-card';
@@ -42,7 +44,7 @@ describe('employee resignation journey',()=>{
  it.each([[3,false,'3 working days left'],[0,true,'0 working days left'],[-1,true,'Reply overdue by 1 working day']] as const)('shows the server company-calendar reply count %i and reminder warning',(remaining,warning,copy)=>{
   const offer={position:'Senior Analyst',jobGrade:'G4',basicSalary:'7600.00',effectiveDate:'2027-01-01',justification:'Revised terms'};
   const rendered=wrap(<EmployeeResignation employmentId="employment-a" initial={{today:'2026-11-16',earliestLastDay:'2026-12-16',noticeLabel:'1 month',unavailableReason:null,canSubmit:false,cases:[c({stage:'offer',offer,offerReplyBy:'2026-11-20',offerWorkingDaysRemaining:remaining,offerReplyWarning:warning})]}}/>);
-  const deadline=rendered.container.querySelector('[data-offer-reply]');expect(deadline).toHaveTextContent('Reply by 20/11/2026');expect(deadline).toHaveTextContent(copy);expect(deadline?.classList.contains('bg-amber-100')).toBe(warning);
+  const deadline=rendered.container.querySelector('[data-offer-reply]');expect(deadline).toHaveTextContent('Reply by 20-Nov-2026');expect(deadline).toHaveTextContent(copy);expect(deadline?.classList.contains('bg-amber-100')).toBe(warning);
  });
  it('renders the same employee terms and reply timing on the authorized direct case, without exposing a private offer',()=>{
   const offer={position:'Senior Analyst',jobGrade:'G4',basicSalary:'7600.00',effectiveDate:'2027-01-01',justification:'Revised terms'},value=c({stage:'offer',offer,viewerIsEmployee:true,offerReplyBy:'2026-11-20',offerWorkingDaysRemaining:2,offerReplyWarning:true,capabilities:{withdraw:false,accept:false,offer:false,comment:false,retry:false}});
@@ -237,4 +239,28 @@ it('shows only the server-authorized current holder when a letter is private',()
  const letter=l({private:true,waitingOn:[{id:'safe-holder',name:'Fictional current reviewer'}],routing:[{id:'future-secret',order:3,action:'Sign',people:[{id:'secret-person',name:'Future private signer'}],owner:false,status:'waiting',signedBy:null,signedAt:null}],blocks:[{id:'secret',type:'text',text:'Private offer salary 99999',section:''}],capabilities:{...l().capabilities,open:false,sign:false,sendBack:false}});
  wrap(<ResignationLetterCard value={c({stage:'retention'})} letter={letter} busy={false} command={vi.fn(async()=>true)}/>);
  expect(screen.getByText('Waiting for Fictional current reviewer')).toBeInTheDocument();expect(screen.queryByText('Future private signer')).not.toBeInTheDocument();expect(screen.queryByText('Private offer salary 99999')).not.toBeInTheDocument();expect(screen.queryByRole('list')).not.toBeInTheDocument();expect(screen.queryByRole('button',{name:'Open letter'})).not.toBeInTheDocument();
+});
+
+
+function letterFieldDocument():Document{
+ const field=(id:string,label:string,owner:Field['owner'],pmKey:string|null=null):Field=>({id,label,owner,pmKey,type:'text',required:true,sensitive:false,options:[],section:'details',when:null});
+ return{id:'letter-a',templateId:'template-a',version:1,name:'Fictional form letter',status:'opened',blocks:[{id:'details',type:'fields',text:'',section:'details'}],fields:[field('employee-note','Employee response','employee'),field('hr-note','HR review note','hr'),field('registered-name','Registered name','pmLocked','employee.name'),field('mapped-job','Mapped job','hr','employee.position')],values:{'employee-note':'Recorded response','hr-note':'Recorded review','registered-name':'Fictional Employee','mapped-job':'Analyst'},mergeValues:{},edits:{},hrSignature:null,employeeSignature:null,createdAt:'2026-11-16T00:00:00Z',sentAt:null};
+}
+it('saves only authorized document fields and keeps the draft and native refusal visible before signing',async()=>{
+ actions.runResignationCommand.mockResolvedValue({ok:false,error:'Choose a valid field value.'});
+ const letter=l({document:letterFieldDocument(),opened:true,editableFieldIds:['employee-note'],capabilities:{...l().capabilities,sendBack:false}});
+ wrap(<ResignationCaseCard initial={c({stage:'offer',letters:[letter],capabilities:{withdraw:false,accept:false,offer:false,comment:false,retry:false}})} today="2026-11-16"/>);
+ fireEvent.click(screen.getByRole('button',{name:'Open letter'}));expect(screen.getByLabelText('Employee response *')).toBeEnabled();expect(screen.getByLabelText('HR review note *')).toBeDisabled();expect(screen.getByLabelText(/Registered name/)).toBeDisabled();expect(screen.getByLabelText('Mapped job *')).toBeDisabled();
+ fireEvent.change(screen.getByLabelText('Type your full name as your signature'),{target:{value:'Fictional Employee'}});fireEvent.click(screen.getByRole('checkbox'));expect(screen.getByRole('button',{name:'Sign and accept offer'})).toBeEnabled();
+ fireEvent.change(screen.getByLabelText('Employee response *'),{target:{value:'My unsaved response'}});expect(screen.getByRole('button',{name:'Sign and accept offer'})).toBeDisabled();fireEvent.click(screen.getByRole('button',{name:'Save form fields'}));
+ await waitFor(()=>expect(actions.runResignationCommand).toHaveBeenCalledWith({caseId:'case-a',revision:7,command:{type:'saveLetterFields',documentId:'letter-a',documentRevision:2,values:{'employee-note':'My unsaved response'}}}));expect(await screen.findByRole('alert')).toHaveTextContent('Choose a valid field value.');expect(screen.getByLabelText('Employee response *')).toHaveValue('My unsaved response');expect(actions.runResignationCommand.mock.calls.some(([input])=>input.command.type==='letterAction')).toBe(false);
+});
+it.each(['review','approve'] as const)('allows an incomplete authorized field draft but blocks %s until saved',action=>{
+ const command=vi.fn(async()=>false),letter=l({document:letterFieldDocument(),opened:true,editableFieldIds:['hr-note'],capabilities:{...l().capabilities,sign:false,sendBack:false,review:action==='review',approve:action==='approve'}});
+ wrap(<ResignationLetterCard value={c()} letter={letter} busy={false} command={command}/>);fireEvent.click(screen.getByRole('button',{name:'Open letter'}));fireEvent.change(screen.getByLabelText('HR review note *'),{target:{value:''}});
+ expect(screen.getByRole('button',{name:messages.resignationJourney[action]})).toBeDisabled();expect(screen.getByRole('button',{name:'Save form fields'})).toBeEnabled();fireEvent.click(screen.getByRole('button',{name:'Save form fields'}));expect(command).toHaveBeenCalledWith({type:'saveLetterFields',documentId:'letter-a',documentRevision:2,values:{'hr-note':''}});expect(screen.getByLabelText('Employee response *')).toBeDisabled();
+});
+it('preserves existing owner-based document editing and never enables mapped Personnel fields through an explicit scope',()=>{
+ const document=letterFieldDocument(),rendered=wrap(<DocumentBody document={document} editableBy="hr" change={vi.fn()}/>);expect(screen.getByLabelText('HR review note *')).toBeEnabled();expect(screen.getByLabelText('Employee response *')).toBeDisabled();
+ rendered.rerender(<NextIntlClientProvider locale="en" messages={messages}><DocumentBody document={document} editableBy="hr" editableFieldIds={['employee-note','registered-name','mapped-job']} change={vi.fn()}/></NextIntlClientProvider>);expect(screen.getByLabelText('Employee response *')).toBeEnabled();expect(screen.getByLabelText('HR review note *')).toBeDisabled();expect(screen.getByLabelText(/Registered name/)).toBeDisabled();expect(screen.getByLabelText('Mapped job *')).toBeDisabled();
 });

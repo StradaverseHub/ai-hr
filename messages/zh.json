@@ -40965,6 +40965,8 @@
     }
   },
   "resignationJourney": {
+    "saveFormFields": "保存表单字段",
+    "saveFieldsBeforeAction": "请先保存字段更改，再完成审核、批准、签署或重新发送。",
     "conversationClosedDetail": "此个案不再需要离职决定。",
     "outcomePendingDetail": "尚未记录最终结果。",
     "acceptedLetterDetail": "您的离职申请已获接受，接受函仍在处理中。",

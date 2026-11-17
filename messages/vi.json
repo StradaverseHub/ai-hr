@@ -40965,6 +40965,8 @@
     }
   },
   "resignationJourney": {
+    "saveFormFields": "Lưu các trường biểu mẫu",
+    "saveFieldsBeforeAction": "Lưu thay đổi các trường trước khi hoàn tất xem xét, phê duyệt, ký hoặc gửi lại.",
     "conversationClosedDetail": "Hồ sơ này không còn cần quyết định về đơn nghỉ việc.",
     "outcomePendingDetail": "Chưa ghi nhận kết quả cuối cùng.",
     "acceptedLetterDetail": "Đơn nghỉ việc của bạn đã được chấp thuận. Thư chấp thuận vẫn đang được xử lý.",

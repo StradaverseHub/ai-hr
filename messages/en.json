@@ -40965,6 +40965,8 @@
     }
   },
   "resignationJourney": {
+    "saveFormFields": "Save form fields",
+    "saveFieldsBeforeAction": "Save your field changes before completing a review, approving, signing or resending.",
     "conversationClosedDetail": "This case no longer needs a resignation decision.",
     "outcomePendingDetail": "No final outcome has been recorded yet.",
     "acceptedLetterDetail": "Your resignation was accepted. The acceptance letter is still being processed.",

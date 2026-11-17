@@ -4,10 +4,12 @@ import { v9Letterhead } from '@/lib/lifecycle-v9-letterhead';
 import type { ReactNode } from 'react';
 import { merge, type Document, type Field } from '@/lib/lifecycle-v9-model';
 
-export function DocumentBody({ document, values = document.values, editableBy, disabled = false, change }: {
-  document: Document; values?: Record<string, string>; editableBy?: 'employee' | 'hr'; disabled?: boolean;
+export function DocumentBody({ document, values = document.values, editableBy, editableFieldIds, disabled = false, change }: {
+  document: Document; values?: Record<string, string>; editableBy?: 'employee' | 'hr'; editableFieldIds?:readonly string[]; disabled?: boolean;
   change?: (id: string, value: string) => void;
 }) {
+  // Optional native-authorized field scope; existing modules retain their owner-based editing rule.
+  const fieldDisabled=(field:Field)=>disabled||(editableFieldIds===undefined?editableBy!==field.owner:!editableFieldIds.includes(field.id)||field.owner==='pmLocked'||!!field.pmKey);
   return <article className="v9-document v9-document-grid">{document.blocks.map(block => {
     const text = merge(document.edits[block.id] ?? block.text, { ...document.mergeValues, ...values }, undefined, true).text;
     let content: ReactNode;
@@ -16,11 +18,11 @@ export function DocumentBody({ document, values = document.values, editableBy, d
     else if (block.type === 'subheading') content = <h3>{text}</h3>;
     else if (block.type === 'text') content = <p style={{ whiteSpace: 'pre-wrap' }}>{text}</p>;
     else if (block.type === 'fields') {
-      content = <div className="v9-document-grid">{document.fields.filter(f => f.section === block.section && (!f.when || values[f.when.field] === f.when.value)).map(field => <div key={field.id} className={field.width === 'half' ? 'v9-form-half' : 'v9-form-full'}><DocumentField field={field} value={values[field.id] ?? ''} disabled={disabled || editableBy !== field.owner} change={value => change?.(field.id, value)}/></div>)}</div>;
+      content = <div className="v9-document-grid">{document.fields.filter(f => f.section === block.section && (!f.when || values[f.when.field] === f.when.value)).map(field => <div key={field.id} className={field.width === 'half' ? 'v9-form-half' : 'v9-form-full'}><DocumentField field={field} value={values[field.id] ?? ''} disabled={fieldDisabled(field)} change={value => change?.(field.id, value)}/></div>)}</div>;
     } else if (block.type === 'field') {
       const field = document.fields.find(f => f.id === block.fieldId);
       if (!field || field.when && values[field.when.field] !== field.when.value) return null;
-      return <div key={block.id} className={field.width === 'half' ? 'v9-form-half' : 'v9-form-full'}><DocumentField field={field} value={values[field.id] ?? ''} disabled={disabled || editableBy !== field.owner} change={value => change?.(field.id, value)}/></div>;
+      return <div key={block.id} className={field.width === 'half' ? 'v9-form-half' : 'v9-form-full'}><DocumentField field={field} value={values[field.id] ?? ''} disabled={fieldDisabled(field)} change={value => change?.(field.id, value)}/></div>;
     } else if (block.type === 'table') {
       const columns = (block.columns ?? '').split(/[,|]/).map(s => s.trim());
       const rows = (block.rows ?? '').split('\n').filter(Boolean).map(row => row.split('|').map(s => s.trim()));

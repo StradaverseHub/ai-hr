@@ -40965,6 +40965,8 @@
     }
   },
   "resignationJourney": {
+    "saveFormFields": "Simpan medan borang",
+    "saveFieldsBeforeAction": "Simpan perubahan medan sebelum melengkapkan semakan, meluluskan, menandatangani atau menghantar semula.",
     "conversationClosedDetail": "Kes ini tidak lagi memerlukan keputusan peletakan jawatan.",
     "outcomePendingDetail": "Keputusan akhir belum direkodkan.",
     "acceptedLetterDetail": "Peletakan jawatan anda telah diterima. Surat penerimaan masih diproses.",
