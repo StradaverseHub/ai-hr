@@ -293,3 +293,41 @@ END $$;
 --> statement-breakpoint
 REVOKE ALL ON FUNCTION app.resignation_offboarding_date_intent(uuid,date,date),app.resignation_offboarding_date_store(uuid,integer,date,date,jsonb) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION app.resignation_offboarding_date_intent(uuid,date,date),app.resignation_offboarding_date_store(uuid,integer,date,date,jsonb) TO ai_hr_app;
+
+--> statement-breakpoint
+-- Human queue presentation only: current configured waiting members for already-visible pending Offboarding postings.
+-- The shared people RPC and model-facing posting DTO stay unchanged. No directory or group lookup by arbitrary id.
+CREATE FUNCTION app.offboarding_posting_waiting_members(p_postings uuid[])
+RETURNS TABLE(posting_id uuid,names text[],total_members integer)
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ WITH visible AS MATERIALIZED (
+  SELECT p.id,p.approver_group_id,e.person_id
+  FROM public.personnel_posting p JOIN public.employment e ON e.tenant_id=p.tenant_id AND e.id=p.employment_id
+  WHERE coalesce(cardinality(p_postings),0) BETWEEN 1 AND 100 AND app.principal_snapshot_current()
+   AND p.tenant_id=app.current_tenant_id() AND p.id=ANY(p_postings) AND p.source='offboarding' AND p.status='pending'
+   AND app.personnel_posting_visible(p.approver_group_id,p.employment_id,p.source)
+ ), wanted_groups AS MATERIALIZED (SELECT DISTINCT approver_group_id AS id FROM visible),
+ configuration AS MATERIALIZED (
+  SELECT coalesce((SELECT data->'groups' FROM public.lc_onboarding_config WHERE tenant_id=app.current_tenant_id()),
+   (SELECT data->'groups' FROM public.lc_v9_config WHERE tenant_id=app.current_tenant_id()),'[]'::jsonb) AS groups
+ ), configured_members AS MATERIALIZED (
+  SELECT DISTINCT wanted.id,member.value AS user_id
+  FROM configuration cfg CROSS JOIN LATERAL jsonb_array_elements(CASE WHEN jsonb_typeof(cfg.groups)='array' THEN cfg.groups ELSE '[]'::jsonb END) g
+  JOIN wanted_groups wanted ON wanted.id=g->>'id'
+  CROSS JOIN LATERAL jsonb_array_elements_text(CASE WHEN jsonb_typeof(g->'members')='array' THEN g->'members' ELSE '[]'::jsonb END) member
+ ), active_people AS MATERIALIZED (
+  SELECT u.id,u.person_id,nullif(btrim(person.full_name),'') AS name
+  FROM public.app_user u LEFT JOIN public.person person ON person.tenant_id=u.tenant_id AND person.id=u.person_id
+  WHERE u.tenant_id=app.current_tenant_id() AND u.archived_at IS NULL AND NOT app.login_blocked(u.id)
+   AND EXISTS(SELECT 1 FROM configured_members m WHERE m.user_id=u.id::text)
+ ), ranked AS (
+  SELECT v.id,u.name,row_number() OVER(PARTITION BY v.id ORDER BY u.name NULLS LAST,u.id) AS rank,
+   count(*) OVER(PARTITION BY v.id)::integer AS total
+  FROM visible v JOIN configured_members m ON m.id=v.approver_group_id
+  JOIN active_people u ON u.id::text=m.user_id AND u.person_id IS DISTINCT FROM v.person_id
+ )
+ SELECT v.id,coalesce(array_agg(r.name ORDER BY r.rank) FILTER(WHERE r.rank<=3 AND r.name IS NOT NULL),'{}'::text[]),coalesce(max(r.total),0)
+ FROM visible v LEFT JOIN ranked r ON r.id=v.id GROUP BY v.id;
+$$;
+REVOKE ALL ON FUNCTION app.offboarding_posting_waiting_members(uuid[]) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.offboarding_posting_waiting_members(uuid[]) TO ai_hr_app;

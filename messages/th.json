@@ -41205,6 +41205,8 @@
     "overdue": "เกินกำหนด",
     "noDueDate": "ไม่มีกำหนดเวลา",
     "waitingFor": "กำลังรอ {group}",
+    "waitingOthers": "คนอื่นอีก {count} คน",
+    "waitingTotal": "ทั้งหมด {count} คน",
     "reject": "ปฏิเสธ",
     "rejectionReason": "เหตุผลที่ปฏิเสธ (จำเป็น)",
     "retry": "ลองเรียกใช้เวิร์กโฟลว์อีกครั้ง",

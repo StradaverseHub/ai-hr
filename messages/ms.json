@@ -41205,6 +41205,8 @@
     "overdue": "Lewat",
     "noDueDate": "Tiada tarikh akhir",
     "waitingFor": "Menunggu {group}",
+    "waitingOthers": "{count} yang lain",
+    "waitingTotal": "Jumlah {count}",
     "reject": "Tolak",
     "rejectionReason": "Sebab penolakan (wajib)",
     "retry": "Cuba semula aliran kerja",

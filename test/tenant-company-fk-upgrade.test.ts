@@ -427,6 +427,8 @@ it('stops on a cross-tenant row, then validates every company/tenant key without
    'app.resignation_communication_offboarding_context(uuid,uuid,uuid)',
    'app.resignation_communication_files(uuid,uuid)',
 
+   // Human-only pending Offboarding posting member labels; application EXECUTE, never PUBLIC.
+   'app.offboarding_posting_waiting_members(uuid[])',
    // Scoped company-retention boolean; journey rows retain their existing custody-only RLS.
    'app.resignation_company_in_use(uuid)',
    // Reverse-linked clearance template IDs: scoped native metadata, application EXECUTE only.

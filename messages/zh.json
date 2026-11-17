@@ -41205,6 +41205,8 @@
     "overdue": "已逾期",
     "noDueDate": "无截止日期",
     "waitingFor": "正在等待{group}",
+    "waitingOthers": "其他 {count} 人",
+    "waitingTotal": "共 {count} 人",
     "reject": "驳回",
     "rejectionReason": "驳回原因（必填）",
     "retry": "重试工作流",

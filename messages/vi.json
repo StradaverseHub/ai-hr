@@ -41205,6 +41205,8 @@
     "overdue": "Quá hạn",
     "noDueDate": "Không có hạn chót",
     "waitingFor": "Đang chờ {group}",
+    "waitingOthers": "{count} người khác",
+    "waitingTotal": "Tổng cộng {count} người",
     "reject": "Từ chối",
     "rejectionReason": "Lý do từ chối (bắt buộc)",
     "retry": "Thử lại quy trình",

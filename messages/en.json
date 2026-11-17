@@ -41205,6 +41205,8 @@
     "overdue": "Overdue",
     "noDueDate": "No due date",
     "waitingFor": "Waiting for {group}",
+    "waitingOthers": "{count, plural, one {# other} other {# others}}",
+    "waitingTotal": "{count} total",
     "reject": "Reject",
     "rejectionReason": "Reason for rejection (required)",
     "retry": "Retry workflow",

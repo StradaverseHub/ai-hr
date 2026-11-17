@@ -3,8 +3,9 @@ import {getTranslations} from 'next-intl/server';
 import {Card,ErrorBanner,PageHeader} from '@/components/ui';
 import {ActionButton} from '@/components/ui/action-button';
 import {requireScopedLifecycleModule} from '@/lib/scoped-lifecycle-page';
-import {listPersonnelPostings} from '@/packs/personnel-postings/service';
+import {listPersonnelPostings,loadOffboardingPostingApprovers} from '@/packs/personnel-postings/service';
 import {formatDmy,formatDmyTime} from '@/lib/date-display';
+import {formatMoney} from '@/lib/money';
 import {todayInKualaLumpur} from '@/lib/hr-date';
 import {approveOffboardingPostingAction,rejectOffboardingPostingAction,retryOffboardingPostingAction} from './actions';
 const one=(v:string|string[]|undefined)=>typeof v==='string'?v:undefined;
@@ -13,6 +14,8 @@ export default async function Page({searchParams}:{searchParams:Promise<Record<s
  const ctx=await requireScopedLifecycleModule(),q=await searchParams,t=await getTranslations('offboardingPostings'),common=await getTranslations('personnelPostings');
  const status=STATUSES.find(s=>s===one(q.status))??'pending';const offset=Math.max(0,Math.trunc(Number(one(q.offset)??0))||0);
  const page=await listPersonnelPostings(ctx,{source:'offboarding',status,offset,limit:50}),today=todayInKualaLumpur();
+ const waiting=await loadOffboardingPostingApprovers(ctx,page.rows.filter(p=>p.status==='pending'&&!p.canApprove).map(p=>p.id));
+ const waitingLabel=(id:string,group:string|null)=>{const members=waiting[id],names=members?.names??[],remaining=Math.max(0,(members?.total??0)-names.length);return <span>{t('waitingFor',{group:names.length?names.join(', ')+(remaining?' · '+t('waitingOthers',{count:remaining}):''):group??'—'})}{members&&<small className="block text-muted-foreground">{t('waitingTotal',{count:members.total})}</small>}</span>;};
  const href=(next:number,s=status)=>'/lifecycle/offboarding/postings?'+new URLSearchParams({status:s,offset:String(next)});
  const groups=[...new Set(page.rows.map(p=>p.approverGroupName).filter(Boolean))];
  return <div className="mx-auto max-w-7xl space-y-6"><p className="text-sm text-muted-foreground">{t('breadcrumb')}</p><PageHeader title={t('title')} description={t('intro')}/>
@@ -22,12 +25,12 @@ export default async function Page({searchParams}:{searchParams:Promise<Record<s
    {!page.rows.length&&<tr><td className="px-4 py-10 text-center text-muted-foreground" colSpan={8}>{t('empty')}</td></tr>}
    {page.rows.map(p=><tr key={p.id}><td className="px-4 py-4 font-medium">{p.label}</td><td className="px-4 py-4">{p.employeeName??'—'}<small className="block text-muted-foreground">{p.employeeCode}</small></td><td className="px-4 py-4">{t('resignation')}</td>
     <td className="min-w-64 px-4 py-4"><b>{t('event.'+p.eventType)}</b> · {formatDmy(p.current.effectiveDate)}
-     {(['position','jobGrade','basicSalary'] as const).map(key=>p.current[key]!==undefined&&<div key={key} className="mt-1">{t('fields.'+key)}: {key==='basicSalary'&&p.baseline?.currency?p.baseline.currency+' ':''}{p.baseline?.[key]??'—'} → {key==='basicSalary'&&p.baseline?.currency?p.baseline.currency+' ':''}{p.current[key]}</div>)}
+     {(['position','jobGrade','basicSalary'] as const).map(key=>p.current[key]!==undefined&&<div key={key} className="mt-1">{t('fields.'+key)}: {key==='basicSalary'?formatMoney(p.baseline?.[key],p.baseline?.currency):p.baseline?.[key]??'—'} → {key==='basicSalary'?formatMoney(p.current[key],p.baseline?.currency):p.current[key]}</div>)}
      {p.current.exitReason&&<div>{t('exitReason')}: {p.current.exitReason}</div>}{p.editedBy&&<small className="mt-1 block text-muted-foreground">{t('editedBy',{name:p.editedBy.name??'—'})}</small>}
     </td><td className="whitespace-nowrap px-4 py-4">{formatDmyTime(p.createdAt)}</td><td className="px-4 py-4">{t('status.'+p.displayStatus)}{p.rejectionReason&&<p className="mt-1 text-sm text-destructive">{p.rejectionReason}</p>}</td>
     <td className="whitespace-nowrap px-4 py-4">{p.dueOn?<span className={p.status==='pending'&&p.dueOn<today?'text-destructive':''}>{p.status==='pending'&&p.dueOn<today?t('overdue')+' · ':''}{formatDmy(p.dueOn)}</span>:t('noDueDate')}</td>
     <td className="min-w-48 px-4 py-4"><div className="flex flex-wrap gap-2">{p.status==='pending'&&<>
-     {p.canApprove?<form action={approveOffboardingPostingAction}><input type="hidden" name="postingId" value={p.id}/><input type="hidden" name="revision" value={p.revision}/><ActionButton actionKind="saving" className="rounded-lg border bg-primary px-3 py-2 text-primary-foreground">{common('approve')}</ActionButton></form>:<span>{t('waitingFor',{group:p.approverGroupName??'—'})}</span>}
+     {p.canApprove?<form action={approveOffboardingPostingAction}><input type="hidden" name="postingId" value={p.id}/><input type="hidden" name="revision" value={p.revision}/><ActionButton actionKind="saving" className="rounded-lg border bg-primary px-3 py-2 text-primary-foreground">{common('approve')}</ActionButton></form>:waitingLabel(p.id,p.approverGroupName)}
      {p.canEdit&&<Link className="rounded-lg border px-3 py-2" href={'/lifecycle/offboarding/postings/'+p.id+'/edit'}>{common('edit')}</Link>}
      {p.canApprove&&<details className="w-full"><summary className="cursor-pointer text-destructive">{t('reject')}</summary><form action={rejectOffboardingPostingAction} className="mt-2 space-y-2"><input type="hidden" name="postingId" value={p.id}/><input type="hidden" name="revision" value={p.revision}/><label className="block">{t('rejectionReason')}<textarea name="reason" required maxLength={2000} className="mt-1 w-full rounded-lg border p-2"/></label><ActionButton actionKind="saving" className="rounded-lg border px-3 py-2">{t('reject')}</ActionButton></form></details>}
      </>}{p.status==='rejected'&&p.canRetry&&<form action={retryOffboardingPostingAction}><input type="hidden" name="postingId" value={p.id}/><ActionButton actionKind="saving" className="rounded-lg border px-3 py-2">{t('retry')}</ActionButton></form>}</div></td>

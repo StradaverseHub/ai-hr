@@ -286,3 +286,13 @@ export async function approvePersonnelPosting(ctx: SessionContext, input: { id: 
   }
   return approved;
 }
+
+/** Human Offboarding queue labels only. Deliberately separate from the shared/model-facing posting DTO. */
+export async function loadOffboardingPostingApprovers(ctx:SessionContext,postingIds:readonly string[]):Promise<Record<string,{names:string[];total:number}>>{
+ if(postingIds.length>MAX_LISTED_POSTINGS||postingIds.some(id=>!UUID.test(id)))throw new PersonnelPostingError('invalid','Choose at most 100 valid postings.');
+ const ids=[...new Set(postingIds)];if(!ids.length)return{};
+ return withScopedLifecycleTenant(ctx,async tx=>{
+  const rows=await tx.execute<{postingId:string;names:string[];total:number}>(sql`select posting_id as "postingId",names,total_members as total from app.offboarding_posting_waiting_members(${pgArray(ids)}::uuid[])`);
+  return Object.fromEntries(rows.map(row=>[row.postingId,{names:row.names,total:row.total}]));
+ });
+}
