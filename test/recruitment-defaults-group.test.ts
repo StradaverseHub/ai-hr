@@ -112,8 +112,8 @@ describe('recruitment defaults for a 70-company group', () => {
     await owner.db.insert(roleAssignment).values({ tenantId: base.tenantId, appUserId: user.id, companyId: groupA[0], role: 'recruiting_partner' });
     const partner: SessionContext = { ...admin, userId: user.id, roles: ['recruiting_partner'], grants: [{ role: 'recruiting_partner', companyId: groupA[0] }] };
     expect((await recruitmentOverview(partner, [groupA[0]])).openJobs).toBe(0);
-    for (const call of [recruitmentOverview(partner, groupA), listJobs(partner, groupA), recruitmentOverview(admin, [...groupA, 'not-a-uuid'])]) {
-      const error = await call.then(() => null, (e: unknown) => e);
+    for (const call of [() => recruitmentOverview(partner, groupA), () => listJobs(partner, groupA), () => recruitmentOverview(admin, [...groupA, 'not-a-uuid'])]) {
+      const error = await call().then(() => null, (e: unknown) => e);
       expect(error).toBeInstanceOf(RecruitmentError);
       expect((error as RecruitmentError).code).toBe('forbidden');
     }

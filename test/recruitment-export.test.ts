@@ -151,7 +151,10 @@ describe('case 112 — exports contain exactly what the exporter can see, escape
     const withComments = await exportInterviewFeedback(f.r1, f.j1, ['candidateName', 'comments']);
     expect(String(withComments.rows[0][1])).toMatch(/^QZXOVERVIEW\nRole knowledge: QZXNOTE c1/);
     // The hiring manager and the interviewer see the job but do not operate it; the other recruiter and a bystander do not see it at all.
-    expect(await Promise.all([f.hm, f.iv, f.r2, f.bystander].map((who) => code(exportInterviewFeedback(who, f.j1, null))))).toEqual(['forbidden', 'forbidden', 'not_found', 'not_found']);
+    // One after another: four exports at once would race the tenant's three export slots (export_busy is correct then).
+    const refusals: unknown[] = [];
+    for (const who of [f.hm, f.iv, f.r2, f.bystander]) refusals.push(await code(exportInterviewFeedback(who, f.j1, null)));
+    expect(refusals).toEqual(['forbidden', 'forbidden', 'not_found', 'not_found']);
   });
 
   it('refuses more than 10,000 rows and writes an audit event with counts and ids only', async () => {
