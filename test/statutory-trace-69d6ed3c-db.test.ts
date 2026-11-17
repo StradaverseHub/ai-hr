@@ -14,6 +14,7 @@
  *   run 2 adds 506 − 418 = 88 and 598 − 494 = 104. The old code gave 88 / 48.
  */
 import { and, eq, sql } from 'drizzle-orm';
+import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import * as schema from '../db/schema';
 import type { SessionContext } from '../db/client';
@@ -121,7 +122,8 @@ async function goldenRun() {
 async function saveAndReprocess(input: PayComponentInput, batchId: string, employmentId: string) {
   await upsertPayComponent(a, input);
   await markRunsAffectedByPayComponent(a, { componentId: await idByCode(input.code), code: input.code });
-  await reprocessSelectedEmployees(a, { batchId, employmentIds: [employmentId], reason: 'Pay item EPF setting changed' });
+  // Each fixture call models a new operator action; replaying the same reason otherwise reuses its completed job.
+  return reprocessSelectedEmployees(a, { batchId, employmentIds: [employmentId], reason: 'Pay item EPF setting changed', idempotencyKey: randomUUID() });
 }
 
 beforeAll(async () => {
@@ -194,14 +196,16 @@ describe('ffb6c2e0 — open reprocessing and closed trace protection', () => {
   it('eligible reprocessing changes only the enabled non-EPF wages and their contribution legs', async () => {
     await setup();
     const { e, batchId } = await goldenRun();
-    await saveAndReprocess(BONUS({ includedInSocsoEis: false }), batchId, e.employmentId);
+    const excludedJob = await saveAndReprocess(BONUS({ includedInSocsoEis: false }), batchId, e.employmentId);
     const excluded = await slipOf(batchId, e.employmentId);
     const old = statOf(excluded);
     expect(old.statutoryTrace!.socso.wage).toBe(4200);
     expect(old.statutoryTrace!.items.find(l => l.code === 'BNS')?.socsoEis).toBe(0);
-    await saveAndReprocess(BONUS(), batchId, e.employmentId);
+    const includedJob = await saveAndReprocess(BONUS(), batchId, e.employmentId);
+    expect(includedJob.jobId).not.toBe(excludedJob.jobId);
     const included = await slipOf(batchId, e.employmentId);
     const current = statOf(included);
+    expect(included.version).toBeGreaterThan(excluded.version);
     expect(current.statutoryTrace!.socso.wage).toBe(5000);
     expect(current.statutoryTrace!.items.find(l => l.code === 'BNS')?.socsoEis).toBe(800);
     expect(current.statutoryTrace!.run.own.socsoWageExtra).toBe(800);
