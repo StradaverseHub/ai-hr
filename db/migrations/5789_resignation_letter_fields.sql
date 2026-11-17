@@ -300,12 +300,14 @@ GRANT EXECUTE ON FUNCTION app.resignation_offboarding_date_intent(uuid,date,date
 CREATE FUNCTION app.offboarding_posting_waiting_members(p_postings uuid[])
 RETURNS TABLE(posting_id uuid,names text[],total_members integer)
 LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
- WITH visible AS MATERIALIZED (
-  SELECT p.id,p.approver_group_id,e.person_id
+ WITH RECURSIVE visible AS MATERIALIZED (
+  SELECT p.id,p.approver_group_id,e.person_id,e.company_id
   FROM public.personnel_posting p JOIN public.employment e ON e.tenant_id=p.tenant_id AND e.id=p.employment_id
   WHERE coalesce(cardinality(p_postings),0) BETWEEN 1 AND 100 AND app.principal_snapshot_current()
    AND p.tenant_id=app.current_tenant_id() AND p.id=ANY(p_postings) AND p.source='offboarding' AND p.status='pending'
    AND app.personnel_posting_visible(p.approver_group_id,p.employment_id,p.source)
+   -- Employment state is the canonical inline owner predicate in the CURRENT READER's import context.
+   AND app.access_workforce_employment_permitted(e.tenant_id,e.company_id,e.voided_at,e.import_pending_attempt_id,ARRAY[e.company_id])
  ), wanted_groups AS MATERIALIZED (SELECT DISTINCT approver_group_id AS id FROM visible),
  configuration AS MATERIALIZED (
   SELECT coalesce((SELECT data->'groups' FROM public.lc_onboarding_config WHERE tenant_id=app.current_tenant_id()),
@@ -321,11 +323,57 @@ LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp A
   FROM wanted_users wanted JOIN public.app_user u ON u.id=wanted.user_id AND u.tenant_id=app.current_tenant_id()
   LEFT JOIN public.person person ON person.tenant_id=u.tenant_id AND person.id=u.person_id
   WHERE u.archived_at IS NULL AND NOT app.login_blocked(u.id)
+ ), wanted_companies AS MATERIALIZED (SELECT DISTINCT company_id FROM visible),
+ -- Derived reader of the canonical Access owners (0579/2510/5076/2126), pinned and compared by native regression tests.
+ -- No permission is stored or granted here. Resolve the current published parent source once, never per member.
+ published_parents AS MATERIALIZED (
+  SELECT DISTINCT ON(m.company_id) m.company_id,m.parent_company_id
+  FROM public.company_organisation_mapping m JOIN public.company_organisation_run r ON r.tenant_id=m.tenant_id AND r.id=m.run_id
+  WHERE m.tenant_id=app.current_tenant_id() AND r.state='published' AND r.effective_on<=(now() AT TIME ZONE 'Asia/Kuala_Lumpur')::date
+  ORDER BY m.company_id,r.effective_on DESC,r.published_at DESC,r.id DESC
+ ), parents AS MATERIALIZED (
+  SELECT c.id,CASE WHEN p.company_id IS NOT NULL THEN p.parent_company_id ELSE c.parent_company_id END AS parent_id
+  FROM public.company c LEFT JOIN published_parents p ON p.company_id=c.id WHERE c.tenant_id=app.current_tenant_id()
+ ), lineage(company_id,ancestor_id,path) AS (
+  SELECT c.company_id,c.company_id,ARRAY[c.company_id] FROM wanted_companies c
+  UNION ALL SELECT l.company_id,p.id,l.path||p.id FROM lineage l JOIN parents current_parent ON current_parent.id=l.ancestor_id
+   JOIN parents p ON p.id=current_parent.parent_id WHERE NOT(p.id=ANY(l.path))
+ ), candidate_pairs AS MATERIALIZED (
+  SELECT DISTINCT u.id AS user_id,v.company_id FROM visible v JOIN configured_members m ON m.id=v.approver_group_id
+  JOIN active_people u ON u.id=m.user_id AND u.person_id IS DISTINCT FROM v.person_id
+ ), role_pairs AS MATERIALIZED (
+  SELECT DISTINCT p.user_id,p.company_id FROM candidate_pairs p JOIN public.role_assignment r
+   ON r.tenant_id=app.current_tenant_id() AND r.app_user_id=p.user_id AND r.role::text IN('hr_admin','super_admin')
+   AND (r.company_id IS NULL OR EXISTS(SELECT 1 FROM lineage l WHERE l.company_id=p.company_id AND l.ancestor_id=r.company_id))
+ ), capability AS MATERIALIZED (
+  SELECT c.supported,c.scope,jsonb_array_length(c.bindings)>0 AS bound,coalesce(cfg.initialized,false) AS initialized
+  FROM public.access_capability c LEFT JOIN public.access_configuration cfg ON cfg.tenant_id=app.current_tenant_id()
+  WHERE c.id='workforce.maintain'
+ ), overrides AS MATERIALIZED (
+  SELECT DISTINCT p.user_id,p.company_id,o.effect FROM role_pairs p JOIN public.access_user_override o
+   ON o.tenant_id=app.current_tenant_id() AND o.user_id=p.user_id AND o.capability_id='workforce.maintain' AND o.retired_at IS NULL
+   AND (o.company_id IS NULL OR EXISTS(SELECT 1 FROM lineage l WHERE l.company_id=p.company_id AND l.ancestor_id=o.company_id))
+ ), memberships AS MATERIALIZED (
+  SELECT m.user_id,m.group_id,m.company_id FROM public.access_effective_membership m JOIN wanted_users w ON w.user_id=m.user_id
+  WHERE m.tenant_id=app.current_tenant_id()
+ ), group_rights AS MATERIALIZED (
+  SELECT DISTINCT p.user_id,p.company_id FROM role_pairs p JOIN memberships m ON m.user_id=p.user_id
+  JOIN public.access_group g ON g.tenant_id=app.current_tenant_id() AND g.id=m.group_id AND g.retired_at IS NULL
+  JOIN public.access_group_grant a ON a.tenant_id=g.tenant_id AND a.group_id=g.id AND a.capability_id='workforce.maintain' AND a.retired_at IS NULL
+  WHERE (m.company_id IS NULL OR EXISTS(SELECT 1 FROM lineage l WHERE l.company_id=p.company_id AND l.ancestor_id=m.company_id))
+   AND (a.company_id IS NULL OR EXISTS(SELECT 1 FROM lineage l WHERE l.company_id=p.company_id AND l.ancestor_id=a.company_id))
+ ), permitted AS MATERIALIZED (
+  SELECT p.user_id,p.company_id FROM role_pairs p CROSS JOIN capability c
+  WHERE NOT c.supported OR c.scope='company' AND c.bound AND c.initialized
+   AND NOT EXISTS(SELECT 1 FROM overrides o WHERE o.user_id=p.user_id AND o.company_id=p.company_id AND o.effect='deny')
+   AND (EXISTS(SELECT 1 FROM overrides o WHERE o.user_id=p.user_id AND o.company_id=p.company_id AND o.effect='allow')
+    OR EXISTS(SELECT 1 FROM group_rights g WHERE g.user_id=p.user_id AND g.company_id=p.company_id))
  ), ranked AS (
   SELECT v.id,u.name,row_number() OVER(PARTITION BY v.id ORDER BY u.name NULLS LAST,u.id) AS rank,
    count(*) OVER(PARTITION BY v.id)::integer AS total
   FROM visible v JOIN configured_members m ON m.id=v.approver_group_id
   JOIN active_people u ON u.id=m.user_id AND u.person_id IS DISTINCT FROM v.person_id
+  JOIN permitted p ON p.user_id=u.id AND p.company_id=v.company_id
  )
  SELECT v.id,coalesce(array_agg(r.name ORDER BY r.rank) FILTER(WHERE r.rank<=3 AND r.name IS NOT NULL),'{}'::text[]),coalesce(max(r.total),0)
  FROM visible v LEFT JOIN ranked r ON r.id=v.id GROUP BY v.id;

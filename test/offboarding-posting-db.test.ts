@@ -82,9 +82,14 @@ it('projects only bounded current waiting names for visible pending Offboarding 
  const archived=await member('Hidden archived member'),blocked=await member('Hidden ended member');
  await owner.db.execute(sql`update app_user set archived_at=now() where id=${archived.userId}::uuid`);
  await terminateEmployment(admin,{employmentId:blocked.employmentId,terminationDate:'2026-01-02',terminationType:'voluntary',terminationReason:'Fictional completed exit'});
- const subjectUser=await createAppUser(b.tenantId,f.hire.personId,'employee');
+ const subjectUser=await createAppUser(b.tenantId,f.hire.personId,'hr_admin');
  const foreign=await seedBase();await setModule(foreign.tenantId,'lifecycle','active');const foreignSubject=await hireEmployee(adminCtx(foreign),{person:{fullName:'Hidden foreign member',primaryEmail:randomUUID()+'@waiting.example.test'},companyId:foreign.companyId,departmentId:foreign.deptA,employmentType:'full_time',hiredOn:'2026-01-01'}),foreignUser=await createAppUser(foreign.tenantId,foreignSubject.personId,'hr_admin');
- const group={id:'waiting',name:'Configured waiting people',limit:10,members:[...active.map(person=>person.userId),active[0].userId,archived.userId,blocked.userId,subjectUser,foreignUser,'malformed historical member','123-not-a-uuid']};
+ const ordinary=await member('Hidden ordinary employee'),wrongCompany=await member('Hidden other-company HR'),otherScope=randomUUID();
+ await owner.db.execute(sql`insert into company(id,tenant_id,legal_name) values(${otherScope}::uuid,${b.tenantId}::uuid,'Fictional member other scope')`);
+ await owner.db.execute(sql`update role_assignment set role='employee' where app_user_id=${ordinary.userId}::uuid and tenant_id=${b.tenantId}::uuid`);
+ await owner.db.execute(sql`update role_assignment set company_id=${otherScope}::uuid where app_user_id=${wrongCompany.userId}::uuid and tenant_id=${b.tenantId}::uuid`);
+ for(const candidate of [{...admin,userId:ordinary.userId,personId:ordinary.personId,roles:['employee']},{...admin,userId:wrongCompany.userId,personId:wrongCompany.personId,grants:[{role:'hr_admin',companyId:otherScope}]}] as SessionContext[])expect(await withTenant(candidate,tx=>tx.execute<{allowed:boolean}>(sql`select app.access_workforce_employment(${f.hire.employmentId}::uuid,'workforce.maintain') as allowed`))).toEqual([{allowed:false}]);
+ const group={id:'waiting',name:'Configured waiting people',limit:10,members:[...active.map(person=>person.userId),active[0].userId,archived.userId,blocked.userId,subjectUser,foreignUser,ordinary.userId,wrongCompany.userId,'malformed historical member','123-not-a-uuid']};
  await owner.db.execute(sql`update lc_onboarding_config set data=jsonb_set(data,'{groups}',data->'groups'||${JSON.stringify([group])}::jsonb) where tenant_id=${b.tenantId}::uuid`);
  await owner.db.execute(sql`update lc_v9_config set data=jsonb_set(jsonb_set(data,'{groups}',data->'groups'||${JSON.stringify([group])}::jsonb),'{offboarding,postingApproverGroupId}','"waiting"'::jsonb) where tenant_id=${b.tenantId}::uuid`);
  const posting=await withTenant(admin,tx=>createPersonnelPostingTx(tx,{...f.input,approverGroupId:group.id}));
@@ -95,8 +100,10 @@ it('projects only bounded current waiting names for visible pending Offboarding 
  const native=(ctx:SessionContext,ids:string[])=>withTenant(ctx,tx=>tx.execute<{posting_id:string;names:string[];total_members:number}>(sql`select * from app.offboarding_posting_waiting_members(${`{${ids.join(',')}}`}::uuid[])`));
  expect(await native(admin,[posting.id])).toEqual([{posting_id:posting.id,names:expected[posting.id].names,total_members:5}]);
  expect(await native(admin,[])).toEqual([]);expect(await native(admin,[posting.id,...Array.from({length:100},()=>randomUUID())])).toEqual([]);
- const subject={...admin,userId:subjectUser,personId:f.hire.personId,roles:['employee'],grants:undefined};
+ const subject={...admin,userId:subjectUser,personId:f.hire.personId,roles:['hr_admin'],grants:undefined};
  expect(await native(subject,[posting.id])).toEqual([]);expect(await native(adminCtx(foreign),[posting.id])).toEqual([]);
+ expect(await withTenant(subject,tx=>tx.execute<{allowed:boolean}>(sql`select app.access_workforce_employment(${f.hire.employmentId}::uuid,'workforce.maintain') as allowed`))).toEqual([{allowed:true}]); // Workforce maintenance alone never admits approval of one's own posting.
+ for(const inactive of [archived,blocked])expect(await withTenant({...admin,userId:inactive.userId,personId:inactive.personId},tx=>tx.execute<{allowed:boolean}>(sql`select app.access_workforce_employment(${f.hire.employmentId}::uuid,'workforce.maintain') as allowed`))).toEqual([{allowed:false}]);
  const managerUser=await createAppUser(b.tenantId,null,'manager');await owner.db.execute(sql`update lc_onboarding_config set data=jsonb_set(data,'{access,offboarding}',data->'access'->'offboarding'||${JSON.stringify([managerUser])}::jsonb) where tenant_id=${b.tenantId}::uuid`);
  const manager:SessionContext={...admin,userId:managerUser,personId:null,roles:['manager']};expect((await listPersonnelPostings(manager,{source:'offboarding',status:'all'})).rows).toEqual([]);expect(await native(manager,[posting.id])).toEqual([]); // Module access alone is not queue membership.
  const company=randomUUID(),restricted=await createAppUser(b.tenantId,null,'hr_admin');await owner.db.execute(sql`insert into company(id,tenant_id,legal_name) values(${company}::uuid,${b.tenantId}::uuid,'Fictional other company')`);
@@ -108,3 +115,57 @@ it('projects only bounded current waiting names for visible pending Offboarding 
  await withTenant(approver,tx=>tx.execute(sql`select app.offboarding_posting_reject(${posting.id}::uuid,1,'Fictional review required')`));
  expect(await native(admin,[posting.id])).toEqual([]);expect(await loadOffboardingPostingApprovers(admin,[posting.id])).toEqual({});
 },90000);
+
+it('pins the Access owner bodies and security attributes used by the derived human waiting projection',async()=>{
+ const contracts=[
+  ['app.access_workforce_company(uuid,text)','a44f92a105ec55bb504516b17a3b4966','sql',true,'search_path=pg_catalog, public, pg_temp'],
+  ['app.access_workforce_employment(uuid,text)','dcdb6797287dc5c3339ffab3873fd892','sql',true,'search_path=pg_catalog, public, pg_temp'],
+  ['app.access_allowed_for_tenant(uuid,uuid,text,uuid)','37b7ff9f10ef68cee3efa754cc259a08','plpgsql',true,'search_path=pg_catalog, public, pg_temp'],
+  ['app.company_org_parent_for_tenant(uuid,uuid)','3ae3f6628230ba9775a4a5609922e1e2','sql',true,'search_path=pg_catalog, public, pg_temp'],
+  ['app.company_org_descendant_for_tenant(uuid,uuid,uuid)','54a42a4016a905df5f0d00551dc07117','sql',true,'search_path=pg_catalog, public, pg_temp'],
+  ['app.access_scope_covers(uuid,uuid,uuid)','b8fdee28a9b177b35f8cd10bfeeb79e7','sql',true,'search_path=pg_catalog, public, pg_temp'],
+  ['app.access_workforce_employment_permitted(uuid,uuid,timestamp with time zone,uuid,uuid[])','4dcea99560326ecaba91f1f7942d402c','sql',false,null],
+  ['app.has_role_for(text,uuid)','e8a6315d53cf3e89b21852823e1d3589','sql',true,'search_path=pg_catalog, public, pg_temp'],
+  ['app.grants_have_role_for(jsonb,text,uuid)','3f18bf0fb0482ea472c649521198989c','sql',true,'search_path=pg_catalog, public, app'],
+ ] as const;
+ for(const [signature,body,language,definer,config] of contracts){const[actual]=await owner.db.execute<{body:string;language:string;definer:boolean;volatility:string;config:string[]|null}>(sql`select md5(p.prosrc) as body,l.lanname as language,p.prosecdef as definer,p.provolatile as volatility,p.proconfig as config from pg_proc p join pg_language l on l.oid=p.prolang where p.oid=${signature}::regprocedure`);expect(actual,signature+' changed: review derived waiting eligibility together with the canonical owner').toEqual({body,language,definer,volatility:'s',config:config?[config]:null});}
+});
+
+it('matches actual native-principal Workforce eligibility for configured waiting members, including capability precedence and employment state',async()=>{
+ const f=await retained(),parent=randomUUID(),beta=randomUUID();
+ await owner.db.execute(sql`insert into company(id,tenant_id,legal_name) values(${parent}::uuid,${b.tenantId}::uuid,'Fictional role parent'),(${beta}::uuid,${b.tenantId}::uuid,'Fictional unrelated scope')`);
+ await owner.db.execute(sql`update company set parent_company_id=${parent}::uuid where id=${b.companyId}::uuid and tenant_id=${b.tenantId}::uuid`);
+ const candidate=async(name:string,role:'employee'|'hr_admin',scope:string|null)=>{const person=await hireEmployee(admin,{person:{fullName:name,primaryEmail:randomUUID()+'@waiting-parity.example.test'},companyId:b.companyId,departmentId:b.deptA,employmentType:'full_time',hiredOn:'2026-01-01'});const id=await createAppUser(b.tenantId,person.personId,role);await owner.db.execute(sql`update role_assignment set company_id=${scope}::uuid where tenant_id=${b.tenantId}::uuid and app_user_id=${id}::uuid`);return{id,name,ctx:{...admin,userId:id,personId:person.personId,roles:[role],grants:[{role,companyId:scope}]} as SessionContext};};
+ const employee=await candidate('Parity ordinary employee','employee',null),wrong=await candidate('Parity other-company HR','hr_admin',beta),allow=await candidate('Parity allowed HR','hr_admin',b.companyId),deny=await candidate('Parity denied HR','hr_admin',parent),effective=await candidate('Parity effective-group HR','hr_admin',parent),none=await candidate('Parity no grant HR','hr_admin',b.companyId);
+ const candidates=[employee,wrong,allow,deny,effective,none],group={id:'parity',name:'Parity configured group',members:candidates.map(c=>c.id),limit:0};
+ await owner.db.execute(sql`update lc_onboarding_config set data=jsonb_set(data,'{groups}',data->'groups'||${JSON.stringify([group])}::jsonb) where tenant_id=${b.tenantId}::uuid`);
+ await owner.db.execute(sql`update lc_v9_config set data=jsonb_set(jsonb_set(data,'{groups}',data->'groups'||${JSON.stringify([group])}::jsonb),'{offboarding,postingApproverGroupId}','"parity"'::jsonb) where tenant_id=${b.tenantId}::uuid`);
+ const posting=await withTenant(admin,tx=>createPersonnelPostingTx(tx,{...f.input,approverGroupId:'parity'}));
+ const [original]=await owner.db.execute<{supported:boolean;bindings:unknown}>(sql`select supported,bindings from access_capability where id='workforce.maintain'`);
+ const setMembers=async(ids:string[])=>{await owner.db.execute(sql`update lc_onboarding_config set data=jsonb_set(data,'{groups}',(select jsonb_agg(case when g->>'id'='parity' then jsonb_set(g,'{members}',${JSON.stringify(ids)}::jsonb) else g end) from jsonb_array_elements(data->'groups') g)) where tenant_id=${b.tenantId}::uuid`);};
+ const expected=async()=>{const permitted=[];for(const c of candidates){const[row]=await withTenant(c.ctx,tx=>tx.execute<{allowed:boolean}>(sql`select app.access_workforce_employment(${f.hire.employmentId}::uuid,'workforce.maintain') as allowed`));if(row.allowed)permitted.push(c.name);}return permitted.sort();};
+ const compare=async(label:string)=>{const names=await expected(),labels=await loadOffboardingPostingApprovers(admin,[posting.id]);expect(labels[posting.id],label).toEqual({names:names.slice(0,3),total:names.length});for(const c of candidates){await setMembers([c.id]);const result=await loadOffboardingPostingApprovers(admin,[posting.id]);expect(result[posting.id],label+'/'+c.name).toEqual({names:names.includes(c.name)?[c.name]:[],total:Number(names.includes(c.name))});}await setMembers(candidates.map(c=>c.id));return names;};
+ try{
+  await owner.db.execute(sql`update access_capability set supported=true,bindings='[{"owner":"waiting-eligibility-fixture","operation":"maintain"}]'::jsonb where id='workforce.maintain'`);
+  await owner.db.execute(sql`update access_configuration set initialized=true where tenant_id=${b.tenantId}::uuid`);
+  await owner.db.execute(sql`update access_group_grant set retired_at=now() where tenant_id=${b.tenantId}::uuid and capability_id='workforce.maintain' and retired_at is null`);
+  for(const user of [admin.userId!,employee.id,wrong.id,allow.id,deny.id])await owner.db.execute(sql`insert into access_user_override(tenant_id,user_id,capability_id,company_id,effect) values(${b.tenantId}::uuid,${user}::uuid,'workforce.maintain',null,'allow')`);
+  await owner.db.execute(sql`insert into access_user_override(tenant_id,user_id,capability_id,company_id,effect) values(${b.tenantId}::uuid,${deny.id}::uuid,'workforce.maintain',${b.companyId}::uuid,'deny')`);
+  const accessGroup=randomUUID();await owner.db.execute(sql`insert into access_group(id,tenant_id,name) values(${accessGroup}::uuid,${b.tenantId}::uuid,'Fictional waiting capability group')`);
+  await owner.db.execute(sql`insert into access_membership(tenant_id,group_id,user_id,company_id) values(${b.tenantId}::uuid,${accessGroup}::uuid,${effective.id}::uuid,${parent}::uuid)`);
+  await owner.db.execute(sql`insert into access_group_grant(tenant_id,group_id,capability_id,company_id) values(${b.tenantId}::uuid,${accessGroup}::uuid,'workforce.maintain',${parent}::uuid)`);
+  expect(await compare('supported: deny beats global allow; effective group covers child')).toEqual(['Parity allowed HR','Parity effective-group HR']);
+  await owner.db.execute(sql`update access_capability set supported=false where id='workforce.maintain'`);
+  expect(await compare('unsupported capability preserves canonical HR-role fallback')).toEqual(['Parity allowed HR','Parity denied HR','Parity effective-group HR','Parity no grant HR']);
+  await owner.db.execute(sql`update access_capability set supported=true where id='workforce.maintain'`);
+  const attempt=randomUUID();await owner.db.execute(sql`insert into import_attempt(id,tenant_id,kind,created_by,company_ids,mime_type,operation_key,plan,source_content,source_hash,source_name) values(${attempt}::uuid,${b.tenantId}::uuid,'employee_full',${admin.userId}::uuid,${`{${b.companyId}}`}::uuid[],'text/csv',${randomUUID()}::uuid,'{}'::jsonb,decode('','hex'),encode(sha256(decode('','hex')),'hex'),'waiting-fixture.csv')`);
+  await owner.db.execute(sql`update employment set import_pending_attempt_id=${attempt}::uuid where id=${f.hire.employmentId}::uuid and tenant_id=${b.tenantId}::uuid`);
+  expect(await expected()).toEqual([]);expect(await loadOffboardingPostingApprovers(admin,[posting.id])).toEqual({});
+  // This is the real import owner's current reader context, not a candidate impersonation or an authority grant.
+  await withTenant(admin,async tx=>{await tx.execute(sql`select set_config('app.import_attempt',${attempt},true)`);expect(await tx.execute<{allowed:boolean}>(sql`select app.access_workforce_employment(${f.hire.employmentId}::uuid,'workforce.maintain') as allowed`)).toEqual([{allowed:true}]);expect(await tx.execute<{names:string[];total_members:number}>(sql`select names,total_members from app.offboarding_posting_waiting_members(${`{${posting.id}}`}::uuid[])`)).toEqual([{names:['Parity allowed HR','Parity effective-group HR'],total_members:2}]);});
+  await owner.withTenant(admin,tx=>tx.execute(sql`select app.import_release(${attempt}::uuid)`));
+  expect(await compare('released import marker uses the existing visibility owner')).toEqual(['Parity allowed HR','Parity effective-group HR']);
+  await owner.db.execute(sql`update employment set voided_at=now(),voided_by=${admin.userId}::uuid,void_reason='Fictional import void',voided_import_attempt_id=${attempt}::uuid,voided_employee_code=employee_code,employee_code=null where id=${f.hire.employmentId}::uuid and tenant_id=${b.tenantId}::uuid`);
+  expect(await expected()).toEqual([]);expect(await loadOffboardingPostingApprovers(admin,[posting.id])).toEqual({});
+ }finally{await owner.db.execute(sql`update access_capability set supported=${original.supported},bindings=${JSON.stringify(original.bindings)}::jsonb where id='workforce.maintain'`);}
+},270000);
