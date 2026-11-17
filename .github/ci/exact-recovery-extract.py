@@ -3,6 +3,7 @@ import json,pathlib,re,stat,sys,zipfile
 archive,destination=map(pathlib.Path,sys.argv[1:])
 prerequisites={'personnel-draft-discard-premigration-role-prerequisites.json':'PERSONNEL_DRAFT_DISCARD_PREMIGRATION_ROLE_PREREQUISITES','personnel-draft-discard-role-prerequisites.json':'PERSONNEL_DRAFT_DISCARD_DISPOSABLE_ROLE_PREREQUISITES'}
 source_diagnostics={'claims-approval-queue-100k.json':('test/claims-approval-queue-scale.test.ts','CLAIMS_APPROVAL_QUEUE_SCALE_V1'),'personnel-page-projection.json':('test/personnel-page-projection.test.ts','NATIVE_PERSONNEL_PROJECTION_COUNT_NOT_SYSTEM_CAPACITY')}
+source_diagnostics.update({'assistant-chat-list-root-batch.json':('test/assistant-chat-list-root-batch.test.ts','NATIVE_CHAT_ROOT_READ_COUNT_COMPONENT_ONLY'),'personnel-draft-discard-role-transfer.json':('test/personnel-draft-discard-role-transfer.test.ts','PERSONNEL_DRAFT_DISCARD_RESTRICTED_LOGIN_OWNERSHIP_REHEARSAL')})
 label_fixed={'system-label-browser-resources.json','system-label-browser-results.json','system-label-browser-server.log','system-label-preview-en-desktop.png','system-label-profile-options-empty.png','system-label-restricted-global-refusal.png'}
 def label_diagnostic(name):
     return name in label_fixed or re.fullmatch(r'system-label-dev-server-heap/heap-[1-9][0-9]*\.json',name) or re.fullmatch(r'system-label-exchange-(en|ms|ta|th|vi|zh)-(mobile|desktop)\.png',name)
@@ -55,6 +56,8 @@ with zipfile.ZipFile(archive) as z:
         value=json.loads(z.read(name))
         if not database or selected not in groups['DB'] or value.get('kind')!=kind:
             raise ValueError('Diagnostic is not declared by the selected source')
+        if name=='personnel-draft-discard-role-transfer.json' and any(value.get(k)!=report.get(v) for k,v in [('candidate','sha'),('controller','controller'),('runId','runId'),('attempt','attempt')]):
+            raise ValueError('Role transfer diagnostic identity differs')
     if 'test/analytics-carry-searched-native-scale.test.ts' in groups.get('DB',[]) and 'analytics-carry-searched-native-50k.json' not in names:
         raise ValueError('Selected Carry source diagnostic missing')
     if 'analytics-carry-searched-native-50k.json' in names:

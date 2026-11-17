@@ -37,6 +37,16 @@ class ExactExtraction(unittest.TestCase):
     def test_label_json_bound(self):self.assertNotEqual(self.invoke(True,files=['test/system-label-exchange-browser.test.ts'],extra=[('system-label-browser-resources.json','x'*65537)])[0],0)
     def test_label_unknown_locale_refused(self):self.assertNotEqual(self.invoke(True,files=['test/system-label-exchange-browser.test.ts'],extra=[('system-label-exchange-fr-mobile.png',b'PNG')])[0],0)
     def test_label_traversal_refused(self):self.assertNotEqual(self.invoke(True,files=['test/system-label-exchange-browser.test.ts'],extra=[('system-label-dev-server-heap/../heap-123.json','{}')])[0],0)
+    def test_chat_root_diagnostic(self):self.assertEqual(self.invoke(True,files=['test/assistant-chat-list-root-batch.test.ts'],extra=[('assistant-chat-list-root-batch.json',json.dumps({'kind':'NATIVE_CHAT_ROOT_READ_COUNT_COMPONENT_ONLY'}))]),(0,['db.vitest.json','focused.json']))
+    def transfer(self,**change):
+        value={'kind':'PERSONNEL_DRAFT_DISCARD_RESTRICTED_LOGIN_OWNERSHIP_REHEARSAL','candidate':'a'*40,'controller':'c'*40,'runId':'200','attempt':'1'};value.update(change)
+        return [('personnel-draft-discard-role-transfer.json',json.dumps(value))]
+    def test_role_transfer_diagnostic(self):self.assertEqual(self.invoke(True,files=['test/personnel-draft-discard-role-transfer.test.ts'],extra=self.transfer()),(0,['db.vitest.json','focused.json']))
+    def test_role_transfer_identity(self):
+        for key in ['candidate','controller','runId','attempt']:
+            with self.subTest(key=key):self.assertNotEqual(self.invoke(True,files=['test/personnel-draft-discard-role-transfer.test.ts'],extra=self.transfer(**{key:'foreign'}))[0],0)
+    def test_role_transfer_undeclared(self):self.assertNotEqual(self.invoke(True,extra=self.transfer())[0],0)
+    def test_chat_root_undeclared(self):self.assertNotEqual(self.invoke(True,extra=[('assistant-chat-list-root-batch.json',json.dumps({'kind':'NATIVE_CHAT_ROOT_READ_COUNT_COMPONENT_ONLY'}))])[0],0)
     def test_undeclared_source_diagnostic(self):self.assertNotEqual(self.invoke(True,extra=[('claims-approval-queue-100k.json','{}')])[0],0)
     def test_source_diagnostic_wrong_kind(self):self.assertNotEqual(self.invoke(True,files=['test/personnel-page-projection.test.ts'],extra=[('personnel-page-projection.json','{}')])[0],0)
     def test_nodb(self):self.assertEqual(self.invoke(),(0,['focused.json','nodb.vitest.json']))
