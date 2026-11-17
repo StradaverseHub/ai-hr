@@ -844,3 +844,21 @@ same-purpose technical rebinding approval, the 29 already-approved records bind 
 (1640 source files). Only sourceDigest changes; human metadata and pending statuses are preserved.
 The agent manifest is regenerated last. Hosted regression and actual PDF download verification
 remain required; this source binding is neither a test pass nor release authorization.
+
+### Handoff completeness corrections: development checkpoint — 17 November 2026
+
+The renewed handoff and engineering review correct deterministic Lifecycle ownership, native letter teams,
+current-Person privacy, local document fields, workflow conditions, configured case classification, and
+case communication previews and actor-only test intent. Native SQL retains exact principal, tenant/company,
+transaction and argument admission; the existing private sender owns transport. The new presentation read
+is internal, and message editing/testing remain human handoffs. There is no new model tool, provider
+payload, disclosure purpose or transport. Read and React reviews retain their findings and source closures;
+hosted and actual rendered verification remain outstanding. This checkpoint does not claim the later
+linked-case date synchronization or final accepted Movement integration is complete.
+
+Under the recorded owner approval for same-purpose technical bindings, only the 29 already-approved
+records' sourceDigest changes from
+`e5837992670b1e294b6d41bae623ec1d912e717a45e9b57250bb57b5e1972939` to
+`19b66c2622f1bc2aca20958057e73cfaaa29871181601a49103520f4cc987098` (1644 source files).
+Human reviewer identities, dates, evidence and pending statuses are unchanged. The derived agent manifest
+is regenerated last. This is development source preparation, not a release witness or installation.

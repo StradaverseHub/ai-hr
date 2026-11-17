@@ -17,6 +17,8 @@ Contract **5800–5849,5890–5909 and5920–5959**, including5900–5909/idx530
 `when`1794841005900–1794841005909 and the later confirmed5920–5959/idx5320–5359/
 `when`1794841005920–1794841005959. Preserve these ranges. Recruitment's lower timestamps must be
 reconciled before any higher-timestamp Contract installation; tag order alone does not establish ordering.
+Contract also reserves **5960–5969**, idx5360–5369, `when`1794841005960–1794841005969,
+after a later coordinator-confirmed 288-worktree survey. Preserve this block as well.
 Refresh remote claims and both target installation watermarks at admission. No lease or release readiness
 is claimed, and no production installation or package publication is authorized by this reservation.
 
