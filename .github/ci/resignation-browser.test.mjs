@@ -57,7 +57,7 @@ test('requires actual GBS, CEO and BP identities and a distinct repair departmen
 // Independent handoff contract: additions or omissions need a reviewed update here, not a derived count.
 const requiredByPage={
  configuration:['configuration-navigation','configuration-workflows','configuration-decision','configuration-templates','configuration-document-editor','configuration-email-editor','configuration-groups-routing','configuration-settings','configuration-routing-editor','configuration-document-routing','configuration-retention-settings','configuration-decision-mobile','offboarding-settings-cards-mobile'],
- employee:['employee-submit','employee-tracking','employee-sign','private-offer','employee-offer','retained-outcome','declined-offer','unconfigured-employee-recorded','employee-submit-mobile','employee-tracking-mobile','employee-offer-mobile'],
+ employee:['employee-submit','employee-tracking','employee-sign','private-offer','employee-offer','retained-outcome','declined-offer','unconfigured-employee-recorded','employee-submit-mobile','employee-tracking-mobile','employee-offer-mobile','employee-offer-posting-blocked'],
  decision:['manager-decision','manager-acceptance','manager-retention','bp-fyi','manager-decision-mobile','declined-accept-only-decision'],
  letters:['letter-review','recalled-letter','owner-regenerated-letter','bp-sign-acceptance','ceo-sign-retention','owner-corrected-last-day'],
  offboarding:['accepted-clearance','personnel-postings-pending','personnel-postings-approved','clearance-posting','linked-acceptance-documents','linked-acceptance-pdf','personnel-posting-edit','personnel-postings-nonapprover'],
@@ -66,8 +66,8 @@ const requiredByPage={
  repair:['unconfigured-gbs-repair','repaired-decision-assigned'],
  security:['outsider-denied'],
 };
-test('requires all fifty-seven independent page, role, control and negative-path captures',()=>{
- const expected=Object.values(requiredByPage).flat();assert.equal(expected.length,57);assert.equal(new Set(expected).size,57);assert.equal(REQUIRED_RESIGNATION_CAPTURES.length,57);assert.equal(new Set(REQUIRED_RESIGNATION_CAPTURES).size,57);assert.deepEqual([...REQUIRED_RESIGNATION_CAPTURES].sort(),expected.sort());
+test('requires all fifty-eight independent page, role, control and negative-path captures',()=>{
+ const expected=Object.values(requiredByPage).flat();assert.equal(expected.length,58);assert.equal(new Set(expected).size,58);assert.equal(REQUIRED_RESIGNATION_CAPTURES.length,58);assert.equal(new Set(REQUIRED_RESIGNATION_CAPTURES).size,58);assert.deepEqual([...REQUIRED_RESIGNATION_CAPTURES].sort(),expected.sort());
 });
 test('requires exactly six named mobile views including settings and employee offer terms',()=>{
  assert.deepEqual(REQUIRED_RESIGNATION_CAPTURES.filter(id=>id.endsWith('-mobile')).sort(),['configuration-decision-mobile','employee-submit-mobile','employee-tracking-mobile','manager-decision-mobile','offboarding-settings-cards-mobile','employee-offer-mobile'].sort());
