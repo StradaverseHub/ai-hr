@@ -530,7 +530,11 @@ class ConditionalRuntimeTests(unittest.TestCase):
                         for child in parked.iterdir():child.rename(target.directory/child.name)
                     else:
                         leaf=target.directory/'audit/system-testing.json';value=json.loads(leaf.read_bytes());value['tamperedAfterRead']=True;leaf.write_bytes(encoded(value))
-                with metadata_snapshot_race(f,'root-before',action,setup=lambda target:target.finish())as state:
+                def setup(target):
+                    # The audit-hash case already published native O before retaining
+                    # its baseline audit. Do not synthesize a second finish publication.
+                    if defect!='audit-hash':target.finish()
+                with metadata_snapshot_race(f,'root-before',action,setup=setup)as state:
                     with self.assertRaisesRegex(ValueError,'unknown/missing|directory identity|audit byte integrity'):f.conditional()
                 self.assertTrue(state['fired']);self.assertEqual(state['retries'],0);self.assertEqual(f.unit.read_bytes(),before);self.assertFalse((f.operation/'activated.json').exists());self.assertFalse((f.operation/'ci-worker-start-request.json').exists());self.assertFalse(list(f.operation.glob('ci-runtime-native-retry-*.json')))
 
