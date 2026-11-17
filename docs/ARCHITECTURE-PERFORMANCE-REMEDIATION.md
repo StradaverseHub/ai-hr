@@ -43,7 +43,7 @@ Initial integration base: `59f06b08db014e01cd553a827c62ccf864d33f78`. Preserve t
 | AP-017 | P1 | Contract Management Intake Settings and Workflows | Open; implementation pending |
 | AP-018 | P1 | Loans listing | Open; implementation pending |
 | AP-019 | P2 | Claims Configuration and employee claim choices | Open; implementation pending |
-| AP-020 | P2 | Leave Approval Workflow and readout | Open; implementation pending |
+| AP-020 | P2 | Leave Approval Workflow and readout | Batch7 implemented: native policy catalogue batch; qualification pending, not staged |
 | AP-021 | P2 | Rewards shared policy history | Open; implementation pending |
 | AP-022 | P1 | EA PCB2II and CP22 batch PDF generation | Open; implementation pending |
 | AP-023 | P1 | Shift Card Pay Item Fixed Transaction and standalone Cost Allocation imports | Open; implementation pending |
@@ -183,3 +183,8 @@ AP-011 replaces210company-level reader transactions with one group read under sh
 Batch4's first repaired native run44005754693 exposed a pre-existing shared lookup defect: the single-table staff projection left its outer template ID unqualified inside a correlated SQL subquery. PostgreSQL could bind it to the inner template row, returning an unrelated published version and breaking Prepare letter. The shared projection now explicitly qualifies the request's template ID. Every returned version is independently checked against its canonically created template/version pair, in addition to reader equivalence. Native template RLS and command validation remain unchanged. The original failing evidence is retained.
 
 Preserved Batch5 run44004359509 passed195selected cases and Linux build; whole typecheck found generic inference errors in the new multi-catalogue test. Explicit union-row generic arguments repair the fixture without changing application behavior. The archived-BU source repair and combined qualification remain separate evidence from that original run.
+
+
+## Batch7: Leave escalation settings
+
+AP-020 loads escalation policy metadata once for the company choices already authorized by Leave Approval Workflow and its readout. The singleton reader and group reader share the existing default/target-role decoder; unconfigured, unknown and RLS-invisible companies retain the same defaults. Input company order and native UUID aliases remain supported. The new reader is idempotent, READ ONLY and uses shared Access. Policy writers, approval matching, escalation timing and the nightly sweep remain unchanged. Native70-company/1000-employment, every-role/group/company and actual readout qualification is authored; hosted and staging evidence is pending. No migration or staging change.

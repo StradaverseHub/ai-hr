@@ -6,7 +6,7 @@ import { listCompanies, listEmployeePickOptions, listEmployees, listJobGrades, l
 import { deriveEmploymentStatus } from '@/core/employment-status';
 import type { LeaveLevelKind } from '@/lib/leave-approval-kinds';
 import { previewApprovalChain } from '@/core/leave';
-import { getLeaveEscalationPolicy } from '@/core/leave-approval-policy';
+import { getLeaveEscalationPolicies } from '@/core/leave-approval-policy';
 import {
   listApprovalTemplates,
   listEligibilityRuleScopes,
@@ -123,9 +123,8 @@ export default async function LeaveConfigApprovalChainsPage({
     listEligibilityRuleScopes(s),
   ]);
 
-  const rows = await Promise.all(
-    companies.map(async (c) => ({ company: c, esc: await getLeaveEscalationPolicy(s, c.id) })),
-  );
+  const escalations=await getLeaveEscalationPolicies(s,companies.map(company=>company.id));
+  const rows=companies.map(company=>({company,esc:escalations.get(company.id)!}));
 
   const [templates, allAssignments, employeePickOptions] = await Promise.all([
     listApprovalTemplates(s),

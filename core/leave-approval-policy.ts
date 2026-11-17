@@ -6,7 +6,9 @@ import {lockLeaveDependencyConfigurationTx} from './leave-dependency-lock';
  * leave-day range — all nullable/wildcard. Resolved at request time by core/leave.ts ("most-specific
  * matching rule wins"); edited by admins via the rule builder.
  */
-import { and, eq, isNull, sql } from 'drizzle-orm';
+import {withIdempotentDatabaseRead} from '../db/workload';
+import {lockAccessConfigurationReadTx} from './access-configuration-lock';
+import { and, eq, inArray, isNull, sql } from 'drizzle-orm';
 import { withTenant, type SessionContext, type Tx } from '../db/client';
 import { actorOf, appendEvent } from '../db/events';
 import { company, employmentTypeEnum, leaveApprovalPolicy, leaveApprovalTemplate } from '../db/schema';
@@ -818,7 +820,13 @@ export async function getLeaveEscalationPolicy(
       .from(company)
       .where(eq(company.id, companyId))
       .limit(1);
-    const target: LeaveEscalationTarget =
+    return escalationPolicyFromRow(co);
+  });
+}
+
+/** Decode native stored values once, including the unconfigured/invisible company's legacy defaults. */
+function escalationPolicyFromRow(co:{enabled:boolean;escalateAfterDays:number|null;target:string;targetRole:string|null}|undefined):LeaveEscalationPolicy{
+ const target: LeaveEscalationTarget =
       co?.target === 'specific_role' ? 'specific_role' : 'next_level';
     const targetRole = (LEVEL_KINDS as readonly string[]).includes(co?.targetRole ?? '')
       ? (co?.targetRole as LeaveLevelKind)
@@ -829,7 +837,22 @@ export async function getLeaveEscalationPolicy(
       target,
       targetRole,
     };
-  });
+}
+
+/** Same native company rows as the singleton reader, once for the complete authorized choice set. */
+export function getLeaveEscalationPolicies(ctx:SessionContext,companyIds:readonly string[]):Promise<Map<string,LeaveEscalationPolicy>>{
+ const ids=[...new Set(companyIds)];
+ return withIdempotentDatabaseRead(()=>withTenant(ctx,async tx=>{
+  await tx.execute(sql`set transaction read only`);
+  await lockAccessConfigurationReadTx(tx,ctx.tenantId);
+  if(!ids.length)return new Map();
+  const rows=await tx.select({id:company.id,enabled:company.escalationEnabled,escalateAfterDays:company.escalateAfterDays,
+   target:company.escalationTarget,targetRole:company.escalationTargetRole}).from(company).where(inArray(company.id,ids));
+  const key=(id:string)=>id.replace(/[{}-]/g,'').toLowerCase();
+  const byId=new Map(rows.map(row=>[key(row.id),row]));
+  // UUID case variants address the same native row; preserve requested keys and company order.
+  return new Map(ids.map(id=>[id,escalationPolicyFromRow(byId.get(key(id)))]));
+ }));
 }
 
 /** Save a company's approval-escalation settings. NOT part of the rule matrix — escalation is one number

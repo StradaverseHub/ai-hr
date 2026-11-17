@@ -7,7 +7,7 @@ import { listBusinessUnits, listPositions } from '@/core/admin';
 import { listGradeGroups } from '@/core/benefit-scheme';
 import {
   decideApproval,
-  getLeaveEscalationPolicy,
+  getLeaveEscalationPolicies,
   loadApprovalRuleSet,
   type ApprovalRuleSet,
   type LeaveEscalationPolicy,
@@ -396,15 +396,13 @@ export async function loadLeaveTypeApprovalReadout(
   const [set, templates, escalations] = await Promise.all([
     withTenant(s, (tx) => loadApprovalRuleSet(tx)),
     listApprovalTemplates(s),
-    Promise.all(
-      companies.map(async (c) => [c.id, await getLeaveEscalationPolicy(s, c.id)] as const),
-    ),
+    getLeaveEscalationPolicies(s,companies.map(company=>company.id)),
   ]);
   return {
     companies,
     set,
     templateNameById: new Map(templates.map((x) => [x.id, x.name])),
-    escalationByCompany: new Map(escalations),
+    escalationByCompany: escalations,
   };
 }
 
