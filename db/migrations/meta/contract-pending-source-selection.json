@@ -138,6 +138,13 @@
       "when": 1794841006015,
       "tag": "6015_automation_offboarding_configuration_compatibility",
       "breakpoints": true
+    },
+    {
+      "idx": 5416,
+      "version": "7",
+      "when": 1794841006016,
+      "tag": "6016_contract_setup_fingerprint_setwise",
+      "breakpoints": true
     }
   ],
   "forwardSourceSqlSha256": {
@@ -156,7 +163,8 @@
     "6011_contract_posting_org_snapshot_owner": "ba157898e5a35bfa08931aba91362ac43d985ef6e4c2293cd2cf9f49eeefabc2",
     "6013_contract_email_form_binding_order": "a693631009b659dcabc5654eb205e65df9a05585fed617362488303a9df4d364",
     "6014_contract_empty_opening_technical_finish": "4c121b4f3d8e35a1573aba4cb1a858492f6a035ec2b0981f31502e816841091d",
-    "6015_automation_offboarding_configuration_compatibility": "e0c866f621440434fd45ba1c847b28c8defdf0d7cca57420295d36c1b18282c5"
+    "6015_automation_offboarding_configuration_compatibility": "e0c866f621440434fd45ba1c847b28c8defdf0d7cca57420295d36c1b18282c5",
+    "6016_contract_setup_fingerprint_setwise": "0b51b7a40c7f76e2d23ca8f9d0c29be655e01fe52763f4b7c2c57dc0eded8dca"
   },
   "forwardSourceReview": {
     "emailV4Source": "e73af9cec",
@@ -233,6 +241,11 @@
       "tag": "6015_automation_offboarding_configuration_compatibility",
       "scope": "Only previously user-approved native Offboarding configure conjunction restored. Current Contract/Probation branches and later execution owners unchanged. Original5902 remains archived; no Resignation branch selected.",
       "nativeEvidence": "Authored native grant/revocation/ordinary-account fixture unrun; original failing44104737922 retained."
+    },
+    "setupFingerprintSetwise": {
+      "tag": "6016_contract_setup_fingerprint_setwise",
+      "scope": "Same private setup fingerprint, all original inputs and ordering retained. Set-based activity/verification/participant computation only; no authority or ACL change.",
+      "evidence": "Original9afa5001case timeout retained; exact original/new hash oracle and full5001preview authored unrun. Actual restricted owner rehearsal separately required."
     }
   },
   "archivedExcludedSources": [

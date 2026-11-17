@@ -1,3 +1,22 @@
+## Set-based Contract setup fingerprint — 17 November 2026 (provisional source only)
+
+Registered `6016_contract_setup_fingerprint_setwise`, idx `5416`, when `1794841006016`,
+SQL SHA-256 `0b51b7a40c7f76e2d23ca8f9d0c29be655e01fe52763f4b7c2c57dc0eded8dca`.
+Fresh source-only survey read all420 Git-discovered migration directories and raw journal text,
+with no6016/5416/timestamp collision. One pre-existing conflicted journal was read as text and
+left untouched. All129 pending Contract entries still require final forward allocation from the
+actual accepted prior sources and ordered installation ledger before the final gate.
+
+The existing private fingerprint retains all original source, settings, configuration, workflow,
+routing, document, email, account and reason inputs and their ordering. Account activity,
+verification and participants are calculated as sets instead of repeated per-member functions.
+Canonical predecessor body hashes are guarded. OID, owner, security mode and private ACL remain;
+there is no grant, object, data write or new authority. Independent source review found no semantic
+blocker. Exact original/new hash comparisons and the unchanged5001-member preview remain unrun;
+the ordinary postgres fixture oracle is not restricted-owner evidence. Separate native restricted
+owner runtime/upgrade verification remains required. Earlier1047 SQL/journal entries are preserved.
+No passing check, installation, merge or release is claimed.
+
 ## Shared Offboarding configure compatibility — 17 November 2026 (provisional source only)
 
 Registered `6015_automation_offboarding_configuration_compatibility`, idx `5415`, when

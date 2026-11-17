@@ -7330,6 +7330,13 @@
       "when": 1794841006015,
       "tag": "6015_automation_offboarding_configuration_compatibility",
       "breakpoints": true
+    },
+    {
+      "idx": 5416,
+      "version": "7",
+      "when": 1794841006016,
+      "tag": "6016_contract_setup_fingerprint_setwise",
+      "breakpoints": true
     }
   ]
 }

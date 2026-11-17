@@ -1,4 +1,5 @@
 import {randomUUID} from 'node:crypto';
+import {readFileSync} from 'node:fs';
 import {afterAll,beforeAll,beforeEach,describe,expect,it} from 'vitest';
 import {sql} from 'drizzle-orm';
 import {withTenant,type SessionContext} from '../db/client';
@@ -43,15 +44,22 @@ async function fixture(){
  await saveAutomationWorkflow(admin,{workflow,expectedRevision:0,reason:'Reviewed Contract decision fixture'});
  return {b,admin,proposer,employee,caseId,groupId,workflow};
 }
-async function finishPreview(id:string,as:SessionContext){
+async function finishPreview(id:string,as:SessionContext,statementTimeoutMs?:number){
  let failure:unknown;
- const diagnostic={...contractPreviewJobHandler,describeFailure:async(...args:Parameters<NonNullable<typeof contractPreviewJobHandler.describeFailure>>)=>{
+ const diagnostic:typeof contractPreviewJobHandler={...contractPreviewJobHandler,async finalize(ctx,job,unit){
+  if(statementTimeoutMs===undefined)return contractPreviewJobHandler.finalize!(ctx,job,unit);
+  // The real held owner transaction awaits cancellation/rollback; Vitest must not abandon a live query.
+  return contractPreviewJobHandler.finalize!(ctx,job,{...unit,ownerTx:run=>unit.ownerTx!(async connection=>{
+   await connection`select set_config('statement_timeout',${String(statementTimeoutMs)},true)`;return run(connection);
+  })});
+ },describeFailure:async(...args:Parameters<NonNullable<typeof contractPreviewJobHandler.describeFailure>>)=>{
   failure=args[1];return contractPreviewJobHandler.describeFailure!(...args);
  }};
  for(let count=0;count<30;count++){
   const job=await readBulkJob(as,id,'contract_preview');
   if(job.state==='failed')throw failure??new Error(job.error??'Protected Contract preview failed.');
-  if(['completed','failed','cancelled'].includes(job.state))return job;
+  if(job.state==='cancelled')throw new Error('Protected Contract preview was cancelled.');
+  if(job.state==='completed')return job;
   await runBulkJobTick(owner.client,{handlers:[diagnostic]});
  }
  throw new Error('Protected Contract preview did not finish.');
@@ -64,7 +72,8 @@ async function finishAutomation(id:string,as:SessionContext){
  for(let count=0;count<100;count++){
   const job=await readBulkJob(as,id,'contract_automation');
   if(job.state==='failed')throw failure??new Error(job.error??'Protected Contract automation failed.');
-  if(['completed','cancelled'].includes(job.state))return job;
+  if(job.state==='cancelled')throw new Error('Protected Contract automation was cancelled.');
+  if(job.state==='completed')return job;
   await runBulkJobTick(owner.client,{handlers:[diagnostic]});
  }
  throw new Error('Protected Contract automation did not finish.');
@@ -114,11 +123,46 @@ describe('protected Contract decision preview and submission',()=>{
   await v9SaveConfig(f.admin,config.revision,{...config,groups:config.groups.map(group=>group.id===f.groupId?{...group,members:[]}:group)});
   expect(await target()).toBeNull();
  });
+ it('keeps the exact original setup fingerprint through set-based account and participant identity states',async()=>{
+  const migration=readFileSync(new URL('../db/migrations/5807_contract_shared_commands.sql',import.meta.url),'utf8');
+  const ownerStart=migration.indexOf('CREATE FUNCTION app.contract_shared_setup_revision(p_case uuid)');
+  const originalBody=migration.slice(ownerStart).split('AS $$\n')[1].split('\n$$;')[0].replace(/\bp_case\b/g,()=>'$1::uuid');
+  if(!originalBody.startsWith(' WITH workflows'))throw Error('The frozen5807 equivalence oracle changed');
+  const compare=async(label:string,caseId=f.caseId)=>owner.client.begin(async connection=>{
+   await connection`select set_config('app.tenant_id',${f.b.tenantId},true),set_config('app.user_id',${f.proposer.userId!},true),set_config('jit','off',true),set_config('statement_timeout','8000',true)`;
+   const[context]=await connection<{role:string;tenant:string;user:string;private:boolean}[]>`select current_user as role,app.current_tenant_id() as tenant,app.current_user_id() as user,not has_function_privilege('ai_hr_app','app.contract_shared_setup_revision(uuid)','EXECUTE') as private`;
+   expect(context).toEqual({role:'postgres',tenant:f.b.tenantId,user:f.proposer.userId!,private:true});
+   const[before]=await connection.unsafe<{hash:string}[]>('select ('+originalBody+') as hash',[caseId]);
+   const[after]=await connection<{hash:string}[]>`select app.contract_shared_setup_revision(${caseId}::uuid) as hash`;
+   expect(after.hash,label).toBe(before.hash);return after.hash;
+  });
+  const baseline=await compare('Original source and published dependencies');
+  const otherTenant=await seedBase();await createAppUser(otherTenant.tenantId,f.proposer.personId!,'employee');
+  expect(await compare('Same Person account in another tenant does not affect tenant-scoped uniqueness')).toBe(baseline);
+  const[adminEmployment]=await owner.db.execute<{count:number}>(sql`select count(*)::int as count from employment where person_id=${f.admin.personId}::uuid`);expect(adminEmployment.count).toBe(0);
+  await compare('Named active account without any employment remains verified');
+  await owner.db.execute(sql`update app_user set archived_at=now() where id=${f.admin.userId}::uuid`);await compare('Archived referenced account remains hashed with verified=false');
+  await owner.db.execute(sql`update app_user set archived_at=null where id=${f.admin.userId}::uuid`);
+  const[unlinked]=await owner.db.execute<{id:string}>(sql`insert into app_user(tenant_id,workos_user_id) values(${f.b.tenantId}::uuid,${'unlinked-parity-'+randomUUID()}) returning id`);
+  await owner.db.execute(sql`update lc_v9_config set data=jsonb_set(data,'{groups}',(data->'groups')||jsonb_build_array(jsonb_build_object('id','unrelated-parity','name','Still hashed','limit',0,'members',jsonb_build_array(${unlinked.id}::text)))) where tenant_id=${f.b.tenantId}::uuid`);
+  expect(await compare('Unrelated group members remain hashed, including NULL Person')).not.toBe(baseline);
+  const duplicate=await createAppUser(f.b.tenantId,f.proposer.personId!,'employee');
+  await compare('Manager uniqueness counts every active same-Person account');
+  await owner.db.execute(sql`update app_user set archived_at=now() where id=${duplicate}::uuid`);await compare('Archived duplicate restores the canonical unique manager');
+  const[manager]=await owner.db.execute<{name:string}>(sql`select full_name as name from person where id=${f.proposer.personId}::uuid`);
+  await owner.db.execute(sql`update person set full_name='   ' where id=${f.proposer.personId}::uuid`);await compare('Blank name is unverified while account activity is a separate fact');
+  await owner.db.execute(sql`update person set full_name=${manager.name} where id=${f.proposer.personId}::uuid`);
+  await owner.db.execute(sql`update employment set blacklisted_at=now() where tenant_id=${f.b.tenantId}::uuid and person_id=${f.proposer.personId}::uuid`);await compare('Canonical person-wide blocked login');
+  await owner.db.execute(sql`update employment set blacklisted_at=null,last_working_date=current_date where tenant_id=${f.b.tenantId}::uuid and person_id=${f.proposer.personId}::uuid`);await compare('Login allows the last day while Contract participants require an unended employment');
+  await owner.db.execute(sql`update employment set last_working_date=current_date-1 where tenant_id=${f.b.tenantId}::uuid and person_id=${f.proposer.personId}::uuid`);await compare('Login blocks after the last day');
+  await compare('No selected case still hashes the exact configuration-only source',randomUUID());
+ });
  it('does not hydrate unrelated tenant groups into a case-specific decision preview',async()=>{
   await owner.db.execute(sql`with unrelated as(insert into app_user(tenant_id,workos_user_id) select ${f.b.tenantId}::uuid,'unrelated-contract-fixture-'||gen_random_uuid()::text from generate_series(1,5001) returning id)
    update lc_v9_config set data=jsonb_set(data,'{groups}',(data->'groups')||jsonb_build_array(jsonb_build_object('id','unrelated-large-group','name','Unrelated configuration','limit',0,'members',(select jsonb_agg(id) from unrelated)))),revision=revision+1 where tenant_id=${f.b.tenantId}::uuid`);
   const requested=await previewContractSharedDecision(f.proposer,{caseId:f.caseId,revision:1,draft});
-  expect((await finishPreview(requested.jobId,f.proposer)).state).toBe('completed');
+  const workerStarted=performance.now();
+  try{expect((await finishPreview(requested.jobId,f.proposer,8_000)).state).toBe('completed');}finally{console.info('[Contract preview5001 native worker ms]',Math.round(performance.now()-workerStarted));}
   expect((await readContractSharedDecisionPreview(f.proposer,requested.previewId)).plan?.blockers).toEqual([]);
  });
  it('queues shared email with frozen rich wording, default CC and a source-bound individual approval link',async()=>{
@@ -129,9 +173,14 @@ describe('protected Contract decision preview and submission',()=>{
   await saveAutomationWorkflow(f.admin,{workflow,expectedRevision:1,reason:'Include the shared decision receipt'});
   const requested=await previewContractSharedDecision(f.proposer,{caseId:f.caseId,revision:1,draft:{...draft,payChanges:true,basicSalary:'5200.12'}});await finishPreview(requested.jobId,f.proposer);
   const preview=await readContractSharedDecisionPreview(f.proposer,requested.previewId);expect(preview.plan?.blockers).toEqual([]);
-  const accepted=await submitContractSharedDecision(f.proposer,{caseId:f.caseId,revision:1,previewId:requested.previewId});await finishAutomation(accepted.jobId,f.proposer);
+  const accepted=await submitContractSharedDecision(f.proposer,{caseId:f.caseId,revision:1,previewId:requested.previewId});expect((await finishAutomation(accepted.jobId,f.proposer)).state).toBe('completed');
   const deliveries=await owner.db.execute<{id:string;key:string;payload:{linkPath:string;mail:{subject:string;body:string;to:string[];cc:string[];richBody:{values:Record<string,string>}}}}>(sql`select id,mail_key as key,payload from automation_email_delivery where tenant_id=${f.b.tenantId}::uuid order by mail_key`);
-  expect(deliveries).toHaveLength(2);
+  const receipts=deliveries.length===2?null:{
+   jobs:await owner.db.execute(sql`select id,state,phase,error from bulk_job where tenant_id=${f.b.tenantId}::uuid and id=${accepted.jobId}::uuid`),
+   events:await owner.db.execute(sql`select id,trigger_event,processed_at is not null as processed,error from contract_shared_event where tenant_id=${f.b.tenantId}::uuid and job_id=${accepted.jobId}::uuid order by created_at,id`),
+   runs:await owner.db.execute(sql`select id,trigger_event,status,step_cursor,waiting_for,failure from automation_run where tenant_id=${f.b.tenantId}::uuid and subject_id=${f.caseId}::uuid order by started_at,id`),
+  };
+  expect(deliveries,JSON.stringify({keys:deliveries.map(item=>item.key),receipts})).toHaveLength(2);
   const workflowMail=deliveries.find(item=>!item.key.startsWith('approval:'))!,assignment=deliveries.find(item=>item.key.startsWith('approval:'))!;
   expect(workflowMail.payload.mail).toMatchObject({subject:'Review Fictional Contract subject',to:[f.admin.userId],cc:[f.proposer.userId]});
   expect(workflowMail.payload.mail.body).toContain('{{case.link}}');expect(workflowMail.payload.mail.richBody.values['contract.salary']).toBe('5200.12');expect(JSON.stringify(workflowMail.payload)).not.toContain('4976.21');
