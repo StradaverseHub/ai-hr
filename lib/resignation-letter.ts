@@ -566,4 +566,3 @@ export function resignationLetterPreview(letter: ResignationLetter, userId: stri
     warnings: capabilities.contentVisible ? resignationLetterMergeWarnings(letter) : [],
     sentBack: capabilities.contentVisible ? letter.sentBack : undefined};
 }
-

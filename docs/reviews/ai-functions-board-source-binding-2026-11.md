@@ -1090,13 +1090,13 @@ now bounds its transport observations without weakening native receipt assertion
 
 Under the recorded owner approval for these coordinated same-purpose staging bindings,
 only the same 29 approved sourceDigest literals carry forward to
-`89748d580c4b170c8cb358117000fb3717cb16415ed10750fdcc13b178abd923` over 1714 covered files.
+`b87b678e58667959a981ff67c85b7a37134b6959a87881cd68ebee7bc9349c22` over 1714 covered files.
 A static comparison of all 31 records confirms identical contract IDs, statuses, reviewers,
 evidence references and original review timestamps across both parents. Pending records
 stay pending, including the unapproved Recruitment matching purpose. No provider transform,
 outbound field, purpose or transport is authorized by this technical rebinding.
 The derived agent manifest is regenerated last: 496 files,
-`bce5e39a1982a1a64ed0447ef5d3ecd83462ced4cce878f9e74a0baa09208aa7`.
+`dd44723fe7ca47e5edad35b50947b984753e055199ea16977ed15f0b74d53c5e`.
 
 The owner authorized staging after successful verification and coordinator admission.
 The newer queue direction puts the staging-investigation hotfix first, Resignation after
