@@ -166,3 +166,24 @@ it('sends one message to several To recipients together and keeps every address 
   expect(await internalLifecycleV9Mail(request, transport)).toMatchObject({ outcome: 'skipped' });
   expect(transport).toHaveBeenCalledOnce();
 });
+
+it('sends twelve resolved group accounts in one email and deduplicates their mailboxes against literal To and CC', async () => {
+  const accounts = Array.from({ length: 12 }, (_, i) => ({ userId: randomUUID(), subject: randomUUID(), issuer: target.bindings[0].issuer, email: `member${i}@fictional.invalid` }));
+  target.bindings = accounts.map(({ userId, subject, issuer }) => ({ userId, subject, issuer }));
+  target.payload.mail.to = [...accounts.map(account => account.userId), 'address:MEMBER0@fictional.invalid'];
+  target.payload.mail.cc = ['address:member1@fictional.invalid', 'address:archive@fictional.invalid'];
+  target.literals = [{ key: 'address:MEMBER0@fictional.invalid', email: 'MEMBER0@fictional.invalid', position: 13 },
+    { key: 'address:member1@fictional.invalid', email: 'member1@fictional.invalid', position: 14 },
+    { key: 'address:archive@fictional.invalid', email: 'archive@fictional.invalid', position: 15 }];
+  fixture.credential.mockImplementation(async (_sql: unknown, key: string) => {
+    const account = accounts.find(account => `credential:${account.subject}` === key)!;
+    return { ...account, tenantId };
+  });
+  fixture.principal.mockImplementation(async (_sql: unknown, credential: { subject: string }) => ({ app_user_id: accounts.find(account => account.subject === credential.subject)!.userId, tenant_id: tenantId }));
+  const transport = vi.fn(async () => {});
+  expect(await internalLifecycleV9Mail(request, transport)).toEqual({ outcome: 'sent', error: null });
+  expect(fixture.principal).toHaveBeenCalledTimes(12);
+  expect(transport).toHaveBeenCalledExactlyOnceWith(relay.relay, expect.objectContaining({ to: accounts.map(account => account.email), cc: ['archive@fictional.invalid'] }));
+  const proof = JSON.parse(fixture.sql.mock.calls.find(call => call[0].join('?').includes('email_start'))!.at(-1));
+  expect(proof.addresses).toHaveLength(15); expect(proof.bindings).toEqual(target.bindings);
+});

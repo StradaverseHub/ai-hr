@@ -6462,6 +6462,13 @@
       "when": 1794841006103,
       "tag": "6103_lifecycle_pbp_removal",
       "breakpoints": true
+    },
+    {
+      "idx": 5504,
+      "version": "7",
+      "when": 1794841006104,
+      "tag": "6104_lifecycle_recipient_fanout",
+      "breakpoints": true
     }
   ]
 }
