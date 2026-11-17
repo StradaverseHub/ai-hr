@@ -935,3 +935,15 @@ normalizing to current main’s active fingerprint also exactly reproduces its r
 records, the retired Attendance approval and every original reviewer/date/evidence field stay unchanged.
 Agent manifest: `cafbe0f78f9b32c19130fe97609f3fefa4ee9209b3931d5815cd381af97d01e7` (496 files).
 Source binding supplies no test, installation, staging acceptance or production claim.
+
+### Approved-board final verification repair binding — 17 November 2026
+
+The owner’s current-chat authorization “Approve staging-only rebinding and verification repairs”
+covers this repaired source `0be8bbeefb0a9cc89206c4e40851248454ae7fa0`, including the accepted Movement baseline, native
+SMTP group delivery, consistent live history values, compiler repairs and rendered state/mobile fixes.
+No provider purpose, outbound field or production permission is added. The same 28 active approvals
+move from `cfcab95ecec7fcfdc42604be3c2072d3c45a6c00e18b5cced3863535dcc0da2b` to `686fe871e430f551251b46329ccf2a5c7b8d0254f7c376a7c6f4055013abc6d1` (1708 files). Reversing them reproduces the prior registry byte for byte;
+normalizing to current main’s active fingerprint also exactly reproduces its registry. Both pending
+records, the retired Attendance approval and every original reviewer/date/evidence field stay unchanged.
+Agent manifest: `738d0c0e11a75af9ea5370af9599674572f20e90d9a9ccfe25df92d7074c72f5` (496 files).
+Source binding supplies no test, installation, staging acceptance or production claim.
