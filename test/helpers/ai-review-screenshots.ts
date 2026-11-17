@@ -101,6 +101,15 @@ export async function captureAiReviewScreenshots(html:string,locale:string,secti
    return{caseFieldsDoNotOverlap:true};
   }):null;
   const overflow=await page.evaluate(()=>document.documentElement.scrollWidth>window.innerWidth+1);
+  const postingGeometry=section==='contract-postings'&&device==='mobile'?await page.evaluate(()=>{
+   const rows=Array.from(document.querySelectorAll('.contract-posting-table tbody tr'));
+   const cells=rows.flatMap(row=>Array.from(row.querySelectorAll('td')));
+   const contentClipped=cells.some(cell=>cell.scrollHeight>cell.clientHeight+1);
+   const overlaps=rows.some(row=>{const boxes=Array.from(row.querySelectorAll('td')).map(cell=>cell.getBoundingClientRect());return boxes.some((box,index)=>index>0&&box.top<boxes[index-1].bottom-1);});
+   const boxes=rows.map(row=>row.getBoundingClientRect());
+   const rowsOverlap=boxes.some((box,index)=>index>0&&box.top<boxes[index-1].bottom-1);
+   return{rows:rows.length,cells:cells.length,contentClipped,overlaps,rowsOverlap};
+  }):null;
   const scrollRegions=await page.locator('[data-function-access-scroll]').evaluateAll(nodes=>nodes.map(node=>({width:node.clientWidth,content:node.scrollWidth,scrollable:getComputedStyle(node).overflowX==='auto'})));
   if(width===390&&scrollRegions.some(region=>!region.scrollable||region.width>=region.content))throw Error('The wide function guide must remain horizontally scrollable on a phone.');
   const clippedCalendarCells=section==='chat-card-rewards-calendar'?await page.evaluate(()=>Array.from(document.querySelectorAll('table td')).some(cell=>{const box=cell.getBoundingClientRect();return box.left<0||box.right>window.innerWidth+1||cell.scrollWidth>cell.clientWidth+1;})):false;
@@ -112,8 +121,9 @@ export async function captureAiReviewScreenshots(html:string,locale:string,secti
    return {heading:{text:heading.textContent,fontSize:Number.parseFloat(style.fontSize),fontFamily:style.fontFamily},bodyFontFamily:getComputedStyle(document.body).fontFamily,fontsReady:document.fonts.status==='loaded',decisionButtons:Array.from(document.querySelectorAll<HTMLButtonElement>('.contract-decision-choice>button')).map(button=>({label:button.textContent,width:button.clientWidth,height:button.getBoundingClientRect().height,scrollWidth:button.scrollWidth,clipped:button.scrollWidth>button.clientWidth+1}))};
   }):null;
   const file=`${locale}-${section}-${device}.png`;await page.screenshot({path:join(out,file),fullPage:true});
+  if(postingGeometry&&(postingGeometry.contentClipped||postingGeometry.overlaps||postingGeometry.rowsOverlap))throw Error('Mobile Personnel posting cells overlap or clip content: '+JSON.stringify(postingGeometry));
   if(section==='security-functions')await page.screenshot({path:join(out,`${locale}-${section}-${device}-viewport.png`),fullPage:false});
-  rows.push({locale,section,device,width,height,overflow,file,browser:browser.version(),candidate:process.env.AIHR_CI_HEAD,runId:process.env.GITHUB_RUN_ID,theme,scrollRegions,fixture,scriptFontProof,chartGeometry,trackerGeometry,contractGeometry,...(section==='chat-card-rewards-calendar'?{cellsVisible:!clippedCalendarCells}:{})});
+  rows.push({locale,section,device,width,height,overflow,file,browser:browser.version(),candidate:process.env.AIHR_CI_HEAD,runId:process.env.GITHUB_RUN_ID,theme,scrollRegions,fixture,scriptFontProof,chartGeometry,trackerGeometry,postingGeometry,contractGeometry,...(section==='chat-card-rewards-calendar'?{cellsVisible:!clippedCalendarCells}:{})});
   if(clippedCalendarCells)throw Error('Calendar before/after value is clipped; inspect the captured evidence.');
   // This existing table intentionally scrolls horizontally on small screens. Capture its action
   // column too, so the mobile evidence shows the real controls rather than only the left-hand labels.
