@@ -73,7 +73,7 @@ export type Block = { id: string; type: 'letterhead' | 'heading' | 'subheading' 
 export type TemplateVersion = { version: number; state: 'draft' | 'published'; at: string; by: string; blocks: Block[]; fields: Field[]; routing?: DocumentRouting };
 export type Template = {
   id: string; name: string; module: Module; type: 'Form' | 'Letter' | 'Acknowledgement' | 'Attachment';
-  rules: Rules; hrStep: 'none' | 'before' | 'after'; employeeAck: boolean; retired: boolean;
+  rules: Rules; offboardingHrSignature?:'pbp'|'beforeEmployee'|'namedHr'; hrStep: 'none' | 'before' | 'after'; employeeAck: boolean; retired: boolean;
   versions: TemplateVersion[]; currentVersion?: number; note?: string;
 };
 export type ConfigSaveReceipt = { revision: number; groupsRevision: number; versionStamps?: { templateId: string; version: number; state: TemplateVersion['state']; at: string; by: string }[] };

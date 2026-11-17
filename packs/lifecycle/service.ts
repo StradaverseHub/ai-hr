@@ -34,7 +34,7 @@ export async function createResignationOffboardingTx(tx:import('../../db/client'
  // workflow records a recoverable domain failure in the surrounding transaction.
  return tx.transaction(async handoffTx=>{
   await handoffTx.execute(sql`select app.resignation_offboarding_admit(${caseId}::uuid)`);
-  const [row]=await handoffTx.execute<{intent:{employmentId:string;type:'Resignation';noticeDate:string;lastDay:string;offboardingCaseId:string|null}}>(sql`select app.resignation_offboarding_intent(${caseId}::uuid) as intent`);
+  const [row]=await handoffTx.execute<{intent:{employmentId:string;type:import('../../lib/lifecycle-v9-model').ExitType;noticeDate:string;lastDay:string;offboardingCaseId:string|null}}>(sql`select app.resignation_offboarding_intent(${caseId}::uuid) as intent`);
   let result=row.intent.offboardingCaseId;
   if(!result){
    const {v9CreateOffboardingTx}=await import('./v9/service');
