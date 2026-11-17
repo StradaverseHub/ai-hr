@@ -6644,6 +6644,13 @@
       "when": 1794841005919,
       "tag": "5919_contract_work_case_source_anchor",
       "breakpoints": true
+    },
+    {
+      "idx": 5325,
+      "version": "7",
+      "when": 1794841005925,
+      "tag": "5925_contract_template_lifecycle",
+      "breakpoints": true
     }
   ]
 }
