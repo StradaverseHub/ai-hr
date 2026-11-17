@@ -7,6 +7,7 @@ import type {
   ContractTrackerRow,
   ContractWaitingMetadata,
 } from '@/packs/contracts/service';
+import {ContractAttention} from './attention';
 import { SharedContractNavigation, contractDate } from './shared-case-ui';
 function trackerStatus(row: ContractTrackerRow) {
   if (row.stage && ['renewed', 'converted', 'offboarding', 'superseded'].includes(row.stage)) return 'Closed';
@@ -49,6 +50,7 @@ export function SharedContractTracker({
   function href(offset: number) {
     const params = new URLSearchParams();
     if (query.search) params.set('search', query.search);
+    if(query.attention) params.set('attention','true');
     if (query.companyId) params.set('companyId', query.companyId);
     if (query.status && query.status !== 'all') params.set('status', query.status);
     params.set('offset', String(offset));
@@ -63,8 +65,10 @@ export function SharedContractTracker({
         </div>
       </header>
       <SharedContractNavigation />
+      <dl className="contract-summary">{([['total','Current periods'],['upcoming','Upcoming'],['decision','Decision needed'],['inProgress','In progress'],['closed','Closed'],['attention','Needs attention']] as const).map(([key,label])=><div key={key}><dt>{copy(label)}</dt><dd>{page.summary[key]}</dd></div>)}</dl>
       <section className="v9-panel v9-stack">
         <form className="contract-toolbar" action="/lifecycle/contracts">
+          <label className="contract-checkbox"><input type="checkbox" name="attention" value="true" defaultChecked={query.attention||query.status==='attention'}/>{copy('Needs attention only')}</label>
           <label className="v9-field">
             <span>{copy('Search')}</span>
             <input
@@ -82,7 +86,6 @@ export function SharedContractTracker({
               <option value="upcoming">{copy('Upcoming')}</option>
               <option value="decision">{copy('Decision needed')}</option>
               <option value="progress">{copy('In progress')}</option>
-              <option value="attention">{copy('Needs attention')}</option>
               <option value="closed">{copy('Closed')}</option>
             </select>
           </label>
@@ -171,11 +174,7 @@ export function SharedContractTracker({
                     {waiting.find((item) => item.caseId === row.caseId)?.waitingFor && (
                       <small>{waiting.find((item) => item.caseId === row.caseId)!.waitingFor}</small>
                     )}
-                    {row.stalledDays !== null && (
-                      <small>
-                        {copy('Stalled for')} {row.stalledDays} {copy('days')}
-                      </small>
-                    )}
+                    <ContractAttention flags={[...row.flags,...(row.previousPayPending?['pay_pending']:[])]} stalledDays={row.stalledDays} compact/>
                     {!row.stage || row.stage === 'open' ? (
                       <small>
                         {row.firstReminderOn

@@ -1,0 +1,15 @@
+'use client';
+import {useEffect,useRef,useState,useTransition} from 'react';
+import {useRouter} from 'next/navigation';
+import type {ContractSharedManualWorkflow} from '@/packs/contracts/service';
+import {useContractSharedCopy} from '@/lib/contract-shared-copy';
+import {readSharedManualWorkflows,startSharedManualWorkflow} from './shared-actions';
+import {ContractPanel,ContractFeedback} from './shared-case-ui';
+
+export function ContractManualWorkflow({caseId,revision}:{caseId:string;revision:number}){
+ const copy=useContractSharedCopy(),router=useRouter(),[choices,setChoices]=useState<ContractSharedManualWorkflow[]|null>(null),[selected,setSelected]=useState(''),[error,setError]=useState(''),[status,setStatus]=useState(''),[busy,start]=useTransition();
+ const attempt=useRef<{key:string;requestId:string}|null>(null);
+ useEffect(()=>{let active=true;void readSharedManualWorkflows(caseId).then(result=>{if(!active)return;if(result.ok)setChoices(result.value);else {setChoices([]);setError(result.error);}}).catch(()=>{if(active){setChoices([]);setError('The live workflow choices could not be loaded. Reload this case to try again.');}});return()=>{active=false;};},[caseId,revision]);
+ function run(){const workflow=choices?.find(item=>item.id===selected);if(!workflow)return;const key=JSON.stringify({caseId,revision,workflowId:workflow.id,workflowRevision:workflow.revision});if(attempt.current?.key!==key)attempt.current={key,requestId:crypto.randomUUID()};start(async()=>{setError('');try{const result=await startSharedManualWorkflow({caseId,revision,workflowId:workflow.id,workflowRevision:workflow.revision,requestId:attempt.current!.requestId});if(result.ok){setStatus('The workflow was accepted. Its execution appears in Workflow progress.');setSelected('');attempt.current=null;router.refresh();}else setError(result.error);}catch{setError('The workflow could not be confirmed. Your selection is retained; try again.');}});}
+ return <ContractPanel title={copy('Start workflow by hand')}><ContractFeedback error={error} status={status}/><p>{copy('After fixing a stopped workflow in HR Automation, choose a live manual workflow for this case. Earlier failed runs remain in the case history.')}</p>{choices===null?<p role="status">{copy('Loading eligible live workflows…')}</p>:choices.length===0&&!error?<p>{copy('No live manual workflow is eligible for this case. An HR Automation owner can review its trigger and conditions.')}</p>:choices.length>0?<><label className="v9-field"><span>{copy('Live manual workflow')}</span><select value={selected} disabled={busy} onChange={event=>{setSelected(event.target.value);setStatus('');}}><option value="">{copy('Choose a workflow')}</option>{choices.map(item=><option key={item.id} value={item.id}>{item.name} · {copy('Version')} {item.revision}</option>)}</select></label>{choices.find(item=>item.id===selected)?.description&&<p>{choices.find(item=>item.id===selected)!.description}</p>}<button className="v9-button v9-button-primary" disabled={busy||!selected} onClick={run}>{copy('Start selected workflow')}</button></>:null}</ContractPanel>;
+}

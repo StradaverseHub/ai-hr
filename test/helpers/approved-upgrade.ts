@@ -256,6 +256,8 @@ export const APPROVED_UPGRADE_TAIL=[
  {idx:5317,when:1794841005917,tag:'5917_contract_work_exact_document_join'},
  {idx:5318,when:1794841005918,tag:'5918_contract_tracker_scheduled_period'},
  {idx:5319,when:1794841005919,tag:'5919_contract_work_case_source_anchor'},
+ {idx:5320,when:1794841005920,tag:'5920_contract_case_progress_explanations'},
+ {idx:5321,when:1794841005921,tag:'5921_contract_case_fallback_receipts'},
  {idx:5325,when:1794841005925,tag:'5925_contract_template_lifecycle'},
  {idx:5326,when:1794841005926,tag:'5926_contract_template_draft_publication'},
  {idx:5327,when:1794841005927,tag:'5927_contract_routing_check_names'},
@@ -567,6 +569,8 @@ const APPROVED_UPGRADE_HASHES:Record<string,string>={
  '5784_resignation_configuration':'6e064c336c441fbbf01017debe9e1a748957976d3d6b2b96470747d07d7dacb5',
  '5785_resignation_postings':'5d26a0f446c3e72ed01861544af395690b08cdce47b9fc739f0b0d7d1b22a4f5',
  '5786_resignation_email_delivery':'52bf3fa8f4430d37fd4dabd2164f00764e73245b38ee6520d2816dca7e03459b',
+ '5920_contract_case_progress_explanations':'6fb83e2629a5fc599e51f253d3cbae894f0273fc6cbfd0955c798d8f05ddcac8',
+ '5921_contract_case_fallback_receipts':'5a4a0c1c3d3aa5694ae47a8c7f31ed6e7d9eb2022316f1ff4c80886c3e152b5a',
 };
 export function assertApprovedUpgradeTail(entries:{idx:number;when:number;tag:string}[]){
  expect(entries).toHaveLength(671+APPROVED_UPGRADE_TAIL.length);

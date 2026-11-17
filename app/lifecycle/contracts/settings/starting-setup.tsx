@@ -11,11 +11,13 @@ export function ContractStartingSetup({
   companyId,
   fallbackGroupId,
   postingApproverGroupId,
+  canAdministerAccess=false,
 }: {
   initial: ContractSharedSetup;
   companyId: string;
   fallbackGroupId: string;
   postingApproverGroupId: string;
+  canAdministerAccess?:boolean;
 }) {
   const copy = useContractSharedCopy(),
     router = useRouter(),
@@ -121,6 +123,7 @@ export function ContractStartingSetup({
   return (
     <ContractPanel title={copy('Starting configuration')}>
       <ContractFeedback error={error} />
+      {!setup.accessReady&&<p className="v9-notice">{copy('People BP case access still needs an explicit business-group assignment. Signing routing does not grant case access.')} {canAdministerAccess?<Link href="#contract-access">{copy('Review Contract access')}</Link>:copy('Ask a tenant-wide Access administrator to review the Contract role assignment.')}</p>}
       {setup.installed ? (
         <p>
           {copy(

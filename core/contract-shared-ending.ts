@@ -5,6 +5,7 @@ import {z} from 'zod';
 import type {SessionContext} from '../db/client';
 import type {SqlExecutor} from '../db/sql-executor';
 import {withScopedLifecycleTenant} from './module-gate';
+import {publicContractFlow} from './contract-shared-read';
 import {pgSqlState} from '../lib/db-error';
 import {ContractManagementError} from '../lib/contract-management-model';
 import type {ContractFlow} from '../lib/contract-case-flow';
@@ -22,7 +23,7 @@ export async function recordContractSharedDecline(ctx:SessionContext,raw:z.input
  const input=declineSchema.parse(raw);
  try{return await withScopedLifecycleTenant(ctx,async tx=>{
   const [row]=await tx.execute<{result:{flow:ContractFlow;eventId:string;jobId:string}}>(sql`select app.contract_shared_record_decline(${input.caseId}::uuid,${input.revision},${input.reason},${input.notes}) as result`);
-  return row.result;
+  return {...row.result,flow:publicContractFlow(row.result.flow)};
  });}catch(error){
   const code=pgSqlState(error);
   if(code==='42501')throw new ContractManagementError('forbidden','You cannot record a decline for this Contract case.');

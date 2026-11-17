@@ -26,10 +26,15 @@ export async function contractSharedPage(ctx:SessionContext,raw:{search?:string;
   return {rows:rows.slice(0,input.limit),hasMore:rows.length>input.limit,limit:input.limit,offset:input.offset};
  });
 }
+/** Runtime boundary: retained fallback routing is private even when native JSON has extra keys. */
+export function publicContractFlow(flow:ContractFlow&{fallbacks?:unknown}):ContractFlow{
+ const {fallbacks:retainedFallbacks,...visible}=flow;void retainedFallbacks;return visible;
+}
 export async function contractSharedContextTx(tx:Tx,id:string):Promise<ContractSharedContext>{
  z.uuid().parse(id);
- const [row]=await tx.execute<{context:ContractSharedContext|null}>(sql`select app.contract_shared_context(${id}::uuid) as context`);
+ const [row]=await tx.execute<{context:(Omit<ContractSharedContext,'flow'>&{flow:(ContractFlow&{fallbacks?:unknown})|null})|null}>(sql`select app.contract_shared_context(${id}::uuid) as context`);
  if(!row?.context)throw new ContractManagementError('forbidden','This Contract case is unavailable.');
+ if(row.context.flow)return {...row.context,flow:publicContractFlow(row.context.flow)};
  return row.context;
 }
 export function contractSharedContext(ctx:SessionContext,id:string){return withScopedLifecycleTenant(ctx,tx=>contractSharedContextTx(tx,id));}

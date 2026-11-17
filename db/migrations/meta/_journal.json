@@ -6667,6 +6667,20 @@
       "breakpoints": true
     },
     {
+      "idx": 5320,
+      "version": "7",
+      "when": 1794841005920,
+      "tag": "5920_contract_case_progress_explanations",
+      "breakpoints": true
+    },
+    {
+      "idx": 5321,
+      "version": "7",
+      "when": 1794841005921,
+      "tag": "5921_contract_case_fallback_receipts",
+      "breakpoints": true
+    },
+    {
       "idx": 5325,
       "version": "7",
       "when": 1794841005925,

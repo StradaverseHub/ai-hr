@@ -149,6 +149,7 @@ export function SharedContractSettings({
           companyId={companyId}
           fallbackGroupId={settings?.fallbackGroupId ?? ''}
           postingApproverGroupId={settings?.postingApproverGroupId ?? ''}
+          canAdministerAccess={choices.accessAdmin}
         />
       )}{' '}
       {settings && stored && companyId && (
@@ -252,6 +253,7 @@ export function SharedContractSettings({
           </button>
         </ContractPanel>
       )}
+      <div id="contract-access" />
       {access && (
         <>
           <ContractPanel title={copy('Roles and permissions')}>

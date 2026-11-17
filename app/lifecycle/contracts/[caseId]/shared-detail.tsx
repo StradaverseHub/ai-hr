@@ -1,4 +1,7 @@
 'use client';
+import {ContractFallbackHistory} from '../fallback-history';
+import {ContractManualWorkflow} from '../manual-workflow';
+import {ContractAttention} from '../attention';
 import { useContractSharedCopy } from '@/lib/contract-shared-copy';
 import { useEffect, useState, useTransition, type ReactNode } from 'react';
 import { useRouter } from 'next/navigation';
@@ -54,16 +57,6 @@ const logNames: Record<string, string> = {
   waiting: 'Waiting for assigned action',
   stepFailed: 'Needs review',
   failed: 'Needs review',
-};
-const flagLabels: Record<string, string> = {
-  fallback: 'Fallback group used',
-  employee_cannot_sign: 'Employee account needs attention',
-  sent_back: 'Letter sent back',
-  template_stopped: 'Template or workflow needs attention',
-  posting_mismatch: 'Posting differs from the agreed terms',
-  no_workflow: 'No matching workflow',
-  pay_pending: 'Manual Payroll entry needs confirmation',
-  source_changed: 'Personnel source changed',
 };
 export function SharedContractDetail({
   workspace,
@@ -246,9 +239,7 @@ export function SharedContractDetail({
               </p>
             )}
           </ContractPanel>
-          {flow?.flags.length ? (
-            <p className="v9-notice">{flow.flags.map((f) => copy(flagLabels[f] ?? f)).join(' · ')}</p>
-          ) : null}
+          <ContractAttention flags={[...(flow?.flags??[]),...(workspace.attention?.flags??[])]} stalledDays={workspace.attention?.stalledDays}/>
           {!flow ? (
             <ContractPanel title={copy('Existing contract case')}>
               <p>{copy('Existing approvals, letters and record updates keep their original workflow.')}</p>
@@ -573,7 +564,7 @@ export function SharedContractDetail({
                       'The Personnel posting was approved. The case remains open until an authorised posting approver confirms that Payroll was updated manually.',
                     )}
                   </p>
-                  <Link className="v9-button" href="/lifecycle/contracts/postings?status=approved">
+                  <Link className="v9-button" href={'/lifecycle/contracts/postings?status=approved'+(workspace.postingSummary?.postingId||flow.posting?.id?'&postingId='+encodeURIComponent(workspace.postingSummary?.postingId??flow.posting!.id):'')}>
                     {copy('Review posting and pay confirmation')}
                   </Link>
                 </>
@@ -668,7 +659,9 @@ export function SharedContractDetail({
               <p className="v9-muted">{copy('Letters appear when a workflow generates them.')}</p>
             )}
           </ContractPanel>
+          {workspace.fallbackPage&&<ContractFallbackHistory caseId={view.id} initial={workspace.fallbackPage}/>}
           {caseFiles}
+          {flow&&view.permissions.includes('manual')&&<ContractManualWorkflow caseId={view.id} revision={flow.revision}/>}
           {workspace.runs.length > 0 && (
             <ContractPanel title={copy('Workflow progress')}>
               {workspace.runs.map((run) => (
@@ -705,6 +698,8 @@ export function SharedContractDetail({
                                     : 'Waiting',
                               )}
                             </p>
+                            {entry?.message&&<p>{entry.message}</p>}
+                            {!!entry?.fallbackCount&&<p className="v9-notice">{copy('Recipient routing needs review for this step.')} {entry.fallbackCount} {copy('recipient choices could not be resolved. Check the step routing in HR Automation.')}</p>}
                           </div>
                         </li>
                       );
@@ -742,6 +737,7 @@ export function SharedContractDetail({
         </div>
         <aside className="v9-stack">
           <ContractPanel title={copy('Case ownership')}>
+            {workspace.configuredFallbackGroup&&<p>{copy('Current fallback group:')} <strong>{workspace.configuredFallbackGroup}</strong></p>}
             {workspace.waiting && (
               <p>
                 <strong>{workspace.waiting.waitingOn}</strong>

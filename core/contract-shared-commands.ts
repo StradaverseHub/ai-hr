@@ -3,7 +3,7 @@ import {sql} from 'drizzle-orm';
 import {z} from 'zod';
 import type {SessionContext} from '../db/client';
 import {withScopedLifecycleTenant} from './module-gate';
-import {contractSharedContextTx} from './contract-shared-read';
+import {contractSharedContextTx,publicContractFlow} from './contract-shared-read';
 import {validateContractFlowDecision,type ContractFlow,type ContractFlowDecisionDraft} from '../lib/contract-case-flow';
 import {ContractManagementError} from '../lib/contract-management-model';
 import {pgSqlState} from '../lib/db-error';
@@ -28,7 +28,7 @@ export function adoptContractSharedCase(ctx:SessionContext,caseId:string):Promis
  z.uuid().parse(caseId);
  return command(()=>withScopedLifecycleTenant(ctx,async tx=>{
   const [row]=await tx.execute<{flow:ContractFlow}>(sql`select app.contract_shared_adopt(${caseId}::uuid) as flow`);
-  return row.flow;
+  return publicContractFlow(row.flow);
  }));
 }
 export function previewContractSharedDecision(ctx:SessionContext,raw:{caseId:string;revision:number;draft:ContractFlowDecisionDraft}):Promise<{previewId:string;jobId:string}>{
@@ -58,13 +58,13 @@ export function submitContractSharedDecision(ctx:SessionContext,raw:{caseId:stri
   const decision=contractProposedDecisionSchema.parse(saved.preview.decision);
   // The native command checks offered reasons for a new decision, after recognizing an already accepted retry.
   const [row]=await tx.execute<{result:{flow:ContractFlow;eventId:string;jobId:string}}>(sql`select app.contract_shared_decision_submit(${input.caseId}::uuid,${input.revision},${JSON.stringify(decision)}::jsonb,${input.previewId}::uuid) as result`);
-  return row.result;
+  return {...row.result,flow:publicContractFlow(row.result.flow)};
  }));
 }
 export function contractSharedHistory(ctx:SessionContext,caseId:string,before=2147483647){
  z.uuid().parse(caseId);z.number().int().positive().parse(before);
  return command(()=>withScopedLifecycleTenant(ctx,async tx=>{
   const rows=await tx.execute<{entry:{revision:number;at:string;actorId:string|null;actorPersonId:string|null;actorName:string|null;flow:ContractFlow}}>(sql`select value as entry from app.contract_shared_history(${caseId}::uuid,${before}) value`);
-  return rows.map(row=>row.entry);
+  return rows.map(({entry})=>({...entry,flow:publicContractFlow(entry.flow)}));
  }));
 }

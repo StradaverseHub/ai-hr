@@ -13,9 +13,9 @@ async function perform<T>(work:(session:NonNullable<Awaited<ReturnType<typeof re
  catch(error){return {ok:false as const,error:error instanceof ContractManagementError?error.message:error instanceof ZodError?'Check the entered values and try again.':'The request could not be completed. Your entries are still here. Try again.'};}
 }
 export async function actSharedApproval(input:Parameters<typeof owner.actContractSharedApproval>[1]){return perform(s=>owner.actContractSharedApproval(s,input));}
-export async function actSharedLetter(input:Parameters<typeof owner.actContractSharedLetter>[1]){return perform(async s=>{const letter=await owner.actContractSharedLetter(s,input);return {letter,document:owner.renderContractSharedLetter(letter),capabilities:await owner.contractSharedLetterActions(s,letter.id)};});}
-export async function editSharedLetter(input:Parameters<typeof owner.editContractSharedLetter>[1]){return perform(async s=>{const letter=await owner.editContractSharedLetter(s,input);return {letter,document:owner.renderContractSharedLetter(letter),capabilities:await owner.contractSharedLetterActions(s,letter.id)};});}
-export async function bindSharedEmployee(id:string){return perform(async s=>{const letter=await owner.bindContractSharedEmployee(s,id);return {letter,document:owner.renderContractSharedLetter(letter),capabilities:await owner.contractSharedLetterActions(s,letter.id)};});}
+export async function actSharedLetter(input:Parameters<typeof owner.actContractSharedLetter>[1]){return perform(async s=>{const letter=await owner.actContractSharedLetter(s,input);return {letter,document:owner.renderContractSharedLetter(letter),capabilities:await owner.contractSharedLetterActions(s,letter.id),form:await owner.readContractSharedForm(s,letter.id),releaseProof:await owner.readContractSharedReleaseProof(s,letter.id)};});}
+export async function editSharedLetter(input:Parameters<typeof owner.editContractSharedLetter>[1]){return perform(async s=>{const letter=await owner.editContractSharedLetter(s,input);return {letter,document:owner.renderContractSharedLetter(letter),capabilities:await owner.contractSharedLetterActions(s,letter.id),form:await owner.readContractSharedForm(s,letter.id),releaseProof:await owner.readContractSharedReleaseProof(s,letter.id)};});}
+export async function bindSharedEmployee(id:string){return perform(async s=>{const letter=await owner.bindContractSharedEmployee(s,id);return {letter,document:owner.renderContractSharedLetter(letter),capabilities:await owner.contractSharedLetterActions(s,letter.id),form:await owner.readContractSharedForm(s,letter.id),releaseProof:await owner.readContractSharedReleaseProof(s,letter.id)};});}
 export async function previewSharedDecision(input:Parameters<typeof owner.previewContractSharedDecision>[1]){return perform(s=>owner.previewContractSharedDecision(s,input));}
 export async function readSharedDecisionPreview(id:string){return perform(async s=>{const preview=await owner.readContractSharedDecisionPreview(s,id),job=await readBulkJob(s,preview.jobId,'contract_preview');return {...preview,jobState:job.state};},false);}
 export async function submitSharedDecision(input:Parameters<typeof owner.submitContractSharedDecision>[1]){return perform(s=>owner.submitContractSharedDecision(s,input));}
@@ -32,3 +32,11 @@ export async function readSharedSetup(companyId:string){return perform(async s=>
 export async function recordSharedDecline(input:Parameters<typeof owner.recordContractSharedDecline>[1]){return perform(s=>owner.recordContractSharedDecline(s,input));}
 
 export async function confirmSharedPay(input:Parameters<typeof owner.confirmContractSharedPay>[1]){return perform(s=>owner.confirmContractSharedPay(s,input));}
+
+export async function readSharedManualWorkflows(caseId:string){return perform(s=>owner.contractSharedManualWorkflows(s,caseId),false);}
+export async function startSharedManualWorkflow(input:Parameters<typeof owner.startContractSharedManualWorkflow>[1]){return perform(s=>owner.startContractSharedManualWorkflow(s,input));}
+export async function saveSharedForm(input:Parameters<typeof owner.saveContractSharedForm>[1]){return perform(s=>owner.saveContractSharedForm(s,input));}
+
+export async function readSharedLetterState(id:string){return perform(async s=>{const letter=await owner.readContractSharedLetter(s,id);return {letter,document:owner.renderContractSharedLetter(letter),capabilities:await owner.contractSharedLetterActions(s,id),form:await owner.readContractSharedForm(s,id),releaseProof:await owner.readContractSharedReleaseProof(s,id)};},false);}
+
+export async function readSharedFallbacks(caseId:string,before:number){return perform(s=>owner.contractSharedFallbacks(s,caseId,before),false);}
