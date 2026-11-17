@@ -84,6 +84,7 @@ BEGIN
  SELECT coalesce((SELECT waiting->'email'->'template' FROM jsonb_array_elements(coalesce(j.data->'waits','[]')) waiting WHERE waiting->>'runId'=p_run::text AND waiting->>'kind'='file' AND waiting->'step'->>'id'=p_step LIMIT 1),(SELECT e FROM lc_v9_config cfg CROSS JOIN LATERAL jsonb_array_elements(coalesce(cfg.data->'emails','[]')) e WHERE cfg.tenant_id=j.tenant_id AND e->>'id'=message_step->'params'->>'emailTemplateId' AND e->>'module'='off' LIMIT 1)) INTO email_template;
  IF email_template IS NULL OR email_template->>'active' IS DISTINCT FROM 'true' OR EXISTS(SELECT 1 FROM jsonb_array_elements(coalesce(email_template->'slots','[]')) slot WHERE slot->>'required'='true' AND NOT EXISTS(SELECT 1 FROM resignation_journey_file f WHERE f.tenant_id=j.tenant_id AND f.case_id=j.id AND f.slot=(email_template->>'id')||':'||(slot->>'id') AND EXISTS(SELECT 1 FROM jsonb_array_elements(coalesce(p_mail->'content'->'files','[]')) included WHERE included->>'id'=f.id::text))) THEN RAISE EXCEPTION 'Resolve the active template and required case-file holds before sending a test' USING ERRCODE='22023';END IF;
  IF EXISTS(SELECT 1 FROM jsonb_array_elements_text(coalesce(email_template->'attachments','[]')) required WHERE NOT EXISTS(SELECT 1 FROM jsonb_array_elements(coalesce(p_mail->'content'->'documents','[]')) d WHERE d->>'templateId'=required AND p_mail->'content'->'pdfDocumentIds' ? (d->>'id'))) OR EXISTS(SELECT 1 FROM jsonb_array_elements_text(coalesce(email_template->'links','[]')) required WHERE NOT EXISTS(SELECT 1 FROM jsonb_array_elements(coalesce(p_mail->'content'->'documents','[]')) d WHERE d->>'templateId'=required AND p_mail->'content'->'linkDocumentIds' ? (d->>'id'))) THEN RAISE EXCEPTION 'Required released letters must be included in the test' USING ERRCODE='22023';END IF;
+ IF p_offboarding IS NOT NULL AND NOT EXISTS(SELECT 1 FROM app.resignation_communication_runs(p_case,p_offboarding) allowed CROSS JOIN LATERAL jsonb_array_elements(coalesce(allowed.definition->'steps','[]')) allowed_step WHERE allowed.id=p_run AND allowed.preview_available AND allowed_step->>'id'=p_step AND allowed_step->>'type'='sendEmail') THEN RAISE EXCEPTION 'This message is not an acceptance-only communication' USING ERRCODE='42501';END IF;
  IF p_mail->'holds' IS DISTINCT FROM '[]'::jsonb OR jsonb_typeof(p_mail->'subject')<>'string' OR jsonb_typeof(p_mail->'body')<>'string' OR jsonb_typeof(p_mail->'content')<>'object' THEN RAISE EXCEPTION 'Resolve message holds before sending a test' USING ERRCODE='22023';END IF;
  -- No request may choose recipients. The live worker resolves this actual user's verified identity.
  IF NOT EXISTS(SELECT 1 FROM app_external_identity i WHERE i.app_user_id=app.current_user_id() AND i.revoked_at IS NULL AND i.issuer LIKE '%/auth/'||app.current_tenant_id()::text) THEN RAISE EXCEPTION 'Your verified delivery identity is unavailable' USING ERRCODE='42501';END IF;
@@ -117,14 +118,35 @@ REVOKE ALL ON FUNCTION app.resignation_communication_test_queue(uuid,integer,uui
 GRANT EXECUTE ON FUNCTION app.resignation_communication_test_queue(uuid,integer,uuid,text,uuid,jsonb) TO ai_hr_app;
 --> statement-breakpoint
 -- A current letter reader may inspect only this case's pinned run; no shared configuration grant is added.
+-- Offboarding admission excludes private message templates BEFORE either definition or file metadata leaves SQL.
+-- The bridge needs only message recipients/template IDs and pinned acceptance generator references, never other step payloads.
 CREATE FUNCTION app.resignation_communication_runs(p_case uuid,p_offboarding uuid DEFAULT NULL)
 RETURNS TABLE(id uuid,workflow_id uuid,workflow_revision integer,status text,trigger_event text,definition jsonb,editable boolean,preview_available boolean)
 LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
- WITH scope AS MATERIALIZED(SELECT app.resignation_communication_case_scope(p_case,p_offboarding) AS data)
- SELECT r.id,r.workflow_id,r.workflow_revision,r.status,r.trigger_event,v.definition,coalesce((scope.data->>'editable')::boolean,false) AND r.status IN('running','waiting','failed'),CASE WHEN r.trigger_event IN('retention','offerAccepted','offerDeclined','offerDue','rejected') THEN coalesce((scope.data->>'retention')::boolean,false) WHEN r.trigger_event='submitted' THEN coalesce((scope.data->>'submitted')::boolean,false) ELSE coalesce((scope.data->>'acceptance')::boolean,false) END
+ WITH scope AS MATERIALIZED(SELECT app.resignation_communication_case_scope(p_case,p_offboarding) AS data),
+ case_data AS MATERIALIZED(SELECT j.data FROM resignation_journey j WHERE j.tenant_id=app.current_tenant_id() AND j.id=p_case),
+ config AS MATERIALIZED(SELECT cfg.data FROM lc_v9_config cfg WHERE cfg.tenant_id=app.current_tenant_id()),
+ selected_runs AS MATERIALIZED(
+ SELECT r.id,r.workflow_id,r.workflow_revision,r.status,r.trigger_event,r.started_at,v.definition,coalesce((scope.data->>'editable')::boolean,false) AND r.status IN('running','waiting','failed') AS editable,CASE WHEN r.trigger_event IN('retention','offerAccepted','offerDeclined','offerDue','rejected') THEN coalesce((scope.data->>'retention')::boolean,false) WHEN r.trigger_event='submitted' THEN coalesce((scope.data->>'submitted')::boolean,false) ELSE coalesce((scope.data->>'acceptance')::boolean,false) END AS preview_available
  FROM automation_run r JOIN automation_workflow_version v ON v.tenant_id=r.tenant_id AND v.workflow_id=r.workflow_id AND v.revision=r.workflow_revision CROSS JOIN scope
  WHERE r.tenant_id=app.current_tenant_id() AND r.subject_id=p_case AND r.module='off' AND CASE WHEN p_offboarding IS NOT NULL THEN r.trigger_event='accepted' AND (coalesce((scope.data->>'acceptance')::boolean,false) OR coalesce((scope.data->>'admitted')::boolean,false) AND (scope.data->>'acceptanceCount')::integer=0) WHEN r.trigger_event IN('retention','offerAccepted','offerDeclined','offerDue','rejected') THEN coalesce((scope.data->>'retention')::boolean,false) WHEN r.trigger_event='submitted' THEN coalesce((scope.data->>'submitted')::boolean,false) ELSE coalesce((scope.data->>'acceptance')::boolean,false) END
- ORDER BY r.started_at DESC,r.id DESC LIMIT 30;
+ ORDER BY r.started_at DESC,r.id DESC LIMIT 30
+ ), steps AS(
+ SELECT r.*,step,n,coalesce((SELECT wait->'email'->'template' FROM case_data c CROSS JOIN LATERAL jsonb_array_elements(coalesce(c.data->'waits','[]')) wait WHERE wait->>'runId'=r.id::text AND wait->>'kind'='file' AND wait->'step'->>'id'=step->>'id' AND wait->'email'->'template'->>'id'=step->'params'->>'emailTemplateId' LIMIT 1),
+ (SELECT e FROM config cfg CROSS JOIN LATERAL jsonb_array_elements(coalesce(cfg.data->'emails','[]')) e WHERE e->>'id'=step->'params'->>'emailTemplateId' AND e->>'module'='off' LIMIT 1)) AS template
+ FROM selected_runs r CROSS JOIN LATERAL jsonb_array_elements(coalesce(r.definition->'steps','[]')) WITH ORDINALITY definition_steps(step,n)
+ WHERE step->>'type' IN('sendEmail','generateDocument')
+ ), safe_steps AS(
+ SELECT steps.* FROM steps WHERE step->>'type'='generateDocument' OR (step->>'type'='sendEmail' AND (p_offboarding IS NULL OR (
+ template IS NOT NULL AND jsonb_build_array(template->'subject',template->'body',template->'bodyDoc',(SELECT c.data->'emailOverrides'->(template->>'id') FROM case_data c))::text !~ 'retention[.]|employee[.]salary'
+ AND NOT EXISTS(SELECT 1 FROM jsonb_array_elements_text(coalesce(template->'attachments','[]')||coalesce(template->'links','[]')) reference WHERE NOT EXISTS(
+ SELECT 1 FROM case_data c CROSS JOIN LATERAL jsonb_array_elements(coalesce(c.data->'letters','[]')) letter WHERE letter->>'kind'='acceptance' AND letter->>'templateId'=reference
+ UNION ALL SELECT 1 FROM jsonb_array_elements(coalesce(steps.definition->'steps','[]')) generator WHERE generator->>'type'='generateDocument' AND generator->'params'->>'letterTemplateId'=reference))
+ )))
+ )
+ SELECT r.id,r.workflow_id,r.workflow_revision,r.status,r.trigger_event,
+ jsonb_build_object('name',r.definition->'name','steps',coalesce((SELECT jsonb_agg(CASE WHEN ss.step->>'type'='generateDocument' THEN jsonb_build_object('id',ss.step->'id','type','generateDocument','params',jsonb_build_object('letterTemplateId',ss.step->'params'->'letterTemplateId')) ELSE jsonb_build_object('id',ss.step->'id','type','sendEmail','to',coalesce(ss.step->'to','[]'),'cc',coalesce(ss.step->'cc','[]'),'params',jsonb_build_object('emailTemplateId',ss.step->'params'->'emailTemplateId')) END ORDER BY ss.n) FROM safe_steps ss WHERE ss.id=r.id),'[]'::jsonb)),r.editable,r.preview_available
+ FROM selected_runs r ORDER BY r.started_at DESC,r.id DESC;
 $$;
 REVOKE ALL ON FUNCTION app.resignation_communication_runs(uuid,uuid) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION app.resignation_communication_runs(uuid,uuid) TO ai_hr_app;
