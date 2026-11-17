@@ -1,5 +1,5 @@
 {
-  "sourceBase": "69ba90700 original literal Contract intent; plus reviewed6000V3 SQL0e92e55257678ee5ceec522cb475ab56b2442059bff63457216bb1425266e9ec and root reviewed6001\u20136009 literal posting ACL additions (no observed database expectations); plus approved6010 literal private notice ACL intent at d29e5380d, SQL71afc04f48fd (same literal ACL after append-expression correction)",
+  "sourceBase": "69ba90700 original literal Contract intent; plus reviewed6000V3 SQL0e92e55257678ee5ceec522cb475ab56b2442059bff63457216bb1425266e9ec and root reviewed6001\u20136009 literal posting ACL additions (no observed database expectations); plus approved6010 literal private notice ACL intent at d29e5380d, SQL71afc04f48fd (same literal ACL after append-expression correction); plus independently reviewed6012 navigation source df3f269dd, exact SQL b2174ca4b5acd7d433a6a1407778d67c8cbfd4a307b1a8d45e4dbbc62c43834d (provisional registration; no runtime claim)",
   "functionsAdded": [
     {
       "signature": "app.automation_assignment_group_people(text)",
@@ -592,6 +592,12 @@
     {
       "signature": "app.contract_shared_configuration_choices()",
       "appExecute": true,
+      "publicExecute": false,
+      "owner": "MIGRATION_OWNER"
+    },
+    {
+      "signature": "app.contract_shared_configuration_company_scope()",
+      "appExecute": false,
       "publicExecute": false,
       "owner": "MIGRATION_OWNER"
     },
@@ -1402,6 +1408,12 @@
     {
       "signature": "app.contract_shared_native_intake_holds(uuid[])",
       "appExecute": false,
+      "publicExecute": false,
+      "owner": "MIGRATION_OWNER"
+    },
+    {
+      "signature": "app.contract_shared_navigation_access()",
+      "appExecute": true,
       "publicExecute": false,
       "owner": "MIGRATION_OWNER"
     },
@@ -2251,6 +2263,15 @@
       "signature": "app.contract_service_info_intent_allowed(jsonb,jsonb)",
       "appExecute": false,
       "publicExecute": false
+    },
+    {
+      "signature": "app.contract_shared_configuration_choices()",
+      "appExecute": true,
+      "publicExecute": false,
+      "owner": "MIGRATION_OWNER",
+      "oidPreserved": true,
+      "aclPreserved": true,
+      "source": "6012_contract_shared_navigation_access:29"
     },
     {
       "signature": "app.contract_source(uuid)",

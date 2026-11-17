@@ -69,7 +69,7 @@ export type ShellNavigationFacts = {
   /** Recruitment slice 7: the viewer may refer candidates (an active employment in a company with Recruitment). */
   referralPortal?: boolean;
   probationAccess?: {page:boolean;configure:boolean;intake?:boolean;access?:boolean};
-  contractStaffAccess?: {page:boolean;configure:boolean;intake?:boolean};
+  contractStaffAccess?: {page:boolean;configure:boolean;intake?:boolean;automation?:boolean};
   onboardingAccess?: boolean;
   onboardingV9Access?: boolean;
   onboardingV9Navigation?: V9NavigationPermissions;
@@ -188,7 +188,7 @@ export function resolveShellNavigation({
   // Settings keep their V9 gate; obsolete builder aliases are not mounted.
   const v9Administration = onboardingV9Access && !!onboardingV9Navigation?.administration;
   const automationRows: ChildItem[] = [
-    ...(probationAccess.configure || contractStaffAccess.configure || v9Administration ? AUTOMATION_NAVIGATION : []),
+    ...(probationAccess.configure || (contractStaffAccess.automation ?? contractStaffAccess.configure) || v9Administration ? AUTOMATION_NAVIGATION : []),
     ...V9_NAVIGATION.filter(item => item.view==='settings'&&v9Administration).map(item => ({
       href:item.href,labelKey:item.labelKey,icon:ONBOARDING_NODE.icon,exactHref:true,
     } satisfies ChildItem)).filter(canSeeChild),

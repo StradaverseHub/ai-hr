@@ -103,6 +103,13 @@
       "when": 1794841006010,
       "tag": "6010_contract_email_document_hr_notices",
       "breakpoints": true
+    },
+    {
+      "idx": 5412,
+      "version": "7",
+      "when": 1794841006012,
+      "tag": "6012_contract_shared_navigation_access",
+      "breakpoints": true
     }
   ],
   "forwardSourceSqlSha256": {
@@ -116,7 +123,8 @@
     "6007_contract_posting_admission_and_status_ports": "f94fd9292674b0084aa5331eeb5b5be45d6417c47ff707df520937b7c9aac57b",
     "6008_contract_posting_application_metadata": "9477f8b0f029ba475830d8174353b77e47ced60d0b7393a8d11d8df82092f422",
     "6009_contract_posting_reconciliation_and_authority": "d0ce6a32a101e8da9f87dc85da2a64158b720505cc36504a090cb9faf340b472",
-    "6010_contract_email_document_hr_notices": "71afc04f48fda2449becba50bd156b698a0f5ce5d2f0f4765c4211904d9389c4"
+    "6010_contract_email_document_hr_notices": "71afc04f48fda2449becba50bd156b698a0f5ce5d2f0f4765c4211904d9389c4",
+    "6012_contract_shared_navigation_access": "b2174ca4b5acd7d433a6a1407778d67c8cbfd4a307b1a8d45e4dbbc62c43834d"
   },
   "forwardSourceReview": {
     "emailV4Source": "e73af9cec",
@@ -135,6 +143,16 @@
       "previousUninstalledSQL": "2600359d6e09a4e4e855a530faf2fda963712e805fdddf8da90f1ddfc444cdb5",
       "selectedSQL": "fd629cb52c55f5cbc8c88567a9910ccde7d5ad2c365439e8da1a6a0f8fac2138",
       "reason": "Native Letter primary-key binding and validated UUID hint lookups; ordinary subjects with malformed hints delegate unchanged."
+    },
+    "navigationSource": "df3f269dda47d67ef1b44b1836b18e0f77473fd1",
+    "navigationBoundary": "Reviewed navigation hints only: one canonical shared tracker subject cohort, one extracted private configuration company owner, distinct Automation capability. Native page/action guards and legacy role owners unchanged; no task-only tracker grant.",
+    "navigationRegistration": {
+      "tag": "6012_contract_shared_navigation_access",
+      "sqlSha256": "b2174ca4b5acd7d433a6a1407778d67c8cbfd4a307b1a8d45e4dbbc62c43834d",
+      "provisionalIdx": 5412,
+      "provisionalWhen": 1794841006012,
+      "status": "Source registration preparation only; not SQL execution, test approval, installation or release.",
+      "watermarkHold": "Provisional identity must be included in the final coordinated reallocation of all pending timestamps above the accepted Board watermark before any normal migration execution."
     }
   },
   "archivedExcludedSources": [
