@@ -1,4 +1,3 @@
-import {derivedDocumentKind} from './document-form-fields';
 /** Contract preflight over the shared evaluators and routing owners. This describes effects; it performs none. */
 import {evaluateAutomationConditions} from './automation/conditions';
 import {CONTRACT_AUTOMATION_CATALOGUE} from './automation/catalogues/contracts';
@@ -85,7 +84,6 @@ export function buildContractDecisionPlan(input:{context:ContractAutomationConte
     const chosen=definitions.documents.find(d=>d.template.id===step.params.letterTemplateId);
     if(!chosen)continue;
     const {template,version}=chosen;
-    if(derivedDocumentKind(template.blocks)==='Form'){plan.blockers.push(at+template.name+': Form response capture and signing are on hold. Choose a supported outcome letter before submitting.');continue;}
     const facts={businessGroup:context.businessGroupId,company:context.companyId,department:context.departmentId,jobTitle:context.jobTitle,decision:read('decision')};
     if(!automationDocumentMatches(template,field=>{const value=facts[field as keyof typeof facts];return typeof value==='string'?value:null;})){
      plan.blockers.push(at+template.name+' does not match this decision and organisation.');continue;
