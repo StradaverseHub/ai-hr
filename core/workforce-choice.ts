@@ -20,7 +20,7 @@ export function readWorkforceChoices(ctx:SessionContext,input:WorkforceChoiceInp
     from app.access_workforce_picker_facts(${wanted})
     where terminated_on is null and employment_id<>${p.subjectId}::uuid
      and ${p.companyId?sql`company_id=${p.companyId}::uuid`:sql`true`}
-   ), matched as materialized (select * from population where ${query?sql`name ilike ${pattern} or "employeeCode" ilike ${pattern} or "employmentId"::text ilike ${pattern}`:sql`true`}),
+   ), matched as materialized (select * from population where ${query?sql`(case when coalesce("employeeCode",'')='' then name else "employeeCode"||' – '||name end) ilike ${pattern} or "employmentId"::text ilike ${pattern}`:sql`true`}),
    page as (select * from matched order by name,"employmentId" limit 25 offset ${p.offset??0})
    select coalesce((select jsonb_agg(to_jsonb(page) order by name,"employmentId") from page),'[]'::jsonb) as rows,
     coalesce((select jsonb_agg(to_jsonb(population) order by name,"employmentId") from population where "employmentId"=any(${selected})),'[]'::jsonb) as selected,

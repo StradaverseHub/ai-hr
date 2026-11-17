@@ -39,6 +39,8 @@ it('pages the exact active native picker population across roles and scopes, ret
    expect(page.rows).toEqual(oracle.slice(0,25));expect(page.total).toBe(oracle.length);expect(page.selected).toEqual(oracle.filter(r=>r.employmentId===selectedId));
   }
  }
+ const displayed=expected.find(row=>row.employmentId===selectedId)!;
+ expect((await readWorkforceChoices(ctx,{subjectId,query:`${displayed.employeeCode} – ${displayed.name}`})).rows).toEqual([displayed]);
  for(const query of ['İpek %_\\','Σίσυφος','相同姓名'])expect((await readWorkforceChoices(ctx,{subjectId,query})).rows.map(r=>r.name)).toEqual([query]);
  expect((await readWorkforceChoices(ctx,{subjectId,query:'no match',selectedIds:[selectedId,subjectId,employees[999].id,randomUUID()]})).selected).toEqual(expected.filter(r=>r.employmentId===selectedId));
  const single=await readWorkforceChoices(ctx,{subjectId,companyId:companies[1],selectedIds:[selectedId]});expect(single.rows.every(r=>r.companyId===companies[1])).toBe(true);expect(single.total).toBe(expected.filter(r=>r.companyId===companies[1]).length);
