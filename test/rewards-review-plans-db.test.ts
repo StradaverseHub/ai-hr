@@ -17,8 +17,9 @@ beforeEach(async()=>{await resetDb();b=await seedBase();await setModule(b.tenant
 async function createYear(){const input={year:2026,settings};const preview=await previewRewardYear(adminCtx(b),input);return createRewardYear(adminCtx(b),input,preview.digest,reason);}
 const toEdit=(r:Awaited<ReturnType<typeof rewardReviewPlans>>['rows'][number]):RewardPlanGridEdit=>({companyId:r.companyId,expectedRevision:r.revision,planType:r.planType,reason:r.reason,salaryVersionId:r.salaryVersionId,bonusVersionId:r.bonusVersionId,salaryReviewed:r.salarySuggestion.reviewed,bonusReviewed:r.bonusSuggestion.reviewed,branchAcknowledged:r.branchAcknowledged});
 it('creates one draft including an incomplete choice, refuses duplicate years and stale edits, and audits the human actor',async()=>{
+ await owner.db.execute(sql`insert into reward_company_exclusion(tenant_id,company_id,year,reason,created_by,award_type)values(${b.tenantId}::uuid,${b.companyId}::uuid,2026,'Existing uploaded participation must be retained',${b.adminUserId}::uuid,'uploaded')`);
  expect(await createYear()).toEqual({year:2026,created:1});
- const view=await rewardReviewPlans(adminCtx(b),{year:2026});expect(view.rows.map(r=>[r.companyId,r.status,r.headcount])).toEqual([[b.companyId,'draft',0]]);expect(view.coverage).toMatchObject({total:1,ready:0,missingSalary:1,missingBonus:1,missingPat:1});
+ const view=await rewardReviewPlans(adminCtx(b),{year:2026});expect(view.rows.map(r=>[r.companyId,r.status,r.headcount])).toEqual([[b.companyId,'draft',0]]);expect(view.coverage).toMatchObject({total:1,ready:0,missingSalary:1,missingBonus:1,missingPat:1});expect(view.rows[0].planType).toBe('uploaded');
  await expect(createYear()).rejects.toThrow(/already exists/);
  const edit={...toEdit(view.rows[0]),planType:'no_awards' as const,reason:'This legal entity has no awards this year'};const raw={year:2026,edits:[edit]},preview=await previewRewardPlanGrid(adminCtx(b),raw);await saveRewardPlanGrid(adminCtx(b),raw,preview.digest,reason);
  await expect(saveRewardPlanGrid(adminCtx(b),raw,preview.digest,reason)).rejects.toThrow(/changed/);
@@ -55,11 +56,14 @@ it('reads seventy companies and a thousand employments with independent ordered 
  const ids=[b.companyId,...extra.map(c=>c.id)],people=Array.from({length:1000},(_,i)=>({id:randomUUID(),companyId:ids[i%ids.length],name:`Fictional scale person ${i}`,code:`RP${i}`}));
  await owner.db.execute(sql`insert into person(id,tenant_id,full_name)select x.id,${b.tenantId}::uuid,x.name from jsonb_to_recordset(${JSON.stringify(people)}::jsonb)x(id uuid,name text)`);
  await owner.db.execute(sql`insert into employment(tenant_id,person_id,company_id,employee_code,hired_on)select ${b.tenantId}::uuid,x.id,x."companyId",x.code,'2024-01-01'::date from jsonb_to_recordset(${JSON.stringify(people)}::jsonb)x(id uuid,"companyId" uuid,code text)`);
- expect(await createYear()).toEqual({year:2026,created:70});
- const view=await rewardReviewPlans(adminCtx(b),{year:2026});expect(view.rows).toHaveLength(70);expect(view.coverage.total).toBe(70);expect(view.rows.reduce((n,r)=>n+r.headcount,0)).toBe(1000);
+ const createStarted=performance.now();expect(await createYear()).toEqual({year:2026,created:70});const createMs=performance.now()-createStarted;
+ const readStarted=performance.now(),view=await rewardReviewPlans(adminCtx(b),{year:2026}),readMs=performance.now()-readStarted;expect(view.rows).toHaveLength(70);expect(view.coverage.total).toBe(70);expect(view.rows.reduce((n,r)=>n+r.headcount,0)).toBe(1000);
  const expectedCounts=new Map(ids.map(id=>[id,people.filter(p=>p.companyId===id).length]));expect(view.rows.map(r=>[r.companyId,r.headcount])).toEqual(view.rows.map(r=>[r.companyId,expectedCounts.get(r.companyId)]));
  const filtered=await rewardReviewPlans(adminCtx(b),{year:2026,filters:{businessUnitId:bu}});expect(filtered.rows.map(r=>r.companyId)).toEqual([b.companyId]);expect(filtered.coverage.total).toBe(1);expect(filtered.rows[0].headcount).toBe(15);
  expect(view.rows.map(r=>[r.businessUnit??'',r.company,r.companyId])).toEqual([...view.rows].sort((a,b)=>(a.businessUnit??'').localeCompare(b.businessUnit??'')||a.company.localeCompare(b.company)||a.companyId.localeCompare(b.companyId)).map(r=>[r.businessUnit??'',r.company,r.companyId]));
+ const edits=view.rows.map(r=>({...toEdit(r),reason:'Measured set-based configuration update'})),input={year:2026,edits},preview=await previewRewardPlanGrid(adminCtx(b),input),saveStarted=performance.now();await saveRewardPlanGrid(adminCtx(b),input,preview.digest,reason);const saveMs=performance.now()-saveStarted;
+ console.info(JSON.stringify({measurement:'reward-review-plans-70-company-1000-employment',companies:70,employments:1000,createMs,saveMs,readMs,coverage:view.coverage.total,headcount:view.rows.reduce((n,r)=>n+r.headcount,0)}));
+
 },180_000);
 it('holds the worker Access lock shared so ordinary protected reads overlap a paused bulk chunk',async()=>{
  let ready!:()=>void,release!:()=>void;const acquired=new Promise<void>(r=>ready=r),continueWork=new Promise<void>(r=>release=r);
