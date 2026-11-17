@@ -3,7 +3,7 @@ import {revalidatePath} from 'next/cache';
 import {getTranslations} from 'next-intl/server';
 import {getSession} from '@/lib/session';
 import {requireModule} from '@/lib/authz';
-import {previewRewardYear,createRewardYear,previewRewardPlanGrid,saveRewardPlanGrid,enqueueRewardPlanReviews,rewardPreviousPlanChoices} from '@/packs/rewards/review-plans';
+import {previewRewardYear,createRewardYear,previewRewardPlanGrid,saveRewardPlanGrid,enqueueRewardPlanReviews,rewardPreviousPlanChoices,rewardPlanBulkEdits} from '@/packs/rewards/review-plans';
 import type {RewardYearInput,RewardPlanGridInput} from '@/packs/rewards/review-plans-model';
 import {RewardSetupError} from '@/packs/rewards/setup-model';
 
@@ -17,3 +17,5 @@ export async function saveGridAction(input:RewardPlanGridInput,digest:string,rea
 export async function previousChoicesAction(year:number){try{return{ok:true as const,edits:await rewardPreviousPlanChoices(await session(),year)};}catch(error){return{ok:false as const,error:await errorMessage(error)};}}
 export async function createReviewsAction(year:number,companyIds?:string[]){try{const result=await enqueueRewardPlanReviews(await session(),{year,companyIds});refresh();return{ok:true as const,...result};}catch(error){return{ok:false as const,error:await errorMessage(error)};}}
 export async function reviewJobAction(id:string){try{const {readBulkJob,bulkJobProgress}=await import('@/core/bulk-job');return{ok:true as const,progress:bulkJobProgress(await readBulkJob(await session(),id))};}catch(error){return{ok:false as const,error:await errorMessage(error)};}}
+
+export async function acceptSuggestionsAction(year:number){try{return{ok:true as const,edits:await rewardPlanBulkEdits(await session(),{year,operation:'accept-suggestions'})};}catch(error){return{ok:false as const,error:await errorMessage(error)};}}
