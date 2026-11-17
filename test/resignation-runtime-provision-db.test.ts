@@ -20,7 +20,7 @@ it('provisions once as the restricted owner and refuses missing config/table, an
  const restrictedUrl=new URL(adminUrl);restrictedUrl.pathname='/'+database;restrictedUrl.username='ai_hr_owner';restrictedUrl.password='';appUrl.pathname='/'+database;
  const owner=postgres(restrictedUrl.toString(),{max:1,connect_timeout:10,onnotice:()=>{}}),locker=postgres(restrictedUrl.toString(),{max:1,connect_timeout:10,onnotice:()=>{}}),application=postgres(appUrl.toString(),{max:1,connect_timeout:10,onnotice:()=>{}});
  let created=false;
- const childEnvironment=()=>{const env={...process.env,NODE_OPTIONS:''};for(const name of Object.keys(env))if(name.startsWith('AUTH_')||name==='MIGRATION_DATABASE_URL'||['PGHOST','PGPORT','PGDATABASE','PGUSER','PGPASSWORD','PGSERVICE','PGSERVICEFILE','PGOPTIONS'].includes(name))delete env[name];return env;};
+ const childEnvironment=()=>{const env:NodeJS.ProcessEnv={...process.env,NODE_OPTIONS:''};for(const name of Object.keys(env))if(name.startsWith('AUTH_')||name==='MIGRATION_DATABASE_URL'||['PGHOST','PGPORT','PGDATABASE','PGUSER','PGPASSWORD','PGSERVICE','PGSERVICEFILE','PGOPTIONS'].includes(name))delete env[name];return env;};
  const run=async(options:{url?:string;sessionKey?:string;missingKey?:boolean;origin?:string}={})=>{
   const envPath=join(dir,'operator-'+randomUUID()+'.env');writeFileSync(envPath,'MIGRATION_DATABASE_URL='+(options.url??restrictedUrl.toString())+'\nAUTH_PUBLIC_ORIGIN='+(options.origin??'https://runtime.example.test')+'\n'+(options.missingKey?'':'AUTH_SESSION_KEY='+(options.sessionKey??key)+'\n'),{mode:0o600});
   return new Promise<{status:number|null;stdout:string;stderr:string;timedOut:boolean}>((resolveResult,reject)=>{
