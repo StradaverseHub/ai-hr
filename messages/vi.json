@@ -39981,6 +39981,20 @@
           "title": "Việc nhập ứng viên đã dừng",
           "body": "Việc nhập đã được dừng. Các dòng đã nhập vẫn được giữ; mở lần nhập để xem kết quả."
         }
+      },
+      "rewardPlanReviews": {
+        "completed": {
+          "title": "Đã tạo xong đánh giá",
+          "body": "Mở Kế hoạch đánh giá để xem đánh giá đã tạo và công ty được bỏ qua."
+        },
+        "failed": {
+          "title": "Đã dừng tạo đánh giá",
+          "body": "Đánh giá đã tạo được giữ lại. Mở Kế hoạch đánh giá để xem tiến độ và lý do."
+        },
+        "cancelled": {
+          "title": "Đã dừng tạo đánh giá",
+          "body": "Đánh giá đã tạo được giữ lại. Mở Kế hoạch đánh giá để xem tiến độ và lý do."
+        }
       }
     },
     "panel": {
@@ -40031,7 +40045,7 @@
     "cancel": "Hủy",
     "highImpact": {
       "released-pat": "PAT thay đổi cho một đợt đánh giá đã phát hành.",
-      "released-library": "Các đợt đánh giá đã phát hành dùng phiên bản trước và sẽ giữ phiên bản đó; đợt đánh giá mới dùng phiên bản này.",
+      "released-library": "Một đánh giá đã phát hành bị ảnh hưởng. Kiểm tra bên dưới để biết giữ phiên bản hay tính lại.",
       "released-limit": "Hạn mức ngân sách thay đổi cho một đợt đánh giá đã phát hành.",
       "release-review": "Phát hành sẽ gửi đợt đánh giá này đến CEO đơn vị kinh doanh.",
       "remove-access": "Một người sẽ mất quyền truy cập vào đợt đánh giá.",
@@ -40100,7 +40114,8 @@
       "released": "Đã phát hành",
       "applied": "Đã áp dụng thay đổi",
       "changed": "Đã thay đổi",
-      "reset": "Đặt lại mặc định"
+      "reset": "Đặt lại mặc định",
+      "created": "Đã tạo"
     },
     "empty": "Không có thay đổi nào khớp bộ lọc.",
     "pages": "Trang",
@@ -44042,6 +44057,8 @@
       "failed": "Cần xử lý",
       "cancelled": "Đã hủy"
     },
-    "pollRetry": "Không đọc được tiến độ. Đang kiểm tra lại trạng thái; việc tạo đánh giá vẫn tiếp tục ở nền."
+    "pollRetry": "Không đọc được tiến độ. Đang kiểm tra lại trạng thái; việc tạo đánh giá vẫn tiếp tục ở nền.",
+    "newCompanyTitle": "Đã thêm công ty mới vào {year}",
+    "newCompanyBody": "Đã thêm công ty mới {company} vào {year} – chọn cơ cấu lương và ma trận thưởng."
   }
 }

@@ -39981,6 +39981,20 @@
           "title": "Import calon dihentikan",
           "body": "Import telah dihentikan. Baris yang sudah diimport kekal; buka import untuk melihat hasil."
         }
+      },
+      "rewardPlanReviews": {
+        "completed": {
+          "title": "Penciptaan semakan selesai",
+          "body": "Buka Pelan Semakan untuk melihat semakan yang dicipta dan syarikat yang dilangkau."
+        },
+        "failed": {
+          "title": "Penciptaan semakan dihentikan",
+          "body": "Semakan yang telah dicipta dikekalkan. Buka Pelan Semakan untuk menyemak kemajuan dan sebab."
+        },
+        "cancelled": {
+          "title": "Penciptaan semakan dihentikan",
+          "body": "Semakan yang telah dicipta dikekalkan. Buka Pelan Semakan untuk menyemak kemajuan dan sebab."
+        }
       }
     },
     "panel": {
@@ -40031,7 +40045,7 @@
     "cancel": "Batal",
     "highImpact": {
       "released-pat": "PAT berubah untuk semakan yang telah dilepaskan.",
-      "released-library": "Semakan yang telah dilepaskan menggunakan versi terdahulu. Semakan itu mengekalkannya; semakan baharu menggunakan versi ini.",
+      "released-library": "Semakan yang telah dilepaskan terjejas. Semak di bawah sama ada versinya dikekalkan atau dikira semula.",
       "released-limit": "Had bajet berubah untuk semakan yang telah dilepaskan.",
       "release-review": "Pelepasan menghantar semakan ini kepada CEO BU.",
       "remove-access": "Seseorang kehilangan akses kepada semakan.",
@@ -40100,7 +40114,8 @@
       "released": "Dilepaskan",
       "applied": "Digunakan",
       "changed": "Diubah",
-      "reset": "Ditetapkan semula kepada lalai"
+      "reset": "Ditetapkan semula kepada lalai",
+      "created": "Dicipta"
     },
     "empty": "Tiada perubahan sepadan dengan penapis ini.",
     "pages": "Halaman",
@@ -44042,6 +44057,8 @@
       "failed": "Perlu perhatian",
       "cancelled": "Dibatalkan"
     },
-    "pollRetry": "Kemajuan tidak dapat dibaca. Semakan status dicuba semula; penciptaan semakan diteruskan di latar belakang."
+    "pollRetry": "Kemajuan tidak dapat dibaca. Semakan status dicuba semula; penciptaan semakan diteruskan di latar belakang.",
+    "newCompanyTitle": "Syarikat baharu ditambah ke {year}",
+    "newCompanyBody": "Syarikat baharu {company} ditambah ke {year} – pilih struktur gaji dan matriks bonus."
   }
 }

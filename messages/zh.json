@@ -39981,6 +39981,20 @@
           "title": "候选人导入已停止",
           "body": "导入已被停止。已导入的行会保留；打开导入查看结果。"
         }
+      },
+      "rewardPlanReviews": {
+        "completed": {
+          "title": "评审创建已完成",
+          "body": "打开评审计划查看已创建的评审及跳过的公司。"
+        },
+        "failed": {
+          "title": "评审创建已停止",
+          "body": "已创建的评审会保留。打开评审计划查看进度及原因。"
+        },
+        "cancelled": {
+          "title": "评审创建已停止",
+          "body": "已创建的评审会保留。打开评审计划查看进度及原因。"
+        }
       }
     },
     "panel": {
@@ -40031,7 +40045,7 @@
     "cancel": "取消",
     "highImpact": {
       "released-pat": "已发布的评审的 PAT 发生变化。",
-      "released-library": "已发布的评审使用较早的版本，并将继续沿用；新评审将使用此版本。",
+      "released-library": "已发布的评审受到影响。请在下方确认其保留原版本还是重新计算。",
       "released-limit": "已发布的评审的预算上限发生变化。",
       "release-review": "发布后此评审将发送给业务单元 CEO。",
       "remove-access": "有人将失去对某个评审的访问权限。",
@@ -40100,7 +40114,8 @@
       "released": "已发布",
       "applied": "已应用",
       "changed": "已更改",
-      "reset": "已重置为默认"
+      "reset": "已重置为默认",
+      "created": "已创建"
     },
     "empty": "没有符合这些筛选条件的变更。",
     "pages": "页面",
@@ -44042,6 +44057,8 @@
       "failed": "需要处理",
       "cancelled": "已取消"
     },
-    "pollRetry": "无法读取进度。正在重试状态查询；后台评审创建仍在继续。"
+    "pollRetry": "无法读取进度。正在重试状态查询；后台评审创建仍在继续。",
+    "newCompanyTitle": "新公司已加入 {year} 年度",
+    "newCompanyBody": "新公司 {company} 已加入 {year} 年度 — 请选择薪资结构和奖金矩阵。"
   }
 }

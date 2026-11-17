@@ -39981,6 +39981,20 @@
           "title": "Candidate import stopped",
           "body": "The import was stopped. Rows already imported stay; open the import to see the result."
         }
+      },
+      "rewardPlanReviews": {
+        "completed": {
+          "title": "Review creation finished",
+          "body": "Open Review Plans to see the reviews created and companies skipped."
+        },
+        "failed": {
+          "title": "Review creation stopped",
+          "body": "Reviews already created are kept. Open Review Plans to check progress and the reason."
+        },
+        "cancelled": {
+          "title": "Review creation stopped",
+          "body": "Reviews already created are kept. Open Review Plans to check progress and the reason."
+        }
       }
     },
     "panel": {
@@ -40031,7 +40045,7 @@
     "cancel": "Cancel",
     "highImpact": {
       "released-pat": "PAT changes for a review that has already been released.",
-      "released-library": "Reviews already released use an earlier version. They keep it; new reviews use this one.",
+      "released-library": "A released review is affected. Check below whether it keeps its version or is recalculated.",
       "released-limit": "A budget limit changes for a review that has already been released.",
       "release-review": "Releasing sends this review to the BU CEO.",
       "remove-access": "Someone loses access to a review.",
@@ -40100,7 +40114,8 @@
       "released": "Released",
       "applied": "Applied",
       "changed": "Changed",
-      "reset": "Reset to default"
+      "reset": "Reset to default",
+      "created": "Created"
     },
     "empty": "No changes match these filters.",
     "pages": "Pages",
@@ -44042,6 +44057,8 @@
       "failed": "Needs attention",
       "cancelled": "Cancelled"
     },
-    "pollRetry": "Progress could not be read. Retrying the status check; review creation continues in the background."
+    "pollRetry": "Progress could not be read. Retrying the status check; review creation continues in the background.",
+    "newCompanyTitle": "New company added to {year}",
+    "newCompanyBody": "New company {company} added to {year} – choose salary structure and bonus matrix."
   }
 }
