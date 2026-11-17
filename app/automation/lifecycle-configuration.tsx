@@ -16,7 +16,7 @@ import type {RoutingChoices} from '@/app/lifecycle/probation/templates/routing-e
 export type LifecycleConfigurationData=Awaited<ReturnType<typeof v9Configuration>>;
 
 /** Existing V9 document and rich email editors, hosted in the shared Configuration destination. */
-export function LifecycleTemplateSection({initial,filter,choices,sharedWorkflows=[],summaryRoutings=choices.routings}:{initial:LifecycleConfigurationData;filter:Module|'all';choices:RoutingChoices;sharedWorkflows?:AutomationWorkflow[];summaryRoutings?:{id:string;name:string;retired?:boolean}[]}){
+export function LifecycleTemplateSection({initial,filter,choices,sharedWorkflows=[],summaryRoutings=choices.routings}:{initial:LifecycleConfigurationData;filter:Module|'all';choices:RoutingChoices;sharedWorkflows?:AutomationWorkflow[];summaryRoutings?:readonly {id:string;name:string;retired?:boolean}[]}){
  const t=useTranslations('automation');
  const router=useRouter(),configuration=useV9Configuration(initial.config,saveV9Config,()=>router.refresh());
  const[selected,select]=useState(''),[module,setModule]=useState<Module>(filter==='off'?'off':'onb'),[users,setUsers]=useState(initial.users);
