@@ -10,10 +10,12 @@ export function ResignationLetterCard({value,letter,busy,command}:{value:Resigna
  useEffect(()=>{if(!editing)setBlocks(letter.editableBlocks??[]);},[letter.editableBlocks,editing]);
  const caps=letter.capabilities,doc={documentId:letter.id,documentRevision:letter.revision};
  const [fieldValues,setFieldValues]=useState<Record<string,string>>(()=>({...letter.document?.values}));
- useEffect(()=>setFieldValues({...letter.document?.values}),[letter.revision,letter.document?.values]);
- const editableFieldIds=(letter.editableFieldIds??[]).filter(id=>letter.document?.fields.some(field=>field.id===id&&field.owner!=='pmLocked'&&!field.pmKey));
- const fieldsDirty=editableFieldIds.some(id=>(fieldValues[id]??'')!==(letter.document?.values[id]??''));
- const saveFields=()=>command({type:'saveLetterFields',...doc,values:Object.fromEntries(editableFieldIds.map(id=>[id,fieldValues[id]??'']))});
+ // A serialized DTO refresh is not a new letter. Reset only for a new revision or genuinely changed saved values.
+ const canonicalFieldValues=JSON.stringify(Object.entries(letter.document?.values??{}).sort(([a],[b])=>a.localeCompare(b)));
+ useEffect(()=>setFieldValues(Object.fromEntries(JSON.parse(canonicalFieldValues) as [string,string][])),[letter.id,letter.revision,canonicalFieldValues]);
+ const editableFieldIds=(letter.editableFieldIds??[]).filter(id=>letter.document?.fields.some(field=>field.id===id&&field.owner!=='pmLocked'&&!field.pmKey&&(!field.when||fieldValues[field.when.field]===field.when.value)));
+ const changedFieldIds=editableFieldIds.filter(id=>(fieldValues[id]??'')!==(letter.document?.values[id]??'')),fieldsDirty=changedFieldIds.length>0;
+ const saveFields=()=>command({type:'saveLetterFields',...doc,values:Object.fromEntries(changedFieldIds.map(id=>[id,fieldValues[id]??'']))});
  const retention=letter.kind==='retention'&&value.stage==='offer',opened=letter.opened;
  const sendBack=()=>{if(!reason.trim()){setLocalError(t('sendBackRequired'));return;}setLocalError('');return command({type:'sendBack',...doc,reason:reason.trim()}).then(saved=>{if(saved)setReason('');});};
  return <section className="space-y-4" aria-label={letter.name}><header className="flex flex-wrap items-start justify-between gap-3"><div><h3 className="font-semibold">{letter.name}</h3><p className="mt-1 text-xs text-muted-foreground">{t('version',{revision:letter.revision,templateVersion:letter.templateVersion})} · {t('generatedOn',{date:day(letter.generatedOn)})}</p>{t.has('letterState.'+letter.state)&&<Badge variant={letter.state==='released'?'success':letter.state==='owner'?'warning':'default'}>{t('letterState.'+letter.state)}</Badge>}</div>{letter.downloadUrl&&<a className="text-sm font-medium text-primary underline" href={letter.downloadUrl}>{t('download')}</a>}</header>
