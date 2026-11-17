@@ -110,11 +110,28 @@ END $$;
 REVOKE ALL ON FUNCTION app.reward_history_write_guard() FROM PUBLIC;
 CREATE TRIGGER reward_history_readonly BEFORE INSERT OR UPDATE OR DELETE ON public.reward_person_history FOR EACH STATEMENT EXECUTE FUNCTION app.reward_history_write_guard();
 --> statement-breakpoint
+-- Only the new history writer may open this transaction-local owner read window. No application ACL.
+CREATE TABLE public.reward_history_post_read_lease(
+ tenant_id uuid NOT NULL REFERENCES public.tenant(id),unit_id uuid NOT NULL REFERENCES public.reward_unit(id),transaction_id bigint NOT NULL,
+ PRIMARY KEY(tenant_id,unit_id,transaction_id)
+);
+ALTER TABLE public.reward_history_post_read_lease ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.reward_history_post_read_lease FORCE ROW LEVEL SECURITY;
+REVOKE ALL ON public.reward_history_post_read_lease FROM PUBLIC,ai_hr_app;
+CREATE POLICY reward_history_post_read_lease_owner ON public.reward_history_post_read_lease FOR ALL TO ai_hr_owner
+ USING(tenant_id=app.current_tenant_id() AND transaction_id=txid_current())
+ WITH CHECK(tenant_id=app.current_tenant_id() AND transaction_id=txid_current());
+CREATE POLICY reward_history_uploaded_post_selection ON public.reward_uploaded_award FOR SELECT TO ai_hr_owner
+ USING(tenant_id=app.current_tenant_id() AND app.principal_snapshot_current() AND app.reward_not_viewing_as()
+  AND EXISTS(SELECT 1 FROM public.reward_history_post_read_lease l WHERE l.tenant_id=reward_uploaded_award.tenant_id AND l.unit_id=reward_uploaded_award.unit_id AND l.transaction_id=txid_current())
+  AND EXISTS(SELECT 1 FROM public.reward_unit u WHERE u.id=reward_uploaded_award.unit_id AND u.tenant_id=reward_uploaded_award.tenant_id AND u.deleted_at IS NULL
+   AND u.status IN('approved','posted') AND app.reward_admin(u.company_id) AND 'payroll'=ANY(ARRAY(SELECT app.reward_roles(u.id)))));
+--> statement-breakpoint
 -- Payroll posters have no general SELECT policy on stored history. The writer returns a count,
 -- preventing INSERT RETURNING from requiring an overly broad disclosure policy for that role.
 CREATE FUNCTION app.reward_record_person_history(wanted_unit uuid,wanted_rows jsonb) RETURNS integer
  LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
-DECLARE u public.reward_unit;n integer;submitted bigint;unique_entries bigint;bound_entries bigint;
+DECLARE u public.reward_unit;n integer;submitted bigint;unique_entries bigint;bound_entries bigint;selected_count bigint;uploaded boolean;selected_ids uuid[];self_award boolean;
 BEGIN
  SELECT * INTO u FROM public.reward_unit WHERE id=wanted_unit AND tenant_id=app.current_tenant_id() AND deleted_at IS NULL FOR UPDATE;
  IF u.id IS NULL OR u.status NOT IN('approved','posted') OR NOT app.principal_snapshot_current() OR NOT app.reward_not_viewing_as()
@@ -141,12 +158,32 @@ BEGIN
   OR EXISTS(SELECT 1 FROM jsonb_each(CASE WHEN jsonb_typeof(r.value->'withheld')='object' THEN r.value->'withheld' ELSE '{}'::jsonb END) w(key,value)
    WHERE w.key NOT IN('increase','bonus','lump') OR jsonb_typeof(w.value) IS DISTINCT FROM 'string' OR length(w.value#>>'{}') NOT BETWEEN 10 AND 1000)) THEN
   RAISE EXCEPTION 'Invalid reward history row types' USING ERRCODE='23514';END IF;
- WITH wanted AS(SELECT (r.value->>'entryId')::uuid AS entry_id,(r.value->>'employmentId')::uuid AS employment_id FROM jsonb_array_elements(wanted_rows) r(value))
- SELECT count(*),count(DISTINCT w.entry_id),count(p.id) INTO submitted,unique_entries,bound_entries
- FROM wanted w LEFT JOIN public.reward_entry e ON e.id=w.entry_id AND e.employment_id=w.employment_id AND e.unit_id=u.id AND e.tenant_id=u.tenant_id
+ SELECT EXISTS(SELECT 1 FROM public.reward_uploaded_review r WHERE r.unit_id=u.id AND r.tenant_id=u.tenant_id) INTO uploaded;
+ IF uploaded THEN
+  INSERT INTO public.reward_history_post_read_lease(tenant_id,unit_id,transaction_id) VALUES(u.tenant_id,u.id,txid_current());
+  BEGIN
+   -- Same native selected award set, including explicit zero awards. Refuse the WHOLE unit on self pay,
+   -- rather than hiding that award and accidentally accepting an incomplete subset.
+   SELECT coalesce(array_agg(a.entry_id),ARRAY[]::uuid[]),coalesce(bool_or(actor.person_id::text=e.source->>'personId' OR actor.person_id=employee.person_id),false)
+    INTO selected_ids,self_award
+   FROM public.reward_uploaded_award a JOIN public.reward_entry e ON e.id=a.entry_id AND e.unit_id=a.unit_id AND e.tenant_id=a.tenant_id
+   JOIN public.employment employee ON employee.id=e.employment_id AND employee.tenant_id=e.tenant_id
+   JOIN public.app_user actor ON actor.id=app.current_user_id() AND actor.tenant_id=a.tenant_id
+   WHERE a.unit_id=u.id AND a.tenant_id=u.tenant_id;
+   DELETE FROM public.reward_history_post_read_lease WHERE tenant_id=u.tenant_id AND unit_id=u.id AND transaction_id=txid_current();
+  EXCEPTION WHEN OTHERS THEN
+   DELETE FROM public.reward_history_post_read_lease WHERE tenant_id=u.tenant_id AND unit_id=u.id AND transaction_id=txid_current();
+   RAISE;
+  END;
+  IF self_award THEN RAISE EXCEPTION 'A different authorized Payroll reviewer must post this review' USING ERRCODE='42501';END IF;
+ END IF;
+ WITH selected AS MATERIALIZED(SELECT e.id,e.employment_id FROM public.reward_entry e WHERE e.unit_id=u.id AND e.tenant_id=u.tenant_id AND(NOT uploaded OR e.id=ANY(selected_ids))),
+ wanted AS(SELECT (r.value->>'entryId')::uuid AS entry_id,(r.value->>'employmentId')::uuid AS employment_id FROM jsonb_array_elements(wanted_rows) r(value))
+ SELECT count(*),count(DISTINCT w.entry_id),count(p.id),(SELECT count(*) FROM selected) INTO submitted,unique_entries,bound_entries,selected_count
+ FROM wanted w LEFT JOIN selected e ON e.id=w.entry_id AND e.employment_id=w.employment_id
  LEFT JOIN public.employment p ON p.id=e.employment_id AND p.tenant_id=u.tenant_id AND p.company_id=u.company_id;
  IF submitted=0 OR submitted<>unique_entries OR submitted<>bound_entries
-  OR (u.status='approved' AND submitted<>(SELECT count(*) FROM public.reward_entry e WHERE e.unit_id=u.id AND e.tenant_id=u.tenant_id)) THEN
+  OR (u.status='approved' AND submitted<>selected_count) THEN
   RAISE EXCEPTION 'Reward history must match the selected review entry set' USING ERRCODE='23514';END IF;
  -- A historical backfill may contain only the proven subset. SQL independently checks the enacted
  -- basic identity; the Rewards service remains the sole owner of the complete recalculation.
