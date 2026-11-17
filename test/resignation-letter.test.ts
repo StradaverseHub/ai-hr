@@ -494,6 +494,14 @@ describe('Offboarding-only frozen team letter steps',()=>{
 
 describe('Offboarding local form fields',()=>{
   const withFields=()=>{const t=template();t.versions[0].fields=[{id:'note',label:'Employee note',type:'text',owner:'employee',pmKey:null,required:true,sensitive:false,options:[],section:'form',when:null},{id:'locked',label:'Personnel salary',type:'number',owner:'pmLocked',pmKey:'employee.salary',required:false,sensitive:false,options:[],section:'form',when:null}];t.versions[0].blocks.push({id:'form',type:'fields',text:'',section:'form'});return t;};
+  it('rejects reserved-key local definitions at generation and preserves correctly mapped Personnel values',()=>{
+    const t=withFields();t.versions[0].fields[0].id='retention.salary';
+    expect(()=>generate({template:t,values:{...values(),'retention.salary':'7600'}})).toThrow('reserved HR merge key');
+    t.versions[0].fields[0].pmKey='employee.salary';expect(()=>generate({template:t})).toThrow('reserved HR merge key');
+    t.versions[0].fields[0].owner='pmLocked';t.versions[0].fields[0].pmKey='retention.salary';
+    const valid=generate({template:t}).letter;expect(resignationLetterPreview(valid,people.owner).document?.values['retention.salary']).toBe('7600');
+    expect(resignationLetterPreview(valid,people.owner).editableFieldIds).not.toContain('retention.salary');
+  });
   it('accepts only the current actor’s local fields, invalidates affected signatures, and freezes completed values',()=>{
     let letter=generate({template:withFields()}).letter;letter=complete(letter,'owner').letter;letter=complete(letter,'ceo').letter;letter=act(letter,'employee',{type:'open'}).letter;
     expect(resignationLetterPreview(letter,people.employee).editableFieldIds).toEqual(['note']);
