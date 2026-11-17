@@ -267,6 +267,50 @@ class Fixture(old.UpgradeFlowFixture):
             finally:
                 if self.pending_publication:os.close(self.pending_publication[0]);self.pending_publication=None
 
+class PauseBeforeNativeRemoval(Exception):pass
+
+
+def prepare_real_cleanup_intent(f):
+    original=shutil.rmtree
+    def pause(*args,**kwargs):raise PauseBeforeNativeRemoval()
+    pause.avoids_symlink_attacks=original.avoids_symlink_attacks
+    with patch.object(owned_cleanup.shutil,'rmtree',pause):
+        try:f.begin_cleanup()
+        except PauseBeforeNativeRemoval:pass
+    check((f.directory/'cleanup-intent.json').exists() and (f.directory/'next').exists() and (f.directory/'packet').exists(),'actual native intent must precede both removals')
+
+
+@contextlib.contextmanager
+def metadata_snapshot_race(f,point,action,setup=prepare_real_cleanup_intent):
+    """Actual owner mutates precisely after initial readdir or at final root lstat."""
+    original_listdir=os.listdir;original_lstat=Path.lstat;original_boundary=f.boundary;original_sleep=f.sleep_port
+    state={'ready':False,'captured':False,'fired':False,'retries':0,'names':set()}
+    def boundary(kind,count):
+        original_boundary(kind,count)
+        if kind=='fast' and count==1:setup(f);state['ready']=True
+    def listing(path):
+        result=original_listdir(path)
+        if state['ready'] and not state['captured'] and isinstance(path,(str,os.PathLike)) and Path(path)==f.directory:
+            state['captured']=True;state['names']=set(result)
+        return result
+    def lstat(path,*args,**kwargs):
+        target=f.directory/point if point in ('packet','next')else f.directory
+        if state['captured'] and not state['fired'] and path==target:
+            state['fired']=True
+            if point=='root-after':
+                result=original_lstat(path,*args,**kwargs);action(f);return result
+            action(f)
+        return original_lstat(path,*args,**kwargs)
+    def sleep(seconds):
+        if seconds==.02:state['retries']+=1
+        original_sleep(seconds)
+    with patch.object(f,'boundary',side_effect=boundary),patch.object(f,'sleep_port',side_effect=sleep),patch.object(ci.os,'listdir',side_effect=listing),patch.object(Path,'lstat',new=lstat):yield state
+
+
+def resume_real_owned_removal(f):
+    return owned_cleanup.cleanup_install(str(f.directory),str(f.webroot))
+
+
 class ConditionalRuntimeTests(unittest.TestCase):
     def test_fixture_original_grant_obeys_the_real_native_closed_validator(self):
         with tempfile.TemporaryDirectory()as tmp:
@@ -453,7 +497,43 @@ class ConditionalRuntimeTests(unittest.TestCase):
         with tempfile.TemporaryDirectory()as tmp:
             f=Fixture(Path(tmp));f.cleanup_at=5;f.observe_cleanup=True;f.conditional()
             self.assertEqual([row['stage']for row in f.cleanup_observations],['lock-held','original-audit-retained','normal-cleanup-ready.json','normal-cleanup-commit.json','cleanup-authorized.json','normal-cleanup-consumed.json','cleanup-intent.json','removed-next','removed-packet','cleanup-result.json','normal-session-result','lock-released'])
-            self.assertEqual(f.cleanup_observations[-1]['removed'],['next','packet']);self.assertEqual((f.native_calls,f.fast_calls),(2,10));self.assertTrue((f.operation/'activated.json').exists())
+            self.assertEqual(set(f.cleanup_observations[-1]['removed']),{'next','packet','normal-cleanup.lock'});self.assertTrue({'next','packet','normal-cleanup.lock'}.isdisjoint(f.cleanup_observations[-1]['members']));self.assertEqual((f.native_calls,f.fast_calls),(2,10));self.assertTrue((f.operation/'activated.json').exists())
+    def test_real_native_packet_and_next_removal_between_names_and_folder_stat_retries_once(self):
+        for point in ['packet','next']:
+            with self.subTest(point=point),tempfile.TemporaryDirectory()as tmp:
+                f=Fixture(Path(tmp))
+                with metadata_snapshot_race(f,point,resume_real_owned_removal)as state:f.conditional()
+                self.assertTrue(state['fired']);self.assertTrue({'packet','next'}<=state['names']);self.assertEqual(state['retries'],1)
+                self.assertEqual((f.native_calls,f.fast_calls),(2,10));self.assertFalse((f.directory/'next').exists());self.assertFalse((f.directory/'packet').exists());self.assertTrue((f.operation/'activated.json').exists())
+                self.assertEqual(json.loads((f.directory/'cleanup-result.json').read_bytes())['kind'],'OWNED_INSTALL_BYTES_ABSENT_AUDIT_RETAINED')
+    def test_real_native_removal_before_and_after_final_root_stat_uses_final_stable_nlink(self):
+        for point in ['root-before','root-after']:
+            with self.subTest(point=point),tempfile.TemporaryDirectory()as tmp:
+                f=Fixture(Path(tmp))
+                with metadata_snapshot_race(f,point,resume_real_owned_removal)as state:f.conditional()
+                self.assertTrue(state['fired']);self.assertEqual(state['retries'],1);self.assertEqual((f.native_calls,f.fast_calls),(2,10));self.assertTrue((f.operation/'activated.json').exists())
+                self.assertFalse((f.directory/'packet').exists());self.assertFalse((f.directory/'next').exists())
+    def test_actual_audit_publication_root_races_retry_but_unknown_identity_and_hash_are_fatal(self):
+        for point in ['root-before','root-after']:
+            with self.subTest(publication=point),tempfile.TemporaryDirectory()as tmp:
+                f=Fixture(Path(tmp))
+                with metadata_snapshot_race(f,point,lambda target:target.retain_audit_native(),setup=lambda target:target.finish())as state:f.conditional()
+                self.assertTrue(state['fired']);self.assertNotIn('audit',state['names']);self.assertEqual(state['retries'],1);self.assertEqual((f.native_calls,f.fast_calls),(2,10));self.assertTrue((f.operation/'activated.json').exists())
+        for defect in ['unknown-member','directory-identity','audit-hash']:
+            with self.subTest(fatal=defect),tempfile.TemporaryDirectory()as tmp:
+                f=Fixture(Path(tmp));before=f.unit.read_bytes()
+                if defect=='audit-hash':f.finish();f.retain_audit_native()
+                def action(target):
+                    if defect=='unknown-member':target.private_record('foreign.json',{'unknown':True})
+                    elif defect=='directory-identity':
+                        parked=target.directory.parent/'parked-foreign-root';target.directory.rename(parked);target.directory.mkdir(mode=0o700)
+                        for child in parked.iterdir():child.rename(target.directory/child.name)
+                    else:
+                        leaf=target.directory/'audit/system-testing.json';value=json.loads(leaf.read_bytes());value['tamperedAfterRead']=True;leaf.write_bytes(encoded(value))
+                with metadata_snapshot_race(f,'root-before',action,setup=lambda target:target.finish())as state:
+                    with self.assertRaisesRegex(ValueError,'unknown/missing|directory identity|audit byte integrity'):f.conditional()
+                self.assertTrue(state['fired']);self.assertEqual(state['retries'],0);self.assertEqual(f.unit.read_bytes(),before);self.assertFalse((f.operation/'activated.json').exists());self.assertFalse((f.operation/'ci-worker-start-request.json').exists());self.assertFalse(list(f.operation.glob('ci-runtime-native-retry-*.json')))
+
     def test_native_cleanup_intent_hash_directory_and_order_refuse_before_owned_deletion(self):
         for defect in ['hash','directory','child-order']:
             with self.subTest(defect=defect),tempfile.TemporaryDirectory()as tmp:
@@ -485,9 +565,11 @@ class ConditionalRuntimeTests(unittest.TestCase):
                 f=Fixture(Path(tmp));before=f.unit.read_bytes()
                 if defect=='required':f.probe_override={'required':'0','waitSeconds':None}
                 if defect=='wait':f.probe_override={'required':'1','waitSeconds':'45'}
-                if defect=='retained-audit-byte':(f.directory/'packet/system-testing.json').write_bytes(b'changed original native bytes')
+                if defect=='retained-audit-byte':
+                    leaf=f.directory/'packet/system-testing.json';value=json.loads(leaf.read_bytes());value['fixtureTampered']=True;leaf.write_bytes(encoded(value))
                 with self.assertRaisesRegex(ValueError,'identity/environment/health|audit byte integrity'):f.conditional()
                 self.assertEqual(f.unit.read_bytes(),before);self.assertEqual(f.native_calls,0);self.assertFalse((f.operation/'activated.json').exists())
+                if defect=='retained-audit-byte':self.assertEqual(f.publication_sleeps,0);self.assertFalse(list(f.operation.glob('ci-runtime-native-retry-*.json')))
     def test_f2_admission_refuses_helper_readiness_and_global_reservation_before_mutation(self):
         for defect in ['helper-reserve','readiness-opportunity','global-estimate','fence-deadline']:
             with self.subTest(defect=defect),tempfile.TemporaryDirectory()as tmp:
@@ -570,6 +652,7 @@ class ConditionalRuntimeTests(unittest.TestCase):
                 ci.source_inventory(base,root,['node_modules','.next'])
             self.assertEqual(len(swapped),1);self.assertEqual(target.read_text(),'original');self.assertEqual(foreign.read_text(),'tampered')
     def test_child_inherits_real_queue_sh_and_install_ex_with_absolute_slot_timeout(self):
+        real_child=ci.child
         with tempfile.TemporaryDirectory()as tmp:
             f=Fixture(Path(tmp))
             with f.ports(),contextlib.redirect_stdout(io.StringIO()):
@@ -578,11 +661,11 @@ class ConditionalRuntimeTests(unittest.TestCase):
                 try:
                     invocation.bind_install(fd,f.root/'install.lock')
                     with patch.object(ci,'ACTIVE_OPERATION_GUARD',invocation),patch.object(ci,'SLOT_DEADLINE',time.monotonic()+2),patch.object(ci,'bounded_process',return_value=b'{}')as run:
-                        ci.child([str(f.node),'fixed-status'],f.owner,{'HOME':str(f.home)},timeout=180,operation_fd=invocation.lock.fd)
+                        real_child([str(f.node),'fixed-status'],f.owner,{'HOME':str(f.home)},timeout=180,operation_fd=invocation.lock.fd)
                         kwargs=run.call_args.kwargs;self.assertEqual(kwargs['pass_fds'],(invocation.lock.fd,fd));self.assertGreater(kwargs['timeout'],0);self.assertLessEqual(kwargs['timeout'],2)
                         for held,kind in [(invocation.lock.fd,'READ'),(fd,'WRITE')]:self.assertIn(kind,Path('/proc/self/fdinfo/'+str(held)).read_text())
                     with patch.object(ci,'SLOT_DEADLINE',time.monotonic()-1),patch.object(ci,'bounded_process')as run:
-                        with self.assertRaisesRegex(ValueError,'slot expired'):ci.child([str(f.node),'fixed-status'],f.owner,{},timeout=180)
+                        with self.assertRaisesRegex(ValueError,'slot expired'):real_child([str(f.node),'fixed-status'],f.owner,{},timeout=180)
                         run.assert_not_called()
                 finally:invocation.close();os.close(fd)
 
