@@ -134,8 +134,25 @@ async function main(){
    const open=await payroll(f,prepared.open.id);assert.deepEqual(open.slips,prepared.open.facts.slips);assert.equal(open.batch.status,'processed');assert.ok(open.batch.needs_recalc_at);assert.ok(Array.isArray(open.batch.recalc_employment_ids)&&open.batch.recalc_employment_ids.includes(f.employee.employmentId));
    const{needs_recalc_at:_oldAt,recalc_employment_ids:_oldIds,...oldOpen}=prepared.open.facts.batch;const{needs_recalc_at:_newAt,recalc_employment_ids:_newIds,...newOpen}=open.batch;assert.deepEqual(newOpen,oldOpen);
    const allRuns=[...prepared.closed,prepared.open];const actualDocuments=await Promise.all(allRuns.map(run=>payslipForReview(f.admin,{companyIds:[f.b.companyId],payslipId:run.facts.slips[0].id})));assert.deepEqual(JSON.parse(JSON.stringify(actualDocuments)),prepared.documents);
-   const snapshots=await owner.db.execute<{id:string}>(sql`select payslip_id as id from public.information_payslip_snapshot where tenant_id=${f.b.tenantId}::uuid and employment_id=${f.employee.employmentId}::uuid order by payslip_id`);
+   // This FORCE-RLS store deliberately has no owner SELECT bypass: the unscoped queue login
+   // cannot read protected documents merely because it installed/owns their table.
+   const[unscoped]=await owner.db.execute<{session:string;current:string;tenant:string|null;actor:string|null;visible:number}>(sql`select session_user::text as session,current_user::text as current,
+    app.current_tenant_id() as tenant,app.current_user_id() as actor,(select count(*)::int from public.information_payslip_snapshot
+     where tenant_id=${f.b.tenantId}::uuid and employment_id=${f.employee.employmentId}::uuid) as visible`);
+   assert.deepEqual({...unscoped},{session:'ai_hr_owner',current:'ai_hr_owner',tenant:null,actor:null,visible:0});
+   // Use the SAME real Payroll administrator whose three complete issued documents just matched.
+   // This is native app-role SELECT under existing policy, not a private read port or extra grant.
+   const snapshots=await withTenant(f.admin,async tx=>{
+    const[reader]=await tx.execute<{current:string;tenant:string;actor:string;principal:boolean;payroll:boolean}>(sql`select current_user::text as current,
+     app.current_tenant_id() as tenant,app.current_user_id() as actor,app.principal_snapshot_current() as principal,app.can_admin_payroll_for(${f.b.companyId}::uuid) as payroll`);
+    assert.deepEqual({...reader},{current:'ai_hr_app',tenant:f.b.tenantId,actor:f.admin.userId,principal:true,payroll:true});
+    return tx.execute<{id:string}>(sql`select payslip_id as id from public.information_payslip_snapshot
+     where tenant_id=${f.b.tenantId}::uuid and employment_id=${f.employee.employmentId}::uuid order by payslip_id`);
+   });
    assert.deepEqual(snapshots.map(row=>row.id),allRuns.map(run=>run.facts.slips[0].id).sort());
+   const[postingGroupReader]=await withTenant(f.approver,tx=>tx.execute<{visible:number}>(sql`select count(*)::int as visible from public.information_payslip_snapshot
+    where tenant_id=${f.b.tenantId}::uuid and employment_id=${f.employee.employmentId}::uuid`));
+   assert.equal(postingGroupReader.visible,0,'Posting approval must not grant access to protected Payroll snapshots.');
    const[finish]=await owner.db.execute<{login_name:string;backend_pid:number;actor:string}>(sql`select result.login_name,result.backend_pid,source.requester_user_id as actor from app.contract_posting_job_result result join app.contract_posting_job_source source on source.tenant_id=result.tenant_id and source.job_id=result.job_id where result.tenant_id=${f.b.tenantId}::uuid and result.job_id=${queued.jobId}::uuid`);
    assert.deepEqual({...finish},{login_name:'ai_hr_owner',backend_pid:beforeIdentity.pid,actor:f.approver.userId});
    const prefix=await owner.db.execute<{sequence:string;row:Row}>(sql`select sequence::text,to_jsonb(d) as row from public.domain_event d where d.tenant_id=${f.b.tenantId}::uuid and d.subject_employment_id=${f.employee.employmentId}::uuid and sequence<=${prepared.prefix.at(-1)!.sequence}::bigint order by sequence`);assert.deepEqual(Array.from(prefix),prepared.prefix);
