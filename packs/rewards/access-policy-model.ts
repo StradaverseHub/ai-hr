@@ -49,10 +49,11 @@ export const isRewardLevel=(value:unknown):value is RewardLevel=>typeof value===
 export function rewardDefaultLevel(role:RewardAccessRole,capability:RewardCapability):RewardLevel{
  const r=role==='proxy_bg'?'bg':role;
  switch(capability){
-  case'access.manage':case'plans.manage':case'data.check':case'snapshot.refresh':return r==='gr'?'full':'none';
+  case'access.manage':case'data.check':case'snapshot.refresh':return r==='gr'?'full':'none';
   // Board 60f1fdcd (migration 5600): Group Rewards, CTRO and HR Admin edit Salary Structures, Bonus Matrices and company
   // PAT. The configuration editor predicate (app.reward_config_editor) still scopes them: a company-scoped HR Admin never
   // edits group-wide items.
+  case'plans.manage':return r==='gr'||r==='ctro'||r==='hr_admin'?'full':r==='ec'?'view':'none';
   case'salary.view':case'bonus.view':case'pat.manage':return r==='gr'||r==='ctro'||r==='hr_admin'?'full':'none';
   case'senior.manage':case'limits.view':return r==='gr'?'full':r==='ctro'||r==='ec'?'view':'none';
   case'restricted.view':return r==='gr'||r==='ctro'||r==='ec'?'step':'none';
@@ -74,7 +75,7 @@ export function rewardLevelOptions(role:RewardAccessRole,capability:RewardCapabi
  const d=rewardDefaultLevel(role,capability);
  if(d==='none')return['none'];
  if(capability==='restricted.view')return['step','view'];
- if(d==='full'&&(capability==='salary.view'||capability==='bonus.view'||capability==='senior.manage'||capability==='limits.view'))return['full','view','none'];
+ if(d==='full'&&(capability==='plans.manage'||capability==='salary.view'||capability==='bonus.view'||capability==='senior.manage'||capability==='limits.view'))return['full','view','none'];
  return[d,'none'];
 }
 

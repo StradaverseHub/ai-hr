@@ -784,12 +784,12 @@
     "steps": [
       {
         "id": "1",
-        "route": "/admin/rewards/plans",
+        "route": "/admin/rewards/review-plans",
         "target": null,
         "placement": "center",
         "text": {
           "title": "Prepare a rewards review",
-          "body": "Start in Shared Rewards Configuration to prepare the plan, confirm its employee snapshot and choose the companies that will use it.",
+          "body": "Start in Review Plans to prepare the plan, confirm its employee snapshot and choose the companies that will use it.",
           "lang": "en"
         },
         "roles": [
@@ -799,7 +799,7 @@
       },
       {
         "id": "2",
-        "route": "/admin/rewards/plans",
+        "route": "/admin/rewards/review-plans",
         "target": "[data-tour=\"rewards-configuration\"]",
         "placement": "bottom",
         "text": {
