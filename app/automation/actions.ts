@@ -1,4 +1,5 @@
 'use server';
+import {routingDefaultProblems} from '@/lib/automation/routing-builder';
 import {revalidatePath} from 'next/cache';
 import {requireScopedLifecycleModule} from '@/lib/scoped-lifecycle-page';
 import {
@@ -63,7 +64,7 @@ export async function documentTemplateVersionsAction(id:string){
 }
 
 export async function saveRoutingAction(input: { routing: Routing; retired: boolean; expectedRevision: number; reason: string }) {
-  return execute(async () => saveAutomationRouting(await requireScopedLifecycleModule(), input));
+  return execute(async () => {if(!input.retired&&routingDefaultProblems(input.routing).length)throw new AutomationError('invalid','Keep one explicit default row last.');return saveAutomationRouting(await requireScopedLifecycleModule(), input);});
 }
 export async function saveAssignmentGroupsAction(input:unknown){
  return execute(async()=>saveAutomationAssignmentGroups(await requireScopedLifecycleModule(),input));
@@ -167,3 +168,14 @@ export async function dryRunOffboardingWorkflowAction(input:{workflow:Automation
 export async function installOffboardingDefaultsAction(){return execute(async()=>installResignationDefaults(await requireScopedLifecycleModule()));}
 /** Selected-company Contract reviewer search, behind the module owner's exact authority. */
 export async function searchContractReviewersAction(input:{companyId:string;query:string;selectedUserIds:string[]}){return execute(async()=>contractConfigurationDirectory(await requireScopedLifecycleModule(),input));}
+
+/** Preview permission is Templates + actual case View; it never implies Workflows or See current pay. */
+export async function searchContractTemplateCasesAction(search:string){return execute(async()=>{const {contractTemplatePreviewCases}=await import('@/packs/contracts/service');return contractTemplatePreviewCases(await requireScopedLifecycleModule(),search);});}
+export async function loadContractTemplatePreviewAction(caseId:string){return execute(async()=>{const {contractTemplatePreviewValues}=await import('@/packs/contracts/service');return contractTemplatePreviewValues(await requireScopedLifecycleModule(),caseId);});}
+
+export async function documentTemplateUsageAction(id:string){return execute(async()=>{const owner=await import('@/packs/automation/service');return owner.automationDocumentUsage(await requireScopedLifecycleModule(),id);});}
+export async function documentTemplateAction(input:{id:string;expectedRevision:number;action:'publishVersion'|'deleteVersion'|'deleteTemplate';version?:number}){return execute(async()=>{const owner=await import('@/packs/automation/service');return owner.actAutomationDocumentTemplate(await requireScopedLifecycleModule(),input);});}
+
+export async function checkContractRoutingAction(routing:Routing,caseId:string){return execute(async()=>{const owner=await import('@/packs/contracts/service');return owner.contractRoutingCheck(await requireScopedLifecycleModule(),routing,caseId);});}
+
+export async function searchContractRoutingCasesAction(search:string){return execute(async()=>{const owner=await import('@/packs/contracts/service');return owner.contractRoutingPreviewCases(await requireScopedLifecycleModule(),search);});}

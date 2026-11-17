@@ -55,7 +55,7 @@ export function EmailEditor({initial,refs,onClose,documents=[]}:{initial:ListedE
   {!draft.active&&<p className="v9-notice">{t('templates.offNote')}</p>}
   <p className="v9-muted">{p('senderHelp')}</p>
   <div className="v9-field"><div className="automation-row automation-between"><label htmlFor="automation-email-subject">{t('editor.subject')}</label>{picker('subject')}</div>
-   <input id="automation-email-subject" ref={element=>{fields.current.subject=element;}} value={draft.subject} maxLength={500} disabled={readOnly} aria-invalid={!draft.subject.trim()} onChange={e=>change({subject:e.target.value})}/></div>
+   <p className="v9-muted">Subject is plain text. Merge fields are replaced separately for each person.</p><input id="automation-email-subject" ref={element=>{fields.current.subject=element;}} value={draft.subject} maxLength={500} disabled={readOnly} aria-invalid={!draft.subject.trim()} onChange={e=>change({subject:e.target.value})}/></div>
   <div className="automation-row" role="tablist" aria-label={p('view')}>{(['edit','preview']as const).map(value=><button key={value} type="button" role="tab" aria-selected={mode===value} className={'v9-button'+(mode===value?' v9-button-primary':'')} onClick={()=>setMode(value)}>{value==='edit'?p('edit'):p('preview')}</button>)}</div>
   {mode==='edit'?<div className="v9-field"><span>{t('editor.message')}</span><EmailBodyEditor ref={editor} value={doc} onChange={bodyDoc=>change({bodyDoc,body:automationEmailBodyText(bodyDoc)})} disabled={readOnly} fields={catalogue.mergeFields.map(field=>({key:field.key,label:field.label}))}
    images={(draft.assets??[]).filter(asset=>asset.kind==='image').map(asset=>({id:asset.id,name:asset.name,alt:asset.alt??'',src:'/automation/templates/assets/'+asset.id}))}

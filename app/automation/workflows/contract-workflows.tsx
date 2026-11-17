@@ -18,7 +18,7 @@ export function ContractWorkflows({workflows,refs}:{workflows:ListedWorkflow[];r
  return <section className="pcg-card pcg-card-flush" aria-label={t('modules.contract_staff')}>
   <div className="pcg-wi"><div><h2>{t('modules.contract_staff')}</h2><p className="pcg-hint">{t('contract.listHelp')}</p></div><button type="button" className="v9-button v9-button-primary" onClick={create}>{t('workflows.new')}</button></div>
   {!workflows.length&&<p className="pcg-card-extra v9-muted">{t('workflows.empty')}</p>}
-  <ul className="pcg-wl">{workflows.map(item=>{
+  <ul className="pcg-wl">{workflows.filter(item=>item.workflow.status!=='retired').map(item=>{
    const w=item.workflow,lines=workflowListLines(w,catalogue);
    const problems=w.status==='retired'?[]:[...automationWorkflowProblems(w,catalogue,references),...contractStepParamProblems(w,{emailTemplates:refs.emailTemplates,letterTemplateIds:refs.letterTemplates?.map(l=>l.id)??null},references)];
    return <li className="pcg-wi" key={w.id}><div className="pcg-wi-text"><h3>{t('modules.contract_staff')} · {w.name}</h3><p>{lines.trigger}</p><p className="pcg-wi-steps">{lines.steps}</p></div><div className="pcg-row">

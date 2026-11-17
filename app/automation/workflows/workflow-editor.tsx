@@ -1,5 +1,5 @@
 'use client';
-import {useRef,useState,useTransition} from 'react';
+import {useEffect,useRef,useState,useTransition} from 'react';
 import {useRouter} from 'next/navigation';
 import {useTranslations} from 'next-intl';
 import {mergeFieldsForTrigger,type AutomationModuleCatalogue} from '@/lib/automation/catalogue';
@@ -60,6 +60,7 @@ export function WorkflowEditor({catalogue,initial,revision:savedRevision,refs,on
  const [converted]=useState(()=>conditionsWithIds(initial,refs.conditionValues));
  const [draft,setDraft]=useState(converted),[revision,setRevision]=useState(savedRevision),[dirty,setDirty]=useState(savedRevision===0||converted!==initial),[note,setNote]=useState(''),[message,setMessage]=useState<Message|null>(null),[people,setPeople]=useState(refs.people);
  const fields=useRef<Record<string,HTMLInputElement|HTMLTextAreaElement|null>>({});
+ const [autoSaving,setAutoSaving]=useState(false),latestDraft=useRef(draft),failedSnapshot=useRef<string|null>(null);latestDraft.current=draft;
  const readOnly=!editable||initial.status==='retired'||busy;
  const change=(edit:(workflow:AutomationWorkflow)=>void)=>{setDraft(current=>{const next=structuredClone(current);edit(next);return next;});setDirty(true);setMessage(null);};
  const setStep=(index:number,edit:(step:AutomationStep)=>void)=>change(w=>edit(w.steps[index]));
@@ -73,16 +74,33 @@ export function WorkflowEditor({catalogue,initial,revision:savedRevision,refs,on
  const valuesFor=(field:string)=>refs.conditionValues[field]??[];
 
  const save=(status:AutomationWorkflow['status'],reason:string)=>{
+  if(autoSaving)return;
   if(status==='live'){const gate=setAutomationWorkflowStatus(draft,'live',problems);if(!gate.ok){setMessage({kind:'error',text:gate.reason,problems});return;}}
   const next={...draft,status};
-  start(async()=>{
+  start(async()=>{try{
    const result=await saveWorkflowAction({workflow:next,expectedRevision:revision,reason:note.trim()||reason});
    if(!result.ok){setMessage({kind:'error',text:result.detail??t('errors.unavailable'),problems:result.problems});return;}
    setRevision(result.result.revision);setDraft(next);setDirty(false);setNote('');
    setMessage({kind:'status',text:status==='live'?t('editor.isLive',{name:next.name}):status==='retired'?t('editor.retired',{name:next.name}):draft.status==='live'&&status==='paused'?t('editor.paused',{name:next.name}):t('editor.saved')});
    router.refresh();if(status==='retired')onClose();
+  }catch{setMessage({kind:'error',text:'Changes are not saved. Your entries are kept here. Retry saving.'});}
   });
  };
+ // Serial, debounced saves retain edits made while the previous request is in flight.
+ useEffect(()=>{
+  if(!dirty||!editable||initial.status==='retired'||busy||autoSaving||draft.status==='live'&&problems.length)return;
+  const snapshot=JSON.stringify(draft);if(failedSnapshot.current===snapshot)return;
+  const timer=setTimeout(()=>{setAutoSaving(true);void(async()=>{
+   try{const result=await saveWorkflowAction({workflow:draft,expectedRevision:revision,reason:'Automatically saved workflow changes'});
+    if(!result.ok){failedSnapshot.current=snapshot;setMessage({kind:'error',text:result.detail??t('errors.unavailable'),problems:result.problems});return;}
+    setRevision(result.result.revision);failedSnapshot.current=null;
+    if(JSON.stringify(latestDraft.current)===snapshot)setDirty(false);
+    setMessage({kind:'status',text:t('editor.saved')});router.refresh();
+   }catch{failedSnapshot.current=snapshot;setMessage({kind:'error',text:'Changes are not saved. Your entries are kept here. Retry saving.'});}
+   finally{setAutoSaving(false);}
+  })();},700);
+  return()=>clearTimeout(timer);
+ },[draft,dirty,revision,autoSaving,busy,editable,initial.status,problems.length,t,router]);
  const insertMerge=(index:number,param:'subject'|'body',key:string)=>{
   const element=fields.current[`${index}:${param}`],current=text(draft.steps[index].params[param]),token=`{{${key}}}`;
   const from=element?.selectionStart??current.length,to=element?.selectionEnd??current.length;
@@ -173,13 +191,14 @@ export function WorkflowEditor({catalogue,initial,revision:savedRevision,refs,on
    actions={<>
     {message&&<div className={message.kind==='error'?'v9-notice v9-error':'v9-notice'} role={message.kind==='error'?'alert':'status'}>{message.text}{message.problems?.length?<ul>{message.problems.map((p,i)=><li key={i}>{p}</li>)}</ul>:null}</div>}
     {editable&&initial.status!=='retired'&&<>
-     <WorkflowField label={t('editor.note')}><input value={note} maxLength={500} disabled={readOnly} placeholder={t('editor.notePlaceholder')} onChange={e=>setNote(e.target.value)}/></WorkflowField>
+     <p className="v9-muted" role="status">{autoSaving?'Saving…':dirty?'Changes waiting to save':'Changes save automatically'}</p>
+    <WorkflowField label={t('editor.note')}><input value={note} maxLength={500} disabled={readOnly} placeholder={t('editor.notePlaceholder')} onChange={e=>setNote(e.target.value)}/></WorkflowField>
      <div className="automation-row">
       {draft.status==='live'
-       ?<button type="button" className="v9-button v9-button-primary" disabled={busy} onClick={()=>save('paused',t('editor.reasonPause'))}>{t('editor.pause')}</button>
-       :<button type="button" className="v9-button v9-button-primary" disabled={busy||problems.length>0} title={problems.length?t('editor.fixFirst'):undefined} onClick={()=>save('live',t('editor.reasonLive'))}>{t('editor.makeLive')}</button>}
-      <button type="button" className="v9-button" disabled={busy||!dirty||(draft.status==='live'&&problems.length>0)} onClick={()=>save(draft.status,t('editor.reasonSave'))}>{t('editor.save')}</button>
-      {revision>0&&<button type="button" className="v9-button" disabled={busy} onClick={()=>{if(window.confirm(t('editor.retireConfirm')))save('retired',t('editor.reasonRetire'));}}>{t('editor.retire')}</button>}
+       ?<button type="button" className="v9-button v9-button-primary" disabled={busy||autoSaving} onClick={()=>save('paused',t('editor.reasonPause'))}>{t('editor.pause')}</button>
+       :<button type="button" className="v9-button v9-button-primary" disabled={busy||autoSaving||problems.length>0} title={problems.length?t('editor.fixFirst'):undefined} onClick={()=>save('live',t('editor.reasonLive'))}>{t('editor.makeLive')}</button>}
+      {message?.kind==='error'&&<button type="button" className="v9-button" disabled={busy||autoSaving||!dirty||(draft.status==='live'&&problems.length>0)} onClick={()=>{failedSnapshot.current=null;save(draft.status,t('editor.reasonSave'));}}>Retry saving</button>}
+      {revision>0&&<button type="button" className="v9-button" disabled={busy||autoSaving} onClick={()=>save('retired','Deleted workflow from HR Automation')}>Delete workflow</button>}
       <button type="button" className="v9-button" disabled={busy} onClick={()=>{if(!dirty||window.confirm(t('editor.leaveUnsaved')))onClose();}}>{t('editor.back')}</button>
      </div>
      <p className="v9-muted">{t('editor.runsKeep')}</p>
