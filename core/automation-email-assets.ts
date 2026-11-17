@@ -8,9 +8,10 @@ import {resolveDocumentUpload} from './employee-documents';
 import {automationEmailAssetSchema,type AutomationEmailAsset,type AutomationEmailSlot} from '../lib/automation-email-assets';
 import {pgSqlState} from '../lib/db-error';
 
-const uploadSchema=z.object({templateId:z.uuid(),module:z.enum(['contract_staff','probation']),revision:z.number().int().positive(),kind:z.enum(['file','image']),name:z.string().min(1).max(180).regex(/^[^\u0000-\u001f\u007f/\\:]+$/u),caseId:z.uuid().optional(),slotId:z.uuid().optional()}).strict();
+const uploadSchema=z.object({templateId:z.uuid(),module:z.enum(['contract_staff','probation']),revision:z.number().int().positive(),kind:z.enum(['file','image']),name:z.string().min(1).max(180).regex(/^[^\u0000-\u001f\u007f/\\:]+$/u),caseId:z.uuid().optional(),slotId:z.uuid().optional(),prerequisiteId:z.uuid().optional()}).strict();
 export async function uploadAutomationEmailAsset(ctx:SessionContext,input:z.infer<typeof uploadSchema>&{content:Buffer}):Promise<AutomationEmailAsset>{
  const {content,...raw}=input,parsed=uploadSchema.parse(raw);
+ if(parsed.prerequisiteId&&(parsed.module!=='contract_staff'||!parsed.caseId||!parsed.slotId||parsed.kind!=='file'))throw new AutomationError('invalid','Choose a file slot from the waiting Contract email.');
  if(!Buffer.isBuffer(content)||!content.length||content.length>(parsed.kind==='image'?1048576:10485760)||!/\.(pdf|png|jpe?g|gif|webp|docx?|xlsx?|txt|csv)$/i.test(parsed.name))throw new AutomationError('invalid','Choose a supported file of at most 10 MB, or an email image of at most 1 MB.');
  let mimeType:string;
  try{
@@ -21,6 +22,8 @@ export async function uploadAutomationEmailAsset(ctx:SessionContext,input:z.infe
  }catch{throw new AutomationError('invalid','The file contents do not match a supported type. Choose a readable file or image and try again.');}
  return withScopedLifecycleTenant(ctx,async tx=>{
   try{
+   // Selection only: the native owner independently checks this pin and the actual actor.
+   await tx.execute(sql`select set_config('app.requested_contract_email_pin',${parsed.prerequisiteId??''},true)`);
    const [row]=await tx.execute<{asset:unknown}>(sql`select app.automation_email_asset_upload(${parsed.templateId}::uuid,${parsed.module},${parsed.revision},${parsed.kind},${parsed.name},${mimeType},decode(${content.toString('base64')},'base64'),${parsed.caseId??null}::uuid,${parsed.slotId??null}) as asset`);
    return automationEmailAssetSchema.parse(row.asset);
   }catch(error){const state=pgSqlState(error);if(state==='42501')throw new AutomationError('forbidden','You cannot upload a file here.');if(state==='40001')throw new AutomationError('conflict','The case or template changed. Reload before uploading.');if(state==='22023')throw new AutomationError('invalid',error instanceof Error?error.message:'Check this upload.');throw error;}
@@ -34,7 +37,7 @@ export async function downloadAutomationEmailAsset(ctx:SessionContext,id:string)
   return {name:row.asset.name,mimeType:row.asset.mimeType,content:Buffer.from(row.asset.bytes,'base64')};
  });
 }
-export type AutomationEmailCaseFileSet={templateId:string;templateName:string;revision:number;slots:(AutomationEmailSlot&{file:AutomationEmailAsset|null})[]};
+export type AutomationEmailCaseFileSet={templateId:string;templateName:string;revision:number;prerequisiteId?:string;sourcePeriodRevision?:string;preparedAt?:string;slots:(AutomationEmailSlot&{file:AutomationEmailAsset|null})[]};
 /** Only email definitions named by actual accepted runs on this case are exposed to its manual operator. */
 export async function automationEmailCaseFiles(ctx:SessionContext,caseId:string):Promise<AutomationEmailCaseFileSet[]>{
  z.uuid().parse(caseId);

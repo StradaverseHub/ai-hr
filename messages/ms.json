@@ -40897,6 +40897,8 @@
       "addSlot": "Add a file per person",
       "defaultSlot": "File for this person",
       "caseTitle": "Email files for this person",
+      "caseVersion": "Email version {version}",
+      "waitingVersion": "Waiting email: upload files for this version",
       "requiredFile": "Upload this file before continuing the email.",
       "noFile": "No file uploaded.",
       "loadMore": "Show more email file templates"
