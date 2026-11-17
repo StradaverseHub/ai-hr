@@ -44131,7 +44131,9 @@
       "test_demo": "Công ty thử nghiệm hoặc minh họa",
       "alias": "Bí danh của công ty khác",
       "structure": "Chưa xác nhận đơn vị kinh doanh"
-    }
+    },
+    "rebindNotificationTitle": "Đã cập nhật đánh giá đãi ngộ",
+    "rebindNotificationBody": "Cơ cấu lương hoặc ma trận thưởng của công ty đã thay đổi. Với vai trò người phê duyệt hiện tại, hãy xem xét các đề xuất đã tính lại trước khi phê duyệt."
   },
   "rewardsPersonHistoryUpload": {
     "title": "Tải lên lịch sử thưởng",

@@ -44131,7 +44131,9 @@
       "test_demo": "测试或演示公司",
       "alias": "其他公司的别名",
       "structure": "业务单元尚未确认"
-    }
+    },
+    "rebindNotificationTitle": "薪酬评审已更新",
+    "rebindNotificationBody": "公司薪资结构或奖金矩阵已更改。作为当前审批人，请在批准前查看重新计算的建议。"
   },
   "rewardsPersonHistoryUpload": {
     "title": "上传奖励历史",

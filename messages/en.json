@@ -44131,7 +44131,9 @@
       "test_demo": "Test or demo company",
       "alias": "Alias of another company",
       "structure": "Business Unit not confirmed"
-    }
+    },
+    "rebindNotificationTitle": "Rewards review updated",
+    "rebindNotificationBody": "The company salary structure or bonus matrix changed. As the current approver, review the recalculated recommendations before approving."
   },
   "rewardsPersonHistoryUpload": {
     "title": "Reward history upload",
