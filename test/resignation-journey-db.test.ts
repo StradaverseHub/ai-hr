@@ -5,12 +5,26 @@ import {sql} from 'drizzle-orm';
 import {withTenant} from '../db/client';
 import {owner,migrateTestDb,resetDb,closeAll} from './harness';
 import {resignationJourneyFixture} from './helpers/resignation-journey-fixture';
-import {commandResignationJourney,resignationCase,resignationInbox,resignationEmployeeView,submitResignationJourney,installResignationDefaults} from '../packs/lifecycle/service';
+import {commandResignationJourney,resignationCase,resignationInbox,resignationEmployeeView,submitResignationJourney,installResignationDefaults,resignationWorkflowDryRun} from '../packs/lifecycle/service';
 import {myResignation,listResignationRequests,decideResignation,submitResignation} from '../core/offboarding';
 
 beforeAll(migrateTestDb);beforeEach(resetDb);afterEach(()=>vi.unstubAllEnvs());afterAll(closeAll);
 
 describe('managed resignation service composes one workflow authority',()=>{
+ it('uses the same scoped canonical BP resolution for No BP skip in execution and dry run',async()=>{
+  const f=await resignationJourneyFixture({decisionWorkflow:false}),workflowId=await f.workflow('submitted',[{id:'decision',type:'requestDecision',conditions:[],to:[{kind:'person',userId:f.managerUserId}],cc:[],params:{choices:'both'}}]);
+  await owner.db.execute(sql`update automation_workflow_version set definition=jsonb_set(definition,'{skipWhen}','"noPbp"'::jsonb) where tenant_id=${f.base.tenantId}::uuid and workflow_id=${workflowId}::uuid`);
+  const [row]=await owner.db.execute<{definition:import('../lib/automation/workflow').AutomationWorkflow}>(sql`select definition from automation_workflow_version where workflow_id=${workflowId}::uuid`);
+  expect((await resignationWorkflowDryRun(f.admin,{caseId:f.journey.id,workflow:row.definition})).run).toMatchObject({wouldRun:false,reason:'Skipped: no People Business Partner is found for the case'});
+  let current=await commandResignationJourney(f.admin,{caseId:f.journey.id,revision:f.journey.revision,command:{type:'runWorkflowsAgain'}});expect(current.deciders).toEqual([]);
+  f.config.bpRules=[{rules:{company:[randomUUID()]},userId:f.fyiUserId}];
+  await owner.db.execute(sql`update lc_v9_config set data=${JSON.stringify(f.config)}::jsonb where tenant_id=${f.base.tenantId}::uuid`);
+  expect((await resignationWorkflowDryRun(f.admin,{caseId:f.journey.id,workflow:row.definition})).run.wouldRun).toBe(false);
+  f.config.bpRules.push({rules:{company:[f.base.companyId]},userId:f.fyiUserId});
+  await owner.db.execute(sql`update lc_v9_config set data=${JSON.stringify(f.config)}::jsonb where tenant_id=${f.base.tenantId}::uuid`);
+  expect((await resignationWorkflowDryRun(f.admin,{caseId:f.journey.id,workflow:row.definition})).run.wouldRun).toBe(true);
+  current=await commandResignationJourney(f.admin,{caseId:current.id,revision:current.revision,command:{type:'runWorkflowsAgain'}});expect(current.deciders.map(person=>person.id)).toEqual([f.managerUserId]);
+ },90000);
  it('assigns decision and FYI separately, preserves the request UUID and excludes managed cases from legacy inboxes',async()=>{
   const f=await resignationJourneyFixture();
   const action=await resignationInbox(f.admin,{kind:'approvals'}),fyi=await resignationInbox(f.watcher,{kind:'approvals'});
