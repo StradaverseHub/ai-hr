@@ -10,11 +10,11 @@ import {bulkJobProgress,enqueueBulkJobTx,readBulkJob,listBulkJobsTx} from '../..
 import {parseCsvWithLineNumbers} from '../../lib/csv';
 import {assertRewardWritableTx} from './access-policy';
 import {todayInKualaLumpur} from '../../lib/hr-date';
-import {rewardHistoryUploadFromCells,rewardHistoryUploadRowSchema,type RewardHistoryUploadRow} from './person-history-model';
+import {rewardHistoryUploadFromCells,rewardHistoryUploadRowSchema,type RewardHistoryUploadRow,type RewardHistoryProblemCode} from './person-history-model';
 
 export const REWARD_HISTORY_IMPORT_KIND='reward_person_history';
 type ResolvedRow={line:number;value:RewardHistoryUploadRow;employmentId:string};
-export type RewardHistoryImportPreview={token:string;rows:ResolvedRow[];problems:{line:number;reason:string}[];firstReviewYear:number|null};
+export type RewardHistoryImportPreview={token:string;rows:ResolvedRow[];problems:{line:number;reason:string;code:RewardHistoryProblemCode}[];firstReviewYear:number|null};
 export async function rewardHistoryImportAuthorityTx(tx:Tx,companyId:string){
  const [actor]=await tx.execute<{allowed:boolean}>(sql`select app.principal_snapshot_current() and app.reward_not_viewing_as()
   and app.reward_setup_allowed(NULL,'manage') and app.reward_setup_allowed(${companyId}::uuid,'manage')
@@ -25,6 +25,7 @@ const inputSchema=z.object({companyId:z.uuid(),csv:z.string().min(1).max(5_000_0
 /** The preview binds employee codes in the selected company in one statement, never a query per row. */
 export async function previewRewardPersonHistoryImport(ctx:SessionContext,raw:unknown):Promise<RewardHistoryImportPreview>{
  const input=inputSchema.parse(raw);
+ if(Buffer.byteLength(input.csv,'utf8')>5_000_000)throw Error('Use a history file up to 5 MB.');
  return withRewardsTenant(ctx,async tx=>{
   await lockAccessConfigurationReadTx(tx,ctx.tenantId);await rewardHistoryImportAuthorityTx(tx,input.companyId);
   const csv=parseCsvWithLineNumbers(input.csv,true),parsed=rewardHistoryUploadFromCells(csv.map(row=>row.cells),csv.map(row=>row.line));
@@ -37,9 +38,9 @@ export async function previewRewardPersonHistoryImport(ctx:SessionContext,raw:un
   const problems=[...parsed.problems],rows:ResolvedRow[]=[];
   for(const row of parsed.rows){
    const matches=people.get(row.value.employeeCode)??[];
-   if(matches.length!==1)problems.push({line:row.line,reason:'Employee ID is unavailable or ambiguous in this company.'});
-   else if(row.value.year>=Number(todayInKualaLumpur().slice(0,4)))problems.push({line:row.line,reason:'Upload completed historical years only.'});
-   else if(firstReviewYear!==null&&row.value.year>=firstReviewYear)problems.push({line:row.line,reason:'Upload only years before the company’s first posted AI-HR Rewards review.'});
+   if(matches.length!==1)problems.push({line:row.line,reason:'Employee ID is unavailable or ambiguous in this company.',code:'employee'});
+   else if(row.value.year>=Number(todayInKualaLumpur().slice(0,4)))problems.push({line:row.line,reason:'Upload completed historical years only.',code:'year'});
+   else if(firstReviewYear!==null&&row.value.year>=firstReviewYear)problems.push({line:row.line,reason:'Upload only years before the company’s first posted AI-HR Rewards review.',code:'postedYear'});
    else rows.push({...row,employmentId:matches[0]});
   }
   const token=createHash('sha256').update(JSON.stringify({tenantId:ctx.tenantId,userId:ctx.userId,companyId:input.companyId,rows,problems,cutoff:firstReviewYear})).digest('hex');

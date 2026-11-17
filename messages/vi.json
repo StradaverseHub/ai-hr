@@ -44175,6 +44175,16 @@
       "completed": "Hoàn tất",
       "failed": "Thất bại",
       "cancelled": "Đã dừng"
-    }
+    },
+    "problems": {
+      "columns": "Quá nhiều cột.",
+      "duplicate": "Trùng nhân viên, năm và loại.",
+      "invalid": "Nhập nhân viên, năm, xếp hạng và số tiền không âm hợp lệ.",
+      "number": "Dùng số không âm với tối đa hai chữ số thập phân.",
+      "employee": "Mã nhân viên không có hoặc không duy nhất trong công ty này.",
+      "year": "Chỉ tải dữ liệu của các năm đã kết thúc.",
+      "postedYear": "Chỉ tải dữ liệu trước năm đánh giá AI-HR Rewards đầu tiên đã chuyển sang bảng lương."
+    },
+    "error": "Không thể hoàn tất yêu cầu. Vui lòng thử lại."
   }
 }

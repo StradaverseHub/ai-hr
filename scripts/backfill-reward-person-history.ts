@@ -13,7 +13,7 @@ async function main(){
  if(!path)throw Error('Pass --context=/private/path/current-session.json and --unit=UUID.');
  const input=z.object({tenantId:z.uuid(),userId:z.uuid(),personId:z.uuid().nullable().optional(),roles:z.array(z.string()),
   grants:z.array(z.object({role:z.string(),companyId:z.uuid().nullable()})).optional()}).parse(JSON.parse(readFileSync(path,'utf8')));
- const {backfillRewardPersonHistory}=await import('../packs/rewards/person-history-backfill');
+ const {backfillRewardPersonHistory}=await import('../packs/rewards/service');
  const report=await backfillRewardPersonHistory({...input,entitlementsExempt:'sweeps'},unitId,process.argv.includes('--apply'));
  process.stdout.write(JSON.stringify(report,null,2)+'\n');
  if(report.refused.length)process.exitCode=2;
