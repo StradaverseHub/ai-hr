@@ -1,8 +1,9 @@
 /** AP002: exact thin Workforce population with bounded transport at group scale. */
 import {randomUUID} from 'node:crypto';
 import {eq,sql} from 'drizzle-orm';
-import {afterAll,beforeAll,expect,it} from 'vitest';
-import {withTenant} from '../db/client';
+import {afterAll,beforeAll,expect,it,vi} from 'vitest';
+import {withTenant,type SessionContext,type Tx} from '../db/client';
+import * as database from '../db/client';
 import * as s from '../db/schema';
 import {listWorkforcePickOptions} from '../core/read';
 import {readWorkforceChoices} from '../core/workforce-choice';
@@ -45,8 +46,14 @@ it('pages the exact active native picker population across roles and scopes, ret
  expect((await readWorkforceChoices(ctx,{subjectId,query:'no match',selectedIds:[selectedId,subjectId,employees[999].id,randomUUID()]})).selected).toEqual(expected.filter(r=>r.employmentId===selectedId));
  const single=await readWorkforceChoices(ctx,{subjectId,companyId:companies[1],selectedIds:[selectedId]});expect(single.rows.every(r=>r.companyId===companies[1])).toBe(true);expect(single.total).toBe(expected.filter(r=>r.companyId===companies[1]).length);
  const foreign=await seedBase();await expect(readWorkforceChoices(adminCtx(foreign),{subjectId})).rejects.toBeInstanceOf(WorkforceChoiceAccessError);
- // Ordinary human presentation snapshot is RR/READ ONLY; no exclusive Access admission.
- await withTenant(ctx,async tx=>{const [mode]=await tx.execute<{ro:string;isolation:string}>(sql`select current_setting('transaction_read_only') ro,current_setting('transaction_isolation') isolation`);expect(mode).toEqual({ro:'on',isolation:'repeatable read'});},{readOnlySnapshot:true});
+ // Observe the actual picker-owned carrier, not an unrelated generic read-only transaction.
+ const native=database.withTenant,carriers:{ro:string;isolation:string;exclusive:boolean}[]=[];
+ const spy=vi.spyOn(database,'withTenant').mockImplementation(<T>(who:SessionContext,read:(tx:Tx)=>Promise<T>,options?:Parameters<typeof database.withTenant>[2])=>native(who,async tx=>{
+  const result=await read(tx);const [mode]=await tx.execute<{ro:string;isolation:string;exclusive:boolean}>(sql`select current_setting('transaction_read_only') ro,current_setting('transaction_isolation') isolation,
+   coalesce(app.access_lock_mode_held(${who.tenantId}::uuid)='X',false) exclusive`);carriers.push(mode);return result;
+ },options));
+ try{await readWorkforceChoices(ctx,{subjectId});expect(spy).toHaveBeenCalledTimes(1);expect(carriers).toEqual([{ro:'on',isolation:'repeatable read',exclusive:false}]);}finally{spy.mockRestore();}
+
 },300000);
 it('rejects invalid or excessive public picker inputs before a database operation',()=>{
  for(const input of [{subjectId:'bad'},{subjectId:randomUUID(),offset:2147483648},{subjectId:randomUUID(),offset:-1},{subjectId:randomUUID(),query:'a'.repeat(201)},{subjectId:randomUUID(),selectedIds:Array.from({length:9},()=>randomUUID())},{subjectId:randomUUID(),companyIds:[]}])expect(()=>workforceChoiceInput(input)).toThrow(WorkforceChoiceInputError);
