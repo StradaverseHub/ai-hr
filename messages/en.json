@@ -25145,7 +25145,7 @@
         "previous": "Previous",
         "next": "Next",
         "position": "{index} of {total}",
-        "openRecord": "Open full record to edit",
+        "openRecord": "Open full record",
         "noFlags": "No flags for this person.",
         "notes": "Notes",
         "noNote": "No notes.",
@@ -25233,8 +25233,46 @@
           "multiplier": "Enter a multiplier such as 1.25.",
           "amount": "Enter an amount in MYR with up to two decimal places.",
           "grade": "Choose a job grade.",
-          "note": "Keep the note to 2,000 characters or fewer."
+          "note": "Keep the note to 2,000 characters or fewer.",
+          "withhold": "Enter a reason of at least 10 characters.",
+          "decision": "Choose a valid case decision."
         }
+      },
+      "panel": {
+        "suggested": "Suggested {value}",
+        "useSuggested": "Use suggested",
+        "difference": "Difference {value}",
+        "range": {
+          "below": "Below range",
+          "in": "In range",
+          "above": "Above range"
+        },
+        "withheld": "Withheld",
+        "withhold": "Withhold {award}",
+        "award": {
+          "increase": "salary increase",
+          "bonus": "bonus",
+          "lump": "lump sum"
+        },
+        "withholdReason": "Reason for withholding",
+        "withholdReasonRequired": "Enter a reason of at least 10 characters.",
+        "withheldReason": "Withheld: {reason}",
+        "viewOnly": "With {role} – view only",
+        "caseDecision": "PIP / ER decision",
+        "history": "Reward history",
+        "notFinal": "This review – not final",
+        "offcycle": "Off-cycle",
+        "notOnRecord": "Not on record",
+        "historyColumn": {
+          "year": "Year",
+          "talent": "Talent",
+          "performance": "Performance",
+          "incrementPercent": "Increase %",
+          "incrementMoney": "Increase (MYR)",
+          "bonusMoney": "Bonus (MYR)",
+          "bonusMonths": "Bonus months"
+        },
+        "auditChange": "{field}: {before} → {after}"
       }
     },
     "sharedGovernance": {
@@ -25499,7 +25537,8 @@
         "merit": "merit",
         "promotion": "promotion",
         "special": "special adjustment"
-      }
+      },
+      "withheldAward": "Withheld: {reason}"
     },
     "limitControlsOwned": "Limit Controls own these values for this reward year. They are read-only here and the review uses the Limit Controls version.",
     "offcycle": {
@@ -39995,6 +40034,20 @@
           "title": "Review creation stopped",
           "body": "Reviews already created are kept. Open Review Plans to check progress and the reason."
         }
+      },
+      "rewardPersonHistory": {
+        "completed": {
+          "title": "Reward history saved",
+          "body": "The reward history upload finished. Open it to check row outcomes."
+        },
+        "failed": {
+          "title": "Reward history upload failed",
+          "body": "The upload could not finish. Open it to review the problem and saved rows."
+        },
+        "cancelled": {
+          "title": "Reward history upload stopped",
+          "body": "The upload stopped. Rows already saved remain available."
+        }
       }
     },
     "panel": {
@@ -44060,5 +44113,49 @@
     "pollRetry": "Progress could not be read. Retrying the status check; review creation continues in the background.",
     "newCompanyTitle": "New company added to Review Plans",
     "newCompanyBody": "Choose a salary structure and bonus matrix for the new company."
+  },
+  "rewardsPersonHistoryUpload": {
+    "title": "Reward history upload",
+    "description": "Add ratings and awards from years before AI-HR Rewards.",
+    "back": "Back to Rewards",
+    "help": "Choose a company, download the template and review every row before saving. Use Employee ID from that company. Upload only years before its first posted AI-HR Rewards review.",
+    "company": "Company",
+    "file": "History file",
+    "template": "Download template",
+    "fileError": "Choose a CSV or Excel file up to 5 MB.",
+    "literalCells": "Use values only; formulas are not accepted.",
+    "working": "Checking the file…",
+    "previewTitle": "Review history rows",
+    "summary": "{accepted} valid rows · {problems} rows to fix",
+    "cutoff": "Upload years earlier than {year}.",
+    "problem": "Row {line}: {reason}",
+    "employee": "Employee ID",
+    "year": "Year",
+    "talent": "Talent rating",
+    "performance": "Performance rating",
+    "incrementPercent": "Increment %",
+    "incrementMoney": "Increment (MYR)",
+    "bonusMoney": "Bonus (MYR)",
+    "bonusMonths": "Bonus months",
+    "type": "Type",
+    "annual": "Annual",
+    "offcycle": "Off-cycle",
+    "replaceHelp": "Saving another record for the same employee, year and type replaces the displayed upload. The previous record stays in the audit history.",
+    "confirm": "Save history",
+    "progressTitle": "History upload progress",
+    "progress": "{done} of {total} rows processed",
+    "stop": "Stop upload",
+    "stopping": "Stopping…",
+    "checkpointHelp": "The upload saves a checkpoint after each row. Stopping keeps rows already saved.",
+    "states": {
+      "queued": "Queued",
+      "preparing": "Checking",
+      "running": "Saving history",
+      "finalizing": "Finishing",
+      "discarding": "Stopping",
+      "completed": "Completed",
+      "failed": "Failed",
+      "cancelled": "Stopped"
+    }
   }
 }

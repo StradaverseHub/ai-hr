@@ -1,4 +1,3 @@
-import type { ReactNode } from 'react';
 import { ExportDownloadLink } from '@/components/export-download-link';
 import { RewardSubmit } from '../submit-button';
 import { ScopedCommandIndex } from '@/components/scoped-command-index';
@@ -17,7 +16,7 @@ import { RewardPostPanel } from '../post-panel';
 import { rewardReviewHeaderTitle, rewardReviewTitle } from './unit-scope';
 import { UnitLumpSum } from './lump-sum';
 import { PayWindowTag } from './pay-window';
-import { isSeniorPlanMember, performances, REWARD_NOTE_MAX, talents, transition } from '@/packs/rewards/model';
+import { isSeniorPlanMember, performances, talents, transition } from '@/packs/rewards/model';
 import { formatMoney } from '@/lib/money';
 import { rewardDaysUntil } from '@/packs/rewards/calendar';
 import { PersonDrawer } from './desk/person-drawer';
@@ -26,10 +25,12 @@ import { DecisionActions, FlagsButton, SaveStatus, StaleBanner } from './desk/he
 import { SummaryTiles } from './desk/summary-tiles';
 import { PeopleGrid } from './desk/people-grid';
 import { FlagsDrawer } from './desk/flags-drawer';
-import { OpenDetailsOnHash, PersonNote } from './desk/person-note';
+import { OpenDetailsOnHash } from './desk/person-note';
 import { BudgetDetails, ReferenceDetails } from './desk/review-details';
-import { deskCellsEditable, deskRow, deskSummary, deskTotals, filterDeskRows, parseDeskFilters, DESK_FILTER_KEYS, type RewardView } from './desk/desk-model';
+import { deskRow, deskSummary, deskTotals, filterDeskRows, parseDeskFilters, DESK_FILTER_KEYS, type RewardView } from './desk/desk-model';
 import { flagText } from './desk/flag-text';
+import { PersonPanel } from './desk/person-panel';
+import { rewardPersonHistory } from '@/packs/rewards/person-history';
 
 const rm = (cents: number) => formatMoney(cents === 0 ? 0 : cents / 100, 'MYR');
 /** Compa-ratio as worked out by the service (basis points of the midpoint), shown as a ratio. */
@@ -76,10 +77,11 @@ export default async function RewardUnitPage({ params, searchParams }: { params:
   const href = (over: Record<string, string | null>) => { const q = new URLSearchParams(keep); if (page) q.set('page', String(page)); for (const [k, value] of Object.entries(over)) { if (value == null) q.delete(k); else q.set(k, value); } const text = q.toString(); return `/rewards/${encodeURIComponent(unitId)}${text ? `?${text}` : ''}`; };
   const personHref = (id: string) => href({ person: id });
   const openIndex = sp.person ? filtered.findIndex(r => r.id === sp.person) : -1; const open = openIndex >= 0 ? filtered[openIndex] : null;
+  const history = open ? await rewardPersonHistory(s, unitId, open.id) : [];
+  const deskRows = open && !pageRows.some(row => row.id === open.id) ? [...pageRows, deskRow(v, open, v.flags)] : pageRows;
   const flagPersonLinks = Object.fromEntries(v.flags.filter(f => f.entryId).map(f => [f.entryId!, filtered.some(r => r.id === f.entryId) ? personHref(f.entryId!) : `/rewards/${encodeURIComponent(unitId)}?person=${encodeURIComponent(f.entryId!)}`]));
   const nominations = v.rows.filter(row => row.recommendation.promotionGrade && !(isSeniorPlanMember(unit.policy, row.facts, row.source.grade) && !v.seniorAmountsVisible));
   const editable = unit.status === 'draft' && v.canEdit;
-  const cellsEditable = deskCellsEditable(v);
   const scope = t('unitBonus.appliesOnlyTo', { company: v.companyName, unit: v.name });
   const setupHref = preparation.setupVisible ? `/admin/rewards/review-setup/${encodeURIComponent(unitId)}` : null;
   const grades = [...new Set(v.rows.map(r => r.source.grade))].sort((x, y) => Number(x) - Number(y) || x.localeCompare(y));
@@ -88,7 +90,7 @@ export default async function RewardUnitPage({ params, searchParams }: { params:
   const dueDays = v.due ? rewardDaysUntil(v.due, todayInKualaLumpur()) : null;
   const badge = v.returned ? 'returned' : unit.status === 'draft' ? 'draft' : 'submitted';
 
-  return <ReviewDeskProvider key={`${unit.revision}:${page}:${JSON.stringify(keep)}`} unitId={unitId} revision={unit.revision} summary={deskSummary(v)} totals={deskTotals(rows)} flags={v.flags} rows={pageRows} filters={keep}>
+  return <ReviewDeskProvider key={`${unit.revision}:${page}:${JSON.stringify(keep)}`} unitId={unitId} revision={unit.revision} summary={deskSummary(v)} totals={deskTotals(rows)} flags={v.flags} rows={deskRows} filters={keep}>
   <div className="w-full space-y-5">
     <ScopedCommandIndex entries={v.rows.map(row => ({ href: `/rewards/${unitId}?person=${row.id}`, label: row.source.name, context: row.source.employeeCode ?? '' }))} />
     <OpenDetailsOnHash />
@@ -155,9 +157,8 @@ export default async function RewardUnitPage({ params, searchParams }: { params:
     </div>
     {unit.status === 'posted' && v.roles.some(r => ['bu', 'bg', 'gr'].includes(r)) && <section id="start-offcycle" className="max-w-3xl scroll-mt-6 space-y-4"><h2 className="font-semibold">{t('startOffcycle')}</h2><form action={offcycleAction} className="space-y-4">{fields}<div className="grid gap-4 sm:grid-cols-2"><Field label={t('type')}><select name="kind" defaultValue={sp.offcycle === 'midyear' ? 'midyear' : 'adhoc'} className={inputCls}><option value="adhoc">{t('kinds.adhoc')}</option><option value="midyear">{t('kinds.midyear')}</option></select></Field><Field label={t('effectiveFrom')}><input type="date" name="effectiveFrom" required className={inputCls} /></Field></div><fieldset className="max-h-72 space-y-2 overflow-y-auto rounded-md border border-border p-3"><legend>{t('people')}</legend>{v.rows.map(e => <label key={e.id} className="flex gap-2 text-sm"><input type="checkbox" name="entryIds" value={e.id} />{e.source.employeeCode} · {e.source.name}</label>)}</fieldset><Field label={t('budgetException')}><textarea name="exceptionReason" rows={3} maxLength={4000} className={`${inputCls} h-auto py-2`} /></Field><p className="text-sm text-muted-foreground">{t('exceptionHelp')}</p><RewardSubmit type="submit">{t('startOffcycle')}</RewardSubmit></form></section>}
     <FlagsDrawer personLinks={flagPersonLinks} sectionHrefs={{ 'salary-increase': '#salary-increase', bonus: '#bonus', people: '#people' }} />
-    {open && <PersonDrawer title={open.source.name} description={`${open.source.employeeCode} · ${t('grade')} ${open.source.grade} · ${t(open.plan === 'ec' ? 'ecPlan' : open.plan)}`} prevId={filtered[openIndex - 1]?.id ?? null} nextId={filtered[openIndex + 1]?.id ?? null} position={{ index: openIndex + 1, total: filtered.length }} editHref={`/rewards/${unitId}/people/${open.id}`}>
-      <PersonCalculation row={open} hidden={isSeniorPlanMember(unit.policy, open.facts, open.source.grade) && !v.seniorAmountsVisible} flags={v.flags.filter(f => f.entryId === open.id)} t={t} rm={rm} pct={pct} fullView={fullView}
-        note={<PersonNote entryId={open.id} note={open.recommendation.note ?? ''} editable={cellsEditable && !(isSeniorPlanMember(unit.policy, open.facts, open.source.grade) && !v.seniorAmountsVisible)} max={REWARD_NOTE_MAX} />} />
+    {open && <PersonDrawer title={open.source.name} description={`${open.source.employeeCode} · ${t('grade')} ${open.source.grade} · ${t(open.plan === 'ec' ? 'ecPlan' : open.plan)}`} prevId={filtered[openIndex - 1]?.id ?? null} nextId={filtered[openIndex + 1]?.id ?? null} position={{ index: openIndex + 1, total: filtered.length }} editHref={fullView ? `/rewards/${unitId}/people/${open.id}` : undefined}>
+      <PersonPanel key={open.id} entryId={open.id} year={unit.policy.year} history={history} />
     </PersonDrawer>}
     {(fullView || v.uploaded) && <section className="rounded-lg border border-border p-3">
       <h2 className="text-sm font-medium">{t('sections')}</h2>
@@ -172,52 +173,13 @@ export default async function RewardUnitPage({ params, searchParams }: { params:
 }
 
 const pct = (bp: number) => `${(bp / 100).toFixed(1)}%`;
-type Row = RewardView['rows'][number];
 type Flag = RewardView['flags'][number];
 const chipCls: Record<Flag['severity'], string> = { block: 'bg-destructive/10 text-destructive', exception: 'bg-amber-100 text-amber-900 dark:bg-amber-500/15 dark:text-amber-200', warning: 'bg-amber-100 text-amber-900 dark:bg-amber-500/15 dark:text-amber-200', review: 'bg-muted text-muted-foreground' };
 const flagWords = (flag: Flag, t: (key: string, values?: Record<string, string>) => string) => {
   if (flag.code === 'ARCH-01') return t('architectureMismatch');
   const text = flagText(flag);
-  return text ? t(`flagText.${text.key}`, { plan: text.plan ? t(text.plan) : '', part: text.part ? t(`flagText.parts.${text.part}`) : '' }) : flag.message;
+  return text ? t(`flagText.${text.key}`, { plan: text.plan ? t(text.plan) : '', part: text.part ? t(`flagText.parts.${text.part}`) : '', reason: text.reason ?? '' }) : flag.message;
 };
-/** 5d34d00d Step 2 / 37f82412 — the full calculation for one person, with eligibility, pay position before
- *  and after, the promotion business case and notes. Every figure comes from the server's calculated row. */
-function PersonCalculation({ row: r, hidden, flags, t, rm, pct, fullView, note }: { row: Row; hidden: boolean; flags: Flag[]; t: (key: string, values?: Record<string, string>) => string; rm: (cents: number) => string; pct: (bp: number) => string; fullView: boolean; note: ReactNode }) {
-  const money = (cents: number) => hidden ? (fullView ? t('governance.handledSeparately') : '—') : rm(cents);
-  const line = (label: string, value: string, strong = false) => <div key={label} className="flex items-baseline justify-between gap-4 py-1.5"><dt className="text-muted-foreground">{label}</dt><dd className={`text-right tabular-nums ${strong ? 'font-semibold' : 'font-medium'}`}>{value}</dd></div>;
-  return <div className="space-y-5 text-sm">
-    <dl className="divide-y divide-border">{line(t('talent'), r.facts.talent ?? '—')}{line(t('performance'), r.facts.performance ?? '—')}</dl>
-    <section><h3 className="mb-1 font-semibold">{t('desk.tiles.salary')}</h3><dl className="divide-y divide-border">
-      {line(t('currentPay'), rm(r.source.basicCents))}
-      {r.crBeforeBp != null && line(t('compaRatioBefore'), pct(r.crBeforeBp))}
-      {line(`${t('merit')} ${hidden ? '' : pct(r.meritBp)}`, money(r.meritCents))}
-      {line(`${t('promotion')} ${hidden ? '' : pct(r.promotionBp)}${r.recommendation.promotionGrade ? ` → ${r.recommendation.promotionGrade}` : ''}`, money(r.promotionCents))}
-      {line(`${t('special')} ${hidden ? '' : pct(r.specialBp)}`, money(r.specialCents))}
-      {line(t('newPay'), money(r.newBasicCents), true)}
-      {r.crAfterBp != null && line(t('compaRatioAfter'), pct(r.crAfterBp))}
-      {line(t('incrementEligibility'), r.incrementReason || t('eligible'))}
-    </dl></section>
-    <section><h3 className="mb-1 font-semibold">{t('desk.tiles.bonus')}</h3><dl className="divide-y divide-border">
-      {r.bonusBasicCents !== r.source.basicCents && line(t('payWindow.bonusBasic'), rm(r.bonusBasicCents))}
-      {line(t('bonusMultiplier'), hidden ? '—' : (r.bonusMultiplierBp / 10000).toFixed(2))}
-      {!hidden && line(t('desk.grid.column.months'), (r.bonusMonthsBp / 10000).toFixed(2))}
-      {line(t('bonus'), money(r.bonusCents), true)}
-      {line(t('lumpSum'), rm(r.lumpCents))}
-      {line(t('bonusEligibility'), r.bonusReason || t('eligible'))}
-    </dl></section>
-    {!hidden && (r.recommendation.promotionGrade || r.recommendation.reason || r.facts.erCase || r.facts.pipCase) && <section><h3 className="mb-1 font-semibold">{t('desk.person.businessCase')}</h3>
-      {r.recommendation.reason ? <p className="mb-2 whitespace-pre-wrap">{r.recommendation.reason}</p> : <p className="mb-2 text-muted-foreground">{t('desk.person.noBusinessCase')}</p>}
-      <dl className="divide-y divide-border">
-        {r.facts.erCase && line(t('erDecision'), t(`case.${r.facts.erDecision}`))}
-        {r.facts.pipCase && line(t('pipDecision'), t(`case.${r.facts.pipDecision}`))}
-        {r.facts.caseReason && line(t('caseReason'), r.facts.caseReason)}
-      </dl>
-    </section>}
-    {!hidden && <section><h3 className="mb-1 font-semibold">{t('desk.person.notes')}</h3>{note}</section>}
-    <section><h3 className="mb-1 font-semibold">{t('desk.flags')}</h3>{flags.length ? <ul className="space-y-2">{flags.map((f, i) => <li key={i} className="flex gap-2"><span className={`h-fit shrink-0 rounded-full px-2 py-0.5 text-xs font-medium ${chipCls[f.severity]}`}>{t(`severity.${f.severity}`)}</span><span>{flagWords(f, t)}</span></li>)}</ul> : <p className="text-muted-foreground">{t('desk.person.noFlags')}</p>}</section>
-  </div>;
-}
-
 /** Off-cycle requests keep their existing single-page layout; only annual reviews use the simplified desk. */
 async function OffcycleReview({ v, sp, scopeIds, s }: { v: RewardView; sp: Search; scopeIds: string[]; s: Awaited<ReturnType<typeof scopedSession>>['s'] }) {
   const { unit } = v; const unitId = unit.id;

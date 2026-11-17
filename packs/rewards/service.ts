@@ -1,3 +1,5 @@
+import { applyRewardCell, parseRewardCellValue, type RewardCellField } from './review-cell';
+import { recordRewardPersonHistoryTx } from './person-history';
 import { formatMoney } from '../../lib/money';
 import { emptyRewardPreparation, REWARD_PREPARATION_STEPS, rewardPreparationStatus } from './preparation-model';
 import {aiCentreActivity} from '../../lib/ai/centre-activity';
@@ -396,7 +398,7 @@ async function reviewFinancialProjectionTx(tx: Tx, ctx: SessionContext, unitId: 
   if(publicState&&!publicState.selectionConfirmed&&roles.includes('bu')&&!roles.includes('gr'))throw new RewardError('Senior plan membership is a draft. Group Rewards must make it active before the BU review can open.');
   const visible = calculated.rows.filter(e => visibleEntry(e, roles, ctx.personId)).map(entry=>{
     if(seniorAmounts||!isSeniorPlanMember(unit.policy,entry.facts,entry.source.grade))return entry;
-    return {...entry,recommendation:emptyRecommendation(),newBasicCents:entry.source.basicCents,bonusCents:0,meritCents:0,promotionCents:0,specialCents:0,lumpCents:0};
+    return {...entry,suggestedMeritBp:0,suggestedPromotionBp:0,suggestedSpecialBp:0,suggestedSpecialCents:0,suggestedMultiplierBp:0,suggestedLumpCents:0,paidBonusMonthsBp:0,recommendation:emptyRecommendation(),newBasicCents:entry.source.basicCents,bonusCents:0,meritCents:0,promotionCents:0,specialCents:0,lumpCents:0};
   });
   const visibleIds = new Set(visible.map(e => e.id));
   const flags = calculated.flags.filter(f => !f.entryId || visibleIds.has(f.entryId));
@@ -452,7 +454,7 @@ async function reviewProjectionTx(tx: Tx, ctx: SessionContext, unitId: string,ca
     const analytics = includeAnalytics ? await analyticsRowsTx(tx, ctx, {
       unit, roles, rows: calculated.rows, flags, state, effectivePolicy, publicState, uploaded: !!uploadedReview?.present, seniorAmounts,
     }) : null;
-    return { ...(analytics ? { analytics } : {}), libraryBound:libraryBinding?.bound??false,...(caps?{capabilities:{...caps.value,snapshotRefresh:!uploadedReview?.present&&caps.value.snapshotRefresh}}:{}),uploaded:uploadedReview?.present??false,uploadedSummary:uploadedReview?.present?{people:visible.filter(row=>entries.some(e=>e.id===row.id&&e.uploadedAward!==null)).length,incrementCents:visible.reduce((n,e)=>n+e.newBasicCents-e.source.basicCents,0),bonusCents:visible.reduce((n,e)=>n+e.bonusCents,0),lumpCents:visible.reduce((n,e)=>n+e.lumpCents,0)}:null,unit:{...unit,policy:redactPatPolicy(effectivePolicy,roles)}, poolStatus:publicState?.status??'legacy',seniorAmountsVisible:maySeeSeniorAmounts(roles), cycle, route, due, payrollDue, name: bu?.name ?? 'Business unit', companyName: co?.name ?? '', roles, members, decisions, returned,
+    return { ...(analytics ? { analytics } : {}), libraryBound:libraryBinding?.bound??false,...(caps?{capabilities:{...caps.value,snapshotRefresh:!uploadedReview?.present&&caps.value.snapshotRefresh}}:{}),uploaded:uploadedReview?.present??false,uploadedSummary:uploadedReview?.present?{people:visible.filter(row=>entries.some(e=>e.id===row.id&&e.uploadedAward!==null)).length,incrementCents:visible.reduce((n,e)=>n+e.newBasicCents-e.source.basicCents,0),bonusCents:visible.reduce((n,e)=>n+e.bonusCents,0),lumpCents:visible.reduce((n,e)=>n+e.lumpCents,0)}:null,unit:{...unit,policy:redactPatPolicy(effectivePolicy,roles)}, poolStatus:publicState?.status??'legacy',seniorAmountsVisible:seniorAmounts, cycle, route, due, payrollDue, name: bu?.name ?? 'Business unit', companyName: co?.name ?? '', roles, members, decisions, returned,
       // 37f82412: pay position before and after (basis points of the approved midpoint), worked out here so
       // the screen never does pay arithmetic. Null where the figures are hidden or no midpoint is configured.
       rows: visible.map(e=>{const {uploadedAward:_award,groupEcDirectReport:_groupEc,restrictedHidden:_hidden,restrictedReadOnly:_readOnly,...safe}=e as typeof e&{uploadedAward?:unknown;groupEcDirectReport?:boolean;restrictedHidden?:boolean;restrictedReadOnly?:boolean};
@@ -461,7 +463,7 @@ async function reviewProjectionTx(tx: Tx, ctx: SessionContext, unitId: string,ca
         const position=(cents:number)=>hiddenSenior||!midpoint?null:ratio(cents,10000,midpoint,'nearest');
         // b945f0cc: position in range (below / within / above) before and after, for the single-person off-cycle view.
         const range=hiddenSenior?null:offcyclePayPosition(unit.policy,e);
-        return {...safe,crBeforeBp:position(e.source.basicCents),crAfterBp:position(e.newBasicCents),rangeBefore:range?.before.position??null,rangeAfter:range?.after.position??null,totalIncreaseBp:hiddenSenior?null:e.meritBp+e.promotionBp+e.specialBp};}), flags, hiddenCount: entries.length - visible.length,
+        return {...safe,restrictedReadOnly:!!_readOnly,crBeforeBp:position(e.source.basicCents),crAfterBp:position(e.newBasicCents),rangeBefore:range?.before.position??null,rangeAfter:range?.after.position??null,totalIncreaseBp:hiddenSenior?null:e.meritBp+e.promotionBp+e.specialBp};}), flags, hiddenCount: entries.length - visible.length,
       // b945f0cc: the company off-cycle balance this request is checked against (aggregates only).
       offcycleBalance: 'offcycleBalance' in calculated ? calculated.offcycleBalance : null,
       budgets: { standard: calculated.budgets.standard, h: calculated.budgets.h },
@@ -926,11 +928,30 @@ export async function setRewardMember(ctx: SessionContext, unitId: string, revis
 }
 
 const confidentialityFloorMessage = 'This person is marked confidential from their reporting line in People. Group Rewards can make the marking stricter, never lower.';
-export async function saveRewardEntry(ctx: SessionContext, unitId: string, revision: number, entryId: string, recommendation: unknown, facts?: unknown) {
+export async function saveRewardEntry(ctx: SessionContext, unitId: string, revision: number, entryId: string, recommendation: unknown, facts?: unknown, returnProjection = false, cellPatch?: { field: RewardCellField; value: string }) {
   idSchema.parse(entryId); let rec = recommendationSchema.parse(recommendation);
-  const validatedFacts = facts === undefined ? undefined : factsSchema.parse(facts);
+  let validatedFacts = facts === undefined ? undefined : factsSchema.parse(facts);
   return withRewardsTenant(ctx, async tx => {
     const { unit, roles, entries } = await load(tx, unitId, true); assertRevision(unit, revision);
+    const entry = entries.find(e => e.id === entryId);
+    if (!entry || !visibleEntry(entry, roles, ctx.personId)) throw new RewardError('This reward record is not available to you.');
+    if (cellPatch) {
+      if (unit.kind !== 'annual' || isSeniorPlanMember(unit.policy, entry.facts, entry.source.grade) || entry.source.leftOn || entry.restrictedReadOnly) throw new RewardError('This value cannot be changed here at this step.');
+      const parsed = parseRewardCellValue(cellPatch.field, cellPatch.value);
+      const calculated = await calculateUnit(tx, unit, entries);
+      const row = calculated.rows.find(item => item.id === entryId)!;
+      const caseField = ['erDecision','pipDecision','caseReason'].includes(cellPatch.field);
+      const award = typeof parsed === 'object' && parsed !== null ? parsed.award : cellPatch.field === 'multiplierBp' ? 'bonus' : cellPatch.field === 'lumpCents' ? 'lump' : 'increase';
+      if (caseField) {
+        if (unit.status !== 'draft' || !roles.some(role => role === 'bu' || role === 'gr') || (cellPatch.field === 'erDecision' ? !entry.facts.erCase : cellPatch.field === 'pipDecision' ? !entry.facts.pipCase : !entry.facts.erCase && !entry.facts.pipCase)) throw new RewardError('This value cannot be changed here at this step.');
+      } else if (!['note','reason'].includes(cellPatch.field)) {
+        if (row.plan === 'ec' || (award === 'increase' && !!row.payChange && payWindowReasons.includes(row.incrementReason)) || (award === 'bonus' && !row.bonusEligible) || (award === 'lump' && !row.lumpEligible)) throw new RewardError('This value cannot be changed here at this step.');
+        if (cellPatch.field === 'promotionGrade' && parsed && !row.allowedPromotionGrades.includes(String(parsed))) throw new RewardError('Choose an allowed promotion grade.');
+      }
+      const patched = applyRewardCell(entry, cellPatch.field, parsed);
+      rec = recommendationSchema.parse(patched.recommendation);
+      validatedFacts = patched.facts === undefined ? undefined : factsSchema.parse(patched.facts);
+    }
     const [scope] = await tx.execute<{ wholeGroup: boolean; stageAllowed: boolean }>(sql`
       select exists(select 1 from app.reward_current_group_roles()) as "wholeGroup",
         app.reward_group_figures_stage_allowed(${unitId}::uuid) as "stageAllowed"
@@ -946,11 +967,10 @@ export async function saveRewardEntry(ctx: SessionContext, unitId: string, revis
       throw new RewardError('The inputs changed after submission. Return this review to draft.');
     }
     await assertRewardCapabilityTx(tx,unitId,'figures.edit');
-    const entry = entries.find(e => e.id === entryId);
     if((await tx.execute<{uploaded:boolean}>(sql`select exists(select 1 from reward_uploaded_review where unit_id=${unitId}::uuid) as uploaded`))[0]?.uploaded)throw new RewardError('Use the Uploaded awards adjustment form to change this amount with a reason.');
-    if (!entry || !visibleEntry(entry, roles, ctx.personId)) throw new RewardError('This reward record is not available to you.');
     // 37f82412: forms that do not carry the person-panel note keep the one already saved.
     if (rec.note === undefined && entry.recommendation.note !== undefined) rec = { ...rec, note: entry.recommendation.note };
+    if (rec.withhold === undefined && entry.recommendation.withhold !== undefined) rec = { ...rec, withhold: entry.recommendation.withhold };
     if (approvalStageEdit && validatedFacts && !isDeepStrictEqual(validatedFacts, entry.facts)) {
       throw new RewardError('Only the recommendation can change at this approval step.');
     }
@@ -980,8 +1000,16 @@ export async function saveRewardEntry(ctx: SessionContext, unitId: string, revis
     } else {
       await touch(tx, unitId);
     }
-    await stamp(tx, ctx, unitId, 'recommendation-updated', { entryId, revision: unit.revision + 1, stage: unit.status });
+    const changes = Object.keys(rec).filter(key => !isDeepStrictEqual(entry.recommendation[key as keyof typeof rec], rec[key as keyof typeof rec])).map(field => ({ field, before: entry.recommendation[field as keyof typeof rec] ?? null, after: rec[field as keyof typeof rec] ?? null }));
+    if (validatedFacts) for (const field of ['erDecision','pipDecision','caseReason'] as const) if (entry.facts[field] !== validatedFacts[field]) changes.push({ field, before: entry.facts[field], after: validatedFacts[field] });
+    await stamp(tx, ctx, unitId, 'recommendation-updated', { entryId, revision: unit.revision + 1, stage: unit.status, changes, reason: Object.values(rec.withhold ?? {}).join('; ') || rec.reason || validatedFacts?.caseReason || null });
+    if (returnProjection) return reviewProjectionTx(tx, ctx, unitId);
   });
+}
+
+/** Native cell writer derives the patch from the locked stored entry and returns its committed projection. */
+export async function saveRewardEntryCell(ctx: SessionContext, unitId: string, revision: number, entryId: string, field: RewardCellField, value: string) {
+  return saveRewardEntry(ctx, unitId, revision, entryId, emptyRecommendation(), undefined, true, { field, value });
 }
 
 export async function importRewardFacts(ctx: SessionContext, unitId: string, revision: number, rows: { employmentId: string; facts: RewardFacts }[]) {
@@ -1398,6 +1426,7 @@ async function postRewardEffectTx(tx:Tx,ctx:SessionContext,unitId:string,revisio
       }
       if(prepared.uploaded&&batchId){const [currentInput]=await tx.select().from(payrollInput).where(and(eq(payrollInput.batchId,batchId),eq(payrollInput.employmentId,emp.id)));if(currentInput){const source={unitId,entryId:e.id,revision,plan:'Uploaded award' as const,confirmedBy:prepared.uploaded.checkedBy,confirmedAt:prepared.uploaded.checkedAt,historicalOnly:true as const};await tx.update(payrollInput).set({rewardProvenance:[...currentInput.rewardProvenance.filter(p=>p.unitId!==unitId||p.entryId!==e.id),source]}).where(and(eq(payrollInput.batchId,batchId),eq(payrollInput.employmentId,emp.id)));}}
     }
+    await recordRewardPersonHistoryTx(tx, ctx, unit, result.rows);
     await tx.update(rewardUnit).set({ status: 'posted', fundingCents: unit.kind === 'annual' ? { standard: result.budgets.standard.pools.reduce((n, amount, i) => n + Math.max(0, amount - result.budgets.standard.used[i]), 0), h: result.budgets.h.pools.reduce((n, amount, i) => n + Math.max(0, amount - result.budgets.h.used[i]), 0) } : unit.fundingCents, postedBatchId: batchId ?? null, postedAt: new Date(), updatedAt: new Date() }).where(eq(rewardUnit.id, unitId));
     const postedEventId=await stamp(tx, ctx, unitId, 'posted', { batchId: batchId ?? null, revision, seniorPlanEntryIds:result.rows.filter(entry=>isSeniorPlanMember(unit.policy,entry.facts,entry.source.grade)).map(entry=>entry.id) },returnEventId);
     return { alreadyPosted: false, ...(returnEventId?{postedEventId}: {}) };

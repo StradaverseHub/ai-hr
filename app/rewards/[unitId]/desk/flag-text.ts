@@ -13,8 +13,9 @@ export function flagSection(flag: Pick<RewardFlag, 'code' | 'message'>): 'salary
  * Plain-language wording for the engine's fixed flag messages, as a translation key under rewards.flagText
  * with its values. The engine keeps one English message per rule; null means "show the message as it is".
  */
-export type FlagText = { key: string; plan?: 'standard' | 'h'; part?: 'merit' | 'promotion' | 'special' };
+export type FlagText = { key: string; plan?: 'standard' | 'h'; part?: 'merit' | 'promotion' | 'special'; reason?: string };
 export function flagText(flag: Pick<RewardFlag, 'code' | 'message'>): FlagText | null {
+  if (flag.code.startsWith('WITHHOLD-')) return { key: 'withheldAward', reason: flag.message.replace(/^Withheld: /,'') };
   const m = flag.message, plan = (s: string) => s === 'JG H' ? 'h' as const : 'standard' as const;
   const pool = /^(Standard|JG H) (merit|promotion|special adjustment) exceeds its separate pool/.exec(m);
   if (pool) return { key: 'poolOver', plan: plan(pool[1]), part: pool[2] === 'special adjustment' ? 'special' : pool[2] as 'merit' | 'promotion' };
