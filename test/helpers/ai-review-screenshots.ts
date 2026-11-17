@@ -58,6 +58,15 @@ export async function captureAiReviewScreenshots(html:string,locale:string,secti
   const unloaded=await page.evaluate(async faces=>{void getComputedStyle(document.documentElement).fontFamily;const lists=await Promise.all(faces.map(face=>document.fonts.load(face)));return faces.filter((_,i)=>!lists[i].length||lists[i].some(face=>face.status!=='loaded'));},SCRIPT_FONTS.map(font=>`${font.weight} 16px "${font.family}"`));
   if(unloaded.length)throw Error('Script fonts did not load before layout: '+unloaded.join(', '));
   await page.evaluate(()=>{document.body.hidden=false;return document.fonts.ready;});
+  // A jsdom source-DOM fixture serializes an open native dialog as an attribute. Restore the real
+  // top layer in Chrome for Review Plans captures; ordinary dialog[open] is non-modal and misrepresents
+  // backdrop/placement, especially on a phone. This changes evidence rendering, never application behavior.
+  const reviewPlanModal=section.startsWith('rewards-review-plans-')?await page.evaluate(()=>{
+   const dialogs=Array.from(document.querySelectorAll<HTMLDialogElement>('dialog[open]'));
+   for(const dialog of dialogs){dialog.removeAttribute('open');dialog.showModal();}
+   window.scrollTo(0,0);
+   return dialogs.map(dialog=>{const box=dialog.getBoundingClientRect();if(!dialog.matches(':modal'))throw Error('Review Plans confirmation did not enter the native modal top layer.');if(box.left<0||box.right>innerWidth+1||box.top<0||box.bottom>innerHeight+1)throw Error('Review Plans native modal exceeds the viewport.');return{nativeModal:true,width:box.width,height:box.height,viewportWidth:innerWidth,viewportHeight:innerHeight};});
+  }):null;
   let chartGeometry:unknown=null;
   if(section==='org-chart-controls'){
    // React's layout effect has already rendered the real edge population in jsdom. Re-measure those
@@ -107,7 +116,7 @@ export async function captureAiReviewScreenshots(html:string,locale:string,secti
   if(section==='people-configuration-navigation')await page.locator('a[href="/admin/settings/system-labels"]').scrollIntoViewIfNeeded();
   const file=`${locale}-${section}-${device}.png`;await page.screenshot({path:join(out,file),fullPage:true});
   if(section==='security-functions')await page.screenshot({path:join(out,`${locale}-${section}-${device}-viewport.png`),fullPage:false});
-  rows.push({locale,section,device,width,height,overflow,file,browser:browser.version(),candidate:process.env.AIHR_CI_HEAD,runId:process.env.GITHUB_RUN_ID,theme,scrollRegions,fixture,scriptFontProof,chartGeometry,trackerGeometry,...(section==='chat-card-rewards-calendar'?{cellsVisible:!clippedCalendarCells}:{})});
+  rows.push({locale,section,device,width,height,overflow,file,browser:browser.version(),candidate:process.env.AIHR_CI_HEAD,runId:process.env.GITHUB_RUN_ID,theme,scrollRegions,fixture,scriptFontProof,chartGeometry,trackerGeometry,reviewPlanModal,...(section==='chat-card-rewards-calendar'?{cellsVisible:!clippedCalendarCells}:{})});
   if(clippedCalendarCells)throw Error('Calendar before/after value is clipped; inspect the captured evidence.');
   // This existing table intentionally scrolls horizontally on small screens. Capture its action
   // column too, so the mobile evidence shows the real controls rather than only the left-hand labels.
