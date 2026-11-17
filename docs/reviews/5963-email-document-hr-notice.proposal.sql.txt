@@ -1,0 +1,35 @@
+-- UNAPPLIED 5963 review SQL. No app EXECUTE grant; no authored-trigger vocabulary change.
+-- Exact source selector used by emit, held-event proof and delivery target eligibility.
+CREATE FUNCTION app.contract_shared_email_hr_notice_source(p_letter uuid,p_revision integer) RETURNS jsonb
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT jsonb_build_object('letterId',l.id,'pinId',pin.id,'companyId',c.company_id,'subjectPersonId',e.person_id,'signingRevision',d.revision,
+ 'recipients',coalesce((SELECT jsonb_agg(jsonb_build_object('userId',u.id,'personId',u.person_id,'stepId',step->>'id') ORDER BY u.id,step->>'id') FROM app.document_signing_pending_steps(d.data) step
+ JOIN public.app_user u ON u.tenant_id=l.tenant_id AND u.id::text=step->>'holderId' AND u.person_id::text=step->>'holderPersonId'
+ WHERE u.person_id<>e.person_id AND app.contract_verified_human(u.id)), '[]'::jsonb),
+ 'returned',app.document_signing_returned(d.data),'ownerUserId',app.document_signing_owner(d.data))
+ FROM public.contract_shared_letter l JOIN public.document_signing_document d ON d.tenant_id=l.tenant_id AND d.id=l.signing_document_id AND d.subject_type='contract' AND d.subject_id=l.id
+ JOIN public.contract_case c ON c.tenant_id=l.tenant_id AND c.id=l.case_id
+ JOIN public.employment e ON e.tenant_id=c.tenant_id AND e.id=c.employment_id AND e.company_id=c.company_id AND e.person_id::text=l.data->>'subjectPersonId' AND e.voided_at IS NULL
+ JOIN public.contract_shared_email_document_step pin ON pin.tenant_id=l.tenant_id AND pin.case_id=l.case_id AND pin.company_id=c.company_id AND pin.subject_person_id=e.person_id AND pin.documents->>(l.data->>'templateId')=l.id::text
+ WHERE l.tenant_id=app.current_tenant_id() AND l.id=p_letter AND l.purpose='email' AND l.data->>'state'='routing' AND d.revision=p_revision AND app.contract_company_entitled(c.company_id)
+ AND app.contract_shared_email_document_current(l.id)
+$$;
+REVOKE ALL ON FUNCTION app.contract_shared_email_hr_notice_source(uuid,integer) FROM PUBLIC,ai_hr_app;
+
+-- Persistent objects explicitly included in the approval request (final bodies depend on frozen root5960):
+-- 1. Contract event CHECK adds internal-only emailDocumentHRNotice while preserving every existing item.
+-- 2. Private emit(letter): actual held SendEmail AFTER bind OR canonical AFTER action source proof only;
+--    insert immutable source receipt, event.workflow_versions=[]; true-system event reuses held parent's job/root;
+--    actual human action enqueues existing contract_automation with its REAL UID/PID, never a fake HR actor.
+-- 3. Contract-only AFTER Signing trigger calls emit ONLY new actual actions, preserving other subjects byte-for-byte.
+-- 4. Existing worker_event_held/event_check delegate unchanged except exact private-receipt+sealed-job branch.
+-- 5. effect_held denies ALL business effects for emailDocumentHRNotice, regardless workflow/run/step input.
+-- 6. Private page(case,afterUID) requires held notice receipt, exact current source selector, returns at most30
+--    pending nonemployee frozen UID/PID pairs, or exact frozen returned owner proven nonemployee.
+-- 7. Private mail context + queue + target adapters accept only key
+--    email-hr:<letterUUID>:<signingRevision>:<recipientUID>:<recipientPID>, CC=[], no richBody/assets/documents,
+--    subject='Contract document needs your action', body='A Contract document is waiting for your action.
+
+{{case.link}}'.
+--    The link resolves only the receipt's actual Letter. Sender rechecks pending HR identity before SMTP.
+-- No new public EXECUTE, general queue authority, authored workflow, source impersonation or business facts.
