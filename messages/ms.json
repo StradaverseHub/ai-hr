@@ -8486,6 +8486,7 @@
         "partial": "Sebahagian berjaya",
         "failed": "Gagal"
       },
+      "transactionAfterLeaving": "{employeeName} ({employeeCode}) — {itemName} ({itemCode}): tarikh transaksi {dates} adalah selepas hari terakhir pekerja, {lastDay}. Semak tarikh kuat kuasa transaksi sebelum memproses semula.",
       "reason": {
         "TAX_SELECTION_CONFIRMATION_REQUIRED": "Sahkan pilihan Pemastautin Cukai Pendapatan untuk majikan ini sebelum memproses penggajian.",
         "TAX_SELECTION_INVALID_SCHEME": "Semak kategori cukai pendapatan yang dipilih sebelum memproses penggajian.",
@@ -8502,6 +8503,7 @@
         "NOT_AUTHORIZED": "Anda tiada akses kepada syarikat ini",
         "INVALID_CYCLE": "Tiada kitaran gaji sah untuk syarikat ini",
         "PRE_PROCESS_BLOCKED": "Pekerja dalam skop tiada rekod gaji semasa",
+        "TRANSACTION_AFTER_LEAVING": "Transaksi bertarikh selepas hari terakhir pekerja",
         "SYSTEM_VALIDATION_ERROR": "Ralat pengesahan sistem",
         "MISSING_SALARY": "Maklumat gaji tiada",
         "EMPTY_SELECTION": "Tiada pekerja dalam pilihan khusus tergolong dalam syarikat ini bagi tempoh yang dipilih. Proses seluruh syarikat tidak dicipta.",

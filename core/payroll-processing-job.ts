@@ -27,6 +27,7 @@ import {withTenant,type SessionContext,type Tx} from '../db/client';
 import {payrollBatch} from '../db/schema';
 import {bulkJobId,bulkJobProgress,bulkJobWorkerStatusTx,enqueueBulkJobTx,type BulkJobRow} from './bulk-job';
 import {isTransientBulkJobError,type BulkJobDiscardUnit,type BulkJobHandler,type BulkJobPrepared,type BulkJobRefused,type BulkJobStep,type BulkJobStepInput,type BulkJobUnit} from './bulk-job-worker';
+import {transactionFailureForPayrollError} from './payroll-run-group-result';
 import {publicErrorMessage} from '../lib/public-error';
 import {lockPayComponentCatalogReadTx} from './pay-component-catalog-lock';
 import {lockNativePayrollBatchPeriodTx} from './payroll-period-lock';
@@ -138,7 +139,7 @@ export const payrollProcessJobHandler:BulkJobHandler<EmployeesStep|Record<string
   catch(error){
    if(error instanceof PayrollRunQueuedError||isTransientBulkJobError(error))throw error;
    // The wizard's result screen names the reason exactly as the synchronous run's catch mapped this error.
-   return{refused:publicErrorMessage(error),plan:{batchId,failureReason:reasonForPayrollError(error)}};
+   return{refused:publicErrorMessage(error),plan:{batchId,failureReason:reasonForPayrollError(error),transactionFailure:transactionFailureForPayrollError(error)}};
   }
  },
  async commitPrepareTx(tx,_ctx,job,prepared){
@@ -159,7 +160,7 @@ export const payrollProcessJobHandler:BulkJobHandler<EmployeesStep|Record<string
  // The reason the synchronous wizard's catch gave this error, kept on the plan for the run group's outcome. The
  // kernel merges it into the plan with the failure (describeFailure itself is read only).
  async describeFailure(_job,error){
-  return{error:publicErrorMessage(error),planMerge:{failureReason:reasonForPayrollError(error)}};
+  return{error:publicErrorMessage(error),planMerge:{failureReason:reasonForPayrollError(error),transactionFailure:transactionFailureForPayrollError(error)}};
  },
  // A wizard run group waiting for this run settles when its last job finishes (core/payroll-run-group-store.ts);
  // the kernel retries a settle that fails until it succeeds. One owner transaction that the kernel opens, attributes

@@ -1,3 +1,4 @@
+import { reasonForPayrollError, transactionFailureForPayrollError } from '../core/payroll-run-group-result';
 /**
  * ad6ed930 — how a transaction dated after the employee's last day is TOLD, everywhere it is told.
  *
@@ -119,4 +120,18 @@ describe('ad6ed930 · messages and the whole-run processing text', () => {
     expect(payrollLeavingDate({ terminatedOn: '2026-10-29', resignationDate: '2026-11-15', lastWorkingDate: null })).toBe('2026-10-29');
     expect(payrollLeavingDate({ resignationDate: '2026-12-01' })).toBe('2026-12-01');
   });
+  it('exposes only known structured refusals and supplies localized copy in every language', () => {
+    const error=new PayItemFormulaRepriceError(emp,componentId,'ONOR','NORMAL OT',['2026-10-31'],'after_leaving_date',
+      'internal details must not be displayed','2026-10-29',{name:'Fictional Employee',code:'TEST42'});
+    expect(reasonForPayrollError(error)).toBe('TRANSACTION_AFTER_LEAVING');
+    expect(JSON.stringify(transactionFailureForPayrollError(error))).not.toContain('internal details');
+    expect(transactionFailureForPayrollError(new Error('select secret from private_table'))).toBeUndefined();
+    expect(reasonForPayrollError(new Error('select secret from private_table'))).toBe('SYSTEM_VALIDATION_ERROR');
+    for(const loc of LOCALES) {
+      const m=JSON.parse(fs.readFileSync(path.resolve(__dirname,`../messages/${loc}.json`),'utf8'));
+      for(const field of ['employeeName','employeeCode','itemName','itemCode','dates','lastDay'])
+        expect(m.payroll.process.transactionAfterLeaving).toContain('{'+field+'}');
+    }
+  });
+
 });

@@ -13,7 +13,7 @@ import type postgres from 'postgres';
 import {withTenant,type SessionContext,type Tx} from '../db/client';
 import {actorOf,appendEvent} from '../db/events';
 import {bulkJobProgress,bulkJobWorkerStatusTx,isBulkJobId,type BulkJobRow} from './bulk-job';
-import {summarize,type CompanyOutcome,type RunGroupReasonCode,type RunGroupResult} from './payroll-run-group-result';
+import {summarize,type CompanyOutcome,type RunGroupReasonCode,type RunGroupResult,type PayrollTransactionFailure} from './payroll-run-group-result';
 import {PAYROLL_PROCESS_JOB_KIND} from '../lib/payroll-processing-job';
 import type {BulkJobProgress,BulkJobWorkerStatus} from '../lib/bulk-job';
 
@@ -44,9 +44,10 @@ function finishedOutcome(o:PendingCompanyOutcome,job:JobOutcomeRow|undefined):Co
   return{companyId:o.companyId,companyName:o.companyName,status:'succeeded',batchId:o.batchId,employeesSelected:o.employeesSelected,employeesSucceeded:payslips,
    ...(skipped>0?{employeesSkipped:skipped}:{})};
  }
+ const transactionFailure=(job.plan as {transactionFailure?:PayrollTransactionFailure}|null)?.transactionFailure;
  const reason=((job.plan as {failureReason?:RunGroupReasonCode}|null)?.failureReason)??'SYSTEM_VALIDATION_ERROR';
  return{companyId:o.companyId,companyName:o.companyName,status:'failed',...(o.failed.batchId?{batchId:o.failed.batchId}:{}),
-  employeesSelected:o.failed.employeesSelected,employeesSucceeded:0,reason};
+  employeesSelected:o.failed.employeesSelected,employeesSucceeded:0,reason,...(transactionFailure?{transactionFailure}:{})};
 }
 async function jobsTx(tx:Tx,ids:string[]){
  if(!ids.length)return new Map<string,BulkJobRow>();
@@ -85,6 +86,7 @@ function runGroupEventPayload(p:RunGroupEventInput){
     batchId:c.batchId??null,
     status:c.status,
     reason:c.reason??null,
+    ...(c.transactionFailure?{transactionFailure:c.transactionFailure}:{}),
     employeesSelected:c.employeesSelected,
     employeesSucceeded:c.employeesSucceeded,
     // r226 — the run-group event is the DURABLE record, so the skip has to be inspectable here too. A COUNT

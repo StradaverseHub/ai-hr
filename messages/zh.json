@@ -8486,6 +8486,7 @@
         "partial": "部分成功",
         "failed": "失败"
       },
+      "transactionAfterLeaving": "{employeeName}（{employeeCode}）— {itemName}（{itemCode}）：交易日期 {dates} 晚于员工最后工作日 {lastDay}。请核对交易生效日期后再处理。",
       "reason": {
         "TAX_SELECTION_CONFIRMATION_REQUIRED": "处理工资前，请确认此雇主的所得税居民选项。",
         "TAX_SELECTION_INVALID_SCHEME": "处理工资前，请检查所选所得税类别。",
@@ -8502,6 +8503,7 @@
         "NOT_AUTHORIZED": "您无权访问此公司",
         "INVALID_CYCLE": "此公司没有有效的薪资周期",
         "PRE_PROCESS_BLOCKED": "范围内的员工没有当前薪资记录",
+        "TRANSACTION_AFTER_LEAVING": "交易日期晚于员工最后工作日",
         "SYSTEM_VALIDATION_ERROR": "系统验证错误",
         "MISSING_SALARY": "缺少薪资信息",
         "EMPTY_SELECTION": "在所选期间，此公司没有明确选择的员工。未创建全公司薪资批次。",

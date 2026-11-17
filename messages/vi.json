@@ -8486,6 +8486,7 @@
         "partial": "Thành công một phần",
         "failed": "Thất bại"
       },
+      "transactionAfterLeaving": "{employeeName} ({employeeCode}) — {itemName} ({itemCode}): ngày giao dịch {dates} sau ngày làm việc cuối cùng của nhân viên, {lastDay}. Hãy kiểm tra ngày hiệu lực của giao dịch trước khi xử lý lại.",
       "reason": {
         "TAX_SELECTION_CONFIRMATION_REQUIRED": "Xác nhận lựa chọn cư trú thuế thu nhập cho chủ lao động này trước khi xử lý lương.",
         "TAX_SELECTION_INVALID_SCHEME": "Kiểm tra loại thuế thu nhập đã chọn trước khi xử lý lương.",
@@ -8502,6 +8503,7 @@
         "NOT_AUTHORIZED": "Bạn không có quyền truy cập công ty này",
         "INVALID_CYCLE": "Không có chu kỳ lương hợp lệ cho công ty này",
         "PRE_PROCESS_BLOCKED": "Nhân viên trong phạm vi chưa có hồ sơ lương hiện hành",
+        "TRANSACTION_AFTER_LEAVING": "Ngày giao dịch sau ngày làm việc cuối cùng của nhân viên",
         "SYSTEM_VALIDATION_ERROR": "Lỗi xác thực hệ thống",
         "MISSING_SALARY": "Thiếu thông tin lương",
         "EMPTY_SELECTION": "Không có nhân viên được chọn cụ thể nào thuộc công ty này trong kỳ đã chọn. Không tạo đợt lương cho toàn công ty.",
