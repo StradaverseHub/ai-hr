@@ -14,7 +14,8 @@ import { todayInKualaLumpur, timeInKualaLumpur } from '../../../lib/hr-date';
 import type { NotificationSweepConnection } from '../../../core/notice-projection';
 import { assertModuleEnabled } from '../../../core/entitlements';
 import * as M from '../../../lib/lifecycle-v9-model';
-import { maskEmail } from '../../../lib/lifecycle-v9-recipients';
+import { lifecycleRecipientAddressesTx } from './recipient-directory';
+import { maskPersonalEmailView } from '../../../lib/lifecycle-v9-recipients';
 import { v9EmploymentLabels } from '../../../lib/lifecycle-v9-employment';
 import { projectNativeCase, nativeDocumentState } from '../../../lib/lifecycle-v9-native';
 import { OnboardingError, nativeCaseFormValues, effectiveFacts as nativeFacts } from '../../../lib/onboarding-model';
@@ -91,18 +92,10 @@ async function personalEmailRevealTx(tx: Tx, ctx: SessionContext): Promise<boole
   const [row] = await tx.execute<{ ok: boolean }>(sql`select exists(select 1 from company where tenant_id=${ctx.tenantId}::uuid and app.personnel_identity_search_permitted(id)) as ok`);
   return row?.ok === true;
 }
-const maskedKey = (key: string) => { const address = key.startsWith('address:') ? key.slice(8) : key; return 'address:' + maskEmail(address); };
 /** Server-side masking of personal email keys in a case projection. Other recipients are unchanged. */
 function maskCasePersonalEmail(c: M.Case): M.Case {
   if (!c.mails.some(mail => mail.delivery?.personalKeys?.length)) return c;
-  const next = structuredClone(c);
-  for (const mail of next.mails) {
-    const personal = new Set(mail.delivery?.personalKeys ?? []);
-    if (!personal.size) continue;
-    mail.to = mail.to.map(key => personal.has(key) ? maskedKey(key) : key); mail.cc = mail.cc.map(key => personal.has(key) ? maskedKey(key) : key);
-    mail.delivery!.personalKeys = [...personal].map(maskedKey);
-  }
-  return next;
+  return { ...c, mails: c.mails.map(mail => maskPersonalEmailView(mail, mail.delivery?.personalKeys ?? [])) };
 }
 
 async function actor(tx: Tx, ctx: SessionContext): Promise<M.Actor> {
@@ -114,7 +107,8 @@ async function configTx(tx: Tx, ctx: SessionContext, lock = false): Promise<M.Co
   const [row] = await tx.execute<{ data: M.Config }>(sql`select data from lc_v9_config where tenant_id=${ctx.tenantId}::uuid ${lock ? sql`for update` : sql``}`);
   if (!row) return null;
   const [shared] = await tx.execute<{ revision: number; data: { groups: M.Group[] } }>(sql`select revision,data from lc_onboarding_config where tenant_id=${ctx.tenantId}::uuid`);
-  return { ...row.data, groups: shared?.data.groups ?? [], groupsRevision: shared?.revision ?? 0 };
+  const data = { ...row.data } as M.Config & { bpRules?: unknown }; delete data.bpRules;
+  return { ...data, groups: shared?.data.groups ?? [], groupsRevision: shared?.revision ?? 0 };
 }
 async function lockTx(tx: Tx, ctx: SessionContext): Promise<void> {
   // The onboarding key first, as lockOnboardingTx. The audit chain is sealed at commit.
@@ -162,10 +156,11 @@ async function environment(tx: Tx, ctx: SessionContext, c: M.Case, config: M.Con
   const [personnel] = await tx.execute<{ position: string | null; department: string | null; business_group: string | null }>(sql`select (select title from position where id::text=${c.facts.title} and tenant_id=${ctx.tenantId}::uuid) as position,(select name from department where id::text=${c.facts.department} and tenant_id=${ctx.tenantId}::uuid) as department,(select name from business_unit where id::text=${c.facts.businessGroup} and tenant_id=${ctx.tenantId}::uuid) as business_group`);
   const native = c.module === 'onb' ? await onboardingV9ReadTx(ctx, tx, c.id) : null;
   const nf = native ? nativeFacts(native.c) : null;
-  const source = c.facts.employmentId
+  const source: Record<string,string> = c.facts.employmentId
     ? await readV9PersonnelTx(tx, ctx, c.facts.employmentId)
     : { email: nf?.email ?? '', icNo: nf?.ic ?? '', passportNo: nf?.passport ?? '',
         ...(native ? await onboardingV9DraftEmailFieldsTx(ctx, tx, native) : {}) };
+  const supervisorUserId = native ? native.supervisorUserId : source.supervisorUserId || null;
   const currentBusinessUnit = native?.personnelLabels.businessGroup;
   const [unit] = !native && ctx.userId && c.facts.employmentId
     ? await tx.execute<{ name: string | null }>(sql`
@@ -180,7 +175,7 @@ async function environment(tx: Tx, ctx: SessionContext, c: M.Case, config: M.Con
   const fmt = (value: string) => M.validDate(value) ? value.slice(8) + '/' + value.slice(5, 7) + '/' + value.slice(0, 4) : '';
   const values: Record<string, string> = { ...source,
     'employee.name': c.facts.name, 'employee.empNo': c.facts.employeeNo, 'employee.position': personnel?.position ?? c.facts.title, 'employee.department': personnel?.department ?? c.facts.department,
-    'employee.icNo': source.icNo ?? '', 'employee.passportNo': source.passportNo ?? '', 'employee.supervisor': users.find(u => u.id === c.facts.supervisorUserId)?.name ?? native?.personnelLabels.supervisor ?? '',
+    'employee.icNo': source.icNo ?? '', 'employee.passportNo': source.passportNo ?? '', 'employee.supervisor': users.find(u => u.id === supervisorUserId)?.name ?? native?.personnelLabels.supervisor ?? '',
     'employee.businessUnit': currentBusinessUnit ?? (unit ? unit.name ?? '' : personnel?.business_group ?? ''),
     'company.name': company[0]?.name ?? '', 'joiner.joinDate': fmt(c.facts.joinDate), 'leaver.lastDay': fmt(c.facts.lastDay),
     'leaver.noticeDate': fmt(c.facts.noticeDate), 'leaver.type': c.facts.caseType, 'today.date': fmt(today), today: fmt(today),
@@ -194,11 +189,11 @@ async function environment(tx: Tx, ctx: SessionContext, c: M.Case, config: M.Con
   values['company.color'] = signatory?.letterhead?.color ?? '#4F46E5';
   values['employee.company']=company[0]?.name??'';values['employee.businessGroup']=personnel?.business_group??'';
   const caseFields=resolveV9CaseFields(c.module,config.caseForms?.[c.module],true),caseValues=native?nativeCaseFormValues(native.c):offCaseFormValues(c);
-  const caseLabels: Record<string,string>={name:c.facts.name,company:company[0]?.name??'',group:personnel?.business_group??'',dept:personnel?.department??'',position:personnel?.position??'',supervisor:users.find(user=>user.id===c.facts.supervisorUserId)?.name??'',ta:users.find(user=>user.id===c.facts.taUserId)?.name??''};
+  const caseLabels: Record<string,string>={name:c.facts.name,company:company[0]?.name??'',group:personnel?.business_group??'',dept:personnel?.department??'',position:personnel?.position??'',supervisor:users.find(user=>user.id===supervisorUserId)?.name??'',ta:users.find(user=>user.id===c.facts.taUserId)?.name??''};
   for(const field of caseFields) values['case.'+field.key]=field.key in caseLabels?caseLabels[field.key]:field.type==='date'?fmt(caseValues[field.key]??''):caseValues[field.key]??'';
 
   if (calculation?.ready) Object.assign(values, { 'leave.remaining': String(calculation.remainingLeave), 'leave.encashDays': String(calculation.encashDays), 'leave.encashAmount': `${calculation.currency} ${calculation.amount!.toFixed(2)}`, 'leave.dailyRate': `${calculation.currency} ${calculation.dailyRate!.toFixed(2)}`, 'pay.finalPayDate': fmt(calculation.payDate) });
-  return { today, now: new Date().toISOString(), actor: who, nextId: randomUUID,
+  return { today, now: new Date().toISOString(), actor: who, supervisorUserId, nextId: randomUUID,
     onLeave: (id, date) => unavailable.some(r => r.user_id === id && r.on_date === date),
     openLoad: id => Number(sharedLoads.find(load => load.user_id === id)?.task_load ?? 0),
     lastAssigned: id => { const last = sharedLoads.find(load => load.user_id === id)?.last_auto; return last ? Date.parse(last) || 0 : 0; },
@@ -233,7 +228,8 @@ export async function v9PreviewPersonnelValues(ctx: SessionContext, caseId: stri
     const config = await configTx(tx, ctx);
     if (!config) throw new M.V9Error('V9 configuration is not available.');
     const { mergeValues } = await environment(tx, ctx, row.data, config);
-    return Object.fromEntries([...personnelMergeLabels.keys()].map(key => [key, mergeValues[key] ?? '']));
+    const preview = Object.fromEntries([...personnelMergeLabels.keys()].map(key => [key, mergeValues[key] ?? '']));
+    return await personalEmailRevealTx(tx, ctx) ? preview : maskPersonalEmailView(preview, [mergeValues.personalEmail ?? '']);
   });
 }
 
@@ -242,8 +238,9 @@ export async function v9PreviewEmail(ctx: SessionContext, caseId: string, emailI
   return withLifecycleTenant(ctx, async tx => {
     const row = await load(tx, ctx, caseId), config = await configTx(tx, ctx);
     if (!config) throw new M.V9Error('V9 configuration is not available.');
-    const preview = M.previewEmail(row.data, config, emailId, await environment(tx, ctx, row.data, config));
-    return await personalEmailRevealTx(tx, ctx) ? preview : { ...preview, cc: preview.cc.map(recipient => recipient.personal ? { ...recipient, id: maskedKey(recipient.id) } : recipient) };
+    const env = await environment(tx, ctx, row.data, config);
+    const preview = M.previewEmail(row.data, config, emailId, env);
+    return await personalEmailRevealTx(tx, ctx) ? preview : maskPersonalEmailView(preview, [env.mergeValues.personalEmail ?? '', ...preview.cc.filter(recipient => recipient.personal).map(recipient => recipient.id)]);
   });
 }
 
@@ -259,7 +256,7 @@ export async function v9PreviewWorkflow(ctx: SessionContext, caseId: string, wor
     // Match the reference's single-output priority; an unrelated later draft cannot break this preview.
     const messages=notification?.type==='notify'&&!email?[{id:notification.id,name:'Notification',...M.previewWorkflowNotification(c,config,notification,env,workflow.id)}]:[];
     const documents=!email&&!notification&&document?.type==='doc'?[M.generate({...c,documents:[]},config,document.template,env)]:[];
-    return {workflow, messages, documents};
+    return {workflow, messages: await personalEmailRevealTx(tx, ctx) ? messages : maskPersonalEmailView(messages, [env.mergeValues.personalEmail ?? '']), documents};
   });
 }
 
@@ -272,7 +269,14 @@ export async function v9PlanWorkflow(ctx: SessionContext, caseId: string, input:
     if (!config) throw new M.V9Error('V9 configuration is not available.');
     if (row.data.module !== workflow.module) throw new M.V9Error('Choose a case from this module.', 'not_found');
     const c = structuredClone(row.data), env = await environment(tx, ctx, c, config);
-    return M.planWorkflow(c, config, workflow, { ...env, revealPersonal: await personalEmailRevealTx(tx, ctx), workflowId: workflow.id });
+    const userIds = new Set<string>();
+    for (const step of workflow.steps) if (step.type === 'email' || step.type === 'notify') {
+      const template = step.type === 'email' ? config.emails.find(email => email.id === step.template) : null;
+      const recipients = M.resolveStepRecipients(c, config, M.stepRecipientRoles(c, workflow.id, step, template), env);
+      for (const recipient of [...recipients.to, ...recipients.cc]) if (uuid.test(recipient.key)) userIds.add(recipient.key);
+    }
+    const addresses = await lifecycleRecipientAddressesTx(tx, ctx, caseId, [...userIds]);
+    return M.planWorkflow(c, config, workflow, { ...env, userEmail: id => addresses[id] ?? null, revealPersonal: await personalEmailRevealTx(tx, ctx), workflowId: workflow.id });
   });
 }
 export type EmailHoldInboxItem = { caseId: string; module: M.Module; number: string; name: string; email: string; workflow: string; heldAt: string; missing: { label: string; reason: string }[] };
@@ -310,7 +314,8 @@ export async function v9PreviewUpdatedEmail(ctx:SessionContext,id:string,mailId:
     const row=await load(tx,ctx,id),config=await configTx(tx,ctx);if(!config)throw new M.V9Error('V9 configuration is unavailable.');
     await updatedEmailAllowed(tx,id,mailId);const env=await environment(tx,ctx,row.data,config);let sequence=0;
     const plan=M.updatedDeliveryPlan(row.data,config,mailId,{...env,nextId:()=>`preview-${++sequence}`});
-    return {sourceRevision:updatedEmailRevision(row.data,config,env,plan),subject:plan.mail.subject,body:plan.mail.body,to:plan.mail.delivery!.toNames,cc:plan.mail.delivery!.ccNames,documents:plan.mail.documentIds.map(id=>plan.case.documents.find(document=>document.id===id)!).map(document=>({name:document.name,version:document.version})),files:[...plan.mail.fileIds.map(id=>plan.case.files.find(file=>file.id===id)!.name),...(plan.mail.delivery?.assets??[]).map(asset=>asset.name)]};
+    const preview = {sourceRevision:updatedEmailRevision(row.data,config,env,plan),subject:plan.mail.subject,body:plan.mail.body,to:plan.mail.delivery!.toNames,cc:plan.mail.delivery!.ccNames,documents:plan.mail.documentIds.map(id=>plan.case.documents.find(document=>document.id===id)!).map(document=>({name:document.name,version:document.version})),files:[...plan.mail.fileIds.map(id=>plan.case.files.find(file=>file.id===id)!.name),...(plan.mail.delivery?.assets??[]).map(asset=>asset.name)]};
+    return await personalEmailRevealTx(tx,ctx) ? preview : maskPersonalEmailView(preview,[env.mergeValues.personalEmail ?? '',...(plan.mail.delivery?.personalKeys ?? [])]);
   });
 }
 
@@ -318,7 +323,7 @@ export async function v9Workspace(ctx: SessionContext): Promise<Workspace> {
   return withLifecycleTenant(ctx, async tx => {
     const who = await actor(tx, ctx); let config = await configTx(tx, ctx);
     const [permission] = await tx.execute<{ ok: boolean;onboarding:boolean;offboarding:boolean;administration:boolean;records:boolean;onboardingModule:boolean }>(sql`select app.is_group_admin() as ok, app.onboarding_v9_page_reader() as onboarding,app.onboarding_page_access() as "onboardingModule",app.onboarding_v9_record_reader() as records, app.lc_v9_off_access() as offboarding, app.is_admin() as administration`);
-    if((!config||!permission?.ok&&!permission?.onboardingModule&&!permission?.offboarding)&&(permission?.onboarding||permission?.records)){const [shell]=await tx.execute<{data:M.Config|null}>(sql`select app.lc_v9_onboarding_shell() as data`);config=shell?.data??null;}
+    if((!config||!permission?.ok&&!permission?.onboardingModule&&!permission?.offboarding)&&(permission?.onboarding||permission?.records)){const [shell]=await tx.execute<{data:M.Config|null}>(sql`select app.lc_v9_onboarding_shell() as data`);config=shell?.data??null;if(config)delete (config as M.Config & {bpRules?:unknown}).bpRules;}
     const companies = await tx.execute<{ id: string; name: string; registrationNo: string; address: string }>(sql`select id,legal_name as name,coalesce(registration_no,'') as "registrationNo",concat_ws(', ',nullif(trim(address_line1),''),nullif(trim(address_line2),''),nullif(trim(address_line3),''),nullif(trim(postcode),''),nullif(trim(city),''),nullif(trim(state),''),nullif(trim(address_country),'')) as address from company where tenant_id=${ctx.tenantId}::uuid and app.is_admin_for(id) order by legal_name,id`);
     if (!permission?.ok && !permission?.offboarding && !permission?.onboarding && !permission?.records) throw new M.V9Error('Onboarding or Offboarding module access is required. Open your assigned lifecycle tasks instead.', 'forbidden');
     const users = await tx.execute<DirectoryUser>(sql`select u.id,coalesce(p.full_name,'User') as name from app_user u left join person p on p.id=u.person_id and p.tenant_id=u.tenant_id where u.tenant_id=${ctx.tenantId}::uuid and u.archived_at is null and not app.login_blocked(u.id) order by name,u.id`);
@@ -394,7 +399,7 @@ export async function v9SaveConfig(ctx: SessionContext, revision: number, input:
       if (role.startsWith('group:') && !config.groups.some(group => group.id === role.slice(6))) throw new M.V9Error('Choose an existing assignment group for the recipient.');
     }
 
-    if (config.bpRules.some(r => !users.some(u => u.id === r.userId)) || config.companies?.some(c => c.signatoryUserId && !users.some(u => u.id === c.signatoryUserId))) throw new M.V9Error('Choose an available user for the PBP and company signatory.');
+    if (config.companies?.some(c => c.signatoryUserId && !users.some(u => u.id === c.signatoryUserId))) throw new M.V9Error('Choose an available user for the company signatory.');
     const companies = await tx.execute<{ id: string }>(sql`select id from company where tenant_id=${ctx.tenantId}::uuid`);
     if (config.companies?.some(c => !companies.some(co => co.id === c.companyId))) throw new M.V9Error('Choose an available company.');
     for(const company of config.companies??[]) {
@@ -563,7 +568,7 @@ export async function v9CreateOffboardingTx(tx:Tx,ctx:SessionContext,input:{ emp
     const managers = await tx.execute<{ id: string }>(sql`select u.id from reporting_line r join employment e on e.id=r.manager_employment_id and e.tenant_id=r.tenant_id join app_user u on u.person_id=e.person_id and u.tenant_id=e.tenant_id and u.archived_at is null where r.tenant_id=${ctx.tenantId}::uuid and r.subordinate_employment_id=${employee.id}::uuid and r.line_type='administrative' and r.superseded_at is null and r.valid_from<=${todayInKualaLumpur()}::date and (r.valid_to is null or r.valid_to>${todayInKualaLumpur()}::date) order by r.valid_from desc,r.id,u.id`);
     const { nextNumber } = await import('../../../core/lifecycle-base');
     const id = randomUUID(), number = contractSource ? `OFB9-${String((await tx.execute<{n:number}>(contractSource.kind==='contract'?sql`select app.contract_offboarding_sequence(${contractSource.caseId}::uuid) as n`:sql`select app.probation_offboarding_sequence(${contractSource.caseId}::uuid) as n`))[0].n).padStart(4,'0')}` : await nextNumber(tx, 'OFB9');
-    const c: M.Case = { version: 9, id, number, module: 'off', revision: 1, state: 'pending', facts: { confirmationDate: employee.confirmation_date, finalConfirmationDate: employee.final_confirmation_date, probationEndDate: employee.probation_end_date, provisionalEndOn: employee.provisional_end_on, name: employee.name, employeeNo: employee.employee_no, employmentId: employee.id, personId: employee.person_id, joinDate: employee.hired_on, lastDay: input.lastDay, noticeDate: input.noticeDate, employeeUserId: logins.length === 1 ? logins[0].id : null, supervisorUserId: managers.length === 1 ? managers[0].id : null, pbpUserId: null, taUserId: null, company: employee.company_id, businessGroup: assignment?.business_unit_id ?? '', department: assignment?.department_id ?? '', grade: employee.grade_id ?? '', title: assignment?.position_id ?? '', employmentType: assignment?.employment_type ?? '', caseType: input.type }, checklistId: null, checklistName: '', override: 'automatic', tasks: [], items: [], documents: [], runs: [], mails: [], files: [], pmChanges: [], log: [], sourceRevision: '', submittedAt: null, closedAt: null, closedBy: null, closeReason: '', cancelReason: '', revokeDate: input.lastDay, finalFigures: null, review: null };
+    const c: M.Case = { version: 9, id, number, module: 'off', revision: 1, state: 'pending', facts: { confirmationDate: employee.confirmation_date, finalConfirmationDate: employee.final_confirmation_date, probationEndDate: employee.probation_end_date, provisionalEndOn: employee.provisional_end_on, name: employee.name, employeeNo: employee.employee_no, employmentId: employee.id, personId: employee.person_id, joinDate: employee.hired_on, lastDay: input.lastDay, noticeDate: input.noticeDate, employeeUserId: logins.length === 1 ? logins[0].id : null, supervisorUserId: managers.length === 1 ? managers[0].id : null, taUserId: null, company: employee.company_id, businessGroup: assignment?.business_unit_id ?? '', department: assignment?.department_id ?? '', grade: employee.grade_id ?? '', title: assignment?.position_id ?? '', employmentType: assignment?.employment_type ?? '', caseType: input.type }, checklistId: null, checklistName: '', override: 'automatic', tasks: [], items: [], documents: [], runs: [], mails: [], files: [], pmChanges: [], log: [], sourceRevision: '', submittedAt: null, closedAt: null, closedBy: null, closeReason: '', cancelReason: '', revokeDate: input.lastDay, finalFigures: null, review: null };
     const who = await actor(tx, ctx); c.log.push({ id: randomUUID(), at: new Date().toISOString(), actor: who, action: 'case.created', detail: 'Created from Personnel Management.' });
     if(contractSource)Object.assign(c,contractSource.kind==='contract'?{contractSourceCaseId:contractSource.caseId,contractSourceLetter:contractLetter}:{probationSourceCaseId:contractSource.caseId});
     c.sourceRevision = createHash('sha256').update(JSON.stringify({ employee, assignment })).digest('hex');
@@ -668,12 +673,11 @@ export async function v9Command(ctx: SessionContext, id: string, revision: numbe
         try { validateV9CaseValue(field,value); } catch (error) { throw new M.V9Error(error instanceof Error ? error.message : 'Review the case fields.'); }
       }
       const values = { ...before, ...command.values };
-      if (c.state==='submitted' && Object.entries(command.values).some(([key,value])=>['type','notice','revokeMode','revokeDate','pbp'].includes(key)&&value!==before[key]) && !command.reason.trim()) throw new M.V9Error('Record a reason for changing the submitted case details.');
+      if (c.state==='submitted' && Object.entries(command.values).some(([key,value])=>['type','notice','revokeMode','revokeDate'].includes(key)&&value!==before[key]) && !command.reason.trim()) throw new M.V9Error('Record a reason for changing the submitted case details.');
       if (!['Resignation','Termination','Contract end','Retirement','Non-confirmation'].includes(values.type) || !M.validDate(values.notice) || values.notice>c.facts.lastDay) throw new M.V9Error('Choose a valid case type and notice date on or before the last working day.');
       if (!['lastday','date'].includes(values.revokeMode) || values.revokeMode==='date'&&!M.validDate(values.revokeDate)) throw new M.V9Error('Choose when access must be revoked.');
-      if (values.pbp && !env.eligibleUser(values.pbp)) throw new M.V9Error('Choose an available People Business Partner.');
       const priorRevoke = c.revokeDate, priorMode = c.revokeMode ?? 'lastday';
-      c.facts.caseType=values.type;c.facts.noticeDate=values.notice;c.facts.pbpUserId=values.pbp||null;c.revokeMode=values.revokeMode as 'lastday'|'date';c.revokeDate=c.revokeMode==='lastday'?c.facts.lastDay:values.revokeDate;
+      c.facts.caseType=values.type;c.facts.noticeDate=values.notice;c.revokeMode=values.revokeMode as 'lastday'|'date';c.revokeDate=c.revokeMode==='lastday'?c.facts.lastDay:values.revokeDate;
       c.caseValues={...c.caseValues,...Object.fromEntries(Object.entries(command.values).filter(([key])=>fields.some(field=>field.key===key&&field.custom)))};
       if (c.revokeDate!==priorRevoke || c.revokeMode!==priorMode) for (const item of c.items) {
         if (!M.returnOpen(item)) continue;

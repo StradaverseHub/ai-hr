@@ -158,6 +158,19 @@ fi
 set -a; . ./.env.production; set +a
 : "${MIGRATION_DATABASE_URL:?set in .env.production}"
 
+# aihr-worker-ci-runtime/v1: source-bound CI cutover window, without changing private configuration.
+# An explicit private setting is never silently overridden. Ordinary deploys retain their existing policy.
+if [ -n "$AIHR_SELECTED_CI_BUILD_INSTALL" ]; then
+  if [ "${AIHR_IMPORT_WORKER_WAIT_SECONDS+x}" = x ] && [ "$AIHR_IMPORT_WORKER_WAIT_SECONDS" != 600 ]; then
+    echo 'CI worker cutover requires AIHR_IMPORT_WORKER_WAIT_SECONDS unset or exactly 600; explicit private wait differs (configuration unchanged).' >&2
+    exit 1
+  fi
+  readonly AIHR_SELECTED_IMPORT_WORKER_WAIT=600
+else
+  readonly AIHR_SELECTED_IMPORT_WORKER_WAIT="${AIHR_IMPORT_WORKER_WAIT_SECONDS:-45}"
+fi
+
+
 # DEMO MODE IS AN OPT-IN (r290). `--customer` forces it off; otherwise the deployment has to SAY it is
 # the gated demo by setting ALLOW_DEMO_SESSION=true — the same variable lib/session.ts reads to enable
 # the "act as" switcher, so a deployment that has it on authenticates nobody and cannot be a real one.
@@ -556,7 +569,7 @@ fi
 # drain → web install → worker activate sequence the worker is legitimately stopped here, so by default this reports;
 # AIHR_IMPORT_WORKER_REQUIRED=1 (worker already activated for this release) makes a missing worker fail the deploy.
 # Deliberately no new dstate phase: a finished deploy still records phase=restart (test/r291-detached-deploy.test.ts).
-if node --env-file=.env.production --import tsx scripts/check-import-worker.ts --wait "${AIHR_IMPORT_WORKER_WAIT_SECONDS:-45}"; then
+if node --env-file=.env.production --import tsx scripts/check-import-worker.ts --wait "$AIHR_SELECTED_IMPORT_WORKER_WAIT"; then
   echo "✅ Import worker is serving this release."
 else
   import_worker_status=$?

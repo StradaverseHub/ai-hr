@@ -6441,6 +6441,34 @@
       "when": 1794841006100,
       "tag": "6100_rewards_review_plans",
       "breakpoints": true
+    },
+    {
+      "idx": 5501,
+      "version": "7",
+      "when": 1794841006101,
+      "tag": "6101_reward_person_history",
+      "breakpoints": true
+    },
+    {
+      "idx": 5502,
+      "version": "7",
+      "when": 1794841006102,
+      "tag": "6102_lifecycle_recipient_directory",
+      "breakpoints": true
+    },
+    {
+      "idx": 5503,
+      "version": "7",
+      "when": 1794841006103,
+      "tag": "6103_lifecycle_pbp_removal",
+      "breakpoints": true
+    },
+    {
+      "idx": 5504,
+      "version": "7",
+      "when": 1794841006104,
+      "tag": "6104_lifecycle_recipient_fanout",
+      "breakpoints": true
     }
   ]
 }

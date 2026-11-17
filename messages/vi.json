@@ -502,7 +502,7 @@
     "rewardsApprovalsBoard": "Bảng phê duyệt",
     "rewardsRules": "Quy tắc",
     "rewardsReviewCycles": "Chu kỳ xét duyệt",
-    "rewardsSharedConfiguration": "Cấu hình đãi ngộ dùng chung",
+    "rewardsSharedConfiguration": "Kế hoạch đánh giá",
     "rewardsSalaryStructures": "Cơ cấu lương",
     "rewardsBonusMatrices": "Ma trận thưởng",
     "rewardsPatInputs": "Dữ liệu PAT",
@@ -603,7 +603,9 @@
     "probationPostings": "Personnel postings",
     "probationAccess": "Access",
     "recruitment": "Tuyển dụng",
-    "myReferrals": "Giới thiệu ứng viên"
+    "myReferrals": "Giới thiệu ứng viên",
+    "rewardsReviewPlans": "Kế hoạch đánh giá",
+    "rewardsHistoryUpload": "Tải lịch sử đãi ngộ"
   },
   "dashboard": {
     "viewAll": "Xem tất cả"
@@ -23987,7 +23989,17 @@
       "view": "Xem"
     },
     "workflowRecipients": {
-      "setupNeeded": "Chọn người nhận (Đến) cho bước này. Quy trình có sẵn để trống cho nhóm công ty của bạn tự chọn. Cho đến khi đó, thư này sẽ bị giữ mỗi khi chạy."
+      "setupNeeded": "Chọn người nhận (Đến) cho bước này. Quy trình có sẵn để trống cho nhóm công ty của bạn tự chọn. Cho đến khi đó, thư này sẽ bị giữ mỗi khi chạy.",
+      "taUnavailable": "TA đã chọn không khả dụng. Hãy chọn người dùng đang hoạt động khác.",
+      "clearTa": "Xóa TA",
+      "taNotLinked": "{name} chưa được liên kết với người dùng. Hãy chọn TA.",
+      "taNotSelected": "Chưa chọn TA.",
+      "searchTa": "Tìm TA",
+      "searchTaHint": "Nhập ít nhất hai ký tự trong tên",
+      "searchingTa": "Đang tìm người dùng đang hoạt động…",
+      "taSearchFailed": "Không tải được kết quả tìm TA. Hãy nhập lại tên.",
+      "taNoMatches": "Không có người dùng đang hoạt động nào khớp với tên này.",
+      "taMatches": "Người dùng đang hoạt động phù hợp"
     }
   },
   "clockingFile": {
@@ -24808,10 +24820,10 @@
     "sourceAdoption": "Imported assessment reference",
     "potential": "Potential",
     "sharedPolicy": {
-      "title": "Cấu hình thưởng dùng chung",
+      "title": "Kế hoạch đánh giá",
       "description": "Duy trì một chính sách có phiên bản cho các cặp công ty và đơn vị kinh doanh đã chọn.",
       "edit": "Sửa cấu hình dùng chung",
-      "create": "Cấu hình dùng chung mới",
+      "create": "Kế hoạch đánh giá mới",
       "futureOnly": "Lưu sẽ tạo phiên bản mới cho các đợt xét duyệt tương lai. Danh sách nhân viên, ngân sách, quyền truy cập và phê duyệt hiện có vẫn thuộc từng đợt riêng.",
       "name": "Tên cấu hình",
       "year": "Năm thưởng",
@@ -24851,7 +24863,7 @@
         "excluded": "Công ty đã chọn đã được lưu trữ hoặc bị loại trừ trong năm thưởng này. Hãy bỏ công ty đó trước khi lưu."
       },
       "ownershipHelp": "Mỗi cặp công ty/đơn vị dùng một cấu hình chung trong mỗi năm thưởng.",
-      "currencyHelp": "Cấu hình dùng chung sử dụng chính sách Reward Desk MYR hiện có; không cung cấp chính sách tiền tệ khác tại đây.",
+      "currencyHelp": "Kế hoạch đánh giá sử dụng chính sách Reward Desk MYR hiện có; không cung cấp chính sách tiền tệ khác tại đây.",
       "archive": "Lưu trữ cấu hình",
       "archiveHelp": "Lưu mà không chọn cặp nào sẽ ngừng áp dụng cấu hình này cho đợt xét duyệt tương lai. Vẫn giữ các phiên bản đã lưu và đợt xét duyệt hiện có.",
       "otherCompanies": "Công ty khác",
@@ -25143,7 +25155,7 @@
         "previous": "Trước",
         "next": "Tiếp",
         "position": "{index} / {total}",
-        "openRecord": "Mở hồ sơ đầy đủ để chỉnh sửa",
+        "openRecord": "Mở hồ sơ đầy đủ",
         "noFlags": "Người này không có điểm cần xem.",
         "notes": "Ghi chú",
         "noNote": "Không có ghi chú.",
@@ -25231,8 +25243,46 @@
           "multiplier": "Nhập hệ số, ví dụ 1.25.",
           "amount": "Nhập số tiền bằng MYR với tối đa hai chữ số thập phân.",
           "grade": "Chọn một bậc công việc.",
-          "note": "Giữ ghi chú trong tối đa 2.000 ký tự."
+          "note": "Giữ ghi chú trong tối đa 2.000 ký tự.",
+          "withhold": "Nhập lý do ít nhất 10 ký tự.",
+          "decision": "Chọn quyết định hồ sơ hợp lệ."
         }
+      },
+      "panel": {
+        "suggested": "Đề xuất {value}",
+        "useSuggested": "Dùng đề xuất",
+        "difference": "Chênh lệch {value}",
+        "range": {
+          "below": "Dưới khoảng",
+          "in": "Trong khoảng",
+          "above": "Trên khoảng"
+        },
+        "withheld": "Tạm giữ",
+        "withhold": "Tạm giữ {award}",
+        "award": {
+          "increase": "tăng lương",
+          "bonus": "thưởng",
+          "lump": "khoản trả một lần"
+        },
+        "withholdReason": "Lý do tạm giữ",
+        "withholdReasonRequired": "Nhập lý do ít nhất 10 ký tự.",
+        "withheldReason": "Tạm giữ: {reason}",
+        "viewOnly": "Đang ở {role} – chỉ xem",
+        "caseDecision": "Quyết định PIP / ER",
+        "history": "Lịch sử đãi ngộ",
+        "notFinal": "Kỳ xét này – chưa chốt",
+        "offcycle": "Ngoài kỳ",
+        "notOnRecord": "Chưa có hồ sơ",
+        "historyColumn": {
+          "year": "Năm",
+          "talent": "Tiềm năng",
+          "performance": "Hiệu suất",
+          "incrementPercent": "Tăng %",
+          "incrementMoney": "Tăng (MYR)",
+          "bonusMoney": "Thưởng (MYR)",
+          "bonusMonths": "Số tháng thưởng"
+        },
+        "auditChange": "{field}: {before} → {after}"
       }
     },
     "sharedGovernance": {
@@ -25249,8 +25299,8 @@
       "confirmExclusion": "Xác nhận loại trừ",
       "cancel": "Hủy",
       "unknownActor": "Không có tên người dùng",
-      "configurations": "Cấu hình thưởng dùng chung",
-      "newConfiguration": "Cấu hình dùng chung mới",
+      "configurations": "Kế hoạch đánh giá",
+      "newConfiguration": "Kế hoạch đánh giá mới",
       "name": "Tên",
       "year": "Năm thưởng",
       "version": "Phiên bản",
@@ -25446,7 +25496,7 @@
     "unitInputsLink": "Mở dữ liệu đơn vị",
     "architectureMismatch": "Bậc nhân viên khác bậc vị trí đã duyệt. Xem xét ánh xạ hoặc đề xuất biến động bậc có ngày hiệu lực; bậc nhân viên đã ghi vẫn giữ nguyên.",
     "companyPicker": {
-      "classificationTitle": "Rà soát danh tính công ty",
+      "classificationTitle": "Công ty không được đưa vào",
       "reviewDesignation": "Rà soát phân loại công ty",
       "classificationHelp": "Chỉ phân loại đã được xác minh mới ẩn công ty khỏi lựa chọn cấu hình chung mới. Không tự động đối chiếu tên. Các đối tượng và lịch sử đã lưu không đổi.",
       "noneDesignated": "Chưa có phân loại công ty. Xác minh danh tính trước khi xác nhận đã dọn các mục thử nghiệm hoặc trùng lặp.",
@@ -25497,7 +25547,8 @@
         "merit": "tăng theo thành tích",
         "promotion": "tăng do thăng chức",
         "special": "điều chỉnh đặc biệt"
-      }
+      },
+      "withheldAward": "Tạm giữ: {reason}"
     },
     "limitControlsOwned": "Các giá trị này của năm khen thưởng do Kiểm soát giới hạn quản lý. Tại đây chỉ được xem và đợt xét duyệt dùng phiên bản Kiểm soát giới hạn.",
     "offcycle": {
@@ -34353,7 +34404,7 @@
   "rewardsAdminTabs": {
     "label": "Quản trị thưởng",
     "configuration": "Cấu hình Thưởng",
-    "shared": "Cấu hình thưởng dùng chung",
+    "shared": "Kế hoạch đánh giá",
     "access": "Quyền truy cập Thưởng",
     "salary": "Cơ cấu lương",
     "bonus": "Ma trận thưởng",
@@ -37951,7 +38002,7 @@
     "approved": "Đã phê duyệt",
     "locked": "Đã khóa",
     "notUsed": "Chưa có kế hoạch sử dụng phiên bản này.",
-    "assignmentOwner": "Việc phân công công ty được quản lý trong kế hoạch đãi ngộ. Danh sách này chỉ cho phép xem.",
+    "assignmentOwner": "Việc phân công công ty được quản lý trong Kế hoạch đánh giá. Danh sách chỉ cho xem.",
     "compare": "So sánh",
     "compareVersion": "So sánh với phiên bản",
     "choose": "Chọn…",
@@ -38366,7 +38417,8 @@
       "BUD-01": "Quỹ thưởng dựa trên mức đạt PAT và số tháng mục tiêu. Chi vượt quỹ sẽ chặn việc gửi; dùng quá ít sẽ hiện cảnh báo.",
       "BUD-03": "Khoản thưởng được làm tròn xuống. Thưởng cá nhân cao bất thường cần có lý do.",
       "BUD-05": "Khoản thưởng một lần chia phần số dư thưởng còn lại. RM 0 nghĩa là tạm giữ; số tiền cá nhân khác cần có lý do."
-    }
+    },
+    "reviewPlan": "Kế hoạch đánh giá"
   },
   "rewardAccessPolicy": {
     "scrollRoles": "Cuộn ngang để xem thêm vai trò.",
@@ -39102,7 +39154,7 @@
   "rewardsPreparation": {
     "sourceChanged": "Dữ liệu nguồn đã thay đổi; cần kiểm tra lại việc chuẩn bị.",
     "system": "Hệ thống",
-    "sharedConfiguration": "Cấu hình chung",
+    "sharedConfiguration": "Kế hoạch đánh giá",
     "salaryStructure": "Cơ cấu lương",
     "bonusMatrix": "Ma trận thưởng",
     "version": "Phiên bản {number}",
@@ -39978,6 +40030,34 @@
           "title": "Việc nhập ứng viên đã dừng",
           "body": "Việc nhập đã được dừng. Các dòng đã nhập vẫn được giữ; mở lần nhập để xem kết quả."
         }
+      },
+      "rewardPlanReviews": {
+        "completed": {
+          "title": "Đã tạo xong đánh giá",
+          "body": "Mở Kế hoạch đánh giá để xem đánh giá đã tạo và công ty được bỏ qua."
+        },
+        "failed": {
+          "title": "Đã dừng tạo đánh giá",
+          "body": "Đánh giá đã tạo được giữ lại. Mở Kế hoạch đánh giá để xem tiến độ và lý do."
+        },
+        "cancelled": {
+          "title": "Đã dừng tạo đánh giá",
+          "body": "Đánh giá đã tạo được giữ lại. Mở Kế hoạch đánh giá để xem tiến độ và lý do."
+        }
+      },
+      "rewardPersonHistory": {
+        "completed": {
+          "title": "Đã lưu lịch sử thưởng",
+          "body": "Tải lên lịch sử thưởng đã hoàn tất. Mở để kiểm tra kết quả từng dòng."
+        },
+        "failed": {
+          "title": "Tải lên lịch sử thưởng thất bại",
+          "body": "Không thể hoàn tất tải lên. Mở để xem vấn đề và các dòng đã lưu."
+        },
+        "cancelled": {
+          "title": "Đã dừng tải lên lịch sử thưởng",
+          "body": "Đã dừng tải lên. Các dòng đã lưu vẫn còn."
+        }
       }
     },
     "panel": {
@@ -40028,7 +40108,7 @@
     "cancel": "Hủy",
     "highImpact": {
       "released-pat": "PAT thay đổi cho một đợt đánh giá đã phát hành.",
-      "released-library": "Các đợt đánh giá đã phát hành dùng phiên bản trước và sẽ giữ phiên bản đó; đợt đánh giá mới dùng phiên bản này.",
+      "released-library": "Một đánh giá đã phát hành bị ảnh hưởng. Kiểm tra bên dưới để biết giữ phiên bản hay tính lại.",
       "released-limit": "Hạn mức ngân sách thay đổi cho một đợt đánh giá đã phát hành.",
       "release-review": "Phát hành sẽ gửi đợt đánh giá này đến CEO đơn vị kinh doanh.",
       "remove-access": "Một người sẽ mất quyền truy cập vào đợt đánh giá.",
@@ -40076,8 +40156,8 @@
       "salary": "Cấu trúc lương",
       "bonus": "Ma trận thưởng",
       "pat": "Dữ liệu PAT",
-      "plan": "Cấu hình Rewards dùng chung",
-      "shared": "Cấu hình dùng chung",
+      "plan": "Kế hoạch đánh giá",
+      "shared": "Kế hoạch đánh giá",
       "exemption": "Miễn trừ hạn mức ngân sách",
       "senior": "Kế hoạch cấp cao",
       "upload": "Thưởng đã tải lên",
@@ -40097,7 +40177,8 @@
       "released": "Đã phát hành",
       "applied": "Đã áp dụng thay đổi",
       "changed": "Đã thay đổi",
-      "reset": "Đặt lại mặc định"
+      "reset": "Đặt lại mặc định",
+      "created": "Đã tạo"
     },
     "empty": "Không có thay đổi nào khớp bộ lọc.",
     "pages": "Trang",
@@ -43930,5 +44011,187 @@
       "subject": "Mã đăng nhập cổng công ty tuyển dụng của bạn: {code}",
       "body": "Mã để bạn đăng nhập vào cổng công ty tuyển dụng của {companyName} là:\n\n{code}\n\nMã hết hạn sau 10 phút. Nếu bạn không yêu cầu mã này, bạn có thể bỏ qua e-mail này.\n\n{senderName}"
     }
+  },
+  "rewardsReviewPlans": {
+    "title": "Kế hoạch đánh giá",
+    "newYear": "Năm đãi ngộ mới",
+    "year": "Năm đãi ngộ",
+    "earlierPlans": "Kế hoạch trước đây",
+    "openYear": "Mở năm",
+    "yearSettings": "Thiết lập năm",
+    "businessUnit": "Đơn vị kinh doanh",
+    "allUnits": "Tất cả đơn vị kinh doanh",
+    "planType": "Loại kế hoạch",
+    "allTypes": "Tất cả loại kế hoạch",
+    "missingSalary": "Thiếu cơ cấu lương",
+    "missingBonus": "Thiếu ma trận thưởng",
+    "unreviewed": "Đề xuất chưa được xem xét",
+    "applyFilters": "Áp dụng bộ lọc",
+    "clearFilters": "Xóa bộ lọc",
+    "salary": "Cơ cấu lương",
+    "bonus": "Ma trận thưởng",
+    "company": "Đơn vị kinh doanh › Công ty",
+    "headcount": "Số nhân sự",
+    "pat": "Dữ liệu PAT",
+    "status": "Trạng thái",
+    "chooseSalary": "Chọn cơ cấu lương",
+    "chooseBonus": "Chọn ma trận thưởng",
+    "applySalary": "Áp dụng cơ cấu lương",
+    "applyBonus": "Áp dụng ma trận thưởng",
+    "applyType": "Áp dụng loại kế hoạch",
+    "acceptAll": "Chấp nhận mọi đề xuất",
+    "copyPrevious": "Sao chép lựa chọn năm trước",
+    "accept": "Chấp nhận đề xuất",
+    "selected": "Đã chọn {count}",
+    "selectAll": "Chọn mọi công ty trên trang này",
+    "selectCompany": "Chọn {name}",
+    "companyField": "{company}: {field}",
+    "entered": "Đã nhập",
+    "missing": "Còn thiếu",
+    "edited": "Đã đổi — chưa lưu",
+    "viewOnly": "Chỉ xem",
+    "openReview": "Mở đánh giá",
+    "missingUnit": "Chưa đặt đơn vị kinh doanh",
+    "branch": "Hệ số chi nhánh",
+    "branchAcknowledged": "Công ty này đã thiết lập hệ số chi nhánh",
+    "exclusionReason": "Lý do không có thưởng (ít nhất 10 ký tự)",
+    "reviewChanges": "Xem xét thay đổi",
+    "saveChanges": "Lưu thay đổi",
+    "discard": "Bỏ thay đổi",
+    "pendingChanges": "{count} công ty có thay đổi chưa lưu",
+    "saved": "Đã lưu kế hoạch đánh giá.",
+    "copied": "Đã chuẩn bị lựa chọn năm trước. Xem xét và lưu để áp dụng.",
+    "fixInvalid": "Nhập lý do cho mọi công ty bị loại và xác nhận lựa chọn hệ số chi nhánh.",
+    "saveFailed": "Không thể lưu thay đổi. Tải lại và kiểm tra quyền trước khi thử lại.",
+    "unsaved": "Kế hoạch đánh giá có thay đổi chưa lưu. Lưu hoặc bỏ trước khi rời trang.",
+    "createSelected": "Tạo đánh giá đã chọn",
+    "createReady": "Tạo đánh giá cho công ty Sẵn sàng",
+    "saveBeforeCreate": "Lưu hoặc bỏ thay đổi trước khi tạo đánh giá.",
+    "creationStarted": "Đang tạo đánh giá ở nền. Bạn có thể tiếp tục làm việc.",
+    "progress": "Đã xử lý {done}/{total} công ty",
+    "empty": "Không có công ty khớp bộ lọc.",
+    "previewYear": "Xem xét năm đãi ngộ mới",
+    "createYear": "Tạo năm đãi ngộ và kế hoạch nháp",
+    "cancel": "Hủy",
+    "pagination": "Trang kế hoạch đánh giá",
+    "previous": "Trước",
+    "next": "Tiếp",
+    "page": "Trang {page}",
+    "leftOut": "Công ty không được đưa vào",
+    "noneLeftOut": "Không có công ty nào bị loại trong phạm vi của bạn.",
+    "noYear": "Chưa tạo năm đãi ngộ {year}.",
+    "description": "Tạo năm đãi ngộ, rồi chọn cơ cấu lương, ma trận thưởng và loại kế hoạch cho từng công ty.",
+    "yearHelp": "Ngày áp dụng cho cả năm đãi ngộ. Ngày năm trước được chuyển tiếp và có thể sửa. Khi lưu, mỗi công ty đủ điều kiện có một kế hoạch nháp.",
+    "coverage": "{ready}/{total} công ty sẵn sàng · {missingSalary} thiếu cơ cấu lương · {missingBonus} thiếu ma trận thưởng · {missingPat} thiếu PAT",
+    "leftOutHelp": "Bản ghi nhóm, pháp nhân lưu trữ, công ty thử nghiệm, bí danh và công ty không trả bằng MYR nằm ngoài bảng. Việc phân loại công ty được quản lý tại đây.",
+    "types": {
+      "standard": "Kế hoạch chuẩn",
+      "uploaded": "Thưởng đã tải lên",
+      "no_awards": "Loại trừ – không có thưởng"
+    },
+    "statuses": {
+      "draft": "Nháp",
+      "ready": "Sẵn sàng",
+      "reviews-created": "Đã tạo đánh giá"
+    },
+    "sources": {
+      "previous-year": "Giống năm {year}",
+      "business-unit": "Khớp đơn vị kinh doanh",
+      "group-default": "Mặc định tập đoàn",
+      "multiple-matches": "Nhiều kết quả khớp – hãy chọn",
+      "none": "Không có đề xuất"
+    },
+    "dates": {
+      "effectiveFrom": "Ngày lương có hiệu lực",
+      "joinedBefore": "Gia nhập trước",
+      "confirmedBy": "Xác nhận trước",
+      "activeAsOf": "Đang làm việc tại",
+      "blockedFrom": "Loại trừ tăng lương từ",
+      "blockedTo": "Loại trừ tăng lương đến",
+      "snapshotDate": "Ngày chụp dữ liệu"
+    },
+    "jobStates": {
+      "queued": "Đang chờ",
+      "preparing": "Đang chuẩn bị",
+      "running": "Đang chạy",
+      "finalizing": "Đang hoàn tất",
+      "discarding": "Đang hủy",
+      "completed": "Hoàn tất",
+      "failed": "Cần xử lý",
+      "cancelled": "Đã hủy"
+    },
+    "pollRetry": "Không đọc được tiến độ. Đang kiểm tra lại trạng thái; việc tạo đánh giá vẫn tiếp tục ở nền.",
+    "newCompanyTitle": "Đã thêm công ty mới vào Kế hoạch đánh giá",
+    "newCompanyBody": "Chọn cơ cấu lương và ma trận thưởng cho công ty mới.",
+    "leftOutReasons": {
+      "archived": "Công ty đã lưu trữ",
+      "currency": "Không thanh toán bằng MYR",
+      "grouping": "Bản ghi nhóm",
+      "test": "Công ty thử nghiệm hoặc minh họa",
+      "test_demo": "Công ty thử nghiệm hoặc minh họa",
+      "alias": "Bí danh của công ty khác",
+      "structure": "Chưa xác nhận đơn vị kinh doanh"
+    },
+    "rebindNotificationTitle": "Đã cập nhật đánh giá đãi ngộ",
+    "rebindNotificationBody": "Cơ cấu lương hoặc ma trận thưởng của công ty đã thay đổi. Với vai trò người phê duyệt hiện tại, hãy xem xét các đề xuất đã tính lại trước khi phê duyệt.",
+    "viewOnlyHelp": "Chỉ xem. Bạn có thể xem các kế hoạch này nhưng quyền hiện tại không cho phép thay đổi.",
+    "mixedViewOnly": "Một số công ty chỉ cho xem. Tên của chúng được đánh dấu trong bảng.",
+    "exclusionTooShort": "Nhập ít nhất 10 ký tự để giải thích vì sao công ty này không có thưởng.",
+    "refreshComparison": "Làm mới so sánh",
+    "comparisonRefreshed": "Đã làm mới so sánh từ dữ liệu hiện tại. Lựa chọn và lý do của bạn được giữ lại; kiểm tra so sánh mới trước khi lưu."
+  },
+  "rewardsPersonHistoryUpload": {
+    "title": "Tải lên lịch sử thưởng",
+    "description": "Thêm xếp hạng và khoản thưởng của các năm trước khi dùng AI-HR Rewards.",
+    "back": "Quay lại Thưởng",
+    "help": "Chọn công ty, tải mẫu và kiểm tra từng dòng trước khi lưu. Dùng mã nhân viên của công ty đó. Chỉ tải dữ liệu trước năm đánh giá AI-HR Rewards đầu tiên đã chuyển sang bảng lương.",
+    "company": "Công ty",
+    "file": "Tệp lịch sử",
+    "template": "Tải mẫu",
+    "fileError": "Chọn tệp CSV hoặc Excel tối đa 5 MB.",
+    "literalCells": "Chỉ dùng giá trị; không chấp nhận công thức.",
+    "working": "Đang kiểm tra tệp…",
+    "previewTitle": "Kiểm tra các dòng lịch sử",
+    "summary": "{accepted} dòng hợp lệ · {problems} dòng cần sửa",
+    "cutoff": "Tải dữ liệu của các năm trước {year}.",
+    "problem": "Dòng {line}: {reason}",
+    "employee": "Mã nhân viên",
+    "year": "Năm",
+    "talent": "Xếp hạng tài năng",
+    "performance": "Xếp hạng hiệu suất",
+    "incrementPercent": "Tăng lương %",
+    "incrementMoney": "Tăng lương (MYR)",
+    "bonusMoney": "Thưởng (MYR)",
+    "bonusMonths": "Số tháng thưởng",
+    "type": "Loại",
+    "annual": "Hằng năm",
+    "offcycle": "Ngoài chu kỳ",
+    "replaceHelp": "Bản ghi mới cho cùng nhân viên, năm và loại sẽ thay thế dữ liệu tải lên đang hiển thị. Bản ghi cũ vẫn được giữ trong lịch sử kiểm toán.",
+    "confirm": "Lưu lịch sử",
+    "progressTitle": "Tiến độ tải lên lịch sử",
+    "progress": "Đã xử lý {done} trên {total} dòng",
+    "stop": "Dừng tải lên",
+    "stopping": "Đang dừng…",
+    "checkpointHelp": "Tiến độ được lưu sau mỗi dòng. Khi dừng, các dòng đã lưu vẫn được giữ lại.",
+    "states": {
+      "queued": "Đang chờ",
+      "preparing": "Đang kiểm tra",
+      "running": "Đang lưu lịch sử",
+      "finalizing": "Đang hoàn tất",
+      "discarding": "Đang dừng",
+      "completed": "Hoàn tất",
+      "failed": "Thất bại",
+      "cancelled": "Đã dừng"
+    },
+    "problems": {
+      "columns": "Quá nhiều cột.",
+      "duplicate": "Trùng nhân viên, năm và loại.",
+      "invalid": "Nhập nhân viên, năm, xếp hạng và số tiền không âm hợp lệ.",
+      "number": "Dùng số không âm với tối đa hai chữ số thập phân.",
+      "employee": "Mã nhân viên không có hoặc không duy nhất trong công ty này.",
+      "year": "Chỉ tải dữ liệu của các năm đã kết thúc.",
+      "postedYear": "Chỉ tải dữ liệu trước năm đánh giá AI-HR Rewards đầu tiên đã chuyển sang bảng lương."
+    },
+    "error": "Không thể hoàn tất yêu cầu. Vui lòng thử lại."
   }
 }

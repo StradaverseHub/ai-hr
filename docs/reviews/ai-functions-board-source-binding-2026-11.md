@@ -877,3 +877,85 @@ registry byte-for-byte. No contract gains a provider transform, outbound field, 
 `recruitment_match_summary_v1` stays pending and unapproved (D-069/D-071). Agent manifest
 `103074e0809a534418f710f018221416559b000e9c962d6523e991ace764d182` over 496 files. No gate result, staging acceptance or
 production authority is granted by this binding.
+
+
+### Movement correction-history hotfix binding (17 November 2026)
+
+The repository owner explicitly approved carrying forward the 28 existing AI source approvals
+to `e7f9a66a837dd19dfa996048309c8df1e04b4a428243be9f0a5db99582a1d648` in the staging investigation chat on 17 November 2026
+("Approve source rebinding"). The release coordinator carries forward only the same 28 active
+digest literals from `a092a7cb98254676eee275f1687618f858d06d778e0a836d28844a60281acc39` over 1694 covered files.
+Pre-binding repair source is `357ce78c8089056793fb06067e0e5615016658d3`. The covered changes attach original-hire
+corrections to their recorded hire, preserve later deliberate field boundaries and read company
+history from the canonical dated assignments. No provider contract, purpose, outbound field,
+serializer or transport changes. Reversing the 28 substitutions reproduces the prior approval
+registry byte-for-byte; pending, retired, reviewer and historical evidence metadata are retained.
+The derived agent manifest is regenerated after binding. This grants no passing verification,
+staging acceptance or production authority.
+
+### Approved-board combined development binding — 17 November 2026
+
+The repository owner explicitly authorized this five-item candidate and necessary verification
+repairs in the current board-work chat: "Approve staging-only rebinding and verification repairs".
+The source is pre-binding `a6f6b446e38bfbf013977dd5eb445e91ec6edff4`. Its changes remain native
+lifecycle, Rewards and payroll behavior; new entry points are unregistered backlog or internal
+presentation. Human case-authorized address previews do not add a provider payload or purpose.
+No provider transform, outbound field, purpose or transport is added by this carry-forward.
+
+Only the same 28 active approval digest literals move from
+`a092a7cb98254676eee275f1687618f858d06d778e0a836d28844a60281acc39` to
+`a74c1244a428f20b2ad47a2f0ac9fa99894153078ede89567550b39c249335e9`
+(1,708 covered files). Reversing those substitutions reproduces the prior committed registry
+byte-for-byte. Reviewers, evidence, original dates and all pending/retired records remain unchanged.
+The regenerated agent manifest is `d891d9a840db52288399432d5e88e9e78dabfa5b2ade3f848f717a7f776bb9b6`
+(496 files). This is staging-only source approval: no gate result, installation, staging
+acceptance or production authority is asserted. Later source repairs require another exact
+fingerprint record under the same expressly authorized verification-repair scope.
+
+### Approved-board verification repairs — 17 November 2026
+
+Under the current-chat authorization “Approve staging-only rebinding and verification repairs”,
+the repaired candidate before binding is `6f792c60ee874834565e9608b282658b9cca9602`. It repairs fixture validity,
+recipient fanout assertions, Rewards upload syntax, native history numeric capacity and the
+released-plan repricing notification/RLS behavior. No new provider purpose, outbound field or
+production permission is added. Exactly the same 28 active source approvals move from
+`a74c1244a428f20b2ad47a2f0ac9fa99894153078ede89567550b39c249335e9` to `785dac445b64de992e997f1ce1dfaa73f35679842cc1ea968cc987052a345acb` over 1,708 files. Reversing the substitutions reproduces the previous
+registry byte for byte; pending and retired records and original review metadata stay unchanged.
+Agent manifest: `eacc4681aaed73c89ffeb78162e7ce1263e3699e8f42d60672cd9fcd9488ca55` (496 files).
+This records source binding only; verification and staging acceptance remain separate.
+
+### Approved-board final verification repair binding — 17 November 2026
+
+The owner’s current-chat authorization “Approve staging-only rebinding and verification repairs”
+covers this repaired source `e0843fd010cf6e16d1f4fa6924b0b8b3b81aafca`, including the accepted Movement baseline, native
+SMTP group delivery, consistent live history values, compiler repairs and rendered state/mobile fixes.
+No provider purpose, outbound field or production permission is added. The same 28 active approvals
+move from `785dac445b64de992e997f1ce1dfaa73f35679842cc1ea968cc987052a345acb` to `cfcab95ecec7fcfdc42604be3c2072d3c45a6c00e18b5cced3863535dcc0da2b` (1708 files). Reversing them reproduces the prior registry byte for byte;
+normalizing to current main’s active fingerprint also exactly reproduces its registry. Both pending
+records, the retired Attendance approval and every original reviewer/date/evidence field stay unchanged.
+Agent manifest: `cafbe0f78f9b32c19130fe97609f3fefa4ee9209b3931d5815cd381af97d01e7` (496 files).
+Source binding supplies no test, installation, staging acceptance or production claim.
+
+### Approved-board final verification repair binding — 17 November 2026
+
+The owner’s current-chat authorization “Approve staging-only rebinding and verification repairs”
+covers this repaired source `0be8bbeefb0a9cc89206c4e40851248454ae7fa0`, including the accepted Movement baseline, native
+SMTP group delivery, consistent live history values, compiler repairs and rendered state/mobile fixes.
+No provider purpose, outbound field or production permission is added. The same 28 active approvals
+move from `cfcab95ecec7fcfdc42604be3c2072d3c45a6c00e18b5cced3863535dcc0da2b` to `686fe871e430f551251b46329ccf2a5c7b8d0254f7c376a7c6f4055013abc6d1` (1708 files). Reversing them reproduces the prior registry byte for byte;
+normalizing to current main’s active fingerprint also exactly reproduces its registry. Both pending
+records, the retired Attendance approval and every original reviewer/date/evidence field stay unchanged.
+Agent manifest: `738d0c0e11a75af9ea5370af9599674572f20e90d9a9ccfe25df92d7074c72f5` (496 files).
+Source binding supplies no test, installation, staging acceptance or production claim.
+
+### Approved-board final verification repair binding — 17 November 2026
+
+The owner’s current-chat authorization “Approve staging-only rebinding and verification repairs”
+covers this repaired source `72831ec6684290d7dae70cd08ece6940615e9373`, including the accepted Movement baseline, native
+SMTP group delivery, consistent live history values, compiler repairs and rendered state/mobile fixes.
+No provider purpose, outbound field or production permission is added. The same 28 active approvals
+move from `686fe871e430f551251b46329ccf2a5c7b8d0254f7c376a7c6f4055013abc6d1` to `e08bbae6177d6ff513325021214d1ab98adc7d399ecf32ef217f7572162fce4b` (1708 files). Reversing them reproduces the prior registry byte for byte;
+normalizing to current main’s active fingerprint also exactly reproduces its registry. Both pending
+records, the retired Attendance approval and every original reviewer/date/evidence field stay unchanged.
+Agent manifest: `ec83ff9c6c4b9b75e7ec787d295b38248126f7ef16688d6ec924ea1918e65fbf` (496 files).
+Source binding supplies no test, installation, staging acceptance or production claim.

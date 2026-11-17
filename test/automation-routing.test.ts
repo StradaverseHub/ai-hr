@@ -1,11 +1,10 @@
 import {describe,it,expect} from 'vitest';
-import {resolvePbp,type Config,type Facts} from '../lib/lifecycle-v9-model';
 import {resolveRoutingRow,routingFromV9BpRules,routingProblems,routingRecipients,type Routing} from '../lib/automation/routing';
 
 const u=(n:number)=>`10000000-0000-4000-8000-${String(n).padStart(12,'0')}`;
 
 describe('Shared routing rules',()=>{
- it('resolves a converted V9 PBP rule list to exactly the person V9 resolves, for every fact combination',()=>{
+ it('preserves the historical PBP conversion outcomes after lifecycle routing removal, for every fact combination',()=>{
   const bpRules=[
    {rules:{businessGroup:['CHGB']},userId:u(1)},
    {rules:{businessGroup:['CHGB'],company:['SpaceX']},userId:u(2)},
@@ -16,12 +15,15 @@ describe('Shared routing rules',()=>{
    {rules:{},userId:u(7)},
    {rules:{businessGroup:['CHGB'],department:['Finance']},userId:u(8)},
   ];
-  const config={bpRules} as unknown as Config,routing=routingFromV9BpRules(bpRules);
+  const routing=routingFromV9BpRules(bpRules);
   let checked=0;
   for(const businessGroup of['CHGB','CHBM','CHCE','FIAMMA',''])for(const company of['SpaceX','CHGB Holdings',''])for(const department of['Finance','Sales','']){
-   const facts={businessGroup,company,department} as unknown as Facts;
-   const v9=resolvePbp(config,facts),shared=resolveRoutingRow(routing,{businessGroup,company,department});
-   expect(shared?.row.assignTo).toEqual(v9?{kind:'people',userIds:[v9]}:undefined);checked++;
+   // Independently pinned historical outcomes; the retired lifecycle resolver is no longer callable.
+   const expected = businessGroup === 'CHGB' ? company === 'SpaceX' ? 2 : department === 'Finance' ? 8 : 1
+     : ['CHBM','CHCE'].includes(businessGroup) ? 5
+     : department === 'Finance' ? company === 'SpaceX' ? 4 : 3 : 7;
+   const shared=resolveRoutingRow(routing,{businessGroup,company,department});
+   expect(shared?.row.assignTo).toEqual({kind:'people',userIds:[u(expected)]});checked++;
   }
   expect(checked).toBe(45);
  });

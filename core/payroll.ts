@@ -1,3 +1,4 @@
+import { nonEpfStatutoryWage } from './statutory-wage-inclusion';
 import {movementPayrollInvalidationDeferredTx} from './workforce-payroll-invalidation';
 import {employmentPaymentMethodOnSql} from './employment-payment-method';
 import {personnelGroupingReadinessTx} from './personnel-quality';
@@ -6457,8 +6458,8 @@ async function generatePayslipsTx(tx: Tx, ctx: SessionContext, p: GeneratePaysli
         // and SOCSO on e.g. a tax-exempt long service award ticked for both);
         // the taxable remainder rides the declared stream: normal → the Y1 wage bucket, additional → the
         // Yt bonus bucket. EPF Bonus 2012 forces the bonus (additional-remuneration EPF) routing regardless
-        // of the SOCSO flag — the amount is a bonus payment for EPF purposes (and bonuses sit outside
-        // SOCSO/EIS by law). Legacy rows (both null/false) fall through to the flag inference unchanged.
+        // of the SOCSO flag. The independent SOCSO/EIS switch owns the non-EPF wage base.
+        // Legacy rows (both null/false) fall through to the flag inference unchanged.
         const stream = c.epfBonus2012 ? 'additional' : c.pcbRemunerationType;
         if (stream === 'normal' || stream === 'additional') {
           let taxable = applied;
@@ -6475,7 +6476,7 @@ async function generatePayslipsTx(tx: Tx, ctx: SessionContext, p: GeneratePaysli
               // Owner decision A — the agency legs of the exempt slice, by the item's own ticks. On an
               // additional run a RECURRING item's slice counts as the month's normal wage, re-folded exactly
               // as its taxable wage is (the regular run pays it). EPF Bonus 2012 keeps its bonus EPF stream
-              // and stays out of SOCSO/EIS (SOCSO Act 1969 s.2), exactly as its taxable remainder does below.
+              // while SOCSO/EIS/SKBBK independently follow the SOCSO/EIS switch, as for the taxable remainder.
               //
               // 2026-11-14 (statutory follow-ups, item 1) — a ONE-OFF 'additional'-stream row keyed on an
               // additional run is consumed by that run and by no other, so that run now PAYS its exempt slice
@@ -6493,7 +6494,7 @@ async function generatePayslipsTx(tx: Tx, ctx: SessionContext, p: GeneratePaysli
               if (paidOneOffHere) oneOffExemptionUsed[code] = round2((oneOffExemptionUsed[code] ?? 0) + exempt);
               if (!c.oneOff || paidOneOffHere) {
                 const epfLeg = c.epf ? exempt : 0;
-                const socsoLeg = c.socso && !c.epfBonus2012 ? exempt : 0;
+                const socsoLeg = nonEpfStatutoryWage(exempt, c.socso);
                 if (c.epfBonus2012) exemptEpfAdditional = round2(exemptEpfAdditional + epfLeg);
                 else exemptEpfWage = round2(exemptEpfWage + epfLeg);
                 exemptSocsoWage = round2(exemptSocsoWage + socsoLeg);
@@ -6536,23 +6537,9 @@ async function generatePayslipsTx(tx: Tx, ctx: SessionContext, p: GeneratePaysli
               epfWageExtra = round2(epfWageExtra + taxable);
               if (currentLine) currentLine.epfNormalStream = true;
             }
-            // The SOCSO leg is the ADDING one, and the only place r187 increases a contribution:
-            // Overtime 1.5 on this tenant is ticked "not EPF, yes SOCSO/EIS" but classified
-            // 'additional', so before r187 it was charged EPF and left OUT of SOCSO/EIS — the exact
-            // opposite of its own settings, in both directions.
-            //
-            // `epfBonus2012` IS THE EXCEPTION, and deliberately so. Every other flag on a pay item is
-            // the operator answering "is this in that agency's base"; epfBonus2012 is the operator
-            // saying "this money IS a bonus" (it forces the additional-remuneration EPF rate). SOCSO
-            // Act 1969 s.2 excludes a bonus from wages, so a declared bonus stays out of SOCSO/EIS even
-            // if its SOCSO box is ticked — honouring the tick there would compute an illegal
-            // contribution. The seeded BONUS code carries epfBonus2012 — but only since 2026-11-14 (the seed
-            // for new tenants, migration 5660 for existing seeded-shape rows); before that date it did NOT,
-            // and was routed by the legacy `epf && !socso` inference below instead. With the tick, the
-            // ordinary bonus is covered by this without anyone having to know the rule. Pinned by the golden test in
-            // test/pcb-classification.test.ts ("EPF Bonus 2012 … routes the amount down the
-            // additional-remuneration EPF path"), which asserts the RM4,000-band SOCSO share.
-            if (c.socso && !c.epfBonus2012) socsoWageExtra = round2(socsoWageExtra + taxable);
+            // Approved ffb6c2e0: EPF Bonus 2012 chooses only the EPF stream. The shared
+            // SOCSO/EIS/SKBBK wage follows its own switch, including on additional pay.
+            socsoWageExtra = round2(socsoWageExtra + nonEpfStatutoryWage(taxable, c.socso));
           }
           continue;
         }

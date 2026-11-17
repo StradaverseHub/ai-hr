@@ -31,7 +31,6 @@ export const AUTOMATION_FLOOR = {
     fieldOwners: ['employee', 'hr', 'pmLocked'],
     taskAssignees: ['group', 'manager', 'employee'],
     taskModes: ['rr', 'manual'],
-    bpRuleFields: ['businessGroup', 'company', 'department'],
     /** Email template options beside id, name, module, subject and body (v9ConfigSchema `emails`). */
     emailOptions: ['active', 'sender', 'cc', 'files', 'images', 'links', 'attachments', 'slots', 'recipientReview', 'bodyDoc'],
     /** Email merge fields: the Personnel fields (`lib/lifecycle-v9-personnel-merge-fields.ts`) and the run's own words. */

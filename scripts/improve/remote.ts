@@ -13,6 +13,7 @@ import { execFileSync } from 'node:child_process';
 import { operatorSsh } from '../operator-ssh.mjs';
 import { randomUUID } from 'node:crypto';
 import { RELEASE_STAGES, type FeedbackReleaseStage } from '../../lib/feedback-release';
+import { recipientReportRoles, v9RecipientReport } from '../../lib/lifecycle-v9-recipients';
 
 const SSH = operatorSsh();
 const TARGET = SSH.target;
@@ -112,6 +113,33 @@ function remote(cmd: string, stdin?: string): string {
     encoding: 'utf8',
     maxBuffer: 32 * 1024 * 1024,
   });
+}
+
+/** Operator-only inventory for board 4a60b3ec and the 42f2b8a9 removal precondition. The database
+ * rejects writes for this session, and no case facts, addresses or message bodies leave the server. */
+export function lifecycleRecipientReport() {
+  // Filter before crossing SSH too: literal addresses and named users/groups are outside this inventory.
+  const roles = recipientReportRoles.map(role => `'${role}'`).join(',');
+  const roleArray = (expression: string) => `(select coalesce(jsonb_agg(value order by position), '[]') from jsonb_array_elements(
+    case jsonb_typeof(${expression}) when 'array' then ${expression} when 'string' then jsonb_build_array(${expression}) else '[]'::jsonb end
+    ) with ordinality as report_role(value,position) where value #>> '{}' in (${roles}))`;
+  const query = `select coalesce(json_agg(row_to_json(r)), '[]') from (
+    select v.tenant_id as "tenantId", t.name as "tenantName", jsonb_build_object(
+      'workflows', coalesce((select jsonb_agg(jsonb_build_object(
+        'id', w->'id', 'name', w->'name', 'module', w->'module', 'status', w->'status', 'trigger', w->'trigger',
+        'steps', coalesce((select jsonb_agg(jsonb_build_object('id', s->'id', 'type', s->'type',
+          'to', ${roleArray("s->'to'")}, 'cc', ${roleArray("s->'cc'")})) from jsonb_array_elements(coalesce(w->'steps', '[]')) s
+          where s->>'type' in ('email','notify')), '[]')))
+        from jsonb_array_elements(coalesce(v.data->'workflows', '[]')) w), '[]'),
+      'emails', coalesce((select jsonb_agg(jsonb_build_object('id', e->'id', 'name', e->'name',
+        'module', e->'module', 'active', e->'active', 'cc', ${roleArray("e->'cc'")}))
+        from jsonb_array_elements(coalesce(v.data->'emails', '[]')) e), '[]')) as config
+    from lc_v9_config v join tenant t on t.id=v.tenant_id order by t.name,v.tenant_id
+  ) r`;
+  const rows = JSON.parse(remote('PGOPTIONS="-c default_transaction_read_only=on" psql "$MIGRATION_DATABASE_URL" -X -v ON_ERROR_STOP=1 -tA -f -', query)) as {
+    tenantId: string; tenantName: string; config: Parameters<typeof v9RecipientReport>[0];
+  }[];
+  return rows.map(row => ({ tenantId: row.tenantId, tenantName: row.tenantName, recipients: v9RecipientReport(row.config) }));
 }
 
 /** One time this item was parked on a question, and what was said back (migration 0323). */

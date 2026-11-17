@@ -502,7 +502,7 @@
     "rewardsApprovalsBoard": "Approvals Board",
     "rewardsRules": "Rules",
     "rewardsReviewCycles": "Review Cycles",
-    "rewardsSharedConfiguration": "Shared Rewards Configuration",
+    "rewardsSharedConfiguration": "Review Plans",
     "rewardsSalaryStructures": "Salary Structures",
     "rewardsBonusMatrices": "Bonus Matrices",
     "rewardsPatInputs": "PAT Inputs",
@@ -603,7 +603,9 @@
     "probationPostings": "Personnel postings",
     "probationAccess": "Access",
     "recruitment": "Recruitment",
-    "myReferrals": "Refer a candidate"
+    "myReferrals": "Refer a candidate",
+    "rewardsReviewPlans": "Review Plans",
+    "rewardsHistoryUpload": "Reward history upload"
   },
   "dashboard": {
     "viewAll": "View all"
@@ -23987,7 +23989,17 @@
       "view": "View"
     },
     "workflowRecipients": {
-      "setupNeeded": "Choose a To recipient for this step. The ready-made workflow leaves it for your company group to choose. Until then, this email is held whenever it runs."
+      "setupNeeded": "Choose a To recipient for this step. The ready-made workflow leaves it for your company group to choose. Until then, this email is held whenever it runs.",
+      "taUnavailable": "Selected TA is unavailable. Choose another active user.",
+      "clearTa": "Clear TA",
+      "taNotLinked": "{name} is not linked to a user. Choose the TA.",
+      "taNotSelected": "TA not selected.",
+      "searchTa": "Search for a TA",
+      "searchTaHint": "Type at least two letters of a name",
+      "searchingTa": "Searching active users…",
+      "taSearchFailed": "TA search could not load. Try typing the name again.",
+      "taNoMatches": "No active users match this name.",
+      "taMatches": "Matching active users"
     }
   },
   "clockingFile": {
@@ -24666,7 +24678,7 @@
       },
       "eligibilityTitle": "Eligibility is judged against",
       "eligibilityDates": "Joined before {joinedBefore} · Confirmed by {confirmedBy} · Salary effective date {effectiveFrom}",
-      "eligibilityShared": "The dates in the shared configuration {name}. You can review them in the review settings after creating it."
+      "eligibilityShared": "The dates in the Review Plans {name}. You can review them in the review settings after creating it."
     },
     "export": "Export visible recommendations",
     "rulePools": "Standard and JG H merit, promotion and special-adjustment pools are funded separately. No pool, plan or business unit may fund another. Nil-recommended eligible payroll remains in the pool base.",
@@ -24808,10 +24820,10 @@
     "sourceAdoption": "Imported assessment reference",
     "potential": "Potential",
     "sharedPolicy": {
-      "title": "Shared rewards configuration",
+      "title": "Review Plans",
       "description": "Maintain one versioned policy for selected company and business-unit pairs.",
-      "edit": "Edit shared configuration",
-      "create": "New shared configuration",
+      "edit": "Edit Review Plans",
+      "create": "New Review Plans",
       "futureOnly": "Saving creates a new version for future reviews. Existing employee lists, budgets, access and approvals stay with their own reviews.",
       "name": "Configuration name",
       "year": "Reward year",
@@ -24830,13 +24842,13 @@
       "preview": "Review selected group",
       "back": "Back to editing",
       "reload": "Reload configuration",
-      "saved": "Shared configuration saved.",
+      "saved": "Review Plans saved.",
       "backToReviews": "Back to Rewards Configuration",
-      "empty": "No shared configurations are available.",
+      "empty": "No Review Plans are available.",
       "policyHelp": "These policy inputs are shared for future reviews in the selected pairs. Each review keeps separate employee and salary snapshots, budgets and approvals.",
       "membershipHelp": "Senior Plan membership is selected separately within each review. This configuration shares no employee selections.",
       "individualDefaults": "Individual review defaults",
-      "reviewSnapshotHelp": "Copies this version into one company/unit review. Later changes to the shared configuration do not change that review.",
+      "reviewSnapshotHelp": "Copies this version into one company/unit review. Later changes to the Review Plans do not change that review.",
       "usage": "Where this configuration is used",
       "usageHelp": "Shows reviews within your current company access, with the version used when each was created.",
       "unused": "No accessible reviews use this configuration yet.",
@@ -24850,8 +24862,8 @@
         "overlap": "Some units are already assigned to another configuration. Remove them or reload the assignments.",
         "excluded": "A selected company is archived or excluded from this reward year. Remove it before saving."
       },
-      "ownershipHelp": "A company/unit pair uses one shared configuration per reward year.",
-      "currencyHelp": "Shared configurations use the existing MYR Reward Desk policy; other currency policies are not offered here.",
+      "ownershipHelp": "A company/unit pair uses one Review Plans per reward year.",
+      "currencyHelp": "Review Plans use the existing MYR Reward Desk policy; other currency policies are not offered here.",
       "archive": "Archive configuration",
       "archiveHelp": "Saving with no selected pairs stops this configuration for future reviews. Its saved versions and existing reviews are retained.",
       "otherCompanies": "Other companies",
@@ -25143,7 +25155,7 @@
         "previous": "Previous",
         "next": "Next",
         "position": "{index} of {total}",
-        "openRecord": "Open full record to edit",
+        "openRecord": "Open full record",
         "noFlags": "No flags for this person.",
         "notes": "Notes",
         "noNote": "No notes.",
@@ -25231,8 +25243,46 @@
           "multiplier": "Enter a multiplier such as 1.25.",
           "amount": "Enter an amount in MYR with up to two decimal places.",
           "grade": "Choose a job grade.",
-          "note": "Keep the note to 2,000 characters or fewer."
+          "note": "Keep the note to 2,000 characters or fewer.",
+          "withhold": "Enter a reason of at least 10 characters.",
+          "decision": "Choose a valid case decision."
         }
+      },
+      "panel": {
+        "suggested": "Suggested {value}",
+        "useSuggested": "Use suggested",
+        "difference": "Difference {value}",
+        "range": {
+          "below": "Below range",
+          "in": "In range",
+          "above": "Above range"
+        },
+        "withheld": "Withheld",
+        "withhold": "Withhold {award}",
+        "award": {
+          "increase": "salary increase",
+          "bonus": "bonus",
+          "lump": "lump sum"
+        },
+        "withholdReason": "Reason for withholding",
+        "withholdReasonRequired": "Enter a reason of at least 10 characters.",
+        "withheldReason": "Withheld: {reason}",
+        "viewOnly": "With {role} – view only",
+        "caseDecision": "PIP / ER decision",
+        "history": "Reward history",
+        "notFinal": "This review – not final",
+        "offcycle": "Off-cycle",
+        "notOnRecord": "Not on record",
+        "historyColumn": {
+          "year": "Year",
+          "talent": "Talent",
+          "performance": "Performance",
+          "incrementPercent": "Increase %",
+          "incrementMoney": "Increase (MYR)",
+          "bonusMoney": "Bonus (MYR)",
+          "bonusMonths": "Bonus months"
+        },
+        "auditChange": "{field}: {before} → {after}"
       }
     },
     "sharedGovernance": {
@@ -25249,8 +25299,8 @@
       "confirmExclusion": "Confirm exclusion",
       "cancel": "Cancel",
       "unknownActor": "User name unavailable",
-      "configurations": "Shared rewards configurations",
-      "newConfiguration": "New shared configuration",
+      "configurations": "Review Plans",
+      "newConfiguration": "New Review Plans",
       "name": "Name",
       "year": "Reward year",
       "version": "Version",
@@ -25260,7 +25310,7 @@
       "reviews": "Reviews using it",
       "versions": "Versions",
       "hiddenConfigurations": "{count} configurations cover companies you do not manage. Ask Group Rewards for access.",
-      "noneSaved": "No shared configurations have been saved yet.",
+      "noneSaved": "No Review Plans have been saved yet.",
       "lockedHelp": "Locked means a review using this version has moved past Draft. Changes create a new version for future reviews.",
       "active": "Active",
       "locked": "Locked",
@@ -25446,7 +25496,7 @@
     "unitInputsLink": "Open unit inputs",
     "architectureMismatch": "The employee grade differs from the approved position grade. Review the mapping or propose a dated grade movement; the recorded employee grade stays unchanged.",
     "companyPicker": {
-      "classificationTitle": "Company identity review",
+      "classificationTitle": "Companies left out",
       "reviewDesignation": "Review company designation",
       "classificationHelp": "Only explicitly reviewed designations hide companies from new shared-configuration selections. No names are matched automatically. Existing saved targets and history stay unchanged.",
       "noneDesignated": "No company designations have been recorded. Review the company identities before declaring test or duplicate entries cleaned up.",
@@ -25497,7 +25547,8 @@
         "merit": "merit",
         "promotion": "promotion",
         "special": "special adjustment"
-      }
+      },
+      "withheldAward": "Withheld: {reason}"
     },
     "limitControlsOwned": "Limit Controls own these values for this reward year. They are read-only here and the review uses the Limit Controls version.",
     "offcycle": {
@@ -34353,7 +34404,7 @@
   "rewardsAdminTabs": {
     "label": "Rewards administration",
     "configuration": "Rewards configuration",
-    "shared": "Shared rewards configuration",
+    "shared": "Review Plans",
     "access": "Rewards access",
     "salary": "Salary Structures",
     "bonus": "Bonus Matrices",
@@ -37951,7 +38002,7 @@
     "approved": "Approved",
     "locked": "Locked",
     "notUsed": "No plan uses this version.",
-    "assignmentOwner": "Company assignments are managed in the Rewards plan. This list is read only.",
+    "assignmentOwner": "Company assignments are managed in Review Plans. This list is read only.",
     "compare": "Compare",
     "compareVersion": "Compare with version",
     "choose": "Choose…",
@@ -37975,8 +38026,8 @@
     "savePending": "Save draft",
     "copyLastYear": "Copy last year’s targets",
     "saved": "Saved.",
-    "emptyPlans": "No shared rewards configurations have been created.",
-    "editShared": "Manage shared configurations",
+    "emptyPlans": "No Review Planss have been created.",
+    "editShared": "Manage Review Plans",
     "cycleName": "Review cycle name",
     "snapshotDate": "Roster snapshot date",
     "missingBusinessUnit": "No unambiguous dated Business unit assignment is available. Review the company structure before assigning libraries.",
@@ -38043,7 +38094,7 @@
     "salaryMissing": "Grade {grade}: fill in Minimum, Midpoint and Maximum.",
     "salaryOrder": "Grade {grade}: Minimum must be below Midpoint, and Midpoint below Maximum.",
     "copyPriorLibrary": "Copy last year’s library",
-    "fromShared": "Reconcile an existing shared configuration",
+    "fromShared": "Reconcile an existing Review Plans",
     "fromSharedHelp": "Review the retained values before saving a draft. Missing active grades stay blank. Existing reviews keep their recorded settings.",
     "active": "Active",
     "saveActive": "Save and make active",
@@ -38366,7 +38417,8 @@
       "BUD-01": "The bonus pool follows PAT achievement and target months. Spending over the pool stops submission; using too little of it shows a warning.",
       "BUD-03": "Bonus payouts are rounded down. An unusually high individual bonus needs a reason.",
       "BUD-05": "Lump sums share the remaining bonus balance. RM 0 means withheld; a different individual amount needs a reason."
-    }
+    },
+    "reviewPlan": "Review Plans"
   },
   "rewardAccessPolicy": {
     "scrollRoles": "Scroll sideways to see more roles.",
@@ -39102,7 +39154,7 @@
   "rewardsPreparation": {
     "sourceChanged": "Source evidence changed; preparation needs to be checked again.",
     "system": "System",
-    "sharedConfiguration": "Shared configuration",
+    "sharedConfiguration": "Review Plans",
     "salaryStructure": "Salary structure",
     "bonusMatrix": "Bonus matrix",
     "version": "Version {number}",
@@ -39161,7 +39213,7 @@
       "excluded": "Salary changes in the configured exclusion window, with export.",
       "senior": "Select members and save the Senior plan membership.",
       "budget": "PAT and target months come from PAT Inputs. Overrides and exemptions need their recorded approvals.",
-      "applied": "Confirmed shared configuration, salary structure and bonus matrix versions."
+      "applied": "Confirmed Review Plans, salary structure and bonus matrix versions."
     },
     "blockedStep": "Step {step}: {reason}",
     "reasons": {
@@ -39978,6 +40030,34 @@
           "title": "Candidate import stopped",
           "body": "The import was stopped. Rows already imported stay; open the import to see the result."
         }
+      },
+      "rewardPlanReviews": {
+        "completed": {
+          "title": "Review creation finished",
+          "body": "Open Review Plans to see the reviews created and companies skipped."
+        },
+        "failed": {
+          "title": "Review creation stopped",
+          "body": "Reviews already created are kept. Open Review Plans to check progress and the reason."
+        },
+        "cancelled": {
+          "title": "Review creation stopped",
+          "body": "Reviews already created are kept. Open Review Plans to check progress and the reason."
+        }
+      },
+      "rewardPersonHistory": {
+        "completed": {
+          "title": "Reward history saved",
+          "body": "The reward history upload finished. Open it to check row outcomes."
+        },
+        "failed": {
+          "title": "Reward history upload failed",
+          "body": "The upload could not finish. Open it to review the problem and saved rows."
+        },
+        "cancelled": {
+          "title": "Reward history upload stopped",
+          "body": "The upload stopped. Rows already saved remain available."
+        }
       }
     },
     "panel": {
@@ -40028,7 +40108,7 @@
     "cancel": "Cancel",
     "highImpact": {
       "released-pat": "PAT changes for a review that has already been released.",
-      "released-library": "Reviews already released use an earlier version. They keep it; new reviews use this one.",
+      "released-library": "A released review is affected. Check below whether it keeps its version or is recalculated.",
       "released-limit": "A budget limit changes for a review that has already been released.",
       "release-review": "Releasing sends this review to the BU CEO.",
       "remove-access": "Someone loses access to a review.",
@@ -40076,8 +40156,8 @@
       "salary": "Salary structures",
       "bonus": "Bonus matrices",
       "pat": "PAT Inputs",
-      "plan": "Shared Rewards Configuration",
-      "shared": "Shared configuration",
+      "plan": "Review Plans",
+      "shared": "Review Plans",
       "exemption": "Budget-cap exemption",
       "senior": "Senior plan",
       "upload": "Uploaded awards",
@@ -40097,7 +40177,8 @@
       "released": "Released",
       "applied": "Applied",
       "changed": "Changed",
-      "reset": "Reset to default"
+      "reset": "Reset to default",
+      "created": "Created"
     },
     "empty": "No changes match these filters.",
     "pages": "Pages",
@@ -43930,5 +44011,187 @@
       "subject": "Your agency portal sign-in code: {code}",
       "body": "Your code to sign in to the {companyName} agency portal is:\n\n{code}\n\nIt expires in 10 minutes. If you did not ask for this code, you can ignore this email.\n\n{senderName}"
     }
+  },
+  "rewardsReviewPlans": {
+    "title": "Review Plans",
+    "newYear": "New reward year",
+    "year": "Reward year",
+    "earlierPlans": "Earlier plans",
+    "openYear": "Open year",
+    "yearSettings": "Year settings",
+    "businessUnit": "Business Unit",
+    "allUnits": "All Business Units",
+    "planType": "Plan type",
+    "allTypes": "All plan types",
+    "missingSalary": "Missing salary structure",
+    "missingBonus": "Missing bonus matrix",
+    "unreviewed": "Suggestion not yet reviewed",
+    "applyFilters": "Apply filters",
+    "clearFilters": "Clear filters",
+    "salary": "Salary structure",
+    "bonus": "Bonus matrix",
+    "company": "Business Unit › Company",
+    "headcount": "Headcount",
+    "pat": "PAT inputs",
+    "status": "Status",
+    "chooseSalary": "Choose salary structure",
+    "chooseBonus": "Choose bonus matrix",
+    "applySalary": "Apply salary structure",
+    "applyBonus": "Apply bonus matrix",
+    "applyType": "Apply plan type",
+    "acceptAll": "Accept all suggestions",
+    "copyPrevious": "Copy last year's choices",
+    "accept": "Accept suggestion",
+    "selected": "{count} selected",
+    "selectAll": "Select all companies on this page",
+    "selectCompany": "Select {name}",
+    "companyField": "{company}: {field}",
+    "entered": "Entered",
+    "missing": "Missing",
+    "edited": "Changed — not saved",
+    "viewOnly": "View only",
+    "openReview": "Open review",
+    "missingUnit": "Business Unit not set",
+    "branch": "Branch factors",
+    "branchAcknowledged": "This company is set up for branch factors",
+    "exclusionReason": "Reason for no awards (at least 10 characters)",
+    "reviewChanges": "Review changes",
+    "saveChanges": "Save changes",
+    "discard": "Discard changes",
+    "pendingChanges": "{count} companies with unsaved changes",
+    "saved": "Review Plans saved.",
+    "copied": "Last year's choices are staged. Review and save to apply them.",
+    "fixInvalid": "Give every excluded company a reason and confirm any branch-factor choices.",
+    "saveFailed": "The change could not be saved. Reload and check your access before trying again.",
+    "unsaved": "Review Plans has unsaved changes. Save or discard them before leaving.",
+    "createSelected": "Create selected reviews",
+    "createReady": "Create reviews for Ready companies",
+    "saveBeforeCreate": "Save or discard your changes before creating reviews.",
+    "creationStarted": "Review creation is running in the background. You can keep working.",
+    "progress": "{done} of {total} companies processed",
+    "empty": "No companies match these filters.",
+    "previewYear": "Review new reward year",
+    "createYear": "Create reward year and draft plans",
+    "cancel": "Cancel",
+    "pagination": "Review Plans pages",
+    "previous": "Previous",
+    "next": "Next",
+    "page": "Page {page}",
+    "leftOut": "Companies left out",
+    "noneLeftOut": "No companies are left out in your scope.",
+    "noYear": "No reward year has been created for {year}.",
+    "description": "Create a reward year, then choose the salary structure, bonus matrix and plan type for each company.",
+    "yearHelp": "Dates apply to the whole reward year. Prior-year dates move forward and remain editable. Saving creates one draft plan per eligible company.",
+    "coverage": "{ready} of {total} companies ready · {missingSalary} missing salary structure · {missingBonus} missing bonus matrix · {missingPat} missing PAT",
+    "leftOutHelp": "Grouping records, archived entities, test or demo companies, aliases and companies not paid in MYR stay outside the grid. Company classification remains managed here.",
+    "types": {
+      "standard": "Standard plan",
+      "uploaded": "Uploaded awards",
+      "no_awards": "Excluded – no awards"
+    },
+    "statuses": {
+      "draft": "Draft",
+      "ready": "Ready",
+      "reviews-created": "Reviews created"
+    },
+    "sources": {
+      "previous-year": "Same as {year}",
+      "business-unit": "Matches Business Unit",
+      "group-default": "Group default",
+      "multiple-matches": "Several matches – choose",
+      "none": "No suggestion"
+    },
+    "dates": {
+      "effectiveFrom": "Salary effective date",
+      "joinedBefore": "Joined before",
+      "confirmedBy": "Confirmed by",
+      "activeAsOf": "Active as of",
+      "blockedFrom": "Increase exclusion from",
+      "blockedTo": "Increase exclusion to",
+      "snapshotDate": "Snapshot date"
+    },
+    "jobStates": {
+      "queued": "Queued",
+      "preparing": "Preparing",
+      "running": "Running",
+      "finalizing": "Finishing",
+      "discarding": "Cancelling",
+      "completed": "Completed",
+      "failed": "Needs attention",
+      "cancelled": "Cancelled"
+    },
+    "pollRetry": "Progress could not be read. Retrying the status check; review creation continues in the background.",
+    "newCompanyTitle": "New company added to Review Plans",
+    "newCompanyBody": "Choose a salary structure and bonus matrix for the new company.",
+    "leftOutReasons": {
+      "archived": "Archived company",
+      "currency": "Not paid in MYR",
+      "grouping": "Grouping record",
+      "test": "Test or demo company",
+      "test_demo": "Test or demo company",
+      "alias": "Alias of another company",
+      "structure": "Business Unit not confirmed"
+    },
+    "rebindNotificationTitle": "Rewards review updated",
+    "rebindNotificationBody": "The company salary structure or bonus matrix changed. As the current approver, review the recalculated recommendations before approving.",
+    "viewOnlyHelp": "View only. You can inspect these plans, but your current access does not allow changes.",
+    "mixedViewOnly": "Some companies are view only. Their names are marked in the grid.",
+    "exclusionTooShort": "Enter at least 10 characters to explain why this company has no awards.",
+    "refreshComparison": "Refresh comparison",
+    "comparisonRefreshed": "Comparison refreshed from the current records. Your staged choices and reason are kept; check the new comparison before saving."
+  },
+  "rewardsPersonHistoryUpload": {
+    "title": "Reward history upload",
+    "description": "Add ratings and awards from years before AI-HR Rewards.",
+    "back": "Back to Rewards",
+    "help": "Choose a company, download the template and review every row before saving. Use Employee ID from that company. Upload only years before its first posted AI-HR Rewards review.",
+    "company": "Company",
+    "file": "History file",
+    "template": "Download template",
+    "fileError": "Choose a CSV or Excel file up to 5 MB.",
+    "literalCells": "Use values only; formulas are not accepted.",
+    "working": "Checking the file…",
+    "previewTitle": "Review history rows",
+    "summary": "{accepted} valid rows · {problems} rows to fix",
+    "cutoff": "Upload years earlier than {year}.",
+    "problem": "Row {line}: {reason}",
+    "employee": "Employee ID",
+    "year": "Year",
+    "talent": "Talent rating",
+    "performance": "Performance rating",
+    "incrementPercent": "Increment %",
+    "incrementMoney": "Increment (MYR)",
+    "bonusMoney": "Bonus (MYR)",
+    "bonusMonths": "Bonus months",
+    "type": "Type",
+    "annual": "Annual",
+    "offcycle": "Off-cycle",
+    "replaceHelp": "Saving another record for the same employee, year and type replaces the displayed upload. The previous record stays in the audit history.",
+    "confirm": "Save history",
+    "progressTitle": "History upload progress",
+    "progress": "{done} of {total} rows processed",
+    "stop": "Stop upload",
+    "stopping": "Stopping…",
+    "checkpointHelp": "The upload saves a checkpoint after each row. Stopping keeps rows already saved.",
+    "states": {
+      "queued": "Queued",
+      "preparing": "Checking",
+      "running": "Saving history",
+      "finalizing": "Finishing",
+      "discarding": "Stopping",
+      "completed": "Completed",
+      "failed": "Failed",
+      "cancelled": "Stopped"
+    },
+    "problems": {
+      "columns": "Too many columns.",
+      "duplicate": "Duplicate employee, year and type.",
+      "invalid": "Enter a valid employee, year, rating and nonnegative amount.",
+      "number": "Use a nonnegative number with up to two decimals.",
+      "employee": "Employee ID is unavailable or ambiguous in this company.",
+      "year": "Upload completed historical years only.",
+      "postedYear": "Upload only years before the company’s first posted AI-HR Rewards review."
+    },
+    "error": "The request could not finish. Try again."
   }
 }

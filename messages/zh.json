@@ -502,7 +502,7 @@
     "rewardsApprovalsBoard": "审批看板",
     "rewardsRules": "规则",
     "rewardsReviewCycles": "审核周期",
-    "rewardsSharedConfiguration": "共享奖励配置",
+    "rewardsSharedConfiguration": "评审计划",
     "rewardsSalaryStructures": "薪资结构",
     "rewardsBonusMatrices": "奖金矩阵",
     "rewardsPatInputs": "PAT 输入",
@@ -603,7 +603,9 @@
     "probationPostings": "Personnel postings",
     "probationAccess": "Access",
     "recruitment": "招聘",
-    "myReferrals": "推荐候选人"
+    "myReferrals": "推荐候选人",
+    "rewardsReviewPlans": "评审计划",
+    "rewardsHistoryUpload": "上传薪酬历史"
   },
   "dashboard": {
     "viewAll": "查看全部"
@@ -23987,7 +23989,17 @@
       "view": "查看"
     },
     "workflowRecipients": {
-      "setupNeeded": "请为此步骤选择收件人。预设工作流程将其留给您的公司集团自行选择。在此之前，此邮件每次运行时都会被暂停。"
+      "setupNeeded": "请为此步骤选择收件人。预设工作流程将其留给您的公司集团自行选择。在此之前，此邮件每次运行时都会被暂停。",
+      "taUnavailable": "所选 TA 不可用。请选择其他活跃用户。",
+      "clearTa": "清除 TA",
+      "taNotLinked": "{name} 尚未关联用户。请选择 TA。",
+      "taNotSelected": "尚未选择 TA。",
+      "searchTa": "搜索 TA",
+      "searchTaHint": "请输入姓名的至少两个字符",
+      "searchingTa": "正在搜索活跃用户…",
+      "taSearchFailed": "无法加载 TA 搜索结果。请重新输入姓名。",
+      "taNoMatches": "没有匹配此姓名的活跃用户。",
+      "taMatches": "匹配的活跃用户"
     }
   },
   "clockingFile": {
@@ -24666,7 +24678,7 @@
       },
       "eligibilityTitle": "资格评定依据",
       "eligibilityDates": "入职早于 {joinedBefore} · 于 {confirmedBy} 前转正 · 薪资生效日期 {effectiveFrom}",
-      "eligibilityShared": "采用共享配置 {name} 中的日期。创建后可在评审设置中查看。"
+      "eligibilityShared": "采用评审计划 {name} 中的日期。创建后可在评审设置中查看。"
     },
     "export": "Export visible recommendations",
     "rulePools": "Standard and JG H merit, promotion and special-adjustment pools are funded separately. No pool, plan or business unit may fund another. Nil-recommended eligible payroll remains in the pool base.",
@@ -24808,10 +24820,10 @@
     "sourceAdoption": "Imported assessment reference",
     "potential": "Potential",
     "sharedPolicy": {
-      "title": "共享奖励配置",
+      "title": "评审计划",
       "description": "为选定的公司与业务单位组合维护同一份版本化政策。",
-      "edit": "编辑共享配置",
-      "create": "新建共享配置",
+      "edit": "编辑评审计划",
+      "create": "新建评审计划",
       "futureOnly": "保存将创建供未来评审使用的新版本。现有员工名单、预算、访问权限与审批仍归各自评审所有。",
       "name": "配置名称",
       "year": "奖励年度",
@@ -24830,13 +24842,13 @@
       "preview": "检查所选分组",
       "back": "返回编辑",
       "reload": "重新加载配置",
-      "saved": "共享配置已保存。",
+      "saved": "评审计划已保存。",
       "backToReviews": "返回奖励配置",
-      "empty": "没有可用的共享配置。",
+      "empty": "没有可用的评审计划。",
       "policyHelp": "这些政策输入供所选组合的未来评审共享使用。每项评审保留独立的员工与薪资快照、预算及审批。",
       "membershipHelp": "高级计划成员在各项评审中单独选择。此配置不会共享员工选择。",
       "individualDefaults": "单项评审默认值",
-      "reviewSnapshotHelp": "将此版本复制到一项公司／业务单位评审。之后更改共享配置不会改变该评审。",
+      "reviewSnapshotHelp": "将此版本复制到一项公司／业务单位评审。之后更改评审计划不会改变该评审。",
       "usage": "配置使用情况",
       "usageHelp": "仅显示您当前可访问公司中的评审及其创建时使用的版本。",
       "unused": "目前没有可访问的评审使用此配置。",
@@ -24850,8 +24862,8 @@
         "overlap": "部分单位已分配给其他配置。请移除这些单位或重新加载分配。",
         "excluded": "所选公司已归档或被排除于此奖励年度之外。请先移除再保存。"
       },
-      "ownershipHelp": "每个公司／业务单位组合在同一奖励年度使用一份共享配置。",
-      "currencyHelp": "共享配置使用现有的 MYR 奖励政策；此处不提供其他币种政策。",
+      "ownershipHelp": "每个公司／业务单位组合在同一奖励年度使用一份评审计划。",
+      "currencyHelp": "评审计划使用现有的 MYR 奖励政策；此处不提供其他币种政策。",
       "archive": "归档配置",
       "archiveHelp": "不选择任何组合保存后，此配置将不再用于未来评审。已保存版本与现有评审均予保留。",
       "otherCompanies": "其他公司",
@@ -25143,7 +25155,7 @@
         "previous": "上一位",
         "next": "下一位",
         "position": "第 {index} / {total} 位",
-        "openRecord": "打开完整记录进行编辑",
+        "openRecord": "打开完整记录",
         "noFlags": "此人没有待查事项。",
         "notes": "备注",
         "noNote": "暂无备注。",
@@ -25231,8 +25243,46 @@
           "multiplier": "请输入乘数，例如 1.25。",
           "amount": "请输入最多两位小数的 MYR 金额。",
           "grade": "请选择职级。",
-          "note": "备注请保持在 2,000 个字符以内。"
+          "note": "备注请保持在 2,000 个字符以内。",
+          "withhold": "请输入至少10个字符的原因。",
+          "decision": "请选择有效的个案决定。"
         }
+      },
+      "panel": {
+        "suggested": "建议 {value}",
+        "useSuggested": "使用建议值",
+        "difference": "差额 {value}",
+        "range": {
+          "below": "低于区间",
+          "in": "在区间内",
+          "above": "高于区间"
+        },
+        "withheld": "暂不发放",
+        "withhold": "暂不发放{award}",
+        "award": {
+          "increase": "加薪",
+          "bonus": "奖金",
+          "lump": "一次性奖励"
+        },
+        "withholdReason": "暂不发放原因",
+        "withholdReasonRequired": "请输入至少10个字符的原因。",
+        "withheldReason": "暂不发放：{reason}",
+        "viewOnly": "由{role}处理 – 仅供查看",
+        "caseDecision": "PIP / ER 决定",
+        "history": "奖励历史",
+        "notFinal": "本次评审 – 尚未最终确定",
+        "offcycle": "非年度调整",
+        "notOnRecord": "暂无记录",
+        "historyColumn": {
+          "year": "年份",
+          "talent": "人才评级",
+          "performance": "绩效",
+          "incrementPercent": "加薪 %",
+          "incrementMoney": "加薪（MYR）",
+          "bonusMoney": "奖金（MYR）",
+          "bonusMonths": "奖金月数"
+        },
+        "auditChange": "{field}：{before} → {after}"
       }
     },
     "sharedGovernance": {
@@ -25249,8 +25299,8 @@
       "confirmExclusion": "确认排除",
       "cancel": "取消",
       "unknownActor": "用户名不可用",
-      "configurations": "共享奖励配置",
-      "newConfiguration": "新建共享配置",
+      "configurations": "评审计划",
+      "newConfiguration": "新建评审计划",
       "name": "名称",
       "year": "奖励年度",
       "version": "版本",
@@ -25260,7 +25310,7 @@
       "reviews": "使用此配置的审核",
       "versions": "版本历史",
       "hiddenConfigurations": "有 {count} 个配置涉及您未管理的公司。请向集团奖励团队申请权限。",
-      "noneSaved": "尚未保存共享配置。",
+      "noneSaved": "尚未保存评审计划。",
       "lockedHelp": "已锁定表示使用此版本的审核已超过草稿阶段。更改会创建新版本，仅用于今后的审核。",
       "active": "有效",
       "locked": "已锁定",
@@ -25446,9 +25496,9 @@
     "unitInputsLink": "打开单位输入",
     "architectureMismatch": "员工职级与已批准的岗位职级不同。请审查映射或提出有生效日期的职级变动；已记录的员工职级保持不变。",
     "companyPicker": {
-      "classificationTitle": "公司身份审核",
+      "classificationTitle": "未纳入的公司",
       "reviewDesignation": "审核公司标记",
-      "classificationHelp": "仅明确审核的标记会从新共享配置选项中隐藏公司。系统不会自动匹配名称。现有已保存目标及历史保持不变。",
+      "classificationHelp": "仅明确审核的标记会从新评审计划选项中隐藏公司。系统不会自动匹配名称。现有已保存目标及历史保持不变。",
       "noneDesignated": "尚未记录公司标记。请先核实公司身份，再确认测试或重复记录已清理。",
       "company": "公司",
       "designation": "标记",
@@ -25497,7 +25547,8 @@
         "merit": "绩效加薪",
         "promotion": "晋升加薪",
         "special": "特别调整"
-      }
+      },
+      "withheldAward": "暂不发放：{reason}"
     },
     "limitControlsOwned": "本奖励年度的这些数值由限额控制管理。此处为只读，评审使用限额控制版本。",
     "offcycle": {
@@ -34353,7 +34404,7 @@
   "rewardsAdminTabs": {
     "label": "奖励管理",
     "configuration": "奖励配置",
-    "shared": "共享奖励配置",
+    "shared": "评审计划",
     "access": "奖励访问权限",
     "salary": "薪资结构",
     "bonus": "奖金矩阵",
@@ -37951,7 +38002,7 @@
     "approved": "已批准",
     "locked": "已锁定",
     "notUsed": "暂无计划使用此版本。",
-    "assignmentOwner": "公司分配由奖励计划管理。此列表仅供查看。",
+    "assignmentOwner": "公司分配在评审计划中管理。此列表仅供查看。",
     "compare": "比较",
     "compareVersion": "选择比较版本",
     "choose": "请选择…",
@@ -37975,8 +38026,8 @@
     "savePending": "保存草稿",
     "copyLastYear": "复制去年的目标",
     "saved": "已保存。",
-    "emptyPlans": "尚未创建共享奖励配置。",
-    "editShared": "管理共享配置",
+    "emptyPlans": "尚未创建评审计划。",
+    "editShared": "管理评审计划",
     "cycleName": "审核周期名称",
     "snapshotDate": "人员快照日期",
     "missingBusinessUnit": "暂无明确且生效的业务单位分配。分配资料库前，请先检查公司架构。",
@@ -38043,7 +38094,7 @@
     "salaryMissing": "职级 {grade}：请填写最低值、中位值和最高值。",
     "salaryOrder": "职级 {grade}：最低值必须低于中位值，中位值必须低于最高值。",
     "copyPriorLibrary": "复制去年的资料库",
-    "fromShared": "核对现有共享配置",
+    "fromShared": "核对现有评审计划",
     "fromSharedHelp": "保存草稿前请检查保留的数值。缺失的有效职级保持空白。现有审核仍使用已记录的设置。",
     "active": "生效",
     "saveActive": "保存并设为生效",
@@ -38366,7 +38417,8 @@
       "BUD-01": "奖金池按 PAT 达成率和目标月数计算。超出奖金池会阻止提交；使用过少会显示警告。",
       "BUD-03": "奖金发放向下取整。个人奖金异常偏高时需要说明理由。",
       "BUD-05": "一次性奖金分配剩余奖金余额。RM 0 表示暂不发放；个人金额不同需要说明理由。"
-    }
+    },
+    "reviewPlan": "评审计划"
   },
   "rewardAccessPolicy": {
     "scrollRoles": "横向滚动以查看更多角色。",
@@ -39102,7 +39154,7 @@
   "rewardsPreparation": {
     "sourceChanged": "源数据已更改，须重新核查准备工作。",
     "system": "系统",
-    "sharedConfiguration": "共享配置",
+    "sharedConfiguration": "评审计划",
     "salaryStructure": "薪资结构",
     "bonusMatrix": "奖金矩阵",
     "version": "版本{number}",
@@ -39161,7 +39213,7 @@
       "excluded": "已配置排除期间内的薪资变动，支持导出。",
       "senior": "选择成员并保存高级计划成员名单。",
       "budget": "PAT及目标月数来自PAT输入。覆盖值及豁免须有已记录的审批。",
-      "applied": "已确认的共享配置、薪资结构及奖金矩阵版本。"
+      "applied": "已确认的评审计划、薪资结构及奖金矩阵版本。"
     },
     "blockedStep": "第 {step} 步：{reason}",
     "reasons": {
@@ -39978,6 +40030,34 @@
           "title": "候选人导入已停止",
           "body": "导入已被停止。已导入的行会保留；打开导入查看结果。"
         }
+      },
+      "rewardPlanReviews": {
+        "completed": {
+          "title": "评审创建已完成",
+          "body": "打开评审计划查看已创建的评审及跳过的公司。"
+        },
+        "failed": {
+          "title": "评审创建已停止",
+          "body": "已创建的评审会保留。打开评审计划查看进度及原因。"
+        },
+        "cancelled": {
+          "title": "评审创建已停止",
+          "body": "已创建的评审会保留。打开评审计划查看进度及原因。"
+        }
+      },
+      "rewardPersonHistory": {
+        "completed": {
+          "title": "奖励历史已保存",
+          "body": "奖励历史上传已完成。请打开查看每行结果。"
+        },
+        "failed": {
+          "title": "奖励历史上传失败",
+          "body": "上传未能完成。请打开查看问题与已保存的行。"
+        },
+        "cancelled": {
+          "title": "奖励历史上传已停止",
+          "body": "上传已停止，已保存的行仍可使用。"
+        }
       }
     },
     "panel": {
@@ -40028,7 +40108,7 @@
     "cancel": "取消",
     "highImpact": {
       "released-pat": "已发布的评审的 PAT 发生变化。",
-      "released-library": "已发布的评审使用较早的版本，并将继续沿用；新评审将使用此版本。",
+      "released-library": "已发布的评审受到影响。请在下方确认其保留原版本还是重新计算。",
       "released-limit": "已发布的评审的预算上限发生变化。",
       "release-review": "发布后此评审将发送给业务单元 CEO。",
       "remove-access": "有人将失去对某个评审的访问权限。",
@@ -40076,8 +40156,8 @@
       "salary": "薪资结构",
       "bonus": "奖金矩阵",
       "pat": "PAT 输入",
-      "plan": "共享薪酬配置",
-      "shared": "共享配置",
+      "plan": "评审计划",
+      "shared": "评审计划",
       "exemption": "预算上限豁免",
       "senior": "高级计划",
       "upload": "上传的奖励",
@@ -40097,7 +40177,8 @@
       "released": "已发布",
       "applied": "已应用",
       "changed": "已更改",
-      "reset": "已重置为默认"
+      "reset": "已重置为默认",
+      "created": "已创建"
     },
     "empty": "没有符合这些筛选条件的变更。",
     "pages": "页面",
@@ -43930,5 +44011,187 @@
       "subject": "您的机构门户登录验证码：{code}",
       "body": "您登录 {companyName} 机构门户的验证码是：\n\n{code}\n\n验证码 10 分钟后失效。如果您没有请求此验证码，请忽略这封邮件。\n\n{senderName}"
     }
+  },
+  "rewardsReviewPlans": {
+    "title": "评审计划",
+    "newYear": "新建薪酬年度",
+    "year": "薪酬年度",
+    "earlierPlans": "以往计划",
+    "openYear": "打开年度",
+    "yearSettings": "年度设置",
+    "businessUnit": "业务单元",
+    "allUnits": "全部业务单元",
+    "planType": "计划类型",
+    "allTypes": "全部计划类型",
+    "missingSalary": "缺少薪资结构",
+    "missingBonus": "缺少奖金矩阵",
+    "unreviewed": "建议尚未审核",
+    "applyFilters": "应用筛选",
+    "clearFilters": "清除筛选",
+    "salary": "薪资结构",
+    "bonus": "奖金矩阵",
+    "company": "业务单元 › 公司",
+    "headcount": "人数",
+    "pat": "PAT 数据",
+    "status": "状态",
+    "chooseSalary": "选择薪资结构",
+    "chooseBonus": "选择奖金矩阵",
+    "applySalary": "应用薪资结构",
+    "applyBonus": "应用奖金矩阵",
+    "applyType": "应用计划类型",
+    "acceptAll": "接受全部建议",
+    "copyPrevious": "复制上年度选择",
+    "accept": "接受建议",
+    "selected": "已选 {count} 家",
+    "selectAll": "选择本页全部公司",
+    "selectCompany": "选择 {name}",
+    "companyField": "{company}：{field}",
+    "entered": "已录入",
+    "missing": "缺少",
+    "edited": "已修改，尚未保存",
+    "viewOnly": "仅查看",
+    "openReview": "打开评审",
+    "missingUnit": "尚未设置业务单元",
+    "branch": "分支系数",
+    "branchAcknowledged": "此公司已配置分支系数",
+    "exclusionReason": "无奖励原因（至少 10 个字符）",
+    "reviewChanges": "审核更改",
+    "saveChanges": "保存更改",
+    "discard": "放弃更改",
+    "pendingChanges": "{count} 家公司有未保存更改",
+    "saved": "评审计划已保存。",
+    "copied": "已暂存上年度选择。审核并保存以应用。",
+    "fixInvalid": "请为每家排除的公司填写原因，并确认分支系数选择。",
+    "saveFailed": "无法保存更改。请重新加载并检查权限后重试。",
+    "unsaved": "评审计划有未保存的更改。离开前请保存或放弃。",
+    "createSelected": "创建所选评审",
+    "createReady": "为就绪公司创建评审",
+    "saveBeforeCreate": "创建评审前请保存或放弃更改。",
+    "creationStarted": "正在后台创建评审。您可以继续工作。",
+    "progress": "已处理 {done}/{total} 家公司",
+    "empty": "没有符合筛选条件的公司。",
+    "previewYear": "审核新薪酬年度",
+    "createYear": "创建薪酬年度及草稿计划",
+    "cancel": "取消",
+    "pagination": "评审计划分页",
+    "previous": "上一页",
+    "next": "下一页",
+    "page": "第 {page} 页",
+    "leftOut": "未纳入的公司",
+    "noneLeftOut": "您权限范围内没有未纳入的公司。",
+    "noYear": "尚未创建 {year} 薪酬年度。",
+    "description": "创建薪酬年度，然后为每家公司选择薪资结构、奖金矩阵和计划类型。",
+    "yearHelp": "日期适用于整个薪酬年度。上年度日期将顺延且可编辑。保存后为每家符合条件的公司创建一个草稿计划。",
+    "coverage": "{total} 家公司中 {ready} 家就绪 · {missingSalary} 家缺少薪资结构 · {missingBonus} 家缺少奖金矩阵 · {missingPat} 家缺少 PAT",
+    "leftOutHelp": "分组记录、已归档实体、测试或演示公司、别名及不以 MYR 支付的公司不会列入表格。公司分类在此管理。",
+    "types": {
+      "standard": "标准计划",
+      "uploaded": "已上传奖励",
+      "no_awards": "排除 — 无奖励"
+    },
+    "statuses": {
+      "draft": "草稿",
+      "ready": "就绪",
+      "reviews-created": "评审已创建"
+    },
+    "sources": {
+      "previous-year": "与 {year} 年相同",
+      "business-unit": "匹配业务单元",
+      "group-default": "集团默认",
+      "multiple-matches": "多个匹配项 — 请选择",
+      "none": "无建议"
+    },
+    "dates": {
+      "effectiveFrom": "薪资生效日期",
+      "joinedBefore": "入职早于",
+      "confirmedBy": "转正不晚于",
+      "activeAsOf": "在职截至",
+      "blockedFrom": "加薪排除起始日期",
+      "blockedTo": "加薪排除结束日期",
+      "snapshotDate": "快照日期"
+    },
+    "jobStates": {
+      "queued": "排队中",
+      "preparing": "准备中",
+      "running": "处理中",
+      "finalizing": "正在完成",
+      "discarding": "正在取消",
+      "completed": "已完成",
+      "failed": "需要处理",
+      "cancelled": "已取消"
+    },
+    "pollRetry": "无法读取进度。正在重试状态查询；后台评审创建仍在继续。",
+    "newCompanyTitle": "新公司已加入评审计划",
+    "newCompanyBody": "请为新公司选择薪资结构和奖金矩阵。",
+    "leftOutReasons": {
+      "archived": "公司已归档",
+      "currency": "不以 MYR 支付",
+      "grouping": "分组记录",
+      "test": "测试或演示公司",
+      "test_demo": "测试或演示公司",
+      "alias": "其他公司的别名",
+      "structure": "业务单元尚未确认"
+    },
+    "rebindNotificationTitle": "薪酬评审已更新",
+    "rebindNotificationBody": "公司薪资结构或奖金矩阵已更改。作为当前审批人，请在批准前查看重新计算的建议。",
+    "viewOnlyHelp": "仅供查看。您可以查看这些计划，但当前权限不允许修改。",
+    "mixedViewOnly": "部分公司仅供查看，其名称已在表格中标注。",
+    "exclusionTooShort": "请至少输入 10 个字符，说明此公司没有奖励的原因。",
+    "refreshComparison": "刷新比较",
+    "comparisonRefreshed": "已根据当前记录刷新比较。您暂存的选择和原因已保留；保存前请检查新比较。"
+  },
+  "rewardsPersonHistoryUpload": {
+    "title": "上传奖励历史",
+    "description": "添加使用 AI-HR 奖励模块之前年度的评级与奖励。",
+    "back": "返回奖励",
+    "help": "选择公司，下载模板，并在保存前检查每一行。使用该公司的员工编号。仅可上传早于该公司首次已提交薪资的 AI-HR 奖励评审年度的数据。",
+    "company": "公司",
+    "file": "历史文件",
+    "template": "下载模板",
+    "fileError": "请选择不超过 5 MB 的 CSV 或 Excel 文件。",
+    "literalCells": "仅接受数值，不接受公式。",
+    "working": "正在检查文件…",
+    "previewTitle": "检查历史记录",
+    "summary": "{accepted} 行有效 · {problems} 行需修改",
+    "cutoff": "请上传早于 {year} 年的数据。",
+    "problem": "第 {line} 行：{reason}",
+    "employee": "员工编号",
+    "year": "年度",
+    "talent": "人才评级",
+    "performance": "绩效评级",
+    "incrementPercent": "加薪 %",
+    "incrementMoney": "加薪（MYR）",
+    "bonusMoney": "奖金（MYR）",
+    "bonusMonths": "奖金月数",
+    "type": "类型",
+    "annual": "年度",
+    "offcycle": "周期外",
+    "replaceHelp": "同一员工、年度和类型的新记录将替换当前显示的上传记录。原记录仍保留在审计历史中。",
+    "confirm": "保存历史",
+    "progressTitle": "历史上传进度",
+    "progress": "已处理 {done} / {total} 行",
+    "stop": "停止上传",
+    "stopping": "正在停止…",
+    "checkpointHelp": "每处理一行都会保存进度。停止后，已保存的行会保留。",
+    "states": {
+      "queued": "排队中",
+      "preparing": "检查中",
+      "running": "正在保存历史",
+      "finalizing": "正在完成",
+      "discarding": "正在停止",
+      "completed": "已完成",
+      "failed": "失败",
+      "cancelled": "已停止"
+    },
+    "problems": {
+      "columns": "列数过多。",
+      "duplicate": "员工、年度与类型重复。",
+      "invalid": "请输入有效的员工、年度、评级和非负金额。",
+      "number": "请输入最多两位小数的非负数。",
+      "employee": "该员工编号在此公司不可用或不唯一。",
+      "year": "仅可上传已结束年度的历史数据。",
+      "postedYear": "仅可上传早于该公司首次已提交薪资的 AI-HR 奖励评审年度的数据。"
+    },
+    "error": "请求未能完成，请重试。"
   }
 }

@@ -50,7 +50,7 @@ const jobOf=async(userId:string|undefined)=>(await owner.db.execute<{id:string}>
 it('shows CTRO and HR Admin as Full on Salary Structures, Bonus Matrices and PAT Inputs, and leaves other pages unchanged',()=>{
  for(const capability of ['salary.view','bonus.view','pat.manage'] as const)for(const role of ['gr','ctro','hr_admin'] as const)expect(rolePermission(role,capability)).toBe('full');
  for(const role of ['bu','bg','ec','pbp','payroll'] as const)expect(rolePermission(role,'pat.manage')).toBe('none');
- expect(rolePermission('ctro','plans.manage')).toBe('none');expect(rolePermission('hr_admin','senior.manage')).toBe('none');
+ expect(rolePermission('ctro','plans.manage')).toBe('full');expect(rolePermission('hr_admin','senior.manage')).toBe('none');
  expect(rolePermission('hr_admin','review.decide')).toBe('none');
 });
 

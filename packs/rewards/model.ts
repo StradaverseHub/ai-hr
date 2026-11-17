@@ -44,6 +44,8 @@ export type Recommendation = {
   currentRoleSummary: string; proposedRoleSummary: string;
   /** 37f82412 — a short reviewer note shown in the person panel beside the business case. Absent on older entries. */
   note?: string;
+  /** Explicit award withholding; reasons remain in the submitted digest and audit. */
+  withhold?: { increase?: string; bonus?: string; lump?: string };
 };
 export const policySchema: z.ZodType<RewardPolicy> = z.object({
   year: z.number().int().min(2000).max(2200),
@@ -95,6 +97,7 @@ export const recommendationSchema: z.ZodType<Recommendation> = z.object({
   reason: z.string().trim().max(4000),
   currentRoleSummary: z.string().trim().max(8000).default(''), proposedRoleSummary: z.string().trim().max(8000).default(''),
   note: z.string().trim().max(REWARD_NOTE_MAX).optional(),
+  withhold: z.object({ increase: z.string().trim().min(10).max(1000).optional(), bonus: z.string().trim().min(10).max(1000).optional(), lump: z.string().trim().min(10).max(1000).optional() }).strict().optional(),
 }).strict();
 /** 328ebe84 — a negative increase or award is a salary reduction attempt, not a technical range error. */
 const reductionFields = ['meritBp', 'promotionBp', 'specialBp', 'bonusCents', 'lumpCents'];
