@@ -42,6 +42,15 @@ class FencesTests(unittest.TestCase):
         self.assertEqual(row['metadata'],expected);self.assertEqual(result['root']['inode'],str(self.tree.stat().st_ino))
         encoded=json.dumps(result['entries'],sort_keys=True,separators=(',',':'),ensure_ascii=True).encode('ascii')
         self.assertEqual(result['metadataSha256'],hashlib.sha256(encoded).hexdigest())
+    def test_raw_tuple_comparison_preserves_full_original_result_entries_and_digest(self):
+        (self.tree/'empty').mkdir();(self.tree/'internal').write_bytes(b'inside')
+        (self.tree/'inside-alias').symlink_to('internal');(self.targets/'second').symlink_to('target')
+        (self.tree/'external-alias').symlink_to('../dependencies/second')
+        with patch.object(fences,'same',side_effect=lambda a,b:fences.metadata(a)==fences.metadata(b)):
+            original=self.capture()
+        optimized=self.capture()
+        self.assertEqual(optimized,original)
+        self.assertEqual(optimized['entries'],original['entries']);self.assertEqual(optimized['metadataSha256'],original['metadataSha256'])
     def test_link_literal_and_real_resolved_target_metadata_without_implicit_traversal(self):
         (self.tree/'alias').symlink_to(self.targets/'target');r=self.capture()
         self.assertEqual(r['nodes'],3);self.assertEqual(r['links'],1)

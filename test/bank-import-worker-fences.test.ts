@@ -4,7 +4,7 @@ import {expect,it} from 'vitest';
 it('refuses real filesystem races and observes complete stable bounded metadata with actual descriptors',()=>{
  const result=spawnSync('python3',['-I','-B','test/fixtures/bank-import-worker-fences-tests.py'],{encoding:'utf8',maxBuffer:1024**2,timeout:90000});
  expect(result.status,result.stdout+'\n'+result.stderr).toBe(0);
- expect(result.stderr).toContain('Ran 22 tests');
+ expect(result.stderr).toContain('Ran 23 tests');
 },100000);
 it('refuses actual UID drift between complete enumerations using only owned hosted tempfiles',()=>{
  if(process.getuid===undefined)throw Error('Standard Linux hosted runner UID required');

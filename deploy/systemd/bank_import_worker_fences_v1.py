@@ -36,7 +36,8 @@ def metadata(info):
 
 
 def same(left,right):
-    return metadata(left)==metadata(right)
+    # Compare exact native integers; decimal serialization belongs only to emitted rows.
+    return (left.st_dev,left.st_ino,left.st_mode,left.st_uid,left.st_gid,left.st_nlink,left.st_size,left.st_mtime_ns,left.st_ctime_ns)==(right.st_dev,right.st_ino,right.st_mode,right.st_uid,right.st_gid,right.st_nlink,right.st_size,right.st_mtime_ns,right.st_ctime_ns)
 
 
 def canonical_directory(value,deadline):
