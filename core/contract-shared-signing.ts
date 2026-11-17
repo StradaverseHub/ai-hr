@@ -104,24 +104,33 @@ export async function editContractSharedLetter(ctx:SessionContext,raw:{id:string
  });}catch(error){return signingFailure(error);}
 }
 
-export async function activateContractSharedLetter(tx:SqlExecutor,ctx:SessionContext,input:{view:{id:string;companyId:string;employmentId:string;flow:ContractFlow|null};context:ContractAutomationContext;step:AutomationStepContext;templates:{template:AutomationDocumentTemplate;version:number}[];lastAssigned:Record<string,string|null>;today:string;chooser?:ReturnType<typeof contractRoutingChooser>}){
+async function prepareContractSharedLetter(tx:SqlExecutor,ctx:SessionContext,input:{view:{id:string;companyId:string;employmentId:string;flow:ContractFlow|null};context:ContractAutomationContext;step:AutomationStepContext;templates:{template:AutomationDocumentTemplate;version:number}[];lastAssigned:Record<string,string|null>;today:string;chooser?:ReturnType<typeof contractRoutingChooser>;email?:{templateId:string;reference:{id:string;revision:number}}}){
  if(ctx.userId)throw new ContractManagementError('forbidden','A protected Contract event worker is required.');
- const chosen=input.templates.find(item=>item.template.id===input.step.step.params.letterTemplateId),decision=input.view.flow?.decision;
- if(!chosen||!decision)throw new ContractManagementError('conflict','A published outcome template and accepted decision are required.');
+ const chosen=input.templates.find(item=>item.template.id===(input.email?.templateId??input.step.step.params.letterTemplateId)),decision=input.view.flow?.decision;
+ if(!chosen||!decision&&!input.email)throw new ContractManagementError('conflict','A published outcome template and accepted decision are required.');
  const names={renew:'Renew',convert:'Convert to permanent',end:'End'};
- const facts={businessGroup:input.context.businessGroupId,company:input.view.companyId,department:input.context.departmentId,jobTitle:input.context.jobTitle,decision:names[decision.kind]};
+ const facts={businessGroup:input.context.businessGroupId,company:input.view.companyId,department:input.context.departmentId,jobTitle:input.context.jobTitle,decision:decision?names[decision.kind]:null};
  if(!automationDocumentMatches(chosen.template,field=>facts[field as keyof typeof facts]??null))throw new ContractManagementError('conflict','The outcome template does not match this decision and organisation.');
  const assignment=contractLetterAssignment(chosen.template,input.context,{today:input.today,lastAssigned:input.lastAssigned},input.chooser);
  if(assignment.unresolved.some(issue=>!issue.holderId&&assignment.route.steps.find(step=>step.id===issue.stepId)?.role!=='employee'))throw new ContractManagementError('conflict','A letter step has no eligible holder or fallback member.');
  const routing={templateId:chosen.template.id,templateVersion:chosen.version,caseOwnerId:assignment.route.steps.find(step=>step.owner)?.holderId??null,fallbackGroupId:input.context.fallbackGroupId,liveMergeReviews:true};
- const [prepared]=await tx.execute<{letter:{id:string;signingDocumentId:string;contentHash:string;state:string;existing:boolean}}>(sql`select app.contract_shared_prepare_letter(${input.view.id}::uuid,${input.step.run.id}::uuid,${input.step.step.id},${chosen.template.id}::uuid,${chosen.version},${JSON.stringify(assignment.route)}::jsonb,${JSON.stringify(routing)}::jsonb) as letter`);
+ const [prepared]=await tx.execute<{letter:{id:string;signingDocumentId:string;contentHash:string;state:string;existing:boolean}}>(sql`select app.contract_shared_prepare_letter(${input.view.id}::uuid,${input.step.run.id}::uuid,${input.step.step.id},${chosen.template.id}::uuid,${chosen.version},${JSON.stringify(assignment.route)}::jsonb,${JSON.stringify(routing)}::jsonb,${input.email?JSON.stringify(input.email.reference):null}::jsonb) as letter`);
  const letter=prepared.letter;
  if(!letter.existing){
   const contentHash=derivedDocumentKind(chosen.template.blocks)==='Form'?await initializeContractSharedFormTx(tx,ctx,letter.id):null;
   await createSigningDocumentTx(tx,ctx,{id:letter.signingDocumentId,companyId:input.view.companyId,employmentId:input.view.employmentId,subjectId:letter.id,subjectType:'contract',contentHash:contentHash??letter.contentHash,route:assignment.route,guardrails:{requiredRoles:[]},routing});
-  await tx.execute(sql`select app.contract_shared_enqueue_child_event(nullif(current_setting('app.contract_event',true),'')::uuid,'letterActionNeeded',${'letter:'+letter.id+':generated'},jsonb_build_object('letterId',${letter.id}::text))`);
+  if(!input.email)await tx.execute(sql`select app.contract_shared_enqueue_child_event(nullif(current_setting('app.contract_event',true),'')::uuid,'letterActionNeeded',${'letter:'+letter.id+':generated'},jsonb_build_object('letterId',${letter.id}::text))`);
  }
+ return letter;
+}
+/** The normal Generate document step still waits for canonical release. */
+export async function activateContractSharedLetter(...args:Parameters<typeof prepareContractSharedLetter>){
+ const letter=await prepareContractSharedLetter(...args);
  return letter.state==='released'?{status:'done' as const,message:'The existing outcome letter has been released.'}:{status:'wait' as const,documentId:letter.id,message:'Waiting for the outcome letter to be reviewed and released.'};
+}
+/** Email-selected documents share the native document owner; the Send email step owns the prerequisite hold. */
+export async function activateContractSharedEmailDocument(tx:SqlExecutor,ctx:SessionContext,input:Parameters<typeof prepareContractSharedLetter>[2]&{email:NonNullable<Parameters<typeof prepareContractSharedLetter>[2]['email']>}):Promise<string>{
+ return (await prepareContractSharedLetter(tx,ctx,input)).id;
 }
 export async function readContractSharedApproval(ctx:SessionContext,id:string){
  z.uuid().parse(id);

@@ -23,7 +23,13 @@ export function listAutomationDocumentTemplates(ctx:SessionContext,module:Automa
 export type AutomationDocumentVersion={version:number;template:AutomationDocumentTemplate;savedAt:string;note:string;documents:number;state:'draft'|'published'|'inUse';canDelete:boolean};
 export type AutomationDocumentUsage={documents:number;usedByWorkflow:boolean;deleteReason:string|null;versions:AutomationDocumentVersion[]};
 export function automationDocumentUsage(ctx:SessionContext,id:string){z.uuid().parse(id);return withScopedLifecycleTenant(ctx,async tx=>(await tx.execute<{usage:AutomationDocumentUsage}>(sql`select app.automation_document_template_usage(${id}::uuid) as usage`))[0].usage);}
-export async function automationDocumentVersions(ctx:SessionContext,id:string){return (await automationDocumentUsage(ctx,id)).versions;}
+/** Preserve the original generic version reader; Contract's richer history has a separate exact-authority metadata API. */
+export function automationDocumentVersions(ctx:SessionContext,id:string){
+ z.uuid().parse(id);
+ return withScopedLifecycleTenant(ctx,async tx=>[...await tx.execute<{version:number;template:AutomationDocumentTemplate;savedAt:string}>(sql`
+  select version,definition as template,saved_at::text as "savedAt" from automation_document_template_version
+  where tenant_id=app.current_tenant_id() and template_id=${id}::uuid and deleted_at is null order by version desc limit 100`)]);
+}
 export function actAutomationDocumentTemplate(ctx:SessionContext,input:{id:string;expectedRevision:number;action:'publishVersion'|'deleteVersion'|'deleteTemplate';version?:number}){
  z.uuid().parse(input.id);z.number().int().positive().parse(input.expectedRevision);if(input.version!==undefined)z.number().int().positive().parse(input.version);
  return withScopedLifecycleTenant(ctx,async tx=>{

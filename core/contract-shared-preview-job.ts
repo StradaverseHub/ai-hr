@@ -45,7 +45,7 @@ async function readPreviewInputs(owner:postgres.ReservedSql,ctx:SessionContext,c
   join automation_workflow_version v on v.tenant_id=e.tenant_id and v.module='contract_staff' and (
    exists(select 1 from jsonb_array_elements(e.workflow_versions) x where x->>'workflowId'=v.workflow_id::text and x->>'revision'=v.revision::text)
    or exists(select 1 from automation_run r where r.tenant_id=e.tenant_id and r.subject_id=e.case_id and r.module='contract_staff' and r.status='waiting'
-    and r.waiting_for::text=coalesce(e.data->>'approvalId',e.data->>'letterId') and r.workflow_id=v.workflow_id and r.workflow_revision=v.revision))
+    and r.waiting_for::text=coalesce(e.data->>'prerequisiteId',e.data->>'approvalId',e.data->>'letterId') and r.workflow_id=v.workflow_id and r.workflow_revision=v.revision))
   where e.tenant_id=${ctx.tenantId}::uuid and e.case_id=${caseId}::uuid and e.job_id::text=current_setting('app.bulk_job',true)
   and e.id::text=current_setting('app.contract_event',true)
   order by id,v.revision limit 251`):await db.execute<WorkflowRow>(sql`
@@ -54,13 +54,19 @@ async function readPreviewInputs(owner:postgres.ReservedSql,ctx:SessionContext,c
   where status='live' and definition->'trigger'->>'event'='decisionSubmitted' order by workflow_id limit 201`);
  const uuidArray=(ids:readonly string[])=>'{'+[...new Set(ids.filter(id=>z.uuid().safeParse(id).success))].join(',')+'}';
  const steps=workflows.flatMap(row=>row.definition.steps);
- const documentIds=steps.flatMap(step=>step.type==='generateDocument'&&typeof step.params.letterTemplateId==='string'?[step.params.letterTemplateId]:[]);
+ const directDocumentIds=steps.flatMap(step=>step.type==='generateDocument'&&typeof step.params.letterTemplateId==='string'?[step.params.letterTemplateId]:[]);
  const emailIds=steps.flatMap(step=>step.type==='sendEmail'&&typeof step.params.emailTemplateId==='string'?[step.params.emailTemplateId]:[]);
- type EmailRow={id:string;name:string;active:boolean;retired:boolean;revision:number;cc:AutomationEmailTemplate['cc'];subject:string|null;body:string|null;bodyDoc:AutomationEmailTemplate['bodyDoc']|null};
+ type EmailRow={id:string;name:string;active:boolean;retired:boolean;revision:number;cc:AutomationEmailTemplate['cc'];subject:string|null;body:string|null;bodyDoc:AutomationEmailTemplate['bodyDoc']|null;documentIds:string[]};
  const emails=await db.execute<EmailRow>(sql`
-  select distinct on(template_id) template_id as id,name,active,retired,revision,cc,
+  select template_id as id,name,active,retired,revision,cc,coalesce(document_ids,'[]'::jsonb) as "documentIds",
   ${execution?sql`subject,body,body_doc as "bodyDoc"`:sql`null::text as subject,null::text as body,null::jsonb as "bodyDoc"`}
-  from automation_email_template_version where tenant_id=${ctx.tenantId}::uuid and module='contract_staff' and template_id=any(${uuidArray(emailIds)}::uuid[]) order by template_id,revision desc limit 501`);
+  from automation_email_template_version email where tenant_id=${ctx.tenantId}::uuid and module='contract_staff' and template_id=any(${uuidArray(emailIds)}::uuid[])
+  and (revision=(select max(latest.revision) from automation_email_template_version latest where latest.tenant_id=email.tenant_id and latest.template_id=email.template_id)
+  ${execution?sql`or exists(select 1 from contract_shared_email_document_step pin join automation_run run on run.tenant_id=pin.tenant_id and run.id=pin.workflow_run_id
+   where pin.tenant_id=email.tenant_id and pin.case_id=${caseId}::uuid and pin.email_template_id=email.template_id and pin.email_revision=email.revision
+   and run.module='contract_staff' and run.status in('running','waiting') and run.workflow_id=any(${uuidArray(workflows.map(row=>row.id))}::uuid[]))`:sql``})
+  order by template_id,revision desc limit 501`);
+ const documentIds=[...new Set([...directDocumentIds,...emails.flatMap(email=>email.documentIds)])];
  const documents=await db.execute<{template:AutomationDocumentTemplate;version:number}>(sql`
   select v.definition as template,h.live_version as version from automation_document_template h join automation_document_template_version v on v.tenant_id=h.tenant_id and v.template_id=h.id and v.version=h.live_version
   where h.tenant_id=${ctx.tenantId}::uuid and h.module='contract_staff' and not h.retired and h.id=any(${uuidArray(documentIds)}::uuid[]) order by h.id limit 501`);

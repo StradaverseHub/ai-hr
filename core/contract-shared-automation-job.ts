@@ -9,10 +9,11 @@ import {readContractSharedExecutionInputs} from './contract-shared-preview-job';
 import {contractSharedAutomationContext} from './contract-shared-context';
 import {contractAutomationRead,contractAutomationPending} from '../lib/contract-automation-context';
 import {queueAutomationEmailTx} from './automation-email-delivery';
-import {activateContractSharedApproval,activateContractSharedLetter} from './contract-shared-signing';
+import {activateContractSharedApproval,activateContractSharedLetter,activateContractSharedEmailDocument} from './contract-shared-signing';
 import {activateContractSharedPosting} from './contract-shared-postings';
 import {activateContractSharedOffboarding} from './contract-shared-ending';
 import {contractSharedEmailExecutors} from './contract-shared-email';
+import {prepareContractSharedEmailStep} from './contract-shared-email-documents';
 import {CONTRACT_AUTOMATION_CATALOGUE} from '../lib/automation/catalogues/contracts';
 import {runAutomationEvent,resumeAutomationRun,sqlAutomationRunStore,type AutomationExecutors,type AutomationRuntimeGuards,type AutomationRun} from '../packs/automation/service';
 import {todayInKualaLumpur} from '../lib/hr-date';
@@ -61,10 +62,18 @@ export const contractAutomationJobHandler:BulkJobHandler<never>={
    const read=contractAutomationRead(context,event.trigger_event,today,facts&&typeof facts==='object'&&!Array.isArray(facts)?facts as Record<string,unknown>:undefined),store=sqlAutomationRunStore(db);
    const letterId=typeof event.data.letterId==='string'&&z.uuid().safeParse(event.data.letterId).success?event.data.letterId:null;
    if(letterId)context.pending=contractAutomationPending(inputs.refs.documents.filter(document=>document.subjectType==='contract'&&document.subjectId===letterId));
-   const [letter]=letterId?await db.execute<{name:string}>(sql`select data->'definition'->>'name' as name from contract_shared_letter where tenant_id=${ctx.tenantId}::uuid and case_id=${event.case_id}::uuid and id=${letterId}::uuid`):[];
-   const letterValues=letter?{'letter.documentName':letter.name,'letter.signingStep':context.pending?.label??'','letter.sentBackBy':typeof event.data.sentBackBy==='string'?event.data.sentBackBy:'','letter.sentBackReason':typeof event.data.sentBackReason==='string'?event.data.sentBackReason:''}:undefined;
+   const [letter]=letterId?await db.execute<{name:string;values:Record<string,string>}>(sql`select data->'definition'->>'name' as name,app.contract_shared_letter_values(id) as values from contract_shared_letter where tenant_id=${ctx.tenantId}::uuid and case_id=${event.case_id}::uuid and id=${letterId}::uuid`):[];
+   const allowedEmailKeys=new Set(CONTRACT_AUTOMATION_CATALOGUE.mergeFields.map(field=>field.key));
+   const retainedValues=Object.fromEntries(Object.entries(letter?.values??{}).filter(([key,value])=>allowedEmailKeys.has(key)&&typeof value==='string'));
+   const [pay]=!letter&&context.flow?.decision&&!context.flow.decision.payChanges?await db.execute<{cents:string|null}>(sql`select app.contract_source(${inputs.view.employmentId}::uuid)->>'salaryCents' as cents`):[];
+   const amount=pay?.cents&&/^\d+$/.test(pay.cents)?BigInt(pay.cents):null;
+   const letterValues={...retainedValues,...(amount!==null?{'contract.salary':`${amount/BigInt(100)}.${String(amount%BigInt(100)).padStart(2,'0')}`}:{ }),
+    ...(letter?{'letter.documentName':letter.name,'letter.signingStep':context.pending?.label??'','letter.sentBackBy':typeof event.data.sentBackBy==='string'?event.data.sentBackBy:'','letter.sentBackReason':typeof event.data.sentBackReason==='string'?event.data.sentBackReason:''}:{})};
    const executors:AutomationExecutors={
-    ...contractSharedEmailExecutors(db,{context,today,templates:inputs.runtimeEmails,letterValues}),
+    ...contractSharedEmailExecutors(db,{context,today,templates:inputs.runtimeEmails,letterValues,
+     prepareTemplate:(step,current)=>prepareContractSharedEmailStep(db,workerCtx,{step,current,
+      create:(templateId,reference)=>activateContractSharedEmailDocument(db,workerCtx,{view:inputs.view,context,step,templates:inputs.definitions.documents,lastAssigned:inputs.definitions.lastAssigned,today,chooser,email:{templateId,reference}})}),
+    }),
     requestApproval:step=>activateContractSharedApproval(db,workerCtx,{view:inputs.view,context,step,lastAssigned:inputs.definitions.lastAssigned,today,chooser}),
     generateDocument:step=>activateContractSharedLetter(db,workerCtx,{view:inputs.view,context,step,templates:inputs.definitions.documents,lastAssigned:inputs.definitions.lastAssigned,today,chooser}),
     createPosting:async step=>{
@@ -77,7 +86,7 @@ export const contractAutomationJobHandler:BulkJobHandler<never>={
     },
    };
    const guards:AutomationRuntimeGuards={
-    emailTemplate:step=>{const template=inputs.definitions.emails.find(item=>item.id===step.params.emailTemplateId);return !template||template.retired?'missing':template.active?'active':'off';},
+    // Send email checks its immutable prepared version before considering the current on/off state.
     documentTemplate:step=>inputs.definitions.documents.some(item=>item.template.id===step.params.letterTemplateId)?'available':'missing',
    };
    const waitingId=(event.trigger_event==='approvalsComplete'||event.trigger_event==='approvalRejected')?event.data.approvalId:event.trigger_event==='letterReleased'?event.data.letterId:null;

@@ -85,8 +85,12 @@ describe('protected Contract decision preview and submission',()=>{
   await expect(startContractSharedManualWorkflow(f.proposer,{caseId:f.caseId,revision:1,workflowId:unmatched.id,workflowRevision:1,requestId:randomUUID()})).rejects.toMatchObject({code:'invalid'});
   const [before]=await owner.db.execute<{events:number}>(sql`select count(*)::int as events from contract_shared_event where tenant_id=${f.b.tenantId}::uuid and trigger_event='manual'`);expect(before.events).toBe(0);
   const command={caseId:f.caseId,revision:1,workflowId:workflow.id,workflowRevision:1,requestId:randomUUID()};
+  await owner.db.execute(sql`update contract_shared_case set data=jsonb_set(data,'{flags}','["no_workflow","fallback"]'::jsonb) where tenant_id=${f.b.tenantId}::uuid and case_id=${f.caseId}::uuid`);
   const accepted=await startContractSharedManualWorkflow(f.proposer,command);
+  const reconciled=await contractSharedContext(f.proposer,f.caseId);
+  expect(reconciled.flow?.flags).toEqual(['fallback']);
   expect(await startContractSharedManualWorkflow(f.proposer,command)).toEqual(accepted);
+  expect((await contractSharedContext(f.proposer,f.caseId)).flow?.revision).toBe(reconciled.flow?.revision);
   await expect(startContractSharedManualWorkflow(f.proposer,{...command,workflowId:unmatched.id})).rejects.toMatchObject({code:'conflict'});
   await saveAutomationWorkflow(f.admin,{workflow:{...workflow,status:'paused'},expectedRevision:1,reason:'Accepted manual work keeps its version'});
   expect((await finishAutomation(accepted.jobId,f.proposer)).state).toBe('completed');

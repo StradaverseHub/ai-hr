@@ -6735,6 +6735,13 @@
       "when": 1794841005946,
       "tag": "5946_contract_snapshot_native_binding",
       "breakpoints": true
+    },
+    {
+      "idx": 5361,
+      "version": "7",
+      "when": 1794841005961,
+      "tag": "5961_contract_manual_attention_reconciliation",
+      "breakpoints": true
     }
   ]
 }
