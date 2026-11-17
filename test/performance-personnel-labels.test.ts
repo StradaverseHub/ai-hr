@@ -6,7 +6,8 @@ import * as database from '../db/client';
 import * as s from '../db/schema';
 import {listDepartments} from '../core/read';
 import {bulkSaveLabels,listPositions,listCostCenters,listBusinessUnits} from '../core/admin';
-import {labelIdsForCompany,setLabelCriteria} from '../core/system-labels';
+import {businessUnitCriteriaForIds,labelIdsForCompany,setLabelCriteria} from '../core/system-labels';
+import {hireOptionVisible} from '../lib/hire-form-filter';
 import {labelCompanyCsv,labelsInCompanyScope} from '../lib/system-label-scope';
 import {adminCtx,closeAll,createAppUser,migrateTestDb,owner,resetDb,seedBase} from './harness';
 beforeAll(migrateTestDb);afterAll(closeAll);
@@ -23,6 +24,17 @@ it('retains native per-company availability/order for all roles, shared/global/a
   expect(result.createdIds).toHaveLength(70);
   await setLabelCriteria(ctx,{kind,labelId:result.createdIds[1].id,isGlobal:false,companyIds:[companies[2]]});
  }
+ // Active departments retain their cascade relationship when the referenced BU is archived.
+ const linkedBu=(await bulkSaveLabels(ctx,'business_unit',{creates:[{key:'linked',companyId:b.companyId,companyIds:[b.companyId],code:'LINKED',name:'Referenced unit'}],updates:[]})).createdIds[0].id;
+ const linkedDept=(await bulkSaveLabels(ctx,'department',{creates:[{key:'linked-dept',companyId:b.companyId,companyIds:[b.companyId],name:'Linked active department',businessUnitId:linkedBu}],updates:[]})).createdIds[0].id;
+ await bulkSaveLabels(ctx,'business_unit',{creates:[],updates:[{key:linkedBu,id:linkedBu,archived:true}]});
+ expect((await listBusinessUnits(ctx)).some(row=>row.id===linkedBu)).toBe(false);
+ expect((await listDepartments(ctx)).find(row=>row.id===linkedDept)?.businessUnitId).toBe(linkedBu);
+ const metadata=await businessUnitCriteriaForIds(ctx,[linkedBu]);
+ const preservedCsv=labelCompanyCsv(metadata,companies).get(linkedBu)!;
+ expect(preservedCsv).toBe(b.companyId);expect(await labelIdsForCompany(ctx,'business_unit',b.companyId)).toContain(linkedBu);
+ expect(hireOptionVisible({optCompanies:b.companyId,optBusinessUnit:linkedBu,optBuCompanies:preservedCsv,selectedCompany:b.companyId,selectedBusinessUnit:randomUUID()})).toBe(false);
+ expect(hireOptionVisible({optCompanies:b.companyId,optBusinessUnit:linkedBu,optBuCompanies:preservedCsv,selectedCompany:b.companyId,selectedBusinessUnit:linkedBu})).toBe(true);
  const spy=vi.spyOn(database,'withTenant');
  try{
   for(let index=0;index<4;index++){

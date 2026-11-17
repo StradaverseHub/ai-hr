@@ -22,6 +22,7 @@ import { withEmploymentDefaults } from '@/lib/employee-draft-schema';
 // 35b7af0a group 8 — the nationality catalog the shared identity group offers on BOTH screens.
 import { listProfileOptions } from '@/core/profile-options';
 import { listConfigs, resolveEmployeeIdRule } from '@/core/employee-id-config';
+import {businessUnitCriteriaForIds} from '@/core/system-labels';
 import { labelCompanyCsv } from '@/lib/system-label-scope';
 import type { EmployeeIdRule } from '@/lib/employee-id-mode';
 import { todayInKualaLumpur } from '@/lib/hr-date';
@@ -144,7 +145,8 @@ export default async function CreateEmployeePage({
   // Catalogue owners already return Global and explicit Criteria. Reuse those authorized
   // rows instead of reopening four native transactions for each company choice.
   const companyIds=companies.map(company=>company.id);
-  const buCsv=labelCompanyCsv(businessUnits,companyIds),deptCsv=labelCompanyCsv(departments,companyIds);
+  const referencedBuCriteria=await businessUnitCriteriaForIds(session,departments.flatMap(row=>row.businessUnitId?[row.businessUnitId]:[]));
+  const buCsv=labelCompanyCsv([...businessUnits,...referencedBuCriteria],companyIds),deptCsv=labelCompanyCsv(departments,companyIds);
   const posCsv=labelCompanyCsv(positions,companyIds),ccCsv=labelCompanyCsv(costCenters,companyIds);
 
   // The full-time probation default for THIS draft's company — the hiring-defaults probation length

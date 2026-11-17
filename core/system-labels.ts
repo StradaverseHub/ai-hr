@@ -1,3 +1,5 @@
+import {withIdempotentDatabaseRead} from '../db/workload';
+import {lockAccessConfigurationReadTx} from './access-configuration-lock';
 import {lockLeaveDependencyConfigurationTx} from './leave-dependency-lock';
 import { tenantMutation } from '../db/tenant-mutation';
 /** System Labels criteria owner. Creation company is provenance and write ownership;
@@ -147,6 +149,20 @@ export function labelCompanyIdsSql(
   return sql<string[]>`array(select lca.company_id::text from label_company_assignment lca
     where lca.tenant_id = ${outer}.${sql.identifier('tenant_id')} and lca.label_kind = ${kind}
       and lca.label_id = ${outer}.${sql.identifier('id')} order by lca.company_id)`;
+}
+
+/** Complete Criteria metadata for referenced BUs, including archived or picker-scope-omitted roots.
+ * Does not make them selectable; native RLS remains the disclosure owner. */
+export function businessUnitCriteriaForIds(ctx:SessionContext,labelIds:readonly string[]){
+ const ids=[...new Set(labelIds)];
+ return withIdempotentDatabaseRead(()=>withTenant(ctx,async tx=>{
+  await tx.execute(sql`set transaction read only`);
+  await lockAccessConfigurationReadTx(tx,ctx.tenantId);
+  if(!ids.length)return [];
+  return tx.select({id:businessUnit.id,companyId:businessUnit.companyId,isGlobal:businessUnit.isGlobal,
+   assignedCompanyIds:labelCompanyIdsSql(businessUnit,'business_unit')}).from(businessUnit)
+   .where(and(eq(businessUnit.tenantId,ctx.tenantId),inArray(businessUnit.id,ids)));
+ }));
 }
 
 /** Global automatically includes current and future companies; scoped rows use only saved criteria. */
