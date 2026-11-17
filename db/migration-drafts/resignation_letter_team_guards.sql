@@ -26,7 +26,7 @@ BEGIN
  ELSIF k='retry' THEN RETURN app.resignation_journey_can_act(p_id,'retry');
  ELSIF k='runWorkflowsAgain' THEN RETURN app.resignation_journey_can_act(p_id,'runAgain');
  ELSIF k='completeReplacement' THEN RETURN j.data->'replacementRequest'->>'status'='requested' AND j.data->'replacementRequest'->>'id'=p_command->>'taskId' AND j.data->'replacementRequest'->'to' ? u.id::text;
- ELSIF k='taskProgress' THEN RETURN EXISTS(SELECT 1 FROM jsonb_array_elements(coalesce(j.data->'tasks','[]')) t WHERE t->>'id'=p_command->>'taskId' AND t->'userIds' ? u.id::text);
+ ELSIF k='taskProgress' THEN RETURN EXISTS(SELECT 1 FROM jsonb_array_elements(coalesce(j.data->'tasks','[]')) t WHERE t->>'id'=p_command->>'taskId' AND t->'userIds' ? u.id::text AND NOT EXISTS(SELECT 1 FROM jsonb_array_elements(coalesce(j.data->'letters','[]')) task_letter WHERE split_part(t->>'id',':',1)=task_letter->>'id' AND NOT(task_letter->>'state'='owner' AND t->>'id'=(task_letter->>'id')||':update' AND app.resignation_letter_owner_mine(task_letter) OR task_letter->>'state'='review' AND EXISTS(SELECT 1 FROM app.resignation_pending_steps(task_letter) task_step WHERE t->>'id'=(task_letter->>'id')||':'||(task_step->>'id') AND app.resignation_letter_step_mine(task_letter,task_step)))));
  ELSIF k='uploadFile' THEN RETURN EXISTS(SELECT 1 FROM jsonb_array_elements(coalesce(j.data->'waits','[]')) upload_wait WHERE upload_wait->>'id'=p_command->>'taskId' AND upload_wait->>'kind'='file' AND upload_wait->'to' ? u.id::text);
  ELSIF k='approvalTask' THEN
   FOR w IN SELECT x FROM jsonb_array_elements(coalesce(j.data->'waits','[]')) x WHERE x->>'kind'='approval' LOOP

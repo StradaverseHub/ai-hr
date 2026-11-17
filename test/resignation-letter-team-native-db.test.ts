@@ -79,11 +79,11 @@ it('keeps first-on-it advisory: another frozen member may act but cannot replace
 });
 
 it('rejects relinked member identities and invented signature actors without changing stored evidence',async()=>{
- let letter=act(realLetter(),manager,{type:'complete',stepId:'owner-review'});data={...data,decision:null,letters:[letter]};await seedJourney('offer');const original=await persisted();
+ let letter=act(realLetter(),manager,{type:'complete',stepId:'owner-review'});data={...data,decision:null,letters:[letter],tasks:[{id:letter.id+':team-sign',userIds:[manager.userId,fyi.userId],team:true}]};await seedJourney('offer');const original=await persisted();
  const completed=act(letter,fyi,{type:'complete',stepId:'team-sign',signature:'Verified teammate',consent:true});const forged=structuredClone(completed);forged.history.at(-1)!.actorPersonId=employee.personId!;
  await nativeRefusal(withTenant(fyi,async tx=>{await begin(tx,fyi,{type:'letterAction',documentId:letter.id,documentRevision:letter.revision,action:'sign',signature:'Verified teammate',consent:true});await save(tx,fyi,{...data,letters:[forged]},'offer');}),'42501');expect(await persisted()).toEqual(original);
  await owner.db.execute(sql`update app_user set person_id=${employee.personId}::uuid where id=${fyi.userId}::uuid`);
- const relinked={...fyi,personId:employee.personId};await nativeRefusal(withTenant(relinked,tx=>begin(tx,relinked,{type:'letterAction',documentId:letter.id,documentRevision:letter.revision,action:'sign',signature:'Verified teammate',consent:true})),'42501');expect(await persisted()).toEqual(original);
+ const relinked={...fyi,personId:employee.personId};await nativeRefusal(withTenant(relinked,tx=>begin(tx,relinked,{type:'letterAction',documentId:letter.id,documentRevision:letter.revision,action:'sign',signature:'Verified teammate',consent:true})),'42501');await nativeRefusal(withTenant(relinked,tx=>begin(tx,relinked,{type:'taskProgress',taskId:letter.id+':team-sign',status:'progress'})),'42501');expect(await persisted()).toEqual(original);
 });
 it('permits a teammate to open released evidence but refuses to rewrite its frozen content',async()=>{
  let letter=act(realLetter(),manager,{type:'complete',stepId:'owner-review'});letter=act(letter,fyi,{type:'complete',stepId:'team-sign',signature:'Verified teammate',consent:true});letter=act(letter,employee,{type:'open'});letter=act(letter,employee,{type:'complete',stepId:'employee-sign',signature:'Verified employee',consent:true});expect(letter.state).toBe('released');data={...data,decision:null,letters:[letter]};await seedJourney('retained');const original=await persisted();
