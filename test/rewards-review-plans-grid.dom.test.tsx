@@ -4,10 +4,10 @@ import {cleanup,fireEvent,render,screen,waitFor} from '@testing-library/react';
 import {NextIntlClientProvider} from 'next-intl';
 import en from '../messages/en.json';import ms from '../messages/ms.json';import ta from '../messages/ta.json';import th from '../messages/th.json';import viCopy from '../messages/vi.json';import zh from '../messages/zh.json';
 import type {RewardReviewPlans,RewardReviewPlanRow} from '../packs/rewards/review-plans-model';
-const actions=vi.hoisted(()=>({preview:vi.fn(),save:vi.fn(),copy:vi.fn(),create:vi.fn(),progress:vi.fn(),accept:vi.fn()}));
+const actions=vi.hoisted(()=>({preview:vi.fn(),save:vi.fn(),copy:vi.fn(),create:vi.fn(),progress:vi.fn(),accept:vi.fn(),refreshGrid:vi.fn()}));
 const router=vi.hoisted(()=>({refresh:vi.fn(),push:vi.fn()}));
 vi.mock('next/navigation',()=>({useRouter:()=>router}));
-vi.mock('../app/admin/rewards/review-plans/actions',()=>({previewGridAction:actions.preview,saveGridAction:actions.save,previousChoicesAction:actions.copy,createReviewsAction:actions.create,reviewJobAction:actions.progress,acceptSuggestionsAction:actions.accept}));
+vi.mock('../app/admin/rewards/review-plans/actions',()=>({previewGridAction:actions.preview,saveGridAction:actions.save,previousChoicesAction:actions.copy,createReviewsAction:actions.create,reviewJobAction:actions.progress,acceptSuggestionsAction:actions.accept,refreshGridAction:actions.refreshGrid}));
 import {ReviewPlanGrid} from '../app/admin/rewards/review-plans/editor';
 const salary='10000000-0000-4000-8000-000000000001',bonus='10000000-0000-4000-8000-000000000002';
 const row:RewardReviewPlanRow={companyId:'20000000-0000-4000-8000-000000000001',company:'Alpha Fictional',businessUnitId:'30000000-0000-4000-8000-000000000001',businessUnit:'Consumer',revision:4,planVersionId:null,planType:'standard',reason:'',salaryVersionId:salary,bonusVersionId:bonus,salarySuggestion:{versionId:salary,source:'previous-year',reviewed:false},bonusSuggestion:{versionId:bonus,source:'group-default',reviewed:false},headcount:125,patEntered:true,status:'draft',canEdit:true,reviewUnitId:null,branchAcknowledged:false};
@@ -31,6 +31,7 @@ describe('Review Plans grid',()=>{
  it('requires a no-awards reason before asking the server to save',()=>{
   show();fireEvent.change(screen.getByRole('combobox',{name:'Alpha Fictional: Plan type'}),{target:{value:'no_awards'}});
   fireEvent.click(screen.getByRole('button',{name:'Review changes'}));
+  const reason=screen.getByRole('textbox',{name:'Alpha Fictional: Reason for no awards (at least 10 characters)'});expect(reason).toHaveAttribute('aria-invalid','true');expect(reason).toHaveAccessibleDescription('Enter at least 10 characters to explain why this company has no awards.');
   expect(screen.getByRole('alert').textContent).toContain('Give every excluded company a reason');expect(actions.preview).not.toHaveBeenCalled();
  });
  it('applies a bulk choice only to the selected editable company',async()=>{
@@ -55,7 +56,7 @@ describe('Review Plans grid',()=>{
   expect(actions.create).toHaveBeenCalledTimes(1);expect(actions.progress).toHaveBeenCalledTimes(1);
  });
  it('shows no write or creation actions for a view-only reader',()=>{
-  show({...data,canEdit:false,canCreateReviews:false,rows:[{...row,canEdit:false}]});expect(screen.queryByRole('button',{name:'Review changes'})).toBeNull();expect(screen.queryByRole('button',{name:'Create selected reviews'})).toBeNull();expect(screen.getByRole('combobox',{name:'Alpha Fictional: Salary structure'})).toBeDisabled();
+  show({...data,canEdit:false,canCreateReviews:false,rows:[{...row,canEdit:false}]});expect(screen.queryByRole('button',{name:'Review changes'})).toBeNull();expect(screen.queryByRole('button',{name:'Create selected reviews'})).toBeNull();expect(screen.getByText('View only. You can inspect these plans, but your current access does not allow changes.')).toBeTruthy();expect(screen.getByRole('combobox',{name:'Alpha Fictional: Salary structure'})).toBeDisabled();
  });
  for(const locale of Object.keys(copies) as (keyof typeof copies)[])it('renders all new grid copy in '+locale,()=>{show(data,locale);expect(screen.getByText('Alpha Fictional')).toBeTruthy();});
 });

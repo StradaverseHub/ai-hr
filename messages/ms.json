@@ -44133,7 +44133,12 @@
       "structure": "Unit Perniagaan belum disahkan"
     },
     "rebindNotificationTitle": "Semakan ganjaran dikemas kini",
-    "rebindNotificationBody": "Struktur gaji atau matriks bonus syarikat telah berubah. Sebagai pelulus semasa, semak cadangan yang dikira semula sebelum meluluskan."
+    "rebindNotificationBody": "Struktur gaji atau matriks bonus syarikat telah berubah. Sebagai pelulus semasa, semak cadangan yang dikira semula sebelum meluluskan.",
+    "viewOnlyHelp": "Lihat sahaja. Anda boleh memeriksa pelan ini, tetapi akses semasa anda tidak membenarkan perubahan.",
+    "mixedViewOnly": "Sesetengah syarikat untuk lihat sahaja. Nama mereka ditandakan dalam grid.",
+    "exclusionTooShort": "Masukkan sekurang-kurangnya 10 aksara untuk menerangkan sebab syarikat ini tiada ganjaran.",
+    "refreshComparison": "Muat semula perbandingan",
+    "comparisonRefreshed": "Perbandingan dimuat semula daripada rekod semasa. Pilihan dan sebab anda dikekalkan; semak perbandingan baharu sebelum menyimpan."
   },
   "rewardsPersonHistoryUpload": {
     "title": "Muat naik sejarah ganjaran",

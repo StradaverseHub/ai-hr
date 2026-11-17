@@ -44133,7 +44133,12 @@
       "structure": "Chưa xác nhận đơn vị kinh doanh"
     },
     "rebindNotificationTitle": "Đã cập nhật đánh giá đãi ngộ",
-    "rebindNotificationBody": "Cơ cấu lương hoặc ma trận thưởng của công ty đã thay đổi. Với vai trò người phê duyệt hiện tại, hãy xem xét các đề xuất đã tính lại trước khi phê duyệt."
+    "rebindNotificationBody": "Cơ cấu lương hoặc ma trận thưởng của công ty đã thay đổi. Với vai trò người phê duyệt hiện tại, hãy xem xét các đề xuất đã tính lại trước khi phê duyệt.",
+    "viewOnlyHelp": "Chỉ xem. Bạn có thể xem các kế hoạch này nhưng quyền hiện tại không cho phép thay đổi.",
+    "mixedViewOnly": "Một số công ty chỉ cho xem. Tên của chúng được đánh dấu trong bảng.",
+    "exclusionTooShort": "Nhập ít nhất 10 ký tự để giải thích vì sao công ty này không có thưởng.",
+    "refreshComparison": "Làm mới so sánh",
+    "comparisonRefreshed": "Đã làm mới so sánh từ dữ liệu hiện tại. Lựa chọn và lý do của bạn được giữ lại; kiểm tra so sánh mới trước khi lưu."
   },
   "rewardsPersonHistoryUpload": {
     "title": "Tải lên lịch sử thưởng",

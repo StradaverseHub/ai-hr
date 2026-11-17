@@ -142,6 +142,12 @@ export async function captureAiReviewScreenshots(html:string,locale:string,secti
    const controls=`${locale}-${section}-mobile-controls.png`;await page.screenshot({path:join(out,controls),fullPage:true});
    rows.push({locale,section,device:'mobile-controls',width,height,overflow,file:controls,browser:browser.version(),candidate:process.env.AIHR_CI_HEAD,runId:process.env.GITHUB_RUN_ID,theme:'classic',fixture});
   }
+  // Review Plans keeps its wide company grid scrollable. Capture the complete plan-type control and
+  // the right-side status/actions on a phone, rather than treating the leftmost clipped viewport as proof.
+  if(section.startsWith('rewards-review-plans-')&&device==='mobile'&&(!reviewPlanModal||reviewPlanModal.length===0)){
+   const tableProof=await page.evaluate(()=>{const table=document.querySelector<HTMLTableElement>('table');const holder=table?.parentElement;const choice=table?.querySelector<HTMLSelectElement>('tbody tr select');if(!table||!holder||!choice||holder.scrollWidth<=holder.clientWidth)return null;const before=choice.getBoundingClientRect(),bounds=holder.getBoundingClientRect();holder.scrollLeft+=before.left-bounds.left-8;const after=choice.getBoundingClientRect();if(after.left<bounds.left-1||after.right>bounds.right+1)throw Error('Review Plans plan-type choice does not fit the mobile scrolling region.');return{width:holder.clientWidth,content:holder.scrollWidth,choiceWidth:after.width};});
+   if(tableProof){const choiceFile=`${locale}-${section}-mobile-plan-type.png`;await page.screenshot({path:join(out,choiceFile),fullPage:true});rows.push({locale,section,device:'mobile-plan-type',width,height,overflow,file:choiceFile,browser:browser.version(),candidate:process.env.AIHR_CI_HEAD,runId:process.env.GITHUB_RUN_ID,theme,fixture,tableProof});await page.evaluate(()=>{const holder=document.querySelector('table')?.parentElement;if(holder)holder.scrollLeft=holder.scrollWidth;});const controlsFile=`${locale}-${section}-mobile-controls.png`;await page.screenshot({path:join(out,controlsFile),fullPage:true});rows.push({locale,section,device:'mobile-controls',width,height,overflow,file:controlsFile,browser:browser.version(),candidate:process.env.AIHR_CI_HEAD,runId:process.env.GITHUB_RUN_ID,theme,fixture,tableProof});}
+  }
   await page.close();
  }}finally{await browser.close();}
  writeFileSync(join(out,`${locale}-${section}.json`),JSON.stringify(rows,null,2)+'\n');
