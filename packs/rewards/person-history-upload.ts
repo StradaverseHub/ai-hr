@@ -29,7 +29,8 @@ export async function previewRewardPersonHistoryImport(ctx:SessionContext,raw:un
   await lockAccessConfigurationReadTx(tx,ctx.tenantId);await rewardHistoryImportAuthorityTx(tx,input.companyId);
   const csv=parseCsvWithLineNumbers(input.csv,true),parsed=rewardHistoryUploadFromCells(csv.map(row=>row.cells),csv.map(row=>row.line));
   const codes=[...new Set(parsed.rows.map(row=>row.value.employeeCode))];
-  const [context]=await tx.execute<{value:{people:{id:string;code:string}[];firstReviewYear:number|null}}>(sql`select app.reward_history_upload_context(${input.companyId}::uuid,${codes}::text[]) as value`);
+  const codeArray=sql`ARRAY[${sql.join(codes.map(code=>sql`${code}`),sql`, `)}]::text[]`;
+  const [context]=await tx.execute<{value:{people:{id:string;code:string}[];firstReviewYear:number|null}}>(sql`select app.reward_history_upload_context(${input.companyId}::uuid,${codeArray}) as value`);
   if(!context?.value)throw Error('Reward history upload is unavailable.');
   const people=new Map<string,string[]>();for(const person of context.value.people)people.set(person.code,[...(people.get(person.code)??[]),person.id]);
   const firstReviewYear=context.value.firstReviewYear;
@@ -65,7 +66,7 @@ export async function applyRewardPersonHistoryImportRowTx(tx:Tx,ctx:SessionConte
  const value=rewardHistoryUploadRowSchema.parse(raw.value),employmentId=z.uuid().parse(raw.employmentId);
  await rewardHistoryImportAuthorityTx(tx,companyId);
  await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${`reward-history:${ctx.tenantId}:${employmentId}:${value.year}:${value.kind}`},0))`);
- const [context]=await tx.execute<{value:{people:{id:string;code:string}[];firstReviewYear:number|null}}>(sql`select app.reward_history_upload_context(${companyId}::uuid,${[value.employeeCode]}::text[]) as value`);
+ const [context]=await tx.execute<{value:{people:{id:string;code:string}[];firstReviewYear:number|null}}>(sql`select app.reward_history_upload_context(${companyId}::uuid,ARRAY[${value.employeeCode}]::text[]) as value`);
  if(!context?.value||context.value.people.length!==1||context.value.people[0].id!==employmentId||value.year>=Number(todayInKualaLumpur().slice(0,4))||(context.value.firstReviewYear!==null&&value.year>=context.value.firstReviewYear))throw Error('The employee or allowable history years changed. Preview the file again.');
  const previous=await tx.execute<{id:string}>(sql`update reward_person_history set superseded_at=now() where tenant_id=app.current_tenant_id()
   and company_id=${companyId}::uuid and employment_id=${employmentId}::uuid and year=${value.year} and kind=${value.kind} and source='upload' and superseded_at is null returning id`);

@@ -38,7 +38,7 @@ REVOKE ALL ON FUNCTION app.reward_history_upload_subject(uuid,uuid) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION app.reward_history_upload_subject(uuid,uuid) TO ai_hr_app;
 CREATE POLICY reward_history_owner_read ON public.reward_person_history FOR SELECT TO ai_hr_owner USING(tenant_id=app.current_tenant_id());
 CREATE POLICY reward_history_owner_insert ON public.reward_person_history FOR INSERT TO ai_hr_owner WITH CHECK(tenant_id=app.current_tenant_id() AND source='review' AND created_by=app.current_user_id());
-CREATE POLICY reward_history_upload_read ON public.reward_person_history FOR SELECT TO ai_hr_app USING(tenant_id=app.current_tenant_id() AND app.reward_history_upload_authorized(company_id) AND app.reward_history_upload_subject(employment_id,company_id));
+CREATE POLICY reward_history_upload_read ON public.reward_person_history FOR SELECT TO ai_hr_app USING(tenant_id=app.current_tenant_id() AND source='upload' AND app.reward_history_upload_authorized(company_id) AND app.reward_history_upload_subject(employment_id,company_id));
 CREATE POLICY reward_history_insert ON public.reward_person_history FOR INSERT TO ai_hr_app WITH CHECK(
  tenant_id=app.current_tenant_id() AND created_by=app.current_user_id() AND app.reward_not_viewing_as()
  AND((source='upload' AND app.reward_history_upload_authorized(company_id)) OR(source='review' AND EXISTS(
