@@ -13,6 +13,18 @@ const make=(event='submitted'):AutomationWorkflow=>({id:'00000000-0000-4000-8000
 const show=(workflow:AutomationWorkflow,editable=true)=>render(<NextIntlClientProvider locale="en" messages={messages}><WorkflowEditor catalogue={OFFBOARDING_AUTOMATION_CATALOGUE} initial={workflow} revision={1} refs={refs} editable={editable} onClose={vi.fn()}/></NextIntlClientProvider>);
 beforeEach(()=>{vi.clearAllMocks();mocks.save.mockResolvedValue({ok:true,result:{revision:2,problems:[],warnings:[]}});});
 describe('Offboarding configuration editor',()=>{
+ it('repairs an unsupported stored exit reason with a native classification before activation',async()=>{
+  const workflow=make('accepted');workflow.steps=[{id:'start',type:'startOffboarding',to:[],cc:[],conditions:[],params:{exitReason:'Unsupported reason'}}];
+  show(workflow);
+  const reason=screen.getByRole('combobox',{name:messages.automation.editor.exitReason});
+  expect(reason).toHaveValue('Unsupported reason');
+  expect(screen.getByRole('button',{name:'Make it live'})).toBeDisabled();
+  fireEvent.change(reason,{target:{value:'Retirement'}});
+  expect(screen.getByRole('button',{name:'Make it live'})).toBeEnabled();
+  fireEvent.click(screen.getByRole('button',{name:'Save changes'}));
+  await waitFor(()=>expect(mocks.save).toHaveBeenCalledOnce());
+  expect(mocks.save.mock.calls[0][0].workflow.steps[0].params.exitReason).toBe('Retirement');
+ });
  it('keeps deciders and FYI recipients separate when saving acceptance-only decisions',async()=>{
   show(make());
   expect(screen.getByRole('button',{name:'Who records the resignation decision'})).toHaveTextContent('Their Direct Superior');

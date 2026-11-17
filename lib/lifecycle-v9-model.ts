@@ -17,8 +17,9 @@ import { roleLabel, toRoles, workEmailLabel, personalEmailLabel, maskEmail, reci
 import { validV9SignatureValue } from './lifecycle-v9-signature';
 import { isCalendarDate } from './calendar-date';
 import type { SettlementPolicy, SettlementInput } from './lifecycle-v9-calculator';
+import type {ExitType} from './lifecycle-v9-exit-types';
 export type Module = 'onb' | 'off';
-export type ExitType = 'Resignation' | 'Termination' | 'Contract end' | 'Retirement' | 'Non-confirmation';
+export type {ExitType} from './lifecycle-v9-exit-types';
 export type CaseState = 'pending' | 'submitted' | 'cleared' | 'cancelled';
 export type RuleField = 'businessGroup' | 'company' | 'department' | 'grade' | 'employmentType' | 'title' | 'caseType';
 export type Rules = Partial<Record<RuleField, string[]>>;

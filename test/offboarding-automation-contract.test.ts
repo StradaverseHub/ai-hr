@@ -14,6 +14,11 @@ const problems=(event:string,s:AutomationStep)=>offboardingStepParamProblems(wor
 const base=():Config=>({version:9,revision:1,checklists:[],templates:[],emails:[],workflows:[],groups:[{id:'ops',name:'Operations',members:[],limit:25}],peopleOpsGroup:'ops',bpRules:[]});
 
 describe('Offboarding catalogue and module isolation',()=>{
+ it('validates the native exit classification without changing other modules',()=>{
+  for(const reason of ['Resignation','Termination','Contract end','Retirement','Non-confirmation','',undefined])expect(problems('accepted',step('startOffboarding',{exitReason:reason}))).toEqual([]);
+  for(const reason of ['Unsupported',0,{reason:'Resignation'}])expect(problems('accepted',step('startOffboarding',{exitReason:reason}))).toContain('Step 1: Choose an existing Offboarding exit reason.');
+  expect(offboardingStepParamProblems({...workflow('accepted',[step('startOffboarding',{exitReason:'Other legacy reason'})]),module:'probation'},refs)).toEqual([]);
+ });
  it('registers exactly the eleven handoff events without changing Probation options',()=>{
   expect(automationCatalogueProblems(O)).toEqual([]);
   expect(O.triggers.map(t=>t.id)).toEqual(['submitted','retention','accepted','rejected','offerDue','offerAccepted','offerDeclined','withdrawn','signRequest','sentBack','released']);

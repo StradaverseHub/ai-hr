@@ -1,5 +1,6 @@
 /** Module-owned settings and checks. Existing shared records in other modules never enter these checks. */
 import type {Config} from '../lifecycle-v9-model';
+import {isV9ExitType} from '../lifecycle-v9-exit-types';
 import type {DocumentRouting} from '../document-signing-routing';
 import type {AutomationRecipient,AutomationReferences,AutomationWorkflow} from './workflow';
 import {OFFBOARDING_DECISION_TRIGGERS,OFFBOARDING_LETTER_TRIGGERS,OFFBOARDING_NOTIFY_TRIGGERS,OFFBOARDING_OFFER_TRIGGERS,OFFBOARDING_POSTING_EVENTS,OFFBOARDING_POSTING_FIELDS} from './catalogues/offboarding';
@@ -71,6 +72,7 @@ export function offboardingStepParamProblems(workflow:AutomationWorkflow,refs:Of
  for(const [index,step] of workflow.steps.entries()){
   const at=`Step ${index+1}: `,add=(problem:string)=>problems.push(at+problem),p=step.params;
   if(notifyOnly&&step.type!=='notify')add('This trigger only sends notifications.');
+  if(step.type==='startOffboarding'&&p.exitReason!=null&&p.exitReason!==''&&!isV9ExitType(p.exitReason))add('Choose an existing Offboarding exit reason.');
   recipientProblems([...step.to,...step.cc],refs.references,letter).forEach(add);
   if(['requestDecision','createPosting'].includes(step.type)&&!offboardingDueValueValid(p.dueDays))add('Due within must be 1 to 60 working days, or left blank.');
   if(step.type==='requestDecision'){

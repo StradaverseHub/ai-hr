@@ -2,6 +2,8 @@
 import {useRef,useState,useTransition} from 'react';
 import {useRouter} from 'next/navigation';
 import {useTranslations} from 'next-intl';
+import {useOnboardingCopy} from '@/lib/onboarding-copy';
+import {V9_EXIT_TYPES,isV9ExitType} from '@/lib/lifecycle-v9-exit-types';
 import {mergeFieldsForTrigger,type AutomationModuleCatalogue} from '@/lib/automation/catalogue';
 import {automationMergeWarnings,automationWorkflowProblems,setAutomationWorkflowStatus,type AutomationReferences,type AutomationStep,type AutomationWorkflow} from '@/lib/automation/workflow';
 import {PROBATION_POSTING_EVENTS,probationStepParamProblems,probationStepParamWarnings} from '@/lib/automation/email';
@@ -54,7 +56,7 @@ const text = (value: unknown) => typeof value === 'string' ? value : '';
 
 /** The shared workflow editor for a module on the shared engine (Probation first). Saves through the shared store. */
 export function WorkflowEditor({catalogue,initial,revision:savedRevision,refs,onClose,editable=true}:{editable?:boolean;catalogue:AutomationModuleCatalogue;initial:AutomationWorkflow;revision:number;refs:WorkflowEditorReferences;onClose:()=>void}){
- const t=useTranslations('automation'),router=useRouter(),[busy,start]=useTransition();
+ const t=useTranslations('automation'),copy=useOnboardingCopy(),router=useRouter(),[busy,start]=useTransition();
  const [converted]=useState(()=>conditionsWithIds(initial,refs.conditionValues));
  const [draft,setDraft]=useState(converted),[revision,setRevision]=useState(savedRevision),[dirty,setDirty]=useState(savedRevision===0||converted!==initial),[note,setNote]=useState(''),[message,setMessage]=useState<Message|null>(null),[people,setPeople]=useState(refs.people);
  const fields=useRef<Record<string,HTMLInputElement|HTMLTextAreaElement|null>>({});
@@ -114,7 +116,7 @@ export function WorkflowEditor({catalogue,initial,revision:savedRevision,refs,on
    :<WorkflowField label={t('editor.letterTemplateId')}><input value={text(step.params.letterTemplateId)} disabled={readOnly} onChange={e=>setStep(index,s=>{s.params.letterTemplateId=e.target.value.trim();})}/></WorkflowField>}
    <p className="v9-muted">{t('editor.letterNote')}</p></div>;
   if(step.type==='createPosting')return <div className="v9-stack"><WorkflowField label={t('editor.postingEvent')}><select value={text(step.params.eventType)} disabled={readOnly} onChange={e=>setStep(index,s=>{s.params.eventType=e.target.value;})}><option value="">{t('editor.choose')}</option>{(draft.module==='off'?OFFBOARDING_POSTING_EVENTS:PROBATION_POSTING_EVENTS).map(event=><option key={event} value={event}>{event}</option>)}</select></WorkflowField><p className="v9-muted">{t('editor.postingNote')}</p></div>;
-  if(step.type==='startOffboarding')return <div className="v9-stack"><WorkflowField label={t('editor.exitReason')}><input value={text(step.params.exitReason)} maxLength={200} disabled={readOnly} onChange={e=>setStep(index,s=>{s.params.exitReason=e.target.value;})}/></WorkflowField><p className="v9-muted">{t('editor.offboardingNote')}</p></div>;
+  if(step.type==='startOffboarding')return <div className="v9-stack"><WorkflowField label={t('editor.exitReason')}>{draft.module==='off'?<select value={text(step.params.exitReason)||'Resignation'} disabled={readOnly} onChange={e=>setStep(index,s=>{s.params.exitReason=e.target.value;})}>{text(step.params.exitReason)&&!isV9ExitType(step.params.exitReason)&&<option value={text(step.params.exitReason)} disabled>{text(step.params.exitReason)}</option>}{V9_EXIT_TYPES.map(reason=><option key={reason} value={reason}>{copy(reason)}</option>)}</select>:<input value={text(step.params.exitReason)} maxLength={200} disabled={readOnly} onChange={e=>setStep(index,s=>{s.params.exitReason=e.target.value;})}/>}</WorkflowField><p className="v9-muted">{t('editor.offboardingNote')}</p></div>;
   return null;
  };
 
