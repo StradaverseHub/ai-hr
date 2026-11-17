@@ -41253,5 +41253,30 @@
     "searchLabels": "Tìm Chức danh hoặc Cấp bậc công việc",
     "search": "Tìm kiếm",
     "narrowSearch": "Hiển thị 501 giá trị khớp đầu tiên. Tìm kiếm để thu hẹp lựa chọn."
+  },
+  "resignationCommunications": {
+    "title": "Trao đổi trong hồ sơ",
+    "intro": "Kiểm tra các thư của hồ sơ này. Thư thử chỉ gửi tới email đã xác minh của bạn.",
+    "loading": "Đang tải các thư trong hồ sơ…",
+    "failed": "Không thể tải hoặc lưu thư. Hãy tải lại và thử lại.",
+    "empty": "Không có thư nào cho trách nhiệm hiện tại của bạn trong hồ sơ.",
+    "reload": "Tải lại thư",
+    "workflow": "{name} · phiên bản {revision}",
+    "preview": "Xem trước thư",
+    "edit": "Chỉnh sửa cho người này",
+    "sendTest": "Gửi thư thử cho tôi",
+    "openWorkflow": "Mở quy trình",
+    "testHint": "Thư thử chỉ được xếp hàng gửi bản sao cho bạn và không chuyển hồ sơ sang bước tiếp theo.",
+    "to": "Đến",
+    "cc": "Đồng gửi",
+    "nobody": "Không có người nhận hợp lệ",
+    "none": "Không có",
+    "attachments": "Tệp đính kèm",
+    "subject": "Tiêu đề",
+    "body": "Nội dung email",
+    "save": "Lưu thư",
+    "saved": "Đã lưu thay đổi thư.",
+    "queued": "Thư thử đã được xếp hàng gửi tới email đã xác minh của bạn. Chưa xác nhận đã chuyển thư.",
+    "uncertain": "Chưa xác nhận được yêu cầu thử. Hãy thử lại để kiểm tra cùng yêu cầu đó."
   }
 }

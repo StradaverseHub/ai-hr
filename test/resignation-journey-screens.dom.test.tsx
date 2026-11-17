@@ -15,7 +15,7 @@ import {money,offerDifference,PriorCases} from '../components/resignation/common
 import {ResignationTaskRows,resignationTaskInFilter} from '../components/resignation/task-rows';
 import {ResignationTaskPanel} from '../components/resignation/task-panel';
 import {parseApprovalCategory} from '../lib/approvals-categories';
-const actions=vi.hoisted(()=>({runResignationCommand:vi.fn(),reloadResignationCase:vi.fn(),submitOwnResignation:vi.fn(),uploadOwnResignationFile:vi.fn(),loadResignationOffboarding:vi.fn(),refresh:vi.fn()}));
+const actions=vi.hoisted(()=>({runResignationCommand:vi.fn(),reloadResignationCase:vi.fn(),submitOwnResignation:vi.fn(),uploadOwnResignationFile:vi.fn(),loadResignationOffboarding:vi.fn(),loadResignationCommunications:vi.fn().mockResolvedValue({ok:true,value:{caseId:'case-a',revision:7,items:[]}}),testResignationMessage:vi.fn(),editResignationMessage:vi.fn(),refresh:vi.fn()}));
 vi.mock('../app/resignation/actions',()=>actions);
 vi.mock('next/navigation',()=>({useRouter:()=>({refresh:actions.refresh})}));
 const wrap=(node:ReactNode)=>render(<NextIntlClientProvider locale="en" messages={messages} onError={error=>{throw error;}}>{node}</NextIntlClientProvider>);
@@ -278,4 +278,10 @@ it('sends only changed prospectively visible field values and drops a dirty chil
 });
 it('keeps a newly visible conditional field read-only until the server provides its authorized scope',()=>{
  const document=letterFieldDocument();document.fields=[{...document.fields[0],id:'answer',label:'More details?',type:'select',options:['Yes','No']},{...document.fields[0],id:'details',label:'Details',when:{field:'answer',value:'Yes'}}];document.values={answer:'No',details:''};const command=vi.fn(async()=>false),letter=l({document,opened:true,editableFieldIds:['answer'],capabilities:{...l().capabilities,sign:false,sendBack:false}});wrap(<ResignationLetterCard value={c()} letter={letter} busy={false} command={command}/>);fireEvent.click(screen.getByRole('button',{name:'Open letter'}));fireEvent.change(screen.getByLabelText('More details? *'),{target:{value:'Yes'}});expect(screen.getByLabelText('Details *')).toBeDisabled();fireEvent.click(screen.getByRole('button',{name:'Save form fields'}));expect(command).toHaveBeenCalledWith({type:'saveLetterFields',documentId:'letter-a',documentRevision:2,values:{answer:'Yes'}});
+});
+
+
+it('loads owner case communications only when an existing letter capability admits the case surface',async()=>{
+ wrap(<ResignationCaseCard initial={c({letters:[l({private:true,capabilities:{...l().capabilities,open:false,sign:false,sendBack:false}})]})} today="2026-11-16"/>);expect(actions.loadResignationCommunications).not.toHaveBeenCalled();
+ cleanup();wrap(<ResignationCaseCard initial={c({letters:[l({capabilities:{...l().capabilities,open:true,sign:false,sendBack:false}})]})} today="2026-11-16"/>);expect(await screen.findByRole('heading',{name:'Case communications'})).toBeInTheDocument();expect(actions.loadResignationCommunications).toHaveBeenCalledWith({caseId:'case-a',offboardingCaseId:undefined});
 });

@@ -41253,5 +41253,30 @@
     "searchLabels": "Search Position or Job Grade",
     "search": "Search",
     "narrowSearch": "Showing the first 501 matching values. Search to narrow the choices."
+  },
+  "resignationCommunications": {
+    "title": "Case communications",
+    "intro": "Inspect the messages for this case. Tests go only to your verified email.",
+    "loading": "Loading case communications…",
+    "failed": "The messages could not be loaded or saved. Reload and try again.",
+    "empty": "No messages are available for your current case responsibility.",
+    "reload": "Reload messages",
+    "workflow": "{name} · version {revision}",
+    "preview": "Preview message",
+    "edit": "Edit for this person",
+    "sendTest": "Send test to me",
+    "openWorkflow": "Open workflow",
+    "testHint": "A test queues a copy to you only. It does not advance the case.",
+    "to": "To",
+    "cc": "CC",
+    "nobody": "Recipient unavailable",
+    "none": "None",
+    "attachments": "Attachments",
+    "subject": "Subject",
+    "body": "Email body",
+    "save": "Save message",
+    "saved": "Message changes saved.",
+    "queued": "Test queued to your verified email. Delivery has not been confirmed.",
+    "uncertain": "The test request could not be confirmed. Try again to check the same request."
   }
 }

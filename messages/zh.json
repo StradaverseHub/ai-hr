@@ -41253,5 +41253,30 @@
     "searchLabels": "搜索职位或职级",
     "search": "搜索",
     "narrowSearch": "显示前501个匹配值。请搜索以缩小选择范围。"
+  },
+  "resignationCommunications": {
+    "title": "个案通信",
+    "intro": "查看此个案的消息。测试仅发送至您已验证的邮箱。",
+    "loading": "正在加载个案通信…",
+    "failed": "无法加载或保存消息。请重新加载后再试。",
+    "empty": "您当前的个案职责下没有可用消息。",
+    "reload": "重新加载消息",
+    "workflow": "{name} · 版本 {revision}",
+    "preview": "预览消息",
+    "edit": "为此员工编辑",
+    "sendTest": "向我发送测试",
+    "openWorkflow": "打开工作流程",
+    "testHint": "测试副本仅排队发送给您，不会推进个案。",
+    "to": "收件人",
+    "cc": "抄送",
+    "nobody": "收件人不可用",
+    "none": "无",
+    "attachments": "附件",
+    "subject": "主题",
+    "body": "邮件正文",
+    "save": "保存消息",
+    "saved": "消息更改已保存。",
+    "queued": "测试已排队发送至您已验证的邮箱，尚未确认送达。",
+    "uncertain": "无法确认测试请求。请重试以查询同一个请求。"
   }
 }

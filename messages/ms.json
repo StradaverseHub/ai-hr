@@ -41253,5 +41253,30 @@
     "searchLabels": "Cari Jawatan atau Gred jawatan",
     "search": "Cari",
     "narrowSearch": "Memaparkan 501 nilai sepadan yang pertama. Cari untuk memperincikan pilihan."
+  },
+  "resignationCommunications": {
+    "title": "Komunikasi kes",
+    "intro": "Semak mesej untuk kes ini. Ujian dihantar hanya ke e-mel anda yang telah disahkan.",
+    "loading": "Memuatkan komunikasi kes…",
+    "failed": "Mesej tidak dapat dimuatkan atau disimpan. Muat semula dan cuba lagi.",
+    "empty": "Tiada mesej tersedia untuk tanggungjawab kes semasa anda.",
+    "reload": "Muat semula mesej",
+    "workflow": "{name} · versi {revision}",
+    "preview": "Pratonton mesej",
+    "edit": "Edit untuk orang ini",
+    "sendTest": "Hantar ujian kepada saya",
+    "openWorkflow": "Buka aliran kerja",
+    "testHint": "Ujian memasukkan salinan ke dalam baris gilir untuk anda sahaja. Ia tidak menggerakkan kes ke langkah seterusnya.",
+    "to": "Kepada",
+    "cc": "Salinan kepada",
+    "nobody": "Penerima tidak tersedia",
+    "none": "Tiada",
+    "attachments": "Lampiran",
+    "subject": "Subjek",
+    "body": "Kandungan e-mel",
+    "save": "Simpan mesej",
+    "saved": "Perubahan mesej disimpan.",
+    "queued": "Ujian dimasukkan ke dalam baris gilir ke e-mel anda yang telah disahkan. Penghantaran belum disahkan.",
+    "uncertain": "Permintaan ujian tidak dapat disahkan. Cuba lagi untuk menyemak permintaan yang sama."
   }
 }
