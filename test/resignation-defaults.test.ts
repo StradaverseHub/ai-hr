@@ -100,12 +100,13 @@ it('generates each installed document with real captured merge values and no unr
   const generated=generateResignationLetter({id:'generated-'+kind,kind,template,tenantId:'fictional-tenant',companyId:'fictional-company',subjectId:'fictional-case',employeeUserId:'fictional-employee',caseOwnerId:'fictional-gbs',generatedOn:'2026-11-16',generatedAt:at,values,facts:{caseType:'Resignation'},context:{employeeUserId:'fictional-employee',directSuperiorUserId:'fictional-manager',facts:{},routing:id=>({id,name:'Explicit fixture routing',rows:[{match:{},assignTo:{kind:'people',userIds:[id===I.bp?'fictional-bp':'fictional-ceo']}}]}),groupMembers:()=>['fictional-gbs'],choose:people=>people[0]??null,fallback:null,describe:who=>who.kind}},{fingerprint:content=>createHash('sha256').update(content).digest('hex'),newId:()=> 'fictional-id'});
   const preview=resignationLetterPreview(generated.letter,'fictional-gbs');expect(preview.warnings).toEqual([]);expect(preview.document).not.toBeNull();
   const document=preview.document!,keys=resignationLetterMergeKeys(document.blocks);
-  if(!document.mergeValues)throw new Error('Generated default document must capture merge values');
-  expect(document.mergeValues['employee.name']).toBe('Fictional Taylor');
-  for(const key of keys)expect(document.mergeValues[key]).toBe(values[key as keyof typeof values]);
-  const rendered=document.blocks.flatMap(block=>[block.text,block.rows??'',block.columns??'',block.label??'']).map(text=>merge(text,document.mergeValues));
+  const mergeValues=document.mergeValues;
+  if(!mergeValues)throw new Error('Generated default document must capture merge values');
+  expect(mergeValues['employee.name']).toBe('Fictional Taylor');
+  for(const key of keys)expect(mergeValues[key]).toBe(values[key as keyof typeof values]);
+  const rendered=document.blocks.flatMap(block=>[block.text,block.rows??'',block.columns??'',block.label??'']).map(text=>merge(text,mergeValues));
   expect(rendered.flatMap(part=>part.missing)).toEqual([]);const wording=rendered.map(part=>part.text).join('\n');expect(wording).toContain('Dear Fictional Taylor,');expect(wording).not.toMatch(/[{}]|\[Full name\]/);
-  if(kind==='acceptance'){expect(document.mergeValues['resignation.lastDay']).toBe('2027-02-18');expect(wording).toContain('Your agreed last working day is 2027-02-18.');}
+  if(kind==='acceptance'){expect(mergeValues['resignation.lastDay']).toBe('2027-02-18');expect(wording).toContain('Your agreed last working day is 2027-02-18.');}
   else{expect(wording).toContain('Job title | Coordinator | Senior Coordinator');expect(wording).toContain('Grade | G3 | G4');expect(wording).toContain('Base salary | 5000.00 | 5500.00');expect(wording).toContain('These terms take effect on 2027-01-01.');}
  }
  // Email content belongs to its existing mail token adapter, not the document token parser.
