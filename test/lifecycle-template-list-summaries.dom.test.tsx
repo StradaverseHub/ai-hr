@@ -1,6 +1,6 @@
 import {beforeAll,afterAll,afterEach,it,expect,vi} from 'vitest';
 import {cleanup,render,screen,within,fireEvent} from '@testing-library/react';
-import {createTranslator,NextIntlClientProvider,type AbstractIntlMessages} from 'next-intl';
+import {createTranslator,NextIntlClientProvider} from 'next-intl';
 import messages from '../messages/en.json';
 import {v9Defaults} from '../lib/lifecycle-v9-defaults';
 import type {Template} from '../lib/lifecycle-v9-model';
@@ -19,9 +19,19 @@ beforeAll(()=>{
 });
 afterAll(()=>{dialogMethods.forEach((name,index)=>{const original=originalDialogMethods[index];if(original)Object.defineProperty(HTMLDialogElement.prototype,name,original);else Reflect.deleteProperty(HTMLDialogElement.prototype,name);});});
 afterEach(cleanup);
-// The production metadata adapter accepts dynamic catalogue keys; missing keys still throw below.
-const catalogue:AbstractIntlMessages=messages;
+// Dynamic presentation keys retain real catalogue membership and ICU formatting without literal-argument inference.
+type StringLeaves<T>={[K in keyof T]:T[K] extends string?string:StringLeaves<T[K]>};
+const catalogue:{automation:StringLeaves<typeof messages.automation>}={automation:messages.automation};
 const t=createTranslator({locale:'en',messages:catalogue,namespace:'automation',onError:error=>{throw error;}});
+function isLabelKey(key:string):key is Parameters<typeof t>[0]{
+ let value:unknown=catalogue.automation;
+ for(const part of key.split('.')){if(!value||typeof value!=='object'||!Object.hasOwn(value,part))return false;value=Reflect.get(value,part);}
+ return typeof value==='string';
+}
+function label(key:string,values?:Record<string,string|number>){
+ if(!isLabelKey(key))throw Error('Unknown automation message: '+key);
+ return t(key,values);
+}
 const template=(id:string,module:'onb'|'off'='off'):Template=>({id,name:'Acceptance letter',module,type:'Letter',rules:{},hrStep:'none',employeeAck:false,retired:false,currentVersion:1,versions:[{version:1,state:'published',at:'2026-11-17T00:00:00Z',by:'Fictional editor',blocks:[],fields:[],routing:[{id:'employee',order:2,action:'sign',who:{kind:'employee'},owner:false},{id:'review',order:1,action:'review',who:{kind:'group',groupId:'ops'},owner:true},{id:'approve',order:1,action:'approve',who:{kind:'people',userIds:['bp']},owner:false}]}]});
 function fixture(){
  const config=v9Defaults();config.templates=[template('shared'),template('legacy'),template('onboarding','onb'),template('unused')];config.groups=[{id:'ops',name:'Fictional People Ops',members:[],limit:5}];
@@ -33,7 +43,7 @@ function fixture(){
 it('shows the current review/sign chain and exact workflow steps in the existing list without confusing same-named templates',()=>{
  const {config,shared,choices}=fixture();config.templates[0].versions.push({...config.templates[0].versions[0],version:2,state:'draft',routing:[{id:'future',order:1,action:'sign',who:{kind:'people',userIds:['unpublished']},owner:true}]});
  const before=JSON.stringify(config);
- const metadata=lifecycleTemplateListMetadata(config,shared,choices,(key,values)=>t(key,values));
+ const metadata=lifecycleTemplateListMetadata(config,shared,choices,label);
  render(<NextIntlClientProvider locale="en" messages={messages}><TemplateEditor config={config} listMetadata={metadata} selected="" select={vi.fn()} module="off" setModule={vi.fn()} edit={vi.fn()} editable={false} saved previewCases={[]} users={choices.people} initialFilter="off" showModuleFilter={false}/></NextIntlClientProvider>);
  const docs=screen.getByRole('region',{name:'Document templates'}),rows=within(docs).getAllByRole('listitem'),first=within(rows[0]),second=within(rows[1]);
  expect(first.getByText(/Review Fictional People Ops \+ Approve Fictional Business Partner \(parallel\) → Sign the employee/)).toBeInTheDocument();
@@ -48,7 +58,7 @@ it('shows the current review/sign chain and exact workflow steps in the existing
 it('retains paused/retired references, module identity and draft/removed-route truth without inventing workflow usage',()=>{
  const {config,shared,choices}=fixture();shared[0].status='paused';shared.push({...shared[0],id:'wrong-module',module:'probation',name:'Hidden Probation workflow'});
  config.templates[0].versions[0].state='draft';config.templates[0].versions[0].routing=[{id:'missing',order:1,action:'sign',who:{kind:'routing',routingId:'retired-route'},owner:true}];
- const metadata=lifecycleTemplateListMetadata(config,shared,{...choices,routings:[{id:'retired-route',name:'Existing BP routing',retired:true}]},(key,values)=>t(key,values));
+ const metadata=lifecycleTemplateListMetadata(config,shared,{...choices,routings:[{id:'retired-route',name:'Existing BP routing',retired:true}]},label);
  expect(metadata.documents.shared.signing).toBe('Draft routing: Sign Existing BP routing · Retired');
  expect(metadata.documents.shared.uses.join(' ')).toContain('Paused');expect(metadata.documents.shared.uses.join(' ')).not.toContain('Hidden Probation workflow');
  expect(metadata.documents.onboarding.uses).toEqual(['Not used in the visible workflows']);
@@ -57,7 +67,7 @@ it('retains paused/retired references, module identity and draft/removed-route t
 
 it('does not invent resolved employee signers for an Offboarding template using the runtime HR fallback',()=>{
  const {config,shared,choices}=fixture();config.templates[0].versions[0].routing=[];config.templates[0].hrStep='none';config.templates[0].employeeAck=false;
- const metadata=lifecycleTemplateListMetadata(config,shared,choices,(key,values)=>t(key,values));
+ const metadata=lifecycleTemplateListMetadata(config,shared,choices,label);
  expect(metadata.documents.shared.signing).toBe(t('templates.signing.existing'));
  expect(metadata.documents.shared.signing).not.toContain('Sign the employee');
 });
