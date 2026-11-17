@@ -5,7 +5,7 @@ import type {SessionContext} from '../db/client';
 import {closeAll,migrateTestDb,resetDb,seedBase,setModule,entitledCtx,createAppUser,owner,type Base} from './harness';
 import {v9Setup,v9Workspace,v9SaveConfig} from '../packs/lifecycle/service';
 import {saveAutomationRouting,saveAutomationWorkflow,listAutomationWorkflows,listAutomationDocumentTemplates} from '../packs/automation/service';
-import {contractSharedSetup,startContractSharedSetup,contractSetupJobHandler,contractSharedSettings} from '../packs/contracts/service';
+import {contractSharedSetup,startContractSharedSetup,contractSetupJobHandler,contractSharedSettings,saveContractSharedMember} from '../packs/contracts/service';
 import {contractDefaultId,type ContractStartingMappings} from '../lib/contract-starting-configuration';
 import {readBulkJob} from '../core/bulk-job';
 import {runBulkJobTick} from '../core/bulk-job-worker';
@@ -49,6 +49,7 @@ describe('Mapped Contract starting setup on the existing human kernel',()=>{
   const {jobId}=await startContractSharedSetup(admin,mapping);const finished=await finish(jobId);
   expect(finished.created_by).toBe(admin.userId);expect(finished.steps_done).toBe(24);
   const state=await contractSharedSetup(admin,b.companyId);expect(state.installed).toBe(true);expect(state.accessReady).toBe(false);expect(state.missing.join(' ')).toContain('explicitly assign');
+  const member={id:randomUUID(),roleId:contractDefaultId(401),userId:admin.userId!,companyId:null,businessGroupId:b.companyId,validFrom:'2026-01-01',validTo:null,revoked:false};await saveContractSharedMember(admin,member);expect((await contractSharedSetup(admin,b.companyId)).accessReady).toBe(true);expect((await contractSharedSetup(admin,b.companyId)).missing).toEqual([]);await saveContractSharedMember(admin,{...member,revoked:true,expectedRevision:1});expect((await contractSharedSetup(admin,b.companyId)).accessReady).toBe(false);
   const documents=await listAutomationDocumentTemplates(admin,'contract_staff');expect(documents).toHaveLength(5);
   const workflows=await listAutomationWorkflows(admin,{module:'contract_staff'});expect(workflows).toHaveLength(12);
   const renew=workflows.find(item=>item.workflow.id===contractDefaultId(204))!;

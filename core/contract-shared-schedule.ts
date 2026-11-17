@@ -9,8 +9,8 @@ import {queueAutomationEmailTx} from './automation-email-delivery';
 import {decideAutomationRuns,type AutomationWorkflow} from '../packs/automation/service';
 import {CONTRACT_AUTOMATION_CATALOGUE} from '../lib/automation/catalogues/contracts';
 import type {ContractFlow} from '../lib/contract-case-flow';
-const progress=z.object({phase:z.enum(['periods','digest']),after:z.uuid().nullable(),activeCase:z.uuid().nullable(),workflowAfter:z.uuid().nullable(),company:z.uuid().nullable(),companyAfter:z.uuid().nullable(),digestAfter:z.uuid().nullable()});
-const initial=()=>({phase:'periods' as const,after:null,activeCase:null,workflowAfter:null,company:null,companyAfter:null,digestAfter:null});
+const progress=z.object({phase:z.enum(['periods','digest']),after:z.uuid().nullable(),activeCase:z.uuid().nullable(),workflowAfter:z.uuid().nullable(),company:z.uuid().nullable(),companyAfter:z.uuid().nullable(),digestAfter:z.uuid().nullable(),recipientAfter:z.uuid().nullable().default(null)});
+const initial=()=>({phase:'periods' as const,after:null,activeCase:null,workflowAfter:null,company:null,companyAfter:null,digestAfter:null,recipientAfter:null});
 const forbidden=async():Promise<never>=>{throw new Error('This fixed system kind never captures a human or uses application-role steps.');};
 export const contractScheduleJobHandler:BulkJobHandler<never>={kind:'contract_schedule',mode:'per-step',finalizeOwner:true,prepare:forbidden,applyStepTx:forbidden,quietNotice:()=>true,
  systemOwner:{async prepare(job,unit){z.object({day:z.iso.date()}).strict().parse(job.input);await unit.ownerTx(async()=>undefined);return initial();},async finalize(job,unit){return scheduleUnit(job,unit);}}
@@ -53,18 +53,18 @@ async function scheduleUnit(job:BulkJobRow,unit:BulkJobDiscardUnit){
   if(!plan.company){
    const [company]=await db.execute<{id:string}>(sql`select company.id from company join contract_shared_settings settings on settings.tenant_id=company.tenant_id and settings.company_id=company.id where company.tenant_id=${job.tenant_id}::uuid and company.archived_at is null and (${plan.companyAfter}::uuid is null or company.id>${plan.companyAfter}::uuid) and exists(select 1 from tenant_module module where module.tenant_id=company.tenant_id and module.module_code='lifecycle' and module.status in('active','trial') and (module.company_id is null or module.company_id=company.id) and (module.expires_at is null or module.expires_at>now())) order by company.id limit 1`);
    if(!company)return {result:{processed:true,day,actorType:'system'}};
-   await unit.set(owner,{planMerge:{company:company.id,companyAfter:company.id,digestAfter:null}});return 'more' as const;
+   await unit.set(owner,{planMerge:{company:company.id,companyAfter:company.id,digestAfter:null,recipientAfter:null}});return 'more' as const;
   }
   const rows=await db.execute<{caseId:string;name:string;flags:string[];stalledDays:number|null;personId:string}>(sql`select * from app.contract_shared_digest_cases(${plan.company}::uuid,${plan.digestAfter}::uuid)`);
   if(!rows.length){await unit.set(owner,{planMerge:{company:null,digestAfter:null}});return 'more' as const;}
-  const recipients=await db.execute<{id:string}>(sql`select app.contract_shared_digest_recipients(${job.tenant_id}::uuid,${plan.company}::uuid) as id`);
-  const key=`digest:${day}:${plan.company}:${plan.digestAfter??'start'}`,first=rows[0],context={systemJobId:job.id,digestKey:key,digestCompanyId:plan.company,employmentId:null as string|null,cases:rows.map(row=>({caseId:row.caseId,personId:row.personId}))};
+  const recipients=await db.execute<{id:string}>(sql`select app.contract_shared_digest_recipients(${job.tenant_id}::uuid,${plan.company}::uuid,${plan.recipientAfter}::uuid) as id`);
+  const key=`digest:${day}:${plan.company}:${plan.digestAfter??'start'}:to:${plan.recipientAfter??'start'}`,first=rows[0],context={systemJobId:job.id,digestKey:key,digestCompanyId:plan.company,employmentId:null as string|null,cases:rows.map(row=>({caseId:row.caseId,personId:row.personId}))};
   const [employment]=await db.execute<{employmentId:string}>(sql`select employment_id as "employmentId" from contract_case where tenant_id=${job.tenant_id}::uuid and id=${first.caseId}::uuid`);context.employmentId=employment?.employmentId??null;
   await db.execute(sql`insert into app.contract_system_digest(tenant_id,mail_key,job_id,company_id,case_id,source_date,context,recipient_ids) values(${job.tenant_id}::uuid,${key},${job.id}::uuid,${plan.company}::uuid,${first.caseId}::uuid,${day}::date,${JSON.stringify(context)}::jsonb,${'{'+recipients.map(row=>row.id).join(',')+'}'}::uuid[]) on conflict(tenant_id,mail_key) do nothing`);
   if(recipients.length){
    const body='Contract cases needing attention on '+day+'\n\n'+rows.map(row=>row.name.slice(0,100)+' — '+[...row.flags.map(flag=>flag.replaceAll('_',' ')),...(row.stalledDays!==null?['Stalled '+row.stalledDays+' days']:[])].join('; ')).join('\n')+'\n\nOpen Contract Management to review these cases.\n{{case.link}}';
    await queueAutomationEmailTx(db,{module:'contract_staff',subjectId:first.caseId,key,to:recipients.map(row=>row.id),cc:[],subject:'Daily Contract cases needing attention · '+day,body});
   }
-  await unit.set(owner,{planMerge:{digestAfter:rows.at(-1)!.caseId},countersAdd:{digestCases:rows.length,digestPages:1}});return 'more' as const;
+  await unit.set(owner,{planMerge:recipients.length===100?{recipientAfter:recipients.at(-1)!.id}:{digestAfter:rows.at(-1)!.caseId,recipientAfter:null},countersAdd:{digestCases:recipients.length===100?0:rows.length,digestPages:recipients.length?1:0}});return 'more' as const;
  });
 }
