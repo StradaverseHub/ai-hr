@@ -1,25 +1,35 @@
 /** Board 42f2b8a9: populated rollout preserves history, keeps old pods safe and does not rewrite recipients. */
 import { readFileSync } from 'node:fs';
 import { afterAll, beforeEach, expect, it } from 'vitest';
+import type { SessionContext } from '../db/client';
 import { hireEmployee } from '../core/org';
 import { v9Setup, v9Workspace, v9CreateOffboarding, v9SaveConfig } from '../packs/lifecycle/service';
 import { closeAll, resetDb, seedBase, setModule, entitledCtx, owner } from './harness';
+
+async function confirmedActorId(ctx: SessionContext): Promise<string> {
+  const id = ctx.userId;
+  if (!id) throw new Error('The migration fixture requires an actual bound actor.');
+  const [binding] = await owner.client<{ id: string }[]>`select id from app_user where id=${id}::uuid and tenant_id=${ctx.tenantId}::uuid`;
+  if (binding?.id !== id) throw new Error('The migration fixture actor is not bound to its tenant.');
+  return id;
+}
 
 const migration = readFileSync('db/migrations/6103_lifecycle_pbp_removal.sql', 'utf8');
 beforeEach(async () => { await resetDb(); });
 afterAll(closeAll);
 it('clears populated routing and case overrides with coherent revisions and system audit, retaining canonical SQL and saved recipients', async () => {
   const base = await seedBase(); await setModule(base.tenantId, 'lifecycle', 'active'); const admin = await entitledCtx(base);
+  const actorId = await confirmedActorId(admin);
   const employee = await hireEmployee(admin, { companyId: base.companyId, departmentId: base.deptA, positionId: base.positionId, employmentType: 'full_time', hiredOn: '2026-01-01', person: { fullName: 'Fictional migration subject', primaryEmail: 'migration.subject@test.invalid' } });
   await v9Setup(admin);
   const caseId = await v9CreateOffboarding(admin, { employmentId: employee.employmentId, type: 'Resignation', noticeDate: '2026-10-01', lastDay: '2026-12-01' });
   const config = (await v9Workspace(admin)).config!;
-  const priorConfig = { ...config, bpRules: [{ rules: {}, userId: admin.userId }], caseForms: { off: [{ key: 'pbp', label: 'People Business Partner', type: 'text', show: false, required: false, hrOnly: false, rules: {}, options: [], help: '' }] } };
+  const priorConfig = { ...config, bpRules: [{ rules: {}, userId: actorId }], caseForms: { off: [{ key: 'pbp', label: 'People Business Partner', type: 'text', show: false, required: false, hrOnly: false, rules: {}, options: [], help: '' }] } };
   // Historical/test definitions may retain PBP under the owner's explicit exception; never rewrite them.
   priorConfig.workflows[0].steps = [{ id: 'legacy', type: 'notify', subject: 'Legacy subject', body: '', to: ['pbp'], cc: ['peopleOps'] }];
   priorConfig.emails[0].cc = ['pbp'];
   await owner.client`update lc_v9_config set data=${JSON.stringify(priorConfig)}::jsonb where tenant_id=${base.tenantId}::uuid`;
-  await owner.client`update lc_v9_case set data=jsonb_set(data,'{facts,pbpUserId}',to_jsonb(${admin.userId}::text)) where id=${caseId}::uuid`;
+  await owner.client`update lc_v9_case set data=jsonb_set(data,'{facts,pbpUserId}',to_jsonb(${actorId}::text)) where id=${caseId}::uuid`;
   const [before] = await owner.client`select revision,data from lc_v9_case where id=${caseId}::uuid`;
   const signatures = ['app.lifecycle_canonical_pbp_user(uuid,uuid)', 'app.lifecycle_canonical_pbp_scope(uuid,uuid,uuid)', 'app.lc_v9_onboarding_shell()'];
   const definitions = await owner.client`select oid::regprocedure::text as identity,pg_get_functiondef(oid) as definition from pg_proc where oid=any(${signatures}::regprocedure[]) order by oid::regprocedure::text`;
@@ -50,6 +60,6 @@ it('clears populated routing and case overrides with coherent revisions and syst
   expect(latest).not.toHaveProperty('bpRules');
   latest.workflows[0].steps = [{ id: 'legacy', type: 'notify', subject: 'Updated subject', body: '', to: ['peopleOps'], cc: [] }];
   latest.emails[0].cc = [];
-  await v9SaveConfig(admin, latest.revision, { ...latest, bpRules: [{ rules: {}, userId: admin.userId }] });
+  await v9SaveConfig(admin, latest.revision, { ...latest, bpRules: [{ rules: {}, userId: actorId }] });
   expect((await owner.client`select data from lc_v9_config where tenant_id=${base.tenantId}::uuid`)[0].data).not.toHaveProperty('bpRules');
 });
