@@ -2,11 +2,11 @@ import {afterEach,beforeAll,describe,expect,it,vi} from 'vitest';
 import {act,cleanup,fireEvent,render,screen,waitFor,within} from '@testing-library/react';
 import type {Editor} from '@tiptap/core';
 import {NextIntlClientProvider} from 'next-intl';
-import type {ReactNode} from 'react';
+import {useState,type ReactNode} from 'react';
 import messages from '../messages/en.json';
 import type {ResignationCaseView,ResignationLetterView,ResignationTaskView} from '../lib/resignation-journey';
 import {DocumentBody} from '../components/lifecycle-v9/document-body';
-import type {Document,Field} from '../lib/lifecycle-v9-model';
+import type {Block,Document,Field} from '../lib/lifecycle-v9-model';
 import {EmployeeResignation} from '../components/resignation/employee';
 import {ResignationCaseCard} from '../components/resignation/case-card';
 import {ResignationLetterCard} from '../components/resignation/letter-card';
@@ -335,4 +335,27 @@ it('keeps an invalid local editor draft and blocks Review until that actual draf
  expect(screen.getByRole('textbox',{name:'1. Text'})).toHaveTextContent('Unsaved second paragraph');expect(screen.getByRole('button',{name:'Review'})).toBeDisabled();
  screen.getByRole('textbox',{name:'1. Text'}).focus();await waitFor(()=>expect(screen.getByRole('textbox',{name:'1. Text'})).toHaveAttribute('contenteditable','true'));expect(getEditor().getJSON().content).toHaveLength(2);expect(screen.getByRole('button',{name:'Review'})).toBeDisabled();
  act(()=>{getEditor().commands.setContent({type:'doc',content:[{type:'paragraph',content:[{type:'text',text:'Corrected local wording'}]}]});});await waitFor(()=>expect(screen.getByRole('button',{name:'Review'})).toBeEnabled());fireEvent.click(screen.getByRole('button',{name:'Review'}));expect(command).toHaveBeenCalledWith({type:'letterAction',documentId:'letter-a',documentRevision:2,action:'review',blocks:[{...source[0],text:'Corrected local wording'}]});
+});
+
+it('preserves a blank single-column row through add, fill and clear, and removes only the selected row',async()=>{
+ const changes:Block[][]=[];
+ function Table(){const[blocks,setBlocks]=useState<Block[]>([{id:'one-column',type:'table',text:'',section:'',columns:'Term',rows:''}]);return <ResignationBlockEditor busy={false} blocks={blocks} onChange={next=>{changes.push(next);setBlocks(next);}}/>;}
+ wrap(<Table/>);expect(screen.queryByRole('textbox',{name:'Term, Row 1'})).not.toBeInTheDocument();fireEvent.click(screen.getByRole('button',{name:'Add row'}));
+ expect(changes.at(-1)?.[0].rows).toBe(' ');expect(screen.getAllByRole('button',{name:/Remove row/})).toHaveLength(1);
+ screen.getByRole('textbox',{name:'Term, Row 1'}).focus();await waitFor(()=>expect(screen.getByRole('textbox',{name:'Term, Row 1'})).toHaveAttribute('contenteditable','true'));
+ const editor=(screen.getByRole('textbox',{name:'Term, Row 1'}) as HTMLElement&{editor:Editor}).editor;
+ act(()=>{editor.commands.setContent({type:'doc',content:[{type:'paragraph',content:[{type:'text',text:'First term'}]}]});});await waitFor(()=>expect(changes.at(-1)?.[0].rows).toBe('First term'));
+ act(()=>{editor.commands.setContent({type:'doc',content:[{type:'paragraph',content:[]}]});});await waitFor(()=>expect(changes.at(-1)?.[0].rows).toBe(' '));expect(screen.getAllByRole('button',{name:/Remove row/})).toHaveLength(1);
+ fireEvent.click(screen.getByRole('button',{name:'Add row'}));expect(changes.at(-1)?.[0].rows).toBe(' \n ');expect(screen.getByRole('textbox',{name:'Term, Row 2'})).toBeInTheDocument();
+ screen.getByRole('textbox',{name:'Term, Row 2'}).focus();await waitFor(()=>expect(screen.getByRole('textbox',{name:'Term, Row 2'})).toHaveAttribute('contenteditable','true'));
+ act(()=>{(screen.getByRole('textbox',{name:'Term, Row 2'}) as HTMLElement&{editor:Editor}).editor.commands.setContent({type:'doc',content:[{type:'paragraph',content:[{type:'text',text:'Keep this term'}]}]});});await waitFor(()=>expect(changes.at(-1)?.[0].rows).toBe(' \nKeep this term'));
+ fireEvent.click(screen.getByRole('button',{name:'Remove row 1'}));expect(changes.at(-1)?.[0].rows).toBe('Keep this term');expect(screen.getByRole('textbox',{name:'Term, Row 1'})).toHaveTextContent('Keep this term');expect(screen.queryByRole('textbox',{name:'Term, Row 2'})).not.toBeInTheDocument();
+ fireEvent.click(screen.getByRole('button',{name:'Remove row 1'}));expect(changes.at(-1)?.[0].rows).toBe('');expect(screen.queryByRole('button',{name:/Remove row/})).not.toBeInTheDocument();
+});
+it('does not offer a stale wording or correction save after the native capabilities are removed',()=>{
+ const command=vi.fn(async()=>true),source=[{id:'body',type:'text' as const,text:'Canonical wording',section:''}],letter=l({editableBlocks:source,capabilities:{...l().capabilities,edit:true,sign:false,sendBack:false}}),ui=wrap(<ResignationLetterCard value={c()} letter={letter} busy={false} command={command}/>);
+ fireEvent.click(screen.getByRole('button',{name:'Update letter'}));expect(screen.getByRole('button',{name:'Save letter changes'})).toBeInTheDocument();
+ ui.rerender(<NextIntlClientProvider locale="en" messages={messages}><ResignationLetterCard value={c()} letter={{...letter,capabilities:{...letter.capabilities,edit:false,correct:false}}} busy={false} command={command}/></NextIntlClientProvider>);expect(screen.queryByRole('button',{name:'Save letter changes'})).not.toBeInTheDocument();expect(command).not.toHaveBeenCalled();
+ cleanup();const correcting=l({capabilities:{...l().capabilities,correct:true,sign:false,sendBack:false}}),details=wrap(<ResignationLetterCard value={c()} letter={correcting} busy={false} command={command}/>);fireEvent.click(screen.getByRole('button',{name:'Correct the details on the case'}));expect(screen.getByRole('button',{name:'Save letter changes'})).toBeInTheDocument();
+ details.rerender(<NextIntlClientProvider locale="en" messages={messages}><ResignationLetterCard value={c()} letter={{...correcting,capabilities:{...correcting.capabilities,correct:false}}} busy={false} command={command}/></NextIntlClientProvider>);expect(screen.queryByRole('button',{name:'Save letter changes'})).not.toBeInTheDocument();expect(command).not.toHaveBeenCalled();
 });
