@@ -301,9 +301,9 @@ it('submits offboarding with validated saved form answers and fresh workflow mer
   const id=await v9CreateOffboarding(admin,{employmentId,type:'Resignation',noticeDate:'2026-10-01',lastDay:'2026-11-01'});
   await expect(v9Command(admin,id,1,{type:'caseFormSave',values:{type:'Termination'},reason:'',submit:true})).rejects.toThrow('Decision detail');
   await expect(v9Command(admin,id,1,{type:'caseFormSave',values:{empNo:'FORGED'},reason:'',submit:false})).rejects.toThrow('Personnel fields are locked');
-  await v9Command(admin,id,1,{type:'caseFormSave',values:{type:'Termination',notice:'2026-10-02',decisionDetail:'Reviewed explanation',revokeMode:'date',revokeDate:'2026-10-31',pbp:employee.userId!},reason:'',submit:true});
+  await v9Command(admin,id,1,{type:'caseFormSave',values:{type:'Termination',notice:'2026-10-02',decisionDetail:'Reviewed explanation',revokeMode:'date',revokeDate:'2026-10-31'},reason:'',submit:true});
   const c=(await v9CaseDetail(admin,id)).case;
-  expect(c).toMatchObject({state:'submitted',caseValues:{decisionDetail:'Reviewed explanation'},revokeMode:'date',revokeDate:'2026-10-31',facts:{caseType:'Termination',noticeDate:'2026-10-02',pbpUserId:employee.userId}});
+  expect(c).toMatchObject({state:'submitted',caseValues:{decisionDetail:'Reviewed explanation'},revokeMode:'date',revokeDate:'2026-10-31',facts:{caseType:'Termination',noticeDate:'2026-10-02'}});
   expect(c.mails[0].body).toBe('Termination: Reviewed explanation');
   await expect(v9Command(admin,id,c.revision,{type:'caseFormSave',values:{notice:'2026-10-03'},reason:'',submit:false})).rejects.toThrow('Record a reason');
 });
@@ -1239,7 +1239,7 @@ it('separates module membership, company HR scope and the minimal onboarding she
   const shell=await v9Workspace(employee);
   expect(shell.permissions).toEqual({onboarding:true,offboarding:false,administration:false,records:true});
   expect(shell.cases).toEqual([]);expect(shell.config!.checklists.every(checklist=>checklist.module==='onb')).toBe(true);
-  expect(shell.config).toMatchObject({templates:[],emails:[],workflows:[],bpRules:[]});
+  expect(shell.config).toMatchObject({templates:[],emails:[],workflows:[],});
   expect(shell.config).not.toHaveProperty('settlementPolicy');expect(shell.config).not.toHaveProperty('companies');
   await expect(v9CaseDetail(employee,c.id)).rejects.toThrow();
   const scopedId=await createAppUser(base.tenantId,other.personId!,'hr_admin');

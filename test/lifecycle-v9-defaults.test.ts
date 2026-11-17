@@ -83,3 +83,10 @@ it('allows turning an email off while protecting new or edited live workflow act
   workflow.status = 'draft';
   expect(() => parseV9Config(next, previous)).not.toThrow();
 });
+
+it('strips legacy PBP routing from stale tabs without mutating their input', () => {
+  const input = { ...v9Defaults(), bpRules: [{ rules: {}, userId: '11111111-1111-4111-8111-111111111111' }] };
+  expect(parseV9Config(input)).not.toHaveProperty('bpRules');
+  expect(input.bpRules).toHaveLength(1);
+  expect(v9Defaults()).not.toHaveProperty('bpRules');
+});

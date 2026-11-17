@@ -5952,6 +5952,5 @@
       "limit": 4
     }
   ],
-  "peopleOpsGroup": "g-people",
-  "bpRules": []
+  "peopleOpsGroup": "g-people"
 }

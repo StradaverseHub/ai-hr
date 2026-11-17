@@ -41,7 +41,7 @@ it('redacts hidden sections and HR facts before serialization and rejects hidden
 it('keeps record-group access independent and read-only without exposing a joiner page or private workspace metadata',async()=>{
  const context=await onboardingContext(admin);context.config.access.joinerViewGroups=[];context.config.access.recordGroups=['page-readers'];await onboardingSaveConfig(admin,context.revision,context.config);
  const rows=await onboardingList(member);expect(rows.find(row=>row.case.id===id)?.case).toMatchObject({tasks:[],history:[],notes:''});await expect(onboardingDetail(member,id)).rejects.toThrow();
- const workspace=await v9Workspace(member);expect(workspace.permissions).toMatchObject({onboarding:false,offboarding:false,administration:false,records:true});expect(workspace.config).toMatchObject({templates:[],emails:[],workflows:[],bpRules:[]});expect(workspace.options.employees).toEqual([]);
+ const workspace=await v9Workspace(member);expect(workspace.permissions).toMatchObject({onboarding:false,offboarding:false,administration:false,records:true});expect(workspace.config).toMatchObject({templates:[],emails:[],workflows:[]});expect(workspace.options.employees).toEqual([]);
  await expect(onboardingCommand(member,id,rows[0].revision,{type:'save',patch:{floor:'Denied record edit'}})).rejects.toThrow();
  expect(await withTenant(member,tx=>tx.execute(sql`update lc_onboarding_case set data=jsonb_set(data,'{floor}','"Denied record SQL"') where id=${id}::uuid returning id`))).toHaveLength(0);
 });
