@@ -5,14 +5,14 @@ import {sql} from 'drizzle-orm';
 import {withTenant} from '../db/client';
 import {closeAll,migrateTestDb,owner,createAppUser} from './harness';
 import {fixture,finish,letters,saveAnswers,actForm} from './helpers/contract-document-fixture';
-import {saveAutomationEmailTemplate,saveAutomationDocumentTemplate,saveAutomationWorkflow} from '../packs/automation/service';
+import {saveAutomationEmailTemplate,saveAutomationDocumentTemplate,saveAutomationWorkflow,uploadAutomationEmailAsset} from '../packs/automation/service';
 import {previewContractSharedDecision,submitContractSharedDecision,contractAutomationJobHandler,readContractSharedLetter} from '../packs/contracts/service';
 import {runBulkJobTick} from '../core/bulk-job-worker';
 import {v9Workspace,v9SaveConfig} from '../packs/lifecycle/service';
 const origin='https://contract-recovery-fixture.invalid';
 beforeAll(migrateTestDb);afterAll(closeAll);
 
-async function actualRecovery(callbackChange?:'archive'|'relink'){
+async function actualRecovery(callbackChange?:'archive'|'relink',requiredFile?:'legacy'|'hint'){
  const f=await fixture('renew'),employeeId=await createAppUser(f.b.tenantId,f.employee.personId,'employee');
  let callbackActor=f.admin;
  if(callbackChange){
@@ -23,7 +23,7 @@ async function actualRecovery(callbackChange?:'archive'|'relink'){
  for(const userId of[f.admin.userId!,employeeId])await owner.db.execute(sql`insert into app_external_identity(issuer,subject,app_user_id) values(${origin+'/auth/'+f.b.tenantId},${randomUUID()},${userId}::uuid)`);
  const documentId=f.workflow.steps[0].params.letterTemplateId as string;
  await saveAutomationDocumentTemplate(f.admin,{template:{id:documentId,module:'contract_staff',name:'Fictional recovery Form',description:'Actual native HR evidence',rules:{},blocks:[{id:'intro',type:'text',text:'For {Full name}.',section:''},{id:'fields',type:'fields',text:'',section:'main'}],fields:[{id:'hrChoice',label:'HR decision',type:'select',owner:'hr',pmKey:null,required:true,sensitive:false,options:['Yes','No'],section:'main',when:null}],routing:[{id:'hr-review',order:1,action:'review',owner:true,who:{kind:'group',groupId:f.groupId}},{id:'hr-sign',order:2,action:'sign',owner:false,who:{kind:'group',groupId:f.groupId}},{id:'employee-sign',order:3,action:'sign',owner:false,who:{kind:'employee'}}]},expectedRevision:1,publish:true,retired:false});
- const emailId=randomUUID(),email={id:emailId,module:'contract_staff' as const,name:'Pinned recovery email',active:true,subject:'Original recovery for {{employee.name}}',body:'Original frozen wording',cc:[{kind:'person' as const,userId:f.admin.userId!}],documentIds:[documentId]};
+ const emailId=randomUUID(),slotId=randomUUID(),email={id:emailId,module:'contract_staff' as const,name:'Pinned recovery email',active:true,subject:'Original recovery for {{employee.name}}',body:'Original frozen wording',cc:[{kind:'person' as const,userId:f.admin.userId!}],documentIds:[documentId],...(requiredFile?{slots:[{id:slotId,label:'Actual required evidence',required:true}]}:{})};
  await saveAutomationEmailTemplate(f.admin,{template:email,expectedRevision:0,retired:false,reason:'Actual first preparation'});
  const emailStep=randomUUID(),tailStep=randomUUID();
  await saveAutomationWorkflow(f.admin,{workflow:{...f.workflow,steps:[{id:emailStep,type:'sendEmail',conditions:[],to:[{kind:'role',role:'employee'}],cc:[],params:{emailTemplateId:emailId}},{id:tailStep,type:'requestApproval',conditions:[],to:[],cc:[],params:{layers:[{id:randomUUID(),name:'Original authority approval',pick:'any',approver:{kind:'person',userId:f.admin.userId!}}]}}]},expectedRevision:1,reason:'Same email then actual protected approval'});
@@ -54,10 +54,15 @@ async function actualRecovery(callbackChange?:'archive'|'relink'){
  expect(await owner.db.execute(sql`select id from automation_email_delivery where tenant_id=${f.b.tenantId}::uuid`)).toHaveLength(0);
  await saveAnswers(callbackActor,letter.id,{hrChoice:'Yes'});await actForm(callbackActor,letter.id,'reviewed');
  expect(await owner.db.execute(sql`select event_id from app.contract_email_prerequisite_resume where tenant_id=${f.b.tenantId}::uuid`)).toHaveLength(0);
- await saveAutomationEmailTemplate(f.admin,{template:{...email,active:false,subject:'Later wording',body:'Later body',cc:[],documentIds:[]},expectedRevision:1,retired:false,reason:'The waiting email keeps its actual immutable version'});
+ if(requiredFile!=='legacy')await saveAutomationEmailTemplate(f.admin,{template:{...email,active:false,subject:'Later wording',body:'Later body',cc:[],documentIds:[]},expectedRevision:1,retired:false,reason:'The waiting email keeps its actual immutable version'});
  await actForm(callbackActor,letter.id,'signed');expect((await readContractSharedLetter({...f.admin,userId:employeeId,personId:f.employee.personId,roles:['employee'],grants:undefined},letter.id)).pendingAction?.kind).toBe('sign');
- const receipts=await owner.db.execute<{eventId:string;actor:string;jobId:string}>(sql`select r.event_id as "eventId",e.actor_user_id as actor,e.job_id as "jobId" from app.contract_email_prerequisite_resume r join contract_shared_event e on e.tenant_id=r.tenant_id and e.id=r.event_id where r.tenant_id=${f.b.tenantId}::uuid`);
- expect(receipts).toHaveLength(1);expect(receipts[0]).toMatchObject({actor:callbackActor.userId,jobId:accepted.jobId});
+ if(requiredFile){
+  expect(await owner.db.execute(sql`select event_id from app.contract_email_prerequisite_resume where tenant_id=${f.b.tenantId}::uuid`)).toHaveLength(0);
+  await uploadAutomationEmailAsset(f.admin,{templateId:emailId,module:'contract_staff',revision:1,kind:'file',name:'required-evidence.txt',content:Buffer.from('Actual fictional required file'),caseId:f.caseId,slotId,...(requiredFile==='hint'?{prerequisiteId:pin!.id}:{})});
+ }
+ const receipts=()=>owner.db.execute<{eventId:string;actor:string;jobId:string}>(sql`select r.event_id as "eventId",e.actor_user_id as actor,e.job_id as "jobId" from app.contract_email_prerequisite_resume r join contract_shared_event e on e.tenant_id=r.tenant_id and e.id=r.event_id where r.tenant_id=${f.b.tenantId}::uuid`);
+ if(requiredFile==='legacy')expect(await receipts()).toHaveLength(0);
+ else{const actual=await receipts();expect(actual).toHaveLength(1);expect(actual[0]).toMatchObject({actor:callbackActor.userId,jobId:accepted.jobId});}
  await expect(withTenant(f.admin,tx=>tx.execute(sql`select app.contract_shared_email_prerequisite_signal(${pin!.id}::uuid)`))).rejects.toThrow();
  if(callbackChange==='archive')await owner.db.execute(sql`update app_user set archived_at=now() where tenant_id=${f.b.tenantId}::uuid and id=${callbackActor.userId}::uuid`);
  if(callbackChange==='relink'){
@@ -65,7 +70,7 @@ async function actualRecovery(callbackChange?:'archive'|'relink'){
   await owner.db.execute(sql`update app_user set person_id=${replacement.id}::uuid where tenant_id=${f.b.tenantId}::uuid and id=${callbackActor.userId}::uuid`);
  }
  // The durable wait uses the kernel's genuine not-before delay; no local admission/proof bypass.
- await new Promise(resolve=>setTimeout(resolve,2100));await tick();
+ await new Promise(resolve=>setTimeout(resolve,2100));await tick();if(requiredFile==='legacy')await tick();
  const deliveries=await owner.db.execute<{id:string;payload:{mail:{subject:string;body:string;cc:string[]}}}>(sql`select id,payload from automation_email_delivery where tenant_id=${f.b.tenantId}::uuid`);
  if(callbackChange){
   expect(checkedHeldGuards).toBe(true);expect(deliveries).toHaveLength(0);
@@ -75,6 +80,7 @@ async function actualRecovery(callbackChange?:'archive'|'relink'){
  }
  expect(deliveries).toHaveLength(1);expect(deliveries[0].payload.mail).toMatchObject({subject:'Original recovery for Fictional ending subject',body:'Original frozen wording',cc:[f.admin.userId]});
  expect(checkedHeldGuards).toBe(true);
+ const completed=await receipts();expect(completed).toHaveLength(1);expect(completed[0]).toMatchObject({actor:callbackActor.userId,jobId:accepted.jobId});
  expect(await owner.db.execute(sql`select id from contract_shared_approval where tenant_id=${f.b.tenantId}::uuid`)).toHaveLength(0);
  const [run]=await owner.db.execute<{status:string;cursor:number;tail:string}>(sql`select status,step_cursor as cursor,remaining_steps->0->'step'->>'id' as tail from automation_run where tenant_id=${f.b.tenantId}::uuid and id=${pin!.runId}::uuid`);expect(run).toEqual({status:'running',cursor:1,tail:tailStep});
  for(let n=0;n<10;n++)await tick();
@@ -86,3 +92,5 @@ async function actualRecovery(callbackChange?:'archive'|'relink'){
 it('uses actual first-prepared Form, HR completion and immutable template to retry only its email before original approval tail',()=>actualRecovery(),120_000);
 it('refuses an archived actual HR callback while the original workflow owner remains active',()=>actualRecovery('archive'),120_000);
 it('refuses a relinked actual HR callback while retaining the same pending email and untouched tail',()=>actualRecovery('relink'),120_000);
+it('recovers a real required-file hold from an actual legacy upload observation without requiring a reupload',()=>actualRecovery(undefined,'legacy'),120_000);
+it('uses actual hinted old-version upload proof after the waiting template is edited and turned off',()=>actualRecovery(undefined,'hint'),120_000);
