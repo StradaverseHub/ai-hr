@@ -25269,7 +25269,8 @@
           "incrementMoney": "Increase (MYR)",
           "bonusMoney": "Bonus (MYR)",
           "bonusMonths": "Bonus months"
-        }
+        },
+        "auditChange": "{field}: {before} → {after}"
       }
     },
     "sharedGovernance": {

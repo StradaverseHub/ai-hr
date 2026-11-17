@@ -25269,7 +25269,8 @@
           "incrementMoney": "ขึ้นเงินเดือน (MYR)",
           "bonusMoney": "โบนัส (MYR)",
           "bonusMonths": "จำนวนเดือนโบนัส"
-        }
+        },
+        "auditChange": "{field}: {before} → {after}"
       }
     },
     "sharedGovernance": {

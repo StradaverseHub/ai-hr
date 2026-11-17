@@ -25269,7 +25269,8 @@
           "incrementMoney": "உயர்வு (MYR)",
           "bonusMoney": "போனஸ் (MYR)",
           "bonusMonths": "போனஸ் மாதங்கள்"
-        }
+        },
+        "auditChange": "{field}: {before} → {after}"
       }
     },
     "sharedGovernance": {

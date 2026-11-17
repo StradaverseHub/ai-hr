@@ -25269,7 +25269,8 @@
           "incrementMoney": "加薪（MYR）",
           "bonusMoney": "奖金（MYR）",
           "bonusMonths": "奖金月数"
-        }
+        },
+        "auditChange": "{field}：{before} → {after}"
       }
     },
     "sharedGovernance": {

@@ -1,3 +1,4 @@
+import { recordRewardPersonHistoryTx } from './person-history';
 import { formatMoney } from '../../lib/money';
 import { emptyRewardPreparation, REWARD_PREPARATION_STEPS, rewardPreparationStatus } from './preparation-model';
 import {aiCentreActivity} from '../../lib/ai/centre-activity';
@@ -1395,6 +1396,7 @@ async function postRewardEffectTx(tx:Tx,ctx:SessionContext,unitId:string,revisio
       }
       if(prepared.uploaded&&batchId){const [currentInput]=await tx.select().from(payrollInput).where(and(eq(payrollInput.batchId,batchId),eq(payrollInput.employmentId,emp.id)));if(currentInput){const source={unitId,entryId:e.id,revision,plan:'Uploaded award' as const,confirmedBy:prepared.uploaded.checkedBy,confirmedAt:prepared.uploaded.checkedAt,historicalOnly:true as const};await tx.update(payrollInput).set({rewardProvenance:[...currentInput.rewardProvenance.filter(p=>p.unitId!==unitId||p.entryId!==e.id),source]}).where(and(eq(payrollInput.batchId,batchId),eq(payrollInput.employmentId,emp.id)));}}
     }
+    await recordRewardPersonHistoryTx(tx, ctx, unit, result.rows);
     await tx.update(rewardUnit).set({ status: 'posted', fundingCents: unit.kind === 'annual' ? { standard: result.budgets.standard.pools.reduce((n, amount, i) => n + Math.max(0, amount - result.budgets.standard.used[i]), 0), h: result.budgets.h.pools.reduce((n, amount, i) => n + Math.max(0, amount - result.budgets.h.used[i]), 0) } : unit.fundingCents, postedBatchId: batchId ?? null, postedAt: new Date(), updatedAt: new Date() }).where(eq(rewardUnit.id, unitId));
     const postedEventId=await stamp(tx, ctx, unitId, 'posted', { batchId: batchId ?? null, revision, seniorPlanEntryIds:result.rows.filter(entry=>isSeniorPlanMember(unit.policy,entry.facts,entry.source.grade)).map(entry=>entry.id) },returnEventId);
     return { alreadyPosted: false, ...(returnEventId?{postedEventId}: {}) };

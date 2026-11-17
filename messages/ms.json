@@ -25269,7 +25269,8 @@
           "incrementMoney": "Kenaikan (MYR)",
           "bonusMoney": "Bonus (MYR)",
           "bonusMonths": "Bulan bonus"
-        }
+        },
+        "auditChange": "{field}: {before} → {after}"
       }
     },
     "sharedGovernance": {

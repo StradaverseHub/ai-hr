@@ -25269,7 +25269,8 @@
           "incrementMoney": "Tăng (MYR)",
           "bonusMoney": "Thưởng (MYR)",
           "bonusMonths": "Số tháng thưởng"
-        }
+        },
+        "auditChange": "{field}: {before} → {after}"
       }
     },
     "sharedGovernance": {
