@@ -6,7 +6,7 @@ import {hireEmployee,setEmploymentInfo} from '../../core/org';
 import {setCompensation} from '../../core/comp';
 import {v9Setup,v9Workspace,v9SaveConfig} from '../../packs/lifecycle/service';
 import {saveAutomationDocumentTemplate,saveAutomationWorkflow,type AutomationWorkflow} from '../../packs/automation/service';
-import {adoptContractSharedCase,previewContractSharedDecision,submitContractSharedDecision,contractPreviewJobHandler,contractAutomationJobHandler,readContractSharedApproval,actContractSharedApproval,readContractSharedLetter,actContractSharedLetter,listContractSharedPostings} from '../../packs/contracts/service';
+import {adoptContractSharedCase,previewContractSharedDecision,submitContractSharedDecision,contractPreviewJobHandler,contractAutomationJobHandler,readContractSharedApproval,actContractSharedApproval,readContractSharedLetter,actContractSharedLetter,listContractSharedPostings,contractSharedContext} from '../../packs/contracts/service';
 import {readBulkJob} from '../../core/bulk-job';
 import {runBulkJobTick} from '../../core/bulk-job-worker';
 import {todayInKualaLumpur,addCalendarMonths} from '../../lib/hr-date';
@@ -61,9 +61,10 @@ export async function contractPostingFixture(options:{kind?:'renew'|'convert';pa
 }
 export type ContractPostingFixture=Awaited<ReturnType<typeof contractPostingFixture>>;
 export async function releaseContractPosting(f:ContractPostingFixture,options:{returnAtPosting?:boolean}={}){
- const preview=await previewContractSharedDecision(f.proposer,{caseId:f.caseId,revision:1,draft:f.draft});
+ const revision=(await contractSharedContext(f.proposer,f.caseId)).flow!.revision;
+ const preview=await previewContractSharedDecision(f.proposer,{caseId:f.caseId,revision,draft:f.draft});
  await finishContractPostingJob(preview.jobId,f.proposer,'contract_preview');
- const accepted=await submitContractSharedDecision(f.proposer,{caseId:f.caseId,revision:1,previewId:preview.previewId});
+ const accepted=await submitContractSharedDecision(f.proposer,{caseId:f.caseId,revision,previewId:preview.previewId});
  await finishContractPostingJob(accepted.jobId,f.proposer,'contract_automation');
  const[approvalId]=await owner.db.execute<{id:string}>(sql`select id from contract_shared_approval where tenant_id=${f.b.tenantId}::uuid and case_id=${f.caseId}::uuid`);
  const approval=await readContractSharedApproval(f.admin,approvalId.id);
