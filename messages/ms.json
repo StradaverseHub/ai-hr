@@ -40673,7 +40673,7 @@
       "groupsReadOnly": "Only On/Off Boarding administrators can change groups and their members.",
       "routings": "Routing rules",
       "routingIntro": "Each routing finds who acts for an employee. Pick a routing by name in any To or CC list, or in an approval or signing step, when the person depends on who the employee is. The most specific matching row wins; leave a field on Any to match everyone.",
-      "approvalNote": "In an approval or signing step a routing yields one person (any member or round robin). As a To or CC recipient it yields everyone in the matched group or list.",
+      "approvalNote": "Langkah kelulusan dan tandatangan biasanya memilih seorang (mana-mana ahli atau secara giliran). Untuk surat Offboarding, ini memilih penerima tugasan awal; semua orang yang layak dan ditentukan untuk langkah itu boleh bertindak, dan tugasan tidak dikunci. Sebagai penerima Kepada atau CC, penghalaan merangkumi semua orang dalam kumpulan atau senarai yang sepadan.",
       "newRouting": "New routing",
       "newRoutingName": "New routing",
       "noRoutings": "No routings yet. Create one to route approvals and messages by business group, company, department or job title.",

@@ -40673,7 +40673,7 @@
       "groupsReadOnly": "Only On/Off Boarding administrators can change groups and their members.",
       "routings": "Routing rules",
       "routingIntro": "Each routing finds who acts for an employee. Pick a routing by name in any To or CC list, or in an approval or signing step, when the person depends on who the employee is. The most specific matching row wins; leave a field on Any to match everyone.",
-      "approvalNote": "In an approval or signing step a routing yields one person (any member or round robin). As a To or CC recipient it yields everyone in the matched group or list.",
+      "approvalNote": "ஒப்புதல் மற்றும் கையொப்பப் படிகள் பொதுவாக ஒருவரைத் தேர்ந்தெடுக்கும் (எந்த உறுப்பினரையும் அல்லது சுழற்சி முறையில்). பணிவிலகல் கடிதங்களுக்கு, இது ஆரம்பப் பொறுப்பாளரைத் தேர்ந்தெடுக்கும்; அந்தப் படிக்கு தீர்மானிக்கப்பட்ட தகுதியுள்ள அனைவரும் செயல்படலாம், மேலும் பணி பூட்டப்படாது. பெறுநர் அல்லது நகல் பெறுநராகப் பயன்படுத்தும்போது, பொருந்தும் குழு அல்லது பட்டியலில் உள்ள அனைவரையும் வழிமுறை உள்ளடக்கும்.",
       "newRouting": "New routing",
       "newRoutingName": "New routing",
       "noRoutings": "No routings yet. Create one to route approvals and messages by business group, company, department or job title.",

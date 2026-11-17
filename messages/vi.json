@@ -40673,7 +40673,7 @@
       "groupsReadOnly": "Only On/Off Boarding administrators can change groups and their members.",
       "routings": "Routing rules",
       "routingIntro": "Each routing finds who acts for an employee. Pick a routing by name in any To or CC list, or in an approval or signing step, when the person depends on who the employee is. The most specific matching row wins; leave a field on Any to match everyone.",
-      "approvalNote": "In an approval or signing step a routing yields one person (any member or round robin). As a To or CC recipient it yields everyone in the matched group or list.",
+      "approvalNote": "Các bước phê duyệt và ký thường chọn một người (bất kỳ thành viên nào hoặc luân phiên). Với thư nghỉ việc, quy tắc này chọn người được giao ban đầu; tất cả những người đủ điều kiện được xác định cho bước đó đều có thể thực hiện và công việc không bị khóa. Khi dùng cho người nhận hoặc CC, quy tắc định tuyến bao gồm tất cả mọi người trong nhóm hoặc danh sách phù hợp.",
       "newRouting": "New routing",
       "newRoutingName": "New routing",
       "noRoutings": "No routings yet. Create one to route approvals and messages by business group, company, department or job title.",

@@ -40673,7 +40673,7 @@
       "groupsReadOnly": "Only On/Off Boarding administrators can change groups and their members.",
       "routings": "Routing rules",
       "routingIntro": "Each routing finds who acts for an employee. Pick a routing by name in any To or CC list, or in an approval or signing step, when the person depends on who the employee is. The most specific matching row wins; leave a field on Any to match everyone.",
-      "approvalNote": "In an approval or signing step a routing yields one person (any member or round robin). As a To or CC recipient it yields everyone in the matched group or list.",
+      "approvalNote": "审批和签署步骤通常选择一人（任意成员或轮流分配）。对于离职信函，此规则选择初始受派人；此步骤确定的所有符合条件人员均可操作，任务不会被锁定。用于收件人或抄送时，路由包含匹配组或名单中的所有人。",
       "newRouting": "New routing",
       "newRoutingName": "New routing",
       "noRoutings": "No routings yet. Create one to route approvals and messages by business group, company, department or job title.",
