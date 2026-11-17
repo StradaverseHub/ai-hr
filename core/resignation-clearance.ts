@@ -33,13 +33,18 @@ export async function createResignationRetentionPostingTx(tx:Tx,_ctx:SessionCont
 
 /** Called after the V9 cleared revision is stored, in the same transaction. Unmanaged/legacy cases are untouched. */
 export async function raiseResignationClearancePostingTx(tx:Tx,ctx:SessionContext,input:{caseId:string;employmentId:string;lastWorkingDay:string;exitReason?:string}):Promise<{id:string;number:number}|null>{
- const [managed]=await tx.execute<{id:string;submittedOn:string;groupId:string|null}>(sql`
-  select j.id,j.submitted_on::text as "submittedOn",CASE WHEN c.data->'offboarding' ? 'postingApproverGroupId' THEN c.data->'offboarding'->>'postingApproverGroupId' ELSE c.data->>'peopleOpsGroup' END as "groupId"
+ const [managed]=await tx.execute<{id:string;submittedOn:string;groupId:string|null;employmentId:string;companyId:string;nativeCompanyId:string|null;nativeEmploymentId:string|null;module:string|null;state:string|null;source:string|null;exitReason:string|null;lastDay:string|null}>(sql`
+  select j.id,j.submitted_on::text as "submittedOn",j.employment_id as "employmentId",j.company_id as "companyId",
+   n.company_id as "nativeCompanyId",n.employment_id as "nativeEmploymentId",n.module,n.data->>'state' as state,n.data->>'resignationSourceCaseId' as source,n.data->'facts'->>'caseType' as "exitReason",n.data->'facts'->>'lastDay' as "lastDay",
+   CASE WHEN c.data->'offboarding' ? 'postingApproverGroupId' THEN c.data->'offboarding'->>'postingApproverGroupId' ELSE c.data->>'peopleOpsGroup' END as "groupId"
   from resignation_journey j join lc_v9_config c on c.tenant_id=j.tenant_id
-  where j.tenant_id=app.current_tenant_id() and j.offboarding_case_id=${input.caseId}::uuid and j.employment_id=${input.employmentId}::uuid`);
+  left join lc_v9_case n on n.tenant_id=j.tenant_id and n.id=j.offboarding_case_id
+  where j.tenant_id=app.current_tenant_id() and j.offboarding_case_id=${input.caseId}::uuid`);
  if(!managed)return null;
+ // The case owns its exit classification. Caller labels must never replace that native fact.
+ if(managed.employmentId!==input.employmentId||managed.nativeEmploymentId!==managed.employmentId||managed.nativeCompanyId!==managed.companyId||managed.module!=='off'||managed.state!=='cleared'||managed.source!==managed.id||managed.lastDay!==input.lastWorkingDay||!managed.exitReason||!['Resignation','Termination','Contract end','Retirement','Non-confirmation'].includes(managed.exitReason))throw new PersonnelPostingError('invalid','Clearance posting requires the matching completed Offboarding case and its exit reason.');
  if(!managed.groupId)throw new PersonnelPostingError('invalid','Choose who approves Offboarding Personnel postings before clearance.');
- return createPersonnelPostingTx(tx,{source:'offboarding',sourceRef:managed.id,employmentId:input.employmentId,eventType:'termination',proposed:{effectiveDate:input.lastWorkingDay,resignationDate:managed.submittedOn,exitReason:input.exitReason??'Resignation'},approverGroupId:managed.groupId,idempotencyKey:'clearance:'+input.caseId});
+ return createPersonnelPostingTx(tx,{source:'offboarding',sourceRef:managed.id,employmentId:input.employmentId,eventType:'termination',proposed:{effectiveDate:input.lastWorkingDay,resignationDate:managed.submittedOn,exitReason:managed.exitReason},approverGroupId:managed.groupId,idempotencyKey:'clearance:'+input.caseId});
 }
 
 /** Current pending assignments move atomically with the config save; empty groups deliberately leave them in place. */
