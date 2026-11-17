@@ -34,7 +34,7 @@ Initial integration base: `59f06b08db014e01cd553a827c62ccf864d33f78`. Preserve t
 | AP-008 | P1 | Personnel employee draft editor | Batch5 implemented: reuse native Criteria projections; qualification pending, not staged |
 | AP-009 | P1 | Personnel Import entry screen | Batch5 implemented: reuse native catalogue rows; qualification pending, not staged |
 | AP-010 | P2 | Personnel Profile Changes | Open; implementation pending |
-| AP-011 | P1 | Attendance Offline Clocking settings | Batch6 implemented: grouped settings/review counts and native context-count packet; qualification pending, not staged |
+| AP-011 | P1 | Attendance Offline Clocking settings | Batch6 partial: settings/review counts grouped; native context-count internals still per company; qualification pending, not staged |
 | AP-012 | P2 | Attendance Company Policy Settings | Open; implementation pending |
 | AP-013 | P2 | Attendance Schedule Clock Policy editor | Open; implementation pending |
 | AP-014 | P2 | Attendance Work Schedule and Overtime Rates | Open; implementation pending |

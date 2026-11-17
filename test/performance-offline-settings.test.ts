@@ -6,6 +6,7 @@ import * as database from '../db/client';
 import type {SessionContext,Tx} from '../db/client';
 import * as s from '../db/schema';
 import {countOfflineClaimsAwaitingReview,countOpenOfflineContexts,readOfflineClockingSettings,readOfflineClockingSettingsAcross,setOfflineClockingPolicy} from '../packs/attendance/service';
+import {offlineClockingPolicyFromStored,OfflineAdjudicationError} from '../packs/attendance/mobile-offline-adjudicator';
 import {createOfflineClaimService} from '../core/mobile-offline-claim';
 import {offlineServiceFixture} from './helpers/mobile-offline-service-fixture';
 import {adminCtx,closeAll,createAppUser,migrateTestDb,owner,resetDb,seedBase} from './harness';
@@ -57,3 +58,10 @@ it('retains independent native permissions, counts and unavailable states with o
  }
  // Every-role70-company legacy oracle includes210transactions; fixture and native claim need headroom.
 },300000);
+
+it('preserves policy defaults and rejects malformed stored settings through the shared decoder',()=>{
+ expect(offlineClockingPolicyFromStored(undefined)).toEqual({enabled:false,maxProvenWindowSeconds:900});
+ expect(offlineClockingPolicyFromStored({enabled:null,seconds:null})).toEqual({enabled:false,maxProvenWindowSeconds:900});
+ for(const seconds of ['60','86400'])expect(offlineClockingPolicyFromStored({enabled:'true',seconds})).toEqual({enabled:true,maxProvenWindowSeconds:Number(seconds)});
+ for(const row of [{enabled:'TRUE',seconds:'900'},{enabled:'1',seconds:'900'},...['59','86401','90.5','NaN'].map(seconds=>({enabled:'false',seconds}))])expect(()=>offlineClockingPolicyFromStored(row)).toThrow(OfflineAdjudicationError);
+});
