@@ -16029,6 +16029,16 @@
     "previewAnyOne": "其中任意一位均可审批"
   },
   "feedback": {
+    "dialogueTitle": "澄清此报告",
+    "dialogueWaitingTitle": "等待您的回复",
+    "dialogueQuestionLabel": "需要了解什么？",
+    "dialogueAskHint": "请先阅读报告和先前的回复。将相关问题合并，并说明为何需要这些信息。",
+    "dialogueAnswerHint": "方便时再回复。答案会被保存并继续调查，但不代表批准计划。",
+    "dialogueAskSubmit": "提出问题",
+    "dialogueQuestionSent": "问题已保存，等待报告人回复。",
+    "dialogueAnswerSent": "回复已保存，报告可以继续调查。",
+    "dialogueWaitingHint": "已请报告人补充信息。",
+    "dialogueSending": "正在发送…",
     "kanbanScroll": "横向滚动可查看其他阶段。",
     "kanbanPrevious": "前面的阶段",
     "kanbanNext": "后面的阶段",

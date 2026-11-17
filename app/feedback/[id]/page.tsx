@@ -1,13 +1,17 @@
 import { notFound } from 'next/navigation';
+import {randomUUID} from 'node:crypto';
 import { getTranslations } from 'next-intl/server';
 import { getSession } from '@/lib/session';
 import { getFeedback } from '@/core/feedback';
 import { feedbackBoardOpen } from '@/app/feedback/board';
 import { Button, Card, ErrorBanner, Field, PageHeader, SectionHeader, inputCls } from '@/components/ui';
 import { formatFeedbackDateTime } from '@/lib/feedback-date';
+import {FeedbackDialogueForm} from '@/components/feedback-dialogue-form';
 import { feedbackBoardStatus, feedbackStatusTone as statusTone } from '@/lib/feedback-release';
 import {
   answerBlockingQuestionAction,
+  askFeedbackClarificationAction,
+  answerFeedbackClarificationAction,
   approveFeedbackPlanAction,
   cancelFeedbackAction,
   contestFeedbackPlanAction,
@@ -81,9 +85,11 @@ export default async function FeedbackDetailPage({
   // 0323 — `blocked` means "waiting on an answer only the reporter can give", and every gate above it
   // covered some OTHER status, so the one state that explicitly asks a question had no way to receive one.
   const canAnswer = (isReporter || isAdmin) && fb.status === 'blocked';
+  const preplan = fb.status === 'open' || fb.status === 'contested';
+  const pendingQuestion = preplan ? fb.blockHistory.find(q => !q.resolvedAt) : undefined;
   // In-app planning is disabled by default — plans come from the operator-side improvement loop (ADR-0044).
   const inAppPlanning = settingEnabledOrDefault(s, 'feedback.ai_planning_enabled');
-  const canGeneratePlan = inAppPlanning && isAdmin && (fb.status === 'open' || fb.status === 'contested');
+  const canGeneratePlan = inAppPlanning && isAdmin && preplan && !pendingQuestion;
   // 0406 — mockups of the CURRENT plan, rendered inline beside it. Two filters, both load-bearing:
   // the revision (an older generation would illustrate a proposal that no longer exists) and the mime
   // (`plan` stage accepts whatever was attached, and a PDF in an <img> is a broken image, so anything
@@ -168,6 +174,20 @@ export default async function FeedbackDetailPage({
           </div>
         )}
       </Card>
+
+      {preplan && (pendingQuestion || isAdmin) && (
+        <Card className="p-5">
+          <SectionHeader title={t(pendingQuestion ? 'dialogueWaitingTitle' : 'dialogueTitle')} />
+          {pendingQuestion ? <>
+            <p className="mt-2 whitespace-pre-wrap break-words text-sm">{pendingQuestion.question}</p>
+            {(isReporter || isAdmin) ? <FeedbackDialogueForm mode="answer" feedbackId={fb.id} questionId={pendingQuestion.id} action={answerFeedbackClarificationAction} />
+              : <p className="mt-3 text-sm text-muted-foreground">{t('dialogueWaitingHint')}</p>}
+          </> : <details className="mt-2">
+            <summary className="cursor-pointer text-sm font-medium text-primary focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2">{t('dialogueAskSubmit')}</summary>
+            <FeedbackDialogueForm mode="ask" feedbackId={fb.id} questionId={randomUUID()} planRevision={fb.planRevision} action={askFeedbackClarificationAction} />
+          </details>}
+        </Card>
+      )}
 
       {/* 0318 — the negotiation, oldest first. Before this existed, each re-plan overwrote the previous
           plan and cleared the push-back that caused it, so a reporter could not see why the current plan

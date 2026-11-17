@@ -13,6 +13,7 @@ import { execFileSync } from 'node:child_process';
 import { operatorSsh } from '../operator-ssh.mjs';
 import { randomUUID } from 'node:crypto';
 import { RELEASE_STAGES, type FeedbackReleaseStage } from '../../lib/feedback-release';
+import {dialogueText, FEEDBACK_QUESTION_LIMIT} from '../../lib/feedback-dialogue';
 
 const SSH = operatorSsh();
 const TARGET = SSH.target;
@@ -116,6 +117,7 @@ function remote(cmd: string, stdin?: string): string {
 
 /** One time this item was parked on a question, and what was said back (migration 0323). */
 export type RemoteBlockEpisode = {
+  id?: string;
   question: string;
   asked_at: string;
   answer: string | null;
@@ -190,8 +192,8 @@ export function blockTrailSql(ids: string[]): string {
   const list = ids.map((id) => `'${id}'`).join(',');
   return (
     `select coalesce(json_agg(row_to_json(t)), '[]') from (` +
-    `select feedback_request_id, question, asked_at, answer, resolved_at from feedback_block ` +
-    `where feedback_request_id in (${list}) order by asked_at) t`
+    `select id, feedback_request_id, question, asked_at, answer, resolved_at from feedback_block ` +
+    `where feedback_request_id in (${list}) order by asked_at, id) t`
   );
 }
 
@@ -257,8 +259,10 @@ export function pullItem(id: string): RemoteFeedback[] {
   return rows;
 }
 
-/** Items awaiting a (re)plan. */
-export const pullPlannable = (): RemoteFeedback[] => selectFeedback(`'open','contested'`);
+export const waitingForClarification = (item: Pick<RemoteFeedback, 'block_trail'>): boolean => item.block_trail.some(q => q.resolved_at === null);
+/** Waiting items release the investigation slot. The next pull resumes them once an answer is saved. */
+export const pullPlannable = (): RemoteFeedback[] => selectFeedback(`'open','contested'`).filter(r => !waitingForClarification(r));
+export const pullAwaitingClarification = (): RemoteFeedback[] => selectFeedback(`'open','contested'`).filter(waitingForClarification);
 /**
  * Items the reporter has approved AND that are actually startable.
  *
@@ -417,12 +421,18 @@ export function pushPlan(p: {
   plan: string;
   model: string;
 }): void {
+  remote(`psql "$MIGRATION_DATABASE_URL" -v ON_ERROR_STOP=1 -f -`, pushPlanSql(p));
+}
+
+export function pushPlanSql(p: {id: string; tenantId: string; reporterEmploymentId: string | null; plan: string; model: string}): string {
   assertUuid(p.id, 'feedback id');
   assertUuid(p.tenantId, 'tenant id');
   reporterEmploymentSql(p.reporterEmploymentId);
   const sql = [
     'BEGIN;',
-    doBlock(['BEGIN', reporterBindingBody(p), 'END'].join('\n')),
+    doBlock(['BEGIN', reporterBindingBody(p),
+      `IF EXISTS (SELECT 1 FROM feedback_block WHERE feedback_request_id='${p.id}' AND resolved_at IS NULL) THEN RAISE EXCEPTION 'Report is waiting for an answer; read the reply before planning'; END IF;`,
+      'END'].join('\n')),
     // Close whatever version is still open. A contest already stamped its own outcome WITH the reporter's
     // words, and `outcome IS NULL` keeps this from overwriting it — a re-plan must never erase the
     // objection that prompted it, which is precisely how the old history was lost.
@@ -434,7 +444,50 @@ export function pushPlan(p: {
     `INSERT INTO domain_event (tenant_id, aggregate_type, aggregate_id, event_type, actor_type, subject_employment_id, payload) VALUES ('${p.tenantId}', 'feedback', '${p.id}', 'feedback.plan.drafted', 'agent', ${reporterEmploymentSql(p.reporterEmploymentId)}, ${dq(JSON.stringify({ model: p.model, via: 'improvement-loop' }))}::jsonb);`,
     'COMMIT;',
   ].join('\n');
-  remote(`psql "$MIGRATION_DATABASE_URL" -v ON_ERROR_STOP=1 -f -`, sql);
+  return sql;
+}
+
+export type OperatorClarification = {id: string; tenantId: string; reporterEmploymentId: string | null; questionId: string; expectedPlanRevision: number; question: string};
+
+/** Idempotent operator command; the caller must already have authorization to contact this reporter. */
+export function askClarificationSql(p: OperatorClarification): string {
+  assertUuid(p.id, 'feedback id'); assertUuid(p.tenantId, 'tenant id'); assertUuid(p.questionId, 'question id');
+  reporterEmploymentSql(p.reporterEmploymentId);
+  if (!Number.isSafeInteger(p.expectedPlanRevision) || p.expectedPlanRevision < 0) throw new Error('A current plan revision is required.');
+  const question = dialogueText(p.question, FEEDBACK_QUESTION_LIMIT);
+  return doBlock([
+    'DECLARE f feedback_request%ROWTYPE; q feedback_block%ROWTYPE;', 'BEGIN', reporterBindingBody(p),
+    `SELECT * INTO f FROM feedback_request WHERE id='${p.id}';`,
+    `SELECT * INTO q FROM feedback_block WHERE id='${p.questionId}';`,
+    `IF FOUND THEN IF q.feedback_request_id IS DISTINCT FROM f.id OR q.question IS DISTINCT FROM ${dq(question)} THEN RAISE EXCEPTION 'Question reference already used'; END IF; RETURN; END IF;`,
+    `IF f.status NOT IN ('open','contested') OR f.plan_revision <> ${p.expectedPlanRevision} THEN RAISE EXCEPTION 'Report or plan revision changed; read it again'; END IF;`,
+    `IF EXISTS (SELECT 1 FROM feedback_block WHERE feedback_request_id=f.id AND resolved_at IS NULL) THEN RAISE EXCEPTION 'Report already waits for an answer'; END IF;`,
+    `IF EXISTS (SELECT 1 FROM feedback_block WHERE feedback_request_id=f.id AND question=${dq(question)}) THEN RAISE EXCEPTION 'Question already in history; read the earlier answer'; END IF;`,
+    `INSERT INTO feedback_block (id,tenant_id,feedback_request_id,question) VALUES ('${p.questionId}',f.tenant_id,f.id,${dq(question)});`,
+    `UPDATE feedback_request SET updated_at=now() WHERE id=f.id;`,
+    `INSERT INTO domain_event (tenant_id,aggregate_type,aggregate_id,event_type,actor_type,subject_employment_id,payload) VALUES (f.tenant_id,'feedback',f.id,'feedback.clarification.requested','agent',f.reporter_employment_id,${dq(JSON.stringify({questionId: p.questionId, planRevision: p.expectedPlanRevision, via: 'improvement-loop'}))}::jsonb);`,
+    'END',
+  ].join('\n'));
+}
+export function askClarification(p: OperatorClarification): void {
+  remote(`psql "$MIGRATION_DATABASE_URL" -v ON_ERROR_STOP=1 -f -`, askClarificationSql(p));
+}
+
+export function closeClarificationSql(p: {id: string; tenantId: string; reporterEmploymentId: string | null; questionId: string; reason: string}): string {
+  assertUuid(p.id, 'feedback id'); assertUuid(p.tenantId, 'tenant id'); assertUuid(p.questionId, 'question id');
+  reporterEmploymentSql(p.reporterEmploymentId);
+  const reason = dialogueText(p.reason, FEEDBACK_QUESTION_LIMIT);
+  return doBlock(['DECLARE n int;', 'BEGIN', reporterBindingBody(p),
+    `IF NOT EXISTS (SELECT 1 FROM feedback_request WHERE id='${p.id}' AND status IN ('open','contested')) THEN RAISE EXCEPTION 'Only pre-plan questions can be closed'; END IF;`,
+    `UPDATE feedback_block SET resolved_at=now() WHERE id='${p.questionId}' AND feedback_request_id='${p.id}' AND resolved_at IS NULL;`,
+    'GET DIAGNOSTICS n = ROW_COUNT;',
+    `IF n <> 1 THEN RAISE EXCEPTION 'Question already resolved or unavailable'; END IF;`,
+    `UPDATE feedback_request SET updated_at=now() WHERE id='${p.id}';`,
+    `INSERT INTO domain_event (tenant_id,aggregate_type,aggregate_id,event_type,actor_type,subject_employment_id,payload) VALUES ('${p.tenantId}','feedback','${p.id}','feedback.clarification.closed','agent',${reporterEmploymentSql(p.reporterEmploymentId)},${dq(JSON.stringify({questionId: p.questionId, reason, resumes: 'investigation', via: 'improvement-loop'}))}::jsonb);`,
+    'END'].join('\n'));
+}
+export function closeClarification(p: Parameters<typeof closeClarificationSql>[0]): void {
+  remote(`psql "$MIGRATION_DATABASE_URL" -v ON_ERROR_STOP=1 -f -`, closeClarificationSql(p));
 }
 
 /**

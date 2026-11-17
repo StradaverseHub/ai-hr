@@ -30,6 +30,9 @@ import { writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import {
   boardStatus,
+  askClarification,
+  closeClarification,
+  pullAwaitingClarification,
   fetchAttachment,
   listAttachments,
   markBlocked,
@@ -136,6 +139,21 @@ async function main() {
     case 'pull-blocked':
       process.stdout.write(JSON.stringify(pullBlocked(), null, 2) + '\n');
       break;
+    case 'pull-waiting':
+      process.stdout.write(JSON.stringify(pullAwaitingClarification(), null, 2) + '\n');
+      break;
+    case 'ask': {
+      const p = JSON.parse(await readStdin());
+      askClarification(p);
+      console.log(`question ${p.questionId} recorded or retained for ${p.id}; read back with pull-item`);
+      break;
+    }
+    case 'close-question': {
+      const p = JSON.parse(await readStdin());
+      closeClarification(p);
+      console.log(`question ${p.questionId} closed without an answer; investigation can resume`);
+      break;
+    }
     case 'block': {
       // Park an approved item on an unanswered question (status → blocked), so it stops surfacing in
       // pull-approved as buildable. Reads {id, tenantId, reporterEmploymentId, reason, blockedById?}.

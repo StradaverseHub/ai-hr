@@ -16029,6 +16029,16 @@
     "previewAnyOne": "Bất kỳ ai trong số này đều có thể duyệt"
   },
   "feedback": {
+    "dialogueTitle": "Làm rõ báo cáo này",
+    "dialogueWaitingTitle": "Đang chờ câu trả lời của bạn",
+    "dialogueQuestionLabel": "Cần biết thông tin gì?",
+    "dialogueAskHint": "Đọc báo cáo và các câu trả lời trước. Gộp các câu hỏi liên quan và giải thích lý do cần câu trả lời.",
+    "dialogueAnswerHint": "Trả lời khi thuận tiện. Câu trả lời được lưu để tiếp tục điều tra; đây không phải là phê duyệt kế hoạch.",
+    "dialogueAskSubmit": "Đặt câu hỏi",
+    "dialogueQuestionSent": "Đã lưu câu hỏi. Đang chờ người báo cáo trả lời.",
+    "dialogueAnswerSent": "Đã lưu câu trả lời. Báo cáo đã sẵn sàng để tiếp tục điều tra.",
+    "dialogueWaitingHint": "Đã yêu cầu người báo cáo cung cấp thêm thông tin.",
+    "dialogueSending": "Đang gửi…",
     "kanbanScroll": "Cuộn ngang để xem các giai đoạn khác.",
     "kanbanPrevious": "Giai đoạn trước",
     "kanbanNext": "Giai đoạn sau",

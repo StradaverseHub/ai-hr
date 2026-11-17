@@ -16029,6 +16029,16 @@
     "previewAnyOne": "Mana-mana seorang daripada ini boleh meluluskan"
   },
   "feedback": {
+    "dialogueTitle": "Jelaskan laporan ini",
+    "dialogueWaitingTitle": "Menunggu jawapan anda",
+    "dialogueQuestionLabel": "Apakah yang perlu diketahui?",
+    "dialogueAskHint": "Baca laporan dan jawapan terdahulu dahulu. Kumpulkan soalan berkaitan dan terangkan mengapa jawapan diperlukan.",
+    "dialogueAnswerHint": "Jawab apabila sesuai. Jawapan anda disimpan dan siasatan diteruskan; ini bukan kelulusan pelan.",
+    "dialogueAskSubmit": "Tanya soalan",
+    "dialogueQuestionSent": "Soalan disimpan. Menunggu jawapan pelapor.",
+    "dialogueAnswerSent": "Jawapan disimpan. Laporan sedia untuk disiasat.",
+    "dialogueWaitingHint": "Pelapor telah diminta memberikan maklumat lanjut.",
+    "dialogueSending": "Menghantar…",
     "kanbanScroll": "Tatal ke sisi untuk melihat peringkat lain.",
     "kanbanPrevious": "Peringkat sebelumnya",
     "kanbanNext": "Peringkat seterusnya",

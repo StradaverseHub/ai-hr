@@ -20,6 +20,8 @@ import {
 } from '@/core/feedback';
 import { feedbackBoardOpen } from '@/app/feedback/board';
 import type { FeedbackCategory } from '@/db/schema';
+import {askFeedbackClarification, answerFeedbackClarification} from '@/core/feedback-clarification';
+import type {FeedbackDialogueFormState} from '@/lib/feedback-dialogue';
 
 const BASE = '/feedback';
 const fail = (e: unknown, path: string = BASE): never =>
@@ -29,6 +31,27 @@ async function boardSession() {
   const s = await getSession();
   if (!feedbackBoardOpen(s)) redirect('/');
   return s;
+}
+
+export async function askFeedbackClarificationAction(_state: FeedbackDialogueFormState, data: FormData): Promise<FeedbackDialogueFormState> {
+  const s = await boardSession();
+  const id = String(data.get('id') ?? '');
+  try {
+    await askFeedbackClarification(s, {feedbackId: id, questionId: String(data.get('questionId') ?? ''),
+      expectedPlanRevision: Number(data.get('planRevision')), question: String(data.get('question') ?? '')});
+  } catch (e) { return {error: publicErrorMessage(e)}; }
+  revalidatePath(`${BASE}/${id}`); revalidatePath(BASE);
+  return {sent: true};
+}
+
+export async function answerFeedbackClarificationAction(_state: FeedbackDialogueFormState, data: FormData): Promise<FeedbackDialogueFormState> {
+  const s = await boardSession();
+  const id = String(data.get('id') ?? '');
+  try {
+    await answerFeedbackClarification(s, {feedbackId: id, questionId: String(data.get('questionId') ?? ''), answer: String(data.get('answer') ?? '')});
+  } catch (e) { return {error: publicErrorMessage(e)}; }
+  revalidatePath(`${BASE}/${id}`); revalidatePath(BASE);
+  return {sent: true};
 }
 
 export async function submitFeedbackAction(formData: FormData) {

@@ -16029,6 +16029,16 @@
     "previewAnyOne": "Any one of these can approve"
   },
   "feedback": {
+    "dialogueTitle": "Clarify this report",
+    "dialogueWaitingTitle": "Waiting for your answer",
+    "dialogueQuestionLabel": "What do you need to know?",
+    "dialogueAskHint": "Read the report and earlier answers first. Group related questions and explain why the answer is needed.",
+    "dialogueAnswerHint": "Reply when convenient. Your answer is saved and investigation resumes; it does not approve a plan.",
+    "dialogueAskSubmit": "Ask a question",
+    "dialogueQuestionSent": "Question saved. Waiting for the reporter’s reply.",
+    "dialogueAnswerSent": "Answer saved. The report is ready for investigation.",
+    "dialogueWaitingHint": "The reporter has been asked for more information.",
+    "dialogueSending": "Sending…",
     "kanbanScroll": "Scroll sideways to see other stages.",
     "kanbanPrevious": "Previous stages",
     "kanbanNext": "Next stages",
