@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import {createHash} from 'node:crypto';
 import {readFileSync,writeFileSync} from 'node:fs';
 import {join} from 'node:path';
+import {resignationCaptureGeometry} from './resignation-capture-geometry.mjs';
 export const REQUIRED_RESIGNATION_CAPTURES=['configuration-navigation','configuration-workflows','configuration-decision','configuration-templates','configuration-document-editor','configuration-email-editor','configuration-groups-routing','configuration-settings','employee-submit','employee-tracking','manager-decision','bp-fyi','manager-acceptance','letter-review','employee-sign','accepted-clearance','manager-retention','private-offer','employee-offer','retained-outcome','declined-offer','recalled-letter','personnel-postings-pending','personnel-postings-approved','clearance-posting','outsider-denied','owner-regenerated-letter','linked-acceptance-documents','linked-acceptance-pdf','configuration-decision-mobile','employee-submit-mobile','employee-tracking-mobile','manager-decision-mobile','bp-sign-acceptance','ceo-sign-retention','unconfigured-employee-recorded','unconfigured-gbs-repair','repaired-decision-assigned','declined-accept-only-decision','configuration-routing-editor','configuration-document-routing','configuration-retention-settings','approvals-resignations-list','approvals-fyi-list','my-tasks-list','my-tasks-sign-panel','my-tasks-update-panel','my-tasks-upload-panel','personnel-posting-edit','offboarding-settings-cards-mobile','employee-offer-mobile','my-tasks-team-peer','case-communication-owner-edit','case-communication-test-queued','offboarding-communication-preview','owner-corrected-last-day','personnel-postings-nonapprover'];
 /** Refuse a screenshot receipt when its target is hidden by the viewport or a scrolling ancestor. */
 export function assertResignationCaptureVisibility(metrics,id){
@@ -20,7 +21,32 @@ export function validateResignationFixture(value){
 export async function exerciseResignationBrowser({base,browser,fixture,observe,clearance,publishTemplate,publishRepair,observeRepair,prepareNonApprover,report,out,gate,sha}){
  const contexts=new Map(),messages=JSON.parse(readFileSync('messages/en.json','utf8')),t=messages.resignationJourney,c=messages.resignationCommunications;
  report.screenshots=[];report.journeys=[];let active;
- const save=()=>writeFileSync(join(out,'screenshots-manifest.json'),JSON.stringify({kind:'ACTUAL_RENDERED_SYNTHETIC_JOURNEY',sha,releaseEligible:false,required:REQUIRED_RESIGNATION_CAPTURES,captures:report.screenshots,mobileChecks:report.mobileChecks??[],sectionChecks:report.sectionChecks??[],inboxChecks:report.inboxChecks??[],taskPanels:report.taskPanels??[],communications:report.communications??[],correction:report.correction??null,normalEmails:report.normalEmails??[],atomicReview:report.atomicReview??null,nonApproverPosting:report.nonApproverPosting??null,regeneration:report.regeneration??null,linkedAcceptance:report.linkedAcceptance??null,signatures:report.signatures??[],repair:report.repair??null},null,2)+'\n',{mode:0o600});
+ const save=()=>writeFileSync(join(out,'screenshots-manifest.json'),JSON.stringify({kind:'ACTUAL_RENDERED_SYNTHETIC_JOURNEY',sha,releaseEligible:false,required:REQUIRED_RESIGNATION_CAPTURES,captures:report.screenshots,mobileChecks:report.mobileChecks??[],sectionChecks:report.sectionChecks??[],geometryPreflight:report.geometryPreflight??null,inboxChecks:report.inboxChecks??[],taskPanels:report.taskPanels??[],communications:report.communications??[],correction:report.correction??null,normalEmails:report.normalEmails??[],atomicReview:report.atomicReview??null,nonApproverPosting:report.nonApproverPosting??null,regeneration:report.regeneration??null,linkedAcceptance:report.linkedAcceptance??null,signatures:report.signatures??[],repair:report.repair??null},null,2)+'\n',{mode:0o600});
+ async function geometryPreflight(){
+  const context=await browser.newContext({viewport:{width:800,height:600}});
+  report.geometryPreflight={kind:'GEOMETRY_PREFLIGHT_NOT_APP_CAPTURE',cases:[],passed:false};save();
+  const cases=[
+   {id:'tall-inner-scroller',passes:true,html:'<div style="width:500px;height:300px;overflow:auto"><div id="target" style="width:400px;height:2000px"></div></div>'},
+   {id:'ordinary-horizontal-clip',passes:false,html:'<div style="width:100px;height:100px;overflow:hidden"><div id="target" style="margin-left:50px;width:200px;height:50px"></div></div>'},
+   {id:'viewport-fixed-escape',passes:true,html:'<div style="width:100px;height:100px;overflow:hidden"><div id="target" style="position:fixed;left:200px;top:200px;width:200px;height:50px"></div></div>'},
+   {id:'transformed-fixed-clip',passes:false,html:'<div style="width:100px;height:100px;overflow:hidden;transform:translateZ(0)"><div id="target" style="position:fixed;left:50px;top:20px;width:200px;height:50px"></div></div>'},
+   {id:'native-modal-escape',passes:true,html:'<div style="width:100px;height:100px;overflow:hidden"><dialog style="position:fixed;left:200px;top:200px;margin:0;width:300px;height:200px;padding:0;border:0;overflow:auto"><div id="target" style="width:200px;height:50px"></div></dialog></div>',modal:true},
+  ];
+  try{for(const item of cases){
+   const page=await context.newPage();
+   try{
+    await page.setContent('<!doctype html><html><body style="margin:20px">'+item.html+'</body></html>');
+    if(item.modal)await page.locator('dialog').evaluate(dialog=>dialog.showModal());
+    const metrics=await page.locator('#target').evaluate(resignationCaptureGeometry);
+    const evidence={id:item.id,expectedAccepted:item.passes,...metrics};report.geometryPreflight.cases.push(evidence);save();
+    if(item.passes)assertResignationCaptureVisibility(metrics,item.id);
+    else assert.throws(()=>assertResignationCaptureVisibility(metrics,item.id),/horizontally clipped/,item.id+' must reject actual clipping');
+    assert.equal(metrics.observed.isIntersecting,true,item.id+' must measure an intersecting target rather than a missing element');
+    if(item.id==='tall-inner-scroller')assert.equal(metrics.clip.height,300,'Tall content must use its independent inner viewport');
+    evidence.passed=true;save();
+   }finally{await page.close();}
+  }report.geometryPreflight.passed=true;save();}finally{await context.close();}
+ }
  async function login(key){if(contexts.has(key)){active={key,...contexts.get(key)};return active.page;}const actor=fixture.actors.find(a=>a.key===key);assert(actor);const context=await browser.newContext({httpCredentials:{username:'ci',password:gate},locale:'en-US',colorScheme:'light',reducedMotion:'reduce',viewport:{width:1440,height:1000}});await context.addInitScript(()=>localStorage.setItem('theme','light'));const page=await context.newPage();page.setDefaultTimeout(30000);page.on('pageerror',error=>report.browserErrors.push(error.message));page.on('response',response=>{if(response.status()>=500)report.serverErrors.push({url:response.url(),status:response.status()});});await page.goto(base+'/login');await page.locator(`form[action="/login/as"]:has(input[name="userId"][value="${actor.userId}"]) button[type="submit"]:visible`).click();await page.waitForURL(url=>!url.pathname.startsWith('/login'));await page.addLocatorHandler(page.getByRole('dialog',{name:'Product tour',exact:true}),async()=>page.getByRole('dialog',{name:'Product tour',exact:true}).getByRole('button',{name:'Skip',exact:true}).click());contexts.set(key,{context,page});active={key,context,page};return page;}
  async function visit(page,path){const response=await page.goto(base+path,{waitUntil:'load'});assert(response&&response.status()<500,'Rendered route failed');
   const pathname=new URL(path,base).pathname;
@@ -33,13 +59,10 @@ export async function exerciseResignationBrowser({base,browser,fixture,observe,c
  async function sectionCapture(page,id,target){
   await target.waitFor({state:'visible'});assert.equal(await target.count(),1,id+' requires one named capture target');
   await target.evaluate(element=>element.scrollIntoView({block:'center',inline:'nearest'}));
-  const metrics=await target.evaluate(element=>{
-   const r=element.getBoundingClientRect(),parents=[];let left=0,top=0,right=innerWidth,bottom=innerHeight;
-   for(let p=element.parentElement;p;p=p.parentElement){const style=getComputedStyle(p),rect=p.getBoundingClientRect();if(/auto|scroll|hidden|clip/.test(style.overflowY)){top=Math.max(top,rect.top);bottom=Math.min(bottom,rect.bottom);}if(/auto|scroll|hidden|clip/.test(style.overflowX)){left=Math.max(left,rect.left);right=Math.min(right,rect.right);}if(/auto|scroll/.test(style.overflowY)&&p.scrollHeight>p.clientHeight)parents.push({tag:p.tagName,role:p.getAttribute('role'),scrollTop:p.scrollTop,clientHeight:p.clientHeight,scrollHeight:p.scrollHeight,bounds:{top:rect.top,bottom:rect.bottom}});}
-   return{bounds:{x:r.x,y:r.y,width:r.width,height:r.height},viewport:{width:innerWidth,height:innerHeight},scrollParents:parents,clip:{left,top,width:Math.max(0,right-left),height:Math.max(0,bottom-top)},visibleHeight:Math.max(0,Math.min(r.bottom,bottom)-Math.max(r.top,top)),visibleWidth:Math.max(0,Math.min(r.right,right)-Math.max(r.left,left))};
-  });
+  const metrics=await target.evaluate(resignationCaptureGeometry);
+  report.sectionChecks??=[];report.sectionChecks.push({id,actor:active?.key,url:new URL(page.url()).pathname+new URL(page.url()).search,target:String(target),...metrics});save();
   assertResignationCaptureVisibility(metrics,id);
-  report.sectionChecks??=[];report.sectionChecks.push({id,actor:active?.key,url:new URL(page.url()).pathname+new URL(page.url()).search,target:String(target),...metrics});await capture(page,id);
+  await capture(page,id);
  }
  async function waitConfigurationSaved(page){await page.locator('[role=status]').filter({hasText:/^Changes save automatically$/}).waitFor();assert.equal(await page.locator('[role=alert]').filter({hasText:/Changes not saved|could not be saved/}).count(),0);}
  async function openTask(actorKey,employeeKey,kind,{dismiss=false,captureId}={}){
@@ -114,6 +137,7 @@ export async function exerciseResignationBrowser({base,browser,fixture,observe,c
 
 
  try{
+  await geometryPreflight();
   let page=await login('configurer');await visit(page,'/automation/workflows?module=off');await page.getByRole('heading',{name:'Offboarding',exact:true}).waitFor();
   const configurationTrigger=page.getByRole('button',{name:messages.nav.moduleHrAutomation,exact:true});if(await configurationTrigger.getAttribute('aria-expanded')!=='true')await configurationTrigger.click();
   const configurationNavigation=page.getByRole('navigation',{name:messages.nav.moduleHrAutomation,exact:true});await configurationNavigation.waitFor();assert.deepEqual(await configurationNavigation.getByRole('link').evaluateAll(links=>links.map(link=>link.getAttribute('href'))),['/automation/workflows','/automation/templates','/automation/groups','/lifecycle/v9?view=settings']);assert.equal(await configurationNavigation.getByRole('link',{name:messages.nav.v9Settings,exact:true}).count(),1);await capture(page,'configuration-navigation');await page.keyboard.press('Escape');await configurationNavigation.waitFor({state:'hidden'});
