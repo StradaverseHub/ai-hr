@@ -48,11 +48,25 @@ function realLetter():ResignationLetter{return generateResignationLetter(letterI
 function act(letter:ResignationLetter,ctx:SessionContext,action:ResignationLetterAction){return actResignationLetter(letter,{id:randomUUID(),documentRevision:letter.revision,actor:{userId:ctx.userId!,personId:ctx.personId!,name:'Fictional verified actor',at:new Date().toISOString(),today:'2026-11-16'},action}).letter;}
 
 
-function formLetter():ResignationLetter{
+function formLetterInput():GenerateResignationLetterInput{
  const input=letterInput(),version=input.template.versions[0]!;
- input.values['employee.salary']='6400';version.fields=[{id:'hr-note',label:'HR note',type:'text',owner:'hr',pmKey:null,required:true,sensitive:false,options:[],section:'local',when:null},{id:'hr-detail',label:'HR detail',type:'text',owner:'hr',pmKey:null,required:false,sensitive:false,options:[],section:'local',when:{field:'hr-note',value:'Show'}},{id:'employee-note',label:'Employee note',type:'text',owner:'employee',pmKey:null,required:false,sensitive:false,options:[],section:'local',when:null},{id:'hr-source-check',label:'Check sourced salary',type:'text',owner:'hr',pmKey:null,required:false,sensitive:false,options:[],section:'local',when:{field:'salary',value:'6400'}},{id:'today',label:'Conflicting generated date',type:'text',owner:'hr',pmKey:null,required:false,sensitive:false,options:[],section:'local',when:null},{id:'retention.salary',label:'Conflicting local name',type:'text',owner:'hr',pmKey:null,required:false,sensitive:false,options:[],section:'local',when:null},{id:'salary',label:'Salary',type:'number',owner:'pmLocked',pmKey:'employee.salary',required:false,sensitive:true,options:[],section:'local',when:null}];
- version.blocks.push({id:'local-fields',type:'fields',section:'local',text:''});return generateResignationLetter(input).letter;
+ input.values['employee.salary']='6400';version.fields=[{id:'hr-note',label:'HR note',type:'text',owner:'hr',pmKey:null,required:true,sensitive:false,options:[],section:'local',when:null},{id:'hr-detail',label:'HR detail',type:'text',owner:'hr',pmKey:null,required:false,sensitive:false,options:[],section:'local',when:{field:'hr-note',value:'Show'}},{id:'employee-note',label:'Employee note',type:'text',owner:'employee',pmKey:null,required:false,sensitive:false,options:[],section:'local',when:null},{id:'hr-source-check',label:'Check sourced salary',type:'text',owner:'hr',pmKey:null,required:false,sensitive:false,options:[],section:'local',when:{field:'salary',value:'6400'}},{id:'salary',label:'Salary',type:'number',owner:'pmLocked',pmKey:'employee.salary',required:false,sensitive:true,options:[],section:'local',when:null}];
+ version.blocks.push({id:'local-fields',type:'fields',section:'local',text:''});return input;
 }
+function formLetter():ResignationLetter{return generateResignationLetter(formLetterInput()).letter;}
+it.each(['today','retention.salary'])('rejects generation of an unmapped reserved field %s',fieldId=>{
+ const input=formLetterInput(),fields=input.template.versions[0]!.fields;
+ fields.push({...fields[0]!,id:fieldId,label:'Reserved source collision',required:false});
+ expect(()=>generateResignationLetter(input)).toThrow(/reserved HR merge key/);
+});
+it.each(['today','retention.salary'])('denies native edits of a stored reserved local field %s',async fieldId=>{
+ const letter=formLetter();
+ // Owner setup represents a malformed or historical document; current generation rejects this definition above.
+ letter.fields.push({...letter.fields[0]!,id:fieldId,label:'Stored source collision',required:false});
+ data={...data,decision:null,letters:[letter]};await seedJourney('offer');const original=await persisted();
+ await nativeRefusal(withTenant(fyi,tx=>begin(tx,fyi,{type:'saveLetterFields',documentId:letter.id,documentRevision:letter.revision,values:{[fieldId]:'forged source value'}})),'42501');
+ expect(await persisted()).toEqual(original);
+});
 it('admits assigned HR local fields and atomically enabled conditional values, preserving Personnel sources',async()=>{
  const letter=formLetter();data={...data,decision:null,letters:[letter]};await seedJourney('offer');
  const values={'hr-note':'Show','hr-detail':'A verified local detail','hr-source-check':'Checked mapped source'};
