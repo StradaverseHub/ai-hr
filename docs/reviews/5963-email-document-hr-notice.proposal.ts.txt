@@ -16,3 +16,15 @@ export async function deliverContractEmailDocumentHRNotice(db, event, afterUID) 
 // Existing handler branch event.trigger_event==='emailDocumentHRNotice': call helper, persist bounded
 // progress or event_finish and RETURN; never runAutomationEvent or resumeAutomationRun.
 // Native source emitted initial AFTER pin.bind; subsequent canonical Signing AFTER hook emits nextHR/sendback.
+
+// Concrete rejected completion helper, review text ONLY (not imported/wired):
+import {sql} from 'drizzle-orm';
+import type {SqlExecutor} from '../db/sql-executor';
+import {queueAutomationEmailTx} from './automation-email-delivery';
+type Page={letterId:string;signingRevision:number;recipients:{userId:string;personId:string;stepId:string}[]};
+export async function notifyContractSharedEmailDocumentHR(tx:SqlExecutor,letterId:string){await tx.execute(sql`select app.contract_shared_email_hr_emit(${letterId}::uuid)`);}
+export async function deliverContractSharedEmailDocumentHR(tx:SqlExecutor,caseId:string,afterUID:string|null):Promise<{afterUID:string|null;complete:boolean}>{
+ const [row]=await tx.execute<{page:Page}>(sql`select app.contract_shared_email_hr_page(${caseId}::uuid,${afterUID}::uuid) as page`);
+ for(const recipient of row.page.recipients)await queueAutomationEmailTx(tx,{module:'contract_staff',subjectId:caseId,key:`email-hr:${row.page.letterId}:${row.page.signingRevision}:${recipient.userId}:${recipient.personId}`,to:[recipient.userId],cc:[],subject:'Contract document needs your action',body:'A Contract document is waiting for your action.\n\n{{case.link}}'});
+ return {afterUID:row.page.recipients.at(-1)?.userId??null,complete:row.page.recipients.length===0};
+}

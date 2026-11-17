@@ -1,35 +1,161 @@
--- UNAPPLIED 5963 review SQL. No app EXECUTE grant; no authored-trigger vocabulary change.
--- Exact source selector used by emit, held-event proof and delivery target eligibility.
-CREATE FUNCTION app.contract_shared_email_hr_notice_source(p_letter uuid,p_revision integer) RETURNS jsonb
-LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+-- UNAPPLIED: concrete HRNotice security-boundary write rejected by automatic approval review. No journal registration or live implementation.
+-- Private canonical HR task notices for email-purpose documents. No authored trigger, new job kind, app grant or business write.
+CREATE TABLE app.contract_email_hr_notice(
+ tenant_id uuid NOT NULL,event_id uuid NOT NULL,case_id uuid NOT NULL,letter_id uuid NOT NULL,pin_id uuid NOT NULL,signing_revision integer NOT NULL,
+ company_id uuid NOT NULL,subject_person_id uuid NOT NULL,source_parent_id uuid,source_action_id text,data_hash text NOT NULL,
+ PRIMARY KEY(tenant_id,event_id),UNIQUE(tenant_id,letter_id,signing_revision),
+ FOREIGN KEY(tenant_id,event_id) REFERENCES public.contract_shared_event(tenant_id,id) DEFERRABLE INITIALLY DEFERRED,
+ FOREIGN KEY(tenant_id,letter_id) REFERENCES public.contract_shared_letter(tenant_id,id),
+ CHECK((source_parent_id IS NULL)<>(source_action_id IS NULL))
+);
+ALTER TABLE app.contract_email_hr_notice ENABLE ROW LEVEL SECURITY;
+ALTER TABLE app.contract_email_hr_notice FORCE ROW LEVEL SECURITY;
+CREATE POLICY contract_email_hr_notice_owner ON app.contract_email_hr_notice FOR ALL TO ai_hr_owner USING(app.acting_as_owner()) WITH CHECK(app.acting_as_owner());
+REVOKE ALL ON app.contract_email_hr_notice FROM PUBLIC,ai_hr_app;
+GRANT SELECT,INSERT ON app.contract_email_hr_notice TO ai_hr_owner;
+CREATE TRIGGER contract_email_hr_notice_immutable BEFORE UPDATE OR DELETE ON app.contract_email_hr_notice FOR EACH ROW EXECUTE FUNCTION app.contract_case_revision_immutable();
+--> statement-breakpoint
+ALTER TABLE public.contract_shared_event DROP CONSTRAINT contract_shared_event_trigger_event_check;
+ALTER TABLE public.contract_shared_event ADD CONSTRAINT contract_shared_event_trigger_event_check CHECK(trigger_event IN('caseOpened','beforeContractEnd','afterContractEnd','decisionSubmitted','approvalsComplete','approvalRejected','employeeDeclined','letterActionNeeded','letterSentBack','letterReleased','manual','approvalActionNeeded','emailDocumentReady','emailDocumentHRNotice'));
+ALTER TABLE public.contract_shared_event DROP CONSTRAINT contract_shared_event_system_actor;
+ALTER TABLE public.contract_shared_event ADD CONSTRAINT contract_shared_event_system_actor CHECK(actor_type<>'system' OR (actor_user_id IS NULL AND actor_person_id IS NULL AND trigger_event IN('caseOpened','beforeContractEnd','afterContractEnd','emailDocumentReady','emailDocumentHRNotice')));
+--> statement-breakpoint
+CREATE FUNCTION app.contract_shared_email_hr_source(p_tenant uuid,p_letter uuid,p_revision integer) RETURNS jsonb LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
  SELECT jsonb_build_object('letterId',l.id,'pinId',pin.id,'companyId',c.company_id,'subjectPersonId',e.person_id,'signingRevision',d.revision,
- 'recipients',coalesce((SELECT jsonb_agg(jsonb_build_object('userId',u.id,'personId',u.person_id,'stepId',step->>'id') ORDER BY u.id,step->>'id') FROM app.document_signing_pending_steps(d.data) step
+ 'recipients',coalesce((SELECT jsonb_agg(jsonb_build_object('userId',u.id,'personId',u.person_id,'stepId',step->>'id') ORDER BY u.id,step->>'id') FROM jsonb_array_elements(d.data->'route'->'steps') step
  JOIN public.app_user u ON u.tenant_id=l.tenant_id AND u.id::text=step->>'holderId' AND u.person_id::text=step->>'holderPersonId'
- WHERE u.person_id<>e.person_id AND app.contract_verified_human(u.id)), '[]'::jsonb),
- 'returned',app.document_signing_returned(d.data),'ownerUserId',app.document_signing_owner(d.data))
+ JOIN public.person person ON person.tenant_id=u.tenant_id AND person.id=u.person_id
+ WHERE u.person_id<>e.person_id AND u.archived_at IS NULL AND NOT app.login_blocked(u.id) AND length(btrim(person.full_name))>0
+ AND CASE WHEN app.document_signing_returned(d.data) THEN step->'owner'='true'::jsonb AND u.id=app.document_signing_owner(d.data)
+ ELSE EXISTS(SELECT 1 FROM app.document_signing_pending_steps(d.data) pending WHERE pending->>'id'=step->>'id') END),'[]'::jsonb))
  FROM public.contract_shared_letter l JOIN public.document_signing_document d ON d.tenant_id=l.tenant_id AND d.id=l.signing_document_id AND d.subject_type='contract' AND d.subject_id=l.id
- JOIN public.contract_case c ON c.tenant_id=l.tenant_id AND c.id=l.case_id
- JOIN public.employment e ON e.tenant_id=c.tenant_id AND e.id=c.employment_id AND e.company_id=c.company_id AND e.person_id::text=l.data->>'subjectPersonId' AND e.voided_at IS NULL
+ JOIN public.contract_case c ON c.tenant_id=l.tenant_id AND c.id=l.case_id JOIN public.employment e ON e.tenant_id=c.tenant_id AND e.id=c.employment_id AND e.company_id=c.company_id AND e.person_id::text=l.data->>'subjectPersonId' AND e.voided_at IS NULL
+ JOIN public.company company ON company.tenant_id=c.tenant_id AND company.id=c.company_id AND company.archived_at IS NULL JOIN public.tenant tenant ON tenant.id=c.tenant_id AND tenant.status IN('active','trial')
  JOIN public.contract_shared_email_document_step pin ON pin.tenant_id=l.tenant_id AND pin.case_id=l.case_id AND pin.company_id=c.company_id AND pin.subject_person_id=e.person_id AND pin.documents->>(l.data->>'templateId')=l.id::text
- WHERE l.tenant_id=app.current_tenant_id() AND l.id=p_letter AND l.purpose='email' AND l.data->>'state'='routing' AND d.revision=p_revision AND app.contract_company_entitled(c.company_id)
- AND app.contract_shared_email_document_current(l.id)
+ WHERE l.tenant_id=p_tenant AND l.id=p_letter AND l.purpose='email' AND l.data->>'state'='routing' AND d.revision=p_revision
+ AND EXISTS(SELECT 1 FROM public.tenant_module module WHERE module.tenant_id=p_tenant AND module.module_code='lifecycle' AND module.status IN('active','trial') AND (module.company_id IS NULL OR module.company_id=c.company_id) AND (module.expires_at IS NULL OR module.expires_at>now()))
+ ORDER BY pin.prepared_at,pin.id LIMIT 1
 $$;
-REVOKE ALL ON FUNCTION app.contract_shared_email_hr_notice_source(uuid,integer) FROM PUBLIC,ai_hr_app;
+REVOKE ALL ON FUNCTION app.contract_shared_email_hr_source(uuid,uuid,integer) FROM PUBLIC,ai_hr_app;
+--> statement-breakpoint
+CREATE FUNCTION app.contract_shared_email_hr_event_held(p_case uuid,p_revision integer DEFAULT NULL) RETURNS boolean LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT app.contract_shared_storage_runner() AND EXISTS(SELECT 1 FROM public.contract_shared_event event JOIN app.contract_email_hr_notice notice ON notice.tenant_id=event.tenant_id AND notice.event_id=event.id
+ JOIN public.bulk_job job ON job.tenant_id=event.tenant_id AND job.id=event.job_id JOIN public.contract_case c ON c.tenant_id=notice.tenant_id AND c.id=notice.case_id AND c.company_id=notice.company_id
+ JOIN public.employment e ON e.tenant_id=c.tenant_id AND e.id=c.employment_id AND e.company_id=notice.company_id AND e.person_id=notice.subject_person_id AND e.voided_at IS NULL
+ WHERE event.tenant_id=app.current_tenant_id() AND event.id::text=current_setting('app.contract_event',true) AND event.case_id=p_case AND (p_revision IS NULL OR event.decision_revision=p_revision)
+ AND event.trigger_event='emailDocumentHRNotice' AND event.workflow_versions='[]'::jsonb AND event.processed_at IS NULL AND event.job_id::text=current_setting('app.bulk_job',true)
+ AND job.kind IN('contract_automation','contract_scheduled_automation') AND coalesce(event.root_event_id,event.id)::text=job.input->>'eventId' AND app.bulk_job_capability_held(job.id)
+ AND notice.data_hash=encode(sha256(convert_to(event.data::text,'UTF8')),'hex') AND app.contract_company_entitled(notice.company_id)
+ AND (notice.source_parent_id IS NOT NULL AND EXISTS(SELECT 1 FROM public.contract_shared_event parent WHERE parent.tenant_id=event.tenant_id AND parent.id=notice.source_parent_id AND parent.job_id=event.job_id AND coalesce(parent.root_event_id,parent.id)=event.root_event_id AND parent.actor_user_id IS NOT DISTINCT FROM event.actor_user_id AND parent.actor_person_id IS NOT DISTINCT FROM event.actor_person_id AND parent.actor_type=event.actor_type)
+ OR notice.source_action_id IS NOT NULL AND event.actor_type='user' AND EXISTS(SELECT 1 FROM public.contract_shared_letter letter JOIN public.document_signing_document signing ON signing.tenant_id=letter.tenant_id AND signing.id=letter.signing_document_id CROSS JOIN LATERAL jsonb_array_elements(signing.data->'actions') action WHERE letter.tenant_id=event.tenant_id AND letter.id=notice.letter_id AND action->>'id'=notice.source_action_id AND action->>'actorId'=event.actor_user_id::text AND action->>'actorPersonId'=event.actor_person_id::text)))
+$$;
+REVOKE ALL ON FUNCTION app.contract_shared_email_hr_event_held(uuid,integer) FROM PUBLIC,ai_hr_app;
+--> statement-breakpoint
+CREATE FUNCTION app.contract_shared_email_hr_emit(p_letter uuid) RETURNS void LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE l public.contract_shared_letter;d public.document_signing_document;parent public.contract_shared_event;source jsonb;event_id uuid;action jsonb;job uuid;queued jsonb;data jsonb;is_initial boolean;
+BEGIN
+ SELECT * INTO l FROM public.contract_shared_letter WHERE tenant_id=app.current_tenant_id() AND id=p_letter;
+ IF l.purpose IS DISTINCT FROM 'email' THEN RETURN;END IF;
+ SELECT * INTO d FROM public.document_signing_document WHERE tenant_id=l.tenant_id AND id=l.signing_document_id;
+ source:=app.contract_shared_email_hr_source(l.tenant_id,l.id,d.revision);
+ IF source IS NULL OR jsonb_array_length(source->'recipients')=0 THEN RETURN;END IF;
+ is_initial:=jsonb_array_length(d.data->'actions')=0;
+ IF is_initial THEN
+  IF app.contract_shared_effect_held(l.case_id,l.workflow_run_id,l.workflow_step_id,'sendEmail') IS NOT TRUE THEN RAISE EXCEPTION 'Held original Send email preparation required' USING ERRCODE='42501';END IF;
+  SELECT * INTO parent FROM public.contract_shared_event WHERE tenant_id=l.tenant_id AND id::text=current_setting('app.contract_event',true);
+ ELSE
+  action:=d.data->'actions'->-1;
+  IF action->>'actorId' IS DISTINCT FROM app.current_user_id()::text OR action->>'actorPersonId' IS DISTINCT FROM app.contract_actor_person(app.current_user_id())::text OR app.contract_verified_human(app.current_user_id()) IS NOT TRUE THEN RAISE EXCEPTION 'Actual canonical progression actor required' USING ERRCODE='42501';END IF;
+ END IF;
+ IF EXISTS(SELECT 1 FROM app.contract_email_hr_notice WHERE tenant_id=l.tenant_id AND letter_id=l.id AND signing_revision=d.revision) THEN RETURN;END IF;
+ event_id:=gen_random_uuid();data:=source||jsonb_build_object('sourcePersonId',l.data->>'subjectPersonId','documentRevision',d.revision);
+ INSERT INTO public.contract_shared_event(tenant_id,id,case_id,trigger_event,occurrence,decision_revision,actor_user_id,actor_person_id,actor_type,workflow_versions,data,root_event_id,job_id)
+ VALUES(l.tenant_id,event_id,l.case_id,'emailDocumentHRNotice','email-hr:'||l.id::text||':'||d.revision::text,l.decision_revision,
+ CASE WHEN is_initial THEN parent.actor_user_id ELSE app.current_user_id() END,CASE WHEN is_initial THEN parent.actor_person_id ELSE app.contract_actor_person(app.current_user_id()) END,
+ CASE WHEN is_initial THEN parent.actor_type ELSE 'user' END,'[]'::jsonb,data,CASE WHEN is_initial THEN coalesce(parent.root_event_id,parent.id) END,CASE WHEN is_initial THEN parent.job_id END);
+ INSERT INTO app.contract_email_hr_notice(tenant_id,event_id,case_id,letter_id,pin_id,signing_revision,company_id,subject_person_id,source_parent_id,source_action_id,data_hash)
+ VALUES(l.tenant_id,event_id,l.case_id,l.id,(source->>'pinId')::uuid,d.revision,(source->>'companyId')::uuid,(source->>'subjectPersonId')::uuid,CASE WHEN is_initial THEN parent.id END,CASE WHEN NOT is_initial THEN action->>'id' END,encode(sha256(convert_to(data::text,'UTF8')),'hex'));
+ IF NOT is_initial THEN
+  queued:=app.bulk_job_enqueue('contract_automation',event_id,ARRAY[(source->>'companyId')::uuid],'',NULL,jsonb_build_object('eventId',event_id));job:=(queued->>'id')::uuid;
+  IF job IS NULL THEN RAISE EXCEPTION 'Could not queue the actual HR notice' USING ERRCODE='40001';END IF;
+  UPDATE public.contract_shared_event SET job_id=job WHERE tenant_id=l.tenant_id AND id=event_id;
+ END IF;
+END $$;
+REVOKE ALL ON FUNCTION app.contract_shared_email_hr_emit(uuid) FROM PUBLIC,ai_hr_app;
+--> statement-breakpoint
+CREATE FUNCTION app.contract_shared_email_hr_progress() RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+BEGIN
+ IF NEW.subject_type='contract' AND jsonb_array_length(NEW.data->'actions')>jsonb_array_length(OLD.data->'actions') AND EXISTS(SELECT 1 FROM public.contract_shared_letter l WHERE l.tenant_id=NEW.tenant_id AND l.id=NEW.subject_id AND l.purpose='email') THEN PERFORM app.contract_shared_email_hr_emit(NEW.subject_id);END IF;
+ RETURN NEW;
+END $$;
+REVOKE ALL ON FUNCTION app.contract_shared_email_hr_progress() FROM PUBLIC,ai_hr_app;
+CREATE TRIGGER zzzz_contract_email_hr_progress AFTER UPDATE OF data ON public.document_signing_document FOR EACH ROW EXECUTE FUNCTION app.contract_shared_email_hr_progress();
 
--- Persistent objects explicitly included in the approval request (final bodies depend on frozen root5960):
--- 1. Contract event CHECK adds internal-only emailDocumentHRNotice while preserving every existing item.
--- 2. Private emit(letter): actual held SendEmail AFTER bind OR canonical AFTER action source proof only;
---    insert immutable source receipt, event.workflow_versions=[]; true-system event reuses held parent's job/root;
---    actual human action enqueues existing contract_automation with its REAL UID/PID, never a fake HR actor.
--- 3. Contract-only AFTER Signing trigger calls emit ONLY new actual actions, preserving other subjects byte-for-byte.
--- 4. Existing worker_event_held/event_check delegate unchanged except exact private-receipt+sealed-job branch.
--- 5. effect_held denies ALL business effects for emailDocumentHRNotice, regardless workflow/run/step input.
--- 6. Private page(case,afterUID) requires held notice receipt, exact current source selector, returns at most30
---    pending nonemployee frozen UID/PID pairs, or exact frozen returned owner proven nonemployee.
--- 7. Private mail context + queue + target adapters accept only key
---    email-hr:<letterUUID>:<signingRevision>:<recipientUID>:<recipientPID>, CC=[], no richBody/assets/documents,
---    subject='Contract document needs your action', body='A Contract document is waiting for your action.
-
-{{case.link}}'.
---    The link resolves only the receipt's actual Letter. Sender rechecks pending HR identity before SMTP.
--- No new public EXECUTE, general queue authority, authored workflow, source impersonation or business facts.
+-- The following is the exact rejected completion patch, retained as review text ONLY.
+CREATE FUNCTION app.contract_shared_email_hr_page(p_case uuid,p_after uuid DEFAULT NULL) RETURNS jsonb LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE event public.contract_shared_event;notice app.contract_email_hr_notice;source jsonb;recipients jsonb;
+BEGIN
+ IF app.contract_shared_email_hr_event_held(p_case) IS NOT TRUE THEN RAISE EXCEPTION 'Exact held HR notice required' USING ERRCODE='42501';END IF;
+ SELECT * INTO event FROM public.contract_shared_event WHERE tenant_id=app.current_tenant_id() AND id::text=current_setting('app.contract_event',true);
+ SELECT * INTO notice FROM app.contract_email_hr_notice WHERE tenant_id=event.tenant_id AND event_id=event.id;
+ source:=app.contract_shared_email_hr_source(event.tenant_id,notice.letter_id,notice.signing_revision);
+ SELECT coalesce(jsonb_agg(recipient ORDER BY recipient->>'userId'),'[]'::jsonb) INTO recipients FROM(
+ SELECT DISTINCT ON(recipient->>'userId') recipient FROM jsonb_array_elements(coalesce(source->'recipients','[]'::jsonb)) recipient WHERE (p_after IS NULL OR (recipient->>'userId')::uuid>p_after)
+ AND EXISTS(SELECT 1 FROM jsonb_array_elements(event.data->'recipients') frozen WHERE frozen=recipient) ORDER BY recipient->>'userId',recipient->>'stepId' LIMIT 30) actual;
+ RETURN jsonb_build_object('letterId',notice.letter_id,'signingRevision',notice.signing_revision,'recipients',recipients);
+END $$;
+REVOKE ALL ON FUNCTION app.contract_shared_email_hr_page(uuid,uuid) FROM PUBLIC,ai_hr_app;
+DO $$
+DECLARE signature text;original regprocedure;name text;definition text;copy_name text;arguments text;
+BEGIN
+ FOREACH signature IN ARRAY ARRAY['app.contract_shared_worker_event_held(uuid,integer)','app.contract_shared_effect_held(uuid,uuid,text,text)','app.automation_can_run(text,uuid)','app.contract_shared_mail_context(uuid,text)','app.contract_shared_delivery_eligible(uuid,uuid,jsonb)','app.automation_email_queue_rich(text,uuid,text,uuid[],uuid[],text,text,jsonb)'] LOOP
+  original:=signature::regprocedure;SELECT proname,pg_get_functiondef(oid),pg_get_function_identity_arguments(oid) INTO name,definition,arguments FROM pg_proc WHERE oid=original;
+  copy_name:=name||'_before_hr_notice';definition:=replace(definition,'FUNCTION app.'||name||'(','FUNCTION app.'||copy_name||'(');
+  IF position('FUNCTION app.'||copy_name||'(' IN definition)=0 THEN RAISE EXCEPTION 'Unexpected canonical function definition %',signature;END IF;
+  EXECUTE definition;EXECUTE format('REVOKE ALL ON FUNCTION app.%I(%s) FROM PUBLIC,ai_hr_app',copy_name,arguments);
+ END LOOP;
+END $$;
+CREATE OR REPLACE FUNCTION app.contract_shared_worker_event_held(p_case uuid,p_revision integer) RETURNS boolean LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT app.contract_shared_email_hr_event_held(p_case,p_revision) OR app.contract_shared_worker_event_held_before_hr_notice(p_case,p_revision)
+$$;
+CREATE OR REPLACE FUNCTION app.contract_shared_effect_held(p_case uuid,p_run uuid,p_step text,p_type text) RETURNS boolean LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT NOT app.contract_shared_email_hr_event_held(p_case) AND app.contract_shared_effect_held_before_hr_notice(p_case,p_run,p_step,p_type)
+$$;
+CREATE OR REPLACE FUNCTION app.automation_can_run(p_module text,p_subject uuid) RETURNS boolean LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT CASE WHEN p_module='contract_staff' AND app.contract_shared_email_hr_event_held(p_subject) THEN true ELSE app.automation_can_run_before_hr_notice(p_module,p_subject) END
+$$;
+CREATE OR REPLACE FUNCTION app.contract_shared_mail_context(p_case uuid,p_key text) RETURNS jsonb LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE event public.contract_shared_event;notice app.contract_email_hr_notice;
+BEGIN
+ IF app.contract_shared_email_hr_event_held(p_case) IS NOT TRUE THEN RETURN app.contract_shared_mail_context_before_hr_notice(p_case,p_key);END IF;
+ SELECT * INTO event FROM public.contract_shared_event WHERE tenant_id=app.current_tenant_id() AND id::text=current_setting('app.contract_event',true);
+ SELECT * INTO notice FROM app.contract_email_hr_notice WHERE tenant_id=event.tenant_id AND event_id=event.id;
+ IF NOT EXISTS(SELECT 1 FROM jsonb_array_elements(event.data->'recipients') recipient WHERE p_key='email-hr:'||notice.letter_id::text||':'||notice.signing_revision::text||':'||(recipient->>'userId')||':'||(recipient->>'personId')) THEN RAISE EXCEPTION 'Exact native HR recipient key required' USING ERRCODE='42501';END IF;
+ RETURN jsonb_build_object('kind','emailDocumentHRNotice','eventId',event.id,'letterId',notice.letter_id,'documentRevision',notice.signing_revision,'decisionRevision',event.decision_revision,'subjectPersonId',notice.subject_person_id,
+ 'employmentId',(SELECT employment_id FROM public.contract_case WHERE tenant_id=event.tenant_id AND id=p_case),'periodRevision',(SELECT source_period_revision FROM public.contract_shared_email_document_step WHERE tenant_id=event.tenant_id AND id=notice.pin_id));
+END $$;
+CREATE FUNCTION app.contract_shared_email_hr_delivery_eligible(p_tenant uuid,p_case uuid,p_context jsonb) RETURNS boolean LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT EXISTS(SELECT 1 FROM app.contract_email_hr_notice notice JOIN public.contract_shared_event event ON event.tenant_id=notice.tenant_id AND event.id=notice.event_id
+ CROSS JOIN LATERAL jsonb_array_elements(coalesce(app.contract_shared_email_hr_source(p_tenant,notice.letter_id,notice.signing_revision)->'recipients','[]'::jsonb)) recipient
+ WHERE notice.tenant_id=p_tenant AND notice.case_id=p_case AND event.id::text=p_context->>'eventId' AND event.trigger_event='emailDocumentHRNotice' AND event.workflow_versions='[]'::jsonb
+ AND notice.letter_id::text=p_context->>'letterId' AND notice.subject_person_id::text=p_context->>'subjectPersonId' AND notice.signing_revision::text=p_context->>'documentRevision'
+ AND notice.data_hash=encode(sha256(convert_to(event.data::text,'UTF8')),'hex') AND event.data->'recipients' @> jsonb_build_array(recipient)
+ AND p_context->'recipientPeople'->>(recipient->>'userId')=recipient->>'personId')
+$$;
+REVOKE ALL ON FUNCTION app.contract_shared_email_hr_delivery_eligible(uuid,uuid,jsonb) FROM PUBLIC,ai_hr_app;
+CREATE OR REPLACE FUNCTION app.contract_shared_delivery_eligible(p_tenant uuid,p_case uuid,p_context jsonb) RETURNS boolean LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT CASE WHEN p_context->>'kind'='emailDocumentHRNotice' THEN app.contract_shared_email_hr_delivery_eligible(p_tenant,p_case,p_context) ELSE app.contract_shared_delivery_eligible_before_hr_notice(p_tenant,p_case,p_context) END
+$$;
+CREATE OR REPLACE FUNCTION app.automation_email_queue_rich(p_module text,p_subject uuid,p_key text,p_to uuid[],p_cc uuid[],p_subject_line text,p_body text,p_rich_body jsonb) RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE page jsonb;recipient jsonb;allowed boolean:=false;
+BEGIN
+ IF p_module='contract_staff' AND app.contract_shared_email_hr_event_held(p_subject) THEN
+  IF cardinality(p_to)<>1 OR coalesce(cardinality(p_cc),0)<>0 OR p_rich_body IS NOT NULL OR p_subject_line<>'Contract document needs your action' OR p_body<>E'A Contract document is waiting for your action.\n\n{{case.link}}' THEN RAISE EXCEPTION 'Only the fixed native HR action notice can be queued' USING ERRCODE='42501';END IF;
+  page:=app.contract_shared_email_hr_page(p_subject,NULL);
+  FOR recipient IN SELECT * FROM jsonb_array_elements(page->'recipients') LOOP
+   IF p_to[1]::text=recipient->>'userId' AND p_key='email-hr:'||(page->>'letterId')||':'||(page->>'signingRevision')||':'||(recipient->>'userId')||':'||(recipient->>'personId') THEN allowed:=true;END IF;
+  END LOOP;
+  IF NOT allowed THEN RAISE EXCEPTION 'The pending native HR actor changed' USING ERRCODE='42501';END IF;
+ END IF;
+ RETURN app.automation_email_queue_rich_before_hr_notice(p_module,p_subject,p_key,p_to,p_cc,p_subject_line,p_body,p_rich_body);
+END $$;

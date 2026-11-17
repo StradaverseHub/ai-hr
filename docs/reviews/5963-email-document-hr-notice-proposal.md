@@ -1,6 +1,8 @@
 # Private email-document HR notices — exact approval proposal
 
-Status: UNAPPLIED. No active migration, worker hook or grant accompanies this proposal. The earlier email-document approval covers document creation/readiness, but this proposal asks approval for the additional persistent internal notification admission below. Allocation 5963 / idx5363 / when1794841005963 belongs to this implementation only after approval.
+Status: UNAPPLIED. Concrete completion write rejected by automatic approval review on17 November2026: “This migration persistently rewrites multiple shared worker, execution, delivery, mail-context, and queue security functions via same-OID wrappers and adds a new HR-notice event path; the user approved bounded emailDocumentReady recovery, not this broader HRNotice security-boundary change.” No retry or alternate execution. The accepted unregistered source draft has been moved out of active migrations into the companion review artifact. Specific human approval of this exact HRNotice boundary is required before resuming that rejected write.
+
+Original status: UNAPPLIED. No active migration, worker hook or grant accompanies this proposal. The earlier email-document approval covers document creation/readiness, but this proposal asks approval for the additional persistent internal notification admission below. Allocation 5963 / idx5363 / when1794841005963 belongs to this implementation only after approval.
 
 ## User-visible result
 
