@@ -29,7 +29,7 @@ it('preserves exact destination choices and disambiguation across native roles, 
   // Same code/label in disjoint company Criteria: format after narrowing, as each old singleton does.
   await bulkSaveLabels(ctx,kind,{creates:companies.slice(0,2).map((companyId,i)=>({key:'duplicate'+i,companyId,companyIds:[companyId],isGlobal:false,code:'REPEATED',name:'REPEATED',title:'REPEATED',label:'Repeated caption'})),updates:[]});
  }
- for(const companyId of companies)await createLocation(ctx,{companyId,code:'HQ',name:'Fictional headquarters',country:'MY'});
+ for(const [index,companyId] of companies.entries())await createLocation(ctx,{companyId,code:'HQ'+index,name:'Fictional headquarters',country:'MY'});
  const spy=vi.spyOn(database,'withTenant');
  const expected=new Map(await Promise.all(companies.map(async id=>[id,await legacy(ctx,id)] as const)));
  expect(spy).toHaveBeenCalledTimes(70);spy.mockRestore();
