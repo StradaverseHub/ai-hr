@@ -45,20 +45,20 @@ it('retains native per-company availability/order for all roles, shared/global/a
    spy.mockClear();
    for(const companyId of companies){
     const old=await read(ctx,{companyIds:[companyId]});
-    expect(labelsInCompanyScope(rows,new Set([companyId]))).toEqual(old);
+    expect(labelsInCompanyScope<(typeof rows)[number]>(rows,new Set([companyId]))).toEqual(old);
     const legacyIds=new Set(await labelIdsForCompany(ctx,kind,companyId));
     for(const row of rows)expect(csv.get(row.id)?.split(',').includes(companyId)??false).toBe(legacyIds.has(row.id));
     for(const row of completeCriteria)expect(completeCsv.get(row.id)?.split(',').includes(companyId)??false).toBe(legacyIds.has(row.id));
    }
    expect(spy).toHaveBeenCalledTimes(140);spy.mockClear();
-   const catalogue=await read(ctx);for(const companyId of companies)labelsInCompanyScope(catalogue,new Set([companyId]));labelCompanyCsv(catalogue,companies);
+   const catalogue=await read(ctx);for(const companyId of companies)labelsInCompanyScope<(typeof catalogue)[number]>(catalogue,new Set([companyId]));labelCompanyCsv(catalogue,companies);
    expect(spy).toHaveBeenCalledTimes(1);
    for(const role of s.roleEnum.enumValues)for(const companyId of role==='super_admin'?[null]:[null,b.companyId]){
     const userId=await createAppUser(b.tenantId,people[0].id,'employee');
     await owner.db.update(s.roleAssignment).set({role,companyId}).where(eq(s.roleAssignment.appUserId,userId));
     const who={...ctx,userId,personId:people[0].id,roles:[role],grants:[{role,companyId}]};
     const all=await read(who);
-    for(const id of [b.companyId,companies[1]])expect(labelsInCompanyScope(all,new Set([id]))).toEqual(await read(who,{companyIds:[id]}));
+    for(const id of [b.companyId,companies[1]])expect(labelsInCompanyScope<(typeof all)[number]>(all,new Set([id]))).toEqual(await read(who,{companyIds:[id]}));
    }
   }
  }finally{spy.mockRestore();}
