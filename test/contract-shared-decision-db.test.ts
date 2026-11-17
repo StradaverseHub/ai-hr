@@ -219,7 +219,7 @@ describe('protected Contract decision preview and submission',()=>{
   await expect(submitContractSharedDecision(f.proposer,{caseId:f.caseId,revision:1,previewId:requested.previewId})).rejects.toMatchObject({code:'conflict'});
   const fresh=await previewContractSharedDecision(f.proposer,{caseId:f.caseId,revision:1,draft});
   expect((await finishPreview(fresh.jobId,f.proposer)).state).toBe('completed');
-  expect((await readContractSharedDecisionPreview(f.proposer,fresh.previewId)).plan?.blockers.join(' ')).toContain('No live workflow');
+  expect((await readContractSharedDecisionPreview(f.proposer,fresh.previewId)).plan?.blockers).toEqual([]);expect((await readContractSharedDecisionPreview(f.proposer,fresh.previewId)).plan?.warnings.join(' ')).toContain('No workflow ran');
   expect((await contractSharedContext(f.proposer,f.caseId)).flow?.stage).toBe('open');
  });
  it('binds the native offered-reason guard to the Personnel catalogue and rejects unknown codes',async()=>{
