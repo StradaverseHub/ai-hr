@@ -320,7 +320,7 @@ export default async function ZakatTransactionPage({
               ) : (
                 <Field label={t('zakat.history.employee')}>
                   <EmployeeChoiceField name="hEmploymentId" label={t('zakat.history.employee')}
-                    allLabel={t('zakat.history.all')} selectedId={hEmploymentId} selected={historyEmployee} />
+                    allLabel={t('zakat.history.all')} showEmploymentLabels selectedId={hEmploymentId} selected={historyEmployee} />
                 </Field>
               )}
               <Field label={t('zakat.history.year')}>

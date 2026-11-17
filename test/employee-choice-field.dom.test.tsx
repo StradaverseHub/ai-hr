@@ -97,3 +97,16 @@ describe('demand-loaded employee form field',()=>{
     expect(screen.getAllByRole('option')).toHaveLength(2);
   });
 });
+
+
+it('retains code/company disambiguation for bounded all-status history choices',async()=>{
+ const result=page();result.labelMode='labels';
+ result.rows[0]={...result.rows[0],name:'Same name',employeeCode:'A001',company:'Company A'};
+ result.rows[1]={...result.rows[1],name:'Same name',employeeCode:'B001',company:'Company B'};
+ const fetch=vi.fn(async(_url:string,_init:RequestInit)=>Response.json(result));vi.stubGlobal('fetch',fetch);
+ render(<NextIntlClientProvider locale="en" messages={messages}><form><EmployeeChoiceField name="hEmploymentId" label="History employee" allLabel="All employees" showEmploymentLabels selectedId={selected.employmentId} selected={{...selected,employeeCode:'OLD',company:'Company A'}} /></form></NextIntlClientProvider>);
+ const user=userEvent.setup();await user.click(screen.getByText('History employee: '+selected.name+' (OLD) · Company A'));
+ expect(await screen.findByRole('option',{name:'Same name (A001) · Company A'})).toBeInTheDocument();
+ expect(screen.getByRole('option',{name:'Same name (B001) · Company B'})).toBeInTheDocument();
+ expect(JSON.parse(String(fetch.mock.calls[0]?.[1]?.body)).labelMode).toBe('labels');
+});

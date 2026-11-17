@@ -7,23 +7,26 @@ import {EMPLOYEE_CHOICE_PAGE_SIZE, employeeChoiceKey, isEmployeeChoicePage, type
 /** A form-GET field: loading navigation options never submits the report or changes its filters.
  * The first list is requested only when opened. The selected label is an independent server read,
  * so a deep selection remains visible without serializing the whole workforce into the form. */
-export function EmployeeChoiceField({name, label, allLabel, selectedId, selected, fallbackAction, fallbackContext}: {
+export function EmployeeChoiceField({name, label, allLabel, selectedId, selected, fallbackAction, fallbackContext, showEmploymentLabels=false}: {
   name:string;
   label:string;
   allLabel:string;
+  showEmploymentLabels?:boolean;
   selectedId?:string;
-  selected:{employmentId:string;name:string}|null;
+  selected:{employmentId:string;name:string;employeeCode?:string|null;company?:string}|null;
   /** Module-owned native read flow, available before hydration as well as without JS. */
   fallbackAction?:string;
   fallbackContext?:string;
 }) {
   const t=useTranslations('employeePanel'), id=useId();
   const selectionId=selectedId?.toLowerCase();
+  const labelMode=showEmploymentLabels?'labels':'names';
+  const choiceLabel=(row:{name:string;employeeCode?:string|null;company?:string})=>showEmploymentLabels?`${row.name}${row.employeeCode?` (${row.employeeCode})`:''}${row.company?` · ${row.company}`:''}`:row.name;
   const [open,setOpen]=useState(false), [query,setQuery]=useState(''), [offset,setOffset]=useState(0), [retry,setRetry]=useState(0);
   const [value,setValue]=useState(selectionId??'');
   const [result,setResult]=useState<{key:string;data?:EmployeeChoicePage;failed?:true}|null>(null);
   const filters={query,companyId:'',businessUnitId:'',departmentId:'',status:''};
-  const key=employeeChoiceKey(filters,offset,'names')+':'+retry;
+  const key=employeeChoiceKey(filters,offset,labelMode)+':'+retry;
   const current=result?.key===key?result:null;
   const loading=open&&!current;
   useEffect(()=>{
@@ -32,18 +35,18 @@ export function EmployeeChoiceField({name, label, allLabel, selectedId, selected
     const timer=setTimeout(()=>{
       void fetch('/api/employee-choices',{
         method:'POST',headers:{'Content-Type':'application/json'},cache:'no-store',credentials:'same-origin',signal:controller.signal,
-        body:JSON.stringify({query,offset,limit:EMPLOYEE_CHOICE_PAGE_SIZE,selectedId:selectionId||undefined,labelMode:'names'}),
+        body:JSON.stringify({query,offset,limit:EMPLOYEE_CHOICE_PAGE_SIZE,selectedId:selectionId||undefined,labelMode}),
       }).then(async response=>{
         if(!response.ok)throw Error('Employee choices unavailable');
         const data:unknown=await response.json();
         if(!isEmployeeChoicePage(data)||data.limit!==EMPLOYEE_CHOICE_PAGE_SIZE
-          ||employeeChoiceKey(data.filters,data.offset,data.labelMode)!==employeeChoiceKey(filters,offset,'names')
+          ||employeeChoiceKey(data.filters,data.offset,data.labelMode)!==employeeChoiceKey(filters,offset,labelMode)
           ||data.selected!==null&&data.selected.employmentId!==selectionId)throw Error('Employee choices unavailable');
         if(active)setResult({key,data});
       }).catch(()=>{if(active&&!controller.signal.aborted)setResult({key,failed:true});});
     },query?180:0);
     return()=>{active=false;clearTimeout(timer);controller.abort();};
-  },[open,key,query,offset,selectionId]);
+  },[open,key,query,offset,selectionId,labelMode]);
   const rows=current?.data?.rows??[];
   const selectedChoice=current?.data?.selected??selected;
   const selectedOutsidePage=value&&!rows.some(row=>row.employmentId===value);
@@ -52,7 +55,7 @@ export function EmployeeChoiceField({name, label, allLabel, selectedId, selected
     if(!next)setResult(null);
     setOpen(next);
   }}>
-    <summary className="cursor-pointer text-xs font-medium text-muted-foreground">{label}: {selectedChoice?.name??(value?'—':allLabel)}</summary>
+    <summary className="cursor-pointer text-xs font-medium text-muted-foreground">{label}: {selectedChoice?choiceLabel(selectedChoice):(value?'—':allLabel)}</summary>
     <div className="space-y-2 rounded-md border border-border p-2">
       <label htmlFor={id+'-search'} className="block text-xs text-muted-foreground">{t('searchLabel')}</label>
       <input id={id+'-search'} type="search" value={query} onChange={event=>{setQuery(event.target.value);setOffset(0);}}
@@ -63,8 +66,8 @@ export function EmployeeChoiceField({name, label, allLabel, selectedId, selected
       <select id={id+'-select'} name={name} value={value} className="h-9 w-full rounded-lg border border-border bg-background px-2.5 text-sm"
         onChange={event=>{setValue(event.target.value);event.currentTarget.form?.requestSubmit();}}>
         <option value="">{allLabel}</option>
-        {selectedOutsidePage&&<option value={value}>{selectedChoice?.name??'—'}</option>}
-        {rows.map(row=><option key={row.employmentId} value={row.employmentId}>{row.name}</option>)}
+        {selectedOutsidePage&&<option value={value}>{selectedChoice?choiceLabel(selectedChoice):'—'}</option>}
+        {rows.map(row=><option key={row.employmentId} value={row.employmentId}>{choiceLabel(row)}</option>)}
       </select>
       {current?.data&&<div className="flex items-center justify-between gap-2 text-xs text-muted-foreground">
         <button type="button" disabled={offset===0} onClick={()=>setOffset(n=>Math.max(0,n-EMPLOYEE_CHOICE_PAGE_SIZE))}>{t('previousPage')}</button>
