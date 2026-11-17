@@ -68,7 +68,7 @@ GRANT EXECUTE ON FUNCTION app.resignation_communication_test_receipt(uuid,intege
 --> statement-breakpoint
 CREATE FUNCTION app.resignation_communication_test_begin(p_case uuid,p_revision integer,p_run uuid,p_step text,p_request uuid,p_offboarding uuid,p_mail jsonb)
 RETURNS void LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
-DECLARE proof jsonb;j resignation_journey;definition jsonb;scope jsonb;
+DECLARE proof jsonb;j resignation_journey;definition jsonb;scope jsonb;email_template jsonb;message_step jsonb;
 BEGIN
  proof:=app.resignation_runtime_consume('context',p_case,jsonb_build_object('mode','communicationTest','caseId',p_case,'revision',p_revision,'runId',p_run,'stepId',p_step,'requestId',p_request,'offboardingCaseId',p_offboarding,'mail',p_mail));
  PERFORM app.access_workforce_write_lock();
@@ -78,6 +78,11 @@ BEGIN
  IF j.revision IS DISTINCT FROM p_revision THEN RAISE EXCEPTION 'This case changed; reload before sending a test' USING ERRCODE='40001';END IF;
  SELECT v.definition INTO definition FROM automation_run r JOIN automation_workflow_version v ON v.tenant_id=r.tenant_id AND v.workflow_id=r.workflow_id AND v.revision=r.workflow_revision WHERE r.tenant_id=j.tenant_id AND r.id=p_run AND r.module='off' AND r.subject_id=j.id;
  IF NOT EXISTS(SELECT 1 FROM jsonb_array_elements(coalesce(definition->'steps','[]')) s WHERE s->>'id'=p_step AND s->>'type'='sendEmail') THEN RAISE EXCEPTION 'The pinned message step is unavailable' USING ERRCODE='42501'; END IF;
+ SELECT value INTO message_step FROM jsonb_array_elements(coalesce(definition->'steps','[]')) WHERE value->>'id'=p_step AND value->>'type'='sendEmail';
+ IF p_mail->'content'->>'emailTemplateId' IS DISTINCT FROM message_step->'params'->>'emailTemplateId' THEN RAISE EXCEPTION 'The message template differs from its pinned step' USING ERRCODE='42501';END IF;
+ SELECT coalesce((SELECT waiting->'email'->'template' FROM jsonb_array_elements(coalesce(j.data->'waits','[]')) waiting WHERE waiting->>'runId'=p_run::text AND waiting->>'kind'='file' LIMIT 1),(SELECT e FROM lc_v9_config cfg CROSS JOIN LATERAL jsonb_array_elements(coalesce(cfg.data->'emails','[]')) e WHERE cfg.tenant_id=j.tenant_id AND e->>'id'=message_step->'params'->>'emailTemplateId' AND e->>'module'='off' LIMIT 1)) INTO email_template;
+ IF email_template IS NULL OR email_template->>'active' IS DISTINCT FROM 'true' OR EXISTS(SELECT 1 FROM jsonb_array_elements(coalesce(email_template->'slots','[]')) slot WHERE slot->>'required'='true' AND NOT EXISTS(SELECT 1 FROM resignation_journey_file f WHERE f.tenant_id=j.tenant_id AND f.case_id=j.id AND f.slot=(email_template->>'id')||':'||(slot->>'id') AND EXISTS(SELECT 1 FROM jsonb_array_elements(coalesce(p_mail->'content'->'files','[]')) included WHERE included->>'id'=f.id::text))) THEN RAISE EXCEPTION 'Resolve the active template and required case-file holds before sending a test' USING ERRCODE='22023';END IF;
+ IF EXISTS(SELECT 1 FROM jsonb_array_elements_text(coalesce(email_template->'attachments','[]')) required WHERE NOT EXISTS(SELECT 1 FROM jsonb_array_elements(coalesce(p_mail->'content'->'documents','[]')) d WHERE d->>'templateId'=required AND p_mail->'content'->'pdfDocumentIds' ? (d->>'id'))) OR EXISTS(SELECT 1 FROM jsonb_array_elements_text(coalesce(email_template->'links','[]')) required WHERE NOT EXISTS(SELECT 1 FROM jsonb_array_elements(coalesce(p_mail->'content'->'documents','[]')) d WHERE d->>'templateId'=required AND p_mail->'content'->'linkDocumentIds' ? (d->>'id'))) THEN RAISE EXCEPTION 'Required released letters must be included in the test' USING ERRCODE='22023';END IF;
  IF p_mail->'holds' IS DISTINCT FROM '[]'::jsonb OR jsonb_typeof(p_mail->'subject')<>'string' OR jsonb_typeof(p_mail->'body')<>'string' OR jsonb_typeof(p_mail->'content')<>'object' THEN RAISE EXCEPTION 'Resolve message holds before sending a test' USING ERRCODE='22023';END IF;
  -- No request may choose recipients. The live worker resolves this actual user's verified identity.
  IF NOT EXISTS(SELECT 1 FROM app_external_identity i WHERE i.app_user_id=app.current_user_id() AND i.revoked_at IS NULL AND i.issuer LIKE '%/auth/'||app.current_tenant_id()::text) THEN RAISE EXCEPTION 'Your verified delivery identity is unavailable' USING ERRCODE='42501';END IF;
@@ -102,7 +107,7 @@ BEGIN
  END IF;
  key:='case-test:'||p_case::text||':'||app.current_user_id()::text||':'||p_request::text;
  -- Existing queue consumes the signed exact email proof and validates every released document, asset and case file.
- result:=app.resignation_email_queue(p_case,key,ARRAY[app.current_user_id()],'{}'::uuid[],'[Test] '||(p_mail->>'subject'),p_mail->>'body',p_mail->'content');
+ result:=app.resignation_email_queue(p_case,key,ARRAY[app.current_user_id()],'{}'::uuid[],left('[Test] '||(p_mail->>'subject'),500),p_mail->>'body',p_mail->'content');
  IF coalesce((result->>'queued')::integer,0)<>1 OR jsonb_array_length(coalesce(result->'unreachable','[]'))<>0 THEN RAISE EXCEPTION 'Your verified delivery identity is unavailable' USING ERRCODE='42501'; END IF;
  INSERT INTO resignation_communication_test(tenant_id,case_id,actor_id,request_id,case_revision,run_id,step_id,payload_hash) VALUES(app.current_tenant_id(),p_case,app.current_user_id(),p_request,p_revision,p_run,p_step,hash);
  RETURN jsonb_build_object('requestId',p_request,'status','queued','replayed',false);

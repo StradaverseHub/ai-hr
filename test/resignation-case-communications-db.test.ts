@@ -46,9 +46,18 @@ describe('managed case message inspection and actor-only test intents',()=>{
   expect(await owner.db.execute(sql`select request_id from resignation_communication_test`)).toEqual([]);
  },90000);
  it('requires exact native signed context and refuses a swapped payload after admission',async()=>{
-  const f=await fixture(),request=randomUUID(),mail={subject:'Hello Journey employee',body:'Your case is '+f.current.number+'.',content:{number:f.current.number,emailTemplateId:randomUUID(),documents:[],pdfDocumentIds:[],linkDocumentIds:[],assets:[],files:[]},holds:[]};
+  const f=await fixture(),request=randomUUID(),mail={subject:'Hello Journey employee',body:'Your case is '+f.current.number+'.',content:{number:f.current.number,emailTemplateId:f.item.emailTemplateId,documents:[],pdfDocumentIds:[],linkDocumentIds:[],assets:[],files:[]},holds:[]};
   await expect(withTenant(f.admin,tx=>tx.execute(sql`select app.resignation_communication_test_begin(${f.current.id}::uuid,${f.messages.revision},${f.item.runId}::uuid,'email',${request}::uuid,null,${JSON.stringify(mail)}::jsonb)`))).rejects.toThrow();
   await expect(withTenant(f.admin,async tx=>{await prepareResignationProofTx(tx,f.admin,{operation:'context',caseId:f.current.id,args:{mode:'communicationTest',caseId:f.current.id,revision:f.messages.revision,runId:f.item.runId,stepId:'email',requestId:request,offboardingCaseId:null,mail}});await tx.execute(sql`select app.resignation_communication_test_begin(${f.current.id}::uuid,${f.messages.revision},${f.item.runId}::uuid,'email',${request}::uuid,null,${JSON.stringify(mail)}::jsonb)`);await tx.execute(sql`select app.resignation_communication_test_queue(${f.current.id}::uuid,${f.messages.revision},${f.item.runId}::uuid,'email',${request}::uuid,${JSON.stringify({...mail,body:'Swapped'})}::jsonb)`);})).rejects.toThrow();
   expect(await owner.db.execute(sql`select request_id from resignation_communication_test`)).toEqual([]);
  },90000);
 });
+
+it('rejects expired context custody before test admission and fails closed after the actor identity changes',async()=>{
+ const f=await fixture(),request=randomUUID();
+ const{signResignationRuntime}=await import('../lib/resignation-runtime-proof');
+ await expect(withTenant(f.admin,async tx=>{const[row]=await tx.execute<{id:string}>(sql`select txid_current()::text as id`);const proof=signResignationRuntime({operation:'context',caseId:f.current.id,args:{}},{tenantId:f.base.tenantId,userId:f.admin.userId!,personId:f.admin.personId!,transactionId:row.id},'a'.repeat(64),Date.now()-120000);await tx.execute(sql`select app.resignation_journey_admit(${proof.payload},${proof.signature})`);})).rejects.toThrow();
+ await owner.db.execute(sql`update app_user set person_id=null where tenant_id=${f.base.tenantId}::uuid and id=${f.managerUserId}::uuid`);
+ await expect(requestResignationMessageTest(f.admin,{caseId:f.current.id,revision:f.messages.revision,runId:f.item.runId,stepId:f.item.stepId,requestId:request})).rejects.toMatchObject({code:'forbidden'});
+ expect(await owner.db.execute(sql`select request_id from resignation_communication_test`)).toEqual([]);
+},90000);

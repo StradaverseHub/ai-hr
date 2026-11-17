@@ -23,7 +23,7 @@ export async function requestResignationMessageTest(ctx:SessionContext,input:Res
  const sources=await resignationCommunicationSourcesTx(tx,ctx,input),source=sources.find(item=>item.runId===input.runId&&item.stepId===input.stepId);if(!source)denied();if(source.caseRevision!==input.revision)throw new ResignationJourneyError('conflict','This case changed. Reload before sending a test.');const mail=prepareResignationCommunication(source);if(mail.holds.length)throw new ResignationJourneyError('invalid',mail.holds.join(' '));
  await prepareResignationProofTx(tx,ctx,{operation:'context',caseId:input.caseId,args:{mode:'communicationTest',caseId:input.caseId,revision:input.revision,runId:input.runId,stepId:input.stepId,requestId:input.requestId,offboardingCaseId:input.offboardingCaseId??null,mail}});
  await tx.execute(sql`select app.resignation_communication_test_begin(${input.caseId}::uuid,${input.revision},${input.runId}::uuid,${input.stepId},${input.requestId}::uuid,${input.offboardingCaseId??null}::uuid,${JSON.stringify(mail)}::jsonb)`);
- const key=`case-test:${input.caseId}:${ctx.userId}:${input.requestId}`,subject='[Test] '+mail.subject;
+ const key=`case-test:${input.caseId}:${ctx.userId}:${input.requestId}`,subject=('[Test] '+mail.subject).slice(0,500);
  await prepareResignationProofTx(tx,ctx,{operation:'email',caseId:input.caseId,args:{key,to:[ctx.userId],cc:[],subject,body:mail.body,content:mail.content}});
  const [result]=await tx.execute<{receipt:ResignationMessageTestResult}>(sql`select app.resignation_communication_test_queue(${input.caseId}::uuid,${input.revision},${input.runId}::uuid,${input.stepId},${input.requestId}::uuid,${JSON.stringify(mail)}::jsonb) as receipt`);return result.receipt;
  }));}
