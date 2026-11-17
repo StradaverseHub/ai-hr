@@ -10,7 +10,7 @@ import {getRewardUnit,withRewardHistoryBackfill,saveRewardEntry} from '../packs/
 import {backfillRewardPersonHistory} from '../packs/rewards/person-history-backfill';
 import {rewardPersonHistory,recordRewardPersonHistoryTx} from '../packs/rewards/person-history';
 import {previewRewardPersonHistoryImport,importRewardPersonHistory,applyRewardPersonHistoryImportRowTx} from '../packs/rewards/person-history-upload';
-import {rewardHistoryUploadHeaders} from '../packs/rewards/person-history-model';
+import {rewardHistoryValues,rewardHistoryUploadHeaders} from '../packs/rewards/person-history-model';
 import {createApprovedRewardUnit} from './rewards-setup-fixture';
 import {setRewardMember} from './rewards-access-fixture';
 import {closeAll,createAppUser,entitledCtx,owner,resetDb,seedBase,setModule,migrateTestDb,type Base} from './harness';
@@ -115,7 +115,7 @@ describe('Person reward history custody and upload',()=>{
   const valid={entryId,employmentId,talent:'STAR',performance:'OU',meritBp:0,promotionBp:0,specialBp:0,incrementCents:0,totalIncreaseBp:0,promoted:false,promotionGrade:null,bonusCents:0,bonusMonthsBp:0,lumpCents:0,withheld:{}};
   const write=(rows:unknown)=>withTenant(admin,tx=>tx.execute(sql`select app.reward_record_person_history(${unitId}::uuid,${JSON.stringify(rows)}::jsonb)`));
   const refused=[[],[null],[{entryId,employmentId}],[valid,valid],[{...valid,entryId:pastEntryId}],[{...valid,employmentId:personId}],
-   [{...valid,employmentId:'not-a-uuid'}],[{...valid,entryId:null}],[{...valid,meritBp:'not-a-number'}],
+   [{...valid,employmentId:'not-a-uuid'}],[{...valid,entryId:null}],[{...valid,meritBp:'not-a-number'}],[{...valid,totalIncreaseBp:9007199254740992}],
    [valid,{...valid,entryId:pastEntryId}]];
   for(const rows of refused){
    await expect(write(rows)).rejects.toThrow();
@@ -123,6 +123,23 @@ describe('Person reward history custody and upload',()=>{
   }
   await write([valid]);
   expect(await owner.db.execute(sql`select id from reward_person_history where unit_id=${unitId}::uuid`)).toHaveLength(1);
+ });
+ it('retains existing valid Senior engine ratios above int32 without changing award amounts',async()=>{
+  const current=await getRewardUnit(admin,unitId),entry=current.rows.find(item=>item.id===entryId)!;
+  await setRewardMember(admin,unitId,current.unit.revision,admin.userId!,'payroll');
+  const input={...entry,source:{...entry.source,basicCents:10000},facts:{...entry.facts,seniorPlan:true}};
+  // These awards remain inside the existing centsSchema cap. The engine alone computes the ratios.
+  const calculated=calculateRewards([input],defaultPolicy(year),{seniorAwards:{[entryId]:{newBasicCents:100_000_000_000,bonusCents:100_000_000_000}}}).rows[0];
+  const values=rewardHistoryValues(calculated);
+  expect(calculated.newBasicCents).toBe(100_000_000_000);expect(calculated.bonusCents).toBe(100_000_000_000);
+  expect(values.totalIncreaseBp).toBe(99_999_990_000);expect(values.bonusMonthsBp).toBe(100_000_000_000);
+  expect(values.totalIncreaseBp).toBeGreaterThan(2_147_483_647);expect(values.bonusMonthsBp).toBeGreaterThan(2_147_483_647);
+  expect(Number.isSafeInteger(values.totalIncreaseBp)&&Number.isSafeInteger(values.bonusMonthsBp)).toBe(true);
+  await owner.db.update(schema.rewardEntry).set({source:input.source,facts:input.facts}).where(eq(schema.rewardEntry.id,entryId));
+  await owner.db.execute(sql`update reward_unit set status='approved' where id=${unitId}::uuid`);
+  expect(await withTenant(admin,tx=>recordRewardPersonHistoryTx(tx,admin,current.unit,[calculated]))).toBe(1);
+  const [stored]=await owner.db.execute<{value:{totalIncreaseBp:number;bonusMonthsBp:number;incrementCents:number;bonusCents:number}}>(sql`select jsonb_build_object('totalIncreaseBp',total_increase_bp,'bonusMonthsBp',bonus_months_bp,'incrementCents',increment_cents,'bonusCents',bonus_cents) as value from reward_person_history where entry_id=${entryId}::uuid`);
+  expect(stored.value).toEqual({totalIncreaseBp:99_999_990_000,bonusMonthsBp:100_000_000_000,incrementCents:99_999_990_000,bonusCents:100_000_000_000});
  });
  it('records a complete native review above 10,000 selected entries and 16 MB as one set insert',async()=>{
   await setRewardMember(admin,unitId,(await getRewardUnit(admin,unitId)).unit.revision,admin.userId!,'payroll');

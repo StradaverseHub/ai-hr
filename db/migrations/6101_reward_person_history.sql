@@ -8,8 +8,8 @@ CREATE TABLE public.reward_person_history(
  upload_batch_id uuid REFERENCES public.bulk_job(id),talent text CHECK(talent IS NULL OR talent IN('SSTAR','STAR','SCORE','IMPRO','PIP')),
  performance text CHECK(performance IS NULL OR performance IN('UA','BE','ME','AE','OU')),
  merit_bp integer NOT NULL CHECK(merit_bp>=0),promotion_bp integer NOT NULL CHECK(promotion_bp>=0),special_bp integer NOT NULL CHECK(special_bp>=0),
- increment_cents bigint NOT NULL CHECK(increment_cents BETWEEN 0 AND 100000000000),total_increase_bp integer NOT NULL CHECK(total_increase_bp>=0),promoted boolean NOT NULL,promotion_grade text,
- bonus_cents bigint NOT NULL CHECK(bonus_cents>=0),bonus_months_bp integer NOT NULL CHECK(bonus_months_bp>=0),lump_cents bigint NOT NULL CHECK(lump_cents>=0),
+ increment_cents bigint NOT NULL CHECK(increment_cents BETWEEN 0 AND 100000000000),total_increase_bp bigint NOT NULL CHECK(total_increase_bp>=0),promoted boolean NOT NULL,promotion_grade text,
+ bonus_cents bigint NOT NULL CHECK(bonus_cents>=0),bonus_months_bp bigint NOT NULL CHECK(bonus_months_bp>=0),lump_cents bigint NOT NULL CHECK(lump_cents>=0),
  withheld jsonb NOT NULL DEFAULT '{}'::jsonb CHECK(jsonb_typeof(withheld)='object'),created_by uuid NOT NULL REFERENCES public.app_user(id),
  created_at timestamptz NOT NULL DEFAULT now(),superseded_at timestamptz,
  CHECK((source='review' AND unit_id IS NOT NULL AND entry_id IS NOT NULL AND upload_batch_id IS NULL)
@@ -122,7 +122,8 @@ BEGIN
   OR jsonb_typeof(r.value->'promoted') IS DISTINCT FROM 'boolean'
   OR jsonb_typeof(r.value->'withheld') IS DISTINCT FROM 'object'
   OR EXISTS(SELECT 1 FROM unnest(ARRAY['meritBp','promotionBp','specialBp','incrementCents','totalIncreaseBp','bonusCents','bonusMonthsBp','lumpCents']) f(key)
-   WHERE jsonb_typeof(r.value->f.key) IS DISTINCT FROM 'number' OR coalesce(r.value->>f.key,'') !~ '^[0-9]+$')
+   WHERE jsonb_typeof(r.value->f.key) IS DISTINCT FROM 'number' OR coalesce(r.value->>f.key,'') !~ '^[0-9]+$'
+    OR CASE WHEN coalesce(r.value->>f.key,'') ~ '^[0-9]+$' THEN (r.value->>f.key)::numeric>9007199254740991 ELSE false END)
   OR EXISTS(SELECT 1 FROM jsonb_each(CASE WHEN jsonb_typeof(r.value->'withheld')='object' THEN r.value->'withheld' ELSE '{}'::jsonb END) w(key,value)
    WHERE w.key NOT IN('increase','bonus','lump') OR jsonb_typeof(w.value) IS DISTINCT FROM 'string' OR length(w.value#>>'{}') NOT BETWEEN 10 AND 1000)) THEN
   RAISE EXCEPTION 'Invalid reward history row types' USING ERRCODE='23514';END IF;
@@ -145,7 +146,7 @@ BEGIN
  SELECT u.tenant_id,u.company_id,v."employmentId",(u.policy->>'year')::integer,CASE WHEN u.kind='annual' THEN 'annual' ELSE 'offcycle' END,'review',u.id,v."entryId",
   v.talent,v.performance,v."meritBp",v."promotionBp",v."specialBp",v."incrementCents",v."totalIncreaseBp",v.promoted,v."promotionGrade",v."bonusCents",v."bonusMonthsBp",v."lumpCents",coalesce(v.withheld,'{}'::jsonb),app.current_user_id()
  FROM jsonb_to_recordset(wanted_rows) AS v("entryId" uuid,"employmentId" uuid,talent text,performance text,"meritBp" integer,"promotionBp" integer,"specialBp" integer,
-  "incrementCents" bigint,"totalIncreaseBp" integer,promoted boolean,"promotionGrade" text,"bonusCents" bigint,"bonusMonthsBp" integer,"lumpCents" bigint,withheld jsonb);
+  "incrementCents" bigint,"totalIncreaseBp" bigint,promoted boolean,"promotionGrade" text,"bonusCents" bigint,"bonusMonthsBp" bigint,"lumpCents" bigint,withheld jsonb);
  -- No ON CONFLICT path: a repeated native posted request returns before this writer; any historical
  -- conflict here must be reconciled, never silently adopted or overwritten.
  GET DIAGNOSTICS n=ROW_COUNT;RETURN n;
