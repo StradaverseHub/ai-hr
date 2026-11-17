@@ -90,7 +90,8 @@ class GuardedInvocation:
                    'exact approved held native lease required')
         self.environment={'PATH':'/opt/node22/bin:/usr/bin:/bin','LANG':'C.UTF-8','HOME':self.owner.pw_dir,'USER':self.owner.pw_name,'LOGNAME':self.owner.pw_name,
                           'AIHR_STAGING_NODE_GUARDED':'1','AIHR_STAGING_BATCH':self.lease['batch'],'AIHR_STAGING_EPOCH':str(self.lease['epoch']),
-                          'AIHR_STAGING_CANDIDATE':self.lease['candidate'],'AIHR_STAGING_TOKEN':self.lease['token']}
+                          'AIHR_STAGING_CANDIDATE':self.lease['candidate'],'AIHR_STAGING_TOKEN':self.lease['token'],
+                          'PYTHONNOUSERSITE':'1','PYTHONSAFEPATH':'1'}
         self.last_phase=None;self.quarantine=False;self.observer=None;self.start_sent=False;self.install_fd=None;self.install_path=None;self.install_identity=None
         # Staging SH is acquired BEFORE update.upgrade may acquire worker install EX.
         self.lock=QueueOperationLock(base,self.a['operationsLock'])
@@ -104,6 +105,7 @@ class GuardedInvocation:
         b.check(self.ci.protected_private(b,self.path)==self.approval_identity and b.read_bounded(self.path,65536)==self.bytes,'root invocation approval changed')
         b.check(self.ci.protected_private(b,self.lease_path)==self.lease_identity and self.ci.sha(b.read_bounded(self.lease_path,4096))==a['leaseFileSha256'],'root invocation lease inode/content changed')
         b.check(self.ci.sha(b.read_bounded(self.ci.COORDINATOR,1024**2))==a['coordinatorSha256'],'native coordinator bytes changed')
+        self.ci.verify_python(b,a['python'])
         b.root_protected(b.NODE,regular=True)
         b.check(self.ci.sha(b.read_bounded(b.NODE,128*1024**2))==a['nodeSha256'],'independently approved Node bytes changed')
         return self.lock.fd
@@ -146,6 +148,7 @@ class GuardedInvocation:
         b.check(self.ci.epoch(a['issuedAt'])<=time.time()<self.ci.epoch(a['expiresAt']),'root invocation authority expired')
         b.check(self.ci.sha(b.read_bounded(self.ci.SOURCE/'.env.production',1024**2))==a['dotenvSha256'] and
                 self.ci.sha(b.read_bounded(b.ENV,1024**2))==self.identity['worker_env_sha256'],'approved web/worker environment changed')
+        self.ci.assert_python_runtime(b,self.owner,self.environment,a['python'])
         if self.stage=='drain':
             observed=self.ci.child([str(b.NODE),'--env-file=.env.production','--input-type=module','-e',DRAIN_ENVIRONMENT_PROBE],self.owner,self.environment,timeout=30,operation_fd=self.lock.fd)
             b.check(observed=={'kind':'CI_WORKER_DRAIN_ENVIRONMENT_POLICY_V1','environmentSha256':a['environmentSha256'],'readiness':a['readiness']},'actual native drain environment/readiness differs')
