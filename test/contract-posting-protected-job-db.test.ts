@@ -17,6 +17,7 @@ import {readBulkJob} from '../core/bulk-job';
 import {todayInKualaLumpur,addCalendarMonths} from '../lib/hr-date';
 import {addDaysIso} from '../lib/roster-month';
 import {pgSqlState} from '../lib/db-error';
+import {reportContractPostingTemporalDiagnostics} from './helpers/contract-posting-temporal-diagnostics';
 
 beforeAll(migrateTestDb);afterAll(closeAll);
 const monthStart=(day:string)=>day.slice(0,7)+'-01';
@@ -109,7 +110,12 @@ describe('Contract group approval through one protected native application job',
   const job=await finishPostingJob(f.approver,queued.jobId);
   const status=await readContractSharedPostingApprovalJob(f.approver,queued.jobId);
   expect(status).toMatchObject({jobId:queued.jobId,postingId:posting.id,jobState:'completed',postingStatus:'approved',applicationState:'applied'});
-  expect(await subjectFacts(f)).toEqual({...before,employment:{...before.employment,contract_start_date:f.newStart,contract_end_date:f.newEnd,contract_number:5}});
+  try{
+   expect(await subjectFacts(f)).toEqual({...before,employment:{...before.employment,contract_start_date:f.newStart,contract_end_date:f.newEnd,contract_number:5}});
+  }catch(error){
+   await reportContractPostingTemporalDiagnostics('CONTRACT_POSTING_TEMPORAL_DIAGNOSTICS',f.b.tenantId,f.employee.employmentId);
+   throw error;
+  }
   expect(await batchFacts(f,earlier.batchId)).toEqual({batch:earlier.batch,slips:earlier.slips});
   expect(await batchFacts(f,overlapping.batchId)).toEqual({batch:overlapping.batch,slips:overlapping.slips});
   const openAfter=await batchFacts(f,open.batchId);

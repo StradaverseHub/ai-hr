@@ -18,11 +18,13 @@ import {todayInKualaLumpur,addCalendarMonths} from '../lib/hr-date';
 import {addDaysIso} from '../lib/roster-month';
 import {migrateTestDb,closeAll,owner,createAppUser,setModule,entitledCtx} from './harness';
 import {contractPostingFixture,releaseContractPosting,finishContractPostingJob} from './helpers/contract-posting-fixture';
+import {reportContractPostingTemporalDiagnostics} from './helpers/contract-posting-temporal-diagnostics';
 
 beforeAll(migrateTestDb);afterAll(closeAll);
 it('uses managed Org classification and the exact emitted snapshot rows inside a genuine group-only posting job',async()=>{
  const targetStart=addCalendarMonths(todayInKualaLumpur().slice(0,7)+'-01',-1);
  let unitId='',otherCompanyId='',checkerEmploymentId='',checkerPersonId='',checkerUserId='';
+ let publishedAssignmentDays:string[]=[];
  const f=await contractPostingFixture({endOn:addDaysIso(targetStart,-1),beforeAdopt:async({admin,employee,b,start,newStart})=>{
   expect((await withTenant(admin,tx=>deriveCompanyOrganisationTx(tx,admin,{companyId:b.companyId,asOf:start}))).status).toBe('legacy');
   // The actual recorded movements precede publication. No classification exists at their dates yet.
@@ -37,6 +39,11 @@ it('uses managed Org classification and the exact emitted snapshot rows inside a
   const unit=await createBusinessUnit(admin,{companyId:b.companyId,code:'CONTRACT-MANAGED',name:'Fictional published Contract unit'});unitId=unit.id;
   await setLabelGlobal(admin,{kind:'business_unit',labelId:unitId,isGlobal:true});
   otherCompanyId=(await createCompany(admin,{legalName:'Fictional wrong-scope company'})).id;
+  // The native publication owner projects each live dated Assignment, not only the hire row.
+  const sourceRows=await owner.db.execute<{day:string}>(sql`select distinct greatest(valid_from,${start}::date)::text as day from public.assignment
+   where tenant_id=${b.tenantId}::uuid and employment_id=${employee.employmentId}::uuid and superseded_at is null
+   and (valid_to is null or valid_to>${start}::date) order by day`);
+  publishedAssignmentDays=sourceRows.map(row=>row.day);expect(publishedAssignmentDays.length).toBeGreaterThan(0);
   const runId=await prepareCompanyOrganisationRun(admin,{kind:'mapping',companyIds:[b.companyId],effectiveOn:start,changes:[{companyId:b.companyId,businessUnitId:unitId,parentCompanyId:null}]});
   const report=await companyOrganisationRunReport(checker,runId);
   await decideCompanyOrganisationRun(checker,{id:runId,digest:report.run.digest,approve:true,reason:'Independent review of actual fictional mapping and population'});
@@ -48,7 +55,10 @@ it('uses managed Org classification and the exact emitted snapshot rows inside a
  const dates=[addDaysIso(f.newStart,5),addDaysIso(f.newStart,10)];
  expect(dates.every(day=>addDaysIso(day,1)<=f.today)).toBe(true);
  const classificationsBefore=await owner.db.execute<{id:string;day:string;unit:string;status:string}>(sql`select id,effective_on::text as day,tags->>'businessUnitId' as unit,tags->>'status' as status from public.employment_organisation_classification where tenant_id=${f.b.tenantId}::uuid and employment_id=${f.employee.employmentId}::uuid order by effective_on,id`);
- expect(classificationsBefore.length).toBeGreaterThan(0);expect(classificationsBefore.every(row=>row.day===f.start&&row.unit===unitId&&row.status==='ready')).toBe(true);
+ await reportContractPostingTemporalDiagnostics('CONTRACT_POSTING_ORG_BEFORE_DIAGNOSTICS',f.b.tenantId,f.employee.employmentId,{publishedAssignmentDays});
+ expect(classificationsBefore.length).toBeGreaterThan(0);
+ expect([...new Set(classificationsBefore.map(row=>row.day))].sort()).toEqual(publishedAssignmentDays);
+ expect(classificationsBefore.every(row=>row.unit===unitId&&row.status==='ready')).toBe(true);
  const posting=await releaseContractPosting(f);
  await setModule(f.b.tenantId,'payroll','active');const payrollAdmin={...f.admin,entitlements:(await entitledCtx(f.b)).entitlements};
  await requirePackFor('MY').statutory.set(payrollAdmin,{personId:f.employee.personId,icNumber:'900101010001',taxCategory:1,numChildren:0});
@@ -131,6 +141,7 @@ it('uses managed Org classification and the exact emitted snapshot rows inside a
   expect(probes.filter(row=>row.kind==='org').every(row=>row.denied===4)).toBe(true);
   expect(probes.filter(row=>row.kind==='snapshot')).toHaveLength(1);expect(probes.find(row=>row.kind==='snapshot')?.denied).toBe(10);
   const classified=await owner.db.execute<{id:string;day:string;unit:string;status:string;actor:string;kind:string}>(sql`select id,effective_on::text as day,tags->>'businessUnitId' as unit,tags->>'status' as status,actor_id as actor,actor_kind as kind from public.employment_organisation_classification where tenant_id=${f.b.tenantId}::uuid and employment_id=${f.employee.employmentId}::uuid order by effective_on,id`);
+  await reportContractPostingTemporalDiagnostics('CONTRACT_POSTING_ORG_AFTER_DIAGNOSTICS',f.b.tenantId,f.employee.employmentId,{classificationsBefore,classified});
   const newRows=classified.filter(row=>!classificationsBefore.some(old=>old.id===row.id));expect(newRows.length).toBeGreaterThan(0);
   for(const day of dates)expect(newRows.some(row=>row.day===day)).toBe(true);
   expect(newRows.every(row=>row.unit===unitId&&row.status==='ready'&&row.kind==='user'&&row.actor===f.approver.userId)).toBe(true);

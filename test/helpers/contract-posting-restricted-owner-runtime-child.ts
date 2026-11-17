@@ -39,6 +39,7 @@ async function main(){
  const{sql}=await import('drizzle-orm');const{owner,closeAll,setModule,entitledCtx}=await import('../harness');
  const{withTenant}=await import('../../db/client');
  const{contractPostingFixture,releaseContractPosting:release}=await import('./contract-posting-fixture');
+ const{reportContractPostingTemporalDiagnostics}=await import('./contract-posting-temporal-diagnostics');
  const{createMovementEvent}=await import('../../core/movement');
  const{createBatch,generatePayslips,closeBatch}=await import('../../packs/payroll/service');
  const{payslipForReview}=await import('../../core/payroll-view');
@@ -109,7 +110,12 @@ async function main(){
    }
    assert.equal(job.state,'completed');
    const status=await readContractSharedPostingApprovalJob(f.approver,queued.jobId);assert.equal(status.postingStatus,'approved');assert.equal(status.applicationState,'applied');
-   assert.deepEqual(await facts(f),{...prepared.before,employment:{...prepared.before.employment,contract_start_date:f.newStart,contract_end_date:f.newEnd,contract_number:5}});
+   try{
+    assert.deepEqual(await facts(f),{...prepared.before,employment:{...prepared.before.employment,contract_start_date:f.newStart,contract_end_date:f.newEnd,contract_number:5}});
+   }catch(error){
+    await reportContractPostingTemporalDiagnostics('CONTRACT_POSTING_TEMPORAL_DIAGNOSTICS',f.b.tenantId,f.employee.employmentId);
+    throw error;
+   }
    for(const closed of prepared.closed)assert.deepEqual(await payroll(f,closed.id),closed.facts);
    const open=await payroll(f,prepared.open.id);assert.deepEqual(open.slips,prepared.open.facts.slips);assert.equal(open.batch.status,'processed');assert.ok(open.batch.needs_recalc_at);assert.ok(Array.isArray(open.batch.recalc_employment_ids)&&open.batch.recalc_employment_ids.includes(f.employee.employmentId));
    const{needs_recalc_at:_oldAt,recalc_employment_ids:_oldIds,...oldOpen}=prepared.open.facts.batch;const{needs_recalc_at:_newAt,recalc_employment_ids:_newIds,...newOpen}=open.batch;assert.deepEqual(newOpen,oldOpen);

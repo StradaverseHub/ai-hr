@@ -32,7 +32,11 @@ async function child(phase:'prepare'|'apply',database:string,nonce:string,folder
   processChild.stdout.on('data',chunk=>{stdout+=String(chunk);if(stdout.length>8*1024*1024)processChild.kill('SIGKILL');});
   processChild.stderr.on('data',chunk=>{stderr+=String(chunk);if(stderr.length>8*1024*1024)processChild.kill('SIGKILL');});
   processChild.once('error',error=>{clearTimeout(timer);reject(error);});
-  processChild.once('exit',(code,signal)=>{clearTimeout(timer);if(code!==0||signal)reject(Error(`Restricted Contract ${phase} fixture failed: ${stderr.slice(-8000)}`));else resolveChild(stdout);});
+  processChild.once('exit',(code,signal)=>{clearTimeout(timer);if(code!==0||signal){
+   // Keep the full safe fixture timeline available in hosted test logs even when the error tail is bounded.
+   for(const line of stderr.split('\n'))if(line.startsWith('CONTRACT_POSTING_TEMPORAL_DIAGNOSTICS '))console.error(line);
+   reject(Error(`Restricted Contract ${phase} fixture failed: ${stderr.slice(-8000)}`));
+  }else resolveChild(stdout);});
  });
  const lines=output.split('\n').filter(line=>line.startsWith(RESULT));assert.equal(lines.length,1,'exactly one child outcome');
  return JSON.parse(lines[0].slice(RESULT.length)) as RestrictedPostingRuntimeReceipt|{prepared:true};
