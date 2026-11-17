@@ -92,6 +92,7 @@ const DEFAULT_LABELS: Record<string, string> = {
   'retention.effectiveDate': 'Effective date', 'employee.name': 'Full name', 'employee.salary': 'Current base salary',
 };
 const unique = (values: string[]) => [...new Set(values)];
+const objectMemberKey=(id:string)=>['__proto__','prototype','constructor'].includes(id);
 const reservedMergeKey=(id:string)=>/^(employee|retention|resignation|company|org|letter|signer)\./.test(id)||['today','companyName','acknowledgedBy','acknowledgedOn','__proto__','prototype','constructor'].includes(id);
 function invalid(message: string): never {throw new SigningError('invalid', message);}
 function forbidden(message: string): never {throw new SigningError('forbidden', message);}
@@ -174,7 +175,7 @@ export function generateResignationLetter(input: GenerateResignationLetterInput,
     ? template.versions.filter(version => version.state === 'published').sort((a, b) => b.version - a.version)[0]
     : template.versions.find(version => version.version === template.currentVersion && version.state === 'published');
   if (!version) invalid('This template has no version in use. Publish a version, then retry.');
-  const shadow=version.fields.find(field=>reservedMergeKey(field.id)&&field.pmKey!==field.id);if(shadow)invalid(`Document field ${shadow.label} uses a reserved HR merge key. Change its field ID or map it to the same authoritative Personnel value.`);
+  const shadow=version.fields.find(field=>objectMemberKey(field.id)||reservedMergeKey(field.id)&&field.pmKey!==field.id);if(shadow)invalid(`Document field ${shadow.label} uses a reserved HR merge key. Change its field ID or map it to the same authoritative Personnel value.`);
   if (!isCalendarDate(input.generatedOn) || !Number.isFinite(Date.parse(input.generatedAt)) || !input.employeeUserId) invalid('A generated date and verified employee account are required.');
   if (input.previous && (input.previous.id !== input.id || input.previous.kind !== input.kind
     || input.previous.employeeUserId !== input.employeeUserId || input.previous.document.tenantId !== input.tenantId
@@ -549,7 +550,7 @@ export function resignationLetterPreview(letter: ResignationLetter, userId: stri
     // Typed form controls keep their source value (an absent optional date/table is empty, not a literal dash).
     // Inline text merges still use the human-readable dash supplied above.
     const source = letter.frozenValues ?? letter.mergeValues;
-    document.values = Object.fromEntries(visibleFields(letter).filter(field=>!reservedMergeKey(field.id)||field.pmKey===field.id).map(field => [field.id, source[field.pmKey ?? field.id] ?? '']));
+    document.values = Object.fromEntries(visibleFields(letter).filter(field=>!objectMemberKey(field.id)&&(!reservedMergeKey(field.id)||field.pmKey===field.id)).map(field => [field.id, source[field.pmKey ?? field.id] ?? '']));
   }
   return {id: letter.id, name: letter.name, state: letter.state, revision: letter.revision, templateVersion: letter.templateVersion,
     contentVisible: capabilities.contentVisible, document, capabilities,

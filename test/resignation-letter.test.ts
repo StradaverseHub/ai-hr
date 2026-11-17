@@ -501,6 +501,7 @@ describe('Offboarding local form fields',()=>{
     t.versions[0].fields[0].owner='pmLocked';t.versions[0].fields[0].pmKey='retention.salary';
     const valid=generate({template:t}).letter;expect(resignationLetterPreview(valid,people.owner).document?.values['retention.salary']).toBe('7600');
     expect(resignationLetterPreview(valid,people.owner).editableFieldIds).not.toContain('retention.salary');
+    t.versions[0].fields[0].id='constructor';t.versions[0].fields[0].pmKey='constructor';expect(()=>generate({template:t})).toThrow('reserved HR merge key');
   });
   it('accepts only the current actor’s local fields, invalidates affected signatures, and freezes completed values',()=>{
     let letter=generate({template:withFields()}).letter;letter=complete(letter,'owner').letter;letter=complete(letter,'ceo').letter;letter=act(letter,'employee',{type:'open'}).letter;
