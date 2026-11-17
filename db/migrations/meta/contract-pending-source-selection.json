@@ -96,19 +96,27 @@
       "when": 1794841006009,
       "tag": "6009_contract_posting_reconciliation_and_authority",
       "breakpoints": true
+    },
+    {
+      "idx": 5410,
+      "version": "7",
+      "when": 1794841006010,
+      "tag": "6010_contract_email_document_hr_notices",
+      "breakpoints": true
     }
   ],
   "forwardSourceSqlSha256": {
-    "6000_contract_historical_email_recovery": "3c54ae7aa5784eebeaef4a0c2713c2ef20ab7c9d0be6d7c04f0f77cd9a281e8e",
+    "6000_contract_historical_email_recovery": "1713269e3093a973e9564e16adfe6ba3b8809c2363334722fe453f919b4a0eaa",
     "6001_contract_posting_protected_job_foundation": "11855741c65e76f5025dc6ecf5f398ec11ca32da465da8017483ad2d71e25bfd",
-    "6002_contract_posting_recorded_replay_frames": "1a8157a425f10c196032da63e1a58568d0fbf0ab73adf6b56368747451ae0ffa",
+    "6002_contract_posting_recorded_replay_frames": "1d31a6d7c8ff3b1c60866eacaf20100ae9d228a6318c0e3b1d8ee1e221c5485f",
     "6003_contract_posting_prepared_target_source": "745bff94b485f6eab07068fa37c8af84730761fe474d112a8f3e2879e9ce3e92",
     "6004_contract_posting_bound_target_completion": "bfcc647be0dc06ac1658b52abdb26dc87a7cac5ac2bec4e8e229aee0820286fe",
-    "6005_contract_posting_finish_and_commit_guard": "e943f602dc3d151b9eec90fe2723113846e208b1d420565664dc2d5abce9bcd3",
+    "6005_contract_posting_finish_and_commit_guard": "836bb4381d471e5744e8477574a99b221adcddd066e8cc571b908ceb5bc2be5e",
     "6006_contract_posting_first_producer_readiness": "d9b5e3625c2d569a099805c369eb721d0c0ef1a04a79a4aac8ef3e53055a2295",
     "6007_contract_posting_admission_and_status_ports": "f94fd9292674b0084aa5331eeb5b5be45d6417c47ff707df520937b7c9aac57b",
     "6008_contract_posting_application_metadata": "9477f8b0f029ba475830d8174353b77e47ced60d0b7393a8d11d8df82092f422",
-    "6009_contract_posting_reconciliation_and_authority": "d0ce6a32a101e8da9f87dc85da2a64158b720505cc36504a090cb9faf340b472"
+    "6009_contract_posting_reconciliation_and_authority": "d0ce6a32a101e8da9f87dc85da2a64158b720505cc36504a090cb9faf340b472",
+    "6010_contract_email_document_hr_notices": "fd629cb52c55f5cbc8c88567a9910ccde7d5ad2c365439e8da1a6a0f8fac2138"
   },
   "forwardSourceReview": {
     "emailV4Source": "e73af9cec",
@@ -120,7 +128,14 @@
       "6003": "One extra EOF newline removed in the new Root source copy; original frozen53ba SQL retained unchanged",
       "6007": "One extra EOF newline removed in the new Root source copy; original frozen53ba SQL retained unchanged"
     },
-    "historicalNativeFixtureSource": "0ed72b8aa57f823965deff5ead25a9b09adbef2e"
+    "historicalNativeFixtureSource": "0ed72b8aa57f823965deff5ead25a9b09adbef2e",
+    "hrNoticeSource": "d29e5380d32ef98caeb4ab4a25a47faffbf06959",
+    "hrNoticeBoundary": "Explicit human approval: sealed internal fixed OneHR pending HR/BP/send-back owner link only; no authored workflow or business effects. Native tests authored, not yet executed.",
+    "hrNoticeIndexedSelection": {
+      "previousUninstalledSQL": "2600359d6e09a4e4e855a530faf2fda963712e805fdddf8da90f1ddfc444cdb5",
+      "selectedSQL": "fd629cb52c55f5cbc8c88567a9910ccde7d5ad2c365439e8da1a6a0f8fac2138",
+      "reason": "Native Letter primary-key binding and validated UUID hint lookups; ordinary subjects with malformed hints delegate unchanged."
+    }
   },
   "archivedExcludedSources": [
     {
@@ -266,5 +281,29 @@
         "newSha256": "023348f52876533cb0e773211b08e271959368d898a3b7edf572d62c8924794c"
       }
     ]
+  },
+  "uninstalledCaseComparisonRevisions": {
+    "originalFrozenSource": "fbb4c4265130d92eacf6bc11f1f244a6a8a77e92",
+    "repairSource": "3510a3515de91f012344e7806e738afe9209029d",
+    "failedFocusedRun": "44048132866",
+    "reason": "Five parentheses-only PL/pgSQL IF CASE comparison grammar corrections; no predicate, permission or business outcome change. Original frozen bytes remain in source history; accepted919 SQL unchanged.",
+    "files": [
+      {
+        "path": "db/migrations/6000_contract_historical_email_recovery.sql",
+        "oldSha256": "3c54ae7aa5784eebeaef4a0c2713c2ef20ab7c9d0be6d7c04f0f77cd9a281e8e",
+        "newSha256": "1713269e3093a973e9564e16adfe6ba3b8809c2363334722fe453f919b4a0eaa"
+      },
+      {
+        "path": "db/migrations/6002_contract_posting_recorded_replay_frames.sql",
+        "oldSha256": "1a8157a425f10c196032da63e1a58568d0fbf0ab73adf6b56368747451ae0ffa",
+        "newSha256": "1d31a6d7c8ff3b1c60866eacaf20100ae9d228a6318c0e3b1d8ee1e221c5485f"
+      },
+      {
+        "path": "db/migrations/6005_contract_posting_finish_and_commit_guard.sql",
+        "oldSha256": "e943f602dc3d151b9eec90fe2723113846e208b1d420565664dc2d5abce9bcd3",
+        "newSha256": "836bb4381d471e5744e8477574a99b221adcddd066e8cc571b908ceb5bc2be5e"
+      }
+    ],
+    "inspection": "Source-only lexical inspection; not a SQL/runtime PASS."
   }
 }

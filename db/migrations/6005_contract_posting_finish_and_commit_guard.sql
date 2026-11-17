@@ -22,7 +22,7 @@ BEGIN
  OR p.revision IS DISTINCT FROM source.posting_revision+1 OR app.bulk_job_value_digest(p.applied) IS DISTINCT FROM source.values_hash
  OR r.movement_group_id IS DISTINCT FROM p_group OR movement.id IS NULL OR movement.subject_employment_id IS DISTINCT FROM x.employment_id
  OR movement.payload->'movement'->>'groupId' IS DISTINCT FROM p_group::text
- OR movement.payload->'movement'->>'type' IS DISTINCT FROM CASE i.kind WHEN 'contractConversion' THEN 'employmentTypeChange' ELSE 'contractRenewal' END
+ OR movement.payload->'movement'->>'type' IS DISTINCT FROM (CASE i.kind WHEN 'contractConversion' THEN 'employmentTypeChange' ELSE 'contractRenewal' END)
  OR movement.occurred_at IS DISTINCT FROM now()
  THEN RAISE EXCEPTION 'Canonical Contract movement receipt missing' USING ERRCODE='42501';END IF;
  IF p_scheduled THEN

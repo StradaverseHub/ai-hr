@@ -7288,6 +7288,13 @@
       "when": 1794841006009,
       "tag": "6009_contract_posting_reconciliation_and_authority",
       "breakpoints": true
+    },
+    {
+      "idx": 5410,
+      "version": "7",
+      "when": 1794841006010,
+      "tag": "6010_contract_email_document_hr_notices",
+      "breakpoints": true
     }
   ]
 }

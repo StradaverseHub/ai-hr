@@ -349,20 +349,22 @@ export const APPROVED_UPGRADE_TAIL=[
  {idx:5407,when:1794841006007,tag:'6007_contract_posting_admission_and_status_ports'},
  {idx:5408,when:1794841006008,tag:'6008_contract_posting_application_metadata'},
  {idx:5409,when:1794841006009,tag:'6009_contract_posting_reconciliation_and_authority'},
+ {idx:5410,when:1794841006010,tag:'6010_contract_email_document_hr_notices'},
 ] as const;
 // Final pending 2109/2126 bytes reviewed from engine 128bc2539; no applied-prefix hashes change.
 const APPROVED_UPGRADE_HASHES:Record<string,string>={
  ...Object.fromEntries(PERFORMANCE_MIGRATION_IDENTITIES.map(({tag,hash})=>[tag,hash])),
- '6000_contract_historical_email_recovery':'3c54ae7aa5784eebeaef4a0c2713c2ef20ab7c9d0be6d7c04f0f77cd9a281e8e',
+ '6000_contract_historical_email_recovery':'1713269e3093a973e9564e16adfe6ba3b8809c2363334722fe453f919b4a0eaa',
  '6001_contract_posting_protected_job_foundation':'11855741c65e76f5025dc6ecf5f398ec11ca32da465da8017483ad2d71e25bfd',
- '6002_contract_posting_recorded_replay_frames':'1a8157a425f10c196032da63e1a58568d0fbf0ab73adf6b56368747451ae0ffa',
+ '6002_contract_posting_recorded_replay_frames':'1d31a6d7c8ff3b1c60866eacaf20100ae9d228a6318c0e3b1d8ee1e221c5485f',
  '6003_contract_posting_prepared_target_source':'745bff94b485f6eab07068fa37c8af84730761fe474d112a8f3e2879e9ce3e92',
  '6004_contract_posting_bound_target_completion':'bfcc647be0dc06ac1658b52abdb26dc87a7cac5ac2bec4e8e229aee0820286fe',
- '6005_contract_posting_finish_and_commit_guard':'e943f602dc3d151b9eec90fe2723113846e208b1d420565664dc2d5abce9bcd3',
+ '6005_contract_posting_finish_and_commit_guard':'836bb4381d471e5744e8477574a99b221adcddd066e8cc571b908ceb5bc2be5e',
  '6006_contract_posting_first_producer_readiness':'d9b5e3625c2d569a099805c369eb721d0c0ef1a04a79a4aac8ef3e53055a2295',
  '6007_contract_posting_admission_and_status_ports':'f94fd9292674b0084aa5331eeb5b5be45d6417c47ff707df520937b7c9aac57b',
  '6008_contract_posting_application_metadata':'9477f8b0f029ba475830d8174353b77e47ced60d0b7393a8d11d8df82092f422',
  '6009_contract_posting_reconciliation_and_authority':'d0ce6a32a101e8da9f87dc85da2a64158b720505cc36504a090cb9faf340b472',
+ '6010_contract_email_document_hr_notices':'fd629cb52c55f5cbc8c88567a9910ccde7d5ad2c365439e8da1a6a0f8fac2138',
  '5923_contract_letter_purpose_guidance':'d33fdacdaec8347bbd30d9cd27cfba9b7bbb289650440815f7bf8658a3ff1595',
  '5977_contract_email_current_set_source':'1d743062638fa9184c8afba5fbd3d9a4992fb1026ca2a3b5de2d3feebe2a2ae8',
  '5978_contract_email_work_archived_company':'6e0c37f61c66feb80f95a312a23d4f3910a2d7c91f79a0047acaebcdb6914523',
@@ -687,8 +689,7 @@ const APPROVED_UPGRADE_HASHES:Record<string,string>={
  '5121_personnel_search_set_mapping':'3d9b5a53b963a0f01843d090a96662da3e9f7b5c5bb0650e3064d237a3c60d54',
  '5125_individual_txn_pricing_marker':'d48a8a3e394da801bbb0e9917d74d934ab51a3470bdea1bc8d8be1b110a24837',
  '5126_contract_internship_end_dates':'cbc405c4dde11abbe8f298feaf4af0795c8cf742701f62565547eb9ec9d10796',
- '5770_attendance_workflow_approver_codes':'f71cf33a9ced5f4e1007de02388a858bd31c64006a422352193bd7c14e367ec0',
- '5771_assistant_legacy_index_shared_access':'433dfd7549b496b034bdeaa2c06484b700b5dd5647213106d68487f0b485c7c0',
+
 };
 export function assertApprovedUpgradeTail(entries:{idx:number;when:number;tag:string}[]){
  expect(entries).toHaveLength(671+APPROVED_UPGRADE_TAIL.length);

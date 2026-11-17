@@ -165,8 +165,9 @@ it.each(['waiting','running'] as const)('shows the authorized reconciliation hol
  const value=workspace('document'),run=value.runs[0];run.status=status;const retainedLog=structuredClone(run.log);value.runs.push({...run,id:'unlisted-run',name:'Fictional unrelated current workflow'});
  const record=reconciliationItem(0,'needs_reconciliation');record.retainedRunIds=[run.id];value.emailReconciliations={items:[record],total:1,limit:50,offset:0,hasMore:false};
  mount(<SharedContractDetail workspace={value} today="2026-11-17"/>);
- const retained=within(screen.getByRole('heading',{name:'Renew contract — decision submitted · Version 3'}).closest('section')!);
- expect(retained.getByText('Needs People Ops review')).toBeVisible();expect(retained.queryByText('Running')).not.toBeInTheDocument();
+ const retainedHeading=screen.getByRole('heading',{name:'Renew contract — decision submitted · Version 3'}),retained=within(retainedHeading.closest('section')!);
+ expect(retainedHeading.nextElementSibling).toHaveTextContent(/^Needs People Ops review$/);expect(retainedHeading.nextElementSibling).toBeVisible();expect(retained.queryByText('Running')).not.toBeInTheDocument();
  expect(retained.getByText('Completed')).toBeVisible();expect(retained.getByText('Waiting')).toBeVisible();expect(value.runs[0].status).toBe(status);expect(value.runs[0].log).toEqual(retainedLog);
- const unrelated=within(screen.getByRole('heading',{name:'Fictional unrelated current workflow · Version 3'}).closest('section')!);expect(unrelated.getByText(status==='running'?'Running':'Waiting for assigned action')).toBeVisible();expect(unrelated.queryByText('Needs People Ops review')).not.toBeInTheDocument();
+ const unrelatedHeading=screen.getByRole('heading',{name:'Fictional unrelated current workflow · Version 3'}),unrelated=within(unrelatedHeading.closest('section')!);
+ expect(unrelatedHeading.nextElementSibling).toHaveTextContent(status==='running'?/^Running$/:/^Waiting for assigned action$/);expect(unrelatedHeading.nextElementSibling).toBeVisible();expect(unrelated.queryByText('Needs People Ops review')).not.toBeInTheDocument();
 });

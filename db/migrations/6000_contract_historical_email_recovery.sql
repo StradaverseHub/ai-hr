@@ -211,7 +211,7 @@ BEGIN
  SELECT coalesce(jsonb_agg(value ORDER BY n),'[]'::jsonb) INTO extra FROM jsonb_array_elements(NEW.log) WITH ORDINALITY x(value,n) WHERE n>preserved;
  IF OLD.tenant_id IS DISTINCT FROM event.tenant_id OR OLD.id IS DISTINCT FROM pin.workflow_run_id OR OLD.status<>'waiting' OR OLD.waiting_for IS DISTINCT FROM pin.id
  OR NEW.status IS DISTINCT FROM expected_status OR NEW.waiting_for IS NOT NULL OR NEW.remaining_steps IS DISTINCT FROM tail
- OR NEW.step_cursor IS DISTINCT FROM (first->>'index')::integer+1 OR NEW.failure IS DISTINCT FROM CASE WHEN expected_status='failed' THEN CASE WHEN mode='legacy_cursor_unknown' THEN 'Original workflow progress needs reconciliation; remaining steps stopped.' ELSE 'Original workflow authority changed; remaining steps stopped.' END ELSE NULL::text END
+ OR NEW.step_cursor IS DISTINCT FROM (first->>'index')::integer+1 OR NEW.failure IS DISTINCT FROM (CASE WHEN expected_status='failed' THEN CASE WHEN mode='legacy_cursor_unknown' THEN 'Original workflow progress needs reconciliation; remaining steps stopped.' ELSE 'Original workflow authority changed; remaining steps stopped.' END ELSE NULL::text END)
  OR (to_jsonb(NEW)-ARRAY['status','step_cursor','waiting_for','remaining_steps','log','failure','updated_at']) IS DISTINCT FROM (to_jsonb(OLD)-ARRAY['status','step_cursor','waiting_for','remaining_steps','log','failure','updated_at'])
  OR jsonb_array_length(NEW.log)<>preserved+added
  OR (SELECT coalesce(jsonb_agg(value ORDER BY n),'[]'::jsonb) FROM jsonb_array_elements(NEW.log) WITH ORDINALITY x(value,n) WHERE n<=preserved) IS DISTINCT FROM (SELECT coalesce(jsonb_agg(value ORDER BY n),'[]'::jsonb) FROM jsonb_array_elements(OLD.log) WITH ORDINALITY x(value,n) WHERE n>jsonb_array_length(OLD.log)-preserved)

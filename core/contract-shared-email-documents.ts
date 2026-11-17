@@ -62,6 +62,7 @@ export async function prepareContractSharedEmailDocuments(tx:SqlExecutor,ctx:Ses
   const [existing]=await tx.execute<{id:string|null}>(sql`select app.contract_shared_email_document_reuse(${run.subjectId}::uuid,${run.id}::uuid,${step.id},${templateId}::uuid) as id`);
   const id=existing.id??z.uuid().parse(await input.create(templateId,plan.reference));
   await tx.execute(sql`select app.contract_shared_email_document_bind(${run.subjectId}::uuid,${run.id}::uuid,${step.id},${templateId}::uuid,${id}::uuid)`);
+  await tx.execute(sql`select app.contract_shared_email_hr_notice_emit(${id}::uuid)`);
   documents[templateId]=id;
  }
  for(const templateId of plan.documentTemplateIds){

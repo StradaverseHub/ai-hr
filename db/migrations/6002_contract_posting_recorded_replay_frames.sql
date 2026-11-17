@@ -147,7 +147,7 @@ BEGIN
   SELECT d->'payload' INTO transfer FROM jsonb_array_elements(group_events) d WHERE d->>'event_type'='employment.company.transferred';
   IF transfer IS NOT NULL THEN
    before_company:=(transfer->'before'->>'companyId')::uuid;after_company:=(transfer->'after'->>'companyId')::uuid;
-   IF before_company IS NULL OR after_company IS NULL OR current_company IS DISTINCT FROM CASE step_direction WHEN 'inverse' THEN after_company ELSE before_company END
+   IF before_company IS NULL OR after_company IS NULL OR current_company IS DISTINCT FROM (CASE step_direction WHEN 'inverse' THEN after_company ELSE before_company END)
    THEN RAISE EXCEPTION 'Recorded company sequence requires reconciliation' USING ERRCODE='40001';END IF;
   ELSE before_company:=current_company;after_company:=current_company;END IF;
   INSERT INTO app.contract_posting_replay_step(tenant_id,job_id,xact_id,backend_pid,ordinal,event_id,direction,group_id,group_hash,company_before,company_after)
@@ -174,7 +174,7 @@ BEGIN
  SELECT company_id INTO company FROM public.employment WHERE tenant_id=state.tenant_id AND id=state.employment_id;
  IF step.ordinal IS NULL OR step.event_id IS DISTINCT FROM p_event OR step.direction IS DISTINCT FROM p_direction OR step.completed
  OR (p_direction='inverse' AND state.target_completed) OR (p_direction='replay' AND NOT state.target_completed)
- OR company IS DISTINCT FROM CASE p_direction WHEN 'inverse' THEN step.company_after ELSE step.company_before END
+ OR company IS DISTINCT FROM (CASE p_direction WHEN 'inverse' THEN step.company_after ELSE step.company_before END)
  OR step.group_hash IS DISTINCT FROM app.contract_posting_group_hash(p_job,p_event)
  THEN RAISE EXCEPTION 'Actual next recorded canonical step required' USING ERRCODE='42501';END IF;
  UPDATE app.contract_posting_replay_state SET active_ordinal=step.ordinal WHERE tenant_id=state.tenant_id AND job_id=p_job AND xact_id=state.xact_id AND backend_pid=state.backend_pid;
@@ -193,7 +193,7 @@ BEGIN
  SELECT * INTO step FROM app.contract_posting_replay_step WHERE tenant_id=state.tenant_id AND job_id=p_job AND xact_id=state.xact_id AND backend_pid=state.backend_pid AND ordinal=state.active_ordinal;
  SELECT * INTO e FROM public.employment WHERE tenant_id=state.tenant_id AND id=state.employment_id;
  IF step.ordinal IS NULL OR step.event_id IS DISTINCT FROM p_event OR step.direction IS DISTINCT FROM p_direction OR step.completed
- OR e.company_id IS DISTINCT FROM CASE p_direction WHEN 'inverse' THEN step.company_before ELSE step.company_after END
+ OR e.company_id IS DISTINCT FROM (CASE p_direction WHEN 'inverse' THEN step.company_before ELSE step.company_after END)
  OR step.group_hash IS DISTINCT FROM app.contract_posting_group_hash(p_job,p_event)
  THEN RAISE EXCEPTION 'Recorded canonical company endpoint required' USING ERRCODE='42501';END IF;
  UPDATE app.contract_posting_replay_step SET completed=true WHERE tenant_id=state.tenant_id AND job_id=p_job AND xact_id=state.xact_id AND backend_pid=state.backend_pid AND ordinal=step.ordinal;

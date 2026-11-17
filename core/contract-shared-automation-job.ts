@@ -19,6 +19,7 @@ import {activateContractSharedOffboarding} from './contract-shared-ending';
 import {contractSharedEmailExecutors} from './contract-shared-email';
 import {prepareContractSharedEmailStep} from './contract-shared-email-documents';
 import {beginContractEmailRecovery,retryContractEmailRecovery,continueContractEmailRecovery,recheckOriginalContractEmail,observeHistoricalContractEmail} from './contract-shared-email-recovery';
+import {deliverContractEmailDocumentHRNotice} from './contract-shared-email-hr-notice';
 import {CONTRACT_AUTOMATION_CATALOGUE} from '../lib/automation/catalogues/contracts';
 import {runAutomationEvent,resumeAutomationRun,sqlAutomationRunStore,type AutomationExecutors,type AutomationRuntimeGuards,type AutomationRun} from '../packs/automation/service';
 import {todayInKualaLumpur} from '../lib/hr-date';
@@ -60,6 +61,7 @@ export async function advanceContractSharedAutomationOwner(owner:postgres.Reserv
     case when ${progress.rootParked??false} then id end,created_at,id limit 1 for update`);
    if(!event)return true;
    await owner`select set_config('app.contract_event',${event.id},true)`;
+   if(event.trigger_event==='emailDocumentHRNotice'){await deliverContractEmailDocumentHRNotice(db,event.case_id);await db.execute(sql`select app.contract_shared_event_finish(${event.id}::uuid,${job.id}::uuid)`);return false;}
    const emailRecovery=event.trigger_event==='emailDocumentReady'?await beginContractEmailRecovery(db,event.id):null;
    if(!emailRecovery){const historical=await observeHistoricalContractEmail(db,event.id);if(historical.handled){if(historical.reconciliationNeeded)await unit.set(owner,{phase:'Needs People Ops reconciliation',error:historical.reason==='legacy_cursor_unknown'?'Original workflow progress is unknown; frozen work is retained for reconciliation.':'Original workflow authority changed; unattempted work is retained for reconciliation.'});if(historical.waiting)await unit.set(owner,{planMerge:{rootParked:true,eventAfter:event.id}});return historical.waiting?'waiting':false;}}
    if(event.id===rootId&&progress.activeEventId&&progress.activeEventId!==rootId)throw Error('The legacy root workflow cursor needs reconciliation before any frozen reference is restarted.');

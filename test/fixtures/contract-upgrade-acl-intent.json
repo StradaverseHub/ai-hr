@@ -1,5 +1,5 @@
 {
-  "sourceBase": "69ba90700 original literal Contract intent; plus reviewed6000V3 SQL0e92e55257678ee5ceec522cb475ab56b2442059bff63457216bb1425266e9ec and root reviewed6001\u20136009 literal posting ACL additions (no observed database expectations)",
+  "sourceBase": "69ba90700 original literal Contract intent; plus reviewed6000V3 SQL0e92e55257678ee5ceec522cb475ab56b2442059bff63457216bb1425266e9ec and root reviewed6001\u20136009 literal posting ACL additions (no observed database expectations); plus approved6010 literal private notice ACL intent at d29e5380d, SQLfd629cb52c55",
   "functionsAdded": [
     {
       "signature": "app.automation_assignment_group_people(text)",
@@ -142,6 +142,12 @@
     {
       "signature": "app.automation_email_queue_rich(text,uuid,text,uuid[],uuid[],text,text,jsonb,jsonb)",
       "appExecute": true,
+      "publicExecute": false,
+      "owner": "MIGRATION_OWNER"
+    },
+    {
+      "signature": "app.automation_email_queue_rich_before_hr_notice(text,uuid,text,uuid[],uuid[],text,text,jsonb)",
+      "appExecute": false,
       "publicExecute": false,
       "owner": "MIGRATION_OWNER"
     },
@@ -650,6 +656,18 @@
       "owner": "MIGRATION_OWNER"
     },
     {
+      "signature": "app.contract_shared_delivery_eligible_before_hr_notice(uuid,uuid,jsonb)",
+      "appExecute": false,
+      "publicExecute": false,
+      "owner": "MIGRATION_OWNER"
+    },
+    {
+      "signature": "app.contract_shared_delivery_eligible_before_hr_notice(uuid,uuid,uuid,jsonb)",
+      "appExecute": false,
+      "publicExecute": false,
+      "owner": "MIGRATION_OWNER"
+    },
+    {
       "signature": "app.contract_shared_delivery_link(uuid,uuid,uuid,jsonb)",
       "appExecute": false,
       "publicExecute": false,
@@ -699,6 +717,12 @@
     },
     {
       "signature": "app.contract_shared_effect_held_before_email_recovery(uuid,uuid,text,text)",
+      "appExecute": false,
+      "publicExecute": false,
+      "owner": "MIGRATION_OWNER"
+    },
+    {
+      "signature": "app.contract_shared_effect_held_before_hr_notice(uuid,uuid,text,text)",
       "appExecute": false,
       "publicExecute": false,
       "owner": "MIGRATION_OWNER"
@@ -795,6 +819,54 @@
     },
     {
       "signature": "app.contract_shared_email_file_pin_valid(uuid)",
+      "appExecute": false,
+      "publicExecute": false,
+      "owner": "MIGRATION_OWNER"
+    },
+    {
+      "signature": "app.contract_shared_email_hr_notice_context(uuid,uuid)",
+      "appExecute": false,
+      "publicExecute": false,
+      "owner": "MIGRATION_OWNER"
+    },
+    {
+      "signature": "app.contract_shared_email_hr_notice_eligible(uuid,uuid,jsonb)",
+      "appExecute": false,
+      "publicExecute": false,
+      "owner": "MIGRATION_OWNER"
+    },
+    {
+      "signature": "app.contract_shared_email_hr_notice_emit(uuid,text)",
+      "appExecute": false,
+      "publicExecute": false,
+      "owner": "MIGRATION_OWNER"
+    },
+    {
+      "signature": "app.contract_shared_email_hr_notice_held(uuid)",
+      "appExecute": false,
+      "publicExecute": false,
+      "owner": "MIGRATION_OWNER"
+    },
+    {
+      "signature": "app.contract_shared_email_hr_notice_identity(uuid,uuid)",
+      "appExecute": false,
+      "publicExecute": false,
+      "owner": "MIGRATION_OWNER"
+    },
+    {
+      "signature": "app.contract_shared_email_hr_notice_page(uuid)",
+      "appExecute": false,
+      "publicExecute": false,
+      "owner": "MIGRATION_OWNER"
+    },
+    {
+      "signature": "app.contract_shared_email_hr_notice_progress()",
+      "appExecute": false,
+      "publicExecute": false,
+      "owner": "MIGRATION_OWNER"
+    },
+    {
+      "signature": "app.contract_shared_email_hr_notice_source(uuid,uuid,integer)",
       "appExecute": false,
       "publicExecute": false,
       "owner": "MIGRATION_OWNER"
@@ -994,6 +1066,12 @@
     {
       "signature": "app.contract_shared_event_check(uuid,uuid)",
       "appExecute": true,
+      "publicExecute": false,
+      "owner": "MIGRATION_OWNER"
+    },
+    {
+      "signature": "app.contract_shared_event_check_before_hr_notice(uuid,uuid)",
+      "appExecute": false,
       "publicExecute": false,
       "owner": "MIGRATION_OWNER"
     },
@@ -1263,6 +1341,12 @@
     },
     {
       "signature": "app.contract_shared_mail_context(uuid,text)",
+      "appExecute": false,
+      "publicExecute": false,
+      "owner": "MIGRATION_OWNER"
+    },
+    {
+      "signature": "app.contract_shared_mail_context_before_hr_notice(uuid,text)",
       "appExecute": false,
       "publicExecute": false,
       "owner": "MIGRATION_OWNER"
@@ -1899,6 +1983,12 @@
     },
     {
       "signature": "app.contract_shared_worker_event_held_before_email_recovery(uuid,integer)",
+      "appExecute": false,
+      "publicExecute": false,
+      "owner": "MIGRATION_OWNER"
+    },
+    {
+      "signature": "app.contract_shared_worker_event_held_before_hr_notice(uuid,integer)",
       "appExecute": false,
       "publicExecute": false,
       "owner": "MIGRATION_OWNER"
@@ -2736,6 +2826,20 @@
         ]
       },
       "owner": "MIGRATION_OWNER"
+    },
+    {
+      "table": "app.contract_email_hr_notice",
+      "rls": true,
+      "force": true,
+      "explicitRolePrivileges": {
+        "PUBLIC": [],
+        "ai_hr_app": [],
+        "ai_hr_owner": [
+          "INSERT",
+          "SELECT"
+        ]
+      },
+      "owner": "MIGRATION_OWNER"
     }
   ],
   "policiesAdded": [
@@ -3228,6 +3332,16 @@
       "using": "app.acting_as_owner()",
       "check": "app.acting_as_owner()",
       "source": "6006_contract_posting_first_producer_readiness:35"
+    },
+    {
+      "schema": "app",
+      "table": "contract_email_hr_notice",
+      "name": "contract_email_hr_notice_owner",
+      "cmd": "ALL",
+      "roles": "ai_hr_owner",
+      "using": "app.acting_as_owner()",
+      "check": "app.acting_as_owner()",
+      "source": "6010_contract_email_document_hr_notices:21"
     }
   ]
 }
