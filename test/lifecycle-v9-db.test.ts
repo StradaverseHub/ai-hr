@@ -1475,3 +1475,24 @@ it('resolves an offboarding email manager from current PM reporting lines withou
   expect(current.mails.filter(mail=>mail.workflowId===workflow.id)).toMatchObject([{to:[managers[1].userId],body:'For Fictional New manager'}]);
   expect(current.facts.supervisorUserId).toBe(managers[0].userId);
 });
+
+it('masks personal mailboxes across email previews and history until identity permission exists in any company', async () => {
+  const { payrollPermissionGrant, company } = await import('../db/schema');
+  const mailbox='private.recipient@fictional.invalid';await updatePersonProfilePartial(admin,{personId:employee.personId!,personalEmail:mailbox});
+  const config=(await v9Workspace(admin)).config!;config.checklists=config.checklists.filter(checklist=>checklist.module==='onb');
+  config.emails.push({id:'privacy-preview',name:'Private mailbox preview',module:'off',active:true,sender:'noreply',subject:'Email {personalEmail}',body:'Contact {personalEmail}',cc:['employeePersonal'],links:[],attachments:[],slots:[]});
+  config.workflows=[{id:'privacy-workflow',name:'Private mailbox workflow',module:'off',status:'published',trigger:{event:'manual',days:0,workdays:false,repeat:false,skipIf:''},conditions:[],steps:[{id:'private-message',type:'notify',subject:'Email {personalEmail}',body:'Contact {personalEmail}',to:['employeePersonal'],cc:[]}],description:''}];
+  await v9SaveConfig(admin,config.revision,config);
+  const caseId=await v9CreateOffboarding(admin,{employmentId,type:'Resignation',noticeDate:todayInKualaLumpur(),lastDay:addDays(todayInKualaLumpur(),30)});
+  await v9Command(admin,caseId,1,{type:'submit'});let current=(await v9CaseDetail(admin,caseId)).case;
+  await v9Command(admin,caseId,current.revision,{type:'startWorkflow',workflowId:'privacy-workflow'});
+  const [raw]=await owner.client`select data from lc_v9_case where id=${caseId}::uuid`;expect(JSON.stringify(raw.data.mails)).toContain(mailbox);
+  await owner.db.insert(payrollPermissionGrant).values({tenantId:base.tenantId,companyId:null,role:'hr_admin',permissionKey:'report.read.identity',allowed:false});
+  const hidden=(await v9CaseDetail(admin,caseId)).case;expect(JSON.stringify(hidden.mails)).not.toContain(mailbox);expect(hidden.mails.find(mail=>mail.workflowId)?.body).toBe('Contact p•••••@fictional.invalid');
+  expect(JSON.stringify(await v9PreviewEmail(admin,caseId,'privacy-preview'))).not.toContain(mailbox);
+  const otherCompany=(await owner.db.insert(company).values({tenantId:base.tenantId,legalName:'Fictional separate identity permission company'}).returning())[0];
+  await owner.db.insert(payrollPermissionGrant).values({tenantId:base.tenantId,companyId:otherCompany.id,role:'hr_admin',permissionKey:'report.read.identity',allowed:true});
+  expect((await v9CaseDetail(admin,caseId)).case.mails.find(mail=>mail.workflowId)?.body).toBe('Contact '+mailbox);
+  expect((await v9PreviewEmail(admin,caseId,'privacy-preview')).body).toBe('Contact '+mailbox);
+  expect((await owner.client`select data from lc_v9_case where id=${caseId}::uuid`)[0].data.mails).toEqual(raw.data.mails);
+});

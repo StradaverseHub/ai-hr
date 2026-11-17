@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest';
 import * as M from '../lib/lifecycle-v9-model';
 import { parseV9Config } from '../lib/lifecycle-v9-validation';
 import { v9Defaults } from '../lib/lifecycle-v9-defaults';
-import { convertV9Recipients, maskEmail, v9RecipientReport, offeredRoles, roleLabel } from '../lib/lifecycle-v9-recipients';
+import { convertV9Recipients, maskEmail, maskPersonalEmailView, v9RecipientReport, offeredRoles, roleLabel } from '../lib/lifecycle-v9-recipients';
 
 function fixture(module: M.Module = 'off') {
   let sequence = 0;
@@ -230,5 +230,15 @@ describe('one-off conversion and pre-release report', () => {
     expect(config.workflows[0].steps[0]).toMatchObject({ to: ['employee'] });
     expect(v9RecipientReport(config).map(row => [row.id, row.action, row.roles])).toEqual([['welcome', 'converted', ['employee']], ['leaver', 'replace', ['employee', 'employee', 'pbp']], ['ta-only', 'information', ['ta']], [config.emails[0].id, 'converted', ['employee']]]);
     expect(() => parseV9Config(converted)).not.toThrow();
+  });
+});
+
+describe('personal mailbox email view redaction', () => {
+  it('masks the recipient keys and every nested preview/receipt occurrence without changing stored content', () => {
+    const email = "private&'box@fictional.invalid";
+    const stored = { id: 'stable-receipt', to: ['address:'+email], cc: [], subject: email.toUpperCase(), body: 'Contact '+email, delivery: { personalKeys: ['address:'+email], toNames: [email], contact: {email}, html: '<p>private&amp;&#39;box@fictional.invalid</p>' } };
+    const before=structuredClone(stored),masked=maskPersonalEmailView(stored,['address:'+email]);
+    expect(masked).toEqual({ id: 'stable-receipt', to: ['address:p•••••@fictional.invalid'], cc: [], subject: 'p•••••@fictional.invalid', body: 'Contact p•••••@fictional.invalid', delivery: {personalKeys:['address:p•••••@fictional.invalid'],toNames:['p•••••@fictional.invalid'],contact:{email:'p•••••@fictional.invalid'},html:'<p>p•••••@fictional.invalid</p>'} });
+    expect(stored).toEqual(before);
   });
 });

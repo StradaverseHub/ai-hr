@@ -15,7 +15,7 @@ import type { NotificationSweepConnection } from '../../../core/notice-projectio
 import { assertModuleEnabled } from '../../../core/entitlements';
 import * as M from '../../../lib/lifecycle-v9-model';
 import { lifecycleRecipientAddressesTx } from './recipient-directory';
-import { maskEmail } from '../../../lib/lifecycle-v9-recipients';
+import { maskPersonalEmailView } from '../../../lib/lifecycle-v9-recipients';
 import { v9EmploymentLabels } from '../../../lib/lifecycle-v9-employment';
 import { projectNativeCase, nativeDocumentState } from '../../../lib/lifecycle-v9-native';
 import { OnboardingError, nativeCaseFormValues, effectiveFacts as nativeFacts } from '../../../lib/onboarding-model';
@@ -92,18 +92,10 @@ async function personalEmailRevealTx(tx: Tx, ctx: SessionContext): Promise<boole
   const [row] = await tx.execute<{ ok: boolean }>(sql`select exists(select 1 from company where tenant_id=${ctx.tenantId}::uuid and app.personnel_identity_search_permitted(id)) as ok`);
   return row?.ok === true;
 }
-const maskedKey = (key: string) => { const address = key.startsWith('address:') ? key.slice(8) : key; return 'address:' + maskEmail(address); };
 /** Server-side masking of personal email keys in a case projection. Other recipients are unchanged. */
 function maskCasePersonalEmail(c: M.Case): M.Case {
   if (!c.mails.some(mail => mail.delivery?.personalKeys?.length)) return c;
-  const next = structuredClone(c);
-  for (const mail of next.mails) {
-    const personal = new Set(mail.delivery?.personalKeys ?? []);
-    if (!personal.size) continue;
-    mail.to = mail.to.map(key => personal.has(key) ? maskedKey(key) : key); mail.cc = mail.cc.map(key => personal.has(key) ? maskedKey(key) : key);
-    mail.delivery!.personalKeys = [...personal].map(maskedKey);
-  }
-  return next;
+  return { ...c, mails: c.mails.map(mail => maskPersonalEmailView(mail, mail.delivery?.personalKeys ?? [])) };
 }
 
 async function actor(tx: Tx, ctx: SessionContext): Promise<M.Actor> {
@@ -236,7 +228,8 @@ export async function v9PreviewPersonnelValues(ctx: SessionContext, caseId: stri
     const config = await configTx(tx, ctx);
     if (!config) throw new M.V9Error('V9 configuration is not available.');
     const { mergeValues } = await environment(tx, ctx, row.data, config);
-    return Object.fromEntries([...personnelMergeLabels.keys()].map(key => [key, mergeValues[key] ?? '']));
+    const preview = Object.fromEntries([...personnelMergeLabels.keys()].map(key => [key, mergeValues[key] ?? '']));
+    return await personalEmailRevealTx(tx, ctx) ? preview : maskPersonalEmailView(preview, [mergeValues.personalEmail ?? '']);
   });
 }
 
@@ -245,8 +238,9 @@ export async function v9PreviewEmail(ctx: SessionContext, caseId: string, emailI
   return withLifecycleTenant(ctx, async tx => {
     const row = await load(tx, ctx, caseId), config = await configTx(tx, ctx);
     if (!config) throw new M.V9Error('V9 configuration is not available.');
-    const preview = M.previewEmail(row.data, config, emailId, await environment(tx, ctx, row.data, config));
-    return await personalEmailRevealTx(tx, ctx) ? preview : { ...preview, cc: preview.cc.map(recipient => recipient.personal ? { ...recipient, id: maskedKey(recipient.id) } : recipient) };
+    const env = await environment(tx, ctx, row.data, config);
+    const preview = M.previewEmail(row.data, config, emailId, env);
+    return await personalEmailRevealTx(tx, ctx) ? preview : maskPersonalEmailView(preview, [env.mergeValues.personalEmail ?? '', ...preview.cc.filter(recipient => recipient.personal).map(recipient => recipient.id)]);
   });
 }
 
@@ -262,7 +256,7 @@ export async function v9PreviewWorkflow(ctx: SessionContext, caseId: string, wor
     // Match the reference's single-output priority; an unrelated later draft cannot break this preview.
     const messages=notification?.type==='notify'&&!email?[{id:notification.id,name:'Notification',...M.previewWorkflowNotification(c,config,notification,env,workflow.id)}]:[];
     const documents=!email&&!notification&&document?.type==='doc'?[M.generate({...c,documents:[]},config,document.template,env)]:[];
-    return {workflow, messages, documents};
+    return {workflow, messages: await personalEmailRevealTx(tx, ctx) ? messages : maskPersonalEmailView(messages, [env.mergeValues.personalEmail ?? '']), documents};
   });
 }
 
@@ -320,7 +314,8 @@ export async function v9PreviewUpdatedEmail(ctx:SessionContext,id:string,mailId:
     const row=await load(tx,ctx,id),config=await configTx(tx,ctx);if(!config)throw new M.V9Error('V9 configuration is unavailable.');
     await updatedEmailAllowed(tx,id,mailId);const env=await environment(tx,ctx,row.data,config);let sequence=0;
     const plan=M.updatedDeliveryPlan(row.data,config,mailId,{...env,nextId:()=>`preview-${++sequence}`});
-    return {sourceRevision:updatedEmailRevision(row.data,config,env,plan),subject:plan.mail.subject,body:plan.mail.body,to:plan.mail.delivery!.toNames,cc:plan.mail.delivery!.ccNames,documents:plan.mail.documentIds.map(id=>plan.case.documents.find(document=>document.id===id)!).map(document=>({name:document.name,version:document.version})),files:[...plan.mail.fileIds.map(id=>plan.case.files.find(file=>file.id===id)!.name),...(plan.mail.delivery?.assets??[]).map(asset=>asset.name)]};
+    const preview = {sourceRevision:updatedEmailRevision(row.data,config,env,plan),subject:plan.mail.subject,body:plan.mail.body,to:plan.mail.delivery!.toNames,cc:plan.mail.delivery!.ccNames,documents:plan.mail.documentIds.map(id=>plan.case.documents.find(document=>document.id===id)!).map(document=>({name:document.name,version:document.version})),files:[...plan.mail.fileIds.map(id=>plan.case.files.find(file=>file.id===id)!.name),...(plan.mail.delivery?.assets??[]).map(asset=>asset.name)]};
+    return await personalEmailRevealTx(tx,ctx) ? preview : maskPersonalEmailView(preview,[env.mergeValues.personalEmail ?? '',...(plan.mail.delivery?.personalKeys ?? [])]);
   });
 }
 
