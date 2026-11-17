@@ -252,9 +252,17 @@ export const APPROVED_UPGRADE_TAIL=[
  {idx:5317,when:1794841005917,tag:'5917_contract_work_exact_document_join'},
  {idx:5318,when:1794841005918,tag:'5918_contract_tracker_scheduled_period'},
  {idx:5319,when:1794841005919,tag:'5919_contract_work_case_source_anchor'},
+ {idx:5340,when:1794841005940,tag:'5940_contract_form_response_owner'},
+ {idx:5341,when:1794841005941,tag:'5941_country_owned_document_sources'},
+ {idx:5342,when:1794841005942,tag:'5942_contract_form_response_actions'},
+ {idx:5344,when:1794841005944,tag:'5944_contract_letterhead_fallback_evidence'},
 ] as const;
 // Final pending 2109/2126 bytes reviewed from engine 128bc2539; no applied-prefix hashes change.
 const APPROVED_UPGRADE_HASHES:Record<string,string>={
+ '5940_contract_form_response_owner':'dd0d8981476f558821116f5ced16586994934c0aad1f709dbca2294f4470065f',
+ '5941_country_owned_document_sources':'e15604398e043678562179c08a53c8a534164b121fb1b2c89fce6e2a80bcfe00',
+ '5942_contract_form_response_actions':'e66c1c391bd35cb673e6e5fbaa40af3d9238a5a2e367530c17f56e6d215f1ca8',
+ '5944_contract_letterhead_fallback_evidence':'2f041a122bb5090369d27e59559c5f0d6342d90917a900cc3300837558c9888a',
  '5919_contract_work_case_source_anchor':'1a631a17f42da80d13ca08959c4968674e7524615d99bc002f476b5095267d27',
  '5918_contract_tracker_scheduled_period':'a0e74677822b8fd5c8d09e22cf0291c009cced94dbc5fa3fc446e8c44e69a898',
  '5917_contract_work_exact_document_join':'9a08bdc24d937c3c019f0246717c67e5810800017967c2a5eb6104c74e32cb2c',
