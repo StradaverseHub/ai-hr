@@ -144,6 +144,7 @@ function contentFingerprint(letter: Pick<ResignationLetter, 'blocks' | 'fields' 
 export function resignationLetterPendingSteps(letter: ResignationLetter): SigningStep[] {
   return letter.state === 'review' ? pendingSigningSteps(letter.document) : [];
 }
+export function resignationLetterStepKinds(letter:ResignationLetter):string[]{if(letter.state==='owner')return['Update'];if(letter.state==='released')return['Released'];return unique(resignationLetterPendingSteps(letter).map(step=>step.kind==='sign'?'Sign':step.kind==='review'?'Review':'Approve'));}
 export function resignationLetterEmployeePending(letter: ResignationLetter): boolean {
   return letter.kind === 'retention' && resignationLetterPendingSteps(letter)
     .some(step => step.kind === 'sign' && step.role === 'employee' && step.holderId === letter.employeeUserId);

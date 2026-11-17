@@ -143,6 +143,24 @@ describe('managed resignation service composes one workflow authority',()=>{
   const released=await resignationCase(relinked,current.id);expect(released.letters[0]).toMatchObject({private:true,document:null,editableFieldIds:[],downloadUrl:null});expect(released.offer).toBeNull();expect(released.emails).toEqual([]);expect(JSON.stringify(released)).not.toContain('8123.45');
   await expect(downloadResignationLetter(relinked,{caseId:current.id,documentId:letter.id})).rejects.toMatchObject({code:'not_found'});
  },90000);
+ it('matches parallel letter action kinds, Update and Released consistently in native events and dry runs',async()=>{
+  const f=await resignationJourneyFixture(),templateId=randomUUID();
+  f.config.templates.push({id:templateId,name:'Parallel phase fixture',module:'off',type:'Letter',rules:{caseType:['Resignation']},hrStep:'none',employeeAck:false,retired:false,currentVersion:1,versions:[{version:1,state:'published',at:new Date().toISOString(),by:'Fixture owner',blocks:[{id:'body',type:'text',text:'Dear {employee.name}.',section:''},{id:'bp',type:'signature',text:'',role:'step:sign',section:''}],fields:[],routing:[{id:'review',order:1,action:'review',who:{kind:'people',userIds:[f.managerUserId]},owner:true},{id:'approve',order:1,action:'approve',who:{kind:'people',userIds:[f.fyiUserId]},owner:false},{id:'sign',order:2,action:'sign',who:{kind:'people',userIds:[f.fyiUserId]},owner:false}]}]});
+  await owner.db.execute(sql`update lc_v9_config set data=${JSON.stringify(f.config)}::jsonb where tenant_id=${f.base.tenantId}::uuid`);
+  const notification=(id:string,kind:string,op:'is'|'isNot'='is')=>({id,type:'notify',conditions:[{field:'letterStep',op,values:[kind]}],to:[{kind:'person' as const,userId:f.managerUserId}],cc:[],params:{subject:id,body:'Actual phase matched.'}});
+  await f.workflow('signRequest',[notification('PhaseReview','Review'),notification('PhaseApprove','Approve'),notification('WrongNotApprove','Approve','isNot')]);await f.workflow('sentBack',[notification('PhaseUpdate','Update')]);const releasedId=await f.workflow('released',[notification('PhaseReleased','Released')]);
+  await f.workflow('accepted',[{id:'generate',type:'generateDocument',conditions:[],to:[],cc:[],params:{letterTemplateId:templateId}}]);
+  let current=await commandResignationJourney(f.admin,{caseId:f.journey.id,revision:f.journey.revision,command:{type:'accept',lastWorkingDay:f.lastWorkingDay,replacementNeeded:false}}),letter=current.letters[0];
+  const subjects=async()=>{const rows=await owner.db.execute<{subject:string}>(sql`select subject from automation_email_delivery where subject_id=${current.id}::uuid`);return rows.map(row=>row.subject);};
+  expect(await subjects()).toEqual(expect.arrayContaining(['PhaseReview','PhaseApprove']));expect(await subjects()).not.toContain('WrongNotApprove');
+  current=await commandResignationJourney(f.watcher,{caseId:current.id,revision:current.revision,command:{type:'sendBack',documentId:letter.id,documentRevision:letter.revision,reason:'Please correct the wording'}});expect(await subjects()).toContain('PhaseUpdate');
+  letter=current.letters[0];current=await commandResignationJourney(f.admin,{caseId:current.id,revision:current.revision,command:{type:'resendLetter',documentId:letter.id,documentRevision:letter.revision}});
+  letter=current.letters[0];current=await commandResignationJourney(f.admin,{caseId:current.id,revision:current.revision,command:{type:'letterAction',documentId:letter.id,documentRevision:letter.revision,action:'review'}});
+  current=await commandResignationJourney(f.watcher,{caseId:current.id,revision:current.revision,command:{type:'letterAction',documentId:letter.id,documentRevision:letter.revision,action:'approve'}});
+  current=await commandResignationJourney(f.watcher,{caseId:current.id,revision:current.revision,command:{type:'letterAction',documentId:letter.id,documentRevision:letter.revision,action:'sign',signature:'Journey business partner',consent:true}});expect(await subjects()).toContain('PhaseReleased');
+  const [released]=await owner.db.execute<{definition:import('../lib/automation/workflow').AutomationWorkflow}>(sql`select definition from automation_workflow_version where workflow_id=${releasedId}::uuid`);
+  expect((await resignationWorkflowDryRun(f.admin,{caseId:current.id,workflow:released.definition})).run.steps[0].runs).toBe(true);
+ },90000);
  it('an own withdrawal closes only this managed case and preserves history; cross-case readers remain denied',async()=>{
   const f=await resignationJourneyFixture(),other=await resignationJourneyFixture();await expect(resignationCase(other.staff,f.journey.id)).rejects.toMatchObject({code:'not_found'});
   const withdrawn=await commandResignationJourney(f.staff,{caseId:f.journey.id,revision:f.journey.revision,command:{type:'withdraw'}});expect(withdrawn.stage).toBe('withdrawn');expect((await resignationInbox(f.admin,{kind:'approvals'})).total).toBe(0);
