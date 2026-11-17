@@ -13,8 +13,9 @@ before final release evidence and admission. No main/alpha advancement is author
 frozen gate. This supersedes any older conditional suggestion that Resignation might release first.
 
 Foreign reservations: Recruitment **5850–5877**, idx5250–5277, `when`1793330005550–1793330005577;
-Contract **5800–5849 and5890–5909**, including its newly reserved5900–5909/idx5300–5309/
-`when`1794841005900–1794841005909. Preserve these ranges. Recruitment's lower timestamps must be
+Contract **5800–5849,5890–5909 and5920–5959**, including5900–5909/idx5300–5309/
+`when`1794841005900–1794841005909 and the later confirmed5920–5959/idx5320–5359/
+`when`1794841005920–1794841005959. Preserve these ranges. Recruitment's lower timestamps must be
 reconciled before any higher-timestamp Contract installation; tag order alone does not establish ordering.
 Refresh remote claims and both target installation watermarks at admission. No lease or release readiness
 is claimed, and no production installation or package publication is authorized by this reservation.
