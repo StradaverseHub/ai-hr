@@ -447,7 +447,7 @@ LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp A
  AND posting.status='approved' AND posting.movement_id IS NOT NULL AND posting.approved_by IS NOT NULL AND posting.approved_at IS NOT NULL
  AND posting.event_type=intent.kind AND intent.kind IN('contractRenewal','contractConversion') AND f.data->'period'->>'sourceRevision'=receipt.source_revision
  AND to_jsonb(employment) @> intent.desired
- AND placement.employment_type=CASE intent.kind WHEN 'contractConversion' THEN 'full_time' ELSE 'contract' END
+ AND placement.employment_type=(CASE intent.kind WHEN 'contractConversion' THEN 'full_time' ELSE 'contract' END)::public.employment_type
  AND EXISTS(SELECT 1 FROM public.domain_event movement WHERE movement.tenant_id=receipt.tenant_id AND movement.subject_employment_id=employment.id
   AND movement.occurred_at=now() AND movement.actor_type=CASE WHEN app.current_user_id() IS NULL THEN 'system'::public.actor_type ELSE 'user'::public.actor_type END
   AND movement.actor_id IS NOT DISTINCT FROM app.current_user_id() AND movement.payload->'movement'->>'groupId'=receipt.movement_group_id::text

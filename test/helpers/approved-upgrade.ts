@@ -354,7 +354,7 @@ export const APPROVED_UPGRADE_TAIL=[
 // Final pending 2109/2126 bytes reviewed from engine 128bc2539; no applied-prefix hashes change.
 const APPROVED_UPGRADE_HASHES:Record<string,string>={
  ...Object.fromEntries(PERFORMANCE_MIGRATION_IDENTITIES.map(({tag,hash})=>[tag,hash])),
- '6000_contract_historical_email_recovery':'1713269e3093a973e9564e16adfe6ba3b8809c2363334722fe453f919b4a0eaa',
+ '6000_contract_historical_email_recovery':'d2fee7e0bbeb141cc9fa0b30ebcfd9311dc1a16c04f221fdec8a79305e3d3414',
  '6001_contract_posting_protected_job_foundation':'11855741c65e76f5025dc6ecf5f398ec11ca32da465da8017483ad2d71e25bfd',
  '6002_contract_posting_recorded_replay_frames':'1d31a6d7c8ff3b1c60866eacaf20100ae9d228a6318c0e3b1d8ee1e221c5485f',
  '6003_contract_posting_prepared_target_source':'745bff94b485f6eab07068fa37c8af84730761fe474d112a8f3e2879e9ce3e92',
