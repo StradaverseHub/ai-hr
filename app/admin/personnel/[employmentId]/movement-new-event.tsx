@@ -17,7 +17,7 @@ import {DerivedOrganisationFields,useDerivedOrganisation} from '@/components/der
 //
 // Every option list is pre-loaded and pre-translated by the server page; this island owns only the form
 // state. The tab shell injects the hidden `tab` field on submit, so the save lands back on the Movement tab.
-import { useRef, useState, useActionState } from 'react';
+import { useEffect, useRef, useState, useActionState } from 'react';
 import { useTranslations } from 'next-intl';
 import { ProfileOptionSelect } from '@/components/profile-option-select';
 import { personnelWorkflowControl, personnelWorkflowInput, personnelFormLabel, personnelFormCatalog, personnelFormChoices } from '@/lib/personnel-form-contract';
@@ -353,6 +353,8 @@ export function MovementNewEvent({
   // The Direct Superior must belong to the company the employee lands in — the service refuses anything
   // else, so the picker must not offer it.
   const [chosenManager,setChosenManager]=useState<{scope:string;id:string;row:MovementManagerOption|null}|null>(null);
+  // The old select remounted on every scope change; never resurrect an earlier scope's temporary choice.
+  useEffect(()=>{setChosenManager(null);},[scopeCompanyId]);
   const chosenHere=chosenManager?.scope===scopeCompanyId?chosenManager:null;
   const knownManagers=chosenHere?.row?[chosenHere.row,...managers.filter(m=>m.id!==chosenHere.id)]:managers;
   const scopedManagers = knownManagers.filter((m) => !scopeChanged || m.companyId === scopeCompanyId);

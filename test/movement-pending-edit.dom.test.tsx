@@ -69,6 +69,12 @@ it('uses remote manager choices with exact hidden submission and resets company-
   fireEvent.click(picker.querySelector('button')!);await screen.findByRole('option',{name:'New destination manager'});fireEvent.mouseDown(screen.getByRole('option',{name:'New destination manager'}));expect(posted()).toBe('manager-new-b');
   // The legacy select restores the saved `after` manager, not the pre-pending current manager.
   fireEvent.change(container.querySelector('select[name="companyId"]')!,{target:{value:'company-a'}});expect(posted()).toBe(managerB.id);
+  // Visit a second scope WITHOUT making a choice: returning must still reset, not revive the temporary pick.
+  const originalPicker=container.querySelector('input[name="managerEmploymentId"]')!.parentElement!;
+  fireEvent.click(originalPicker.querySelector('button')!);await screen.findByRole('option',{name:'New destination manager'});
+  fireEvent.mouseDown(screen.getByRole('option',{name:'New destination manager'}));expect(posted()).toBe('manager-new-b');
+  fireEvent.change(container.querySelector('select[name="companyId"]')!,{target:{value:'company-b'}});expect(posted()).toBe(managerB.id);
+  fireEvent.change(container.querySelector('select[name="companyId"]')!,{target:{value:'company-a'}});expect(posted()).toBe(managerB.id);
   fireEvent.change(container.querySelector('select[name="companyId"]')!,{target:{value:'company-b'}});expect(posted()).toBe(managerB.id);
   const changedPicker=container.querySelector('input[name="managerEmploymentId"]')!.parentElement!;
   fireEvent.click(changedPicker.querySelector('button')!);
