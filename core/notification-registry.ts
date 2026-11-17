@@ -32,6 +32,7 @@ export type NotificationRecipientReaders<Reader>={
  rewardPoolChanged:NotificationRecipientReader<Reader>;
  rewardApproved:NotificationRecipientReader<Reader>;
  rewardConfigChanged:NotificationRecipientReader<Reader>;
+ rewardPlanCompanyAdded:NotificationRecipientReader<Reader>;
  rewardLimitsReapplied:NotificationRecipientReader<Reader>;
  leaveSubmitted:NotificationRecipientReader<Reader>;
  leaveCancellationSubmitted:NotificationRecipientReader<Reader>;
@@ -174,6 +175,7 @@ const registry:Record<string,NotificationSpec<Reader>|NotificationSpec<Reader>[]
   },
   // Board 60f1fdcd: one notice per Rewards configuration save to the other configuration holders. It names the item,
   // the editor, the count of changed values and the reason; never a value or anyone's pay.
+  'reward-plan.company-added':{recipientAudience:'reader',kind:'rewards.plan-company-added',category:'rewards',recipientPort:'rewardPlanCompanyAdded',recipients:readers.rewardPlanCompanyAdded,render:(p)=>({severity:'action',title:'rewardsReviewPlans.newCompanyTitle',body:`${typeof p?.company==='string'?p.company:'Company'} · ${typeof p?.year==='number'?p.year:''}`,linkPath:`/admin/rewards/review-plans?year=${typeof p?.year==='number'?p.year:''}`})},
   'rewards-config.changed': {recipientAudience:'reader',
     kind:'rewards.config-changed',category:'rewards',
     render:(payload)=>{
