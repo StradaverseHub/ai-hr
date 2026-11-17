@@ -7309,6 +7309,13 @@
       "when": 1794841006012,
       "tag": "6012_contract_shared_navigation_access",
       "breakpoints": true
+    },
+    {
+      "idx": 5413,
+      "version": "7",
+      "when": 1794841006013,
+      "tag": "6013_contract_email_form_binding_order",
+      "breakpoints": true
     }
   ]
 }

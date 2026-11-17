@@ -10,10 +10,10 @@ vi.mock('../lib/internal-auth/store',async original=>({...await original<typeof 
 vi.mock('../lib/internal-auth/service',async original=>({...await original<typeof import('../lib/internal-auth/service')>(),InternalAuthError:class extends Error{},assertActiveCredential:async(_:unknown,credential:{subject:string})=>({app_user_id:credential.subject.split('/')[1]})}));
 vi.mock('../lib/internal-auth/smtp',()=>({sendSmtp:auth.send}));
 import {withTenant} from '../db/client';
-import {closeAll,migrateTestDb,owner,setModule} from './harness';
+import {closeAll,migrateTestDb,owner,setModule,createAppUser} from './harness';
 import {contractEmailHRNoticeFixture} from './helpers/contract-email-hr-notice-fixture';
 import {internalAutomationMail} from '../lib/internal-auth/automation-mail';
-import {bindContractSharedEmployee} from '../packs/contracts/service';
+import {bindContractSharedEmployee,readContractSharedForm} from '../packs/contracts/service';
 import {saveAutomationWorkflow} from '../packs/automation/service';
 beforeAll(migrateTestDb);afterAll(closeAll);
 type F=Awaited<ReturnType<typeof contractEmailHRNoticeFixture>>;
@@ -65,7 +65,24 @@ it('excludes the actual employee PID from parallel pending routes and does not s
  const f=await contractEmailHRNoticeFixture(auth.origin,{parallel:true,unboundEmployee:true});await f.drainNotice(f.admin.userId!);
  expect((await actionNotices(f)).flatMap(item=>item.payload.mail.to)).toEqual([f.admin.userId]);
  await owner.db.execute(sql`update app_user set person_id=${f.employee.personId}::uuid where tenant_id=${f.b.tenantId}::uuid and id=${f.employeeActor.userId}::uuid`);
- await bindContractSharedEmployee(f.employeeActor,f.pin.letterId);await f.tick();
+ const[before]=await owner.db.execute<{data:{route:{steps:Record<string,unknown>[]};actions:unknown[];contentRevision:number}}>(sql`select data from document_signing_document where tenant_id=${f.b.tenantId}::uuid and subject_type='contract' and subject_id=${f.pin.letterId}::uuid`);
+ expect((await readContractSharedForm(f.employeeActor,f.pin.letterId))?.visible).toBe(false);
+ await bindContractSharedEmployee(f.employeeActor,f.pin.letterId);
+ const[after]=await owner.db.execute<{data:typeof before.data}>(sql`select data from document_signing_document where tenant_id=${f.b.tenantId}::uuid and subject_type='contract' and subject_id=${f.pin.letterId}::uuid`);
+ expect(after.data.route.steps).toEqual(before.data.route.steps.map(step=>step.role==='employee'&&step.holderId===null?{...step,holderId:f.employeeActor.userId,holderPersonId:f.employee.personId}:step));
+ expect(after.data.actions).toEqual(before.data.actions);expect(after.data.contentRevision).toBe(before.data.contentRevision);
+ expect((await readContractSharedForm(f.employeeActor,f.pin.letterId))?.visible).toBe(true);
+ await f.tick();
+ expect((await actionNotices(f)).flatMap(item=>item.payload.mail.to)).not.toContain(f.employeeActor.userId);await assertNoBusinessEffects(f);
+},180_000);
+it('rejects an unrelated login and duplicate employee accounts without mutating the actual unassigned route',async()=>{
+ const f=await contractEmailHRNoticeFixture(auth.origin,{parallel:true,unboundEmployee:true});await f.drainNotice(f.admin.userId!);
+ await owner.db.execute(sql`update app_user set person_id=${f.employee.personId}::uuid where tenant_id=${f.b.tenantId}::uuid and id=${f.employeeActor.userId}::uuid`);
+ const state=()=>owner.db.execute(sql`select data,revision from document_signing_document where tenant_id=${f.b.tenantId}::uuid and subject_type='contract' and subject_id=${f.pin.letterId}::uuid`),before=await state();
+ await expect(bindContractSharedEmployee(f.approver,f.pin.letterId)).rejects.toMatchObject({code:'forbidden'});expect(await state()).toEqual(before);
+ await createAppUser(f.b.tenantId,f.employee.personId,'employee');
+ await expect(bindContractSharedEmployee(f.employeeActor,f.pin.letterId)).rejects.toMatchObject({code:'invalid'});expect(await state()).toEqual(before);
+ expect((await readContractSharedForm(f.employeeActor,f.pin.letterId))?.visible).toBe(false);
  expect((await actionNotices(f)).flatMap(item=>item.payload.mail.to)).not.toContain(f.employeeActor.userId);await assertNoBusinessEffects(f);
 },180_000);
 it('retains a true system initial notice in its actual sealed parent job with no captured or fabricated human',async()=>{
@@ -79,7 +96,7 @@ it.each(['recipientPid','company','entitlement','archivedActor','subjectPerson']
  if(changed==='company'){const[other]=await owner.db.execute<{id:string}>(sql`insert into company(tenant_id,legal_name) values(${f.b.tenantId}::uuid,'Fictional changed notice company') returning id`);await owner.db.execute(sql`update employment set company_id=${other.id}::uuid where tenant_id=${f.b.tenantId}::uuid and id=${f.employee.employmentId}::uuid`);}
  if(changed==='entitlement')await setModule(f.b.tenantId,'lifecycle','disabled');
  if(changed==='archivedActor')await owner.db.execute(sql`update app_user set archived_at=now() where tenant_id=${f.b.tenantId}::uuid and id=${f.admin.userId}::uuid`);
- if(changed==='subjectPerson'){const[person]=await owner.db.execute<{id:string}>(sql`insert into person(tenant_id,full_name) values(${f.b.tenantId}::uuid,'Fictional changed notice subject') returning id`);await owner.db.execute(sql`update employment set person_id=${person.id}::uuid where tenant_id=${f.b.tenantId}::uuid and id=${f.employee.employmentId}::uuid`);}
+ if(changed==='subjectPerson'){const[person]=await owner.db.execute<{id:string}>(sql`insert into person(tenant_id,full_name,primary_email) values(${f.b.tenantId}::uuid,'Fictional changed notice subject',${randomUUID()+'@hr-notice.example.test'}) returning id`);await owner.db.execute(sql`update employment set person_id=${person.id}::uuid where tenant_id=${f.b.tenantId}::uuid and id=${f.employee.employmentId}::uuid`);}
  const token=await lease(mail.id);expect((await owner.db.execute<{target:unknown}>(sql`select app.automation_email_target(${mail.id}::uuid,${token}::uuid,${auth.origin}) as target`))[0].target).toBeNull();
  expect(await internalAutomationMail({deliveryId:mail.id,leaseToken:token},auth.send)).toMatchObject({outcome:'skipped'});expect(auth.send).not.toHaveBeenCalled();
 },180_000);

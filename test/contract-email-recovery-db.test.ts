@@ -7,7 +7,7 @@ import {closeAll,migrateTestDb,owner,createAppUser} from './harness';
 import {fixture,finish,letters,saveAnswers,actForm} from './helpers/contract-document-fixture';
 import {saveAutomationEmailTemplate,saveAutomationDocumentTemplate,saveAutomationWorkflow,uploadAutomationEmailAsset} from '../packs/automation/service';
 import {previewContractSharedDecision,submitContractSharedDecision,contractAutomationJobHandler,readContractSharedLetter} from '../packs/contracts/service';
-import {runBulkJobTick} from '../core/bulk-job-worker';
+import {runBulkJobTick,BulkJobAuthorityLost} from '../core/bulk-job-worker';
 import {v9Workspace,v9SaveConfig} from '../packs/lifecycle/service';
 const origin='https://contract-recovery-fixture.invalid';
 beforeAll(migrateTestDb);afterAll(closeAll);
@@ -30,7 +30,17 @@ async function actualRecovery(callbackChange?:'archive'|'relink',requiredFile?:'
  const preview=await previewContractSharedDecision(f.admin,{caseId:f.caseId,revision:1,draft:{kind:'renew',payChanges:false,months:6,reason:'Continue actual fictional role'}});
  await finish(preview.jobId,f.admin,'contract_preview');const accepted=await submitContractSharedDecision(f.admin,{caseId:f.caseId,revision:1,previewId:preview.previewId});
  let checkedHeldGuards=false,expectedCallbackActive=!callbackChange;
- const diagnostic:typeof contractAutomationJobHandler={...contractAutomationJobHandler,async finalize(ctx,job,unit){
+ const invalidatedNoticeJobs=new Map<string,string>(),kernelAuthorityRefusals=new Set<string>(),provenNoticeRefusals=new Set<string>();
+ const diagnostic:typeof contractAutomationJobHandler={...contractAutomationJobHandler,
+ async describeFailure(job,error,step,native){
+  if(invalidatedNoticeJobs.has(job.id)){
+   // A real kernel actor fence can stop an archived actor before event preparation.
+   // Do not accept the generic public wording as proof of an expected authority refusal.
+   expect(error).toBeInstanceOf(BulkJobAuthorityLost);kernelAuthorityRefusals.add(job.id);
+  }
+  const describe=contractAutomationJobHandler.describeFailure;if(!describe)throw Error('Canonical Contract failure descriptor is required.');
+  return describe(job,error,step,native);
+ },async finalize(ctx,job,unit){
   return contractAutomationJobHandler.finalize!(ctx,job,{...unit,ownerTx:async callback=>unit.ownerTx!(async native=>{
    await native`select set_config('app.tenant_id',${f.b.tenantId},true),set_config('app.user_id','',true)`;
    const [child]=await native<{id:string;revision:number;run:string;step:string}[]>`select id,decision_revision as revision,data->>'runId' as run,data->>'stepId' as step from contract_shared_event where tenant_id=${f.b.tenantId}::uuid and job_id=${job.id}::uuid and trigger_event='emailDocumentReady' and processed_at is null order by created_at,id limit 1`;
@@ -48,7 +58,6 @@ async function actualRecovery(callbackChange?:'archive'|'relink',requiredFile?:'
  }};
  // Only native standalone notice jobs captured BEFORE this test deliberately invalidates their real actor
  // may refuse admission. The original workflow and every unknown failed job must still stay healthy.
- const invalidatedNoticeJobs=new Map<string,string>();
  const captureNoticeJobs=async()=>{
   const notices=await owner.db.execute<{jobId:string;eventId:string}>(sql`select job.id as "jobId",event.id as "eventId" from app.contract_email_hr_notice receipt join contract_shared_event event on event.tenant_id=receipt.tenant_id and event.id=receipt.event_id join bulk_job job on job.tenant_id=event.tenant_id and job.id=event.job_id and job.operation_key=event.id where receipt.tenant_id=${f.b.tenantId}::uuid and receipt.case_id=${f.caseId}::uuid and receipt.parent_event_id is null and receipt.actor_user_id=${callbackActor.userId}::uuid and receipt.actor_person_id=${callbackActor.personId}::uuid and event.trigger_event='emailDocumentHRNotice' and event.workflow_versions='[]'::jsonb and job.state not in('completed','failed','cancelled')`);
   for(const notice of notices)invalidatedNoticeJobs.set(notice.jobId,notice.eventId);
@@ -57,7 +66,12 @@ async function actualRecovery(callbackChange?:'archive'|'relink',requiredFile?:'
   const worked=await runBulkJobTick(owner.client,{handlers:[diagnostic]});
   const failed=await owner.db.execute<{id:string;error:string}>(sql`select id,error from bulk_job where tenant_id=${f.b.tenantId}::uuid and state='failed'`);
   for(const job of failed){const eventId=invalidatedNoticeJobs.get(job.id);if(!eventId)continue;
-   expect(job.error).toBe('The accepted Contract event or its verified principal is no longer available.');
+   if(kernelAuthorityRefusals.has(job.id))expect(job.error).toBe('The Contract workflow could not continue. People Ops can review the case and its current setup.');
+   else expect(job.error).toBe('The accepted Contract event or its verified principal is no longer available.');
+   if(!provenNoticeRefusals.has(job.id)){
+    const[admission]=await withTenant(callbackActor,tx=>tx.execute<{allowed:boolean}>(sql`select app.contract_shared_event_check(${eventId}::uuid,${job.id}::uuid) as allowed`));
+    expect(admission.allowed,'The exact captured notice must fail its real native principal check at refusal').toBe(false);provenNoticeRefusals.add(job.id);
+   }
    expect(await owner.db.execute(sql`select id from automation_email_delivery where tenant_id=${f.b.tenantId}::uuid and payload->'context'->>'hrNoticeEventId'=${eventId}`)).toEqual([]);
   }
   expect(failed.filter(job=>!invalidatedNoticeJobs.has(job.id))).toEqual([]);
@@ -71,7 +85,7 @@ async function actualRecovery(callbackChange?:'archive'|'relink',requiredFile?:'
  const assertNoticeRefusals=async()=>{
   if(!invalidatedNoticeJobs.size)return;
   const jobs=await owner.db.execute<{id:string;state:string}>(sql`select id,state from bulk_job where tenant_id=${f.b.tenantId}::uuid and id in(${sql.join([...invalidatedNoticeJobs.keys()].map(id=>sql`${id}::uuid`),sql`,`)})`);
-  expect(jobs).toHaveLength(invalidatedNoticeJobs.size);expect(jobs.every(job=>job.state==='failed')).toBe(true);
+  expect(jobs).toHaveLength(invalidatedNoticeJobs.size);expect(jobs.every(job=>job.state==='failed'&&provenNoticeRefusals.has(job.id))).toBe(true);
  };
 
  let pin:{id:string;runId:string;revision:number}|undefined;

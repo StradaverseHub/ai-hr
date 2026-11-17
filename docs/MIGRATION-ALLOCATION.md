@@ -1,3 +1,20 @@
+## Contract Form employee binding order — 17 November 2026 (provisional source only)
+
+Registered `6013_contract_email_form_binding_order`, idx `5413`, when `1794841006013`,
+SQL SHA-256 `a693631009b659dcabc5654eb205e65df9a05585fed617362488303a9df4d364`, from the owned
+6000–6029 development block. A fresh static survey covered all 410 Git-discovered worktrees and
+journals, including raw conflict-marked journals: no 6013/5413/1794841006013 claim or unreadable
+journal was found. This is a development source identity, not a final installation allocation.
+All 126 pending Contract migrations must be allocated forward from the actual accepted earlier
+Board/Resignation source and ordered ledger before the final gate. No forecast watermark is used.
+
+Two existing Contract functions are replaced under unchanged OIDs, owners and ACLs. The existing
+exact employee/email-pin proof binds the actual unique account before permitted Form reads;
+the nested Signing metadata check verifies the retained hash without reading hidden Form values.
+No helper, grant, policy, table, column, provider use or business-effect authority is added.
+The original proposal header is retained with the reviewed SQL bytes. Independent source review
+found no blocker; native checks remain required. Earlier SQL bytes and journal entries are preserved.
+
 ## Contract completion forward source block — 17 November 2026 (installation held)
 
 Root reserves **6000–6029**, idx **5400–5429**, when **1794841006000–1794841006029**, after a fresh read-only survey of all 333 Git-discovered migration trees and journal text, including conflict-marked journals; no collisions were found. `6000` belongs to canonical Contract email recovery and passive applied-period provenance; `6001–6008` belong to the protected human Contract posting owner, in dependency order; `6009` adds the reviewed forward reconciliation-readiness and explicit approver projection safeguards. `6010` is approved for the exact internal emailDocumentHRNotice boundary: fixed OneHR links only to the actual pending HR reviewer, BP signer or send-back owner, with account/Person/company/step proof; no authored workflow or business effects. Source6010 is registered with SQL SHA-256 71afc04f48fda2449becba50bd156b698a0f5ce5d2f0f4765c4211904d9389c4; independent native evidence remains required before any separately approved admission. Other slots are held and unused. A renewed source-only survey covered all 356 Git-discovered worktrees before6010 registration; nine owned Contract trees carried6000–6029 source claims, with no foreign claims or unreadable journals.
