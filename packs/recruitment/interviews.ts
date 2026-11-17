@@ -26,7 +26,7 @@ import {
   recruitmentCompanySetting, recruitmentEvaluationForm, recruitmentInterview, recruitmentInterviewInterviewer, recruitmentScorecard,
 } from './schema';
 import {
-  actorId, assertCompanyTx, assertJobLevelTx, assertSeeCompanyTx, ensureRecruitmentDefaultsTx, jobLevelTx, userLabelsTx, uuidArray, type UserLabel,
+  actorId, assertCompanyTx, assertJobLevelTx, assertSeeCompaniesTx, ensureRecruitmentDefaultsTx, jobLevelTx, userLabelsTx, uuidArray, type UserLabel,
 } from './data';
 import {
   addressOfCompanyTx, formQuestionsTx, groupMembersTx, interviewPlaceError, roomOfCompanyTx, schedulingSetupTx, type SchedulingAddress, type SchedulingGroup,
@@ -397,7 +397,7 @@ export async function interviewSchedule(s: SessionContext, companyIds: readonly 
   const now = new Date();
   const today = todayInKualaLumpur(now);
   return withRecruitmentTenant(s, async (tx) => {
-    for (const id of companyIds) await assertSeeCompanyTx(tx, id);
+    await assertSeeCompaniesTx(tx, companyIds);
     const ids = uuidArray(companyIds);
     const job = filters.jobId && isUuid(filters.jobId) ? filters.jobId : null;
     const recruiter = filters.recruiterUserId && isUuid(filters.recruiterUserId) ? filters.recruiterUserId : null;

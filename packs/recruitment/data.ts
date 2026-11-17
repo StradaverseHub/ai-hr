@@ -72,6 +72,24 @@ export async function assertSeeCompanyTx(tx: Tx, companyId: string): Promise<voi
   const [row] = await tx.execute<{ ok: boolean }>(sql`select app.can_see_recruitment_company(${companyId}::uuid) as ok`);
   if (row?.ok !== true) throw new RecruitmentError('forbidden');
 }
+/**
+ * assertCompanyTx / assertSeeCompanyTx for a whole selection in ONE statement (SCALE-AND-RELEASE-RULES rule 2: "All
+ * companies" is 70 or more). Refuses if any listed company fails, exactly as the per-company loop did.
+ */
+export async function assertCompaniesTx(tx: Tx, companyIds: readonly string[]): Promise<void> {
+  if (!companyIds.length) return;
+  if (!companyIds.every(isUuid)) throw new RecruitmentError('forbidden');
+  const [row] = await tx.execute<{ ok: boolean }>(sql`
+    select bool_and(app.can_admin_recruitment_for(c.id)) as ok from unnest(${uuidArray(companyIds)}::uuid[]) as c(id)`);
+  if (row?.ok !== true) throw new RecruitmentError('forbidden');
+}
+export async function assertSeeCompaniesTx(tx: Tx, companyIds: readonly string[]): Promise<void> {
+  if (!companyIds.length) return;
+  if (!companyIds.every(isUuid)) throw new RecruitmentError('forbidden');
+  const [row] = await tx.execute<{ ok: boolean }>(sql`
+    select bool_and(app.can_see_recruitment_company(c.id)) as ok from unnest(${uuidArray(companyIds)}::uuid[]) as c(id)`);
+  if (row?.ok !== true) throw new RecruitmentError('forbidden');
+}
 export type JobLevel = 'read' | 'review' | 'operate';
 /** The caller's access to one job, from the database predicates (5852). */
 export async function jobLevelTx(tx: Tx, companyId: string, jobId: string, applicationId?: string): Promise<{ admin: boolean; operate: boolean; review: boolean; read: boolean }> {
@@ -366,7 +384,7 @@ export async function recruitmentOverview(s: SessionContext, companyIds: readonl
   const now = new Date();
   const today = todayInKualaLumpur(now);
   return withRecruitmentTenant(s, async (tx) => {
-    for (const id of companyIds) await assertCompanyTx(tx, id);
+    await assertCompaniesTx(tx, companyIds);
     const ids = uuidArray(companyIds);
     const [row] = await tx.execute<Record<keyof RecruitmentOverview, number>>(sql`
       select
@@ -467,7 +485,7 @@ export async function listJobs(s: SessionContext, companyIds: readonly string[],
   if (!companyIds.length) return { rows: [], counts: { opening: 0, closed: 0 }, departments: [], recruiters: [], customFilters: [], customFilter: null };
   return withRecruitmentTenant(s, async (tx) => {
     // Administrators list every job of the company; a team member's row security lists only their own jobs (5852).
-    for (const id of companyIds) await assertSeeCompanyTx(tx, id);
+    await assertSeeCompaniesTx(tx, companyIds);
     const ids = uuidArray(companyIds);
     const title = filters.title?.trim() ? `%${filters.title.trim().replace(/[\\%_]/g, (c) => `\\${c}`)}%` : null;
     const number = filters.jobNumber?.trim() ? filters.jobNumber.trim().toUpperCase() : null;
@@ -894,7 +912,7 @@ export async function candidateBoard(s: SessionContext, companyIds: readonly str
   return withRecruitmentTenant(s, async (tx) => {
     // Administrators see the company's pipeline; a team member's row security narrows it to their jobs' applications
     // and the applications they interview (5852). Every count below runs under the same row security.
-    for (const id of companyIds) await assertSeeCompanyTx(tx, id);
+    await assertSeeCompaniesTx(tx, companyIds);
     const ids = uuidArray(companyIds);
     const jobs = await tx.execute<{ id: string; title: string; job_number: string; status: JobStatus; company_id: string; process_id: string }>(sql`
       select j.id, j.title, j.job_number, j.status, j.company_id, j.process_id from recruitment_job_opening j

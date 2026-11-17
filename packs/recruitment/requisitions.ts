@@ -25,7 +25,7 @@ import {
   recruitmentApplication, recruitmentApplicationEvent, recruitmentRequisition, recruitmentRequisitionApproval, recruitmentRequisitionJob,
 } from './schema';
 import {
-  actorId, assertCompanyTx, assertNotRepeatedTx, earlierApplicationsTx, insertApplicationTx, jobFormOptions, jobTx, processStagesTx, repeatWindowTx, userLabelsTx, uuidArray,
+  actorId, assertCompaniesTx, assertCompanyTx, assertNotRepeatedTx, earlierApplicationsTx, insertApplicationTx, jobFormOptions, jobTx, processStagesTx, repeatWindowTx, userLabelsTx, uuidArray,
   type JobFormOptions,
 } from './data';
 import { repeatApplicationBlocked } from './privacy-model';
@@ -109,7 +109,7 @@ export async function listRequisitions(s: SessionContext, companyIds: readonly s
   if (!companyIds.length) return { rows: [], counts: zero, departments: [], hiringManagers: [], creators: [] };
   const today = todayInKualaLumpur();
   return withRecruitmentTenant(s, async (tx) => {
-    for (const id of companyIds) await assertCompanyTx(tx, id);
+    await assertCompaniesTx(tx, companyIds);
     const ids = uuidArray(companyIds);
     const rows = await tx.execute<{
       id: string; req_number: string; title: string; company_id: string; company_name: string; department_id: string | null; department_name: string | null;
@@ -444,7 +444,7 @@ export async function talentPool(s: SessionContext, companyIds: readonly string[
   if (!companyIds.length) return { cards: [], totals: { today: 0, total: 0 }, jobs: [], reasons: [], tags: [], customFilters: [], customFilter: null };
   const today = todayInKualaLumpur();
   return withRecruitmentTenant(s, async (tx) => {
-    for (const id of companyIds) await assertCompanyTx(tx, id);
+    await assertCompaniesTx(tx, companyIds);
     const ids = uuidArray(companyIds);
     const job = filters.jobId && isUuid(filters.jobId) ? filters.jobId : null;
     const reason = filters.reasonId && isUuid(filters.reasonId) ? filters.reasonId : null;

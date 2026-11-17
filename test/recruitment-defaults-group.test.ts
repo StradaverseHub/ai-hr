@@ -11,7 +11,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import type { SessionContext } from '../db/client';
 import { appUser, company, roleAssignment } from '../db/schema';
 import { withRecruitmentTenant } from '../core/module-gate';
-import { ensureRecruitmentDefaults, recruitmentSettings, updateStage, RecruitmentError } from '../packs/recruitment/service';
+import { ensureRecruitmentDefaults, listJobs, recruitmentOverview, recruitmentSettings, updateStage, RecruitmentError } from '../packs/recruitment/service';
 import { ensureRecruitmentDefaultsTx } from '../packs/recruitment/data';
 import { closeAll, entitledCtx, migrateTestDb, owner, resetDb, seedBase, setModule, type Base } from './harness';
 
@@ -102,6 +102,21 @@ describe('recruitment defaults for a 70-company group', () => {
     expect(await snapshot(groupA[69])).toEqual(seededBefore);
     const [row] = await owner.client`select count(distinct company_id)::int as n from recruitment_company_setting where company_id = any(${groupA}::uuid[])`;
     expect(row.n).toBe(GROUP);
+  });
+
+  it('checks a 70-company selection in one go: administrators read it, a partner of one company is refused', async () => {
+    await ensureRecruitmentDefaults(admin, groupA);
+    expect((await listJobs(admin, groupA)).rows).toEqual([]);
+    expect((await recruitmentOverview(admin, groupA)).openJobs).toBe(0);
+    const [user] = await owner.db.insert(appUser).values({ tenantId: base.tenantId, workosUserId: `user_${randomUUID()}` }).returning({ id: appUser.id });
+    await owner.db.insert(roleAssignment).values({ tenantId: base.tenantId, appUserId: user.id, companyId: groupA[0], role: 'recruiting_partner' });
+    const partner: SessionContext = { ...admin, userId: user.id, roles: ['recruiting_partner'], grants: [{ role: 'recruiting_partner', companyId: groupA[0] }] };
+    expect((await recruitmentOverview(partner, [groupA[0]])).openJobs).toBe(0);
+    for (const call of [recruitmentOverview(partner, groupA), listJobs(partner, groupA), recruitmentOverview(admin, [...groupA, 'not-a-uuid'])]) {
+      const error = await call.then(() => null, (e: unknown) => e);
+      expect(error).toBeInstanceOf(RecruitmentError);
+      expect((error as RecruitmentError).code).toBe('forbidden');
+    }
   });
 
   it('refuses the whole selection when one company is not administered by the caller, writing nothing', async () => {
