@@ -44058,7 +44058,7 @@
       "cancelled": "Cancelled"
     },
     "pollRetry": "Progress could not be read. Retrying the status check; review creation continues in the background.",
-    "newCompanyTitle": "New company added to {year}",
-    "newCompanyBody": "New company {company} added to {year} – choose salary structure and bonus matrix."
+    "newCompanyTitle": "New company added to Review Plans",
+    "newCompanyBody": "Choose a salary structure and bonus matrix for the new company."
   }
 }

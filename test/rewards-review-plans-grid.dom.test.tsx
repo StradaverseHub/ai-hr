@@ -48,6 +48,12 @@ describe('Review Plans grid',()=>{
   await waitFor(()=>expect(actions.save).toHaveBeenCalledWith(actions.preview.mock.calls[0][0],'b'.repeat(64),'Checked the annual library choices.'));
   await waitFor(()=>expect(screen.getByText('Review Plans saved.')).toBeTruthy());expect(screen.getByRole('button',{name:'Review changes'})).toBeDisabled();
  });
+ it('recovers from a rejected progress read without enqueueing the review creation twice',async()=>{
+  actions.create.mockResolvedValue({ok:true,jobId:'40000000-0000-4000-8000-000000000001'});actions.progress.mockRejectedValueOnce(new Error('Fictional transport interruption'));
+  show({...data,coverage:{...data.coverage,ready:1}});fireEvent.click(screen.getByRole('button',{name:'Create reviews for Ready companies'}));
+  await waitFor(()=>expect(screen.getByRole('alert').textContent).toContain('Progress could not be read. Retrying the status check'));
+  expect(actions.create).toHaveBeenCalledTimes(1);expect(actions.progress).toHaveBeenCalledTimes(1);
+ });
  it('shows no write or creation actions for a view-only reader',()=>{
   show({...data,canEdit:false,canCreateReviews:false,rows:[{...row,canEdit:false}]});expect(screen.queryByRole('button',{name:'Review changes'})).toBeNull();expect(screen.queryByRole('button',{name:'Create selected reviews'})).toBeNull();expect(screen.getByRole('combobox',{name:'Alpha Fictional: Salary structure'})).toBeDisabled();
  });

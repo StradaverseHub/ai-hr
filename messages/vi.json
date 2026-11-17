@@ -44058,7 +44058,7 @@
       "cancelled": "Đã hủy"
     },
     "pollRetry": "Không đọc được tiến độ. Đang kiểm tra lại trạng thái; việc tạo đánh giá vẫn tiếp tục ở nền.",
-    "newCompanyTitle": "Đã thêm công ty mới vào {year}",
-    "newCompanyBody": "Đã thêm công ty mới {company} vào {year} – chọn cơ cấu lương và ma trận thưởng."
+    "newCompanyTitle": "Đã thêm công ty mới vào Kế hoạch đánh giá",
+    "newCompanyBody": "Chọn cơ cấu lương và ma trận thưởng cho công ty mới."
   }
 }

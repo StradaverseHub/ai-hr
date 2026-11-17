@@ -44058,7 +44058,7 @@
       "cancelled": "已取消"
     },
     "pollRetry": "无法读取进度。正在重试状态查询；后台评审创建仍在继续。",
-    "newCompanyTitle": "新公司已加入 {year} 年度",
-    "newCompanyBody": "新公司 {company} 已加入 {year} 年度 — 请选择薪资结构和奖金矩阵。"
+    "newCompanyTitle": "新公司已加入评审计划",
+    "newCompanyBody": "请为新公司选择薪资结构和奖金矩阵。"
   }
 }

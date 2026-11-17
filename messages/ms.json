@@ -44058,7 +44058,7 @@
       "cancelled": "Dibatalkan"
     },
     "pollRetry": "Kemajuan tidak dapat dibaca. Semakan status dicuba semula; penciptaan semakan diteruskan di latar belakang.",
-    "newCompanyTitle": "Syarikat baharu ditambah ke {year}",
-    "newCompanyBody": "Syarikat baharu {company} ditambah ke {year} – pilih struktur gaji dan matriks bonus."
+    "newCompanyTitle": "Syarikat baharu ditambah ke Pelan Semakan",
+    "newCompanyBody": "Pilih struktur gaji dan matriks bonus untuk syarikat baharu."
   }
 }
