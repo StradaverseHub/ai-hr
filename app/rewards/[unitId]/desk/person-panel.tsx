@@ -2,8 +2,7 @@
 import { useEffect, useState, type ReactNode } from 'react';
 import { useLocale, useTranslations } from 'next-intl';
 import { formatMoney } from '@/lib/money';
-import { REWARD_NOTE_MAX } from '@/packs/rewards/model';
-import type { RewardPersonHistoryRow } from '@/packs/rewards/person-history';
+import type { RewardPersonHistoryRow } from '@/packs/rewards/service';
 import type { RewardCellField } from '../../actions';
 import type { DeskRow } from './desk-model';
 import { EditCell, PromotionCell } from './fields';
@@ -56,14 +55,14 @@ function CaseDecision({ row, field }: { row: DeskRow; field: 'erDecision' | 'pip
 }
 
 /** Live panel values come from the same server projection as the table, including an off-page person. */
-export function PersonPanel({ entryId, year, history }: { entryId: string; year: number; history: readonly RewardPersonHistoryRow[] }) {
+export function PersonPanel({ entryId, year, history, noteMax }: { entryId: string; year: number; history: readonly RewardPersonHistoryRow[]; noteMax: number }) {
   const desk = useReviewDesk();
   const row = desk.rows[entryId];
   const t = useTranslations('rewards'), p = useTranslations('rewards.desk.panel');
   const locale = useLocale();
   if (!row) return null;
   const money = (cents: number | null | undefined) => cents == null ? '—' : formatMoney(cents / 100, 'MYR', locale);
-  const pct = (bp: number | null | undefined) => bp == null ? '—' : `${new Intl.NumberFormat(locale, { maximumFractionDigits: 2 }).format(bp / 100)}%`;
+  const pct = (bp: number | null | undefined) => bp == null ? '—' : `${new Intl.NumberFormat(locale, { minimumFractionDigits: 1, maximumFractionDigits: 1 }).format(bp / 100)}%`;
   const decimal = (bp: number | null | undefined) => bp == null ? '—' : new Intl.NumberFormat(locale, { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(bp / 10000);
   const line = (label: string, value: ReactNode, strong = false) => <div className="flex items-baseline justify-between gap-4 py-2"><dt className="text-muted-foreground">{label}</dt><dd className={`text-right tabular-nums ${strong ? 'font-semibold' : 'font-medium'}`}>{value}</dd></div>;
   const percentage = (field: 'meritBp' | 'specialBp', label: string) => row.editable.increase ? <EditCell row={row} field={field} label={label} placeholder={String((row[field] ?? 0) / 100)} step="0.01" suggested /> : pct(row[field]);
@@ -97,7 +96,7 @@ export function PersonPanel({ entryId, year, history }: { entryId: string; year:
       <TextEdit row={row} field="caseReason" label={t('caseReason')} value={row.caseReason} max={3000} editable={row.casesEditable} />
     </section>}
     {!row.promotionGrade && row.businessCase && <section><h3 className="mb-1 font-semibold">{t('desk.person.businessCase')}</h3><TextEdit row={row} field="reason" label={t('businessCase')} value={row.businessCase} max={4000} editable={row.notesEditable} /></section>}
-    {row.newBasicCents != null && <section><h3 className="mb-1 font-semibold">{t('desk.person.notes')}</h3><TextEdit row={row} field="note" label={t('desk.person.notes')} value={row.note} max={REWARD_NOTE_MAX} editable={row.notesEditable} /></section>}
+    {row.newBasicCents != null && <section><h3 className="mb-1 font-semibold">{t('desk.person.notes')}</h3><TextEdit row={row} field="note" label={t('desk.person.notes')} value={row.note} max={noteMax} editable={row.notesEditable} /></section>}
     <section><h3 className="mb-2 font-semibold">{t('desk.flags')}</h3>{flags.length ? <ul className="space-y-2">{flags.map((flag,index) => { const words = flagText(flag); return <li key={index} className="flex gap-2"><span className="h-fit shrink-0 rounded-full bg-muted px-2 py-0.5 text-xs font-medium">{t(`severity.${flag.severity}`)}</span><span>{flag.code.startsWith('WITHHOLD-') ? p('withheldReason', { reason: flag.message.replace(/^Withheld: /,'') }) : words ? t(`flagText.${words.key}`, { plan: words.plan ? t(words.plan) : '', part: words.part ? t(`flagText.parts.${words.part}`) : '' }) : flag.message}</span></li>; })}</ul> : <p className="text-muted-foreground">{t('desk.person.noFlags')}</p>}</section>
   </div>;
 }

@@ -1,7 +1,7 @@
 'use server';
 import {getSession} from '@/lib/session';
 import {rewardReviewPublicError} from '@/packs/rewards/review-errors';
-import {previewRewardPersonHistoryImport,importRewardPersonHistory,rewardPersonHistoryImportProgress,REWARD_HISTORY_IMPORT_KIND} from '@/packs/rewards/person-history-upload';
+import {previewRewardPersonHistoryImport,importRewardPersonHistory,rewardPersonHistoryImportProgress,REWARD_HISTORY_IMPORT_KIND} from '@/packs/rewards/service';
 import {requestBulkJobCancel} from '@/core/bulk-job';
 import {revalidatePath} from 'next/cache';
 export async function previewHistoryAction(raw:unknown){try{return{ok:true as const,preview:await previewRewardPersonHistoryImport(await getSession(),raw)};}catch(error){return{ok:false as const,error:rewardReviewPublicError(error)};}}

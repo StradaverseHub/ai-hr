@@ -11,8 +11,7 @@ vi.mock('next/navigation',()=>({redirect:ports.redirect,notFound:()=>{throw new 
 vi.mock('next-intl/server',()=>({getLocale:async()=>'en',getTranslations:async(namespace:string)=>createTranslator({locale:'en',messages:en,namespace:namespace as 'rewards'})}));
 vi.mock('../lib/scope',()=>({scopedSession:async()=>({s:{tenantId:'t',userId:'actor'},scopeIds:['company']})}));
 vi.mock('../lib/authz',()=>({requireModule:vi.fn()}));
-vi.mock('../packs/rewards/service',async()=>({getRewardUnit:ports.read,getRewardPreparationStatus:async()=>({required:false,released:true,setupVisible:false,isGr:false,preparation:null}),rewardPayrollChoices:async()=>[],rewardSetupChoices:async()=>({companies:[]})}));
-vi.mock('../packs/rewards/person-history',()=>({rewardPersonHistory:async()=>[]}));
+vi.mock('../packs/rewards/service',async()=>({getRewardUnit:ports.read,getRewardPreparationStatus:async()=>({required:false,released:true,setupVisible:false,isGr:false,preparation:null}),rewardPayrollChoices:async()=>[],rewardPersonHistory:async()=>[],rewardSetupChoices:async()=>({companies:[]})}));
 vi.mock('../app/rewards/actions',()=>({importOnehrAction:vi.fn(),decideAction:vi.fn(),importFactsAction:vi.fn(),offcycleAction:vi.fn(),postAction:vi.fn(),saveRewardCell:ports.save}));
 vi.mock('../app/rewards/[unitId]/lump-sum',()=>({UnitLumpSum:()=> <div>Existing lump-sum owner</div>}));
 vi.mock('../app/rewards/[unitId]/unit-multiplier',()=>({UnitMultiplier:()=> <div>Existing multiplier owner</div>}));
@@ -109,7 +108,8 @@ describe('Review tab People table (37f82412)',()=>{
   await show({person:'b'});
   const panel=within(screen.getByRole('dialog'));
   expect(panel.getByRole('heading',{name:'Fictional Bravo'})).toBeTruthy();
-  for(const text of [/^MYR\s5,375\.00$/,/^MYR\s125\.00$/,/^MYR\s12,000\.00$/,'1.50','2.25','95.0%','102.1%','2 of 3','Fictional business case.'])expect(panel.getAllByText(text).length).toBeGreaterThan(0);
+  for(const text of [/^MYR\s5,375\.00$/,/^MYR\s125\.00$/,/^MYR\s12,000\.00$/,'2.25','95.0%','102.1%','2 of 3','Fictional business case.'])expect(panel.getAllByText(text).length).toBeGreaterThan(0);
+  expect((panel.getByRole('textbox',{name:`${en.rewards.bonusMultiplier} · Fictional Bravo`}) as HTMLInputElement).placeholder).toBe('1.50');
   expect(panel.getByText(en.rewards.flagText.largeIncrease)).toBeTruthy();
   expect((panel.getByRole('textbox',{name:en.rewards.desk.person.notes}) as HTMLTextAreaElement).value).toBe('Fictional note for Bravo.');
   expect(panel.getByRole('link',{name:/Previous/}).getAttribute('href')).toBe('/rewards/unit?person=a');
@@ -128,7 +128,7 @@ describe('Review tab People table (37f82412)',()=>{
   await act(async()=>{fireEvent.change(merit,{target:{value:'7'}});fireEvent.blur(merit);});
   expect(ports.save).toHaveBeenCalledWith('unit',4,'p55','meritBp','7',{});
   expect(panel.getAllByText('MYR 5,475.00')).toHaveLength(1);
-  expect(panel.getByText('Difference +2%')).toBeTruthy();
+  expect(panel.getByText(/Difference \+2%/)).toBeTruthy();
   expect(panel.getByRole('button',{name:'Use suggested'})).toBeTruthy();
   expect(panel.queryByRole('link',{name:en.rewards.desk.person.openRecord})).toBeNull();
  });

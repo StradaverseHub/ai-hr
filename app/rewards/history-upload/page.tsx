@@ -4,7 +4,7 @@ import {getTranslations} from 'next-intl/server';
 import {scopedSession} from '@/lib/scope';
 import {requireModule} from '@/lib/authz';
 import {PageHeader} from '@/components/ui';
-import {rewardHistoryUploadCompanies,latestRewardPersonHistoryImport} from '@/packs/rewards/person-history-upload';
+import {rewardHistoryUploadCompanies,latestRewardPersonHistoryImport} from '@/packs/rewards/service';
 import {RewardHistoryUploadEditor} from './upload-editor';
 
 export default async function RewardHistoryUploadPage(){
