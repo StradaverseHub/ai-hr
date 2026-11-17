@@ -6450,6 +6450,13 @@
       "breakpoints": true
     },
     {
+      "idx": 5502,
+      "version": "7",
+      "when": 1794841006102,
+      "tag": "6102_lifecycle_recipient_directory",
+      "breakpoints": true
+    },
+    {
       "idx": 5503,
       "version": "7",
       "when": 1794841006103,
