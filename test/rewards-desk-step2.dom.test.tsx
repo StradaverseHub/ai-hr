@@ -14,7 +14,7 @@ vi.mock('next-intl/server',()=>({getLocale:async()=>'en',getTranslations:async(n
 vi.mock('../lib/scope',()=>({scopedSession:async()=>({s:{tenantId:'t',userId:'actor'},scopeIds:['company']})}));
 vi.mock('../lib/authz',()=>({requireModule:vi.fn()}));
 vi.mock('../packs/rewards/service',async()=>({getRewardUnit:ports.read,getRewardPreparationStatus:async()=>({required:false,released:true,setupVisible:false,isGr:false,preparation:null}),rewardPayrollChoices:async()=>[],rewardPersonHistory:ports.history,rewardSetupChoices:async()=>({companies:[]})}));
-vi.mock('../app/rewards/actions',()=>({importOnehrAction:vi.fn(),decideAction:vi.fn(),importFactsAction:vi.fn(),offcycleAction:vi.fn(),postAction:vi.fn(),saveRewardCell:ports.save}));
+vi.mock('../app/rewards/actions',()=>({entryAction:vi.fn(),importOnehrAction:vi.fn(),decideAction:vi.fn(),importFactsAction:vi.fn(),offcycleAction:vi.fn(),postAction:vi.fn(),saveRewardCell:ports.save}));
 vi.mock('../app/rewards/[unitId]/lump-sum',()=>({UnitLumpSum:()=> <div>Existing lump-sum owner</div>}));
 vi.mock('../app/rewards/[unitId]/unit-multiplier',()=>({UnitMultiplier:()=> <div>Existing multiplier owner</div>}));
 vi.mock('../app/rewards/[unitId]/pay-window',()=>({PayWindowTag:()=>null,PayWindowExcluded:()=>null}));
@@ -185,7 +185,11 @@ describe('Review tab People table (37f82412)',()=>{
   ports.save.mockResolvedValueOnce({ok:true,revision:5,row:rows[1],summary:deskSummary(next as any),totals:deskTotals(rows),flags:next.flags});
   const merit=panel.getByRole('textbox',{name:'Merit % · Fictional Bravo'});
   await act(async()=>{fireEvent.change(merit,{target:{value:'6'}});fireEvent.blur(merit);});
-  expect((grid().getByRole('textbox',{name:'Merit % · Fictional Bravo'}) as HTMLInputElement).value).toBe('6');
+  // Radix correctly removes the background table from the accessibility tree while the modal is open.
+  // Inspect that intentionally inert DOM state without making its controls accessible behind the drawer.
+  const backgroundMerit=grid().getByDisplayValue('6') as HTMLInputElement;
+  expect(backgroundMerit.getAttribute('aria-label')).toBe('Merit % · Fictional Bravo');
+  expect(backgroundMerit.value).toBe('6');
   expect(panel.getByText('MYR 5,425.00')).toBeTruthy();
   if(role==='gr')expect(panel.getByRole('link',{name:en.rewards.desk.person.openRecord})).toBeTruthy();
   else expect(panel.queryByRole('link',{name:en.rewards.desk.person.openRecord})).toBeNull();
