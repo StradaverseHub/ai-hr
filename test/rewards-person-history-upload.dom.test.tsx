@@ -27,7 +27,8 @@ describe('Reward history upload preview and durable progress',()=>{
   await act(async()=>{fireEvent.click(screen.getByRole('button',{name:en.rewardsPersonHistoryUpload.confirm}));});
   expect(ports.save).toHaveBeenCalledWith({companyId:'company',csv:'fictional CSV',name:'fictional.csv'},'a'.repeat(64));
   expect(screen.getByText(en.rewardsPersonHistoryUpload.states.running)).toBeTruthy();expect(screen.getByRole('button',{name:en.rewardsPersonHistoryUpload.stop})).toBeTruthy();
- });
+ },60000); // Hosted Chrome loads application CSS and script fonts before two device captures.
+
  it('shows translated row problems and blocks confirmation when any row needs correction',async()=>{
   ports.preview.mockResolvedValue({ok:true,preview:{...preview,problems:[{line:3,code:'employee',reason:'This raw server sentence must not replace the localized problem.'}]}});
   show();await chooseFile();expect(screen.getByText('Row 3: '+en.rewardsPersonHistoryUpload.problems.employee)).toBeTruthy();

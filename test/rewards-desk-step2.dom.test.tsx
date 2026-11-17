@@ -194,6 +194,18 @@ describe('Review tab People table (37f82412)',()=>{
   await captureAiReviewScreenshots('<section class="mx-auto max-w-3xl">'+aiReviewDomHtml(content)+'</section>','en',`rewards-person-panel-${role}`,'Actual editable Rewards person panel after shared table/panel save; fictional service projection and history; DB authority checked separately; no installed application acceptance.','atelier');
   await captureAiReviewScreenshots(aiReviewDomHtml(document.body),'en',`rewards-person-drawer-${role}`,'Actual Rewards page and portaled person drawer at the reviewer’s own step, after a shared-state edit; fictional data owners; no installed application acceptance.','atelier');
  },120000); // Two bounded source-rendered captures per role use hosted Chrome and real application CSS/fonts.
+
+ it('keeps review decisions disabled until an automatic save succeeds',async()=>{
+  let release!:(result:unknown)=>void;
+  ports.save.mockImplementationOnce(()=>new Promise(resolve=>{release=resolve;}));
+  await show();
+  const merit=grid().getByRole('textbox',{name:'Merit % · Fictional Alpha'});
+  await act(async()=>{fireEvent.change(merit,{target:{value:'6'}});fireEvent.blur(merit);});
+  expect((screen.getByRole('button',{name:en.rewards.submit}) as HTMLButtonElement).disabled).toBe(true);
+  await act(async()=>{release({ok:false,stale:false,error:'Fictional save failure. Retry before deciding.'});});
+  expect((screen.getByRole('button',{name:en.rewards.submit}) as HTMLButtonElement).disabled).toBe(true);
+  expect(screen.getByRole('button',{name:en.rewards.desk.save.retry})).toBeTruthy();
+ });
  it('ignores a ?person the viewer cannot see',async()=>{
   await show({person:'not-visible'});expect(screen.queryByRole('dialog')).toBeNull();
  });
