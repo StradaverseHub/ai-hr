@@ -40594,6 +40594,19 @@
       "nothingSent": "Nothing is sent and nothing is saved."
     },
     "templates": {
+      "listSummary": {
+        "usedIn": "Digunakan dalam “{workflow}” · langkah {step}",
+        "notUsed": "Tidak digunakan dalam aliran kerja yang kelihatan",
+        "legacy": "Aliran kerja kes terdahulu",
+        "shared": "Aliran kerja dikongsi",
+        "state": "({state})",
+        "parallel": "{steps} (selari)",
+        "legacyNoSigning": "Tandatangan tidak diperlukan",
+        "legacyBefore": "HR menandatangani sebelum pekerja",
+        "legacyAfter": "HR menandatangani balas selepas pekerja",
+        "employeeAck": "Akuan pekerja",
+        "draftRoute": "Penghalaan draf: {chain}"
+      },
       "title": "Templates",
       "intro": "Document templates and email templates. A workflow decides when a document is generated or an email is sent.",
       "documents": "Document templates",
@@ -40952,6 +40965,17 @@
     }
   },
   "resignationJourney": {
+    "conversationClosedDetail": "Kes ini tidak lagi memerlukan keputusan peletakan jawatan.",
+    "outcomePendingDetail": "Keputusan akhir belum direkodkan.",
+    "acceptedLetterDetail": "Peletakan jawatan anda telah diterima. Surat penerimaan masih diproses.",
+    "awaitLetterNextSteps": "Surat perlu melengkapkan langkah semakan dan tandatangan terdahulu sebelum anda boleh memberikan jawapan.",
+    "offerNextSteps": "Buka surat sebelum menandatangani, menolak atau menghantarnya semula.",
+    "acceptanceNextSteps": "Ikuti tindakan surat dan pelepasan yang ditunjukkan untuk kes ini.",
+    "retainedNextSteps": "HR akan melengkapkan sebarang kemas kini yang diperlukan pada rekod pekerjaan anda.",
+    "withdrawnNextSteps": "Tiada lagi langkah pelepasan untuk peletakan jawatan ini.",
+    "clearanceNextSteps": "Lengkapkan langkah serah tugas dan pelepasan yang diberikan oleh HR.",
+    "workingDaysLeft": "Baki {count} hari bekerja",
+    "replyOverdue": "Jawapan lewat {count} hari bekerja",
     "title": "Peletakan jawatan",
     "description": "Hantar peletakan jawatan anda untuk semakan. Penghantaran ini tidak menamatkan pekerjaan anda.",
     "lastWorkingDay": "Hari terakhir bekerja",

@@ -40594,6 +40594,19 @@
       "nothingSent": "Nothing is sent and nothing is saved."
     },
     "templates": {
+      "listSummary": {
+        "usedIn": "Dùng trong “{workflow}” · bước {step}",
+        "notUsed": "Không dùng trong các quy trình đang hiển thị",
+        "legacy": "Quy trình hồ sơ cũ",
+        "shared": "Quy trình dùng chung",
+        "state": "({state})",
+        "parallel": "{steps} (song song)",
+        "legacyNoSigning": "Không yêu cầu chữ ký",
+        "legacyBefore": "Nhân sự ký trước nhân viên",
+        "legacyAfter": "Nhân sự ký xác nhận sau nhân viên",
+        "employeeAck": "Xác nhận của nhân viên",
+        "draftRoute": "Luồng bản nháp: {chain}"
+      },
       "title": "Templates",
       "intro": "Document templates and email templates. A workflow decides when a document is generated or an email is sent.",
       "documents": "Document templates",
@@ -40952,6 +40965,17 @@
     }
   },
   "resignationJourney": {
+    "conversationClosedDetail": "Hồ sơ này không còn cần quyết định về đơn nghỉ việc.",
+    "outcomePendingDetail": "Chưa ghi nhận kết quả cuối cùng.",
+    "acceptedLetterDetail": "Đơn nghỉ việc của bạn đã được chấp thuận. Thư chấp thuận vẫn đang được xử lý.",
+    "awaitLetterNextSteps": "Thư phải hoàn tất các bước xem xét và ký trước đó thì bạn mới có thể phản hồi.",
+    "offerNextSteps": "Mở thư trước khi ký, từ chối hoặc gửi trả để chỉnh sửa.",
+    "acceptanceNextSteps": "Thực hiện các việc về thư và bàn giao được hiển thị cho hồ sơ này.",
+    "retainedNextSteps": "Nhân sự sẽ hoàn tất các cập nhật cần thiết cho hồ sơ việc làm của bạn.",
+    "withdrawnNextSteps": "Đơn nghỉ việc này không còn bước bàn giao nào tiếp theo.",
+    "clearanceNextSteps": "Hoàn tất các bước bàn giao và thủ tục nghỉ việc do Nhân sự cung cấp.",
+    "workingDaysLeft": "Còn {count} ngày làm việc",
+    "replyOverdue": "Phản hồi quá hạn {count} ngày làm việc",
     "title": "Nghỉ việc",
     "description": "Gửi đơn nghỉ việc để xem xét. Việc gửi đơn không chấm dứt quan hệ lao động của bạn.",
     "lastWorkingDay": "Ngày làm việc cuối cùng",

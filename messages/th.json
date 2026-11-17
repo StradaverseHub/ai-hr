@@ -40594,6 +40594,19 @@
       "nothingSent": "Nothing is sent and nothing is saved."
     },
     "templates": {
+      "listSummary": {
+        "usedIn": "ใช้ใน “{workflow}” · ขั้นตอน {step}",
+        "notUsed": "ไม่ได้ใช้ในเวิร์กโฟลว์ที่แสดง",
+        "legacy": "เวิร์กโฟลว์กรณีเดิม",
+        "shared": "เวิร์กโฟลว์ที่ใช้ร่วมกัน",
+        "state": "({state})",
+        "parallel": "{steps} (พร้อมกัน)",
+        "legacyNoSigning": "ไม่ต้องลงนาม",
+        "legacyBefore": "ฝ่ายบุคคลลงนามก่อนพนักงาน",
+        "legacyAfter": "ฝ่ายบุคคลลงนามรับรองหลังพนักงาน",
+        "employeeAck": "การรับทราบของพนักงาน",
+        "draftRoute": "เส้นทางฉบับร่าง: {chain}"
+      },
       "title": "Templates",
       "intro": "Document templates and email templates. A workflow decides when a document is generated or an email is sent.",
       "documents": "Document templates",
@@ -40952,6 +40965,17 @@
     }
   },
   "resignationJourney": {
+    "conversationClosedDetail": "กรณีนี้ไม่ต้องรอการตัดสินใจเรื่องลาออกอีกต่อไป",
+    "outcomePendingDetail": "ยังไม่มีการบันทึกผลลัพธ์สุดท้าย",
+    "acceptedLetterDetail": "คำขอลาออกของคุณได้รับการยอมรับแล้ว หนังสือตอบรับยังอยู่ระหว่างดำเนินการ",
+    "awaitLetterNextSteps": "หนังสือต้องผ่านขั้นตอนตรวจสอบและลงนามก่อนหน้าให้เสร็จก่อนที่คุณจะตอบกลับได้",
+    "offerNextSteps": "เปิดหนังสือก่อนลงนาม ปฏิเสธ หรือส่งกลับเพื่อแก้ไข",
+    "acceptanceNextSteps": "ดำเนินการเรื่องหนังสือและการส่งมอบงานตามที่แสดงในกรณีนี้",
+    "retainedNextSteps": "ฝ่ายบุคคลจะปรับปรุงข้อมูลการจ้างงานที่จำเป็นให้เสร็จ",
+    "withdrawnNextSteps": "การลาออกนี้ไม่มีขั้นตอนส่งมอบงานเพิ่มเติม",
+    "clearanceNextSteps": "ดำเนินการส่งมอบงานและขั้นตอนพ้นสภาพตามที่ฝ่ายบุคคลกำหนด",
+    "workingDaysLeft": "เหลือ {count} วันทำงาน",
+    "replyOverdue": "ตอบกลับเกินกำหนด {count} วันทำงาน",
     "title": "การลาออก",
     "description": "ส่งคำขอลาออกเพื่อพิจารณา การส่งคำขอไม่ได้ทำให้การจ้างงานของคุณสิ้นสุดลง",
     "lastWorkingDay": "วันทำงานวันสุดท้าย",

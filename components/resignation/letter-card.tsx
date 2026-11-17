@@ -3,7 +3,7 @@ import {useEffect,useState} from 'react';
 import {useTranslations} from 'next-intl';
 import {Badge,Button,inputCls} from '@/components/ui';
 import type {ResignationCaseView,ResignationJourneyCommand,ResignationLetterView} from '@/lib/resignation-journey';
-import {LetterPreview,LetterRouting,day} from './common';
+import {LetterPreview,LetterRouting,OfferReplyDeadline,day} from './common';
 import {ResignationBlockEditor} from './block-editor';
 export function ResignationLetterCard({value,letter,busy,command}:{value:ResignationCaseView;letter:ResignationLetterView;busy:boolean;command:(command:ResignationJourneyCommand)=>Promise<boolean>}){
  const t=useTranslations('resignationJourney'),[shown,setShown]=useState(false),[signature,setSignature]=useState(''),[consent,setConsent]=useState(false),[reason,setReason]=useState(''),[why,setWhy]=useState(''),[localError,setLocalError]=useState(''),[blocks,setBlocks]=useState(letter.editableBlocks??[]),[lastDay,setLastDay]=useState(value.lastWorkingDay),[caseReason,setCaseReason]=useState(value.reason),[correcting,setCorrecting]=useState(false),[editing,setEditing]=useState(false);
@@ -28,6 +28,6 @@ export function ResignationLetterCard({value,letter,busy,command}:{value:Resigna
  {caps.sendBack&&<div className="space-y-2"><label className="block space-y-1 text-sm"><span>{t('sendBackReason')}</span><textarea className={inputCls} rows={3} disabled={busy||!opened} value={reason} maxLength={2000} onChange={e=>setReason(e.target.value)}/></label><p className="text-xs text-muted-foreground">{t('sendBackInfo')}</p><Button variant="outline" disabled={busy||!opened} onClick={sendBack}>{t('sendBack')}</Button>{localError&&<p role="alert" className="text-sm text-destructive">{localError}</p>}</div>}
  {caps.resend&&<Button disabled={busy||editing||correcting} onClick={()=>command({type:'resendLetter',...doc})}>{t('resend')}</Button>}
  {caps.withdrawOffer&&<div className="space-y-2"><label className="block space-y-1 text-sm"><span>{t('withdrawOfferReason')}</span><textarea className={inputCls} rows={2} maxLength={2000} disabled={busy} value={why} onChange={e=>setWhy(e.target.value)}/></label><Button variant="destructive" disabled={busy||!why.trim()} onClick={()=>command({type:'withdrawOffer',...doc,reason:why.trim()})}>{t('withdrawOffer')}</Button></div>}
- {retention&&<p className="text-sm text-muted-foreground">{value.offerReplyBy?t('replyBy',{date:day(value.offerReplyBy)}):t('openEnded')}</p>}
+ {retention&&<OfferReplyDeadline value={value}/>}
  </section>;
 }

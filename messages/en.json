@@ -40594,6 +40594,19 @@
       "nothingSent": "Nothing is sent and nothing is saved."
     },
     "templates": {
+      "listSummary": {
+        "usedIn": "Used in “{workflow}” · step {step}",
+        "notUsed": "Not used in the visible workflows",
+        "legacy": "Legacy case workflow",
+        "shared": "Shared workflow",
+        "state": "({state})",
+        "parallel": "{steps} (parallel)",
+        "legacyNoSigning": "No signature required",
+        "legacyBefore": "HR signs before the employee",
+        "legacyAfter": "HR countersigns after the employee",
+        "employeeAck": "Employee acknowledgement",
+        "draftRoute": "Draft routing: {chain}"
+      },
       "title": "Templates",
       "intro": "Document templates and email templates. A workflow decides when a document is generated or an email is sent.",
       "documents": "Document templates",
@@ -40952,6 +40965,17 @@
     }
   },
   "resignationJourney": {
+    "conversationClosedDetail": "This case no longer needs a resignation decision.",
+    "outcomePendingDetail": "No final outcome has been recorded yet.",
+    "acceptedLetterDetail": "Your resignation was accepted. The acceptance letter is still being processed.",
+    "awaitLetterNextSteps": "The letter must finish its earlier review and signing steps before you can respond.",
+    "offerNextSteps": "Open the letter before signing, declining or sending it back.",
+    "acceptanceNextSteps": "Follow the letter and clearance actions shown for this case.",
+    "retainedNextSteps": "HR will complete any required updates to your employment record.",
+    "withdrawnNextSteps": "This resignation has no further leaving steps.",
+    "clearanceNextSteps": "Complete the handover and clearance steps provided by HR.",
+    "workingDaysLeft": "{count, plural, one {# working day left} other {# working days left}}",
+    "replyOverdue": "{count, plural, one {Reply overdue by # working day} other {Reply overdue by # working days}}",
     "title": "Resignation",
     "description": "Submit your resignation for review. Submitting does not end your employment.",
     "lastWorkingDay": "Last working day",

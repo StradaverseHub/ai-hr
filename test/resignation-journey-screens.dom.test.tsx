@@ -24,6 +24,32 @@ afterEach(()=>{cleanup();vi.clearAllMocks();});
 beforeAll(()=>{HTMLDialogElement.prototype.showModal=function(){this.setAttribute('open','');};HTMLDialogElement.prototype.close=function(){this.removeAttribute('open');};});
 
 describe('employee resignation journey',()=>{
+ it.each([
+  ['decision','No final outcome has been recorded yet.','Next steps will appear after a decision is recorded.'],
+  ['retention','No final outcome has been recorded yet.','The letter must finish its earlier review and signing steps before you can respond.'],
+  ['offer','An offer is waiting for your response.','Open the letter before signing, declining or sending it back.'],
+  ['accepted','Your resignation was accepted. The acceptance letter is still being processed.','Follow the letter and clearance actions shown for this case.'],
+  ['retained','You accepted the retention offer. Your resignation is withdrawn.','HR will complete any required updates to your employment record.'],
+  ['withdrawn','You withdrew this resignation. The case is closed.','This resignation has no further leaving steps.'],
+  ['leaving','Your resignation is accepted. Your exit checklist follows.','Complete the handover and clearance steps provided by HR.'],
+ ] as const)('shows truthful outcome and next steps for the %s stage',(stage,outcome,next)=>{
+  wrap(<EmployeeResignation employmentId="employment-a" initial={{today:'2026-11-16',earliestLastDay:'2026-12-16',noticeLabel:'1 month',unavailableReason:null,canSubmit:false,cases:[c({stage})]}}/>);
+  const tracker=screen.getByRole('list',{name:messages.resignationJourney.title}),steps=within(tracker).getAllByRole('listitem');
+  expect(steps[2]).toHaveTextContent(outcome);expect(steps[3]).toHaveTextContent(next);
+  if(!['accepted','leaving'].includes(stage))expect(tracker).not.toHaveTextContent('Your resignation is accepted.');
+  if(stage==='accepted')expect(steps[2]).toHaveAttribute('aria-current','step');
+ });
+ it.each([[3,false,'3 working days left'],[0,true,'0 working days left'],[-1,true,'Reply overdue by 1 working day']] as const)('shows the server company-calendar reply count %i and reminder warning',(remaining,warning,copy)=>{
+  const offer={position:'Senior Analyst',jobGrade:'G4',basicSalary:'7600.00',effectiveDate:'2027-01-01',justification:'Revised terms'};
+  const rendered=wrap(<EmployeeResignation employmentId="employment-a" initial={{today:'2026-11-16',earliestLastDay:'2026-12-16',noticeLabel:'1 month',unavailableReason:null,canSubmit:false,cases:[c({stage:'offer',offer,offerReplyBy:'2026-11-20',offerWorkingDaysRemaining:remaining,offerReplyWarning:warning})]}}/>);
+  const deadline=rendered.container.querySelector('[data-offer-reply]');expect(deadline).toHaveTextContent('Reply by 20/11/2026');expect(deadline).toHaveTextContent(copy);expect(deadline?.classList.contains('bg-amber-100')).toBe(warning);
+ });
+ it('renders the same employee terms and reply timing on the authorized direct case, without exposing a private offer',()=>{
+  const offer={position:'Senior Analyst',jobGrade:'G4',basicSalary:'7600.00',effectiveDate:'2027-01-01',justification:'Revised terms'},value=c({stage:'offer',offer,viewerIsEmployee:true,offerReplyBy:'2026-11-20',offerWorkingDaysRemaining:2,offerReplyWarning:true,capabilities:{withdraw:false,accept:false,offer:false,comment:false,retry:false}});
+  const rendered=wrap(<ResignationCaseCard initial={value} today="2026-11-16"/>);expect(screen.getByText('Senior Analyst')).toBeInTheDocument();expect(screen.getByText('MYR 7,600.00')).toBeInTheDocument();expect(rendered.container.querySelector('[data-offer-reply]')).toHaveTextContent('2 working days left');
+  cleanup();wrap(<ResignationCaseCard initial={{...value,stage:'retention'}} today="2026-11-16"/>);expect(screen.queryByText('MYR 7,600.00')).not.toBeInTheDocument();expect(screen.queryByText('Senior Analyst')).not.toBeInTheDocument();
+ });
+
  it('uses the policy date, preserves input on refusal, and does not expose another submission while active',async()=>{
   actions.submitOwnResignation.mockResolvedValue({ok:false,error:'Try again later'});
   wrap(<EmployeeResignation employmentId="employment-a" initial={{today:'2026-11-16',earliestLastDay:'2026-12-16',noticeLabel:'1 month',unavailableReason:null,canSubmit:true,cases:[]}}/>);
@@ -56,6 +82,11 @@ describe('employee resignation journey',()=>{
 });
 
 describe('manager decision and BP information',()=>{
+ it('hides retention only for an explicit accept-only workflow while preserving a cooldown explanation',()=>{
+  const base=c({decisionChoices:'accept',offerBlock:'This workflow step allows accept only.',capabilities:{...c().capabilities,offer:false}});wrap(<ResignationCaseCard initial={base} today="2026-11-16"/>);expect(screen.getByRole('radio',{name:'Accept resignation'})).toBeInTheDocument();expect(screen.queryByRole('radio',{name:messages.resignationJourney.retain})).not.toBeInTheDocument();
+  cleanup();wrap(<ResignationCaseCard initial={{...base,decisionChoices:'both',offerBlock:'Another offer can be made from 16 November 2027.'}} today="2026-11-16"/>);expect(screen.getByRole('radio',{name:messages.resignationJourney.retain})).toBeDisabled();expect(screen.getByText('Another offer can be made from 16 November 2027.')).toBeInTheDocument();
+ });
+
  it('submits the edited agreed date and replacement choice under the original case revision',async()=>{
   actions.runResignationCommand.mockResolvedValue({ok:true,value:c({stage:'accepted',capabilities:{withdraw:false,accept:false,offer:false,comment:false,retry:false}})});
   wrap(<ResignationCaseCard initial={c()} today="2026-11-16"/>);
@@ -199,4 +230,11 @@ describe('shared acceptance letters in existing Offboarding Documents',()=>{
  it('renders no linked section for a legacy case with no managed source',async()=>{
   actions.loadResignationOffboarding.mockResolvedValue({ok:true,value:null});const view=wrap(<ResignationOffboardingDocuments offboardingCaseId="legacy-offboarding"/>);await waitFor(()=>expect(view.container).toBeEmptyDOMElement());
  });
+});
+
+
+it('shows only the server-authorized current holder when a letter is private',()=>{
+ const letter=l({private:true,waitingOn:[{id:'safe-holder',name:'Fictional current reviewer'}],routing:[{id:'future-secret',order:3,action:'Sign',people:[{id:'secret-person',name:'Future private signer'}],owner:false,status:'waiting',signedBy:null,signedAt:null}],blocks:[{id:'secret',type:'text',text:'Private offer salary 99999',section:''}],capabilities:{...l().capabilities,open:false,sign:false,sendBack:false}});
+ wrap(<ResignationLetterCard value={c({stage:'retention'})} letter={letter} busy={false} command={vi.fn(async()=>true)}/>);
+ expect(screen.getByText('Waiting for Fictional current reviewer')).toBeInTheDocument();expect(screen.queryByText('Future private signer')).not.toBeInTheDocument();expect(screen.queryByText('Private offer salary 99999')).not.toBeInTheDocument();expect(screen.queryByRole('list')).not.toBeInTheDocument();expect(screen.queryByRole('button',{name:'Open letter'})).not.toBeInTheDocument();
 });

@@ -40594,6 +40594,19 @@
       "nothingSent": "Nothing is sent and nothing is saved."
     },
     "templates": {
+      "listSummary": {
+        "usedIn": "用于“{workflow}” · 步骤 {step}",
+        "notUsed": "未用于可见的工作流程",
+        "legacy": "旧版个案工作流程",
+        "shared": "共享工作流程",
+        "state": "（{state}）",
+        "parallel": "{steps}（并行）",
+        "legacyNoSigning": "无需签名",
+        "legacyBefore": "人力资源部先于员工签署",
+        "legacyAfter": "员工签署后由人力资源部加签",
+        "employeeAck": "员工确认",
+        "draftRoute": "草稿流转：{chain}"
+      },
       "title": "Templates",
       "intro": "Document templates and email templates. A workflow decides when a document is generated or an email is sent.",
       "documents": "Document templates",
@@ -40952,6 +40965,17 @@
     }
   },
   "resignationJourney": {
+    "conversationClosedDetail": "此个案不再需要离职决定。",
+    "outcomePendingDetail": "尚未记录最终结果。",
+    "acceptedLetterDetail": "您的离职申请已获接受，接受函仍在处理中。",
+    "awaitLetterNextSteps": "信函须先完成前面的审核和签署步骤，您才能回应。",
+    "offerNextSteps": "请先打开信函，再签署、拒绝或退回修改。",
+    "acceptanceNextSteps": "请按照此个案显示的信函和离职交接事项办理。",
+    "retainedNextSteps": "人力资源部将完成雇佣记录所需的更新。",
+    "withdrawnNextSteps": "此离职申请没有后续离职交接步骤。",
+    "clearanceNextSteps": "请完成人力资源部安排的工作交接和离职手续。",
+    "workingDaysLeft": "剩余 {count} 个工作日",
+    "replyOverdue": "回复已逾期 {count} 个工作日",
     "title": "辞职",
     "description": "提交辞职申请以供审核。提交申请不会终止您的雇佣关系。",
     "lastWorkingDay": "最后工作日",

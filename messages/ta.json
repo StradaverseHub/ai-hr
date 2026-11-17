@@ -40594,6 +40594,19 @@
       "nothingSent": "Nothing is sent and nothing is saved."
     },
     "templates": {
+      "listSummary": {
+        "usedIn": "“{workflow}” இல் பயன்படுத்தப்படுகிறது · படி {step}",
+        "notUsed": "காணப்படும் பணிச்சுற்றுகளில் பயன்படுத்தப்படவில்லை",
+        "legacy": "முந்தைய வழக்குப் பணிச்சுற்று",
+        "shared": "பகிரப்பட்ட பணிச்சுற்று",
+        "state": "({state})",
+        "parallel": "{steps} (இணையாக)",
+        "legacyNoSigning": "கையொப்பம் தேவையில்லை",
+        "legacyBefore": "பணியாளருக்கு முன் மனிதவளப் பிரிவு கையொப்பமிடும்",
+        "legacyAfter": "பணியாளருக்குப் பின் மனிதவளப் பிரிவு உறுதிக் கையொப்பமிடும்",
+        "employeeAck": "பணியாளர் ஒப்புதல்",
+        "draftRoute": "வரைவு வழிமுறை: {chain}"
+      },
       "title": "Templates",
       "intro": "Document templates and email templates. A workflow decides when a document is generated or an email is sent.",
       "documents": "Document templates",
@@ -40952,6 +40965,17 @@
     }
   },
   "resignationJourney": {
+    "conversationClosedDetail": "இந்த வழக்கிற்கு இனி விலகல் முடிவு தேவையில்லை.",
+    "outcomePendingDetail": "இறுதி முடிவு இன்னும் பதிவு செய்யப்படவில்லை.",
+    "acceptedLetterDetail": "உங்கள் விலகல் ஏற்கப்பட்டது. ஏற்புக் கடிதம் இன்னும் செயலாக்கத்தில் உள்ளது.",
+    "awaitLetterNextSteps": "நீங்கள் பதிலளிக்கும் முன் கடிதத்தின் முந்தைய பரிசீலனை மற்றும் கையொப்பப் படிகள் நிறைவடைய வேண்டும்.",
+    "offerNextSteps": "கையொப்பமிடும் முன், நிராகரிக்கும் முன் அல்லது திருத்தத்திற்காகத் திருப்பி அனுப்பும் முன் கடிதத்தைத் திறக்கவும்.",
+    "acceptanceNextSteps": "இந்த வழக்கில் காட்டப்பட்டுள்ள கடிதம் மற்றும் ஒப்படைப்பு நடவடிக்கைகளைப் பின்பற்றவும்.",
+    "retainedNextSteps": "உங்கள் பணிப் பதிவில் தேவையான மாற்றங்களை மனிதவளப் பிரிவு நிறைவு செய்யும்.",
+    "withdrawnNextSteps": "இந்த விலகலுக்கு இனி வெளியேறும் நடவடிக்கைகள் எதுவும் இல்லை.",
+    "clearanceNextSteps": "மனிதவளப் பிரிவு வழங்கிய பணி ஒப்படைப்பு மற்றும் வெளியேறும் நடவடிக்கைகளை நிறைவு செய்யவும்.",
+    "workingDaysLeft": "{count} வேலை நாட்கள் மீதமுள்ளன",
+    "replyOverdue": "பதிலளிக்க வேண்டிய காலம் முடிந்து {count} வேலை நாட்கள் ஆகிவிட்டன",
     "title": "பணி விலகல்",
     "description": "உங்கள் பணி விலகலைப் பரிசீலனைக்குச் சமர்ப்பிக்கவும். சமர்ப்பிப்பதால் உங்கள் வேலைவாய்ப்பு முடிவடையாது.",
     "lastWorkingDay": "கடைசி வேலை நாள்",
