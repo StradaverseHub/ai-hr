@@ -36,6 +36,8 @@ export function ReviewDeskProvider({ unitId, revision: initialRevision, summary:
   const [totals, setTotals] = useState(initialTotals);
   const [flags, setFlags] = useState(initialFlags);
   const [rows, setRows] = useState<Record<string, DeskRow>>(() => Object.fromEntries(initialRows.map(row => [row.id, row])));
+  // URL navigation can open a person beyond this table page without remounting the provider.
+  const availableRows = useMemo(() => ({ ...Object.fromEntries(initialRows.map(row => [row.id, row])), ...rows }), [initialRows, rows]);
   const [saveState, setSaveState] = useState<SaveState>('idle');
   const [stale, setStale] = useState(false);
   const [error, setError] = useState('');
@@ -67,7 +69,7 @@ export function ReviewDeskProvider({ unitId, revision: initialRevision, summary:
     return run;
   }, [unitId, filters]);
   const retry = useCallback(() => { const last = failed.current; if (last) void save(last.entryId, last.field, last.value); }, [save]);
-  const value = useMemo(() => ({ unitId, revision, summary, totals, flags, rows, saveState, stale, error, flagsOpen, setFlagsOpen, save, retry }),
-    [unitId, revision, summary, totals, flags, rows, saveState, stale, error, flagsOpen, save, retry]);
+  const value = useMemo(() => ({ unitId, revision, summary, totals, flags, rows: availableRows, saveState, stale, error, flagsOpen, setFlagsOpen, save, retry }),
+    [unitId, revision, summary, totals, flags, availableRows, saveState, stale, error, flagsOpen, save, retry]);
   return <DeskContext.Provider value={value}>{children}</DeskContext.Provider>;
 }

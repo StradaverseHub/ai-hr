@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { calculateRewards } from '../packs/rewards/engine';
+import { applyRewardCell, parseRewardCellValue } from '../packs/rewards/review-cell';
 import { baselineRewardLimits } from '../packs/rewards/limit-controls-model';
 import { defaultPolicy, emptyFacts, emptyRecommendation, recommendationSchema, type RewardEntry } from '../packs/rewards/model';
 
@@ -37,6 +38,11 @@ describe('Rewards panel engine owner', () => {
     if (award === 'bonus') { expect(row.bonusCents).toBe(0); expect(row.paidBonusMonthsBp).toBe(0); expect(row.newBasicCents).toBe(before.newBasicCents); }
     if (award === 'lump') { expect(before.lumpCents).toBe(10000); expect(row.lumpCents).toBe(0); expect(row.newBasicCents).toBe(before.newBasicCents); }
     expect(result.flags).toContainEqual(expect.objectContaining({ entryId: person.id, severity: 'exception', message: 'Withheld: Approved fictional reason' }));
+  });
+  it('patches the locked recommendation without erasing unrelated overrides and clears the promotion percentage with its grade', () => {
+    const stored = entry({ recommendation: { ...emptyRecommendation(), meritBp: 400, promotionGrade: '15', promotionBp: 800, note: 'A fictional saved note' } });
+    expect(applyRewardCell(stored,'promotionGrade',parseRewardCellValue('promotionGrade','')).recommendation).toMatchObject({ meritBp:400,promotionGrade:null,promotionBp:null,note:'A fictional saved note' });
+    expect(applyRewardCell(stored,'specialBp',parseRewardCellValue('specialBp','2.5')).recommendation).toMatchObject({ meritBp:400,specialBp:250,promotionGrade:'15',promotionBp:800,note:'A fictional saved note' });
   });
   it('requires a real reason and parses older recommendations unchanged', () => {
     expect(recommendationSchema.parse(emptyRecommendation())).toEqual(emptyRecommendation());

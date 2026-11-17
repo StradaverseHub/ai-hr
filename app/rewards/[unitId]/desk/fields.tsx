@@ -17,7 +17,7 @@ export function EditCell({ row, field, label, placeholder, step, suggested = fal
   const [draft, setDraft] = useState(stored);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
-  useEffect(() => { setDraft(stored); }, [stored]);
+  useEffect(() => { setDraft(stored); setError(''); }, [stored, row.id]);
   const commit = async (value: string) => {
     if (value === stored || busy) return;
     setBusy(true); setError('');
@@ -64,4 +64,3 @@ export function PromotionCell({ row, suggested = false }: { row: DeskRow; sugges
     {error && <span role="alert" className="max-w-40 whitespace-normal text-[11px] text-destructive">{error}</span>}
   </span>;
 }
-

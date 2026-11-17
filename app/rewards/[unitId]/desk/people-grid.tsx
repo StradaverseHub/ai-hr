@@ -62,7 +62,7 @@ export function PeopleGrid({ order, personHrefs, openId, emptyText, fullView }: 
         {OPTIONAL_COLUMNS.map(column => <label key={column} className="flex items-center gap-2 text-sm"><input type="checkbox" checked={show(column)} onChange={() => toggle(column)} />{g(`column.${column}`)}</label>)}
       </fieldset>}
     </div>
-    {list[0]?.viewOnlyStage && <p className="text-sm text-muted-foreground">{p('viewOnly', { role: t(`stages.${list[0].viewOnlyStage}`) })}</p>}
+    {list[0]?.viewOnlyStage && <p className="text-sm text-muted-foreground">{p('viewOnly', { role: t(`${['bu','bg','gr','ctro','ec','payroll'].includes(list[0].viewOnlyStage) ? 'roles' : 'stages'}.${list[0].viewOnlyStage}`) })}</p>}
     <div data-people-grid className="max-h-[70vh] overflow-auto rounded-lg border border-border bg-card">
       <table className="w-full border-separate border-spacing-0 text-[13px]">
         <caption className="sr-only">{t('people')}</caption>

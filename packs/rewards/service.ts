@@ -1,3 +1,4 @@
+import { applyRewardCell, parseRewardCellValue, type RewardCellField } from './review-cell';
 import { recordRewardPersonHistoryTx } from './person-history';
 import { formatMoney } from '../../lib/money';
 import { emptyRewardPreparation, REWARD_PREPARATION_STEPS, rewardPreparationStatus } from './preparation-model';
@@ -920,11 +921,30 @@ export async function setRewardMember(ctx: SessionContext, unitId: string, revis
 }
 
 const confidentialityFloorMessage = 'This person is marked confidential from their reporting line in People. Group Rewards can make the marking stricter, never lower.';
-export async function saveRewardEntry(ctx: SessionContext, unitId: string, revision: number, entryId: string, recommendation: unknown, facts?: unknown, returnProjection = false) {
+export async function saveRewardEntry(ctx: SessionContext, unitId: string, revision: number, entryId: string, recommendation: unknown, facts?: unknown, returnProjection = false, cellPatch?: { field: RewardCellField; value: string }) {
   idSchema.parse(entryId); let rec = recommendationSchema.parse(recommendation);
-  const validatedFacts = facts === undefined ? undefined : factsSchema.parse(facts);
+  let validatedFacts = facts === undefined ? undefined : factsSchema.parse(facts);
   return withRewardsTenant(ctx, async tx => {
     const { unit, roles, entries } = await load(tx, unitId, true); assertRevision(unit, revision);
+    const entry = entries.find(e => e.id === entryId);
+    if (!entry || !visibleEntry(entry, roles, ctx.personId)) throw new RewardError('This reward record is not available to you.');
+    if (cellPatch) {
+      if (unit.kind !== 'annual' || isSeniorPlanMember(unit.policy, entry.facts, entry.source.grade) || entry.source.leftOn || entry.restrictedReadOnly) throw new RewardError('This value cannot be changed here at this step.');
+      const parsed = parseRewardCellValue(cellPatch.field, cellPatch.value);
+      const calculated = await calculateUnit(tx, unit, entries);
+      const row = calculated.rows.find(item => item.id === entryId)!;
+      const caseField = ['erDecision','pipDecision','caseReason'].includes(cellPatch.field);
+      const award = typeof parsed === 'object' && parsed !== null ? parsed.award : cellPatch.field === 'multiplierBp' ? 'bonus' : cellPatch.field === 'lumpCents' ? 'lump' : 'increase';
+      if (caseField) {
+        if (unit.status !== 'draft' || !roles.some(role => role === 'bu' || role === 'gr') || (cellPatch.field === 'erDecision' ? !entry.facts.erCase : cellPatch.field === 'pipDecision' ? !entry.facts.pipCase : !entry.facts.erCase && !entry.facts.pipCase)) throw new RewardError('This value cannot be changed here at this step.');
+      } else if (!['note','reason'].includes(cellPatch.field)) {
+        if (row.plan === 'ec' || (award === 'increase' && !!row.payChange && payWindowReasons.includes(row.incrementReason)) || (award === 'bonus' && !row.bonusEligible) || (award === 'lump' && !row.lumpEligible)) throw new RewardError('This value cannot be changed here at this step.');
+        if (cellPatch.field === 'promotionGrade' && parsed && !row.allowedPromotionGrades.includes(String(parsed))) throw new RewardError('Choose an allowed promotion grade.');
+      }
+      const patched = applyRewardCell(entry, cellPatch.field, parsed);
+      rec = recommendationSchema.parse(patched.recommendation);
+      validatedFacts = patched.facts === undefined ? undefined : factsSchema.parse(patched.facts);
+    }
     const [scope] = await tx.execute<{ wholeGroup: boolean; stageAllowed: boolean }>(sql`
       select exists(select 1 from app.reward_current_group_roles()) as "wholeGroup",
         app.reward_group_figures_stage_allowed(${unitId}::uuid) as "stageAllowed"
@@ -940,9 +960,7 @@ export async function saveRewardEntry(ctx: SessionContext, unitId: string, revis
       throw new RewardError('The inputs changed after submission. Return this review to draft.');
     }
     await assertRewardCapabilityTx(tx,unitId,'figures.edit');
-    const entry = entries.find(e => e.id === entryId);
     if((await tx.execute<{uploaded:boolean}>(sql`select exists(select 1 from reward_uploaded_review where unit_id=${unitId}::uuid) as uploaded`))[0]?.uploaded)throw new RewardError('Use the Uploaded awards adjustment form to change this amount with a reason.');
-    if (!entry || !visibleEntry(entry, roles, ctx.personId)) throw new RewardError('This reward record is not available to you.');
     // 37f82412: forms that do not carry the person-panel note keep the one already saved.
     if (rec.note === undefined && entry.recommendation.note !== undefined) rec = { ...rec, note: entry.recommendation.note };
     if (rec.withhold === undefined && entry.recommendation.withhold !== undefined) rec = { ...rec, withhold: entry.recommendation.withhold };
@@ -980,6 +998,11 @@ export async function saveRewardEntry(ctx: SessionContext, unitId: string, revis
     await stamp(tx, ctx, unitId, 'recommendation-updated', { entryId, revision: unit.revision + 1, stage: unit.status, changes, reason: Object.values(rec.withhold ?? {}).join('; ') || rec.reason || validatedFacts?.caseReason || null });
     if (returnProjection) return reviewProjectionTx(tx, ctx, unitId);
   });
+}
+
+/** Native cell writer derives the patch from the locked stored entry and returns its committed projection. */
+export async function saveRewardEntryCell(ctx: SessionContext, unitId: string, revision: number, entryId: string, field: RewardCellField, value: string) {
+  return saveRewardEntry(ctx, unitId, revision, entryId, emptyRecommendation(), undefined, true, { field, value });
 }
 
 export async function importRewardFacts(ctx: SessionContext, unitId: string, revision: number, rows: { employmentId: string; facts: RewardFacts }[]) {

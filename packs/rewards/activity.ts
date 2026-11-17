@@ -17,7 +17,7 @@ export async function rewardReviewActivity(ctx: SessionContext, unitIds: readonl
       a.subject_id as "subjectId", a.subject_name as "subjectName",
       case when a.event_type='reward-unit.recommendation-updated' and c.id is null then null else a.reason end as reason,
       coalesce(c.changes,'[]'::jsonb) as changes
-    from app.reward_review_activity(${units}, ${actorId ?? null}::uuid, ${subjectId ?? null}::uuid) a
+    from app.reward_review_activity(${units}, ${actorId ?? null}::uuid, ${subjectId ?? null}::uuid) with ordinality a
     left join app.reward_review_activity_changes(${units}, ${actorId ?? null}::uuid, ${subjectId ?? null}::uuid) c on c.id=a.id
-    order by a.occurred_at desc,a.id desc`));
+    order by a.ordinality`));
 }

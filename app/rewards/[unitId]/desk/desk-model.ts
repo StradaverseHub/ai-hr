@@ -98,7 +98,7 @@ export function deskRow(v: RewardView, r: ViewRow, flags: readonly RewardFlag[])
     erCase: !!r.facts.erCase, pipCase: !!r.facts.pipCase, erDecision: r.facts.erDecision, pipDecision: r.facts.pipDecision, caseReason: hidden ? '' : r.facts.caseReason,
     notesEditable: permitted && v.capabilities?.notesAdd !== false,
     casesEditable: permitted && v.unit.status === 'draft' && v.roles.some(role => role === 'bu' || role === 'gr') && v.capabilities?.casesDecide !== false,
-    viewOnlyStage: deskCellsEditable(v) ? null : v.unit.status === 'draft' ? v.route[0] : v.unit.status,
+    viewOnlyStage: deskCellsEditable(v) ? null : v.unit.status === 'draft' ? v.route[0] : v.unit.status === 'approved' ? 'payroll' : v.unit.status,
     flag: own.some(flag => flag.severity === 'block') ? 'block' : own.length ? 'warn' : null, flagCount: own.length,
     unverified: !r.facts.reviewed, leftOn: r.source.leftOn ?? null,
   };

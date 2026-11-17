@@ -7,7 +7,7 @@ import { withTenant, type SessionContext } from '../db/client';
 import * as schema from '../db/schema';
 import { hireEmployee } from '../core/org';
 import { setCompensation } from '../core/comp';
-import { getRewardUnit, saveRewardEntry, decideRewardUnit } from '../packs/rewards/service';
+import { getRewardUnit, saveRewardEntry, saveRewardEntryCell, decideRewardUnit } from '../packs/rewards/service';
 import { emptyFacts, type RewardRole } from '../packs/rewards/model';
 import { closeAll, createAppUser, entitledCtx, owner, resetDb, seedBase, setModule, type Base } from './harness';
 import { todayInKualaLumpur } from '../lib/hr-date';
@@ -115,6 +115,22 @@ describe('Rewards review desk (37f82412)', () => {
     expect(gr.rows[0].crBeforeBp).toBe(10000);
     expect(gr.rows[0].totalIncreaseBp).toBe(gr.rows[0].meritBp + gr.rows[0].promotionBp + gr.rows[0].specialBp);
     expect((await view(actors.pbp!)).fullView).toBe(false);
+  });
+
+  it('applies a cell to the locked current recommendation, keeps unrelated fields and enforces native eligibility', async () => {
+    const before = await view(), entry = before.rows[0];
+    const after = await saveRewardEntryCell(actors.bu!, unitId, before.unit.revision, entry.id, 'meritBp', '4');
+    expect(after?.rows[0].meritBp).toBe(400);
+    const noted = await saveRewardEntryCell(actors.bu!, unitId, after!.unit.revision, entry.id, 'note', 'Fictional note from the panel.');
+    expect(noted?.rows[0].recommendation.meritBp).toBe(400);
+    expect(noted?.rows[0].recommendation.note).toBe('Fictional note from the panel.');
+    // A bonus-eligible employee cannot receive a lump sum, and no ER/PIP flag means no case decision.
+    await expect(saveRewardEntryCell(actors.bu!, unitId, noted!.unit.revision, entry.id, 'lumpCents', '100')).rejects.toThrow(/cannot be changed/);
+    await expect(saveRewardEntryCell(actors.bu!, unitId, noted!.unit.revision, entry.id, 'erDecision', 'in')).rejects.toThrow(/cannot be changed/);
+    await expect(saveRewardEntryCell(actors.bu!, unitId, noted!.unit.revision, entry.id, 'promotionGrade', '99')).rejects.toThrow(/allowed promotion grade/);
+    await submit();
+    const submitted = await view();
+    await expect(saveRewardEntryCell(actors.bu!, unitId, submitted.unit.revision, entry.id, 'meritBp', '5')).rejects.toThrow(/Return the unit to draft|cannot edit/);
   });
 
   it('returns the same transaction projection with withholding and an allowlisted before/after audit', async () => {

@@ -15,7 +15,7 @@ import { flagText } from './flag-text';
 function TextEdit({ row, field, label, value, max, editable }: { row: DeskRow; field: 'note' | 'reason' | 'caseReason'; label: string; value: string; max: number; editable: boolean }) {
   const { save } = useReviewDesk();
   const [draft, setDraft] = useState(value), [error, setError] = useState(''), [busy, setBusy] = useState(false);
-  useEffect(() => { setDraft(value); }, [value]);
+  useEffect(() => { setDraft(value); setError(''); }, [value, row.id]);
   if (!editable) return value ? <p className="whitespace-pre-wrap">{value}</p> : null;
   return <label className="block space-y-1"><span className="text-sm text-muted-foreground">{label}</span>
     <textarea rows={3} maxLength={max} value={draft} disabled={busy} aria-invalid={!!error || undefined} className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm"
@@ -29,7 +29,7 @@ function Withhold({ row, award, editable }: { row: DeskRow; award: 'increase' | 
   const t = useTranslations('rewards.desk.panel');
   const saved = row.withhold?.[award] ?? '';
   const [enabled, setEnabled] = useState(!!saved), [reason, setReason] = useState(saved), [busy, setBusy] = useState(false), [error, setError] = useState('');
-  useEffect(() => { setEnabled(!!saved); setReason(saved); }, [saved]);
+  useEffect(() => { setEnabled(!!saved); setReason(saved); setError(''); }, [saved, row.id]);
   const commit = async (value: string, removing = false) => {
     if (!removing && value.trim().length < 10) { setError(t('withholdReasonRequired')); return; }
     if (value === saved) return;
@@ -69,7 +69,7 @@ export function PersonPanel({ entryId, year, history }: { entryId: string; year:
   const percentage = (field: 'meritBp' | 'specialBp', label: string) => row.editable.increase ? <EditCell row={row} field={field} label={label} placeholder={String((row[field] ?? 0) / 100)} step="0.01" suggested /> : pct(row[field]);
   const flags = desk.flags.filter(flag => flag.entryId === entryId);
   return <div className="space-y-5 text-sm" data-reward-person-panel={entryId}>
-    <div className="flex flex-wrap items-center justify-between gap-2"><SaveStatus />{row.viewOnlyStage && <p className="text-xs text-muted-foreground">{p('viewOnly', { role: t(`stages.${row.viewOnlyStage}`) })}</p>}</div>
+    <div className="flex flex-wrap items-center justify-between gap-2"><SaveStatus />{row.viewOnlyStage && <p className="text-xs text-muted-foreground">{p('viewOnly', { role: t(`${['bu','bg','gr','ctro','ec','payroll'].includes(row.viewOnlyStage) ? 'roles' : 'stages'}.${row.viewOnlyStage}`) })}</p>}</div>
     <dl className="divide-y divide-border">{line(t('talent'), row.talent ?? '—')}{line(t('performance'), row.performance ?? '—')}</dl>
     <section><h3 className="mb-1 font-semibold">{t('desk.tiles.salary')}</h3><dl className="divide-y divide-border">
       {line(t('currentPay'), money(row.basicCents))}

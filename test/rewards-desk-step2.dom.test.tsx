@@ -7,7 +7,7 @@ import {defaultPolicy} from '../packs/rewards/model';
 // 5d34d00d Step 2 / 37f82412 — the full-width People table, the person panel, paging and in-cell editing.
 const ports=vi.hoisted(()=>({read:vi.fn(),replace:vi.fn(),save:vi.fn(),redirect:vi.fn((href:string)=>{throw new Error(href);})}));
 vi.mock('next/link',()=>({default:({children,scroll:_s,replace:_r,...props}:any)=><a {...props}>{children}</a>}));
-vi.mock('next/navigation',()=>({redirect:ports.redirect,useRouter:()=>({replace:ports.replace,refresh:vi.fn()}),usePathname:()=>'/rewards/unit',useSearchParams:()=>new URLSearchParams('person=b')}));
+vi.mock('next/navigation',()=>({redirect:ports.redirect,notFound:()=>{throw new Error('not-found');},useRouter:()=>({replace:ports.replace,refresh:vi.fn()}),usePathname:()=>'/rewards/unit',useSearchParams:()=>new URLSearchParams('person=b')}));
 vi.mock('next-intl/server',()=>({getLocale:async()=>'en',getTranslations:async(namespace:string)=>createTranslator({locale:'en',messages:en,namespace:namespace as 'rewards'})}));
 vi.mock('../lib/scope',()=>({scopedSession:async()=>({s:{tenantId:'t',userId:'actor'},scopeIds:['company']})}));
 vi.mock('../lib/authz',()=>({requireModule:vi.fn()}));
@@ -19,6 +19,7 @@ vi.mock('../app/rewards/[unitId]/unit-multiplier',()=>({UnitMultiplier:()=> <div
 vi.mock('../app/rewards/[unitId]/pay-window',()=>({PayWindowTag:()=>null,PayWindowExcluded:()=>null}));
 vi.mock('../app/rewards/[unitId]/source-refresh',()=>({SourceRefresh:()=>null}));
 import RewardUnitPage from '../app/rewards/[unitId]/page';
+import RewardPersonPage from '../app/rewards/[unitId]/people/[entryId]/page';
 import {DEFAULT_HIDDEN} from '../app/rewards/[unitId]/desk/people-grid';
 const budget={excludedCount:0,excludedPayrollCents:0,payrollCents:0,pools:[0,0,0],used:[0,0,0],bonusPayrollCents:0,bonusPoolCents:0,bonusUsedCents:0,standardBonusCents:0,increasesCents:0,reductionsCents:0,lumpCents:0,lumpCount:0,balanceCents:0};
 const recommendation={meritBp:null,promotionGrade:null,promotionBp:null,specialBp:null,multiplierBp:null,bonusCents:null,lumpCents:null,reason:'',currentRoleSummary:'',proposedRoleSummary:''};
@@ -144,6 +145,25 @@ describe('Review tab People table (37f82412)',()=>{
   expect(ports.save).toHaveBeenCalledWith('unit',4,'b','note','Updated fictional note',{});
   expect((note as HTMLTextAreaElement).value).toBe('Updated fictional note');
   expect(panel.getByRole('alert').textContent).toContain('Fictional save refused');
+ });
+
+ it.each(['bu','bg','proxy_bg'])('refuses annual full-person routes for %s reviewers',async role=>{
+  ports.read.mockResolvedValue(view({roles:[role],fullView:false}));
+  await expect(RewardPersonPage({params:Promise.resolve({unitId:'unit',entryId:'b'})})).rejects.toThrow('not-found');
+ });
+ it.each(['gr','ctro','ec'])('retains full-person routes and a bounded grade dropdown for %s',async role=>{
+  ports.read.mockResolvedValue(view({roles:[role],fullView:true}));
+  const element=await RewardPersonPage({params:Promise.resolve({unitId:'unit',entryId:'b'})});
+  render(<NextIntlClientProvider locale="en" messages={en}>{element}</NextIntlClientProvider>);
+  expect(screen.getByRole('heading',{name:'Fictional Bravo'})).toBeTruthy();
+  const grade=screen.getByRole('combobox',{name:en.rewards.promotionGrade});
+  expect(within(grade).getByRole('option',{name:'To JG 15'})).toBeTruthy();
+ });
+ it('preserves the separate off-cycle person page for reviewers',async()=>{
+  ports.read.mockResolvedValue(view({fullView:false,unit:{...view().unit,kind:'adhoc'}}));
+  const element=await RewardPersonPage({params:Promise.resolve({unitId:'unit',entryId:'b'})});
+  render(<NextIntlClientProvider locale="en" messages={en}>{element}</NextIntlClientProvider>);
+  expect(screen.getByRole('heading',{name:'Fictional Bravo'})).toBeTruthy();
  });
  it('ignores a ?person the viewer cannot see',async()=>{
   await show({person:'not-visible'});expect(screen.queryByRole('dialog')).toBeNull();
