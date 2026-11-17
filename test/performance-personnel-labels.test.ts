@@ -27,7 +27,7 @@ it('retains native per-company availability/order for all roles, shared/global/a
  // Active departments retain their cascade relationship when the referenced BU is archived.
  const linkedBu=(await bulkSaveLabels(ctx,'business_unit',{creates:[{key:'linked',companyId:b.companyId,companyIds:[b.companyId],code:'LINKED',name:'Referenced unit'}],updates:[]})).createdIds[0].id;
  const linkedDept=(await bulkSaveLabels(ctx,'department',{creates:[{key:'linked-dept',companyId:b.companyId,companyIds:[b.companyId],name:'Linked active department',businessUnitId:linkedBu}],updates:[]})).createdIds[0].id;
- await bulkSaveLabels(ctx,'business_unit',{creates:[],updates:[{key:linkedBu,id:linkedBu,archived:true}]});
+ await bulkSaveLabels(ctx,'business_unit',{creates:[],updates:[{key:linkedBu,id:linkedBu,code:'LINKED',name:'Referenced unit',archived:true}]});
  expect((await listBusinessUnits(ctx)).some(row=>row.id===linkedBu)).toBe(false);
  expect((await listDepartments(ctx)).find(row=>row.id===linkedDept)?.businessUnitId).toBe(linkedBu);
  const metadata=await businessUnitCriteriaForIds(ctx,[linkedBu]);

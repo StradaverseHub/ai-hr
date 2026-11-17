@@ -7,7 +7,7 @@ import {afterAll,afterEach,beforeAll,expect,it,vi} from 'vitest';
 import * as database from '../db/client';
 import type {SessionContext,Tx} from '../db/client';
 import * as s from '../db/schema';
-import {decideLetterTemplate,saveLetterPermission,saveLetterTemplate} from '../core/letters';
+import {decideLetterTemplate,saveLetterPermission,saveLetterTemplate,setLetterTemplateActive} from '../core/letters';
 import {listLetterRequestsForStaff,listLetterRequestsForStaffPage,saveLetterRequestOptions,type StaffLetterRequest} from '../core/letter-requests';
 import {parsePageQuery} from '../lib/pagination';
 import {todayInKualaLumpur} from '../lib/hr-date';
@@ -79,7 +79,9 @@ it('matches every role and scope, exact counts and ordered pages with one shared
  const foreign=await seedBase();
  await expect(listLetterRequestsForStaffPage(adminCtx(foreign),{companyIds:[b.companyId],page:parsePageQuery()})).rejects.toMatchObject({code:'permission'});
  // Close a native template: the request stays readable but cannot start generation from an unpublished root.
- await owner.db.update(s.letterTemplate).set({deactivated:true}).where(eq(s.letterTemplate.id,templates.get(b.companyId)![0]));
+ const closingTemplate=templates.get(b.companyId)![0];
+ const [root]=await owner.db.select({revision:s.letterTemplate.revision}).from(s.letterTemplate).where(eq(s.letterTemplate.id,closingTemplate));
+ await setLetterTemplateActive(ctx,{templateId:closingTemplate,expectedRevision:root.revision,active:false});
  const unavailable=await listLetterRequestsForStaff(ctx,{companyId:b.companyId});
  expect(unavailable.filter(row=>row.templateId===templates.get(b.companyId)![0]).every(row=>row.publishedVersionId===null)).toBe(true);
  expect((await listLetterRequestsForStaffPage(ctx,{companyIds:[b.companyId],page:parsePageQuery({size:'all'})})).rows).toEqual(unavailable);
