@@ -190,6 +190,48 @@ describe('69d6ed3c — the payslip carries the working that produced it', () => 
   });
 });
 
+describe('ffb6c2e0 — open reprocessing and closed trace protection', () => {
+  it('eligible reprocessing changes only the enabled non-EPF wages and their contribution legs', async () => {
+    await setup();
+    const { e, batchId } = await goldenRun();
+    await saveAndReprocess(BONUS({ includedInSocsoEis: false }), batchId, e.employmentId);
+    const excluded = await slipOf(batchId, e.employmentId);
+    const old = statOf(excluded);
+    expect(old.statutoryTrace!.socso.wage).toBe(4200);
+    expect(old.statutoryTrace!.items.find(l => l.code === 'BNS')?.socsoEis).toBe(0);
+    await saveAndReprocess(BONUS(), batchId, e.employmentId);
+    const included = await slipOf(batchId, e.employmentId);
+    const current = statOf(included);
+    expect(current.statutoryTrace!.socso.wage).toBe(5000);
+    expect(current.statutoryTrace!.items.find(l => l.code === 'BNS')?.socsoEis).toBe(800);
+    expect(current.statutoryTrace!.run.own.socsoWageExtra).toBe(800);
+    expect(money(current)).toEqual([506, 598, 24.75, 86.65, 37.15, 9.9, 9.9]);
+    expect(current.statutoryTrace!.epf).toEqual(old.statutoryTrace!.epf);
+    for (const key of ['pcb', 'hrdf', 'epfEmployee', 'epfEmployer']) expect(current[key]).toBe(old[key]);
+    for (const key of ['basicSalary', 'allowance', 'overtimePay', 'bonus', 'grossPay', 'otherDeductions'] as const) {
+      expect(included[key]).toBe(excluded[key]);
+    }
+    // Corrected employee contributions: SOCSO +4, SKBBK +6, EIS +1.60; no other cash movement.
+    expect(Number(excluded.netPay) - Number(included.netPay)).toBeCloseTo(11.6, 2);
+    expect(explainStatutory(included.statutory, 'regular').traceStatus).toBe('recorded');
+  });
+
+  it('a closed payslip with a recorded trace refuses processing and retains every serialized result byte', async () => {
+    await setup();
+    const { e, batchId } = await goldenRun();
+    await closeBatch(a, { batchId });
+    const before = await slipOf(batchId, e.employmentId);
+    const serialized = JSON.stringify(before);
+    expect(explainStatutory(before.statutory, 'regular').traceStatus).toBe('recorded');
+    await upsertPayComponent(a, BONUS({ includedInSocsoEis: false }));
+    const marked = await markRunsAffectedByPayComponent(a, { componentId: await idByCode('BNS'), code: 'BNS' });
+    expect(marked.map(row => row.batchId)).not.toContain(batchId);
+    await expect(generatePayslips(a, { batchId })).rejects.toThrow();
+    await expect(reprocessSelectedEmployees(a, { batchId, employmentIds: [e.employmentId], reason: 'Closed statutory correction refused' })).rejects.toThrow();
+    expect(JSON.stringify(await slipOf(batchId, e.employmentId))).toBe(serialized);
+  });
+});
+
 describe('69d6ed3c — the multi-run defect: an earlier run counts only its EPF-subject pay', () => {
   async function threeRuns(strip: 'none' | 'trace' | 'trace_and_lines') {
     await upsertPayComponent(a, TRANSPORT());
