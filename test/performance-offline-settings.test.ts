@@ -10,7 +10,8 @@ import {offlineClockingPolicyFromStored,OfflineAdjudicationError} from '../packs
 import {createOfflineClaimService} from '../core/mobile-offline-claim';
 import {offlineServiceFixture} from './helpers/mobile-offline-service-fixture';
 import {adminCtx,closeAll,createAppUser,migrateTestDb,owner,resetDb,seedBase} from './harness';
-beforeAll(migrateTestDb);afterAll(async()=>{vi.unstubAllEnvs();await closeAll();});
+import {installOfflineGroupCountProposal} from './helpers/mobile-offline-group-count';
+beforeAll(async()=>{await migrateTestDb();await installOfflineGroupCountProposal();});afterAll(async()=>{vi.unstubAllEnvs();await closeAll();});
 async function legacy(ctx:SessionContext,companyIds:readonly string[]){
  return new Map(await Promise.all(companyIds.map(async id=>[id,{...await readOfflineClockingSettings(ctx,id),waiting:await countOfflineClaimsAwaitingReview(ctx,[id]),phonesOffline:await countOpenOfflineContexts(ctx,id)}] as const)));
 }
@@ -47,11 +48,13 @@ it('retains independent native permissions, counts and unavailable states with o
  await owner.db.execute(sql`alter table attendance_policy rename column offline_max_proven_window_seconds to fixture_offline_seconds`);
  await owner.db.execute(sql`alter table mobile_offline_claim_resolution rename to fixture_offline_resolution`);
  await owner.db.execute(sql`alter function app.mobile_offline_open_context_count(uuid) rename to fixture_offline_open_count`);
+ await owner.db.execute(sql`alter function app.mobile_offline_open_context_counts(uuid[]) rename to fixture_offline_open_counts`);
  try{
   const absent=await legacy(ctx,companies);expect(absent.get(b.companyId)).toMatchObject({columns:false,policy:{enabled:false,maxProvenWindowSeconds:900},waiting:null,phonesOffline:null});
   expect(await readOfflineClockingSettingsAcross(ctx,companies)).toEqual(absent);
  }finally{
   await owner.db.execute(sql`alter function app.fixture_offline_open_count(uuid) rename to mobile_offline_open_context_count`);
+  await owner.db.execute(sql`alter function app.fixture_offline_open_counts(uuid[]) rename to mobile_offline_open_context_counts`);
   await owner.db.execute(sql`alter table fixture_offline_resolution rename to mobile_offline_claim_resolution`);
   await owner.db.execute(sql`alter table attendance_policy rename column fixture_offline_seconds to offline_max_proven_window_seconds`);
   await owner.db.execute(sql`alter table attendance_policy rename column fixture_offline_enabled to offline_clocking_enabled`);

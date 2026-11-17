@@ -2119,7 +2119,13 @@
         "emptySource": "தேதி பதிவு செய்யப்படவில்லை",
         "unknownSource": "இந்த நிகழ்வில் பதிவு செய்யப்படவில்லை"
       },
-      "costCenterAllocationTitle": "செலவு மைய ஒதுக்கீடு"
+      "costCenterAllocationTitle": "செலவு மைய ஒதுக்கீடு",
+      "workforcePickerLoading": "ஏற்றுகிறது…",
+      "workforcePickerError": "பணியாளர்களை ஏற்ற முடியவில்லை.",
+      "workforcePickerRetry": "மீண்டும் முயலவும்",
+      "workforcePickerCount": "பொருந்தும் பணியாளர்கள்: {count}",
+      "workforcePickerPrevious": "முந்தையது",
+      "workforcePickerNext": "அடுத்தது"
     },
     "import": {
       "title": "பணியாளர்களை இறக்குமதி செய்",

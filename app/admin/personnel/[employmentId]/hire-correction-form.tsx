@@ -1,4 +1,5 @@
 'use client';
+import {WorkforcePicker} from '@/components/workforce-picker';
 import {DerivedOrganisationFields,useDerivedOrganisation} from '@/components/derived-organisation-fields';
 
 // c063eea9 — client half of "Correct hire details" on the Hired row.
@@ -67,7 +68,9 @@ export function HireCorrectionForm({
   readOnly,
   cancelHref,
   pageContext,
+  remoteManagers,
 }: {
+  remoteManagers?:boolean;
   employmentId: string;
   /** "Hired · 2024-03-01" */
   heading: string;
@@ -90,6 +93,7 @@ export function HireCorrectionForm({
   const [values, setValues] = useState<Record<string, string>>(() =>
     Object.fromEntries(fields.map((f) => [f.field, f.currentId ?? ''])),
   );
+  const [managerLabel,setManagerLabel]=useState<{id:string;name:string}|null>(null);
   const [reason, setReason] = useState('');
   const [salary, setSalary] = useState(salaryAtHire?.amount ?? '');
   const salaryChanged = !!salaryAtHire && salary !== '' && Number(salary) !== Number(salaryAtHire.amount);
@@ -107,6 +111,7 @@ export function HireCorrectionForm({
   /** Option label for an id, falling back to the field's own current label (an archived / out-of-scope value). */
   const labelOf = (f: HireCorrectionFormField, id: string | null): string => {
     if (!id) return t('noneValue');
+    if(f.field==='managerEmploymentId'&&managerLabel?.id===id)return managerLabel.name;
     return f.options.find((o) => o.id === id)?.name ?? (id === f.currentId ? (f.currentLabel ?? id) : id);
   };
 
@@ -162,7 +167,10 @@ export function HireCorrectionForm({
                 )}
               </div>
               <div className="text-sm text-foreground">{f.originalLabel ?? '—'}</div>
-              <select {...personnelControl(hireField(f.field),'draft')}
+              {remoteManagers&&f.field==='managerEmploymentId'?<WorkforcePicker subjectId={employmentId} value={value} namesOnly ariaLabel={fieldLabel(f.field)}
+                retained={f.currentId?[{employmentId:f.currentId,name:f.currentLabel??f.currentId,employeeCode:null,companyId:''}]:[]}
+                placeholder={t('none')} onValueChange={(id,row)=>{setValues(prev=>({...prev,[f.field]:id}));setManagerLabel(row?{id,name:row.name}:null);}}/>
+                :(              <select {...personnelControl(hireField(f.field),'draft')}
                 aria-label={fieldLabel(f.field)}
                 value={value}
                 onChange={(e) => setValues((prev) => ({ ...prev, [f.field]: e.target.value }))}
@@ -177,7 +185,8 @@ export function HireCorrectionForm({
                     {o.name}
                   </option>
                 ))}
-              </select>
+              </select>)}
+
             </div>
           );
         })}

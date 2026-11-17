@@ -2119,7 +2119,13 @@
         "emptySource": "No recorded date",
         "unknownSource": "Not recorded in this event"
       },
-      "costCenterAllocationTitle": "Cost Center Allocation"
+      "costCenterAllocationTitle": "Cost Center Allocation",
+      "workforcePickerLoading": "Loading…",
+      "workforcePickerError": "Unable to load employees.",
+      "workforcePickerRetry": "Retry",
+      "workforcePickerCount": "{count} matching employees",
+      "workforcePickerPrevious": "Previous",
+      "workforcePickerNext": "Next"
     },
     "import": {
       "title": "Import employees",

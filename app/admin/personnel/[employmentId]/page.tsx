@@ -1,3 +1,5 @@
+import {readWorkforceChoices} from '@/core/workforce-choice';
+import {WorkforcePicker} from '@/components/workforce-picker';
 import {movementOrganisationChoices,type MovementOrganisationChoices} from '@/core/movement-organisation-choices';
 import {DerivedOrganisationControl} from '@/components/derived-organisation-fields';
 import { ActionButton } from '@/components/ui/action-button';
@@ -33,7 +35,7 @@ import {
   employeeDetail,
   employmentCompanyEditable,
   listDepartments,
-  listWorkforcePickOptions,
+
   listJobGrades,
   reportingLinesFor,
 } from '@/core/read';
@@ -391,11 +393,11 @@ export default async function EmployeePage({
     ]));
   };
   const emptyOrganisationOptions: Awaited<ReturnType<typeof readOrganisationOptions>> = [[], [], [], []];
-  const [history, currentOrganisationOptions, reporting, employees, grades, delegations] = await Promise.all([
+  const [history, currentOrganisationOptions, reporting, workforceChoices, grades, delegations] = await Promise.all([
     readProfileCards ? assignmentHistory(s, employmentId) : [],
     readMovementEditorChoices ? readOrganisationOptions(emp.companyId) : emptyOrganisationOptions,
     readProfileCards ? reportingLinesFor(s, employmentId) : {managers:[],reports:[]},
-    readMovementEditorChoices || movementPage === 'correct-hire' ? listWorkforcePickOptions(s) : [],
+    readMovementEditorChoices || movementPage === 'correct-hire' ? readWorkforceChoices(s,{subjectId:employmentId}) : {rows:[],selected:[],total:0,offset:0,limit:25},
     readMovementEditorChoices ? listJobGrades(s, { companyId: orgScopeCompanyId }) : [],
     readProfileCards ? delegationsFor(s, employmentId) : [],
   ]);
@@ -550,7 +552,7 @@ export default async function EmployeePage({
    *  admin screen's own per-location empty state is where that gap belongs. */
   const thisMonthStart = `${today.slice(0, 7)}-01`;
   const current = history.find((h) => !h.validTo) ?? history[0];
-  const others = employees.filter((e) => e.employmentId !== employmentId && !e.terminatedOn);
+  const others = workforceChoices.rows;
   // Direct Superior (dce55aff): the CURRENT superior is the active administrative reporting line (the
   // one relationship every downstream consumer — approvals, visibility, calendars — actually follows).
   // The closed lines feed the read-only history disclosure; the storage stays effective-dated underneath.
@@ -560,13 +562,6 @@ export default async function EmployeePage({
   // and name alike. Active employees only (`others` already excludes self + terminated); the current
   // superior is prepended if no longer in that set (e.g. terminated) so the field never shows a raw id.
   const superiorLabel = (code: string | null, name: string) => (code ? `${code} – ${name}` : name);
-  const superiorOptions = others.map((o) => ({ value: o.employmentId, label: superiorLabel(o.employeeCode, o.name) }));
-  if (currentSuperior && !superiorOptions.some((o) => o.value === currentSuperior.employmentId)) {
-    superiorOptions.unshift({
-      value: currentSuperior.employmentId,
-      label: superiorLabel(currentSuperior.employeeCode, currentSuperior.name),
-    });
-  }
   // Movement tab redesign (78853b97): Employment History is a read-model projection over the
   // domain_event ledger — Hired-first, date-ascending, no second record-keeping system. The detail view
   // (?movement=<id>) adds an as-of Before/After reconstruction at the event's effective date.
@@ -3570,6 +3565,10 @@ export default async function EmployeePage({
     other: t('terminationOther'),
   };
 
+  const movementEditInput = canCorrectMovement && movementEditRow
+    ? await movementPendingEditInput(s, employmentId, movementEditRow.id) : null;
+  const managerIds=[movementFormData?.current.managerEmploymentId,movementEditInput?.values.managerEmploymentId].filter((id):id is string=>!!id);
+  const managerSeeds=managerIds.length?(await readWorkforceChoices(s,{subjectId:employmentId,selectedIds:managerIds})).selected:[];
   const movementFormProps = movementFormData
     ? {
         employmentId: emp.employmentId,
@@ -3587,7 +3586,8 @@ export default async function EmployeePage({
         // DESTINATION company on an Entity Transfer. No extra read: listEmployees already returns it.
         // The service refuses a manager outside the destination, so offering one would be an affordance
         // that lies.
-        managers: others.map((o) => ({ id: o.employmentId, name: o.name, companyId: o.companyId })),
+        managers: managerSeeds.map((o) => ({ id: o.employmentId, name: o.name, companyId: o.companyId })),
+        remoteManagers: true,
         // b7b22514 — the destinations, and each destination's org lists (see the read above).
         companies: movementCompanies,
         orgByCompany: movementOrgByCompany,
@@ -3637,7 +3637,8 @@ export default async function EmployeePage({
     companies: movementFormProps.companies,
     orgByCompany: movementFormProps.orgByCompany,
     grades: movementFormProps.grades,
-    managers: movementFormProps.managers,
+    managers: rehireForm.values.managerEmploymentId?(await readWorkforceChoices(s,{subjectId:employmentId,selectedIds:[rehireForm.values.managerEmploymentId]})).selected.map(o=>({id:o.employmentId,name:o.name,companyId:o.companyId})):[],
+    remoteManagers: true,
     employmentTypes: movementFormProps.employmentTypes,
     employeeIdRules: rehireForm.employeeIdRules,
     cancelHref: historyHref,
@@ -3689,8 +3690,7 @@ export default async function EmployeePage({
   // corrected. `canEdit` comes from the service, so a row the service would refuse never renders a form.
   // Include the edited code's metadata even if inactive; the client needs its resolved behavior.
   // 1d58019a Step 2 — termination is decided by the catalogue, so a tenant's own Termination type pre-fills too.
-  const movementEditInput = canCorrectMovement && movementEditRow
-    ? await movementPendingEditInput(s, employmentId, movementEditRow.id) : null;
+
   const editEventCard = canCorrectMovement && movementEditRow && movementFormProps ? (
     <Card id="section-movement-edit-event" className="overflow-hidden">
       <SectionHeader title={t('movement.editTitle')} />
@@ -3802,6 +3802,7 @@ export default async function EmployeePage({
                 employmentId={employmentId}
                 heading={`${movementKindLabel('hired')} · ${formatDmy(hireCorrection.hiredOn)}`}
                 fields={fields}
+                remoteManagers
                 salaryAtHire={hireCorrection.salaryAtHire}
                 endDate={hireCorrection.endDate ? { field: hireCorrection.endDate.field, value: hireCorrection.endDate.value } : undefined}
                 readOnly={readOnly}
@@ -4424,7 +4425,7 @@ export default async function EmployeePage({
             <span className="text-muted-foreground">{t('directSuperiorNone')}</span>
           )}
         </div>
-        {!emp.terminatedOn && others.length > 0 && (
+        {!emp.terminatedOn && workforceChoices.total > 0 && (
           <form action={setDirectSuperiorAction} className="grid grid-cols-1 items-end gap-3 sm:grid-cols-3">
             <input type="hidden" name="employmentId" value={emp.employmentId} />
             {/* The no-change guard + the "clear → end current line" path both need the current state. */}
@@ -4432,15 +4433,11 @@ export default async function EmployeePage({
             <input type="hidden" name="currentLineId" value={currentSuperior?.id ?? ''} />
             <div className="sm:col-span-2">
               <PersonnelField fieldId="employment.direct_superior_and_history.superioremploymentid" mode="record">
-                <Combobox {...personnelControl("employment.direct_superior_and_history.superioremploymentid", 'record')}
+                <WorkforcePicker {...personnelControl("employment.direct_superior_and_history.superioremploymentid", 'record')}
+                  subjectId={employmentId} value={currentSuperior?.employmentId??''}
+                  retained={currentSuperior?[{employmentId:currentSuperior.employmentId,name:currentSuperior.name,employeeCode:currentSuperior.employeeCode,companyId:emp.companyId}]:[]}
+                  placeholder={t('directSuperiorNone')}/>
 
-                  value={currentSuperior?.employmentId ?? ''}
-                  options={superiorOptions}
-                  placeholder={t('directSuperiorNone')}
-                  searchPlaceholder={t('directSuperiorSearch')}
-                  noResultsLabel={t('directSuperiorNoResults')}
-                  legacySuffix=""
-                />
               </PersonnelField>
             </div>
             <div>
@@ -4506,20 +4503,16 @@ export default async function EmployeePage({
             </ul>
           )}
         </div>
-        {!emp.terminatedOn && others.length > 0 && (
+        {!emp.terminatedOn && workforceChoices.total > 0 && (
           <form
             action={addDelegationAction}
             className="grid grid-cols-1 items-end gap-3 border-t border-border p-4 sm:grid-cols-4"
           >
             <input type="hidden" name="employmentId" value={emp.employmentId} />
             <PersonnelField fieldId="employment.approval_delegations.delegateemploymentid" mode="record">
-              <select {...personnelControl("employment.approval_delegations.delegateemploymentid", 'record')}   className={inputCls}>
-                {others.map((o) => (
-                  <option key={o.employmentId} value={o.employmentId}>
-                    {o.name}
-                  </option>
-                ))}
-              </select>
+              <WorkforcePicker {...personnelControl("employment.approval_delegations.delegateemploymentid", 'record')}
+                subjectId={employmentId} allowClear={false} ariaLabel={personnelLabel('employment.approval_delegations.delegateemploymentid')} value={others[0]?.employmentId??''} retained={others.slice(0,1)} namesOnly/>
+
             </PersonnelField>
             <PersonnelField fieldId="employment.approval_delegations.validfrom" mode="record">
               <DateField {...personnelControl('employment.approval_delegations.validfrom','record')} defaultValue={today} className={inputCls} label={personnelLabel('employment.approval_delegations.validfrom')} />

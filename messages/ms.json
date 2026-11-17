@@ -2119,7 +2119,13 @@
         "emptySource": "Tiada tarikh direkodkan",
         "unknownSource": "Tidak direkodkan dalam peristiwa ini"
       },
-      "costCenterAllocationTitle": "Peruntukan Pusat Kos"
+      "costCenterAllocationTitle": "Peruntukan Pusat Kos",
+      "workforcePickerLoading": "Memuatkan…",
+      "workforcePickerError": "Tidak dapat memuatkan pekerja.",
+      "workforcePickerRetry": "Cuba lagi",
+      "workforcePickerCount": "{count} pekerja sepadan",
+      "workforcePickerPrevious": "Sebelumnya",
+      "workforcePickerNext": "Seterusnya"
     },
     "import": {
       "title": "Import pekerja",

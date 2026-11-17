@@ -2119,7 +2119,13 @@
         "emptySource": "Chưa ghi ngày",
         "unknownSource": "Không được ghi nhận trong sự kiện này"
       },
-      "costCenterAllocationTitle": "Phân bổ trung tâm chi phí"
+      "costCenterAllocationTitle": "Phân bổ trung tâm chi phí",
+      "workforcePickerLoading": "Đang tải…",
+      "workforcePickerError": "Không thể tải nhân viên.",
+      "workforcePickerRetry": "Thử lại",
+      "workforcePickerCount": "{count} nhân viên phù hợp",
+      "workforcePickerPrevious": "Trước",
+      "workforcePickerNext": "Tiếp"
     },
     "import": {
       "title": "Nhập nhân viên",

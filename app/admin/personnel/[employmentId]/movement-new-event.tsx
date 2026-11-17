@@ -1,4 +1,5 @@
 'use client';
+import {WorkforcePicker} from '@/components/workforce-picker';
 import { ActionButton } from '@/components/ui/action-button';
 import {DerivedOrganisationFields,useDerivedOrganisation} from '@/components/derived-organisation-fields';
 
@@ -181,6 +182,7 @@ export function MovementNewEvent({
   grades,
   locations,
   managers,
+  remoteManagers,
   employmentTypes,
   profileOptions,
   terminationReasons,
@@ -204,6 +206,7 @@ export function MovementNewEvent({
   grades: MovementOption[];
   locations: MovementOption[];
   managers: MovementManagerOption[];
+  remoteManagers?:boolean;
   /** Pre-translated by the server page (reuses the existing people.detail labels). */
   employmentTypes: { value: string; label: string }[];
   profileOptions:Record<string,{value:string;label:string}[]>;
@@ -349,7 +352,10 @@ export function MovementNewEvent({
   };
   // The Direct Superior must belong to the company the employee lands in — the service refuses anything
   // else, so the picker must not offer it.
-  const scopedManagers = managers.filter((m) => !scopeChanged || m.companyId === scopeCompanyId);
+  const [chosenManager,setChosenManager]=useState<{scope:string;id:string;row:MovementManagerOption|null}|null>(null);
+  const chosenHere=chosenManager?.scope===scopeCompanyId?chosenManager:null;
+  const knownManagers=chosenHere?.row?[chosenHere.row,...managers.filter(m=>m.id!==chosenHere.id)]:managers;
+  const scopedManagers = knownManagers.filter((m) => !scopeChanged || m.companyId === scopeCompanyId);
   // ae9350f2 — Termination now has a structured exit block. The old free `terminationType` picker is GONE:
   // the reason is the single thing HR picks and the classification is derived from it server-side, so the
   // two can never be saved in contradiction (a Misconduct exit filed as "voluntary" is a real data fault,
@@ -574,7 +580,12 @@ export function MovementNewEvent({
         {typeChanges && <p className="text-xs text-muted-foreground">{t('form.endDateRequiredIntern')}</p>}
       </>) : null,
     row('managerEmploymentId', 'manager', label(movementField('managerEmploymentId')), nameOf(managers, current.managerEmploymentId),
-      select('managerEmploymentId', after.managerEmploymentId, scopedManagers, t('form.none'))),
+      remoteManagers?<WorkforcePicker {...personnelWorkflowControl(movementField('managerEmploymentId'),'movement')}
+        subjectId={employmentId} companyId={scopeChanged?scopeCompanyId:undefined}
+        value={scopedManagers.some(m=>m.id===(chosenHere?.id??after.managerEmploymentId))?(chosenHere?.id??after.managerEmploymentId):''}
+        retained={scopedManagers.map(m=>({employmentId:m.id,name:m.name,companyId:m.companyId??current.companyId,employeeCode:null}))}
+        namesOnly ariaLabel={label(movementField('managerEmploymentId'))} placeholder={t('form.none')} onValueChange={(id,row)=>setChosenManager({scope:scopeCompanyId,id,row:row?{id,name:row.name,companyId:row.companyId}:null})}/>
+        :select('managerEmploymentId', after.managerEmploymentId, scopedManagers, t('form.none'))),
     row('basicSalary', 'basicSalary', label(movementField('basicSalary')), current.basicSalary,
       <input
         {...personnelWorkflowInput(movementField('basicSalary'), 'movement', 'edit')}

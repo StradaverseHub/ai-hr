@@ -116,7 +116,7 @@ export function readOfflineClockingSettingsAcross(ctx:SessionContext,companyIds:
   const result=new Map<string,OfflineClockingCompanyRead>();if(!ids.length)return result;
   const columns=await offlineClockingColumnsPresentTx(tx);
   const [ready]=await tx.execute<{claims:boolean;contexts:boolean}>(sql`select to_regclass('public.mobile_offline_claim_resolution') is not null as claims,
-   to_regprocedure('app.mobile_offline_open_context_count(uuid)') is not null as contexts`);
+   to_regprocedure('app.mobile_offline_open_context_counts(uuid[])') is not null as contexts`);
   const input=sql`array[${sql.join(ids.map(id=>sql`${id}::uuid`),sql`,`)}]::uuid[]`;
   const policies=await tx.execute<{id:string;canEdit:boolean;enabled:string|null;seconds:string|null}>(sql`select requested.id,coalesce(app.can_admin_payroll_for(requested.id),false) as "canEdit",
    to_jsonb(p)->>'offline_clocking_enabled' enabled,to_jsonb(p)->>'offline_max_proven_window_seconds' seconds
@@ -125,7 +125,7 @@ export function readOfflineClockingSettingsAcross(ctx:SessionContext,companyIds:
    where c.tenant_id=app.current_tenant_id() and c.outcome='needs_review' and e.company_id=any(${input})
     and app.can_correct_attendance(c.employment_id) and not exists(select 1 from mobile_offline_claim_resolution r where r.claim_id=c.id and r.tenant_id=c.tenant_id)
    group by e.company_id`):[];
-  const contexts=ready?.contexts?await tx.execute<{id:string;count:number|null}>(sql`select requested.id,app.mobile_offline_open_context_count(requested.id) as count from unnest(${input}) requested(id)`):[];
+  const contexts=ready?.contexts?await tx.execute<{id:string;count:number|null}>(sql`select company_id as id,open_count as count from app.mobile_offline_open_context_counts(${input})`):[];
   const policyById=new Map(policies.map(row=>[row.id,row])),waitingById=new Map(waiting.map(row=>[row.id,Number(row.count)]));
   const contextsById=new Map(contexts.map(row=>[row.id,row.count==null?null:Number(row.count)]));
   for(const id of ids){const key=id.toLowerCase(),row=policyById.get(key);

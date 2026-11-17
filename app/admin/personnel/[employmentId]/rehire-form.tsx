@@ -1,4 +1,5 @@
 'use client';
+import {WorkforcePicker} from '@/components/workforce-picker';
 // Board 511aa74a — New Event → Rehired. The previous period's values start the form; HR changes only what is
 // different. Saving starts a NEW employment for the same person (core/rehire.ts); the previous period is not
 // changed. Every option list is pre-loaded and pre-translated by the server page; the service re-checks all.
@@ -44,6 +45,7 @@ export type RehireFormProps = {
   orgByCompany: Record<string, OrgScope>;
   grades: Option[];
   managers: (Option & { companyId: string })[];
+  remoteManagers?:boolean;
   employmentTypes: { value: string; label: string }[];
   employeeIdRules: Record<string, EmployeeIdRule>;
   cancelHref: string;
@@ -182,10 +184,14 @@ export function RehireEventForm(props: RehireFormProps) {
         </label>
         <label className="flex flex-col gap-1 text-xs text-muted-foreground">
           {label(movementField('managerEmploymentId'))}
-          <select key={`mgr-${companyId}`} {...personnelWorkflowControl(movementField('managerEmploymentId'), 'movement', 'edit')} defaultValue={keep(managers, props.defaults.managerEmploymentId)} className={inputCls}>
+          {props.remoteManagers?<WorkforcePicker {...personnelWorkflowControl(movementField('managerEmploymentId'),'movement','edit')}
+            subjectId={props.employmentId} companyId={companyId===props.defaults.companyId?undefined:companyId}
+            value={keep(managers,props.defaults.managerEmploymentId)} namesOnly
+            retained={managers.map(m=>({employmentId:m.id,name:m.name,companyId:m.companyId,employeeCode:null}))}/>:(          <select key={`mgr-${companyId}`} {...personnelWorkflowControl(movementField('managerEmploymentId'), 'movement', 'edit')} defaultValue={keep(managers, props.defaults.managerEmploymentId)} className={inputCls}>
             <option value="">{t('none')}</option>
             {managers.map((o) => <option key={o.id} value={o.id}>{o.name}</option>)}
-          </select>
+          </select>)}
+
         </label>
         <label className="flex flex-col gap-1 text-xs text-muted-foreground sm:col-span-3">
           {label(movementField('remarks'))}

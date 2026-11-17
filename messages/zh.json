@@ -2119,7 +2119,13 @@
         "emptySource": "未记录日期",
         "unknownSource": "此事件未记录"
       },
-      "costCenterAllocationTitle": "成本中心分配"
+      "costCenterAllocationTitle": "成本中心分配",
+      "workforcePickerLoading": "正在加载…",
+      "workforcePickerError": "无法加载员工。",
+      "workforcePickerRetry": "重试",
+      "workforcePickerCount": "{count} 位匹配员工",
+      "workforcePickerPrevious": "上一页",
+      "workforcePickerNext": "下一页"
     },
     "import": {
       "title": "导入员工",

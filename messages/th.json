@@ -2119,7 +2119,13 @@
         "emptySource": "ยังไม่ได้บันทึกวันที่",
         "unknownSource": "ไม่ได้บันทึกไว้ในรายการนี้"
       },
-      "costCenterAllocationTitle": "การปันส่วนศูนย์ต้นทุน"
+      "costCenterAllocationTitle": "การปันส่วนศูนย์ต้นทุน",
+      "workforcePickerLoading": "กำลังโหลด…",
+      "workforcePickerError": "ไม่สามารถโหลดพนักงานได้",
+      "workforcePickerRetry": "ลองอีกครั้ง",
+      "workforcePickerCount": "พนักงานที่ตรงกัน {count} คน",
+      "workforcePickerPrevious": "ก่อนหน้า",
+      "workforcePickerNext": "ถัดไป"
     },
     "import": {
       "title": "นำเข้าพนักงาน",

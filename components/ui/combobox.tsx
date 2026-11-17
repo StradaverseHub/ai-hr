@@ -44,11 +44,14 @@ export function Combobox({
   legacySuffix,
   className,
   onValueChange,
+  remote,
+  ariaLabel,
 }: {
   /** OPTIONAL (35b7af0a group 8). Omit it and no hidden input is rendered at all — the controlled mode of
    *  a shared field group must post nothing, so a source guard grepping for name="…" can never conclude
    *  that the wizard's copy submits. Every pre-existing caller passes one and is unaffected. */
   name?: string;
+  ariaLabel?:string;
   value: string | null | undefined;
   options: ComboboxOption[];
   placeholder: string;
@@ -60,6 +63,8 @@ export function Combobox({
   // Lets a client parent react live to the choice (e.g. flip IC ⇄ passport identification by nationality)
   // without waiting for a form submit. Optional → existing form-only usages are unaffected.
   onValueChange?: (value: string) => void;
+  /** Remote owner supplies already-filtered bounded rows and explicit loading/error/paging state. */
+  remote?: {onQuery:(query:string)=>void;onOpen:()=>void;footer:React.ReactNode;allowClear?:boolean};
 }) {
   const listId = useId();
   const rootRef = useRef<HTMLDivElement>(null);
@@ -82,16 +87,16 @@ export function Combobox({
 
   // The full row set the dropdown offers: an empty "clear" row, then any legacy value, then the catalog.
   const allRows = useMemo<ComboboxOption[]>(
-    () => [{ value: '', label: placeholder }, ...(legacy ? [legacy] : []), ...options],
-    [options, legacy, placeholder],
+    () => [{ value: '', label: placeholder,disabled:remote?.allowClear===false }, ...(legacy ? [legacy] : []), ...options],
+    [options, legacy, placeholder,remote?.allowClear],
   );
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
-    if (!q) return allRows;
+    if (remote || !q) return allRows;
     // Always keep the clear/placeholder row reachable; filter the rest by case-insensitive substring.
     return allRows.filter((r) => r.value === '' || r.label.toLowerCase().includes(q) || r.value.toLowerCase().includes(q) || !!r.description?.toLowerCase().includes(q) || !!r.keywords?.toLowerCase().includes(q));
-  }, [allRows, query]);
+  }, [allRows, query, remote]);
   // Opened near the bottom of the window or inside a dialog, the list opens upwards or shrinks to fit.
   useFitToView(open, panelRef, filtered.length);
 
@@ -111,6 +116,7 @@ export function Combobox({
   useEffect(() => {
     if (!open) return;
     setQuery('');
+    remote?.onOpen();
     const idx = Math.max(0, filtered.findIndex((r) => r.value === selected));
     setActiveIdx(idx);
     const raf = requestAnimationFrame(() => searchRef.current?.focus());
@@ -166,6 +172,7 @@ export function Combobox({
       <button
         type="button"
         className={`${className ?? inputCls} flex items-center justify-between gap-2 text-left`}
+        aria-label={ariaLabel}
         aria-haspopup="listbox"
         aria-expanded={open}
         onClick={() => setOpen((o) => !o)}
@@ -185,11 +192,13 @@ export function Combobox({
               value={query}
               onChange={(e) => {
                 setQuery(e.target.value);
+                remote?.onQuery(e.target.value);
                 setActiveIdx(0);
               }}
               onKeyDown={onKeyDown}
               placeholder={searchPlaceholder}
               className={inputCls}
+              aria-label={ariaLabel?`${ariaLabel}: ${searchPlaceholder}`:searchPlaceholder}
               aria-controls={listId}
               aria-autocomplete="list"
             />
@@ -227,6 +236,7 @@ export function Combobox({
               })
             )}
           </ul>
+          {remote?.footer}
         </div>
       )}
     </div>
