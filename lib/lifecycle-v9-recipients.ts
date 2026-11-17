@@ -82,7 +82,8 @@ export function convertV9Recipients<T extends ConfigLike>(config: T): { config: 
 }
 export type RecipientReportRow = { kind: 'workflow' | 'email'; id: string; name: string; module: Module; status?: string; stepId?: string; to?: Role[]; cc?: Role[]; roles: Role[]; action: 'replace' | 'converted' | 'information' };
 const informationRoles: readonly Role[] = ['employeeWork', 'employeePersonal', 'ta', 'peopleOps', 'taskOwners'];
-const reportedRole = (role: Role) => isRemovedRole(role) || role === legacyEmployeeRole || informationRoles.includes(role);
+export const recipientReportRoles: readonly Role[] = [...removedRoles, legacyEmployeeRole, ...informationRoles];
+const reportedRole = (role: Role) => recipientReportRoles.includes(role);
 /** Pre-release report includes the reporter's answers: GBS People Ops stays, and all Task owners uses are listed.
  * It reports saved definitions only; it never converts them or reveals literal personal addresses. */
 export function v9RecipientReport(config: ConfigLike): RecipientReportRow[] {
