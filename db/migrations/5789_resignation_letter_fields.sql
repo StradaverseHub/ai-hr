@@ -107,3 +107,101 @@ BEGIN
  IF construction IS NULL THEN RAISE EXCEPTION 'The resignation employment subject or company changed; review the case before handoff' USING ERRCODE='40001';END IF;
  RETURN jsonb_build_object('employmentId',j.employment_id,'type',exit_type,'noticeDate',j.submitted_on::text,'lastDay',j.data->>'lastWorkingDay','manualHandoff',false,'offboardingCaseId',j.offboarding_case_id,'construction',construction);
 END $$;
+
+--> statement-breakpoint
+-- Existing 5785 function identities/ACLs retained; only termination source-fact consistency changes.
+CREATE OR REPLACE FUNCTION app.personnel_posting_create(p_source text,p_source_ref uuid,p_employment uuid,p_event text,p_proposed jsonb,p_approver_group text,p_key text) RETURNS uuid LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE t uuid:=app.current_tenant_id(); j public.resignation_journey; old public.personnel_posting; v_id uuid; v_number integer; configured text; baseline jsonb; workflow_step jsonb; source_currency text; current_currency text;
+BEGIN
+ IF p_source<>'offboarding' THEN RETURN app.personnel_posting_create_probation_v1(p_source,p_source_ref,p_employment,p_event,p_proposed,p_approver_group,p_key); END IF;
+ IF t IS NULL OR app.current_user_id() IS NULL OR NOT app.principal_snapshot_current() THEN RAISE EXCEPTION 'Sign in to create a posting' USING ERRCODE='42501'; END IF;
+ PERFORM app.access_workforce_write_lock();
+ SELECT * INTO j FROM public.resignation_journey WHERE tenant_id=t AND id=p_source_ref AND employment_id=p_employment;
+ IF NOT FOUND OR NOT app.resignation_journey_access(j.id) THEN RAISE EXCEPTION 'Resignation source unavailable' USING ERRCODE='42501'; END IF;
+ IF p_event='termination' AND p_key IS DISTINCT FROM 'clearance:'||j.offboarding_case_id::text THEN RAISE EXCEPTION 'Termination posting requires the canonical clearance idempotency key' USING ERRCODE='22023'; END IF;
+ PERFORM pg_advisory_xact_lock(hashtextextended('personnel-posting:'||t::text,0));
+ SELECT * INTO old FROM public.personnel_posting WHERE tenant_id=t AND source=p_source AND source_ref=p_source_ref AND event_type=p_event AND idempotency_key=p_key;
+ IF FOUND THEN
+  IF old.proposed<>p_proposed OR old.employment_id<>p_employment THEN RAISE EXCEPTION 'Posting retry changed its frozen source values' USING ERRCODE='22023'; END IF;
+  RETURN old.id;
+ END IF;
+ IF app.offboarding_posting_values_ok(p_event,p_proposed) IS NOT TRUE OR length(btrim(coalesce(p_key,''))) NOT BETWEEN 1 AND 200 THEN RAISE EXCEPTION 'Posting values are incomplete or not allowed' USING ERRCODE='22023'; END IF;
+ IF p_event='termination' THEN
+  IF NOT app.lc_v9_off_access(j.company_id) OR j.offboarding_case_id IS NULL OR NOT EXISTS(SELECT 1 FROM public.lc_v9_case c WHERE c.id=j.offboarding_case_id AND c.tenant_id=t AND c.employment_id=j.employment_id AND c.data->>'state'='cleared') THEN RAISE EXCEPTION 'Termination is raised only at completed clearance' USING ERRCODE='42501'; END IF;
+  IF p_proposed->>'resignationDate' IS DISTINCT FROM j.submitted_on::text OR NOT EXISTS(
+   SELECT 1 FROM public.lc_v9_case c WHERE c.tenant_id=j.tenant_id AND c.id=j.offboarding_case_id AND c.company_id=j.company_id AND c.employment_id=j.employment_id AND c.module='off'
+    AND c.data->>'state'='cleared' AND c.data->>'resignationSourceCaseId'=j.id::text
+    AND c.data->'facts'->>'caseType' IN('Resignation','Termination','Contract end','Retirement','Non-confirmation')
+    AND p_proposed->>'exitReason'=c.data->'facts'->>'caseType' AND p_proposed->>'effectiveDate'=c.data->'facts'->>'lastDay'
+  ) THEN RAISE EXCEPTION 'Termination must use the completed Offboarding case exit reason and source facts' USING ERRCODE='22023'; END IF;
+  IF p_proposed->>'effectiveDate' IS DISTINCT FROM (SELECT r.last_working_day::text FROM public.resignation_request r WHERE r.id=j.id AND r.tenant_id=t) THEN RAISE EXCEPTION 'Clearance last working day changed' USING ERRCODE='40001'; END IF;
+ ELSE
+  IF j.stage<>'retained' OR NOT (app.resignation_journey_can_act(j.id,'own') OR app.resignation_journey_can_act(j.id,'retry')) THEN RAISE EXCEPTION 'An accepted retention offer is required' USING ERRCODE='42501'; END IF;
+  SELECT step INTO workflow_step FROM public.automation_run r JOIN public.automation_workflow_version w ON w.tenant_id=r.tenant_id AND w.workflow_id=r.workflow_id AND w.revision=r.workflow_revision CROSS JOIN LATERAL jsonb_array_elements(w.definition->'steps') step
+  WHERE r.tenant_id=t AND r.module='off' AND r.subject_id=j.id AND r.status IN ('running','failed') AND p_key=r.id::text||':'||(step->>'id')||':'||j.revision::text AND step->>'type'='createPosting' LIMIT 1;
+  IF workflow_step IS NULL THEN RAISE EXCEPTION 'Only a pinned workflow posting step can propose this event' USING ERRCODE='42501'; END IF;
+  IF p_event IS DISTINCT FROM (CASE workflow_step->'params'->>'eventType' WHEN 'Transfer' THEN 'transfer' WHEN 'Increment' THEN 'increment' WHEN 'Confirmation' THEN 'confirmation' WHEN 'Salary Adjustment' THEN 'salaryAdjustment' WHEN 'Employment Type Change' THEN 'employmentTypeChange' ELSE 'promotion' END) THEN RAISE EXCEPTION 'Posting event does not match its workflow step' USING ERRCODE='22023'; END IF;
+  IF (p_proposed ? 'positionId') IS DISTINCT FROM (coalesce(workflow_step->'params'->'fields','["title","grade","salary"]'::jsonb) ? 'title') OR (p_proposed ? 'gradeId') IS DISTINCT FROM (coalesce(workflow_step->'params'->'fields','["title","grade","salary"]'::jsonb) ? 'grade') OR (p_proposed ? 'basicSalary') IS DISTINCT FROM (coalesce(workflow_step->'params'->'fields','["title","grade","salary"]'::jsonb) ? 'salary') THEN RAISE EXCEPTION 'Posting fields do not match its workflow step' USING ERRCODE='22023'; END IF;
+
+  IF p_proposed->>'effectiveDate' IS DISTINCT FROM (CASE workflow_step->'params'->>'dateFrom' WHEN 'lwd' THEN j.data->>'lastWorkingDay' WHEN 'today' THEN (now() AT TIME ZONE 'Asia/Kuala_Lumpur')::date::text ELSE j.data->'offer'->>'effectiveDate' END) THEN RAISE EXCEPTION 'Posting must use its pinned workflow date' USING ERRCODE='22023'; END IF;
+  IF p_proposed ? 'position' AND p_proposed->>'position' IS DISTINCT FROM j.data->'offer'->>'position' THEN RAISE EXCEPTION 'Posting must use accepted Position' USING ERRCODE='22023'; END IF;
+  IF p_proposed ? 'jobGrade' AND p_proposed->>'jobGrade' IS DISTINCT FROM j.data->'offer'->>'jobGrade' THEN RAISE EXCEPTION 'Posting must use accepted Job Grade' USING ERRCODE='22023'; END IF;
+  IF p_proposed ? 'basicSalary' THEN IF (p_proposed->>'basicSalary')::numeric IS DISTINCT FROM (j.data->'offer'->>'basicSalary')::numeric THEN RAISE EXCEPTION 'Posting must use accepted Basic salary' USING ERRCODE='22023'; END IF; END IF;
+ END IF;
+ IF p_proposed ? 'basicSalary' THEN
+  source_currency:=nullif(btrim(j.data->'facts'->>'currency'),'');
+  IF source_currency IS NOT NULL THEN
+   IF NOT pg_try_advisory_xact_lock_shared(hashtextextended('leave-dependency-configuration:'||t::text,0)) THEN RAISE EXCEPTION 'Salary source is busy; review this posting again' USING ERRCODE='40001'; END IF;
+   IF NOT pg_try_advisory_xact_lock(hashtextextended('leave-dependency-employment:'||t::text||':'||p_employment::text,0)) THEN RAISE EXCEPTION 'Salary source is busy; review this posting again' USING ERRCODE='40001'; END IF;
+   SELECT c.currency INTO current_currency FROM public.compensation c WHERE c.tenant_id=t AND c.employment_id=p_employment AND c.superseded_at IS NULL AND c.valid_from<=(p_proposed->>'effectiveDate')::date AND (c.valid_to IS NULL OR c.valid_to>(p_proposed->>'effectiveDate')::date) ORDER BY c.valid_from DESC,c.id LIMIT 1;
+   IF current_currency IS DISTINCT FROM source_currency THEN RAISE EXCEPTION 'The salary currency changed since this resignation case; review the agreed offer before creating a posting' USING ERRCODE='40001'; END IF;
+  END IF;
+ END IF;
+ IF app.offboarding_posting_references_ok(j.company_id,p_proposed) IS NOT TRUE THEN RAISE EXCEPTION 'Posting references do not match Personnel Management' USING ERRCODE='22023'; END IF;
+ SELECT CASE WHEN c.data->'offboarding' ? 'postingApproverGroupId' THEN c.data->'offboarding'->>'postingApproverGroupId' ELSE c.data->>'peopleOpsGroup' END INTO configured FROM public.lc_v9_config c WHERE c.tenant_id=t;
+ IF configured IS DISTINCT FROM p_approver_group OR cardinality(app.offboarding_posting_group_members(configured))=0 THEN RAISE EXCEPTION 'Configure a populated Offboarding posting approver group' USING ERRCODE='22023'; END IF;
+ SELECT coalesce(max(number),1000)+1 INTO v_number FROM public.personnel_posting WHERE tenant_id=t;
+ baseline:=jsonb_build_object('position',j.data->'facts'->'position','jobGrade',j.data->'facts'->'jobGrade','basicSalary',j.data->'facts'->'basicSalary','currency',j.data->'facts'->'currency');
+ INSERT INTO public.personnel_posting(tenant_id,company_id,employment_id,number,source,source_ref,event_type,proposed,approver_group_id,created_by,idempotency_key,baseline_values)
+ VALUES(t,j.company_id,p_employment,v_number,p_source,p_source_ref,p_event,p_proposed,configured,app.current_user_id(),p_key,baseline) RETURNING id INTO v_id;
+ INSERT INTO public.domain_event(tenant_id,aggregate_type,aggregate_id,event_type,actor_type,actor_id,subject_employment_id,payload) VALUES(t,'personnel_posting',v_id,'personnel_posting.created','user',app.current_user_id(),p_employment,jsonb_build_object('number',v_number,'source',p_source,'sourceRef',p_source_ref,'eventType',p_event,'proposed',p_proposed,'approverGroupId',configured));
+ RETURN v_id;
+END $$;
+--> statement-breakpoint
+CREATE OR REPLACE FUNCTION app.personnel_posting_approve(p_id uuid,p_revision integer,p_values jsonb) RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE p public.personnel_posting; v jsonb; source_currency text; current_currency text;
+BEGIN
+ SELECT * INTO p FROM public.personnel_posting WHERE tenant_id=app.current_tenant_id() AND id=p_id;
+ IF NOT FOUND OR p.source<>'offboarding' THEN RETURN app.personnel_posting_approve_probation_v1(p_id,p_revision,p_values); END IF;
+ PERFORM app.access_workforce_write_lock();SELECT * INTO p FROM public.personnel_posting WHERE tenant_id=app.current_tenant_id() AND id=p_id FOR UPDATE;
+ IF NOT app.personnel_posting_visible(p.approver_group_id,p.employment_id,'offboarding') OR NOT app.offboarding_posting_group(p.company_id,p.approver_group_id) OR NOT app.access_workforce_employment(p.employment_id,'workforce.maintain') THEN RAISE EXCEPTION 'Only the authorised posting group can approve this posting' USING ERRCODE='42501'; END IF;
+ IF p.status='approved' AND p.movement_id IS NOT NULL AND p_revision IN (p.revision,p.revision-1) AND (p_values IS NULL OR p_values=p.applied) THEN
+  RETURN jsonb_build_object('id',p.id,'number',p.number,'employmentId',p.employment_id,'eventType',p.event_type,'values',p.applied,'revision',p.revision,'movementId',p.movement_id,'alreadyApplied',true);
+ END IF;
+ IF p.status<>'pending' OR p.revision<>p_revision THEN RAISE EXCEPTION 'Posting changed; reload before approving' USING ERRCODE='40001'; END IF;
+ IF NOT EXISTS(SELECT 1 FROM public.resignation_journey j JOIN public.employment e ON e.id=j.employment_id AND e.tenant_id=j.tenant_id WHERE j.tenant_id=p.tenant_id AND j.id=p.source_ref AND j.employment_id=p.employment_id AND j.company_id=p.company_id AND e.company_id=p.company_id AND (p.event_type<>'termination' AND j.stage='retained' OR p.event_type='termination' AND EXISTS(SELECT 1 FROM public.lc_v9_case c WHERE c.tenant_id=j.tenant_id AND c.id=j.offboarding_case_id AND c.employment_id=j.employment_id AND c.data->>'state'='cleared'))) THEN RAISE EXCEPTION 'The posting source or company changed; review before approving' USING ERRCODE='40001'; END IF;
+
+ v:=coalesce(p_values,p.edited,p.proposed);IF app.offboarding_posting_values_ok(p.event_type,v) IS NOT TRUE THEN RAISE EXCEPTION 'Posting values are incomplete or not allowed' USING ERRCODE='22023'; END IF;
+ IF p.event_type='termination' AND NOT EXISTS(
+  SELECT 1 FROM public.resignation_journey j JOIN public.lc_v9_case c ON c.tenant_id=j.tenant_id AND c.id=j.offboarding_case_id AND c.company_id=j.company_id AND c.employment_id=j.employment_id
+  JOIN public.resignation_request r ON r.tenant_id=j.tenant_id AND r.id=j.id AND r.employment_id=j.employment_id
+  WHERE j.tenant_id=p.tenant_id AND j.id=p.source_ref AND j.company_id=p.company_id AND j.employment_id=p.employment_id AND c.module='off'
+   AND c.data->>'state'='cleared' AND c.data->>'resignationSourceCaseId'=j.id::text
+   AND c.data->'facts'->>'caseType' IN('Resignation','Termination','Contract end','Retirement','Non-confirmation')
+   AND v->>'exitReason'=c.data->'facts'->>'caseType' AND v->>'effectiveDate'=c.data->'facts'->>'lastDay' AND v->>'effectiveDate'=r.last_working_day::text
+   AND v->>'resignationDate'=j.submitted_on::text
+ ) THEN RAISE EXCEPTION 'Termination must use the completed Offboarding case exit reason and source facts' USING ERRCODE='22023'; END IF;
+ IF v ? 'basicSalary' THEN
+  SELECT nullif(btrim(j.data->'facts'->>'currency'),'') INTO source_currency FROM public.resignation_journey j WHERE j.tenant_id=p.tenant_id AND j.id=p.source_ref;
+  IF source_currency IS NOT NULL THEN
+   IF NOT pg_try_advisory_xact_lock_shared(hashtextextended('leave-dependency-configuration:'||p.tenant_id::text,0)) THEN RAISE EXCEPTION 'Salary source is busy; review this posting again' USING ERRCODE='40001'; END IF;
+   IF NOT pg_try_advisory_xact_lock(hashtextextended('leave-dependency-employment:'||p.tenant_id::text||':'||p.employment_id::text,0)) THEN RAISE EXCEPTION 'Salary source is busy; review this posting again' USING ERRCODE='40001'; END IF;
+   SELECT c.currency INTO current_currency FROM public.compensation c WHERE c.tenant_id=p.tenant_id AND c.employment_id=p.employment_id AND c.superseded_at IS NULL AND c.valid_from<=(v->>'effectiveDate')::date AND (c.valid_to IS NULL OR c.valid_to>(v->>'effectiveDate')::date) ORDER BY c.valid_from DESC,c.id LIMIT 1;
+   IF current_currency IS DISTINCT FROM source_currency THEN RAISE EXCEPTION 'The salary currency changed since this resignation case; review the agreed offer before approving this posting' USING ERRCODE='40001'; END IF;
+  END IF;
+ END IF;
+ IF app.offboarding_posting_references_ok(p.company_id,v) IS NOT TRUE THEN RAISE EXCEPTION 'Posting references do not match Personnel Management' USING ERRCODE='22023'; END IF;
+ UPDATE public.personnel_posting SET status='approved',approved_by=app.current_user_id(),approved_at=now(),applied=v,revision=p.revision+1 WHERE id=p.id AND tenant_id=p.tenant_id;
+ INSERT INTO public.domain_event(tenant_id,aggregate_type,aggregate_id,event_type,actor_type,actor_id,subject_employment_id,payload) VALUES(p.tenant_id,'personnel_posting',p.id,'personnel_posting.approved','user',app.current_user_id(),p.employment_id,jsonb_build_object('source',p.source,'sourceRef',p.source_ref,'applied',v,'revision',p.revision+1));
+ RETURN jsonb_build_object('id',p.id,'number',p.number,'employmentId',p.employment_id,'eventType',p.event_type,'values',v,'revision',p.revision+1);
+END $$;
