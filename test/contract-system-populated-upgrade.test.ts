@@ -9,7 +9,7 @@ import {sql} from 'drizzle-orm';
 import {expect,it} from 'vitest';
 import {createDb,type SessionContext} from '../db/client';
 import {seedCatalogs} from '../scripts/seed-catalogs';
-import {withoutCombinedReleaseNulls} from './helpers/approved-upgrade';
+import {COMBINED_RELEASE_DEFAULT_COLUMNS} from './helpers/approved-upgrade';
 import {todayInKualaLumpur} from '../lib/hr-date';
 it('retains genuine human Contract jobs, events, seals, actor bindings and old rows across the nullable-system-creator/default-actor upgrade',async()=>{
  const journal=JSON.parse(readFileSync('db/migrations/meta/_journal.json','utf8')) as {entries:{tag:string;when:number}[]};
@@ -38,7 +38,8 @@ it('retains genuine human Contract jobs, events, seals, actor bindings and old r
   expect(before.jobs.every(item=>item.row.created_by===user&&item.row.context.userId===user&&item.row.state==='queued')).toBe(true);expect(before.events.every(item=>item.row.actor_user_id===user&&item.row.actor_person_id===person&&!Object.hasOwn(item.row,'actor_type'))).toBe(true);
   await migrate(storage.db,{migrationsFolder:'db/migrations'});
   const after=await snapshots();expect(after.jobs).toEqual(before.jobs);expect(after.cases).toEqual(before.cases);expect(after.flows).toEqual(before.flows);expect(after.seals).toEqual(before.seals);expect(after.audit).toEqual(before.audit);
-  expect(after.events.map(item=>({row:withoutCombinedReleaseNulls('contract_shared_event',item.row)}))).toEqual(before.events);expect(after.events.every(item=>item.row.actor_type==='user')).toBe(true);
+  expect(COMBINED_RELEASE_DEFAULT_COLUMNS).toContainEqual({tag:'5932_contract_native_system_kernel',table:'contract_shared_event',column:'actor_type',value:'user'});
+  expect(after.events.map(item=>{const {actor_type,...retained}=item.row;expect(actor_type).toBe('user');return {row:retained};})).toEqual(before.events);
   const columns=await storage.client`select table_name,column_name,is_nullable from information_schema.columns where table_schema='public' and (table_name='bulk_job' and column_name='created_by' or table_name='contract_shared_event' and column_name='actor_type') order by table_name`;
   expect(columns).toEqual([{table_name:'bulk_job',column_name:'created_by',is_nullable:'YES'},{table_name:'contract_shared_event',column_name:'actor_type',is_nullable:'NO'}]);
   expect((await storage.client`select hash,created_at::text from drizzle.__drizzle_migrations order by created_at,id`).slice(0,ledger.length)).toEqual(ledger);
