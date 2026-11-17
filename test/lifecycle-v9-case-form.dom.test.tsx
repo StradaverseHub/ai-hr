@@ -93,13 +93,13 @@ it('drops a stored PBP field instead of turning it into a custom editable field'
   const stored = [...defaultV9CaseFields('off'), { key: 'pbp', label: 'Legacy PBP', type: 'text' as const, show: true, required: false, hrOnly: false, rules: {}, options: [], help: '' }];
   const fields = resolveV9CaseFields('off', stored, true);
   expect(fields.some(field => field.key === 'pbp')).toBe(false);
-  render(<CaseFormFields fields={fields} facts={{}} values={{ pbp: 'legacy-user' }} hr editing change={vi.fn()}/>);
+  render(<NextIntlClientProvider locale="en" messages={messages}><CaseFormFields fields={fields} facts={{}} values={{ pbp: 'legacy-user' }} hr editing change={vi.fn()}/></NextIntlClientProvider>);
   expect(screen.queryByLabelText('Legacy PBP')).not.toBeInTheDocument();
   expect(screen.queryByDisplayValue('legacy-user')).not.toBeInTheDocument();
 });
 
 it('removes Shared PBP routing while retaining GBS People Ops and company signatories', () => {
-  render(<WorkspaceSettings config={v9Defaults()} options={{ users: [], companies: [], employees: [] }} activeTab="shared" editable edit={vi.fn()}/>);
+  render(<NextIntlClientProvider locale="en" messages={messages}><WorkspaceSettings config={v9Defaults()} options={{ users: [], companies: [], employees: [] }} activeTab="shared" editable edit={vi.fn()}/></NextIntlClientProvider>);
   expect(screen.getByLabelText('GBS People Ops group')).toBeInTheDocument();
   expect(screen.getByRole('heading', { name: 'Company signatories' })).toBeInTheDocument();
   expect(screen.queryByRole('heading', { name: 'People Business Partner routing' })).not.toBeInTheDocument();
