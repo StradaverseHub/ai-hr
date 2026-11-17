@@ -88,7 +88,7 @@ class Fixture(old.UpgradeFlowFixture):
         self.queue=root/'queue';self.queue.mkdir(mode=0o700);self.queue_lock=self.queue/'operations.lock';self.queue_lock.write_bytes(b'');self.queue_lock.chmod(0o600)
         q=self.queue.stat();lock=self.queue_lock.stat()
         self.operations_lock={'policy':guard.GUARD_POLICY,'queueDirectory':str(self.queue),'lockPath':str(self.queue_lock),'uid':q.st_uid,'gid':q.st_gid,'mode':0o600,'device':lock.st_dev,'inode':lock.st_ino,'queueMode':0o700,'queueDevice':q.st_dev,'queueInode':q.st_ino}
-        self.auth['operationsLock']=self.operations_lock;self.auth['python']=copy.deepcopy(PYTHON_PINS)
+        self.auth['operationsLock']=self.operations_lock;self.auth['python']=copy.deepcopy(PYTHON_PINS);self.auth['nodeOptions']={'policy':'aihr-worker-node-options-memory/v1','sha256':ci.sha(b'')}
         original_protected=self.base.root_protected
         def protected(path,regular=False):
             if Path(path)==PYTHON_PATH:
@@ -96,7 +96,7 @@ class Fixture(old.UpgradeFlowFixture):
             return original_protected(path,regular=regular)
         self.base.root_protected=protected
         self.firstfile=root/'original-pre-drain-approval.json'
-        self.first={'format':1,'kind':'ADMIN_REVIEWED_CI_WORKER_DRAIN_PINS','policy':ci.POLICY,'target':'alpha-staging','issuedAt':'2026-11-17T00:00:00Z','expiresAt':'2026-11-17T00:00:04Z',**{k:self.auth[k]for k in ['identity','helperSha256','nodeSha256','lease','leaseFileSha256','sourceManifestSha256','environmentSha256','dotenvSha256','readiness','operationsLock','leaseFile','coordinatorSha256','python']},'gate':{k:self.grant[k]for k in ['source','controller','runId','build','artifact','witnessFingerprint','policyVersion']},'releaseAuthorized':False}
+        self.first={'format':1,'kind':'ADMIN_REVIEWED_CI_WORKER_DRAIN_PINS','policy':ci.POLICY,'target':'alpha-staging','issuedAt':'2026-11-17T00:00:00Z','expiresAt':'2026-11-17T00:00:04Z',**{k:self.auth[k]for k in ['identity','helperSha256','nodeSha256','lease','leaseFileSha256','sourceManifestSha256','environmentSha256','dotenvSha256','readiness','operationsLock','leaseFile','coordinatorSha256','python','nodeOptions']},'gate':{k:self.grant[k]for k in ['source','controller','runId','build','artifact','witnessFingerprint','policyVersion']},'releaseAuthorized':False}
         self.firstfile.write_bytes(encoded(self.first));self.firstfile.chmod(0o600);self.auth.update(firstStageApproval=str(self.firstfile),firstStageApprovalSha256=ci.sha(self.firstfile.read_bytes()))
         self.store={'format':1,'installId':self.install_id,'directory':{'device':st.st_dev,'inode':st.st_ino},'packetDirectory':{'device':st.st_dev,'inode':(self.directory/'packet').stat().st_ino}}
         (self.directory/'store.json').write_bytes(encoded(self.store));(self.directory/'store.json').chmod(0o600)
@@ -533,7 +533,7 @@ class ConditionalRuntimeTests(unittest.TestCase):
         # The eventual application/coordinator child is a recording port and never executes.
         node=shutil.which('node');self.assertIsNotNone(node)
         owner=SimpleNamespace(pw_uid=os.getuid(),pw_gid=os.getgid());environment={'HOME':'/private/owner','PATH':'/usr/bin:/bin'}
-        keys=['NODE_OPTIONS','NODE_PATH','NODE_V8_COVERAGE','NODE_EXTRA_CA_CERTS','LD_PRELOAD','DYLD_INSERT_LIBRARIES','PYTHONPATH','OPENSSL_CONF']
+        keys=['NODE_OPTIONS','NODE_PATH','NODE_V8_COVERAGE','NODE_COMPILE_CACHE','NODE_REDIRECT_WARNINGS','NODE_ICU_DATA','NODE_EXTRA_CA_CERTS','LD_PRELOAD','DYLD_INSERT_LIBRARIES','PYTHONPATH','OPENSSL_CONF']
         with tempfile.TemporaryDirectory()as tmp:
             source=Path(tmp);dotenv=source/'.env.production';status=[node,'--env-file=.env.production','fixed-status']
             def process(argv,**options):
@@ -546,10 +546,10 @@ class ConditionalRuntimeTests(unittest.TestCase):
                     for line in [key+'=opaque','export '+key+'=opaque',key+'="opaque"',key+"='opaque'"]:
                         with self.subTest(key=key,line=line.split('=')[0]):
                             run.reset_mock();dotenv.write_text('AIHR_IMPORT_WORKER_REQUIRED=1\n'+line+'\n')
-                            with self.assertRaisesRegex(ValueError,'active dotenv loader'):ci.child(status,owner,environment)
+                            with self.assertRaisesRegex(ValueError,'active dotenv loader'):ci.child(status,owner,environment,node_options={'policy':'aihr-worker-node-options-memory/v1','sha256':ci.sha(b'')})
                             self.assertEqual(run.call_count,1);self.assertNotIn('--env-file=.env.production',run.call_args.args[0])
                     run.reset_mock();dotenv.write_text('AIHR_IMPORT_WORKER_REQUIRED=1\n# '+key+'=opaque\n')
-                    self.assertEqual(ci.child(status,owner,environment),{});self.assertEqual(run.call_count,2)
+                    self.assertEqual(ci.child(status,owner,environment,node_options={'policy':'aihr-worker-node-options-memory/v1','sha256':ci.sha(b'')}),{});self.assertEqual(run.call_count,2)
                     self.assertEqual(run.call_args.kwargs['env'],{**environment,'PYTHONNOUSERSITE':'1','PYTHONSAFEPATH':'1'})
                     run.reset_mock()
                     with self.assertRaisesRegex(ValueError,'controlled loader'):ci.child([node,'fixed-status'],owner,{**environment,key:'opaque'})
@@ -585,5 +585,77 @@ class ConditionalRuntimeTests(unittest.TestCase):
                         with self.assertRaisesRegex(ValueError,'slot expired'):ci.child([str(f.node),'fixed-status'],f.owner,{},timeout=180)
                         run.assert_not_called()
                 finally:invocation.close();os.close(fd)
+
+    def test_python_runtime_and_node_options_approval_pins_refuse_before_service_mutation(self):
+        for defect in ['python-bytes','python-too-old','python-wrong-version','python-resolution','node-policy','node-shared-digest']:
+            with self.subTest(defect=defect),tempfile.TemporaryDirectory()as tmp:
+                f=Fixture(Path(tmp));before=f.unit.read_bytes();f.first=copy.deepcopy(f.first)
+                if defect=='python-bytes':f.auth['python']['sha256']='0'*64
+                if defect=='python-too-old':f.auth['python']['version']='3.10.0'
+                if defect=='python-wrong-version':f.auth['python']['version']='3.99.0'
+                if defect=='python-resolution':f.auth['python']['path']='/usr/bin/python3.999'
+                if defect.startswith('python-'):f.first['python']=copy.deepcopy(f.auth['python'])
+                if defect=='node-policy':f.auth['nodeOptions']['policy']='unreviewed';f.first['nodeOptions']=copy.deepcopy(f.auth['nodeOptions'])
+                if defect=='node-shared-digest':f.auth['nodeOptions']['sha256']='0'*64
+                f.firstfile.write_bytes(encoded(f.first));f.auth['firstStageApprovalSha256']=ci.sha(f.firstfile.read_bytes());f.persist_authority()
+                with self.assertRaises((ValueError,FileNotFoundError)):f.conditional()
+                self.assertEqual(f.unit.read_bytes(),before);self.assertFalse((f.operation/'activated.json').exists());self.assertFalse((f.operation/'ci-worker-start-request.json').exists())
+
+    def test_pinned_memory_only_node_options_preserve_native_value_and_recognized_v8_flags(self):
+        node=shutil.which('node');self.assertIsNotNone(node);owner=SimpleNamespace(pw_uid=os.getuid(),pw_gid=os.getgid())
+        environment={'HOME':'/fictional/private-owner','PATH':'/usr/bin:/bin'}
+        program="import{createHash}from'node:crypto';import{getHeapStatistics}from'node:v8';const value=process.env.NODE_OPTIONS;process.stdout.write(JSON.stringify({sha256:createHash('sha256').update(value).digest('hex'),recognized:process.allowedNodeEnvironmentFlags.has(value.split('=')[0]),bounded:getHeapStatistics().heap_size_limit>=256*1024**2&&getHeapStatistics().heap_size_limit<=512*1024**2}));"
+        with tempfile.TemporaryDirectory()as tmp:
+            source=Path(tmp);dotenv=source/'.env.production';argv=[node,'--env-file=.env.production','--input-type=module','-e',program];seen=[]
+            def bounded(command,**options):
+                seen.append(command);self.assertNotIn('NODE_OPTIONS',options['env'])
+                self.assertEqual(options['env'].get('PYTHONNOUSERSITE','1'),'1');self.assertEqual(options['env'].get('PYTHONSAFEPATH','1'),'1')
+                return subprocess.run(command,cwd=options['cwd'],env=options['env'],capture_output=True,check=True,timeout=5).stdout
+            with patch.object(ci,'SOURCE',source),patch.object(ci,'bounded_process',side_effect=bounded):
+                for first in ('-','_'):
+                    for second in ('-','_'):
+                        for third in ('-','_'):
+                            value='--max'+first+'old'+second+'space'+third+'size=256';pins={'policy':'aihr-worker-node-options-memory/v1','sha256':ci.sha(value.encode())}
+                            for text in ['NODE_OPTIONS='+value+'\n','export NODE_OPTIONS="'+value+'"\n',"NODE_OPTIONS='"+value+"'\n",'NODE_OPTIONS=--max-old-space-size=384\n# NODE_OPTIONS=--import=forbidden\nNODE_OPTIONS='+value+'\n']:
+                                with self.subTest(spelling=value,text=text[:20]):
+                                    dotenv.write_text(text);seen.clear();result=ci.child(argv,owner,environment,node_options=pins)
+                                    self.assertEqual(result,{'sha256':pins['sha256'],'recognized':True,'bounded':True});self.assertEqual(len(seen),2)
+                base='--max-old-space-size=256';pins={'policy':'aihr-worker-node-options-memory/v1','sha256':ci.sha(base.encode())}
+                for value in ['--max-old-space-size=127','--max-old-space-size=65537','--max-old-space-size=-256','--max-old-space-size=256x',' '+base,base+' ',base+' --import=forbidden',base+' --require=forbidden','--inspect','--require=forbidden','--import=forbidden','--max-old-space-size=384']:
+                    with self.subTest(refusal=value.split('=')[0]):
+                        # Quoting retains intentional leading/trailing whitespace in the active value.
+                        dotenv.write_text('NODE_OPTIONS="'+value+'"\n');seen.clear()
+                        with self.assertRaisesRegex(ValueError,'active dotenv loader'):ci.child(argv,owner,environment,node_options=pins)
+                        self.assertEqual(len(seen),1);self.assertNotIn('--env-file=.env.production',seen[0])
+                dotenv.write_text('NODE_OPTIONS="'+base+'\n--import=forbidden"\n');seen.clear()
+                with self.assertRaisesRegex(ValueError,'active dotenv loader'):ci.child(argv,owner,environment,node_options=pins)
+                self.assertEqual(len(seen),1)
+
+    def test_actual_node_python_child_inherits_safe_path_and_cannot_run_hostile_customization(self):
+        node=shutil.which('node');self.assertIsNotNone(node)
+        owner=SimpleNamespace(pw_uid=os.getuid(),pw_gid=os.getgid())
+        with tempfile.TemporaryDirectory()as tmp:
+            root=Path(tmp);home=root/'home';cwd=root/'cwd';home.mkdir();cwd.mkdir()
+            major,minor=PYTHON_PINS['version'].split('.')[:2]
+            user_site=home/'.local/lib'/('python'+major+'.'+minor)/'site-packages';user_site.mkdir(parents=True)
+            user_marker=root/'user-site-executed';cwd_marker=root/'cwd-site-executed'
+            (user_site/'usercustomize.py').write_text('from pathlib import Path;Path('+repr(str(user_marker))+').write_text("forbidden")')
+            (cwd/'sitecustomize.py').write_text('from pathlib import Path;Path('+repr(str(cwd_marker))+').write_text("forbidden")')
+            program="import json,sys;print(json.dumps({'safePath':sys.flags.safe_path,'noUserSite':sys.flags.no_user_site}))"
+            # The control proves that the fictional owner-user-site fixture is discoverable.
+            control=subprocess.run([str(PYTHON_PATH),'-c',program],cwd=cwd,env={'PATH':'/usr/bin:/bin','HOME':str(home)},capture_output=True,text=True,check=True,timeout=5)
+            self.assertEqual(json.loads(control.stdout)['noUserSite'],0);self.assertTrue(user_marker.exists());user_marker.unlink()
+            if cwd_marker.exists():cwd_marker.unlink()
+            env={'PATH':'/usr/bin:/bin','HOME':str(home)}
+            js="const{execFileSync}=require('node:child_process');process.stdout.write(execFileSync(process.argv[1],['-c',process.argv[2]],{cwd:process.argv[3],env:process.env}));"
+            def bounded(argv,**options):
+                self.assertEqual(options.pop('user'),os.getuid());self.assertEqual(options.pop('group'),os.getgid());self.assertEqual(options.pop('extra_groups'),[])
+                self.assertEqual(options['env']['PYTHONNOUSERSITE'],'1');self.assertEqual(options['env']['PYTHONSAFEPATH'],'1')
+                # Already that actual unprivileged UID; separate kernel fixture tests privilege drop.
+                result=subprocess.run(argv,cwd=options['cwd'],env=options['env'],capture_output=True,check=True,timeout=5)
+                return result.stdout
+            with patch.object(ci,'SOURCE',cwd),patch.object(ci,'bounded_process',side_effect=bounded):
+                result=ci.child([node,'-e',js,str(PYTHON_PATH),program,str(cwd)],owner,env)
+            self.assertEqual(result,{'safePath':True,'noUserSite':1});self.assertFalse(user_marker.exists());self.assertFalse(cwd_marker.exists())
 
 if __name__=='__main__':unittest.main()
