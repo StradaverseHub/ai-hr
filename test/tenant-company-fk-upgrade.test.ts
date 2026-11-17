@@ -1805,6 +1805,7 @@ it('stops on a cross-tenant row, then validates every company/tenant key without
   const approvedRelations:Record<string,{rls:boolean;force:boolean;acl:string}>={
    'app.reward_review_plan_company_outbox':{rls:true,force:true,acl:'{OWNER=arwdDxt/OWNER}'},
    'app.reward_review_plan_write_lease':{rls:true,force:true,acl:'{OWNER=arwdDxt/OWNER}'},
+   'reward_history_post_read_lease':{rls:true,force:true,acl:'{OWNER=arwdDxt/OWNER}'},
    'reward_person_history':{rls:true,force:true,acl:'{OWNER=arwdDxt/OWNER,ai_hr_app=a/OWNER}'},
    'reward_plan_year':{rls:true,force:true,acl:'{OWNER=arwdDxt/OWNER,ai_hr_app=ar/OWNER}'},
    'reward_plan_year_company':{rls:true,force:true,acl:'{OWNER=arwdDxt/OWNER,ai_hr_app=arw/OWNER}'},
@@ -1848,6 +1849,8 @@ it('stops on a cross-tenant row, then validates every company/tenant key without
    {table:'reward_person_history',name:'reward_history_upload_read',cmd:'SELECT',role:'ai_hr_app',using:"tenant_id=app.current_tenant_id() AND source='upload' AND app.reward_history_upload_authorized(company_id) AND app.reward_history_upload_subject(employment_id,company_id)",check:null},
    {table:'reward_person_history',name:'reward_history_insert',cmd:'INSERT',role:'ai_hr_app',using:null,check:"tenant_id=app.current_tenant_id() AND created_by=app.current_user_id() AND app.reward_not_viewing_as() AND source='upload' AND app.reward_history_upload_authorized(company_id)"},
    {table:'reward_person_history',name:'reward_history_supersede',cmd:'UPDATE',role:'ai_hr_app',using:"tenant_id=app.current_tenant_id() AND source='upload' AND superseded_at IS NULL AND app.reward_history_upload_authorized(company_id) AND app.reward_history_upload_subject(employment_id,company_id)",check:"tenant_id=app.current_tenant_id() AND source='upload' AND superseded_at IS NOT NULL AND app.reward_history_upload_authorized(company_id) AND app.reward_history_upload_subject(employment_id,company_id)"},
+   {table:'reward_history_post_read_lease',name:'reward_history_post_read_lease_owner',cmd:'ALL',role:'ai_hr_owner',using:'tenant_id=app.current_tenant_id() AND transaction_id=txid_current()',check:'tenant_id=app.current_tenant_id() AND transaction_id=txid_current()'},
+   {table:'reward_uploaded_award',name:'reward_history_uploaded_post_selection',cmd:'SELECT',role:'ai_hr_owner',using:"tenant_id=app.current_tenant_id() AND app.principal_snapshot_current() AND app.reward_not_viewing_as() AND EXISTS(SELECT 1 FROM public.reward_history_post_read_lease l WHERE l.tenant_id=reward_uploaded_award.tenant_id AND l.unit_id=reward_uploaded_award.unit_id AND l.transaction_id=txid_current()) AND EXISTS(SELECT 1 FROM public.reward_unit u WHERE u.id=reward_uploaded_award.unit_id AND u.tenant_id=reward_uploaded_award.tenant_id AND u.deleted_at IS NULL AND u.status IN('approved','posted') AND app.reward_admin(u.company_id) AND 'payroll'=ANY(ARRAY(SELECT app.reward_roles(u.id))))",check:null},
   ];
   const policyIdentity=(policy:ApprovedPolicy)=>({schemaname:policy.table.startsWith('app.')?'app':'public',tablename:policy.table.replace(/^app\./,''),policyname:policy.name});
   const isApprovedPolicy=(row:(typeof afterPerformancePrivileges.policies)[number])=>approvedPolicies.some(policy=>samePolicy(policyIdentity(policy),row));
