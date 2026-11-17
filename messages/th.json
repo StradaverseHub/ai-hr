@@ -40965,6 +40965,11 @@
     }
   },
   "resignationJourney": {
+    "signRelease": "ลงนามและออกจดหมาย",
+    "insertMergeField": "แทรกฟิลด์ผสาน",
+    "unknownMergeField": "ไม่รู้จักฟิลด์ผสาน โปรดตรวจสอบโทเค็นนี้ก่อนตรวจทาน:",
+    "invalidInlineEdit": "ใช้เฉพาะข้อความธรรมดาและฟิลด์ผสาน เซลล์ตารางต้องไม่มีการขึ้นบรรทัดใหม่หรือ |",
+    "reviewSavesEdits": "การแก้ไขจดหมายของคุณจะถูกบันทึกเมื่อคุณตรวจทานเสร็จสิ้น",
     "offboardingFallback": "ลายเซ็นฝ่ายบุคคลสำรอง",
     "offboardingFallbackLegacy": "คงการตั้งค่าลายเซ็นฝ่ายบุคคลเดิม",
     "offboardingFallbackPbp": "PBP ลงนามก่อนออกหนังสือ",

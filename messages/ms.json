@@ -40965,6 +40965,11 @@
     }
   },
   "resignationJourney": {
+    "signRelease": "Tandatangan dan keluarkan surat",
+    "insertMergeField": "Masukkan medan gabungan",
+    "unknownMergeField": "Medan gabungan tidak dikenali. Semak token ini sebelum semakan:",
+    "invalidInlineEdit": "Gunakan teks biasa dan medan gabungan sahaja. Sel jadual tidak boleh mengandungi baris baharu atau |.",
+    "reviewSavesEdits": "Suntingan surat anda akan disimpan apabila anda melengkapkan Semakan.",
     "offboardingFallback": "Tandatangan HR sandaran",
     "offboardingFallbackLegacy": "Kekalkan tetapan tandatangan HR sedia ada",
     "offboardingFallbackPbp": "PBP menandatangani sebelum dikeluarkan",

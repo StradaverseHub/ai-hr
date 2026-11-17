@@ -9,7 +9,7 @@
 import {
   SigningError, currentRoundActions, pendingSigningSteps, recordSigningAction, resendSigningDocument,
   reviseSigningDocument, signingComplete, signingContentLocked, signingContentVisible, signingDocumentOwner,
-  signingStepAction, signingStepQueue, validateSigningRoute,
+  signingStepAction, signingStepQueue, signingStepFulfilled, validateSigningRoute,
   type SigningAction, type SigningDocument, type SigningStep,
 } from './document-signing-model';
 import {
@@ -268,7 +268,7 @@ export function regenerateResignationLetter(letter: ResignationLetter, input: {
 
 export type ResignationLetterCapabilities = {
   contentVisible: boolean; ownerUserId: string | null; pendingSteps: SigningStep[];
-  canOpen: boolean; canSign: boolean; canReview: boolean; canApprove: boolean; canSendBack: boolean;
+  canOpen: boolean; canSign: boolean; canReleaseOnSign: boolean; canReview: boolean; canApprove: boolean; canSendBack: boolean;
   canRecall: boolean; canEditContent: boolean; canCorrectDetails: boolean; canResend: boolean;
   canWithdrawOffer: boolean; canDecline: boolean; canRegenerate: boolean; requiresOpen: boolean;
 };
@@ -287,8 +287,13 @@ export function resignationLetterCapabilities(letter: ResignationLetter, userId:
   const contentVisible = identityAllowed&&signingContentVisible(document, userId, {released: letter.state === 'released'})
     && (active(letter) || letter.state === 'released');
   const needsOpen = employee && mine.length > 0 && !opened;
-  return {contentVisible, ownerUserId: owner, pendingSteps: pending, canOpen: contentVisible,
-    canSign: mine.some(step => signingStepAction(letter.document, step) === 'signed') && !needsOpen,
+  const signingStep=mine.find(step=>signingStepAction(letter.document,step)==='signed');
+  const canSign=!!signingStep&&!needsOpen;
+  // A label projection only: native completion still validates all current-round signing guardrails.
+  const finishingIds=new Set(signingStep?[signingStep.id,...(signingStep.coveredStepIds??[])]:[]);
+  const canReleaseOnSign=letter.kind!=='retention'&&canSign&&letter.document.route.steps.every(step=>!step.required||signingStepFulfilled(letter.document,step)||finishingIds.has(step.id));
+  return {contentVisible, ownerUserId: owner, pendingSteps: pending, canOpen: contentVisible,canReleaseOnSign,
+    canSign,
     canReview: mine.some(step => step.kind === 'review'), canApprove: mine.some(step => step.kind === 'approve'),
     canSendBack: active(letter) && mine.length > 0 && !isOwner && !needsOpen,
     canRecall: active(letter) && isOwner && !holding && pending.length > 0,

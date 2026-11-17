@@ -40965,6 +40965,11 @@
     }
   },
   "resignationJourney": {
+    "signRelease": "签署并发布信函",
+    "insertMergeField": "插入合并字段",
+    "unknownMergeField": "未知的合并字段。审核前请检查此标记：",
+    "invalidInlineEdit": "仅使用纯文本和合并字段。表格单元格不能包含换行或 |。",
+    "reviewSavesEdits": "完成审核时将保存您的信函修改。",
     "offboardingFallback": "备用人力资源签署方式",
     "offboardingFallbackLegacy": "保留现有人力资源签署设置",
     "offboardingFallbackPbp": "PBP 在发出前签署",

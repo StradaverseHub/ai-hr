@@ -1,13 +1,17 @@
 import {Node} from '@tiptap/core';
 import StarterKit from '@tiptap/starter-kit';
 import {TableKit} from '@tiptap/extension-table';
-/** The editor exposes only formatting the canonical document can preserve. No link/image/code extensions. */
-export function letterEditorExtensions(labels:{conditional:string;then:string;otherwise:string}){
- const field=Node.create({name:'letterField',group:'inline',inline:true,atom:true,selectable:true,
+/** Shared field atom. Omitted labels preserve the Contract editor's canonical display. */
+export function letterFieldExtension(labels?:ReadonlyMap<string,string>){
+ return Node.create({name:'letterField',group:'inline',inline:true,atom:true,selectable:true,
   addAttributes(){return {key:{default:'',parseHTML:element=>element.getAttribute('data-letter-field')}};},
   parseHTML(){return [{tag:'span[data-letter-field]'}];},
-  renderHTML({node}){return ['span',{'data-letter-field':node.attrs.key,contenteditable:'false',class:'rounded bg-primary/10 px-1 font-medium text-primary'},'{{'+String(node.attrs.key)+'}}'];},
+  renderHTML({node}){return ['span',{'data-letter-field':node.attrs.key,contenteditable:'false',class:'rounded bg-primary/10 px-1 font-medium text-primary'},labels?'{' +(labels.get(String(node.attrs.key))??String(node.attrs.key))+'}':'{{'+String(node.attrs.key)+'}}'];},
  });
+}
+/** The editor exposes only formatting the canonical document can preserve. No link/image/code extensions. */
+export function letterEditorExtensions(labels:{conditional:string;then:string;otherwise:string}){
+ const field=letterFieldExtension();
  const branch=Node.create({name:'letterBranch',content:'block+',isolating:true,defining:true,
   addAttributes(){return {branch:{default:'then',parseHTML:element=>element.getAttribute('data-letter-branch')}};},
   parseHTML(){return [{tag:'section[data-letter-branch]',contentElement:'[data-letter-branch-content]'}];},

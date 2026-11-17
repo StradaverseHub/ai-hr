@@ -40965,6 +40965,11 @@
     }
   },
   "resignationJourney": {
+    "signRelease": "Sign and release letter",
+    "insertMergeField": "Insert merge field",
+    "unknownMergeField": "Unknown merge field. Check this token before review:",
+    "invalidInlineEdit": "Use plain text and merge fields only. Table cells cannot contain line breaks or |.",
+    "reviewSavesEdits": "Your letter edits will be saved when you complete Review.",
     "offboardingFallback": "Fallback HR signature",
     "offboardingFallbackLegacy": "Keep existing HR signature setting",
     "offboardingFallbackPbp": "PBP signs before release",

@@ -539,3 +539,43 @@ describe('existing signing subjects retain their behavior', () => {
     expect(returned.actions[0].action).toBe('returned'); expect(signingComplete(returned, {requiredRoles: []})).toBe(false);
   });
 });
+
+describe('authoritative acceptance final-sign label projection',()=>{
+ function acceptance(parallel=false){
+  const routing=route().filter(step=>step.id!=='employee-sign');if(parallel)routing.push({id:'bp-sign',order:2,action:'sign',who:{kind:'group',groupId:'bps'},owner:false});
+  const t=template(routing);t.versions[0].blocks=t.versions[0].blocks.filter(block=>block.role!=='step:employee-sign');
+  if(parallel)t.versions[0].blocks.push({id:'bp-signature',type:'signature',text:'',section:'',role:'step:bp-sign'});
+  return generate({kind:'acceptance',template:t}).letter;
+ }
+ it('labels the actual final signer only after all earlier required steps are fulfilled',()=>{
+  let letter=acceptance();expect(resignationLetterCapabilities(letter,people.ceo).canReleaseOnSign).toBe(false);
+  letter=complete(letter,'owner').letter;const before=structuredClone(letter);
+  expect(resignationLetterCapabilities(letter,people.ceo).canReleaseOnSign).toBe(true);
+  expect(resignationLetterCapabilities(letter,people.stranger).canReleaseOnSign).toBe(false);
+  expect(complete(letter,'ceo').released).toBe(true);expect(letter).toEqual(before);
+ });
+ it('does not claim release until every parallel peer has completed its required current-round action',()=>{
+  let letter=complete(acceptance(true),'owner').letter;
+  expect(resignationLetterCapabilities(letter,people.ceo).canReleaseOnSign).toBe(false);expect(resignationLetterCapabilities(letter,people.bp).canReleaseOnSign).toBe(false);
+  letter=complete(letter,'ceo').letter;expect(resignationLetterCapabilities(letter,people.bp).canReleaseOnSign).toBe(true);expect(complete(letter,'bp').released).toBe(true);
+ });
+ it('does not reuse earlier-round receipts after recall/resend or expose release through an identity mismatch',()=>{
+  let letter=complete(acceptance(),'owner').letter;
+  letter=act(letter,'owner',{type:'recall'}).letter;letter=act(letter,'owner',{type:'resend'}).letter;
+  expect(resignationLetterCapabilities(letter,people.ceo).canReleaseOnSign).toBe(false);letter=complete(letter,'owner').letter;
+  const step=letter.document.route.steps.find(step=>step.id==='ceo-sign')!;step.holderPersonId='ceo-person';
+  letter.teamSteps={...letter.teamSteps,'ceo-sign':{memberIds:[people.ceo],personIds:{[people.ceo]:'ceo-person'},groupId:'ceos',team:true}};
+  expect(resignationLetterCapabilities(letter,people.ceo,'different-person').canReleaseOnSign).toBe(false);expect(resignationLetterCapabilities(letter,people.ceo,'ceo-person').canReleaseOnSign).toBe(true);
+ });
+ it('never replaces retention employee acceptance with a generic release action',()=>{
+  let letter=withEmployeeOffer();letter=act(letter,'employee',{type:'open'}).letter;
+  expect(resignationLetterCapabilities(letter,people.employee).canSign).toBe(true);expect(resignationLetterCapabilities(letter,people.employee).canReleaseOnSign).toBe(false);
+ });
+ it('atomically reviews edited canonical blocks and advances to the signer on the new revision',()=>{
+  const letter=acceptance(),changed=letter.blocks.map(block=>block.type==='text'?{...block,text:'Reviewed wording for {employee.name}.'}:block);
+  const reviewed=act(letter,'owner',{type:'complete',stepId:'owner-review',blocks:changed});
+  expect(reviewed.letter.blocks).toEqual(changed);expect(reviewed.letter.revision).toBe(letter.revision+1);
+  expect(resignationLetterPendingSteps(reviewed.letter).map(step=>step.id)).toEqual(['ceo-sign']);expect(resignationLetterCapabilities(reviewed.letter,people.ceo).canReleaseOnSign).toBe(true);
+  expect(letter.blocks).not.toEqual(changed);expect(reviewed.letter.history.at(-1)?.action).toBe('reviewed');
+ });
+});

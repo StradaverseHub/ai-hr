@@ -40965,6 +40965,11 @@
     }
   },
   "resignationJourney": {
+    "signRelease": "Ký và phát hành thư",
+    "insertMergeField": "Chèn trường trộn",
+    "unknownMergeField": "Trường trộn không xác định. Kiểm tra mã này trước khi rà soát:",
+    "invalidInlineEdit": "Chỉ dùng văn bản thuần và trường trộn. Ô bảng không được chứa dấu xuống dòng hoặc |.",
+    "reviewSavesEdits": "Các chỉnh sửa thư sẽ được lưu khi bạn hoàn tất rà soát.",
     "offboardingFallback": "Chữ ký Nhân sự dự phòng",
     "offboardingFallbackLegacy": "Giữ thiết lập chữ ký Nhân sự hiện có",
     "offboardingFallbackPbp": "PBP ký trước khi phát hành",
