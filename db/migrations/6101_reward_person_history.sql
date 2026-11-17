@@ -29,16 +29,24 @@ CREATE FUNCTION app.reward_history_upload_authorized(wanted_company uuid) RETURN
 $$;
 REVOKE ALL ON FUNCTION app.reward_history_upload_authorized(uuid) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION app.reward_history_upload_authorized(uuid) TO ai_hr_app;
+CREATE FUNCTION app.reward_history_upload_subject(wanted_employment uuid,wanted_company uuid) RETURNS boolean
+ LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT EXISTS(SELECT 1 FROM public.employment e WHERE e.id=wanted_employment AND e.company_id=wanted_company
+  AND e.tenant_id=app.current_tenant_id() AND NOT app.is_self_person(e.person_id))
+$$;
+REVOKE ALL ON FUNCTION app.reward_history_upload_subject(uuid,uuid) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.reward_history_upload_subject(uuid,uuid) TO ai_hr_app;
 CREATE POLICY reward_history_owner_read ON public.reward_person_history FOR SELECT TO ai_hr_owner USING(tenant_id=app.current_tenant_id());
-CREATE POLICY reward_history_upload_read ON public.reward_person_history FOR SELECT TO ai_hr_app USING(tenant_id=app.current_tenant_id() AND app.reward_history_upload_authorized(company_id));
+CREATE POLICY reward_history_owner_insert ON public.reward_person_history FOR INSERT TO ai_hr_owner WITH CHECK(tenant_id=app.current_tenant_id() AND source='review' AND created_by=app.current_user_id());
+CREATE POLICY reward_history_upload_read ON public.reward_person_history FOR SELECT TO ai_hr_app USING(tenant_id=app.current_tenant_id() AND app.reward_history_upload_authorized(company_id) AND app.reward_history_upload_subject(employment_id,company_id));
 CREATE POLICY reward_history_insert ON public.reward_person_history FOR INSERT TO ai_hr_app WITH CHECK(
  tenant_id=app.current_tenant_id() AND created_by=app.current_user_id() AND app.reward_not_viewing_as()
  AND((source='upload' AND app.reward_history_upload_authorized(company_id)) OR(source='review' AND EXISTS(
   SELECT 1 FROM public.reward_unit u WHERE u.id=unit_id AND u.tenant_id=reward_person_history.tenant_id AND u.company_id=reward_person_history.company_id
    AND u.status IN('approved','posted') AND app.reward_admin(u.company_id) AND 'payroll'=ANY(ARRAY(SELECT app.reward_roles(u.id)))))));
 CREATE POLICY reward_history_supersede ON public.reward_person_history FOR UPDATE TO ai_hr_app
- USING(tenant_id=app.current_tenant_id() AND source='upload' AND superseded_at IS NULL AND app.reward_history_upload_authorized(company_id))
- WITH CHECK(tenant_id=app.current_tenant_id() AND source='upload' AND superseded_at IS NOT NULL AND app.reward_history_upload_authorized(company_id));
+ USING(tenant_id=app.current_tenant_id() AND source='upload' AND superseded_at IS NULL AND app.reward_history_upload_authorized(company_id) AND app.reward_history_upload_subject(employment_id,company_id))
+ WITH CHECK(tenant_id=app.current_tenant_id() AND source='upload' AND superseded_at IS NOT NULL AND app.reward_history_upload_authorized(company_id) AND app.reward_history_upload_subject(employment_id,company_id));
 GRANT SELECT,INSERT ON public.reward_person_history TO ai_hr_app;
 GRANT UPDATE(superseded_at) ON public.reward_person_history TO ai_hr_app;
 --> statement-breakpoint
@@ -69,7 +77,7 @@ BEGIN
   WHERE e.id=NEW.entry_id AND e.unit_id=NEW.unit_id AND e.employment_id=NEW.employment_id AND u.tenant_id=NEW.tenant_id AND u.company_id=NEW.company_id
    AND (u.policy->>'year')::integer=NEW.year AND NEW.kind=CASE WHEN u.kind='annual' THEN 'annual' ELSE 'offcycle' END) THEN
   RAISE EXCEPTION 'Reward history review binding is invalid' USING ERRCODE='23514';END IF;
- IF NEW.source='upload' AND (NOT EXISTS(SELECT 1 FROM public.bulk_job j WHERE j.id=NEW.upload_batch_id AND j.tenant_id=NEW.tenant_id
+ IF NEW.source='upload' AND (NEW.year>=extract(year from timezone('Asia/Kuala_Lumpur',now()))::integer OR NOT EXISTS(SELECT 1 FROM public.bulk_job j WHERE j.id=NEW.upload_batch_id AND j.tenant_id=NEW.tenant_id
   AND j.kind='reward_person_history' AND j.created_by=app.current_user_id() AND j.input->>'companyId'=NEW.company_id::text)
   OR EXISTS(SELECT 1 FROM public.reward_unit u WHERE u.tenant_id=NEW.tenant_id AND u.company_id=NEW.company_id AND u.status='posted' AND u.deleted_at IS NULL AND (u.policy->>'year')::integer<=NEW.year)
   OR EXISTS(SELECT 1 FROM public.employment e WHERE e.id=NEW.employment_id AND app.is_self_person(e.person_id))) THEN
@@ -79,6 +87,31 @@ END $$;
 REVOKE ALL ON FUNCTION app.reward_history_shape() FROM PUBLIC;
 CREATE TRIGGER reward_history_shape BEFORE INSERT OR UPDATE ON public.reward_person_history FOR EACH ROW EXECUTE FUNCTION app.reward_history_shape();
 CREATE TRIGGER reward_history_readonly BEFORE INSERT OR UPDATE OR DELETE ON public.reward_person_history FOR EACH ROW EXECUTE FUNCTION app.reward_view_as_write_guard();
+--> statement-breakpoint
+-- Payroll posters have no general SELECT policy on stored history. The writer returns a count,
+-- preventing INSERT RETURNING from requiring an overly broad disclosure policy for that role.
+CREATE FUNCTION app.reward_record_person_history(wanted_unit uuid,wanted_rows jsonb) RETURNS integer
+ LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE u public.reward_unit;n integer;
+BEGIN
+ SELECT * INTO u FROM public.reward_unit WHERE id=wanted_unit AND tenant_id=app.current_tenant_id() AND deleted_at IS NULL;
+ IF u.id IS NULL OR u.status NOT IN('approved','posted') OR NOT app.principal_snapshot_current() OR NOT app.reward_not_viewing_as()
+  OR NOT app.reward_admin(u.company_id) OR NOT 'payroll'=ANY(ARRAY(SELECT app.reward_roles(u.id))) THEN
+  RAISE EXCEPTION 'Reward history posting authority is required' USING ERRCODE='42501';END IF;
+ IF jsonb_typeof(wanted_rows)<>'array' OR jsonb_array_length(wanted_rows)>10000 OR octet_length(wanted_rows::text)>16000000 THEN
+  RAISE EXCEPTION 'Invalid reward history rows' USING ERRCODE='23514';END IF;
+ INSERT INTO public.reward_person_history(tenant_id,company_id,employment_id,year,kind,source,unit_id,entry_id,talent,performance,
+  merit_bp,promotion_bp,special_bp,increment_cents,total_increase_bp,promoted,promotion_grade,bonus_cents,bonus_months_bp,lump_cents,withheld,created_by)
+ SELECT u.tenant_id,u.company_id,v."employmentId",(u.policy->>'year')::integer,CASE WHEN u.kind='annual' THEN 'annual' ELSE 'offcycle' END,'review',u.id,v."entryId",
+  v.talent,v.performance,v."meritBp",v."promotionBp",v."specialBp",v."incrementCents",v."totalIncreaseBp",v.promoted,v."promotionGrade",v."bonusCents",v."bonusMonthsBp",v."lumpCents",coalesce(v.withheld,'{}'::jsonb),app.current_user_id()
+ FROM jsonb_to_recordset(wanted_rows) AS v("entryId" uuid,"employmentId" uuid,talent text,performance text,"meritBp" integer,"promotionBp" integer,"specialBp" integer,
+  "incrementCents" bigint,"totalIncreaseBp" integer,promoted boolean,"promotionGrade" text,"bonusCents" bigint,"bonusMonthsBp" integer,"lumpCents" bigint,withheld jsonb);
+ -- No ON CONFLICT path: a repeated native posted request returns before this writer; any historical
+ -- conflict here must be reconciled, never silently adopted or overwritten.
+ GET DIAGNOSTICS n=ROW_COUNT;RETURN n;
+END $$;
+REVOKE ALL ON FUNCTION app.reward_record_person_history(uuid,jsonb) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.reward_record_person_history(uuid,jsonb) TO ai_hr_app;
 --> statement-breakpoint
 -- Current-review visibility is the sole disclosure authority. Historical rows do not grant access.
 CREATE FUNCTION app.reward_person_history(wanted_unit uuid,wanted_entry uuid) RETURNS jsonb
@@ -111,6 +144,15 @@ CREATE FUNCTION app.reward_person_history(wanted_unit uuid,wanted_entry uuid) RE
 $$;
 REVOKE ALL ON FUNCTION app.reward_person_history(uuid,uuid) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION app.reward_person_history(uuid,uuid) TO ai_hr_app;
+--> statement-breakpoint
+CREATE FUNCTION app.reward_history_recorded_entries(wanted_unit uuid) RETURNS SETOF uuid
+ LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT h.entry_id FROM public.reward_person_history h JOIN public.reward_unit u ON u.id=h.unit_id AND u.tenant_id=h.tenant_id
+ WHERE h.unit_id=wanted_unit AND h.tenant_id=app.current_tenant_id() AND h.source='review'
+  AND u.deleted_at IS NULL AND app.reward_admin(u.company_id) AND 'payroll'=ANY(ARRAY(SELECT app.reward_roles(u.id)))
+$$;
+REVOKE ALL ON FUNCTION app.reward_history_recorded_entries(uuid) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.reward_history_recorded_entries(uuid) TO ai_hr_app;
 --> statement-breakpoint
 INSERT INTO public.bulk_job_kind(kind,scope_kind,exclusive,input_shape,finalize_owner)
  VALUES('reward_person_history',NULL,'tenant','{"companyId":"string","token":"string"}'::jsonb,false);

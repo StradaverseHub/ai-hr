@@ -23,11 +23,7 @@ export async function rewardPersonHistory(ctx:SessionContext,unitId:string,entry
 export async function recordRewardPersonHistoryTx(tx:Tx,ctx:SessionContext,unit:{id:string;companyId:string;kind:string;policy:{year:number}},rows:readonly CalculatedEntry[]){
  if(!rows.length)return;
  const values=rows.map(row=>({entryId:row.id,employmentId:row.source.employmentId,...rewardHistoryValues(row)}));
- await tx.execute(sql`insert into reward_person_history(tenant_id,company_id,employment_id,year,kind,source,unit_id,entry_id,talent,performance,
-  merit_bp,promotion_bp,special_bp,increment_cents,total_increase_bp,promoted,promotion_grade,bonus_cents,bonus_months_bp,lump_cents,withheld,created_by)
- select ${ctx.tenantId}::uuid,${unit.companyId}::uuid,v."employmentId",${unit.policy.year},${unit.kind==='annual'?'annual':'offcycle'},'review',${unit.id}::uuid,v."entryId",
-  v.talent,v.performance,v."meritBp",v."promotionBp",v."specialBp",v."incrementCents",v."totalIncreaseBp",v.promoted,v."promotionGrade",v."bonusCents",v."bonusMonthsBp",v."lumpCents",v.withheld,${ctx.userId}::uuid
- from jsonb_to_recordset(${JSON.stringify(values)}::jsonb) as v("entryId" uuid,"employmentId" uuid,talent text,performance text,"meritBp" integer,"promotionBp" integer,"specialBp" integer,
-  "incrementCents" bigint,"totalIncreaseBp" integer,promoted boolean,"promotionGrade" text,"bonusCents" bigint,"bonusMonthsBp" integer,"lumpCents" bigint,withheld jsonb)
- on conflict(entry_id) where source='review' do nothing`);
+ const [recorded]=await tx.execute<{count:number}>(sql`select app.reward_record_person_history(${unit.id}::uuid,${JSON.stringify(values)}::jsonb) as count`);
+ if(recorded?.count!==rows.length)throw Error('Reward history could not be recorded completely.');
+ return recorded.count;
 }

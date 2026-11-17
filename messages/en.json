@@ -40017,6 +40017,20 @@
           "title": "Candidate import stopped",
           "body": "The import was stopped. Rows already imported stay; open the import to see the result."
         }
+      },
+      "rewardPersonHistory": {
+        "completed": {
+          "title": "Reward history saved",
+          "body": "The reward history upload finished. Open it to check row outcomes."
+        },
+        "failed": {
+          "title": "Reward history upload failed",
+          "body": "The upload could not finish. Open it to review the problem and saved rows."
+        },
+        "cancelled": {
+          "title": "Reward history upload stopped",
+          "body": "The upload stopped. Rows already saved remain available."
+        }
       }
     },
     "panel": {
@@ -43968,6 +43982,50 @@
     "codeEmail": {
       "subject": "Your agency portal sign-in code: {code}",
       "body": "Your code to sign in to the {companyName} agency portal is:\n\n{code}\n\nIt expires in 10 minutes. If you did not ask for this code, you can ignore this email.\n\n{senderName}"
+    }
+  },
+  "rewardsPersonHistoryUpload": {
+    "title": "Reward history upload",
+    "description": "Add ratings and awards from years before AI-HR Rewards.",
+    "back": "Back to Rewards",
+    "help": "Choose a company, download the template and review every row before saving. Use Employee ID from that company. Upload only years before its first posted AI-HR Rewards review.",
+    "company": "Company",
+    "file": "History file",
+    "template": "Download template",
+    "fileError": "Choose a CSV or Excel file up to 5 MB.",
+    "literalCells": "Use values only; formulas are not accepted.",
+    "working": "Checking the file…",
+    "previewTitle": "Review history rows",
+    "summary": "{accepted} valid rows · {problems} rows to fix",
+    "cutoff": "Upload years earlier than {year}.",
+    "problem": "Row {line}: {reason}",
+    "employee": "Employee ID",
+    "year": "Year",
+    "talent": "Talent rating",
+    "performance": "Performance rating",
+    "incrementPercent": "Increment %",
+    "incrementMoney": "Increment (MYR)",
+    "bonusMoney": "Bonus (MYR)",
+    "bonusMonths": "Bonus months",
+    "type": "Type",
+    "annual": "Annual",
+    "offcycle": "Off-cycle",
+    "replaceHelp": "Saving another record for the same employee, year and type replaces the displayed upload. The previous record stays in the audit history.",
+    "confirm": "Save history",
+    "progressTitle": "History upload progress",
+    "progress": "{done} of {total} rows processed",
+    "stop": "Stop upload",
+    "stopping": "Stopping…",
+    "checkpointHelp": "The upload saves a checkpoint after each row. Stopping keeps rows already saved.",
+    "states": {
+      "queued": "Queued",
+      "preparing": "Checking",
+      "running": "Saving history",
+      "finalizing": "Finishing",
+      "discarding": "Stopping",
+      "completed": "Completed",
+      "failed": "Failed",
+      "cancelled": "Stopped"
     }
   }
 }

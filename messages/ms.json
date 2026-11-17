@@ -40017,6 +40017,20 @@
           "title": "Import calon dihentikan",
           "body": "Import telah dihentikan. Baris yang sudah diimport kekal; buka import untuk melihat hasil."
         }
+      },
+      "rewardPersonHistory": {
+        "completed": {
+          "title": "Sejarah ganjaran disimpan",
+          "body": "Muat naik sejarah ganjaran selesai. Buka untuk menyemak hasil setiap baris."
+        },
+        "failed": {
+          "title": "Muat naik sejarah ganjaran gagal",
+          "body": "Muat naik tidak dapat diselesaikan. Buka untuk menyemak masalah dan baris yang disimpan."
+        },
+        "cancelled": {
+          "title": "Muat naik sejarah ganjaran dihentikan",
+          "body": "Muat naik dihentikan. Baris yang sudah disimpan masih tersedia."
+        }
       }
     },
     "panel": {
@@ -43968,6 +43982,50 @@
     "codeEmail": {
       "subject": "Kod log masuk portal agensi anda: {code}",
       "body": "Kod anda untuk log masuk ke portal agensi {companyName} ialah:\n\n{code}\n\nKod tamat tempoh dalam 10 minit. Jika anda tidak meminta kod ini, anda boleh abaikan e-mel ini.\n\n{senderName}"
+    }
+  },
+  "rewardsPersonHistoryUpload": {
+    "title": "Muat naik sejarah ganjaran",
+    "description": "Tambah penarafan dan ganjaran bagi tahun sebelum AI-HR Rewards.",
+    "back": "Kembali ke Ganjaran",
+    "help": "Pilih syarikat, muat turun templat dan semak setiap baris sebelum menyimpan. Gunakan ID Pekerja syarikat tersebut. Muat naik hanya tahun sebelum semakan AI-HR Rewards pertama yang diposkan.",
+    "company": "Syarikat",
+    "file": "Fail sejarah",
+    "template": "Muat turun templat",
+    "fileError": "Pilih fail CSV atau Excel sehingga 5 MB.",
+    "literalCells": "Gunakan nilai sahaja; formula tidak diterima.",
+    "working": "Menyemak fail…",
+    "previewTitle": "Semak baris sejarah",
+    "summary": "{accepted} baris sah · {problems} baris perlu dibetulkan",
+    "cutoff": "Muat naik tahun sebelum {year}.",
+    "problem": "Baris {line}: {reason}",
+    "employee": "ID Pekerja",
+    "year": "Tahun",
+    "talent": "Penarafan bakat",
+    "performance": "Penarafan prestasi",
+    "incrementPercent": "Kenaikan %",
+    "incrementMoney": "Kenaikan (MYR)",
+    "bonusMoney": "Bonus (MYR)",
+    "bonusMonths": "Bulan bonus",
+    "type": "Jenis",
+    "annual": "Tahunan",
+    "offcycle": "Luar kitaran",
+    "replaceHelp": "Rekod baharu untuk pekerja, tahun dan jenis yang sama menggantikan muat naik yang dipaparkan. Rekod terdahulu kekal dalam sejarah audit.",
+    "confirm": "Simpan sejarah",
+    "progressTitle": "Kemajuan muat naik sejarah",
+    "progress": "{done} daripada {total} baris diproses",
+    "stop": "Hentikan muat naik",
+    "stopping": "Menghentikan…",
+    "checkpointHelp": "Muat naik menyimpan selepas setiap baris. Menghentikannya mengekalkan baris yang sudah disimpan.",
+    "states": {
+      "queued": "Dalam giliran",
+      "preparing": "Menyemak",
+      "running": "Menyimpan sejarah",
+      "finalizing": "Menyiapkan",
+      "discarding": "Menghentikan",
+      "completed": "Selesai",
+      "failed": "Gagal",
+      "cancelled": "Dihentikan"
     }
   }
 }

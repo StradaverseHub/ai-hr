@@ -40017,6 +40017,20 @@
           "title": "Việc nhập ứng viên đã dừng",
           "body": "Việc nhập đã được dừng. Các dòng đã nhập vẫn được giữ; mở lần nhập để xem kết quả."
         }
+      },
+      "rewardPersonHistory": {
+        "completed": {
+          "title": "Đã lưu lịch sử thưởng",
+          "body": "Tải lên lịch sử thưởng đã hoàn tất. Mở để kiểm tra kết quả từng dòng."
+        },
+        "failed": {
+          "title": "Tải lên lịch sử thưởng thất bại",
+          "body": "Không thể hoàn tất tải lên. Mở để xem vấn đề và các dòng đã lưu."
+        },
+        "cancelled": {
+          "title": "Đã dừng tải lên lịch sử thưởng",
+          "body": "Đã dừng tải lên. Các dòng đã lưu vẫn còn."
+        }
       }
     },
     "panel": {
@@ -43968,6 +43982,50 @@
     "codeEmail": {
       "subject": "Mã đăng nhập cổng công ty tuyển dụng của bạn: {code}",
       "body": "Mã để bạn đăng nhập vào cổng công ty tuyển dụng của {companyName} là:\n\n{code}\n\nMã hết hạn sau 10 phút. Nếu bạn không yêu cầu mã này, bạn có thể bỏ qua e-mail này.\n\n{senderName}"
+    }
+  },
+  "rewardsPersonHistoryUpload": {
+    "title": "Tải lên lịch sử thưởng",
+    "description": "Thêm xếp hạng và khoản thưởng của các năm trước khi dùng AI-HR Rewards.",
+    "back": "Quay lại Thưởng",
+    "help": "Chọn công ty, tải mẫu và kiểm tra từng dòng trước khi lưu. Dùng mã nhân viên của công ty đó. Chỉ tải dữ liệu trước năm đánh giá AI-HR Rewards đầu tiên đã chuyển sang bảng lương.",
+    "company": "Công ty",
+    "file": "Tệp lịch sử",
+    "template": "Tải mẫu",
+    "fileError": "Chọn tệp CSV hoặc Excel tối đa 5 MB.",
+    "literalCells": "Chỉ dùng giá trị; không chấp nhận công thức.",
+    "working": "Đang kiểm tra tệp…",
+    "previewTitle": "Kiểm tra các dòng lịch sử",
+    "summary": "{accepted} dòng hợp lệ · {problems} dòng cần sửa",
+    "cutoff": "Tải dữ liệu của các năm trước {year}.",
+    "problem": "Dòng {line}: {reason}",
+    "employee": "Mã nhân viên",
+    "year": "Năm",
+    "talent": "Xếp hạng tài năng",
+    "performance": "Xếp hạng hiệu suất",
+    "incrementPercent": "Tăng lương %",
+    "incrementMoney": "Tăng lương (MYR)",
+    "bonusMoney": "Thưởng (MYR)",
+    "bonusMonths": "Số tháng thưởng",
+    "type": "Loại",
+    "annual": "Hằng năm",
+    "offcycle": "Ngoài chu kỳ",
+    "replaceHelp": "Bản ghi mới cho cùng nhân viên, năm và loại sẽ thay thế dữ liệu tải lên đang hiển thị. Bản ghi cũ vẫn được giữ trong lịch sử kiểm toán.",
+    "confirm": "Lưu lịch sử",
+    "progressTitle": "Tiến độ tải lên lịch sử",
+    "progress": "Đã xử lý {done} trên {total} dòng",
+    "stop": "Dừng tải lên",
+    "stopping": "Đang dừng…",
+    "checkpointHelp": "Tiến độ được lưu sau mỗi dòng. Khi dừng, các dòng đã lưu vẫn được giữ lại.",
+    "states": {
+      "queued": "Đang chờ",
+      "preparing": "Đang kiểm tra",
+      "running": "Đang lưu lịch sử",
+      "finalizing": "Đang hoàn tất",
+      "discarding": "Đang dừng",
+      "completed": "Hoàn tất",
+      "failed": "Thất bại",
+      "cancelled": "Đã dừng"
     }
   }
 }

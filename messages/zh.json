@@ -40017,6 +40017,20 @@
           "title": "候选人导入已停止",
           "body": "导入已被停止。已导入的行会保留；打开导入查看结果。"
         }
+      },
+      "rewardPersonHistory": {
+        "completed": {
+          "title": "奖励历史已保存",
+          "body": "奖励历史上传已完成。请打开查看每行结果。"
+        },
+        "failed": {
+          "title": "奖励历史上传失败",
+          "body": "上传未能完成。请打开查看问题与已保存的行。"
+        },
+        "cancelled": {
+          "title": "奖励历史上传已停止",
+          "body": "上传已停止，已保存的行仍可使用。"
+        }
       }
     },
     "panel": {
@@ -43968,6 +43982,50 @@
     "codeEmail": {
       "subject": "您的机构门户登录验证码：{code}",
       "body": "您登录 {companyName} 机构门户的验证码是：\n\n{code}\n\n验证码 10 分钟后失效。如果您没有请求此验证码，请忽略这封邮件。\n\n{senderName}"
+    }
+  },
+  "rewardsPersonHistoryUpload": {
+    "title": "上传奖励历史",
+    "description": "添加使用 AI-HR 奖励模块之前年度的评级与奖励。",
+    "back": "返回奖励",
+    "help": "选择公司，下载模板，并在保存前检查每一行。使用该公司的员工编号。仅可上传早于该公司首次已提交薪资的 AI-HR 奖励评审年度的数据。",
+    "company": "公司",
+    "file": "历史文件",
+    "template": "下载模板",
+    "fileError": "请选择不超过 5 MB 的 CSV 或 Excel 文件。",
+    "literalCells": "仅接受数值，不接受公式。",
+    "working": "正在检查文件…",
+    "previewTitle": "检查历史记录",
+    "summary": "{accepted} 行有效 · {problems} 行需修改",
+    "cutoff": "请上传早于 {year} 年的数据。",
+    "problem": "第 {line} 行：{reason}",
+    "employee": "员工编号",
+    "year": "年度",
+    "talent": "人才评级",
+    "performance": "绩效评级",
+    "incrementPercent": "加薪 %",
+    "incrementMoney": "加薪（MYR）",
+    "bonusMoney": "奖金（MYR）",
+    "bonusMonths": "奖金月数",
+    "type": "类型",
+    "annual": "年度",
+    "offcycle": "周期外",
+    "replaceHelp": "同一员工、年度和类型的新记录将替换当前显示的上传记录。原记录仍保留在审计历史中。",
+    "confirm": "保存历史",
+    "progressTitle": "历史上传进度",
+    "progress": "已处理 {done} / {total} 行",
+    "stop": "停止上传",
+    "stopping": "正在停止…",
+    "checkpointHelp": "每处理一行都会保存进度。停止后，已保存的行会保留。",
+    "states": {
+      "queued": "排队中",
+      "preparing": "检查中",
+      "running": "正在保存历史",
+      "finalizing": "正在完成",
+      "discarding": "正在停止",
+      "completed": "已完成",
+      "failed": "失败",
+      "cancelled": "已停止"
     }
   }
 }
