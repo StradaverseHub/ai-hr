@@ -10,7 +10,7 @@ The owner explicitly chose **termination at completed clearance**, following the
 
 Previously accepted requests and pre-cutover in-flight requests keep their recorded outcome and owner. Do not replay acceptance, synthesize signed letters or move historical termination dates. Managed and legacy paths must be explicit and must not both present an actionable decision for the same request.
 
-The handoff wins where its text and HTML differ: the decision form includes an editable agreed last working day and displays monthly salary cost change as well as the percentage. Replacement recruitment follows the durable HR follow-up described below because AIHR has no recruitment vacancy service.
+The handoff wins where its text and HTML differ: the decision form includes an editable agreed last working day and displays monthly salary cost change as well as the percentage. Replacement recruitment follows the durable HR follow-up described below, with HR recording the recruitment request reference.
 
 ## Owners and contracts
 
