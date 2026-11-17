@@ -1,0 +1,49 @@
+/** A real pre5932 populated database upgraded through the ordinary full journal; no local SQL installer. */
+import {randomUUID} from 'node:crypto';
+import {copyFileSync,mkdtempSync,mkdirSync,readFileSync,rmSync,writeFileSync} from 'node:fs';
+import {tmpdir} from 'node:os';
+import {join} from 'node:path';
+import postgres from 'postgres';
+import {migrate} from 'drizzle-orm/postgres-js/migrator';
+import {sql} from 'drizzle-orm';
+import {expect,it} from 'vitest';
+import {createDb,type SessionContext} from '../db/client';
+import {seedCatalogs} from '../scripts/seed-catalogs';
+import {withoutCombinedReleaseNulls} from './helpers/approved-upgrade';
+import {todayInKualaLumpur} from '../lib/hr-date';
+it('retains genuine human Contract jobs, events, seals, actor bindings and old rows across the nullable-system-creator/default-actor upgrade',async()=>{
+ const journal=JSON.parse(readFileSync('db/migrations/meta/_journal.json','utf8')) as {entries:{tag:string;when:number}[]};
+ const boundary=journal.entries.findIndex(entry=>entry.tag==='5932_contract_native_system_kernel');expect(boundary).toBeGreaterThan(0);
+ const directory=mkdtempSync(join(tmpdir(),'contract-system-upgrade-')),name='contract_upgrade_'+randomUUID().replaceAll('-','');
+ const url=new URL(process.env.TEST_MIGRATION_DATABASE_URL!);expect(['127.0.0.1','localhost']).toContain(url.hostname);expect(url.username).not.toBe('ai_hr_app');url.pathname='/postgres';const admin=postgres(url.toString(),{max:1,onnotice:()=>{}});url.pathname='/'+name;const storage=createDb(url.toString(),{max:1});let created=false;
+ const tenant=randomUUID(),company=randomUUID(),department=randomUUID(),person=randomUUID(),user=randomUUID(),subject=randomUUID(),employment=randomUUID(),today=todayInKualaLumpur(),start=today.slice(0,4)+'-01-01',end=(Number(today.slice(0,4))+1)+'-12-31';
+ try{
+  await admin.unsafe(`CREATE DATABASE "${name}"`);created=true;mkdirSync(join(directory,'meta'));
+  for(const entry of journal.entries.slice(0,boundary))copyFileSync('db/migrations/'+entry.tag+'.sql',join(directory,entry.tag+'.sql'));
+  writeFileSync(join(directory,'meta/_journal.json'),JSON.stringify({...journal,entries:journal.entries.slice(0,boundary)}));await migrate(storage.db,{migrationsFolder:directory});await seedCatalogs(storage.db);
+  await storage.client`insert into tenant(id,workos_org_id,name,status) values(${tenant},${randomUUID()},'Fictional retained human-job tenant','active')`;
+  await storage.client`insert into company(id,tenant_id,legal_name) values(${company},${tenant},'Fictional retained employer')`;
+  await storage.client`insert into department(id,tenant_id,company_id,name) values(${department},${tenant},${company},'Fictional retained department')`;
+  await storage.client`insert into person(id,tenant_id,full_name,primary_email) values(${person},${tenant},'Fictional actual human creator','creator@upgrade.invalid'),(${subject},${tenant},'Fictional retained contract employee','subject@upgrade.invalid')`;
+  await storage.client`insert into app_user(id,tenant_id,person_id,workos_user_id) values(${user},${tenant},${person},${randomUUID()})`;
+  await storage.client`insert into role_assignment(tenant_id,app_user_id,role) values(${tenant},${user},'hr_admin')`;
+  await storage.client`insert into tenant_module(tenant_id,module_code,status) values(${tenant},'lifecycle','active')`;
+  await storage.client`insert into employment(id,tenant_id,person_id,company_id,hired_on,employee_code,contract_start_date,contract_end_date,contract_number) values(${employment},${tenant},${subject},${company},${start}::date,'RETAIN-4',${start}::date,${end}::date,4)`;
+  await storage.client`insert into assignment(tenant_id,employment_id,company_id,department_id,employment_type,valid_from) values(${tenant},${employment},${company},${department},'contract',${start}::date)`;
+  const ctx:SessionContext={tenantId:tenant,userId:user,personId:person,roles:['hr_admin'],grants:[{role:'hr_admin',companyId:null}]};
+  const [opened]=await storage.withTenant(ctx,tx=>tx.execute<{value:{caseId:string;eventId:string;jobId:string}}>(sql`select app.contract_shared_period_open(${employment}::uuid,app.contract_shared_period_revision(${employment}::uuid)) as value`));
+  await storage.withTenant(ctx,tx=>tx.execute(sql`select app.contract_shared_enqueue_event(${opened.value.caseId}::uuid,'beforeContractEnd','retained-human-reminder','{}'::jsonb)`));
+  const snapshots=async()=>({jobs:[...await storage.client`select to_jsonb(j) as row from bulk_job j where tenant_id=${tenant} order by id`],events:[...await storage.client`select to_jsonb(e) as row from contract_shared_event e where tenant_id=${tenant} order by id`],cases:[...await storage.client`select to_jsonb(c) as row from contract_case c where tenant_id=${tenant} order by id`],flows:[...await storage.client`select to_jsonb(f) as row from contract_shared_case f where tenant_id=${tenant} order by case_id`],seals:[...await storage.client`select to_jsonb(s) as row from app.bulk_job_seal s where tenant_id=${tenant} order by job_id`],audit:[...await storage.client`select to_jsonb(e) as row from domain_event e where tenant_id=${tenant} order by id`]});
+  const before=await snapshots(),ledger=[...await storage.client`select hash,created_at::text from drizzle.__drizzle_migrations order by created_at,id`];expect(before.jobs).toHaveLength(2);expect(before.events).toHaveLength(2);expect(before.seals).toHaveLength(2);expect(before.audit.length).toBeGreaterThan(0);
+  expect(before.jobs.every(item=>item.row.created_by===user&&item.row.context.userId===user&&item.row.state==='queued')).toBe(true);expect(before.events.every(item=>item.row.actor_user_id===user&&item.row.actor_person_id===person&&!Object.hasOwn(item.row,'actor_type'))).toBe(true);
+  await migrate(storage.db,{migrationsFolder:'db/migrations'});
+  const after=await snapshots();expect(after.jobs).toEqual(before.jobs);expect(after.cases).toEqual(before.cases);expect(after.flows).toEqual(before.flows);expect(after.seals).toEqual(before.seals);expect(after.audit).toEqual(before.audit);
+  expect(after.events.map(item=>({row:withoutCombinedReleaseNulls('contract_shared_event',item.row)}))).toEqual(before.events);expect(after.events.every(item=>item.row.actor_type==='user')).toBe(true);
+  const columns=await storage.client`select table_name,column_name,is_nullable from information_schema.columns where table_schema='public' and (table_name='bulk_job' and column_name='created_by' or table_name='contract_shared_event' and column_name='actor_type') order by table_name`;
+  expect(columns).toEqual([{table_name:'bulk_job',column_name:'created_by',is_nullable:'YES'},{table_name:'contract_shared_event',column_name:'actor_type',is_nullable:'NO'}]);
+  expect((await storage.client`select hash,created_at::text from drizzle.__drizzle_migrations order by created_at,id`).slice(0,ledger.length)).toEqual(ledger);
+  expect(await storage.client`select job_id from app.contract_system_job_source where tenant_id=${tenant}`).toHaveLength(0);expect(await storage.client`select id from app_user where tenant_id=${tenant}`).toHaveLength(1);
+  await expect(storage.client`update bulk_job set created_by=null where id=${opened.value.jobId}::uuid`).rejects.toMatchObject({code:'23514'});await expect(storage.client`update contract_shared_event set actor_type='system' where id=${opened.value.eventId}::uuid`).rejects.toMatchObject({code:'23514'});
+  expect((await snapshots()).jobs).toEqual(before.jobs);
+ }finally{await storage.client.end();if(created)await admin.unsafe(`DROP DATABASE "${name}" WITH (FORCE)`);await admin.end();rmSync(directory,{recursive:true,force:true});}
+},180000);
