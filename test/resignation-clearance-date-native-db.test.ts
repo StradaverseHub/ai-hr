@@ -84,11 +84,11 @@ it('synchronizes only permitted open dates with actual prior signature invalidat
  const[revision]=await owner.db.execute<{data:M.Case;actor:string}>(sql`select data,actor_user_id::text actor from lc_v9_case_revision where case_id=${clearanceId}::uuid and revision=1`);expect(revision.data).toEqual(clearance);expect(revision.actor).toBe(fyi.userId);
 });
 it('denies naked proofless/nonowner calls and current-context proofs without the admitted source command',async()=>{
- const original=await nativeCase();for(const actor of[employee,fyi]){await nativeRefusal(withTenant(actor,tx=>tx.execute(sql`select app.resignation_offboarding_date_intent(${id}::uuid,${day}::date,${correctedDay}::date)`)),'42501');await nativeRefusal(withTenant(actor,tx=>dateIntent(tx,actor)),'42501');}expect(await nativeCase()).toEqual(original);
+ const original=await nativeCase();await nativeRefusal(withTenant(employee,tx=>begin(tx,employee,{type:'updateLetter',documentId:letter.id,documentRevision:letter.revision,lastWorkingDay:correctedDay})),'42501');for(const actor of[employee,fyi]){await nativeRefusal(withTenant(actor,tx=>tx.execute(sql`select app.resignation_offboarding_date_intent(${id}::uuid,${day}::date,${correctedDay}::date)`)),'42501');await nativeRefusal(withTenant(actor,tx=>dateIntent(tx,actor)),'42501');}expect(await nativeCase()).toEqual(original);
 });
 it('rejects immutable facts, assignments, resolved rows, wrong relative dates and false log actors atomically',async()=>{
  const original=await nativeCase(),journey=await persisted();
- const mutations=[(c:M.Case)=>{c.facts.personId=fyi.personId!;},(c:M.Case)=>{c.tasks[0]!.assignee=employee.userId!;},(c:M.Case)=>{c.tasks[1]!.dueOn=correctedDay;},(c:M.Case)=>{c.items[0]!.dueOn=correctedDay;},(c:M.Case)=>{c.log.at(-1)!.actor.id=manager.userId!;}];
+ const mutations=[(c:M.Case)=>{c.facts.company=randomUUID();},(c:M.Case)=>{c.facts.personId=fyi.personId!;},(c:M.Case)=>{c.tasks[0]!.assignee=employee.userId!;},(c:M.Case)=>{c.tasks[1]!.dueOn=correctedDay;},(c:M.Case)=>{c.items[0]!.dueOn=correctedDay;},(c:M.Case)=>{c.log.at(-1)!.actor.id=manager.userId!;}];
  for(const mutate of mutations){await nativeRefusal(withTenant(fyi,async tx=>{await admittedCorrection(tx,fyi);await dateIntent(tx,fyi);const next=projected(fyi);mutate(next);await dateStore(tx,fyi,next);}),'42501');expect(await nativeCase()).toEqual(original);expect(await persisted()).toEqual(journey);}
 });
 it('returns closed only to the verified owner and rolls back the already-saved source correction',async()=>{
@@ -99,4 +99,9 @@ it('enforces clearance CAS and purpose transaction/principal binding',async()=>{
  const original=await nativeCase();await nativeRefusal(withTenant(fyi,async tx=>{await admittedCorrection(tx,fyi);await dateIntent(tx,fyi);await dateStore(tx,fyi,projected(fyi),2);}),'40001');expect(await nativeCase()).toEqual(original);
  let proof:{payload:string;signature:string}|undefined;await withTenant(fyi,async tx=>{const[row]=await tx.execute<{id:string}>(sql`select txid_current()::text id`);proof=signResignationRuntime({operation:'context',caseId:id,args:{mode:'offboardingDateCorrection',journeyId:id,oldLastDay:day,newLastDay:correctedDay}},{tenantId:b.tenantId,userId:fyi.userId!,personId:fyi.personId!,transactionId:row.id},master);});
  for(const actor of[fyi,manager])await nativeRefusal(withTenant(actor,tx=>tx.execute(sql`select app.resignation_journey_admit(${proof!.payload},${proof!.signature})`)),'42501');expect(await nativeCase()).toEqual(original);
+});
+
+it('refuses a broken reverse source link without committing either date',async()=>{
+ await owner.db.execute(sql`update lc_v9_case set data=jsonb_set(data,'{resignationSourceCaseId}',${JSON.stringify(randomUUID())}::jsonb) where id=${clearanceId}::uuid`);const oldCase=await nativeCase(),oldJourney=await persisted();
+ await nativeRefusal(withTenant(fyi,async tx=>{await admittedCorrection(tx,fyi);await dateIntent(tx,fyi);}),'42501');expect(await nativeCase()).toEqual(oldCase);expect(await persisted()).toEqual(oldJourney);
 });
