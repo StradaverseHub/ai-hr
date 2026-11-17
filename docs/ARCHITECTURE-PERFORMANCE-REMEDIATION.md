@@ -1,6 +1,6 @@
 # Architecture and performance remediation
 
-Current status,17November: the first batch was accepted on staging at9bdfb4596; AP-033 is closed and AP-038 was resolved externally. Sixty observations remain open. Own Leave/Payroll selection paging is development-qualified and held before its next staging release. Query batches3–7 are development-qualified with retained affected-area evidence; batch8 Movement destination choices is under qualification. Accepted Movement is preserved by current main/alpha2a4132204. Recruitment is the next release by owner order; migration5787 remains unchanged and unapplied, awaiting allocation above Recruitment's actual accepted watermark and fresh claim checks. The5780 proposal was never confirmed. Final source integration, exact approved binding, authenticated release gates and staging acceptance remain separate requirements. No new finding is closed. Earlier prepared/held snapshots below are historical.
+Current status,17November: the first batch was accepted on staging at9bdfb4596; AP-033 is closed and AP-038 was resolved externally. Sixty observations remain open. Own Leave/Payroll selection paging is development-qualified and held before its next staging release. Query batches3–8 are development-qualified with retained affected-area evidence. Accepted Movement is preserved by current main/alpha2a4132204. Recruitment is the next release by owner order; migration5787 remains unchanged and unapplied, awaiting allocation above Recruitment's actual accepted watermark and fresh claim checks. The5780 proposal was never confirmed. Final source integration, exact approved binding, authenticated release gates and staging acceptance remain separate requirements. No new finding is closed. Earlier prepared/held snapshots below are historical.
 
 Scope: the completed 16 November 2026 assessment, revalidated per fix against current main. This is the consolidated disposition ledger; an implementation is not a verified improvement until its native and staging evidence is recorded. Production is outside this task.
 
@@ -24,7 +24,7 @@ Initial integration base: `59f06b08db014e01cd553a827c62ccf864d33f78`. Preserve t
 
 | ID | Priority | Screen or concern | State |
 |---|---|---|---|
-| AP-001 | P1 | Personnel Movement New and Edit | Batch8 implemented: native destination catalogue batch; qualification pending, not staged |
+| AP-001 | P1 | Personnel Movement New and Edit | Batch8 development-qualified: native destination choices; staging/native-plan/mixed-load acceptance pending |
 | AP-002 | P1 | Personnel profile and Movement manager choices | Open; implementation pending |
 | AP-003 | P1 | New Lifecycle Requisition | Open; implementation pending |
 | AP-004 | P2 | Probation Tracker | Open; implementation pending |
@@ -196,3 +196,6 @@ AP-001's destination fanout remains present in freshly fetched accepted Movement
 
 
 Combined application source1b74b8ca9 passed Linux build in44006495617. Native Letters/Personnel fixtures passed onfaf2c4a8e in44007073271 after complete native archive commands repaired the fixtures; the same final source passed whole typecheck in44007752994. Offline group/role/absence and malformed-decoder cases passed in the combined run. Application bytes were unchanged by these later test/doc repairs. Original failed workflows remain failed, with their valid compiler/build portions retained separately. Batch7 source055d3581c passed93selected cases, whole typecheck and Linux build in44008297446. These are development witnesses, not a release gate or staging acceptance.
+
+
+Batch8 source01a2eca7911d2f5f8420e3c4ae990d5c23113c69 passed48selected cases, whole typecheck and Linux build in44011411911. Independent review caught an invalid tenant-wide location-code fixture; distinct native codes preserve the real constraint. Original dispatch44011181356 remains failed for a nonexistent selected test path, with its successful compiler/build evidence retained independently. The native helper oracle uses70transactions before and1after; the page reuses its current-company read and changes69additional destination transactions to1. Staging/native-plan/mixed-load acceptance and integration with the actual accepted release baseline remain pending. No new finding is closed.
