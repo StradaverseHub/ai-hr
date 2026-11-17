@@ -6700,6 +6700,13 @@
       "when": 1794841005937,
       "tag": "5937_contract_digest_queue_capability",
       "breakpoints": true
+    },
+    {
+      "idx": 5338,
+      "version": "7",
+      "when": 1794841005938,
+      "tag": "5938_contract_system_private_row_security",
+      "breakpoints": true
     }
   ]
 }

@@ -261,9 +261,11 @@ export const APPROVED_UPGRADE_TAIL=[
  {idx:5335,when:1794841005935,tag:'5935_contract_system_provenance_rechecks'},
  {idx:5336,when:1794841005936,tag:'5936_contract_accept_no_matching_workflow'},
  {idx:5337,when:1794841005937,tag:'5937_contract_digest_queue_capability'},
+ {idx:5338,when:1794841005938,tag:'5938_contract_system_private_row_security'},
 ] as const;
 // Final pending 2109/2126 bytes reviewed from engine 128bc2539; no applied-prefix hashes change.
 const APPROVED_UPGRADE_HASHES:Record<string,string>={
+ '5938_contract_system_private_row_security':'fd4816c1a9660558a966755e4b2dfd9bd5f72780bf4d546a3c900fdbf896b3b2',
  '5937_contract_digest_queue_capability':'b352d4968c10b3ecb8595a6a0f9828ce242e162c4a5f8566b02126aa174787ef',
  '5936_contract_accept_no_matching_workflow':'f21e2a3ee02e2f17673dce57f3320e614236c17e8efc31e32284ecdf6d007767',
  '5935_contract_system_provenance_rechecks':'2e0c3fc8e1e1952db417de76c3e1a61243155b94d940f7f389ec2ec748f8d2aa',
