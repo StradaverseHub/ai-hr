@@ -190,6 +190,20 @@ class BoundaryTests(unittest.TestCase):
         o.file_mutation(failure_only=True);self.assertEqual(o.events,['EX','own-start'])
         o.observer=None
         with self.assertRaisesRegex(ValueError,'owned-start'):o.file_mutation(failure_only=True)
+    def test_native_command_clamps_shared_absolute_deadline_without_reset(self):
+        spec=importlib.util.spec_from_file_location('installer_io',ROOT/'deploy/systemd/bank_import_worker_installer_v2.py')
+        base=importlib.util.module_from_spec(spec);spec.loader.exec_module(base)
+        result=SimpleNamespace(returncode=0)
+        with patch.object(base.subprocess,'run',return_value=result)as run,patch.object(base.time,'monotonic',return_value=10):
+            base.VERIFIED_OPERATION_FDS=(4,5);base.command(['/fixed-readonly-fixture'])
+            self.assertEqual(run.call_args.kwargs['timeout'],45)
+            base.VERIFIED_OPERATION_DEADLINE=20;base.command(['/fixed-readonly-fixture'])
+            self.assertEqual(run.call_args.kwargs['timeout'],10);self.assertEqual(run.call_args.kwargs['pass_fds'],(4,5))
+            with patch.object(base.time,'monotonic',return_value=17):base.command(['/fixed-readonly-fixture'])
+            self.assertEqual(run.call_args.kwargs['timeout'],3)
+            with patch.object(base.time,'monotonic',return_value=20):
+                with self.assertRaisesRegex(ValueError,'absolute operation command deadline'):base.command(['/fixed-readonly-fixture'])
+            self.assertEqual(run.call_count,3)
     def test_node_pin_is_checked_in_guard_verify_without_activation_observer(self):
         with tempfile.TemporaryDirectory()as tmp:
             r=Path(tmp);node=r/'node';node.write_bytes(b'approved-node-v22.23.3');coordinator=r/'coordinator';coordinator.write_bytes(b'fixed-owner')
