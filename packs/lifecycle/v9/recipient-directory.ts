@@ -18,12 +18,16 @@ export async function searchOnboardingRecipientUsers(ctx: SessionContext, caseId
     return lifecycleRecipientProjection(ctx.tenantId, rows);
   });
 }
-/** One batched read for the workflow preview. Only canonical account addresses leave the Auth adapter. */
+/** One set read for the internal workflow preview, bounded by its deduped server-resolved keys.
+ * This is not a browser-supplied directory endpoint. Every selected group/task-owner account is resolved;
+ * only canonical account addresses leave the Auth adapter. Search has its separate twenty-result cap.
+ */
 export async function lifecycleRecipientAddressesTx(tx: Tx, ctx: SessionContext, caseId: string, userIds: readonly string[]): Promise<Record<string, string>> {
   id.parse(caseId);
-  const ids = [...new Set(z.array(id).max(1024).parse(userIds))];
+  const ids = [...new Set(z.array(id).parse(userIds))];
   if (!ids.length) return {};
   await lockAccessConfigurationReadTx(tx, ctx.tenantId);
+  // One parameter and one set conversion to a PostgreSQL uuid array, avoiding one parameter/query per user.
   const rows = await tx.execute<LifecycleRecipientBinding>(sql`select * from app.lifecycle_recipient_accounts(${caseId}::uuid,${internalIssuer(ctx.tenantId)},array(select jsonb_array_elements_text(${JSON.stringify(ids)}::jsonb)::uuid),null::text)`);
   return Object.fromEntries(lifecycleRecipientProjection(ctx.tenantId, rows).map(user => [user.id, user.email]));
 }

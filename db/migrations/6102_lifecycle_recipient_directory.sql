@@ -17,7 +17,7 @@ LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_te
 DECLARE is_search boolean := p_query IS NOT NULL;
 BEGIN
  IF NOT app.lifecycle_recipient_case_allowed(p_case,is_search) THEN RAISE EXCEPTION 'Full lifecycle case access is required' USING ERRCODE='insufficient_privilege'; END IF;
- IF p_issuer IS NULL OR length(p_issuer)>500 OR p_ids IS NULL AND NOT is_search OR cardinality(p_ids)>1024 THEN
+ IF p_issuer IS NULL OR length(p_issuer)>500 OR p_ids IS NULL AND NOT is_search THEN
   RAISE EXCEPTION 'Invalid recipient directory request' USING ERRCODE='invalid_parameter_value';
  END IF;
  IF is_search AND (length(btrim(p_query))<2 OR length(p_query)>100) THEN RETURN; END IF;
@@ -41,7 +41,7 @@ BEGIN
   FROM active w JOIN public.app_external_identity i ON i.app_user_id=w.id AND i.issuer=p_issuer AND i.revoked_at IS NULL
   LEFT JOIN public.app_internal_auth_record r ON r.record_key='credential:'||i.subject AND r.owner_id::text=i.subject AND (r.expires_at IS NULL OR r.expires_at>now())
  ), selected AS MATERIALIZED (
-  SELECT b.* FROM bound b WHERE b.bindings=1 AND b.sealed IS NOT NULL ORDER BY lower(b.name),b.id LIMIT CASE WHEN is_search THEN 20 ELSE 1024 END
+  SELECT b.* FROM bound b WHERE b.bindings=1 AND b.sealed IS NOT NULL ORDER BY lower(b.name),b.id LIMIT CASE WHEN is_search THEN 20 ELSE cardinality(p_ids) END
  ), departments AS (
   SELECT s.id,string_agg(DISTINCT d.name,', ' ORDER BY d.name) AS label
   FROM selected s JOIN public.employment e ON e.person_id=s.person_id AND e.tenant_id=app.current_tenant_id()

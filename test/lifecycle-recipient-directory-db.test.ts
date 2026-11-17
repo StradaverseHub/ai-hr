@@ -52,7 +52,8 @@ it('returns bounded canonical account addresses, never PM email or sealed creden
   await expect(searchOnboardingRecipientUsers(admin, off, 'Fictional')).rejects.toThrow();
   expect(await searchOnboardingRecipientUsers(admin, caseId, 'F')).toEqual([]);
   await expect(searchOnboardingRecipientUsers(admin, caseId, 'x'.repeat(101))).rejects.toThrow();
-  await expect(addresses(Array.from({ length: 1025 }, () => randomUUID()))).rejects.toThrow();
+  await expect(addresses([user.id, 'invalid-identifier'])).rejects.toThrow();
+  expect(await addresses([])).toEqual({});
 });
 it('rechecks archived, blocked, revoked, ambiguous and missing bindings, plus credential account readiness', async () => {
   const users = await Promise.all(['Archived', 'Revoked', 'Missing', 'Disabled', 'Ambiguous'].map(name => account(`Fictional ${name}`)));
@@ -95,10 +96,10 @@ it('refuses cross-tenant, unrelated-company and view-only case access without le
   await expect(searchOnboardingRecipientUsers(admin, caseId, 'Fictional')).rejects.toThrow();
   await expect(addresses([user.id])).rejects.toThrow();
 });
-it('a 70-company / 1,000-employment group stays bounded, ordered and equivalent under All companies and one company', async () => {
+it('a 70-company / 1,030-employment group stays bounded, ordered and equivalent under All companies and one company', async () => {
   const companies = Array.from({ length: 70 }, (_, i) => ({ id: randomUUID(), tenantId: base.tenantId, legalName: `Directory scale ${String(i).padStart(2, '0')}`, country: 'MY' }));
   await owner.db.insert(schema.company).values(companies);
-  const people = Array.from({ length: 1000 }, (_, i) => ({ id: randomUUID(), tenantId: base.tenantId, fullName: `Scale Recipient ${String(i).padStart(4, '0')}` }));
+  const people = Array.from({ length: 1030 }, (_, i) => ({ id: randomUUID(), tenantId: base.tenantId, fullName: `Scale Recipient ${String(i).padStart(4, '0')}` }));
   await owner.db.insert(schema.person).values(people);
   const employments = people.map((person, i) => ({ id: randomUUID(), tenantId: base.tenantId, personId: person.id, companyId: companies[i % 70].id, hiredOn: '2026-01-01' }));
   await owner.db.insert(schema.employment).values(employments);
@@ -119,5 +120,10 @@ it('a 70-company / 1,000-employment group stays bounded, ordered and equivalent 
   const config = await onboardingContext(admin); config.config.access.onboarding.push(singleId); await onboardingSaveConfig(admin, config.revision, config.config);
   const single: SessionContext = { ...admin, userId: singleId, roles: ['hr_admin'], grants: [{ role: 'hr_admin', companyId: base.companyId }] };
   expect(await searchOnboardingRecipientUsers(single, caseId, 'Scale Recipient')).toEqual(all);
-  expect(await addresses(users.slice(0, 25).map(u => u.id))).toEqual(Object.fromEntries(users.slice(0, 25).map((u, i) => [u.id, `scale${i}@account.fixture.test`])));
-}, 120_000); // Bulk 70-company/1,000-person admission plus bounded reads on the standard hosted runner.
+  const complete = await addresses(users.map(user => user.id));
+  const expected = Object.fromEntries(users.map((user, i) => [user.id, `scale${i}@account.fixture.test`]));
+  expect(Object.keys(complete)).toHaveLength(1030);
+  expect(Object.keys(complete)).toEqual(users.map(user => user.id));
+  expect(complete).toEqual(expected);
+  expect(await addresses(users.map(user => user.id), single)).toEqual(expected);
+}, 120_000); // Bulk 70-company/1,030-person admission plus bounded reads on the standard hosted runner.
