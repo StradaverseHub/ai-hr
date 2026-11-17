@@ -1,7 +1,7 @@
 /**
  * Statutory follow-ups to owner decisions A/B (2026-11-14). Through the kernel, on real payslips. Fictional
  * fixtures only. Owner rules: a PCB exemption reduces only the PCB base; only the EPF Bonus 2012 tick puts
- * money on the EPF bonus stream; SOCSO/EIS/SKBBK follow the SOCSO tick (EPF Bonus 2012 items stay out).
+ * money on the EPF bonus stream; SOCSO/EIS/SKBBK follow the SOCSO tick (including EPF Bonus 2012 after approved ffb6c2e0).
  *
  *   1. A PCB-exempt ONE-OFF keyed on an ADDITIONAL (bonus) run is paid by that run. Before this date the
  *      exempt slice went to the untaxed cash bucket, which an additional run does not pay, so a fully exempt
@@ -52,7 +52,7 @@ const item = (code: string, name: string, over: Partial<PayComponentInput> = {})
 const AWARD = item('A0097', 'LONG SERVICE AWARD (TAX EXEMPTED)', { pcbRemunerationType: 'additional', pcbExemptionCode: 'PCB_PERQUISITE' });
 /** An 'additional'-classified item ticked EPF, NOT EPF Bonus 2012, not SOCSO, fully taxable. */
 const PERF = item('PERF', 'Performance incentive', { includedInSocsoEis: false, pcbRemunerationType: 'additional' });
-/** A declared bonus: EPF Bonus 2012 (SOCSO ticked, still excluded by law). */
+/** A declared bonus: EPF Bonus 2012 (SOCSO ticked, independently of EPF classification). */
 const BNS = item('BNS', 'Bonus', { pcbRemunerationType: 'additional', epfBonus2012: true });
 /** A LEGACY item: no remuneration type, no exemption code, no EPF Bonus 2012; ticked EPF, not SOCSO. */
 const LEG = item('LEGINC', 'Legacy incentive', {
@@ -285,8 +285,8 @@ describe('item 2 — only EPF Bonus 2012 chooses the EPF bonus stream (legacy fl
     // Identical to an 'additional'-classified non-2012 item, for every agency including PCB.
     expect(monthTotal(L)).toEqual(monthTotal(P));
     // EPF Bonus 2012 is unchanged: the bonus EPF stream, and it differs here.
-    expect(B.bases).toMatchObject({ epf: 4800, epfAdditional: 400, socsoEis: 4800 });
-    expect(itemLine(B, 'BNS')).toMatchObject({ epfNormal: 0, epfBonus: 400, socsoEis: 0 });
+    expect(B.bases).toMatchObject({ epf: 4800, epfAdditional: 400, socsoEis: 5200 });
+    expect(itemLine(B, 'BNS')).toMatchObject({ epfNormal: 0, epfBonus: 400, socsoEis: 400 });
     expect(B.statutoryTrace!.run.own).toMatchObject({ epfAdditional: 400, epfWageExtra: 0 });
     expect(explainStatutory(L, 'regular').traceStatus).toBe('recorded');
   });
@@ -378,6 +378,41 @@ describe('owner decision (14 Nov 2026) — the default BONUS pay item carries EP
       await reset(over);
       await apply();
       expect((await read('BONUS')).epfBonus2012, JSON.stringify(over)).toBe(false);
+    }
+  });
+});
+
+describe('ffb6c2e0 — Bonus 2012 exempt and taxable wage carry', () => {
+  it('regular → bonus → off-cycle carries both slices once and agrees with one regular payroll', async () => {
+    await setup([{ ...AWARD, epfBonus2012: true }]);
+    const twin = await hire('independent-twin@acme.test', 3734);
+    const e = await hire('independent-carry@acme.test', 3734);
+    const reg = await createBatch(a, { companyId: base.companyId, payPeriod: PERIOD });
+    await oneOff(reg.batchId, twin.employmentId, 'A0097', 2500);
+    await generatePayslips(a, { batchId: reg.batchId });
+    const run1 = await createAdditionalRun(a, { companyId: base.companyId, payPeriod: PERIOD, runType: 'bonus' });
+    await oneOff(run1.batchId, e.employmentId, 'A0097', 1000);
+    await generatePayslips(a, { batchId: run1.batchId });
+    const run2 = await createAdditionalRun(a, { companyId: base.companyId, payPeriod: PERIOD, runType: 'off_cycle' });
+    await oneOff(run2.batchId, e.employmentId, 'A0097', 1500);
+    await generatePayslips(a, { batchId: run2.batchId });
+    const r = statOf(await slipOf(reg.batchId, e.employmentId));
+    const s1 = statOf(await slipOf(run1.batchId, e.employmentId));
+    const s2 = statOf(await slipOf(run2.batchId, e.employmentId));
+    const tw = statOf(await slipOf(reg.batchId, twin.employmentId));
+    expect(itemLine(s1, 'A0097')).toMatchObject({ epfNormal: 0, epfBonus: 1000, socsoEis: 1000 });
+    expect(itemLine(s2, 'A0097')).toMatchObject({ epfNormal: 0, epfBonus: 1500, socsoEis: 1500 });
+    expect(s1.statutoryTrace!.run.own).toMatchObject({ epfAdditional: 0, exemptEpfAdditional: 1000, exemptSocsoWage: 1000 });
+    expect(s2.statutoryTrace!.run).toMatchObject({ own: { epfAdditional: 500, socsoWageExtra: 500, exemptEpfAdditional: 1000, exemptSocsoWage: 1000 },
+      earlier: { exemptEpfAdditional: 1000, exemptSocsoWage: 1000 } });
+    expect(s2.bases).toMatchObject({ epf: 3734, epfAdditional: 2500, socsoEis: 6234, pcb: 4234 });
+    // Unchanged contribution tables: above the 6,000 PERKESO ceiling, counted once across all runs.
+    const total = monthTotal(r, s1, s2);
+    expect(total).toEqual(monthTotal(tw));
+    expect([total.socsoEmployee, total.socsoEmployer, total.socsoSkbbk, total.eisEmployee, total.eisEmployer])
+      .toEqual([29.75, 104.15, 44.65, 11.9, 11.9]);
+    for (const [st, kind] of [[r, 'regular'], [s1, 'bonus'], [s2, 'off_cycle']] as const) {
+      expect(explainStatutory(st, kind).traceStatus).toBe('recorded');
     }
   });
 });

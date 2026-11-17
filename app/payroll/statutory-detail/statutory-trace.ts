@@ -114,7 +114,8 @@ export function scheduleTraceItemRows(trace: StatutoryTraceRecord, key: Schedule
   const rows: TraceItemRow[] = [];
   for (const l of trace.items) {
     if (l.kind !== 'item' && l.socsoEis === 0) continue;
-    // EPF Bonus 2012 keeps a bonus out of SOCSO / EIS even with the SOCSO/EIS tick on (SOCSO Act 1969 s.2).
+    // Preserve the treatment recorded by historical runs. New runs include this money by its SOCSO/EIS
+    // switch; a nonzero stamped liability wins regardless of EPF classification. Never rederive old wages.
     const bonusExcluded = l.kind === 'item' && l.socsoEis === 0 && l.socso === true && l.epfBonus2012 === true;
     rows.push({
       description: lineDescription(l, t),
