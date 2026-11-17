@@ -50,7 +50,7 @@
 import { and, eq, inArray, like, lt } from 'drizzle-orm';
 import { withTenant, type SessionContext } from '@/db/client';
 import { employment, employeeStatutoryMy, payrollBatch, payslip, tp1Relief } from '@/db/schema';
-import { listEmployees } from '@/core/read';
+import { employeePickerSubject } from '@/core/read';
 import {
   TP1_COUNTABLE_COLUMNS,
   TP1_ITEMS,
@@ -334,10 +334,8 @@ export async function pcbSlipData(
   p: { companyIds: string[]; employmentId: string; taxYear: number; month: number },
 ): Promise<PcbSlipData> {
   if (p.companyIds.length === 0 || !Number.isInteger(p.taxYear)) return EMPTY;
-  // `listEmployees` is the scope-fenced roster every other admin surface resolves an employment through;
-  // it is what turns this screen's `employmentId` into the `personId` the declaration reads need.
-  const roster = await listEmployees(s, p.companyIds);
-  const emp = roster.find((e) => e.employmentId === p.employmentId);
+  // Resolve the exact legacy roster member; declaration authority remains with its native owners.
+  const emp = await employeePickerSubject(s, p.employmentId, p.companyIds);
   const profile = await taxProfile(s, p);
   const childHeadCount = childHeadCountOf(profile);
   if (!emp) return { ...EMPTY, profile, childHeadCount };

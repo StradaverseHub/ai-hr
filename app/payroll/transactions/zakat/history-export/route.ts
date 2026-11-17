@@ -6,7 +6,7 @@
  * DomainEvent (in core/payroll-view.ts), mirroring the individual-txn / payment-summary export precedents.
  */
 import { scopedAdmin } from '@/lib/scope';
-import { listEmployees } from '@/core/read';
+import { employeeListContains } from '@/core/read';
 import { exportZakatTxnsCsv } from '@/core/payroll-view';
 
 const CYCLES = ['regular', 'off_cycle', 'bonus', 'adjustment'] as const;
@@ -33,8 +33,7 @@ export async function GET(req: Request) {
   const rawEmployment = url.searchParams.get('hEmploymentId');
   let employmentId: string | undefined;
   if (rawEmployment) {
-    const employees = await listEmployees(s, scopeIds);
-    employmentId = employees.some((e) => e.employmentId === rawEmployment) ? rawEmployment : undefined;
+    employmentId = await employeeListContains(s, rawEmployment, scopeIds) ? rawEmployment : undefined;
   }
 
   const year = intParam(url.searchParams.get('hYear'), 2000, 2100);

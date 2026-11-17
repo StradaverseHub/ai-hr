@@ -7,7 +7,7 @@
  */
 import { recordPayrollExportAcross } from '@/core/payroll-audit/access-log';
 import { scopedAdmin } from '@/lib/scope';
-import { listEmployees } from '@/core/read';
+import { employeeListContains } from '@/core/read';
 import { exportIndividualTxnsCsv, INDIVIDUAL_TXN_STATUS_FILTERS } from '@/core/payroll-view';
 import { TXN_KINDS } from '@/core/payroll-individual-txn';
 
@@ -38,8 +38,7 @@ export async function GET(req: Request) {
   const rawEmployment = url.searchParams.get('employmentId');
   let employmentId: string | undefined;
   if (rawEmployment) {
-    const employees = await listEmployees(s, scopeIds);
-    employmentId = employees.some((e) => e.employmentId === rawEmployment) ? rawEmployment : undefined;
+    employmentId = await employeeListContains(s, rawEmployment, scopeIds) ? rawEmployment : undefined;
   }
 
   const year = intParam(url.searchParams.get('year'), 2000, 2100);

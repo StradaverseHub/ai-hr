@@ -2,7 +2,7 @@ import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { getTranslations } from 'next-intl/server';
 import { scopedAdmin } from '@/lib/scope';
-import { listEmployees } from '@/core/read';
+import { employeePickerSubject } from '@/core/read';
 import { getStatutoryProfileMY } from '@/localization/my/statutory';
 import { MY_STATES } from '@/localization/my/holidays';
 import { Button, Card, EmployeeName, ErrorBanner, Field, PageHeader, SectionHeader, inputCls } from '@/components/ui';
@@ -43,9 +43,8 @@ export default async function ZakatElectionPage({
   const t = await getTranslations('payroll.transactions');
   const { employmentId, error } = await searchParams;
 
-  const employees = (await listEmployees(s, scopeIds)).filter((e) => !e.terminatedOn);
-  const emp = employmentId ? (employees.find((e) => e.employmentId === employmentId) ?? null) : null;
-  if (!emp) notFound();
+  const emp = await employeePickerSubject(s, employmentId, scopeIds);
+  if (!emp || emp.terminatedOn) notFound();
 
   const statutory = await getStatutoryProfileMY(s, emp.personId);
   // "Has a setup on file" is the SAME predicate listZakatElections uses for the history list, so the button

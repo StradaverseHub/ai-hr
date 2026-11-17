@@ -29,7 +29,7 @@
  */
 import { getLocale, getTranslations } from 'next-intl/server';
 import { scopedAdmin } from '@/lib/scope';
-import { listEmployees } from '@/core/read';
+import { employeePickerSubject } from '@/core/read';
 import {
   getTp1AccumulatedForPerson,
   getTp1ByIdForPerson,
@@ -62,8 +62,7 @@ export async function GET(req: Request, { params }: { params: Promise<{ year: st
   if (!employmentId) return notFound();
 
   const { s, scopeIds } = await scopedAdmin();
-  const employees = await listEmployees(s, scopeIds);
-  const emp = employees.find((e) => e.employmentId === employmentId);
+  const emp = await employeePickerSubject(s, employmentId, scopeIds);
   if (!emp) return notFound();
 
   const rows = await listTp1DeclarationsForPersonYear(s, { personId: emp.personId, assessmentYear: year });

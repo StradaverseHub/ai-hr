@@ -19,7 +19,7 @@ import { getLocale, getTranslations } from 'next-intl/server';
 import { historyGridDisplayRows, historyGridLabelKey } from '../history-grid-presentation';
 import { payrollRunLabel } from '@/core/payslip-cycle-label';
 import { scopedAdmin } from '@/lib/scope';
-import { listEmployees } from '@/core/read';
+import { employeePickerSubject } from '@/core/read';
 import { listPayComponents } from '@/core/pay-components';
 import { listProcessedPayslipsAcross } from '@/core/payroll-view';
 import { packFor } from '@/localization/registry';
@@ -60,9 +60,8 @@ export async function GET(req: Request) {
   const companyId = rawCompany && scopeIds.includes(rawCompany) ? rawCompany : undefined;
   const companyIds = companyId ? [companyId] : scopeIds;
 
-  const employees = await listEmployees(s, scopeIds);
   const rawEmployment = sp.get('employmentId');
-  const selected = rawEmployment ? employees.find((e) => e.employmentId === rawEmployment) : undefined;
+  const selected = await employeePickerSubject(s, rawEmployment ?? undefined, scopeIds);
 
   const rawYear = Number(sp.get('year'));
   const year =

@@ -2,7 +2,7 @@ import { notFound, redirect } from 'next/navigation';
 import { getLocale, getTranslations } from 'next-intl/server';
 import { requireAdmin } from '@/lib/authz';
 import { scopedAdmin } from '@/lib/scope';
-import { listEmployees } from '@/core/read';
+import { employeePickerSubject } from '@/core/read';
 import { listTp1DeclarationsForPersonYear } from '@/core/tax-relief';
 import { Button, Card, PageHeader, SectionHeader, inputCls, pageWideCls } from '@/components/ui';
 import { todayInKualaLumpur } from '@/lib/hr-date';
@@ -46,8 +46,7 @@ export default async function Tp1NewDeclarationPage({
   const t = await getTranslations('payroll.transactions');
   const sp = await searchParams;
 
-  const employees = await listEmployees(s, scopeIds);
-  const selected = employees.find((e) => e.employmentId === sp.employmentId);
+  const selected = await employeePickerSubject(s, sp.employmentId, scopeIds);
   // No employee, or one this caller may not see: the same bare 404, so the url cannot enumerate either.
   if (!selected) notFound();
 

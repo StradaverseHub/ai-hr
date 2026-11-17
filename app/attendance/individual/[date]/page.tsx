@@ -15,7 +15,7 @@ import { AttendanceClockData } from '@/components/attendance-clock-data';
 import { attendanceForEmploymentRange, attendancePunchesForRange } from '@/core/attendance';
 import { breakMinutesOf, otByRate, flagOf, statusOf, type AttendanceStatus, type AttendanceFlag } from '@/core/attendance-derive';
 import { explainAttendanceDay } from '@/core/attendance-explain';
-import { listEmployees } from '@/core/read';
+import { employeePickerSubject } from '@/core/read';
 import { employmentScheduleGroupName } from '@/core/roster';
 import { canSubmitUnclockedAttendanceWork, attendanceClockData, clockCaptureEvidence, attendanceDayEditor, attendanceIrregularitiesForDate } from '@/packs/attendance/service';
 import { Card, ErrorBanner, PageHeader, SectionHeader, Button, inputCls, pageWideCls } from '@/components/ui';
@@ -89,8 +89,7 @@ export default async function IndividualAttendanceDayPage({
 
   // The employee is resolved against the caller's own scope, exactly as the list does — the date in the
   // path is not an authorization boundary and must not become one.
-  const employees = await listEmployees(s, scopeIds);
-  const selected = employees.find((e) => e.employmentId === sp.emp) ?? null;
+  const selected = await employeePickerSubject(s, sp.emp, scopeIds);
 
   if (!selected) {
     return (

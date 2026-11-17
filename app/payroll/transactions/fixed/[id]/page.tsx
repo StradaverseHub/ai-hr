@@ -2,7 +2,7 @@ import { notFound } from 'next/navigation';
 import Link from 'next/link';
 import { getTranslations } from 'next-intl/server';
 import { scopedAdmin } from '@/lib/scope';
-import { listEmployees } from '@/core/read';
+import { employeePickerSubject } from '@/core/read';
 import { getEmploymentPayComponent } from '@/core/pay-components';
 import { listPayrollCycles } from '@/core/payroll-cycle';
 import { Badge, Button, Card, EmployeeName, ErrorBanner, Field, PageHeader, SectionHeader, inputCls } from '@/components/ui';
@@ -61,8 +61,7 @@ export default async function FixedTransactionDetailPage({
 
   // Scope-guard the employment exactly as the list does: RLS isolates tenants, company scope does not
   // travel with it, so an out-of-scope (or absent) employmentId is simply not found.
-  const employees = await listEmployees(s, scopeIds);
-  const emp = employmentId ? (employees.find((e) => e.employmentId === employmentId) ?? null) : null;
+  const emp = await employeePickerSubject(s, employmentId, scopeIds);
   if (!emp) notFound();
 
   const row = await getEmploymentPayComponent(s, { id, employmentId: emp.employmentId });

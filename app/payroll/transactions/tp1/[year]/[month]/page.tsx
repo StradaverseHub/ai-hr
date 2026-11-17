@@ -2,7 +2,7 @@ import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { getTranslations } from 'next-intl/server';
 import { scopedAdmin } from '@/lib/scope';
-import { listEmployees } from '@/core/read';
+import { employeePickerSubject } from '@/core/read';
 import {
   getTp1AccumulatedForPerson,
   getTp1ByIdForPerson,
@@ -91,8 +91,7 @@ export default async function Tp1DeclarationMonthPage({
   const month = /^\d{1,2}$/.test(rawMonth) ? Number(rawMonth) : NaN;
   if (!Number.isInteger(month) || month < 1 || month > 12) notFound();
 
-  const employees = await listEmployees(s, scopeIds);
-  const emp = employmentId ? (employees.find((e) => e.employmentId === employmentId) ?? null) : null;
+  const emp = await employeePickerSubject(s, employmentId, scopeIds);
   if (!emp) notFound();
 
   // `personId` comes from the ALREADY scope-guarded row — never from a form field, which is the rule the

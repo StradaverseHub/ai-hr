@@ -407,7 +407,7 @@ describe('27605faa rev 2 · Add New TP1 asks for the year and month, on its own 
   it('is scoped and re-guards the employment, like the screen it returns to', () => {
     expect(NEW).toContain('scopedAdmin');
     expect(NEW).toContain('requireAdmin()');
-    expect(NEW).toContain('employees.find((e) => e.employmentId === sp.employmentId)');
+    expect(NEW).toContain('employeePickerSubject(s, sp.employmentId, scopeIds)');
     expect(NEW, 'an unknown or out-of-scope employee is the same bare 404').toContain('notFound()');
   });
 });

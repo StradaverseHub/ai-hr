@@ -23,7 +23,7 @@
 import { recordPayrollExportAcross } from '@/core/payroll-audit/access-log';
 import { getTranslations } from 'next-intl/server';
 import { scopedAdmin } from '@/lib/scope';
-import { listCompanies, listEmployees } from '@/core/read';
+import { listCompanies, employeePickerSubject } from '@/core/read';
 import { listPayComponents } from '@/core/pay-components';
 import { listProcessedPayslipsAcross } from '@/core/payroll-view';
 import { packFor } from '@/localization/registry';
@@ -59,11 +59,10 @@ export async function GET(req: Request) {
   const t = await getTranslations('payroll.transactions');
   const tList = await getTranslations('payroll.list');
 
-  const employees = await listEmployees(s, scopeIds);
   const rawCompany = sp.get('companyId');
   const companyId = rawCompany && scopeIds.includes(rawCompany) ? rawCompany : undefined;
   const rawEmployment = sp.get('employmentId');
-  const selectedEmployee = rawEmployment ? employees.find((e) => e.employmentId === rawEmployment) : undefined;
+  const selectedEmployee = await employeePickerSubject(s, rawEmployment ?? undefined, scopeIds);
   const rawCycle = sp.get('cycle');
   const cycle = rawCycle && (CYCLES as readonly string[]).includes(rawCycle) ? rawCycle : undefined;
 

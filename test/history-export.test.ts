@@ -544,7 +544,7 @@ describe('0fcb2557 — the download can never contain a company the caller may n
       /scopeIds\.includes\(rawCompany\)/,
     );
     // …and the employee too: an out-of-scope employmentId resolves to "no selection", never to a read.
-    expect(src).toMatch(/employees\.find\(\(e\) => e\.employmentId === rawEmployment\)/);
+    expect(src).toContain('employeePickerSubject(s, rawEmployment ?? undefined, scopeIds)');
   });
 
   it('scope=all widens to the caller’s OWN companies and never past them', () => {

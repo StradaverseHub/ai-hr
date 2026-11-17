@@ -32,7 +32,7 @@
  */
 import { getLocale, getTranslations } from 'next-intl/server';
 import { scopedAdmin } from '@/lib/scope';
-import { listEmployees } from '@/core/read';
+import { employeePickerSubject } from '@/core/read';
 import {
   getTp3ForPersonYear,
   getTp3Identity,
@@ -63,8 +63,7 @@ export async function GET(req: Request) {
   if (!employmentId) return notFound();
 
   const { s, scopeIds } = await scopedAdmin();
-  const employees = await listEmployees(s, scopeIds);
-  const emp = employees.find((e) => e.employmentId === employmentId);
+  const emp = await employeePickerSubject(s, employmentId, scopeIds);
   if (!emp) return notFound();
 
   // The requested form language, then the viewer's locale IF the form exists in it, then English.
