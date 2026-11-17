@@ -1,0 +1,13 @@
+# Exact email document self-binding authorization branch
+
+UNAPPLIED review proposal. Automatic review rejected changing the persistent Contract signing authorization function despite the earlier email-document approval. No rejected reroute/read branch has been installed or added to active migrations.
+
+Requested exact approval: update existing app.contract_shared_signing_access(text,uuid,text) while preserving its OID and ACL. For an email-purpose document ONLY, add metadata Read and Reroute authorization to the actual employee's own unique verified active account when an unfulfilled Employee slot still has NULL holder. Require an actual immutable private email pin/doc map and still-waiting accepted Send email run, same real source employee person and company, company entitlement, canonical route identity and native source-current/history proof. Metadata Read never grants Form body access; the Form owner still requires actual routed UID AND PID. This is not Case View, tracker permission, a general replaceSigner grant, or an HR/fallback substitution.
+
+Reroute additionally requires the existing native app.contract_shared_email_self_binding_held proof: BEFORE generic storage, the private expected route must already equal the original canonical route with ONLY unfulfilled NULL Employee slots changed to this actual UID/PID. Every other row, existing holder, completed action, source person/company and signature remains unchanged. Only the existing native bind command can write that private expected route. A generic replacement call cannot manufacture it. No non-email Contract, approval, Probation or other subject path changes.
+
+Related ordinary released Letter access: actual To/CC recipients may read only the canonical released non-Form Letter named in a native immutable queued email receipt, with the native-frozen recipient UID/PID pair and unchanged actual case person/company. This creates no signing authority. Forms have NO recipient-only or released CaseView shortcut. Cancelled receipts do not grant access. The native queue derives recipient PIDs from actual accounts, never accepts them from a client.
+
+The companion SQL shows the exact guarded additions to the existing function. The final definition retains every existing ordinary-company/module/source/identity guard after these narrow branches. Hosted tests must cover unique versus ambiguous accounts, null-only binding, wrong person/company, generic replacement refusal, changed other rows, post-posting recovery without reopening the case, immutable receipt-body access, no Form PII shortcut, UID relinking and unchanged other modules.
+
+Approval does not approve merging, installation or release.

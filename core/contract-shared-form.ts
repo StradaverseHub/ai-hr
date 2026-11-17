@@ -6,7 +6,7 @@ import type {SqlExecutor} from '../db/sql-executor';
 import {withScopedLifecycleTenant} from './module-gate';
 import {ContractManagementError} from '../lib/contract-management-model';
 import {pgSqlState} from '../lib/db-error';
-export type ContractSharedFormReceipt={actionId:string;actorUserId:string;actorPersonId:string;legalBaseHash:string;responseRevision:number;responseHash:string;scope:'employee'|'hr';fieldIds:string[];values:Record<string,string>};
+export type ContractSharedFormReceipt={actorName?:string;at?:string;actionId:string;actorUserId:string;actorPersonId:string;legalBaseHash:string;responseRevision:number;responseHash:string;scope:'employee'|'hr';fieldIds:string[];values:Record<string,string>};
 export type ContractSharedForm=null|{letterId:string;kind:'Form';visible:false}|{letterId:string;kind:'Form';visible:true;responseRevision:number;responseHash:string;values:Record<string,string>;editableFieldIds:string[];missingLockedFields:string[];receipts:ContractSharedFormReceipt[];legalBaseHash:string};
 const proof=z.object({id:z.uuid(),contentRevision:z.number().int().positive(),contentHash:z.string().regex(/^[a-f0-9]{64}$/),responseRevision:z.number().int().positive(),responseHash:z.string().regex(/^[a-f0-9]{64}$/)});
 function failure(error:unknown):never{const code=pgSqlState(error);if(code==='42501')throw new ContractManagementError('forbidden','This Form is unavailable.');if(code==='40001')throw new ContractManagementError('conflict','This Form changed. Reload and review its answers.');if(code==='22023')throw new ContractManagementError('invalid','Check the Form fields and required Personnel values.');throw error;}

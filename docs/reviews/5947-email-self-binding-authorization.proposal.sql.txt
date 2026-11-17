@@ -1,0 +1,42 @@
+-- UNAPPLIED REVIEW TEXT. No active migration or authorization grant.
+CREATE FUNCTION app.contract_shared_email_self_binding_available(p_letter uuid) RETURNS boolean LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT app.contract_verified_human(app.current_user_id()) AND EXISTS(SELECT 1 FROM public.contract_shared_letter l JOIN public.contract_case c ON c.tenant_id=l.tenant_id AND c.id=l.case_id
+ JOIN public.employment e ON e.tenant_id=c.tenant_id AND e.id=c.employment_id AND e.company_id=c.company_id JOIN public.document_signing_document d ON d.tenant_id=l.tenant_id AND d.id=l.signing_document_id
+ JOIN public.contract_shared_email_document_step pin ON pin.tenant_id=l.tenant_id AND pin.case_id=l.case_id AND pin.company_id=c.company_id AND pin.subject_person_id=e.person_id AND pin.documents @> jsonb_build_object(l.data->>'templateId',l.id::text)
+ JOIN public.automation_run run ON run.tenant_id=pin.tenant_id AND run.id=pin.workflow_run_id AND run.module='contract_staff' AND run.subject_id=pin.case_id AND run.status='waiting' AND run.waiting_for=pin.id
+ WHERE l.tenant_id=app.current_tenant_id() AND l.id=p_letter AND l.purpose='email' AND l.data->>'state'='routing' AND e.person_id::text=l.data->>'subjectPersonId'
+ AND e.person_id=app.contract_actor_person(app.current_user_id()) AND app.contract_shared_email_document_current(l.id) AND app.contract_company_entitled(c.company_id)
+ AND (SELECT count(*) FROM public.app_user account WHERE account.tenant_id=l.tenant_id AND account.person_id=e.person_id AND app.contract_verified_human(account.id))=1
+ AND EXISTS(SELECT 1 FROM jsonb_array_elements(d.data->'route'->'steps') step WHERE step->>'role'='employee' AND step->>'holderId' IS NULL AND NOT app.document_signing_step_fulfilled(d.data,step)))
+$$;
+REVOKE ALL ON FUNCTION app.contract_shared_email_self_binding_available(uuid) FROM PUBLIC,ai_hr_app;
+CREATE OR REPLACE FUNCTION app.contract_shared_signing_access(p_type text,p_subject uuid,p_operation text) RETURNS boolean
+LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE l public.contract_shared_letter;document jsonb;assigned boolean;ordinary_company uuid;
+BEGIN
+ IF p_type='contract' AND p_operation='read' AND app.contract_shared_email_self_binding_available(p_subject) THEN RETURN true;END IF;
+ IF p_type='contract' AND p_operation='reroute' AND app.contract_shared_email_self_binding_available(p_subject) AND app.contract_shared_email_self_binding_held(p_subject) THEN RETURN true;END IF;
+ -- Existing reads remain unchanged. Decision approvals and ordinary Letters require their own company module.
+ IF p_type='contract-approval' AND p_operation IS DISTINCT FROM 'read' THEN
+  SELECT c.company_id INTO ordinary_company FROM public.contract_shared_approval approval JOIN public.contract_case c ON c.tenant_id=approval.tenant_id AND c.id=approval.case_id
+  WHERE approval.tenant_id=app.current_tenant_id() AND approval.id=p_subject;
+  IF ordinary_company IS NOT NULL AND app.contract_company_entitled(ordinary_company) IS NOT TRUE THEN RETURN false;END IF;
+ END IF;
+ -- Held email/Form paths below delegate unchanged.
+ IF p_type='contract' AND p_operation IS DISTINCT FROM 'read' THEN
+  SELECT c.company_id INTO ordinary_company FROM public.contract_shared_letter letter JOIN public.contract_case c ON c.tenant_id=letter.tenant_id AND c.id=letter.case_id
+  WHERE letter.tenant_id=app.current_tenant_id() AND letter.id=p_subject AND letter.purpose<>'email'
+  AND NOT EXISTS(SELECT 1 FROM jsonb_array_elements(coalesce(letter.data->'definition'->'blocks','[]'::jsonb)) block WHERE block->>'type' IN('field','fields'));
+  IF ordinary_company IS NOT NULL AND app.contract_company_entitled(ordinary_company) IS NOT TRUE THEN RETURN false;END IF;
+ END IF;
+ IF p_type<>'contract' OR p_operation NOT IN('sign','revise','live_refresh') THEN RETURN app.contract_shared_signing_access_before_email_documents(p_type,p_subject,p_operation);END IF;
+ SELECT * INTO l FROM public.contract_shared_letter WHERE tenant_id=app.current_tenant_id() AND id=p_subject;
+ IF l.purpose IS DISTINCT FROM 'email' THEN RETURN app.contract_shared_signing_access_before_email_documents(p_type,p_subject,p_operation);END IF;
+ IF app.contract_verified_human(app.current_user_id()) IS NOT TRUE OR app.contract_shared_email_document_current(p_subject) IS NOT TRUE OR l.data->>'state'<>'routing' THEN RETURN false;END IF;
+ SELECT data INTO document FROM public.document_signing_document WHERE tenant_id=l.tenant_id AND id=l.signing_document_id AND subject_type='contract' AND subject_id=l.id;
+ IF document IS NULL THEN RETURN false;END IF;
+ assigned:=EXISTS(SELECT 1 FROM jsonb_array_elements(document->'route'->'steps') step WHERE step->>'holderId'=app.current_user_id()::text AND step->>'holderPersonId'=app.contract_actor_person(app.current_user_id())::text);
+ IF p_operation='sign' THEN RETURN assigned AND (EXISTS(SELECT 1 FROM app.document_signing_pending_steps(document)) OR app.document_signing_returned(document) AND app.document_signing_owner(document)=app.current_user_id());END IF;
+ IF p_operation='revise' THEN RETURN app.document_signing_can_edit(document,app.current_user_id());END IF;
+ RETURN assigned AND NOT app.document_signing_locked(document);
+END $$;

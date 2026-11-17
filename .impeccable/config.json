@@ -20,6 +20,15 @@
         ],
         "createdAt": "2026-11-16T20:49:56.824Z",
         "reason": "Agent verified L46: the top border belongs to the unrounded .v9-letterhead; border-radius belongs to the separate .v9-letterhead-mark logo selector on the same minified line. Regex combines distinct elements."
+      },
+      {
+        "rule": "side-tab",
+        "value": "*",
+        "files": [
+          "app/lifecycle/v9/workspace.css"
+        ],
+        "createdAt": "2026-11-17T02:43:56.458Z",
+        "reason": "Agent review: L21 is the existing unrounded, borderless .v9-workflow-section grouping rail inside native workflow/checklist editors, not an accented card or side tab. Preserve the shared On/Off Boarding hierarchy; all other detector rules remain active."
       }
     ]
   }

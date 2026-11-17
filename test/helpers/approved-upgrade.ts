@@ -275,11 +275,15 @@ export const APPROVED_UPGRADE_TAIL=[
  {idx:5344,when:1794841005944,tag:'5944_contract_letterhead_fallback_evidence'},
  {idx:5345,when:1794841005945,tag:'5945_contract_retrospective_ending_legacy_owner'},
  {idx:5346,when:1794841005946,tag:'5946_contract_snapshot_native_binding'},
+ {idx:5347,when:1794841005947,tag:'5947_contract_email_document_identity'},
+ {idx:5348,when:1794841005948,tag:'5948_contract_form_current_proof'},
  {idx:5355,when:1794841005955,tag:'5955_shared_email_materialization_start'},
  {idx:5361,when:1794841005961,tag:'5961_contract_manual_attention_reconciliation'},
 ] as const;
 // Final pending 2109/2126 bytes reviewed from engine 128bc2539; no applied-prefix hashes change.
 const APPROVED_UPGRADE_HASHES:Record<string,string>={
+ '5948_contract_form_current_proof':'44643617420c889b1f18743b99e3432a800020e8fc70db0b414b1599464532b1',
+ '5947_contract_email_document_identity':'595f8d9c1078dffb16a2aff0524420c10f702b9f4fd02e885f07a60a3e56b435',
  '5955_shared_email_materialization_start':'156a7948da7836d8e9e9bbfe9aff3063be26586c726b142d5f3836ce390ddc7b',
  '5938_contract_system_private_row_security':'fd4816c1a9660558a966755e4b2dfd9bd5f72780bf4d546a3c900fdbf896b3b2',
  '5937_contract_digest_queue_capability':'b352d4968c10b3ecb8595a6a0f9828ce242e162c4a5f8566b02126aa174787ef',
@@ -590,7 +594,7 @@ export const COMBINED_RELEASE_NULL_COLUMNS:readonly {tag:string;table:string;col
  ...['department','position','cost_center','business_unit','label_company_assignment','profile_option','job_grade','grade_group','grade_group_member']
   .map(table=>({tag:'5070_system_label_import_staged_job',table,columns:['import_pending_attempt_id']})),
 ]);
-export const COMBINED_RELEASE_DEFAULT_COLUMNS=Object.freeze([{tag:'5925_contract_template_lifecycle',table:'automation_document_template_version',column:'note',value:''}] as const);
+export const COMBINED_RELEASE_DEFAULT_COLUMNS=Object.freeze([{tag:'5925_contract_template_lifecycle',table:'automation_document_template_version',column:'note',value:''},{tag:'5932_contract_native_system_kernel',table:'contract_shared_event',column:'actor_type',value:'user'}] as const);
 // Snapshot keys that name a widened table by another word.
 const SNAPSHOT_TABLE_ALIASES:Readonly<Record<string,string>>={audit:'domain_event',people:'person'};
 /** A retained row of a widened table, compared without the combined release's columns. Each one the row carries
