@@ -44026,6 +44026,16 @@
       "completed": "Completed",
       "failed": "Failed",
       "cancelled": "Stopped"
-    }
+    },
+    "problems": {
+      "columns": "Too many columns.",
+      "duplicate": "Duplicate employee, year and type.",
+      "invalid": "Enter a valid employee, year, rating and nonnegative amount.",
+      "number": "Use a nonnegative number with up to two decimals.",
+      "employee": "Employee ID is unavailable or ambiguous in this company.",
+      "year": "Upload completed historical years only.",
+      "postedYear": "Upload only years before the company’s first posted AI-HR Rewards review."
+    },
+    "error": "The request could not finish. Try again."
   }
 }

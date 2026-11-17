@@ -31,7 +31,7 @@ REVOKE ALL ON FUNCTION app.reward_history_upload_authorized(uuid) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION app.reward_history_upload_authorized(uuid) TO ai_hr_app;
 CREATE FUNCTION app.reward_history_upload_subject(wanted_employment uuid,wanted_company uuid) RETURNS boolean
  LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
- SELECT EXISTS(SELECT 1 FROM public.employment e WHERE e.id=wanted_employment AND e.company_id=wanted_company
+ SELECT app.reward_history_upload_authorized(wanted_company) AND EXISTS(SELECT 1 FROM public.employment e WHERE e.id=wanted_employment AND e.company_id=wanted_company
   AND e.tenant_id=app.current_tenant_id() AND NOT app.is_self_person(e.person_id))
 $$;
 REVOKE ALL ON FUNCTION app.reward_history_upload_subject(uuid,uuid) FROM PUBLIC;
@@ -47,7 +47,11 @@ CREATE POLICY reward_history_insert ON public.reward_person_history FOR INSERT T
 CREATE POLICY reward_history_supersede ON public.reward_person_history FOR UPDATE TO ai_hr_app
  USING(tenant_id=app.current_tenant_id() AND source='upload' AND superseded_at IS NULL AND app.reward_history_upload_authorized(company_id) AND app.reward_history_upload_subject(employment_id,company_id))
  WITH CHECK(tenant_id=app.current_tenant_id() AND source='upload' AND superseded_at IS NOT NULL AND app.reward_history_upload_authorized(company_id) AND app.reward_history_upload_subject(employment_id,company_id));
-GRANT SELECT,INSERT ON public.reward_person_history TO ai_hr_app;
+GRANT INSERT ON public.reward_person_history TO ai_hr_app;
+REVOKE SELECT ON public.reward_person_history FROM ai_hr_app;
+-- Superseding needs identity columns only. Award amounts are available solely through the
+-- current-review disclosure function, including for a Group Rewards uploader.
+GRANT SELECT(id,tenant_id,company_id,employment_id,year,kind,source,superseded_at) ON public.reward_person_history TO ai_hr_app;
 GRANT UPDATE(superseded_at) ON public.reward_person_history TO ai_hr_app;
 --> statement-breakpoint
 -- Group Rewards need not hold generic Personnel access to bind a history upload. No names or salary
@@ -94,7 +98,7 @@ CREATE FUNCTION app.reward_record_person_history(wanted_unit uuid,wanted_rows js
  LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
 DECLARE u public.reward_unit;n integer;
 BEGIN
- SELECT * INTO u FROM public.reward_unit WHERE id=wanted_unit AND tenant_id=app.current_tenant_id() AND deleted_at IS NULL;
+ SELECT * INTO u FROM public.reward_unit WHERE id=wanted_unit AND tenant_id=app.current_tenant_id() AND deleted_at IS NULL FOR UPDATE;
  IF u.id IS NULL OR u.status NOT IN('approved','posted') OR NOT app.principal_snapshot_current() OR NOT app.reward_not_viewing_as()
   OR NOT app.reward_admin(u.company_id) OR NOT 'payroll'=ANY(ARRAY(SELECT app.reward_roles(u.id))) THEN
   RAISE EXCEPTION 'Reward history posting authority is required' USING ERRCODE='42501';END IF;
@@ -124,10 +128,12 @@ CREATE FUNCTION app.reward_person_history(wanted_unit uuid,wanted_entry uuid) RE
   SELECT e.employment_id,u.tenant_id,(u.policy->>'year')::integer AS year,
    NOT(coalesce((e.facts->>'seniorPlan')::boolean,false) OR(coalesce(u.policy->>'seniorMembershipMode','legacy-grades')<>'named-members' AND u.policy->'seniorGrades' ? (e.source->>'grade')))
     OR(roles.value&&ARRAY['gr','ctro','ec'] AND app.reward_level_rank(app.reward_unit_level(u.id,'senior.manage'))>=1) AS amounts
-  FROM public.reward_unit u JOIN public.reward_entry e ON e.unit_id=u.id AND e.tenant_id=u.tenant_id CROSS JOIN principal CROSS JOIN roles
+  FROM public.reward_unit u JOIN public.reward_entry e ON e.unit_id=u.id AND e.tenant_id=u.tenant_id
+  JOIN public.employment employee ON employee.id=e.employment_id AND employee.tenant_id=e.tenant_id CROSS JOIN principal CROSS JOIN roles
   WHERE u.id=wanted_unit AND e.id=wanted_entry AND u.tenant_id=app.current_tenant_id() AND u.deleted_at IS NULL
    AND app.reward_access_scope(u.id) AND app.reward_capability(u.id,'review.view') AND cardinality(roles.value)>0
    AND principal.person_id::text IS DISTINCT FROM e.source->>'personId'
+   AND principal.person_id IS DISTINCT FROM employee.person_id
    AND(e.facts->>'reviewed'='true' OR 'gr'=ANY(roles.value))
    AND(e.facts->>'confidentiality'<>'bg' OR roles.value&&ARRAY['bg','gr','ctro','ec','payroll'])
    AND((e.facts->>'confidentiality'<>'ec' AND e.employment_id NOT IN(SELECT app.reward_group_ec_direct_reports(u.id)))
@@ -180,6 +186,7 @@ CREATE FUNCTION app.reward_review_activity_changes(wanted_units uuid[],wanted_ac
  JOIN public.reward_entry e ON e.id::text=d.payload->>'entryId' AND e.unit_id=allowed.unit_id AND e.tenant_id=d.tenant_id
  JOIN public.reward_unit u ON u.id=e.unit_id AND u.tenant_id=e.tenant_id
  WHERE d.event_type='reward-unit.recommendation-updated' AND app.reward_private_entry_visible(u.id,e.id)
+  AND NOT EXISTS(SELECT 1 FROM public.employment employee WHERE employee.id=e.employment_id AND employee.tenant_id=e.tenant_id AND app.is_self_person(employee.person_id))
   AND((e.facts->>'confidentiality'<>'ec' AND e.employment_id NOT IN(SELECT app.reward_group_ec_direct_reports(u.id)))
    OR app.reward_level_rank(app.reward_unit_level(u.id,'restricted.view'))>=1)
   AND(NOT(coalesce((e.facts->>'seniorPlan')::boolean,false) OR(coalesce(u.policy->>'seniorMembershipMode','legacy-grades')<>'named-members' AND u.policy->'seniorGrades' ? (e.source->>'grade')))

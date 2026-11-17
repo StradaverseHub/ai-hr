@@ -20,7 +20,7 @@ import {movementImportJobHandler} from './movement-import-worker';
 import {movementCheckJobHandler} from './movement-import-check-worker';
 import {movementImportRevertJobHandler} from './movement-import-revert-job';
 import {recruitmentCandidateImportJobHandler} from './recruitment-candidate-import-worker';
-import {rewardPersonHistoryJobHandler} from '../packs/rewards/person-history-worker';
+import {rewardPersonHistoryJobHandler} from '../packs/rewards/service';
 
 export const BULK_JOB_HANDLERS:readonly BulkJobHandler[]=[employeeImportJobHandler,leaveImportJobHandler,leaveGenerationJobHandler,
  earnedAccrualJobHandler,rosterBulkJobHandler,scheduleGroupBulkJobHandler,clockingImportJobHandler,attendanceRecomputePreviewJobHandler,

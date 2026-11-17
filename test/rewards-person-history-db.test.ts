@@ -6,7 +6,8 @@ import {hireEmployee} from '../core/org';
 import {setCompensation} from '../core/comp';
 import {defaultPolicy,emptyFacts,type RewardRole} from '../packs/rewards/model';
 import {calculateRewards} from '../packs/rewards/engine';
-import {getRewardUnit} from '../packs/rewards/service';
+import {getRewardUnit,withRewardHistoryBackfill,saveRewardEntry} from '../packs/rewards/service';
+import {backfillRewardPersonHistory} from '../packs/rewards/person-history-backfill';
 import {rewardPersonHistory,recordRewardPersonHistoryTx} from '../packs/rewards/person-history';
 import {previewRewardPersonHistoryImport,importRewardPersonHistory,applyRewardPersonHistoryImportRowTx} from '../packs/rewards/person-history-upload';
 import {rewardHistoryUploadHeaders} from '../packs/rewards/person-history-model';
@@ -72,7 +73,8 @@ describe('Person reward history custody and upload',()=>{
   await owner.db.insert(schema.rewardMember).values({tenantId:b.tenantId,unitId,userId,role:'gr'});
   await owner.db.execute(sql`insert into reward_setup_grant(tenant_id,user_id,role,valid_from,created_by,reason) values(${b.tenantId}::uuid,${userId}::uuid,'gr','2000-01-01',${admin.userId}::uuid,'Fictional own-history adversarial grant')`);
   expect(await rewardPersonHistory(own,unitId,entryId)).toEqual([]);
-  expect(await withTenant(own,tx=>tx.execute(sql`select id,bonus_cents from reward_person_history where employment_id=${employmentId}::uuid`))).toHaveLength(0);
+  expect(await withTenant(own,tx=>tx.execute(sql`select id from reward_person_history where employment_id=${employmentId}::uuid`))).toHaveLength(0);
+  await expect(withTenant(admin,tx=>tx.execute(sql`select bonus_cents from reward_person_history`))).rejects.toThrow();
   expect(await withTenant(admin,tx=>tx.execute(sql`select id from reward_person_history where source='review'`))).toHaveLength(0);
  });
  it('rechecks role revocation and tenant binding on every read and refuses any alteration of a posted-source history row',async()=>{
@@ -85,7 +87,7 @@ describe('Person reward history custody and upload',()=>{
  });
  it('binds upload preview to company identities, reports all invalid rows, and supersedes through the bulk job identity',async()=>{
   const raw={companyId:b.companyId,name:'fictional-history.csv',csv:toCsv([rewardHistoryUploadHeaders,['HIST-100',String(year-2),'STAR','AE','5','250','5000','1','Annual'],['missing',String(year-2),'STAR','AE','5','250','5000','1','Annual']])};
-  const invalid=await previewRewardPersonHistoryImport(admin,raw);expect(invalid.rows).toHaveLength(1);expect(invalid.problems).toEqual([{line:3,reason:'Employee ID is unavailable or ambiguous in this company.'}]);
+  const invalid=await previewRewardPersonHistoryImport(admin,raw);expect(invalid.rows).toHaveLength(1);expect(invalid.problems).toEqual([{line:3,reason:'Employee ID is unavailable or ambiguous in this company.',code:'employee'}]);
   await expect(importRewardPersonHistory(admin,raw,invalid.token)).rejects.toThrow(/valid, current/);
   const good={...raw,csv:toCsv([rewardHistoryUploadHeaders,['HIST-100',String(year-2),'STAR','AE','5','250','5000','1','Annual']])};
   const preview=await previewRewardPersonHistoryImport(admin,good),request=await importRewardPersonHistory(admin,good,preview.token);
@@ -116,4 +118,26 @@ describe('Person reward history custody and upload',()=>{
   expect(await rewardPersonHistory(admin,unitId,entryId)).toEqual(before);
   const [index]=await owner.db.execute<{exists:boolean}>(sql`select exists(select 1 from pg_indexes where tablename='reward_person_history' and indexname='reward_person_history_person_year') as exists`);expect(index.exists).toBe(true);
  },180000); // 70-company / 1,000-person owner fixture measures the mandated group read shape.
+ it('holds Access shared for both backfill modes and refuses unproved historical compensation',async()=>{
+  for(const apply of [false,true]){
+   const held=await withRewardHistoryBackfill(admin,unitId,apply,async tx=>(await tx.execute<{mode:string}>(sql`select app.access_lock_mode_held(${b.tenantId}::uuid) as mode`))[0].mode);
+   expect(held).toBe('S');
+  }
+  await owner.db.insert(schema.rewardMember).values({tenantId:b.tenantId,unitId:pastUnitId,userId:admin.userId!,role:'payroll'});
+  await owner.db.execute(sql`delete from reward_person_history where entry_id=${pastEntryId}::uuid`);
+  await owner.db.execute(sql`update reward_unit set status='posted' where id=${pastUnitId}::uuid`);
+  const report=await backfillRewardPersonHistory(admin,pastUnitId,false);
+  expect(report.inserted).toBe(0);expect(report.accepted).toEqual([]);expect(report.refused.map(row=>row.entryId)).toEqual([pastEntryId]);
+  expect(await owner.db.execute(sql`select id from reward_person_history where entry_id=${pastEntryId}::uuid`)).toHaveLength(0);
+ });
+ it('exposes allowlisted before/after edit values to Group Rewards and hides Senior details when that field is unavailable',async()=>{
+  const view=await getRewardUnit(admin,unitId),row=view.rows.find(item=>item.id===entryId)!;
+  await saveRewardEntry(admin,unitId,view.unit.revision,entryId,{...row.recommendation,meritBp:500,note:'Fictional next-approver note'});
+  const read=()=>withTenant(admin,tx=>tx.execute<{changes:{field:string;before:unknown;after:unknown}[]}>(sql`select changes from app.reward_review_activity_changes(ARRAY[${unitId}::uuid],null,null)`));
+  const changes=(await read()).flatMap(event=>event.changes);
+  expect(changes).toContainEqual({field:'meritBp',before:null,after:500});expect(changes).toContainEqual({field:'note',before:null,after:'Fictional next-approver note'});
+  await owner.db.execute(sql`update reward_entry set facts=jsonb_set(facts,'{seniorPlan}','true') where id=${entryId}::uuid`);
+  await owner.db.execute(sql`insert into reward_role_permission(tenant_id,role,capability,allowed,level,changed_by) values(${b.tenantId}::uuid,'gr','senior.manage',false,'none',${admin.userId}::uuid)`);
+  expect(await read()).toEqual([]);
+ });
 });

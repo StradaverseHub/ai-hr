@@ -23,12 +23,13 @@ export const rewardHistoryUploadRowSchema=z.object({
  talent:z.enum(talents).nullable(),performance:z.enum(performances).nullable(),incrementBp:bp,incrementCents:amount,bonusCents:amount,bonusMonthsBp:bp,
 }).strict();
 export type RewardHistoryUploadRow=z.infer<typeof rewardHistoryUploadRowSchema>;
+export type RewardHistoryProblemCode='columns'|'duplicate'|'invalid'|'number'|'employee'|'year'|'postedYear';
 export const rewardHistoryUploadHeaders=['Employee ID','Year','Talent rating','Performance rating','Increment %','Increment MYR','Bonus MYR','Bonus months','Type'];
 /** Parse every nonempty row; report original worksheet lines and never coerce malformed money to zero. */
 export function rewardHistoryUploadFromCells(cells:readonly string[][],lineNumbers?:readonly number[]){
  const headers=cells[0]??[];
  if(![8,9].includes(headers.length)||headers.some((h,i)=>h.trim()!==rewardHistoryUploadHeaders[i]))throw Error('Use the reward history template without changing its headings.');
- const rows:{line:number;value:RewardHistoryUploadRow}[]=[],problems:{line:number;reason:string}[]=[],seen=new Set<string>();
+ const rows:{line:number;value:RewardHistoryUploadRow}[]=[],problems:{line:number;reason:string;code:RewardHistoryProblemCode}[]=[],seen=new Set<string>();
  for(const [index,cell]of cells.slice(1).entries()){
   if(!cell.some(x=>x.trim()))continue;
   const line=lineNumbers?.[index+1]??index+2;
@@ -39,7 +40,11 @@ export function rewardHistoryUploadFromCells(cells:readonly string[][],lineNumbe
     incrementBp:uploadedDecimal(cell[4]??''),incrementCents:uploadedDecimal(cell[5]??''),bonusCents:uploadedDecimal(cell[6]??''),bonusMonthsBp:uploadedDecimal(cell[7]??'')*100,kind:type==='off-cycle'?'offcycle':type});
    const key=JSON.stringify([value.employeeCode,value.year,value.kind]);
    if(seen.has(key))throw Error('Duplicate employee, year and type.');seen.add(key);rows.push({line,value});
-  }catch(e){problems.push({line,reason:e instanceof z.ZodError?'Enter a valid employee, year, rating and nonnegative amount.':e instanceof Error?e.message:'Invalid history row.'});}
+  }catch(e){
+   const reason=e instanceof z.ZodError?'Enter a valid employee, year, rating and nonnegative amount.':e instanceof Error?e.message:'Invalid history row.';
+   const code:RewardHistoryProblemCode=e instanceof z.ZodError?'invalid':reason==='Duplicate employee, year and type.'?'duplicate':reason==='Too many columns.'?'columns':'number';
+   problems.push({line,reason,code});
+  }
  }
  if(rows.length+problems.length>10000)throw Error('Upload at most 10,000 history rows per file.');
  return{rows,problems};

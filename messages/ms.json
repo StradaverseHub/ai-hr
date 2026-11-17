@@ -44026,6 +44026,16 @@
       "completed": "Selesai",
       "failed": "Gagal",
       "cancelled": "Dihentikan"
-    }
+    },
+    "problems": {
+      "columns": "Terlalu banyak lajur.",
+      "duplicate": "Pekerja, tahun dan jenis berulang.",
+      "invalid": "Masukkan pekerja, tahun, penarafan dan amaun bukan negatif yang sah.",
+      "number": "Gunakan nombor bukan negatif dengan sehingga dua tempat perpuluhan.",
+      "employee": "ID Pekerja tidak tersedia atau tidak unik dalam syarikat ini.",
+      "year": "Muat naik tahun sejarah yang sudah lengkap sahaja.",
+      "postedYear": "Muat naik hanya tahun sebelum semakan AI-HR Rewards pertama yang diposkan untuk syarikat."
+    },
+    "error": "Permintaan tidak dapat diselesaikan. Cuba lagi."
   }
 }
