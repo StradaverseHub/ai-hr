@@ -475,20 +475,18 @@ class RuntimeObservation:
     def private_fence(self):
         """Original bytes stay immutable; only exact native cleanup publications/removals progress."""
         b=self.base;uid=self.owner.pw_uid
+        initial_root=FENCES.metadata(private_install(b,self.directory,uid,True))
         original={'authorization.json','store.json','verified.json','activated.json','runtime.json'}
         allowed={'audit','normal-cleanup.lock','normal-cleanup-ready.json','normal-cleanup-commit.json','normal-cleanup-consumed.json','cleanup-authorized.json','cleanup-intent.json','cleanup-result.json','normal-cleanup-owned-cleanup.json'}
         names=set(os.listdir(self.directory));b.check(names<=original|allowed|{'packet','next'} and original<=names,'unknown/missing private installation member')
         previous=getattr(self,'private_names',None)
-        if previous is not None:
-            b.check(previous-names<=({'packet','next','normal-cleanup.lock'}),'native private publications backslid')
-            b.check(not self.cleaned.intersection(names),'removed native owned member reappeared')
-        records={};audit_directories={}
+        records={};audit_directories={};intent_valid=False;packet_bytes={}
+        audit_members={'system-testing.json':'preparedSha256','successful-build.json':'successfulObservationSha256','build-provenance.json':'provenanceSha256','bytes/build-bundle-files.json':'manifestSha256'}
         def audit_directory(path):
             st=private_install(b,path,uid,True);key=str(path.relative_to(self.directory));members=set(os.listdir(path));metadata=FENCES.metadata(st)
             prior=getattr(self,'private_audit_directories',{}).get(key)
             if prior is not None:
-                b.check(all(prior['metadata'][k]==metadata[k]for k in ('device','inode','mode','uid','gid')) and set(prior['members'])<=members,'retained audit directory replaced or backslid')
-                b.check(prior['members']!=sorted(members) or prior['metadata']==metadata,'retained audit directory metadata changed without publication')
+                b.check(all(prior['metadata'][k]==metadata[k]for k in ('device','inode','mode','uid','gid')),'retained audit directory identity/mode changed')
             audit_directories[key]={'metadata':metadata,'members':sorted(members)}
             return members
         def read(path,bound=MAX_MANIFEST):
@@ -497,8 +495,10 @@ class RuntimeObservation:
             fd=os.open(path,os.O_RDONLY|os.O_NOFOLLOW)
             try:
                 before=os.fstat(fd)
+                core=('device','inode','mode','uid','gid','nlink')
+                b.check(all(FENCES.metadata(expected)[k]==FENCES.metadata(before)[k]for k in core),'private named/opened record identity differs')
                 if FENCES.metadata(expected)!=FENCES.metadata(before):
-                    if new_publication:raise NativePublicationPending('new native publication changed while opening')
+                    if new_publication:pending('new native publication changed while opening',publication=True)
                     b.check(False,'private named/opened record identity differs')
                 chunks=[];total=0
                 while True:
@@ -507,53 +507,55 @@ class RuntimeObservation:
                     chunks.append(chunk);total+=len(chunk);b.check(total<=bound,'private record exceeds bound')
                 raw=b''.join(chunks);after=os.fstat(fd);named=path.lstat()
                 b.check(len(raw)<=bound,'private record exceeds bound')
-                if new_publication and (FENCES.metadata(before)!=FENCES.metadata(after) or FENCES.metadata(after)!=FENCES.metadata(named) or not raw.endswith(b'\n')):
-                    raise NativePublicationPending('known native publication is incomplete')
+                b.check(all(FENCES.metadata(before)[k]==FENCES.metadata(after)[k]==FENCES.metadata(named)[k]for k in core),'private record identity changed during read')
+                is_audit=key.startswith('audit/')or key.startswith('packet/')
+                if new_publication and (FENCES.metadata(before)!=FENCES.metadata(after) or FENCES.metadata(after)!=FENCES.metadata(named) or not is_audit and not raw.endswith(b'\n')):
+                    pending('known native publication is incomplete',publication=True)
                 b.check(FENCES.metadata(before)==FENCES.metadata(after)==FENCES.metadata(named),'private record changed during bounded read')
                 item={'sha256':sha(raw),'metadata':FENCES.metadata(after)}
+                if is_audit:
+                    relative=key.split('/',1)[1];expected_sha=self.grant['build'][audit_members[relative]]
+                    if item['sha256']!=expected_sha:
+                        prefix=packet_bytes.get(relative)
+                        if key.startswith('audit/') and new_publication and prefix is not None and len(raw)<len(prefix) and prefix.startswith(raw):pending('known retained audit prefix publication is incomplete',publication=True)
+                        b.check(False,'retained original audit byte integrity failed')
+                    if key.startswith('packet/'):packet_bytes[relative]=raw
                 b.check(key not in self.private_seen or self.private_seen[key]==item,'immutable original/native cleanup record changed')
                 try:value=json.loads(raw)
                 except json.JSONDecodeError:
-                    if new_publication:raise NativePublicationPending('new known native JSON publication is incomplete') from None
-                    raise
+                    raise ValueError('invalid closed native JSON record') from None
                 self.private_seen[key]=item;records[key]=item
                 return value
             finally:os.close(fd)
+        def pending(reason,*,publication=False,removal=False):
+            # Typed metadata retry only. Fresh immutable originals, same-install
+            # lease and strict native O precede it; no native byte error enters here.
+            for name in original:read(self.directory/name)
+            self.check_authority();stage,_=self.snapshot();b.check(stage=='O','native metadata transition requires fresh strict O')
+            current=set(os.listdir(self.directory))
+            b.check(original<=current and current<=original|allowed|{'packet','next'},'unknown/missing private installation member')
+            additions=current-names;removals=names-current
+            b.check(additions<=allowed,'unexpected private installation addition')
+            permitted_removals={'packet','next'}if intent_valid else set()
+            if intent_valid and {'cleanup-result.json','normal-cleanup-owned-cleanup.json'}.intersection(current):permitted_removals.add('normal-cleanup.lock')
+            b.check(removals<=permitted_removals and (not removal or intent_valid),'native removal lacks validated same-install intent')
+            for name in additions:private_install(b,self.directory/name,uid,name=='audit')
+            current_root=FENCES.metadata(private_install(b,self.directory,uid,True))
+            b.check(all(current_root[k]==initial_root[k]for k in ('device','inode','mode','uid','gid')),'native private directory identity/mode changed')
+            b.check(bool(additions or removals or publication or removal),'unclassified private metadata drift')
+            raise NativePublicationPending(reason)
         for name in original:read(self.directory/name)
         store=json.loads(b.read_bounded(self.directory/'store.json',4096));activated=json.loads(b.read_bounded(self.directory/'activated.json',1024**2))
-        intent_valid=False
-        if 'cleanup-intent.json'in names:
-            intent=read(self.directory/'cleanup-intent.json',65536)
-            b.check({'cleanup-authorized.json','normal-cleanup-consumed.json'}<=names,'native cleanup intent precedes authority/consumption')
-            self.cleanup_authority()
-            expected={'format':1,'kind':'OWNED_INSTALL_CLEANUP_INTENT','authoritySha256':sha(b.read_bounded(self.directory/'cleanup-authorized.json',65536)),'directory':store['directory'],'children':['next','packet']}
-            b.check(intent==expected,'native cleanup intent differs');intent_valid=True
-        audit_members={'system-testing.json':'preparedSha256','successful-build.json':'successfulObservationSha256','build-provenance.json':'provenanceSha256','bytes/build-bundle-files.json':'manifestSha256'}
-        for folder in ('packet','audit'):
-            if folder not in names:continue
-            private_install(b,self.directory/folder,uid,True)
-            if folder=='packet':
-                st=(self.directory/folder).lstat();b.check({'device':st.st_dev,'inode':st.st_ino}==store['packetDirectory'],'native packet directory changed')
-            else:
-                audit_names=audit_directory(self.directory/folder);b.check(audit_names<=set(k for k in audit_members if '/'not in k)|{'bytes'},'unknown retained audit member')
-                if 'bytes'in audit_names:
-                    b.check(audit_directory(self.directory/folder/'bytes')<={'build-bundle-files.json'},'unknown retained audit bytes')
-            for name,key in audit_members.items():
-                path=self.directory/folder/name
-                if folder=='audit' and not path.exists():continue
-                try:read(path)
-                except FileNotFoundError:
-                    if folder=='packet' and intent_valid:raise NativePublicationPending('native owned packet removal is in progress') from None
-                    raise
-                b.check(records[folder+'/'+name]['sha256']==self.grant['build'][key],'retained original audit byte integrity failed')
-        if 'next'in names:
-            st=private_install(b,self.directory/'next',uid,True)
-            b.check({'device':st.st_dev,'inode':st.st_ino}==activated['activation']['retainedDirectory'],'retained previous build directory changed')
+        missing_cleanup_lock=False
         for name in allowed-{'audit'}:
-            if name in names:read(self.directory/name)
+            if name in names:
+                try:read(self.directory/name)
+                except FileNotFoundError:
+                    if name!='normal-cleanup.lock':raise
+                    missing_cleanup_lock=True
         if allowed.intersection(names):
             stage,_=self.snapshot();b.check(stage=='O','normal cleanup only follows genuine successful native finish')
-        if 'normal-cleanup.lock'in names:
+        if 'normal-cleanup.lock'in names and not missing_cleanup_lock:
             lock=json.loads(b.read_bounded(self.directory/'normal-cleanup.lock',4096))
             b.check(set(lock)=={'source','installId','pid'} and lock['source']==self.args.source and lock['installId']==self.grant['installId'] and type(lock['pid'])is int and lock['pid']>0,'unknown native cleanup lock shape')
         if 'normal-cleanup-ready.json'in names:
@@ -572,33 +574,88 @@ class RuntimeObservation:
             self.cleanup_authority()
             authority=json.loads(b.read_bounded(self.directory/'cleanup-authorized.json',65536))
             b.check(authority['sourceProof']==commit['proof'],'native cleanup checksum commit differs')
-            for name in audit_members:b.check('audit/'+name in records,'native cleanup lost retained original audit')
         if 'normal-cleanup-consumed.json'in names:
             b.check('cleanup-authorized.json'in names,'cleanup consumption precedes authority')
             consumed=json.loads(b.read_bounded(self.directory/'normal-cleanup-consumed.json',65536))
             b.check(consumed=={'kind':'NORMAL_CLEANUP_NONCE_CONSUMED','readySha256':sha(canonical(ready))},'native cleanup nonce differs')
+        intent_valid=False
+        if 'cleanup-intent.json'in names:
+            intent=read(self.directory/'cleanup-intent.json',65536)
+            b.check({'cleanup-authorized.json','normal-cleanup-consumed.json'}<=names,'native cleanup intent precedes authority/consumption')
+            self.cleanup_authority()
+            expected={'format':1,'kind':'OWNED_INSTALL_CLEANUP_INTENT','authoritySha256':sha(b.read_bounded(self.directory/'cleanup-authorized.json',65536)),'directory':store['directory'],'children':['next','packet']}
+            b.check(intent==expected,'native cleanup intent differs');intent_valid=True
+        if missing_cleanup_lock:pending('validated native cleanup lock release is in progress')
+        for folder in ('packet','audit'):
+            if folder not in names:continue
+            try:
+                st=private_install(b,self.directory/folder,uid,True)
+            except FileNotFoundError:
+                if folder=='packet' and intent_valid:pending('validated native packet directory removal is in progress',removal=True)
+                raise
+            if folder=='packet':
+                b.check({'device':st.st_dev,'inode':st.st_ino}==store['packetDirectory'],'native packet directory changed')
+            else:
+                audit_names=audit_directory(self.directory/folder);b.check(audit_names<=set(k for k in audit_members if '/'not in k)|{'bytes'},'unknown retained audit member')
+                if 'bytes'in audit_names:
+                    b.check(audit_directory(self.directory/folder/'bytes')<={'build-bundle-files.json'},'unknown retained audit bytes')
+            for name,key in audit_members.items():
+                path=self.directory/folder/name
+                if folder=='audit' and not path.exists():continue
+                try:read(path)
+                except FileNotFoundError:
+                    if folder=='packet' and intent_valid:pending('native owned packet removal is in progress',removal=True)
+                    raise
+                b.check(records[folder+'/'+name]['sha256']==self.grant['build'][key],'retained original audit byte integrity failed')
+        if 'next'in names:
+            try:st=private_install(b,self.directory/'next',uid,True)
+            except FileNotFoundError:
+                if intent_valid:pending('validated native retained directory removal is in progress',removal=True)
+                raise
+            b.check({'device':st.st_dev,'inode':st.st_ino}==activated['activation']['retainedDirectory'],'retained previous build directory changed')
+        if 'cleanup-authorized.json'in names:
+            for name in audit_members:b.check('audit/'+name in records,'native cleanup lost retained original audit')
+        # FIRST establish a stable final namespace/root observation. Applying old
+        # snapshot nlink or monotonic rules before this point races legal cleanup.
+        before_final=FENCES.metadata(private_install(b,self.directory,uid,True))
+        final_names=set(os.listdir(self.directory))
+        root_metadata=FENCES.metadata(private_install(b,self.directory,uid,True))
+        final_names_again=set(os.listdir(self.directory))
+        final_root=FENCES.metadata(private_install(b,self.directory,uid,True))
+        b.check(original<=final_names and final_names<=original|allowed|{'packet','next'} and original<=final_names_again and final_names_again<=original|allowed|{'packet','next'},'unknown/missing private installation member')
+        b.check(all(initial_root[k]==before_final[k]==root_metadata[k]==final_root[k]for k in ('device','inode','mode','uid','gid')),'native private directory identity/mode changed')
+        if names!=final_names or final_names!=final_names_again or before_final!=root_metadata or root_metadata!=final_root:
+            pending('known native membership/root publication changed during fence',publication=bool((final_names_again-(previous or names))&allowed),removal=bool((names-final_names_again)&{'packet','next'}))
+        for key,value in audit_directories.items():
+            final_members=set(os.listdir(self.directory/key));final_metadata=FENCES.metadata((self.directory/key).lstat())
+            b.check(all(value['metadata'][k]==final_metadata[k]for k in ('device','inode','mode','uid','gid')),'retained audit directory identity/mode changed')
+            permitted={'bytes','system-testing.json','successful-build.json','build-provenance.json'}if key=='audit' else {'build-bundle-files.json'}
+            b.check(final_members<=permitted and set(value['members'])<=final_members,'unknown/backsliding retained audit member')
+            if final_members!=set(value['members']) or final_metadata!=value['metadata']:pending('known retained audit publication changed during fence',publication=True)
         absent={'packet','next'}-names
         b.check(not absent or intent_valid,'native owned bytes removed without exact cleanup intent/commit')
-        self.cleaned|=absent
-        if previous is not None and 'normal-cleanup.lock'in previous and 'normal-cleanup.lock'not in names:self.cleaned.add('normal-cleanup.lock')
         if 'cleanup-result.json'in names or 'normal-cleanup-owned-cleanup.json'in names:
             b.check(absent=={'packet','next'},'native cleanup result precedes complete owned deletion')
             result=json.loads(b.read_bounded(self.directory/('cleanup-result.json'if 'cleanup-result.json'in names else 'normal-cleanup-owned-cleanup.json'),65536))
             expected={'format':1,'kind':'OWNED_INSTALL_BYTES_ABSENT_AUDIT_RETAINED','installId':self.grant['installId'],'authorizationSha256':self.auth['grantSha256'],'authoritySha256':records['cleanup-authorized.json']['sha256'],'source':self.args.source,'nextBuildId':self.args.build_id,'activeDirectory':activated['activation']['activeDirectory'],'verifiedAbsent':['next','packet'],'auditEvidenceRetained':True,'releaseHandbackVerified':False}
             b.check(result==expected,'native owned cleanup result differs')
             if 'normal-cleanup-owned-cleanup.json'in names:b.check(json.loads(b.read_bounded(self.directory/'normal-cleanup-owned-cleanup.json',65536))==expected,'native session cleanup result differs')
-        root_metadata=FENCES.metadata(self.directory.lstat())
+        # Snapshot-relative semantics are safe only after all final stability checks.
         if previous is not None:
+            b.check(previous-names<=({'packet','next','normal-cleanup.lock'}),'native private publications backslid')
+            b.check(not self.cleaned.intersection(names),'removed native owned member reappeared')
             prior_root=self.private_root
-            stable_fields={'device','inode','mode','uid','gid'}
-            b.check(all(prior_root[k]==root_metadata[k]for k in stable_fields),'native private directory identity/mode changed')
+            b.check(all(prior_root[k]==root_metadata[k]for k in ('device','inode','mode','uid','gid')),'native private directory identity/mode changed')
             expected_nlink=int(prior_root['nlink'])+int('audit'in names and 'audit'not in previous)-sum(int(x in previous and x not in names)for x in ('next','packet'))
             b.check(int(root_metadata['nlink'])==expected_nlink,'unexpected native private directory membership')
             b.check(previous!=names or root_metadata==prior_root,'native private root metadata changed without legal membership publication')
-        if set(os.listdir(self.directory))!=names:raise NativePublicationPending('native cleanup membership publication changed during metadata fence')
         for key,value in audit_directories.items():
-            if set(os.listdir(self.directory/key))!=set(value['members']) or FENCES.metadata((self.directory/key).lstat())!=value['metadata']:
-                raise NativePublicationPending('retained audit metadata publication changed during fence')
+            prior=getattr(self,'private_audit_directories',{}).get(key)
+            if prior is not None:
+                b.check(set(prior['members'])<=set(value['members']),'retained audit publication backslid')
+                b.check(prior['members']!=value['members'] or prior['metadata']==value['metadata'],'retained audit metadata changed without publication')
+        self.cleaned|=absent
+        if previous is not None and 'normal-cleanup.lock'in previous and 'normal-cleanup.lock'not in names:self.cleaned.add('normal-cleanup.lock')
         self.private_root=root_metadata
         self.private_names=names
         self.private_audit_directories=audit_directories
