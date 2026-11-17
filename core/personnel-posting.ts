@@ -20,7 +20,7 @@ import {withTenant,type SessionContext,type Tx} from '../db/client';
 import {pgSqlState} from '../lib/db-error';
 import {withScopedLifecycleTenant} from './module-gate';
 import {createMovementEventTx,movementLedgerMarkerTx,movementRowsAfterSequenceTx} from './movement';
-import {readContractSharedPostingTx,requestContractSharedPostingApprovalTx,type ContractPostingApprovalOutcome} from './contract-shared-postings';
+import type {ContractPostingApprovalOutcome} from '../packs/contracts/service';
 import {movementNeedsEntitlementReprojection} from './movement-kinds';
 import {
   isPersonnelPostingEvent,normalisePostingValues,postingCurrentValues,postingDisplayStatus,postingLabel,
@@ -212,6 +212,9 @@ export type ApprovedPersonnelPosting = { id: string; movementId: string; employm
  */
 export async function approvePersonnelPostingTx(tx: Tx, ctx: SessionContext, input: { id: string; revision: number; values?: Record<string, unknown>;eventType?:PersonnelPostingEvent }): Promise<ApprovedPersonnelPosting|ContractPostingApprovalOutcome> {
   if (!UUID.test(input.id) || !Number.isInteger(input.revision)) throw new PersonnelPostingError('not_found', 'Posting not found.');
+  // Resolve the Contract facade only when approving a posting, keeping this broad Personnel
+  // module free of eager private Contract service dependencies. The native owners still authorize it.
+  const {readContractSharedPostingTx,requestContractSharedPostingApprovalTx}=await import('../packs/contracts/service');
   const contract=await readContractSharedPostingTx(tx,input.id);
   if(contract){
     if(input.eventType&&input.eventType!==contract.eventType)throw new PersonnelPostingError('invalid','The Contract posting event type is fixed.');

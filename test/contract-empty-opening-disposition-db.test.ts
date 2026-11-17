@@ -124,22 +124,44 @@ it('rolls processed_at back when the genuine owner transaction fails after techn
  expect(result.reached).toBe(1);expect(String(result.cause)).toContain('Deliberate post-finisher transaction failure');expect(await processed(f)).toBeNull();
  await owner.client.begin(async native=>{await native`select set_config('app.tenant_id',${f.b.tenantId},true)`;expect(await image(native,f)).toEqual(before);});
 },180_000);
-it.each(['not-started','started'] as const)('keeps a genuine nonempty opening strict: %s',async mode=>{
- const f=await setup(true);
- if(mode==='started'){
-  let started=false;
-  const deadline=Date.now()+30_000;
-  while(!started&&Date.now()<deadline){
-   const[job]=await owner.db.execute<{notBefore:string|null}>(sql`select not_before::text as "notBefore" from bulk_job where id=${f.opened.jobId}::uuid`);
-   const delay=job.notBefore?Date.parse(job.notBefore)-Date.now():0;
-   if(delay>0){await new Promise(resolve=>setTimeout(resolve,Math.min(delay,250)));continue;}
-   if(!await runBulkJobTick(owner.client,{handlers:[contractAutomationJobHandler]}))await new Promise(resolve=>setTimeout(resolve,50));
-   const[run]=await owner.db.execute<{id:string}>(sql`select id from automation_run where tenant_id=${f.b.tenantId}::uuid and module='contract_staff' and subject_id=${f.opened.caseId}::uuid and trigger_event='caseOpened'`);started=!!run;
-  }
-  expect(started).toBe(true);expect(await processed(f)).toBeNull();
- }
- await f.accept();const result=await drive(f,async native=>{const before=await image(native,f);expect(await invoke(native,f)).toBe(false);expect(await image(native,f)).toEqual(before);},true);
+it('keeps a genuine nonempty unstarted opening strict',async()=>{
+ const f=await setup(true);await f.accept();
+ const result=await drive(f,async native=>{const before=await image(native,f);expect(await invoke(native,f)).toBe(false);expect(await image(native,f)).toEqual(before);},true);
  expect(result.reached).toBeGreaterThan(0);expect(await processed(f)).toBeNull();
+},180_000);
+it('refuses the empty-opening finisher while existing native email recovery technically closes a genuinely completed email run',async()=>{
+ const f=await setup(true);let started=false;
+ const deadline=Date.now()+30_000;
+ while(!started&&Date.now()<deadline){
+  const[job]=await owner.db.execute<{notBefore:string|null}>(sql`select not_before::text as "notBefore" from bulk_job where id=${f.opened.jobId}::uuid`);
+  const delay=job.notBefore?Date.parse(job.notBefore)-Date.now():0;
+  if(delay>0){await new Promise(resolve=>setTimeout(resolve,Math.min(delay,250)));continue;}
+  if(!await runBulkJobTick(owner.client,{handlers:[contractAutomationJobHandler]}))await new Promise(resolve=>setTimeout(resolve,50));
+  const[run]=await owner.db.execute<{id:string}>(sql`select id from automation_run where tenant_id=${f.b.tenantId}::uuid and module='contract_staff' and subject_id=${f.opened.caseId}::uuid and trigger_event='caseOpened'`);started=!!run;
+ }
+ expect(started).toBe(true);expect(await processed(f)).toBeNull();
+ const runs=()=>owner.db.execute<{id:string;status:string;cursor:number;waiting:string|null;remaining:unknown[];log:unknown[];row:unknown}>(sql`select id,status,step_cursor as cursor,waiting_for as waiting,remaining_steps as remaining,log,to_jsonb(r) as row from automation_run r where tenant_id=${f.b.tenantId}::uuid and module='contract_staff' and subject_id=${f.opened.caseId}::uuid and trigger_event='caseOpened' order by id`);
+ const deliveries=()=>owner.db.execute<{row:unknown}>(sql`select to_jsonb(d) as row from automation_email_delivery d where tenant_id=${f.b.tenantId}::uuid and module='contract_staff' and subject_id=${f.opened.caseId}::uuid order by id`);
+ const beforeRuns=await runs(),beforeDeliveries=await deliveries();expect(beforeRuns).toHaveLength(1);
+ expect(beforeRuns[0]).toMatchObject({status:'done',cursor:1,waiting:null,remaining:[]});expect(beforeRuns[0].log.length).toBeGreaterThan(0);expect(beforeDeliveries).toHaveLength(1);
+ const origins=await owner.db.execute<{run:string;root:string;origin:string;documents:unknown}>(sql`select pin.workflow_run_id as run,binding.root_event_id as root,binding.origin_event_id as origin,pin.documents from app.contract_email_prerequisite_origin binding join contract_shared_email_document_step pin on pin.tenant_id=binding.tenant_id and pin.id=binding.pin_id where binding.tenant_id=${f.b.tenantId}::uuid and binding.job_id=${f.opened.jobId}::uuid`);
+ expect(origins).toEqual([{run:beforeRuns[0].id,root:f.event.id,origin:f.event.id,documents:{}}]);
+ await f.accept();const decisionBefore=await contractSharedContext(f.proposer,f.opened.caseId);
+ let held=false;
+ const result=await drive(f,async native=>{
+  const[guards]=await native<{ordinary:boolean;recovery:boolean}[]>`select app.contract_shared_worker_event_held(${f.opened.caseId}::uuid,0) as ordinary,app.contract_shared_email_recovery_frame(${f.opened.jobId}::uuid) as recovery`;
+  expect(guards).toEqual({ordinary:false,recovery:true});held=true;
+  const before=await image(native,f);expect(await invoke(native,f)).toBe(false);expect(await image(native,f)).toEqual(before);
+ });
+ expect(result.reached).toBe(1);expect(held).toBe(true);expect(await processed(f)).not.toBeNull();
+ const[event]=await owner.db.execute<{error:string|null;reconciliation:unknown;versions:unknown}>(sql`select error,email_reconciliation as reconciliation,workflow_versions as versions from contract_shared_event where tenant_id=${f.b.tenantId}::uuid and id=${f.event.id}::uuid`);
+ expect(event.error).toBe('Original workflow authority changed; unattempted work is retained for reconciliation.');expect(event.reconciliation).toBeNull();expect(event.versions).toHaveLength(1);
+ expect(await runs()).toEqual(beforeRuns);expect(await deliveries()).toEqual(beforeDeliveries);
+ expect(await contractSharedContext(f.proposer,f.opened.caseId)).toEqual(decisionBefore);
+ for(const table of ['contract_shared_approval','contract_shared_letter'] as const){
+  const rows=table==='contract_shared_approval'?await owner.db.execute(sql`select id from contract_shared_approval where tenant_id=${f.b.tenantId}::uuid and case_id=${f.opened.caseId}::uuid`):await owner.db.execute(sql`select id from contract_shared_letter where tenant_id=${f.b.tenantId}::uuid and case_id=${f.opened.caseId}::uuid`);expect(rows).toEqual([]);
+ }
+ expect(await owner.db.execute(sql`select id from personnel_posting where tenant_id=${f.b.tenantId}::uuid and source='contract_staff' and source_ref=${f.opened.caseId}::uuid`)).toEqual([]);
 },180_000);
 
 it.each(['archived','relinked'] as const)('never reaches a finisher when the actual creator is %s before the kernel fence',async change=>{
