@@ -118,11 +118,13 @@ it('projects only bounded current waiting names for visible pending Offboarding 
 
 it('pins the Access owner bodies and security attributes used by the derived human waiting projection',async()=>{
  const contracts=[
-  ['app.access_workforce_company(uuid,text)','a44f92a105ec55bb504516b17a3b4966','sql',true,'search_path=pg_catalog, public, pg_temp'],
+  // 5071 rewrites company/capability readers to this tenant-effective owner; 2302 keeps ancestry semantics with early exit.
+  ['app.access_capability_effective(uuid)','f35838b8412fdb126145a42e65b499ee','sql',false,null],
+  ['app.access_workforce_company(uuid,text)','553170b575b843a2cc2aae888eeeec2d','sql',true,'search_path=pg_catalog, public, pg_temp'],
   ['app.access_workforce_employment(uuid,text)','dcdb6797287dc5c3339ffab3873fd892','sql',true,'search_path=pg_catalog, public, pg_temp'],
-  ['app.access_allowed_for_tenant(uuid,uuid,text,uuid)','37b7ff9f10ef68cee3efa754cc259a08','plpgsql',true,'search_path=pg_catalog, public, pg_temp'],
+  ['app.access_allowed_for_tenant(uuid,uuid,text,uuid)','1aadfa3400577c5ca1215a4d8d8bd7eb','plpgsql',true,'search_path=pg_catalog, public, pg_temp'],
   ['app.company_org_parent_for_tenant(uuid,uuid)','3ae3f6628230ba9775a4a5609922e1e2','sql',true,'search_path=pg_catalog, public, pg_temp'],
-  ['app.company_org_descendant_for_tenant(uuid,uuid,uuid)','54a42a4016a905df5f0d00551dc07117','sql',true,'search_path=pg_catalog, public, pg_temp'],
+  ['app.company_org_descendant_for_tenant(uuid,uuid,uuid)','611ae737787339a50c98e136d4b0e964','plpgsql',true,'search_path=pg_catalog, public, pg_temp'],
   ['app.access_scope_covers(uuid,uuid,uuid)','b8fdee28a9b177b35f8cd10bfeeb79e7','sql',true,'search_path=pg_catalog, public, pg_temp'],
   ['app.access_workforce_employment_permitted(uuid,uuid,timestamp with time zone,uuid,uuid[])','4dcea99560326ecaba91f1f7942d402c','sql',false,null],
   ['app.has_role_for(text,uuid)','e8a6315d53cf3e89b21852823e1d3589','sql',true,'search_path=pg_catalog, public, pg_temp'],
@@ -157,7 +159,24 @@ it('matches actual native-principal Workforce eligibility for configured waiting
   expect(await compare('supported: deny beats global allow; effective group covers child')).toEqual(['Parity allowed HR','Parity effective-group HR']);
   await owner.db.execute(sql`update access_capability set supported=false where id='workforce.maintain'`);
   expect(await compare('unsupported capability preserves canonical HR-role fallback')).toEqual(['Parity allowed HR','Parity denied HR','Parity effective-group HR','Parity no grant HR']);
-  await owner.db.execute(sql`update access_capability set supported=true where id='workforce.maintain'`);
+  // Real partial-publication fixture: the global supported flip cannot move this tenant off its previous HR-role fallback.
+  // The deny/no-grant candidates make the two catalogues observably different (4 prior candidates versus 2 published).
+  const publication=73001,previous={['workforce.maintain']:{supported:false,bindings:[]}};
+  try{
+   await owner.client.begin(async tx=>{
+    await tx`update access_capability set supported=true where id='workforce.maintain'`;
+    await tx`insert into app.access_capability_publication(version,bindings_sha256,state,previous) values(${publication},encode(sha256(convert_to((select jsonb_build_object(id,jsonb_build_object('supported',supported,'bindings',bindings))::text from access_capability where id='workforce.maintain'),'UTF8')),'hex'),'publishing',${JSON.stringify(previous)}::jsonb)`;
+   });
+   expect(await owner.db.execute<{supported:boolean}>(sql`select supported from access_capability where id='workforce.maintain'`)).toEqual([{supported:true}]);
+   expect(await owner.db.execute<{supported:boolean}>(sql`select supported from app.access_capability_effective(${b.tenantId}::uuid) where id='workforce.maintain'`)).toEqual([{supported:false}]);
+   expect(await compare('global publication flip alone retains this tenant previous native authority')).toEqual(['Parity allowed HR','Parity denied HR','Parity effective-group HR','Parity no grant HR']);
+   await owner.db.execute(sql`insert into app.access_capability_tenant_publication(version,tenant_id) values(${publication},${b.tenantId}::uuid)`);
+   expect(await owner.db.execute<{supported:boolean}>(sql`select supported from app.access_capability_effective(${b.tenantId}::uuid) where id='workforce.maintain'`)).toEqual([{supported:true}]);
+   expect(await compare('own tenant publication activates exactly the canonical supported authority')).toEqual(['Parity allowed HR','Parity effective-group HR']);
+  }finally{
+   await owner.db.execute(sql`delete from app.access_capability_tenant_publication where version=${publication} and tenant_id=${b.tenantId}::uuid`);
+   await owner.db.execute(sql`delete from app.access_capability_publication where version=${publication}`);
+  }
   const attempt=randomUUID();await owner.db.execute(sql`insert into import_attempt(id,tenant_id,kind,created_by,company_ids,mime_type,operation_key,plan,source_content,source_hash,source_name) values(${attempt}::uuid,${b.tenantId}::uuid,'employee_full',${admin.userId}::uuid,${`{${b.companyId}}`}::uuid[],'text/csv',${randomUUID()}::uuid,'{}'::jsonb,decode('','hex'),encode(sha256(decode('','hex')),'hex'),'waiting-fixture.csv')`);
   await owner.db.execute(sql`update employment set import_pending_attempt_id=${attempt}::uuid where id=${f.hire.employmentId}::uuid and tenant_id=${b.tenantId}::uuid`);
   expect(await expected()).toEqual([]);expect(await loadOffboardingPostingApprovers(admin,[posting.id])).toEqual({});

@@ -333,7 +333,7 @@ LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp A
   LEFT JOIN public.person person ON person.tenant_id=u.tenant_id AND person.id=u.person_id
   WHERE u.archived_at IS NULL AND NOT app.login_blocked(u.id)
  ), wanted_companies AS MATERIALIZED (SELECT DISTINCT company_id FROM visible),
- -- Derived reader of the canonical Access owners (0579/2510/5076/2126), pinned and compared by native regression tests.
+ -- Derived reader of the canonical Access owners (0579/2510/5071/5076/2126/2302), pinned and compared by native regression tests.
  -- No permission is stored or granted here. Resolve the current published parent source once, never per member.
  published_parents AS MATERIALIZED (
   SELECT DISTINCT ON(m.company_id) m.company_id,m.parent_company_id
@@ -356,7 +356,8 @@ LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp A
    AND (r.company_id IS NULL OR EXISTS(SELECT 1 FROM lineage l WHERE l.company_id=p.company_id AND l.ancestor_id=r.company_id))
  ), capability AS MATERIALIZED (
   SELECT c.supported,c.scope,jsonb_array_length(c.bindings)>0 AS bound,coalesce(cfg.initialized,false) AS initialized
-  FROM public.access_capability c LEFT JOIN public.access_configuration cfg ON cfg.tenant_id=app.current_tenant_id()
+  -- The canonical inlined catalogue preserves this tenant's previous state during a partial publication.
+  FROM app.access_capability_effective(app.current_tenant_id()) c LEFT JOIN public.access_configuration cfg ON cfg.tenant_id=app.current_tenant_id()
   WHERE c.id='workforce.maintain'
  ), overrides AS MATERIALIZED (
   SELECT DISTINCT p.user_id,p.company_id,o.effect FROM role_pairs p JOIN public.access_user_override o
