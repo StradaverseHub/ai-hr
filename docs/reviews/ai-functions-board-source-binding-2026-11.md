@@ -897,3 +897,20 @@ Human metadata and pending statuses remain unchanged; the agent manifest is rege
 Original failures remain recorded. Hosted failed/affected recovery, rendered UI/PDF verification,
 accepted Movement integration and authenticated final release evidence remain required. This is
 source preparation and grants no release or production/package publication authority.
+
+### Literal UI development checkpoint — 17 November 2026
+
+This checkpoint adds labelled per-case inline editing through the existing Contract field atom and pure
+converters, atomic Review edits and an authoritative final-sign action label. Native signing remains the
+adjudicator. Offboarding waiting names use a separate human presentation loader; the shared posting
+DTO and model tool payloads remain unchanged. Frozen-currency formatting performs no financial
+calculation. Native waiting eligibility is still an open source-review item and is not a release claim.
+
+Under the recorded explicit owner approval for same-purpose technical binding, only the same 29
+approved sourceDigest values change from
+`1003ab45531e061b5217c8227b2f09e311bdce603428a26e9f8b2f315c697fc1` to
+`e4e9247c94224549b19a5d278f8932af8b83972c795545a1fa80bdfa40902b73` (1644 source files).
+Human metadata and pending records are unchanged. The agent manifest is regenerated last. This is
+a frozen development checkpoint for independent affected UI checks; native eligibility, compiler,
+actual57-state UI/PDF verification, accepted upstream integration and authenticated release checks
+remain outstanding. No provider disclosure purpose, model tool or transport authority is broadened.

@@ -240,7 +240,7 @@ export const APPROVED_UPGRADE_TAIL=[
 const APPROVED_UPGRADE_HASHES:Record<string,string>={
  '5790_resignation_case_communications':'ad6e4adf6ab022a548d1ff4f6bf9ca41f42554aa8e522058ccea495884e92df3',
  '5788_resignation_letter_teams':'b7769b4044d013cfb630d532d8cc5b7fd2c8635662cf05663a4dcf6746eae4f3',
- '5789_resignation_letter_fields':'e7daffafd003c0e1c5576a0092d8b93a2f282ad1df7ed05f652e862851c70786',
+ '5789_resignation_letter_fields':'d0ff9d8b653607d046f903e0b1729ded4592b417f9897f201cd5ad4e45684d9e',
 
  '5770_attendance_workflow_approver_codes':'f71cf33a9ced5f4e1007de02388a858bd31c64006a422352193bd7c14e367ec0',
  '5771_assistant_legacy_index_shared_access':'433dfd7549b496b034bdeaa2c06484b700b5dd5647213106d68487f0b485c7c0',
