@@ -27,7 +27,6 @@ import {withTenant,type SessionContext,type Tx} from '../db/client';
 import {payrollBatch} from '../db/schema';
 import {bulkJobId,bulkJobProgress,bulkJobWorkerStatusTx,enqueueBulkJobTx,type BulkJobRow} from './bulk-job';
 import {isTransientBulkJobError,type BulkJobDiscardUnit,type BulkJobHandler,type BulkJobPrepared,type BulkJobRefused,type BulkJobStep,type BulkJobStepInput,type BulkJobUnit} from './bulk-job-worker';
-import {transactionFailureForPayrollError} from './payroll-run-group-result';
 import {publicErrorMessage} from '../lib/public-error';
 import {lockPayComponentCatalogReadTx} from './pay-component-catalog-lock';
 import {lockNativePayrollBatchPeriodTx} from './payroll-period-lock';
@@ -36,7 +35,7 @@ import {
  type PayrollProcessingChunkResult,type PayrollProcessingInputSnapshot,type PayrollProcessingPlan,
 } from './payroll';
 import {PAYROLL_PROCESS_JOB_KIND,type PayrollProcessingStatus} from '../lib/payroll-processing-job';
-import {reasonForPayrollError} from './payroll-run-group-result';
+import {reasonForPayrollError,transactionFailureForPayrollError} from './payroll-run-group-result';
 import {settleRunGroupsForJobTx} from './payroll-run-group-store';
 
 export {PAYROLL_PROCESS_JOB_KIND};

@@ -1,3 +1,4 @@
+import {createTranslator} from 'next-intl';
 import { reasonForPayrollError, transactionFailureForPayrollError } from '../core/payroll-run-group-result';
 /**
  * ad6ed930 — how a transaction dated after the employee's last day is TOLD, everywhere it is told.
@@ -129,6 +130,9 @@ describe('ad6ed930 · messages and the whole-run processing text', () => {
     expect(reasonForPayrollError(new Error('select secret from private_table'))).toBe('SYSTEM_VALIDATION_ERROR');
     for(const loc of LOCALES) {
       const m=JSON.parse(fs.readFileSync(path.resolve(__dirname,`../messages/${loc}.json`),'utf8'));
+      const t=createTranslator({locale:loc,messages:m,namespace:'payroll.process'});
+      const rendered=t('transactionAfterLeaving',transactionFailureForPayrollError(error)!);
+      for(const text of ['Fictional Employee','TEST42','NORMAL OT','ONOR','2026-10-31','2026-10-29']) expect(rendered).toContain(text);
       for(const field of ['employeeName','employeeCode','itemName','itemCode','dates','lastDay'])
         expect(m.payroll.process.transactionAfterLeaving).toContain('{'+field+'}');
     }

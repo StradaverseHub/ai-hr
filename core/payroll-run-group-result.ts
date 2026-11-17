@@ -4,7 +4,7 @@
  * run to its reason) and the run-group record can share them without importing the orchestrator. Unchanged in
  * behaviour; core/payroll-run-group.ts re-exports every name.
  */
-import { PayItemFormulaRepriceError } from '../packs/payroll/individual-calculation';
+import { PayItemFormulaRepriceError } from '../lib/pay-item-reprice-error';
 import { NonCashBenefitConfigurationError } from '../localization/noncash-benefits';
 /** Machine-stable failure reasons the result page renders as friendly, localized text. */
 export type RunGroupReasonCode =
