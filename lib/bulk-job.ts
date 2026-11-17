@@ -26,6 +26,7 @@ export const BULK_JOB_FINISHED_EVENT='bulk-job.finished';
 export const BULK_JOB_NOTICE_KIND='bulk-job.finished';
 export type BulkJobNoticeOutcome='completed'|'failed'|'cancelled';
 export const BULK_JOB_NOTICES:Record<string,{messages:string;linkPath:string}>={
+ reward_plan_reviews:{messages:'rewardPlanReviews',linkPath:'/admin/rewards/review-plans'},
  employee_import:{messages:'employeeImport',linkPath:'/admin/personnel/import/history'},
  leave_ledger:{messages:'leaveImport',linkPath:'/admin/leave-config/import'},
  leave_generation:{messages:'leaveGeneration',linkPath:'/admin/leave-config/generate'},
