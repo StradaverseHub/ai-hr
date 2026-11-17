@@ -879,3 +879,21 @@ records carry only sourceDigest from
 Human metadata and pending statuses remain unchanged. The agent manifest is regenerated last.
 Hosted recovery, the actual 56-state renderer, accepted Movement integration and the release gate
 remain required. This source record grants no release witness, production or package publication.
+
+### Failed-area recovery admission binding — 17 November 2026
+
+The completed development recovery exposed a required-upload SQL alias collision and a managed
+clearance hook reading a row-secured journey without its narrow custody proof. The repairs preserve
+required uploads, verified native reverse links, tenant/company and actor admission; clearance now
+rolls back if its expected proposal cannot be created. No permission, provider payload, model tool,
+disclosure purpose or email transport is broadened. Fixture corrections use real Person mappings
+and reachable synthetic recipient identities while retaining reserved-field and native receipt attacks.
+
+Under the recorded explicit owner approval for same-purpose technical bindings, only the same 29
+approved records' sourceDigest changes from
+`edd791f7f899755cc18f273331127108b0fa7c0fb9e73de53990de1c847c0aab` to
+`1003ab45531e061b5217c8227b2f09e311bdce603428a26e9f8b2f315c697fc1` (1644 source files).
+Human metadata and pending statuses remain unchanged; the agent manifest is regenerated last.
+Original failures remain recorded. Hosted failed/affected recovery, rendered UI/PDF verification,
+accepted Movement integration and authenticated final release evidence remain required. This is
+source preparation and grants no release or production/package publication authority.
