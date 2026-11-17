@@ -58,7 +58,11 @@ class QueueOperationLock:
                         (named.st_dev,named.st_ino,named.st_uid,named.st_gid,named.st_mode,named.st_nlink),
                         'opened native operation lock differs from its path')
         if require_held:
-            self.base.check(self.acquired and any(line.split()[2:5]==['FLOCK','ADVISORY','READ'] for line in Path('/proc/self/fdinfo/'+str(self.fd)).read_text().splitlines()if line.startswith('lock:')),'native shared operation lock is not held')
+            # An inherited duplicate can LOCK_UN this same open-file description without changing
+            # the named inode. Verify the actual kernel READ lock, not only our acquisition flag.
+            locks=Path('/proc/self/fdinfo/'+str(self.fd)).read_text().splitlines()
+            held_shared=any(line.startswith('lock:') and line.split()[2:5]==['FLOCK','ADVISORY','READ'] for line in locks)
+            self.base.check(self.acquired and held_shared,'native shared operation lock is not held')
         return self.fd
 
     def close(self):

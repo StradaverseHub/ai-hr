@@ -85,6 +85,17 @@ class KernelTests(unittest.TestCase):
         try:self.assertFalse(self.try_ex(self.operation))
         finally:os.close(duplicate)
         self.assertTrue(self.try_ex(self.operation))
+    def test_duplicate_unlock_invalidates_actual_shared_guard_without_inode_change(self):
+        q=queue_lock(self.queue);duplicate=os.dup(q.fd);before=self.operation.stat()
+        try:
+            fcntl.flock(duplicate,fcntl.LOCK_UN)
+            after=self.operation.stat()
+            self.assertEqual((before.st_dev,before.st_ino),(after.st_dev,after.st_ino))
+            self.assertTrue(self.try_ex(self.operation),'Kernel SH was actually removed by inherited duplicate')
+            with self.assertRaisesRegex(ValueError,'shared operation lock is not held'):q.verify()
+        finally:
+            # Close only; never unlock a possibly inherited surviving open description.
+            os.close(duplicate);q.close()
     def test_named_inode_replacement_refuses_even_while_original_is_locked(self):
         q=queue_lock(self.queue)
         try:
