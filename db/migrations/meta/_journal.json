@@ -6637,6 +6637,20 @@
       "when": 1794841005919,
       "tag": "5919_contract_work_case_source_anchor",
       "breakpoints": true
+    },
+    {
+      "idx": 5330,
+      "version": "7",
+      "when": 1794841005930,
+      "tag": "5930_contract_tracker_attention_summary",
+      "breakpoints": true
+    },
+    {
+      "idx": 5331,
+      "version": "7",
+      "when": 1794841005931,
+      "tag": "5931_contract_starting_setup_completion",
+      "breakpoints": true
     }
   ]
 }
