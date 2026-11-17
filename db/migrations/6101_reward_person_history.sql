@@ -168,7 +168,8 @@ CREATE FUNCTION app.reward_person_history(wanted_unit uuid,wanted_entry uuid) RE
   FROM public.reward_unit u JOIN public.reward_entry e ON e.unit_id=u.id AND e.tenant_id=u.tenant_id
   JOIN public.employment employee ON employee.id=e.employment_id AND employee.tenant_id=e.tenant_id CROSS JOIN principal CROSS JOIN roles
   WHERE u.id=wanted_unit AND e.id=wanted_entry AND u.tenant_id=app.current_tenant_id() AND u.deleted_at IS NULL
-   AND app.reward_access_scope(u.id) AND app.reward_capability(u.id,'review.view') AND cardinality(roles.value)>0
+   -- Use native review authority, not the Access-directory scope (which intentionally excludes EC/payroll).
+   AND app.reward_capability(u.id,'review.view') AND cardinality(roles.value)>0
    AND principal.person_id::text IS DISTINCT FROM e.source->>'personId'
    AND principal.person_id IS DISTINCT FROM employee.person_id
    AND(e.facts->>'reviewed'='true' OR 'gr'=ANY(roles.value))
