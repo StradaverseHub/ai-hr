@@ -1,0 +1,9 @@
+# Restricted sender materialization capability approval
+
+The automatic permission review rejected the proposed ACL change: it persistently grants `ai_hr_app` EXECUTE on a private SMTP materialization function; general email-document authorization did not explicitly approve this security boundary and its blast radius. No grant was applied.
+
+The existing private OneHR sender imports the application's database singleton (`lib/internal-auth/automation-mail.ts`); `DATABASE_URL` uses `ai_hr_app`. The sweep creates a different owner connection, so successful owner-only fixture tests do not prove that the actual sender can call the new5955 helper. Current `REVOKE` prevents attachment-bearing mail from starting.
+
+The adjacent unapplied patch proposes granting only `app.automation_email_materialization(uuid,uuid,text)` EXECUTE to `ai_hr_app`. The helper calls the existing native `automation_email_target(deliveryID,leaseToken,installationOrigin)` first; an absent, expired, started, foreign or mismatched capability returns NULL. It returns only exact frozen receipt/document/version metadata of that already-authorized delivery. It adds no user, person, tenant or address parameter, arbitrary file access, file-table grant, owner connection, or sender identity. The private copied original-start bypass remains revoked.
+
+Required verification after explicit approval: actual unscoped `ai_hr_app` sender with fictional native deliveries and fake SMTP; valid ready linked document succeeds, bad/stale/foreign lease and changed recipient/person/route refuse before SMTP; private original-start remains inaccessible. Replace the prior blanket helper-role-denial assertion with these stronger capability-scoped cases. No actual mail, provisioning, installation, merge or release is authorized by this proposal.

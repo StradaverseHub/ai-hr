@@ -1,6 +1,7 @@
 import { internalSelected } from './internal-auth/config';
 import { lifecycleV9DeliveryRequest, type LifecycleV9DeliveryRequest, type LifecycleV9DeliveryResult } from './lifecycle-v9-delivery-model';
-import type {AutomationRichEmailBody} from './automation-email-content';
+import type {AutomationEmailAsset} from './automation-email-assets';
+import type {AutomationEmailLinkedDocument,AutomationRichEmailBody} from './automation-email-content';
 import type {Document, EmailAsset} from './lifecycle-v9-model';
 /**
  * Shared workflow email (migration 5754) crosses the authentication boundary exactly like On/Off Boarding V9 mail: only
@@ -21,7 +22,7 @@ export type AutomationEmailContent = {
 };
 export type AutomationMailTarget = {
   id: string; tenantId: string; module: 'probation'|'contract_staff'|'off'; subjectId: string;
-  payload: { version: 1; module: 'probation'|'contract_staff'|'off'; subjectId: string; linkPath: string; content?:AutomationEmailContent;mail: { id: string; to: string[]; cc: string[]; subject: string; body: string;richBody?:AutomationRichEmailBody|null; delivery: { version: 1; sender: string } } };
+  payload: { version: 1; module: 'probation'|'contract_staff'|'off'; subjectId: string; linkPath: string; purpose?:string; content?:AutomationEmailContent;mail: { id: string; to: string[]; cc: string[]; subject: string; body: string;richBody?:AutomationRichEmailBody|null; delivery: { version: 1; sender: string;assets?:AutomationEmailAsset[];documents?:AutomationEmailLinkedDocument[] } } };
   bindings: { userId: string; subject: string; issuer: string }[];
 };
 /** Compatibility adapters do not claim support for a private capability they cannot verify. */

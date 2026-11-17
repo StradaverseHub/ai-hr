@@ -23,7 +23,10 @@ export function automationEmailContent(input:RichInput|AutomationMailTarget,orig
  }
 
  const link=notificationEmailLink(input.origin,input.linkPath);
- if(!input.richBody)return {text:input.body.split('{{case.link}}').join(link)};
+ if(!input.richBody){
+  const documents=input.documents??[],lines=documents.map(document=>`${document.name}: ${notificationEmailLink(input.origin,`/lifecycle/contracts/letters/${document.id}`)}`);
+  return {text:input.body.split('{{case.link}}').join(link)+(lines.length?'\n\n'+lines.join('\n'):'')};
+ }
  const catalogue=automationCatalogue(input.module);
  if(!catalogue)throw new Error('This module has no shared email fields.');
  const assets=input.assets??[],documents=input.documents??[];

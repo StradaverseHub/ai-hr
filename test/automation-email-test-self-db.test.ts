@@ -6,6 +6,8 @@ import {withTenant,type SessionContext} from '../db/client';
 import {v9Setup} from '../packs/lifecycle/service';
 import {saveAutomationEmailTemplate,testAutomationEmail} from '../packs/automation/service';
 import {saveContractSharedMember,saveContractSharedRole} from '../packs/contracts/service';
+import {deliverAutomationEmails} from '../core/automation-email-delivery';
+import type {Tx} from '../db/client';
 import {automationEmailBodyDoc} from '../lib/automation/email';
 const ORIGIN='https://template-test.invalid';
 let b:Base,admin:SessionContext,editor:SessionContext,memberId:string,templateId:string;
@@ -59,6 +61,17 @@ describe('Saved email test addressed only to the actual template editor',()=>{
   const [other]=await owner.db.execute<{id:string}>(sql`insert into person(tenant_id,full_name,primary_email) values(${b.tenantId}::uuid,'Different fictional person',${randomUUID()+'@template.invalid'}) returning id`);
   await owner.db.execute(sql`update app_user set person_id=${other.id}::uuid where tenant_id=${b.tenantId}::uuid and id=${editor.userId}::uuid`);
   expect(await target(second.deliveryId,secondToken)).toBeNull();
+ });
+ it('delivers the queued self-test through the real sweep without a fictitious case company',async()=>{
+  const {deliveryId}=await queue();const runner={...admin,userId:undefined,personId:undefined,roles:[],grants:undefined};let calls=0;
+  const connection={withTenant:<T>(ctx:SessionContext,work:(tx:Tx)=>Promise<T>)=>owner.withTenant(ctx,work)};
+  const result=await deliverAutomationEmails(runner,connection,async request=>{
+   calls++;const view=await target(request.deliveryId,request.leaseToken);expect(view?.payload.mail.to).toEqual([editor.userId]);expect(view?.payload.mail.cc).toEqual([]);
+   const [{ok}]=await owner.db.execute<{ok:boolean}>(sql`select app.automation_email_start(${request.deliveryId}::uuid,${request.leaseToken}::uuid,${ORIGIN},${JSON.stringify({bindings:view!.bindings,addresses:['fictional-self@template.invalid'],relayRevision:'fixture'})}::jsonb) as ok`);expect(ok).toBe(true);
+   await owner.db.execute(sql`select app.automation_email_finish(${request.deliveryId}::uuid,${request.leaseToken}::uuid,'sent',null)`);return {outcome:'sent',error:null};
+  });expect(result).toMatchObject({attempted:1,sent:1,cancelled:0});expect(calls).toBe(1);
+  const [{status}]=await owner.db.execute<{status:string}>(sql`select status from automation_email_delivery where id=${deliveryId}::uuid`);expect(status).toBe('sent');
+  await deliverAutomationEmails(runner,connection,async()=>{throw Error('A sent self-test must not replay');});
  });
  it('refuses stale revisions and arbitrary recipient inputs without creating mail',async()=>{
   await expect(testAutomationEmail(editor,{templateId,revision:2,sample:'complete',requestId:randomUUID()})).rejects.toMatchObject({code:'forbidden'});

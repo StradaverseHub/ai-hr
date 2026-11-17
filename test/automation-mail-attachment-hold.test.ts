@@ -10,17 +10,17 @@ import {internalAutomationMail} from '../lib/internal-auth/automation-mail';
 const request={deliveryId:'10000000-0000-4000-8000-000000000001',leaseToken:'10000000-0000-4000-8000-000000000002'};
 function target(module:string,extra:Record<string,unknown>){return {id:request.deliveryId,tenantId:'10000000-0000-4000-8000-000000000003',module,subjectId:'10000000-0000-4000-8000-000000000004',payload:{version:1,module,linkPath:'/lifecycle/contracts/example',mail:{id:'fixture',to:['10000000-0000-4000-8000-000000000005'],cc:[],subject:'Fictional queued message',body:'The promised document is attached.',delivery:{version:1,sender:'noreply',...extra}}},bindings:[]};}
 beforeEach(()=>{state.target=null;state.relay.mockClear();state.transport.mockClear();});
-describe('shared attachment transport approval hold',()=>{
+describe('shared attachment transport admission',()=>{
  for(const module of ['contract_staff','probation']){
-  it(`holds ${module} files instead of silently sending a message without its promised attachment`,async()=>{
+  it(`holds ${module} files while no relay is available`,async()=>{
    state.target=target(module,{assets:[{id:'frozen-file'}]});
-   expect(await internalAutomationMail(request,state.transport)).toEqual({outcome:'skipped',error:'notEligible'});
-   expect(state.relay).not.toHaveBeenCalled();expect(state.transport).not.toHaveBeenCalled();
+   expect(await internalAutomationMail(request,state.transport)).toEqual({outcome:'skipped',error:'relayUnavailable'});
+   expect(state.relay).toHaveBeenCalledOnce();expect(state.transport).not.toHaveBeenCalled();
   });
-  it(`holds ${module} linked documents before any private relay or SMTP work`,async()=>{
+  it(`holds ${module} linked documents while no relay is available`,async()=>{
    state.target=target(module,{documents:[{id:'frozen-document'}]});
-   expect(await internalAutomationMail(request,state.transport)).toEqual({outcome:'skipped',error:'notEligible'});
-   expect(state.relay).not.toHaveBeenCalled();expect(state.transport).not.toHaveBeenCalled();
+   expect(await internalAutomationMail(request,state.transport)).toEqual({outcome:'skipped',error:'relayUnavailable'});
+   expect(state.relay).toHaveBeenCalledOnce();expect(state.transport).not.toHaveBeenCalled();
   });
  }
  it('retains ordinary word-only delivery admission and the existing Offboarding path',async()=>{

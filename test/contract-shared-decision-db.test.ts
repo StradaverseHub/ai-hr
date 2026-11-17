@@ -84,8 +84,8 @@ describe('protected Contract decision preview and submission',()=>{
   const choices=await contractSharedManualWorkflows(f.proposer,f.caseId);expect(choices.map(choice=>choice.id)).toEqual([workflow.id]);
   await expect(startContractSharedManualWorkflow(f.proposer,{caseId:f.caseId,revision:1,workflowId:unmatched.id,workflowRevision:1,requestId:randomUUID()})).rejects.toMatchObject({code:'invalid'});
   const [before]=await owner.db.execute<{events:number}>(sql`select count(*)::int as events from contract_shared_event where tenant_id=${f.b.tenantId}::uuid and trigger_event='manual'`);expect(before.events).toBe(0);
-  const command={caseId:f.caseId,revision:1,workflowId:workflow.id,workflowRevision:1,requestId:randomUUID()};
-  await owner.db.execute(sql`update contract_shared_case set data=jsonb_set(data,'{flags}','["no_workflow","fallback"]'::jsonb) where tenant_id=${f.b.tenantId}::uuid and case_id=${f.caseId}::uuid`);
+  await owner.db.execute(sql`update contract_shared_case set revision=revision+1,data=jsonb_set(jsonb_set(data,'{flags}','["no_workflow","fallback"]'::jsonb),'{revision}',to_jsonb(revision+1)) where tenant_id=${f.b.tenantId}::uuid and case_id=${f.caseId}::uuid`);
+  const command={caseId:f.caseId,revision:(await contractSharedContext(f.proposer,f.caseId)).flow!.revision,workflowId:workflow.id,workflowRevision:1,requestId:randomUUID()};
   const accepted=await startContractSharedManualWorkflow(f.proposer,command);
   const reconciled=await contractSharedContext(f.proposer,f.caseId);
   expect(reconciled.flow?.flags).toEqual(['fallback']);
