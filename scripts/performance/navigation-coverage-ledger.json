@@ -1282,10 +1282,19 @@
       "reason": "No executed usable-content evidence for this stable shell destination is recorded in this ledger."
     },
     {
+      "id": "shell.rewardsHistoryUpload",
+      "sourceOwner": "packs/rewards/index.ts",
+      "sourceKey": "shell-slot:rewardsHistoryUpload",
+      "declaredHref": "/rewards/history-upload",
+      "status": "uncovered",
+      "owner": "packs/rewards/index.ts",
+      "reason": "No executed usable-content evidence for this stable shell destination is recorded in this ledger."
+    },
+    {
       "id": "shell.rewardsSharedConfiguration",
       "sourceOwner": "packs/rewards/index.ts",
       "sourceKey": "shell-slot:rewardsSharedConfiguration",
-      "declaredHref": "/admin/rewards/shared",
+      "declaredHref": "/admin/rewards/review-plans",
       "status": "uncovered",
       "owner": "packs/rewards/index.ts",
       "reason": "No executed usable-content evidence for this stable shell destination is recorded in this ledger."

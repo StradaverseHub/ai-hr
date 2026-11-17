@@ -193,7 +193,9 @@ describe('5867 static shape and registration', () => {
   it('registers the kind with the kernel, its handler and its completion notice', () => {
     expect(CANDIDATE_IMPORT_KIND).toBe('recruitment_candidate_import');
     expect(migration).toMatch(/INSERT INTO bulk_job_kind\(kind,scope_kind,exclusive,input_shape,input_max_bytes,finalize_owner\)\s+VALUES\('recruitment_candidate_import',NULL,'creator'/);
-    expect(read('core/bulk-job-handlers.ts')).toMatch(/recruitmentCandidateImportJobHandler\]/);
+    const handlers=read('core/bulk-job-handlers.ts').match(/export const BULK_JOB_HANDLERS[^=]*=\s*\[([^\]]*)\]/)?.[1];
+    expect(handlers).toBeDefined();
+    expect(handlers?.split(',').map(handler=>handler.trim())).toContain('recruitmentCandidateImportJobHandler');
     expect(BULK_JOB_NOTICES.recruitment_candidate_import).toEqual({ messages: 'recruitmentImport', linkPath: '/recruitment/candidates/import' });
     expect(bulkJobNoticeKeys('recruitment_candidate_import', 'completed')?.title).toBe('bulkJobs.notification.recruitmentImport.completed.title');
   });
