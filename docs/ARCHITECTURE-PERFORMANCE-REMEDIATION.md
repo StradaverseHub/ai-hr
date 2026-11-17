@@ -68,7 +68,7 @@ Initial integration base: `59f06b08db014e01cd553a827c62ccf864d33f78`. Preserve t
 | AP-042 | P2 | HR Analytics carry-forward table paging | Open; implementation pending |
 | AP-043 | P1 | HR Analytics and legacy Custom Report export controls | Open; implementation pending |
 | AP-044 | P1 | Data Privacy and Audit Integrity screen | Open; implementation pending |
-| AP-045 | P1 | Payroll run row-menu Close Reset Remove and Reprocess screens | Batch 1 partially implemented; hosted and staging verification pending; remainder open |
+| AP-045 | P1 | Payroll run row-menu Close Reset Remove and Reprocess screens | Partial installed header/count projection; batch2 selection paging development-qualified, staging pending; history costs remain open |
 | AP-046 | P1 | Performance cycle Open control | Open; implementation pending |
 | AP-047 | P1 | Performance administrative Generate Build Fill and Import controls | Open; implementation pending |
 | AP-048 | P1 | Performance Results Release and Revoke bulk controls | Open; implementation pending |
@@ -81,10 +81,12 @@ Initial integration base: `59f06b08db014e01cd553a827c62ccf864d33f78`. Preserve t
 | AP-055 | P1 | Rewards Post to Payroll control | Open; implementation pending |
 | AP-056 | P1 | Rewards Data Centre Refresh Sources Preview and Confirm | Open; implementation pending |
 | AP-057 | P1 | Rewards Uploaded Awards Save and Replace controls | Open; implementation pending |
-| AP-058 | P1 | Import History Bank Statutory and Cost Allocation Revert controls | Batch 1 partially implemented; hosted and staging verification pending; remainder open |
+| AP-058 | P1 | Import History Bank Statutory and Cost Allocation Revert controls | Partial installed shared preview; rendered preview fixture pending; durable reversals/per-item inspection remain open |
 | AP-059 | P1 | Employee Leave Balances and Employee Leave Records exports | Open; implementation pending |
 | AP-060 | P1 | My Team weekly/monthly grid and its export | Open; implementation pending |
 | AP-061 | P2 | My Team single-item review and decision commands | Open; implementation pending |
+
+| AP-062 | P1 | Own Leave assistant review discovery | Batch2 development-qualified shared metadata/expiry intervals; migration5787 and staging acceptance pending |
 
 ## Completion evidence required
 
