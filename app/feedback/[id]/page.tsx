@@ -180,11 +180,11 @@ export default async function FeedbackDetailPage({
           <h2 data-ui-section-header className="border-b border-border px-4 py-3 text-sm font-medium">{t(pendingQuestion ? 'dialogueWaitingTitle' : 'dialogueTitle')}</h2>
           {pendingQuestion ? <>
             <p className="mt-2 whitespace-pre-wrap break-words text-sm">{pendingQuestion.question}</p>
-            {(isReporter || isAdmin) ? <FeedbackDialogueForm mode="answer" feedbackId={fb.id} questionId={pendingQuestion.id} action={answerFeedbackClarificationAction} />
+            {(isReporter || isAdmin) ? <FeedbackDialogueForm key={pendingQuestion.id} mode="answer" feedbackId={fb.id} questionId={pendingQuestion.id} action={answerFeedbackClarificationAction} />
               : <p className="mt-3 text-sm text-muted-foreground">{t('dialogueWaitingHint')}</p>}
           </> : <details className="mt-2">
             <summary className="cursor-pointer text-sm font-medium text-primary focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2">{t('dialogueAskSubmit')}</summary>
-            <FeedbackDialogueForm mode="ask" feedbackId={fb.id} questionId={randomUUID()} planRevision={fb.planRevision} action={askFeedbackClarificationAction} />
+            <FeedbackDialogueForm key={`ask-${fb.planRevision}`} mode="ask" feedbackId={fb.id} questionId={randomUUID()} planRevision={fb.planRevision} action={askFeedbackClarificationAction} />
           </details>}
         </Card>
       )}
