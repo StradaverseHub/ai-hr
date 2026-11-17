@@ -4,7 +4,7 @@ import {sql} from 'drizzle-orm';
 import {withTenant,type SessionContext} from '../db/client';
 import {closeAll,migrateTestDb,resetDb,seedBase,setModule,entitledCtx,createAppUser,owner,type Base} from './harness';
 import {v9Setup} from '../packs/lifecycle/service';
-import {actAutomationDocumentTemplate,automationDocumentUsage,listAutomationDocumentTemplates,saveAutomationDocumentTemplate,saveAutomationWorkflow,type AutomationWorkflow} from '../packs/automation/service';
+import {actAutomationDocumentTemplate,automationDocumentUsage,automationDocumentVersions,listAutomationDocumentTemplates,saveAutomationDocumentTemplate,saveAutomationWorkflow,type AutomationWorkflow} from '../packs/automation/service';
 import type {AutomationDocumentTemplate} from '../lib/automation/document-template';
 let b:Base,admin:SessionContext;
 beforeAll(migrateTestDb);afterAll(closeAll);
@@ -12,6 +12,13 @@ beforeEach(async()=>{await resetDb();b=await seedBase();await setModule(b.tenant
 const template=():AutomationDocumentTemplate=>({id:randomUUID(),module:'contract_staff',name:'Fictional renewal',description:'Review-only letter',rules:{},blocks:[{id:'intro',type:'text',text:'Dear {employee.name}',section:''}],fields:[],routing:[{id:'owner',order:1,action:'review',owner:true,who:{kind:'directSuperior'}}]});
 const save=(doc:AutomationDocumentTemplate,expectedRevision:number,publish=false,note='')=>saveAutomationDocumentTemplate(admin,{template:doc,expectedRevision,publish,retired:false,note});
 describe('Contract template native version lifecycle',()=>{
+ it('preserves the generic version reader for existing non-Contract module definitions',async()=>{
+  for(const module of ['probation','off'] as const){
+   const doc={...template(),module};await saveAutomationDocumentTemplate(admin,{template:doc,expectedRevision:0,publish:false,retired:false});
+   expect((await listAutomationDocumentTemplates(admin,module)).map(row=>row.template.id)).toContain(doc.id);
+   expect((await automationDocumentVersions(admin,doc.id)).map(row=>({version:row.version,template:row.template}))).toEqual([{version:1,template:doc}]);
+  }
+ });
  it('publishes an existing draft without rewriting bytes; CAS stays monotonic through metadata changes and future saves',async()=>{
   const doc=template();await save(doc,0,true,'Original published wording');await save({...doc,name:'Reviewed wording'},1,false,'People Ops revision');
   expect(await automationDocumentUsage(admin,doc.id)).toMatchObject({documents:0,deleteReason:null,versions:[{version:2,state:'draft',note:'People Ops revision',canDelete:true},{version:1,state:'inUse',canDelete:false}]});
