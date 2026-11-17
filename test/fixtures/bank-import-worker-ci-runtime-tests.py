@@ -527,13 +527,13 @@ class ConditionalRuntimeTests(unittest.TestCase):
         owner=SimpleNamespace(pw_uid=1001,pw_gid=1001);env={'HOME':'/private/owner','PATH':'/opt/node22/bin:/usr/bin:/bin'}
         with patch.object(ci,'bounded_process',return_value=b'{}')as run:
             self.assertEqual(ci.child(['/opt/node22/bin/node','fixed-status'],owner,env),{})
-            kwargs=run.call_args.kwargs;self.assertEqual(kwargs['user'],1001);self.assertEqual(kwargs['group'],1001);self.assertEqual(kwargs['extra_groups'],[]);self.assertEqual(kwargs['env'],{**env,'PYTHONNOUSERSITE':'1','PYTHONSAFEPATH':'1'});self.assertNotIn('shell',kwargs)
+            kwargs=run.call_args.kwargs;self.assertEqual(kwargs['user'],1001);self.assertEqual(kwargs['group'],1001);self.assertEqual(kwargs['extra_groups'],[]);self.assertEqual(kwargs['env'],{**env,'PYTHONNOUSERSITE':'1','PYTHONSAFEPATH':'1','TSX_DISABLE_CACHE':'1'});self.assertNotIn('shell',kwargs)
     def test_actual_node_parser_refuses_active_loader_keys_and_allows_comments(self):
         # Execute only the pinned native owner's no-dotenv/no-app-import parser port.
         # The eventual application/coordinator child is a recording port and never executes.
         node=shutil.which('node');self.assertIsNotNone(node)
         owner=SimpleNamespace(pw_uid=os.getuid(),pw_gid=os.getgid());environment={'HOME':'/private/owner','PATH':'/usr/bin:/bin'}
-        keys=['NODE_OPTIONS','NODE_PATH','NODE_V8_COVERAGE','NODE_COMPILE_CACHE','NODE_REDIRECT_WARNINGS','NODE_ICU_DATA','NODE_EXTRA_CA_CERTS','LD_PRELOAD','DYLD_INSERT_LIBRARIES','PYTHONPATH','OPENSSL_CONF']
+        keys=['NODE_OPTIONS','NODE_PATH','NODE_V8_COVERAGE','NODE_COMPILE_CACHE','NODE_REDIRECT_WARNINGS','NODE_ICU_DATA','NODE_EXTRA_CA_CERTS','LD_PRELOAD','DYLD_INSERT_LIBRARIES','PYTHONPATH','OPENSSL_CONF','TSX_TSCONFIG_PATH','TSX_DISABLE_CACHE']
         with tempfile.TemporaryDirectory()as tmp:
             source=Path(tmp);dotenv=source/'.env.production';status=[node,'--env-file=.env.production','fixed-status']
             def process(argv,**options):
@@ -550,7 +550,7 @@ class ConditionalRuntimeTests(unittest.TestCase):
                             self.assertEqual(run.call_count,1);self.assertNotIn('--env-file=.env.production',run.call_args.args[0])
                     run.reset_mock();dotenv.write_text('AIHR_IMPORT_WORKER_REQUIRED=1\n# '+key+'=opaque\n')
                     self.assertEqual(ci.child(status,owner,environment,node_options={'policy':'aihr-worker-node-options-memory/v1','sha256':ci.sha(b'')}),{});self.assertEqual(run.call_count,2)
-                    self.assertEqual(run.call_args.kwargs['env'],{**environment,'PYTHONNOUSERSITE':'1','PYTHONSAFEPATH':'1'})
+                    self.assertEqual(run.call_args.kwargs['env'],{**environment,'PYTHONNOUSERSITE':'1','PYTHONSAFEPATH':'1','TSX_DISABLE_CACHE':'1'})
                     run.reset_mock()
                     with self.assertRaisesRegex(ValueError,'controlled loader'):ci.child([node,'fixed-status'],owner,{**environment,key:'opaque'})
                     run.assert_not_called()
@@ -630,6 +630,57 @@ class ConditionalRuntimeTests(unittest.TestCase):
                 dotenv.write_text('NODE_OPTIONS="'+base+'\n--import=forbidden"\n');seen.clear()
                 with self.assertRaisesRegex(ValueError,'active dotenv loader'):ci.child(argv,owner,environment,node_options=pins)
                 self.assertEqual(len(seen),1)
+
+    def test_actual_tsx_ignores_malicious_disk_transforms_and_preserves_frozen_resolution(self):
+        self.assertGreater(os.geteuid(),0,'Actual cache permission proof needs the hosted unprivileged runner')
+        node=shutil.which('node');self.assertIsNotNone(node);owner=SimpleNamespace(pw_uid=os.getuid(),pw_gid=os.getgid())
+        with tempfile.TemporaryDirectory()as tmp:
+            source=Path(tmp);temporary=source/'temporary';temporary.mkdir();(source/'lib').mkdir()
+            (source/'node_modules').symlink_to(ROOT/'node_modules',target_is_directory=True)
+            (source/'package.json').write_text('{"type":"commonjs"}')
+            config=source/'tsconfig.json';config.write_text(json.dumps({'compilerOptions':{'target':'ES2022','module':'commonjs','baseUrl':'.','paths':{'@fictional/*':['lib/*']}}}))
+            (source/'lib/answer.ts').write_text('export const answer: number = 42;')
+            main=source/'main.ts';main.write_text("import {answer} from '@fictional/answer'; const value: number=answer; console.log(JSON.stringify({answer:value,cacheDisabled:process.env.TSX_DISABLE_CACHE==='1'}));")
+            dotenv=source/'.env.production';dotenv.write_text('AIHR_IMPORT_WORKER_REQUIRED=1\n')
+            env={'PATH':str(Path(node).parent)+':/usr/bin:/bin','HOME':str(source),'TMPDIR':str(temporary)}
+            argv=[node,'--env-file=.env.production','--import','tsx',str(main)]
+            warm=subprocess.run(argv,cwd=source,env=env,capture_output=True,text=True,check=True,timeout=15)
+            self.assertEqual(json.loads(warm.stdout),{'answer':42,'cacheDisabled':False})
+            cache=temporary/('tsx-'+str(os.geteuid()));self.assertTrue(cache.is_dir())
+            poison_marker=source/'poison-executed';poisoned=[]
+            for file in cache.iterdir():
+                if not file.is_file():continue
+                try:value=json.loads(file.read_bytes())
+                except (ValueError,UnicodeError):continue
+                if isinstance(value,dict)and isinstance(value.get('code'),str):
+                    value['code']="require('node:fs').writeFileSync("+json.dumps(str(poison_marker))+",'hostile transform executed');console.log('hostile transform');"
+                    file.write_bytes(encoded(value));poisoned.append(file)
+            self.assertTrue(poisoned,'Control must create actual runtime transform-cache entries')
+            subprocess.run(argv,cwd=source,env=env,capture_output=True,timeout=15)
+            self.assertTrue(poison_marker.exists(),'Control must actually execute the poisoned transform without the fixed cache policy');poison_marker.unlink()
+            before={file.name:(ci.sha(file.read_bytes()),file.stat().st_size,file.stat().st_mtime_ns)for file in cache.iterdir()if file.is_file()}
+            config_before=config.read_bytes();mode=stat.S_IMODE(cache.stat().st_mode)
+            # This actual UID cannot read OR write any existing transform through this
+            # directory. Source-package cache implementation has no chmod fallback.
+            cache.chmod(0)
+            try:
+                with self.assertRaises(PermissionError):os.listdir(cache)
+                def bounded(command,**options):
+                    self.assertEqual(options.pop('user'),os.getuid());self.assertEqual(options.pop('group'),os.getgid());self.assertEqual(options.pop('extra_groups'),[])
+                    result=subprocess.run(command,cwd=options['cwd'],env=options['env'],capture_output=True,check=True,timeout=15)
+                    return result.stdout
+                with patch.object(ci,'SOURCE',source),patch.object(ci,'bounded_process',side_effect=bounded):
+                    for text in ['AIHR_IMPORT_WORKER_REQUIRED=1\n','TSX_DISABLE_CACHE=1\n']:
+                        dotenv.write_text(text)
+                        result=ci.child(argv,owner,env,node_options={'policy':'aihr-worker-node-options-memory/v1','sha256':ci.sha(b'')})
+                        self.assertEqual(result,{'answer':42,'cacheDisabled':True})
+                self.assertEqual(stat.S_IMODE(cache.stat().st_mode),0);self.assertFalse(poison_marker.exists())
+            finally:cache.chmod(mode)
+            self.assertEqual(before,{file.name:(ci.sha(file.read_bytes()),file.stat().st_size,file.stat().st_mtime_ns)for file in cache.iterdir()if file.is_file()});self.assertEqual(config.read_bytes(),config_before)
+            # Actual --env-file precedence: an existing fixed subprocess key wins.
+            dotenv.write_text('TSX_DISABLE_CACHE=0\n')
+            precedence=subprocess.run([node,'--env-file=.env.production','-e',"process.stdout.write(JSON.stringify({disabled:process.env.TSX_DISABLE_CACHE==='1'}))"],cwd=source,env={**env,'TSX_DISABLE_CACHE':'1'},capture_output=True,text=True,check=True,timeout=5)
+            self.assertEqual(json.loads(precedence.stdout),{'disabled':True})
 
     def test_actual_node_python_child_inherits_safe_path_and_cannot_run_hostile_customization(self):
         node=shutil.which('node');self.assertIsNotNone(node)

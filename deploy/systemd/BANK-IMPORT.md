@@ -705,6 +705,14 @@ owner probe verifies version and actual safe_path/no_user_site flags. Subprocess
 PYTHONNOUSERSITE=1/PYTHONSAFEPATH=1 after loader admission; native Node-to-Python verification inherits them.
 Host/private environment files, native argv, grant and native proof fields remain unchanged. This excludes
 user-site/current-directory Python customization; system Python/global packages remain under OS trust.
+
+Proof subprocesses also receive fixed TSX_DISABLE_CACHE=1 after active-dotenv admission. The installed
+TSX owner selects an in-memory Map under this flag rather than reading/writing generated transforms in
+os.tmpdir()/tsx-UID outside the observed roots. Active TSX_DISABLE_CACHE must be absent or exactly1;
+TSX_TSCONFIG_PATH must be absent, preserving normal resolution through the frozen source config. The
+builtin no-dotenv parser emits only those policy booleans and key presence. Hosted controls execute
+actual Node --import tsx against a poisoned, unreadable/unwritable fictional cache, preserve frozen
+config/path-alias resolution, and verify actual --env-file precedence for the fixed subprocess flag.
 No environment file is edited. Coverage
 is deliberately bounded to canonical source, active compiled tree, entire node_modules link-target graph
 and complete `/opt/node22`; it does not claim a systemwide dependency graph or replace OS loader trust.
