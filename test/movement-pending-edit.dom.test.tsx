@@ -57,3 +57,20 @@ describe('pending Movement Edit retains its saved target independently of curren
   expect(parent).toContain('movementPendingEditInput(s, employmentId, movementEditRow.id)');expect(parent).toContain("const movementEditInput = canCorrectMovement && movementEditRow");expect(parent).toContain('pendingInput: movementEditInput?.values');expect(parent).toContain('{...movementFormProps}');
  });
 });
+
+it('uses remote manager choices with exact hidden submission and resets company-scoped overrides',async()=>{
+ const managerA={id:'manager-a',name:'Original manager',companyId:'company-a'},managerB=base.managers[0];
+ const fetcher=vi.fn().mockResolvedValue({ok:true,json:async()=>({rows:[{employmentId:'manager-new-b',name:'New destination manager',companyId:'company-b',employeeCode:null}],selected:[],total:1,offset:0,limit:25})});vi.stubGlobal('fetch',fetcher);
+ try{
+  const {container}=mount({...base,current:{...base.current,managerEmploymentId:managerA.id},managers:[managerA,managerB],remoteManagers:true,edit:edit('entityTransfer',{companyId:'company-b',departmentId:'department-b',managerEmploymentId:managerB.id})});
+  const posted=()=>new FormData(container.querySelector('form')!).get('managerEmploymentId');
+  expect(posted()).toBe(managerB.id);
+  const picker=container.querySelector('input[name="managerEmploymentId"]')!.parentElement!;
+  fireEvent.click(picker.querySelector('button')!);await screen.findByRole('option',{name:'New destination manager'});fireEvent.mouseDown(screen.getByRole('option',{name:'New destination manager'}));expect(posted()).toBe('manager-new-b');
+  fireEvent.change(container.querySelector('select[name="companyId"]')!,{target:{value:'company-a'}});expect(posted()).toBe(managerA.id);
+  fireEvent.change(container.querySelector('select[name="companyId"]')!,{target:{value:'company-b'}});expect(posted()).toBe(managerB.id);
+  fireEvent.click(container.querySelector('input[name="managerEmploymentId"]')!.parentElement!.querySelector('button')!);
+  fireEvent.mouseDown(screen.getByRole('option',{name:messages.people.detail.movement.form.none}));expect(posted()).toBe('');
+  const data=await submit(container);expect(data.get('managerEmploymentId')).toBe('');
+ }finally{vi.unstubAllGlobals();}
+});

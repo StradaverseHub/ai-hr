@@ -20,6 +20,14 @@ it('pages the exact active native picker population across roles and scopes, ret
  expect(expected).toHaveLength(998);
  const rows=[];for(let offset=0;offset<expected.length;offset+=25){const page=await readWorkforceChoices(ctx,{subjectId,offset,selectedIds:[selectedId]});expect(page.total).toBe(998);expect(page.rows).toHaveLength(Math.min(25,998-offset));rows.push(...page.rows);expect(page.selected).toEqual(expected.filter(r=>r.employmentId===selectedId));}
  expect(rows).toEqual(expected);
+ // Representative native fact/page plan: authority still examines the complete thin cohort;
+ // LIMIT bounds transport, not the native owner cardinality. No latency threshold is inferred.
+ const plan=await withTenant(ctx,tx=>tx.execute(sql`explain (analyze,buffers,format json)
+  select employment_id,name,employee_code,company_id from app.access_workforce_picker_facts(null::uuid[])
+  where terminated_on is null and employment_id<>${subjectId}::uuid order by name,employment_id limit 25`),{readOnlySnapshot:true});
+ const root=(plan[0] as unknown as {'QUERY PLAN':{Plan:{'Actual Rows':number;'Node Type':string}}[]})['QUERY PLAN'][0].Plan;
+ expect(root['Node Type']).toBe('Limit');expect(root['Actual Rows']).toBe(25);
+ console.info('Fictional Workforce native fact/page plan',JSON.stringify(plan));
  expect(JSON.stringify((await readWorkforceChoices(ctx,{subjectId})).rows).length).toBeLessThan(JSON.stringify(expected).length/10);
  for(const role of s.roleEnum.enumValues)for(const companyId of role==='super_admin'?[null]:[null,b.companyId]){
   const userId=await createAppUser(b.tenantId,people[70].id,'employee');await owner.db.update(s.roleAssignment).set({role,companyId}).where(eq(s.roleAssignment.appUserId,userId));

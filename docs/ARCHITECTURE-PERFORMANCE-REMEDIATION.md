@@ -25,7 +25,7 @@ Initial integration base: `59f06b08db014e01cd553a827c62ccf864d33f78`. Preserve t
 | ID | Priority | Screen or concern | State |
 |---|---|---|---|
 | AP-001 | P1 | Personnel Movement New and Edit | Batch8 development-qualified: native destination choices; staging/native-plan/mixed-load acceptance pending |
-| AP-002 | P1 | Personnel profile and Movement manager choices | Open; implementation pending |
+| AP-002 | P1 | Personnel profile and Movement manager choices | Batch9 implemented: native 25-row search/count and selected hydration across all full Workforce consumers; hosted verification pending; staging held |
 | AP-003 | P1 | New Lifecycle Requisition | Open; implementation pending |
 | AP-004 | P2 | Probation Tracker | Open; implementation pending |
 | AP-005 | P1 | Generate Letters all-company request queue | Batch4 development-qualified: global SQL page/count and request-template correlation; staging pending |
@@ -34,7 +34,7 @@ Initial integration base: `59f06b08db014e01cd553a827c62ccf864d33f78`. Preserve t
 | AP-008 | P1 | Personnel employee draft editor | Batch5 development-qualified: native Criteria/reference metadata reuse; staging pending |
 | AP-009 | P1 | Personnel Import entry screen | Batch5 development-qualified: native catalogue reuse; staging pending |
 | AP-010 | P2 | Personnel Profile Changes | Open; implementation pending |
-| AP-011 | P1 | Attendance Offline Clocking settings | Batch6 partial, development-qualified: settings/review counts grouped; native context-count internals still per company; staging pending |
+| AP-011 | P1 | Attendance Offline Clocking settings | Batch9 proposed: private grouped native context counts; SQL unallocated and outside journal; hosted verification pending; staging held |
 | AP-012 | P2 | Attendance Company Policy Settings | Open; implementation pending |
 | AP-013 | P2 | Attendance Schedule Clock Policy editor | Open; implementation pending |
 | AP-014 | P2 | Attendance Work Schedule and Overtime Rates | Open; implementation pending |
@@ -199,3 +199,14 @@ Combined application source1b74b8ca9 passed Linux build in44006495617. Native Le
 
 
 Batch8 source01a2eca7911d2f5f8420e3c4ae990d5c23113c69 passed48selected cases, whole typecheck and Linux build in44011411911. Independent review caught an invalid tenant-wide location-code fixture; distinct native codes preserve the real constraint. Original dispatch44011181356 remains failed for a nonexistent selected test path, with its successful compiler/build evidence retained independently. The native helper oracle uses70transactions before and1after; the page reuses its current-company read and changes69additional destination transactions to1. Staging/native-plan/mixed-load acceptance and integration with the actual accepted release baseline remain pending. No new finding is closed.
+
+
+## Batch 9: full Workforce pickers and private offline counts
+
+The owned candidate derives from qualified batch8 source `e53fbe8ed`, preserving the earlier unreleased query work. Freshly fetched main and alpha are `2a4132204`; the owned chain diverges31/31 and is intentionally not an integration/release candidate. Recruitment remains next by direct owner order. No shared release refs or staging resources are changed.
+
+AP-002 uses the existing thin native `access_workforce_picker_facts` authority, excluding self and every non-NULL termination exactly as before. SQL counts and orders the complete permitted cohort but returns25 rows and at most8 selected facts. Raw search travels through a bounded same-origin POST body. Direct Superior retains its already-disclosed current relationship; Delegation remains nonempty; Movement retains destination-company rules; Correct Hire retains changed-fields-only submission; Rehire retains its previous default-company behavior. The generic employment picker is a separate authorization owner and remains outside this batch.
+
+AP-011 proposes a true grouped private context reader, with the original actor-private policies unchanged. A narrow NOLOGIN/NOBYPASSRLS purpose role receives only necessary columns, and the function gates each requested company through the native settings authority before grouping contexts. Application callers receive aggregate EXECUTE and no role membership or new raw-column grants. Permitted empty is0; denied/unknown isNULL; absent grouped storage is unavailable. The existing singleton remains unchanged as an independent oracle.
+
+The SQL is deliberately held at `db/proposals/mobile-offline-group-count/reader.sql`, outside the migration journal. Fresh installation watermarks and peer claims must precede allocation; DBA prerequisite/cleanup, restricted-owner rehearsal, final migration ordering and startup/release admission remain required. This proposal is not installable release evidence. Initial frozen source `de8d1e98b` is under hosted run44023117541 (native70-company/1000-employment role/scope equivalence, picker DOM, private populated-owner rehearsal, whole compiler and Linux build). Results are pending. No new finding is closed and no staging release is authorized.

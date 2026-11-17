@@ -14,7 +14,14 @@ function Picker({subjectId,companyId,name,value,retained=[],placeholder,onValueC
  const [selected,setSelected]=useState(value??''),[known,setKnown]=useState(retained);
  const [search,setSearch]=useState({query:'',offset:0,version:0}),[page,setPage]=useState<WorkforceChoicePage|null>(null);
  const [state,setState]=useState<'idle'|'loading'|'ready'|'error'>('idle');
- const sequence=useRef(0);
+ const sequence=useRef(0),root=useRef<HTMLDivElement>(null),previousSelected=useRef(selected);
+ useEffect(()=>{
+  if(previousSelected.current===selected)return;previousSelected.current=selected;
+  // Hidden inputs do not emit native input events when React updates their value. Notify form dirty owners.
+  const input=root.current?.querySelector('input[type="hidden"]');
+  input?.dispatchEvent(new Event('input',{bubbles:true}));
+  input?.dispatchEvent(new Event('change',{bubbles:true}));
+ },[selected]);
  useEffect(()=>{
   if(!search.version)return;
   const controller=new AbortController(),ticket=++sequence.current;
@@ -36,9 +43,9 @@ function Picker({subjectId,companyId,name,value,retained=[],placeholder,onValueC
  },[subjectId,companyId,search,selected]);
  const rows=[...known,...(page?.rows??[])].filter((row,index,all)=>all.findIndex(other=>other.employmentId===row.employmentId)===index);
  const change=(id:string)=>{const row=rows.find(row=>row.employmentId===id)??null;setSelected(id);setKnown(row?[row]:[]);onValueChange?.(id,row);};
- return <Combobox ariaLabel={ariaLabel??t('directSuperiorTitle')} name={name} value={value} options={rows.map(row=>({value:row.employmentId,label:!namesOnly&&row.employeeCode?`${row.employeeCode} – ${row.name}`:row.name,disabled:state==='loading'&&row.employmentId!==selected}))}
+ return <div ref={root}><Combobox ariaLabel={ariaLabel??t('directSuperiorTitle')} name={name} value={value} options={rows.map(row=>({value:row.employmentId,label:!namesOnly&&row.employeeCode?`${row.employeeCode} – ${row.name}`:row.name,disabled:state==='loading'&&row.employmentId!==selected}))}
   placeholder={placeholder??t('directSuperiorNone')} searchPlaceholder={t('directSuperiorSearch')} noResultsLabel={t('directSuperiorNoResults')} legacySuffix="" onValueChange={change}
   remote={{allowClear:allowClear??!required,onOpen:()=>setSearch({query:'',offset:0,version:Date.now()}),onQuery:query=>{setPage(null);setState('loading');setSearch(previous=>({query,offset:0,version:previous.version+1}));},footer:<div className="flex items-center justify-between gap-2 border-t p-2 text-xs" aria-live="polite">
    {state==='loading'?t('workforcePickerLoading'):state==='error'?<><span role="alert">{t('workforcePickerError')}</span><button type="button" onClick={()=>setSearch(previous=>({...previous,version:previous.version+1}))}>{t('workforcePickerRetry')}</button></>:page?<><span>{t('workforcePickerCount',{count:page.total})}</span><button type="button" disabled={!page.offset} onClick={()=>setSearch(previous=>({...previous,offset:Math.max(0,previous.offset-25)}))}>{t('workforcePickerPrevious')}</button><button type="button" disabled={page.offset+25>=page.total} onClick={()=>setSearch(previous=>({...previous,offset:previous.offset+25}))}>{t('workforcePickerNext')}</button></>:null}
-  </div>}}/>;
+  </div>}}/></div>;
 }

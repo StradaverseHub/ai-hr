@@ -584,7 +584,7 @@ export function MovementNewEvent({
         subjectId={employmentId} companyId={scopeChanged?scopeCompanyId:undefined}
         value={scopedManagers.some(m=>m.id===(chosenHere?.id??after.managerEmploymentId))?(chosenHere?.id??after.managerEmploymentId):''}
         retained={scopedManagers.map(m=>({employmentId:m.id,name:m.name,companyId:m.companyId??current.companyId,employeeCode:null}))}
-        namesOnly ariaLabel={label(movementField('managerEmploymentId'))} placeholder={t('form.none')} onValueChange={(id,row)=>setChosenManager({scope:scopeCompanyId,id,row:row?{id,name:row.name,companyId:row.companyId}:null})}/>
+        namesOnly ariaLabel={label(movementField('managerEmploymentId'))} placeholder={t('form.none')} onValueChange={(id,row)=>{touched.current.add('managerEmploymentId');setChosenManager({scope:scopeCompanyId,id,row:row?{id,name:row.name,companyId:row.companyId}:null});}}/>
         :select('managerEmploymentId', after.managerEmploymentId, scopedManagers, t('form.none'))),
     row('basicSalary', 'basicSalary', label(movementField('basicSalary')), current.basicSalary,
       <input

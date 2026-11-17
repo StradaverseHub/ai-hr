@@ -41,8 +41,23 @@ it('retains independent native permissions, counts and unavailable states with o
  }
  expect(await readOfflineClockingSettingsAcross(ctx,[])).toEqual(new Map());
  expect(await readOfflineClockingSettingsAcross(ctx,[b.companyId.toUpperCase(),b.companyId])).toEqual(await legacy(ctx,[b.companyId.toUpperCase(),b.companyId]));
+ // Group scale plan: one grouped owner invocation replaces70 singleton invocations.
+ // Nested private scans are reviewed in the proposal and populated owner-shape rehearsal.
+ const plan=await database.withTenant(ctx,tx=>tx.execute(sql`explain (analyze,buffers,format json)
+  select * from app.mobile_offline_open_context_counts(array[${sql.join(companies.map(id=>sql`${id}::uuid`),sql`, `)}]::uuid[])`));
+ const root=(plan[0] as unknown as {'QUERY PLAN':{Plan:{'Actual Rows':number;'Actual Loops':number}}[]})['QUERY PLAN'][0].Plan;
+ expect(root['Actual Rows']).toBe(70);expect(root['Actual Loops']).toBe(1);
+ console.info('Fictional offline grouped-owner plan',JSON.stringify(plan));
  const foreign=await seedBase();expect(await readOfflineClockingSettingsAcross(adminCtx(foreign),companies)).toEqual(await legacy(adminCtx(foreign),companies));
  await expect(readOfflineClockingSettingsAcross(ctx,['invalid'])).rejects.toMatchObject({reason:'invalid_input'});
+ // Deployment transition: old singleton remains available, new group owner is not yet installed.
+ await owner.db.execute(sql`alter function app.mobile_offline_open_context_counts(uuid[]) rename to fixture_offline_open_counts`);
+ try{
+  expect(await countOpenOfflineContexts(ctx,b.companyId)).toBe(1);
+  const transition=await readOfflineClockingSettingsAcross(ctx,[b.companyId]);
+  expect(transition.get(b.companyId)?.phonesOffline).toBeNull();
+  expect(transition.get(b.companyId)?.canEdit).toBe(true);
+ }finally{await owner.db.execute(sql`alter function app.fixture_offline_open_counts(uuid[]) rename to mobile_offline_open_context_counts`);}
  // Isolated hosted fixture temporarily hides optional names, restoring the same objects in finally.
  await owner.db.execute(sql`alter table attendance_policy rename column offline_clocking_enabled to fixture_offline_enabled`);
  await owner.db.execute(sql`alter table attendance_policy rename column offline_max_proven_window_seconds to fixture_offline_seconds`);
