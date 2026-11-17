@@ -1,7 +1,7 @@
 name: contract-walkthrough
 run-name: Contract production renderer · ${{ inputs.candidate_ref || github.ref_name }}
 on:
-  # Reviewed handoff repair: first-page task links, visible assigned actions and Contract reminder bounds.
+  # Reviewed renderer repair: await the exact posting return URL and ready native approval action.
   # Temporary, development-only bootstrap. Exact compared file paths are verified through the read-only API.
   # Existing bounded-profile coverage explicitly includes this Contract renderer admission.
   # Migrations, server and Chromium retain their normal heaps; ceilings and RSS budgets are unchanged.
