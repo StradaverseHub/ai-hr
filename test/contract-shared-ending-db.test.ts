@@ -80,6 +80,7 @@ describe('shared Contract endings use native Offboarding without automatic Perso
  },120_000);
  it('requires the exact private native self-binding route, unchanged subject and one real employee account',async()=>{
   const f=await historicalEmailPostingFixture({ordinaryLetter:true}),letter=f.email;
+  const ownerPersonId=f.admin.personId;if(!ownerPersonId)throw Error('The actual routed owner Person is required.');
   const userId=await createAppUser(f.b.tenantId,f.employee.personId,'employee');
   const employee:SessionContext={...f.employeeActor,userId};
   const [native]=await owner.db.execute<{id:string;route:{version:number;steps:Record<string,unknown>[]}}>(sql`select d.id,d.data->'route' as route from contract_shared_letter l join document_signing_document d on d.tenant_id=l.tenant_id and d.id=l.signing_document_id where l.tenant_id=${f.b.tenantId}::uuid and l.id=${letter.id}::uuid`);
@@ -94,7 +95,7 @@ describe('shared Contract endings use native Offboarding without automatic Perso
    const checks:[string,()=>Promise<unknown>][]=[
     ['exact private preimage',()=>tx`select 1`],
     ['other route step changed',()=>tx`update contract_shared_letter set data=jsonb_set(data,'{signingPolicy,route}',${JSON.stringify({...exact,steps:exact.steps.map((step,n)=>n===0?{...step,label:'Changed another step'}:step)})}::text::jsonb) where tenant_id=${f.b.tenantId}::uuid and id=${letter.id}::uuid`],
-    ['subject changed',()=>tx`update employment set person_id=${f.admin.personId}::uuid where tenant_id=${f.b.tenantId}::uuid and id=${f.employee.employmentId}::uuid`],
+    ['subject changed',()=>tx`update employment set person_id=${ownerPersonId}::uuid where tenant_id=${f.b.tenantId}::uuid and id=${f.employee.employmentId}::uuid`],
     ['duplicate verified account',()=>tx`update app_user set archived_at=null where tenant_id=${f.b.tenantId}::uuid and id=${f.employeeActor.userId!}::uuid`],
     ['different actor',()=>tx`select set_config('app.user_id',${f.admin.userId!},true)`],
    ];
