@@ -6434,6 +6434,13 @@
       "when": 1793330005577,
       "tag": "5877_recruitment_agency_portal",
       "breakpoints": true
+    },
+    {
+      "idx": 5504,
+      "version": "7",
+      "when": 1794841006104,
+      "tag": "6104_lifecycle_recipient_fanout",
+      "breakpoints": true
     }
   ]
 }
