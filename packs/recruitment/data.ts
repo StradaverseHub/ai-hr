@@ -234,11 +234,91 @@ export async function ensureRecruitmentDefaultsTx(tx: Tx, s: SessionContext, com
   }
 }
 
-/** Seed every listed company the caller administers (the pages call this when Recruitment opens). */
+/**
+ * The listed companies that still lack any of their defaults — ONE read statement, whatever the number of companies.
+ * Defaults are never deleted (a default archive reason can only be hidden; stages, processes, forms and offer fields have
+ * no delete), so a company that has every seed key once keeps them, renamed or disabled.
+ */
+async function unseededCompaniesTx(tx: Tx, s: SessionContext, companyIds: readonly string[]): Promise<string[]> {
+  const stageKeys = DEFAULT_STAGES.map((d) => d.seedKey), reasonKeys = DEFAULT_ARCHIVE_REASONS.map((d) => d.seedKey);
+  const fieldKeys = DEFAULT_OFFER_FIELDS.map((d) => d.seedKey);
+  const rows = await tx.execute<{ id: string }>(sql`
+    select c.id from unnest(${uuidArray(companyIds)}::uuid[]) as c(id)
+    where not exists (select 1 from recruitment_company_setting x where x.tenant_id = ${s.tenantId}::uuid and x.company_id = c.id)
+       or not exists (select 1 from recruitment_process x where x.tenant_id = ${s.tenantId}::uuid and x.company_id = c.id and x.seed_key = ${DEFAULT_PROCESS.seedKey})
+       or not exists (select 1 from recruitment_evaluation_form x where x.tenant_id = ${s.tenantId}::uuid and x.company_id = c.id and x.seed_key = ${DEFAULT_EVALUATION_FORM.seedKey})
+       or (select count(*) from recruitment_stage x where x.tenant_id = ${s.tenantId}::uuid and x.company_id = c.id and x.seed_key = any(${stageKeys}::text[])) < ${stageKeys.length}
+       or (select count(*) from recruitment_archive_reason x where x.tenant_id = ${s.tenantId}::uuid and x.company_id = c.id and x.seed_key = any(${reasonKeys}::text[])) < ${reasonKeys.length}
+       or (select count(*) from recruitment_offer_field x where x.tenant_id = ${s.tenantId}::uuid and x.company_id = c.id and x.seed_key = any(${fieldKeys}::text[])) < ${fieldKeys.length}
+    order by c.id`);
+  return rows.map((r) => r.id);
+}
+
+/**
+ * ensureRecruitmentDefaultsTx for many companies at once, set-based (SCALE-AND-RELEASE-RULES rule 2): about eight
+ * statements in total instead of about thirty per company. Same rows, same idempotence, same per-company seed locks
+ * (taken in one ordered statement, so it never deadlocks with the single-company writers).
+ */
+async function seedRecruitmentDefaultsSetTx(tx: Tx, s: SessionContext, companyIds: readonly string[]): Promise<void> {
+  const ids = [...new Set(companyIds)].sort();
+  if (!ids.length) return;
+  const user = actorId(s);
+  const [allowed] = await tx.execute<{ ok: boolean }>(sql`
+    select bool_and(app.can_admin_recruitment_for(c.id)) as ok from unnest(${uuidArray(ids)}::uuid[]) as c(id)`);
+  if (allowed?.ok !== true) throw new RecruitmentError('forbidden');
+  await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended('recruitment-seed:' || ${s.tenantId} || ':' || c.id::text, 0))
+    from unnest(${uuidArray(ids)}::uuid[]) as c(id) order by c.id`);
+  const base = { tenantId: s.tenantId, createdByUserId: user, updatedByUserId: user };
+  await tx.insert(recruitmentStage).values(ids.flatMap((companyId) => DEFAULT_STAGES.map((stage) => ({
+    ...base, companyId, name: stage.name, stageType: stage.type, systemKey: stage.systemKey ?? null, seedKey: stage.seedKey,
+  })))).onConflictDoNothing();
+  // A process is new only where none carried the seed key; its ordered stages are added only then (as the single path does).
+  const created = await tx.insert(recruitmentProcess).values(ids.map((companyId) => ({
+    ...base, companyId, name: DEFAULT_PROCESS.name, seedKey: DEFAULT_PROCESS.seedKey,
+  }))).onConflictDoNothing().returning({ id: recruitmentProcess.id, companyId: recruitmentProcess.companyId });
+  if (created.length) {
+    const stages = await tx.select({ id: recruitmentStage.id, companyId: recruitmentStage.companyId, seedKey: recruitmentStage.seedKey }).from(recruitmentStage)
+      .where(and(eq(recruitmentStage.tenantId, s.tenantId), sql`${recruitmentStage.companyId} = any(${uuidArray(created.map((p) => p.companyId))}::uuid[])`));
+    const bySeed = new Map(stages.map((r) => [`${r.companyId}:${r.seedKey}`, r.id]));
+    const links = created.flatMap((process) => {
+      let position = 0;
+      return DEFAULT_STAGES.flatMap((stage) => {
+        const stageId = bySeed.get(`${process.companyId}:${stage.seedKey}`);
+        if (!stageId) return [];
+        position += 1;
+        return [{ tenantId: s.tenantId, companyId: process.companyId, processId: process.id, stageId, position }];
+      });
+    });
+    if (links.length) await tx.insert(recruitmentProcessStage).values(links);
+  }
+  await tx.insert(recruitmentArchiveReason).values(ids.flatMap((companyId) => DEFAULT_ARCHIVE_REASONS.map((reason, index) => ({
+    ...base, companyId, internalReason: reason.internal, externalReason: reason.external, kind: 'default' as const,
+    position: (index + 1) * 10, seedKey: reason.seedKey,
+  })))).onConflictDoNothing();
+  await tx.insert(recruitmentCompanySetting).values(ids.map((companyId) => ({ ...base, companyId }))).onConflictDoNothing();
+  // The seeded form becomes the default only for a company that has none yet (read before the insert, as the single path does).
+  const withDefault = new Set((await tx.select({ companyId: recruitmentEvaluationForm.companyId }).from(recruitmentEvaluationForm)
+    .where(and(eq(recruitmentEvaluationForm.tenantId, s.tenantId), eq(recruitmentEvaluationForm.isDefault, true),
+      sql`${recruitmentEvaluationForm.companyId} = any(${uuidArray(ids)}::uuid[])`))).map((r) => r.companyId));
+  await tx.insert(recruitmentEvaluationForm).values(ids.map((companyId) => ({
+    ...base, companyId, name: DEFAULT_EVALUATION_FORM.name, definition: DEFAULT_EVALUATION_FORM.definition, isDefault: !withDefault.has(companyId),
+    seedKey: DEFAULT_EVALUATION_FORM.seedKey,
+  }))).onConflictDoNothing();
+  await tx.insert(recruitmentOfferField).values(ids.flatMap((companyId) => DEFAULT_OFFER_FIELDS.map((field, index) => ({
+    ...base, companyId, label: field.label, fieldType: field.type, choices: [], required: field.required,
+    needsApproval: field.needsApproval, private: field.private, position: (index + 1) * 10, seedKey: field.seedKey,
+  })))).onConflictDoNothing();
+}
+
+/**
+ * Seed every listed company the caller administers (the pages call this when Recruitment opens). A page view runs ONE
+ * read statement; only companies still missing a default are seeded, together and set-based. Never a per-company loop.
+ */
 export async function ensureRecruitmentDefaults(s: SessionContext, companyIds: readonly string[]): Promise<void> {
   if (!companyIds.length) return;
   await withRecruitmentTenant(s, async (tx) => {
-    for (const companyId of companyIds) await ensureRecruitmentDefaultsTx(tx, s, companyId);
+    const missing = await unseededCompaniesTx(tx, s, companyIds);
+    if (missing.length) await seedRecruitmentDefaultsSetTx(tx, s, missing);
   });
 }
 
