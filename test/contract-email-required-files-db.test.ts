@@ -47,8 +47,9 @@ describe('required Contract email files retain the real pending version/source',
   const asset=await upload(f);expect(await proof(f.pin)).toEqual({ready:true,assets:[asset]});
   expect((await automationEmailCaseFilePage(admin,f.caseId)).items[0].slots.find(s=>s.id===f.template.slots[0].id)?.file).toEqual(asset);
   await owner.db.execute(sql`update contract_shared_case set revision=revision+1,data=jsonb_set(jsonb_set(data,'{revision}',to_jsonb(revision+1)),'{period,sourceRevision}',to_jsonb('fictional-later-source'::text)) where tenant_id=${b.tenantId}::uuid and case_id=${f.caseId}::uuid`);
-  expect(await proof(f.pin)).toEqual({ready:true,assets:[asset]});
-  expect(await upload(f)).toEqual(asset);
+  // No native writer replaces an existing case period: such a forged projection must hold closed.
+  expect(await proof(f.pin)).toEqual({ready:false,assets:[]});
+  await expect(upload(f)).rejects.toMatchObject({code:'forbidden'});
  });
  it('rejects unknown/cross-case/version/slot/module hints, caller GUCs and unverified actors without changing stored bytes',async()=>{
   const f=await fixture(),other=await fixture();
