@@ -16,7 +16,7 @@ import { RewardPostPanel } from '../post-panel';
 import { rewardReviewHeaderTitle, rewardReviewTitle } from './unit-scope';
 import { UnitLumpSum } from './lump-sum';
 import { PayWindowTag } from './pay-window';
-import { isSeniorPlanMember, performances, talents, transition } from '@/packs/rewards/model';
+import { isSeniorPlanMember, performances, REWARD_NOTE_MAX, talents, transition } from '@/packs/rewards/model';
 import { formatMoney } from '@/lib/money';
 import { rewardDaysUntil } from '@/packs/rewards/calendar';
 import { PersonDrawer } from './desk/person-drawer';
@@ -28,9 +28,8 @@ import { FlagsDrawer } from './desk/flags-drawer';
 import { OpenDetailsOnHash } from './desk/person-note';
 import { BudgetDetails, ReferenceDetails } from './desk/review-details';
 import { deskRow, deskSummary, deskTotals, filterDeskRows, parseDeskFilters, DESK_FILTER_KEYS, type RewardView } from './desk/desk-model';
-import { flagText } from './desk/flag-text';
 import { PersonPanel } from './desk/person-panel';
-import { rewardPersonHistory } from '@/packs/rewards/person-history';
+import { rewardPersonHistory } from '@/packs/rewards/service';
 
 const rm = (cents: number) => formatMoney(cents === 0 ? 0 : cents / 100, 'MYR');
 /** Compa-ratio as worked out by the service (basis points of the midpoint), shown as a ratio. */
@@ -158,7 +157,7 @@ export default async function RewardUnitPage({ params, searchParams }: { params:
     {unit.status === 'posted' && v.roles.some(r => ['bu', 'bg', 'gr'].includes(r)) && <section id="start-offcycle" className="max-w-3xl scroll-mt-6 space-y-4"><h2 className="font-semibold">{t('startOffcycle')}</h2><form action={offcycleAction} className="space-y-4">{fields}<div className="grid gap-4 sm:grid-cols-2"><Field label={t('type')}><select name="kind" defaultValue={sp.offcycle === 'midyear' ? 'midyear' : 'adhoc'} className={inputCls}><option value="adhoc">{t('kinds.adhoc')}</option><option value="midyear">{t('kinds.midyear')}</option></select></Field><Field label={t('effectiveFrom')}><input type="date" name="effectiveFrom" required className={inputCls} /></Field></div><fieldset className="max-h-72 space-y-2 overflow-y-auto rounded-md border border-border p-3"><legend>{t('people')}</legend>{v.rows.map(e => <label key={e.id} className="flex gap-2 text-sm"><input type="checkbox" name="entryIds" value={e.id} />{e.source.employeeCode} · {e.source.name}</label>)}</fieldset><Field label={t('budgetException')}><textarea name="exceptionReason" rows={3} maxLength={4000} className={`${inputCls} h-auto py-2`} /></Field><p className="text-sm text-muted-foreground">{t('exceptionHelp')}</p><RewardSubmit type="submit">{t('startOffcycle')}</RewardSubmit></form></section>}
     <FlagsDrawer personLinks={flagPersonLinks} sectionHrefs={{ 'salary-increase': '#salary-increase', bonus: '#bonus', people: '#people' }} />
     {open && <PersonDrawer title={open.source.name} description={`${open.source.employeeCode} · ${t('grade')} ${open.source.grade} · ${t(open.plan === 'ec' ? 'ecPlan' : open.plan)}`} prevId={filtered[openIndex - 1]?.id ?? null} nextId={filtered[openIndex + 1]?.id ?? null} position={{ index: openIndex + 1, total: filtered.length }} editHref={fullView ? `/rewards/${unitId}/people/${open.id}` : undefined}>
-      <PersonPanel key={open.id} entryId={open.id} year={unit.policy.year} history={history} />
+      <PersonPanel key={open.id} entryId={open.id} year={unit.policy.year} history={history} noteMax={REWARD_NOTE_MAX} />
     </PersonDrawer>}
     {(fullView || v.uploaded) && <section className="rounded-lg border border-border p-3">
       <h2 className="text-sm font-medium">{t('sections')}</h2>
@@ -172,14 +171,6 @@ export default async function RewardUnitPage({ params, searchParams }: { params:
   </ReviewDeskProvider>;
 }
 
-const pct = (bp: number) => `${(bp / 100).toFixed(1)}%`;
-type Flag = RewardView['flags'][number];
-const chipCls: Record<Flag['severity'], string> = { block: 'bg-destructive/10 text-destructive', exception: 'bg-amber-100 text-amber-900 dark:bg-amber-500/15 dark:text-amber-200', warning: 'bg-amber-100 text-amber-900 dark:bg-amber-500/15 dark:text-amber-200', review: 'bg-muted text-muted-foreground' };
-const flagWords = (flag: Flag, t: (key: string, values?: Record<string, string>) => string) => {
-  if (flag.code === 'ARCH-01') return t('architectureMismatch');
-  const text = flagText(flag);
-  return text ? t(`flagText.${text.key}`, { plan: text.plan ? t(text.plan) : '', part: text.part ? t(`flagText.parts.${text.part}`) : '', reason: text.reason ?? '' }) : flag.message;
-};
 /** Off-cycle requests keep their existing single-page layout; only annual reviews use the simplified desk. */
 async function OffcycleReview({ v, sp, scopeIds, s }: { v: RewardView; sp: Search; scopeIds: string[]; s: Awaited<ReturnType<typeof scopedSession>>['s'] }) {
   const { unit } = v; const unitId = unit.id;

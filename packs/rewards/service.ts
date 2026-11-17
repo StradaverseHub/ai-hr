@@ -1847,7 +1847,7 @@ export type RewardBoardRow = {
  * the Executive plan consumes no pool. The full board adds detail metadata separately.
  */
 type BoardSummaryInput = Pick<ReviewProjection, 'flags' | 'budgets' | 'roles' | 'route' | 'canEdit' | 'posting' | 'uploaded' | 'capabilities'> & {
-  rows: readonly Omit<ReviewProjection['rows'][number], 'crBeforeBp' | 'crAfterBp' | 'rangeBefore' | 'rangeAfter' | 'totalIncreaseBp'>[];
+  rows: readonly Omit<ReviewProjection['rows'][number], 'crBeforeBp' | 'crAfterBp' | 'rangeBefore' | 'rangeAfter' | 'totalIncreaseBp' | 'restrictedReadOnly'>[];
   unit: Pick<ReviewProjection['unit'], 'kind' | 'status'>;
 };
 /** Shared summary arithmetic and stage authority: never a second implementation of review truth. */
@@ -2664,3 +2664,9 @@ export async function saveRewardOffcycleYear(ctx:SessionContext,raw:unknown){
   return{revision:row.revision};
  });
 }
+
+/** Public history boundary; consumers keep authorization and persistence behind the Rewards pack. */
+export { rewardPersonHistory } from './person-history';
+export type { RewardPersonHistoryRow } from './person-history';
+export { previewRewardPersonHistoryImport, importRewardPersonHistory, rewardPersonHistoryImportProgress, latestRewardPersonHistoryImport, rewardHistoryUploadCompanies, REWARD_HISTORY_IMPORT_KIND } from './person-history-upload';
+export { backfillRewardPersonHistory } from './person-history-backfill';

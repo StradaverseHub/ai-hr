@@ -8,7 +8,7 @@ import { getSession } from '@/lib/session';
 import { publicErrorMessage } from '@/lib/public-error';
 import {rewardPolicyFromForm} from './policy-input';
 import { rewardCalendarStages, rewardOffcycleSlaStages, saveRewardCalendar, RewardMaintenanceError, previewRewardAccessChange, saveRewardAccessChange, deleteRewardReview, RewardPolicyGroupError, previewRewardSeniorMembership, saveRewardSeniorMembership, importOnehrRewardResults, createOffcycleReview, createRewardUnit, decideRewardUnit, getRewardUnit, getRewardConfiguration,importRewardFacts, postRewardUnit, saveRewardEntry, saveRewardEntryCell, saveRewardPolicy, previewRewardMultiplier, saveRewardMultiplier, setRewardMember, setRewardUnitLump, previewRewardLump, setRewardPayWindowKeep, previewRewardSourceRefresh, saveRewardSourceRefresh } from '@/packs/rewards/service';
-import { emptyFacts, isSalaryReductionAttempt, performances, talents, REWARD_NOTE_MAX, type RewardRole } from '@/packs/rewards/model';
+import { emptyFacts, isSalaryReductionAttempt, performances, talents, type RewardRole } from '@/packs/rewards/model';
 import { parseRewardCellValue, RewardCellInputError, type RewardCellField } from '@/packs/rewards/review-cell';
 import { deskRow, deskSummary, deskTotals, filterDeskRows, parseDeskFilters, type DeskRow, type DeskSummary, type DeskTotals, type RewardView } from './[unitId]/desk/desk-model';
 

@@ -1,5 +1,5 @@
 import {getSession} from '@/lib/session';
-import {rewardHistoryUploadCompanies} from '@/packs/rewards/person-history-upload';
+import {rewardHistoryUploadCompanies} from '@/packs/rewards/service';
 import {rewardHistoryUploadHeaders} from '@/packs/rewards/person-history-model';
 import {toCsv} from '@/lib/csv';
 export async function GET(){
