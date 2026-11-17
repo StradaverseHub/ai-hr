@@ -29,6 +29,27 @@ it('reprices a released review, notifies its actual current approver, permits th
  const rated=await getRewardUnit(admin,unitId);expect(rated.rows).toHaveLength(1);await saveRewardEntry(admin,unitId,rated.unit.revision,rated.rows[0].id,rated.rows[0].recommendation,{...emptyFacts(),talent:'SCORE',performance:'ME',reviewed:true});await refreshRewardFixtureBudget(admin,unitId);
  const before=await getRewardUnit(admin,unitId);expect(await decideRewardUnit(actors.bu!,unitId,before.unit.revision,'submit','Fictional BU review checked and submitted')).toBe('bg');
  const oldSource=await owner.db.execute<{id:string;policy:unknown}>(sql`select v.id,v.policy from reward_policy_group_version v join reward_unit u on u.tenant_id=v.tenant_id and u.policy_group_version_id=v.id where u.id=${unitId}::uuid`);
+ // A client flag cannot confer the private transaction lease; a wrong transaction
+ // or a different company/column cannot use the owner's narrow rebind exception.
+ await expect(withTenant(admin,async tx=>{await tx.execute(sql`select set_config('app.reward_review_plan_writing','true',true)`);await tx.execute(sql`update reward_unit set policy_group_version_id=null where id=${unitId}::uuid`);})).rejects.toMatchObject({cause:{code:'23514',message:expect.stringMatching(/lineage is immutable/)}});
+ await expect(withTenant(admin,tx=>tx.execute(sql`insert into app.reward_review_plan_write_lease(tenant_id,xact_id)values(app.current_tenant_id(),txid_current())`))).rejects.toMatchObject({cause:{code:'42501'}});
+ const [foreignCompany]=await owner.db.insert(schema.company).values({tenantId:b.tenantId,legalName:'Fictional forbidden rebind employer'}).returning();
+ const [foreignBu]=await owner.db.insert(schema.businessUnit).values({tenantId:b.tenantId,companyId:b.companyId,code:'NO-REBIND',name:'Fictional forbidden rebind unit'}).returning();
+ const mutations=[
+  {wrongJob:true,query:sql`update reward_unit set policy_group_version_id=null where id=${unitId}::uuid`},
+  {wrongJob:false,query:sql`update reward_unit set policy_group_version_id=null,company_id=${foreignCompany.id}::uuid where id=${unitId}::uuid`},
+  {wrongJob:false,query:sql`update reward_unit set policy_group_version_id=null,business_unit_id=${foreignBu.id}::uuid where id=${unitId}::uuid`},
+  {wrongJob:false,query:sql`update reward_unit set policy_group_version_id=null,policy=jsonb_set(policy,'{year}',to_jsonb(${year+1}::integer)) where id=${unitId}::uuid`},
+ ];
+ for(const mutation of mutations){
+  await expect(owner.db.transaction(async tx=>{
+   await tx.execute(sql`select set_config('app.tenant_id',${b.tenantId},true),set_config('app.user_id',${admin.userId!},true)`);
+   await tx.execute(sql`insert into app.reward_review_plan_write_lease(tenant_id,xact_id)values(${b.tenantId}::uuid,txid_current()+${mutation.wrongJob?1:0})`);
+   await tx.execute(mutation.query);
+  })).rejects.toMatchObject({cause:{code:'23514',message:expect.stringMatching(/lineage is immutable/)}});
+  expect(await owner.db.execute(sql`select policy_group_version_id as id from reward_unit where id=${unitId}::uuid`)).toEqual([{id:oldSource[0].id}]);
+ }
+
  const grades=await setupGrades(admin),newBonus=await saveRewardLibrary(admin,{libraryId:null,versionId:null,expectedLock:0,name:'Explicitly selected one-month matrix',year,tags:[],groupDefault:false,previousLibraryId:null,data:{kind:'bonus',type:'standard',rows:grades.map(g=>({...g,months:[0,5000,10000,15000,20000]})),segments:[]},reason:'Approved explicit company matrix change',mode:'active'});
  const grid=await rewardReviewPlans(admin,{year}),row=grid.rows.find(r=>r.companyId===b.companyId)!;expect(row).toBeTruthy();const edit:RewardPlanGridEdit={companyId:row.companyId,expectedRevision:row.revision,planType:row.planType,reason:row.reason,salaryVersionId:row.salaryVersionId,bonusVersionId:newBonus,salaryReviewed:true,bonusReviewed:true,branchAcknowledged:false};const input={year,edits:[edit]},preview=await previewRewardPlanGrid(admin,input);expect(preview.summary.highImpact).toContain('released-library');
  const unchangedRevision=(await getRewardUnit(admin,unitId)).unit.revision;await expect(saveRewardPlanGrid(admin,input,preview.digest,'short')).rejects.toThrow(/reason/);expect((await getRewardUnit(admin,unitId)).unit.revision).toBe(unchangedRevision);
