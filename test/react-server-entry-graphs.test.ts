@@ -38,6 +38,10 @@ it('loads the payroll pack facade and the leave-type validation owner without re
   const result = loadUnderServerCondition(['./packs/payroll/service', './core/admin']);
   expect(result.error).toBeUndefined(); expect(result.stderr).toBe(''); expect(result.status).toBe(0);
 }, 120000);
+it('loads Contract and shared HR Automation owners under the worker server runtime',()=>{
+  const result=loadUnderServerCondition(['./packs/contracts/service','./packs/automation/service','./packs/document-signing/service']);
+  expect(result.error).toBeUndefined();expect(result.stderr).toBe('');expect(result.status).toBe(0);
+},120000);
 it('keeps the server allow-lists free of dependencies and equal to the rendered palette and icon registry', async () => {
   const keys = readFileSync(join(root, 'lib/leave-visual-keys.ts'), 'utf8').replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
   expect(keys).not.toMatch(/\bimport\b|\brequire\(/);

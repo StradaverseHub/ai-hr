@@ -56,6 +56,7 @@ export async function Pager({
   state,
   exportHref,
   truncatedHint,
+  maxPageSize,
   ...target
 }: PagerTarget & {
   state: PageState;
@@ -63,6 +64,8 @@ export async function Pager({
   exportHref?: string;
   /** Screen-specific guidance when this audience has no complete-set export. Already translated. */
   truncatedHint?: string;
+  /** Rich aggregate readers can cap available sizes; callers normalize URL input to the same ceiling. */
+  maxPageSize?: number;
 }) {
   if (!showPager(state)) return null;
   const t = await getTranslations('pagination');
@@ -77,14 +80,14 @@ export async function Pager({
         });
 
   const sizeOptions = [
-    ...PAGE_SIZE_OPTIONS.map((n) => ({
+    ...PAGE_SIZE_OPTIONS.filter(n=>maxPageSize===undefined||n<=maxPageSize).map((n) => ({
       value: String(n),
       label: String(n),
       // Changing the page size restarts at the first page — page 4 of 25-row pages is meaningless once
       // the page is 200 rows, and landing past the end would show an empty table.
       href: href({ size: n, page: 0 }),
     })),
-    { value: 'all', label: t('all'), href: href({ size: 'all', page: 0 }) },
+    ...(maxPageSize===undefined||maxPageSize>=ALL_ROW_CEILING?[{ value: 'all', label: t('all'), href: href({ size: 'all', page: 0 }) }]:[]),
   ];
 
   // The numbered strip (9da61c86). A window rather than the whole run — see pageNumbers.

@@ -1,0 +1,270 @@
+{
+  "version": 1,
+  "scope": "Unapplied Contract-only candidate source selection",
+  "acceptedBase": "fc092e1adbe5f8f1cbfe730a17d1317f08625a7c",
+  "acceptedPrefixEntries": 919,
+  "replacementEntries": [
+    {
+      "idx": 5390,
+      "version": "7",
+      "when": 1794841005990,
+      "tag": "5990_contract_shared_mail_native_compatibility",
+      "breakpoints": true
+    },
+    {
+      "idx": 5391,
+      "version": "7",
+      "when": 1794841005991,
+      "tag": "5991_contract_configuration_directory",
+      "breakpoints": true
+    }
+  ],
+  "replacementSqlSha256": {
+    "5990_contract_shared_mail_native_compatibility": "392408cf03500a1ad8dd2d574ce36c6e09a08996aaaabb2eb82d0f6ff1f4f1e3",
+    "5991_contract_configuration_directory": "974118bc835a2ac0508bbe4156436c1f4a462268f828a572c6a1449a7bdaf72c"
+  },
+  "permissions": "Existing Contract approver identities retained. New app execution is limited to human posting request/status ports; new recovery, history, provenance and worker helpers remain private. Review complete native and restricted-owner evidence before installation.",
+  "installationPrecondition": "Verify target ordered applied ledger and absence of excluded pending migrations before any separately approved installation. This candidate does not upgrade an installation containing those excluded migrations.",
+  "verification": "Source identities only. Restricted-owner and populated-baseline rehearsal required; not an acceptance or release receipt.",
+  "forwardSourceEntries": [
+    {
+      "idx": 5400,
+      "version": "7",
+      "when": 1794841006000,
+      "tag": "6000_contract_historical_email_recovery",
+      "breakpoints": true
+    },
+    {
+      "idx": 5401,
+      "version": "7",
+      "when": 1794841006001,
+      "tag": "6001_contract_posting_protected_job_foundation",
+      "breakpoints": true
+    },
+    {
+      "idx": 5402,
+      "version": "7",
+      "when": 1794841006002,
+      "tag": "6002_contract_posting_recorded_replay_frames",
+      "breakpoints": true
+    },
+    {
+      "idx": 5403,
+      "version": "7",
+      "when": 1794841006003,
+      "tag": "6003_contract_posting_prepared_target_source",
+      "breakpoints": true
+    },
+    {
+      "idx": 5404,
+      "version": "7",
+      "when": 1794841006004,
+      "tag": "6004_contract_posting_bound_target_completion",
+      "breakpoints": true
+    },
+    {
+      "idx": 5405,
+      "version": "7",
+      "when": 1794841006005,
+      "tag": "6005_contract_posting_finish_and_commit_guard",
+      "breakpoints": true
+    },
+    {
+      "idx": 5406,
+      "version": "7",
+      "when": 1794841006006,
+      "tag": "6006_contract_posting_first_producer_readiness",
+      "breakpoints": true
+    },
+    {
+      "idx": 5407,
+      "version": "7",
+      "when": 1794841006007,
+      "tag": "6007_contract_posting_admission_and_status_ports",
+      "breakpoints": true
+    },
+    {
+      "idx": 5408,
+      "version": "7",
+      "when": 1794841006008,
+      "tag": "6008_contract_posting_application_metadata",
+      "breakpoints": true
+    },
+    {
+      "idx": 5409,
+      "version": "7",
+      "when": 1794841006009,
+      "tag": "6009_contract_posting_reconciliation_and_authority",
+      "breakpoints": true
+    }
+  ],
+  "forwardSourceSqlSha256": {
+    "6000_contract_historical_email_recovery": "3c54ae7aa5784eebeaef4a0c2713c2ef20ab7c9d0be6d7c04f0f77cd9a281e8e",
+    "6001_contract_posting_protected_job_foundation": "11855741c65e76f5025dc6ecf5f398ec11ca32da465da8017483ad2d71e25bfd",
+    "6002_contract_posting_recorded_replay_frames": "1a8157a425f10c196032da63e1a58568d0fbf0ab73adf6b56368747451ae0ffa",
+    "6003_contract_posting_prepared_target_source": "745bff94b485f6eab07068fa37c8af84730761fe474d112a8f3e2879e9ce3e92",
+    "6004_contract_posting_bound_target_completion": "bfcc647be0dc06ac1658b52abdb26dc87a7cac5ac2bec4e8e229aee0820286fe",
+    "6005_contract_posting_finish_and_commit_guard": "e943f602dc3d151b9eec90fe2723113846e208b1d420565664dc2d5abce9bcd3",
+    "6006_contract_posting_first_producer_readiness": "d9b5e3625c2d569a099805c369eb721d0c0ef1a04a79a4aac8ef3e53055a2295",
+    "6007_contract_posting_admission_and_status_ports": "f94fd9292674b0084aa5331eeb5b5be45d6417c47ff707df520937b7c9aac57b",
+    "6008_contract_posting_application_metadata": "9477f8b0f029ba475830d8174353b77e47ced60d0b7393a8d11d8df82092f422",
+    "6009_contract_posting_reconciliation_and_authority": "d0ce6a32a101e8da9f87dc85da2a64158b720505cc36504a090cb9faf340b472"
+  },
+  "forwardSourceReview": {
+    "emailV4Source": "e73af9cec",
+    "postingFrozenSource": "53ba466ea15dd685e682901e771380a841f1cf1c",
+    "postingForwardSafeguard": "365c007cb7030766d73c063d84b89a2046e5b5af",
+    "restrictedOwnerFixture": "da1ff5cdfb7b01228fb0836cce0ff5fd7e1a1201",
+    "status": "Source registration only; no SQL executed or hosted checks run",
+    "rootWhitespaceRevisions": {
+      "6003": "One extra EOF newline removed in the new Root source copy; original frozen53ba SQL retained unchanged",
+      "6007": "One extra EOF newline removed in the new Root source copy; original frozen53ba SQL retained unchanged"
+    },
+    "historicalNativeFixtureSource": "0ed72b8aa57f823965deff5ead25a9b09adbef2e"
+  },
+  "archivedExcludedSources": [
+    {
+      "entry": {
+        "idx": 5183,
+        "version": "7",
+        "when": 1793330005483,
+        "tag": "5783_resignation_journey",
+        "breakpoints": true
+      },
+      "sourcePath": "db/migrations/5783_resignation_journey.sql",
+      "sha256": "130c0b99586bc316ac5203d27a65bfc0a565c4f608b8ab1ac336a8e8d41d1216",
+      "action": "Original literal source archived unchanged in isolated review history; omitted from selected candidate and active registration"
+    },
+    {
+      "entry": {
+        "idx": 5184,
+        "version": "7",
+        "when": 1793330005484,
+        "tag": "5784_resignation_configuration",
+        "breakpoints": true
+      },
+      "sourcePath": "db/migrations/5784_resignation_configuration.sql",
+      "sha256": "6e064c336c441fbbf01017debe9e1a748957976d3d6b2b96470747d07d7dacb5",
+      "action": "Original literal source archived unchanged in isolated review history; omitted from selected candidate and active registration"
+    },
+    {
+      "entry": {
+        "idx": 5185,
+        "version": "7",
+        "when": 1793330005485,
+        "tag": "5785_resignation_postings",
+        "breakpoints": true
+      },
+      "sourcePath": "db/migrations/5785_resignation_postings.sql",
+      "sha256": "5d26a0f446c3e72ed01861544af395690b08cdce47b9fc739f0b0d7d1b22a4f5",
+      "action": "Original literal source archived unchanged in isolated review history; omitted from selected candidate and active registration"
+    },
+    {
+      "entry": {
+        "idx": 5186,
+        "version": "7",
+        "when": 1793330005486,
+        "tag": "5786_resignation_email_delivery",
+        "breakpoints": true
+      },
+      "sourcePath": "db/migrations/5786_resignation_email_delivery.sql",
+      "sha256": "52bf3fa8f4430d37fd4dabd2164f00764e73245b38ee6520d2816dca7e03459b",
+      "action": "Original literal source archived unchanged in isolated review history; omitted from selected candidate and active registration"
+    },
+    {
+      "entry": {
+        "idx": 5234,
+        "version": "7",
+        "when": 1794841005834,
+        "tag": "5834_contract_shared_email_compatibility",
+        "breakpoints": true
+      },
+      "sourcePath": "db/migrations/5834_contract_shared_email_compatibility.sql",
+      "sha256": "73670275ddadbdfce99ec61ba758ab604afb841c3caa5650a1c8ffe95449138e",
+      "action": "Original literal source archived unchanged in isolated review history; omitted from selected candidate and active registration"
+    },
+    {
+      "entry": {
+        "idx": 5302,
+        "version": "7",
+        "when": 1794841005902,
+        "tag": "5902_shared_automation_permission_compatibility",
+        "breakpoints": true
+      },
+      "sourcePath": "db/migrations/5902_shared_automation_permission_compatibility.sql",
+      "sha256": "33a60c8951f539bf987f9ae5ecda727fbe9927083c6f35fdaf3a0025167a8ef5",
+      "action": "Original literal source archived unchanged in isolated review history; omitted from selected candidate and active registration"
+    }
+  ],
+  "originalReviewSource": "8bad6deff",
+  "selectedSourceFormattingVersions": [
+    {
+      "tag": "5815_contract_posting_movement_authority",
+      "originalReviewSha256": "1eea9a234448186bbbfc90372deb53936b2ec92f34b87d6c08cb0567b7db0924",
+      "selectedSourceSha256": "3d77156d9159d3c6a972a1bb6369daa057d72d5536f201c377a55ee1364449a8",
+      "delta": "Whitespace only in new final source copy; original frozen bytes preserved in isolated review history8bad6deff"
+    },
+    {
+      "tag": "5841_shared_email_case_file_pages",
+      "originalReviewSha256": "bc583120fb2148723ec7dcbeb43aa8e12a8491c1c2c07922b8a6f33f76c58f32",
+      "selectedSourceSha256": "374d4ac7f8b47ebbd07bbf05374ad89b72cb4eab88e122d34e6a7f6301068c3a",
+      "delta": "Whitespace only in new final source copy; original frozen bytes preserved in isolated review history8bad6deff"
+    },
+    {
+      "tag": "5917_contract_work_exact_document_join",
+      "originalReviewSha256": "9a08bdc24d937c3c019f0246717c67e5810800017967c2a5eb6104c74e32cb2c",
+      "selectedSourceSha256": "d8b115ca57db54c5c7b87ee92dae948af13b557a1e385f073d9695d0413a7855",
+      "delta": "Whitespace only in new final source copy; original frozen bytes preserved in isolated review history8bad6deff"
+    },
+    {
+      "tag": "5918_contract_tracker_scheduled_period",
+      "originalReviewSha256": "a0e74677822b8fd5c8d09e22cf0291c009cced94dbc5fa3fc446e8c44e69a898",
+      "selectedSourceSha256": "28fa547dc48d49d488328cd6fb71229ab4368596b15d5702cc5c6f221a266d46",
+      "delta": "Whitespace only in new final source copy; original frozen bytes preserved in isolated review history8bad6deff"
+    },
+    {
+      "tag": "5919_contract_work_case_source_anchor",
+      "originalReviewSha256": "1a631a17f42da80d13ca08959c4968674e7524615d99bc002f476b5095267d27",
+      "selectedSourceSha256": "14e0235cbff2a0cd6fe97acf26a47b32b46899a485efe6c7a440ef9a1df75a6b",
+      "delta": "Whitespace only in new final source copy; original frozen bytes preserved in isolated review history8bad6deff"
+    },
+    {
+      "tag": "5933_contract_system_period_events",
+      "originalReviewSha256": "81545741eed6091cecf3cbfdcfb4f051d2505f2f53a3a9c98137d33fbbcbc638",
+      "selectedSourceSha256": "df371a0e3532dc25c4f4f69b3e8f5ea96388382abfae891d73d187de550d1921",
+      "delta": "Whitespace only in new final source copy; original frozen bytes preserved in isolated review history8bad6deff"
+    },
+    {
+      "tag": "5934_contract_system_mail_digest",
+      "originalReviewSha256": "17295a8edb1f4505f40bbfe4cb1ea37a2a10829c5cea2337f8bd9d4604b414da",
+      "selectedSourceSha256": "f0352956ff1a038a3fda77ee27c596e9047af5f480815e478f0b31fff2741be8",
+      "delta": "Whitespace only in new final source copy; original frozen bytes preserved in isolated review history8bad6deff"
+    }
+  ],
+  "uninstalledSourceSyntaxRevisions": {
+    "originalFrozenSource": "6fbaab5f127da8d905c049302c4a0f932c004d68",
+    "repairSource": "ec30d8681c841fe77379fadce02bd91937b140aa",
+    "evidence": {
+      "focusedRun": "44046063843",
+      "browserRun": "44045996600"
+    },
+    "reason": "Parenthesize CASE expressions in PL/pgSQL IF predicates. No condition, role, grant or business authority changes. Original frozen bytes remain in source history; no accepted or applied SQL changed.",
+    "files": [
+      {
+        "path": "db/migrations/5922_contract_email_assigned_work.sql",
+        "oldSha256": "dc0b112db874ab700c92af3d6d388a029d3d5d377cb88141b11785e366ff4915",
+        "newSha256": "6a6ef5108fa9473f70dcb2e539447d945a1432b45d9512f705196cdc0c782d1a"
+      },
+      {
+        "path": "db/migrations/5923_contract_letter_purpose_guidance.sql",
+        "oldSha256": "0a5cbffcb21d6d2fdca7fed03f5abe1af40748f3f8376f3c53de761f2a7589c2",
+        "newSha256": "d33fdacdaec8347bbd30d9cd27cfba9b7bbb289650440815f7bf8658a3ff1595"
+      },
+      {
+        "path": "db/migrations/5972_contract_unsigned_email_form_sources.sql",
+        "oldSha256": "ecab979739e9a503fa5ddfbe5eb2b2295b6b88f28a39208bab50523f51c99fa4",
+        "newSha256": "023348f52876533cb0e773211b08e271959368d898a3b7edf572d62c8924794c"
+      }
+    ]
+  }
+}

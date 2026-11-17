@@ -1,0 +1,74 @@
+import {randomUUID} from 'node:crypto';
+import {afterAll,beforeAll,beforeEach,describe,expect,it} from 'vitest';
+import {sql} from 'drizzle-orm';
+import {withTenant,type SessionContext} from '../db/client';
+import {closeAll,migrateTestDb,resetDb,seedBase,setModule,entitledCtx,createAppUser,owner,type Base} from './harness';
+import {v9Setup} from '../packs/lifecycle/service';
+import {actAutomationDocumentTemplate,automationDocumentUsage,automationDocumentVersions,listAutomationDocumentTemplates,saveAutomationDocumentTemplate,saveAutomationWorkflow,type AutomationWorkflow} from '../packs/automation/service';
+import type {AutomationDocumentTemplate} from '../lib/automation/document-template';
+let b:Base,admin:SessionContext;
+beforeAll(migrateTestDb);afterAll(closeAll);
+beforeEach(async()=>{await resetDb();b=await seedBase();await setModule(b.tenantId,'lifecycle','active');admin=await entitledCtx(b);const[p]=await owner.db.execute<{id:string}>(sql`insert into person(tenant_id,full_name,primary_email) values(${b.tenantId}::uuid,'Fictional template author',${randomUUID()+'@template.invalid'}) returning id`);await owner.db.execute(sql`update app_user set person_id=${p.id}::uuid where id=${b.adminUserId}::uuid`);admin={...admin,personId:p.id};await v9Setup(admin);});
+const template=():AutomationDocumentTemplate=>({id:randomUUID(),module:'contract_staff',name:'Fictional renewal',description:'Review-only letter',rules:{},blocks:[{id:'intro',type:'text',text:'Dear {employee.name}',section:''}],fields:[],routing:[{id:'owner',order:1,action:'review',owner:true,who:{kind:'directSuperior'}}]});
+const save=(doc:AutomationDocumentTemplate,expectedRevision:number,publish=false,note='')=>saveAutomationDocumentTemplate(admin,{template:doc,expectedRevision,publish,retired:false,note});
+describe('Contract template native version lifecycle',()=>{
+ it('restores a retired template while keeping its published bytes and live pointer unchanged',async()=>{
+  const doc=template();await save(doc,0,true,'Original publication');
+  await saveAutomationDocumentTemplate(admin,{template:doc,expectedRevision:1,publish:false,retired:true,note:'Retired'});
+  expect((await listAutomationDocumentTemplates(admin,'contract_staff'))[0]).toMatchObject({retired:true,liveVersion:1,revision:2});
+  const before=await automationDocumentVersions(admin,doc.id);
+  await saveAutomationDocumentTemplate(admin,{template:doc,expectedRevision:2,publish:false,retired:false,note:'Restored template'});
+  expect((await listAutomationDocumentTemplates(admin,'contract_staff'))[0]).toMatchObject({retired:false,liveVersion:1,revision:3});
+  const after=await automationDocumentVersions(admin,doc.id);
+  expect(after.filter(row=>row.version<=2)).toEqual(before);expect(after[0].template).toEqual(doc);
+  await expect(saveAutomationDocumentTemplate(admin,{template:doc,expectedRevision:2,publish:false,retired:false})).rejects.toMatchObject({code:'conflict'});
+ });
+
+ it('preserves the generic version reader for existing non-Contract module definitions',async()=>{
+  for(const module of ['probation','off'] as const){
+   const doc={...template(),module};await saveAutomationDocumentTemplate(admin,{template:doc,expectedRevision:0,publish:false,retired:false});
+   expect((await listAutomationDocumentTemplates(admin,module)).map(row=>row.template.id)).toContain(doc.id);
+   expect((await automationDocumentVersions(admin,doc.id)).map(row=>({version:row.version,template:row.template}))).toEqual([{version:1,template:doc}]);
+  }
+ });
+ it('publishes an existing draft without rewriting bytes; CAS stays monotonic through metadata changes and future saves',async()=>{
+  const doc=template();await save(doc,0,true,'Original published wording');await save({...doc,name:'Reviewed wording'},1,false,'People Ops revision');
+  expect(await automationDocumentUsage(admin,doc.id)).toMatchObject({documents:0,deleteReason:null,versions:[{version:2,state:'draft',note:'People Ops revision',canDelete:true},{version:1,state:'inUse',canDelete:false}]});
+  expect(await actAutomationDocumentTemplate(admin,{id:doc.id,expectedRevision:2,action:'publishVersion',version:2})).toEqual({revision:3});
+  expect((await listAutomationDocumentTemplates(admin,'contract_staff'))[0]).toMatchObject({revision:3,currentVersion:2,liveVersion:2});
+  expect((await automationDocumentUsage(admin,doc.id)).versions).toMatchObject([{version:2,state:'inUse'},{version:1,state:'published'}]);
+  await expect(actAutomationDocumentTemplate(admin,{id:doc.id,expectedRevision:3,action:'publishVersion',version:1})).rejects.toMatchObject({code:'invalid'});
+  await expect(withTenant(admin,tx=>tx.execute(sql`select app.automation_document_template_action(${doc.id}::uuid,3,'publishVersion',1)`))).rejects.toThrow();
+  await expect(actAutomationDocumentTemplate(admin,{id:doc.id,expectedRevision:2,action:'deleteVersion',version:1})).rejects.toMatchObject({code:'conflict'});
+  expect(await actAutomationDocumentTemplate(admin,{id:doc.id,expectedRevision:3,action:'deleteVersion',version:1})).toEqual({revision:4});
+  expect((await automationDocumentUsage(admin,doc.id)).versions.map(v=>v.version)).toEqual([2]);
+  await save({...doc,name:'Next revision'},4,false,'New draft after deletion');
+  expect((await listAutomationDocumentTemplates(admin,'contract_staff'))[0]).toMatchObject({revision:5,currentVersion:5,liveVersion:2});
+  const rows=await owner.db.execute<{version:number;name:string}>(sql`select version,definition->>'name' as name from automation_document_template_version where tenant_id=${b.tenantId}::uuid and template_id=${doc.id}::uuid order by version`);
+  expect(rows).toEqual([{version:1,name:'Fictional renewal'},{version:2,name:'Reviewed wording'},{version:5,name:'Next revision'}]);
+ });
+ it('refuses deleting the live or last version, and keeps template deletion guarded by actual workflow references',async()=>{
+  const doc=template();await save(doc,0,true);
+  await expect(actAutomationDocumentTemplate(admin,{id:doc.id,expectedRevision:1,action:'deleteVersion',version:1})).rejects.toMatchObject({code:'invalid'});
+  const workflow:AutomationWorkflow={id:randomUUID(),module:'contract_staff',name:'Fictional renewal flow',description:'',status:'paused',required:false,trigger:{event:'decisionSubmitted',days:0,workdays:false,repeat:false},skipWhen:'never',conditions:[],steps:[{id:'letter',type:'generateDocument',conditions:[],to:[],cc:[],params:{letterTemplateId:doc.id}}]};
+  await saveAutomationWorkflow(admin,{workflow,expectedRevision:0,reason:'Reference the saved template'});
+  expect(await automationDocumentUsage(admin,doc.id)).toMatchObject({usedByWorkflow:true,deleteReason:expect.stringContaining('workflow')});
+  await expect(actAutomationDocumentTemplate(admin,{id:doc.id,expectedRevision:1,action:'deleteTemplate'})).rejects.toMatchObject({code:'invalid'});
+  await saveAutomationWorkflow(admin,{workflow:{...workflow,status:'retired'},expectedRevision:1,reason:'Delete unused workflow'});
+  await actAutomationDocumentTemplate(admin,{id:doc.id,expectedRevision:1,action:'deleteTemplate'});
+  expect(await listAutomationDocumentTemplates(admin,'contract_staff')).toEqual([]);
+  await expect(save(doc,2,true)).rejects.toMatchObject({code:'conflict'});
+  await expect(withTenant(admin,tx=>tx.execute(sql`select app.automation_document_template_save(${doc.id}::uuid,'contract_staff',${JSON.stringify(doc)}::jsonb,2,true,false)`))).rejects.toThrow();
+ });
+ it('denies ordinary and foreign-tenant users and rechecks withdrawn routing references before publishing',async()=>{
+  const doc=template();await save(doc,0);
+  const[p]=await owner.db.execute<{id:string}>(sql`insert into person(tenant_id,full_name,primary_email) values(${b.tenantId}::uuid,'Fictional ordinary employee',${randomUUID()+'@template.invalid'}) returning id`),userId=await createAppUser(b.tenantId,p.id,'employee');
+  const plain={...admin,userId,personId:p.id,roles:['employee'],grants:undefined};
+  await expect(automationDocumentUsage(plain,doc.id)).rejects.toThrow();await expect(actAutomationDocumentTemplate(plain,{id:doc.id,expectedRevision:1,action:'deleteTemplate'})).rejects.toMatchObject({code:'forbidden'});
+  const foreign=await seedBase();await setModule(foreign.tenantId,'lifecycle','active');await expect(automationDocumentUsage(await entitledCtx(foreign),doc.id)).rejects.toThrow();
+  const invalid={...doc,routing:[{...doc.routing[0],who:{kind:'group' as const,groupId:'withdrawn-group'}}]};await save(invalid,1);
+  await expect(actAutomationDocumentTemplate(admin,{id:doc.id,expectedRevision:2,action:'publishVersion',version:2})).rejects.toMatchObject({code:'invalid'});
+  await expect(withTenant(admin,tx=>tx.execute(sql`select app.automation_document_template_action(${doc.id}::uuid,2,'publishVersion',2)`))).rejects.toThrow();
+  expect((await listAutomationDocumentTemplates(admin,'contract_staff'))[0]).toMatchObject({revision:2,liveVersion:null});
+ });
+});

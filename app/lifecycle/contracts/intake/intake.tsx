@@ -2,21 +2,23 @@
 import {useRef,useState,useTransition} from 'react';
 import {useRouter} from 'next/navigation';
 import {useTranslations} from 'next-intl';
-import type {contractAdmissionChoices,contractCompanies,ContractSource} from '@/packs/contracts/service';
+import type {ContractAdmissionPage,ContractSource} from '@/packs/contracts/service';
 import {WorkflowField,WorkflowButton} from '../../workflow-editor-shell';
 import {ContractNavigation,contractDay,contractMoney,useContractCommand} from '../shared';
 import {readContractRetirementContext} from '../actions';
 import {PendingRetirementEvidence} from './health-evidence';
 
-type Props={companies:Awaited<ReturnType<typeof contractCompanies>>[number][];employees:{companyId:string;rows:Awaited<ReturnType<typeof contractAdmissionChoices>>[number][]}[]};
+type Props={page:ContractAdmissionPage;search:string;companyId:string|null};
 type Retirement=Extract<Awaited<ReturnType<typeof readContractRetirementContext>>,{ok:true}>;
-export function ContractIntake({companies,employees}:Props){
+export function ContractIntake({page,search,companyId}:Props){
+ const companies=page.companies,employees=page.rows,shared=useTranslations('contractShared');
+ const pageHref=(offset:number)=>{const q=new URLSearchParams({search,offset:String(offset)});if(companyId)q.set('companyId',companyId);return '/lifecycle/contracts/intake?'+q;};
  const t=useTranslations('contractManagement'),router=useRouter(),ui=useContractCommand();
- const [companyId,setCompany]=useState(companies[0]?.id??''),[employmentId,setEmployee]=useState(''),[kind,setKind]=useState<'maternity_cover'|'project'|'post_retirement'>('project');
+ const [employmentId,setEmployee]=useState(''),[kind,setKind]=useState<'maternity_cover'|'project'|'post_retirement'>('project');
  const [source,setSource]=useState<ContractSource|null>(null),[retirement,setRetirement]=useState<Retirement|null>(null),[custody,setCustody]=useState('');
  const [retirementId,setRetirementId]=useState(''),[approval,setApproval]=useState(''),[health,setHealth]=useState(''),[reason,setReason]=useState('');
  const [pending,start]=useTransition(),[error,setError]=useState(''),selection=useRef('');
- const company=companies.find(c=>c.id===companyId),busy=ui.pending||pending;
+ const company=companies.find(c=>c.id===(employees.find(e=>e.id===employmentId)?.companyId??companyId)),busy=ui.pending||pending;
  const sourceIssueKey=source?.sourceIssue==='unsupported_pay_basis'?'sourcePayBasisUnsupported':source?.sourceIssue==='unsupported_currency'?'sourceCurrencyUnsupported':null;
  const sourceComplete=source!==null&&!source.sourceIssue&&!!source.startOn&&!!source.endOn&&source.salaryCents!=null&&source.allowanceCents!=null;
  const proofRequired=source?.retirementProofRequired===true,healthPending=source?.retirementHealthPending===true,lockedKind=proofRequired||healthPending;
@@ -41,10 +43,17 @@ export function ContractIntake({companies,employees}:Props){
  return <div className="v9-stack">
   <header className="v9-heading"><div><h1>{t('intakeTitle')}</h1><p className="v9-muted">{t('intakeIntro')}</p></div></header>
   <ContractNavigation intake configure={!!company?.configure} templates={!!company?.gbs}/>
+  <form action="/lifecycle/contracts/intake" method="get" className="v9-panel v9-stack">
+   <div className="grid gap-4 sm:grid-cols-2">
+    <WorkflowField label={t('company')}><select className="v9-input" name="companyId" defaultValue={companyId??''} disabled={busy}><option value="">{shared('c39b460136cb9')}</option>{companies.map(c=><option value={c.id} key={c.id}>{c.name}</option>)}</select></WorkflowField>
+    <WorkflowField label={shared('c49c266baaaa7')}><input className="v9-input" name="search" defaultValue={search} maxLength={100} disabled={busy}/></WorkflowField>
+   </div>
+   <button type="submit" className="v9-btn" disabled={busy}>{shared('c49c266baaaa7')}</button>
+  </form>
+  <div className="flex items-center gap-3"><span>{page.total} {shared('ce0705e68b046')}</span>{page.offset>0&&<a className="v9-btn" href={pageHref(Math.max(0,page.offset-page.limit))}>{shared('ca57b08a480b8')}</a>}{page.offset+page.limit<page.total&&<a className="v9-btn" href={pageHref(page.offset+page.limit)}>{shared('c1ff57a29d7c9')}</a>}</div>
   <section className="v9-panel v9-stack">
-   <div className="grid gap-4 sm:grid-cols-3">
-    <WorkflowField label={t('company')}><select className="v9-input" value={companyId} disabled={busy} onChange={e=>{setCompany(e.target.value);selectEmployee('');}}>{companies.map(c=><option value={c.id} key={c.id}>{c.name}</option>)}</select></WorkflowField>
-    <WorkflowField label={t('employee')}><select className="v9-input" value={employmentId} disabled={busy} onChange={e=>selectEmployee(e.target.value)}><option value="">{t('choose')}</option>{employees.find(c=>c.companyId===companyId)?.rows.map(e=><option value={e.id} key={e.id}>{e.name} · {e.employeeId} · {contractDay(e.endOn)}</option>)}</select></WorkflowField>
+   <div className="grid gap-4 sm:grid-cols-2">
+    <WorkflowField label={t('employee')}><select className="v9-input" value={employmentId} disabled={busy} onChange={e=>selectEmployee(e.target.value)}><option value="">{t('choose')}</option>{employees.map(e=><option value={e.id} key={e.id}>{e.name} · {e.employeeId} · {contractDay(e.endOn)} · {companies.find(c=>c.id===e.companyId)?.name}</option>)}</select></WorkflowField>
     <WorkflowField label={t('contractType')}><select className="v9-input" value={kind} disabled={busy||lockedKind} onChange={e=>{setKind(e.target.value as typeof kind);setRetirement(null);setCustody('');}}>{['maternity_cover','project','post_retirement'].map(k=><option key={k} value={k}>{t('kind.'+k)}</option>)}</select></WorkflowField>
    </div>
    <WorkflowButton disabled={busy||!employmentId} onClick={preview}>{t('previewSource')}</WorkflowButton>

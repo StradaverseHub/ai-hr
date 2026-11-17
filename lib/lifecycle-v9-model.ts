@@ -1,3 +1,4 @@
+import type {DocumentRouting} from './document-signing-routing';
 import { bulkAssignmentProblem, RETURN_BULK_LABELS } from './lifecycle-bulk-assignment';
 import { personnelMergeLabels } from '@/lib/lifecycle-v9-personnel-merge-fields';
 import type { Note as LifecycleNote } from './onboarding-model';
@@ -68,7 +69,7 @@ export type Field = {
   when: { field: string; value: string } | null;
 };
 export type Block = { id: string; type: 'letterhead' | 'heading' | 'subheading' | 'text' | 'fields' | 'field' | 'table' | 'signature'; text: string; section: string; fieldId?: string; columns?: string; rows?: string; role?: string; label?: string };
-export type TemplateVersion = { version: number; state: 'draft' | 'published'; at: string; by: string; blocks: Block[]; fields: Field[] };
+export type TemplateVersion = { version: number; state: 'draft' | 'published'; at: string; by: string; blocks: Block[]; fields: Field[]; routing?: DocumentRouting };
 export type Template = {
   id: string; name: string; module: Module; type: 'Form' | 'Letter' | 'Acknowledgement' | 'Attachment';
   rules: Rules; hrStep: 'none' | 'before' | 'after'; employeeAck: boolean; retired: boolean;
@@ -175,6 +176,12 @@ export type Mail = {
 export type PMChange = { id: string; documentId: string; field: string; before: string; after: string; status: 'proposed' | 'pushed' | 'conflict' | 'rejected'; sourceRevision: string };
 export type FinalFigures = { sourceRevision: string; lastDay: string; leaveDays: string; amount: string; currency: string; payDate: string; lockedAt: string; payrollReference: string };
 export type Case = {
+  /** Native Contract handoff receipt. Absence preserves earlier On/Off Boarding case behaviour. */
+  contractSharedSourceCaseId?:string;
+  contractSharedSourceLetter?:{letterId:string;signingDocumentId:string;hash:string};
+  contractSharedTerminationReason?:string;
+  contractSharedClearance?:'pending-manual-personnel';
+  contractSharedNoticeReviewRequired?:boolean;
   version: 9; id: string; number: string; module: Module; revision: number; state: CaseState;
   facts: Facts; checklistId: string | null; checklistName: string; override: 'automatic' | 'none' | string;
   tasks: Task[]; items: Item[]; documents: Document[]; runs: Run[]; mails: Mail[];

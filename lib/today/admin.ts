@@ -33,7 +33,7 @@ export function todayLayoutFor(roles:readonly string[]|null|undefined,admin:bool
 /** Decisions whose outcome reaches the next payroll: they are due by its cut-off. */
 export const PAY_AFFECTING_TASKS:ReadonlySet<string>=new Set(['claim','attendance','replacementLeave']);
 /** Decisions about a person's employment, leave or record. */
-const PEOPLE_TASKS:ReadonlySet<string>=new Set(['leave','leaveCancellation','resignation','hrReview','managerReview','profile','probationApproval','probationTask']);
+const PEOPLE_TASKS:ReadonlySet<string>=new Set(['leave','leaveCancellation','resignation','hrReview','managerReview','profile','probationApproval','probationTask','contractApproval','contractLetter','contractPosting','contractPay']);
 
 /** What leaving an entry undone costs, most serious first: a statutory filing or a payroll that cannot run; then pay that
  * comes out wrong; then a decision about a person; then records and set-up; then everything else. */

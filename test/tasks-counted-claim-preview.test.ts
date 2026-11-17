@@ -7,9 +7,10 @@ vi.mock('@/core/entitlements',()=>({isModuleEnabledOrFalse:(_ctx:unknown,module:
 // Recruitment slice 9: the page reads myTaskSummary, which is pendingTaskSummary for every company (undefined scope) plus the
 // recruitment to-dos for the switcher's selection; its own scope behaviour is proved in test/recruitment-tasks.test.ts.
 vi.mock('@/core/approvals-inbox',()=>({myTaskSummary:state.preview,pendingTaskSummary:state.full,listPendingTasks:state.full}));
+vi.mock('@/packs/contracts/service',()=>({contractSharedWorkPage:async()=>({items:[],total:0,countsByKind:{},approvalTotal:0,taskTotal:0,limit:25,offset:0,hasMore:false})}));
 vi.mock('@/packs/lifecycle/service',()=>({onboardingTasks:state.onboarding}));
 vi.mock('../app/lifecycle/workflow-availability',()=>({lifecycleModuleNavigation:async()=>({})}));
-vi.mock('../app/lifecycle/module-inbox',()=>({lifecycleModuleInbox:async()=>({items:[],count:0})}));
+vi.mock('../app/lifecycle/module-inbox',()=>({lifecycleModuleInbox:async()=>({items:[],count:0,myTasksCount:0,queueLinks:[],approvalCount:0})}));
 vi.mock('../app/tasks/tasks-view',()=>({TasksView:(props:{existing:unknown[];existingTotal:number;claimTotal:number})=>{
  state.view(props);return React.createElement('div',{'data-preview-rows':props.existing.length,'data-task-total':props.existingTotal,'data-claim-total':props.claimTotal});
 }}));

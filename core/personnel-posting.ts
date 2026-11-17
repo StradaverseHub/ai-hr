@@ -20,6 +20,7 @@ import {withTenant,type SessionContext,type Tx} from '../db/client';
 import {pgSqlState} from '../lib/db-error';
 import {withScopedLifecycleTenant} from './module-gate';
 import {createMovementEventTx,movementLedgerMarkerTx,movementRowsAfterSequenceTx} from './movement';
+import {readContractSharedPostingTx,requestContractSharedPostingApprovalTx,type ContractPostingApprovalOutcome} from './contract-shared-postings';
 import {movementNeedsEntitlementReprojection} from './movement-kinds';
 import {
   isPersonnelPostingEvent,normalisePostingValues,postingCurrentValues,postingDisplayStatus,postingLabel,
@@ -110,7 +111,7 @@ async function present(tx: Tx, rows: Row[]): Promise<PersonnelPosting[]> {
   }));
 }
 
-export type PersonnelPostingFilters = { status?: 'pending' | 'approved' | 'all'; employmentId?: string; limit?: number; offset?: number };
+export type PersonnelPostingFilters = { source?:PersonnelPostingSource; status?: 'pending' | 'approved' | 'all'; employmentId?: string; limit?: number; offset?: number };
 export type PersonnelPostingPage = { rows: PersonnelPosting[]; offset: number; limit: number; hasMore: boolean };
 
 /** The queue: postings the user may read (row security), newest first, one bounded page. */
@@ -121,7 +122,9 @@ export async function listPersonnelPostings(ctx: SessionContext, filters: Person
   if (!['pending', 'approved', 'all'].includes(status)) throw new PersonnelPostingError('invalid', 'Unknown posting status.');
   if (filters.employmentId !== undefined && !UUID.test(filters.employmentId)) throw new PersonnelPostingError('invalid', 'Unknown employee.');
   return withScopedLifecycleTenant(ctx, async (tx) => {
-    const where = sql`(${status}::text = 'all' or p.status = ${status}::text) and (${filters.employmentId ?? null}::uuid is null or p.employment_id = ${filters.employmentId ?? null}::uuid)`;
+    const source=filters.source??'probation';
+    if(!['probation','contract_staff'].includes(source))throw new PersonnelPostingError('invalid','Unknown posting source.');
+    const where = sql`p.source=${source} and (${status}::text = 'all' or p.status = ${status}::text) and (${filters.employmentId ?? null}::uuid is null or p.employment_id = ${filters.employmentId ?? null}::uuid)`;
     const rows = await tx.execute<Row>(selectRows(where, limit + 1, offset));
     return { rows: await present(tx, [...rows].slice(0, limit)), offset, limit, hasMore: rows.length > limit };
   });
@@ -148,8 +151,8 @@ export async function personnelPostingsForSourceTx(tx: Tx, source: PersonnelPost
   return rows.map((r) => ({ id: r.id, number: r.number, eventType: r.eventType, status: r.status, current: postingCurrentValues(r), movementId: r.movementId }));
 }
 
-function values(event: PersonnelPostingEvent, raw: Record<string, unknown>): PersonnelPostingValues {
-  const checked = normalisePostingValues(event, raw);
+function values(event: PersonnelPostingEvent, raw: Record<string, unknown>,source:PersonnelPostingSource='probation'): PersonnelPostingValues {
+  const checked = normalisePostingValues(event, raw,source);
   if (!checked.ok) {
     throw new PersonnelPostingError('invalid', checked.problem === 'effectiveDate' ? 'Enter a valid effective date.'
       : checked.problem === 'endDate' ? (event === 'probationExtension' ? 'Enter the new probation end date.' : 'A Confirmation has no end date.')
@@ -193,13 +196,13 @@ export function editPersonnelPosting(ctx: SessionContext, input: { id: string; r
   return withTenant(ctx, (tx) => guarded(async () => {
     const posting = await personnelPostingTx(tx, input.id);
     if (!posting) throw new PersonnelPostingError('not_found', 'Posting not found.');
-    const next = values(posting.eventType, input.values);
+    const next = values(posting.eventType, input.values,posting.source);
     const [row] = await tx.execute<{ revision: number }>(sql`select app.personnel_posting_edit(${input.id}::uuid, ${input.revision}, ${JSON.stringify(next)}::jsonb) as revision`);
     return { revision: row.revision };
   }));
 }
 
-export type ApprovedPersonnelPosting = { id: string; movementId: string; employmentId: string; eventType: PersonnelPostingEvent; values: PersonnelPostingValues; behaviourKind: string; gradeBefore?: { gradeId: string | null } };
+export type ApprovedPersonnelPosting = { id: string; movementId: string; employmentId: string; eventType: PersonnelPostingEvent; values: PersonnelPostingValues; behaviourKind: string; alreadyApproved?:boolean; gradeBefore?: { gradeId: string | null } };
 
 /**
  * Approve in the caller's transaction: authorise and mark approved (database), apply the change through the movement
@@ -207,8 +210,13 @@ export type ApprovedPersonnelPosting = { id: string; movementId: string; employm
  * `values` are the approver's own corrections from the movement page ("Save event and approve"); absent means the
  * posting's current values.
  */
-export async function approvePersonnelPostingTx(tx: Tx, ctx: SessionContext, input: { id: string; revision: number; values?: Record<string, unknown> }): Promise<ApprovedPersonnelPosting> {
+export async function approvePersonnelPostingTx(tx: Tx, ctx: SessionContext, input: { id: string; revision: number; values?: Record<string, unknown>;eventType?:PersonnelPostingEvent }): Promise<ApprovedPersonnelPosting|ContractPostingApprovalOutcome> {
   if (!UUID.test(input.id) || !Number.isInteger(input.revision)) throw new PersonnelPostingError('not_found', 'Posting not found.');
+  const contract=await readContractSharedPostingTx(tx,input.id);
+  if(contract){
+    if(input.eventType&&input.eventType!==contract.eventType)throw new PersonnelPostingError('invalid','The Contract posting event type is fixed.');
+    return requestContractSharedPostingApprovalTx(tx,input);
+  }
   let corrected: PersonnelPostingValues | null = null;
   if (input.values) {
     const posting = await personnelPostingTx(tx, input.id);
@@ -218,6 +226,7 @@ export async function approvePersonnelPostingTx(tx: Tx, ctx: SessionContext, inp
   const [approved] = await guarded(() => tx.execute<{ data: { id: string; number: number; employmentId: string; eventType: PersonnelPostingEvent; values: PersonnelPostingValues } }>(
     sql`select app.personnel_posting_approve(${input.id}::uuid, ${input.revision}, ${corrected ? JSON.stringify(corrected) : null}::jsonb) as data`));
   const {employmentId, eventType, values: applied, number} = approved.data;
+  if(eventType==='contractRenewal'||eventType==='contractConversion')throw new PersonnelPostingError('invalid','The source-bound Contract posting is unavailable.');
   const marker = await movementLedgerMarkerTx(tx, ctx, employmentId);
   const result = await createMovementEventTx(tx, ctx, {
     employmentId, kind: eventType, effectiveDate: applied.effectiveDate,
@@ -233,8 +242,9 @@ export async function approvePersonnelPostingTx(tx: Tx, ctx: SessionContext, inp
 }
 
 /** Approve (Approve on the queue, or "Save event and approve" on the movement page), then refresh leave entitlement. */
-export async function approvePersonnelPosting(ctx: SessionContext, input: { id: string; revision: number; values?: Record<string, unknown> }): Promise<ApprovedPersonnelPosting> {
+export async function approvePersonnelPosting(ctx: SessionContext, input: { id: string; revision: number; values?: Record<string, unknown>;eventType?:PersonnelPostingEvent }): Promise<ApprovedPersonnelPosting|ContractPostingApprovalOutcome> {
   const approved = await withTenant(ctx, (tx) => approvePersonnelPostingTx(tx, ctx, input));
+  if('applicationState' in approved)return approved;
   // Same follow-up as the New Event form: best-effort and idempotent, never fails the approval that committed.
   if (movementNeedsEntitlementReprojection(approved.behaviourKind)) {
     try {

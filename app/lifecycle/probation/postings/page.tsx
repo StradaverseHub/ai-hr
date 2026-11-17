@@ -17,7 +17,7 @@ export default async function Page({searchParams}:{searchParams:Promise<Record<s
  const session=await requireScopedLifecycleModule(),query=await searchParams,t=await getTranslations('personnelPostings');
  const status:Status=(STATUSES as readonly string[]).includes(one(query.status)??'')?one(query.status) as Status:'pending';
  const offset=Math.max(0,Math.trunc(Number(one(query.offset)??0))||0);
- const page=await listPersonnelPostings(session,{status,offset,limit:50});
+ const page=await listPersonnelPostings(session,{source:'probation',status,offset,limit:50});
  const href=(next:{status?:Status;offset?:number})=>{const q=new URLSearchParams({status:next.status??status});if(next.offset)q.set('offset',String(next.offset));return '/lifecycle/probation/postings?'+q;};
  // The intro names the approver group when every listed posting has the same one (one company setting); otherwise it
  // says "the posting approver group", as each row's own "Only … can approve" line names its group.

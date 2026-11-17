@@ -31,6 +31,24 @@ const options=(select:HTMLElement)=>within(select).getAllByRole('option').map(op
 beforeEach(()=>{vi.clearAllMocks();m.save.mockResolvedValue({ok:true,result:{revision:2,problems:[],warnings:[]}});});
 
 describe('shared workflow editor',()=>{
+ it('serializes autosave and retains a later edit made while the first request is in flight',async()=>{
+  let resolve!:(value:unknown)=>void;m.save.mockImplementationOnce(()=>new Promise(done=>{resolve=done;})).mockResolvedValue({ok:true,result:{revision:3,problems:[],warnings:[]}});
+  show(workflow());const input=screen.getByRole('textbox',{name:'Workflow name'});
+  fireEvent.change(input,{target:{value:'First edit'}});await waitFor(()=>expect(m.save).toHaveBeenCalledTimes(1),{timeout:2000});
+  fireEvent.change(input,{target:{value:'Later edit'}});expect(input).toHaveValue('Later edit');expect(m.save).toHaveBeenCalledTimes(1);
+  resolve({ok:true,result:{revision:2,problems:[],warnings:[]}});
+  await waitFor(()=>expect(m.save).toHaveBeenCalledTimes(2),{timeout:2500});expect(m.save.mock.calls[1][0]).toMatchObject({expectedRevision:2,workflow:{name:'Later edit'}});
+ });
+ it('retains unsaved entries after a refused autosave and offers explicit retry without repeated requests',async()=>{
+  m.save.mockResolvedValueOnce({ok:false,code:'conflict',detail:'Reload before saving.'});show(workflow());
+  fireEvent.change(screen.getByRole('textbox',{name:'Workflow name'}),{target:{value:'Retained edit'}});
+  expect(await screen.findByRole('alert',{}, {timeout:2000})).toHaveTextContent('Reload before saving.');expect(screen.getByRole('textbox',{name:'Workflow name'})).toHaveValue('Retained edit');
+  expect(m.save).toHaveBeenCalledTimes(1);fireEvent.click(screen.getByRole('button',{name:'Retry saving'}));await waitFor(()=>expect(m.save).toHaveBeenCalledTimes(2));
+ });
+ it('deletes immediately through the retained-version owner without asking for a replacement',async()=>{
+  const confirm=vi.spyOn(window,'confirm');show(workflow());fireEvent.click(screen.getByRole('button',{name:'Delete workflow'}));await waitFor(()=>expect(m.save).toHaveBeenCalledTimes(1));expect(m.save.mock.calls[0][0]).toMatchObject({expectedRevision:1,workflow:{status:'retired'}});expect(confirm).not.toHaveBeenCalled();confirm.mockRestore();
+ });
+
  it('offers only the condition fields the chosen trigger can supply',()=>{
   show(workflow({trigger:{event:'caseOpened',days:0,workdays:false,repeat:false},conditions:[]}));
   fireEvent.click(screen.getByRole('button',{name:'Add condition'}));
@@ -64,9 +82,8 @@ describe('shared workflow editor',()=>{
   fireEvent.click(screen.getByRole('checkbox',{name:'Extend'}));
   fireEvent.click(screen.getByRole('button',{name:'Done'}));
   expect(screen.getByRole('button',{name:'Condition value for Outcome'})).toHaveTextContent('Confirm, Extend, Non-confirmation');
-  fireEvent.click(screen.getByRole('button',{name:'Save changes'}));
   await waitFor(()=>expect(m.save).toHaveBeenCalledTimes(1));
-  expect(m.save.mock.calls[0][0]).toMatchObject({expectedRevision:1,reason:'Edited in the workflow builder',workflow:{status:'paused',conditions:[{field:'outcome',op:'is',values:['Confirm','Extend','Non-confirmation']}]}});
+  expect(m.save.mock.calls[0][0]).toMatchObject({expectedRevision:1,reason:'Automatically saved workflow changes',workflow:{status:'paused',conditions:[{field:'outcome',op:'is',values:['Confirm','Extend','Non-confirmation']}]}});
  });
 
  it('stores business group, company and department conditions as ids and shows their names; a value saved as a name becomes its id',async()=>{
@@ -76,7 +93,6 @@ describe('shared workflow editor',()=>{
   const fields=screen.getAllByRole('combobox',{name:'Condition field'});
   fireEvent.change(fields[fields.length-1],{target:{value:'department'}});
   expect(screen.getByRole('button',{name:'Condition value for Department'})).toHaveTextContent('Finance');
-  fireEvent.click(screen.getByRole('button',{name:'Save changes'}));
   await waitFor(()=>expect(m.save).toHaveBeenCalledTimes(1));
   expect(m.save.mock.calls[0][0].workflow.conditions).toEqual([
    {field:'outcome',op:'is',values:['Confirm']},

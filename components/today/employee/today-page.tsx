@@ -14,6 +14,7 @@ import {LINK,PanelNote,PanelSkeleton} from './panel';
 import {PanelBoundary} from './panel-boundary';
 import {CalendarPanel,ComingUpPanel,HoursPanel,LeavePanel,NextStepPanel,NoticesPanel,PaydayPanel,RequestsPanel,WaitingPanel,type PanelContext} from './panels';
 import {TodayPerformance} from '../performance-slot';
+import {TodayContracts} from '../contract-slot';
 import {WorkspaceLinks} from '../workspace-links';
 import {moduleState,readAskAllowed,readOwnContext,readOwnPassportCards,readOwnReadiness} from './reads';
 
@@ -52,14 +53,14 @@ export async function EmployeeTodayPage({session,scopeIds,employmentId,notice,no
  </header>;
  const [te,tNotices]=await Promise.all([getTranslations('today.employee'),getTranslations('notices')]);
  const pageUnavailable=(key:string)=><div data-today="employee" data-today-page-unavailable={key} className="mx-auto w-full max-w-[72rem] min-w-0 space-y-6">
-  {notice}{header}<PanelNote>{te('pageUnavailable')}</PanelNote>
+  {notice}{header}<TodayContracts session={session}/><PanelNote>{te('pageUnavailable')}</PanelNote>
  </div>;
  if(!own)return pageUnavailable('context');
  // Your workspace: team pages for someone whose own employment manages people, and a partner's own payroll or
  // performance pages (the old team workbench and the old personal Home under a partner's Today are retired).
  const options=<Suspense fallback={null}><WorkspaceLinks session={session} team={own.identity.role==='manager'}/></Suspense>;
  if(!selected)return <div data-today="employee" className="mx-auto w-full max-w-[72rem] min-w-0 space-y-6">
-  {notice}{header}{options}
+  {notice}{header}{options}<TodayContracts session={session}/>
   {own.identity.employmentState==='choose'?<section aria-labelledby="today-choose" className="space-y-3 rounded-2xl border border-border bg-card p-5">
    <h2 id="today-choose" className="m-0 text-base font-semibold">{tHome('chooseEmployment')}</h2>
    <p className="m-0 text-sm text-muted-foreground">{tHome('chooseHelp')}</p>
@@ -86,6 +87,7 @@ export async function EmployeeTodayPage({session,scopeIds,employmentId,notice,no
  return <div data-today="employee" className="mx-auto w-full max-w-[80rem] min-w-0 space-y-4">
   {notice}{header}{options}
   <TodayPerformance session={session} scopeIds={scopeIds}/>
+  <TodayContracts session={session}/>
   <PanelBoundary fallback={failed}><Suspense fallback={null}><WaitingPanel session={session} locale={locale}/></Suspense></PanelBoundary>
   <div className="grid grid-cols-1 gap-4 lg:grid-cols-12">
    {slot('next',te('nextStep'),'lg:col-span-5 lg:row-span-2',<NextStepPanel {...p}/>)}

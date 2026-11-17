@@ -14,7 +14,7 @@ import {taskGroupHref} from '../lib/today/admin';
 import {PACK_TASK_KINDS} from '../lib/assigned-work';
 import {HOME_TASK_KINDS} from '../lib/employee-home';
 afterEach(cleanup);
-const counts={leave:0,leaveCancellation:0,replacementLeave:0,attendance:0,overtime:0,claim:0,resignations:0,managerReviews:0,hrReviews:0,rewards:0,probation:3};
+const counts={leave:0,leaveCancellation:0,replacementLeave:0,attendance:0,overtime:0,claim:0,resignations:0,managerReviews:0,hrReviews:0,rewards:0,probation:3,contracts:0};
 describe('Probation in Approval Items',()=>{
  it('is a people category any approver can open, showing its own section only',async()=>{
   expect(APPROVAL_CATEGORIES).toContain('probation');
