@@ -1,3 +1,18 @@
+## Contract handoff completion — 17 November 2026
+
+The user explicitly requested fixing all gaps in the handoff audit and completing checks, with approval required before merge or release. This is source allocation only. Isolated completion base: `4e671016c9d7661434401b70fa83056512d0f7e0`; existing worktrees/WIP remain preserved. A fresh 276-worktree survey found no competing 5920–5959 SQL filenames or bounded numeric allocation claims. Preserve Resignation5788–5790, Audit5787 and Recruitment5850–5877. Recheck actual ledgers before any eventual admission. Journal idx = number minus600; when =1794841000000 plus number.
+
+| Block | Owner | Responsibility |
+|---|---|---|
+|5920–5924|Contract screens|Case/work metadata and UI shaped reads|
+|5925–5929|Shared Automation UI|Template preview/version/delete and builder owners|
+|5930–5939|Contract tracker|Statuses/defaults, fixed scheduler and flagged-case digest|
+|5940–5949|Contract ending|Forms/email-document readiness, letterhead/fallback and overdue End|
+|5950–5954|Contract postings|Posting correction/navigation and acceptance refinements|
+|5955–5959|Shared email assets|Test sweep, SMTP assets/document delivery proofs|
+
+Root retains pending5900–5903/5905–5909 for manual commands/release evidence/integration;5904 belongs to tracker. Frozen SQL is immutable. No shared branch, staging or release action is authorized by this allocation.
+
 <!-- 5919_contract_work_case_source_anchor -->
 # Contract native assigned-work case anchor — 17 November 2026 MYT
 
