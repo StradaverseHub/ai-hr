@@ -1,4 +1,3 @@
-import {createTranslator} from 'next-intl';
 import { reasonForPayrollError, transactionFailureForPayrollError } from '../core/payroll-run-group-result';
 /**
  * ad6ed930 — how a transaction dated after the employee's last day is TOLD, everywhere it is told.
