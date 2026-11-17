@@ -159,7 +159,7 @@ const staffColumns=()=>({id:letterRequest.id,companyId:letterRequest.companyId,e
  employeeName:sql<string|null>`(select s.employee_name from app.letter_request_subject(${letterRequest.id}) s)`,
  employeeCode:sql<string|null>`(select s.employee_code from app.letter_request_subject(${letterRequest.id}) s)`,
  publishedVersionId:sql<string|null>`(select v.id from letter_template_version v join letter_template t on t.id=v.template_id
-  where v.template_id=${letterRequest.templateId} and not t.deactivated and v.status='approved' and v.effective_from<=${todayInKualaLumpur()}::date order by v.ordinal desc limit 1)`});
+  where v.template_id=${sql.identifier('letter_request')}.${sql.identifier('template_id')} and not t.deactivated and v.status='approved' and v.effective_from<=${todayInKualaLumpur()}::date order by v.ordinal desc limit 1)`});
 
 /** Open requests (or the given statuses) of one company for a caller holding `generate` there, oldest first. */
 export function listLetterRequestsForStaff(ctx:SessionContext,input:{companyId:string;statuses?:readonly LetterRequestStatus[];limit?:number}):Promise<readonly StaffLetterRequest[]>{

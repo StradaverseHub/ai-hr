@@ -32,12 +32,12 @@ it('matches every role and scope, exact counts and ordered pages with one shared
  await owner.db.insert(s.appUser).values(members.map(m=>({id:m.userId,tenantId:b.tenantId,personId:m.personId,workosUserId:'fixture_'+m.userId})));
  await owner.db.insert(s.roleAssignment).values(members.map(m=>({tenantId:b.tenantId,appUserId:m.userId,role:'employee' as const,companyId:m.companyId})));
  const reviewer={...ctx,userId:await createAppUser(b.tenantId,members[0].personId,'hr_admin'),personId:members[0].personId};
- const templates=new Map<string,string[]>();
+ const templates=new Map<string,string[]>(),versions=new Map<string,string>();
  for(const companyId of companies){const ids:string[]=[];
   for(let i=0;i<3;i++){
    const made=await saveLetterTemplate(ctx,{companyId,code:'QUEUE'+i,name:'Fictional queue letter '+i,category:'confirmation',effectiveFrom:todayInKualaLumpur(),document:{version:1,language:'en',blocks:[{type:'paragraph',content:[{type:'text',text:'Fictional queue letter'}]}]},fieldVersionIds:[]});
    await decideLetterTemplate(ctx,{versionId:made.versionId,expectedStatus:'draft',action:'submit'});
-   await decideLetterTemplate(reviewer,{versionId:made.versionId,expectedStatus:'submitted',action:'approve'});ids.push(made.templateId);
+   await decideLetterTemplate(reviewer,{versionId:made.versionId,expectedStatus:'submitted',action:'approve'});ids.push(made.templateId);versions.set(made.templateId,made.versionId);
   }
   await saveLetterRequestOptions(ctx,{companyId,changes:ids.map(templateId=>({templateId,requestable:true}))});templates.set(companyId,ids);
  }
@@ -47,7 +47,8 @@ it('matches every role and scope, exact counts and ordered pages with one shared
   const result=await read(tx);const [mode]=await tx.execute<{readOnly:string;mode:string}>(sql`select current_setting('transaction_read_only') as "readOnly",app.access_lock_mode_held(${who.tenantId}::uuid) as mode`);carriers.push(mode);return result;
  },options));
  const legacy=ordered((await Promise.all(companies.map(companyId=>listLetterRequestsForStaff(ctx,{companyId})))).flat());
- expect(legacy).toHaveLength(3000);expect(spy).toHaveBeenCalledTimes(70);spy.mockClear();carriers.length=0;
+ expect(legacy).toHaveLength(3000);
+ for(const row of legacy)expect(row.publishedVersionId).toBe(versions.get(row.templateId));expect(spy).toHaveBeenCalledTimes(70);spy.mockClear();carriers.length=0;
  const first=await listLetterRequestsForStaffPage(ctx,{companyIds:companies,page:parsePageQuery()});
  expect(first.rows).toEqual(legacy.slice(0,25));expect(first.state).toMatchObject({total:3000,from:1,to:25,hasNext:true});expect(spy).toHaveBeenCalledTimes(1);expect(carriers).toEqual([{readOnly:'on',mode:'S'}]);
  const oldBytes=Buffer.byteLength(JSON.stringify(legacy)),pageBytes=Buffer.byteLength(JSON.stringify(first));expect(pageBytes).toBeLessThan(oldBytes/10);
