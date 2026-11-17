@@ -91,3 +91,9 @@ it('permits a teammate to open released evidence but refuses to rewrite its froz
  await nativeRefusal(withTenant(fyi,async tx=>{await begin(tx,fyi,{type:'openLetter',documentId:letter.id,documentRevision:letter.revision});await save(tx,fyi,{...data,letters:[changed]},'retained');}),'42501',/Released letter evidence/);expect(await persisted()).toEqual(original);
  await withTenant(fyi,async tx=>{await begin(tx,fyi,{type:'openLetter',documentId:letter.id,documentRevision:letter.revision});await save(tx,fyi,{...data,letters:[act(letter,fyi,{type:'open'})]},'retained');});expect(await persisted()).toMatchObject({revision:2});
 });
+
+it('rejects Review or Approve evidence forged during an Open, including future owner steps',async()=>{
+ const letter=realLetter();data={...data,decision:null,letters:[letter]};await seedJourney('offer');const original=await persisted();
+ const reviewed=act(letter,fyi,{type:'complete',stepId:'owner-review'});
+ for(const action of['reviewed','approved'] as const){for(const stepId of['owner-review','team-sign']){const forged=structuredClone(reviewed);forged.history.at(-1)!.action=action;forged.history.at(-1)!.stepId=stepId;forged.document.actions.at(-1)!.action=action;forged.document.actions.at(-1)!.stepId=stepId;await nativeRefusal(withTenant(fyi,async tx=>{await begin(tx,fyi,{type:'openLetter',documentId:letter.id,documentRevision:letter.revision});await save(tx,fyi,{...data,letters:[forged]},'offer');}),'42501',/Review and approval evidence/);expect(await persisted()).toEqual(original);}}
+});
