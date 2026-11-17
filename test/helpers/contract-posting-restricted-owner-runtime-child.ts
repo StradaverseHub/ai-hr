@@ -88,6 +88,13 @@ async function main(){
   }
   const prepared=JSON.parse(readFileSync(join(folder,'prepared.json'),'utf8')) as Prepared;assert.equal(prepared.version,1);
   const f=prepared.fixture,posting=prepared.posting;assert.ok(f.newStart<f.today);assert.equal((await facts(f)).employment.contract_number,4);
+  assert.equal(prepared.before.assignment.valid_from,addDaysIso(f.newStart,5));
+  assert.equal(prepared.before.compensation.valid_from,addDaysIso(f.newStart,10));
+  // Independently pin native first-open replay semantics to the actual closed fixture batches.
+  const lastClosedPeriod=prepared.closed.map(run=>String(run.facts.batch.pay_period)).sort().at(-1)!;
+  assert.equal(lastClosedPeriod,month(f.today,-1));
+  const firstOpenSalaryDay=addCalendarMonths(lastClosedPeriod+'-01',1);
+  assert.equal(firstOpenSalaryDay,f.today.slice(0,7)+'-01');
   const[roles]=await withTenant(f.approver,tx=>tx.execute<{maintain:boolean;payroll:boolean}>(sql`select app.access_workforce_employment(${f.employee.employmentId}::uuid,'workforce.maintain') as maintain,app.can_admin_payroll_for(${f.b.companyId}::uuid) as payroll`));assert.deepEqual({...roles},{maintain:false,payroll:false});assert.deepEqual(f.approver.roles,['employee']);
   const queue=openImportWorkerOwner(process.env.TEST_MIGRATION_DATABASE_URL!);
   type Identity={session:string;current:string;super:boolean;bypass:boolean;createdb:boolean;createrole:boolean;pid:number};
@@ -111,7 +118,14 @@ async function main(){
    assert.equal(job.state,'completed');
    const status=await readContractSharedPostingApprovalJob(f.approver,queued.jobId);assert.equal(status.postingStatus,'approved');assert.equal(status.applicationState,'applied');
    try{
-    assert.deepEqual(await facts(f),{...prepared.before,employment:{...prepared.before.employment,contract_start_date:f.newStart,contract_end_date:f.newEnd,contract_number:5}});
+    assert.deepEqual(await facts(f),{...prepared.before,
+     employment:{...prepared.before.employment,contract_start_date:f.newStart,contract_end_date:f.newEnd,contract_number:5},
+     compensation:{...prepared.before.compensation,valid_from:firstOpenSalaryDay}});
+    const preservedSalary=await owner.db.execute<{row:Row}>(sql`select to_jsonb(c)-array['id','created_at','recorded_at','updated_at','superseded_at'] as row
+     from public.compensation c where c.tenant_id=${f.b.tenantId}::uuid and c.employment_id=${f.employee.employmentId}::uuid
+     and c.valid_from=${String(prepared.before.compensation.valid_from)}::date and c.valid_to=${firstOpenSalaryDay}::date and c.superseded_at is null`);
+    assert.equal(preservedSalary.length,1);
+    assert.deepEqual(preservedSalary[0].row,{...prepared.before.compensation,valid_to:firstOpenSalaryDay});
    }catch(error){
     await reportContractPostingTemporalDiagnostics('CONTRACT_POSTING_TEMPORAL_DIAGNOSTICS',f.b.tenantId,f.employee.employmentId);
     throw error;

@@ -89,6 +89,14 @@ describe('Contract group approval through one protected native application job',
   expect(documentsBefore.every(Boolean)).toBe(true);
   const before=await subjectFacts(f);
   expect(before.employment.contract_number).toBe(4);expect(before.assignment.department_id).toBe(f.b.deptB);expect(before.compensation.basic_salary).toBe(5291.42);
+  expect(before.assignment.valid_from).toBe(addDaysIso(f.newStart,5));
+  expect(before.compensation.valid_from).toBe(addDaysIso(f.newStart,10));
+  // Native closed-Payroll replay retains consumed salary and starts the replacement at the first
+  // open month. Derive the expectation from the actually closed fixture batches, never the after-row.
+  const lastClosedPeriod=[earlier,overlapping].map(run=>String(run.batch.pay_period)).sort().at(-1)!;
+  expect(lastClosedPeriod).toBe(targetMonth.slice(0,7));
+  const firstOpenSalaryDay=addCalendarMonths(lastClosedPeriod+'-01',1);
+  expect(firstOpenSalaryDay).toBe(monthStart(f.today));
   const prefix=await owner.db.execute<{sequence:number;row:Record<string,unknown>}>(sql`select d.sequence,to_jsonb(d) as row from public.domain_event d where d.tenant_id=${f.b.tenantId}::uuid and d.subject_employment_id=${f.employee.employmentId}::uuid order by d.sequence`);
   expect(prefix.length).toBeGreaterThan(0);const maxSequence=prefix[prefix.length-1].sequence;
   const[rights]=await withTenant(f.approver,tx=>tx.execute<{maintain:boolean;payroll:boolean}>(sql`select app.access_workforce_employment(${f.employee.employmentId}::uuid,'workforce.maintain') as maintain,app.can_admin_payroll_for(${f.b.companyId}::uuid) as payroll`));
@@ -111,7 +119,14 @@ describe('Contract group approval through one protected native application job',
   const status=await readContractSharedPostingApprovalJob(f.approver,queued.jobId);
   expect(status).toMatchObject({jobId:queued.jobId,postingId:posting.id,jobState:'completed',postingStatus:'approved',applicationState:'applied'});
   try{
-   expect(await subjectFacts(f)).toEqual({...before,employment:{...before.employment,contract_start_date:f.newStart,contract_end_date:f.newEnd,contract_number:5}});
+   expect(await subjectFacts(f)).toEqual({...before,
+    employment:{...before.employment,contract_start_date:f.newStart,contract_end_date:f.newEnd,contract_number:5},
+    compensation:{...before.compensation,valid_from:firstOpenSalaryDay}});
+   const preservedSalary=await owner.db.execute<{row:Record<string,unknown>}>(sql`select to_jsonb(c)-array['id','created_at','recorded_at','updated_at','superseded_at'] as row
+    from public.compensation c where c.tenant_id=${f.b.tenantId}::uuid and c.employment_id=${f.employee.employmentId}::uuid
+    and c.valid_from=${String(before.compensation.valid_from)}::date and c.valid_to=${firstOpenSalaryDay}::date and c.superseded_at is null`);
+   expect(preservedSalary).toHaveLength(1);
+   expect(preservedSalary[0].row).toEqual({...before.compensation,valid_to:firstOpenSalaryDay});
   }catch(error){
    await reportContractPostingTemporalDiagnostics('CONTRACT_POSTING_TEMPORAL_DIAGNOSTICS',f.b.tenantId,f.employee.employmentId);
    throw error;
