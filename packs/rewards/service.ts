@@ -319,6 +319,13 @@ async function load(tx: Tx, unitId: string, lock = false,capability:import('./ac
   await assertRewardCapabilityTx(tx,unitId,capability);
   if (!roles.length) throw new RewardError('Ask an administrator to assign your Reward Desk role for this unit.');
   const entries = await tx.select().from(rewardEntry).where(eq(rewardEntry.unitId, unitId)).orderBy(asc(rewardEntry.id));
+  // An explicitly authorized Review Plans rebind preserves the current approver. Only the exact
+  // rebind revision may adopt the freshly calculated native digest; unrelated stale inputs still refuse.
+  if(lock&&unit.status!=='draft'&&!['approved','posted','withdrawn','rejected'].includes(unit.status)){
+    const [rebind]=await tx.execute<{consumed:boolean}>(sql`select app.reward_review_plan_consume_rebind(${unitId}::uuid,${unit.revision}) as consumed`);
+    if(rebind?.consumed){unit.approvedDigest=digest(unit,entries);await tx.update(rewardUnit).set({approvedDigest:unit.approvedDigest}).where(and(eq(rewardUnit.id,unitId),eq(rewardUnit.revision,unit.revision)));}
+  }
+
   const awards=await tx.execute<{entryId:string;award:import('./uploaded-awards-model').UploadedAward}>(sql`select entry_id as "entryId",award from reward_uploaded_award where unit_id=${unitId}::uuid and tenant_id=app.current_tenant_id()`);
   const directReports = new Set((await tx.execute<{ id:string }>(sql`
     select app.reward_group_ec_direct_reports(${unitId}::uuid) as id

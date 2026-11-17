@@ -93,7 +93,7 @@ export function rewardNavigation(ctx: SessionContext) {
   return withRewardsTenant(ctx, async tx => {
     const [pages] = await tx.execute<{
       review: boolean; analytics: boolean; approvals: boolean; rules: boolean; promotions: boolean;
-      manage: boolean; plans: boolean; pat: boolean; salary: boolean; bonus: boolean; access: boolean; bootstrap: boolean; rolePermissions: boolean;
+      historyUpload: boolean; manage: boolean; plans: boolean; pat: boolean; salary: boolean; bonus: boolean; access: boolean; bootstrap: boolean; rolePermissions: boolean;
       setup: boolean; limits: boolean;
     }>(sql`
       with visible_units as (
@@ -109,8 +109,9 @@ export function rewardNavigation(ctx: SessionContext) {
           and app.reward_capability(u.id, 'review.view')
           and 'gr' in (select app.reward_roles(u.id))
           and app.reward_level_rank(app.reward_unit_level(u.id, 'promotions.view')) >= 1) as promotions,
+        app.reward_setup_allowed(null, 'manage') and app.reward_actor_holds_role('gr') as "historyUpload",
         app.reward_setup_allowed(null, 'manage') as manage,
-        app.reward_setup_page_allowed(null, 'plans.manage', 'manage') as plans,
+        app.reward_config_page_allowed(null, 'plans.manage', 'library_view') as plans,
         -- Board 60f1fdcd + db14e49c: the configuration editor of the group or of a company, narrowed by the page's row.
         app.reward_config_editor_anywhere() and app.reward_level_rank(app.reward_actor_page_level('pat.manage')) >= 3 as pat,
         app.reward_config_page_allowed(null, 'salary.view', 'library_view') as salary,
@@ -132,7 +133,8 @@ export function rewardNavigation(ctx: SessionContext) {
       ...(pages.rules ? ['/rewards/rules'] : []),
       ...(pages.promotions ? ['/rewards/promotions'] : []),
       // Board db14e49c: each configuration page also follows its Role permissions row.
-      ...(pages.plans ? ['/admin/rewards/shared'] : []),
+      ...(pages.plans ? ['/admin/rewards/review-plans'] : []),
+      ...(pages.historyUpload ? ['/rewards/history-upload'] : []),
       ...(pages.salary ? ['/admin/rewards/salary-structures'] : []),
       ...(pages.bonus ? ['/admin/rewards/bonus-matrices'] : []),
       ...(pages.pat ? ['/admin/rewards/pat-inputs'] : []),
