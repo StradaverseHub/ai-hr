@@ -18,7 +18,7 @@ function Picker({subjectId,companyId,name,value,retained=[],placeholder,onValueC
  useEffect(()=>{
   if(previousSelected.current===selected)return;previousSelected.current=selected;
   // Hidden inputs do not emit native input events when React updates their value. Notify form dirty owners.
-  const input=root.current?.querySelector('input[type="hidden"]');
+  const input=root.current?.querySelector('input[type="hidden"]')??root.current;
   input?.dispatchEvent(new Event('input',{bubbles:true}));
   input?.dispatchEvent(new Event('change',{bubbles:true}));
  },[selected]);

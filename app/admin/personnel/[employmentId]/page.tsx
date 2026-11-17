@@ -3567,7 +3567,7 @@ export default async function EmployeePage({
 
   const movementEditInput = canCorrectMovement && movementEditRow
     ? await movementPendingEditInput(s, employmentId, movementEditRow.id) : null;
-  const managerIds=[movementFormData?.current.managerEmploymentId,movementEditInput?.values.managerEmploymentId].filter((id):id is string=>!!id);
+  const managerIds=[movementFormData?.current.managerEmploymentId,movementEditInput?.values?.managerEmploymentId].filter((id):id is string=>!!id);
   const managerSeeds=managerIds.length?(await readWorkforceChoices(s,{subjectId:employmentId,selectedIds:managerIds})).selected:[];
   const movementFormProps = movementFormData
     ? {
