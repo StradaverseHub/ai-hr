@@ -23,11 +23,11 @@ export async function uploadOwnResignationFile(form:FormData):Promise<Resignatio
 }
 
 export async function loadResignationCommunications(input:{caseId?:string;offboardingCaseId?:string}):Promise<{ok:true;value:import('@/lib/resignation-communications').ResignationCommunications|null}|{ok:false;error:string}>{
- try{const service=await import('@/packs/lifecycle/resignation/service'),ctx=await getSession();return{ok:true,value:input.offboardingCaseId?await service.resignationOffboardingCommunications(ctx,input.offboardingCaseId):input.caseId?await service.resignationCaseCommunications(ctx,{caseId:input.caseId}):null};}catch(error){return refusal(error);}
+ try{const service=await import('@/packs/lifecycle/service'),ctx=await getSession();return{ok:true,value:input.offboardingCaseId?await service.resignationOffboardingCommunications(ctx,input.offboardingCaseId):input.caseId?await service.resignationCaseCommunications(ctx,{caseId:input.caseId}):null};}catch(error){return refusal(error);}
 }
 export async function testResignationMessage(input:import('@/lib/resignation-communications').ResignationMessageTestInput):Promise<{ok:true;value:import('@/lib/resignation-communications').ResignationMessageTestResult}|{ok:false;error:string}>{
- try{const{requestResignationMessageTest}=await import('@/packs/lifecycle/resignation/service');return{ok:true,value:await requestResignationMessageTest(await getSession(),input)};}catch(error){return refusal(error);}
+ try{const{requestResignationMessageTest}=await import('@/packs/lifecycle/service');return{ok:true,value:await requestResignationMessageTest(await getSession(),input)};}catch(error){return refusal(error);}
 }
 export async function editResignationMessage(input:{caseId:string;revision:number;runId:string;stepId:string;subject:string;body:string;offboardingCaseId?:string}):Promise<{ok:true;value:import('@/lib/resignation-communications').ResignationCommunications}|{ok:false;error:string}>{
- try{const{editResignationCaseMessage}=await import('@/packs/lifecycle/resignation/service');const value=await editResignationCaseMessage(await getSession(),input);refresh();return{ok:true,value};}catch(error){return refusal(error);}
+ try{const{editResignationCaseMessage}=await import('@/packs/lifecycle/service');const value=await editResignationCaseMessage(await getSession(),input);refresh();return{ok:true,value};}catch(error){return refusal(error);}
 }
