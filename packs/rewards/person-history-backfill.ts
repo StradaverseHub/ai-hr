@@ -21,7 +21,7 @@ export async function backfillRewardPersonHistory(ctx:SessionContext,unitId:stri
    if(match?.alreadyRecorded){alreadyRecorded.push(row.id);continue;}
    // Parse fixed decimals exactly. A value that cannot be proved in cents is refused, never rounded.
    const amount=match?.basic;
-   const cents=amount&&/^\d+(\.\d{1,2})?$/.test(amount)?Number(BigInt(amount.split('.')[0])*100n+BigInt((amount.split('.')[1]??'').padEnd(2,'0'))):null;
+   const cents=amount&&/^\d+(\.\d{1,2})?$/.test(amount)?Number(BigInt(amount.split('.')[0])*BigInt(100)+BigInt((amount.split('.')[1]??'').padEnd(2,'0'))):null;
    if(cents===null||!Number.isSafeInteger(cents)||cents!==row.newBasicCents)refused.push({entryId:row.id,reason:'The recalculated basic does not match the entry’s enacted compensation record.'});
    else accepted.push(row);
   }

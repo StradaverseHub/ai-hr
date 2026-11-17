@@ -45,6 +45,7 @@ export async function captureAiReviewScreenshots(html:string,locale:string,secti
  const out=join(evidence,'ui-screenshots');mkdirSync(out,{recursive:true});
  const styles=(await applicationCss())+((section.startsWith('lifecycle-case-')||section==='lifecycle-email-template'||section==='probation-tracker')?'\n'+readFileSync('app/onboarding-workspace.css','utf8')+'\n'+readFileSync('app/lifecycle/v9/workspace.css','utf8')+(section==='probation-tracker'?'\n'+readFileSync('app/lifecycle/probation/probation.css','utf8'):''):''),browser=await chromium.launch({executablePath:executable,headless:true});
  const rows=[];
+ const motionProofs=[];
  try{for(const [device,width,height] of [['desktop',1440,1000],['mobile',390,844]] as const){
   const page=await browser.newPage({viewport:{width,height},deviceScaleFactor:1});
   await page.route('**/*',route=>route.abort());
@@ -59,6 +60,22 @@ export async function captureAiReviewScreenshots(html:string,locale:string,secti
   if(unloaded.length)throw Error('Script fonts did not load before layout: '+unloaded.join(', '));
   await page.evaluate(()=>{document.body.hidden=false;return document.fonts.ready;});
   let chartGeometry:unknown=null;
+  // Source-DOM serialization starts CSS entrance animations anew. Finish finite motion before
+  // measuring/capturing the actual layout; application animation behavior remains unchanged.
+  const settledMotion=await page.evaluate(async()=>{
+   let finished=0;
+   for(const animation of document.getAnimations()){
+    const end=animation.effect?.getComputedTiming().endTime;
+    if(typeof end==='number'&&Number.isFinite(end)){animation.finish();finished++;}
+   }
+   await new Promise<void>(resolve=>requestAnimationFrame(()=>requestAnimationFrame(()=>resolve())));
+   const panel=document.querySelector<HTMLElement>('.ui-drawer-panel[data-state="open"]');
+   const rect=panel?.getBoundingClientRect();
+   const drawer=rect?{left:rect.left,right:rect.right,width:rect.width,viewportWidth:innerWidth}:null;
+   return{finished,drawer,drawerFits:!drawer||(drawer.left>=-1&&drawer.right<=innerWidth+1)};
+  });
+  motionProofs.push({device,...settledMotion});
+
   if(section==='org-chart-controls'){
    // React's layout effect has already rendered the real edge population in jsdom. Re-measure those
    // SAME cards after Chromium loads the application fonts, using the live chart's pure path owner.
@@ -119,6 +136,8 @@ export async function captureAiReviewScreenshots(html:string,locale:string,secti
   await page.close();
  }}finally{await browser.close();}
  writeFileSync(join(out,`${locale}-${section}.json`),JSON.stringify(rows,null,2)+'\n');
+ writeFileSync(join(out,`${locale}-${section}-motion.json`),JSON.stringify(motionProofs,null,2)+'\n');
+ if(motionProofs.some(row=>!row.drawerFits))throw Error('Settled drawer exceeds its native viewport; inspect the captured geometry.');
  if(rows.some(row=>row.overflow))throw Error('Rendered fixture overflows its viewport; inspect the captured evidence.');
 }
 

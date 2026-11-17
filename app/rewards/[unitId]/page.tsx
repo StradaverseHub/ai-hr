@@ -56,7 +56,7 @@ export default async function RewardUnitPage({ params, searchParams }: { params:
   }
   if (unit.kind !== 'annual') return <OffcycleReview v={v} sp={sp} scopeIds={scopeIds} s={s} />;
   const batches = await rewardPayrollChoices(s, unitId);
-  const u = await getTranslations('rewardUploaded'), a = await getTranslations('rewardAdvisor'), d = await getTranslations('rewards.desk');
+  const u = await getTranslations('rewardUploaded'), a = await getTranslations('rewardAdvisor'), d = await getTranslations('rewards.desk'), common = await getTranslations('common');
   const fields = <><input type="hidden" name="unitId" value={unitId} /><input type="hidden" name="revision" value={unit.revision} /></>;
   const fullView = !!v.fullView;
   const canSubmit = unit.status === 'draft' && v.capabilities?.reviewDecide !== false && v.roles.includes(v.route[0]);
@@ -118,7 +118,7 @@ export default async function RewardUnitPage({ params, searchParams }: { params:
     <section id="people" className="scroll-mt-6 space-y-3">
       <h2 className="text-base font-semibold">{t('people')}</h2>
       {v.hiddenCount > 0 && <p role="note" className="rounded-md border border-border bg-muted/40 px-3 py-2 text-sm">{t('desk.hiddenRows', { count: v.hiddenCount })}</p>}
-      <form className="flex max-w-lg gap-2">{Object.entries(keep).filter(([k]) => k !== 'q').map(([k, value]) => <input key={k} type="hidden" name={k} value={value} />)}<input name="q" defaultValue={filters.q} aria-label={t('search')} placeholder={t('search')} className={inputCls} /><RewardSubmit type="submit" variant="secondary">{t('search')}</RewardSubmit></form>
+      <form className="flex max-w-lg gap-2">{Object.entries(keep).filter(([k]) => k !== 'q').map(([k, value]) => <input key={k} type="hidden" name={k} value={value} />)}<input name="q" defaultValue={filters.q} aria-label={t('search')} placeholder={t('search')} className={`${inputCls} min-w-0 flex-1`} /><RewardSubmit type="submit" variant="secondary">{common('search')}</RewardSubmit></form>
       <nav aria-label={d('filters.label')} className="flex flex-wrap items-center gap-2">
         {pill(d('filters.all'), { f: null, talent: null, perf: null, jg: null, plan: null, check: null, flag: null }, !anyFilter && !flagCode)}
         {pill(d('filters.flags'), { f: filters.f === 'flags' ? null : 'flags' }, filters.f === 'flags')}
