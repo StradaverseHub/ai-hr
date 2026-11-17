@@ -44068,6 +44068,8 @@
       "test_demo": "Syarikat ujian atau demo",
       "alias": "Alias syarikat lain",
       "structure": "Unit Perniagaan belum disahkan"
-    }
+    },
+    "rebindNotificationTitle": "Semakan ganjaran dikemas kini",
+    "rebindNotificationBody": "Struktur gaji atau matriks bonus syarikat telah berubah. Sebagai pelulus semasa, semak cadangan yang dikira semula sebelum meluluskan."
   }
 }
