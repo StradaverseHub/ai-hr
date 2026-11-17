@@ -1,10 +1,10 @@
 # Resignation journey on shared Configuration
 
-Status: accepted direction, 16 November 2026. Release held by the owner pending explicit approval; implementation verification may continue.
+Status: accepted direction, 16 November 2026; updated 17 November. Staging is conditional on complete verification, Movement-first integration and guarded queue admission. Production is not authorized.
 
 ## Decisions
 
-The owner reviewed the supplied resignation HTML and AIHR merge mockups and authorized implementation. The subsequent instruction to stop before release supersedes the earlier staging request; no branch integration into main/alpha or installation is authorized until renewed approval. Configuration is shared: reuse Workflows, Templates (documents and emails), Assignment groups and named routing rules. Keep operational Leavers, checklists and source-filtered Personnel postings in Offboarding. Existing module and company permissions remain authoritative.
+The owner reviewed the supplied resignation HTML and AIHR merge mockups and authorized implementation, then held release for approval. The later direct coordination approval permits staging only after the work is complete and verified, with Movement releasing first. The renewed handoff review and latest engineering-convention checks must finish before that admission; no readiness is inferred from this approval. Configuration is shared: reuse Workflows, Templates (documents and emails), Assignment groups and named routing rules. Keep operational Leavers, checklists and source-filtered Personnel postings in Offboarding. Existing module and company permissions remain authoritative.
 
 The owner explicitly chose **termination at completed clearance**, following the handoff. For new managed resignation journeys, accepting a resignation starts the configured acceptance-letter and Offboarding workflow; it does not call the old acceptance/termination command or freeze leave. Completed clearance raises one Termination posting. Authorized approval applies the existing employment movement and required leave/final-pay consequences atomically. There is one writer of employment truth, and a repeated clearance or posting approval cannot repeat it.
 
