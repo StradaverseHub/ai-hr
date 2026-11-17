@@ -49,6 +49,7 @@ export const lifecyclePack: ModulePack = {
     satelliteTables: [
         { table: 'resignation_journey', note: 'Company-scoped resignation decisions, letters and immutable released snapshots' },
         { table: 'resignation_journey_file', note: 'Case-bound supporting and per-person workflow files' },
+        { table: 'resignation_communication_test', note: 'Immutable actor-only case message test request receipts' },
         { table: 'app.resignation_runtime_verifier', note: 'Owner-only verifier for Lifecycle resignation service custody' },
         { table: 'app.resignation_runtime_state', note: 'Transaction-bound resignation read and command admission' },
         { table: 'app.resignation_notification_receipt', note: 'Resignation notice deduplication; notification remains the bell owner' },

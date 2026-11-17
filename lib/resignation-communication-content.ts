@@ -6,6 +6,7 @@ import type {ResignationCommunicationSource,ResignationPreparedMessage} from './
 const fill=(text:string,values:Record<string,string>)=>text.replace(/\{\{\s*([\w.]+)\s*\}\}|\{([\w.]+)\}/g,(_,a,b)=>values[a??b]||'—');
 export function prepareResignationCommunication(source:ResignationCommunicationSource):ResignationPreparedMessage{
  const t=source.template,holds:string[]=[];
+ if(source.previewAvailable===false)return{subject:'',body:'',content:{number:source.caseNumber,documents:[],pdfDocumentIds:[],linkDocumentIds:[]},holds:['The acceptance letter must be prepared before this message preview is available.']};
  if(!t.active)holds.push('This email template is inactive.');
  if(source.recipientProblem)holds.push(source.recipientProblem);
  const required=[...new Set([...t.attachments,...t.links])],documents=required.flatMap(id=>{const doc=source.documents.find(d=>d.templateId===id);if(!doc)holds.push('The attached letter must be signed and released before this message can be sent.');return doc?[doc]:[];});
@@ -16,3 +17,6 @@ export function prepareResignationCommunication(source:ResignationCommunicationS
  validateAutomationEmailContent(content);
  return{subject:fill(source.override?.subject??t.subject,source.values),body,content,holds:[...new Set(holds)]};
 }
+
+/** PostgreSQL left(text,500) counts Unicode code points, not JavaScript UTF-16 units. */
+export const resignationTestSubject=(subject:string)=>Array.from('[Test] '+subject).slice(0,500).join('');
