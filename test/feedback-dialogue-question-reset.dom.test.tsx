@@ -9,7 +9,7 @@ vi.mock('next/navigation', () => ({notFound: () => {throw Error('not found');}})
 vi.mock('../lib/session', () => ({getSession: async () => ({userId: 'reporter', roles: ['employee']})}));
 vi.mock('../core/entitlements', () => ({settingEnabledOrDefault: () => false}));
 vi.mock('../app/feedback/board', () => ({feedbackBoardOpen: () => true}));
-vi.mock('next-intl/server', () => ({getTranslations: async (namespace: string) => createTranslator({locale: 'en', messages: en, namespace})}));
+vi.mock('next-intl/server', () => ({getTranslations: async (namespace: 'feedback') => createTranslator({locale: 'en', messages: en, namespace})}));
 vi.mock('../core/feedback', () => ({getFeedback: async () => ({id: '11111111-1111-4111-8111-111111111111', title: 'Fictional preview report', category: 'issue', description: 'A missing entry.', reporterUserId: 'reporter', status: 'open', plan: null,
   planRevision: 0, reopenedCount: 0, release: null, buildRef: null, attachments: [], planHistory: [], blockedBy: null,
   createdAt: new Date('2026-11-17T00:00:00Z'), updatedAt: new Date('2026-11-17T00:00:00Z'),

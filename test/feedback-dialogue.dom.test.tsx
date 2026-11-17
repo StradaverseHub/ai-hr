@@ -13,7 +13,7 @@ vi.mock('../lib/session', () => ({getSession: async () => fixture.session}));
 vi.mock('../core/feedback', () => ({getFeedback: async () => fixture.feedback}));
 vi.mock('../core/entitlements', () => ({settingEnabledOrDefault: () => true}));
 vi.mock('../app/feedback/board', () => ({feedbackBoardOpen: () => true}));
-vi.mock('next-intl/server', () => ({getTranslations: async (namespace: string) => createTranslator({locale: 'en', messages: en, namespace})}));
+vi.mock('next-intl/server', () => ({getTranslations: async (namespace: 'feedback') => createTranslator({locale: 'en', messages: en, namespace})}));
 vi.mock('../app/feedback/actions', () => ({askFeedbackClarificationAction: (...args: unknown[]) => fixture.ask(...args), answerFeedbackClarificationAction: (...args: unknown[]) => fixture.answer(...args),
   answerBlockingQuestionAction: vi.fn(), approveFeedbackPlanAction: vi.fn(), cancelFeedbackAction: vi.fn(), contestFeedbackPlanAction: vi.fn(), generateFeedbackPlanNowAction: vi.fn(), refuteDeploymentAction: vi.fn(), restoreFeedbackAction: vi.fn()}));
 import FeedbackDetailPage from '../app/feedback/[id]/page';
