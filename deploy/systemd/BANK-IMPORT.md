@@ -615,3 +615,85 @@ directory and release.
 
 Disk: each update keeps the archive (about 275 MB for 0cbe5fec), one checked extraction in the attempt and the new
 release (about 0.9 GB each). Check `df -B1 /opt/aihr-import` before the window.
+
+### Authenticated CI runtime cutover (`aihr-worker-ci-runtime/v1`, staging only)
+
+This is a separate administrator operation, `activate-ci-runtime`. Ordinary `drain`, `activate`,
+`adopt-stopped`, their successful-web requirements, and failure quarantine retain their existing contracts.
+There is no controller hook, environment edit, synthetic heartbeat, deployment `finish`, pending removal,
+lease promotion, or arrival/acceptance authority in this operation.
+
+Two administrator stages are mandatory:
+
+1. **Before the unchanged operator/pending/source installation**, review the authenticated complete gate,
+   exact candidate/new build, archive/lock/package, generated self-contained helper, Node, prior unit and worker
+   environment, healthy old web, and held lease. Run the existing normal `drain` with those exact pins.
+   Retain its root-protected `drained.json`, authenticated archive, and the old `last-ok` bytes/hash. Do not
+   select a later arbitrary grant to justify a drain made for different bytes.
+2. After the unchanged native installation initializer and the genuine new active-service CI marker, the
+   administrator independently compares that single actual, unexpired grant and installation with **all**
+   original drain/gate pins. Create a new root-protected one-operation authorization (not an application or
+   helper-generated approval). It binds its own issue/deadline (at most 900 seconds and before grant expiry),
+   exact original drain SHA/identity, helper/Node, grant/activated/runtime record hashes, installation
+   UID/GID/device/inode and canonical private directory, source/build/run/controller/build record,
+   unchanged full environment fingerprint and dotenv bytes, full ordered migration ledger, original new web
+   PID/start/boot, current deployment launch identity/process start/cmdline, exact held installing lease,
+   coordinator hash, old last-ok hash, and protected canonical full-source inventory/hash.
+
+The exact authorization schema is enforced by `bank_import_worker_ci_runtime_v1.py::RuntimeObservation`.
+Its kind is `ADMIN_AUTHORIZED_SINGLE_CI_WORKER_CUTOVER`, format1, target `alpha-staging`, policy
+`aihr-worker-ci-runtime/v1`, releaseAuthorized:false. The `identity` is the complete original drain identity;
+`launch.current` is the entire selected current record except result/exit_code/finished_at, with original
+`processStartTicks` and `cmdlineSha256`. `install` contains only id/buildRecordId/runId/controller/directory/
+uid/gid/device/inode. `lease` contains only batch/epoch/candidate; the separately root-protected lease
+credential file is hash-pinned and never printed. No generator issues this authority or chooses a grant.
+
+Prepare the independent full-source inventory as the ordinary owner of the frozen checkout, before drain:
+
+```
+node --import tsx scripts/bank-import-worker-source-inventory.mjs FROZEN_CHECKOUT FULL_CANDIDATE_SHA PRIVATE_OUTPUT
+```
+
+This uses the actual `deploymentRsyncArgs` and `canonicalSourceExclusions` owners, includes every canonical
+node (including untracked canonical extras), and hashes file content, links, modes and the exact included
+set. Transfer/root-protect/hash-pin the result independently. The helper rechecks both filter owners and
+compares the full installed tree, detecting extras as well as omissions/edits. This is additional content
+proof; native runtime's `fullSourceChecksumVerified:false` stays unchanged and truthful. The canonical
+operator `sourceChecksumDryRun` remains the full-tree arrival checksum authority; metadata fences do not
+replace it.
+
+Invoke only the independently hash-pinned root-owned self-contained bundle, under the same held staging
+`guard` (including its shared kernel operation lock), with the original managed arguments plus:
+
+```
+activate-ci-runtime --ci-runtime-authorization /ROOT_PROTECTED_AUTHORIZATION --ci-runtime-authorization-sha256 EXACT_SHA256
+```
+
+The install lock serializes this operation. The helper never runs mutable application JavaScript as root.
+It invokes the exact native `status` argv from `stagingInstallerCommand` after dropping UID/GID and all
+supplementary groups to the **actual** private-install owner, in `/opt/ai-hr`, with a fixed controlled
+PATH/HOME and pinned lease environment. It never uses expired `resume-status`. Native status rechecks the
+real grant, source contract, compiled byte inventory, full environment, restarted service/health, boot and
+complete ordered ledger. A persisted marker or caller JSON alone is insufficient. Protected per-observation
+records retain native proof and independent content proof separately; no secrets are emitted.
+
+Only this original CI launch at `ci-build-health` can progress R0 (running, old pinned last-ok) → R1 (native
+exit0/finished-at/candidate last-ok publication) → O (strict normal successful current/last-ok). Direct R0→O
+is allowed; backslides, failure, pending, dead/reused running PID, changed launch/web PID/boot/environment/
+source/build/ledger, or unrelated last-ok refuse. Separate atomic writes during native finish receive only
+bounded coherent-snapshot retries. Fresh proof brackets package/unit/start transitions and all three
+four-second worker observations, so normal finish during a worker stability interval is permitted without
+weakening immutable identity. The native deploy is the sole owner of finish/publication.
+
+The new receipt says mode `activate-ci-runtime` and `journeyVerified:false`, with original grant/authority
+and transition hashes. It proves worker service stability under conditional runtime admission, not all-kind
+readiness, arrival, browser acceptance or release handback. Mid-start failure retains the existing exact-unit
+SIGKILL-free quarantine; no automatic rollback, foreign-unit stop, queue reset or fabricated success.
+
+**CI timing policy:** a selected authenticated CI installation waits a fixed source-versioned 600 seconds
+for the unchanged all-kind live-heartbeat predicate. An explicitly configured `AIHR_IMPORT_WORKER_WAIT_SECONDS`
+is allowed only if exactly `600`; any other value (including empty/45/0600) refuses early after private env
+load and before dependency/build/migration/activation work. It is never silently overridden or rewritten.
+Non-CI retains configured/default45 behavior. `AIHR_IMPORT_WORKER_REQUIRED=1` remains required wherever the
+worker is installed. Startup bank/individual work can delay bulk heartbeat; no real heartbeat by the deadline
+still fails. Root/operator scheduling must fit the grant/deploy window and preserve the real failure evidence.

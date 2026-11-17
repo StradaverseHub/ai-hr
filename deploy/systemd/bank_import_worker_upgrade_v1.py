@@ -317,15 +317,21 @@ def stage_release(base, fmt, archive, operation, args, manifest):
     return release
 
 
-def replace_and_start(base, fmt, args, operation, release, state, prior_unit_sha256, receipt):
+def replace_and_start(base, fmt, args, operation, release, state, prior_unit_sha256, receipt, ci_observer=None):
     """Atomic current-template unit, reload, start, three stable observations, receipt; quarantine on any failure.
     Shared by activate and adopt-stopped; only the pinned prior unit hash and receipt provenance differ.
     """
     try:
+        if ci_observer:
+            ci_observer.observe()
         atomic_unit(base, base.service_unit(args.source).encode(), prior_unit_sha256)
         base.command(['/usr/bin/systemctl', 'daemon-reload'])
         base.validate_service(properties(base), release)
+        if ci_observer:
+            ci_observer.observe()
         base.command(['/usr/bin/systemctl', 'start', 'aihr-bank-import.service'])
+        if ci_observer:
+            ci_observer.observe()
         stable_pid = None
         for _ in range(3):
             time.sleep(4)
@@ -335,7 +341,13 @@ def replace_and_start(base, fmt, args, operation, release, state, prior_unit_sha
             pid = validate_process(base, report, args.source)
             base.check(stable_pid in (None, pid), 'updated worker PID changed')
             stable_pid = pid
-        base.check(healthy_web_state(base, args.source, args.build_id) == state, 'web changed before worker acceptance')
+            if ci_observer:
+                ci_observer.observe()
+        if ci_observer:
+            ci_observer.observe()
+            receipt = {**receipt, **ci_observer.receipt()}
+        else:
+            base.check(healthy_web_state(base, args.source, args.build_id) == state, 'web changed before worker acceptance')
         base.check(digest(base.read_bounded(base.ENV, 1024**2)) == args.worker_env_sha256, 'worker environment changed during activation')
         accepted = {**receipt, 'source': args.source, 'webBuildId': args.build_id, 'archiveSha256': args.archive_sha256,
                     'selectedEnvironmentSha256': args.worker_env_sha256,
@@ -381,9 +393,9 @@ def adopt_stopped(base, fmt, args, operation, identity):
                        'priorObservationSha256': fmt.digest(fmt.canonical(prior))})
 
 
-def upgrade(argv, fmt, base):
+def upgrade(argv, fmt, base, ci=None):
     parser = argparse.ArgumentParser()
-    parser.add_argument('phase', choices=['drain', 'activate', 'adopt-stopped'])
+    parser.add_argument('phase', choices=['drain', 'activate', 'adopt-stopped', 'activate-ci-runtime'])
     common = ('previous-worker-source', 'source', 'build-id', 'archive', 'archive-sha256', 'lock-sha256', 'package-sha256', 'worker-env-sha256')
     managed = ('previous-web-source', 'previous-web-build', 'unit-sha256')
     adopted = ('observed-unit-sha256',)
@@ -391,7 +403,14 @@ def upgrade(argv, fmt, base):
         parser.add_argument('--' + name)
     # Optional, drain/activate only: the env sha the prior receipt records, when a reviewed key was added after activation.
     parser.add_argument('--previous-worker-env-sha256')
+    parser.add_argument('--ci-runtime-authorization')
+    parser.add_argument('--ci-runtime-authorization-sha256')
     args = parser.parse_args(argv)
+    conditional = args.phase == 'activate-ci-runtime'
+    for name in ('ci_runtime_authorization','ci_runtime_authorization_sha256'):
+        base.check((getattr(args,name) is not None) == conditional, 'CI runtime authority flags belong only to activate-ci-runtime')
+    if conditional:
+        base.check(ci is not None and re.fullmatch('[a-f0-9]{64}', args.ci_runtime_authorization_sha256 or ''), 'reviewed bundled CI runtime observer and authorization hash required')
     adopt = args.phase == 'adopt-stopped'
     rebind = args.previous_worker_env_sha256
     for name in common + (adopted if adopt else managed):
@@ -451,9 +470,15 @@ def upgrade(argv, fmt, base):
             return
         base.root_protected(operation)
         base.root_protected(operation / 'drained.json', regular=True)
-        record = json.loads(base.read_bounded(operation / 'drained.json', 65536))
+        drain_bytes = base.read_bounded(operation / 'drained.json', 65536)
+        record = json.loads(drain_bytes)
         base.check(record.get('identity') == identity and record.get('drain', {}).get('state') == 'drained', 'exact drain record required')
-        state = healthy_web_state(base, args.source, args.build_id)
+        if conditional:
+            base.check(not (operation / 'ci-runtime-started.json').exists() and not (operation / 'ci-runtime-started.json').is_symlink(), 'existing CI runtime attempt needs separate recovery review')
+        observer = ci.RuntimeObservation(base, fmt, args, operation, drain_bytes) if conditional else None
+        state = observer.observe() if observer else healthy_web_state(base, args.source, args.build_id)
+        if observer:
+            base.write_new(operation / 'ci-runtime-started.json', fmt.canonical({'authorizationSha256': digest(observer.bytes), 'journeyVerified': False}), 0o400)
         report = validate_existing(base, args.previous_worker_source, args.unit_sha256, args.worker_env_sha256, rebind)
         if rebind is not None:
             reviewed_environment(base, args.worker_env_sha256)
@@ -465,9 +490,12 @@ def upgrade(argv, fmt, base):
         base.check(fmt.digest(fmt.canonical(manifest)) == record.get('manifestSha256'), 'prepared manifest changed')
         # Re-extract authenticated bytes instead of trusting an earlier unpacked tree.
         release = stage_release(base, fmt, archive, operation, args, manifest)
-        base.check(healthy_web_state(base, args.source, args.build_id) == state, 'web changed before activation')
+        if observer:
+            observer.observe()
+        else:
+            base.check(healthy_web_state(base, args.source, args.build_id) == state, 'web changed before activation')
         replace_and_start(base, fmt, args, operation, release, state, args.unit_sha256,
                           {'manifestSha256': record['manifestSha256'], 'previousWebSource': args.previous_web_source,
-                           'previousWebBuildId': args.previous_web_build, 'previousWorkerSource': args.previous_worker_source})
+                           'previousWebBuildId': args.previous_web_build, 'previousWorkerSource': args.previous_worker_source}, observer)
     finally:
         os.close(fd)
