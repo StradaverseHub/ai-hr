@@ -2475,6 +2475,176 @@
   ],
   "tablesAdded": [
     {
+      "table": "public.contract_access_role",
+      "rls": true,
+      "force": true,
+      "explicitRolePrivileges": {
+        "PUBLIC": [],
+        "ai_hr_app": [
+          "SELECT"
+        ]
+      },
+      "owner": "MIGRATION_OWNER"
+    },
+    {
+      "table": "public.contract_access_member",
+      "rls": true,
+      "force": true,
+      "explicitRolePrivileges": {
+        "PUBLIC": [],
+        "ai_hr_app": [
+          "SELECT"
+        ]
+      },
+      "owner": "MIGRATION_OWNER"
+    },
+    {
+      "table": "public.contract_shared_settings",
+      "rls": true,
+      "force": true,
+      "explicitRolePrivileges": {
+        "PUBLIC": [],
+        "ai_hr_app": [
+          "SELECT"
+        ]
+      },
+      "owner": "MIGRATION_OWNER"
+    },
+    {
+      "table": "public.contract_shared_case",
+      "rls": true,
+      "force": true,
+      "explicitRolePrivileges": {
+        "PUBLIC": [],
+        "ai_hr_app": []
+      },
+      "owner": "MIGRATION_OWNER"
+    },
+    {
+      "table": "public.contract_shared_letter",
+      "rls": true,
+      "force": true,
+      "explicitRolePrivileges": {
+        "PUBLIC": [],
+        "ai_hr_app": []
+      },
+      "owner": "MIGRATION_OWNER"
+    },
+    {
+      "table": "public.automation_document_template",
+      "rls": true,
+      "force": true,
+      "explicitRolePrivileges": {
+        "PUBLIC": [],
+        "ai_hr_app": [
+          "SELECT"
+        ]
+      },
+      "owner": "MIGRATION_OWNER"
+    },
+    {
+      "table": "public.automation_document_template_version",
+      "rls": true,
+      "force": true,
+      "explicitRolePrivileges": {
+        "PUBLIC": [],
+        "ai_hr_app": [
+          "SELECT"
+        ]
+      },
+      "owner": "MIGRATION_OWNER"
+    },
+    {
+      "table": "public.contract_shared_case_revision",
+      "rls": true,
+      "force": true,
+      "explicitRolePrivileges": {
+        "PUBLIC": [],
+        "ai_hr_app": []
+      },
+      "owner": "MIGRATION_OWNER"
+    },
+    {
+      "table": "public.contract_shared_event",
+      "rls": true,
+      "force": true,
+      "explicitRolePrivileges": {
+        "PUBLIC": [],
+        "ai_hr_app": []
+      },
+      "owner": "MIGRATION_OWNER"
+    },
+    {
+      "table": "public.contract_shared_preview",
+      "rls": true,
+      "force": true,
+      "explicitRolePrivileges": {
+        "PUBLIC": [],
+        "ai_hr_app": []
+      },
+      "owner": "MIGRATION_OWNER"
+    },
+    {
+      "table": "public.document_signing_assignment",
+      "rls": true,
+      "force": true,
+      "explicitRolePrivileges": {
+        "PUBLIC": [],
+        "ai_hr_app": []
+      },
+      "owner": "MIGRATION_OWNER"
+    },
+    {
+      "table": "public.contract_shared_approval",
+      "rls": true,
+      "force": true,
+      "explicitRolePrivileges": {
+        "PUBLIC": [],
+        "ai_hr_app": []
+      },
+      "owner": "MIGRATION_OWNER"
+    },
+    {
+      "table": "public.contract_shared_letter_content",
+      "rls": true,
+      "force": true,
+      "explicitRolePrivileges": {
+        "PUBLIC": [],
+        "ai_hr_app": []
+      },
+      "owner": "MIGRATION_OWNER"
+    },
+    {
+      "table": "public.contract_shared_posting",
+      "rls": true,
+      "force": true,
+      "explicitRolePrivileges": {
+        "PUBLIC": [],
+        "ai_hr_app": []
+      },
+      "owner": "MIGRATION_OWNER"
+    },
+    {
+      "table": "public.contract_shared_posting_tx",
+      "rls": true,
+      "force": true,
+      "explicitRolePrivileges": {
+        "PUBLIC": [],
+        "ai_hr_app": []
+      },
+      "owner": "MIGRATION_OWNER"
+    },
+    {
+      "table": "public.contract_shared_review_admission",
+      "rls": true,
+      "force": true,
+      "explicitRolePrivileges": {
+        "PUBLIC": [],
+        "ai_hr_app": []
+      },
+      "owner": "MIGRATION_OWNER"
+    },
+    {
       "table": "app.automation_email_asset_verifier",
       "rls": true,
       "force": true,
@@ -2485,7 +2655,52 @@
       "owner": "MIGRATION_OWNER"
     },
     {
-      "table": "app.contract_email_delivery_receipt",
+      "table": "public.contract_shared_release_receipt",
+      "rls": true,
+      "force": true,
+      "explicitRolePrivileges": {
+        "PUBLIC": [],
+        "ai_hr_app": []
+      },
+      "owner": "MIGRATION_OWNER"
+    },
+    {
+      "table": "app.contract_system_job_source",
+      "rls": true,
+      "force": false,
+      "explicitRolePrivileges": {
+        "PUBLIC": [],
+        "ai_hr_app": []
+      },
+      "owner": "MIGRATION_OWNER"
+    },
+    {
+      "table": "app.contract_system_digest",
+      "rls": true,
+      "force": false,
+      "explicitRolePrivileges": {
+        "PUBLIC": [],
+        "ai_hr_app": []
+      },
+      "owner": "MIGRATION_OWNER"
+    },
+    {
+      "table": "public.document_form_response",
+      "rls": true,
+      "force": true,
+      "explicitRolePrivileges": {
+        "PUBLIC": [],
+        "ai_hr_app": [],
+        "ai_hr_owner": [
+          "INSERT",
+          "SELECT",
+          "UPDATE"
+        ]
+      },
+      "owner": "MIGRATION_OWNER"
+    },
+    {
+      "table": "public.document_form_response_revision",
       "rls": true,
       "force": true,
       "explicitRolePrivileges": {
@@ -2499,7 +2714,7 @@
       "owner": "MIGRATION_OWNER"
     },
     {
-      "table": "app.contract_email_hr_notice",
+      "table": "public.document_form_action_intent",
       "rls": true,
       "force": true,
       "explicitRolePrivileges": {
@@ -2508,6 +2723,49 @@
         "ai_hr_owner": [
           "INSERT",
           "SELECT"
+        ]
+      },
+      "owner": "MIGRATION_OWNER"
+    },
+    {
+      "table": "public.document_form_action_receipt",
+      "rls": true,
+      "force": true,
+      "explicitRolePrivileges": {
+        "PUBLIC": [],
+        "ai_hr_app": [],
+        "ai_hr_owner": [
+          "INSERT",
+          "SELECT"
+        ]
+      },
+      "owner": "MIGRATION_OWNER"
+    },
+    {
+      "table": "public.document_form_release",
+      "rls": true,
+      "force": true,
+      "explicitRolePrivileges": {
+        "PUBLIC": [],
+        "ai_hr_app": [],
+        "ai_hr_owner": [
+          "INSERT",
+          "SELECT"
+        ]
+      },
+      "owner": "MIGRATION_OWNER"
+    },
+    {
+      "table": "public.contract_shared_email_document_step",
+      "rls": true,
+      "force": true,
+      "explicitRolePrivileges": {
+        "PUBLIC": [],
+        "ai_hr_app": [],
+        "ai_hr_owner": [
+          "INSERT",
+          "SELECT",
+          "UPDATE"
         ]
       },
       "owner": "MIGRATION_OWNER"
@@ -2570,66 +2828,6 @@
       "owner": "MIGRATION_OWNER"
     },
     {
-      "table": "app.contract_ordinary_event_progress",
-      "rls": true,
-      "force": true,
-      "explicitRolePrivileges": {
-        "PUBLIC": [],
-        "ai_hr_app": [],
-        "ai_hr_owner": [
-          "INSERT",
-          "SELECT",
-          "UPDATE"
-        ]
-      },
-      "owner": "MIGRATION_OWNER"
-    },
-    {
-      "table": "app.contract_posting_assignment_org_before",
-      "rls": true,
-      "force": true,
-      "explicitRolePrivileges": {
-        "PUBLIC": [],
-        "ai_hr_app": [],
-        "ai_hr_owner": [
-          "DELETE",
-          "INSERT",
-          "SELECT"
-        ]
-      },
-      "owner": "MIGRATION_OWNER"
-    },
-    {
-      "table": "app.contract_posting_assignment_org_permit",
-      "rls": true,
-      "force": true,
-      "explicitRolePrivileges": {
-        "PUBLIC": [],
-        "ai_hr_app": [],
-        "ai_hr_owner": [
-          "DELETE",
-          "INSERT",
-          "SELECT",
-          "UPDATE"
-        ]
-      },
-      "owner": "MIGRATION_OWNER"
-    },
-    {
-      "table": "app.contract_posting_job_result",
-      "rls": true,
-      "force": true,
-      "explicitRolePrivileges": {
-        "PUBLIC": [],
-        "ai_hr_app": [],
-        "ai_hr_owner": [
-          "INSERT",
-          "SELECT"
-        ]
-      },
-      "owner": "MIGRATION_OWNER"
-    },
-    {
       "table": "app.contract_posting_job_source",
       "rls": true,
       "force": true,
@@ -2659,21 +2857,7 @@
       "owner": "MIGRATION_OWNER"
     },
     {
-      "table": "app.contract_posting_producer",
-      "rls": true,
-      "force": true,
-      "explicitRolePrivileges": {
-        "PUBLIC": [],
-        "ai_hr_app": [],
-        "ai_hr_owner": [
-          "INSERT",
-          "SELECT"
-        ]
-      },
-      "owner": "MIGRATION_OWNER"
-    },
-    {
-      "table": "app.contract_posting_producer_certificate",
+      "table": "app.contract_posting_job_result",
       "rls": true,
       "force": true,
       "explicitRolePrivileges": {
@@ -2717,6 +2901,77 @@
       "owner": "MIGRATION_OWNER"
     },
     {
+      "table": "app.contract_posting_producer",
+      "rls": true,
+      "force": true,
+      "explicitRolePrivileges": {
+        "PUBLIC": [],
+        "ai_hr_app": [],
+        "ai_hr_owner": [
+          "INSERT",
+          "SELECT"
+        ]
+      },
+      "owner": "MIGRATION_OWNER"
+    },
+    {
+      "table": "app.contract_posting_producer_certificate",
+      "rls": true,
+      "force": true,
+      "explicitRolePrivileges": {
+        "PUBLIC": [],
+        "ai_hr_app": [],
+        "ai_hr_owner": [
+          "INSERT",
+          "SELECT"
+        ]
+      },
+      "owner": "MIGRATION_OWNER"
+    },
+    {
+      "table": "app.contract_email_delivery_receipt",
+      "rls": true,
+      "force": true,
+      "explicitRolePrivileges": {
+        "PUBLIC": [],
+        "ai_hr_app": [],
+        "ai_hr_owner": [
+          "INSERT",
+          "SELECT"
+        ]
+      },
+      "owner": "MIGRATION_OWNER"
+    },
+    {
+      "table": "app.contract_ordinary_event_progress",
+      "rls": true,
+      "force": true,
+      "explicitRolePrivileges": {
+        "PUBLIC": [],
+        "ai_hr_app": [],
+        "ai_hr_owner": [
+          "INSERT",
+          "SELECT",
+          "UPDATE"
+        ]
+      },
+      "owner": "MIGRATION_OWNER"
+    },
+    {
+      "table": "app.contract_email_hr_notice",
+      "rls": true,
+      "force": true,
+      "explicitRolePrivileges": {
+        "PUBLIC": [],
+        "ai_hr_app": [],
+        "ai_hr_owner": [
+          "INSERT",
+          "SELECT"
+        ]
+      },
+      "owner": "MIGRATION_OWNER"
+    },
+    {
       "table": "app.contract_posting_snapshot_permit",
       "rls": true,
       "force": true,
@@ -2732,111 +2987,14 @@
       "owner": "MIGRATION_OWNER"
     },
     {
-      "table": "app.contract_system_digest",
-      "rls": true,
-      "force": false,
-      "explicitRolePrivileges": {
-        "PUBLIC": [],
-        "ai_hr_app": []
-      },
-      "owner": "MIGRATION_OWNER"
-    },
-    {
-      "table": "app.contract_system_job_source",
-      "rls": true,
-      "force": false,
-      "explicitRolePrivileges": {
-        "PUBLIC": [],
-        "ai_hr_app": []
-      },
-      "owner": "MIGRATION_OWNER"
-    },
-    {
-      "table": "public.automation_document_template",
-      "rls": true,
-      "force": true,
-      "explicitRolePrivileges": {
-        "PUBLIC": [],
-        "ai_hr_app": [
-          "SELECT"
-        ]
-      },
-      "owner": "MIGRATION_OWNER"
-    },
-    {
-      "table": "public.automation_document_template_version",
-      "rls": true,
-      "force": true,
-      "explicitRolePrivileges": {
-        "PUBLIC": [],
-        "ai_hr_app": [
-          "SELECT"
-        ]
-      },
-      "owner": "MIGRATION_OWNER"
-    },
-    {
-      "table": "public.contract_access_member",
-      "rls": true,
-      "force": true,
-      "explicitRolePrivileges": {
-        "PUBLIC": [],
-        "ai_hr_app": [
-          "SELECT"
-        ]
-      },
-      "owner": "MIGRATION_OWNER"
-    },
-    {
-      "table": "public.contract_access_role",
-      "rls": true,
-      "force": true,
-      "explicitRolePrivileges": {
-        "PUBLIC": [],
-        "ai_hr_app": [
-          "SELECT"
-        ]
-      },
-      "owner": "MIGRATION_OWNER"
-    },
-    {
-      "table": "public.contract_shared_approval",
-      "rls": true,
-      "force": true,
-      "explicitRolePrivileges": {
-        "PUBLIC": [],
-        "ai_hr_app": []
-      },
-      "owner": "MIGRATION_OWNER"
-    },
-    {
-      "table": "public.contract_shared_case",
-      "rls": true,
-      "force": true,
-      "explicitRolePrivileges": {
-        "PUBLIC": [],
-        "ai_hr_app": []
-      },
-      "owner": "MIGRATION_OWNER"
-    },
-    {
-      "table": "public.contract_shared_case_revision",
-      "rls": true,
-      "force": true,
-      "explicitRolePrivileges": {
-        "PUBLIC": [],
-        "ai_hr_app": []
-      },
-      "owner": "MIGRATION_OWNER"
-    },
-    {
-      "table": "public.contract_shared_email_document_step",
+      "table": "app.contract_posting_assignment_org_permit",
       "rls": true,
       "force": true,
       "explicitRolePrivileges": {
         "PUBLIC": [],
         "ai_hr_app": [],
         "ai_hr_owner": [
+          "DELETE",
           "INSERT",
           "SELECT",
           "UPDATE"
@@ -2845,180 +3003,302 @@
       "owner": "MIGRATION_OWNER"
     },
     {
-      "table": "public.contract_shared_event",
-      "rls": true,
-      "force": true,
-      "explicitRolePrivileges": {
-        "PUBLIC": [],
-        "ai_hr_app": []
-      },
-      "owner": "MIGRATION_OWNER"
-    },
-    {
-      "table": "public.contract_shared_letter",
-      "rls": true,
-      "force": true,
-      "explicitRolePrivileges": {
-        "PUBLIC": [],
-        "ai_hr_app": []
-      },
-      "owner": "MIGRATION_OWNER"
-    },
-    {
-      "table": "public.contract_shared_letter_content",
-      "rls": true,
-      "force": true,
-      "explicitRolePrivileges": {
-        "PUBLIC": [],
-        "ai_hr_app": []
-      },
-      "owner": "MIGRATION_OWNER"
-    },
-    {
-      "table": "public.contract_shared_posting",
-      "rls": true,
-      "force": true,
-      "explicitRolePrivileges": {
-        "PUBLIC": [],
-        "ai_hr_app": []
-      },
-      "owner": "MIGRATION_OWNER"
-    },
-    {
-      "table": "public.contract_shared_posting_tx",
-      "rls": true,
-      "force": true,
-      "explicitRolePrivileges": {
-        "PUBLIC": [],
-        "ai_hr_app": []
-      },
-      "owner": "MIGRATION_OWNER"
-    },
-    {
-      "table": "public.contract_shared_preview",
-      "rls": true,
-      "force": true,
-      "explicitRolePrivileges": {
-        "PUBLIC": [],
-        "ai_hr_app": []
-      },
-      "owner": "MIGRATION_OWNER"
-    },
-    {
-      "table": "public.contract_shared_release_receipt",
-      "rls": true,
-      "force": true,
-      "explicitRolePrivileges": {
-        "PUBLIC": [],
-        "ai_hr_app": []
-      },
-      "owner": "MIGRATION_OWNER"
-    },
-    {
-      "table": "public.contract_shared_review_admission",
-      "rls": true,
-      "force": true,
-      "explicitRolePrivileges": {
-        "PUBLIC": [],
-        "ai_hr_app": []
-      },
-      "owner": "MIGRATION_OWNER"
-    },
-    {
-      "table": "public.contract_shared_settings",
-      "rls": true,
-      "force": true,
-      "explicitRolePrivileges": {
-        "PUBLIC": [],
-        "ai_hr_app": [
-          "SELECT"
-        ]
-      },
-      "owner": "MIGRATION_OWNER"
-    },
-    {
-      "table": "public.document_form_action_intent",
+      "table": "app.contract_posting_assignment_org_before",
       "rls": true,
       "force": true,
       "explicitRolePrivileges": {
         "PUBLIC": [],
         "ai_hr_app": [],
         "ai_hr_owner": [
+          "DELETE",
           "INSERT",
           "SELECT"
         ]
-      },
-      "owner": "MIGRATION_OWNER"
-    },
-    {
-      "table": "public.document_form_action_receipt",
-      "rls": true,
-      "force": true,
-      "explicitRolePrivileges": {
-        "PUBLIC": [],
-        "ai_hr_app": [],
-        "ai_hr_owner": [
-          "INSERT",
-          "SELECT"
-        ]
-      },
-      "owner": "MIGRATION_OWNER"
-    },
-    {
-      "table": "public.document_form_release",
-      "rls": true,
-      "force": true,
-      "explicitRolePrivileges": {
-        "PUBLIC": [],
-        "ai_hr_app": [],
-        "ai_hr_owner": [
-          "INSERT",
-          "SELECT"
-        ]
-      },
-      "owner": "MIGRATION_OWNER"
-    },
-    {
-      "table": "public.document_form_response",
-      "rls": true,
-      "force": true,
-      "explicitRolePrivileges": {
-        "PUBLIC": [],
-        "ai_hr_app": [],
-        "ai_hr_owner": [
-          "INSERT",
-          "SELECT",
-          "UPDATE"
-        ]
-      },
-      "owner": "MIGRATION_OWNER"
-    },
-    {
-      "table": "public.document_form_response_revision",
-      "rls": true,
-      "force": true,
-      "explicitRolePrivileges": {
-        "PUBLIC": [],
-        "ai_hr_app": [],
-        "ai_hr_owner": [
-          "INSERT",
-          "SELECT"
-        ]
-      },
-      "owner": "MIGRATION_OWNER"
-    },
-    {
-      "table": "public.document_signing_assignment",
-      "rls": true,
-      "force": true,
-      "explicitRolePrivileges": {
-        "PUBLIC": [],
-        "ai_hr_app": []
       },
       "owner": "MIGRATION_OWNER"
     }
   ],
   "policiesAdded": [
+    {
+      "schema": "public",
+      "table": "contract_access_role",
+      "name": "contract_access_role_owner",
+      "cmd": "ALL",
+      "roles": "ai_hr_owner",
+      "using": "app.acting_as_owner()",
+      "check": "app.acting_as_owner()",
+      "source": "5800_contract_shared_access:74"
+    },
+    {
+      "schema": "public",
+      "table": "contract_access_member",
+      "name": "contract_access_member_owner",
+      "cmd": "ALL",
+      "roles": "ai_hr_owner",
+      "using": "app.acting_as_owner()",
+      "check": "app.acting_as_owner()",
+      "source": "5800_contract_shared_access:76"
+    },
+    {
+      "schema": "public",
+      "table": "contract_shared_settings",
+      "name": "contract_shared_settings_owner",
+      "cmd": "ALL",
+      "roles": "ai_hr_owner",
+      "using": "app.acting_as_owner()",
+      "check": "app.acting_as_owner()",
+      "source": "5800_contract_shared_access:77"
+    },
+    {
+      "schema": "public",
+      "table": "contract_access_role",
+      "name": "contract_access_role_read",
+      "cmd": "SELECT",
+      "roles": "ai_hr_app",
+      "using": "tenant_id=app.current_tenant_id() AND app.contract_shared_access_admin()",
+      "check": null,
+      "source": "5800_contract_shared_access:78"
+    },
+    {
+      "schema": "public",
+      "table": "contract_access_member",
+      "name": "contract_access_member_read",
+      "cmd": "SELECT",
+      "roles": "ai_hr_app",
+      "using": "tenant_id=app.current_tenant_id() AND app.contract_shared_access_admin()",
+      "check": null,
+      "source": "5800_contract_shared_access:80"
+    },
+    {
+      "schema": "public",
+      "table": "contract_shared_settings",
+      "name": "contract_shared_settings_read",
+      "cmd": "SELECT",
+      "roles": "ai_hr_app",
+      "using": "tenant_id=app.current_tenant_id() AND app.contract_shared_permitted('access',company_id)",
+      "check": null,
+      "source": "5800_contract_shared_access:81"
+    },
+    {
+      "schema": "public",
+      "table": "contract_shared_case",
+      "name": "contract_shared_case_owner",
+      "cmd": "ALL",
+      "roles": "ai_hr_owner",
+      "using": "app.acting_as_owner()",
+      "check": "app.acting_as_owner()",
+      "source": "5801_contract_shared_flows:20"
+    },
+    {
+      "schema": "public",
+      "table": "contract_shared_letter",
+      "name": "contract_shared_letter_owner",
+      "cmd": "ALL",
+      "roles": "ai_hr_owner",
+      "using": "app.acting_as_owner()",
+      "check": "app.acting_as_owner()",
+      "source": "5801_contract_shared_flows:22"
+    },
+    {
+      "schema": "public",
+      "table": "contract_shared_case",
+      "name": "contract_shared_case_read",
+      "cmd": "SELECT",
+      "roles": "ai_hr_app",
+      "using": "tenant_id=app.current_tenant_id() AND app.contract_shared_case_permitted(case_id,'view')",
+      "check": null,
+      "source": "5801_contract_shared_flows:32"
+    },
+    {
+      "schema": "public",
+      "table": "contract_shared_letter",
+      "name": "contract_shared_letter_read",
+      "cmd": "SELECT",
+      "roles": "ai_hr_app",
+      "using": "tenant_id=app.current_tenant_id() AND (app.contract_shared_case_permitted(case_id,'view') OR app.contract_shared_letter_assigned(case_id))",
+      "check": null,
+      "source": "5801_contract_shared_flows:34"
+    },
+    {
+      "schema": "public",
+      "table": "automation_document_template",
+      "name": "automation_document_template_owner",
+      "cmd": "ALL",
+      "roles": "ai_hr_owner",
+      "using": "app.acting_as_owner()",
+      "check": "app.acting_as_owner()",
+      "source": "5803_shared_document_templates:21"
+    },
+    {
+      "schema": "public",
+      "table": "automation_document_template_version",
+      "name": "automation_document_template_version_owner",
+      "cmd": "ALL",
+      "roles": "ai_hr_owner",
+      "using": "app.acting_as_owner()",
+      "check": "app.acting_as_owner()",
+      "source": "5803_shared_document_templates:23"
+    },
+    {
+      "schema": "public",
+      "table": "automation_document_template",
+      "name": "automation_document_template_read",
+      "cmd": "SELECT",
+      "roles": "ai_hr_app",
+      "using": "tenant_id=app.current_tenant_id() AND app.automation_can_manage(module,'templates')",
+      "check": null,
+      "source": "5803_shared_document_templates:24"
+    },
+    {
+      "schema": "public",
+      "table": "automation_document_template_version",
+      "name": "automation_document_template_version_read",
+      "cmd": "SELECT",
+      "roles": "ai_hr_app",
+      "using": "tenant_id=app.current_tenant_id() AND EXISTS(SELECT 1 FROM public.automation_document_template h WHERE h.tenant_id=automation_document_template_version.tenant_id AND h.id=automation_document_template_version.template_id AND app.automation_can_manage(h.module,'templates'))",
+      "check": null,
+      "source": "5803_shared_document_templates:25"
+    },
+    {
+      "schema": "public",
+      "table": "document_signing_assignment",
+      "name": "document_signing_assignment_owner",
+      "cmd": "ALL",
+      "roles": "ai_hr_owner",
+      "using": "app.acting_as_owner()",
+      "check": "app.acting_as_owner()",
+      "source": "5807_contract_shared_commands:40"
+    },
+    {
+      "schema": "public",
+      "table": "contract_shared_case_revision",
+      "name": "contract_shared_case_revision_owner",
+      "cmd": "ALL",
+      "roles": "ai_hr_owner",
+      "using": "app.acting_as_owner()",
+      "check": "app.acting_as_owner()",
+      "source": "5807_contract_shared_commands:66"
+    },
+    {
+      "schema": "public",
+      "table": "contract_shared_event",
+      "name": "contract_shared_event_owner",
+      "cmd": "ALL",
+      "roles": "ai_hr_owner",
+      "using": "app.acting_as_owner()",
+      "check": "app.acting_as_owner()",
+      "source": "5807_contract_shared_commands:67"
+    },
+    {
+      "schema": "public",
+      "table": "contract_shared_preview",
+      "name": "contract_shared_preview_owner",
+      "cmd": "ALL",
+      "roles": "ai_hr_owner",
+      "using": "app.acting_as_owner()",
+      "check": "app.acting_as_owner()",
+      "source": "5807_contract_shared_commands:68"
+    },
+    {
+      "schema": "public",
+      "table": "contract_shared_approval",
+      "name": "contract_shared_approval_owner",
+      "cmd": "ALL",
+      "roles": "ai_hr_owner",
+      "using": "app.acting_as_owner()",
+      "check": "app.acting_as_owner()",
+      "source": "5808_contract_shared_signing:31"
+    },
+    {
+      "schema": "public",
+      "table": "contract_shared_letter_content",
+      "name": "contract_shared_letter_content_owner",
+      "cmd": "ALL",
+      "roles": "ai_hr_owner",
+      "using": "app.acting_as_owner()",
+      "check": "app.acting_as_owner()",
+      "source": "5808_contract_shared_signing:32"
+    },
+    {
+      "schema": "public",
+      "table": "contract_shared_posting",
+      "name": "contract_shared_posting_owner",
+      "cmd": "ALL",
+      "roles": "ai_hr_owner",
+      "using": "app.acting_as_owner()",
+      "check": "app.acting_as_owner()",
+      "source": "5814_contract_shared_personnel_postings:19"
+    },
+    {
+      "schema": "public",
+      "table": "contract_shared_posting_tx",
+      "name": "contract_shared_posting_tx_owner",
+      "cmd": "ALL",
+      "roles": "ai_hr_owner",
+      "using": "app.acting_as_owner()",
+      "check": "app.acting_as_owner()",
+      "source": "5815_contract_posting_movement_authority:10"
+    },
+    {
+      "schema": "public",
+      "table": "employment",
+      "name": "contract_posting_employment_read",
+      "cmd": "SELECT",
+      "roles": "ai_hr_app",
+      "using": "tenant_id=app.current_tenant_id() AND app.contract_shared_posting_tx_subject(id)",
+      "check": null,
+      "source": "5815_contract_posting_movement_authority:46"
+    },
+    {
+      "schema": "public",
+      "table": "assignment",
+      "name": "contract_posting_assignment_read",
+      "cmd": "SELECT",
+      "roles": "ai_hr_app",
+      "using": "tenant_id=app.current_tenant_id() AND app.contract_shared_posting_tx_subject(employment_id)",
+      "check": null,
+      "source": "5815_contract_posting_movement_authority:47"
+    },
+    {
+      "schema": "public",
+      "table": "employment",
+      "name": "contract_posting_employment_update",
+      "cmd": "UPDATE",
+      "roles": "ai_hr_app",
+      "using": "app.contract_shared_posting_employment_row(to_jsonb(employment),false)",
+      "check": "app.contract_shared_posting_employment_row(to_jsonb(employment),true)",
+      "source": "5815_contract_posting_movement_authority:100"
+    },
+    {
+      "schema": "public",
+      "table": "assignment",
+      "name": "contract_posting_assignment_insert",
+      "cmd": "INSERT",
+      "roles": "ai_hr_app",
+      "using": null,
+      "check": "app.contract_shared_posting_assignment_row(to_jsonb(assignment),false)",
+      "source": "5815_contract_posting_movement_authority:101"
+    },
+    {
+      "schema": "public",
+      "table": "assignment",
+      "name": "contract_posting_assignment_update",
+      "cmd": "UPDATE",
+      "roles": "ai_hr_app",
+      "using": "app.contract_shared_posting_assignment_row(to_jsonb(assignment),true)",
+      "check": "app.contract_shared_posting_assignment_row(to_jsonb(assignment),false)",
+      "source": "5815_contract_posting_movement_authority:102"
+    },
+    {
+      "schema": "public",
+      "table": "contract_shared_review_admission",
+      "name": "contract_shared_review_admission_owner",
+      "cmd": "ALL",
+      "roles": "ai_hr_owner",
+      "using": "true",
+      "check": "true",
+      "source": "5835_contract_shared_review_wording:13"
+    },
     {
       "schema": "app",
       "table": "automation_email_asset_verifier",
@@ -3030,24 +3310,74 @@
       "source": "5842_probation_shared_email_asset_proof:12"
     },
     {
-      "schema": "app",
-      "table": "contract_email_delivery_receipt",
-      "name": "contract_email_delivery_receipt_owner",
+      "schema": "public",
+      "table": "contract_shared_release_receipt",
+      "name": "contract_shared_release_receipt_owner",
       "cmd": "ALL",
       "roles": "ai_hr_owner",
-      "using": "app.acting_as_owner()",
-      "check": "app.acting_as_owner()",
-      "source": "6000 inactive proposal literal CREATE POLICY"
+      "using": "true",
+      "check": "true",
+      "source": "5901_contract_shared_release_evidence:12"
     },
     {
-      "schema": "app",
-      "table": "contract_email_hr_notice",
-      "name": "contract_email_hr_notice_owner",
+      "schema": "public",
+      "table": "document_form_response",
+      "name": "document_form_response_owner",
       "cmd": "ALL",
       "roles": "ai_hr_owner",
       "using": "app.acting_as_owner()",
       "check": "app.acting_as_owner()",
-      "source": "6010_contract_email_document_hr_notices:21"
+      "source": "5940_contract_form_response_owner:43"
+    },
+    {
+      "schema": "public",
+      "table": "document_form_response_revision",
+      "name": "document_form_response_revision_owner",
+      "cmd": "ALL",
+      "roles": "ai_hr_owner",
+      "using": "app.acting_as_owner()",
+      "check": "app.acting_as_owner()",
+      "source": "5940_contract_form_response_owner:44"
+    },
+    {
+      "schema": "public",
+      "table": "document_form_action_intent",
+      "name": "document_form_action_intent_owner",
+      "cmd": "ALL",
+      "roles": "ai_hr_owner",
+      "using": "app.acting_as_owner()",
+      "check": "app.acting_as_owner()",
+      "source": "5940_contract_form_response_owner:45"
+    },
+    {
+      "schema": "public",
+      "table": "document_form_action_receipt",
+      "name": "document_form_action_receipt_owner",
+      "cmd": "ALL",
+      "roles": "ai_hr_owner",
+      "using": "app.acting_as_owner()",
+      "check": "app.acting_as_owner()",
+      "source": "5940_contract_form_response_owner:46"
+    },
+    {
+      "schema": "public",
+      "table": "document_form_release",
+      "name": "document_form_release_owner",
+      "cmd": "ALL",
+      "roles": "ai_hr_owner",
+      "using": "app.acting_as_owner()",
+      "check": "app.acting_as_owner()",
+      "source": "5940_contract_form_response_owner:47"
+    },
+    {
+      "schema": "public",
+      "table": "contract_shared_email_document_step",
+      "name": "contract_shared_email_document_step_owner",
+      "cmd": "ALL",
+      "roles": "ai_hr_owner",
+      "using": "app.acting_as_owner()",
+      "check": "app.acting_as_owner()",
+      "source": "5943_contract_email_document_readiness:12"
     },
     {
       "schema": "app",
@@ -3091,8 +3421,8 @@
     },
     {
       "schema": "app",
-      "table": "contract_ordinary_event_progress",
-      "name": "contract_ordinary_event_progress_owner",
+      "table": "contract_email_delivery_receipt",
+      "name": "contract_email_delivery_receipt_owner",
       "cmd": "ALL",
       "roles": "ai_hr_owner",
       "using": "app.acting_as_owner()",
@@ -3101,33 +3431,13 @@
     },
     {
       "schema": "app",
-      "table": "contract_posting_assignment_org_before",
-      "name": "contract_posting_assignment_org_before_owner",
+      "table": "contract_ordinary_event_progress",
+      "name": "contract_ordinary_event_progress_owner",
       "cmd": "ALL",
       "roles": "ai_hr_owner",
       "using": "app.acting_as_owner()",
       "check": "app.acting_as_owner()",
-      "source": "6011_contract_posting_org_snapshot_owner reviewed-v11 literal source intent"
-    },
-    {
-      "schema": "app",
-      "table": "contract_posting_assignment_org_permit",
-      "name": "contract_posting_assignment_org_permit_owner",
-      "cmd": "ALL",
-      "roles": "ai_hr_owner",
-      "using": "app.acting_as_owner()",
-      "check": "app.acting_as_owner()",
-      "source": "6011_contract_posting_org_snapshot_owner reviewed-v11 literal source intent"
-    },
-    {
-      "schema": "app",
-      "table": "contract_posting_job_result",
-      "name": "contract_posting_job_result_owner",
-      "cmd": "ALL",
-      "roles": "ai_hr_owner",
-      "using": "app.acting_as_owner()",
-      "check": "app.acting_as_owner()",
-      "source": "6001_contract_posting_protected_job_foundation:196"
+      "source": "6000 inactive proposal literal CREATE POLICY"
     },
     {
       "schema": "app",
@@ -3151,23 +3461,13 @@
     },
     {
       "schema": "app",
-      "table": "contract_posting_producer",
-      "name": "contract_posting_producer_owner",
+      "table": "contract_posting_job_result",
+      "name": "contract_posting_job_result_owner",
       "cmd": "ALL",
       "roles": "ai_hr_owner",
       "using": "app.acting_as_owner()",
       "check": "app.acting_as_owner()",
-      "source": "6006_contract_posting_first_producer_readiness:34"
-    },
-    {
-      "schema": "app",
-      "table": "contract_posting_producer_certificate",
-      "name": "contract_posting_producer_certificate_owner",
-      "cmd": "ALL",
-      "roles": "ai_hr_owner",
-      "using": "app.acting_as_owner()",
-      "check": "app.acting_as_owner()",
-      "source": "6006_contract_posting_first_producer_readiness:35"
+      "source": "6001_contract_posting_protected_job_foundation:196"
     },
     {
       "schema": "app",
@@ -3191,6 +3491,36 @@
     },
     {
       "schema": "app",
+      "table": "contract_posting_producer",
+      "name": "contract_posting_producer_owner",
+      "cmd": "ALL",
+      "roles": "ai_hr_owner",
+      "using": "app.acting_as_owner()",
+      "check": "app.acting_as_owner()",
+      "source": "6006_contract_posting_first_producer_readiness:34"
+    },
+    {
+      "schema": "app",
+      "table": "contract_posting_producer_certificate",
+      "name": "contract_posting_producer_certificate_owner",
+      "cmd": "ALL",
+      "roles": "ai_hr_owner",
+      "using": "app.acting_as_owner()",
+      "check": "app.acting_as_owner()",
+      "source": "6006_contract_posting_first_producer_readiness:35"
+    },
+    {
+      "schema": "app",
+      "table": "contract_email_hr_notice",
+      "name": "contract_email_hr_notice_owner",
+      "cmd": "ALL",
+      "roles": "ai_hr_owner",
+      "using": "app.acting_as_owner()",
+      "check": "app.acting_as_owner()",
+      "source": "6010_contract_email_document_hr_notices:21"
+    },
+    {
+      "schema": "app",
       "table": "contract_posting_snapshot_permit",
       "name": "contract_posting_snapshot_permit_owner",
       "cmd": "ALL",
@@ -3201,362 +3531,32 @@
     },
     {
       "schema": "public",
-      "table": "assignment",
-      "name": "contract_posting_assignment_insert",
-      "cmd": "INSERT",
-      "roles": "ai_hr_app",
-      "using": null,
-      "check": "app.contract_shared_posting_assignment_row(to_jsonb(assignment),false)",
-      "source": "5815_contract_posting_movement_authority:101"
-    },
-    {
-      "schema": "public",
-      "table": "assignment",
-      "name": "contract_posting_assignment_read",
-      "cmd": "SELECT",
-      "roles": "ai_hr_app",
-      "using": "tenant_id=app.current_tenant_id() AND app.contract_shared_posting_tx_subject(employment_id)",
-      "check": null,
-      "source": "5815_contract_posting_movement_authority:47"
-    },
-    {
-      "schema": "public",
-      "table": "assignment",
-      "name": "contract_posting_assignment_update",
-      "cmd": "UPDATE",
-      "roles": "ai_hr_app",
-      "using": "app.contract_shared_posting_assignment_row(to_jsonb(assignment),true)",
-      "check": "app.contract_shared_posting_assignment_row(to_jsonb(assignment),false)",
-      "source": "5815_contract_posting_movement_authority:102"
-    },
-    {
-      "schema": "public",
-      "table": "automation_document_template",
-      "name": "automation_document_template_owner",
-      "cmd": "ALL",
-      "roles": "ai_hr_owner",
-      "using": "app.acting_as_owner()",
-      "check": "app.acting_as_owner()",
-      "source": "5803_shared_document_templates:21"
-    },
-    {
-      "schema": "public",
-      "table": "automation_document_template",
-      "name": "automation_document_template_read",
-      "cmd": "SELECT",
-      "roles": "ai_hr_app",
-      "using": "tenant_id=app.current_tenant_id() AND app.automation_can_manage(module,'templates')",
-      "check": null,
-      "source": "5803_shared_document_templates:24"
-    },
-    {
-      "schema": "public",
-      "table": "automation_document_template_version",
-      "name": "automation_document_template_version_owner",
-      "cmd": "ALL",
-      "roles": "ai_hr_owner",
-      "using": "app.acting_as_owner()",
-      "check": "app.acting_as_owner()",
-      "source": "5803_shared_document_templates:23"
-    },
-    {
-      "schema": "public",
-      "table": "automation_document_template_version",
-      "name": "automation_document_template_version_read",
-      "cmd": "SELECT",
-      "roles": "ai_hr_app",
-      "using": "tenant_id=app.current_tenant_id() AND EXISTS(SELECT 1 FROM public.automation_document_template h WHERE h.tenant_id=automation_document_template_version.tenant_id AND h.id=automation_document_template_version.template_id AND app.automation_can_manage(h.module,'templates'))",
-      "check": null,
-      "source": "5803_shared_document_templates:25"
-    },
-    {
-      "schema": "public",
-      "table": "contract_access_member",
-      "name": "contract_access_member_owner",
-      "cmd": "ALL",
-      "roles": "ai_hr_owner",
-      "using": "app.acting_as_owner()",
-      "check": "app.acting_as_owner()",
-      "source": "5800_contract_shared_access:76"
-    },
-    {
-      "schema": "public",
-      "table": "contract_access_member",
-      "name": "contract_access_member_read",
-      "cmd": "SELECT",
-      "roles": "ai_hr_app",
-      "using": "tenant_id=app.current_tenant_id() AND app.contract_shared_access_admin()",
-      "check": null,
-      "source": "5800_contract_shared_access:80"
-    },
-    {
-      "schema": "public",
-      "table": "contract_access_role",
-      "name": "contract_access_role_owner",
-      "cmd": "ALL",
-      "roles": "ai_hr_owner",
-      "using": "app.acting_as_owner()",
-      "check": "app.acting_as_owner()",
-      "source": "5800_contract_shared_access:74"
-    },
-    {
-      "schema": "public",
-      "table": "contract_access_role",
-      "name": "contract_access_role_read",
-      "cmd": "SELECT",
-      "roles": "ai_hr_app",
-      "using": "tenant_id=app.current_tenant_id() AND app.contract_shared_access_admin()",
-      "check": null,
-      "source": "5800_contract_shared_access:78"
-    },
-    {
-      "schema": "public",
-      "table": "contract_shared_approval",
-      "name": "contract_shared_approval_owner",
-      "cmd": "ALL",
-      "roles": "ai_hr_owner",
-      "using": "app.acting_as_owner()",
-      "check": "app.acting_as_owner()",
-      "source": "5808_contract_shared_signing:31"
-    },
-    {
-      "schema": "public",
-      "table": "contract_shared_case",
-      "name": "contract_shared_case_owner",
-      "cmd": "ALL",
-      "roles": "ai_hr_owner",
-      "using": "app.acting_as_owner()",
-      "check": "app.acting_as_owner()",
-      "source": "5801_contract_shared_flows:20"
-    },
-    {
-      "schema": "public",
-      "table": "contract_shared_case",
-      "name": "contract_shared_case_read",
-      "cmd": "SELECT",
-      "roles": "ai_hr_app",
-      "using": "tenant_id=app.current_tenant_id() AND app.contract_shared_case_permitted(case_id,'view')",
-      "check": null,
-      "source": "5801_contract_shared_flows:32"
-    },
-    {
-      "schema": "public",
-      "table": "contract_shared_case_revision",
-      "name": "contract_shared_case_revision_owner",
-      "cmd": "ALL",
-      "roles": "ai_hr_owner",
-      "using": "app.acting_as_owner()",
-      "check": "app.acting_as_owner()",
-      "source": "5807_contract_shared_commands:66"
-    },
-    {
-      "schema": "public",
-      "table": "contract_shared_email_document_step",
-      "name": "contract_shared_email_document_step_owner",
-      "cmd": "ALL",
-      "roles": "ai_hr_owner",
-      "using": "app.acting_as_owner()",
-      "check": "app.acting_as_owner()",
-      "source": "5943_contract_email_document_readiness:12"
-    },
-    {
-      "schema": "public",
-      "table": "contract_shared_event",
-      "name": "contract_shared_event_owner",
-      "cmd": "ALL",
-      "roles": "ai_hr_owner",
-      "using": "app.acting_as_owner()",
-      "check": "app.acting_as_owner()",
-      "source": "5807_contract_shared_commands:67"
-    },
-    {
-      "schema": "public",
-      "table": "contract_shared_letter",
-      "name": "contract_shared_letter_owner",
-      "cmd": "ALL",
-      "roles": "ai_hr_owner",
-      "using": "app.acting_as_owner()",
-      "check": "app.acting_as_owner()",
-      "source": "5801_contract_shared_flows:22"
-    },
-    {
-      "schema": "public",
-      "table": "contract_shared_letter",
-      "name": "contract_shared_letter_read",
-      "cmd": "SELECT",
-      "roles": "ai_hr_app",
-      "using": "tenant_id=app.current_tenant_id() AND (app.contract_shared_case_permitted(case_id,'view') OR app.contract_shared_letter_assigned(case_id))",
-      "check": null,
-      "source": "5801_contract_shared_flows:34"
-    },
-    {
-      "schema": "public",
-      "table": "contract_shared_letter_content",
-      "name": "contract_shared_letter_content_owner",
-      "cmd": "ALL",
-      "roles": "ai_hr_owner",
-      "using": "app.acting_as_owner()",
-      "check": "app.acting_as_owner()",
-      "source": "5808_contract_shared_signing:32"
-    },
-    {
-      "schema": "public",
-      "table": "contract_shared_posting",
-      "name": "contract_shared_posting_owner",
-      "cmd": "ALL",
-      "roles": "ai_hr_owner",
-      "using": "app.acting_as_owner()",
-      "check": "app.acting_as_owner()",
-      "source": "5814_contract_shared_personnel_postings:19"
-    },
-    {
-      "schema": "public",
-      "table": "contract_shared_posting_tx",
-      "name": "contract_shared_posting_tx_owner",
-      "cmd": "ALL",
-      "roles": "ai_hr_owner",
-      "using": "app.acting_as_owner()",
-      "check": "app.acting_as_owner()",
-      "source": "5815_contract_posting_movement_authority:10"
-    },
-    {
-      "schema": "public",
-      "table": "contract_shared_preview",
-      "name": "contract_shared_preview_owner",
-      "cmd": "ALL",
-      "roles": "ai_hr_owner",
-      "using": "app.acting_as_owner()",
-      "check": "app.acting_as_owner()",
-      "source": "5807_contract_shared_commands:68"
-    },
-    {
-      "schema": "public",
-      "table": "contract_shared_release_receipt",
-      "name": "contract_shared_release_receipt_owner",
-      "cmd": "ALL",
-      "roles": "ai_hr_owner",
-      "using": "true",
-      "check": "true",
-      "source": "5901_contract_shared_release_evidence:12"
-    },
-    {
-      "schema": "public",
-      "table": "contract_shared_review_admission",
-      "name": "contract_shared_review_admission_owner",
-      "cmd": "ALL",
-      "roles": "ai_hr_owner",
-      "using": "true",
-      "check": "true",
-      "source": "5835_contract_shared_review_wording:13"
-    },
-    {
-      "schema": "public",
-      "table": "contract_shared_settings",
-      "name": "contract_shared_settings_owner",
-      "cmd": "ALL",
-      "roles": "ai_hr_owner",
-      "using": "app.acting_as_owner()",
-      "check": "app.acting_as_owner()",
-      "source": "5800_contract_shared_access:77"
-    },
-    {
-      "schema": "public",
-      "table": "contract_shared_settings",
-      "name": "contract_shared_settings_read",
-      "cmd": "SELECT",
-      "roles": "ai_hr_app",
-      "using": "tenant_id=app.current_tenant_id() AND app.contract_shared_permitted('access',company_id)",
-      "check": null,
-      "source": "5800_contract_shared_access:81"
-    },
-    {
-      "schema": "public",
-      "table": "document_form_action_intent",
-      "name": "document_form_action_intent_owner",
-      "cmd": "ALL",
-      "roles": "ai_hr_owner",
-      "using": "app.acting_as_owner()",
-      "check": "app.acting_as_owner()",
-      "source": "5940_contract_form_response_owner:45"
-    },
-    {
-      "schema": "public",
-      "table": "document_form_action_receipt",
-      "name": "document_form_action_receipt_owner",
-      "cmd": "ALL",
-      "roles": "ai_hr_owner",
-      "using": "app.acting_as_owner()",
-      "check": "app.acting_as_owner()",
-      "source": "5940_contract_form_response_owner:46"
-    },
-    {
-      "schema": "public",
-      "table": "document_form_release",
-      "name": "document_form_release_owner",
-      "cmd": "ALL",
-      "roles": "ai_hr_owner",
-      "using": "app.acting_as_owner()",
-      "check": "app.acting_as_owner()",
-      "source": "5940_contract_form_response_owner:47"
-    },
-    {
-      "schema": "public",
-      "table": "document_form_response",
-      "name": "document_form_response_owner",
-      "cmd": "ALL",
-      "roles": "ai_hr_owner",
-      "using": "app.acting_as_owner()",
-      "check": "app.acting_as_owner()",
-      "source": "5940_contract_form_response_owner:43"
-    },
-    {
-      "schema": "public",
-      "table": "document_form_response_revision",
-      "name": "document_form_response_revision_owner",
-      "cmd": "ALL",
-      "roles": "ai_hr_owner",
-      "using": "app.acting_as_owner()",
-      "check": "app.acting_as_owner()",
-      "source": "5940_contract_form_response_owner:44"
-    },
-    {
-      "schema": "public",
-      "table": "document_signing_assignment",
-      "name": "document_signing_assignment_owner",
-      "cmd": "ALL",
-      "roles": "ai_hr_owner",
-      "using": "app.acting_as_owner()",
-      "check": "app.acting_as_owner()",
-      "source": "5807_contract_shared_commands:40"
-    },
-    {
-      "schema": "public",
-      "table": "employment",
-      "name": "contract_posting_employment_read",
-      "cmd": "SELECT",
-      "roles": "ai_hr_app",
-      "using": "tenant_id=app.current_tenant_id() AND app.contract_shared_posting_tx_subject(id)",
-      "check": null,
-      "source": "5815_contract_posting_movement_authority:46"
-    },
-    {
-      "schema": "public",
-      "table": "employment",
-      "name": "contract_posting_employment_update",
-      "cmd": "UPDATE",
-      "roles": "ai_hr_app",
-      "using": "app.contract_shared_posting_employment_row(to_jsonb(employment),false)",
-      "check": "app.contract_shared_posting_employment_row(to_jsonb(employment),true)",
-      "source": "5815_contract_posting_movement_authority:100"
-    },
-    {
-      "schema": "public",
       "table": "information_payslip_snapshot",
       "name": "contract_posting_snapshot_insert",
       "cmd": "INSERT",
       "roles": "ai_hr_owner",
       "using": null,
       "check": "app.contract_posting_snapshot_insert_allowed(to_jsonb(information_payslip_snapshot))",
+      "source": "6011_contract_posting_org_snapshot_owner reviewed-v11 literal source intent"
+    },
+    {
+      "schema": "app",
+      "table": "contract_posting_assignment_org_permit",
+      "name": "contract_posting_assignment_org_permit_owner",
+      "cmd": "ALL",
+      "roles": "ai_hr_owner",
+      "using": "app.acting_as_owner()",
+      "check": "app.acting_as_owner()",
+      "source": "6011_contract_posting_org_snapshot_owner reviewed-v11 literal source intent"
+    },
+    {
+      "schema": "app",
+      "table": "contract_posting_assignment_org_before",
+      "name": "contract_posting_assignment_org_before_owner",
+      "cmd": "ALL",
+      "roles": "ai_hr_owner",
+      "using": "app.acting_as_owner()",
+      "check": "app.acting_as_owner()",
       "source": "6011_contract_posting_org_snapshot_owner reviewed-v11 literal source intent"
     }
   ]
