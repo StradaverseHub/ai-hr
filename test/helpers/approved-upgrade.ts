@@ -255,9 +255,11 @@ export const APPROVED_UPGRADE_TAIL=[
  {idx:5319,when:1794841005919,tag:'5919_contract_work_case_source_anchor'},
  {idx:5325,when:1794841005925,tag:'5925_contract_template_lifecycle'},
  {idx:5326,when:1794841005926,tag:'5926_contract_template_draft_publication'},
+ {idx:5327,when:1794841005927,tag:'5927_contract_routing_check_names'},
 ] as const;
 // Final pending 2109/2126 bytes reviewed from engine 128bc2539; no applied-prefix hashes change.
 const APPROVED_UPGRADE_HASHES:Record<string,string>={
+ '5927_contract_routing_check_names':'1e73ccf6a9d4d28aa1c206211dc9d53d92068c5b0c18756f86c63d6861055fa3',
  '5926_contract_template_draft_publication':'5add71cdc647ff5ee6200ed435a2d75429c5e86b5158a3cadb70761349e2398f',
  '5925_contract_template_lifecycle':'57bd8be55c0c646ac8b541b1e5e2b796e82072cc9c0564b7d31af2c08630dfe0',
  '5902_shared_automation_permission_compatibility':'33a60c8951f539bf987f9ae5ecda727fbe9927083c6f35fdaf3a0025167a8ef5',

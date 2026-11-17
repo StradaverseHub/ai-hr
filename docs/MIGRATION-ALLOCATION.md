@@ -4090,3 +4090,5 @@ Contract posting forward5915 (idx5315/when1794841005915), coordinated with scree
 Shared builder remediation5925 (idx5325/when1794841005925), allocated by the Contract coordinator, adds version notes/usage and guarded logical deletion/publication. Existing SQL remains unchanged; new document usage is tenant/template indexed and history bounded to100. Remaining5926–29 reserved for this owner. No installation or release authority.
 
 Shared builder5926 (idx5326/when1794841005926) enforces draft-only history publication with a forward head trigger, retaining5925 SQL and every prior version/audit.5927–29 remain reserved.
+
+Shared builder5927 (idx5327/when1794841005927) projects up to50 named routing recipients behind the existing exact Contract groups guard and native active-account source. This avoids inferring a Workforce/person grant for group editors.5928–29 remain reserved.
