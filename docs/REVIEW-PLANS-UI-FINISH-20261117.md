@@ -4,13 +4,11 @@
 
 Approved board item `0c0d8710-d271-4def-90ea-7556e131b50e` is an ordinary extension of the authenticated Rewards workspace. The implemented surface agrees with the incumbent Atelier operational system. No new visual world, global token, typography role, illustration or shipping raster is needed. `DESIGN.md`, `.impeccable/design.json` and `PRODUCT.md` remain unchanged. The dedicated [Review Plans brief](../.impeccable/surfaces/app-admin-rewards-review-plans-page-tsx.md) owns the direction contract, five promises and quality bar; its grid composition is not a rule for unrelated pages.
 
-This is a bounded system comparison and evidence record, not a release verdict. At this record's checkpoint, the finish reviewer had returned six findings and the repair batch was implemented; the final scoring disposition remains pending. The controller will attach the exact final verdict and settled recovery capture identity when received. No installed, accepted or shipped claim follows from this document.
+The same finish reviewer returned **VERDICT PASS** on the six material fixes: all six **Resolved**, remaining findings **Clear**, and no material regressions observed from the repair batch. The reviewer's **SHIP** disposition covers those scored fixes only; it is not whole-surface approval or installation/release acceptance.
 
-## Source identity
+## Source and evidence identity
 
-The documentation checkout was verified as `/Users/zenlam/Projects/ai-hr/approved-review-plans-20261117`, branch `codex/approved-review-plans-20261117`, initially clean at `1699d25bc`. Remote `main` and `alpha` were freshly fetched; each comparison was 14 commits local-only and 5 remote-only. This pass retains the assigned candidate branch and does not choose a new integration base or alter shared history.
-
-Application repair batch: `d8b02fd95` (`fix(rewards): resolve Review Plans mobile recovery and permission findings`). The subsequent `1699d25bc` change waits for enabled Refresh comparison in the capture fixture; it is not an application repair. Source-component captures in the supplied repair3 evidence identify aggregate candidate `ec40a26e2ebd5260c574ed7f472446173b235b66`, run `44071714679`. That aggregate identity is distinct from this documentation checkout and must not be relabeled onto it.
+Final aggregate source: `9164a2f89ee2a4fd31633bed01975baa2b5b687a`. Hosted run: `44075796690`. Application repair batch: `d8b02fd95`. Fixture correction `1699d25bc` waits for the settled React transition before capturing the enabled recovery action; it changes no application source. Aggregate evidence identities are distinct from the documentation commits.
 
 ## Incumbent comparison
 
@@ -43,23 +41,23 @@ The six reported findings map to the source as follows:
 5. Excluded companies have inline ten-character guidance, native required/minimum constraints and an accessible error association.
 6. View-only guidance precedes the wide table and repeats under the company name, so the permission state is visible before scrolling to distant controls.
 
-These observations document implementation correspondence only. They do not independently score or close the reviewer's findings.
+The reviewer's final six-fix scoring closes these findings within the stated batch scope; the comparison above records their correspondence with the incumbent system.
 
 ## Evidence checked
 
 System sources: `PRODUCT.md`, `DESIGN.md`, `.impeccable/design.json`, `app/atelier.css`, `app/globals.css`, `components/ui.tsx`, and sampled `components/ui/{button,input,card}.tsx`. Surface sources: `app/admin/rewards/review-plans/{page,editor,new-year}.tsx`, `app/admin/rewards/review-before-saving.tsx`, and the dedicated brief. The Impeccable `reference/document.md` supplies the documentation format and token/sidecar rules; no global regeneration is warranted by this ordinary extension.
 
-Supplied artifact directory:
+Final artifact directory:
 
-`/Users/zenlam/Projects/ai-hr/approved-board-controller-20261117/.improve/approved-board-20261117/repair3/ui-screenshots`
+`/Users/zenlam/Projects/ai-hr/approved-board-controller-20261117/.improve/approved-board-20261117/repair4/ui-screenshots`
 
-The directory inventories nine state families across Review Plans and the shared Role permissions confirmation regression: Group Rewards, scoped HR, EC read-only, invalid exclusion, save error, saved, completed job, no year, and Role permissions. It additionally contains new-year error captures. Desktop/mobile PNGs and JSON identities are present, with mobile plan-type and right-control views for applicable grid states.
+Nine Review Plans state families are represented: Group Rewards, scoped HR, EC read-only, invalid exclusion, save error, saved, completed job, no year, and new-year error. Role permissions is a separate shared-confirmation regression artifact. Desktop/mobile PNGs and JSON identities accompany mobile plan-type and right-control views for applicable grid states.
 
-This pass visually sampled `en-rewards-review-plans-gr-desktop.png`, `en-rewards-review-plans-gr-mobile-plan-type.png`, `en-rewards-review-plans-ec-read-only-mobile.png`, `en-rewards-review-plans-invalid-exclusion-mobile.png`, and `en-rewards-review-plans-save-error-desktop.png`; it did not independently inspect every inventory image. The sampled Group Rewards JSON identifies Atelier, desktop 1440 × 1000 and mobile 390 × 844 capture viewports, Chromium `157.0.8103.50`, no page overflow, and a mobile plan select width of 272 px inside a 356 px scroll region with 1141 px content. Full-page PNG height can exceed viewport height.
+The final visual sample covers `en-rewards-review-plans-save-error-desktop.png`, `en-rewards-review-plans-save-error-mobile.png`, `en-rewards-review-plans-invalid-exclusion-mobile-plan-type.png`, `en-rewards-review-plans-ec-read-only-mobile.png`, and `en-rewards-review-plans-scoped-hr-mobile-controls.png`. The settled save-error captures show enabled Refresh comparison and Save changes, the retained reason and staged choice, and the stale-source error within the native modal. The plan-type view shows the full exclusion choice and ten-character guidance; the EC view shows both the pre-table notice and row labels; the scoped-HR right-control view retains accessible save actions below the scrollable grid. This was a sample, not an independent inspection of every inventory image.
 
-The sampled save-error PNG still catches transient Saving with disabled Refresh comparison. It establishes error placement, retained reason and modal presentation, but does not establish the settled enabled recovery affordance. Fixture change `1699d25bc` addresses capture timing; the controller's settled replacement and final reviewer score are pending at this checkpoint. The first invalid modal capture was superseded by a capture that restores the native modal top layer using `showModal()`; this correction is a rendering-fixture correction, not evidence of a live authenticated session.
+The final save-error JSON identifies the exact source/run above, Atelier, Chromium `157.0.8103.50`, desktop 1440 × 1000 and mobile 390 × 844 viewports, no page overflow, and `nativeModal: true`. The desktop modal measures 672 × 900 px; the mobile modal measures 390 × 844 px. Full-page PNG height can exceed viewport height. Native `showModal()` restores the top layer for serialized open dialogs; this rendering-fixture correction does not establish a live authenticated journey.
 
-The controller reports hosted repaired suites passed for aggregate source `ec40a26e2ebd5260c574ed7f472446173b235b66`. This documentation pass did not rerun suites, compiler, build or the design detector, and does not independently certify that broader test claim. The earlier scoped detector result was reported as `[]` before the final repair; it is not presented as a detector result for the final candidate.
+The controller reports **24 selected assertions PASS**, including the rendered journey, for the final source/run above. This documentation pass did not independently rerun suites, compiler, build or the design detector. The earlier scoped detector result was reported as `[]` before the final repair and is not represented as a final-candidate detector result.
 
 ## Limits and uncopied drift
 
