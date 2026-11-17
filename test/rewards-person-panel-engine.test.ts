@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { deskRow } from '../app/rewards/[unitId]/desk/desk-model';
 import { calculateRewards } from '../packs/rewards/engine';
 import { applyRewardCell, parseRewardCellValue } from '../packs/rewards/review-cell';
 import { baselineRewardLimits } from '../packs/rewards/limit-controls-model';
@@ -43,6 +44,18 @@ describe('Rewards panel engine owner', () => {
     const stored = entry({ recommendation: { ...emptyRecommendation(), meritBp: 400, promotionGrade: '15', promotionBp: 800, note: 'A fictional saved note' } });
     expect(applyRewardCell(stored,'promotionGrade',parseRewardCellValue('promotionGrade','')).recommendation).toMatchObject({ meritBp:400,promotionGrade:null,promotionBp:null,note:'A fictional saved note' });
     expect(applyRewardCell(stored,'specialBp',parseRewardCellValue('specialBp','2.5')).recommendation).toMatchObject({ meritBp:400,specialBp:250,promotionGrade:'15',promotionBp:800,note:'A fictional saved note' });
+  });
+  it('uses the same actual history ratios for current Senior awards and masks both rates and amounts without Senior access', () => {
+    const person = entry({ facts: { ...emptyFacts(), reviewed: true, talent: 'STAR', performance: 'OU', seniorPlan: true } });
+    const calculated = calculateRewards([person], policy, { seniorAwards: { [person.id]: { newBasicCents: 700000, bonusCents: 1000000 } } }).rows[0];
+    const context = { unit: { policy, kind: 'annual', status: 'draft' }, canEdit: true, uploaded: false, roles: ['gr'], route: ['bu','bg','gr','ctro','ec'], seniorAmountsVisible: true };
+    const projected = { ...calculated, totalIncreaseBp: calculated.meritBp + calculated.promotionBp + calculated.specialBp };
+    const visible = deskRow(context as any, projected as any, []);
+    // The Senior award is not split into merit/promotion/special, so the legacy table rate remains0.
+    expect(visible.totalIncreaseBp).toBe(0);
+    expect(visible.historyIncreaseBp).toBe(4000);expect(visible.incrementCents).toBe(200000);expect(visible.paidBonusMonthsBp).toBe(20000);
+    const masked = deskRow({ ...context, seniorAmountsVisible: false } as any, projected as any, []);
+    expect(masked.historyIncreaseBp).toBeNull();expect(masked.incrementCents).toBeNull();expect(masked.paidBonusMonthsBp).toBeNull();
   });
   it('requires a real reason and parses older recommendations unchanged', () => {
     expect(recommendationSchema.parse(emptyRecommendation())).toEqual(emptyRecommendation());
