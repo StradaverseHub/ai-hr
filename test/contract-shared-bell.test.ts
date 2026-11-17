@@ -15,7 +15,7 @@ it('sums native owner totals independently of bounded previews for an actor with
  source.postings.mockResolvedValue({items:[{id:'assigned-posting',kind:'contractPosting',subjectName:'Fictional employee',linkPath:'/lifecycle/contracts/postings?postingId=assigned-posting'}],total:250});
  const result=await lifecycleModuleInbox(session,navigation);
  expect(source.legacy).not.toHaveBeenCalled();expect(source.work).toHaveBeenCalledWith(session,{limit:20});expect(source.postings).toHaveBeenCalledWith(session,{limit:20});
- expect(result.count).toBe(1250);expect(result.myTasksCount).toBe(1000);expect(result.queueLinks.map(queue=>queue.href)).toEqual(['/tasks?contractPage=1','/lifecycle/contracts/postings/work']);expect(result.items).toHaveLength(2);expect(result.approvalCount).toBe(0);expect(result.items[1].linkPath).toContain('postingId=assigned-posting');
+ expect(result.count).toBe(1250);expect(result.myTasksCount).toBe(1000);expect(result.queueLinks.map(queue=>queue.href)).toEqual(['/tasks','/lifecycle/contracts/postings/work']);expect(result.items).toHaveLength(2);expect(result.approvalCount).toBe(0);expect(result.items[1].linkPath).toContain('postingId=assigned-posting');
 });
 it('keeps separate paged My Tasks from rereading Contract previews and counts only actual Approval Items work',async()=>{
  source.work.mockResolvedValue({items:[],total:9,approvalTotal:6,taskTotal:3});

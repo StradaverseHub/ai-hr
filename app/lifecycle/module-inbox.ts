@@ -88,7 +88,7 @@ export async function lifecycleModuleInbox(
       ? [{ href: '/approvals?category=contracts', label: sharedCopy!('approvals'), count: shared.approvalTotal }]
       : []),
     ...(shared.taskTotal
-      ? [{ href: '/tasks?contractPage=1', label: sharedCopy!('signatures'), count: shared.taskTotal }]
+      ? [{ href: '/tasks', label: sharedCopy!('signatures'), count: shared.taskTotal }]
       : []),
     ...(postings.total
       ? [{ href: '/lifecycle/contracts/postings/work', label: postingCopy!('contractPosting'), count: postings.total }]

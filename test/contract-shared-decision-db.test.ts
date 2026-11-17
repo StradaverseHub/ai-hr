@@ -96,6 +96,14 @@ const draft={kind:'renew' as const,months:6,payChanges:false,reason:'Continue th
 let f:Awaited<ReturnType<typeof fixture>>;
 beforeEach(async()=>{f=await fixture();});
 describe('protected Contract decision preview and submission',()=>{
+ it('enforces the Contract reminder range at the real server writer before publishing',async()=>{
+  const reminder:AutomationWorkflow={...f.workflow,id:randomUUID(),name:'Bounded Contract reminder',trigger:{event:'beforeContractEnd',days:365,workdays:false,repeat:false},conditions:[],steps:[{id:randomUUID(),type:'notify',conditions:[],to:[{kind:'person',userId:f.admin.userId!}],cc:[],params:{subject:'Contract period reminder',body:'Review the current contract period.'}}]};
+  expect((await saveAutomationWorkflow(f.admin,{workflow:reminder,expectedRevision:0,reason:'Valid maximum Contract reminder'})).revision).toBe(1);
+  await expect(saveAutomationWorkflow(f.admin,{workflow:{...reminder,trigger:{...reminder.trigger,days:366}},expectedRevision:1,reason:'Outside the Contract reminder range'})).rejects.toMatchObject({code:'invalid'});
+  const[retained]=await owner.db.execute<{revision:number;days:number}>(sql`select revision,(definition->'trigger'->>'days')::integer as days from automation_workflow_version where tenant_id=${f.b.tenantId}::uuid and workflow_id=${reminder.id}::uuid order by revision desc limit 1`);
+  expect(retained).toEqual({revision:1,days:365});
+  expect((await saveAutomationWorkflow(f.admin,{workflow:{...reminder,trigger:{...reminder.trigger,days:0}},expectedRevision:1,reason:'Same-day Contract reminder'})).revision).toBe(2);
+ });
  it('checks manual conditions and scope before admission, then retains the selected version exactly once',async()=>{
   const workflow:AutomationWorkflow={...f.workflow,id:randomUUID(),name:'Manual case follow-up',trigger:{event:'manual',days:0,workdays:false,repeat:false},conditions:[{field:'decision',op:'isNot',values:['Renew']},{field:'daysToEnd',op:'gte',values:['0']}],steps:[{id:randomUUID(),type:'notify',conditions:[],to:[{kind:'person',userId:f.admin.userId!}],cc:[],params:{subject:'Manual follow-up',body:'Review this Contract case.'}}]};
   const unmatched={...workflow,id:randomUUID(),name:'Renew-only follow-up',conditions:[{field:'decision',op:'is' as const,values:['Renew']}]};

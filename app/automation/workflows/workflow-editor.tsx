@@ -3,7 +3,7 @@ import {useEffect,useRef,useState,useTransition} from 'react';
 import {useRouter} from 'next/navigation';
 import {useTranslations} from 'next-intl';
 import {mergeFieldsForTrigger,type AutomationModuleCatalogue} from '@/lib/automation/catalogue';
-import {automationMergeWarnings,automationWorkflowProblems,setAutomationWorkflowStatus,type AutomationReferences,type AutomationStep,type AutomationWorkflow} from '@/lib/automation/workflow';
+import {automationMergeWarnings,automationTriggerDayLimit,automationWorkflowProblems,setAutomationWorkflowStatus,type AutomationReferences,type AutomationStep,type AutomationWorkflow} from '@/lib/automation/workflow';
 import {PROBATION_POSTING_EVENTS,probationStepParamProblems,probationStepParamWarnings} from '@/lib/automation/email';
 import {WorkflowEditorShell,WorkflowField} from '../../lifecycle/workflow-editor-shell';
 import {MultiSelect} from '../multi-select';
@@ -77,7 +77,9 @@ export function WorkflowEditor({catalogue,initial,revision:savedRevision,refs,on
    const result=await saveWorkflowAction({workflow:next,expectedRevision:revision,reason:note.trim()||reason});
    if(!result.ok){setMessage({kind:'error',text:result.detail??t('errors.unavailable'),problems:result.problems});return;}
    setRevision(result.result.revision);setDraft(next);setDirty(false);setNote('');
-   setMessage({kind:'status',text:status==='live'?t('editor.isLive',{name:next.name}):status==='retired'?t('editor.retired',{name:next.name}):draft.status==='live'&&status==='paused'?t('editor.paused',{name:next.name}):t('editor.saved')});
+   const liveWarnings=status==='live'&&next.module==='contract_staff'?result.result.warnings:[];
+   const statusText=status==='live'?t('editor.isLive',{name:next.name}):status==='retired'?t('editor.retired',{name:next.name}):draft.status==='live'&&status==='paused'?t('editor.paused',{name:next.name}):t('editor.saved');
+   setMessage({kind:'status',text:statusText+(liveWarnings.length?' '+t('editor.warnings')+': '+liveWarnings.join(' '):'')});
    router.refresh();if(status==='retired')onClose();
   }catch{setMessage({kind:'error',text:'Changes are not saved. Your entries are kept here. Retry saving.'});}
   });
@@ -155,7 +157,7 @@ export function WorkflowEditor({catalogue,initial,revision:savedRevision,refs,on
      {catalogue.triggers.map(x=><option key={x.id} value={x.id}>{x.label}</option>)}
     </select></WorkflowField>
     {trigger?.dated&&<div className="automation-row">
-     <WorkflowField label={trigger.label}><input className="v9-input" type="number" min={0} max={3660} step={1} value={draft.trigger.days} disabled={readOnly} onChange={e=>change(w=>{w.trigger.days=Math.max(0,Math.floor(Number(e.target.value)||0));})}/></WorkflowField>
+     <WorkflowField label={trigger.label}><input className="v9-input" type="number" min={0} max={automationTriggerDayLimit(draft.module)} step={1} value={draft.trigger.days} disabled={readOnly} onChange={e=>change(w=>{w.trigger.days=Math.max(0,Math.floor(Number(e.target.value)||0));})}/></WorkflowField>
      <label className="automation-check"><input type="checkbox" checked={draft.trigger.workdays} disabled={readOnly} onChange={e=>change(w=>{w.trigger.workdays=e.target.checked;})}/><span>{t('editor.workdays')}</span></label>
      <label className="automation-check"><input type="checkbox" checked={draft.trigger.repeat} disabled={readOnly} onChange={e=>change(w=>{w.trigger.repeat=e.target.checked;})}/><span>{t('editor.repeat')}</span></label>
     </div>}

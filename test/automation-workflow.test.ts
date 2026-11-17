@@ -1,6 +1,7 @@
 import {describe,it,expect} from 'vitest';
 import {addDays as v9AddDays} from '../lib/lifecycle-v9-model';
 import {PROBATION_AUTOMATION_CATALOGUE as P} from '../lib/automation/catalogues/probation';
+import {CONTRACT_AUTOMATION_CATALOGUE as C} from '../lib/automation/catalogues/contracts';
 import {addAutomationDays,automationMergeWarnings,automationWorkflowProblems,dryRunAutomationWorkflow,freezeAutomationWorkflow,setAutomationWorkflowStatus,type AutomationRecipient,type AutomationWorkflow} from '../lib/automation/workflow';
 
 const refs={routingExists:(id:string)=>id==='r-bp',groupExists:(id:string)=>id==='g-gbs',personExists:(id:string)=>id==='u-ravi'};
@@ -18,6 +19,15 @@ const reminder=():AutomationWorkflow=>({...confirm(),id:'wf-kpi',name:'Week 1 KP
  steps:[{id:'n1',type:'notify',conditions:[],to:[{kind:'pending'}],cc:[],params:{subject:'Set Week 1 KPIs for {{employee.name}}',body:'Due {{probation.dueDate}}. Outcome {{probation.outcome}}. {{unknown.token}}'}}]});
 
 describe('Shared workflow definition',()=>{
+ it('caps Contract reminders at365 days while preserving the existing Probation range',()=>{
+  const contract:AutomationWorkflow={...reminder(),module:'contract_staff',trigger:{event:'beforeContractEnd',days:365,workdays:false,repeat:false},conditions:[],steps:[{id:'notice',type:'notify',conditions:[],to:[{kind:'role',role:'employee'}],cc:[],params:{subject:'Contract reminder',body:'Review the current period.'}}]};
+  expect(automationWorkflowProblems(contract,C,refs)).toEqual([]);
+  expect(automationWorkflowProblems({...contract,trigger:{...contract.trigger,days:366}},C,refs)).toContain('Enter between 0 and 365 days.');
+  expect(automationWorkflowProblems({...contract,trigger:{...contract.trigger,days:0}},C,refs)).toEqual([]);
+  const probation={...reminder(),trigger:{...reminder().trigger,days:3660}};
+  expect(automationWorkflowProblems(probation,P,refs)).toEqual([]);
+  expect(automationWorkflowProblems({...probation,trigger:{...probation.trigger,days:3661}},P,refs)).toContain('Enter between 0 and 3660 days.');
+ });
  it('accepts the prototype’s Outcome · Confirm and Week 1 KPI reminder workflows',()=>{
   expect(automationWorkflowProblems(confirm(),P,refs)).toEqual([]);
   expect(automationWorkflowProblems(reminder(),P,refs)).toEqual([]);

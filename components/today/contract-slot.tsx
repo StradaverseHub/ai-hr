@@ -13,7 +13,7 @@ export function TodayContracts({session}:{session:SessionContext}){
  if(!isModuleEnabledOrFalse(session,'lifecycle')&&!session.entitlements?.scopedModules.lifecycle?.length)return null;
  return <PanelBoundary fallback={<ContractUnavailable/>}><Suspense fallback={null}><ContractSignatures session={session}/></Suspense></PanelBoundary>;
 }
-async function ContractUnavailable(){const t=await getTranslations('contractHome');return <PanelNote>{t('unavailable')} <Link className="underline underline-offset-4" href="/tasks?contractPage=1">{t('openTasks')}</Link></PanelNote>;}
+async function ContractUnavailable(){const t=await getTranslations('contractHome');return <PanelNote>{t('unavailable')} <Link className="underline underline-offset-4" href="/tasks">{t('openTasks')}</Link></PanelNote>;}
 async function ContractSignatures({session}:{session:SessionContext}){
  const t=await getTranslations('contractHome');
  let page:Awaited<ReturnType<typeof contractSharedWorkPage>>;

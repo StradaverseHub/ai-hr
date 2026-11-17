@@ -14,7 +14,7 @@ describe('Today Contract signatures',()=>{
   const view=render(<ContractSection {...labels} total={127} items={items}/>);
   const section=screen.getByRole('region',{name:'Contract signatures'});expect(section).toHaveAttribute('data-contract-total','127');
   expect(within(section).getByText('127 letters are waiting for your signature')).toBeInTheDocument();expect(view.container.querySelectorAll('[data-contract-home-item]')).toHaveLength(5);
-  expect(within(section).getByRole('link',{name:'View all 127'})).toHaveAttribute('href','/tasks?contractPage=1');
+  expect(within(section).getByRole('link',{name:'View all 127'})).toHaveAttribute('href','/tasks');
   expect(within(section).getByRole('link',{name:'Fictional person 1 Sign letter'})).toHaveAttribute('href',items[0].linkPath);
  });
  it('draws no work card when the owner reports zero signatures',()=>{
@@ -36,7 +36,7 @@ describe('Today Contract native owner slot',()=>{
  });
  it('shows a retry path when the owner fails instead of reporting no signatures',async()=>{
   native.read.mockRejectedValue(new Error('Fictional owner unavailable'));render(await resolveServerTree(TodayContracts({session})));
-  expect(screen.getByText(/Contract letters could not be loaded/)).toBeInTheDocument();expect(screen.getByRole('link',{name:'Open Tasks'})).toHaveAttribute('href','/tasks?contractPage=1');
+  expect(screen.getByText(/Contract letters could not be loaded/)).toBeInTheDocument();expect(screen.getByRole('link',{name:'Open Tasks'})).toHaveAttribute('href','/tasks');
   expect(screen.queryByRole('region',{name:'Contract signatures'})).not.toBeInTheDocument();
  });
 });
