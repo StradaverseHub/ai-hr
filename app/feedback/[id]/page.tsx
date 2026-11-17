@@ -177,7 +177,7 @@ export default async function FeedbackDetailPage({
 
       {preplan && (pendingQuestion || isAdmin) && (
         <Card className="p-5">
-          <SectionHeader title={t(pendingQuestion ? 'dialogueWaitingTitle' : 'dialogueTitle')} />
+          <h2 data-ui-section-header className="border-b border-border px-4 py-3 text-sm font-medium">{t(pendingQuestion ? 'dialogueWaitingTitle' : 'dialogueTitle')}</h2>
           {pendingQuestion ? <>
             <p className="mt-2 whitespace-pre-wrap break-words text-sm">{pendingQuestion.question}</p>
             {(isReporter || isAdmin) ? <FeedbackDialogueForm mode="answer" feedbackId={fb.id} questionId={pendingQuestion.id} action={answerFeedbackClarificationAction} />

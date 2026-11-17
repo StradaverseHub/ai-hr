@@ -14,6 +14,7 @@ import { operatorSsh } from '../operator-ssh.mjs';
 import { randomUUID } from 'node:crypto';
 import { RELEASE_STAGES, type FeedbackReleaseStage } from '../../lib/feedback-release';
 import {dialogueText, FEEDBACK_QUESTION_LIMIT} from '../../lib/feedback-dialogue';
+import {FEEDBACK_DIALOGUE_SOURCE_AGGREGATE, FEEDBACK_DIALOGUE_SOURCE_WINDOW} from '../../lib/feedback-dialogue-source';
 
 const SSH = operatorSsh();
 const TARGET = SSH.target;
@@ -118,6 +119,7 @@ function remote(cmd: string, stdin?: string): string {
 /** One time this item was parked on a question, and what was said back (migration 0323). */
 export type RemoteBlockEpisode = {
   id?: string;
+  dialogue_digest?: string;
   question: string;
   asked_at: string;
   answer: string | null;
@@ -125,6 +127,7 @@ export type RemoteBlockEpisode = {
 };
 
 export type RemoteFeedback = {
+  dialogue_digest?: string | null;
   id: string;
   tenant_id: string;
   reporter_employment_id: string | null;
@@ -192,7 +195,7 @@ export function blockTrailSql(ids: string[]): string {
   const list = ids.map((id) => `'${id}'`).join(',');
   return (
     `select coalesce(json_agg(row_to_json(t)), '[]') from (` +
-    `select id, feedback_request_id, question, asked_at, answer, resolved_at from feedback_block ` +
+    `select id, feedback_request_id, question, asked_at, answer, resolved_at, ${FEEDBACK_DIALOGUE_SOURCE_WINDOW} AS dialogue_digest from feedback_block ` +
     `where feedback_request_id in (${list}) order by asked_at, id) t`
   );
 }
@@ -243,7 +246,7 @@ function selectFeedback(whereStatus: string): RemoteFeedback[] {
   // Always present, even as []. An absent key would make "never blocked" indistinguishable from "this
   // pull predates block trails" at the point of use, and a build agent skimming the JSON would read the
   // absence as "no question was asked" rather than "look again".
-  for (const r of rows) r.block_trail = trails.get(r.id) ?? [];
+  for (const r of rows) {r.block_trail = trails.get(r.id) ?? []; r.dialogue_digest = r.block_trail[0]?.dialogue_digest ?? null;}
   return rows;
 }
 
@@ -255,7 +258,7 @@ export function pullItem(id: string): RemoteFeedback[] {
   const out = remote(`psql "$MIGRATION_DATABASE_URL" -tAc ${shellQuote(feedbackSelectByIdSql(id))}`).trim();
   const rows = JSON.parse(out || '[]') as RemoteFeedback[];
   const trails = blockTrails(rows.map((r) => r.id));
-  for (const r of rows) r.block_trail = trails.get(r.id) ?? [];
+  for (const r of rows) {r.block_trail = trails.get(r.id) ?? []; r.dialogue_digest = r.block_trail[0]?.dialogue_digest ?? null;}
   return rows;
 }
 
@@ -407,6 +410,7 @@ export function pushPlanWithMockups(p: {
   reporterEmploymentId: string | null;
   plan: string;
   model: string;
+  dialogueDigest?: string | null;
   mockups?: PlanMockup[];
 }): void {
   pushPlan(p);
@@ -420,18 +424,21 @@ export function pushPlan(p: {
   reporterEmploymentId: string | null;
   plan: string;
   model: string;
+  dialogueDigest?: string | null;
 }): void {
   remote(`psql "$MIGRATION_DATABASE_URL" -v ON_ERROR_STOP=1 -f -`, pushPlanSql(p));
 }
 
-export function pushPlanSql(p: {id: string; tenantId: string; reporterEmploymentId: string | null; plan: string; model: string}): string {
+export function pushPlanSql(p: {id: string; tenantId: string; reporterEmploymentId: string | null; plan: string; model: string; dialogueDigest?: string | null}): string {
   assertUuid(p.id, 'feedback id');
   assertUuid(p.tenantId, 'tenant id');
   reporterEmploymentSql(p.reporterEmploymentId);
+  if (p.dialogueDigest != null && !/^[a-f0-9]{64}$/.test(p.dialogueDigest)) throw new Error('Invalid reporter conversation version.');
   const sql = [
     'BEGIN;',
     doBlock(['BEGIN', reporterBindingBody(p),
       `IF EXISTS (SELECT 1 FROM feedback_block WHERE feedback_request_id='${p.id}' AND resolved_at IS NULL) THEN RAISE EXCEPTION 'Report is waiting for an answer; read the reply before planning'; END IF;`,
+      `IF ${p.dialogueDigest != null ? 'TRUE' : 'FALSE'} OR EXISTS (SELECT 1 FROM domain_event e JOIN feedback_request f ON f.id=e.aggregate_id WHERE f.id='${p.id}' AND e.event_type='feedback.clarification.requested' AND e.payload->>'planRevision'=f.plan_revision::text) THEN IF ${p.dialogueDigest ? dq(p.dialogueDigest) : 'NULL'} IS DISTINCT FROM (SELECT ${FEEDBACK_DIALOGUE_SOURCE_AGGREGATE} FROM feedback_block WHERE feedback_request_id='${p.id}') THEN RAISE EXCEPTION 'Reporter conversation changed; read the latest answers'; END IF; END IF;`,
       'END'].join('\n')),
     // Close whatever version is still open. A contest already stamped its own outcome WITH the reporter's
     // words, and `outcome IS NULL` keeps this from overwriting it — a re-plan must never erase the

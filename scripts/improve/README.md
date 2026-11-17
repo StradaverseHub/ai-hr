@@ -63,6 +63,14 @@ Both native and operator plan writes reject an unanswered question. `pull-waitin
 items separately. This is durable queue eligibility, not a newly enabled scheduler, email notification
 or automatic model invocation. The retired anonymous `feedback:plan` command remains retired.
 
+After reading the reply, include the pulled item's `dialogue_digest` as `dialogueDigest` in the
+`push-plan` payload. Native `setFeedbackPlan` callers use `getFeedback(...).dialogueDigest`. The version
+is read in the same database statement as the history; it changes when a question is added or resolved.
+A new pre-plan dialogue in the current revision requires this binding, so a plan drafted before the
+reply cannot silently overwrite it. This is a content version, not proof that an agent understood the
+answer or permission to bypass reporter approval. Existing reports without new pre-plan dialogue keep
+their previous plan-writing contract.
+
 If investigation resolves the ambiguity without a reply, explicitly close the exact question:
 
 ```sh

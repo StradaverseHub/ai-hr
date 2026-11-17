@@ -45,6 +45,7 @@ describe('asynchronous clarification before a plan', () => {
   });
   it('an answer survives restarts and returns to investigation, with a plan still requiring separate approval', async () => {
     const {id} = await report(), q = await ask(id);
+    const unansweredVersion = (await getFeedback(reporter, id))!.dialogueDigest;
     await answerFeedbackClarification(reporter, {feedbackId: id, questionId: q.id, answer: ANSWER});
     const fresh = await getFeedback(reporter, id);
     expect(fresh?.status).toBe('open'); expect(fresh?.plan).toBeNull();
@@ -54,7 +55,10 @@ describe('asynchronous clarification before a plan', () => {
     const trail = (rows[0].coalesce as unknown as {question: string; answer: string; resolved_at: string}[]);
     expect(trail[0]).toMatchObject({question: QUESTION, answer: ANSWER});
     expect(waitingForClarification({block_trail: trail as never})).toBe(false);
-    await setFeedbackPlan(admin, {feedbackId: id, plan: 'Fix the November preview and show independent expected results.'});
+    await expect(setFeedbackPlan(admin, {feedbackId: id, plan: 'A stale plan.', dialogueDigest: unansweredVersion})).rejects.toThrow(/conversation changed/);
+    await expect(script(pushPlanSql({id, tenantId: b.tenantId, reporterEmploymentId: null, plan: 'A stale plan.', model: 'fixture', dialogueDigest: unansweredVersion}))).rejects.toThrow();
+    expect(trail[0]).toHaveProperty('dialogue_digest', fresh!.dialogueDigest);
+    await setFeedbackPlan(admin, {feedbackId: id, plan: 'Fix the November preview and show independent expected results.', dialogueDigest: fresh!.dialogueDigest});
     expect((await getFeedback(reporter, id))?.status).toBe('planned');
     await approveFeedbackPlan(reporter, {feedbackId: id});
     expect((await getFeedback(reporter, id))?.status).toBe('approved');
@@ -114,6 +118,9 @@ describe('asynchronous clarification before a plan', () => {
     expect(await listPlannableFeedback(admin)).toContain(id);
     const pulled = await owner.client.unsafe(feedbackSelectSql("'open','contested'"));
     expect((pulled[0].coalesce as {id: string}[]).map(r => r.id)).toContain(id);
+    await expect(script(pushPlanSql({...p, plan: 'Use the supplied screenshot.', model: 'fixture'}))).rejects.toThrow();
+    await script(pushPlanSql({...p, plan: 'Use the supplied screenshot.', model: 'fixture', dialogueDigest: d!.dialogueDigest}));
+    expect((await getFeedback(reporter, id))?.status).toBe('planned');
   });
   it('different concurrent questions cannot both become active, and administrators can retire a stale request', async () => {
     const {id} = await report();

@@ -241,7 +241,7 @@ async function main() {
     }
     default:
       console.error(
-        'usage: improve <pull | pull-item <id> | pull-approved | pull-planned | pull-blocked | raise | push-plan | block | unblock | build-start | build-complete | release | deploy | mark-deployed | record-release>',
+        'usage: improve <pull | pull-item <id> | pull-approved | pull-planned | pull-blocked | pull-waiting | ask | close-question | raise | push-plan | block | unblock | build-start | build-complete | release | deploy | mark-deployed | record-release>',
       );
       process.exit(2);
   }

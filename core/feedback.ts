@@ -7,8 +7,9 @@ import {withAiCentreFunction} from './ai-centre-control';
  * review authority (only the reporter approves/contests) is enforced here.
  */
 import { createHash } from 'node:crypto';
-import { and, asc, desc, eq, inArray, isNull, notExists, sql } from 'drizzle-orm';
-import {assertNoPendingFeedbackQuestion} from './feedback-clarification';
+import { and, asc, desc, eq, getTableColumns, inArray, isNull, notExists, sql } from 'drizzle-orm';
+import {assertNoPendingFeedbackQuestion, assertReviewedFeedbackDialogue, feedbackDialogueDigestTx} from './feedback-clarification';
+import {FEEDBACK_DIALOGUE_SOURCE_WINDOW} from '../lib/feedback-dialogue-source';
 import { withTenant, type SessionContext, type Tx } from '../db/client';
 import { actorOf, appendEvent } from '../db/events';
 import { generateDraft, redactPII } from '../lib/ai';
@@ -174,7 +175,7 @@ export function getFeedbackAttachment(
  *  by the planning agent (agent actor). plan_revision bumps so re-plans are tracked; clears the contest. */
 export async function setFeedbackPlan(
   ctx: SessionContext,
-  p: { feedbackId: string; plan: string; model?: string | null },
+  p: { feedbackId: string; plan: string; model?: string | null; dialogueDigest?: string | null },
 ): Promise<void> {
   const plan = p.plan?.trim();
   if (!plan) throw new FeedbackError('A plan is required.');
@@ -182,12 +183,13 @@ export async function setFeedbackPlan(
 }
 
 /** Same canonical transition; only the AI caller adds a source-replay prerequisite. */
-async function setFeedbackPlanTx(tx:Tx,ctx:SessionContext,p:{feedbackId:string;plan:string;model?:string|null},plan:string):Promise<void>{
+async function setFeedbackPlanTx(tx:Tx,ctx:SessionContext,p:{feedbackId:string;plan:string;model?:string|null;dialogueDigest?:string|null},plan:string):Promise<void>{
     const fb = await loadDecidable(tx, p.feedbackId, true);
     if (fb.status !== 'open' && fb.status !== 'contested') {
       throw new FeedbackError(`A plan can only be drafted while the item is open or contested (it is ${fb.status}).`);
     }
     await assertNoPendingFeedbackQuestion(tx, fb.id);
+    await assertReviewedFeedbackDialogue(tx, fb.id, fb.planRevision, p.dialogueDigest);
     const nextRevision = fb.planRevision + 1;
     // Close the outgoing version FIRST. A contest already stamped its own outcome (with the reporter's
     // words); anything still open was replaced without one, which is `superseded` — an operator re-plan.
@@ -308,7 +310,7 @@ async function generateFeedbackPlanActivity(ctx: SessionContext, p: { feedbackId
   await withTenant(ctx,async tx=>{
     // A provider result is not authority to overwrite a concurrently changed source or plan.
     if(feedbackPlanningDigest(await feedbackPlanningSourceTx(tx,ctx,fb.id,true))!==sourceDigest)throw new FeedbackError('Current feedback planning source could not be confirmed.');
-    await setFeedbackPlanTx(tx,ctx,{feedbackId:fb.id,plan,model:`${aiCfg.provider}/${aiCfg.model}`},plan.trim());
+    await setFeedbackPlanTx(tx,ctx,{feedbackId:fb.id,plan,model:`${aiCfg.provider}/${aiCfg.model}`,dialogueDigest:await feedbackDialogueDigestTx(tx,fb.id)},plan.trim());
   });
   return { plan };
 }
@@ -930,6 +932,8 @@ export type FeedbackPlanRevisionRow = typeof feedbackPlanRevision.$inferSelect;
 export type FeedbackBlockRow = typeof feedbackBlock.$inferSelect;
 
 export type FeedbackDetail = typeof feedbackRequest.$inferSelect & {
+  /** Content version read in the same snapshot as blockHistory, for a source-bound plan write. */
+  dialogueDigest: string | null;
   /** 0321 — stage/planRevision say WHICH round each image belongs to, so the page can group them.
    *  0406 — mimeType joins them so the page can render a `plan` mockup inline and leave anything that is
    *  not an image (a PDF, say) in the link list, instead of emitting a broken <img>. */
@@ -985,11 +989,13 @@ export function getFeedback(ctx: SessionContext, id: string): Promise<FeedbackDe
       .from(feedbackPlanRevision)
       .where(eq(feedbackPlanRevision.feedbackRequestId, id))
       .orderBy(asc(feedbackPlanRevision.revision));
-    const blockHistory = await tx
-      .select()
+    const questionRows = await tx
+      .select({...getTableColumns(feedbackBlock), dialogueDigest: sql<string>`${sql.raw(FEEDBACK_DIALOGUE_SOURCE_WINDOW)}`})
       .from(feedbackBlock)
       .where(eq(feedbackBlock.feedbackRequestId, id))
-      .orderBy(asc(feedbackBlock.askedAt));
+      .orderBy(asc(feedbackBlock.askedAt), asc(feedbackBlock.id));
+    const dialogueDigest = questionRows[0]?.dialogueDigest ?? null;
+    const blockHistory = questionRows.map(({dialogueDigest: _digest, ...question}) => question);
     let blockedBy: FeedbackDetail['blockedBy'] = null;
     if (row.blockedById) {
       const [b] = await tx
@@ -999,7 +1005,7 @@ export function getFeedback(ctx: SessionContext, id: string): Promise<FeedbackDe
         .limit(1);
       blockedBy = b ?? null; // tenant-scoped by RLS; a cross-tenant id simply resolves to nothing
     }
-    return { ...row, attachments: atts, blockedBy, planHistory, blockHistory };
+    return { ...row, attachments: atts, blockedBy, planHistory, blockHistory, dialogueDigest };
   });
 }
 

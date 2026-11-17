@@ -2,7 +2,8 @@
 import {and, eq, isNull, sql} from 'drizzle-orm';
 import {withTenant, type SessionContext, type Tx} from '../db/client';
 import {actorOf, appendEvent} from '../db/events';
-import {feedbackBlock, feedbackRequest} from '../db/schema';
+import {domainEvent, feedbackBlock, feedbackRequest} from '../db/schema';
+import {FEEDBACK_DIALOGUE_SOURCE_AGGREGATE} from '../lib/feedback-dialogue-source';
 import {dialogueText, FEEDBACK_ANSWER_LIMIT, FEEDBACK_QUESTION_LIMIT, FEEDBACK_PREPLAN_STATES} from '../lib/feedback-dialogue';
 
 const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -28,6 +29,23 @@ export async function assertNoPendingFeedbackQuestion(tx: Tx, feedbackId: string
   const [pending] = await tx.select({id: feedbackBlock.id}).from(feedbackBlock)
     .where(and(eq(feedbackBlock.feedbackRequestId, feedbackId), isNull(feedbackBlock.resolvedAt))).limit(1);
   if (pending) throw new Error('This report is waiting for an answer. Read the reply before preparing a plan.');
+}
+
+export async function feedbackDialogueDigestTx(tx: Tx, feedbackId: string): Promise<string> {
+  const [row] = await tx.select({digest: sql<string>`${sql.raw(FEEDBACK_DIALOGUE_SOURCE_AGGREGATE)}`})
+    .from(feedbackBlock).where(eq(feedbackBlock.feedbackRequestId, feedbackId));
+  return row.digest;
+}
+
+/** New pre-plan dialogue requires the writer to bind the exact question/answer history it read. */
+export async function assertReviewedFeedbackDialogue(tx: Tx, feedbackId: string, revision: number, digest?: string | null): Promise<void> {
+  const [requested] = await tx.select({id: domainEvent.id}).from(domainEvent).where(and(
+    eq(domainEvent.aggregateId, feedbackId), eq(domainEvent.eventType, 'feedback.clarification.requested'),
+    sql`${domainEvent.payload}->>'planRevision' = ${String(revision)}`,
+  )).limit(1);
+  if (!requested && digest == null) return; // Existing non-dialogue plan callers retain their contract.
+  if (!digest || !/^[a-f0-9]{64}$/.test(digest) || await feedbackDialogueDigestTx(tx, feedbackId) !== digest)
+    throw new Error('The reporter conversation changed. Read the latest questions and answers before preparing a plan.');
 }
 
 export async function askFeedbackClarification(ctx: SessionContext, p: {

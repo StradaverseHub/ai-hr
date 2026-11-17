@@ -25,6 +25,6 @@ export function FeedbackDialogueForm({mode, feedbackId, questionId, planRevision
     </Field>
     <p id={`dialogue-hint-${mode}`} className="text-sm text-muted-foreground">{t(asking ? 'dialogueAskHint' : 'dialogueAnswerHint')}</p>
     {state.error && <p role="alert" className="text-sm text-destructive">{state.error}</p>}
-    <Button type="submit" size="sm" disabled={pending || !value.trim()}>{t(pending ? 'dialogueSending' : asking ? 'dialogueAskSubmit' : 'answerSubmit')}</Button>
+    <Button type="submit" size="sm" pendingLabel={t('dialogueSending')} disabled={pending || !value.trim()}>{t(asking ? 'dialogueAskSubmit' : 'answerSubmit')}</Button>
   </form>;
 }
