@@ -114,7 +114,7 @@ describe('Person reward history custody and upload',()=>{
   await owner.db.execute(sql`update reward_unit set status='approved' where id=${unitId}::uuid`);
   const valid={entryId,employmentId,talent:'STAR',performance:'OU',meritBp:0,promotionBp:0,specialBp:0,incrementCents:0,totalIncreaseBp:0,promoted:false,promotionGrade:null,bonusCents:0,bonusMonthsBp:0,lumpCents:0,withheld:{}};
   const write=(rows:unknown)=>withTenant(admin,tx=>tx.execute(sql`select app.reward_record_person_history(${unitId}::uuid,${JSON.stringify(rows)}::jsonb)`));
-  const refused=[[],[valid,valid],[{...valid,entryId:pastEntryId}],
+  const refused=[[],[null],[{entryId,employmentId}],[valid,valid],[{...valid,entryId:pastEntryId}],[{...valid,employmentId:personId}],
    [{...valid,employmentId:'not-a-uuid'}],[{...valid,entryId:null}],[{...valid,meritBp:'not-a-number'}],
    [valid,{...valid,entryId:pastEntryId}]];
   for(const rows of refused){
@@ -142,7 +142,7 @@ describe('Person reward history custody and upload',()=>{
     ${JSON.stringify(facts)}::jsonb,${JSON.stringify(recommendation)}::jsonb from employments e returning id
   ) select count(*)::integer as count from entries`);
   expect(added.count).toBe(10000);
-  await owner.db.execute(sql`update reward_entry set recommendation=${JSON.stringify(recommendation)}::jsonb where unit_id=${unitId}::uuid`);
+  await owner.db.execute(sql`update reward_entry set recommendation=${JSON.stringify(recommendation)}::jsonb,facts=${JSON.stringify(facts)}::jsonb where unit_id=${unitId}::uuid`);
   const selected=await owner.db.execute<{entryId:string;employmentId:string}>(sql`select id as "entryId",employment_id as "employmentId" from reward_entry where tenant_id=${b.tenantId}::uuid and unit_id=${unitId}::uuid order by id`);
   expect(selected.length).toBeGreaterThan(10000);expect(new Set(selected.map(row=>row.entryId)).size).toBe(selected.length);
   const rows=selected.map(row=>({...row,talent:'SCORE',performance:'ME',meritBp:0,promotionBp:0,specialBp:0,incrementCents:0,totalIncreaseBp:0,promoted:false,promotionGrade:null,bonusCents:0,bonusMonthsBp:0,lumpCents:0,withheld}));
