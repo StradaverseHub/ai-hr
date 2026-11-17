@@ -55,6 +55,7 @@ it('matches legacy exact selections and membership in every native role/group/co
  try{await employeePickerSubject(ctx,id,companies);expect(carriers).toEqual([{ro:'on',isolation:'repeatable read',exclusive:false}]);}finally{spy.mockRestore();}
  // Every-role70-company/1000-employment native equivalence includes multiple exact identities per scope.
 },300000);
+async function expectMissingPdf(pending:Promise<Response>){const response=await pending;expect(response.status).toBe(404);expect(await response.text()).toBe('Not found');}
 it('keeps real detail/redirect/PDF identities, terminated cohorts and native refusal behavior',async()=>{
  const {b,ctx,companies,people,employees}=await fixture();
  const id=employees[1].id;
@@ -74,13 +75,13 @@ it('keeps real detail/redirect/PDF identities, terminated cohorts and native ref
  for(const index of [17,999])await expect(ZakatEditor({searchParams:Promise.resolve({employmentId:employees[index].id})})).rejects.toThrow('NEXT_NOT_FOUND');
  for(const value of [randomUUID(),id.toUpperCase(),id.replaceAll('-',''),'bad']){
   await expect(Tp1New({searchParams:Promise.resolve({employmentId:value})})).rejects.toThrow('NEXT_NOT_FOUND');
-  await expect(tp1Pdf(new Request(url(value)),{params})).rejects.toThrow('NEXT_NOT_FOUND');
-  await expect(tp3Pdf(new Request(url(value)))).rejects.toThrow('NEXT_NOT_FOUND');
+  await expectMissingPdf(tp1Pdf(new Request(url(value)),{params}));
+  await expectMissingPdf(tp3Pdf(new Request(url(value))));
  }
  scope={s:ctx,scopeIds:[companies[0]]};
  await expect(Tp1Detail({params,searchParams:Promise.resolve({employmentId:id})})).rejects.toThrow('NEXT_NOT_FOUND');
  await expect(ZakatEditor({searchParams:Promise.resolve({employmentId:id})})).rejects.toThrow('NEXT_NOT_FOUND');
- await expect(tp1Pdf(new Request(url(id)),{params})).rejects.toThrow('NEXT_NOT_FOUND');await expect(tp3Pdf(new Request(url(id)))).rejects.toThrow('NEXT_NOT_FOUND');
+ await expectMissingPdf(tp1Pdf(new Request(url(id)),{params}));await expectMissingPdf(tp3Pdf(new Request(url(id))));
  const day=await AttendanceDay({params:Promise.resolve({date:'2026-07-01'}),searchParams:Promise.resolve({emp:id})});expect(JSON.stringify(day)).toContain('dayNoRecord');expect(JSON.stringify(day)).not.toContain('Detail employee 0001');
  scope={s:ctx,scopeIds:[]};expect(await Tp1New({searchParams:Promise.resolve({employmentId:id})})).toBeTruthy();
  // Real native declaration reads and six generated PDF documents need hosted renderer headroom.
