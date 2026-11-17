@@ -4,8 +4,8 @@ import * as M from '../lib/lifecycle-v9-model';
 function fixture(module: M.Module = 'off') {
   let sequence = 0;
   const environment: M.Environment = { today: '2026-10-30', now: '2026-10-30T00:00:00Z', actor: { id: 'hr', name: 'People Ops' }, nextId: () => `id-${++sequence}`, onLeave: () => false, openLoad: () => 0, lastAssigned: () => 0, eligibleUser: () => true, userName: id => id, mergeValues: { 'employee.name': 'Person', 'company.name': 'Company' } };
-  const c: M.Case = { version: 9, id: 'case', number: 'OFB-1', module, revision: 1, state: 'submitted', facts: { name: 'Person', employeeNo: 'EMP-1', employmentId: 'employment', personId: 'person', joinDate: '2026-10-01', lastDay: '2026-10-30', noticeDate: '2026-09-30', employeeUserId: 'employee', supervisorUserId: 'manager', pbpUserId: 'pbp', taUserId: 'ta', businessGroup: 'group', company: 'company', department: 'dept', grade: 'grade', employmentType: 'contract', title: 'title', caseType: 'Resignation' }, checklistId: null, checklistName: '', override: 'automatic', tasks: [], items: [], documents: [], runs: [], mails: [], files: [], pmChanges: [], log: [], sourceRevision: 'personnel-1', submittedAt: environment.now, closedAt: null, closedBy: null, closeReason: '', cancelReason: '', revokeDate: '2026-10-30', finalFigures: null, review: null };
-  const config: M.Config = { version: 9, revision: 1, checklists: [], templates: [], emails: [], workflows: [], groups: [{ id: 'ops', name: 'HR Ops', members: ['hr', 'hr2'], limit: 4 }], peopleOpsGroup: 'ops', bpRules: [] };
+  const c: M.Case = { version: 9, id: 'case', number: 'OFB-1', module, revision: 1, state: 'submitted', facts: { name: 'Person', employeeNo: 'EMP-1', employmentId: 'employment', personId: 'person', joinDate: '2026-10-01', lastDay: '2026-10-30', noticeDate: '2026-09-30', employeeUserId: 'employee', supervisorUserId: 'manager', taUserId: 'ta', businessGroup: 'group', company: 'company', department: 'dept', grade: 'grade', employmentType: 'contract', title: 'title', caseType: 'Resignation' }, checklistId: null, checklistName: '', override: 'automatic', tasks: [], items: [], documents: [], runs: [], mails: [], files: [], pmChanges: [], log: [], sourceRevision: 'personnel-1', submittedAt: environment.now, closedAt: null, closedBy: null, closeReason: '', cancelReason: '', revokeDate: '2026-10-30', finalFigures: null, review: null };
+  const config: M.Config = { version: 9, revision: 1, checklists: [], templates: [], emails: [], workflows: [], groups: [{ id: 'ops', name: 'HR Ops', members: ['hr', 'hr2'], limit: 4 }], peopleOpsGroup: 'ops', };
   const figures: M.FinalFigures = { sourceRevision: 'payroll-1', lastDay: '2026-10-30', leaveDays: '2.5', amount: '500.00', currency: 'MYR', payDate: '2026-11-25', lockedAt: '', payrollReference: 'payroll-input-1' };
   return { c, config, environment, figures };
 }
@@ -79,10 +79,11 @@ describe('V9 calendar and matching parity', () => {
     expect(M.matchChecklist(config, c)).toMatchObject({ checklist: { id: 'specific' }, tie: true });
     c.override = 'none'; expect(M.matchChecklist(config, c).checklist).toBeNull();
   });
-  it('resolves PBP using weighted specificity and a case override', () => {
-    const { c, config } = fixture(); c.facts.pbpUserId = null;
-    config.bpRules = [{ rules: { company: ['company'], department: ['dept'] }, userId: 'companyBP' }, { rules: { businessGroup: ['group'] }, userId: 'groupBP' }];
-    expect(M.resolvePbp(config, c.facts)).toBe('groupBP'); c.facts.pbpUserId = 'override'; expect(M.resolvePbp(config, c.facts)).toBe('override');
+  it('treats a legacy PBP recipient as missing after routing removal', () => {
+    const { c, config, environment } = fixture();
+    const legacy = workflow({ steps: [{ id: 'legacy', type: 'notify', to: ['pbp'], cc: [], subject: 'Legacy', body: '' }] });
+    expect(M.runWorkflow(c, config, legacy, environment, 'manual')?.hold?.missing).toEqual([{ role: 'pbp', label: 'PBP', reason: 'PBP routing has been removed; replace this recipient' }]);
+    expect(c.mails.filter(mail => mail.workflowId !== null)).toEqual([]);
   });
   it('uses leave on the due date, workload caps and last assignment to assign work', () => {
     const { config, environment } = fixture();
@@ -174,6 +175,7 @@ describe('V9 employee documents and clearance', () => {
   it('flags future tasks with zero overdue and emails People Ops only once', () => {
     const { c, config, environment, figures } = fixture(); c.tasks = [task('After exit', '2026-11-04')];
     expect(M.lastDayCheck(c, config, environment, figures)).toBe('flagged'); expect(c.review?.overdue).toBe(0);
+    expect(c.mails[0]).toMatchObject({ to: ['hr'], cc: ['hr2'], delivery: { toNames: ['hr'], ccNames: ['hr2'] } });
     environment.today = '2026-10-31'; expect(M.lastDayCheck(c, config, environment, figures)).toBe('unchanged'); expect(c.mails).toHaveLength(1);
     c.tasks[0].status = 'done'; expect(M.lastDayCheck(c, config, environment, figures)).toBe('closed'); expect(c.closedBy?.name).toBe('System (auto-close)');
   });

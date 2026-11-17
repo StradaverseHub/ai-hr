@@ -6,6 +6,7 @@ import { readFileSync } from 'node:fs';
 import { CaseFormEditor } from '../app/lifecycle/v9/case-form-editor';
 import { CaseFormFields } from '../components/lifecycle-v9/case-form-fields';
 import { OffboardingCaseForm } from '../app/lifecycle/v9/offboarding-case-form';
+import { WorkspaceSettings } from '../app/lifecycle/v9/workspace-settings';
 import { defaultV9CaseFields, resolveV9CaseFields } from '../lib/lifecycle-v9-case-form';
 import { v9Defaults } from '../lib/lifecycle-v9-defaults';
 import { parseV9Config } from '../lib/lifecycle-v9-validation';
@@ -86,4 +87,21 @@ it('collects hidden mandatory offboarding inputs at submission and retains the P
  expect(screen.queryByText('Last working day')).not.toBeInTheDocument();
  fireEvent.click(screen.getByRole('button',{name:'Submit case'}));
  expect(command).toHaveBeenCalledWith(expect.objectContaining({submit:true,values:expect.objectContaining({notice:'',revokeMode:'lastday'})}));
+});
+
+it('drops a stored PBP field instead of turning it into a custom editable field', () => {
+  const stored = [...defaultV9CaseFields('off'), { key: 'pbp', label: 'Legacy PBP', type: 'text' as const, show: true, required: false, hrOnly: false, rules: {}, options: [], help: '' }];
+  const fields = resolveV9CaseFields('off', stored, true);
+  expect(fields.some(field => field.key === 'pbp')).toBe(false);
+  render(<CaseFormFields fields={fields} facts={{}} values={{ pbp: 'legacy-user' }} hr editing change={vi.fn()}/>);
+  expect(screen.queryByLabelText('Legacy PBP')).not.toBeInTheDocument();
+  expect(screen.queryByDisplayValue('legacy-user')).not.toBeInTheDocument();
+});
+
+it('removes Shared PBP routing while retaining GBS People Ops and company signatories', () => {
+  render(<WorkspaceSettings config={v9Defaults()} options={{ users: [], companies: [], employees: [] }} activeTab="shared" editable edit={vi.fn()}/>);
+  expect(screen.getByLabelText('GBS People Ops group')).toBeInTheDocument();
+  expect(screen.getByRole('heading', { name: 'Company signatories' })).toBeInTheDocument();
+  expect(screen.queryByRole('heading', { name: 'People Business Partner routing' })).not.toBeInTheDocument();
+  expect(screen.queryByRole('button', { name: 'Add PBP rule' })).not.toBeInTheDocument();
 });
