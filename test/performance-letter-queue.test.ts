@@ -1,5 +1,7 @@
 /** AP005: native Letters queue at group scale; no constraint or trigger bypass. */
 import {randomUUID} from 'node:crypto';
+import {writeFileSync} from 'node:fs';
+import {join} from 'node:path';
 import {eq,sql} from 'drizzle-orm';
 import {afterAll,afterEach,beforeAll,expect,it,vi} from 'vitest';
 import * as database from '../db/client';
@@ -48,6 +50,8 @@ it('matches every role and scope, exact counts and ordered pages with one shared
  expect(legacy).toHaveLength(3000);expect(spy).toHaveBeenCalledTimes(70);spy.mockClear();carriers.length=0;
  const first=await listLetterRequestsForStaffPage(ctx,{companyIds:companies,page:parsePageQuery()});
  expect(first.rows).toEqual(legacy.slice(0,25));expect(first.state).toMatchObject({total:3000,from:1,to:25,hasNext:true});expect(spy).toHaveBeenCalledTimes(1);expect(carriers).toEqual([{readOnly:'on',mode:'S'}]);
+ const oldBytes=Buffer.byteLength(JSON.stringify(legacy)),pageBytes=Buffer.byteLength(JSON.stringify(first));expect(pageBytes).toBeLessThan(oldBytes/10);
+ if(process.env.AIHR_FOCUSED_EVIDENCE_DIR)writeFileSync(join(process.env.AIHR_FOCUSED_EVIDENCE_DIR,'letter-queue-packet.json'),JSON.stringify({companies:70,employments:1000,requests:3000,legacyTransactions:70,pageTransactions:1,oldBytes,pageBytes,pageRows:first.rows.length,total:first.state.total,readOnly:'on',accessMode:'S'}));
  for(const size of ['25','50','100','200','all']){
   const page=parsePageQuery({page:'2',size}),packet=await listLetterRequestsForStaffPage(ctx,{companyIds:companies,page});
   expect(packet.rows).toEqual(legacy.slice(page.offset,page.offset+page.limit));expect(packet.state.total).toBe(3000);expect(packet.state.truncated).toBe(size==='all');
