@@ -1,3 +1,6 @@
+import {contractSharedWorkPage} from '@/packs/contracts/service';
+import {ContractWorkSection} from '@/app/lifecycle/contracts/work-section';
+import {todayInKualaLumpur} from '@/lib/hr-date';
 import { Pager } from '@/components/pager';
 import { parsePageQuery, pageState } from '@/lib/pagination';
 import {AttendanceUnclockedEvidence} from '@/components/attendance-unclocked-evidence';
@@ -175,13 +178,13 @@ function DecideButtons({
 export default async function ApprovalsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ error?: string; sort?: string; category?: string; leaveFilter?:string|string[]; claimsPage?:string;claimsSize?:string;task?:string|string[];requestId?:string|string[] }>;
+  searchParams: Promise<{ error?: string; sort?: string; category?: string; leaveFilter?:string|string[]; claimsPage?:string;claimsSize?:string;contractPage?:string;contractSize?:string;task?:string|string[];requestId?:string|string[] }>;
 
 }) {
   const { s, scopeIds } = await scopedSession();
   const admin=isAdmin(s),manager=(s.roles??[]).includes('manager');
   const attendanceOn=isModuleEnabledOrFalse(s,'attendance'),claimsOn=isModuleEnabledOrFalse(s,'claims');
-  const {error,sort:sortParam,category:categoryParam,claimsPage,claimsSize,task,requestId,leaveFilter}=await searchParams;
+  const {error,sort:sortParam,category:categoryParam,claimsPage,claimsSize,contractPage,contractSize,task,requestId,leaveFilter}=await searchParams;
 
   let focus:AssignedApprovalFocus|null;
   try{focus=parseAssignedApprovalFocus(task,requestId);}catch{notFound();}
@@ -196,15 +199,17 @@ export default async function ApprovalsPage({
   // very queue the Rewards provider projects — reading them again would admit a viewer to an inbox
   // with nothing on it, or count one Rewards unit twice.
   // Probation Approve steps: the same bounded owner the task list's Probation source reads (migration 5751).
+  const contractQuery=parsePageQuery({page:contractPage,size:['200','all'].includes(contractSize??'')?'100':contractSize});
   const probationOn=isModuleEnabledOrFalse(s,'lifecycle')||!!s.entitlements?.scopedModules.lifecycle?.length;
-  const [rewardReviews,probationApprovals,assignedAttendance,assignedTasks]=await Promise.all([
+  const [rewardReviews,probationApprovals,assignedAttendance,assignedTasks,contractWork]=await Promise.all([
     !focus&&isModuleEnabledOrFalse(s,'rewards')?pendingRewardReviews(s,scopeIds):Promise.resolve([]),
     !focus&&probationOn?probationTaskList(s,{category:'approval',companyIds:scopeIds}):Promise.resolve({count:0,capped:false,items:[]}),
     focus?Promise.resolve(focus.kind==='attendance'):attendanceOn?hasPendingAttendanceParticipantAssignment(s):Promise.resolve(false),
     !focus&&!admin&&!manager?listPendingTasks(s,scopeIds,{attendance:attendanceOn,claims:claimsOn,performance:false,rewards:false,probation:false},{noticeAcknowledgements:false}):Promise.resolve([]),
+    !focus&&probationOn?contractSharedWorkPage(s,{category:'approvals',companyIds:scopeIds,limit:contractQuery.limit,offset:contractQuery.offset}):Promise.resolve({items:[],total:0}),
   ]);
-  if(!focus&&!admin&&!manager&&!rewardReviews.length&&!probationApprovals.items.length&&!assignedAttendance&&!assignedTasks.length)redirect('/');
-  const attendanceOnly=!admin&&!manager&&!rewardReviews.length&&!probationApprovals.items.length&&assignedAttendance&&assignedTasks.every(task=>task.kind==='attendance');
+  if(!focus&&!admin&&!manager&&!contractWork.total&&!rewardReviews.length&&!probationApprovals.items.length&&!assignedAttendance&&!assignedTasks.length)redirect('/');
+  const attendanceOnly=!admin&&!manager&&!contractWork.total&&!rewardReviews.length&&!probationApprovals.items.length&&assignedAttendance&&assignedTasks.every(task=>task.kind==='attendance');
   if(admin&&categoryParam==='profileChanges')redirect('/admin/personnel/profile-changes');
   // Approvals sort (09cda965): display-only ordering, read from ?sort= so it survives reload + bulk
   // selection. Default (latest-first) matches every loader's existing desc(createdAt).
@@ -373,6 +378,7 @@ export default async function ApprovalsPage({
     hrReviews: hrReviews.length,
     rewards: rewardReviews.length,
     probation: probationApprovals.items.length,
+    contracts: contractWork.total,
   };
   // The All badge / unfiltered header total — now INCLUDING the two review queues, so header, All badge
   // and the All Pending card are one number.
@@ -426,11 +432,12 @@ export default async function ApprovalsPage({
     (visible('replacementLeave') ? replacementRequests.length : 0) +
     (visible('claims') ? claimResult.page.total : 0) +
     (visible('corrections') ? visibleCorrections.length : 0) +
-    (visible('resignations') ? resignations.length : 0) +
+    (visible('resignations') ? pendingCounts.resignations : 0) +
     (visible('managerReviews') ? managerReviews.length : 0) +
     (visible('hrReviews') ? hrReviews.length : 0) +
     (visible('rewards') ? rewardReviews.length : 0) +
-    (visible('probation') ? probationApprovals.items.length : 0);
+    (visible('probation') ? probationApprovals.items.length : 0) +
+    (visible('contracts') ? contractWork.total : 0);
 
   // Return params every decide form posts back, so the redirect keeps the selected category + sort.
   const nav: NavParams = { category: category === 'all' ? '' : category, sort: sortParam ?? '' };
@@ -494,6 +501,7 @@ export default async function ApprovalsPage({
           scroll to, focus, and briefly highlight the target section. Renders nothing itself. */}
       <AttentionOnArrival />
       {visible('rewards') && rewardReviews.length > 0 && <Card><SectionHeader title={t('rewards')} count={rewardReviews.length} /><ul className="divide-y divide-border">{rewardReviews.map(r => <li key={r.id} className="flex flex-wrap items-center justify-between gap-3 p-4 text-sm"><span>{r.cycle} · {r.name}</span><Link href={`/rewards/${r.id}?view=approvals`} className="font-medium text-primary hover:underline">{t('reviewRewards')}</Link></li>)}</ul></Card>}
+      {visible('contracts')&&<ContractWorkSection items={contractWork.items} total={contractWork.total} pager={<Pager maxPageSize={100} state={pageState(contractQuery,contractWork.total,contractWork.items.length)} basePath="/approvals" params={{category,sort:sortParam}} paramNames={{page:"contractPage",size:"contractSize"}}/>}/>}
       {visible('probation') && probationApprovals.items.length > 0 && <Card aria-label={t('probation')}><SectionHeader title={t('probation')} count={probationApprovals.items.length} /><ul className="divide-y divide-border">{probationApprovals.items.map(item => <li key={item.partId} className="flex flex-wrap items-center justify-between gap-3 p-4 text-sm"><span><span className="font-medium">{item.employeeName}</span> · {tProbation(probationTaskLabel(item.kind, item.partType).title, probationTaskLabel(item.kind, item.partType).values)}{item.dueOn && <span className="text-muted-foreground"> · {t('probationDue', { date: item.dueOn })}</span>}</span><Link href={item.href} className="font-medium text-primary hover:underline">{tProbation(probationTaskLabel(item.kind, item.partType).action, probationTaskLabel(item.kind, item.partType).values)}</Link></li>)}</ul>{probationApprovals.capped && <p className="border-t border-border p-4 text-sm text-muted-foreground">{t('probationCapped', { shown: probationApprovals.items.length })} <Link href="/lifecycle/probation?mine=1" className="font-medium text-primary hover:underline">{t('probationSeeAll')}</Link></p>}</Card>}
 
       <div data-tour="approvals-intro">

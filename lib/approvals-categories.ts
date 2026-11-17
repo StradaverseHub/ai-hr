@@ -27,10 +27,11 @@ export type ApprovalCategory =
   | 'hrReviews'
   | 'rewards'
   // Probation Approve steps (Head of Department, PBP, or a delegate on their behalf): each opens the case view.
-  | 'probation';
+  | 'probation'
+  | 'contracts';
 
 /** Categories beyond the bulk taxonomy — the people matters, in panel order. */
-const PEOPLE_CATEGORIES = ['resignations', 'managerReviews', 'hrReviews', 'rewards', 'probation'] as const;
+const PEOPLE_CATEGORIES = ['resignations', 'managerReviews', 'hrReviews', 'rewards', 'probation', 'contracts'] as const;
 
 /**
  * Every category in canonical order: all first, then the bulk taxonomy, then replacement leave, then the
@@ -106,7 +107,8 @@ export type ApprovalSection =
   | 'managerReviews'
   | 'hrReviews'
   | 'rewards'
-  | 'probation';
+  | 'probation'
+  | 'contracts';
 
 const SECTION_FOR_CATEGORY: Record<Exclude<ApprovalCategory, 'all'>, ApprovalSection> = {
   leave: 'leave',
@@ -120,6 +122,7 @@ const SECTION_FOR_CATEGORY: Record<Exclude<ApprovalCategory, 'all'>, ApprovalSec
   hrReviews: 'hrReviews',
   rewards: 'rewards',
   probation: 'probation',
+  contracts: 'contracts',
 };
 
 /** Whether a page section renders under the selected category ('all' shows every section). */

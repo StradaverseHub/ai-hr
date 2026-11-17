@@ -1,15 +1,22 @@
 'use server';
+import {routingDefaultProblems} from '@/lib/automation/routing-builder';
 import {revalidatePath} from 'next/cache';
 import {requireScopedLifecycleModule} from '@/lib/scoped-lifecycle-page';
 import {
   AutomationError,automationBuilderAccess,automationPeopleNames,conditionFieldsForTrigger,dryRunAutomationWorkflow,
   installAutomationDefaults,listAutomationRoutings,automationAssignmentGroups,resolveRoutingRow,
   saveAutomationEmailTemplate,saveAutomationRouting,saveAutomationWorkflow,searchAutomationPeople,
+  saveAutomationDocumentTemplate,automationDocumentVersions,
+  saveAutomationAssignmentGroups,
+  testAutomationEmail,
+  searchAutomationGroupPeople,
   type AutomationDryRun,type AutomationEmailTemplate,type AutomationRecipient,type AutomationWorkflow,type Routing,
 } from '@/packs/automation/service';
+import {contractConfigurationDirectory} from '@/packs/contracts/service';
 import {probationCase,probationSummaryRows,moveProbationWorkflowsToShared} from '@/packs/probation/service';
 import {PROBATION_AUTOMATION_CATALOGUE} from '@/lib/automation/catalogues/probation';
 import {PROBATION_DEFAULTS} from './probation-defaults';
+import {contractSharedPage,dryRunContractWorkflow,type ContractDryRunEvent} from '@/packs/contracts/service';
 import type {ActionResult,DryRunEventFacts} from './types';
 
 async function execute<T>(work: () => Promise<T>): Promise<ActionResult<T>> {
@@ -25,6 +32,20 @@ async function probationConfigurer() {
   if (!(await automationBuilderAccess(ctx)).probation) throw new AutomationError('forbidden', 'You cannot configure this.');
   return ctx;
 }
+async function contractConfigurer(){
+ const ctx=await requireScopedLifecycleModule();
+ if(!(await automationBuilderAccess(ctx,'workflows')).contractStaff)throw new AutomationError('forbidden','Contract builders are unavailable.');
+ return ctx;
+}
+export async function searchContractCasesAction(search:string){
+ return execute(async()=>{
+  const page=await contractSharedPage(await contractConfigurer(),{search:String(search??'').slice(0,100),limit:20});
+  return page.rows.map(row=>({id:row.id,name:row.employeeName,detail:[row.employeeCode,row.company,row.businessGroup].filter(Boolean).join(' · ')}));
+ });
+}
+export async function dryRunContractWorkflowAction(input:{workflow:AutomationWorkflow;caseId:string;event:ContractDryRunEvent}){
+ return execute(async()=>dryRunContractWorkflow(await contractConfigurer(),input));
+}
 
 /** Saves a workflow. The store refuses Live with problems, Probation step settings included. */
 export async function saveWorkflowAction(input: { workflow: AutomationWorkflow; expectedRevision: number; reason: string }) {
@@ -34,9 +55,24 @@ export async function saveWorkflowAction(input: { workflow: AutomationWorkflow; 
 export async function saveEmailTemplateAction(input: { template: AutomationEmailTemplate; retired: boolean; expectedRevision: number; reason: string }) {
   return execute(async () => saveAutomationEmailTemplate(await requireScopedLifecycleModule(), input));
 }
+export async function saveDocumentTemplateAction(input:unknown){
+ return execute(async()=>saveAutomationDocumentTemplate(await requireScopedLifecycleModule(),input));
+}
+export async function documentTemplateVersionsAction(id:string){
+ return execute(async()=>automationDocumentVersions(await requireScopedLifecycleModule(),id));
+}
 
 export async function saveRoutingAction(input: { routing: Routing; retired: boolean; expectedRevision: number; reason: string }) {
-  return execute(async () => saveAutomationRouting(await requireScopedLifecycleModule(), input));
+  return execute(async () => {if(!input.retired&&routingDefaultProblems(input.routing).length)throw new AutomationError('invalid','Keep one explicit default row last.');return saveAutomationRouting(await requireScopedLifecycleModule(), input);});
+}
+export async function saveAssignmentGroupsAction(input:unknown){
+ return execute(async()=>saveAutomationAssignmentGroups(await requireScopedLifecycleModule(),input));
+}
+export async function searchAssignmentGroupPeopleAction(query:string){
+ return execute(async()=>searchAutomationGroupPeople(await requireScopedLifecycleModule(),query));
+}
+export async function sendTestEmailAction(input:unknown){
+ return execute(async()=>testAutomationEmail(await requireScopedLifecycleModule(),input));
 }
 
 export async function searchPeopleAction(query: string) {
@@ -118,3 +154,17 @@ export async function dryRunWorkflowAction(input: { workflow: AutomationWorkflow
     return { employeeName: facts.employeeName, run };
   });
 }
+
+/** Selected-company Contract reviewer search, behind the module owner's exact authority. */
+export async function searchContractReviewersAction(input:{companyId:string;query:string;selectedUserIds:string[]}){return execute(async()=>contractConfigurationDirectory(await requireScopedLifecycleModule(),input));}
+
+/** Preview permission is Templates + actual case View; it never implies Workflows or See current pay. */
+export async function searchContractTemplateCasesAction(search:string){return execute(async()=>{const {contractTemplatePreviewCases}=await import('@/packs/contracts/service');return contractTemplatePreviewCases(await requireScopedLifecycleModule(),search);});}
+export async function loadContractTemplatePreviewAction(caseId:string){return execute(async()=>{const {contractTemplatePreviewValues}=await import('@/packs/contracts/service');return contractTemplatePreviewValues(await requireScopedLifecycleModule(),caseId);});}
+
+export async function documentTemplateUsageAction(id:string){return execute(async()=>{const owner=await import('@/packs/automation/service');return owner.automationDocumentUsage(await requireScopedLifecycleModule(),id);});}
+export async function documentTemplateAction(input:{id:string;expectedRevision:number;action:'publishVersion'|'deleteVersion'|'deleteTemplate';version?:number}){return execute(async()=>{const owner=await import('@/packs/automation/service');return owner.actAutomationDocumentTemplate(await requireScopedLifecycleModule(),input);});}
+
+export async function checkContractRoutingAction(routing:Routing,caseId:string){return execute(async()=>{const owner=await import('@/packs/contracts/service');return owner.contractRoutingCheck(await requireScopedLifecycleModule(),routing,caseId);});}
+
+export async function searchContractRoutingCasesAction(search:string){return execute(async()=>{const owner=await import('@/packs/contracts/service');return owner.contractRoutingPreviewCases(await requireScopedLifecycleModule(),search);});}

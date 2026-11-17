@@ -1,3 +1,4 @@
+import {isContractPostingMovementKind} from '@/core/movement-kinds';
 import {HIRE_SCALAR_INFORMATION_FIELDS} from '@/core/hire-employment-information';
 import {MOVEMENT_INFORMATION_FIELDS,type MovementInformationField} from '@/lib/movement-information-evidence';
 import {personnelMaintenanceCompanyIds} from '@/core/workforce-access';
@@ -3429,6 +3430,8 @@ export default async function EmployeePage({
         { key: 'manager', label: t('movement.field.manager'), before: movementDetailData.before?.manager, after: movementDetailData.after.manager },
         {key:'paymentMethod',label:t('paymentMethod'),before:movementDetailData.before?.paymentMethod?t(`paymentMethod_${movementDetailData.before.paymentMethod}` as 'paymentMethod_cash'):null,after:movementDetailData.after.paymentMethod?t(`paymentMethod_${movementDetailData.after.paymentMethod}` as 'paymentMethod_cash'):null},
         { key: 'salary', label: t('movement.field.salary'), before: movementDetailData.before?.salary, after: movementDetailData.after.salary },
+        // The Contract counter is shown only when this event recorded its own before/after.
+        ...movementDetailData.flatChanges.filter(change=>change.field==='contractNumber').map(change=>({key:'contractNumber',label:personnelLabel('employment.employment_dates_and_service.contractnumber'),before:change.before,after:change.after})),
         ...(movementDetailData.after.salaryPayrollFrom?[{key:'salaryPayrollFrom',label:t('salaryPayrollFrom'),before:null,after:formatDmy(movementDetailData.after.salaryPayrollFrom)}]:[]),
         ...MOVEMENT_INFORMATION_FIELDS.map(field=>{
           const label=movementInformationLabel(field);
@@ -3666,7 +3669,7 @@ export default async function EmployeePage({
         // already labelled. The island holds no server imports, so the catalogue is resolved here; passing
         // `behaviourKind` is what lets the form ask for the right fields for one of their OWN types.
         types: movementTypes
-          .filter((r) => r.active)
+          .filter((r) => r.active&&!isContractPostingMovementKind(r.behaviourKind))
           .filter((r) => (r.behaviourKind === 'rehire' ? canRehire : canCreateMovement))
           .map((r) => ({ code: r.code, label: r.label, behaviourKind: r.behaviourKind, description: r.description, ...typeControls(r.code) })),
         cancelHref:historyHref,
@@ -3753,7 +3756,7 @@ export default async function EmployeePage({
         key={movementEditRow.id}
         {...movementFormProps}
         types={movementTypes
-          .filter((r) => r.active || r.code === (movementEditRow.correctionKind ?? movementEditRow.kind))
+          .filter((r) => !isContractPostingMovementKind(r.behaviourKind)&&(r.active || r.code === (movementEditRow.correctionKind ?? movementEditRow.kind)))
           .map((r) => ({ code: r.code, label: r.label, behaviourKind: r.behaviourKind, ...typeControls(r.code) }))}
         edit={{
           movementId: movementEditRow.id,
@@ -3764,7 +3767,7 @@ export default async function EmployeePage({
           pendingInput: movementEditInput?.values,
           pendingUnavailable: movementEditInput?.unavailable,
           // Every replacement goes through the destination's canonical validation in the same transaction.
-          allowedKinds: Array.from(new Set([movementEditRow.correctionKind ?? movementEditRow.kind, ...movementTypes.filter(r => r.active).map(r => r.code)])),
+          allowedKinds: Array.from(new Set([movementEditRow.correctionKind ?? movementEditRow.kind, ...movementTypes.filter(r => r.active&&!isContractPostingMovementKind(r.behaviourKind)).map(r => r.code)])),
           payrollWarning: movementEditRow.payrollWarning,
           payrollClosedPeriods: movementEditRow.payrollClosedPeriods,
           availableClosedPayrollPeriods: closedPayrollPeriods,
@@ -4368,6 +4371,7 @@ export default async function EmployeePage({
             <div className="space-y-3">
               <h4 className="text-xs font-semibold text-foreground">{t('employmentInfo.contractGroup')}</h4>
               <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                <PersonnelField fieldId="employment.employment_dates_and_service.contractnumber" mode="record"><label className="block space-y-1"><span className="text-xs font-medium">{personnelLabel('employment.employment_dates_and_service.contractnumber')}</span><input {...personnelControl('employment.employment_dates_and_service.contractnumber','record')} type="number" min={1} max={100000} step={1} defaultValue={emp.contractNumber??''} className={inputCls}/></label></PersonnelField>
                 <PersonnelField fieldId="employment.employment_dates_and_service.contractstartdate" mode="record">
                   <DateField {...personnelControl('employment.employment_dates_and_service.contractstartdate','record')}
 

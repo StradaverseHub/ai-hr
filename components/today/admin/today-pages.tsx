@@ -13,6 +13,7 @@ import {AdminAskPanel,AdminHeadline,AdminNeedsPanel,DecidePanel,HandledPanel,Man
  type RoleContext} from './panels';
 import {scopeKey} from './reads';
 import {TodayPerformance} from '../performance-slot';
+import {TodayContracts} from '../contract-slot';
 import {WorkspaceLinks} from '../workspace-links';
 
 /** HR administrator and manager Today (owner decision, 11 Nov 2026; AdminToday.dc.html and ManagerToday.dc.html), at
@@ -65,6 +66,7 @@ export async function AdminTodayPage(p:PageProps){
  return <div data-today="administrator" className="mx-auto w-full max-w-[68rem] min-w-0 space-y-6">
   {p.notice}{top.node}
   <TodayPerformance session={p.session} scopeIds={p.scopeIds}/>
+  <TodayContracts session={p.session}/>
   <div className="grid grid-cols-1 items-start gap-6 lg:grid-cols-[minmax(0,1fr)_20rem]">
    <div className="flex min-w-0 flex-col gap-6">
     {slot('readiness',t('readinessTitle'),<ReadinessPanel {...c}/>,1)}
@@ -90,6 +92,7 @@ export async function ManagerTodayPage(p:PageProps){
   {/* Your workspace: the team pages the retired team workbench used to lead to. */}
   <Suspense fallback={null}><WorkspaceLinks session={p.session} team/></Suspense>
   <TodayPerformance session={p.session} scopeIds={p.scopeIds}/>
+  <TodayContracts session={p.session}/>
   <div className="grid grid-cols-1 items-start gap-6 lg:grid-cols-[minmax(0,1fr)_19rem]">
    <div className="flex min-w-0 flex-col gap-6">
     {slot('decide',t('decideTitle'),<DecidePanel {...c} highlight={p.recommend}/>,4)}

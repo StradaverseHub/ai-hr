@@ -1,6 +1,12 @@
+import {contractWorkflowEditorId} from '../editor-target';
+import {getTranslations} from 'next-intl/server';
+import {contractTerminationReasons} from '@/packs/contracts/service';
+import {LifecycleWorkflowSection} from '../lifecycle-configuration';
+import {v9Configuration} from '@/packs/lifecycle/service';
 import {notFound} from 'next/navigation';
 import {requireScopedLifecycleModule} from '@/lib/scoped-lifecycle-page';
-import {automationAssignmentGroups,automationPeopleNames,automationRoutingOptions,listAutomationEmailTemplates,listAutomationRoutings,listAutomationWorkflows} from '@/packs/automation/service';
+import {automationTemplateChoices,automationAssignmentGroups,automationPeopleNames,automationRoutingOptions,listAutomationDocumentTemplates,listAutomationEmailTemplates,listAutomationRoutings,listAutomationWorkflows} from '@/packs/automation/service';
+import {contractWorkflowRecipients} from '@/lib/contract-automation';
 import {automationFilter,automationPageAccess} from '../access';
 import {probationLetterChoices} from '../letter-templates';
 import {PROBATION_DEFAULTS} from '../probation-defaults';
@@ -8,9 +14,10 @@ import type {WorkflowEditorReferences} from './workflow-editor';
 import {WorkflowsWorkspace,type ListedWorkflow} from './workflows-workspace';
 
 export default async function Page({searchParams}:{searchParams:Promise<Record<string,string|string[]|undefined>>}){
- const ctx=await requireScopedLifecycleModule(),query=await searchParams,access=await automationPageAccess(ctx);
+ const ctx=await requireScopedLifecycleModule(),query=await searchParams,access=await automationPageAccess(ctx,'workflows');
  if(!access.any)notFound();
  const filter=automationFilter(query.module,access);
+ const lifecycle=access.legacy&&(filter==='all'||filter==='onb'||filter==='off')?await v9Configuration(ctx):null;
  const refs:WorkflowEditorReferences={routings:[],groups:[],people:[],emailTemplates:[],letterTemplates:null,conditionValues:{}};
  let workflows:ListedWorkflow[]=[],defaultsMissing=0;
  if(access.probation&&(filter==='all'||filter==='probation')){
@@ -32,5 +39,16 @@ export default async function Page({searchParams}:{searchParams:Promise<Record<s
   const present=new Set([...stored.map(w=>w.workflow.id),...emails.map(e=>e.template.id),...routings.map(r=>r.routing.id)]);
   defaultsMissing=[...PROBATION_DEFAULTS.workflows,...PROBATION_DEFAULTS.emailTemplates,...PROBATION_DEFAULTS.routings].filter(d=>!present.has(d.id)).length;
  }
- return <WorkflowsWorkspace filter={filter} access={access} workflows={workflows} refs={refs} defaultsMissing={defaultsMissing}/>;
+ let contract:{workflows:ListedWorkflow[];refs:WorkflowEditorReferences}|undefined;
+ if(access.contractStaff&&(filter==='all'||filter==='contract_staff')){
+  const [stored,routings,choices]=await Promise.all([listAutomationWorkflows(ctx,{module:'contract_staff'}),listAutomationRoutings(ctx),automationTemplateChoices(ctx,'contract_staff')]);
+  const [groups,options,reasons,reasonCopy]=await Promise.all([automationAssignmentGroups(ctx),automationRoutingOptions(ctx),contractTerminationReasons(ctx),getTranslations('people.detail.movement.terminationReason')]);
+  const reasonChoices=reasons.map(reason=>({value:reason.code,label:reason.label??(reason.builtIn?reasonCopy(reason.code):reason.code)}));
+  const personIds=stored.flatMap(w=>contractWorkflowRecipients(w.workflow)).flatMap(r=>r.kind==='person'?[r.userId]:[]);
+  contract={workflows:stored.map(w=>({workflow:w.workflow,revision:w.revision})),refs:{routings:routings.map(r=>({id:r.routing.id,name:r.routing.name,retired:r.retired})),groups,people:await automationPeopleNames(ctx,personIds),
+   emailTemplates:choices.emails,
+   letterTemplates:choices.documents.map(d=>({id:d.id,name:d.name})),
+   conditionValues:{businessGroup:options.businessGroups.map(o=>({value:o.id,label:o.name})),endReason:reasonChoices,declineReason:reasonChoices}}};
+ }
+ return <WorkflowsWorkspace initialContractWorkflowId={contractWorkflowEditorId(query)} contract={contract} onboardingSection={lifecycle?<LifecycleWorkflowSection initial={lifecycle} filter={filter==='onb'?'onb':filter==='off'?'off':'all'} initialSelected={typeof query.workflow==='string'?query.workflow:undefined}/>:undefined} filter={filter} access={access} workflows={workflows} refs={refs} defaultsMissing={defaultsMissing}/>;
 }

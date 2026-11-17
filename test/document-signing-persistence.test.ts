@@ -47,6 +47,20 @@ beforeEach(async()=>{
  await owner.db.execute(sql`insert into test_document_signing_subject(id,tenant_id,company_id,employment_id,admin_id,readers,route,rules,content) values(${subjectId}::uuid,${b.tenantId}::uuid,${b.companyId}::uuid,${employmentId}::uuid,${admin.userId}::uuid,array[${sql.join([admin.userId!,manager.userId,employee.userId,head.userId,delegate.userId].map(id=>sql`${id}::uuid`),sql`, `)}]::uuid[],${JSON.stringify(route)}::jsonb,${JSON.stringify(rules)}::jsonb,${JSON.stringify({contentHash:hash,contentRevision:1,companyId:b.companyId,employmentId})}::jsonb)`);
 });
 describe('authoritative signing persistence and SQL boundaries',()=>{
+ it('resolves a maximum-size route in one bounded identity read without trusting supplied person bindings',async()=>{
+  route={version:1,steps:Array.from({length:30},(_,index)=>({id:'review-'+index,role:'review-'+index,kind:'review' as const,stage:index,required:true,holderId:index%2?head.userId:manager.userId,holderPersonId:employee.personId}))};
+  // The subject authorizes the route's holders; the signing owner must independently hydrate their person identities.
+  const canonical={...route,steps:route.steps.map(step=>({...step,holderPersonId:step.holderId===head.userId?head.personId:manager.personId}))};
+  await updateRoute(canonical);
+  await owner.db.execute(sql`update test_document_signing_subject set rules='{"requiredRoles":[]}'::jsonb where id=${subjectId}::uuid`);
+  let statements=0;
+  const created=await withTenant(admin,tx=>{
+   const bounded=new Proxy(tx,{get(target,key){if(key==='execute')return (...args:Parameters<typeof tx.execute>)=>{statements++;return Reflect.apply(target.execute,target,args);};return Reflect.get(target,key);}});
+   return createSigningDocumentTx(bounded,admin,{companyId:b.companyId,employmentId,subjectId,subjectType:'probation',contentHash:hash,route,guardrails:{requiredRoles:[]}});
+  });
+  expect(statements).toBe(2); // One identity read plus the authoritative store, independent of layer count.
+  expect(created.document.route).toEqual(canonical);
+ });
  it('reads with SELECT-only rights and signs a real scoped route with authoritative person/name/time and private audit',async()=>{
   const created=await create();expect(await withTenant(manager.ctx,tx=>readSigningDocumentTx(tx,manager.ctx,created.id))).toMatchObject({contentHash:hash,actions:[]});
   const action=rawAction(manager);const first=await rawAct(created.id,manager,action);expect(first.actions[0]).toMatchObject({actorId:manager.userId,actorPersonId:manager.personId,actorName:'Fictional Manager'});expect(first.actions[0].at).not.toBe('1900-01-01T00:00:00Z');

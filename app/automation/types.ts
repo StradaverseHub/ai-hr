@@ -1,6 +1,6 @@
 /** Shapes shared by the HR Automation server actions and screens. Types only. */
 /** What a dry run assumes about the event itself (which part, which outcome…), chosen by the tester as in the prototype. */
-export type DryRunEventFacts = { part: string; outcome: string; resultBand: string; suggestionOverridden: string; pendingStep: string };
+export type DryRunEventFacts = { part: string; outcome: string; resultBand: string; suggestionOverridden: string; pendingStep: string;decision?:string;endReason?:string;declineReason?:string;payChanges?:string;termMonths?:string };
 export type ActionResult<T> = { ok: true; result: T } | { ok: false; code: 'forbidden' | 'invalid' | 'conflict' | 'not_found' | 'review' | 'unavailable'; detail?: string; problems?: string[] };
 /** The module filter of the shared builders. */
 export type AutomationFilter = 'all' | 'onb' | 'off' | 'contract_staff' | 'probation';

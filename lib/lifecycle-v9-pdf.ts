@@ -36,16 +36,20 @@ export function v9PdfDocument(document: Document, requireComplete = false): Lett
   return { version: 1, language: 'en', blocks };
 }
 function timestamp(value: string) { const date = new Date(value); if (!Number.isFinite(date.getTime())) throw new V9Error('This document timestamp needs review.'); return new Intl.DateTimeFormat('en-GB', { timeZone: 'Asia/Kuala_Lumpur', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).format(date) + ' MYT'; }
-async function evidence(signature: Signature | null, role: string, document: Document): Promise<LetterPdfInput['signature']> {
+async function evidence(signature: Signature | null, role: string, document: Document,proof?:RoutedPdfSignature): Promise<LetterPdfInput['signature']> {
   if (!signature) return { name: '', caption: document.templateType === 'Attachment' ? 'Generated attachment' : `Unsigned document · ${document.status}`, timestamp: timestamp(document.createdAt) };
   if (!validV9SignatureValue(signature.method, signature.value)) throw new V9Error('This recorded signature needs review before PDF export.');
   const stamp = signature.method === 'drawn' ? await sharp(Buffer.from(signature.value.slice(signature.value.indexOf(',') + 1), 'base64'), { limitInputPixels: 2097152, failOn: 'error' }).png().toBuffer() : undefined;
-  return { name: signature.method === 'typed' ? signature.value : signature.by.name, caption: `${role} signature recorded in AI HR${signature.method === 'typed' && signature.value !== signature.by.name ? ' · account: ' + signature.by.name : ''}`, timestamp: timestamp(signature.at), ...(stamp ? { stamp } : {}) };
+  return { name: signature.method === 'typed' ? signature.value : signature.by.name, caption: `${proof?'Verified AIHR login · '+role+' · content revision '+proof.contentRevision+' · '+proof.contentHash:role+' signature recorded in AI HR'}${signature.method === 'typed' && signature.value !== signature.by.name ? ' · account: ' + signature.by.name : ''}`, timestamp: timestamp(signature.at), ...(stamp ? { stamp } : {}),...(proof&&signature.method==='typed'?{script:true}:{}) };
 }
-export async function renderV9DocumentPdf(document: Document, reference: string, requireComplete = false) {
-  const signatures = document.hrStep === 'before' ? [{ signature: document.hrSignature, role: 'HR' }, { signature: document.employeeSignature, role: 'Employee' }] : [{ signature: document.employeeSignature, role: 'Employee' }, { signature: document.hrSignature, role: 'HR' }];
+export type RoutedPdfSignature={signature:Signature;role:string;contentRevision:number;contentHash:string};
+export async function renderV9DocumentPdf(document: Document, reference: string, requireComplete = false,routedSignatures?:readonly RoutedPdfSignature[]) {
+  if(routedSignatures&&(routedSignatures.length>30||routedSignatures.some(receipt=>!Number.isInteger(receipt.contentRevision)||receipt.contentRevision<1||! /^[a-f0-9]{64}$/.test(receipt.contentHash))))throw new V9Error('The routed signature proof needs review.');
+  const signatures = routedSignatures??(document.hrStep === 'before' ? [{ signature: document.hrSignature, role: 'HR' }, { signature: document.employeeSignature, role: 'Employee' }] : [{ signature: document.employeeSignature, role: 'Employee' }, { signature: document.hrSignature, role: 'HR' }]);
   const recorded = signatures.filter(value => value.signature);
   const primary = recorded[0] ?? { signature: null, role: 'Employee' };
-  const result = await renderLetterPdf({ document: v9PdfDocument(document, requireComplete), title: document.name, ...(document.blocks.some(block => block.type === 'letterhead') ? { accentColor: v9Letterhead(document).color } : {}), reference: `${reference} · v${document.version} · ${document.status}`, signature: await evidence(primary.signature, primary.role, document), ...(recorded.length > 1 ? { additionalSignatures: [await evidence(recorded[1].signature, recorded[1].role, document)] } : {}) });
+  const retained:NonNullable<LetterPdfInput['routedSignatures']>=[];
+  if(routedSignatures)for(const receipt of routedSignatures)retained.push(await evidence(receipt.signature,receipt.role,document,receipt));
+  const result = await renderLetterPdf({ document: v9PdfDocument(document, requireComplete), title: document.name, ...(document.blocks.some(block => block.type === 'letterhead') ? { accentColor: v9Letterhead(document).color } : {}), reference: `${reference} · v${document.version} · ${document.status}`, signature: retained[0]??await evidence(primary.signature, primary.role, document), ...(retained.length?{routedSignatures:retained}:recorded.length > 1 ? { additionalSignatures: [await evidence(recorded[1].signature, recorded[1].role, document)] } : {}) });
   return { bytes: result.bytes, pages: result.pages };
 }

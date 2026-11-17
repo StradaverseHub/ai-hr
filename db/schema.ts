@@ -1108,6 +1108,7 @@ export const employment = pgTable(
     // screen pre-fills the Group Join Date as a display default and writes only on save). contract_remark is
     // free text and deliberately NOT catalog-validated (see EMPLOYMENT_INFO_FIELD_CATEGORY in core/org.ts).
     contractStartDate: date('contract_start_date'),
+    contractNumber: integer('contract_number'),
     contractRemark: text('contract_remark'),
     // Wave 2 (ADR-0038 2C): the state this employment works in — drives which state public holidays
     // apply. Null falls back to the company's default_work_state, then national-only.

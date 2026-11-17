@@ -1,15 +1,16 @@
 import type { SessionContext } from '@/db/client';
-import { NotificationCenter, type NotificationTaskItem } from '@/components/notification-center';
+import { NotificationCenter, type NotificationTaskItem,type NotificationTaskQueueLink } from '@/components/notification-center';
 import { dispatchNotifications, notificationBellSummary } from '@/core/notifications';
 import { onboardingNoticeSummary } from '@/packs/lifecycle/service';
 
-export async function ShellNotificationCenter({ session, scope, catchUp, lifecycleEnabled, tasks, taskCount, claimPreviewRevision, canApprove }: {
+export async function ShellNotificationCenter({ session, scope, catchUp, lifecycleEnabled, tasks, taskCount, taskQueueLinks, claimPreviewRevision, canApprove }: {
   session: SessionContext;
   scope: { letterCompanyIds?: string[] } | null;
   catchUp: boolean;
   lifecycleEnabled: boolean;
   tasks: NotificationTaskItem[];
   taskCount: number;
+  taskQueueLinks?:NotificationTaskQueueLink[];
   claimPreviewRevision?: string;
   canApprove: boolean;
 }) {
@@ -25,6 +26,7 @@ export async function ShellNotificationCenter({ session, scope, catchUp, lifecyc
     unread={bell.unread + notices.unreadCount}
     items={[...bell.items, ...notices.unread]}
     tasks={tasks}
+    taskQueueLinks={taskQueueLinks}
     taskNotifications={bell.tasks}
     claimPreviewRevision={claimPreviewRevision}
     taskCount={taskCount + bell.taskCount}

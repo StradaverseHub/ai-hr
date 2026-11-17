@@ -48,6 +48,8 @@ export function movementKindLabel(
     case 'orgAssignmentChange': return t('movement.eventType.orgAssignmentChange');
     case 'reportingLineChange': return t('movement.eventType.reportingLineChange');
     case 'employmentTypeChange': return t('movement.eventType.employmentTypeChange');
+    case 'contractRenewal': return t('movement.eventType.contractRenewal');
+    case 'contractTermination': return t('movement.eventType.contractTermination');
     case 'gradeChange': return t('movement.eventType.gradeChange');
     // 89ea527b — the two employment-date movements.
     case 'joinDateChange': return t('movement.eventType.joinDateChange');

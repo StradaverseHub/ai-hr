@@ -20,7 +20,7 @@ export class AssignedWorkPrincipalUnavailableError extends Error{
 export const PACK_TASK_KINDS=['performanceReview','assessmentWork','careerPlan','calibration','rewardReview',
  // Probation (core/probation.ts pendingProbationTasks): Approve steps, and every other Probation task (employee, Line
  // Manager, PBP and GBS tasks, letter Sign steps). Both open the case view.
- 'probationApproval','probationTask'] as const;
+ 'probationApproval','probationTask','contractApproval','contractLetter','contractPosting','contractPay'] as const;
 export type PackTaskKind=typeof PACK_TASK_KINDS[number];
 /**
  * Probation only (lane L, L5): the plain step code of the caller's task (app.probation_task_list `kind`, for example

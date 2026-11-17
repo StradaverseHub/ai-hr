@@ -11,6 +11,9 @@ import type {SessionContext,Tx} from '../db/client';
 import {deliverAutomationEmails} from '../core/automation-email-delivery';
 import {emitProbationEventTx,probationAutomationCaseTx} from '../core/probation-automation';
 import type {AutomationDeliveryRequest,AutomationDeliveryResult} from '../lib/automation-email-ipc';
+import {automationEmailBodyDoc} from '../lib/automation/email';
+import {automationEmailContent,type AutomationRichEmailBody} from '../lib/automation-email-content';
+import type {EmailBodyDoc} from '../lib/email-body/doc';
 
 const ORIGIN='https://workflow-mail-fixture.example';
 let b:Base,admin:SessionContext,fixture:ReturnType<typeof probationOutcomeFixture>;
@@ -22,9 +25,9 @@ async function liveWorkflow(trigger:string,steps:Record<string,unknown>[]){
   steps:steps.map((step,i)=>({id:'s'+(i+1),conditions:[],to:[],cc:[],params:{},...step}))};
  await owner.db.execute(sql`insert into automation_workflow_version(tenant_id,workflow_id,revision,module,status,required,definition,reason,saved_by) values(${b.tenantId}::uuid,${randomUUID()}::uuid,1,'probation','live',false,${JSON.stringify(definition)}::jsonb,'Fictional live workflow',${admin.userId}::uuid)`);
 }
-async function emailTemplate(active:boolean){
+async function emailTemplate(active:boolean,bodyDoc?:EmailBodyDoc){
  const id=randomUUID();
- await owner.db.execute(sql`insert into automation_email_template_version(tenant_id,template_id,revision,module,name,active,subject,body,cc,reason,saved_by) values(${b.tenantId}::uuid,${id}::uuid,1,'probation','Fictional template',${active},'Review for {{employee.name}}','Please open {{ case.link }} for {{employee.name}}.','[]'::jsonb,'Fictional template',${admin.userId}::uuid)`);
+ await owner.db.execute(sql`insert into automation_email_template_version(tenant_id,template_id,revision,module,name,active,subject,body,cc,reason,saved_by,body_doc) values(${b.tenantId}::uuid,${id}::uuid,1,'probation','Fictional template',${active},'Review for {{employee.name}}','Please open {{ case.link }} for {{employee.name}}.','[]'::jsonb,'Fictional template',${admin.userId}::uuid,${bodyDoc?JSON.stringify(bodyDoc):null}::jsonb)`);
  return id;
 }
 const identity=(userId:string)=>owner.db.execute(sql`insert into app_external_identity(issuer,subject,app_user_id) values(${ORIGIN+'/auth/'+b.tenantId},${randomUUID()},${userId}::uuid)`);
@@ -54,6 +57,22 @@ async function raise(caseId:string,partId:string,occurrence:string){
 }
 
 describe('Shared workflow email (F1, 5754)',()=>{
+ it('freezes rich source in the durable intent and retains it when the template is revised',async()=>{
+  const {ids,staff,admin:pbp}=await fixture.recordedConfirm();admin=pbp;
+  await identity(staff.userId);
+  const doc=automationEmailBodyDoc({body:'Dear {{employee.name}}\n\nOpen {{case.link}}'}),template=await emailTemplate(true,doc);
+  await liveWorkflow('lowResult',[{type:'sendEmail',params:{emailTemplateId:template},to:[{kind:'role',role:'employee'}]}]);
+  await raise(ids.caseId,ids.part,'rich');
+  const [queued]=await owner.db.execute<{richBody:AutomationRichEmailBody}>(sql`select payload->'mail'->'richBody' as "richBody" from automation_email_delivery where tenant_id=${b.tenantId}::uuid`);
+  expect(queued.richBody.doc).toEqual(doc);
+  const content=automationEmailContent({module:'probation',origin:ORIGIN,linkPath:'/lifecycle/probation/'+ids.caseId,body:'Backup',richBody:queued.richBody});
+  expect(content.html).toContain('Fictional Staff');expect(content.text).toContain(ORIGIN+'/lifecycle/probation/'+ids.caseId);
+  await owner.db.execute(sql`insert into automation_email_template_version(tenant_id,template_id,revision,module,name,active,subject,body,cc,reason,saved_by,body_doc)
+   select tenant_id,template_id,2,module,name,active,'A later subject','A later body',cc,'Later revision',saved_by,null from automation_email_template_version where tenant_id=${b.tenantId}::uuid and template_id=${template}::uuid and revision=1`);
+  const [retained]=await owner.db.execute<{richBody:AutomationRichEmailBody}>(sql`select payload->'mail'->'richBody' as "richBody" from automation_email_delivery where tenant_id=${b.tenantId}::uuid`);
+  expect(retained.richBody).toEqual(queued.richBody);
+  expect((await raise(ids.caseId,ids.part,'rich')).alreadyRan).toHaveLength(1);expect(await deliveries()).toHaveLength(1);
+ });
  it('queues To and CC apart beside the in-app notice, skips a template turned off, records people without an email, and sends once',async()=>{
   const {ids,staff,manager,admin:pbp}=await fixture.recordedConfirm();admin=pbp;
   await identity(staff.userId);await identity(pbp.userId!); // the Line Manager has no sign-in email

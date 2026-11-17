@@ -10,6 +10,8 @@
  * Probation execution slice). Retiring is final.
  */
 import {sql} from 'drizzle-orm';
+import type {EmailBodyDoc} from '../lib/email-body/doc';
+import type {AutomationEmailAsset,AutomationEmailSlot} from '../lib/automation-email-assets';
 import type {SessionContext} from '../db/client';
 import {pgSqlState} from '../lib/db-error';
 import {withScopedLifecycleTenant} from './module-gate';
@@ -24,7 +26,7 @@ export const MAX_LISTED_EMAIL_TEMPLATES = 500;
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 export type StoredAutomationEmailTemplate = { template: AutomationEmailTemplate; revision: number; retired: boolean; savedAt: string; savedBy: string };
-type Row = { templateId: string; revision: number; module: AutomationModule; name: string; active: boolean; subject: string; body: string; cc: AutomationRecipient[]; retired: boolean; savedAt: string; savedBy: string };
+type Row = { templateId: string; revision: number; module: AutomationModule; name: string; active: boolean; subject: string; body: string; bodyDoc:EmailBodyDoc|null;assets:AutomationEmailAsset[]|null;slots:AutomationEmailSlot[]|null;documentIds:string[]|null; cc: AutomationRecipient[]; retired: boolean; savedAt: string; savedBy: string };
 
 function mapDatabaseError(e: unknown): never {
   const state = pgSqlState(e), message = e instanceof Error ? e.message : 'The save was refused.';
@@ -39,12 +41,12 @@ export async function listAutomationEmailTemplates(ctx: SessionContext, filter: 
   if (filter.module && !AUTOMATION_MODULES.includes(filter.module)) throw new AutomationError('invalid', 'Unknown module.');
   return withScopedLifecycleTenant(ctx, async tx => {
     const rows = await tx.execute<Row>(sql`
-      select distinct on (template_id) template_id as "templateId", revision, module, name, active, subject, body, cc, retired, saved_at as "savedAt", saved_by as "savedBy"
+      select distinct on (template_id) template_id as "templateId", revision, module, name, active, subject, body, body_doc as "bodyDoc",assets,file_slots as slots,document_ids as "documentIds", cc, retired, saved_at as "savedAt", saved_by as "savedBy"
       from automation_email_template_version
       where tenant_id = app.current_tenant_id() and (${filter.module ?? null}::text is null or module = ${filter.module ?? null}::text)
       order by template_id, revision desc
       limit ${MAX_LISTED_EMAIL_TEMPLATES}`);
-    return rows.map(r => ({ template: { id: r.templateId, module: r.module, name: r.name, active: r.active, subject: r.subject, body: r.body, cc: r.cc }, revision: r.revision, retired: r.retired, savedAt: r.savedAt, savedBy: r.savedBy }))
+    return rows.map(r => ({ template: { id: r.templateId, module: r.module, name: r.name, active: r.active, subject: r.subject, body: r.body, ...(r.bodyDoc?{bodyDoc:r.bodyDoc}:{}),assets:r.assets??[],slots:r.slots??[],documentIds:r.documentIds??[], cc: r.cc }, revision: r.revision, retired: r.retired, savedAt: r.savedAt, savedBy: r.savedBy }))
       .sort((a, b) => a.template.name.localeCompare(b.template.name) || a.template.id.localeCompare(b.template.id));
   });
 }
@@ -57,14 +59,14 @@ export async function saveAutomationEmailTemplate(ctx: SessionContext, input: { 
   const people = [...new Set(template.cc.flatMap(r => r.kind === 'person' ? [r.userId] : []))].filter(id => UUID.test(id));
   return withScopedLifecycleTenant(ctx, async tx => {
     // Authority first, so someone who cannot configure the module learns nothing from the catalogue checks.
-    const [allowed] = await tx.execute<{ ok: boolean }>(sql`select app.automation_can_configure(${template.module}) as ok`);
+    const [allowed] = await tx.execute<{ ok: boolean }>(sql`select app.automation_can_manage(${template.module},'templates') as ok`);
     if (!allowed?.ok) throw new AutomationError('forbidden', 'You cannot configure this.');
     if (!input.retired) {
       const problems = automationEmailTemplateProblems(template, catalogue, await automationReferencesTx(tx, people));
       if (problems.length) throw new AutomationError('invalid', 'Fix the email template before saving it.', problems);
     }
     try {
-      const [row] = await tx.execute<{ revision: number }>(sql`select app.automation_email_template_save(${template.id}::uuid, ${template.module}, ${template.name}, ${template.active}, ${template.subject}, ${template.body}, ${JSON.stringify(template.cc)}::jsonb, ${input.retired}, ${input.expectedRevision}, ${input.reason}) as revision`);
+      const [row] = await tx.execute<{ revision: number }>(sql`select app.automation_email_template_save_full(${template.id}::uuid, ${template.module}, ${template.name}, ${template.active}, ${template.subject}, ${template.body}, ${JSON.stringify(template.cc)}::jsonb, ${input.retired}, ${input.expectedRevision}, ${input.reason},${template.bodyDoc?JSON.stringify(template.bodyDoc):null}::jsonb,${JSON.stringify(template.assets??[])}::jsonb,${JSON.stringify(template.slots??[])}::jsonb,${JSON.stringify(template.documentIds??[])}::jsonb) as revision`);
       return { revision: row.revision, warnings: automationEmailMergeWarnings(template, catalogue) };
     } catch (e) { mapDatabaseError(e); }
   });

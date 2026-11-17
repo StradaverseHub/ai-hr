@@ -1,3 +1,9 @@
+## Contract completion forward source block — 17 November 2026 (installation held)
+
+Root reserves **6000–6029**, idx **5400–5429**, when **1794841006000–1794841006029**, after a fresh read-only survey of all 333 Git-discovered migration trees and journal text, including conflict-marked journals; no collisions were found. `6000` belongs to canonical Contract email recovery and passive applied-period provenance; `6001–6008` belong to the protected human Contract posting owner, in dependency order; `6009` adds the reviewed forward reconciliation-readiness and explicit approver projection safeguards. `6010` is held for the separately pending HR notice decision and confers no implementation authority. Other slots are held and unused. A renewed source-only survey covered all 344 Git-discovered worktrees before registration; the only6000–6029 files were these owned Contract review/proposal trees, with no foreign claims.
+
+These source allocations follow the selected pending `5990` private mail compatibility and `5991` guarded Contract directory prerequisites. Earlier unregistered proposal labels 5980/5981–5988 and all original bytes/history remain preserved; they are not installation positions. Accepted main/alpha `2a41322043b79e2512e5fec00622168442ffa38e` retains all 891 ordered journal entries and SQL bytes. This is a source reservation, not a live-ledger query, passing check, migration application or merge/release approval. Recheck installed watermarks, accepted Recruitment integration and foreign claims before any separately approved admission.
+
 ## Movement staging handback and unused slots — 17 November 2026 MYT
 
 Movement completed its three-stage candidate at source `65ab4e868d43efe08e046c666051c13ccb61c76d`,

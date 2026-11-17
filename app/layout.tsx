@@ -243,6 +243,7 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
   const lifecycleInbox=await lifecycleModuleInbox(session,scopedLifecycleNavigation);
   const lifecycleTasks:NotificationTaskItem[]=[...onboardingQueue.map(onboardingNotificationTask),...lifecycleInbox.items];
   const lifecycleTaskCount=onboardingQueue.length+lifecycleInbox.count;
+  const lifecycleMyTasksCount=onboardingQueue.length+lifecycleInbox.myTasksCount;
   // Navigation and the floating launcher share the current Assistant grant read.
   const [{launcher,allowed:assistantAccess},privateCaseHandler] = await Promise.all([
     assistantShellFor(session),
@@ -265,11 +266,11 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
     state:'ready',
     items:approvalSummary.items,
     total:approvalSummary.total,
-    approvalCount:approvalSummary.approvalCount,
+    approvalCount:approvalSummary.approvalCount+lifecycleInbox.approvalCount,
     claimTotal:approvalSummary.claimTotal,
     // Ordinary employees keep their native assignment eligibility without acquiring manager authority.
     hasAssignedAttendanceApproval:!canApprove&&approvalSummary.items.some(task=>task.kind==='attendance'),
-    hasAssignedApproval:!canApprove&&approvalSummary.approvalCount>0,
+    hasAssignedApproval:!canApprove&&(approvalSummary.approvalCount+lifecycleInbox.approvalCount)>0,
   }),():ShellApprovalResult=>{
     console.error('Shared shell approval facts unavailable');
     return {state:'unavailable'};
@@ -322,7 +323,7 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
               // D-P1-32 PT-X5 — Performance & Talent needs no flag (the module gate is its gate); calibration,
               // talent and development are tabs inside the area, so the rail no longer reads the worklist.
               performanceAdminHref={performanceAdminPath}
-              taskCount={lifecycleTaskCount}
+              taskCount={lifecycleMyTasksCount}
               onboardingAccess={onboardingAccess}
               probationAccess={scopedLifecycleNavigation.probation}
               contractStaffAccess={scopedLifecycleNavigation.contractStaff}
@@ -475,6 +476,7 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
                       catchUp={catchUpNotifications}
                       lifecycleEnabled={lifecycleEnabled}
                       tasks={lifecycleTasks}
+                      taskQueueLinks={lifecycleInbox.queueLinks}
                       claimPreviewRevision={claimsEnabled ? crypto.randomUUID() : undefined}
                       taskCount={lifecycleTaskCount}
                       canApprove={canApprove}
