@@ -23989,7 +23989,17 @@
       "view": "查看"
     },
     "workflowRecipients": {
-      "setupNeeded": "请为此步骤选择收件人。预设工作流程将其留给您的公司集团自行选择。在此之前，此邮件每次运行时都会被暂停。"
+      "setupNeeded": "请为此步骤选择收件人。预设工作流程将其留给您的公司集团自行选择。在此之前，此邮件每次运行时都会被暂停。",
+      "taUnavailable": "所选 TA 不可用。请选择其他活跃用户。",
+      "clearTa": "清除 TA",
+      "taNotLinked": "{name} 尚未关联用户。请选择 TA。",
+      "taNotSelected": "尚未选择 TA。",
+      "searchTa": "搜索 TA",
+      "searchTaHint": "请输入姓名的至少两个字符",
+      "searchingTa": "正在搜索活跃用户…",
+      "taSearchFailed": "无法加载 TA 搜索结果。请重新输入姓名。",
+      "taNoMatches": "没有匹配此姓名的活跃用户。",
+      "taMatches": "匹配的活跃用户"
     }
   },
   "clockingFile": {

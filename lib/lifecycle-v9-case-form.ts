@@ -11,7 +11,7 @@ function definitions(module: CaseFormModule): CaseFieldDefinition[] {
   return module === 'onb' ? [
     base('name','Full name','personnel',{ system: true }), base('empNo','Employee no.','personnel'), base('joinInput','Join date','personnel',{ system: true, type: 'date' }),
     base('position','Job title','personnel',{ system: true }), base('dept','Department','personnel',{ system: true }), base('company','Company','personnel',{ system: true }), base('group','Business Group','personnel',{ system: true }),
-    base('supervisor','Supervisor','personnel'), base('ta','GBS TA name','personnel'),
+    base('supervisor','Supervisor','personnel'), base('ta','TA','case'),
     base('hireType','New hire or replacement','case',{ type: 'dropdown', options: ['New hire','Replacement'], values: ['new_hire','replacement'], required: true }),
     base('replacing','Employee being replaced','case',{ required: true, when: { field: 'hireType', value: 'replacement' } }),
     base('email','New hire email','case'), base('floor','Floor / building','case'),

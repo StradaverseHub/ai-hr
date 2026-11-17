@@ -74,3 +74,15 @@ it('does not turn a scoped company HR viewer into a case writer or expose hidden
  await expect(onboardingCommand(viewer,id,detail.revision,{type:'save',patch:{floor:'Denied HR viewer'}})).rejects.toThrow();
  expect(await withTenant(viewer,tx=>tx.execute(sql`update lc_onboarding_case set data=jsonb_set(data,'{floor}','"Denied HR SQL"') where id=${id}::uuid returning id`))).toHaveLength(0);
 });
+
+it('binds a case TA only to an active account of the same tenant and retains legacy text without auto-linking', async () => {
+ let detail=await onboardingDetail(admin,id);
+ await onboardingCommand(admin,id,detail.revision,{type:'save',patch:{local:{taUserId:member.userId!}}});
+ detail=await onboardingDetail(admin,id);expect(detail.case.local.taUserId).toBe(member.userId);
+ const foreign=await seedBase(),foreignAdmin=await entitledCtx(foreign);
+ await expect(onboardingCommand(admin,id,detail.revision,{type:'save',patch:{local:{taUserId:foreignAdmin.userId!}}})).rejects.toThrow('current active user');
+ await owner.client`update app_user set archived_at=now() where id=${member.userId!}::uuid`;
+ await expect(onboardingCommand(admin,id,detail.revision,{type:'save',patch:{local:{taUserId:member.userId!}}})).rejects.toThrow('current active user');
+ await onboardingCommand(admin,id,detail.revision,{type:'save',patch:{local:{taUserId:''}}});
+ expect((await onboardingDetail(admin,id)).case.local.taUserId).toBe('');
+});

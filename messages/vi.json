@@ -23989,7 +23989,17 @@
       "view": "Xem"
     },
     "workflowRecipients": {
-      "setupNeeded": "Chọn người nhận (Đến) cho bước này. Quy trình có sẵn để trống cho nhóm công ty của bạn tự chọn. Cho đến khi đó, thư này sẽ bị giữ mỗi khi chạy."
+      "setupNeeded": "Chọn người nhận (Đến) cho bước này. Quy trình có sẵn để trống cho nhóm công ty của bạn tự chọn. Cho đến khi đó, thư này sẽ bị giữ mỗi khi chạy.",
+      "taUnavailable": "TA đã chọn không khả dụng. Hãy chọn người dùng đang hoạt động khác.",
+      "clearTa": "Xóa TA",
+      "taNotLinked": "{name} chưa được liên kết với người dùng. Hãy chọn TA.",
+      "taNotSelected": "Chưa chọn TA.",
+      "searchTa": "Tìm TA",
+      "searchTaHint": "Nhập ít nhất hai ký tự trong tên",
+      "searchingTa": "Đang tìm người dùng đang hoạt động…",
+      "taSearchFailed": "Không tải được kết quả tìm TA. Hãy nhập lại tên.",
+      "taNoMatches": "Không có người dùng đang hoạt động nào khớp với tên này.",
+      "taMatches": "Người dùng đang hoạt động phù hợp"
     }
   },
   "clockingFile": {

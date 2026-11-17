@@ -14,6 +14,7 @@ import { todayInKualaLumpur, timeInKualaLumpur } from '../../../lib/hr-date';
 import type { NotificationSweepConnection } from '../../../core/notice-projection';
 import { assertModuleEnabled } from '../../../core/entitlements';
 import * as M from '../../../lib/lifecycle-v9-model';
+import { lifecycleRecipientAddressesTx } from './recipient-directory';
 import { maskEmail } from '../../../lib/lifecycle-v9-recipients';
 import { v9EmploymentLabels } from '../../../lib/lifecycle-v9-employment';
 import { projectNativeCase, nativeDocumentState } from '../../../lib/lifecycle-v9-native';
@@ -273,7 +274,14 @@ export async function v9PlanWorkflow(ctx: SessionContext, caseId: string, input:
     if (!config) throw new M.V9Error('V9 configuration is not available.');
     if (row.data.module !== workflow.module) throw new M.V9Error('Choose a case from this module.', 'not_found');
     const c = structuredClone(row.data), env = await environment(tx, ctx, c, config);
-    return M.planWorkflow(c, config, workflow, { ...env, revealPersonal: await personalEmailRevealTx(tx, ctx), workflowId: workflow.id });
+    const userIds = new Set<string>();
+    for (const step of workflow.steps) if (step.type === 'email' || step.type === 'notify') {
+      const template = step.type === 'email' ? config.emails.find(email => email.id === step.template) : null;
+      const recipients = M.resolveStepRecipients(c, config, M.stepRecipientRoles(c, workflow.id, step, template), env);
+      for (const recipient of [...recipients.to, ...recipients.cc]) if (uuid.test(recipient.key)) userIds.add(recipient.key);
+    }
+    const addresses = await lifecycleRecipientAddressesTx(tx, ctx, caseId, [...userIds]);
+    return M.planWorkflow(c, config, workflow, { ...env, userEmail: id => addresses[id] ?? null, revealPersonal: await personalEmailRevealTx(tx, ctx), workflowId: workflow.id });
   });
 }
 export type EmailHoldInboxItem = { caseId: string; module: M.Module; number: string; name: string; email: string; workflow: string; heldAt: string; missing: { label: string; reason: string }[] };

@@ -213,6 +213,8 @@ export type Environment = {
   /** Services reject identities without an authorized verified destination before delivery. */
   eligibleUser: (userId: string) => boolean;
   userName: (userId: string) => string;
+  /** Auth-owned actual account destination, provided only by the server's bounded preview read. */
+  userEmail?: (userId: string) => string | null;
   mergeValues: Record<string, string>;
   signatoryUserId?: string | null;
   actorSignatoryTitle?: string;
@@ -844,18 +846,29 @@ export function testWorkflowMessages(c: Case, config: Config, workflowId: string
   }
 }
 /** Source dry run: inspect every step against current data, independent of submission/date eligibility. */
-export type PlanEnvironment = Pick<Environment, 'today' | 'userName'> & Partial<Pick<Environment, 'eligibleUser' | 'mergeValues' | 'onboardingContact'>> & { revealPersonal?: boolean; workflowId?: string | null };
+export type PlanEnvironment = Pick<Environment, 'today' | 'userName'> & Partial<Pick<Environment, 'eligibleUser' | 'mergeValues' | 'onboardingContact' | 'userEmail'>> & { revealPersonal?: boolean; workflowId?: string | null };
 export function planWorkflow(c: Case, config: Config, workflow: Workflow, env: PlanEnvironment): { matches: boolean; lines: { text: string; ok: boolean }[] } {
   const matches = workflowMatches(c, workflow, env.today), lines: { text: string; ok: boolean }[] = [];
   if (!matches) return { matches, lines: [{ text: 'Skipped: this record does not match the conditions.', ok: false }] };
   lines.push({ text: 'Conditions match.', ok: true });
   const lookup = { eligibleUser: env.eligibleUser ?? (() => true), userName: env.userName, mergeValues: env.mergeValues ?? {}, onboardingContact: env.onboardingContact };
+  // A selected personal mailbox stays protected when another role resolves to the same address.
+  const protectedPersonal = literalEmail(env.mergeValues?.personalEmail)?.toLowerCase();
   // Each person and the address they are reached at. Personal email is masked unless the viewer may see it.
-  const shown = (recipient: ResolvedRecipient) => { const address = v9LiteralAddress(recipient.key) ?? (recipient.key.includes('@') ? recipient.key : null); return address ? `${recipient.name} <${recipient.personal && !env.revealPersonal ? maskEmail(address) : address}>` : `${recipient.name} (account email)`; };
+  const shown = (recipient: ResolvedRecipient) => { const address = v9LiteralAddress(recipient.key) ?? (recipient.key.includes('@') ? recipient.key : env.userEmail?.(recipient.key)); return address ? `${recipient.name} <${(recipient.personal || address.toLowerCase() === protectedPersonal) && !env.revealPersonal ? maskEmail(address) : address}>` : `${recipient.name} (account email)`; };
   const message = (step: Extract<Step, { type: 'email' | 'notify' }>, what: string, active: boolean) => {
     const email = step.type === 'email' ? config.emails.find(e => e.id === step.template) : null;
     const roles = stepRecipientRoles(c, env.workflowId ?? workflow.id, step, email), resolved = resolveStepRecipients(c, config, roles, lookup);
-    if (resolved.missing.length) return { text: `Would hold ${what}: nobody is emailed because ${resolved.missing.map(entry => `${entry.label}: ${entry.reason}`).join('; ')}.`, ok: false };
+    if (env.userEmail) {
+      // Match the delivery owner's address dedupe, including a literal address equal to an account destination.
+      const seen = new Set<string>();
+      for (const position of ['to', 'cc'] as const) resolved[position] = resolved[position].filter(recipient => {
+        const address = v9LiteralAddress(recipient.key) ?? (recipient.key.includes('@') ? recipient.key : env.userEmail!(recipient.key));
+        if (!address) { resolved.missing.push({ role: `person:${recipient.key}`, label: recipient.name, reason: 'no verified account email is available' }); return true; }
+        const key = address.toLowerCase(); if (seen.has(key)) return false; seen.add(key); return true;
+      });
+    }
+    if (resolved.missing.length) return { text: `Would hold ${what}: nobody is emailed because ${resolved.missing.map(entry => `${entry.label}: ${entry.reason}`).join('; ')}.${env.userEmail && (resolved.to.length || resolved.cc.length) ? ` Found To: ${resolved.to.map(shown).join(', ') || 'No one'}; CC: ${resolved.cc.map(shown).join(', ') || 'No one'}.` : ''}`, ok: false };
     return { text: `Would send ${what} to ${resolved.to.map(shown).join(', ')}${resolved.cc.length ? ', CC ' + resolved.cc.map(shown).join(', ') : ''}${roles.overridden ? ' (recipients changed for this case)' : ''}`, ok: active };
   };
   for (const step of workflow.steps) {

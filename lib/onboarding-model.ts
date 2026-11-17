@@ -213,6 +213,7 @@ export type Extra = {
     reason: string;
     approval: boolean;
 };
+export type CaseLocalFacts = Partial<Facts> & { /** Case-owned selected account; old gbsTa text is never an identity. */ taUserId?: string };
 export type Case = {
     version: 1;
     id: Id;
@@ -225,7 +226,7 @@ export type Case = {
     syncedAt: string;
     source: Partial<Facts>;
     sourceVersion: string;
-    local: Partial<Facts>;
+    local: CaseLocalFacts;
     state: 'pending' | 'submitted' | 'cancelled';
     submittedAt: string | null;
     submittedBy: Id | null;
@@ -545,7 +546,7 @@ const REQUIRED_FIELD_LABELS: Record<string, string> = { fullName: 'Full name', j
 /** Shared required-field projection for validation and the onboarding preparation UI. */
 export function nativeCaseFormValues(c: Case): Record<string,string> {
     const f = effectiveFacts(c);
-    return { ...c.caseValues, name: f.fullName, empNo: f.employeeId, joinInput: f.joinDate, position: f.title, dept: f.department, company: f.company, group: f.businessGroup, supervisor: f.supervisor, ta: f.gbsTa, hireType: c.hiring, replacing: c.replacedEmployee, email: c.caseContactEmail ?? f.email, floor: c.floor, costCentre: f.costCentre, icNo: f.ic, passportNo: f.passport, notes: c.notes };
+    return { ...c.caseValues, name: f.fullName, empNo: f.employeeId, joinInput: f.joinDate, position: f.title, dept: f.department, company: f.company, group: f.businessGroup, supervisor: f.supervisor, ta: c.local.taUserId ?? '', hireType: c.hiring, replacing: c.replacedEmployee, email: c.caseContactEmail ?? f.email, floor: c.floor, costCentre: f.costCentre, icNo: f.ic, passportNo: f.passport, notes: c.notes };
 }
 export function missingCaseFields(c: Case, config?: Config, hr = true): string[] {
     if (config?.v9CaseFields) return missingV9CaseFields(resolveV9CaseFields('onb', config.v9CaseFields), effectiveFacts(c), nativeCaseFormValues(c), hr).map(field => field.key);
@@ -696,7 +697,7 @@ export function reconcileItems(config: Config, c: Case, a: Actor, env: Environme
     }
 }
 export type CasePatch = Partial<Pick<Case, 'hiring' | 'replacedEmployee' | 'deviceType' | 'floor' | 'notes' | 'selected' | 'extras' | 'checklistOverride' | 'equipmentOverrides' | 'caseValues' | 'caseContactEmail'>> & {
-    local?: Partial<Facts>;
+    local?: CaseLocalFacts;
 };
 export function saveCase(config: Config, c: Case, patch: CasePatch, a: Actor, env: Environment) {
     caseActor(a);
@@ -704,7 +705,7 @@ export function saveCase(config: Config, c: Case, patch: CasePatch, a: Actor, en
         const equal=(left:unknown,right:unknown)=>JSON.stringify(left)===JSON.stringify(right);
         for(const [key,value] of Object.entries(patch)){
             if(value===undefined)continue;
-            const changed=key==='local'?Object.entries(patch.local??{}).some(([field,value])=>value!==effectiveFacts(c)[field as keyof Facts]):!equal(value,c[key as keyof Case]);
+            const changed=key==='local'?Object.entries(patch.local??{}).some(([field,value])=>value!==(field==='taUserId'?c.local.taUserId:effectiveFacts(c)[field as keyof Facts])):!equal(value,c[key as keyof Case]);
             if(!changed)continue;
             const permitted=['selected','extras','equipmentOverrides','deviceType'].includes(key)?a.sections.equip==='act':key==='checklistOverride'?a.sections.checklist==='all':key==='notes'?a.sections.notes==='view':a.sections.case==='view';
             if(!permitted)fail('This case section is hidden or read-only for your group.','forbidden');
@@ -735,6 +736,12 @@ export function saveCase(config: Config, c: Case, patch: CasePatch, a: Actor, en
     }
     const priorChecklist = JSON.stringify(matchChecklist(config, c).checklist);
     for (const [key, value] of Object.entries(patch.local ?? {})) {
+        if (key === 'taUserId') {
+            if (config.v9CaseFields?.find(field => field.key === 'ta')?.hrOnly && !a.hr) fail('Company HR access is required for this case field.', 'forbidden');
+            if (value && !env.users.includes(value)) fail('Choose a current active user for the TA.');
+            c.local.taUserId = value;
+            continue;
+        }
         if (config.v9CaseFields && value !== effectiveFacts(c)[key as keyof Facts]) fail('This field comes from Personnel Management. Edit it there.');
         if (c.source[key as keyof Facts] !== undefined && value !== c.source[key as keyof Facts])
             fail('This field comes from Personnel Management. Edit it there.');
