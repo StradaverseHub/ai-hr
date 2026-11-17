@@ -1,0 +1,78 @@
+UNAPPROVED REVIEW PATCH. NOT COMPILED OR IMPORTED. NO ACTIVE KERNEL/SMTP AUTHORITY.
+Companion native source is 5965-contract-historical-email-recovery.proposal.sql.txt.
+The full approval unit includes its explicitly listed native begin/finish/one-step/projection companions.
+
+--- Proposed new core/contract-historical-email-recovery.ts ---
+import type postgres from 'postgres';
+import {sql} from 'drizzle-orm';
+import {reservedSqlExecutor} from '../db/sql-executor';
+import {automationRunFromRow,sqlAutomationRunStore,MAX_RUN_LOG,type AutomationRun} from '../packs/automation/service';
+import {readContractSharedExecutionInputs} from './contract-shared-preview-job';
+import {contractSharedAutomationContext} from './contract-shared-context';
+import {contractSharedEmailExecutors} from './contract-shared-email';
+import {prepareContractSharedEmailStep} from './contract-shared-email-documents';
+import {contractAutomationRead} from '../lib/contract-automation-context';
+import {todayInKualaLumpur} from '../lib/hr-date';
+
+type RunRow=Parameters<typeof automationRunFromRow>[0];
+type Begin={ready:boolean;run?:RunRow;caseId?:string;pinId?:string;decisionRevision?:number;originalTrigger?:string;originalConditionFacts?:Record<string,unknown>};
+export type HistoricalEmailResult='unavailable'|'waiting'|'stopped';
+
+/** Fixed implementation, not a generic owner callback or a fallback to advanceContractSharedAutomationOwner. */
+export async function recoverOneHistoricalContractEmail(owner:postgres.ReservedSql,tenantId:string,jobId:string):Promise<HistoricalEmailResult>{
+ await owner`select set_config('app.tenant_id',${tenantId},true),set_config('app.user_id','',true),set_config('app.roles','',true),set_config('app.grants','[]',true),set_config('jit','off',true)`;
+ const [event]=await owner<{id:string}[]>`select id from contract_shared_event where tenant_id=${tenantId}::uuid and job_id=${jobId}::uuid and trigger_event='emailDocumentReady' and processed_at is null order by created_at,id limit 1 for update`;
+ if(!event)return 'unavailable';
+ await owner`select set_config('app.contract_event',${event.id},true)`;
+ const db=reservedSqlExecutor(owner);
+ const [admission]=await db.execute<{value:Begin}>(sql`select app.contract_historical_email_begin(${event.id}::uuid) as value`);
+ if(!admission.value.ready)return 'unavailable';
+ const start=admission.value;
+ if(!start.run||!start.caseId||start.decisionRevision===undefined||!start.originalTrigger)throw Error('Incomplete native historical email admission');
+ const run=automationRunFromRow(start.run),pending=run.remaining[0];
+ if(pending?.step.type!=='sendEmail')throw Error('Historical recovery permits only the exact pending Send email');
+ const inputs=await readContractSharedExecutionInputs(owner,{tenantId,userId:undefined,roles:[]},start.caseId);
+ const flow=inputs.view.flow;if(!flow)throw Error('The original case source is unavailable');
+ const decision=start.decisionRevision===0?null:[flow.decision,...flow.decisionHistory].find(value=>value?.revision===start.decisionRevision)??null;
+ if(start.decisionRevision>0&&!decision)throw Error('The original accepted decision is unavailable');
+ // Date/counter merges already resolve from immutable flow.period. Never substitute a later decision or current pay.
+ const context=contractSharedAutomationContext({...inputs.view,flow:{...flow,decision,declined:null}},inputs.refs);
+ const today=todayInKualaLumpur(),read=contractAutomationRead(context,start.originalTrigger,today,start.originalConditionFacts);
+ const sender=contractSharedEmailExecutors(db,{context,today,templates:inputs.runtimeEmails,prepareTemplate:(step,current)=>prepareContractSharedEmailStep(db,{tenantId,userId:undefined,roles:[]},{step,current,create:async()=>{throw Error('Historical recovery cannot generate a document')}})}).sendEmail;
+ if(!sender)throw Error('The fixed email executor is unavailable');
+ const next:AutomationRun={...run,status:'running',waitingFor:null,cursor:pending.index+1,remaining:run.remaining.slice(1)};
+ const outcome=await sender({run:next,step:pending.step,index:pending.index,read});
+ if(outcome.status==='wait')return 'waiting';
+ if(outcome.status!=='done')throw Error(outcome.reason);
+ const at=new Date().toISOString(),reason='The original Personnel period changed. This email completed; the remaining workflow steps require reconciliation.';
+ next.log=[...run.log,{at,kind:'stepDone',step:pending.index+1,stepId:pending.step.id,type:'sendEmail',message:outcome.message??'Email delivery intent recorded.',recipients:outcome.recipients??[],unresolved:outcome.unresolved??[]}].slice(-MAX_RUN_LOG);
+ if(next.remaining.length){next.status='failed';next.failure=reason;next.log=[...next.log,{at,kind:'failed',step:null,stepId:null,type:null,message:reason}].slice(-MAX_RUN_LOG);}
+ else{next.status='done';next.failure=null;next.log=[...next.log,{at,kind:'done',step:null,stepId:null,type:null,message:'Finished.'}].slice(-MAX_RUN_LOG);}
+ // The companion native one-step guard permits only this consumed email, unchanged suffix and exact queued receipt.
+ await sqlAutomationRunStore(db).save(next,'waiting');
+ const [receipt]=await db.execute<{value:{completed:boolean;hasTail:boolean;jobId:string}}>(sql`select app.contract_historical_email_finish(${event.id}::uuid) as value`);
+ if(!receipt.value.completed||receipt.value.jobId!==jobId)throw Error('The exact historical email completion receipt is missing');
+ // Even an empty run suffix does not prove all other original event/workflow references finished.
+ // Stop the physical job honestly; never call ordinary system finalize or claim its unrelated work completed.
+ return 'stopped';
+}
+
+--- Proposed exact processContractSystemClaimed catch extension ---
+Existing LeaseLost / BulkJobWaiting handling remains first. For BulkJobAuthorityLost only,
+and job.kind==='contract_scheduled_automation' && job.state==='finalizing':
+
+ const recovered=await ownerTransaction(connection,c,'contractHistoricalEmail',owner=>recoverOneHistoricalContractEmail(owner,job.tenant_id,job.id));
+ if(recovered==='waiting')return waitLater(connection,c);
+ if(recovered==='stopped')return failJob(connection,handler,c,null,
+  'The pinned email completed. The original Personnel period changed; remaining workflow work requires reconciliation.',[],
+  new BulkJobAuthorityLost());
+ // unavailable follows the existing authority-loss failJob path unchanged.
+
+The ownerTransaction is committed before waitLater/failJob. Its native begin must verify the genuine current
+capability/seal/live job and private source; no callback can supply the owner function. No ordinary prepare,
+finalize, notify, Generate document, approval, posting, Payroll or Offboarding executor is exposed here.
+
+Open companion review requirements (must be completed before activation): exact declined-email source alias
+projection; actual-observation historical admission; native same-OID worker/effect internal-only branches;
+one-step failed-tail guard; private stopped-attention projection; full actual posting/Form/upload/SMTP fixtures.
+This patch deliberately cannot be activated by copying only this file or a partial native predicate.

@@ -1,0 +1,238 @@
+-- INACTIVE REVIEW ARTIFACT ONLY: UNAPPROVED, UNAPPLIED, NOT A REGISTERED MIGRATION.
+-- Requires final assembled5960/5962/5964/5968/5969. Existing5957 is deliberately untouched.
+-- Receipt/SMTP seam below is executable candidate SQL, NOT a complete historical kernel boundary.
+-- Unimplemented companion begin/finish/one-step tail transition/observation interfaces are listed last.
+CREATE TABLE app.contract_historical_email_tx(
+ tenant_id uuid NOT NULL,event_id uuid NOT NULL,pin_id uuid NOT NULL,job_id uuid NOT NULL,
+ xact_id bigint NOT NULL,backend_pid integer NOT NULL,login_name text NOT NULL,
+ PRIMARY KEY(tenant_id,xact_id,backend_pid),
+ FOREIGN KEY(tenant_id,event_id) REFERENCES app.contract_email_prerequisite_resume(tenant_id,event_id)
+);
+CREATE TABLE app.contract_historical_email_delivery(
+ tenant_id uuid NOT NULL,delivery_id uuid PRIMARY KEY REFERENCES public.automation_email_delivery(id),
+ event_id uuid NOT NULL,pin_id uuid NOT NULL,job_id uuid NOT NULL,original_event_id uuid NOT NULL,root_event_id uuid NOT NULL,
+ callback_user_id uuid NOT NULL,callback_person_id uuid NOT NULL,
+ payload_hash bytea NOT NULL,input_digest bytea NOT NULL,plan_digest bytea NOT NULL,created_at timestamptz NOT NULL DEFAULT now(),
+ FOREIGN KEY(tenant_id,event_id) REFERENCES app.contract_email_prerequisite_resume(tenant_id,event_id),
+ FOREIGN KEY(tenant_id,pin_id) REFERENCES app.contract_email_prerequisite_origin(tenant_id,pin_id)
+);
+ALTER TABLE app.contract_historical_email_tx ENABLE ROW LEVEL SECURITY;
+ALTER TABLE app.contract_historical_email_tx FORCE ROW LEVEL SECURITY;
+ALTER TABLE app.contract_historical_email_delivery ENABLE ROW LEVEL SECURITY;
+ALTER TABLE app.contract_historical_email_delivery FORCE ROW LEVEL SECURITY;
+CREATE POLICY contract_historical_email_tx_owner ON app.contract_historical_email_tx FOR ALL TO ai_hr_owner USING(app.acting_as_owner()) WITH CHECK(app.acting_as_owner());
+CREATE POLICY contract_historical_email_delivery_owner ON app.contract_historical_email_delivery FOR ALL TO ai_hr_owner USING(app.acting_as_owner()) WITH CHECK(app.acting_as_owner());
+REVOKE ALL ON app.contract_historical_email_tx,app.contract_historical_email_delivery FROM PUBLIC,ai_hr_app;
+GRANT SELECT,INSERT ON app.contract_historical_email_tx,app.contract_historical_email_delivery TO ai_hr_owner;
+
+-- Explicit tenant: SMTP has no tenant GUC. No held/readiness calls, principal substitution or period override.
+-- Original private provenance and completed business posting are independent of kernel cleanup/termination.
+CREATE FUNCTION app.contract_historical_email_source(p_tenant uuid,p_pin uuid) RETURNS boolean
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT EXISTS(SELECT 1 FROM public.contract_shared_email_document_step pin
+ JOIN app.contract_email_prerequisite_origin origin ON origin.tenant_id=pin.tenant_id AND origin.pin_id=pin.id
+ JOIN public.contract_shared_event original ON original.tenant_id=origin.tenant_id AND original.id=origin.origin_event_id
+ JOIN public.bulk_job job ON job.tenant_id=origin.tenant_id AND job.id=origin.job_id
+ JOIN public.contract_case c ON c.tenant_id=pin.tenant_id AND c.id=pin.case_id
+ JOIN public.contract_shared_case flow ON flow.tenant_id=c.tenant_id AND flow.case_id=c.id
+ JOIN public.employment e ON e.tenant_id=c.tenant_id AND e.id=c.employment_id AND e.company_id=pin.company_id AND e.person_id=pin.subject_person_id
+ JOIN public.company company ON company.tenant_id=pin.tenant_id AND company.id=pin.company_id AND company.archived_at IS NULL
+ JOIN public.tenant tenant ON tenant.id=pin.tenant_id AND tenant.status IN('active','trial')
+ WHERE pin.tenant_id=p_tenant AND pin.id=p_pin AND c.company_id=pin.company_id AND c.source_conflict IS NULL
+ AND e.voided_at IS NULL AND e.blacklisted_at IS NULL AND e.terminated_on IS NULL
+ AND flow.data->'period'->>'sourceRevision'=pin.source_period_revision
+ AND original.case_id=pin.case_id AND original.decision_revision=pin.decision_revision AND original.job_id=job.id
+ AND coalesce(original.root_event_id,original.id)=origin.root_event_id
+ AND EXISTS(SELECT 1 FROM public.tenant_module module WHERE module.tenant_id=p_tenant AND module.module_code='lifecycle'
+  AND module.status IN('active','trial') AND (module.company_id IS NULL OR module.company_id=pin.company_id) AND (module.expires_at IS NULL OR module.expires_at>now()))
+ -- Conservative custody refusal, stricter than5904: no first-post-retirement intake can be bypassed.
+ AND NOT EXISTS(SELECT 1 FROM public.contract_retirement_custody custody WHERE custody.tenant_id=p_tenant
+  AND custody.employment_id=e.id AND custody.company_id=pin.company_id AND custody.withdrawn_at IS NULL)
+ AND ((original.actor_type='system' AND original.actor_user_id IS NULL AND original.actor_person_id IS NULL
+  AND job.created_by IS NULL AND job.kind='contract_scheduled_automation'
+  AND job.context=jsonb_build_object('tenantId',p_tenant,'roles','[]'::jsonb)
+  AND EXISTS(SELECT 1 FROM app.contract_system_job_source source WHERE source.tenant_id=p_tenant AND source.job_id=job.id
+   AND source.kind=job.kind AND source.event_id=original.id AND source.case_id=pin.case_id AND source.employment_id=e.id
+   AND source.period_revision=pin.source_period_revision AND source.cause=original.trigger_event
+   AND source.source_date<=(now() AT TIME ZONE 'Asia/Kuala_Lumpur')::date))
+ OR (original.actor_type='user' AND job.kind='contract_automation' AND job.created_by=original.actor_user_id
+  AND EXISTS(SELECT 1 FROM public.app_user actor JOIN public.person person ON person.tenant_id=actor.tenant_id AND person.id=actor.person_id
+   WHERE actor.tenant_id=p_tenant AND actor.id=original.actor_user_id AND actor.person_id=original.actor_person_id
+   AND actor.archived_at IS NULL AND NOT app.login_blocked(actor.id) AND length(btrim(person.full_name))>0)))
+ AND EXISTS(SELECT 1 FROM public.contract_shared_posting receipt
+  JOIN public.personnel_posting posting ON posting.tenant_id=receipt.tenant_id AND posting.id=receipt.posting_id
+  JOIN public.domain_event movement ON movement.tenant_id=posting.tenant_id AND movement.id::text=posting.movement_id
+  WHERE receipt.tenant_id=p_tenant AND receipt.case_id=pin.case_id AND receipt.subject_person_id=pin.subject_person_id
+  AND receipt.source_revision=pin.source_period_revision AND receipt.applied_at IS NOT NULL AND receipt.movement_group_id IS NOT NULL
+  AND posting.source='contract_staff' AND posting.source_ref=pin.case_id AND posting.company_id=pin.company_id AND posting.employment_id=e.id
+  AND posting.status='approved' AND posting.approved_by IS NOT NULL AND posting.approved_at IS NOT NULL
+  AND posting.event_type IN('contractRenewal','contractConversion') AND movement.subject_employment_id=e.id
+  AND movement.payload->'movement'->>'groupId'=receipt.movement_group_id::text
+  AND movement.payload->'movement'->>'type'=CASE posting.event_type WHEN 'contractConversion' THEN 'employmentTypeChange' ELSE 'contractRenewal' END))
+$$;
+REVOKE ALL ON FUNCTION app.contract_historical_email_source(uuid,uuid) FROM PUBLIC,ai_hr_app;
+
+-- Actual tx marker may ONLY be inserted by the separately reviewed native begin function.
+CREATE FUNCTION app.contract_historical_email_tx_held(p_event uuid) RETURNS boolean
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT EXISTS(SELECT 1 FROM app.contract_historical_email_tx x WHERE x.tenant_id=app.current_tenant_id() AND x.event_id=p_event
+ AND x.xact_id=txid_current() AND x.backend_pid=pg_backend_pid() AND x.login_name=session_user AND x.job_id::text=current_setting('app.bulk_job',true))
+$$;
+REVOKE ALL ON FUNCTION app.contract_historical_email_tx_held(uuid) FROM PUBLIC,ai_hr_app;
+
+-- Independent leaf: no origin_held/event_held/effect_held recursion. Exact stored waiting run precedes state.
+CREATE FUNCTION app.contract_historical_email_child_held(p_event uuid) RETURNS boolean
+LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE child public.contract_shared_event;r app.contract_email_prerequisite_resume;pin public.contract_shared_email_document_step;
+ origin app.contract_email_prerequisite_origin;job public.bulk_job;run public.automation_run;state jsonb;original public.contract_shared_event;
+BEGIN
+ SELECT * INTO child FROM public.contract_shared_event WHERE tenant_id=app.current_tenant_id() AND id=p_event;
+ SELECT * INTO r FROM app.contract_email_prerequisite_resume WHERE tenant_id=child.tenant_id AND event_id=child.id;
+ SELECT * INTO pin FROM public.contract_shared_email_document_step WHERE tenant_id=r.tenant_id AND id=r.pin_id;
+ SELECT * INTO origin FROM app.contract_email_prerequisite_origin WHERE tenant_id=pin.tenant_id AND pin_id=pin.id;
+ SELECT * INTO original FROM public.contract_shared_event WHERE tenant_id=origin.tenant_id AND id=origin.origin_event_id;
+ SELECT * INTO job FROM public.bulk_job WHERE tenant_id=origin.tenant_id AND id=origin.job_id;
+ SELECT * INTO run FROM public.automation_run WHERE tenant_id=pin.tenant_id AND id=pin.workflow_run_id;
+ IF r.event_id IS NULL OR r.completed_at IS NOT NULL OR child.processed_at IS NOT NULL OR child.trigger_event<>'emailDocumentReady'
+ OR child.id::text IS DISTINCT FROM current_setting('app.contract_event',true) OR child.workflow_versions IS DISTINCT FROM '[]'::jsonb
+ OR child.actor_type<>'user' OR child.actor_user_id IS DISTINCT FROM r.callback_user_id OR child.actor_person_id IS DISTINCT FROM r.callback_person_id
+ OR app.contract_verified_human(r.callback_user_id) IS NOT TRUE OR app.contract_binding_person(r.callback_user_id) IS DISTINCT FROM r.callback_person_id
+ OR child.job_id IS DISTINCT FROM job.id OR child.root_event_id IS DISTINCT FROM origin.root_event_id OR child.case_id IS DISTINCT FROM pin.case_id
+ OR child.decision_revision IS DISTINCT FROM pin.decision_revision OR original.processed_at IS NOT NULL
+ OR app.contract_historical_email_source(pin.tenant_id,pin.id) IS NOT TRUE
+ OR app.contract_shared_storage_runner() IS NOT TRUE OR app.bulk_job_capability_held(job.id) IS NOT TRUE
+ OR job.id::text IS DISTINCT FROM current_setting('app.bulk_job',true) OR job.state<>'finalizing' OR job.cancel_requested_at IS NOT NULL
+ OR job.lease_expires_at IS NULL OR job.lease_expires_at<=clock_timestamp() OR job.input IS DISTINCT FROM jsonb_build_object('eventId',origin.root_event_id)
+ OR NOT EXISTS(SELECT 1 FROM app.bulk_job_seal seal WHERE seal.tenant_id=job.tenant_id AND seal.job_id=job.id
+  AND seal.input_digest=app.bulk_job_value_digest(job.input) AND seal.plan_digest=app.bulk_job_value_digest(job.plan))
+ OR (original.actor_type='system' AND NOT EXISTS(SELECT 1 FROM app.contract_system_job_source source WHERE source.tenant_id=job.tenant_id
+  AND source.job_id=job.id AND source.input_digest=app.bulk_job_value_digest(job.input)))
+ OR run.status<>'waiting' OR run.waiting_for IS DISTINCT FROM pin.id OR run.remaining_steps->0->'step'->>'type' IS DISTINCT FROM 'sendEmail'
+ OR run.remaining_steps->0->'step'->>'id' IS DISTINCT FROM pin.workflow_step_id THEN RETURN false;END IF;
+ --5968 file_pin_valid returns on the exact native stored wait before any effect fallback.
+ state:=app.contract_shared_email_prerequisite_state(pin.id);
+ RETURN state->'ready'='true'::jsonb AND state->>'proofHash'=r.readiness_hash AND state->>'runHash'=r.source_run_hash
+ AND child.data=jsonb_build_object('prerequisiteId',pin.id,'runId',pin.workflow_run_id,'stepId',pin.workflow_step_id,
+ 'emailId',pin.email_template_id,'emailRevision',pin.email_revision,'proofHash',r.proof_hash,'letterId',original.data->'letterId',
+ 'sourcePersonId',pin.subject_person_id,'sourceRevision',pin.source_period_revision,'originEventId',original.id::text);
+END $$;
+REVOKE ALL ON FUNCTION app.contract_historical_email_child_held(uuid) FROM PUBLIC,ai_hr_app;
+
+-- Strip supplied markers ALWAYS. The actual NEW.id is marked only under the exact native held transaction.
+-- Trigger sorts after existing canonical delivery_assets BEFORE owner, so actual final template receipts exist.
+CREATE FUNCTION app.contract_historical_email_delivery_mark() RETURNS trigger
+LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE event_id uuid;
+BEGIN
+ NEW.payload:=NEW.payload #- ARRAY['context','historicalDeliveryId'];
+ IF NEW.module<>'contract_staff' THEN RETURN NEW;END IF;
+ SELECT x.event_id INTO event_id FROM app.contract_historical_email_tx x WHERE x.tenant_id=NEW.tenant_id AND x.xact_id=txid_current() AND x.backend_pid=pg_backend_pid() AND x.login_name=session_user;
+ IF event_id IS NULL THEN RETURN NEW;END IF;
+ IF app.contract_historical_email_child_held(event_id) IS NOT TRUE THEN RAISE EXCEPTION 'Historical delivery lost child proof' USING ERRCODE='42501';END IF;
+ IF NOT EXISTS(SELECT 1 FROM app.contract_email_prerequisite_resume r JOIN public.contract_shared_email_document_step pin ON pin.tenant_id=r.tenant_id AND pin.id=r.pin_id
+ WHERE r.tenant_id=NEW.tenant_id AND r.event_id=event_id AND pin.case_id=NEW.subject_id AND regexp_replace(NEW.mail_key,':[0-9]+$','')=pin.workflow_run_id::text||':'||pin.workflow_step_id
+ AND NEW.payload->'context'->>'eventId'=event_id::text AND NEW.payload->'mail'->>'templateId'=pin.email_template_id::text
+ AND NEW.payload->'mail'->>'templateRevision'=pin.email_revision::text) THEN RAISE EXCEPTION 'Only pinned email may queue' USING ERRCODE='42501';END IF;
+ NEW.payload:=jsonb_set(NEW.payload,'{context}',coalesce(NEW.payload->'context','{}'::jsonb)||jsonb_build_object('historicalDeliveryId',NEW.id));
+ RETURN NEW;
+END $$;
+CREATE TRIGGER zzzzz_contract_historical_email_delivery_mark BEFORE INSERT ON public.automation_email_delivery FOR EACH ROW EXECUTE FUNCTION app.contract_historical_email_delivery_mark();
+REVOKE ALL ON FUNCTION app.contract_historical_email_delivery_mark() FROM PUBLIC,ai_hr_app;
+
+-- A single email effect may create several native recipient chunks; each actual delivery gets a receipt.
+-- AFTER sees the complete actual stored payload. Hash covers context, addresses, templates, files and documents.
+CREATE FUNCTION app.contract_historical_email_delivery_bind() RETURNS trigger
+LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE x app.contract_historical_email_tx;r app.contract_email_prerequisite_resume;origin app.contract_email_prerequisite_origin;job public.bulk_job;
+BEGIN
+ IF NEW.payload->'context'->>'historicalDeliveryId' IS NULL THEN RETURN NEW;END IF;
+ SELECT * INTO x FROM app.contract_historical_email_tx WHERE tenant_id=NEW.tenant_id AND xact_id=txid_current() AND backend_pid=pg_backend_pid() AND login_name=session_user;
+ IF x.event_id IS NULL OR NEW.payload->'context'->>'historicalDeliveryId' IS DISTINCT FROM NEW.id::text
+ OR app.contract_historical_email_child_held(x.event_id) IS NOT TRUE THEN RAISE EXCEPTION 'Actual admitted delivery required' USING ERRCODE='42501';END IF;
+ SELECT * INTO r FROM app.contract_email_prerequisite_resume WHERE tenant_id=x.tenant_id AND event_id=x.event_id;
+ SELECT * INTO origin FROM app.contract_email_prerequisite_origin WHERE tenant_id=x.tenant_id AND pin_id=x.pin_id;
+ SELECT * INTO job FROM public.bulk_job WHERE tenant_id=x.tenant_id AND id=x.job_id;
+ INSERT INTO app.contract_historical_email_delivery(tenant_id,delivery_id,event_id,pin_id,job_id,original_event_id,root_event_id,callback_user_id,callback_person_id,payload_hash,input_digest,plan_digest)
+ VALUES(NEW.tenant_id,NEW.id,x.event_id,x.pin_id,x.job_id,origin.origin_event_id,origin.root_event_id,r.callback_user_id,r.callback_person_id,
+ sha256(convert_to(NEW.payload::text,'UTF8')),app.bulk_job_value_digest(job.input),app.bulk_job_value_digest(job.plan));
+ RETURN NEW;
+END $$;
+CREATE TRIGGER contract_historical_email_delivery_bind AFTER INSERT ON public.automation_email_delivery FOR EACH ROW EXECUTE FUNCTION app.contract_historical_email_delivery_bind();
+REVOKE ALL ON FUNCTION app.contract_historical_email_delivery_bind() FROM PUBLIC,ai_hr_app;
+
+-- Prevent redirecting a marker after insert or copying its context onto another previously queued row.
+CREATE FUNCTION app.contract_historical_email_delivery_immutable() RETURNS trigger
+LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+BEGIN
+ IF (OLD.payload->'context' ? 'historicalDeliveryId' OR NEW.payload->'context' ? 'historicalDeliveryId')
+ AND (NEW.id,NEW.tenant_id,NEW.module,NEW.subject_id,NEW.mail_key,NEW.payload) IS DISTINCT FROM (OLD.id,OLD.tenant_id,OLD.module,OLD.subject_id,OLD.mail_key,OLD.payload)
+ THEN RAISE EXCEPTION 'Historical delivery identity and payload are immutable' USING ERRCODE='42501';END IF;
+ RETURN NEW;
+END $$;
+CREATE TRIGGER contract_historical_email_delivery_immutable BEFORE UPDATE ON public.automation_email_delivery FOR EACH ROW EXECUTE FUNCTION app.contract_historical_email_delivery_immutable();
+REVOKE ALL ON FUNCTION app.contract_historical_email_delivery_immutable() FROM PUBLIC,ai_hr_app;
+
+-- SMTP AFTER native completion: actual persisted delivery/hash/receipt, never asserted context IDs alone.
+-- The recorded admission digests survive physical-job stop and kernel personal-input cleanup.
+CREATE FUNCTION app.contract_historical_email_delivery_eligible(p_tenant uuid,p_case uuid,p_context jsonb) RETURNS boolean
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT EXISTS(SELECT 1 FROM app.contract_historical_email_delivery proof
+ JOIN public.automation_email_delivery delivery ON delivery.tenant_id=proof.tenant_id AND delivery.id=proof.delivery_id
+ JOIN app.contract_email_prerequisite_resume r ON r.tenant_id=proof.tenant_id AND r.event_id=proof.event_id AND r.pin_id=proof.pin_id
+ JOIN public.contract_shared_event child ON child.tenant_id=r.tenant_id AND child.id=r.event_id
+ JOIN app.contract_email_prerequisite_origin origin ON origin.tenant_id=proof.tenant_id AND origin.pin_id=proof.pin_id
+ JOIN public.contract_shared_email_document_step pin ON pin.tenant_id=proof.tenant_id AND pin.id=proof.pin_id
+ JOIN public.app_user actor ON actor.tenant_id=proof.tenant_id AND actor.id=proof.callback_user_id AND actor.person_id=proof.callback_person_id
+ JOIN public.person person ON person.tenant_id=actor.tenant_id AND person.id=actor.person_id
+ WHERE proof.tenant_id=p_tenant AND pin.case_id=p_case AND delivery.subject_id=p_case AND delivery.module='contract_staff'
+ AND proof.delivery_id::text=p_context->>'historicalDeliveryId' AND delivery.payload->'context'=p_context
+ AND proof.payload_hash=sha256(convert_to(delivery.payload::text,'UTF8')) AND delivery.status<>'cancelled'
+ AND origin.job_id=proof.job_id AND origin.origin_event_id=proof.original_event_id AND origin.root_event_id=proof.root_event_id
+ AND r.callback_user_id=proof.callback_user_id AND r.callback_person_id=proof.callback_person_id AND r.completed_at IS NOT NULL
+ AND child.processed_at IS NOT NULL AND child.job_id=proof.job_id AND child.root_event_id=proof.root_event_id AND child.trigger_event='emailDocumentReady'
+ AND child.actor_user_id=proof.callback_user_id AND child.actor_person_id=proof.callback_person_id
+ AND actor.archived_at IS NULL AND NOT app.login_blocked(actor.id) AND length(btrim(person.full_name))>0
+ AND regexp_replace(delivery.mail_key,':[0-9]+$','')=pin.workflow_run_id::text||':'||pin.workflow_step_id
+ AND delivery.payload->'mail'->>'templateId'=pin.email_template_id::text AND delivery.payload->'mail'->>'templateRevision'=pin.email_revision::text
+ AND app.contract_historical_email_source(p_tenant,pin.id))
+$$;
+REVOKE ALL ON FUNCTION app.contract_historical_email_delivery_eligible(uuid,uuid,jsonb) FROM PUBLIC,ai_hr_app;
+
+-- Same OID preserves warmed SMTP callers and all ordinary behavior. No target/start/materialization changes.
+DO $$
+BEGIN
+ EXECUTE replace(pg_get_functiondef('app.contract_shared_delivery_eligible(uuid,uuid,jsonb)'::regprocedure),
+ 'app.contract_shared_delivery_eligible(', 'app.contract_shared_delivery_eligible_before_historical_email(');
+END $$;
+REVOKE ALL ON FUNCTION app.contract_shared_delivery_eligible_before_historical_email(uuid,uuid,jsonb) FROM PUBLIC,ai_hr_app;
+CREATE OR REPLACE FUNCTION app.contract_shared_delivery_eligible(p_tenant uuid,p_case uuid,p_context jsonb) RETURNS boolean
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT app.contract_shared_delivery_eligible_before_historical_email(p_tenant,p_case,p_context)
+ OR app.contract_historical_email_delivery_eligible(p_tenant,p_case,p_context)
+$$;
+REVOKE ALL ON FUNCTION app.contract_shared_delivery_eligible(uuid,uuid,jsonb) FROM PUBLIC,ai_hr_app;
+
+-- REQUIRED COMPANIONS, NOT IMPLEMENTED / NOT AN EXECUTABLE COMPLETE BOUNDARY:
+-- A. app.contract_historical_email_begin(p_event) RETURNS jsonb {ready,run,pinId}:
+-- source -> sorted docs -> pin -> template locks, child_held, mint actual backend/session/tx marker.
+-- DTO must additionally return ACTUAL native pin, originEventId, caseId, decisionRevision, originalTrigger,
+-- originalConditionFacts, original source-period, and exact historical decision/phase evidence from persisted
+-- original event/immutable period, never caller/current-view invented values. Revision0 => decision=NULL.
+-- Fixed TS must not merge later decision/pay, must use only pinned template/documents, never freshGenerateDoc.
+-- Exact private child event branch in current same-OID prerequisite_event_held must recognize marker then
+-- call child_held; ordinary5935/system_job_held and original-tail worker/effect dispatch remain unchanged.
+-- B. Native one-step progress trigger: marked transaction consumes exactly ONE sendEmail, requires actual
+-- delivery receipt, retains byte-identical tail. Empty tail done; nonempty tail failed with explicit failure
+-- and stepDone+failed log suffix (bounded200). Tail-failed disposition remains owner REVIEW PENDING.
+-- C. app.contract_historical_email_finish(p_event) RETURNS jsonb {completed,hasTail,jobId}:
+-- require same tx marker + completed native one-step receipt + actual bound delivery. Process ONLY child.
+-- D. Actual callback-created child required. Historical SYSTEM upload observations need separately scoped
+-- bounded held-live-job admission that consumes ONE matching unseen native observation with real UID/PID.
+-- No fakehuman; no broad origin_held relaxation. If there is no genuine child, child_held refuses.
+-- E. Fixed TS entrypoint executes ONE pinned sendEmail, native save, finish, then commits BEFORE failJob
+-- for preserved nonempty tail. Empty-tail physical completion needs separately reviewed fixed settlement.
+-- No arbitrary owner callback, normal dispatch, notify, generateDocument, approvals, posting or Offboarding.
+-- F. Verification must cover copied context/newrow substitution, wrong delivery/hash/actor/pin/source,
+-- absent completed movement, scheduled-only posting, missing/stale file, expired lease/seal/cancelled job,
+-- current-period regressions, actual historical SYSTEM + humanrev0 queue/SMTP, and every non-email effect.
+-- No local verification performed. These activation blockers must be resolved before registration/approval.

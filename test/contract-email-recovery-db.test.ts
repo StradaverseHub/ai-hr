@@ -18,7 +18,7 @@ async function actualRecovery(callbackChange?:'archive'|'relink',requiredFile?:'
  if(callbackChange){
   const [person]=await owner.db.execute<{id:string}>(sql`insert into person(tenant_id,full_name,primary_email) values(${f.b.tenantId}::uuid,'Fictional independent HR reviewer',${randomUUID()+'@recovery.test'}) returning id`);
   const userId=await createAppUser(f.b.tenantId,person.id,'hr_admin');callbackActor={...f.admin,userId,personId:person.id};
-  const config=(await v9Workspace(f.admin)).config!;await v9SaveConfig(f.admin,config.revision,{...config,groups:config.groups.map(group=>group.id===f.groupId?{...group,members:[...group.members,userId]}:group)});
+  const config=(await v9Workspace(f.admin)).config!;await v9SaveConfig(f.admin,config.revision,{...config,groups:config.groups.map(group=>group.id===f.groupId?{...group,members:[userId]}:group)});
  }
  for(const userId of[f.admin.userId!,employeeId])await owner.db.execute(sql`insert into app_external_identity(issuer,subject,app_user_id) values(${origin+'/auth/'+f.b.tenantId},${randomUUID()},${userId}::uuid)`);
  const documentId=f.workflow.steps[0].params.letterTemplateId as string;
