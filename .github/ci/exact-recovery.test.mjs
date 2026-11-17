@@ -124,7 +124,7 @@ test('The original 9bdf receiver accepts the unchanged format-2 grant from a dis
   assert.deepEqual(original.validateInstallGrant(grant,{now:g.now}),grant);assert.equal(grant.kind,'OPERATOR_AUTHORIZED_STAGING_CI_BUILD_INSTALL');assert.equal(grant.format,2);
   assert.equal(original.validateInstallGrant.toString(),(await import('./ci-install-grant.mjs')).validateInstallGrant.toString());
   assert.throws(()=>original.validateInstallGrant({...grant,target:'production'},{now:g.now}));
-  assert.equal(run.conclusion,'failure');assert.equal(c.recoveryPolicy,'aihr-exact-source-recovery/v4');
+  assert.equal(run.conclusion,'failure');assert.equal(c.recoveryPolicy,'aihr-exact-source-recovery/v5');
  }finally{rmSync(root,{recursive:true,force:true});}
 });
 test('Focused evidence cannot silently replace the original producing controller',()=>{const f=dbInput();f.focused[0].run.head_sha='d'.repeat(40);f.focused[0].report.controller='d'.repeat(40);assert.throws(()=>verifyExactRecovery(f));});
@@ -140,7 +140,7 @@ test('Recovery controller scope refuses application, receiver-runtime or coverag
 
 function interruptedInput(){
  const f=dbInput(),template=f.reports.find(r=>r.databaseTerminalEvidence),plain=f.plan.units.find(u=>u.kind==='nodb').files;
- const db=Array.from({length:25},(_,i)=>`test/interrupted-${i}.test.ts`),suite=[...plain,...db].sort(),units=buildUnits(suite,{db,nodb:plain},f.plan.units.find(u=>u.kind==='browser').files);
+ const db=Array.from({length:47},(_,i)=>`test/interrupted-${i}.test.ts`),suite=[...plain,...db].sort(),units=buildUnits(suite,{db,nodb:plain},f.plan.units.find(u=>u.kind==='browser').files);
  const {fingerprint,...body}={...f.plan,suite,units};f.plan={...body,fingerprint:hash(body)};
  const missing=units.find(u=>u.kind==='db'),originals=f.reports;
  const makeResult=files=>({success:true,numTotalTests:files.length,numPassedTests:files.length,numFailedTests:0,numFailedTestSuites:0,testResults:files.map(path=>({name:'/candidate/'+path,status:'passed',assertionResults:[{fullName:'unchanged behavior: '+path,status:'passed'}]}))});
