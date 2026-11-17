@@ -14,6 +14,29 @@ async function facts(f:ContractPostingFixture){
 }
 async function postedEvents(f:ContractPostingFixture){return owner.db.execute<{type:string;source:string|null}>(sql`select payload->'movement'->>'type' as type,payload->'movement'->>'contractPostingId' as source from domain_event where tenant_id=${f.b.tenantId}::uuid and subject_employment_id=${f.employee.employmentId}::uuid and payload->'movement' ? 'contractPostingId' order by sequence`);}
 describe('Contract agreement → canonical Personnel postings → explicit manual pay receipt',()=>{
+ it('closes a renewal with unchanged pay immediately after native posting approval',async()=>{
+  const f=await contractPostingFixture({payChanges:false}),before=await facts(f),p=await releaseContractPosting(f);
+  expect((await contractSharedContext(f.proposer,f.caseId)).flow?.stage).toBe('posting');
+  await approveContractSharedPosting(f.approver,{id:p.id,revision:p.revision});
+  expect(await facts(f)).toEqual({...before,start:f.newStart,end:f.newEnd,number:5});
+  expect((await contractSharedContext(f.proposer,f.caseId)).flow).toMatchObject({stage:'renewed',payConfirmation:null});
+  expect(await readContractSharedPosting(f.approver,p.id)).toMatchObject({status:'approved',canConfirmPay:false,payChanges:false});
+ });
+ it('keeps a conversion with changed pay open until explicit manual Payroll attestation',async()=>{
+  const f=await contractPostingFixture({kind:'convert',payChanges:true}),before=await facts(f),p=await releaseContractPosting(f);
+  await approveContractSharedPosting(f.approver,{id:p.id,revision:p.revision});
+  expect(await facts(f)).toEqual({...before,start:null,end:null,type:'full_time'});
+  const approved=await readContractSharedPosting(f.approver,p.id);
+  expect(approved).toMatchObject({status:'approved',canConfirmPay:true,payChanges:true});
+  expect((await contractSharedContext(f.proposer,f.caseId)).flow?.stage).toBe('pay');
+  await setCompensation(f.admin,{employmentId:f.employee.employmentId,basicSalary:5200.12,effectiveFrom:f.newStart});
+  expect((await contractSharedContext(f.proposer,f.caseId)).flow?.stage).toBe('pay');
+  const updated=await facts(f);
+  await expect(confirmContractSharedPay(f.proposer,{caseId:f.caseId,expectedRevision:approved!.caseRevision,confirmed:true})).rejects.toMatchObject({code:'forbidden'});
+  expect(await confirmContractSharedPay(f.approver,{caseId:f.caseId,expectedRevision:approved!.caseRevision,confirmed:true})).toMatchObject({stage:'converted',confirmed:true});
+  expect(await facts(f)).toEqual(updated);
+  expect((await contractSharedContext(f.proposer,f.caseId)).flow).toMatchObject({stage:'converted',payConfirmation:{by:f.approver.userId}});
+ });
  it('requires the released agreement and actual posting group, increments only the native period, and closes only after a human pay attestation',async()=>{
   const f=await contractPostingFixture({payChanges:true}),before=await facts(f);
   expect((await listContractSharedPostings(f.approver)).rows).toEqual([]);

@@ -41896,6 +41896,7 @@
     "approvedOn": "Approved {date}. This posting is fixed.",
     "readOnly": "You can view this posting. Its current approver group owns changes and approval.",
     "refresh": "Refresh status",
+    "inlineEdit": "Correct values here",
     "awaitingWorkflow": "Posting approval is waiting for the workflow to finish."
   }
 }
