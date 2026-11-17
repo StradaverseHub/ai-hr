@@ -106,7 +106,7 @@
     }
   ],
   "forwardSourceSqlSha256": {
-    "6000_contract_historical_email_recovery": "d2fee7e0bbeb141cc9fa0b30ebcfd9311dc1a16c04f221fdec8a79305e3d3414",
+    "6000_contract_historical_email_recovery": "cbfb44f6df287476b7e42c93c69f2276f701808ce9cc429adcaa425db8fb09f2",
     "6001_contract_posting_protected_job_foundation": "11855741c65e76f5025dc6ecf5f398ec11ca32da465da8017483ad2d71e25bfd",
     "6002_contract_posting_recorded_replay_frames": "1d31a6d7c8ff3b1c60866eacaf20100ae9d228a6318c0e3b1d8ee1e221c5485f",
     "6003_contract_posting_prepared_target_source": "745bff94b485f6eab07068fa37c8af84730761fe474d112a8f3e2879e9ce3e92",
@@ -313,5 +313,13 @@
     "selectedSQL": "d2fee7e0bbeb141cc9fa0b30ebcfd9311dc1a16c04f221fdec8a79305e3d3414",
     "failedFocusedRun": "44050780356",
     "reason": "One-line explicit public.employment_type cast on constant CASE result. Existing predicates/authority unchanged; accepted919 SQL bytes preserved. Source-only review is not runtime proof."
+  },
+  "uninstalledWorkspacePredecessorRevision": {
+    "originalFrozenSource": "73da80dad6046b05b43ef5bb15316302613f18e8",
+    "repairSource": "6a0926205167e642b25e9313bb0423d7c329340f",
+    "originalSQL": "d2fee7e0bbeb141cc9fa0b30ebcfd9311dc1a16c04f221fdec8a79305e3d3414",
+    "selectedSQL": "cbfb44f6df287476b7e42c93c69f2276f701808ce9cc429adcaa425db8fb09f2",
+    "failedFocusedRun": "44052823298",
+    "reason": "Bind unique exact5921 workspace declaration, delegated base call and whole fallback return. Preserve CaseView, fallbackPage, sameOID/ACL and bounded validated-offset reconciliation metadata. No new functions/grants; accepted919 SQL unchanged. Source inspection is not runtime proof."
   }
 }

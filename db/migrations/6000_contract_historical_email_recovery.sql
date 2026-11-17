@@ -608,11 +608,16 @@ BEGIN
 END $$;
 REVOKE ALL ON FUNCTION app.contract_shared_email_reconciliation_page(uuid,integer,integer) FROM PUBLIC,ai_hr_app;
 -- Existing app workspace grant, same OID and existing CaseView gate; the offset is NEVER authority.
-DO $$ DECLARE definition text;BEGIN
+DO $$ DECLARE definition text;
+ declaration_needle constant text:='DECLARE result jsonb;';
+ base_needle constant text:=' result:=app.contract_shared_workspace_before_fallback_receipts(p_case);';
+ return_needle constant text:=' RETURN result||jsonb_build_object(''fallbackPage'',app.contract_shared_fallback_page(p_case));';
+BEGIN
  definition:=pg_get_functiondef('app.contract_shared_workspace(uuid)'::regprocedure);
- IF position('RETURN result;' in definition)=0 THEN RAISE EXCEPTION 'Expected native workspace return before6000 reconciliation extension';END IF;
- definition:=replace(definition,'DECLARE result jsonb;', 'DECLARE requested_offset text:=nullif(current_setting(''app.requested_contract_email_reconciliation_offset'',true),'''');reconciliation_offset integer:=0;result jsonb;');
- definition:=replace(definition,' RETURN result;', ' IF requested_offset IS NOT NULL THEN IF requested_offset !~ ''^[0-9]{1,6}$'' OR requested_offset::integer>100000 THEN RAISE EXCEPTION ''Invalid reconciliation offset'' USING ERRCODE=''22023'';END IF;reconciliation_offset:=requested_offset::integer;END IF; RETURN result||jsonb_build_object(''emailReconciliations'',app.contract_shared_email_reconciliation_page(p_case,50,reconciliation_offset));');
+ IF cardinality(string_to_array(definition,declaration_needle))<>2 OR cardinality(string_to_array(definition,base_needle))<>2
+ OR cardinality(string_to_array(definition,return_needle))<>2 THEN RAISE EXCEPTION 'Expected unique native5921 workspace seams before6000 reconciliation extension';END IF;
+ definition:=replace(definition,declaration_needle, 'DECLARE requested_offset text:=nullif(current_setting(''app.requested_contract_email_reconciliation_offset'',true),'''');reconciliation_offset integer:=0;result jsonb;');
+ definition:=replace(definition,return_needle, ' IF requested_offset IS NOT NULL THEN IF requested_offset !~ ''^[0-9]{1,6}$'' OR requested_offset::integer>100000 THEN RAISE EXCEPTION ''Invalid reconciliation offset'' USING ERRCODE=''22023'';END IF;reconciliation_offset:=requested_offset::integer;END IF; RETURN result||jsonb_build_object(''fallbackPage'',app.contract_shared_fallback_page(p_case))||jsonb_build_object(''emailReconciliations'',app.contract_shared_email_reconciliation_page(p_case,50,reconciliation_offset));');
  EXECUTE definition;
 END $$;
 
