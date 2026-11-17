@@ -1185,3 +1185,32 @@ call, full gate, shared-ref advancement, lease, deployment or acceptance is impl
 isolated checkpoint. Later Board integration and forward allocation of the seven unapplied
 Resignation migrations must use the actual accepted staging source and complete ordered ledger.
 Further covered-source repairs require a fresh exact-source binding review.
+
+### Resignation finite visual repair binding — 17 November 2026
+
+Under the owner's direct release-coordination instruction, “I approve all the AI binding and
+migration ordering,” the coordinator carries forward the existing approvals for exact source
+`5731c9e06605e0b24a949a29c0e3ce789078dc1b`, at the Resignation owner's request. This is the finite
+visual repair of the independently reviewed `f290eee378e07d7d0c16dbd0d180c677acd5f508` candidate.
+
+The eleven-file repair stacks Current and Proposed fields on phones while keeping one set of
+controls and stable command/state identities, improves preview table spacing, and presents truthful
+translated declined, expired and withdrawn retention-offer notices. Existing backend capabilities
+still govern disclosure and actions. No service, SQL, permission, financial rule, provider payload,
+purpose, serializer or transport is changed. The only provider-closure files changed by this repair
+are the six existing locale JSON files. Actual rendered and affected behavior checks remain required.
+
+Only 28 continuing approved sourceDigest literals move from
+`551e2a070a015a594f7f48af8f12bce7acc0fdb309163b4419b808b85c121c2b` to
+`4155d5d8c9e18efbf9c81185a2f79caa6762142e1ebc3b519b17bf9767596858` across 1,714 files.
+Reversing those substitutions reproduces the frozen registry byte for byte, including both pending
+records, the entire retired Attendance Formula historical row, original review metadata and dates.
+Existing evaluations and promotions retain their original source identities; no new purpose is approved.
+
+The module-agent manifest is regenerated last: 496 files,
+`f23fe78faf395407c24482a6d32fd9447c6e713427494721ed44e6fca95db8c7`.
+Static manifest and reversal checks pass. This isolated checkpoint establishes no compiler, native,
+rendered or release-gate pass, shared-ref advancement, lease, staging deployment/acceptance, package
+publication or production authority. Board stays first. Final Resignation integration and seven
+forward migration positions must follow the actual accepted Board source and ordered staging ledger;
+any subsequent covered-source change requires a fresh exact-source review.
