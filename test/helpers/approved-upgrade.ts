@@ -259,10 +259,17 @@ export const APPROVED_UPGRADE_TAIL=[
  {idx:5340,when:1794841005940,tag:'5940_contract_form_response_owner'},
  {idx:5341,when:1794841005941,tag:'5941_country_owned_document_sources'},
  {idx:5342,when:1794841005942,tag:'5942_contract_form_response_actions'},
+ {idx:5343,when:1794841005943,tag:'5943_contract_email_document_readiness'},
  {idx:5344,when:1794841005944,tag:'5944_contract_letterhead_fallback_evidence'},
+ {idx:5345,when:1794841005945,tag:'5945_contract_retrospective_ending_legacy_owner'},
+ {idx:5346,when:1794841005946,tag:'5946_contract_snapshot_native_binding'},
 ] as const;
 // Final pending 2109/2126 bytes reviewed from engine 128bc2539; no applied-prefix hashes change.
 const APPROVED_UPGRADE_HASHES:Record<string,string>={
+ '5943_contract_email_document_readiness':'56510e47526ce0ab815044d283ff31ed1af1f8631af10f306a0c720bd2f2047b',
+ '5945_contract_retrospective_ending_legacy_owner':'d34c7ba568e69bab197b1cdbe3112d24386b5e26eed5775d21566dbeedc6e681',
+ '5946_contract_snapshot_native_binding':'aa5900c654a63ad8607084c7245f7cc4d2536ff4ec00402190fa5c88430ed708',
+
  '5905_contract_shared_body_identity':'12d630f93077d139a26a52c4a227d49edb2879e0d382f3abff8a89aacc468314',
  '5902_shared_automation_permission_compatibility':'33a60c8951f539bf987f9ae5ecda727fbe9927083c6f35fdaf3a0025167a8ef5',
  '5901_contract_shared_release_evidence':'8fc880c2d4d671a3b92190a5a933814db0dbce7b725244872466acfa00089111',
