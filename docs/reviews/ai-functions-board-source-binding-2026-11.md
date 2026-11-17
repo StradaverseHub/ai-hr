@@ -892,3 +892,14 @@ serializer or transport changes. Reversing the 28 substitutions reproduces the p
 registry byte-for-byte; pending, retired, reviewer and historical evidence metadata are retained.
 The derived agent manifest is regenerated after binding. This grants no passing verification,
 staging acceptance or production authority.
+
+### Re-binding the Recruitment page-performance fix (17 November 2026)
+
+The Recruitment pages seeded company defaults per company on every view and checked access once per company
+(SCALE-AND-RELEASE-RULES rule 2). The fix in `packs/recruitment/data.ts`, `interviews.ts` and `requisitions.ts` makes both
+set-based; no provider transform, outbound field, purpose, serializer or transport changes. Under the owner's standing staging
+re-bind pre-approval of 12 November 2026, the same 28 approved digest literals carry forward from
+`e7f9a66a837dd19dfa996048309c8df1e04b4a428243be9f0a5db99582a1d648` (main `12098e9c5`) to
+`df854520671522af7b3b49b680a1b9934b16a34de78d553030c2a92ffe800052` over 1,694 files; reversing them reproduces the previous
+registry byte-for-byte. Agent manifest `e3de30f15c7a37f47ba92b320a2b95de0d2fc75ca6f1bcd316aacbaece448a21` over 496 files.
+`recruitment_match_summary_v1` stays pending and unapproved (D-069/D-071). No gate result, acceptance or production authority.
