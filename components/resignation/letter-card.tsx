@@ -3,14 +3,15 @@ import {useEffect,useState} from 'react';
 import {useTranslations} from 'next-intl';
 import {Badge,Button,inputCls} from '@/components/ui';
 import type {ResignationCaseView,ResignationJourneyCommand,ResignationLetterView} from '@/lib/resignation-journey';
-import {LetterPreview,LetterRouting,OfferReplyDeadline,day} from './common';
+import {LetterPreview,LetterRouting,OfferReplyDeadline,ClosedRetentionOfferNotice,closedRetentionOfferState,day} from './common';
 import {ResignationBlockEditor} from './block-editor';
 export function ResignationLetterCard({value,letter,busy,command}:{value:ResignationCaseView;letter:ResignationLetterView;busy:boolean;command:(command:ResignationJourneyCommand)=>Promise<boolean>}){
  const t=useTranslations('resignationJourney'),[shown,setShown]=useState(false),[signature,setSignature]=useState(''),[consent,setConsent]=useState(false),[reason,setReason]=useState(''),[why,setWhy]=useState(''),[localError,setLocalError]=useState(''),[blocks,setBlocks]=useState(letter.editableBlocks??[]),[lastDay,setLastDay]=useState(value.lastWorkingDay),[caseReason,setCaseReason]=useState(value.reason),[correcting,setCorrecting]=useState(false),[editing,setEditing]=useState(false);
  const canonicalBlocks=JSON.stringify(letter.editableBlocks??[]),[blocksValid,setBlocksValid]=useState(true);
  useEffect(()=>{setBlocks(JSON.parse(canonicalBlocks));setEditing(false);setBlocksValid(true);},[letter.id,letter.revision,canonicalBlocks]);
  const blocksDirty=JSON.stringify(blocks)!==canonicalBlocks;
- const caps=letter.capabilities,doc={documentId:letter.id,documentRevision:letter.revision};
+ const caps=letter.capabilities,doc={documentId:letter.id,documentRevision:letter.revision},closedOffer=closedRetentionOfferState(letter);
+ useEffect(()=>{if(!caps.open||letter.private)setShown(false);},[letter.id,caps.open,letter.private]);
  const [fieldValues,setFieldValues]=useState<Record<string,string>>(()=>({...letter.document?.values}));
  // A serialized DTO refresh is not a new letter. Reset only for a new revision or genuinely changed saved values.
  const canonicalFieldValues=JSON.stringify(Object.entries(letter.document?.values??{}).sort(([a],[b])=>a.localeCompare(b)));
@@ -24,8 +25,8 @@ export function ResignationLetterCard({value,letter,busy,command}:{value:Resigna
  {letter.sentBack&&<p className="rounded-lg border bg-muted/30 p-3 text-sm">{letter.sentBack.recall?t('recalled'):t('returned',{by:letter.sentBack.by,reason:letter.sentBack.reason})}</p>}
  {letter.changes.length>0&&<div className="rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-950 dark:bg-amber-950 dark:text-amber-100"><strong>{t('signAgain')}</strong><ul className="mt-1 space-y-1">{letter.changes.map((change,i)=><li key={i}>{t('change',change)}</li>)}</ul></div>}
  <LetterRouting letter={letter}/>
- {caps.open?<Button variant="outline" disabled={busy} onClick={async()=>{if(opened||await command({type:'openLetter',...doc}))setShown(v=>!v);}}>{t('openLetter')}</Button>:<p className="text-sm text-muted-foreground">{t('privateLetter')}</p>}
- {shown&&<><LetterPreview letter={letter} fieldValues={fieldValues} fieldsDisabled={busy||editing||correcting||blocksDirty} onFieldChange={editableFieldIds.length?(id,next)=>{if(editableFieldIds.includes(id))setFieldValues(previous=>({...previous,[id]:next}));}:undefined}/>{editableFieldIds.length>0&&<div className="space-y-2"><Button variant="outline" disabled={busy||!fieldsDirty||editing||correcting||blocksDirty} onClick={saveFields}>{t('saveFormFields')}</Button>{fieldsDirty&&<p role="status" className="text-sm text-muted-foreground">{t('saveFieldsBeforeAction')}</p>}</div>}</>}
+ {closedOffer?<ClosedRetentionOfferNotice value={value} letter={letter}/>:caps.open?<Button variant="outline" disabled={busy} onClick={async()=>{if(opened||await command({type:'openLetter',...doc}))setShown(v=>!v);}}>{t('openLetter')}</Button>:<p className="text-sm text-muted-foreground">{t('privateLetter')}</p>}
+ {shown&&caps.open&&!letter.private&&!closedOffer&&<><LetterPreview letter={letter} fieldValues={fieldValues} fieldsDisabled={busy||editing||correcting||blocksDirty} onFieldChange={editableFieldIds.length?(id,next)=>{if(editableFieldIds.includes(id))setFieldValues(previous=>({...previous,[id]:next}));}:undefined}/>{editableFieldIds.length>0&&<div className="space-y-2"><Button variant="outline" disabled={busy||!fieldsDirty||editing||correcting||blocksDirty} onClick={saveFields}>{t('saveFormFields')}</Button>{fieldsDirty&&<p role="status" className="text-sm text-muted-foreground">{t('saveFieldsBeforeAction')}</p>}</div>}</>}
  {caps.regenerate&&<div className="space-y-2 rounded-lg border border-dashed p-3"><p className="text-sm text-muted-foreground">{t('regenerateHint')}</p><Button variant="outline" disabled={busy} onClick={()=>command({type:'regenerateLetter',...doc})}>{t('regenerate')}</Button></div>}
  {caps.recall&&<Button variant="outline" disabled={busy} onClick={()=>command({type:'recall',...doc})}>{t('recall')}</Button>}
  {caps.edit&&letter.editableBlocks&&<><Button variant="outline" disabled={busy||correcting||fieldsDirty||!blocksValid} onClick={()=>setEditing(v=>!v)}>{t('updateLetter')}</Button>{editing&&<div className="grid gap-4 xl:grid-cols-2"><ResignationBlockEditor blocks={blocks} busy={busy} fields={letter.document?.fields} onChange={setBlocks} onValidityChange={setBlocksValid}/><LetterPreview letter={letter} blocks={blocks}/></div>}</>}

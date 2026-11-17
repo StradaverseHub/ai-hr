@@ -41282,7 +41282,12 @@
     "runAgainHint": "设置修正后，此操作会运行当前已启用的工作流，以指派尚缺的决策人。",
     "taskRepair": "打开工作流修复",
     "repairTaskHint": "此个案需要决策人。请查看下方记录的设置问题；配置就绪后重新运行工作流。",
-    "awaitDecisionNextSteps": "记录决定后将显示后续步骤。"
+    "awaitDecisionNextSteps": "记录决定后将显示后续步骤。",
+    "closedOfferDeclined": "此挽留方案已被拒绝。",
+    "closedOfferLapsed": "此挽留方案已过期。",
+    "closedOfferWithdrawn": "此挽留方案已撤回。",
+    "closedOfferNextDecision": "{people} 将记录辞职决定。",
+    "closedOfferUnassigned": "辞职申请正在等待指派决定人。"
   },
   "offboardingPostings": {
     "breadcrumb": "入职与离职 / 人事变动入账",

@@ -41282,7 +41282,12 @@
     "runAgainHint": "Sau khi thiết lập được sửa, thao tác này chạy các quy trình đang hoạt động hiện tại để giao người quyết định còn thiếu.",
     "taskRepair": "Mở phần sửa quy trình",
     "repairTaskHint": "Hồ sơ này cần người quyết định. Xem vấn đề thiết lập được ghi nhận bên dưới; chạy lại quy trình khi cấu hình đã sẵn sàng.",
-    "awaitDecisionNextSteps": "Các bước tiếp theo sẽ xuất hiện sau khi quyết định được ghi nhận."
+    "awaitDecisionNextSteps": "Các bước tiếp theo sẽ xuất hiện sau khi quyết định được ghi nhận.",
+    "closedOfferDeclined": "Đề nghị giữ chân này đã bị từ chối.",
+    "closedOfferLapsed": "Đề nghị giữ chân này đã hết hạn.",
+    "closedOfferWithdrawn": "Đề nghị giữ chân này đã được rút lại.",
+    "closedOfferNextDecision": "{people} sẽ ghi nhận quyết định về đơn xin nghỉ việc.",
+    "closedOfferUnassigned": "Đơn xin nghỉ việc đang chờ được chỉ định người ra quyết định."
   },
   "offboardingPostings": {
     "breadcrumb": "Tiếp nhận và nghỉ việc / Ghi nhận biến động nhân sự",

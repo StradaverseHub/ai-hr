@@ -149,6 +149,25 @@ describe('manager decision and BP information',()=>{
 });
 
 describe('letter privacy and consent',()=>{
+ it('replaces an already-open declined offer with one closed notice and its actual next decision maker',async()=>{
+  const command=vi.fn(async()=>true),document:Document={...letterFieldDocument(),fields:[],values:{},blocks:[{id:'private-offer',type:'text',text:'Private revised terms 7600.00',section:''}]},original=l({opened:true,document,capabilities:{...l().capabilities,sendBack:false}}),ui=wrap(<ResignationLetterCard value={c({stage:'offer'})} letter={original} busy={false} command={command}/>);
+  fireEvent.click(screen.getByRole('button',{name:messages.resignationJourney.openLetter}));expect(screen.getByText('Private revised terms 7600.00')).toBeInTheDocument();
+  const closed={...original,state:'declined',private:true,capabilities:{...original.capabilities,open:false,sign:false}};
+  ui.rerender(<NextIntlClientProvider locale="en" messages={messages}><ResignationLetterCard value={c({stage:'decision',deciders:[{id:'hr-owner',name:'Fictional HR decision owner'}]})} letter={closed} busy={false} command={command}/></NextIntlClientProvider>);
+  expect(screen.getAllByText(messages.resignationJourney.closedOfferDeclined)).toHaveLength(1);expect(screen.getByText('Fictional HR decision owner will record the resignation decision.')).toBeInTheDocument();expect(screen.queryByText(messages.resignationJourney.privateLetter)).not.toBeInTheDocument();expect(screen.queryByText('Private revised terms 7600.00')).not.toBeInTheDocument();expect(screen.queryByRole('region',{name:messages.resignationJourney.preview})).not.toBeInTheDocument();expect(screen.queryByRole('button',{name:messages.resignationJourney.openLetter})).not.toBeInTheDocument();expect(command).not.toHaveBeenCalled();
+ });
+ it('explains an unassigned next decision without promising a manager or revealing the closed offer',()=>{
+  const letter=l({state:'lapsed',private:true,capabilities:{...l().capabilities,open:false,sign:false,sendBack:false}});wrap(<ResignationLetterCard value={c({deciders:[]})} letter={letter} busy={false} command={vi.fn(async()=>false)}/>);
+  expect(screen.getByText(messages.resignationJourney.closedOfferLapsed)).toBeInTheDocument();expect(screen.getByText(messages.resignationJourney.closedOfferUnassigned)).toBeInTheDocument();expect(screen.queryByText(messages.resignationJourney.privateLetter)).not.toBeInTheDocument();
+ });
+ it.each(['withdrawn','retained'] as const)('does not invent a next decision when the whole case is %s',stage=>{
+  const letter=l({state:'withdrawn',private:true,capabilities:{...l().capabilities,open:false,sign:false,sendBack:false}});wrap(<ResignationLetterCard value={c({stage})} letter={letter} busy={false} command={vi.fn(async()=>false)}/>);
+  expect(screen.getAllByText(messages.resignationJourney.closedOfferWithdrawn)).toHaveLength(1);expect(screen.queryByText(/will record the resignation decision/)).not.toBeInTheDocument();expect(screen.queryByText(messages.resignationJourney.closedOfferUnassigned)).not.toBeInTheDocument();expect(screen.queryByText(messages.resignationJourney.privateLetter)).not.toBeInTheDocument();
+ });
+ it('keeps future unreached letters private with one privacy explanation',()=>{
+  const letter=l({private:true,capabilities:{...l().capabilities,open:false,sign:false,sendBack:false}});wrap(<ResignationLetterCard value={c({stage:'retention'})} letter={letter} busy={false} command={vi.fn(async()=>false)}/>);
+  expect(screen.getAllByText(messages.resignationJourney.privateLetter)).toHaveLength(1);expect(screen.queryByRole('button',{name:messages.resignationJourney.openLetter})).not.toBeInTheDocument();expect(screen.queryByText(messages.resignationJourney.closedOfferDeclined)).not.toBeInTheDocument();
+ });
  it('requires opening, typed name and consent before accepting an offer',()=>{
   const command=vi.fn(async()=>true),view=c({stage:'offer'});const original=l();const ui=wrap(<ResignationLetterCard value={view} letter={original} busy={false} command={command}/>);
   expect(screen.getByRole('button',{name:'Sign and accept offer'})).toBeDisabled();expect(screen.getByLabelText('Type your full name as your signature')).toBeDisabled();

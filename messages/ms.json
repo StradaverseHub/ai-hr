@@ -41282,7 +41282,12 @@
     "runAgainHint": "Selepas persediaan dibetulkan, tindakan ini menjalankan aliran kerja aktif semasa untuk menugaskan pembuat keputusan yang belum ditetapkan.",
     "taskRepair": "Buka pembaikan aliran kerja",
     "repairTaskHint": "Kes ini memerlukan pembuat keputusan. Semak isu persediaan yang direkodkan di bawah; jalankan aliran kerja semula apabila konfigurasi sudah sedia.",
-    "awaitDecisionNextSteps": "Langkah seterusnya akan dipaparkan selepas keputusan direkodkan."
+    "awaitDecisionNextSteps": "Langkah seterusnya akan dipaparkan selepas keputusan direkodkan.",
+    "closedOfferDeclined": "Tawaran pengekalan ini telah ditolak.",
+    "closedOfferLapsed": "Tawaran pengekalan ini telah tamat tempoh.",
+    "closedOfferWithdrawn": "Tawaran pengekalan ini telah ditarik balik.",
+    "closedOfferNextDecision": "{people} akan merekodkan keputusan peletakan jawatan.",
+    "closedOfferUnassigned": "Peletakan jawatan ini sedang menunggu pelantikan pembuat keputusan."
   },
   "offboardingPostings": {
     "breadcrumb": "Pengurusan masuk & keluar pekerja / Catatan perjawatan",

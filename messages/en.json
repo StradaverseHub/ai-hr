@@ -41282,7 +41282,12 @@
     "runAgainHint": "After the setup is corrected, this runs the current live workflows to assign the missing decision maker.",
     "taskRepair": "Open workflow repair",
     "repairTaskHint": "This case needs a decision maker. Review the recorded setup issue below; run the workflows again when the configuration is ready.",
-    "awaitDecisionNextSteps": "Next steps will appear after a decision is recorded."
+    "awaitDecisionNextSteps": "Next steps will appear after a decision is recorded.",
+    "closedOfferDeclined": "This retention offer was declined.",
+    "closedOfferLapsed": "This retention offer expired.",
+    "closedOfferWithdrawn": "This retention offer was withdrawn.",
+    "closedOfferNextDecision": "{people} will record the resignation decision.",
+    "closedOfferUnassigned": "The resignation is waiting for a decision maker to be assigned."
   },
   "offboardingPostings": {
     "breadcrumb": "Onboarding & offboarding / Personnel postings",
