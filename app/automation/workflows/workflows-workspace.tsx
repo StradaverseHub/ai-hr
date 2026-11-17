@@ -66,7 +66,7 @@ export function WorkflowsWorkspace({filter,access,workflows,refs,defaultsMissing
    </details>
    {active.length===0&&<p className="v9-muted">{t('workflows.empty')}</p>}
    </div>
-   <ul className="pcg-wl">{[...active,...retired].map(item=>{const w=item.workflow,lines=workflowListLines(w,catalogue);return <li key={w.id} className="pcg-wi">
+   <ul className="pcg-wl">{active.map(item=>{const w=item.workflow,lines=workflowListLines(w,catalogue);return <li key={w.id} className="pcg-wi">
     <div className="pcg-wi-text"><h3>{t('modules.probation')} · {w.name}</h3><p>{lines.trigger}</p><p className="pcg-wi-steps">{lines.steps}</p></div>
     <div className="pcg-row">
      <span className="pcg-pill">{t('modules.probation')}</span>
@@ -82,7 +82,7 @@ export function WorkflowsWorkspace({filter,access,workflows,refs,defaultsMissing
   {offboarding&&<section className="pcg-card pcg-card-flush" aria-label="Offboarding">
    <div className="pcg-wi"><div><h2>Offboarding</h2><p className="pcg-hint">Resignation workflows request decisions, route letters and propose Personnel postings for review.</p></div><div className="v9-actions"><button type="button" className="v9-button" disabled={busy||!offboarding.editable} onClick={installOffboarding}>Set up resignation defaults</button><button type="button" className="v9-button v9-button-primary" disabled={busy||!offboarding.editable} onClick={()=>setEditing({workflow:{...blank(),module:'off',name:'New Offboarding workflow',trigger:{event:'submitted',days:0,workdays:false,repeat:false}},revision:0})}>New workflow</button></div></div>
    {!offboarding.workflows.length&&<p className="pcg-card-extra v9-muted">No Offboarding workflows yet. Configure the resignation defaults before accepting employee submissions.</p>}
-   <ul className="pcg-wl">{offboarding.workflows.map(item=>{const w=item.workflow,lines=workflowListLines(w,OFFBOARDING_AUTOMATION_CATALOGUE);return <li className="pcg-wi" key={w.id}><div className="pcg-wi-text"><h3>{w.name}</h3><p>{lines.trigger}</p><p className="pcg-wi-steps">{lines.steps}</p></div><div className="pcg-row"><span className="pcg-pill">Offboarding</span><span className={'pcg-pill '+(w.status==='live'?'pcg-pill-ok':w.status==='paused'?'pcg-pill-warn':'')}>{w.status==='paused'?'Draft':t('status.'+w.status)}</span><button type="button" className="v9-button" aria-label={'Edit '+w.name} onClick={()=>setEditing(item)}>{w.status==='retired'?'View':'Edit'}</button></div></li>;})}</ul>
+   <ul className="pcg-wl">{offboarding.workflows.filter(item=>item.workflow.status!=='retired').map(item=>{const w=item.workflow,lines=workflowListLines(w,OFFBOARDING_AUTOMATION_CATALOGUE);return <li className="pcg-wi" key={w.id}><div className="pcg-wi-text"><h3>{w.name}</h3><p>{lines.trigger}</p><p className="pcg-wi-steps">{lines.steps}</p></div><div className="pcg-row"><span className="pcg-pill">Offboarding</span><span className={'pcg-pill '+(w.status==='live'?'pcg-pill-ok':w.status==='paused'?'pcg-pill-warn':'')}>{w.status==='paused'?'Draft':t('status.'+w.status)}</span><button type="button" className="v9-button" aria-label={'Edit '+w.name} onClick={()=>setEditing(item)}>{w.status==='retired'?'View':'Edit'}</button></div></li>;})}</ul>
   </section>}
   {!contract&&contractSection}
   {legacy.map(module=><LegacyBuilderCard key={module} module={module} kind="workflows" href={LEGACY_BUILDERS.workflows[module]} allowed={module==='contract_staff'?access.contractStaff:access.legacy}/>)}

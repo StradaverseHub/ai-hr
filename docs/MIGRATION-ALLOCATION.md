@@ -13,6 +13,8 @@ The user explicitly requested fixing all gaps in the handoff audit and completin
 
 Root retains pending5900–5903/5905–5909 for manual commands/release evidence/integration;5904 belongs to tracker. Frozen SQL is immutable. No shared branch, staging or release action is authorized by this allocation.
 
+Root forward5960–5969 (idx5360–5369, when1794841005960–5969) reserved after a fresh288-worktree survey found no competing SQL or bounded numeric claims. This block follows the now-frozen5943 email pin owner and5932–5934 system owner in creation order. It completes the separately approved internal email-prerequisite event/worker/effect/canonical-document/private-upload callbacks, recoverable file waits and manual attention reconciliation. Unused5903 stays unused; do not create an early dependency on a later table. No prior frozen source or applied prefix may be rewritten.
+
 <!-- 5919_contract_work_case_source_anchor -->
 # Contract native assigned-work case anchor — 17 November 2026 MYT
 

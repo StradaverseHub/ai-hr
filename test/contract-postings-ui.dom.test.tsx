@@ -59,3 +59,17 @@ it('shows the workflow readiness hold and refreshes status without submitting ap
  expect(screen.queryByRole('button',{name:'Approve posting'})).not.toBeInTheDocument();
  fireEvent.click(screen.getByRole('button',{name:'Refresh status'}));expect(actions.refresh).toHaveBeenCalledOnce();expect(actions.approve).not.toHaveBeenCalled();
 });
+it('corrects the pending posting inline through the same native editor and retains refused values',async()=>{
+ actions.save.mockResolvedValue('The posting must match the released agreement.');
+ const row=posting();mount(queue(row));
+ const details=screen.getByText('Correct values here').closest('details')!;
+ fireEvent.click(screen.getByText('Correct values here'));details.open=true;
+ fireEvent.change(screen.getByLabelText('New contract end'),{target:{value:'2027-09-30'}});
+ fireEvent.click(screen.getByRole('button',{name:'Save changes for approval'}));
+ expect(await screen.findByRole('alert')).toHaveTextContent('must match the released agreement');
+ expect(screen.getByLabelText('New contract end')).toHaveValue('2027-09-30');
+ const form=actions.save.mock.calls[0][1] as FormData;
+ expect(form.get('postingId')).toBe(row.id);expect(form.get('revision')).toBe('1');
+ expect(form.get('employmentId')).toBe(row.employmentId);expect(form.get('endDate')).toBe('2027-09-30');
+ expect(screen.queryByRole('spinbutton',{name:/salary/i})).not.toBeInTheDocument();
+});

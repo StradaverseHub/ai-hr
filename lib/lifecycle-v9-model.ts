@@ -184,6 +184,7 @@ export type Case = {
   contractSharedSourceLetter?:{letterId:string;signingDocumentId:string;hash:string};
   contractSharedTerminationReason?:string;
   contractSharedClearance?:'pending-manual-personnel';
+  contractSharedNoticeReviewRequired?:boolean;
   version: 9; id: string; number: string; module: Module; revision: number; state: CaseState;
   facts: Facts; checklistId: string | null; checklistName: string; override: 'automatic' | 'none' | string;
   tasks: Task[]; items: Item[]; documents: Document[]; runs: Run[]; mails: Mail[];

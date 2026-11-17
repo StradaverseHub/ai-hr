@@ -104,7 +104,7 @@ export function EmailBodyEditor(props: EmailBodyEditorProps) {
     },
   });
 
-  useEffect(() => { editor?.setEditable(!disabled); }, [editor, disabled]);
+  useEffect(() => { editor?.setEditable(!disabled, false); }, [editor, disabled]);
   // Controlled value: only an outside change (not our own echo) replaces the content.
   useEffect(() => {
     if (!editor) return;

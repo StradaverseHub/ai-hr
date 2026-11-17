@@ -28,3 +28,5 @@ export const contractConfigurationWorkflows: ConfigurationService['contractConfi
 export const contractConfigurationDirectory: ConfigurationService['contractConfigurationDirectory'] = async (...args) => (await loadConfiguration()).contractConfigurationDirectory(...args);
 export const contractConfigurationTemplates: ConfigurationService['contractConfigurationTemplates'] = async (...args) => (await loadConfiguration()).contractConfigurationTemplates(...args);
 export {listContractSharedPostings,readContractSharedPosting,readContractSharedPostingSummary,approveContractSharedPosting,editContractSharedPosting,confirmContractSharedPay,contractSharedPostingWorkPage,type ContractSharedPosting,type ContractSharedPostingPage,type ContractSharedPostingSummary} from '../../core/contract-shared-postings';
+
+export * from '../../core/contract-shared-template-preview';

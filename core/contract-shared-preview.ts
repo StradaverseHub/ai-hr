@@ -30,6 +30,7 @@ export function dryRunContractWorkflow(ctx:SessionContext,input:{workflow:Automa
   const refs=row.refs,context=contractSharedAutomationContext(view,refs);
   const known={routingExists:(id:string)=>refs.routings.some(r=>r.id===id),groupExists:(id:string)=>refs.groups.some(g=>g.id===id),personExists:(id:string)=>context.activePeople.includes(id)};
   const problems=[...automationWorkflowProblems(input.workflow,catalogue,known),...contractStepParamProblems(input.workflow,{emailTemplates:refs.templates.emails,letterTemplateIds:refs.templates.documents.map(doc=>doc.id)},known)];
+  if(view.source.nativeIntakeRequired)problems.push('Complete the native post-retirement Contract intake with its authorised owner before running this workflow.');
   const available=new Set(conditionFieldsForTrigger(catalogue,input.workflow.trigger.event).map(field=>field.id)),base=contractAutomationRead(context,input.workflow.trigger.event,todayInKualaLumpur());
   const resolve=(recipient:Parameters<typeof contractAutomationRecipients>[0][number])=>{
    const result=contractAutomationRecipients([recipient],context);

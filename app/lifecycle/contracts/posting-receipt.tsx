@@ -125,7 +125,7 @@ export function ContractPostingReceipt({
           </button>
         </div>
       )}
-      <Link href={'/lifecycle/contracts/postings?status=' + (summary.status === 'approved' ? 'approved' : 'pending')}>
+      <Link href={'/lifecycle/contracts/postings?status=' + (summary.status === 'approved' ? 'approved' : 'pending') + '&postingId=' + encodeURIComponent(summary.postingId)}>
         {copy('Open Personnel postings')}
       </Link>
     </ContractPanel>

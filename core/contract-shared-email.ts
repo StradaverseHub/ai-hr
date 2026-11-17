@@ -6,13 +6,16 @@ import type {AutomationRecipient} from '../lib/automation/workflow';
 import type {AutomationExecutors,AutomationStepContext,AutomationStepOutcome} from '../lib/automation/runtime';
 import {contractAutomationRecipients,contractAutomationMergeValues,type ContractAutomationContext} from '../lib/contract-automation-context';
 import {queueAutomationEmailTx} from './automation-email-delivery';
+import {recordContractSharedFallbackTx} from './contract-shared-fallback';
 
 export function contractSharedEmailExecutors(tx:SqlExecutor,input:{context:ContractAutomationContext;today:string;templates:readonly {retired:boolean;template:AutomationEmailTemplate}[];letterValues?:Readonly<Record<string,string>>}):Pick<AutomationExecutors,'notify'|'sendEmail'>{
  const templates=new Map(input.templates.filter(item=>!item.retired).map(item=>[item.template.id,item.template]));
  const values={...contractAutomationMergeValues(input.context,input.today),...input.letterValues,'case.link':'{{case.link}}'};
- const deliver=async({run,step}:AutomationStepContext,cc:readonly AutomationRecipient[],subject:string,body:string,template?:AutomationEmailTemplate):Promise<AutomationStepOutcome>=>{
+ const deliver=async(effect:AutomationStepContext,cc:readonly AutomationRecipient[],subject:string,body:string,template?:AutomationEmailTemplate):Promise<AutomationStepOutcome>=>{
+  const {run,step}=effect;
   const to=contractAutomationRecipients(step.to,input.context),copy=contractAutomationRecipients(cc,input.context,{fallback:false});
   if(!to.userIds.length)return {status:'failed',reason:'Nobody could receive this email, and the fallback group has no active members.'};
+  if(to.fallbackUsed)await recordContractSharedFallbackTx(tx,effect,to.unresolved.map(({meantFor,reason})=>({meantFor,reason})));
   const queued=await queueAutomationEmailTx(tx,{module:'contract_staff',subjectId:input.context.caseId,key:run.id+':'+step.id,to:to.userIds,cc:copy.userIds.filter(id=>!to.userIds.includes(id)),
    subject:fillAutomationMergeFields(subject,values).replace(/\s+/g,' ').trim()||'Contract update',body:fillAutomationMergeFields(body,values),
    ...(template?.bodyDoc?{richBody:{doc:template.bodyDoc,values}}:{})});

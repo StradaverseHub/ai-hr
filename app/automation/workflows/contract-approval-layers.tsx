@@ -17,7 +17,7 @@ export function ContractApprovalLayers({layers,onChange,options,disabled}:{layer
   <p className="v9-muted">{t('approvalHelp')}</p>
   {layers.map((layer,index)=><fieldset className="v9-panel v9-stack" key={layer.id} disabled={disabled}>
    <legend>{t('layerNumber',{number:index+1})}</legend>
-   <label className="v9-field"><span>{t('layerName')}</span><input value={layer.name} maxLength={100} onChange={e=>update(index,{name:e.target.value})}/></label>
+   <label className="v9-field"><span>{t('layerName')}</span><input className="v9-input" value={layer.name} maxLength={100} onChange={e=>update(index,{name:e.target.value})}/></label>
    <label className="v9-field"><span>{t('approver')}</span><select value={recipientKey(layer.approver as AutomationRecipient)} onChange={e=>{const approver=choose(e.target.value);if(approver)update(index,{approver});}}>
     {options.filter(option=>option.value!=='pending').map(option=><option key={option.value} value={option.value}>{option.label}</option>)}
    </select></label>

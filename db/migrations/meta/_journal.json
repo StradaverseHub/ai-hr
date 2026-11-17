@@ -6667,6 +6667,27 @@
       "breakpoints": true
     },
     {
+      "idx": 5325,
+      "version": "7",
+      "when": 1794841005925,
+      "tag": "5925_contract_template_lifecycle",
+      "breakpoints": true
+    },
+    {
+      "idx": 5326,
+      "version": "7",
+      "when": 1794841005926,
+      "tag": "5926_contract_template_draft_publication",
+      "breakpoints": true
+    },
+    {
+      "idx": 5327,
+      "version": "7",
+      "when": 1794841005927,
+      "tag": "5927_contract_routing_check_names",
+      "breakpoints": true
+    },
+    {
       "idx": 5340,
       "version": "7",
       "when": 1794841005940,
@@ -6688,10 +6709,31 @@
       "breakpoints": true
     },
     {
+      "idx": 5343,
+      "version": "7",
+      "when": 1794841005943,
+      "tag": "5943_contract_email_document_readiness",
+      "breakpoints": true
+    },
+    {
       "idx": 5344,
       "version": "7",
       "when": 1794841005944,
       "tag": "5944_contract_letterhead_fallback_evidence",
+      "breakpoints": true
+    },
+    {
+      "idx": 5345,
+      "version": "7",
+      "when": 1794841005945,
+      "tag": "5945_contract_retrospective_ending_legacy_owner",
+      "breakpoints": true
+    },
+    {
+      "idx": 5346,
+      "version": "7",
+      "when": 1794841005946,
+      "tag": "5946_contract_snapshot_native_binding",
       "breakpoints": true
     }
   ]

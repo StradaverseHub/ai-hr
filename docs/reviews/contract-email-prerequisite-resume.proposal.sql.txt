@@ -1,0 +1,47 @@
+-- UNAPPLIED REVIEW TEXT. Root 5903 owner; no migration registration or installation.
+-- Exact event storage extension; authored workflow trigger vocabulary is unchanged.
+ALTER TABLE public.contract_shared_event DROP CONSTRAINT contract_shared_event_trigger_event_check;
+ALTER TABLE public.contract_shared_event ADD CONSTRAINT contract_shared_event_trigger_event_check CHECK(trigger_event IN('caseOpened','beforeContractEnd','afterContractEnd','decisionSubmitted','approvalsComplete','approvalRejected','employeeDeclined','letterActionNeeded','letterSentBack','letterReleased','manual','approvalActionNeeded','emailDocumentReady'));
+
+-- The final owner replaces only the Contract internal-event branch of the existing protected worker/effect
+-- adapter. The existing implementations for every other event/module remain delegated and unchanged.
+-- Private proof used by those branches, independent of caller's ready flag:
+CREATE FUNCTION app.contract_shared_email_prerequisite_held(p_case uuid,p_run uuid,p_step text,p_pin uuid) RETURNS boolean
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT app.contract_shared_storage_runner() AND EXISTS(
+ SELECT 1 FROM public.contract_shared_event event JOIN public.bulk_job job ON job.tenant_id=event.tenant_id AND job.id=event.job_id
+ JOIN public.contract_shared_email_document_step pin ON pin.tenant_id=event.tenant_id AND pin.id=p_pin AND pin.case_id=event.case_id
+ JOIN public.automation_run run ON run.tenant_id=pin.tenant_id AND run.id=pin.workflow_run_id AND run.module='contract_staff' AND run.subject_id=pin.case_id
+ JOIN public.contract_case c ON c.tenant_id=pin.tenant_id AND c.id=pin.case_id AND c.company_id=pin.company_id
+ JOIN public.employment e ON e.tenant_id=c.tenant_id AND e.id=c.employment_id AND e.company_id=pin.company_id AND e.person_id=pin.subject_person_id
+ JOIN public.app_user actor ON actor.tenant_id=event.tenant_id AND actor.id=event.actor_user_id AND actor.person_id=event.actor_person_id
+ WHERE event.tenant_id=app.current_tenant_id() AND event.id::text=current_setting('app.contract_event',true)
+ AND event.case_id=p_case AND event.trigger_event='emailDocumentReady' AND event.workflow_versions='[]'::jsonb AND event.processed_at IS NULL
+ AND job.kind='contract_automation' AND job.id::text=current_setting('app.bulk_job',true) AND job.input->>'eventId'=event.id::text AND app.bulk_job_capability_held(job.id)
+ AND pin.workflow_run_id=p_run AND pin.workflow_step_id=p_step AND event.data->>'prerequisiteId'=pin.id::text
+ AND event.data->>'runId'=p_run::text AND event.data->>'stepId'=p_step AND event.decision_revision=pin.decision_revision
+ AND run.status IN('running','waiting') AND app.contract_company_entitled(pin.company_id))
+$$;
+REVOKE ALL ON FUNCTION app.contract_shared_email_prerequisite_held(uuid,uuid,text,uuid) FROM PUBLIC,ai_hr_app;
+
+-- Existing canonical progression invokes this Contract-only trigger AFTER its actual writes. The private
+-- signal itself is owned by root 5903 and must recheck actual complete document/file readiness before enqueue.
+CREATE FUNCTION app.contract_shared_email_prerequisite_document_signal() RETURNS trigger
+LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE pin_id uuid;
+BEGIN
+ IF NEW.subject_type<>'contract' OR NEW.data=OLD.data THEN RETURN NEW;END IF;
+ FOR pin_id IN SELECT pin.id FROM public.contract_shared_email_document_step pin JOIN public.contract_shared_letter letter ON letter.tenant_id=pin.tenant_id AND letter.id=NEW.subject_id
+ JOIN public.automation_run run ON run.tenant_id=pin.tenant_id AND run.id=pin.workflow_run_id AND run.status='waiting' AND run.waiting_for=pin.id
+ WHERE pin.tenant_id=NEW.tenant_id AND pin.documents @> jsonb_build_object(letter.data->>'templateId',letter.id::text)
+ LOOP PERFORM app.contract_shared_email_prerequisite_signal(pin_id);END LOOP;
+ RETURN NEW;
+END $$;
+REVOKE ALL ON FUNCTION app.contract_shared_email_prerequisite_document_signal() FROM PUBLIC,ai_hr_app;
+CREATE TRIGGER zz_contract_email_prerequisite_signal AFTER UPDATE OF data ON public.document_signing_document FOR EACH ROW EXECUTE FUNCTION app.contract_shared_email_prerequisite_document_signal();
+
+-- Required-file recovery: after the existing native upload owner has committed an authorised receipt,
+-- its same-transaction hook calls app.contract_shared_email_prerequisite_signal(actual_pin_id).
+-- Native signal derives frozen required slots/recipients from pin.email_template_id/email_revision;
+-- actual asset-owner readiness, canonical document HR readiness, unchanged UID/PID/company/source and
+-- exact waiting run/step must ALL pass. No public EXECUTE grant on either signal or proof.

@@ -1,3 +1,4 @@
+import {contractTemplatePreviewCases} from '@/packs/contracts/service';
 import {v9Configuration} from '@/packs/lifecycle/service';
 import {LifecycleTemplateSection} from '../lifecycle-configuration';
 import {FilterChips} from '../filter-chips';
@@ -27,9 +28,9 @@ export default async function Page({searchParams}:{searchParams:Promise<Record<s
  let contract:ContractTemplatesData|undefined;
  if(access.contractStaff&&(filter==='all'||filter==='contract_staff')){
   const [documents,stored,routings]=await Promise.all([listAutomationDocumentTemplates(ctx,'contract_staff'),listAutomationEmailTemplates(ctx,{module:'contract_staff'}),listAutomationRoutings(ctx)]);
-  const [groups,options]=await Promise.all([automationAssignmentGroups(ctx),automationRoutingOptions(ctx)]);
+  const [groups,options,previewCases]=await Promise.all([automationAssignmentGroups(ctx),automationRoutingOptions(ctx),contractTemplatePreviewCases(ctx)]);
   const peopleIds=[...documents.flatMap(d=>d.template.routing.flatMap(s=>s.who.kind==='people'?s.who.userIds:[])),...stored.flatMap(e=>e.template.cc.flatMap(r=>r.kind==='person'?[r.userId]:[]))];
-  contract={documents,emails:stored.map(e=>({template:e.template,revision:e.revision,retired:e.retired})),refs:{routings:routings.map(r=>({id:r.routing.id,name:r.routing.name,retired:r.retired})),groups,people:await automationPeopleNames(ctx,peopleIds),conditions:{businessGroup:options.businessGroups.map(o=>({value:o.id,label:o.name})),company:options.companies.map(o=>({value:o.id,label:o.name})),department:options.departments.map(o=>({value:o.id,label:o.name})),jobTitle:options.jobTitles.map(value=>({value,label:value}))}}};
+  contract={documents,emails:stored.map(e=>({template:e.template,revision:e.revision,retired:e.retired})),refs:{routings:routings.map(r=>({id:r.routing.id,name:r.routing.name,retired:r.retired})),groups,previewCases,people:await automationPeopleNames(ctx,peopleIds),conditions:{businessGroup:options.businessGroups.map(o=>({value:o.id,label:o.name})),company:options.companies.map(o=>({value:o.id,label:o.name})),department:options.departments.map(o=>({value:o.id,label:o.name})),jobTitle:options.jobTitles.map(value=>({value,label:value}))}}};
  }
  const lifecycle=access.legacy&&(filter==='all'||filter==='onb'||filter==='off')?await v9Configuration(ctx):null;
  const routes=lifecycle?await listAutomationRoutings(ctx):[];

@@ -3,6 +3,7 @@ import {sql} from 'drizzle-orm';
 import {z} from 'zod';
 import type {SessionContext} from '../db/client';
 import {withScopedLifecycleTenant} from './module-gate';
+import {lockAccessConfigurationReadTx} from './access-configuration-lock';
 import {pgSqlState} from '../lib/db-error';
 import {ContractManagementError} from '../lib/contract-management-model';
 export type ContractSharedManualWorkflow={id:string;revision:number;name:string;description:string};
@@ -16,7 +17,7 @@ function failure(error:unknown):never{
 export async function contractSharedManualWorkflows(ctx:SessionContext,caseId:string):Promise<ContractSharedManualWorkflow[]>{
  z.uuid().parse(caseId);
  try{return await withScopedLifecycleTenant(ctx,async tx=>{
-  await tx.execute(sql`select app.access_workforce_write_lock()`);
+  await lockAccessConfigurationReadTx(tx,ctx.tenantId);
   const [row]=await tx.execute<{workflows:ContractSharedManualWorkflow[]}>(sql`select app.contract_shared_manual_workflows(${caseId}::uuid) as workflows`);return row.workflows;
  });}catch(error){return failure(error);}
 }

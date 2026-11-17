@@ -123,6 +123,7 @@ export const contractPreviewJobHandler:BulkJobHandler<never>={
    let plan:ContractDecisionPlan;
    const parsed=contractProposedDecisionSchema.safeParse(request.decision);
    if(!parsed.success)plan=emptyPlan('Check the proposed decision, dates and agreed pay.');
+   else if(inputs.view.source.nativeIntakeRequired)plan=emptyPlan('Complete the native post-retirement Contract intake with its authorised owner before proposing a decision.');
    else if(!inputs.view.sourceCurrent||inputs.view.source.ended||inputs.view.source.periodRevision!==inputs.view.flow!.period.sourceRevision)plan=emptyPlan('The Personnel period changed or employment ended. Reconcile it before submitting.');
    else if(parsed.data.kind!=='end'&&inputs.view.source.sourceIssue)plan=emptyPlan('Verify the native Payroll pay basis and currency before proposing new Contract terms.');
    else{

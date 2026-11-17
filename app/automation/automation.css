@@ -43,3 +43,7 @@
 .automation-email-preview{width:100%;max-width:640px;min-width:0;padding:1rem;background:var(--v9-panel,#fff);border:1px solid var(--v9-border,#d5d9e3);border-radius:12px;overflow-wrap:anywhere;overflow-x:auto}
 .automation-email-preview[data-preview-width="phone"]{max-width:360px}
 .automation-email-preview pre{white-space:pre-wrap;overflow-wrap:anywhere}
+
+/* A picker in a vertical field must size by its control, not the horizontal-row flex basis. */
+.automation .v9-field>.automation-multiselect{flex:0 0 auto;min-width:0;width:100%}
+.automation .automation-editor [contenteditable=true]{font-weight:400}

@@ -55,7 +55,7 @@ export function TemplateRoutingEditor({value,blocks,choices,editable,onChange,on
    return <fieldset key={step.id} className="probation-criterion" disabled={disabled} aria-label={t('routing.stepTitle',{n})}>
     <legend>{t('routing.stepTitle',{n})}</legend>
     <div className="v9-fields">
-     <label className="v9-field"><span>{t('routing.order')}</span><input type="number" min={1} max={MAX_DOCUMENT_ROUTING_ORDER} value={step.order} onChange={e=>update(step.id,{order:Math.max(1,Math.min(MAX_DOCUMENT_ROUTING_ORDER,Math.floor(Number(e.target.value)||1)))})}/></label>
+     <label className="v9-field"><span>{t('routing.order')}</span><input className="v9-input" type="number" min={1} max={MAX_DOCUMENT_ROUTING_ORDER} value={step.order} onChange={e=>update(step.id,{order:Math.max(1,Math.min(MAX_DOCUMENT_ROUTING_ORDER,Math.floor(Number(e.target.value)||1)))})}/></label>
      <label className="v9-field"><span>{t('routing.action')}</span><select value={step.action} onChange={e=>update(step.id,{action:e.target.value as DocumentRoutingStep['action']})}>{DOCUMENT_ROUTING_ACTIONS.map(action=><option key={action} value={action}>{t('routing.actions.'+action)}</option>)}</select></label>
      <label className="v9-field"><span>{t('routing.who')}</span><select value={current} onChange={e=>{const who=whoFromKey(e.target.value,step.who);if(who)update(step.id,{who});}}>
       {!whoOptions.some(o=>o.key===current)&&<option value={current}>{whoLabel(step.who)}</option>}
