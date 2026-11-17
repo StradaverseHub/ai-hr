@@ -50,18 +50,17 @@ describe('single-template Movement import screen (ac6645ec)',()=>{
   expect(within(screen.getByRole('table')).getByText(en.importProblems.wholeFile)).toBeInTheDocument();
   expect(screen.queryByRole('button',{name:'Confirm and import selected events'})).toBeNull();
  });
- it('646355e5 slice C — names an Update or Delete and its closed months, and posts the closed-payroll confirmation only when ticked',async()=>{
+ it('646355e5 slice C — names Delete and its closed months, retains the preservation notice and posts no acknowledgement',async()=>{
   const correction={...row(2,'GOOD','valid'),action:'delete',movementId:'7d1c2e4a-5b6f-4a8b-9c0d-1e2f3a4b5c6d',closedPayrollPeriods:['2026-09']};
   const closed={inputHash:'file-bound',selection:[2],fileErrors:[],valid:1,excluded:0,employees:[{key:'company-a|GOOD',companyId:'company-a',companyName:'EXT · Fictional A',employeeCode:'GOOD',employmentId:'good',name:'Fictional valid',fingerprint:'good-fingerprint',rows:[correction]}]};
   mocks.fetch.mockResolvedValueOnce(response({ok:true,attemptId:'attempt-3',previewHash:'hash-3',preview:closed}));mount();choose();fireEvent.click(screen.getByRole('button',{name:'Check file'}));
   await screen.findByRole('heading',{name:'Review events before importing'});
   expect(screen.getByText(/^Delete · /)).toBeInTheDocument();expect(screen.getByText('Payroll for 2026-09 is already closed.')).toBeInTheDocument();
-  const box=screen.getByRole('checkbox',{name:en.people.import.movement.sheet.closedPayrollAcknowledge});expect(box).not.toBeChecked();
+  expect(screen.queryByRole('checkbox',{name:en.people.import.movement.sheet.closedPayrollAcknowledge})).toBeNull();
+  expect(screen.getByText(en.people.import.movement.sheet.closedPayrollBody)).toBeInTheDocument();
   const save=screen.getByRole('button',{name:'Confirm and import selected events'});expect(save).toBeEnabled();
   mocks.fetch.mockResolvedValueOnce(response({ok:false,message:'stop here'}));fireEvent.click(save);await screen.findByText('stop here');
-  expect((mocks.fetch.mock.calls[1][1].body as FormData).get('acknowledgeClosedPayroll')).toBe('false');
-  fireEvent.click(box);mocks.fetch.mockResolvedValueOnce(response({ok:false,message:'stop again'}));fireEvent.click(save);await screen.findByText('stop again');
-  expect((mocks.fetch.mock.calls[2][1].body as FormData).get('acknowledgeClosedPayroll')).toBe('true');
+  expect((mocks.fetch.mock.calls[1][1].body as FormData).has('acknowledgeClosedPayroll')).toBe(false);
  });
  // Board d3ba1e9f — the check and result screens list the problems in the standard table, and "Download Error Log"
  // builds the .xlsx in the browser from the SAME lines (the client CSV is gone).

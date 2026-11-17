@@ -120,7 +120,7 @@ describe('the fault this item fixes', () => {
 describe('recording a movement', () => {
   it('dated in the FUTURE changes nothing today and reads as pending', async () => {
     const { employmentId } = await hireOne();
-    const before = await movementCurrentState(adminCtx(b), employmentId);
+    const before = await movementCurrentState(adminCtx(b), employmentId,{asOf:FUTURE});
 
     await createMovementEvent(adminCtx(b), {
       employmentId,
@@ -131,7 +131,7 @@ describe('recording a movement', () => {
     });
 
     // The Employment tab's own baseline read is untouched...
-    const after = await movementCurrentState(adminCtx(b), employmentId);
+    const after = await movementCurrentState(adminCtx(b), employmentId,{asOf:FUTURE});
     expect(after.departmentId).toBe(before.departmentId);
     expect(after.departmentId).toBe(b.deptA);
 
@@ -163,7 +163,7 @@ describe('recording a movement', () => {
       effectiveDate: TODAY,
       departmentId: b.deptB,
     });
-    const cur = await movementCurrentState(adminCtx(b), employmentId);
+    const cur = await movementCurrentState(adminCtx(b), employmentId,{asOf:FUTURE});
     expect(cur.departmentId).toBe(b.deptB);
     const hist = await movementHistory(adminCtx(b), employmentId);
     expect(rowById(hist, hist.find((r) => r.kind === 'transfer')!.id).status).toBe('applied');
@@ -177,7 +177,7 @@ describe('recording a movement', () => {
       effectiveDate: PAST,
       departmentId: b.deptB,
     });
-    const cur = await movementCurrentState(adminCtx(b), employmentId);
+    const cur = await movementCurrentState(adminCtx(b), employmentId,{asOf:FUTURE});
     expect(cur.departmentId).toBe(b.deptB);
     const hist = await movementHistory(adminCtx(b), employmentId);
     expect(hist.find((r) => r.kind === 'transfer')!.status).toBe('applied');
@@ -197,7 +197,7 @@ describe('the scheduled-application sweep', () => {
     // The day before: not due.
     const early = await sweepDueMovements(adminCtx(b), { today: plusDays(FUTURE, -1) });
     expect(early.applied).toBe(0);
-    expect((await movementCurrentState(adminCtx(b), employmentId)).departmentId).toBe(b.deptA);
+    expect((await movementCurrentState(adminCtx(b), employmentId,{asOf:FUTURE})).departmentId).toBe(b.deptA);
 
     // The morning of: applied, with no HR action. The sweep is TENANT-WIDE — it is the nightly job, not
     // a per-employee call — so its `applied` total also counts pending movements other tests in this
@@ -206,7 +206,7 @@ describe('the scheduled-application sweep', () => {
     const due = await sweepDueMovements(adminCtx(b), { today: FUTURE });
     expect(due.failed).toBe(0);
     expect(await appliedEventsFor(employmentId)).toHaveLength(1);
-    expect((await movementCurrentState(adminCtx(b), employmentId)).departmentId).toBe(b.deptB);
+    expect((await movementCurrentState(adminCtx(b), employmentId,{asOf:FUTURE})).departmentId).toBe(b.deptB);
 
     // ONE line in the history, whose status moved — not a second row appearing on the effective date.
     const hist = await movementHistory(adminCtx(b), employmentId);
@@ -312,46 +312,19 @@ describe('the scheduled-application sweep', () => {
 });
 
 describe('conflicting movements resolve at projection time', () => {
-  it('same effective date, same field: the later entry wins and the earlier is Superseded', async () => {
-    const { employmentId } = await hireOne();
-    const gradeA = await createJobGrade(adminCtx(b), { code: `G${randomUUID().slice(0, 6)}`, name: `G_${randomUUID().slice(0, 6)}` });
-    const gradeB = await createJobGrade(adminCtx(b), { code: `G${randomUUID().slice(0, 6)}`, name: `G_${randomUUID().slice(0, 6)}` });
-
-    // HR keys a promotion for a future date, then re-keys it with the right grade for the SAME date.
-    await createMovementEvent(adminCtx(b), {
-      employmentId,
-      kind: 'promotion',
-      effectiveDate: FUTURE,
-      gradeId: gradeA.id,
-    });
-    await createMovementEvent(adminCtx(b), {
-      employmentId,
-      kind: 'promotion',
-      effectiveDate: FUTURE,
-      gradeId: gradeB.id,
-    });
-
-    // Both are legitimately recorded and both are Pending while the date is still ahead.
-    const beforeArrival = await movementHistory(adminCtx(b), employmentId);
-    expect(beforeArrival.filter((r) => r.status === 'pending')).toHaveLength(2);
-
-    const res = await sweepDueMovements(adminCtx(b), { today: FUTURE });
-    expect(res.applied).toBe(1); // only the winner
-
-    const hist = await movementHistory(adminCtx(b), employmentId);
-    const promos = hist.filter((r) => r.kind === 'promotion');
-    expect(promos).toHaveLength(2); // the loser KEEPS its line — never silently ignored
-    const statuses = promos.map((r) => r.status).sort();
-    expect(statuses).toEqual(['applied', 'superseded']);
-
-    // The grade that actually landed is the one from the later entry.
-    const cur = await movementCurrentState(adminCtx(b), employmentId);
-    expect(cur.gradeId).toBe(gradeB.id);
-
-    // A superseded movement is terminal: nothing to cancel, nothing to correct.
-    const loser = promos.find((r) => r.status === 'superseded')!;
-    expect(loser.canEdit).toBe(false);
-    expect(loser.canReverse).toBe(false);
+  it('requires an explicit cancellation before replacing a same-date grade decision', async () => {
+    const {employmentId}=await hireOne(),ctx=adminCtx(b);
+    const gradeA=await createJobGrade(ctx,{code:`G${randomUUID().slice(0,6)}`,name:'Fictional first grade'});
+    const gradeB=await createJobGrade(ctx,{code:`G${randomUUID().slice(0,6)}`,name:'Fictional corrected grade'});
+    await createMovementEvent(ctx,{employmentId,kind:'promotion',effectiveDate:FUTURE,gradeId:gradeA.id});
+    const original=(await movementHistory(ctx,employmentId)).find(row=>row.kind==='promotion')!;
+    await expect(createMovementEvent(ctx,{employmentId,kind:'promotion',effectiveDate:FUTURE,gradeId:gradeB.id})).rejects.toThrow(/resolve the order/);
+    expect((await movementHistory(ctx,employmentId)).filter(row=>row.kind==='promotion')).toHaveLength(1);
+    await reverseMovementEvent(ctx,{employmentId,movementId:original.id,reason:'Replace the incorrect pending grade decision'});
+    await createMovementEvent(ctx,{employmentId,kind:'promotion',effectiveDate:FUTURE,gradeId:gradeB.id});
+    expect(await sweepDueMovements(ctx,{today:FUTURE})).toMatchObject({applied:1,failed:0});
+    expect((await movementCurrentState(ctx,employmentId,{asOf:FUTURE})).gradeId).toBe(gradeB.id);
+    expect((await movementHistory(ctx,employmentId)).filter(row=>row.kind==='promotion').map(row=>row.status).sort()).toEqual(['applied','reversed']);
   });
 
   it('different fields do not conflict — both apply', async () => {
@@ -374,7 +347,7 @@ describe('conflicting movements resolve at projection time', () => {
     expect(res.applied).toBe(2);
     const hist = await movementHistory(adminCtx(b), employmentId);
     expect(hist.filter((r) => r.status === 'superseded')).toHaveLength(0);
-    const cur = await movementCurrentState(adminCtx(b), employmentId);
+    const cur = await movementCurrentState(adminCtx(b), employmentId,{asOf:FUTURE});
     expect(cur.departmentId).toBe(b.deptB);
     expect(cur.gradeId).toBe(grade.id);
   });
@@ -400,7 +373,7 @@ describe('correcting and cancelling', () => {
 
     const res = await sweepDueMovements(adminCtx(b), { today: FUTURE });
     expect(res.applied).toBe(0);
-    expect((await movementCurrentState(adminCtx(b), employmentId)).departmentId).toBe(b.deptA);
+    expect((await movementCurrentState(adminCtx(b), employmentId,{asOf:FUTURE})).departmentId).toBe(b.deptA);
   });
 
   it('cancelling an APPLIED movement restores the previous values via the existing reversal path', async () => {
@@ -412,7 +385,7 @@ describe('correcting and cancelling', () => {
       departmentId: b.deptB,
     });
     await sweepDueMovements(adminCtx(b), { today: FUTURE });
-    expect((await movementCurrentState(adminCtx(b), employmentId)).departmentId).toBe(b.deptB);
+    expect((await movementCurrentState(adminCtx(b), employmentId,{asOf:FUTURE})).departmentId).toBe(b.deptB);
 
     const hist = await movementHistory(adminCtx(b), employmentId);
     const mv = hist.find((r) => r.kind === 'transfer')!;
@@ -422,7 +395,7 @@ describe('correcting and cancelling', () => {
     await reverseMovementEvent(adminCtx(b), { employmentId, movementId: mv.id, reason: 'Wrong employee' });
 
     // Restored from the before-values stored on the movement — the department is the hire's again.
-    expect((await movementCurrentState(adminCtx(b), employmentId)).departmentId).toBe(b.deptA);
+    expect((await movementCurrentState(adminCtx(b), employmentId,{asOf:FUTURE})).departmentId).toBe(b.deptA);
     const after = await movementHistory(adminCtx(b), employmentId);
     expect(after.find((r) => r.id === mv.id)!.status).toBe('reversed');
   });
@@ -455,10 +428,10 @@ describe('correcting and cancelling', () => {
     expect(live[0].effectiveDate).toBe(later);
 
     // Still nothing applied, and the corrected date is honoured.
-    expect((await movementCurrentState(adminCtx(b), employmentId)).departmentId).toBe(b.deptA);
+    expect((await movementCurrentState(adminCtx(b), employmentId,{asOf:FUTURE})).departmentId).toBe(b.deptA);
     expect((await sweepDueMovements(adminCtx(b), { today: FUTURE })).applied).toBe(0);
     expect((await sweepDueMovements(adminCtx(b), { today: later })).applied).toBe(1);
-    expect((await movementCurrentState(adminCtx(b), employmentId)).departmentId).toBe(b.deptB);
+    expect((await movementCurrentState(adminCtx(b), employmentId,{asOf:later})).departmentId).toBe(b.deptB);
   });
 
   /**

@@ -784,6 +784,70 @@ not change. The derived agent manifest is regenerated after the literal update. 
 to run the full gate and deploy only to staging after all checks pass remains in effect. No production
 installation or package publication is authorized.
 
+### Comprehensive Movement staging source binding (17 November 2026)
+
+The repository owner explicitly approved **“I approve all the AI binding and migration ordering”**
+in the four-session release coordination chat on 17 November 2026 MYT, then directed
+**“Movement should be the first one to release.”** This authorizes the scoped source-binding
+carry-forward and safe migration ordering for these coordinated staging releases. It does not waive
+verification, authorize new outbound behavior, publish packages or install production.
+
+Reviewed pre-binding Movement source `eb841ac8f8da0e988e984e10046380d8cb5962cb` integrates the
+current main/alpha baseline `9bdfb45969c4bff81a9b9830b52403a95e82bdc6`. Its native changes cover
+complete Movement information, dated payment routing, original-hire correction and compensating
+replay, salary recording choices, bounded open-payroll invalidation and company-period history import.
+Migration 5779 reconciles incompatible allocations through their existing owner without weakening
+the allocation/company constraint or changing issued payroll figures. The existing Agent action DTO
+continues to expose the same payment-method field through the dated native reader. Provider policies,
+serializers, approved outbound fields, purposes and transports are unchanged.
+
+The same 28 active approvals carry forward from
+`0b60766ac33a0418d98b24ff7da5aaab08d17c927ced7d9c7853b929bc35930b` to the exact provider
+fingerprint `5f0f352a8020b336f5d7a7eb02e9a211c732fc0568cc4d6bcc3a8d08c222d83b` over 1635 files.
+Reversing only those 28 digest substitutions reproduces the previous approval registry byte-for-byte.
+Both pending records, the retired Attendance Formula binding, historical reviewer/evidence metadata,
+and existing evaluation/promotion identities are retained. The derived agent manifest is regenerated
+after those substitutions: `2dde4317cde38383935b881c16479f7224edcbd588c09a5d444325b801e44883` over 494 files.
+
+This is source-binding evidence only. Original failed gate 43938744762 remains failed; its missing
+unit/browser coverage, the allocation-owner repair, whole types, canonical build, migration rehearsal,
+rendered acceptance and authenticated staging admission still require their actual verification.
+
+
+### Comprehensive Movement verification-repair binding (17 November 2026)
+
+Under the same explicit repository-owner approval above for all coordinated AI binding and migration
+ordering, the release coordinator carries forward the existing 28 active approvals over pre-binding
+repair source `bac5169fc6b03fd7398051791bf2c365e3ff0668`. The changes bind controlled Personnel presentation, record-only
+salary amendment history, shared-lock display reads and the planner-visible projection of the existing
+dated payment-method owner. The native Agent DTO, provider purposes, outbound fields, serializers,
+policies and transports remain unchanged. No additional approval, promotion or outbound action is granted.
+
+The exact provider digest is `d4b66dced0bf4db26f3276e6b48e5c7fbf744e7d0d68038ae3653ae8727bf740` over 1635 files. Reversing
+only the 28 matching previous-digest substitutions reproduces the prior registry byte-for-byte. Pending
+and retired records and all historical approval/evaluation metadata remain unchanged. The regenerated
+agent digest is `4f5309ff8e2af1132dd31565c44306ea5936aca0b1ca468522099c78d70cd956` over 494 files.
+
+Original full gate43943737895 and unchanged-source scale reproduction43951241825 retain their failed
+identities. Development runs43952343985,43952356442,43953766240 and43953835964 retain their own source
+and check coverage. This binding supplies no passing gate or staging acceptance; all final verification,
+authenticated admission and rendered staging checks remain required.
+
+
+The final control-type repair at `dd432052b5e939c7c908d33179394d5ce6a7bb68` retains explicit required names for ordinary
+workflow controls while controlled draft inputs stay unnamed. Under the same owner approval, only the
+28 active source digests carry forward to `fefbfc37e8bb11ba89f8bdff321d9793864cb618569aafd8199bebd4a6ed917a` (1635 files), with
+agent digest `87d6c5b769b9a1b70aac583fdefc0af6a2db912aad06fdaa97688defa3f90c2c` (494 files). Reverse digest substitution remains
+byte-identical. This changes presentation typing, not provider behavior, approved fields or permission.
+
+
+### Movement import guidance and visibility inventory binding (17 November 2026)
+
+Completed full gate43959096902 on `35086d6c5f19e290968449fb043dc534eed9d347` retains its failed identity: two no-database checks found missing new-field inventory rows and localized import guidance; build, whole compiler, migrations, all database chunks and all three browser engines passed. The repair supplies the written ESS disposition and six-language guidance for the existing audited Hired-information and dated payment-method owners. It changes no provider purposes, outbound fields, serializers, transport, permissions or migration SQL.
+
+Under the same explicit owner approval for coordinated AI binding above, only the 28 active matching source digests carry forward to `19e53ef85cfd48ce9812d47aa98173e6085760b949373faadc6ca343b34bf7c6` (1635 files). Reversing those substitutions reproduces the previous approval registry byte-for-byte; pending, retired and historical metadata are unchanged. The regenerated agent digest is `2aedf5532dae0f0dacd640da518a10263aa91d43b7221f901336bd483daaff22` (494 files). This binding grants no gate result or staging acceptance.
+
+The affected-check run43966198442 on `18284f32d1f32fa8d89786de49f68d07c6a60789` passed48/49 checks; the remaining exact inventory assertion exposed missing source-evidence references on the two new descriptors. Adding those references under the same owner-approved binding carries only the 28 active matching digest literals to `6985d77b4bb489f7cc63babd8f38bb8a9e1b3311fb1359d8fa0669ffba9d4d1b` (1635 files), with reverse byte identity preserved. The resulting agent digest is `b8f9d13b18fbae1edfb9bc6ec82be338dddc14841b73138c1185517bbf1d8a36` (494 files). This is provenance metadata, without a new provider behavior, outbound field, access grant or migration. Original failed checks retain their identities.
 ### Re-binding the Recruitment group 2 staging candidate (17 November 2026)
 
 Branch `claude/rea-web-app-reconstruction-2c12ee` (Recruitment slices 1–25, migrations 5850–5877) merged the staging
@@ -802,3 +866,14 @@ The 59 additional covered files come from Recruitment slice 24's new contract `r
 it; this re-binding does not approve it (owner decision D-069/D-071: legal review first). The agent manifest is
 `200ce12a3991d4f0c221f6d782e5bc76110725f94285c547fd7dbeac2b7eaca7` over 496 files, regenerated after the literal update.
 This binding grants no production authority.
+
+### Re-binding Recruitment after the Movement staging release (17 November 2026)
+
+The Recruitment branch merged `origin/main` `2a4132204` (Movement accepted on staging at `65ab4e868`). Under the owner's
+standing staging re-bind pre-approval of 12 November 2026, only the same 28 already-approved digest literals carry forward from
+Movement's `6985d77b4bb489f7cc63babd8f38bb8a9e1b3311fb1359d8fa0669ffba9d4d1b` to
+`a092a7cb98254676eee275f1687618f858d06d778e0a836d28844a60281acc39` over 1,694 files; reversing them reproduces main's
+registry byte-for-byte. No contract gains a provider transform, outbound field, purpose or transport.
+`recruitment_match_summary_v1` stays pending and unapproved (D-069/D-071). Agent manifest
+`103074e0809a534418f710f018221416559b000e9c962d6523e991ace764d182` over 496 files. No gate result, staging acceptance or
+production authority is granted by this binding.

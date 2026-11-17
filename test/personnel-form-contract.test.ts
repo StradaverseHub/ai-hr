@@ -8,6 +8,12 @@ const birth='profile.personal_details.dateofbirth';
 const initial='employment.employment_dates_and_service.confirmationdate';
 const final='employment.employment_dates_and_service.finalconfirmationdate';
 describe('Personnel shared form contract',()=>{
+  it('keeps controlled original-hire inputs unnamed and derives the changed-only carry from their workflow owner',()=>{
+    const id='employment.employment_dates_and_service.hiredon';
+    expect(personnelWorkflowInput(id,'hireInformation','draft')).toMatchObject({type:'date','data-personnel-field':id,required:false});
+    expect(personnelWorkflowInput(id,'hireInformation','draft')).not.toHaveProperty('name');
+    expect(personnelWorkflowCarry(id,'hireInformation')).toMatchObject({name:'hireInformation_hiredOn',type:'hidden',required:false});
+  });
   it('binds dated calendar workflow fields without adding generic report/import or self-service writers',()=>{
     const prefix='attendance.dated_holiday_calendar.';
     for(const suffix of ['calendar','startdate','enddate']){

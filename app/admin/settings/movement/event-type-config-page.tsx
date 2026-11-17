@@ -32,6 +32,7 @@ export async function EventTypeConfigPage({ code }: { code: string | null }) {
   const t = await getTranslations('movementSettings');
   const tk = await getTranslations('people.detail.movement.eventType');
   const tPeople = await getTranslations('people.detail');
+  const tRoot = await getTranslations();
 
   const row = code ? await getMovementEventTypeForSettings(s, code) : null;
   if (code && !row) notFound();
@@ -74,7 +75,7 @@ export async function EventTypeConfigPage({ code }: { code: string | null }) {
   }));
   // The same field names the New Event form shows (the personnel field registry, translated).
   const resolveLabel = (key: string, fallback: string) =>
-    key.startsWith('people.detail.') && tPeople.has(key.slice(14)) ? tPeople(key.slice(14)) : fallback;
+    tRoot.has(key) ? tRoot(key) : fallback;
   const fieldLabels = Object.fromEntries(
     MOVEMENT_RULE_FIELDS.map((f) => [f, personnelFormLabel(MOVEMENT_FORM_IDS[f], resolveLabel)]),
   );

@@ -32,8 +32,8 @@ describe('canonical future sequence admission lifetime',()=>{
   });
   const after=await snapshot(employmentId);expect(after.employment).toEqual(before.employment);expect(after.assignment).toEqual(before.assignment);expect(after.events.filter(row=>row.eventType==='employment.movement.scheduled')).toHaveLength(2);
   expect((await movementCurrentState(ctx,employmentId)).departmentId).toBe(b.deptA);
-  await withTenant(ctx,tx=>applyDueMovementsTx(tx,ctx,employmentId,day(7)));expect((await movementCurrentState(ctx,employmentId)).departmentId).toBe(b.deptB);
-  await withTenant(ctx,tx=>applyDueMovementsTx(tx,ctx,employmentId,day(14)));expect((await movementCurrentState(ctx,employmentId)).departmentId).toBe(b.deptA);
+  await withTenant(ctx,tx=>applyDueMovementsTx(tx,ctx,employmentId,day(7)));expect((await movementCurrentState(ctx,employmentId,{asOf:day(7)})).departmentId).toBe(b.deptB);
+  await withTenant(ctx,tx=>applyDueMovementsTx(tx,ctx,employmentId,day(14)));expect((await movementCurrentState(ctx,employmentId,{asOf:day(14)})).departmentId).toBe(b.deptA);
  });
  it('requires exact frozen ordered inputs and rolls the entire outer write back on replay mismatch',async()=>{
   const {employmentId}=await hire(),ctx=adminCtx(b),before=await snapshot(employmentId),first:CreateMovementInput={employmentId,kind:'secondment',effectiveDate:day(-2),remarks:'Original first'},second:CreateMovementInput={employmentId,kind:'actingPosition',effectiveDate:day(-1),remarks:'Original second'};

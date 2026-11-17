@@ -25,6 +25,9 @@ async function closedSlip(id:string){
 // Restores the installed owners after a test swaps in the 0698 original: 0873, then every later replacement of the same
 // functions (board 4604dccc r3: 5690), so the shared test database never keeps an older definition for later tests.
 const repairs=['0873_movement_exit_payroll_preservation','5690_information_payslip_snapshot_from_history'].map(tag=>readFileSync(`db/migrations/${tag}.sql`,'utf8'));
+// Only the public wrapper was replaced by this fixture. The current shared implementation remains installed.
+const latestWrapper=readFileSync('db/migrations/5777_movement_closed_payroll_metadata.sql','utf8').split('--> statement-breakpoint').find(block=>block.includes('CREATE OR REPLACE FUNCTION app.preserve_information_payroll'))!;
+repairs.push(latestWrapper);
 async function installRepair(){for(const repair of repairs)for(const block of repair.split('--> statement-breakpoint'))if(block.trim())await owner.client.unsafe(block);}
 describe('646355e5 — ended employment retains finalised payroll before correction',()=>{
  it('upgrades the populated strict helper and restores the employee while keeping the payslip document byte-identical',async()=>{
@@ -44,7 +47,7 @@ describe('646355e5 — ended employment retains finalised payroll before correct
   try{
    await owner.client.unsafe(original.slice(start,end).replace('CREATE FUNCTION','CREATE OR REPLACE FUNCTION'));
    let failure:unknown;
-   try{await reverseMovementEvent(ctx,{employmentId,movementId:movement.id,reason:'Fictional incorrect exit',acknowledgeClosedPayroll:true});}catch(error){failure=error;}
+   try{await withTenant(ctx,tx=>tx.execute(sql`select app.preserve_information_payroll(${employmentId}::uuid)`));}catch(error){failure=error;}
    expect(pgSqlState(failure)).toBe('P0002');
    expect(await owner.db.select().from(s.informationPayslipSnapshot).where(eq(s.informationPayslipSnapshot.employmentId,employmentId))).toHaveLength(0);
   }finally{await installRepair();}

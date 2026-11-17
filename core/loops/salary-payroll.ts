@@ -1,3 +1,4 @@
+import {employmentPaymentMethodOnSql} from '../employment-payment-method';
 /** AI v2 P2-2a — the Salary payroll loop, from the salary cut-off to close (owner decisions, payroll-cycle loops, items
  * 1, 2, 3 and 5). PREPARE ONLY, IN EVERY COMPANY, ENFORCED: this module reads through the payroll owners and returns
  * observations; it never creates, processes, approves, closes or reopens a run, and it never generates or sends a bank
@@ -101,8 +102,8 @@ async function bankCheckFor(sponsor:SessionContext,batch:Batch,country:string):P
  // The run's own recorded net pay and headcount, and what of it is paid by bank (cash and cheque are not in the file).
  const [own]=await withTenant(sponsor,tx=>tx.select({
   slips:sql<number>`count(*)::int`,
-  bankRecords:sql<number>`(count(*) filter (where ${employment.paymentMethod}='bank_transfer' and ${payslip.netPay}>0))::int`,
-  otherCents:sql<string>`coalesce(sum(round(${payslip.netPay}*100)) filter (where ${employment.paymentMethod} is distinct from 'bank_transfer'),0)::text`})
+  bankRecords:sql<number>`(count(*) filter (where ${employmentPaymentMethodOnSql(sql`${employment.id}`)}='bank_transfer' and ${payslip.netPay}>0))::int`,
+  otherCents:sql<string>`coalesce(sum(round(${payslip.netPay}*100)) filter (where ${employmentPaymentMethodOnSql(sql`${employment.id}`)} is distinct from 'bank_transfer'),0)::text`})
   .from(payslip).innerJoin(employment,eq(employment.id,payslip.employmentId)).where(eq(payslip.batchId,batch.id)));
  const bankRecords=Number(own?.bankRecords??0);
  // Nobody is paid by bank (cash and cheque only): the run's net pay to bank is nothing, and so is the bank file.

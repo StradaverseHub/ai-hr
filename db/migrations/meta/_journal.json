@@ -6184,6 +6184,62 @@
       "breakpoints": true
     },
     {
+      "idx": 5172,
+      "version": "7",
+      "when": 1793330005472,
+      "tag": "5772_movement_employment_periods",
+      "breakpoints": true
+    },
+    {
+      "idx": 5173,
+      "version": "7",
+      "when": 1793330005473,
+      "tag": "5773_movement_payroll_protection_and_delete",
+      "breakpoints": true
+    },
+    {
+      "idx": 5174,
+      "version": "7",
+      "when": 1793330005474,
+      "tag": "5774_employment_payment_method_history",
+      "breakpoints": true
+    },
+    {
+      "idx": 5175,
+      "version": "7",
+      "when": 1793330005475,
+      "tag": "5775_movement_payment_method_field",
+      "breakpoints": true
+    },
+    {
+      "idx": 5176,
+      "version": "7",
+      "when": 1793330005476,
+      "tag": "5776_workforce_payroll_input_invalidation",
+      "breakpoints": true
+    },
+    {
+      "idx": 5177,
+      "version": "7",
+      "when": 1793330005477,
+      "tag": "5777_movement_closed_payroll_metadata",
+      "breakpoints": true
+    },
+    {
+      "idx": 5178,
+      "version": "7",
+      "when": 1793330005478,
+      "tag": "5778_movement_payroll_windows",
+      "breakpoints": true
+    },
+    {
+      "idx": 5179,
+      "version": "7",
+      "when": 1793330005479,
+      "tag": "5779_hire_company_allocation_review",
+      "breakpoints": true
+    },
+    {
       "idx": 5250,
       "version": "7",
       "when": 1793330005550,

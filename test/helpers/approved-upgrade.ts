@@ -228,6 +228,15 @@ export const APPROVED_UPGRADE_TAIL=[
  // Board 237c31e6: request-bound approver Employee ID readers for the Attendance approval progress panel (16 Nov 2026).
  {idx:5170,when:1793330005470,tag:'5770_attendance_workflow_approver_codes'},
  {idx:5171,when:1793330005471,tag:'5771_assistant_legacy_index_shared_access'},
+ // Comprehensive Movement workflow: exact appended, unapplied forward SQL.
+ {idx:5172,when:1793330005472,tag:'5772_movement_employment_periods'},
+ {idx:5173,when:1793330005473,tag:'5773_movement_payroll_protection_and_delete'},
+ {idx:5174,when:1793330005474,tag:'5774_employment_payment_method_history'},
+ {idx:5175,when:1793330005475,tag:'5775_movement_payment_method_field'},
+ {idx:5176,when:1793330005476,tag:'5776_workforce_payroll_input_invalidation'},
+ {idx:5177,when:1793330005477,tag:'5777_movement_closed_payroll_metadata'},
+ {idx:5178,when:1793330005478,tag:'5778_movement_payroll_windows'},
+ {idx:5179,when:1793330005479,tag:'5779_hire_company_allocation_review'},
  // Recruitment slices 1–25 (renumbered 5700–5727 → 5850–5877 on 17 Nov 2026; docs/MIGRATION-ALLOCATION.md).
  {idx:5250,when:1793330005550,tag:'5850_recruiting_partner_role'},
  {idx:5251,when:1793330005551,tag:'5851_recruitment_core'},
@@ -260,6 +269,14 @@ export const APPROVED_UPGRADE_TAIL=[
 ] as const;
 // Final pending 2109/2126 bytes reviewed from engine 128bc2539; no applied-prefix hashes change.
 const APPROVED_UPGRADE_HASHES:Record<string,string>={
+ '5779_hire_company_allocation_review':'8a157b18ea8fe5ebaf5d86046f7ba03dd41e6532c03ef2cb7799beafeb4fc8dd',
+ '5772_movement_employment_periods':'9a66595ca046bdf0bdaaf0b51e1b87cfd8811156093d37464ef854d36b7d4ef3',
+ '5773_movement_payroll_protection_and_delete':'3f54dd21490e301f4c52131d449d32c883f482d67025df610fe5b84c83be1897',
+ '5774_employment_payment_method_history':'4e68e7aa1c2e66f605938fef0e59ce86a137ecdbd061c0f3e5a3e5a48ff6c5d8',
+ '5775_movement_payment_method_field':'3841610ec8f01675b16ad51b9c9523d77146f8c048790565d9862510909d3155',
+ '5776_workforce_payroll_input_invalidation':'28624ba957c14e02dfb7305c5d94b5627be11d4cc66f65e8903e5a921436589f',
+ '5777_movement_closed_payroll_metadata':'bb1ed221d194021c059392f21ad7c01c99cf9c0b05f6698b4ffff6579c2707f4',
+ '5778_movement_payroll_windows':'789c93999e156c08f6cfac5a79f5f58071cd1f834778454238146809e1b55106',
  '5850_recruiting_partner_role':'eebd1f2ca17bdab497c749fe618dd97cc19bc84c13214970924d9b895e503162',
  '5851_recruitment_core':'50ade8ad665ff40990fe01f82a2bf69ab09bba9093adf38fedfd543557fe20a7',
  '5852_recruitment_team_interviews':'2b929096989e751e6a16a099e6ee234bc53f48e11b769ad112fecba8abaed056',
@@ -579,6 +596,7 @@ export async function migrateApprovedUpgrade(db:Database, migrationsFolder = 'db
    expect(after).toEqual({...before,generation:Number(before.generation)+(configs.some(row=>row.tenant_id===before.tenant_id)?1:0)});return {before,after};
   });
   expect(await table(db,'public.access_group')).toEqual(groups);expect(await table(db,'public.app_user')).toEqual(users);
+  const [movementClock]=await db.client`select clock_timestamp()::text at`;
   await migrate(db.db,{migrationsFolder});
   expect(await db.client`select id from public.company where display_group_field is not null or display_group_option_id is not null`).toEqual([]);
   expect(await db.client`select user_id from public.reward_group_role_grant`).toEqual([]);
@@ -586,9 +604,17 @@ export async function migrateApprovedUpgrade(db:Database, migrationsFolder = 'db
   // present and null on every upgraded row, and only then is a retained event compared without it.
   await assertCombinedReleaseNulls(db,migrationsFolder);
   expect((await table(db,'public.domain_event')).map(row=>withoutCombinedReleaseNulls('domain_event',row))).toEqual(eventsAfter);
-  expect(await table(db,'public.access_group_grant')).toEqual(groupAfter);expect(await table(db,'public.access_user_override')).toEqual(overrideAfter);
+  const finalGroups=await table(db,'public.access_group_grant'),movementGrants=newRows(groupAfter,finalGroups);
+  expect(ordered(finalGroups.filter(row=>groupAfter.some(prior=>prior.id===row.id)))).toEqual(ordered(groupAfter));
+  const requestedJournal=JSON.parse(readFileSync(join(migrationsFolder,'meta/_journal.json'),'utf8')) as {entries:{tag:string}[]};
+  const includesMovement=requestedJournal.entries.some(row=>row.tag==='5773_movement_payroll_protection_and_delete');
+  const movementHolders=includesMovement?groups.filter(row=>row.legacy_key==='system_administrator'&&row.retired_at===null):[];
+  expect(ordered(movementGrants.map(({tenant_id,group_id,capability_id,company_id,retired_at})=>({tenant_id,group_id,capability_id,company_id,retired_at})))).toEqual(ordered(movementHolders.map(group=>({tenant_id:group.tenant_id,group_id:group.id,capability_id:'workforce.movement.delete',company_id:null,retired_at:null}))));
+  for(const grant of movementGrants){expect(String(grant.id)).toMatch(/^[0-9a-f-]{36}$/);expect(Date.parse(String(grant.created_at))).toBeGreaterThanOrEqual(Date.parse(String(movementClock.at)));}
+  expect((await table(db,'public.access_capability')).filter(row=>row.id==='workforce.movement.delete')).toEqual(includesMovement?[{id:'workforce.movement.delete',scope:'company',supported:true,bindings:[{owner:'core/movement.ts:reverseMovementEvent',operation:'delete'},{owner:'core/movement.ts:reverseMovementForImportTx',operation:'import-delete-revert'},{owner:'app/admin/personnel/[employmentId]/movement-history-actions.tsx',operation:'delete-affordance'}]}]:[]);
+  expect(await table(db,'public.access_user_override')).toEqual(overrideAfter);
   expect(await table(db,'public.access_configuration')).toEqual(configsAfter);expect(await table(db,'app.access_profile_write_generation')).toEqual(generationsAfter);
-  return {events,eventsRaw:eventsRaw.filter(row=>events.some(event=>event.id===row.id)),grants,overrides,configurations,generations:generationPairs};
+  return {events,eventsRaw:eventsRaw.filter(row=>events.some(event=>event.id===row.id)),grants:[...grants,...movementGrants],overrides,configurations,generations:generationPairs};
  }finally{rmSync(folder,{recursive:true,force:true});}
 }
 /** Remove ONLY exact independently validated new rows, or restore ONLY exact independently

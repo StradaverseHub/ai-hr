@@ -158,6 +158,7 @@ export function mergeCompanySegments(
   currentCompanyId: string,
   from: string,
   to: string,
+  options: { requireRecordedHistory?: boolean } = {},
 ): CompanySegment[] {
   if (from > to) return [];
   const clipped: CompanySegment[] = [];
@@ -172,17 +173,18 @@ export function mergeCompanySegments(
   // before the backfill and transferred after it has history only from the transfer onward; the days
   // before it are not "unemployed", they are simply unrecorded, and today's column is the best (and only)
   // answer available for them.
+  const mayFill = !options.requireRecordedHistory || rows.length === 0;
   const filled: CompanySegment[] = [];
   let cursor = from;
   for (const seg of clipped) {
     if (seg.to < cursor) continue; // wholly inside a range already emitted
     const segFrom = maxDate(seg.from, cursor);
-    if (segFrom > cursor) filled.push({ companyId: currentCompanyId, from: cursor, to: dayBefore(segFrom) });
+    if (mayFill && segFrom > cursor) filled.push({ companyId: currentCompanyId, from: cursor, to: dayBefore(segFrom) });
     filled.push({ companyId: seg.companyId, from: segFrom, to: seg.to });
     cursor = dayAfter(seg.to);
     if (cursor > to) break;
   }
-  if (cursor <= to) filled.push({ companyId: currentCompanyId, from: cursor, to });
+  if (mayFill && cursor <= to) filled.push({ companyId: currentCompanyId, from: cursor, to });
 
   // Merge adjacent ranges naming the same entity. A department transfer inside one company writes a new
   // assignment version carrying the SAME company_id; without this merge it would split a payroll month
@@ -191,7 +193,7 @@ export function mergeCompanySegments(
   const merged: CompanySegment[] = [];
   for (const seg of filled) {
     const last = merged[merged.length - 1];
-    if (last && last.companyId === seg.companyId) last.to = seg.to;
+    if (last && last.companyId === seg.companyId && dayAfter(last.to) === seg.from) last.to = seg.to;
     else merged.push({ ...seg });
   }
   return merged;

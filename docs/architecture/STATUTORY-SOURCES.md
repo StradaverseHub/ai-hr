@@ -55,7 +55,7 @@ to these tables is traceable to the exact runs it affects.
     against the old 1,007/1,099, and the bonus run contributes 176/192. **This line has not been
     re-verified against an LHDN/KWSP source document since the change — it records the customer's
     approved reading, and the ✅ below refers to the MTD exhibits, not to this bullet.**
-  - **EPF — Part A bonus note (item 7f5cc653, 2026-11-16). ⚠️ PRIMARY WORDING PENDING HUMAN CONFIRMATION.**
+  - **EPF — Part A bonus note (item 7f5cc653). Primary wording confirmed by the owner on 2026-11-17.**
     The combined reading above is now limited by KWSP's Third Schedule Part A bonus note: *"Where the
     employer pays bonus to an employee who receives monthly wages of RM5,000.00 and below, and upon
     receiving the said bonus renders the wages received for that month to exceed RM5,000.00, the
@@ -66,7 +66,7 @@ to these tables is traceable to the exact runs it affects.
     RM1,786.83 = RM6,486.83 → RM844, not the RM780 12% row. The employee share stays on the Part A row for
     the month's total (RM715), because the note names only the employer (an inference; medium-high
     confidence). Restated figures: ADR-0024 addendum 2026-11-16 (§7 row 2: RM1,950).
-    - **Status: secondary sources only.** The note text above is as reproduced verbatim by independent
+    - **Supporting history (2026-11-16): secondary sources.** The note text above was reproduced verbatim by independent
       payroll publishers, retrieved 2026-11-16:
       Talenox, "EPF contribution rate" <https://help.talenox.com/en/articles/2488717-epf-contribution-rate>;
       payroll.my, footnote 6 <https://payroll.my/>.
@@ -75,11 +75,14 @@ to these tables is traceable to the exact runs it affects.
       <https://worksy.freshdesk.com/support/solutions/articles/63000277020-epf-contribution-calculation->,
       HReasily <https://support.hreasilygroup.com/en/support/solutions/articles/72000647322> and SQL Payroll
       <https://docs.sql.com.my/sqlpay/miscellaneous/epf/overview>.
-    - **PENDING HUMAN CONFIRMATION (release gate).** kwsp.gov.my returned HTTP 403 to every automated
-      fetch (including `https://www.kwsp.gov.my/documents/d/guest/jadual-ketiga-bi-pdf-1`), so the primary
-      Jadual Ketiga text was NOT read. A person must open the current Jadual Ketiga (Worksy cites
-      "jadual-ketiga-bi-1-oct-2025", p.12) and record here the exact note wording, the page and the date
-      checked. Until then this bullet is NOT verified.
+    - **Primary-wording confirmation — 2026-11-17.** Reviewer: **zenlam, repository owner**.
+      The official [KWSP Third Schedule, Part A, page 12](https://www.kwsp.gov.my/documents/d/guest/jadual-ketiga-bi-pdf-1#page=12)
+      is now accessible. Its bonus note and next-ringgit rounding text match the exact wording quoted above.
+      After that primary page was presented, the owner confirmed personal verification of the current
+      bonus-note and rounding wording on 17 November 2026. This resolves this primary-wording gate;
+      it does not claim a licensed-accountant review or resolve the interpretation limits below.
+      Earlier automated HTTP 403 failures remain historical evidence. The confirmation was received
+      after publication and web/database installation; it is not represented as an earlier preflight pass.
     - **Unknowns (readings, not verified text):** (1) a month above RM20,000 with normal wages at or below
       RM5,000 — the note sets no upper limit, so 13% of the total is applied (previously 12%); (2) Part C
       (PR 60+ elected) — a parallel 6.5% note is reported only in a search snippet; the elected path keeps

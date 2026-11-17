@@ -1,3 +1,5 @@
+import {movementPayrollInvalidationDeferredTx} from './workforce-payroll-invalidation';
+import {employmentPaymentMethodOnSql} from './employment-payment-method';
 import {personnelGroupingReadinessTx} from './personnel-quality';
 import {payrollEmploymentPredicate,outstandingPaymentPredicate,payrollCompensationEffectiveOn,payrollEmploymentEnd,payrollRunContextsTx,type PayrollEligibilityRun} from './payroll-employment-eligibility';
 import {PayrollTaxBasisError} from '../lib/payroll-tax-basis';
@@ -915,7 +917,7 @@ export async function markBatchNeedsRecalc(
  * `payroll-batch.recalc-required` event (no column, no migration) and read back by
  * `listRecalcChangeCategories` for the run screen.
  */
-export const RECALC_CHANGE_CATEGORIES = ['termination', 'hire_date', 'transfer', 'compensation', 'statutory'] as const;
+export const RECALC_CHANGE_CATEGORIES = ['termination', 'hire_date', 'transfer', 'compensation', 'statutory', 'employment_information'] as const;
 export type RecalcChangeCategory = (typeof RECALC_CHANGE_CATEGORIES)[number];
 
 /**
@@ -937,12 +939,12 @@ export type RecalcChangeCategory = (typeof RECALC_CHANGE_CATEGORIES)[number];
 export async function markRunsAffectedByEmploymentChangeTx(
   tx: Tx,
   ctx: SessionContext,
-  p: { employmentIds?: string[]; personId?: string; category: RecalcChangeCategory; from: string | null },
+  p: { employmentIds?: string[]; personId?: string; category: RecalcChangeCategory; from: string | null; until?:string|null },
 ): Promise<{ batchId: string; employmentIds: string[] }[]> {
-  const ids = asIdArray(p.employmentIds ?? []);
+  const ids = asIdArray(p.employmentIds ?? []).filter(id=>!movementPayrollInvalidationDeferredTx(tx,id));
   if (p.personId) {
     const rows = await tx.select({ id: employment.id }).from(employment).where(eq(employment.personId, p.personId));
-    ids.push(...rows.map((r) => r.id).filter((id) => !ids.includes(id)));
+    ids.push(...rows.map((r) => r.id).filter((id) => !ids.includes(id)&&!movementPayrollInvalidationDeferredTx(tx,id)));
   }
   if (ids.length === 0) return [];
   const fromPeriod = p.from && /^\d{4}-\d{2}/.test(p.from) ? p.from.slice(0, 7) : null;
@@ -957,6 +959,7 @@ export async function markRunsAffectedByEmploymentChangeTx(
         // those are stale exactly like a processed run's (the others will read the change when computed).
         inArray(payrollBatch.status, ['processed', 'processing']),
         fromPeriod ? gte(payrollBatch.payPeriod, fromPeriod) : undefined,
+        p.until?sql`${payrollBatch.payPeriod}<=to_char(${p.until}::date-1,'YYYY-MM')`:undefined,
         sql`app.can_admin_payroll_for(${payrollBatch.companyId})`,
       ),
     );
@@ -12687,7 +12690,7 @@ export function paymentSummaryForBatch(ctx: SessionContext, batchId: string) {
         // that are actually paid BY bank transfer; cheque and cash rows have to be settled another way.
         // Emitting the method turns a flat list into something the payment run can be split on, instead of
         // whoever opens the CSV having to remember who is not on transfer.
-        paymentMethod: employment.paymentMethod,
+        paymentMethod: employmentPaymentMethodOnSql(sql`${employment.id}`),
         net: payslip.netPay,
       })
       .from(payslip)
@@ -12833,7 +12836,7 @@ export function payslipDetail(ctx: SessionContext, payslipId: string, ownOnly = 
         position: position.title,
         jobGrade: frozenPayslipInformation('grade',sql`${jobGrade.name}`),
         employmentType: frozenPayslipInformation('employmentType',sql`${assignment.employmentType}`),
-        paymentMethod: employment.paymentMethod,
+        paymentMethod: employmentPaymentMethodOnSql(sql`${employment.id}`),
         bankName: employeeStatutoryMy.bankName,
         bankAccountNo: employeeStatutoryMy.bankAccountNo,
         icNumber: employeeStatutoryMy.icNumber,

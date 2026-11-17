@@ -452,3 +452,5 @@ not allocate migrations or grant employee rights.
 | `attendance.dated_holiday_calendar.calendar` | Attendance | Protected | specialist | HR-only dated calendar assignment workflow; no employee self-service mutation binding. |
 | `attendance.dated_holiday_calendar.startdate` | Attendance | Protected | specialist | HR-only dated calendar assignment workflow; no employee self-service mutation binding. |
 | `attendance.dated_holiday_calendar.enddate` | Attendance | Protected | specialist | HR-only dated calendar assignment workflow; no employee self-service mutation binding. |
+| `employment.employment_dates_and_service.extendedconfirmationdate` | Employment | Protected | specialist | Original Hired information is maintained through the audited hire-correction owner; generic imports and the Employment card do not change this lifecycle fact. |
+| `payroll.payment_method_and_payroll_policy.effectiveon` | Payroll | Protected | specialist | Dated payment routing is maintained by authorized HR. |

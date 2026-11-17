@@ -114,7 +114,7 @@ export async function recordMovementConfirmation(ctx:SessionContext,input:{attem
    for(const employee of result.employees){const failedRows=employee.rows.filter(r=>r.status==='failed');if(!failedRows.length||!employee.companyId)continue;
     await recordImportItemTx(tx,ctx,{attemptId:input.attemptId,companyId:employee.companyId,employmentId:employee.employmentId,itemKey:`failed|${movementEmployeeKey(employee)}`,label:`${employee.employeeCode}${employee.name?' · '+employee.name:''}`,ordinal:Math.min(...failedRows.map(r=>r.row)),status:'failed',errors:[describe(failedRows.flatMap(r=>r.errors))]});}
    for(const employee of invalid)if(employee.companyId)await recordImportItemTx(tx,ctx,{attemptId:input.attemptId,companyId:employee.companyId,employmentId:null,itemKey:`invalid|${employee.key}`,label:`${employee.employeeCode}${employee.name?' · '+employee.name:''}`,ordinal:Math.min(...employee.rows),status:'failed',errors:employee.errors});
-   await recordImportEventTx(tx,ctx,{attemptId:input.attemptId,kind:'confirmed',importKind:'movement',detail:{succeeded:result.imported,failed,...(input.acknowledgeClosedPayroll===true?{closedPayrollAcknowledged:true}:{})}});
+   await recordImportEventTx(tx,ctx,{attemptId:input.attemptId,kind:'confirmed',importKind:'movement',detail:{succeeded:result.imported,failed,closedPayrollProtected:true}});
    await hooks.after?.(tx);
   });
  }catch(error){

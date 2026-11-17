@@ -29,6 +29,7 @@ import {decideReview,startReview,submitManagerEvaluation,uploadReviewDocument} f
 import {createEmployeeDraftWithReservedCode,saveEmployeeDraft} from '../core/employee-draft';
 import {decideResignation,submitResignation} from '../core/offboarding';
 import {correctHireDetails} from '../core/hire-correction';
+import {movementCurrentState,movementDetail,movementHistory} from '../core/movement';
 import {movementImportDownloadData} from '../core/movement-import';
 import {withExitDateAuthorityTx} from '../core/exit-date-authority';
 import {maintainWorkforceRecord,workforceEditor} from '../core/workforce-maintenance';
@@ -195,6 +196,16 @@ describe('liveness: converted writers run while another writer holds the shared 
    expect(outcomes).toEqual(writes.map(([name])=>`${name}=ok`));
   }finally{await holder.release();}
  },240000);
+ it('standalone Movement information and detail reads coexist with another shared Access holder',async()=>{
+  const ctx=adminCtx(b),subject=await hire('movement display'),hired=(await movementHistory(ctx,subject.employmentId)).find(row=>row.kind==='hired')!;
+  const holder=await sharedHolder();
+  try{
+   const results=await settled(Promise.all([movementCurrentState(ctx,subject.employmentId),movementDetail(ctx,subject.employmentId,hired.id)]),20000);
+   expect(results).not.toBe('timeout');
+   if(results==='timeout')throw Error('Movement display requested an exclusive editor lock');
+   expect(results.value[0]).toMatchObject({companyId:b.companyId,departmentId:b.deptA});expect(results.value[1]?.row.id).toBe(hired.id);
+  }finally{await holder.release();}
+ },60000);
  it('still waits behind an access configuration editor',async()=>{
   const subject=await hire('editor wait'),held=barrier(),release=barrier();
   const editor=raw.begin(async tx=>{await tx.unsafe(`select pg_advisory_xact_lock(${lockKey(b.tenantId)})`);held.resolve();await release.promise;});

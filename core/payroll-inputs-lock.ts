@@ -40,11 +40,17 @@ async function heldShared(tx:Tx,key:string):Promise<boolean>{
 
 /** Shared mode for the companies employing these employments and/or this person. Resolved by the
  * database for the current tenant, independent of the caller's read scope. */
-export async function lockPayrollInputsTx(tx:Tx,subject:{employmentIds?:readonly string[];personId?:string|null}){
+export async function lockPayrollInputsTx(tx:Tx,subject:{employmentIds?:readonly string[];personId?:string|null;companyIds?:readonly string[]}){
  const ids=[...new Set((subject.employmentIds??[]).filter((id):id is string=>typeof id==='string'))];
- if(!ids.length&&!subject.personId)return;
- const keys=await tx.execute<{key:string}>(sql`select k as key from app.payroll_input_lock_keys(
-  ARRAY(select jsonb_array_elements_text(${JSON.stringify(ids)}::jsonb))::uuid[],${subject.personId??null}::uuid) k`);
+ const companies=[...new Set((subject.companyIds??[]).filter(id=>/^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i.test(id)))];
+ if(!ids.length&&!subject.personId&&!companies.length)return;
+ const keys=await tx.execute<{key:string}>(sql`select key from (
+  select k as key from app.payroll_input_lock_keys(
+    ARRAY(select jsonb_array_elements_text(${JSON.stringify(ids)}::jsonb))::uuid[],${subject.personId??null}::uuid) k
+  union select 'payroll-inputs:'||app.current_tenant_id()::text||':'||c.id::text from public.company c
+    where c.tenant_id=app.current_tenant_id() and c.id in
+      (select jsonb_array_elements_text(${JSON.stringify(companies)}::jsonb)::uuid)
+ ) keys order by key`);
  for(const {key} of keys)await acquireBoundedAdvisoryLockTx(tx,key,true);
 }
 

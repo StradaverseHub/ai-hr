@@ -1648,6 +1648,7 @@
       "payMode_hourly": "Hourly",
       "payMode_custom_period": "Custom Period",
       "paymentTerm": "Payment Term",
+      "paymentMethod": "Payment Method",
       "paymentTerm_monthly": "Monthly",
       "paymentTerm_weekly": "Weekly",
       "paymentTerm_biweekly": "Bi-Weekly",
@@ -1660,7 +1661,24 @@
       "salaryRemarkRequiredError": "This salary record has no basic amount, so Remarks must say why — for example, paid by quarterly director's fees. Payroll will leave this employee out of any month with nothing to pay them.",
       "salaryNegativeError": "Basic salary cannot be a negative amount. Leave it blank or enter 0 for an employee with no basic salary.",
       "salaryNotANumberError": "Basic salary must be a number. Leave it blank or enter 0 for an employee with no basic salary.",
-      "paymentMethod": "Payment Method",
+      "salaryRecording": {
+        "title": "Record salary change",
+        "choice": "How should this be recorded?",
+        "newEvent": "Create a new event",
+        "updateLatest": "Update latest applicable event",
+        "amendment": "Salary amendment without an event",
+        "eventType": "Event type",
+        "target": "Event to update",
+        "selectTarget": "Select the event",
+        "latestHint": "The event keeps its shown Effective Date. A different date requires a new event or amendment.",
+        "amendmentHint": "The salary and payment method are saved together. The audit records the amendment without adding an Employment History event."
+      },
+      "salaryPayrollFrom": "Salary applies to open payroll from",
+      "paymentMethodHistoryTitle": "Payment method history",
+      "paymentMethodEffectiveDate": "Effective date",
+      "paymentMethodRecordedAt": "Recorded at",
+      "paymentMethodRevision": "Revision",
+      "paymentMethodLegacySnapshot": "Known on installation date",
       "paymentMethodNotSet": "Not specified",
       "paymentMethod_bank_transfer": "Bank Transfer",
       "paymentMethod_cheque": "Cheque",
@@ -1691,6 +1709,8 @@
         },
         "detail": {
           "eventInformation": "Event Information",
+          "companyReviewNeeded": "Review these assignments after correcting the original company:",
+          "notRecorded": "Not recorded in this event’s history",
           "scheduledValues": "Scheduled / proposed values",
           "scheduledValuesNote": "These are the saved targets for this scheduled event. They have not been applied. Only explicitly submitted fields are shown.",
           "beforeChanges": "Before Changes",
@@ -1802,7 +1822,7 @@
           "pendingTargetUnavailable": "A saved target is no longer available in your current choices or access scope. This correction cannot be saved. Review the pending event before continuing.",
           "resignationLifecycleHint": "Resignation information takes effect on the Effective Date. Record the tender date, resignation date and last working date separately.",
           "closedPayrollTitle": "Payroll for {periods} is already closed.",
-          "closedPayrollBody": "This correction updates the employee's record and future processing. The closed payroll, released payslips and statutory submissions keep their finalised figures and will not be recalculated. If an amount needs adjusting, use the payroll correction process. A corrected salary takes effect from the first month after the closed payroll.",
+          "closedPayrollBody": "These changes update the employee record and future processing. Closed payroll, released payslips and statutory submissions remain as finalised. Use the payroll correction process if a paid amount needs adjusting.",
           "closedPayrollAcknowledge": "I understand that closed payroll will not change.",
           "dateClosedPayrollOptional": "If this date moves across a closed payroll month, tick below. Closed payroll, payslips and statutory submissions stay exactly as they were paid.",
           "mustChange": "Required to change",
@@ -1922,6 +1942,9 @@
         },
         "payrollClosedBadge": "Payroll closed: {periods}",
         "informationCorrected": "Information corrected",
+        "orderConflict": "Resolve event order",
+        "orderConflictHint": "Events on this date change the same details. Edit their Effective Dates or cancel a conflicting pending event before they apply.",
+        "payrollAdjustmentReview": "Review any payroll adjustment needed for the corrected company or salary. Closed payroll and issued documents are unchanged.",
         "informationNeedsReview": "Correction needs review",
         "historyBadge": "History",
         "rehire": {
@@ -2121,7 +2144,14 @@
         "emptySource": "No recorded date",
         "unknownSource": "Not recorded in this event"
       },
-      "costCenterAllocationTitle": "Cost Center Allocation"
+      "costCenterAllocationTitle": "Cost Center Allocation",
+      "salaryAmendments": {
+        "title": "Recorded salary amendments",
+        "amount": "Basic salary",
+        "recordOnly": "Record only — closed payroll unchanged",
+        "previous": "Previous",
+        "next": "Next"
+      }
     },
     "import": {
       "title": "Import employees",
@@ -2331,6 +2361,8 @@
       "exclusionsField": "Field",
       "exclusionsReason": "Why and where to go",
       "exclusionReasons": {
+        "hireInformation": "Correct Original Hired information through its audited correction action in Employment History. Employee imports do not change it.",
+        "paymentMethodDate": "Set payment-method effective dates through the dated payment-method action in Payroll to preserve its history.",
         "bankPayeeResidency": "Choose bank payee residency in Personnel > Bank & Statutory > Bank Information. Employee imports do not derive it from tax residency or citizenship.",
         "datedCalendar": "Set dated calendars in Personnel > Attendance > Holiday Calendar to keep prior assignment history. Employee imports cannot change the calendar or its dates.",
         "testRecord": "This internal safety classification is retained. Personnel and employee imports cannot edit it.",
@@ -2665,7 +2697,7 @@
           "guideReason": "Reason: why the movement is being corrected or rolled back. It is required for Update and Delete and is kept in the audit history. Where payroll for the period is already closed, you confirm that on screen before saving.",
           "closedPayrollRow": "Payroll for {periods} is already closed.",
           "closedPayrollTitle": "Some corrections change movements behind closed payroll ({periods}).",
-          "closedPayrollBody": "These corrections update the employees’ records and future processing. The closed payroll, released payslips and statutory submissions keep their finalised figures and will not be recalculated. Without this confirmation, the employees concerned are not saved.",
+          "closedPayrollBody": "These changes update employee records and future processing. Closed payroll, released payslips and statutory submissions remain as finalised.",
           "closedPayrollAcknowledge": "I understand that closed payroll will not change."
         },
         "historyRow": "Recorded as history: {from} to {to} takes the Before values. The record from {date} does not change."
@@ -6671,7 +6703,8 @@
         "hire_date": "join date changed",
         "transfer": "company transfer changed",
         "compensation": "salary changed",
-        "statutory": "statutory settings changed"
+        "statutory": "statutory settings changed",
+        "employment_information": "employment information changed"
       },
       "closeConfirmNo": "No",
       "closeBack": "Back to Payroll Process",
@@ -31497,6 +31530,7 @@
       "configure": "Manage security and permissions",
       "workforceView": "View employee records",
       "workforceMaintain": "Maintain employee records",
+      "movementDelete": "Delete employment movement events",
       "probationModule": "Manage Probation for all companies",
       "profileReview": "Review eligible profile changes"
     },
@@ -32267,6 +32301,7 @@
     "emailLoginNote": "Sign-in is separate: people sign in with organization code and username, and a sign-in account still cannot be created twice for the same email."
   },
   "costAllocations": {
+    "replacementReview": "Company history changed. Review the retained allocations, then save a replacement or confirm that no allocation is needed.",
     "title": "Cost Center Allocation",
     "description": "Record employment cost distribution separately from the primary organisational cost center. Partial allocation is allowed; this does not divide payroll.",
     "effectiveDate": "Effective date",
