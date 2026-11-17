@@ -1,3 +1,25 @@
+# Approved board items — 17 November 2026 (source reservations; installation held)
+
+Coordinator `codex/approved-board-controller-20261117` reserves:
+
+| Tag | idx | when | Owner |
+| --- | --- | --- | --- |
+| `6100_rewards_review_plans` | 5500 | 1794841006100 | Review Plans backend |
+| `6101_reward_person_history` | 5501 | 1794841006101 | Rewards person history |
+| `6102_lifecycle_pbp_removal` | 5502 | 1794841006102 | PBP removal, held on approved prerequisites |
+
+Fresh origin fetch and read-only survey covered 4,583 distinct local/origin ref heads,
+721 distinct committed journals and 380 readable registered worktree journals. The
+highest observed competing timestamp was 1794841006029. Existing historical high
+numbered files remain reserved; these three tags, indexes and timestamps have no
+observed collision. Staging independently reported source `fc092e1adbe5f8f1cbfe730a17d1317f08625a7c`,
+build `DZ2pCq8fJrQO8QOlmFL-K`, and 919 applied rows through 1793330005577.
+Production access timed out, so its ledger freshness is unknown. These are provisional
+source allocations only: refresh exact ordered target ledgers and competing claims
+before integration/admission. Preserve the canonical journal prefix and applied SQL
+bytes. PBP Stage 2 additionally waits for its approved live-recipient and production
+report prerequisites. No installation, acceptance or deployment authority is granted.
+
 ## Movement staging handback and unused slots — 17 November 2026 MYT
 
 Movement completed its three-stage candidate at source `65ab4e868d43efe08e046c666051c13ccb61c76d`,
