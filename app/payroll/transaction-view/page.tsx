@@ -874,10 +874,10 @@ export default async function TransactionViewPage({
                   because "in the same place the Individual tab already keeps its download" is what the
                   reporter approved. The control is a <details> disclosure rather than a client dropdown so the
                   whole page stays a server component: two plain anchors, no state, no server action. */}
-              <div className="flex items-center justify-between gap-3 pr-4">
-                <SectionHeader title={t('view.tabs.history')} count={shownHistoryRows.length} />
+              <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border px-4 py-3">
+                <SectionHeader title={t('view.tabs.history')} count={shownHistoryRows.length} className="border-0 p-0" />
                 <details className="relative shrink-0">
-                  <summary className="inline-flex cursor-pointer list-none items-center gap-2 rounded-md border border-border bg-background px-3 py-1.5 text-sm font-medium text-foreground transition-colors hover:bg-muted [&::-webkit-details-marker]:hidden">
+                  <summary data-table-primary className="inline-flex cursor-pointer list-none items-center gap-2 rounded-md border border-border bg-background px-3 py-1.5 text-sm font-medium text-foreground transition-colors hover:bg-muted [&::-webkit-details-marker]:hidden">
                     {t('view.history.export')}
                     <span aria-hidden="true" className="text-[10px]">
                       ▼
@@ -903,7 +903,7 @@ export default async function TransactionViewPage({
                 </details>
               </div>
               {historyTruncated && (
-                <p className="px-4 pb-2 text-xs text-amber-700 dark:text-amber-400">
+                <p className="px-4 py-3 text-xs leading-5 text-muted-foreground">
                   {t('view.history.capped', { cap: HISTORY_ROW_CAP })}
                 </p>
               )}
