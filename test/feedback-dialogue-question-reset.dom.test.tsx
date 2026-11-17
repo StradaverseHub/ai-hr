@@ -23,6 +23,7 @@ it('shows a fresh empty reply form for a different question without a full page 
   const page = () => FeedbackDetailPage({params: Promise.resolve({id: '11111111-1111-4111-8111-111111111111'}), searchParams: Promise.resolve({})});
   const wrap = (node: React.ReactNode) => <NextIntlClientProvider locale="en" messages={en}>{node}</NextIntlClientProvider>;
   const view = render(wrap(await page()));
+  expect(screen.queryByText(en.feedback.planPending)).toBeNull(); // Waiting must not promise an imminent automatic plan.
   fireEvent.change(screen.getByLabelText(en.feedback.answerLabel), {target: {value: 'November preview.'}});
   fireEvent.submit(screen.getByRole('button', {name: en.feedback.answerSubmit}).closest('form')!);
   expect(await screen.findByRole('status')).toHaveTextContent(en.feedback.dialogueAnswerSent);

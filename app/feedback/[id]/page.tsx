@@ -336,7 +336,7 @@ export default async function FeedbackDetailPage({
             )}
           </>
         ) : (
-          <p className="px-1 pt-2 text-sm text-muted-foreground">{t('planPending')}</p>
+          <p className="px-1 pt-2 text-sm text-muted-foreground">{t(pendingQuestion ? 'dialogueWaitingTitle' : 'planPending')}</p>
         )}
 
         {canGeneratePlan && (
