@@ -1,5 +1,7 @@
 """Native upgrade spine with real files/hashes and deterministic systemd/proc/native-command ports. Hosted only."""
 import contextlib
+import fcntl
+import stat
 import shutil
 from contextlib import ExitStack
 import copy
@@ -24,17 +26,28 @@ update=old.update
 spec=importlib.util.spec_from_file_location('ci_runtime',ROOT/'deploy/systemd/bank_import_worker_ci_runtime_v1.py')
 ci=importlib.util.module_from_spec(spec);spec.loader.exec_module(ci)
 check=old.check
+def load_native(name, filename):
+    spec=importlib.util.spec_from_file_location(name,ROOT/'deploy/systemd'/filename)
+    module=importlib.util.module_from_spec(spec);spec.loader.exec_module(module);return module
+guard=load_native('operation_guard_fixture','bank_import_worker_operation_guard_v1.py')
+fences=load_native('complete_fences_fixture','bank_import_worker_fences_v1.py')
+cleanup_spec=importlib.util.spec_from_file_location('owned_cleanup_fixture',ROOT/'.github/ci/cleanup-install.py')
+owned_cleanup=importlib.util.module_from_spec(cleanup_spec);cleanup_spec.loader.exec_module(owned_cleanup)
 # Import immutable build/runtime contract data from its actual native owner, not a copied selector schema.
 contract=subprocess.run(['node','--input-type=module','-e',"import {STAGING_BUILD_RUNTIME,BUILD_CAPACITY_PROFILE} from './.github/ci/build-production.mjs';console.log(JSON.stringify({runtime:STAGING_BUILD_RUNTIME,capacity:BUILD_CAPACITY_PROFILE}))"],cwd=ROOT,capture_output=True,text=True,check=True)
 NATIVE_CONTRACT=json.loads(contract.stdout)
+PYTHON_PATH=Path('/usr/bin/python3').resolve(strict=True)
+PYTHON_PINS={'path':str(PYTHON_PATH),'sha256':hashlib.sha256(PYTHON_PATH.read_bytes()).hexdigest(),'version':subprocess.run([str(PYTHON_PATH),'-c','import sys;print(".".join(map(str,sys.version_info[:3])))'],capture_output=True,text=True,check=True).stdout.strip()}
 
 def encoded(value):return json.dumps(value,sort_keys=True,separators=(',',':')).encode()+b'\n'
 
 class Fixture(old.UpgradeFlowFixture):
     def __init__(self,root):
         super().__init__(root)
-        self.invoke('drain');os.utime(self.operation/'drained.json',(1794873602,1794873602));self.web=self.source;self.native_calls=0;self.finish_at=None;self.fault_at=None;self.native_fault=None;self.held_phase='installing';self.arrive_at=None;self.cleanup_at=None;self.cleanup_failures=0;self.cleanup_persistent=False;self.lease_backslide_at=None;self.probe_override=None;self.cleanup_arrival_pending=False
+        self.invoke('drain');os.utime(self.operation/'drained.json',(1794873602,1794873602));self.web=self.source;self.native_calls=0;self.finish_at=None;self.fault_at=None;self.native_fault=None;self.held_phase='installing';self.arrive_at=None;self.cleanup_at=None;self.lease_backslide_at=None;self.probe_override=None;self.fast_calls=0;self.finish_on=None;self.clock=1794873610;self.advance_at=None;self.advance_seconds=0;self.native_failure_at=None;self.final_native_fault=None;self.monotonic_offset=0;self.deadline_at=None;self.stability_overrun=False;self.observe_cleanup=False;self.cleanup_observations=[];self.cleanup_intent_fault=None;self.partial_ready_at=None;self.pending_publication=None;self.pending_defect=None;self.publication_sleeps=0;self.cache_fault=None
         self.webroot=root/'web';self.webroot.mkdir();(self.webroot/'.next').mkdir();(self.webroot/'.next/BUILD_ID').write_text(self.new_build)
+        (self.webroot/'node_modules').mkdir();(self.webroot/'node_modules/dependency.js').write_text('frozen dependency')
+        self.runtime_root=root/'runtime';(self.runtime_root/'bin').mkdir(parents=True);self.node.rename(self.runtime_root/'bin/node');self.node=self.runtime_root/'bin/node';self.base.NODE=self.node
         (self.webroot/'.env.production').write_text('AIHR_IMPORT_WORKER_REQUIRED=1\n')
         for name in ['scripts/improve/release.ts','.github/ci/normal-cleanup-fences.mjs']:
             p=self.webroot/name;p.parent.mkdir(parents=True,exist_ok=True);p.write_bytes((ROOT/name).read_bytes())
@@ -51,12 +64,17 @@ class Fixture(old.UpgradeFlowFixture):
         self.directory=parent/self.install_id;self.directory.mkdir(mode=0o700);(self.directory/'packet').mkdir(mode=0o700)
         uid=self.directory.stat().st_uid;self.owner=SimpleNamespace(pw_uid=uid,pw_gid=self.directory.stat().st_gid,pw_dir=str(self.home),pw_name='installation-owner')
         self.grant={'kind':'OPERATOR_AUTHORIZED_STAGING_CI_BUILD_INSTALL','format':2,'target':'alpha-staging','installId':self.install_id,'source':self.source,'controller':'3'*40,'runId':77,'baseline':self.previous_web,'baselineBuildId':self.old_build,'environmentSha256':'c'*64,'expiresAt':'2099-01-01T00:00:00Z','build':{'buildRecordId':self.build_record,'nextBuildId':self.new_build,'lockSha256':'a'*64,'packageSha256':'b'*64}}
-        self.grant.update(policyVersion='aihr-staging-ci/v17',controllerBranch='alpha',runAttempt=1,runCreatedAt='2026-11-17T00:00:00Z',issuedAt='2026-11-17T00:00:00Z',expiresAt='2026-11-17T00:20:00Z',producerStartedAt='2026-11-17T00:00:00Z',producerCompletedAt='2026-11-17T00:00:00Z',witnessFingerprint='9'*64,artifact={'digest':'sha256:'+'8'*64,'id':1})
+        self.grant.update(policyVersion='aihr-staging-ci/v17',controllerBranch='alpha',runAttempt=1,runCreatedAt='2026-11-17T00:00:00Z',issuedAt='2026-11-17T00:00:00Z',expiresAt='2026-11-17T00:30:00Z',producerStartedAt='2026-11-17T00:00:00Z',producerCompletedAt='2026-11-17T00:00:00Z',witnessFingerprint='9'*64,artifact={'digest':'sha256:'+'8'*64,'id':1})
         self.grant['build'].update(format=2,capacityProfile=copy.deepcopy(NATIVE_CONTRACT['capacity']),buildSourcePath='/frozen',runtime=copy.deepcopy(NATIVE_CONTRACT['runtime']),provenanceSha256='1'*64,archiveSha256='2'*64,archiveBytes=1,manifestSha256='3'*64,preparedSha256='4'*64,successfulObservationSha256='5'*64)
-        self.activated={'activation':{'activeDirectory':{'device':1,'inode':11},'retainedDirectory':{'device':1,'inode':12}},'kind':'CI_BUILD_BYTES_ACTIVATED_NOT_FULL_ARRIVAL','source':self.source,'installId':self.install_id,'buildRecordId':self.build_record,'nextBuildId':self.new_build,'bootIdSha256':ci.sha(self.boot.read_bytes())}
+        (self.directory/'next').mkdir(mode=0o700);(self.directory/'next/BUILD_ID').write_text(self.old_build)
+        active=(self.webroot/'.next').stat();retained=(self.directory/'next').stat()
+        self.activated={'activation':{'activeDirectory':{'device':active.st_dev,'inode':active.st_ino},'retainedDirectory':{'device':retained.st_dev,'inode':retained.st_ino}},'kind':'CI_BUILD_BYTES_ACTIVATED_NOT_FULL_ARRIVAL','source':self.source,'installId':self.install_id,'buildRecordId':self.build_record,'nextBuildId':self.new_build,'bootIdSha256':ci.sha(self.boot.read_bytes())}
+        self.verified={'format':1,'source':self.source,'installId':self.install_id,'buildRecordId':self.build_record,'nextBuildId':self.new_build}
+        for name,key in [('system-testing.json','preparedSha256'),('successful-build.json','successfulObservationSha256'),('build-provenance.json','provenanceSha256'),('bytes/build-bundle-files.json','manifestSha256')]:
+            leaf=self.directory/'packet'/name;leaf.parent.mkdir(mode=0o700,parents=True,exist_ok=True);leaf.write_bytes(encoded({'nativeFixtureRecord':name,'source':self.source}));leaf.chmod(0o600);self.grant['build'][key]=ci.sha(leaf.read_bytes())
         self.ledger={'format':1,'kind':'READ_ONLY_EXACT_MIGRATION_LEDGER_NOT_RELEASE','rows':919,'expectedSha256':'d'*64,'actualSha256':'e'*64,'releaseAuthorized':False}
         self.runtime={'kind':'CI_BUILD_ACTIVE_SERVICE_VERIFIED_NOT_FULL_ARRIVAL','format':1,'source':self.source,'installId':self.install_id,'buildRecordId':self.build_record,'nextBuildId':self.new_build,'authorizationSha256':ci.sha(encoded(self.grant)),'pid':'999','startedMonotonicUs':2000000,'healthStatus':200,'fullMigrationLedgerVerified':True,'fullSourceChecksumVerified':False,'releaseAuthorized':False,'migrationLedger':{**self.ledger,'verifiedAt':'2026-11-17T00:00:00.000Z'},'compiledByteInventory':{'format':2,'files':12000},'verifiedAt':'2026-11-17T00:00:00.000Z'}
-        for name,value in [('authorization.json',self.grant),('activated.json',self.activated),('runtime.json',self.runtime)]:
+        for name,value in [('authorization.json',self.grant),('activated.json',self.activated),('runtime.json',self.runtime),('verified.json',self.verified)]:
             (self.directory/name).write_bytes(encoded(value));(self.directory/name).chmod(0o600)
         self.lease={'protocol':'aihr-staging-queue/v1','batch':'32345678-1234-4123-8123-123456789abc','epoch':4,'candidate':self.source,'token':'f'*64,'releaseAuthorized':False}
         self.leasefile=root/'lease.json';self.leasefile.write_bytes(encoded(self.lease));self.leasefile.chmod(0o600)
@@ -66,9 +84,19 @@ class Fixture(old.UpgradeFlowFixture):
         self.helper=root/'protected-bundle.py';self.helper.write_text('independently reviewed root bundle fixture')
         self.authorization=root/'activation-authorization.json'
         drain=(self.operation/'drained.json').read_bytes();st=self.directory.stat()
-        self.auth={'format':1,'kind':'ADMIN_AUTHORIZED_SINGLE_CI_WORKER_CUTOVER','policy':ci.POLICY,'target':'alpha-staging','issuedAt':'2026-11-17T00:00:05Z','expiresAt':'2026-11-17T00:10:00Z','identity':json.loads(drain)['identity'],'drainSha256':ci.sha(drain),'helperSha256':ci.sha(self.helper.read_bytes()),'nodeSha256':ci.sha(self.node.read_bytes()),'install':{'id':self.install_id,'buildRecordId':self.build_record,'runId':77,'controller':'3'*40,'directory':str(self.directory),'uid':uid,'gid':self.owner.pw_gid,'device':st.st_dev,'inode':st.st_ino},'grantSha256':ci.sha(encoded(self.grant)),'activatedSha256':ci.sha(encoded(self.activated)),'runtimeSha256':ci.sha(encoded(self.runtime)),'environmentSha256':'c'*64,'dotenvSha256':ci.sha((self.webroot/'.env.production').read_bytes()),'ledger':self.ledger,'bootIdSha256':ci.sha(self.boot.read_bytes()),'webPid':'999','webStartedMonotonicUs':2000000,'lease':{k:self.lease[k]for k in ['batch','epoch','candidate']},'leaseFile':str(self.leasefile),'leaseFileSha256':ci.sha(self.leasefile.read_bytes()),'coordinatorSha256':ci.sha(self.coordinator.read_bytes()),'sourceManifest':str(self.source_manifest_file),'sourceManifestSha256':ci.sha(self.source_manifest_file.read_bytes()),'priorLastOkSha256':ci.sha((self.state/'last-ok').read_bytes()),'launch':{'current':{k:v for k,v in self.current.items()if k not in ['result','exit_code','finished_at']},'processStartTicks':'444','cmdlineSha256':ci.sha(p.joinpath('cmdline').read_bytes())},'releaseAuthorized':False,'readiness':{'required':'1','waitSeconds':None}}
+        self.auth={'format':1,'kind':'ADMIN_AUTHORIZED_SINGLE_CI_WORKER_CUTOVER','policy':ci.POLICY,'target':'alpha-staging','issuedAt':'2026-11-17T00:00:05Z','expiresAt':'2026-11-17T00:15:05Z','identity':json.loads(drain)['identity'],'drainSha256':ci.sha(drain),'helperSha256':ci.sha(self.helper.read_bytes()),'nodeSha256':ci.sha(self.node.read_bytes()),'install':{'id':self.install_id,'buildRecordId':self.build_record,'runId':77,'controller':'3'*40,'directory':str(self.directory),'uid':uid,'gid':self.owner.pw_gid,'device':st.st_dev,'inode':st.st_ino},'grantSha256':ci.sha(encoded(self.grant)),'activatedSha256':ci.sha(encoded(self.activated)),'runtimeSha256':ci.sha(encoded(self.runtime)),'environmentSha256':'c'*64,'dotenvSha256':ci.sha((self.webroot/'.env.production').read_bytes()),'ledger':self.ledger,'bootIdSha256':ci.sha(self.boot.read_bytes()),'webPid':'999','webStartedMonotonicUs':2000000,'lease':{k:self.lease[k]for k in ['batch','epoch','candidate']},'leaseFile':str(self.leasefile),'leaseFileSha256':ci.sha(self.leasefile.read_bytes()),'coordinatorSha256':ci.sha(self.coordinator.read_bytes()),'sourceManifest':str(self.source_manifest_file),'sourceManifestSha256':ci.sha(self.source_manifest_file.read_bytes()),'priorLastOkSha256':ci.sha((self.state/'last-ok').read_bytes()),'launch':{'current':{k:v for k,v in self.current.items()if k not in ['result','exit_code','finished_at']},'processStartTicks':'444','cmdlineSha256':ci.sha(p.joinpath('cmdline').read_bytes())},'releaseAuthorized':False,'readiness':{'required':'1','waitSeconds':None}}
+        self.queue=root/'queue';self.queue.mkdir(mode=0o700);self.queue_lock=self.queue/'operations.lock';self.queue_lock.write_bytes(b'');self.queue_lock.chmod(0o600)
+        q=self.queue.stat();lock=self.queue_lock.stat()
+        self.operations_lock={'policy':guard.GUARD_POLICY,'queueDirectory':str(self.queue),'lockPath':str(self.queue_lock),'uid':q.st_uid,'gid':q.st_gid,'mode':0o600,'device':lock.st_dev,'inode':lock.st_ino,'queueMode':0o700,'queueDevice':q.st_dev,'queueInode':q.st_ino}
+        self.auth['operationsLock']=self.operations_lock;self.auth['python']=copy.deepcopy(PYTHON_PINS)
+        original_protected=self.base.root_protected
+        def protected(path,regular=False):
+            if Path(path)==PYTHON_PATH:
+                st=PYTHON_PATH.lstat();check(stat.S_ISREG(st.st_mode)and st.st_uid==0 and not st.st_mode&0o022,'real root Python executable required');return
+            return original_protected(path,regular=regular)
+        self.base.root_protected=protected
         self.firstfile=root/'original-pre-drain-approval.json'
-        self.first={'format':1,'kind':'ADMIN_REVIEWED_CI_WORKER_DRAIN_PINS','policy':ci.POLICY,'target':'alpha-staging','issuedAt':'2026-11-17T00:00:00Z','expiresAt':'2026-11-17T00:00:04Z',**{k:self.auth[k]for k in ['identity','helperSha256','nodeSha256','lease','leaseFileSha256','sourceManifestSha256','environmentSha256','dotenvSha256','readiness']},'gate':{k:self.grant[k]for k in ['source','controller','runId','build','artifact','witnessFingerprint','policyVersion']},'releaseAuthorized':False}
+        self.first={'format':1,'kind':'ADMIN_REVIEWED_CI_WORKER_DRAIN_PINS','policy':ci.POLICY,'target':'alpha-staging','issuedAt':'2026-11-17T00:00:00Z','expiresAt':'2026-11-17T00:00:04Z',**{k:self.auth[k]for k in ['identity','helperSha256','nodeSha256','lease','leaseFileSha256','sourceManifestSha256','environmentSha256','dotenvSha256','readiness','operationsLock','leaseFile','coordinatorSha256','python']},'gate':{k:self.grant[k]for k in ['source','controller','runId','build','artifact','witnessFingerprint','policyVersion']},'releaseAuthorized':False}
         self.firstfile.write_bytes(encoded(self.first));self.firstfile.chmod(0o600);self.auth.update(firstStageApproval=str(self.firstfile),firstStageApprovalSha256=ci.sha(self.firstfile.read_bytes()))
         self.store={'format':1,'installId':self.install_id,'directory':{'device':st.st_dev,'inode':st.st_ino},'packetDirectory':{'device':st.st_dev,'inode':(self.directory/'packet').stat().st_ino}}
         (self.directory/'store.json').write_bytes(encoded(self.store));(self.directory/'store.json').chmod(0o600)
@@ -82,73 +110,162 @@ class Fixture(old.UpgradeFlowFixture):
         if phase=='O':self.current['result']='ok'
         self.write_records()
     def begin_cleanup(self):
-        self.finish();self.cleanup_arrival_pending=True
-        audit=self.directory/'audit';audit.mkdir(mode=0o700);(audit/'bytes').mkdir(mode=0o700)
-        # Same real ordering as retainNormalCleanupAudit -> durable marker -> packet/retained removal.
-        (audit/'source-contract-retained').write_text('original frozen source/provenance audit bytes')
-        c={'format':1,'kind':'OWNED_CI_INSTALL_CLEANUP_AFTER_VERIFIED_ARRIVAL','sourceDirectory':str(self.webroot),'source':self.source,'installId':self.install_id,'buildRecordId':self.build_record,'nextBuildId':self.new_build,'authorizationSha256':self.auth['grantSha256'],'witnessFingerprint':self.grant['witnessFingerprint'],'directory':self.store['directory'],'activeDirectory':self.activated['activation']['activeDirectory'],'retainedDirectory':self.activated['activation']['retainedDirectory'],'packetDirectory':self.store['packetDirectory'],'sourceProof':{'format':1,'kind':'OPERATOR_OBSERVED_SOURCE_CHECKSUM_FOR_OWNED_CLEANUP','source':self.source,'installId':self.install_id,'buildRecordId':self.build_record,'nextBuildId':self.new_build,'authorizationSha256':self.auth['grantSha256'],'witnessFingerprint':self.grant['witnessFingerprint'],'outputSha256':ci.sha(b''),'checkedAt':'2026-11-17T00:00:08.999Z'},'sourceProofSha256':'recomputed below','authorizedAt':'2026-11-17T00:00:09.000Z'}
-        c['sourceProofSha256']=ci.sha(ci.canonical(c['sourceProof']))
-        (self.directory/'cleanup-authorized.json').write_bytes(encoded(c));(self.directory/'cleanup-authorized.json').chmod(0o600)
-        shutil.rmtree(self.directory/'packet');self.cleanup_failures=1
-    def native(self,argv,identity,environment,**options):
-        check(identity.pw_uid==self.owner.pw_uid and identity.pw_uid>0,'native command did not drop root')
-        check(environment['HOME']==str(self.home) and environment['AIHR_STAGING_TOKEN']==self.lease['token'],'native controlled identity/lease environment differs')
-        if argv[0]=='/usr/bin/python3':return {'releaseAuthorized':False,**self.auth['lease'],'phase':self.held_phase}
-        if '-e' in argv:
-            check(argv==[str(self.node),'--env-file=.env.production','-e',ci.READINESS_PROBE],'fixed native readiness probe changed')
-            env=dict(line.split('=',1)for line in (self.webroot/'.env.production').read_text().splitlines())
-            return {'kind':'CI_WORKER_READINESS_POLICY_V1',**(self.probe_override or {'required':env.get('AIHR_IMPORT_WORKER_REQUIRED'),'waitSeconds':env.get('AIHR_IMPORT_WORKER_WAIT_SECONDS')})}
-        check(argv==[str(self.node),'--env-file=.env.production','--import','tsx','.github/ci/staging-build-install.mjs','status',self.source,self.install_id,self.build_record],'native status selection/argv differs')
-        self.native_calls+=1
-        if self.finish_at==self.native_calls:self.finish()
-        if self.arrive_at==self.native_calls:self.finish();self.held_phase='arrived'
-        if self.lease_backslide_at==self.native_calls:self.held_phase='installing'
-        if self.cleanup_at==self.native_calls:self.begin_cleanup()
-        marker=self.directory/'cleanup-authorized.json'
-        if marker.exists() and json.loads(marker.read_bytes()).get('kind')!='OWNED_CI_INSTALL_CLEANUP_AFTER_VERIFIED_ARRIVAL':raise ValueError('native cleanup authority invalid')
-        if self.cleanup_failures or (self.cleanup_persistent and marker.exists()):
-            self.cleanup_failures=max(0,self.cleanup_failures-1);raise ValueError('native sourceContract selected packet before normal cleanup removed it')
-        if self.fault_at==self.native_calls:
+        self.finish()
+        # External native normal-session ordering: retain exact original audit bytes, READY,
+        # checksum COMMIT, authorization, consumed nonce, owned deletion, result, then arrived.
+        self.private_record('normal-cleanup.lock',{'source':self.source,'installId':self.install_id,'pid':777});self.observe_native_cleanup('lock-held')
+        self.retain_audit_native()
+        self.observe_native_cleanup('original-audit-retained')
+        selection={'source':self.source,'installId':self.install_id,'buildRecordId':self.build_record,'nextBuildId':self.new_build,'authorizationSha256':self.auth['grantSha256']}
+        ready={'format':1,'kind':'NORMAL_VALID_GRANT_CLEANUP_READY','selection':selection,'nonce':'a'*64,'fencesSha256':'b'*64,'readyAt':'2026-11-17T00:00:08.000Z'}
+        proof={'format':1,'kind':'OPERATOR_OBSERVED_SOURCE_CHECKSUM_FOR_OWNED_CLEANUP',**selection,'witnessFingerprint':self.grant['witnessFingerprint'],'outputSha256':ci.sha(b''),'checkedAt':'2026-11-17T00:00:08.999Z'}
+        commit={'format':1,'kind':'NORMAL_VALID_GRANT_CLEANUP_COMMIT','readySha256':ci.sha(ci.canonical(ready)),'nonce':ready['nonce'],'proof':proof}
+        authority={'format':1,'kind':'OWNED_CI_INSTALL_CLEANUP_AFTER_VERIFIED_ARRIVAL','sourceDirectory':str(self.webroot),**selection,'witnessFingerprint':self.grant['witnessFingerprint'],'directory':self.store['directory'],'activeDirectory':self.activated['activation']['activeDirectory'],'retainedDirectory':self.activated['activation']['retainedDirectory'],'packetDirectory':self.store['packetDirectory'],'sourceProof':proof,'sourceProofSha256':ci.sha(ci.canonical(proof)),'authorizedAt':'2026-11-17T00:00:09.000Z'}
+        for name,value in [('normal-cleanup-ready.json',ready),('normal-cleanup-commit.json',commit),('cleanup-authorized.json',authority),('normal-cleanup-consumed.json',{'kind':'NORMAL_CLEANUP_NONCE_CONSUMED','readySha256':ci.sha(ci.canonical(ready))})]:
+            self.private_record(name,value);self.observe_native_cleanup(name)
+        if self.cleanup_intent_fault:
+            intent={'format':1,'kind':'OWNED_INSTALL_CLEANUP_INTENT','authoritySha256':ci.sha((self.directory/'cleanup-authorized.json').read_bytes()),'directory':self.store['directory'],'children':['next','packet']}
+            if self.cleanup_intent_fault=='hash':intent['authoritySha256']='0'*64
+            if self.cleanup_intent_fault=='directory':intent['directory']={**intent['directory'],'inode':intent['directory']['inode']+1}
+            if self.cleanup_intent_fault=='child-order':intent['children']=['packet','next']
+            self.private_record('cleanup-intent.json',intent)
+        original_publish=owned_cleanup.publish;original_remove=shutil.rmtree
+        def publish(fd,name,value):
+            original_publish(fd,name,value);self.observe_native_cleanup(name)
+        def remove(name,*args,**kwargs):
+            original_remove(name,*args,**kwargs);self.observe_native_cleanup('removed-'+str(name))
+        # Actual descriptor-relative native intent/identity/deletion/result owner, not copied cleanup logic.
+        remove.avoids_symlink_attacks=original_remove.avoids_symlink_attacks
+        with patch.object(owned_cleanup,'publish',side_effect=publish),patch.object(owned_cleanup.shutil,'rmtree',remove):
+            result=owned_cleanup.cleanup_install(str(self.directory),str(self.webroot))
+        self.private_record('normal-cleanup-owned-cleanup.json',result);self.observe_native_cleanup('normal-session-result')
+        (self.directory/'normal-cleanup.lock').unlink();self.observe_native_cleanup('lock-released');self.held_phase='arrived'
+    def retain_audit_native(self):
+        # The actual native retain owner checks the retained baseline and copies exact wx audit records.
+        program="import{readFileSync}from'node:fs';import{join}from'node:path';import{retainNormalCleanupAudit}from'./.github/ci/staging-build-install.mjs';const d=process.argv[1];retainNormalCleanupAudit({directory:d,packet:join(d,'packet'),next:join(d,'next'),grant:JSON.parse(readFileSync(join(d,'authorization.json')))},JSON.parse(readFileSync(join(d,'activated.json'))));"
+        subprocess.run(['node','--input-type=module','-e',program,str(self.directory)],cwd=ROOT,capture_output=True,text=True,check=True,timeout=15)
+    def start_partial_ready(self):
+        self.finish();self.private_record('normal-cleanup.lock',{'source':self.source,'installId':self.install_id,'pid':777});self.retain_audit_native()
+        selection={'source':self.source,'installId':self.install_id,'buildRecordId':self.build_record,'nextBuildId':self.new_build,'authorizationSha256':self.auth['grantSha256']}
+        ready={'format':1,'kind':'NORMAL_VALID_GRANT_CLEANUP_READY','selection':selection,'nonce':'a'*64,'fencesSha256':'b'*64,'readyAt':'2026-11-17T00:00:08.000Z'}
+        raw=encoded(ready);leaf=self.directory/'normal-cleanup-ready.json';fd=os.open(leaf,os.O_WRONLY|os.O_CREAT|os.O_EXCL,0o600);split=len(raw)//2;os.write(fd,raw[:split]);self.pending_publication=(fd,raw[split:])
+    def sleep_port(self,seconds):
+        if self.stability_overrun and seconds==4:self.monotonic_offset+=25
+        if self.pending_publication and seconds==.02:
+            self.publication_sleeps+=1
+            if self.pending_defect=='deadline':self.monotonic_offset+=21;return
+            if self.pending_defect=='lease':self.held_phase='accepting';return
+            fd,tail=self.pending_publication;os.write(fd,tail);os.fsync(fd);os.close(fd);self.pending_publication=None
+    def observe_native_cleanup(self,stage):
+        if self.observe_cleanup:
+            observed=ci.ACTIVE_OPERATION_GUARD.observer.private_fence()
+            self.cleanup_observations.append({'stage':stage,'members':observed['members'],'removed':observed['removed']})
+    def private_record(self,name,value):
+        leaf=self.directory/name;leaf.write_bytes(encoded(value));leaf.chmod(0o600)
+    def boundary(self,kind,count):
+        if self.finish_on==(kind,count) or kind=='fast' and self.finish_at==count:self.finish()
+        if kind!='fast':return
+        if self.cache_fault and count==6:
+            if self.cache_fault=='cache-child':(self.webroot/'.next/cache/new-child').mkdir();(self.webroot/'.next/cache/new-child/data').write_text('legitimate runtime cache')
+            if self.cache_fault=='compiled-sibling':(self.webroot/'.next/server.js').write_text('changed compiled bytes')
+            if self.cache_fault=='cache-replaced':
+                shutil.rmtree(self.webroot/'.next/cache');(self.webroot/'.next/cache').mkdir(mode=0o700)
+        if self.partial_ready_at==count:self.start_partial_ready()
+        if self.advance_at==count:self.clock+=self.advance_seconds
+        if self.deadline_at==count:self.monotonic_offset+=21
+        if self.arrive_at==count:self.finish();self.held_phase='arrived'
+        if self.lease_backslide_at==count:self.held_phase='installing'
+        if self.cleanup_at==count:self.begin_cleanup()
+        if self.fault_at==count:
             if self.native_fault=='failed':self.current['result']='failed';self.write_records()
             elif self.native_fault=='source':(self.webroot/'source-000').write_text('drift after launch')
             elif self.native_fault=='lease-inode':
                 p=self.root/'replacement-lease';p.write_bytes(self.leasefile.read_bytes());p.chmod(0o600);os.replace(p,self.leasefile)
             elif self.native_fault=='backslide':self.current.update(result='',exit_code='');self.current.pop('finished_at',None);self.prior={'ref':self.previous_web,'pid':'666','log':'/private/previous-deploy.log','started_at':'2026-11-16T00:00:00Z','phase':'restart','result':'','exit_code':'0','build_id':self.old_build,'built_at':'2026-11-16T00:01:00Z','finished_at':'2026-11-16T00:02:00Z'};self.write_records()
-        if self.cleanup_arrival_pending:self.held_phase='arrived';self.cleanup_arrival_pending=False
-        result={'authorizationSha256':self.auth['grantSha256'],'releaseAuthorized':False,'runtime':copy.deepcopy(self.runtime),'verified':{},'activated':copy.deepcopy(self.activated)}
-        result['runtime']['migrationLedger']['verifiedAt']='2026-11-17T00:00:%02d.000Z'%self.native_calls
-        result['runtime']['verifiedAt']='2026-11-17T00:00:%02d.001Z'%self.native_calls
-        if self.native_fault in ['ledger-extra','ledger-missing','ledger-time','runtime-time','ledger-time-order']:
-            ledger=result['runtime']['migrationLedger']
-            if self.native_fault=='ledger-extra':ledger['unknown']=True
-            if self.native_fault=='ledger-missing':ledger.pop('verifiedAt')
-            if self.native_fault=='ledger-time':ledger['verifiedAt']='not-a-time'
-            if self.native_fault=='runtime-time':result['runtime']['verifiedAt']='not-a-time'
-            if self.native_fault=='ledger-time-order':ledger['verifiedAt']='2026-11-17T00:00:59.000Z'
-        if self.native_fault in ['pid','ledger','compiled','wrong-install','environment-proof']:
-            if self.native_fault=='pid':result['runtime']['pid']='1000'
-            if self.native_fault=='ledger':result['runtime']['migrationLedger']['actualSha256']='0'*64
-            if self.native_fault=='compiled':result['runtime']['compiledByteInventory']['format']=1
-            if self.native_fault=='wrong-install':result['runtime']['installId']='different'
-            if self.native_fault=='environment-proof':raise ValueError('native full environment proof differs')
+    def timestamp(self):return ci.datetime.fromtimestamp(self.clock,ci.timezone.utc).isoformat(timespec='milliseconds').replace('+00:00','Z')
+    def native(self,argv,identity,environment,**options):
+        check(identity.pw_uid==self.owner.pw_uid and identity.pw_uid>0,'native command did not drop root')
+        check(environment['HOME']==str(self.home) and environment['AIHR_STAGING_TOKEN']==self.lease['token'],'native controlled identity/lease environment differs')
+        if argv[:2]==[PYTHON_PINS['path'],'-c']:
+            check(argv==[PYTHON_PINS['path'],'-c',"import json,sys;print(json.dumps({'version':'.'.join(map(str,sys.version_info[:3])),'safePath':sys.flags.safe_path,'noUserSite':sys.flags.no_user_site}))"],'fixed Python runtime probe changed')
+            check(environment.get('PYTHONNOUSERSITE')=='1' and environment.get('PYTHONSAFEPATH')=='1','fixed Python isolation environment required')
+            return {'version':PYTHON_PINS['version'],'safePath':True,'noUserSite':1}
+        if argv[0]=='/usr/bin/python3':
+            check(argv==['/usr/bin/python3',str(self.coordinator)],'native coordinator command changed')
+            request=json.loads(options['input']);check(request['action']=='assert' and all(request[k]==self.lease[k]for k in self.lease),'native lease selection differs')
+            fd=options.get('operation_fd')
+            if fd is None and ci.ACTIVE_OPERATION_GUARD is not None:fd=ci.ACTIVE_OPERATION_GUARD.lock.fd
+            check(fd is not None and any('FLOCK' in line and 'READ' in line for line in Path('/proc/self/fdinfo/'+str(fd)).read_text().splitlines()),'coordinator lacks genuine inherited queue SH')
+            return {'releaseAuthorized':False,**self.auth['lease'],'phase':self.held_phase}
+        if argv==[str(self.node),'--env-file=.env.production','-e',ci.READINESS_PROBE]:
+            env=dict(line.split('=',1)for line in (self.webroot/'.env.production').read_text().splitlines())
+            return {'kind':'CI_WORKER_READINESS_POLICY_V1',**(self.probe_override or {'required':env.get('AIHR_IMPORT_WORKER_REQUIRED'),'waitSeconds':env.get('AIHR_IMPORT_WORKER_WAIT_SECONDS')})}
+        if '-e' in argv:
+            check(argv==[str(self.node),'--env-file=.env.production','--input-type=module','-e',ci.FAST_PROBE,str(self.directory)],'fixed complete fresh probe changed')
+            self.fast_calls+=1;self.boundary('fast',self.fast_calls)
+            return {'kind':'CI_WORKER_COMPLETE_FENCE_V2','pid':self.auth['webPid'],'startedMonotonicUs':self.auth['webStartedMonotonicUs'],'bootId':self.boot.read_text(),'build':self.new_build,'environmentSha256':self.auth['environmentSha256'],'migrationLedger':{**self.ledger,'verifiedAt':self.timestamp()},'healthStatus':200,'readiness':self.probe_override or self.auth['readiness']}
+        check(argv==[str(self.node),'--env-file=.env.production','--import','tsx','.github/ci/staging-build-install.mjs','status',self.source,self.install_id,self.build_record],'native status selection/argv differs')
+        self.native_calls+=1;self.boundary('audit',self.native_calls)
+        if self.native_failure_at==self.native_calls:raise ValueError('genuine native compiled byte integrity failed')
+        result={'authorizationSha256':self.auth['grantSha256'],'releaseAuthorized':False,'runtime':copy.deepcopy(self.runtime),'verified':copy.deepcopy(self.verified),'activated':copy.deepcopy(self.activated)}
+        result['runtime']['migrationLedger']['verifiedAt']=self.timestamp();result['runtime']['verifiedAt']=self.timestamp()
+        fault=self.final_native_fault if self.native_calls==2 else self.native_fault
+        ledger=result['runtime']['migrationLedger']
+        if fault=='ledger-extra':ledger['unknown']=True
+        if fault=='ledger-missing':ledger.pop('verifiedAt')
+        if fault=='ledger-time':ledger['verifiedAt']='not-a-time'
+        if fault=='runtime-time':result['runtime']['verifiedAt']='not-a-time'
+        if fault=='ledger-time-order':ledger['verifiedAt']='2026-11-17T00:00:59.000Z'
+        if fault=='pid':result['runtime']['pid']='1000'
+        if fault=='ledger':ledger['actualSha256']='0'*64
+        if fault=='compiled':result['runtime']['compiledByteInventory']['format']=1
+        if fault=='wrong-install':result['runtime']['installId']='different'
+        if fault=='environment-proof':raise ValueError('native full environment proof differs')
+        if fault=='unknown-runtime':result['runtime']['extraTimestamp']='2026-11-17T00:00:10.000Z'
         return result
+    def command(self,argv,**options):
+        if argv==['/usr/bin/systemctl','show','aihr-bank-import.service','--property=ControlGroup','--value']:
+            return SimpleNamespace(stdout='/system.slice/aihr-bank-import.service\n')
+        try:return super().command(argv)
+        finally:
+            if argv==['/usr/bin/systemctl','start','aihr-bank-import.service']:
+                process=self.proc/self.report['MainPID'];process.mkdir(exist_ok=True)
+                (process/'cwd').symlink_to(self.app/'releases'/self.source)
+                (process/'cmdline').write_bytes(str(self.node).encode()+b'\0--import\0tsx\0scripts/bank-import-runner.ts\0')
+                (process/'status').write_text('Uid:\t'+'\t'.join([str(self.owner.pw_uid)]*4)+'\n')
+                (process/'cgroup').write_text('0::/system.slice/aihr-bank-import.service\n')
+                ticks=int(time.monotonic()*os.sysconf('SC_CLK_TCK'))+1
+                (process/'stat').write_text(self.report['MainPID']+' (owned worker) '+' '.join(['S']+['0']*18+[str(ticks)]))
     @contextlib.contextmanager
     def ports(self):
-        original_fstat=os.fstat
+        original_fstat=os.fstat;original_monotonic=time.monotonic
+        root_files={self.authorization,self.leasefile,self.firstfile,self.root/'install.lock'}
+        def protected_stat(fd):
+            info=original_fstat(fd)
+            # Only administrator-private credentials/install EX emulate the root privilege boundary.
+            # Queue locks, real metadata-tree descriptors and install-owner records retain every actual field.
+            target=Path(os.readlink('/proc/self/fd/'+str(fd)))
+            if target not in root_files:return info
+            fields={name:getattr(info,name)for name in dir(info)if name.startswith('st_')}
+            fields['st_uid']=0;return SimpleNamespace(**fields)
         with ExitStack() as s:
-            for name,value in [('SOURCE',self.webroot),('STATE',self.state),('COORDINATOR',self.coordinator),('BOOT_ID',self.boot),('PROCESS_ROOT',self.proc)]:s.enter_context(patch.object(ci,name,value))
-            s.enter_context(patch.object(ci,'child',side_effect=self.native));s.enter_context(patch.object(ci.pwd,'getpwuid',return_value=self.owner))
-            s.enter_context(patch.object(ci.time,'time',return_value=1794873610));s.enter_context(patch.object(update.time,'sleep'))
+            for name,value in [('SOURCE',self.webroot),('STATE',self.state),('COORDINATOR',self.coordinator),('BOOT_ID',self.boot),('PROCESS_ROOT',self.proc),('RUNTIME_ROOT',self.runtime_root),('FENCES',fences)]:s.enter_context(patch.object(ci,name,value))
+            s.enter_context(patch.object(guard,'QUEUE',self.queue));s.enter_context(patch.object(guard,'LOCK',self.queue_lock))
+            s.enter_context(patch.object(ci,'child',side_effect=self.native));s.enter_context(patch.object(ci.pwd,'getpwuid',return_value=self.owner));s.enter_context(patch.object(ci.pwd,'getpwnam',return_value=self.owner))
+            s.enter_context(patch.object(ci.time,'time',side_effect=lambda:self.clock));s.enter_context(patch.object(ci.time,'monotonic',side_effect=lambda:original_monotonic()+self.monotonic_offset))
+            s.enter_context(patch.object(update.time,'sleep',side_effect=self.sleep_port))
             s.enter_context(patch.object(sys,'argv',[str(self.helper)]))
-            s.enter_context(patch.object(update.os,'geteuid',return_value=0))
-            s.enter_context(patch.object(update.os,'fstat',side_effect=lambda fd:SimpleNamespace(st_mode=original_fstat(fd).st_mode,st_uid=0,st_nlink=1,st_dev=original_fstat(fd).st_dev,st_ino=original_fstat(fd).st_ino)))
+            s.enter_context(patch.object(update.os,'geteuid',return_value=0));s.enter_context(patch.object(update.os,'fstat',side_effect=protected_stat))
             s.enter_context(patch.object(update,'properties',side_effect=lambda _:dict(self.report)))
             s.enter_context(patch.object(update,'HTTPConnection',side_effect=self.health_connection))
             s.enter_context(patch.object(update,'validate_process',side_effect=lambda _,report,source:int(report['MainPID'])))
+            self.base.service_properties=lambda:dict(self.report)
             yield
     def conditional(self):
-        args=self.args('activate-ci-runtime',{'ci-runtime-authorization':str(self.authorization),'ci-runtime-authorization-sha256':ci.sha(self.authorization.read_bytes())})
-        with self.ports(),contextlib.redirect_stdout(io.StringIO()),contextlib.redirect_stderr(io.StringIO()):update.upgrade(args,self.fmt,self.base,ci)
+        with self.ports(),contextlib.redirect_stdout(io.StringIO()),contextlib.redirect_stderr(io.StringIO()):
+            try:guard.launch(['guarded-activate-ci-runtime','--approval',str(self.authorization),'--approval-sha256',ci.sha(self.authorization.read_bytes())],self.fmt,self.base,ci,update)
+            finally:
+                if self.pending_publication:os.close(self.pending_publication[0]);self.pending_publication=None
 
 class ConditionalRuntimeTests(unittest.TestCase):
     def test_fixture_original_grant_obeys_the_real_native_closed_validator(self):
@@ -159,11 +276,13 @@ class ConditionalRuntimeTests(unittest.TestCase):
     def test_running_ci_retains_old_last_ok_and_honest_partial_receipt(self):
         with tempfile.TemporaryDirectory()as tmp:
             f=Fixture(Path(tmp));old_last=(f.state/'last-ok').read_bytes();environment=f.env.read_bytes();dotenv=(f.webroot/'.env.production').read_bytes();f.conditional()
-            r=json.loads((f.operation/'activated.json').read_text());self.assertEqual(r['mode'],'activate-ci-runtime');self.assertFalse(r['journeyVerified']);self.assertEqual(set(r['transitionStages']),{'R0'});self.assertEqual((f.state/'last-ok').read_bytes(),old_last);self.assertEqual(f.env.read_bytes(),environment);self.assertEqual((f.webroot/'.env.production').read_bytes(),dotenv)
-    def test_normal_finish_can_complete_at_every_prestart_and_three_four_second_observation(self):
-        for call in range(1,10):
-            with self.subTest(native_call=call),tempfile.TemporaryDirectory()as tmp:
-                f=Fixture(Path(tmp));f.finish_at=call;f.conditional();r=json.loads((f.operation/'activated.json').read_text());self.assertEqual(r['transitionStages'][-1],'O');self.assertFalse(r['journeyVerified']);self.assertEqual(f.current['result'],'ok')
+            r=json.loads((f.operation/'activated.json').read_text());self.assertEqual(r['mode'],'activate-ci-runtime');self.assertFalse(r['journeyVerified']);self.assertEqual(set(r['transitionStages']),{'R0'});self.assertEqual((f.native_calls,f.fast_calls),(2,10));self.assertEqual((r['fullNativeAudits'],r['completeMetadataFences']),(2,10));self.assertEqual(len(list(f.operation.glob('ci-runtime-full-audit-*.json'))),2);self.assertEqual(len(list(f.operation.glob('ci-runtime-fence-*.json'))),10);self.assertEqual((f.state/'last-ok').read_bytes(),old_last);self.assertEqual(f.env.read_bytes(),environment);self.assertEqual((f.webroot/'.env.production').read_bytes(),dotenv)
+    def test_normal_finish_can_complete_at_all_ten_fences_and_exactly_two_audits(self):
+        for kind,total in [('fast',10),('audit',2)]:
+            for call in range(1,total+1):
+                with self.subTest(kind=kind,call=call),tempfile.TemporaryDirectory()as tmp:
+                    f=Fixture(Path(tmp));f.finish_on=(kind,call);f.conditional();r=json.loads((f.operation/'activated.json').read_text())
+                    self.assertEqual(r['transitionStages'][-1],'O');self.assertFalse(r['journeyVerified']);self.assertEqual(f.current['result'],'ok');self.assertEqual((f.native_calls,f.fast_calls),(2,10))
     def test_coherent_native_r1_publication_then_ok_is_monotonic(self):
         with tempfile.TemporaryDirectory()as tmp:
             f=Fixture(Path(tmp));f.finish('R1');f.finish_at=2;f.conditional();r=json.loads((f.operation/'activated.json').read_text());self.assertEqual(r['transitionStages'][0],'R1');self.assertEqual(r['transitionStages'][-1],'O')
@@ -171,7 +290,7 @@ class ConditionalRuntimeTests(unittest.TestCase):
         with tempfile.TemporaryDirectory()as tmp:
             f=Fixture(Path(tmp));f.finish();f.conditional();self.assertEqual(set(json.loads((f.operation/'activated.json').read_text())['transitionStages']),{'O'})
     def test_same_lease_arrives_and_normal_cleanup_crosses_every_native_boundary(self):
-        for boundary in range(1,10):
+        for boundary in range(1,11):
             for cleanup in [False,True]:
                 with self.subTest(boundary=boundary,cleanup=cleanup),tempfile.TemporaryDirectory()as tmp:
                     f=Fixture(Path(tmp))
@@ -179,7 +298,7 @@ class ConditionalRuntimeTests(unittest.TestCase):
                     else:f.arrive_at=boundary
                     f.conditional();r=json.loads((f.operation/'activated.json').read_text());self.assertEqual(r['transitionStages'][-1],'O');self.assertEqual(r['leasePhases'][-1],'arrived');self.assertFalse(r['journeyVerified'])
                     if cleanup:
-                        retries=list(f.operation.glob('ci-runtime-native-retry-*.json'));self.assertTrue(retries);self.assertEqual(json.loads(retries[0].read_bytes())['leasePhase'],'installing');self.assertFalse((f.directory/'packet').exists())
+                        self.assertFalse(list(f.operation.glob('ci-runtime-native-retry-*.json')));self.assertFalse((f.directory/'packet').exists());self.assertFalse((f.directory/'next').exists());self.assertEqual((f.native_calls,f.fast_calls),(2,10))
     def test_arrived_requires_strict_ok_and_lease_never_backslides(self):
         for stage in ['R0','R1','wrong-build']:
             with self.subTest(stage=stage),tempfile.TemporaryDirectory()as tmp:
@@ -187,17 +306,20 @@ class ConditionalRuntimeTests(unittest.TestCase):
                 if stage=='R1':f.finish('R1')
                 if stage=='wrong-build':f.finish();(f.webroot/'.next/BUILD_ID').write_text('other-build')
                 with self.assertRaises(ValueError):f.conditional()
-                self.assertFalse((f.app/'releases'/f.source).exists())
+                self.assertFalse((f.operation/'activated.json').exists())
         with tempfile.TemporaryDirectory()as tmp:
             f=Fixture(Path(tmp));f.arrive_at=1;f.lease_backslide_at=6
             with self.assertRaises(RuntimeError):f.conditional()
             self.assertFalse((f.operation/'activated.json').exists());self.assertEqual(f.report['Restart'],'no')
-    def test_persistent_normal_cleanup_failure_requires_quarantine_not_a_waiver(self):
-        with tempfile.TemporaryDirectory()as tmp:
-            f=Fixture(Path(tmp));f.cleanup_at=6;f.cleanup_persistent=True
-            with self.assertRaises(RuntimeError):f.conditional()
-            self.assertEqual(f.native_calls,8);self.assertFalse((f.operation/'activated.json').exists());self.assertEqual(f.report['Restart'],'no')
-    def test_wrong_expired_missing_and_late_grant_or_authority_refuse_before_package_or_unit_mutation(self):
+    def test_native_byte_failure_during_legal_cleanup_is_fatal_without_retry(self):
+        for audit in (1,2):
+            with self.subTest(audit=audit),tempfile.TemporaryDirectory()as tmp:
+                f=Fixture(Path(tmp));f.cleanup_at=1 if audit==1 else 6;f.native_failure_at=audit;before=f.unit.read_bytes()
+                with self.assertRaisesRegex(ValueError if audit==1 else RuntimeError,'native compiled byte|retained packages|Retained packages'):f.conditional()
+                self.assertEqual(f.native_calls,audit);self.assertFalse(list(f.operation.glob('ci-runtime-native-retry-*.json')));self.assertFalse((f.operation/'activated.json').exists())
+                if audit==1:self.assertEqual(f.unit.read_bytes(),before)
+                else:self.assertEqual(f.report['Restart'],'no');self.assertEqual(f.report['SendSIGKILL'],'no')
+    def test_wrong_expired_missing_and_late_authority_refuses_before_unit_or_service_mutation(self):
         for defect in ['authority-expired','unknown-authority','grant-expired','late-grant','wrong-run','wrong-controller','wrong-install','wrong-directory','wrong-inode','wrong-owner','wrong-drain','missing-grant','environment','worker-env','node','boot','manifest','extra-source','missing-source','source-mode','foreign-lease','pending','failed','dead-pid','wrong-launch','wrong-last-ok','world-readable-lease','symlink-lease','unknown-launch','unknown-ledger','unknown-grant','unknown-build','cleaned-install','unknown-current','unknown-last-ok','filter-drift','wrong-first-gate','wrong-first-artifact','wrong-first-helper','postdated-first-approval','expired-at-drain','world-readable-first-approval','first-web-env','first-dotenv','first-readiness','bad-readiness']:
             with self.subTest(defect=defect),tempfile.TemporaryDirectory()as tmp:
                 f=Fixture(Path(tmp));before=f.unit.read_bytes()
@@ -232,7 +354,7 @@ class ConditionalRuntimeTests(unittest.TestCase):
                     actual=f.root/'actual-lease';os.rename(f.leasefile,actual);f.leasefile.symlink_to(actual)
                 if defect=='unknown-launch':f.auth['launch']['selfApproved']=True
                 if defect=='unknown-ledger':f.auth['ledger']['subset']=True
-                if defect in ['unknown-grant','unknown-build','cleaned-install','unknown-current','unknown-last-ok','filter-drift','wrong-first-gate','wrong-first-artifact','wrong-first-helper','postdated-first-approval','expired-at-drain','world-readable-first-approval','first-web-env','first-dotenv','first-readiness','bad-readiness']:
+                if defect in ['unknown-grant','unknown-build']:
                     target=f.grant if defect=='unknown-grant' else f.grant['build'];target['extra']=True;(f.directory/'authorization.json').write_bytes(encoded(f.grant));f.auth['grantSha256']=ci.sha(encoded(f.grant))
                 if defect=='cleaned-install':(f.directory/'cleanup-authorized.json').write_text('{}')
                 if defect=='unknown-current':f.current['unapproved']='extra';f.auth['launch']['current']['unapproved']='extra';f.write_records()
@@ -257,20 +379,20 @@ class ConditionalRuntimeTests(unittest.TestCase):
                 if defect=='bad-readiness':f.auth['readiness']={'required':'1','waitSeconds':'45'}
                 f.persist_authority()
                 with self.assertRaises((ValueError,FileNotFoundError,KeyError)):f.conditional()
-                self.assertEqual(f.unit.read_bytes(),before);self.assertFalse((f.app/'releases'/f.source).exists());self.assertFalse((f.operation/'activated.json').exists())
+                self.assertEqual(f.unit.read_bytes(),before);self.assertFalse((f.operation/'activated.json').exists());self.assertFalse((f.operation/'activated.json').exists())
     def test_fresh_native_proof_refuses_pid_ledger_compiled_install_and_full_environment_drift(self):
-        for defect in ['pid','ledger','compiled','wrong-install','environment-proof','ledger-extra','ledger-missing','ledger-time','runtime-time','ledger-time-order']:
+        for defect in ['pid','ledger','compiled','wrong-install','environment-proof','ledger-extra','ledger-missing','ledger-time','runtime-time','ledger-time-order','unknown-runtime']:
             with self.subTest(defect=defect),tempfile.TemporaryDirectory()as tmp:
                 f=Fixture(Path(tmp));f.native_fault=defect
                 with self.assertRaises(ValueError):f.conditional()
-                self.assertFalse((f.app/'releases'/f.source).exists());self.assertFalse((f.operation/'activated.json').exists())
+                self.assertFalse((f.operation/'activated.json').exists());self.assertFalse((f.operation/'activated.json').exists())
     def test_deploy_failure_or_source_drift_after_worker_start_uses_existing_quarantine(self):
         for defect in ['failed','source','backslide']:
             with self.subTest(defect=defect),tempfile.TemporaryDirectory()as tmp:
                 f=Fixture(Path(tmp));f.fault_at=6;f.native_fault=defect
                 if defect=='backslide':f.finish_at=1
                 with self.assertRaisesRegex(RuntimeError,'retained packages|Retained packages'):f.conditional()
-                self.assertTrue((f.operation/'activation-failure-observation.json').exists());self.assertFalse((f.operation/'activated.json').exists());self.assertEqual(f.report['Restart'],'no');self.assertEqual(f.report['SendSIGKILL'],'no');self.assertEqual(f.report['UnitFileState'],'disabled')
+                self.assertTrue((f.operation/'ci-worker-started.json').exists());self.assertTrue((f.operation/'ci-worker-quarantine-authority.json').exists());self.assertFalse((f.operation/'activated.json').exists());self.assertEqual(f.report['Restart'],'no');self.assertEqual(f.report['SendSIGKILL'],'no');self.assertEqual(f.report['UnitFileState'],'disabled');self.assertEqual(f.report['MainPID'],'0');self.assertEqual(f.report['ActiveState'],'inactive')
     def test_conditional_authority_cannot_be_reused_or_passed_to_normal_modes(self):
         with tempfile.TemporaryDirectory()as tmp:
             f=Fixture(Path(tmp));f.conditional()
@@ -280,8 +402,8 @@ class ConditionalRuntimeTests(unittest.TestCase):
     def test_changed_lease_inode_is_refused_before_unit_replacement(self):
         with tempfile.TemporaryDirectory()as tmp:
             f=Fixture(Path(tmp));f.fault_at=1;f.native_fault='lease-inode';before=f.unit.read_bytes()
-            with self.assertRaisesRegex(ValueError,'credential identity'):f.conditional()
-            self.assertEqual(f.unit.read_bytes(),before);self.assertFalse((f.app/'releases'/f.source).exists())
+            with self.assertRaisesRegex(ValueError,'lease inode/content|credential identity'):f.conditional()
+            self.assertEqual(f.unit.read_bytes(),before);self.assertFalse((f.operation/'activated.json').exists())
     def test_native_output_and_silent_runtime_have_hard_streaming_and_time_bounds(self):
         for stream in ['stdout','stderr']:
             with patch.object(ci,'MAX_NATIVE_STDOUT',256),patch.object(ci,'MAX_NATIVE_STDERR',256):
@@ -309,10 +431,159 @@ class ConditionalRuntimeTests(unittest.TestCase):
                 with self.assertRaisesRegex(ValueError,'root-private'):ci.protected_private(base,leaf)
                 linked.unlink();symbolic=root/'symbolic';symbolic.symlink_to(leaf)
                 with self.assertRaises(OSError):ci.protected_private(base,symbolic)
+    def test_only_safe_preexisting_cache_children_may_change_compiled_siblings_remain_exact(self):
+        for defect in ['cache-child','compiled-sibling','cache-replaced']:
+            with self.subTest(defect=defect),tempfile.TemporaryDirectory()as tmp:
+                f=Fixture(Path(tmp));(f.webroot/'.next/cache').mkdir(mode=0o700);(f.webroot/'.next/server.js').write_text('frozen compiled bytes');f.cache_fault=defect
+                if defect=='cache-child':
+                    f.conditional();self.assertEqual((f.native_calls,f.fast_calls),(2,10));self.assertTrue((f.operation/'activated.json').exists())
+                else:
+                    with self.assertRaises(RuntimeError):f.conditional()
+                    self.assertFalse((f.operation/'activated.json').exists());self.assertEqual(f.report['Restart'],'no');self.assertEqual(f.native_calls,1)
+    def test_known_native_wx_publication_completes_only_inside_same_fence_and_live_authority(self):
+        with tempfile.TemporaryDirectory()as tmp:
+            f=Fixture(Path(tmp));f.partial_ready_at=1;f.conditional()
+            self.assertEqual(f.publication_sleeps,1);self.assertEqual((f.native_calls,f.fast_calls),(2,10));self.assertTrue((f.operation/'activated.json').exists());self.assertFalse(list(f.operation.glob('ci-runtime-native-retry-*.json')))
+        for defect in ['deadline','lease']:
+            with self.subTest(defect=defect),tempfile.TemporaryDirectory()as tmp:
+                f=Fixture(Path(tmp));before=f.unit.read_bytes();f.partial_ready_at=1;f.pending_defect=defect
+                with self.assertRaisesRegex(ValueError,'stage deadline|native lease|installing/arrived'):f.conditional()
+                self.assertEqual(f.publication_sleeps,1);self.assertEqual(f.unit.read_bytes(),before);self.assertEqual(f.native_calls,0);self.assertFalse((f.operation/'activated.json').exists());self.assertFalse(list(f.operation.glob('ci-runtime-native-retry-*.json')))
+    def test_actual_native_cleanup_lifecycle_is_legal_at_every_publication_and_removal(self):
+        with tempfile.TemporaryDirectory()as tmp:
+            f=Fixture(Path(tmp));f.cleanup_at=5;f.observe_cleanup=True;f.conditional()
+            self.assertEqual([row['stage']for row in f.cleanup_observations],['lock-held','original-audit-retained','normal-cleanup-ready.json','normal-cleanup-commit.json','cleanup-authorized.json','normal-cleanup-consumed.json','cleanup-intent.json','removed-next','removed-packet','cleanup-result.json','normal-session-result','lock-released'])
+            self.assertEqual(f.cleanup_observations[-1]['removed'],['next','packet']);self.assertEqual((f.native_calls,f.fast_calls),(2,10));self.assertTrue((f.operation/'activated.json').exists())
+    def test_native_cleanup_intent_hash_directory_and_order_refuse_before_owned_deletion(self):
+        for defect in ['hash','directory','child-order']:
+            with self.subTest(defect=defect),tempfile.TemporaryDirectory()as tmp:
+                f=Fixture(Path(tmp));f.cleanup_at=1;f.cleanup_intent_fault=defect;before=f.unit.read_bytes()
+                with self.assertRaisesRegex(ValueError,'cleanup intent differs'):f.conditional()
+                self.assertEqual(f.unit.read_bytes(),before);self.assertTrue((f.directory/'next').exists());self.assertTrue((f.directory/'packet').exists());self.assertFalse((f.operation/'activated.json').exists());self.assertEqual(f.native_calls,0)
+    def test_fixed_guard_is_mandatory_and_existing_queue_lock_excludes_foreign_operation(self):
+        with tempfile.TemporaryDirectory()as tmp:
+            f=Fixture(Path(tmp));before=f.unit.read_bytes()
+            with f.ports(),self.assertRaisesRegex(ValueError,'fixed root guarded'):
+                update.upgrade(f.args('activate-ci-runtime',{'ci-runtime-authorization':str(f.authorization),'ci-runtime-authorization-sha256':ci.sha(f.authorization.read_bytes())}),f.fmt,f.base,ci)
+            fd=os.open(f.queue_lock,os.O_RDWR|os.O_NOFOLLOW)
+            try:
+                fcntl.flock(fd,fcntl.LOCK_EX|fcntl.LOCK_NB)
+                with self.assertRaises(BlockingIOError):f.conditional()
+                self.assertEqual(f.unit.read_bytes(),before);self.assertEqual(f.fast_calls,0);self.assertEqual(f.native_calls,0)
+            finally:os.close(fd)
+        for defect in ['mode','inode']:
+            with self.subTest(defect=defect),tempfile.TemporaryDirectory()as tmp:
+                f=Fixture(Path(tmp));before=f.unit.read_bytes()
+                if defect=='mode':f.queue_lock.chmod(0o644)
+                else:
+                    replacement=f.queue/'replacement';replacement.write_bytes(b'');replacement.chmod(0o600);os.replace(replacement,f.queue_lock)
+                with self.assertRaisesRegex(ValueError,'lock path identity'):f.conditional()
+                self.assertEqual(f.unit.read_bytes(),before);self.assertFalse((f.operation/'activated.json').exists())
+    def test_fresh_readiness_and_original_audit_bytes_are_not_metadata_waivers(self):
+        for defect in ['required','wait','retained-audit-byte']:
+            with self.subTest(defect=defect),tempfile.TemporaryDirectory()as tmp:
+                f=Fixture(Path(tmp));before=f.unit.read_bytes()
+                if defect=='required':f.probe_override={'required':'0','waitSeconds':None}
+                if defect=='wait':f.probe_override={'required':'1','waitSeconds':'45'}
+                if defect=='retained-audit-byte':(f.directory/'packet/system-testing.json').write_bytes(b'changed original native bytes')
+                with self.assertRaisesRegex(ValueError,'identity/environment/health|audit byte integrity'):f.conditional()
+                self.assertEqual(f.unit.read_bytes(),before);self.assertEqual(f.native_calls,0);self.assertFalse((f.operation/'activated.json').exists())
+    def test_f2_admission_refuses_helper_readiness_and_global_reservation_before_mutation(self):
+        for defect in ['helper-reserve','readiness-opportunity','global-estimate','fence-deadline']:
+            with self.subTest(defect=defect),tempfile.TemporaryDirectory()as tmp:
+                f=Fixture(Path(tmp));before=f.unit.read_bytes();events=len(f.events)
+                if defect=='helper-reserve':f.advance_at=3;f.advance_seconds=400
+                if defect=='readiness-opportunity':
+                    f.clock=1794873960;f.auth['issuedAt']='2026-11-17T00:05:50Z';f.auth['expiresAt']='2026-11-17T00:20:50Z';f.advance_at=3;f.advance_seconds=100
+                if defect=='global-estimate':
+                    f.grant['expiresAt']='2026-11-17T00:20:00Z';f.private_record('authorization.json',f.grant);f.auth['grantSha256']=ci.sha(encoded(f.grant))
+                    f.runtime['authorizationSha256']=f.auth['grantSha256'];f.private_record('runtime.json',f.runtime);f.auth['runtimeSha256']=ci.sha(encoded(f.runtime))
+                if defect=='fence-deadline':f.deadline_at=3
+                f.persist_authority()
+                with self.assertRaisesRegex(ValueError,'insufficient mandatory|insufficient estimated global|stage deadline'):f.conditional()
+                self.assertEqual(f.native_calls,1);self.assertEqual(f.fast_calls,3);self.assertEqual(f.unit.read_bytes(),before);self.assertFalse((f.operation/'activated.json').exists())
+                mutations=[v for v in f.events[events:]if isinstance(v,list)and v[:2]in [['/usr/bin/systemctl','daemon-reload'],['/usr/bin/systemctl','start']]]
+                self.assertEqual(mutations,[])
+    def test_final_native_pass_is_mandatory_and_only_two_timestamp_fields_may_vary(self):
+        for fault in ['unknown-runtime','compiled','ledger-extra','ledger-time-order']:
+            with self.subTest(fault=fault),tempfile.TemporaryDirectory()as tmp:
+                f=Fixture(Path(tmp));f.final_native_fault=fault
+                with self.assertRaises(RuntimeError):f.conditional()
+                self.assertEqual(f.native_calls,2);self.assertFalse((f.operation/'activated.json').exists());self.assertEqual(f.report['Restart'],'no')
+        with tempfile.TemporaryDirectory()as tmp:
+            f=Fixture(Path(tmp));f.conditional()
+            records=[json.loads(path.read_bytes())for path in sorted(f.operation.glob('ci-runtime-full-audit-*.json'))]
+            self.assertEqual(len(records),2)
+            for record in records:
+                self.assertNotEqual(record['runtime']['verifiedAt'],f.runtime['verifiedAt'])
+                self.assertNotEqual(record['runtime']['migrationLedger']['verifiedAt'],f.runtime['migrationLedger']['verifiedAt'])
+                self.assertEqual(ci.runtime_identity(f.base,record['runtime'],ci.epoch(f.grant['issuedAt']),f.clock,True),ci.runtime_identity(f.base,f.runtime,ci.epoch(f.grant['issuedAt']),f.clock))
+    def test_stability_sleep_and_following_fence_share_one_deadline(self):
+        with tempfile.TemporaryDirectory()as tmp:
+            f=Fixture(Path(tmp));f.stability_overrun=True
+            with self.assertRaises(RuntimeError):f.conditional()
+            self.assertEqual(f.fast_calls,5);self.assertFalse((f.operation/'activated.json').exists());self.assertEqual(f.report['Restart'],'no')
     def test_native_command_drops_uid_gid_groups_and_has_no_shell_or_inherited_loader(self):
         owner=SimpleNamespace(pw_uid=1001,pw_gid=1001);env={'HOME':'/private/owner','PATH':'/opt/node22/bin:/usr/bin:/bin'}
         with patch.object(ci,'bounded_process',return_value=b'{}')as run:
             self.assertEqual(ci.child(['/opt/node22/bin/node','fixed-status'],owner,env),{})
-            kwargs=run.call_args.kwargs;self.assertEqual(kwargs['user'],1001);self.assertEqual(kwargs['group'],1001);self.assertEqual(kwargs['extra_groups'],[]);self.assertEqual(kwargs['env'],env);self.assertNotIn('shell',kwargs)
+            kwargs=run.call_args.kwargs;self.assertEqual(kwargs['user'],1001);self.assertEqual(kwargs['group'],1001);self.assertEqual(kwargs['extra_groups'],[]);self.assertEqual(kwargs['env'],{**env,'PYTHONNOUSERSITE':'1','PYTHONSAFEPATH':'1'});self.assertNotIn('shell',kwargs)
+    def test_actual_node_parser_refuses_active_loader_keys_and_allows_comments(self):
+        # Execute only the pinned native owner's no-dotenv/no-app-import parser port.
+        # The eventual application/coordinator child is a recording port and never executes.
+        node=shutil.which('node');self.assertIsNotNone(node)
+        owner=SimpleNamespace(pw_uid=os.getuid(),pw_gid=os.getgid());environment={'HOME':'/private/owner','PATH':'/usr/bin:/bin'}
+        keys=['NODE_OPTIONS','NODE_PATH','NODE_V8_COVERAGE','NODE_EXTRA_CA_CERTS','LD_PRELOAD','DYLD_INSERT_LIBRARIES','PYTHONPATH','OPENSSL_CONF']
+        with tempfile.TemporaryDirectory()as tmp:
+            source=Path(tmp);dotenv=source/'.env.production';status=[node,'--env-file=.env.production','fixed-status']
+            def process(argv,**options):
+                if argv==[node,'--input-type=module','-e',ci.LOADER_PROBE]:
+                    parsed=subprocess.run(argv,cwd=options['cwd'],env=options['env'],capture_output=True,check=True,timeout=5)
+                    return parsed.stdout
+                self.assertEqual(argv,status);return b'{}'
+            with patch.object(ci,'SOURCE',source),patch.object(ci,'bounded_process',side_effect=process)as run:
+                for key in keys:
+                    for line in [key+'=opaque','export '+key+'=opaque',key+'="opaque"',key+"='opaque'"]:
+                        with self.subTest(key=key,line=line.split('=')[0]):
+                            run.reset_mock();dotenv.write_text('AIHR_IMPORT_WORKER_REQUIRED=1\n'+line+'\n')
+                            with self.assertRaisesRegex(ValueError,'active dotenv loader'):ci.child(status,owner,environment)
+                            self.assertEqual(run.call_count,1);self.assertNotIn('--env-file=.env.production',run.call_args.args[0])
+                    run.reset_mock();dotenv.write_text('AIHR_IMPORT_WORKER_REQUIRED=1\n# '+key+'=opaque\n')
+                    self.assertEqual(ci.child(status,owner,environment),{});self.assertEqual(run.call_count,2)
+                    self.assertEqual(run.call_args.kwargs['env'],{**environment,'PYTHONNOUSERSITE':'1','PYTHONSAFEPATH':'1'})
+                    run.reset_mock()
+                    with self.assertRaisesRegex(ValueError,'controlled loader'):ci.child([node,'fixed-status'],owner,{**environment,key:'opaque'})
+                    run.assert_not_called()
+    def test_named_before_open_swapped_and_restored_source_file_is_refused(self):
+        with tempfile.TemporaryDirectory()as tmp:
+            parent=Path(tmp);root=parent/'source';root.mkdir();target=root/'target';target.write_text('original')
+            foreign=parent/'foreign';foreign.write_text('tampered');parked=parent/'parked';original_open=os.open;swapped=[]
+            def raced_open(path,flags,*args,**kwargs):
+                if path=='target' and kwargs.get('dir_fd')is not None:
+                    os.replace(target,parked);os.replace(foreign,target)
+                    try:fd=original_open(path,flags,*args,**kwargs)
+                    finally:os.replace(target,foreign);os.replace(parked,target)
+                    swapped.append(fd);return fd
+                return original_open(path,flags,*args,**kwargs)
+            base=SimpleNamespace(check=check)
+            with patch.object(ci.os,'open',side_effect=raced_open),self.assertRaisesRegex(ValueError,'source file changed while opening'):
+                ci.source_inventory(base,root,['node_modules','.next'])
+            self.assertEqual(len(swapped),1);self.assertEqual(target.read_text(),'original');self.assertEqual(foreign.read_text(),'tampered')
+    def test_child_inherits_real_queue_sh_and_install_ex_with_absolute_slot_timeout(self):
+        with tempfile.TemporaryDirectory()as tmp:
+            f=Fixture(Path(tmp))
+            with f.ports(),contextlib.redirect_stdout(io.StringIO()):
+                invocation=guard.GuardedInvocation(f.base,ci,'activate-ci-runtime',f.authorization,ci.sha(f.authorization.read_bytes()))
+                fd=os.open(f.root/'install.lock',os.O_RDWR|os.O_CREAT,0o600);fcntl.flock(fd,fcntl.LOCK_EX|fcntl.LOCK_NB)
+                try:
+                    invocation.bind_install(fd,f.root/'install.lock')
+                    with patch.object(ci,'ACTIVE_OPERATION_GUARD',invocation),patch.object(ci,'SLOT_DEADLINE',time.monotonic()+2),patch.object(ci,'bounded_process',return_value=b'{}')as run:
+                        ci.child([str(f.node),'fixed-status'],f.owner,{'HOME':str(f.home)},timeout=180,operation_fd=invocation.lock.fd)
+                        kwargs=run.call_args.kwargs;self.assertEqual(kwargs['pass_fds'],(invocation.lock.fd,fd));self.assertGreater(kwargs['timeout'],0);self.assertLessEqual(kwargs['timeout'],2)
+                        for held,kind in [(invocation.lock.fd,'READ'),(fd,'WRITE')]:self.assertIn(kind,Path('/proc/self/fdinfo/'+str(held)).read_text())
+                    with patch.object(ci,'SLOT_DEADLINE',time.monotonic()-1),patch.object(ci,'bounded_process')as run:
+                        with self.assertRaisesRegex(ValueError,'slot expired'):ci.child([str(f.node),'fixed-status'],f.owner,{},timeout=180)
+                        run.assert_not_called()
+                finally:invocation.close();os.close(fd)
 
 if __name__=='__main__':unittest.main()
