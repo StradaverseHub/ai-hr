@@ -24,7 +24,7 @@ Initial integration base: `59f06b08db014e01cd553a827c62ccf864d33f78`. Preserve t
 
 | ID | Priority | Screen or concern | State |
 |---|---|---|---|
-| AP-001 | P1 | Personnel Movement New and Edit | Open; implementation pending |
+| AP-001 | P1 | Personnel Movement New and Edit | Batch8 implemented: native destination catalogue batch; qualification pending, not staged |
 | AP-002 | P1 | Personnel profile and Movement manager choices | Open; implementation pending |
 | AP-003 | P1 | New Lifecycle Requisition | Open; implementation pending |
 | AP-004 | P2 | Probation Tracker | Open; implementation pending |
@@ -188,3 +188,8 @@ Preserved Batch5 run44004359509 passed195selected cases and Linux build; whole t
 ## Batch7: Leave escalation settings
 
 AP-020 loads escalation policy metadata once for the company choices already authorized by Leave Approval Workflow and its readout. The singleton reader and group reader share the existing default/target-role decoder; unconfigured, unknown and RLS-invisible companies retain the same defaults. Input company order and native UUID aliases remain supported. The new reader is idempotent, READ ONLY and uses shared Access. Policy writers, approval matching, escalation timing and the nightly sweep remain unchanged. Native70-company/1000-employment, every-role/group/company and actual readout qualification is authored; hosted and staging evidence is pending. No migration or staging change.
+
+
+## Batch8: Movement destination organization choices
+
+AP-001's destination fanout remains present in freshly fetched accepted Movement source2a4132204; acceptance of that feature is not evidence that this older performance gap was removed. The owned repair replaces the69additional destination transactions at70companies with one native catalogue read. Shared/Global/explicit Criteria and each company's native visibility remain authoritative, locations retain their own company/admin owner, and display-label disambiguation happens after per-company narrowing. The current-company form reuses its original scoped options. Commands, destination authorization and the separate full Workforce manager-picker gapAP-002 remain unchanged. Native70-company/1000-employment, every-role/group/company, invisible/unknown/foreign scopes and duplicate-caption fixtures are authored; hosted qualification and later integration with accepted Movement remain pending. No migration or staging change.

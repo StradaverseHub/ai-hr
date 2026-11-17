@@ -1,3 +1,4 @@
+import {movementOrganisationChoices} from '@/core/movement-organisation-choices';
 import {DerivedOrganisationControl} from '@/components/derived-organisation-fields';
 import { ActionButton } from '@/components/ui/action-button';
 import { ExportDownloadLink } from '@/components/export-download-link';
@@ -679,9 +680,8 @@ export default async function EmployeePage({
    *
    * Read ONLY while the New Event / Edit screen is open, and only for companies the actor ADMINISTERS —
    * which is also exactly the set the writer will accept (it requires is_admin_for(destination)), so what
-   * the form offers and what the service permits cannot drift apart. Each list is resolved per company
-   * rather than filtered from one query on purpose: a System Label may be SHARED into a company it does not
-   * originate in, so "usable by company X" is a question only the resolver can answer.
+   * the form offers and what the service permits cannot drift apart. The native catalogue Criteria, not origin ownership,
+   * determine availability. One batched destination read retains that relation for every company.
    */
   const movementCompanies =
     // Gated on movementCurrent, which is itself gated on New Event OR Edit: a correction of an Entity
@@ -698,25 +698,18 @@ export default async function EmployeePage({
           ];
         })()
       : [];
-  const movementOrgByCompany = Object.fromEntries(
-    await Promise.all(
-      movementCompanies.map(async (c) => {
-        // The current-company form already loaded these exact scoped lists.
-        const [deps, poss, bus, locs] = c.id === emp.companyId
-          ? currentOrganisationOptions
-          : await readOrganisationOptions(c.id);
-        return [
-          c.id,
-          {
-            departments: organisationChoiceLabels(deps).map((d) => ({ id: d.id, name: d.displayLabel })),
-            positions: organisationChoiceLabels(poss).map((pos) => ({ id: pos.id, name: pos.displayLabel })),
-            businessUnits: organisationChoiceLabels(bus).map((bu) => ({ id: bu.id, name: bu.displayLabel })),
-            locations: locs.map((l) => ({ id: l.id, name: `${l.name} (${l.code})` })),
-          },
-        ] as const;
-      }),
-    ),
-  );
+  const destinationOrganisationOptions=await movementOrganisationChoices(s,movementCompanies.filter(company=>company.id!==emp.companyId).map(company=>company.id));
+  const movementOrgByCompany=Object.fromEntries(movementCompanies.map(company=>{
+    if(company.id!==emp.companyId)return [company.id,destinationOrganisationOptions.get(company.id)!];
+    // Reuse the current-company form's original scoped population and display-label disambiguation.
+    const [deps,poss,bus,locs]=currentOrganisationOptions;
+    return [company.id,{
+      departments:organisationChoiceLabels(deps).map(row=>({id:row.id,name:row.displayLabel})),
+      positions:organisationChoiceLabels(poss).map(row=>({id:row.id,name:row.displayLabel})),
+      businessUnits:organisationChoiceLabels(bus).map(row=>({id:row.id,name:row.displayLabel})),
+      locations:locs.map(row=>({id:row.id,name:`${row.name} (${row.code})`})),
+    }];
+  }));
   // 7d309da7 — configurable profile-field dropdown catalogs (religion / race / nationality / state /
   // country / relationship). Active options only for the pickers; the ProfileOptionSelect renders any
   // out-of-catalog stored value as a pre-selected extra so a Save never blanks legacy data.
