@@ -7316,6 +7316,13 @@
       "when": 1794841006013,
       "tag": "6013_contract_email_form_binding_order",
       "breakpoints": true
+    },
+    {
+      "idx": 5414,
+      "version": "7",
+      "when": 1794841006014,
+      "tag": "6014_contract_empty_opening_technical_finish",
+      "breakpoints": true
     }
   ]
 }

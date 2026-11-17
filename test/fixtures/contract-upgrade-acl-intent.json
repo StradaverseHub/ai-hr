@@ -2274,6 +2274,12 @@
       "appExecute": false,
       "publicExecute": false,
       "owner": "MIGRATION_OWNER"
+    },
+    {
+      "signature": "app.contract_shared_finish_empty_opening(uuid,uuid)",
+      "appExecute": false,
+      "publicExecute": false,
+      "owner": "MIGRATION_OWNER"
     }
   ],
   "existingFunctionsTouched": [

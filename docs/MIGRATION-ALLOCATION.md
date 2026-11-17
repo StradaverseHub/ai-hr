@@ -1,3 +1,19 @@
+## Contract empty opening technical completion — 17 November 2026 (provisional source only)
+
+Registered `6014_contract_empty_opening_technical_finish`, idx `5414`, when `1794841006014`,
+SQL SHA-256 `4c121b4f3d8e35a1573aba4cb1a858492f6a035ec2b0981f31502e816841091d`, from the owned
+6000–6029 development block. Fresh static survey: all 416 Git-discovered worktrees/journals read,
+no 6014/5414/1794841006014 collision or unreadable journal. This is a provisional development
+identity; all 127 pending Contract entries still await forward allocation from the actual accepted
+earlier releases and ordered ledger before the final gate. No forecast position or installation.
+
+The owner directly approved exact empty-opening recovery SQL `4c121b4f3d8e` and handler patch
+`7fd8a9788895`. One private worker function can only mark an authentic, untouched, empty human
+caseOpened event processed after a newer current decision overtakes it. Existing worker/effect/
+finish guards remain unchanged; no context hydration, workflow step, case/pay/signing/access effect
+or app/PUBLIC grant is added. Independent source review found no blocker. Runtime tests remain
+required; no merge/release permission. All prior 1045 SQL bytes and journal entries are preserved.
+
 ## Contract Form employee binding order — 17 November 2026 (provisional source only)
 
 Registered `6013_contract_email_form_binding_order`, idx `5413`, when `1794841006013`,

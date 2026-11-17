@@ -353,6 +353,7 @@ export const APPROVED_UPGRADE_TAIL=[
  {idx:5411,when:1794841006011,tag:'6011_contract_posting_org_snapshot_owner'},
  {idx:5412,when:1794841006012,tag:'6012_contract_shared_navigation_access'},
  {idx:5413,when:1794841006013,tag:'6013_contract_email_form_binding_order'},
+ {idx:5414,when:1794841006014,tag:'6014_contract_empty_opening_technical_finish'},
 ] as const;
 // Final pending 2109/2126 bytes reviewed from engine 128bc2539; no applied-prefix hashes change.
 const APPROVED_UPGRADE_HASHES:Record<string,string>={
@@ -371,6 +372,7 @@ const APPROVED_UPGRADE_HASHES:Record<string,string>={
  '6011_contract_posting_org_snapshot_owner':'ba157898e5a35bfa08931aba91362ac43d985ef6e4c2293cd2cf9f49eeefabc2',
  '6012_contract_shared_navigation_access':'8da44c0a2a09dd09681ce5b839f3ed1b4c46f218e1ad76ef432d9fa6c98aa146',
  '6013_contract_email_form_binding_order':'a693631009b659dcabc5654eb205e65df9a05585fed617362488303a9df4d364',
+ '6014_contract_empty_opening_technical_finish':'4c121b4f3d8e35a1573aba4cb1a858492f6a035ec2b0981f31502e816841091d',
  '5923_contract_letter_purpose_guidance':'d33fdacdaec8347bbd30d9cd27cfba9b7bbb289650440815f7bf8658a3ff1595',
  '5977_contract_email_current_set_source':'1d743062638fa9184c8afba5fbd3d9a4992fb1026ca2a3b5de2d3feebe2a2ae8',
  '5978_contract_email_work_archived_company':'6e0c37f61c66feb80f95a312a23d4f3910a2d7c91f79a0047acaebcdb6914523',

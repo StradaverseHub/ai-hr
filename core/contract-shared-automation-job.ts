@@ -61,6 +61,11 @@ export async function advanceContractSharedAutomationOwner(owner:postgres.Reserv
     case when ${progress.rootParked??false} then id end,created_at,id limit 1 for update`);
    if(!event)return true;
    await owner`select set_config('app.contract_event',${event.id},true)`;
+   // Technical completion never constructs stale opening context or business executors.
+   if(!system&&event.id===rootId&&event.trigger_event==='caseOpened'&&!event.workflow_versions.length){
+    const [closed]=await db.execute<{closed:boolean}>(sql`select app.contract_shared_finish_empty_opening(${event.id}::uuid,${job.id}::uuid) as closed`);
+    if(closed?.closed)return false;
+   }
    if(event.trigger_event==='emailDocumentHRNotice'){await deliverContractEmailDocumentHRNotice(db,event.case_id);await db.execute(sql`select app.contract_shared_event_finish(${event.id}::uuid,${job.id}::uuid)`);return false;}
    const emailRecovery=event.trigger_event==='emailDocumentReady'?await beginContractEmailRecovery(db,event.id):null;
    if(!emailRecovery){const historical=await observeHistoricalContractEmail(db,event.id);if(historical.handled){if(historical.reconciliationNeeded)await unit.set(owner,{phase:'needs_people_ops_reconciliation',error:historical.reason==='legacy_cursor_unknown'?'Original workflow progress is unknown; frozen work is retained for reconciliation.':'Original workflow authority changed; unattempted work is retained for reconciliation.'});if(historical.waiting)await unit.set(owner,{planMerge:{rootParked:true,eventAfter:event.id}});return historical.waiting?'waiting':false;}}
