@@ -26,6 +26,15 @@ it.each(['Retirement','Contract end'] as const)('carries configured %s from the 
  await v9Command(f.admin,caseId,detail.case.revision,{type:'submit'});detail=await v9CaseDetail(f.admin,caseId);
  expect(detail.calculation).toMatchObject({ready:true,lastDay:f.lastWorkingDay,currency:'SGD',remainingLeave:0});
  expect((await listPersonnelPostings(f.admin,{source:'offboarding',status:'all'})).rows).toEqual([]);
+ // Even HR cannot read the raw journey in this fresh transaction: the clearance owner must obtain its narrow custody proof.
+ expect(await withTenant(f.admin,tx=>tx.execute(sql`select id from resignation_journey where id=${accepted.id}::uuid`))).toEqual([]);
+ // A managed clearance with a missing posting owner must roll back the case and payroll handover, not silently finish.
+ await owner.db.execute(sql`update lc_v9_config set data=jsonb_set(data,'{offboarding,postingApproverGroupId}','null'::jsonb) where tenant_id=${f.base.tenantId}::uuid`);
+ await expect(v9Command(f.admin,caseId,detail.case.revision,{type:'clear',sourceRevision:detail.calculation!.sourceRevision,reason:'Attempt before assigning a posting owner.'})).rejects.toThrow(/Choose who approves Offboarding Personnel postings/);
+ const unchanged=await v9CaseDetail(f.admin,caseId);expect(unchanged.case).toMatchObject({state:'submitted',revision:detail.case.revision,finalFigures:null});
+ expect(await owner.db.execute(sql`select id from lc_v9_payroll_handover where tenant_id=${f.base.tenantId}::uuid and case_id=${caseId}::uuid`)).toEqual([]);
+ expect((await listPersonnelPostings(f.admin,{source:'offboarding',status:'all'})).rows).toEqual([]);
+ await owner.db.execute(sql`update lc_v9_config set data=${JSON.stringify(f.config)}::jsonb where tenant_id=${f.base.tenantId}::uuid`);
  await v9Command(f.admin,caseId,detail.case.revision,{type:'clear',sourceRevision:detail.calculation!.sourceRevision,reason:'Completed the configured exit clearance.'});
  detail=await v9CaseDetail(f.admin,caseId);expect(detail.case.state).toBe('cleared');
  const postings=(await listPersonnelPostings(f.admin,{source:'offboarding',status:'all'})).rows;expect(postings).toHaveLength(1);

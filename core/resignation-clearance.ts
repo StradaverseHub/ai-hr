@@ -3,6 +3,7 @@ import {sql} from 'drizzle-orm';
 import type {SessionContext,Tx} from '../db/client';
 import {createPersonnelPostingTx,PersonnelPostingError,personnelPostingTx} from './personnel-posting';
 import type {PersonnelPostingValues} from '../lib/personnel-posting';
+import {prepareResignationProofTx} from './resignation-proof';
 
 export type RetentionPostingInput={
  journeyId:string;employmentId:string;companyId?:string;
@@ -33,6 +34,14 @@ export async function createResignationRetentionPostingTx(tx:Tx,_ctx:SessionCont
 
 /** Called after the V9 cleared revision is stored, in the same transaction. Unmanaged/legacy cases are untouched. */
 export async function raiseResignationClearancePostingTx(tx:Tx,ctx:SessionContext,input:{caseId:string;employmentId:string;lastWorkingDay:string;exitReason?:string}):Promise<{id:string;number:number}|null>{
+ // Read the caller-visible native case first. The native classification proves the reverse journey link,
+ // company and employment; a source label alone cannot authorize access to a resignation aggregate.
+ const [scope]=await tx.execute<{managed:boolean;source:string|null}>(sql`
+  select app.resignation_offboarding_case_managed(c.id) as managed,c.data->>'resignationSourceCaseId' as source
+  from lc_v9_case c where c.tenant_id=app.current_tenant_id() and c.id=${input.caseId}::uuid and c.module='off'`);
+ if(!scope?.managed)return null;
+ if(!scope.source)throw new PersonnelPostingError('invalid','The managed clearance source is unavailable; clearance was not completed.');
+ await prepareResignationProofTx(tx,ctx,{operation:'read',caseId:scope.source,args:{mode:'offboarding',caseId:scope.source,offboardingCaseId:input.caseId}});
  const [managed]=await tx.execute<{id:string;submittedOn:string;groupId:string|null;employmentId:string;companyId:string;nativeCompanyId:string|null;nativeEmploymentId:string|null;module:string|null;state:string|null;source:string|null;exitReason:string|null;lastDay:string|null}>(sql`
   select j.id,j.submitted_on::text as "submittedOn",j.employment_id as "employmentId",j.company_id as "companyId",
    n.company_id as "nativeCompanyId",n.employment_id as "nativeEmploymentId",n.module,n.data->>'state' as state,n.data->>'resignationSourceCaseId' as source,n.data->'facts'->>'caseType' as "exitReason",n.data->'facts'->>'lastDay' as "lastDay",
@@ -40,7 +49,7 @@ export async function raiseResignationClearancePostingTx(tx:Tx,ctx:SessionContex
   from resignation_journey j join lc_v9_config c on c.tenant_id=j.tenant_id
   left join lc_v9_case n on n.tenant_id=j.tenant_id and n.id=j.offboarding_case_id
   where j.tenant_id=app.current_tenant_id() and j.offboarding_case_id=${input.caseId}::uuid`);
- if(!managed)return null;
+ if(!managed)throw new PersonnelPostingError('forbidden','The managed clearance source is unavailable; clearance was not completed.');
  // The case owns its exit classification. Caller labels must never replace that native fact.
  if(managed.employmentId!==input.employmentId||managed.nativeEmploymentId!==managed.employmentId||managed.nativeCompanyId!==managed.companyId||managed.module!=='off'||managed.state!=='cleared'||managed.source!==managed.id||managed.lastDay!==input.lastWorkingDay||!managed.exitReason||!['Resignation','Termination','Contract end','Retirement','Non-confirmation'].includes(managed.exitReason))throw new PersonnelPostingError('invalid','Clearance posting requires the matching completed Offboarding case and its exit reason.');
  if(!managed.groupId)throw new PersonnelPostingError('invalid','Choose who approves Offboarding Personnel postings before clearance.');
