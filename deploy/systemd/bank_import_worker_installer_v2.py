@@ -29,8 +29,10 @@ ENV_KEYS={'DATABASE_URL','MIGRATION_DATABASE_URL','AUDIT_HASH_CHAIN_ENABLED','NO
 def check(ok,message):
     if not ok: raise ValueError('Worker installation refused: '+message)
 
+VERIFIED_OPERATION_FDS=()  # Set only by the fixed root-owned staging launcher; default behavior is unchanged.
+
 def command(argv,*,input=None,env=None,allow_failure=False):
-    result=subprocess.run(argv,input=input,env=env or BASE_ENV,cwd='/',capture_output=True,text=True,timeout=45)
+    result=subprocess.run(argv,input=input,env=env or BASE_ENV,cwd='/',capture_output=True,text=True,timeout=45,pass_fds=VERIFIED_OPERATION_FDS)
     if not allow_failure: check(result.returncode==0,'administrator/runtime command failed (credentials suppressed)')
     return result
 
