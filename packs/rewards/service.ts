@@ -2675,3 +2675,5 @@ export async function saveRewardOffcycleYear(ctx:SessionContext,raw:unknown){
   return{revision:row.revision};
  });
 }
+
+/** Approved annual Review Plans worker entrypoints; native owners retain all authorization. */

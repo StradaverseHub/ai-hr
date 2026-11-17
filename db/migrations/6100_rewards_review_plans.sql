@@ -61,11 +61,16 @@ LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,app SET j
  EXISTS(SELECT 1 FROM company_organisation_run r WHERE r.tenant_id=app.current_tenant_id() AND r.state='published' AND r.kind<>'retag' AND r.effective_on<=wanted_day) AS activated
  ),tags AS MATERIALIZED(
  SELECT p.id,p.legal_name,app.company_org_resolve(p.id,o.mapping,o.activated) AS tags FROM population p CROSS JOIN org o
+ ),active_employments AS MATERIALIZED(
+ SELECT e.id,e.company_id FROM employment e WHERE e.tenant_id=app.current_tenant_id() AND e.import_pending_attempt_id IS NULL AND e.hired_on<=timezone('Asia/Kuala_Lumpur',now())::date AND(e.terminated_on IS NULL OR e.terminated_on>timezone('Asia/Kuala_Lumpur',now())::date)
+ ),assignments AS MATERIALIZED(
+ SELECT DISTINCT ON(a.employment_id) a.employment_id,a.company_id FROM assignment a JOIN active_employments e ON e.id=a.employment_id WHERE a.tenant_id=app.current_tenant_id() AND a.superseded_at IS NULL AND a.valid_from<=timezone('Asia/Kuala_Lumpur',now())::date AND(a.valid_to IS NULL OR a.valid_to>timezone('Asia/Kuala_Lumpur',now())::date) ORDER BY a.employment_id,a.valid_from DESC,a.id
+ ),corrections AS MATERIALIZED(
+ SELECT DISTINCT ON(ev.subject_employment_id)ev.subject_employment_id,nullif(ev.payload->'before'->>'companyId','')::uuid AS previous_company FROM domain_event ev JOIN active_employments e ON e.id=ev.subject_employment_id
+ WHERE ev.tenant_id=app.current_tenant_id() AND ev.event_type='employment.information.corrected' AND ev.payload->>'effectiveOn'>timezone('Asia/Kuala_Lumpur',now())::date::text ORDER BY ev.subject_employment_id,ev.sequence
  ),counts AS MATERIALIZED(
- SELECT e.company_id,count(*)::integer AS n FROM employment e JOIN population p ON p.id=e.company_id
- WHERE e.tenant_id=app.current_tenant_id() AND e.import_pending_attempt_id IS NULL AND e.hired_on<=timezone('Asia/Kuala_Lumpur',now())::date
- AND(e.terminated_on IS NULL OR e.terminated_on>timezone('Asia/Kuala_Lumpur',now())::date) GROUP BY e.company_id
- ) SELECT t.id,t.legal_name,nullif(t.tags->>'businessUnitId','')::uuid,coalesce(b.label,b.code),coalesce(c.n,0)
+ SELECT coalesce(c.previous_company,a.company_id,e.company_id) AS company_id,count(*)::integer AS n FROM active_employments e LEFT JOIN assignments a ON a.employment_id=e.id LEFT JOIN corrections c ON c.subject_employment_id=e.id GROUP BY coalesce(c.previous_company,a.company_id,e.company_id)
+ ) SELECT t.id,t.legal_name,nullif(t.tags->>'businessUnitId','')::uuid,b.name,coalesce(c.n,0)
  FROM tags t LEFT JOIN business_unit b ON b.tenant_id=app.current_tenant_id() AND b.id=nullif(t.tags->>'businessUnitId','')::uuid
  LEFT JOIN counts c ON c.company_id=t.id WHERE t.tags->>'status'='ready'
 $$;
@@ -133,6 +138,10 @@ BEGIN
  OR jsonb_typeof(p_edits)<>'array' OR jsonb_array_length(p_edits)>500 OR p_policy->>'year' IS DISTINCT FROM p_year::text THEN RAISE EXCEPTION 'Invalid Review Plans command' USING ERRCODE='22023';END IF;
  PERFORM pg_advisory_xact_lock(hashtextextended('access-configuration:'||t::text,0));
  PERFORM pg_advisory_xact_lock(hashtextextended(t::text||':review-plan-year:'||p_year,2203));
+ IF NOT p_new_year THEN
+  SELECT settings,(settings-'snapshotDate')||jsonb_build_object('year',year) INTO p_settings,p_policy FROM reward_plan_year WHERE tenant_id=t AND year=p_year;
+  IF p_settings IS NULL THEN RAISE EXCEPTION 'Create the reward year first';END IF;
+ END IF;
  SELECT person_id INTO actor_person FROM app_user WHERE tenant_id=t AND id=actor AND archived_at IS NULL AND NOT app.login_blocked(id);
  IF actor_person IS NULL THEN RAISE EXCEPTION 'A person-backed configuration account is required' USING ERRCODE='42501';END IF;
  IF p_new_year THEN
@@ -448,3 +457,103 @@ CREATE FUNCTION app.reward_review_plan_company_recipients(wanted_event uuid) RET
  AND app.is_admin() AND(app.current_user_id() IS NULL OR app.is_group_admin())
 $$;
 REVOKE ALL ON FUNCTION app.reward_review_plan_company_recipients(uuid) FROM PUBLIC;GRANT EXECUTE ON FUNCTION app.reward_review_plan_company_recipients(uuid) TO ai_hr_app;
+--> statement-breakpoint
+CREATE FUNCTION app.reward_review_plan_activate(wanted_year integer,wanted_company uuid) RETURNS void LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,app AS $$
+DECLARE p reward_plan_year_company%ROWTYPE;actor uuid:=app.current_user_id();
+BEGIN
+ IF NOT app.reward_setup_allowed(wanted_company,'manage') OR NOT app.reward_config_page_allowed(wanted_company,'plans.manage','manage') THEN RAISE EXCEPTION 'Current plan creation authority required' USING ERRCODE='42501';END IF;
+ SELECT * INTO p FROM reward_plan_year_company WHERE tenant_id=app.current_tenant_id() AND year=wanted_year AND company_id=wanted_company FOR UPDATE;
+ IF p.plan_version_id IS NULL OR NOT EXISTS(SELECT 1 FROM app.reward_review_plan_rows(wanted_year)r WHERE r."companyId"=wanted_company AND r.status='ready') THEN RAISE EXCEPTION 'Current ready plan required';END IF;
+ UPDATE reward_plan_setup SET state='approved',approved_by=actor,approved_by_person_id=(SELECT person_id FROM app_user WHERE tenant_id=app.current_tenant_id() AND id=actor),approved_at=now(),revision=revision+1,updated_at=now()
+ WHERE tenant_id=p.tenant_id AND version_id=p.plan_version_id AND state='draft';
+ INSERT INTO reward_plan_company(tenant_id,company_id,year,plan_version_id,salary_version_id,bonus_version_id)VALUES(p.tenant_id,p.company_id,p.year,p.plan_version_id,p.salary_version_id,p.bonus_version_id)
+ ON CONFLICT(tenant_id,company_id,year)DO UPDATE SET plan_version_id=excluded.plan_version_id,salary_version_id=excluded.salary_version_id,bonus_version_id=excluded.bonus_version_id;
+END $$;
+REVOKE ALL ON FUNCTION app.reward_review_plan_activate(integer,uuid) FROM PUBLIC;GRANT EXECUTE ON FUNCTION app.reward_review_plan_activate(integer,uuid) TO ai_hr_app;
+CREATE FUNCTION app.reward_review_plan_company_rows(wanted_year integer,wanted_day date,config_editor boolean) RETURNS TABLE(id uuid,name text,"parentId" uuid,"parentName" text,"businessGroupId" uuid,"businessGroupName" text,"businessUnitId" uuid,"businessUnitName" text,"structureStatus" text)
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,app SET jit=off AS $$
+ WITH eligible AS MATERIALIZED(
+ SELECT c.id,c.legal_name,c.parent_company_id FROM company c LEFT JOIN company_registration_classification r ON r.tenant_id=c.tenant_id AND r.company_id=c.id LEFT JOIN reward_company_classification x ON x.tenant_id=c.tenant_id AND x.company_id=c.id
+ WHERE c.tenant_id=app.current_tenant_id() AND c.archived_at IS NULL AND c.currency='MYR' AND coalesce(r.entity_kind,'legal_entity')='legal_entity' AND NOT coalesce(r.is_test_entity,false) AND coalesce(x.disposition,'visible')='visible'
+ AND CASE WHEN config_editor THEN app.reward_config_editor(c.id) ELSE app.reward_setup_allowed(c.id,'manage') END
+ AND NOT EXISTS(SELECT 1 FROM reward_company_exclusion e WHERE e.tenant_id=c.tenant_id AND e.company_id=c.id AND e.year=wanted_year AND e.ended_at IS NULL)
+ ),source AS MATERIALIZED(SELECT app.company_org_mapping_at(wanted_day) AS mapping,EXISTS(SELECT 1 FROM company_organisation_run WHERE tenant_id=app.current_tenant_id() AND state='published' AND kind<>'retag' AND effective_on<=wanted_day) AS activated),
+ tags AS MATERIALIZED(SELECT e.*,app.company_org_resolve(e.id,s.mapping,s.activated) AS tags FROM eligible e CROSS JOIN source s)
+ SELECT t.id,t.legal_name,p.id,p.legal_name,nullif(t.tags->>'businessGroupId','')::uuid,g.legal_name,nullif(t.tags->>'businessUnitId','')::uuid,b.name,coalesce(t.tags->>'status','legacy')
+ FROM tags t LEFT JOIN company p ON p.tenant_id=app.current_tenant_id() AND p.id=t.parent_company_id LEFT JOIN company g ON g.tenant_id=app.current_tenant_id() AND g.id=nullif(t.tags->>'businessGroupId','')::uuid LEFT JOIN business_unit b ON b.tenant_id=app.current_tenant_id() AND b.id=nullif(t.tags->>'businessUnitId','')::uuid
+ ORDER BY coalesce(g.legal_name,p.legal_name,''),coalesce(b.label,b.code,''),t.legal_name,t.id
+$$;
+REVOKE ALL ON FUNCTION app.reward_review_plan_company_rows(integer,date,boolean) FROM PUBLIC;GRANT EXECUTE ON FUNCTION app.reward_review_plan_company_rows(integer,date,boolean) TO ai_hr_app;
+--> statement-breakpoint
+CREATE FUNCTION app.reward_review_plan_legacy_suggestion_data(wanted_year integer,wanted_day date) RETURNS jsonb LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,app AS $$
+ SELECT jsonb_build_object('companies',coalesce((SELECT jsonb_agg(to_jsonb(c) ORDER BY c.id) FROM app.reward_review_plan_company_rows(wanted_year,wanted_day,false)c),'[]'::jsonb),
+ 'candidates',coalesce((SELECT jsonb_agg(jsonb_build_object('id',v.id,'libraryId',l.id,'name',l.name,'year',l.year,'version',v.revision,'kind',l.kind,'tags',l.tags,'groupDefault',l.group_default,'type',v.data->>'type','previousLibraryId',l.previous_library_id) ORDER BY l.name,v.revision DESC) FROM reward_library l JOIN reward_library_version v ON v.tenant_id=l.tenant_id AND v.library_id=l.id WHERE l.tenant_id=app.current_tenant_id() AND l.year=wanted_year AND v.state='confirmed'),'[]'::jsonb),
+ 'previous',coalesce((SELECT jsonb_agg(jsonb_build_object('companyId',p.company_id,'salaryLibraryId',sv.library_id,'bonusLibraryId',bv.library_id,'branch',bv.data->>'type'='branch')) FROM reward_plan_company p JOIN reward_library_version sv ON sv.tenant_id=p.tenant_id AND sv.id=p.salary_version_id JOIN reward_library_version bv ON bv.tenant_id=p.tenant_id AND bv.id=p.bonus_version_id WHERE p.tenant_id=app.current_tenant_id() AND p.year=wanted_year-1),'[]'::jsonb),
+ 'covered',coalesce((SELECT jsonb_agg(DISTINCT company_id) FROM(SELECT company_id FROM reward_plan_company WHERE tenant_id=app.current_tenant_id() AND year=wanted_year UNION SELECT company_id FROM reward_plan_year_company WHERE tenant_id=app.current_tenant_id() AND year=wanted_year UNION SELECT t.company_id FROM reward_policy_group_target t JOIN reward_policy_group g ON g.tenant_id=t.tenant_id AND g.current_version_id=t.version_id JOIN reward_policy_group_version v ON v.tenant_id=t.tenant_id AND v.id=t.version_id WHERE t.tenant_id=app.current_tenant_id() AND v.policy->>'year'=wanted_year::text)c),'[]'::jsonb))
+ WHERE app.reward_setup_allowed(NULL,'manage')
+$$;
+REVOKE ALL ON FUNCTION app.reward_review_plan_legacy_suggestion_data(integer,date) FROM PUBLIC;GRANT EXECUTE ON FUNCTION app.reward_review_plan_legacy_suggestion_data(integer,date) TO ai_hr_app;
+
+--> statement-breakpoint
+-- 5620 creator is retained exactly except shared Access mode: creating one review changes no pre-existing access configuration.
+CREATE OR REPLACE FUNCTION app.reward_config_create_planned_unit(wanted_version uuid,wanted_company uuid,wanted_business_unit uuid) RETURNS uuid LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,app AS $$
+DECLARE t uuid:=app.current_tenant_id();actor uuid:=app.current_user_id();p reward_plan_setup%ROWTYPE;b jsonb;s jsonb;v jsonb;pat reward_pat_version%ROWTYPE;policy jsonb;cycle uuid;existing_cycle_name text;unit uuid:=gen_random_uuid();source jsonb;row record;overlap boolean;pending_names text;company_tags jsonb;plan_year integer;
+BEGIN
+ -- The same lock order as setupTenant and the installed 4100 entry point, ahead of the plan and company locks.
+ PERFORM pg_advisory_xact_lock_shared(hashtextextended('access-configuration:'||t::text,0));
+ PERFORM pg_advisory_xact_lock(hashtextextended(t::text||':plans',2203));
+ IF t IS NULL OR actor IS NULL OR NOT coalesce(app.reward_not_viewing_as(),false) OR NOT app.reward_setup_allowed(wanted_company,'manage') THEN RAISE EXCEPTION 'Group Rewards plan creation authority required' USING ERRCODE='42501';END IF;
+ -- 5620: the company-year key's plan year is read here, by this function under its own row security, and a plan it
+ -- cannot see is refused before that lock (5580/5600 hashed a NULL year, so no lock was taken at all).
+ SELECT year INTO plan_year FROM reward_plan_setup WHERE tenant_id=t AND version_id=wanted_version AND state='approved';
+ IF plan_year IS NULL THEN RAISE EXCEPTION 'Current approved plan and available legal employer required';END IF;
+ PERFORM pg_advisory_xact_lock(hashtextextended(t::text||':company-year:'||wanted_company::text||':'||plan_year::text,2203));
+ -- The annual-admission guard (app.reward_policy_binding_guard) admits this owner writer only inside this call.
+ PERFORM set_config('app.reward_config_creating',txid_current()::text,true);
+ SELECT * INTO p FROM reward_plan_setup WHERE tenant_id=t AND version_id=wanted_version AND state='approved';
+ IF p.version_id IS NULL OR p.year IS DISTINCT FROM plan_year OR NOT app.reward_config_company_eligible(wanted_company,p.year) OR p.snapshot_date>timezone('Asia/Kuala_Lumpur',now())::date THEN RAISE EXCEPTION 'Current approved plan and available legal employer required';END IF;
+ PERFORM pg_advisory_xact_lock(hashtextextended(t::text||':pat:'||wanted_company::text||':'||p.year::text,2203));
+ company_tags:=app.reward_config_company_structure(wanted_company,p.snapshot_date);IF company_tags->>'status' IS DISTINCT FROM 'ready' OR nullif(company_tags->>'businessUnitId','')::uuid IS DISTINCT FROM wanted_business_unit THEN RAISE EXCEPTION 'Confirmed dated company Business unit required at the approved plan snapshot' USING ERRCODE='22023';END IF;
+ SELECT value INTO b FROM jsonb_array_elements(p.bindings) WHERE value->>'companyId'=wanted_company::text AND value->>'businessUnitId'=wanted_business_unit::text;
+ IF b IS NULL OR NOT EXISTS(SELECT 1 FROM reward_plan_company c WHERE c.tenant_id=t AND c.company_id=wanted_company AND c.year=p.year AND c.plan_version_id=wanted_version) THEN RAISE EXCEPTION 'Company is not assigned to this approved plan';END IF;
+ IF EXISTS(SELECT 1 FROM reward_unit u JOIN reward_cycle c ON c.id=u.cycle_id AND c.tenant_id=u.tenant_id WHERE u.tenant_id=t AND u.company_id=wanted_company AND c.year=p.year AND u.kind='annual' AND u.deleted_at IS NULL) OR EXISTS(SELECT 1 FROM reward_company_year_review WHERE tenant_id=t AND company_id=wanted_company AND year=p.year) THEN RAISE EXCEPTION 'Company already has a review for this reward year';END IF;
+ SELECT rv.data INTO s FROM reward_library_version rv JOIN reward_library l ON l.id=rv.library_id AND l.tenant_id=rv.tenant_id WHERE rv.id=(b->>'salaryVersionId')::uuid AND rv.tenant_id=t AND rv.state='confirmed' AND l.kind='salary' AND l.year=p.year;
+ SELECT rv.data INTO v FROM reward_library_version rv JOIN reward_library l ON l.id=rv.library_id AND l.tenant_id=rv.tenant_id WHERE rv.id=(b->>'bonusVersionId')::uuid AND rv.tenant_id=t AND rv.state='confirmed' AND l.kind='bonus' AND l.year=p.year;
+ SELECT * INTO pat FROM reward_pat_version WHERE tenant_id=t AND company_id=wanted_company AND year=p.year AND state='confirmed' ORDER BY revision DESC LIMIT 1;
+ IF s IS NULL OR v IS NULL OR pat.id IS NULL OR(pat.inputs->>'targetCents')::bigint<=0 OR coalesce(pat.inputs->>'actualCents',pat.inputs->>'forecastCents') IS NULL THEN RAISE EXCEPTION 'Confirmed libraries and PAT are required';END IF;
+ source:=app.reward_config_policy_source(wanted_version);policy:=source->'policy';
+ policy:=app.reward_config_planned_policy_snapshot(policy,s,v,pat.inputs);
+ SELECT c.id,c.name INTO cycle,existing_cycle_name FROM reward_setup_cycle link JOIN reward_cycle c ON c.id=link.cycle_id AND c.tenant_id=link.tenant_id WHERE link.tenant_id=t AND link.group_id=p.group_id AND link.year=p.year;
+ IF cycle IS NULL THEN INSERT INTO reward_cycle(tenant_id,name,year,created_by) VALUES(t,p.cycle_name,p.year,actor) RETURNING id INTO cycle;INSERT INTO reward_setup_cycle VALUES(t,p.group_id,p.year,wanted_version,cycle);ELSIF existing_cycle_name IS DISTINCT FROM p.cycle_name THEN RAISE EXCEPTION 'The cycle name is fixed after the first review is created';END IF;
+ INSERT INTO reward_unit(id,tenant_id,created_by,cycle_id,company_id,business_unit_id,policy,policy_group_version_id,snapshot_date) VALUES(unit,t,actor,cycle,wanted_company,wanted_business_unit,policy,wanted_version,p.snapshot_date);
+ INSERT INTO reward_company_year_review VALUES(t,wanted_company,p.year,unit,'planned');
+ INSERT INTO reward_unit_setup(unit_id,tenant_id,plan_version_id,salary_version_id,bonus_version_id,pat_version_id) VALUES(unit,t,wanted_version,(b->>'salaryVersionId')::uuid,(b->>'bonusVersionId')::uuid,pat.id);
+ INSERT INTO reward_member(tenant_id,unit_id,user_id,role,valid_from) VALUES(t,unit,actor,'gr',timezone('Asia/Kuala_Lumpur',now())::date);
+ SELECT string_agg(coalesce(e.employee_code,e.id::text)||' · '||pe.full_name,'; ' ORDER BY e.employee_code,e.id) INTO pending_names FROM employment e JOIN person pe ON pe.id=e.person_id AND pe.tenant_id=e.tenant_id AND pe.import_pending_attempt_id IS NULL WHERE e.tenant_id=t AND e.import_pending_attempt_id IS NULL AND e.hired_on<=p.snapshot_date AND(e.terminated_on IS NULL OR e.terminated_on>p.snapshot_date) AND app.reward_config_source_org_tags(e.id,p.snapshot_date)->>'companyId'=wanted_company::text AND coalesce(app.reward_config_source_org_tags(e.id,p.snapshot_date)->>'status','pending') NOT IN('legacy','ready');
+ IF pending_names IS NOT NULL THEN RAISE EXCEPTION 'Group structure tagging is pending: %',pending_names;END IF;
+ SELECT EXISTS(SELECT 1 FROM employment e JOIN assignment a ON a.employment_id=e.id AND a.tenant_id=e.tenant_id WHERE e.tenant_id=t AND e.import_pending_attempt_id IS NULL AND app.reward_config_source_org_tags(e.id,p.snapshot_date)->>'companyId'=wanted_company::text AND e.hired_on<=p.snapshot_date AND(e.terminated_on IS NULL OR e.terminated_on>p.snapshot_date) AND (CASE WHEN app.reward_config_source_org_tags(e.id,p.snapshot_date)->>'status'='legacy' THEN a.business_unit_id ELSE nullif(app.reward_config_source_org_tags(e.id,p.snapshot_date)->>'businessUnitId','')::uuid END)=wanted_business_unit AND a.valid_from<=p.snapshot_date AND(a.valid_to IS NULL OR a.valid_to>p.snapshot_date) AND a.superseded_at IS NULL GROUP BY e.id HAVING count(*)>1) INTO overlap;
+ IF overlap THEN RAISE EXCEPTION 'An employee has overlapping assignments; correct Personnel before creating reviews';END IF;
+ FOR row IN SELECT e.*,a.id AS assignment_id,a.position_id AS assignment_position_id,j.code AS grade_code,pe.full_name,comp.id AS compensation_id,comp.basic_salary,comp.currency AS comp_currency,comp.pay_mode,comp.valid_from AS pay_from,pr.id AS review_id,pr.overall_rating
+ FROM employment e JOIN person pe ON pe.id=e.person_id AND pe.tenant_id=e.tenant_id AND pe.import_pending_attempt_id IS NULL JOIN assignment a ON a.employment_id=e.id AND a.tenant_id=e.tenant_id
+ LEFT JOIN job_grade j ON j.id=e.grade_id AND j.tenant_id=e.tenant_id
+ LEFT JOIN LATERAL(SELECT * FROM compensation c WHERE c.employment_id=e.id AND c.tenant_id=e.tenant_id AND c.valid_from<=p.snapshot_date AND(c.valid_to IS NULL OR c.valid_to>p.snapshot_date) AND c.superseded_at IS NULL ORDER BY c.valid_from DESC,c.id DESC LIMIT 1)comp ON true
+ LEFT JOIN LATERAL(SELECT r.id,r.overall_rating FROM performance_review r JOIN review_cycle c ON c.id=r.cycle_id AND c.tenant_id=r.tenant_id WHERE r.employment_id=e.id AND r.tenant_id=e.tenant_id AND r.closed_at IS NOT NULL AND c.period_start<=make_date(p.year,12,31) AND c.period_end>=make_date(p.year,1,1) ORDER BY r.closed_at DESC,r.id DESC LIMIT 1)pr ON true
+ WHERE e.tenant_id=t AND e.import_pending_attempt_id IS NULL AND app.reward_config_source_org_tags(e.id,p.snapshot_date)->>'companyId'=wanted_company::text AND e.hired_on<=p.snapshot_date AND(e.terminated_on IS NULL OR e.terminated_on>p.snapshot_date) AND (CASE WHEN app.reward_config_source_org_tags(e.id,p.snapshot_date)->>'status'='legacy' THEN a.business_unit_id ELSE nullif(app.reward_config_source_org_tags(e.id,p.snapshot_date)->>'businessUnitId','')::uuid END)=wanted_business_unit AND a.valid_from<=p.snapshot_date AND(a.valid_to IS NULL OR a.valid_to>p.snapshot_date) AND a.superseded_at IS NULL
+ LOOP
+ INSERT INTO reward_entry(tenant_id,unit_id,employment_id,source,facts,recommendation) VALUES(t,unit,row.id,jsonb_build_object('employmentId',row.id,'assignmentId',row.assignment_id,'positionId',row.assignment_position_id,'personId',row.person_id,'compensationId',row.compensation_id,'employeeCode',coalesce(row.employee_code,row.id::text),'name',row.full_name,'grade',regexp_replace(coalesce(row.grade_code,''),'^JG[[:space:]]*','','i'),'gradeId',row.grade_id,'basicCents',coalesce(round(row.basic_salary*100),0),'currency',coalesce(row.comp_currency,'MYR'),'payMode',coalesce(row.pay_mode,'monthly'),'hiredOn',row.hired_on,'confirmedOn',row.confirmation_date,'notice',(row.tender_resignation_date IS NOT NULL AND row.tender_resignation_date<=p.snapshot_date) OR(row.resignation_date IS NOT NULL AND row.resignation_date<=p.snapshot_date),'lastPayChange',CASE WHEN row.pay_from>row.hired_on THEN row.pay_from ELSE NULL END,'confirmationPayChange',coalesce(row.pay_from=row.confirmation_date AND row.pay_from>row.hired_on,false),'performanceReviewId',row.review_id,'performanceRating',row.overall_rating,'architecture',app.reward_config_architecture_for_source(unit,row.id,row.assignment_position_id,p.snapshot_date),'payChanges',coalesce((SELECT jsonb_agg(jsonb_build_object('on',x.valid_from,'basicCents',round(x.basic_salary*100),'kind',app.reward_config_snapshot_pay_change_kind(x.id)) ORDER BY x.valid_from,x.id) FROM(SELECT c.*,lag(c.basic_salary)over(ORDER BY c.valid_from,c.id) AS prior_basic FROM compensation c WHERE c.employment_id=row.id AND c.tenant_id=t AND c.superseded_at IS NULL)x WHERE x.prior_basic IS NOT NULL AND x.basic_salary<>x.prior_basic AND x.valid_from>row.hired_on AND x.valid_from BETWEEN make_date(p.year,1,1) AND make_date(p.year+1,12,31)),'[]'::jsonb)),
+ '{"talent":null,"performance":null,"confidentiality":"standard","seniorPlan":false,"erCase":false,"pipCase":false,"erDecision":"pending","pipDecision":"pending","caseReason":"","segment":"","branch":"","reviewed":false}'::jsonb,
+ '{"meritBp":null,"promotionGrade":null,"promotionBp":null,"specialBp":null,"multiplierBp":null,"bonusCents":null,"lumpCents":null,"reason":"","currentRoleSummary":"","proposedRoleSummary":""}'::jsonb);
+ END LOOP;
+ INSERT INTO domain_event(tenant_id,aggregate_type,aggregate_id,event_type,actor_type,actor_id,payload) VALUES(t,'reward-unit',unit,'reward-unit.approved-plan-admitted','user',actor,jsonb_build_object('planVersionId',wanted_version,'salaryVersionId',b->>'salaryVersionId','bonusVersionId',b->>'bonusVersionId','patVersionId',pat.id));
+ PERFORM set_config('app.reward_config_creating','',true);
+ RETURN unit;
+END $$;
+
+--> statement-breakpoint
+CREATE OR REPLACE FUNCTION app.reward_role_level_options(wanted_role text,wanted_capability text) RETURNS text[] LANGUAGE sql IMMUTABLE SET search_path=pg_catalog,app AS $$
+ SELECT CASE WHEN d='none' THEN ARRAY['none']
+  WHEN wanted_capability='restricted.view' THEN ARRAY['step','view']
+  WHEN d='full' AND wanted_capability IN('salary.view','bonus.view','senior.manage','limits.view','plans.manage') THEN ARRAY['full','view','none']
+  ELSE ARRAY[d,'none'] END
+ FROM (SELECT app.reward_role_default_level(wanted_role,wanted_capability) AS d) x
+$$;

@@ -18,7 +18,7 @@ const readers:NotificationRecipientReaders<Probe>={
 };
 const registry=createNotificationRegistry(readers),recipes=Object.entries(registry).flatMap(([eventType,value])=>(Array.isArray(value)?value:[value]).map(spec=>({eventType,spec})));
 const eligible=(spec:NotificationSpec<Probe>):NotificationPayload=>spec.recipientGuard?{[spec.recipientGuard.field]:spec.recipientGuard.not?false:true}:{};
-const unsupported=new Set(['attendanceEscalation','bulkJobInitiator','rewardConfigChanged','rewardLimitsReapplied','rewardPreparationReleased','rewardPreparationChanged','rewardPreparationInvalidated','probation','leaveSubmitted','leaveCancellationSubmitted','overtimeSubmitted','readinessNudge','peerFeedback','assessmentReviewTask','assessmentKpiApproval','legacyReviewStarted','legacyReviewEvaluated','legacyReviewDecidedLetter','legacyReviewReminder','leaveEscalation','automaticReviewChase','missingClockFollowup','passportFollowup','lifecycleFollowup','employeeLoopDigest','approvalChase']);
+const unsupported=new Set(['attendanceEscalation','bulkJobInitiator','rewardPlanCompanyAdded','rewardConfigChanged','rewardLimitsReapplied','rewardPreparationReleased','rewardPreparationChanged','rewardPreparationInvalidated','probation','leaveSubmitted','leaveCancellationSubmitted','overtimeSubmitted','readinessNudge','peerFeedback','assessmentReviewTask','assessmentKpiApproval','legacyReviewStarted','legacyReviewEvaluated','legacyReviewDecidedLetter','legacyReviewReminder','leaveEscalation','automaticReviewChase','missingClockFollowup','passportFollowup','lifecycleFollowup','employeeLoopDigest','approvalChase']);
 
 // Reviewed domain identities, independent of the registry's runtime count/factory expansion.
 const expectedRecipeKeys=[
@@ -78,6 +78,7 @@ const expectedRecipeKeys=[
  'resignation.accepted|resignation.accepted',
  'resignation.rejected|resignation.rejected',
  'reward-access.suspended|rewards.access-suspended',
+ 'reward-plan.company-added|rewards.plan-company-added',
  'reward-unit.approved|rewards.approved',
  'reward-unit.final-pool-changed|rewards.final-pool-changed',
  'reward-unit.limits-reapplied|rewards.limits-reapplied',
