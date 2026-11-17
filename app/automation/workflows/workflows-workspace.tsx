@@ -21,9 +21,9 @@ const catalogue = PROBATION_AUTOMATION_CATALOGUE;
 const blank = (): AutomationWorkflow => ({ id: crypto.randomUUID(), module: 'probation', name: '', description: '', status: 'paused', required: false, trigger: { event: catalogue.triggers[0].id, days: 0, workdays: false, repeat: false }, skipWhen: 'never', conditions: [], steps: [] });
 
 /** HR Automation › Workflows (prototype WorkflowsPage; mockups 12 and 13). Probation is on the shared engine; the other modules link to their builders. */
-export function WorkflowsWorkspace({filter,access,workflows,refs,defaultsMissing,offboarding,onboardingSection,contractSection}:{contractSection?:ReactNode;onboardingSection?:ReactNode;offboarding?:OffboardingWorkspace;filter:AutomationFilter;access:AutomationPageAccess;workflows:ListedWorkflow[];refs:WorkflowEditorReferences;defaultsMissing:number}){
+export function WorkflowsWorkspace({filter,access,workflows,refs,defaultsMissing,offboarding,onboardingSection,contractSection,initialOffboardingWorkflowId}:{contractSection?:ReactNode;onboardingSection?:ReactNode;offboarding?:OffboardingWorkspace;initialOffboardingWorkflowId?:string;filter:AutomationFilter;access:AutomationPageAccess;workflows:ListedWorkflow[];refs:WorkflowEditorReferences;defaultsMissing:number}){
  const t=useTranslations('automation'),router=useRouter(),[busy,start]=useTransition();
- const [editing,setEditing]=useState<ListedWorkflow|null>(null),[notice,setNotice]=useState<{kind:'error'|'status';text:string}|null>(null);
+ const [editing,setEditing]=useState<ListedWorkflow|null>(()=>offboarding?.workflows.find(item=>item.workflow.id===initialOffboardingWorkflowId)??null),[notice,setNotice]=useState<{kind:'error'|'status';text:string}|null>(null);
  const [moveReason,setMoveReason]=useState(''),[moveResult,setMoveResult]=useState<ProbationWorkflowMoveResult|null>(null);
  // G2: move the notify-only Probation workflows whose conversion is proven exact; the rest stay, with the reason.
  const move=()=>{if(!window.confirm(t('move.confirm')))return;setNotice(null);start(async()=>{const result=await moveProbationWorkflowsAction({reason:moveReason});if(!result.ok){setNotice({kind:'error',text:result.detail??t('errors.unavailable')});return;}
