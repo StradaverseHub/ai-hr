@@ -50,7 +50,7 @@ function act(letter:ResignationLetter,ctx:SessionContext,action:ResignationLette
 
 function formLetter():ResignationLetter{
  const input=letterInput(),version=input.template.versions[0]!;
- input.values['employee.salary']='6400';version.fields=[{id:'hr-note',label:'HR note',type:'text',owner:'hr',pmKey:null,required:true,sensitive:false,options:[],section:'local',when:null},{id:'hr-detail',label:'HR detail',type:'text',owner:'hr',pmKey:null,required:false,sensitive:false,options:[],section:'local',when:{field:'hr-note',value:'Show'}},{id:'employee-note',label:'Employee note',type:'text',owner:'employee',pmKey:null,required:false,sensitive:false,options:[],section:'local',when:null},{id:'hr-source-check',label:'Check sourced salary',type:'text',owner:'hr',pmKey:null,required:false,sensitive:false,options:[],section:'local',when:{field:'salary',value:'6400'}},{id:'salary',label:'Salary',type:'number',owner:'pmLocked',pmKey:'employee.salary',required:false,sensitive:true,options:[],section:'local',when:null}];
+ input.values['employee.salary']='6400';version.fields=[{id:'hr-note',label:'HR note',type:'text',owner:'hr',pmKey:null,required:true,sensitive:false,options:[],section:'local',when:null},{id:'hr-detail',label:'HR detail',type:'text',owner:'hr',pmKey:null,required:false,sensitive:false,options:[],section:'local',when:{field:'hr-note',value:'Show'}},{id:'employee-note',label:'Employee note',type:'text',owner:'employee',pmKey:null,required:false,sensitive:false,options:[],section:'local',when:null},{id:'hr-source-check',label:'Check sourced salary',type:'text',owner:'hr',pmKey:null,required:false,sensitive:false,options:[],section:'local',when:{field:'salary',value:'6400'}},{id:'today',label:'Conflicting generated date',type:'text',owner:'hr',pmKey:null,required:false,sensitive:false,options:[],section:'local',when:null},{id:'retention.salary',label:'Conflicting local name',type:'text',owner:'hr',pmKey:null,required:false,sensitive:false,options:[],section:'local',when:null},{id:'salary',label:'Salary',type:'number',owner:'pmLocked',pmKey:'employee.salary',required:false,sensitive:true,options:[],section:'local',when:null}];
  version.blocks.push({id:'local-fields',type:'fields',section:'local',text:''});return generateResignationLetter(input).letter;
 }
 it('admits assigned HR local fields and atomically enabled conditional values, preserving Personnel sources',async()=>{
@@ -67,7 +67,7 @@ it('preserves earlier local edits and evaluates a later conditional edit against
 });
 it('denies unknown, mapped, wrong-owner, hidden and future-recipient form writes',async()=>{
  const letter=formLetter();data={...data,decision:null,letters:[letter]};await seedJourney('offer');const original=await persisted();
- for(const values of[{unknown:'injected'},{salary:'999999'},{'employee-note':'wrong owner'},{'hr-detail':'still hidden'}]){await nativeRefusal(withTenant(fyi,tx=>begin(tx,fyi,{type:'saveLetterFields',documentId:letter.id,documentRevision:letter.revision,values})),'42501');expect(await persisted()).toEqual(original);}
+ for(const values of[{unknown:'injected'},{today:'2099-01-01'},{'retention.salary':'999999'},{salary:'999999'},{'employee-note':'wrong owner'},{'hr-detail':'still hidden'}]){await nativeRefusal(withTenant(fyi,tx=>begin(tx,fyi,{type:'saveLetterFields',documentId:letter.id,documentRevision:letter.revision,values})),'42501');expect(await persisted()).toEqual(original);}
  await nativeRefusal(withTenant(employee,tx=>begin(tx,employee,{type:'saveLetterFields',documentId:letter.id,documentRevision:letter.revision,values:{'employee-note':'too early'}})),'42501');expect(await persisted()).toEqual(original);
 });
 it('refuses field-definition, wrong-value and Personnel-source rewrites under a valid field command',async()=>{
@@ -94,4 +94,10 @@ it('allows offer to return to retention when employee local edits invalidate a p
  expect(changed.revision).toBeGreaterThan(letter.revision);expect(changed.document.actions.some(a=>a.action==='signed')).toBe(false);
  await withTenant(employee,async tx=>{await begin(tx,employee,{type:'saveLetterFields',documentId:letter.id,documentRevision:letter.revision,values});await save(tx,employee,{...data,letters:[changed]},'retention');});
  expect(await persisted()).toMatchObject({revision:2,stage:'retention'});
+});
+it.each([{}, {exitReason:''}])('defaults an absent or empty pinned exit reason to Resignation: %j',async params=>{
+ const workflowId=randomUUID(),runId=randomUUID(),definition={trigger:{event:'accepted'},steps:[{id:'default-exit',type:'startOffboarding',params}]};
+ await owner.db.execute(sql`insert into automation_workflow_version(tenant_id,workflow_id,revision,module,status,required,definition,reason,saved_by) values(${b.tenantId}::uuid,${workflowId}::uuid,1,'off','live',true,${JSON.stringify(definition)}::jsonb,'Pinned default reason',${b.adminUserId}::uuid)`);
+ await owner.db.execute(sql`insert into automation_run(tenant_id,id,module,workflow_id,workflow_revision,subject_id,event_key,trigger_event,status) values(${b.tenantId}::uuid,${runId}::uuid,'off',${workflowId}::uuid,1,${id}::uuid,'default-reason-fixture','accepted','running')`);
+ await withTenant(manager,async tx=>{await begin(tx,manager,{type:'accept',lastWorkingDay:day,replacementNeeded:false});await save(tx,manager,{...data,decision:null,replacementNeeded:false,offboardingStart:{runId,stepId:'default-exit',exitReason:'Resignation'}},'accepted');const[row]=await tx.execute<{intent:{type:string}}>(sql`select app.resignation_offboarding_intent(${id}::uuid) intent`);expect(row.intent.type).toBe('Resignation');});
 });
