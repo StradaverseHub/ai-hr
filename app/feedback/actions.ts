@@ -38,7 +38,7 @@ export async function askFeedbackClarificationAction(_state: FeedbackDialogueFor
   const id = String(data.get('id') ?? '');
   try {
     await askFeedbackClarification(s, {feedbackId: id, questionId: String(data.get('questionId') ?? ''),
-      expectedPlanRevision: Number(data.get('planRevision')), question: String(data.get('question') ?? '')});
+      expectedPlanRevision: Number(data.get('planRevision') ?? NaN), question: String(data.get('question') ?? '')});
   } catch (e) { return {error: publicErrorMessage(e)}; }
   revalidatePath(`${BASE}/${id}`); revalidatePath(BASE);
   return {sent: true};

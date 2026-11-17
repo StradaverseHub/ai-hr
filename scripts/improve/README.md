@@ -19,6 +19,66 @@ the server; only SQL and results travel over SSH.
 
 ## Phase A — plan (proven)
 
+### Asynchronous clarification before planning
+
+Reports that are clear need no question. For an incomplete report, read its attachments and full
+`block_trail` first, investigate what the system can establish, then group the remaining related
+questions and explain why an answer matters. Never ask for a fact already recorded in the history.
+
+The authenticated Feedback detail page now lets an administrator ask a question before a first or
+revised plan. The reporter or an authorized administrator can reply there when convenient. The reply
+is saved against the exact question ID. It keeps the report `open` or `contested`: answering is not
+plan approval or permission to build. A new/revised plan still needs its normal review.
+
+The operator equivalents use the existing private connection and require the session's authorization
+to contact the reporter. Generate a question UUID once and retain it for retries:
+
+```sh
+pnpm exec tsx scripts/improve/cli.ts pull-waiting
+pnpm exec tsx scripts/improve/cli.ts ask < /ABSOLUTE/PRIVATE/question.json
+pnpm exec tsx scripts/improve/cli.ts pull-item FEEDBACK_UUID
+```
+
+The question payload is:
+
+```json
+{
+  "id": "FEEDBACK_UUID",
+  "tenantId": "TENANT_UUID",
+  "reporterEmploymentId": null,
+  "questionId": "STABLE_QUESTION_UUID",
+  "expectedPlanRevision": 0,
+  "question": "Is overtime missing from approval or the payroll preview? Which month? This determines which workflow to investigate."
+}
+```
+
+Use the actual reporter employment ID when one exists. `expectedPlanRevision` comes from the item you
+read, not an assumed zero. Questions are limited to 4,000 characters, replies to 8,000. Only one open
+question bundle is allowed. Repeating the same command ID records no second question/event. A previous
+answer is immutable; a new question should explain any changed context.
+
+`improve:pull` excludes reports with an open question. No agent waits on a chat connection: after the
+reply, the next authorized pull returns the item together with all earlier questions and answers.
+Both native and operator plan writes reject an unanswered question. `pull-waiting` exposes the waiting
+items separately. This is durable queue eligibility, not a newly enabled scheduler, email notification
+or automatic model invocation. The retired anonymous `feedback:plan` command remains retired.
+
+If investigation resolves the ambiguity without a reply, explicitly close the exact question:
+
+```sh
+pnpm exec tsx scripts/improve/cli.ts close-question < /ABSOLUTE/PRIVATE/resolution.json
+```
+
+Use the same `id`, `tenantId`, reporter binding and `questionId`, plus a nonblank `reason`. Closing
+retains the unanswered question and audit reason; it never fabricates a reporter answer. Read the item
+back after writes. No new migration is needed: the append-and-close-once owner from migration 0323
+already stores these conversations, including user-only reporters under the current canonical policies.
+
+The source changes refresh generated AI source inventories but do not renew human provider-data
+approvals. Release coordination must review and rebind the exact new source before governed model
+egress is admitted; stale approvals continue to refuse. No model or messaging permissions are enabled
+by these commands or UI controls.
+
 ```bash
 pnpm improve:pull                      # → JSON array of open/contested feedback from the server DB
 ```
