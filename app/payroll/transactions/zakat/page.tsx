@@ -1,16 +1,16 @@
+import {sharedEmployeePicker} from '@/core/shared-employee-picker';
 import { ExportDownloadLink } from '@/components/export-download-link';
 import Link from 'next/link';
 import { cookies } from 'next/headers';
 import { getTranslations } from 'next-intl/server';
 import { scopedAdmin } from '@/lib/scope';
-import { listCompanies, listEmployees } from '@/core/read';
+import { listCompanies } from '@/core/read';
 import { listZakatElections, listZakatTxnsAcross } from '@/core/payroll-view';
 import { getStatutoryProfileMY } from '@/localization/my/statutory';
 import { Button, Card, EmployeeName, ErrorBanner, Field, PageHeader, SectionHeader, inputCls, pageWideCls } from '@/components/ui';
 import {
   CollapsibleEmployeePanel,
   EmployeeScopePanel,
-  type ScopeEmployee,
 } from '@/components/collapsible-employee-panel';
 import { AppliedInPayrollList, type AppliedInPayrollRow } from '@/components/applied-in-payroll-list';
 import { ZakatElectionsList, type ZakatElectionListRow } from './elections-list';
@@ -105,13 +105,10 @@ export default async function ZakatTransactionPage({
   const typedComponentsOn = isModuleEnabledOrFalse(s, 'typed_pay_components');
 
   // ── Selection ──────────────────────────────────────────────────────────────
-  const [allEmployees, companies] = await Promise.all([listEmployees(s, scopeIds), listCompanies(s)]);
-  const employees = allEmployees.filter((e) => !e.terminatedOn);
-  const selectedEmploymentId =
-    employmentId && employees.some((e) => e.employmentId === employmentId) ? employmentId : null;
-  const selectedEmp = selectedEmploymentId
-    ? (employees.find((e) => e.employmentId === selectedEmploymentId) ?? null)
-    : null;
+  const [{choices:employeeChoices,subject:selectedEmp},companies]=await Promise.all([
+    sharedEmployeePicker(s,scopeIds,'active',{labelMode:'labels',selectedId:employmentId}),listCompanies(s),
+  ]);
+  const selectedEmploymentId=selectedEmp?.employmentId??null;
   // Add vs Edit, decided by the SAME predicate the history list uses for "has a setup on file", so the
   // button and the row underneath it can never disagree about which one this person is.
   const statutory = selectedEmp ? await getStatutoryProfileMY(s, selectedEmp.personId) : null;
@@ -122,20 +119,7 @@ export default async function ZakatTransactionPage({
   // The panel is fed EXACTLY the set the guard above accepts (`employees`, i.e. non-terminated), so it can
   // never offer a row the server would then refuse. Feeding it `allEmployees` would render terminated
   // people as clickable and silently drop the selection — a dead click is worse than an absent one.
-  const panelEmployees: ScopeEmployee[] = employees.map((e) => ({
-    employmentId: e.employmentId,
-    name: e.name,
-    employeeCode: e.employeeCode,
-    company: e.company,
-    companyId: e.companyId,
-    department: e.departmentLabel ?? e.department,
-    departmentCode: e.departmentCode,
-    departmentId: e.departmentId,
-    businessUnit: e.businessUnitLabel ?? e.businessUnit,
-    businessUnitCode: e.businessUnitCode,
-    businessUnitId: e.businessUnitId,
-    status: e.terminatedOn == null ? 'active' : 'ended',
-  }));
+
 
   // ── History filters (read-only lists) ──────────────────────────────────────
   const scopedCompanies = companies.filter((c) => scopeIds.includes(c.id));
@@ -270,12 +254,12 @@ export default async function ZakatTransactionPage({
           <Card className="p-4">
             <h2 className="text-sm font-semibold">{t('zakat.election.pickEmployee')}</h2>
             <p className="mt-1 text-xs text-muted-foreground">{t('zakat.election.subtitle')}</p>
-            {employees.length === 0 ? (
+            {employeeChoices.total === 0 ? (
               <p className="mt-3 text-sm text-muted-foreground">{t('zakat.election.noEmployees')}</p>
             ) : (
               <div className="mt-3">
                 <EmployeeScopePanel
-                  employees={panelEmployees}
+                  remote={{initial:employeeChoices,endpoint:'/api/shared-employee-choices/active'}}
                   selectedId={selectedEmploymentId}
                   basePath="/payroll/transactions/zakat"
                   preserve={panelPreserve}

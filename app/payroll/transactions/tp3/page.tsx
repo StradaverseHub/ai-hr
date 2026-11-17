@@ -1,3 +1,4 @@
+import {sharedEmployeePicker} from '@/core/shared-employee-picker';
 import { ActionButton } from '@/components/ui/action-button';
 import { Tp3DeclarationFields } from '@/components/tp3-declaration-fields';
 import Link from 'next/link';
@@ -5,7 +6,6 @@ import { cookies } from 'next/headers';
 import { getLocale, getTranslations } from 'next-intl/server';
 import { scopedAdmin } from '@/lib/scope';
 import { tp3LineFigures } from '@/lib/tp3-line-figures';
-import { listEmployees } from '@/core/read';
 import {
   deriveAccumulatorSeed,
   tp3EpfReliefCap,
@@ -34,7 +34,7 @@ import {
   inputCls,
   pageWideCls,
 } from '@/components/ui';
-import { CollapsibleEmployeePanel, EmployeeScopePanel, type ScopeEmployee } from '@/components/collapsible-employee-panel';
+import { CollapsibleEmployeePanel, EmployeeScopePanel } from '@/components/collapsible-employee-panel';
 import { timeInKualaLumpur, todayInKualaLumpur } from '@/lib/hr-date';
 import { deleteTp3Action, saveTp3Action } from './actions';
 
@@ -108,25 +108,11 @@ export default async function Tp3Page({
   // NARROW THE SELECTION TO THE ADMIN'S OWN COMPANY SCOPE, the way every sibling transaction screen
   // does. The database already fails closed (employment RLS routes through app.is_admin_for); this
   // makes the reachable set and the visible set the same thing.
-  const employees = await listEmployees(s, scopeIds);
-  const selectedEmp = (sp.employmentId ? employees.find((e) => e.employmentId === sp.employmentId) : undefined) ?? null;
-  const selectedEmploymentId = selectedEmp?.employmentId ?? null;
+  const {choices:employeeChoices,subject:selectedEmp}=await sharedEmployeePicker(s,scopeIds,'scoped',{labelMode:'labels',selectedId:sp.employmentId});
+  const selectedEmploymentId=selectedEmp?.employmentId??null;
 
   const panelDefaultOpen = (await cookies()).get(TP3_PANEL_COOKIE)?.value !== '0';
-  const panelEmployees: ScopeEmployee[] = employees.map((e) => ({
-    employmentId: e.employmentId,
-    name: e.name,
-    employeeCode: e.employeeCode,
-    company: e.company,
-    companyId: e.companyId,
-    department: e.departmentLabel ?? e.department,
-    departmentCode: e.departmentCode,
-    departmentId: e.departmentId,
-    businessUnit: e.businessUnitLabel ?? e.businessUnit,
-    businessUnitCode: e.businessUnitCode,
-    businessUnitId: e.businessUnitId,
-    status: e.terminatedOn == null ? 'active' : 'ended',
-  }));
+
 
   // The assessment year is a MYT calendar fact — between 00:00 and 08:00 MYT on 1 January a host-clock
   // year is still last year's (lib/hr-date.ts). Fixtures included: never `new Date().getFullYear()`.
@@ -215,7 +201,7 @@ export default async function Tp3Page({
             <p className="mt-1 text-xs text-muted-foreground">{t('tp3.selectEmployeePrompt')}</p>
             <div className="mt-3">
               <EmployeeScopePanel
-                employees={panelEmployees}
+                remote={{initial:employeeChoices,endpoint:'/api/shared-employee-choices/scoped'}}
                 selectedId={selectedEmploymentId}
                 basePath="/payroll/transactions/tp3"
                 preserve={{ year: String(selectedYear) }}

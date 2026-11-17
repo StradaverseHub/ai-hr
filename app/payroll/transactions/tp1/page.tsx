@@ -1,8 +1,8 @@
+import {sharedEmployeePicker} from '@/core/shared-employee-picker';
 import Link from 'next/link';
 import { cookies } from 'next/headers';
 import { getLocale, getTranslations } from 'next-intl/server';
 import { scopedAdmin } from '@/lib/scope';
-import { listEmployees } from '@/core/read';
 import { listTp1DeclarationsForPersonYear, listTp1YearsForPerson, type Tp1MonthDeclaration } from '@/core/tax-relief';
 import { listAppliedTp1Deductions, type AppliedTp1ViewRow } from '@/core/payroll-view';
 import {
@@ -18,7 +18,6 @@ import {
 import {
   CollapsibleEmployeePanel,
   EmployeeScopePanel,
-  type ScopeEmployee,
 } from '@/components/collapsible-employee-panel';
 import { adminDeleteTp1 } from '../deductions-actions';
 import { AppliedInPayrollList, type AppliedInPayrollRow } from '@/components/applied-in-payroll-list';
@@ -115,30 +114,15 @@ export default async function Tp1DeclarationPage({
   // header comment for what this is and is not — the database already fails closed; this makes the
   // reachable set and the visible set the same. The selected row is taken from THIS list rather than
   // re-read through employmentSubject: one read, and the row that passed the guard is the row rendered.
-  const employees = await listEmployees(s, scopeIds);
-  const selectedEmp =
-    (employmentId ? employees.find((e) => e.employmentId === employmentId) : undefined) ?? null;
-  const selectedEmploymentId = selectedEmp?.employmentId ?? null;
+  const {choices:employeeChoices,subject:selectedEmp}=await sharedEmployeePicker(s,scopeIds,'scoped',{labelMode:'labels',selectedId:employmentId});
+  const selectedEmploymentId=selectedEmp?.employmentId??null;
 
   // Resolved on the SERVER from the cookie so first paint is already correct; absent ⇒ expanded.
   const panelDefaultOpen = (await cookies()).get(TP1_PANEL_COOKIE)?.value !== '0';
   // ALL scoped employees, terminated included — and the guard above accepts exactly this set, so the panel
   // can never offer a row the server would then refuse. A leaver still has declared assessment years and an
   // EA form to answer for; the panel's Employee Status filter is what narrows to the active ones.
-  const panelEmployees: ScopeEmployee[] = employees.map((e) => ({
-    employmentId: e.employmentId,
-    name: e.name,
-    employeeCode: e.employeeCode,
-    company: e.company,
-    companyId: e.companyId,
-    department: e.departmentLabel ?? e.department,
-    departmentCode: e.departmentCode,
-    departmentId: e.departmentId,
-    businessUnit: e.businessUnitLabel ?? e.businessUnit,
-    businessUnitCode: e.businessUnitCode,
-    businessUnitId: e.businessUnitId,
-    status: e.terminatedOn == null ? 'active' : 'ended',
-  }));
+
 
   // ── The selected employee's two lists (nothing is read for nobody) ─────────
   // The assessment year is a MYT calendar fact: between 00:00 and 08:00 MYT on 1 January, a host-clock
@@ -314,12 +298,12 @@ export default async function Tp1DeclarationPage({
           <Card className="p-4">
             <h2 className="text-sm font-semibold">{t('tp1.pickEmployee')}</h2>
             <p className="mt-1 text-xs text-muted-foreground">{t('tp1.subtitle')}</p>
-            {employees.length === 0 ? (
+            {employeeChoices.total === 0 ? (
               <p className="mt-3 text-sm text-muted-foreground">{t('tp1.noEmployees')}</p>
             ) : (
               <div className="mt-3">
                 <EmployeeScopePanel
-                  employees={panelEmployees}
+                  remote={{initial:employeeChoices,endpoint:'/api/shared-employee-choices/scoped'}}
                   selectedId={selectedEmploymentId}
                   basePath="/payroll/transactions/tp1"
                 />

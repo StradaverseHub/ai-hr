@@ -1,7 +1,7 @@
 import { notFound } from 'next/navigation';
 import { getTranslations } from 'next-intl/server';
 import { requireAdmin } from '@/lib/authz';
-import { listEmployees } from '@/core/read';
+import { employeePickerSubject } from '@/core/read';
 import { Card, EmployeeName, ErrorBanner, PageHeader, SectionHeader } from '@/components/ui';
 import { LoanNewForm } from '@/components/loan-new-form';
 
@@ -33,8 +33,7 @@ export default async function NewLoanPage({
   const t = await getTranslations('loans');
   const { employmentId, error } = await searchParams;
 
-  const employees = await listEmployees(s);
-  const emp = employmentId ? (employees.find((e) => e.employmentId === employmentId) ?? null) : null;
+  const emp=await employeePickerSubject(s,employmentId);
   if (!emp) notFound();
   // A loan may only be opened for someone still employed — a terminated employment has no future payroll
   // run to deduct an instalment from. Reading a terminated person's EXISTING loans stays possible (the list

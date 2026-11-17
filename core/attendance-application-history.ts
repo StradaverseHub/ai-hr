@@ -1,3 +1,5 @@
+import {readEmployeeChoicesTx} from './employee-choice';
+import type {EmployeeChoiceInput} from '../lib/employee-choice';
 import type { AttendanceResolvedStage } from '../lib/attendance-workflow';
 import { attendanceApplicationReviewTx, attendanceProgressTx } from './attendance-application-review';
 import type { AttendanceProgress } from '../lib/attendance-progress';
@@ -168,7 +170,7 @@ export async function attendanceApplicationDetail(ctx: SessionContext, companyId
         return { ...row, applicationType: attendanceApplicationType(row.application), workflow, events, review, progress, approverCodes, canReassign: !self && row.application.status === 'pending' && (workflow?.routingVersion === 2 || (workflow?.routingVersion === 3 || workflow?.routingVersion === 4)) && workflow.currentStage < workflow.stages.length, canDecide, canCancel: !self && (row.application.status === 'pending' || row.application.status === 'approved') };
     });
 }
-export function attendanceApplicationFilterOptions(ctx: SessionContext, companyIds: string[],selectedApproverIds:readonly string[]=[]) {
+export function attendanceApplicationFilterOptions(ctx: SessionContext, companyIds: string[],selectedApproverIds:readonly string[]=[],options:{omitEmployees?:boolean}={}) {
     if(selectedApproverIds.length>100||selectedApproverIds.some(id=>!/^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i.test(id)))throw new Error('Invalid selected employee identities.');
     admin(ctx);
     return withTenant(ctx, async (tx) => {
@@ -194,7 +196,7 @@ export function attendanceApplicationFilterOptions(ctx: SessionContext, companyI
         }
         // Extend the existing authorised options, rather than introducing a wider employee reader.
         // One dated assignment supplies the choice-only narrowers; application filters remain separate.
-        const employees = await tx.execute(sql`SELECT e.id,p.full_name AS name,e.employee_code AS "employeeCode",
+        const employees = options.omitEmployees?[]:await tx.execute(sql`SELECT e.id,p.full_name AS name,e.employee_code AS "employeeCode",
           e.company_id AS "companyId",co.legal_name AS company,e.terminated_on AS "terminatedOn",
           a.department_id AS "departmentId",d.name AS department,
           coalesce(a.business_unit_id,d.business_unit_id) AS "businessUnitId",bu.name AS "businessUnit"
@@ -212,13 +214,25 @@ export function attendanceApplicationFilterOptions(ctx: SessionContext, companyI
             terminatedOn:string|null; departmentId:string|null; department:string|null;
             businessUnitId:string|null; businessUnit:string|null;
           }[];
-        const approverEmployees = await tx.execute(sql`select id,name,employee_code as "employeeCode" from app.attendance_workflow_v3_approver_options(ARRAY[${sql.join(companies.map(row => sql`${row.id}::uuid`), sql`, `)}]::uuid[]) limit 50`) as unknown as { id: string; name: string; employeeCode: string | null }[];
-        if(selectedApproverIds.length){
+        const approverEmployees = options.omitEmployees?[]:await tx.execute(sql`select id,name,employee_code as "employeeCode" from app.attendance_workflow_v3_approver_options(ARRAY[${sql.join(companies.map(row => sql`${row.id}::uuid`), sql`, `)}]::uuid[]) limit 50`) as unknown as { id: string; name: string; employeeCode: string | null }[];
+        if(!options.omitEmployees&&selectedApproverIds.length){
           const selected=await tx.execute<{id:string;name:string;employeeCode:string|null}>(sql`select e.id,p.full_name as name,e.employee_code as "employeeCode" from employment e join person p on p.id=e.person_id and p.tenant_id=e.tenant_id where e.tenant_id=${ctx.tenantId}::uuid and e.id in (${sql.join(selectedApproverIds.map(id=>sql`${id}::uuid`),sql`, `)}) and app.is_admin_for(e.company_id) and app.access_workforce_employment(e.id,'workforce.view')`);
           for(const employee of selected)if(!approverEmployees.some(row=>row.id===employee.id))approverEmployees.push(employee);
         }
-        const availability=companies.length===1?await tx.execute(sql`select app.attendance_workflow_approver_availability(${companies[0].id}::uuid) as reason`) as unknown as {reason:'available'|'noEmployees'|'noActiveEmployees'|'noLinkedLogin'|'noEligible'|null}[]:[];
+        const availability=!options.omitEmployees&&companies.length===1?await tx.execute(sql`select app.attendance_workflow_approver_availability(${companies[0].id}::uuid) as reason`) as unknown as {reason:'available'|'noEmployees'|'noActiveEmployees'|'noLinkedLogin'|'noEligible'|null}[]:[];
         const [allCompany]=await tx.execute<{ok:boolean}>(sql`select app.principal_snapshot_current() and app.is_admin_for(NULL::uuid) as ok`);
         return { canManageAllCompanies:allCompany?.ok===true, companies, departments, businessUnits, grades, divisions, employees, approverEmployees, approverAvailability:availability[0]?.reason??undefined, positions, profileFields };
     });
+}
+
+/** The history selector has dated Assignment and department→Business Unit fallback semantics.
+ * Derive administered companies here; neither browser filters nor the generic directory widen them. */
+export function attendanceApplicationEmployeeChoices(ctx:SessionContext,companyIds:readonly string[],input:EmployeeChoiceInput={}){
+ admin(ctx);const scope=companyIds.slice(),asOf=todayInKualaLumpur();
+ return withTenant(ctx,async tx=>{
+  const companies=scope.length?await tx.select({id:company.id}).from(company)
+   .where(and(inArray(company.id,scope),sql`app.is_admin_for(${company.id})`)):[];
+  return readEmployeeChoicesTx(tx,ctx,{...input,limit:25,labelMode:'names',companyIds:companies.map(row=>row.id),
+   ...(companies.length?{}:{employmentIds:[]}),assignmentAsOf:asOf});
+ },{readOnlySnapshot:true});
 }

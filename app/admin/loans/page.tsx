@@ -1,15 +1,15 @@
+import {sharedEmployeePicker} from '@/core/shared-employee-picker';
 import Link from 'next/link';
 import { cookies } from 'next/headers';
 import { getTranslations } from 'next-intl/server';
 import { requireAdmin } from '@/lib/authz';
-import { listCompanies, listEmployees } from '@/core/read';
+import { listCompanies } from '@/core/read';
 import { listActiveLoans, type LoanRow } from '@/core/loans';
 import { listAppliedLoanRepayments } from '@/core/payroll-view';
 import { Button, Card, EmployeeName, ErrorBanner, PageHeader, SectionHeader, pageWideCls } from '@/components/ui';
 import {
   CollapsibleEmployeePanel,
   EmployeeScopePanel,
-  type ScopeEmployee,
 } from '@/components/collapsible-employee-panel';
 import { AppliedInPayrollList, type AppliedInPayrollRow } from '@/components/applied-in-payroll-list';
 import { LoanList } from '@/components/loan-list';
@@ -64,12 +64,11 @@ export default async function LoansPage({
   const t = await getTranslations('loans');
   const { error, employmentId } = await searchParams;
 
-  const [companies, employees] = await Promise.all([listCompanies(s), listEmployees(s)]);
+  const [companies,{choices:employeeChoices,subject:selectedEmp}]=await Promise.all([listCompanies(s),sharedEmployeePicker(s,[],'loans',{labelMode:'names',selectedId:employmentId})]);
 
   // SCOPE-GUARD the param: the ?employmentId= must be in the list this admin can already see. An unknown or
   // out-of-scope value is treated as NO selection (the whole list), never as an error and never as a read.
-  const selected = employmentId && employees.some((e) => e.employmentId === employmentId) ? employmentId : null;
-  const selectedEmp = selected ? (employees.find((e) => e.employmentId === selected) ?? null) : null;
+  const selected=selectedEmp?.employmentId??null;
 
   const companyIds = companies.map((c) => c.id);
   // Gather every loan across the companies the admin can see. Narrow AFTER the read, not before: the read
@@ -100,18 +99,7 @@ export default async function LoansPage({
   // ALL employees, not just active ones: a terminated employee can still carry a settled or outstanding
   // loan, and a screen whose whole job is the historical record must be able to reach them. The Employee
   // Status filter in the panel is what narrows to the active ones.
-  const panelEmployees: ScopeEmployee[] = employees.map((e) => ({
-    employmentId: e.employmentId,
-    name: e.name,
-    employeeCode: e.employeeCode,
-    company: e.company,
-    companyId: e.companyId,
-    department: e.department,
-    departmentId: e.departmentId,
-    businessUnit: e.businessUnit,
-    businessUnitId: e.businessUnitId,
-    status: e.terminatedOn == null ? 'active' : 'ended',
-  }));
+
 
   return (
     <div className={pageWideCls}>
@@ -151,7 +139,7 @@ export default async function LoansPage({
           <Card className="p-4">
             <h2 className="text-sm font-semibold">{t('employee')}</h2>
             <div className="mt-3">
-              <EmployeeScopePanel employees={panelEmployees} selectedId={selected} basePath="/admin/loans" />
+              <EmployeeScopePanel remote={{initial:employeeChoices,endpoint:'/api/shared-employee-choices/loans'}} selectedId={selected} basePath="/admin/loans" />
             </div>
           </Card>
         }

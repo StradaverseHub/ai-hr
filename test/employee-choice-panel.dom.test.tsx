@@ -56,3 +56,11 @@ it('uses an explicit module endpoint while preserving default consumers and navi
  fireEvent.click(screen.getByRole('button',{name:/Employee 26/}));
  const url=new URL(push.mock.calls[0][0],'https://fixture.invalid');expect(url.pathname).toBe('/leave/employee-balances');expect(url.searchParams.getAll('type')).toEqual(['annual','pool']);expect(url.searchParams.get('asOf')).toBe('2026-07-01');expect(url.searchParams.get('emp')).toBe('e26');
 });
+
+it.each(['scoped','active','loans'])('keeps %s purpose endpoint, deep selection and bounded navigation without posting its population',async purpose=>{
+ const initial=page(),next=page(25),fetcher=vi.fn().mockResolvedValue({ok:true,json:async()=>next});vi.stubGlobal('fetch',fetcher);
+ render(<NextIntlClientProvider locale="en" messages={messages}><EmployeeScopePanel remote={{initial,endpoint:'/api/shared-employee-choices/'+purpose}} selectedId="e99" basePath="/payroll/transactions/tp1" preserve={{year:'2026'}}/></NextIntlClientProvider>);
+ fireEvent.click(screen.getByRole('button',{name:'Next'}));await screen.findByText('Employee 26');
+ expect(fetcher.mock.calls[0][0]).toBe('/api/shared-employee-choices/'+purpose);const body=JSON.parse(fetcher.mock.calls[0][1].body);expect(body).toMatchObject({offset:25,selectedId:'e99'});expect(body.companyIds).toBeUndefined();expect(body.activeOnly).toBeUndefined();
+ fireEvent.click(screen.getByRole('button',{name:/Employee 26/}));expect(new URL(push.mock.calls[0][0],'https://fixture.invalid').searchParams.get('year')).toBe('2026');
+});

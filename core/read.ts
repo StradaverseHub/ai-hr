@@ -293,6 +293,23 @@ export function listEmployeesTx(tx: Tx, companyIds?: string[],purpose?:'workforc
       .orderBy(person.fullName);
 }
 
+/** Exact legacy selected header; no complete directory or unrelated lifecycle/private fields. */
+export function employeePickerSubjectTx(tx:Tx,id:string|undefined,companyIds?:readonly string[]){
+ if(!id||!/^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/.test(id))return Promise.resolve(null);
+ return tx.select({employmentId:employment.id,name:person.fullName,employeeCode:employment.employeeCode,
+  personId:employment.personId,companyId:employment.companyId,company:company.legalName,
+  department:department.name,position:position.title,hiredOn:employment.hiredOn,terminatedOn:employment.terminatedOn})
+  .from(employment).innerJoin(person,eq(person.id,employment.personId)).innerJoin(company,eq(company.id,employment.companyId))
+  .leftJoin(assignment,and(eq(assignment.employmentId,employment.id),isNull(assignment.validTo),isNull(assignment.supersededAt)))
+  .leftJoin(department,eq(department.id,assignment.departmentId)).leftJoin(position,eq(position.id,assignment.positionId))
+  .where(and(eq(employment.id,id),companyIds?.length?inArray(employment.companyId,companyIds.slice()):undefined)).limit(1)
+  .then(rows=>rows[0]??null);
+}
+export function employeePickerSubject(ctx:SessionContext,id:string|undefined,companyIds?:readonly string[]){
+ const scope=companyIds?.slice();
+ return withTenant(ctx,tx=>employeePickerSubjectTx(tx,id,scope),{readOnlySnapshot:true});
+}
+
 /** Exact membership of the legacy employee-list population, without hydrating the directory.
  * Empty company scope retains listEmployees' established all-visible semantics. UUID string equality
  * also stays exact: alternate spellings never matched the old JavaScript .some check. */

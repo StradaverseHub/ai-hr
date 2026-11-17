@@ -1,3 +1,4 @@
+import {sharedEmployeePicker} from '@/core/shared-employee-picker';
 import { recordPayrollAccess } from '@/core/payroll-audit/access-log';
 import { PayslipBlock as Block, PayslipInformation as Info, PayslipRow as Row } from '@/components/payslip-sections';
 import {PayslipCompanyLogo} from '@/components/payslip-company-logo';
@@ -126,7 +127,7 @@ import { listReprocessEmployeeOutcomes } from '@/packs/payroll/service';
 import { ReprocessOutcomeStatus, ReprocessOutcomeRemarks } from '../[batchId]/reprocess/outcomes';
 import { getLocale, getTranslations } from 'next-intl/server';
 import { scopedAdmin } from '@/lib/scope';
-import { listEmployees, listCompanies } from '@/core/read';
+import { listCompanies } from '@/core/read';
 // 417d4937 — today's Pay Item catalogue, for the read-time repair of record-line labels. Kept: r199
 // shipped it on this screen and 45df860a does not touch it.
 import { listPayComponents } from '@/core/pay-components';
@@ -163,7 +164,6 @@ import { Button, Card, EmployeeName, Field, PageHeader, inputCls, pageWideCls } 
 import {
   CollapsibleEmployeePanel,
   EmployeeScopePanel,
-  type ScopeEmployee,
 } from '@/components/collapsible-employee-panel';
 import { deriveHistoryBreakdown } from '../transaction-view/history-breakdown';
 // 5a29686c — the selection rules, pure so they can be asserted without a browser: which payslip the four
@@ -267,8 +267,8 @@ export default async function IndividualPayslipPage({
   // 417d4937 — the tenant's live Pay Items, keyed by CODE, for the record-line label repair below.
   // `includeArchived` on purpose: an archived item can still be the code on an already-calculated run,
   // and its real description is a better answer than a remark that was never that item's.
-  const [employees, companies, payItems] = await Promise.all([
-    listEmployees(s, scopeIds),
+  const [{choices:employeeChoices,subject:selectedEmp}, companies, payItems] = await Promise.all([
+    sharedEmployeePicker(s,scopeIds,'scoped',{labelMode:'labels',selectedId:sp.employmentId}),
     listCompanies(s),
     listPayComponents(s, { includeArchived: true }),
   ]);
@@ -280,8 +280,7 @@ export default async function IndividualPayslipPage({
   // by r179 — the control that expresses the selection moved, the place it is DECIDED did not.
   const companyId = sp.companyId && scopeIds.includes(sp.companyId) ? sp.companyId : undefined;
   const companyIds = companyId ? [companyId] : scopeIds;
-  const employmentId =
-    sp.employmentId && employees.some((e) => e.employmentId === sp.employmentId) ? sp.employmentId : undefined;
+  const employmentId=selectedEmp?.employmentId;
   const year = intParam(sp.year, 2000, 2100);
   const month = intParam(sp.month, 1, 12);
   // r210 — `?cycle=` now carries the run NUMBER as well ('bonus:2'), because the run type alone does not
@@ -295,23 +294,6 @@ export default async function IndividualPayslipPage({
   // Resolved on the SERVER from the cookie so first paint is already correct; absent ⇒ expanded.
   const panelDefaultOpen = (await cookies()).get(PAYSLIP_PANEL_COOKIE)?.value !== '0';
   // Fed the SAME set the scope guard above accepts, so the panel cannot offer a row the server refuses.
-  const panelEmployees: ScopeEmployee[] = employees.map((e) => ({
-    employmentId: e.employmentId,
-    name: e.name,
-    employeeCode: e.employeeCode,
-    company: e.company,
-    companyId: e.companyId,
-    department: e.departmentLabel ?? e.department,
-    departmentCode: e.departmentCode,
-    departmentId: e.departmentId,
-    businessUnit: e.businessUnitLabel ?? e.businessUnit,
-    businessUnitCode: e.businessUnitCode,
-    businessUnitId: e.businessUnitId,
-    status: e.terminatedOn == null ? 'active' : 'ended',
-  }));
-  // 009c8a37 — who the header row names. Read off the SAME already-fenced list the scope guard accepted,
-  // so it can never name somebody the page refused.
-  const selectedEmp = employmentId ? (employees.find((e) => e.employmentId === employmentId) ?? null) : null;
   // The period filters ride along when the employee changes — these are the GUARDED values, not the raw
   // params. `payslipId` deliberately does NOT: it names a run belonging to the person being navigated away
   // from, and carrying it would ask the next employee's list for someone else's payslip.
@@ -505,7 +487,7 @@ export default async function IndividualPayslipPage({
             <p className="mt-1 text-xs text-muted-foreground">{t('chooseEmployeeHint')}</p>
             <div className="mt-3">
               <EmployeeScopePanel
-                employees={panelEmployees}
+                remote={{initial:employeeChoices,endpoint:'/api/shared-employee-choices/scoped'}}
                 selectedId={employmentId ?? null}
                 basePath="/payroll/individual-payslip"
                 preserve={panelPreserve}

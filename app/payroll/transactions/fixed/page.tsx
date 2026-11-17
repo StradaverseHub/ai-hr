@@ -1,12 +1,12 @@
+import {sharedEmployeePicker} from '@/core/shared-employee-picker';
 import { cookies } from 'next/headers';
 import { getTranslations } from 'next-intl/server';
 import { scopedAdmin } from '@/lib/scope';
-import { listEmployees } from '@/core/read';
 import { listEmploymentPayComponents, listPayComponents, FIXED_TRANSACTION_CYCLES } from '@/core/pay-components';
 import { listPayrollCycles } from '@/core/payroll-cycle';
 import { Card, EmployeeName, ErrorBanner, PageHeader, SectionHeader, pageWideCls } from '@/components/ui';
 import { CollapsibleEmployeePanel } from '@/components/collapsible-employee-panel';
-import { EmployeePicker, type PickerEmployee } from './employee-picker';
+import { EmployeePicker } from './employee-picker';
 import { FixedToolbar } from './add-fixed-dialog';
 import { TxnImportButtons } from '../import-excel/txn-import-dialog';
 import { buildTxnTemplateReference } from '../import-excel/reference';
@@ -70,27 +70,8 @@ export default async function FixedTransactionPage({
   // Resolved on the SERVER from the cookie so first paint is already correct; absent ⇒ expanded.
   const panelDefaultOpen = (await cookies()).get(FIXED_PANEL_COOKIE)?.value !== '0';
 
-  const employees = await listEmployees(s, scopeIds);
-  // SCOPE-GUARD the param (mirror individual/page.tsx): the ?employmentId= must be in the admin's
-  // scoped list. Company scope is an application concern (RLS only isolates tenants), so without this an
-  // admin could cross-company read/write by URL tampering. An out-of-scope param is treated as no selection.
-  const selected = employmentId && employees.some((e) => e.employmentId === employmentId) ? employmentId : null;
-  const selectedEmp = selected ? (employees.find((e) => e.employmentId === selected) ?? null) : null;
-
-  // Step-1 search/filter panel source (feedback ee21508c). Derive employment status ('active' when not
-  // terminated, else 'ended') for the Status filter — matches the Individual Transaction convention.
-  const pickerEmployees: PickerEmployee[] = employees.map((e) => ({
-    employmentId: e.employmentId,
-    name: e.name,
-    employeeCode: e.employeeCode,
-    company: e.company,
-    companyId: e.companyId,
-    department: e.department,
-    departmentId: e.departmentId,
-    businessUnit: e.businessUnit,
-    businessUnitId: e.businessUnitId,
-    status: e.terminatedOn == null ? 'active' : 'ended',
-  }));
+  const {choices:employeeChoices,subject:selectedEmp}=await sharedEmployeePicker(s,scopeIds,'scoped',{labelMode:'names',selectedId:employmentId});
+  const selected=selectedEmp?.employmentId??null;
 
   const [components, existing, cycles] = selectedEmp
     ? await Promise.all([
@@ -233,11 +214,11 @@ export default async function FixedTransactionPage({
         panel={
           <Card className="p-4">
             <h2 className="text-sm font-medium">{t('fixed.pickEmployee')}</h2>
-            {employees.length === 0 ? (
+            {employeeChoices.total === 0 ? (
               <p className="mt-3 text-sm text-muted-foreground">{t('fixed.empty')}</p>
             ) : (
               <div className="mt-3">
-                <EmployeePicker employees={pickerEmployees} selectedId={selected} />
+                <EmployeePicker remote={{initial:employeeChoices}} selectedId={selected} />
               </div>
             )}
           </Card>

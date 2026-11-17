@@ -1,3 +1,4 @@
+import {draftManagerChoices} from '@/core/draft-manager-choice';
 import { organisationChoiceLabels } from '@/lib/organisation-choice-label';
 import { getTranslations } from 'next-intl/server';
 import { requireAdmin } from '@/lib/authz';
@@ -6,7 +7,6 @@ import {
   listCompanies,
   listDepartments,
   listJobGrades,
-  listManagerCandidates,
 } from '@/core/read';
 import { listPositions, listCostCenters, listBusinessUnits } from '@/core/admin';
 import { resolveProbationMonths } from '@/core/org';
@@ -106,7 +106,7 @@ export default async function CreateEmployeePage({
     costCenters,
     businessUnits,
     grades,
-    managerCandidates,
+    managerChoices,
     nationalities,
     dependentRelationships,
     countries,
@@ -120,7 +120,7 @@ export default async function CreateEmployeePage({
     listCostCenters(session, { companyIds: scopeIds }),
     listBusinessUnits(session, { companyIds: scopeIds }),
     listJobGrades(session,{companyId:scopeIds.length===1?scopeIds[0]:null}),
-    listManagerCandidates(session, { companyIds: scopeIds }),
+    draftManagerChoices(session,scopeIds,{subjectId:draft.id,selectedIds:typeof draft.data.employment?.reportingManagerEmploymentId==='string'&&/^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/.test(draft.data.employment.reportingManagerEmploymentId)?[draft.data.employment.reportingManagerEmploymentId]:[]}),
     // 35b7af0a group 8 — active options only, exactly as the Personnel profile card reads them, so a
     // nationality HR can pick here is one core/org.ts's catalog validation will accept on a later edit.
     listProfileOptions(session, 'nationality', { activeOnly: true,companyId:scopeIds.length===1?scopeIds[0]:null }),
@@ -213,11 +213,9 @@ export default async function CreateEmployeePage({
         grades={organisationChoiceLabels(grades).map((g) => ({ id: g.id, label: g.displayLabel }))}
         // r392 — CODE then name ("EMP-0008 – John Tan"), the label the Personnel record's Direct Superior
         // Combobox uses, so typing an Employee ID or part of a name narrows the list the same way on both.
-        // The candidate set itself is unchanged: `listManagerCandidates(session, { companyIds: scopeIds })`.
-        managers={managerCandidates.map((m) => ({
-          id: m.employmentId,
-          label: m.employeeCode ? `${m.employeeCode} – ${m.name}` : m.name,
-        }))}
+        // The bounded owner preserves the legacy employment/person RLS population.
+        managers={managerChoices.selected.map(m=>({id:m.employmentId,label:m.employeeCode?`${m.employeeCode} – ${m.name}`:m.name}))}
+        remoteManagers
         nationalityOptions={nationalities.map((o) => ({ value: o.value, label: o.label }))}
         // PLAIN DATA across the boundary, trimmed to what the dropdowns render: this screen is a client
         // component and a catalog row's sort order and active flag would be columns in the browser bundle

@@ -1,4 +1,5 @@
 'use client';
+import {BoundedEmploymentPicker} from '@/components/bounded-employment-picker';
 import {DerivedOrganisationFields,useDerivedOrganisation} from '@/components/derived-organisation-fields';
 
 /**
@@ -180,6 +181,7 @@ export function EmployeeWizard({
   costCenters,
   grades,
   managers,
+  remoteManagers,
   nationalityOptions,
   profileOptions,
   relationshipOptions,
@@ -206,6 +208,7 @@ export function EmployeeWizard({
   costCenters: Option[];
   grades: Option[];
   managers: Option[];
+  remoteManagers?:boolean;
   /** 35b7af0a group 8 — the tenant's nationality catalog (System Labels > Profile Options), the SAME list
    *  the Personnel profile card offers. PLAIN DATA, like every other prop crossing this boundary. */
   nationalityOptions: ComboboxOption[];
@@ -789,7 +792,10 @@ export function EmployeeWizard({
                 `completeEmployeeDraft` hands `hireEmployee` unchanged. The people offered are unchanged
                 too: page.tsx still reads `listManagerCandidates(session, { companyIds: scopeIds })`. */}
             <PersonnelField fieldId={"employment.direct_superior_and_history.superioremploymentid"} mode="draft">
-              <Combobox {...personnelControl("employment.direct_superior_and_history.superioremploymentid", 'draft')}
+              {remoteManagers?<BoundedEmploymentPicker endpoint="/api/draft-manager-choices" subjectId={draftId}
+                value={data.employment?.reportingManagerEmploymentId??''}
+                retained={managers.map(m=>({employmentId:m.id,name:m.label,employeeCode:null,companyId:''}))}
+                onValueChange={id=>set('employment',{reportingManagerEmploymentId:id})}/>:(              <Combobox {...personnelControl("employment.direct_superior_and_history.superioremploymentid", 'draft')}
                 value={data.employment?.reportingManagerEmploymentId ?? ''}
                 options={managers.map((m) => ({ value: m.id, label: m.label }))}
                 placeholder={t('directSuperiorNone')}
@@ -797,7 +803,8 @@ export function EmployeeWizard({
                 noResultsLabel={t('directSuperiorNoResults')}
                 legacySuffix=""
                 onValueChange={(v) => set('employment', { reportingManagerEmploymentId: v })}
-              />
+              />)}
+
             </PersonnelField>
             {/* a72610af — THE `??` BELOW IS NO LONGER A DEFAULT, IT IS A GUARD, and the difference is the
                 whole of the defect this item fixed. It used to be the only statement of "Full Time" on

@@ -1,8 +1,9 @@
+import {attendanceApplicationEmployeeChoices} from '@/core/attendance-application-history';
 import { cookies } from 'next/headers';
 import Link from 'next/link';
 import { getTranslations } from 'next-intl/server';
 import { AttendanceHistoryFilters } from '@/components/attendance-history-filters';
-import { CollapsibleEmployeePanel, EmployeeScopePanel, type ScopeEmployee } from '@/components/collapsible-employee-panel';
+import { CollapsibleEmployeePanel, EmployeeScopePanel } from '@/components/collapsible-employee-panel';
 import { AttendanceHistoryTable } from '@/components/attendance-history-table';
 import { attendanceHistoryReturn } from '@/lib/attendance-history-filter';
 import { publicErrorMessage } from '@/lib/public-error';
@@ -31,10 +32,11 @@ export default async function AttendanceApplicationHistoryPage({ searchParams }:
   };
   const emptyCounts = { pending: 0, approved: 0, rejected: 0, cancelled: 0, withdrawn: 0, cancelledWithdrawn: 0, all: 0 };
   // The Offline punches tab (draft 0647): null without the draft, and then there is no tab and no ?view=offline.
-  const [result, options, offlineCount] = await Promise.all([
+  const [result, options, offlineCount,employeeChoices] = await Promise.all([
     listAttendanceApplicationHistory(s, scopeIds, f).then(data => ({ data, error: null as string | null })).catch(e => ({ data: { rows: [], total: 0, counts: emptyCounts, page: 1, pageSize: 25 }, error: publicErrorMessage(e) })),
-    attendanceApplicationFilterOptions(s, scopeIds),
+    attendanceApplicationFilterOptions(s, scopeIds,[],{omitEmployees:true}),
     offlineReviewTabCount(s, scopeIds),
+    attendanceApplicationEmployeeChoices(s,scopeIds,{selectedId:sp.employmentId}),
   ]);
   const offlineView = sp.view === 'offline' && offlineCount !== null;
   const { data, error } = result;
@@ -57,17 +59,12 @@ export default async function AttendanceApplicationHistoryPage({ searchParams }:
     <label className={fieldClass}>{t('status')}<select name="status" defaultValue={status} className={controlClass}><option value="all">{t('all')}</option>{['pending', 'approved', 'rejected', 'cancelled', 'withdrawn'].map(value => <option key={value} value={value}>{t(`statuses.${value}`)}</option>)}<option value="cancelled_withdrawn">{t('cancelledWithdrawn')}</option></select></label>
     <label className={fieldClass}>{t('pageSize')}<select name="pageSize" className={controlClass} defaultValue={sp.pageSize ?? '25'}>{[10, 25, 50, 100].map(n => <option key={n} value={n}>{n}</option>)}</select></label>
   </div><p className="text-xs text-muted-foreground">{t('organisationHelp')}</p></Card>;
-  const selected = options.employees.find(e => e.id === sp.employmentId);
-  const panelEmployees: ScopeEmployee[] = options.employees.map(e => ({
-    employmentId:e.id, name:e.name, employeeCode:e.employeeCode, companyId:e.companyId, company:e.company,
-    departmentId:e.departmentId, department:e.department, businessUnitId:e.businessUnitId, businessUnit:e.businessUnit,
-    status:e.terminatedOn == null ? 'active' : 'ended',
-  }));
+  const selected=employeeChoices.selected;
   const preservedFilters = Object.fromEntries(Object.entries(sp).filter(([key,value]) => value && key !== 'page' && key !== 'employmentId')) as Record<string,string>;
   const selection = sp.employmentId ? <input type="hidden" name="employmentId" value={sp.employmentId} /> : undefined;
   const employeePanel = <Card className="space-y-3 bg-white! p-4 text-slate-900!">
     <h2 className="text-sm font-semibold">{t('selectEmployeeLabel')}</h2>
-    <EmployeeScopePanel employees={panelEmployees} selectedId={selected?.id ?? null}
+    <EmployeeScopePanel remote={{initial:employeeChoices,endpoint:'/api/attendance/application-history/employees'}} selectedId={selected?.employmentId ?? null}
       basePath="/attendance/application-history" preserve={preservedFilters} allowAll />
   </Card>;
   const tabs = [

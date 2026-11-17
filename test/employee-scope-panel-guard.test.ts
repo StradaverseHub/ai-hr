@@ -211,7 +211,7 @@ describe('r168a — an out-of-scope ?employmentId= selects NOTHING on every scre
     // render terminated and cross-company people as clickable rows the server then silently refuses.
     const tree = await ZakatTransactionPage({ searchParams: Promise.resolve({}) });
     const panel = findByType(tree, EmployeeScopePanel)[0];
-    const offered: string[] = panel.props.employees.map((e: { employmentId: string }) => e.employmentId);
+    const offered: string[] = panel.props.remote.initial.rows.map((e: { employmentId: string }) => e.employmentId);
     expect(offered).toContain(mine.employmentId);
     expect(offered, 'a cross-company employee must not be offered').not.toContain(foreign.employmentId);
 
@@ -272,7 +272,7 @@ describe('r168a — an out-of-scope ?employmentId= selects NOTHING on every scre
 
     // …and the panel is fed only what the guard would accept, so it cannot offer a row the server refuses.
     // Every option is fed back through the page to prove it.
-    const offered: string[] = findByType(tree, EmployeeScopePanel)[0].props.employees.map(
+    const offered: string[] = findByType(tree, EmployeeScopePanel)[0].props.remote.initial.rows.map(
       (e: { employmentId: string }) => e.employmentId,
     );
     expect(offered).toContain(mine.employmentId);
@@ -315,7 +315,7 @@ describe('r168a — an out-of-scope ?employmentId= selects NOTHING on every scre
     // so the mocked requireAdmin above is what it ran on. If it had been swapped to scopedAdmin it would
     // have read `scope.s` through a different call and the tenant-wide employee list would have narrowed.
     const tree = await LoansPage({ searchParams: Promise.resolve({}) });
-    const offered: string[] = findByType(tree, EmployeeScopePanel)[0].props.employees.map(
+    const offered: string[] = findByType(tree, EmployeeScopePanel)[0].props.remote.initial.rows.map(
       (e: { employmentId: string }) => e.employmentId,
     );
     expect(offered).toContain(mine.employmentId);

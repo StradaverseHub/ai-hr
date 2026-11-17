@@ -2,7 +2,7 @@ import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { getTranslations } from 'next-intl/server';
 import { requireAdmin } from '@/lib/authz';
-import { listEmployees } from '@/core/read';
+import { employeePickerSubject } from '@/core/read';
 import { getLoanWithSchedule } from '@/core/loans';
 import { Button, Card, EmployeeName, ErrorBanner, Field, PageHeader, SectionHeader, inputCls } from '@/components/ui';
 import { ConfirmSubmit } from '@/components/ui/confirm-submit';
@@ -49,8 +49,7 @@ export default async function LoanDetailPage({
   const { id } = await params;
   const { employmentId, error } = await searchParams;
 
-  const employees = await listEmployees(s);
-  const emp = employmentId ? (employees.find((e) => e.employmentId === employmentId) ?? null) : null;
+  const emp=await employeePickerSubject(s,employmentId);
   if (!emp) notFound();
 
   const found = await getLoanWithSchedule(s, id);

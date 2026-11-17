@@ -1,5 +1,6 @@
 'use client';
 
+import type {EmployeeChoicePage} from '@/lib/employee-choice';
 import { EmployeeScopePanel, type ScopeEmployee } from '@/components/collapsible-employee-panel';
 
 /**
@@ -28,14 +29,17 @@ export type PickerEmployee = ScopeEmployee;
 
 export function EmployeePicker({
   employees,
+  remote,
   selectedId,
 }: {
-  employees: PickerEmployee[];
+  employees?: PickerEmployee[];
+  remote?:{initial:EmployeeChoicePage};
   selectedId: string | null;
 }) {
   return (
     <EmployeeScopePanel
       employees={employees}
+      remote={remote?{...remote,endpoint:'/api/shared-employee-choices/scoped'}:undefined}
       selectedId={selectedId}
       basePath="/payroll/transactions/fixed"
     />
