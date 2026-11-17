@@ -74,7 +74,7 @@ function mapDatabaseError(e: unknown): never {
   if (state === '22023') {
     // Match exactly; unknown SQL diagnostics remain private under the generic contract below.
     for(let cause:unknown=e,depth=0;cause&&typeof cause==='object'&&depth<5;cause=(cause as {cause?:unknown}).cause,depth++){
-      if((cause as {message?:unknown}).message==='Configure a populated Offboarding posting approver group')throw new PersonnelPostingError('invalid',OFFBOARDING_POSTING_APPROVER_REPAIR_MESSAGE);
+      if((cause as {code?:unknown}).code==='22023'&&(cause as {message?:unknown}).message==='Configure a populated Offboarding posting approver group')throw new PersonnelPostingError('invalid',OFFBOARDING_POSTING_APPROVER_REPAIR_MESSAGE);
     }
   }
   if (state === '22023' || state === '23514') throw new PersonnelPostingError('invalid', 'The posting details are incomplete or not allowed.');
