@@ -66,7 +66,10 @@ async function setup(items: PayComponentInput[]) {
   for (const i of items) await upsertPayComponent(a, i);
 }
 
+// Keep one identity per fictional employee; duplicate NRIC admission remains enforced.
+let icSeq = 0;
 async function hire(email: string, basic: number) {
+  icSeq += 1;
   const e = await hireEmployee(a, {
     person: { fullName: email.split('@')[0], primaryEmail: email },
     companyId: base.companyId,
@@ -75,7 +78,7 @@ async function hire(email: string, basic: number) {
     hiredOn: '2026-01-01',
   });
   // Born 1 Jan 1990: a Malaysian citizen below 60 — KWSP Part A, SOCSO First Category, EIS eligible.
-  await setStatutoryProfileMY(a, { personId: e.personId, icNumber: '900101015401', subjectToSkbbk: true });
+  await setStatutoryProfileMY(a, { personId: e.personId, icNumber: `90010101${String(5400 + icSeq).padStart(4, '0')}`, subjectToSkbbk: true });
   await setCompensation(a, { employmentId: e.employmentId, basicSalary: basic, monthlyAllowance: 0, effectiveFrom: '2026-01-01' });
   await setEmploymentPayComponent(a, { employmentId: e.employmentId, componentId: await idByCode('BASIC'), amount: basic, effectiveFrom: '2026-01-01' });
   return e;
