@@ -274,8 +274,8 @@ export const APPROVED_UPGRADE_TAIL=[
 ] as const;
 // Final pending 2109/2126 bytes reviewed from engine 128bc2539; no applied-prefix hashes change.
 const APPROVED_UPGRADE_HASHES:Record<string,string>={
- '6100_rewards_review_plans':'393f6e5ebe298db30bdc82be152fc40a8cb59045286510e1bfb818fcbd306fbd',
- '6101_reward_person_history':'07e19bdfe627b50da5324ed6761f9c3c3e8fd7c361386c1c19bfb7307c55e6f8',
+ '6100_rewards_review_plans':'9b58684a7083853f5ef33a092cce64348f12d30307bf857d1c26204f7b7313b7',
+ '6101_reward_person_history':'272134ef668344e3d85a06693962c36dec4418a776b70c2a9e5a95b73a7d0696',
  '6102_lifecycle_recipient_directory':'b7ba294ffdf0a95439995c61730407dfda7b204d07ba32f2adc15b94a3f7e2e3',
  '6103_lifecycle_pbp_removal':'3cbe38c2aee6fc1297991d4af368bd1f1176cc33872767068a5d3f332cd973a1',
  '6104_lifecycle_recipient_fanout':'130469c2b2f94235223b767c49bffaab6aa062d5d052605d0e34d5d1db99de9f',

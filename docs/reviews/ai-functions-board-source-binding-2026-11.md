@@ -896,3 +896,15 @@ The regenerated agent manifest is `d891d9a840db52288399432d5e88e9e78dabfa5b2ade3
 (496 files). This is staging-only source approval: no gate result, installation, staging
 acceptance or production authority is asserted. Later source repairs require another exact
 fingerprint record under the same expressly authorized verification-repair scope.
+
+### Approved-board verification repairs — 17 November 2026
+
+Under the current-chat authorization “Approve staging-only rebinding and verification repairs”,
+the repaired candidate before binding is `6f792c60ee874834565e9608b282658b9cca9602`. It repairs fixture validity,
+recipient fanout assertions, Rewards upload syntax, native history numeric capacity and the
+released-plan repricing notification/RLS behavior. No new provider purpose, outbound field or
+production permission is added. Exactly the same 28 active source approvals move from
+`a74c1244a428f20b2ad47a2f0ac9fa99894153078ede89567550b39c249335e9` to `785dac445b64de992e997f1ce1dfaa73f35679842cc1ea968cc987052a345acb` over 1,708 files. Reversing the substitutions reproduces the previous
+registry byte for byte; pending and retired records and original review metadata stay unchanged.
+Agent manifest: `eacc4681aaed73c89ffeb78162e7ce1263e3699e8f42d60672cd9fcd9488ca55` (496 files).
+This records source binding only; verification and staging acceptance remain separate.
