@@ -106,6 +106,7 @@ class GuardedInvocation:
         b.check(self.ci.protected_private(b,self.lease_path)==self.lease_identity and self.ci.sha(b.read_bounded(self.lease_path,4096))==a['leaseFileSha256'],'root invocation lease inode/content changed')
         b.check(self.ci.sha(b.read_bounded(self.ci.COORDINATOR,1024**2))==a['coordinatorSha256'],'native coordinator bytes changed')
         self.ci.verify_python(b,a['python'])
+        self.ci.verify_node_options_pins(b,a['nodeOptions'])
         b.root_protected(b.NODE,regular=True)
         b.check(self.ci.sha(b.read_bounded(b.NODE,128*1024**2))==a['nodeSha256'],'independently approved Node bytes changed')
         return self.lock.fd
@@ -150,7 +151,7 @@ class GuardedInvocation:
                 self.ci.sha(b.read_bounded(b.ENV,1024**2))==self.identity['worker_env_sha256'],'approved web/worker environment changed')
         self.ci.assert_python_runtime(b,self.owner,self.environment,a['python'])
         if self.stage=='drain':
-            observed=self.ci.child([str(b.NODE),'--env-file=.env.production','--input-type=module','-e',DRAIN_ENVIRONMENT_PROBE],self.owner,self.environment,timeout=30,operation_fd=self.lock.fd)
+            observed=self.ci.child([str(b.NODE),'--env-file=.env.production','--input-type=module','-e',DRAIN_ENVIRONMENT_PROBE],self.owner,self.environment,timeout=30,operation_fd=self.lock.fd,node_options=a['nodeOptions'])
             b.check(observed=={'kind':'CI_WORKER_DRAIN_ENVIRONMENT_POLICY_V1','environmentSha256':a['environmentSha256'],'readiness':a['readiness']},'actual native drain environment/readiness differs')
         held=self.native_lease()
         b.check(self.ci.epoch(a['issuedAt'])<=time.time()<self.ci.epoch(a['expiresAt']),'root invocation authority expired before mutation')
