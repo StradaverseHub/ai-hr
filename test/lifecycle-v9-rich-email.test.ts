@@ -66,3 +66,16 @@ it('validates the stored body on save: unsafe links, unticked document links, mi
   expect(() => parseV9Config(withBody(doc, { images: [{ ...image, alt: '' }] }))).toThrow('alt text');
   expect(documentLinkToken(form.id)).toContain(form.id);
 });
+
+it('renders special characters in saved image alt as text in preview and delivery', () => {
+  const { c, config, environment } = fixture();
+  const alt = `Logo "quoted" & O'Reilly <script>alert(1)</script> 中文 🌿`;
+  config.emails[0].images![0].alt = alt;
+  const preview = M.previewEmail(c, config, 'rich', environment);
+  M.queueEmail(c, config, 'rich', environment);
+  for (const html of [preview.html, c.mails[0].delivery!.html]) {
+    expect(html).toContain('alt="Logo &quot;quoted&quot; &amp; O&#39;Reilly &lt;script&gt;alert(1)&lt;/script&gt; 中文 🌿"');
+    expect(html).not.toContain('<script>');
+  }
+  expect(c.mails[0].body).toContain(`[Image: ${alt}]`);
+});

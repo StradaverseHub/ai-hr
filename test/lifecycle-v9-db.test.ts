@@ -1456,3 +1456,44 @@ it('previews the saved draft contact fields and organisation names without sendi
   expect((await v9CaseDetail(admin, row.case.id)).case.mails).toHaveLength(0);
   await expect(v9PreviewEmail(other, row.case.id, 'draft-field-preview')).rejects.toThrow();
 });
+
+// Board 50ec5e36: exercise the actual upload and configuration writer, including a failed-save retry.
+it('saves image alt separately from immutable receipts and still names invalid files', async () => {
+  let config = (await v9Workspace(admin)).config!;
+  const images = [];
+  for (let index = 0; index < 3; index++) images.push(await v9UploadEmailAsset(admin, {
+    revision: config.revision, emailId: 'e1', kind: 'image', name: `Fictional logo ${index + 1}.png`, content: assetPng,
+  }));
+  const first = { ...images[0], alt: 'First image' };
+  const invalid = structuredClone(config);
+  invalid.emails.find(email => email.id === 'e1')!.images = [{ ...first, contentHash: '0'.repeat(64) }];
+  await expect(v9SaveConfig(admin, config.revision, invalid)).rejects.toThrow(first.name);
+  // The same draft that was refused now saves once its receipt is correct, without reuploading.
+  config.emails.find(email => email.id === 'e1')!.images = [first];
+  await v9SaveConfig(admin, config.revision, config);
+  config = (await v9Workspace(admin)).config!;
+  expect(config.emails.find(email => email.id === 'e1')!.images).toEqual([first]);
+  const alt = `Logo "quoted" & O'Reilly <script>alert(1)</script> 中文 🌿`;
+  const all = images.map((image, index) => ({ ...image, alt: index === 1 ? alt : `Image ${index + 1}` }));
+  const email = config.emails.find(email => email.id === 'e1')!;
+  email.images = all;
+  email.bodyDoc = { type: 'doc', content: [{ type: 'paragraph', content: all.map(image => ({ type: 'image', attrs: { assetId: image.id, alt: image.alt } })) }] };
+  await v9SaveConfig(admin, config.revision, config);
+  config = (await v9Workspace(admin)).config!;
+  expect(config.emails.find(email => email.id === 'e1')!.images).toEqual(all);
+  const edited = config.emails.find(email => email.id === 'e1')!;
+  edited.images![1].alt = 'Updated 中文 🌿';
+  await v9SaveConfig(admin, config.revision, config);
+  config = (await v9Workspace(admin)).config!;
+  expect(config.emails.find(email => email.id === 'e1')!.images).toEqual([all[0], { ...all[1], alt: 'Updated 中文 🌿' }, all[2]]);
+  for (const mismatch of [{ ...all[0], contentHash: '0'.repeat(64) }, { ...all[0], id: randomUUID() }]) {
+    const bad = structuredClone(config); bad.emails.find(email => email.id === 'e1')!.images![0] = mismatch;
+    // Keep rich-body references valid so the receipt check owns the failure.
+    delete bad.emails.find(email => email.id === 'e1')!.bodyDoc;
+    await expect(v9SaveConfig(admin, config.revision, bad)).rejects.toThrow(all[0].name);
+  }
+  const wrongParent = structuredClone(config); wrongParent.emails.find(email => email.id === 'e2')!.images = [all[0]];
+  await expect(v9SaveConfig(admin, config.revision, wrongParent)).rejects.toThrow(all[0].name);
+  const blankAlt = structuredClone(config); blankAlt.emails.find(email => email.id === 'e1')!.images![0].alt = '';
+  await expect(v9SaveConfig(admin, config.revision, blankAlt)).rejects.toThrow('alt text');
+});
