@@ -209,10 +209,10 @@ export async function contractInbox(ctx:SessionContext):Promise<{count:number;it
 }
 
 /** Root navigation admission only: no Personnel, company or case arrays are materialised. */
-export async function contractNavigationAccess(ctx:SessionContext):Promise<{page:boolean;configure:boolean;intake:boolean;automation:boolean}>{
+export async function contractNavigationAccess(ctx:SessionContext):Promise<{page:boolean;configure:boolean;intake:boolean;automation:boolean;postings:boolean}>{
  const {isModuleEnabled}=await import('./entitlements');
- if(!isModuleEnabled(ctx,'lifecycle')&&!(ctx.entitlements?.scopedModules.lifecycle??[]).some(id=>isModuleEnabled(ctx,'lifecycle',id)))return {page:false,configure:false,intake:false,automation:false};
- return withLifecycleTenant(ctx,async tx=>{const [r]=await tx.execute<{access:{page:boolean;configure:boolean;intake:boolean;automation:boolean}}>(sql`select app.contract_shared_navigation_access() as access`);return r?.access??{page:false,configure:false,intake:false,automation:false};});
+ if(!isModuleEnabled(ctx,'lifecycle')&&!(ctx.entitlements?.scopedModules.lifecycle??[]).some(id=>isModuleEnabled(ctx,'lifecycle',id)))return {page:false,configure:false,intake:false,automation:false,postings:false};
+ return withLifecycleTenant(ctx,async tx=>{const [r]=await tx.execute<{access:{page:boolean;configure:boolean;intake:boolean;automation:boolean;postings:boolean}}>(sql`select app.contract_shared_navigation_access() as access`);return r?.access??{page:false,configure:false,intake:false,automation:false,postings:false};});
 }
 
 export async function revokeContractRole(ctx:SessionContext,raw:unknown){const p=z.object({assignmentId:uuid,reason:z.string().trim().min(10).max(2000)}).strict().parse(raw);return withLifecycleTenant(ctx,tx=>tx.execute(sql`select app.contract_revoke_role(${p.assignmentId}::uuid,${p.reason})`));}

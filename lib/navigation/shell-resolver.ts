@@ -69,7 +69,7 @@ export type ShellNavigationFacts = {
   /** Recruitment slice 7: the viewer may refer candidates (an active employment in a company with Recruitment). */
   referralPortal?: boolean;
   probationAccess?: {page:boolean;configure:boolean;intake?:boolean;access?:boolean};
-  contractStaffAccess?: {page:boolean;configure:boolean;intake?:boolean;automation?:boolean};
+  contractStaffAccess?: {page:boolean;configure:boolean;intake?:boolean;automation?:boolean;postings?:boolean};
   onboardingAccess?: boolean;
   onboardingV9Access?: boolean;
   onboardingV9Navigation?: V9NavigationPermissions;
@@ -174,6 +174,7 @@ export function resolveShellNavigation({
     const access = item.module === 'probation' ? probationAccess : contractStaffAccess;
     switch (item.access) {
       case 'page': return access.page;
+      case 'postings': return item.module === 'contracts' && contractStaffAccess.postings === true;
       case 'configure': return access.configure;
       case 'configureOrIntake': return access.configure || access.intake === true;
       case 'intake': return access.intake === true;

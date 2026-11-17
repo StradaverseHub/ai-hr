@@ -5,11 +5,11 @@ import {sql} from 'drizzle-orm';
 import {withTenant,type SessionContext} from '../db/client';
 import {closeAll,migrateTestDb,resetDb,seedBase,setModule,entitledCtx,createAppUser,owner,type Base} from './harness';
 import {hireEmployee,setEmploymentInfo} from '../core/org';
-import {v9Setup} from '../packs/lifecycle/service';
+import {v9Setup,v9Workspace,v9SaveConfig} from '../packs/lifecycle/service';
 import {saveAutomationWorkflow} from '../packs/automation/service';
-import {contractNavigationAccess,contractSharedTracker,contractSharedConfigurationChoices,saveContractSharedRole,saveContractSharedMember,contractSharedSettings,saveContractSharedSettings,openContractSharedPeriod,previewContractSharedDecision,submitContractSharedDecision,contractSharedContext,readContractSharedApproval,actContractSharedApproval,readContractSharedLetter,actContractSharedLetter} from '../packs/contracts/service';
+import {contractNavigationAccess,contractSharedTracker,contractSharedConfigurationChoices,saveContractSharedRole,saveContractSharedMember,contractSharedSettings,saveContractSharedSettings,openContractSharedPeriod,previewContractSharedDecision,submitContractSharedDecision,contractSharedContext,readContractSharedApproval,actContractSharedApproval,readContractSharedLetter,actContractSharedLetter,listContractSharedPostings,approveContractSharedPosting} from '../packs/contracts/service';
 import {contractSharedWorkPage} from '../core/contract-shared-tasks';
-import {contractPostingFixture,finishContractPostingJob} from './helpers/contract-posting-fixture';
+import {contractPostingFixture,finishContractPostingJob,releaseContractPosting} from './helpers/contract-posting-fixture';
 import {todayInKualaLumpur} from '../lib/hr-date';
 let b:Base,admin:SessionContext;
 const year=Number(todayInKualaLumpur().slice(0,4)),start=`${year}-01-01`,end=`${year+1}-12-31`;
@@ -32,12 +32,12 @@ const legacy=(actor:SessionContext)=>withTenant(actor,async tx=>(await tx.execut
 it('exposes Direct Superior tracker navigation before any case, and holds unrelated, disabled-superior and full-time-only managers',async()=>{
  const manager=await hireEmployee(admin,{person:{fullName:'Fictional real superior',primaryEmail:randomUUID()+'@navigation.test'},companyId:b.companyId,departmentId:b.deptA,employmentType:'full_time',hiredOn:start});
  const superior={...admin,userId:await createAppUser(b.tenantId,manager.personId,'employee'),personId:manager.personId,roles:['employee'],grants:undefined} as SessionContext;
- expect(await contractNavigationAccess(superior)).toMatchObject({page:false,configure:false,automation:false});
+ expect(await contractNavigationAccess(superior)).toMatchObject({page:false,configure:false,automation:false,postings:false});
  await hireEmployee(admin,{person:{fullName:'Fictional full-time report',primaryEmail:randomUUID()+'@navigation.test'},companyId:b.companyId,departmentId:b.deptA,employmentType:'full_time',hiredOn:start,reportingManagerEmploymentId:manager.employmentId});
  expect((await contractNavigationAccess(superior)).page).toBe(false);
  const report=await fixedTerm(manager.employmentId),before=await owner.db.execute(sql`select id from contract_case where tenant_id=${b.tenantId}::uuid`);expect(before).toEqual([]);
  expect((await legacy(superior)).page).toBe(false);expect((await contractSharedTracker(superior)).rows.map(row=>row.id)).toEqual([report.employmentId]);
- expect(await contractNavigationAccess(superior)).toEqual({page:true,configure:false,intake:false,automation:false});
+ expect(await contractNavigationAccess(superior)).toEqual({page:true,configure:false,intake:false,automation:false,postings:false});
  expect(await owner.db.execute(sql`select id from contract_case where tenant_id=${b.tenantId}::uuid`)).toEqual(before);
  const outsider=await ordinary();expect((await contractNavigationAccess(outsider)).page).toBe(false);
  const settings=await contractSharedSettings(admin,b.companyId);await saveContractSharedSettings(admin,{companyId:b.companyId,expectedRevision:settings.revision,settings:{...settings.settings,automaticSuperior:{...settings.settings.automaticSuperior,enabled:false}}});
@@ -45,10 +45,10 @@ it('exposes Direct Superior tracker navigation before any case, and holds unrela
 },60000);
 it('keeps named view, company settings and Automation-only capabilities separate and responds to actual revocation',async()=>{
  await fixedTerm();const viewer=await ordinary(),settings=await ordinary(),builder=await ordinary();const membership=await grant(viewer,['view']);await grant(settings,['access']);await grant(builder,['workflows']);
- expect(await contractNavigationAccess(viewer)).toEqual({page:true,configure:false,intake:false,automation:false});
+ expect(await contractNavigationAccess(viewer)).toEqual({page:true,configure:false,intake:false,automation:false,postings:false});
  const choices=await contractSharedConfigurationChoices(settings);expect(choices.accessAdmin).toBe(false);expect(choices.companies.map(company=>company.id)).toEqual([b.companyId]);
- expect(await contractNavigationAccess(settings)).toEqual({page:true,configure:true,intake:false,automation:false});
- expect(await contractNavigationAccess(builder)).toEqual({page:false,configure:false,intake:false,automation:true});expect((await contractSharedConfigurationChoices(builder)).companies).toEqual([]);
+ expect(await contractNavigationAccess(settings)).toEqual({page:true,configure:true,intake:false,automation:false,postings:false});
+ expect(await contractNavigationAccess(builder)).toEqual({page:false,configure:false,intake:false,automation:true,postings:false});expect((await contractSharedConfigurationChoices(builder)).companies).toEqual([]);
  await saveContractSharedMember(admin,{id:membership.memberId,roleId:membership.roleId,userId:viewer.userId!,companyId:b.companyId,businessGroupId:null,validFrom:start,validTo:null,revoked:true,expectedRevision:1});expect((await contractNavigationAccess(viewer)).page).toBe(false);
  await expect(withTenant(admin,tx=>tx.execute(sql`select * from app.contract_shared_configuration_company_scope()`))).rejects.toThrow();
 });
@@ -85,7 +85,7 @@ it('uses the same bounded visibility and configuration company owner for 1,000 e
  const single=await contractSharedTracker(viewer,{companyId:all.companies[0].id,limit:100});expect(single.total).toBe(15);
  const forbidden=await contractSharedTracker(viewer,{companyId:all.companies[1].id});expect(forbidden.total).toBe(0);
  const settings=await ordinary();await grant(settings,['access'],all.companies[0].id);const choices=await contractSharedConfigurationChoices(settings);
- expect(choices.companies).toEqual([all.companies[0]]);expect(await contractNavigationAccess(settings)).toEqual({page:true,configure:true,intake:false,automation:false});
+ expect(choices.companies).toEqual([all.companies[0]]);expect(await contractNavigationAccess(settings)).toEqual({page:true,configure:true,intake:false,automation:false,postings:false});
  expect(await owner.db.execute(sql`select id from contract_case where tenant_id=${b.tenantId}::uuid`)).toEqual([]);
 },180000);
 
@@ -94,3 +94,22 @@ it('does not invoke a generic case, document or directory fallback from the new 
  for(const forbidden of ['app.contract_navigation_access(', 'app.contract_case_access(', 'app.contract_document_access(', 'app.contract_shared_configuration_choices('])expect(row.body).not.toContain(forbidden);
  expect(row.body.match(/app\.contract_shared_tracker_subjects\(\)/g)).toHaveLength(1);
 });
+
+it('discovers real group-only Personnel postings without Case View and never infers posting authority from a tracker role',async()=>{
+ const f=await contractPostingFixture({future:false,payChanges:false});
+ expect(await contractNavigationAccess(f.approver)).toEqual({page:false,configure:false,intake:false,automation:false,postings:true});
+ await expect(contractSharedContext(f.approver,f.caseId)).rejects.toMatchObject({code:'forbidden'});
+ expect((await contractNavigationAccess(f.proposer)).page).toBe(true);expect((await contractNavigationAccess(f.proposer)).postings).toBe(false);
+ const posting=await releaseContractPosting(f);
+ expect((await listContractSharedPostings(f.approver,{status:'pending'})).rows.map(row=>row.id)).toEqual([posting.id]);
+ expect((await listContractSharedPostings(f.proposer,{status:'pending'})).rows).toEqual([]);
+ await expect(approveContractSharedPosting(f.proposer,{id:posting.id,revision:posting.revision})).rejects.toMatchObject({code:'forbidden'});
+ // Native shared configuration changes the actual group, without editing any posting or access proof.
+ const config=(await v9Workspace(f.admin)).config!;
+ await v9SaveConfig(f.admin,config.revision,{...config,groups:config.groups.map(group=>group.id===f.groupId?{...group,members:[f.proposer.userId!]}:group)});
+ expect((await contractNavigationAccess(f.approver)).postings).toBe(false);expect((await listContractSharedPostings(f.approver,{status:'pending'})).rows).toEqual([]);
+ expect((await contractNavigationAccess(f.proposer)).postings).toBe(true);
+ await setModule(f.b.tenantId,'lifecycle','disabled');
+ expect((await contractNavigationAccess(f.proposer)).postings).toBe(false);
+ expect((await listContractSharedPostings(f.proposer,{status:'pending'})).rows).toEqual([]);
+},120000);

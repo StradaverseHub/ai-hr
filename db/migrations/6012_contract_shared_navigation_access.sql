@@ -64,6 +64,7 @@ LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp A
  shared AS MATERIALIZED(SELECT
   app.contract_shared_access_admin() OR EXISTS(SELECT 1 FROM app.contract_shared_configuration_company_scope()) AS configure,
   app.automation_can_configure('contract_staff') AS automation,
+  EXISTS(SELECT 1 FROM app.contract_shared_posting_scope()) AS postings,
   EXISTS(SELECT 1 FROM rights r JOIN public.employment e ON e.tenant_id=app.current_tenant_id() AND e.id=r.employment_id
    JOIN public.company co ON co.tenant_id=e.tenant_id AND co.id=e.company_id
    LEFT JOIN placement a ON a.employment_id=e.id CROSS JOIN clock
@@ -73,7 +74,7 @@ LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp A
     OR EXISTS(SELECT 1 FROM public.contract_case c WHERE c.tenant_id=e.tenant_id AND c.employment_id=e.id AND c.company_id=e.company_id)) AS page)
  SELECT facts||jsonb_build_object('page',coalesce((facts->>'configure')::boolean,false) OR coalesce((facts->>'intake')::boolean,false) OR legacy_role.page OR shared.page OR shared.configure,
   'configure',coalesce((facts->>'configure')::boolean,false) OR shared.configure,
-  'automation',coalesce(shared.automation,false)) FROM legacy CROSS JOIN legacy_role CROSS JOIN shared
+  'automation',coalesce(shared.automation,false),'postings',shared.postings) FROM legacy CROSS JOIN legacy_role CROSS JOIN shared
 $$;
 REVOKE ALL ON FUNCTION app.contract_shared_navigation_access() FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION app.contract_shared_navigation_access() TO ai_hr_app;

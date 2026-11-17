@@ -124,7 +124,7 @@
     "6008_contract_posting_application_metadata": "9477f8b0f029ba475830d8174353b77e47ced60d0b7393a8d11d8df82092f422",
     "6009_contract_posting_reconciliation_and_authority": "d0ce6a32a101e8da9f87dc85da2a64158b720505cc36504a090cb9faf340b472",
     "6010_contract_email_document_hr_notices": "71afc04f48fda2449becba50bd156b698a0f5ce5d2f0f4765c4211904d9389c4",
-    "6012_contract_shared_navigation_access": "b2174ca4b5acd7d433a6a1407778d67c8cbfd4a307b1a8d45e4dbbc62c43834d"
+    "6012_contract_shared_navigation_access": "6ab7c4d51c3beb606a1dddcf88bde26281556a5b93e179148db04afa88e7d461"
   },
   "forwardSourceReview": {
     "emailV4Source": "e73af9cec",
@@ -145,10 +145,10 @@
       "reason": "Native Letter primary-key binding and validated UUID hint lookups; ordinary subjects with malformed hints delegate unchanged."
     },
     "navigationSource": "df3f269dda47d67ef1b44b1836b18e0f77473fd1",
-    "navigationBoundary": "Reviewed navigation hints only: one canonical shared tracker subject cohort, one extracted private configuration company owner, distinct Automation capability. Native page/action guards and legacy role owners unchanged; no task-only tracker grant.",
+    "navigationBoundary": "Reviewed navigation hints only: one canonical shared tracker subject cohort, one extracted private configuration company owner, distinct Automation capability. Native page/action guards and legacy role owners unchanged; no task-only tracker grant. A fifth postings boolean reuses only the existing set-based Contract posting scope, independent of Case View, for the canonical Personnel postings leaf.",
     "navigationRegistration": {
       "tag": "6012_contract_shared_navigation_access",
-      "sqlSha256": "b2174ca4b5acd7d433a6a1407778d67c8cbfd4a307b1a8d45e4dbbc62c43834d",
+      "sqlSha256": "6ab7c4d51c3beb606a1dddcf88bde26281556a5b93e179148db04afa88e7d461",
       "provisionalIdx": 5412,
       "provisionalWhen": 1794841006012,
       "status": "Source registration preparation only; not SQL execution, test approval, installation or release.",
@@ -347,5 +347,11 @@
     "selectedSQL": "71afc04f48fda2449becba50bd156b698a0f5ce5d2f0f4765c4211904d9389c4",
     "failedFocusedRun": "44054664619",
     "reason": "Parenthesize JSONB extraction before removing last action. Preserve exact one-append, prefix, other-subject, actor and authority proofs. Add actual SMTP fixed text/Letter link assertion; no permission or predicate widening."
+  },
+  "uninstalledNavigationPostingsHintRevision": {
+    "originalFrozenSource": "df3f269dda47d67ef1b44b1836b18e0f77473fd1",
+    "originalSQL": "b2174ca4b5acd7d433a6a1407778d67c8cbfd4a307b1a8d45e4dbbc62c43834d",
+    "selectedSQL": "6ab7c4d51c3beb606a1dddcf88bde26281556a5b93e179148db04afa88e7d461",
+    "reason": "Never-applied 6012 gains a fifth navigation-only posting-scope boolean; existing native source and command guards, function identities and ACL remain unchanged. No runtime or release claim."
   }
 }

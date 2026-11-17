@@ -8,7 +8,7 @@ vi.mock('../packs/lifecycle/service',()=>({v9EmailHoldInbox:source.holds}));
 vi.mock('../core/entitlements',()=>({isModuleEnabledOrFalse:()=>true}));
 import {lifecycleModuleInbox} from '../app/lifecycle/module-inbox';
 const session={tenantId:'fictional-tenant',userId:'actual-assigned-account',roles:['employee']} as SessionContext;
-const navigation:Parameters<typeof lifecycleModuleInbox>[1]={contractStaff:{page:false,configure:false,intake:false,automation:false},probation:{page:false,configure:false,intake:false,access:false}};
+const navigation:Parameters<typeof lifecycleModuleInbox>[1]={contractStaff:{page:false,configure:false,intake:false,automation:false,postings:false},probation:{page:false,configure:false,intake:false,access:false}};
 beforeEach(()=>{vi.clearAllMocks();source.legacy.mockResolvedValue({count:0,items:[]});source.holds.mockResolvedValue({count:0,items:[]});source.work.mockResolvedValue({items:[],total:0,approvalTotal:0,taskTotal:0});source.postings.mockResolvedValue({items:[],total:0});});
 it('sums native owner totals independently of bounded previews for an actor without Case View',async()=>{
  source.work.mockResolvedValue({items:[{id:'assigned-letter',kind:'contractLetter',subjectName:'Fictional employee',action:'sign',linkPath:'/lifecycle/contracts/letters/assigned-letter'}],total:1000,approvalTotal:0,taskTotal:1000});
