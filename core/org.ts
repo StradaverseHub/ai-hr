@@ -9,6 +9,7 @@ import {lockPayrollInputsTx} from './payroll-inputs-lock';
 import {withSystemLabelCompanyTx} from './system-label-selection';
 import {organisationManagedTx,organisationBusinessUnit} from './organisation-write-policy';
 import {deriveCompanyOrganisationTx,recordEmploymentOrganisationTagsTx,type OrganisationTagTrigger} from './company-organisation';
+import {assignmentProjectionImage} from '../lib/assignment-projection-image';
 import {probationDateAuthorityTx} from './probation-effect-authority';
 import {contractPostingInfoAuthorityTx,contractPostingAssignmentAuthorityTx} from './contract-posting-authority';
 import {contractDateAuthorityTx,withAcceptedContractRecordIntentTx,withContractMaternityRecordIntentTx} from './contract-record-authority';
@@ -4042,12 +4043,22 @@ export async function projectEmploymentOrganisationAssignmentTx(tx:Tx,ctx:Sessio
     if(row.validFrom<from)parts.push({validFrom:row.validFrom,validTo:from,businessUnitId:row.businessUnitId});
     parts.push({validFrom:from,validTo:to,businessUnitId:tags.businessUnitId});
     if(to&&(!row.validTo||to<row.validTo))parts.push({validFrom:to,validTo:row.validTo,businessUnitId:row.businessUnitId});
+    const replacements:ReturnType<typeof assignmentProjectionImage>[]=[];
     for(const part of parts){
-      const [next]=await tx.insert(assignment).values({tenantId:row.tenantId,employmentId:row.employmentId,departmentId:row.departmentId,positionId:row.positionId,costCenterId:row.costCenterId,locationId:row.locationId,companyId:row.companyId,employmentType:row.employmentType,...part}).returning({id:assignment.id});
+      const [next]=await tx.insert(assignment).values({tenantId:row.tenantId,employmentId:row.employmentId,departmentId:row.departmentId,positionId:row.positionId,costCenterId:row.costCenterId,locationId:row.locationId,companyId:row.companyId,employmentType:row.employmentType,...part}).returning();
       assignmentIds.push(next.id);
+      replacements.push(assignmentProjectionImage(next));
     }
-    await recordEmploymentOrganisationTagsTx(tx,ctx,{employmentId:p.employmentId,companyId,asOf:from,trigger:p.trigger});
-    await appendEvent(tx,{tenantId:ctx.tenantId,aggregateType:'assignment',aggregateId:row.id,eventType:'employment.organisation.projected',actor:actorOf(ctx),subjectEmploymentId:p.employmentId,payload:{sourceAssignmentId:row.id,effectiveOn:from,validTo:to,beforeBusinessUnitId:row.businessUnitId,businessUnitId:tags.businessUnitId,mappingVersionId:tags.mappingVersionId,trigger:p.trigger}});
+    const recordedTags=await recordEmploymentOrganisationTagsTx(tx,ctx,{employmentId:p.employmentId,companyId,asOf:from,trigger:p.trigger});
+    // Passive provenance only. A missing/ambiguous older receipt never changes publication authority;
+    // that projection simply cannot later authorize automatic movement replay.
+    const mappingReceipts=await tx.select({id:domainEvent.id}).from(domainEvent).where(and(
+     eq(domainEvent.tenantId,ctx.tenantId),eq(domainEvent.subjectEmploymentId,p.employmentId),eq(domainEvent.aggregateId,p.employmentId),eq(domainEvent.eventType,'employment.organisation-tagged'),
+     sql`${domainEvent.payload}->>'companyId'=${companyId} and ${domainEvent.payload}->>'effectiveOn'=${from}
+      and ${domainEvent.payload}->>'mappingVersionId'=${recordedTags.mappingVersionId}
+      and ${domainEvent.payload}->'after'=${JSON.stringify(recordedTags)}::text::jsonb`)).limit(2);
+    await appendEvent(tx,{tenantId:ctx.tenantId,aggregateType:'assignment',aggregateId:row.id,eventType:'employment.organisation.projected',actor:actorOf(ctx),subjectEmploymentId:p.employmentId,payload:{sourceAssignmentId:row.id,effectiveOn:from,validTo:to,beforeBusinessUnitId:row.businessUnitId,businessUnitId:tags.businessUnitId,mappingVersionId:tags.mappingVersionId,trigger:p.trigger,
+     projection:{version:1,companyId,source:assignmentProjectionImage(row),replacements,mappingTags:recordedTags,mappingReceiptId:mappingReceipts.length===1?mappingReceipts[0].id:null}}});
     changed++;
   }
   return {changed,assignmentIds};

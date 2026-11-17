@@ -1,7 +1,7 @@
 name: contract-walkthrough
 run-name: Contract production renderer · ${{ inputs.candidate_ref || github.ref_name }}
 on:
-  # Reviewed native source repair: 6010 canonical action append expression, SQL71afc04f48fd.
+  # Reviewed native repair: plain-worker JSON transport, 6014 empty-opening finish and Org lineage.
   # Temporary, development-only bootstrap. Exact compared file paths are verified through the read-only API.
   # Existing bounded-profile coverage explicitly includes this Contract renderer admission.
   # Migrations, server and Chromium retain their normal heaps; ceilings and RSS budgets are unchanged.

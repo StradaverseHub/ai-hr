@@ -6,6 +6,7 @@ import type {BulkJobHandler} from './bulk-job-worker';
 import type {BulkJobRow} from './bulk-job';
 import {approveContractSharedPostingTx,readContractSharedPostingApprovalJob,readContractSharedPosting} from './contract-shared-postings';
 import {withContractPostingHistorySourceTx} from './contract-posting-history-source';
+import {OrganisationProjectionLineageError} from './organisation-projection-lineage';
 
 const inputSchema=z.object({postingId:z.uuid()}).strict();
 export type ContractPostingAppliedResult={postingId:string;groupId:string;scheduled:boolean;applied:boolean};
@@ -25,7 +26,7 @@ export const contractPostingApplyJobHandler:BulkJobHandler<never>={
  async applyStepTx(){throw Error('Contract posting applications have one fixed atomic owner unit.');},
  async finalize(){throw Error('Contract posting applications require the fixed kernel entrypoint.');},
  quietNotice:()=>true,
- async describeFailure(){return {error:CONTRACT_POSTING_APPLICATION_FAILURE};},
+ async describeFailure(_job,error){return {error:error instanceof OrganisationProjectionLineageError?error.message:CONTRACT_POSTING_APPLICATION_FAILURE};},
  async afterTerminal(ctx,job){
   if(!ctx||job.state!=='completed')return;
   const input=inputSchema.parse(job.input),posting=await readContractSharedPosting(ctx,input.postingId);

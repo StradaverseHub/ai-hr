@@ -59,6 +59,12 @@ Payroll and native effective-date/history protection. Agreed pay is entered manu
 the designated posting approver group separately attests completion where required. Saving
 Payroll or matching an amount does not automatically close a case.
 
+Native Org publication retains exact passive Assignment replacement and mapping receipts in its
+audit event. Existing audit readers and exports can show this added lineage metadata; no access
+grant or provider disclosure is added. Automatic historical replay requires a provable one-to-one
+full-range replacement. Split, legacy ID-less or unprovable projections require People Ops
+reconciliation; the posting remains pending and its atomic application changes roll back.
+
 A reviewed and released ending letter supplies the native Offboarding handoff. Contract can
 close as handed to Offboarding; it does not imply clearance or termination is complete. People
 Ops records termination manually in Personnel Management until clearance integration is available.

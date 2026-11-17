@@ -1,4 +1,5 @@
 import {movementPayrollWindows} from '../lib/movement-payroll-windows';
+import {resolveOrganisationProjectionAssignmentTx} from './organisation-projection-lineage';
 import {withMovementPayrollWindowsTx,withContractPostingPayrollDeferralTx} from './workforce-payroll-invalidation';
 import {originalHireDecisionPreimage,movementInformationEvidence,type MovementInformationField,type MovementInformationFact} from '../lib/movement-information-evidence';
 import {conflictingMovementFields} from '../lib/movement-sequence-conflict';
@@ -4474,6 +4475,7 @@ async function reverseLegTx(
   hireCorrections: unknown[],
   correctionReason: string | null,
   correctedHireBefore: Record<string,string|null>,
+  sourceEvents:readonly RawEvent[],
 ): Promise<void> {
   // Restore corrected original facts rather than an obsolete immutable preimage. The original event
   // remains untouched; each inverse still goes through its native owner and appends new evidence.
@@ -4506,12 +4508,13 @@ async function reverseLegTx(
     }
     case 'assignment.transferred':
     case 'employment.assignment.changed': {
+      const assignmentId=await resolveOrganisationProjectionAssignmentTx(tx,ctx.tenantId,employmentId,e.aggregateId,sourceEvents,hireCorrections);
       const [row] = await tx
         .select()
         .from(assignment)
         .where(
           and(
-            eq(assignment.id, liveIncarnationOf(e.aggregateId, hireCorrections)),
+            eq(assignment.id, assignmentId),
             eq(assignment.employmentId, employmentId),
           ),
         )
@@ -5011,9 +5014,16 @@ async function reverseMovementTx(
   // Undo the newest leg first: within one movement a later leg can sit on top of an earlier one.
   const tag: MovementTag = { type: row.kind, groupId: randomUUID(), secondary: true };
   const hireCorrections = events.filter((x) => isAssignmentReplacementEvent(x.eventType, HIRE_CORRECTED_EVENT)).map((x) => x.payload);
+  // Passive Org lineage is deliberately outside MOVEMENT_EVENT_TYPES: it neither creates a
+  // movement nor changes business-event projection/date semantics. Load its actual persisted
+  // evidence separately only when the existing inverse owns an Assignment leg.
+  const projectionEvents:RawEvent[]=group.some(event=>event.eventType==='assignment.transferred'||event.eventType==='employment.assignment.changed')
+    ?await tx.select({id:domainEvent.id,eventType:domainEvent.eventType,aggregateId:domainEvent.aggregateId,payload:domainEvent.payload,occurredAt:domainEvent.occurredAt,sequence:domainEvent.sequence,actorId:domainEvent.actorId})
+      .from(domainEvent).where(and(eq(domainEvent.tenantId,ctx.tenantId),eq(domainEvent.subjectEmploymentId,employmentId),eq(domainEvent.eventType,'employment.organisation.projected'))).orderBy(asc(domainEvent.sequence))
+    :[];
   const correctedHireBefore=originalHireDecisionPreimage(events,row.effectiveDate);
   for (const e of [...group].sort((a, b) => b.sequence - a.sequence)) {
-    await reverseLegTx(tx, ctx, employmentId, e, tag, hireCorrections, reason, correctedHireBefore);
+    await reverseLegTx(tx, ctx, employmentId, e, tag, hireCorrections, reason, correctedHireBefore,projectionEvents);
   }
   if (row.kind !== 'historicalHire') {
     const organisation=await employmentOrganisationTagsTx(tx,ctx,{employmentId,asOf:row.effectiveDate});

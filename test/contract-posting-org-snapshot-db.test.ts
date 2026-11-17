@@ -59,6 +59,9 @@ it('uses managed Org classification and the exact emitted snapshot rows inside a
  expect(classificationsBefore.length).toBeGreaterThan(0);
  expect([...new Set(classificationsBefore.map(row=>row.day))].sort()).toEqual(publishedAssignmentDays);
  expect(classificationsBefore.every(row=>row.unit===unitId&&row.status==='ready')).toBe(true);
+ expect(classificationsBefore.some(row=>row.day===dates[0])).toBe(true);
+ const classificationImagesBefore=await owner.db.execute<{id:string;row:Record<string,unknown>}>(sql`select id,to_jsonb(c) as row from public.employment_organisation_classification c
+  where tenant_id=${f.b.tenantId}::uuid and employment_id=${f.employee.employmentId}::uuid order by id`);
  const posting=await releaseContractPosting(f);
  await setModule(f.b.tenantId,'payroll','active');const payrollAdmin={...f.admin,entitlements:(await entitledCtx(f.b)).entitlements};
  await requirePackFor('MY').statutory.set(payrollAdmin,{personId:f.employee.personId,icNumber:'900101010001',taxCategory:1,numChildren:0});
@@ -143,7 +146,14 @@ it('uses managed Org classification and the exact emitted snapshot rows inside a
   const classified=await owner.db.execute<{id:string;day:string;unit:string;status:string;actor:string;kind:string}>(sql`select id,effective_on::text as day,tags->>'businessUnitId' as unit,tags->>'status' as status,actor_id as actor,actor_kind as kind from public.employment_organisation_classification where tenant_id=${f.b.tenantId}::uuid and employment_id=${f.employee.employmentId}::uuid order by effective_on,id`);
   await reportContractPostingTemporalDiagnostics('CONTRACT_POSTING_ORG_AFTER_DIAGNOSTICS',f.b.tenantId,f.employee.employmentId,{classificationsBefore,classified});
   const newRows=classified.filter(row=>!classificationsBefore.some(old=>old.id===row.id));expect(newRows.length).toBeGreaterThan(0);
-  for(const day of dates)expect(newRows.some(row=>row.day===day)).toBe(true);
+  // Publication already classified the transfer date; the native owner keeps that exact receipt
+  // idempotently. Salary replay adds its own previously unclassified day rather than duplicating it.
+  for(const day of dates)expect(classified.some(row=>row.day===day)).toBe(true);
+  expect(newRows.some(row=>row.day===dates[1])).toBe(true);
+  expect(newRows.some(row=>row.day===dates[0])).toBe(false);
+  const classificationImagesAfter=await owner.db.execute<{id:string;row:Record<string,unknown>}>(sql`select id,to_jsonb(c) as row from public.employment_organisation_classification c
+   where tenant_id=${f.b.tenantId}::uuid and employment_id=${f.employee.employmentId}::uuid order by id`);
+  expect(classificationImagesAfter.filter(row=>classificationImagesBefore.some(old=>old.id===row.id))).toEqual(classificationImagesBefore);
   expect(newRows.every(row=>row.unit===unitId&&row.status==='ready'&&row.kind==='user'&&row.actor===f.approver.userId)).toBe(true);
   const audit=await owner.db.execute<{day:string;actor:string;job:string;kind:string;unit:string}>(sql`select payload->>'effectiveOn' as day,actor_id as actor,payload->'bulkJob'->>'id' as job,payload->'bulkJob'->>'kind' as kind,payload->'after'->>'businessUnitId' as unit from public.domain_event where tenant_id=${f.b.tenantId}::uuid and subject_employment_id=${f.employee.employmentId}::uuid and event_type='employment.organisation-tagged' and payload->'bulkJob'->>'id'=${queued.jobId} order by sequence`);
   expect(audit.length).toBeGreaterThan(0);expect(audit.every(row=>row.actor===f.approver.userId&&row.job===queued.jobId&&row.kind==='contract_posting_apply'&&row.unit===unitId)).toBe(true);
