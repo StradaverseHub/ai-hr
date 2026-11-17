@@ -1,5 +1,6 @@
 """Native upgrade spine with real files/hashes and deterministic systemd/proc/native-command ports. Hosted only."""
 import contextlib
+import shutil
 from contextlib import ExitStack
 import copy
 import hashlib
@@ -28,7 +29,7 @@ def encoded(value):return json.dumps(value,sort_keys=True,separators=(',',':')).
 class Fixture(old.UpgradeFlowFixture):
     def __init__(self,root):
         super().__init__(root)
-        self.invoke('drain');self.web=self.source;self.native_calls=0;self.finish_at=None;self.fault_at=None;self.native_fault=None;self.held_phase='installing'
+        self.invoke('drain');os.utime(self.operation/'drained.json',(1794873602,1794873602));self.web=self.source;self.native_calls=0;self.finish_at=None;self.fault_at=None;self.native_fault=None;self.held_phase='installing';self.arrive_at=None;self.cleanup_at=None;self.cleanup_failures=0;self.cleanup_persistent=False;self.lease_backslide_at=None;self.probe_override=None
         self.webroot=root/'web';self.webroot.mkdir();(self.webroot/'.next').mkdir();(self.webroot/'.next/BUILD_ID').write_text(self.new_build)
         (self.webroot/'.env.production').write_text('AIHR_IMPORT_WORKER_REQUIRED=1\n')
         for name in ['scripts/improve/release.ts','.github/ci/normal-cleanup-fences.mjs']:
@@ -48,20 +49,25 @@ class Fixture(old.UpgradeFlowFixture):
         self.grant={'kind':'OPERATOR_AUTHORIZED_STAGING_CI_BUILD_INSTALL','format':2,'target':'alpha-staging','installId':self.install_id,'source':self.source,'controller':'3'*40,'runId':77,'baseline':self.previous_web,'baselineBuildId':self.old_build,'environmentSha256':'c'*64,'expiresAt':'2099-01-01T00:00:00Z','build':{'buildRecordId':self.build_record,'nextBuildId':self.new_build,'lockSha256':'a'*64,'packageSha256':'b'*64}}
         self.grant.update(policyVersion='aihr-staging-ci/v17',controllerBranch='alpha',runAttempt=1,runCreatedAt='2026-11-17T00:00:00Z',issuedAt='2026-11-17T00:00:00Z',expiresAt='2026-11-17T00:20:00Z',producerStartedAt='2026-11-17T00:00:00Z',producerCompletedAt='2026-11-17T00:00:00Z',witnessFingerprint='9'*64,artifact={'digest':'sha256:'+'8'*64,'id':1})
         self.grant['build'].update(format=2,capacityProfile={},buildSourcePath='/frozen',runtime={},provenanceSha256='1'*64,archiveSha256='2'*64,archiveBytes=1,manifestSha256='3'*64,preparedSha256='4'*64,successfulObservationSha256='5'*64)
-        self.activated={'kind':'CI_BUILD_BYTES_ACTIVATED_NOT_FULL_ARRIVAL','source':self.source,'installId':self.install_id,'buildRecordId':self.build_record,'nextBuildId':self.new_build,'bootIdSha256':ci.sha(self.boot.read_bytes())}
+        self.activated={'activation':{'activeDirectory':{'device':1,'inode':11},'retainedDirectory':{'device':1,'inode':12}},'kind':'CI_BUILD_BYTES_ACTIVATED_NOT_FULL_ARRIVAL','source':self.source,'installId':self.install_id,'buildRecordId':self.build_record,'nextBuildId':self.new_build,'bootIdSha256':ci.sha(self.boot.read_bytes())}
         self.ledger={'format':1,'kind':'READ_ONLY_EXACT_MIGRATION_LEDGER_NOT_RELEASE','rows':919,'expectedSha256':'d'*64,'actualSha256':'e'*64,'releaseAuthorized':False}
-        self.runtime={'kind':'CI_BUILD_ACTIVE_SERVICE_VERIFIED_NOT_FULL_ARRIVAL','format':1,'source':self.source,'installId':self.install_id,'buildRecordId':self.build_record,'nextBuildId':self.new_build,'authorizationSha256':ci.sha(encoded(self.grant)),'pid':'999','startedMonotonicUs':2000000,'healthStatus':200,'fullMigrationLedgerVerified':True,'fullSourceChecksumVerified':False,'releaseAuthorized':False,'migrationLedger':self.ledger,'compiledByteInventory':{'format':2,'files':12000},'verifiedAt':'2026-11-17T00:00:00Z'}
+        self.runtime={'kind':'CI_BUILD_ACTIVE_SERVICE_VERIFIED_NOT_FULL_ARRIVAL','format':1,'source':self.source,'installId':self.install_id,'buildRecordId':self.build_record,'nextBuildId':self.new_build,'authorizationSha256':ci.sha(encoded(self.grant)),'pid':'999','startedMonotonicUs':2000000,'healthStatus':200,'fullMigrationLedgerVerified':True,'fullSourceChecksumVerified':False,'releaseAuthorized':False,'migrationLedger':{**self.ledger,'verifiedAt':'2026-11-17T00:00:00.000Z'},'compiledByteInventory':{'format':2,'files':12000},'verifiedAt':'2026-11-17T00:00:00.000Z'}
         for name,value in [('authorization.json',self.grant),('activated.json',self.activated),('runtime.json',self.runtime)]:
             (self.directory/name).write_bytes(encoded(value));(self.directory/name).chmod(0o600)
         self.lease={'protocol':'aihr-staging-queue/v1','batch':'32345678-1234-4123-8123-123456789abc','epoch':4,'candidate':self.source,'token':'f'*64,'releaseAuthorized':False}
         self.leasefile=root/'lease.json';self.leasefile.write_bytes(encoded(self.lease));self.leasefile.chmod(0o600)
         filters=ci.canonical_filters(self.base,self.webroot)
         manifest={'format':1,'kind':'CANONICAL_FROZEN_SOURCE_CONTENT_INVENTORY','policy':ci.POLICY,'source':self.source,'filters':filters,'entries':ci.source_inventory(self.base,self.webroot,filters),'releaseSha256':ci.sha((self.webroot/'scripts/improve/release.ts').read_bytes()),'filterOwnerSha256':ci.sha((self.webroot/'.github/ci/normal-cleanup-fences.mjs').read_bytes())}
-        self.manifest=root/'source-manifest.json';self.manifest.write_bytes(encoded(manifest))
+        self.source_manifest_file=root/'source-manifest.json';self.source_manifest_file.write_bytes(encoded(manifest))
         self.helper=root/'protected-bundle.py';self.helper.write_text('independently reviewed root bundle fixture')
         self.authorization=root/'activation-authorization.json'
         drain=(self.operation/'drained.json').read_bytes();st=self.directory.stat()
-        self.auth={'format':1,'kind':'ADMIN_AUTHORIZED_SINGLE_CI_WORKER_CUTOVER','policy':ci.POLICY,'target':'alpha-staging','issuedAt':'2026-11-17T00:00:00Z','expiresAt':'2026-11-17T00:10:00Z','identity':json.loads(drain)['identity'],'drainSha256':ci.sha(drain),'helperSha256':ci.sha(self.helper.read_bytes()),'nodeSha256':ci.sha(self.node.read_bytes()),'install':{'id':self.install_id,'buildRecordId':self.build_record,'runId':77,'controller':'3'*40,'directory':str(self.directory),'uid':uid,'gid':self.owner.pw_gid,'device':st.st_dev,'inode':st.st_ino},'grantSha256':ci.sha(encoded(self.grant)),'activatedSha256':ci.sha(encoded(self.activated)),'runtimeSha256':ci.sha(encoded(self.runtime)),'environmentSha256':'c'*64,'dotenvSha256':ci.sha((self.webroot/'.env.production').read_bytes()),'ledger':self.ledger,'bootIdSha256':ci.sha(self.boot.read_bytes()),'webPid':'999','webStartedMonotonicUs':2000000,'lease':{k:self.lease[k]for k in ['batch','epoch','candidate']},'leaseFile':str(self.leasefile),'leaseFileSha256':ci.sha(self.leasefile.read_bytes()),'coordinatorSha256':ci.sha(self.coordinator.read_bytes()),'sourceManifest':str(self.manifest),'sourceManifestSha256':ci.sha(self.manifest.read_bytes()),'priorLastOkSha256':ci.sha((self.state/'last-ok').read_bytes()),'launch':{'current':{k:v for k,v in self.current.items()if k not in ['result','exit_code','finished_at']},'processStartTicks':'444','cmdlineSha256':ci.sha(p.joinpath('cmdline').read_bytes())},'releaseAuthorized':False}
+        self.auth={'format':1,'kind':'ADMIN_AUTHORIZED_SINGLE_CI_WORKER_CUTOVER','policy':ci.POLICY,'target':'alpha-staging','issuedAt':'2026-11-17T00:00:05Z','expiresAt':'2026-11-17T00:10:00Z','identity':json.loads(drain)['identity'],'drainSha256':ci.sha(drain),'helperSha256':ci.sha(self.helper.read_bytes()),'nodeSha256':ci.sha(self.node.read_bytes()),'install':{'id':self.install_id,'buildRecordId':self.build_record,'runId':77,'controller':'3'*40,'directory':str(self.directory),'uid':uid,'gid':self.owner.pw_gid,'device':st.st_dev,'inode':st.st_ino},'grantSha256':ci.sha(encoded(self.grant)),'activatedSha256':ci.sha(encoded(self.activated)),'runtimeSha256':ci.sha(encoded(self.runtime)),'environmentSha256':'c'*64,'dotenvSha256':ci.sha((self.webroot/'.env.production').read_bytes()),'ledger':self.ledger,'bootIdSha256':ci.sha(self.boot.read_bytes()),'webPid':'999','webStartedMonotonicUs':2000000,'lease':{k:self.lease[k]for k in ['batch','epoch','candidate']},'leaseFile':str(self.leasefile),'leaseFileSha256':ci.sha(self.leasefile.read_bytes()),'coordinatorSha256':ci.sha(self.coordinator.read_bytes()),'sourceManifest':str(self.source_manifest_file),'sourceManifestSha256':ci.sha(self.source_manifest_file.read_bytes()),'priorLastOkSha256':ci.sha((self.state/'last-ok').read_bytes()),'launch':{'current':{k:v for k,v in self.current.items()if k not in ['result','exit_code','finished_at']},'processStartTicks':'444','cmdlineSha256':ci.sha(p.joinpath('cmdline').read_bytes())},'releaseAuthorized':False,'readiness':{'required':'1','waitSeconds':None}}
+        self.firstfile=root/'original-pre-drain-approval.json'
+        self.first={'format':1,'kind':'ADMIN_REVIEWED_CI_WORKER_DRAIN_PINS','policy':ci.POLICY,'target':'alpha-staging','issuedAt':'2026-11-17T00:00:00Z','expiresAt':'2026-11-17T00:00:04Z',**{k:self.auth[k]for k in ['identity','helperSha256','nodeSha256','lease','leaseFileSha256','sourceManifestSha256','environmentSha256','dotenvSha256','readiness']},'gate':{k:self.grant[k]for k in ['source','controller','runId','build','artifact','witnessFingerprint','policyVersion']},'releaseAuthorized':False}
+        self.firstfile.write_bytes(encoded(self.first));self.firstfile.chmod(0o600);self.auth.update(firstStageApproval=str(self.firstfile),firstStageApprovalSha256=ci.sha(self.firstfile.read_bytes()))
+        self.store={'format':1,'installId':self.install_id,'directory':{'device':st.st_dev,'inode':st.st_ino},'packetDirectory':{'device':st.st_dev,'inode':(self.directory/'packet').stat().st_ino}}
+        (self.directory/'store.json').write_bytes(encoded(self.store));(self.directory/'store.json').chmod(0o600)
         self.persist_authority()
     def persist_authority(self):self.authorization.write_bytes(encoded(self.auth));self.authorization.chmod(0o600)
     def write_records(self):
@@ -71,13 +77,33 @@ class Fixture(old.UpgradeFlowFixture):
         self.current.update(exit_code='0',finished_at='2026-11-17T00:03:00Z');self.prior=dict(self.current)
         if phase=='O':self.current['result']='ok'
         self.write_records()
+    def begin_cleanup(self):
+        self.finish();self.held_phase='arrived'
+        audit=self.directory/'audit';audit.mkdir(mode=0o700);(audit/'bytes').mkdir(mode=0o700)
+        # Same real ordering as retainNormalCleanupAudit -> durable marker -> packet/retained removal.
+        (audit/'source-contract-retained').write_text('original frozen source/provenance audit bytes')
+        c={'format':1,'kind':'OWNED_CI_INSTALL_CLEANUP_AFTER_VERIFIED_ARRIVAL','sourceDirectory':str(self.webroot),'source':self.source,'installId':self.install_id,'buildRecordId':self.build_record,'nextBuildId':self.new_build,'authorizationSha256':self.auth['grantSha256'],'witnessFingerprint':self.grant['witnessFingerprint'],'directory':self.store['directory'],'activeDirectory':self.activated['activation']['activeDirectory'],'retainedDirectory':self.activated['activation']['retainedDirectory'],'packetDirectory':self.store['packetDirectory'],'sourceProof':{'format':1,'kind':'OPERATOR_OBSERVED_SOURCE_CHECKSUM_FOR_OWNED_CLEANUP','source':self.source,'installId':self.install_id,'buildRecordId':self.build_record,'nextBuildId':self.new_build,'authorizationSha256':self.auth['grantSha256'],'witnessFingerprint':self.grant['witnessFingerprint'],'outputSha256':ci.sha(b''),'checkedAt':'2026-11-17T00:00:08.999Z'},'sourceProofSha256':'recomputed below','authorizedAt':'2026-11-17T00:00:09.000Z'}
+        c['sourceProofSha256']=ci.sha(ci.canonical(c['sourceProof']))
+        (self.directory/'cleanup-authorized.json').write_bytes(encoded(c));(self.directory/'cleanup-authorized.json').chmod(0o600)
+        shutil.rmtree(self.directory/'packet');self.cleanup_failures=1
     def native(self,argv,identity,environment,**options):
         check(identity.pw_uid==self.owner.pw_uid and identity.pw_uid>0,'native command did not drop root')
         check(environment['HOME']==str(self.home) and environment['AIHR_STAGING_TOKEN']==self.lease['token'],'native controlled identity/lease environment differs')
         if argv[0]=='/usr/bin/python3':return {'releaseAuthorized':False,**self.auth['lease'],'phase':self.held_phase}
+        if '-e' in argv:
+            check(argv==[str(self.node),'--env-file=.env.production','-e',ci.READINESS_PROBE],'fixed native readiness probe changed')
+            env=dict(line.split('=',1)for line in (self.webroot/'.env.production').read_text().splitlines())
+            return {'kind':'CI_WORKER_READINESS_POLICY_V1',**(self.probe_override or {'required':env.get('AIHR_IMPORT_WORKER_REQUIRED'),'waitSeconds':env.get('AIHR_IMPORT_WORKER_WAIT_SECONDS')})}
         check(argv==[str(self.node),'--env-file=.env.production','--import','tsx','.github/ci/staging-build-install.mjs','status',self.source,self.install_id,self.build_record],'native status selection/argv differs')
         self.native_calls+=1
         if self.finish_at==self.native_calls:self.finish()
+        if self.arrive_at==self.native_calls:self.finish();self.held_phase='arrived'
+        if self.lease_backslide_at==self.native_calls:self.held_phase='installing'
+        if self.cleanup_at==self.native_calls:self.begin_cleanup()
+        marker=self.directory/'cleanup-authorized.json'
+        if marker.exists() and json.loads(marker.read_bytes()).get('kind')!='OWNED_CI_INSTALL_CLEANUP_AFTER_VERIFIED_ARRIVAL':raise ValueError('native cleanup authority invalid')
+        if self.cleanup_failures or (self.cleanup_persistent and marker.exists()):
+            self.cleanup_failures=max(0,self.cleanup_failures-1);raise ValueError('native sourceContract selected packet before normal cleanup removed it')
         if self.fault_at==self.native_calls:
             if self.native_fault=='failed':self.current['result']='failed';self.write_records()
             elif self.native_fault=='source':(self.webroot/'source-000').write_text('drift after launch')
@@ -85,6 +111,15 @@ class Fixture(old.UpgradeFlowFixture):
                 p=self.root/'replacement-lease';p.write_bytes(self.leasefile.read_bytes());p.chmod(0o600);os.replace(p,self.leasefile)
             elif self.native_fault=='backslide':self.current.update(result='',exit_code='');self.current.pop('finished_at',None);self.prior={'ref':self.previous_web,'pid':'666','log':'/private/previous-deploy.log','started_at':'2026-11-16T00:00:00Z','phase':'restart','result':'','exit_code':'0','build_id':self.old_build,'built_at':'2026-11-16T00:01:00Z','finished_at':'2026-11-16T00:02:00Z'};self.write_records()
         result={'authorizationSha256':self.auth['grantSha256'],'releaseAuthorized':False,'runtime':copy.deepcopy(self.runtime),'verified':{},'activated':copy.deepcopy(self.activated)}
+        result['runtime']['migrationLedger']['verifiedAt']='2026-11-17T00:00:%02d.000Z'%self.native_calls
+        result['runtime']['verifiedAt']='2026-11-17T00:00:%02d.001Z'%self.native_calls
+        if self.native_fault in ['ledger-extra','ledger-missing','ledger-time','runtime-time','ledger-time-order']:
+            ledger=result['runtime']['migrationLedger']
+            if self.native_fault=='ledger-extra':ledger['unknown']=True
+            if self.native_fault=='ledger-missing':ledger.pop('verifiedAt')
+            if self.native_fault=='ledger-time':ledger['verifiedAt']='not-a-time'
+            if self.native_fault=='runtime-time':result['runtime']['verifiedAt']='not-a-time'
+            if self.native_fault=='ledger-time-order':ledger['verifiedAt']='2026-11-17T00:00:59.000Z'
         if self.native_fault in ['pid','ledger','compiled','wrong-install','environment-proof']:
             if self.native_fault=='pid':result['runtime']['pid']='1000'
             if self.native_fault=='ledger':result['runtime']['migrationLedger']['actualSha256']='0'*64
@@ -125,8 +160,34 @@ class ConditionalRuntimeTests(unittest.TestCase):
     def test_initial_strict_ok_is_admitted_only_under_same_pins(self):
         with tempfile.TemporaryDirectory()as tmp:
             f=Fixture(Path(tmp));f.finish();f.conditional();self.assertEqual(set(json.loads((f.operation/'activated.json').read_text())['transitionStages']),{'O'})
+    def test_same_lease_arrives_and_normal_cleanup_crosses_every_native_boundary(self):
+        for boundary in range(1,10):
+            for cleanup in [False,True]:
+                with self.subTest(boundary=boundary,cleanup=cleanup),tempfile.TemporaryDirectory()as tmp:
+                    f=Fixture(Path(tmp))
+                    if cleanup:f.cleanup_at=boundary
+                    else:f.arrive_at=boundary
+                    f.conditional();r=json.loads((f.operation/'activated.json').read_text());self.assertEqual(r['transitionStages'][-1],'O');self.assertEqual(r['leasePhases'][-1],'arrived');self.assertFalse(r['journeyVerified'])
+                    if cleanup:self.assertTrue(list(f.operation.glob('ci-runtime-native-retry-*.json')));self.assertFalse((f.directory/'packet').exists())
+    def test_arrived_requires_strict_ok_and_lease_never_backslides(self):
+        for stage in ['R0','R1','wrong-build']:
+            with self.subTest(stage=stage),tempfile.TemporaryDirectory()as tmp:
+                f=Fixture(Path(tmp));f.held_phase='arrived'
+                if stage=='R1':f.finish('R1')
+                if stage=='wrong-build':f.finish();(f.webroot/'.next/BUILD_ID').write_text('other-build')
+                with self.assertRaises(ValueError):f.conditional()
+                self.assertFalse((f.app/'releases'/f.source).exists())
+        with tempfile.TemporaryDirectory()as tmp:
+            f=Fixture(Path(tmp));f.arrive_at=1;f.lease_backslide_at=6
+            with self.assertRaises(RuntimeError):f.conditional()
+            self.assertFalse((f.operation/'activated.json').exists());self.assertEqual(f.report['Restart'],'no')
+    def test_persistent_normal_cleanup_failure_requires_quarantine_not_a_waiver(self):
+        with tempfile.TemporaryDirectory()as tmp:
+            f=Fixture(Path(tmp));f.cleanup_at=6;f.cleanup_persistent=True
+            with self.assertRaises(RuntimeError):f.conditional()
+            self.assertEqual(f.native_calls,8);self.assertFalse((f.operation/'activated.json').exists());self.assertEqual(f.report['Restart'],'no')
     def test_wrong_expired_missing_and_late_grant_or_authority_refuse_before_package_or_unit_mutation(self):
-        for defect in ['authority-expired','unknown-authority','grant-expired','late-grant','wrong-run','wrong-controller','wrong-install','wrong-directory','wrong-inode','wrong-owner','wrong-drain','missing-grant','environment','worker-env','node','boot','manifest','extra-source','missing-source','source-mode','foreign-lease','pending','failed','dead-pid','wrong-launch','wrong-last-ok','world-readable-lease','symlink-lease','unknown-launch','unknown-ledger','unknown-grant','unknown-build','cleaned-install','unknown-current','unknown-last-ok','filter-drift']:
+        for defect in ['authority-expired','unknown-authority','grant-expired','late-grant','wrong-run','wrong-controller','wrong-install','wrong-directory','wrong-inode','wrong-owner','wrong-drain','missing-grant','environment','worker-env','node','boot','manifest','extra-source','missing-source','source-mode','foreign-lease','pending','failed','dead-pid','wrong-launch','wrong-last-ok','world-readable-lease','symlink-lease','unknown-launch','unknown-ledger','unknown-grant','unknown-build','cleaned-install','unknown-current','unknown-last-ok','filter-drift','wrong-first-gate','wrong-first-artifact','wrong-first-helper','postdated-first-approval','expired-at-drain','world-readable-first-approval','first-web-env','first-dotenv','first-readiness','bad-readiness']:
             with self.subTest(defect=defect),tempfile.TemporaryDirectory()as tmp:
                 f=Fixture(Path(tmp));before=f.unit.read_bytes()
                 if defect=='authority-expired':f.auth['expiresAt']='2026-11-16T00:00:00Z'
@@ -145,7 +206,7 @@ class ConditionalRuntimeTests(unittest.TestCase):
                 if defect=='worker-env':f.env.write_text('DATABASE_URL="changed"\n')
                 if defect=='node':f.node.write_text('different node')
                 if defect=='boot':f.boot.write_text('other boot')
-                if defect=='manifest':f.manifest.write_text('{}')
+                if defect=='manifest':f.source_manifest_file.write_text('{}')
                 if defect=='extra-source':(f.webroot/'unexpected').write_text('canonical extra')
                 if defect=='missing-source':(f.webroot/'source-000').unlink()
                 if defect=='source-mode':(f.webroot/'source-000').chmod(0o755)
@@ -160,18 +221,34 @@ class ConditionalRuntimeTests(unittest.TestCase):
                     actual=f.root/'actual-lease';os.rename(f.leasefile,actual);f.leasefile.symlink_to(actual)
                 if defect=='unknown-launch':f.auth['launch']['selfApproved']=True
                 if defect=='unknown-ledger':f.auth['ledger']['subset']=True
-                if defect in ['unknown-grant','unknown-build','cleaned-install','unknown-current','unknown-last-ok','filter-drift']:
+                if defect in ['unknown-grant','unknown-build','cleaned-install','unknown-current','unknown-last-ok','filter-drift','wrong-first-gate','wrong-first-artifact','wrong-first-helper','postdated-first-approval','expired-at-drain','world-readable-first-approval','first-web-env','first-dotenv','first-readiness','bad-readiness']:
                     target=f.grant if defect=='unknown-grant' else f.grant['build'];target['extra']=True;(f.directory/'authorization.json').write_bytes(encoded(f.grant));f.auth['grantSha256']=ci.sha(encoded(f.grant))
                 if defect=='cleaned-install':(f.directory/'cleanup-authorized.json').write_text('{}')
                 if defect=='unknown-current':f.current['unapproved']='extra';f.auth['launch']['current']['unapproved']='extra';f.write_records()
                 if defect=='unknown-last-ok':f.prior['unapproved']='extra';f.write_records()
                 if defect=='filter-drift':
-                    m=json.loads(f.manifest.read_text());m['filters'].append('source-000');m['entries']=[row for row in m['entries']if row['path']!='source-000'];f.manifest.write_bytes(encoded(m));f.auth['sourceManifestSha256']=ci.sha(f.manifest.read_bytes())
+                    m=json.loads(f.source_manifest_file.read_text());m['filters'].append('source-000');m['entries']=[row for row in m['entries']if row['path']!='source-000'];f.source_manifest_file.write_bytes(encoded(m));f.auth['sourceManifestSha256']=ci.sha(f.source_manifest_file.read_bytes())
+                if defect in ['wrong-first-gate','wrong-first-artifact','wrong-first-helper','postdated-first-approval','expired-at-drain']:
+                    f.first=copy.deepcopy(f.first)
+                    if defect=='wrong-first-gate':f.first['gate']['runId']=78
+                    if defect=='wrong-first-artifact':f.first['gate']['build']['provenanceSha256']='f'*64
+                    if defect=='wrong-first-helper':f.first['helperSha256']='0'*64
+                    if defect=='postdated-first-approval':f.first['issuedAt']='2026-11-17T00:00:03Z'
+                    if defect=='expired-at-drain':f.first['expiresAt']='2026-11-17T00:00:01Z'
+                    f.firstfile.write_bytes(encoded(f.first));f.auth['firstStageApprovalSha256']=ci.sha(f.firstfile.read_bytes())
+                if defect=='world-readable-first-approval':f.firstfile.chmod(0o644)
+                if defect in ['first-web-env','first-dotenv','first-readiness']:
+                    f.first=copy.deepcopy(f.first)
+                    if defect=='first-web-env':f.first['environmentSha256']='0'*64
+                    if defect=='first-dotenv':f.first['dotenvSha256']='0'*64
+                    if defect=='first-readiness':f.first['readiness']={'required':'0','waitSeconds':None}
+                    f.firstfile.write_bytes(encoded(f.first));f.auth['firstStageApprovalSha256']=ci.sha(f.firstfile.read_bytes())
+                if defect=='bad-readiness':f.auth['readiness']={'required':'1','waitSeconds':'45'}
                 f.persist_authority()
-                with self.assertRaises((ValueError,FileNotFoundError)):f.conditional()
+                with self.assertRaises((ValueError,FileNotFoundError,KeyError)):f.conditional()
                 self.assertEqual(f.unit.read_bytes(),before);self.assertFalse((f.app/'releases'/f.source).exists());self.assertFalse((f.operation/'activated.json').exists())
     def test_fresh_native_proof_refuses_pid_ledger_compiled_install_and_full_environment_drift(self):
-        for defect in ['pid','ledger','compiled','wrong-install','environment-proof']:
+        for defect in ['pid','ledger','compiled','wrong-install','environment-proof','ledger-extra','ledger-missing','ledger-time','runtime-time','ledger-time-order']:
             with self.subTest(defect=defect),tempfile.TemporaryDirectory()as tmp:
                 f=Fixture(Path(tmp));f.native_fault=defect
                 with self.assertRaises(ValueError):f.conditional()

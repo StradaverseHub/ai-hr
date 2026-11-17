@@ -637,7 +637,7 @@ Two administrator stages are mandatory:
    exact original drain SHA/identity, helper/Node, grant/activated/runtime record hashes, installation
    UID/GID/device/inode and canonical private directory, source/build/run/controller/build record,
    unchanged full environment fingerprint and dotenv bytes, full ordered migration ledger, original new web
-   PID/start/boot, current deployment launch identity/process start/cmdline, exact held installing lease,
+   PID/start/boot, current deployment launch identity/process start/cmdline, exact held installing→arrived lease (arrived only under strict successful O),
    coordinator hash, old last-ok hash, and protected canonical full-source inventory/hash.
 
 The exact authorization schema is enforced by `bank_import_worker_ci_runtime_v1.py::RuntimeObservation`.
@@ -697,3 +697,47 @@ load and before dependency/build/migration/activation work. It is never silently
 Non-CI retains configured/default45 behavior. `AIHR_IMPORT_WORKER_REQUIRED=1` remains required wherever the
 worker is installed. Startup bank/individual work can delay bulk heartbeat; no real heartbeat by the deadline
 still fails. Root/operator scheduling must fit the grant/deploy window and preserve the real failure evidence.
+
+
+The first administrator stage has a retained machine-readable protected record too: format1, kind
+`ADMIN_REVIEWED_CI_WORKER_DRAIN_PINS`, same policy/target, issue/expiry, full original drain identity,
+helper/Node, batch/epoch/candidate and lease credential SHA, full-source manifest SHA, web dotenv byte SHA,
+canonical native environment fingerprint, and readiness `{required:"1",waitSeconds:null}` (or `"600"`).
+Its closed `gate` is the originally approved CI grant subset source/controller/runId/build/artifact/
+witnessFingerprint/policyVersion, including all original build/provenance digests. No installation UUID
+exists until native initialization; stage two pins that single resulting installation and exact grant.
+Final authorization names `firstStageApproval` plus its independently pinned SHA. Both files are root-private,
+non-linked, canonical, and retain the same inode/bytes throughout. The first approval must have been valid
+at the original drain file's mtime and activation approval must postdate drain. Its historical expiry need
+not still be valid at activation; the later operation and actual native grant must both remain fresh.
+All shared pins, especially the unchanged web **and** worker environments, match across the two stages.
+The helper performs a fixed unprivileged native dotenv flag probe for REQUIRED1 / WAIT unset or exactly600;
+this does not extend worker heartbeat/readiness schema or create a new controller hook.
+
+Native evidence preserves its real shape and raw bytes/hashes: native migrationLedger has six stable identity
+fields **plus** verifiedAt. Root authorization pins only the six named stable fields. Runtime comparison
+normalizes exactly top-level verifiedAt and nested migrationLedger.verifiedAt, validates both native timestamps,
+and ignores nothing recursively. Fresh/original raw native records remain separately retained.
+
+The same lease may advance monotonically installing→arrived while worker stability auditing continues.
+Arrived is admitted only with strict O, exact source/build and fresh authenticated native runtime proof.
+Accepting/capturing, foreign identities, backslides and arrived during R0/R1 remain forbidden. The helper does
+not perform the phase transition. Normal operator owned cleanup may remove packet/previous-build trees;
+native status's existing allowCleanup path authenticates retained original audit records. Their legitimate
+removal is not source/grant drift. If normal cleanup publishes its authority after a status reader selected
+packet, at most two additional **read-only** status attempts may run within one source-versioned60-second
+recovery window, capped also by operation/grant expiry. Each retry requires strict O and every current
+source/environment/PID/lease/grant fence, exact native same-install cleanup authority/store/activation inodes
+and its original fresh-at-authorization zero-difference checksum request. Failed attempts retain explicit
+not-accepted private observations. Only an eventual fresh native PASS proceeds; unknown authority,
+persistent corruption, drift or timeout still refuses and uses unchanged exact-unit quarantine.
+
+Timing is not inferred from the deterministic port fixtures. A normal activation performs nine native
+runtime audits plus bounded complete source inventories and local flag/lease probes; each native audit
+can be expensive on the 2-vCPU installation. Retries add at most two audits within the recovery window.
+Each call is capped by remaining authority/grant time (at most600 seconds per native call); all operation
+admission remains within900 seconds and original grant expiry, while the web's real all-kind check still
+expires at600 seconds. Per-observation elapsedSeconds/nativeStatusAttempts are retained for actual review.
+Before the root-controlled cutover, rehearse/measure the actual read-only proof costs and prepare pins outside
+the active window. If the real audits and bank/individual startup do not fit the remaining CI window, fail
+honestly and inspect; fake-clock tests establish transitions/refusals, not host performance or heartbeat.
