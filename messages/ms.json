@@ -40965,6 +40965,12 @@
     }
   },
   "resignationJourney": {
+    "offboardingFallback": "Tandatangan HR sandaran",
+    "offboardingFallbackLegacy": "Kekalkan tetapan tandatangan HR sedia ada",
+    "offboardingFallbackPbp": "PBP menandatangani sebelum dikeluarkan",
+    "offboardingFallbackBeforeEmployee": "HR menandatangani sebelum pekerja",
+    "offboardingFallbackNamed": "Penandatangan HR yang dinamakan menandatangani sebelum dikeluarkan",
+    "offboardingFallbackHint": "Digunakan hanya apabila versi templat ini tiada penghalaan semakan atau tandatangan. Templat sedia ada mengekalkan tetapan tandatangan HR sehingga anda memilih sandaran pelepasan yang khusus.",
     "saveFormFields": "Simpan medan borang",
     "saveFieldsBeforeAction": "Simpan perubahan medan sebelum melengkapkan semakan, meluluskan, menandatangani atau menghantar semula.",
     "conversationClosedDetail": "Kes ini tidak lagi memerlukan keputusan peletakan jawatan.",

@@ -40965,6 +40965,12 @@
     }
   },
   "resignationJourney": {
+    "offboardingFallback": "Fallback HR signature",
+    "offboardingFallbackLegacy": "Keep existing HR signature setting",
+    "offboardingFallbackPbp": "PBP signs before release",
+    "offboardingFallbackBeforeEmployee": "HR signs before employee",
+    "offboardingFallbackNamed": "Named HR signatory signs before release",
+    "offboardingFallbackHint": "Used only when this template version has no review or signing routing. Existing templates keep their HR signature setting until you choose an explicit Offboarding fallback.",
     "saveFormFields": "Save form fields",
     "saveFieldsBeforeAction": "Save your field changes before completing a review, approving, signing or resending.",
     "conversationClosedDetail": "This case no longer needs a resignation decision.",

@@ -40965,6 +40965,12 @@
     }
   },
   "resignationJourney": {
+    "offboardingFallback": "备用人力资源签署方式",
+    "offboardingFallbackLegacy": "保留现有人力资源签署设置",
+    "offboardingFallbackPbp": "PBP 在发出前签署",
+    "offboardingFallbackBeforeEmployee": "人力资源部先于员工签署",
+    "offboardingFallbackNamed": "指定人力资源签署人在发出前签署",
+    "offboardingFallbackHint": "仅当此模板版本没有审核或签署流转时使用。现有模板会保留其人力资源签署设置，直到您明确选择离职备用签署方式。",
     "saveFormFields": "保存表单字段",
     "saveFieldsBeforeAction": "请先保存字段更改，再完成审核、批准、签署或重新发送。",
     "conversationClosedDetail": "此个案不再需要离职决定。",

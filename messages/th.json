@@ -40965,6 +40965,12 @@
     }
   },
   "resignationJourney": {
+    "offboardingFallback": "ลายเซ็นฝ่ายบุคคลสำรอง",
+    "offboardingFallbackLegacy": "คงการตั้งค่าลายเซ็นฝ่ายบุคคลเดิม",
+    "offboardingFallbackPbp": "PBP ลงนามก่อนออกหนังสือ",
+    "offboardingFallbackBeforeEmployee": "ฝ่ายบุคคลลงนามก่อนพนักงาน",
+    "offboardingFallbackNamed": "ผู้ลงนามฝ่ายบุคคลที่ระบุลงนามก่อนออกหนังสือ",
+    "offboardingFallbackHint": "ใช้เมื่อแม่แบบเวอร์ชันนี้ไม่มีเส้นทางตรวจสอบหรือลงนามเท่านั้น แม่แบบเดิมจะคงการตั้งค่าลายเซ็นฝ่ายบุคคลจนกว่าคุณจะเลือกวิธีสำรองสำหรับการพ้นสภาพอย่างชัดเจน",
     "saveFormFields": "บันทึกช่องข้อมูลแบบฟอร์ม",
     "saveFieldsBeforeAction": "บันทึกการแก้ไขช่องข้อมูลก่อนตรวจสอบให้เสร็จ อนุมัติ ลงนาม หรือส่งอีกครั้ง",
     "conversationClosedDetail": "กรณีนี้ไม่ต้องรอการตัดสินใจเรื่องลาออกอีกต่อไป",

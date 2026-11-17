@@ -40965,6 +40965,12 @@
     }
   },
   "resignationJourney": {
+    "offboardingFallback": "Chữ ký Nhân sự dự phòng",
+    "offboardingFallbackLegacy": "Giữ thiết lập chữ ký Nhân sự hiện có",
+    "offboardingFallbackPbp": "PBP ký trước khi phát hành",
+    "offboardingFallbackBeforeEmployee": "Nhân sự ký trước nhân viên",
+    "offboardingFallbackNamed": "Người ký Nhân sự được chỉ định ký trước khi phát hành",
+    "offboardingFallbackHint": "Chỉ dùng khi phiên bản mẫu này không có luồng xem xét hoặc ký. Mẫu hiện có giữ thiết lập chữ ký Nhân sự cho đến khi bạn chọn phương án dự phòng cụ thể cho quy trình thôi việc.",
     "saveFormFields": "Lưu các trường biểu mẫu",
     "saveFieldsBeforeAction": "Lưu thay đổi các trường trước khi hoàn tất xem xét, phê duyệt, ký hoặc gửi lại.",
     "conversationClosedDetail": "Hồ sơ này không còn cần quyết định về đơn nghỉ việc.",
