@@ -137,7 +137,7 @@ describe('Person reward history custody and upload',()=>{
   const changes=(await read()).flatMap(event=>event.changes);
   expect(changes).toContainEqual({field:'meritBp',before:null,after:500});expect(changes).toContainEqual({field:'note',before:null,after:'Fictional next-approver note'});
   await owner.db.execute(sql`update reward_entry set facts=jsonb_set(facts,'{seniorPlan}','true') where id=${entryId}::uuid`);
-  await owner.db.execute(sql`insert into reward_role_permission(tenant_id,role,capability,allowed,level,changed_by) values(${b.tenantId}::uuid,'gr','senior.manage',false,'none',${admin.userId}::uuid)`);
+  await owner.db.execute(sql`insert into reward_role_permission(tenant_id,role,capability,allowed,level,changed_by,reason) values(${b.tenantId}::uuid,'gr','senior.manage',false,'none',${admin.userId}::uuid,'Fictional restricted field visibility test')`);
   expect(await read()).toEqual([]);
  });
 });
