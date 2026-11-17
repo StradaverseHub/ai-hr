@@ -1,7 +1,7 @@
 /** One company per fenced worker transaction; a crash cannot duplicate a review or its checkpoint. */
 import 'server-only';
 import {sql} from 'drizzle-orm';
-import type {BulkJobHandler} from '../../core/bulk-job-worker';
+import type {BulkJobHandler,BulkJobStepOutcome} from '../../core/bulk-job-worker';
 import {lockAccessConfigurationReadTx} from '../../core/access-configuration-lock';
 import {appendEvent,actorOf} from '../../db/events';
 import {policySchema} from './model';
@@ -14,7 +14,7 @@ export const rewardPlanReviewsJobHandler:BulkJobHandler<ReviewStep>={
  stepRef:step=>step.payload.companyId,phaseOf:()=>'companies',
  async prepare(ctx,job){const input=job.input as {year:number;companyIds:string[]};const rows=await setupReadTenant(ctx,async tx=>{const[r]=await tx.execute<{rows:RewardReviewPlanRow[]}>(sql`select app.reward_review_plan_selected(${input.year},${JSON.stringify(input.companyIds)}::jsonb) as rows`);return r.rows;});return{steps:rows.map((r,i)=>({kind:'company',rowNum:i+1,payload:{companyId:r.companyId,year:input.year}})),counters:{total:rows.length},plan:{year:input.year}};},
  async beginChunkTx(tx,ctx){await lockAccessConfigurationReadTx(tx,ctx.tenantId);},
- async applyStepTx(tx,ctx,_job,step){const p=step.payload;const [r]=await tx.execute<{rows:RewardReviewPlanRow[]}>(sql`select app.reward_review_plan_selected(${p.year},${JSON.stringify([p.companyId])}::jsonb) as rows`);const row=r.rows[0];if(!row)throw Error('Company is no longer available.');
+ async applyStepTx(tx,ctx,_job,step):Promise<BulkJobStepOutcome>{const p=step.payload;const [r]=await tx.execute<{rows:RewardReviewPlanRow[]}>(sql`select app.reward_review_plan_selected(${p.year},${JSON.stringify([p.companyId])}::jsonb) as rows`);const row=r.rows[0];if(!row)throw Error('Company is no longer available.');
   // The native owner rechecks current creation authority and all plan/own-pay conditions, never the stored admission.
   const [authority]=await tx.execute<{allowed:boolean}>(sql`select app.reward_setup_allowed(${p.companyId}::uuid,'manage') as allowed`);if(!authority?.allowed)throw Error('Group Rewards review creation authority is required.');
   if(row.reviewUnitId)return{result:{unitId:row.reviewUnitId,skipped:'already-reviewed'},counters:{skipped:1}};
