@@ -4,7 +4,7 @@ import {withTenant,type SessionContext} from '../db/client';
 import * as schema from '../db/schema';
 import {hireEmployee} from '../core/org';
 import {setCompensation} from '../core/comp';
-import {defaultPolicy,emptyFacts,type RewardRole} from '../packs/rewards/model';
+import {defaultPolicy,emptyFacts,emptyRecommendation,type RewardRole} from '../packs/rewards/model';
 import {calculateRewards} from '../packs/rewards/engine';
 import {getRewardUnit,withRewardHistoryBackfill,saveRewardEntry} from '../packs/rewards/service';
 import {backfillRewardPersonHistory} from '../packs/rewards/person-history-backfill';
@@ -109,6 +109,53 @@ describe('Person reward history custody and upload',()=>{
   const stored=await owner.db.execute<{bonus_cents:string}>(sql`select bonus_cents from reward_person_history where entry_id=${entryId}::uuid`);
   expect(stored).toHaveLength(1);expect(Number(stored[0].bonus_cents)).toBe(calculated[0].bonusCents);
  });
+ it('refuses missing, duplicate, foreign and malformed native writer sets without inserting partial history',async()=>{
+  await setRewardMember(admin,unitId,(await getRewardUnit(admin,unitId)).unit.revision,admin.userId!,'payroll');
+  await owner.db.execute(sql`update reward_unit set status='approved' where id=${unitId}::uuid`);
+  const valid={entryId,employmentId,talent:'STAR',performance:'OU',meritBp:0,promotionBp:0,specialBp:0,incrementCents:0,totalIncreaseBp:0,promoted:false,promotionGrade:null,bonusCents:0,bonusMonthsBp:0,lumpCents:0,withheld:{}};
+  const write=(rows:unknown)=>withTenant(admin,tx=>tx.execute(sql`select app.reward_record_person_history(${unitId}::uuid,${JSON.stringify(rows)}::jsonb)`));
+  const refused=[[],[valid,valid],[{...valid,entryId:pastEntryId}],
+   [{...valid,employmentId:'not-a-uuid'}],[{...valid,entryId:null}],[{...valid,meritBp:'not-a-number'}],
+   [valid,{...valid,entryId:pastEntryId}]];
+  for(const rows of refused){
+   await expect(write(rows)).rejects.toThrow();
+   expect(await owner.db.execute(sql`select id from reward_person_history where unit_id=${unitId}::uuid`)).toHaveLength(0);
+  }
+  await write([valid]);
+  expect(await owner.db.execute(sql`select id from reward_person_history where unit_id=${unitId}::uuid`)).toHaveLength(1);
+ });
+ it('records a complete native review above 10,000 selected entries and 16 MB as one set insert',async()=>{
+  await setRewardMember(admin,unitId,(await getRewardUnit(admin,unitId)).unit.revision,admin.userId!,'payroll');
+  const reason='Fictional complete-review capacity evidence. '.repeat(23).slice(0,1000);
+  const withheld={increase:reason,bonus:reason,lump:reason};
+  const facts={...emptyFacts(),reviewed:true,talent:'SCORE',performance:'ME'},recommendation={...emptyRecommendation(),withhold:withheld};
+  // All three populations are created in set statements before approval. These are real selected
+  // unit entries, not repeated fabricated IDs; no fixture query or service call runs per person.
+  const [added]=await owner.db.execute<{count:number}>(sql`with people as (
+   insert into person(tenant_id,full_name) select ${b.tenantId}::uuid,'Fictional native history capacity person '||n from generate_series(1,10000) n returning id
+  ), employments as (
+   insert into employment(tenant_id,person_id,company_id,employee_code,hired_on)
+   select ${b.tenantId}::uuid,p.id,${b.companyId}::uuid,'NHC-'||p.id::text,${`${year-3}-01-01`}::date from people p returning id,person_id,employee_code
+  ), entries as (
+   insert into reward_entry(tenant_id,unit_id,employment_id,source,facts,recommendation)
+   select ${b.tenantId}::uuid,${unitId}::uuid,e.id,${JSON.stringify(source)}::jsonb||jsonb_build_object('employmentId',e.id,'personId',e.person_id,'compensationId',null,'employeeCode',e.employee_code,'name','Fictional capacity subject'),
+    ${JSON.stringify(facts)}::jsonb,${JSON.stringify(recommendation)}::jsonb from employments e returning id
+  ) select count(*)::integer as count from entries`);
+  expect(added.count).toBe(10000);
+  await owner.db.execute(sql`update reward_entry set recommendation=${JSON.stringify(recommendation)}::jsonb where unit_id=${unitId}::uuid`);
+  const selected=await owner.db.execute<{entryId:string;employmentId:string}>(sql`select id as "entryId",employment_id as "employmentId" from reward_entry where tenant_id=${b.tenantId}::uuid and unit_id=${unitId}::uuid order by id`);
+  expect(selected.length).toBeGreaterThan(10000);expect(new Set(selected.map(row=>row.entryId)).size).toBe(selected.length);
+  const rows=selected.map(row=>({...row,talent:'SCORE',performance:'ME',meritBp:0,promotionBp:0,specialBp:0,incrementCents:0,totalIncreaseBp:0,promoted:false,promotionGrade:null,bonusCents:0,bonusMonthsBp:0,lumpCents:0,withheld}));
+  const payload=JSON.stringify(rows);expect(Buffer.byteLength(payload,'utf8')).toBeGreaterThan(16_000_000);
+  await owner.db.execute(sql`update reward_unit set status='approved' where id=${unitId}::uuid`);
+  const [written]=await withTenant(admin,tx=>tx.execute<{count:number}>(sql`select app.reward_record_person_history(${unitId}::uuid,${payload}::jsonb) as count`));
+  expect(written.count).toBe(selected.length);
+  const [proof]=await owner.db.execute<{count:number;distinctEntries:number;increment:string;bonus:string}>(sql`select count(*)::integer as count,count(distinct entry_id)::integer as "distinctEntries",sum(increment_cents)::text as increment,sum(bonus_cents)::text as bonus
+   from reward_person_history where tenant_id=${b.tenantId}::uuid and unit_id=${unitId}::uuid`);
+  expect(proof).toEqual({count:selected.length,distinctEntries:selected.length,increment:'0',bonus:'0'});
+  expect(await owner.db.execute(sql`select e.id from reward_entry e left join reward_person_history h on h.entry_id=e.id and h.tenant_id=e.tenant_id and h.unit_id=e.unit_id
+   where e.unit_id=${unitId}::uuid and e.tenant_id=${b.tenantId}::uuid and h.id is null`)).toEqual([]);
+ },240000); // A real 10,001-entry writer proof includes all owner fixture and immutable-row trigger work.
  it('keeps the same indexed person projection with 70 companies and 1,000 unrelated employments',async()=>{
   const before=await rewardPersonHistory(actors.bu!,unitId,entryId);
   const companies=await owner.db.insert(schema.company).values(Array.from({length:70},(_,i)=>({tenantId:b.tenantId,legalName:`Fictional history scale company ${i}`}))).returning({id:schema.company.id});
