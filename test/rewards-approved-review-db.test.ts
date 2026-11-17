@@ -272,7 +272,8 @@ describe('approved Rewards review SQL custody',()=>{
   // Whole-unit self refusal must hold even when the submitted payload omits that person's own award.
   const writeInstalledHistory=(ctx:SessionContext,rows:unknown)=>owner.withTenant(ctx,async tx=>{
     await tx.execute(sql.raw(HISTORY_INSTALLED_OWNERSHIP));await tx.execute(sql`set local row_security=on`);await tx.execute(sql`set local role ai_hr_app`);
-    return tx.execute(sql`select app.reward_record_person_history(${uploadedId}::uuid,${JSON.stringify(rows)}::jsonb)`);
+    await tx.execute(sql`select app.reward_record_person_history(${uploadedId}::uuid,${JSON.stringify(rows)}::jsonb)`);
+    throw new Error('Rollback unexpected acceptance of an installed-owner refusal case');
   });
   expect(pgSqlState(await writeInstalledHistory(selfPayroll,[expectedZero]).catch(error=>error))).toBe('42501');
   expect(pgSqlState(await postRewardUnit(selfPayroll,uploadedId,5,batchId).catch(error=>error))).toBe('42501');
