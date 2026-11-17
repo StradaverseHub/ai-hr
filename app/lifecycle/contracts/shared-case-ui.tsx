@@ -19,7 +19,7 @@ export function SharedContractNavigation() {
   if(!links.length)return <div className="v9-tabs" aria-hidden="true" style={{minHeight:44}}/>;
   return (
     <nav className="v9-tabs" style={{minHeight:44}} aria-label={copy('Contract Management')}>
-      {links.map(link=><Link key={link.href} className={'v9-button'+(link.active?' v9-button-primary':'')} href={link.href}>{copy(link.label)}</Link>)}
+      {links.map(link=><Link key={link.href} className={'v9-button'+(link.active?' v9-button-primary':'')} href={link.href} aria-current={link.active?'page':undefined}>{copy(link.label)}</Link>)}
     </nav>
   );
 }
