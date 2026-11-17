@@ -1,6 +1,8 @@
 'use client';
 import {useLocale} from 'next-intl';
 import {useOnboardingCopy} from '@/lib/onboarding-copy';
+import {useContractSharedCopy} from '@/lib/contract-shared-copy';
+import {useContractReasonLabel} from '@/lib/contract-reason-copy';
 import {useEffect,useState} from 'react';
 import Link from 'next/link';
 import {Button, Field} from '@/components/ui';
@@ -27,11 +29,11 @@ import {PersonnelReview} from './personnel-review';
 
 const date=(value:string)=>M.validDate(value)?value.split('-').reverse().join('/'):'—';
 export {caseTasksByDue} from '@/components/lifecycle-v9/case-layout';
-export function OffboardingCaseView({c, config, users, actor, personnelWritableKeys, busy, command, onDocument, onReason, onOpenWorkflow, onBack, canOpenTasks=true, today=todayInKualaLumpur()}: {
- c:M.Case;config:M.Config;users:Workspace['options']['users'];actor:M.Actor;personnelWritableKeys:string[];busy:boolean;
+export function OffboardingCaseView({c, config, users,terminationReasonLabels=[], actor, personnelWritableKeys, busy, command, onDocument, onReason, onOpenWorkflow, onBack, canOpenTasks=true, today=todayInKualaLumpur()}: {
+ c:M.Case;config:M.Config;users:Workspace['options']['users'];terminationReasonLabels?:Workspace['options']['terminationReasonLabels'];actor:M.Actor;personnelWritableKeys:string[];busy:boolean;
  command:(value:Command)=>Promise<{ok:boolean;error?:string}>;onDocument:(document:M.Document)=>void;onReason:(type:'cancel'|'reopen')=>void;onOpenWorkflow:(id:string)=>void;onBack:()=>void;canOpenTasks?:boolean;today?:string;
 }){
- const copy=useOnboardingCopy(),locale=useLocale();
+ const copy=useOnboardingCopy(),contractCopy=useContractSharedCopy(),locale=useLocale(),reasonLabel=useContractReasonLabel();
  const [editing,setEditing]=useState(c.state==='pending'),[error,setError]=useState('');
  useEffect(()=>{setEditing(c.state==='pending');},[c.id,c.state]);
  const state=M.work(c),tasks=caseTasksByDue(c.tasks),next=tasks.find(task=>!M.isResolved(task.status)),first=c.log[0];
@@ -50,6 +52,8 @@ export function OffboardingCaseView({c, config, users, actor, personnelWritableK
    {c.state==='cleared'&&<Button variant="outline" onClick={()=>onReason('reopen')}>{copy('Reopen case')}</Button>}
    {['pending','submitted'].includes(c.state)&&!editing&&<Button variant="outline" onClick={()=>setEditing(true)}>{copy('Edit details')}</Button>}
   </>}/>
+  {c.contractSharedSourceCaseId&&c.contractSharedNoticeReviewRequired&&<div className="v9-notice v9-warning" role="status"><strong>{copy('Needs HR review')}</strong><p>{contractCopy("The released letter notice date is after the last working day. People Ops must review these dates before recording termination in Personnel Management.")}</p></div>}
+  {c.contractSharedSourceCaseId&&<div className="v9-notice" role="status"><strong>{contractCopy('Contract Management handoff')}</strong><p>{contractCopy(c.state==='cleared'?'Offboarding clearance completed.':'Offboarding clearance pending.')} {contractCopy('People Ops records termination manually in Personnel Management. Contract Management does not end employment automatically.')}</p>{c.contractSharedTerminationReason&&<p>{contractCopy('Reason')}: {reasonLabel(c.contractSharedTerminationReason,terminationReasonLabels.find(reason=>reason.code===c.contractSharedTerminationReason)?.label)}</p>}<Link href={`/lifecycle/contracts/${encodeURIComponent(c.contractSharedSourceCaseId)}`}>{contractCopy('Open source Contract case')}</Link></div>}
   <CaseSummaryCards>
    <CaseSummaryCard label={copy('Last working day')} value={date(c.facts.lastDay)} detail={<>{onboardingRelative(c.facts.lastDay,today,locale)} · Access revoked {date(c.revokeDate)}</>}/>
    <CaseSummaryCard label={copy('Case status')} value={<OnboardingBadge tone={tone}>{copy(status)}</OnboardingBadge>} detail={first?<>{first.detail} · {onboardingTimestamp(first.at)}</>:'Source not recorded'}/>

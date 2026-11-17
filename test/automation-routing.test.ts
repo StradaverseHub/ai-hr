@@ -5,6 +5,14 @@ import {resolveRoutingRow,routingFromV9BpRules,routingProblems,routingRecipients
 const u=(n:number)=>`10000000-0000-4000-8000-${String(n).padStart(12,'0')}`;
 
 describe('Shared routing rules',()=>{
+ it('keeps existing empty-match semantics unless the module explicitly enables default fallback',()=>{
+  const routing:Routing={id:'route',name:'Approver',rows:[
+   {match:{company:['company']},assignTo:{kind:'group',groupId:'empty'}},
+   {match:{},assignTo:{kind:'people',userIds:[u(1)]}},
+  ]};
+  expect(routingRecipients(routing,{company:'company'},()=>[]).userIds).toEqual([]);
+  expect(routingRecipients(routing,{company:'company'},()=>[],{defaultOnEmpty:true}).userIds).toEqual([u(1)]);
+ });
  it('resolves a converted V9 PBP rule list to exactly the person V9 resolves, for every fact combination',()=>{
   const bpRules=[
    {rules:{businessGroup:['CHGB']},userId:u(1)},

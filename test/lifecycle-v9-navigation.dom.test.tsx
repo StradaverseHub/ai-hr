@@ -23,26 +23,26 @@ function sidebar(theme:UiTheme='classic', allowed:typeof permissions & {records?
 }
 it.each(['classic','monolith','atelier'] as const)('renders the requested three-level hierarchy in the existing %s sidebar',theme=>{
  const menu=sidebar(theme), nav=within(menu);
- expect(nav.getAllByRole('button').map(button=>button.textContent?.trim())).toEqual(['Onboarding','Offboarding','Configuration']);
+ expect(nav.getAllByRole('button').map(button=>button.textContent?.trim())).toEqual(['Onboarding','Offboarding']);
  expect(nav.getAllByRole('link').map(link=>[link.textContent?.trim(),link.getAttribute('href')])).toEqual([
   ['New Joiners','/lifecycle/v9'],['Checklist Management','/lifecycle/v9?view=onbChecklists'],
   ['Leavers','/lifecycle/v9?view=leavers'],['Offboarding checklists','/lifecycle/v9?view=offChecklists'],
-  ['Onboarding & Offboarding Settings','/lifecycle/v9?view=settings'],['Module Access','/lifecycle/v9?view=access'],
+  ['Module Access','/lifecycle/v9?view=access'],
  ]);
  for(const label of ['Onboarding & IT','My onboarding & offboarding','Requisitions','All requisitions'])expect(nav.queryByText(label)).not.toBeInTheDocument();
  const onboarding=nav.getByRole('button',{name:'Onboarding'});fireEvent.click(onboarding);
  expect(onboarding).toHaveAttribute('aria-expanded','false');expect(nav.queryByRole('link',{name:'Checklist Management'})).not.toBeInTheDocument();
  expect(nav.getByRole('link',{name:'Leavers'})).toBeVisible();fireEvent.click(onboarding);expect(nav.getByRole('link',{name:'Checklist Management'})).toBeVisible();
 });
-it.each(['classic','monolith','atelier'] as const)('moves the On/Off Boarding builders into the shared HR Automation section in the %s sidebar',theme=>{
+it.each(['classic','monolith','atelier'] as const)('shows one Configuration destination per shared builder in the %s sidebar',theme=>{
  sidebar(theme);
- // ADR 2026-11-15-probation-shared-automation, decision 1: same V9 screens, now beside the shared builders.
+ // The approved merge has one shared destination per builder, plus native-authorized On/Off Boarding settings.
  const automationTrigger=screen.getByRole('button',{name:messages.nav.moduleHrAutomation});
  if(automationTrigger.getAttribute('aria-expanded')!=='true')fireEvent.click(automationTrigger);
  const automation=within(screen.getByRole('navigation',{name:messages.nav.moduleHrAutomation}));
  expect(automation.getAllByRole('link').map(link=>[link.textContent?.trim(),link.getAttribute('href')])).toEqual([
   ['Workflows','/automation/workflows'],['Templates','/automation/templates'],['Assignment groups','/automation/groups'],
-  ['On/Off Boarding templates','/lifecycle/v9?view=templates'],['On/Off Boarding workflows','/lifecycle/v9?view=workflows'],['On/Off Boarding assignment groups','/lifecycle/v9?view=groups'],
+  ['Onboarding & Offboarding Settings','/lifecycle/v9?view=settings'],
  ]);
 });
 it('keeps an offboarding-only reader out of onboarding and configuration navigation',()=>{

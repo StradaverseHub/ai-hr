@@ -12,6 +12,7 @@ import type {SessionContext,Tx} from '../db/client';
 import {pgSqlState} from '../lib/db-error';
 import {withScopedLifecycleTenant} from './module-gate';
 import {automationCatalogue} from '../lib/automation/catalogues';
+import type {AutomationModule} from '../lib/automation/catalogue';
 import {automationWorkflowProblems,type AutomationReferences,type AutomationWorkflow} from '../lib/automation/workflow';
 import {routingProblems,type Routing} from '../lib/automation/routing';
 import {automationEmailTemplateProblems,type AutomationEmailTemplate} from '../lib/automation/email';
@@ -24,7 +25,7 @@ export const MAX_ROUTING_OPTION_TITLES = 1000;
 export const MAX_PEOPLE_NAMES = 500;
 export const MAX_PEOPLE_SEARCH = 20;
 
-export type AutomationBuilderAccess = { probation: boolean; any: boolean };
+export type AutomationBuilderAccess = { probation: boolean; contractStaff: boolean; any: boolean };
 export type AutomationOption = { id: string; name: string };
 export type AutomationRoutingOptions = {
   businessGroups: AutomationOption[];
@@ -46,10 +47,10 @@ export async function automationReferencesTx(tx: Tx, people: readonly string[]):
 }
 
 /** Who may configure what in the shared builders, as the database answers it (5740). */
-export function automationBuilderAccess(ctx: SessionContext): Promise<AutomationBuilderAccess> {
+export function automationBuilderAccess(ctx: SessionContext,kind?:'workflows'|'templates'|'groups'): Promise<AutomationBuilderAccess> {
   return withScopedLifecycleTenant(ctx, async tx => {
-    const [row] = await tx.execute<AutomationBuilderAccess>(sql`select app.automation_can_configure('probation') as probation, app.automation_can_configure_any() as any`);
-    return { probation: !!row?.probation, any: !!row?.any };
+    const [row] = await tx.execute<AutomationBuilderAccess>(sql`select ${kind?sql`app.automation_can_manage('probation',${kind})`:sql`app.automation_can_configure('probation')`} as probation, ${kind?sql`app.automation_can_manage('contract_staff',${kind})`:sql`app.automation_can_configure('contract_staff')`} as "contractStaff", ${kind?sql`app.automation_can_manage_any(${kind})`:sql`app.automation_can_configure_any()`} as any`);
+    return { probation: !!row?.probation, contractStaff: !!row?.contractStaff, any: !!row?.any };
   });
 }
 
@@ -185,4 +186,12 @@ export async function installAutomationDefaults(ctx: SessionContext, defaults: A
     }
     return { installed, alreadyPresent: ids.filter(id => existing.has(id)).length };
   });
+}
+
+/** Workflow editors may select template identities without gaining permission to edit their content. */
+export function automationTemplateChoices(ctx:SessionContext,module:AutomationModule){
+ return withScopedLifecycleTenant(ctx,async tx=>{
+  const [row]=await tx.execute<{choices:{emails:{id:string;name:string;active:boolean;retired:boolean;subject:string}[];documents:{id:string;name:string;version:number}[]}}>(sql`select app.automation_template_choices(${module}) as choices`);
+  return row.choices;
+ });
 }

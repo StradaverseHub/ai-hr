@@ -34,7 +34,7 @@ describe('Ops and Strata placement never grants authority',()=>{
   // ADR 2026-11-15-probation-shared-automation, decision 1: the shared builders and the moved V9 builder views.
   ['/automation/workflows','ops','automation','config'],['/automation/templates','ops','automation','config'],['/automation/groups','ops','automation','config'],
   ['/lifecycle/v9?view=workflows','ops','automation','config'],['/lifecycle/v9?view=templates','ops','automation','config'],['/lifecycle/v9?view=groups','ops','automation','config'],
-  ['/lifecycle/v9?view=settings','ops','onboarding','hr'],['/lifecycle/probation/postings','ops','probation','hr'],
+  ['/lifecycle/v9?view=settings','ops','automation','config'],['/lifecycle/probation/postings','ops','probation','hr'],
   ['/performance/home','strata','performance','mine'],['/performance/my','strata','performance','mine'],
   ['/performance/workspace','strata','performance','mine'],['/performance/calibration/talent-box','strata','performance','mine'],
   ['/performance','strata','performanceAdmin','hr'],['/performance/0f9b4c1e-2d3a-4b5c-8d7e-6f5a4b3c2d1e/cycle/calendar','strata','performanceAdmin','hr'],

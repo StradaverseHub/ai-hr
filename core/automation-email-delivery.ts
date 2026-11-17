@@ -11,22 +11,24 @@
  * and receipt commits on its own and the SMTP call happens outside every transaction, under no business lock. A message
  * whose send started and whose receipt was lost becomes `uncertain` and is never re-sent automatically.
  */
+import type {AutomationRichEmailBody} from '../lib/automation-email-content';
 import {randomUUID} from 'node:crypto';
 import {sql} from 'drizzle-orm';
 import type {SessionContext,Tx} from '../db/client';
+import type {SqlExecutor} from '../db/sql-executor';
 import type {NotificationSweepConnection} from './notice-projection';
 import {isModuleEnabled} from './entitlements';
 import {automationEmailIpc,type AutomationDeliveryRequest,type AutomationDeliveryResult} from '../lib/automation-email-ipc';
 
 export type AutomationEmailQueued = {queued: number; to: string[]; cc: string[]; unreachable: string[]};
 /** Records the email intent in the caller's transaction (idempotent on `key`). */
-export async function queueAutomationEmailTx(tx: Tx, input: {module: 'probation'; subjectId: string; key: string; to: readonly string[]; cc: readonly string[]; subject: string; body: string}): Promise<AutomationEmailQueued> {
+export async function queueAutomationEmailTx(tx: SqlExecutor, input: {module: 'probation'|'contract_staff'; subjectId: string; key: string; to: readonly string[]; cc: readonly string[]; subject: string; body: string;richBody?:AutomationRichEmailBody}): Promise<AutomationEmailQueued> {
   const array = (ids: readonly string[]) => `{${ids.join(',')}}`;
-  const [row] = await tx.execute<{data: AutomationEmailQueued}>(sql`select app.automation_email_queue(${input.module}, ${input.subjectId}::uuid, ${input.key}, ${array(input.to)}::uuid[], ${array(input.cc)}::uuid[], ${input.subject.slice(0, 500)}, ${input.body.slice(0, 20000)}) as data`);
+  const [row] = await tx.execute<{data: AutomationEmailQueued}>(sql`select app.automation_email_queue_rich(${input.module}, ${input.subjectId}::uuid, ${input.key}, ${array(input.to)}::uuid[], ${array(input.cc)}::uuid[], ${input.subject.slice(0, 500)}, ${input.body.slice(0, 20000)},${input.richBody?JSON.stringify(input.richBody):null}::jsonb) as data`);
   return row.data;
 }
 
-type Job = {id: string; module: string; subject_id: string; status: string; lease_token: string | null; started_at: string | null; company_id: string | null};
+type Job = {id: string; module: string; subject_id: string; status: string; lease_token: string | null; started_at: string | null; company_id: string | null; purpose?:string | null};
 /** Durable transport worker for shared workflow email. Requires the owner connection (no signed-in user). */
 export async function deliverAutomationEmails(ctx: SessionContext, connection: NotificationSweepConnection, send: (request: AutomationDeliveryRequest) => Promise<AutomationDeliveryResult> = automationEmailIpc) {
   if (ctx.userId) throw new Error('Workflow email delivery requires the storage owner.');
@@ -41,10 +43,12 @@ export async function deliverAutomationEmails(ctx: SessionContext, connection: N
   for (const {id} of due) {
     try {
       const claim = await connection.withTenant(ctx, async tx => {
-        const [job] = await tx.execute<Job>(sql`select d.id,d.module,d.subject_id,d.status,d.lease_token,d.started_at,c.company_id from automation_email_delivery d left join probation_case c on d.module='probation' and c.id=d.subject_id and c.tenant_id=d.tenant_id where d.id=${id}::uuid and d.tenant_id=${ctx.tenantId}::uuid and d.status='queued' and d.next_attempt_at<=now() for update of d skip locked`);
+        const [job] = await tx.execute<Job>(sql`select d.id,d.module,d.subject_id,d.status,d.lease_token,d.started_at,d.payload->>'purpose' as purpose,coalesce(c.company_id,contract.company_id) as company_id from automation_email_delivery d left join probation_case c on d.module='probation' and c.id=d.subject_id and c.tenant_id=d.tenant_id left join contract_case contract on d.module='contract_staff' and contract.id=d.subject_id and contract.tenant_id=d.tenant_id where d.id=${id}::uuid and d.tenant_id=${ctx.tenantId}::uuid and d.status='queued' and d.next_attempt_at<=now() for update of d skip locked`);
         if (!job) return null;
-        // The module must still be in use for the case's company; otherwise the message is cancelled, never sent.
-        if (!job.company_id || ctx.entitlementsExempt === undefined && !isModuleEnabled(ctx, 'lifecycle', job.company_id)) {
+        // A saved-template self-test has no employment case/company. Its native private target rechecks
+        // current module entitlement, template authority and actual sole author before start; purpose is
+        // only a dispatch distinction, never authorization to send. Case mail retains company admission.
+        if (job.purpose !== 'templateTest' && (!job.company_id || ctx.entitlementsExempt === undefined && !isModuleEnabled(ctx, 'lifecycle', job.company_id))) {
           await tx.execute(sql`update automation_email_delivery set status='cancelled',error_code='notEligible',updated_at=now() where id=${id}::uuid`);
           return 'cancelled' as const;
         }

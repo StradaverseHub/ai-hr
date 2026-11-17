@@ -33,7 +33,7 @@ export function ConditionRows({catalogue,trigger,conditions,onChange,valuesFor,a
      {(spec?.ops??DEFAULT_OPS).map(op=><option key={op} value={op}>{t(OP_KEYS[op])}</option>)}
     </select>
     {numeric(condition.op)
-     ?<input aria-label={t('conditions.valueFor',{field:fieldLabel})} type="number" min={0} step={1} value={condition.values[0]??''} disabled={disabled} onChange={e=>update(index,{...condition,values:[e.target.value]})}/>
+     ?<input aria-label={t('conditions.valueFor',{field:fieldLabel})} type="number" min={condition.field==='daysToEnd'?undefined:0} step={1} value={condition.values[0]??''} disabled={disabled} onChange={e=>update(index,{...condition,values:[e.target.value]})}/>
      :values.length
       ?<MultiSelect label={t('conditions.valueFor',{field:fieldLabel})} value={condition.values} options={values} disabled={disabled} onChange={next=>update(index,{...condition,values:next})}/>
       :<TypedValues label={t('conditions.valueFor',{field:fieldLabel})} placeholder={t('conditions.typeValues')} values={condition.values} disabled={disabled} onChange={next=>update(index,{...condition,values:next})}/>}

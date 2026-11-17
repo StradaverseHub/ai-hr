@@ -2,6 +2,7 @@ import {withPersonnelRead} from './personnel-read-bounds';
 import {assertWorkforceEmploymentTx} from './workforce-access';
 import {isCalendarDate} from '../lib/calendar-date';
 import {contractCompensationAuthorityTx} from './contract-record-authority';
+import {assertContractPostingHistoryWriteTx} from './contract-posting-history-source';
 /**
  * Compensation — generic, jurisdiction-neutral, effective-dated (ADR-0008 #5).
  * Salary is comp *history*: a change CLOSE + INSERTs a new version. Amounts are tenant data.
@@ -38,12 +39,13 @@ import {lockPayrollInputsTx} from './payroll-inputs-lock';
  * employment's leave-dependency lock serialises writers of one employee and waits with the bound
  * instead of refusing, and the payroll inputs key makes a change wait for an in-flight run of the
  * employee's company, so the run either reads it or is marked for recalculation below. */
-async function ownCompensationDependenciesTx(tx:Tx,ctx:SessionContext,employmentId:string,contractAuthority=false){
+async function ownCompensationDependenciesTx(tx:Tx,ctx:SessionContext,employmentId:string,contractAuthority=false,contractHistory=false){
  await lockAccessConfigurationTx(tx,ctx.tenantId);
  // Same barrier rows as before (a stale REPEATABLE READ writer still refuses), in shared mode.
  await tx.execute(sql`select app.access_workforce_write_lock()`);
  const [row]=await tx.execute<{allowed:boolean}>(sql`select exists(select 1 from public.employment e where e.id=${employmentId}::uuid and e.tenant_id=${ctx.tenantId}::uuid and (app.can_admin_employment(e.id) or app.can_admin_perfcomp_employment(e.id))) as allowed`);
- if(row?.allowed!==true&&!contractAuthority)throw new Error('Salary record or permission is unavailable');
+ if(contractHistory)await assertContractPostingHistoryWriteTx(tx,employmentId);
+ else if(row?.allowed!==true&&!contractAuthority)throw new Error('Salary record or permission is unavailable');
  await lockLeaveDependenciesWaitTx(tx,ctx.tenantId,[employmentId]);
  await lockPayrollInputsTx(tx,{employmentIds:[employmentId]});
 }
@@ -406,7 +408,13 @@ export async function amendDatedCompensationTx(tx:Tx,ctx:SessionContext,p:{emplo
  return{compensationId:revision.id,sourceId:source.id,changed:true,payrollFrom:informationOnly?null:payrollFrom,until,informationOnly};
 }
 
-export async function setCompensation(
+export function setCompensation(ctx:SessionContext,p:Parameters<typeof setCompensationBody>[1],outerTx?:Tx){return setCompensationBody(ctx,p,outerTx);}
+/** Replays an existing immutable canonical salary decision; never accepts a Contract pay proposal. */
+export async function replayContractPostingCompensationTx(ctx:SessionContext,p:Parameters<typeof setCompensationBody>[1],tx:Tx){
+ await assertContractPostingHistoryWriteTx(tx,p.employmentId);
+ return setCompensationBody(ctx,p,tx,true);
+}
+async function setCompensationBody(
   ctx: SessionContext,
   p: {
     employmentId: string;
@@ -439,11 +447,12 @@ export async function setCompensation(
   /** Optional caller transaction — pass it to make this write participate in an enclosing
    *  transaction (e.g. the performance pay-seam enact) so it commits/rolls back atomically. */
   outerTx?: Tx,
+  contractHistory=false,
 ) {
   ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(grant=>({...grant}))};
   p={...p,...(p.movement?{movement:{...p.movement}}:{})};
   const run = async (tx: Tx) => {
-    await ownCompensationDependenciesTx(tx,ctx,p.employmentId,contractCompensationAuthorityTx(tx,p));
+    await ownCompensationDependenciesTx(tx,ctx,p.employmentId,contractCompensationAuthorityTx(tx,p),contractHistory);
     const [cur] = await tx
       .select()
       .from(compensation)
@@ -791,17 +800,23 @@ export async function updateCompensation(
  * Appends a `compensation.superseded` DomainEvent (PDPA redact-to-reference: who/what/when + reference,
  * never the amount).
  */
-export async function supersedeCompensation(
+export function supersedeCompensation(ctx:SessionContext,p:Parameters<typeof supersedeCompensationBody>[1],outerTx?:Tx){return supersedeCompensationBody(ctx,p,outerTx);}
+export async function reverseContractPostingCompensationTx(ctx:SessionContext,p:Parameters<typeof supersedeCompensationBody>[1],tx:Tx){
+ await assertContractPostingHistoryWriteTx(tx,p.employmentId);
+ return supersedeCompensationBody(ctx,p,tx,true);
+}
+async function supersedeCompensationBody(
   ctx: SessionContext,
   p: { compensationId: string; employmentId: string },
   /** 66a63bd6 — optional caller transaction (the run(outerTx) pattern setCompensation already uses), so a
    *  Movement rollback removes the pay leg atomically with the assignment / grade / reporting-line legs. */
   outerTx?: Tx,
+  contractHistory=false,
 ) {
   ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(grant=>({...grant}))};
   p={...p};
   const run = async (tx: Tx) => {
-    await ownCompensationDependenciesTx(tx,ctx,p.employmentId);
+    await ownCompensationDependenciesTx(tx,ctx,p.employmentId,false,contractHistory);
     const [row] = await tx
       .select()
       .from(compensation)

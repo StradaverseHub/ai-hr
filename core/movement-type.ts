@@ -42,6 +42,7 @@ import { withTenant, type SessionContext, type Tx } from '../db/client';
 import { actorOf, appendEvent } from '../db/events';
 import { movementEventType } from '../db/schema';
 import { INTERCHANGEABLE_COMPARISON_KINDS, MOVEMENT_KINDS, type MovementKind } from './movement';
+import {isContractPostingMovementKind} from './movement-kinds';
 import {
   deleteMovementTypeControlsTx,
   movementTypeControlsTx,
@@ -275,7 +276,7 @@ export async function getMovementEventTypeForSettings(
 
 /** The types the New Event form offers — the catalogue minus everything switched off. */
 export async function activeMovementEventTypes(ctx: SessionContext): Promise<MovementEventTypeRow[]> {
-  return (await listMovementEventTypes(ctx)).filter((r) => r.active);
+  return (await listMovementEventTypes(ctx)).filter((r) => r.active&&!isContractPostingMovementKind(r.behaviourKind));
 }
 
 /**

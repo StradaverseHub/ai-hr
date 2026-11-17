@@ -6,6 +6,7 @@ import {realpathSync,readFileSync} from 'node:fs';
 import {isAbsolute,join,resolve} from 'node:path';
 import {platform} from 'node:os';
 import postgres from 'postgres';
+import {hasContractBrowserRoleIntent,inspectContractBrowserRoleAdmission,sameContractBrowserRoleBinding,CONTRACT_BROWSER_ROLE_MODE,type ContractBrowserRoleBinding} from '../../scripts/lib/contract-browser-role-admission';
 import {hasFullCiRoleIntent,hasFocusedMigrationIntent,inspectFullCiRoleAdmission,sameFullCiRoleBinding,FULL_CI_PLAN_OBSERVER,type FullCiRoleBinding,type FullCiRoleHost,type FullCiRoleAdmission} from '../../scripts/lib/discard-premigration';
 const fullCiRoleHost=():FullCiRoleHost=>({platform:platform(),cwd:process.cwd(),realpath:path=>realpathSync(path),read:path=>readFileSync(path,'utf8'),
  git:(cwd,args)=>execFileSync('git',[...args],{cwd,encoding:'utf8',maxBuffer:16*1024*1024}),
@@ -22,13 +23,22 @@ export const isDraftDiscardFixtureDatabasePath=(path:string)=>/^\/ai_hr_test(?:_
 export type RoleRow={oid:number;name:string;login:boolean;inherit:boolean;super:boolean;createDb:boolean;createRole:boolean;replication:boolean;bypassRls:boolean;connectionLimit:number;validUntil:string|null};
 export type MembershipRow={role:string;member:string;grantor:string;inherit:boolean;set:boolean;admin:boolean};
 export type RoleCatalog={roles:RoleRow[];edges:MembershipRow[]};
-export type DraftDiscardRoleFixture=RoleCatalog&{mode:'focused_disposable'|'full_ci_disposable'|'preprovisioned_read_only';postgres:{versionNumber:number;versionText:string;session:string;current:string}};
+export type DraftDiscardRoleFixture=RoleCatalog&{mode:'focused_disposable'|'full_ci_disposable'|'preprovisioned_read_only'|typeof CONTRACT_BROWSER_ROLE_MODE;postgres:{versionNumber:number;versionText:string;session:string;current:string}};
+// Reject abandoned feature-specific provisioning hints instead of falling back to another mode.
+const unsupportedBrowserIntent=()=>Object.keys(process.env).some(key=>key.startsWith('AIHR_RESIGNATION_ROLE_')&&process.env[key]!==undefined);
 const refuse=():never=>{throw Error('Disposable focused role fixture prerequisites are not satisfied.');};
 const sha=(value:string|undefined)=>/^[0-9a-f]{40}$/.test(value??'');
 const numeric=(value:string|undefined)=>/^[1-9][0-9]*$/.test(value??'');
 
 /** No URL or credential is included in an error, result or artifact. All checks precede a connection. */
-export function assertDisposableDraftDiscardFixture(adminUrl:string,full?:FullCiRoleBinding):void{
+export function assertDisposableDraftDiscardFixture(adminUrl:string,full?:FullCiRoleBinding,contract?:ContractBrowserRoleBinding):void{
+ if(contract||hasContractBrowserRoleIntent(process.env)){
+  if(!contract||full||unsupportedBrowserIntent()||hasFullCiRoleIntent(process.env)||hasFocusedMigrationIntent(process.env))throw Error('Explicit exclusive Contract browser binding required.');
+  const observed=inspectContractBrowserRoleAdmission(process.env,{platform:platform(),cwd:process.cwd(),realpath:path=>realpathSync(path),read:path=>readFileSync(path,'utf8'),git:(cwd,args)=>execFileSync('git',[...args],{cwd,encoding:'utf8'})});
+  if(adminUrl!==observed.admin||!sameContractBrowserRoleBinding(contract,observed.binding))throw Error('Contract browser owner binding changed.');
+  return;
+ }
+ if(unsupportedBrowserIntent())throw Error('Unsupported browser role intent.');
  if(full||hasFullCiRoleIntent(process.env)){
   if(!full)throw Error('Full CI explicit binding required.');
   const observed=inspectFullCiRoleAdmission(process.env,fullCiRoleHost());
@@ -93,8 +103,8 @@ export function assertDraftDiscardRoleCatalog(catalog:RoleCatalog,allowMissing=f
   if(actual.length!==1||actual[0].inherit!==edge.inherit||actual[0].set!==edge.set||actual[0].admin!==edge.admin||actual[0].grantor!=='postgres')refuse();
  }
 }
-export async function prepareDisposableDraftDiscardRoles(adminUrl:string,full?:FullCiRoleBinding):Promise<DraftDiscardRoleFixture>{
- assertDisposableDraftDiscardFixture(adminUrl,full);
+export async function prepareDisposableDraftDiscardRoles(adminUrl:string,full?:FullCiRoleBinding,contract?:ContractBrowserRoleBinding):Promise<DraftDiscardRoleFixture>{
+ assertDisposableDraftDiscardFixture(adminUrl,full,contract);
  const admin=postgres(adminUrl,{max:1,onnotice:()=>{},connect_timeout:5});
  try{return await admin.begin(async tx=>{
   await tx`select pg_advisory_xact_lock(hashtextextended('test:focused:draft-discard-role-fixture',0))`;
@@ -124,7 +134,7 @@ export async function prepareDisposableDraftDiscardRoles(adminUrl:string,full?:F
    pg_has_role('ai_hr_app','ai_hr_draft_discard_port','MEMBER') as "appMemberChild",
    pg_has_role('ai_hr_draft_discard_port','ai_hr_owner','MEMBER') as "childMemberOwner"`;
   if(paths.inheritsChild||!paths.setsChild||paths.appMemberChild||paths.childMemberOwner)refuse();
-  return {...after,mode:full?'full_ci_disposable' as const:'focused_disposable' as const,postgres:{versionNumber:server.version,versionText:server.versionText,session:server.session,current:server.current}};
+  return {...after,mode:contract?CONTRACT_BROWSER_ROLE_MODE:full?'full_ci_disposable' as const:'focused_disposable' as const,postgres:{versionNumber:server.version,versionText:server.versionText,session:server.session,current:server.current}};
  });}finally{await admin.end({timeout:5});}
 }
 
@@ -145,6 +155,8 @@ export async function validateExistingDraftDiscardRoles(adminUrl:string):Promise
 /** Focused intent always takes the strict guard. A failed guard cannot fall back to a connection
  * or another provisioning course. Other contexts only validate their existing operator prerequisite. */
 export function ensureDraftDiscardTestRoles(adminUrl:string):Promise<DraftDiscardRoleFixture>{
+ if(hasContractBrowserRoleIntent(process.env))return Promise.reject(Error('Contract browser setup requires explicit source-bound admission; no worker fallback.'));
+ if(unsupportedBrowserIntent())return Promise.reject(Error('Unsupported browser role intent; no worker fallback.'));
  if(hasFullCiRoleIntent(process.env))return Promise.reject(Error('Full CI provisioning hints must not reach template/worker setup.'));
  if(process.env.AIHR_FOCUSED_SUITE_CAPACITY==='true'||process.env.GITHUB_WORKFLOW==='alpha-focused-checks')
   return prepareDisposableDraftDiscardRoles(adminUrl);

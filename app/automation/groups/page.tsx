@@ -1,19 +1,32 @@
+import {v9Configuration} from '@/packs/lifecycle/service';
+import {AssignmentGroups} from './assignment-groups';
+import {LifecycleGroupSection} from '../lifecycle-configuration';
 import {notFound} from 'next/navigation';
 import {requireScopedLifecycleModule} from '@/lib/scoped-lifecycle-page';
-import {automationAssignmentGroups,automationPeopleNames,automationRoutingOptions,listAutomationRoutings,listAutomationWorkflows} from '@/packs/automation/service';
+import {automationAssignmentGroups,automationGroupWorkspace,automationPeopleNames,automationRoutingOptions,listAutomationRoutings,listAutomationWorkflows} from '@/packs/automation/service';
 import {automationPageAccess} from '../access';
 import {GroupsWorkspace,type ListedRouting} from './groups-workspace';
 
 export default async function Page(){
- const ctx=await requireScopedLifecycleModule(),access=await automationPageAccess(ctx);
+ const ctx=await requireScopedLifecycleModule(),access=await automationPageAccess(ctx,'groups');
  if(!access.any)notFound();
- const [routings,groups,options]=await Promise.all([listAutomationRoutings(ctx),automationAssignmentGroups(ctx),automationRoutingOptions(ctx)]);
+ const [routings,groups,options,groupWorkspace]=await Promise.all([listAutomationRoutings(ctx),automationAssignmentGroups(ctx),automationRoutingOptions(ctx),access.contractStaff?automationGroupWorkspace(ctx):null]);
  // Workflows the viewer may read (row security): where each routing is used, for the "Used in" note.
  const workflows=await listAutomationWorkflows(ctx);
  const usedBy=new Map<string,Set<string>>();
  for(const {workflow} of workflows)if(workflow.status!=='retired')for(const step of workflow.steps)for(const recipient of [...step.to,...step.cc])
   if(recipient.kind==='routing')usedBy.set(recipient.routingId,(usedBy.get(recipient.routingId)??new Set<string>()).add(workflow.name));
- const listed:ListedRouting[]=routings.map(r=>({routing:r.routing,revision:r.revision,retired:r.retired,usedBy:[...usedBy.get(r.routing.id)??[]]}));
  const people=await automationPeopleNames(ctx,routings.flatMap(r=>r.routing.rows.flatMap(row=>row.assignTo.kind==='people'?row.assignTo.userIds:[])));
- return <GroupsWorkspace access={access} groups={groups} routings={listed} options={{businessGroups:options.businessGroups,companies:options.companies,departments:options.departments,jobTitles:options.jobTitles}} people={people}/>;
+ const lifecycle=access.legacy?await v9Configuration(ctx):null;
+ const groupUses:Record<string,string[]>={};
+ const use=(id:string,label:string)=>{groupUses[id]??=[];if(!groupUses[id].includes(label))groupUses[id].push(label);};
+ for(const r of routings)if(!r.retired)for(const row of r.routing.rows)if(row.assignTo.kind==='group')use(row.assignTo.groupId,'Routing: '+r.routing.name);
+ const config=lifecycle?.config;
+ const routeUse=(id:string,label:string)=>usedBy.set(id,(usedBy.get(id)??new Set<string>()).add(label));
+ const recipientUse=(recipient:import('@/lib/automation/workflow').AutomationRecipient,label:string)=>{if(recipient.kind==='routing')routeUse(recipient.routingId,label);};
+ for(const {workflow}of workflows)for(const step of workflow.steps){for(const recipient of Array.isArray(step.params.watch)?step.params.watch:[])recipientUse(recipient,'Workflow: '+workflow.name);for(const layer of Array.isArray(step.params.layers)?step.params.layers:[])for(const recipient of layer.to??[])recipientUse(recipient,'Workflow: '+workflow.name);}
+ for(const template of config?.templates??[])for(const version of template.versions)for(const step of version.routing??[])if(step.who.kind==='routing')routeUse(step.who.routingId,'Template: '+template.name);
+ if(config?.peopleOpsGroup)use(config.peopleOpsGroup,'Shared settings: GBS People Ops');
+ const listed:ListedRouting[]=routings.map(r=>({routing:r.routing,revision:r.revision,retired:r.retired,usedBy:[...usedBy.get(r.routing.id)??[]]}));
+ return <GroupsWorkspace groupSection={groupWorkspace?<AssignmentGroups initial={groupWorkspace} usedBy={groupUses}/>:lifecycle?<LifecycleGroupSection initial={lifecycle} usedBy={groupUses}/>:undefined} access={access} groups={groups} routings={listed} options={{businessGroups:options.businessGroups,companies:options.companies,departments:options.departments,jobTitles:options.jobTitles}} people={people}/>;
 }

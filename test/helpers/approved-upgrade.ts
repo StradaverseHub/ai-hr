@@ -22,7 +22,6 @@ export const APPROVED_UPGRADE_TAIL=[
  {idx:1382,when:1793330001528,tag:'2128_organisation_account_admission'},
  {idx:1383,when:1793330001530,tag:'2130_approved_company_retention'},
  {idx:1410,when:1793330001610,tag:'2210_personnel_projection_reuse'},
- // Pending main payroll learning, then the combined Architecture, Rewards and Registration successors.
  {idx:1411,when:1793330001611,tag:'2013_payroll_learned_baseline'},
  {idx:1412,when:1793330001612,tag:'2200_job_architecture'},
  {idx:1413,when:1793330001613,tag:'2201_job_architecture_documents'},
@@ -69,9 +68,7 @@ export const APPROVED_UPGRADE_TAIL=[
  {idx:3602,when:1793330003902,tag:'4202_attendance_clock_policy_revisions'},
  {idx:4000,when:1793330004300,tag:'4600_attendance_clock_policy_group_scope'},
  {idx:4001,when:1793330004301,tag:'4601_last_login_event_index'},
- // 50d9b809: the AI Centre control for the shared_leave_groups read (docs/MIGRATION-ALLOCATION.md, 10 November 2026).
  {idx:4200,when:1793330004500,tag:'4800_ai_shared_leave_groups_read'},
- // Architecture candidate, renumbered above the released 8d5254eb watermark (docs/MIGRATION-ALLOCATION.md, 10 November 2026).
  ...PERFORMANCE_MIGRATION_IDENTITIES.map(({idx,when,tag})=>({idx,when,tag})),
  {idx:4237,when:1793330004537,tag:'3500_ai_centre_architecture_compatibility'},
  {idx:4238,when:1793330004538,tag:'3501_ai_centre_mandate_write_order'},
@@ -80,9 +77,6 @@ export const APPROVED_UPGRADE_TAIL=[
  {idx:4241,when:1793330004541,tag:'4340_ai_management_presentation_snapshot'},
  {idx:4242,when:1793330004542,tag:'4341_home_leave_presentation_snapshot'},
  {idx:4243,when:1793330004543,tag:'4342_attendance_clock_policy_audit_scope'},
- // Combined release block above every surveyed peer (docs/MIGRATION-ALLOCATION.md, 11 November 2026): the reader/writer
- // Access lock, the staged employee import and bulk-job kernel, Personnel typed facts, the bulk conversions, and the
- // audit-chain commit seal last.
  {idx:4400,when:1793330004700,tag:'5000_access_reader_writer_core'},
  {idx:4401,when:1793330004701,tag:'5001_access_reader_writer_serialisers'},
  {idx:4402,when:1793330004702,tag:'5002_access_reader_writer_profile_values'},
@@ -131,73 +125,40 @@ export const APPROVED_UPGRADE_TAIL=[
  {idx:4490,when:1793330004790,tag:'5090_audit_chain_commit_seal'},
  {idx:4520,when:1793330004820,tag:'5120_access_review_custody_held_mode'},
  {idx:4521,when:1793330004821,tag:'5121_personnel_search_set_mapping'},
- // ccd3a65c Import History section type, renumbered above release candidate 3's 5120/5121 and PR 240's 5122 (docs/MIGRATION-ALLOCATION.md, 12 November 2026).
  {idx:4523,when:1793330004823,tag:'5123_import_history_kind'},
- // 4452ba3c attendance workflow skipped levels, renumbered after 5123 (docs/MIGRATION-ALLOCATION.md, 12 November 2026).
  {idx:4524,when:1793330004824,tag:'5124_attendance_workflow_skipped_levels'},
- // 792053e5 payroll formula repricing marker, renumbered 5125 (docs/MIGRATION-ALLOCATION.md, 12 November 2026).
  {idx:4525,when:1793330004825,tag:'5125_individual_txn_pricing_marker'},
- // 2260a06b contract/internship end dates (draft 9750), renumbered 5126 (docs/MIGRATION-ALLOCATION.md, 12 November 2026).
  {idx:4526,when:1793330004826,tag:'5126_contract_internship_end_dates'},
- // 8d02748a readable import log references, renumbered 5127 (docs/MIGRATION-ALLOCATION.md, 12 November 2026).
  {idx:4527,when:1793330004827,tag:'5127_import_log_actor_labels'},
- // Payroll history effective reads, allocated above production's 5127 and PR 240's 5128 (docs/MIGRATION-ALLOCATION.md, 12 November 2026).
  {idx:4529,when:1793330004829,tag:'5129_payroll_history_effective_reads'},
- // Background AI Formula Generator draft job (12 November 2026), allocated above 5129 (docs/MIGRATION-ALLOCATION.md).
  {idx:4530,when:1793330004830,tag:'5130_pay_formula_ai_draft_job'},
- // daa76ed4/96a54ed2 Irwin attendance workflow lane draft (block 5140-5149; final numbering at integration).
  {idx:4540,when:1793330004840,tag:'5140_attendance_workflow_cross_company_pending'},
  {idx:4541,when:1793330004841,tag:'5141_attendance_workflow_escalation'},
  {idx:4542,when:1793330004842,tag:'5142_attendance_on_behalf'},
  {idx:4543,when:1793330004843,tag:'5143_attendance_final_decision_window'},
  {idx:4544,when:1793330004844,tag:'5144_attendance_lane_security_review'},
- // 96a54ed2 AI Centre controls for the two on-behalf reads (owner decision, 12 November 2026; coordinator block 5140-5159).
  {idx:4545,when:1793330004845,tag:'5145_ai_attendance_on_behalf_reads'},
- // 2f803985 Irwin Schedule Group Overtime Setting: per-date rounding in the policy part payable count (block 5150-5159).
  {idx:4550,when:1793330004850,tag:'5150_attendance_policy_dated_rounding'},
- // Sweep reads each company's net-swing threshold (draft 9760), allocated 5160 above the Irwin 5140–5150 holds (docs/MIGRATION-ALLOCATION.md, 13 November 2026).
  {idx:4560,when:1793330004860,tag:'5160_sweep_swing_thresholds'},
- // Manager Today team minimum (draft 9770), allocated 13 November 2026 as 5161 (docs/MIGRATION-ALLOCATION.md).
  {idx:4561,when:1793330004861,tag:'5161_leave_team_minimum_present'},
- // Probation and passport loops act as request-only steps: draft 9780, allocated 13 November 2026 as 5162 (docs/MIGRATION-ALLOCATION.md).
  {idx:4562,when:1793330004862,tag:'5162_teras_loop_request_acts'},
- // 60f1fdcd Rewards direct configuration (DRAFT block 5400–5419; the integrator renumbers at admission).
  {idx:4800,when:1793330005100,tag:'5400_rewards_direct_configuration'},
- // 4de410ed/356ae8c1 Rewards dashboard preparation notices (DRAFT block 5420–5439).
  {idx:4820,when:1793330005120,tag:'5420_rewards_dashboard_preparation_notices'},
- // 5a8c382c/4a60b3ec/6bdda222 lifecycle email recipients (DRAFT block 5460–5479).
  {idx:4860,when:1793330005160,tag:'5460_lifecycle_v9_email_recipients'},
- // d1e26f81 offboarding items assignment load (DRAFT block 5480–5499).
  {idx:4880,when:1793330005180,tag:'5480_offboarding_items_assignment_load'},
- // fc804e8c Rewards Limit Controls (DRAFT block 5500–5519; the integrator renumbers at admission).
  {idx:4900,when:1793330005200,tag:'5500_rewards_limit_controls'},
- // db14e49c Rewards role permission grid (DRAFT block 5520–5539; the integrator renumbers at admission).
  {idx:4920,when:1793330005220,tag:'5520_rewards_role_permission_grid'},
- // b945f0cc Rewards off-cycle company balance (DRAFT block 5540–5559; the integrator renumbers at admission).
  {idx:4940,when:1793330005240,tag:'5540_rewards_offcycle_company_balance'},
- // fc804e8c + db14e49c Limit Controls follows its Role permissions row (board release integration, 12 Nov 2026).
  {idx:4960,when:1793330005260,tag:'5560_rewards_limit_controls_role_level'},
- // 60f1fdcd Rewards configuration owner paths (DRAFT block 5580–5599, admitted at the board release integration).
  {idx:4980,when:1793330005280,tag:'5580_rewards_config_owner_paths'},
- // 60f1fdcd + db14e49c the Role permissions grid admits the configuration editors (board release integration, 13 Nov 2026).
  {idx:5000,when:1793330005300,tag:'5600_rewards_config_editor_role_levels'},
- // 5580/5600 loose ends: predicate EXECUTE off PUBLIC and the creator's company-year lock (board release, 13 Nov 2026).
  {idx:5020,when:1793330005320,tag:'5620_rewards_config_grants_creator_lock'},
- // ADR-0174 composite company/tenant key for the 5460 email-hold projection (board release gate repair, 13 Nov 2026).
  {idx:5040,when:1793330005340,tag:'5640_lifecycle_v9_email_hold_company_tenant'},
- // Statutory follow-ups: EPF Bonus 2012 on the seeded-shape default BONUS pay item (owner decision, 14 Nov 2026).
  {idx:5060,when:1793330005360,tag:'5660_pay_component_bonus_epf_bonus_2012'},
- // Board 4604dccc: payroll history binds a record to the company of its month (dated history), 15 Nov 2026.
  {idx:5080,when:1793330005380,tag:'5680_payroll_history_dated_company'},
- // Board 4604dccc r3: payslip snapshots from recorded history; payroll history no longer blocks a correction, 15 Nov 2026.
  {idx:5090,when:1793330005390,tag:'5690_information_payslip_snapshot_from_history'},
- // Board 511aa74a Rehired: the employment period link, its guard and the rehire Roll Back void (15 Nov 2026).
  {idx:5095,when:1793330005395,tag:'5695_employment_rehire_link'},
- // Board 4604dccc r4: the latest saved information correction controls the SQL before-image readers (16 Nov 2026).
  {idx:5096,when:1793330005396,tag:'5696_information_correction_latest_saved'},
- // Probation reshape onto shared HR automation (ADR 2026-11-15-probation-shared-automation), 16 Nov 2026: shared
- // workflow/routing definitions, Personnel postings and shared email templates (new empty tables and functions), and
- // the Probation settings scope, case at activation, override event and tracker-at-scale changes (5742, 5744-5746).
  {idx:5140,when:1793330005440,tag:'5740_automation_shared_definitions'},
  {idx:5141,when:1793330005441,tag:'5741_personnel_postings'},
  {idx:5142,when:1793330005442,tag:'5742_probation_settings_scope'},
@@ -266,9 +227,256 @@ export const APPROVED_UPGRADE_TAIL=[
  {idx:5275,when:1793330005575,tag:'5875_recruitment_referral_rewards_agency_fees'},
  {idx:5276,when:1793330005576,tag:'5876_recruitment_ai_match_summary'},
  {idx:5277,when:1793330005577,tag:'5877_recruitment_agency_portal'},
+ {idx:5200,when:1794841005800,tag:'5800_contract_shared_access'},
+ {idx:5201,when:1794841005801,tag:'5801_contract_shared_flows'},
+ {idx:5202,when:1794841005802,tag:'5802_contract_shared_builders'},
+ {idx:5203,when:1794841005803,tag:'5803_shared_document_templates'},
+ {idx:5204,when:1794841005804,tag:'5804_shared_email_rich_body'},
+ {idx:5205,when:1794841005805,tag:'5805_native_contract_counter_and_cutover'},
+ {idx:5206,when:1794841005806,tag:'5806_contract_shared_projections'},
+ {idx:5207,when:1794841005807,tag:'5807_contract_shared_commands'},
+ {idx:5208,when:1794841005808,tag:'5808_contract_shared_signing'},
+ {idx:5209,when:1794841005809,tag:'5809_contract_shared_decision_identity'},
+ {idx:5210,when:1794841005810,tag:'5810_contract_shared_execution_adapters'},
+ {idx:5211,when:1794841005811,tag:'5811_contract_shared_worker_binding'},
+ {idx:5212,when:1794841005812,tag:'5812_contract_shared_identity_context'},
+ {idx:5213,when:1794841005813,tag:'5813_contract_shared_email_notifications'},
+ {idx:5214,when:1794841005814,tag:'5814_contract_shared_personnel_postings'},
+ {idx:5215,when:1794841005815,tag:'5815_contract_posting_movement_authority'},
+ {idx:5216,when:1794841005816,tag:'5816_contract_posting_projections'},
+ {idx:5217,when:1794841005817,tag:'5817_contract_posting_receipts_and_tasks'},
+ {idx:5218,when:1794841005818,tag:'5818_contract_shared_tracker'},
+ {idx:5219,when:1794841005819,tag:'5819_contract_shared_period_open'},
+ {idx:5220,when:1794841005820,tag:'5820_contract_shared_case_workspace'},
+ {idx:5221,when:1794841005821,tag:'5821_contract_shared_assigned_work'},
+ {idx:5222,when:1794841005822,tag:'5822_contract_shared_ending_handoff'},
+ {idx:5223,when:1794841005823,tag:'5823_contract_shared_decline'},
+ {idx:5224,when:1794841005824,tag:'5824_contract_shared_offboarding'},
+ {idx:5225,when:1794841005825,tag:'5825_contract_shared_email_document_lifecycle'},
+ {idx:5226,when:1794841005826,tag:'5826_automation_shared_assignment_groups'},
+ {idx:5227,when:1794841005827,tag:'5827_shared_automation_email_assets'},
+ {idx:5228,when:1794841005828,tag:'5828_automation_email_test_self'},
+ {idx:5229,when:1794841005829,tag:'5829_shared_automation_email_asset_delivery'},
+ {idx:5230,when:1794841005830,tag:'5830_contract_shared_tracker_choices'},
+ {idx:5232,when:1794841005832,tag:'5832_contract_shared_starting_setup'},
+ {idx:5233,when:1794841005833,tag:'5833_contract_shared_tracker_retained_cases'},
+ {idx:5235,when:1794841005835,tag:'5835_contract_shared_review_wording'},
+ {idx:5236,when:1794841005836,tag:'5836_contract_shared_ending_actions'},
+ {idx:5237,when:1794841005837,tag:'5837_contract_shared_email_self_binding'},
+ {idx:5238,when:1794841005838,tag:'5838_contract_shared_email_task_projection'},
+ {idx:5240,when:1794841005840,tag:'5840_shared_email_test_asset_source'},
+ {idx:5241,when:1794841005841,tag:'5841_shared_email_case_file_pages'},
+ {idx:5242,when:1794841005842,tag:'5842_probation_shared_email_asset_proof'},
+ {idx:5244,when:1794841005844,tag:'5844_shared_groups_preserve_members'},
+ {idx:5245,when:1794841005845,tag:'5845_shared_groups_member_identity'},
+ {idx:5246,when:1794841005846,tag:'5846_email_test_current_human'},
+ {idx:5247,when:1794841005847,tag:'5847_email_test_authority_utf8'},
+ {idx:5248,when:1794841005848,tag:'5848_contract_shared_virtual_period'},
+ {idx:5249,when:1794841005849,tag:'5849_contract_shared_case_references'},
+ {idx:5296,when:1794841005896,tag:'5896_contract_shared_directory_and_signer_caption'},
+ {idx:5297,when:1794841005897,tag:'5897_contract_shared_period_history'},
+ {idx:5298,when:1794841005898,tag:'5898_contract_shared_work_page'},
+ {idx:5299,when:1794841005899,tag:'5899_contract_shared_legacy_inbox_cutover'},
+ {idx:5300,when:1794841005900,tag:'5900_contract_shared_manual_workflows'},
+ {idx:5301,when:1794841005901,tag:'5901_contract_shared_release_evidence'},
+ {idx:5304,when:1794841005904,tag:'5904_contract_shared_native_intake_guard'},
+ {idx:5305,when:1794841005905,tag:'5905_contract_shared_body_identity'},
+ {idx:5310,when:1794841005910,tag:'5910_contract_shared_work_page_null_guards'},
+ {idx:5311,when:1794841005911,tag:'5911_contract_posting_canonical_assignment_receipt'},
+ {idx:5312,when:1794841005912,tag:'5912_contract_posting_source_projection'},
+ {idx:5313,when:1794841005913,tag:'5913_contract_posting_native_completion'},
+ {idx:5315,when:1794841005915,tag:'5915_contract_posting_durable_job_readiness'},
+ {idx:5316,when:1794841005916,tag:'5916_contract_ordinary_signing_company_gate'},
+ {idx:5317,when:1794841005917,tag:'5917_contract_work_exact_document_join'},
+ {idx:5318,when:1794841005918,tag:'5918_contract_tracker_scheduled_period'},
+ {idx:5319,when:1794841005919,tag:'5919_contract_work_case_source_anchor'},
+ {idx:5320,when:1794841005920,tag:'5920_contract_case_progress_explanations'},
+ {idx:5321,when:1794841005921,tag:'5921_contract_case_fallback_receipts'},
+ {idx:5322,when:1794841005922,tag:'5922_contract_email_assigned_work'},
+ {idx:5323,when:1794841005923,tag:'5923_contract_letter_purpose_guidance'},
+ {idx:5325,when:1794841005925,tag:'5925_contract_template_lifecycle'},
+ {idx:5326,when:1794841005926,tag:'5926_contract_template_draft_publication'},
+ {idx:5327,when:1794841005927,tag:'5927_contract_routing_check_names'},
+ {idx:5330,when:1794841005930,tag:'5930_contract_tracker_attention_summary'},
+ {idx:5331,when:1794841005931,tag:'5931_contract_starting_setup_completion'},
+ {idx:5332,when:1794841005932,tag:'5932_contract_native_system_kernel'},
+ {idx:5333,when:1794841005933,tag:'5933_contract_system_period_events'},
+ {idx:5334,when:1794841005934,tag:'5934_contract_system_mail_digest'},
+ {idx:5335,when:1794841005935,tag:'5935_contract_system_provenance_rechecks'},
+ {idx:5336,when:1794841005936,tag:'5936_contract_accept_no_matching_workflow'},
+ {idx:5337,when:1794841005937,tag:'5937_contract_digest_queue_capability'},
+ {idx:5338,when:1794841005938,tag:'5938_contract_system_private_row_security'},
+ {idx:5340,when:1794841005940,tag:'5940_contract_form_response_owner'},
+ {idx:5341,when:1794841005941,tag:'5941_country_owned_document_sources'},
+ {idx:5342,when:1794841005942,tag:'5942_contract_form_response_actions'},
+ {idx:5343,when:1794841005943,tag:'5943_contract_email_document_readiness'},
+ {idx:5344,when:1794841005944,tag:'5944_contract_letterhead_fallback_evidence'},
+ {idx:5345,when:1794841005945,tag:'5945_contract_retrospective_ending_legacy_owner'},
+ {idx:5346,when:1794841005946,tag:'5946_contract_snapshot_native_binding'},
+ {idx:5347,when:1794841005947,tag:'5947_contract_email_document_identity'},
+ {idx:5348,when:1794841005948,tag:'5948_contract_form_current_proof'},
+ {idx:5349,when:1794841005949,tag:'5949_contract_published_form_email_source'},
+ {idx:5355,when:1794841005955,tag:'5955_shared_email_materialization_start'},
+ {idx:5357,when:1794841005957,tag:'5957_shared_email_explicit_tenant_start'},
+ {idx:5360,when:1794841005960,tag:'5960_contract_email_prerequisite_recovery'},
+ {idx:5361,when:1794841005961,tag:'5961_contract_manual_attention_reconciliation'},
+ {idx:5362,when:1794841005962,tag:'5962_contract_email_required_files'},
+ {idx:5364,when:1794841005964,tag:'5964_shared_email_guard_preservation'},
+ {idx:5366,when:1794841005966,tag:'5966_contract_canonical_form_readiness'},
+ {idx:5367,when:1794841005967,tag:'5967_contract_intake_paged_read'},
+ {idx:5368,when:1794841005968,tag:'5968_contract_email_recovery_guard_identity'},
+ {idx:5369,when:1794841005969,tag:'5969_contract_email_recovery_callback_identity'},
+ {idx:5370,when:1794841005970,tag:'5970_contract_live_form_source_owner'},
+ {idx:5371,when:1794841005971,tag:'5971_contract_email_prerequisite_state_binding'},
+ {idx:5372,when:1794841005972,tag:'5972_contract_unsigned_email_form_sources'},
+ {idx:5373,when:1794841005973,tag:'5973_contract_original_email_readiness_recheck'},
+ {idx:5374,when:1794841005974,tag:'5974_contract_form_native_field_parity'},
+ {idx:5375,when:1794841005975,tag:'5975_contract_setup_ending_email_readiness'},
+ {idx:5376,when:1794841005976,tag:'5976_contract_setup_preserved_definition_review'},
+ {idx:5377,when:1794841005977,tag:'5977_contract_email_current_set_source'},
+ {idx:5378,when:1794841005978,tag:'5978_contract_email_work_archived_company'},
+ {idx:5379,when:1794841005979,tag:'5979_contract_email_current_explicit_tenant'},
+ {idx:5389,when:1794841005989,tag:'5989_contract_email_actual_upload_signal_identity'},
+ {idx:5390,when:1794841005990,tag:'5990_contract_shared_mail_native_compatibility'},
+ {idx:5391,when:1794841005991,tag:'5991_contract_configuration_directory'},
+ {idx:5400,when:1794841006000,tag:'6000_contract_historical_email_recovery'},
+ {idx:5401,when:1794841006001,tag:'6001_contract_posting_protected_job_foundation'},
+ {idx:5402,when:1794841006002,tag:'6002_contract_posting_recorded_replay_frames'},
+ {idx:5403,when:1794841006003,tag:'6003_contract_posting_prepared_target_source'},
+ {idx:5404,when:1794841006004,tag:'6004_contract_posting_bound_target_completion'},
+ {idx:5405,when:1794841006005,tag:'6005_contract_posting_finish_and_commit_guard'},
+ {idx:5406,when:1794841006006,tag:'6006_contract_posting_first_producer_readiness'},
+ {idx:5407,when:1794841006007,tag:'6007_contract_posting_admission_and_status_ports'},
+ {idx:5408,when:1794841006008,tag:'6008_contract_posting_application_metadata'},
+ {idx:5409,when:1794841006009,tag:'6009_contract_posting_reconciliation_and_authority'},
+ {idx:5410,when:1794841006010,tag:'6010_contract_email_document_hr_notices'},
 ] as const;
 // Final pending 2109/2126 bytes reviewed from engine 128bc2539; no applied-prefix hashes change.
 const APPROVED_UPGRADE_HASHES:Record<string,string>={
+ ...Object.fromEntries(PERFORMANCE_MIGRATION_IDENTITIES.map(({tag,hash})=>[tag,hash])),
+ '6000_contract_historical_email_recovery':'cbfb44f6df287476b7e42c93c69f2276f701808ce9cc429adcaa425db8fb09f2',
+ '6001_contract_posting_protected_job_foundation':'11855741c65e76f5025dc6ecf5f398ec11ca32da465da8017483ad2d71e25bfd',
+ '6002_contract_posting_recorded_replay_frames':'1d31a6d7c8ff3b1c60866eacaf20100ae9d228a6318c0e3b1d8ee1e221c5485f',
+ '6003_contract_posting_prepared_target_source':'745bff94b485f6eab07068fa37c8af84730761fe474d112a8f3e2879e9ce3e92',
+ '6004_contract_posting_bound_target_completion':'bfcc647be0dc06ac1658b52abdb26dc87a7cac5ac2bec4e8e229aee0820286fe',
+ '6005_contract_posting_finish_and_commit_guard':'836bb4381d471e5744e8477574a99b221adcddd066e8cc571b908ceb5bc2be5e',
+ '6006_contract_posting_first_producer_readiness':'d9b5e3625c2d569a099805c369eb721d0c0ef1a04a79a4aac8ef3e53055a2295',
+ '6007_contract_posting_admission_and_status_ports':'f94fd9292674b0084aa5331eeb5b5be45d6417c47ff707df520937b7c9aac57b',
+ '6008_contract_posting_application_metadata':'9477f8b0f029ba475830d8174353b77e47ced60d0b7393a8d11d8df82092f422',
+ '6009_contract_posting_reconciliation_and_authority':'d0ce6a32a101e8da9f87dc85da2a64158b720505cc36504a090cb9faf340b472',
+ '6010_contract_email_document_hr_notices':'71afc04f48fda2449becba50bd156b698a0f5ce5d2f0f4765c4211904d9389c4',
+ '5923_contract_letter_purpose_guidance':'d33fdacdaec8347bbd30d9cd27cfba9b7bbb289650440815f7bf8658a3ff1595',
+ '5977_contract_email_current_set_source':'1d743062638fa9184c8afba5fbd3d9a4992fb1026ca2a3b5de2d3feebe2a2ae8',
+ '5978_contract_email_work_archived_company':'6e0c37f61c66feb80f95a312a23d4f3910a2d7c91f79a0047acaebcdb6914523',
+ '5979_contract_email_current_explicit_tenant':'5203f577fa7642f3fb140f30ffbccf45673a49382dc7b2f781963e96fa0770f5',
+ '5973_contract_original_email_readiness_recheck':'17ac1a87cb677263918a7dbaa5b08e14573d2bdbd62530a0692851c3f4967fb1',
+ '5989_contract_email_actual_upload_signal_identity':'ee2455c7f875d16ea99eec561e98e3b79456d1e1dfcb9acf1a3fda755d2e4076',
+ '5990_contract_shared_mail_native_compatibility':'392408cf03500a1ad8dd2d574ce36c6e09a08996aaaabb2eb82d0f6ff1f4f1e3',
+ '5991_contract_configuration_directory':'974118bc835a2ac0508bbe4156436c1f4a462268f828a572c6a1449a7bdaf72c',
+ '5972_contract_unsigned_email_form_sources':'023348f52876533cb0e773211b08e271959368d898a3b7edf572d62c8924794c',
+ '5974_contract_form_native_field_parity':'695077fddbcb4163712b8c49fb6d34eeddba1cb194394c5b43c220471b485d24',
+ '5976_contract_setup_preserved_definition_review':'e0e1e6ba6d0ebba90b9b78f7a789a5d67c7f4d84f9a80dbdeaf3767a20f08e66',
+ '5922_contract_email_assigned_work':'6a6ef5108fa9473f70dcb2e539447d945a1432b45d9512f705196cdc0c782d1a',
+ '5975_contract_setup_ending_email_readiness':'6e5c07eaff52a882a8c6342d0ceb8a9e58be6c74042b05533fdc95dc609cd804',
+ '5971_contract_email_prerequisite_state_binding':'727905457b70345256b57e0322bbc55a0426a61f1c3b347d6140da0d579eca7f',
+ '5970_contract_live_form_source_owner':'b42fc02e1df81cae00d8c73e8fcef98d0814d3d4f3ca3abece3fc9d38a3373bd',
+ '5967_contract_intake_paged_read':'d69268f3cc938840b6984cfdb60315e9d670ff76338ddeb8e30c31428730eb17',
+ '5921_contract_case_fallback_receipts':'5a4a0c1c3d3aa5694ae47a8c7f31ed6e7d9eb2022316f1ff4c80886c3e152b5a',
+ '5920_contract_case_progress_explanations':'6fb83e2629a5fc599e51f253d3cbae894f0273fc6cbfd0955c798d8f05ddcac8',
+ '5969_contract_email_recovery_callback_identity':'4d7e95c4d9a6e01e4e1867c9d2c99a2e080abc3108ccb539750d9266cf025534',
+ '5968_contract_email_recovery_guard_identity':'fad87425ec2e8719eaf3f4ffcd92a586ff14dbc82c3e338bc73f0d134baf5c4e',
+ '5966_contract_canonical_form_readiness':'199588e0599c3478027e43f59c40a7606671bb30fe8245fff60652f6551c039f',
+ '5962_contract_email_required_files':'a429585538814d9751a6a7a86fe23c433682a54d773c612ece427217c1093b25',
+ '5960_contract_email_prerequisite_recovery':'f6c20bbdc4e28a5cb31036ac376e7587bd7b77ca7952d397a1bc7f04f57a4f36',
+ '5964_shared_email_guard_preservation':'3d7f565347886acfe1ebeff78f1206a1d2bc61387de4e873bf7d86d05bf0cdfa',
+ '5949_contract_published_form_email_source':'d658a65e037260f1864ede14b7c048ee93f7250b888524d593e89bd9346ab0d6',
+ '5957_shared_email_explicit_tenant_start':'9a03a79f90973cb51eb7e7b02e0d5dcf3ea91f38afa7063c4c67ff3a053fb30c',
+ '5948_contract_form_current_proof':'44643617420c889b1f18743b99e3432a800020e8fc70db0b414b1599464532b1',
+ '5947_contract_email_document_identity':'595f8d9c1078dffb16a2aff0524420c10f702b9f4fd02e885f07a60a3e56b435',
+ '5955_shared_email_materialization_start':'156a7948da7836d8e9e9bbfe9aff3063be26586c726b142d5f3836ce390ddc7b',
+ '5938_contract_system_private_row_security':'fd4816c1a9660558a966755e4b2dfd9bd5f72780bf4d546a3c900fdbf896b3b2',
+ '5937_contract_digest_queue_capability':'b352d4968c10b3ecb8595a6a0f9828ce242e162c4a5f8566b02126aa174787ef',
+ '5936_contract_accept_no_matching_workflow':'f21e2a3ee02e2f17673dce57f3320e614236c17e8efc31e32284ecdf6d007767',
+ '5935_contract_system_provenance_rechecks':'2e0c3fc8e1e1952db417de76c3e1a61243155b94d940f7f389ec2ec748f8d2aa',
+ '5934_contract_system_mail_digest':'f0352956ff1a038a3fda77ee27c596e9047af5f480815e478f0b31fff2741be8',
+ '5933_contract_system_period_events':'df371a0e3532dc25c4f4f69b3e8f5ea96388382abfae891d73d187de550d1921',
+ '5932_contract_native_system_kernel':'28983d2af360ba36f4587506df918cc471b338ea0f520db990b2a8e8641c6753',
+ '5931_contract_starting_setup_completion':'05ffef386dcc1c2f7612c700ce2d3be58185525f730659f4f507fbc29a78ce80',
+ '5930_contract_tracker_attention_summary':'9446565465c8c8f1ec25cbef7f93df6672a03437a7b123b0237f7356e8cfa4a1',
+ '5961_contract_manual_attention_reconciliation':'567a501c1dec9dedfd69132626f645e5a0fe489ec09998c981972f22e0bd0975',
+ '5927_contract_routing_check_names':'1e73ccf6a9d4d28aa1c206211dc9d53d92068c5b0c18756f86c63d6861055fa3',
+ '5926_contract_template_draft_publication':'5add71cdc647ff5ee6200ed435a2d75429c5e86b5158a3cadb70761349e2398f',
+ '5925_contract_template_lifecycle':'57bd8be55c0c646ac8b541b1e5e2b796e82072cc9c0564b7d31af2c08630dfe0',
+ '5943_contract_email_document_readiness':'56510e47526ce0ab815044d283ff31ed1af1f8631af10f306a0c720bd2f2047b',
+ '5945_contract_retrospective_ending_legacy_owner':'d34c7ba568e69bab197b1cdbe3112d24386b5e26eed5775d21566dbeedc6e681',
+ '5946_contract_snapshot_native_binding':'aa5900c654a63ad8607084c7245f7cc4d2536ff4ec00402190fa5c88430ed708',
+ '5944_contract_letterhead_fallback_evidence':'2f041a122bb5090369d27e59559c5f0d6342d90917a900cc3300837558c9888a',
+ '5942_contract_form_response_actions':'e66c1c391bd35cb673e6e5fbaa40af3d9238a5a2e367530c17f56e6d215f1ca8',
+ '5941_country_owned_document_sources':'e15604398e043678562179c08a53c8a534164b121fb1b2c89fce6e2a80bcfe00',
+ '5940_contract_form_response_owner':'dd0d8981476f558821116f5ced16586994934c0aad1f709dbca2294f4470065f',
+ '5905_contract_shared_body_identity':'12d630f93077d139a26a52c4a227d49edb2879e0d382f3abff8a89aacc468314',
+ '5901_contract_shared_release_evidence':'8fc880c2d4d671a3b92190a5a933814db0dbce7b725244872466acfa00089111',
+ '5900_contract_shared_manual_workflows':'4d3e71335e2cfa3864b7b0980cf7fe2d174608717adb1cd8944d2d089575e9c2',
+ '5919_contract_work_case_source_anchor':'14e0235cbff2a0cd6fe97acf26a47b32b46899a485efe6c7a440ef9a1df75a6b',
+ '5918_contract_tracker_scheduled_period':'28fa547dc48d49d488328cd6fb71229ab4368596b15d5702cc5c6f221a266d46',
+ '5917_contract_work_exact_document_join':'d8b115ca57db54c5c7b87ee92dae948af13b557a1e385f073d9695d0413a7855',
+ '5916_contract_ordinary_signing_company_gate':'cd7f5ad4d52dede9a0210796a92c10ed9721fa8ba7fcd37e68e8ea1519db13f0',
+ '5915_contract_posting_durable_job_readiness':'d6d2471e14534c8b8e68aa0fba0d0d4e3a2341db2f027cd88320884787359171',
+ '5913_contract_posting_native_completion':'b267d52c086b6dabda037ada30eb5902144a236f873916cd82829dc9e7036e26',
+ '5838_contract_shared_email_task_projection':'6796ee897abfa5c088b1f215afc5889cc6d1d2b3557d0f0deaac710fb23c4214',
+ '5837_contract_shared_email_self_binding':'d00b83a2300a3e26a25b79150d084d61fa224b688a43ccc4475b4e854d74c6d4',
+ '5836_contract_shared_ending_actions':'26b4dd8d55fda25ea1f97f8e950243834555a4bc87a0110361a30d4d97c9cad9',
+ '5822_contract_shared_ending_handoff':'93453d2576f82d89f1007e0d558d55ca4cd4c8de7175059ccb8faca66390d6dc',
+ '5823_contract_shared_decline':'f8c314de620cdc82f282d35908b70677fabcd2c9ad81cd2753d5a27aa80adaef',
+ '5824_contract_shared_offboarding':'cbd497768b3ea5731c999dda3cf9ac3389fefd8612352186e4eb3620ca69617f',
+ '5825_contract_shared_email_document_lifecycle':'0e53c15e1a2f4d8be4095f1fa4e3baebbde9007bb5b9ccc63f41b8b2baa78cc7',
+ '5817_contract_posting_receipts_and_tasks':'97f25f6436ae0dc36e62eaba6cc9432b5a71d4ad47774b70aa916c430f58c6a4',
+ '5816_contract_posting_projections':'81a74ca3dbe2554756574c7684273a5ff7be69c615846482e794408459ed79da',
+ '5815_contract_posting_movement_authority':'3d77156d9159d3c6a972a1bb6369daa057d72d5536f201c377a55ee1364449a8',
+ '5814_contract_shared_personnel_postings':'54a543202440caccc4e32f50eab39eecf76ae2497f2df850b6d6f8af02f793e3',
+ '5912_contract_posting_source_projection':'c4b3003dfd78efecdf4e1f9674769dcb8aee9701593bc327cdba24cdb28e746e',
+ '5911_contract_posting_canonical_assignment_receipt':'86d530dec94eb6cce45039e05adfba1a3b671764e5b8e687f1e5a64747f0b977',
+ '5829_shared_automation_email_asset_delivery':'96c9f4fdbb02063c6335c1d7f83dd5273d94a33515159a883712f7b30a68c925',
+ '5827_shared_automation_email_assets':'35f2cf530e008e6c47bc48f36640cc3f328a072ee29f73bb6523c41295485d66',
+ '5840_shared_email_test_asset_source':'18e936754a6784f14911a82ea9654c2f3d8d2e9278d1d45c6663ce9c4e81a883',
+ '5841_shared_email_case_file_pages':'374d4ac7f8b47ebbd07bbf05374ad89b72cb4eab88e122d34e6a7f6301068c3a',
+ '5828_automation_email_test_self':'2f14899f4fffb1c84cf20d6ba60b282b8f443a53471342611648583663a8afcc',
+ '5826_automation_shared_assignment_groups':'4b112e626b80a509c6687fbfd3153bd56bd4ddfdda5cf1fb5c236f8bb9ff86f8',
+ '5844_shared_groups_preserve_members':'3d5b0933efdee689848653da194bda914e93e7a94246c3b1345ad684e9e7ad9a',
+ '5845_shared_groups_member_identity':'970591319022c650ce991c1ff6be1ad6ed7718fd8e7679f0dd88b7cb92fc4873',
+ '5847_email_test_authority_utf8':'3ba274eada4346d5cfea1ac8dbb154e2f01374dab24325e45c9fabdd176a8186',
+ '5846_email_test_current_human':'a3cd7270229682b341c50f05a7ef50fda655dcbc76d4deda66bc82b414318b0c',
+ '5842_probation_shared_email_asset_proof':'b0deeef4ccebf79b41f57c8f44753c67a8039b50eea5414541ab87f81050bb15',
+ '5910_contract_shared_work_page_null_guards':'51ecf59479ae4516b699ef3020b08bd1ea4aa6eaf9d4b7ac67ff80c1120a547d',
+ '5899_contract_shared_legacy_inbox_cutover':'7e03b54bd2375278e32aef835d2e88bf6fb017145bb3bf488ebffdd0a6dcc32e',
+ '5849_contract_shared_case_references':'420746f8e5fc37017e9a87c125cbd457b67e4f99e35bad4ab058c5f66b450319',
+ '5904_contract_shared_native_intake_guard':'2e3725db72f7f2a080a2a6d0db9fcd748e800ab2700e65616681c951732419c8',
+ '5898_contract_shared_work_page':'f18a09d0a09539f502171b5d8e201298c75e627869c613f5cc90c9c0b71c0dca',
+ '5897_contract_shared_period_history':'df2f4fd1dea25a1461fcb9e83bcdc21fc5d5658e6b9cb9618fb0f4f0807bbecc',
+ '5832_contract_shared_starting_setup':'115b3dcb22d478e7e106a3bac40c8210ca925cf71bcfa726fea975090a42c2ee',
+ '5833_contract_shared_tracker_retained_cases':'3d9992098d14c60bd6464b58b9a95a631238feb0bf09b0f4de019ac521934ca5',
+ '5848_contract_shared_virtual_period':'d8686bc5d8eb4b862790f32b8a1e088aecf12d69f9a52a0ce0c077b7c2349018',
+ '5835_contract_shared_review_wording':'557fbe13eab31a62eda92dce6e6bb33b0c82139ac3d1d547e4e5366bd41197aa',
+ '5896_contract_shared_directory_and_signer_caption':'b76119936a00827c77ec3de038bf3fa3bb61d439559257b4795b7e83e885a0cf',
+ '5820_contract_shared_case_workspace':'d463af063a32e5abbba0485bac85c2eade319e1363d40df6ccb4c11c688e4eba',
+ '5821_contract_shared_assigned_work':'8880d4a73eb8b577e06ba4aec4d139b1bd0c693b8997e900b4d7dc1946c07d30',
+ '5830_contract_shared_tracker_choices':'ffe03a1ed05a62c27ec5fc554c50f0fc1cff854e2dc21ff2428c7db49a77a65a',
+ '5819_contract_shared_period_open':'ca6b1667583d3b8544f1a6d8b4eb3168140d67a9fc4c916b9fa98b03f2c49c3c',
+ '5818_contract_shared_tracker':'b20ac0a47fb09b78bb02f71566726d0c3b09bb4f574d0e492c85cec4730a0daa',
+ '5813_contract_shared_email_notifications':'dffc41e7da79471a45e00cf2fc8914107ac94978e856d40b863eef510f0a58eb',
+ '5812_contract_shared_identity_context':'52297a99fc31f991954be72225bd15b1929de02fe0c798558498fb873f511345',
+ '5811_contract_shared_worker_binding':'06f410b065580e27f79add6d988e0b3aaacb81ef786416ed395417860885d1e4',
+ '5810_contract_shared_execution_adapters':'f166257ff49068e15adda1a78a3070df1661fb65fd67e08e76d1b65643fd10f9',
+ '5808_contract_shared_signing':'580fb0f986a84218b127dad7276954331eba90e1398b3b46a4ba4f2b47a68c9d',
+ '5809_contract_shared_decision_identity':'5e83fffd290b7cdbceb5d01b17c1b64241228dd905ac4738a721f3798787772b',
+ '5807_contract_shared_commands':'e8c5737b8b0757fd2e3ce5c84b572a0933770fac76c6774d799eabcee91699d2',
+ '5804_shared_email_rich_body':'96dd54e4b9bd66c015296ec0874b32c6de2af9af7c40b6f5812eaa7d3e408754',
+ '5805_native_contract_counter_and_cutover':'caf0bdc349aa0f84c0edfeaeddff55f15318d235ba100c450062e497b929a9ac',
+ '5806_contract_shared_projections':'02834a55469bd12ba44b5e6e299cda8f9374f4c22451b69958fac65e32344b25',
+ '5800_contract_shared_access':'08671eb8f4654fb52af284d4202fc56f98befc38bca4bcab5b279cdb531dc756',
+ '5801_contract_shared_flows':'12ff6216ebe82fcc0456ade8cf6a6f40d4daaf101782aa94136927e2f4f54382',
+ '5802_contract_shared_builders':'c0fda7bf21a7d01dd214b7527736910eff7e0260962e1f67efda36ab2ffa97d0',
+ '5803_shared_document_templates':'adce2251c00b32bb1913ef5c385f40782fdbb2c28274d3cc611c4305f77c0e12',
  '5779_hire_company_allocation_review':'8a157b18ea8fe5ebaf5d86046f7ba03dd41e6532c03ef2cb7799beafeb4fc8dd',
  '5772_movement_employment_periods':'9a66595ca046bdf0bdaaf0b51e1b87cfd8811156093d37464ef854d36b7d4ef3',
  '5773_movement_payroll_protection_and_delete':'3f54dd21490e301f4c52131d449d32c883f482d67025df610fe5b84c83be1897',
@@ -389,7 +597,6 @@ const APPROVED_UPGRADE_HASHES:Record<string,string>={
  '3100_pay_formula_saved_availability':'7bc0ab95aea27bae36f9be299784d3d391b4a315aa0302a9c42c2dbf9996b1b8',
  '3101_attendance_shared_workflow':'f32d12965f2788dc673f0c09e128996a653341bbcf6933e47f211da021617169',
  '3110_attendance_workflow_owner_rls':'39fc4b31666120cb4befe263b8b30433d6752dbaa52cda6cdbe350b3077f8f16',
-
  '2106_account_management_subject':'d4bbd5d20d9b40294b31d022a3ec0cf29e9a290f10749493c4934db31c5cdd67',
  '2107_probation_module_permission':'da94777be8e2b3f4365851eb785a64baaf9c54e9fb64808f7c72379ee94732f8',
  '2108_rewards_entity_classification':'8f485227fba437d5a24bc8b762630c670c38364d98d10e85802ce6e05bddd1c6',
@@ -425,7 +632,6 @@ const APPROVED_UPGRADE_HASHES:Record<string,string>={
  '2600_onboarding_current_personnel':'ef82561ecfca93f3feab8f38918c3449569b68afe944085cceb8bafd25ab60be',
  '3200_ai_centre_controls':'2182ae4a614d0b847f399af18f9cfc43e82d3c9fd6f42ca960bfe22ebf4f10e2',
  '3201_ai_centre_function_coverage':'0c7239f512174c0d941dcb441cf98bd3a685a8e4d65973dc92f136dfb6b78d8a',
- ...Object.fromEntries(PERFORMANCE_MIGRATION_IDENTITIES.map(({tag,hash})=>[tag,hash])),
  '3500_ai_centre_architecture_compatibility':'c264d042ea39709e2bcc3b7f9b33b83715a30f05b98437e60b1c1910b1e3bbf3',
  '3501_ai_centre_mandate_write_order':'821312765fb359ee0c761a200b519525d1d667bfe20b11f1889829f6d4976d76',
  '4338_assistant_rewards_return_presentation_snapshot':'1acfa11fd818c5efe53dc74c05aef351fb7b71e238dcd0dfc0d1c978672d84d8',
@@ -483,6 +689,7 @@ const APPROVED_UPGRADE_HASHES:Record<string,string>={
  '5121_personnel_search_set_mapping':'3d9b5a53b963a0f01843d090a96662da3e9f7b5c5bb0650e3064d237a3c60d54',
  '5125_individual_txn_pricing_marker':'d48a8a3e394da801bbb0e9917d74d934ab51a3470bdea1bc8d8be1b110a24837',
  '5126_contract_internship_end_dates':'cbc405c4dde11abbe8f298feaf4af0795c8cf742701f62565547eb9ec9d10796',
+
 };
 export function assertApprovedUpgradeTail(entries:{idx:number;when:number;tag:string}[]){
  expect(entries).toHaveLength(671+APPROVED_UPGRADE_TAIL.length);
@@ -499,6 +706,16 @@ async function table(db:Database,name:string):Promise<Row[]>{return (await db.cl
  * may hold a value there. migrateApprovedUpgrade proves each column present and null on every row once its
  * migration is applied; a retained row is then compared without it (withoutCombinedReleaseNulls). */
 export const COMBINED_RELEASE_NULL_COLUMNS:readonly {tag:string;table:string;columns:readonly string[]}[]=Object.freeze([
+ {tag:'6000_contract_historical_email_recovery',table:'contract_shared_event',columns:['email_reconciliation']},
+ {tag:'6000_contract_historical_email_recovery',table:'contract_shared_posting',columns:['after_period_revision']},
+ {tag:'6000_contract_historical_email_recovery',table:'app.contract_email_prerequisite_resume',columns:['disposition','begun_xid','begun_backend','begun_login']},
+ {tag:'5925_contract_template_lifecycle',table:'automation_document_template',columns:['deleted_at']},
+ {tag:'5925_contract_template_lifecycle',table:'automation_document_template_version',columns:['deleted_at']},
+ {tag:'5808_contract_shared_signing',table:'contract_shared_letter',columns:['signing_document_id','decision_revision','workflow_run_id','workflow_step_id']},
+ {tag:'5809_contract_shared_decision_identity',table:'contract_shared_case_revision',columns:['actor_person_id','actor_name']},
+ {tag:'5810_contract_shared_execution_adapters',table:'contract_shared_event',columns:['root_event_id']},
+ {tag:'5804_shared_email_rich_body',table:'automation_email_template_version',columns:['body_doc']},
+ {tag:'5805_native_contract_counter_and_cutover',table:'employment',columns:['contract_number']},
  {tag:'5010_employee_import_staged_job',table:'employment',columns:['import_pending_attempt_id']},
  {tag:'5010_employee_import_staged_job',table:'person',columns:['import_pending_attempt_id']},
  {tag:'5012_import_release_visibility',table:'domain_event',columns:['import_pending_attempt_id']},
@@ -518,6 +735,7 @@ export const COMBINED_RELEASE_NULL_COLUMNS:readonly {tag:string;table:string;col
  ...['department','position','cost_center','business_unit','label_company_assignment','profile_option','job_grade','grade_group','grade_group_member']
   .map(table=>({tag:'5070_system_label_import_staged_job',table,columns:['import_pending_attempt_id']})),
 ]);
+export const COMBINED_RELEASE_DEFAULT_COLUMNS=Object.freeze([{tag:'5925_contract_template_lifecycle',table:'automation_document_template_version',column:'note',value:''},{tag:'5932_contract_native_system_kernel',table:'contract_shared_event',column:'actor_type',value:'user'}] as const);
 // Snapshot keys that name a widened table by another word.
 const SNAPSHOT_TABLE_ALIASES:Readonly<Record<string,string>>={audit:'domain_event',people:'person'};
 /** A retained row of a widened table, compared without the combined release's columns. Each one the row carries
@@ -525,6 +743,7 @@ const SNAPSHOT_TABLE_ALIASES:Readonly<Record<string,string>>={audit:'domain_even
 export function withoutCombinedReleaseNulls(name:string,row:Row):Row{
  const tableName=name.replace(/^public\./,''),target=SNAPSHOT_TABLE_ALIASES[tableName]??tableName;
  let normalized=row;
+ for(const entry of COMBINED_RELEASE_DEFAULT_COLUMNS)if(entry.table===target&&Object.hasOwn(normalized,entry.column)){expect(normalized[entry.column],tableName+'.'+entry.column+' ('+entry.tag+') on a retained row').toBe(entry.value);const {[entry.column]:_added,...original}=normalized;normalized=original;}
  for(const entry of COMBINED_RELEASE_NULL_COLUMNS)if(entry.table===target)for(const column of entry.columns){
   if(!Object.hasOwn(normalized,column))continue;
   expect(normalized[column],tableName+'.'+column+' ('+entry.tag+') on a retained row').toBeNull();
@@ -535,11 +754,21 @@ export function withoutCombinedReleaseNulls(name:string,row:Row):Row{
 /** After the complete migrate: each column whose migration the applied journal holds exists, and no row holds a value. */
 async function assertCombinedReleaseNulls(db:Database,migrationsFolder:string){
  const applied=new Set((JSON.parse(readFileSync(join(migrationsFolder,'meta/_journal.json'),'utf8')).entries as {tag:string}[]).map(entry=>entry.tag));
+ for(const entry of COMBINED_RELEASE_DEFAULT_COLUMNS){
+  if(!applied.has(entry.tag))continue;
+  expect(await db.client`select 1 as present from information_schema.columns where table_schema='public' and table_name=${entry.table} and column_name=${entry.column}`,entry.table+'.'+entry.column+' added by '+entry.tag).toEqual([{present:1}]);
+  expect(await db.client.unsafe('select count(*)::int as held from public."'+entry.table+'" where "'+entry.column+'" is distinct from $1',[entry.value]),entry.table+'.'+entry.column+' has its default on every upgraded row').toEqual([{held:0}]);
+ }
  for(const entry of COMBINED_RELEASE_NULL_COLUMNS){
   if(!applied.has(entry.tag))continue;
+  // Only literal registry identities choose a schema; legacy unqualified entries remain public.
+  const identity=/^(?:(public|app)\.)?([a-z_][a-z0-9_]*)$/.exec(entry.table);
+  if(!identity)throw Error('Invalid reviewed nullable-column table identity.');
+  const schema=identity[1]??'public',tableName=identity[2]!;
   for(const column of entry.columns){
-   expect(await db.client`select 1 as present from information_schema.columns where table_schema='public' and table_name=${entry.table} and column_name=${column}`,entry.table+'.'+column+' added by '+entry.tag).toEqual([{present:1}]);
-   expect(await db.client.unsafe('select count(*)::int as held from public."'+entry.table+'" where "'+column+'" is not null'),entry.table+'.'+column+' is null on every upgraded row').toEqual([{held:0}]);
+   if(!/^[a-z_][a-z0-9_]*$/.test(column))throw Error('Invalid reviewed nullable-column identity.');
+   expect(await db.client`select 1 as present from information_schema.columns where table_schema=${schema} and table_name=${tableName} and column_name=${column}`,entry.table+'.'+column+' added by '+entry.tag).toEqual([{present:1}]);
+   expect(await db.client.unsafe('select count(*)::int as held from "'+schema+'"."'+tableName+'" where "'+column+'" is not null'),entry.table+'.'+column+' is null on every upgraded row').toEqual([{held:0}]);
   }
  }
 }

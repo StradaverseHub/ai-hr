@@ -61,9 +61,9 @@ describe('Shared automation email templates (5743)',()=>{
   const plain=await member(),granted=await member('allow'),denied=await member('deny');
   expect(await listAutomationEmailTemplates(plain)).toEqual([]);
   await rejects(saveAutomationEmailTemplate(plain,{template:template(),retired:false,expectedRevision:0,reason:'x'}),'forbidden');
-  expect(await automationBuilderAccess(plain)).toEqual({probation:false,any:false});
+  expect(await automationBuilderAccess(plain)).toEqual({probation:false,contractStaff:false,any:false});
   expect((await listAutomationEmailTemplates(granted)).map(x=>x.template.id)).toEqual([t.id]);
-  expect(await automationBuilderAccess(granted)).toEqual({probation:true,any:true});
+  expect(await automationBuilderAccess(granted)).toEqual({probation:true,contractStaff:false,any:true});
   expect(await listAutomationEmailTemplates(denied)).toEqual([]);
   await expect(withTenant(admin,tx=>tx.execute(sql`select app.automation_email_template_save(${randomUUID()}::uuid,'contract_staff','x',true,'Subject','Body','[]'::jsonb,false,0,'x')`))).rejects.toThrow();
  });
