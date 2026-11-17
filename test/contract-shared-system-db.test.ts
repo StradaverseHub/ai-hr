@@ -96,3 +96,17 @@ it('pages more than 100 authorized digest recipients through the same native job
  expect(mails).toHaveLength(105);expect(mails.map(mail=>mail.recipient)).toEqual(records.map(record=>record.id));expect(mails.every(mail=>mail.body.includes('Fictional fixed-term subject'))).toBe(true);
  expect(await owner.client`select mail_key from app.contract_system_digest where tenant_id=${b.tenantId}::uuid`).toHaveLength(2);
 });
+
+it('continues as the system after the real setup operator is archived, using independently active recipients',async()=>{
+ const [recipient]=await owner.client<{userId:string;personId:string}[]>`with person_row as(insert into person(tenant_id,full_name,primary_email) values(${b.tenantId}::uuid,'Fictional independent People Ops recipient',${randomUUID()+'@system.test'}) returning id),user_row as(insert into app_user(tenant_id,workos_user_id,person_id) select ${b.tenantId}::uuid,${'independent-'+randomUUID()},id from person_row returning id,person_id),role_row as(insert into role_assignment(tenant_id,app_user_id,role,company_id) select ${b.tenantId}::uuid,id,'hr_admin',${b.companyId}::uuid from user_row),identity_row as(insert into app_external_identity(issuer,subject,app_user_id) select ${origin+'/auth/'+b.tenantId},id::text,id from user_row) select id as "userId",person_id as "personId" from user_row`;
+ const cfg=(await v9Workspace(admin)).config!;await v9SaveConfig(admin,cfg.revision,{...cfg,groups:cfg.groups.map(group=>group.id===groupId?{...group,members:[admin.userId!,recipient.userId]}:group)});
+ await employee();await workflow();await admit();await owner.client`update app_user set archived_at=now() where tenant_id=${b.tenantId}::uuid and id=${admin.userId!}::uuid`;await finish();
+ const mails=await owner.client`select payload from automation_email_delivery where tenant_id=${b.tenantId}::uuid`;expect(mails).toHaveLength(1);expect(mails[0].payload.mail.to).toEqual([recipient.userId]);expect(mails[0].payload.context.recipientPeople[recipient.userId]).toBe(recipient.personId);
+ expect((await owner.client`select count(*)::int as count from contract_shared_event where tenant_id=${b.tenantId}::uuid and (actor_user_id is not null or actor_person_id is not null)`)[0].count).toBe(0);
+});
+it('holds already admitted scheduled automation when the actual native period changes before execution',async()=>{
+ const e=await employee();await workflow();const id=await admit();for(let n=0;n<30;n++){if((await owner.client`select state from bulk_job where id=${id}::uuid`)[0].state==='completed')break;await runBulkJobTick(owner.client,{handlers:[contractScheduleJobHandler]});}
+ await owner.client`update employment set contract_end_date=contract_end_date+1 where tenant_id=${b.tenantId}::uuid and id=${e.employmentId}::uuid`;
+ await runBulkJobTick(owner.client,{handlers:[contractScheduledAutomationJobHandler]});expect((await owner.client`select count(*)::int as count from bulk_job where tenant_id=${b.tenantId}::uuid and kind='contract_scheduled_automation' and state='failed'`)[0].count).toBe(1);
+ expect(await owner.client`select id from automation_email_delivery where tenant_id=${b.tenantId}::uuid`).toHaveLength(0);expect(await owner.client`select id from personnel_posting where tenant_id=${b.tenantId}::uuid`).toHaveLength(0);
+});
