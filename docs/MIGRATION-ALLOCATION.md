@@ -1,3 +1,16 @@
+## Movement staging handback and unused slots — 17 November 2026 MYT
+
+Movement completed its three-stage candidate at source `65ab4e868d43efe08e046c666051c13ccb61c76d`,
+staging build `PJOMTJWE2tL_LIrXN3qu0`. The exact installed ledger contains 891 entries, ending with
+`5779_hire_company_allocation_review` / when `1793330005479`; migrations 5772–5779 keep their original bytes.
+
+The Movement owner releases its unused reservations **5780–5782** (idx 5180–5182,
+when 1793330005480–5482). This supersedes the earlier held-and-unused statements below. No SQL files or
+journal entries were created for those slots, and no further Movement migration is planned for this completed
+release. The coordinator may allocate them through the normal fresh-ledger and peer-claim admission procedure;
+this does not allocate a peer migration or authorize installation. Keep later Resignation and other peer
+reservations intact. Production installation and package publication were not requested or performed.
+
 ## Movement hire-company allocation reconciliation — 17 November 2026
 
 Reserved `5779_hire_company_allocation_review`, idx `5179`, when `1793330005479`, from the
