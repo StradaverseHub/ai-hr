@@ -205,3 +205,91 @@ BEGIN
  INSERT INTO public.domain_event(tenant_id,aggregate_type,aggregate_id,event_type,actor_type,actor_id,subject_employment_id,payload) VALUES(p.tenant_id,'personnel_posting',p.id,'personnel_posting.approved','user',app.current_user_id(),p.employment_id,jsonb_build_object('source',p.source,'sourceRef',p.source_ref,'applied',v,'revision',p.revision+1));
  RETURN jsonb_build_object('id',p.id,'number',p.number,'employmentId',p.employment_id,'eventType',p.event_type,'values',v,'revision',p.revision+1);
 END $$;
+
+--> statement-breakpoint
+-- Exact pre-correction custody was adjudicated by the existing native begin admission.
+CREATE OR REPLACE FUNCTION app.resignation_journey_admit(p_payload text,p_signature text) RETURNS void LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE k bytea;p jsonb;expected bytea;received bytea;difference integer:=0;i integer;n numeric:=extract(epoch FROM clock_timestamp())*1000;j resignation_journey;op text;
+BEGIN
+ IF p_payload IS NULL OR octet_length(p_payload)>4194304 OR p_signature IS NULL OR p_signature!~'^[a-f0-9]{64}$' THEN RAISE EXCEPTION 'Runtime proof unavailable' USING ERRCODE='42501';END IF;
+ SELECT secret INTO k FROM app.resignation_runtime_verifier WHERE singleton;
+ IF k IS NULL THEN RAISE EXCEPTION 'Resignation runtime verifier is not provisioned' USING ERRCODE='42501';END IF;
+ expected:=app._ai_spend_hmac_sha256(convert_to(p_payload,'UTF8'),k);received:=decode(p_signature,'hex');
+ FOR i IN 0..31 LOOP difference:=difference | (get_byte(expected,i) # get_byte(received,i));END LOOP;
+ IF difference<>0 THEN RAISE EXCEPTION 'Runtime proof unavailable' USING ERRCODE='42501';END IF;
+ p:=p_payload::jsonb;op:=p->>'operation';
+ IF jsonb_typeof(p) IS DISTINCT FROM 'object' OR NOT(p ?& ARRAY['v','purpose','runner','tenantId','userId','personId','transactionId','operation','issuedAt','expiresAt']) OR p->>'purpose' IS DISTINCT FROM 'aihr-resignation-runtime-v1' OR p->'v' IS DISTINCT FROM '1'::jsonb OR p->>'runner' IS DISTINCT FROM 'resignation-journey' OR p->>'tenantId' IS DISTINCT FROM app.current_tenant_id()::text OR p->>'userId' IS DISTINCT FROM app.current_user_id()::text OR p->>'transactionId' IS DISTINCT FROM txid_current()::text OR jsonb_typeof(p->'issuedAt') IS DISTINCT FROM 'number' OR jsonb_typeof(p->'expiresAt') IS DISTINCT FROM 'number' OR (p->>'issuedAt')!~'^[0-9]{1,16}$' OR (p->>'expiresAt')!~'^[0-9]{1,16}$' OR (p->>'issuedAt')::numeric>n OR (p->>'expiresAt')::numeric<=n OR (p->>'expiresAt')::numeric-(p->>'issuedAt')::numeric NOT BETWEEN 1 AND 60000 OR op NOT IN('begin','create','save','read','context','notify','retrySave','postingRejected','email') THEN RAISE EXCEPTION 'Runtime proof unavailable' USING ERRCODE='42501';END IF;
+ IF app.current_user_id() IS NOT NULL AND NOT EXISTS(SELECT 1 FROM app_user u WHERE u.tenant_id=app.current_tenant_id() AND u.id=app.current_user_id() AND u.person_id::text IS NOT DISTINCT FROM p->>'personId' AND u.archived_at IS NULL AND NOT app.login_blocked(u.id)) OR app.current_user_id() IS NULL AND NOT app.acting_as_owner() THEN RAISE EXCEPTION 'Runtime actor unavailable' USING ERRCODE='42501';END IF;
+ IF p ? 'caseId' THEN
+  SELECT * INTO j FROM resignation_journey WHERE tenant_id=app.current_tenant_id() AND id=(p->>'caseId')::uuid;
+  IF j.id IS NOT NULL AND p ? 'companyId' AND p->>'companyId' IS DISTINCT FROM j.company_id::text THEN RAISE EXCEPTION 'Runtime company mismatch' USING ERRCODE='42501';END IF;
+ END IF;
+ IF op='begin' THEN
+  PERFORM app.access_workforce_write_lock();
+  SELECT * INTO j FROM resignation_journey WHERE tenant_id=app.current_tenant_id() AND id=(p->>'caseId')::uuid FOR UPDATE;
+  IF j.id IS NULL OR app.resignation_command_allowed(j.id,p->'command') IS NOT TRUE THEN RAISE EXCEPTION 'This action is not currently assigned to you' USING ERRCODE='42501';END IF;
+  IF j.revision IS DISTINCT FROM (p->>'revision')::integer THEN RAISE EXCEPTION 'This resignation changed; reload before acting' USING ERRCODE='40001';END IF;
+  p:=p||jsonb_build_object('initialStage',j.stage,'companyId',j.company_id)||CASE WHEN p->'command'->>'type'='regenerateLetter' THEN jsonb_build_object('initialData',jsonb_build_object('letters',(SELECT coalesce(jsonb_agg(l),'[]'::jsonb) FROM jsonb_array_elements(coalesce(j.data->'letters','[]')) l WHERE l->>'id'=p->'command'->>'documentId'))) WHEN p->'command'->>'type'='updateLetter' AND p->'command' ? 'lastWorkingDay' THEN jsonb_build_object('initialData',jsonb_build_object('lastWorkingDay',j.data->>'lastWorkingDay')) ELSE '{}'::jsonb END;
+  INSERT INTO app.resignation_runtime_state VALUES(app.current_tenant_id(),coalesce(app.current_user_id()::text,'worker'),'intent:'||j.id::text,txid_current(),p,now()) ON CONFLICT(tenant_id,actor,kind) DO UPDATE SET transaction_id=excluded.transaction_id,payload=excluded.payload,created_at=excluded.created_at;
+ ELSIF op NOT IN('read','context','create') AND NOT app.resignation_runtime_intent((p->>'caseId')::uuid) THEN RAISE EXCEPTION 'A current authorized command is required' USING ERRCODE='42501';END IF;
+ DELETE FROM app.resignation_runtime_state WHERE tenant_id=app.current_tenant_id() AND actor=coalesce(app.current_user_id()::text,'worker') AND transaction_id<>txid_current();
+ IF op='begin' THEN RETURN;END IF;
+ INSERT INTO app.resignation_runtime_state VALUES(app.current_tenant_id(),coalesce(app.current_user_id()::text,'worker'),'proof:'||op,txid_current(),p,now()) ON CONFLICT(tenant_id,actor,kind) DO UPDATE SET transaction_id=excluded.transaction_id,payload=excluded.payload,created_at=excluded.created_at;
+END $$;
+--> statement-breakpoint
+CREATE FUNCTION app.resignation_offboarding_date_intent(p_id uuid,p_old date,p_new date) RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE j resignation_journey;c lc_v9_case;intent jsonb;u app_user;cfg jsonb;source jsonb;cfg_revision integer;group_revision integer;
+BEGIN
+ PERFORM app.resignation_runtime_consume('context',p_id,jsonb_build_object('mode','offboardingDateCorrection','journeyId',p_id,'oldLastDay',p_old::text,'newLastDay',p_new::text));
+ SELECT payload INTO intent FROM app.resignation_runtime_state WHERE tenant_id=app.current_tenant_id() AND actor=app.current_user_id()::text AND kind='intent:'||p_id::text AND transaction_id=txid_current();
+ SELECT * INTO u FROM app_user WHERE tenant_id=app.current_tenant_id() AND id=app.current_user_id() AND person_id IS NOT NULL AND archived_at IS NULL AND NOT app.login_blocked(id);
+ SELECT * INTO j FROM resignation_journey WHERE tenant_id=app.current_tenant_id() AND id=p_id;
+ IF intent IS NULL OR u.id IS NULL OR intent->>'personId' IS DISTINCT FROM u.person_id::text OR intent->'command'->>'type' IS DISTINCT FROM 'updateLetter' OR intent->'command'->>'lastWorkingDay' IS DISTINCT FROM p_new::text OR intent->'initialData'->>'lastWorkingDay' IS DISTINCT FROM p_old::text OR j.id IS NULL OR j.data->>'lastWorkingDay' IS DISTINCT FROM p_new::text OR p_new IS NULL OR p_old IS NULL OR p_new=p_old THEN RAISE EXCEPTION 'A current holding-owner date correction is required' USING ERRCODE='42501';END IF;
+ SELECT * INTO c FROM lc_v9_case WHERE tenant_id=j.tenant_id AND id=j.offboarding_case_id AND company_id=j.company_id AND employment_id=j.employment_id AND module='off' AND data->>'resignationSourceCaseId'=j.id::text AND data->'facts'->>'personId'=j.person_id::text FOR UPDATE;
+ IF c.id IS NULL THEN RAISE EXCEPTION 'The linked clearance source changed' USING ERRCODE='42501';END IF;
+ IF c.data->>'state' IN('cleared','cancelled') THEN RETURN jsonb_build_object('blocked','closed');END IF;
+ IF (c.data->>'state' IN('pending','submitted')) IS NOT TRUE OR c.data->'facts'->>'lastDay' IS DISTINCT FROM p_old::text OR p_new<(c.data->'facts'->>'noticeDate')::date THEN RAISE EXCEPTION 'The linked clearance date changed' USING ERRCODE='40001';END IF;
+ SELECT cfgrow.data||CASE WHEN shared.tenant_id IS NULL THEN '{}'::jsonb ELSE jsonb_build_object('groups',coalesce(shared.data->'groups','[]'::jsonb),'groupsRevision',shared.revision) END,cfgrow.revision,shared.revision INTO cfg,cfg_revision,group_revision FROM lc_v9_config cfgrow LEFT JOIN lc_onboarding_config shared ON shared.tenant_id=cfgrow.tenant_id WHERE cfgrow.tenant_id=j.tenant_id;
+ SELECT jsonb_build_object('notice_before_confirmation_value',e.notice_before_confirmation_value,'notice_before_confirmation_unit',e.notice_before_confirmation_unit,'notice_after_confirmation_value',e.notice_after_confirmation_value,'notice_after_confirmation_unit',e.notice_after_confirmation_unit,'final_confirmation_date',e.final_confirmation_date::text,'grade',g.code,'source_version',e.xmin::text) INTO source FROM employment e LEFT JOIN job_grade g ON g.tenant_id=e.tenant_id AND g.id=e.grade_id WHERE e.tenant_id=j.tenant_id AND e.id=j.employment_id AND e.company_id=j.company_id AND e.person_id=j.person_id;
+ IF cfg IS NOT NULL AND source IS NOT NULL THEN INSERT INTO app.resignation_runtime_state VALUES(j.tenant_id,u.id::text,'dateCorrection:'||j.id::text,txid_current(),jsonb_build_object('caseId',c.id,'caseRevision',c.revision,'journeyRevision',j.revision,'oldLastDay',p_old::text,'newLastDay',p_new::text,'personId',u.person_id,'employmentVersion',source->>'source_version','configRevision',cfg_revision,'groupsRevision',group_revision),now()) ON CONFLICT(tenant_id,actor,kind) DO UPDATE SET transaction_id=excluded.transaction_id,payload=excluded.payload,created_at=excluded.created_at;END IF;
+ RETURN jsonb_build_object('row',jsonb_build_object('id',c.id,'revision',c.revision,'company_id',c.company_id,'data',c.data||jsonb_build_object('review',NULL,'finalFigures',NULL)),'config',cfg,'employmentDateSource',source);
+END $$;
+--> statement-breakpoint
+CREATE FUNCTION app.resignation_offboarding_date_store(p_id uuid,p_revision integer,p_old date,p_new date,p_data jsonb) RETURNS void LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE j resignation_journey;c lc_v9_case;intent jsonb;bound jsonb;u app_user;expected jsonb;tasks jsonb;items jsonb;entry jsonb;anchor date;actor_name text;source_version text;cfg_revision integer;group_revision integer;
+BEGIN
+ PERFORM app.resignation_runtime_consume('context',p_id,jsonb_build_object('mode','offboardingDateCorrectionSave','journeyId',p_id,'revision',p_revision,'oldLastDay',p_old::text,'newLastDay',p_new::text,'data',p_data));
+ SELECT payload INTO intent FROM app.resignation_runtime_state WHERE tenant_id=app.current_tenant_id() AND actor=app.current_user_id()::text AND kind='intent:'||p_id::text AND transaction_id=txid_current();
+ DELETE FROM app.resignation_runtime_state WHERE tenant_id=app.current_tenant_id() AND actor=app.current_user_id()::text AND kind='dateCorrection:'||p_id::text AND transaction_id=txid_current() RETURNING payload INTO bound;
+ SELECT * INTO u FROM app_user WHERE tenant_id=app.current_tenant_id() AND id=app.current_user_id() AND person_id IS NOT NULL AND archived_at IS NULL AND NOT app.login_blocked(id);
+ SELECT * INTO j FROM resignation_journey WHERE tenant_id=app.current_tenant_id() AND id=p_id;
+ IF bound IS NULL OR intent IS NULL OR u.id IS NULL OR intent->>'personId' IS DISTINCT FROM u.person_id::text OR bound->>'personId' IS DISTINCT FROM u.person_id::text OR intent->'command'->>'type' IS DISTINCT FROM 'updateLetter' OR intent->'command'->>'lastWorkingDay' IS DISTINCT FROM p_new::text OR intent->'initialData'->>'lastWorkingDay' IS DISTINCT FROM p_old::text OR bound->>'oldLastDay' IS DISTINCT FROM p_old::text OR bound->>'newLastDay' IS DISTINCT FROM p_new::text OR j.id IS NULL OR j.data->>'lastWorkingDay' IS DISTINCT FROM p_new::text OR bound->>'journeyRevision' IS DISTINCT FROM j.revision::text OR bound->>'caseId' IS DISTINCT FROM j.offboarding_case_id::text THEN RAISE EXCEPTION 'A current verified clearance date projection is required' USING ERRCODE='42501';END IF;
+ SELECT * INTO c FROM lc_v9_case WHERE tenant_id=j.tenant_id AND id=j.offboarding_case_id AND company_id=j.company_id AND employment_id=j.employment_id AND module='off' AND data->>'resignationSourceCaseId'=j.id::text AND data->'facts'->>'personId'=j.person_id::text FOR UPDATE;
+ IF c.id IS NULL THEN RAISE EXCEPTION 'The linked clearance source changed' USING ERRCODE='42501';END IF;
+ IF c.revision IS DISTINCT FROM p_revision OR bound->>'caseRevision' IS DISTINCT FROM c.revision::text OR (c.data->>'state' IN('pending','submitted')) IS NOT TRUE OR c.data->'facts'->>'lastDay' IS DISTINCT FROM p_old::text THEN RAISE EXCEPTION 'The linked clearance case changed; refresh before correcting it' USING ERRCODE='40001';END IF;
+ SELECT e.xmin::text INTO source_version FROM employment e WHERE e.tenant_id=j.tenant_id AND e.id=j.employment_id AND e.company_id=j.company_id AND e.person_id=j.person_id;
+ SELECT cfg.revision,shared.revision INTO cfg_revision,group_revision FROM lc_v9_config cfg LEFT JOIN lc_onboarding_config shared ON shared.tenant_id=cfg.tenant_id WHERE cfg.tenant_id=j.tenant_id;
+ IF bound->>'employmentVersion' IS DISTINCT FROM source_version OR bound->>'configRevision' IS DISTINCT FROM cfg_revision::text OR bound->>'groupsRevision' IS DISTINCT FROM group_revision::text THEN RAISE EXCEPTION 'The clearance date policy or employment source changed' USING ERRCODE='40001';END IF;
+ expected:=jsonb_set(c.data,'{facts,lastDay}',to_jsonb(p_new::text));
+ IF coalesce(c.data->>'revokeMode','lastday')='lastday' THEN expected:=jsonb_set(expected,'{revokeDate}',to_jsonb(p_new::text));END IF;
+ SELECT coalesce(jsonb_agg(CASE WHEN task->>'status' IN('done','notNeeded') THEN task ELSE task||jsonb_build_object('dueOn',(p_new+(task->>'due')::integer)::text,'opensOn',CASE WHEN task->'opens'='null'::jsonb THEN NULL ELSE (p_new+(task->>'opens')::integer)::text END) END ORDER BY n),'[]'::jsonb) INTO tasks FROM jsonb_array_elements(coalesce(c.data->'tasks','[]')) WITH ORDINALITY rows(task,n);
+ expected:=jsonb_set(expected,'{tasks}',tasks);
+ IF c.data->>'state'='submitted' THEN
+  -- The canonical settlement date owner derives this anchor. Its exact result is HMAC-bound; SQL owns every permitted relative-date delta.
+  IF (p_data->>'returnAnchor' ~ '^\d{4}-\d{2}-\d{2}$') IS NOT TRUE THEN RAISE EXCEPTION 'A verified effective return anchor is required' USING ERRCODE='42501';END IF;
+  anchor:=(p_data->>'returnAnchor')::date;expected:=jsonb_set(expected,'{returnAnchor}',to_jsonb(anchor::text));
+  SELECT coalesce(jsonb_agg(CASE WHEN item->>'status' IN('done','notNeeded','notReturned') THEN item WHEN jsonb_typeof(item->'dueDay')='number' THEN item||jsonb_build_object('dueOn',(anchor+(item->>'dueDay')::integer)::text) WHEN NOT(item ? 'method') AND NOT(item ? 'dueDay') AND item->'dueOn'=c.data->'revokeDate' THEN item||jsonb_build_object('dueOn',expected->'revokeDate') ELSE item END ORDER BY n),'[]'::jsonb) INTO items FROM jsonb_array_elements(coalesce(c.data->'items','[]')) WITH ORDINALITY rows(item,n);
+  expected:=jsonb_set(expected,'{items}',items);
+ END IF;
+ SELECT coalesce(p.full_name,'User') INTO actor_name FROM person p WHERE p.tenant_id=j.tenant_id AND p.id=u.person_id;
+ entry:=p_data->'log'->jsonb_array_length(coalesce(c.data->'log','[]'));
+ IF jsonb_array_length(coalesce(p_data->'log','[]')) IS DISTINCT FROM jsonb_array_length(coalesce(c.data->'log','[]'))+1 OR entry->>'action' IS DISTINCT FROM 'case.resignationLastDaySynchronized' OR entry->'actor' IS DISTINCT FROM jsonb_build_object('id',u.id,'name',actor_name) OR entry->>'detail' IS DISTINCT FROM 'Agreed last working day corrected from '||p_old::text||' to '||p_new::text||'. Open checklist dates and relative return dates now follow the corrected source.' OR (entry->>'id' ~ '^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$') IS NOT TRUE OR (entry->>'at' ~ '^\d{4}-\d{2}-\d{2}T') IS NOT TRUE OR (entry-ARRAY['id','at','actor','action','detail'])<>'{}'::jsonb THEN RAISE EXCEPTION 'Clearance date corrections require one verified owner audit entry' USING ERRCODE='42501';END IF;
+ expected:=expected||jsonb_build_object('revision',p_revision+1,'review',NULL,'finalFigures',NULL,'log',coalesce(c.data->'log','[]')||jsonb_build_array(entry));
+ IF p_data IS DISTINCT FROM expected THEN RAISE EXCEPTION 'A clearance date correction cannot rewrite other case facts or assignments' USING ERRCODE='42501';END IF;
+ INSERT INTO lc_v9_case_revision(tenant_id,case_id,company_id,revision,data,actor_user_id) VALUES(j.tenant_id,c.id,c.company_id,c.revision,c.data,u.id);
+ UPDATE lc_v9_case SET data=p_data,revision=p_revision+1,updated_at=now() WHERE tenant_id=j.tenant_id AND id=c.id AND revision=p_revision;
+ IF NOT FOUND THEN RAISE EXCEPTION 'The linked clearance case changed; refresh before correcting it' USING ERRCODE='40001';END IF;
+END $$;
+--> statement-breakpoint
+REVOKE ALL ON FUNCTION app.resignation_offboarding_date_intent(uuid,date,date),app.resignation_offboarding_date_store(uuid,integer,date,date,jsonb) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.resignation_offboarding_date_intent(uuid,date,date),app.resignation_offboarding_date_store(uuid,integer,date,date,jsonb) TO ai_hr_app;
