@@ -375,7 +375,12 @@ export async function v9SaveConfig(ctx: SessionContext, revision: number, input:
     if (references.length) {
       const ids = [...new Set(references.map(reference => reference.asset.id))];
       const assets = await tx.execute<EmailAssetRow>(sql`select *,octet_length(content) as size from lc_v9_email_asset where tenant_id=${ctx.tenantId}::uuid and id in (${sql.join(ids.map(id => sql`${id}::uuid`),sql`,`)})`);
-      for (const reference of references) { const actual = assets.find(asset => asset.id === reference.asset.id && asset.email_template_id === reference.emailId); if (!actual || !v9Equal(emailAssetMetadata(actual), reference.asset)) throw new M.V9Error('An email file no longer matches its uploaded receipt. Upload or select the actual file again.', 'conflict'); }
+      for (const reference of references) {
+        const actual = assets.find(asset => asset.id === reference.asset.id && asset.email_template_id === reference.emailId);
+        // Alt text belongs to the template; the immutable upload receipt describes only the file.
+        const { alt: _alt, ...receipt } = reference.asset;
+        if (!actual || !v9Equal(emailAssetMetadata(actual), receipt)) throw new M.V9Error(`The email file “${reference.asset.name}” no longer matches its uploaded receipt. Upload or select the actual file again.`, 'conflict');
+      }
     }
     const deletesVersion = previous.templates.some(template => { const retained = config.templates.find(next => next.id === template.id); return !retained || template.versions.some(version => !retained.versions.some(next => next.version === version.version)); });
     const usage = deletesVersion ? await tx.execute<M.TemplateUsage>(sql`select template_id as "templateId",version,documents from app.lc_v9_document_usage()`) : [];
