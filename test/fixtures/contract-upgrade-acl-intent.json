@@ -2265,15 +2265,6 @@
       "publicExecute": false
     },
     {
-      "signature": "app.contract_shared_configuration_choices()",
-      "appExecute": true,
-      "publicExecute": false,
-      "owner": "MIGRATION_OWNER",
-      "oidPreserved": true,
-      "aclPreserved": true,
-      "source": "6012_contract_shared_navigation_access:29"
-    },
-    {
       "signature": "app.contract_source(uuid)",
       "appExecute": false,
       "publicExecute": false
