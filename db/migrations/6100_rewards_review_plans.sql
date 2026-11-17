@@ -557,3 +557,21 @@ CREATE OR REPLACE FUNCTION app.reward_role_level_options(wanted_role text,wanted
   ELSE ARRAY[d,'none'] END
  FROM (SELECT app.reward_role_default_level(wanted_role,wanted_capability) AS d) x
 $$;
+--> statement-breakpoint
+-- Retained legacy commands join the same draft owner. They cannot create a second, invisible company/year plan.
+CREATE FUNCTION app.reward_review_plan_track_legacy_setup() RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,app AS $$
+DECLARE policy_data jsonb;
+BEGIN
+ IF app.reward_review_plan_writing() THEN RETURN NEW;END IF;
+ PERFORM pg_advisory_xact_lock(hashtextextended(NEW.tenant_id::text||':review-plan-year:'||NEW.year,2203));
+ SELECT policy INTO policy_data FROM reward_policy_group_version WHERE tenant_id=NEW.tenant_id AND id=NEW.version_id;
+ IF EXISTS(SELECT 1 FROM reward_plan_year_company c JOIN reward_plan_setup prior ON prior.tenant_id=c.tenant_id AND prior.version_id=c.plan_version_id
+ WHERE c.tenant_id=NEW.tenant_id AND c.year=NEW.year AND c.company_id=ANY(NEW.company_ids) AND c.plan_version_id<>NEW.version_id AND prior.group_id<>NEW.group_id AND c.plan_version_id IS DISTINCT FROM NEW.previous_plan_version_id) THEN RAISE EXCEPTION 'This company already has a draft or active Review Plan for the year' USING ERRCODE='23505';END IF;
+ INSERT INTO reward_plan_year(tenant_id,year,settings,created_by,created_by_person_id)VALUES(NEW.tenant_id,NEW.year,(policy_data-'year')||jsonb_build_object('snapshotDate',NEW.snapshot_date),NEW.created_by,NEW.created_by_person_id)ON CONFLICT DO NOTHING;
+ INSERT INTO reward_plan_year_company(tenant_id,year,company_id,plan_version_id,salary_version_id,bonus_version_id,salary_reviewed,bonus_reviewed,branch_acknowledged)
+ SELECT NEW.tenant_id,NEW.year,(b->>'companyId')::uuid,NEW.version_id,(b->>'salaryVersionId')::uuid,(b->>'bonusVersionId')::uuid,true,true,coalesce((b->>'branchAcknowledged')::boolean,false) FROM jsonb_array_elements(NEW.bindings)b
+ ON CONFLICT(tenant_id,year,company_id)DO UPDATE SET plan_version_id=excluded.plan_version_id,salary_version_id=excluded.salary_version_id,bonus_version_id=excluded.bonus_version_id,salary_reviewed=true,bonus_reviewed=true,branch_acknowledged=excluded.branch_acknowledged,revision=reward_plan_year_company.revision+1,updated_at=now();
+ RETURN NEW;
+END $$;
+REVOKE ALL ON FUNCTION app.reward_review_plan_track_legacy_setup() FROM PUBLIC;
+CREATE TRIGGER reward_review_plan_track_legacy_setup AFTER INSERT OR UPDATE ON reward_plan_setup FOR EACH ROW EXECUTE FUNCTION app.reward_review_plan_track_legacy_setup();

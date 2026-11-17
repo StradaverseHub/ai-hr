@@ -67,3 +67,12 @@ it('holds the worker Access lock shared so ordinary protected reads overlap a pa
  await acquired;
  try{const ordinary=await withTenant(adminCtx(b),async tx=>{await tx.execute(sql`select app.access_workforce_write_lock()`);return(await tx.execute<{n:number}>(sql`select count(*)::int as n from company where tenant_id=app.current_tenant_id()`))[0].n;});expect(ordinary).toBeGreaterThan(0);}finally{release();await worker;}
 },15_000);
+it('consumes company-change nominations once and refuses a forged native rebind lease',async()=>{
+ await createYear();const[next]=await owner.db.insert(company).values({tenantId:b.tenantId,legalName:'Fictional newly eligible employer'}).returning();const[unit]=await owner.db.insert(businessUnit).values({tenantId:b.tenantId,companyId:next.id,code:'NEXT',name:'New employer BU'}).returning();
+ await setupCompanyStructureFixture(adminCtx(b),[{companyId:next.id,businessUnitId:unit.id}],'2026-01-01');
+ for(let i=0;i<4;i++)await owner.client.begin(tx=>tx`select app.reward_review_plan_company_tick()`);
+ const rows=await owner.db.execute<{company_id:string;plan_version_id:string|null}>(sql`select company_id,plan_version_id from reward_plan_year_company where tenant_id=${b.tenantId}::uuid and year=2026 order by company_id`);expect(rows).toHaveLength(2);expect(rows.find(r=>r.company_id===next.id)?.plan_version_id).toBeNull();
+ const events=await owner.db.execute<{payload:{companyId:string;year:number}}>(sql`select payload from domain_event where tenant_id=${b.tenantId}::uuid and event_type='reward-plan.company-added'`);expect(events.map(e=>[e.payload.companyId,e.payload.year])).toEqual([[next.id,2026]]);
+ await withTenant(adminCtx(b),async tx=>{await tx.execute(sql`select set_config('app.reward_review_plan_writing',txid_current()::text,true)`);const[r]=await tx.execute<{allowed:boolean}>(sql`select app.reward_review_plan_writing() as allowed`);expect(r.allowed).toBe(false);});
+ await expect(withTenant(adminCtx(b),tx=>tx.execute(sql`insert into app.reward_review_plan_write_lease values(app.current_tenant_id(),txid_current())`))).rejects.toThrow();
+},90_000);
