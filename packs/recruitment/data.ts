@@ -258,6 +258,12 @@ export async function ensureRecruitmentDefaultsTx(tx: Tx, s: SessionContext, com
  * no delete), so a company that has every seed key once keeps them, renamed or disabled.
  */
 async function unseededCompaniesTx(tx: Tx, s: SessionContext, companyIds: readonly string[]): Promise<string[]> {
+  // A Postgres array literal, as uuidArray does: drizzle would expand a JS array into a row tuple. Seed keys are fixed
+  // lower-case identifiers, checked here so the literal can never need quoting.
+  const keyArray = (keys: readonly string[]) => {
+    if (!keys.every((k) => /^[a-z0-9_]+$/.test(k))) throw new Error('Recruitment seed keys must be lower-case identifiers');
+    return `{${keys.join(',')}}`;
+  };
   const stageKeys = DEFAULT_STAGES.map((d) => d.seedKey), reasonKeys = DEFAULT_ARCHIVE_REASONS.map((d) => d.seedKey);
   const fieldKeys = DEFAULT_OFFER_FIELDS.map((d) => d.seedKey);
   const rows = await tx.execute<{ id: string }>(sql`
@@ -265,9 +271,9 @@ async function unseededCompaniesTx(tx: Tx, s: SessionContext, companyIds: readon
     where not exists (select 1 from recruitment_company_setting x where x.tenant_id = ${s.tenantId}::uuid and x.company_id = c.id)
        or not exists (select 1 from recruitment_process x where x.tenant_id = ${s.tenantId}::uuid and x.company_id = c.id and x.seed_key = ${DEFAULT_PROCESS.seedKey})
        or not exists (select 1 from recruitment_evaluation_form x where x.tenant_id = ${s.tenantId}::uuid and x.company_id = c.id and x.seed_key = ${DEFAULT_EVALUATION_FORM.seedKey})
-       or (select count(*) from recruitment_stage x where x.tenant_id = ${s.tenantId}::uuid and x.company_id = c.id and x.seed_key = any(${stageKeys}::text[])) < ${stageKeys.length}
-       or (select count(*) from recruitment_archive_reason x where x.tenant_id = ${s.tenantId}::uuid and x.company_id = c.id and x.seed_key = any(${reasonKeys}::text[])) < ${reasonKeys.length}
-       or (select count(*) from recruitment_offer_field x where x.tenant_id = ${s.tenantId}::uuid and x.company_id = c.id and x.seed_key = any(${fieldKeys}::text[])) < ${fieldKeys.length}
+       or (select count(*) from recruitment_stage x where x.tenant_id = ${s.tenantId}::uuid and x.company_id = c.id and x.seed_key = any(${keyArray(stageKeys)}::text[])) < ${stageKeys.length}
+       or (select count(*) from recruitment_archive_reason x where x.tenant_id = ${s.tenantId}::uuid and x.company_id = c.id and x.seed_key = any(${keyArray(reasonKeys)}::text[])) < ${reasonKeys.length}
+       or (select count(*) from recruitment_offer_field x where x.tenant_id = ${s.tenantId}::uuid and x.company_id = c.id and x.seed_key = any(${keyArray(fieldKeys)}::text[])) < ${fieldKeys.length}
     order by c.id`);
   return rows.map((r) => r.id);
 }
