@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import {labelsInCompanyScope} from '@/lib/system-label-scope';
 import { personnelReferenceOptions } from '@/lib/personnel-template-reference';
 import {personnelImportBrowserKey} from '@/lib/personnel-import-browser-key';
 import { getPeopleGeneral } from '@/core/people-general';
@@ -25,6 +26,7 @@ export default async function ImportPage() {
     departments,
     positions,
     costCenters,
+    businessUnits,
     // Item 2983802f — the catalog-governed vocabularies the new columns write into. Read here for the
     // same reason as the catalogs above: the Reference sheet must list the values `analyze()` accepts,
     // and the only way to guarantee that is to generate it from the list `analyze()` reads.
@@ -35,14 +37,17 @@ export default async function ImportPage() {
     listDepartments(s),
     listPositions(s),
     listCostCenters(s),
+    listBusinessUnits(s),
     listAllProfileOptions(s,{activeOnly:true}),
     getPeopleGeneral(s),
   ]);
   // Company-specific guidance uses the same visibility owners as full-import validation.
   // The Company cell can override Target company; preview is authoritative in that case.
   const grades=await listJobGrades(s);
-  const organisationOptionsByCompany=Object.fromEntries(await Promise.all(companies.map(async co=>{
-    const [ds,ps,cs,bs]=await Promise.all([listDepartments(s,{companyIds:[co.id]}),listPositions(s,{companyIds:[co.id]}),listCostCenters(s,{companyIds:[co.id]}),listBusinessUnits(s,{companyIds:[co.id]})]);
+  const organisationOptionsByCompany=Object.fromEntries(companies.map(co=>{
+    const scope=new Set([co.id]);
+    const ds=labelsInCompanyScope(departments,scope),ps=labelsInCompanyScope(positions,scope);
+    const cs=labelsInCompanyScope(costCenters,scope),bs=labelsInCompanyScope(businessUnits,scope);
     return [co.id,{
       department:personnelReferenceOptions(ds.map(d=>({value:d.code,label:d.label?.trim()||d.description||d.code}))),
       position:personnelReferenceOptions(ps.map(p=>({value:p.code,label:p.label?.trim()||p.description||p.code}))),
@@ -50,7 +55,7 @@ export default async function ImportPage() {
       business_unit:personnelReferenceOptions(bs.map(b=>({value:b.code,label:b.label?.trim()||b.name||b.code}))),
       job_grade:personnelReferenceOptions(grades.map(g=>({value:g.code,label:g.name}))),
     }] as const;
-  })));
+  }));
   const organisationByCompany=Object.fromEntries(Object.entries(organisationOptionsByCompany).map(([id,fields])=>[id,Object.fromEntries(Object.entries(fields).map(([column,options])=>[column,uniqSorted(options.map(option=>option.value))]))]));
   const scopeIds = await getScopeIds(companies.map((c) => c.id));
   // Default to the active scope if it's a single company; otherwise the company with the most

@@ -22,7 +22,7 @@ import { withEmploymentDefaults } from '@/lib/employee-draft-schema';
 // 35b7af0a group 8 — the nationality catalog the shared identity group offers on BOTH screens.
 import { listProfileOptions } from '@/core/profile-options';
 import { listConfigs, resolveEmployeeIdRule } from '@/core/employee-id-config';
-import { labelIdsForCompany } from '@/core/system-labels';
+import { labelCompanyCsv } from '@/lib/system-label-scope';
 import type { EmployeeIdRule } from '@/lib/employee-id-mode';
 import { todayInKualaLumpur } from '@/lib/hr-date';
 import { PageHeader } from '@/components/ui';
@@ -48,7 +48,7 @@ import { EmployeeWizard } from './wizard';
  * would make going back a network round trip, and HR moves back and forth constantly.
  *
  * The `data-companies` CSV stamps are the SAME resolver output the old inline hire form used
- * (`labelIdsForCompany`, origin ∪ shared-in ∪ global, flag-gated) — the cascade rule moved screens, it
+ * (`labelInCompanyScope`, Global or saved per-code Criteria) — the cascade rule moved screens, it
  * did not get reimplemented, and `hireOptionVisible` remains its one definition.
  */
 export default async function CreateEmployeePage({
@@ -141,27 +141,11 @@ export default async function CreateEmployeePage({
     listProfileOptions(session, 'race', { activeOnly: true,companyId:scopeIds.length===1?scopeIds[0]:null }),
   ]);
 
-  // Same inversion the Personnel page performs: resolver answers per company → Map(labelId → CSV).
-  const labelCompanyCsv = async (kind: string): Promise<Map<string, string>> => {
-    const perCompany = await Promise.all(
-      companies.map(async (c) => ({ companyId: c.id, ids: await labelIdsForCompany(session, kind, c.id) })),
-    );
-    const byLabel = new Map<string, string[]>();
-    for (const { companyId, ids } of perCompany) {
-      for (const id of ids) {
-        const arr = byLabel.get(id);
-        if (arr) arr.push(companyId);
-        else byLabel.set(id, [companyId]);
-      }
-    }
-    return new Map(Array.from(byLabel, ([id, cos]) => [id, cos.sort().join(',')] as const));
-  };
-  const [buCsv, deptCsv, posCsv, ccCsv] = await Promise.all([
-    labelCompanyCsv('business_unit'),
-    labelCompanyCsv('department'),
-    labelCompanyCsv('position'),
-    labelCompanyCsv('cost_center'),
-  ]);
+  // Catalogue owners already return Global and explicit Criteria. Reuse those authorized
+  // rows instead of reopening four native transactions for each company choice.
+  const companyIds=companies.map(company=>company.id);
+  const buCsv=labelCompanyCsv(businessUnits,companyIds),deptCsv=labelCompanyCsv(departments,companyIds);
+  const posCsv=labelCompanyCsv(positions,companyIds),ccCsv=labelCompanyCsv(costCenters,companyIds);
 
   // The full-time probation default for THIS draft's company — the hiring-defaults probation length
   // (core/hiring-defaults.ts, `company.probation_months`; NULL → 3 via `resolveProbationMonths`). Since

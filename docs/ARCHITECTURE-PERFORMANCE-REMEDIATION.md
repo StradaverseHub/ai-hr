@@ -31,8 +31,8 @@ Initial integration base: `59f06b08db014e01cd553a827c62ccf864d33f78`. Preserve t
 | AP-005 | P1 | Generate Letters all-company request queue | Batch4 implemented: global SQL page/count; native qualification in progress, not staged |
 | AP-006 | P1 | AI Centre Payroll Audit loop | Batch3 implemented: atomic native access-event chunks; development-qualified; staging pending |
 | AP-007 | P1 | Approvals leave queue | Batch3 implemented: native date-packet and per-manager queue batches; development-qualified; staging pending |
-| AP-008 | P1 | Personnel employee draft editor | Open; implementation pending |
-| AP-009 | P1 | Personnel Import entry screen | Open; implementation pending |
+| AP-008 | P1 | Personnel employee draft editor | Batch5 implemented: reuse native Criteria projections; qualification pending, not staged |
+| AP-009 | P1 | Personnel Import entry screen | Batch5 implemented: reuse native catalogue rows; qualification pending, not staged |
 | AP-010 | P2 | Personnel Profile Changes | Open; implementation pending |
 | AP-011 | P1 | Attendance Offline Clocking settings | Open; implementation pending |
 | AP-012 | P2 | Attendance Company Policy Settings | Open; implementation pending |
@@ -165,3 +165,8 @@ Batch3 development qualification completed at `edffc689e73d35badfe1bc484aa65e0c7
 AP-005 replaces per-company request transactions and in-memory flatten/sort with one globally ordered native SQL page/count. Permission admission covers every requested company; a denied company refuses the whole packet. Native request-subject and published-template disclosure remains after the selected page identities. Standard25/50/100/200/All choices use the shared2000-row ceiling with an explicit continuation message. Decline retains page context, request identity, private reason, employee message and native version check. The original single-company reader and every command owner remain unchanged.
 
 Qualification is in progress:70companies/1000employments/3000requests, native template approval/requestable lifecycle, every role/group and company scope, ordered legacy equivalence, exact totals, bounded All/out-of-range pages, shared read-only transaction, rendered controls and decline redirects. No migration, integration-ref change or staging release is included. All60open observations retain their original IDs and acceptance requirements.
+
+
+## Batch5: Personnel label fanout
+
+AP-008 reuses already authorized active catalogue Criteria to construct the draft wizard's exact company CSV stamps through the shared label-scope predicate. AP-009 derives company-specific workbook choices from the existing authorized catalogue rows, loading Business Units once. This removes four company-by-company readers from each request without redefining label availability, archive rules, code/label formatting, company defaulting or import validation. Global and explicitly assigned availability remain independent of creation company. Existing complete catalogue payloads are still required by these forms; no pagination or payload-size improvement is claimed. Native70-company/1000-employment qualification and hosted checks are pending. No migration or staging change.
