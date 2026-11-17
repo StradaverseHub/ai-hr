@@ -2,7 +2,7 @@
 import {createHash} from 'node:crypto';
 import {beforeEach,it,expect,vi} from 'vitest';
 const f=vi.hoisted(()=>({queries:[] as string[],files:[] as Record<string,unknown>[],start:true,target:null as any,send:vi.fn(),relay:vi.fn(),principal:vi.fn()}));
-vi.mock('../db/client',()=>({withSystemWork:<T>(work:()=>T)=>work(),client:async(q:TemplateStringsArray)=>{const text=q.join('?');f.queries.push(text);if(text.includes('automation_email_target('))return[{target:f.target}];if(text.includes('automation_email_assets('))return f.files;if(text.includes('automation_email_start('))return[{started:f.start}];if(text.includes('automation_email_finish('))return[{finished:true}];throw Error('Unexpected native query');}}));
+vi.mock('../db/client',()=>({withSystemWork:<T>(work:()=>T)=>work(),client:async(q:TemplateStringsArray)=>{const text=q.join('?');f.queries.push(text);if(text.includes('automation_email_target('))return[{target:f.target}];if(text.includes('automation_email_assets('))return f.files;if(text.includes('automation_email_materialization('))return[{proof:{version:1}}];if(text.includes('automation_email_start('))return[{started:f.start}];if(text.includes('automation_email_finish('))return[{finished:true}];throw Error('Unexpected native query');}}));
 vi.mock('../lib/internal-auth/config',()=>({internalConfig:()=>({origin:'https://fictional.invalid'}),internalIssuer:()=> 'https://fictional.invalid/auth/tenant'}));
 vi.mock('../lib/internal-auth/active-relay',()=>({readLifecycleRelayTx:f.relay}));
 vi.mock('../lib/internal-auth/store',()=>({admittedAuthSql:{},readRecord:async()=>({subject:'human',tenantId:'tenant',issuer:'https://fictional.invalid/auth/tenant',email:'human@fictional.invalid'})}));

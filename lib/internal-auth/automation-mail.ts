@@ -58,7 +58,10 @@ export async function internalAutomationMail(input: AutomationDeliveryRequest, t
   } catch { return { outcome: 'skipped', error: 'notEligible' }; }
   const currentRelay = await readLifecycleRelayTx(admittedAuthSql, target.tenantId);
   if (!currentRelay || currentRelay.revision !== active.revision || currentRelay.senderName !== active.senderName) return { outcome: 'skipped', error: 'relayUnavailable' };
-  const proof = { bindings: target.bindings, addresses, relayRevision: active.revision, senderProfile: 'noreply', senderName: active.senderName ?? active.relay.config.fromName, senderAddress: active.relay.config.from };
+  const hasSharedReferences=target.module!=='off'&&Boolean(mail.delivery.assets?.length||mail.delivery.documents?.length);
+  const sharedMaterialization=hasSharedReferences?(await withSystemWork(()=>client`select app.automation_email_materialization(${id}::uuid,${token}::uuid,${origin}) as proof`))[0]?.proof:null;
+  if(hasSharedReferences&&!sharedMaterialization)return {outcome:'skipped',error:'notEligible'};
+  const proof = { ...(hasSharedReferences?{sharedMaterialization}:{}),bindings: target.bindings, addresses, relayRevision: active.revision, senderProfile: 'noreply', senderName: active.senderName ?? active.relay.config.fromName, senderAddress: active.relay.config.from };
   const started = (await withSystemWork(()=>client`select app.automation_email_start(${id}::uuid,${token}::uuid,${origin},${JSON.stringify(proof)}::jsonb) as started`))[0]?.started === true;
   if (!started) return { outcome: 'skipped', error: 'notEligible' };
   let result: AutomationDeliveryResult;
