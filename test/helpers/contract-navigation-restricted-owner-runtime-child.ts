@@ -73,7 +73,7 @@ async function main(){
    const ctx=await context(userId),actorUrl=new URL(process.env.TEST_DATABASE_URL!);
    // createDb intentionally caches by URL. A supported startup label gives each actor
    // its own canonical pool/backend instead of reopening a previously ended cached pool.
-   const applicationName='contract-nav:'+nonce.slice(0,8)+':'+key;assert.ok(Buffer.byteLength(applicationName,'utf8')<=63);
+   const applicationName:string='contract-nav:'+nonce.slice(0,8)+':'+key;assert.ok(Buffer.byteLength(applicationName,'utf8')<=63);
    actorUrl.searchParams.set('application_name',applicationName);
    const app=createDb(actorUrl.toString(),{max:1});
    try{
