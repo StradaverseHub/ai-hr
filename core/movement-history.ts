@@ -34,7 +34,7 @@ import {todayInKualaLumpur} from '../lib/hr-date';
 import {labelUsableByCompany} from './system-labels';
 import {assertWorkforceCompanyTx,assertWorkforceEmploymentTx} from './workforce-access';
 import {lockEmploymentStatutoryOwnerTx} from './org';
-import {assertContractPostingHistoryWriteTx} from './contract-posting-history-source';
+import {assertContractPostingHistoryWriteTx,withContractPostingAssignmentOrgTx} from './contract-posting-history-source';
 
 export const MOVEMENT_HISTORY_EVENT='employment.history.recorded';
 export const MOVEMENT_HISTORY_REVERTED_EVENT='employment.history.reverted';
@@ -516,8 +516,11 @@ async function reapplyCorrectionBoundariesBodyTx(tx:Tx,ctx:SessionContext,employ
    if(next.locationId&&changed.includes('companyId')){const [loc]=await tx.select({companyId:location.companyId}).from(location).where(eq(location.id,next.locationId)).limit(1);if(!loc||loc.companyId!==company)throw new MovementHistoryError(`movement_correction_boundary_label:${boundary.date}`);}
   }
   const {id,createdAt:_c,recordedAt:_r,supersededAt:_s,...copy}=cover;
-  await tx.update(assignment).set({validTo:boundary.date}).where(eq(assignment.id,id));
-  const [row]=await tx.insert(assignment).values({...copy,...(boundary.values as Partial<typeof assignment.$inferInsert>),validFrom:boundary.date}).returning({id:assignment.id});
+  const values={...copy,...(boundary.values as Partial<typeof assignment.$inferInsert>),validFrom:boundary.date};
+  const row=await withContractPostingAssignmentOrgTx(tx,{sourceAssignmentId:id,retainedAssignmentId:boundary.liftedId,values},async()=>{
+   await tx.update(assignment).set({validTo:boundary.date}).where(eq(assignment.id,id));
+   const [inserted]=await tx.insert(assignment).values(values).returning({id:assignment.id});return inserted;
+  });
   placed.push({date:boundary.date,fields:changed,splitId:id,insertedId:row.id,liftedId:boundary.liftedId});
  }
  // employment.company_id follows the record with the latest Effective Date.

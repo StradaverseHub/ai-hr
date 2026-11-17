@@ -158,7 +158,7 @@ describe('Contract group approval through one protected native application job',
    await tx.execute(sql`select set_config('app.agent_principal_id',${randomUUID()},true)`);
    return tx.execute(sql`select app.contract_posting_request(${posting.id}::uuid,${posting.revision}::integer,NULL::jsonb)`);
   }));
-  await expect(approveContractSharedPosting({...f.approver,agent:{principalId:randomUUID(),enablements:[]}},{id:posting.id,revision:posting.revision})).rejects.toMatchObject({code:'forbidden'});
+  await expect(Promise.resolve().then(()=>approveContractSharedPosting({...f.approver,agent:{principalId:randomUUID(),enablements:[]}},{id:posting.id,revision:posting.revision}))).rejects.toMatchObject({code:'forbidden'});
   const[notAdmitted]=await owner.db.execute<{n:number}>(sql`select count(*)::int as n from app.contract_posting_job_source where tenant_id=${f.b.tenantId}::uuid and posting_id=${posting.id}::uuid`);expect(notAdmitted.n).toBe(0);
   const aliases=await owner.db.execute<{name:string}>(sql`select p.proname as name from pg_proc p join pg_namespace n on n.oid=p.pronamespace where n.nspname='app' and p.proname like 'contract_shared_posting_approve%' and p.pronargs=3 and p.proargtypes[0]='uuid'::regtype and p.proargtypes[1]='integer'::regtype and p.proargtypes[2]='jsonb'::regtype order by p.proname`);
   expect(aliases.length).toBeGreaterThan(1);

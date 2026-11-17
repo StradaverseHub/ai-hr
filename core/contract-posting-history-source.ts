@@ -1,5 +1,6 @@
 /** Fixed Contract application owner. No request context, role or caller flag supplies this scope. */
-import {sql} from 'drizzle-orm';
+import {getTableColumns,sql} from 'drizzle-orm';
+import {assignment} from '../db/schema';
 import type {Tx} from '../db/client';
 
 type Source={jobId:string;employmentId:string};
@@ -15,6 +16,8 @@ export async function withContractPostingHistorySourceTx<T>(tx:Tx,source:Source,
 }
 
 export function hasContractPostingHistorySourceTx(tx:Tx,employmentId:string){return sources.get(tx)?.employmentId===employmentId;}
+/** Read only by fixed canonical companions; the native owner independently checks every use. */
+export function contractPostingHistorySourceTx(tx:Tx):Readonly<Source>|null{return sources.get(tx)??null;}
 /** A genuine native savepoint shares its parent's already-proven job/backend/XID, never caller roles. */
 export function withContractPostingSavepointSourceTx<T>(parent:Tx,child:Tx,write:()=>Promise<T>):Promise<T>{
  const source=sources.get(parent);
@@ -70,4 +73,20 @@ export async function protectContractPostingHistoryTx(tx:Tx):Promise<number>{
 export async function bindContractPostingHistoryIntentTx(tx:Tx):Promise<void>{
  const source=sources.get(tx);if(!source)throw Error('A fixed Contract history source is required.');
  await tx.execute(sql`select app.contract_posting_job_bind_intent(${source.jobId}::uuid,${source.employmentId}::uuid)`);
+}
+
+/** Org-only witness around the canonical history row builder; never a DML or caller-hash port.
+ * Generated ID/recorded timestamps stay PostgreSQL defaults on the unchanged native INSERT.
+ */
+export async function withContractPostingAssignmentOrgTx<T>(tx:Tx,input:{sourceAssignmentId:string;retainedAssignmentId:string;values:typeof assignment.$inferInsert},write:()=>Promise<T>):Promise<T>{
+ const source=sources.get(tx);if(!source)return write();
+ await assertContractPostingHistoryWriteTx(tx,source.employmentId);
+ const columns=getTableColumns(assignment),native:Record<string,unknown>={};
+ for(const key of Object.keys(columns) as (keyof typeof columns)[]){
+  const value=input.values[key];if(value!==undefined)native[columns[key].name]=value;
+ }
+ const[row]=await tx.execute<{permit:string|null}>(sql`select app.contract_posting_assignment_org_prepare(${source.jobId}::uuid,${source.employmentId}::uuid,${input.sourceAssignmentId}::uuid,${input.retainedAssignmentId}::uuid,${JSON.stringify(native)}::jsonb) as permit`);
+ const result=await write();
+ if(row?.permit)await tx.execute(sql`select app.contract_posting_assignment_org_finish(${row.permit}::uuid)`);
+ return result;
 }

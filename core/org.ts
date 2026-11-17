@@ -2794,8 +2794,8 @@ async function transferEmploymentCompanyBodyTx(
   // Authz, up front and explicit — exactly as changeEmploymentCompany does it. Flipping company_id trips
   // employment_rls WITH CHECK is_admin_for(NEW); asking first turns an opaque row-level failure into a
   // sentence that says what to do about it.
-  const adminRes = await tx.execute(sql`select app.is_admin_for(${p.newCompanyId}::uuid) as ok`);
-  if (!(adminRes as unknown as { ok: boolean }[])[0]?.ok) throw new DestinationCompanyNotAdministered();
+  const adminRes = contractHistory?null:await tx.execute(sql`select app.is_admin_for(${p.newCompanyId}::uuid) as ok`);
+  if (!contractHistory&&!(adminRes as unknown as { ok: boolean }[])[0]?.ok) throw new DestinationCompanyNotAdministered();
 
   // ── Cross-company coherence, checked BEFORE the flip so a refusal leaves nothing half-done ──
   // The state the movement starts from: the OPEN assignment version and the OPEN administrative reporting

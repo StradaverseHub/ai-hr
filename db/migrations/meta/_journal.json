@@ -7297,6 +7297,13 @@
       "breakpoints": true
     },
     {
+      "idx": 5411,
+      "version": "7",
+      "when": 1794841006011,
+      "tag": "6011_contract_posting_org_snapshot_owner",
+      "breakpoints": true
+    },
+    {
       "idx": 5412,
       "version": "7",
       "when": 1794841006012,
