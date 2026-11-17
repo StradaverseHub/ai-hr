@@ -265,9 +265,11 @@ export const APPROVED_UPGRADE_TAIL=[
  {idx:5346,when:1794841005946,tag:'5946_contract_snapshot_native_binding'},
  {idx:5347,when:1794841005947,tag:'5947_contract_email_document_identity'},
  {idx:5348,when:1794841005948,tag:'5948_contract_form_current_proof'},
+ {idx:5349,when:1794841005949,tag:'5949_contract_published_form_email_source'},
 ] as const;
 // Final pending 2109/2126 bytes reviewed from engine 128bc2539; no applied-prefix hashes change.
 const APPROVED_UPGRADE_HASHES:Record<string,string>={
+ '5949_contract_published_form_email_source':'d658a65e037260f1864ede14b7c048ee93f7250b888524d593e89bd9346ab0d6',
  '5947_contract_email_document_identity':'595f8d9c1078dffb16a2aff0524420c10f702b9f4fd02e885f07a60a3e56b435',
  '5948_contract_form_current_proof':'44643617420c889b1f18743b99e3432a800020e8fc70db0b414b1599464532b1',
 
