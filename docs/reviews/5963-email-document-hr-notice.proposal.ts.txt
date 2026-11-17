@@ -1,0 +1,18 @@
+// UNAPPLIED worker-only hook. Called BEFORE the authored Workflow runtime.
+// Native page authorizes only exact sealed internal event + pending HR UID/PID + actual pin/source.
+export async function deliverContractEmailDocumentHRNotice(db, event, afterUID) {
+ const [row] = await db.execute(sql`select app.contract_shared_email_hr_notice_page(${event.case_id}::uuid,${afterUID}::uuid) as page`);
+ if (!row?.page) throw new Error('The native email-document HR notice source is unavailable.');
+ for (const recipient of row.page.recipients) { // max30 canonical route rows; worker only, not request
+  await queueAutomationEmailTx(db, {
+   module:'contract_staff', subjectId:event.case_id,
+   key:`email-hr:${row.page.letterId}:${row.page.signingRevision}:${recipient.userId}:${recipient.personId}`,
+   to:[recipient.userId], cc:[], subject:'Contract document needs your action',
+   body:'A Contract document is waiting for your action.\n\n{{case.link}}',
+  });
+ }
+ return {afterUID:row.page.recipients.at(-1)?.userId??null,complete:row.page.recipients.length===0};
+}
+// Existing handler branch event.trigger_event==='emailDocumentHRNotice': call helper, persist bounded
+// progress or event_finish and RETURN; never runAutomationEvent or resumeAutomationRun.
+// Native source emitted initial AFTER pin.bind; subsequent canonical Signing AFTER hook emits nextHR/sendback.

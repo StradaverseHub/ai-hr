@@ -5,7 +5,7 @@ import {withTenant,type SessionContext} from '../db/client';
 import {closeAll,migrateTestDb,resetDb,seedBase,setModule,entitledCtx,createAppUser,owner} from './harness';
 import {hireEmployee,setEmploymentInfo} from '../core/org';
 import {v9Setup,v9Workspace,v9SaveConfig} from '../packs/lifecycle/service';
-import {adoptContractSharedCase,previewContractSharedDecision,submitContractSharedDecision,contractSharedContext,contractPreviewJobHandler,contractAutomationJobHandler,readContractSharedLetter,actContractSharedLetter} from '../packs/contracts/service';
+import {adoptContractSharedCase,previewContractSharedDecision,submitContractSharedDecision,contractSharedContext,contractPreviewJobHandler,contractAutomationJobHandler,readContractSharedLetter,actContractSharedLetter,editContractSharedLetter} from '../packs/contracts/service';
 import {readContractSharedForm,saveContractSharedForm,type ContractSharedForm} from '../core/contract-shared-form';
 import {MY_DOCUMENT_MERGE_KEYS} from '../localization/my/document-merge';
 import {requirePackFor} from '../localization/registry';
@@ -26,7 +26,7 @@ describe('actual shared Contract Form owner',()=>{
  it('uses selected country fields, native ownership, scoped immutable signatures and strict released privacy',async()=>{
   const f=await formFixture();expect(requirePackFor('MY').documentMerge?.keys).toEqual(MY_DOCUMENT_MERGE_KEYS);
   expect(await readContractSharedForm(f.employeeActor,f.letterId)).toEqual({letterId:f.letterId,kind:'Form',visible:false});
-  const initial=visible(await readContractSharedForm(f.admin,f.letterId));expect(initial.values).toMatchObject({lockedIC:'990101-01-1234',lockedBank:'FICTIONAL-BANK-001'});expect(initial.editableFieldIds).toEqual(['hrChoice']);
+  const initial=visible(await readContractSharedForm(f.admin,f.letterId));expect(initial.values).toMatchObject({lockedIC:'990101011234',lockedBank:'FICTIONAL-BANK-001'});expect(initial.editableFieldIds).toEqual(['hrChoice']);
   const letter=await readContractSharedLetter(f.admin,f.letterId);expect(letter.body?.values).toMatchObject({'company.regNo':'FICTIONAL-REG','company.address':'Fictional Shared address','company.color':'#123456','decision.type':'Renew'});expect(letter.body?.values).not.toHaveProperty('contract.salary');
   await expect(saveAnswers(f.admin,f.letterId,{lockedIC:'forged'})).rejects.toThrow();await expect(saveAnswers(f.admin,f.letterId,{hrChoice:'Not an option'})).rejects.toThrow();
   expect(letter.body?.values).toHaveProperty('employee.name','Fictional ending subject');expect(initial.missingLockedFields).not.toContain('inactiveLocked');
@@ -54,6 +54,21 @@ describe('actual shared Contract Form owner',()=>{
   expect(await withTenant(viewer,tx=>tx.execute(sql`select 1 where app.contract_shared_case_permitted(${f.caseId}::uuid,'view')`))).toHaveLength(1);
   expect(await readContractSharedForm(viewer,f.letterId)).toEqual({letterId:f.letterId,kind:'Form',visible:false});expect((await readContractSharedLetter(viewer,f.letterId)).body).toBeNull();
   const [personnel]=await owner.db.execute<{ended:string|null;counter:number}>(sql`select terminated_on::text as ended,contract_number as counter from employment where tenant_id=${f.b.tenantId}::uuid and id=${f.employee.employmentId}::uuid`);expect(personnel).toEqual({ended:null,counter:3});
+ },120_000);
+ it('validates native typed Form answers and rejects coercion and malformed table cells',async()=>{
+  const base={owner:'hr' as const,pmKey:null,required:false,sensitive:false,options:[],section:'main',when:null};
+  const f=await formFixture([{...base,id:'amount',label:'Number',type:'number'},{...base,id:'date',label:'Date',type:'date'},{...base,id:'email',label:'Email',type:'email'},{...base,id:'rows',label:'Rows',type:'table',columns:['One','Two']}]);
+  for(const values of [{amount:'1e999'},{amount:'NaN'},{date:'2026-02-30'},{email:'not-an-email'},{rows:'[[1,"two"]]'},{rows:'[["one"]]'}])await expect(saveAnswers(f.admin,f.letterId,values)).rejects.toThrow();
+  const saved=await saveAnswers(f.admin,f.letterId,{amount:'12.50',date:'2026-11-17',email:'fictional@example.test',rows:'[["one","two"]]'});expect(saved.values).toMatchObject({amount:'12.50',date:'2026-11-17',email:'fictional@example.test',rows:'[["one","two"]]'});
+ },120_000);
+ it('does not expand published Personnel selection through editable Form wording',async()=>{
+  const f=await formFixture();await owner.db.execute(sql`update employee_statutory_my set tax_number='FICTIONAL-UNSELECTED-TAX' where tenant_id=${f.b.tenantId}::uuid and person_id=${f.employee.personId}::uuid`);
+  const before=await readContractSharedLetter(f.admin,f.letterId);
+  const edited=await editContractSharedLetter(f.admin,{id:f.letterId,revision:before.contentRevision,hash:before.contentHash!,blocks:{...before.body!.blocks,intro:'For {Full name}. Added {taxNo}, {employee.passportNo}, {contract.salary}, {unknown.literal}.'}});
+  expect(edited.body?.values).not.toHaveProperty('taxNo');expect(edited.body?.values).not.toHaveProperty('employee.passportNo');expect(edited.body?.values).not.toHaveProperty('contract.salary');
+  expect(edited.body?.blocks.intro).toContain('{unknown.literal}');expect(JSON.stringify(edited.body)).not.toContain('FICTIONAL-UNSELECTED-TAX');
+  await owner.db.execute(sql`update employee_statutory_my set bank_account_no='FICTIONAL-SELECTED-CORRECTION' where tenant_id=${f.b.tenantId}::uuid and person_id=${f.employee.personId}::uuid`);
+  expect(visible(await readContractSharedForm(f.admin,f.letterId)).values.lockedBank).toBe('FICTIONAL-SELECTED-CORRECTION');
  },120_000);
  it('serializes actual competing response saves and refuses stale proof, account relinking and arbitrary fields',async()=>{
   const f=await formFixture(),letter=await readContractSharedLetter(f.admin,f.letterId),form=visible(await readContractSharedForm(f.admin,f.letterId));
