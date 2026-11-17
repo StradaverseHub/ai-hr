@@ -52,6 +52,14 @@ describe('Person reward history custody and upload',()=>{
    values(${b.tenantId}::uuid,${b.companyId}::uuid,${employmentId}::uuid,${year-1},'annual','review',${pastUnitId}::uuid,${pastEntryId}::uuid,'SCORE','ME',450,0,0,22500,450,false,750000,15000,0,${admin.userId}::uuid)`);
  },120000); // Approved setup fixtures use independently checked libraries and organization evidence.
 
+ it('reports retained company usage only to the canonical administrator without exposing history rows',async()=>{
+  const retained=(ctx:SessionContext,companyId:string)=>withTenant(ctx,tx=>tx.execute<{used:boolean}>(sql`select app.reward_history_company_in_use(${companyId}::uuid) as used`));
+  expect(await retained(admin,b.companyId)).toEqual([{used:true}]);
+  expect(await retained(actors.bg!,b.companyId)).toEqual([{used:false}]);
+  expect(await retained(admin,personId)).toEqual([{used:false}]); // Existing UUID, but not an administered company.
+  // The boolean never turns into direct access to the prior review's monetary rows.
+  await expect(withTenant(admin,tx=>tx.execute(sql`select bonus_cents from reward_person_history`))).rejects.toThrow();
+ });
  it('returns independently expected prior awards under the current review and denies direct table reads to reviewers',async()=>{
   // Native BU access requires an active Senior selection, including this intentionally empty roster.
   await initializeRewardGovernanceFixture(admin,unitId);

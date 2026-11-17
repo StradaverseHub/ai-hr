@@ -12223,7 +12223,9 @@
         "recruitment": "Phải bật mô-đun Tuyển dụng. Quản trị viên nhân sự và Đối tác Tuyển dụng xem được vị trí, ứng viên và cài đặt của các công ty họ quản trị; quản lý tuyển dụng và người phỏng vấn chưa có quyền truy cập.",
         "myReferrals": "Chỉ những người có quan hệ lao động đang hiệu lực tại công ty dùng Tuyển dụng. Họ chỉ thấy các vị trí HR đưa lên cổng giới thiệu và các lượt giới thiệu của chính mình; việc giới thiệu không mang lại quyền Tuyển dụng nào khác.",
         "attendanceRequestOnBehalf": "Chỉ liệt kê nhân viên trong các công ty bạn quản trị với vai trò HR, hoặc người dưới bạn trong tuyến báo cáo của chính bạn, khi bạn có quyền attendance.request_on_behalf. Yêu cầu theo quy trình của chính nhân viên đó.",
-        "attendanceApproveOnBehalf": "Chỉ liệt kê người phê duyệt trong các công ty bạn quản trị với vai trò HR, hoặc người dưới bạn trong tuyến báo cáo của chính bạn, khi bạn có quyền attendance.approve_on_behalf. Quyết định được ghi nhận là thay mặt người phê duyệt được chỉ định."
+        "attendanceApproveOnBehalf": "Chỉ liệt kê người phê duyệt trong các công ty bạn quản trị với vai trò HR, hoặc người dưới bạn trong tuyến báo cáo của chính bạn, khi bạn có quyền attendance.approve_on_behalf. Quyết định được ghi nhận là thay mặt người phê duyệt được chỉ định.",
+        "rewardsAdmin": "Phải bật Rewards. Quyền thiết lập hiện hành và phạm vi công ty quyết định quyền truy cập Kế hoạch đánh giá và Kế hoạch trước đây. Người đánh giá toàn tập đoàn và quản trị viên nhân sự theo phạm vi có thể có quyền đọc, sửa khác nhau; riêng vai trò nền tảng không cấp các quyền này.",
+        "rewardsHistoryUpload": "Phải bật Rewards. Tải lịch sử thưởng trước đây lên cần vai trò Group Rewards có hiệu lực cùng quyền thiết lập hiện hành cho toàn tập đoàn và công ty đã chọn. Riêng tư cách quản trị viên nhân sự không cấp quyền tải lên."
       },
       "scopedTo": "Phạm vi đến {company} và các công ty con của nó",
       "screen": {

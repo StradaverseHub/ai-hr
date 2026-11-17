@@ -63,11 +63,11 @@ export const MATRIX_ROLES: readonly Role[] = [
 ] as const;
 
 /** The page guard each screen is gated by — the single source of the access truth for that screen. */
-export type Guard = 'requireSecurityCenter' | 'requireGroupAdministration' | 'assistantSession' | 'requireWorkforceAccess' | 'requireAccessConfiguration' | 'requireAdmin' | 'scopedAdmin' | 'scopedSession' | 'requireTeamAccess' | 'onboardingAccess' | 'onboardingParticipant' | 'onboardingMaster';
+export type Guard = 'rewardReviewPlans' | 'requireSecurityCenter' | 'requireGroupAdministration' | 'assistantSession' | 'requireWorkforceAccess' | 'requireAccessConfiguration' | 'requireAdmin' | 'scopedAdmin' | 'scopedSession' | 'requireTeamAccess' | 'onboardingAccess' | 'onboardingParticipant' | 'onboardingMaster';
 
 /** Role eligibility. The effective-capability gate is rendered as conditional, never a role grant. */
 export function rolesForGuard(guard: Guard): ReadonlySet<Role> {
-  if(guard==='requireSecurityCenter'||guard==='assistantSession'||guard==='requireAccessConfiguration'||guard==='requireWorkforceAccess')return new Set<Role>(MATRIX_ROLES);
+  if(guard==='rewardReviewPlans'||guard==='requireSecurityCenter'||guard==='assistantSession'||guard==='requireAccessConfiguration'||guard==='requireWorkforceAccess')return new Set<Role>(MATRIX_ROLES);
   if (guard === 'requireTeamAccess') return new Set<Role>(['manager', 'hr_admin', 'super_admin']);
   // requireAdmin & scopedAdmin both gate on isAdmin → hr_admin + super_admin only.
   if (guard === 'requireGroupAdministration' || guard === 'requireAdmin' || guard === 'scopedAdmin' || guard === 'onboardingMaster') {
@@ -176,7 +176,9 @@ export const SCREENS: readonly ScreenEntry[] = [
     '/rewards/[unitId]/advisor/fairness','/rewards/[unitId]/uploaded','/rewards/analytics','/rewards/promotions','/rewards/rules','/rewards/offcycle/new','/rewards/offcycle/settings',
   ]},
   { screenKey: 'rewardsApprovals', href: '/rewards/approvals', labelKey: 'rewards.board.title', guard: 'scopedSession', routes: ['/rewards/approvals'] },
-  { screenKey: 'rewardsAdmin', href: '/admin/rewards', labelKey: 'rewards.adminTitle', guard: 'scopedAdmin', routes: ['/admin/rewards','/admin/rewards/review-plans'] },
+  // Role eligibility is conditional: the native plan owner derives current setup and company authority.
+  { screenKey: 'rewardsAdmin', href: '/admin/rewards', labelKey: 'rewards.adminTitle', guard: 'rewardReviewPlans', conditionalAccess:true, hasScopeNote:true, routes: ['/admin/rewards','/admin/rewards/review-plans','/admin/rewards/earlier-plans'] },
+  { screenKey: 'rewardsHistoryUpload', href: '/rewards/history-upload', labelKey: 'nav.rewardsHistoryUpload', guard: 'scopedSession', conditionalAccess:true, hasScopeNote:true, routes: ['/rewards/history-upload'] },
   { screenKey: 'rewardsPolicy', href: '/admin/rewards/[unitId]', labelKey: 'rewards.configuration', guard: 'scopedSession', routes: ['/admin/rewards/[unitId]'] },
   // ADR-0080 D10 / ADR-0049 — Recruitment. Every page calls requireModule('recruitment') + scopedSession and then admits
   // recruitment administrators (canAdminRecruitment: HR administrators and the company-scoped Recruiting Partner) for

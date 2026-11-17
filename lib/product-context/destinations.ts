@@ -164,6 +164,7 @@ export const NATIVE_SCOPE_ONLY_PAGES:ReadonlySet<string>=new Set([
  '/admin/attendance/settings/offline-clocking',
  '/payroll/statutory-forms/filing-history',
  '/admin/rewards/access/view-as',
+ '/admin/rewards/earlier-plans',
  '/admin/rewards/bonus-matrices',
  '/admin/rewards/change-log',
  '/admin/rewards/limit-controls',
@@ -174,6 +175,8 @@ export const NATIVE_SCOPE_ONLY_PAGES:ReadonlySet<string>=new Set([
  '/admin/rewards/setup-access',
  '/admin/rewards/uploaded',
  '/rewards/analytics',
+ // Earlier history uploads require effective Group Rewards plus group/company setup authority.
+ '/rewards/history-upload',
  // b945f0cc: seat-scoped off-cycle flows stay in native navigation.
  '/rewards/offcycle/new',
  '/rewards/offcycle/settings',
@@ -259,7 +262,7 @@ export const LINKABLE_PAGES:readonly PageRow[]=Object.freeze(([
  ['/admin/personnel/duplicates','admin',null],['/admin/personnel/import','admin',null],['/admin/personnel/import/history','admin',null],
  ['/admin/personnel/new','admin',null],['/admin/personnel/profile-changes','admin',null],['/admin/personnel/settings','admin',null],
  ['/admin/privacy','admin',null],['/admin/privacy/case-handlers','admin',null],['/admin/rewards/access','admin','rewards'],
- ['/admin/rewards/review-plans','admin','rewards'],['/admin/scheduled-actions','admin',null],['/admin/security-center','admin',null],['/admin/security-center/password-policy','admin',null],
+ ['/admin/scheduled-actions','admin',null],['/admin/security-center','admin',null],['/admin/security-center/password-policy','admin',null],
  ['/admin/settings','admin',null],['/admin/settings/dashboard','admin',null],['/admin/settings/email','admin',null],
  ['/admin/settings/email-templates','admin',null],['/admin/settings/employee-id','admin',null],['/admin/settings/entra','admin',null],['/admin/settings/hiring-defaults','admin',null],
  ['/admin/settings/login','admin',null],['/admin/settings/movement','admin',null],['/admin/settings/movement/reasons','admin',null],

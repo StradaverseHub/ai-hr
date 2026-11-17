@@ -12223,7 +12223,9 @@
         "recruitment": "Pengambilan mesti diaktifkan. Pentadbir HR dan Rakan Pengambilan melihat jawatan, calon dan tetapan bagi syarikat yang mereka tadbir; pengurus pengambilan dan penemu duga belum mempunyai akses.",
         "myReferrals": "Hanya orang yang mempunyai pekerjaan aktif dalam syarikat yang menggunakan Pengambilan. Mereka melihat jawatan yang diletakkan HR di portal rujukan dan rujukan mereka sendiri sahaja; merujuk tidak memberi akses Pengambilan yang lain.",
         "attendanceRequestOnBehalf": "Hanya menyenaraikan pekerja dalam syarikat yang anda tadbir sebagai HR, atau orang di bawah anda dalam talian pelaporan anda sendiri, jika anda memegang attendance.request_on_behalf. Permohonan mengikut aliran kerja pekerja itu sendiri.",
-        "attendanceApproveOnBehalf": "Hanya menyenaraikan pelulus dalam syarikat yang anda tadbir sebagai HR, atau orang di bawah anda dalam talian pelaporan anda sendiri, jika anda memegang attendance.approve_on_behalf. Keputusan direkodkan bagi pihak pelulus yang ditetapkan."
+        "attendanceApproveOnBehalf": "Hanya menyenaraikan pelulus dalam syarikat yang anda tadbir sebagai HR, atau orang di bawah anda dalam talian pelaporan anda sendiri, jika anda memegang attendance.approve_on_behalf. Keputusan direkodkan bagi pihak pelulus yang ditetapkan.",
+        "rewardsAdmin": "Rewards mesti didayakan. Kebenaran persediaan semasa dan skop syarikat menentukan akses kepada Pelan Semakan dan Pelan Terdahulu. Penyemak seluruh kumpulan dan pentadbir HR berskop boleh mempunyai hak baca dan sunting yang berbeza; peranan platform sahaja tidak memberikan hak tersebut.",
+        "rewardsHistoryUpload": "Rewards mesti didayakan. Muat naik sejarah ganjaran terdahulu memerlukan peranan Group Rewards yang berkuat kuasa serta kuasa persediaan semasa bagi seluruh kumpulan dan syarikat yang dipilih. Status pentadbir HR sahaja tidak memberikan akses muat naik."
       },
       "scopedTo": "Diskopkan kepada {company} dan anak syarikatnya",
       "screen": {

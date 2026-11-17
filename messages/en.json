@@ -12223,7 +12223,9 @@
         "recruitment": "Recruitment must be enabled. HR administrators and Recruiting Partners see the jobs, candidates and settings of the companies they administer; hiring managers and interviewers do not have access yet.",
         "myReferrals": "Only people with an active employment in a company that uses Recruitment. They see the jobs HR put on the referral portal and their own referrals only; referring gives no other Recruitment access.",
         "attendanceRequestOnBehalf": "Lists only employees in companies you administer as HR, or people beneath you in your own reporting line, when you hold attendance.request_on_behalf. The request follows the employee's own workflow.",
-        "attendanceApproveOnBehalf": "Lists only approvers in companies you administer as HR, or people beneath you in your own reporting line, when you hold attendance.approve_on_behalf. Decisions are recorded as on behalf of the designated approver."
+        "attendanceApproveOnBehalf": "Lists only approvers in companies you administer as HR, or people beneath you in your own reporting line, when you hold attendance.approve_on_behalf. Decisions are recorded as on behalf of the designated approver.",
+        "rewardsAdmin": "Rewards must be enabled. Current Rewards setup permissions and company scope determine access to Review Plans and Earlier Plans. Whole-group reviewers and scoped HR administrators can have different read and edit rights; a platform role alone grants neither.",
+        "rewardsHistoryUpload": "Rewards must be enabled. Uploading earlier reward history requires an effective Group Rewards role and current group-wide and selected-company setup authority. HR administrator status alone does not grant upload access."
       },
       "scopedTo": "Scoped to {company} and its sub-companies",
       "screen": {
