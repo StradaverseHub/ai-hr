@@ -49,7 +49,7 @@ with zipfile.ZipFile(archive) as z:
         receipt=json.loads(z.read('analytics-carry-searched-native-50k.json'))
         if 'test/analytics-carry-searched-native-scale.test.ts' not in groups['DB'] or receipt.get('kind')!='SEARCHED_CARRY_50000_NATIVE_COMPONENT':
             raise ValueError('Carry diagnostic is not declared by selected source')
-        if report.get('exitCode')==0 and (receipt.get('status')!='COMPLETE' or receipt.get('settlement')!='CONFIRMED' or receipt.get('observedBackends')!=4):
+        if report.get('exitCode')==0 and (receipt.get('status')!='COMPLETE' or receipt.get('settlement')!='CONFIRMED' or type(receipt.get('observedBackends')) is not int or not 1<=receipt['observedBackends']<=4):
             raise ValueError('Successful Carry result requires complete settled native diagnostic')
     present=set(prerequisites).intersection(names)
     if present and (not database or present!=set(prerequisites)):

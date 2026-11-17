@@ -20,6 +20,14 @@ class ExactExtraction(unittest.TestCase):
     def test_carry_receipt_declared_by_selected_source(self):
         receipt={'kind':'SEARCHED_CARRY_50000_NATIVE_COMPONENT','status':'COMPLETE','settlement':'CONFIRMED','observedBackends':4}
         self.assertEqual(self.invoke(True,files=['test/analytics-carry-searched-native-scale.test.ts'],extra=[('analytics-carry-searched-native-50k.json',json.dumps(receipt))]),(0,['db.vitest.json','focused.json']))
+    def test_sequential_carry_transactions_may_reuse_one_backend(self):
+        receipt={'kind':'SEARCHED_CARRY_50000_NATIVE_COMPONENT','status':'COMPLETE','settlement':'CONFIRMED','observedBackends':1}
+        self.assertEqual(self.invoke(True,files=['test/analytics-carry-searched-native-scale.test.ts'],extra=[('analytics-carry-searched-native-50k.json',json.dumps(receipt))]),(0,['db.vitest.json','focused.json']))
+    def test_carry_backend_count_must_be_one_to_four_unique_connections(self):
+        for count in [0,5,-1,True,1.5,'1',None]:
+            with self.subTest(count=count):
+                receipt={'kind':'SEARCHED_CARRY_50000_NATIVE_COMPONENT','status':'COMPLETE','settlement':'CONFIRMED','observedBackends':count}
+                self.assertNotEqual(self.invoke(True,files=['test/analytics-carry-searched-native-scale.test.ts'],extra=[('analytics-carry-searched-native-50k.json',json.dumps(receipt))])[0],0)
     def test_missing_carry_receipt_refused(self):self.assertNotEqual(self.invoke(True,files=['test/analytics-carry-searched-native-scale.test.ts'])[0],0)
     def test_undeclared_carry_refused(self):self.assertNotEqual(self.invoke(True,extra=[('analytics-carry-searched-native-50k.json','{}')])[0],0)
     def test_unsettled_carry_refused(self):
