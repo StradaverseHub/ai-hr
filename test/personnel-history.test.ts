@@ -47,3 +47,29 @@ describe('personnel display chronology and correction ownership',()=>{
   expect(movementPageHref('employee','history',undefined,{showCorrected:'1',from:'org'})).toBe('/admin/personnel/employee/movement/history?showCorrected=1&from=org');
  });
 });
+
+
+describe('original-hire correction lineage',()=>{
+ it.each(['hiredOn','joinDate','gradeId','employmentType','contractEndDate','internshipEndDate'] as const)('keeps %s attached to Hired despite its own secondary writer',field=>{
+  const rows=[{...row('hire',1,'hired'),effectiveDate:'2020-01-01'},{...row('later',3),effectiveDate:'2026-01-01'}];
+  const writer=field==='gradeId'?'employment.grade.changed':field==='employmentType'?'employment.assignment.changed':'employment.info.updated';
+  const events=[event('hire',1,'employment.hired',{}),event('secondary',5,writer,{fields:[field],before:{[field]:'old'},after:{[field]:'corrected'},movement:{groupId:'private-correction',secondary:true}}),event('correction',6,'employment.information.corrected',{source:'original-hire',hiredEventId:'hire',dated:true,effectiveOn:'2020-02-01',fields:[field],after:{[field]:'corrected'},until:{}})];
+  const result=personnelInformationCorrections(events,rows);
+  expect(result.get('hire')).toEqual([{eventId:'correction',fields:[field],values:{[field]:'corrected'},needsReview:false}]);
+  expect(result.get('later')?.[0].values[field]).toBe('corrected');
+ });
+ it('retains a later deliberate grade and its Before value at the date boundary',()=>{
+  const rows=[{...row('hire',1,'hired'),effectiveDate:'2020-01-01'},{...row('promotion',8,'promotion','promotion'),effectiveDate:'2026-03-01'},{...row('promotion:before',7.5),effectiveDate:'2026-03-01'}];
+  const events=[event('hire',1,'employment.hired',{}),event('correction',5,'employment.information.corrected',{source:'original-hire',hiredEventId:'hire',dated:true,effectiveOn:'2020-01-01',fields:['gradeId'],after:{gradeId:'corrected'},until:{}}),event('later-grade',9,'employment.grade.changed',{before:'corrected',after:'later',movement:{groupId:'promotion'}})];
+  const result=personnelInformationCorrections(events,rows);
+  expect(result.get('hire')?.[0].values.gradeId).toBe('corrected');
+  expect(result.has('promotion')).toBe(false);
+ });
+ it('respects each saved boundary and preserves explicit clears on repeat corrections',()=>{
+  const rows=[{...row('hire',1,'hired'),effectiveDate:'2020-01-01'},{...row('later',3),effectiveDate:'2026-03-01'}];
+  const events=[event('hire',1,'employment.hired',{}),event('first',5,'employment.information.corrected',{source:'original-hire',dated:true,effectiveOn:'2020-01-01',fields:['gradeId','employmentType'],after:{gradeId:'first',employmentType:'contract'},until:{employmentType:'2026-03-01'}}),event('second',6,'employment.information.corrected',{source:'original-hire',dated:true,effectiveOn:'2020-01-01',fields:['gradeId'],after:{gradeId:null},until:{gradeId:'2026-03-01'}})];
+  const result=personnelInformationCorrections(events,rows);
+  expect(result.get('hire')?.at(-1)?.values.gradeId).toBeNull();
+  expect(result.get('later')).toEqual([{eventId:'first',fields:['gradeId'],values:{gradeId:'first'},needsReview:false}]);
+ });
+});

@@ -1632,7 +1632,7 @@ async function personnelCorrectionViewTx(tx:Tx,events:RawEvent[],rows:ProjectedR
  return {corrections,apply:(id:string,snapshot:MovementSnapshot)=>{
   const after={...snapshot};
   for(const item of corrections.get(id)??[]){if(item.needsReview)continue;
-   if('companyId'in item.values)after.company=item.values.companyId?companyLabels.get(item.values.companyId)??null:null;
+   if('companyId'in item.values&&!hasDatedCompanyHistory(events))after.company=item.values.companyId?companyLabels.get(item.values.companyId)??null:null;
    if('gradeId'in item.values)after.grade=item.values.gradeId?gradeLabels.get(item.values.gradeId)??null:null;
    if('employmentType'in item.values)after.employmentType=item.values.employmentType??null;
    if('hiredOn'in item.values)after.groupJoinDate=item.values.hiredOn??null;
