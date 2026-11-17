@@ -6,7 +6,8 @@ import {resignationJourneyFixture} from './helpers/resignation-journey-fixture';
 import {commandResignationJourney} from '../packs/lifecycle/service';
 import {v9CaseDetail,v9Command} from '../packs/lifecycle/v9/service';
 import {raiseResignationClearancePostingTx} from '../core/resignation-clearance';
-import {approvePersonnelPosting,createPersonnelPostingTx,listPersonnelPostings,personnelPosting} from '../core/personnel-posting';
+import {approvePersonnelPosting,listPersonnelPostings,personnelPosting} from '../core/personnel-posting';
+import type {PersonnelPostingValues} from '../lib/personnel-posting';
 import {defaultSettlementPolicy} from '../lib/lifecycle-v9-calculator';
 beforeAll(migrateTestDb);beforeEach(resetDb);afterEach(()=>vi.unstubAllEnvs());afterAll(closeAll);
 
@@ -32,8 +33,11 @@ it.each(['Retirement','Contract end'] as const)('carries configured %s from the 
  const repeated=await withTenant(f.admin,tx=>raiseResignationClearancePostingTx(tx,f.admin,{caseId,employmentId:f.employee.employmentId,lastWorkingDay:f.lastWorkingDay,exitReason:'Termination'}));
  expect(repeated?.id).toBe(posting!.id); // The caller cannot choose a reason, even on an idempotent replay.
  const forged={...posting!.current,exitReason:'Resignation'};
- await expect(withTenant(f.admin,tx=>createPersonnelPostingTx(tx,{source:'offboarding',sourceRef:accepted.id,employmentId:f.employee.employmentId,eventType:'termination',proposed:forged,approverGroupId:f.groupId,idempotencyKey:'spoofed-clearance-reason'}))).rejects.toThrow(/completed Offboarding case exit reason/);
- await expect(approvePersonnelPosting(f.admin,{id:posting!.id,revision:posting!.revision,values:forged})).rejects.toThrow(/completed Offboarding case exit reason/);
+ const nativeCreate=(proposed:PersonnelPostingValues,key:string)=>withTenant(f.admin,tx=>tx.execute(sql`select app.personnel_posting_create('offboarding',${accepted.id}::uuid,${f.employee.employmentId}::uuid,'termination',${JSON.stringify(proposed)}::jsonb,${f.groupId},${key})`));
+ await expect(nativeCreate(posting!.current,'spoofed-clearance-key')).rejects.toMatchObject({cause:{code:'22023',message:'Termination posting requires the canonical clearance idempotency key'}});
+ await expect(nativeCreate(forged,'clearance:'+caseId)).rejects.toMatchObject({cause:{code:'22023',message:'Posting retry changed its frozen source values'}});
+ expect((await listPersonnelPostings(f.admin,{source:'offboarding',status:'all'})).rows.map(row=>row.id)).toEqual([posting!.id]);
+ await expect(withTenant(f.admin,tx=>tx.execute(sql`select app.personnel_posting_approve(${posting!.id}::uuid,${posting!.revision},${JSON.stringify(forged)}::jsonb)`))).rejects.toMatchObject({cause:{code:'22023',message:'Termination must use the completed Offboarding case exit reason and source facts'}});
  expect(await personnelPosting(f.admin,posting!.id)).toMatchObject({status:'pending',revision:posting!.revision,applied:null,movementId:null});
  await approvePersonnelPosting(f.admin,{id:posting!.id,revision:posting!.revision});
  expect(await personnelPosting(f.admin,posting!.id)).toMatchObject({status:'approved',applied:{exitReason},movementId:expect.any(String)});
