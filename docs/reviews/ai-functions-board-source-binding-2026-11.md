@@ -959,3 +959,7 @@ normalizing to current main’s active fingerprint also exactly reproduces its r
 records, the retired Attendance approval and every original reviewer/date/evidence field stay unchanged.
 Agent manifest: `ec83ff9c6c4b9b75e7ec787d295b38248126f7ef16688d6ec924ea1918e65fbf` (496 files).
 Source binding supplies no test, installation, staging acceptance or production claim.
+
+### Staging verification repairs — 17 November 2026
+
+The owner’s explicit authorization “Approve staging-only rebinding and verification repairs” covers source `97468b917372073f33941becd2c006c9d38a27c8` and these Repairs: the Rewards native writer privilege fence, tenant-bound history retention, conditional native access metadata and route integration. The same 28 active approvals move from `e08bbae6177d6ff513325021214d1ab98adc7d399ecf32ef217f7572162fce4b` to `5e530422497a5e6fc08c7ab3fdc8a273dc80824d7de95a8d50cbda527b815cb1` (1708 source files). Reversing this substitution reproduces the prior registry exactly; normalizing to current main’s fingerprint reproduces its registry exactly. Reviewer, date, evidence and scope fields, both pending approvals and the retired Attendance record remain unchanged. No provider purpose, outbound field or production permission is added. Agent source: `9dc3404eff3b65cec49bf0b669b5b06e70b57922c89d71284eb68c90a012fcd4` (496 files). This records source binding only.
