@@ -24,7 +24,7 @@ import { OnboardingError, nativeCaseFormValues, effectiveFacts as nativeFacts } 
 import { changeV9Note, type CaseNoteCommand } from '../../../lib/lifecycle-v9-notes';
 import { v9Defaults } from '../../../lib/lifecycle-v9-defaults';
 import { parseV9Config, validateV9ConfigChange, v9Equal, v9RoleSchema, v9ConfigSchema } from '../../../lib/lifecycle-v9-validation';
-import { readSettlementTx, type SettlementView } from './settlement';
+import { readSettlementTx, settlementDateForSource,type SettlementEmploymentDateSource,type SettlementView } from './settlement';
 import { returnRows, plannedDue, offeredToCompany, existingGroup, type ReturnSources } from '../../../lib/lifecycle-v9-return-presets';
 import { bulkAssignmentProblem, RETURN_BULK_LABELS } from '../../../lib/lifecycle-bulk-assignment';
 import { readV9PersonnelTx, pushV9PersonnelTx, lockV9PersonnelWritesTx, v9PersonnelWritableKeys } from '../../../core/lifecycle-v9-personnel';
@@ -78,7 +78,7 @@ function openHolds(c: Pick<M.Case, 'runs' | 'state'>, config: M.Config | null): 
   })()] : []);
 }
 /** The Inbox projection of held emails, written in the same transaction as the case store. */
-async function syncEmailHoldsTx(tx: Tx, ctx: SessionContext, input: { caseId: string; companyId: string; before: Pick<M.Case, 'runs' | 'state'>; after: M.Case; config: M.Config | null }): Promise<void> {
+async function syncEmailHoldsTx(tx: Tx, ctx: SessionContext, input: { caseId: string; companyId: string; before: Pick<M.Case, 'runs' | 'state'>; after: M.Case; config: M.Config | null; preserveUnchangedState?:boolean }): Promise<void> {
   const key = (hold: HoldKey) => `${hold.runId}\u0000${hold.stepId}\u0000${hold.at}`;
   const before = openHolds(input.before, input.config), after = openHolds(input.after, input.config), kept = new Set(after.map(key));
   for (const hold of after) if (!before.some(previous => key(previous) === key(hold)))
@@ -86,7 +86,7 @@ async function syncEmailHoldsTx(tx: Tx, ctx: SessionContext, input: { caseId: st
   const released = before.filter(hold => !kept.has(key(hold)));
   for (const hold of released) await tx.execute(sql`update lc_v9_email_hold set released_at=now(),released_by=${ctx.userId ?? null}::uuid where tenant_id=${ctx.tenantId}::uuid and case_id=${input.caseId}::uuid and run_id=${hold.runId} and step_id=${hold.stepId} and held_at=${hold.at}::timestamptz and released_at is null`);
   // A cancelled, cleared or reopened case closes every hold it still has.
-  if (input.after.state !== 'submitted') await tx.execute(sql`update lc_v9_email_hold set released_at=now(),released_by=${ctx.userId ?? null}::uuid where tenant_id=${ctx.tenantId}::uuid and case_id=${input.caseId}::uuid and released_at is null`);
+  if (input.after.state !== 'submitted'&&(!input.preserveUnchangedState||input.after.state!==input.before.state)) await tx.execute(sql`update lc_v9_email_hold set released_at=now(),released_by=${ctx.userId ?? null}::uuid where tenant_id=${ctx.tenantId}::uuid and case_id=${input.caseId}::uuid and released_at is null`);
 }
 /** Personal email is shown only to viewers who may see that Personnel field in any company of the tenant. */
 async function personalEmailRevealTx(tx: Tx, ctx: SessionContext): Promise<boolean> {
@@ -135,20 +135,30 @@ async function load(tx: Tx, ctx: SessionContext, id: string): Promise<Row> {
 async function record(tx: Tx, ctx: SessionContext, id: string, employmentId: string, action: string): Promise<void> {
   await appendEvent(tx, { tenantId: ctx.tenantId, aggregateType: 'lifecycle-v9-case', aggregateId: id, eventType: `lifecycle-v9.${action}`, actor: actorOf(ctx), subjectEmploymentId: employmentId || null, payload: { caseId: id, action } });
 }
-async function store(tx: Tx, ctx: SessionContext, row: Row, next: M.Case, action: string, config: M.Config | null = null): Promise<void> {
+type ResignationDateCorrection={journeyId:string;oldLastDay:string;newLastDay:string};
+async function store(tx: Tx, ctx: SessionContext, row: Row, next: M.Case, action: string, config: M.Config | null = null,resignationDateCorrection?:ResignationDateCorrection): Promise<void> {
   if (row.native) {
     await onboardingV9StoreTx(ctx, tx, row.id, row.revision, nativeDocumentState(next), next.tasks.filter(task => task.status === 'done' && task.documentTemplate).map(task => task.id), action);
     await syncEmailHoldsTx(tx, ctx, { caseId: row.id, companyId: row.company_id, before: row.data, after: next, config });
     return;
   }
+  if(resignationDateCorrection){
+    next.revision=row.revision+1;
+    const{prepareResignationProofTx}=await import('../../../core/resignation-proof');
+    const args={mode:'offboardingDateCorrectionSave',journeyId:resignationDateCorrection.journeyId,revision:row.revision,oldLastDay:resignationDateCorrection.oldLastDay,newLastDay:resignationDateCorrection.newLastDay,data:JSON.parse(JSON.stringify(next))};
+    await prepareResignationProofTx(tx,ctx,{operation:'context',caseId:resignationDateCorrection.journeyId,args});
+    await tx.execute(sql`select app.resignation_offboarding_date_store(${resignationDateCorrection.journeyId}::uuid,${row.revision},${resignationDateCorrection.oldLastDay}::date,${resignationDateCorrection.newLastDay}::date,${JSON.stringify(next)}::jsonb)`);
+  }else{
   await tx.execute(sql`insert into lc_v9_case_revision(tenant_id,case_id,company_id,revision,data,actor_user_id) values(${ctx.tenantId}::uuid,${row.id}::uuid,${row.company_id}::uuid,${row.revision},${JSON.stringify(row.data)}::jsonb,${ctx.userId ?? null}::uuid)`);
   next.revision = row.revision + 1;
   const updated = await tx.execute<{ id: string }>(sql`update lc_v9_case set data=${JSON.stringify(next)}::jsonb,revision=${next.revision},updated_at=now() where id=${row.id}::uuid and tenant_id=${ctx.tenantId}::uuid and revision=${row.revision} returning id`);
   if (!updated.length) throw new M.V9Error('This case changed. Refresh it before trying again.', 'conflict');
+  }
   if (row.data.state !== 'cleared' && next.state === 'cleared' && next.finalFigures) await tx.execute(sql`insert into lc_v9_payroll_handover(id,tenant_id,company_id,case_id,employment_id,data) values(${next.finalFigures.payrollReference}::uuid,${ctx.tenantId}::uuid,${row.company_id}::uuid,${row.id}::uuid,${next.facts.employmentId}::uuid,${JSON.stringify(next.finalFigures)}::jsonb)`);
   if (row.data.state === 'cleared' && next.state !== 'cleared') await tx.execute(sql`update lc_v9_payroll_handover set status='withdrawn',updated_at=now() where case_id=${row.id}::uuid and tenant_id=${ctx.tenantId}::uuid and status in ('pending','reviewed')`);
   if(row.data.state!=='cleared'&&next.state==='cleared')await raiseResignationClearancePostingTx(tx,ctx,{caseId:row.id,employmentId:next.facts.employmentId,lastWorkingDay:next.facts.lastDay,exitReason:next.facts.caseType});
-  await syncEmailHoldsTx(tx, ctx, { caseId: row.id, companyId: row.company_id, before: row.data, after: next, config });
+  // The native correction forbids state/run changes, so no hold can open or close.
+  await syncEmailHoldsTx(tx, ctx, { caseId: row.id, companyId: row.company_id, before: row.data, after: next, config,preserveUnchangedState:!!resignationDateCorrection });
   await record(tx, ctx, row.id, next.facts.employmentId, action);
 }
 async function environment(tx: Tx, ctx: SessionContext, c: M.Case, config: M.Config): Promise<M.Environment> {
@@ -604,6 +614,22 @@ export async function v9CreateOffboardingTx(tx:Tx,ctx:SessionContext,input:{ emp
     await tx.execute(sql`insert into lc_v9_case(id,tenant_id,company_id,employment_id,module,number,data) values(${id}::uuid,${ctx.tenantId}::uuid,${employee.company_id}::uuid,${employee.id}::uuid,'off',${number},${JSON.stringify(c)}::jsonb)`);
     await record(tx, ctx, id, employee.id, 'created'); return id;
 }
+/** A correction follows its one canonical journey fact; the native owner binds every input and target row. */
+export async function v9SynchronizeResignationLastDayTx(tx:Tx,ctx:SessionContext,input:ResignationDateCorrection):Promise<void>{
+ await lockTx(tx,ctx);
+ const{prepareResignationProofTx}=await import('../../../core/resignation-proof');
+ await prepareResignationProofTx(tx,ctx,{operation:'context',caseId:input.journeyId,args:{mode:'offboardingDateCorrection',journeyId:input.journeyId,oldLastDay:input.oldLastDay,newLastDay:input.newLastDay}});
+ const[verified]=await tx.execute<{intent:{row?:Row;config?:M.Config;employmentDateSource?:SettlementEmploymentDateSource;blocked?:'closed'}}>(sql`select app.resignation_offboarding_date_intent(${input.journeyId}::uuid,${input.oldLastDay}::date,${input.newLastDay}::date) as intent`);
+ if(verified?.intent?.blocked==='closed')throw new M.V9Error('The linked clearance case is already completed or cancelled. Reopen it before correcting the last working day.','conflict');
+ if(!verified?.intent?.row||!verified.intent.config||!verified.intent.employmentDateSource)throw new M.V9Error('The linked resignation clearance case or its date sources are unavailable. Review its setup before correcting the last working day.','conflict');
+ const{row,config,employmentDateSource}=verified.intent,c=structuredClone(row.data);
+ // The existing settlement owner selects dates without reading salary or leave balances.
+ const effectiveLastDay=settlementDateForSource({...c,facts:{...c.facts,lastDay:input.newLastDay}},config,employmentDateSource);
+ const who=await actor(tx,ctx),env={now:new Date().toISOString(),actor:who,nextId:randomUUID};
+ M.synchronizeResignationLastDay(c,input.oldLastDay,input.newLastDay,effectiveLastDay,env);
+ await store(tx,ctx,row,c,'resignation.lastDayCorrected',config,input);
+}
+
 export type Command = CaseNoteCommand
   | { type: 'recipientsOverride'; workflowId: string; stepId: string; to?: M.Role[]; cc?: M.Role[]; clear?: true }
   | { type: 'pmPush'; id: string }
@@ -805,8 +831,7 @@ export async function v9Command(ctx: SessionContext, id: string, revision: numbe
       // d1e26f81 — default Return and revoke dates follow the effective last working day; fixed dates stay.
       const anchor = c.state === 'submitted' ? (await readSettlementTx(tx, ctx, c, config))?.lastDay : undefined;
       if (anchor && M.validDate(anchor) && anchor !== (c.returnAnchor ?? c.facts.lastDay)) {
-        c.returnAnchor = anchor; let moved = 0;
-        for (const item of c.items) if (M.returnOpen(item) && typeof item.dueDay === 'number') { const next = M.returnDue(anchor, item.dueDay); if (next !== item.dueOn) { item.dueOn = next; moved++; } }
+        c.returnAnchor = anchor; const moved=M.reanchorOpenReturnDates(c,anchor);
         M.appendLog(c, env, 'returns.datesMoved', `${moved} return and revoke dates now count from ${anchor}.`);
       }
     }

@@ -52,3 +52,6 @@ export async function prepareResignationEmailTx(tx:import('../../db/client').Tx,
  const {prepareResignationProofTx}=await import('../../core/resignation-proof');
  await prepareResignationProofTx(tx,ctx,{operation:'email',caseId:input.caseId,args:{key:input.key,to:[...input.to],cc:[...input.cc],subject:input.subject,body:input.body,content:input.content??null}});
 }
+
+/** One-purpose date synchronization; ordinary Offboarding authority is never granted to the letter owner. */
+export async function synchronizeResignationOffboardingLastDayTx(tx:import('../../db/client').Tx,ctx:import('../../db/client').SessionContext,input:{journeyId:string;oldLastDay:string;newLastDay:string}):Promise<void>{const{v9SynchronizeResignationLastDayTx}=await import('./v9/service');await v9SynchronizeResignationLastDayTx(tx,ctx,input);}

@@ -286,7 +286,7 @@ export function assign(config: Config, groupId: string | null, due: string, env:
     .sort((a, b) => a.load - b.load || (tieBreak === 'recent' ? env.lastAssigned(a.id, group.id) - env.lastAssigned(b.id, group.id) : 0) || members.indexOf(a.id) - members.indexOf(b.id));
   return ranked.length ? { userId: ranked[0].id, reason: null } : { userId: null, reason: `Everyone available in ${group.name} is at their limit of ${group.limit} open tasks.` };
 }
-export function appendLog(c: Case, env: Environment, action: string, detail: string, assignment?: { userId: string; groupId: string }): void {
+export function appendLog(c: Case, env: Pick<Environment,'actor'|'now'|'nextId'>, action: string, detail: string, assignment?: { userId: string; groupId: string }): void {
   c.log.push({ id: env.nextId(), at: env.now, actor: { ...env.actor }, action, detail, ...assignment });
 }
 export function submit(c: Case, config: Config, env: Environment): void {
@@ -318,6 +318,21 @@ export function isResolved(status: Task['status'] | Item['status']): boolean { r
 export function defaultReturnDay(kind: Item['kind']): number { return kind === 'device' ? -1 : 0; }
 /** Day 0 is the anchor (the effective last working day); -1 the day before. */
 export function returnDue(anchor: string, dueDay: number): string { return taskDate('off', anchor, dueDay); }
+
+/** Reuse the settlement-options date owner: only unresolved relative rows follow an effective anchor. */
+export function reanchorOpenReturnDates(c:Case,anchor:string):number{let moved=0;for(const item of c.items)if(returnOpen(item)&&typeof item.dueDay==='number'){const next=returnDue(anchor,item.dueDay);if(next!==item.dueOn){item.dueOn=next;moved++;}}return moved;}
+/** The purpose-bound service verifies the reverse source link and exact owner correction before this projection. */
+export function synchronizeResignationLastDay(c:Case,oldDay:string,newDay:string,effectiveDay:string,env:Pick<Environment,'actor'|'now'|'nextId'>):void{
+ if(c.module!=='off'||!(c as Case&{resignationSourceCaseId?:string}).resignationSourceCaseId||!['pending','submitted'].includes(c.state))throw new V9Error('Only an open linked resignation clearance case can follow this correction.','conflict');
+ if(c.facts.lastDay!==oldDay||!validDate(newDay)||!validDate(effectiveDay)||newDay<c.facts.noticeDate)throw new V9Error('The linked case date changed. Refresh before correcting it.','conflict');
+ if(oldDay===newDay)return;
+ const oldRevoke=c.revokeDate;c.facts.lastDay=newDay;
+ if((c.revokeMode??'lastday')==='lastday')c.revokeDate=newDay;
+ for(const task of c.tasks)if(!isResolved(task.status)){task.dueOn=taskDate('off',newDay,task.due);task.opensOn=task.opens===null?null:taskDate('off',newDay,task.opens);}
+ if(c.state==='submitted'){c.returnAnchor=effectiveDay;reanchorOpenReturnDates(c,effectiveDay);for(const item of c.items)if(returnOpen(item)&&item.method===undefined&&item.dueDay===undefined&&item.dueOn===oldRevoke)item.dueOn=c.revokeDate;}
+ c.review=null;c.finalFigures=null;
+ appendLog(c,env,'case.resignationLastDaySynchronized',`Agreed last working day corrected from ${oldDay} to ${newDay}. Open checklist dates and relative return dates now follow the corrected source.`);
+}
 export function returnOpen(item: Pick<Item, 'status'>): boolean { return !isResolved(item.status) && item.status !== 'notReturned'; }
 /** Round-robin assignment for one return item: the leaver is excluded and the reason is kept when nobody can take it. */
 export function assignReturnItem(c: Case, config: Config, item: Item, env: Environment, extra: Record<string, number>): void {
