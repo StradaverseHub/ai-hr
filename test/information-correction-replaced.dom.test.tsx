@@ -91,6 +91,7 @@ describe('correction audit payload compatibility',()=>{
  it('renders original-hire scalar fields with their existing translated labels',()=>{
   const history=[{id:'original-scalars',at:new Date('2026-11-17T02:00:00Z'),actorId:'actor',actorName:null,payload:{fields:['contractStartDate','extendedConfirmationDate','lastWorkingDate'],beforeLabels:{contractStartDate:null,extendedConfirmationDate:null,lastWorkingDate:null},afterLabels:{contractStartDate:'2026-01-01',extendedConfirmationDate:'2026-04-01',lastWorkingDate:null},reason:'Fictional original dates',method:'manual',effectiveOn:'2026-01-01'}}];
   render(<NextIntlClientProvider locale="en" messages={en}><InformationCorrectionAudit history={history as Parameters<typeof InformationCorrectionAudit>[0]['history']}/></NextIntlClientProvider>);
+  fireEvent.click(screen.getByText(en.people.informationCorrection.history));
   expect(screen.getByRole('rowheader',{name:'Contract Start Date'})).toBeInTheDocument();
   expect(screen.getByRole('rowheader',{name:'Extended confirmation date'})).toBeInTheDocument();
   expect(screen.getByRole('rowheader',{name:'Last Working Date'})).toBeInTheDocument();
