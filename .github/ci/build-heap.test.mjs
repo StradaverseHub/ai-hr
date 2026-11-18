@@ -4,8 +4,60 @@ import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import {fileURLToPath} from 'node:url';
 import {join} from 'node:path';
+import {parseProcessStat,parseProcessMemory,buildProcessKind,createBuildProcessObserver} from './build-process-memory.mjs';
 import {BUILD_HEAP_CEILING_MB,BUILD_HEAP_DEFAULT_MB,BUILD_HEAP_PROFILE,BUILD_HEAP_NODE_OPTIONS,BUILD_RSS_WARN_KIB,BUILD_RSS_FAIL_KIB,
  parseMemTotalKiB,parseMaxRssKiB,assertBuildHeapRunner,assertRequestedHeapMb,admitBuildHeap,assertBuildHeapEnvironment,admittedBuildNodeOptions,rssVerdict} from './build-heap.mjs';
+
+const processStat=(pid,parent,start,name='node')=>{const fields=Array(20).fill('0');fields[0]='S';fields[1]=String(parent);fields[19]=String(start);return `${pid} (${name}) ${fields.join(' ')}`;};
+function processFixture(){
+ const rows=new Map(),readCommands=[];let clock=0;
+ const add=(pid,parent,start,script='/source/node_modules/next/dist/bin/next')=>rows.set(pid,{parent,start,command:Buffer.from(`node\0${script}\0build\0SECRET_ARGUMENT\0`),memory:'VmRSS:\t100 kB\nVmHWM:\t150 kB\n'});
+ const io={pids:()=>[...rows.keys()],stat:pid=>{const r=rows.get(pid);assert(r,'gone');return processStat(pid,r.parent,r.start);},status:pid=>rows.get(pid).memory,cmdline:pid=>{readCommands.push(pid);return rows.get(pid).command;}};
+ return {rows,readCommands,add,io,now:()=>clock,tick:()=>{clock+=500;}};
+}
+test('process metadata parses stat names with parentheses and refuses malformed memory',()=>{
+ assert.deepEqual(parseProcessStat(processStat(200,100,321,'name ) ( with spaces')),{pid:200,parentPid:100,starttime:'321',state:'S'});
+ assert.deepEqual(parseProcessMemory('VmRSS:\t100 kB\nVmHWM:\t150 kB\n'),{rssKiB:100,hwmKiB:150});
+ for(const value of ['', 'VmRSS: 12 MB\nVmHWM: 20 kB', 'VmRSS: 12 kB'])assert.throws(()=>parseProcessMemory(value));
+ assert.throws(()=>parseProcessStat('200 invalid stat'));
+});
+test('classification emits only fixed labels, including the detached TypeScript CLI and deduper',()=>{
+ const command=script=>Buffer.from(`node\0${script}\0build\0SECRET\0`);
+ assert.equal(buildProcessKind(command('/source/node_modules/typescript/bin/tsc')),'tsc');
+ assert.equal(buildProcessKind(command('/source/node_modules/typescript/lib/tsc.js')),'tsc');
+ assert.equal(buildProcessKind(command('/source/node_modules/next/dist/bin/next')),'next');
+ assert.equal(buildProcessKind(command('scripts/dedupe-server-source-maps.mjs')),'dedupe');
+ assert.equal(buildProcessKind(command('/source/pnpm.cjs')),'pnpm');
+ assert.equal(buildProcessKind(command('/private/SECRET.mjs')),'other');
+ assert.throws(()=>buildProcessKind(Buffer.alloc(4097)));
+});
+test('observer proves ancestry before command reads and never exports argv or environment',()=>{
+ const f=processFixture();f.add(100,90,10);f.add(200,100,20);f.add(300,1,30,'/private/SECRET.mjs');
+ const observer=createBuildProcessObserver(100,{io:f.io,now:f.now,expectedParentPid:90});observer.sample();
+ assert.deepEqual(new Set(f.readCommands),new Set([100,200]));
+ const report=observer.report();assert.equal(report.processes.length,2);assert.equal(report.processes[0].peakObservedHwmKiB,150);
+ assert(!JSON.stringify(report).includes('SECRET'));assert.equal(report.attributionComplete,false);
+ assert.equal(rssVerdict(BUILD_RSS_FAIL_KIB+1),'fail');
+});
+test('retained child identity survives reparenting but a reused PID needs fresh ancestry',()=>{
+ const f=processFixture();f.add(100,90,10);f.add(200,100,20);
+ const observer=createBuildProcessObserver(100,{io:f.io,now:f.now,expectedParentPid:90});observer.sample();
+ f.tick();f.rows.get(200).parent=1;observer.sample();assert.equal(observer.report().processes.find(p=>p.pid===200).lastParentPid,1);
+ f.tick();f.add(200,1,99,'/private/SECRET.mjs');observer.sample();
+ assert.equal(f.readCommands.filter(pid=>pid===200).length,1);assert(observer.report().issues.pid_reused>0);
+ f.tick();f.add(200,100,100,'scripts/dedupe-server-source-maps.mjs');observer.sample();
+ assert.equal(observer.report().processes.filter(p=>p.pid===200).length,2);
+ assert.equal(observer.report().processes.find(p=>p.pid===200&&p.starttime==='100').kind,'dedupe');
+});
+test('observer records disappearing and unreadable processes and enforces finite rows and scans',()=>{
+ const f=processFixture();f.add(100,90,10);f.add(200,100,20);f.add(201,200,30);
+ const observer=createBuildProcessObserver(100,{io:f.io,now:f.now,expectedParentPid:90,rowLimit:2});observer.sample();
+ assert.equal(observer.report().processes.length,2);assert(observer.report().issues.lifetime_row_limit>0);
+ f.tick();f.rows.get(200).memory='malformed';observer.sample();assert(observer.report().issues.owned_memory_read_gap>0);
+ f.tick();f.rows.delete(200);observer.sample();assert(observer.report().processes.find(p=>p.pid===200).exitedSeenMs!==undefined);
+ const limited=createBuildProcessObserver(100,{io:f.io,now:f.now,expectedParentPid:90,scanLimit:1});limited.sample();assert(limited.report().issues.process_scan_limit>0);
+ const absent=createBuildProcessObserver(999,{io:f.io,now:f.now,expectedParentPid:90});absent.sample();assert(absent.report().issues.root_identity_unavailable>0);
+});
 import {readdirSync} from 'node:fs';
 const root=fileURLToPath(new URL('../../',import.meta.url));
 const hosted16='MemTotal:       16374980 kB\nMemFree:         1000000 kB\nMemAvailable:   15000000 kB\n';

@@ -14,6 +14,7 @@ import {spawn} from 'node:child_process';
 import {readFileSync,writeFileSync,mkdirSync,appendFileSync,existsSync} from 'node:fs';
 import {join,resolve} from 'node:path';
 import {fileURLToPath} from 'node:url';
+import {createBuildProcessObserver} from './build-process-memory.mjs';
 
 export const BUILD_HEAP_DEFAULT_MB=6144;
 export const BUILD_HEAP_CEILING_MB=8192; // Hard ceiling. Changing it needs owner review.
@@ -109,8 +110,16 @@ async function measure(dir,argv){
  sample();const timer=setInterval(sample,2000);
  const startedAt=new Date().toISOString();
  const child=spawn('/usr/bin/time',['-v','-o',timeFile,...argv],{stdio:'inherit',env:e});
- const exit=await new Promise((done,reject)=>{child.once('error',reject);child.once('exit',(code,signal)=>done({code,signal}));});
- clearInterval(timer);sample();
+ let observer,processTimer,exit;
+ try{
+  observer=createBuildProcessObserver(child.pid);observer.sample();
+  processTimer=setInterval(()=>{try{observer.sample();}catch{observer.noteFailure();}},500);
+  exit=await new Promise((done,reject)=>{child.once('error',reject);child.once('exit',(code,signal)=>done({code,signal}));});
+ }finally{
+  clearInterval(timer);clearInterval(processTimer);sample();
+  try{observer?.sample();writeFileSync(join(dir,'build-process-memory.json'),JSON.stringify(observer?.report()??{kind:'OBSERVED_BUILD_PROCESS_MEMORY_NOT_ACCEPTANCE',attributionComplete:false,error:'observer_unavailable'},null,2)+'\n',{flag:'wx',mode:0o600});}
+  catch{console.log('::warning::Optional build-process attribution unavailable; GNU time verdict remains authoritative');}
+ }
  const report={kind:'NEXT_BUILD_MEMORY_TELEMETRY_NOT_RELEASE',releaseAuthorized:false,source:e.AIHR_CI_HEAD??null,controller:e.AIHR_CI_CONTROL_HEAD??e.GITHUB_SHA??null,
   runId:e.GITHUB_RUN_ID??null,job:e.GITHUB_JOB??null,command:argv,nodeOptions:e.NODE_OPTIONS,heapProfile:e.AIHR_CI_BUILD_HEAP_PROFILE??'default-6144',
   memTotalKiB:parseMemTotalKiB(readFileSync('/proc/meminfo','utf8')),startedAt,endedAt:new Date().toISOString(),exitCode:exit.code,signal:exit.signal,
