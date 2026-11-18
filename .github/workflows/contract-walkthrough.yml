@@ -1,7 +1,7 @@
 name: contract-walkthrough
 run-name: Contract production renderer · ${{ inputs.candidate_ref || github.ref_name }}
 on:
-  # Reviewed finish batch: truthful Contract UI, exact preview metadata and bounded control/denial evidence.
+  # Reviewed renderer synchronization: await the saved read-only decline outcome before recording its capture.
   # Temporary, development-only bootstrap. Exact compared file paths are verified through the read-only API.
   # Existing bounded-profile coverage explicitly includes this Contract renderer admission.
   # Migrations, server and Chromium retain their normal heaps; ceilings and RSS budgets are unchanged.
