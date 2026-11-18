@@ -13,7 +13,7 @@ import {setStatutoryProfileMY} from '../localization/my/statutory';
 import {seedPayrollCycleCatalog} from '../core/payroll-cycle';
 import {createBatch,generatePayslips,batchDetail,resetProcessedBatch,deleteDraftBatch,closeBatch,myPayslipDetail} from '../core/payroll';
 import {previewPayrollHistoryUpload,confirmPayrollHistoryUpload,previewPayrollHistoryRevert,revertPayrollHistoryUpload} from '../core/payroll-history-revisions';
-import {nativePayrollPayslip,nativePayrollPayslipWrite,nativeHistoryBaselineSourcesTx,finalizeNativeHistoryBaselinesTx,type DetachedNativeHistoryBaseline} from '../core/payroll-history-native-baseline';
+import {nativePayrollPayslip,nativePayrollPayslipWrite,nativeHistoryBaselineSourcesTx,finalizeNativeHistoryBaselinesTx,nativeHistoryBaselineIds,nativeHistoryBaselineValueHash,type DetachedNativeHistoryBaseline} from '../core/payroll-history-native-baseline';
 import {requestPayrollHistoryConfirm,payrollHistoryJobHandler} from '../core/payroll-history-job';
 import {runBulkJobTick} from '../core/bulk-job-worker';
 import {PAYROLL_HISTORY_HEADERS} from '../lib/payroll-history-import-schema';
@@ -42,6 +42,22 @@ beforeEach(async()=>{
 });
 afterAll(closeAll);
 describe('detached history baseline and mutable native payroll owner',()=>{
+ it('binds one NULL-cycle native origin to one retained record across alternate cycles and regenerated payslip IDs',async()=>{
+  const [original]=await physical(),[run]=await owner.db.select().from(s.payrollBatch).where(eq(s.payrollBatch.id,batchId));expect(run.payrollCycleId).toBeNull();const edit=await correction();await edit.commit();
+  const [cycle]=await owner.db.insert(s.payrollCycle).values({tenantId:b.tenantId,companyId:b.companyId,name:'Fictional alternate history cycle',code:'ALTERNATE',runType:'adjustment'}).returning();
+  const [alternate]=await withTenant(ctx,tx=>tx.insert(s.payrollHistoryImportRecord).values({tenantId:b.tenantId,companyId:b.companyId,employmentId,period,cycleId:cycle.id}).returning());const [sourceAttempt]=await owner.db.select().from(s.payrollHistoryImportAttempt).where(eq(s.payrollHistoryImportAttempt.id,edit.preview.attemptId));
+  const captureAgain=async(sourceId:string)=>{
+   const [source]=await withTenant(ctx,tx=>nativeHistoryBaselineSourcesTx(tx,ctx,[sourceId]));expect(source).toBeTruthy();const attemptId=randomUUID(),descriptor:DetachedNativeHistoryBaseline={...source,...nativeHistoryBaselineIds(attemptId,batchId,sourceId),valueHash:nativeHistoryBaselineValueHash(source.values)};
+   const row={...edit.preview.plan.rows[0],recordId:alternate.id,cycleId:cycle.id,cycleName:cycle.name,expectedOrdinaryPayslipId:sourceId,detachedNativeBaseline:descriptor};
+   await withTenant(ctx,tx=>tx.insert(s.payrollHistoryImportAttempt).values({...sourceAttempt,id:attemptId,operationKey:randomUUID(),plan:{...sourceAttempt.plan,rows:[row]}}));
+   await expect(withTenant(ctx,tx=>tx.execute(sql`select app.payroll_history_capture_native(${attemptId}::uuid,${alternate.id}::uuid,${JSON.stringify(descriptor)}::jsonb,${cycle.name},${descriptor.valueHash})`))).rejects.toMatchObject({cause:{code:'40001',message:'This native payroll origin already has a retained baseline. Review the existing history record.'}});
+  };
+  await captureAgain(original.id);await resetProcessedBatch(ctx,{batchId,reason:'Regenerate the same native origin'});await generatePayslips(ctx,{batchId});const [regenerated]=await physical();expect(regenerated.id).not.toBe(original.id);await captureAgain(regenerated.id);
+  // The database identity, rather than an isolation-sensitive prior SELECT, also rejects an owner INSERT.
+  const [proof]=await owner.client<Record<string,unknown>[]>`select * from app.payroll_history_native_capture where source_batch_id=${batchId}::uuid`;
+  await expect(owner.client`insert into app.payroll_history_native_capture(snapshot_id,tenant_id,record_id,attempt_id,baseline_batch_id,source_batch_id,source_employment_id,source_payslip_id,source_version,source_hash,created_by) values(${randomUUID()}::uuid,${b.tenantId}::uuid,${alternate.id}::uuid,${proof.attempt_id as string}::uuid,${proof.baseline_batch_id as string}::uuid,${batchId}::uuid,${employmentId}::uuid,${regenerated.id}::uuid,${regenerated.version},${proof.source_hash as string},${ctx.userId!}::uuid)`).rejects.toMatchObject({code:'23505',constraint_name:'payroll_history_native_capture_origin'});
+  expect(await owner.client`select snapshot_id from app.payroll_history_native_capture where tenant_id=${b.tenantId}::uuid and source_batch_id=${batchId}::uuid and source_employment_id=${employmentId}::uuid`).toHaveLength(1);expect((await effective()).map(row=>row.grossPay)).toEqual(['6000.00']);
+ });
  it('restores generated recurring BIK and VOLA as native owned evidence and consumes it exactly once in the next month',async()=>{
   await setModule(b.tenantId,'typed_pay_components','active');ctx=await entitledCtx(b);await resetProcessedBatch(ctx,{batchId,reason:'Add fictional native recurring benefits'});
   const flags={kind:'non_payable' as const,isNonPayable:true,prorates:false,includedInPcb:true,includedInEpf:false,includedInSocsoEis:false,includedInHrdfBase:false,pcbRemunerationType:'normal' as const,pcbExemptionCode:'PCB_TAXABLE',epfBonus2012:false};

@@ -6,8 +6,9 @@ CREATE TABLE app.payroll_history_native_capture(
  snapshot_id uuid PRIMARY KEY REFERENCES public.payroll_history_import_snapshot(id) ON DELETE CASCADE DEFERRABLE INITIALLY DEFERRED,
  tenant_id uuid NOT NULL REFERENCES public.tenant(id),record_id uuid NOT NULL REFERENCES public.payroll_history_import_record(id),
  attempt_id uuid NOT NULL REFERENCES public.payroll_history_import_attempt(id),baseline_batch_id uuid NOT NULL REFERENCES public.payroll_batch(id) ON DELETE CASCADE,
- source_batch_id uuid NOT NULL,source_payslip_id uuid NOT NULL,source_version integer NOT NULL CHECK(source_version>0),source_hash text NOT NULL CHECK(source_hash ~ '^[0-9a-f]{64}$'),
- created_by uuid NOT NULL REFERENCES public.app_user(id),created_at timestamptz NOT NULL DEFAULT now(),UNIQUE(record_id)
+ source_batch_id uuid NOT NULL,source_employment_id uuid NOT NULL,source_payslip_id uuid NOT NULL,source_version integer NOT NULL CHECK(source_version>0),source_hash text NOT NULL CHECK(source_hash ~ '^[0-9a-f]{64}$'),
+ created_by uuid NOT NULL REFERENCES public.app_user(id),created_at timestamptz NOT NULL DEFAULT now(),UNIQUE(record_id),
+ CONSTRAINT payroll_history_native_capture_origin UNIQUE(tenant_id,source_batch_id,source_employment_id)
 );
 CREATE INDEX payroll_history_native_capture_source ON app.payroll_history_native_capture(tenant_id,source_batch_id,record_id);
 ALTER TABLE app.payroll_history_native_capture ENABLE ROW LEVEL SECURITY;

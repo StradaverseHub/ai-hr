@@ -3,7 +3,7 @@ CREATE FUNCTION app.payroll_history_native_proof(c app.payroll_history_native_ca
 $$;
 CREATE FUNCTION app.payroll_history_native_snapshot_bound(s public.payroll_history_import_snapshot) RETURNS boolean LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
  SELECT EXISTS(SELECT 1 FROM app.payroll_history_native_capture c JOIN public.payslip p ON p.id=c.snapshot_id AND p.tenant_id=c.tenant_id JOIN public.payroll_batch b ON b.id=p.batch_id AND b.tenant_id=p.tenant_id JOIN public.payroll_history_import_record r ON r.id=c.record_id AND r.tenant_id=c.tenant_id
- WHERE c.snapshot_id=s.id AND c.record_id=s.record_id AND c.tenant_id=s.tenant_id AND c.baseline_batch_id=b.id AND b.history_import_attempt_id=c.attempt_id AND p.employment_id=r.employment_id AND b.company_id=r.company_id AND b.pay_period=r.period AND s.values=app.payroll_history_native_values(p))
+ WHERE c.snapshot_id=s.id AND c.record_id=s.record_id AND c.tenant_id=s.tenant_id AND c.baseline_batch_id=b.id AND b.history_import_attempt_id=c.attempt_id AND p.employment_id=r.employment_id AND c.source_employment_id=r.employment_id AND b.company_id=r.company_id AND b.pay_period=r.period AND s.values=app.payroll_history_native_values(p))
 $$;
 CREATE FUNCTION app.payroll_history_native_revision_bound(r public.payroll_history_import_revision) RETURNS boolean LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
  SELECT EXISTS(SELECT 1 FROM app.payroll_history_native_capture c JOIN public.payroll_history_import_snapshot s ON s.id=c.snapshot_id AND s.record_id=c.record_id AND s.tenant_id=c.tenant_id WHERE r.kind='adopted' AND r.ordinal=1 AND r.previous_revision_id IS NULL AND r.maintenance IS NULL AND c.snapshot_id=r.snapshot_id AND c.record_id=r.record_id AND c.tenant_id=r.tenant_id AND c.attempt_id=r.attempt_id AND r.native_source=app.payroll_history_native_proof(c) AND app.payroll_history_native_snapshot_bound(s))
@@ -51,13 +51,16 @@ BEGIN
   IF c.record_id<>r.id OR c.attempt_id<>a.id OR c.source_hash<>input->>'sourceHash' OR NOT EXISTS(SELECT 1 FROM public.payroll_history_import_snapshot s WHERE s.id=slip_id AND s.value_hash=p_value_hash AND s.values=input->'values') THEN RAISE EXCEPTION 'Native baseline replay differs';END IF;
   RETURN jsonb_build_object('snapshotId',slip_id,'nativeSource',app.payroll_history_native_proof(c));
  END IF;
+ -- One native run/employment owns one detached baseline across cycles and regenerated payslip IDs.
+ -- The unique origin constraint remains the concurrent/snapshot-isolation backstop.
+ IF EXISTS(SELECT 1 FROM app.payroll_history_native_capture prior WHERE prior.tenant_id=r.tenant_id AND prior.source_batch_id=b.id AND prior.source_employment_id=p.employment_id) THEN RAISE EXCEPTION 'This native payroll origin already has a retained baseline. Review the existing history record.' USING ERRCODE='40001';END IF;
  SELECT * INTO copy_batch FROM public.payroll_batch WHERE id=batch_id;
  IF copy_batch.id IS NULL THEN
   INSERT INTO public.payroll_batch(id,tenant_id,company_id,pay_period_id,pay_period,run_type,run_seq,status,batch_date,payroll_cycle_id,remarks,history_import_attempt_id,history_import_cycle_name)
   VALUES(batch_id,r.tenant_id,r.company_id,NULL,r.period,'adjustment',0,'draft',b.batch_date,b.payroll_cycle_id,'Retained native baseline',a.id,p_cycle_name);
  ELSIF copy_batch.tenant_id<>r.tenant_id OR copy_batch.company_id<>r.company_id OR copy_batch.pay_period<>r.period OR copy_batch.history_import_attempt_id IS DISTINCT FROM a.id OR copy_batch.status<>'draft' OR NOT EXISTS(SELECT 1 FROM app.payroll_history_native_capture old WHERE old.baseline_batch_id=batch_id AND old.source_batch_id=b.id AND old.attempt_id=a.id) THEN RAISE EXCEPTION 'Native baseline batch changed';END IF;
- INSERT INTO app.payroll_history_native_capture(snapshot_id,tenant_id,record_id,attempt_id,baseline_batch_id,source_batch_id,source_payslip_id,source_version,source_hash,created_by)
- VALUES(slip_id,r.tenant_id,r.id,a.id,batch_id,b.id,p.id,p.version,input->>'sourceHash',app.current_user_id()) RETURNING * INTO c;
+ INSERT INTO app.payroll_history_native_capture(snapshot_id,tenant_id,record_id,attempt_id,baseline_batch_id,source_batch_id,source_employment_id,source_payslip_id,source_version,source_hash,created_by)
+ VALUES(slip_id,r.tenant_id,r.id,a.id,batch_id,b.id,p.employment_id,p.id,p.version,input->>'sourceHash',app.current_user_id()) RETURNING * INTO c;
  INSERT INTO public.payslip(id,tenant_id,batch_id,employment_id,basic_salary,allowance,overtime_pay,bonus,days_worked,coverage_from,coverage_to,gross_pay,statutory,other_deductions,total_deductions,net_pay,employer_cost,version,created_at)
  VALUES(slip_id,r.tenant_id,batch_id,p.employment_id,p.basic_salary,p.allowance,p.overtime_pay,p.bonus,p.days_worked,p.coverage_from,p.coverage_to,p.gross_pay,p.statutory,p.other_deductions,p.total_deductions,p.net_pay,p.employer_cost,p.version,p.created_at);
  INSERT INTO public.payroll_history_import_snapshot(id,tenant_id,record_id,value_hash,"values") VALUES(slip_id,r.tenant_id,r.id,p_value_hash,input->'values');
