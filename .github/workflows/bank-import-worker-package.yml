@@ -4,6 +4,11 @@ on:
   push:
     branches: ['codex/combined-expanded-*']
   workflow_dispatch:
+    inputs:
+      recover_921_controls:
+        description: 'Recover the two reviewed 921 fixture errors; authenticate retained controls first'
+        type: boolean
+        default: false
 permissions:
   contents: read
   actions: read
@@ -31,7 +36,135 @@ jobs:
           node: '22.23.3'
           path: .
           mobile: 'false'
+      - name: Authenticate bounded recovery of the original 921 worker controls
+        if: ${{ inputs.recover_921_controls == true }}
+        timeout-minutes: 3
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          test "$GITHUB_REPOSITORY" = StradaverseHub/ai-hr
+          test "$GITHUB_EVENT_NAME" = workflow_dispatch
+          timeout 60s git fetch --no-tags --depth=16 https://github.com/StradaverseHub/ai-hr.git "$GITHUB_SHA" 9211b11ff1fe9a0f120e9f0c34c9cf101a5dc772
+          recovery_dir="$(mktemp -d "$RUNNER_TEMP/worker-controls-recovery-XXXXXX")"
+          gh api repos/StradaverseHub/ai-hr/actions/runs/44284850735 > "$recovery_dir/run.json"
+          gh api repos/StradaverseHub/ai-hr/actions/runs/44284850735/jobs > "$recovery_dir/jobs.json"
+          gh api repos/StradaverseHub/ai-hr/actions/artifacts/14417524256 > "$recovery_dir/artifact.json"
+          gh api repos/StradaverseHub/ai-hr/actions/artifacts/14417524256/zip > "$recovery_dir/controls.zip"
+          unset GH_TOKEN
+          python3 -I -B - "$recovery_dir" <<'PY'
+          import ast,copy,hashlib,json,os,re,subprocess,sys,zipfile
+          from pathlib import Path
+          ORIGINAL='9211b11ff1fe9a0f120e9f0c34c9cf101a5dc772'
+          RUN=44284850735
+          JOB=134734758783
+          ARTIFACT=14417524256
+          ARCHIVE_SHA='973247ff97f169ee53c81f641c0b46489f3a479570b1d42643f3be02442e8616'
+          FIXTURE='test/fixtures/bank-import-worker-prepared-tests.py'
+          WORKFLOW='.github/workflows/bank-import-worker-package.yml'
+          REPAIRED_SHA='753efb218e08b3c3f369bf5af122ca97db3390b2d92a1b70f2dd75bd4e5bb529'
+          UI_PINS={'app/admin/settings/email-templates/designer.tsx':'0529cfba6d02e14304f0467644076357f3e684058b8460a364c1fc3f37351d24','test/email-designer.dom.test.tsx':'821a67c89fdf62bbe44a34430a407d7d25326adbf8b8caeb17b7f7b8c75765d0'}
+          FAILED={'test_legacy_unprepared_and_preunit_f4_keep20','test_normal_prepared_r0_r1_o_and_genuine_native_cleanup'}
+          def need(ok):
+              if not ok:raise ValueError('Original worker control recovery refused')
+          def metadata(run,jobs,artifact):
+              need(run['id']==RUN and run['head_sha']==ORIGINAL and run['repository']['full_name']=='StradaverseHub/ai-hr')
+              need(run['path']==WORKFLOW and run['event']=='workflow_dispatch' and run['run_attempt']==1 and run['status']=='completed' and run['conclusion']=='failure')
+              need(jobs['total_count']==1 and len(jobs['jobs'])==1)
+              job=jobs['jobs'][0]
+              need(job['id']==JOB and job['name']=='worker-package' and job['status']=='completed' and job['conclusion']=='failure')
+              steps={s['name']:s['conclusion']for s in job['steps']}
+              need(steps.get('Verify handoff controls on the pinned worker runtime')=='failure')
+              for name in ('Verify bounded worker package controls','Produce immutable worker bytes from this exact source','Qualify actual full-package preparation and complete prepared handoff graphs','Verify actual extracted worker startup without database credentials'):
+                  need(steps.get(name)=='skipped')
+              need(artifact['id']==ARTIFACT and artifact['name']=='worker-runtime-controls-v1' and artifact['expired']is False)
+              need(artifact['digest']=='sha256:'+ARCHIVE_SHA and artifact['size_in_bytes']==8665)
+              need(artifact['workflow_run']['id']==RUN and artifact['workflow_run']['head_sha']==ORIGINAL)
+          def allowed_paths(paths):
+              selected=set(paths);base={FIXTURE,WORKFLOW}
+              need(len(paths)==len(selected) and (selected==base or selected==base|set(UI_PINS)))
+              return bool(selected&set(UI_PINS))
+          def reviewed_ui(hashes):need(hashes==UI_PINS)
+          def normalized(tree):
+              tree=copy.deepcopy(tree)
+              classes=[c for c in tree.body if isinstance(c,ast.ClassDef)and c.name=='PreparedFlowTests']
+              need(len(classes)==1)
+              tests=[n for n in classes[0].body if isinstance(n,ast.FunctionDef)and n.name.startswith('test_')]
+              need(len(tests)==33 and len({n.name for n in tests})==33 and FAILED<={n.name for n in tests})
+              for n in tests:
+                  if n.name in FAILED:n.body=[ast.Pass()]
+              return ast.dump(tree,include_attributes=False)
+          def fixture_scope(old,new):need(normalized(old)==normalized(new))
+          def refused(fn):
+              try:fn()
+              except ValueError:return
+              raise AssertionError('Recovery negative control did not refuse')
+          folder=Path(sys.argv[1]);run=json.loads((folder/'run.json').read_bytes());jobs=json.loads((folder/'jobs.json').read_bytes());artifact=json.loads((folder/'artifact.json').read_bytes())
+          metadata(run,jobs,artifact)
+          sha=os.environ['GITHUB_SHA'];need(re.fullmatch('[a-f0-9]{40}',sha)is not None)
+          def git(*args):return subprocess.check_output(['git',*args],text=True)
+          need(git('rev-parse','HEAD').strip()==sha and not git('status','--porcelain','--untracked-files=all').strip())
+          subprocess.run(['git','merge-base','--is-ancestor',ORIGINAL,'HEAD'],check=True)
+          paths=git('diff','--name-only',ORIGINAL,'HEAD').splitlines();has_ui=allowed_paths(paths)
+          ui_hashes={p:hashlib.sha256(Path(p).read_bytes()).hexdigest()for p in UI_PINS}if has_ui else{}
+          if has_ui:reviewed_ui(ui_hashes)
+          old=ast.parse(git('show',ORIGINAL+':'+FIXTURE));new=ast.parse(Path(FIXTURE).read_bytes());fixture_scope(old,new)
+          need(hashlib.sha256(Path(FIXTURE).read_bytes()).hexdigest()==REPAIRED_SHA)
+          archive=(folder/'controls.zip').read_bytes();need(hashlib.sha256(archive).hexdigest()==ARCHIVE_SHA)
+          with zipfile.ZipFile(folder/'controls.zip')as z:
+              entries=z.infolist();need(len(entries)==2 and {i.filename for i in entries}=={'worker-runtime-controls.log','worker-native-systemd-drain.json'})
+              need(all(not i.is_dir() and i.file_size<=1024**2 for i in entries))
+              log_bytes=z.read('worker-runtime-controls.log');native_bytes=z.read('worker-native-systemd-drain.json')
+          log=log_bytes.decode();native=json.loads(native_bytes)
+          summaries=re.findall(r'Ran (\d+) tests in [\d.]+s\s+\n(OK|FAILED \(errors=2\))',log)
+          need(summaries==[(str(n),'FAILED (errors=2)'if n==33 else'OK')for n in(10,5,11,90,5,36,33,15,26)])
+          errors=re.findall(r'^ERROR: (.+)$',log,re.M)
+          need(errors==['test_legacy_unprepared_and_preunit_f4_keep20 (__main__.PreparedFlowTests.test_legacy_unprepared_and_preunit_f4_keep20) (mode=\'unprepared\')','test_normal_prepared_r0_r1_o_and_genuine_native_cleanup (__main__.PreparedFlowTests.test_normal_prepared_r0_r1_o_and_genuine_native_cleanup)'])
+          need(not re.findall(r'^FAIL:',log,re.M))
+          need(native['source']==ORIGINAL and native['testsRun']==5 and native['failures']==native['errors']==0 and native['releaseAuthorized']is False)
+          records=[]
+          for line in log.splitlines():
+              start=line.find('{')
+              if start<0:continue
+              try:records.append(json.loads(line[start:]))
+              except ValueError:pass
+          kernel=[r for r in records if r.get('kind')=='ACTUAL_ROOT_TO_OWNER_KERNEL_BOUNDARY']
+          drift=[r for r in records if r.get('kind')=='ACTUAL_UID_METADATA_DRIFT_REFUSED']
+          need(len(kernel)==len(drift)==1)
+          k=kernel[0];d=drift[0]
+          need(k['uid']>0 and k['rootLauncherRefused']is True and k['parentDescriptionsClosed']is True and k['childHeldBothUntilExit']is True and k['servicesTouched']is False and k['mutationsOutsideOwnedTempfiles']is False and k['releaseAuthorized']is False)
+          need(d['uid']>0 and d['ownedTemporaryFilesOnly']is True and d['releaseAuthorized']is False)
+          # Pure admission controls use authentic records as their positive fixture.
+          negatives=0
+          for key,value in [('head_sha','0'*40),('status','in_progress'),('conclusion','success'),('run_attempt',2),('path','other.yml')]:
+              bad=copy.deepcopy(run);bad[key]=value;refused(lambda:metadata(bad,jobs,artifact));negatives+=1
+          bad=copy.deepcopy(run);bad['repository']['full_name']='foreign/repo';refused(lambda:metadata(bad,jobs,artifact));negatives+=1
+          bad=copy.deepcopy(jobs);bad['jobs'][0]['id']=JOB+1;refused(lambda:metadata(run,bad,artifact));negatives+=1
+          bad=copy.deepcopy(jobs);bad['jobs'][0]['conclusion']='success';refused(lambda:metadata(run,bad,artifact));negatives+=1
+          for key,value in [('id',ARTIFACT+1),('expired',True),('digest','sha256:'+'0'*64)]:
+              bad=copy.deepcopy(artifact);bad[key]=value;refused(lambda:metadata(run,jobs,bad));negatives+=1
+          refused(lambda:allowed_paths(paths+['app/page.tsx']));negatives+=1
+          refused(lambda:allowed_paths([FIXTURE,WORKFLOW,next(iter(UI_PINS))]));negatives+=1
+          bad=dict(UI_PINS);bad[next(iter(UI_PINS))]='0'*64;refused(lambda:reviewed_ui(bad));negatives+=1
+          tampered=copy.deepcopy(new);c=next(c for c in tampered.body if isinstance(c,ast.ClassDef)and c.name=='PreparedFlowTests');other=next(n for n in c.body if isinstance(n,ast.FunctionDef)and n.name.startswith('test_')and n.name not in FAILED);other.body=[ast.Pass()]
+          refused(lambda:fixture_scope(old,tampered));negatives+=1
+          tampered=copy.deepcopy(new);c=next(c for c in tampered.body if isinstance(c,ast.ClassDef)and c.name=='PreparedFlowTests');c.body.remove(next(n for n in c.body if isinstance(n,ast.FunctionDef)and n.name in FAILED))
+          refused(lambda:fixture_scope(old,tampered));negatives+=1
+          receipt={'kind':'RETAINED_WORKER_CONTROLS_ADMISSION_NOT_TEST_RESULT','originalRun':RUN,'originalJob':JOB,'originalSource':ORIGINAL,'originalConclusion':'failure','artifact':ARTIFACT,'archiveSha256':ARCHIVE_SHA,'originalLogSha256':hashlib.sha256(log_bytes).hexdigest(),'nativeSystemdSha256':hashlib.sha256(native_bytes).hexdigest(),'candidate':sha,'changedMethods':sorted(FAILED),'changedUiBlobs':ui_hashes,'retainedScope':'operator controls only; UI and current package require separate qualification','retainedPreparedMethods':31,'negativeControls':negatives,'releaseAuthorized':False}
+          output=Path(os.environ['RUNNER_TEMP'])/'worker-controls-retained.json';fd=os.open(output,os.O_WRONLY|os.O_CREAT|os.O_EXCL,0o600)
+          with os.fdopen(fd,'w')as f:json.dump(receipt,f,sort_keys=True);f.write('\n')
+          print(json.dumps(receipt,sort_keys=True))
+          PY
+      - name: Verify only the two reviewed failed prepared fixture cases
+        if: ${{ inputs.recover_921_controls == true }}
+        timeout-minutes: 2
+        run: |
+          set -euo pipefail
+          node -e "require('node:assert/strict').equal(process.versions.node, '22.23.3')"
+          python3 -I -B -c "import sys; assert sys.version_info >= (3,11) and sys.flags.safe_path and sys.flags.no_user_site"
+          python3 -I -B test/fixtures/bank-import-worker-prepared-tests.py PreparedFlowTests.test_legacy_unprepared_and_preunit_f4_keep20 PreparedFlowTests.test_normal_prepared_r0_r1_o_and_genuine_native_cleanup 2>&1 | tee "$RUNNER_TEMP/worker-runtime-controls.log"
       - name: Verify handoff controls on the pinned worker runtime
+        if: ${{ inputs.recover_921_controls != true }}
         timeout-minutes: 8
         run: |
           set -o pipefail
@@ -63,6 +196,7 @@ jobs:
           path: |
             ${{ runner.temp }}/worker-runtime-controls.log
             ${{ runner.temp }}/worker-native-systemd-drain.json
+            ${{ runner.temp }}/worker-controls-retained.json
           if-no-files-found: warn
           retention-days: 14
       - name: Verify bounded worker package controls
