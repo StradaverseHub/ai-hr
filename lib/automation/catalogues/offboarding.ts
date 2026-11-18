@@ -17,7 +17,7 @@ export const OFFBOARDING_AUTOMATION_CATALOGUE: AutomationModuleCatalogue = {
   {id:'signRequest',label:'A letter needs a review, approval or signature'}, {id:'sentBack',label:'A letter is sent back for changes'},
   {id:'released',label:'A letter is signed and released'},
  ],
- skipWhen:[{id:'never',label:'Never skip'},{id:'caseClosed',label:'The case is already closed'},{id:'noPbp',label:'No People Business Partner is found for the case'}],
+ skipWhen:[{id:'never',label:'Never skip'},{id:'caseClosed',label:'The case is already closed'},{id:'noPbp',label:'Retired PBP condition — reconcile named routing'}],
  conditionFields:[
   {id:'businessGroup',label:'Business group',ops:['is','isNot']},{id:'company',label:'Company',ops:['is','isNot']},
   {id:'department',label:'Department',ops:['is','isNot']},{id:'jobTitle',label:'Job title',ops:['is','isNot']},{id:'jobGrade',label:'Job grade',ops:['is','isNot']},

@@ -11,9 +11,16 @@ const refs:OffboardingStepReferences={emailTemplates:[{id:'email',name:'Email',a
 const step=(type:string,params:Record<string,unknown>={}):AutomationStep=>({id:'s',type,params,conditions:[],to:[{kind:'role',role:'directSuperior'}],cc:[]});
 const workflow=(event:string,steps:AutomationStep[]):AutomationWorkflow=>({id:'00000000-0000-4000-8000-000000000001',module:'off',name:'Resignation',description:'',status:'paused',required:false,trigger:{event,days:0,workdays:false,repeat:false},skipWhen:'never',conditions:[],steps});
 const problems=(event:string,s:AutomationStep)=>offboardingStepParamProblems(workflow(event,[s]),refs);
-const base=():Config=>({version:9,revision:1,checklists:[],templates:[],emails:[],workflows:[],groups:[{id:'ops',name:'Operations',members:[],limit:25}],peopleOpsGroup:'ops',bpRules:[]});
+const base=():Config=>({version:9,revision:1,checklists:[],templates:[],emails:[],workflows:[],groups:[{id:'ops',name:'Operations',members:[],limit:25}],peopleOpsGroup:'ops'});
 
 describe('Offboarding catalogue and module isolation',()=>{
+ it.each(['paused','live'] as const)('flags retired PBP authoring in %s definitions while preserving legacy readability and module isolation',status=>{
+  const legacy={...workflow('submitted',[step('requestDecision',{choices:'both'})]),status,skipWhen:'noPbp'};
+  expect(O.skipWhen.find(option=>option.id==='noPbp')?.label).toBe('Retired PBP condition — reconcile named routing');
+  expect(offboardingStepParamProblems(legacy,refs)).toContain('The legacy No PBP condition is retired. Choose an explicit named routing and replace this condition before making the workflow live.');
+  expect(offboardingStepParamProblems({...legacy,skipWhen:'never'},refs)).toEqual([]);
+  expect(offboardingStepParamProblems({...legacy,module:'probation'},refs)).toEqual([]);
+ });
  it('validates the native exit classification without changing other modules',()=>{
   for(const reason of ['Resignation','Termination','Contract end','Retirement','Non-confirmation','',undefined])expect(problems('accepted',step('startOffboarding',{exitReason:reason}))).toEqual([]);
   for(const reason of ['Unsupported',0,{reason:'Resignation'}])expect(problems('accepted',step('startOffboarding',{exitReason:reason}))).toContain('Step 1: Choose an existing Offboarding exit reason.');

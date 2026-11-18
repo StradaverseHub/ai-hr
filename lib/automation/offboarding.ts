@@ -69,6 +69,7 @@ export function retentionRoutingProblems(routing:DocumentRouting):string[] {
 export function offboardingStepParamProblems(workflow:AutomationWorkflow,refs:OffboardingStepReferences):string[] {
  if(workflow.module!=='off')return [];
  const problems:string[]=[],event=workflow.trigger.event,letter=includes(OFFBOARDING_LETTER_TRIGGERS,event),notifyOnly=includes(OFFBOARDING_NOTIFY_TRIGGERS,event);
+ if(workflow.skipWhen==='noPbp')problems.push('The legacy No PBP condition is retired. Choose an explicit named routing and replace this condition before making the workflow live.');
  for(const [index,step] of workflow.steps.entries()){
   const at=`Step ${index+1}: `,add=(problem:string)=>problems.push(at+problem),p=step.params;
   if(notifyOnly&&step.type!=='notify')add('This trigger only sends notifications.');
