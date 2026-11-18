@@ -2,6 +2,9 @@
 
 Reserves `6200_feedback_automation`, idx5600 / when1794974006200. Read-only registered-worktree journal survey found highest peer when1794841006104/tag6104/idx5504. Staging was healthy at12098e9c5; another release owns epoch126. This timestamp is above the peer journal watermark. Recheck actual staging/production ledger watermarks, newer committed refs and peer claims before admission. No applied SQL is edited; new work claims are operator-only. Canonical account notifications retain read-only history and actual reporter binding. Reservation grants no deployment priority or authority.
 
+Read-only installation checks on 18 November 2026 verified staging at 924 ledger rows / watermark1794841006104 and production at 883 rows / watermark1793330005471. The reserved `when`1794974006200 is above both. Ordered ledger metadata is retained privately with PR245 release evidence. Production metadata access was explicitly approved and made no production changes. Recheck staging identity at admission.
+
+
 # Approved board items — 17 November 2026 (source reservations; installation held)
 
 Coordinator `codex/approved-board-controller-20261117` reserves:
