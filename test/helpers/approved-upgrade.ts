@@ -312,7 +312,7 @@ export const APPROVED_UPGRADE_TAIL=[
 ] as const;
 // Final pending 2109/2126 bytes reviewed from engine 128bc2539; no applied-prefix hashes change.
 const APPROVED_UPGRADE_HASHES:Record<string,string>={
- '6686_probation_personnel_completion':'3301a993b95716c02af1d71079d8a84854edc6bcefdac0716190fdf430cf38ae',
+ '6686_probation_personnel_completion':'6d82db8f3f9a20dd743af7f1815ebe88c239c11e2559578f59c3668b1df544e1',
  '6687_probation_personnel_completion_commands':'1559c694d713bdd0466bf9e9c8f43020d46eae868a2dbb7c482662a0f9d8f47b',
  '6688_personnel_completion_recovery':'436591720f4ac89b24b544bf1809c726eacf684cab1d84062946a207ae251d48',
  '6689_personnel_completion_recovery_jobs':'5cd7a902f1bef6290a4c9d54711f84b5dccceb154eacd1bcea59d6127323f5b4',
