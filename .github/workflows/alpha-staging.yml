@@ -509,9 +509,7 @@ jobs:
         run: node ../automation/.github/ci/system-label-fonts.mjs "$UNIT"
       - name: Provision System Labels multilingual fonts before tests
         if: ${{ steps.system-label-fonts.outputs.required == 'true' }}
-        run: |
-          sudo apt-get update -qq
-          sudo apt-get install -y --no-install-recommends fonts-noto-core fonts-noto-cjk
+        run: node ../automation/.github/ci/fixed-noto-bootstrap.mjs "$RUNNER_TEMP/aihr-ci/noto-font-setup.json"
       - name: Preserve suite headroom after PDF tooling
         if: ${{ github.run_attempt == 1 }}
         run: bash ../automation/.github/ci/prepare-runner.sh
