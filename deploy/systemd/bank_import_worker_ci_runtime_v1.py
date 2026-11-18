@@ -974,7 +974,7 @@ class RuntimeObservation:
         b.check(self.fence_count<10 and FENCES is not None,'reviewed complete metadata primitive and exactly ten fences required')
         if shared_stability_deadline:
             self.check_slot();self.slot_name='F'+str(self.fence_count)
-        else:self.slot('F'+str(self.fence_count),60 if self.guard.stage=='recover-published-ci-runtime' and self.fence_count==4 else 20)
+        else:self.slot('F'+str(self.fence_count),60 if self.guard.stage in ('activate-prepared-ci-runtime','recover-published-ci-runtime') and self.fence_count==4 else 20)
         self.check_authority();before,_=self.snapshot()
         for attempt in range(16):
             try:
@@ -1044,14 +1044,16 @@ class RuntimeObservation:
         original=json.loads(b.read_bounded(self.directory/'runtime.json',1024**2))
         c=epoch(original['verifiedAt'])+600
         remaining=min(epoch(self.auth['expiresAt']),epoch(self.grant['expiresAt']))-now
+        extra=40 if self.guard.stage=='activate-prepared-ci-runtime'else 0
+        required_post=497+extra;required_helper=527+extra;required_readiness=155+extra
         b.check(self.fence_count==3 and len(self.audits)==1 and len(self.content_proofs)==1,'pre-mutation proof graph incomplete')
-        b.check(self.overall_deadline is None or self.overall_deadline-time.monotonic()>=497,'insufficient fixed live global opportunity before first mutation')
-        b.check(remaining>=527 and c-now>=155,'insufficient mandatory helper/readiness opportunity before first mutation')
+        b.check(self.overall_deadline is None or self.overall_deadline-time.monotonic()>=required_post,'insufficient fixed live global opportunity before first mutation')
+        b.check(remaining>=required_helper and c-now>=required_readiness,'insufficient mandatory helper/readiness opportunity before first mutation')
         # The unchanged normal operator has its own larger per-command timeouts.
         # 830s is explicitly a planning reservation, NOT an enforced branch cap.
         estimated_normal=830
-        b.check(epoch(self.grant['expiresAt'])-now>=max(497,max(0,c+15-now)+estimated_normal)+30,'insufficient estimated global fork reservation; no mutation')
-        return {'helperRemainingRequiredSeconds':527,'readinessOpportunitySeconds':155,'estimatedNormalBranchSeconds':estimated_normal,'normalBranchHardCap':False}
+        b.check(epoch(self.grant['expiresAt'])-now>=max(required_post,max(0,c+15-now)+estimated_normal)+30,'insufficient estimated global fork reservation; no mutation')
+        return {'helperRemainingRequiredSeconds':required_helper,'readinessOpportunitySeconds':required_readiness,'estimatedNormalBranchSeconds':estimated_normal,'normalBranchHardCap':False}
 
     def receipt(self):
         self.check_slot();self.check_authority()
