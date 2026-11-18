@@ -52,3 +52,7 @@ it('keeps an unclassified linked field with HR until its classification is expli
  const rendered=render(view(<PersonnelCompletionDocumentBody document={document} editableBy="employee"/>));expect(screen.getByRole('textbox',{name:'Fictional unclassified link *'})).toBeDisabled();rendered.unmount();
  render(view(<PersonnelCompletionPanel document={document} canOverride onOverride={vi.fn()} onSave={vi.fn()}/>));expect(within(screen.getByRole('group',{name:'Fictional unclassified link'})).queryByRole('button',{name:'Ask the employee'})).toBeNull();expect(screen.getByRole('textbox',{name:'Fictional unclassified link *'})).toBeEnabled();
 });
+
+it('shows an exact locked Personnel select value even if the template options do not include it',()=>{
+ const document=completionDocument(),field=document.fields.find(field=>field.id==='passport')!;field.type='select';field.options=['Fictional different option'];render(view(<PersonnelCompletionDocumentBody document={document} editableBy="employee"/>));const input=screen.getByRole('combobox',{name:/Passport number/});expect(input).toBeDisabled();expect(input).toHaveValue('Fictional passport in PM');expect((within(input).getByRole('option',{name:'Fictional passport in PM'})as HTMLOptionElement).selected).toBe(true);
+});
