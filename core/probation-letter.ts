@@ -1,3 +1,4 @@
+import {pgErrorChain} from '../lib/db-error';
 import {validateProbationLetterFields,probationLetterDocument} from '../lib/probation-letter-document';
 import {sql} from 'drizzle-orm';
 import {z} from 'zod';
@@ -79,7 +80,7 @@ export function probationLetterBuilderCatalog(ctx:SessionContext,companyId:strin
  'businessGroup',coalesce((select jsonb_agg(jsonb_build_object('id',u.id,'code',u.code,'name',u.name,'archived',u.archived_at is not null) order by u.code,u.id) from business_unit u where u.tenant_id=c.tenant_id and u.company_id=c.id),'[]'::jsonb),
  'department',coalesce((select jsonb_agg(jsonb_build_object('id',d.id,'code',d.name,'name',coalesce(d.label,d.name),'archived',d.archived_at is not null) order by d.name,d.id) from department d where d.tenant_id=c.tenant_id and d.company_id=c.id),'[]'::jsonb),
  'grade',coalesce((select jsonb_agg(jsonb_build_object('id',g.id,'code',g.code,'name',g.name,'archived',g.archived_at is not null) order by g.rank,g.code,g.id) from job_grade g where g.tenant_id=c.tenant_id and (g.scope_company_ids is null or c.id=any(g.scope_company_ids))),'[]'::jsonb)),
- 'positions',coalesce((select jsonb_agg(jsonb_build_object('id',p.id,'code',p.title,'name',coalesce(p.label,p.title),'archived',p.archived_at is not null) order by p.title,p.id) from position p where p.tenant_id=c.tenant_id and p.company_id=c.id),'[]'::jsonb)) as data from company c where c.id=${companyId}::uuid and c.tenant_id=app.current_tenant_id()`);return row.data;
+ 'positions',coalesce((select jsonb_agg(jsonb_build_object('id',p.id,'code',p.title,'name',coalesce(p.label,p.title),'archived',p.archived_at is not null) order by p.title,p.id) from position p where p.tenant_id=c.tenant_id and (p.company_id=c.id or p.is_global)),'[]'::jsonb)) as data from company c where c.id=${companyId}::uuid and c.tenant_id=app.current_tenant_id()`);return row.data;
 });}
 export type ProbationLetterChoices={templates:{id:string;familyId:string;version:number;name:string;score:number}[];suggestedTemplateId:string|null;tie:boolean};
 export function probationLetterTemplateChoices(ctx:SessionContext,outcomeId:string){return withScopedLifecycleTenant(ctx,async tx=>{const[row]=await tx.execute<{data:ProbationLetterChoices}>(sql`select app.probation_letter_template_choices(${id.parse(outcomeId)}::uuid) as data`);return row.data;});}
@@ -230,4 +231,4 @@ export function releaseProbationLetter(ctx:SessionContext,input:{caseId:string;p
  const[row]=await tx.execute<{id:string}>(sql`select app.probation_release_signed_letter(${view.outcomeId}::uuid,${view.id}::uuid,${input.outcomeRevision},${input.reason}) as id`);return row.id;
 });}
 
-export function deleteProbationLetterTemplate(ctx:SessionContext,input:{companyId:string;key:string;expectedVersion:number;reason:string}){return withScopedLifecycleTenant(ctx,async tx=>{companyGate(ctx,id.parse(input.companyId));await tx.execute(sql`select app.probation_letter_template_delete(${input.companyId}::uuid,${input.key},${input.expectedVersion},${input.reason})`);return{deleted:true};});}
+export function deleteProbationLetterTemplate(ctx:SessionContext,input:{companyId:string;key:string;expectedVersion:number;reason:string}){return withScopedLifecycleTenant(ctx,async tx=>{companyGate(ctx,id.parse(input.companyId));await tx.execute(sql`select app.probation_letter_template_delete(${input.companyId}::uuid,${input.key},${input.expectedVersion},${input.reason})`);return{deleted:true};}).catch((error:unknown)=>{const database=pgErrorChain(error).find(link=>['22023','40001','42501'].includes(link.code??''));if(database)throw new ProbationError(database.code==='40001'?'conflict':database.code==='42501'?'forbidden':'invalid',database.message??'The template deletion was refused.');throw error;});}
