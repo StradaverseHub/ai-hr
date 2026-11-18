@@ -24,7 +24,7 @@ function routed(){
  f.environment.mergeValues['bankAcc']='Private unrelated account';f.environment.documentRouting={tenantId:'tenant',hash:text=>createHash('sha256').update(text).digest('hex'),resolve:routing=>resolveDocumentRouting(routing,{employeeUserId:'employee',directSuperiorUserId:'manager',facts:{},routing:()=>null,groupMembers:()=>null,choose:ids=>ids[0]??null,fallback:null,describe:()=>''})};
  const document=M.generate(f.c,f.config,definition.id,f.environment);return {...f,document,definition};
 }
-function action(f:ReturnType<typeof routed>,user:string,stepId:string,kind:'signed'|'reviewed'|'returned'|'resent',id=kind+stepId){return recordV9DocumentRouteAction(f.document,{id,stepId,revision:f.document.signing!.contentRevision,hash:f.document.signing!.contentHash,action:kind,comment:kind==='returned'?'Please correct the wording.':'',...(kind==='signed'?{signature:{method:'typed' as const,value:user,consent:true as const}}:{})},{id:user,personId:'person-'+user,name:user},f.environment.now);}
+function action(f:ReturnType<typeof routed>,user:string,stepId:string,kind:'signed'|'reviewed'|'approved'|'returned'|'resent',id=kind+stepId){return recordV9DocumentRouteAction(f.document,{id,stepId,revision:f.document.signing!.contentRevision,hash:f.document.signing!.contentHash,action:kind,comment:kind==='returned'?'Please correct the wording.':'',...(kind==='signed'?{signature:{method:'typed' as const,value:user,consent:true as const}}:{})},{id:user,personId:'person-'+user,name:user},f.environment.now);}
 it('freezes the saved version and resolved recipients; legacy HR-first documents retain their existing path',()=>{
  const f=routed();expect(f.document.mergeValues).not.toHaveProperty('bankAcc');expect(f.document.signing?.route.steps.map(s=>s.holderId)).toEqual(['hr','hr2','employee','observer']);
  f.definition.versions[0].routing![0].who={kind:'people',userIds:['replacement']};expect(f.document.routing?.[0].who).toEqual({kind:'people',userIds:['hr']});
@@ -60,4 +60,11 @@ it('admits a second exact document completion even while another notification fr
 it('never invents HR signing from review or approval decisions, or from employee-only signatures',()=>{
  const f=routed();f.document.signing!.route.steps=f.document.signing!.route.steps.filter(step=>step.id!=='hr-sign');expect(v9RoutedHrComplete(f.document)).toBe(false);action(f,'hr','review','reviewed');expect(v9RoutedHrComplete(f.document)).toBe(false);action(f,'employee','employee-sign','signed');expect(f.document.status).toBe('signed');expect(v9RoutedHrComplete(f.document)).toBe(false);
  const actual=routed();action(actual,'hr','review','reviewed');action(actual,'hr2','hr-sign','signed');expect(v9RoutedHrComplete(actual.document)).toBe(true);
+});
+
+it('keeps Review/Approve-only completion distinct from a signature task and retains previously completed task history on send-back',()=>{
+ const f=routed();f.definition.versions[0].routing=[{id:'review',order:1,action:'review',who:{kind:'people',userIds:['hr']},owner:true},{id:'approval',order:2,action:'approve',who:{kind:'people',userIds:['observer']},owner:false}];f.definition.versions[0].blocks=f.definition.versions[0].blocks.filter(block=>block.type!=='signature');f.c.documents=[];f.document=M.generate(f.c,f.config,f.definition.id,f.environment);
+ f.c.tasks=[{...task('signed'),documentTemplate:f.document.templateId,documentAction:'signed'},{...task('completed'),documentTemplate:f.document.templateId,documentAction:'completed'},{...task('past'),documentTemplate:f.document.templateId,documentAction:'signed',status:'done'}];
+ action(f,'hr','review','reviewed');action(f,'observer','approval','approved');expect(M.documentPresentationStatus(f.document)).toBe('completed');M.synchronizeRoutedDocumentTasks(f.c,f.document);expect(f.c.tasks.map(task=>task.status)).toEqual(['todo','done','done']);
+ action(f,'observer','approval','returned');M.synchronizeRoutedDocumentTasks(f.c,f.document);expect(f.c.tasks.map(task=>task.status)).toEqual(['todo','done','done']);
 });

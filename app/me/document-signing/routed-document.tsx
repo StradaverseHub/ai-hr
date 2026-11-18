@@ -1,4 +1,5 @@
 'use client';
+import {RoutedDocumentCompletionBadge} from './summary';
 import {useState,useTransition} from 'react';
 import {useRouter} from 'next/navigation';
 import {useTranslations} from 'next-intl';
@@ -19,6 +20,7 @@ export function V9RoutedDocument({initial,actor}:{initial:V9DocumentSigningWork;
  function run(work:()=>ReturnType<typeof actOnRoutedDocument>){if(busy)return;setError('');start(async()=>{const result=await work();if(result.ok){setItem(result.item);setValues(result.item.document?.values??{});setComment('');setEditing(false);router.refresh();}else setError(t('failed'));});}
  function act(stepId:string,action:V9DocumentRouteAction['action'],signature?:V9DocumentRouteAction['signature']){run(()=>actOnRoutedDocument({caseId:item.caseId,caseRevision:item.caseRevision,documentId:item.documentId,stepId,contentRevision:signing.contentRevision,contentHash:signing.contentHash,action,comment,...(signature?{signature}:{})}));}
  return <section className="v9-panel v9-stack" aria-label={item.name}><div className="v9-heading"><div><h2>{item.name}</h2><p className="v9-muted">{item.number} · {t('revision',{number:signing.contentRevision})}</p></div><button type="button" className="v9-button" disabled={busy} onClick={()=>run(()=>refreshRoutedDocument(item.caseId,item.documentId))}>{t('refresh')}</button></div>
+  {document&&<RoutedDocumentCompletionBadge document={document}/>}
   {error&&<p role="alert" className="v9-notice v9-error">{error}</p>}
   {returned&&<p role="status" className="v9-notice">{t('returned',{comment:returned.comment})}</p>}
   <ol className="v9-list">{signing.route.steps.map(step=><li key={step.id}><strong>{step.stage}. {t('actions.'+step.kind)}</strong> · {step.label??t('unassigned')} · {step.required?t('required'):t('optional')} · {signingStepFulfilled(signing,step)?t('done'):pendingSigningSteps(signing).some(current=>current.id===step.id)?t('pending'):t('waiting')}</li>)}</ol>

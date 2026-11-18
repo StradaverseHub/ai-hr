@@ -1,6 +1,6 @@
 /** V9 subject adapter over the shared deterministic signing kernel. State stays on the saved document. */
 import type {Document,Case,TemplateVersion,Environment,Signature} from './lifecycle-v9-model';
-import {V9Error,personnelFieldSourceValue} from './lifecycle-v9-model';
+import {V9Error,personnelFieldSourceValue,validateFieldValue} from './lifecycle-v9-model';
 import {canEditSigningContent,signingContentLocked,currentRoundActions,recordSigningAction,resendSigningDocument,reviseSigningDocument,signingComplete,signingSendBack,signingStepFulfilled,validateSigningRoute,type SigningDocument,type SigningRoute,type SigningAction} from './document-signing-model';
 import type {DocumentRouting,DocumentRoutingUnresolved} from './document-signing-routing';
 import {personnelCompletionIssues} from './lifecycle-v9-personnel-completion';
@@ -39,6 +39,7 @@ export function v9RouteReadyForEmployee(document:Document){
  const employeeStage=Math.min(...document.signing.route.steps.filter(step=>step.role==='employee').map(step=>step.stage));
  return document.signing.route.steps.filter(step=>step.required&&step.role!=='employee'&&step.stage<employeeStage).every(step=>signingStepFulfilled(document.signing!,step));
 }
+export function v9RoutedHasSigningReceipt(document:Document):boolean{return !!document.signing&&currentRoundActions(document.signing).some(action=>action.action==='signed'&&action.signature?.consent===true&&document.signing!.route.steps.some(step=>step.id===action.stepId&&['sign','acknowledge'].includes(step.kind)));}
 export function v9RoutedHrComplete(document:Document){const signing=document.signing;if(!signing||signingSendBack(signing))return false;const signed=new Set(currentRoundActions(signing).filter(action=>action.action==='signed').map(action=>action.stepId));return signing.route.steps.some(step=>step.role!=='employee'&&['sign','acknowledge'].includes(step.kind)&&signed.has(step.id))&&signing.route.steps.filter(step=>step.required&&step.role!=='employee').every(step=>signingStepFulfilled(signing,step));}
 export function reviseV9DocumentRouting(document:Document,env:Environment,employeeFields=false){
  if(!document.signing)return;
@@ -60,5 +61,6 @@ export function recordV9DocumentRouteAction(document:Document,input:{id:string;s
  if(!document.signing)throw new V9Error('This document uses its existing signing process.','conflict');
  if(input.action==='signed'&&document.personnelCompletion){const issue=personnelCompletionIssues(document,{final:true})[0];if(issue)throw new V9Error(issue.message);}
  const next=input.action==='resent'?resendSigningDocument(document.signing,{id:input.id,actorId:actor.id,actorPersonId:actor.personId,actorName:actor.name,comment:input.comment,at}):recordSigningAction(document.signing,V9_DOCUMENT_SIGNING_RULES,{id:input.id,stepId:input.stepId,revision:input.revision,hash:input.hash,action:input.action,actorId:actor.id,actorPersonId:actor.personId,actorName:actor.name,comment:input.comment,at,...input.signature});
+ if(signingComplete(next,V9_DOCUMENT_SIGNING_RULES))for(const field of document.fields){if(field.when&&document.values[field.when.field]!==field.when.value)continue;const value=document.values[field.id]??'';validateFieldValue(field,value);if(field.required&&(!value.trim()||field.type==='checkbox'&&value!=='true'||field.type==='table'&&value==='[]'))throw new V9Error('Complete required document fields before completing this route.');}
  const action=next.actions.find(action=>action.id===input.id)!;document.signing=next;synchronizeV9SigningPresentation(document);return action;
 }

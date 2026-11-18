@@ -1,5 +1,5 @@
 import {initializePersonnelCompletion,effectivePersonnelCompletion,missingPersonnelCompletion,overridePersonnelCompletion,reconcilePersonnelCompletion,personnelCompletionLocked,savePersonnelCompletionAnswer,personnelCompletionIssues,personnelCompletionMergeValues,personnelCompletionEmployeeAnswers,type PersonnelCompletionPolicy} from './lifecycle-v9-personnel-completion';
-import {initializeV9DocumentRouting,reviseV9DocumentRouting,v9RouteReadyForEmployee,v9RoutedHrComplete,type V9DocumentRoutingEnvironment} from './lifecycle-v9-document-routing';
+import {initializeV9DocumentRouting,reviseV9DocumentRouting,v9RouteReadyForEmployee,v9RoutedHrComplete,v9RoutedHasSigningReceipt,type V9DocumentRoutingEnvironment} from './lifecycle-v9-document-routing';
 import {canEditSigningContent,type SigningDocument} from './document-signing-model';
 import type {DocumentRouting,DocumentRoutingUnresolved} from './document-signing-routing';
 import { managerRecipientResult, type PersonnelManagerRecipient } from './personnel-manager-recipient';
@@ -396,6 +396,10 @@ export function validateFieldValue(field: Field, value: string): void {
   }
 }
 export function documentFinal(d: Document): boolean { return ['completed', 'signed', 'acknowledged'].includes(d.status) || d.templateType === 'Attachment' && ['sent', 'opened'].includes(d.status); }
+/** The persisted signed code also represents completed Review/Approve-only routes; never print a signature claim for those. */
+export function documentPresentationStatus(document:Document):Document['status']{return document.signing&&document.status==='signed'&&!v9RoutedHasSigningReceipt(document)?'completed':document.status;}
+/** Completed task history remains true; a signed task additionally requires a real current-round signing/acknowledgement receipt. */
+export function synchronizeRoutedDocumentTasks(c:Case,document:Document){if(!document.signing||!documentFinal(document))return;for(const task of c.tasks)if(task.documentTemplate===document.templateId&&(task.documentAction==='completed'||task.documentAction==='signed'&&v9RoutedHasSigningReceipt(document)))task.status='done';}
 /** Unused case-form answers never travel with a released document's merge snapshot. */
 export function documentMergeValues(document: Pick<Document,'blocks'|'fields'> & { edits?: Document['edits'] }, values: Record<string,string>,restrictToUsed=false): Record<string,string> {
   const content=document.blocks.flatMap(block=>[document.edits?.[block.id]??block.text,block.rows??'',block.label??'']).join('\n');
@@ -1015,7 +1019,7 @@ export function runWorkflow(c: Case, config: Config, workflow: Workflow, env: En
     while (run.cursor < workflow.steps.length) {
       const step = workflow.steps[run.cursor]; let waiting = '';
       if (step.type === 'doc') {
-        const doc = generate(c, config, step.template, env), template = config.templates.find(t => t.id === step.template);
+        const doc = generate(c, config, step.template, env), template = config.templates.find(t => t.id === step.template);synchronizeRoutedDocumentTasks(c,doc);
         if (step.release && (['draft', 'hrsigned'].includes(doc.status)||doc.signing&&!doc.sentAt&&!['withdrawn','superseded'].includes(doc.status))) {
           const employeePreparation=doc.personnelCompletion&&!personnelCompletionLocked(doc)&&!doc.personnelCompletion.submitted&&doc.fields.some(field=>field.required&&effectivePersonnelCompletion(doc,field)==='employee'&&(!field.when||doc.values[field.when.field]===field.when.value));
           if(employeePreparation){
@@ -1033,7 +1037,7 @@ export function runWorkflow(c: Case, config: Config, workflow: Workflow, env: En
           run.completionHold={documentId:doc.id,stepId:step.id,dueOn:heldEmailDueOn(c,run),at:env.now};
           appendLog(c,env,'workflow.personnelCompletionHeld',`${workflow.name}: ${doc.name}`);
         }
-      } else if (step.type === 'waitSign') { const d = activeDocument(c, step.template); if (!(step.by === 'hr' ? d&&(d.signing?v9RoutedHrComplete(d):d.hrSignature) : d && documentFinal(d))) waiting = `Waiting for ${step.by === 'hr' ? 'HR' : 'the employee'} to sign.`; }
+      } else if (step.type === 'waitSign') { const d = activeDocument(c, step.template);if(d)synchronizeRoutedDocumentTasks(c,d); if (!(step.by === 'hr' ? d&&(d.signing?v9RoutedHrComplete(d):d.hrSignature) : d && documentFinal(d))) waiting = `Waiting for ${step.by === 'hr' ? 'HR' : 'the employee'} to sign.`; }
       else if (step.type === 'waitFile') { if (!c.files.some(f => f.slot === step.slot)) waiting = `Waiting for ${step.label}.`; }
       else {
         const dueOn = heldEmailDueOn(c, run);
