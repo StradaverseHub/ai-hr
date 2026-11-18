@@ -149,6 +149,50 @@ describe('payroll history confirm and revert as staged jobs',()=>{
   expect(await state(job,bv.preview.attemptId)).toEqual(await state(sync,a.preview.attemptId));
  },240000);
 
+ it('commits new records with later processed payroll only after warning acknowledgement',async()=>{
+  const t=await tenant(),period=`${year}-01`;
+  const preview=await previewPayrollHistoryUpload(t.ctx,{name:'new-before-processed.csv',content:Buffer.from(toCsv([Array.from(PAYROLL_HISTORY_HEADERS),...lines('0007',period,'5200.00')])),operationKey:randomUUID()});
+  expect(preview.plan.counts).toEqual({created:1,replaced:0,unchanged:0,invalid:0});
+  expect(preview.plan.rows[0].warnings?.join(' ')).toContain('Tax (PCB) already deducted is not recalculated');
+  const input={attemptId:preview.attemptId,previewHash:preview.plan.previewHash,confirmReplacement:false};
+  await expect(requestPayrollHistoryConfirm(t.ctx,input)).rejects.toThrow(/Acknowledge/);
+  expect(await owner.db.select().from(schema.payrollHistoryImportRevision).where(eq(schema.payrollHistoryImportRevision.attemptId,preview.attemptId))).toHaveLength(0);
+  const request=await requestPayrollHistoryConfirm(t.ctx,{...input,acknowledgeWarnings:true});
+  if(!('jobId' in request))throw new Error('expected a job');
+  expect(await drain(request.jobId)).toBe('completed');
+  expect((await payrollHistoryJobStatus(t.ctx,request.jobId))?.job.result).toMatchObject({changes:1,importedRows:5});
+  const records=await withTenant(t.ctx,tx=>tx.select({employee:schema.payslip.employmentId,gross:schema.payslip.grossPay}).from(schema.payslip).innerJoin(schema.payrollBatch,eq(schema.payslip.batchId,schema.payrollBatch.id)).where(eq(schema.payrollBatch.payPeriod,period)));
+  expect(records).toEqual([{employee:t.employments['0007'],gross:'5200.00'}]);
+ },120000);
+
+ it('imports warned new records alone, then replaces selected history without changing skipped values',async()=>{
+  const t=await tenant(),period=`${year}-01`;
+  const upload=(rows:string[][])=>previewPayrollHistoryUpload(t.ctx,{name:'mixed-before-processed.csv',content:Buffer.from(toCsv([Array.from(PAYROLL_HISTORY_HEADERS),...rows])),operationKey:randomUUID()});
+  const start=async(preview:Awaited<ReturnType<typeof upload>>,extra:{skipReplacements?:boolean;confirmReplacement?:boolean;selectedRecordKeys?:string[];acknowledgeWarnings?:boolean})=>requestPayrollHistoryConfirm(t.ctx,{attemptId:preview.attemptId,previewHash:preview.plan.previewHash,confirmReplacement:false,...extra});
+  const finish=async(request:Awaited<ReturnType<typeof requestPayrollHistoryConfirm>>)=>{
+   if(!('jobId' in request))throw new Error('expected a job');
+   expect(await drain(request.jobId)).toBe('completed');
+   return (await payrollHistoryJobStatus(t.ctx,request.jobId))?.job.result;
+  };
+  const money=()=>withTenant(t.ctx,tx=>tx.select({employee:schema.payslip.employmentId,gross:schema.payslip.grossPay}).from(schema.payslip).innerJoin(schema.payrollBatch,eq(schema.payslip.batchId,schema.payrollBatch.id)).where(eq(schema.payrollBatch.payPeriod,period)).orderBy(schema.payslip.grossPay));
+  const initial=await upload(lines('0007',period,'5000.00'));
+  await finish(await start(initial,{acknowledgeWarnings:true}));
+  const content=[...lines('0007',period,'6100.00'),...lines('0008',period,'4200.00')];
+  const mixed=await upload(content);expect(mixed.plan.counts).toEqual({created:1,replaced:1,unchanged:0,invalid:0});
+  expect(mixed.plan.rows.every(row=>!!row.warnings?.length)).toBe(true);
+  await expect(start(mixed,{skipReplacements:true})).rejects.toThrow(/Acknowledge/);
+  expect(await money()).toEqual([{employee:t.employments['0007'],gross:'5000.00'}]);
+  expect(await finish(await start(mixed,{skipReplacements:true,acknowledgeWarnings:true}))).toMatchObject({changes:1,skippedReplacements:1,importedRows:5});
+  expect(await money()).toEqual([{employee:t.employments['0008'],gross:'4200.00'},{employee:t.employments['0007'],gross:'5000.00'}]);
+  const corrected=await upload(content);expect(corrected.plan.counts).toEqual({created:0,replaced:1,unchanged:1,invalid:0});
+  const selectedRecordKeys=corrected.plan.rows.filter(row=>row.operation==='replace').map(historyRecordKey);
+  await expect(start(corrected,{confirmReplacement:true,selectedRecordKeys})).rejects.toThrow(/Acknowledge/);
+  expect(await finish(await start(corrected,{confirmReplacement:true,selectedRecordKeys,acknowledgeWarnings:true}))).toMatchObject({changes:1,importedRows:5});
+  expect(await money()).toEqual([{employee:t.employments['0008'],gross:'4200.00'},{employee:t.employments['0007'],gross:'6100.00'}]);
+  // The original imported snapshot stays in the append-only audit history.
+  expect(await owner.db.select().from(schema.payrollHistoryImportRevision).where(eq(schema.payrollHistoryImportRevision.attemptId,initial.attemptId))).toHaveLength(1);
+ },120000);
+
  it('refuses a revert exactly as the single transaction does, recording the same failure',async()=>{
   const sync=await tenant(),job=await tenant();
   for(const t of [sync,job]){
