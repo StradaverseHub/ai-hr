@@ -32,15 +32,15 @@ BEGIN
  END LOOP;
  FOR d IN SELECT value FROM jsonb_array_elements(new_docs) LOOP
   SELECT value INTO prior FROM jsonb_array_elements(old_docs) WHERE value->>'id'=d->>'id';
-  -- Preserve a byte-identical frozen route when a former holder later becomes unavailable.
-  -- Tenant/case/subject checks above and removed-document history checks still apply.
-  IF d IS NOT DISTINCT FROM prior THEN CONTINUE;END IF;
   IF jsonb_typeof(d->'signing') IS DISTINCT FROM 'object' THEN
    IF jsonb_typeof(prior->'signing')='object' THEN RAISE EXCEPTION 'A saved document keeps its signing route';END IF;CONTINUE;
   END IF;
   signature:=d->'signing';
   IF signature->>'tenantId' IS DISTINCT FROM NEW.tenant_id::text OR signature->>'companyId' IS DISTINCT FROM company::text OR signature->>'subjectId' IS DISTINCT FROM d->>'id' OR signature->>'subjectType' IS DISTINCT FROM 'lifecycle_v9'
    OR signature->>'contentHash' IS DISTINCT FROM app.v9_document_content_hash(d) OR d->'hrSignature' IS DISTINCT FROM 'null'::jsonb OR d->'employeeSignature' IS DISTINCT FROM 'null'::jsonb THEN RAISE EXCEPTION 'Routed signing source mismatch';END IF;
+  -- Preserve a byte-identical frozen route when a former holder later becomes unavailable.
+  -- Tenant/case/subject checks above and removed-document history checks still apply.
+  IF d IS NOT DISTINCT FROM prior THEN CONTINUE;END IF;
   PERFORM app.document_signing_validate(signature,'{"requiredRoles":[]}'::jsonb);
   IF coalesce(d->'stepSignatures','{}'::jsonb) IS DISTINCT FROM app.v9_document_route_signatures(d) OR (d->>'status'='signed') IS DISTINCT FROM app.v9_document_route_complete(d) AND d->>'status' NOT IN('withdrawn','superseded') THEN RAISE EXCEPTION 'Routed signature/status projection mismatch';END IF;
   IF jsonb_typeof(prior->'signing')='object' THEN
