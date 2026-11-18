@@ -119,16 +119,83 @@ END $$;
 REVOKE ALL ON FUNCTION app.v9_document_route_validate_append(jsonb,jsonb,jsonb) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION app.v9_document_route_validate_append(jsonb,jsonb,jsonb) TO ai_hr_app;
 --> statement-breakpoint
+-- Private canonical source owner for the offered Personnel fields. No case payload supplies an official value.
+CREATE FUNCTION app.v9_document_personnel_source_unchecked(p_case uuid) RETURNS jsonb
+LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE c lc_v9_case;n lc_onboarding_case;e employment;p person;draft employee_draft;a assignment;co company;st employee_statutory_my;
+ native boolean:=false;f jsonb;profile jsonb;source_values jsonb;case_values jsonb;cfg jsonb;company_config jsonb;field jsonb;k text;v text;supervisor_id uuid;business_unit_id uuid;supervisor_name text;join_day date;day date:=(now() AT TIME ZONE 'Asia/Kuala_Lumpur')::date;
+BEGIN
+ SELECT * INTO c FROM lc_v9_case WHERE id=p_case AND tenant_id=app.current_tenant_id();
+ IF NOT FOUND THEN
+  SELECT * INTO n FROM lc_onboarding_case WHERE id=p_case AND tenant_id=app.current_tenant_id();IF NOT FOUND THEN RETURN NULL;END IF;
+  native:=true;c.company_id:=n.company_id;c.employment_id:=n.employment_id;c.tenant_id:=n.tenant_id;c.data:=n.data;f:=coalesce(n.data->'local','{}'::jsonb)||coalesce(n.data->'source','{}'::jsonb);
+ ELSE f:=c.data->'facts';END IF;
+ SELECT * INTO co FROM company WHERE id=c.company_id AND tenant_id=c.tenant_id;
+ SELECT data INTO cfg FROM lc_v9_config WHERE tenant_id=c.tenant_id;
+ IF c.employment_id IS NOT NULL THEN
+  SELECT * INTO e FROM employment WHERE id=c.employment_id AND tenant_id=c.tenant_id;IF NOT FOUND OR e.company_id IS DISTINCT FROM co.id THEN RAISE EXCEPTION 'Personnel source no longer belongs to this case company';END IF;
+  SELECT * INTO p FROM person WHERE id=e.person_id AND tenant_id=c.tenant_id;
+  SELECT * INTO a FROM assignment WHERE employment_id=e.id AND tenant_id=c.tenant_id AND superseded_at IS NULL AND valid_from<=greatest(day,e.hired_on) AND (valid_to IS NULL OR valid_to>greatest(day,e.hired_on)) ORDER BY valid_from DESC,id LIMIT 1;
+  business_unit_id:=(nullif(app.company_org_employment_unchecked(e.id,greatest(day,e.hired_on))->>'businessUnitId',''))::uuid;
+  SELECT r.manager_employment_id INTO supervisor_id FROM reporting_line r WHERE r.tenant_id=c.tenant_id AND r.subordinate_employment_id=e.id AND r.line_type='administrative' AND r.superseded_at IS NULL AND r.valid_from<=day AND (r.valid_to IS NULL OR r.valid_to>day) ORDER BY r.valid_from DESC,r.id LIMIT 1;
+  IF co.country='MY' THEN SELECT * INTO st FROM employee_statutory_my WHERE person_id=p.id AND tenant_id=c.tenant_id;END IF;
+  profile:=jsonb_build_object('fullName',p.full_name,'primaryEmail',p.primary_email,'icNumber',st.ic_number,'passportNumber',st.passport_number,'race',p.race,'religion',p.religion,'nationality',p.nationality,'gender',p.gender,'maritalStatus',p.marital_status,'phone',p.phone,'homePhone',p.home_phone,'personalEmail',p.personal_email,
+   'address',coalesce(nullif(p.address,''),concat_ws(', ',nullif(p.permanent_address_line1,''),nullif(p.permanent_address_line2,''),nullif(p.permanent_address_line3,''),nullif(p.permanent_postcode,''),nullif(p.permanent_city,''),nullif(p.permanent_state,''),nullif(p.permanent_country,''))));
+  join_day:=CASE WHEN native THEN coalesce(e.join_date,e.hired_on) ELSE e.hired_on END;
+ ELSE
+  SELECT * INTO draft FROM employee_draft WHERE id=n.source_draft_id AND tenant_id=n.tenant_id AND company_id=n.company_id;
+  IF NOT FOUND THEN RAISE EXCEPTION 'The authoritative Personnel draft is unavailable';END IF;
+  profile:=coalesce(draft.data->'profile','{}'::jsonb);profile:=profile||jsonb_build_object('address',concat_ws(', ',nullif(profile->>'permanentAddressLine1',''),nullif(profile->>'permanentAddressLine2',''),nullif(profile->>'permanentAddressLine3',''),nullif(profile->>'permanentPostcode',''),nullif(profile->>'permanentCity',''),nullif(profile->>'permanentState',''),nullif(profile->>'permanentCountry','')));
+  a.department_id:=(nullif(draft.data->'employment'->>'departmentId',''))::uuid;a.position_id:=(nullif(draft.data->'employment'->>'positionId',''))::uuid;supervisor_id:=(nullif(draft.data->'employment'->>'reportingManagerEmploymentId',''))::uuid;
+  join_day:=(nullif(draft.data->'employment'->>'hiredOn',''))::date;
+  SELECT d.business_unit_id INTO business_unit_id FROM department d WHERE d.id=a.department_id AND d.tenant_id=c.tenant_id;
+ END IF;
+ SELECT mp.full_name INTO supervisor_name FROM employment me JOIN person mp ON mp.id=me.person_id AND mp.tenant_id=me.tenant_id WHERE me.id=supervisor_id AND me.tenant_id=c.tenant_id;
+ source_values:=jsonb_build_object('employee.empNo',coalesce(e.employee_code,draft.reserved_employee_code,profile->>'employeeCode',''),'employee.name',coalesce(profile->>'fullName',''),'employee.icNo',coalesce(profile->>'icNumber',''),'employee.passportNo',coalesce(profile->>'passportNumber',''),
+  'race',coalesce(profile->>'race',''),'religion',coalesce(profile->>'religion',''),'nationality',coalesce(profile->>'nationality',''),'gender',upper(left(coalesce(profile->>'gender',''),1))||substring(coalesce(profile->>'gender','') from 2),'marital',upper(left(coalesce(profile->>'maritalStatus',''),1))||substring(coalesce(profile->>'maritalStatus','') from 2),
+  'mobile',coalesce(profile->>'phone',''),'homePhone',coalesce(profile->>'homePhone',''),'personalEmail',coalesce(profile->>'personalEmail',''),'address',coalesce(profile->>'address',''),'email',coalesce(profile->>'primaryEmail',''),
+  'company.name',coalesce(co.legal_name,''),'employee.department',coalesce((SELECT name FROM department WHERE id=a.department_id AND tenant_id=c.tenant_id),''),'employee.position',coalesce((SELECT title FROM position WHERE id=a.position_id AND tenant_id=c.tenant_id),''),'employee.supervisor',coalesce(supervisor_name,''),'joiner.joinDate',coalesce(to_char(join_day,'DD/MM/YYYY'),''),'leaver.lastDay',CASE WHEN native THEN '' ELSE coalesce(to_char(nullif(f->>'lastDay','')::date,'DD/MM/YYYY'),'') END);
+ SELECT value INTO company_config FROM jsonb_array_elements(coalesce(cfg->'companies','[]'::jsonb)) configured WHERE configured->>'companyId'=co.id::text;
+ source_values:=source_values||jsonb_build_object('company.regNo',coalesce(company_config->'letterhead'->>'registrationNo',co.registration_no,''),'company.address',coalesce(company_config->'letterhead'->>'address',concat_ws(', ',nullif(trim(co.address_line1),''),nullif(trim(co.address_line2),''),nullif(trim(co.address_line3),''),nullif(trim(co.postcode),''),nullif(trim(co.city),''),nullif(trim(co.state),''),nullif(trim(co.address_country),''))),'company.color',coalesce(company_config->'letterhead'->>'color','#4F46E5'),
+ 'signatory.name',coalesce((SELECT mp.full_name FROM app_user u JOIN person mp ON mp.id=u.person_id AND mp.tenant_id=u.tenant_id WHERE u.id::text=company_config->>'signatoryUserId' AND u.tenant_id=c.tenant_id AND u.archived_at IS NULL AND NOT app.login_blocked(u.id)),''),'signatory.title',coalesce(cfg->'signatoryTitles'->>(company_config->>'signatoryUserId'),company_config->>'signatoryTitle',''));
+ source_values:=source_values||jsonb_build_object('name',source_values->>'employee.name','empNo',source_values->>'employee.empNo','icNo',source_values->>'employee.icNo','passportNo',source_values->>'employee.passportNo','company',source_values->>'company.name','position',source_values->>'employee.position');
+ case_values:=coalesce(c.data->'caseValues','{}'::jsonb)||CASE WHEN native THEN jsonb_build_object('name',source_values->>'employee.name','empNo',source_values->>'employee.empNo','joinInput',join_day,'position',source_values->>'employee.position','dept',source_values->>'employee.department','company',co.legal_name,'group',coalesce((SELECT name FROM business_unit WHERE id=business_unit_id AND tenant_id=c.tenant_id),''),'supervisor',supervisor_name,'ta',coalesce((SELECT mp.full_name FROM app_user u JOIN person mp ON mp.id=u.person_id AND mp.tenant_id=u.tenant_id WHERE u.id::text=c.data->'local'->>'taUserId' AND u.tenant_id=c.tenant_id),''),'hireType',c.data->>'hiring','replacing',c.data->>'replacedEmployee','email',coalesce(c.data->>'caseContactEmail',source_values->>'email'),'floor',c.data->>'floor','costCentre',f->>'costCentre','icNo',source_values->>'employee.icNo','passportNo',source_values->>'employee.passportNo','notes',c.data->>'notes')
+ ELSE jsonb_build_object('empNo',source_values->>'employee.empNo','lastDay',f->>'lastDay','supervisor',supervisor_name,'type',f->>'caseType','notice',f->>'noticeDate','revokeMode',coalesce(c.data->>'revokeMode',CASE WHEN c.data->>'revokeDate'=f->>'lastDay' THEN 'lastday' ELSE 'date' END),'revokeDate',c.data->>'revokeDate') END;
+ SELECT data INTO cfg FROM lc_v9_config WHERE tenant_id=c.tenant_id;
+ FOR k,v IN SELECT key,value FROM jsonb_each_text(case_values) LOOP
+  IF k IN('joinInput','lastDay','notice','revokeDate') OR EXISTS(SELECT 1 FROM jsonb_array_elements(coalesce(cfg->'caseForms'->CASE WHEN native THEN 'onb' ELSE 'off' END,'[]'::jsonb)) AS cf(configured) WHERE cf.configured->>'key'=k AND cf.configured->>'type'='date') THEN
+   IF v ~ '^\d{4}-\d{2}-\d{2}$' THEN v:=to_char(v::date,'DD/MM/YYYY');ELSE v:='';END IF;
+  END IF;
+  source_values:=source_values||jsonb_build_object('case.'||k,coalesce(v,''));
+ END LOOP;
+ RETURN source_values||jsonb_build_object('_companyId',co.id,'_employmentId',c.employment_id,'_personId',coalesce(e.person_id,(nullif(n.data->>'personId',''))::uuid),'_country',co.country);
+END $$;
+REVOKE ALL ON FUNCTION app.v9_document_personnel_source_unchecked(uuid) FROM PUBLIC,ai_hr_app;
+CREATE FUNCTION app.v9_document_personnel_values(p_case uuid) RETURNS jsonb
+LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE company_id uuid;native boolean:=false;owner_call boolean:=app.current_user_id() IS NULL AND (session_user='ai_hr_owner' OR EXISTS(SELECT 1 FROM pg_roles WHERE rolname=session_user AND rolsuper));
+BEGIN
+ SELECT c.company_id INTO company_id FROM lc_v9_case c WHERE c.id=p_case AND c.tenant_id=app.current_tenant_id();
+ IF NOT FOUND THEN SELECT c.company_id INTO company_id FROM lc_onboarding_case c WHERE c.id=p_case AND c.tenant_id=app.current_tenant_id();native:=true;END IF;
+ IF company_id IS NULL OR NOT(owner_call OR app.v9_signing_current_actor() AND app.is_admin_for(company_id) AND CASE WHEN native THEN app.onboarding_page_access() OR app.onboarding_v9_case_actor() OR app.is_group_admin() ELSE app.lc_v9_off_access(company_id) END) THEN RETURN NULL;END IF;
+ IF EXISTS(SELECT 1 FROM lc_v9_case c JOIN employment e ON e.id=c.employment_id AND e.tenant_id=c.tenant_id WHERE c.id=p_case AND c.tenant_id=app.current_tenant_id() AND e.company_id<>c.company_id) OR EXISTS(SELECT 1 FROM lc_onboarding_case c JOIN employment e ON e.id=c.employment_id AND e.tenant_id=c.tenant_id WHERE c.id=p_case AND c.tenant_id=app.current_tenant_id() AND e.company_id<>c.company_id) THEN RETURN NULL;END IF;
+ RETURN app.v9_document_personnel_source_unchecked(p_case);
+END $$;
+REVOKE ALL ON FUNCTION app.v9_document_personnel_values(uuid) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.v9_document_personnel_values(uuid) TO ai_hr_app;
+--> statement-breakpoint
 CREATE FUNCTION app.v9_document_route_guard() RETURNS trigger LANGUAGE plpgsql SET search_path=pg_catalog,public,pg_temp AS $$
-DECLARE old_docs jsonb;new_docs jsonb;d jsonb;prior jsonb;definition jsonb;version jsonb;cfg jsonb;native_cfg jsonb;c lc_onboarding_case;facts jsonb;company uuid;subject_person uuid;admin boolean;step jsonb;spec jsonb;who jsonb;group_row jsonb;routing jsonb;candidate_row jsonb;selected_group text;possible text[];holder text;employee_user text;supervisor_user text;signature jsonb;body_changed boolean;content_edit boolean;
+DECLARE old_docs jsonb;new_docs jsonb;d jsonb;prior jsonb;definition jsonb;version jsonb;cfg jsonb;native_cfg jsonb;c lc_onboarding_case;facts jsonb;company uuid;subject_person uuid;admin boolean;step jsonb;spec jsonb;who jsonb;group_row jsonb;routing jsonb;candidate_row jsonb;selected_group text;possible text[];holder text;employee_user text;supervisor_user text;signature jsonb;body_changed boolean;content_edit boolean;source_case uuid;source_employment uuid;personnel_source jsonb;field jsonb;source_key text;expected text;
 BEGIN
  IF NEW.tenant_id IS DISTINCT FROM app.current_tenant_id() AND NOT app.acting_as_owner() THEN RAISE EXCEPTION 'Document tenant mismatch';END IF;
  IF TG_TABLE_NAME='lc_onboarding_private' THEN
+  source_case:=NEW.case_id;
   old_docs:=CASE WHEN TG_OP='INSERT' THEN '[]'::jsonb ELSE coalesce(OLD.data->'lifecycleV9'->'documents','[]'::jsonb) END;new_docs:=coalesce(NEW.data->'lifecycleV9'->'documents','[]'::jsonb);
   SELECT * INTO c FROM lc_onboarding_case WHERE id=NEW.case_id AND tenant_id=NEW.tenant_id;
-  company:=c.company_id;facts:=coalesce(c.data->'local','{}'::jsonb)||coalesce(c.data->'source','{}'::jsonb);subject_person:=(c.data->>'personId')::uuid;
+  source_employment:=c.employment_id;company:=c.company_id;facts:=coalesce(c.data->'local','{}'::jsonb)||coalesce(c.data->'source','{}'::jsonb);subject_person:=(c.data->>'personId')::uuid;
   admin:=app.is_admin_for(company) AND (app.onboarding_page_access() OR app.onboarding_v9_case_actor() OR app.is_group_admin());
  ELSE
+  source_case:=NEW.id;source_employment:=NEW.employment_id;
   old_docs:=CASE WHEN TG_OP='INSERT' THEN '[]'::jsonb ELSE coalesce(OLD.data->'documents','[]'::jsonb) END;new_docs:=coalesce(NEW.data->'documents','[]'::jsonb);company:=NEW.company_id;facts:=NEW.data->'facts';subject_person:=(facts->>'personId')::uuid;admin:=app.lc_v9_off_access(company);
  END IF;
  IF NOT EXISTS(SELECT 1 FROM jsonb_array_elements(old_docs||new_docs) d WHERE jsonb_typeof(d->'signing')='object') THEN RETURN NEW;END IF;
@@ -173,6 +240,19 @@ BEGIN
   SELECT value INTO definition FROM jsonb_array_elements(cfg->'templates') WHERE value->>'id'=d->>'templateId';
   SELECT value INTO version FROM jsonb_array_elements(definition->'versions') WHERE value->'version'=d->'version' AND value->>'state'='published';
   IF d->'blocks' IS DISTINCT FROM version->'blocks' OR d->'fields' IS DISTINCT FROM version->'fields' OR d->>'templateType' IS DISTINCT FROM definition->>'type' OR d->'edits' IS DISTINCT FROM '{}'::jsonb OR signature->'route'->'version' IS DISTINCT FROM '1'::jsonb OR version IS NULL OR d->'routing' IS DISTINCT FROM version->'routing' OR jsonb_array_length(d->'routing')<>jsonb_array_length(signature->'route'->'steps') OR signature->'routing'->>'templateId' IS DISTINCT FROM d->>'templateId' OR signature->'routing'->'templateVersion' IS DISTINCT FROM d->'version' THEN RAISE EXCEPTION 'Signing route must come from the published saved version';END IF;
+  IF personnel_source IS NULL THEN personnel_source:=app.v9_document_personnel_values(source_case);END IF;
+  IF personnel_source IS NULL OR personnel_source->>'_companyId' IS DISTINCT FROM company::text OR personnel_source->>'_employmentId' IS DISTINCT FROM source_employment::text OR personnel_source->>'_personId' IS DISTINCT FROM subject_person::text THEN RAISE EXCEPTION 'The authoritative Personnel subject changed';END IF;
+  FOR source_key IN SELECT jsonb_object_keys(coalesce(d->'mergeValues','{}'::jsonb)) LOOP
+   IF NOT EXISTS(SELECT 1 FROM jsonb_array_elements(version->'fields') configured WHERE configured->>'pmKey'=source_key)
+    AND NOT EXISTS(SELECT 1 FROM jsonb_array_elements(version->'blocks') block CROSS JOIN LATERAL regexp_matches(coalesce(block->>'text','')||' '||coalesce(block->>'rows','')||' '||coalesce(block->>'label',''),'\{([a-zA-Z][a-zA-Z0-9_]*(?:\.[a-zA-Z0-9_]+)?)\}','g') AS token(parts) WHERE parts[1]=source_key)
+    AND NOT(source_key IN('company.name','company.regNo','company.address','company.color') AND EXISTS(SELECT 1 FROM jsonb_array_elements(version->'blocks') block WHERE block->>'type'='letterhead')) THEN RAISE EXCEPTION 'Generated documents cannot expose unused source values';END IF;
+   IF left(source_key,1)<>'_' AND personnel_source ? source_key AND d->'mergeValues'->source_key IS DISTINCT FROM personnel_source->source_key THEN RAISE EXCEPTION 'Generated Personnel source values must match their canonical owner';END IF;
+  END LOOP;
+  FOR field IN SELECT value FROM jsonb_array_elements(d->'fields') WHERE value->>'owner'='pmLocked' LOOP
+   source_key:=field->>'pmKey';expected:=CASE WHEN left(source_key,1)<>'_' THEN coalesce(personnel_source->>source_key,'') ELSE '' END;
+   IF field->>'type'='date' AND expected<>'' THEN expected:=CASE WHEN expected ~ '^\d{2}/\d{2}/\d{4}$' THEN to_char(to_date(expected,'DD/MM/YYYY'),'YYYY-MM-DD') WHEN expected ~ '^\d{4}-\d{2}-\d{2}$' THEN expected ELSE '' END;END IF;
+   IF coalesce(d->'values'->>(field->>'id'),'') IS DISTINCT FROM expected THEN RAISE EXCEPTION 'Locked Personnel fields must match their canonical source';END IF;
+  END LOOP;
   IF signature->'routing'->>'caseOwnerId' IS DISTINCT FROM coalesce(CASE WHEN TG_TABLE_NAME='lc_onboarding_private' THEN c.data->>'submittedBy' ELSE facts->>'starterUserId' END,app.current_user_id()::text) THEN RAISE EXCEPTION 'Document owner does not match the case owner';END IF;
   SELECT CASE WHEN count(*)=1 THEN min(u.id::text) END INTO employee_user FROM app_user u WHERE u.person_id=subject_person AND u.tenant_id=NEW.tenant_id AND u.archived_at IS NULL AND NOT app.login_blocked(u.id);
   IF TG_TABLE_NAME='lc_onboarding_private' THEN
