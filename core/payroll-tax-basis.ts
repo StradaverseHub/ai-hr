@@ -43,6 +43,14 @@ const basicSetting=SYSTEM_BASIC_TAX_SETTING;
 type SourceSlip={id:string;period:string;runOrder:number;gross:string;deductions:string;basic:string;allowance:string;overtime:string;bonus:string;statutory:Record<string,unknown>;historyAttemptId:string|null;cycleId:string|null};
 type InputLine={code:string;amount:number;direction:'earning'|'deduction'|'noncash';settingId?:string;rowNum?:number;nonCashSource?:{source:'recurring'|'one_off';sourceId?:string};previousTreatment?:string|null};
 type SourceCache=Map<string,{retained:{name:string;sourceHash:string;rows:HistoryRevisionRow[]};rows:Awaited<ReturnType<typeof parsePayrollHistorySource>>}>&{codes?:Awaited<ReturnType<typeof resolveImportCodes>>;slips?:Map<string,SourceSlip[]>;country?:string;rules?:Map<string,Awaited<ReturnType<ReturnType<typeof requirePackFor>['payroll']['loadRulesetResolved']>>>;sourceHashes?:Map<string,string>;effective?:Awaited<ReturnType<typeof readEffectiveTaxBasesTx>>|null;superseded?:Map<string,string[]>;rulesStates?:Awaited<ReturnType<typeof importedTaxRulesStatesTx>>};
+/** Preview and atomic continuation share exact released ownership, including detached native origins. */
+async function supersededTaxBasisRowsTx(tx:Tx,sourceIds:readonly string[]):Promise<Map<string,string[]>>{
+ const ids=[...new Set(sourceIds)];if(!ids.length)return new Map();
+ const old=await tx.execute<{sourceId:string;id:string}>(sql`select current_source.id as "sourceId",r.id from payslip current_source join payroll_batch b on b.id=current_source.batch_id join payroll_tax_basis_revision r on r.company_id=b.company_id and r.employment_id=current_source.employment_id and r.period=b.pay_period where current_source.id=any(${uuidArray(ids)}) and (r.payslip_id=current_source.id or r.payslip_id in(select previous.id from payroll_history_import_snapshot previous join payroll_history_import_snapshot current on current.record_id=previous.record_id where current.id=current_source.id)) order by current_source.id,r.id`);
+ const detached=await tx.execute<{sourceId:string;id:string}>(sql`select * from app.payroll_history_native_tax_predecessors(${uuidArray(ids)})`);
+ const grouped=new Map<string,Set<string>>();for(const row of [...old,...detached]){const values=grouped.get(row.sourceId)??new Set<string>();values.add(row.id);grouped.set(row.sourceId,values);}
+ return new Map([...grouped].map(([id,values]):[string,string[]]=>[id,[...values].sort()]));
+}
 async function linesTx(tx:Tx,slip:SourceSlip,employmentId:string,companyId:string,settings:Settings[],cache:SourceCache,ctx:SessionContext):Promise<InputLine[]>{
  if(slip.historyAttemptId){
   let cached=cache.get(slip.historyAttemptId);
@@ -124,12 +132,7 @@ async function employeeTx(tx:Tx,ctx:SessionContext,selection:TaxBasisSelection,w
   let effective:Awaited<ReturnType<typeof readEffectiveTaxBasesTx>>|null=null;
   // A fresh correction may explicitly supersede a stale source. It must still be exactly reconstructible.
   try{effective=cache.effective!==undefined?cache.effective:await readEffectiveTaxBasesTx(tx,ctx,included.map(s=>s.id));}catch(error){if(!(error instanceof PayrollTaxBasisError)||!error.message.startsWith('Saved payroll changed')&&!error.message.startsWith('Imported wage inputs require review'))throw error;}
-  let superseded=cache.superseded;
-  if(!superseded){
-   superseded=new Map();
-   const rows=await tx.execute<{sourceId:string;id:string}>(sql`select current_source.id as "sourceId",r.id from payslip current_source join payroll_batch b on b.id=current_source.batch_id join payroll_tax_basis_revision r on r.company_id=b.company_id and r.employment_id=current_source.employment_id and r.period=b.pay_period where current_source.id=any(${uuidArray(included.map(slip=>slip.id))}) and (r.payslip_id=current_source.id or r.payslip_id in(select previous.id from payroll_history_import_snapshot previous join payroll_history_import_snapshot current on current.record_id=previous.record_id where current.id=current_source.id)) order by current_source.id,r.id`);
-   for(const row of rows)superseded.set(row.sourceId,[...(superseded.get(row.sourceId)??[]),row.id]);
-  }
+  const superseded=cache.superseded??await supersededTaxBasisRowsTx(tx,included.map(slip=>slip.id));
   const months:TaxBasisMonth[]=[];let ytdTaxable=0,ytdExempt=0;
   for(const row of replay){
    const source=included.find(s=>s.id===row.payslipId)!;
@@ -192,10 +195,7 @@ async function computeTx(tx:Tx,ctx:SessionContext,selection:TaxBasisSelection):P
  cache.rulesStates=await importedTaxRulesStatesTx(tx,[...new Set(allSlips.map(slip=>slip.period))]);
  cache.effective=null;
  try{cache.effective=await readEffectiveTaxBasesTx(tx,ctx,allSlips.map(slip=>slip.id));}catch(error){if(!(error instanceof PayrollTaxBasisError)||!error.message.startsWith('Saved payroll changed')&&!error.message.startsWith('Imported wage inputs require review'))throw error;}
- cache.superseded=new Map();
- const old=employees.length?await tx.execute<{sourceId:string;id:string}>(sql`select current_source.id as "sourceId",r.id from payslip current_source join payroll_batch b on b.id=current_source.batch_id join payroll_tax_basis_revision r on r.company_id=b.company_id and r.employment_id=current_source.employment_id and r.period=b.pay_period where b.company_id=${selection.companyId}::uuid and current_source.employment_id=any(${uuidArray(employees.map(employee=>employee.id))}) and b.pay_period like ${selection.year+'-%'} and (r.payslip_id=current_source.id or r.payslip_id in(select previous.id from payroll_history_import_snapshot previous join payroll_history_import_snapshot current on current.record_id=previous.record_id where current.id=current_source.id)) order by current_source.id,r.id`):[];
- const detached=allSlips.length?await tx.execute<{sourceId:string;id:string}>(sql`select * from app.payroll_history_native_tax_predecessors(${uuidArray(allSlips.map(slip=>slip.id))})`):[];
- for(const row of [...old,...detached])cache.superseded.set(row.sourceId,[...(cache.superseded.get(row.sourceId)??[]),row.id]);
+ cache.superseded=await supersededTaxBasisRowsTx(tx,allSlips.map(slip=>slip.id));
  for(const who of employees){if(Date.now()-started>25000)fail('This preview is too large. Select a smaller employee group and preview again.');results.push(await employeeTx(tx,ctx,selection,who,settings,settingsHash,cache));}
  const ready=results.filter(r=>r.status==='ready');
  const sum=(key:'beforeTaxable'|'taxable'|'beforeExempt'|'exempt')=>ready.some(r=>r[key]===null)?null:round(ready.reduce((n,r)=>n+r[key]!,0));

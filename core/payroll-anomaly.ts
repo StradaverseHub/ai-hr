@@ -1,4 +1,3 @@
-import {nativePayrollPayslip} from './payroll-history-native-baseline';
 import {employmentPaymentMethodOnSql} from './employment-payment-method';
 import {assertAiPrincipalTx} from './ai-principal';
 import {resolveEntitlementsTx,assertModuleEnabled,isModuleEnabled,TENANT_STATUS_GOOD_STANDING} from './entitlements';
@@ -6,6 +5,11 @@ import type { EntitlementSnapshot } from './entitlement-types';
 import {payrollLoopSettingsTx} from './loops/payroll-loop-settings';
 import {DEFAULT_SWING_THRESHOLD_BP,swingThresholdOrDefault,type ComponentIds} from './loops/net-swing';
 import {swingRowsTx} from './loops/swing-rows';
+/** Source unavailability never means an empty payroll or permission to clear existing checks. */
+export class PayrollAnomalySourceUnavailableError extends Error{
+ readonly code='PAYROLL_ANOMALY_SOURCE_UNAVAILABLE';
+ constructor(){super('Payroll anomaly source is unavailable. Existing checks are retained.');this.name='PayrollAnomalySourceUnavailableError';}
+}
 /**
  * ADR-0076 — the payroll anomaly engine. The ADR-0074 control-tower keystone, Phase 1a.
  *
@@ -356,21 +360,20 @@ async function gatherContext(tx: Tx, tenantId: string, batchId: string, entitlem
   const periodStart = `${batch.payPeriod}-01`;
   const periodEnd = `${batch.payPeriod}-${String(dim).padStart(2, '0')}`;
 
-  const slips = await tx
-    .select({
-      employmentId: nativePayrollPayslip.employmentId,
-      grossPay: nativePayrollPayslip.grossPay,
-      netPay: nativePayrollPayslip.netPay,
-      basicSalary: nativePayrollPayslip.basicSalary,
-      allowance: nativePayrollPayslip.allowance,
-      overtimePay: nativePayrollPayslip.overtimePay,
-      bonus: nativePayrollPayslip.bonus,
-      totalDeductions: nativePayrollPayslip.totalDeductions,
-      daysWorked: nativePayrollPayslip.daysWorked,
-      statutory: nativePayrollPayslip.statutory,
-    })
-    .from(nativePayrollPayslip)
-    .where(eq(nativePayrollPayslip.batchId, batchId));
+  // Keep the original RLS-governed source for ordinary SYSTEM/suspended evaluations. The native portal
+  // adds only physical rows its existing owner authorizes; UNION deduplicates the exact payslip ID.
+  const slips=await tx.execute<{id:string;employmentId:string;grossPay:string;netPay:string;basicSalary:string;allowance:string;overtimePay:string;bonus:string;totalDeductions:string;daysWorked:string|null;statutory:unknown}>(sql`
+   select p.id,p.employment_id as "employmentId",p.gross_pay as "grossPay",p.net_pay as "netPay",p.basic_salary as "basicSalary",p.allowance,p.overtime_pay as "overtimePay",p.bonus,p.total_deductions as "totalDeductions",p.days_worked as "daysWorked",p.statutory
+   from public.payslip p where p.batch_id=${batchId}::uuid
+   union
+   select p.id,p.employment_id,p.gross_pay,p.net_pay,p.basic_salary,p.allowance,p.overtime_pay,p.bonus,p.total_deductions,p.days_worked,p.statutory
+   from public.payroll_history_native_payslip p where p.batch_id=${batchId}::uuid order by 1`);
+  // Only an independent metadata witness can prove completeness. A false/unknown selector or a stale
+  // run counter cannot turn hidden physical members into an apparently complete subset.
+  const [source]=await tx.execute<{complete:boolean}>(sql`select app.payroll_history_native_anomaly_complete(${batchId}::uuid,ARRAY[${sql.join(slips.map(row=>sql`${row.id}::uuid`),sql`, `)}]::uuid[]) complete`);
+  if(source?.complete!==true)throw new PayrollAnomalySourceUnavailableError();
+  const [prior]=await tx.execute<{missing:boolean}>(sql`select exists(select 1 from public.payroll_anomaly_verdict v where v.batch_id=${batchId}::uuid and v.superseded_at is null and not(v.employment_id=any(ARRAY[${sql.join(slips.map(row=>sql`${row.employmentId}::uuid`),sql`, `)}]::uuid[]))) missing`);
+  if(prior?.missing)throw new PayrollAnomalySourceUnavailableError();
   if (slips.length === 0) {
     return {
       batchId,
