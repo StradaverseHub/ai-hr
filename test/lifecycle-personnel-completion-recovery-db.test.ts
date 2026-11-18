@@ -56,7 +56,7 @@ it('rejects stale official-source and document hashes and employee/cross-tenant 
 });
 it('uses the real bulk handler/kernel: metadata preview makes no case write and only explicit sealed selection adopts and continues the reviewed run',async()=>{
  const f=await fixture(),candidate=(await page()).items[0],before=await saved(f.id),job=await requestPersonnelCompletionRecoveryPreview(hr,[candidate]);expect(await drain(job.row.id)).toBe('completed');expect(await saved(f.id)).toEqual(before);
- const preview=await readPersonnelCompletionRecoveryPreview(hr,job.row.id),r=preview.items[0].result as PersonnelCompletionRecoveryReview;expect(r.outcome).toBe('eligible');
+ const preview=await readPersonnelCompletionRecoveryPreview(hr,job.row.id);expect(preview.items).toHaveLength(1);expect(preview.items[0].seq).toBe(0);expect(preview.after).toBe(0);expect((await readPersonnelCompletionRecoveryPreview(hr,job.row.id,preview.after!)).items).toEqual([]);const r=preview.items[0].result as PersonnelCompletionRecoveryReview;expect(r.outcome).toBe('eligible');
  const apply=await requestPersonnelCompletionRecovery(hr,{previewJobId:job.row.id,reviewHashes:[r.reviewHash!],confirmed:true});expect(await drain(apply.row.id)).toBe('completed');const after=await saved(f.id);expect(after.data.documents[0].personnelCompletion?.preparation).toBeTruthy();expect(after.data.documents[0].sentAt).toBeNull();expect(after.data.mails).toEqual([]);expect(after.data.runs[0].status).toBe('waiting');
 });
 it('holds an ambiguous legacy answer rather than overwriting it',async()=>{
@@ -88,12 +88,14 @@ it('proves legacy native date anchors from matched public/private retained snaps
  const candidate=(await page()).items.find(c=>c.caseId===id)!;expect(candidate).toBeTruthy();const r=await review(candidate);expect(r).toMatchObject({outcome:'late',runs:[{dueOn:addDays(original,1)}]});expect(JSON.stringify(r)).not.toContain(original);expect(JSON.stringify(r)).not.toContain('FICTIONAL-PRIVATE');
 });
 it('rechecks creator authority in the real worker after an admitted preview is queued',async()=>{
- const f=await fixture(),job=await requestPersonnelCompletionRecoveryPreview(hr,[(await page()).items[0]]);await owner.client`update role_assignment set role='employee' where tenant_id=${b.tenantId}::uuid and app_user_id=${hr.userId}::uuid and role in ('hr_admin','super_admin','group_admin')`;expect(await drain(job.row.id)).toBe('failed');expect((await saved(f.id)).revision).toBe(1);
+ const f=await fixture(),job=await requestPersonnelCompletionRecoveryPreview(hr,[(await page()).items[0]]),revoked=await owner.client`update role_assignment set role='employee' where tenant_id=${b.tenantId}::uuid and app_user_id=${hr.userId}::uuid and role='hr_admin' returning app_user_id`;expect(revoked).toHaveLength(1);expect(await drain(job.row.id)).toBe('failed');expect((await saved(f.id)).revision).toBe(1);
 });
 it('pages a large saved population in stable case/document order with a bounded metadata-only result',async()=>{
  const f=await fixture();
- // One set-based fixture load; ten legacy documents per case exercises context hashing once per case.
- await owner.withTenant(hr,tx=>tx.execute(sql`with ids as(select gen_random_uuid() id from generate_series(1,125)), copies as(select id,${JSON.stringify(f.c)}::jsonb||jsonb_build_object('id',id,'number','FX-'||id::text,'documents',(select jsonb_agg(${JSON.stringify(f.doc)}::jsonb||jsonb_build_object('id','doc-'||n::text)) from generate_series(1,10) n)) data from ids) insert into lc_v9_case(id,tenant_id,company_id,employment_id,module,number,revision,data) select id,${b.tenantId}::uuid,${b.companyId}::uuid,${employmentId}::uuid,'off',data->>'number',1,data from copies`));
+ // One legitimate active case per employment; a set-based legacy restore models its many saved documents.
+ // Distinct employments/companies are covered independently by the group-scale fixture below.
+ await owner.withTenant(hr,tx=>tx.execute(sql`update lc_v9_case set data=jsonb_set(data,'{documents}',(select jsonb_agg(${JSON.stringify(f.doc)}::jsonb||jsonb_build_object('id','doc-'||n::text) order by n) from generate_series(1,1251) n)) where id=${f.id}::uuid and tenant_id=${b.tenantId}::uuid`));
+ const [shape]=await owner.client<{cases:number;documents:number;valid:boolean}[]>`select count(*)::integer cases,sum(jsonb_array_length(data->'documents'))::integer documents,bool_and(revision=1 and data->>'revision'='1') valid from lc_v9_case where tenant_id=${b.tenantId}::uuid`;expect(shape).toEqual({cases:1,documents:1251,valid:true});
  const first=await personnelCompletionRecoveryPage(hr,null,100) as Awaited<ReturnType<typeof page>>;expect(first.total).toBe(1251);expect(first.items).toHaveLength(100);expect(JSON.stringify(first)).not.toContain('confidential');expect(JSON.stringify(first)).not.toContain('F51');
  const next=await personnelCompletionRecoveryPage(hr,first.after,100) as Awaited<ReturnType<typeof page>>;expect(next.total).toBe(1251);expect(next.items).toHaveLength(100);const keys=[...first.items,...next.items].map(c=>c.caseId+'|'+c.documentId);expect(new Set(keys).size).toBe(200);expect(keys).toEqual([...keys].sort());
  await expect(withTenant(hr,tx=>tx.execute(sql`select app.personnel_completion_recovery_candidates(null,null,null)`))).rejects.toThrow();

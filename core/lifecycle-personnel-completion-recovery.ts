@@ -43,8 +43,9 @@ export async function requestPersonnelCompletionRecoveryPreview(ctx:SessionConte
  human(ctx);const targets=candidates.parse(input);if(!unique(targets)||targets.some(t=>t.tenantId!==ctx.tenantId))throw new Error('Use unique same-tenant document targets.');
  return withLifecycleTenant(ctx,async tx=>{await lockAccessConfigurationReadTx(tx,ctx.tenantId);await admissionTx(tx,ctx,targets);return enqueueTx(tx,ctx,previewKind,targets,targets);});
 }
-export async function readPersonnelCompletionRecoveryPreview(ctx:SessionContext,jobId:string,after=0,limit=100){
- human(ctx);return withAccessDisplayRead(()=>withLifecycleTenant(ctx,async tx=>{const job=await bulkJobTx(tx,jobId,{kind:previewKind});const rows=await tx.execute<{seq:number;state:string;result:unknown;error:string|null;total:number}>(sql`select seq,state,result,error,count(*) over()::integer as total from bulk_job_step where job_id=${job.id}::uuid and tenant_id=${ctx.tenantId}::uuid and seq>${Math.max(0,Math.trunc(after)||0)} order by seq limit ${Math.min(100,Math.max(1,Math.trunc(limit)||100))}`);return{jobId:job.id,state:job.state,items:rows.map(({total:_,...row})=>row),remainingCount:Number(rows[0]?.total??0),after:rows.at(-1)?.seq??null};},{readOnlySnapshot:true}));
+export async function readPersonnelCompletionRecoveryPreview(ctx:SessionContext,jobId:string,after=-1,limit=100){
+ const cursor=Number.isFinite(after)?Math.max(-1,Math.trunc(after)):-1;
+ human(ctx);return withAccessDisplayRead(()=>withLifecycleTenant(ctx,async tx=>{const job=await bulkJobTx(tx,jobId,{kind:previewKind});const rows=await tx.execute<{seq:number;state:string;result:unknown;error:string|null;total:number}>(sql`select seq,state,result,error,count(*) over()::integer as total from bulk_job_step where job_id=${job.id}::uuid and tenant_id=${ctx.tenantId}::uuid and seq>${cursor} order by seq limit ${Math.min(100,Math.max(1,Math.trunc(limit)||100))}`);return{jobId:job.id,state:job.state,items:rows.map(({total:_,...row})=>row),remainingCount:Number(rows[0]?.total??0),after:rows.at(-1)?.seq??null};},{readOnlySnapshot:true}));
 }
 /** Accept only exact results from the creator's completed, kernel-sealed preview. */
 export async function requestPersonnelCompletionRecovery(ctx:SessionContext,input:{previewJobId:string;reviewHashes:string[];confirmed:true}){
