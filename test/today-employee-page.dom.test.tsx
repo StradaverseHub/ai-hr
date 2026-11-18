@@ -35,7 +35,7 @@ vi.mock('@/components/today/contract-slot',async importOriginal=>{
  return {...actual,TodayContracts:async(props:Parameters<typeof actual.TodayContracts>[0])=>resolve(actual.TodayContracts(props))};
 });
 vi.mock('@/packs/contracts/service',()=>({contractSharedWorkPage:fx.contractRead}));
-vi.mock('@/core/entitlements',()=>({isModuleEnabledOrFalse:()=>true}));
+vi.mock('@/core/entitlements',()=>({isModuleEnabled:()=>true}));
 vi.mock('@/components/performance-home/performance-home',()=>({PerformanceHomeSlot:async()=><section data-performance-home>Performance</section>}));
 vi.mock('@/components/today/employee/reads',()=>({
  moduleState:()=>{if(S.moduleError)throw S.moduleError;return 'on';},
