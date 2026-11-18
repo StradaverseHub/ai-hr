@@ -207,8 +207,9 @@ jobs:
         run: node scripts/bank-import-worker-package.mjs "$GITHUB_WORKSPACE" "$RUNNER_TEMP/worker-package" "$GITHUB_SHA"
       - name: Qualify actual full-package preparation and complete prepared handoff graphs
         # The earlier four-case suite plus root audit took 451s; now retain six full cases.
+        # Keep finite CI headroom for both additional complete legacy graphs; their duration is unmeasured.
         # Every native per-operation deadline remains enforced inside the unchanged helpers.
-        timeout-minutes: 15
+        timeout-minutes: 20
         run: |
           set -o pipefail
           {
