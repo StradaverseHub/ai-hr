@@ -25,6 +25,6 @@ for(const theme of ['classic','monolith','atelier'] as const)for(const dark of [
  fireEvent.click(screen.getByRole('button',{name:'Fictional confirmation letter'}));
  expect(screen.getByLabelText('Grade at start')).toBeVisible();expect(screen.getByLabelText('Employment type')).toBeVisible();expect(screen.getByRole('heading',{name:'Signing and review routing'})).toBeVisible();
  expect(screen.getByRole('combobox',{name:'Signature block 5'})).toBeDefined();
- await captureAiReviewScreenshots(aiReviewDomHtml(document.querySelector('main')!),`en-${theme}-${dark?'dark':'light'}`,'lifecycle-letter-template','Actual canonical Probation template workspace and native signing editor; fictional scoped props and component interactions; no authenticated server journey',theme,dark?'dark':'light');
+ await captureAiReviewScreenshots(aiReviewDomHtml(document.body),`en-${theme}-${dark?'dark':'light'}`,'lifecycle-letter-template','Actual canonical Probation template workspace and native signing editor; fictional scoped props and component interactions; no authenticated server journey',theme,dark?'dark':'light');
  fireEvent.click(screen.getByRole('tab',{name:'Preview'}));expect(screen.getByText(/Dear Alex Tan \(sample\)/)).toBeVisible();
 },120_000);
