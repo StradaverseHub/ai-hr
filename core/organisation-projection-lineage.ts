@@ -9,7 +9,7 @@ type ProjectionEvent={id:string;eventType:string;aggregateId:string;payload:unkn
 export class OrganisationProjectionLineageError extends Error{
  constructor(){super('Personnel must reconcile the recorded organisation projection before this movement can be replayed. No Personnel or Payroll changes were applied.');}
 }
-function readImage(value:unknown):Image{
+function readProjectionImage(value:unknown):Image{
  if(!value||typeof value!=='object'||Array.isArray(value))throw new OrganisationProjectionLineageError();
  const row=value as Record<string,unknown>;
  if(Object.keys(row).length!==imageKeys.length||imageKeys.some(key=>!Object.hasOwn(row,key)||(row[key]!==null&&typeof row[key]!=='string')))throw new OrganisationProjectionLineageError();
@@ -42,7 +42,7 @@ export async function resolveOrganisationProjectionAssignmentTx(tx:Tx,tenantId:s
   if(!recorded)throw new OrganisationProjectionLineageError();
   const proof=p?.projection as Record<string,unknown>|null;
   if(!p||!proof||proof.version!==1||p.sourceAssignmentId!==current||typeof p.mappingVersionId!=='string'||!uuid.test(p.mappingVersionId)||typeof p.effectiveOn!=='string'||typeof proof.companyId!=='string'||!uuid.test(proof.companyId)||typeof proof.mappingReceiptId!=='string'||!uuid.test(proof.mappingReceiptId)||!proof.mappingTags||typeof proof.mappingTags!=='object'||Array.isArray(proof.mappingTags)||!Array.isArray(proof.replacements)||proof.replacements.length!==1)throw new OrganisationProjectionLineageError();
-  const before=readImage(proof.source),after=readImage(proof.replacements[0]);
+  const before=readProjectionImage(proof.source),after=readProjectionImage(proof.replacements[0]);
   if(before.id!==current||typeof after.id!=='string'||!uuid.test(after.id)||after.id===current||before.tenantId!==tenantId||after.tenantId!==tenantId||before.employmentId!==employmentId||after.employmentId!==employmentId
    ||before.validFrom!==after.validFrom||before.validTo!==after.validTo
    ||(before.companyId!==null&&before.companyId!==proof.companyId)||p.effectiveOn!==after.validFrom||p.validTo!==after.validTo
