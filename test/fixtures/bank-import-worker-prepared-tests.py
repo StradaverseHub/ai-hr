@@ -80,7 +80,8 @@ class Fixture(core.Fixture):
  def iso(self,seconds=0):return ci.datetime.fromtimestamp(self.clock+seconds,ci.timezone.utc).isoformat()
  def approval(self,path,value):
   path.write_bytes(encoded(value));path.chmod(0o600);self.additional_root_private_files.add(path);return path
- def prepare_record(self,recovery=False):
+ def prepare_record(self,recovery=False,policy=None):
+  policy=prepared.POLICY if policy is None else policy
   ident='a0000000-0000-4000-8000-000000000007';failure=None
   if recovery:
    old=self.approval(self.root/'retained-original-activation.json',self.original_auth)
@@ -93,7 +94,7 @@ class Fixture(core.Fixture):
   else:
    directory=self.operation/('prepared-'+ident);d=None;self.held_phase='claimed';self.web=self.previous_web
   output=self.operation/('prepared-worker-'+ident+'.json');self.additional_root_private_files.add(output)
-  a={**copy.deepcopy(self.first),'kind':prepared.KINDS['prepare-ci-worker'],'helperSha256':ci.sha(self.helper.read_bytes()),'issuedAt':self.iso(),'expiresAt':self.iso(300),'preparation':{'policy':prepared.POLICY,'mode':'failed-preunit'if recovery else'normal','id':ident,'firstStageApproval':str(self.firstfile),'firstStageApprovalSha256':ci.sha(self.firstfile.read_bytes()),'drainSha256':self.auth['drainSha256'],'directory':str(directory),'directoryIdentity':d,'proof':str(output),'failure':failure}}
+  a={**copy.deepcopy(self.first),'kind':prepared.KINDS['prepare-ci-worker'],'helperSha256':ci.sha(self.helper.read_bytes()),'issuedAt':self.iso(),'expiresAt':self.iso(prepared.preparation_seconds({'policy':policy,'mode':'failed-preunit'if recovery else'normal'})),'preparation':{'policy':policy,'mode':'failed-preunit'if recovery else'normal','id':ident,'firstStageApproval':str(self.firstfile),'firstStageApprovalSha256':ci.sha(self.firstfile.read_bytes()),'drainSha256':self.auth['drainSha256'],'directory':str(directory),'directoryIdentity':d,'proof':str(output),'failure':failure}}
   return a
  @contextlib.contextmanager
  def prepared_ports(self):
@@ -399,12 +400,100 @@ class PreparedFlowTests(unittest.TestCase):
   self.assertEqual((r['completeMetadataFences'],r['fullNativeAudits']),(10,2));self.assertFalse(r['journeyVerified'])
   self.assertFalse((f.directory/'packet').exists());self.assertFalse((f.directory/'next').exists());self.assertTrue((f.directory/'audit').is_dir())
 
+ def test_normal_v2_seals_after300_under_fresh600_without_touching_live_clocks(self):
+  f=self.fixture();a=f.prepare_record(policy=prepared.NORMAL_V2_POLICY);extract=f.fmt.extract_archive
+  original={name:(f.directory/name).read_bytes()for name in('authorization.json','runtime.json')}
+  def slow(*args,**kw):
+   result=extract(*args,**kw);f.clock+=350;f.monotonic_offset+=350;return result
+  with patch.object(f.fmt,'extract_archive',side_effect=slow):proof=f.invoke_preparation(a)
+  p=json.loads(proof.read_bytes());self.assertEqual(p['policy'],prepared.NORMAL_V2_POLICY)
+  self.assertEqual(ci.epoch(a['expiresAt'])-ci.epoch(a['issuedAt']),600)
+  self.assertGreater(ci.epoch(p['preparedAt'])-ci.epoch(a['issuedAt']),300)
+  self.assertLess(ci.epoch(p['preparedAt'])-ci.epoch(a['issuedAt']),600)
+  self.assertEqual({name:(f.directory/name).read_bytes()for name in original},original);self.assert_no_unit_mutation(f)
+
+ def test_v2_and_legacy_keep_every_original_shorter300_expiry(self):
+  for policy in(prepared.POLICY,prepared.NORMAL_V2_POLICY):
+   with self.subTest(policy=policy):
+    f=self.fixture();a=f.prepare_record(policy=policy);a['expiresAt']=f.iso(300);extract=f.fmt.extract_archive
+    def slow(*args,**kw):
+     result=extract(*args,**kw);f.clock+=350;f.monotonic_offset+=350;return result
+    with patch.object(f.fmt,'extract_archive',side_effect=slow):
+     with self.assertRaisesRegex(ValueError,'expired|deadline'):f.invoke_preparation(a)
+    self.assertFalse(Path(a['preparation']['proof']).exists());self.assert_no_unit_mutation(f)
+
+ def test_v2_cannot_exceed600_or_reinterpret_legacy_as600(self):
+  for policy,seconds,ceiling in((prepared.POLICY,600,300),(prepared.NORMAL_V2_POLICY,601,600)):
+   with self.subTest(policy=policy):
+    f=self.fixture();a=f.prepare_record(policy=policy);a['expiresAt']=f.iso(seconds)
+    with self.assertRaisesRegex(ValueError,'exceeds'+str(ceiling)+'s'):f.invoke_preparation(a)
+    self.assertFalse(Path(a['preparation']['directory']).exists());self.assertFalse(Path(a['preparation']['proof']).exists());self.assert_no_unit_mutation(f)
+
+ def test_v2_is_normal_only_and_has_no_caller_duration_field(self):
+  for fault in('failed-preunit','duration-field','unknown-version'):
+   with self.subTest(fault=fault):
+    f=self.fixture();a=f.prepare_record(fault=='failed-preunit');a['preparation']['policy']=prepared.NORMAL_V2_POLICY
+    if fault=='duration-field':a['preparation']['durationSeconds']=600
+    if fault=='unknown-version':a['preparation']['policy']='aihr-worker-prepared-handoff/v999'
+    with self.assertRaisesRegex(ValueError,'closed preparation identity'):f.invoke_preparation(a)
+    self.assertFalse(Path(a['preparation']['proof']).exists());self.assert_no_unit_mutation(f)
+
+ def test_v2_guard_selects_cap_before_admission_and_retains_tighter_outer_limit(self):
+  class Observed(Exception):pass
+  for policy,outer,ceiling in((prepared.POLICY,None,300),(prepared.NORMAL_V2_POLICY,None,600),(prepared.NORMAL_V2_POLICY,200,200)):
+   with self.subTest(policy=policy,outer=outer):
+    f=self.fixture();a=f.prepare_record(policy=policy)
+    def observe(*args,**kw):
+     remaining=f.base.VERIFIED_OPERATION_DEADLINE-time.monotonic();self.assertGreater(remaining,ceiling-10);self.assertLessEqual(remaining,ceiling+1);raise Observed()
+    with contextlib.ExitStack()as ports:
+     if outer is not None:ports.enter_context(patch.object(f.base,'VERIFIED_OPERATION_DEADLINE',time.monotonic()+outer,create=True))
+     ports.enter_context(patch.object(guard,'GuardedInvocation',side_effect=observe))
+     with self.assertRaises(Observed):f.invoke_preparation(a)
+    self.assert_no_unit_mutation(f)
+
+ def test_v2_full_preparation_retains_tighter_outer_io_deadline(self):
+  f=self.fixture();a=f.prepare_record(policy=prepared.NORMAL_V2_POLICY);extract=f.fmt.extract_archive
+  def slow(*args,**kw):
+   result=extract(*args,**kw);f.clock+=350;f.monotonic_offset+=350;return result
+  with patch.object(f.base,'VERIFIED_OPERATION_DEADLINE',time.monotonic()+200,create=True),patch.object(f.fmt,'extract_archive',side_effect=slow),patch.object(prepared,'tree_identity',wraps=prepared.tree_identity)as scan:
+   with self.assertRaisesRegex(ValueError,'expired|deadline'):f.invoke_preparation(a)
+   scan.assert_not_called()
+  self.assertFalse(Path(a['preparation']['proof']).exists());self.assert_no_unit_mutation(f)
+
+ def test_v2_admission_does_not_restart_cap_after_slow_policy_read(self):
+  class Observed(Exception):pass
+  f=self.fixture();a=f.prepare_record(policy=prepared.NORMAL_V2_POLICY);read=f.base.read_bounded;delayed=[]
+  def slow(path,*args,**kw):
+   value=read(path,*args,**kw)
+   if Path(path)==f.root/'finite-preparation.json' and not delayed:
+    delayed.append(True);f.clock+=350;f.monotonic_offset+=350
+   return value
+  def observe(*args,**kw):
+   remaining=f.base.VERIFIED_OPERATION_DEADLINE-time.monotonic();self.assertGreater(remaining,240);self.assertLess(remaining,260);raise Observed()
+  with patch.object(f.base,'read_bounded',side_effect=slow),patch.object(guard,'GuardedInvocation',side_effect=observe):
+   with self.assertRaises(Observed):f.invoke_preparation(a)
+  self.assertEqual(delayed,[True]);self.assert_no_unit_mutation(f)
+
+ def test_v2_does_not_reset_expired_original_readiness_or_grant(self):
+  for expired in('readiness','grant'):
+   with self.subTest(expired=expired):
+    f=self.fixture();original={name:(f.directory/name).read_bytes()for name in('authorization.json','runtime.json')}
+    f.clock=ci.epoch(f.runtime['verifiedAt'])+601 if expired=='readiness'else ci.epoch(f.grant['expiresAt'])+1
+    a=f.prepare_record(policy=prepared.NORMAL_V2_POLICY);proof=f.invoke_preparation(a)
+    with self.assertRaisesRegex(ValueError,'insufficient mandatory helper/readiness|original CI grant expired|operation exceeds'):f.invoke_live(f.live_record(a,proof))
+    self.assertEqual({name:(f.directory/name).read_bytes()for name in original},original);self.assert_no_unit_mutation(f)
+
+ def test_v1_prepared_proof_cannot_be_relabelled_v2(self):
+  f=self.fixture();a=f.prepare_record();proof=f.invoke_preparation(a);p=json.loads(proof.read_bytes());p['policy']=prepared.NORMAL_V2_POLICY;proof.chmod(0o600);proof.write_bytes(encoded(p));proof.chmod(0o400)
+  with self.assertRaisesRegex(ValueError,'policy version differs'):f.invoke_live(f.live_record(a,proof))
+  self.assert_no_unit_mutation(f)
+
 
 class ActualArchiveCapacityTests(unittest.TestCase):
  def test_actual_full_archive_normal_prepared_f4_startup_window(self):
   with tempfile.TemporaryDirectory()as tmp:
    f=Fixture(Path(tmp),PACKAGE);self.assertGreater(len(f.manifest['entries']),60000)
-   a=f.prepare_record();proof=f.invoke_preparation(a);capture=core.fences.capture_tree;fired=[]
+   a=f.prepare_record(policy=prepared.NORMAL_V2_POLICY);proof=f.invoke_preparation(a);capture=core.fences.capture_tree;fired=[]
    def startup(*args,**kwargs):
     o=getattr(ci.ACTIVE_OPERATION_GUARD,'observer',None)
     if o is not None and o.slot_name=='F4'and not fired:fired.append(True);REAL_SLEEP(30)
@@ -416,17 +505,17 @@ class ActualArchiveCapacityTests(unittest.TestCase):
    self.assertEqual((r['completeMetadataFences'],r['fullNativeAudits']),(10,2));self.assertLess(time.monotonic()-began,827)
    print(json.dumps({'kind':'ACTUAL_FULL_WORKER_PACKAGE_NORMAL_PREPARED_F4_WINDOW','source':f.source,
     'entries':len(f.manifest['entries']),'archiveBytes':PACKAGE.stat().st_size,'f4ElapsedSeconds':f4['elapsedSeconds'],
-    'fixedLiveCapSeconds':827,'nativeReadinessSeconds':600,'nativeProofPorts':'deterministic; actual bytes/hash/locks/monotonic elapsed'}))
+    'offlinePreparationPolicy':a['preparation']['policy'],'offlinePreparationMaxSeconds':600,'fixedLiveCapSeconds':827,'nativeReadinessSeconds':600,'nativeProofPorts':'deterministic; actual bytes/hash/locks/monotonic elapsed'}))
  def test_actual_full_archive_preparation_over30_then_normal_full_wrapper(self):
   with tempfile.TemporaryDirectory()as tmp:
    f=Fixture(Path(tmp),PACKAGE);self.assertGreater(len(f.manifest['entries']),60000)
    raw_extract=f.fmt.extract_archive
    def expensive(*args,**kw):
     result=raw_extract(*args,**kw);REAL_SLEEP(31);return result
-   started=time.monotonic();a=f.prepare_record()
+   started=time.monotonic();a=f.prepare_record(policy=prepared.NORMAL_V2_POLICY)
    with patch.object(f.fmt,'extract_archive',side_effect=expensive):proof=f.invoke_preparation(a,umask=0o077)
    elapsed=time.monotonic()-started;self.assertGreater(elapsed,30);r=f.invoke_live(f.live_record(a,proof));self.assertEqual(r['completeMetadataFences'],10);self.assertEqual(r['fullNativeAudits'],2)
-   print(json.dumps({'kind':'ACTUAL_FULL_WORKER_PACKAGE_PREPARED_NORMAL_GRAPH','source':f.source,'archiveBytes':PACKAGE.stat().st_size,'entries':len(f.manifest['entries']),'preparationElapsedSeconds':elapsed,'fixedLiveCapSeconds':827,'originalLivePreparationSeconds':30,'nativeProofPorts':'deterministic; actual files/hash/locks/elapsed','unitMutationBeforePreparation':False}))
+   print(json.dumps({'kind':'ACTUAL_FULL_WORKER_PACKAGE_PREPARED_NORMAL_GRAPH','source':f.source,'archiveBytes':PACKAGE.stat().st_size,'entries':len(f.manifest['entries']),'preparationElapsedSeconds':elapsed,'offlinePreparationPolicy':a['preparation']['policy'],'offlinePreparationMaxSeconds':600,'fixedLiveCapSeconds':827,'originalLivePreparationSeconds':30,'nativeProofPorts':'deterministic; actual files/hash/locks/elapsed','unitMutationBeforePreparation':False}))
  def test_actual_full_archive_failed_preunit_wrapper_preserves_original_failure(self):
   with tempfile.TemporaryDirectory()as tmp:
    f=Fixture(Path(tmp),PACKAGE);started=time.monotonic();a=f.prepare_record(True);REAL_SLEEP(31);proof=f.invoke_preparation(a);before=(f.state/'current').read_bytes();marker=(f.operation/'ci-runtime-started.json').read_bytes();r=f.invoke_live(f.live_record(a,proof));self.assertEqual(r['transitionStages'],['F']*10);self.assertEqual(r['fullNativeAudits'],2);self.assertEqual((f.state/'current').read_bytes(),before);self.assertEqual((f.operation/'ci-runtime-started.json').read_bytes(),marker);self.assertEqual(f.original_probe_modes.count('resume-status'),2)

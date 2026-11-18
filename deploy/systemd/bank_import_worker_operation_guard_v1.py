@@ -173,6 +173,16 @@ class GuardedInvocation:
         if self.lock:self.lock.close()
 
 
+def preparation_initial_seconds(base,ci,path,pinned):
+    # Select only the reviewed normal-v2 ceiling from the EXACT protected approval.
+    # This grants no authority: GuardedInvocation still validates every field and
+    # re-reads these same hash-pinned bytes before acquiring/mutating anything.
+    path=Path(path);ci.protected_private(base,path);raw=base.read_bounded(path,65536)
+    base.check(ci.sha(raw)==pinned,'root invocation approval hash differs')
+    record=json.loads(raw);p=record.get('preparation')if isinstance(record,dict)else None
+    return 600 if isinstance(p,dict) and p.get('policy')=='aihr-worker-prepared-handoff/v2' and p.get('mode')=='normal' else 300
+
+
 def launch(argv,fmt,base,ci,update):
     parser=argparse.ArgumentParser()
     parser.add_argument('mode',choices=['guarded-drain','guarded-activate-ci-runtime','guarded-prepare-ci-worker','guarded-activate-prepared-ci-runtime','guarded-recover-ci-runtime','guarded-seal-published-ci-worker','guarded-recover-published-ci-runtime'])
@@ -183,8 +193,9 @@ def launch(argv,fmt,base,ci,update):
     previous_deadline=getattr(base,'VERIFIED_OPERATION_DEADLINE',None);previous_slot=getattr(ci,'SLOT_DEADLINE',None);previous_overall=getattr(base,'RECOVERY_OVERALL_DEADLINE',None)
     if stage in ('activate-prepared-ci-runtime','recover-ci-runtime','recover-published-ci-runtime'):base.RECOVERY_OVERALL_DEADLINE=min(time.monotonic()+827,previous_overall if previous_overall is not None else float('inf'))
     if stage in ('activate-ci-runtime','prepare-ci-worker','activate-prepared-ci-runtime','recover-ci-runtime',*published_kinds(ci)):
-        initial_seconds=300 if stage in ('prepare-ci-worker','seal-published-ci-worker') else 30
-        initial_deadline=min([time.monotonic()+initial_seconds,*[value for value in (previous_deadline,previous_slot)if value is not None]])
+        initial_started=time.monotonic()
+        initial_seconds=preparation_initial_seconds(base,ci,args.approval,args.approval_sha256)if stage=='prepare-ci-worker'else 300 if stage=='seal-published-ci-worker'else 30
+        initial_deadline=min([initial_started+initial_seconds,*[value for value in (previous_deadline,previous_slot)if value is not None]])
         base.VERIFIED_OPERATION_DEADLINE=initial_deadline;ci.SLOT_DEADLINE=initial_deadline
     try:
         guard=GuardedInvocation(base,ci,stage,args.approval,args.approval_sha256)
