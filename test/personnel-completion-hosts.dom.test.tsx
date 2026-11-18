@@ -3,6 +3,7 @@ import {cleanup,fireEvent,render,screen,waitFor} from '@testing-library/react';
 import {NextIntlClientProvider} from 'next-intl';
 import {EmployeeLifecycle} from '../app/me/lifecycle/view';
 import {CaseDocument} from '../app/lifecycle/v9/case-document';
+import {reconcilePersonnelCompletion} from '../lib/lifecycle-v9-personnel-completion';
 import {completionDocument,completionActor} from './helpers/personnel-completion-ui-fixture';
 import type {LifecycleV9OwnCase} from '../packs/lifecycle/service';
 import messages from '../messages/en.json';
@@ -26,4 +27,10 @@ it('keeps the employee preparation draft after a failed submission',async()=>{
 it('uses the HR case command for an audited completion override rather than changing template ownership',async()=>{
  const doc=ownDocument(),command=vi.fn().mockResolvedValue({ok:true});render(<NextIntlClientProvider locale="en" messages={messages}><CaseDocument c={{state:'submitted'}} document={doc} actor={{id:'hr',name:'Fictional HR'}} busy={false} command={command}/></NextIntlClientProvider>);
  fireEvent.click(screen.getAllByRole('button',{name:'Fill it myself'})[0]);fireEvent.change(screen.getByRole('textbox',{name:messages.personnelCompletion.reason}),{target:{value:'Employee asked HR to enter the supplied address'}});fireEvent.click(screen.getByRole('button',{name:'Confirm change'}));await waitFor(()=>expect(command).toHaveBeenCalledWith({type:'documentCompletionOverride',id:doc.id,fieldId:'address-answer',owner:'hr',reason:'Employee asked HR to enter the supplied address'}));expect(doc.fields[0].owner).toBe('pmLocked');
+});
+
+it('shows relocked official preparation fields and the retained answer without offering an empty submission',()=>{
+ const doc=ownDocument();doc.values['address-answer']='Saved employee address';reconcilePersonnelCompletion(doc,{values:{'address-answer':'Current official address',mobile:'+60129876543',passport:'Fictional passport in PM',workEmail:'official-work@example.test'},sourceFingerprint:'new-source',actor:completionActor,at:'2026-11-18T03:00:00.000Z'});
+ const c={id:'case',revision:4,state:'submitted',own:true,documents:[doc],facts:{name:'Fictional employee'},items:[],tasks:[]}as unknown as LifecycleV9OwnCase;render(<NextIntlClientProvider locale="en" messages={messages}><EmployeeLifecycle cases={[c]} initialSelection={{caseId:c.id,documentId:doc.id}}/></NextIntlClientProvider>);
+ expect(screen.getByRole('textbox',{name:/^Address/})).toBeDisabled();expect(screen.getByRole('textbox',{name:/^Address/})).toHaveValue('Current official address');expect(screen.getByText('Saved employee address')).toBeVisible();expect(screen.queryByRole('button',{name:'Save progress'})).not.toBeInTheDocument();expect(screen.queryByRole('button',{name:'Submit answers'})).not.toBeInTheDocument();expect(screen.queryByRole('link',{name:'Download PDF'})).not.toBeInTheDocument();expect(actions.save).not.toHaveBeenCalled();expect(actions.submit).not.toHaveBeenCalled();
 });
