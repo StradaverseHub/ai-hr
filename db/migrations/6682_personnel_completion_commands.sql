@@ -1,11 +1,11 @@
 -- One canonical saved-document command. Inputs are values/intent, never a policy or arbitrary case blob.
-CREATE FUNCTION app.v9_personnel_completion_sources(p_case uuid DEFAULT NULL) RETURNS TABLE(case_id uuid,revision integer,company_id uuid,employment_id uuid,person_id uuid,is_native boolean,state text,document jsonb)
+CREATE FUNCTION app.v9_personnel_completion_sources(p_case uuid) RETURNS TABLE(case_id uuid,revision integer,company_id uuid,employment_id uuid,person_id uuid,is_native boolean,state text,document jsonb)
 LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
  SELECT c.id,c.revision,c.company_id,c.employment_id,e.person_id,false,c.data->>'state',d FROM lc_v9_case c JOIN employment e ON e.id=c.employment_id AND e.tenant_id=c.tenant_id AND e.company_id=c.company_id
- CROSS JOIN LATERAL jsonb_array_elements(coalesce(c.data->'documents','[]'::jsonb)) d WHERE c.tenant_id=app.current_tenant_id() AND (p_case IS NULL OR c.id=p_case)
+ CROSS JOIN LATERAL jsonb_array_elements(coalesce(c.data->'documents','[]'::jsonb)) d WHERE c.tenant_id=app.current_tenant_id() AND c.id=p_case
  UNION ALL
  SELECT c.id,c.revision,c.company_id,c.employment_id,(c.data->>'personId')::uuid,true,c.data->>'state',d FROM lc_onboarding_case c JOIN lc_onboarding_private p ON p.case_id=c.id AND p.tenant_id=c.tenant_id
- CROSS JOIN LATERAL jsonb_array_elements(coalesce(p.data->'lifecycleV9'->'documents','[]'::jsonb)) d WHERE c.tenant_id=app.current_tenant_id() AND (p_case IS NULL OR c.id=p_case)
+ CROSS JOIN LATERAL jsonb_array_elements(coalesce(p.data->'lifecycleV9'->'documents','[]'::jsonb)) d WHERE c.tenant_id=app.current_tenant_id() AND c.id=p_case
  AND p.data->'lifecycleV9Subject'->>'personId' IS NOT DISTINCT FROM c.data->>'personId' AND p.data->'lifecycleV9Subject'->>'employmentId' IS NOT DISTINCT FROM c.employment_id::text
  AND (c.employment_id IS NULL OR EXISTS(SELECT 1 FROM employment e WHERE e.id=c.employment_id AND e.tenant_id=c.tenant_id AND e.company_id=c.company_id AND e.person_id::text=c.data->>'personId'))
 $$;
@@ -22,7 +22,7 @@ CREATE FUNCTION app.personnel_completion_preparation_projection(d jsonb) RETURNS
  'personnelCompletion',(d->'personnelCompletion')||jsonb_build_object('fields',entries,'history',coalesce((SELECT jsonb_agg(item) FROM jsonb_array_elements(d->'personnelCompletion'->'history') item WHERE entries ? (item->>'fieldId')),'[]'::jsonb))) FROM projection
 $$;
 CREATE FUNCTION app.v9_personnel_completion_read(p_case uuid,p_document text) RETURNS jsonb LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
- SELECT CASE WHEN hr.allowed OR jsonb_typeof(s.document->'signing')='object' AND app.v9_document_route_content_visible(s.document) OR s.document->>'sentAt' IS NOT NULL THEN s.document ELSE app.personnel_completion_preparation_projection(s.document) END
+ SELECT CASE WHEN hr.allowed OR jsonb_typeof(s.document->'signing')='object' AND app.v9_document_route_content_visible(s.document) OR s.document->>'sentAt' IS NOT NULL THEN app.personnel_completion_document_projection(s.document) ELSE app.personnel_completion_preparation_projection(s.document) END
  FROM app.v9_personnel_completion_sources(p_case) s
  CROSS JOIN LATERAL(SELECT app.is_admin_for(s.company_id) AND CASE WHEN s.is_native THEN app.onboarding_page_access() OR app.onboarding_v9_case_actor() OR app.is_group_admin() ELSE app.lc_v9_off_access(s.company_id) END AS allowed) hr
  WHERE app.v9_signing_current_actor() AND app.probation_company_entitled(s.company_id) AND s.document->>'id'=p_document AND s.state='submitted' AND s.document->>'status' NOT IN('withdrawn','superseded') AND s.document?'personnelCompletion'
@@ -81,6 +81,7 @@ BEGIN
   IF jsonb_typeof(p_override) IS DISTINCT FROM 'object' OR p_override-ARRAY['fieldId','owner','reason']<>'{}'::jsonb OR coalesce(p_override->>'owner' IN('employee','hr'),false) IS NOT TRUE OR length(btrim(coalesce(p_override->>'reason',''))) NOT BETWEEN 1 AND 4000 THEN RAISE EXCEPTION 'Record a bounded reason and completion owner';END IF;
   key:=p_override->>'fieldId';SELECT item INTO field FROM jsonb_array_elements(d->'fields') item WHERE item->>'id'=key AND item->>'owner'='pmLocked';entry:=policy->'fields'->key;
   IF field IS NULL OR entry IS NULL OR btrim(coalesce(entry->>'sourceValue',''))<>'' THEN RAISE EXCEPTION 'Only a missing Personnel field can change owner';END IF;
+  IF p_override->>'owner'='employee' AND app.personnel_completion_group(field->>'pmKey')='unknown' THEN RAISE EXCEPTION 'Unclassified Personnel fields remain with HR';END IF;
   before_owner:=app.personnel_completion_owner(d,field);after_owner:=p_override->>'owner';
   IF before_owner<>after_owner THEN entry:=entry-'answer';d:=jsonb_set(d,ARRAY['values',key],'""'::jsonb,true);END IF;
   entry:=entry||jsonb_build_object('override',jsonb_build_object('owner',after_owner,'by',actor,'at',stamp,'reason',btrim(p_override->>'reason')));
@@ -113,6 +114,14 @@ BEGIN
   policy:=policy||jsonb_build_object('submitted',jsonb_build_object('at',stamp,'by',actor,'sourceFingerprint',fingerprint));d:=jsonb_set(d,'{personnelCompletion}',policy);
  END IF;
  IF p_operation='adopt' AND EXISTS(SELECT 1 FROM jsonb_array_elements(d->'fields') f WHERE f->>'required'='true' AND app.personnel_completion_owner(d,f)='employee') AND NOT EXISTS(SELECT 1 FROM jsonb_array_elements(d->'fields') f WHERE app.personnel_completion_owner(d,f)='hr' AND btrim(coalesce(d->'values'->>(f->>'id'),''))='') THEN d:=jsonb_set(d,'{personnelCompletion,preparation}',jsonb_build_object('at',stamp,'by',actor));END IF;
+ IF NOT(policy?'preparation') AND EXISTS(SELECT 1 FROM jsonb_array_elements(d->'fields') f WHERE f->>'required'='true' AND app.personnel_completion_owner(d,f)='employee') THEN policy:=policy||jsonb_build_object('preparation',jsonb_build_object('at',stamp,'by',actor));d:=jsonb_set(d,'{personnelCompletion}',policy);END IF;
+ FOR field IN SELECT item FROM jsonb_array_elements(d->'fields') item WHERE item->>'owner'='pmLocked' AND policy->'fields'?(item->>'id') LOOP
+  key:=field->>'id';answer:=coalesce(d->'values'->>key,'');
+  IF field->>'type'='date' AND answer~'^\d{4}-\d{2}-\d{2}$' THEN answer:=to_char(answer::date,'DD/MM/YYYY');END IF;
+  IF answer='' AND field->>'required' IS DISTINCT FROM 'true' THEN answer:='—';END IF;
+  d:=jsonb_set(d,ARRAY['mergeValues',field->>'pmKey'],to_jsonb(answer),true);
+ END LOOP;
+ d:=app.personnel_completion_document_projection(d);
  IF d IS NOT DISTINCT FROM before_doc AND changes IS NOT DISTINCT FROM coalesce(case_data->'pmChanges','[]'::jsonb) THEN RETURN s.revision;END IF;
  IF jsonb_typeof(d->'signing')='object' THEN
   d:=jsonb_set(d,'{signing,contentRevision}',to_jsonb((d->'signing'->>'contentRevision')::integer+1));d:=jsonb_set(d,'{signing,contentHash}',to_jsonb(app.v9_document_content_hash(d)));

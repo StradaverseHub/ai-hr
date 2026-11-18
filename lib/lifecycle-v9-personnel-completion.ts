@@ -34,11 +34,13 @@ export function initializePersonnelCompletion(document:CompletionDocument,input:
  const fields:PersonnelCompletionPolicy['fields']={};
  for(const field of document.fields)if(field.owner==='pmLocked'){const official=input.officialValues[field.id]??'';fields[field.id]={key:field.pmKey,group:personnelCompletionGroup(field.pmKey),sourceValue:official,sourceFingerprint:input.sourceFingerprint};document.values[field.id]=official;}
  document.personnelCompletion={version:1,classification:PERSONNEL_COMPLETION_CLASSIFICATION,country:input.country,sourceFingerprint:input.sourceFingerprint,adoptedAt:input.at,adoptedBy:{...input.actor},fields,history:[]};
+ if(document.fields.some(field=>field.required&&effectivePersonnelCompletion(document,field)==='employee'))document.personnelCompletion.preparation={at:input.at,by:{...input.actor}};
 }
 export function effectivePersonnelCompletion(document:CompletionDocument,field:Field):PersonnelCompletionOwner{
  if(field.owner!=='pmLocked')return field.owner;
  const entry=document.personnelCompletion?.fields[field.id];
  if(!entry||entry.key!==field.pmKey||entry.sourceValue.trim())return 'pmLocked';
+ if(personnelCompletionGroup(field.pmKey)==='unknown')return 'hr';
  return entry.override?.owner??(entry.group==='personal'?'employee':'hr');
 }
 export function missingPersonnelCompletion(document:CompletionDocument,owner:'employee'|'hr'){
@@ -48,11 +50,13 @@ export function missingPersonnelCompletion(document:CompletionDocument,owner:'em
 export function overridePersonnelCompletion(document:CompletionDocument,input:{fieldId:string;owner:'employee'|'hr';reason:string;actor:Actor;at:string}){
  const entry=document.personnelCompletion?.fields[input.fieldId],field=document.fields.find(f=>f.id===input.fieldId);
  if(!entry||!field||field.owner!=='pmLocked'||entry.sourceValue.trim()||personnelCompletionLocked(document))throw new Error('Only a missing unsigned Personnel field can change who completes it.');
+ if(input.owner==='employee'&&personnelCompletionGroup(field.pmKey)==='unknown')throw new Error('Unclassified Personnel fields remain with HR.');
  if(!input.reason.trim())throw new Error('Record why completion is changing.');
  const before=effectivePersonnelCompletion(document,field);
  if(before!==input.owner){document.values[field.id]='';delete entry.answer;}
  delete document.personnelCompletion!.submitted;
  entry.override={owner:input.owner,reason:input.reason.trim(),by:{...input.actor},at:input.at};
+ if(input.owner==='employee'&&field.required&&!document.personnelCompletion!.preparation)document.personnelCompletion!.preparation={at:input.at,by:{...input.actor}};
  document.personnelCompletion!.history.push({fieldId:field.id,action:'override',by:{...input.actor},at:input.at,before,after:input.owner,reason:input.reason.trim()});
 }
 /** Official values win only while editable; conflicting saved employee drafts remain available for HR review. */
@@ -69,7 +73,7 @@ export function reconcilePersonnelCompletion(document:CompletionDocument,input:{
   policy.history.push({fieldId:field.id,action:'reconciled',by:{...input.actor},at:input.at,before:entry.sourceValue,after:official,reason:'Current authorized Personnel source'});
   entry.sourceValue=official;entry.sourceFingerprint=input.sourceFingerprint;changed=true;
  }
- if(changed){policy.sourceFingerprint=input.sourceFingerprint;delete policy.submitted;}return changed;
+ if(changed){policy.sourceFingerprint=input.sourceFingerprint;delete policy.submitted;if(!policy.preparation&&document.fields.some(field=>field.required&&effectivePersonnelCompletion(document,field)==='employee'))policy.preparation={at:input.at,by:{...input.actor}};}return changed;
 }
 /** Full numbering-plan metadata, with an evidenced company jurisdiction for national numbers. No length-only inference. */
 export function normalizeCompletionPhone(value:string,country:string|null):string{

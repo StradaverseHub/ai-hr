@@ -1,6 +1,6 @@
 import {updatePersonnelCompletionTx} from './personnel-completion';
 import {communicationPreviewSource,type WorkflowPreviewContext} from '../../../lib/lifecycle-case-preview';
-import {reviseV9DocumentRouting} from '../../../lib/lifecycle-v9-document-routing';
+import {v9SigningCanonicalText,reviseV9DocumentRouting} from '../../../lib/lifecycle-v9-document-routing';
 import {documentRoutingProblems,resolveDocumentRouting} from '../../../lib/document-signing-routing';
 import {resolveNativeDocumentRouting} from '../../../lib/document-signing-native-routing';
 import type {Routing as NativeDocumentRouting} from '../../../lib/onboarding-model';
@@ -210,7 +210,8 @@ async function environment(tx: Tx, ctx: SessionContext, c: M.Case, config: M.Con
     openLoad: id => Number(sharedLoads.find(load => load.user_id === id)?.task_load ?? 0),
     lastAssigned: id => { const last = sharedLoads.find(load => load.user_id === id)?.last_auto; return last ? Date.parse(last) || 0 : 0; },
     eligibleUser: id => users.some(u => u.id === id), userName: id => users.find(u => u.id === id)?.name ?? 'Unlinked user', mergeValues: values, ...(calculation?.lastDay ? { effectiveLastDay: calculation.lastDay } : {}), holdAlertUserIds: ['pending', 'submitted'].includes(c.state) ? await holdAlertUsersTx(tx, ctx.tenantId, c.facts.company, c.module) : [], signatoryUserId: signatory?.signatoryUserId ?? null, actorSignatoryTitle:v9SignatoryTitle(config,who.id,c.facts.company), requireDeliveryAck: true, ...(native && !c.facts.employeeUserId && z.email().max(320).regex(/^[\x21-\x7e]+$/).safeParse((native.c.caseContactEmail ?? nf?.email)?.trim()).success ? { onboardingContact: { email: (native.c.caseContactEmail ?? nf!.email).trim(), sourceRevision: native.c.sourceVersion } } : {}) };
-  const [routedPersonnel]=config.templates.some(template=>template.versions.some(version=>version.routing?.length))?await tx.execute<{values:Record<string,string>|null}>(sql`select app.v9_document_personnel_values(${c.id}::uuid) as values`):[];
+  const [routedPersonnel]=config.templates.some(template=>template.versions.some(version=>version.routing?.length||version.fields.some(field=>field.owner==='pmLocked')))?await tx.execute<{values:Record<string,string>|null}>(sql`select app.v9_document_personnel_values(${c.id}::uuid) as values`):[];
+  env.personnelCompletion={available:!!routedPersonnel?.values,country:routedPersonnel?.values?._country??null,source:routedPersonnel?.values??{},fingerprint:(values,country)=>createHash('sha256').update(v9SigningCanonicalText({country,values})).digest('hex')};
   env.documentRouting={...(routedPersonnel?{...(routedPersonnel.values?{personnelSource:routedPersonnel.values}:{sourceUnavailable:true})}:{}),tenantId:ctx.tenantId,hash:text=>createHash('sha256').update(text).digest('hex'),resolve:routing=>{
    const resolved=resolveDocumentRouting(routing,{employeeUserId:c.facts.employeeUserId,directSuperiorUserId:supervisorUserId,facts:{company:c.facts.company,businessGroup:c.facts.businessGroup,department:c.facts.department,jobTitle:c.facts.title},routing:()=>null,
     nativeRouting:id=>{const definition=nativeRoutingConfig?.routings?.find(definition=>definition.id===id);return definition?resolveNativeDocumentRouting(definition,{...c.facts,finalConfirmationDate:c.facts.finalConfirmationDate??undefined,confirmationDate:c.facts.confirmationDate??undefined,probationEndDate:c.facts.probationEndDate??undefined,provisionalEndOn:c.facts.provisionalEndOn??undefined},config.groups,id=>env.eligibleUser(id)&&!env.onLeave(id,today)):{userIds:[],groupId:null,reason:'The On/Off Boarding routing no longer exists.'};},
@@ -781,6 +782,8 @@ export async function v9Command(ctx: SessionContext, id: string, revision: numbe
           proposal.status = 'rejected';
           M.appendLog(c, env, 'personnel.kept', `${proposal.field}: kept on the case only`);
         } else {
+          const document=c.documents.find(document=>document.id===proposal.documentId);
+          if(document?.personnelCompletion&&(!M.currentDocumentCompletionProposal(document,proposal)||proposal.provenance?.kind==='missing-personnel'&&!document.personnelCompletion.submitted))throw new M.V9Error('This employee answer changed or is no longer submitted. Review the current document.','conflict');
           proposal.status = await pushV9PersonnelTx(tx, ctx, { employmentId: c.facts.employmentId, field: proposal.field, before: proposal.before, after: proposal.after });
           M.appendLog(c, env, proposal.status === 'pushed' ? 'personnel.pushed' : 'personnel.conflict', `${proposal.field}: ${proposal.status === 'pushed' ? 'reviewed change applied' : 'Personnel source changed; review in Personnel Management'}`);
         }
@@ -1179,7 +1182,16 @@ export async function v9OwnDocument(ctx: SessionContext, input: { caseId: string
   if (!Number.isSafeInteger(input.revision) || input.revision < 1 || !input.documentId || input.documentId.length > 120 || JSON.stringify(input.values).length > 1048576) throw new M.V9Error('Invalid document details.');
   await withLifecycleTenant(ctx, async tx => {
     await lockTx(tx, ctx); await actor(tx, ctx);
-    const [result] = await tx.execute<{ employment: string }>(sql`select app.lc_v9_self_document(${input.caseId}::uuid,${input.revision},${input.documentId},${JSON.stringify(input.values)}::jsonb,${input.signature ? JSON.stringify(input.signature) : null}::jsonb) as employment`);
+    const [completion]=await tx.execute<{document:M.Document|null}>(sql`select app.v9_personnel_completion_read(${input.caseId}::uuid,${input.documentId}) as document`);
+    let revision=input.revision,values=input.values;
+    if(completion.document){
+      if(input.signature){
+        if(completion.document.hrSignature||completion.document.employeeSignature){
+          if(Object.entries(values).some(([key,value])=>completion.document!.values[key]!==value))throw new M.V9Error('Signed content is locked.','conflict');values={};
+        }else {revision=await updatePersonnelCompletionTx(tx,{caseId:input.caseId,revision,documentId:input.documentId,values},'submit');values={};}
+      }else {await updatePersonnelCompletionTx(tx,{caseId:input.caseId,revision,documentId:input.documentId,values},'save');return;}
+    }
+    const [result] = await tx.execute<{ employment: string }>(sql`select app.lc_v9_self_document(${input.caseId}::uuid,${revision},${input.documentId},${JSON.stringify(values)}::jsonb,${input.signature ? JSON.stringify(input.signature) : null}::jsonb) as employment`);
     if (!result?.employment) throw new M.V9Error('Document not available.', 'not_found');
     await record(tx, ctx, input.caseId, result.employment, input.signature ? 'employeeDocumentSigned' : 'employeeDocumentSaved');
   });
@@ -1220,14 +1232,15 @@ export async function v9DownloadEmailAsset(ctx: SessionContext, id: string): Pro
 /** Authorized saved instance only: HR scope or the linked employee's released-document projection. */
 export async function v9DownloadDocument(ctx: SessionContext, caseId: string, documentId: string): Promise<{ name: string; content: Uint8Array }> {
   identifier(caseId); documentId = commandId.parse(documentId);
-  let document: M.Document | undefined, reference = '';
+  let document: M.Document | undefined, reference = '',hrView=false;
   try {
-    const detail = await v9CaseDetail(ctx, caseId); document = detail.case.documents.find(d => d.id === documentId); reference = detail.case.number;
+    const detail = await v9CaseDetail(ctx, caseId);hrView=true; document = detail.case.documents.find(d => d.id === documentId); reference = detail.case.number;
   } catch (error) {
     if (!(error instanceof M.V9Error || error instanceof OnboardingError) || !['forbidden', 'not_found'].includes(error.code)) throw error;
     const own = (await v9OwnWork(ctx)).find(c => c.id === caseId); document = own?.documents.find(d => d.id === documentId); reference = own?.number ?? '';
   }
   if(!document){const {v9ReadDocumentSigningWork}=await import('./document-routing');const routed=await v9ReadDocumentSigningWork(ctx,caseId,documentId).catch(()=>null);document=routed?.document??undefined;reference=routed?.number??'';}
+  if(!hrView&&document?.personnelCompletion?.preparation&&!document.sentAt){const {v9ReadDocumentSigningWork}=await import('./document-routing');const routed=await v9ReadDocumentSigningWork(ctx,caseId,documentId).catch(()=>null);if(!routed?.document)throw new M.V9Error('Unsigned preparation has no released document PDF.','forbidden');document=routed.document;reference=routed.number;}
   if (!document) throw new M.V9Error('Document not found or unavailable.', 'not_found');
   const { renderV9DocumentPdf } = await import('../../../lib/lifecycle-v9-pdf');
   const result = await renderV9DocumentPdf(document, reference);

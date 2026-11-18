@@ -1,3 +1,4 @@
+import {updatePersonnelCompletionTx} from './personnel-completion';
 import {randomUUID} from 'node:crypto';
 import {sql} from 'drizzle-orm';
 import {z} from 'zod';
@@ -46,5 +47,5 @@ export async function v9DocumentRouteAct(ctx:SessionContext,input:V9DocumentRout
 }
 export async function v9DocumentRouteEdit(ctx:SessionContext,input:{caseId:string;caseRevision:number;documentId:string;edits?:Record<string,string>;values?:Record<string,string>}){
  const parsed=reference.extend({edits:z.record(z.string().min(1).max(120),z.string().max(20000)).refine(value=>Object.keys(value).length<=500).optional(),values:z.record(z.string().min(1).max(120),z.string().max(20000)).refine(value=>Object.keys(value).length<=500).optional()}).strict().parse(input);
- return withLifecycleTenant(ctx,async tx=>{await lockAccessConfigurationWriteTx(tx,ctx.tenantId);await tx.execute(sql`select app.v9_document_route_edit(${parsed.caseId}::uuid,${parsed.caseRevision},${parsed.documentId},${parsed.edits?JSON.stringify(parsed.edits):null}::jsonb,${JSON.stringify(parsed.values??{})}::jsonb)`);return read(tx,parsed.caseId,parsed.documentId);});
+ return withLifecycleTenant(ctx,async tx=>{await lockAccessConfigurationWriteTx(tx,ctx.tenantId);let revision=parsed.caseRevision;const item=await read(tx,parsed.caseId,parsed.documentId);if(item.document?.personnelCompletion&&parsed.values&&Object.keys(parsed.values).length){revision=await updatePersonnelCompletionTx(tx,{caseId:parsed.caseId,revision,documentId:parsed.documentId,values:parsed.values},'save');if(!parsed.edits||!Object.keys(parsed.edits).length)return read(tx,parsed.caseId,parsed.documentId);parsed.values={};}await tx.execute(sql`select app.v9_document_route_edit(${parsed.caseId}::uuid,${revision},${parsed.documentId},${parsed.edits?JSON.stringify(parsed.edits):null}::jsonb,${JSON.stringify(parsed.values??{})}::jsonb)`);return read(tx,parsed.caseId,parsed.documentId);});
 }

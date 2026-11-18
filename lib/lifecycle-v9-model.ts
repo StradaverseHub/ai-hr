@@ -222,7 +222,7 @@ export type Environment = {
   today: string; now: string; actor: Actor; nextId: () => string;
   documentRouting?:V9DocumentRoutingEnvironment;
   /** Canonical, authorized source; absence deliberately preserves legacy pure-model callers. */
-  personnelCompletion?:{country:string|null;source:Record<string,string>;fingerprint:(values:Record<string,string>,country:string|null)=>string};
+  personnelCompletion?:{available?:boolean;country:string|null;source:Record<string,string>;fingerprint:(values:Record<string,string>,country:string|null)=>string};
   onLeave: (userId: string, date: string) => boolean;
   openLoad: (userId: string, groupId: string) => number;
   lastAssigned: (userId: string, groupId: string) => number;
@@ -421,12 +421,14 @@ export function generate(c: Case, config: Config, templateId: string, env: Envir
   for (const field of version.fields) if (field.pmKey) values[field.id] = personnelFieldSourceValue(field, env.mergeValues);
   const doc: Document = { id: env.nextId(), templateId, version: version.version, name: template.name, status: 'draft', blocks: structuredClone(version.blocks), fields: structuredClone(version.fields), values, edits: {}, hrSignature: null, employeeSignature: null, createdAt: env.now, sentAt: null, mergeValues: documentMergeValues(version,env.mergeValues), templateType: template.type, hrStep: template.hrStep, employeeAck: template.employeeAck, signatoryUserId: env.signatoryUserId ?? null };
   if(env.personnelCompletion&&doc.fields.some(field=>field.owner==='pmLocked')){
+    if(env.personnelCompletion.available===false)throw new V9Error('The current authorized Personnel source is unavailable.','conflict');
     const source=env.personnelCompletion.source;
+    if(source._sourceBasis==='unresolved-exit'&&doc.fields.some(field=>['employee.department','employee.position','employee.supervisor'].includes(field.pmKey??'')))throw new V9Error('The dated Personnel source requires review.','conflict');
     if(source._identityFieldsWithheld==='true'&&doc.fields.some(field=>['personalEmail','employee.icNo','employee.passportNo'].includes(field.pmKey??'')))throw new V9Error('Permission to view protected Personnel identity fields is required for this document.','forbidden');
     const official=Object.fromEntries(doc.fields.filter(field=>field.owner==='pmLocked').map(field=>[field.id,personnelFieldSourceValue(field,source)]));
     initializePersonnelCompletion(doc,{country:env.personnelCompletion.country,sourceFingerprint:env.personnelCompletion.fingerprint(official,env.personnelCompletion.country),officialValues:official,actor:env.actor,at:env.now});
   }
-  if(doc.personnelCompletion)doc.mergeValues=documentMergeValues(doc,doc.mergeValues??{},true);
+  if(doc.personnelCompletion){doc.mergeValues=documentMergeValues(doc,{...doc.mergeValues,...Object.fromEntries(Object.entries(env.personnelCompletion!.source).filter(([key])=>!key.startsWith('_')))},true);if(env.personnelCompletion!.source._identityFieldsWithheld==='true'&&['personalEmail','employee.icNo','employee.passportNo','icNo','passportNo','case.icNo','case.passportNo'].some(key=>Object.hasOwn(doc.mergeValues!,key)))throw new V9Error('Permission to view protected Personnel identity fields is required for this document.','forbidden');}
   initializeV9DocumentRouting(c,version,doc,env);
   c.documents.push(doc); appendLog(c, env, 'document.generated', `${doc.name} version ${doc.version}`); return doc;
 }
@@ -477,13 +479,14 @@ export function refreshDocumentPersonnelCompletion(doc:Document,env:Environment)
 export function overrideDocumentPersonnelCompletion(c:Case,id:string,input:{fieldId:string;owner:'employee'|'hr';reason:string},env:Environment){
   const doc=c.documents.find(document=>document.id===id);if(!doc)throw new V9Error('Document not found.','not_found');
   if(c.state!=='submitted'||documentDeliveryReserved(c,id))throw new V9Error('This document is no longer editable.','conflict');
-  refreshDocumentPersonnelCompletion(doc,env);overridePersonnelCompletion(doc,{...input,actor:env.actor,at:env.now});reviseV9DocumentRouting(doc,env);
+  refreshDocumentPersonnelCompletion(doc,env);overridePersonnelCompletion(doc,{...input,actor:env.actor,at:env.now});doc.mergeValues={...doc.mergeValues,...personnelCompletionMergeValues(doc)};reviseV9DocumentRouting(doc,env);
   reconcileDocumentCompletionProposals(c,doc,env);
   appendLog(c,env,'document.completionOwnerChanged',`${doc.name}: ${input.fieldId}; ${input.reason.trim()}`);
 }
 /** An earlier submitted answer is audit history, not permission to push an abandoned draft. */
 export function currentDocumentCompletionProposal(doc:Document,change:PMChange):boolean{
-  if(!doc.personnelCompletion||change.provenance?.kind!=='missing-personnel')return true;
+  if(!doc.personnelCompletion||!doc.fields.some(field=>field.owner==='pmLocked'&&field.pmKey===change.field))return true;
+  if(change.provenance?.kind!=='missing-personnel')return false;
   return doc.fields.some(field=>{const entry=doc.personnelCompletion!.fields[field.id],answer=entry?.answer;return field.pmKey===change.field&&effectivePersonnelCompletion(doc,field)==='employee'&&answer?.owner==='employee'&&answer.value===change.after&&doc.values[field.id]===change.after&&answer.by.id===change.provenance!.by.id;});
 }
 function reconcileDocumentCompletionProposals(c:Case,doc:Document,env:Environment){
@@ -545,6 +548,7 @@ export function saveDocument(c: Case, id: string, values: Record<string, string>
     validateFieldValue(field, value);
     if(field.owner==='pmLocked')savePersonnelCompletionAnswer(doc,field,value,{owner,actor:env.actor,at:env.now});else doc.values[key] = value;
   }
+  if(doc.personnelCompletion)doc.mergeValues={...doc.mergeValues,...personnelCompletionMergeValues(doc)};
   reviseV9DocumentRouting(doc,env,owner==='employee');
   reconcileDocumentCompletionProposals(c,doc,env);
   appendLog(c, env, 'document.saved', doc.name);
