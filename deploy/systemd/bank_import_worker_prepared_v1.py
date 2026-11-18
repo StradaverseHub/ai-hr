@@ -235,5 +235,5 @@ def run(stage,guard,fmt,base,ci,update):
 def configure(ci):
     global PREP_FIELDS,NORMAL_FIELDS,FIELDS
     PREP_FIELDS=ci.FIRST_APPROVAL_FIELDS|{'preparation'}
-    NORMAL_FIELDS=ci.ACTIVATION_FIELDS|{'preparedWorker'}
-    FIELDS=ci.ACTIVATION_FIELDS|{'preparedWorker','recovery'}
+    NORMAL_FIELDS=ci.ACTIVATION_FIELDS|{'preparedWorker','nativeActivation'}
+    FIELDS=ci.ACTIVATION_FIELDS|{'preparedWorker','recovery','nativeActivation'}

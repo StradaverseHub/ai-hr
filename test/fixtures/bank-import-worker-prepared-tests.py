@@ -109,6 +109,7 @@ class Fixture(core.Fixture):
   proof=Path(record['preparation']['proof']);os.utime(proof,(self.clock,self.clock));return proof
  def live_record(self,preparation,proof):
   a=copy.deepcopy(self.original_auth);a.update(helperSha256=ci.sha(self.helper.read_bytes()),kind=prepared.KINDS['recover-ci-runtime'if preparation['preparation']['failure']else'activate-prepared-ci-runtime'],issuedAt=self.iso(),expiresAt=self.iso(900),preparedWorker={'path':str(proof),'sha256':ci.sha(proof.read_bytes())})
+  a['nativeActivation']={name:ci.sha((self.directory/name).read_bytes())for name in('activate-intent.json','activate-result.json')}
   if preparation['preparation']['failure']:a['recovery']=copy.deepcopy(preparation['preparation']['failure'])
   return a
  def invoke_live(self,a):
@@ -130,6 +131,59 @@ class PreparedFlowTests(unittest.TestCase):
   f=self.fixture();a=f.prepare_record();proof=f.invoke_preparation(a);self.assert_no_unit_mutation(f);r=f.invoke_live(f.live_record(a,proof));self.assertTrue(r['serviceStable']);self.assertFalse(r['journeyVerified']);self.assertEqual(r['completeMetadataFences'],10);self.assertEqual(r['fullNativeAudits'],2)
  def test_normal_preparation_normalizes_restrictive_umask(self):
   f=self.fixture();a=f.prepare_record();proof=f.invoke_preparation(a,umask=0o077);self.assertEqual(stat.S_IMODE(Path(a['preparation']['directory']).stat().st_mode),0o755);self.assertTrue(f.invoke_live(f.live_record(a,proof))['serviceStable'])
+ def test_native_activation_pair_is_real_exchange_and_retained_build_is_public_mode(self):
+  f=self.fixture();a=f.prepare_record(True);proof=f.invoke_preparation(a);live=f.live_record(a,proof)
+  intent=json.loads((f.directory/'activate-intent.json').read_bytes());result=json.loads((f.directory/'activate-result.json').read_bytes())
+  self.assertEqual(intent['newDirectory'],result['activeDirectory']);self.assertEqual(intent['oldDirectory'],result['retainedDirectory'])
+  self.assertEqual(stat.S_IMODE((f.directory/'next').stat().st_mode),0o755)
+  self.assertTrue(f.invoke_live(live)['serviceStable'])
+ def test_native_activation_pair_missing_tampered_symlink_or_unpinned_refuses(self):
+  for name in('activate-intent.json','activate-result.json'):
+   for fault in('missing','tampered','symlink','approval-pin'):
+    with self.subTest(name=name,fault=fault):
+     f=self.fixture();a=f.prepare_record(True);proof=f.invoke_preparation(a);live=f.live_record(a,proof);path=f.directory/name
+     if fault=='missing':path.unlink()
+     elif fault=='tampered':path.write_bytes(path.read_bytes()+b' ')
+     elif fault=='symlink':
+      saved=f.root/(name+'.saved');path.rename(saved);path.symlink_to(saved)
+     else:live['nativeActivation'][name]='0'*64
+     reason={'missing':'unknown/missing private installation member','tampered':'administrator-pinned native activation bytes differ','symlink':'canonical private installation path required','approval-pin':'administrator-pinned native activation bytes differ'}[fault]
+     self.assertRaisesRegex(ValueError,reason,f.invoke_live,live)
+     self.assertTrue(any(x.name.startswith('recovery-')for x in f.operation.iterdir()),'negative did not reach complete private fence')
+     self.assert_no_unit_mutation(f)
+ def test_native_activation_pair_schema_directory_and_build_mismatch_refuses_even_with_fresh_hash_pin(self):
+  for fault in('intent-kind','intent-time','intent-extra','result-build','result-directory','active-build','retained-build','active-mode','retained-mode','unknown-member'):
+   with self.subTest(fault=fault):
+    f=self.fixture();a=f.prepare_record(True);proof=f.invoke_preparation(a)
+    if fault.startswith('intent-'):
+     path=f.directory/'activate-intent.json';value=json.loads(path.read_bytes())
+     if fault=='intent-kind':value['kind']='UNTRUSTED'
+     elif fault=='intent-time':value['createdUnixNs']=1
+     else:value['unexpected']=True
+     f.private_record(path.name,value)
+    elif fault.startswith('result-'):
+     path=f.directory/'activate-result.json';value=json.loads(path.read_bytes())
+     if fault=='result-build':value['activeBuildId']='wrong-build'
+     else:value['activeDirectory']['inode']+=1
+     f.private_record(path.name,value)
+    elif fault=='active-build':(f.webroot/'.next/BUILD_ID').write_text('wrong-build')
+    elif fault=='retained-build':(f.directory/'next/BUILD_ID').write_text('wrong-build')
+    elif fault=='active-mode':(f.webroot/'.next').chmod(0o777)
+    elif fault=='retained-mode':(f.directory/'next').chmod(0o777)
+    else:f.private_record('unexpected.json',{})
+    reason={'intent-kind':'native activation intent differs','intent-time':'native activation intent differs','intent-extra':'native activation intent differs','result-build':'native activation result differs','result-directory':'native activation result differs','active-build':'actual build differs','retained-build':'native retained build identity differs','active-mode':'private installation protection differs','retained-mode':'private installation protection differs','unknown-member':'unknown/missing private installation member'}[fault]
+    self.assertRaisesRegex(ValueError,reason,f.invoke_live,f.live_record(a,proof))
+    self.assertEqual(any(x.name.startswith('recovery-')for x in f.operation.iterdir()),fault!='active-build','negative refused at an unexpected admission boundary')
+    self.assert_no_unit_mutation(f)
+ def test_native_activation_original_mutation_between_complete_fences_refuses(self):
+  for name in('activate-intent.json','activate-result.json'):
+   with self.subTest(name=name):
+    f=self.fixture();a=f.prepare_record(True);proof=f.invoke_preparation(a);live=f.live_record(a,proof);original=f.boundary
+    def changed(kind,count):
+     original(kind,count)
+     if kind=='fast'and count==2:
+      path=f.directory/name;path.write_bytes(path.read_bytes()+b' ')
+    f.boundary=changed;self.assertRaisesRegex(ValueError,'immutable|activation bytes',f.invoke_live,live);self.assertGreaterEqual(f.fast_calls,2);self.assert_no_unit_mutation(f)
  def test_exact_failed_preunit_expired_grant_full_graph_preserves_failure(self):
   f=self.fixture();a=f.prepare_record(True);old=(f.operation/'ci-runtime-started.json').read_bytes();current=(f.state/'current').read_bytes();proof=f.invoke_preparation(a);r=f.invoke_live(f.live_record(a,proof));self.assertEqual(r['mode'],'recover-ci-runtime');self.assertEqual(r['transitionStages'],['F']*10);self.assertEqual(f.original_probe_modes.count('resume-status'),2);self.assertEqual((f.operation/'ci-runtime-started.json').read_bytes(),old);self.assertEqual((f.state/'current').read_bytes(),current);self.assertFalse(r['journeyVerified'])
  def test_unknown_failed_nonzero_or_deactivating_prior_never_admits(self):
