@@ -21,7 +21,7 @@
 import {resolveRoutingRow,type Routing,type RoutingFacts} from './automation/routing';
 import type {SigningRoute,SigningStep} from './document-signing-model';
 
-export const DOCUMENT_ROUTING_ACTIONS = ['review', 'approve', 'sign'] as const;
+export const DOCUMENT_ROUTING_ACTIONS = ['review', 'approve', 'sign', 'acknowledge'] as const;
 export type DocumentRoutingAction = typeof DOCUMENT_ROUTING_ACTIONS[number];
 export type DocumentRoutingWho =
   | {kind: 'routing'; routingId: string}
@@ -30,7 +30,7 @@ export type DocumentRoutingWho =
   | {kind: 'employee'}
   | {kind: 'directSuperior'};
 export type DocumentRoutingPick = 'any' | 'roundRobin';
-export type DocumentRoutingStep = {id: string; order: number; action: DocumentRoutingAction; who: DocumentRoutingWho; owner: boolean; pick?: DocumentRoutingPick};
+export type DocumentRoutingStep = {id: string; order: number; action: DocumentRoutingAction; who: DocumentRoutingWho; owner: boolean; required?:boolean; pick?: DocumentRoutingPick};
 export type DocumentRouting = DocumentRoutingStep[];
 export const MAX_DOCUMENT_ROUTING_STEPS = 30;
 export const MAX_DOCUMENT_ROUTING_ORDER = 30;
@@ -44,7 +44,7 @@ export function sortedDocumentRouting(routing: DocumentRouting): DocumentRouting
   return routing.map((step, index) => ({step, index})).sort((a, b) => a.step.order - b.step.order || a.index - b.index).map(x => x.step);
 }
 export function documentRoutingSignSteps(routing: DocumentRouting): DocumentRoutingStep[] {
-  return sortedDocumentRouting(routing).filter(step => step.action === 'sign');
+  return sortedDocumentRouting(routing).filter(step => step.action === 'sign' || step.action === 'acknowledge');
 }
 export function signatureBlockStepId(block: DocumentRoutingBlock): string | null {
   return block.type === 'signature' && block.role?.startsWith(SIGNATURE_STEP_PREFIX) ? block.role.slice(SIGNATURE_STEP_PREFIX.length) : null;
@@ -63,8 +63,9 @@ export function documentRoutingProblems(routing: DocumentRouting, refs: Document
     if (!step.id || ids.has(step.id) || step.id.length > 120) problems.push(at + 'each step needs its own id.');
     ids.add(step.id);
     if (!Number.isInteger(step.order) || step.order < 1 || step.order > MAX_DOCUMENT_ROUTING_ORDER) problems.push(at + `needs an order number from 1 to ${MAX_DOCUMENT_ROUTING_ORDER}.`);
-    if (!(DOCUMENT_ROUTING_ACTIONS as readonly string[]).includes(step.action)) problems.push(at + 'choose Review, Approve or Sign.');
+    if (!(DOCUMENT_ROUTING_ACTIONS as readonly string[]).includes(step.action)) problems.push(at + 'choose Review, Approve, Sign or Acknowledge.');
     if (step.pick !== undefined && step.pick !== 'any' && step.pick !== 'roundRobin') problems.push(at + 'choose any member or round robin.');
+    if (step.required !== undefined && typeof step.required !== 'boolean') problems.push(at + 'choose whether the step is required.');
     const who = step.who;
     if (!who || !['routing', 'group', 'people', 'employee', 'directSuperior'].includes(who.kind)) problems.push(at + 'choose who acts at this step.');
     else if (who.kind === 'routing' && !refs.routingExists(who.routingId)) problems.push(at + 'the chosen routing no longer exists.');
@@ -74,7 +75,7 @@ export function documentRoutingProblems(routing: DocumentRouting, refs: Document
       else if (who.userIds.some(id => !refs.personExists(id))) problems.push(at + 'a chosen person can no longer be found.');
     }
   });
-  if (!routing.some(step => step.action === 'sign')) problems.push('At least one step must be a Sign step, or nobody signs the document.');
+  if (!routing.some(step => (step.action === 'sign' || step.action === 'acknowledge') && step.required !== false)) problems.push('At least one step must be a Sign step, or nobody signs the document.');
   if (routing.filter(step => step.owner).length > 1) problems.push('Only one step can own the document. Untick the others.');
   return problems;
 }
@@ -144,7 +145,7 @@ export function resolveDocumentRouting(routing: DocumentRouting, ctx: DocumentRo
       unresolved.push({stepId: step.id, meantFor, reason, fallbackGroupId: ctx.fallback?.groupId ?? null, holderId});
     }
     const role = step.who.kind === 'employee' ? 'employee' : step.who.kind === 'directSuperior' ? 'lm' : step.who.kind === 'routing' ? `routing:${step.who.routingId}` : step.who.kind === 'group' ? `group:${step.who.groupId}` : 'people';
-    return {id: step.id, role, kind: step.action, stage: step.order, holderId, required: true, ...(step.owner ? {owner: true} : {}), ...(meantFor ? {meantFor} : {})};
+    return {id: step.id, role, kind: step.action, stage: step.order, holderId, required: step.required !== false, ...(step.owner ? {owner: true} : {}), ...(meantFor ? {meantFor} : {})};
   });
   return {route: {version: 1, steps}, unresolved};
 }
