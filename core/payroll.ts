@@ -6764,8 +6764,8 @@ async function generatePayslipsTx(tx: Tx, ctx: SessionContext, p: GeneratePaysli
       const subsetIds = emps.map((e) => e.employmentId);
       const existing = await tx
         .select()
-        .from(nativePayrollPayslip)
-        .where(and(eq(nativePayrollPayslip.batchId, p.batchId), inArray(nativePayrollPayslip.employmentId, subsetIds)))
+        .from(nativePayrollPayslipWrite)
+        .where(and(eq(nativePayrollPayslipWrite.batchId, p.batchId), inArray(nativePayrollPayslipWrite.employmentId, subsetIds)))
         .for('update');
       taxReplacement = await prepareTaxBasisReplacementTx(tx,ctx,existing.map(sl=>sl.id));
       const correctedSourceIds=new Set(taxReplacement.corrections.map(c=>c.payslipId));
@@ -11354,8 +11354,8 @@ export async function removeEmployeePayrollTx(
   //     never be recovered.
   const onRun = await tx
     .select()
-    .from(nativePayrollPayslip)
-    .where(eq(nativePayrollPayslip.batchId, p.batchId))
+    .from(nativePayrollPayslipWrite)
+    .where(eq(nativePayrollPayslipWrite.batchId, p.batchId))
     .for('update');
   const removing = onRun.filter((sl) => requested.includes(sl.employmentId));
   if (removing.length === 0) throw new RemoveNoEmployeesError();
@@ -12841,8 +12841,8 @@ export function payslipDetail(ctx: SessionContext, payslipId: string, ownOnly = 
         category: employment.employmentCategory,
         department: department.name,
         position: position.title,
-        jobGrade: frozenPayslipInformation('grade',sql`${jobGrade.name}`),
-        employmentType: frozenPayslipInformation('employmentType',sql`${assignment.employmentType}`),
+        jobGrade: frozenPayslipInformation('grade',sql`${jobGrade.name}`,sql`${nativePayrollPayslip.id}`),
+        employmentType: frozenPayslipInformation('employmentType',sql`${assignment.employmentType}`,sql`${nativePayrollPayslip.id}`),
         paymentMethod: employmentPaymentMethodOnSql(sql`${employment.id}`),
         bankName: employeeStatutoryMy.bankName,
         bankAccountNo: employeeStatutoryMy.bankAccountNo,
@@ -13657,7 +13657,7 @@ export async function previewReviewedPayrollResetTx(tx:Tx,supplied:SessionContex
  const schedules=loanIds.length?await tx.select().from(loanRepayment).where(inArray(loanRepayment.loanId,loanIds)).orderBy(loanRepayment.id).limit(10001).for('update',{noWait:true}):[];
  budget([loans,schedules]);
  const lockSources=async()=>{
-  const slips=await tx.select().from(nativePayrollPayslip).where(eq(nativePayrollPayslip.batchId,batchId)).orderBy(nativePayrollPayslip.id).limit(10001).for('update',{noWait:true});
+  const slips=await tx.select().from(nativePayrollPayslipWrite).where(eq(nativePayrollPayslipWrite.batchId,batchId)).orderBy(nativePayrollPayslipWrite.id).limit(10001).for('update',{noWait:true});
   // Lock every batch claim, including currently approved rows: status can change without changing FK.
   const claims=await tx.select().from(claimRequest).where(eq(claimRequest.payrollBatchId,batchId)).orderBy(claimRequest.id).limit(10001).for('update',{noWait:true});
   const individuals=await tx.select().from(payrollIndividualTxn).where(or(eq(payrollIndividualTxn.batchId,batchId),eq(payrollIndividualTxn.consumedBatchId,batchId))).orderBy(payrollIndividualTxn.id).limit(10001).for('update',{noWait:true});

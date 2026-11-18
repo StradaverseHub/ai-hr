@@ -104,7 +104,8 @@ describe('detached history baseline and mutable native payroll owner',()=>{
   expect((await effective()).map(p=>p.grossPay)).toEqual(['6000.00']);
  });
  it('does not suppress a new unrelated native batch for the same employment and month',async()=>{
-  await(await correction()).commit();await resetProcessedBatch(ctx,{batchId,reason:'Replace the original native run'});await deleteDraftBatch(ctx,{batchId});
+  await owner.db.update(s.payComponent).set({includedInPcb:true,pcbRemunerationType:'normal',pcbExemptionCode:'PCB_TAXABLE'}).where(and(eq(s.payComponent.tenantId,b.tenantId),eq(s.payComponent.code,'BASIC')));
+  const edit=await correction();expect((edit.preview.plan.rows[0].values?.statutory as {importedTaxBasis:{state:string}}).importedTaxBasis.state).toBe('ready');await edit.commit();await resetProcessedBatch(ctx,{batchId,reason:'Replace the original native run'});await deleteDraftBatch(ctx,{batchId});
   const later=(await createBatch(ctx,{companyId:b.companyId,payPeriod:period})).batchId;expect(later).not.toBe(batchId);await generatePayslips(ctx,{batchId:later});
   expect((await effective()).map(p=>p.grossPay).sort()).toEqual(['4000.00','6000.00']);
  });
