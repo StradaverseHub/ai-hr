@@ -6525,6 +6525,13 @@
       "when": 1794998006650,
       "tag": "6650_pay_formula_business_code_registration",
       "breakpoints": true
+    },
+    {
+      "idx": 10060,
+      "version": "7",
+      "when": 1794998006660,
+      "tag": "6660_imported_tax_basis_reader",
+      "breakpoints": true
     }
   ]
 }

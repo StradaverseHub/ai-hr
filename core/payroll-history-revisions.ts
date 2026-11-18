@@ -228,6 +228,7 @@ async function planRowsWithFacts(tx:Tx,ctx:SessionContext,records:PayrollHistory
   for(const month of prepared_.preview.months){
    const resolved=prepared_.months.find(m=>m.month.key===month.key),rowNums=month.rowNums.map(rowNumber);
    const reasons=prepared_.preview.issues.filter(issue=>issue.status!=='Warning'&&month.rowNums.includes(issue.rowNum)).map(issue=>issue.description);
+   if(resolved?.statutory.importedTaxBasis)resolved.statutory.importedTaxBasis={...resolved.statutory.importedTaxBasis,lines:resolved.statutory.importedTaxBasis.lines.map(line=>({...line,rowNum:rowNumber(line.rowNum)}))};
    const values:ImportedPayrollValues|null=resolved?{basicSalary:resolved.basicSalary.toFixed(2),allowance:resolved.allowance.toFixed(2),overtimePay:resolved.overtimePay.toFixed(2),bonus:resolved.bonus.toFixed(2),grossPay:resolved.grossPay.toFixed(2),statutory:resolved.statutory,
     otherDeductions:resolved.otherDeductions.toFixed(2),totalDeductions:resolved.totalDeductions.toFixed(2),netPay:resolved.netPay.toFixed(2),employerCost:resolved.employerCost.toFixed(2)}:null;
    if(values&&Object.entries(values).some(([name,value])=>name!=='statutory'&&(!Number.isFinite(Number(value))||Math.abs(Number(value))>9999999999.99)))reasons.push('An accumulated payroll amount exceeds the supported range.');

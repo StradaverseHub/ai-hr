@@ -159,6 +159,7 @@ export const PAYROLL_IMPORT_DESTINATIONS = [
   'overtime',
   'bonus',
   'other_deduction',
+  'noncash',
   'epf_employee',
   'epf_employer',
   'socso_employee',
@@ -208,6 +209,10 @@ export type ImportCodeEntry = {
   direction: PayrollImportDirection;
   /** Where the resolver found it — surfaced on the template's Codes sheet so HR can see the provenance. */
   source: 'statutory' | 'component' | 'catalog' | 'alias';
+  /** Explicit canonical target; aliases never acquire ownership by their display code. */
+  targetCode?:string;
+  basicSalaryOwner?:boolean;
+  taxSettings?:unknown;
 };
 
 /**
@@ -223,7 +228,7 @@ export const STATUTORY_IMPORT_CODES: readonly ImportCodeEntry[] = [
   // its own code (E0001, BASIC_SALARY…) had no BASIC at all and the reporter's own template was rejected.
   // Built in, every tenant has it; a company's own code still works beside it, and naming both in one
   // employee-month is stopped in analyze() so basic salary is never counted twice.
-  { code: 'BASIC', label: 'Basic salary', destination: 'basic', direction: 'earning', source: 'statutory' },
+  { code: 'BASIC', label: 'Basic salary', destination: 'basic', direction: 'earning', source: 'statutory',basicSalaryOwner:true },
   { code: 'EEEPF', label: 'Employee EPF', destination: 'epf_employee', direction: 'deduction', source: 'statutory' },
   { code: 'EESOCSO', label: 'Employee SOCSO', destination: 'socso_employee', direction: 'deduction', source: 'statutory' },
   { code: 'EEEIS', label: 'Employee EIS', destination: 'eis_employee', direction: 'deduction', source: 'statutory' },

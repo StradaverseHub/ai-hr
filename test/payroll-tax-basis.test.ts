@@ -42,7 +42,7 @@ describe('authorized immutable historical income tax corrections',()=>{
   const original=await owner.db.select().from(schema.payslip);
   const p=await previewTaxBasisRecalculation(ctx,selection());expect(p.eligibleCount).toBe(1);expect(p.recordCount).toBe(3);
   expect(p.employees[0].months.map(m=>m.taxable)).toEqual([5500,5500,5500]);expect(p.employees[0].months.map(m=>m.ytdTaxable)).toEqual([5500,11000,16500]);
-  expect(p.employees[0].months[0].items.find(i=>i.code==='TRV')).toMatchObject({amount:500,taxable:500,previousTreatment:null});expect(p.totals.beforeTaxable).toBeNull();
+  expect(p.employees[0].months[0].items.find(i=>i.code==='TRV')).toMatchObject({amount:500,taxable:500,previousTreatment:'Non-Taxable'});expect(p.totals.beforeTaxable).toBe(15000);
   const done=await confirm(p);expect((await getTaxBasisBatch(ctx,done.id))?.status).toBe('completed');
   expect(await owner.db.select().from(schema.payslip)).toEqual(original);
   const corrected=await withTenant(ctx,tx=>readEffectiveTaxBasesTx(tx,ctx,original.map(s=>s.id)));expect([...corrected.values()].map(c=>c.basis.pcb)).toEqual([5500,5500,5500]);
@@ -67,7 +67,6 @@ describe('authorized immutable historical income tax corrections',()=>{
   const batch=await confirm(preview);expect((await getTaxBasisBatch(ctx,batch.id))?.completedCount).toBe(1);
  });
  it('feeds the corrected prefix into a real future run while preserving prior issued money',async()=>{
-  await owner.db.update(schema.payComponent).set({includedInPcb:false}).where(eq(schema.payComponent.id,travel));
   const original=await owner.db.select().from(schema.payslip),p=await previewTaxBasisRecalculation(ctx,selection());await confirm(p);
   const [subject]=await owner.db.select().from(schema.employment).where(eq(schema.employment.id,employee));
   await setCompensation(ctx,{employmentId:employee,basicSalary:5000,effectiveFrom:'2025-01-01'});
@@ -75,7 +74,7 @@ describe('authorized immutable historical income tax corrections',()=>{
   const run=await createBatch(ctx,{companyId:b.companyId,payPeriod:'2026-04'});await generatePayslips(ctx,{batchId:run.batchId});
   const [future]=await owner.db.select().from(schema.payslip).where(eq(schema.payslip.batchId,run.batchId));
   const st=future.statutory as {pcbMeta:{ytdGross:number;ytdNet:number};taxBasisCorrections:unknown[];epfEmployee:number};
-  expect(st.pcbMeta.ytdGross).toBe(15000);expect(st.pcbMeta.ytdNet).toBe(15000);expect(st.taxBasisCorrections).toHaveLength(3);
+  expect(st.pcbMeta.ytdGross).toBe(16500);expect(st.pcbMeta.ytdNet).toBe(16500);expect(st.taxBasisCorrections).toHaveLength(3);
   expect(Number(future.grossPay)).toBe(5000);expect(st.epfEmployee).toBe(550);
   const after=await owner.db.select().from(schema.payslip);for(const row of original)expect(after.find(s=>s.id===row.id)).toEqual(row);
  });
@@ -141,12 +140,14 @@ describe('authorized immutable historical income tax corrections',()=>{
   const error=await withTenant(ctx,async tx=>{await tx.execute(sql`select set_config('app.payroll_tax_basis_reader','0',true)`);return tx.select().from(schema.payslip).orderBy(schema.payslip.id);}).catch(error=>error);
   expect(error.cause?.message??error.message).toMatch(/correction-aware income-tax reader/);
  });
- it('refuses a stale replaced source even when payroll readers cannot open the correction log',async()=>{
+ it('uses only the exact accepted replacement import and still guards changed settings without correction-log access',async()=>{
   const p=await previewTaxBasisRecalculation(ctx,selection());await confirm(p);await upload('0007','600');
   await owner.db.insert(schema.payrollPermissionGrant).values({tenantId:b.tenantId,companyId:b.companyId,permissionKey:'payroll.tax-basis.view',role:'hr_admin',allowed:false});
   expect(await listTaxBasisBatches(ctx)).toEqual([]);
   const current=await withTenant(ctx,tx=>tx.select().from(schema.payslip));expect(current).toHaveLength(3);
-  await expect(withTenant(ctx,tx=>readEffectiveTaxBasesTx(tx,ctx,current.map(s=>s.id)))).rejects.toThrow(/Saved payroll changed/);
+  const active=await withTenant(ctx,tx=>readEffectiveTaxBasesTx(tx,ctx,current.map(s=>s.id)));expect([...active.values()].map(value=>value.basis.pcb)).toEqual([5600,5600,5600]);expect([...active.values()].every(value=>value.correction===null)).toBe(true);
+  await owner.db.update(schema.payComponent).set({includedInPcb:false}).where(eq(schema.payComponent.id,travel));
+  await expect(withTenant(ctx,tx=>readEffectiveTaxBasesTx(tx,ctx,current.map(s=>s.id)))).rejects.toThrow(/Imported wage inputs require review/);
  });
  it('keeps immutable correction records tenant-bound and refuses active-batch recovery',async()=>{
   const p=await previewTaxBasisRecalculation(ctx,selection()),done=await confirm(p);
@@ -155,4 +156,26 @@ describe('authorized immutable historical income tax corrections',()=>{
   expect(await recoverTaxBasisBatch(ctx,done.id)).toEqual(done);
   const foreign={...ctx,tenantId:randomUUID()};await expect(getTaxBasisBatch(foreign,done.id)).resolves.toBeNull();
  });
+});
+
+it('stamps accepted imported wages separately from file statutory totals and requires reviewed changes before future use',async()=>{
+ const original=await owner.db.select().from(schema.payslip);
+ for(const slip of original){const st=slip.statutory as Record<string,unknown>;expect(st.pcb).toBe(0);expect(st).toMatchObject({bases:{pcb:5000},importedTaxBasis:{state:'ready',year:2026}});}
+ await expect(withTenant(ctx,tx=>readEffectiveTaxBasesTx(tx,ctx,original.map(slip=>slip.id)))).rejects.toThrow(/Imported wage inputs require review/);
+ const preview=await previewTaxBasisRecalculation(ctx,selection());expect(preview.employees[0].pcbComparison).toEqual({state:'unavailable',originalPaid:0,missingInputs:['originalStatutoryInputs','originalTaxCategoryAndReliefs','originalPriorEmployerIncome']});
+ await confirm(preview);
+ expect((await withTenant(ctx,tx=>readEffectiveTaxBasesTx(tx,ctx,original.map(slip=>slip.id)))).size).toBe(3);
+ expect(await owner.db.select().from(schema.payslip)).toEqual(original);
+});
+it('keeps original item amounts and named affected figures visible when annual opening evidence is unknown',async()=>{
+ await owner.db.update(schema.payComponent).set({pcbExemptionCode:'PCB_TRA_BUSINESS'}).where(eq(schema.payComponent.id,travel));
+ const before=await owner.db.select().from(schema.payslip),preview=await previewTaxBasisRecalculation(ctx,selection()),who=preview.employees[0];
+ expect(who.status).toBe('blocked');expect(who.taxable).toBeNull();expect(who.months).toEqual([]);expect(who.partialMonths?.map(month=>month.period)).toEqual(['2026-01','2026-02','2026-03']);
+ expect(who.partialMonths?.[0].items.find(item=>item.code==='TRV')).toMatchObject({amount:500,includedInPcb:true,exemptionCode:'PCB_TRA_BUSINESS'});
+ expect(who.missingEvidence).toMatchObject([{field:'priorEmployerExemptionUsage',affects:['taxableWages','exemptWages','optionalDeductions','pcbComparison']}]);
+ await expect(confirm(preview)).rejects.toThrow(/eligible/);expect(await owner.db.select().from(schema.payslip)).toEqual(before);
+});
+
+it('denies a rollback reader access to newly imported tax-input evidence',async()=>{
+ const hidden=await withTenant(ctx,async tx=>{await tx.execute(sql`select set_config('app.payroll_import_tax_basis_reader','0',true)`);return tx.select().from(schema.payslip);});expect(hidden).toEqual([]);
 });

@@ -853,3 +853,5 @@ export interface CountryPack {
     p: { employmentId: string; year: string; selectedDate: string; companyId?: string },
   ) => Promise<Pcb2iiForm | null>;
 }
+
+export type {TaxBasisItemSetting} from './my/tax-basis-replay';

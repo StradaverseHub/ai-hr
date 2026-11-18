@@ -4600,3 +4600,5 @@ grant, function, column or row changes; existing rows already satisfy the wider 
 `1b92edf3fe85d66954e50f5677bc1cf5122f8fe92faf22db636181c5ed8503f8`. The approved upgrade tail pin
 (`test/helpers/approved-upgrade.ts`) and `test/tenant-company-fk-upgrade.test.ts` carry `5162`. Recheck peer claims and
 the installed ledger at admission. This entry carries no deployment authority.
+
+- 18 November 2026 approved PCB history lane: 6660–6669 / idx10060–10069 / when1794998006660–6669 reserved by release coordinator. 6660 adds the noncash import vocabulary and additive imported-tax compatible-reader guard; no existing data rewrite. Final integration re-surveys all registered worktrees and installed journals.

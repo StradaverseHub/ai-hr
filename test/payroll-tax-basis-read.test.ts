@@ -28,7 +28,7 @@ describe('exact effective tax basis reads',()=>{
   const source=fixture(2),old=await correction(1),fresh=await correction(2);
   const prior={...fresh,id:'prior-correction',basis:{...basis,supersedes:[old.id]}};
   const result=await readEffectiveTaxBasesTx(txRows([[source],[old,fresh,prior],[],[]]),ctx,[source.id]);
-  expect(result.get(source.id)?.correction.id).toBe(fresh.id);
+  expect(result.get(source.id)?.correction?.id).toBe(fresh.id);
  });
  it('rejects malformed corrections and unreconciled remuneration totals',()=>{
   expect(()=>validatedTaxBasis({...basis,pcb:5501})).toThrow(/reconcile/);
