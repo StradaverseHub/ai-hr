@@ -22,9 +22,16 @@ describe('email designer',()=>{
   setup();fireEvent.click(screen.getByRole('button',{name:en.emailDesign.blocksNames.text}));
   fireEvent.change(screen.getByRole('textbox',{name:en.emailDesign.heading}),{target:{value:'Welcome {first_name}'}});
   expect(document.querySelector('iframe')!.srcdoc).toContain('Welcome Alex');
+  fireEvent.change(screen.getByRole('textbox',{name:en.emailDesign.text,exact:true}),{target:{value:'Original text'}});
+  fireEvent.click(screen.getByRole('button',{name:en.emailDesign.addText,exact:true}));
+  const runs=screen.getAllByRole<HTMLTextAreaElement>('textbox',{name:en.emailDesign.text,exact:true});
+  expect(runs).toHaveLength(2);expect(runs[0].value).toBe('Original text');
+  fireEvent.change(runs[1],{target:{value:'Appended text'}});
+  expect(document.querySelector('iframe')!.srcdoc).toContain('Original text');expect(document.querySelector('iframe')!.srcdoc).toContain('Appended text');
   fireEvent.click(screen.getByRole('button',{name:en.emailDesign.save}));
   await waitFor(()=>expect(actions.saveEmailDesignAction).toHaveBeenCalled());
   expect(actions.saveEmailDesignAction.mock.calls[0][0]).toBe('invitation');
+  expect(actions.saveEmailDesignAction.mock.calls[0][2]).toMatchObject({blocks:expect.arrayContaining([expect.objectContaining({type:'text',runs:[{text:'Original text'},{text:'Appended text'}]})])});
  });
  it('changes language without copying customized wording into unedited languages',()=>{
   const custom={...defaultEmailDocument('invitation'),subject:'Saved subject'};
