@@ -13,7 +13,7 @@ import {payFormulaTemplateSource} from '../lib/pay-formula-templates';
 import {PAY_FORMULA_VARIABLE_CATEGORIES} from '../lib/pay-formula-registry';
 import type {FormulaBuilderOptions,FormulaBuilderView} from '../app/payroll/formula-builder/ui-types';
 const state=vi.hoisted(()=>({save:vi.fn(),test:vi.fn(),activate:vi.fn(),remove:vi.fn(),group:vi.fn(),search:vi.fn(),batches:vi.fn(),push:vi.fn(),refresh:vi.fn(),replace:vi.fn(),draft:vi.fn(),read:vi.fn(),discard:vi.fn()}));
-vi.mock('../app/payroll/formula-builder/actions',()=>({startFormulaDraftAction:state.draft,readFormulaDraftAction:state.read,discardFormulaDraftAction:state.discard,saveFormulaAction:state.save,testFormulaAction:state.test,formulaStateAction:state.activate,deleteFormulaAction:state.remove,saveAccumulationAction:state.group,searchFormulaEmployeesAction:state.search,listFormulaBatchesAction:state.batches,formulaCodeChoicesAction:vi.fn(),registerPersonnelFormulaFieldAction:vi.fn()}));
+vi.mock('../app/payroll/formula-builder/actions',()=>({startFormulaDraftAction:state.draft,readFormulaDraftAction:state.read,discardFormulaDraftAction:state.discard,saveFormulaAction:state.save,testFormulaAction:state.test,formulaStateAction:state.activate,deleteFormulaAction:state.remove,saveAccumulationAction:state.group,searchFormulaEmployeesAction:state.search,listFormulaBatchesAction:state.batches,readFormulaCodeChoicesAction:vi.fn(),registerPersonnelFormulaFieldAction:vi.fn()}));
 vi.mock('../app/admin/pay-components/actions',()=>({draftPayRuleAction:vi.fn(),previewPayRuleAction:vi.fn(),searchPreviewEmployeesAction:vi.fn()}));
 vi.mock('next/navigation',()=>({useRouter:()=>({push:state.push,refresh:state.refresh,replace:state.replace})}));
 const catalogues={en,ms,zh,ta,th,vi:vietnamese};

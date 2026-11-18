@@ -12,6 +12,8 @@ vi.mock('../app/automation/actions',()=>({saveEmailTemplateAction:actions.saveEm
 vi.mock('../components/email-body-editor',()=>({EmailBodyEditor:()=>null}));
 import {V9Workspace} from '../app/lifecycle/v9/workspace';
 import {ProbationTemplateSection} from '../app/automation/templates/probation-template-section';
+HTMLDialogElement.prototype.showModal=function(){this.setAttribute('open','');};
+HTMLDialogElement.prototype.close=function(){this.removeAttribute('open');};
 afterEach(()=>{cleanup();vi.clearAllMocks();});
 const actor={id:'fictional-hr',name:'Fictional HR'};
 function fixture(routed=false){
