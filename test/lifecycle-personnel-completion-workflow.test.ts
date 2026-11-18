@@ -34,3 +34,7 @@ it('holds unknown dates and never treats an uncertain receipt as permission to r
  f.c.runs[0].completionHold!.dueOn='2026-11-16';M.runWorkflow(f.c,f.config,f.workflow,f.env,'resume');const input={workflowId:f.workflow.id,runId:f.c.runs[0].id,stepId:'notice-one',decision:'send' as const};M.decideLateEmail(f.c,f.config,input,f.env);f.c.mails[0].status='uncertain';
  M.runWorkflow(f.c,f.config,f.workflow,f.env,'resume');expect(f.c.mails).toHaveLength(1);expect(f.c.runs[0].reason).toContain('uncertain');expect(()=>M.decideLateEmail(f.c,f.config,input,f.env)).toThrow();
 });
+it('resumes the reviewed second frozen run without consuming an earlier run of the same workflow',()=>{
+ const f=fixture();ready(f);const first=structuredClone(f.c.runs[0]),second=structuredClone(first);second.id='reviewed-second-run';f.c.runs.push(second);
+ M.runWorkflow(f.c,f.config,f.workflow,f.env,'resume',{resumeRunId:second.id});expect(f.c.runs[0]).toEqual(first);expect(f.c.mails).toHaveLength(1);expect(f.c.mails[0].key).toBe('reviewed-second-run:notice-one:main');
+});
