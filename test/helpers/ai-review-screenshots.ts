@@ -43,7 +43,7 @@ export async function captureAiReviewScreenshots(html:string,locale:string,secti
  const executable='/usr/bin/google-chrome';
  if(!existsSync(executable))throw Error('The hosted runner Chrome executable is unavailable; no visual evidence claimed.');
  const out=join(evidence,'ui-screenshots');mkdirSync(out,{recursive:true});
- const styles=(await applicationCss())+((section.startsWith('lifecycle-case-')||section==='lifecycle-email-template'||section.startsWith('feedback-probation-email-')||section==='lifecycle-letter-template'||section==='probation-tracker')?'\n'+readFileSync('app/onboarding-workspace.css','utf8')+'\n'+readFileSync('app/lifecycle/v9/workspace.css','utf8')+(section==='probation-tracker'?'\n'+readFileSync('app/lifecycle/probation/probation.css','utf8'):''):''),browser=await chromium.launch({executablePath:executable,headless:true});
+ const styles=(await applicationCss())+((section.startsWith('lifecycle-case-')||section.startsWith('feedback-pm-completion-')||section==='lifecycle-email-template'||section.startsWith('feedback-probation-email-')||section==='lifecycle-letter-template'||section==='probation-tracker')?'\n'+readFileSync('app/onboarding-workspace.css','utf8')+'\n'+readFileSync('app/lifecycle/v9/workspace.css','utf8')+(section==='probation-tracker'?'\n'+readFileSync('app/lifecycle/probation/probation.css','utf8'):''):''),browser=await chromium.launch({executablePath:executable,headless:true});
  const rows=[];
  const motionProofs=[];
  try{for(const [device,width,height] of [['desktop',1440,1000],['mobile',390,844]] as const){
@@ -127,6 +127,7 @@ export async function captureAiReviewScreenshots(html:string,locale:string,secti
    return{caseFieldsDoNotOverlap:true};
   }):null;
   const overflow=await page.evaluate(()=>document.documentElement.scrollWidth>window.innerWidth+1);
+  if(section.startsWith('feedback-pm-completion-')&&overflow)throw Error('Personnel completion must fit the page; wide PM tables scroll inside their own region.');
   const scrollRegions=await page.locator('[data-function-access-scroll]').evaluateAll(nodes=>nodes.map(node=>({width:node.clientWidth,content:node.scrollWidth,scrollable:getComputedStyle(node).overflowX==='auto'})));
   if(width===390&&scrollRegions.some(region=>!region.scrollable||region.width>=region.content))throw Error('The wide function guide must remain horizontally scrollable on a phone.');
   const clippedCalendarCells=section==='chat-card-rewards-calendar'?await page.evaluate(()=>Array.from(document.querySelectorAll('table td')).some(cell=>{const box=cell.getBoundingClientRect();return box.left<0||box.right>window.innerWidth+1||cell.scrollWidth>cell.clientWidth+1;})):false;
