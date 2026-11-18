@@ -11,3 +11,9 @@ it('holds incomplete or conflicting reviews instead of silently dropping a saved
  expect(()=>applyReviewedLetterOrganisation(original,'owner',{sourceVersionId:'version',sourceVersion:1,reviewed:true,mappings:[]})).toThrow('every saved');
  expect(()=>applyReviewedLetterOrganisation(original,'owner',{sourceVersionId:'version',sourceVersion:1,reviewed:true,mappings:[{sourceField:'businessUnit',sourceValue:'saved',targetField:'company',targetValues:['other']}]})).toThrow('identity kinds');
 });
+it('warns only when two rule sets can match the same outcome',async()=>{
+ const {letterMatchingOverlap}=await import('../lib/probation-letter-matching');
+ const a={...newProbationLetterTemplate('confirm','a','A'),rules:{department:['one']}};
+ expect(letterMatchingOverlap(a,{...a,id:'b',rules:{department:['two']}})).toBe(false);
+ expect(letterMatchingOverlap(a,{...a,id:'b',rules:{}})).toBe(true);
+});

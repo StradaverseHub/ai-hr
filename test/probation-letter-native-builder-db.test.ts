@@ -5,6 +5,7 @@ import {adminCtx,closeAll,migrateTestDb,owner,resetDb,seedBase,setModule,type Ba
 import {probationOutcomeFixture} from './helpers/probation-outcome-fixture';
 import {newProbationLetterTemplate} from '../lib/probation-letter-template';
 import {saveProbationLetterTemplate,probationLetterTemplates,prepareProbationLetter,readProbationLetter,editProbationLetterContent,actOnProbationLetter} from '../packs/probation/service';
+import {deleteProbationLetterTemplate} from '../core/probation-letter';
 import type {DocumentRouting} from '../lib/document-signing-routing';
 let b:Base;
 beforeAll(migrateTestDb);afterAll(closeAll);
@@ -20,6 +21,7 @@ it('resolves native routes, permits only owned employee values and reviewer word
  template.blocks.push({id:'field',type:'field',fieldId:'employeeAnswer',text:'',section:'main'},{id:'hr-sign',type:'signature',role:'step:hr',text:'',section:'main'},{id:'employee-sign',type:'signature',role:'step:employee',text:'',section:'main'});
  const templateId=await saveProbationLetterTemplate(admin,{companyId:b.companyId,template,publish:true,expectedVersion:0});
  const prepared=await prepareProbationLetter(admin,{outcomeId:decision.id,templateId,revision:decision.revision,edits:{}});
+ await expect(deleteProbationLetterTemplate(admin,{companyId:b.companyId,key:template.id,expectedVersion:1,reason:'Try removing a generated template'})).rejects.toThrow();
  let letter=await readProbationLetter(staff.ctx,ids.caseId,prepared.partId);
  expect(letter.signing!.document.route.steps.find(step=>step.id==='hr')!.holderId).toBe(admin.userId);
  expect(letter.canEditContent).toBe(true);expect(letter.editableFieldOwner).toBe('employee');

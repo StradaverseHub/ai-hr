@@ -41041,6 +41041,29 @@
     },
     "history": {
       "routingSteps": "{count, plural, =0 {no routing} one {# routing step} other {# routing steps}}"
+    },
+    "builderMatch": {
+      "reviewTitle": "审核已保存的匹配规则",
+      "reviewHelp": "保留原始版本。请审核每个实际人事身份。未解决或已归档的值会暂停转换。",
+      "savedRule": "已保存规则",
+      "builderMatch": "构建器匹配",
+      "reviewRequired": "需要审核",
+      "reviewConfirm": "我已审核所有已保存值及明确的公司范围。",
+      "applyReview": "将已审核匹配应用到草稿",
+      "rulesHelp": "规则之间为“且”；同一规则内的值为“或”。起始职级使用录入时保存的身份。",
+      "grade": "起始职级",
+      "businessGroup": "业务组",
+      "company": "公司",
+      "department": "部门",
+      "employmentType": "雇佣类型",
+      "title": "职位",
+      "archived": "已归档",
+      "overlap": "可能重叠：{names}。建议最具体的匹配；同分时按名称及版本身份排序。准备前请审核。",
+      "overlapConfirm": "匹配可能与 {names} 重叠。建议最具体的匹配；同分时按名称及版本身份排序。发布此版本？",
+      "delete": "删除模板",
+      "deleteHelp": "保留历史版本。已被文档使用的模板须停用。",
+      "deleteConfirm": "从未来选择中删除此模板？保留历史版本。已使用的模板无法删除。",
+      "deleteReason": "删除此模板的原因"
     }
   },
   "automationRuntime": {

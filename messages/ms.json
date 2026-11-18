@@ -41041,6 +41041,29 @@
     },
     "history": {
       "routingSteps": "{count, plural, =0 {no routing} one {# routing step} other {# routing steps}}"
+    },
+    "builderMatch": {
+      "reviewTitle": "Semak peraturan padanan tersimpan",
+      "reviewHelp": "Versi asal dikekalkan. Semak setiap identiti Personnel sebenar. Nilai belum selesai atau diarkibkan menahan penukaran.",
+      "savedRule": "Peraturan tersimpan",
+      "builderMatch": "Padanan pembina",
+      "reviewRequired": "Semakan diperlukan",
+      "reviewConfirm": "Saya telah menyemak semua nilai tersimpan dan skop Syarikat yang jelas.",
+      "applyReview": "Gunakan padanan disemak pada draf",
+      "rulesHelp": "Peraturan digabungkan dengan DAN; nilai dalam satu peraturan dengan ATAU. Gred permulaan menggunakan identiti kemasukan yang direkodkan.",
+      "grade": "Gred permulaan",
+      "businessGroup": "Kumpulan perniagaan",
+      "company": "Syarikat",
+      "department": "Jabatan",
+      "employmentType": "Jenis pekerjaan",
+      "title": "Jawatan",
+      "archived": "Diarkibkan",
+      "overlap": "Pertindihan berpotensi: {names}. Padanan paling khusus dicadangkan; seri mengikut nama, kemudian identiti versi. Semak sebelum menyediakan.",
+      "overlapConfirm": "Padanan mungkin bertindih dengan {names}. Padanan paling khusus dicadangkan; seri mengikut nama, kemudian identiti versi. Terbitkan versi ini?",
+      "delete": "Padam templat",
+      "deleteHelp": "Versi terdahulu dikekalkan. Templat yang digunakan oleh dokumen mesti ditamatkan.",
+      "deleteConfirm": "Padam templat daripada pilihan masa hadapan? Versi terdahulu kekal. Templat yang digunakan tidak boleh dipadam.",
+      "deleteReason": "Sebab memadam templat ini"
     }
   },
   "automationRuntime": {

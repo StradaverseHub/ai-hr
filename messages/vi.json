@@ -41041,6 +41041,29 @@
     },
     "history": {
       "routingSteps": "{count, plural, =0 {no routing} one {# routing step} other {# routing steps}}"
+    },
+    "builderMatch": {
+      "reviewTitle": "Rà soát quy tắc khớp đã lưu",
+      "reviewHelp": "Giữ nguyên các phiên bản gốc. Kiểm tra từng danh tính Nhân sự thực tế. Giá trị chưa rõ hoặc đã lưu trữ sẽ giữ chuyển đổi.",
+      "savedRule": "Quy tắc đã lưu",
+      "builderMatch": "Khớp trong trình tạo",
+      "reviewRequired": "Cần rà soát",
+      "reviewConfirm": "Tôi đã kiểm tra mọi giá trị đã lưu và phạm vi Công ty rõ ràng.",
+      "applyReview": "Áp dụng kết quả rà soát vào bản nháp",
+      "rulesHelp": "Các quy tắc kết hợp bằng VÀ; giá trị trong một quy tắc bằng HOẶC. Bậc lúc bắt đầu dùng danh tính đã ghi khi tiếp nhận.",
+      "grade": "Bậc lúc bắt đầu",
+      "businessGroup": "Nhóm kinh doanh",
+      "company": "Công ty",
+      "department": "Phòng ban",
+      "employmentType": "Loại việc làm",
+      "title": "Chức danh",
+      "archived": "Đã lưu trữ",
+      "overlap": "Có thể trùng: {names}. Đề xuất khớp cụ thể nhất; nếu bằng nhau, xếp theo tên rồi danh tính phiên bản. Kiểm tra trước khi chuẩn bị.",
+      "overlapConfirm": "Quy tắc có thể trùng với {names}. Đề xuất khớp cụ thể nhất; nếu bằng nhau xếp theo tên rồi danh tính phiên bản. Xuất bản phiên bản này?",
+      "delete": "Xóa mẫu",
+      "deleteHelp": "Giữ các phiên bản lịch sử. Mẫu được tài liệu sử dụng phải ngừng sử dụng thay vì xóa.",
+      "deleteConfirm": "Xóa khỏi lựa chọn tương lai? Phiên bản lịch sử vẫn được giữ. Không thể xóa mẫu đã được sử dụng.",
+      "deleteReason": "Lý do xóa mẫu này"
     }
   },
   "automationRuntime": {
