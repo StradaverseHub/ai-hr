@@ -46,7 +46,7 @@ it('names the unconverted email and field and saves it through its original lega
 });
 
 it('adds a newly searched named colleague to canonical Default CC without requiring V9 configuration',async()=>{
- fixture();fireEvent.change(screen.getByRole('textbox',{name:'Search people'}),{target:{value:'Fictional'}});fireEvent.click(screen.getByRole('button',{name:'Find'}));
+ fixture();fireEvent.change(screen.getByRole('textbox',{name:'Search people by name'}),{target:{value:'Fictional'}});fireEvent.click(screen.getByRole('button',{name:'Find'}));
  fireEvent.click(await screen.findByRole('button',{name:'Add Fictional new CC colleague'}));fireEvent.click(screen.getByRole('button',{name:'Save email'}));await waitFor(()=>expect(actions.save).toHaveBeenCalledOnce());
  expect(actions.save.mock.calls[0][0].template.cc).toEqual([{kind:'person',userId:'86f137e7-6ec5-44fe-bba6-a7fc8a1a5526'}]);
 });
