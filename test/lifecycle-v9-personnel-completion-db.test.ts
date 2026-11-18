@@ -20,6 +20,7 @@ beforeEach(async()=>{
 async function prepared(all=false,routed=false){
  const config=(await v9Workspace(hr)).config!,keys=all?[...Object.keys(personnelCompletionClassification),'unknown.future']:['address','employee.name'];
  const fields:Field[]=keys.map((key,index)=>({id:'F'+index,label:key,type:key==='homePhone'||key==='mobile'?'phone':key==='personalEmail'||key==='email'?'email':['joiner.joinDate','leaver.lastDay'].includes(key)?'date':'text',owner:'pmLocked',pmKey:key,required:key==='address',sensitive:false,options:[],section:'main',when:null}));
+ config.emails=[];
  config.templates=[{id:'completion-form',name:'Synthetic completion form',module:'off',type:'Form',rules:{},hrStep:'before',employeeAck:false,retired:false,versions:[{version:1,state:'published',at:'',by:'',fields,blocks:[{id:'private-wording',type:'text',text:'Private unreleased wording: {employee.name}. Address: {address}',section:'main'},{id:'answers',type:'fields',text:'',section:'main'}]}]}];
  if(routed){config.templates[0].versions[0].routing=[{id:'review',order:1,action:'review',who:{kind:'people',userIds:[hr.userId!]},owner:true},{id:'employee-sign',order:2,action:'sign',who:{kind:'employee'},owner:false}];config.templates[0].versions[0].blocks.push({id:'employee-signature',type:'signature',role:'step:employee-sign',text:'',section:'main'});}
  config.companies=[{companyId:b.companyId,signatoryUserId:hr.userId!,signatoryTitle:'Synthetic HR'}];
