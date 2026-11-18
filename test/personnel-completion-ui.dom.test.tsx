@@ -5,7 +5,7 @@ import {NextIntlClientProvider} from 'next-intl';
 import messages from '../messages/en.json';
 import {PersonnelCompletionDocumentBody,PersonnelCompletionPanel,PersonnelCompletionInventory} from '../components/lifecycle-v9/personnel-completion';
 import {PersonnelReview} from '../app/lifecycle/v9/personnel-review';
-import {reconcilePersonnelCompletion} from '../lib/lifecycle-v9-personnel-completion';
+import {initializePersonnelCompletion,reconcilePersonnelCompletion} from '../lib/lifecycle-v9-personnel-completion';
 import {completionDocument,completionReviewCase,completionActor} from './helpers/personnel-completion-ui-fixture';
 afterEach(cleanup);
 const view=(content:ReactNode)=><NextIntlClientProvider locale="en" messages={messages}>{content}</NextIntlClientProvider>;
@@ -44,4 +44,10 @@ it('shows actual missing-PM provenance and pushes only explicitly selected propo
 });
 it('reports all twenty approved fields as eleven personal and nine employment without offering a template setting',()=>{
  render(view(<PersonnelCompletionInventory/>));fireEvent.click(screen.getByText(messages.personnelCompletion.inventoryTitle));const lists=screen.getAllByRole('list');expect(within(lists[0]).getAllByRole('listitem')).toHaveLength(11);expect(within(lists[1]).getAllByRole('listitem')).toHaveLength(9);expect(screen.queryByRole('combobox')).toBeNull();
+});
+
+it('keeps an unclassified linked field with HR until an explicit case override',()=>{
+ const document=completionDocument();document.fields.push({...document.fields[0],id:'unknown-answer',label:'Fictional unclassified link',pmKey:'case.newField'});document.values['unknown-answer']='';delete document.personnelCompletion;
+ initializePersonnelCompletion(document,{country:'MY',sourceFingerprint:'unknown-link-source',officialValues:{passport:'Fictional passport in PM'},actor:completionActor,at:'2026-11-18T00:00:00.000Z'});
+ render(view(<PersonnelCompletionDocumentBody document={document} editableBy="employee"/>));expect(screen.getByRole('textbox',{name:'Fictional unclassified link *'})).toBeDisabled();
 });
