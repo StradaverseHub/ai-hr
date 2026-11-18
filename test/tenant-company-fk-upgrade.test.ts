@@ -2025,6 +2025,7 @@ it('stops on a cross-tenant row, then validates every company/tenant key without
    ],
    probation_letter_personnel_proposal:[
     ['id','uuid',true,'','gen_random_uuid()'],['tenant_id','uuid',true,'',null],['part_id','uuid',true,'',null],['field_id','text',true,'',null],['field_key','text',true,'',null],['before_value','text',true,'',"''::text"],['after_value','text',true,'',null],['source_fingerprint','text',true,'',null],['status','text',true,'',"'proposed'::text"],['provenance','jsonb',true,'',null],['history','jsonb',true,'',"'[]'::jsonb"],['reviewed_by','uuid',false,'',null],['reviewed_at','timestamp with time zone',false,'',null],['created_at','timestamp with time zone',true,'','now()'],['updated_at','timestamp with time zone',true,'','now()'],
+    ['review_transaction','xid8',false,'',null],['review_actor','uuid',false,'',null],['review_source_before','text',false,'',null],['review_part_revision','integer',false,'',null],['review_mode','text',false,'',null],
    ],
   };
   const templateColumns=await storage.client`select c.relname::text as rel,a.attname::text as name,format_type(a.atttypid,a.atttypmod) as type,a.attnotnull as "notNull",a.attgenerated::text as generated,pg_get_expr(d.adbin,d.adrelid) as expression

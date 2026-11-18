@@ -6,7 +6,7 @@ import {withLifecycleTenant} from '../../../core/module-gate';
 import {withAccessDisplayRead,lockAccessConfigurationReadTx} from '../../../core/access-configuration-lock';
 import type {OffboardingRequisition} from '../../../lib/offboarding-requisition';
 import {V9Error} from '../../../lib/lifecycle-v9-model';
-import {v9Command,v9OwnItem} from './service';
+import {v9Command,v9OwnItem} from './entrypoints';
 export async function offboardingRequisition(ctx:SessionContext,id:string):Promise<OffboardingRequisition>{
  z.uuid().parse(id);
  return withAccessDisplayRead(()=>withLifecycleTenant(ctx,async tx=>{
