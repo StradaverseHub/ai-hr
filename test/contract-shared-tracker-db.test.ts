@@ -8,6 +8,7 @@ import {setCompensation} from '../core/comp';
 import {v9Setup,v9Workspace,v9SaveConfig} from '../packs/lifecycle/service';
 import {contractSharedTracker,contractSharedCaseAttention,contractSharedPeriodContext,openContractSharedPeriod,contractSharedContext,saveContractSharedRole,saveContractSharedMember,confirmContractSharedPay,readContractSharedPosting} from '../packs/contracts/service';
 import {todayInKualaLumpur} from '../lib/hr-date';
+import {automationBusinessPartnerWorkspace,saveAutomationBusinessPartners} from '../packs/automation/service';
 import {addAutomationDays,type AutomationWorkflow} from '../lib/automation/workflow';
 import {contractPostingFixture,releaseContractPosting,approveAppliedContractPosting} from './helpers/contract-posting-fixture';
 
@@ -112,7 +113,8 @@ describe('Personnel-based Contract tracker and native case opening',()=>{
  it('retains native People Ops and uniquely matched PBP authority, and removes expired or ambiguous grants',async()=>{
   const employee=await fixedTerm(),gbs=await ordinary('Fictional actual People Ops'),pbp=await ordinary('Fictional actual PBP'),unmatched=await ordinary('Fictional unmatched PBP'),expired=await ordinary('Fictional expired viewer');
   const config=(await v9Workspace(admin)).config!,groupId=randomUUID();
-  await v9SaveConfig(admin,config.revision,{...config,groups:[...config.groups,{id:groupId,name:'Actual tracker People Ops',members:[gbs.userId!],limit:0}],peopleOpsGroup:groupId,bpRules:[{userId:pbp.userId!,rules:{company:[b.companyId]}}]});
+  await v9SaveConfig(admin,config.revision,{...config,groups:[...config.groups,{id:groupId,name:'Actual tracker People Ops',members:[gbs.userId!],limit:0}],peopleOpsGroup:groupId});
+  const partners=await automationBusinessPartnerWorkspace(admin);expect(partners).not.toBeNull();await saveAutomationBusinessPartners(admin,{expectedRevision:partners!.revision,rules:[{userId:pbp.userId!,rules:{company:[b.companyId]}}],reason:'Configure the actual tracker Business Partner responsibility'});
   await owner.db.execute(sql`insert into contract_role_assignment(tenant_id,company_id,user_id,role,valid_from,created_by) values(${b.tenantId}::uuid,${b.companyId}::uuid,${gbs.userId}::uuid,'gbs',${start}::date,${admin.userId}::uuid),(${b.tenantId}::uuid,${b.companyId}::uuid,${pbp.userId}::uuid,'pbp',${start}::date,${admin.userId}::uuid),(${b.tenantId}::uuid,${b.companyId}::uuid,${unmatched.userId}::uuid,'pbp',${start}::date,${admin.userId}::uuid)`);
   const expiredRole=randomUUID();await saveContractSharedRole(admin,{id:expiredRole,name:'Expired fixture',permissions:['view','decide'],expectedRevision:0});
   await saveContractSharedMember(admin,{id:randomUUID(),roleId:expiredRole,userId:expired.userId!,companyId:b.companyId,businessGroupId:null,validFrom:'2020-01-01',validTo:'2021-01-01',revoked:false});
@@ -121,8 +123,8 @@ describe('Personnel-based Contract tracker and native case opening',()=>{
    const page=await contractSharedTracker(actor);expect(page.total).toBe(native.view?1:0);if(native.view)expect(page.rows[0].canOpen).toBe(native.decide);
   }
   expect((await contractSharedTracker(gbs)).total).toBe(1);expect((await contractSharedTracker(pbp)).total).toBe(1);expect((await contractSharedTracker(unmatched)).total).toBe(0);expect((await contractSharedTracker(expired)).total).toBe(0);
-  const configured=(await v9Workspace(admin)).config!;
-  await v9SaveConfig(admin,configured.revision,{...configured,bpRules:[...configured.bpRules,{userId:unmatched.userId!,rules:{company:[b.companyId]}}]});
+  const configured=await automationBusinessPartnerWorkspace(admin);expect(configured).not.toBeNull();
+  await saveAutomationBusinessPartners(admin,{expectedRevision:configured!.revision,rules:[...configured!.rules,{userId:unmatched.userId!,rules:{company:[b.companyId]}}],reason:'Configure a real ambiguous tracker Business Partner match'});
   expect((await contractSharedTracker(pbp)).total).toBe(0);expect((await contractSharedTracker(unmatched)).total).toBe(0);
   await owner.db.execute(sql`update app_user set archived_at=now() where tenant_id=${b.tenantId}::uuid and id=${gbs.userId}::uuid`);
   expect((await contractSharedTracker(gbs)).rows).toEqual([]);

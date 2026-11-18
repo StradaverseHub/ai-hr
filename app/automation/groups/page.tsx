@@ -1,17 +1,18 @@
 import {offboardingSettings} from '@/lib/automation/offboarding';
 import {v9Configuration} from '@/packs/lifecycle/service';
 import {AssignmentGroups} from './assignment-groups';
+import {BusinessPartnerRules} from './business-partner-rules';
 import {LifecycleGroupSection} from '../lifecycle-configuration';
 import {notFound} from 'next/navigation';
 import {requireScopedLifecycleModule} from '@/lib/scoped-lifecycle-page';
-import {automationAssignmentGroups,automationGroupWorkspace,automationPeopleNames,automationRoutingOptions,listAutomationRoutings,listAutomationWorkflows} from '@/packs/automation/service';
+import {automationAssignmentGroups,automationBusinessPartnerWorkspace,automationGroupWorkspace,automationPeopleNames,automationRoutingOptions,listAutomationRoutings,listAutomationWorkflows} from '@/packs/automation/service';
 import {automationPageAccess} from '../access';
 import {GroupsWorkspace,type ListedRouting} from './groups-workspace';
 
 export default async function Page(){
  const ctx=await requireScopedLifecycleModule(),access=await automationPageAccess(ctx,'groups');
  if(!access.any)notFound();
- const [routings,groups,options,groupWorkspace]=await Promise.all([listAutomationRoutings(ctx),automationAssignmentGroups(ctx),automationRoutingOptions(ctx),access.contractStaff?automationGroupWorkspace(ctx):null]);
+ const [routings,groups,options,groupWorkspace,businessPartners]=await Promise.all([listAutomationRoutings(ctx),automationAssignmentGroups(ctx),automationRoutingOptions(ctx),access.contractStaff?automationGroupWorkspace(ctx):null,automationBusinessPartnerWorkspace(ctx)]);
  // Workflows the viewer may read (row security): where each routing is used, for the "Used in" note.
  const workflows=await listAutomationWorkflows(ctx);
  const usedBy=new Map<string,Set<string>>();
@@ -36,5 +37,5 @@ export default async function Page(){
  if(config?.peopleOpsGroup)use(config.peopleOpsGroup,'Shared settings: GBS People Ops');
  const postingGroup=config?offboardingSettings(config).postingApproverGroupId:null;if(postingGroup)use(postingGroup,'Offboarding settings: Personnel postings approver');
  const listed:ListedRouting[]=routings.map(r=>({routing:r.routing,revision:r.revision,retired:r.retired,usedBy:[...usedBy.get(r.routing.id)??[]]}));
- return <GroupsWorkspace groupSection={groupWorkspace?<AssignmentGroups initial={groupWorkspace} usedBy={groupUses}/>:lifecycle?<LifecycleGroupSection initial={lifecycle} usedBy={groupUses}/>:undefined} access={access} groups={groups} routings={listed} options={{businessGroups:options.businessGroups,companies:options.companies,departments:options.departments,jobTitles:options.jobTitles}} people={people}/>;
+ return <GroupsWorkspace businessPartnerSection={businessPartners?<BusinessPartnerRules initial={businessPartners}/>:undefined} groupSection={groupWorkspace?<AssignmentGroups initial={groupWorkspace} usedBy={groupUses}/>:lifecycle?<LifecycleGroupSection initial={lifecycle} usedBy={groupUses}/>:undefined} access={access} groups={groups} routings={listed} options={{businessGroups:options.businessGroups,companies:options.companies,departments:options.departments,jobTitles:options.jobTitles}} people={people}/>;
 }

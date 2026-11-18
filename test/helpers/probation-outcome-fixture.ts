@@ -1,5 +1,6 @@
 // Shared fixture for the Probation runtime wiring tests (lane D2): a native Part 3 case taken through the real
 // commands up to a recorded outcome. Fictional people only.
+import {automationBusinessPartnerWorkspace,saveAutomationBusinessPartners,type BusinessPartnerRule} from '../../packs/automation/service';
 import {sql} from 'drizzle-orm';
 import {randomUUID} from 'node:crypto';
 import {hireEmployee,setReportingLine} from '../../core/org';
@@ -12,6 +13,12 @@ import {probationCase,saveProbationDraft,actOnProbation,DEFAULT_PROBATION_CONFIG
 
 export function probationOutcomeFixture(b:Base,start:SessionContext){
  let admin=start;
+async function saveBusinessPartners(rules:BusinessPartnerRule[]){
+ const current=await automationBusinessPartnerWorkspace(admin);
+ if(!current)throw Error('The actual fixture administrator cannot configure Business Partner responsibilities.');
+ await saveAutomationBusinessPartners(admin,{expectedRevision:current.revision,rules,reason:'Reviewed fictional Contract and Probation Business Partner responsibilities'});
+}
+
 async function person(name:string){
  const e=await hireEmployee(admin,{person:{fullName:name,primaryEmail:randomUUID()+'@probation.example.test'},companyId:b.companyId,departmentId:b.deptA,employmentType:'full_time',hiredOn:'2026-01-01'});
  const userId=await createAppUser(b.tenantId,e.personId,'employee');
@@ -24,7 +31,8 @@ async function recordedConfirm(extraGroups:{id:string;name:string;members:string
  await owner.db.execute(sql`update app_user set person_id=${hrPerson.id}::uuid where id=${admin.userId}::uuid`);admin={...admin,personId:hrPerson.id};
  const staff=await person('Fictional Staff'),manager=await person('Fictional Manager'),peer=await person('Fictional Reviewer');
  const groups=[{id:'probation-people',name:'Fictional People Ops',members:[admin.userId],limit:10},...extraGroups];
- await owner.db.execute(sql`insert into lc_v9_config(tenant_id,data) values(${b.tenantId}::uuid,${JSON.stringify({version:9,peopleOpsGroup:'probation-people',groups,bpRules:[{rules:{company:[b.companyId]},userId:admin.userId}]})}::jsonb)`);
+ await owner.db.execute(sql`insert into lc_v9_config(tenant_id,data) values(${b.tenantId}::uuid,${JSON.stringify({version:9,peopleOpsGroup:'probation-people',groups})}::jsonb)`);
+ await saveBusinessPartners([{rules:{company:[b.companyId]},userId:admin.userId!}]);
  await owner.db.execute(sql`insert into lc_onboarding_config(tenant_id,data) values(${b.tenantId}::uuid,${JSON.stringify({groups})}::jsonb)`);
  await owner.db.execute(sql`update employment set probation_value=0,probation_months=0 where id in(${manager.employmentId}::uuid,${peer.employmentId}::uuid)`);
  const endOn=addDaysIso(todayInKualaLumpur(),options.endInDays??-4);

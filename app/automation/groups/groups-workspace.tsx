@@ -17,7 +17,7 @@ export type ListedRouting = { routing: Routing; revision: number; retired: boole
 export type RoutingOptions = { businessGroups: NamedOption[]; companies: (NamedOption & { businessGroupId: string })[]; departments: (NamedOption & { companyId: string })[]; jobTitles: string[] };
 
 /** HR Automation › Assignment groups (prototype GroupsPage; mockup 16): groups stay in On/Off Boarding; routing rules are edited here. */
-export function GroupsWorkspace({access,groups,routings,options,people:initialPeople,groupSection}:{groupSection?:ReactNode;access:AutomationPageAccess;groups:NamedOption[];routings:ListedRouting[];options:RoutingOptions;people:NamedOption[]}){
+export function GroupsWorkspace({access,groups,routings,options,people:initialPeople,groupSection,businessPartnerSection}:{groupSection?:ReactNode;businessPartnerSection?:ReactNode;access:AutomationPageAccess;groups:NamedOption[];routings:ListedRouting[];options:RoutingOptions;people:NamedOption[]}){
  const t=useTranslations('automation'),[people,setPeople]=useState(initialPeople),[creating,setCreating]=useState<ListedRouting|null>(null);
  const live=routings.filter(r=>!r.retired);
  const names=routings.map(r=>r.routing.name.trim().toLowerCase());
@@ -33,6 +33,7 @@ export function GroupsWorkspace({access,groups,routings,options,people:initialPe
     <p className="pcg-hint">{used.length?t('groups.usedByList',{list:used.join('; ')}):t('groups.usedBy',{count:0})}</p>
    </li>;})}</ul>}
   </section>}
+  {businessPartnerSection}
   <section className="pcg-card" aria-label={t('groups.routings')}>
    <div className="pcg-row pcg-between" style={{alignItems:'flex-start'}}><div style={{flex:'1 1 480px'}}><h2>{t('groups.routings')}</h2><p className="pcg-sub">{t('groups.routingIntro')} {t('groups.approvalNote')}</p></div>
     <button type="button" className="v9-button v9-button-primary" disabled={!!creating} onClick={()=>setCreating({routing:{id:crypto.randomUUID(),name:'',rows:[{match:{},assignTo:{kind:'group',groupId:groups[0]?.id??''}}]},revision:0,retired:false,usedBy:[]})}>{t('groups.newRouting')}</button></div>
