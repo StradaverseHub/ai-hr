@@ -1917,7 +1917,8 @@ it('stops on a cross-tenant row, then validates every company/tenant key without
   const approvedColumns=['company_id','employment_id','id','kind','source','superseded_at','tenant_id','year'].map(col=>({rel:'reward_person_history',col,acl:col==='superseded_at'?'{ai_hr_app=rw/OWNER}':'{ai_hr_app=r/OWNER}'}));
   expect(afterPerformancePrivileges.columns.filter(row=>isApprovedRelation(row.rel)).map(row=>({...row,acl:ownerAcl(row.acl)}))).toEqual(approvedColumns);
   expect(beforePerformancePrivileges.columns.filter(row=>isApprovedRelation(row.rel))).toEqual([]);
-  expect(afterPerformancePrivileges.functions.filter(row=>approvedFunctions.some(expected=>expected.fn===row.fn)).map(row=>({fn:row.fn,acl:ownerAcl(row.acl)})))
+  // PostgreSQL locale ordering treats punctuation differently from JavaScript; compare exact rows in one deterministic order.
+  expect(afterPerformancePrivileges.functions.filter(row=>approvedFunctions.some(expected=>expected.fn===row.fn)).map(row=>({fn:row.fn,acl:ownerAcl(row.acl)})).sort((a,b)=>a.fn<b.fn?-1:a.fn>b.fn?1:0))
    .toEqual(approvedFunctions.map(row=>({fn:row.fn,acl:row.app?'{OWNER=X/OWNER,ai_hr_app=X/OWNER}':'{OWNER=X/OWNER}'})).sort((a,b)=>a.fn<b.fn?-1:a.fn>b.fn?1:0));
   //6610/6613 add only these three private/checked tables and one nullable canonical-version column.
   // Types/defaults/generated markers are a literal schema review, separate from SQL source hash admission.
