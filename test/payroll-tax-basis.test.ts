@@ -3,6 +3,8 @@ import {eq,sql} from 'drizzle-orm';
 import {randomUUID} from 'node:crypto';
 import {withTenant,type SessionContext} from '../db/client';
 import * as schema from '../db/schema';
+import {requestPayrollHistoryConfirm,payrollHistoryJobHandler} from '../core/payroll-history-job';
+import {runBulkJobTick} from '../core/bulk-job-worker';
 import {createCompany} from '../core/admin';
 import {hireEmployee} from '../core/org';
 import {setCompensation} from '../core/comp';
@@ -220,4 +222,26 @@ it('binds import source hashes identically for authorized administrators and sel
  const slips=await withTenant(ctx,tx=>tx.select({id:schema.payslip.id}).from(schema.payslip)),adminSources=await withTenant(ctx,tx=>taxBasisSourceRowsTx(tx,slips.map(slip=>slip.id))),ownSources=await withTenant(self,tx=>taxBasisSourceRowsTx(tx,slips.map(slip=>slip.id)));
  expect(ownSources).toHaveLength(3);expect(ownSources.map(hashTaxBasisSource)).toEqual(adminSources.map(hashTaxBasisSource));expect(ownSources.every(source=>source.importRevision!==null)).toBe(true);
  expect(await withTenant(self,tx=>tx.select().from(schema.payrollHistoryImportAttempt))).toEqual([]);
+});
+
+it('keeps import source identities and scoped subject pages stable while a replacement is staged',async()=>{
+ const [subject]=await owner.db.select().from(schema.employment).where(eq(schema.employment.id,employee)),self={...ctx,userId:await createAppUser(b.tenantId,subject.personId,'employee'),personId:subject.personId,roles:['employee'],grants:undefined};
+ const ids=(await withTenant(ctx,tx=>tx.select({id:schema.payslip.id}).from(schema.payslip))).map(slip=>slip.id);
+ const source=(who:SessionContext)=>withTenant(who,async tx=>(await taxBasisSourceRowsTx(tx,ids)).map(hashTaxBasisSource));
+ const before=await source(ctx);expect(await source(self)).toEqual(before);
+ const draft=await previewPayrollHistoryUpload(ctx,{name:'staged-correction.csv',content:Buffer.from(toCsv([Array.from(PAYROLL_HISTORY_HEADERS),...rows('0007','600')]))});
+ process.env.PAYROLL_HISTORY_CHUNK_BUDGET_MS='1';
+ try{
+  const request=await requestPayrollHistoryConfirm(ctx,{attemptId:draft.attemptId,previewHash:draft.plan.previewHash,confirmReplacement:true,acknowledgeWarnings:true});if(!('jobId' in request))throw new Error('Expected staged history job');
+  let staged=false;
+  for(let tick=0;tick<50;tick++){await runBulkJobTick(owner.client,{handlers:[payrollHistoryJobHandler]});const [count]=await owner.client<{n:number}[]>`select count(*)::int as n from app.payroll_history_staged_row where stage_id=${request.jobId}::uuid and relation='payroll_history_import_revision'`;if(count.n){staged=true;break;}}
+  expect(staged).toBe(true);expect(await source(ctx)).toEqual(before);expect(await source(self)).toEqual(before);expect((await taxBasisOptions(ctx)).employees.map(person=>person.id)).toEqual([employee]);
+  let completed=false;
+  for(let tick=0;tick<100;tick++){await runBulkJobTick(owner.client,{handlers:[payrollHistoryJobHandler]});const [job]=await owner.client<{state:string}[]>`select state from bulk_job where id=${request.jobId}::uuid`;if(job.state==='completed'){completed=true;break;}if(job.state==='failed')throw new Error('History stage failed');}
+  expect(completed).toBe(true);expect(await source(ctx)).toEqual([]);expect(await source(self)).toEqual([]);
+  const current=(await withTenant(ctx,tx=>tx.select({id:schema.payslip.id}).from(schema.payslip))).map(slip=>slip.id);expect(current).toHaveLength(3);expect(current.every(id=>!ids.includes(id))).toBe(true);
+ }finally{delete process.env.PAYROLL_HISTORY_CHUNK_BUDGET_MS;}
+},90000);
+it('rejects null and oversized SQL subject pages before reading historical subjects',async()=>{
+ for(const query of [sql`select * from app.payroll_tax_basis_subject_page(array[${b.companyId}::uuid],0,null)`,sql`select * from app.payroll_tax_basis_subject_page(array[${b.companyId}::uuid],null,500)`,sql`select * from app.payroll_tax_basis_subject_page(array[${b.companyId}::uuid],0,501)`])await expect(withTenant(ctx,tx=>tx.execute(query))).rejects.toThrow(/Invalid historical subject page/);
 });
