@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {execFileSync} from 'node:child_process';
 import {readFileSync,writeFileSync} from 'node:fs';
 import {join,resolve} from 'node:path';
-import {randomUUID} from 'node:crypto';
+import {randomUUID,createHash} from 'node:crypto';
 import {isDeepStrictEqual} from 'node:util';
 import {createPlan,hash} from './plan.mjs';
 import {requiredEvidence} from './manifest.mjs';
@@ -16,7 +16,7 @@ import {assessResumeSource} from './resume-source.mjs';
 import {reconstructRepairImpact} from './repair-impact.mjs';
 import {collectRecoveryEvidence} from './focused-recovery.mjs';
 import {validateRecoveryControllerDiagnostic} from './focused-recovery-policy.mjs';
-import {verifyRepairRecovery,repairDisposition,validateRepairFocusedMetadata,validateRepairBuildMetadata} from './repair-recovery-policy.mjs';
+import {verifyRepairRecovery,repairDisposition,validateRepairFocusedMetadata,validateRepairBuildMetadata,validateFixturePinRepair,FIXTURE_PIN_REPAIR_PATH,FIXTURE_MIGRATION_PINS} from './repair-recovery-policy.mjs';
 const api=path=>JSON.parse(execFileSync('gh',['api',`repos/${REPOSITORY}/${path}`],{encoding:'utf8',maxBuffer:128*1024**2,timeout:60000}));
 function pages(path,key){const rows=[];for(let page=1;page<=10;page++){const r=api(`${path}${path.includes('?')?'&':'?'}per_page=100&page=${page}`);assert(Array.isArray(r[key]),'Missing complete API inventory');rows.push(...r[key]);if(r[key].length<100)return rows;}throw Error('Repair API inventory exceeds bound');}
 const git=(cwd,...args)=>execFileSync('git',args,{cwd,encoding:'utf8',maxBuffer:64*1024**2,timeout:60000}).trim();
@@ -40,10 +40,16 @@ export function validateRepairDelta({cwd,original,candidate}){
  execFileSync('git',['merge-base','--is-ancestor',original,candidate],{cwd,stdio:'ignore'});
  const records=git(cwd,'diff','--name-status','--no-renames',original,candidate).split('\n').filter(Boolean);
  assert(records.length>0&&records.length<=64,'Bounded nonempty repair delta required');
- const changed=records.map(line=>{const [status,path,...extra]=line.split('\t');assert(status==='M'&&extra.length===0&&/^(app|components|core|lib|packs)\/[A-Za-z0-9_./()\[\]-]+\.(ts|tsx)$/.test(path),'Only existing product TypeScript repairs supported');
+ const fixtureOnly=records.length===1&&records[0]==='M\t'+FIXTURE_PIN_REPAIR_PATH;
+ let fixturePinRepair;
+ if(fixtureOnly){
+  const blob=(ref,path)=>execFileSync('git',['show',ref+':'+path],{cwd,maxBuffer:128*1024**2,timeout:60000});
+  fixturePinRepair=validateFixturePinRepair({before:blob(original,FIXTURE_PIN_REPAIR_PATH),after:blob(candidate,FIXTURE_PIN_REPAIR_PATH),inputs:FIXTURE_MIGRATION_PINS.map(p=>{const before=blob(original,p.path),after=blob(candidate,p.path);assert(before.equals(after),'Migration owner bytes changed');const digest=b=>createHash('sha256').update(b).digest('hex');return {path:p.path,beforeSha256:digest(before),afterSha256:digest(after)};})});
+ }
+ const changed=fixtureOnly?[FIXTURE_PIN_REPAIR_PATH]:records.map(line=>{const [status,path,...extra]=line.split('\t');assert(status==='M'&&extra.length===0&&/^(app|components|core|lib|packs)\/[A-Za-z0-9_./()\[\]-]+\.(ts|tsx)$/.test(path),'Only existing product TypeScript repairs supported');
   assert(!/^lib\/(identity\/|permissions\.|authz\.|session\.|scope\.|request-origin\.)/.test(path)&&!/^core\/(auth|admin|permissions|tenant)(\.|-|s\/)/.test(path),'Security-owner repair needs broader independent coverage');return path;}).sort();
  // Explicitly bind all unchanged non-product inputs, including tests, SQL, workflows and package locks.
- return {changed,baseTree:git(cwd,'rev-parse',original+'^{tree}'),headTree:git(cwd,'rev-parse',candidate+'^{tree}'),diffSha256:hash(git(cwd,'diff','--binary','--no-ext-diff',original,candidate))};
+ return {changed,...(fixturePinRepair?{fixturePinRepair}:{}),baseTree:git(cwd,'rev-parse',original+'^{tree}'),headTree:git(cwd,'rev-parse',candidate+'^{tree}'),diffSha256:hash(git(cwd,'diff','--binary','--no-ext-diff',original,candidate))};
 }
 export function validateLatestRepairHistory({source,rows,candidateBranch,focusedRunIds,buildRunId}){
  const after=source.run.updated_at,known=new Set([...focusedRunIds,buildRunId]);
@@ -81,7 +87,7 @@ export async function verifyRepairedCi({candidatePath,originalPath,runId,baselin
  execFileSync('git',['merge-base','--is-ancestor',baseline,original],{cwd:candidatePath,stdio:'ignore'});
  const delta=validateRepairDelta({cwd:candidatePath,original,candidate});
  const diagnosticId=Number(process.env.AIHR_RECOVERY_CONTROLLER_RUN_ID);assert(Number.isSafeInteger(diagnosticId)&&diagnosticId>0,'Reviewed verifier controller diagnostic required');
- assert(readFileSync(join(controllerRoot,'.github/workflows/alpha-staging.yml'),'utf8').includes(' .github/ci/repair-recovery.test.mjs'),'Hosted integrity suite must execute v2 refusal controls');
+ assert(readFileSync(join(controllerRoot,'.github/workflows/alpha-staging.yml'),'utf8').includes(' .github/ci/repair-recovery.test.mjs'),'Hosted integrity suite must execute v3 refusal controls');
  const dm=metadata(diagnosticId),verificationDiagnostic=validateRecoveryControllerDiagnostic({...dm,controller:verificationController});
  const originalMetadata=metadata(runId),controller=originalMetadata.run.head_sha;
  assert(originalMetadata.run.status==='completed'&&originalMetadata.run.conclusion==='failure'&&originalMetadata.run.run_attempt===1,'Wait for all planned original jobs to finish');
@@ -122,7 +128,7 @@ export async function verifyRepairedCi({candidatePath,originalPath,runId,baselin
  const p={candidate,controller,baseline,runId:buildRunId,controllerBranch:built.run.head_branch},build=await sourceBoundBuild({candidatePath,dir,p,jobs:built.jobs});
  const history=latestHistory({source,focusedWorkflowId:workflow.id,candidateBranch,focusedRunIds,buildRunId});
  const reports=sourcePlan.units.map(u=>source.parsed.get('unit-'+u.id)?.get(`unit-${u.id}.json`));
- const recovery=verifyRepairRecovery({sourcePlan,plan,assessment,sourceRun:source.run,reports,focused,impactContext,classifierHash:hash(readFileSync(join(candidatePath,'scripts/gate-db-classify.ts'),'utf8')),verificationController,verificationDiagnostic,reviewedController,buildRun:built.run,build,history});
+ const recovery=verifyRepairRecovery({sourcePlan,plan,assessment,sourceRun:source.run,reports,focused,impactContext,classifierHash:hash(readFileSync(join(candidatePath,'scripts/gate-db-classify.ts'),'utf8')),verificationController,verificationDiagnostic,reviewedController,buildRun:built.run,build,history,delta});
  recovery.delta=delta;recovery.originalArtifacts=source.artifacts.map(a=>({id:a.id,name:a.name,digest:a.digest}));recovery.originalJobConclusions=source.jobs.map(j=>({id:j.id,name:j.name,conclusion:j.conclusion}));
  assert(cleanHead(candidatePath)===candidate&&cleanHead(originalPath)===original&&cleanHead(controllerRoot)===verificationController,'Source/controller changed while verifying');
  assert([baseline,candidate].includes(api('git/ref/heads/alpha').object?.sha),'Alpha moved away from exact staging baseline/candidate');

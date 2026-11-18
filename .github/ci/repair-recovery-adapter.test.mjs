@@ -58,3 +58,26 @@ test('latest history does not lose overlapping failures, pending runs or executi
  }
  assert.throws(()=>validateLatestRepairHistory({...input,rows:[...rows,{...rows[0],updated_at:'not-a-time'}]}),/Malformed/);
 });
+
+test('v3 collector authenticates complete DB ZIP while extracting only focused assertions, retaining role diagnostics',async()=>{
+ const root=mkdtempSync(join(tmpdir(),'aihr-repair-v3-db-')),bin=join(root,'bin'),responses=join(root,'api');mkdirSync(bin);mkdirSync(responses);
+ const f=fixture();f.artifacts=[];f.archives=new Map();
+ const common={kind:'GIT_SOURCE_CROSS_VERSION_FIXTURE_NOT_PACKET_OR_LIVE_ACCEPTANCE',webSource:'d'.repeat(40),reviewedHistoricalBaseline:'a4bd903840cdae2a94e67d5f57e3b54c9e2a86ac',matchingWorkerRequired:true,authenticatedCorrectedPacketProofRequired:true,actualPacketExecuted:false,protectedServiceVerified:false,liveRestartVerified:false,deploymentAuthorized:false,newWebAdmission:true,humanCommandFixture:true,canonicalWrite:true,tenantDenial:true,newProcessReplay:true,historyItems:1,schemaEntries:1069,sourceArchiveSha256:'a'.repeat(64)};
+ put(f,'focused-development-evidence','focused.json',{groups:{DB:['test/ai-review-worker-compatibility.test.ts'],NODB:[]},files:['test/ai-review-worker-compatibility.test.ts'],sha:common.webSource}, {
+  'worker-cross-version-legacy.json':JSON.stringify({...common,workerSource:'968354c00a71df7baccd499eb60757a3307ed61e'}),'worker-cross-version-staged.json':JSON.stringify({...common,workerSource:'a4bd903840cdae2a94e67d5f57e3b54c9e2a86ac'}),
+  'db.vitest.json':'{}','postgres.log':'original diagnostic','postgres-state.json':'{}','postgres-stats.txt':'{}',
+  'personnel-draft-discard-premigration-role-prerequisites.json':'{}','personnel-draft-discard-role-prerequisites.json':'{}',
+ });
+ const a=f.artifacts[0],zip=f.archives.get(a.name);writeFileSync(join(responses,'packet.zip'),zip);
+ writeFileSync(join(responses,'state.json'),JSON.stringify({run:f.run,jobs:f.jobs,artifacts:f.artifacts}));
+ writeFileSync(join(bin,'gh'),'#!'+process.execPath+'\n'+
+  'const fs=require("node:fs"),p=process.argv[3].split("?")[0],r=process.env.AIHR_FAKE_REPAIR_API,s=JSON.parse(fs.readFileSync(r+"/state.json"));process.stdout.write(p.endsWith("/zip")?fs.readFileSync(r+"/packet.zip"):JSON.stringify(p.endsWith("/artifacts")?{artifacts:s.artifacts}:p.endsWith("/jobs")?{jobs:s.jobs}:s.run));\n',{mode:0o700});
+ const previousPath=process.env.PATH,previousApi=process.env.AIHR_FAKE_REPAIR_API;process.env.PATH=bin+':'+previousPath;process.env.AIHR_FAKE_REPAIR_API=responses;
+ try{
+  const directory=join(root,'evidence'),source=await collectRecoveryEvidence(f.run.id,directory,{repairPackets:true});
+  assert.deepEqual([...source.parsed.get(a.name).keys()].sort(),['db.vitest.json','focused.json']);
+  assert.ok(readFileSync(join(directory,a.name+'.zip')).equals(zip));assert.ok(source.archives.get(a.name).equals(zip));
+  const path=join(directory,a.name+'.zip');writeFileSync(path,Buffer.alloc(zip.length,1));
+  await assert.rejects(collectRecoveryEvidence(f.run.id,directory,{repairPackets:true,reuse:true}),/digest/);
+ }finally{process.env.PATH=previousPath;if(previousApi===undefined)delete process.env.AIHR_FAKE_REPAIR_API;else process.env.AIHR_FAKE_REPAIR_API=previousApi;rmSync(root,{recursive:true,force:true});}
+});

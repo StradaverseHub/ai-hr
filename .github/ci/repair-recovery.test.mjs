@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {fixture,now,time} from './resume-test-fixtures.mjs';
 import {assessResumeCoverage} from './resume-assessment.mjs';
 import {hash} from './manifest.mjs';
-import {verifyRepairRecovery,repairDisposition,validateRepairFocusedMetadata,validateRepairBuildMetadata,validateRepairGrantEvidence} from './repair-recovery-policy.mjs';
+import {verifyRepairRecovery,repairDisposition,validateRepairFocusedMetadata,validateRepairBuildMetadata,validateRepairGrantEvidence,validateFixturePinRepair,FIXTURE_PIN_REPAIR_PATH,FIXTURE_MIGRATION_PINS,REPAIR_RECOVERY_POLICY} from './repair-recovery-policy.mjs';
 import {createInstallGrant} from './ci-install-grant.mjs';
 import {installationFixture} from './staging-install-test-fixture.mjs';
 import {validateRepairDelta,validateRepairArchiveInventory} from './repair-recovery.mjs';
@@ -30,7 +30,7 @@ function input(){
  const buildJobs=['resolve','typecheck','migrations','test','controller-tests','plan','runner-diagnostics','build','browser','verify','deployment-hold'].map((name,i)=>({id:600+i,name,run_id:500,head_sha:buildRun.head_sha,head_branch:buildRun.head_branch,run_attempt:1,status:'completed',conclusion:['resolve','build','deployment-hold'].includes(name)?'success':'skipped',started_at:time(3),completed_at:time(2)}));
  return {sourcePlan,plan,assessment,sourceRun:f.run,reports:f.reports,focused:[{run,jobs,artifact,producer:jobs[1],compiler:{runId:200,jobId:302,controller:run.head_sha},report,result}],impactContext,classifierHash:'classifier',verificationController,verificationDiagnostic:{controller:verificationController,runId:900},reviewedController:verificationController,buildRun,buildJobs,build:{canonicalCandidateInputsVerified:true,source:candidate,controller:plan.controller,runId:500},history:{kind:'AUTHENTICATED_COMPLETE_REPAIR_HISTORY',sourceRunId:f.run.id,runIds:[200,500]}};
 }
-test('v2 preserves failed source and retained report identities while replacing compiler/build and whole failed process',()=>{
+test('v3 preserves failed source and retained report identities while replacing compiler/build and whole failed process',()=>{
  const f=input(),original=structuredClone(f.reports),c=verifyRepairRecovery(f);assert.deepEqual(f.reports,original);assert.equal(c.originalConclusion,'failure');assert.equal(c.originalSha,f.sourcePlan.sha);assert.equal(c.sha,f.plan.sha);assert.equal(c.runId,500);assert.equal(c.tests,5);assert.equal(c.units.filter(u=>u.kind==='retained').length,4);assert.equal(c.units.find(u=>u.kind==='retained').originalSha,f.sourcePlan.sha);
 });
 for(const [name,change] of [
@@ -45,7 +45,7 @@ for(const [name,change] of [
  ['dropped assertion',f=>f.focused[0].result.testResults[0].assertionResults=[]],['changed assertion',f=>f.focused[0].result.testResults[0].assertionResults[0].fullName='different'],['pending assertion',f=>f.focused[0].result.numPendingTests=1],
  ['empty original enumeration',f=>f.reports.find(r=>r.exitCode===1).batches[0].result.testResults=[]],['diagnostic substituted for build',f=>f.build={releaseAuthorized:false,kind:'CANONICAL_CI_APPLICATION_COMPILER_STATE_NOT_RELEASE'}],['old-source build',f=>f.build.source=f.sourcePlan.sha],
  ['foreign build run',f=>f.build.runId=100],['unvalidated verifier',f=>delete f.verificationDiagnostic.runId],['missing latest history',f=>f.history=null],
-])test('v2 refuses '+name,()=>{const f=input();change(f);assert.throws(()=>verifyRepairRecovery(f));});
+])test('v3 refuses '+name,()=>{const f=input();change(f);assert.throws(()=>verifyRepairRecovery(f));});
 function focusedMetadata(){const f=input(),p=f.focused[0];return {run:p.run,jobs:p.jobs,artifacts:[p.artifact],expected:{runId:200,controller:f.plan.controller,workflowId:999,after:time(5)},now};}
 test('Fresh whole compiler is authenticated at its real focused producing job',()=>assert.equal(validateRepairFocusedMetadata(focusedMetadata()).compiler.jobId,302));
 function dbInput(){
@@ -64,7 +64,7 @@ for(const [name,change] of [['compiler failure',f=>f.jobs[2].conclusion='failure
 function buildMetadata(){const f=input();return {run:f.buildRun,jobs:f.buildJobs,expected:{runId:500,controller:f.plan.controller,after:time(5),candidateBranch:'repair',now}};}
 test('Only actual canonical build-only workflow is admitted',()=>assert.equal(validateRepairBuildMetadata(buildMetadata()).name,'build'));
 for(const [name,change] of [['diagnostic run',f=>f.run.display_title='Runner diagnostics · repair'],['focused workflow',f=>f.run.path='.github/workflows/alpha-focused-checks.yml'],['old build',f=>f.run.created_at=time(10)],['build failure',f=>f.jobs.find(j=>j.name==='build').conclusion='failure'],['extra test execution',f=>f.jobs.find(j=>j.name==='test').conclusion='success']])test('Build metadata refuses '+name,()=>{const f=buildMetadata();change(f);assert.throws(()=>validateRepairBuildMetadata(f));});
-test('v2 grant binds fresh canonical producer while retaining original failed run in certificate',()=>{
+test('v3 grant binds fresh canonical producer while retaining original failed run in certificate',()=>{
  const f=input(),c=verifyRepairRecovery(f),g=installationFixture(),e={...g.evidence,...c,recovery:c,fingerprint:hash(c),build:{...g.evidence.build,...f.build}};
  const run={...g.run,id:c.runId,head_sha:c.controller},producer={...g.producer,run_id:c.runId,head_sha:c.controller};
  assert.equal(validateRepairGrantEvidence(e,run),true);const grant=createInstallGrant({...g,evidence:e,run,producer});assert.equal(grant.source,c.sha);assert.equal(grant.runId,500);assert.equal(grant.witnessFingerprint,hash(c));assert.equal(c.originalRunId,100);
@@ -97,4 +97,48 @@ test('Failure diagnostics remain their own bounded original namespace and cannot
  const m={run,jobs:[j],artifacts:[a]};assert.doesNotThrow(()=>validateRepairArchiveInventory(m,new Set([a.name]),()=> 'build',now));
  assert.throws(()=>validateRepairArchiveInventory(m,new Set(['production-build-v1','next-application-state-v1']),()=> 'build',now));
  for(const change of [m=>m.artifacts[0].workflow_run.id++,m=>m.artifacts[0].name='unknown',m=>m.artifacts[0].created_at=time(30),m=>m.artifacts.push(structuredClone(m.artifacts[0]))]){const bad=structuredClone(m);change(bad);assert.throws(()=>validateRepairArchiveInventory(bad,new Set([a.name]),()=> 'build',now));}
+});
+
+function fixturePinInput(){
+ const map=key=>'const REVIEWED_MIGRATION_INPUTS=[\n'+FIXTURE_MIGRATION_PINS.map(p=>` {path:'${p.path}',sha256:'${p[key]}'},`).join('\n')+'\n] as const;';
+ const body='\n// Immutable old worker assertions and commands remain byte-identical.\nconst WORKER_SOURCE="historical";\n';
+ return {before:Buffer.from(map('before')+body),after:Buffer.from(map('after')+body),inputs:FIXTURE_MIGRATION_PINS.map(p=>({path:p.path,beforeSha256:p.after,afterSha256:p.after}))};
+}
+test('v3 admits only the exact two current-web migration pin literals and proves whole-blob inverse',()=>{
+ const f=fixturePinInput(),before=Buffer.from(f.before),proof=validateFixturePinRepair(f);
+ assert.equal(REPAIR_RECOVERY_POLICY,'aihr-cross-source-recovery/v3');assert.equal(proof.path,FIXTURE_PIN_REPAIR_PATH);assert.equal(proof.inverseRestoresOriginal,true);assert.equal(proof.inputs.length,5);assert.ok(f.before.equals(before));
+ assert.equal(FIXTURE_MIGRATION_PINS.filter(p=>p.before!==p.after).length,2);
+});
+for(const [name,change] of [
+ ['unchanged fixture',f=>f.after=f.before],['only one literal',f=>f.after=Buffer.from(f.before.toString().replace(FIXTURE_MIGRATION_PINS[1].before,FIXTURE_MIGRATION_PINS[1].after))],
+ ['unreviewed third pin',f=>f.after=Buffer.from(f.after.toString().replace(FIXTURE_MIGRATION_PINS[0].after,'a'.repeat(64)))],
+ ['worker body edited',f=>f.after=Buffer.from(f.after.toString().replace('historical','new-worker'))],['appended bytes',f=>f.after=Buffer.concat([f.after,Buffer.from('extra')])],
+ ['map duplicated',f=>f.before=Buffer.concat([f.before,f.before])],['missing map',f=>f.before=Buffer.from('no map')],
+ ['helper changed',f=>f.inputs[1].beforeSha256='a'.repeat(64)],['unreviewed helper bytes',f=>{f.inputs[1].beforeSha256=f.inputs[1].afterSha256='a'.repeat(64);}],
+ ['owner omitted',f=>f.inputs.pop()],['owner order changed',f=>f.inputs.reverse()],['owner substituted',f=>f.inputs[0].path='other.ts'],
+])test('closed fixture class refuses '+name,()=>{const f=fixturePinInput();change(f);assert.throws(()=>validateFixturePinRepair(f));});
+test('v3 policy rejects arbitrary test changes and unproved fixture deltas independently of product route',()=>{
+ for(const path of ['test/guard.test.ts',FIXTURE_PIN_REPAIR_PATH]){
+  const f=input(),p=f.impactContext.plan;p.changed=[path];p.classifications[0].path=path;const {fingerprint,...body}=p;p.fingerprint=hash(body);
+  assert.throws(()=>verifyRepairRecovery(f));
+ }
+});
+
+test('v3 closed fixture proof enters the authenticated certificate and refuses old v2 grants',()=>{
+ const f=input(),p=f.impactContext.plan;p.changed=[FIXTURE_PIN_REPAIR_PATH];p.classifications[0].path=FIXTURE_PIN_REPAIR_PATH;const {fingerprint,...body}=p;p.fingerprint=hash(body);
+ f.delta={changed:[FIXTURE_PIN_REPAIR_PATH],fixturePinRepair:validateFixturePinRepair(fixturePinInput())};
+ const c=verifyRepairRecovery(f);assert.equal(c.recoveryPolicy,'aihr-cross-source-recovery/v3');assert.equal(c.originalSha,f.sourcePlan.sha);assert.deepEqual(c.delta,f.delta);
+ const evidence={...c,recovery:{...c,recoveryPolicy:'aihr-cross-source-recovery/v2'}};evidence.fingerprint=hash(evidence.recovery);
+ assert.throws(()=>validateRepairGrantEvidence(evidence,f.buildRun),/certificate/);
+});
+
+test('Actual Git delta adapter refuses matching claimed helper pins when committed bytes do not match',()=>{
+ const root=mkdtempSync(join(tmpdir(),'aihr-fixture-pin-delta-')),f=fixturePinInput();
+ const git=(...args)=>execFileSync('git',args,{cwd:root,encoding:'utf8',env:{...process.env,GIT_AUTHOR_NAME:'Controller fixture',GIT_AUTHOR_EMAIL:'fixture@example.invalid',GIT_COMMITTER_NAME:'Controller fixture',GIT_COMMITTER_EMAIL:'fixture@example.invalid'}}).trim();
+ const put=(path,value)=>{mkdirSync(join(root,path,'..'),{recursive:true});writeFileSync(join(root,path),value);};
+ try{
+  git('init','-q');put(FIXTURE_PIN_REPAIR_PATH,f.before);for(const p of FIXTURE_MIGRATION_PINS)put(p.path,'unreviewed helper bytes\n');git('add','.');git('commit','-qm','original native fixture');const original=git('rev-parse','HEAD');
+  put(FIXTURE_PIN_REPAIR_PATH,f.after);git('add','.');git('commit','-qm','exact two literals with wrong helper bytes');
+  assert.throws(()=>validateRepairDelta({cwd:root,original,candidate:git('rev-parse','HEAD')}),/migration-owner digest/);
+ }finally{rmSync(root,{recursive:true,force:true});}
 });

@@ -1,12 +1,42 @@
-/** Cross-source v2 accounting. API/archive/source authentication belongs to the adapter. */
+/** Cross-source v3 accounting. API/archive/source authentication belongs to the adapter. */
 import assert from 'node:assert/strict';
+import {createHash} from 'node:crypto';
 import {isDeepStrictEqual} from 'node:util';
 import {relative} from 'node:path';
 import {hash,requiredEvidence} from './manifest.mjs';
 import {verifyUnitReport} from './verify-shards.mjs';
 import {validatePostgresEvidence} from './postgres-evidence.mjs';
 import {REPOSITORY,REPOSITORY_ID,WORKFLOW_ID,WORKFLOW_PATH} from './release-policy.mjs';
-export const REPAIR_RECOVERY_POLICY='aihr-cross-source-recovery/v2';
+export const REPAIR_RECOVERY_POLICY='aihr-cross-source-recovery/v3';
+
+// Closed repair class: CURRENT web migration-owner pins, never archived worker overlays.
+export const FIXTURE_PIN_REPAIR_PATH='test/ai-review-worker-compatibility.test.ts';
+export const FIXTURE_MIGRATION_PINS=Object.freeze([
+ {path:'scripts/migrate-with-focused-prerequisites.ts',before:'3050abc60faa490cdab416f9aeffc80b0b042daf3891ce2e34fbb42071bc7eec',after:'3050abc60faa490cdab416f9aeffc80b0b042daf3891ce2e34fbb42071bc7eec'},
+ {path:'scripts/lib/discard-premigration.ts',before:'61f528c2570c90204e739a37652e7e79d6c3fc5905bbf849209d20c66709492a',after:'5eefc2b087ebd707ff97750e39ffff41c23861e988c3338807134a92f00f7152'},
+ {path:'test/helpers/personnel-draft-discard-ci-role-fixture.ts',before:'ba69d34c69f6846b56ccab4284eeacc8e47088b3c4b71340d268a817a25ecce0',after:'bffdfca148697e58b663bdf456b064c0b6b370e75012123e4cd2c1e4d3e9c101'},
+ {path:'scripts/lib/resignation-browser-role-admission.ts',before:'078f96b90a46ec7a147feb77ca7ce1e7133975dff240421b71d89c47895ca4a9',after:'078f96b90a46ec7a147feb77ca7ce1e7133975dff240421b71d89c47895ca4a9'},
+ {path:'scripts/resignation-browser-premigration.ts',before:'ea26d0951f969b2dfa88f30e2f41ee4f41a9edbb7880812dabe0da24776f2ef9',after:'ea26d0951f969b2dfa88f30e2f41ee4f41a9edbb7880812dabe0da24776f2ef9'},
+].map(Object.freeze));
+const byteHash=bytes=>createHash('sha256').update(bytes).digest('hex');
+export function validateFixturePinRepair({before,after,inputs}){
+ assert(Buffer.isBuffer(before)&&Buffer.isBuffer(after)&&Array.isArray(inputs)&&inputs.length===5,'Exact immutable fixture and five migration owners required');
+ const line=(p,value)=>` {path:'${p.path}',sha256:'${value}'},`;
+ const block=values=>'const REVIEWED_MIGRATION_INPUTS=[\n'+FIXTURE_MIGRATION_PINS.map(p=>line(p,p[values])).join('\n')+'\n] as const;';
+ const oldBlock=Buffer.from(block('before')),newBlock=Buffer.from(block('after'));
+ const offset=before.indexOf(oldBlock);
+ assert(offset>=0&&before.indexOf(oldBlock,offset+1)===-1,'Exact original five-entry migration pin map required');
+ const expected=Buffer.concat([before.subarray(0,offset),newBlock,before.subarray(offset+oldBlock.length)]);
+ assert(expected.equals(after),'Only the two exact reviewed fixture pin literals may change');
+ const inverse=Buffer.concat([after.subarray(0,offset),oldBlock,after.subarray(offset+newBlock.length)]);
+ assert(inverse.equals(before),'Fixture inverse must restore the entire original blob');
+ for(const [i,p] of FIXTURE_MIGRATION_PINS.entries()){
+  const input=inputs[i];assert(input?.path===p.path&&input.beforeSha256===input.afterSha256,'Migration owner changed across fixture repair');
+  assert(input.afterSha256===p.after,'Reviewed migration-owner digest differs');
+ }
+ return {kind:'CLOSED_WEB_MIGRATION_FIXTURE_TWO_PIN_REPAIR',path:FIXTURE_PIN_REPAIR_PATH,originalBlobSha256:byteHash(before),repairedBlobSha256:byteHash(after),inverseRestoresOriginal:true,inputs:FIXTURE_MIGRATION_PINS.map(p=>({path:p.path,sha256:p.after}))};
+}
+
 const same=(a,b,message)=>assert(isDeepStrictEqual(a,b),message);
 const sha=x=>typeof x==='string'&&/^[a-f0-9]{40}$/.test(x);
 const id=x=>Number.isSafeInteger(x)&&x>0;
@@ -75,12 +105,19 @@ function caseInventory(result,files,cwd,{passing}){
 export function requireReviewedRepairController({execute,repair,controller,reviewedController}){
  if(execute&&repair)assert(sha(controller)&&reviewedController===controller,'Exact independent verifier review required before any repair deployment operation');
 }
-export function verifyRepairRecovery({sourcePlan,plan,assessment,sourceRun,reports,focused,impactContext,classifierHash,verificationController,verificationDiagnostic,reviewedController=null,buildRun,build,history}){
+export function verifyRepairRecovery({sourcePlan,plan,assessment,sourceRun,reports,focused,impactContext,classifierHash,verificationController,verificationDiagnostic,reviewedController=null,buildRun,build,history,delta=null}){
  assert(sourceRun.status==='completed'&&sourceRun.conclusion==='failure'&&sourceRun.run_attempt===1&&assessment.sourceRun.id===sourceRun.id,'Original complete failure required');
  assert(assessment.sha===sourcePlan.sha&&assessment.controller===sourcePlan.controller&&assessment.fingerprint===sourcePlan.fingerprint&&assessment.baseline===plan.migrationBase,'Original source assessment differs');
  assert(verificationDiagnostic.controller===verificationController&&id(verificationDiagnostic.runId),'Hosted verifier diagnostic required');
  assert(reviewedController===null||reviewedController===verificationController,'Reviewed verifier identity changed');
  const disposition=repairDisposition({sourcePlan,plan,assessment,impactContext,verificationController}),fresh=new Set(disposition.fresh);
+ if(impactContext.plan.changed.some(p=>p.startsWith('test/'))){
+  same(impactContext.plan.changed,[FIXTURE_PIN_REPAIR_PATH],'Only the closed single-fixture repair class admits test changes');
+  assert(delta?.fixturePinRepair?.kind==='CLOSED_WEB_MIGRATION_FIXTURE_TWO_PIN_REPAIR'&&delta.fixturePinRepair.path===FIXTURE_PIN_REPAIR_PATH&&delta.fixturePinRepair.inverseRestoresOriginal===true,'Independently validated exact fixture inverse required');
+  assert(/^[a-f0-9]{64}$/.test(delta.fixturePinRepair.originalBlobSha256)&&/^[a-f0-9]{64}$/.test(delta.fixturePinRepair.repairedBlobSha256)&&delta.fixturePinRepair.originalBlobSha256!==delta.fixturePinRepair.repairedBlobSha256,'Fixture blob identities missing');
+  same(delta.changed,[FIXTURE_PIN_REPAIR_PATH],'Fixture delta inventory differs');
+  same(delta.fixturePinRepair.inputs,FIXTURE_MIGRATION_PINS.map(p=>({path:p.path,sha256:p.after})),'Fixture owner inventory differs');
+ }
  assert(fresh.size>0,'No failed/invalidated units to recover');
  assert(plan.units.filter(u=>fresh.has(u.id)).every(u=>u.kind==='nodb'||u.kind==='db'),'Affected browser units require a separately validated execution route');
  assert(Array.isArray(reports)&&reports.length===sourcePlan.units.length&&new Set(reports.map(r=>r.id)).size===reports.length,'Complete original reports required');
@@ -120,7 +157,7 @@ export function verifyRepairRecovery({sourcePlan,plan,assessment,sourceRun,repor
   tests+=count;units.push({id:u.id,kind:'repaired-source',originalReportHash:hash(report),tests:count,files});
  }
  assert(replacements.size===plan.units.filter(u=>fresh.has(u.id)).reduce((n,u)=>n+u.files.length,0),'Incomplete or excessive replacement coverage');
- return {kind:'AUTHENTICATED_CROSS_SOURCE_RECOVERY',recoveryPolicy:REPAIR_RECOVERY_POLICY,policyVersion:plan.policyVersion,sha:plan.sha,controller:plan.controller,verificationController,verificationDiagnostic,reviewedController,pendingReview:reviewedController===null,releaseAuthorized:false,baseline:plan.migrationBase,runId:buildRun.id,originalRunId:sourceRun.id,originalSha:sourcePlan.sha,originalConclusion:sourceRun.conclusion,originalFingerprint:sourcePlan.fingerprint,candidateFingerprint:plan.fingerprint,disposition,originalFailureObservations:assessment.observations,focusedSources,compilers,history,units,suiteFiles:plan.suite.length,browserFiles:plan.units.filter(u=>u.kind==='browser').reduce((n,u)=>n+u.files.length,0),tests};
+ return {kind:'AUTHENTICATED_CROSS_SOURCE_RECOVERY',recoveryPolicy:REPAIR_RECOVERY_POLICY,policyVersion:plan.policyVersion,sha:plan.sha,controller:plan.controller,verificationController,verificationDiagnostic,reviewedController,pendingReview:reviewedController===null,releaseAuthorized:false,baseline:plan.migrationBase,runId:buildRun.id,originalRunId:sourceRun.id,originalSha:sourcePlan.sha,originalConclusion:sourceRun.conclusion,originalFingerprint:sourcePlan.fingerprint,candidateFingerprint:plan.fingerprint,disposition,originalFailureObservations:assessment.observations,focusedSources,compilers,history,...(delta?{delta}:{}),units,suiteFiles:plan.suite.length,browserFiles:plan.units.filter(u=>u.kind==='browser').reduce((n,u)=>n+u.files.length,0),tests};
 }
 export function validateRepairGrantEvidence(evidence,run){
  const c=evidence.recovery;assert(c?.kind==='AUTHENTICATED_CROSS_SOURCE_RECOVERY'&&c.recoveryPolicy===REPAIR_RECOVERY_POLICY&&c.originalConclusion==='failure'&&c.originalSha!==c.sha&&c.originalRunId!==c.runId&&evidence.fingerprint===hash(c),'Cross-source recovery certificate required');

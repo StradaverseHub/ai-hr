@@ -11,7 +11,7 @@ const text = (cwd, ...args) => git(cwd, ...args).toString('utf8').trim();
 const fail = reason => {throw Error('Repair impact refused: ' + reason);};
 
 /** Parse exactly one bounded cat-file response for every requested object, with no suffix or truncation. */
-export function decodeCommittedBlobs(ids, bytes) {
+export function decodeCommittedBlobs(ids, bytes, declaredSizes = null) {
   if (!Array.isArray(ids) || !ids.every(sha) || new Set(ids).size !== ids.length || !Buffer.isBuffer(bytes))
     fail('invalid blob inventory');
   const result = new Map(); let offset = 0;
@@ -21,6 +21,7 @@ export function decodeCommittedBlobs(ids, bytes) {
     const fields = bytes.subarray(offset, end).toString('utf8').split(' '), size = Number(fields[2]);
     if (fields.length !== 3 || fields[0] !== id || fields[1] !== 'blob' || !Number.isSafeInteger(size) || size < 0)
       fail('invalid blob header');
+    if (declaredSizes && declaredSizes.get(id) !== size) fail('declared blob size differs');
     offset = end + 1;
     if (offset + size >= bytes.length || bytes[offset + size] !== 10) fail('incomplete blob bytes');
     result.set(id, bytes.subarray(offset, offset + size).toString('utf8'));
@@ -30,21 +31,54 @@ export function decodeCommittedBlobs(ids, bytes) {
   return result;
 }
 
+const BLOB_OUTPUT_LIMIT = 128 * 1024 ** 2;
+const BLOB_PHASE_TIMEOUT = 60000;
+/** Complete deterministic transport batches. This bounds one subprocess, not total source size. */
+export function committedBlobBatches(entries, limit = BLOB_OUTPUT_LIMIT) {
+  if (!Number.isSafeInteger(limit) || limit <= 0 || limit > BLOB_OUTPUT_LIMIT) fail('invalid blob transport bound');
+  const seen = new Map(), batches = []; let batch = [], bytes = 0;
+  for (const entry of entries) {
+    const {id, size} = entry;
+    if (!sha(id) || !Number.isSafeInteger(size) || size < 0) fail('invalid declared blob');
+    if (seen.has(id)) {if (seen.get(id) !== size) fail('conflicting declared blob size'); continue;}
+    seen.set(id, size);
+    // SHA + " blob " + decimal bytes + header newline + payload + trailer newline.
+    const output = 48 + String(size).length + size;
+    if (output > limit) fail('single blob exceeds unchanged transport bound');
+    if (bytes + output > limit) {batches.push(batch); batch = []; bytes = 0;}
+    batch.push({id, size}); bytes += output;
+  }
+  if (batch.length) batches.push(batch);
+  if (!batches.length) fail('no committed classifier inputs');
+  return batches;
+}
+/** Test injection changes transport/clock only. Production calls retain fixed bounds and one deadline. */
+export function readCommittedBlobBatches(cwd, entries, {run = execFileSync, now = Date.now, limit = BLOB_OUTPUT_LIMIT} = {}) {
+  const deadline = now() + BLOB_PHASE_TIMEOUT, result = new Map();
+  for (const batch of committedBlobBatches(entries, limit)) {
+    const remaining = deadline - now();
+    if (!Number.isFinite(remaining) || remaining <= 0 || remaining > BLOB_PHASE_TIMEOUT) fail('blob phase deadline exceeded');
+    const ids = batch.map(e => e.id), sizes = new Map(batch.map(e => [e.id, e.size]));
+    const bytes = run('git', ['cat-file', '--batch'], {cwd, input: ids.join('\n') + '\n', maxBuffer: limit, timeout: remaining});
+    if (!Buffer.isBuffer(bytes) || bytes.length > limit || now() > deadline) fail('blob transport bound or phase deadline exceeded');
+    for (const [id, text] of decodeCommittedBlobs(ids, bytes, sizes)) result.set(id, text);
+  }
+  return result;
+}
 function committedTexts(cwd, ref) {
-  const records = git(cwd, 'ls-tree', '-r', '-z', ref).toString('utf8').split('\0').filter(Boolean);
+  const records = git(cwd, 'ls-tree', '-r', '-l', '-z', ref).toString('utf8').split('\0').filter(Boolean);
   const entries = [];
   for (const record of records) {
-    const match = /^([0-7]{6}) (blob|commit) ([a-f0-9]{40})\t([\s\S]+)$/.exec(record);
+    const match = /^([0-7]{6}) (blob|commit) ([a-f0-9]{40}) +([0-9]+|-)\t([\s\S]+)$/.exec(record);
     if (!match) fail('unsupported Git tree entry');
-    if (!/\.(?:[cm]?[jt]sx?|json|css|md)$/.test(match[4])) continue;
+    if (!/\.(?:[cm]?[jt]sx?|json|css|md)$/.test(match[5])) continue;
     if (!['100644', '100755'].includes(match[1]) || match[2] !== 'blob') fail('non-regular classifier input');
-    entries.push({path: match[4], id: match[3]});
+    const size = Number(match[4]);
+    if (!Number.isSafeInteger(size) || size < 0) fail('invalid Git blob size');
+    entries.push({path: match[5], id: match[3], size});
   }
-  const ids = [...new Set(entries.map(entry => entry.id))];
-  if (!ids.length) fail('no committed classifier inputs');
-  const bytes = execFileSync('git', ['cat-file', '--batch'], {cwd, input: ids.join('\n') + '\n',
-    maxBuffer: 128 * 1024 ** 2, timeout: 60000});
-  const blobs = decodeCommittedBlobs(ids, bytes);
+  const blobs = readCommittedBlobBatches(cwd, entries);
+  // Keep the COMPLETE existing classifier Map in original tree order; no caller-selected subset.
   return new Map(entries.map(entry => [entry.path, blobs.get(entry.id)]));
 }
 
