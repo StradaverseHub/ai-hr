@@ -40813,6 +40813,7 @@
         "action": {
           "review": "Review",
           "approve": "Approve",
+          "acknowledge": "确认收悉",
           "sign": "Sign"
         }
       }
@@ -40968,6 +40969,7 @@
       "action": "Action",
       "who": "Who",
       "owner": "Owns the document",
+      "required": "必需",
       "pick": "Choose one person by",
       "pickAny": "Any member",
       "pickRoundRobin": "Round robin",
@@ -40975,11 +40977,13 @@
       "actions": {
         "review": "Review",
         "approve": "Approve",
+        "acknowledge": "确认收悉",
         "sign": "Sign"
       },
       "hint": {
         "review": "Can edit the letter until the first signature. Shown in Approval Items.",
         "approve": "A decision with no signature. Shown in Approval Items.",
+        "acknowledge": "员工签名确认此文档。",
         "sign": "Signs the letter. The last step releases it. Signers can’t edit the text.",
         "owner": "Send-backs come to this step."
       },

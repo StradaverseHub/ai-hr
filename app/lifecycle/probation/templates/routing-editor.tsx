@@ -60,6 +60,7 @@ export function TemplateRoutingEditor({value,blocks,choices,editable,onChange,on
       {!whoOptions.some(o=>o.key===current)&&<option value={current}>{whoLabel(step.who)}</option>}
       {whoOptions.map(o=><option key={o.key} value={o.key}>{o.label}</option>)}</select></label>
      {(step.who.kind==='routing'||step.who.kind==='group'||step.who.kind==='people'&&step.who.userIds.length>1)&&<label className="v9-field"><span>{t('routing.pick')}</span><select value={step.pick??'any'} onChange={e=>update(step.id,{pick:e.target.value==='roundRobin'?'roundRobin':'any'})}><option value="any">{t('routing.pickAny')}</option><option value="roundRobin">{t('routing.pickRoundRobin')}</option></select></label>}
+     <label className="v9-actions"><input type="checkbox" checked={step.required!==false} onChange={e=>update(step.id,{required:e.target.checked})}/>{t('routing.required')}</label>
      <label className="v9-actions"><input type="checkbox" checked={step.owner} onChange={e=>update(step.id,{owner:e.target.checked})}/>{t('routing.owner')}</label>
     </div>
     {(step.who.kind==='routing'||step.who.kind==='group')&&<p className="v9-muted">{t('routing.oneOfGroup')}</p>}
