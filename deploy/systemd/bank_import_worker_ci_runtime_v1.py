@@ -449,6 +449,22 @@ class RuntimeObservation:
         SLOT_DEADLINE=time.monotonic()+seconds
         self.base.VERIFIED_OPERATION_DEADLINE=SLOT_DEADLINE
 
+    def failure_summary(self,error):
+        """Snapshot before failure-only clocks change; never serialize arbitrary exception data."""
+        stages={'M0','M1','S0','S1','A0','A1','receipt',*[f'F{i}'for i in range(10)],*[f'W/F{i}'for i in range(1,4)]}
+        result={'slot':self.slot_name if self.slot_name in stages else 'OTHER','category':'OTHER',
+                'stageRemainingMs':None if SLOT_DEADLINE is None else round((SLOT_DEADLINE-time.monotonic())*1000)}
+        if type(error)is NativeProofFailure:
+            details=error.details
+            reasons={'DEADLINE','CHILD_EXIT','STDOUT_BOUND','STDERR_BOUND','WAIT_TIMEOUT','INTERRUPTED','OTHER'}
+            numbers={'returnCodeBeforeCleanup','returnCodeAfterCleanup','elapsedMs','remainingMs','budgetMs','stdoutBytes','stderrBytes'}
+            if (type(details)is dict and set(details)==numbers|{'reason'} and details['reason']in reasons and
+                    all(details[k]is None or type(details[k])is int for k in numbers)):
+                result.update(category='NATIVE_PROOF',native=dict(details))
+        elif type(error)is ValueError and error.args==('Worker installation refused: aggregate cutover stage deadline exceeded',):
+            result['category']='STAGE_DEADLINE'
+        return result
+
     def check_authority(self):
         b, a = self.base, self.auth
         self.guard.verify_install()
@@ -822,7 +838,7 @@ class RuntimeObservation:
     def assert_owned_worker(self,report):
         self.base.check(self.started_identity is not None and worker_identity(self.base,report,self.args.source)==self.started_identity,'started worker PID/source/UID/cgroup identity changed')
 
-    def quarantine_fence(self):
+    def quarantine_evidence(self,observe=None):
         # Failure-only authority: no fresh lease PASS is inferred. Continuous SH+install EX and exact OWN process are mandatory.
         self.guard.verify_install()
         self.base.check(self.started_identity is not None and (self.started_sha is not None or self.start_capture_pending and self.guard.start_sent),'no protected owned-start evidence; do not touch an uncertain process')
@@ -834,10 +850,38 @@ class RuntimeObservation:
         candidate=self.base.service_unit(self.args.source)
         quarantine=candidate.replace('Restart=on-failure\n','Restart=no\nSendSIGKILL=no\n')
         self.base.check(sha(self.base.read_bounded(self.base.UNIT,65536))in(sha(candidate.encode()),sha(quarantine.encode())),'foreign unit; no quarantine permission')
-        report=self.base.service_properties()
+        report=self.base.service_properties()if observe is None else observe(self.base)
         self.base.validate_service(report,self.base.ROOT/'releases'/self.args.source)
-        self.base.check(worker_identity(self.base,report,self.args.source)==self.started_identity,'foreign/reused/restarted worker; no quarantine permission')
         self.base.check(sha(self.base.read_bounded(BOOT_ID,4096))==self.start_intent['bootIdSha256'],'boot changed; no quarantine permission')
+        return report
+
+    def quarantine_fence(self):
+        report=self.quarantine_evidence()
+        self.base.check(worker_identity(self.base,report,self.args.source)==self.started_identity,'foreign/reused/restarted worker; no quarantine permission')
+
+    def publish_stopped_failure_observation(self,result,observe):
+        """Only an immutable failure observation, never unit mutation or acceptance authority."""
+        b=self.base
+        b.check(self.guard.quarantine and self.started_sha is not None and
+                getattr(self,'quarantine_authority_sha',None)is not None,'owned quarantine authority required')
+        report=self.quarantine_evidence(observe=observe)
+        authority=self.operation/'ci-worker-quarantine-authority.json'
+        b.root_protected(authority,regular=True)
+        b.check(sha(b.read_bounded(authority,65536))==self.quarantine_authority_sha,'protected quarantine authority changed')
+        quarantine=b.service_unit(self.args.source).replace('Restart=on-failure\n','Restart=no\nSendSIGKILL=no\n').encode()
+        b.check(sha(b.read_bounded(b.UNIT,65536))==sha(quarantine),'exact quarantine unit required for stopped observation')
+        b.check(report.get('MainPID')=='0' and report.get('ActiveState')in('inactive','failed') and
+                report.get('SubState')in('dead','failed') and
+                report.get('NRestarts')=='0' and report.get('NeedDaemonReload')=='no' and
+                report.get('Restart')=='no' and report.get('SendSIGKILL')=='no' and report.get('UnitFileState')=='disabled',
+                'exact stopped disabled quarantine required for failure observation')
+        b.check(sha(b.read_bounded(b.ENV,1024**2))==self.args.worker_env_sha256,'worker environment changed before failure observation')
+        b.check(not (PROCESS_ROOT/str(self.started_identity['pid'])).exists(),'owned process still exists or PID was reused')
+        b.check(result.get('source')==self.args.source and result.get('accepted')is False and
+                result.get('stopped')is True and result.get('disabled')is True and result.get('forcedKill')is False,
+                'stopped failure observation cannot authorize success')
+        # The active-process fence intentionally remains mandatory for every other failure-only write/command.
+        b.write_new(self.operation/'activation-failure-observation.json',self.fmt.canonical(result),0o400)
 
     def authorize_quarantine(self):
         self.quarantine_fence()
@@ -846,7 +890,9 @@ class RuntimeObservation:
         except Exception:lease_failed=True
         self.quarantine_fence()
         self.guard.file_mutation(failure_only=True)
-        self.base.write_new(self.operation/'ci-worker-quarantine-authority.json',self.fmt.canonical({'ownedStartedProcess':self.started_identity,'freshLeaseAssertFailed':lease_failed,'failureOnly':True,'successAuthorized':False,'journeyVerified':False}),0o400)
+        raw=self.fmt.canonical({'ownedStartedProcess':self.started_identity,'freshLeaseAssertFailed':lease_failed,'failureOnly':True,'successAuthorized':False,'journeyVerified':False})
+        self.base.write_new(self.operation/'ci-worker-quarantine-authority.json',raw,0o400)
+        self.quarantine_authority_sha=sha(raw)
         self.guard.quarantine=True
 
     def validate_cleanup_proof(self,proof):

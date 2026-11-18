@@ -293,12 +293,13 @@ def atomic_unit(base, raw, expected_prior):
             os.unlink(name)
 
 
-def quiesce_failed_activation(base, operation, source):
+def quiesce_failed_activation(base, operation, source, failure=None):
     """Quarantine only this updater's exact candidate unit; never restore an old worker.
     Persist failure evidence, prevent automatic starts, and drain without forced termination.
     If any protection cannot be established, report uncertainty and require administrator recovery.
     """
     result = {'source': source, 'accepted': False, 'stopped': False, 'disabled': False, 'forcedKill': False}
+    if failure is not None:result['failure']=failure
     candidate = base.service_unit(source).encode()
     try:
         publish(base,operation / 'activation-failed.json', json.dumps(result, sort_keys=True).encode(), 0o400,failure_only=True)
@@ -341,7 +342,11 @@ def quiesce_failed_activation(base, operation, source):
     except Exception:
         result['quiescenceUnconfirmed'] = True
     try:
-        publish(base,operation / 'activation-failure-observation.json', json.dumps(result, sort_keys=True).encode(), 0o400,failure_only=True)
+        guard=getattr(base,'VERIFIED_OPERATION_GUARD',None)
+        if guard is not None and result['stopped']:
+            guard.observer.publish_stopped_failure_observation(result,properties)
+        else:
+            publish(base,operation / 'activation-failure-observation.json', json.dumps(result, sort_keys=True).encode(), 0o400,failure_only=True)
     except Exception:
         result['observationUnavailable'] = True
     return result
@@ -419,15 +424,18 @@ def replace_and_start(base, fmt, args, operation, release, state, prior_unit_sha
         publish(base,operation / 'activated.json', fmt.canonical(accepted), 0o400)
         print(json.dumps(accepted))
         return accepted
-    except Exception:
+    except Exception as error:
         # Includes replacement/fsync, reload/start, process proof and receipt persistence failures.
         # Quarantine refuses any foreign/unchanged unit rather than touching another release.
+        failure=ci_observer.failure_summary(error)if ci_observer else None
+        if failure is not None:
+            print(json.dumps({'kind':'WORKER_ACTIVATION_FAILURE_CAUSE','failure':failure}),file=sys.stderr,flush=True)
         if ci_observer:
             try:
                 ci_observer.failure_deadline(30)
                 ci_observer.authorize_quarantine()
                 ci_observer.failure_deadline(330)
-                observed=quiesce_failed_activation(base,operation,args.source)
+                observed=quiesce_failed_activation(base,operation,args.source,failure=failure)
             except Exception:
                 observed={'source':args.source,'accepted':False,'stopped':False,'disabled':False,'forcedKill':False,'quiescenceUnconfirmed':True,'ownedProcessQuarantineRefused':True}
             finally:ci_observer.guard.quarantine=False

@@ -825,3 +825,23 @@ full source-bound ZIP extraction with more than30 seconds elapsed, the old30-sec
 negative control, and real-root full-package content/metadata/tamper checks. Native
 CI/database/systemd proof ports in graph fixtures are explicitly identified; they
 are not reported as an actual installed application acceptance.
+
+Activation failure diagnostics snapshot the closed stage name, remaining stage
+milliseconds and a fixed category before changing to failure-only clocks. Native
+child failures retain only the existing fixed reason and numeric exit/time/byte
+counts. Arbitrary exception messages, paths, argv, environment and child output
+are never serialized. This safe summary is flushed to stderr before quarantine
+and included in protected failure records when those records can be published.
+The outer recovery error remains generic; the summary identifies the original
+failure separately from any quarantine or evidence-publication failure.
+
+The active owned-process fence still protects every quarantine command and unit
+write. After graceful stop, a separate method can publish only the fixed immutable
+`activation-failure-observation.json` leaf. It rechecks held locks, protected start
+and quarantine records, boot, exact quarantine unit, current environment and one
+complete native systemd observation: stopped, disabled, no restart and no remaining
+or reused owned PID. It grants no command, activation receipt or arrival authority.
+If these checks fail, the original safe summary remains in stderr and the caller
+reports the final observation unavailable. This diagnostic repair neither retries
+an activation nor admits an already published, quarantined release through the
+pre-unit recovery route. That state requires its own reviewed recovery contract.
