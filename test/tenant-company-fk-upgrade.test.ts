@@ -30,12 +30,27 @@ const APPROVED_BOARD_TAIL:Entry[]=[
  {idx:5504,version:'7',when:1794841006104,tag:'6104_lifecycle_recipient_fanout',breakpoints:true},
  {idx:10000,version:'7',when:1794998006600,tag:'6600_probation_reconciliation',breakpoints:true},
  {idx:10001,version:'7',when:1794998006601,tag:'6601_probation_intent_not_employment_activity',breakpoints:true},
+ {idx:10010,version:'7',when:1794998006610,tag:'6610_probation_rich_email_definitions',breakpoints:true},
+ {idx:10011,version:'7',when:1794998006611,tag:'6611_probation_rich_email_delivery',breakpoints:true},
+ {idx:10012,version:'7',when:1794998006612,tag:'6612_probation_email_documents',breakpoints:true},
+ {idx:10013,version:'7',when:1794998006613,tag:'6613_probation_email_case_files',breakpoints:true},
+ {idx:10020,version:'7',when:1794998006620,tag:'6620_document_routing_required_acknowledgement',breakpoints:true},
+ {idx:10021,version:'7',when:1794998006621,tag:'6621_probation_native_document_routing',breakpoints:true},
+ {idx:10022,version:'7',when:1794998006622,tag:'6622_probation_unified_letter_publication',breakpoints:true},
+ {idx:10023,version:'7',when:1794998006623,tag:'6623_document_route_sendback_round',breakpoints:true},
+ {idx:10024,version:'7',when:1794998006624,tag:'6624_probation_letter_content_ownership',breakpoints:true},
+ {idx:10025,version:'7',when:1794998006625,tag:'6625_probation_letter_matching_review',breakpoints:true},
+ {idx:10026,version:'7',when:1794998006626,tag:'6626_probation_letter_delete_guard',breakpoints:true},
  {idx:10030,version:'7',when:1794998006630,tag:'6630_lifecycle_task_documents',breakpoints:true},
  {idx:10031,version:'7',when:1794998006631,tag:'6631_lifecycle_task_card_documents',breakpoints:true},
  {idx:10040,version:'7',when:1794998006640,tag:'6640_lifecycle_personnel_manager',breakpoints:true},
  {idx:10041,version:'7',when:1794998006641,tag:'6641_lifecycle_manager_recovery_job',breakpoints:true},
  {idx:10042,version:'7',when:1794998006642,tag:'6642_lifecycle_manager_recovery_reader',breakpoints:true},
  {idx:10050,version:'7',when:1794998006650,tag:'6650_pay_formula_business_code_registration',breakpoints:true},
+ {idx:10056,version:'7',when:1794998006656,tag:'6656_v9_document_routing_subject',breakpoints:true},
+ {idx:10057,version:'7',when:1794998006657,tag:'6657_v9_document_routing_actions',breakpoints:true},
+ {idx:10058,version:'7',when:1794998006658,tag:'6658_document_route_returned_content_custody',breakpoints:true},
+ {idx:10059,version:'7',when:1794998006659,tag:'6659_v9_routed_document_source_events',breakpoints:true},
 ];
 
 it('stops on a cross-tenant row, then validates every company/tenant key without changing data or grants',async()=>{
@@ -863,6 +878,50 @@ it('stops on a cross-tenant row, then validates every company/tenant key without
    {fn:'app.probation_reconciliation_population(uuid,uuid)',app:false},
    {fn:'app.probation_reconciliation_schedule_tick()',app:false},
    {fn:'app.probation_reconciliation_view(uuid,integer,integer)',app:true},
+   //6610–6613: canonical rich email wrapper, immutable assets, released PDFs and scoped case files.
+   {fn:'app.automation_email_asset_integrity()',app:false},
+   {fn:'app.automation_rich_email_template_save(uuid,text,text,boolean,text,text,jsonb,boolean,integer,text,jsonb)',app:true},
+   {fn:'app.automation_rich_email_queue(text,uuid,text,uuid[],uuid[],text,text,uuid,jsonb)',app:true},
+   {fn:'app.probation_rich_email_definitions(uuid)',app:true},
+   {fn:'app.automation_email_assets(uuid,uuid,text)',app:true},
+   {fn:'app.probation_email_document_refs(uuid,text[])',app:true},
+   {fn:'app.automation_email_document_files(uuid,uuid,text)',app:true},
+   {fn:'app.probation_email_outcome_document(uuid,uuid,uuid)',app:true},
+   {fn:'app.probation_email_case_files_admin(uuid)',app:true},
+   {fn:'app.probation_email_case_file_write(uuid,uuid,uuid,integer,text,text,bytea)',app:true},
+   {fn:'app.probation_email_case_file_refs(uuid,uuid)',app:true},
+   {fn:'app.probation_email_file_choices(uuid)',app:true},
+   {fn:'app.automation_email_case_files(uuid,uuid,text)',app:true},
+   {fn:'app.probation_email_hold_context(uuid,uuid,uuid,jsonb)',app:true},
+   {fn:'app.probation_email_hold_recheck()',app:false},
+   {fn:'app.probation_email_file_budget(uuid,uuid[],uuid[])',app:true},
+   //6620–6626: existing signing kernels retain ACLs; renamed implementations stay private.
+   {fn:'app.probation_native_document_routing_references(uuid)',app:true},
+   {fn:'app.probation_letter_native_routing_context(uuid)',app:true},
+   {fn:'app.probation_native_assignment_facts(uuid,text[],uuid[])',app:true},
+   {fn:'app.probation_definition_save_before_unified_letters_6622(uuid,text,text,jsonb,boolean,integer)',app:false},
+   {fn:'app.probation_letter_edit_content(uuid,integer,jsonb,jsonb,text)',app:true},
+   {fn:'app.probation_signing_action_before_letter_fields_6624(uuid,jsonb)',app:false},
+   {fn:'app.probation_letter_template_score_legacy_6625(uuid,uuid)',app:false},
+   {fn:'app.probation_letter_template_choices_before_6625(uuid)',app:false},
+   {fn:'app.probation_letter_template_delete(uuid,text,integer,text)',app:true},
+   //6656–6659: participants receive bounded saved-document projections; source/apply internals are private.
+   {fn:'app.v9_signing_current_actor()',app:true},
+   {fn:'app.v9_document_content_hash(jsonb)',app:true},
+   {fn:'app.v9_document_route_complete(jsonb)',app:true},
+   {fn:'app.v9_document_route_signatures(jsonb)',app:true},
+   {fn:'app.v9_document_route_participant(jsonb)',app:true},
+   {fn:'app.v9_document_route_content_visible(jsonb)',app:true},
+   {fn:'app.v9_document_route_sources()',app:false},
+   {fn:'app.v9_document_signing_work(text,integer,integer)',app:true},
+   {fn:'app.v9_document_native_rules_match(jsonb,jsonb)',app:true},
+   {fn:'app.v9_document_route_validate_append(jsonb,jsonb,jsonb)',app:true},
+   {fn:'app.v9_document_route_guard()',app:false},
+   {fn:'app.v9_document_route_apply(uuid,integer,text,jsonb,text)',app:false},
+   {fn:'app.v9_document_route_read(uuid,text)',app:true},
+   {fn:'app.v9_document_route_act(uuid,integer,text,jsonb)',app:true},
+   {fn:'app.v9_document_route_edit(uuid,integer,text,jsonb,jsonb)',app:true},
+   {fn:'app.v9_document_route_hr_complete(jsonb)',app:true},
    //6630/6631: employee-owned metadata/open commands;6640/6642: current manager and scoped recovery metadata.
    {fn:'app.lifecycle_task_document(jsonb,text)',app:true},
    {fn:'app.lifecycle_task_documents(uuid[],integer,integer,uuid)',app:true},
@@ -871,6 +930,8 @@ it('stops on a cross-tenant row, then validates every company/tenant key without
    {fn:'app.lifecycle_personnel_manager(uuid)',app:true},
    {fn:'app.lifecycle_manager_recovery_page(text,integer)',app:true},
   ];
+  //6610 deliberately removes the old unchecked template writer from application execution.
+  privateFunctions.push('app.automation_email_template_save(uuid,text,text,boolean,text,text,jsonb,boolean,integer,text)');
   addedFunctions.push(...approvedFunctions.map(row=>row.fn));
   privateFunctions.push(...approvedFunctions.filter(row=>!row.app).map(row=>row.fn));
   addedFunctions.sort();
@@ -1831,6 +1892,9 @@ it('stops on a cross-tenant row, then validates every company/tenant key without
    'reward_person_history':{rls:true,force:true,acl:'{OWNER=arwdDxt/OWNER,ai_hr_app=a/OWNER}'},
    'reward_plan_year':{rls:true,force:true,acl:'{OWNER=arwdDxt/OWNER,ai_hr_app=ar/OWNER}'},
    'reward_plan_year_company':{rls:true,force:true,acl:'{OWNER=arwdDxt/OWNER,ai_hr_app=arw/OWNER}'},
+   'automation_email_asset':{rls:true,force:true,acl:'{OWNER=arwdDxt/OWNER,ai_hr_app=ar/OWNER}'},
+   'automation_email_case_file':{rls:true,force:true,acl:'{OWNER=arwdDxt/OWNER,ai_hr_app=r/OWNER}'},
+   'automation_email_hold_context':{rls:true,force:true,acl:'{OWNER=arwdDxt/OWNER}'},
    'probation_reconciliation_intent':{rls:true,force:true,acl:'{OWNER=arwdDxt/OWNER}'},
    'probation_reconciliation_schedule':{rls:true,force:true,acl:'{OWNER=arwdDxt/OWNER}'},
   };
@@ -1842,11 +1906,52 @@ it('stops on a cross-tenant row, then validates every company/tenant key without
   expect(beforePerformancePrivileges.columns.filter(row=>isApprovedRelation(row.rel))).toEqual([]);
   expect(afterPerformancePrivileges.functions.filter(row=>approvedFunctions.some(expected=>expected.fn===row.fn)).map(row=>({fn:row.fn,acl:ownerAcl(row.acl)})))
    .toEqual(approvedFunctions.map(row=>({fn:row.fn,acl:row.app?'{OWNER=X/OWNER,ai_hr_app=X/OWNER}':'{OWNER=X/OWNER}'})).sort((a,b)=>a.fn<b.fn?-1:a.fn>b.fn?1:0));
+  //6610/6613 add only these three private/checked tables and one nullable canonical-version column.
+  // Types/defaults/generated markers are a literal schema review, separate from SQL source hash admission.
+  const templateColumnPlan:Record<string,readonly [string,string,boolean,string,string|null][]>= {
+   automation_email_asset:[
+    ['id','uuid',true,'','gen_random_uuid()'],['tenant_id','uuid',true,'',null],['template_id','uuid',true,'',null],['module','text',true,'',null],['kind','text',true,'',null],['filename','text',true,'',null],['mime_type','text',true,'',null],['content','bytea',true,'',null],['content_hash','text',false,'s',"encode(sha256(content), 'hex'::text)"],['uploaded_by','uuid',true,'',null],['uploaded_by_name','text',true,'',null],['created_at','timestamp with time zone',true,'','now()'],
+   ],
+   automation_email_case_file:[
+    ['id','uuid',true,'','gen_random_uuid()'],['tenant_id','uuid',true,'',null],['case_id','uuid',true,'',null],['template_id','uuid',true,'',null],['slot_id','uuid',true,'',null],['filename','text',true,'',null],['mime_type','text',true,'',null],['content','bytea',true,'',null],['content_hash','text',false,'s',"encode(sha256(content), 'hex'::text)"],['uploaded_by','uuid',true,'',null],['created_at','timestamp with time zone',true,'','now()'],
+   ],
+   automation_email_hold_context:[
+    ['run_id','uuid',true,'',null],['tenant_id','uuid',true,'',null],['case_id','uuid',true,'',null],['template_id','uuid',true,'',null],['facts','jsonb',true,'',null],['needs_check','boolean',true,'','false'],['checked_at','timestamp with time zone',false,'',null],['created_at','timestamp with time zone',true,'','now()'],
+   ],
+  };
+  const templateColumns=await storage.client`select c.relname::text as rel,a.attname::text as name,format_type(a.atttypid,a.atttypmod) as type,a.attnotnull as "notNull",a.attgenerated::text as generated,pg_get_expr(d.adbin,d.adrelid) as expression
+   from pg_attribute a join pg_class c on c.oid=a.attrelid join pg_namespace n on n.oid=c.relnamespace left join pg_attrdef d on d.adrelid=a.attrelid and d.adnum=a.attnum
+   where n.nspname='public' and c.relname=any(${Object.keys(templateColumnPlan)}::text[]) and a.attnum>0 and not a.attisdropped order by c.relname,a.attnum`;
+  expect(templateColumns).toEqual(Object.entries(templateColumnPlan).flatMap(([rel,columns])=>columns.map(([name,type,notNull,generated,expression])=>({rel,name,type,notNull,generated,expression}))));
+  expect(await storage.client`select format_type(a.atttypid,a.atttypmod) as type,a.attnotnull as "notNull",a.attgenerated::text as generated,pg_get_expr(d.adbin,d.adrelid) as expression from pg_attribute a left join pg_attrdef d on d.adrelid=a.attrelid and d.adnum=a.attnum where a.attrelid='public.automation_email_template_version'::regclass and a.attname='definition'`)
+   .toEqual([{type:'jsonb',notNull:false,generated:'',expression:null}]);
+  const definitionCheck=await storage.client.begin(async tx=>{
+   await tx`create temporary table approved_rich_email_column_reference(definition jsonb check(definition is null or (jsonb_typeof(definition)='object' and pg_column_size(definition)<=300000)))`;
+   const[expected]=await tx`select pg_get_constraintdef(oid) as definition from pg_constraint where conrelid='pg_temp.approved_rich_email_column_reference'::regclass and contype='c'`;
+   await tx`drop table approved_rich_email_column_reference`;return expected.definition;
+  });
+  expect(await storage.client`select pg_get_constraintdef(oid) as definition from pg_constraint where conrelid='public.automation_email_template_version'::regclass and conname='automation_email_template_version_definition_check'`).toEqual([{definition:definitionCheck}]);
+  // All five source/immutability triggers are unconditional, enabled, row-level hooks with the reviewed timing/events.
+  const templateTriggers=[
+   {rel:'automation_email_asset',name:'automation_email_asset_integrity',kind:7,fn:'app.automation_email_asset_integrity()',enabled:'O',condition:null},
+   {rel:'automation_email_template_version',name:'probation_email_definition_recheck',kind:5,fn:'app.probation_email_hold_recheck()',enabled:'O',condition:null},
+   {rel:'lc_onboarding_private',name:'native_routed_document_source_guard',kind:23,fn:'app.v9_document_route_guard()',enabled:'O',condition:null},
+   {rel:'lc_v9_case',name:'v9_routed_document_source_guard',kind:23,fn:'app.v9_document_route_guard()',enabled:'O',condition:null},
+   {rel:'probation_file',name:'probation_email_document_recheck',kind:5,fn:'app.probation_email_hold_recheck()',enabled:'O',condition:null},
+  ];
+  expect(await storage.client`select c.relname::text as rel,t.tgname::text as name,t.tgtype::integer as kind,t.tgfoid::regprocedure::text as fn,t.tgenabled::text as enabled,pg_get_expr(t.tgqual,t.tgrelid) as condition from pg_trigger t join pg_class c on c.oid=t.tgrelid join pg_namespace n on n.oid=c.relnamespace where n.nspname='public' and t.tgname=any(${templateTriggers.map(trigger=>trigger.name)}::text[]) order by c.relname,t.tgname`).toEqual(templateTriggers);
   type ApprovedPolicy={table:string;name:string;cmd:'ALL'|'SELECT'|'INSERT'|'UPDATE';role:'public'|'ai_hr_owner'|'ai_hr_app';using:string|null;check:string|null};
   const view=(column:string)=>`tenant_id=app.current_tenant_id() AND app.reward_config_page_allowed(${column},'plans.manage','library_view')`;
   const manage=(column:string)=>`tenant_id=app.current_tenant_id() AND app.reward_config_page_allowed(${column},'plans.manage','manage')`;
   const own='app.acting_as_owner()';
   const approvedPolicies:ApprovedPolicy[]=[
+   {table:'automation_email_asset',name:'automation_email_asset_owner',cmd:'ALL',role:'ai_hr_owner',using:own,check:own},
+   {table:'automation_email_asset',name:'automation_email_asset_read',cmd:'SELECT',role:'ai_hr_app',using:"tenant_id=app.current_tenant_id() AND app.automation_can_configure(module)",check:null},
+   {table:'automation_email_asset',name:'automation_email_asset_insert',cmd:'INSERT',role:'ai_hr_app',using:null,check:"tenant_id=app.current_tenant_id() AND uploaded_by=app.current_user_id() AND app.automation_can_configure(module) AND EXISTS(SELECT 1 FROM automation_email_template_version v WHERE v.tenant_id=automation_email_asset.tenant_id AND v.template_id=automation_email_asset.template_id AND v.module=automation_email_asset.module)"},
+   {table:'automation_email_case_file',name:'automation_email_case_file_owner',cmd:'ALL',role:'ai_hr_owner',using:own,check:own},
+   {table:'automation_email_case_file',name:'automation_email_case_file_read',cmd:'SELECT',role:'ai_hr_app',using:"tenant_id=app.current_tenant_id() AND app.probation_email_case_files_admin(case_id)",check:null},
+   {table:'automation_email_hold_context',name:'automation_email_hold_owner',cmd:'ALL',role:'ai_hr_owner',using:own,check:own},
+
    {table:'probation_reconciliation_intent',name:'probation_reconciliation_owner',cmd:'ALL',role:'ai_hr_owner',using:own,check:own},
    {table:'probation_reconciliation_schedule',name:'probation_reconciliation_owner',cmd:'ALL',role:'ai_hr_owner',using:own,check:own},
    {table:'reward_plan_year',name:'reward_plan_year_read',cmd:'SELECT',role:'public',using:view('NULL'),check:null},
