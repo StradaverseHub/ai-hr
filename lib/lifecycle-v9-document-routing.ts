@@ -1,10 +1,10 @@
 /** V9 subject adapter over the shared deterministic signing kernel. State stays on the saved document. */
 import type {Document,Case,TemplateVersion,Environment,Signature} from './lifecycle-v9-model';
-import {V9Error} from './lifecycle-v9-model';
+import {V9Error,personnelFieldSourceValue} from './lifecycle-v9-model';
 import {canEditSigningContent,signingContentLocked,currentRoundActions,recordSigningAction,resendSigningDocument,reviseSigningDocument,signingComplete,signingSendBack,signingStepFulfilled,validateSigningRoute,type SigningDocument,type SigningRoute,type SigningAction} from './document-signing-model';
 import type {DocumentRouting,DocumentRoutingUnresolved} from './document-signing-routing';
 
-export type V9DocumentRoutingEnvironment={tenantId:string;hash:(content:string)=>string;resolve:(routing:DocumentRouting)=>{route:SigningRoute;unresolved:DocumentRoutingUnresolved[]}};
+export type V9DocumentRoutingEnvironment={tenantId:string;personnelSource?:Record<string,string>;sourceUnavailable?:boolean;hash:(content:string)=>string;resolve:(routing:DocumentRouting)=>{route:SigningRoute;unresolved:DocumentRoutingUnresolved[]}};
 export const V9_DOCUMENT_SIGNING_RULES={requiredRoles:[]};
 /** PostgreSQL jsonb text ordering and spacing, over the bounded string/boolean/integer content shape.
  * The database independently hashes the same source object before accepting every action or edit. */
@@ -19,6 +19,8 @@ export function v9DocumentSigningContent(document:Document){return {templateId:d
 export function initializeV9DocumentRouting(c:Case,version:TemplateVersion,document:Document,env:Environment){
  if(!version.routing?.length)return;
  if(!env.documentRouting)throw new V9Error('Signing route resolution is unavailable.','conflict');
+ if(env.documentRouting.sourceUnavailable)throw new V9Error('The current authorized Personnel source is unavailable. Review the case before generating this document.','conflict');
+ if(env.documentRouting.personnelSource){const source=Object.fromEntries(Object.entries(env.documentRouting.personnelSource).filter(([key])=>!key.startsWith('_')));document.mergeValues={...document.mergeValues,...source};for(const field of document.fields)if(field.pmKey&&Object.hasOwn(source,field.pmKey))document.values[field.id]=personnelFieldSourceValue(field,source);}
  // Persist only the source values this document uses; signing participation grants no unrelated Personnel data.
  const used=new Set(document.fields.flatMap(field=>field.pmKey?[field.pmKey]:[]));
  for(const block of document.blocks){for(const match of [block.text,block.rows??'',block.label??''].join(' ').matchAll(/\{([a-zA-Z][a-zA-Z0-9_]*(?:\.[a-zA-Z0-9_]+)?)\}/g))used.add(match[1]);if(block.type==='letterhead')for(const key of ['company.name','company.regNo','company.address','company.color'])used.add(key);}
