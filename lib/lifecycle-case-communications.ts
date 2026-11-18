@@ -28,6 +28,8 @@ export function caseCommunications(c:Case,config:Config,today:string){
    const workflow=run?.definition??current,{date,until}=scheduledDate(c,workflow,run);
    const stage:CommunicationStage=workflow.trigger.event==='submitted'?'submitted':date&&validDate(anchor)?date<anchor?'before':date>anchor?'after':'day':'submitted';
    for(const [index,step]of workflow.steps.entries()){
+    // File waits surface only as current recovery blockers, not as extra planned communications.
+    if(step.type==='waitSign'||step.type==='waitFile'&&!(run?.status==='waiting'&&index===run.cursor&&!c.files.some(file=>file.slot===step.slot)))continue;
     const mails=receipts(c,run,step),effective=[...new Map(mails.map(mail=>{const current=effectiveDelivery(c,mail);return[current.id,current] as const;})).values()],mail=effective[0]??null,email=step.type==='email'?config.emails.find(email=>email.id===step.template):null;
     const roles=step.type==='email'||step.type==='notify'?stepRecipientRoles(c,workflow.id,step,email):{to:[],cc:[],overridden:false};
     const held=run?.hold?.stepId===step.id||run?.lateEmail?.stepId===step.id,failed=run?.status==='failed'&&index===run.cursor,done=!!run&&(run.status==='done'||run.status==='skipped'||index<run.cursor);

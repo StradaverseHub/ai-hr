@@ -28,7 +28,7 @@ it('uses effective retry outcomes for attention and preserves required-file wait
  expect(caseCommunications(c,config,'2026-11-27').rows.find(row=>row.step?.id==='receipt')?.status).toBe('open');
  run.definition!.steps=[{id:'file-step',type:'waitFile',slot:'proof',label:'Fictional proof'}];run.cursor=0;
  view=caseCommunications(c,config,'2026-11-27');expect(view.rows.find(row=>row.step?.id==='file-step')).toMatchObject({status:'attention',blocker:'file',fileSlot:'proof'});
- c.files.push({...c.files[0],id:'new-proof',slot:'proof'});expect(caseCommunications(c,config,'2026-11-27').rows.find(row=>row.step?.id==='file-step')?.status).toBe('open');
+ c.files.push({...c.files[0],id:'new-proof',slot:'proof'});expect(caseCommunications(c,config,'2026-11-27').rows.find(row=>row.step?.id==='file-step')).toBeUndefined();
 });
 it('retains distinct unfinished runs and derives recurrence only from frozen definitions',()=>{
  const {c,config}=communicationsFixture();const first=c.runs[0];first.definition!.trigger.repeat=true;
