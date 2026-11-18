@@ -24,6 +24,7 @@ import {SETTINGS_CARDS} from '../app/lifecycle/probation/settings/field-groups';
 import {SettingsScopeEditor} from '../app/lifecycle/probation/settings-scope-editor';
 import {FormFields} from '../app/lifecycle/probation/form-fields';
 import {TemplatesWorkspace} from '../app/automation/templates/templates-workspace';
+import {ProbationTemplateSection} from '../app/automation/templates/probation-template-section';
 import {GroupsWorkspace} from '../app/automation/groups/groups-workspace';
 
 afterEach(()=>{cleanup();vi.clearAllMocks();});
@@ -146,9 +147,18 @@ describe('HR Automation templates and assignment groups (prototype TemplatesPage
   expect(within(rows[0]).getByText('v2 in use')).toBeInTheDocument();
   expect(within(rows[0]).getByRole('link',{name:'Edit Confirmation letter in the letter template editor'})).toHaveAttribute('href',`/lifecycle/probation/templates?company=${COMPANY}`);
   expect(within(rows[1]).getByText('Probation · '+a.templates.signing.existing)).toBeInTheDocument();
-  const emails=within(screen.getByRole('region',{name:a.templates.emails})).getAllByRole('listitem');
-  expect(within(emails[0]).getByText(a.templates.turnedOff)).toBeInTheDocument();
-  expect(within(emails[0]).getByRole('button',{name:'Open email template Review issued'})).toBeInTheDocument();
+  const notice=within(screen.getByRole('region',{name:a.templates.emails}));
+  expect(notice.getByText(messages.probationEmailBuilder.ui.moved)).toBeInTheDocument();
+  expect(notice.getByRole('link',{name:messages.probationEmailBuilder.ui.openEmails})).toHaveAttribute('href',`/lifecycle/v9?view=templates&module=probation&company=${COMPANY}`);
+  // The destination uses the actual shared hub component, including inactive saved records.
+  cleanup();
+  wrap(<ProbationTemplateSection refs={{routings:[],groups:[],people:[]}} emails={[{template:{id:'00000000-0000-4000-8000-0000000000e2',module:'probation',name:'Review issued',active:false,subject:'Your review is open',body:'',cc:[]},revision:1,retired:false}]}/>);
+  const emailRegion=screen.getByRole('region',{name:'Email templates · Probation'});
+  const email=within(emailRegion).getByRole('listitem');
+  expect(within(email).getByText('Review issued')).toBeInTheDocument();
+  expect(within(email).getByText('Your review is open')).toBeInTheDocument();
+  expect(within(email).getByText(messages.probationEmailBuilder.ui.inactive)).toBeInTheDocument();
+  expect(within(email).getByRole('button',{name:'Edit Review issued'})).toBeInTheDocument();
  });
 
  it('draws a card per assignment group with the routings that use it, and routing rules as cards',()=>{

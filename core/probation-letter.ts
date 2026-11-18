@@ -4,7 +4,7 @@ import {sql} from 'drizzle-orm';
 import {z} from 'zod';
 import type {SessionContext,Tx} from '../db/client';
 import {withAccessDisplayRead} from './access-configuration-lock';
-import {v9PersonnelWritableKeys,pushV9PersonnelTx} from './lifecycle-v9-personnel';
+import {v9PersonnelWritableKeys,pushV9PersonnelTx} from '../packs/lifecycle/service';
 import {normalizeCompletionPhone,type PersonnelCompletionPolicy} from '../lib/lifecycle-v9-personnel-completion';
 import {withScopedLifecycleTenant} from './module-gate';
 import {assertModuleEnabled} from './entitlements';

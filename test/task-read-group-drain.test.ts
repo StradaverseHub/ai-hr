@@ -10,6 +10,8 @@ vi.mock('../core/module-gate',()=>({withPerformanceTenant:async(_ctx:unknown,rea
 vi.mock('../core/performance',()=>({managerPendingReviews:io.manager}));
 vi.mock('../packs/performance/onehr/calibration-list',()=>({pendingCalibrationTasks:io.calibration}));
 vi.mock('../packs/performance/service',async()=>({pendingPerformanceTasks:(await import('../packs/performance/onehr/tasks')).pendingPerformanceTasks}));
+// Probation is disabled in this Performance drain fixture; isolate its unrelated provider.
+vi.mock('../packs/probation/service',()=>({pendingProbationTasks:async()=>[]}));
 vi.mock('../packs/rewards/service',()=>({pendingRewardTasks:async()=>[]}));
 vi.mock('../packs/recruitment/service',()=>({pendingRecruitmentTasks:async()=>[]}));
 vi.mock('../packs/leave/service',()=>({pendingLeaveTaskMetadata:async()=>[],pendingLeaveCancellationTaskMetadata:async()=>[],pendingLeaveCancellationCandidatesExistSql:()=>false,listPendingReplacementLeaveTasks:async()=>[]}));

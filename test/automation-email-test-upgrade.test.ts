@@ -37,7 +37,9 @@ it('keeps prepared target and cached start callers on the native capability afte
   expect((await storage.client`select app.automation_email_start(${delivery},${token},${origin},'{}'::jsonb) as ok`)[0].ok).toBe(false);
   await migrate(storage.db,{migrationsFolder:'db/migrations'});
   expect((await storage.client`select 'app.automation_email_target(uuid,uuid,text)'::regprocedure::oid::text as oid`)[0].oid).toBe(old.oid);
-  expect(await storage.client`select to_jsonb(v) as row from automation_email_template_version v where tenant_id=${tenant}`).toEqual(before);
+  expect(before).toHaveLength(1);expect(before[0].row).not.toHaveProperty('definition');
+  expect(await storage.client`select is_nullable,column_default,data_type from information_schema.columns where table_schema='public' and table_name='automation_email_template_version' and column_name='definition'`).toEqual([{is_nullable:'YES',column_default:null,data_type:'jsonb'}]);
+  expect(await storage.client`select to_jsonb(v) as row from automation_email_template_version v where tenant_id=${tenant}`).toEqual(before.map(({row})=>({row:{...row,definition:null}})));
   const queued=await application.client.begin(async tx=>{
    await tx`select set_config('app.tenant_id',${tenant},true),set_config('app.user_id',${user},true)`;
    return (await tx`select app.automation_email_test_queue(${template},1,${randomUUID()},'Retained test','{}'::jsonb) as id`)[0].id as string;

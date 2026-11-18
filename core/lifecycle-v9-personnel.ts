@@ -1,5 +1,6 @@
 /** Personnel owns these values and writers; lifecycle stores reviewed proposals and source snapshots. */
 import 'server-only';
+import {v9PersonnelProfileKeys,v9PersonnelStatutoryKeys,v9PersonnelWritableKeys} from '../lib/lifecycle-v9-personnel-keys';
 import { and, eq, sql } from 'drizzle-orm';
 import type { SessionContext, Tx } from '../db/client';
 import { person, employment } from '../db/schema';
@@ -13,9 +14,9 @@ import { V9Error } from '../lib/lifecycle-v9-model';
 import { lockLeaveDependencyConfigurationTx } from './leave-dependency-lock';
 import { lockProfileValueWritesTx } from './access-configuration-lock';
 
-const profileKeys: Record<string, keyof PersonProfileFields | 'phone'> = { mobile: 'phone', homePhone: 'homePhone', personalEmail: 'personalEmail', race: 'race', religion: 'religion', nationality: 'nationality', emName: 'emergencyContactName', emRel: 'emergencyContactRelationship', emPhone: 'emergencyContactPhone' };
-const statutoryKeys: Record<string, string> = { bankName: 'bank_name', bankAcc: 'bank_account_no', epfNo: 'epf_number', taxNo: 'tax_number' };
-export const v9PersonnelWritableKeys = [...Object.keys(profileKeys), ...Object.keys(statutoryKeys), 'gender', 'marital'];
+const profileKeys: Record<string, keyof PersonProfileFields | 'phone'> = v9PersonnelProfileKeys;
+const statutoryKeys: Record<string, string> = v9PersonnelStatutoryKeys;
+export { v9PersonnelWritableKeys } from '../lib/lifecycle-v9-personnel-keys';
 export async function lockV9PersonnelWritesTx(tx: Tx, ctx: SessionContext): Promise<void> {
   await tx.execute(sql`select app.access_configuration_write_lock()`);
   await lockLeaveDependencyConfigurationTx(tx, ctx.tenantId);

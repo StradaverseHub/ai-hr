@@ -10,7 +10,7 @@ async function main(){
  process.env.AIHR_DB_PROCESS_ROLE='worker';process.env.AIHR_DB_POOL_MAX='2';
  const tenantId=z.uuid().parse(arg('--tenant')),userId=z.uuid().parse(arg('--user'));
  const url=process.env.MIGRATION_DATABASE_URL;if(!url)throw new Error('The verified target owner connection is required.');
- const [{createDb,client},{resolveEntitlementsTx},{managerEmailRecoveryPage,requestManagerEmailRecovery}]=await Promise.all([import('../db/client'),import('../core/entitlements'),import('../core/lifecycle-manager-recovery')]);
+ const [{createDb,client},{resolveEntitlementsTx},{managerEmailRecoveryPage,requestManagerEmailRecovery}]=await Promise.all([import('../db/client'),import('../core/entitlements'),import('../packs/lifecycle/service')]);
  const owner=createDb(url);
  try{
   const rows=await owner.client`select u.person_id,r.role,r.company_id from app_user u join role_assignment r on r.app_user_id=u.id and r.tenant_id=u.tenant_id where u.id=${userId}::uuid and u.tenant_id=${tenantId}::uuid and u.archived_at is null`;

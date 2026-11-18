@@ -6,7 +6,7 @@ import { withTenant, type SessionContext } from '../db/client';
 import { enqueueBulkJobTx } from './bulk-job';
 import type { BulkJobHandler } from './bulk-job-worker';
 import { lockAccessConfigurationReadTx } from './access-configuration-lock';
-import { managerEmailRecoveryPage, recoverManagerEmailHoldTx, type ManagerEmailRecoveryTarget } from '../packs/lifecycle/v9/service';
+import { managerEmailRecoveryPage, recoverManagerEmailHoldTx, type ManagerEmailRecoveryTarget } from '../packs/lifecycle/service';
 const kind='lifecycle_manager_recovery';
 const targetSchema=z.object({tenantId:z.uuid(),caseId:z.uuid(),companyId:z.uuid(),revision:z.number().int().min(1),runId:z.string().min(1).max(500),stepId:z.string().min(1).max(120),heldAt:z.string().min(1).max(100),dueOn:z.string().nullable(),classification:z.enum(['future','today','late','unknown'])}).strict();
 const manifestSchema=z.array(targetSchema).min(1).max(1000);

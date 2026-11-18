@@ -1,5 +1,4 @@
-import {lifecyclePersonnelCompletionPreviewHandler,lifecyclePersonnelCompletionRecoveryHandler} from './lifecycle-personnel-completion-recovery';
-import {lifecycleManagerRecoveryHandler} from './lifecycle-manager-recovery';
+import {lifecyclePersonnelCompletionPreviewHandler,lifecyclePersonnelCompletionRecoveryHandler,lifecycleManagerRecoveryHandler} from '../packs/lifecycle/service';
 /** Every bulk operation the protected import worker runs on the shared kernel. A new kind adds its handler here,
  * its bulk_job_kind row in a migration and its completion-notice entry in lib/bulk-job.ts (ADR "Shared job kernel"). */
 import {rewardPlanReviewsJobHandler,rewardPersonHistoryJobHandler} from '../packs/rewards/service';
