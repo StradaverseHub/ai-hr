@@ -105,7 +105,7 @@ async function employeeTx(tx:Tx,ctx:SessionContext,selection:TaxBasisSelection,w
    if(!resolved.version.startsWith(String(selection.year)+'.'))fail(`${period}: verified assessment-year rules are unavailable.`);
    rulesByPeriod[period]={rules:resolved.ruleset,hash:hash(resolved)};rulesEvidence[period]={version:resolved.version,source:resolved.source,effectiveFrom:resolved.effectiveFrom,packVersion:resolved.packVersion,signedKeyId:resolved.signedKeyId,pcbExemptions:resolved.ruleset.pcbExemptions};
   }
-  const input=[];
+  const input:Parameters<typeof pack.payroll.replayTaxBasis>[0]['slips']=[];
   for(const slip of included)input.push({id:slip.id,period:slip.period,runOrder:slip.runOrder,sourceKind:slip.historyAttemptId?'import' as const:'native' as const,sourceLines:await linesTx(tx,slip,who.id,selection.companyId,settings,cache,ctx),statutory:slip.statutory,expectedGross:Number(slip.gross),expectedOtherDeductions:Number(slip.deductions)});
   const hashes=cache.sourceHashes??new Map((await taxBasisSourceRowsTx(tx,slips.map(slip=>slip.id))).map(source=>[source.id,importedSourceHash(source)]));
   const capped=input.some(row=>importedTaxNeedsOpening(row.sourceLines.map((line,index)=>({...line,originalCode:line.code,rowNum:line.rowNum??index,settingId:line.settingId??settings.find(setting=>setting.code===line.code)?.id??''})),settings,rulesByPeriod[row.period].rules));
