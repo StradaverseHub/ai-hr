@@ -1,6 +1,22 @@
 'use client';
 import { useTranslations } from 'next-intl';
 const keys: Record<string, string> = {
+    "No supervisor on the Personnel record": "managerMail4b1ea5a652",
+    "More than one current supervisor is recorded. HR must review the reporting line.": "managerMailcce1c2adb3",
+    "The supervisor recorded in Personnel is unavailable.": "managerMail596ed0672a",
+    "Line manager {name} has inactive employment": "managerMail358784d1e0",
+    "Line manager {name} has no work email": "managerMail2a65e6fe08",
+    "Line manager {name} has an invalid work email": "managerMail3a024d9981",
+
+    "This email is late": "managerMail0cd4bb19dd",
+    "Scheduled for": "managerMail4cbbcd5184",
+    "The intended send date has passed. Review the recipients and message before choosing what to do.": "managerMaild602b8efb9",
+    "Send anyway": "managerMail911263feab",
+    "Skip this email": "managerMailff16427cf4",
+    "Line manager found": "managerMail27547fe255",
+    "Direct superior from Personnel Management": "managerMaile2bd594a17",
+    "Work email available. A login account is not needed to receive this email.": "managerMail4f40c3071b",
+
     "Email held": "lev909e718ee5d",
     "Nobody was emailed. Missing recipients:": "lev902aeadce22",
     "Fix the record or change the recipients for this case, then press Continue.": "lev9716aacede1",

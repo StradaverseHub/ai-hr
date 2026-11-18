@@ -20,7 +20,7 @@ describe('payroll history revision workflow',()=>{
   const file=new File(['original workbook bytes'],'history.xlsx',{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'});
   await user.upload(screen.getByLabelText('Source file'),file);await user.click(screen.getByRole('button',{name:'Validate file'}));
   expect(fetcher).toHaveBeenCalledWith(expect.stringContaining('history.xlsx'),expect.objectContaining({body:file}));
-  // d28501b8 r2 — replacements are ticked record by record, then acknowledged.
+  // Legacy receipts retain separate replacement confirmation.
   const commit=screen.getByRole('button',{name:'Confirm overwrite and import'});expect(commit).toBeDisabled();
   expect(screen.getByText(/Tick the ones you want to overwrite/)).toBeVisible();
   // Nothing new in this file, so "Import new records only" is not offered.
@@ -79,6 +79,21 @@ describe('payroll history revision workflow',()=>{
   expect(confirm).toHaveBeenCalledWith({attemptId:'attempt-replace',previewHash:'preview-hash',confirmReplacement:true,selectedRecordKeys:['company-a:employee-a:2024-01:cycle-a'],acknowledgeWarnings:true});
   expect(await screen.findByRole('status')).toHaveTextContent('Import committed');
  });
+ it.each(['replace','update_listed'] as const)('confirms reviewed maintenance with informational impact and its selected mode (%s)',async(mode)=>{
+  const user=userEvent.setup(),preview:HistoryRevisionPlan={...plan([{...row(),warnings:['Issued payroll is retained in audit history.']}]),maintenance:{version:1,mode,reason:'Reviewed payroll history correction'}};
+  const fetcher=vi.fn().mockResolvedValue({ok:true,json:async()=>({attemptId:'attempt-maintenance',plan:preview})});vi.stubGlobal('fetch',fetcher);confirm.mockResolvedValue({ok:true,result:{}});
+  render(wrap(<HistoryWorkflow codes={[]}/>));
+  if(mode==='update_listed')await user.click(screen.getByRole('radio',{name:/Update listed Pay Item totals/}));
+  await user.upload(screen.getByLabelText('Source file'),new File(['x'],'history.csv',{type:'text/csv'}));await user.click(screen.getByRole('button',{name:'Validate file'}));
+  expect(fetcher).toHaveBeenCalledWith(expect.stringContaining('&mode='+mode),expect.anything());
+  const commit=screen.getByRole('button',{name:mode==='update_listed'?'Confirm history changes':'Confirm overwrite and import'});expect(commit).toBeDisabled();
+  await user.click(screen.getByLabelText('Overwrite 0000 2024-01'));expect(commit).toBeDisabled();
+  expect(screen.getAllByText('Issued payroll is retained in audit history.').length).toBeGreaterThan(0);
+  expect(screen.queryByLabelText(/I understand\. Replace the ticked records/)).toBeNull();expect(screen.queryByLabelText(/I have reviewed the warnings above/)).toBeNull();
+  await user.click(screen.getByLabelText(/I have reviewed the companies/));expect(commit).toBeEnabled();await user.click(commit);
+  expect(confirm).toHaveBeenCalledWith({attemptId:'attempt-maintenance',previewHash:'preview-hash',confirmReplacement:true,selectedRecordKeys:['company-a:employee-a:2024-01:cycle-a']});
+  expect(await screen.findByRole('status')).toHaveTextContent('Import committed');
+ });
  it('renders source cycle, before-and-after money and bounded pages without truncating the record set',async()=>{
   const user=userEvent.setup();render(wrap(<RevisionPreview plan={plan(Array.from({length:51},(_,i)=>row(i)))}/>));
   expect(screen.getAllByText('Monthly - By Import')).toHaveLength(50);expect(screen.queryByText('0050')).toBeNull();
@@ -97,14 +112,14 @@ describe('payroll history revision workflow',()=>{
   render(wrap(<HistoryWorkflow codes={[]}/>));await user.upload(screen.getByLabelText('Source file'),new File(['x'],'history.csv',{type:'text/csv'}));await user.click(screen.getByRole('button',{name:'Validate file'}));
   expect(screen.getByText('BASIC, EEEPF')).toBeVisible();expect(screen.getByText('Processed in AIHR')).toBeVisible();expect(screen.getByText(/· Sample Employee/)).toBeVisible();
   expect(screen.getByText('Overwrite confirmation required')).toBeVisible();expect(screen.getByText('New record')).toBeVisible();
-  // Ticking the processed record lists what has already gone out for it, once, above the acknowledgement.
+  // Ticking the processed record lists impact in the normal confirmation without another acknowledgement.
   await user.click(screen.getByLabelText('Overwrite 0000 2024-01'));
   expect(screen.getAllByText(/bank payment file was already exported/)).toHaveLength(2);
   await user.click(screen.getByLabelText('Overwrite 0000 2024-01'));
   await user.click(screen.getByLabelText(/I have reviewed the companies/));await user.click(screen.getByRole('button',{name:'Import new records only'}));
   expect(confirm).toHaveBeenCalledWith({attemptId:'attempt-a',previewHash:'preview-hash',confirmReplacement:false,skipReplacements:true,acknowledgeWarnings:false});
   expect(await screen.findByRole('status')).toHaveTextContent('1 existing record was left unchanged');
-  cleanup();render(wrap(<RevisionPreview plan={{...plan([{...row(2),operation:'invalid' as const,reasons:['Payroll for this period and Pay Cycle is still open in Payroll.']}]),counts:{created:0,replaced:0,unchanged:0,invalid:1}}}/>));
+  cleanup();render(wrap(<RevisionPreview plan={{...plan([{...row(2),operation:'invalid' as const,reasons:['Two Pay Cycles match this source record.']}]),counts:{created:0,replaced:0,unchanged:0,invalid:1}}}/>));
   expect(screen.getByText('Rejected')).toBeVisible();expect(screen.queryByRole('checkbox')).toBeNull();
  });
 });

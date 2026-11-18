@@ -1,18 +1,19 @@
 import 'server-only';
 import {sql} from 'drizzle-orm';
+import type {Routing} from '../../../lib/onboarding-model';
 import type {SessionContext} from '../../../db/client';
 import {withLifecycleTenant} from '../../../core/module-gate';
 import {v9EmploymentLabels} from '../../../lib/lifecycle-v9-employment';
 import type {TemplateUsage,DefinitionUsage,RuleField,Actor,Config,Group} from '../../../lib/lifecycle-v9-model';
 
 /** Configuration-only builder projection. Never materialises employee cases or salary data. */
-export async function v9Configuration(ctx:SessionContext):Promise<{config:Config|null;actor:Actor;editable:boolean;offboardingEditable:boolean;users:{id:string;name:string}[];labels:Partial<Record<RuleField,Record<string,string>>>;previewCases:{id:string;module:'onb';label:string}[];usage:TemplateUsage[];references:DefinitionUsage[]} >{
+export async function v9Configuration(ctx:SessionContext):Promise<{nativeDocumentRoutingChoices?:{routings:{id:string;name:string}[];groups:{id:string;name:string}[];people:{id:string;name:string}[]};config:Config|null;actor:Actor;editable:boolean;offboardingEditable:boolean;users:{id:string;name:string}[];labels:Partial<Record<RuleField,Record<string,string>>>;previewCases:{id:string;module:'onb';label:string}[];usage:TemplateUsage[];references:DefinitionUsage[]} >{
  return withLifecycleTenant(ctx,async tx=>{
   const[access]=await tx.execute<{allowed:boolean;editable:boolean;offboardingEditable:boolean}>(sql`select app.is_group_admin() or app.is_admin() and (app.onboarding_page_access() or app.lc_v9_off_access()) as allowed,app.is_group_admin() as editable,app.automation_can_configure('off') as "offboardingEditable"`);
   if(!access?.allowed)throw new Error('You cannot open lifecycle configuration.');
   const[row]=await tx.execute<{data:Config}>(sql`select data from lc_v9_config where tenant_id=app.current_tenant_id()`);
   if(row)Reflect.deleteProperty(row.data,'bpRules');
-  const[shared]=await tx.execute<{revision:number;groups:Group[]}>(sql`select revision,data->'groups' as groups from lc_onboarding_config where tenant_id=app.current_tenant_id()`);
+  const[shared]=await tx.execute<{revision:number;groups:Group[];routings:Routing[]}>(sql`select revision,data->'groups' as groups,data->'routings' as routings from lc_onboarding_config where tenant_id=app.current_tenant_id()`);
   const wanted=new Set<string>(ctx.userId?[ctx.userId]:[]);
   for(const group of shared?.groups??[])for(const id of group.members)wanted.add(id);
   for(const template of row?.data.templates??[])for(const version of template.versions)for(const step of version.routing??[])if(step.who.kind==='people')for(const id of step.who.userIds)wanted.add(id);
@@ -40,6 +41,6 @@ export async function v9Configuration(ctx:SessionContext):Promise<{config:Config
    for(const item of managed){if(item.kind==='document'&&item.version!==null){const prior=usage.find(u=>u.templateId===item.definitionId&&u.version===item.version);if(prior)prior.documents+=item.documents;else usage.push({templateId:item.definitionId,version:item.version,documents:item.documents});}const prior=references.find(r=>r.kind===item.kind&&r.definitionId===item.definitionId);if(prior)prior.messages+=item.messages+item.documents;else references.push({kind:item.kind,definitionId:item.definitionId,messages:item.messages+item.documents,runs:0});}
   }
   const actor=users.find(u=>u.id===ctx.userId)??{id:ctx.userId??'',name:'User'};
-  return{config:row?{...row.data,groups:shared?.groups??[],groupsRevision:shared?.revision??0}:null,actor,editable:!!access.editable,offboardingEditable:!!access.offboardingEditable,users:[...users],labels,previewCases:[...previewCases],usage,references};
+  return{nativeDocumentRoutingChoices:{routings:(shared?.routings??[]).filter(route=>typeof route.id==='string'&&route.id.length>0&&route.id.length<=120).slice(0,200).map(route=>({id:route.id,name:route.name})),groups:(shared?.groups??[]).map(group=>({id:group.id,name:group.name})),people:[...users]},config:row?{...row.data,groups:shared?.groups??[],groupsRevision:shared?.revision??0}:null,actor,editable:!!access.editable,offboardingEditable:!!access.offboardingEditable,users:[...users],labels,previewCases:[...previewCases],usage,references};
  });
 }

@@ -23,8 +23,12 @@ import {validateAutomationEmailContent} from '../lib/automation-email-content-po
 
 export type AutomationEmailQueued = {queued: number; to: string[]; cc: string[]; unreachable: string[]};
 /** Records the email intent in the caller's transaction (idempotent on `key`). */
-export async function queueAutomationEmailTx(tx: SqlExecutor, input: {module: 'probation'|'contract_staff'|'off'; subjectId: string; key: string; to: readonly string[]; cc: readonly string[]; subject: string; body: string;richBody?:AutomationRichEmailBody;content?:AutomationEmailContent},ctx?:SessionContext): Promise<AutomationEmailQueued> {
+export async function queueAutomationEmailTx(tx: SqlExecutor, input: {module: 'probation'|'contract_staff'|'off'; subjectId: string; key: string; to: readonly string[]; cc: readonly string[]; subject: string; body: string;richBody?:AutomationRichEmailBody;content?:AutomationEmailContent;rich?:{templateId:string;templateRevision:number;sourceProof:{payload:string;signature:string};html:string;documents?:import('../lib/automation-email-ipc').AutomationEmailDocumentRef[];caseFiles?:import('../lib/automation-email-ipc').AutomationEmailCaseFileRef[];assets:{id:string;kind:'file'|'image';contentHash:string}[]}},ctx?:SessionContext): Promise<AutomationEmailQueued> {
   const array = (ids: readonly string[]) => `{${ids.join(',')}}`;
+  if(input.rich&&(input.module!=='probation'||input.richBody||input.content))throw new Error('Email content protocols cannot be combined.');
+  if(input.rich){
+    const [row]=await tx.execute<{data:AutomationEmailQueued}>(sql`select app.automation_rich_email_queue(${input.module},${input.subjectId}::uuid,${input.key},${array(input.to)}::uuid[],${array(input.cc)}::uuid[],${input.subject.slice(0,500)},${input.body.slice(0,20000)},${input.rich.templateId}::uuid,${JSON.stringify({version:2,html:input.rich.html,assets:input.rich.assets,documents:input.rich.documents??[],caseFiles:input.rich.caseFiles??[],templateRevision:input.rich.templateRevision,sourceProof:input.rich.sourceProof})}::jsonb) as data`);return row.data;
+  }
   if (input.module === 'off') {
     if(input.richBody)throw new Error('Resignation email uses its frozen native content.');
     if (!ctx) throw new Error('Resignation email requires the authorized command context.');

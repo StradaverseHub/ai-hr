@@ -41,7 +41,7 @@ afterAll(async()=>{
 });
 async function actor(name:string):Promise<Actor&{employmentId:string}>{const e=await hireEmployee(admin,{person:{fullName:name,primaryEmail:randomUUID()+'@routing.example.test'},companyId:b.companyId,departmentId:b.deptA,employmentType:'full_time',hiredOn:'2026-01-01'});const userId=await createAppUser(b.tenantId,e.personId,'employee');return{userId,personId:e.personId,employmentId:e.employmentId,ctx:{...admin,userId,roles:['employee'],grants:undefined}};}
 const routing=()=>({templateId:'letter-template',templateVersion:3,caseOwnerId:admin.userId!,fallbackGroupId:null});
-async function create(withRouting=true){return withTenant(admin,tx=>createSigningDocumentTx(tx,admin,{companyId:b.companyId,employmentId,subjectId,subjectType:'probation',contentHash:hash,route,guardrails:rules,...(withRouting?{routing:routing()}:{})}));}
+async function create(withRouting=true,caseOwnerId=admin.userId!){return withTenant(admin,tx=>createSigningDocumentTx(tx,admin,{companyId:b.companyId,employmentId,subjectId,subjectType:'probation',contentHash:hash,route,guardrails:rules,...(withRouting?{routing:{...routing(),caseOwnerId}}:{})}));}
 const act=(id:string,who:Actor,stepId:string,action:'signed'|'returned'|'reviewed'|'approved',comment?:string)=>withTenant(who.ctx,tx=>{const doc=readSigningDocumentTx(tx,who.ctx,id);return doc.then(d=>recordDocumentSigningActionTx(tx,who.ctx,{id,stepId,revision:d.contentRevision,hash:d.contentHash,action,comment,...(action==='signed'?{method:'typed' as const,value:'Fictional signature',consent:true}:{})}));});
 async function rawAct(id:string,who:Actor,action:Record<string,unknown>){return withTenant(who.ctx,async tx=>(await tx.execute<{document:SigningDocument}>(sql`select app.document_signing_act(${id}::uuid,${JSON.stringify(action)}::jsonb) as document`))[0].document);}
 const raw=(who:Actor,stepId:string,role:string,action:string,extra:Record<string,unknown>={})=>({id:randomUUID(),stepId,contentRevision:1,contentHash:hash,actorId:who.userId,actorPersonId:who.personId,actorName:'Caller name',representedId:who.userId,role,at:'2026-11-16T00:00:00Z',action,comment:'',signature:null,...extra});
@@ -58,6 +58,15 @@ beforeEach(async()=>{
 });
 
 describe('template-routing signing documents in the database',()=>{
+ it('uses only the frozen case owner as null-holder administrative fallback, preserving the unresolved Review and denying its signer action',async()=>{
+  route.steps[0]={...route.steps[0],owner:true,holderId:null};delete route.steps[0].holderPersonId;
+  await owner.db.execute(sql`update test_routed_signing_subject set route=${JSON.stringify(route)}::jsonb where id=${subjectId}::uuid`);
+  const d=await create(true,outsider.userId);const [identity]=await withTenant(outsider.ctx,tx=>tx.execute<{owner:string|null}>(sql`select app.document_signing_owner(${JSON.stringify(d.document)}::jsonb) as owner`));expect(identity.owner).toBe(outsider.userId);
+  await act(d.id,signerA,'sign-a','returned','The reviewer is unassigned');
+  await expect(withTenant(signerA.ctx,tx=>resendSigningDocumentTx(tx,signerA.ctx,{id:d.id}))).rejects.toThrow();
+  const resent=await withTenant(outsider.ctx,tx=>resendSigningDocumentTx(tx,outsider.ctx,{id:d.id,comment:'Sent to its unchanged route'}));
+  expect(resent.route.steps[0].holderId).toBeNull();expect(pendingSigningSteps(resent).map(step=>step.id)).toEqual(['review']);await expect(act(d.id,outsider,'review','reviewed')).rejects.toThrow();
+ });
  it('records a Review without a signature, then both Sign steps of a stage in parallel',async()=>{
   const d=await create();
   expect(d.document.routing).toMatchObject({templateId:'letter-template',templateVersion:3,caseOwnerId:admin.userId});

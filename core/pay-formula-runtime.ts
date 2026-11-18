@@ -1,9 +1,10 @@
+import {personnelBusinessCodeValueTx} from './pay-formula-business-codes';
 import {personnelFormulaDependencyTx} from './pay-formula-personnel';
 /** Authorized source adapter shared by simulation and the native payroll kernel. */
 import {createHash} from 'node:crypto';
 import {sql} from 'drizzle-orm';
 import type {Tx,SessionContext} from '../db/client';
-import {personnelFormulaAdapter,PAY_FORMULA_LEGACY_PERSONNEL_FIELDS,PAY_FORMULA_PERSONNEL_PROVIDER_VERSION,type PersonnelFormulaAdapter} from '../lib/pay-formula-personnel';
+import {personnelFormulaAdapter,PAY_FORMULA_LEGACY_PERSONNEL_FIELDS,PAY_FORMULA_PERSONNEL_PROVIDER_VERSION,personnelFormulaProviderVersion,type PersonnelFormulaAdapter} from '../lib/pay-formula-personnel';
 import {todayInKualaLumpur} from '../lib/hr-date';
 import {PERSONNEL_FIELDS} from '../lib/personnel-field-registry';
 import {isCalendarDate} from '../lib/calendar-date';
@@ -104,6 +105,7 @@ export async function preparePayFormulaRuntimeTx(tx:Tx,ctx:SessionContext,contex
  for(const formula of active.values()){const contract=await personnelFormulaDependencyTx(tx,formula.program);if(contract)sources.push({owner:'personnel-registry',contract});}
  const adapters=[...new Map(calls.flatMap(call=>{const adapter=personnelFormulaAdapter(call.code,String(call.args[0]?.value??''));return adapter?[[adapter.key,adapter] as const]:[];})).values()];
  for(const adapter of adapters){
+  const personnelProvider=personnelFormulaProviderVersion(adapter);
   if(!allowed.get(adapter.fieldId))continue;
   if(adapter.dateBasis==='current-only'&&context.asOf!==todayInKualaLumpur()){
    // Reuse only a source read referenced by this exact run's current native payslip, never a
@@ -115,7 +117,9 @@ export async function preparePayFormulaRuntimeTx(tx:Tx,ctx:SessionContext,contex
    continue;
   }
   let value:unknown,sourceId:string|undefined;
-  if(adapter.adapter==='company'){
+  if(adapter.adapter==='business-code'){
+   const row=await personnelBusinessCodeValueTx(tx,ctx,{employmentId:context.employmentId,companyId:context.companyId,asOf:context.asOf,key:adapter.key});value=row?.value;sourceId=row?.id;
+  }else if(adapter.adapter==='company'){
    if(adapter.column==='id')value=context.companyId;
    // companyId is the validated effective company for context.asOf; its code and name are read from that
    // same row. The column is closed adapter metadata (company_label or legal_name), never input.
@@ -133,7 +137,7 @@ export async function preparePayFormulaRuntimeTx(tx:Tx,ctx:SessionContext,contex
    const [row]=await tx.execute<{value:unknown}>(sql`select ${sql.identifier(adapter.column)}::text as value from ${sql.identifier(table)} where ${subject} and tenant_id=${ctx.tenantId}::uuid`);value=row?.value;
   }
   if(value!==null&&value!==undefined&&value!=='')personnelValues.set(adapter.key,value);
-  sources.push({owner:'typed-personnel',provider:PAY_FORMULA_PERSONNEL_PROVIDER_VERSION,key:adapter.key,dateBasis:adapter.dateBasis,asOf:context.asOf,sourceId,value});
+  sources.push({owner:'typed-personnel',provider:personnelProvider,key:adapter.key,dateBasis:adapter.dateBasis,asOf:context.asOf,sourceId,value});
  }
  const personnelFieldValue=(adapter:PersonnelFormulaAdapter,loc:FormulaRequest['loc']):FormulaValue=>{
   if(!allowed.get(adapter.fieldId))throw new PayFormulaError('Formula source permission is unavailable.','FORMULA_SOURCE_DENIED');
