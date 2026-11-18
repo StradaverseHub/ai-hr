@@ -2,6 +2,7 @@ import {expect,it} from 'vitest';
 import {personnelMergeGroups} from '../lib/lifecycle-v9-personnel-merge-fields';
 import {effectivePersonnelCompletion,initializePersonnelCompletion,missingPersonnelCompletion,overridePersonnelCompletion,personnelCompletionClassification,personnelCompletionGroup,reconcilePersonnelCompletion,savePersonnelCompletionValue,validateCompletionPhone,personnelCompletionMergeValues,validatePersonnelCompletionScalar,type CompletionDocument} from '../lib/lifecycle-v9-personnel-completion';
 import type {Field} from '../lib/lifecycle-v9-model';
+import {savePersonnelCompletionAnswer,personnelCompletionEmployeeAnswers} from '../lib/lifecycle-v9-personnel-completion';
 const actor={id:'employee',name:'Fictional employee'},hr={id:'hr',name:'Fictional HR'},at='2026-11-18T02:00:00Z';
 const field=(id:string,key:string,type:Field['type']='text'):Field=>({id,label:id,type,owner:'pmLocked',pmKey:key,required:true,sensitive:false,options:[],section:'main',when:null});
 function fixture(){const fields=[field('address','address'),field('name','employee.name'),field('phone','mobile','phone'),field('new','future.field')],document:CompletionDocument={fields,values:{name:'Official name'},status:'draft',sentAt:null,employeeSignature:null,hrSignature:null};initializePersonnelCompletion(document,{country:'MY',sourceFingerprint:'source-1',officialValues:{name:'Official name'},actor:hr,at});return document;}
@@ -19,6 +20,22 @@ it('relocks a still-editable missing field when PM receives a value, preserving 
 });
 it('keeps signed content and its completion evidence immutable when the official profile later changes',()=>{
  const d=fixture();d.employeeSignature={by:actor,at,method:'typed',value:actor.name,consent:true};const before=structuredClone(d);expect(reconcilePersonnelCompletion(d,{values:{name:'Changed official name'},sourceFingerprint:'source-2',actor:hr,at})).toBe(false);expect(d).toEqual(before);
+});
+it('never attributes an HR replacement to the preserved employee draft, including a hand-back to the employee',()=>{
+ const d=fixture();savePersonnelCompletionValue(d,d.fields[0],'Employee address',{actor,at});
+ expect(personnelCompletionEmployeeAnswers(d,actor.id)).toEqual([{fieldId:'address',key:'address',value:'Employee address',by:actor,at}]);
+ overridePersonnelCompletion(d,{fieldId:'address',owner:'hr',reason:'Verified by HR',actor:hr,at});
+ savePersonnelCompletionAnswer(d,d.fields[0],'HR replacement',{owner:'hr',actor:hr,at});
+ expect(d.personnelCompletion!.fields.address.draft!.by).toEqual(actor);
+ expect(d.personnelCompletion!.fields.address.answer).toMatchObject({owner:'hr',by:hr});
+ expect(personnelCompletionEmployeeAnswers(d,actor.id)).toEqual([]);
+ overridePersonnelCompletion(d,{fieldId:'address',owner:'employee',reason:'Ask employee again',actor:hr,at});
+ expect(d.values.address).toBe('');expect(personnelCompletionEmployeeAnswers(d,actor.id)).toEqual([]);
+ savePersonnelCompletionValue(d,d.fields[0],'Fresh employee address',{actor,at});
+ expect(personnelCompletionEmployeeAnswers(d,actor.id)[0].value).toBe('Fresh employee address');
+ expect(personnelCompletionEmployeeAnswers(d,hr.id)).toEqual([]);
+ reconcilePersonnelCompletion(d,{values:{address:'New official address',name:'Official name'},sourceFingerprint:'new',actor:hr,at});
+ expect(personnelCompletionEmployeeAnswers(d,actor.id)).toEqual([]);
 });
 it('validates jurisdiction and numbering prefixes, not only phone length, and applies scalar checks to nonempty draft answers',()=>{
  expect(()=>validateCompletionPhone('0123456789','MY')).not.toThrow();expect(()=>validateCompletionPhone('+6581234567','MY')).not.toThrow();for(const value of ['12345','0001234567','not a phone'])expect(()=>validateCompletionPhone(value,'MY')).toThrow();expect(()=>validateCompletionPhone('0123456789',null)).toThrow('international');expect(()=>validateCompletionPhone('+60123456789',null)).not.toThrow();

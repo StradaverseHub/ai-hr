@@ -16,7 +16,10 @@ export type PersonnelCompletionGroup='personal'|'employment'|'unknown';
 export type PersonnelCompletionOwner='employee'|'hr'|'pmLocked';
 export type PersonnelCompletionEntry={key:string|null;group:PersonnelCompletionGroup;sourceValue:string;sourceFingerprint:string;
  override?:{owner:'employee'|'hr';by:Actor;at:string;reason:string};
- draft?:{value:string;by:Actor;at:string};conflict?:{draft:string;official:string;at:string};};
+ draft?:{value:string;by:Actor;at:string};
+ /** Active case answer is distinct from a preserved employee draft after an HR takeover. */
+ answer?:{value:string;owner:'employee'|'hr';by:Actor;at:string};
+ conflict?:{draft:string;official:string;at:string};};
 export type PersonnelCompletionPolicy={version:1;classification:typeof PERSONNEL_COMPLETION_CLASSIFICATION;country:string|null;sourceFingerprint:string;
  adoptedAt:string;adoptedBy:Actor;fields:Record<string,PersonnelCompletionEntry>;
  history:{fieldId:string;action:'override'|'reconciled';by:Actor;at:string;before:string;after:string;reason:string}[];};
@@ -45,7 +48,9 @@ export function overridePersonnelCompletion(document:CompletionDocument,input:{f
  const entry=document.personnelCompletion?.fields[input.fieldId],field=document.fields.find(f=>f.id===input.fieldId);
  if(!entry||!field||field.owner!=='pmLocked'||entry.sourceValue.trim()||personnelCompletionLocked(document))throw new Error('Only a missing unsigned Personnel field can change who completes it.');
  if(!input.reason.trim())throw new Error('Record why completion is changing.');
- const before=effectivePersonnelCompletion(document,field);if(before==='employee'&&input.owner==='hr')document.values[field.id]='';entry.override={owner:input.owner,reason:input.reason.trim(),by:{...input.actor},at:input.at};
+ const before=effectivePersonnelCompletion(document,field);
+ if(before!==input.owner){document.values[field.id]='';delete entry.answer;}
+ entry.override={owner:input.owner,reason:input.reason.trim(),by:{...input.actor},at:input.at};
  document.personnelCompletion!.history.push({fieldId:field.id,action:'override',by:{...input.actor},at:input.at,before,after:input.owner,reason:input.reason.trim()});
 }
 /** Official values win only while editable; conflicting saved employee drafts remain available for HR review. */
@@ -58,20 +63,21 @@ export function reconcilePersonnelCompletion(document:CompletionDocument,input:{
   if(official.trim()){
    if(draft&&draft!==entry.sourceValue&&draft!==official)entry.conflict={draft,official,at:input.at};
    document.values[field.id]=official;
-  }else if(entry.sourceValue.trim())document.values[field.id]=entry.draft?.value??'';
+  }else if(entry.sourceValue.trim())document.values[field.id]=entry.answer?.value??entry.draft?.value??'';
   policy.history.push({fieldId:field.id,action:'reconciled',by:{...input.actor},at:input.at,before:entry.sourceValue,after:official,reason:'Current authorized Personnel source'});
   entry.sourceValue=official;entry.sourceFingerprint=input.sourceFingerprint;changed=true;
  }
  if(changed)policy.sourceFingerprint=input.sourceFingerprint;return changed;
 }
 /** Full numbering-plan metadata, with an evidenced company jurisdiction for national numbers. No length-only inference. */
-export function validateCompletionPhone(value:string,country:string|null){
- if(!value.trim())return;
+export function normalizeCompletionPhone(value:string,country:string|null):string{
+ if(!value.trim())return '';
  const jurisdiction=country&&isSupportedCountry(country)?country as CountryCode:undefined;
  if(!value.trim().startsWith('+')&&!jurisdiction)throw new Error('Use an international phone number with a country calling code.');
- try{const phone=parsePhoneNumberWithError(value.trim(),{defaultCountry:jurisdiction,extract:false});if(!phone.isValid())throw new Error();}
+ try{const phone=parsePhoneNumberWithError(value.trim(),{defaultCountry:jurisdiction,extract:false});if(!phone.isValid()||phone.ext)throw new Error();return phone.number;}
  catch{throw new Error('Enter a valid phone number including its area or country calling code.');}
 }
+export function validateCompletionPhone(value:string,country:string|null){normalizeCompletionPhone(value,country);}
 export function validatePersonnelCompletionScalar(field:Field,value:string,country:string|null){
  if(value.length>20000)throw new Error('Keep this value within 20,000 characters.');
  if(field.type==='phone')validateCompletionPhone(value,country);
@@ -80,9 +86,24 @@ export function validatePersonnelCompletionScalar(field:Field,value:string,count
  if(field.type==='number'&&value&&(!/^-?(?:\d+(?:\.\d+)?|\.\d+)$/.test(value)||!Number.isFinite(Number(value))))throw new Error('Enter a valid number.');
 }
 export function savePersonnelCompletionValue(document:CompletionDocument,field:Field,value:string,input:{actor:Actor;at:string}){
+ return savePersonnelCompletionAnswer(document,field,value,{...input,owner:'employee'});
+}
+/** This records who supplied the active answer; only the authorized subject service may select the owner. */
+export function savePersonnelCompletionAnswer(document:CompletionDocument,field:Field,value:string,input:{owner:'employee'|'hr';actor:Actor;at:string}){
  const policy=document.personnelCompletion,entry=policy?.fields[field.id];
- if(!entry||effectivePersonnelCompletion(document,field)!=='employee'||personnelCompletionLocked(document))throw new Error('This Personnel field is locked.');
- validatePersonnelCompletionScalar(field,value,policy!.country);document.values[field.id]=value;entry.draft={value,by:{...input.actor},at:input.at};
+ if(!entry||effectivePersonnelCompletion(document,field)!==input.owner||personnelCompletionLocked(document))throw new Error('This Personnel field is locked.');
+ validatePersonnelCompletionScalar(field,value,policy!.country);
+ if(field.type==='phone')value=normalizeCompletionPhone(value,policy!.country);
+ document.values[field.id]=value;
+ entry.answer={value,owner:input.owner,by:{...input.actor},at:input.at};
+ if(input.owner==='employee')entry.draft={value,by:{...input.actor},at:input.at};
+}
+/** Proposals concern an actually submitted employee answer, never an HR replacement or an old preserved draft. */
+export function personnelCompletionEmployeeAnswers(document:CompletionDocument,actorId:string){
+ return document.fields.flatMap(field=>{const entry=document.personnelCompletion?.fields[field.id],answer=entry?.answer;
+  if(!entry?.key||!answer||answer.owner!=='employee'||answer.by.id!==actorId||entry.sourceValue.trim()||effectivePersonnelCompletion(document,field)!=='employee'||answer.value!==document.values[field.id]||!answer.value.trim()||field.when&&document.values[field.when.field]!==field.when.value)return [];
+  return [{fieldId:field.id,key:entry.key,value:answer.value,by:{...answer.by},at:answer.at}];
+ });
 }
 export type PersonnelCompletionIssue={fieldId:string;code:'required'|'phone'|'email'|'date'|'number'|'length';message:string};
 /** UI and services share scalar rules; draft saves permit blank required answers, final submission does not. */
