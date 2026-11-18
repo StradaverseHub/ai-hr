@@ -44,9 +44,9 @@ CREATE TRIGGER payroll_history_maintenance_revision_binding BEFORE INSERT ON pub
 CREATE FUNCTION app.payroll_history_maintenance_code_owner(code_ text) RETURNS uuid
 LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,pg_temp AS $$
  WITH original AS(SELECT c.* FROM public.payroll_import_code c WHERE c.tenant_id=app.current_tenant_id() AND upper(c.code)=upper(code_)),
- target AS(SELECT CASE WHEN original.alias_for IS NULL THEN code_ ELSE original.alias_for END code FROM original UNION ALL SELECT code_ WHERE NOT EXISTS(SELECT 1 FROM original)),
+ target AS(SELECT coalesce(nullif(btrim(original.alias_for),''),code_) code FROM original UNION ALL SELECT code_ WHERE NOT EXISTS(SELECT 1 FROM original)),
  configured AS(SELECT t.code,c.id catalog_id,c.alias_for FROM target t LEFT JOIN public.payroll_import_code c ON c.tenant_id=app.current_tenant_id() AND upper(c.code)=upper(t.code))
- SELECT CASE WHEN count(*)=1 THEN(array_agg(coalesce(p.id,c.catalog_id)))[1] ELSE NULL END FROM configured c LEFT JOIN public.pay_component p ON p.tenant_id=app.current_tenant_id() AND upper(p.code)=upper(c.code) WHERE c.alias_for IS NULL
+ SELECT CASE WHEN count(*)=1 THEN(array_agg(coalesce(p.id,c.catalog_id)))[1] ELSE NULL END FROM configured c LEFT JOIN public.pay_component p ON p.tenant_id=app.current_tenant_id() AND upper(p.code)=upper(c.code) WHERE nullif(btrim(c.alias_for),'') IS NULL
 $$;
 --> statement-breakpoint
 REVOKE ALL ON FUNCTION app.payroll_history_maintenance_code_owner(text) FROM PUBLIC;
@@ -58,7 +58,7 @@ DECLARE catalog_ public.payroll_import_code; component_ public.pay_component;
 BEGIN
  IF(SELECT count(*) FROM public.pay_component WHERE tenant_id=app.current_tenant_id() AND upper(code)=upper(code_))>1 THEN RETURN NULL;END IF;
  SELECT * INTO catalog_ FROM public.payroll_import_code WHERE tenant_id=app.current_tenant_id() AND upper(code)=upper(code_);
- IF FOUND THEN IF NOT catalog_.active OR catalog_.alias_for IS NOT NULL THEN RETURN NULL;END IF;RETURN catalog_.destination;END IF;
+ IF FOUND THEN IF NOT catalog_.active OR nullif(btrim(catalog_.alias_for),'') IS NOT NULL THEN RETURN NULL;END IF;RETURN catalog_.destination;END IF;
  SELECT * INTO component_ FROM public.pay_component WHERE tenant_id=app.current_tenant_id() AND upper(code)=upper(code_);
  IF FOUND AND component_.archived_at IS NULL THEN RETURN CASE WHEN component_.is_non_payable THEN 'noncash' WHEN component_.kind='deduction' THEN 'other_deduction' WHEN component_.display_category='basic' THEN 'basic' WHEN component_.display_category='overtime' THEN 'overtime' WHEN component_.display_category='bonus' THEN 'bonus' WHEN component_.display_category IN('allowance','claim') THEN 'allowance' WHEN upper(code_)='BASIC' THEN 'basic' WHEN upper(code_) LIKE 'OT%' OR upper(code_)='OVERTIME' THEN 'overtime' WHEN upper(code_)='BONUS' THEN 'bonus' ELSE 'allowance' END;END IF;
  RETURN CASE upper(code_) WHEN 'BASIC' THEN 'basic' WHEN 'EEEPF' THEN 'epf_employee' WHEN 'EREPF' THEN 'epf_employer' WHEN 'EESOCSO' THEN 'socso_employee' WHEN 'ERSOCSO' THEN 'socso_employer' WHEN 'EESOCSOSKBBK' THEN 'socso_skbbk' WHEN 'EEEIS' THEN 'eis_employee' WHEN 'EREIS' THEN 'eis_employer' WHEN 'PCB' THEN 'pcb' WHEN 'CP38' THEN 'cp38' WHEN 'ZAKAT' THEN 'zakat' WHEN 'LP' THEN 'lp' WHEN 'HRDF' THEN 'hrdf' ELSE NULL END;

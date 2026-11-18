@@ -100,3 +100,8 @@ it('requires an actual preexisting sealed worker step for raw legacy restoration
  const original=await accept([['BASIC','1000.00'],['PCB','50.00']]),current=await detail(),row={tenantId:b.tenantId,recordId:current.id,ordinal:2,attemptId:original.attemptId,previousRevisionId:current.currentRevisionId,snapshotId:null,kind:'revert' as const,cycleName:'Month end'};
  await sqlRefusal(withTenant(ctx,tx=>tx.insert(schema.payrollHistoryImportRevision).values(row)),'42501',/sealed worker step/);await sqlRefusal(owner.withTenant(ctx,tx=>tx.insert(schema.payrollHistoryImportRevision).values(row)),'42501',/sealed worker step/);expect((await detail()).currentRevisionId).toBe(current.currentRevisionId);
 });
+
+it('uses the canonical direct catalogue owner when its optional alias field is explicitly empty',async()=>{
+ await owner.db.insert(schema.payrollImportCode).values({tenantId:b.tenantId,code:'TRV',label:'Travel',destination:'allowance',direction:'earning',aliasFor:''});
+ await accept([['BASIC','1000.00'],['TRV','500.00'],['PCB','50.00']],'replace');await accept([['TRV','200.00']],'update_listed');expect((await detail()).items.find(item=>item.code==='TRV')).toMatchObject({key:'component:'+trvId,amount:'200.00'});
+});
