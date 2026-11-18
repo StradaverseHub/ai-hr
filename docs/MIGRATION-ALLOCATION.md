@@ -1,3 +1,30 @@
+# Contract/Probation native Business Partner compatibility — 18 November 2026
+
+Reserve `6442_contract_probation_business_partner_owner`, idx `5842`, when
+`1794988006442`, SQL SHA-256 `056eb347fbd5aef43d86ff55b8968d1ab4144436c3ac5baa7e8d21efaaf37c99`.
+The exact frozen source is `f6f7da9158e0082c6eb0a14a1b1520232de2c177`;
+independent coordinator review found no material source issue. This source registration is not
+runtime verification. Preserve all 139 original pending bodies and the three prior additive repairs.
+
+The fresh post-fetch read-only survey covered 4,776 ref heads, 1,241 distinct journal/allocation
+blobs and 471 worktree journals (eight conflict-marked). No actual tag/index/time/filename collision
+was found. Allocation-document `5842_probation_shared_email_asset_proof` is the historical source
+name already renamed to 6347/idx5747, not a competing idx5842 reservation. Actual accepted F8 has
+924 ledger rows through `1794841006104`; its full ordered digests were reverified at handback.
+
+The authorized serial release order is this combined 6300–6442 plus selected 6500 before foreign
+6600/6610/6611/6620/6630/6640 candidates (maximum pending when1794998006640). Those foreign
+claims are preserved and excluded. This does not grant a lease. Requery actual ordered installation
+hashes and watermark at admission; any intervening higher installation requires explicit reallocation.
+
+The new native owner starts empty, retains the prior tenant-wide group-admin/Lifecycle writer
+predicate, immutable actor/reason/revision history and exact case-resolution semantics. No historical
+routing/grants are restored; removed On/Off PBP controls remain removed. Six closed native functions,
+two forced-RLS owner-only tables and two owner policies have a separate source-derived ACL intent.
+The five existing consumer functions retain their identities and ACLs. Direct app-role permission,
+70-company/1,000-employment equivalence, populated restricted-owner, compiler/build and rendered
+journey checks remain mandatory. The full pending tail is now 144 entries; no installation has run.
+
 # AI provider candidate display — 18 November 2026 (unapplied)
 
 `codex/ai-provider-candidate-display-20261118` reserves

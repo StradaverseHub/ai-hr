@@ -1,5 +1,12 @@
 import {PERFORMANCE_MIGRATION_IDENTITIES} from './performance-migration-identities';
-import contractIntent from './fixtures/contract-upgrade-acl-intent.json';
+import originalContractIntent from './fixtures/contract-upgrade-acl-intent.json';
+import businessPartnerIntent from './fixtures/business-partner-upgrade-acl-intent.json';
+// Independent literal DDL intent union; retain the original Contract member fixture unchanged.
+const contractIntent={...originalContractIntent,
+ functionsAdded:[...originalContractIntent.functionsAdded,...businessPartnerIntent.functionsAdded],
+ tablesAdded:[...originalContractIntent.tablesAdded,...businessPartnerIntent.tablesAdded],
+ policiesAdded:[...originalContractIntent.policiesAdded,...businessPartnerIntent.policiesAdded],
+};
 import {APPROVED_UPGRADE_TAIL,assertApprovedUpgradeTail,migrateApprovedUpgrade,withoutCombinedReleaseNulls} from './helpers/approved-upgrade';
 /** ADR-0174 populated upgrade through 2100–2102, on an owned disposable localhost database only.
  * A cross-tenant row present at the boundary must stop the whole upgrade with a readable report and leave
@@ -166,6 +173,7 @@ const APPROVED_COMBINED_RELEASE_TAGS=[
  '6439_contract_resignation_shared_compatibility',
  '6440_own_leave_shared_access',
  '6441_contract_resignation_email_modules',
+ '6442_contract_probation_business_partner_owner',
  '6500_ai_provider_candidate_presentation_rls',
 ] as const;
 
