@@ -44,11 +44,13 @@ export function PersonnelCompletionPanel({document,busy=false,canOverride=false,
  const problems=personnelCompletionIssues({...document,values},{owner:'hr',final:false});
  const changed=hr.filter(field=>draft[field.id]!==undefined&&draft[field.id]!==document.values[field.id]);
  const run=(work:()=>Promise<PersonnelCompletionResult>)=>start(async()=>{setError('');setNotice('');try{const result=await work();if(result.ok)setNotice(t('saved'));else setError(t('saveFailed'));}catch{setError(t('saveFailed'));}});
+ const saveHR=()=>{const changedValues=Object.fromEntries(changed.map(field=>[field.id,values[field.id]??'']));run(()=>onSave!(changedValues));};
+ const issueMessage=(fieldId:string)=>{const issue=problems.find(problem=>problem.fieldId===fieldId);return issue?t('validation'+issue.code[0].toUpperCase()+issue.code.slice(1)):undefined;};
  if(!missing.length&&!conflicts.length)return null;
  return <section className="v9-panel v9-stack" aria-label={t('hrTitle')}><h3>{t('hrTitle')}</h3><p className="v9-muted">{t('hrHelp')}</p>
   {locked&&<p className="v9-notice">{t('locked')}</p>}
   {missing.map(field=><Assignment key={field.id} document={document} field={field} busy={disabled} canOverride={canOverride} onOverride={onOverride}/>)}
-  {hr.length>0&&<section className="v9-stack"><h4>{t('completeMissing')}</h4>{hr.map(field=><DocumentField key={field.id} field={field} sourceLabel={null} value={values[field.id]??''} disabled={disabled||!onSave} error={problems.find(issue=>issue.fieldId===field.id)?t('validation'+problems.find(issue=>issue.fieldId===field.id)!.code[0].toUpperCase()+problems.find(issue=>issue.fieldId===field.id)!.code.slice(1)):undefined} change={value=>setDraft(previous=>({...previous,[field.id]:value}))}/>)}<button type="button" className="v9-button v9-button-primary" disabled={disabled||!onSave||!changed.length||problems.length>0} onClick={()=>run(()=>onSave!(Object.fromEntries(changed.map(field=>[field.id,values[field.id]??''])))))}>{t('saveHR')}</button></section>}
+  {hr.length>0&&<section className="v9-stack"><h4>{t('completeMissing')}</h4>{hr.map(field=><DocumentField key={field.id} field={field} sourceLabel={null} value={values[field.id]??''} disabled={disabled||!onSave} error={issueMessage(field.id)} change={value=>setDraft(previous=>({...previous,[field.id]:value}))}/>)}<button type="button" className="v9-button v9-button-primary" disabled={disabled||!onSave||!changed.length||problems.length>0} onClick={saveHR}>{t('saveHR')}</button></section>}
   {conflicts.map(field=><Conflict key={field.id} field={field} entry={policy.fields[field.id]}/>)}
   {onRefresh&&<button type="button" className="v9-button" disabled={disabled||changed.length>0} onClick={()=>run(onRefresh)}>{t('refresh')}</button>}
   {error&&<p role="alert" className="v9-error">{error}</p>}{notice&&<p role="status" className="v9-notice">{notice}</p>}
