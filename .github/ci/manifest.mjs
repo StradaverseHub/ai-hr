@@ -6,6 +6,8 @@ import {V15_POSTGRES_PROFILE} from './postgres-evidence.mjs';
 export const CI_EXECUTION={workers:2,postgres:V15_POSTGRES_PROFILE,scheduling:DB_SCHEDULING};
 export const DB_BATCH_FILES=24;
 export const NODB_BATCH_FILES=256;
+/** Database files that start their own web server and browser run alone: two full gates on 17-18 Nov 2026 lost the runner of the 24-file unit holding this file (44011466586, 44065545160). Every file stays mandatory. */
+export const ISOLATED_DB_FILES=Object.freeze(['test/system-label-exchange-browser.test.ts']);
 export const BROWSER_ENGINES=['chromium','firefox','webkit'];
 export const hash=value=>createHash('sha256').update(typeof value==='string'?value:JSON.stringify(value)).digest('hex');
 function inventory(files,pattern){
@@ -21,7 +23,9 @@ export function buildUnits(suite,groups,browserFiles){
   const files=groups[kind].slice().sort(),size=kind==='db'?DB_BATCH_FILES:NODB_BATCH_FILES;
   if(kind==='db'&&files.some(f=>PDF_TOOL_CONSUMERS.includes(f)))throw Error('Audited PDF tool consumers must retain their no-DB classification');
   const ordinary=kind==='nodb'?files.filter(f=>!PDF_TOOL_CONSUMERS.includes(f)):files,pdf=kind==='nodb'?files.filter(f=>PDF_TOOL_CONSUMERS.includes(f)):[];
-  const batches=kind==='db'?balanceDatabaseFiles(files,size):Array.from({length:Math.ceil(ordinary.length/size)},(_,i)=>ordinary.slice(i*size,(i+1)*size));
+  const isolated=kind==='db'?files.filter(f=>ISOLATED_DB_FILES.includes(f)):[];
+  const batches=kind==='db'?balanceDatabaseFiles(files.filter(f=>!isolated.includes(f)),size):Array.from({length:Math.ceil(ordinary.length/size)},(_,i)=>ordinary.slice(i*size,(i+1)*size));
+  for(const f of isolated)batches.push([f]);
   if(pdf.length)batches.push(pdf);
   for(const batch of batches)units.push({id:`${kind}-${hash(batch).slice(0,16)}`,kind,files:batch,pdfTools:batch.some(f=>PDF_TOOL_CONSUMERS.includes(f))});
  }
