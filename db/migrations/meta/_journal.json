@@ -6772,6 +6772,13 @@
       "breakpoints": true
     },
     {
+      "idx": 10097,
+      "version": "7",
+      "when": 1794998006697,
+      "tag": "6697_payroll_history_native_tax_predecessors",
+      "breakpoints": true
+    },
+    {
       "idx": 10098,
       "version": "7",
       "when": 1794998006698,
