@@ -26,6 +26,9 @@ async function main(){
  try{
   report.healthBefore=hostHealth();assert(report.healthBefore.ok);
   started=true;run('postgres-setup','bash',[postgres,'reset'],pgEnv);run('create-fictional-database','docker',['exec',container,'psql','-U','postgres','-p','5433','-d','postgres','-v','ON_ERROR_STOP=1','-c',`CREATE DATABASE ${target}`,'-c',`GRANT CONNECT ON DATABASE ${target} TO ai_hr_app`],pgEnv);run('migrate',process.execPath,['--import','tsx','scripts/contract-browser-premigration.ts'],{...dbEnv,AIHR_CONTRACT_ROLE_MODE:'contract_browser_disposable',AIHR_CONTRACT_ROLE_EVIDENCE_DIR:out},300000);run('seed',process.execPath,['--import','tsx','db/seed.ts']);
+  // Shared Approvals also reads the native Resignation inbox. Use the normal schema-owner provisioner
+  // with this same fictional database and ephemeral auth key before any fixture or browser request.
+  run('provision-resignation-runtime',process.execPath,['--conditions=react-server','--import','tsx','scripts/provision-resignation-runtime.ts']);
   const {validateContractFixture,exerciseContractBrowser}=await import(resolve('scripts/contract-browser-acceptance.mjs'));
   const first=fixture('prepare'),prepared=validateContractFixture(first),second=fixture('prepare');assert.equal(first.reused,false);assert.equal(second.reused,true);assert.deepEqual(second.fixture,prepared);assert.deepEqual(second.cases,first.cases);report.fixture=prepared;report.modelRunsBefore=Number(query('select count(*) from ai_model_run'));
   // Fail fast on source-service fixture preparation before the production build. All four build database URLs remain closed; PostgreSQL is idle during this bounded build.

@@ -1,3 +1,4 @@
+import {readFileSync} from 'node:fs';
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {validateBrowserSource} from './contract-browser.mjs';
@@ -53,4 +54,17 @@ test('requires visible bounded target evidence for every support capture at the 
    const value=structuredClone(captures);mutate(value.find(c=>c.id===id));assert.throws(()=>assertContractCaptureCoverage(value));
   }
  }
+});
+
+test('provisions the shared inbox verifier through its canonical owner before fixture and browser work',()=>{
+ const source=readFileSync(new URL('./contract-browser.mjs',import.meta.url),'utf8');
+ const seed=source.indexOf("run('seed',process.execPath,['--import','tsx','db/seed.ts']);");
+ const provision=source.indexOf("run('provision-resignation-runtime',process.execPath,['--conditions=react-server','--import','tsx','scripts/provision-resignation-runtime.ts']);");
+ const fixture=source.indexOf("const first=fixture('prepare')");
+ assert(seed>=0&&provision>seed&&fixture>provision,'Canonical owner provisioning precedes preparation on the actual same database environment');
+ assert.match(source,/AUTH_SESSION_KEY:sessionKey/);
+ assert.match(source,/env=dbEnv/);
+ const owner=readFileSync(new URL('../../scripts/provision-resignation-runtime.ts',import.meta.url),'utf8');
+ assert.match(owner,/Schema-owner admission required/);
+ assert.match(owner,/rotation requires a separate reviewed procedure/);
 });
