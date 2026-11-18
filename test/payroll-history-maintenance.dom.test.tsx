@@ -1,4 +1,4 @@
-import {afterEach,beforeEach,expect,it,vi} from 'vitest';
+import {afterEach,beforeAll,beforeEach,expect,it,vi} from 'vitest';
 import {cleanup,fireEvent,render,screen,within} from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import {NextIntlClientProvider} from 'next-intl';
@@ -16,13 +16,18 @@ import {RevertControl} from '../app/payroll/history-import/logs/[attemptId]/reve
 import type {PayrollHistoryMaintenanceRequest} from '../lib/payroll-history-maintenance';
 import {HistoryWorkflow} from '../app/payroll/history-import/history-workflow';
 import {maintenanceDetail,maintenancePage,maintenancePlan,maintenanceEditPlan,maintenanceRemovalPlan,maintenanceBatchPlan} from './fixtures/payroll-history/maintenance';
-import {captureAiReviewScreenshots,aiReviewDomHtml} from './helpers/ai-review-screenshots';
+import {captureAiReviewScreenshots,aiReviewDomHtml,applicationCss} from './helpers/ai-review-screenshots';
 const mocks=vi.hoisted(()=>({preview:vi.fn(),confirm:vi.fn(),importConfirm:vi.fn(),revertPreview:vi.fn(),revertApply:vi.fn(),refresh:vi.fn()}));
 vi.mock('../app/payroll/history-import/maintenance-actions',()=>({previewHistoryMaintenanceAction:mocks.preview,confirmHistoryMaintenanceAction:mocks.confirm}));
 vi.mock('../app/payroll/history-import/workflow-actions',()=>({confirmHistoryUploadAction:mocks.importConfirm,previewHistoryRevertAction:mocks.revertPreview,revertHistoryUploadAction:mocks.revertApply}));
 vi.mock('next/navigation',()=>({useRouter:()=>({refresh:mocks.refresh})}));
 const catalogues={en,ms,zh,ta,th,vi:viMessages};
 const wrap=(children:React.ReactNode,locale:keyof typeof catalogues='en')=><NextIntlClientProvider locale={locale} messages={catalogues[locale]}>{children}</NextIntlClientProvider>;
+// Compile the shared application stylesheet once as renderer setup. Its cold PostCSS cost
+// is not a user interaction/capture; every actual scenario keeps its existing 30-second deadline.
+beforeAll(async()=>{
+ if(process.env.GITHUB_ACTIONS==='true'&&process.env.AIHR_FOCUSED_EVIDENCE_DIR){const started=performance.now();await applicationCss();console.info('payroll-history-ui-renderer-css-ready-ms',Math.round(performance.now()-started));}
+},90000);
 beforeEach(()=>{mocks.preview.mockImplementation(async(input:PayrollHistoryMaintenanceRequest)=>{const plan=input.operation==='remove_batch'?maintenanceBatchPlan:input.operation==='remove_items'?maintenanceRemovalPlan:maintenanceEditPlan;return{ok:true,result:{attemptId:'review-attempt',plan:{...plan,maintenance:{...plan.maintenance!,reason:input.reason}}}};});mocks.revertPreview.mockResolvedValue({ok:true,result:{attemptId:'attempt-original',count:1,previewHash:'fictional-revert-hash',plan:maintenanceBatchPlan,impact:maintenanceDetail.impact}});mocks.confirm.mockResolvedValue({ok:true,completed:true});});
 afterEach(()=>{cleanup();vi.resetAllMocks();vi.unstubAllGlobals();});
 it('previews exact item/revision/reason, retains canonical unlisted totals and confirms only the current reviewed hash',async()=>{
