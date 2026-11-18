@@ -102,6 +102,10 @@ describe('Personnel to probation reconciliation',()=>{
   await starter();await owner.db.execute(sql`update probation_reconciliation_schedule set next_check_at=now(),last_success_at=null where tenant_id=${b.tenantId}::uuid`);
   await owner.db.execute(sql`select app.probation_reconciliation_schedule_tick()`);
   const[queued]=await owner.db.execute<{last_success_at:unknown}>(sql`select last_success_at from probation_reconciliation_schedule where tenant_id=${b.tenantId}::uuid`);expect(queued.last_success_at).toBeNull();
+  const[scanned]=await owner.db.execute<{pass_count:string}>(sql`select pass_count::text from probation_reconciliation_schedule where tenant_id=${b.tenantId}::uuid`);
+  await owner.db.execute(sql`update probation_reconciliation_schedule set next_check_at=now() where tenant_id=${b.tenantId}::uuid`);
+  await owner.db.execute(sql`select app.probation_reconciliation_schedule_tick()`);
+  expect((await owner.db.execute<{pass_count:string}>(sql`select pass_count::text from probation_reconciliation_schedule where tenant_id=${b.tenantId}::uuid`))[0].pass_count).toBe(scanned.pass_count);
   await drain();expect((await read()).lastSuccessfulCheck).toBeTruthy();
  });
  it('does not scan or claim a successful pass for a suspended tenant',async()=>{
