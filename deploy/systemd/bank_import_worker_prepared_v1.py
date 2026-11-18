@@ -137,6 +137,15 @@ def prepared_proof(base,ci,fmt,selected,identity,*,deadline,metadata=True):
     return proof,root,manifest
 
 
+def clean_prior(base,update,identity):
+    report=update.validate_existing(base,identity['previous_worker_source'],identity['unit_sha256'],identity['worker_env_sha256'])
+    expected={'MainPID':'0','ActiveState':'inactive','SubState':'dead','Result':'success','ExecMainStatus':'0','NRestarts':'0','UnitFileState':'enabled'}
+    base.check(all(report.get(key)==value for key,value in expected.items()),'prior managed worker is not the exact clean drain')
+    base.check(update.unit_or_identity_processes(__import__('pwd').getpwnam(base.USER).pw_uid)==[],'worker identity has an unexpected process')
+    base.check(not (base.ROOT/'releases'/identity['source']).exists(),'new worker release already exists')
+    return report
+
+
 def prepare(guard,fmt,base,ci,update):
     a=guard.a;p,operation=closed_preparation(base,ci,a);end=min(time.monotonic()+PREPARE_SECONDS,ci.epoch(a['expiresAt'])-time.time()+time.monotonic())
     base.check(ci.epoch(a['expiresAt'])<=ci.epoch(a['issuedAt'])+PREPARE_SECONDS,'finite preparation authority exceeds300s')
@@ -148,11 +157,7 @@ def prepare(guard,fmt,base,ci,update):
     base.check(ci.sha(raw)==p['drainSha256'] and drain['identity']==a['identity'] and drain['drain']['state']=='drained','actual original managed drain required')
     base.check(ci.epoch(first['issuedAt'])<=(operation/'drained.json').stat().st_mtime<=ci.epoch(first['expiresAt']),'original drain approval timing differs')
     args=SimpleNamespace(**a['identity'])
-    def prior():
-        report=update.validate_existing(base,args.previous_worker_source,args.unit_sha256,args.worker_env_sha256)
-        base.check(report['MainPID']=='0' and report['ActiveState']=='inactive' and report['NRestarts']=='0','prior worker is not exactly drained')
-        base.check(update.unit_or_identity_processes(__import__('pwd').getpwnam(base.USER).pw_uid)==[],'worker identity has an unexpected process')
-        base.check(not (base.ROOT/'releases'/args.source).exists(),'new worker release already exists')
+    def prior():return clean_prior(base,update,a['identity'])
     def state():
         guard.before_mutation();prior()
         if p['mode']=='normal':
@@ -211,15 +216,14 @@ def run(stage,guard,fmt,base,ci,update):
         if recovery is not None:
             native=ci.child([str(base.NODE),'--env-file=.env.production','--input-type=module','-e',FAILED_NATIVE_PROBE,str(observer.directory)],observer.owner,observer.environment,timeout=30)
             base.check(native['kind']=='EXACT_FAILED_NATIVE_WORKER_CHECK_INSTALL' and native['source']==identity['source'] and native['installId']==a['install']['id'] and native['active']['migrationLedger']['actualSha256']==a['ledger']['actualSha256'],'native original failed-install admission differs')
-        report=update.validate_existing(base,identity['previous_worker_source'],identity['unit_sha256'],identity['worker_env_sha256']);base.check(report['MainPID']=='0' and report['ActiveState']=='inactive' and report['NRestarts']=='0','prior managed worker no longer drained')
-        base.check(not (base.ROOT/'releases'/identity['source']).exists(),'new immutable worker release already exists')
+        clean_prior(base,update,identity)
         if recovery is not None:guard.file_mutation();operation.mkdir(mode=0o700)
         update.publish(base,operation/'ci-runtime-started.json',fmt.canonical({'authorizationSha256':ci.sha(guard.bytes),'journeyVerified':False}),0o400)
         observer.complete_fence();observer.content_audit();observer.complete_fence();observer.full_audit();observer.complete_fence();observer.admit_mutation()
         release=base.ROOT/'releases'/identity['source']
         def publish_prepared():
             # Same M0/45 slot covers this full metadata fence, atomic rename, unit replace and reload.
-            guard.file_mutation();fresh,root,_=prepared_proof(base,ci,fmt,selected,identity,deadline=ci.SLOT_DEADLINE)
+            guard.file_mutation();clean_prior(base,update,identity);fresh,root,_=prepared_proof(base,ci,fmt,selected,identity,deadline=ci.SLOT_DEADLINE)
             base.check(fresh==proof and root==directory and not release.exists(),'prepared publication changed')
             guard.file_mutation();os.rename(directory,release);return release
         return update.replace_and_start(base,fmt,args,operation,release,None,identity['unit_sha256'],{'manifestSha256':proof['manifestSha256'],'preparedProofSha256':selected['sha256'],'previousWebSource':identity['previous_web_source'],'previousWebBuildId':identity['previous_web_build'],'previousWorkerSource':identity['previous_worker_source'],'originalInstallationGrantExpiresAt':observer.grant['expiresAt'],'workerRecoveryOnly':recovery is not None},observer,prepare_release=publish_prepared)
