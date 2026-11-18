@@ -40959,6 +40959,19 @@
     "approverGroupFallback": "the posting approver group"
   },
   "probationLetters": {
+    "builder": {
+      "inventoryTitle": "Semakan penukaran · versi {version}",
+      "inventoryHelp": "Nilai dan sumber tandatangan tersimpan dikekalkan. Nilai belum dipetakan memerlukan semakan; surat diterbitkan mengekalkan tetapan sedia ada.",
+      "savedValue": "Nilai tersimpan",
+      "proposedValue": "Nilai Personnel dicadangkan",
+      "reviewRequired": "Perlu semakan",
+      "migrationTitle": "Semak peranan tandatangan sedia ada",
+      "migrationHelp": "Pilih peraturan atau kumpulan On/Off Boarding bagi setiap peranan tersimpan. Surat diterbitkan mengekalkan tetapan semasa sehingga pengganti lengkap diterbitkan.",
+      "currentSource": "Sumber semasa",
+      "chooseSource": "Pilih sumber On/Off Boarding",
+      "applyMapping": "Gunakan pemetaan disemak",
+      "sample": "Kes contoh rekaan — untuk pratonton sahaja."
+    },
     "routing": {
       "title": "Signing and review routing",
       "help": "Who reviews, approves and signs this letter, and in what order. Steps with the same order number happen at the same time, and the letter moves on when all of them are done. Who each step resolves to comes from Assignment groups and Routing rules. A Review step can edit the letter until the first signature; after that the text is locked. Anyone can send the letter back with a comment: every signature is cleared and it returns to the step that owns the document (or the People Business Partner if none is ticked).",

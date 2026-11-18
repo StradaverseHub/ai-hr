@@ -11,6 +11,8 @@ import {ProbationError} from '../lib/probation-model';
 import type {ProbationTemplate} from '../lib/probation-workflow';
 import {PROBATION_LETTER_KEYS} from '../lib/probation-letter-template';
 import {createSigningDocumentTx,readSigningDocumentTx,recordDocumentSigningActionTx,refreshCanonicalProbationSigningRouteTx,resendSigningDocumentTx,signingContentVisibleTx,canEditSigningContent,signingDocumentOwner,documentRoutingProblems,documentRoutingSignatureProblems,resolveDocumentRouting,type DocumentRouting,type DocumentRoutingWho} from '../packs/document-signing/service';
+import {resolveNativeDocumentRouting,type NativeDocumentRoutingFacts} from '../lib/document-signing-native-routing';
+import type {Routing as NativeRouting,Group as NativeGroup} from '../lib/onboarding-model';
 import {routedStepChooser,type RoutedAssignmentFacts} from '../lib/routed-step-assignment';
 import {documentRoutingSchema} from '../lib/document-signing-routing-schema';
 import {automationReferencesTx} from './automation-builder';
@@ -18,8 +20,8 @@ import {routedStepPeople,type Routing} from '../lib/automation/routing';
 const id=z.uuid(),json=(value:unknown)=>JSON.stringify(value);
 const base=v9ConfigSchema.shape.templates.element;
 const route=z.object({version:z.number().int().positive(),steps:z.array(z.object({id:z.string().min(1).max(120),role:z.enum(['lm','hod','pbp','employee']),kind:z.enum(['sign','acknowledge','approve']),stage:z.number().int().min(0).max(30),holderId:z.null(),holderPersonId:z.undefined().optional(),representedId:z.undefined().optional(),required:z.boolean()}).strict()).min(2).max(30)}).strict();
-const letterRules=base.shape.rules.pick({businessGroup:true,company:true,department:true,grade:true}).extend({businessUnit:z.array(z.string().min(1).max(200)).max(200).optional(),outcome:z.array(z.enum(['confirm','extend','not_confirm'])).max(3).optional(),extensionNumber:z.array(z.string().regex(/^[0-2]$/)).max(3).optional()}).strict();
-const templateSchema=base.omit({module:true}).extend({organisationMapping:z.enum(['legacy-v1','personnel-v2']).optional(),rules:letterRules,module:z.literal('probation'),outcome:z.enum(['confirm','extend','not_confirm']),unfinished:z.boolean(),blocks:base.shape.versions.element.shape.blocks,fields:base.shape.versions.element.shape.fields,route,routing:documentRoutingSchema.optional()}).strict();
+const letterRules=base.shape.rules.pick({businessGroup:true,company:true,department:true,grade:true,employmentType:true,title:true}).extend({businessUnit:z.array(z.string().min(1).max(200)).max(200).optional(),outcome:z.array(z.enum(['confirm','extend','not_confirm'])).max(3).optional(),extensionNumber:z.array(z.string().regex(/^[0-2]$/)).max(3).optional()}).strict();
+const templateSchema=base.omit({module:true}).extend({routingRegistry:z.enum(['shared','on-off-boarding']).optional(),routingMigration:z.object({sourceVersionId:z.uuid(),sourceVersion:z.number().int().positive(),reviewed:z.literal(true)}).strict().optional(),organisationMapping:z.enum(['legacy-v1','personnel-v2']).optional(),rules:letterRules,module:z.literal('probation'),outcome:z.enum(['confirm','extend','not_confirm']),unfinished:z.boolean(),blocks:base.shape.versions.element.shape.blocks,fields:base.shape.versions.element.shape.fields,route,routing:documentRoutingSchema.optional()}).strict();
 export type ProbationLetterDefinition={id:string;companyId:string;key:string;version:number;state:'draft'|'published'|'retired';retirementReason?:string|null;data:ProbationTemplate};
 export type ProbationLetterPreview={merge:Record<string,string>;blocks:Block[];fields:Field[];route:SigningRoute;guardrails:SigningGuardrails;companyId:string;employmentId:string;templateId:string;templateVersion:number;templateName?:string;outcomeRevision:number;sourceDigest:string};
 /** Who holds each step of a letter's route (5765, L3/L4): name and job title of the holder, the routing or group it was routed to. */
@@ -28,6 +30,8 @@ export type ProbationLetterView={signers?:Record<string,ProbationLetterSigner>;r
 function companyGate(ctx:SessionContext,companyId:string){if(ctx.entitlementsExempt===undefined)assertModuleEnabled(ctx,'lifecycle',companyId);}
 function validateTemplate(raw:unknown,publish:boolean):ProbationTemplate{
  const value=templateSchema.parse(raw) as ProbationTemplate;
+ // Explicit Publish is the review action; no separate wording-approved checkbox is required.
+ value.unfinished=false;
  if(value.type!=='Letter'||value.retired)throw new ProbationError('invalid','Choose an active outcome letter template.');
  if(new Set(value.blocks.map(b=>b.id)).size!==value.blocks.length||new Set(value.fields.map(f=>f.id)).size!==value.fields.length)throw new ProbationError('invalid','Document blocks and fields need unique identities.');
  const fieldIds=new Set(value.fields.map(f=>f.id)),keys=new Set<string>([...PROBATION_LETTER_KEYS,...fieldIds]);
@@ -39,21 +43,28 @@ function validateTemplate(raw:unknown,publish:boolean):ProbationTemplate{
  // A routed version (non-empty signing and review routing) links its signature blocks to its Sign steps instead
  // (checked against current routings, groups and people in the saving transaction: probationLetterRoutingProblemsTx).
  const routed=!!(value as ProbationTemplate&{routing?:DocumentRouting}).routing?.length;
- if(publish&&(value.unfinished||!value.blocks.some(b=>b.type==='text'&&b.text.trim())||!routed&&(!value.blocks.some(b=>b.type==='signature'&&b.role==='hr')||!value.blocks.some(b=>b.type==='signature'&&b.role==='employee'))))throw new ProbationError('invalid','Complete and review the letter wording and both signature blocks before publishing.');
+ if(publish&&(!value.blocks.some(b=>b.type==='text'&&b.text.trim())||!routed&&(!value.blocks.some(b=>b.type==='signature'&&b.role==='hr')||!value.blocks.some(b=>b.type==='signature'&&b.role==='employee'))))throw new ProbationError('invalid','Complete the letter wording and required signature blocks before publishing.');
  return value;
 }
 export function probationLetterTemplates(ctx:SessionContext,companyId:string){return withScopedLifecycleTenant(ctx,async tx=>{companyGate(ctx,id.parse(companyId));return tx.execute<ProbationLetterDefinition>(sql`select id,company_id as "companyId",definition_key as key,version,state,case when app.probation_config_admin(company_id) then retirement_reason end as "retirementReason",data from probation_builder_definition where tenant_id=${ctx.tenantId}::uuid and company_id=${companyId}::uuid and kind='template' order by definition_key,version desc`);});}
 export function saveProbationLetterTemplate(ctx:SessionContext,input:{companyId:string;template:unknown;publish:boolean;expectedVersion:number}){return withScopedLifecycleTenant(ctx,async tx=>{
  companyGate(ctx,id.parse(input.companyId));const template=validateTemplate(input.template,input.publish);z.number().int().nonnegative().parse(input.expectedVersion);
- const problems=await probationLetterRoutingProblemsTx(tx,template);if(problems.length)throw new ProbationError('invalid',problems[0]);
+ const problems=await probationLetterRoutingProblemsTx(tx,template,input.companyId);if(problems.length)throw new ProbationError('invalid',problems[0]);
  const[row]=await tx.execute<{id:string}>(sql`select app.probation_definition_save(${input.companyId}::uuid,${template.id},'template',${json(template)}::jsonb,${input.publish},${input.expectedVersion}) as id`);return row.id;
 });}
 /** Routing problems of a template version, in the caller's transaction. Empty for a version without routing (today's behaviour). */
-export async function probationLetterRoutingProblemsTx(tx:Tx,template:ProbationTemplate&{routing?:DocumentRouting}):Promise<string[]>{
+export async function probationLetterRoutingProblemsTx(tx:Tx,template:ProbationTemplate&{routing?:DocumentRouting},companyId?:string):Promise<string[]>{
  const routing=template.routing??[];if(!routing.length)return[];
- const refs=await automationReferencesTx(tx,[...new Set(routing.flatMap(step=>step.who.kind==='people'?step.who.userIds:[]))]);
+ const people=[...new Set(routing.flatMap(step=>step.who.kind==='people'?step.who.userIds:[]))];
+ const refs=template.routingRegistry==='on-off-boarding'&&companyId?await probationNativeRoutingReferencesTx(tx,companyId,people):await automationReferencesTx(tx,people);
  return[...documentRoutingProblems(routing,refs),...documentRoutingSignatureProblems(routing,template.blocks)];
 }
+export async function probationNativeRoutingReferencesTx(tx:Tx,companyId:string,people:readonly string[]=[]){
+ const[row]=await tx.execute<{data:{routings:NativeRouting[];groups:NativeGroup[]}}>(sql`select app.probation_native_document_routing_references(${id.parse(companyId)}::uuid) as data`);
+ const persons=people.length?await tx.execute<{id:string}>(sql`select u.id from app_user u join person p on p.id=u.person_id and p.tenant_id=u.tenant_id where u.tenant_id=app.current_tenant_id() and u.id=any(array[${sql.join(people.map(value=>sql`${id.parse(value)}::uuid`),sql`, `)}]::uuid[]) and u.archived_at is null and not app.login_blocked(u.id) and app.access_workforce_person(p.id,'workforce.view')`):[];
+ return {...row.data,routingExists:(value:string)=>row.data.routings.some(routing=>routing.id===value),groupExists:(value:string)=>row.data.groups.some(group=>group.id===value),personExists:(value:string)=>persons.some(person=>person.id===value)};
+}
+export function probationNativeDocumentRoutingChoices(ctx:SessionContext,companyId:string){return withScopedLifecycleTenant(ctx,async tx=>{companyGate(ctx,id.parse(companyId));const refs=await probationNativeRoutingReferencesTx(tx,companyId);return{routings:refs.routings.map(routing=>({id:routing.id,name:routing.name})),groups:refs.groups.map(group=>({id:group.id,name:group.name}))};});}
 export type ProbationLetterChoices={templates:{id:string;familyId:string;version:number;name:string;score:number}[];suggestedTemplateId:string|null;tie:boolean};
 export function probationLetterTemplateChoices(ctx:SessionContext,outcomeId:string){return withScopedLifecycleTenant(ctx,async tx=>{const[row]=await tx.execute<{data:ProbationLetterChoices}>(sql`select app.probation_letter_template_choices(${id.parse(outcomeId)}::uuid) as data`);return row.data;});}
 async function previewTx(tx:Tx,ctx:SessionContext,input:{outcomeId:string;templateId:string;edits:Record<string,string>;revision:number}){
@@ -91,7 +102,7 @@ export async function prepareProbationLetterTx(tx:Tx,ctx:SessionContext,input:Pa
  await emitLetterEventTx(tx,ctx,{caseId:null,partId:row.data.partId,name:preview.templateName??null,document:created.document});
  return{partId:row.data.partId,outcomeRevision:row.data.outcomeRevision,documentId:created.id};
 }
-type LetterRoutingContext={employeeUserId:string|null;directSuperiorUserId:string|null;caseOwnerId:string|null;fallbackGroupId:string|null;facts:{businessGroup:string|null;businessGroupCompany:string|null;company:string|null;department:string|null;jobTitle:string|null};routings:Routing[];groups:{id:string;members:string[]}[];recent:Record<string,number>};
+type LetterRoutingContext={employeeUserId:string|null;directSuperiorUserId:string|null;caseOwnerId:string|null;fallbackGroupId:string|null;facts:{businessGroup:string|null;businessGroupCompany:string|null;company:string|null;department:string|null;jobTitle:string|null};routings:Routing[];groups:{id:string;members:string[]}[];recent:Record<string,number>;nativeRoutings?:NativeRouting[];nativeFacts?:NativeDocumentRoutingFacts};
 /** Plain description of who a step was meant for, recorded when the fallback group takes it (no personal data). */
 function describeWho(who:DocumentRoutingWho,routings:Routing[]):string{
  if(who.kind==='employee')return 'The employee';if(who.kind==='directSuperior')return 'Their Direct Superior';
@@ -99,8 +110,9 @@ function describeWho(who:DocumentRoutingWho,routings:Routing[]):string{
  if(who.kind==='group')return `The assignment group ${who.groupId}`;return 'The named people';
 }
 /** The V9 assignment owner's chooser over this case's groups and named people (5755). */
-export async function routedStepChooserTx(tx:Tx,caseId:string,groupIds:readonly string[],people:readonly string[]){
- const[row]=await tx.execute<{data:RoutedAssignmentFacts}>(sql`select app.probation_assignment_facts(${caseId}::uuid,${`{${[...new Set(groupIds)].map(id=>'"'+id.replace(/["\\]/g,'')+'"').join(',')}}`}::text[],${`{${[...new Set(people)].join(',')}}`}::uuid[]) as data`);
+export async function routedStepChooserTx(tx:Tx,caseId:string,groupIds:readonly string[],people:readonly string[],native=false){
+ const groups=`{${[...new Set(groupIds)].map(id=>'"'+id.replace(/["\\]/g,'')+'"').join(',')}}`,persons=`{${[...new Set(people)].join(',')}}`;
+ const[row]=native?await tx.execute<{data:RoutedAssignmentFacts}>(sql`select app.probation_native_assignment_facts(${caseId}::uuid,${groups}::text[],${persons}::uuid[]) as data`):await tx.execute<{data:RoutedAssignmentFacts}>(sql`select app.probation_assignment_facts(${caseId}::uuid,${groups}::text[],${persons}::uuid[]) as data`);
  return routedStepChooser(row.data);
 }
 /**
@@ -111,13 +123,16 @@ export async function routedStepChooserTx(tx:Tx,caseId:string,groupIds:readonly 
  * takes the step, chosen the same way, and the step records who it was meant for and why.
  */
 async function freezeLetterRoutingTx(tx:Tx,partId:string,routing:DocumentRouting){
- const[context]=await tx.execute<{data:LetterRoutingContext}>(sql`select app.probation_letter_routing_context(${partId}::uuid) as data`);
+ const[definition]=await tx.execute<{registry:string|null}>(sql`select t.data->>'routingRegistry' as registry from probation_part p join probation_builder_definition t on t.id=(p.data->>'letterTemplateId')::uuid and t.tenant_id=p.tenant_id where p.id=${partId}::uuid and p.tenant_id=app.current_tenant_id()`);
+ const[context]=definition?.registry==='on-off-boarding'?await tx.execute<{data:LetterRoutingContext}>(sql`select app.probation_letter_native_routing_context(${partId}::uuid) as data`):await tx.execute<{data:LetterRoutingContext}>(sql`select app.probation_letter_routing_context(${partId}::uuid) as data`);
  const c=context.data,groups=new Map(c.groups.map(g=>[g.id,g.members])),routings=new Map(c.routings.map(r=>[r.id,r]));
  const[part]=await tx.execute<{caseId:string}>(sql`select case_id as "caseId" from probation_part where id=${partId}::uuid and tenant_id=app.current_tenant_id()`);
  // I8: people named on the matching row of a routing are eligible facts too, not only people named on the step.
- const chooser=await routedStepChooserTx(tx,part.caseId,[...groups.keys()],routedStepPeople(routing,id=>routings.get(id)??null,{businessGroup:[c.facts.businessGroup,c.facts.businessGroupCompany].filter((v):v is string=>!!v),company:c.facts.company,department:c.facts.department,jobTitle:c.facts.jobTitle}));
+ const people=routedStepPeople(routing,id=>routings.get(id)??null,{businessGroup:[c.facts.businessGroup,c.facts.businessGroupCompany].filter((value):value is string=>!!value),company:c.facts.company,department:c.facts.department,jobTitle:c.facts.jobTitle});
+ const chooser=await routedStepChooserTx(tx,part.caseId,[...groups.keys()],people,!!c.nativeRoutings);
  const fallbackMembers=c.fallbackGroupId?groups.get(c.fallbackGroupId)??[]:[];
- const resolved=resolveDocumentRouting(routing,{employeeUserId:c.employeeUserId,directSuperiorUserId:c.directSuperiorUserId,facts:{businessGroup:[c.facts.businessGroup,c.facts.businessGroupCompany].filter((v):v is string=>!!v),company:c.facts.company,department:c.facts.department,jobTitle:c.facts.jobTitle},
+ const nativeGroups=c.groups.map(group=>({...group,name:group.id,limit:0}));
+ const resolved=resolveDocumentRouting(routing,{...(c.nativeRoutings&&c.nativeFacts?{nativeRouting:(value:string)=>{const native=c.nativeRoutings!.find(routing=>routing.id===value);return native?resolveNativeDocumentRouting(native,c.nativeFacts!,nativeGroups,userId=>chooser.available(userId)):{userIds:[],groupId:null,reason:'The On/Off Boarding routing no longer exists.'};}}:{}),employeeUserId:c.employeeUserId,directSuperiorUserId:c.directSuperiorUserId,facts:{businessGroup:[c.facts.businessGroup,c.facts.businessGroupCompany].filter((v):v is string=>!!v),company:c.facts.company,department:c.facts.department,jobTitle:c.facts.jobTitle},
   routing:id=>routings.get(id)??null,groupMembers:id=>groups.get(id)??null,choose:chooser.choose,choiceProblem:chooser.problem,fallback:c.fallbackGroupId?{groupId:c.fallbackGroupId,members:fallbackMembers}:null,describe:who=>describeWho(who,c.routings)});
  await tx.execute(sql`select app.probation_letter_freeze_route(${partId}::uuid,${json(resolved.route)}::jsonb,${json(resolved.unresolved)}::jsonb)`);
  return{route:resolved.route,caseOwnerId:c.caseOwnerId,fallbackGroupId:c.fallbackGroupId};

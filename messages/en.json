@@ -40959,6 +40959,19 @@
     "approverGroupFallback": "the posting approver group"
   },
   "probationLetters": {
+    "builder": {
+      "inventoryTitle": "Conversion review · version {version}",
+      "inventoryHelp": "Saved values and signing sources are retained. Unmapped values need explicit review; published letters keep their existing setup.",
+      "savedValue": "Saved value",
+      "proposedValue": "Proposed Personnel value",
+      "reviewRequired": "Review required",
+      "migrationTitle": "Review existing signing roles",
+      "migrationHelp": "Choose the On/Off Boarding rule or group for each saved role. Published letters keep their current setup until a complete replacement is published.",
+      "currentSource": "Current source",
+      "chooseSource": "Choose an On/Off Boarding source",
+      "applyMapping": "Use reviewed mapping",
+      "sample": "Fictional sample case — preview only."
+    },
     "routing": {
       "title": "Signing and review routing",
       "help": "Who reviews, approves and signs this letter, and in what order. Steps with the same order number happen at the same time, and the letter moves on when all of them are done. Who each step resolves to comes from Assignment groups and Routing rules. A Review step can edit the letter until the first signature; after that the text is locked. Anyone can send the letter back with a comment: every signature is cleared and it returns to the step that owns the document (or the People Business Partner if none is ticked).",
