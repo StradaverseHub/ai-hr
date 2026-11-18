@@ -1,3 +1,4 @@
+import {updatePersonnelCompletionTx} from './personnel-completion';
 import {communicationPreviewSource,type WorkflowPreviewContext} from '../../../lib/lifecycle-case-preview';
 import {reviseV9DocumentRouting} from '../../../lib/lifecycle-v9-document-routing';
 import {documentRoutingProblems,resolveDocumentRouting} from '../../../lib/document-signing-routing';
@@ -634,6 +635,7 @@ export type Command = CaseNoteCommand
   | { type: 'documentTextEdit'; id: string; edits: Record<string, string> }
   | { type: 'documentFillPersonnel'; id: string; values: Record<string, string> }
   | { type: 'documentSave'; id: string; values: Record<string, string> }
+  | {type:'documentCompletionOverride';id:string;fieldId:string;owner:'employee'|'hr';reason:string}
   | { type: 'documentSignatory'; id:string; userId:string }
   | { type: 'documentSign'; id: string; signature: Pick<M.Signature, 'method' | 'value' | 'consent'> }
   | { type: 'documentRefresh' | 'documentRegenerate'; id: string }
@@ -675,6 +677,7 @@ const commandSchema = z.discriminatedUnion('type', [
   z.object({ type: z.literal('emailEdit'), emailId: commandId, subject: z.string().min(1).max(1000), body: z.string().max(20000) }).strict(),
   z.object({ type: z.literal('documentTextEdit'), id: commandId, edits: z.record(commandId, z.string().max(20000)).refine(value => Object.keys(value).length <= 500) }).strict(),
   z.object({ type: z.literal('documentFillPersonnel'), id: commandId, values: z.record(z.string().max(80), z.string().max(20000)) }).strict(),
+  z.object({type:z.literal('documentCompletionOverride'),id:commandId,fieldId:commandId,owner:z.enum(['employee','hr']),reason:reasonText}).strict(),
   z.object({ type: z.literal('documentSave'), id: commandId, values: z.record(commandId, z.string().max(20000)) }).strict(),
   z.object({type:z.literal('documentSignatory'),id:commandId,userId:z.string().uuid()}).strict(),
   z.object({ type: z.literal('documentSign'), id: commandId, signature: z.object({ method: z.enum(['typed', 'drawn']), value: z.string().min(1).max(500000), consent: z.literal(true) }).strict() }).strict(),
@@ -695,7 +698,9 @@ export async function v9Command(ctx: SessionContext, id: string, revision: numbe
     const row = await load(tx, ctx, id); if (row.revision !== revision) throw new M.V9Error('This case changed. Refresh before trying again.', 'conflict');
     const config = await configTx(tx, ctx); if (!config) throw new M.V9Error('V9 configuration is unavailable.');
     const c = structuredClone(row.data); let env = await environment(tx, ctx, c, config);
-    if (row.native && !['generate', 'emailSend', 'emailTest', 'emailEdit', 'emailRetry', 'emailReplace', 'documentTextEdit', 'documentFillPersonnel', 'documentSave', 'documentSignatory', 'documentSign', 'documentRefresh', 'documentRegenerate', 'runWorkflows', 'retryWorkflow', 'lateEmail', 'startWorkflow', 'testWorkflow', 'pmKeep', 'pmPush', 'pmPushSelected', 'recipientsOverride'].includes(command.type)) throw new M.V9Error('Use the onboarding case controls for this change.');
+    if(command.type==='documentCompletionOverride'){await updatePersonnelCompletionTx(tx,{caseId:id,revision,documentId:command.id,override:{fieldId:command.fieldId,owner:command.owner,reason:command.reason}},'override');return;}
+    if((command.type==='documentSave'||command.type==='documentRefresh')&&c.documents.find(document=>document.id===command.id)?.personnelCompletion){await updatePersonnelCompletionTx(tx,{caseId:id,revision,documentId:command.id,...(command.type==='documentSave'?{values:command.values}:{})},command.type==='documentSave'?'save':'refresh');return;}
+    if (row.native && !['generate', 'emailSend', 'emailTest', 'emailEdit', 'emailRetry', 'emailReplace', 'documentTextEdit', 'documentFillPersonnel', 'documentCompletionOverride', 'documentSave', 'documentSignatory', 'documentSign', 'documentRefresh', 'documentRegenerate', 'runWorkflows', 'retryWorkflow', 'lateEmail', 'startWorkflow', 'testWorkflow', 'pmKeep', 'pmPush', 'pmPushSelected', 'recipientsOverride'].includes(command.type)) throw new M.V9Error('Use the onboarding case controls for this change.');
     if (row.native && ['pmPush', 'pmPushSelected'].includes(command.type) && !c.facts.employmentId) throw new M.V9Error('Activate this Personnel draft before applying its proposed changes.');
     if(command.type==='note')changeV9Note(c,env,command);
     if(command.type==='returnSelections'){

@@ -22,6 +22,7 @@ export type PersonnelCompletionEntry={key:string|null;group:PersonnelCompletionG
  conflict?:{draft:string;official:string;at:string};};
 export type PersonnelCompletionPolicy={version:1;classification:typeof PERSONNEL_COMPLETION_CLASSIFICATION;country:string|null;sourceFingerprint:string;
  adoptedAt:string;adoptedBy:Actor;fields:Record<string,PersonnelCompletionEntry>;
+ preparation?:{at:string;by:Actor};submitted?:{at:string;by:Actor;sourceFingerprint:string};
  history:{fieldId:string;action:'override'|'reconciled';by:Actor;at:string;before:string;after:string;reason:string}[];};
 export type CompletionDocument=Pick<Document,'fields'|'values'|'status'|'sentAt'|'employeeSignature'|'hrSignature'|'signing'>&{personnelCompletion?:PersonnelCompletionPolicy};
 export function personnelCompletionGroup(key:string|null|undefined):PersonnelCompletionGroup{return key&&Object.hasOwn(personnelCompletionClassification,key)?personnelCompletionClassification[key as keyof typeof personnelCompletionClassification]:'unknown';}
@@ -50,6 +51,7 @@ export function overridePersonnelCompletion(document:CompletionDocument,input:{f
  if(!input.reason.trim())throw new Error('Record why completion is changing.');
  const before=effectivePersonnelCompletion(document,field);
  if(before!==input.owner){document.values[field.id]='';delete entry.answer;}
+ delete document.personnelCompletion!.submitted;
  entry.override={owner:input.owner,reason:input.reason.trim(),by:{...input.actor},at:input.at};
  document.personnelCompletion!.history.push({fieldId:field.id,action:'override',by:{...input.actor},at:input.at,before,after:input.owner,reason:input.reason.trim()});
 }
@@ -67,7 +69,7 @@ export function reconcilePersonnelCompletion(document:CompletionDocument,input:{
   policy.history.push({fieldId:field.id,action:'reconciled',by:{...input.actor},at:input.at,before:entry.sourceValue,after:official,reason:'Current authorized Personnel source'});
   entry.sourceValue=official;entry.sourceFingerprint=input.sourceFingerprint;changed=true;
  }
- if(changed)policy.sourceFingerprint=input.sourceFingerprint;return changed;
+ if(changed){policy.sourceFingerprint=input.sourceFingerprint;delete policy.submitted;}return changed;
 }
 /** Full numbering-plan metadata, with an evidenced company jurisdiction for national numbers. No length-only inference. */
 export function normalizeCompletionPhone(value:string,country:string|null):string{
@@ -95,6 +97,7 @@ export function savePersonnelCompletionAnswer(document:CompletionDocument,field:
  validatePersonnelCompletionScalar(field,value,policy!.country);
  if(field.type==='phone')value=normalizeCompletionPhone(value,policy!.country);
  document.values[field.id]=value;
+ delete policy!.submitted;
  entry.answer={value,owner:input.owner,by:{...input.actor},at:input.at};
  if(input.owner==='employee')entry.draft={value,by:{...input.actor},at:input.at};
 }

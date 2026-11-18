@@ -3,6 +3,7 @@ import type {Document,Case,TemplateVersion,Environment,Signature} from './lifecy
 import {V9Error,personnelFieldSourceValue} from './lifecycle-v9-model';
 import {canEditSigningContent,signingContentLocked,currentRoundActions,recordSigningAction,resendSigningDocument,reviseSigningDocument,signingComplete,signingSendBack,signingStepFulfilled,validateSigningRoute,type SigningDocument,type SigningRoute,type SigningAction} from './document-signing-model';
 import type {DocumentRouting,DocumentRoutingUnresolved} from './document-signing-routing';
+import {personnelCompletionIssues} from './lifecycle-v9-personnel-completion';
 
 export type V9DocumentRoutingEnvironment={tenantId:string;personnelSource?:Record<string,string>;sourceUnavailable?:boolean;hash:(content:string)=>string;resolve:(routing:DocumentRouting)=>{route:SigningRoute;unresolved:DocumentRoutingUnresolved[]}};
 export const V9_DOCUMENT_SIGNING_RULES={requiredRoles:[]};
@@ -15,7 +16,7 @@ export function v9SigningCanonicalText(value:unknown):string{
  const compare=(a:string,b:string)=>{const x=bytes(a),y=bytes(b);if(x.length!==y.length)return x.length-y.length;for(let i=0;i<x.length;i++)if(x[i]!==y[i])return x[i]-y[i];return 0;};
  return '{'+Object.keys(value).filter(key=>Reflect.get(value,key)!==undefined).sort(compare).map(key=>JSON.stringify(key)+': '+v9SigningCanonicalText(Reflect.get(value,key))).join(', ')+'}';
 }
-export function v9DocumentSigningContent(document:Document){return {templateId:document.templateId,version:document.version,blocks:document.blocks,fields:document.fields,values:document.values,edits:document.edits,mergeValues:document.mergeValues??{},...(document.personnelSourceReference?{personnelSourceReference:document.personnelSourceReference}:{})};}
+export function v9DocumentSigningContent(document:Document){return {templateId:document.templateId,version:document.version,blocks:document.blocks,fields:document.fields,values:document.values,edits:document.edits,mergeValues:document.mergeValues??{},...(document.personnelSourceReference?{personnelSourceReference:document.personnelSourceReference}:{}),...(document.personnelCompletion?{personnelCompletion:document.personnelCompletion}:{})};}
 export function initializeV9DocumentRouting(c:Case,version:TemplateVersion,document:Document,env:Environment){
  if(!version.routing?.length)return;
  if(!env.documentRouting)throw new V9Error('Signing route resolution is unavailable.','conflict');
@@ -57,6 +58,7 @@ export function synchronizeV9SigningPresentation(document:Document){
 }
 export function recordV9DocumentRouteAction(document:Document,input:{id:string;stepId:string;revision:number;hash:string;action:'signed'|'returned'|'reviewed'|'approved'|'resent';comment?:string;signature?:Pick<Signature,'method'|'value'|'consent'>},actor:{id:string;personId:string;name:string},at:string):SigningAction{
  if(!document.signing)throw new V9Error('This document uses its existing signing process.','conflict');
+ if(input.action==='signed'&&document.personnelCompletion){const issue=personnelCompletionIssues(document,{final:true})[0];if(issue)throw new V9Error(issue.message);}
  const next=input.action==='resent'?resendSigningDocument(document.signing,{id:input.id,actorId:actor.id,actorPersonId:actor.personId,actorName:actor.name,comment:input.comment,at}):recordSigningAction(document.signing,V9_DOCUMENT_SIGNING_RULES,{id:input.id,stepId:input.stepId,revision:input.revision,hash:input.hash,action:input.action,actorId:actor.id,actorPersonId:actor.personId,actorName:actor.name,comment:input.comment,at,...input.signature});
  const action=next.actions.find(action=>action.id===input.id)!;document.signing=next;synchronizeV9SigningPresentation(document);return action;
 }

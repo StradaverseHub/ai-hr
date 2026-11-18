@@ -1,4 +1,4 @@
-import type {PersonnelCompletionPolicy} from './lifecycle-v9-personnel-completion';
+import {initializePersonnelCompletion,effectivePersonnelCompletion,missingPersonnelCompletion,overridePersonnelCompletion,reconcilePersonnelCompletion,personnelCompletionLocked,savePersonnelCompletionAnswer,personnelCompletionIssues,personnelCompletionMergeValues,personnelCompletionEmployeeAnswers,type PersonnelCompletionPolicy} from './lifecycle-v9-personnel-completion';
 import {initializeV9DocumentRouting,reviseV9DocumentRouting,v9RouteReadyForEmployee,v9RoutedHrComplete,type V9DocumentRoutingEnvironment} from './lifecycle-v9-document-routing';
 import {canEditSigningContent,type SigningDocument} from './document-signing-model';
 import type {DocumentRouting,DocumentRoutingUnresolved} from './document-signing-routing';
@@ -219,6 +219,8 @@ export type Config = {
 export type Environment = {
   today: string; now: string; actor: Actor; nextId: () => string;
   documentRouting?:V9DocumentRoutingEnvironment;
+  /** Canonical, authorized source; absence deliberately preserves legacy pure-model callers. */
+  personnelCompletion?:{country:string|null;source:Record<string,string>;fingerprint:(values:Record<string,string>,country:string|null)=>string};
   onLeave: (userId: string, date: string) => boolean;
   openLoad: (userId: string, groupId: string) => number;
   lastAssigned: (userId: string, groupId: string) => number;
@@ -415,6 +417,12 @@ export function generate(c: Case, config: Config, templateId: string, env: Envir
   const values: Record<string, string> = {};
   for (const field of version.fields) if (field.pmKey) values[field.id] = personnelFieldSourceValue(field, env.mergeValues);
   const doc: Document = { id: env.nextId(), templateId, version: version.version, name: template.name, status: 'draft', blocks: structuredClone(version.blocks), fields: structuredClone(version.fields), values, edits: {}, hrSignature: null, employeeSignature: null, createdAt: env.now, sentAt: null, mergeValues: documentMergeValues(version,env.mergeValues), templateType: template.type, hrStep: template.hrStep, employeeAck: template.employeeAck, signatoryUserId: env.signatoryUserId ?? null };
+  if(env.personnelCompletion&&doc.fields.some(field=>field.owner==='pmLocked')){
+    const source=env.personnelCompletion.source;
+    if(source._identityFieldsWithheld==='true'&&doc.fields.some(field=>['personalEmail','employee.icNo','employee.passportNo'].includes(field.pmKey??'')))throw new V9Error('Permission to view protected Personnel identity fields is required for this document.','forbidden');
+    const official=Object.fromEntries(doc.fields.filter(field=>field.owner==='pmLocked').map(field=>[field.id,personnelFieldSourceValue(field,source)]));
+    initializePersonnelCompletion(doc,{country:env.personnelCompletion.country,sourceFingerprint:env.personnelCompletion.fingerprint(official,env.personnelCompletion.country),officialValues:official,actor:env.actor,at:env.now});
+  }
   initializeV9DocumentRouting(c,version,doc,env);
   c.documents.push(doc); appendLog(c, env, 'document.generated', `${doc.name} version ${doc.version}`); return doc;
 }
@@ -444,19 +452,41 @@ export function documentDeliveryReserved(c: Pick<Case, 'mails'>, documentId: str
   return c.mails.some(mail => !mail.test && ['pending', 'sending', 'uncertain'].includes(mail.status) && mail.documentIds.includes(documentId));
 }
 export function missingDocumentPersonnelValues(doc: Document): string[] {
-  const values = { ...doc.mergeValues, ...doc.values };
+  const values = { ...doc.mergeValues,...personnelCompletionMergeValues(doc), ...doc.values };
   const missing = doc.blocks.flatMap(block => [
     doc.edits[block.id] ?? block.text, block.rows ?? '', block.label ?? '',
   ].flatMap(text => merge(text, values).missing));
   for (const field of doc.fields) {
-    if (field.owner === 'pmLocked' && field.pmKey && !doc.values[field.id]?.trim() &&
+    if (field.owner === 'pmLocked' && effectivePersonnelCompletion(doc,field)!=='employee' && field.pmKey && !doc.values[field.id]?.trim() &&
         (!field.when || doc.values[field.when.field] === field.when.value) &&
         doc.blocks.some(block => block.type === 'field' && block.fieldId === field.id ||
           block.type === 'fields' && block.section === field.section)) missing.push(field.pmKey);
   }
-  return [...new Set(missing)].filter(key => personnelMergeLabels.has(key));
+  return [...new Set(missing)].filter(key => personnelMergeLabels.has(key)&&!doc.fields.some(field=>field.pmKey===key&&effectivePersonnelCompletion(doc,field)==='employee'));
+}
+export function refreshDocumentPersonnelCompletion(doc:Document,env:Environment):boolean{
+  if(!doc.personnelCompletion||personnelCompletionLocked(doc))return false;
+  if(!env.personnelCompletion)throw new V9Error('Current Personnel values are unavailable. Refresh before continuing.','conflict');
+  const values=Object.fromEntries(doc.fields.filter(field=>field.owner==='pmLocked').map(field=>[field.id,personnelFieldSourceValue(field,env.personnelCompletion!.source)]));
+  return reconcilePersonnelCompletion(doc,{values,sourceFingerprint:env.personnelCompletion.fingerprint(values,doc.personnelCompletion.country),actor:env.actor,at:env.now});
+}
+export function overrideDocumentPersonnelCompletion(c:Case,id:string,input:{fieldId:string;owner:'employee'|'hr';reason:string},env:Environment){
+  const doc=c.documents.find(document=>document.id===id);if(!doc)throw new V9Error('Document not found.','not_found');
+  if(c.state!=='submitted'||documentDeliveryReserved(c,id))throw new V9Error('This document is no longer editable.','conflict');
+  refreshDocumentPersonnelCompletion(doc,env);overridePersonnelCompletion(doc,{...input,actor:env.actor,at:env.now});reviseV9DocumentRouting(doc,env);
+  appendLog(c,env,'document.completionOwnerChanged',`${doc.name}: ${input.fieldId}; ${input.reason.trim()}`);
+}
+export function submitDocumentPersonnelCompletion(c:Case,id:string,env:Environment){
+  const doc=c.documents.find(document=>document.id===id);if(!doc?.personnelCompletion)throw new V9Error('This document has no Personnel completion request.','not_found');
+  refreshDocumentPersonnelCompletion(doc,env);
+  const issue=personnelCompletionIssues(doc,{owner:'employee',final:true})[0];if(issue)throw new V9Error(issue.message);
+  if(personnelCompletionLocked(doc))throw new V9Error('Signed content is locked.','conflict');
+  doc.personnelCompletion.submitted={at:env.now,by:{...env.actor},sourceFingerprint:doc.personnelCompletion.sourceFingerprint};
+  for(const answer of personnelCompletionEmployeeAnswers(doc,env.actor.id))if(!c.pmChanges.some(change=>change.documentId===id&&change.field===answer.key))c.pmChanges.push({id:env.nextId(),documentId:id,field:answer.key,before:'',after:answer.value,sourceRevision:c.sourceRevision,status:'proposed',provenance:{kind:'missing-personnel',version:1,by:{...answer.by},at:answer.at}});
+  reviseV9DocumentRouting(doc,env,true);appendLog(c,env,'document.completionSubmitted',doc.name);
 }
 function documentPersonnelHold(doc: Document): string | null {
+  if(doc.personnelCompletion){const missing=missingPersonnelCompletion(doc,'hr');if(missing.length)return 'Complete missing Personnel values for '+doc.name+': '+missing.map(field=>field.label).join(', ')+'.';}
   const missing = missingDocumentPersonnelValues(doc);
   return missing.length ? 'Complete missing Personnel values for ' + doc.name + ': ' +
     missing.map(key => personnelMergeLabels.get(key)).join(', ') + '.' : null;
@@ -487,18 +517,19 @@ export function fillDocumentPersonnelValues(c: Case, id: string, values: Record<
 }
 export function saveDocument(c: Case, id: string, values: Record<string, string>, owner: 'employee' | 'hr', env: Environment): void {
   const doc = c.documents.find(d => d.id === id); if (!doc) throw new V9Error('Document not found.', 'not_found');
+  refreshDocumentPersonnelCompletion(doc,env);
   if(doc.signing&&!canEditSigningContent(doc.signing,env.actor.id)&&owner==='hr')throw new V9Error('The document is locked or it is not your turn to edit.','forbidden');
   if(doc.signing&&owner==='employee'&&doc.signing.actions.some(action=>action.action==='signed'&&action.contentHash===doc.signing!.contentHash))throw new V9Error('Signed document content is locked.','conflict');
   if (owner === 'employee' && doc.templateType === 'Attachment') throw new V9Error('Attachments are read-only PDFs.', 'forbidden');
   if (c.state !== 'submitted' || documentFinal(doc) || ['withdrawn', 'superseded'].includes(doc.status)) throw new V9Error('This document is no longer editable.', 'conflict');
-  if (owner === 'hr' && !doc.signing && doc.status !== 'draft') throw new V9Error('Released document fields are frozen. Prepare a new document to make this correction.', 'conflict');
+  if (owner === 'hr' && !doc.signing && !doc.personnelCompletion && doc.status !== 'draft') throw new V9Error('Released document fields are frozen. Prepare a new document to make this correction.', 'conflict');
   if (owner === 'hr' && documentDeliveryReserved(c, id)) throw new V9Error('This document is frozen for email delivery.', 'conflict');
   if (owner === 'hr' && (doc.hrSignature || doc.employeeSignature)) throw new V9Error('Signed document fields are frozen. Prepare a new document to make this correction.', 'conflict');
-  if (owner === 'employee' && !doc.signing && !['sent', 'opened'].includes(doc.status)) throw new V9Error('This document has not been released to you.');
+  if (owner === 'employee' && !doc.signing && !doc.personnelCompletion?.preparation && !['sent', 'opened'].includes(doc.status)) throw new V9Error('This document has not been released to you.');
   for (const [key, value] of Object.entries(values)) {
-    const field = doc.fields.find(f => f.id === key); if (!field || field.owner !== owner) throw new V9Error('This field cannot be changed.', 'forbidden');
+    const field = doc.fields.find(f => f.id === key); if (!field || effectivePersonnelCompletion(doc,field) !== owner) throw new V9Error('This field cannot be changed.', 'forbidden');
     validateFieldValue(field, value);
-    doc.values[key] = value;
+    if(field.owner==='pmLocked')savePersonnelCompletionAnswer(doc,field,value,{owner,actor:env.actor,at:env.now});else doc.values[key] = value;
   }
   reviseV9DocumentRouting(doc,env,owner==='employee');
   appendLog(c, env, 'document.saved', doc.name);
@@ -522,12 +553,14 @@ export function signDocument(c: Case, config: Config, id: string, role: 'employe
   const doc = c.documents.find(d => d.id === id), template = doc && config.templates.find(t => t.id === doc.templateId);
   if (!doc || !template) throw new V9Error('Document not found.', 'not_found');
   if(doc.signing)throw new V9Error('Use the assigned signing route for this document.','conflict');
+  refreshDocumentPersonnelCompletion(doc,env);
+  if(doc.personnelCompletion){const issue=personnelCompletionIssues(doc,{final:true})[0];if(issue)throw new V9Error(issue.message);}
   if ((doc.templateType ?? template.type) === 'Attachment') throw new V9Error('Attachments are read-only PDFs and do not require a signature.', 'conflict');
   const hrStep = doc.hrStep ?? template.hrStep, employeeAck = doc.employeeAck ?? template.employeeAck;
   if (c.state !== 'submitted' || ['superseded', 'withdrawn'].includes(doc.status)) throw new V9Error('This document is no longer open.', 'conflict');
   if (role === 'hr' && documentDeliveryReserved(c, id)) throw new V9Error('This document is frozen for email delivery.', 'conflict');
   if (!signature.consent || !validV9SignatureValue(signature.method, signature.value) || signature.by.id !== env.actor.id) throw new V9Error('Confirm consent and provide your own signature.');
-  const missing = doc.blocks.filter(b => ['heading', 'subheading', 'text'].includes(b.type)).flatMap(b => merge(doc.edits[b.id] ?? b.text, { ...doc.mergeValues, ...doc.values }).missing);
+  const missing = doc.blocks.filter(b => ['heading', 'subheading', 'text'].includes(b.type)).flatMap(b => merge(doc.edits[b.id] ?? b.text, { ...doc.mergeValues,...personnelCompletionMergeValues(doc), ...doc.values }).missing);
   const personnelHold = documentPersonnelHold(doc);
   if (personnelHold) throw new V9Error(personnelHold, 'conflict');
   if (missing.length) throw new V9Error(`Complete missing document fields: ${[...new Set(missing)].join(', ')}.`);
@@ -961,7 +994,13 @@ export function runWorkflow(c: Case, config: Config, workflow: Workflow, env: En
       if (step.type === 'doc') {
         const doc = generate(c, config, step.template, env), template = config.templates.find(t => t.id === step.template);
         if (step.release && (['draft', 'hrsigned'].includes(doc.status)||doc.signing&&!doc.sentAt&&!['withdrawn','superseded'].includes(doc.status))) {
-          if (doc.signing?!v9RouteReadyForEmployee(doc):(doc.hrStep ?? template?.hrStep) === 'before' && !doc.hrSignature) waiting = 'HR must sign before release.';
+          const employeePreparation=doc.personnelCompletion&&!personnelCompletionLocked(doc)&&!doc.personnelCompletion.submitted&&doc.fields.some(field=>field.required&&effectivePersonnelCompletion(doc,field)==='employee'&&field.owner==='pmLocked'&&(!field.when||doc.values[field.when.field]===field.when.value));
+          if(employeePreparation){
+            const hold=documentPersonnelHold(doc);
+            if(hold)waiting=hold;
+            else {if(!doc.personnelCompletion!.preparation){doc.personnelCompletion!.preparation={at:env.now,by:{...env.actor}};appendLog(c,env,'document.preparationOpened',doc.name);}waiting='Waiting for the employee to complete required Personnel answers before the first signature.';}
+          }
+          else if (doc.signing?!v9RouteReadyForEmployee(doc):(doc.hrStep ?? template?.hrStep) === 'before' && !doc.hrSignature) waiting = 'HR must sign before release.';
           else {
             waiting = documentPersonnelHold(doc) ?? '';
             if (!waiting) { if(!doc.signing||!documentFinal(doc))doc.status = 'sent'; doc.sentAt = env.now; linkedTasks(c, doc, 'sent'); appendLog(c, env, 'document.released', doc.name); }

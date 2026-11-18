@@ -33,3 +33,5 @@ export async function searchOnboardingRecipientUsers(...args: Parameters<typeof 
 export {v9DocumentSigningWork,v9DocumentSigningWorkspace,v9ReadDocumentSigningWork,v9DocumentRouteAct,v9DocumentRouteEdit} from './v9/document-routing';
 export type {V9DocumentSigningWork,V9DocumentRouteAction} from './v9/document-routing';
 export { lifecycleTaskDocuments, lifecycleTaskCardDocuments, openOwnLifecycleDocument } from './v9/task-documents';
+
+export {v9SubmitOwnDocumentCompletion,v9RefreshOwnDocumentCompletion,v9ReadPersonnelCompletion} from './v9/personnel-completion';
