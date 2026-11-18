@@ -20,6 +20,7 @@ export type ClaimedFeedback = {
  claimToken:string; sourceDigest:string; dialogueDigest:string;
  report:Omit<RemoteFeedback,'block_trail'|'dialogue_digest'>;
  block_trail:RemoteBlockEpisode[]; attachments:RemoteAttachment[];
+ plan_history:unknown[]; closure_history:{questionId:string;reason:string;closed_at:string}[];
 };
 export function pickupSql(p: Pickup): string {
  const tenant = id(p.tenantId), worker = literal(text(p.worker,120)), limit = p.limit ?? 3;
@@ -103,7 +104,7 @@ export function completeSql(p: Completion): string {
  UPDATE feedback_automation_work SET state=${literal(p.action==='hold'?'escalated':p.action==='retry'?'failed':'completed')},
   retry_at=now()+interval '15 minutes',completion_digest=${literal(resultDigest)},last_error=${reason?literal(reason):p.action==='retry'?"'investigation_failed'":'NULL'},updated_at=now() WHERE feedback_request_id=f.id;
  INSERT INTO domain_event(tenant_id,aggregate_type,aggregate_id,event_type,actor_type,payload)
-  VALUES(f.tenant_id,'feedback',f.id,'feedback.automation.settled','agent',jsonb_build_object('claimToken',${token},'action',${literal(p.action)},'sourceDigest',w.source_digest));
+  VALUES(f.tenant_id,'feedback',f.id,'feedback.automation.settled','agent',jsonb_build_object('claimToken',${token},'action',${literal(p.action)},'sourceDigest',w.source_digest,'reason',${reason?literal(reason):'NULL'}));
  END $complete$; COMMIT;`, 'complete');
 }
 /** One reminder per live question after 48h, no auto-close/rejection. Bell text contains no report text. */

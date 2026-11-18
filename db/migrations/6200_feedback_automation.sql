@@ -20,10 +20,18 @@ LANGUAGE sql STABLE SET search_path=pg_catalog,public,app AS $$
  SELECT jsonb_build_object('report',to_jsonb(f),'dialogueDigest',(
   SELECT encode(sha256(convert_to(coalesce(jsonb_agg(jsonb_build_array(q.id::text,q.question,q.answer,q.resolved_at IS NOT NULL) ORDER BY q.id)::text,'[]'),'UTF8')),'hex')
   FROM public.feedback_block q WHERE q.feedback_request_id=f.id AND q.tenant_id=f.tenant_id),
+ 'plan_history',coalesce((SELECT jsonb_agg(to_jsonb(v) ORDER BY v.revision)
+  FROM public.feedback_plan_revision v WHERE v.feedback_request_id=f.id AND v.tenant_id=f.tenant_id),'[]'::jsonb),
+ 'closure_history',coalesce((SELECT jsonb_agg(jsonb_build_object('questionId',e.payload->>'questionId','reason',e.payload->>'reason','closed_at',e.occurred_at) ORDER BY e.sequence)
+  FROM public.domain_event e WHERE e.tenant_id=f.tenant_id AND e.aggregate_type='feedback' AND e.aggregate_id=f.id
+  AND e.event_type='feedback.clarification.closed'),'[]'::jsonb),
  'block_trail',coalesce((
   SELECT jsonb_agg(to_jsonb(q) ORDER BY q.asked_at,q.id) FROM public.feedback_block q
   WHERE q.feedback_request_id=f.id AND q.tenant_id=f.tenant_id),'[]'::jsonb),
- 'attachments',coalesce((SELECT jsonb_agg((to_jsonb(a)-'content')||jsonb_build_object('content_sha256',encode(sha256(a.content),'hex')) ORDER BY a.id)
+ 'attachments',coalesce((SELECT jsonb_agg(jsonb_build_object('id',a.id,'tenant_id',a.tenant_id,'feedback_request_id',a.feedback_request_id,
+  'employment_id',a.employment_id,'file_name',a.file_name,'mime_type',a.mime_type,'size_bytes',a.size_bytes,
+  'uploaded_by_user_id',a.uploaded_by_user_id,'plan_revision',a.plan_revision,'stage',a.stage,'created_at',a.created_at,
+  'content_sha256',encode(sha256(a.content),'hex')) ORDER BY a.id)
  FROM public.feedback_attachment a WHERE a.feedback_request_id=f.id AND a.tenant_id=f.tenant_id),'[]'::jsonb))
  FROM public.feedback_request f WHERE f.id=wanted
 $$;

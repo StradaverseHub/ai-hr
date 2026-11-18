@@ -3,8 +3,8 @@ import {afterAll,beforeAll,beforeEach,describe,expect,it} from 'vitest';
 import {eq,sql} from 'drizzle-orm';
 import {withTenant,type SessionContext} from '../db/client';
 import * as s from '../db/schema';
-import {submitFeedback,getFeedback,approveFeedbackPlan} from '../core/feedback';
-import {answerFeedbackClarification} from '../core/feedback-clarification';
+import {submitFeedback,getFeedback,approveFeedbackPlan,contestFeedbackPlan} from '../core/feedback';
+import {answerFeedbackClarification,closeFeedbackClarification} from '../core/feedback-clarification';
 import {notificationBellSummary,markNotificationRead} from '../core/notifications';
 import {pickupSql,completeSql,notifySql,type Completion,type ClaimedFeedback} from '../scripts/improve/automation';
 import {adminCtx,closeAll,migrateTestDb,owner,resetDb,seedBase,type Base} from './harness';
@@ -117,5 +117,15 @@ describe('durable operator feedback coordinator',()=>{
   expect((await getFeedback(reporter,id))?.planRevision).toBe(1);
   const attachments=await owner.db.select().from(s.feedbackAttachment).where(eq(s.feedbackAttachment.feedbackRequestId,id));
   expect(attachments).toHaveLength(1);expect(attachments[0]).toMatchObject({stage:'plan',planRevision:1,fileName:'review.png'});
+ });
+ it('carries prior negotiated plans and the reason an obsolete question was closed',async()=>{
+  const {id}=await report(),question=await completion();await script(completeSql(question));
+  const reason='Existing logs resolved this question; the reporter need not answer it.';
+  await closeFeedbackClarification(admin,{feedbackId:id,questionId:question.claimToken,reason});
+  const [closed]=await pickup();expect(closed.closure_history).toEqual([expect.objectContaining({questionId:question.claimToken,reason})]);
+  const p:Completion={id,tenantId:b.tenantId,reporterEmploymentId:null,claimToken:closed.claimToken,sourceDigest:closed.sourceDigest,
+   expectedPlanRevision:closed.report.plan_revision,dialogueDigest:closed.dialogueDigest,action:'plan',plan:'A first reviewed proposal.',model:'fixture',visualChange:false};
+  await script(completeSql(p));await contestFeedbackPlan(reporter,{feedbackId:id,reason:'Preserve the payroll preview; change only the date.'});
+  const [revised]=await pickup();expect(revised.plan_history).toEqual([expect.objectContaining({plan:'A first reviewed proposal.',outcome:'contested',outcome_reason:'Preserve the payroll preview; change only the date.'})]);
  });
 });
