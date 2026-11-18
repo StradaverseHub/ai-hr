@@ -84,3 +84,23 @@ export function savePersonnelCompletionValue(document:CompletionDocument,field:F
  if(!entry||effectivePersonnelCompletion(document,field)!=='employee'||personnelCompletionLocked(document))throw new Error('This Personnel field is locked.');
  validatePersonnelCompletionScalar(field,value,policy!.country);document.values[field.id]=value;entry.draft={value,by:{...input.actor},at:input.at};
 }
+export type PersonnelCompletionIssue={fieldId:string;code:'required'|'phone'|'email'|'date'|'number'|'length';message:string};
+/** UI and services share scalar rules; draft saves permit blank required answers, final submission does not. */
+export function personnelCompletionIssues(document:CompletionDocument,options:{owner?:'employee'|'hr';final:boolean}):PersonnelCompletionIssue[]{
+ const issues:PersonnelCompletionIssue[]=[];
+ for(const field of document.fields){
+  if(field.when&&document.values[field.when.field]!==field.when.value)continue;
+  const effective=effectivePersonnelCompletion(document,field);if(options.owner&&effective!==options.owner)continue;
+  const value=document.values[field.id]??'';
+  if(options.final&&field.required&&(!value.trim()||field.type==='checkbox'&&value!=='true'||field.type==='table'&&value==='[]')){issues.push({fieldId:field.id,code:'required',message:'Complete this required field.'});continue;}
+  if(effective==='pmLocked')continue;
+  try{validatePersonnelCompletionScalar(field,value,document.personnelCompletion?.country??null);}catch(error){issues.push({fieldId:field.id,code:value.length>20000?'length':['phone','email','date','number'].includes(field.type)?field.type as 'phone'|'email'|'date'|'number':'length',message:(error as Error).message});}
+ }
+ return issues;
+}
+/** Resolve a missing source token from its per-document answer without changing the official PM snapshot. */
+export function personnelCompletionMergeValues(document:CompletionDocument,values:Record<string,string>=document.values):Record<string,string>{
+ const result:Record<string,string>={};
+ for(const field of document.fields){const entry=document.personnelCompletion?.fields[field.id];if(!entry?.key||entry.sourceValue||effectivePersonnelCompletion(document,field)==='pmLocked'||field.when&&values[field.when.field]!==field.when.value)continue;result[entry.key]=values[field.id]??'';}
+ return result;
+}
