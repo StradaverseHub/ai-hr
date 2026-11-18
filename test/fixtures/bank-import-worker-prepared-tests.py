@@ -144,9 +144,13 @@ class PreparedFlowTests(unittest.TestCase):
      f=self.fixture();a=f.prepare_record(True);proof=f.invoke_preparation(a);live=f.live_record(a,proof);path=f.directory/name
      if fault=='missing':path.unlink()
      elif fault=='tampered':path.write_bytes(path.read_bytes()+b' ')
-     elif fault=='symlink':path.rename(path.with_suffix('.saved'));path.symlink_to(path.with_suffix('.saved'))
+     elif fault=='symlink':
+      saved=f.root/(name+'.saved');path.rename(saved);path.symlink_to(saved)
      else:live['nativeActivation'][name]='0'*64
-     self.assertRaises((ValueError,FileNotFoundError),f.invoke_live,live);self.assert_no_unit_mutation(f)
+     reason={'missing':'unknown/missing private installation member','tampered':'administrator-pinned native activation bytes differ','symlink':'canonical private installation path required','approval-pin':'administrator-pinned native activation bytes differ'}[fault]
+     self.assertRaisesRegex(ValueError,reason,f.invoke_live,live)
+     self.assertTrue(any(x.name.startswith('recovery-')for x in f.operation.iterdir()),'negative did not reach complete private fence')
+     self.assert_no_unit_mutation(f)
  def test_native_activation_pair_schema_directory_and_build_mismatch_refuses_even_with_fresh_hash_pin(self):
   for fault in('intent-kind','intent-time','intent-extra','result-build','result-directory','active-build','retained-build','active-mode','retained-mode','unknown-member'):
    with self.subTest(fault=fault):
@@ -167,7 +171,10 @@ class PreparedFlowTests(unittest.TestCase):
     elif fault=='active-mode':(f.webroot/'.next').chmod(0o777)
     elif fault=='retained-mode':(f.directory/'next').chmod(0o777)
     else:f.private_record('unexpected.json',{})
-    self.assertRaises(ValueError,f.invoke_live,f.live_record(a,proof));self.assert_no_unit_mutation(f)
+    reason={'intent-kind':'native activation intent differs','intent-time':'native activation intent differs','intent-extra':'native activation intent differs','result-build':'native activation result differs','result-directory':'native activation result differs','active-build':'actual build differs','retained-build':'native retained build identity differs','active-mode':'private installation protection differs','retained-mode':'private installation protection differs','unknown-member':'unknown/missing private installation member'}[fault]
+    self.assertRaisesRegex(ValueError,reason,f.invoke_live,f.live_record(a,proof))
+    self.assertEqual(any(x.name.startswith('recovery-')for x in f.operation.iterdir()),fault!='active-build','negative refused at an unexpected admission boundary')
+    self.assert_no_unit_mutation(f)
  def test_native_activation_original_mutation_between_complete_fences_refuses(self):
   for name in('activate-intent.json','activate-result.json'):
    with self.subTest(name=name):
