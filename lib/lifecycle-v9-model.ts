@@ -926,7 +926,7 @@ export function decideLateEmail(c: Case, config: Config, input: { workflowId: st
   return runWorkflow(c, config, definition, env, 'resume', { continueHeld: true, lateDecision: input });
 }
 export function runWorkflow(c: Case, config: Config, workflow: Workflow, env: Environment, event: 'submitted' | 'date' | 'resume' | 'hrSigned' | 'docSigned' | 'manual', options: { startNow?: boolean; continueHeld?: boolean; sourceEvent?:Run['sourceEvent'];lateDecision?:{runId:string;stepId:string;decision:'send'|'skip'} } = {}): Run | null {
-  const unfinished = c.runs.find(r => r.workflowId === workflow.id && (r.status === 'waiting' || r.status === 'failed') && (!options.sourceEvent || r.sourceEvent?.kind===options.sourceEvent.kind && r.sourceEvent.sourceId===options.sourceEvent.sourceId && r.sourceEvent.revision===options.sourceEvent.revision));
+  const unfinished = c.runs.find(r => r.workflowId === workflow.id && (r.status === 'waiting' || r.status === 'failed') && (!options.lateDecision || r.id === options.lateDecision.runId) && (!options.sourceEvent || r.sourceEvent?.kind===options.sourceEvent.kind && r.sourceEvent.sourceId===options.sourceEvent.sourceId && r.sourceEvent.revision===options.sourceEvent.revision));
   // A held email waits for HR: fixing a record alone sends nothing until someone presses Continue.
   if ((unfinished?.hold || unfinished?.lateEmail) && unfinished.status === 'waiting' && !options.continueHeld) return unfinished;
   // A retired workflow starts nothing new, but a run that already started finishes with the steps it saved.

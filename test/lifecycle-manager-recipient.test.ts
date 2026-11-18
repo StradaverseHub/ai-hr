@@ -54,6 +54,34 @@ describe('late held email decisions',()=>{
   M.runWorkflow(c,config,workflow,env,'resume',{continueHeld:true,lateDecision:{runId:c.runs[0].id,stepId:'email',decision:'send'}});expect(c.mails).toEqual([]);
   expect(()=>M.decideLateEmail(c,config,{workflowId:workflow.id,runId:c.runs[0].id,stepId:'email',decision:'skip'},env)).toThrow(/HR must/);
  });
+ function twoHeldRuns(){
+  const f=held(),late=structuredClone(f.c.runs[0]),today=structuredClone(late);
+  late.id='late-run';late.date='2026-11-17';
+  today.id='today-run';today.date='2026-11-18';today.definition!.trigger.days=2;
+  f.c.runs=[today,late];return{...f,today,late};
+ }
+ it.each(['send','skip'] as const)('applies %s to the reviewed second late run without touching the first due-today hold',decision=>{
+  const {c,config,env,workflow,today,late}=twoHeldRuns(),beforeFirst=structuredClone(today);
+  const input={workflowId:workflow.id,runId:late.id,stepId:'email',decision};
+  expect(M.heldEmailDueOn(c,today)).toBe('2026-11-18');expect(M.heldEmailDueOn(c,late)).toBe('2026-11-17');
+  M.decideLateEmail(c,config,input,env);
+  expect(c.runs[0]).toEqual(beforeFirst);expect(c.runs[1]).toMatchObject({id:'late-run',status:'done',cursor:1});
+  expect(c.mails.map(mail=>mail.key)).toEqual(decision==='send'?['late-run:email:main']:[]);
+  expect(c.mails.some(mail=>mail.key.startsWith('today-run:'))).toBe(false);
+  const after=structuredClone(c);expect(()=>M.decideLateEmail(c,config,input,env)).toThrow(/changed/);expect(c).toEqual(after);
+ });
+ it.each(['missing-run','changed-step','changed-hold'] as const)('rejects a stale %s late decision without changing either held run',scenario=>{
+  const {c,config,env,workflow,late}=twoHeldRuns();
+  if(scenario==='changed-hold')late.hold!.stepId='replaced-step';
+  const before=structuredClone(c);
+  expect(()=>M.decideLateEmail(c,config,{workflowId:workflow.id,runId:scenario==='missing-run'?'missing':late.id,stepId:scenario==='changed-step'?'wrong-step':'email',decision:'send'},env)).toThrow(/changed/);
+  expect(c).toEqual(before);expect(c.mails).toEqual([]);
+ });
+ it('keeps ordinary Continue on the first canonical unfinished run',()=>{
+  const {c,config,env,workflow,late}=twoHeldRuns(),beforeLate=structuredClone(late);
+  M.runWorkflow(c,config,workflow,env,'resume',{continueHeld:true});
+  expect(c.runs[0].status).toBe('done');expect(c.runs[1]).toEqual(beforeLate);expect(c.mails.map(mail=>mail.key)).toEqual(['today-run:email:main']);
+ });
  it('continues a due-today hold normally and uses frozen workflow/workday dates',()=>{
   const {c,config,env,workflow}=held();env.today='2026-11-17';M.runWorkflow(c,config,workflow,env,'resume',{continueHeld:true});expect(c.mails).toHaveLength(1);
   const frozen=c.runs[0];workflow.trigger.days=10;expect(M.heldEmailDueOn(c,frozen)).toBe('2026-11-17');
