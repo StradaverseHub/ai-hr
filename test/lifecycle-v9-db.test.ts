@@ -1539,3 +1539,16 @@ it('saves image alt separately from immutable receipts and still names invalid f
   const blankAlt = structuredClone(config); blankAlt.emails.find(email => email.id === 'e1')!.images![0].alt = '';
   await expect(v9SaveConfig(admin, config.revision, blankAlt)).rejects.toThrow('alt text');
 });
+it('previews only the selected saved workflow step after current settings change, without queuing or generating anything',async()=>{
+ let c=await prepared(),config=(await v9Workspace(admin)).config!;
+ config.emails.push({id:'source-preview-email',name:'Fictional source preview',module:'off',active:true,sender:'noreply',subject:'For {owner.name}',body:'Saved preview copy',cc:[],links:[],attachments:[],slots:[]});
+ const workflow:Workflow={id:'source-preview',name:'Frozen preview source',module:'off',status:'published',trigger:{event:'manual',days:0,workdays:false,repeat:false,skipIf:''},conditions:[],steps:[{id:'hold',type:'waitFile',slot:'source-preview-hold',label:'Preview evidence'},{id:'target-email',type:'email',template:'source-preview-email',to:[`person:${admin.userId!}`],cc:[]},{id:'tail-notify',type:'notify',subject:'Saved tail only',body:'Saved selected step',to:['employee'],cc:[]}],description:''};
+ config.workflows.push(workflow);await v9SaveConfig(admin,config.revision,config);c=(await v9CaseDetail(admin,c.id)).case;await v9Command(admin,c.id,c.revision,{type:'startWorkflow',workflowId:workflow.id});
+ c=(await v9CaseDetail(admin,c.id)).case;const run=c.runs.find(run=>run.workflowId===workflow.id)!;expect(run.definition?.steps[1].id).toBe('target-email');
+ config=(await v9Workspace(admin)).config!;const current=config.workflows.find(current=>current.id===workflow.id)!;current.name='Changed current source';current.steps=[{id:'target-email',type:'email',template:'source-preview-email',to:['employee'],cc:[]},{id:'tail-notify',type:'notify',subject:'Unrelated current tail',body:'New settings',to:['employee'],cc:[]}];await v9SaveConfig(admin,config.revision,config);
+ const before=(await v9CaseDetail(admin,c.id)).case,preview=await v9PreviewEmail(admin,c.id,'source-preview-email',{workflowId:workflow.id,runId:run.id,stepId:'target-email'});
+ expect(preview.to.map(recipient=>recipient.id)).toEqual([admin.userId]);expect((await v9PreviewEmail(admin,c.id,'source-preview-email')).to.map(recipient=>recipient.id)).toEqual([employee.userId]);
+ const selected=await v9PreviewWorkflow(admin,c.id,workflow.id,{runId:run.id,stepId:'tail-notify'});expect(selected.workflow.name).toBe('Frozen preview source');expect(selected.messages.map(message=>message.subject)).toEqual(['Saved tail only']);expect(selected.documents).toEqual([]);
+ await expect(v9PreviewEmail(other,c.id,'source-preview-email',{workflowId:workflow.id,runId:run.id,stepId:'target-email'})).rejects.toThrow();await expect(v9PreviewEmail(admin,c.id,'source-preview-email',{workflowId:workflow.id,runId:'not-this-case',stepId:'target-email'})).rejects.toThrow();
+ expect((await v9CaseDetail(admin,c.id)).case).toEqual(before);
+});

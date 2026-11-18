@@ -44569,7 +44569,8 @@
     "resolveRecipient": "Selesaikan penerima",
     "reviewDelivery": "Semak penghantaran",
     "reviewItem": "Semak item",
-    "showTests": "Tunjukkan aliran kerja ujian ({count})",
+    "showTests": "Tunjukkan penghantaran ujian ({count})",
+    "earlierRun": "Larian lain mesti diteruskan dahulu.",
     "emptySchedule": "Tiada kerja berjadual sepadan dengan kes ini. Templat tanpa jadual tersedia di bawah.",
     "testSend": "Penghantaran ujian",
     "to": "Kepada",
@@ -44637,6 +44638,10 @@
         "day": "Hari terakhir",
         "after": "Selepas hari terakhir"
       }
-    }
+    },
+    "templatePreview": "Pratonton templat e-mel",
+    "sourceFrozen": "Penerima menggunakan larian aliran kerja tersimpan dan langkah yang dipilih.",
+    "sourceCurrent": "Penerima menggunakan langkah terpilih dalam aliran kerja semasa.",
+    "previewOnly": "Pratonton jadual baca sahaja. Salinan e-mel tersimpan semasa dipaparkan sehingga dibariskan; penghantaran manual tersedia dalam pratonton templat."
   }
 }

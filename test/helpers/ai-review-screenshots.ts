@@ -126,6 +126,12 @@ export async function captureAiReviewScreenshots(html:string,locale:string,secti
    if(overlaps)throw Error('Mobile Probation case fields overlap.');
    return{caseFieldsDoNotOverlap:true};
   }):null;
+  // Restore the selected tab's horizontal position after serialising the source DOM; its browser focus does this in the live UI.
+  let communicationsGeometry:unknown=null;
+  if(section.startsWith('lifecycle-communications-')){
+   await page.locator('.communications-tabs [aria-selected="true"]').scrollIntoViewIfNeeded();
+   communicationsGeometry=await page.evaluate(()=>{const tabs=Array.from(document.querySelectorAll<HTMLElement>('.communications-tabs>[role="tab"]')),boxes=tabs.map(tab=>tab.getBoundingClientRect()),selected=tabs.find(tab=>tab.getAttribute('aria-selected')==='true')!.getBoundingClientRect();if(boxes.some((box,index)=>index>0&&box.left<boxes[index-1].right-1))throw Error('Communications tabs overlap.');if(selected.left<0||selected.right>innerWidth+1)throw Error('Selected communications tab is outside the viewport.');return{tabCount:tabs.length,nonOverlapping:true,selectedVisible:true};});
+  }
   const overflow=await page.evaluate(()=>document.documentElement.scrollWidth>window.innerWidth+1);
   const scrollRegions=await page.locator('[data-function-access-scroll]').evaluateAll(nodes=>nodes.map(node=>({width:node.clientWidth,content:node.scrollWidth,scrollable:getComputedStyle(node).overflowX==='auto'})));
   if(width===390&&scrollRegions.some(region=>!region.scrollable||region.width>=region.content))throw Error('The wide function guide must remain horizontally scrollable on a phone.');
@@ -133,7 +139,7 @@ export async function captureAiReviewScreenshots(html:string,locale:string,secti
   if(section==='people-configuration-navigation')await page.locator('a[href="/admin/settings/system-labels"]').scrollIntoViewIfNeeded();
   const file=`${locale}-${section}-${device}.png`;await page.screenshot({path:join(out,file),fullPage:true});
   if(section==='security-functions')await page.screenshot({path:join(out,`${locale}-${section}-${device}-viewport.png`),fullPage:false});
-  rows.push({locale,section,device,width,height,overflow,file,browser:browser.version(),candidate:process.env.AIHR_CI_HEAD,runId:process.env.GITHUB_RUN_ID,theme,scrollRegions,fixture,scriptFontProof,chartGeometry,trackerGeometry,reviewPlanModal,...(section==='chat-card-rewards-calendar'?{cellsVisible:!clippedCalendarCells}:{})});
+  rows.push({locale,section,device,width,height,overflow,file,browser:browser.version(),candidate:process.env.AIHR_CI_HEAD,runId:process.env.GITHUB_RUN_ID,theme,scrollRegions,fixture,scriptFontProof,chartGeometry,trackerGeometry,reviewPlanModal,communicationsGeometry,...(section==='chat-card-rewards-calendar'?{cellsVisible:!clippedCalendarCells}:{})});
   if(clippedCalendarCells)throw Error('Calendar before/after value is clipped; inspect the captured evidence.');
   // This existing table intentionally scrolls horizontally on small screens. Capture its action
   // column too, so the mobile evidence shows the real controls rather than only the left-hand labels.

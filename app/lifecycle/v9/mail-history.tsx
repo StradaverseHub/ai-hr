@@ -30,7 +30,7 @@ function DeliveryRow({ mail, userName, replaced, open, busy, command, caseId,lab
     {mail.retryOf && <p><a className="v9-link" href={`#delivery-${mail.retryOf}`}>{mail.retryMode==='updated'?'Updated copy of an earlier delivery':'Retry of an earlier delivery'}</a>{mail.retryReason ? ` · ${mail.retryReason}` : ''}</p>}
     <details><summary>Review delivery</summary><div className="v9-stack">
       <p>Queued: <time dateTime={mail.at}>{timestamp(mail.at)}</time></p>
-      <p>Delivery confirmed: {mail.status === 'sent' && mail.deliveredAt ? <time dateTime={mail.deliveredAt}>{timestamp(mail.deliveredAt)}</time> : 'No acknowledgement recorded'}</p>
+      <p>Relay accepted: {mail.status === 'sent' && mail.deliveredAt ? <time dateTime={mail.deliveredAt}>{timestamp(mail.deliveredAt)}</time> : 'No acknowledgement recorded'}</p>
       {mail.test && <p>Test message to the signed-in sender.</p>}
       {mail.delivery?.contact && <p>Onboarding contact: {mail.delivery.contact.email}</p>}
       <p className="v9-prewrap">{mail.body}</p>

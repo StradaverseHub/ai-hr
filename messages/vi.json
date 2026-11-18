@@ -44569,7 +44569,8 @@
     "resolveRecipient": "Xử lý người nhận",
     "reviewDelivery": "Rà soát giao nhận",
     "reviewItem": "Rà soát mục",
-    "showTests": "Hiển thị quy trình thử ({count})",
+    "showTests": "Hiện lượt gửi thử ({count})",
+    "earlierRun": "Một lượt chạy khác phải được tiếp tục trước.",
     "emptySchedule": "Không có công việc đã lên lịch phù hợp. Mẫu chưa lên lịch vẫn có ở dưới.",
     "testSend": "Gửi thử",
     "to": "Đến",
@@ -44637,6 +44638,10 @@
         "day": "Ngày cuối",
         "after": "Sau ngày cuối"
       }
-    }
+    },
+    "templatePreview": "Xem trước mẫu email",
+    "sourceFrozen": "Người nhận theo lần chạy quy trình đã lưu và bước đã chọn.",
+    "sourceCurrent": "Người nhận theo bước đã chọn của quy trình hiện tại.",
+    "previewOnly": "Xem trước lịch chỉ đọc. Hiển thị bản email đã lưu hiện tại cho đến khi vào hàng đợi; gửi thủ công vẫn có trong xem trước mẫu."
   }
 }

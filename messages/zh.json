@@ -44569,7 +44569,8 @@
     "resolveRecipient": "解决收件人问题",
     "reviewDelivery": "审核投递",
     "reviewItem": "审核项目",
-    "showTests": "显示测试工作流（{count}）",
+    "showTests": "显示测试发送（{count}）",
+    "earlierRun": "必须先继续另一个流程运行。",
     "emptySchedule": "没有匹配的计划工作。未排程模板仍可在下方使用。",
     "testSend": "测试发送",
     "to": "收件人",
@@ -44637,6 +44638,10 @@
         "day": "最后工作日",
         "after": "最后工作日后"
       }
-    }
+    },
+    "templatePreview": "预览邮件模板",
+    "sourceFrozen": "收件人依据已保存的工作流运行及所选步骤。",
+    "sourceCurrent": "收件人依据当前工作流的所选步骤。",
+    "previewOnly": "只读计划预览。入队前显示当前保存的邮件内容；手动发送仍可在模板预览中操作。"
   }
 }

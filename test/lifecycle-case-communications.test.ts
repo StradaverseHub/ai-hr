@@ -19,3 +19,21 @@ it('keeps nonmatching and manually started workflows outside ordinary counts and
  const {c,config,workflow}=communicationsFixture();c.runs=[];config.workflows=[{...workflow,trigger:{...workflow.trigger,event:'manual'}},{...workflow,id:'outside',conditions:[{field:'company',op:'is',value:'another-company'}]}];
  const view=caseCommunications(c,config,'2026-11-27');expect(view.rows).toEqual([]);expect(view.otherWorkflows.map(workflow=>workflow.id)).toEqual(['welcome-flow']);expect(communicationAnchor('schedule','w/r/s')).not.toEqual(communicationAnchor('document','w/r/s'));
 });
+
+it('uses effective retry outcomes for attention and preserves required-file waiting rows',()=>{
+ const {c,config}=communicationsFixture();const run=c.runs.find(run=>run.id==='finished-run')!;run.status='waiting';run.cursor=1;
+ const mail=c.mails.find(mail=>!mail.test)!;mail.status='uncertain';
+ let view=caseCommunications(c,config,'2026-11-27');expect(view.rows.find(row=>row.step?.id==='receipt')).toMatchObject({status:'attention',blocker:'delivery',mail:{id:mail.id}});
+ c.mails.push({...structuredClone(mail),id:'retry-success',retryOf:mail.id,status:'sent',at:'2026-11-30T12:00:00Z'});
+ expect(caseCommunications(c,config,'2026-11-27').rows.find(row=>row.step?.id==='receipt')?.status).toBe('open');
+ run.definition!.steps=[{id:'file-step',type:'waitFile',slot:'proof',label:'Fictional proof'}];run.cursor=0;
+ view=caseCommunications(c,config,'2026-11-27');expect(view.rows.find(row=>row.step?.id==='file-step')).toMatchObject({status:'attention',blocker:'file',fileSlot:'proof'});
+ c.files.push({...c.files[0],id:'new-proof',slot:'proof'});expect(caseCommunications(c,config,'2026-11-27').rows.find(row=>row.step?.id==='file-step')?.status).toBe('open');
+});
+it('retains distinct unfinished runs and derives recurrence only from frozen definitions',()=>{
+ const {c,config}=communicationsFixture();const first=c.runs[0];first.definition!.trigger.repeat=true;
+ c.runs.push({...structuredClone(first),id:'second-held'});config.workflows[0].trigger.repeat=false;
+ expect(caseCommunications(c,config,'2026-11-27').rows.filter(row=>row.workflow?.id===first.workflowId).map(row=>row.run?.id)).toEqual(['held-run','second-held']);
+ config.workflows[0].trigger.repeat=true;first.definition!.trigger.repeat=false;
+ expect(caseCommunications(c,config,'2026-11-27').rows.filter(row=>row.workflow?.id===first.workflowId)).toHaveLength(2);
+});

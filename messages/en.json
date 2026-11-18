@@ -44569,7 +44569,8 @@
     "resolveRecipient": "Resolve recipient",
     "reviewDelivery": "Review delivery",
     "reviewItem": "Review item",
-    "showTests": "Show test workflows ({count})",
+    "showTests": "Show test sends ({count})",
+    "earlierRun": "Another run must continue first.",
     "emptySchedule": "No scheduled work matches this case. Unscheduled templates remain available below.",
     "testSend": "Test send",
     "to": "To",
@@ -44637,6 +44638,10 @@
         "day": "Last day",
         "after": "After last day"
       }
-    }
+    },
+    "templatePreview": "Preview email template",
+    "sourceFrozen": "Recipients use the saved workflow run and selected step.",
+    "sourceCurrent": "Recipients use the selected step of the current workflow.",
+    "previewOnly": "Read-only schedule preview. The current saved email copy is shown until queued; manual sends remain in the template preview."
   }
 }
