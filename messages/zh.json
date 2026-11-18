@@ -1710,6 +1710,9 @@
           "movementId": "异动事件编号"
         },
         "detail": {
+          "exitInformation": "离职时的任职信息",
+          "exitInformationNote": "以下为雇佣关系于 {date} 结束前生效的信息。这些是保留的历史记录，并非当前任职信息。",
+          "atExit": "离职时",
           "eventInformation": "事件信息",
           "companyReviewNeeded": "更正原入职公司后，请检查以下设置：",
           "notRecorded": "此事件历史中未记录",

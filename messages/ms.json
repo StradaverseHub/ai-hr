@@ -1710,6 +1710,9 @@
           "movementId": "ID Peristiwa Pergerakan"
         },
         "detail": {
+          "exitInformation": "Maklumat pekerjaan semasa keluar",
+          "exitInformationNote": "Maklumat yang berkuat kuasa sejurus sebelum pekerjaan tamat pada {date}. Ini ialah butiran sejarah yang dikekalkan, bukan penempatan semasa.",
+          "atExit": "Semasa keluar",
           "eventInformation": "Maklumat Acara",
           "companyReviewNeeded": "Semak penetapan berikut selepas membetulkan syarikat asal:",
           "notRecorded": "Tidak direkodkan dalam sejarah peristiwa ini",

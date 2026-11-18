@@ -1710,6 +1710,9 @@
           "movementId": "Movement Event ID"
         },
         "detail": {
+          "exitInformation": "Employment information at exit",
+          "exitInformationNote": "Information in force immediately before employment ended on {date}. These are retained historical details, not a current assignment.",
+          "atExit": "At exit",
           "eventInformation": "Event Information",
           "companyReviewNeeded": "Review these assignments after correcting the original company:",
           "notRecorded": "Not recorded in this event’s history",

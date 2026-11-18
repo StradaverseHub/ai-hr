@@ -1710,6 +1710,9 @@
           "movementId": "Mã sự kiện biến động"
         },
         "detail": {
+          "exitInformation": "Thông tin công việc khi nghỉ việc",
+          "exitInformationNote": "Thông tin có hiệu lực ngay trước khi quan hệ lao động kết thúc vào {date}. Đây là thông tin lịch sử được lưu giữ, không phải phân công hiện tại.",
+          "atExit": "Khi nghỉ việc",
           "eventInformation": "Thông tin sự kiện",
           "companyReviewNeeded": "Kiểm tra các thiết lập này sau khi sửa công ty ban đầu:",
           "notRecorded": "Không được ghi lại trong lịch sử sự kiện này",
