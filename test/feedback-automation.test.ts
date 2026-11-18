@@ -29,7 +29,7 @@ async function completion(action?:'ask'):Promise<Extract<Completion,{action:'ask
 async function completion(action:'plan'):Promise<Extract<Completion,{action:'plan'}>>;
 async function completion(action:'hold'):Promise<Extract<Completion,{action:'hold'}>>;
 async function completion(action:'retry'):Promise<Extract<Completion,{action:'retry'}>>;
-async function completion(action:Completion['action']='ask'){
+async function completion(action:Completion['action']='ask'):Promise<Completion>{
  const [w]=await pickup();
  const common={id:w.report.id,tenantId:w.report.tenant_id,reporterEmploymentId:w.report.reporter_employment_id,claimToken:w.claimToken,sourceDigest:w.sourceDigest,expectedPlanRevision:w.report.plan_revision,dialogueDigest:w.dialogueDigest};
  return action==='ask'?{...common,action,question:'Which preview screen did you open?'} as const:action==='plan'?{...common,action,plan:'Fix the selected date and show independent verification.',model:'fixture',visualChange:false} as const:action==='hold'?{...common,action,reason:'Needs a scope decision.'} as const:{...common,action:'retry'} as const;
