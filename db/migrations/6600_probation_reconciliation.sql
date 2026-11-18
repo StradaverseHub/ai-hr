@@ -150,7 +150,7 @@ DECLARE s public.probation_reconciliation_schedule;last_id uuid;n integer;
 BEGIN
  IF app.current_user_id() IS NOT NULL OR NOT EXISTS(SELECT 1 FROM pg_roles WHERE rolname=session_user AND(rolname='ai_hr_owner' OR rolsuper)) THEN RAISE EXCEPTION 'Physical no-login owner worker required' USING ERRCODE='42501';END IF;
  INSERT INTO public.probation_reconciliation_schedule(tenant_id) SELECT t.id FROM public.tenant t WHERE t.status IN('active','trial') AND NOT EXISTS(SELECT 1 FROM public.probation_reconciliation_schedule s WHERE s.tenant_id=t.id) ORDER BY t.id LIMIT 100 ON CONFLICT DO NOTHING;
- SELECT * INTO s FROM public.probation_reconciliation_schedule WHERE next_check_at<=now() ORDER BY next_check_at,tenant_id LIMIT 1 FOR UPDATE SKIP LOCKED;
+ SELECT q.* INTO s FROM public.probation_reconciliation_schedule q JOIN public.tenant t ON t.id=q.tenant_id AND t.status IN('active','trial') WHERE q.next_check_at<=now() AND(q.cursor_id IS NOT NULL OR q.started_at IS NULL) ORDER BY q.next_check_at,q.tenant_id LIMIT 1 FOR UPDATE OF q SKIP LOCKED;
  IF NOT FOUND THEN RETURN false;END IF;
  -- Preserve a partially scanned pass across restarts. Only bounded 100-row source slices are queued.
  WITH cohort AS MATERIALIZED(SELECT e.id FROM public.employment e WHERE e.tenant_id=s.tenant_id AND(s.cursor_id IS NULL OR e.id>s.cursor_id) AND e.voided_at IS NULL AND e.import_pending_attempt_id IS NULL

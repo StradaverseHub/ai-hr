@@ -56,7 +56,7 @@ export async function runProbationReconciliationTick(owner:postgres.Sql,connecti
   await tx.execute(sql`update probation_reconciliation_intent set checked_at=now(),retry_on=now()+interval '15 minutes',failure=${failure} where tenant_id=${ctx.tenantId}::uuid and employment_id=${intent.employment_id}::uuid and revision=${intent.revision}::bigint`);
   // A successful full scan only counts once every queued check has committed, and no unexpected
   // admission failed in that pass. Explicit setup/cutover holds are successful, visible checks.
-  await tx.execute(sql`update probation_reconciliation_schedule s set last_success_at=now(),started_at=null where s.tenant_id=${ctx.tenantId}::uuid and s.cursor_id is null and s.next_check_at>now() and s.started_at is not null and not exists(select 1 from probation_reconciliation_intent i where i.tenant_id=s.tenant_id and(i.checked_at is null or i.checked_at<i.requested_at or i.failure))`);
+  await tx.execute(sql`update probation_reconciliation_schedule s set last_success_at=now(),started_at=null where s.tenant_id=${ctx.tenantId}::uuid and s.cursor_id is null and s.started_at is not null and not exists(select 1 from probation_reconciliation_intent i where i.tenant_id=s.tenant_id and(i.checked_at is null or i.checked_at<i.requested_at or i.failure))`);
   return true;
  });
 }
