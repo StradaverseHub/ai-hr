@@ -237,6 +237,17 @@ describe('System Labels authenticated Excel browser journey',()=>{
     target.off('pageerror',pageError);target.off('console',consoleError);target.off('requestfailed',requestFailed);target.off('response',responseError);
    }
   }
+  // Provision required fonts before the owned Next server consumes runner resources.
+  // The packages and both existing finite command budgets remain unchanged.
+  signal.throwIfAborted();
+  if(process.platform==='linux'&&process.env.GITHUB_ACTIONS==='true'){
+   const fontSetupStarted=performance.now();
+   console.info('SYSTEM_LABEL_FONT_SETUP '+JSON.stringify({phase:'update',elapsedMs:0}));
+   execFileSync('sudo',['apt-get','update','-qq'],{stdio:'pipe',timeout:120000});
+   console.info('SYSTEM_LABEL_FONT_SETUP '+JSON.stringify({phase:'install',elapsedMs:Math.round(performance.now()-fontSetupStarted)}));
+   execFileSync('sudo',['apt-get','install','-y','--no-install-recommends','fonts-noto-core','fonts-noto-cjk'],{stdio:'pipe',timeout:120000});
+   console.info('SYSTEM_LABEL_FONT_SETUP '+JSON.stringify({phase:'ready',elapsedMs:Math.round(performance.now()-fontSetupStarted)}));
+  }
   // No production credentials or identity provider. This is the existing explicit developer identity route.
   signal.throwIfAborted();
   server=spawn(process.execPath,['node_modules/next/dist/bin/next','dev','--webpack','--hostname','127.0.0.1','--port',String(port)],{
@@ -252,11 +263,6 @@ describe('System Labels authenticated Excel browser journey',()=>{
    try{await fetch(origin+'/login',{signal:AbortSignal.timeout(2000)});ready=true;break;}catch{await delay(500);}
   }
   expect(ready,'Owned preview server is reachable').toBe(true);
-  if(process.platform==='linux'&&process.env.GITHUB_ACTIONS==='true'){
-   // Ephemeral standard runner only; no larger runner or shared host configuration is touched.
-   execFileSync('sudo',['apt-get','update','-qq'],{stdio:'pipe',timeout:120000});
-   execFileSync('sudo',['apt-get','install','-y','--no-install-recommends','fonts-noto-core','fonts-noto-cjk'],{stdio:'pipe',timeout:120000});
-  }
   signal.throwIfAborted();
   browserLaunch=chromium.launch({...(process.platform==='linux'?{channel:'chrome'}:{}),headless:true});
   const browser=await browserLaunch;
