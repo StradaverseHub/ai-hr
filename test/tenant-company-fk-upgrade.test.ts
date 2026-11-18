@@ -34,6 +34,7 @@ const APPROVED_BOARD_TAIL:Entry[]=[
  {idx:10031,version:'7',when:1794998006631,tag:'6631_lifecycle_task_card_documents',breakpoints:true},
  {idx:10040,version:'7',when:1794998006640,tag:'6640_lifecycle_personnel_manager',breakpoints:true},
  {idx:10041,version:'7',when:1794998006641,tag:'6641_lifecycle_manager_recovery_job',breakpoints:true},
+ {idx:10042,version:'7',when:1794998006642,tag:'6642_lifecycle_manager_recovery_reader',breakpoints:true},
  {idx:10050,version:'7',when:1794998006650,tag:'6650_pay_formula_business_code_registration',breakpoints:true},
 ];
 
