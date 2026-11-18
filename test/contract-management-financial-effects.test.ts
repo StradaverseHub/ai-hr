@@ -1,4 +1,5 @@
 /** Fictional fixtures exercise public decisions and genuine-owner canonical effects; no forged receipts. */
+import {automationBusinessPartnerWorkspace,saveAutomationBusinessPartners} from '../packs/automation/service';
 import {randomUUID} from 'node:crypto';
 import {afterAll,beforeAll,beforeEach,describe,expect,it} from 'vitest';
 import {and,eq,isNull,sql} from 'drizzle-orm';
@@ -16,6 +17,22 @@ import type {SessionContext} from '../db/client';
 import {closeAll,migrateTestDb,resetDb,seedBase,setModule,entitledCtx,createAppUser,owner,type Base} from './harness';
 import * as S from '../db/schema';
 let b:Base,admin:SessionContext;
+async function saveBusinessPartners(rules:Parameters<typeof saveAutomationBusinessPartners>[1]['rules']){
+ // The fixture's existing privileged account needs a genuine Person, not an identity exemption.
+ const[account]=await owner.db.execute<{person_id:string|null}>(sql`select person_id from app_user where tenant_id=${b.tenantId}::uuid and id=${admin.userId}::uuid`);
+ if(!account)throw Error('The actual fixture administrator account is missing.');
+ let personId=account.person_id;
+ if(!personId){
+  const[person]=await owner.db.execute<{id:string}>(sql`insert into person(tenant_id,full_name,primary_email) values(${b.tenantId}::uuid,'Fictional BP configuration administrator',${randomUUID()+'@business-partner-fixture.test'}) returning id`);
+  personId=person.id;
+  await owner.db.execute(sql`update app_user set person_id=${personId}::uuid where tenant_id=${b.tenantId}::uuid and id=${admin.userId}::uuid`);
+ }
+ admin={...admin,personId};
+ const current=await automationBusinessPartnerWorkspace(admin);
+ if(!current)throw Error('The actual fixture administrator cannot configure Business Partner responsibilities.');
+ await saveAutomationBusinessPartners(admin,{expectedRevision:current.revision,rules,reason:'Reviewed fictional Contract and Probation Business Partner responsibilities'});
+}
+
 const today=todayInKualaLumpur(),year=Number(today.slice(0,4)),start=`${year}-01-01`,end=`${year}-10-31`,renewalStart=`${year}-11-01`,renewalEnd=`${year+1}-04-30`,period=`${year}-11`;
 beforeAll(migrateTestDb);afterAll(closeAll);
 beforeEach(async()=>{await resetDb();b=await seedBase();for(const module of ['lifecycle','payroll','typed_pay_components'] as const)await setModule(b.tenantId,module,'active');admin=await entitledCtx(b);});
@@ -27,7 +44,7 @@ const maintenance=()=>({...admin,userId:undefined,personId:null,roles:[],grants:
 async function sweep(){return C.sweepContractManagement(maintenance(),owner);}
 async function liveModule(initial=false,fixedEnd?:string,legacyForeign=false,hourly=false){
  const manager=await employee('Fictional line manager'),chief=await employee('Fictional independent chief'),pbp=await account('Fictional assigned PBP'),gbs=await account('Fictional People Ops'),legal=await account('Fictional independent Legal'),rewards=await account('Fictional Rewards reviewer');
- await v9Setup(admin);const native=(await v9Workspace(admin)).config!,groupId=randomUUID();await v9SaveConfig(admin,native.revision,{...native,groups:[...native.groups,{id:groupId,name:'Fictional actual People Ops group',members:[gbs.userId!],limit:10}],peopleOpsGroup:groupId});await owner.client`update lc_v9_config set data=jsonb_set(data,'{bpRules}',${JSON.stringify([{rules:{company:[b.companyId]},userId:pbp.userId!}])}::jsonb) where tenant_id=${b.tenantId}::uuid`;
+ await v9Setup(admin);const native=(await v9Workspace(admin)).config!,groupId=randomUUID();await v9SaveConfig(admin,native.revision,{...native,groups:[...native.groups,{id:groupId,name:'Fictional actual People Ops group',members:[gbs.userId!],limit:10}],peopleOpsGroup:groupId});await saveBusinessPartners([{rules:{company:[b.companyId]},userId:pbp.userId!}]);
  let previousPerson:string|undefined,retirementId:string|undefined;
  if(initial){const previous=await hireEmployee(admin,{person:{fullName:'Fictional returning retiree',primaryEmail:randomUUID()+'@contract-financial.test'},companyId:b.companyId,departmentId:b.deptA,employmentType:'full_time',hiredOn:`${year-2}-01-01`});previousPerson=previous.personId;retirementId=await v9CreateOffboarding(admin,{employmentId:previous.employmentId,type:'Retirement',noticeDate:`${year-1}-11-01`,lastDay:`${year-1}-12-31`});await v9Command(admin,retirementId,1,{type:'submit'});}
  const subject=await employee('Fictional contract employee',manager.employmentId,previousPerson);

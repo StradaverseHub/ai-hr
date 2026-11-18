@@ -4,6 +4,7 @@
  * counts) for every existing tile, plus an independent count for the new "Suggestion overridden" tile and the
  * Ext. column. Fixture rows are fictional and generated set-based.
  */
+import {automationBusinessPartnerWorkspace,saveAutomationBusinessPartners} from '../packs/automation/service';
 import {afterAll,beforeAll,beforeEach,describe,expect,it} from 'vitest';
 import {randomUUID} from 'node:crypto';
 import {readFileSync} from 'node:fs';
@@ -17,6 +18,12 @@ import {DEFAULT_PROBATION_CONFIG,DEFAULT_PROBATION_FORM,defaultProbationRoutes,p
 
 const COMPANIES=72,PER_COMPANY=15;
 let b:Base,admin:SessionContext;
+async function saveBusinessPartners(rules:Parameters<typeof saveAutomationBusinessPartners>[1]['rules']){
+ const current=await automationBusinessPartnerWorkspace(admin);
+ if(!current)throw Error('The actual fixture administrator cannot configure Business Partner responsibilities.');
+ await saveAutomationBusinessPartners(admin,{expectedRevision:current.revision,rules,reason:'Reviewed fictional Contract and Probation Business Partner responsibilities'});
+}
+
 const today=todayInKualaLumpur();
 type Flag=Exclude<ProbationTrackerFlag,'overridden'>;
 /** The tile expressions exactly as the reader had them before this change (kpi_submit now also waits for the start date). */
@@ -76,7 +83,8 @@ beforeEach(async()=>{
  await resetDb();b=await seedBase();await setModule(b.tenantId,'lifecycle','active');admin=adminCtx(b);
  const[hr]=await owner.db.execute<{id:string}>(sql`insert into person(tenant_id,full_name,primary_email) values(${b.tenantId}::uuid,'Fictional Scale People Ops',${randomUUID()+'@scale.example.test'}) returning id`);
  await owner.db.execute(sql`update app_user set person_id=${hr.id}::uuid where id=${admin.userId}::uuid`);admin={...admin,personId:hr.id};
- await owner.db.execute(sql`insert into lc_v9_config(tenant_id,data) values(${b.tenantId}::uuid,${JSON.stringify({version:9,peopleOpsGroup:'probation-people',bpRules:[]})}::jsonb)`);
+ await owner.db.execute(sql`insert into lc_v9_config(tenant_id,data) values(${b.tenantId}::uuid,${JSON.stringify({version:9,peopleOpsGroup:'probation-people'})}::jsonb)`);
+ await saveBusinessPartners([]);
  await owner.db.execute(sql`insert into lc_onboarding_config(tenant_id,data) values(${b.tenantId}::uuid,${JSON.stringify({groups:[{id:'probation-people',name:'Canonical People Ops',members:[admin.userId],limit:10}]})}::jsonb)`);
  const ids={settings:randomUUID(),form:randomUUID(),route:randomUUID()};
  await owner.db.execute(sql`insert into probation_configuration(id,tenant_id,company_id,kind,version,state,data,created_by) values(${ids.settings}::uuid,${b.tenantId}::uuid,${b.companyId}::uuid,'settings',1,'published',${JSON.stringify(DEFAULT_PROBATION_CONFIG)}::jsonb,${admin.userId}::uuid),(${ids.form}::uuid,${b.tenantId}::uuid,${b.companyId}::uuid,'form',1,'published',${JSON.stringify(DEFAULT_PROBATION_FORM)}::jsonb,${admin.userId}::uuid),(${ids.route}::uuid,${b.tenantId}::uuid,${b.companyId}::uuid,'route',1,'published',${JSON.stringify(defaultProbationRoutes())}::jsonb,${admin.userId}::uuid)`);
@@ -127,7 +135,7 @@ describe('tracker read at real-group shape',()=>{
   const manager=await viewer('Fictional Scale Line Manager'),pbp=await viewer('Fictional Scale People Partner'),delegate=await viewer('Fictional Scale Delegate');
   const[managerEmployment]=await owner.db.execute<{id:string}>(sql`insert into employment(tenant_id,person_id,company_id,hired_on) values(${b.tenantId}::uuid,${manager.person}::uuid,${companies[0]}::uuid,'2025-01-01') returning id`);
   await owner.db.execute(sql`insert into reporting_line(tenant_id,subordinate_employment_id,manager_employment_id,line_type,valid_from) select ${b.tenantId}::uuid,c.employment_id,${managerEmployment.id}::uuid,'administrative','2026-01-01' from probation_case c where c.tenant_id=${b.tenantId}::uuid order by c.id limit 40`);
-  await owner.db.execute(sql`update lc_v9_config set data=jsonb_set(data,'{bpRules}',${JSON.stringify([{rules:{company:companies},userId:pbp.ctx.userId}])}::jsonb) where tenant_id=${b.tenantId}::uuid`);
+  await saveBusinessPartners([{rules:{company:companies},userId:pbp.ctx.userId!}]);
   await owner.db.execute(sql`insert into probation_access(tenant_id,user_id,company_id,role,valid_from,reason) select ${b.tenantId}::uuid,${pbp.ctx.userId}::uuid,id,'pbp','2026-01-01','Scale fixture PBP' from unnest(array[${sql.join(companies.map(id=>sql`${id}::uuid`),sql`, `)}]::uuid[]) id`);
   await owner.db.execute(sql`insert into probation_delegate(tenant_id,part_id,step_id,holder_id,kind,reason,created_by,valid_from) values(${b.tenantId}::uuid,${subject.part}::uuid,'pbp',${delegate.ctx.userId}::uuid,'delegation','Scale fixture delegation',${admin.userId}::uuid,'2026-01-01')`);
   const outsider=await viewer('Fictional Scale Outsider');

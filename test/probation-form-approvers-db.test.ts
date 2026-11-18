@@ -3,6 +3,7 @@
 // Manager submits, frozen for the Part; nobody available goes to the case's fallback group and is recorded; Review and
 // Approve rows record decisions without a signature; a Direct Superior row follows the case's holder and the
 // duplicate-role policy; an assigned person's general Probation delegation moves the step. Fictional people only.
+import {automationBusinessPartnerWorkspace,saveAutomationBusinessPartners} from '../packs/automation/service';
 import {beforeAll,beforeEach,afterAll,describe,it,expect} from 'vitest';
 import {sql} from 'drizzle-orm';
 import {randomUUID} from 'node:crypto';
@@ -16,6 +17,12 @@ import type {ProbationApprovalRow} from '../lib/probation-form';
 import {probationCase,saveProbationDraft,actOnProbation,probationTaskList,probationSummaryRows,DEFAULT_PROBATION_CONFIG,DEFAULT_PROBATION_FORM,defaultProbationRoutes} from '../packs/probation/service';
 
 let b:Base,admin:SessionContext;
+async function saveBusinessPartners(rules:Parameters<typeof saveAutomationBusinessPartners>[1]['rules']){
+ const current=await automationBusinessPartnerWorkspace(admin);
+ if(!current)throw Error('The actual fixture administrator cannot configure Business Partner responsibilities.');
+ await saveAutomationBusinessPartners(admin,{expectedRevision:current.revision,rules,reason:'Reviewed fictional Contract and Probation Business Partner responsibilities'});
+}
+
 beforeAll(migrateTestDb);afterAll(closeAll);
 beforeEach(async()=>{await resetDb();b=await seedBase();await setModule(b.tenantId,'lifecycle','active');admin=adminCtx(b);});
 
@@ -33,7 +40,8 @@ async function caseWithRows(rows:ProbationApprovalRow[],groups:(people:{admin:st
  await owner.db.execute(sql`update app_user set person_id=${hrPerson.id}::uuid where id=${admin.userId}::uuid`);admin={...admin,personId:hrPerson.id};
  const staff=await person('Fictional Staff'),manager=await person('Fictional Manager'),peer=await person('Fictional Peer');
  const allGroups=[{id:'probation-people',name:'Fictional People Ops',members:[admin.userId!],limit:10},...groups({admin:admin.userId!})];
- await owner.db.execute(sql`insert into lc_v9_config(tenant_id,data) values(${b.tenantId}::uuid,${JSON.stringify({version:9,peopleOpsGroup:'probation-people',groups:allGroups,bpRules:[{rules:{company:[b.companyId]},userId:admin.userId}]})}::jsonb)`);
+ await owner.db.execute(sql`insert into lc_v9_config(tenant_id,data) values(${b.tenantId}::uuid,${JSON.stringify({version:9,peopleOpsGroup:'probation-people',groups:allGroups})}::jsonb)`);
+ await saveBusinessPartners([{rules:{company:[b.companyId]},userId:admin.userId!}]);
  await owner.db.execute(sql`insert into lc_onboarding_config(tenant_id,data) values(${b.tenantId}::uuid,${JSON.stringify({groups:allGroups})}::jsonb)`);
  await owner.db.execute(sql`update employment set probation_value=0,probation_months=0 where id in(${manager.employmentId}::uuid,${peer.employmentId}::uuid)`);
  await owner.db.execute(sql`update employment set probation_unit='month',probation_value=12,probation_months=12,probation_end_date='2026-12-31' where id=${staff.employmentId}::uuid`);

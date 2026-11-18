@@ -3,6 +3,7 @@
 // rendered with lib/probation-workflow.ts) are compared with what the converted shared workflow sends on the same case
 // at each stage: recipients, subject and body. "Move to shared workflows" is idempotent and audited, and a moved
 // definition never notifies a case twice. Fictional people only.
+import {automationBusinessPartnerWorkspace,saveAutomationBusinessPartners} from '../packs/automation/service';
 import {beforeAll,beforeEach,afterAll,describe,it,expect} from 'vitest';
 import {sql} from 'drizzle-orm';
 import {randomUUID} from 'node:crypto';
@@ -18,6 +19,12 @@ import {probationNotifyPreviewTx,probationAutomationCaseTx} from '../core/probat
 import {probationCase,saveProbationDraft,actOnProbation,moveProbationWorkflowsToShared,DEFAULT_PROBATION_CONFIG,DEFAULT_PROBATION_FORM,defaultProbationRoutes} from '../packs/probation/service';
 
 let b:Base,admin:SessionContext;
+async function saveBusinessPartners(rules:Parameters<typeof saveAutomationBusinessPartners>[1]['rules']){
+ const current=await automationBusinessPartnerWorkspace(admin);
+ if(!current)throw Error('The actual fixture administrator cannot configure Business Partner responsibilities.');
+ await saveAutomationBusinessPartners(admin,{expectedRevision:current.revision,rules,reason:'Reviewed fictional Contract and Probation Business Partner responsibilities'});
+}
+
 beforeAll(migrateTestDb);afterAll(closeAll);
 beforeEach(async()=>{await resetDb();b=await seedBase();await setModule(b.tenantId,'lifecycle','active');admin=adminCtx(b);});
 
@@ -37,7 +44,8 @@ async function legacyCase(workflows:ProbationWorkflow[]=[]){
  await owner.db.execute(sql`update app_user set person_id=${hrPerson.id}::uuid where id=${admin.userId}::uuid`);admin={...admin,personId:hrPerson.id};
  const staff=await person('Fictional Staff'),manager=await person('Fictional Manager'),peer=await person('Fictional Peer');
  const groups=[{id:'probation-people',name:'Fictional People Ops',members:[admin.userId!],limit:10}];
- await owner.db.execute(sql`insert into lc_v9_config(tenant_id,data) values(${b.tenantId}::uuid,${JSON.stringify({version:9,peopleOpsGroup:'probation-people',groups,bpRules:[{rules:{company:[b.companyId]},userId:admin.userId}]})}::jsonb)`);
+ await owner.db.execute(sql`insert into lc_v9_config(tenant_id,data) values(${b.tenantId}::uuid,${JSON.stringify({version:9,peopleOpsGroup:'probation-people',groups})}::jsonb)`);
+ await saveBusinessPartners([{rules:{company:[b.companyId]},userId:admin.userId!}]);
  await owner.db.execute(sql`insert into lc_onboarding_config(tenant_id,data) values(${b.tenantId}::uuid,${JSON.stringify({groups})}::jsonb)`);
  await owner.db.execute(sql`update employment set probation_value=0,probation_months=0 where id in(${manager.employmentId}::uuid,${peer.employmentId}::uuid)`);
  await owner.db.execute(sql`update employment set probation_unit='month',probation_value=12,probation_months=12,probation_end_date='2026-12-31' where id=${staff.employmentId}::uuid`);

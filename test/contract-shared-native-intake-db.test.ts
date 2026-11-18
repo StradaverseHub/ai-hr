@@ -1,4 +1,5 @@
 /** Native custody fixtures use actual offboarding, P-file PDFs and independently verified roles. */
+import {automationBusinessPartnerWorkspace,saveAutomationBusinessPartners} from '../packs/automation/service';
 import {randomUUID} from 'node:crypto';
 import {PDFDocument} from 'pdf-lib';
 import {beforeAll,beforeEach,afterAll,describe,it,expect} from 'vitest';
@@ -13,6 +14,12 @@ import {todayInKualaLumpur} from '../lib/hr-date';
 import type {SessionContext} from '../db/client';
 import {closeAll,migrateTestDb,resetDb,seedBase,setModule,entitledCtx,createAppUser,owner,type Base} from './harness';
 let b:Base,admin:SessionContext;
+async function saveBusinessPartners(rules:Parameters<typeof saveAutomationBusinessPartners>[1]['rules']){
+ const current=await automationBusinessPartnerWorkspace(admin);
+ if(!current)throw Error('The actual fixture administrator cannot configure Business Partner responsibilities.');
+ await saveAutomationBusinessPartners(admin,{expectedRevision:current.revision,rules,reason:'Reviewed fictional Contract and Probation Business Partner responsibilities'});
+}
+
 const year=Number(todayInKualaLumpur().slice(0,4)),start=`${year}-01-01`,end=`${year+1}-12-31`;
 beforeAll(migrateTestDb);afterAll(closeAll);
 beforeEach(async()=>{await resetDb();b=await seedBase();for(const m of ['lifecycle','payroll','typed_pay_components'] as const)await setModule(b.tenantId,m,'active');admin=await entitledCtx(b);const [person]=await owner.db.execute<{id:string}>(sql`insert into person(tenant_id,full_name,primary_email) values(${b.tenantId}::uuid,'Fictional verified Contract administrator',${randomUUID()+'@intake.test'}) returning id`);await owner.db.execute(sql`update app_user set person_id=${person.id}::uuid where tenant_id=${b.tenantId}::uuid and id=${admin.userId}::uuid`);admin={...admin,personId:person.id};});
@@ -20,7 +27,7 @@ async function account(name:string){const [person]=await owner.db.execute<{id:st
 async function document(employmentId:string,title:string){const pdf=await PDFDocument.create();pdf.addPage().drawText(title);return addEmployeeDocument(admin,{employmentId,title,fileName:'fictional.pdf',mimeType:'application/pdf',content:Buffer.from(await pdf.save())});}
 async function fixture(){
  const pbp=await account('Fictional capturing PBP'),gbs=await account('Fictional independent verifier');
- await v9Setup(admin);const cfg=(await v9Workspace(admin)).config!,groupId=randomUUID();await v9SaveConfig(admin,cfg.revision,{...cfg,groups:[...cfg.groups,{id:groupId,name:'Actual native intake owners',members:[gbs.userId!],limit:10}],peopleOpsGroup:groupId,bpRules:[{rules:{company:[b.companyId]},userId:pbp.userId!}]});
+ await v9Setup(admin);const cfg=(await v9Workspace(admin)).config!,groupId=randomUUID();await v9SaveConfig(admin,cfg.revision,{...cfg,groups:[...cfg.groups,{id:groupId,name:'Actual native intake owners',members:[gbs.userId!],limit:10}],peopleOpsGroup:groupId});await saveBusinessPartners([{rules:{company:[b.companyId]},userId:pbp.userId!}]);
  const previous=await hireEmployee(admin,{person:{fullName:'Fictional returning retiree',primaryEmail:randomUUID()+'@intake.test'},companyId:b.companyId,departmentId:b.deptA,employmentType:'full_time',hiredOn:`${year-2}-01-01`});
  const retirementCaseId=await v9CreateOffboarding(admin,{employmentId:previous.employmentId,type:'Retirement',noticeDate:`${year-1}-11-01`,lastDay:`${year-1}-12-31`});await v9Command(admin,retirementCaseId,1,{type:'submit'});
  const manager=await hireEmployee(admin,{person:{fullName:'Fictional line manager',primaryEmail:randomUUID()+'@intake.test'},companyId:b.companyId,departmentId:b.deptA,employmentType:'full_time',hiredOn:start});

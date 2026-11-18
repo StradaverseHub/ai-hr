@@ -1,4 +1,5 @@
 /** Decision 6 (migration 5744, core/probation.ts sweep): a case opens at activation, waits for the start date, and closes as Did not join. */
+import {automationBusinessPartnerWorkspace,saveAutomationBusinessPartners} from '../packs/automation/service';
 import {afterAll,beforeAll,beforeEach,describe,expect,it} from 'vitest';
 import {randomUUID} from 'node:crypto';
 import {sql} from 'drizzle-orm';
@@ -10,6 +11,12 @@ import {addDaysIso} from '../lib/roster-month';
 import {DEFAULT_PROBATION_CONFIG,DEFAULT_PROBATION_FORM,defaultProbationRoutes,probationActivationCounts,saveProbationConfiguration,sweepProbation} from '../packs/probation/service';
 
 let b:Base,admin:SessionContext,grade:string;
+async function saveBusinessPartners(rules:Parameters<typeof saveAutomationBusinessPartners>[1]['rules']){
+ const current=await automationBusinessPartnerWorkspace(admin);
+ if(!current)throw Error('The actual fixture administrator cannot configure Business Partner responsibilities.');
+ await saveAutomationBusinessPartners(admin,{expectedRevision:current.revision,rules,reason:'Reviewed fictional Contract and Probation Business Partner responsibilities'});
+}
+
 const today=()=>todayInKualaLumpur();
 const runner=()=>({...admin,userId:undefined,roles:[],grants:undefined}) as SessionContext;
 beforeAll(migrateTestDb);afterAll(closeAll);
@@ -84,7 +91,8 @@ describe('intake and activation by company',()=>{
  it('compares full-time Personnel Probation with open cases as the reviewer sees them',async()=>{
   const[hr]=await owner.db.execute<{id:string}>(sql`insert into person(tenant_id,full_name,primary_email) values(${b.tenantId}::uuid,'Fictional intake People Ops',${randomUUID()+'@activation.example.test'}) returning id`);
   await owner.db.execute(sql`update app_user set person_id=${hr.id}::uuid where id=${admin.userId}::uuid`);admin={...admin,personId:hr.id};
-  await owner.db.execute(sql`insert into lc_v9_config(tenant_id,data) values(${b.tenantId}::uuid,${JSON.stringify({version:9,peopleOpsGroup:'probation-people',bpRules:[]})}::jsonb)`);
+  await owner.db.execute(sql`insert into lc_v9_config(tenant_id,data) values(${b.tenantId}::uuid,${JSON.stringify({version:9,peopleOpsGroup:'probation-people'})}::jsonb)`);
+ await saveBusinessPartners([]);
   await owner.db.execute(sql`insert into lc_onboarding_config(tenant_id,data) values(${b.tenantId}::uuid,${JSON.stringify({groups:[{id:'probation-people',name:'Canonical People Ops',members:[admin.userId],limit:10}]})}::jsonb)`);
   await owner.db.execute(sql`insert into probation_access(tenant_id,user_id,company_id,role,valid_from,reason) values(${b.tenantId}::uuid,${admin.userId}::uuid,${b.companyId}::uuid,'gbs','2026-01-01','Intake People Ops fixture')`);
   const[initial]=await probationActivationCounts(admin,[b.companyId]);

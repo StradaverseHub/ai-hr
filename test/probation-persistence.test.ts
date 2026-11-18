@@ -1,3 +1,4 @@
+import {automationBusinessPartnerWorkspace,saveAutomationBusinessPartners} from '../packs/automation/service';
 import {beforeAll,beforeEach,afterAll,describe,it,expect} from 'vitest';
 import {sql} from 'drizzle-orm';
 import {PgDialect} from 'drizzle-orm/pg-core';
@@ -22,6 +23,12 @@ import {listPendingTasks} from '../core/approvals-inbox';
 import {adminCtx,entitledCtx,closeAll,setModule,migrateTestDb,owner,resetDb,seedBase,type Base} from './harness';
 import {bootstrapProbationPreparer,installProbationDrafts,probationSetup,saveProbationConfiguration,DEFAULT_PROBATION_CONFIG,DEFAULT_PROBATION_FORM,defaultProbationRoutes,canConfigureProbationWorkflows,probationEmployeeNameSuggestions,probationSummaryRows,sweepProbation} from '../packs/probation/service';
 let b:Base,admin:SessionContext;
+async function saveBusinessPartners(rules:Parameters<typeof saveAutomationBusinessPartners>[1]['rules']){
+ const current=await automationBusinessPartnerWorkspace(admin);
+ if(!current)throw Error('The actual fixture administrator cannot configure Business Partner responsibilities.');
+ await saveAutomationBusinessPartners(admin,{expectedRevision:current.revision,rules,reason:'Reviewed fictional Contract and Probation Business Partner responsibilities'});
+}
+
 beforeAll(migrateTestDb);afterAll(async()=>{await owner.db.execute(sql`update access_capability set supported=false,bindings='[]'::jsonb where id='workforce.maintain'`);await closeAll();});beforeEach(async()=>{await resetDb();b=await seedBase();await setModule(b.tenantId,'lifecycle','active');admin=adminCtx(b);await owner.db.execute(sql`update access_capability set supported=false,bindings='[]'::jsonb where id='workforce.maintain'`);});
 describe('native probation configuration custody and default-off authority',()=>{
  it('starts disabled and permits module holders to prepare without nomination',async()=>{
@@ -63,7 +70,8 @@ async function privateCase(){
 
  const[hrPerson]=await owner.db.execute<{id:string}>(sql`insert into person(tenant_id,full_name,primary_email) values(${b.tenantId}::uuid,'Fictional HR Partner',${randomUUID()+'@probation.example.test'}) returning id`);await owner.db.execute(sql`update app_user set person_id=${hrPerson.id}::uuid where id=${admin.userId}::uuid`);admin={...admin,personId:hrPerson.id};
  const staff=await person('Fictional Staff'),manager=await person('Fictional Manager'),peer=await person('Fictional Peer');
- await owner.db.execute(sql`insert into lc_v9_config(tenant_id,data) values(${b.tenantId}::uuid,${JSON.stringify({version:9,peopleOpsGroup:'probation-people',bpRules:[{rules:{company:[b.companyId]},userId:admin.userId}]})}::jsonb)`);
+ await owner.db.execute(sql`insert into lc_v9_config(tenant_id,data) values(${b.tenantId}::uuid,${JSON.stringify({version:9,peopleOpsGroup:'probation-people'})}::jsonb)`);
+ await saveBusinessPartners([{rules:{company:[b.companyId]},userId:admin.userId!}]);
  await owner.db.execute(sql`insert into lc_onboarding_config(tenant_id,data) values(${b.tenantId}::uuid,${JSON.stringify({groups:[{id:'probation-people',name:'Canonical People Ops',members:[admin.userId],limit:10}]})}::jsonb)`);
  await owner.db.execute(sql`update employment set probation_value=0,probation_months=0 where id in(${manager.employmentId}::uuid,${peer.employmentId}::uuid)`);
  await owner.db.execute(sql`update employment set probation_unit='month',probation_value=12,probation_months=12,probation_end_date='2026-12-31' where id=${staff.employmentId}::uuid`);
@@ -247,7 +255,9 @@ describe('real evaluation to signed letter custody',()=>{
    const subjectB=await hireEmployee(admin,{person:{fullName:'Fictional company B employee',primaryEmail:randomUUID()+'@probation.example.test'},companyId:companyB.id,departmentId:departmentB.id,employmentType:'full_time',hiredOn:'2026-01-01'});
    const reviewerB=await person('Fictional company B People Partner');
    await owner.db.execute(sql`update employment set probation_months=0,probation_value=0 where id in(${subjectB.employmentId}::uuid,${reviewerB.employmentId}::uuid)`);
-   await owner.db.execute(sql`update lc_v9_config set data=jsonb_set(data,'{bpRules}',(data->'bpRules')||jsonb_build_array(jsonb_build_object('rules',jsonb_build_object('company',jsonb_build_array(${companyB.id}::uuid)),'userId',${reviewerB.userId}::uuid))) where tenant_id=${b.tenantId}::uuid`);
+   const currentBusinessPartners=await automationBusinessPartnerWorkspace(admin);
+   if(!currentBusinessPartners)throw Error('The actual fixture administrator cannot read Business Partner responsibilities.');
+   await saveBusinessPartners([...currentBusinessPartners.rules,{rules:{company:[companyB.id]},userId:reviewerB.userId}]);
    await owner.db.execute(sql`insert into probation_access(tenant_id,user_id,company_id,role,valid_from,reason) values(${b.tenantId}::uuid,${reviewerB.userId}::uuid,${companyB.id}::uuid,'pbp','2026-01-01','Actual company B PBP, no scope in company A')`);
    const [bScope]=await withTenant(reviewerB.ctx,tx=>tx.execute<{ok:boolean}>(sql`select app.probation_role(${subjectB.employmentId}::uuid,'pbp') as ok`));
    expect(bScope.ok).toBe(true);
@@ -552,7 +562,7 @@ describe('native duplicate approval ownership',()=>{
    (${b.tenantId}::uuid,${admin.userId}::uuid,${b.companyId}::uuid,'gbs','2026-01-01','Actual People Ops scope')`);
   if(mode==='sign_once'){
    await owner.db.execute(sql`update department set head_employment_id=${peer.employmentId}::uuid where id=${b.deptA}::uuid`);
-   await owner.db.execute(sql`update lc_v9_config set data=jsonb_set(data,'{bpRules,0,userId}',to_jsonb(${peer.userId}::text)) where tenant_id=${b.tenantId}::uuid`);
+   await saveBusinessPartners([{rules:{company:[b.companyId]},userId:peer.userId}]);
    await owner.db.execute(sql`insert into probation_access(tenant_id,user_id,company_id,role,valid_from,reason)
     values(${b.tenantId}::uuid,${peer.userId}::uuid,${b.companyId}::uuid,'pbp','2026-01-01','Current PBP also holds department head')`);
   }else{
@@ -562,7 +572,7 @@ describe('native duplicate approval ownership',()=>{
   const nextPbp=mode==='escalate'||mode==='named_alternate'?await person('Fictional current pending People Partner'):null;
   if(nextPbp){
    await owner.db.execute(sql`update employment set probation_months=0,probation_value=0 where id=${nextPbp.employmentId}::uuid`);
-   await owner.db.execute(sql`update lc_v9_config set data=jsonb_set(data,'{bpRules,0,userId}',to_jsonb(${nextPbp.userId}::text)) where tenant_id=${b.tenantId}::uuid`);
+   await saveBusinessPartners([{rules:{company:[b.companyId]},userId:nextPbp.userId}]);
    await owner.db.execute(sql`insert into probation_access(tenant_id,user_id,company_id,role,valid_from,reason) values(${b.tenantId}::uuid,${nextPbp.userId}::uuid,${b.companyId}::uuid,'pbp','2026-01-01','Actual next People Partner')`);
   }
   const configured=mode==='escalate'?await saveProbationWorkflow(admin,{companyId:b.companyId,publish:true,expectedVersion:0,workflow:{

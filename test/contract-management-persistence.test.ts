@@ -1,3 +1,4 @@
+import {automationBusinessPartnerWorkspace,saveAutomationBusinessPartners} from '../packs/automation/service';
 import {randomUUID} from 'node:crypto';
 import {afterAll,beforeAll,beforeEach,describe,expect,it} from 'vitest';
 import {eq,sql} from 'drizzle-orm';
@@ -15,6 +16,22 @@ import {closeAll,migrateTestDb,resetDb,seedBase,setModule,entitledCtx,createAppU
 import * as S from '../db/schema';
 import {contractConfigurationDirectory,contractConfigurationWorkflows,contractDirectory,contractNavigationAccess,contractInbox,reconcileContractSource,contractCompanies,canConfigureContractWorkflows,setupContractManagement,contractWorkflowWorkspace,assignContractRole,captureContractRetirementEvidence,saveContractTemplate,publishContractTemplate,saveContractWorkflow,saveContractConfiguration,contractSettings,intakeContract,previewContractIntake,contractCase,contractCases,submitContractDecision,confirmContractDecision,decideContractApproval,acceptContract,retryContractRecords,amendContractEnd,contractLetterEditor,releaseContractLetter,handoffContract,sweepContractManagement} from '../packs/contracts/service';
 let b:Base,admin:SessionContext;
+async function saveBusinessPartners(rules:Parameters<typeof saveAutomationBusinessPartners>[1]['rules']){
+ // The fixture's existing privileged account needs a genuine Person, not an identity exemption.
+ const[account]=await owner.db.execute<{person_id:string|null}>(sql`select person_id from app_user where tenant_id=${b.tenantId}::uuid and id=${admin.userId}::uuid`);
+ if(!account)throw Error('The actual fixture administrator account is missing.');
+ let personId=account.person_id;
+ if(!personId){
+  const[person]=await owner.db.execute<{id:string}>(sql`insert into person(tenant_id,full_name,primary_email) values(${b.tenantId}::uuid,'Fictional BP configuration administrator',${randomUUID()+'@business-partner-fixture.test'}) returning id`);
+  personId=person.id;
+  await owner.db.execute(sql`update app_user set person_id=${personId}::uuid where tenant_id=${b.tenantId}::uuid and id=${admin.userId}::uuid`);
+ }
+ admin={...admin,personId};
+ const current=await automationBusinessPartnerWorkspace(admin);
+ if(!current)throw Error('The actual fixture administrator cannot configure Business Partner responsibilities.');
+ await saveAutomationBusinessPartners(admin,{expectedRevision:current.revision,rules,reason:'Reviewed fictional Contract and Probation Business Partner responsibilities'});
+}
+
 beforeAll(migrateTestDb);afterAll(closeAll);
 beforeEach(async()=>{await resetDb();b=await seedBase();await setModule(b.tenantId,'lifecycle','active');admin=await entitledCtx(b);});
 const today=todayInKualaLumpur(),year=Number(today.slice(0,4));
@@ -26,7 +43,7 @@ async function liveModule(endApproval=false,priorStart=false,manualGrade=false){
  if(manualGrade){const [grade]=await owner.db.insert(S.jobGrade).values({tenantId:b.tenantId,code:'H',name:'Fictional Grade H'}).returning();await setEmploymentGrade(admin,{employmentId:subject.employmentId,gradeId:grade.id});}
  await setCompensation(admin,{employmentId:subject.employmentId,basicSalary:5000,monthlyAllowance:17,effectiveFrom:`${year}-01-01`});
  const [component]=await owner.db.insert(S.payComponent).values({tenantId:b.tenantId,code:'CONTRACT_FIXED',name:'Contract fixed allowance',kind:'allowance'}).returning();
- await v9Setup(admin);const native=(await v9Workspace(admin)).config!;const groupId=randomUUID();await v9SaveConfig(admin,native.revision,{...native,groups:[...native.groups,{id:groupId,name:'Fictional actual People Ops group',members:[gbs.userId!],limit:10}],peopleOpsGroup:groupId});await owner.client`update lc_v9_config set data=jsonb_set(data,'{bpRules}',${JSON.stringify([{rules:{company:[b.companyId]},userId:pbp.userId!}])}::jsonb) where tenant_id=${b.tenantId}::uuid`;
+ await v9Setup(admin);const native=(await v9Workspace(admin)).config!;const groupId=randomUUID();await v9SaveConfig(admin,native.revision,{...native,groups:[...native.groups,{id:groupId,name:'Fictional actual People Ops group',members:[gbs.userId!],limit:10}],peopleOpsGroup:groupId});await saveBusinessPartners([{rules:{company:[b.companyId]},userId:pbp.userId!}]);
  await setupContractManagement(admin,b.companyId,component.id);
  for(const [actor,role] of [[pbp,'pbp'],[gbs,'gbs'],[legal,'legal']] as const)await assignContractRole(admin,{companyId:b.companyId,businessUnitId:null,userId:actor.userId,role,from:`${year}-01-01`,to:null,reason:'Confirmed independent company contract role'});
  for(const type of ['renewal','end','declined','retirement'] as const){const id=randomUUID();await saveContractTemplate(gbs,{id,companyId:b.companyId,type,expectedRevision:0,document:letter(type==='renewal'),signatoryName:'Authorised legal entity signatory',signatoryTitle:'Director',letterhead:null,submit:true});await publishContractTemplate(legal,{id,revision:1,approve:true,reason:'Wording and signatory independently reviewed'});}
@@ -188,12 +205,12 @@ describe('isolated Contract Staff native custody',()=>{
   const f=await liveModule();const [otherCompany]=await owner.db.insert(S.company).values({tenantId:b.tenantId,legalName:'Fictional company outside Contract opt-in'}).returning();expect((await contractCompanies(f.gbs)).map(c=>c.id)).not.toContain(otherCompany.id);const [scope]=await withTenant(f.gbs,tx=>tx.execute<{allowed:boolean}>(sql`select app.contract_has_role(${otherCompany.id}::uuid,NULL,'gbs') as allowed`));expect(scope.allowed).toBe(false);const altGbsId=await createAppUser(b.tenantId,f.gbs.personId!,'employee'),altPbpId=await createAppUser(b.tenantId,f.pbp.personId!,'employee');
   for(const [userId,role] of [[altGbsId,'gbs'],[altPbpId,'pbp']] as const)await expect(assignContractRole(admin,{companyId:b.companyId,businessUnitId:null,userId,role,from:`${year}-01-01`,to:null,reason:'An alternate login cannot invent canonical custody'})).rejects.toMatchObject({cause:{code:'23514'}});
   expect(await canConfigureContractWorkflows(f.gbs)).toBe(true);expect((await contractCase(f.pbp,f.caseId)).pbp).toBe(true);
-  const config=(await v9Workspace(admin)).config!;await v9SaveConfig(admin,config.revision,{...config,groups:config.groups.map(g=>g.id===config.peopleOpsGroup?{...g,members:[f.legal.userId!]}:g)});await owner.client`update lc_v9_config set data=jsonb_set(data,'{bpRules}','[]'::jsonb) where tenant_id=${b.tenantId}::uuid`;
+  const config=(await v9Workspace(admin)).config!;await v9SaveConfig(admin,config.revision,{...config,groups:config.groups.map(g=>g.id===config.peopleOpsGroup?{...g,members:[f.legal.userId!]}:g)});await saveBusinessPartners([]);
   expect(await canConfigureContractWorkflows(f.gbs)).toBe(false);await expect(contractCase(f.gbs,f.caseId)).rejects.toMatchObject({code:'forbidden'});await expect(contractCase(f.pbp,f.caseId)).rejects.toMatchObject({code:'forbidden'});expect((await contractCase(f.manager.ctx,f.caseId)).manager).toBe(true);
  });
  it('holds an ambiguous highest-specificity canonical PBP mapping instead of selecting a login arbitrarily',async()=>{
   const f=await liveModule(),other=await account('Fictional conflicting canonical PBP'),config=(await v9Workspace(admin)).config!;
-  await v9SaveConfig(admin,config.revision,config);await owner.client`update lc_v9_config set data=jsonb_set(data,'{bpRules}',${JSON.stringify([{rules:{company:[b.companyId]},userId:f.pbp.userId!},{rules:{company:[b.companyId]},userId:other.userId!}])}::jsonb) where tenant_id=${b.tenantId}::uuid`;
+  await v9SaveConfig(admin,config.revision,config);await saveBusinessPartners([{rules:{company:[b.companyId]},userId:f.pbp.userId!},{rules:{company:[b.companyId]},userId:other.userId!}]);
   await expect(contractCase(f.pbp,f.caseId)).rejects.toMatchObject({code:'forbidden'});expect((await contractCase(f.manager.ctx,f.caseId)).manager).toBe(true);
  });
  it('returns only employee-safe data from direct native decline, without reviewer reasons or comments',async()=>{
