@@ -44225,6 +44225,12 @@
     "pages": "Document pages",
     "showing": "{from}–{to} of {total}",
     "previous": "Previous",
-    "next": "Next"
+    "next": "Next",
+    "sources": {
+      "onboardingChecklist": "Onboarding checklist",
+      "offboardingChecklist": "Offboarding checklist",
+      "documentsFromHr": "Documents from HR"
+    },
+    "openError": "The document could not be opened. Refresh and check that HR has released it."
   }
 }

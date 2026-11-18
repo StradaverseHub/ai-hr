@@ -44225,6 +44225,12 @@
     "pages": "Trang tài liệu",
     "showing": "{from}–{to} trên {total}",
     "previous": "Trước",
-    "next": "Tiếp"
+    "next": "Tiếp",
+    "sources": {
+      "onboardingChecklist": "Danh sách kiểm tra tiếp nhận",
+      "offboardingChecklist": "Danh sách kiểm tra nghỉ việc",
+      "documentsFromHr": "Tài liệu từ Nhân sự"
+    },
+    "openError": "Không thể mở tài liệu. Hãy làm mới và kiểm tra Nhân sự đã phát hành tài liệu."
   }
 }

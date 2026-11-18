@@ -30,4 +30,4 @@ export async function searchOnboardingRecipientUsers(...args: Parameters<typeof 
   return (await import('./v9/recipient-directory')).searchOnboardingRecipientUsers(...args);
 }
 
-export { lifecycleTaskDocuments, openOwnLifecycleDocument } from './v9/task-documents';
+export { lifecycleTaskDocuments, lifecycleTaskCardDocuments, openOwnLifecycleDocument } from './v9/task-documents';

@@ -1,4 +1,5 @@
 'use server';
+import { getTranslations } from 'next-intl/server';
 import { revalidatePath } from 'next/cache';
 import { requireModule } from '@/lib/authz';
 import { openOwnLifecycleDocument, v9OwnDocument, v9OwnTask, v9OwnItem, v9ReportOwnReturn, v9OwnEquipmentReceipt } from '@/packs/lifecycle/service';
@@ -29,5 +30,5 @@ export async function saveOwnLifecycleEquipmentReceipt(input:{caseId:string;revi
 
 export async function openLifecycleDocument(input:{caseId:string;documentId:string;revision:number}) {
  try {await openOwnLifecycleDocument(await requireModule('lifecycle'),input);revalidatePath('/tasks');revalidatePath('/me/lifecycle');return {ok:true as const};}
- catch{return {ok:false as const,error:'The document could not be opened. Refresh and check that HR has released it.'};}
+ catch{const t=await getTranslations('taskDocuments');return {ok:false as const,error:t('openError')};}
 }

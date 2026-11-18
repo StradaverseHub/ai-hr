@@ -1,7 +1,7 @@
 import { scopedSession } from '@/lib/scope';
 import { isModuleEnabledOrFalse } from '@/core/entitlements';
 import { myTaskSummary } from '@/core/approvals-inbox';
-import { lifecycleTaskDocuments, onboardingTasks } from '@/packs/lifecycle/service';
+import { lifecycleTaskDocuments, lifecycleTaskCardDocuments, onboardingTasks } from '@/packs/lifecycle/service';
 import {lifecycleModuleNavigation} from '../lifecycle/workflow-availability';
 import {lifecycleModuleInbox} from '../lifecycle/module-inbox';
 import { TasksView } from './tasks-view';
@@ -18,6 +18,7 @@ export default async function Page({searchParams}:{searchParams:Promise<Record<s
   myTaskSummary(s,scopeIds,modules),lifecycleModuleNavigation(s),
   isModuleEnabledOrFalse(s,'lifecycle')?lifecycleTaskDocuments(s,{companyIds:scopeIds,offset:Math.min(documentPage,20000)*50}):Promise.resolve({items:[],total:0,offset:0,limit:50}),
  ]);
+ const cardDocuments=isModuleEnabledOrFalse(s,'lifecycle')?await lifecycleTaskCardDocuments(s,{companyIds:scopeIds,refs:items.flatMap(item=>item.kind==='checklist'&&item.documentTemplate&&item.taskId?[{caseId:item.caseId,taskId:item.taskId}]:[])}):[];
  const lifecycle=await lifecycleModuleInbox(s,navigation);
- return <TasksView documents={documents} items={items} existing={summary.items} existingTotal={summary.total} claimTotal={summary.claimTotal} lifecycleTasks={lifecycle.items} lifecycleTotal={lifecycle.count}/>;
+ return <TasksView cardDocuments={cardDocuments} documents={documents} items={items} existing={summary.items} existingTotal={summary.total} claimTotal={summary.claimTotal} lifecycleTasks={lifecycle.items} lifecycleTotal={lifecycle.count}/>;
 }
