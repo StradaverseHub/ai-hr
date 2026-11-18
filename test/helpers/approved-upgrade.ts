@@ -279,7 +279,7 @@ export const APPROVED_UPGRADE_TAIL=[
 ] as const;
 // Final pending 2109/2126 bytes reviewed from engine 128bc2539; no applied-prefix hashes change.
 const APPROVED_UPGRADE_HASHES:Record<string,string>={
- '6600_probation_reconciliation':'a1b1380b57ee2d46deb6f2e1e3ea32af9f322a72fb4c84e949ad4a4bf2e41201',
+ '6600_probation_reconciliation':'6ddabb36a65c0f6eda7bfee80400965a2d29a93d2edd10c5f4f3d8b58be48622',
  '6640_lifecycle_personnel_manager':'790069457cd719faf5ea8dbe268e99b9c143182dbad4e3e88fb6e5aff10b5183',
  '6641_lifecycle_manager_recovery_job':'1768a82495459e936190d23d163ef4e344663ef8afd6f426d463b8877719eb01',
  '6650_pay_formula_business_code_registration':'b416b1d6177fb3ffcb4d60b1ff422c49c9af653949929d313910486f9aeadd34',
