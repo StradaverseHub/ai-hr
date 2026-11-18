@@ -13,7 +13,7 @@ import {HistoryJobPanel} from './history-job-progress';
 import type {BulkJobProgress} from '@/lib/bulk-job';
 
 type Code={code:string;label:string;destination:string;direction:string};
-const button='inline-flex items-center justify-center rounded-lg border px-4 py-2 text-sm font-medium disabled:opacity-40';
+const button='inline-flex min-h-11 items-center justify-center rounded-lg border px-4 py-2 text-sm font-medium disabled:opacity-40';
 export function HistoryWorkflow({codes}:{codes:Code[]}){
  const m=useTranslations('payrollHistoryMaintenance'),t=useTranslations('payroll.historyRevisions'),old=useTranslations('payroll.historyImport');
  const [file,setFile]=useState<File|null>(null),[preview,setPreview]=useState<{attemptId:string;plan:HistoryRevisionPlan}|null>(null);
@@ -79,7 +79,7 @@ export function HistoryWorkflow({codes}:{codes:Code[]}){
 
      </>}
     </div>}
-    <label className="flex items-start gap-3 text-sm"><input type="checkbox" className="mt-1" checked={confirmed} onChange={event=>setConfirmed(event.target.checked)} disabled={busy!==null}/><span>{t('confirmation')}</span></label>
+    <label className="flex min-h-11 items-start gap-3 text-sm"><input type="checkbox" className="mt-1" checked={confirmed} onChange={event=>setConfirmed(event.target.checked)} disabled={busy!==null}/><span>{t('confirmation')}</span></label>
     <div className="flex flex-wrap gap-3">
      {replaceable.length>0?<>
       <ActionButton guardNavigation={true} aria-busy={busy==='confirm'} actionKind="submitting" type="button" className={button+' bg-primary text-primary-foreground'} onClick={()=>commit('ticked')} disabled={blocked||ticked.size===0}>{busy==='confirm'?t('importing'):maintenanceMode==='update_listed'?m('confirmChanges'):t('confirmOverwrite')}</ActionButton>

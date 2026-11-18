@@ -44897,6 +44897,8 @@
     "pushField": "Hantar {field} ke Pengurusan Personel"
   },
   "payrollHistoryMaintenance": {
+    "itemsUnavailable": "Pecahan Item Gaji tidak tersedia.",
+    "sourceLimited": "Fail asal memerlukan akses kepada keseluruhan kelompok import.",
     "impactKinds": {
           "payroll": "{count} larian gaji sedia ada kekal tidak berubah. Semak input sejarahnya secara berasingan.",
           "report": "{count} laporan berkanun yang direkodkan kekal tidak berubah. Semak laporan terjejas secara berasingan.",

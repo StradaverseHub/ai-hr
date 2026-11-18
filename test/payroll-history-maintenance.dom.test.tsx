@@ -30,7 +30,7 @@ it('previews exact item/revision/reason, retains canonical unlisted totals and c
  await user.clear(screen.getByLabelText('New total for ALLOWANCE'));await user.type(screen.getByLabelText('New total for ALLOWANCE'),'275.00');
  expect(screen.getByRole('button',{name:'Review changes'})).toBeDisabled();await user.type(screen.getByLabelText('Reason for this change'),'Corrected approved allowance');await user.click(screen.getByRole('button',{name:'Review changes'}));
  expect(mocks.preview).toHaveBeenCalledExactlyOnceWith({version:1,operation:'edit',recordId:'record-fictional',expectedRevisionId:'revision-current',items:[{key:'allowance',amount:'275.00'}],reason:'Corrected approved allowance'});
- const review=within(screen.getByRole('region',{name:'Before-and-after review'}));expect(review.getAllByText('Keep existing total')).toHaveLength(2);expect(within(review.getByRole('region',{name:'Pay Item changes'})).getByText('MYR 275.00')).toBeInTheDocument();
+ expect(screen.getByRole('heading',{name:'Before-and-after review'})).toHaveFocus();const review=within(screen.getByRole('region',{name:'Before-and-after review'}));expect(review.getAllByText('Keep existing total')).toHaveLength(2);expect(within(review.getByRole('region',{name:'Pay Item changes'})).getByText('MYR 275.00')).toBeInTheDocument();
  expect(screen.getByRole('button',{name:'Confirm history changes'})).toBeDisabled();await user.click(review.getByRole('checkbox'));await user.click(screen.getByRole('button',{name:'Confirm history changes'}));expect(mocks.confirm).toHaveBeenCalledExactlyOnceWith({attemptId:'review-attempt',previewHash:'fictional-preview-hash'});expect(await screen.findByRole('status')).toHaveTextContent('History changes committed');
 });
 it('invalidates the reviewed intent after an amount change and retains edits on a transport failure',async()=>{
@@ -78,3 +78,9 @@ it.each(scenarios)('renders actual selected-item, batch and compatibility remova
  const compatibility=within(screen.getByTestId('compatibility-revert'));await user.click(compatibility.getByRole('button',{name:old.reviewRevert}));expect(compatibility.getByRole('button',{name:old.revert})).toBeDisabled();expect(mocks.confirm).not.toHaveBeenCalled();expect(mocks.revertApply).not.toHaveBeenCalled();
  await captureAiReviewScreenshots(aiReviewDomHtml(container),locale,`feedback-5b47be17-removal-${theme}-${mode}`,'Actual selected-item removal, original-batch contribution removal and compatibility Revert review; fictional later correction retained; no live operation',theme,mode);
 },30000);
+
+it('keeps unknown lineage distinct from empty history and does not offer source links beyond batch access',()=>{
+ const unavailable={...maintenanceDetail,items:[],itemCount:0,canEdit:false,canRemove:false,unavailableReason:'The immutable source lineage requires review.'};
+ const {unmount}=render(wrap(<HistoryMaintenanceControl detail={unavailable}/>));expect(screen.getByRole('status')).toHaveTextContent('Pay Item breakdown unavailable.');expect(screen.getByRole('status')).toHaveTextContent('immutable source lineage');expect(screen.queryByText('No effective imported items.')).not.toBeInTheDocument();expect(screen.queryByRole('button',{name:'Review changes'})).not.toBeInTheDocument();unmount();
+ const current={...maintenanceDetail,items:[{...maintenanceDetail.items[0],sourceName:null}],audit:[{...maintenanceDetail.audit[0],sourceName:''}]};render(wrap(<><HistoryMaintenanceControl detail={current}/><HistoryMaintenanceAudit detail={current}/></>));expect(screen.queryByRole('link')).not.toBeInTheDocument();expect(screen.getAllByText('The original file requires access to the complete import batch.')).toHaveLength(2);
+});

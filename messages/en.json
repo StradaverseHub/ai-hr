@@ -44897,6 +44897,8 @@
     "pushField": "Push {field} to Personnel Management"
   },
   "payrollHistoryMaintenance": {
+    "itemsUnavailable": "Pay Item breakdown unavailable.",
+    "sourceLimited": "The original file requires access to the complete import batch.",
     "impactKinds": {
           "payroll": "{count} existing payroll runs stay unchanged. Review their history inputs separately.",
           "report": "{count} recorded statutory reports stay unchanged. Review affected reports separately.",
