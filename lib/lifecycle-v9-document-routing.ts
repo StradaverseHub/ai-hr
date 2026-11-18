@@ -24,6 +24,7 @@ export function initializeV9DocumentRouting(c:Case,version:TemplateVersion,docum
  // Persist only the source values this document uses; signing participation grants no unrelated Personnel data.
  const used=new Set(document.fields.flatMap(field=>field.pmKey?[field.pmKey]:[]));
  for(const block of document.blocks){for(const match of [block.text,block.rows??'',block.label??''].join(' ').matchAll(/\{([a-zA-Z][a-zA-Z0-9_]*(?:\.[a-zA-Z0-9_]+)?)\}/g))used.add(match[1]);if(block.type==='letterhead')for(const key of ['company.name','company.regNo','company.address','company.color'])used.add(key);}
+ if(env.documentRouting.personnelSource?._identityFieldsWithheld==='true'&&['personalEmail','employee.icNo','employee.passportNo','icNo','passportNo','case.icNo','case.passportNo'].some(key=>used.has(key)))throw new V9Error('Permission to view protected Personnel identity fields is required for this document.','forbidden');
  document.mergeValues=Object.fromEntries(Object.entries(document.mergeValues??{}).filter(([key])=>used.has(key)));
  const resolved=env.documentRouting.resolve(version.routing);validateSigningRoute(resolved.route,V9_DOCUMENT_SIGNING_RULES);
  document.routing=structuredClone(version.routing);document.routingUnresolved=resolved.unresolved;
