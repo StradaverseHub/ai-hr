@@ -45,7 +45,7 @@ jobs:
           set -euo pipefail
           test "$GITHUB_REPOSITORY" = StradaverseHub/ai-hr
           test "$GITHUB_EVENT_NAME" = workflow_dispatch
-          timeout 60s git fetch --no-tags --depth=2 https://github.com/StradaverseHub/ai-hr.git "$GITHUB_SHA" 9211b11ff1fe9a0f120e9f0c34c9cf101a5dc772
+          timeout 60s git fetch --no-tags --depth=16 https://github.com/StradaverseHub/ai-hr.git "$GITHUB_SHA" 9211b11ff1fe9a0f120e9f0c34c9cf101a5dc772
           recovery_dir="$(mktemp -d "$RUNNER_TEMP/worker-controls-recovery-XXXXXX")"
           gh api repos/StradaverseHub/ai-hr/actions/runs/44284850735 > "$recovery_dir/run.json"
           gh api repos/StradaverseHub/ai-hr/actions/runs/44284850735/jobs > "$recovery_dir/jobs.json"
@@ -63,6 +63,7 @@ jobs:
           FIXTURE='test/fixtures/bank-import-worker-prepared-tests.py'
           WORKFLOW='.github/workflows/bank-import-worker-package.yml'
           REPAIRED_SHA='753efb218e08b3c3f369bf5af122ca97db3390b2d92a1b70f2dd75bd4e5bb529'
+          UI_PINS={'app/admin/settings/email-templates/designer.tsx':'0529cfba6d02e14304f0467644076357f3e684058b8460a364c1fc3f37351d24','test/email-designer.dom.test.tsx':'821a67c89fdf62bbe44a34430a407d7d25326adbf8b8caeb17b7f7b8c75765d0'}
           FAILED={'test_legacy_unprepared_and_preunit_f4_keep20','test_normal_prepared_r0_r1_o_and_genuine_native_cleanup'}
           def need(ok):
               if not ok:raise ValueError('Original worker control recovery refused')
@@ -79,7 +80,11 @@ jobs:
               need(artifact['id']==ARTIFACT and artifact['name']=='worker-runtime-controls-v1' and artifact['expired']is False)
               need(artifact['digest']=='sha256:'+ARCHIVE_SHA and artifact['size_in_bytes']==8665)
               need(artifact['workflow_run']['id']==RUN and artifact['workflow_run']['head_sha']==ORIGINAL)
-          def allowed_paths(paths):need(set(paths)=={FIXTURE,WORKFLOW} and len(paths)==2)
+          def allowed_paths(paths):
+              selected=set(paths);base={FIXTURE,WORKFLOW}
+              need(len(paths)==len(selected) and (selected==base or selected==base|set(UI_PINS)))
+              return bool(selected&set(UI_PINS))
+          def reviewed_ui(hashes):need(hashes==UI_PINS)
           def normalized(tree):
               tree=copy.deepcopy(tree)
               classes=[c for c in tree.body if isinstance(c,ast.ClassDef)and c.name=='PreparedFlowTests']
@@ -100,7 +105,9 @@ jobs:
           def git(*args):return subprocess.check_output(['git',*args],text=True)
           need(git('rev-parse','HEAD').strip()==sha and not git('status','--porcelain','--untracked-files=all').strip())
           subprocess.run(['git','merge-base','--is-ancestor',ORIGINAL,'HEAD'],check=True)
-          paths=git('diff','--name-only',ORIGINAL,'HEAD').splitlines();allowed_paths(paths)
+          paths=git('diff','--name-only',ORIGINAL,'HEAD').splitlines();has_ui=allowed_paths(paths)
+          ui_hashes={p:hashlib.sha256(Path(p).read_bytes()).hexdigest()for p in UI_PINS}if has_ui else{}
+          if has_ui:reviewed_ui(ui_hashes)
           old=ast.parse(git('show',ORIGINAL+':'+FIXTURE));new=ast.parse(Path(FIXTURE).read_bytes());fixture_scope(old,new)
           need(hashlib.sha256(Path(FIXTURE).read_bytes()).hexdigest()==REPAIRED_SHA)
           archive=(folder/'controls.zip').read_bytes();need(hashlib.sha256(archive).hexdigest()==ARCHIVE_SHA)
@@ -137,11 +144,13 @@ jobs:
           for key,value in [('id',ARTIFACT+1),('expired',True),('digest','sha256:'+'0'*64)]:
               bad=copy.deepcopy(artifact);bad[key]=value;refused(lambda:metadata(run,jobs,bad));negatives+=1
           refused(lambda:allowed_paths(paths+['app/page.tsx']));negatives+=1
+          refused(lambda:allowed_paths([FIXTURE,WORKFLOW,next(iter(UI_PINS))]));negatives+=1
+          bad=dict(UI_PINS);bad[next(iter(UI_PINS))]='0'*64;refused(lambda:reviewed_ui(bad));negatives+=1
           tampered=copy.deepcopy(new);c=next(c for c in tampered.body if isinstance(c,ast.ClassDef)and c.name=='PreparedFlowTests');other=next(n for n in c.body if isinstance(n,ast.FunctionDef)and n.name.startswith('test_')and n.name not in FAILED);other.body=[ast.Pass()]
           refused(lambda:fixture_scope(old,tampered));negatives+=1
           tampered=copy.deepcopy(new);c=next(c for c in tampered.body if isinstance(c,ast.ClassDef)and c.name=='PreparedFlowTests');c.body.remove(next(n for n in c.body if isinstance(n,ast.FunctionDef)and n.name in FAILED))
           refused(lambda:fixture_scope(old,tampered));negatives+=1
-          receipt={'kind':'RETAINED_WORKER_CONTROLS_ADMISSION_NOT_TEST_RESULT','originalRun':RUN,'originalJob':JOB,'originalSource':ORIGINAL,'originalConclusion':'failure','artifact':ARTIFACT,'archiveSha256':ARCHIVE_SHA,'originalLogSha256':hashlib.sha256(log_bytes).hexdigest(),'nativeSystemdSha256':hashlib.sha256(native_bytes).hexdigest(),'candidate':sha,'changedMethods':sorted(FAILED),'retainedPreparedMethods':31,'negativeControls':negatives,'releaseAuthorized':False}
+          receipt={'kind':'RETAINED_WORKER_CONTROLS_ADMISSION_NOT_TEST_RESULT','originalRun':RUN,'originalJob':JOB,'originalSource':ORIGINAL,'originalConclusion':'failure','artifact':ARTIFACT,'archiveSha256':ARCHIVE_SHA,'originalLogSha256':hashlib.sha256(log_bytes).hexdigest(),'nativeSystemdSha256':hashlib.sha256(native_bytes).hexdigest(),'candidate':sha,'changedMethods':sorted(FAILED),'changedUiBlobs':ui_hashes,'retainedScope':'operator controls only; UI and current package require separate qualification','retainedPreparedMethods':31,'negativeControls':negatives,'releaseAuthorized':False}
           output=Path(os.environ['RUNNER_TEMP'])/'worker-controls-retained.json';fd=os.open(output,os.O_WRONLY|os.O_CREAT|os.O_EXCL,0o600)
           with os.fdopen(fd,'w')as f:json.dump(receipt,f,sort_keys=True);f.write('\n')
           print(json.dumps(receipt,sort_keys=True))
