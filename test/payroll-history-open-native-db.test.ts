@@ -8,6 +8,7 @@ import {hireEmployee} from '../core/org';
 import {upsertPayComponent,setEmploymentPayComponent} from '../core/pay-components';
 import {readEffectiveTaxBasesTx,taxBasisSourceRowsTx} from '../core/payroll-tax-basis-read';
 import {readPcbNonCash} from '../localization/noncash-benefits';
+import {MY_STATUTORY_VERSION} from '../localization/my/statutory-tables';
 import {setCompensation} from '../core/comp';
 import {setStatutoryProfileMY} from '../localization/my/statutory';
 import {seedPayrollCycleCatalog} from '../core/payroll-cycle';
@@ -25,8 +26,8 @@ let b:Base,ctx:SessionContext,employee:SessionContext,employmentId:string,person
 const year=Number(todayInKualaLumpur().slice(0,4))-2,period=`${year}-01`;
 const physical=()=>withTenant(ctx,tx=>tx.select().from(nativePayrollPayslip).where(eq(nativePayrollPayslip.batchId,batchId)));
 const effective=()=>withTenant(ctx,tx=>tx.select().from(s.payslip).where(eq(s.payslip.employmentId,employmentId)));
-async function correction(amount='6000.00'){
- const rows=[['N001',period,'ME','BASIC','NATIVE',amount],...['EEEPF','EESOCSO','EEEIS','PCB'].map(code=>['N001',period,'ME',code,'NATIVE','0.00'])];
+async function correction(amount='6000.00',targetPeriod=period){
+ const rows=[['N001',targetPeriod,'ME','BASIC','NATIVE',amount],...['EEEPF','EESOCSO','EEEIS','PCB'].map(code=>['N001',targetPeriod,'ME',code,'NATIVE','0.00'])];
  const preview=await previewPayrollHistoryUpload(ctx,{name:'fictional-native-history.csv',content:Buffer.from(toCsv([Array.from(PAYROLL_HISTORY_HEADERS),...rows])),maintenance:{version:1,mode:'replace',reason:'Correct fictional retained native figures'}});
  expect(preview.plan.counts.invalid,JSON.stringify(preview.plan)).toBe(0);
  return {preview,commit:()=>confirmPayrollHistoryUpload(ctx,{attemptId:preview.attemptId,previewHash:preview.plan.previewHash,confirmReplacement:true})};
@@ -44,6 +45,13 @@ afterAll(closeAll);
 describe('detached history baseline and mutable native payroll owner',()=>{
  it('binds one NULL-cycle native origin to one retained record across alternate cycles and regenerated payslip IDs',async()=>{
   const [original]=await physical(),[run]=await owner.db.select().from(s.payrollBatch).where(eq(s.payrollBatch.id,batchId));expect(run.payrollCycleId).toBeNull();const edit=await correction();await edit.commit();
+  const visible=await effective();expect(visible.map(row=>row.grossPay)).toEqual(['6000.00']);const acceptedId=visible[0].id;
+  // This private bulk owner returns membership metadata only; app money reads below keep ordinary RLS.
+  const membership=await owner.withTenant(ctx,tx=>tx.execute<{id:string;scalar:boolean;bulk:boolean}>(sql`with bulk as materialized(select id from app.payroll_history_effective_ids(ARRAY[${original.id}::uuid,${acceptedId}::uuid]) effective_id(id)) select candidate.id,app.payroll_history_effective(candidate.id) scalar,exists(select 1 from bulk where bulk.id=candidate.id) bulk from unnest(ARRAY[${original.id}::uuid,${acceptedId}::uuid]) with ordinality candidate(id,n) order by candidate.n`));
+  expect(membership).toEqual([{id:original.id,scalar:false,bulk:false},{id:acceptedId,scalar:true,bulk:true}]);
+  const [aggregate]=await withTenant(ctx,tx=>tx.execute<{employeeCount:number;actual:unknown;reference:unknown}>(sql`select b.employee_count as "employeeCount",b.totals actual,app.payroll_history_batch_totals(b.id) reference from payroll_history_effective_batch b where b.id=${batchId}::uuid`));
+  expect(aggregate.employeeCount).toBe(0);expect(aggregate.actual).toEqual(aggregate.reference);expect(aggregate.reference).toMatchObject({employeeCount:0,gross:0,net:0});
+
   const [cycle]=await owner.db.insert(s.payrollCycle).values({tenantId:b.tenantId,companyId:b.companyId,name:'Fictional alternate history cycle',code:'ALTERNATE',runType:'adjustment'}).returning();
   const [alternate]=await withTenant(ctx,tx=>tx.insert(s.payrollHistoryImportRecord).values({tenantId:b.tenantId,companyId:b.companyId,employmentId,period,cycleId:cycle.id}).returning());const [sourceAttempt]=await owner.db.select().from(s.payrollHistoryImportAttempt).where(eq(s.payrollHistoryImportAttempt.id,edit.preview.attemptId));
   const captureAgain=async(sourceId:string)=>{
@@ -104,9 +112,12 @@ describe('detached history baseline and mutable native payroll owner',()=>{
   expect((await effective()).map(p=>p.grossPay)).toEqual(['6000.00']);
  });
  it('does not suppress a new unrelated native batch for the same employment and month',async()=>{
+  // Only this ready-projection case uses the bundled assessment year; historical cases keep their year guard.
+  const readyPeriod=MY_STATUTORY_VERSION.slice(0,4)+'-01';await resetProcessedBatch(ctx,{batchId,reason:'Use the known bundled tax assessment year'});await deleteDraftBatch(ctx,{batchId});
   await owner.db.update(s.payComponent).set({includedInPcb:true,pcbRemunerationType:'normal',pcbExemptionCode:'PCB_TAXABLE'}).where(and(eq(s.payComponent.tenantId,b.tenantId),eq(s.payComponent.code,'BASIC')));
-  const edit=await correction();expect((edit.preview.plan.rows[0].values?.statutory as {importedTaxBasis:{state:string}}).importedTaxBasis.state).toBe('ready');await edit.commit();await resetProcessedBatch(ctx,{batchId,reason:'Replace the original native run'});await deleteDraftBatch(ctx,{batchId});
-  const later=(await createBatch(ctx,{companyId:b.companyId,payPeriod:period})).batchId;expect(later).not.toBe(batchId);await generatePayslips(ctx,{batchId:later});
+  batchId=(await createBatch(ctx,{companyId:b.companyId,payPeriod:readyPeriod})).batchId;await generatePayslips(ctx,{batchId});
+  const edit=await correction('6000.00',readyPeriod),stamp=(edit.preview.plan.rows[0].values?.statutory as {importedTaxBasis?:{state:string;missing:string[]}}).importedTaxBasis;expect(stamp?.state,JSON.stringify(stamp?.missing??[])).toBe('ready');await edit.commit();await resetProcessedBatch(ctx,{batchId,reason:'Replace the original native run'});await deleteDraftBatch(ctx,{batchId});
+  const later=(await createBatch(ctx,{companyId:b.companyId,payPeriod:readyPeriod})).batchId;expect(later).not.toBe(batchId);await generatePayslips(ctx,{batchId:later});
   expect((await effective()).map(p=>p.grossPay).sort()).toEqual(['4000.00','6000.00']);
  });
  it('refuses a stale reviewed native source without publishing a baseline or correction',async()=>{
