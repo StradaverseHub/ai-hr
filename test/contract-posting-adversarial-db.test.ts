@@ -42,18 +42,25 @@ it('serializes two real approvals into one canonical posting receipt',async()=>{
  expect((await listContractSharedPostings(f.approver,{status:'approved'})).rows).toHaveLength(1);
 });
 it('prelocks the real Employment write before the case flow when a second database session owns that employment',async()=>{
- const f=await contractPostingFixture(),p=await releaseContractPosting(f),blocker=await owner.client.reserve();
+ const f=await contractPostingFixture(),p=await releaseContractPosting(f);
  const request=await approveContractSharedPosting(f.approver,{id:p.id,revision:p.revision});
  if(request.postingStatus!=='pending')throw Error('A new approval must be queued.');
  await runContractPostingApplyTick();
+ const [prepared]=await owner.client<{state:string;due:boolean}[]>`select state,(not_before is null or not_before<=now()) as due from bulk_job where tenant_id=${f.b.tenantId}::uuid and id=${request.jobId}::uuid`;
+ expect(prepared).toEqual({state:'finalizing',due:true});
  let approving:Promise<unknown>|undefined;
+ const outcome:{settled:boolean;value?:boolean;error?:unknown}={settled:false};
+ const blocker=await owner.client.reserve();
  try{
   await blocker`begin`;
+  const [{pid:blockerPid}]=await blocker<{pid:number}[]>`select pg_backend_pid() as pid`;
   await blocker`select id from employment where tenant_id=${f.b.tenantId}::uuid and id=${f.employee.employmentId}::uuid for update`;
-  approving=runContractPostingApplyTick();void approving.catch(()=>undefined);
+  approving=runContractPostingApplyTick().then(value=>{outcome.settled=true;outcome.value=value;return value;},error=>{outcome.settled=true;outcome.error=error;throw error;});void approving.catch(()=>undefined);
   let waiting=false;
   for(let attempt=0;attempt<200;attempt++){
-   const[state]=await blocker<{waiting:boolean}[]>`select exists(select 1 from pg_stat_activity activity where activity.datname=current_database() and activity.application_name='aihr-bulk:contract_posting_apply:finalize' and activity.pid<>pg_backend_pid() and cardinality(pg_blocking_pids(activity.pid))>0) waiting`;
+   if(outcome.settled){if(outcome.error!==undefined)throw outcome.error;throw Error('Native posting finalizer settled before the Employment lock observation: '+String(outcome.value));}
+   // Each autocommit observation gets fresh backend statistics, outside the long-lived blocker transaction.
+   const[state]=await owner.client<{waiting:boolean}[]>`select exists(select 1 from pg_stat_activity activity where activity.datname=current_database() and activity.application_name='aihr-bulk:contract_posting_apply:finalize' and activity.pid<>pg_backend_pid() and ${blockerPid}=any(pg_blocking_pids(activity.pid))) waiting`;
    if(state.waiting){waiting=true;break;}await new Promise(resolve=>setTimeout(resolve,10));
   }
   expect(waiting).toBe(true);await blocker`set local lock_timeout='2s'`;
