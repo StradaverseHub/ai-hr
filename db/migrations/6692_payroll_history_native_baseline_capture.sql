@@ -28,7 +28,7 @@ CREATE TRIGGER payroll_history_native_revision_binding BEFORE INSERT ON public.p
 --> statement-breakpoint
 CREATE FUNCTION app.payroll_history_capture_native(p_attempt uuid,p_record uuid,input jsonb,p_cycle_name text,p_value_hash text) RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
 DECLARE r public.payroll_history_import_record; a public.payroll_history_import_attempt; p public.payslip; b public.payroll_batch; period public.pay_period;
- c app.payroll_history_native_capture; copy_batch public.payroll_batch; batch_id uuid; slip_id uuid; stage uuid:=nullif(current_setting('app.payroll_history_stage',true),'')::uuid;
+ c app.payroll_history_native_capture; copy_batch public.payroll_batch; batch_id uuid; slip_id uuid; copy_period_id uuid; copy_seq integer; stage uuid:=nullif(current_setting('app.payroll_history_stage',true),'')::uuid;
 BEGIN
  IF NOT app.payroll_history_native_module() OR jsonb_typeof(input) IS DISTINCT FROM 'object' OR input-ARRAY['batchId','snapshotId','sourceBatchId','sourcePayslipId','sourceVersion','sourceHash','values','valueHash']<>'{}'::jsonb OR p_value_hash !~ '^[0-9a-f]{64}$' OR p_value_hash IS DISTINCT FROM input->>'valueHash' OR length(p_cycle_name) NOT BETWEEN 1 AND 300 THEN RAISE EXCEPTION 'Invalid native baseline capture' USING ERRCODE='42501';END IF;
  SELECT * INTO r FROM public.payroll_history_import_record WHERE id=p_record AND tenant_id=app.current_tenant_id() FOR UPDATE;
@@ -37,7 +37,7 @@ BEGIN
  OR NOT EXISTS(SELECT 1 FROM jsonb_array_elements(a.plan->'rows') planned WHERE planned->>'companyId'=r.company_id::text AND planned->>'employmentId'=r.employment_id::text AND planned->>'period'=r.period AND planned->>'cycleId'=r.cycle_id::text AND planned->>'operation' IN('create','replace') AND planned->'detachedNativeBaseline'=input AND planned->>'cycleName'=p_cycle_name)
  THEN RAISE EXCEPTION 'The native baseline is not in the reviewed source' USING ERRCODE='42501';END IF;
  IF stage IS NOT NULL AND NOT EXISTS(SELECT 1 FROM app.payroll_history_stage s WHERE s.stage_id=stage AND s.tenant_id=r.tenant_id AND s.attempt_id=a.id AND s.created_by=app.current_user_id() AND s.state='staged') THEN RAISE EXCEPTION 'Native baseline stage unavailable' USING ERRCODE='42501';END IF;
- SELECT period_owner.* INTO period FROM public.pay_period period_owner WHERE period_owner.id=(SELECT source.pay_period_id FROM public.payroll_batch source WHERE source.id=(input->>'sourceBatchId')::uuid AND source.tenant_id=r.tenant_id) AND period_owner.tenant_id=r.tenant_id FOR SHARE;
+ SELECT period_owner.* INTO period FROM public.pay_period period_owner WHERE period_owner.id=(SELECT source.pay_period_id FROM public.payroll_batch source WHERE source.id=(input->>'sourceBatchId')::uuid AND source.tenant_id=r.tenant_id) AND period_owner.tenant_id=r.tenant_id FOR UPDATE;
  SELECT x.* INTO b FROM public.payroll_batch x WHERE x.id=(input->>'sourceBatchId')::uuid AND x.tenant_id=r.tenant_id FOR UPDATE;
  SELECT x.* INTO p FROM public.payslip x WHERE x.id=(input->>'sourcePayslipId')::uuid AND x.tenant_id=r.tenant_id FOR UPDATE;
 
@@ -56,8 +56,14 @@ BEGIN
  IF EXISTS(SELECT 1 FROM app.payroll_history_native_capture prior WHERE prior.tenant_id=r.tenant_id AND prior.source_batch_id=b.id AND prior.source_employment_id=p.employment_id) THEN RAISE EXCEPTION 'This native payroll origin already has a retained baseline. Review the existing history record.' USING ERRCODE='40001';END IF;
  SELECT * INTO copy_batch FROM public.payroll_batch WHERE id=batch_id;
  IF copy_batch.id IS NULL THEN
+  -- A synchronous INSERT must already own its parent: the deferred period trigger retains
+  -- INSERT's NEW row even if finalization subsequently updates the current row. Only an
+  -- actual registered stage may defer the parent/sequence until its later publication transaction.
+  copy_period_id:=CASE WHEN stage IS NULL THEN period.id ELSE NULL END;
+  copy_seq:=0;
+  IF stage IS NULL THEN SELECT coalesce(max(existing.run_seq),0)+1 INTO copy_seq FROM public.payroll_batch existing WHERE existing.pay_period_id=period.id;END IF;
   INSERT INTO public.payroll_batch(id,tenant_id,company_id,pay_period_id,pay_period,run_type,run_seq,status,batch_date,payroll_cycle_id,remarks,history_import_attempt_id,history_import_cycle_name)
-  VALUES(batch_id,r.tenant_id,r.company_id,NULL,r.period,'adjustment',0,'draft',b.batch_date,b.payroll_cycle_id,'Retained native baseline',a.id,p_cycle_name);
+  VALUES(batch_id,r.tenant_id,r.company_id,copy_period_id,r.period,'adjustment',copy_seq,'draft',b.batch_date,b.payroll_cycle_id,'Retained native baseline',a.id,p_cycle_name);
  ELSIF copy_batch.tenant_id<>r.tenant_id OR copy_batch.company_id<>r.company_id OR copy_batch.pay_period<>r.period OR copy_batch.history_import_attempt_id IS DISTINCT FROM a.id OR copy_batch.status<>'draft' OR NOT EXISTS(SELECT 1 FROM app.payroll_history_native_capture old WHERE old.baseline_batch_id=batch_id AND old.source_batch_id=b.id AND old.attempt_id=a.id) THEN RAISE EXCEPTION 'Native baseline batch changed';END IF;
  INSERT INTO app.payroll_history_native_capture(snapshot_id,tenant_id,record_id,attempt_id,baseline_batch_id,source_batch_id,source_employment_id,source_payslip_id,source_version,source_hash,created_by)
  VALUES(slip_id,r.tenant_id,r.id,a.id,batch_id,b.id,p.employment_id,p.id,p.version,input->>'sourceHash',app.current_user_id()) RETURNING * INTO c;
@@ -85,8 +91,8 @@ BEGIN
  LEFT JOIN public.payslip original ON original.id=c.source_payslip_id LEFT JOIN public.payroll_batch source ON source.id=c.source_batch_id LEFT JOIN public.pay_period period ON period.id=source.pay_period_id
  WHERE c.attempt_id=p_attempt AND(c.tenant_id<>app.current_tenant_id() OR NOT app.payroll_history_native_permission(r.company_id,'payroll.history.import') OR NOT app.payroll_history_native_snapshot_bound(s) OR original.id IS NULL OR source.id IS NULL OR source.status::text NOT IN('draft','processing','processed') OR period.id IS NULL OR c.source_hash IS DISTINCT FROM app.payroll_history_native_source_hash(original,source,period.status::text))) THEN RAISE EXCEPTION 'The native baseline source changed before release' USING ERRCODE='40001';END IF;
  -- The existing history write barrier serializes allocation with normal native period ownership.
- WITH wanted AS(SELECT DISTINCT copy.id,source.pay_period_id FROM public.payroll_batch copy JOIN app.payroll_history_native_capture c ON c.baseline_batch_id=copy.id JOIN public.payroll_batch source ON source.id=c.source_batch_id WHERE copy.id=ANY(batch_ids) AND copy.status='draft'),
- numbered AS(SELECT w.*,coalesce((SELECT max(b.run_seq) FROM public.payroll_batch b WHERE b.pay_period_id=w.pay_period_id),0)+row_number()OVER(PARTITION BY w.pay_period_id ORDER BY w.id) seq FROM wanted w),
+ WITH wanted AS(SELECT DISTINCT copy.id,source.pay_period_id,copy.pay_period_id IS NULL deferred_parent,copy.run_seq FROM public.payroll_batch copy JOIN app.payroll_history_native_capture c ON c.baseline_batch_id=copy.id JOIN public.payroll_batch source ON source.id=c.source_batch_id WHERE copy.id=ANY(batch_ids) AND copy.status='draft'),
+ numbered AS(SELECT w.*,CASE WHEN w.deferred_parent THEN coalesce((SELECT max(b.run_seq) FROM public.payroll_batch b WHERE b.pay_period_id=w.pay_period_id),0)+row_number()OVER(PARTITION BY w.pay_period_id,w.deferred_parent ORDER BY w.id) ELSE w.run_seq END seq FROM wanted w),
  totals AS(SELECT p.batch_id,count(*) n,jsonb_build_object('gross',sum(p.gross_pay),'net',sum(p.net_pay),'epfEmployee',sum(coalesce((p.statutory->>'epfEmployee')::numeric,0)),'epfEmployer',sum(coalesce((p.statutory->>'epfEmployer')::numeric,0)),'socsoEmployee',sum(coalesce((p.statutory->>'socsoEmployee')::numeric,0)),'socsoEmployer',sum(coalesce((p.statutory->>'socsoEmployer')::numeric,0)),'eisEmployee',sum(coalesce((p.statutory->>'eisEmployee')::numeric,0)),'eisEmployer',sum(coalesce((p.statutory->>'eisEmployer')::numeric,0)),'pcb',sum(coalesce((p.statutory->>'pcb')::numeric,0))) amount FROM public.payslip p WHERE p.batch_id=ANY(batch_ids) GROUP BY p.batch_id)
  UPDATE public.payroll_batch b SET pay_period_id=n.pay_period_id,run_seq=n.seq::integer,status='closed',employee_count=t.n,totals=t.amount FROM numbered n JOIN totals t ON t.batch_id=n.id WHERE b.id=n.id;
 END

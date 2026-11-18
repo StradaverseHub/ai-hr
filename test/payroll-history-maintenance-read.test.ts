@@ -98,7 +98,7 @@ it('matches independent SQL-page order/counts for 70 companies and 1,000 employm
   await tx.execute(sql`insert into payslip(id,tenant_id,batch_id,employment_id,basic_salary,gross_pay,statutory,total_deductions,net_pay,employer_cost) select "slipId",${b.tenantId}::uuid,"batchId","employmentId",1000,1000,${JSON.stringify(values.statutory)}::jsonb,0,1000,1000 from jsonb_to_recordset(${JSON.stringify(graph)}::jsonb) s("slipId" uuid,"batchId" uuid,"employmentId" uuid)`);
   await tx.execute(sql`update payroll_batch batch set status='closed',employee_count=(select count(*) from payslip p where p.batch_id=batch.id),totals=(select jsonb_build_object('gross',sum(p.gross_pay),'net',sum(p.net_pay),'epfEmployee',0,'epfEmployer',0,'socsoEmployee',0,'socsoEmployer',0,'eisEmployee',0,'eisEmployer',0,'pcb',0) from payslip p where p.batch_id=batch.id) where batch.tenant_id=${b.tenantId}::uuid and batch.history_import_attempt_id=${attemptId}::uuid`);
   await tx.execute(sql`insert into payroll_history_import_snapshot(id,tenant_id,record_id,value_hash,"values") select "slipId",${b.tenantId}::uuid,"recordId",${valueHash},${JSON.stringify(values)}::jsonb from jsonb_to_recordset(${JSON.stringify(graph)}::jsonb) s("slipId" uuid,"recordId" uuid)`);
-  await tx.execute(sql`insert into payroll_history_import_revision(id,tenant_id,record_id,ordinal,attempt_id,snapshot_id,kind,cycle_name,maintenance) select "revisionId",${b.tenantId}::uuid,"recordId",1,${attemptId}::uuid,"slipId",'import','Monthly',jsonb_build_object('version',1,'state',state,'operation','replace','reason',${reason}) from jsonb_to_recordset(${JSON.stringify(graph)}::jsonb) s("revisionId" uuid,"recordId" uuid,"slipId" uuid,state jsonb)`);
+  await tx.execute(sql`insert into payroll_history_import_revision(id,tenant_id,record_id,ordinal,attempt_id,snapshot_id,kind,cycle_name,maintenance) select "revisionId",${b.tenantId}::uuid,"recordId",1,${attemptId}::uuid,"slipId",'import','Monthly',jsonb_build_object('version',1,'state',state,'operation','replace','reason',${reason}::text) from jsonb_to_recordset(${JSON.stringify(graph)}::jsonb) s("revisionId" uuid,"recordId" uuid,"slipId" uuid,state jsonb)`);
   await tx.execute(sql`insert into payroll_history_import_event(tenant_id,attempt_id,kind,actor_id,changes,detail) values(${b.tenantId}::uuid,${attemptId}::uuid,'confirmed',${ctx.userId}::uuid,${JSON.stringify(graph.map(s=>({recordId:s.recordId,revisionId:s.revisionId,previousRevisionId:null,snapshotId:s.slipId})))}::jsonb,'{}'::jsonb)`);
  });
  const [shape]=await owner.client<{companies:number;employments:number}[]>`select count(distinct company_id)::integer companies,count(distinct employment_id)::integer employments from payroll_history_import_record where tenant_id=${b.tenantId}::uuid`;expect(shape).toEqual({companies:70,employments:1000});
@@ -122,8 +122,16 @@ it('uses only retained accepted names when a transferred subject’s current nam
  const scoped:SessionContext={...ctx,grants:[{role:'hr_admin',companyId:b.companyId}]};
  // The approved versioned writer uses the accepted original-record identity; current Employment RLS
  // deliberately hides the transferred subject, so this later frozen plan has no current name.
- const correction=await previewPayrollHistoryUpload(scoped,{name:'fictional-correction-2026.csv',operationKey:randomUUID(),content:content('1100.00'),maintenance:{version:1,mode:'replace',reason:'Reviewed original-employer correction'}});expect(correction.plan.rows[0].employeeName).toBeNull();expect(correction.plan.counts.invalid).toBe(0);await confirmPayrollHistoryUpload(scoped,{attemptId:correction.attemptId,previewHash:correction.plan.previewHash,confirmReplacement:true});
+ const correction=await previewPayrollHistoryUpload(scoped,{name:'fictional-correction-2026.csv',operationKey:randomUUID(),content:content('1100.00'),maintenance:{version:1,mode:'replace',reason:'Reviewed original-employer correction'}});expect(correction.plan.rows[0].employeeName).toBeNull();expect(correction.plan.counts.invalid).toBe(0);await expect(confirmPayrollHistoryUpload(scoped,{attemptId:correction.attemptId,previewHash:correction.plan.previewHash,confirmReplacement:true})).rejects.toThrow(/reviewed payroll history job/);
  const page=await payrollHistoryMaintenanceRecords(scoped,{period:month}),detail=await payrollHistoryMaintenanceRecord(scoped,id);expect(page.items[0].employeeName).toBe('Fictional historical employee');expect(detail?.employeeName).toBe('Fictional historical employee');expect(JSON.stringify({page,detail})).not.toContain('Private receiving-employer current name');expect((await payrollHistoryMaintenanceRecords(scoped,{search:'Private receiving-employer current name'})).total).toBe(0);expect((await payrollHistoryMaintenanceRecords(scoped,{search:'Fictional historical employee'})).total).toBe(1);
+ // The same original-employer authority must work through the actual sealed, atomic kernel path.
+ const staged=await previewPayrollHistoryUpload(scoped,{name:'fictional-staged-correction.csv',operationKey:randomUUID(),content:content('1200.00'),maintenance:{version:1,mode:'update_listed',reason:'Reviewed staged original-employer correction'}});
+ const job=await requestPayrollHistoryConfirm(scoped,{attemptId:staged.attemptId,previewHash:staged.plan.previewHash,confirmReplacement:true});if(!('jobId' in job))throw Error('Expected the real staged correction job');
+ for(let n=0;n<60;n++){await runBulkJobTick(owner.client,{handlers:[payrollHistoryJobHandler]});const [status]=await owner.db.select().from(schema.bulkJob).where(eq(schema.bulkJob.id,job.jobId));if(status.state==='completed')break;if(status.state==='failed')throw Error(status.error??'Staged correction failed');}
+ expect((await owner.db.select().from(schema.bulkJob).where(eq(schema.bulkJob.id,job.jobId)))[0].state).toBe('completed');
+ expect((await payrollHistoryMaintenanceRecord(scoped,id))?.values?.basicSalary).toBe('1200.00');
+ expect(await withTenant(scoped,tx=>tx.select({id:schema.employment.id}).from(schema.employment).where(eq(schema.employment.id,employmentId)))).toEqual([]);
+ expect((await payrollHistoryMaintenanceRecords(scoped,{companyId:receiving.id})).total).toBe(0);
 });
 
 it('accepts the existing 50,000-source-row metadata bound while keeping output pages and offsets bounded',async()=>{
@@ -134,4 +142,31 @@ it('accepts the existing 50,000-source-row metadata bound while keeping output p
  await expect(withTenant(ctx,tx=>tx.execute(sql`select * from app.payroll_history_maintenance_subjects(ARRAY[${b.companyId}::uuid],ARRAY(select 'F001'::text from generate_series(1,50001)),ARRAY[${period}],0,1)`))).rejects.toThrow();
  await expect(withTenant(ctx,tx=>tx.execute(sql`select * from app.payroll_history_maintenance_identity(ARRAY[${id}::uuid],1000001,1)`))).rejects.toThrow();
  await expect(withTenant(ctx,tx=>tx.execute(sql`select * from app.payroll_history_maintenance_identity(ARRAY[${id}::uuid],0,501)`))).rejects.toThrow();
+});
+
+async function retainedRefusal(action:Promise<unknown>,state:string,reason:RegExp){let caught:unknown;try{await action;}catch(error){caught=error;}expect(caught).toBeDefined();let matched=false;for(let n=0,value=caught;n<8&&value&&typeof value==='object';n++){const e=value as {code?:unknown;message?:unknown;cause?:unknown};if(e.code===state&&typeof e.message==='string'&&reason.test(e.message))matched=true;value=e.cause;}expect(matched,'Expected exact retained-history SQL refusal').toBe(true);}
+it('admits no free-value, foreign-principal, stale-hash or orphan retained-history payslip through the direct insertion RPC',async()=>{
+ const first=await accepted(),recordId=first.result.changes[0].recordId;
+ const preview=await previewPayrollHistoryUpload(ctx,{name:'reviewed-existing-record.csv',content:Buffer.from(toCsv([Array.from(PAYROLL_HISTORY_HEADERS),...csvRows('F001','FCO','1100.00')])),maintenance:{version:1,mode:'replace',reason:'Reviewed existing-record correction'}});
+ const [original]=await owner.db.select().from(schema.payrollBatch).where(eq(schema.payrollBatch.historyImportAttemptId,first.preview.attemptId));
+ const [batch]=await owner.db.insert(schema.payrollBatch).values({tenantId:b.tenantId,companyId:b.companyId,payPeriodId:original.payPeriodId,payPeriod:period,batchDate:period+'-01',runType:'adjustment',runSeq:100,status:'draft',payrollCycleId:cycleId,historyImportAttemptId:preview.attemptId,historyImportCycleName:preview.plan.rows[0].cycleName}).returning();
+ const insert=(as:SessionContext,hash=preview.plan.previewHash,batchId=batch.id,id=recordId)=>withTenant(as,tx=>tx.execute(sql`select app.payroll_history_maintenance_payslip(${preview.attemptId}::uuid,${hash},${batchId}::uuid,${id}::uuid)`));
+ await retainedRefusal(insert(employee),'42501',/retained_insert_forbidden/);
+ await retainedRefusal(insert(ctx,'0'.repeat(64)),'42501',/retained_insert_forbidden/);
+ await retainedRefusal(insert(ctx,preview.plan.previewHash,original.id),'42501',/retained_insert_step_required/);
+ await retainedRefusal(insert(ctx,preview.plan.previewHash,batch.id,randomUUID()),'42501',/retained_insert_forbidden/);
+ // Actor-owned JSON is not privileged adjudication; even exact IDs require a real sealed pending step.
+ await retainedRefusal(insert(ctx),'42501',/retained_insert_step_required/);
+ expect(await owner.db.select().from(schema.payslip).where(eq(schema.payslip.batchId,batch.id))).toEqual([]);
+ const [source]=await owner.db.select().from(schema.payrollHistoryImportAttempt).where(eq(schema.payrollHistoryImportAttempt.id,preview.attemptId));
+ const forgedId=randomUUID(),forgedPlan=structuredClone(source.plan);forgedPlan.previewHash='f'.repeat(64);forgedPlan.rows[0].values!.basicSalary='9999.00';
+ await withTenant(ctx,tx=>tx.insert(schema.payrollHistoryImportAttempt).values({...source,id:forgedId,operationKey:randomUUID(),plan:forgedPlan}));
+ const forgedJob=await requestPayrollHistoryConfirm(ctx,{attemptId:forgedId,previewHash:forgedPlan.previewHash,confirmReplacement:true});if(!('jobId' in forgedJob))throw Error('Expected the canonical job adjudication');
+ for(let n=0;n<30;n++){await runBulkJobTick(owner.client,{handlers:[payrollHistoryJobHandler]});const [status]=await owner.db.select().from(schema.bulkJob).where(eq(schema.bulkJob.id,forgedJob.jobId));if(status.state==='failed')break;}
+ const [refused]=await owner.db.select().from(schema.bulkJob).where(eq(schema.bulkJob.id,forgedJob.jobId));expect(refused.state).toBe('failed');expect(refused.error).toMatch(/source|master data|permissions|target revisions|changed/i);
+ expect(await owner.db.select().from(schema.bulkJobStep).where(eq(schema.bulkJobStep.jobId,forgedJob.jobId))).toEqual([]);
+ expect(await owner.db.select().from(schema.payrollHistoryImportRevision).where(eq(schema.payrollHistoryImportRevision.attemptId,forgedId))).toEqual([]);
+ await owner.db.insert(schema.payrollPermissionGrant).values({tenantId:b.tenantId,companyId:b.companyId,permissionKey:'payroll.history.import',role:'hr_admin',allowed:false});
+ await retainedRefusal(insert(ctx),'42501',/retained_insert_forbidden/);
+ expect((await payrollHistoryMaintenanceRecord(ctx,recordId))).toBeNull();
 });

@@ -6805,6 +6805,13 @@
       "when": 1794998006699,
       "tag": "6699_payroll_history_maintenance_subjects",
       "breakpoints": true
+    },
+    {
+      "idx": 10100,
+      "version": "7",
+      "when": 1794998006700,
+      "tag": "6700_payroll_history_retained_insert",
+      "breakpoints": true
     }
   ]
 }

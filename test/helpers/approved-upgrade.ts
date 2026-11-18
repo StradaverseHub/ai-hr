@@ -319,12 +319,14 @@ export const APPROVED_UPGRADE_TAIL=[
  {idx:10097,when:1794998006697,tag:'6697_payroll_history_native_tax_predecessors'},
  {idx:10098,when:1794998006698,tag:'6698_payroll_history_maintenance_read'},
  {idx:10099,when:1794998006699,tag:'6699_payroll_history_maintenance_subjects'},
+ {idx:10100,when:1794998006700,tag:'6700_payroll_history_retained_insert'},
 ] as const;
 // Final pending 2109/2126 bytes reviewed from engine 128bc2539; no applied-prefix hashes change.
 const APPROVED_UPGRADE_HASHES:Record<string,string>={
+ '6700_payroll_history_retained_insert':'3dd03ffb42776f4f56e482004ee7b34807aaf4d91de14e175c1bc389cf477650',
  '6690_payroll_history_item_maintenance':'1c504d948e554570085e1485e852c6116ef5bff82998d31611f4cc81087971e0',
  '6691_payroll_history_native_baseline_source':'38f93cee6e77964a9e22f4d7ee88a9f75bf955c188dfd69cc6711ec321d46dd1',
- '6692_payroll_history_native_baseline_capture':'161b6f023fb1b929758cdd18b3b438e6d73293f50e0306242130653666d55a9d',
+ '6692_payroll_history_native_baseline_capture':'3d9b0485958a7b3a4882829b18fa92da095e278619ae19588d0ba5b01163e062',
  '6693_payroll_history_native_effective_and_artifact':'204a206fcc16c95617de372d9c640aae6ad8926d9d036d0ec1c90f5fe12b570b',
  '6694_payroll_history_native_membership':'cc46558232ea5ac90d47be03a24e973b682f08cbadadba1dc6502fe6ac105324',
  '6695_payroll_history_stage_boundary':'855acb71172c8a354e64c99af856c289d04ea76f6a0ccf58d0c997c34a4b0e82',
@@ -621,6 +623,9 @@ export const COMBINED_RELEASE_NULL_COLUMNS:readonly {tag:string;table:string;col
  // Board 511aa74a (5695): no employment that predates it was rehired from another period.
  {tag:'5695_employment_rehire_link',table:'employment',columns:['rehired_from_employment_id']},
  {tag:'5760_probation_queue_kinds_and_pbp_tasks',table:'probation_outcome',columns:['extension_months']},
+ // Retained pre-maintenance revisions acquire no inferred item chains or native-source proof.
+ {tag:'6690_payroll_history_item_maintenance',table:'payroll_history_import_revision',columns:['maintenance']},
+ {tag:'6691_payroll_history_native_baseline_source',table:'payroll_history_import_revision',columns:['native_source']},
  ...['department','position','cost_center','business_unit','label_company_assignment','profile_option','job_grade','grade_group','grade_group_member']
   .map(table=>({tag:'5070_system_label_import_staged_job',table,columns:['import_pending_attempt_id']})),
 ]);
