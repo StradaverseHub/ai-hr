@@ -45,15 +45,14 @@ describe('product destination registry',()=>{
   const packs=listPacks('module').flatMap(pack=>{const module=pack as ModulePack;return[...(module.navNodes??[]).flatMap(node=>node.children.map(child=>child.href)),...(module.navLinks??[]).map(link=>link.href)];});
   expect(packs.length).toBeGreaterThan(20);
   // Scoped rows now have a real declaration owner, rather than template literals hidden in the renderer.
-  expect(SCOPED_LIFECYCLE_NAVIGATION).toHaveLength(11);
+  expect(SCOPED_LIFECYCLE_NAVIGATION).toHaveLength(12);
   expect(SCOPED_LIFECYCLE_NAVIGATION.some(row=>row.module==='probation')).toBe(true);
   expect(SCOPED_LIFECYCLE_NAVIGATION.some(row=>row.module==='contracts')).toBe(true);
   const expected=[...literal,...SCOPED_LIFECYCLE_NAVIGATION.map(row=>row.href),...packs,...V9_NAVIGATION.map(row=>row.href),...SECURITY_PAGES.map(row=>row.href)];
   expect([...new Set(expected)].filter(href=>!hrefs.has(href)&&!NATIVE_SCOPE_ONLY_PAGES.has(pathOf(href)))).toEqual([]);
   expect(rows.filter(row=>NATIVE_SCOPE_ONLY_PAGES.has(pathOf(row.href)))).toEqual([]);
  });
- it('keeps the native Offboarding posting queue out of coarse-role destinations',()=>{
-  const path='/lifecycle/offboarding/postings';
+ it.each(['/lifecycle/offboarding/postings','/lifecycle/contracts/postings'])('keeps native posting queue %s out of coarse-role destinations',(path)=>{
   expect(NATIVE_SCOPE_ONLY_PAGES.has(path)).toBe(true);
   // Even a recognizable outer module guard must not override native posting-group authority.
   expect(classifyPage(path,"const ctx=await requireModule('lifecycle');")).toBeNull();
