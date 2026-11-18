@@ -45,7 +45,7 @@ export type OwnCase = Pick<M.Case, 'id' | 'number' | 'module' | 'revision' | 'st
 export type PendingReturns = { held:{id:string;name:string;kind:'system'|'device';group:string|null;source:'asset'|'onboarding';catalogueId?:string;requestNumber?:string}[]; catalogue:{id:string;name:string;kind:'system'|'device';group:string;active:boolean}[]; selected:string[];
   /** d1e26f81 — the rows submission will create, with their team, method and Day (presets applied). */
   rows:{previewId:string;name:string;kind:'system'|'device';group:string|null;method:M.ReturnMethod;dueDay:number|null;dueOn:string;cardStep?:'collect'|'deactivate'}[] };
-export type CaseDetail = { returns?:PendingReturns; case: M.Case; calculation: SettlementView | null; personnelWritableKeys: string[]; native?: { config: M.Config; actor: M.Actor } };
+export type CaseDetail = { canUploadFiles?:boolean; returns?:PendingReturns; case: M.Case; calculation: SettlementView | null; personnelWritableKeys: string[]; native?: { config: M.Config; actor: M.Actor } };
 const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 function identifier(value: string): string { if (!uuid.test(value)) throw new M.V9Error('A valid record identifier is required.'); return value; }
 async function admin(tx: Tx, companyId?: string): Promise<void> {
@@ -227,6 +227,12 @@ async function pendingReturnsTx(tx:Tx,ctx:SessionContext,c:M.Case,config:M.Confi
   const rows=returnRows(c,config,sources).map(row=>({previewId:row.previewId,name:row.name,kind:row.kind,group:row.group,method:row.method,...(M.validDate(anchor)?plannedDue(c,row,anchor,c.returnPresets):{dueOn:'',dueDay:row.dueDay}),...(row.cardStep?{cardStep:row.cardStep}:{})}));
   return {held:[...sources.assets.map(asset=>({id:'asset:'+asset.id,name:`${asset.code} · ${asset.model??asset.assetType}`,kind:'device' as const,group:null,source:'asset' as const})),...sources.holdings.map(item=>({id:'onboarding:'+item.itemId,name:item.name,kind:item.kind,group:item.group,source:'onboarding' as const,catalogueId:item.catalogueId,requestNumber:item.requestNumber}))],catalogue:sources.catalogue.filter(item=>offeredToCompany(item,c.facts.company)||(c.returnSelections??[]).includes(item.id)).map(({id,name,kind,group,active})=>({id,name,kind,group,active})),selected:c.returnSelections??[],rows};
 }
+/** Read-only projection of the existing lc_v9_file INSERT policy after the exact upload writer's load authority. */
+async function v9UploadCapabilityTx(tx:Tx,ctx:SessionContext,row:Row):Promise<boolean>{
+ if(!ctx.userId||!['pending','submitted'].includes(row.data.state))return false;
+ const [access]=await tx.execute<{ok:boolean}>(row.native?sql`select app.is_admin_for(${row.company_id}::uuid) and (app.onboarding_page_access() or app.onboarding_v9_case_actor() or app.is_group_admin()) as ok`:sql`select app.lc_v9_off_access(${row.company_id}::uuid) as ok`);
+ return !!access?.ok;
+}
 export async function v9CaseDetail(ctx: SessionContext, id: string): Promise<CaseDetail> {
   return withLifecycleTenant(ctx, async tx => {
     const row = await load(tx, ctx, id), config = await configTx(tx, ctx);
@@ -236,7 +242,7 @@ export async function v9CaseDetail(ctx: SessionContext, id: string): Promise<Cas
     const managerResult = managerRecipientResult(manager.recipient);
     row.data = { ...row.data, supervisorDelivery: { name: manager.recipient.name, problem: 'reason' in managerResult ? managerResult.reason : null, reason: 'reason' in managerResult ? manager.recipient.reason ?? (manager.recipient.email ? 'invalidEmail' : 'missingEmail') : null } };
     const reveal = await personalEmailRevealTx(tx, ctx);
-    return { ...(row.data.module==='off'&&row.data.state==='pending'?{returns:await pendingReturnsTx(tx,ctx,row.data,config,calculation?.lastDay??row.data.facts.lastDay)}:{}), case: reveal ? row.data : maskCasePersonalEmail(row.data), calculation, personnelWritableKeys: v9PersonnelWritableKeys, ...(row.native ? { native: { config, actor: await actor(tx, ctx) } } : {}) };
+    return { canUploadFiles:await v9UploadCapabilityTx(tx,ctx,row),...(row.data.module==='off'&&row.data.state==='pending'?{returns:await pendingReturnsTx(tx,ctx,row.data,config,calculation?.lastDay??row.data.facts.lastDay)}:{}), case: reveal ? row.data : maskCasePersonalEmail(row.data), calculation, personnelWritableKeys: v9PersonnelWritableKeys, ...(row.native ? { native: { config, actor: await actor(tx, ctx) } } : {}) };
   });
 }
 
