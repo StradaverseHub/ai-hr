@@ -4371,7 +4371,7 @@ export default async function EmployeePage({
             <div className="space-y-3">
               <h4 className="text-xs font-semibold text-foreground">{t('employmentInfo.contractGroup')}</h4>
               <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                <PersonnelField fieldId="employment.employment_dates_and_service.contractnumber" mode="record"><label className="block space-y-1"><span className="text-xs font-medium">{personnelLabel('employment.employment_dates_and_service.contractnumber')}</span><input {...personnelControl('employment.employment_dates_and_service.contractnumber','record')} type="number" min={1} max={100000} step={1} defaultValue={emp.contractNumber??''} className={inputCls}/></label></PersonnelField>
+                <PersonnelField fieldId="employment.employment_dates_and_service.contractnumber" mode="record"><label className="block space-y-1"><span className="text-xs font-medium">{personnelLabel('employment.employment_dates_and_service.contractnumber')}</span><input {...personnelInput('employment.employment_dates_and_service.contractnumber','record')} defaultValue={emp.contractNumber??''} className={inputCls}/></label></PersonnelField>
                 <PersonnelField fieldId="employment.employment_dates_and_service.contractstartdate" mode="record">
                   <DateField {...personnelControl('employment.employment_dates_and_service.contractstartdate','record')}
 
