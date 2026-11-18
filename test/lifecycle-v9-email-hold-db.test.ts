@@ -31,6 +31,8 @@ it('writes the hold with the case, shows it in the Inbox and releases it when th
   const c = await heldCase();
   expect(c.runs[0]).toMatchObject({ status: 'waiting', hold: { stepId: 'notice', missing: [{ role: 'hrSignatory', label: 'HR signatory', reason: 'no HR signatory is set for the company' }] } });
   expect(c.mails.filter(mail => mail.workflowId)).toEqual([]);
+  // Full case-view HR remains an operational recipient without a Personnel Person link.
+  expect((await owner.client`select person_id from app_user where id=${admin.userId!}::uuid`)[0].person_id).toBeNull();
   const alert = c.mails.find(mail => mail.key.startsWith('hold-alert:'));
   expect(alert).toMatchObject({ to: [admin.userId], workflowId: null, status: 'pending' });
   expect(await register(c.id)).toEqual([{ step_id: 'notice', workflow_name: 'Fictional held notice', email_name: 'Fictional notice', missing: [{ label: 'HR signatory', reason: 'no HR signatory is set for the company' }], released_at: null, released_by: null }]);

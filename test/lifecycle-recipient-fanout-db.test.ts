@@ -61,6 +61,8 @@ async function prepared() {
 }
 it('captures thirteen resolved To keys from two choices and sends one copy to all twelve mailboxes, with To winning over CC', async () => {
   const { id, recipients } = await prepared();
+  // Real enabled/verified Auth accounts can receive mail without Personnel Person records.
+  expect(await owner.client`select person_id from app_user where tenant_id=${base.tenantId}::uuid and id in(select jsonb_array_elements_text(${JSON.stringify(recipients.map(recipient=>recipient.id))}::jsonb)::uuid)`).toEqual(Array.from({length:12},()=>({person_id:null})));
   const pending = (await v9CaseDetail(admin, id)).case.mails.filter(mail => mail.workflowId === 'shared-group-notice');
   expect(pending).toHaveLength(1); expect(pending[0].to).toHaveLength(13);
   const jobs = await owner.client`select id,payload,status from lc_v9_email_delivery where case_id=${id}::uuid`;

@@ -133,6 +133,8 @@ const SURFACES:Readonly<Record<string,Surface>>={
  'app/payroll/history-import/logs/[attemptId]/source/route.ts':'payroll_history',
  'app/payroll/history-import/logs/page.tsx':'payroll_history',
  'app/payroll/history-import/page.tsx':'payroll_history',
+ 'app/payroll/history-import/records/page.tsx':'payroll_history',
+ 'app/payroll/history-import/records/[recordId]/page.tsx':'payroll_history',
  'app/payroll/history-import/upload/route.ts':'payroll_history',
  'app/payroll/transactions/import-components/page.tsx':'run_pay_components',
  'app/payroll/transactions/import-excel/actions.ts':'fixed_transactions',
