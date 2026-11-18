@@ -114,7 +114,18 @@ async function state(t:Tenant,attemptId:string){
   for(const setting of stamp.settings)expect(settings.find(current=>current.id===setting.id)).toEqual(setting);
   for(const line of stamp.lines)expect(stamp.settings.some(setting=>setting.id===line.settingId&&setting.code===line.code)).toBe(true);
  }
- const names=new Map<string,string>([[t.b.tenantId,'tenant'],[t.b.companyId,'company'],[t.b.adminUserId,'admin'],[t.ordinary,'ordinary-run'],
+ // A reviewed removal has its own immutable actor-owned receipt. Verify its exact role before
+ // normalizing that tenant-specific ID; the audit field itself remains in the comparison.
+ const receiptId=(value:unknown)=>value&&typeof value==='object'&&'maintenanceAttemptId' in value&&typeof value.maintenanceAttemptId==='string'?value.maintenanceAttemptId:undefined;
+ const receiptIds=[...new Set([...events.map(e=>receiptId(e.detail)),...audit.map(e=>receiptId(e.payload))].filter((id):id is string=>typeof id==='string'))];
+ if(receiptIds.length){expect(receiptIds).toHaveLength(1);for(const e of events)if(e.kind==='reverted')expect(receiptId(e.detail)).toBe(receiptIds[0]);for(const e of audit)if(e.event_type==='payroll-history-import.reverted')expect(receiptId(e.payload)).toBe(receiptIds[0]);}
+ const receiptNames:[string,string][]=[];
+ for(const id of receiptIds){
+  const [receipt]=await owner.db.select().from(schema.payrollHistoryImportAttempt).where(eq(schema.payrollHistoryImportAttempt.id,id));if(!receipt)throw Error('The audited removal receipt is missing');expect(receipt.createdBy).toBe(t.ctx.userId);
+  const plan=receipt.plan;expect(plan.maintenance).toEqual({version:1,mode:'remove_batch',reason:'Revert import batch',request:{version:1,operation:'remove_batch',attemptId,reason:'Revert import batch'}});
+  expect(receipt.sourceHash).toBe(createHash('sha256').update(receipt.sourceContent).digest('hex'));expect(plan.sourceHash).toBe(receipt.sourceHash);expect(plan.counts.invalid).toBe(0);receiptNames.push([id,'reviewed-removal-receipt']);
+ }
+ const names=new Map<string,string>([...receiptNames,[t.b.tenantId,'tenant'],[t.b.companyId,'company'],[t.b.adminUserId,'admin'],[t.ordinary,'ordinary-run'],
   ...[...slipKey].map(([id,key])=>[id,'payslip:'+key] as [string,string]),
   ...[...revisionKey].map(([id,key])=>[id,'import-revision:'+key] as [string,string]),
   ...settings.map(setting=>[setting.id,'pay-item:'+setting.code] as [string,string]),
@@ -170,21 +181,13 @@ describe('payroll history confirm and revert as staged jobs',()=>{
   expect(await state(job,bv.preview.attemptId)).toEqual(await state(sync,a.preview.attemptId));
  },240000);
 
- it('refuses a revert exactly as the single transaction does, recording the same failure',async()=>{
+ it('refuses an unreviewed removal hash before synchronous changes or job admission',async()=>{
   const sync=await tenant(),job=await tenant();
-  for(const t of [sync,job]){
-   const v=await validated(t);await confirmPayrollHistoryUpload(t.ctx,v.input);
-   // A later month is processed: restoring the imported basis would change what it was worked out from.
-   const run=await createBatch(t.ctx,{companyId:t.b.companyId,payPeriod:`${year}-04`});await generatePayslips(t.ctx,{batchId:run.batchId});
-   Object.assign(t,{attemptId:v.preview.attemptId});
-  }
-  const hash='0'.repeat(64);
-  const refusal=await revertPayrollHistoryUpload(sync.ctx,(sync as Tenant&{attemptId:string}).attemptId,hash).then(()=>null,(error:Error)=>error.message);
-  expect(refusal).toMatch(/Normally processed payroll already depends/);
-  const request=await requestPayrollHistoryRevert(job.ctx,(job as Tenant&{attemptId:string}).attemptId,hash);
-  expect(await drain(request.jobId)).toBe('failed');
-  expect((await owner.client<{error:string}[]>`select error from bulk_job where id=${request.jobId}::uuid`)[0].error).toBe(refusal);
-  expect(await state(job,(job as Tenant&{attemptId:string}).attemptId)).toEqual(await state(sync,(sync as Tenant&{attemptId:string}).attemptId));
+  for(const t of [sync,job]){const v=await validated(t);await confirmPayrollHistoryUpload(t.ctx,v.input);const run=await createBatch(t.ctx,{companyId:t.b.companyId,payPeriod:`${year}-04`});await generatePayslips(t.ctx,{batchId:run.batchId});Object.assign(t,{attemptId:v.preview.attemptId});}
+  const syncId=(sync as Tenant&{attemptId:string}).attemptId,jobId=(job as Tenant&{attemptId:string}).attemptId,beforeSync=await state(sync,syncId),beforeJob=await state(job,jobId),hash='0'.repeat(64);
+  const refusal=await revertPayrollHistoryUpload(sync.ctx,syncId,hash).then(()=>null,(error:Error)=>error.message);expect(refusal).toMatch(/removal preview.*unavailable or changed/);
+  await expect(requestPayrollHistoryRevert(job.ctx,jobId,hash)).rejects.toThrow(refusal??'Expected the reviewed-removal refusal');
+  expect(await state(sync,syncId)).toEqual(beforeSync);expect(await state(job,jobId)).toEqual(beforeJob);expect(await owner.client`select 1 from bulk_job where tenant_id=${job.b.tenantId}::uuid`).toHaveLength(0);
  },240000);
 
  it('keeps every staged row invisible until the release, then shows the whole attempt at once',async()=>{
@@ -301,11 +304,12 @@ describe('payroll history confirm and revert as staged jobs',()=>{
    const run=await createBatch(t.ctx,{companyId:t.b.companyId,payPeriod:`${year}-04`});await generatePayslips(t.ctx,{batchId:run.batchId});
    expect(await drain(revert.jobId)).toBe('failed');
    const [job]=await owner.client<{error:string;rechecks:number}[]>`select error,(plan->>'rechecks')::int as rechecks from bulk_job where id=${revert.jobId}::uuid`;
-   expect(job).toEqual({error:'Normally processed payroll already depends on this period or a later period in the same year.',rechecks:1});
+   expect(job).toEqual({error:'The source, master data, permissions or target revisions changed. Validate a new attempt.',rechecks:1});
    // Nothing of the revert remains; the import stays effective; the failure is recorded once.
    expect(await owner.client`select 1 from payroll_history_import_revision where tenant_id=${t.b.tenantId}::uuid and kind='revert'`).toHaveLength(0);
-   const events=await owner.db.select().from(schema.payrollHistoryImportEvent).where(eq(schema.payrollHistoryImportEvent.attemptId,v.preview.attemptId));
-   expect(events.map(e=>[e.kind,e.detail])).toEqual([['confirmed',expect.anything()],['revert_failed',{reason:job.error}]]);
+   const events=await owner.db.select().from(schema.payrollHistoryImportEvent).where(eq(schema.payrollHistoryImportEvent.attemptId,v.preview.attemptId));expect(events.map(e=>e.kind)).toEqual(['confirmed']);
+   const [queued]=await owner.client<{attempt_id:string}[]>`select input->>'attemptId' attempt_id from bulk_job where id=${revert.jobId}::uuid`;expect(queued.attempt_id).not.toBe(v.preview.attemptId);
+   const failures=await owner.db.select().from(schema.payrollHistoryImportEvent).where(eq(schema.payrollHistoryImportEvent.attemptId,queued.attempt_id));expect(failures.map(e=>[e.kind,e.detail])).toEqual([['failed',{reason:job.error}]]);
   }finally{delete process.env.PAYROLL_HISTORY_CHUNK_BUDGET_MS;}
  },240000);
 

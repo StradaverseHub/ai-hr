@@ -320,9 +320,11 @@ export const APPROVED_UPGRADE_TAIL=[
  {idx:10098,when:1794998006698,tag:'6698_payroll_history_maintenance_read'},
  {idx:10099,when:1794998006699,tag:'6699_payroll_history_maintenance_subjects'},
  {idx:10100,when:1794998006700,tag:'6700_payroll_history_retained_insert'},
+ {idx:10101,when:1794998006701,tag:'6701_payroll_history_native_anomaly_membership'},
 ] as const;
 // Final pending 2109/2126 bytes reviewed from engine 128bc2539; no applied-prefix hashes change.
 const APPROVED_UPGRADE_HASHES:Record<string,string>={
+ '6701_payroll_history_native_anomaly_membership':'abd915e174cc62841f9d27cfceee147ab956b6daa9810152a5981e67dc53addc',
  '6700_payroll_history_retained_insert':'3dd03ffb42776f4f56e482004ee7b34807aaf4d91de14e175c1bc389cf477650',
  '6690_payroll_history_item_maintenance':'1c504d948e554570085e1485e852c6116ef5bff82998d31611f4cc81087971e0',
  '6691_payroll_history_native_baseline_source':'38f93cee6e77964a9e22f4d7ee88a9f75bf955c188dfd69cc6711ec321d46dd1',

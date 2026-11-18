@@ -6812,6 +6812,13 @@
       "when": 1794998006700,
       "tag": "6700_payroll_history_retained_insert",
       "breakpoints": true
+    },
+    {
+      "idx": 10101,
+      "version": "7",
+      "when": 1794998006701,
+      "tag": "6701_payroll_history_native_anomaly_membership",
+      "breakpoints": true
     }
   ]
 }
