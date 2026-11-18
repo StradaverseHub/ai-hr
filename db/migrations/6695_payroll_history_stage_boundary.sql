@@ -49,6 +49,56 @@ CREATE OR REPLACE FUNCTION app.payroll_history_row_visible(p_relation text,p_id 
   OR NOT app.payroll_history_stage_authorized(s.stage_id)))
 $$;
 --> statement-breakpoint
+-- 5129 expanded the point visibility predicate into its private set owner. Keep that expansion
+-- capability-aware too. This is still OWNER-only, SQL/STABLE/INVOKER without SET: no new API,
+-- custody-table grants, security mode, input limit, or per-ID SECURITY DEFINER source call.
+CREATE OR REPLACE FUNCTION app.payroll_history_effective_ids(p_ids uuid[]) RETURNS SETOF uuid
+LANGUAGE sql STABLE AS $$
+ WITH provided AS MATERIALIZED(SELECT DISTINCT supplied.id FROM unnest(p_ids) supplied(id) WHERE supplied.id IS NOT NULL),
+ hidden_revisions AS MATERIALIZED(
+  SELECT sr.row_id FROM app.payroll_history_staged_row sr JOIN app.payroll_history_stage stage ON stage.stage_id=sr.stage_id
+  WHERE stage.tenant_id=app.current_tenant_id() AND stage.state='staged' AND sr.relation='payroll_history_import_revision'
+ ), native_candidates AS MATERIALIZED(
+  -- Canonical 6693 native_replaced proof, set-wise: a regenerated member of the same original run
+  -- remains replaced; another native batch for that employment/month never matches this origin.
+  SELECT p.id,c.record_id FROM provided supplied JOIN public.payslip p ON p.id=supplied.id
+  JOIN public.payroll_batch original_batch ON original_batch.id=p.batch_id AND original_batch.tenant_id=p.tenant_id
+  JOIN app.payroll_history_native_capture c ON c.source_batch_id=p.batch_id AND c.tenant_id=p.tenant_id
+  JOIN public.payroll_history_import_record identity ON identity.id=c.record_id AND identity.tenant_id=c.tenant_id AND identity.employment_id=p.employment_id
+  JOIN public.payroll_history_import_revision adopted ON adopted.record_id=c.record_id AND adopted.ordinal=1
+   AND adopted.snapshot_id=c.snapshot_id AND adopted.kind='adopted' AND adopted.native_source=app.payroll_history_native_proof(c)
+  WHERE p.tenant_id=app.current_tenant_id() AND original_batch.company_id=identity.company_id AND original_batch.pay_period=identity.period
+   AND(original_batch.payroll_cycle_id IS NULL OR original_batch.payroll_cycle_id=identity.cycle_id)
+   AND NOT EXISTS(SELECT 1 FROM hidden_revisions hidden WHERE hidden.row_id=adopted.id)
+ ), native_records AS MATERIALIZED(SELECT DISTINCT record_id FROM native_candidates),
+ native_latest AS MATERIALIZED(
+  SELECT DISTINCT ON(r.record_id) r.record_id,r.snapshot_id FROM public.payroll_history_import_revision r
+  JOIN native_records records ON records.record_id=r.record_id
+  WHERE NOT EXISTS(SELECT 1 FROM hidden_revisions hidden WHERE hidden.row_id=r.id)
+  ORDER BY r.record_id,r.ordinal DESC
+ ), native_replaced AS MATERIALIZED(
+  SELECT DISTINCT candidate.id FROM native_candidates candidate JOIN native_latest latest ON latest.record_id=candidate.record_id
+  WHERE latest.snapshot_id IS NOT NULL
+ )
+ -- Only the internal probe is deduplicated. Preserve legacy unnest multiplicity, NULL members,
+ -- NULL-array emptiness and unknown/other-tenant IDs; NOT IN would incorrectly drop NULL members.
+ SELECT candidate.id FROM unnest(p_ids) candidate(id)
+ WHERE NOT EXISTS(SELECT 1 FROM public.payroll_history_import_snapshot snapshot
+  WHERE snapshot.id=candidate.id AND snapshot.tenant_id=app.current_tenant_id()
+  AND CASE WHEN NOT EXISTS(SELECT 1 FROM app.payroll_history_staged_row sr JOIN app.payroll_history_stage stage ON stage.stage_id=sr.stage_id
+    WHERE sr.relation='payroll_history_import_snapshot' AND sr.row_id=snapshot.id AND stage.state='staged'
+     AND(stage.stage_id::text IS DISTINCT FROM current_setting('app.payroll_history_stage',true) OR NOT app.payroll_history_stage_authorized(stage.stage_id)))
+   THEN(SELECT revision.snapshot_id FROM public.payroll_history_import_revision revision WHERE revision.record_id=snapshot.record_id
+    AND NOT EXISTS(SELECT 1 FROM app.payroll_history_staged_row sr JOIN app.payroll_history_stage stage ON stage.stage_id=sr.stage_id
+     WHERE sr.relation='payroll_history_import_revision' AND sr.row_id=revision.id AND stage.state='staged'
+      AND(stage.stage_id::text IS DISTINCT FROM current_setting('app.payroll_history_stage',true) OR NOT app.payroll_history_stage_authorized(stage.stage_id)))
+    ORDER BY revision.ordinal DESC LIMIT 1) IS DISTINCT FROM candidate.id
+   ELSE EXISTS(SELECT 1 FROM app.payroll_history_staged_row sr JOIN app.payroll_history_stage stage ON stage.stage_id=sr.stage_id
+    WHERE sr.relation='payslip' AND sr.row_id=candidate.id AND stage.state='staged'
+     AND(stage.stage_id::text IS DISTINCT FROM current_setting('app.payroll_history_stage',true) OR NOT app.payroll_history_stage_authorized(stage.stage_id))) END)
+ AND NOT EXISTS(SELECT 1 FROM native_replaced replaced WHERE replaced.id=candidate.id)
+$$;
+--> statement-breakpoint
 CREATE OR REPLACE FUNCTION app.payroll_history_stage_open(p_stage uuid,p_attempt uuid,p_operation text) RETURNS boolean
 LANGUAGE plpgsql VOLATILE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
 DECLARE j public.bulk_job; a public.payroll_history_import_attempt;
