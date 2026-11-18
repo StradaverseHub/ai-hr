@@ -1,13 +1,4 @@
-/**
- * Signing and review routing on Probation letter template versions (handoff A2; lane D1). Entry points for the letter
- * flow; the storage change is lane D2's.
- *
- * A letter template version is stored by core/probation-letter.ts in probation_builder_definition. Its strict schema
- * does not accept a `routing` field yet, so this file cannot persist a routing without editing that file. Until lane D2
- * adds `routing: documentRoutingSchema.optional()` (lib/document-signing-routing-schema.ts) to the template schema (and the checks below to its
- * validation) and sets PROBATION_LETTER_ROUTING_STORED, a template with an empty routing saves exactly as today and a
- * non-empty routing is refused with a plain message instead of being dropped silently.
- */
+/** Letter template route validation and canonical version persistence. Empty routes retain the published legacy path. */
 import type {SessionContext} from '../db/client';
 import {withScopedLifecycleTenant} from './module-gate';
 import {automationReferencesTx} from './automation-builder';
@@ -39,10 +30,7 @@ export function probationLetterRoutingProblems(ctx: SessionContext, template: Pr
   });
 }
 
-/**
- * Saves a letter template version through the existing Probation service. An empty routing is removed so the version
- * saves exactly as today; a non-empty routing is checked and, until lane D2 stores it, refused.
- */
+/** Save through the canonical Probation definition writer; validate the explicitly selected routing registry. */
 export async function saveProbationLetterTemplateWithRouting(ctx: SessionContext, input: {companyId: string; template: ProbationRoutedTemplate; publish: boolean; expectedVersion: number}): Promise<string> {
   const {routing, ...template} = input.template;
   if (!routing?.length) return saveProbationLetterTemplate(ctx, {...input, template});
