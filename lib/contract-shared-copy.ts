@@ -501,6 +501,7 @@ const keys:Record<string,string>={
   "historical review records": "c6476881d3a3b",
   "Show more workflow reviews": "cf022b2cc218f",
   "Workflow review records could not be loaded. Your current page is retained; try again.": "c554a2a84ec0f",
-  "Historical workflows need People Ops review": "c6c8439281684"
+  "Historical workflows need People Ops review": "c6c8439281684",
+  "Access revocation date": "c78a3a78c4615"
 };
 export function useContractSharedCopy(){const t=useTranslations('contractShared');return (text:string)=>{const caption=text.trim(),key=keys[caption];return key?text.slice(0,text.indexOf(caption))+t(key)+text.slice(text.indexOf(caption)+caption.length):text;};}

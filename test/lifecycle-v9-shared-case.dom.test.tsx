@@ -90,6 +90,8 @@ it('shows the current tenant label for a retained inactive Contract handoff and 
  const source=JSON.stringify(c);
  render(<NextIntlClientProvider locale="en" messages={messages}><OffboardingCaseView c={c} config={v9Defaults()} users={[]} terminationReasonLabels={[{code,label:'Fictional current work-pass reason'}]} actor={{id:'hr',name:'Fictional HR'}} personnelWritableKeys={[]} busy={false} command={vi.fn()} onDocument={vi.fn()} onReason={vi.fn()} onOpenWorkflow={vi.fn()} onBack={vi.fn()}/></NextIntlClientProvider>);
  expect(screen.getByText(/Reason: Fictional current work-pass reason/)).toBeVisible();
+ expect(screen.getByText(/Access revocation date/)).toBeVisible();
+ expect(screen.queryByText(/Access revoked/)).not.toBeInTheDocument();
  expect(screen.getByText('Needs HR review')).toBeVisible();
  expect(screen.getByText(/People Ops records termination manually/)).toBeVisible();
  expect(screen.queryByText(code)).not.toBeInTheDocument();expect(JSON.stringify(c)).toBe(source);

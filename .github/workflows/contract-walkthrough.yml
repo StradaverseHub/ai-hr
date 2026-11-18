@@ -1,7 +1,7 @@
 name: contract-walkthrough
 run-name: Contract production renderer · ${{ inputs.candidate_ref || github.ref_name }}
 on:
-  # Reviewed renderer repair: exact semantic comboboxes for ending and shared editor selections.
+  # Reviewed handoff repair: native in-place case selection and truthful Contract access-date copy.
   # Temporary, development-only bootstrap. Exact compared file paths are verified through the read-only API.
   # Existing bounded-profile coverage explicitly includes this Contract renderer admission.
   # Migrations, server and Chromium retain their normal heaps; ceilings and RSS budgets are unchanged.
