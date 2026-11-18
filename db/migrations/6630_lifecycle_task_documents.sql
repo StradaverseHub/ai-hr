@@ -22,14 +22,14 @@ BEGIN
   SELECT u.id,u.person_id FROM public.app_user u WHERE u.tenant_id=app.current_tenant_id() AND u.id=app.current_user_id() AND u.archived_at IS NULL AND NOT app.login_blocked(u.id)
  ), owned AS MATERIALIZED (
   SELECT c.id,c.revision,c.data->>'number' AS number,'onb'::text AS module,c.data->>'state' AS state,c.data->'tasks' AS tasks,
-   coalesce(c.data->'confirmedChecklist'->>'name','Onboarding checklist') AS checklist,p.data->'lifecycleV9'->'documents' AS documents,p.data->'lifecycleV9'->'runs' AS runs,u.id AS uid
+   coalesce(c.data->'confirmedChecklist'->>'name','Onboarding checklist') AS checklist,p.data->'lifecycleV9'->'documents' AS documents,u.id AS uid
   FROM public.lc_onboarding_case c LEFT JOIN public.lc_onboarding_private p ON p.case_id=c.id AND p.tenant_id=c.tenant_id
   JOIN public.employment e ON e.id=c.employment_id AND e.tenant_id=c.tenant_id AND e.company_id=c.company_id AND e.person_id::text=c.data->>'personId'
   JOIN principal u ON u.person_id=e.person_id
   WHERE c.tenant_id=app.current_tenant_id() AND c.company_id=ANY(p_companies) AND (p_case IS NULL OR c.id=p_case)
    AND (NOT(coalesce(p.data,'{}'::jsonb) ? 'lifecycleV9') OR (p.data->'lifecycleV9Subject'->>'employmentId'=e.id::text AND p.data->'lifecycleV9Subject'->>'personId'=e.person_id::text))
   UNION ALL
-  SELECT c.id,c.revision,c.number,c.module,c.data->>'state',c.data->'tasks',coalesce(c.data->>'checklistName','Offboarding checklist'),c.data->'documents',c.data->'runs',u.id
+  SELECT c.id,c.revision,c.number,c.module,c.data->>'state',c.data->'tasks',coalesce(c.data->>'checklistName','Offboarding checklist'),c.data->'documents',u.id
   FROM public.lc_v9_case c JOIN public.employment e ON e.id=c.employment_id AND e.tenant_id=c.tenant_id JOIN principal u ON u.person_id=e.person_id
   WHERE c.tenant_id=app.current_tenant_id() AND c.company_id=ANY(p_companies) AND (p_case IS NULL OR c.id=p_case)
  ), entries AS MATERIALIZED (
