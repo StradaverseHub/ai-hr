@@ -16,6 +16,7 @@ import {PAYROLL_HISTORY_HEADERS} from '../lib/payroll-history-import-schema';
 import {toCsv} from '../lib/csv';
 import {closeAll,entitledCtx,owner,resetDb,seedBase,setModule,setSetting,type Base} from './harness';
 let b:Base,ctx:SessionContext,employmentId:string,batchId:string;
+async function receiptResetHeld(action:Promise<unknown>){let caught:unknown;try{await action;}catch(error){caught=error;}expect(caught).toBeDefined();let matched=false;for(let depth=0,value=caught;depth<8&&value&&typeof value==='object';depth++){const error=value as {code?:unknown;message?:unknown;cause?:unknown};if(error.code==='23503'&&typeof error.message==='string'&&/payroll_tax_basis_revision/.test(error.message))matched=true;value=error.cause;}expect(matched,'Expected the unchanged immutable tax-receipt foreign-key refusal').toBe(true);}
 const selection=()=>({companyId:b.companyId,year:2026,upToMonth:1,employmentIds:[employmentId]});
 const effective=()=>withTenant(ctx,tx=>tx.select().from(s.payslip).where(eq(s.payslip.employmentId,employmentId)));
 beforeEach(async()=>{
@@ -27,7 +28,7 @@ beforeEach(async()=>{
 afterAll(closeAll);
 it('supersedes only proven old native inputs, preserves the preexisting reset hold, and freshly reviews restored native history without relabelling an old hash',async()=>{
  const [original]=await effective();expect(original).toBeTruthy();const initial=await previewTaxBasisRecalculation(ctx,selection());expect(initial.employees[0].reason).toBeNull();expect(initial.eligibleCount).toBe(1);await confirmTaxBasisRecalculation(ctx,{previewId:initial.previewId,previewHash:initial.previewHash});
- const [receipt]=await owner.db.select().from(s.payrollTaxBasisRevision).where(eq(s.payrollTaxBasisRevision.payslipId,original.id));expect(receipt.basis.pcb).toBe(5000);const oldHash=receipt.sourceHash;
+ const [receipt]=await owner.db.select().from(s.payrollTaxBasisRevision).where(eq(s.payrollTaxBasisRevision.payslipId,original.id));expect(receipt.basis.pcb).toBe(5000);const oldHash=receipt.sourceHash;await receiptResetHeld(resetProcessedBatch(ctx,{batchId,reason:'Prove the preexisting immutable tax receipt hold'}));
  const review=await previewPayrollHistoryUpload(ctx,{name:'fictional-native-listed.csv',content:Buffer.from(toCsv([Array.from(PAYROLL_HISTORY_HEADERS),['C001','2026-01','ME','BASIC','CUSTODY','6000.00']])),maintenance:{version:1,mode:'update_listed',reason:'Reviewed listed total over an already tax-reviewed native run'}});expect(review.plan.counts.invalid).toBe(0);const applied=await confirmPayrollHistoryUpload(ctx,{attemptId:review.attemptId,previewHash:review.plan.previewHash,confirmReplacement:true}),currentId=applied.changes[0].snapshotId!;
  const projected=await withTenant(ctx,tx=>readEffectiveTaxBasesTx(tx,ctx,[currentId],{includeImported:true}));expect(projected.get(currentId)?.basis.pcb).toBe(6000);expect(projected.get(currentId)?.correction).toBeNull();
  const predecessor=await withTenant(ctx,tx=>tx.execute<{sourceId:string;id:string}>(sql`select * from app.payroll_history_native_tax_predecessors(ARRAY[${currentId}::uuid])`));expect(predecessor).toEqual([{sourceId:currentId,id:receipt.id}]);expect(await withTenant(ctx,tx=>tx.execute(sql`select * from app.payroll_history_native_tax_predecessors(ARRAY[${original.id}::uuid])`))).toEqual([]);
@@ -35,7 +36,7 @@ it('supersedes only proven old native inputs, preserves the preexisting reset ho
  const future=(await createBatch(ctx,{companyId:b.companyId,payPeriod:'2026-02'})).batchId;await generatePayslips(ctx,{batchId:future});const [firstFuture]=await owner.db.select().from(s.payslip).where(eq(s.payslip.batchId,future));expect((firstFuture.statutory as {pcbMeta:{ytdGross:number}}).pcbMeta.ytdGross).toBe(6000);
  // This receipt FK already prohibited deleting the reviewed native source before maintenance.
  // Maintenance preserves that immutable-source refusal instead of cascading or moving the receipt.
- await expect(resetProcessedBatch(ctx,{batchId,reason:'Attempt to reset an already reviewed native source'})).rejects.toThrow(/foreign key|payroll_tax_basis_revision|constraint/i);
+ await receiptResetHeld(resetProcessedBatch(ctx,{batchId,reason:'Attempt to reset an already reviewed native source'}));
  expect(await withTenant(ctx,tx=>tx.select().from(nativePayrollPayslip).where(eq(nativePayrollPayslip.id,original.id)))).toEqual([original]);expect((await owner.db.select().from(s.payrollTaxBasisRevision).where(eq(s.payrollTaxBasisRevision.id,receipt.id)))[0]).toEqual(receipt);
  const removal=await previewPayrollHistoryRevert(ctx,review.attemptId);await revertPayrollHistoryUpload(ctx,review.attemptId,removal.previewHash);const restored=(await effective()).find(row=>row.batchId!==future)!;expect(restored.id).not.toBe(original.id);expect(restored.statutory).toEqual(original.statutory);
  const [restoredSource]=await withTenant(ctx,tx=>taxBasisSourceRowsTx(tx,[restored.id]));expect(restoredSource.historyAttemptId).toBeNull();await expect(withTenant(ctx,tx=>readEffectiveTaxBasesTx(tx,ctx,[restored.id],{includeImported:true}))).rejects.toThrow(/Saved payroll changed/);
