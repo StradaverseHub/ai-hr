@@ -774,3 +774,49 @@ reused/uncertain processes are never stopped. Failure initiation gets30s; the ex
 No automatic rollback, DB kill or queue reset applies. Lost lock ownership permits no unit/service mutation.
 Partial receipts remain honest (`journeyVerified:false`); failure diagnostics may themselves be unavailable
 once ownership or process identity can no longer be demonstrated.
+
+### Prepared handoff and exact pre-unit recovery
+
+`bank_import_worker_prepared_v1.py` owns bounded, separately reviewed preparation.
+The original unprepared conditional route retains its 30-second limit and refuses
+large extractions; do not increase that live deadline. For a new normal handoff,
+after managed drain and **before starting the web installer/readiness window**, use
+`guarded-prepare-ci-worker` with `ADMIN_REVIEWED_CI_WORKER_PREPARATION`. Its closed
+`preparation` object selects `normal`, the original drain approval/receipt, an
+exclusive UUID, and fixed derived prepared-tree/proof paths. The separate IO-only
+operation expires within300 seconds, re-extracts and authenticates the complete
+archive, normalizes manifest modes, verifies every file byte/link/member/root
+identity, and seals a root-private immutable proof. It changes no unit or service.
+The independently reviewed later `ADMIN_AUTHORIZED_PREPARED_CI_WORKER_CUTOVER`
+adds only the exact `preparedWorker:{path,sha256}` selection to the original
+activation fields. `guarded-activate-prepared-ci-runtime` then runs the same
+10 metadata fences, two source-content passes, two native byte audits and stable
+owned-process checks. The live preparation remains30 seconds. Metadata rechecking,
+immutable prepared-tree publication, unit replacement and reload share M0/45.
+One absolute827-second live cap starts at guarded entry and never resets per child
+or phase. Original grant/approval/readiness clocks and mutation admission remain.
+
+For the exact failure before immutable worker publication/unit mutation, preparation
+may instead select `failed-preunit`, the original fully extracted directory/inode,
+and closed original terminal worker-check failure/activation/start-marker pins.
+It authenticates all existing bytes; it does not retry extraction or delete history.
+A fresh `ADMIN_AUTHORIZED_SINGLE_CI_WORKER_RECOVERY` explicitly binds that proof,
+the original selected installation/grant/runtime and failed log/records, original
+root authorities, old managed unit/environment/receipt and the held installing
+lease. `guarded-recover-ci-runtime` admits only that exact terminal failed state;
+a fresh attempt directory is published only after historical and actual native
+failure admission. It uses the same full proof graph and live30/827 limits. The
+fresh root approval authorizes one matching **worker** recovery for at most900
+seconds. Original expired CI grants are used only by native read-only
+`resume-status`; they are never renewed or used for web writes. The original600
+readiness window stays failed. No normal fork/cleanup/finish runs during recovery.
+After real matching-worker readiness, the unchanged `resume-arrival` owner verifies
+and finishes the original installation. Recovery receipts are worker-only and never
+claim full arrival, application journeys, handback or production authority.
+
+Hosted qualification includes both complete prepared normal/recovery graphs,
+original authority/global-expiry and unit/PID/environment/tree drift refusals, real
+full source-bound ZIP extraction with more than30 seconds elapsed, the old30-second
+negative control, and real-root full-package content/metadata/tamper checks. Native
+CI/database/systemd proof ports in graph fixtures are explicitly identified; they
+are not reported as an actual installed application acceptance.

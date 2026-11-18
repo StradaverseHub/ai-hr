@@ -35,7 +35,7 @@ FIRST_APPROVAL_FIELDS = {'format','kind','policy','target','issuedAt','expiresAt
 
 
 def require_operation_guard(base):
-    base.check(ACTIVE_OPERATION_GUARD is not None and ACTIVE_OPERATION_GUARD.stage=='activate-ci-runtime','fixed root guarded activation invocation required')
+    base.check(ACTIVE_OPERATION_GUARD is not None and ACTIVE_OPERATION_GUARD.stage in ('activate-ci-runtime','activate-prepared-ci-runtime','recover-ci-runtime'),'fixed root guarded activation invocation required')
     ACTIVE_OPERATION_GUARD.verify()
     return ACTIVE_OPERATION_GUARD
 
@@ -321,20 +321,28 @@ def worker_identity(base,report,source):
 
 
 class RuntimeObservation:
-    def __init__(self, base, fmt, args, operation, drain_bytes):
+    def __init__(self, base, fmt, args, operation, drain_bytes, *, recovery=None, prepared=None):
+        self.recovery=recovery
+        self.prepared=prepared
+        self.overall_deadline=getattr(base,'RECOVERY_OVERALL_DEADLINE',None) if recovery is not None or prepared is not None else None
+        self.drain_operation=Path(recovery['originalOperation']) if recovery is not None else operation
         self.base, self.fmt, self.args, self.operation = base, fmt, args, operation
         self.path = Path(args.ci_runtime_authorization)
         self.auth_identity=protected_private(base,self.path)
         self.bytes = base.read_bounded(self.path, 65536)
         base.check(sha(self.bytes) == args.ci_runtime_authorization_sha256, 'root CI cutover authorization hash differs')
         a = self.auth = json.loads(self.bytes)
-        fields = ACTIVATION_FIELDS
-        base.check(set(a) == fields and a['format'] == 1 and a['kind'] == 'ADMIN_AUTHORIZED_SINGLE_CI_WORKER_CUTOVER' and
+        fields = ACTIVATION_FIELDS if prepared is None else RECOVERY.NORMAL_FIELDS if recovery is None else RECOVERY.FIELDS
+        kind='ADMIN_AUTHORIZED_SINGLE_CI_WORKER_CUTOVER' if prepared is None else RECOVERY.KINDS[ACTIVE_OPERATION_GUARD.stage]
+        base.check(set(a) == fields and a['format'] == 1 and a['kind'] == kind and
                    a['policy'] == POLICY and a['target'] == 'alpha-staging' and a['releaseAuthorized'] is False,
                    'exact administrator CI cutover authority required')
+        base.check((prepared is None or a.get('preparedWorker')==prepared) and (recovery is None or a.get('recovery')==recovery),'explicit prepared/recovery selection differs')
         self.guard=require_operation_guard(base)
         base.check(self.guard.path==self.path and self.guard.bytes==self.bytes and self.guard.a['operationsLock']==a['operationsLock'],'exact guarded activation approval required')
-        self.guard.observer=self;self.start_intent=None;self.started_identity=None;self.started_sha=None;self.start_capture_pending=False
+        self.guard.observer=self
+        if recovery is not None:self.ci=self.guard.ci
+        self.start_intent=None;self.started_identity=None;self.started_sha=None;self.start_capture_pending=False
         self.first_path=Path(a['firstStageApproval'])
         self.first_identity=protected_private(base,self.first_path)
         self.first_bytes=base.read_bounded(self.first_path,65536)
@@ -372,9 +380,9 @@ class RuntimeObservation:
         """One absolute deadline shared by every subprocess in a stage; never reset per child."""
         global SLOT_DEADLINE
         self.check_slot()
-        remaining=min(epoch(self.auth['expiresAt']),epoch(self.grant['expiresAt']))-time.time()
+        remaining=min(epoch(self.auth['expiresAt']),epoch(self.grant['expiresAt']) if self.recovery is None else epoch(self.auth['expiresAt']))-time.time()
         self.base.check(remaining>0,'success authority expired before stage')
-        self.slot_name=name;SLOT_DEADLINE=time.monotonic()+min(seconds,remaining)
+        self.slot_name=name;SLOT_DEADLINE=min(time.monotonic()+min(seconds,remaining),self.overall_deadline if self.overall_deadline is not None else float('inf'))
         self.base.VERIFIED_OPERATION_DEADLINE=SLOT_DEADLINE
 
     def check_slot(self):
@@ -395,8 +403,8 @@ class RuntimeObservation:
         b.check(b.read_bounded(self.path,65536) == self.bytes, 'CI cutover authority changed')
         b.root_protected(Path(sys.argv[0]),regular=True);b.root_protected(b.NODE,regular=True)
         b.check(sha(b.read_bounded(Path(sys.argv[0]),16*1024**2))==a['helperSha256'] and sha(b.read_bounded(b.NODE,128*1024**2))==a['nodeSha256'],'root-pinned helper/runtime changed')
-        b.root_protected(self.operation/'drained.json',regular=True)
-        b.check(sha(b.read_bounded(self.operation/'drained.json',65536))==a['drainSha256'],'original protected drain record changed')
+        b.root_protected(self.drain_operation/'drained.json',regular=True)
+        b.check(sha(b.read_bounded(self.drain_operation/'drained.json',65536))==a['drainSha256'],'original protected drain record changed')
         b.check(epoch(a['issuedAt']) <= time.time() < epoch(a['expiresAt']) <= epoch(a['issuedAt']) + 900,
                 'finite administrator operation authority expired or not yet valid')
         private_install(b,self.directory.parent,self.owner.pw_uid,True)
@@ -414,8 +422,8 @@ class RuntimeObservation:
         first_fields=FIRST_APPROVAL_FIELDS
         gate_fields={'source','controller','runId','build','artifact','witnessFingerprint','policyVersion'}
         b.check(set(first)==first_fields and first['format']==1 and first['kind']=='ADMIN_REVIEWED_CI_WORKER_DRAIN_PINS' and first['policy']==POLICY and first['target']=='alpha-staging' and first['releaseAuthorized'] is False and set(first['gate'])==gate_fields,'closed pre-drain administrator approval required')
-        b.check(all(first[k]==a[k] for k in ('identity','helperSha256','nodeSha256','python','nodeOptions','lease','leaseFileSha256','sourceManifestSha256','environmentSha256','dotenvSha256','readiness','operationsLock','leaseFile','coordinatorSha256')),'pre-drain and activation administrator shared pins differ')
-        drain_time=(self.operation/'drained.json').stat().st_mtime
+        b.check(all(first[k]==a[k] for k in ('identity',*(() if self.recovery is not None else ('helperSha256',)),'nodeSha256','python','nodeOptions','lease','leaseFileSha256','sourceManifestSha256','environmentSha256','dotenvSha256','readiness','operationsLock','leaseFile','coordinatorSha256')),'pre-drain and activation administrator shared pins differ')
+        drain_time=(self.drain_operation/'drained.json').stat().st_mtime
         b.check(epoch(first['issuedAt'])<=drain_time<=epoch(first['expiresAt']) and drain_time<=epoch(a['issuedAt']),'pre-drain approval was not valid when original drain completed or activation approval predates drain')
         i=a['install']
         grant_fields={'format','kind','policyVersion','target','installId','source','controller','controllerBranch','baseline','baselineBuildId','environmentSha256','runId','runAttempt','runCreatedAt','issuedAt','expiresAt','producerStartedAt','producerCompletedAt','witnessFingerprint','artifact','build'}
@@ -433,7 +441,9 @@ class RuntimeObservation:
                 g.get('environmentSha256') == a['environmentSha256'] and
                 g['build'].get('lockSha256') == self.args.lock_sha256 and g['build'].get('packageSha256') == self.args.package_sha256,
                 'original CI grant and administrator/drain pins differ')
-        b.check(time.time() < epoch(g['expiresAt']) and epoch(a['expiresAt']) <= epoch(g['expiresAt']), 'original CI grant expired or operation exceeds it')
+        if self.recovery is None:
+            b.check(time.time() < epoch(g['expiresAt']) and epoch(a['expiresAt']) <= epoch(g['expiresAt']), 'original CI grant expired or operation exceeds it')
+        else:RECOVERY.check_history(self)
         b.check(sha(b.read_bounded(SOURCE/'.env.production',1024**2)) == a['dotenvSha256'] and
                 sha(b.read_bounded(self.base.ENV,1024**2)) == self.args.worker_env_sha256, 'web/worker private environment changed')
         b.check(sha(b.read_bounded(BOOT_ID,4096)) == a['bootIdSha256'], 'boot identity changed')
@@ -449,7 +459,7 @@ class RuntimeObservation:
         if phase=='arrived':
             stage,_=self.snapshot();b.check(stage=='O','arrived lease requires strict native successful deployment')
         self.last_lease_phase=phase
-        b.check(time.time()<min(epoch(a['expiresAt']),epoch(g['expiresAt'])),'operation or original grant expired during authority proof')
+        b.check(time.time()<min(epoch(a['expiresAt']),epoch(g['expiresAt']) if self.recovery is None else epoch(a['expiresAt'])),'operation or original grant expired during authority proof')
 
     def source_proof(self):
         b,a=self.base,self.auth
@@ -662,6 +672,7 @@ class RuntimeObservation:
         return {'records':records,'members':sorted(names),'removed':sorted(self.cleaned)}
 
     def snapshot(self):
+        if self.recovery is not None:return RECOVERY.failed_snapshot(self)
         b,a=self.base,self.auth
         for _ in range(8):
             b.check(not (STATE/'pending').exists() and not (STATE/'pending').is_symlink(),'staging deployment pending')
@@ -722,6 +733,9 @@ class RuntimeObservation:
             self.guard.file_mutation(failure_only=True)
             self.base.write_new(self.operation/'ci-worker-started.json',raw,0o400);self.started_sha=sha(raw)
         finally:self.start_capture_pending=False
+
+    def assert_owned_worker(self,report):
+        self.base.check(self.started_identity is not None and worker_identity(self.base,report,self.args.source)==self.started_identity,'started worker PID/source/UID/cgroup identity changed')
 
     def quarantine_fence(self):
         # Failure-only authority: no fresh lease PASS is inferred. Continuous SH+install EX and exact OWN process are mandatory.
@@ -789,9 +803,9 @@ class RuntimeObservation:
         b.check(len(self.audits)<2,'only two native audit slots permitted')
         self.slot('A'+str(len(self.audits)),180)
         self.check_authority();before,_=self.snapshot();i=a['install']
-        native=child([str(b.NODE),'--env-file=.env.production','--import','tsx','.github/ci/staging-build-install.mjs','status',self.args.source,i['id'],i['buildRecordId']],self.owner,self.environment,timeout=180)
+        native=child([str(b.NODE),'--env-file=.env.production','--import','tsx','.github/ci/staging-build-install.mjs','resume-status' if self.recovery is not None else 'status',self.args.source,i['id'],i['buildRecordId']],self.owner,self.environment,timeout=180)
         self.check_authority();stage,raw=self.snapshot()
-        b.check({'R0':0,'R1':1,'O':2}[stage]>={'R0':0,'R1':1,'O':2}[before],'native finish backslid during full audit')
+        b.check(self.stage_ranks()[stage]>=self.stage_ranks()[before],'native finish backslid during full audit')
         b.check(set(native)=={'authorizationSha256','verified','activated','runtime','releaseAuthorized'},'closed native status record required')
         runtime=native.get('runtime',{})
         runtime_fields={'format','kind','source','installId','buildRecordId','nextBuildId','authorizationSha256','pid','startedMonotonicUs','healthStatus','compiledByteInventory','migrationLedger','verifiedAt','releaseAuthorized','fullSourceChecksumVerified','fullMigrationLedgerVerified'}
@@ -851,14 +865,15 @@ class RuntimeObservation:
         # cache directory identity/mode stay pinned; compiled ROOT metadata is never waived.
         metadata['cache']=cache_state
         b.check(self.metadata is None or metadata==self.metadata,'complete source/compiled/dependency/runtime metadata changed')
-        observed=child([str(b.NODE),'--env-file=.env.production','--input-type=module','-e',FAST_PROBE,str(self.directory)],self.owner,self.environment,timeout=20)
+        if self.recovery is not None:b.check(FAST_PROBE.count('validateInstallGrant(grant);')==1,'closed read-only grant probe owner changed')
+        observed=child([str(b.NODE),'--env-file=.env.production','--input-type=module','-e',FAST_PROBE if self.recovery is None else FAST_PROBE.replace('validateInstallGrant(grant);','validateInstallGrant(grant,{allowExpired:true});',1),str(self.directory)],self.owner,self.environment,timeout=20)
         fields={'kind','pid','startedMonotonicUs','bootId','build','environmentSha256','migrationLedger','healthStatus','readiness'}
         b.check(set(observed)==fields and observed['kind']=='CI_WORKER_COMPLETE_FENCE_V2' and observed['pid']==a['webPid'] and observed['startedMonotonicUs']==a['webStartedMonotonicUs'] and sha(observed['bootId'].encode())==a['bootIdSha256'] and observed['build']==self.args.build_id and observed['environmentSha256']==a['environmentSha256'] and observed['healthStatus']==200 and observed['readiness']==a['readiness'],'fresh complete native identity/environment/health differs')
         ledger=observed['migrationLedger'];b.check(set(ledger)==LEDGER_FIELDS|{'verifiedAt'},'exact fresh full ordered ledger schema required')
         native_timestamp(b,ledger['verifiedAt'],epoch(self.grant['issuedAt']),time.time(),fresh=True)
         b.check({k:v for k,v in ledger.items()if k!='verifiedAt'}==a['ledger'],'fresh full ordered ledger differs')
         self.check_authority();stage,raw=self.snapshot()
-        b.check({'R0':0,'R1':1,'O':2}[stage]>={'R0':0,'R1':1,'O':2}[before] and (self.last is None or {'R0':0,'R1':1,'O':2}[stage]>={'R0':0,'R1':1,'O':2}[self.last]),'native finish publication backslid')
+        b.check(self.stage_ranks()[stage]>=self.stage_ranks()[before] and (self.last is None or self.stage_ranks()[stage]>=self.stage_ranks()[self.last]),'native finish publication backslid')
         self.check_slot();self.metadata=metadata;self.last=stage
         observation={'policy':POLICY,'slot':self.slot_name,'stage':stage,'leasePhase':self.last_lease_phase,'metadataSha256':sha(canonical(metadata)),'private':private,'freshNativeIdentity':observed,'currentSha256':sha(raw[0]),'lastOkSha256':sha(raw[1]),'elapsedSeconds':time.monotonic()-started,'byteProof':False,'journeyVerified':False,'releaseAuthorized':False}
         self.guard.file_mutation();self.check_slot()
@@ -866,12 +881,17 @@ class RuntimeObservation:
         self.transitions.append(observation);self.fence_count+=1
         return observation
 
+    def stage_ranks(self):
+        return {'R0':0,'R1':1,'O':2} if self.recovery is None else {'F':0}
+
     def admit_mutation(self):
+        if self.recovery is not None:return RECOVERY.admit_mutation(self)
         b=self.base;now=time.time()
         original=json.loads(b.read_bounded(self.directory/'runtime.json',1024**2))
         c=epoch(original['verifiedAt'])+600
         remaining=min(epoch(self.auth['expiresAt']),epoch(self.grant['expiresAt']))-now
         b.check(self.fence_count==3 and len(self.audits)==1 and len(self.content_proofs)==1,'pre-mutation proof graph incomplete')
+        b.check(self.overall_deadline is None or self.overall_deadline-time.monotonic()>=497,'insufficient fixed live global opportunity before first mutation')
         b.check(remaining>=527 and c-now>=155,'insufficient mandatory helper/readiness opportunity before first mutation')
         # The unchanged normal operator has its own larger per-command timeouts.
         # 830s is explicitly a planning reservation, NOT an enforced branch cap.
@@ -882,7 +902,7 @@ class RuntimeObservation:
     def receipt(self):
         self.check_slot();self.check_authority()
         self.base.check(self.fence_count==10 and len(self.audits)==2 and len(self.content_proofs)==2,'complete two-audit graph required before receipt')
-        return {'mode':'activate-ci-runtime','policy':POLICY,'authorizationSha256':sha(self.bytes),
+        return {'mode':'activate-ci-runtime' if self.recovery is None else 'recover-ci-runtime','policy':POLICY if self.recovery is None else RECOVERY.POLICY,'authorizationSha256':sha(self.bytes),
                 'installationAuthorizationSha256':self.auth['grantSha256'],'firstStageApprovalSha256':self.auth['firstStageApprovalSha256'],'installId':self.auth['install']['id'],
                 'transitionStages':[row['stage'] for row in self.transitions],
                 'leasePhases':[row['leasePhase'] for row in self.transitions],

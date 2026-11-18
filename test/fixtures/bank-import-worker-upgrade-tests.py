@@ -63,6 +63,45 @@ class WorkerUpgradeTests(unittest.TestCase):
         with patch.object(update,'validate_process',return_value=123),patch.object(update,'properties',return_value=self.active),patch.object(update.time,'monotonic',side_effect=[0,331]):
             with self.assertRaisesRegex(RuntimeError,'deadline reached'):update.drain(self.base,self.active,'1'*40)
         self.assertEqual(len(calls),1);self.assertIn('--signal=SIGTERM',calls[0])
+    def test_properties_is_one_complete_systemd_read(self):
+        calls=[]
+        base=SimpleNamespace(command=lambda argv:(calls.append(argv) or SimpleNamespace(stdout='MainPID=0\nRestart=on-failure\n')),service_properties=lambda:(_ for _ in()).throw(AssertionError('second observation')))
+        self.assertEqual(update.properties(base),{'MainPID':'0','Restart':'on-failure'})
+        self.assertEqual(len(calls),1)
+        self.assertEqual({a[11:] for a in calls[0]if a.startswith('--property=')},set(update.SERVICE_PROPERTY_FIELDS))
+    def test_waits_for_two_identical_full_terminal_metadata_observations(self):
+        a={**self.active,'ExecStart':'{ path=/node ; argv[]=/node runner ; ignore_errors=no ; start_time=[start] ; stop_time=[n/a] ; pid=123 ; code=(null) ; status=0/0 }','ExecMainCode':'0'}
+        b={**a,**self.dead,'ExecStart':a['ExecStart'].replace('stop_time=[n/a]','stop_time=[end]').replace('code=(null)','code=exited'),'ExecMainCode':'1'}
+        c={**b,'ExecStart':b['ExecStart'].replace('stop_time=[end]','stop_time=[final]')}
+        self.active=a
+        result,calls=self.run_drain([a,b,c,c])
+        self.assertEqual(result['state'],'drained');self.assertEqual(len(calls),1)
+    def test_refuses_static_configuration_drift_even_if_terminal(self):
+        for key,value in [('Restart','always'),('NeedDaemonReload','yes'),('UnitFileState','disabled'),('ExecStart','{ path=/foreign ; argv[]=/foreign ; ignore_errors=no ; start_time=[x] }')]:
+            active={**self.active,'Restart':'on-failure','NeedDaemonReload':'no','UnitFileState':'enabled','ExecStart':'{ path=/node ; argv[]=/node ; ignore_errors=no ; start_time=[x] }'}
+            terminal={**active,**self.dead,key:value};self.active=active
+            with self.assertRaisesRegex(ValueError,'configuration changed'):self.run_drain([active,terminal])
+    def test_retains_original_deadline_and_never_accepts_late_snapshot(self):
+        self.base.VERIFIED_OPERATION_DEADLINE=999
+        with patch.object(update,'validate_process',return_value=123),patch.object(update,'properties',side_effect=[self.active,self.dead]),patch.object(update.time,'monotonic',side_effect=[0,1,331]),patch.object(update.time,'sleep'):
+            with self.assertRaisesRegex(ValueError,'deadline exceeded'):update.drain(self.base,self.active,'1'*40)
+        self.assertEqual(self.base.VERIFIED_OPERATION_DEADLINE,999)
+    def test_terminal_metadata_churn_cannot_reset_the_original_deadline(self):
+        clock=[0];count=[0]
+        active={**self.active,'ExecStart':'{ path=/node ; argv[]=/node ; ignore_errors=no ; start_time=[start] ; stop_time=[n/a] }'}
+        def observe(base):
+            count[0]+=1
+            if count[0]==1:return active
+            return {**active,**self.dead,'ExecStart':active['ExecStart'].replace('stop_time=[n/a]','stop_time=['+str(count[0])+']')}
+        calls=[];self.base.command=lambda argv:calls.append(argv)
+        with patch.object(update,'validate_process',return_value=123),patch.object(update,'properties',side_effect=observe),patch.object(update.time,'monotonic',side_effect=lambda:clock[0]),patch.object(update.time,'sleep',side_effect=lambda seconds:clock.__setitem__(0,clock[0]+seconds)):
+            with self.assertRaisesRegex(RuntimeError,'deadline reached'):update.drain(self.base,active,'1'*40)
+        self.assertEqual(clock[0],330);self.assertLessEqual(count[0],168);self.assertEqual(len(calls),1)
+    def test_configuration_drift_refuses_before_a_later_reversion(self):
+        active={**self.active,'Restart':'on-failure'}
+        with patch.object(update,'validate_process',return_value=123),patch.object(update,'properties',side_effect=[active,{**self.dead,'Restart':'always'},{**self.dead,'Restart':'on-failure'}])as observed,patch.object(update.time,'sleep'):
+            with self.assertRaisesRegex(ValueError,'configuration changed'):update.drain(self.base,active,'1'*40)
+        self.assertEqual(observed.call_count,2)
     def test_atomic_replacement_refuses_changed_unit_and_preserves_original(self):
         with tempfile.TemporaryDirectory() as tmp:
             path=Path(tmp)/'worker.service';path.write_bytes(b'prior')
@@ -109,7 +148,7 @@ class WorkerUpgradeTests(unittest.TestCase):
             output=Path(tmp)/'helper.py'
             result=subprocess.run([sys.executable,'-I','-B',str(ROOT/'scripts/bank-import-worker-upgrade-bundle.py'),str(output)],capture_output=True,text=True)
             self.assertEqual(result.returncode,0,result.stderr)
-            self.assertEqual(json.loads(result.stdout)['phases'],['drain','activate','adopt-stopped','activate-ci-runtime','guarded-drain','guarded-activate-ci-runtime'])
+            self.assertEqual(json.loads(result.stdout)['phases'],['drain','activate','adopt-stopped','activate-ci-runtime','guarded-drain','guarded-activate-ci-runtime','guarded-prepare-ci-worker','guarded-activate-prepared-ci-runtime','guarded-recover-ci-runtime'])
             body=output.read_text();self.assertNotIn('spec_from_file_location',body)
             self.assertIn('types.ModuleType',body);self.assertEqual(output.stat().st_mode&0o777,0o600)
             result=subprocess.run([sys.executable,'-I','-B',str(output),'--help'],capture_output=True,text=True)

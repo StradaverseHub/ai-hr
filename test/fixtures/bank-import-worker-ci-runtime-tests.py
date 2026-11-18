@@ -239,7 +239,7 @@ class Fixture(old.UpgradeFlowFixture):
     @contextlib.contextmanager
     def ports(self):
         original_fstat=os.fstat;original_monotonic=time.monotonic
-        root_files={self.authorization,self.leasefile,self.firstfile,self.root/'install.lock'}
+        root_files={self.authorization,self.leasefile,self.firstfile,self.root/'install.lock'}|getattr(self,'additional_root_private_files',set())
         def protected_stat(fd):
             info=original_fstat(fd)
             # Only administrator-private credentials/install EX emulate the root privilege boundary.
