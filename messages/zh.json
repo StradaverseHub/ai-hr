@@ -44897,6 +44897,8 @@
     "pushField": "将 {field} 推送至人事管理"
   },
   "payrollHistoryMaintenance": {
+    "itemsUnavailable": "薪资项目明细暂不可用。",
+    "sourceLimited": "查看原始文件需要整个导入批次的访问权限。",
     "impactKinds": {
           "payroll": "{count} 个现有薪资批次保持不变，请单独审查其历史输入。",
           "report": "{count} 份已记录的法定报告保持不变，请单独审查受影响的报告。",
