@@ -120,6 +120,7 @@ BEGIN
  IF d IS NOT DISTINCT FROM before_doc AND changes IS NOT DISTINCT FROM coalesce(case_data->'pmChanges','[]'::jsonb) THEN RETURN s.revision;END IF;
  IF jsonb_typeof(d->'signing')='object' THEN
   d:=jsonb_set(d,'{signing,contentRevision}',to_jsonb((d->'signing'->>'contentRevision')::integer+1));d:=jsonb_set(d,'{signing,contentHash}',to_jsonb(app.v9_document_content_hash(d)));
+  d:=d||jsonb_build_object('stepSignatures',app.v9_document_route_signatures(d),'hrSignature',NULL,'employeeSignature',NULL,'status',CASE WHEN app.v9_document_route_complete(d) THEN 'signed' WHEN d->>'sentAt' IS NOT NULL THEN 'opened' ELSE 'draft' END);
  END IF;
  target_revision:=s.revision+1;
  INSERT INTO lifecycle_personnel_completion_custody(tenant_id,case_id,document_id,case_revision,actor_user_id,transaction_id,operation,before_hash,after_hash) VALUES(app.current_tenant_id(),p_case,p_document,target_revision,app.current_user_id(),pg_current_xact_id(),p_operation,encode(sha256(convert_to(before_doc::text,'UTF8')),'hex'),encode(sha256(convert_to(d::text,'UTF8')),'hex'));

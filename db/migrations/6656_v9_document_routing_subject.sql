@@ -214,10 +214,12 @@ $$;
 REVOKE ALL ON FUNCTION app.v9_document_personnel_reference(jsonb) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION app.v9_document_personnel_reference(jsonb) TO ai_hr_app;
 --> statement-breakpoint
-CREATE FUNCTION app.v9_document_route_guard() RETURNS trigger LANGUAGE plpgsql SET search_path=pg_catalog,public,pg_temp AS $$
+-- The trigger invokes private kernel validators as its owner; caller authority remains the session actor.
+-- A SECURITY DEFINER source writer cannot impersonate a true owner session.
+CREATE FUNCTION app.v9_document_route_guard() RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
 DECLARE old_docs jsonb;new_docs jsonb;d jsonb;prior jsonb;definition jsonb;version jsonb;cfg jsonb;native_cfg jsonb;c lc_onboarding_case;facts jsonb;company uuid;subject_person uuid;admin boolean;step jsonb;spec jsonb;who jsonb;group_row jsonb;routing jsonb;candidate_row jsonb;selected_group text;possible text[];holder text;employee_user text;supervisor_user text;signature jsonb;body_changed boolean;content_edit boolean;source_case uuid;source_employment uuid;personnel_source jsonb;field jsonb;source_key text;expected text;
 BEGIN
- IF NEW.tenant_id IS DISTINCT FROM app.current_tenant_id() AND NOT app.acting_as_owner() THEN RAISE EXCEPTION 'Document tenant mismatch';END IF;
+ IF NEW.tenant_id IS DISTINCT FROM app.current_tenant_id() AND NOT (session_user='ai_hr_owner' OR EXISTS(SELECT 1 FROM pg_roles WHERE rolname=session_user AND rolsuper)) THEN RAISE EXCEPTION 'Document tenant mismatch';END IF;
  IF TG_TABLE_NAME='lc_onboarding_private' THEN
   source_case:=NEW.case_id;
   old_docs:=CASE WHEN TG_OP='INSERT' THEN '[]'::jsonb ELSE coalesce(OLD.data->'lifecycleV9'->'documents','[]'::jsonb) END;new_docs:=coalesce(NEW.data->'lifecycleV9'->'documents','[]'::jsonb);
@@ -266,7 +268,7 @@ BEGIN
    IF signature->'actions' IS DISTINCT FROM prior->'signing'->'actions' THEN PERFORM app.v9_document_route_validate_append(prior->'signing',signature,d);END IF;
    CONTINUE;
   END IF;
-  IF NOT (admin AND app.v9_signing_current_actor() OR app.acting_as_owner() AND app.current_user_id() IS NULL) OR signature->'actions' IS DISTINCT FROM '[]'::jsonb OR signature->>'contentRevision' IS DISTINCT FROM '1' THEN RAISE EXCEPTION 'A scoped document preparer must initialize signing';END IF;
+  IF NOT (admin AND app.v9_signing_current_actor() OR app.current_user_id() IS NULL AND (session_user='ai_hr_owner' OR EXISTS(SELECT 1 FROM pg_roles WHERE rolname=session_user AND rolsuper))) OR signature->'actions' IS DISTINCT FROM '[]'::jsonb OR signature->>'contentRevision' IS DISTINCT FROM '1' THEN RAISE EXCEPTION 'A scoped document preparer must initialize signing';END IF;
   SELECT value INTO definition FROM jsonb_array_elements(cfg->'templates') WHERE value->>'id'=d->>'templateId';
   SELECT value INTO version FROM jsonb_array_elements(definition->'versions') WHERE value->'version'=d->'version' AND value->>'state'='published';
   IF d->'blocks' IS DISTINCT FROM version->'blocks' OR d->'fields' IS DISTINCT FROM version->'fields' OR d->>'templateType' IS DISTINCT FROM definition->>'type' OR d->'edits' IS DISTINCT FROM '{}'::jsonb OR signature->'route'->'version' IS DISTINCT FROM '1'::jsonb OR version IS NULL OR d->'routing' IS DISTINCT FROM version->'routing' OR jsonb_array_length(d->'routing')<>jsonb_array_length(signature->'route'->'steps') OR signature->'routing'->>'templateId' IS DISTINCT FROM d->>'templateId' OR signature->'routing'->'templateVersion' IS DISTINCT FROM d->'version' THEN RAISE EXCEPTION 'Signing route must come from the published saved version';END IF;

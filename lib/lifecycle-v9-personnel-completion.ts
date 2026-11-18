@@ -26,7 +26,7 @@ export type PersonnelCompletionPolicy={version:1;classification:typeof PERSONNEL
  history:{fieldId:string;action:'override'|'reconciled';by:Actor;at:string;before:string;after:string;reason:string}[];};
 export type CompletionDocument=Pick<Document,'fields'|'values'|'status'|'sentAt'|'employeeSignature'|'hrSignature'|'signing'>&{personnelCompletion?:PersonnelCompletionPolicy};
 export function personnelCompletionGroup(key:string|null|undefined):PersonnelCompletionGroup{return key&&Object.hasOwn(personnelCompletionClassification,key)?personnelCompletionClassification[key as keyof typeof personnelCompletionClassification]:'unknown';}
-export function personnelCompletionLocked(document:CompletionDocument){return !!document.employeeSignature||!!document.hrSignature||!!document.signing&&signingContentLocked(document.signing)||['signed','completed','acknowledged','withdrawn','superseded'].includes(document.status);}
+export function personnelCompletionLocked(document:CompletionDocument){return !!document.employeeSignature||!!document.hrSignature||!!document.signing&&signingContentLocked(document.signing)||['withdrawn','superseded'].includes(document.status)||!document.signing&&['signed','completed','acknowledged'].includes(document.status);}
 /** Only newly generated or explicitly recovered unsigned drafts may adopt the new rule. Existing released snapshots stay legacy. */
 export function initializePersonnelCompletion(document:CompletionDocument,input:{country:string|null;sourceFingerprint:string;officialValues:Record<string,string>;actor:Actor;at:string}){
  if(document.personnelCompletion)return;

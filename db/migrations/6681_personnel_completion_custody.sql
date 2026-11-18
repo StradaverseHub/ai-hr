@@ -23,7 +23,8 @@ CREATE FUNCTION app.personnel_completion_owner(d jsonb,f jsonb) RETURNS text LAN
 $$;
 CREATE FUNCTION app.personnel_completion_locked(d jsonb) RETURNS boolean LANGUAGE sql IMMUTABLE SET search_path=pg_catalog,app AS $$
  SELECT coalesce(d->'employeeSignature'<>'null'::jsonb,false) OR coalesce(d->'hrSignature'<>'null'::jsonb,false)
- OR coalesce(app.document_signing_locked(d->'signing'),false) OR coalesce(d->>'status' IN('signed','completed','acknowledged','withdrawn','superseded'),false)
+ OR coalesce(app.document_signing_locked(d->'signing'),false) OR coalesce(d->>'status' IN('withdrawn','superseded'),false)
+ OR jsonb_typeof(d->'signing') IS DISTINCT FROM 'object' AND coalesce(d->>'status' IN('signed','completed','acknowledged'),false)
 $$;
 CREATE FUNCTION app.personnel_completion_official(d jsonb,source jsonb) RETURNS jsonb LANGUAGE plpgsql IMMUTABLE SET search_path=pg_catalog AS $$
 DECLARE field jsonb;value text;result jsonb:='{}';
@@ -115,7 +116,7 @@ BEGIN
    SELECT p.full_name INTO signatory_name FROM app_user u JOIN person p ON p.id=u.person_id AND p.tenant_id=u.tenant_id WHERE u.id::text=d->>'signatoryUserId' AND u.tenant_id=NEW.tenant_id AND u.archived_at IS NULL AND NOT app.login_blocked(u.id);
    signatory_title:=coalesce(config->'signatoryTitles'->>(d->>'signatoryUserId'),CASE WHEN signatory_config->>'signatoryUserId'=d->>'signatoryUserId' THEN signatory_config->>'signatoryTitle' ELSE '' END,'');
    signatory_allowed:=coalesce(signatory_config->'allowedSignatoryUserIds',jsonb_build_array(signatory_config->>'signatoryUserId'))?(d->>'signatoryUserId');
-   IF app.personnel_completion_locked(prior) OR app.is_admin_for(company) IS NOT TRUE OR (CASE WHEN TG_TABLE_NAME='lc_onboarding_private' THEN app.onboarding_v9_case_actor() AND coalesce(app.onboarding_v9_sections()->>'hr'='view',false) ELSE app.lc_v9_off_access(company) END) IS NOT TRUE OR signatory_allowed IS NOT TRUE OR signatory_name IS NULL OR d->'mergeValues'-ARRAY['signatory.name','signatory.title'] IS DISTINCT FROM prior->'mergeValues'-ARRAY['signatory.name','signatory.title'] OR d->'mergeValues'->>'signatory.name' IS DISTINCT FROM signatory_name OR d->'mergeValues'->>'signatory.title' IS DISTINCT FROM signatory_title THEN RAISE EXCEPTION 'Document source values require canonical completion custody';END IF;
+   IF app.personnel_completion_locked(prior) OR app.is_admin_for(company) IS NOT TRUE OR (CASE WHEN TG_TABLE_NAME='lc_onboarding_private' THEN app.onboarding_v9_case_actor() AND coalesce(app.onboarding_v9_sections()->>'hr'='view',false) ELSE app.lc_v9_off_access(company) END) IS NOT TRUE OR signatory_allowed IS NOT TRUE OR signatory_name IS NULL OR (d->'mergeValues')-ARRAY['signatory.name','signatory.title'] IS DISTINCT FROM (prior->'mergeValues')-ARRAY['signatory.name','signatory.title'] OR d->'mergeValues'->>'signatory.name' IS DISTINCT FROM signatory_name OR d->'mergeValues'->>'signatory.title' IS DISTINCT FROM signatory_title THEN RAISE EXCEPTION 'Document source values require canonical completion custody';END IF;
   END IF;
   IF prior IS NULL THEN
    IF source IS NULL THEN source:=app.v9_document_personnel_values(source_case);END IF;

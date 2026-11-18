@@ -1,3 +1,4 @@
+import {recordSigningAction,signingComplete} from '../lib/document-signing-model';
 import {expect,it} from 'vitest';
 import {personnelMergeGroups} from '../lib/lifecycle-v9-personnel-merge-fields';
 import {effectivePersonnelCompletion,initializePersonnelCompletion,missingPersonnelCompletion,overridePersonnelCompletion,personnelCompletionClassification,personnelCompletionGroup,reconcilePersonnelCompletion,savePersonnelCompletionValue,validateCompletionPhone,personnelCompletionMergeValues,validatePersonnelCompletionScalar,type CompletionDocument} from '../lib/lifecycle-v9-personnel-completion';
@@ -44,4 +45,12 @@ it('validates jurisdiction and numbering prefixes, not only phone length, and ap
 
 it('resolves field-ID aliases from a refreshed official source consistently and treats whitespace-only source as missing',()=>{
  const d=fixture();d.fields[0].id='F51';d.values.F51='';d.personnelCompletion!.fields.F51=d.personnelCompletion!.fields.address;delete d.personnelCompletion!.fields.address;savePersonnelCompletionValue(d,d.fields[0],'Saved address',{actor,at});expect(personnelCompletionMergeValues(d).address).toBe('Saved address');reconcilePersonnelCompletion(d,{values:{name:'Official name',F51:'Official refreshed address'},sourceFingerprint:'source-2',actor:hr,at});expect(personnelCompletionMergeValues(d).address).toBe('Official refreshed address');d.personnelCompletion!.fields.F51.sourceValue='   ';expect(effectivePersonnelCompletion(d,d.fields[0])).toBe('employee');expect(personnelCompletionMergeValues(d).address).toBe('Official refreshed address');
+});
+
+it('locks routed completion content at the first actual signature rather than the compatibility completed status',()=>{
+ const d=fixture();d.signing={tenantId:'tenant',companyId:'company',subjectId:'document',subjectType:'lifecycle_v9',contentRevision:1,contentHash:'hash',route:{version:1,steps:[{id:'review',role:'people',kind:'review',stage:1,holderId:hr.id,holderPersonId:'hr-person',required:true},{id:'optional-sign',role:'employee',kind:'sign',stage:2,holderId:actor.id,holderPersonId:'employee-person',required:false}]},actions:[],routing:{templateId:'form',templateVersion:1,caseOwnerId:hr.id,fallbackGroupId:null}};
+ d.signing=recordSigningAction(d.signing,{requiredRoles:[]},{id:'reviewed',stepId:'review',revision:1,hash:'hash',action:'reviewed',actorId:hr.id,actorPersonId:'hr-person',actorName:hr.name,at});expect(signingComplete(d.signing,{requiredRoles:[]})).toBe(true);d.status='signed';
+ expect(()=>savePersonnelCompletionValue(d,d.fields[0],'Still unsigned answer',{actor,at})).not.toThrow();
+ d.signing=recordSigningAction(d.signing,{requiredRoles:[]},{id:'signed',stepId:'optional-sign',revision:1,hash:'hash',action:'signed',actorId:actor.id,actorPersonId:'employee-person',actorName:actor.name,at,method:'typed',value:actor.name,consent:true});
+ expect(()=>savePersonnelCompletionValue(d,d.fields[0],'Changed after actual signature',{actor,at})).toThrow('locked');
 });
