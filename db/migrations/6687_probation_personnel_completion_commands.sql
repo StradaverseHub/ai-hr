@@ -284,10 +284,25 @@ GRANT EXECUTE ON FUNCTION app.probation_release_signed_letter(uuid,uuid,integer,
 ALTER FUNCTION app.probation_letter_tasks(uuid) RENAME TO probation_letter_tasks_before_completion_6687;
 REVOKE ALL ON FUNCTION app.probation_letter_tasks_before_completion_6687(uuid) FROM PUBLIC,ai_hr_app;
 CREATE FUNCTION app.probation_letter_tasks(p_case uuid) RETURNS TABLE("partId" uuid,label text,state text,"waitingRole" text,"waitingName" text) LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
- WITH candidates AS(
+ WITH legacy AS MATERIALIZED(
+  SELECT * FROM app.probation_letter_tasks_before_completion_6687(p_case) WITH ORDINALITY task("partId",label,state,"waitingRole","waitingName",task_order)
+ ), seeds AS(
+  SELECT legacy.*,false AS preparation_only FROM legacy
+  UNION ALL
+  -- An HR-first private letter is intentionally absent from the legacy full-content reader. Its actual
+  -- subject may nevertheless receive the assigned field-only preparation, without opening that letter.
+  SELECT p.id,'Probation outcome letter'::text,'awaiting_signature'::text,'employee'::text,NULL::text,9223372036854775807::bigint,true
+  FROM probation_part p JOIN probation_case c ON c.id=p.case_id AND c.tenant_id=p.tenant_id
+  JOIN probation_outcome o ON o.letter_part_id=p.id AND o.id=(p.data->>'letterOutcomeId')::uuid AND o.tenant_id=p.tenant_id
+  WHERE p.case_id=p_case AND p.tenant_id=app.current_tenant_id() AND p.data->>'documentKind'='letter' AND p.data?'personnelCompletion'
+   AND app.probation_letter_completion_own(p.id) AND app.probation_case_company_current(c.id)
+   AND app.probation_owns_legacy(c.employment_id) AND app.probation_company_entitled(c.company_id)
+   AND EXISTS(SELECT 1 FROM probation_activation a WHERE a.tenant_id=c.tenant_id AND a.company_id=c.company_id AND a.enabled)
+   AND o.released_at IS NULL AND o.state<>'release_requested' AND NOT EXISTS(SELECT 1 FROM legacy WHERE legacy."partId"=p.id)
+ ), candidates AS(
   SELECT task.*,p.data,c.data AS case_data,c.company_id=e.company_id AS same_company,person.full_name AS subject_name,s.data AS signing,
    jsonb_build_object('fields',p.data->'letterFields','personnelCompletion',p.data->'personnelCompletion','values',coalesce((SELECT jsonb_object_agg(f->>'id',coalesce(p.data->'letterMerge'->>coalesce(f->>'pmKey',f->>'id'),'')) FROM jsonb_array_elements(coalesce(p.data->'letterFields','[]')) f),'{}')) AS document
-  FROM app.probation_letter_tasks_before_completion_6687(p_case) WITH ORDINALITY task("partId",label,state,"waitingRole","waitingName",task_order) JOIN probation_part p ON p.id=task."partId" AND p.tenant_id=app.current_tenant_id()
+  FROM seeds task JOIN probation_part p ON p.id=task."partId" AND p.tenant_id=app.current_tenant_id()
   JOIN probation_case c ON c.id=p.case_id AND c.tenant_id=p.tenant_id JOIN employment e ON e.id=c.employment_id AND e.tenant_id=c.tenant_id JOIN person ON person.id=e.person_id AND person.tenant_id=e.tenant_id
   LEFT JOIN document_signing_document s ON s.subject_type='probation' AND s.subject_id=p.id AND s.tenant_id=p.tenant_id
  ), projected AS(
@@ -297,7 +312,7 @@ CREATE FUNCTION app.probation_letter_tasks(p_case uuid) RETURNS TABLE("partId" u
     AND (data->'personnelCompletion'->'submitted' IS NULL OR data->'personnelCompletion'->'submitted'->>'sourceFingerprint' IS DISTINCT FROM data->'personnelCompletion'->>'sourceFingerprint' OR btrim(coalesce(document->'values'->>(f->>'id'),''))='')) AS preparing
   FROM candidates
  )
- SELECT "partId",label,CASE WHEN preparing THEN 'awaiting_preparation' ELSE state END,CASE WHEN preparing THEN 'employee' ELSE "waitingRole" END,CASE WHEN preparing THEN subject_name ELSE "waitingName" END FROM projected ORDER BY task_order
+ SELECT "partId",label,CASE WHEN preparing THEN 'awaiting_preparation' ELSE state END,CASE WHEN preparing THEN 'employee' ELSE "waitingRole" END,CASE WHEN preparing THEN subject_name ELSE "waitingName" END FROM projected WHERE NOT preparation_only OR preparing ORDER BY task_order,"partId"
 $$;
 REVOKE ALL ON FUNCTION app.probation_letter_tasks(uuid) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION app.probation_letter_tasks(uuid) TO ai_hr_app;
