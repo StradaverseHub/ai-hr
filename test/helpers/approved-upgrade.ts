@@ -408,9 +408,11 @@ export const APPROVED_UPGRADE_TAIL=[
  {idx:5841,when:1794988006441,tag:'6441_contract_resignation_email_modules'},
  {idx:5842,when:1794988006442,tag:'6442_contract_probation_business_partner_owner'},
  {idx:5900,when:1794988006500,tag:'6500_ai_provider_candidate_presentation_rls'},
+ {idx:5901,when:1794988006501,tag:'6501_contract_company_scope_retention'},
 ] as const;
 // Final pending 2109/2126 bytes reviewed from engine 128bc2539; no applied-prefix hashes change.
 const APPROVED_UPGRADE_HASHES:Record<string,string>={
+ '6501_contract_company_scope_retention':'3790725363457523357f24369be874a54440bb14d63c1ba1abeed30666a3bdfd',
  '6442_contract_probation_business_partner_owner':'056eb347fbd5aef43d86ff55b8968d1ab4144436c3ac5baa7e8d21efaaf37c99',
  '6500_ai_provider_candidate_presentation_rls':'ded682ab21306480e2ea982b7bcb48337983b50086569268f52e5045bc7beaea',
  '6441_contract_resignation_email_modules':'6d9821ab2bfde4e13da07a8ad648b47f09e27805e993dd367b0badc36816d995',

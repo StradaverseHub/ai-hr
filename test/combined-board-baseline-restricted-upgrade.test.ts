@@ -1,4 +1,4 @@
-/** Exact public F8/Board924 historical replay +144 forward bodies, populated BEFORE either upgrade.
+/** Exact public F8/Board924 historical replay +145 forward bodies, populated BEFORE either upgrade.
  * Separate from the existing729 rehearsal. Disposable source-derived evidence, never an installed-ledger export.
  * Board business records are produced by the frozen native child, not copied/forged managed state.
  */
@@ -36,10 +36,11 @@ type SeedReceipt={source:string;actor:{userId:string;personId:string};businessUn
 type ChildResult={kind:'NATIVE_F8_BOARD_BASELINE';mode:'seed'|'read';source:string;receipt:SeedReceipt;
  checks:{plan:boolean;historyMetadata:boolean;uploadCompleted:boolean;privateAmountsDenied:boolean;companyRetention:boolean}};
 const F8='f8c90ebcd3c0d4bd8310d9fb1cbab645b2ad108e';
-const CANDIDATE='47d1d770f56dc81af65ddc78ad757c8cd215e653';
-const PREFIX=924,TAIL=144,OWNER='ai_hr_owner';
+const CANDIDATE='e17b0e022c373af9b713940cb11cfff16fce8c2f';
+const PREFIX=924,TAIL=145,OWNER='ai_hr_owner';
 const PREFIX_DIGEST='a1823185bd55be1e39e17ad0469f212339dab21ced58b83f1266f615010efd5b';
-const TAIL_DIGEST='1fad77ff8ff4ac272b07146c3ed4805dadaf190e7ad7e1c7794cfa115f468e77';
+const PRIOR_TAIL=144,PRIOR_TAIL_DIGEST='1fad77ff8ff4ac272b07146c3ed4805dadaf190e7ad7e1c7794cfa115f468e77';
+const TAIL_DIGEST='63c7c63e258e3a05b2e75b964e0a00b7858638c63a7a524beef60a73077a6277';
 const LAST:Entry={idx:5504,version:'7',when:1794841006104,tag:'6104_lifecycle_recipient_fanout',breakpoints:true};
 const ATTRIBUTES=[{login:true,inherit:true,super:false,createdb:false,createrole:false,replication:false,bypassrls:false}];
 const PURPOSE_READERS:Record<string,string>={
@@ -57,7 +58,7 @@ const sha=(bytes:Buffer|string)=>createHash('sha256').update(bytes).digest('hex'
 const exec=promisify(execFile);
 afterAll(closeAll);
 
-it('replays exact frozen924 +144 as literal ai_hr_owner, preserving native Board data and matching a superuser twin',async()=>{
+it('replays exact frozen924 +145 as literal ai_hr_owner, preserving native Board data and matching a superuser twin',async()=>{
  const root=process.cwd(),base=new URL(process.env.TEST_MIGRATION_DATABASE_URL!);
  // Before any connection: only this generated namespace on the existing disposable hosted cluster.
  expect(['postgres:','postgresql:']).toContain(base.protocol);expect(base.hostname).toBe('127.0.0.1');expect(base.port).toBe('5433');
@@ -115,6 +116,7 @@ it('replays exact frozen924 +144 as literal ai_hr_owner, preserving native Board
    writeFileSync(join(migrations,entry.tag+'.sql'),bytes);
    const hash=sha(bytes);return[entry.idx,entry.version,entry.when,entry.tag,entry.breakpoints,hash,hash];
   });
+  expect(sha(JSON.stringify(tailIdentities.slice(0,PRIOR_TAIL)))).toBe(PRIOR_TAIL_DIGEST);
   expect(sha(JSON.stringify(tailIdentities))).toBe(TAIL_DIGEST);
   // The historical timestamp tie remains ordered exactly as public source, never sorted/deduplicated.
   expect(frozen.entries.filter(e=>e.tag==='0220_scheme_leave_combined_limit'||e.tag==='0240_employment_blacklist')).toEqual([
