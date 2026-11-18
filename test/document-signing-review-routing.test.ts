@@ -53,10 +53,10 @@ describe('template-routing signing model',()=>{
   expect(resendSigningDocument(resent,{id:'r1',actorId:'gbs',actorPersonId:'person-gbs',actorName:'gbs',at})).toBe(resent);
   expect(()=>resendSigningDocument(resent,{id:'r2',actorId:'gbs',actorPersonId:'person-gbs',actorName:'gbs',at})).toThrow('sent back');
  });
- it('restarts routing from the first stage when the owner revises the returned content',()=>{
+ it('keeps revised returned content with its owner until explicitly resent',()=>{
   const returned=act(act(chain(),'review','gbs','reviewed'),'approve','hod','returned','Wrong date');
   expect(canEditSigningContent(returned,'gbs')).toBe(true);expect(canEditSigningContent(returned,'hod')).toBe(false);
-  expect(pending(reviseSigningDocument(returned,'b'.repeat(64)))).toEqual(['review']);
+  const revised=reviseSigningDocument(returned,'b'.repeat(64));expect(pending(revised)).toEqual([]);expect(pending(resendSigningDocument(revised,{id:'revised-resend',actorId:'gbs',actorPersonId:'person-gbs',actorName:'gbs',at}))).toEqual(['review']);
  });
  it('lets the owner and the pending Review step edit until the first signature, then locks the content for everyone',()=>{
   const doc=routed([step('review','review',1,'gbs'),step('second-review','review',1,'hod'),step('sign','sign',2,'pbp')],'case-owner');

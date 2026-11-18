@@ -90,7 +90,7 @@ BEGIN
   OR a->'contentRevision' IS DISTINCT FROM p_before->'contentRevision' OR a->>'contentHash' IS DISTINCT FROM p_before->>'contentHash'
   OR length(coalesce(a->>'id','')) NOT BETWEEN 1 AND 200 OR jsonb_typeof(a->'comment') IS DISTINCT FROM 'string' OR length(a->>'comment')>4000
   OR a-ARRAY['id','stepId','contentRevision','contentHash','actorId','actorPersonId','actorName','representedId','role','at','action','comment','signature'] IS DISTINCT FROM '{}'::jsonb
-  OR a->>'at' !~ '^\d{4}-\d{2}-\d{2}T' OR abs(extract(epoch FROM ((a->>'at')::timestamptz-now())))>10
+  OR coalesce(a->>'at','') !~ '^\d{4}-\d{2}-\d{2}T' OR abs(extract(epoch FROM ((a->>'at')::timestamptz-now())))>10
   OR EXISTS(SELECT 1 FROM jsonb_array_elements(p_before->'actions') previous WHERE previous->>'id'=a->>'id') THEN RAISE EXCEPTION 'Signing actor, action reference or source binding is invalid';END IF;
  IF kind='resent' THEN
   IF NOT app.document_signing_returned(p_before) OR app.document_signing_owner(p_before) IS DISTINCT FROM uid OR a->>'role' IS DISTINCT FROM 'owner' OR a->>'representedId' IS DISTINCT FROM uid::text OR a->'signature' IS DISTINCT FROM 'null'::jsonb OR a->>'stepId' IS DISTINCT FROM coalesce(app.document_signing_owner_step(p_before)->>'id','owner') THEN RAISE EXCEPTION 'Only the recorded owner can resend';END IF;
@@ -132,6 +132,11 @@ BEGIN
   old_docs:=CASE WHEN TG_OP='INSERT' THEN '[]'::jsonb ELSE coalesce(OLD.data->'documents','[]'::jsonb) END;new_docs:=coalesce(NEW.data->'documents','[]'::jsonb);company:=NEW.company_id;facts:=NEW.data->'facts';subject_person:=(facts->>'personId')::uuid;admin:=app.lc_v9_off_access(company);
  END IF;
  IF NOT EXISTS(SELECT 1 FROM jsonb_array_elements(old_docs||new_docs) d WHERE jsonb_typeof(d->'signing')='object') THEN RETURN NEW;END IF;
+ IF TG_TABLE_NAME='lc_onboarding_private' THEN
+  IF NEW.data->'lifecycleV9Subject'->>'personId' IS DISTINCT FROM c.data->>'personId' OR NEW.data->'lifecycleV9Subject'->>'employmentId' IS DISTINCT FROM c.employment_id::text THEN RAISE EXCEPTION 'Frozen document subject mismatch';END IF;
+ ELSE
+  IF facts->>'company' IS DISTINCT FROM company::text OR facts->>'employmentId' IS DISTINCT FROM NEW.employment_id::text OR NOT EXISTS(SELECT 1 FROM employment e WHERE e.id=NEW.employment_id AND e.tenant_id=NEW.tenant_id AND e.person_id=subject_person AND e.company_id=company) THEN RAISE EXCEPTION 'Frozen document subject mismatch';END IF;
+ END IF;
  SELECT data INTO cfg FROM lc_v9_config WHERE tenant_id=NEW.tenant_id;
  SELECT data INTO native_cfg FROM lc_onboarding_config WHERE tenant_id=NEW.tenant_id;
  FOR prior IN SELECT value FROM jsonb_array_elements(old_docs) WHERE jsonb_typeof(value->'signing')='object' LOOP
@@ -167,7 +172,7 @@ BEGIN
   IF NOT (admin AND app.v9_signing_current_actor() OR app.acting_as_owner() AND app.current_user_id() IS NULL) OR signature->'actions' IS DISTINCT FROM '[]'::jsonb OR signature->>'contentRevision' IS DISTINCT FROM '1' THEN RAISE EXCEPTION 'A scoped document preparer must initialize signing';END IF;
   SELECT value INTO definition FROM jsonb_array_elements(cfg->'templates') WHERE value->>'id'=d->>'templateId';
   SELECT value INTO version FROM jsonb_array_elements(definition->'versions') WHERE value->'version'=d->'version' AND value->>'state'='published';
-  IF version IS NULL OR d->'routing' IS DISTINCT FROM version->'routing' OR jsonb_array_length(d->'routing')<>jsonb_array_length(signature->'route'->'steps') OR signature->'routing'->>'templateId' IS DISTINCT FROM d->>'templateId' OR signature->'routing'->'templateVersion' IS DISTINCT FROM d->'version' THEN RAISE EXCEPTION 'Signing route must come from the published saved version';END IF;
+  IF d->'blocks' IS DISTINCT FROM version->'blocks' OR d->'fields' IS DISTINCT FROM version->'fields' OR d->>'templateType' IS DISTINCT FROM definition->>'type' OR d->'edits' IS DISTINCT FROM '{}'::jsonb OR signature->'route'->'version' IS DISTINCT FROM '1'::jsonb OR version IS NULL OR d->'routing' IS DISTINCT FROM version->'routing' OR jsonb_array_length(d->'routing')<>jsonb_array_length(signature->'route'->'steps') OR signature->'routing'->>'templateId' IS DISTINCT FROM d->>'templateId' OR signature->'routing'->'templateVersion' IS DISTINCT FROM d->'version' THEN RAISE EXCEPTION 'Signing route must come from the published saved version';END IF;
   IF signature->'routing'->>'caseOwnerId' IS DISTINCT FROM coalesce(CASE WHEN TG_TABLE_NAME='lc_onboarding_private' THEN c.data->>'submittedBy' ELSE facts->>'starterUserId' END,app.current_user_id()::text) THEN RAISE EXCEPTION 'Document owner does not match the case owner';END IF;
   SELECT CASE WHEN count(*)=1 THEN min(u.id::text) END INTO employee_user FROM app_user u WHERE u.person_id=subject_person AND u.tenant_id=NEW.tenant_id AND u.archived_at IS NULL AND NOT app.login_blocked(u.id);
   IF TG_TABLE_NAME='lc_onboarding_private' THEN
@@ -181,7 +186,7 @@ BEGIN
   END IF;
   FOR step IN SELECT value FROM jsonb_array_elements(signature->'route'->'steps') LOOP
    SELECT value INTO spec FROM jsonb_array_elements(d->'routing') WHERE value->>'id'=step->>'id';who:=spec->'who';holder:=step->>'holderId';possible:='{}';selected_group:=NULL;
-   IF spec IS NULL OR step->>'kind' IS DISTINCT FROM spec->>'action' OR step->'stage' IS DISTINCT FROM spec->'order' OR step->'required' IS DISTINCT FROM coalesce(spec->'required','true'::jsonb) OR coalesce(step->'owner','false'::jsonb) IS DISTINCT FROM spec->'owner' OR step->>'role' IS DISTINCT FROM CASE who->>'kind' WHEN 'employee' THEN 'employee' WHEN 'directSuperior' THEN 'lm' WHEN 'group' THEN 'group:'||(who->>'groupId') WHEN 'routing' THEN 'routing:'||(who->>'routingId') ELSE 'people' END THEN RAISE EXCEPTION 'Frozen step differs from its template';END IF;
+   IF step ?| ARRAY['coveredStepIds','coveredByStepId','representedId','signature'] OR spec IS NULL OR step->>'kind' IS DISTINCT FROM spec->>'action' OR step->'stage' IS DISTINCT FROM spec->'order' OR step->'required' IS DISTINCT FROM coalesce(spec->'required','true'::jsonb) OR coalesce(step->'owner','false'::jsonb) IS DISTINCT FROM spec->'owner' OR step->>'role' IS DISTINCT FROM CASE who->>'kind' WHEN 'employee' THEN 'employee' WHEN 'directSuperior' THEN 'lm' WHEN 'group' THEN 'group:'||(who->>'groupId') WHEN 'routing' THEN 'routing:'||(who->>'routingId') ELSE 'people' END THEN RAISE EXCEPTION 'Frozen step differs from its template';END IF;
    IF who->>'kind'='employee' THEN possible:=ARRAY[employee_user];
    ELSIF who->>'kind'='directSuperior' THEN possible:=ARRAY[supervisor_user];
    ELSIF who->>'kind'='people' THEN SELECT coalesce(array_agg(value),'{}') INTO possible FROM jsonb_array_elements_text(who->'userIds');
@@ -199,7 +204,7 @@ BEGIN
     END IF;
    END IF;
    IF selected_group IS NOT NULL THEN SELECT coalesce(array_agg(member),'{}') INTO possible FROM jsonb_array_elements(native_cfg->'groups') g CROSS JOIN LATERAL jsonb_array_elements_text(g->'members') member WHERE g->>'id'=selected_group;END IF;
-   IF holder IS NOT NULL AND (NOT holder=ANY(possible) OR NOT EXISTS(SELECT 1 FROM app_user u WHERE u.id::text=holder AND u.tenant_id=NEW.tenant_id AND u.person_id IS NOT NULL AND u.archived_at IS NULL AND NOT app.login_blocked(u.id))) THEN RAISE EXCEPTION 'Frozen holder is not a permitted template recipient';END IF;
+   IF holder IS NOT NULL AND ((holder=ANY(possible)) IS NOT TRUE OR NOT EXISTS(SELECT 1 FROM app_user u WHERE u.id::text=holder AND u.tenant_id=NEW.tenant_id AND u.person_id IS NOT NULL AND u.archived_at IS NULL AND NOT app.login_blocked(u.id))) THEN RAISE EXCEPTION 'Frozen holder is not a permitted template recipient';END IF;
   END LOOP;
  END LOOP;
  RETURN NEW;
