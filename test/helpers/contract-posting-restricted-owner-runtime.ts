@@ -49,7 +49,7 @@ export async function runRestrictedContractPostingRuntime():Promise<RestrictedPo
  assertDraftDiscardRehearsalContext(base.toString(),'test/contract-posting-restricted-owner-runtime.test.ts');
  if(base.hostname!=='127.0.0.1'||base.port!=='5433'||base.username!=='postgres'||base.password||base.search||base.hash)throw Error(REFUSAL);
  const journal=JSON.parse(readFileSync('db/migrations/meta/_journal.json','utf8')) as {entries:{tag:string;when:number}[]};
- const shared=journal.entries.findIndex(entry=>entry.tag==='6420_historical_email_recovery');
+ const shared=journal.entries.findIndex(entry=>entry.tag==='6420_contract_historical_email_recovery');
  if(shared<0||packet.some((tag,index)=>journal.entries[shared+index+1]?.tag!==tag))throw Error('The complete allocated6420–6429 packet must be registered in the normal journal before this fixture runs.');
  const candidate=execFileSync('git',['rev-parse','HEAD'],{encoding:'utf8'}).trim();
  if(candidate!==process.env.AIHR_CI_HEAD)throw Error(REFUSAL);
