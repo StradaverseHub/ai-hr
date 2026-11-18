@@ -9,11 +9,11 @@ import {historyMaintenanceStatesTx} from './payroll-history-maintenance-state';
 import {resolveImportActors,actorOn} from './import-actor-label';
 import {effectiveHistoryItems} from '../lib/payroll-history-maintenance-lineage';
 import type {HistoryContributionState} from '../lib/payroll-history-maintenance-lineage';
-import type {ImportedPayrollValues} from '../lib/payroll-history-revisions';
+import {PayrollHistoryRevisionError,type ImportedPayrollValues} from '../lib/payroll-history-revisions';
 import type {ImportActor} from '../lib/import-reference';
 import type {PayrollHistoryMaintenanceQuery,PayrollHistoryMaintenancePage,PayrollHistoryMaintenanceRecord,PayrollHistoryMaintenanceDetail,PayrollHistoryMaintenanceAudit,PayrollHistoryMaintenanceImpact} from '../lib/payroll-history-maintenance';
 const uuid=/^[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}$/i;
-const fail=(message:string):never=>{throw new Error(message);};
+function fail(message:string):never{throw new PayrollHistoryRevisionError(message);}
 type RawRecord=Omit<PayrollHistoryMaintenanceRecord,'itemCount'|'values'|'items'|'impact'>&{impactCounts:Record<PayrollHistoryMaintenanceImpact['kind'],number>};
 type RawPage={items:RawRecord[];total:number;offset:number;limit:number};
 type State={state:HistoryContributionState;values:ImportedPayrollValues|null;unavailableReason?:string};

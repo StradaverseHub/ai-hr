@@ -12,7 +12,7 @@ import {toIsoPeriod,type HistoryAnalyzeBatchContext,type HistoryMaintenanceSubje
 export type MaintenanceOptions=NonNullable<HistoryRevisionPlan['maintenance']>;
 export type MaintenanceGroup={company:{id:string;name:string;label:string|null};cycle:{id:string;name:string;code:string|null};records:PayrollHistoryRecord[];indices:number[]};
 export type MaintenanceRecordPreparation={detachedNativeBaseline?:DetachedNativeHistoryBaseline;before:HistoryContributionState;after:HistoryContributionState;beforeValues:ImportedPayrollValues|null;withdrawal:boolean;restoreSnapshotId:string|null;restoreValues:ImportedPayrollValues|null;itemChanges:NonNullable<HistoryRevisionRow['itemChanges']>};
-const fail=(message:string):never=>{throw new PayrollHistoryRevisionError(message);};
+function fail(message:string):never{throw new PayrollHistoryRevisionError(message);}
 const up=(s:string)=>s.trim().toUpperCase();
 export const maintenanceIdentity=(value:{companyId:string;employmentId:string;period:string;cycleId:string})=>[value.companyId,value.employmentId,value.period,value.cycleId].join(':');
 export async function maintenanceSubjectsTx(tx:Tx,groups:readonly MaintenanceGroup[]):Promise<HistoryMaintenanceSubject[]>{

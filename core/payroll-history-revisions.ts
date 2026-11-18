@@ -765,7 +765,6 @@ export async function releaseStagedPayrollHistoryRevertTx(tx:Tx,ctx:SessionConte
  await joinPayrollHistoryStageTx(tx,p.stageId);
  await tx.insert(historyEvent).values({tenantId:ctx.tenantId,attemptId:p.id,kind:'reverted',actorId:ctx.userId!,changes:p.changes,detail:{restored:p.changes.length}});
  await appendEvent(tx,{tenantId:ctx.tenantId,aggregateType:'payroll-history-import',aggregateId:p.id,eventType:'payroll-history-import.reverted',actor:actorOf(ctx),payload:{changes:p.changes}});
- await recordMaintenanceRemovalTx(tx,ctx,source,p.changes);
  await tx.execute(sql`select app.payroll_history_stage_release(${p.stageId}::uuid)`);
  return{attemptId:p.id,restored:p.changes.length};
 }

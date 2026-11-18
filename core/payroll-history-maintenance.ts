@@ -15,7 +15,7 @@ export const payrollHistoryMaintenanceRequestSchema=z.discriminatedUnion('operat
  z.object({...reference,operation:z.literal('remove_items'),itemKeys:z.array(z.string().min(1).max(200)).min(1).max(1000)}).strict(),
  z.object({version:z.literal(1),operation:z.literal('remove_batch'),attemptId:z.uuid(),reason}).strict(),
 ]);
-const fail=(message:string):never=>{throw new PayrollHistoryRevisionError(message);};
+function fail(message:string):never{throw new PayrollHistoryRevisionError(message);}
 export async function previewPayrollHistoryMaintenance(ctx:SessionContext,input:PayrollHistoryMaintenanceRequest):Promise<PayrollHistoryMaintenancePreview>{
  assertModuleGate(ctx,'payroll');const request=payrollHistoryMaintenanceRequestSchema.parse(input);
  const rows=await withTenant(ctx,async tx=>{

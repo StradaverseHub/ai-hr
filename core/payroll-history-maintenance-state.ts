@@ -8,7 +8,7 @@ import {resolveImportCodes} from './payroll-history-import';
 import {readHistoryField,STATUTORY_IMPORT_CODES,type ImportCodeEntry,type PayrollHistoryRecord} from '../lib/payroll-history-import-schema';
 import {aggregateHistoryItems,appendHistoryContribution,effectiveHistoryItems,historyMoney,historyMoneyCents,historyItemsMatchValues,type HistoryContributionState,type HistoryOwnedItem} from '../lib/payroll-history-maintenance-lineage';
 import type {ImportedPayrollValues} from '../lib/payroll-history-revisions';
-const fail=(message:string):never=>{throw new PayrollHistoryRevisionError(message);};
+function fail(message:string):never{throw new PayrollHistoryRevisionError(message);}
 const upper=(value:string)=>value.trim().toUpperCase();
 export function maintenanceSourceItems(rows:readonly {rowNum:number;code:string;amount:string}[],codes:ReadonlyMap<string,ImportCodeEntry>):HistoryOwnedItem[]{
  return aggregateHistoryItems(rows.flatMap(row=>{const entry=codes.get(upper(row.code));if(!entry)fail(`Pay Item ${row.code} is archived, unmapped or unavailable. Review its original mapping.`);if(entry.direction==='check')return[];
