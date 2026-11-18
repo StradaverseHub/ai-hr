@@ -122,7 +122,57 @@ it('retains genuine scheduled Contract provenance and its scoped company without
   expect(deliveries).toHaveLength(1);expect(deliveries[0].payload.mail.to).toEqual([admin.userId]);
   expect(deliveries[0].payload.context.recipientPeople[admin.userId!]).toBe(person.id);
   expect(await h.owner.client`select id from personnel_posting where tenant_id=${b.tenantId}`).toHaveLength(0);
+  // Scale only the ordinary fixture spine after the genuine morning job has completed. These
+  // additional sources never receive cases, settings, digest rows or a second scheduled admission.
+  const added=await h.owner.client<{employmentId:string;personId:string;companyId:string;departmentId:string}[]>`
+   with new_companies as(insert into company(tenant_id,legal_name) select ${b.tenantId}::uuid,'Retention scope employer '||lpad(n::text,2,'0') from generate_series(1,69) n returning id),
+   new_departments as(insert into department(tenant_id,company_id,name) select ${b.tenantId}::uuid,id,'Retention scope department' from new_companies returning id,company_id),
+   companies as materialized(select ${b.companyId}::uuid as id,${b.deptA}::uuid as department_id union all select company_id,id from new_departments),
+   numbered as materialized(select *,row_number() over(order by id) as n from companies),
+   fixture as materialized(select n.n as ordinal,gen_random_uuid() as person_id,gen_random_uuid() as employment_id,c.id as company_id,c.department_id from generate_series(1,999) n(n) join numbered c on c.n=((n.n-1)%70)+1),
+   people as(insert into person(id,tenant_id,full_name,primary_email) select person_id,${b.tenantId}::uuid,'Retention scope employee '||ordinal,'retention-scope-'||ordinal||'@scope.invalid' from fixture),
+   employments as(insert into employment(id,tenant_id,person_id,company_id,hired_on,employee_code,contract_start_date,contract_end_date,contract_number) select employment_id,${b.tenantId}::uuid,person_id,company_id,${start}::date,'RETENTION-'||ordinal,${start}::date,${end}::date,4 from fixture),
+   assignments as(insert into assignment(tenant_id,employment_id,company_id,department_id,employment_type,valid_from) select ${b.tenantId}::uuid,employment_id,company_id,department_id,'contract',${start}::date from fixture returning id)
+   select employment_id as "employmentId",person_id as "personId",company_id as "companyId",department_id as "departmentId" from fixture order by employment_id`;
+  expect(added).toHaveLength(999);
+  const expectedSources=[{employmentId:employee.employmentId,personId:employee.personId,companyId:b.companyId,departmentId:b.deptA},...added].sort((a,b)=>a.employmentId.localeCompare(b.employmentId));
+  const cohortIds=[...new Set(expectedSources.map(row=>row.companyId))].sort();expect(cohortIds).toHaveLength(70);
+  const sourceRows=await h.owner.client`select e.id as "employmentId",e.person_id as "personId",e.company_id as "companyId",a.department_id as "departmentId",a.employment_type as "employmentType",e.hired_on::text as "hiredOn",a.valid_from::text as "validFrom" from employment e join assignment a on a.tenant_id=e.tenant_id and a.employment_id=e.id and a.superseded_at is null where e.tenant_id=${b.tenantId} order by e.id`;
+  expect(sourceRows).toEqual(expectedSources.map(row=>({...row,employmentType:'contract',hiredOn:start,validFrom:start})));
+  const cohortFacts=async()=>(await h.owner.client<{companies:number;people:number;employments:number;assignments:number;fingerprint:string}[]>`
+   with facts as(
+    select 'company' as kind,c.id,to_jsonb(c) as image from company c where c.tenant_id=${b.tenantId} and c.id=any(${cohortIds}::uuid[])
+    union all select 'person',p.id,to_jsonb(p) from person p join employment e on e.tenant_id=p.tenant_id and e.person_id=p.id where e.tenant_id=${b.tenantId}
+    union all select 'employment',e.id,to_jsonb(e) from employment e where e.tenant_id=${b.tenantId}
+    union all select 'assignment',a.id,to_jsonb(a) from assignment a where a.tenant_id=${b.tenantId}
+   ) select count(*) filter(where kind='company')::int as companies,count(*) filter(where kind='person')::int as people,count(*) filter(where kind='employment')::int as employments,count(*) filter(where kind='assignment')::int as assignments,encode(sha256(convert_to(string_agg(kind||':'||image::text,E'\n' order by kind,id),'UTF8')),'hex') as fingerprint from facts`)[0];
+  expect(await cohortFacts()).toMatchObject({companies:70,people:1000,employments:1000,assignments:1000});
+  const foreign=await h.seedBase(),scopeActor=await h.createAppUser(b.tenantId,person.id,'hr_admin');
+  const [foreignPerson]=await h.owner.client<{id:string}[]>`insert into person(tenant_id,full_name,primary_email) values(${foreign.tenantId},'Fictional foreign retention administrator',${randomUUID()+'@retention.invalid'}) returning id`;
+  await h.owner.client`update app_user set person_id=${foreignPerson.id} where tenant_id=${foreign.tenantId} and id=${foreign.adminUserId}`;
+  await h.owner.client`update role_assignment set company_id=${b.companyId} where tenant_id=${b.tenantId} and app_user_id=${scopeActor}`;
+  const scopeAdmin:SessionContext={...admin,userId:scopeActor,grants:[{role:'hr_admin',companyId:b.companyId}]};
+  const ordinaryId=await h.createAppUser(b.tenantId,employee.personId,'employee');
+  const ordinary:SessionContext={...admin,userId:ordinaryId,personId:employee.personId,roles:['employee'],grants:[{role:'employee',companyId:null}]};
+  const staleId=await h.createAppUser(b.tenantId,person.id,'hr_admin');
+  const stale:SessionContext={...admin,userId:staleId,grants:[{role:'hr_admin',companyId:null}]};
+  await h.owner.client`update role_assignment set role='employee' where tenant_id=${b.tenantId} and app_user_id=${staleId}`;
+  const foreignAdmin:SessionContext={...await h.entitledCtx(foreign),personId:foreignPerson.id};
+  const audiences=[{ctx:admin,allowed:true,current:true},{ctx:scopeAdmin,allowed:true,current:true},{ctx:ordinary,allowed:false,current:true},{ctx:foreignAdmin,allowed:false,current:true},{ctx:stale,allowed:false,current:false}];
+  const scaleReads=async()=>{
+   const results=[],allIds='{'+cohortIds.join(',')+'}',oneId='{'+b.companyId+'}';
+   for(const audience of audiences){
+    const rows=await withTenant(audience.ctx,tx=>tx.execute<{id:string;used:boolean;current:boolean}>(sql`select source.id,app.replan_retained_company_in_use(source.id) as used,app.principal_snapshot_current() as current from unnest(${allIds}::uuid[]) source(id) order by source.id`));
+    expect(rows).toEqual(cohortIds.map(id=>({id,used:audience.allowed&&id===b.companyId,current:audience.current})));
+    const one=await withTenant(audience.ctx,tx=>tx.execute<{id:string;used:boolean;current:boolean}>(sql`select source.id,app.replan_retained_company_in_use(source.id) as used,app.principal_snapshot_current() as current from unnest(${oneId}::uuid[]) source(id) order by source.id`));
+    expect(one).toEqual([{id:b.companyId,used:audience.allowed,current:audience.current}]);results.push({all:rows,one});
+   }
+   return results;
+  };
+  const readsBefore=await scaleReads();
   const snapshot=async()=>({
+   cohort:await cohortFacts(),
+   digestPermissions:await h.owner.client`select relowner,relacl from pg_class where oid='app.contract_system_digest'::regclass`,
    settings:await h.owner.client`select to_jsonb(s) as row from contract_shared_settings s where tenant_id=${b.tenantId} order by company_id`,
    members:await h.owner.client`select to_jsonb(m) as row from contract_access_member m where tenant_id=${b.tenantId} order by id`,
    digest:await h.owner.client`select to_jsonb(d) as row from app.contract_system_digest d where tenant_id=${b.tenantId} order by mail_key`,
@@ -137,7 +187,6 @@ it('retains genuine scheduled Contract provenance and its scoped company without
    audit:await h.owner.client`select to_jsonb(e) as row from domain_event e where tenant_id=${b.tenantId} order by id`,
   });
   const proc=async()=>(await h.owner.client<{metadata:Record<string,unknown>;body:string;definition:string}[]>`select to_jsonb(p)-'prosrc' as metadata,prosrc as body,pg_get_functiondef(p.oid) as definition from pg_proc p where p.oid='app.replan_retained_company_in_use(uuid)'::regprocedure`)[0];
-  const foreign=await h.seedBase();
   const before=await snapshot(),functionBefore=await proc(),ledger=await storage`select hash,created_at::text from drizzle.__drizzle_migrations order by created_at,id`;
   expect(functionBefore.body).toBe(oldBody);expect(ledger).toHaveLength(boundary);expect(before.sources.length).toBeGreaterThan(0);
   const code=async(work:()=>Promise<unknown>)=>{try{await work();return 'accepted';}catch(error){return pgSqlState(error);}};
@@ -152,6 +201,7 @@ it('retains genuine scheduled Contract provenance and its scoped company without
    try{await migrate(drizzle(storage),{migrationsFolder:'db/migrations'});}catch(error){refused=constraintRefusal(error);}
    expect(refused).toEqual({code:'23503',constraint_name:constraint});
    expect(await snapshot()).toEqual(corrupted);expect(await proc()).toEqual(functionBefore);
+   expect((await h.owner.client`select to_regclass('app.contract_system_digest_company_lookup') as index`)[0].index).toBeNull();
    expect(await storage`select hash,created_at::text from drizzle.__drizzle_migrations order by created_at,id`).toEqual(ledger);
    const restoreKey=key==='company_id'?foreign.companyId:selected;
    await h.owner.client.unsafe(`update ${table} set company_id=$1::uuid where tenant_id=$2::uuid and ${key}=$3`,[b.companyId,b.tenantId,restoreKey]);
@@ -160,11 +210,15 @@ it('retains genuine scheduled Contract provenance and its scoped company without
   // Ordinary journal migration, not executing the proposal body in a bespoke installer.
   await migrate(drizzle(storage),{migrationsFolder:'db/migrations'});
   expect(await snapshot()).toEqual(before);
+  expect(await scaleReads()).toEqual(readsBefore);
   const functionAfter=await proc();expect(functionAfter.metadata).toEqual(functionBefore.metadata);expect(functionAfter.body).toBe(newBody);
   expect(functionAfter.definition).toBe(functionBefore.definition.replace(oldBody,newBody));
   expect((await storage`select hash,created_at::text from drizzle.__drizzle_migrations order by created_at,id`).slice(0,ledger.length)).toEqual(ledger);
   const constraints=await h.owner.client`select conname,convalidated,confdeltype,pg_get_constraintdef(oid) as definition from pg_constraint where conname in('contract_system_digest_company_tenant_fk','contract_access_member_company_tenant_fk','contract_shared_settings_company_tenant_fk') order by conname`;
   expect(constraints).toHaveLength(3);for(const constraint of constraints){expect(constraint.convalidated).toBe(true);expect(constraint.confdeltype).toBe('a');expect(constraint.definition).toBe('FOREIGN KEY (company_id, tenant_id) REFERENCES company(id, tenant_id)');}
+  const [migrationIdentity]=await storage<{role:string}[]>`select current_user as role`;
+  const indexes=await h.owner.client`select c.relname as name,pg_get_userbyid(c.relowner) as owner,pg_get_userbyid(t.relowner) as table_owner,c.relacl,x.indisvalid as valid,x.indisready as ready,x.indisunique as unique,x.indexprs is null as plain,x.indpred is null as unfiltered,x.indnatts=x.indnkeyatts as no_include,(select array_agg(a.attname::text order by key.ordinality) from unnest(x.indkey::smallint[]) with ordinality key(attnum,ordinality) join pg_attribute a on a.attrelid=x.indrelid and a.attnum=key.attnum) as columns from pg_index x join pg_class c on c.oid=x.indexrelid join pg_class t on t.oid=x.indrelid where x.indrelid='app.contract_system_digest'::regclass and c.relname='contract_system_digest_company_lookup'`;
+  expect(indexes).toEqual([{name:'contract_system_digest_company_lookup',owner:migrationIdentity.role,table_owner:migrationIdentity.role,relacl:null,valid:true,ready:true,unique:false,plain:true,unfiltered:true,no_include:true,columns:['tenant_id','company_id']}]);
   const [emptyCompany]=await h.owner.client<{id:string}[]>`insert into company(tenant_id,legal_name) values(${b.tenantId},'Fictional unretained employer') returning id`;
   const rollback=Symbol('constraint probe rollback');
   for(const [table,constraint] of Object.entries(companyConstraints)){
@@ -194,11 +248,9 @@ it('retains genuine scheduled Contract provenance and its scoped company without
   const scoped:SessionContext={...admin,userId:scopedId,grants:[{role:'hr_admin',companyId:emptyCompany.id}]};
   expect(await withTenant(scoped,async tx=>(await tx.execute<{current:boolean}>(sql`select app.principal_snapshot_current() as current`))[0].current)).toBe(true);
   expect(await retained(scoped,b.companyId)).toBe(false);
-  const ordinaryId=await h.createAppUser(b.tenantId,employee.personId,'employee');
-  const ordinary:SessionContext={...admin,userId:ordinaryId,personId:employee.personId,roles:['employee'],grants:[{role:'employee',companyId:null}]};
   expect(await withTenant(ordinary,async tx=>(await tx.execute<{current:boolean}>(sql`select app.principal_snapshot_current() as current`))[0].current)).toBe(true);
   expect(await retained(ordinary,b.companyId)).toBe(false);
-  expect(await retained(await h.entitledCtx(foreign),b.companyId)).toBe(false);
+  expect(await retained(foreignAdmin,b.companyId)).toBe(false);
   expect(await code(()=>withTenant(admin,tx=>tx.execute(sql`select * from app.contract_system_digest`)))).toBe('42501');
   const [acl]=await h.owner.client`select has_function_privilege('ai_hr_app',p.oid,'EXECUTE') as app,exists(select 1 from aclexplode(coalesce(p.proacl,acldefault('f',p.proowner))) a where a.grantee=0 and a.privilege_type='EXECUTE') as public,has_table_privilege('ai_hr_app','app.contract_system_digest','SELECT') as digest_read from pg_proc p where p.oid='app.replan_retained_company_in_use(uuid)'::regprocedure`;
   expect(acl).toEqual({app:true,public:false,digest_read:false});
