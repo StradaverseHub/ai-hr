@@ -113,6 +113,7 @@ it('retains genuine scheduled Contract provenance and its scoped company without
    members:await h.owner.client`select to_jsonb(m) as row from contract_access_member m where tenant_id=${b.tenantId} order by id`,
    digest:await h.owner.client`select to_jsonb(d) as row from app.contract_system_digest d where tenant_id=${b.tenantId} order by mail_key`,
    sources:await h.owner.client`select to_jsonb(s) as row from app.contract_system_job_source s where tenant_id=${b.tenantId} order by job_id`,
+   seals:await h.owner.client`select to_jsonb(s) as row from app.bulk_job_seal s where tenant_id=${b.tenantId} order by job_id`,
    jobs:await h.owner.client`select to_jsonb(j) as row from bulk_job j where tenant_id=${b.tenantId} order by id`,
    events:await h.owner.client`select to_jsonb(e) as row from contract_shared_event e where tenant_id=${b.tenantId} order by id`,
    flows:await h.owner.client`select to_jsonb(f) as row from contract_shared_case f where tenant_id=${b.tenantId} order by case_id`,
