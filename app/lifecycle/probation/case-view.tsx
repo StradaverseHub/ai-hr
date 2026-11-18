@@ -1,4 +1,5 @@
 'use client';
+import {probationBusinessUnitMissing} from '@/lib/probation-reconciliation';
 import {ActionButton} from '@/components/ui/action-button';
 import Link from 'next/link';
 import {useState,useTransition,type ReactNode} from 'react';
@@ -79,6 +80,7 @@ export function ProbationCaseViewScreen({view,today,tab,part,actor,signerCandida
   {view.startStatus==='waiting_for_start'&&<p className="pcc-wait" role="status"><b>{c('waitingStart',{date:probationDate(view.record.startOn)})}</b></p>}
   {view.startStatus==='did_not_join'&&<p className="pcc-banner" role="status">{t('startStatus.didNotJoin')}</p>}
   {!closed&&who&&!mine&&<p className="pcc-wait" data-testid="probation-next-action"><span>{c('nextAction')} <b>{who.text}</b>.</span></p>}
+  {probationBusinessUnitMissing(view.record.facts)&&<p className="pcc-banner">{t('reconciliation.missingBu')}</p>}
   {!view.runtimeEnabled&&<p className="pcc-banner">{t(view.sourceMoved?'sourceMoved':'runtimePaused')}</p>}
   {view.parts.some(p=>p.override&&p.state!=='cancelled')&&<p className="pcc-banner pcc-banner-warn" role="status"><span className="pcc-pill pcc-pill-warn">{t('tracker.flags.overridden')}</span> {t('overrideNotice')}</p>}
   {f.gradeId!==f.currentGradeId&&<p className="pcc-banner pcc-banner-warn">{t('gradeChanged')}</p>}

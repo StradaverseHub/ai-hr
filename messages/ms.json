@@ -37266,6 +37266,46 @@
         "returnedNote": "Earlier signatures were cleared. The part goes through the signing route again.",
         "decisionHeading": "Your decision"
       }
+    },
+    "reconciliation": {
+      "title": "Semakan Personel",
+      "cadence": "Semakan setiap 15 minit.",
+      "lastCheck": "Semakan berjaya terakhir: {time} (waktu Malaysia).",
+      "notChecked": "Belum ada semakan berjaya direkodkan.",
+      "stale": "Semakan Personel belum selesai baru-baru ini. Minta operator menyemak pekerja latar belakang.",
+      "missing": "{count} pekerja berstatus Percubaan tiada kes",
+      "buAdvisory": "Ketiadaan Unit Perniagaan sahaja tidak menghalang penciptaan kes.",
+      "missingBu": "Tiada Unit Perniagaan pada rekod Personel.",
+      "employee": "Pekerja",
+      "company": "Syarikat",
+      "reason": "Sebab / amaran",
+      "fix": "Betulkan",
+      "queued": "Menunggu semakan latar belakang seterusnya.",
+      "settings": "Tetapan percubaan",
+      "forms": "Editor borang",
+      "routes": "Laluan kelulusan",
+      "personnel": "Pengurusan Personel",
+      "intake": "Pengambilan dan pengaktifan",
+      "pages": "Halaman pekerja tanpa kes",
+      "previous": "Sebelumnya",
+      "next": "Seterusnya",
+      "reasons": {
+        "settings": "Tiada tetapan diterbitkan untuk syarikat ini.",
+        "form": "Tiada borang penilaian diterbitkan untuk gred ini.",
+        "route": "Tiada laluan tandatangan diterbitkan.",
+        "activation": "Syarikat belum diaktifkan.",
+        "grade_missing": "Tiada Gred Jawatan pada rekod Personel.",
+        "grade_ineligible": "Gred {grade} tidak layak.",
+        "assignment": "Tiada penempatan organisasi yang berkenaan.",
+        "employment_type": "Jenis pekerjaan ini tidak layak untuk pengambilan percubaan.",
+        "no_probation": "Rekod Personel menyatakan tiada percubaan.",
+        "period_review": "Tempoh percubaan yang tiada memerlukan semakan pengambilan yang dibenarkan.",
+        "eligibility_review": "Sejarah mula kerja atau pengambilan semula memerlukan semakan yang dibenarkan.",
+        "excluded": "Semakan pengambilan yang dibenarkan mengecualikan pekerja ini.",
+        "cutover": "Percubaan terdahulu memerlukan pengambilan dan pengaktifan yang disemak.",
+        "prior_case": "Kes terdahulu yang ditutup memerlukan semakan HR; tiada kes pendua dicipta.",
+        "retry": "Semakan latar belakang memerlukan semakan operator. Tiada kes diubah."
+      }
     }
   },
   "probationConfig": {
