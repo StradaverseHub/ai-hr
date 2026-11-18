@@ -40977,13 +40977,13 @@
     },
     "routing": {
       "documentHelp": "เลือกผู้ตรวจสอบ อนุมัติ ลงนาม หรือรับทราบเอกสาร ขั้นตอนเลขเดียวกันทำงานพร้อมกัน ขั้นตอนจำเป็นควบคุมความคืบหน้า ผู้ตรวจสอบแก้ไขได้ก่อนลายเซ็นแรก การส่งกลับจะล้างลายเซ็นปัจจุบันและคืนเอกสารให้เจ้าของ",
-        "documentEmpty": "ยังไม่มีการกำหนดเส้นทาง ใช้การตั้งค่าลงนามของ HR และพนักงานเดิม",
-        "documentHint": {
-          "review": "แก้ไขเอกสารได้ก่อนลายเซ็นแรก",
-          "approve": "บันทึกการอนุมัติโดยไม่ลงนาม",
-          "sign": "ลงนามเอกสาร แต่แก้ไขข้อความที่ลงนามแล้วไม่ได้",
-          "acknowledge": "ลงนามเพื่อรับทราบเอกสาร"
-        },
+      "documentEmpty": "ยังไม่มีการกำหนดเส้นทาง ใช้การตั้งค่าลงนามของ HR และพนักงานเดิม",
+      "documentHint": {
+        "review": "แก้ไขเอกสารได้ก่อนลายเซ็นแรก",
+        "approve": "บันทึกการอนุมัติโดยไม่ลงนาม",
+        "sign": "ลงนามเอกสาร แต่แก้ไขข้อความที่ลงนามแล้วไม่ได้",
+        "acknowledge": "ลงนามเพื่อรับทราบเอกสาร"
+      },
       "title": "Signing and review routing",
       "help": "Who reviews, approves and signs this letter, and in what order. Steps with the same order number happen at the same time, and the letter moves on when all of them are done. Who each step resolves to comes from Assignment groups and Routing rules. A Review step can edit the letter until the first signature; after that the text is locked. Anyone can send the letter back with a comment: every signature is cleared and it returns to the step that owns the document (or the People Business Partner if none is ticked).",
       "empty": "No signing routing set. This letter uses the signing route below, as today.",
@@ -44368,6 +44368,46 @@
       "Probation": "ทดลองงาน",
       "Letter": "จดหมาย",
       "General": "ทั่วไป"
+    }
+  },
+  "lifecycleDocumentRouting": {
+    "title": "เอกสารที่ฉันต้องตรวจและลงนาม",
+    "help": "ตรวจและลงนามเอกสารที่บันทึกและมอบหมายให้คุณ โดยคงผู้รับและเส้นทางเดิมไว้",
+    "search": "ค้นหาเอกสาร",
+    "back": "กลับสู่รายการเอกสาร",
+    "count": "{total} เอกสาร",
+    "empty": "ไม่มีเอกสารที่มอบหมายให้คุณ",
+    "previous": "ก่อนหน้า",
+    "next": "ถัดไป",
+    "revision": "ฉบับเนื้อหา {number}",
+    "refresh": "รีเฟรช",
+    "failed": "เอกสารเปลี่ยนแล้วหรือดำเนินการไม่ได้ โปรดรีเฟรชและลองอีกครั้ง",
+    "returned": "ส่งคืนเจ้าของแล้ว: {comment}",
+    "unassigned": "ยังไม่มอบหมาย",
+    "required": "จำเป็น",
+    "optional": "ไม่บังคับ",
+    "done": "เสร็จแล้ว",
+    "pending": "ถึงตาคุณ",
+    "waiting": "กำลังรอ",
+    "privateUntilTurn": "ดูเนื้อหาได้เมื่อถึงตาคุณ",
+    "download": "ดาวน์โหลด PDF",
+    "saveFields": "บันทึกช่องข้อมูล",
+    "edit": "แก้ไขข้อความ",
+    "textBlock": "ส่วนข้อความ {number}",
+    "save": "บันทึกข้อความ",
+    "yourStep": "ขั้นตอนของคุณ: {action}",
+    "confirm": "ยืนยัน {action}",
+    "returnComment": "เหตุผลที่ส่งคืน",
+    "sendBack": "ส่งคืน",
+    "resend": "ส่งเวียนอีกครั้ง",
+    "open": "เปิดตรวจและลงนาม",
+    "savedRoute": "เอกสารที่บันทึกนี้คงเส้นทางตรวจและลงนามเมื่อสร้างไว้",
+    "preparation": "กรอกช่องข้อมูลพนักงานก่อนลายเซ็นแรก หลังมีผู้ลงนาม คำตอบและข้อความจะล็อกจนกว่าจะส่งคืนเอกสาร",
+    "actions": {
+      "review": "ตรวจสอบ",
+      "approve": "อนุมัติ",
+      "sign": "ลงนาม",
+      "acknowledge": "รับทราบ"
     }
   }
 }

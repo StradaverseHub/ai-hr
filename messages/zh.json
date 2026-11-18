@@ -40977,13 +40977,13 @@
     },
     "routing": {
       "documentHelp": "选择审核、批准、签署或确认文档的人员。相同顺序号并行执行；必需步骤决定进度。首次签名前审核人可编辑。退回将清除当前签名并将文档交还所有者。",
-        "documentEmpty": "未设置路由。使用现有的人事和员工签署设置。",
-        "documentHint": {
-          "review": "可在首次签名前编辑文档。",
-          "approve": "记录批准，无需签名。",
-          "sign": "签署文档；无法编辑已签署的文本。",
-          "acknowledge": "签名确认文档。"
-        },
+      "documentEmpty": "未设置路由。使用现有的人事和员工签署设置。",
+      "documentHint": {
+        "review": "可在首次签名前编辑文档。",
+        "approve": "记录批准，无需签名。",
+        "sign": "签署文档；无法编辑已签署的文本。",
+        "acknowledge": "签名确认文档。"
+      },
       "title": "Signing and review routing",
       "help": "Who reviews, approves and signs this letter, and in what order. Steps with the same order number happen at the same time, and the letter moves on when all of them are done. Who each step resolves to comes from Assignment groups and Routing rules. A Review step can edit the letter until the first signature; after that the text is locked. Anyone can send the letter back with a comment: every signature is cleared and it returns to the step that owns the document (or the People Business Partner if none is ticked).",
       "empty": "No signing routing set. This letter uses the signing route below, as today.",
@@ -44368,6 +44368,46 @@
       "Probation": "试用期",
       "Letter": "信函",
       "General": "常规"
+    }
+  },
+  "lifecycleDocumentRouting": {
+    "title": "我的文件审核与签署",
+    "help": "审核并签署分配给您的已保存文件。每份文件保留原始接收人和流程。",
+    "search": "搜索文件",
+    "back": "返回文件列表",
+    "count": "{total} 份文件",
+    "empty": "没有分配给您的文件。",
+    "previous": "上一页",
+    "next": "下一页",
+    "revision": "内容版本 {number}",
+    "refresh": "刷新",
+    "failed": "文件已变更或操作不可用。请刷新后重试。",
+    "returned": "已退回负责人：{comment}",
+    "unassigned": "未分配",
+    "required": "必需",
+    "optional": "可选",
+    "done": "已完成",
+    "pending": "轮到您",
+    "waiting": "等待中",
+    "privateUntilTurn": "轮到您时即可查看文件内容。",
+    "download": "下载 PDF",
+    "saveFields": "保存字段",
+    "edit": "编辑文字",
+    "textBlock": "文字块 {number}",
+    "save": "保存文字",
+    "yourStep": "您的步骤：{action}",
+    "confirm": "确认{action}",
+    "returnComment": "退回原因",
+    "sendBack": "退回",
+    "resend": "重新传阅",
+    "open": "打开审核与签署",
+    "savedRoute": "此已保存文件使用生成时确定的审核与签署流程。",
+    "preparation": "请在首次签署前填写员工字段。任何人签署后，答案和文字都会锁定，直至文件被退回。",
+    "actions": {
+      "review": "审核",
+      "approve": "批准",
+      "sign": "签署",
+      "acknowledge": "确认收到"
     }
   }
 }

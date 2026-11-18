@@ -40977,13 +40977,13 @@
     },
     "routing": {
       "documentHelp": "Choose who reviews, approves, signs or acknowledges this document. Equal order numbers act together; required steps control progression. Reviewers edit before the first signature. Sending back clears the current signatures and returns the document to its owner.",
-        "documentEmpty": "No routing set. The existing HR and employee signing settings apply.",
-        "documentHint": {
-          "review": "Can edit the document before its first signature.",
-          "approve": "Records an approval without a signature.",
-          "sign": "Signs the document; cannot edit signed text.",
-          "acknowledge": "Acknowledges the document with a signature."
-        },
+      "documentEmpty": "No routing set. The existing HR and employee signing settings apply.",
+      "documentHint": {
+        "review": "Can edit the document before its first signature.",
+        "approve": "Records an approval without a signature.",
+        "sign": "Signs the document; cannot edit signed text.",
+        "acknowledge": "Acknowledges the document with a signature."
+      },
       "title": "Signing and review routing",
       "help": "Who reviews, approves and signs this letter, and in what order. Steps with the same order number happen at the same time, and the letter moves on when all of them are done. Who each step resolves to comes from Assignment groups and Routing rules. A Review step can edit the letter until the first signature; after that the text is locked. Anyone can send the letter back with a comment: every signature is cleared and it returns to the step that owns the document (or the People Business Partner if none is ticked).",
       "empty": "No signing routing set. This letter uses the signing route below, as today.",
@@ -44369,5 +44369,45 @@
       "Letter": "Letter",
       "General": "General"
     }
+  },
+  "lifecycleDocumentRouting": {
+    "title": "My document reviews and signatures",
+    "help": "Review and sign the saved documents assigned to you. Each document keeps its original recipients and route.",
+    "search": "Search documents",
+    "back": "Back to documents",
+    "count": "{total} documents",
+    "empty": "No documents are assigned to you.",
+    "previous": "Previous",
+    "next": "Next",
+    "revision": "Content revision {number}",
+    "refresh": "Refresh",
+    "failed": "This document changed or the action is unavailable. Refresh and try again.",
+    "returned": "Returned to its owner: {comment}",
+    "unassigned": "Unassigned",
+    "required": "Required",
+    "optional": "Optional",
+    "done": "Done",
+    "pending": "Your turn",
+    "waiting": "Waiting",
+    "privateUntilTurn": "The document content becomes available when it is your turn.",
+    "download": "Download PDF",
+    "saveFields": "Save fields",
+    "edit": "Edit wording",
+    "textBlock": "Text block {number}",
+    "save": "Save wording",
+    "yourStep": "Your step: {action}",
+    "confirm": "Confirm {action}",
+    "returnComment": "Reason for sending back",
+    "sendBack": "Send back",
+    "resend": "Send round again",
+    "open": "Open signing and review",
+    "savedRoute": "This saved document uses its frozen signing and review route.",
+    "actions": {
+      "review": "Review",
+      "approve": "Approve",
+      "sign": "Sign",
+      "acknowledge": "Acknowledge"
+    },
+    "preparation": "Complete your employee fields before the first signature. After anyone signs, the answers and wording are locked until a send-back."
   }
 }

@@ -40977,13 +40977,13 @@
     },
     "routing": {
       "documentHelp": "ஆவணத்தைச் சரிபார்ப்பவர், ஒப்புதல் அளிப்பவர், கையொப்பமிடுபவர் அல்லது ஏற்றுக்கொள்பவரைத் தேர்ந்தெடுக்கவும். ஒரே வரிசை எண் படிகள் இணையாக இயங்கும்; கட்டாயப் படிகள் முன்னேற்றத்தை நிர்ணயிக்கும். முதல் கையொப்பத்திற்கு முன் மதிப்பாய்வாளர் திருத்தலாம். திருப்பியனுப்புதல் தற்போதைய கையொப்பங்களை நீக்கி உரிமையாளரிடம் ஆவணத்தைத் தரும்.",
-        "documentEmpty": "வழிப்படுத்தல் இல்லை. ஏற்கெனவே உள்ள HR மற்றும் ஊழியர் கையொப்ப அமைப்புகள் பொருந்தும்.",
-        "documentHint": {
-          "review": "முதல் கையொப்பத்திற்கு முன் ஆவணத்தைத் திருத்தலாம்.",
-          "approve": "கையொப்பமின்றி ஒப்புதலைப் பதிவு செய்கிறது.",
-          "sign": "ஆவணத்தில் கையொப்பமிடுகிறார்; கையொப்பமிட்ட உரையைத் திருத்த முடியாது.",
-          "acknowledge": "கையொப்பத்துடன் ஆவணத்தை ஏற்றுக்கொள்கிறார்."
-        },
+      "documentEmpty": "வழிப்படுத்தல் இல்லை. ஏற்கெனவே உள்ள HR மற்றும் ஊழியர் கையொப்ப அமைப்புகள் பொருந்தும்.",
+      "documentHint": {
+        "review": "முதல் கையொப்பத்திற்கு முன் ஆவணத்தைத் திருத்தலாம்.",
+        "approve": "கையொப்பமின்றி ஒப்புதலைப் பதிவு செய்கிறது.",
+        "sign": "ஆவணத்தில் கையொப்பமிடுகிறார்; கையொப்பமிட்ட உரையைத் திருத்த முடியாது.",
+        "acknowledge": "கையொப்பத்துடன் ஆவணத்தை ஏற்றுக்கொள்கிறார்."
+      },
       "title": "Signing and review routing",
       "help": "Who reviews, approves and signs this letter, and in what order. Steps with the same order number happen at the same time, and the letter moves on when all of them are done. Who each step resolves to comes from Assignment groups and Routing rules. A Review step can edit the letter until the first signature; after that the text is locked. Anyone can send the letter back with a comment: every signature is cleared and it returns to the step that owns the document (or the People Business Partner if none is ticked).",
       "empty": "No signing routing set. This letter uses the signing route below, as today.",
@@ -44368,6 +44368,46 @@
       "Probation": "சோதனைக் காலம்",
       "Letter": "கடிதம்",
       "General": "பொது"
+    }
+  },
+  "lifecycleDocumentRouting": {
+    "title": "எனது ஆவண மதிப்பாய்வும் கையொப்பமும்",
+    "help": "உங்களுக்கு ஒதுக்கப்பட்ட சேமித்த ஆவணங்களை மதிப்பாய்ந்து கையொப்பமிடுங்கள். அசல் பெறுநர்களும் வழிமுறையும் தொடரும்.",
+    "search": "ஆவணங்களைத் தேடு",
+    "back": "ஆவணங்களுக்குத் திரும்பு",
+    "count": "{total} ஆவணங்கள்",
+    "empty": "உங்களுக்கு ஆவணங்கள் ஒதுக்கப்படவில்லை.",
+    "previous": "முந்தையது",
+    "next": "அடுத்தது",
+    "revision": "உள்ளடக்கப் பதிப்பு {number}",
+    "refresh": "புதுப்பி",
+    "failed": "ஆவணம் மாறிவிட்டது அல்லது செயல் கிடைக்கவில்லை. புதுப்பித்து மீண்டும் முயலுங்கள்.",
+    "returned": "பொறுப்பாளருக்குத் திருப்பப்பட்டது: {comment}",
+    "unassigned": "ஒதுக்கப்படவில்லை",
+    "required": "கட்டாயம்",
+    "optional": "விருப்பம்",
+    "done": "முடிந்தது",
+    "pending": "உங்கள் முறை",
+    "waiting": "காத்திருக்கிறது",
+    "privateUntilTurn": "உங்கள் முறை வரும்போது உள்ளடக்கத்தைக் காணலாம்.",
+    "download": "PDF பதிவிறக்கு",
+    "saveFields": "புலங்களைச் சேமி",
+    "edit": "உரையைத் திருத்து",
+    "textBlock": "உரைத் தொகுதி {number}",
+    "save": "உரையைச் சேமி",
+    "yourStep": "உங்கள் படி: {action}",
+    "confirm": "{action} உறுதிசெய்",
+    "returnComment": "திருப்புவதற்கான காரணம்",
+    "sendBack": "திருப்பு",
+    "resend": "மீண்டும் அனுப்பு",
+    "open": "மதிப்பாய்வையும் கையொப்பத்தையும் திற",
+    "savedRoute": "இந்தச் சேமித்த ஆவணம் உருவாக்கப்பட்டபோதுள்ள மதிப்பாய்வு மற்றும் கையொப்ப வழிமுறையைப் பின்பற்றுகிறது.",
+    "preparation": "முதல் கையொப்பத்திற்கு முன் ஊழியர் புலங்களை நிரப்புங்கள். யாரேனும் கையொப்பமிட்ட பிறகு, ஆவணம் திருப்பப்படும் வரை பதில்களும் உரையும் பூட்டப்படும்.",
+    "actions": {
+      "review": "மதிப்பாய்வு",
+      "approve": "ஒப்புதல்",
+      "sign": "கையொப்பம்",
+      "acknowledge": "ஏற்பு"
     }
   }
 }
