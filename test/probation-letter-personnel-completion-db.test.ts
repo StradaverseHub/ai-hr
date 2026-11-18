@@ -5,7 +5,7 @@ import {withTenant} from '../db/client';
 import {withAccessDisplayRead} from '../core/access-configuration-lock';
 import {withScopedLifecycleTenant} from '../core/module-gate';
 import {updatePersonProfilePartial} from '../core/org';
-import {adminCtx,closeAll,migrateTestDb,owner,resetDb,seedBase,setModule,type Base} from './harness';
+import {adminCtx,closeAll,createAppUser,migrateTestDb,owner,resetDb,seedBase,setModule,type Base} from './harness';
 import {probationOutcomeFixture} from './helpers/probation-outcome-fixture';
 import {newProbationLetterTemplate,PROBATION_NATIVE_PERSONNEL_GROUPS} from '../lib/probation-letter-template';
 import {saveProbationLetterTemplate,prepareProbationLetter,readProbationLetter,actOnProbationLetter,readProbationLetterCompletion,saveProbationLetterCompletion,overrideProbationLetterCompletion,refreshProbationLetterCompletion,reviewProbationLetterPersonnel,editProbationLetterContent,probationTaskList,releaseProbationLetter,sweepProbation} from '../packs/probation/service';
@@ -35,7 +35,7 @@ it('classifies all twenty native keys, grants only own field preparation before 
  let letter=await readProbationLetter(f.admin,f.ids.caseId,f.partId);await expect(actOnProbationLetter(f.admin,{caseId:f.ids.caseId,partId:f.partId,revision:letter.storageRevision,stepId:'hr',action:'signed',method:'typed',value:'Fictional HR',consent:true})).rejects.toThrow();
  await saveProbationLetterCompletion(f.staff.ctx,{caseId:f.ids.caseId,partId:f.partId,revision:own.storageRevision,values:{'field-mobile':'0123456789'},reason:'Save my own missing mobile draft'});
  let current=await view(f,f.staff.ctx);expect(current.document.values['field-mobile']).toBe('+60123456789');expect(current.document.personnelCompletion!.submitted).toBeUndefined();expect((await view(f)).proposals).toEqual([]);
- letter=await readProbationLetter(f.admin,f.ids.caseId,f.partId);expect(letter.signing!.document.actions).toEqual([]);await expect(actOnProbationLetter(f.admin,{caseId:f.ids.caseId,partId:f.partId,revision:letter.storageRevision,stepId:'hr',action:'signed',method:'typed',value:'Fictional HR',consent:true})).rejects.toThrow('submit');
+ letter=await readProbationLetter(f.admin,f.ids.caseId,f.partId);expect(letter.signing!.document.actions).toEqual([]);await expect(actOnProbationLetter(f.admin,{caseId:f.ids.caseId,partId:f.partId,revision:letter.storageRevision,stepId:'hr',action:'signed',method:'typed',value:'Fictional HR',consent:true})).rejects.toMatchObject({cause:{message:expect.stringContaining('submit'),code:'P0001'}});
  await saveProbationLetterCompletion(f.staff.ctx,{caseId:f.ids.caseId,partId:f.partId,revision:current.storageRevision,values:{'field-mobile':'+60123456789'},submit:true,reason:'Submit my completed missing personal detail'});
  const after=await view(f);expect(after.proposals).toHaveLength(1);expect(after.proposals[0]).toMatchObject({field:'mobile',before:'',after:'+60123456789',status:'proposed',provenance:{kind:'missing-personnel',by:{id:f.staff.userId}}});
  const[p]=await owner.db.execute<{phone:string|null}>(sql`select phone from person where id=${f.staff.personId}::uuid`);expect(p.phone).toBeNull();
@@ -100,14 +100,20 @@ it('refuses policy/owner forgeries and alternate content writers while the new p
  await expect(withTenant(f.staff.ctx,tx=>tx.execute(sql`select * from probation_letter_completion_custody`))).rejects.toThrow();
  await expect(withTenant(f.staff.ctx,tx=>tx.execute(sql`select app.probation_content(${f.partId}::uuid)`))).rejects.toThrow();
  await expect(withTenant(f.staff.ctx,tx=>tx.execute(sql`select app.probation_letter_completion_update(${f.ids.caseId}::uuid,${f.partId}::uuid,${before.storageRevision},'{}','override','Forged employee override',${JSON.stringify({fieldId:'field-mobile',owner:'hr'})}::jsonb)`))).rejects.toThrow();
- await expect(withTenant(f.admin,tx=>tx.execute(sql`select app.probation_letter_edit_content(${f.partId}::uuid,${before.storageRevision},'{"body":"Alternate unchecked edit"}','{}','Try bypassing native custody')`))).rejects.toThrow('custodian');
+ await expect(withTenant(f.admin,tx=>tx.execute(sql`select app.probation_letter_edit_content(${f.partId}::uuid,${before.storageRevision},'{"body":"Alternate unchecked edit"}','{}','Try bypassing native custody')`))).rejects.toMatchObject({cause:{message:expect.stringContaining('custodian'),code:'42501'}});
  expect((await view(f,f.staff.ctx)).storageRevision).toBe(before.storageRevision);expect((await readProbationLetter(f.admin,f.ids.caseId,f.partId)).signing!.document.actions).toEqual([]);
 });
 
 it('projects preparation on the existing task identity, then restores the untouched HR-first signing route only after explicit submission',async()=>{
  const f=await fixture([field('mobile',{type:'phone',required:true})]);const route=(await readProbationLetter(f.admin,f.ids.caseId,f.partId)).signing!.document.route;
+ // The metadata-only task must exist even though full private content remains unavailable before HR first signing.
+ expect(await withTenant(f.staff.ctx,tx=>tx.execute(sql`select id from probation_part where id=${f.partId}::uuid`))).toEqual([]);
+ const projected=await withTenant(f.staff.ctx,tx=>tx.execute<{partId:string;state:string}>(sql`select * from app.probation_letter_tasks(${f.ids.caseId}::uuid)`));expect(projected.filter(task=>task.partId===f.partId)).toHaveLength(1);expect(projected.find(task=>task.partId===f.partId)?.state).toBe('awaiting_preparation');
+ expect((await probationTaskList(f.peer.ctx,{category:'task'})).items.some(item=>item.partId===f.partId)).toBe(false);
  const tasks=await probationTaskList(f.staff.ctx,{category:'task'});expect(tasks.items.find(item=>item.partId===f.partId)).toMatchObject({kind:'letter_prepare',href:`/lifecycle/probation/${f.ids.caseId}/letters/${f.partId}`});
  expect((await probationTaskList(f.admin,{category:'task'})).items.some(item=>item.partId===f.partId)).toBe(false);
+ const unlinked={...f.staff.ctx,userId:await createAppUser(b.tenantId,null,'employee'),personId:undefined};expect((await probationTaskList(unlinked,{category:'task'})).items.some(item=>item.partId===f.partId)).toBe(false);
+ await setModule(b.tenantId,'lifecycle','disabled');expect(await withTenant(f.staff.ctx,tx=>tx.execute(sql`select * from app.probation_letter_tasks(${f.ids.caseId}::uuid) where "partId"=${f.partId}::uuid`))).toEqual([]);await setModule(b.tenantId,'lifecycle','active');
  let own=await view(f,f.staff.ctx);await saveProbationLetterCompletion(f.staff.ctx,{caseId:f.ids.caseId,partId:f.partId,revision:own.storageRevision,values:{'field-mobile':'0123456789'},reason:'Save without submitting'});
  expect((await probationTaskList(f.staff.ctx,{category:'task'})).items.find(item=>item.partId===f.partId)?.kind).toBe('letter_prepare');
  own=await view(f,f.staff.ctx);await saveProbationLetterCompletion(f.staff.ctx,{caseId:f.ids.caseId,partId:f.partId,revision:own.storageRevision,values:{'field-mobile':'0123456789'},submit:true,reason:'Submit only the requested field preparation'});
@@ -160,7 +166,7 @@ it('binds every part-read policy to the guarded public wrapper while keeping the
  const dependencies=await owner.db.execute<{name:string;guarded:boolean;legacy:boolean}>(sql`select p.polname as name,exists(select 1 from pg_depend d where d.classid='pg_policy'::regclass and d.objid=p.oid and d.refclassid='pg_proc'::regclass and d.refobjid='app.probation_part_access(uuid,text)'::regprocedure) as guarded,exists(select 1 from pg_depend d where d.classid='pg_policy'::regclass and d.objid=p.oid and d.refclassid='pg_proc'::regclass and d.refobjid='app.probation_part_access_before_completion_6686(uuid,text)'::regprocedure) as legacy from pg_policy p where p.polname in ('probation_part_read','probation_rater_read','probation_revision_read','probation_delegate_read') order by p.polname`);
  expect(dependencies.map(row=>row.name)).toEqual(['probation_delegate_read','probation_part_read','probation_rater_read','probation_revision_read']);expect(dependencies.every(row=>row.guarded&&!row.legacy)).toBe(true);
  const[acl]=await owner.db.execute<{allowed:boolean}>(sql`select has_function_privilege('ai_hr_app','app.probation_part_access_before_completion_6686(uuid,text)','EXECUTE') as allowed`);expect(acl.allowed).toBe(false);
- await expect(withTenant(f.admin,tx=>tx.execute(sql`select app.probation_part_access_before_completion_6686(${f.partId}::uuid,null)`))).rejects.toThrow('permission denied');
+ await expect(withTenant(f.admin,tx=>tx.execute(sql`select app.probation_part_access_before_completion_6686(${f.partId}::uuid,null)`))).rejects.toMatchObject({cause:{message:expect.stringContaining('permission denied'),code:'42501'}});
  expect(await withTenant(f.admin,tx=>tx.execute(sql`select id from probation_part where id=${f.ids.part}::uuid`))).toHaveLength(1);
  expect(await withTenant(f.admin,tx=>tx.execute(sql`select id from probation_part where id=${f.partId}::uuid`))).toHaveLength(1);
  await owner.db.execute(sql`insert into payroll_permission_grant(tenant_id,company_id,role,permission_key,allowed) values(${b.tenantId}::uuid,${b.companyId}::uuid,'hr_admin','report.read.identity',false)`);
