@@ -1,3 +1,7 @@
+## PR245 feedback operator automation — 18 November 2026 (unapplied)
+
+Reserves `6200_feedback_automation`, idx5600 / when1794974006200. Read-only registered-worktree journal survey found highest peer when1794841006104/tag6104/idx5504. Staging was healthy at12098e9c5; another release owns epoch126. This timestamp is above the peer journal watermark. Recheck actual staging/production ledger watermarks, newer committed refs and peer claims before admission. No applied SQL is edited; new work claims are operator-only. Canonical account notifications retain read-only history and actual reporter binding. Reservation grants no deployment priority or authority.
+
 ## Movement staging handback and unused slots — 17 November 2026 MYT
 
 Movement completed its three-stage candidate at source `65ab4e868d43efe08e046c666051c13ccb61c76d`,

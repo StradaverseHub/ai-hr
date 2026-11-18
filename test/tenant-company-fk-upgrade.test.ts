@@ -328,6 +328,7 @@ it('stops on a cross-tenant row, then validates every company/tenant key without
    '5875_recruitment_referral_rewards_agency_fees',
    '5876_recruitment_ai_match_summary',
    '5877_recruitment_agency_portal',
+   '6200_feedback_automation',
   ]);
   const stagingPrefix=journal.entries.slice(0,performanceStart);
   expect(stagingPrefix.filter(row=>row.tag==='3900_individual_transaction_calculation_method')).toHaveLength(1);
@@ -465,6 +466,7 @@ it('stops on a cross-tenant row, then validates every company/tenant key without
   // the roles that evaluate it (test/rewards-config-grants-lock.test.ts), so no added function is callable by PUBLIC.
   // 5850–5877: Recruitment's SECURITY INVOKER predicates and normalisers keep the default PUBLIC EXECUTE (they run with the
   // caller's own privileges).
+  privateFunctions.push('app.feedback_automation_snapshot(uuid)','app.validate_feedback_notification(jsonb)','app.feedback_notification_operator_owner()');
   const publicFunctions:string[]=[
    'app.can_admin_recruitment_for(uuid)','app.can_operate_recruitment_job(uuid,uuid)','app.can_read_recruitment_application(uuid,uuid,uuid)',
    'app.can_review_recruitment_job(uuid,uuid)','app.can_see_recruitment_company(uuid)','app.recruitment_candidate_lock_key(uuid,uuid)',
@@ -801,6 +803,7 @@ it('stops on a cross-tenant row, then validates every company/tenant key without
   ];
   // Movement5773–5779: exact new function inventory, with no PUBLIC execute and one private implementation.
   addedFunctions.push('app.access_movement_delete_employment(uuid)','app.cost_allocations_after_hire_company_correction(uuid,uuid,text)','app.employment_payment_method_on(uuid,date)','app.preserve_movement_payroll(uuid)','app.preserve_payroll_metadata(uuid,boolean)','app.workforce_payroll_inputs_changed(uuid,date,date,text)','app.workforce_payroll_inputs_changed_windows(uuid,jsonb,text)');
+  addedFunctions.push('app.feedback_automation_snapshot(uuid)','app.validate_feedback_notification(jsonb)','app.feedback_notification_operator_owner()');
   addedFunctions.sort();
   const beforeFunctions=new Set(beforePerformancePrivileges.functions.map(row=>row.fn));
   expect(afterPerformancePrivileges.functions.filter(row=>!beforeFunctions.has(row.fn)).map(row=>row.fn).sort()).toEqual(addedFunctions);

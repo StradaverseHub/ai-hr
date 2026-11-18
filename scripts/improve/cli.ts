@@ -1,3 +1,4 @@
+import {pickupFeedback, completeFeedback, notifyFeedback} from './automation';
 /**
  * Improvement-loop CLI (ADR-0044). The operator (a Claude Code session) drives the loop by piping JSON
  * between these subcommands and the planning/build steps:
@@ -139,6 +140,24 @@ async function main() {
     case 'pull-blocked':
       process.stdout.write(JSON.stringify(pullBlocked(), null, 2) + '\n');
       break;
+    case 'pickup': {
+      const p = JSON.parse(await readStdin());
+      notifyFeedback(p.tenantId);
+      process.stdout.write(JSON.stringify(pickupFeedback(p), null, 2) + '\n');
+      break;
+    }
+    case 'complete': {
+      const p = JSON.parse(await readStdin());
+      completeFeedback(p);
+      notifyFeedback(p.tenantId);
+      console.log('Work settled; read back the report and claim before reporting its outcome.');
+      break;
+    }
+    case 'notify': {
+      const p = JSON.parse(await readStdin()); notifyFeedback(p.tenantId);
+      console.log('Current reporter notifications projected; no email sent.');
+      break;
+    }
     case 'pull-waiting':
       process.stdout.write(JSON.stringify(pullAwaitingClarification(), null, 2) + '\n');
       break;

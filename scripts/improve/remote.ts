@@ -116,6 +116,10 @@ function remote(cmd: string, stdin?: string): string {
   });
 }
 
+/** Private operator transport; never import into application request code. */
+export const runFeedbackOperatorSql = (statement: string): string =>
+  remote('psql "$MIGRATION_DATABASE_URL" -X -q -A -t -v ON_ERROR_STOP=1 -f -', statement);
+
 /** One time this item was parked on a question, and what was said back (migration 0323). */
 export type RemoteBlockEpisode = {
   id?: string;
@@ -437,6 +441,7 @@ export function pushPlanSql(p: {id: string; tenantId: string; reporterEmployment
   const sql = [
     'BEGIN;',
     doBlock(['BEGIN', reporterBindingBody(p),
+      `IF NOT EXISTS (SELECT 1 FROM feedback_request WHERE id='${p.id}' AND status IN ('open','contested')) THEN RAISE EXCEPTION 'Only open or contested reports can receive a plan'; END IF;`,
       `IF EXISTS (SELECT 1 FROM feedback_block WHERE feedback_request_id='${p.id}' AND resolved_at IS NULL) THEN RAISE EXCEPTION 'Report is waiting for an answer; read the reply before planning'; END IF;`,
       `IF ${p.dialogueDigest != null ? 'TRUE' : 'FALSE'} OR EXISTS (SELECT 1 FROM domain_event e JOIN feedback_request f ON f.id=e.aggregate_id WHERE f.id='${p.id}' AND e.event_type='feedback.clarification.requested' AND e.payload->>'planRevision'=f.plan_revision::text) THEN IF ${p.dialogueDigest ? dq(p.dialogueDigest) : 'NULL'} IS DISTINCT FROM (SELECT ${FEEDBACK_DIALOGUE_SOURCE_AGGREGATE} FROM feedback_block WHERE feedback_request_id='${p.id}') THEN RAISE EXCEPTION 'Reporter conversation changed; read the latest answers'; END IF; END IF;`,
       'END'].join('\n')),

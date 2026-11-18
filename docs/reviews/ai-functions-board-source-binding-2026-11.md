@@ -892,3 +892,10 @@ serializer or transport changes. Reversing the 28 substitutions reproduces the p
 registry byte-for-byte; pending, retired, reviewer and historical evidence metadata are retained.
 The derived agent manifest is regenerated after binding. This grants no passing verification,
 staging acceptance or production authority.
+
+
+## PR245 reporter dialogue staging binding — 18 November 2026
+
+The repository owner explicitly selected **“Approve for staging”** in response to the exact-source request for fingerprint `5edc45f34c0409d57679ce7d2e069851d5c38f157bed56b065554b7b04e04f6a` (1,697 covered files). The request identified the reporter-dialogue changes and notification schema, no additional provider or disclosure fields, and no automatic HR decisions. As release coordinator, carry forward only the existing approved contract records to this fingerprint. Pending and retired records retain their values and status. This is staging-only approval; it grants neither new contract approval nor production authority.
+
+The operator coordinator uses the existing private SSH improvement-loop boundary. It does not use an application administrator login or reactivate the retired anonymous scheduled model step. Work claims, bounded clarification and canonical in-app bell projection do not admit provider spend. The existing in-app planning source remains rechecked and the reporter dialogue is composed locally after the protected outline task.
