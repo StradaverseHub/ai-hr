@@ -5,8 +5,8 @@ import { onboardingList } from '../packs/lifecycle/service';
 import { sql } from 'drizzle-orm';
 import { withTenant, type SessionContext } from '../db/client';
 import { hireEmployee, setReportingLine } from '../core/org';
-import { v9Setup, v9SaveConfig, v9CreateOffboarding, v9Command, v9CaseDetail, v9Workspace, v9PreviewWorkflow, onboardingContext, onboardingSaveConfig } from '../packs/lifecycle/service';
-import { closeAll, resetDb, seedBase, setModule, entitledCtx, owner, type Base } from './harness';
+import { v9Setup, v9SaveConfig, v9CreateOffboarding, v9Command, v9CaseDetail, v9Workspace, v9PlanWorkflow, onboardingContext, onboardingSaveConfig } from '../packs/lifecycle/service';
+import { closeAll, resetDb, seedBase, setModule, entitledCtx, owner, createAppUser, type Base } from './harness';
 import type { PersonnelManagerRecipient } from '../lib/personnel-manager-recipient';
 import { todayInKualaLumpur } from '../lib/hr-date';
 import { addDays } from '../lib/lifecycle-v9-model';
@@ -36,7 +36,7 @@ it('does not use the case-creation snapshot after the Personnel manager changes'
  const c=await makeCase(),replacement=(await hire('Replacement','replacement@example.invalid')).employmentId;
  await setReportingLine(admin,{subordinateEmploymentId:subject,managerEmploymentId:replacement,lineType:'administrative',validFrom:day});
  expect(await resolved(admin,c.id)).toMatchObject({employmentId:replacement,email:'replacement@example.invalid'});
- const preview=await v9PreviewWorkflow(admin,c.id,'manager');expect(JSON.stringify(preview)).toContain('replacement@example.invalid');expect(JSON.stringify(preview)).not.toContain('manager@example.invalid');
+ const preview=await v9PlanWorkflow(admin,c.id,(await v9Workspace(admin)).config!.workflows.find(w=>w.id==='manager')!);expect(JSON.stringify(preview)).toContain('replacement@example.invalid');expect(JSON.stringify(preview)).not.toContain('manager@example.invalid');
  await v9Command(admin,c.id,c.revision,{type:'startWorkflow',workflowId:'manager'});expect((await v9CaseDetail(admin,c.id)).case.mails.find(m=>m.workflowId==='manager')?.to).toEqual(['address:replacement@example.invalid']);
 });
 it('names the actual missing work-address problem and keeps Continue held until fixed',async()=>{
@@ -49,7 +49,7 @@ it('names the actual missing work-address problem and keeps Continue held until 
 });
 it('rejects an unrelated tenant and reports inactive manager employment without a personal-mail fallback',async()=>{
  const c=await makeCase(),foreign=await seedBase();await setModule(foreign.tenantId,'lifecycle','active');const foreignAdmin=await entitledCtx(foreign);
- await expect(resolved(foreignAdmin,c.id)).rejects.toThrow(/Full lifecycle case access|unavailable/);
+ await expect(resolved(foreignAdmin,c.id)).rejects.toMatchObject({cause:{message:expect.stringMatching(/Full lifecycle case access|unavailable/)}});
  await owner.client`update employment set terminated_on=${addDays(day,-1)}::date where id=${manager}::uuid`;
  expect(await resolved(admin,c.id)).toMatchObject({employmentId:manager,name:'Fictional Manager',email:null,reason:'inactive'});
 });
@@ -110,6 +110,7 @@ it('requires an explicit revision-guarded HR decision for a late hold and never 
 
 it('SQL-pages recovery in stable order at 70 companies and 1000 employments under All companies and one company',async()=>{
  const {managerEmailRecoveryPage}=await import('../core/lifecycle-manager-recovery');const c=await makeCase();
+ const started=performance.now();const timing=(phase:string)=>console.info('manager-recovery-group',phase,Math.round(performance.now()-started));
  const heldAt='2026-11-18T00:00:00.000Z',missing=[{role:'supervisor',label:'Line manager',reason:'no supervisor on the Personnel record'}];
  const run={id:'manager:once',workflowId:'manager',revision:1,date:day,status:'waiting',cursor:0,reason:'Held',at:heldAt,definition:(await v9Workspace(admin)).config!.workflows[0],hold:{stepId:'message',at:heldAt,missing}};
  await owner.client`insert into company(tenant_id,legal_name,country,currency) select ${base.tenantId}::uuid,'Fictional Recovery Company '||lpad(n::text,3,'0'),'MY','MYR' from generate_series(1,70) n`;
@@ -121,13 +122,26 @@ it('SQL-pages recovery in stable order at 70 companies and 1000 employments unde
  ${JSON.stringify(c)}::jsonb||jsonb_build_object('id',s.id::text,'number','RECOVERY-SCALE-'||lpad(s.n::text,4,'0'),'revision',1,'runs',jsonb_build_array(${JSON.stringify(run)}::jsonb),'mails','[]'::jsonb,'facts',${JSON.stringify(c.facts)}::jsonb||jsonb_build_object('employmentId',s.employment_id::text,'personId',s.person_id::text,'company',s.company_id::text,'name',s.full_name)) from subjects s`;
  await owner.client`insert into lc_v9_email_hold(tenant_id,company_id,module,case_id,case_number,subject_name,run_id,step_id,workflow_name,email_name,missing,held_at)
  select tenant_id,company_id,'off',id,number,data->'facts'->>'name','manager:once','message','Manager message','Fictional',${JSON.stringify(missing)}::jsonb,${heldAt}::timestamptz from lc_v9_case where tenant_id=${base.tenantId}::uuid and number like 'RECOVERY-SCALE-%'`;
+ timing('fixture-written');
  const [shape]=await owner.client`select count(distinct company_id)::integer companies,count(*)::integer employments from lc_v9_case where tenant_id=${base.tenantId}::uuid and number like 'RECOVERY-SCALE-%'`;expect(shape).toEqual({companies:70,employments:1000});
  const [one]=await owner.client`select company_id from lc_v9_case where tenant_id=${base.tenantId}::uuid and number='RECOVERY-SCALE-0001'`;
- for(const ctx of [admin,{...admin,grants:[{role:'hr_admin',companyId:one.company_id}]}]){
+ const scopes:Array<{ctx:SessionContext;companyId:string|null}>=[{ctx:admin,companyId:null},{ctx:{...admin,grants:[{role:'hr_admin',companyId:one.company_id}]},companyId:one.company_id}];
+ for(const scope of scopes){
+  const {ctx}=scope;
   const actual:string[]=[];let after='';let firstCount:number|undefined;
   for(let page=0;page<11;page++){const result=await managerEmailRecoveryPage(ctx,after,100);firstCount??=result.remainingCount;actual.push(...result.items.map(t=>t.caseId));if(result.items.length<100||!result.after)break;after=result.after;}
-  const expected=await owner.client`select id::text from lc_v9_case where tenant_id=${base.tenantId}::uuid and number like 'RECOVERY-SCALE-%' and (${ctx.grants===undefined} or company_id=${one.company_id}::uuid) order by id::text`;
+  const expected=await owner.client`select id::text from lc_v9_case where tenant_id=${base.tenantId}::uuid and number like 'RECOVERY-SCALE-%' and (${scope.companyId===null} or company_id=${scope.companyId}::uuid) order by id::text`;
+  timing(scope.companyId?'single-company-pages':'all-company-pages');
   expect(actual.length).toBeGreaterThan(0);expect(actual).toEqual(expected.map(r=>r.id));expect(firstCount).toBe(expected.length);expect(new Set(actual).size).toBe(actual.length);
  }
+ const [managerPerson]=await owner.client`select person_id from employment where id=${manager}::uuid`;
+ const unrelatedUser=await createAppUser(base.tenantId,managerPerson.person_id,'hr_admin');
+ const unrelated={...admin,userId:unrelatedUser,personId:managerPerson.person_id};
+ // A real HR grant alone is insufficient: this user has no Full offboarding case access.
+ expect((await managerEmailRecoveryPage(unrelated)).items).toEqual([]);
+ const foreign=await seedBase();await setModule(foreign.tenantId,'lifecycle','active');
+ expect((await managerEmailRecoveryPage(await entitledCtx(foreign))).items).toEqual([]);
+ await expect(managerEmailRecoveryPage({...admin,userId:undefined})).rejects.toThrow('Sign in');
  expect(await resolved(admin,c.id)).toMatchObject({employmentId:manager,email:'manager@example.invalid'});
-},90000); // Includes set-based 70-company/1000-case fixture and both complete SQL-page walks on hosted Postgres.
+ timing('authorization-denials');
+},270000); // Prior hosted aggregate exhausted 90s; 3x headroom includes fixture and both page walks. Phase timings diagnose regressions.

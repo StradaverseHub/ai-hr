@@ -20,7 +20,7 @@ export async function requestManagerEmailRecovery(ctx:SessionContext,manifest:Ma
  return withTenant(ctx,async tx=>{
   // The held-register RLS is the case/company boundary; check the entire set in one statement.
   const ids=[...new Set(targets.map(t=>t.caseId))];
-  const [allowed]=await tx.execute<{count:number}>(sql`select count(distinct case_id)::integer as count from lc_v9_email_hold where tenant_id=${ctx.tenantId}::uuid and released_at is null and case_id=any(${ids}::uuid[])`);
+  const [allowed]=await tx.execute<{count:number}>(sql`select count(distinct case_id)::integer as count from lc_v9_email_hold where tenant_id=${ctx.tenantId}::uuid and released_at is null and case_id=any(ARRAY[${sql.join(ids.map(id=>sql`${id}::uuid`),sql`, `)}]::uuid[])`);
   if(allowed.count!==ids.length)throw new Error('Full lifecycle case access is required for every recovery target.');
   return enqueueBulkJobTx(tx,ctx,{kind,companyIds:[...new Set(targets.map(t=>t.companyId))],source:{name:'manager-email-recovery.json',content:source},input:{token}});
  });
