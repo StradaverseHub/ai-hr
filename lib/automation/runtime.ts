@@ -82,6 +82,8 @@ export type AutomationStepExecutor = (context: AutomationStepContext) => Promise
  */
 export type AutomationExecutors = {
   notify?: AutomationStepExecutor;
+  requestDecision?: AutomationStepExecutor;
+  requestApproval?: AutomationStepExecutor;
   sendEmail?: AutomationStepExecutor;
   generateDocument?: AutomationStepExecutor;
   createPosting?: AutomationStepExecutor;
@@ -162,6 +164,8 @@ async function fail(run: AutomationRun, deps: AutomationRunDeps, at: AutomationP
 function stepExecutor(executors: AutomationExecutors, type: string): AutomationStepExecutor | undefined {
   switch (type) {
     case 'notify': return executors.notify;
+    case 'requestDecision': return executors.requestDecision;
+    case 'requestApproval': return executors.requestApproval;
     case 'sendEmail': return executors.sendEmail;
     case 'generateDocument': return executors.generateDocument;
     case 'createPosting': return executors.createPosting;

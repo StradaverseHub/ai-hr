@@ -267,6 +267,13 @@ export const APPROVED_UPGRADE_TAIL=[
  {idx:5275,when:1793330005575,tag:'5875_recruitment_referral_rewards_agency_fees'},
  {idx:5276,when:1793330005576,tag:'5876_recruitment_ai_match_summary'},
  {idx:5277,when:1793330005577,tag:'5877_recruitment_agency_portal'},
+ {idx:5281,when:1793330005581,tag:'5881_resignation_journey'},
+ {idx:5282,when:1793330005582,tag:'5882_resignation_configuration'},
+ {idx:5283,when:1793330005583,tag:'5883_resignation_postings'},
+ {idx:5284,when:1793330005584,tag:'5884_resignation_email_delivery'},
+ {idx:5285,when:1793330005585,tag:'5885_resignation_letter_teams'},
+ {idx:5286,when:1793330005586,tag:'5886_resignation_letter_fields'},
+ {idx:5287,when:1793330005587,tag:'5887_resignation_case_communications'},
  {idx:5500,when:1794841006100,tag:'6100_rewards_review_plans'},
  {idx:5501,when:1794841006101,tag:'6101_reward_person_history'},
  {idx:5502,when:1794841006102,tag:'6102_lifecycle_recipient_directory'},
@@ -275,6 +282,13 @@ export const APPROVED_UPGRADE_TAIL=[
 ] as const;
 // Final pending 2109/2126 bytes reviewed from engine 128bc2539; no applied-prefix hashes change.
 const APPROVED_UPGRADE_HASHES:Record<string,string>={
+ '5887_resignation_case_communications':'3ddeecf73214d333678979e29d63a445b3841377e4e1f06d4f0a8d51aa001f65',
+ '5885_resignation_letter_teams':'b7769b4044d013cfb630d532d8cc5b7fd2c8635662cf05663a4dcf6746eae4f3',
+ '5886_resignation_letter_fields':'4bc7b4108976fe43d7909b6c4f7b8fa20076ff9aef6e3b4be34d24c0110e6025',
+ '5881_resignation_journey':'130c0b99586bc316ac5203d27a65bfc0a565c4f608b8ab1ac336a8e8d41d1216',
+ '5882_resignation_configuration':'6e064c336c441fbbf01017debe9e1a748957976d3d6b2b96470747d07d7dacb5',
+ '5883_resignation_postings':'5d26a0f446c3e72ed01861544af395690b08cdce47b9fc739f0b0d7d1b22a4f5',
+ '5884_resignation_email_delivery':'52bf3fa8f4430d37fd4dabd2164f00764e73245b38ee6520d2816dca7e03459b',
  '6100_rewards_review_plans':'ce6c91a351f2c5178101da137c601b363b5bacc8b560f46e808b319d54c9f0e5',
  '6101_reward_person_history':'055838fa4f2ccc7110b4cd56030e4e97e9ddd85d8455f1ade581fb74e51345f8',
  '6102_lifecycle_recipient_directory':'b7ba294ffdf0a95439995c61730407dfda7b204d07ba32f2adc15b94a3f7e2e3',
@@ -527,6 +541,7 @@ export const COMBINED_RELEASE_NULL_COLUMNS:readonly {tag:string;table:string;col
  // Board 511aa74a (5695): no employment that predates it was rehired from another period.
  {tag:'5695_employment_rehire_link',table:'employment',columns:['rehired_from_employment_id']},
  {tag:'5760_probation_queue_kinds_and_pbp_tasks',table:'probation_outcome',columns:['extension_months']},
+ {tag:'5883_resignation_postings',table:'personnel_posting',columns:['rejected_by','rejected_at','rejection_reason','due_on','baseline_values']},
  ...['department','position','cost_center','business_unit','label_company_assignment','profile_option','job_grade','grade_group','grade_group_member']
   .map(table=>({tag:'5070_system_label_import_staged_job',table,columns:['import_pending_attempt_id']})),
 ]);

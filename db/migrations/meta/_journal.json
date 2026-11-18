@@ -6443,6 +6443,55 @@
       "breakpoints": true
     },
     {
+      "idx": 5281,
+      "version": "7",
+      "when": 1793330005581,
+      "tag": "5881_resignation_journey",
+      "breakpoints": true
+    },
+    {
+      "idx": 5282,
+      "version": "7",
+      "when": 1793330005582,
+      "tag": "5882_resignation_configuration",
+      "breakpoints": true
+    },
+    {
+      "idx": 5283,
+      "version": "7",
+      "when": 1793330005583,
+      "tag": "5883_resignation_postings",
+      "breakpoints": true
+    },
+    {
+      "idx": 5284,
+      "version": "7",
+      "when": 1793330005584,
+      "tag": "5884_resignation_email_delivery",
+      "breakpoints": true
+    },
+    {
+      "idx": 5285,
+      "version": "7",
+      "when": 1793330005585,
+      "tag": "5885_resignation_letter_teams",
+      "breakpoints": true
+    },
+    {
+      "idx": 5286,
+      "version": "7",
+      "when": 1793330005586,
+      "tag": "5886_resignation_letter_fields",
+      "breakpoints": true
+    },
+    {
+      "idx": 5287,
+      "version": "7",
+      "when": 1793330005587,
+      "tag": "5887_resignation_case_communications",
+      "breakpoints": true
+    },
+    {
       "idx": 5500,
       "version": "7",
       "when": 1794841006100,

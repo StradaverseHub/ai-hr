@@ -338,6 +338,13 @@ it('stops on a cross-tenant row, then validates every company/tenant key without
    '5875_recruitment_referral_rewards_agency_fees',
    '5876_recruitment_ai_match_summary',
    '5877_recruitment_agency_portal',
+   '5881_resignation_journey',
+   '5882_resignation_configuration',
+   '5883_resignation_postings',
+   '5884_resignation_email_delivery',
+   '5885_resignation_letter_teams',
+   '5886_resignation_letter_fields',
+   '5887_resignation_case_communications',
    ...APPROVED_BOARD_TAIL.map(row=>row.tag),
   ]);
   expect(journal.entries.slice(-APPROVED_BOARD_TAIL.length)).toEqual(APPROVED_BOARD_TAIL);
@@ -364,6 +371,13 @@ it('stops on a cross-tenant row, then validates every company/tenant key without
   const beforePerformancePrivileges=await privileges();
   await migrate(storage.db,{migrationsFolder:'db/migrations'});
   const afterPerformancePrivileges=await privileges();
+  // The exact signed resignation construction changes only this invoker trigger's
+  // subject lookup branch; its identity, owner-only ACL and other callers remain.
+  const [v9Integrity]=await storage.client`select prosecdef as security_definer,
+   has_function_privilege('ai_hr_app',oid,'EXECUTE') as app_execute,
+   exists(select 1 from aclexplode(coalesce(proacl,acldefault('f',proowner))) a where a.grantee=0 and a.privilege_type='EXECUTE') as public_execute
+   from pg_proc where oid='app.lc_v9_integrity()'::regprocedure`;
+  expect(v9Integrity).toEqual({security_definer:false,app_execute:false,public_execute:false});
   // Every function the forward migrations add, with its reviewed EXECUTE privileges: private functions are not
   // callable by the application role, and none is callable by PUBLIC. The policy-side and trigger-WHEN helpers are
   // granted to exactly the roles their policies or the domain_event writers are (test/policy-helper-function-grants).
@@ -408,6 +422,16 @@ it('stops on a cross-tenant row, then validates every company/tenant key without
    'app.recruitment_screening_close_for_reviewer()','app.recruitment_settle_candidate_import(uuid)','app.recruitment_survey_issue(uuid,uuid,text)',
    'app.recruitment_survey_live(text)','app.recruitment_survey_prune()','app.recruitment_talent_pool_sharing_follows()',
    'app.recruitment_withdraw_interview_emails()',
+   // Owner-only team admission, communication custody and immutable receipt trigger.
+   'app.resignation_letter_step_mine(jsonb,jsonb)',
+   'app.resignation_letter_owner_mine(jsonb)',
+   'app.resignation_communication_case_scope(uuid,uuid)',
+   'app.resignation_communication_test_immutable()',
+
+   // Native managed-submission cutover: the insert trigger remains owner-only.
+   'app.resignation_submission_guard()',
+   // Resignation9991/9993: private command verifiers and revoked original Probation implementations.
+   'app.offboarding_posting_group_members(text)','app.offboarding_posting_references_ok(uuid,jsonb)','app.offboarding_posting_values_ok(text,jsonb)','app.personnel_posting_approve_probation_v1(uuid,integer,jsonb)','app.personnel_posting_create_probation_v1(text,uuid,uuid,text,jsonb,text,text)','app.personnel_posting_edit_probation_v1(uuid,integer,jsonb)','app.personnel_posting_visible_probation_v1(text,uuid,text)','app.resignation_command_allowed(uuid,jsonb)','app.resignation_journey_subject_guard()','app.resignation_managed_request_guard()','app.resignation_notification_owner()','app.resignation_notification_valid(notification)','app.resignation_pending_steps(jsonb)','app.resignation_runtime_consume(text,uuid,jsonb)','app.resignation_runtime_intent(uuid)',
    // 5763: Probation access helpers, owner only.
    'app.probation_access_scope_check(uuid,uuid,date,date)','app.probation_intake_admin_for(uuid,uuid,uuid)','app.probation_permitted_companies(uuid,text[])','app.probation_permitted_scope(text,uuid[])','app.probation_postings_admin(uuid[])','app.probation_superior_rule()',
    // 5764: the routed holder resolver and routing-rule helpers, owner only.
@@ -487,6 +511,35 @@ it('stops on a cross-tenant row, then validates every company/tenant key without
    'app.recruitment_reviews_candidate(uuid,uuid)','app.recruitment_scorecards_private(uuid)','app.recruitment_team_in_company(uuid)',
   ];
   const addedFunctions=[
+   // Handoff corrections: exact native team, date and case-communication entry points; never PUBLIC.
+   'app.resignation_letter_step_mine(jsonb,jsonb)',
+   'app.resignation_letter_owner_mine(jsonb)',
+   'app.resignation_communication_case_scope(uuid,uuid)',
+   'app.resignation_communication_test_immutable()',
+   'app.resignation_offboarding_date_intent(uuid,date,date)',
+   'app.resignation_offboarding_date_store(uuid,integer,date,date,jsonb)',
+   'app.resignation_communication_scope(uuid,uuid,uuid)',
+   'app.resignation_communication_test_receipt(uuid,integer,uuid,text,uuid,uuid)',
+   'app.resignation_communication_test_begin(uuid,integer,uuid,text,uuid,uuid,jsonb)',
+   'app.resignation_communication_test_queue(uuid,integer,uuid,text,uuid,jsonb)',
+   'app.resignation_communication_runs(uuid,uuid)',
+   'app.resignation_communication_offboarding_context(uuid,uuid,uuid)',
+   'app.resignation_communication_files(uuid,uuid)',
+
+   // Human-only pending Offboarding posting member labels; application EXECUTE, never PUBLIC.
+   'app.offboarding_posting_waiting_members(uuid[])',
+   // Scoped company-retention boolean; journey rows retain their existing custody-only RLS.
+   'app.resignation_company_in_use(uuid)',
+   // Reverse-linked clearance template IDs: scoped native metadata, application EXECUTE only.
+   'app.resignation_offboarding_template_ids(uuid)',
+   // HMAC-bound missing-decision repair audience: application entry point, never PUBLIC.
+   'app.resignation_decision_repair_audience(uuid)',
+   // Verified managed-V9 classification; a scoped native boolean, callable by the application only.
+   'app.resignation_offboarding_case_managed(uuid)',
+   // Final shared directory and managed-submission cutover helpers.
+   'app.contract_configuration_directory(uuid[],text,uuid[])','app.resignation_managed_submission_enabled(uuid)','app.resignation_submission_guard()',
+   // Resignation9991/9992/9993/9995: explicit native entry points and private implementation identities.
+   'app.offboarding_posting_choices(uuid,text)','app.offboarding_posting_due(uuid,date)','app.offboarding_posting_edit_event(uuid,integer,text,jsonb)','app.offboarding_posting_group(uuid,text)','app.offboarding_posting_group_members(text)','app.offboarding_posting_ops(uuid)','app.offboarding_posting_queue_access()','app.offboarding_posting_reassign(text,text)','app.offboarding_posting_receipt(uuid)','app.offboarding_posting_references_ok(uuid,jsonb)','app.offboarding_posting_reject(uuid,integer,text)','app.offboarding_posting_terms(uuid)','app.offboarding_posting_values_ok(text,jsonb)','app.personnel_posting_approve_probation_v1(uuid,integer,jsonb)','app.personnel_posting_create_probation_v1(text,uuid,uuid,text,jsonb,text,text)','app.personnel_posting_edit_probation_v1(uuid,integer,jsonb)','app.personnel_posting_visible_probation_v1(text,uuid,text)','app.resignation_command_allowed(uuid,jsonb)','app.resignation_configuration_usage(text[],text[])','app.resignation_email_assets(uuid,uuid,text)','app.resignation_email_files(uuid,uuid,text)','app.resignation_email_queue(uuid,text,uuid[],uuid[],text,text,jsonb)','app.resignation_handoff_active()','app.resignation_journey_access(uuid)','app.resignation_journey_admit(text,text)','app.resignation_journey_can_act(uuid,text)','app.resignation_journey_context(uuid,uuid)','app.resignation_journey_create(uuid,jsonb,uuid[])','app.resignation_journey_notify(uuid,text,uuid[],text,text)','app.resignation_journey_save(uuid,integer,text,text,jsonb,uuid[],uuid)','app.resignation_journey_subject_guard()','app.resignation_managed_clearance_ready(uuid)','app.resignation_managed_request_guard()','app.resignation_notification_owner()','app.resignation_notification_valid(notification)','app.resignation_offboarding_admit(uuid)','app.resignation_offboarding_intent(uuid)','app.resignation_offboarding_sequence(uuid)','app.resignation_pending_steps(jsonb)','app.resignation_posting_run_rejected(uuid,uuid,text)','app.resignation_request_is_managed(uuid)','app.resignation_run_retry_save(uuid,jsonb)','app.resignation_runtime_consume(text,uuid,jsonb)','app.resignation_runtime_intent(uuid)','app.resignation_runtime_readable(uuid,uuid,uuid)',
    // Board window 4 (5124): the preview binding trigger (owner only) and the superior diagnostic.
    // Board release block 5400-5560 (12 November 2026): the Rewards, dashboard and On/Off Boarding functions. Kept sorted.
    // daa76ed4/96a54ed2 (5140-5144, origin/alpha 65e23a1e7): the attendance resolution, escalation, on-behalf and final-window functions.
@@ -1136,6 +1189,15 @@ it('stops on a cross-tenant row, then validates every company/tenant key without
   // policies it adds (5580's configuration-editor and owner policies and 5600's owner policies included) (qual/with_check as md5 digests, the migration owner written OWNER) and the one it retires
   // (5400 drops the second-person PAT confirmation policy). Nothing else in the privilege graph may change.
   const boardRelations:Record<string,{rls:boolean;force:boolean;acl:string|null}>={
+   // Actor-only test receipts remain owner-only and forced-RLS.
+   'resignation_communication_test':{rls:true,force:true,acl:'{OWNER=arwdDxt/OWNER}'},
+   // Resignation9991: salary-sensitive state and uploaded receipts are forced-RLS; HMAC material stays owner-only.
+   'resignation_journey':{rls:true,force:true,acl:'{OWNER=arwdDxt/OWNER,ai_hr_app=r/OWNER}'},
+   'resignation_journey_number_seq':{rls:false,force:false,acl:null},
+   'resignation_journey_file':{rls:true,force:true,acl:'{OWNER=arwdDxt/OWNER,ai_hr_app=ar/OWNER}'},
+   'app.resignation_runtime_verifier':{rls:true,force:true,acl:'{OWNER=arwdDxt/OWNER}'},
+   'app.resignation_runtime_state':{rls:true,force:true,acl:'{OWNER=arwdDxt/OWNER}'},
+   'app.resignation_notification_receipt':{rls:true,force:true,acl:'{OWNER=arwdDxt/OWNER}'},
    'automation_run':{rls:true,force:true,acl:'{OWNER=arwdDxt/OWNER,ai_hr_app=r/OWNER}'},
    // Probation reshape (5740, 5741, 5743; 16 November 2026): four append-only tables, read-only to the application.
    'automation_email_template_version':{rls:true,force:true,acl:'{OWNER=arwdDxt/OWNER,ai_hr_app=r/OWNER}'},
@@ -1872,12 +1934,141 @@ it('stops on a cross-tenant row, then validates every company/tenant key without
    const left=[a.schemaname,a.tablename,a.policyname].join('.'),right=[b.schemaname,b.tablename,b.policyname].join('.');return left<right?-1:left>right?1:0;
   };
   expect(afterPerformancePrivileges.policies.filter(isApprovedPolicy)).toEqual(renderedApproved.sort(policyOrder));
+  // Resignation9991: exact new policies, parsed independently on their actual tables. No prefix exception.
+  const resignationPolicies = [
+   {schema:'public',table:'resignation_communication_test',name:'resignation_communication_test_owner',cmd:'ALL',roles:'ai_hr_owner',using:'app.acting_as_owner()',check:'app.acting_as_owner()'},
+  {
+    "schema": "public",
+    "table": "lc_v9_config",
+    "name": "resignation_handoff_config_read",
+    "cmd": "SELECT",
+    "roles": "ai_hr_app",
+    "using": "tenant_id=app.current_tenant_id() AND app.resignation_handoff_active()",
+    "check": null
+  },
+  {
+    "schema": "public",
+    "table": "resignation_journey",
+    "name": "resignation_journey_owner",
+    "cmd": "ALL",
+    "roles": "ai_hr_owner",
+    "using": "app.acting_as_owner()",
+    "check": "app.acting_as_owner()"
+  },
+  {
+    "schema": "app",
+    "table": "resignation_runtime_verifier",
+    "name": "resignation_runtime_owner",
+    "cmd": "ALL",
+    "roles": "ai_hr_owner",
+    "using": "app.acting_as_owner()",
+    "check": "app.acting_as_owner()"
+  },
+  {
+    "schema": "app",
+    "table": "resignation_runtime_state",
+    "name": "resignation_runtime_owner",
+    "cmd": "ALL",
+    "roles": "ai_hr_owner",
+    "using": "app.acting_as_owner()",
+    "check": "app.acting_as_owner()"
+  },
+  {
+    "schema": "public",
+    "table": "resignation_journey",
+    "name": "resignation_journey_read",
+    "cmd": "SELECT",
+    "roles": "ai_hr_app",
+    "using": "tenant_id=app.current_tenant_id() AND app.resignation_runtime_readable(id,employment_id,company_id)",
+    "check": null
+  },
+  {
+    "schema": "public",
+    "table": "resignation_journey_file",
+    "name": "resignation_journey_file_owner",
+    "cmd": "ALL",
+    "roles": "ai_hr_owner",
+    "using": "app.acting_as_owner()",
+    "check": "app.acting_as_owner()"
+  },
+  {
+    "schema": "public",
+    "table": "resignation_journey_file",
+    "name": "resignation_journey_file_read",
+    "cmd": "SELECT",
+    "roles": "ai_hr_app",
+    "using": "tenant_id=app.current_tenant_id() AND app.resignation_journey_access(case_id) AND document_id IS NULL",
+    "check": null
+  },
+  {
+    "schema": "public",
+    "table": "resignation_journey_file",
+    "name": "resignation_journey_file_insert",
+    "cmd": "INSERT",
+    "roles": "ai_hr_app",
+    "using": null,
+    "check": "tenant_id=app.current_tenant_id() AND uploaded_by=app.current_user_id() AND document_id IS NULL AND EXISTS(SELECT 1 FROM resignation_journey j CROSS JOIN LATERAL jsonb_array_elements(coalesce(j.data->'waits','[]'::jsonb)) w WHERE j.tenant_id=resignation_journey_file.tenant_id AND j.id=resignation_journey_file.case_id AND w->>'kind'='file' AND w->>'id'=resignation_journey_file.task_id AND w->>'slot'=resignation_journey_file.slot AND w->'to' ? app.current_user_id()::text)"
+  },
+  {
+    "schema": "public",
+    "table": "lc_v9_case",
+    "name": "resignation_handoff_case_read",
+    "cmd": "SELECT",
+    "roles": "ai_hr_app",
+    "using": "tenant_id=app.current_tenant_id() AND app.resignation_handoff_active() AND data->>'resignationSourceCaseId'=current_setting('app.resignation_handoff',true)",
+    "check": null
+  },
+  {
+    "schema": "public",
+    "table": "lc_v9_case",
+    "name": "resignation_handoff_case_insert",
+    "cmd": "INSERT",
+    "roles": "ai_hr_app",
+    "using": null,
+    "check": "tenant_id=app.current_tenant_id() AND app.resignation_handoff_active() AND module='off' AND data->>'resignationSourceCaseId'=current_setting('app.resignation_handoff',true) AND EXISTS(SELECT 1 FROM resignation_journey j WHERE j.id::text=current_setting('app.resignation_handoff',true) AND j.tenant_id=lc_v9_case.tenant_id AND j.employment_id=lc_v9_case.employment_id AND j.company_id=lc_v9_case.company_id AND j.offboarding_case_id IS NULL)"
+  },
+  {
+    "schema": "app",
+    "table": "resignation_notification_receipt",
+    "name": "resignation_notification_owner",
+    "cmd": "ALL",
+    "roles": "ai_hr_owner",
+    "using": "app.acting_as_owner()",
+    "check": "app.acting_as_owner()"
+  },
+  {
+    "schema": "public",
+    "table": "resignation_request_attachment",
+    "name": "resignation_journey_supporting_read",
+    "cmd": "SELECT",
+    "roles": "ai_hr_app",
+    "using": "tenant_id=app.current_tenant_id() AND app.resignation_journey_access(resignation_request_id)",
+    "check": null
+  }
+] as const;
+  const isResignationPolicy=(row:(typeof afterPerformancePrivileges.policies)[number])=>resignationPolicies.some(p=>p.schema===row.schemaname&&p.table===row.tablename&&p.name===row.policyname);
+  expect(beforePerformancePrivileges.policies.filter(isResignationPolicy)).toEqual([]);
+  const resignationRendered=await storage.client.begin(async tx=>{
+   const reviewed=[];
+   for(const policy of resignationPolicies){
+    const qualified=policy.schema+'.'+policy.table;
+    await tx.unsafe('create policy upgrade_expected_resignation on '+qualified+' for '+policy.cmd+' to '+policy.roles+(policy.using?' using ('+policy.using+')':'')+(policy.check?' with check ('+policy.check+')':''));
+    const [row]=await tx`select qual,with_check from pg_policies where schemaname=${policy.schema} and tablename=${policy.table} and policyname='upgrade_expected_resignation'`;
+    reviewed.push(row);await tx.unsafe('drop policy upgrade_expected_resignation on '+qualified);
+   }
+   return reviewed;
+  });
+  expect(afterPerformancePrivileges.policies.filter(isResignationPolicy)).toHaveLength(resignationPolicies.length);
+  resignationPolicies.forEach((policy,index)=>{
+   const actual=afterPerformancePrivileges.policies.find(row=>row.schemaname===policy.schema&&row.tablename===policy.table&&row.policyname===policy.name);
+   expect(actual,policy.schema+'.'+policy.table+'.'+policy.name).toEqual({schemaname:policy.schema,tablename:policy.table,policyname:policy.name,permissive:'PERMISSIVE',roles:'{'+policy.roles+'}',cmd:policy.cmd,qual:resignationRendered[index].qual,with_check:resignationRendered[index].with_check});
+  });
   const terminalComparable={
    relations:afterPerformancePrivileges.relations.filter(row=>row.rel!==receiptTable&&!sealTables.includes(row.rel)&&!isCombinedRelation(row.rel)&&!Object.hasOwn(boardRelations,row.rel)&&!isRecruitmentRelation(row.rel)&&!isApprovedRelation(row.rel)).map(row=>
     row.rel===clockTable?{...row,acl:beforeClockTable?.acl}:row),
    columns:afterPerformancePrivileges.columns.filter(row=>row.rel!==receiptTable&&row.rel!==clockTable&&!isCombinedRelation(row.rel)&&!isRecruitmentRelation(row.rel)&&!isApprovedRelation(row.rel)),
    functions:afterPerformancePrivileges.functions.filter(row=>!addedFunctions.includes(row.fn)),
-   policies:afterPerformancePrivileges.policies.filter(row=>!receiptPolicies.includes(row)&&!clockAuditPolicy(row)&&!isCombinedPolicy(row)&&!isBoardPolicy(row)&&!isLanePolicy(row)&&!isRecruitmentPolicy(row)&&!isApprovedPolicy(row)).map(row=>
+   policies:afterPerformancePrivileges.policies.filter(row=>!receiptPolicies.includes(row)&&!clockAuditPolicy(row)&&!isCombinedPolicy(row)&&!isBoardPolicy(row)&&!isLanePolicy(row)&&!isRecruitmentPolicy(row)&&!isApprovedPolicy(row)&&!isResignationPolicy(row)).map(row=>
     isClaimPolicy(row)?{...row,qual:expectedClaimQuals[0]}:isEmploymentPolicy(row)?{...row,qual:expectedEmploymentQuals[0]}:
      isAssignmentPolicy(row)?{...row,qual:expectedAssignmentQuals[0]}:
       isAttachmentRead(row)?{...row,...expectedAttachment.read[0]}:isAttachmentInsert(row)?{...row,...expectedAttachment.insert[0]}:row),
@@ -1899,6 +2090,7 @@ it('stops on a cross-tenant row, then validates every company/tenant key without
   // Probation reshape (16 November 2026): 5741's personnel_posting and 5742's settings-scope membership use the same key.
   const boardReleaseKeys = [
    { rel: 'lc_v9_email_hold', conname: 'lc_v9_email_hold_company_tenant_fk', convalidated: true, action: 'a' },
+   { rel: 'resignation_journey', conname: 'resignation_journey_company_tenant_fk', convalidated: true, action: 'a' },
    { rel: 'personnel_posting', conname: 'personnel_posting_company_tenant_fk', convalidated: true, action: 'a' },
    { rel: 'probation_access_member', conname: 'probation_access_member_company_tenant_fk', convalidated: true, action: 'a' },
    { rel: 'probation_form_import', conname: 'probation_form_import_company_tenant_fk', convalidated: true, action: 'a' },
@@ -1911,7 +2103,7 @@ it('stops on a cross-tenant row, then validates every company/tenant key without
    pg_get_expr(i.indpred,i.indrelid) as predicate from pg_index i where i.indexrelid='public.reward_person_history_company'::regclass`)
    .toEqual([{valid:true,ready:true,unique:false,columns:['tenant_id','company_id'],predicate:null}]);
   const completeKeys = await keys();
-  expect(completeKeys.filter(row => boardReleaseNames.has(row.conname))).toEqual(boardReleaseKeys);
+  expect(completeKeys.filter(row => boardReleaseNames.has(row.conname))).toEqual([...boardReleaseKeys].sort((a,b)=>a.rel.localeCompare(b.rel)));
   expect(completeKeys.filter(row => !expansionNames.has(row.conname) && !boardReleaseNames.has(row.conname))).toEqual(installed);
   expect(completeKeys.filter(row => expansionNames.has(row.conname))).toEqual(expansionRelations.map(rel => ({
    rel, conname: rel + '_company_tenant_fk', convalidated: true, action: 'a',

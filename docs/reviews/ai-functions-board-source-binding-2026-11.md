@@ -783,6 +783,205 @@ and evaluated/promoted agent identities are unchanged. Provider payloads, purpos
 not change. The derived agent manifest is regenerated after the literal update. The existing direction
 to run the full gate and deploy only to staging after all checks pass remains in effect. No production
 installation or package publication is authorized.
+## Resignation shared Configuration source binding — 17 November 2026
+
+The resignation coordinator reviewed the deterministic implementation against current upstream
+`bcba1f3e8faaf75c760599750ec9b4dc1d5a0f73`, including the reviewed scoped handoff repair
+`570c92601` and the post-gate convention corrections. Independent reviews confirmed the added
+closure is Lifecycle state/letter/posting composition and private SMTP delivery, not a new model
+payload. Framework-only configuration imports in the Lifecycle and Contracts facades are deferred until called; their original guards and authorization remain unchanged. The capability inventory leaves resignation decisions, signatures, uploads that resume
+the journey, and mixed employment postings on the human handoff surface. The native posting
+destination is excluded from coarse Assistant navigation. No executable AI tool, provider
+contract, prompt, disclosure schema or transport was added or broadened.
+
+Under the owner's recorded standing authority for same-purpose technical staging rebindings
+(above), the coordinator carried the 29 already-approved upstream records from `f4b83a1fa86cf3a53f111b8be69e10f29e0e629f9fa4f50c8ea0209987034494` to
+`20ae90946fae14a242be006f6396bfac4a92017562c8c3412191c57110a89eb1` (1640 source files).
+Original human reviewers, evidence references, approval timestamps and statuses are preserved;
+pending contracts remain pending. The agent manifest is regenerated after this binding.
+This preparation grants no new data disclosure or release authority. The owner's explicit
+release hold still applies: no main/alpha integration or installation.
+
+### Final shared Configuration navigation binding — 17 November 2026
+
+The approved single Configuration area replaces the older HR Automation working label, removes duplicate
+builder menu aliases and moves the existing gated Onboarding & offboarding settings entry. Existing URLs,
+engines, catalogue identities and native permissions remain unchanged; Contract template approvers without
+configuration authority retain their compatible review route. Independent source review found no new
+provider payload, purpose, tool, disclosure or execution authority. Under the same recorded standing
+staging rebind authority, the 29 previously approved records carry their existing metadata and statuses to
+`a5a4a2b7f3b74bc6c9e2f41d16b9320138db533719a7ccbde302cf096991d91d` (1640 source files).
+Pending records remain pending. The agent manifest is regenerated last. Release remains held pending
+explicit owner approval; this source binding does not authorize main/alpha integration or installation.
+
+### Released baseline and final Resignation staging preparation — 17 November 2026
+
+The coordinator integrated released `9bdfb45969c4bff81a9b9830b52403a95e82bdc6` into the owned
+Resignation branch, preserving both histories and applied migration 5771. The four unapplied Resignation
+drafts are allocated as 5783–5786 without changing their SQL bytes. The native-gated shared menu fixes
+a legacy duplicate settings advertisement; the exact owner-selected top-level name is HR Automation.
+No provider payload, purpose, disclosure schema, model tool or transport is added by these navigation
+changes or by preserving the already-approved released performance changes. Under the recorded
+same-purpose staging rebind authority, all 29 previously approved records bind to
+`381c78103e5b80817998a70ac111bfb8b34a332a49cee4592f13dc042884acd8` (1640 source files).
+The literal records match the released baseline after normalizing only digest strings: original human
+metadata and pending records are preserved. The derived agent manifest is regenerated last.
+
+The owner's direct COORDINATOR request now authorizes staging after complete verification and guarded
+queue admission; the earlier release hold is superseded for staging only. No production installation
+or package publication is authorized. This binding itself is not a release witness or an installation.
+
+### Resignation strict document release correction — 17 November 2026
+
+The actual production walkthrough identified double-braced document defaults that the native
+single-braced document merger could not resolve. Independent source review of da66ff4da,
+6d80a1a83 and 7957dffd0 found no material issue in the corrected defaults and strict server
+release validation before signature persistence or workflow effects. Email syntax, required-field
+guards, frozen released values and native authorization remain unchanged. No AI payload,
+purpose, transport, tool or disclosure authority is added. Under the owner's recorded explicit
+same-purpose technical rebinding approval, the 29 already-approved records bind to
+`e5837992670b1e294b6d41bae623ec1d912e717a45e9b57250bb57b5e1972939`
+(1640 source files). Only sourceDigest changes; human metadata and pending statuses are preserved.
+The agent manifest is regenerated last. Hosted regression and actual PDF download verification
+remain required; this source binding is neither a test pass nor release authorization.
+
+### Handoff completeness corrections: development checkpoint — 17 November 2026
+
+The renewed handoff and engineering review correct deterministic Lifecycle ownership, native letter teams,
+current-Person privacy, local document fields, workflow conditions, configured case classification, and
+case communication previews and actor-only test intent. Native SQL retains exact principal, tenant/company,
+transaction and argument admission; the existing private sender owns transport. The new presentation read
+is internal, and message editing/testing remain human handoffs. There is no new model tool, provider
+payload, disclosure purpose or transport. Read and React reviews retain their findings and source closures;
+hosted and actual rendered verification remain outstanding. This checkpoint does not claim the later
+linked-case date synchronization or final accepted Movement integration is complete.
+
+Under the recorded owner approval for same-purpose technical bindings, only the 29 already-approved
+records' sourceDigest changes from
+`e5837992670b1e294b6d41bae623ec1d912e717a45e9b57250bb57b5e1972939` to
+`19b66c2622f1bc2aca20958057e73cfaaa29871181601a49103520f4cc987098` (1644 source files).
+Human reviewer identities, dates, evidence and pending statuses are unchanged. The derived agent manifest
+is regenerated last. This is development source preparation, not a release witness or installation.
+
+### Handoff correction recovery source binding — 17 November 2026
+
+The correction batch now includes named same-transaction synchronization of admitted last-working-day
+changes through the canonical Offboarding store and date calculator. Native purpose proofs preserve
+identity, company, reverse-link, CAS, history and immutable fields, with no new financial read grant.
+Private communication metadata is filtered before exposure, and narrow compiler/SQL parsing fixes
+preserve the reviewed authorization. These are deterministic human operations; no provider payload,
+disclosure purpose, model tool or transport is broadened. Original failed development evidence is retained.
+
+Under the existing explicit owner approval for same-purpose technical binding, the same 29 approved
+records carry only sourceDigest from
+`19b66c2622f1bc2aca20958057e73cfaaa29871181601a49103520f4cc987098` to
+`edd791f7f899755cc18f273331127108b0fa7c0fb9e73de53990de1c847c0aab` (1644 source files).
+Human metadata and pending statuses remain unchanged. The agent manifest is regenerated last.
+Hosted recovery, the actual 56-state renderer, accepted Movement integration and the release gate
+remain required. This source record grants no release witness, production or package publication.
+
+### Failed-area recovery admission binding — 17 November 2026
+
+The completed development recovery exposed a required-upload SQL alias collision and a managed
+clearance hook reading a row-secured journey without its narrow custody proof. The repairs preserve
+required uploads, verified native reverse links, tenant/company and actor admission; clearance now
+rolls back if its expected proposal cannot be created. No permission, provider payload, model tool,
+disclosure purpose or email transport is broadened. Fixture corrections use real Person mappings
+and reachable synthetic recipient identities while retaining reserved-field and native receipt attacks.
+
+Under the recorded explicit owner approval for same-purpose technical bindings, only the same 29
+approved records' sourceDigest changes from
+`edd791f7f899755cc18f273331127108b0fa7c0fb9e73de53990de1c847c0aab` to
+`1003ab45531e061b5217c8227b2f09e311bdce603428a26e9f8b2f315c697fc1` (1644 source files).
+Human metadata and pending statuses remain unchanged; the agent manifest is regenerated last.
+Original failures remain recorded. Hosted failed/affected recovery, rendered UI/PDF verification,
+accepted Movement integration and authenticated final release evidence remain required. This is
+source preparation and grants no release or production/package publication authority.
+
+### Literal UI development checkpoint — 17 November 2026
+
+This checkpoint adds labelled per-case inline editing through the existing Contract field atom and pure
+converters, atomic Review edits and an authoritative final-sign action label. Native signing remains the
+adjudicator. Offboarding waiting names use a separate human presentation loader; the shared posting
+DTO and model tool payloads remain unchanged. Frozen-currency formatting performs no financial
+calculation. Native waiting eligibility is still an open source-review item and is not a release claim.
+
+Under the recorded explicit owner approval for same-purpose technical binding, only the same 29
+approved sourceDigest values change from
+`1003ab45531e061b5217c8227b2f09e311bdce603428a26e9f8b2f315c697fc1` to
+`e4e9247c94224549b19a5d278f8932af8b83972c795545a1fa80bdfa40902b73` (1644 source files).
+Human metadata and pending records are unchanged. The agent manifest is regenerated last. This is
+a frozen development checkpoint for independent affected UI checks; native eligibility, compiler,
+actual57-state UI/PDF verification, accepted upstream integration and authenticated release checks
+remain outstanding. No provider disclosure purpose, model tool or transport authority is broadened.
+
+### Native waiting eligibility source closure — 17 November 2026
+
+The human-only waiting-member reader now derives current Workforce eligibility set-wise from canonical
+role, scope, capability, override and effective-group sources. Tests pin the effective Access owner
+bodies/attributes and compare real admitted principals; this reader grants no authority and native
+approval remains the adjudicator. Unpublished employment sources yield no candidate names even if
+the current reader owns a temporary import context. Private model-facing posting DTOs stay unchanged.
+
+This repair changes only unapplied native SQL and test sources. The provider source digest remains
+`e4e9247c94224549b19a5d278f8932af8b83972c795545a1fa80bdfa40902b73`; approved record metadata,
+pending records, purposes and transport remain untouched. The derived agent manifest is checked or
+regenerated last. Source review closure is not hosted PASS, actual UI/PDF verification or release
+authority. Exact accepted upstream integration and migration reallocation remain required after
+Recruitment’s accepted ledger.
+
+### Tenant publication recovery checkpoint — 17 November 2026
+
+The completed native owner-body check caught a later canonical5071 publication rule: waiting
+eligibility must read the tenant-effective capability catalogue. The derived human-only reader now
+reuses that inlined owner once per tenant, with actual-principal before/after publication regression
+coverage and current effective owner pins. No grant, provider payload, model tool or transport changes.
+Renderer admission test fixtures now describe the expanded12-actor/57-capture/six-mobile contract;
+validator, production-build, role, private-letter and actual-PDF guards stay unchanged. Test-compiler
+adapter corrections retain runtime message membership and actual localized accessible-name checks.
+
+These changes affect unapplied native SQL and tests only. The provider digest remains
+`e4e9247c94224549b19a5d278f8932af8b83972c795545a1fa80bdfa40902b73`; no approved record or
+pending status is changed. The agent manifest is checked/regenerated last. Original985 failed
+evidence and its unaffected passing scopes remain bound to that source. This checkpoint still
+requires hosted recovery, actual UI/PDF completion, accepted upstream integration and the final
+authenticated release process. It grants no staging admission or production/package authority.
+
+### Rendered routing-context correction — 17 November 2026
+
+The first current built screens exposed stale one-person wording for Offboarding team letter steps
+and an unused HR-signature fallback selector beside an explicit routing. Off-Letter-only context
+copy now describes the initial assignee rule and nonlocking eligible membership; the edited
+version’s routing hides its unused fallback control without mutating the legacy value. Other
+modules keep their existing labels and behavior. No engine, proposal, permission or provider
+payload change. A browser-only geometry collector separately corrects native top-layer clipping
+measurement, retaining thresholds and five real-browser qualification cases distinct from app captures.
+
+Under the existing explicit same-purpose binding approval, only the same29 approved sourceDigest
+values change from `e4e9247c94224549b19a5d278f8932af8b83972c795545a1fa80bdfa40902b73` to
+`f82fab1a3377ebe48b0cc958e0e5ee174d6697e83ae18a563a74de547ffa1d9f` (1644 source files).
+Human metadata and pending statuses stay unchanged; the derived agent manifest is regenerated last.
+Current4a21 whole compiler and production build passed, but only six actual views were captured
+before the corrected measurement failure. No PDF or complete visual PASS is claimed. Hosted
+affected checks, all57 actual states, final visual review, accepted upstream integration, migration
+reallocation and authenticated release verification remain required.
+
+### Shared routing help clarification — 17 November 2026
+
+Actual rendered Routing rules help still described every signing step as yielding one person.
+Offboarding letters retain an initial assignee while every frozen eligible member can act.
+The six locale values now explain this exception and preserve other modules’ single-holder
+and To/CC recipient semantics. No signing engine, authority, provider payload or transport changed.
+
+Under the existing explicit same-purpose binding approval, only the same 29 approved
+sourceDigest values change from `f82fab1a3377ebe48b0cc958e0e5ee174d6697e83ae18a563a74de547ffa1d9f`
+to `cc818adf0cb26e2702f6707fe9c267f09e37130edd4dd65070dba969e57389aa` (1644 files).
+Human metadata and pending statuses remain unchanged; the derived agent manifest is regenerated last.
+Controller-only locator corrections preserve exact selected values, saved routing read-back,
+approver names/counts, privacy checks and all 57 required captures. Prior source-specific compiler
+and selected-test evidence is retained; the actual renderer still requires completion. No complete
+visual, PDF, staging or release PASS is claimed.
+
 
 ### Comprehensive Movement staging source binding (17 November 2026)
 
@@ -878,6 +1077,34 @@ registry byte-for-byte. No contract gains a provider transform, outbound field, 
 `103074e0809a534418f710f018221416559b000e9c962d6523e991ace764d182` over 496 files. No gate result, staging acceptance or
 production authority is granted by this binding.
 
+
+### Resignation accepted-baseline composition — 17 November 2026
+
+The Resignation coordinator composed the frozen resignation source `9d8a9a760` with
+accepted Movement and Recruitment source `fc092e1adbe5f8f1cbfe730a17d1317f08625a7c`
+through the separately recorded migration reservation `154be7f299`. Navigation, scoped
+task totals, company-history guards and independent mail delivery retain both native owners.
+The fixed deployment verifier step runs after migrations and before activation; it does
+not rotate keys, grant app access or add a provider path. The Review evidence controller
+now bounds its transport observations without weakening native receipt assertions.
+
+Under the recorded owner approval for these coordinated same-purpose staging bindings,
+only the same 29 approved sourceDigest literals carry forward to
+`b87b678e58667959a981ff67c85b7a37134b6959a87881cd68ebee7bc9349c22` over 1714 covered files.
+A static comparison of all 31 records confirms identical contract IDs, statuses, reviewers,
+evidence references and original review timestamps across both parents. Pending records
+stay pending, including the unapproved Recruitment matching purpose. No provider transform,
+outbound field, purpose or transport is authorized by this technical rebinding.
+The derived agent manifest is regenerated last: 496 files,
+`dd44723fe7ca47e5edad35b50947b984753e055199ea16977ed15f0b74d53c5e`.
+
+The owner authorized staging after successful verification and coordinator admission.
+The newer queue direction puts the staging-investigation hotfix first, Resignation after
+its accepted handback, Audit last and Contract on hold. This composition has no staging
+lease or installation result. Source-specific earlier compiler, selected-check and partial
+rendered/PDF evidence remain historical evidence; composed-candidate checks and complete
+rendered acceptance are still required. No production deployment or package publication
+is authorized.
 
 ### Movement correction-history hotfix binding (17 November 2026)
 
@@ -1012,3 +1239,97 @@ record under the same scoped owner decision; no evaluated/promoted agent identit
 
 The full release gate, authenticated evidence, restricted-owner migration rehearsal, fresh ordered installation ledgers,
 arrival/rendered acceptance and guarded lease remain required. This authorizes no production installation or package publication.
+
+### Resignation composition with accepted staging hotfix — 17 November 2026
+
+The hotfix owner handed back accepted staging source
+`12098e9c56c95bf2d9441ad74e81ae04f2d2980a`, build `gC3FFxt6m-WhRuTTJNCm9`,
+with a closed lease. Fresh main/alpha fetches agree at that source. A normal merge
+retains its Personnel correction/history repairs alongside Resignation; there is no
+migration delta in the accepted hotfix. The canonical employment writer and existing
+provider payloads, transforms, purposes and transports are unchanged.
+
+Under the recorded same-purpose staging rebinding approval, the same **28 active**
+approval digests carry to
+`062f69ffc55c585eea1246779ebd8d50bd3bed7076d3d7c67ec2ed41a5b3b74a`
+over 1714 covered files. The initial `3a12835c5` branch checkpoint incorrectly carried
+one retired record with these active bindings. Independent coordinator review identified
+that error. The corrected registry restores the entire historical
+`authored_attendance_formula_v1` record to its accepted `12098` identity, including
+fingerprint `ffd2e1fec9fd42740bdd1cda8b4859237c78327bdca9471b17c9406b44eb58ce`,
+original 8 November review timestamp and Board-six evidence. Its historical status stays
+approved; it gains no current-source admission or reactivation. Both pending records
+remain byte-identical. Reversing only the 28 active digest substitutions reproduces the
+accepted registry **byte-for-byte**. A regression pins the historical record and requires
+its current-source disclosure admission to fail.
+
+The agent manifest is regenerated last: 496 files,
+`7bb7e6078c22b01680efa0e140d215f93194df169293432930555f88bba3e862`.
+The provider digest is unchanged by this historical-record correction. All prior failed
+and successful runs retain their original source identities; none is relabelled.
+
+The owner's newer release order puts the approved Board items first. Resignation must
+integrate their actual accepted source and ordered ledger, reconcile its seven unapplied
+migration positions above that watermark, and complete its remaining rendered and final
+release checks. This preparation claims no lease or installation. Audit remains last;
+Contract remains held. No production deployment or package publication is authorized.
+
+### Resignation approver repair guidance source binding — 17 November 2026
+
+The coordinator applies the owner's direct instruction in the release coordination chat,
+“I approve all the AI binding and migration ordering,” to isolated frozen Resignation source
+`9d567849d67113a1f6523bd3b19085b926115637`. The Resignation owner requested this exact technical
+carry-forward. Board remains the first release; this binding grants no staging arrival or acceptance.
+
+The reviewed covered-source repair since `4165f574b` changes only the known Offboarding posting
+approver diagnostic into fixed repair guidance. It requires both the exact native SQL state 22023
+and the sanctioned diagnostic on the same nested error, then maps only the fixed domain error into
+Resignation's safe error contract. The message asks People Ops to choose a populated approver group
+in Offboarding Personnel postings settings and retry. No permission, financial calculation, SQL,
+provider purpose, outbound payload, transport or execution authority changes in this repair.
+Native rollback, retry, privacy and rendered behavior checks remain independently required.
+
+Only the 28 continuing approved sourceDigest literals move from
+`062f69ffc55c585eea1246779ebd8d50bd3bed7076d3d7c67ec2ed41a5b3b74a` to
+`551e2a070a015a594f7f48af8f12bce7acc0fdb309163b4419b808b85c121c2b` over 1,714 files.
+Reversing these 28 substitutions reproduces the frozen approval registry byte for byte. Both
+pending records and the entire retired Attendance Formula historical row retain their original
+status, digest, reviewer, evidence and date. Existing agent evaluations/promotions retain their
+original source identities; no new provider purpose is approved.
+
+The module-agent manifest was regenerated last and binds 496 files to
+`eda2ab508f301dcc659e239cb120f648f36f06217f5d2d7a00e129426bc67edf`.
+Both static manifest checks and registry reversal pass; no application test, compiler, provider
+call, full gate, shared-ref advancement, lease, deployment or acceptance is implied by this
+isolated checkpoint. Later Board integration and forward allocation of the seven unapplied
+Resignation migrations must use the actual accepted staging source and complete ordered ledger.
+Further covered-source repairs require a fresh exact-source binding review.
+
+### Resignation finite visual repair binding — 17 November 2026
+
+Under the owner's direct release-coordination instruction, “I approve all the AI binding and
+migration ordering,” the coordinator carries forward the existing approvals for exact source
+`5731c9e06605e0b24a949a29c0e3ce789078dc1b`, at the Resignation owner's request. This is the finite
+visual repair of the independently reviewed `f290eee378e07d7d0c16dbd0d180c677acd5f508` candidate.
+
+The eleven-file repair stacks Current and Proposed fields on phones while keeping one set of
+controls and stable command/state identities, improves preview table spacing, and presents truthful
+translated declined, expired and withdrawn retention-offer notices. Existing backend capabilities
+still govern disclosure and actions. No service, SQL, permission, financial rule, provider payload,
+purpose, serializer or transport is changed. The only provider-closure files changed by this repair
+are the six existing locale JSON files. Actual rendered and affected behavior checks remain required.
+
+Only 28 continuing approved sourceDigest literals move from
+`551e2a070a015a594f7f48af8f12bce7acc0fdb309163b4419b808b85c121c2b` to
+`4155d5d8c9e18efbf9c81185a2f79caa6762142e1ebc3b519b17bf9767596858` across 1,714 files.
+Reversing those substitutions reproduces the frozen registry byte for byte, including both pending
+records, the entire retired Attendance Formula historical row, original review metadata and dates.
+Existing evaluations and promotions retain their original source identities; no new purpose is approved.
+
+The module-agent manifest is regenerated last: 496 files,
+`f23fe78faf395407c24482a6d32fd9447c6e713427494721ed44e6fca95db8c7`.
+Static manifest and reversal checks pass. This isolated checkpoint establishes no compiler, native,
+rendered or release-gate pass, shared-ref advancement, lease, staging deployment/acceptance, package
+publication or production authority. Board stays first. Final Resignation integration and seven
+forward migration positions must follow the actual accepted Board source and ordered staging ledger;
+any subsequent covered-source change requires a fresh exact-source review.

@@ -4,6 +4,28 @@
 
 Open [Lifecycle configuration](/admin/lifecycle). Review company staff assignments, checklist definitions, approval levels, custom fields and the equipment catalogue. Deactivate obsolete steps through configuration so existing checklist history remains understandable.
 
+## Shared resignation configuration
+
+New managed resignations require Lifecycle to be enabled for the employee's company. Configuration access, case decisions and Personnel posting approval are separate permissions.
+
+Use the shared HR Automation configuration area:
+
+- [Workflows](/automation/workflows?module=off): select Offboarding and review its decision, letter and notification workflows. Installed starter workflows are Paused; configure real recipients and explicitly make the relevant workflows Live after review.
+- [Templates](/automation/templates?module=off): maintain document and email templates. Publish the document version to use and check its routing. A retention letter must end with the employee's Sign step alone.
+- [Assignment groups and Routing rules](/automation/groups): maintain responsible people and matching rules. These groups are shared, so changes can affect other lifecycle work.
+
+Open [Onboarding & offboarding settings](/lifecycle/v9?view=settings). Under Personnel postings, choose a populated approver group. Under Retention offers, review “No second retention offer within (months)”: the default is 12 months from the previous offer's acceptance; enter 1–60 months or leave blank for no limit. This restricts another retention offer, not the employee's ability to resign again.
+
+## Manage resignation exceptions and outcomes
+
+If no decision can be assigned, the submission remains recorded and shows a configuration repair flag. Correct the workflow or assignment group, then use **Run workflows again** when offered. Do not ask the employee to submit a duplicate. A failed existing workflow may instead offer **Retry failed workflows**.
+
+Acceptance follows the configured letter and linked offboarding workflow. For managed resignations, employment termination is recorded only after clearance is completed and its Termination posting is approved in [Offboarding Personnel postings](/lifecycle/offboarding/postings). Accepting the resignation or releasing its letter alone does not terminate employment. Accepted retention terms also require their configured posting approvals before Personnel Management records the effective-dated changes.
+
+Choosing that a replacement is needed creates an assigned recruitment follow-up. Its owner records the recruitment request URL; the choice does not automatically create a vacancy.
+
+Existing in-flight legacy resignation requests remain on their existing route. Do not recreate them to migrate them into the managed journey.
+
 ## Onboard a joiner
 
 1. Open [Onboarding](/lifecycle/onboarding) and create a case or use its import workflow.

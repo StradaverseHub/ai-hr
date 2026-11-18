@@ -7,6 +7,9 @@ vi.mock('../lib/session',()=>({getSession:vi.fn()}));
 vi.mock('../core/entitlements',()=>({isModuleEnabled:vi.fn()}));
 import {Sidebar} from '../components/sidebar';
 afterEach(cleanup);
+// The global Configuration module and Probation's domain-specific Configuration submenu share a visible name.
+const sharedConfigurationTriggers=()=>screen.queryAllByRole('button',{name:messages.nav.moduleHrAutomation}).filter(button=>!button.closest('nav[aria-label="'+messages.nav.probationConfirmation+'"]'));
+
 it('admits the server-authorized company-scoped module without an HR role or a global Lifecycle purchase',()=>{
  render(<NextIntlClientProvider locale="en" messages={messages}><Sidebar isAdmin={false} probationAccess={{page:true,configure:false}} contractStaffAccess={{page:true,configure:false}} enabledModules={[]} defaultCollapsed={false}/></NextIntlClientProvider>);
  fireEvent.click(screen.getByRole('button',{name:messages.nav.probationConfirmation}));
@@ -34,7 +37,7 @@ it('offers the shared HR Automation builders to a Probation configurer, and Pers
  expect(screen.getByRole('link',{name:messages.nav.probationPostings})).toHaveAttribute('href','/lifecycle/probation/postings');
  expect(screen.getByRole('link',{name:messages.nav.probationSettings})).toHaveAttribute('href','/lifecycle/probation/settings');
  expect(screen.queryByRole('link',{name:messages.nav.probationWorkflows})).not.toBeInTheDocument();expect(screen.queryByRole('link',{name:messages.nav.probationTemplates})).not.toBeInTheDocument();
- fireEvent.click(screen.getByRole('button',{name:messages.nav.moduleHrAutomation}));
+ expect(sharedConfigurationTriggers()).toHaveLength(1);fireEvent.click(sharedConfigurationTriggers()[0]);
  expect(screen.getByRole('link',{name:messages.nav.automationWorkflows})).toHaveAttribute('href','/automation/workflows');
  expect(screen.getByRole('link',{name:messages.nav.automationTemplates})).toHaveAttribute('href','/automation/templates');
  expect(screen.getByRole('link',{name:messages.nav.automationGroups})).toHaveAttribute('href','/automation/groups');
@@ -42,13 +45,13 @@ it('offers the shared HR Automation builders to a Probation configurer, and Pers
 });
 it('keeps the shared builders hidden from someone who configures no module',()=>{
  render(<NextIntlClientProvider locale="en" messages={messages}><Sidebar isAdmin={true} probationAccess={{page:true,configure:false,intake:true}} enabledModules={['lifecycle']} defaultCollapsed={false}/></NextIntlClientProvider>);
- expect(screen.queryByRole('button',{name:messages.nav.moduleHrAutomation})).not.toBeInTheDocument();
+ expect(sharedConfigurationTriggers()).toHaveLength(0);
  expect(screen.queryByRole('link',{name:messages.nav.automationWorkflows})).not.toBeInTheDocument();
 });
 it('groups Probation settings, Form editor and Intake under a Configuration sub-menu beside the tracker and postings (handoff B1)',()=>{
  render(<NextIntlClientProvider locale="en" messages={messages}><Sidebar isAdmin={false} probationAccess={{page:true,configure:true,intake:true}} enabledModules={[]} defaultCollapsed={false}/></NextIntlClientProvider>);
  fireEvent.click(screen.getByRole('button',{name:messages.nav.probationConfirmation}));
- const configuration=screen.getAllByRole('button',{name:messages.nav.sectionConfiguration});expect(configuration).toHaveLength(1);
+ const configuration=within(screen.getByRole('navigation',{name:messages.nav.probationConfirmation})).getAllByRole('button',{name:messages.nav.sectionConfiguration});expect(configuration).toHaveLength(1);
  expect(configuration[0]).toHaveAttribute('aria-expanded','true');
  const submenu=document.getElementById(configuration[0].getAttribute('aria-controls')!)!;expect(submenu).not.toBeNull();
  expect(within(submenu).getAllByRole('link').map(link=>link.getAttribute('href'))).toEqual(['/lifecycle/probation/settings','/lifecycle/probation/forms','/lifecycle/probation/intake']);

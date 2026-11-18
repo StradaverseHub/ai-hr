@@ -29,3 +29,33 @@ export {v9WorkflowNavigationAllowed} from './v9/navigation';
 export async function searchOnboardingRecipientUsers(...args: Parameters<typeof import('./v9/recipient-directory').searchOnboardingRecipientUsers>) {
   return (await import('./v9/recipient-directory')).searchOnboardingRecipientUsers(...args);
 }
+export * from './resignation/service';
+
+/** Managed resignations hand off only native source facts within the caller's admitted transaction. */
+export async function createResignationOffboardingTx(tx:import('../../db/client').Tx,ctx:import('../../db/client').SessionContext,caseId:string):Promise<string>{
+ const {sql}=await import('drizzle-orm');
+ // A failed constructor must roll back its writes and local admission before the
+ // workflow records a recoverable domain failure in the surrounding transaction.
+ return tx.transaction(async handoffTx=>{
+  await handoffTx.execute(sql`select app.resignation_offboarding_admit(${caseId}::uuid)`);
+  const [row]=await handoffTx.execute<{intent:{employmentId:string;type:import('../../lib/lifecycle-v9-model').ExitType;noticeDate:string;lastDay:string;offboardingCaseId:string|null}}>(sql`select app.resignation_offboarding_intent(${caseId}::uuid) as intent`);
+  let result=row.intent.offboardingCaseId;
+  if(!result){
+   const {v9CreateOffboardingTx}=await import('./v9/service');
+   result=await v9CreateOffboardingTx(handoffTx,ctx,{employmentId:row.intent.employmentId,type:row.intent.type,noticeDate:row.intent.noticeDate,lastDay:row.intent.lastDay},{kind:'resignation',caseId});
+  }
+  await handoffTx.execute(sql`select set_config('app.resignation_handoff','',true)`);
+  return result;
+ });
+}
+
+/** Lifecycle owns resignation posting composition; Personnel remains the movement writer. */
+export {offboardingPostingAccess,offboardingPostingChoices,rejectOffboardingPosting} from '../../core/resignation-clearance';
+/** Admit only the deterministic email payload being queued, never a caller-selected runtime claim. */
+export async function prepareResignationEmailTx(tx:import('../../db/client').Tx,ctx:import('../../db/client').SessionContext,input:{caseId:string;key:string;to:readonly string[];cc:readonly string[];subject:string;body:string;content?:import('../../lib/automation-email-ipc').AutomationEmailContent}):Promise<void>{
+ const {prepareResignationProofTx}=await import('../../core/resignation-proof');
+ await prepareResignationProofTx(tx,ctx,{operation:'email',caseId:input.caseId,args:{key:input.key,to:[...input.to],cc:[...input.cc],subject:input.subject,body:input.body,content:input.content??null}});
+}
+
+/** One-purpose date synchronization; ordinary Offboarding authority is never granted to the letter owner. */
+export async function synchronizeResignationOffboardingLastDayTx(tx:import('../../db/client').Tx,ctx:import('../../db/client').SessionContext,input:{journeyId:string;oldLastDay:string;newLastDay:string}):Promise<void>{const{v9SynchronizeResignationLastDayTx}=await import('./v9/service');await v9SynchronizeResignationLastDayTx(tx,ctx,input);}

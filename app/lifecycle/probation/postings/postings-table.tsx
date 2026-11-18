@@ -10,7 +10,7 @@ import {movementPageHref} from '@/lib/personnel-movement-navigation';
 export type PostingTableRow = {
   id: string; label: string; employmentId: string; employeeName: string | null; employeeCode: string | null; source: PersonnelPostingSource;
   eventType: PersonnelPostingEvent; proposed: PersonnelPostingValues; edited: PersonnelPostingValues | null; current: PersonnelPostingValues;
-  displayStatus: 'pending' | 'edited' | 'approved'; editedBy: { name: string | null } | null; editedAt: string | null;
+  displayStatus: 'pending' | 'edited' | 'approved' | 'rejected'; editedBy: { name: string | null } | null; editedAt: string | null;
   approvedBy: { name: string | null } | null; approvedAt: string | null; approverGroupName: string | null;
   createdAt: string; revision: number; canApprove: boolean; canEdit: boolean;
 };

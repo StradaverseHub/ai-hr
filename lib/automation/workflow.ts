@@ -6,7 +6,7 @@
  * catalogue (`./catalogue`); step-specific settings (`params`) are checked by the module that executes them. Pure and
  * dependency-free: storage, authorization and execution stay with their owners.
  */
-import {automationConditionProblems,evaluateAutomationConditions,type AutomationCondition,type AutomationConditionResult,type AutomationFactValue} from './conditions';
+import {automationConditionProblems,evaluateAutomationConditions,type AutomationCondition,type AutomationConditionResult,type AutomationFactValue,type AutomationFactAliases} from './conditions';
 import {conditionFieldsForTrigger,mergeFieldsForTrigger,type AutomationModule,type AutomationModuleCatalogue} from './catalogue';
 
 export type AutomationRecipient =
@@ -131,6 +131,8 @@ export type AutomationDryRun = {
 export type AutomationDryRunContext = {
   /** Case facts for the test case, already narrowed to what the viewer may see. */
   read: (field: string) => AutomationFactValue;
+  /** Module-owned alternate fact identities; absent keeps existing scalar behavior. */
+  aliases?:AutomationFactAliases;
   /** The anchor date a dated trigger counts from (start date, review due date…), or null when the case has none. */
   anchor: (anchor: string) => string | null;
   /** The skip-when option that applies to this case right now, or null when none applies. */
@@ -148,13 +150,13 @@ export function dryRunAutomationWorkflow(workflow: AutomationWorkflow, catalogue
     const anchor = context.anchor(trigger.dated.anchor);
     if (anchor) runDate = addAutomationDays(anchor, trigger.dated.direction === 'after' ? workflow.trigger.days : -workflow.trigger.days, workflow.trigger.workdays);
   }
-  const top = evaluateAutomationConditions(workflow.conditions, context.read);
+  const top = evaluateAutomationConditions(workflow.conditions, context.read,context.aliases);
   const skip = context.skipReason(workflow.skipWhen);
   const reason = !trigger ? 'No trigger is chosen.' : trigger.dated && !runDate ? 'This case has no date to count from.' : skip ? `Skipped: ${skip}` : !top.ok ? 'The conditions do not match this case.' : workflow.status !== 'live' ? 'It would match, but the workflow is not live.' : 'It would run for this case.';
   const wouldRun = !!trigger && !(trigger.dated && !runDate) && !skip && top.ok && workflow.status === 'live';
   const names = (list: readonly AutomationRecipient[]) => { const out: string[] = [], missing: string[] = []; for (const r of list) { const x = context.resolve(r); out.push(...x.names); if (x.missing) missing.push(x.missing); } return { out: [...new Set(out)], missing }; };
   const steps = workflow.steps.map((step, index) => {
-    const own = evaluateAutomationConditions(step.conditions, context.read), to = names(step.to), cc = names(step.cc);
+    const own = evaluateAutomationConditions(step.conditions, context.read,context.aliases), to = names(step.to), cc = names(step.cc);
     return { index: index + 1, id: step.id, type: step.type, runs: own.ok, conditions: own.results, to: to.out, cc: cc.out, missing: [...to.missing, ...cc.missing] };
   });
   return { wouldRun, reason, runDate, repeats, conditions: top.results, steps, sends: false };

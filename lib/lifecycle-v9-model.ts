@@ -1,3 +1,5 @@
+import type {DocumentRouting} from './document-signing-routing';
+import type {AutomationRecipient} from './automation/workflow';
 import { bulkAssignmentProblem, RETURN_BULK_LABELS } from './lifecycle-bulk-assignment';
 import { personnelMergeLabels } from '@/lib/lifecycle-v9-personnel-merge-fields';
 import type { Note as LifecycleNote } from './onboarding-model';
@@ -15,8 +17,9 @@ import { roleLabel, toRoles, workEmailLabel, personalEmailLabel, maskEmail, reci
 import { validV9SignatureValue } from './lifecycle-v9-signature';
 import { isCalendarDate } from './calendar-date';
 import type { SettlementPolicy, SettlementInput } from './lifecycle-v9-calculator';
+import type {ExitType} from './lifecycle-v9-exit-types';
 export type Module = 'onb' | 'off';
-export type ExitType = 'Resignation' | 'Termination' | 'Contract end' | 'Retirement' | 'Non-confirmation';
+export type {ExitType} from './lifecycle-v9-exit-types';
 export type CaseState = 'pending' | 'submitted' | 'cleared' | 'cancelled';
 export type RuleField = 'businessGroup' | 'company' | 'department' | 'grade' | 'employmentType' | 'title' | 'caseType';
 export type Rules = Partial<Record<RuleField, string[]>>;
@@ -68,10 +71,10 @@ export type Field = {
   when: { field: string; value: string } | null;
 };
 export type Block = { id: string; type: 'letterhead' | 'heading' | 'subheading' | 'text' | 'fields' | 'field' | 'table' | 'signature'; text: string; section: string; fieldId?: string; columns?: string; rows?: string; role?: string; label?: string };
-export type TemplateVersion = { version: number; state: 'draft' | 'published'; at: string; by: string; blocks: Block[]; fields: Field[] };
+export type TemplateVersion = { version: number; state: 'draft' | 'published'; at: string; by: string; blocks: Block[]; fields: Field[]; routing?: DocumentRouting };
 export type Template = {
   id: string; name: string; module: Module; type: 'Form' | 'Letter' | 'Acknowledgement' | 'Attachment';
-  rules: Rules; hrStep: 'none' | 'before' | 'after'; employeeAck: boolean; retired: boolean;
+  rules: Rules; offboardingHrSignature?:'pbp'|'beforeEmployee'|'namedHr'; hrStep: 'none' | 'before' | 'after'; employeeAck: boolean; retired: boolean;
   versions: TemplateVersion[]; currentVersion?: number; note?: string;
 };
 export type ConfigSaveReceipt = { revision: number; groupsRevision: number; versionStamps?: { templateId: string; version: number; state: TemplateVersion['state']; at: string; by: string }[] };
@@ -101,7 +104,9 @@ export type EmailTemplate = {
   recipientReview?: true;
   /** Board 6bdda222: the structured rich body. Without it the legacy text body sends exactly as before. */
   bodyDoc?: EmailBodyDoc;
-  slots: { id: string; label: string; required: boolean }[]; files?: EmailAsset[]; images?: EmailAsset[];
+  /** Offboarding-only named routing CC; existing Role CC is preserved. */
+  routingCc?: AutomationRecipient[];
+  slots: { id: string; label: string; required: boolean; by?: AutomationRecipient }[]; files?: EmailAsset[]; images?: EmailAsset[];
 };
 export type Trigger = {
   event: 'submitted' | 'hrSigned' | 'docSigned' | 'taskDone' | 'fileUploaded' | 'manual' | 'beforeJoin' | 'afterJoin' | 'beforeLWD' | 'afterLWD'; days: number;
@@ -202,6 +207,8 @@ export type Config = {
   caseForms?: Partial<Record<Module, CaseField[]>>;
   emails: EmailTemplate[]; workflows: Workflow[]; groups: Group[]; peopleOpsGroup: string | null;
   settlementPolicy?: SettlementPolicy;
+  /** Omitted fields preserve existing settings; null reofferMonths means no retention time limit. */
+  offboarding?: { postingApproverGroupId?: string | null; reofferMonths?: number | null };
   signatoryTitles?: Record<string,string>;
   companies?: { companyId: string; signatoryUserId: string | null; signatoryTitle: string; allowedSignatoryUserIds?: string[]; letterhead?: { registrationNo?: string; address?: string; color?: string } }[];
 };
@@ -222,6 +229,9 @@ export type Environment = {
   actorSignatoryTitle?: string;
   /** Production workflows wait for the durable transport acknowledgement. */
   requireDeliveryAck?: boolean;
+  /** Set only by the service's verified journey/clearance link; that shared runner owns resignation letters and mail. */
+  managedResignation?: boolean;
+  resignationOwnedTemplateIds?: readonly string[];
   /** A real Native onboarding contact; this is never an app-user identity or login grant. */
   onboardingContact?: { email: string; sourceRevision: string };
   /** d1e26f81 — the Leaver calculator's effective last working day, when the service could compute it. */
@@ -274,7 +284,7 @@ export function assign(config: Config, groupId: string | null, due: string, env:
     .sort((a, b) => a.load - b.load || (tieBreak === 'recent' ? env.lastAssigned(a.id, group.id) - env.lastAssigned(b.id, group.id) : 0) || members.indexOf(a.id) - members.indexOf(b.id));
   return ranked.length ? { userId: ranked[0].id, reason: null } : { userId: null, reason: `Everyone available in ${group.name} is at their limit of ${group.limit} open tasks.` };
 }
-export function appendLog(c: Case, env: Environment, action: string, detail: string, assignment?: { userId: string; groupId: string }): void {
+export function appendLog(c: Case, env: Pick<Environment,'actor'|'now'|'nextId'>, action: string, detail: string, assignment?: { userId: string; groupId: string }): void {
   c.log.push({ id: env.nextId(), at: env.now, actor: { ...env.actor }, action, detail, ...assignment });
 }
 export function submit(c: Case, config: Config, env: Environment): void {
@@ -284,6 +294,8 @@ export function submit(c: Case, config: Config, env: Environment): void {
   if (c.module === 'off' && !(['Resignation', 'Termination', 'Contract end', 'Retirement', 'Non-confirmation'] as string[]).includes(c.facts.caseType)) throw new V9Error('Choose the offboarding case type.');
   if (c.module === 'off') { const missing = missingV9CaseFields(resolveV9CaseFields('off',config.caseForms?.off), c.facts, offCaseFormValues(c), true); if (missing.length) throw new V9Error('Complete: '+missing.map(field=>field.label).join(', ')); }
   const selected = matchChecklist(config, c), extra: Record<string, number> = {};
+  const conflicting=env.managedResignation?selected.checklist?.tasks.find(task=>task.documentTemplate&&env.resignationOwnedTemplateIds?.includes(task.documentTemplate)):null;
+  if(conflicting)throw new V9Error(`Review checklist task “${conflicting.name}”: this document is owned by the resignation journey. HR must update the checklist requirement before starting clearance.`,'conflict');
   c.checklistId = selected.checklist?.id ?? null; c.checklistName = selected.checklist?.name ?? 'No checklist';
   c.tasks = (selected.checklist?.tasks ?? []).map(def => {
     const dueOn = taskDate(c.module, anchor, def.due), opensOn = def.opens === null ? null : taskDate(c.module, anchor, def.opens);
@@ -304,6 +316,21 @@ export function isResolved(status: Task['status'] | Item['status']): boolean { r
 export function defaultReturnDay(kind: Item['kind']): number { return kind === 'device' ? -1 : 0; }
 /** Day 0 is the anchor (the effective last working day); -1 the day before. */
 export function returnDue(anchor: string, dueDay: number): string { return taskDate('off', anchor, dueDay); }
+
+/** Reuse the settlement-options date owner: only unresolved relative rows follow an effective anchor. */
+export function reanchorOpenReturnDates(c:Case,anchor:string):number{let moved=0;for(const item of c.items)if(returnOpen(item)&&typeof item.dueDay==='number'){const next=returnDue(anchor,item.dueDay);if(next!==item.dueOn){item.dueOn=next;moved++;}}return moved;}
+/** The purpose-bound service verifies the reverse source link and exact owner correction before this projection. */
+export function synchronizeResignationLastDay(c:Case,oldDay:string,newDay:string,effectiveDay:string,env:Pick<Environment,'actor'|'now'|'nextId'>):void{
+ if(c.module!=='off'||!(c as Case&{resignationSourceCaseId?:string}).resignationSourceCaseId||!['pending','submitted'].includes(c.state))throw new V9Error('Only an open linked resignation clearance case can follow this correction.','conflict');
+ if(c.facts.lastDay!==oldDay||!validDate(newDay)||!validDate(effectiveDay)||newDay<c.facts.noticeDate)throw new V9Error('The linked case date changed. Refresh before correcting it.','conflict');
+ if(oldDay===newDay)return;
+ const oldRevoke=c.revokeDate;c.facts.lastDay=newDay;
+ if((c.revokeMode??'lastday')==='lastday')c.revokeDate=newDay;
+ for(const task of c.tasks)if(!isResolved(task.status)){task.dueOn=taskDate('off',newDay,task.due);task.opensOn=task.opens===null?null:taskDate('off',newDay,task.opens);}
+ if(c.state==='submitted'){c.returnAnchor=effectiveDay;reanchorOpenReturnDates(c,effectiveDay);for(const item of c.items)if(returnOpen(item)&&item.method===undefined&&item.dueDay===undefined&&item.dueOn===oldRevoke)item.dueOn=c.revokeDate;}
+ c.review=null;c.finalFigures=null;
+ appendLog(c,env,'case.resignationLastDaySynchronized',`Agreed last working day corrected from ${oldDay} to ${newDay}. Open checklist dates and relative return dates now follow the corrected source.`);
+}
 export function returnOpen(item: Pick<Item, 'status'>): boolean { return !isResolved(item.status) && item.status !== 'notReturned'; }
 /** Round-robin assignment for one return item: the leaver is excluded and the reason is kept when nobody can take it. */
 export function assignReturnItem(c: Case, config: Config, item: Item, env: Environment, extra: Record<string, number>): void {
@@ -392,6 +419,7 @@ export function personnelFieldSourceValue(field: Field, values: Readonly<Record<
   return validDate(iso) ? iso : '';
 }
 export function generate(c: Case, config: Config, templateId: string, env: Environment): Document {
+  if(c.module==='off'&&env.managedResignation&&env.resignationOwnedTemplateIds?.includes(templateId))throw new V9Error('This letter is owned by the linked resignation journey. Open it in Documents instead.','conflict');
   const existing = activeDocument(c, templateId); if (existing) return existing;
   const template = config.templates.find(t => t.id === templateId && t.module === c.module);
   // As in the source opGenerate, an explicit workflow/email reference may retain a retired
@@ -410,6 +438,7 @@ export function canRegenerate(c: Pick<Case, 'state' | 'mails'>, document: Docume
 export function regenerate(c: Case, config: Config, id: string, env: Environment): Document {
   const previous = c.documents.find(document => document.id === id);
   if (!previous) throw new V9Error('Document not found.', 'not_found');
+  if(c.module==='off'&&env.managedResignation&&env.resignationOwnedTemplateIds?.includes(previous.templateId))throw new V9Error('Regenerate this letter through the linked resignation journey.','conflict');
   if (!canRegenerate(c, previous)) throw new V9Error('This document cannot be regenerated while closed, completed, awaiting countersignature or reserved for delivery.', 'conflict');
   const template = config.templates.find(template => template.id === previous.templateId && template.module === c.module);
   if (!template || !currentVersion(template)) throw new V9Error('Publish the document template before regenerating.');
@@ -885,6 +914,7 @@ export function planWorkflow(c: Case, config: Config, workflow: Workflow, env: P
   return { matches, lines };
 }
 export function runWorkflow(c: Case, config: Config, workflow: Workflow, env: Environment, event: 'submitted' | 'date' | 'resume' | 'hrSigned' | 'manual', options: { startNow?: boolean; continueHeld?: boolean } = {}): Run | null {
+  if (c.module === 'off' && env.managedResignation) return null;
   const unfinished = c.runs.find(r => r.workflowId === workflow.id && (r.status === 'waiting' || r.status === 'failed'));
   // A held email waits for HR: fixing a record alone sends nothing until someone presses Continue.
   if (unfinished?.hold && unfinished.status === 'waiting' && !options.continueHeld) return unfinished;

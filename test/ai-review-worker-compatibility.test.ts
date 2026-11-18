@@ -61,13 +61,15 @@ const payrollQueueWorkerPins = {
  'core/bank-import-worker.ts': '0d84069e170914694314c207aea7917cc652c54068c4181a6e884b748f47ef46',
 } as const;
 // The web package migration entry changed for guarded CI provisioning, not for the worker tick.
-// Pin all three reviewed owners byte-for-byte; no arbitrary command omission or script allowlist.
+// Pin every reviewed owner byte-for-byte, including the strictly isolated browser import; no command omission or script allowlist.
 const WORKER_MIGRATION_COMMAND='drizzle-kit migrate';
 const WEB_MIGRATION_COMMAND='node --import tsx scripts/migrate-with-focused-prerequisites.ts';
 const REVIEWED_MIGRATION_INPUTS=[
  {path:'scripts/migrate-with-focused-prerequisites.ts',sha256:'3050abc60faa490cdab416f9aeffc80b0b042daf3891ce2e34fbb42071bc7eec'},
  {path:'scripts/lib/discard-premigration.ts',sha256:'61f528c2570c90204e739a37652e7e79d6c3fc5905bbf849209d20c66709492a'},
- {path:'test/helpers/personnel-draft-discard-ci-role-fixture.ts',sha256:'32aaff3dc2f8a80bfe3e69769422b234e0f607a5dad7c0f4b4cb27e5946a3c54'},
+ {path:'test/helpers/personnel-draft-discard-ci-role-fixture.ts',sha256:'dc191e1b85797839d72716cda4dc9aa3497faf085fc7a05c63d989fd7beb327a'},
+ {path:'scripts/lib/resignation-browser-role-admission.ts',sha256:'078f96b90a46ec7a147feb77ca7ce1e7133975dff240421b71d89c47895ca4a9'},
+ {path:'scripts/resignation-browser-premigration.ts',sha256:'ea26d0951f969b2dfa88f30e2f41ee4f41a9edbb7880812dabe0da24776f2ef9'},
 ] as const;
 // ceb7fa849 deduplicates byte-identical server source maps after `next build`. It changes only the
 // web build packet; the archived worker keeps its own package and never runs the build script.

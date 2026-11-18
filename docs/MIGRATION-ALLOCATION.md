@@ -26,6 +26,118 @@ and attached to the approved board plan without changing its revision. Demo Grou
 no remaining PBP recipients. The owner explicitly allowed the fictional staging tenant
 to retain its five legacy uses, knowing those emails will be held; that exception
 satisfies the remaining Stage 2 prerequisite without rewriting those saved recipients. No installation, acceptance or deployment authority is granted.
+# Approved Board release precedes Resignation — 17 November 2026
+
+The owner now directs the approved Board-items session to release first. Its five
+unapplied migrations are 6100–6104, idx 5500–5504, with `when`
+1794841006100–1794841006104. None was installed when this priority was confirmed.
+After their accepted handback, Resignation must integrate that actual source and
+ordered ledger, obtain a fresh seven-slot forward allocation and update filenames,
+journal identities and upgrade pins together. The still-unapplied 5881–5887 positions
+below will lie below that future watermark and are not an installation-ready suffix.
+Preserve all seven current SQL bytes, including the first four original identities;
+no lower-gap or prematurely assumed watermark is permitted. Foreign claims must be
+surveyed again. No lease, shared-ref advancement or installation is authorized before
+the Board handback and Resignation's completed verification.
+
+The reservation and accepted-hotfix observations below retain their original context.
+
+# Resignation forward reservation — 17 November 2026 (unapplied)
+
+The coordinator confirmed **5881–5887**, idx **5281–5287**, `when`
+**1793330005581–1793330005587**, for the seven unapplied Resignation migrations.
+This supersedes only Resignation's old 5783–5786 and 5788–5790 positions.
+The latest human queue direction puts the staging-investigation hotfix first, then Resignation when verified, and Audit last;
+Audit's still-unapplied 5880 timestamp must be reconciled before its later installation.
+This reservation does not claim a lease, install SQL, advance main/alpha or grant production authority.
+
+Latest source composition: the staging-investigation hotfix was handed back as accepted
+at `12098e9c56c95bf2d9441ad74e81ae04f2d2980a`, build `gC3FFxt6m-WhRuTTJNCm9`,
+and freshly fetched main/alpha agree at that source. Its source delta contains no migration
+change. Resignation integrates it through a normal merge; current target ledger, queue vacancy
+and foreign claims still require independent admission checks. No lease or installation is
+claimed by this source composition.
+
+At reservation creation, freshly fetched main and alpha both resolved to Recruitment source
+`fc092e1adbe5f8f1cbfe730a17d1317f08625a7c`. The coordinator's read-only ordered-ledger
+receipt checked at `2026-11-17T08:26:24.159Z` records 919 rows and maximum
+`1793330005577`; receipt SHA-256
+`f97f7433ef332be9e6d0d453f7aa94ef94c40d2d0f2f41c881791a5b0f5ca557`.
+The reported original-version exceptions remain part of canonical applied identity.
+Signed-in Recruitment screens were not independently verified in that handback; no such claim is made here.
+Recheck the actual ordered native prefix and fresh foreign claims at admission.
+
+Dependency order and current unapplied SQL byte identities (the initial reservation used source `9d8a9a760`):
+
+| Unapplied old tag | Reserved final tag | idx | when | Byte status | Current SQL SHA-256 |
+| --- | --- | --- | --- | --- | --- |
+| `5783_resignation_journey` | `5881_resignation_journey` | 5281 | 1793330005581 | preserve original bytes | `130c0b99586bc316ac5203d27a65bfc0a565c4f608b8ab1ac336a8e8d41d1216` |
+| `5784_resignation_configuration` | `5882_resignation_configuration` | 5282 | 1793330005582 | preserve original bytes | `6e064c336c441fbbf01017debe9e1a748957976d3d6b2b96470747d07d7dacb5` |
+| `5785_resignation_postings` | `5883_resignation_postings` | 5283 | 1793330005583 | preserve original bytes | `5d26a0f446c3e72ed01861544af395690b08cdce47b9fc739f0b0d7d1b22a4f5` |
+| `5786_resignation_email_delivery` | `5884_resignation_email_delivery` | 5284 | 1793330005584 | preserve original bytes | `52bf3fa8f4430d37fd4dabd2164f00764e73245b38ee6520d2816dca7e03459b` |
+| `5788_resignation_letter_teams` | `5885_resignation_letter_teams` | 5285 | 1793330005585 | reviewed draft; final freeze pending | `b7769b4044d013cfb630d532d8cc5b7fd2c8635662cf05663a4dcf6746eae4f3` |
+| `5789_resignation_letter_fields` | `5886_resignation_letter_fields` | 5286 | 1793330005586 | reviewed draft; final freeze pending | `4bc7b4108976fe43d7909b6c4f7b8fa20076ff9aef6e3b4be34d24c0110e6025` |
+| `5790_resignation_case_communications` | `5887_resignation_case_communications` | 5287 | 1793330005587 | reviewed draft; final freeze pending | `3ddeecf73214d333678979e29d63a445b3841377e4e1f06d4f0a8d51aa001f65` |
+
+The still-unapplied 5886/5887 drafts were corrected after the f766 actual browser run
+found a native returned-owner admission mismatch. Their current hashes above include
+the reviewed exact content-round locking rule for recalled owner blocks and held-email drafts.
+No new slot, function identity or ACL is added; the accepted prefix and first four original
+Resignation SQL byte identities remain unchanged. Hosted verification of these corrections
+is required before final admission. Earlier draft hashes remain in Git history.
+
+The first four SQL files retain their original bytes, including historical header comments.
+The last three remain reviewed drafts until their final freeze; this record is not a claim that
+their pending source has been installed. Preserve every applied SQL byte and the accepted prefix.
+Journal entries, filenames and upgrade pins are composed together on the final integration candidate
+after the earlier frozen verification runs finished. All seven SQL byte hashes above remain unchanged.
+Hosted verification of the composed candidate and fresh admission checks remain required.
+
+Preserve foreign Contract reservations, including 5990–5991 and 6000–6029
+(idx 5400–5429 / when 1794841006000–1794841006029 for the latter). Contract remains held.
+No peer range is taken here, and fresh claim verification remains mandatory.
+
+## Historical Resignation allocations (superseded above)
+
+# Resignation handoff-audit correction reservation — 17 November 2026 (unapplied)
+
+The release coordinator confirmed, after a fresh registered-worktree journal and allocation-document survey,
+that Resignation reserves **5788–5790**, journal idx **5188–5190**, with `when` values
+**1793330005488–1793330005490**. These slots cover the additional native team-letter guards,
+authorized document fields/configured workflow details, and per-case communications corrections found
+in the renewed handoff audit. SQL drafts receive final tags only at their reviewed checkpoint; a reservation
+is not an applied migration or a verification result. Root owns journal entries and upgrade pins.
+
+Preserve the SQL bytes of 5783–5786 and foreign Audit 5787. Movement owns 5772–5782 and releases first;
+Resignation must integrate Movement's actual accepted source and recheck the ordered installed ledger
+before final release evidence and admission. No main/alpha advancement is authorized during Movement's
+frozen gate. This supersedes any older conditional suggestion that Resignation might release first.
+
+Foreign reservations: Recruitment **5850–5877**, idx5250–5277, `when`1793330005550–1793330005577;
+Contract **5800–5849,5890–5909 and5920–5959**, including5900–5909/idx5300–5309/
+`when`1794841005900–1794841005909 and the later confirmed5920–5959/idx5320–5359/
+`when`1794841005920–1794841005959. Preserve these ranges. Recruitment's lower timestamps must be
+reconciled before any higher-timestamp Contract installation; tag order alone does not establish ordering.
+Contract also reserves **5960–5969**, idx5360–5369, `when`1794841005960–1794841005969,
+after a later coordinator-confirmed 288-worktree survey. Preserve this block as well.
+Refresh remote claims and both target installation watermarks at admission. No lease or release readiness
+is claimed, and no production installation or package publication is authorized by this reservation.
+
+# Resignation final source allocation — 17 November 2026 (unapplied)
+
+The cross-session release coordinator reserves `5783_resignation_journey` (idx 5183 / when 1793330005483),
+`5784_resignation_configuration` (idx 5184 / when 1793330005484), `5785_resignation_postings` (idx 5185 / when 1793330005485),
+and `5786_resignation_email_delivery` (idx 5186 / when 1793330005486) for `codex/resignation-journey-20261116`.
+These replace the unapplied draft tags 9991, 9992, 9993 and 9995 respectively. All four SQL byte hashes are unchanged;
+draft identifiers in SQL header comments remain historical. Journal, upgrade pins and source references use the final tags.
+
+Applied `5771_assistant_legacy_index_shared_access` is preserved verbatim. Movement owns 5772–5782; none is taken
+or silently considered applied here. If Resignation is released first, the coordinator requires Movement to reallocate
+its still-unapplied block above the actual installed watermark before its later release. Both installed ordered ledgers,
+remote refs and peer claims must be checked again at admission. This allocation grants no deployment or production authority.
+The owner's newer COORDINATOR instruction authorizes staging only after complete verification and guarded queue admission.
+
+Earlier draft reservations below are superseded by this final source allocation.
 
 ## Movement staging handback and unused slots — 17 November 2026 MYT
 

@@ -29,13 +29,13 @@ export function newRoutingStep(routing:DocumentRouting,id:string,who:DocumentRou
  * (Review · Approve · Sign), Who, Owns the document; Add / Remove step; signature blocks linked to Sign steps. Problems
  * are the same pure checks the server applies. `editable` is false while the version is read-only.
  */
-export function TemplateRoutingEditor({value,blocks,choices,editable,onChange,onBlocksChange,newId}:{
- value:DocumentRouting;blocks:readonly Block[];choices:RoutingChoices;editable:boolean;
+export function TemplateRoutingEditor({value,blocks,choices,editable,onChange,onBlocksChange,newId,requireSign=true,teamLabels}:{
+ teamLabels?:{pick:string;hint:string};requireSign?:boolean;value:DocumentRouting;blocks:readonly Block[];choices:RoutingChoices;editable:boolean;
  onChange:(routing:DocumentRouting)=>void;onBlocksChange:(blocks:Block[])=>void;newId:()=>string;
 }){
  const t=useTranslations('probationLetters');
  const known={routings:new Set(choices.routings.map(r=>r.id)),groups:new Set(choices.groups.map(g=>g.id)),people:new Set(choices.people.map(p=>p.id))};
- const problems=[...documentRoutingProblems(value,{routingExists:id=>known.routings.has(id),groupExists:id=>known.groups.has(id),personExists:id=>known.people.has(id)}),...documentRoutingSignatureProblems(value,blocks)];
+ const problems=[...documentRoutingProblems(value,{routingExists:id=>known.routings.has(id),groupExists:id=>known.groups.has(id),personExists:id=>known.people.has(id)},{requireSign}),...documentRoutingSignatureProblems(value,blocks)];
  const name=(list:readonly RoutingChoice[],id:string)=>list.find(item=>item.id===id)?.name??t('routing.unknown');
  const whoLabel=(who:DocumentRoutingWho)=>who.kind==='employee'?t('routing.whoEmployee'):who.kind==='directSuperior'?t('routing.whoDirectSuperior'):who.kind==='routing'?t('routing.whoRouting',{name:name(choices.routings,who.routingId)}):who.kind==='group'?t('routing.whoGroup',{name:name(choices.groups,who.groupId)}):t('routing.whoPeople');
  const update=(id:string,patch:Partial<DocumentRoutingStep>)=>onChange(value.map(step=>step.id===id?{...step,...patch}:patch.owner?{...step,owner:false}:step));
@@ -59,10 +59,10 @@ export function TemplateRoutingEditor({value,blocks,choices,editable,onChange,on
      <label className="v9-field"><span>{t('routing.who')}</span><select value={current} onChange={e=>{const who=whoFromKey(e.target.value,step.who);if(who)update(step.id,{who});}}>
       {!whoOptions.some(o=>o.key===current)&&<option value={current}>{whoLabel(step.who)}</option>}
       {whoOptions.map(o=><option key={o.key} value={o.key}>{o.label}</option>)}</select></label>
-     {(step.who.kind==='routing'||step.who.kind==='group'||step.who.kind==='people'&&step.who.userIds.length>1)&&<label className="v9-field"><span>{t('routing.pick')}</span><select value={step.pick??'any'} onChange={e=>update(step.id,{pick:e.target.value==='roundRobin'?'roundRobin':'any'})}><option value="any">{t('routing.pickAny')}</option><option value="roundRobin">{t('routing.pickRoundRobin')}</option></select></label>}
+     {(step.who.kind==='routing'||step.who.kind==='group'||step.who.kind==='people'&&step.who.userIds.length>1)&&<label className="v9-field"><span>{teamLabels?.pick??t('routing.pick')}</span><select value={step.pick??'any'} onChange={e=>update(step.id,{pick:e.target.value==='roundRobin'?'roundRobin':'any'})}><option value="any">{t('routing.pickAny')}</option><option value="roundRobin">{t('routing.pickRoundRobin')}</option></select></label>}
      <label className="v9-actions"><input type="checkbox" checked={step.owner} onChange={e=>update(step.id,{owner:e.target.checked})}/>{t('routing.owner')}</label>
     </div>
-    {(step.who.kind==='routing'||step.who.kind==='group')&&<p className="v9-muted">{t('routing.oneOfGroup')}</p>}
+    {(step.who.kind==='routing'||step.who.kind==='group'||!!teamLabels&&step.who.kind==='people'&&step.who.userIds.length>1)&&<p className="v9-muted">{teamLabels?.hint??t('routing.oneOfGroup')}</p>}
     {step.who.kind==='people'&&<div className="v9-stack"><span>{t('routing.people')}</span>
      <ul className="v9-list">{step.who.userIds.map(id=><li key={id}>{name(choices.people,id)} <button type="button" className="v9-button" onClick={()=>step.who.kind==='people'&&update(step.id,{who:{kind:'people',userIds:step.who.userIds.filter(other=>other!==id)}})}>{t('routing.removePerson',{name:name(choices.people,id)})}</button></li>)}</ul>
      <PeopleSearch disabled={disabled} known={step.who.userIds.map(id=>({id,name:name(choices.people,id)}))} onAdd={person=>{if(step.who.kind==='people'&&!step.who.userIds.includes(person.id))update(step.id,{who:{kind:'people',userIds:[...step.who.userIds,person.id]}});}}/>

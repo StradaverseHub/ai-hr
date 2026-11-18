@@ -1,6 +1,6 @@
 import {execFileSync} from 'node:child_process';
 import {expect,it} from 'vitest';
-import {assertProviderDataContractReviewed,PROVIDER_DATA_REVIEW_RECORDS,isCompleteProviderDataReview} from '../lib/ai/provider-data-reviews';
+import {assertProviderDataContractReviewed,PROVIDER_DATA_REVIEW_RECORDS,isCompleteProviderDataReview,providerDataReviewStatus} from '../lib/ai/provider-data-reviews';
 import {PROVIDER_DATA_TRANSFORM_SOURCE_DIGEST} from '../lib/ai/provider-data-source-manifest';
 it('refuses every pending/unknown/stale review and never accepts a posted reviewed flag',()=>{
  expect(PROVIDER_DATA_REVIEW_RECORDS.length).toBeGreaterThanOrEqual(20);
@@ -8,6 +8,18 @@ it('refuses every pending/unknown/stale review and never accepts a posted review
  for(const record of PROVIDER_DATA_REVIEW_RECORDS){if(record.status==='pending')expect(()=>assertProviderDataContractReviewed(record.contractId,PROVIDER_DATA_TRANSFORM_SOURCE_DIGEST)).toThrow();else{expect(record.reviewer).toBe('human:zenlam repository-owner provisional');if(record.sourceDigest===PROVIDER_DATA_TRANSFORM_SOURCE_DIGEST)expect(()=>assertProviderDataContractReviewed(record.contractId,PROVIDER_DATA_TRANSFORM_SOURCE_DIGEST)).not.toThrow();else expect(()=>assertProviderDataContractReviewed(record.contractId,PROVIDER_DATA_TRANSFORM_SOURCE_DIGEST)).toThrow();expect(()=>assertProviderDataContractReviewed(record.contractId,'0'.repeat(64))).toThrow();}}
  for(const contract of ['unknown','reviewed:true','aggregate_comparison_analysis_v2'])expect(()=>assertProviderDataContractReviewed(contract,PROVIDER_DATA_TRANSFORM_SOURCE_DIGEST)).toThrow();
  expect(()=>assertProviderDataContractReviewed('aggregate_comparison_analysis_v1','0'.repeat(64))).toThrow();
+});
+
+it('preserves the retired Attendance Formula approval as historical evidence and refuses current-source admission',()=>{
+ const historical={contractId:'authored_attendance_formula_v1',status:'approved',
+  sourceDigest:'ffd2e1fec9fd42740bdd1cda8b4859237c78327bdca9471b17c9406b44eb58ce',
+  reviewer:'human:zenlam repository-owner provisional',
+  evidence:'docs/reviews/board-six-attendance-provider-review-20261109.md#attendance-authoring-purpose',
+  reviewedAt:'2026-11-08T16:58:14Z'};
+ expect(PROVIDER_DATA_REVIEW_RECORDS.filter(record=>record.contractId===historical.contractId)).toEqual([historical]);
+ expect(PROVIDER_DATA_TRANSFORM_SOURCE_DIGEST).not.toBe(historical.sourceDigest);
+ expect(providerDataReviewStatus(historical.contractId)).toBe('pending');
+ expect(()=>assertProviderDataContractReviewed(historical.contractId,PROVIDER_DATA_TRANSFORM_SOURCE_DIGEST)).toThrow();
 });
 
 it('rejects incomplete or placeholder approval metadata even after status/digest are changed',()=>{

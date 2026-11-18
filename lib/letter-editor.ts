@@ -62,3 +62,7 @@ function editorBlocks(input:LetterBlock[]):LetterEditorNode[]{return input.map((
 export function letterDocumentToEditor(document:LetterDocument,fields:LetterField[]):LetterEditorNode{
  const valid=validateLetterDocument(document,fields);return {type:'doc',content:editorBlocks(valid.blocks)};
 }
+
+/** Inline consumers reuse the same strict atom/text converters without changing the Contract document schema. */
+export function letterInlineFromEditor(input:unknown[]):LetterInline[]{assertLetterStructureBound(input);return inline(input);}
+export function letterInlineToEditor(input:LetterInline[]):LetterEditorNode[]{assertLetterStructureBound(input);return editorInline(input);}

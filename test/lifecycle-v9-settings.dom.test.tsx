@@ -49,3 +49,18 @@ it('starts letterhead settings from company facts and retains independent signat
   fireEvent.change(screen.getByRole('combobox', { name: 'Fictional company · Signatory' }), { target: { value: 'hr' } });
   expect(JSON.parse(screen.getByTestId('company-settings').textContent!)).toEqual([{ companyId: 'company', signatoryUserId: 'hr', signatoryTitle: '', allowedSignatoryUserIds:['hr'], letterhead: { registrationNo: 'FORMATTED-001', address: 'Printed address\nSecond line', color: '#336699' } }]);
 });
+function OffboardingEditor(){
+ const [config,setConfig]=useState(()=>{const value=v9Defaults();value.groups=[{id:'first',name:'Configured Operations',members:['hr'],limit:20},{id:'empty',name:'Replacement group',members:[],limit:20}];value.peopleOpsGroup='first';return value;});
+ return <><WorkspaceSettings activeTab="off" config={config} options={{companies:[],users:[{id:'hr',name:'Fictional HR'}],employees:[]}} editable edit={change=>setConfig(old=>{const next=structuredClone(old);change(next);return next;})}/><output data-testid="offboarding-settings">{JSON.stringify(config.offboarding)}</output></>;
+}
+it('stores explicit Offboarding posting and retention settings, including blank no-limit without changing shared People Ops',()=>{
+ render(<OffboardingEditor/>);
+ expect(screen.getByRole('combobox',{name:'Who approves Personnel postings'})).toHaveValue('first');
+ const limit=screen.getByRole('spinbutton',{name:'No second retention offer within (months)'});
+ expect(limit).toHaveValue(12);
+ fireEvent.change(limit,{target:{value:''}});
+ expect(JSON.parse(screen.getByTestId('offboarding-settings').textContent!)).toEqual({postingApproverGroupId:'first',reofferMonths:null});
+ fireEvent.change(screen.getByRole('combobox',{name:'Who approves Personnel postings'}),{target:{value:'empty'}});
+ expect(JSON.parse(screen.getByTestId('offboarding-settings').textContent!)).toEqual({postingApproverGroupId:'empty',reofferMonths:null});
+ expect(screen.getByRole('alert')).toHaveTextContent('Existing pending postings keep their current approvers');
+});
