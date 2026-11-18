@@ -10,7 +10,7 @@ export type ProbationReconciliationView = {
  lastSuccessfulCheck:string|null;checkStale:boolean;
 };
 export function probationBusinessUnitMissing(facts:{organisationMapping?:string;businessGroupId:string|null;businessUnitId:string|null}):boolean{
- return (facts.organisationMapping==='personnel-v2'?facts.businessGroupId:facts.businessUnitId)===null;
+ return (facts.organisationMapping==='personnel-v2'?facts.businessGroupId:facts.businessUnitId)==null;
 }
 export const probationReasonPage = (reason:ProbationIntakeReason,employmentId:string):string => {
  if(reason==='settings'||reason==='grade_ineligible')return '/lifecycle/probation/settings';
