@@ -4,7 +4,7 @@ import type { SessionContext } from '../../../db/client';
 import {actorOf,appendEvent} from '../../../db/events';
 import { withLifecycleTenant } from '../../../core/module-gate';
 import { withAccessDisplayRead } from '../../../core/access-configuration-lock';
-import type { LifecycleTaskDocumentsPage } from '../../../lib/lifecycle-task-documents';
+import type { LifecycleTaskDocumentsPage, LifecycleTaskDocument, LifecycleTaskCardReference } from '../../../lib/lifecycle-task-documents';
 
 /** SQL owns authorization, scope, ordering, count and pagination in one shared Access snapshot. */
 export async function lifecycleTaskDocuments(ctx: SessionContext, input: { companyIds: string[]; caseId?:string; offset?: number; limit?: number }): Promise<LifecycleTaskDocumentsPage> {
@@ -21,4 +21,15 @@ export async function openOwnLifecycleDocument(ctx:SessionContext, input:{caseId
     const [row]=await tx.execute<{result:{revision:number;employmentId:string;changed:boolean}}>(sql`select app.lifecycle_open_own_document(${value.caseId}::uuid,${value.documentId},${value.revision}) as result`);
     if(row.result.changed)await appendEvent(tx,{tenantId:ctx.tenantId,aggregateType:'lifecycle-v9-case',aggregateId:value.caseId,eventType:'lifecycle-v9.employeeDocumentOpened',actor:actorOf(ctx),subjectEmploymentId:row.result.employmentId,payload:{caseId:value.caseId,documentId:value.documentId,revision:row.result.revision}});
   });
+}
+
+/** One exact-reference batch. Only metadata for the requested employee-owned cards leaves SQL. */
+export async function lifecycleTaskCardDocuments(ctx: SessionContext, input: {companyIds:string[];refs:LifecycleTaskCardReference[]}): Promise<LifecycleTaskDocument[]> {
+  const query=z.object({companyIds:z.array(z.string().uuid()).max(500),refs:z.array(z.object({caseId:z.string().uuid(),taskId:z.string().min(1).max(120)}).strict())}).strict().parse(input);
+  const refs=[...new Map(query.refs.map(ref=>[ref.caseId+':'+ref.taskId,ref])).values()];
+  if(!refs.length||!query.companyIds.length)return [];
+  return withAccessDisplayRead(()=>withLifecycleTenant(ctx,async tx=>{
+    const [row]=await tx.execute<{items:LifecycleTaskDocument[]}>(sql`select app.lifecycle_task_card_documents(${query.companyIds}::uuid[],${JSON.stringify(refs)}::jsonb) as items`);
+    return row.items;
+  }));
 }

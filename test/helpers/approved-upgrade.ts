@@ -273,12 +273,14 @@ export const APPROVED_UPGRADE_TAIL=[
  {idx:5504,when:1794841006104,tag:'6104_lifecycle_recipient_fanout'},
  {idx:10000,when:1794998006600,tag:'6600_probation_reconciliation'},
  {idx:10030,when:1794998006630,tag:'6630_lifecycle_task_documents'},
+ {idx:10031,when:1794998006631,tag:'6631_lifecycle_task_card_documents'},
  {idx:10040,when:1794998006640,tag:'6640_lifecycle_personnel_manager'},
  {idx:10041,when:1794998006641,tag:'6641_lifecycle_manager_recovery_job'},
  {idx:10050,when:1794998006650,tag:'6650_pay_formula_business_code_registration'},
 ] as const;
 // Final pending 2109/2126 bytes reviewed from engine 128bc2539; no applied-prefix hashes change.
 const APPROVED_UPGRADE_HASHES:Record<string,string>={
+ '6631_lifecycle_task_card_documents':'50ee89cc0d5d9e19ac38a4f1b5f552be07ebdecb9e41805367e62bd75c0363ec',
  '6600_probation_reconciliation':'6ddabb36a65c0f6eda7bfee80400965a2d29a93d2edd10c5f4f3d8b58be48622',
  '6640_lifecycle_personnel_manager':'790069457cd719faf5ea8dbe268e99b9c143182dbad4e3e88fb6e5aff10b5183',
  '6641_lifecycle_manager_recovery_job':'1768a82495459e936190d23d163ef4e344663ef8afd6f426d463b8877719eb01',

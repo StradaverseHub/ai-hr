@@ -44315,6 +44315,12 @@
     "pages": "文件分页",
     "showing": "第 {from}–{to} 项，共 {total} 项",
     "previous": "上一页",
-    "next": "下一页"
+    "next": "下一页",
+    "sources": {
+      "onboardingChecklist": "入职清单",
+      "offboardingChecklist": "离职清单",
+      "documentsFromHr": "人事部门的文件"
+    },
+    "openError": "无法打开文件。请刷新并确认人事部门已发布此文件。"
   }
 }

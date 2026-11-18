@@ -23,3 +23,18 @@ it.each(['light','dark'] as const)('captures the approved task document states i
  const {container}=render(<NextIntlClientProvider locale="en" messages={messages}><div className="mx-auto max-w-5xl space-y-5"><h1 className="text-2xl font-semibold">My tasks</h1><TaskDocuments page={{items:[item,{...item,taskId:'survey',taskName:'Onboarding survey',documentName:'Onboarding survey',documentId:null,documentStatus:null,state:'unreleased'},{...item,taskId:'signed-task',taskName:'Completed acceptance',documentId:'signed-document',documentName:'Completed acceptance',documentStatus:'signed',taskStatus:'done'}],total:3,offset:0,limit:50}}/></div></NextIntlClientProvider>);
  await captureAiReviewScreenshots(aiReviewDomHtml(container),'en',`feedback-task-documents-${mode}`,'real My tasks document component; fictional existing instances; authenticated open/sign verified separately','classic',mode);
 },30000);
+
+it('translates explicit system provenance fallbacks and preserves real configured names',async()=>{
+ const {TaskDocumentAction}=await import('../components/lifecycle-v9/task-documents');
+ const zh=(await import('../messages/zh.json')).default;
+ render(<NextIntlClientProvider locale="zh" messages={zh}><TaskDocumentAction item={{...item,sourceName:'Onboarding checklist',sourceFallback:'onboardingChecklist'}}/><TaskDocumentAction item={{...item,taskId:'configured',sourceName:'Onboarding checklist',sourceFallback:null}}/></NextIntlClientProvider>);
+ expect(screen.getByText(/入职清单/)).toBeVisible();expect(screen.getByText(/Onboarding checklist/)).toBeVisible();
+});
+
+it('renders one logical document and every linked offboarding task with its own completion rule',()=>{
+ render(<NextIntlClientProvider locale="en" messages={messages}><TaskDocuments page={{items:[{...item,taskId:null,taskName:null,taskStatus:null,action:null,linkedTasks:[{taskId:'sign',taskName:'Sign saved form',taskStatus:'todo',dueOn:item.dueOn,action:'signed',sourceName:'Signing checklist',sourceKind:'checklist'},{taskId:'submit',taskName:'Submit saved form',taskStatus:'progress',dueOn:item.dueOn,action:'completed',sourceName:'Submission checklist',sourceKind:'checklist'}]}],total:1,offset:0,limit:50}}/></NextIntlClientProvider>);
+ expect(screen.getAllByRole('link',{name:'Open'})).toHaveLength(1);
+ expect(screen.getByText('Sign saved form')).toBeVisible();expect(screen.getByText('Submit saved form')).toBeVisible();
+ expect(screen.getByText('Completes when you sign the document')).toBeVisible();expect(screen.getByText('Completes when you submit or sign the document')).toBeVisible();
+ expect(screen.getByText('From Signing checklist')).toBeVisible();expect(screen.getByText('From Submission checklist')).toBeVisible();
+});

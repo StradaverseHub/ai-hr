@@ -44315,6 +44315,12 @@
     "pages": "Halaman dokumen",
     "showing": "{from}–{to} daripada {total}",
     "previous": "Sebelumnya",
-    "next": "Seterusnya"
+    "next": "Seterusnya",
+    "sources": {
+      "onboardingChecklist": "Senarai semak kemasukan",
+      "offboardingChecklist": "Senarai semak keluar",
+      "documentsFromHr": "Dokumen daripada HR"
+    },
+    "openError": "Dokumen tidak dapat dibuka. Muat semula dan semak bahawa HR telah melepaskannya."
   }
 }

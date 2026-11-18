@@ -1,10 +1,17 @@
+export type LifecycleDocumentTaskMetadata = {
+  taskId: string; taskName: string; taskStatus: string; dueOn: string | null;
+  action: 'completed' | 'signed' | 'sent'; sourceName: string;
+  sourceKind: 'checklist' | 'workflow' | 'document';
+  sourceFallback?: 'onboardingChecklist' | 'offboardingChecklist' | 'documentsFromHr' | null;
+};
 /** Metadata only. Answers, signatures and HR-private state never enter My tasks. */
 export type LifecycleTaskDocument = {
   caseId: string; module: 'onb' | 'off'; caseNumber: string; revision: number;
   taskId: string | null; taskName: string | null; taskStatus: string | null;
   dueOn: string | null; action: 'completed' | 'signed' | 'sent' | null;
-  sourceName: string; sourceKind: 'checklist' | 'workflow' | 'document';
+  sourceName: string; sourceFallback?: 'onboardingChecklist' | 'offboardingChecklist' | 'documentsFromHr' | null; sourceKind: 'checklist' | 'workflow' | 'document';
   documentId: string | null; documentName: string; documentStatus: string | null;
+  linkedTasks?: LifecycleDocumentTaskMetadata[];
   state: 'released' | 'unreleased' | 'review';
 };
 export type LifecycleTaskDocumentsPage = { items: LifecycleTaskDocument[]; total: number; offset: number; limit: number };
@@ -21,3 +28,6 @@ export function currentTaskDocument<T extends {id:string;templateId:string;versi
  if(candidates.length>1)return {state:'review',document:null};
  const doc=candidates[0];return doc&&['sent','opened','completed','signed','acknowledged','countersign'].includes(doc.status)?{state:'released',document:doc}:{state:'unreleased',document:null};
 }
+
+/** Exact native task cards already selected for rendering; independent of document-list pagination. */
+export type LifecycleTaskCardReference = { caseId: string; taskId: string };
