@@ -1,11 +1,11 @@
 /** Native payroll artifact access stays distinct from the effective historical source. No money is calculated here. */
-import {createHash} from 'node:crypto';
 import {sql} from 'drizzle-orm';
 import {pgTable,uuid,numeric,jsonb,integer,timestamp,date} from 'drizzle-orm/pg-core';
 import type {SessionContext,Tx} from '../db/client';
 import type {DetachedNativeHistoryBaseline,NativeHistorySource,NativeHistoryBaselineProof} from '../lib/payroll-history-native-baseline';
 export type {DetachedNativeHistoryBaseline,NativeHistorySource,NativeHistoryBaselineProof} from '../lib/payroll-history-native-baseline';
-export {nativeHistoryBaselineIds} from '../lib/payroll-history-native-baseline';
+import {nativeHistoryBaselineValueHash} from '../lib/payroll-history-native-baseline';
+export {nativeHistoryBaselineIds,nativeHistoryBaselineValueHash} from '../lib/payroll-history-native-baseline';
 /** SQL-owned, scope-checked, automatically updatable view. Use ONLY for a native run's physical artifacts, never YTD. */
 const nativePayslipColumns=()=>({
  id:uuid('id').primaryKey().defaultRandom(),tenantId:uuid('tenant_id').notNull(),batchId:uuid('batch_id').notNull(),employmentId:uuid('employment_id').notNull(),
@@ -21,7 +21,8 @@ export async function nativeHistoryBaselineSourcesTx(tx:Tx,_ctx:SessionContext,p
  return rows.map(row=>row.source);
 }
 export async function captureNativeHistoryBaselineTx(tx:Tx,_ctx:SessionContext,input:{attemptId:string;recordId:string;row:DetachedNativeHistoryBaseline;cycleName:string}):Promise<{snapshotId:string;nativeSource:NativeHistoryBaselineProof}>{
- const valueHash=createHash('sha256').update(JSON.stringify(input.row.values,(_key,item)=>item&&typeof item==='object'&&!Array.isArray(item)?Object.fromEntries(Object.entries(item).sort(([a],[b])=>a<b?-1:a>b?1:0)):item)).digest('hex');
+ const valueHash=nativeHistoryBaselineValueHash(input.row.values);
+ if(valueHash!==input.row.valueHash)throw Error('The retained native baseline value commitment changed. Review a new preview.');
  const [result]=await tx.execute<{result:{snapshotId:string;nativeSource:NativeHistoryBaselineProof}}>(sql`select app.payroll_history_capture_native(${input.attemptId}::uuid,${input.recordId}::uuid,${JSON.stringify(input.row)}::jsonb,${input.cycleName},${valueHash}) result`);return result.result;
 }
 export async function finalizeNativeHistoryBaselinesTx(tx:Tx,_ctx:SessionContext,attemptId:string):Promise<void>{await tx.execute(sql`select app.payroll_history_finalize_native(${attemptId}::uuid)`);}

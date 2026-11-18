@@ -10,7 +10,7 @@ import {setStatutoryProfileMY} from '../localization/my/statutory';
 import {seedPayrollCycleCatalog} from '../core/payroll-cycle';
 import {createBatch,generatePayslips,batchDetail,resetProcessedBatch,deleteDraftBatch,closeBatch,myPayslipDetail} from '../core/payroll';
 import {previewPayrollHistoryUpload,confirmPayrollHistoryUpload,previewPayrollHistoryRevert,revertPayrollHistoryUpload} from '../core/payroll-history-revisions';
-import {nativePayrollPayslip,nativePayrollPayslipWrite,nativeHistoryBaselineSourcesTx,finalizeNativeHistoryBaselinesTx} from '../core/payroll-history-native-baseline';
+import {nativePayrollPayslip,nativePayrollPayslipWrite,nativeHistoryBaselineSourcesTx,finalizeNativeHistoryBaselinesTx,type DetachedNativeHistoryBaseline} from '../core/payroll-history-native-baseline';
 import {requestPayrollHistoryConfirm,payrollHistoryJobHandler} from '../core/payroll-history-job';
 import {runBulkJobTick} from '../core/bulk-job-worker';
 import {PAYROLL_HISTORY_HEADERS} from '../lib/payroll-history-import-schema';
@@ -50,6 +50,13 @@ describe('detached history baseline and mutable native payroll owner',()=>{
   await resetProcessedBatch(ctx,{batchId,reason:'Delete the original native draft'});await deleteDraftBatch(ctx,{batchId});expect(await owner.db.select().from(s.payrollBatch).where(eq(s.payrollBatch.id,batchId))).toEqual([]);
   const review=await previewPayrollHistoryRevert(ctx,edit.preview.attemptId);await revertPayrollHistoryUpload(ctx,edit.preview.attemptId,review.previewHash);
   expect((await effective()).map(p=>[p.id,p.grossPay])).toEqual([[retained.id,original.grossPay]]);expect((await owner.db.select().from(s.payslip).where(eq(s.payslip.id,retained.id)))[0]).toEqual(retained);
+ });
+ it('refuses caller-forged baseline value commitments or cycle labels even on a valid capture replay',async()=>{
+  const edit=await correction();await edit.commit();const [adopted]=await owner.db.select().from(s.payrollHistoryImportRevision).where(and(eq(s.payrollHistoryImportRevision.attemptId,edit.preview.attemptId),eq(s.payrollHistoryImportRevision.kind,'adopted'))),descriptor=(edit.preview.plan.rows[0] as unknown as {detachedNativeBaseline:DetachedNativeHistoryBaseline}).detachedNativeBaseline;
+  expect(descriptor.valueHash).toMatch(/^[a-f0-9]{64}$/);
+  const replay=(cycle:string,valueHash:string)=>withTenant(ctx,tx=>tx.execute(sql`select app.payroll_history_capture_native(${edit.preview.attemptId}::uuid,${adopted.recordId}::uuid,${JSON.stringify(descriptor)}::jsonb,${cycle},${valueHash})`));
+  await expect(replay('Caller forged cycle',descriptor.valueHash)).rejects.toThrow();await expect(replay(edit.preview.plan.rows[0].cycleName,'0'.repeat(64))).rejects.toThrow();
+  expect((await effective()).map(p=>p.grossPay)).toEqual(['6000.00']);
  });
  it('does not suppress a new unrelated native batch for the same employment and month',async()=>{
   await(await correction()).commit();await resetProcessedBatch(ctx,{batchId,reason:'Replace the original native run'});await deleteDraftBatch(ctx,{batchId});
