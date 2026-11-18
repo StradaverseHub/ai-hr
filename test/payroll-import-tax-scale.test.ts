@@ -2,7 +2,7 @@
 import {afterAll,expect,it} from 'vitest';
 import {owner,resetDb,seedBase,setModule,entitledCtx,closeAll} from './harness';
 import {createBatch} from '../core/payroll';
-import {previewTaxBasisRecalculation} from '../core/payroll-tax-basis';
+import {previewTaxBasisRecalculation,taxBasisOptions} from '../core/payroll-tax-basis';
 afterAll(closeAll);
 it('pages 930 original-company sources within 70 companies and 1000 employments with exact ordered counts and no scope expansion',async()=>{
  await resetDb();const b=await seedBase();await setModule(b.tenantId,'payroll','active');
@@ -19,6 +19,7 @@ it('pages 930 original-company sources within 70 companies and 1000 employments 
  const preview=await previewTaxBasisRecalculation(ctx,{companyId:b.companyId,year:2026,upToMonth:1,employmentIds:null});
  expect(preview.employees.map(employee=>employee.employeeNo)).toEqual(expected);expect(preview.eligibleCount).toBe(930);expect(preview.blockedCount).toBe(0);expect(preview.recordCount).toBe(930);expect(preview.totals).toMatchObject({beforeTaxable:4650000,taxable:5115000,difference:465000});
  expect(preview.employees.every(employee=>employee.months.length===1&&employee.months[0].taxable===5500&&employee.months[0].items.find(item=>item.code==='TRV')?.taxable===500)).toBe(true);
+ const options=await taxBasisOptions(ctx);expect(options.companies).toHaveLength(70);expect(options.employees.map(employee=>employee.employeeNo)).toEqual(expected);
  const selected=await previewTaxBasisRecalculation(ctx,{companyId:b.companyId,year:2026,upToMonth:1,employmentIds:preview.employees.slice(490,510).map(employee=>employee.id)});
  expect(selected.employees.map(employee=>employee.employeeNo)).toEqual(expected.slice(490,510));expect(selected.totals.taxable).toBe(110000);
  const foreign=await seedBase();await setModule(foreign.tenantId,'payroll','active');await expect(previewTaxBasisRecalculation(await entitledCtx(foreign),{companyId:b.companyId,year:2026,upToMonth:1,employmentIds:null})).rejects.toThrow(/access|authority|unavailable/);

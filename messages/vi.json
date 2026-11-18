@@ -35604,7 +35604,53 @@
     "noticeApplied": "Kết quả này sử dụng các điều chỉnh cơ sở thuế thu nhập đã lưu. PCB thực tế đã nộp và bảng lương đã phát hành không thay đổi.",
     "noticeReferences": "Mã tham chiếu điều chỉnh thuế thu nhập",
     "noticeView": "Xem điều chỉnh thuế thu nhập",
-    "reviewPayrollProcess": "Xem xử lý lương"
+    "reviewPayrollProcess": "Xem xử lý lương",
+    "basisNotTax": "Đây là đầu vào tiền lương tính thuế thu nhập, không phải khoản khấu trừ PCB được tính lại. PCB đã trả ban đầu và bảng lương đã phát hành không thay đổi.",
+    "missingEvidenceTitle": "Thiếu bằng chứng lịch sử",
+    "missingEvidenceHelp": "Chưa có số liệu cuối cùng bị ảnh hưởng cho đến khi xác minh đủ bằng chứng lịch sử. Giá trị thiếu không được coi là số không.",
+    "affectsValues": "Ảnh hưởng: {values}",
+    "availableItems": "Chi tiết tiền lương và Khoản lương hiện có",
+    "availableItemsHelp": "Vẫn có số tiền gốc và phân loại hiện tại. Việc đưa vào trước miễn thuế không xác nhận số tiền chịu thuế cuối cùng.",
+    "itemDirection": "Loại số tiền",
+    "pcbTreatment": "Cách xử lý PCB",
+    "remunerationType": "Loại thù lao",
+    "exemptionCode": "Mã miễn thuế",
+    "includedBeforeExemption": "Đưa vào trước miễn thuế",
+    "notIncludedInPcb": "Không đưa vào tiền lương PCB",
+    "notRecorded": "Chưa được ghi nhận",
+    "noExemptionCode": "Chưa ghi nhận mã miễn thuế",
+    "importWageBasis": "Xem đầu vào tiền lương PCB đã nhập",
+    "importBasisReady": "Sẵn sàng xem trước đầu vào tiền lương",
+    "importBasisHeld": "Cần bằng chứng đầu vào tiền lương",
+    "importBasisHelp": "Đầu vào tiền lương được dẫn xuất theo cài đặt Khoản lương đã ánh xạ. Số tiền theo luật định trong tệp không thay đổi.",
+    "originalImportedPcb": "PCB đã trả từ dữ liệu nhập",
+    "originalRecordedPcb": "PCB đã trả trong lịch sử đã lưu",
+    "cashPcbWages": "Tiền lương tiền mặt chịu thuế PCB",
+    "noncashPcbWages": "Phúc lợi phi tiền mặt chịu thuế PCB",
+    "pcbComparisonTitle": "So sánh khấu trừ PCB",
+    "pcbComparisonUnavailable": "Chưa có PCB tính lại: lịch sử này không giữ đầu vào tính toán theo luật định ban đầu, nhóm thuế và giảm trừ, cùng đầu vào thu nhập từ chủ lao động trước.",
+    "directions": {
+      "earning": "Thu nhập",
+      "deduction": "Khấu trừ",
+      "noncash": "Phúc lợi phi tiền mặt"
+    },
+    "remuneration": {
+      "normal": "Thông thường",
+      "additional": "Bổ sung",
+      "optional_deduction": "Khấu trừ tùy chọn"
+    },
+    "evidenceFields": {
+      "priorEmployerExemptionUsage": "Mức miễn thuế đã sử dụng ban đầu tại chủ lao động trước trong năm tính thuế này",
+      "originalStatutoryInputs": "Đầu vào tính toán theo luật định ban đầu",
+      "originalTaxCategoryAndReliefs": "Nhóm thuế và giảm trừ ban đầu",
+      "originalPriorEmployerIncome": "Đầu vào thu nhập ban đầu từ chủ lao động trước"
+    },
+    "affectedValues": {
+      "taxableWages": "tiền lương chịu thuế",
+      "exemptWages": "tiền lương được miễn thuế",
+      "optionalDeductions": "khấu trừ tùy chọn",
+      "pcbComparison": "so sánh PCB"
+    }
   },
   "entra": {
     "title": "Microsoft Entra ID",

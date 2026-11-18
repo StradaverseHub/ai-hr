@@ -280,6 +280,7 @@ export const APPROVED_UPGRADE_TAIL=[
  {idx:10042,when:1794998006642,tag:'6642_lifecycle_manager_recovery_reader'},
  {idx:10050,when:1794998006650,tag:'6650_pay_formula_business_code_registration'},
  {idx:10060,when:1794998006660,tag:'6660_imported_tax_basis_reader'},
+ {idx:10061,when:1794998006661,tag:'6661_tax_basis_scoped_subject_page'},
 ] as const;
 // Final pending 2109/2126 bytes reviewed from engine 128bc2539; no applied-prefix hashes change.
 const APPROVED_UPGRADE_HASHES:Record<string,string>={
@@ -289,7 +290,8 @@ const APPROVED_UPGRADE_HASHES:Record<string,string>={
  '6600_probation_reconciliation':'57bc67032f085983887067f1cd3fb499576d45b4b4439d599923277cc47bb08e',
  '6640_lifecycle_personnel_manager':'790069457cd719faf5ea8dbe268e99b9c143182dbad4e3e88fb6e5aff10b5183',
  '6641_lifecycle_manager_recovery_job':'1768a82495459e936190d23d163ef4e344663ef8afd6f426d463b8877719eb01',
- '6660_imported_tax_basis_reader':'0d22090d7a9a924faf751e3b65a78ab3ba890981f27c0e8aea591811a0040470',
+ '6661_tax_basis_scoped_subject_page':'88da64e49c1b30e98f614e86f5f9c7596b4a3d89f44157d7065fd21f93cce81b',
+ '6660_imported_tax_basis_reader':'3ddda2b645b75b58ded4fe5d236ea186265632db001186e0c9d50342dd2c0f82',
  '6650_pay_formula_business_code_registration':'b416b1d6177fb3ffcb4d60b1ff422c49c9af653949929d313910486f9aeadd34',
  '6630_lifecycle_task_documents':'292722980ca749eb22705c835a4cd1648a8e5fd29af72a14e89c7b0b7c311e33',
  '6100_rewards_review_plans':'ce6c91a351f2c5178101da137c601b363b5bacc8b560f46e808b319d54c9f0e5',

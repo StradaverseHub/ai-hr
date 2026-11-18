@@ -4602,3 +4602,5 @@ grant, function, column or row changes; existing rows already satisfy the wider 
 the installed ledger at admission. This entry carries no deployment authority.
 
 - 18 November 2026 approved PCB history lane: 6660–6669 / idx10060–10069 / when1794998006660–6669 reserved by release coordinator. 6660 adds the noncash import vocabulary and additive imported-tax compatible-reader guard; no existing data rewrite. Final integration re-surveys all registered worktrees and installed journals.
+
+- PCB lane6661 / idx10061 / when1794998006661: set-paged canonical historical subjects and recursion-safe read-only original payroll employer audience. Existing restrictive reader/effective-source guards and all write policies remain in force.

@@ -35604,7 +35604,53 @@
     "noticeApplied": "This result uses recorded income-tax basis corrections. Actual PCB paid and issued payroll remain unchanged.",
     "noticeReferences": "Income-tax correction references",
     "noticeView": "View income-tax correction",
-    "reviewPayrollProcess": "Review Payroll Process"
+    "reviewPayrollProcess": "Review Payroll Process",
+    "basisNotTax": "These are income-tax wage inputs, not a recalculated PCB deduction. Original PCB paid and issued payroll stay unchanged.",
+    "missingEvidenceTitle": "Missing historical evidence",
+    "missingEvidenceHelp": "Final affected figures are unavailable until the required historical evidence is verified. Missing values are not treated as zero.",
+    "affectsValues": "Affects: {values}",
+    "availableItems": "Available wage and Pay Item detail",
+    "availableItemsHelp": "Original amounts and current classification remain available. Inclusion before exemptions does not confirm the final taxable amount.",
+    "itemDirection": "Amount type",
+    "pcbTreatment": "PCB treatment",
+    "remunerationType": "Remuneration type",
+    "exemptionCode": "Exemption code",
+    "includedBeforeExemption": "Included before exemptions",
+    "notIncludedInPcb": "Not included in PCB wages",
+    "notRecorded": "Not recorded",
+    "noExemptionCode": "No exemption code recorded",
+    "importWageBasis": "Review imported PCB wage inputs",
+    "importBasisReady": "Wage-input preview ready",
+    "importBasisHeld": "Wage-input evidence needed",
+    "importBasisHelp": "Derived wage inputs use the mapped Pay Item settings. Statutory amounts from the file stay unchanged.",
+    "originalImportedPcb": "PCB paid from the import",
+    "originalRecordedPcb": "PCB paid in saved history",
+    "cashPcbWages": "PCB-taxable cash wages",
+    "noncashPcbWages": "PCB-taxable noncash benefits",
+    "pcbComparisonTitle": "PCB deduction comparison",
+    "pcbComparisonUnavailable": "Recalculated PCB is unavailable: the original statutory calculation inputs, tax category and reliefs, and prior-employer income inputs are not retained in this history.",
+    "directions": {
+      "earning": "Earning",
+      "deduction": "Deduction",
+      "noncash": "Noncash benefit"
+    },
+    "remuneration": {
+      "normal": "Normal",
+      "additional": "Additional",
+      "optional_deduction": "Optional deduction"
+    },
+    "evidenceFields": {
+      "priorEmployerExemptionUsage": "Original prior-employer exemption usage for this assessment year",
+      "originalStatutoryInputs": "Original statutory calculation inputs",
+      "originalTaxCategoryAndReliefs": "Original tax category and reliefs",
+      "originalPriorEmployerIncome": "Original prior-employer income inputs"
+    },
+    "affectedValues": {
+      "taxableWages": "taxable wages",
+      "exemptWages": "exempt wages",
+      "optionalDeductions": "optional deductions",
+      "pcbComparison": "PCB comparison"
+    }
   },
   "entra": {
     "title": "Microsoft Entra ID",

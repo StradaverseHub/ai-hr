@@ -5148,7 +5148,7 @@ async function generatePayslipsTx(tx: Tx, ctx: SessionContext, p: GeneratePaysli
       : [];
     // Correct only the tax-input read. The saved payroll row and actual deducted PCB remain original.
     const taxOpeningPrefix=await taxBasisSourceRowsTx(tx,priorSlips.map(slip=>slip.id));
-    const correctedPriorBases = await readEffectiveTaxBasesTx(tx, ctx, priorSlips.map(s => s.id));
+    const correctedPriorBases = await readEffectiveTaxBasesTx(tx, ctx, priorSlips.map(s => s.id),{includeImported:true});
     const taxBasisCorrectionsByEmp = new Map<string, TaxBasisCorrectionRef[]>();
     for (const slip of priorSlips) {
       const corrected = correctedPriorBases.get(slip.id);
@@ -5363,7 +5363,7 @@ async function generatePayslipsTx(tx: Tx, ctx: SessionContext, p: GeneratePaysli
         .innerJoin(payrollBatch, eq(payrollBatch.id, payslip.batchId))
         .where(and(eq(payrollBatch.companyId,batch.companyId),eq(payrollBatch.payPeriodId, batch.payPeriodId), lt(payrollBatch.runSeq, batch.runSeq)));
       for(const source of await taxBasisSourceRowsTx(tx,earlier.map(slip=>slip.id)))if(!taxOpeningPrefix.some(saved=>saved.id===source.id))taxOpeningPrefix.push(source);
-      const correctedEarlier = await readEffectiveTaxBasesTx(tx, ctx, earlier.map(s => s.id));
+      const correctedEarlier = await readEffectiveTaxBasesTx(tx, ctx, earlier.map(s => s.id),{includeImported:true});
       for (const r of earlier) {
         // Read what the original payslip charged before applying any tax-input correction.
         const savedStatutory: unknown = r.statutory;

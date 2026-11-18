@@ -3,10 +3,11 @@ export type TaxOpeningSource={id:string;sourceHash:string;statutory:Record<strin
 export type TaxOpeningEvidence={state:'known';used:Record<string,number>;sourceIds:string[]}|{state:'missing'|'conflict';reason:string};
 const object=(v:unknown):v is Record<string,unknown>=>!!v&&typeof v==='object'&&!Array.isArray(v);
 const canonical=(v:Record<string,number>)=>JSON.stringify(Object.entries(v).filter(([,amount])=>amount>0).sort(([a],[b])=>a.localeCompare(b)));
-export function resolveTaxOpeningEvidence(input:{year:number;employmentId:string;companyId:string;required:boolean;sources:TaxOpeningSource[]}):TaxOpeningEvidence{
+export function resolveTaxOpeningEvidence(input:{year:number;employmentId:string;companyId:string;required:boolean;requiredSourceIds?:string[];sources:TaxOpeningSource[]}):TaxOpeningEvidence{
  if(!input.required)return{state:'known',used:{},sourceIds:[]};
  const candidates:{id:string;used:Record<string,number>}[]=[];
- const lacking=input.sources.filter(source=>!object(source.statutory.taxBasisOpeningExemptionUsed)||source.statutory.taxBasisOpeningExemptionYear!==input.year);
+ const required=input.requiredSourceIds?new Set(input.requiredSourceIds):null;
+ const lacking=input.sources.filter(source=>(!required||required.has(source.id))&&(!object(source.statutory.taxBasisOpeningExemptionUsed)||source.statutory.taxBasisOpeningExemptionYear!==input.year));
  for(const source of input.sources){
   const st=source.statutory,used=st.taxBasisOpeningExemptionUsed;
   if(st.taxBasisOpeningExemptionYear!==input.year||!object(used))continue;

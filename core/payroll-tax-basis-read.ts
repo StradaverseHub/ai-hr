@@ -1,5 +1,5 @@
 /** Narrow read seam for audited tax-input corrections. Does not import payroll or the country registry. */
-import {importedTaxSettingsTx} from './payroll-import-tax-source';
+import {importedTaxSettingsTx,importedTaxRulesStatesTx} from './payroll-import-tax-source';
 import {createHash} from 'node:crypto';
 import {sql} from 'drizzle-orm';
 import type {SessionContext,Tx} from '../db/client';
@@ -12,7 +12,7 @@ export async function taxBasisSourceRowsTx(tx:Tx,ids:string[]):Promise<TaxBasisS
  if(!ids.length)return [];
  return await tx.execute<TaxBasisSource>(sql`select p.id,p.employment_id as "employmentId",b.company_id as "companyId",b.pay_period as period,
    to_jsonb(p) as source,jsonb_build_object('id',b.id,'company_id',b.company_id,'pay_period',b.pay_period,'run_seq',b.run_seq,'run_type',b.run_type,'cycle_id',b.payroll_cycle_id,'batch_date',b.batch_date) as batch,
-   (select r.id::text from payroll_history_import_revision r join payroll_history_import_snapshot s on s.record_id=r.record_id where s.id=p.id order by r.ordinal desc limit 1) as "importRevision"
+   app.payroll_tax_import_source_revision(p.id)::text as "importRevision"
   from payslip p join payroll_batch b on b.id=p.batch_id where p.id=any(array[${sql.join(ids.map(id=>sql`${id}::uuid`),sql`, `)}]::uuid[]) order by p.id`);
 }
 export const hashTaxBasisSource=(row:TaxBasisSource)=>createHash('sha256').update(canonical({source:row.source,batch:row.batch,importRevision:row.importRevision})).digest('hex');
@@ -78,7 +78,7 @@ export async function recordTaxBasisReplacementTx(tx:Tx,ctx:SessionContext,prepa
 }
 export type EffectiveTaxBasis={statutory:Record<string,unknown>;correction:TaxBasisCorrectionRef|null;basis:TaxBasisValue};
 /** Exact current source only. Returned statutory objects are copies; no payslip row is ever modified. */
-export async function readEffectiveTaxBasesTx(tx:Tx,ctx:SessionContext,payslipIds:string[]):Promise<Map<string,EffectiveTaxBasis>>{
+export async function readEffectiveTaxBasesTx(tx:Tx,ctx:SessionContext,payslipIds:string[],options:{includeImported?:boolean}={}):Promise<Map<string,EffectiveTaxBasis>>{
  const out=new Map<string,EffectiveTaxBasis>();if(!payslipIds.length)return out;
  const sources=await taxBasisSourceRowsTx(tx,[...new Set(payslipIds)]);if(!sources.length)return out;
  const keys=sources.map(s=>({companyId:s.companyId,employmentId:s.employmentId,period:s.period}));
@@ -114,12 +114,13 @@ export async function readEffectiveTaxBasesTx(tx:Tx,ctx:SessionContext,payslipId
  }
  // New imported inputs are never silently replaced by the legacy gross-pay fallback. A reviewed
  // exact-source revision wins; otherwise the accepted import's explicit projection must still match.
- const imported=sources.filter(source=>object(source.source.statutory)&&object(source.source.statutory.importedTaxBasis)&&!out.has(source.id));
+ const imported=options.includeImported?sources.filter(source=>object(source.source.statutory)&&object(source.source.statutory.importedTaxBasis)&&!out.has(source.id)):[];
  const current=imported.length?await importedTaxSettingsTx(tx):[];
+ const rulesStates=await importedTaxRulesStatesTx(tx,[...new Set(imported.map(source=>source.period))]);
  for(const source of imported){
   const statutory=source.source.statutory as Record<string,unknown>,stamp=statutory.importedTaxBasis as Record<string,unknown>;
   const unavailable=()=>{throw new PayrollTaxBasisError(`Imported wage inputs require review for ${source.period}. Preview the historical tax inputs and resolve the named missing evidence.`);};
-  if(stamp.version!==1||stamp.year!==Number(source.period.slice(0,4))||stamp.state!=='ready'||!Array.isArray(stamp.settings))unavailable();
+  if(stamp.version!==1||stamp.year!==Number(source.period.slice(0,4))||stamp.state!=='ready'||canonical(stamp.rulesState)!==canonical(rulesStates.get(source.period))||!Array.isArray(stamp.settings))unavailable();
   const settings=stamp.settings as Record<string,unknown>[];
   for(const saved of settings){
    if(saved.id==='system-basic-salary'){if(current.some(setting=>setting.code.toUpperCase()==='BASIC'))unavailable();continue;}
