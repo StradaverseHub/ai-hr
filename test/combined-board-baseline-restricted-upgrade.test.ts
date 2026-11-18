@@ -83,7 +83,27 @@ it('replays exact frozen924 +145, then reviewed Board50 as literal ai_hr_owner, 
   }
   for(const file of ['package.json','pnpm-lock.yaml','scripts/seed-catalogs.ts','packs/catalog.ts']){
    expect(readFileSync(join(source,file)).equals(readFileSync(join(forwardSource,file))),file+' same frozen dependency/catalogue source').toBe(true);
-   expect(readFileSync(join(source,file)).equals(readFileSync(join(root,file))),file+' current prepared dependency/catalogue source').toBe(true);
+   if(file!=='package.json'&&file!=='pnpm-lock.yaml')expect(readFileSync(join(source,file)).equals(readFileSync(join(root,file))),file+' current prepared catalogue source').toBe(true);
+  }
+  // Approved additive leaf only. Remove these exact bytes ONCE from the current manifest/lock
+  // and require byte-for-byte equality with BOTH frozen archives above. Every pre-existing
+  // dependency, version, peer binding, integrity and snapshot therefore remains unchanged.
+  // The historical source files and runtime are never overlaid with candidate application code.
+  const leafAdditions:Record<string,string[]>={
+   'package.json':['    "libphonenumber-js": "1.13.16",\n'],
+   'pnpm-lock.yaml':[
+    '      libphonenumber-js:\n        specifier: 1.13.16\n        version: 1.13.16\n',
+    '  libphonenumber-js@1.13.16:\n    resolution: {integrity: sha512-tIOCM9yx2Go6d5/ZANe0K+G4AZek1Ymx81HxQpf19Sri4zMP95eQbKdnUGHAvFQ4nx0PeLhFqvAfisTADXj3tQ==}\n\n',
+    '  libphonenumber-js@1.13.16: {}\n\n',
+   ],
+  };
+  for(const [file,additions]of Object.entries(leafAdditions)){
+   const archived=readFileSync(join(source,file),'utf8');let prepared=readFileSync(join(root,file),'utf8');
+   for(const addition of additions){
+    expect(archived.includes(addition),file+' leaf is absent from the frozen runtime').toBe(false);
+    expect(prepared.split(addition)).toHaveLength(2);prepared=prepared.replace(addition,'');
+   }
+   expect(prepared,file+' only the exact approved additive leaf differs').toBe(archived);
   }
   symlinkSync(realpathSync(join(root,'node_modules')),join(source,'node_modules'),'dir');
   const currentJournal=JSON.parse(readFileSync(join(root,'db/migrations/meta/_journal.json'),'utf8')) as Journal;

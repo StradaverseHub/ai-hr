@@ -103,7 +103,7 @@ BEGIN
    ELSIF who->>'kind'='group' THEN selected_group:=who->>'groupId';
    ELSIF who->>'kind'='routing' AND TG_TABLE_NAME='lc_v9_case' AND NEW.data->>'module'='off' THEN
     SELECT CASE WHEN r.retired THEN NULL ELSE jsonb_build_object('id',r.routing_id,'rows',r.routing_rows) END INTO routing FROM public.automation_routing_version r WHERE r.tenant_id=NEW.tenant_id AND r.routing_id::text=who->>'routingId' ORDER BY r.revision DESC LIMIT 1;
-    candidate_row:=app.v9_document_shared_routing_row(routing->'rows',facts||jsonb_build_object('businessGroupCompany',(SELECT coalesce(parent_company_id,id)::text FROM public.company WHERE id=company AND tenant_id=NEW.tenant_id)));
+    candidate_row:=app.v9_document_shared_routing_row(routing->'rows',facts||jsonb_build_object('businessGroupCompany',(SELECT coalesce(company_row.parent_company_id,company_row.id)::text FROM public.company company_row WHERE company_row.id=company AND company_row.tenant_id=NEW.tenant_id)));
     IF candidate_row->'assignTo'->>'kind'='group' THEN selected_group:=candidate_row->'assignTo'->>'groupId';ELSE SELECT coalesce(array_agg(value),'{}') INTO possible FROM jsonb_array_elements_text(candidate_row->'assignTo'->'userIds');END IF;
    ELSIF who->>'kind'='routing' THEN
     SELECT value INTO routing FROM jsonb_array_elements(native_cfg->'routings') WHERE value->>'id'=who->>'routingId';

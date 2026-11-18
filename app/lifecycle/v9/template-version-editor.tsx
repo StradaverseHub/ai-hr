@@ -1,6 +1,6 @@
 'use client';
 import { useRef, useState, type ReactNode } from 'react';
-import { personnelMergeGroups } from '@/lib/lifecycle-v9-personnel-merge-fields';
+import { personnelMergeGroups, personnelMergeLabels } from '@/lib/lifecycle-v9-personnel-merge-fields';
 import { DocumentBody } from '@/components/lifecycle-v9/document-body';
 import { merge, personnelFieldSourceValue } from '@/lib/lifecycle-v9-model';
 import type { Block, Document, Field, TemplateVersion } from '@/lib/lifecycle-v9-model';

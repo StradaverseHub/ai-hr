@@ -22,7 +22,16 @@ describe('the moved Probation email builder uses its original canonical versions
    const history=await automationEmailTemplateHistory(admin,original.id);
    expect(history.map(item=>item.revision)).toEqual([2,1]);
    expect(history.map(item=>item.savedBy)).toEqual([admin.userId,admin.userId]);
-   expect(history[1].template).toEqual(original);expect(history[0].template).toEqual(moved);
+   // The shared service preserves both protocols; absent v1 attachment metadata projects as empty lists.
+   expect(history[1].template).toEqual({...original,assets:[],slots:[],documentIds:[]});
+   expect(history[0].template).toEqual({...moved,assets:[],slots:[],documentIds:[]});
+   expect(history[1].template).not.toHaveProperty('bodyDoc');expect(history[1].template).not.toHaveProperty('definition');
+   expect(history[0].template).not.toHaveProperty('bodyDoc');
+   const stored=await withTenant(admin,tx=>tx.execute(sql`select revision,body_doc as "bodyDoc",assets,file_slots as slots,document_ids as "documentIds",definition from automation_email_template_version where tenant_id=${b.tenantId}::uuid and template_id=${original.id}::uuid order by revision desc`));
+   expect([...stored]).toEqual([
+    {revision:2,bodyDoc:null,assets:null,slots:null,documentIds:null,definition:converted.definition},
+    {revision:1,bodyDoc:null,assets:[],slots:[],documentIds:[],definition:null},
+   ]);
    expect(history[0].template.id).toBe(original.id);
   }
   expect((await listAutomationEmailTemplates(admin,{module:'probation'})).map(item=>item.template.name)).toEqual(['Review form is open','Signing request','Week 1 KPI alert','Your probation letter']);

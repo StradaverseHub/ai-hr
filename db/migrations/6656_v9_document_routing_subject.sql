@@ -238,7 +238,7 @@ BEGIN
  OR NOT EXISTS(SELECT 1 FROM public.tenant t JOIN public.tenant_module m ON m.tenant_id=t.id WHERE t.id=c.tenant_id AND t.status IN('active','trial') AND m.module_code='lifecycle' AND(m.company_id IS NULL OR m.company_id=c.company_id) AND m.status IN('active','trial') AND m.activated_at<=now() AND(m.expires_at IS NULL OR m.expires_at>now()))
  THEN RAISE EXCEPTION 'Offboarding document routing is unavailable in your current scope' USING ERRCODE='42501';END IF;
  IF c.revision IS DISTINCT FROM p_revision THEN RAISE EXCEPTION 'The Offboarding case changed. Refresh before generating a document.' USING ERRCODE='40001';END IF;
- source_facts:=(c.data->'facts')||jsonb_build_object('businessGroupCompany',(SELECT coalesce(parent_company_id,id)::text FROM public.company WHERE id=c.company_id AND tenant_id=c.tenant_id));
+ source_facts:=(c.data->'facts')||jsonb_build_object('businessGroupCompany',(SELECT coalesce(company_row.parent_company_id,company_row.id)::text FROM public.company company_row WHERE company_row.id=c.company_id AND company_row.tenant_id=c.tenant_id));
  WITH eligible AS MATERIALIZED(
  SELECT version.value FROM public.lc_v9_config cfg CROSS JOIN LATERAL jsonb_array_elements(cfg.data->'templates') template
  CROSS JOIN LATERAL(SELECT v AS value FROM jsonb_array_elements(template->'versions') v WHERE v->>'state'='published' ORDER BY coalesce(v->>'version'=template->>'currentVersion',false) DESC,(v->>'version')::integer DESC LIMIT 1) version
@@ -351,7 +351,7 @@ BEGIN
    ELSIF who->>'kind'='group' THEN selected_group:=who->>'groupId';
    ELSIF who->>'kind'='routing' AND TG_TABLE_NAME='lc_v9_case' AND NEW.data->>'module'='off' THEN
     SELECT CASE WHEN r.retired THEN NULL ELSE jsonb_build_object('id',r.routing_id,'rows',r.routing_rows) END INTO routing FROM public.automation_routing_version r WHERE r.tenant_id=NEW.tenant_id AND r.routing_id::text=who->>'routingId' ORDER BY r.revision DESC LIMIT 1;
-    candidate_row:=app.v9_document_shared_routing_row(routing->'rows',facts||jsonb_build_object('businessGroupCompany',(SELECT coalesce(parent_company_id,id)::text FROM public.company WHERE id=company AND tenant_id=NEW.tenant_id)));
+    candidate_row:=app.v9_document_shared_routing_row(routing->'rows',facts||jsonb_build_object('businessGroupCompany',(SELECT coalesce(company_row.parent_company_id,company_row.id)::text FROM public.company company_row WHERE company_row.id=company AND company_row.tenant_id=NEW.tenant_id)));
     IF candidate_row->'assignTo'->>'kind'='group' THEN selected_group:=candidate_row->'assignTo'->>'groupId';ELSE SELECT coalesce(array_agg(value),'{}') INTO possible FROM jsonb_array_elements_text(candidate_row->'assignTo'->'userIds');END IF;
    ELSIF who->>'kind'='routing' THEN
     SELECT value INTO routing FROM jsonb_array_elements(native_cfg->'routings') WHERE value->>'id'=who->>'routingId';

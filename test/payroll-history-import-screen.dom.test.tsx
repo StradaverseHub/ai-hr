@@ -87,7 +87,8 @@ describe('payroll history revision workflow',()=>{
   await user.upload(screen.getByLabelText('Source file'),new File(['x'],'history.csv',{type:'text/csv'}));await user.click(screen.getByRole('button',{name:'Validate file'}));
   expect(fetcher).toHaveBeenCalledWith(expect.stringContaining('&mode='+mode),expect.anything());
   const commit=screen.getByRole('button',{name:mode==='update_listed'?'Confirm history changes':'Confirm overwrite and import'});expect(commit).toBeDisabled();
-  await user.click(screen.getByLabelText('Overwrite 0000 2024-01'));expect(commit).toBeDisabled();
+  const record=screen.getByRole('checkbox',{name:mode==='update_listed'?'Update listed totals for 0000 2024-01':'Overwrite 0000 2024-01'});
+  expect(record).not.toBeChecked();await user.click(record);expect(record).toBeChecked();expect(commit).toBeDisabled();
   expect(screen.getAllByText('Issued payroll is retained in audit history.').length).toBeGreaterThan(0);
   expect(screen.queryByLabelText(/I understand\. Replace the ticked records/)).toBeNull();expect(screen.queryByLabelText(/I have reviewed the warnings above/)).toBeNull();
   await user.click(screen.getByLabelText(/I have reviewed the companies/));expect(commit).toBeEnabled();await user.click(commit);

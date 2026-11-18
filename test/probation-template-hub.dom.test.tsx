@@ -16,10 +16,18 @@ HTMLDialogElement.prototype.showModal=function(){this.setAttribute('open','');};
 HTMLDialogElement.prototype.close=function(){this.removeAttribute('open');};
 afterEach(()=>{cleanup();vi.clearAllMocks();});
 const actor={id:'fictional-hr',name:'Fictional HR'};
-function fixture(routed=false){
+function fixture(routed=false,module:'onb'|'off'='onb',legacy=false){
  const config=v9Defaults();
- if(routed){const template=newV9Template('Letter',actor,'fictional-letter','2026-11-18T00:00:00Z');template.name='Fictional routed letter';template.versions[0].routing=[{id:'hr',order:1,action:'sign',owner:true,who:{kind:'group',groupId:'people'}},{id:'employee',order:2,action:'acknowledge',owner:false,who:{kind:'employee'}}];template.versions[0].blocks=[{id:'hr-block',type:'signature',text:'',section:'',role:'step:hr',label:'HR'},{id:'employee-block',type:'signature',text:'',section:'',role:'step:employee',label:'Employee'}];config.templates=[template];}
- return render(<NextIntlClientProvider locale="en" messages={messages}><V9Workspace initial={{config,cases:[],actor,canConfigure:true,personnelWritableKeys:[],permissions:{onboarding:true,offboarding:true,administration:true},options:{users:[],companies:[],employees:[],labels:{},leaveTypes:[],documentRoutingChoices:{routings:[],groups:[{id:'people',name:'Fictional People Ops'}],people:[]}}}} viewer={{name:actor.name,employeeCode:null,employed:false}} navigation="global" initialView="templates" probationTemplates={<ProbationTemplateSection emails={[]} refs={{routings:[],groups:[],people:[]}}/>}/></NextIntlClientProvider>);
+ if(routed||legacy){
+  const template=newV9Template('Letter',actor,'fictional-letter','2026-11-18T00:00:00Z');
+  template.name=routed?'Fictional routed letter':'Fictional legacy letter';template.module=module;template.hrStep='before';
+  if(routed){
+   template.versions[0].routing=[{id:'hr',order:1,action:'sign',owner:true,who:{kind:'group',groupId:'people'}},{id:'employee',order:2,action:'acknowledge',owner:false,who:{kind:'employee'}}];
+   template.versions[0].blocks=[{id:'hr-block',type:'signature',text:'',section:'',role:'step:hr',label:'HR'},{id:'employee-block',type:'signature',text:'',section:'',role:'step:employee',label:'Employee'}];
+  }
+  config.templates=[template];
+ }
+ return render(<NextIntlClientProvider locale="en" messages={messages}><V9Workspace initial={{config,cases:[],actor,canConfigure:true,personnelWritableKeys:[],permissions:{onboarding:true,offboarding:true,administration:true},options:{users:[],companies:[],employees:[],labels:{},leaveTypes:[],nativeDocumentRoutingChoices:{routings:[],groups:[{id:'people',name:'Fictional People Ops'}],people:[]}}}} viewer={{name:actor.name,employeeCode:null,employed:false}} navigation="global" initialView="templates" probationTemplates={<ProbationTemplateSection emails={[]} refs={{routings:[],groups:[],people:[]}}/>}/></NextIntlClientProvider>);
 }
 it('offers Probation from the common New email control and keeps its draft outside V9 configuration',async()=>{
  fixture();
@@ -31,6 +39,22 @@ it('edits native Sign and Acknowledge block links without the duplicate legacy H
  fixture(true);fireEvent.click(screen.getByRole('button',{name:'Edit Fictional routed letter'}));
  await waitFor(()=>expect(screen.getByRole('heading',{name:'Signing and review routing'})).toBeInTheDocument());
  expect(screen.queryByRole('combobox',{name:'HR signature'})).toBeNull();expect(screen.getByRole('combobox',{name:'Signer 1'})).toHaveValue('step:hr');expect(screen.getByRole('combobox',{name:'Signer 2'})).toHaveValue('step:employee');
+});
+
+
+it.each(['onb','off'] as const)('retains the legacy HR signature control for an unrouted %s template',module=>{
+ fixture(false,module,true);fireEvent.click(screen.getByRole('button',{name:'Edit Fictional legacy letter'}));
+ expect(screen.getByRole('combobox',{name:'HR signature'})).toHaveValue('before');
+ expect(screen.queryByRole('combobox',{name:'Fallback HR signature'})!==null).toBe(module==='off');
+ expect(screen.queryByText('Signing follows the routing below.')).toBeNull();
+});
+it('retains shared Offboarding routing authority and hides its obsolete legacy signature controls',()=>{
+ fixture(true,'off');fireEvent.click(screen.getByRole('button',{name:'Edit Fictional routed letter'}));
+ expect(screen.queryByRole('combobox',{name:'HR signature'})).toBeNull();
+ expect(screen.queryByRole('combobox',{name:'Fallback HR signature'})).toBeNull();
+ expect(screen.getByText('Signing follows the routing below.')).toBeInTheDocument();
+ expect(screen.getByRole('combobox',{name:'Signer 1'})).toHaveValue('step:hr');
+ expect(screen.getByRole('combobox',{name:'Signer 2'})).toHaveValue('step:employee');
 });
 
 it('shows company letter configuration without global email authoring controls',()=>{
