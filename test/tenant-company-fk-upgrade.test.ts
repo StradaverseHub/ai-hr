@@ -916,6 +916,9 @@ it('stops on a cross-tenant row, then validates every company/tenant key without
    {fn:'app.v9_document_route_participant(jsonb)',app:true},
    {fn:'app.v9_document_route_content_visible(jsonb)',app:true},
    {fn:'app.v9_document_route_sources()',app:false},
+   //4c2900948: the canonical source is private; the scoped HR display wrapper checks the exact case authority.
+   {fn:'app.v9_document_personnel_source_unchecked(uuid)',app:false},
+   {fn:'app.v9_document_personnel_values(uuid)',app:true},
    {fn:'app.v9_document_signing_work(text,integer,integer)',app:true},
    {fn:'app.v9_document_native_rules_match(jsonb,jsonb)',app:true},
    {fn:'app.v9_document_route_validate_append(jsonb,jsonb,jsonb)',app:true},
