@@ -154,3 +154,17 @@ it('serializes a real Personnel update with first signing and preserves either v
  if(signature.status==='fulfilled'){expect(current.document.personnelCompletion).toEqual(submitted);expect(current.document.values['field-mobile']).toBe('+60123456789');expect(current.signing!.document.actions.filter(action=>action.action==='signed')).toHaveLength(1);}
  else{expect(current.signing!.document.actions).toEqual([]);own=await view(f,f.staff.ctx);expect(own.document.values['field-mobile']).toBe('+601112345678');expect(own.document.personnelCompletion!.fields['field-mobile'].conflict?.draft).toBe('+60123456789');}
 });
+
+it('binds every part-read policy to the guarded public wrapper while keeping the legacy helper private',async()=>{
+ const f=await fixture([field('personalEmail',{type:'email'})]);
+ const dependencies=await owner.db.execute<{name:string;guarded:boolean;legacy:boolean}>(sql`select p.polname as name,exists(select 1 from pg_depend d where d.classid='pg_policy'::regclass and d.objid=p.oid and d.refclassid='pg_proc'::regclass and d.refobjid='app.probation_part_access(uuid,text)'::regprocedure) as guarded,exists(select 1 from pg_depend d where d.classid='pg_policy'::regclass and d.objid=p.oid and d.refclassid='pg_proc'::regclass and d.refobjid='app.probation_part_access_before_completion_6686(uuid,text)'::regprocedure) as legacy from pg_policy p where p.polname in ('probation_part_read','probation_rater_read','probation_revision_read','probation_delegate_read') order by p.polname`);
+ expect(dependencies.map(row=>row.name)).toEqual(['probation_delegate_read','probation_part_read','probation_rater_read','probation_revision_read']);expect(dependencies.every(row=>row.guarded&&!row.legacy)).toBe(true);
+ const[acl]=await owner.db.execute<{allowed:boolean}>(sql`select has_function_privilege('ai_hr_app','app.probation_part_access_before_completion_6686(uuid,text)','EXECUTE') as allowed`);expect(acl.allowed).toBe(false);
+ await expect(withTenant(f.admin,tx=>tx.execute(sql`select app.probation_part_access_before_completion_6686(${f.partId}::uuid,null)`))).rejects.toThrow('permission denied');
+ expect(await withTenant(f.admin,tx=>tx.execute(sql`select id from probation_part where id=${f.ids.part}::uuid`))).toHaveLength(1);
+ expect(await withTenant(f.admin,tx=>tx.execute(sql`select id from probation_part where id=${f.partId}::uuid`))).toHaveLength(1);
+ await owner.db.execute(sql`insert into payroll_permission_grant(tenant_id,company_id,role,permission_key,allowed) values(${b.tenantId}::uuid,${b.companyId}::uuid,'hr_admin','report.read.identity',false)`);
+ const[boundary]=await withTenant(f.admin,tx=>tx.execute<{identity:boolean;access:boolean}>(sql`select app.personnel_identity_search_permitted(${b.companyId}::uuid) as identity,app.probation_part_access(${f.partId}::uuid) as access`));expect(boundary).toEqual({identity:false,access:false});
+ expect(await withTenant(f.admin,tx=>tx.execute(sql`select id from probation_part where id=${f.partId}::uuid`))).toEqual([]);
+ expect(await withTenant(f.admin,tx=>tx.execute(sql`select id from probation_part where id=${f.ids.part}::uuid`))).toHaveLength(1);
+});
