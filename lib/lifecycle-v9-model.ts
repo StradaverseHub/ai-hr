@@ -181,7 +181,7 @@ export type Mail = {
     /** Keys in to/cc that came from Employee (Personal email); masked for viewers without that Personnel permission. */
     personalKeys?: string[] };
 };
-export type PMChange = { id: string; documentId: string; field: string; before: string; after: string; status: 'proposed' | 'pushed' | 'conflict' | 'rejected'; sourceRevision: string; provenance?:{kind:'missing-personnel';version:1;by:Actor;at:string} };
+export type PMChange = { id: string; documentId: string; field: string; before: string; after: string; status: 'proposed' | 'pushed' | 'conflict' | 'rejected'; sourceRevision: string; provenance?:{kind:'missing-personnel';version:1;by:Actor;at:string};superseded?:{at:string;by:Actor;reason:string} };
 export type FinalFigures = { sourceRevision: string; lastDay: string; leaveDays: string; amount: string; currency: string; payDate: string; lockedAt: string; payrollReference: string };
 export type Case = {
   version: 9; id: string; number: string; module: Module; revision: number; state: CaseState;
@@ -476,7 +476,16 @@ export function overrideDocumentPersonnelCompletion(c:Case,id:string,input:{fiel
   const doc=c.documents.find(document=>document.id===id);if(!doc)throw new V9Error('Document not found.','not_found');
   if(c.state!=='submitted'||documentDeliveryReserved(c,id))throw new V9Error('This document is no longer editable.','conflict');
   refreshDocumentPersonnelCompletion(doc,env);overridePersonnelCompletion(doc,{...input,actor:env.actor,at:env.now});reviseV9DocumentRouting(doc,env);
+  reconcileDocumentCompletionProposals(c,doc,env);
   appendLog(c,env,'document.completionOwnerChanged',`${doc.name}: ${input.fieldId}; ${input.reason.trim()}`);
+}
+/** An earlier submitted answer is audit history, not permission to push an abandoned draft. */
+export function currentDocumentCompletionProposal(doc:Document,change:PMChange):boolean{
+  if(!doc.personnelCompletion||change.provenance?.kind!=='missing-personnel')return true;
+  return doc.fields.some(field=>{const entry=doc.personnelCompletion!.fields[field.id],answer=entry?.answer;return field.pmKey===change.field&&effectivePersonnelCompletion(doc,field)==='employee'&&answer?.owner==='employee'&&answer.value===change.after&&doc.values[field.id]===change.after&&answer.by.id===change.provenance!.by.id;});
+}
+function reconcileDocumentCompletionProposals(c:Case,doc:Document,env:Environment){
+  for(const change of c.pmChanges)if(change.documentId===doc.id&&change.status==='proposed'&&!currentDocumentCompletionProposal(doc,change)){change.status='rejected';change.superseded={at:env.now,by:{...env.actor},reason:'The active employee answer changed or completion moved to another owner'};}
 }
 export function submitDocumentPersonnelCompletion(c:Case,id:string,env:Environment){
   const doc=c.documents.find(document=>document.id===id);if(!doc?.personnelCompletion)throw new V9Error('This document has no Personnel completion request.','not_found');
@@ -484,7 +493,8 @@ export function submitDocumentPersonnelCompletion(c:Case,id:string,env:Environme
   const issue=personnelCompletionIssues(doc,{owner:'employee',final:true})[0];if(issue)throw new V9Error(issue.message);
   if(personnelCompletionLocked(doc))throw new V9Error('Signed content is locked.','conflict');
   doc.personnelCompletion.submitted={at:env.now,by:{...env.actor},sourceFingerprint:doc.personnelCompletion.sourceFingerprint};
-  for(const answer of personnelCompletionEmployeeAnswers(doc,env.actor.id))if(!c.pmChanges.some(change=>change.documentId===id&&change.field===answer.key))c.pmChanges.push({id:env.nextId(),documentId:id,field:answer.key,before:'',after:answer.value,sourceRevision:c.sourceRevision,status:'proposed',provenance:{kind:'missing-personnel',version:1,by:{...answer.by},at:answer.at}});
+  reconcileDocumentCompletionProposals(c,doc,env);
+  for(const answer of personnelCompletionEmployeeAnswers(doc,env.actor.id))if(!c.pmChanges.some(change=>change.documentId===id&&change.field===answer.key&&change.status==='proposed'&&change.after===answer.value&&change.provenance?.by.id===answer.by.id))c.pmChanges.push({id:env.nextId(),documentId:id,field:answer.key,before:'',after:answer.value,sourceRevision:c.sourceRevision,status:'proposed',provenance:{kind:'missing-personnel',version:1,by:{...answer.by},at:answer.at}});
   reviseV9DocumentRouting(doc,env,true);appendLog(c,env,'document.completionSubmitted',doc.name);
 }
 function documentPersonnelHold(doc: Document): string | null {
@@ -534,6 +544,7 @@ export function saveDocument(c: Case, id: string, values: Record<string, string>
     if(field.owner==='pmLocked')savePersonnelCompletionAnswer(doc,field,value,{owner,actor:env.actor,at:env.now});else doc.values[key] = value;
   }
   reviseV9DocumentRouting(doc,env,owner==='employee');
+  reconcileDocumentCompletionProposals(c,doc,env);
   appendLog(c, env, 'document.saved', doc.name);
 }
 /** Per-person wording is stored on the saved instance, never on the published template. */

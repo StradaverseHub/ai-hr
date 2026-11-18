@@ -78,7 +78,7 @@ BEGIN
   policy:=policy||jsonb_build_object('fields',entries,'history',history,'sourceFingerprint',fingerprint);d:=jsonb_set(d,'{personnelCompletion}',policy);
  END IF;
  IF p_operation='override' THEN
-  IF jsonb_typeof(p_override) IS DISTINCT FROM 'object' OR p_override-ARRAY['fieldId','owner','reason']<>'{}'::jsonb OR p_override->>'owner' NOT IN('employee','hr') OR length(btrim(coalesce(p_override->>'reason',''))) NOT BETWEEN 1 AND 4000 THEN RAISE EXCEPTION 'Record a bounded reason and completion owner';END IF;
+  IF jsonb_typeof(p_override) IS DISTINCT FROM 'object' OR p_override-ARRAY['fieldId','owner','reason']<>'{}'::jsonb OR coalesce(p_override->>'owner' IN('employee','hr'),false) IS NOT TRUE OR length(btrim(coalesce(p_override->>'reason',''))) NOT BETWEEN 1 AND 4000 THEN RAISE EXCEPTION 'Record a bounded reason and completion owner';END IF;
   key:=p_override->>'fieldId';SELECT item INTO field FROM jsonb_array_elements(d->'fields') item WHERE item->>'id'=key AND item->>'owner'='pmLocked';entry:=policy->'fields'->key;
   IF field IS NULL OR entry IS NULL OR btrim(coalesce(entry->>'sourceValue',''))<>'' THEN RAISE EXCEPTION 'Only a missing Personnel field can change owner';END IF;
   before_owner:=app.personnel_completion_owner(d,field);after_owner:=p_override->>'owner';
@@ -89,7 +89,7 @@ BEGIN
  IF p_operation NOT IN('save','submit') AND p_values<>'{}'::jsonb THEN RAISE EXCEPTION 'Unexpected completion values';END IF;
  FOR key,value IN SELECT * FROM jsonb_each(p_values) LOOP
   SELECT item INTO field FROM jsonb_array_elements(d->'fields') item WHERE item->>'id'=key;owner:=app.personnel_completion_owner(d,field);
-  IF field IS NULL OR jsonb_typeof(value) IS DISTINCT FROM 'string' OR owner='pmLocked' OR owner='employee' AND NOT own OR owner='hr' AND NOT hr THEN RAISE EXCEPTION 'This field belongs to another owner or Personnel Management' USING ERRCODE='42501';END IF;
+  IF field IS NULL OR jsonb_typeof(value) IS DISTINCT FROM 'string' OR owner IS NULL OR owner NOT IN('employee','hr') OR owner='employee' AND NOT own OR owner='hr' AND NOT hr THEN RAISE EXCEPTION 'This field belongs to another owner or Personnel Management' USING ERRCODE='42501';END IF;
   -- HR acting on their own case still edits HR answers through save; submit is always the employee role.
   IF p_operation='submit' AND owner<>'employee' THEN RAISE EXCEPTION 'Only employee answers can be submitted';END IF;
   PERFORM app.personnel_completion_scalar(field,value#>>'{}');d:=jsonb_set(d,ARRAY['values',key],value,true);
@@ -100,12 +100,13 @@ BEGIN
   END IF;
  END LOOP;
  d:=jsonb_set(d,'{personnelCompletion}',policy);changes:=coalesce(case_data->'pmChanges','[]'::jsonb);
+ SELECT coalesce(jsonb_agg(CASE WHEN proposal->>'documentId'=p_document AND proposal->>'status'='proposed' AND proposal->'provenance'->>'kind'='missing-personnel' AND NOT EXISTS(SELECT 1 FROM jsonb_array_elements(d->'fields') f WHERE f->>'pmKey'=proposal->>'field' AND app.personnel_completion_owner(d,f)='employee' AND policy->'fields'->(f->>'id')->'answer'->>'owner'='employee' AND policy->'fields'->(f->>'id')->'answer'->>'value'=proposal->>'after' AND d->'values'->>(f->>'id')=proposal->>'after' AND policy->'fields'->(f->>'id')->'answer'->'by' IS NOT DISTINCT FROM proposal->'provenance'->'by') THEN proposal||jsonb_build_object('status','rejected','superseded',jsonb_build_object('at',stamp,'by',actor,'reason','The active employee answer changed or completion moved to another owner')) ELSE proposal END ORDER BY ordinal),'[]'::jsonb) INTO changes FROM jsonb_array_elements(changes) WITH ORDINALITY x(proposal,ordinal);
  IF p_operation='submit' THEN
   FOR field IN SELECT item FROM jsonb_array_elements(d->'fields') item WHERE app.personnel_completion_owner(d,item)='employee' LOOP
    IF field->'when' IS NOT NULL AND field->'when'<>'null'::jsonb AND d->'values'->>(field->'when'->>'field') IS DISTINCT FROM field->'when'->>'value' THEN CONTINUE;END IF;
    answer:=coalesce(d->'values'->>(field->>'id'),'');IF field->>'required'='true' AND (btrim(answer)='' OR field->>'type'='checkbox' AND answer<>'true' OR field->>'type'='table' AND answer='[]') THEN RAISE EXCEPTION 'Complete required employee answers';END IF;
    PERFORM app.personnel_completion_scalar(field,answer);entry:=policy->'fields'->(field->>'id');
-   IF field->>'owner'='pmLocked' AND entry->'answer'->>'owner'='employee' AND entry->'answer'->'by'->>'id'=app.current_user_id()::text AND entry->'answer'->>'value'=answer AND btrim(answer)<>'' AND field->>'pmKey' NOT LIKE 'case.%' AND NOT EXISTS(SELECT 1 FROM jsonb_array_elements(changes) item WHERE item->>'documentId'=p_document AND item->>'field'=field->>'pmKey') THEN
+   IF field->>'owner'='pmLocked' AND entry->'answer'->>'owner'='employee' AND entry->'answer'->'by'->>'id'=app.current_user_id()::text AND entry->'answer'->>'value'=answer AND btrim(answer)<>'' AND field->>'pmKey' NOT LIKE 'case.%' AND NOT EXISTS(SELECT 1 FROM jsonb_array_elements(changes) item WHERE item->>'documentId'=p_document AND item->>'field'=field->>'pmKey' AND item->>'status'='proposed' AND item->>'after'=answer AND item->'provenance'->'by' IS NOT DISTINCT FROM entry->'answer'->'by') THEN
     changes:=changes||jsonb_build_array(jsonb_build_object('id',gen_random_uuid(),'documentId',p_document,'field',field->>'pmKey','before','','after',answer,'sourceRevision',CASE WHEN s.is_native THEN n.data->>'sourceVersion' ELSE case_data->>'sourceRevision' END,'status','proposed','provenance',jsonb_build_object('kind','missing-personnel','version',1,'by',entry->'answer'->'by','at',entry->'answer'->>'at')));
    END IF;
   END LOOP;
