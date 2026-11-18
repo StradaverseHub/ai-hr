@@ -86,10 +86,16 @@ export function validateSigningRoute(route: SigningRoute, rules: SigningGuardrai
   }
 }
 const atCurrentContent=(action:SigningAction,document:SigningDocument)=>action.contentRevision===document.contentRevision&&action.contentHash===document.contentHash;
-/** Actions of the current round: current content, after the latest re-send of that content. */
+/** Routed send-backs hold custody across content edits until an explicit resend. Historical decisions never revive. */
 export function currentRoundActions(document: SigningDocument): SigningAction[] {
   let start=0;
-  document.actions.forEach((action,index)=>{if(atCurrentContent(action,document)){if(action.action==='resent')start=index+1;else if(document.routing&&action.action==='returned')start=index;}});
+  for(let index=0;index<document.actions.length;index++){
+    const action=document.actions[index];
+    if(document.routing){if(action.action==='returned')start=index;else if(action.action==='resent')start=index+1;}
+    else if(atCurrentContent(action,document)&&action.action==='resent')start=index+1;
+  }
+  const boundary=document.actions[start];
+  if(document.routing&&boundary?.action==='returned')return [boundary];
   return document.actions.slice(start).filter(action=>atCurrentContent(action,document));
 }
 /** The send-back that currently holds the document with its owner, or null. */

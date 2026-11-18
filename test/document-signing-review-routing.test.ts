@@ -144,3 +144,10 @@ describe('signing and review routing per template version',()=>{
   expect(route.steps[0].holderId).toBeNull();expect(unresolved[0]).toMatchObject({stepId:'e',holderId:null,fallbackGroupId:null});
  });
 });
+
+it('retains returned owner custody across revised content until explicit resend, without reviving old signatures',()=>{
+ let doc=act(act(chain(),'review','gbs','reviewed'),'approve','hod','approved');doc=act(doc,'sign-pbp','pbp','signed');doc=act(doc,'sign-pbp','pbp','returned','Correct the wording');
+ const returned=doc.actions.at(-1)!;doc=reviseSigningDocument(doc,'b'.repeat(64));
+ expect(signingSendBack(doc)).toEqual(returned);expect(pending(doc)).toEqual([]);expect(signingContentLocked(doc)).toBe(false);expect(canEditSigningContent(doc,'gbs')).toBe(true);expect(canEditSigningContent(doc,'pbp')).toBe(false);
+ doc=resendSigningDocument(doc,{id:'edited-resend',actorId:'gbs',actorPersonId:'person-gbs',actorName:'gbs',at});expect(signingSendBack(doc)).toBeNull();expect(pending(doc)).toEqual(['review']);expect(doc.actions).toHaveLength(5);
+});
