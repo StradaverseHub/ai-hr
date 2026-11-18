@@ -1,6 +1,6 @@
 /** Genuine native Form signatures at the exact pre5974 journal, followed by ordinary migration.
  * No signed rows, receipts, function replacements or owner guards are manufactured by this fixture. */
-import {randomUUID} from 'node:crypto';
+import {createHash,randomUUID} from 'node:crypto';
 import {copyFileSync,mkdtempSync,mkdirSync,readFileSync,rmSync,writeFileSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
@@ -12,8 +12,16 @@ import {expect,it} from 'vitest';
 
 it('preserves a genuinely signed old known label and old unresolved private label after the alias upgrade',async()=>{
  const tag='6411_contract_form_native_field_parity';
- const journal=JSON.parse(readFileSync('db/migrations/meta/_journal.json','utf8')) as {entries:{tag:string}[]};
- const boundary=journal.entries.findIndex(entry=>entry.tag===tag);expect(boundary).toBeGreaterThan(5300);
+ const journal=JSON.parse(readFileSync('db/migrations/meta/_journal.json','utf8')) as {entries:{idx:number;version:string;when:number;tag:string;breakpoints:boolean}[]};
+ expect(journal.entries.filter(entry=>entry.tag===tag)).toHaveLength(1);
+ const boundary=journal.entries.findIndex(entry=>entry.tag===tag);expect(boundary).toBeGreaterThan(0);
+ // Array position selects the prefix; allocated idx is a separate, noncontiguous identity.
+ expect(journal.entries.slice(boundary-1,boundary+2)).toEqual([
+  {idx:5810,version:'7',when:1794988006410,tag:'6410_contract_original_email_readiness_recheck',breakpoints:true},
+  {idx:5811,version:'7',when:1794988006411,tag,breakpoints:true},
+  {idx:5812,version:'7',when:1794988006412,tag:'6412_contract_setup_ending_email_readiness',breakpoints:true},
+ ]);
+ expect(createHash('sha256').update(readFileSync('db/migrations/'+tag+'.sql')).digest('hex')).toBe('695077fddbcb4163712b8c49fb6d34eeddba1cb194394c5b43c220471b485d24');
  const keys=['TEST_DATABASE_URL','TEST_MIGRATION_DATABASE_URL','DATABASE_URL','MIGRATION_DATABASE_URL'] as const;
  const original=Object.fromEntries(keys.map(key=>[key,process.env[key]]));
  const ownerUrl=new URL(process.env.TEST_MIGRATION_DATABASE_URL!);expect(['localhost','127.0.0.1']).toContain(ownerUrl.hostname);
