@@ -119,7 +119,9 @@ jobs:
           const hints=JSON.parse(readFileSync('.github/ci/db-duration-hints.json'));
           const db=plan.units.filter(u=>u.kind==='db'),files=db.flatMap(u=>u.files).sort(),old=[];
           for(let i=0;i<files.length;i+=DB_BATCH_FILES)old.push(files.slice(i,i+DB_BATCH_FILES));
-          assert.deepEqual(db.flatMap(u=>u.files).sort(),old.flat().sort());assert.equal(db.length,old.length);
+          assert.deepEqual(db.flatMap(u=>u.files).sort(),old.flat().sort());
+          assert.equal(new Set(files).size,files.length,'Unique complete DB coverage');
+          assert(db.every(u=>u.files.length>0&&u.files.length<=DB_BATCH_FILES),'Every isolated/balanced DB unit respects maximum size');
           const estimate=group=>group.reduce((ms,f)=>ms+(hints.durationsMs[f]??hints.unknownDurationMs),0);
           const report={kind:'SCHEDULING_MODEL_NOT_RUNTIME_OR_PASS',candidate:plan.sha,controller:plan.controller,policy:plan.policyVersion,runId:process.env.GITHUB_RUN_ID,dbFiles:files.length,dbUnits:db.length,maximumFiles:DB_BATCH_FILES,workers:plan.execution.workers,scheduling:plan.execution.scheduling,oldAlphabeticalMaximumSummedFileMs:Math.max(...old.map(estimate)),balancedMaximumSummedFileMs:Math.max(...db.map(u=>estimate(u.files))),unknownFiles:files.filter(f=>!Object.hasOwn(hints.durationsMs,f)),completeClassifierInventoryUnchanged:true,releaseAuthorized:false,warning:'Overlapping historical file intervals are advisory weights, not job elapsed times or predicted speedups.'};
           writeFileSync(process.env.RUNNER_TEMP+'/scheduling-model.json',JSON.stringify(report,null,2)+'\n');console.log(JSON.stringify(report,null,2));
