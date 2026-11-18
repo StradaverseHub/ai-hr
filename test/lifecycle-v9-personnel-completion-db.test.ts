@@ -52,6 +52,7 @@ it('rejects direct SQL forged policies, required ownership changes, missing audi
  const {id,document}=await prepared();let c=await current(id);
  const forge=async(next:typeof c)=>withTenant(hr,tx=>tx.execute(sql`update lc_v9_case set data=${JSON.stringify(next)}::jsonb where id=${id}::uuid and tenant_id=${b.tenantId}::uuid`));
  for(const mutation of [(d:Document)=>{d.hrSignature={method:'typed',value:'Synthetic completion HR',consent:true,by:{id:hr.userId!,name:'Synthetic completion HR'},at:new Date().toISOString()};d.status='hrsigned';},(d:Document)=>{d.personnelCompletion!.fields.F0.sourceValue='Forged official';},(d:Document)=>{d.fields[0].required=false;},(d:Document)=>{d.personnelCompletion!.fields.F0.override={owner:'hr',by:{id:hr.userId!,name:'Synthetic completion HR'},at:new Date().toISOString(),reason:'Forged direct command'};}]){const next=structuredClone(c);mutation(next.documents[0]);await expect(forge(next)).rejects.toThrow();}
+ const omittedVersion=structuredClone(c),unversioned=structuredClone(document);unversioned.id='forged-unversioned-document';delete unversioned.personnelCompletion;omittedVersion.documents.push(unversioned);await expect(forge(omittedVersion)).rejects.toThrow();
  const missingTimestamp=structuredClone(c),forgedInitial=structuredClone(document);forgedInitial.id='forged-initial-document';delete (forgedInitial.personnelCompletion as unknown as Record<string,unknown>).adoptedAt;missingTimestamp.documents.push(forgedInitial);await expect(forge(missingTimestamp)).rejects.toThrow();
  await v9SubmitOwnDocumentCompletion(employee,{caseId:id,revision:c.revision,documentId:document.id,values:{F0:'Submitted address'}});c=await current(id);
  await v9Command(hr,id,c.revision,{type:'documentSign',id:document.id,signature:{method:'typed',value:'Synthetic completion HR',consent:true}});c=await current(id);
@@ -74,4 +75,22 @@ it('uses the same protected completion command and content hash through an expli
  await v9DocumentRouteAct(employee,{caseId:id,caseRevision:work.caseRevision,documentId:document.id,contentHash:work.signing.contentHash,contentRevision:work.signing.contentRevision,stepId:'employee-sign',action:'signed',signature:{method:'typed',value:'Synthetic completion subject',consent:true}});
  const c=await current(id);expect(c.documents[0].status).toBe('signed');expect(c.documents[0].values.F0).toBe('Routed employee answer');expect(c.pmChanges.filter(change=>change.status==='proposed')).toMatchObject([{field:'address',after:'Routed employee answer',provenance:{by:{id:employee.userId}}}]);
  await expect(v9DocumentRouteEdit(employee,{caseId:id,caseRevision:c.revision,documentId:document.id,values:{F0:'Changed after signing'}})).rejects.toThrow();
+});
+
+it('serializes employee save against the first HR signature with one winning case revision and no signed-content overwrite',async()=>{
+ const {id,document}=await prepared();await v9SubmitOwnDocumentCompletion(employee,{caseId:id,revision:(await current(id)).revision,documentId:document.id,values:{F0:'Submitted answer'}});const revision=(await current(id)).revision;
+ const results=await Promise.allSettled([v9OwnDocument(employee,{caseId:id,revision,documentId:document.id,values:{F0:'Concurrent employee answer'}}),v9Command(hr,id,revision,{type:'documentSign',id:document.id,signature:{method:'typed',value:'Synthetic completion HR',consent:true}})]);
+ expect(results.filter(result=>result.status==='fulfilled')).toHaveLength(1);expect(results.filter(result=>result.status==='rejected')).toHaveLength(1);const c=await current(id),d=c.documents[0];
+ if(d.hrSignature){expect(d.values.F0).toBe('Submitted answer');await expect(v9OwnDocument(employee,{caseId:id,revision:c.revision,documentId:document.id,values:{F0:'After signature'}})).rejects.toThrow();}else expect(d.values.F0).toBe('Concurrent employee answer');
+});
+
+it('stores no unused sensitive source on the document or employee projection',async()=>{
+ await updatePersonProfilePartial(hr,{personId:employee.personId!,personalEmail:'unused-sensitive-source@example.invalid'});
+ const {id,document}=await prepared();expect(JSON.stringify(document)).not.toContain('unused-sensitive-source@example.invalid');
+ const visible=await v9ReadPersonnelCompletion(employee,{caseId:id,documentId:document.id});expect(JSON.stringify(visible)).not.toContain('unused-sensitive-source@example.invalid');
+});
+it('validates normalized versus forged phone answers independently in SQL',async()=>{
+ const {id:allId,document:allDoc,fields}=await prepared(true),phone=fields.find(field=>field.pmKey==='homePhone')!;
+ await v9OwnDocument(employee,{caseId:allId,revision:(await current(allId)).revision,documentId:allDoc.id,values:{[phone.id]:'012 345 6789'}});const c=await current(allId);expect(c.documents[0].values[phone.id]).toBe('+60123456789');
+ for(const value of ['+600001234567','0123456789','+60123456789 ext 1'])await expect(withTenant(employee,tx=>tx.execute(sql`select app.v9_personnel_completion_update(${allId}::uuid,${c.revision},${allDoc.id},${JSON.stringify({[phone.id]:value})}::jsonb,'save',NULL)`))).rejects.toThrow();
 });

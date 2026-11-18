@@ -52,7 +52,7 @@ BEGIN
  IF value='' THEN RETURN;END IF;
  IF field->>'type'='phone' AND app.personnel_completion_phone_valid(value) IS NOT TRUE THEN RAISE EXCEPTION 'Enter a valid international phone number';END IF;
  IF field->>'type'='email' AND value!~'^[^[:space:]@]+@[^[:space:]@]+[.][^[:space:]@]+$' THEN RAISE EXCEPTION 'Enter a valid email address';END IF;
- IF field->>'type'='number' THEN IF value!~'^-?(\d+([.]\d+)?|[.]\d+)$' THEN RAISE EXCEPTION 'Enter a valid number';END IF;PERFORM value::numeric;END IF;
+ IF field->>'type'='number' THEN IF value!~'^-?(\d+([.]\d+)?|[.]\d+)$' THEN RAISE EXCEPTION 'Enter a valid number';END IF;PERFORM value::numeric;IF abs(value::numeric)>=4.9406564584124654e-324 THEN PERFORM value::double precision;END IF;END IF;
  IF field->>'type'='date' THEN IF value!~'^\d{4}-\d{2}-\d{2}$' THEN RAISE EXCEPTION 'Enter a valid calendar date';END IF;PERFORM value::date;END IF;
  IF field->>'type'='checkbox' AND value NOT IN('true','false') OR field->>'type'='select' AND NOT coalesce(field->'options','[]'::jsonb)?value THEN RAISE EXCEPTION 'Use a declared field value';END IF;
 END $$;
@@ -94,6 +94,7 @@ BEGIN
   source_case:=NEW.id;company:=NEW.company_id;target_revision:=NEW.revision;
   old_docs:=CASE WHEN TG_OP='INSERT' THEN '[]'::jsonb ELSE coalesce(OLD.data->'documents','[]'::jsonb) END;new_docs:=coalesce(NEW.data->'documents','[]'::jsonb);
  END IF;
+ IF NOT(session_user='ai_hr_owner' OR EXISTS(SELECT 1 FROM pg_roles WHERE rolname=session_user AND rolsuper)) AND EXISTS(SELECT 1 FROM jsonb_array_elements(new_docs) candidate WHERE NOT candidate?'personnelCompletion' AND NOT EXISTS(SELECT 1 FROM jsonb_array_elements(old_docs) existing_document WHERE existing_document->>'id'=candidate->>'id') AND EXISTS(SELECT 1 FROM jsonb_array_elements(coalesce(candidate->'fields','[]'::jsonb)) configured_field WHERE configured_field->>'owner'='pmLocked')) THEN RAISE EXCEPTION 'New Personnel-linked documents require versioned completion custody';END IF;
  IF NOT EXISTS(SELECT 1 FROM jsonb_array_elements(old_docs||new_docs) candidate WHERE candidate?'personnelCompletion') THEN RETURN NEW;END IF;
  company_entitled:=app.probation_company_entitled(company);
  SELECT data INTO config FROM lc_v9_config WHERE tenant_id=NEW.tenant_id;
