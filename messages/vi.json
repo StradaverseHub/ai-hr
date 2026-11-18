@@ -36962,6 +36962,7 @@
       }
     },
     "taskKinds": {
+      "letter_prepare": {"title": "Hoàn thành thông tin được yêu cầu cho thư", "action": "Điền thông tin"},
       "submit_employee": {
         "title": "Complete your self-assessment · Part {part}",
         "action": "Open form"

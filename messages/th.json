@@ -36962,6 +36962,7 @@
       }
     },
     "taskKinds": {
+      "letter_prepare": {"title": "กรอกรายละเอียดที่ขอสำหรับจดหมาย", "action": "กรอกรายละเอียด"},
       "submit_employee": {
         "title": "Complete your self-assessment · Part {part}",
         "action": "Open form"

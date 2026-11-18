@@ -3,14 +3,17 @@ import {validateProbationLetterFields,probationLetterDocument} from '../lib/prob
 import {sql} from 'drizzle-orm';
 import {z} from 'zod';
 import type {SessionContext,Tx} from '../db/client';
+import {withAccessDisplayRead} from './access-configuration-lock';
+import {v9PersonnelWritableKeys,pushV9PersonnelTx} from './lifecycle-v9-personnel';
+import {normalizeCompletionPhone,type PersonnelCompletionPolicy} from '../lib/lifecycle-v9-personnel-completion';
 import {withScopedLifecycleTenant} from './module-gate';
 import {assertModuleEnabled} from './entitlements';
 import {v9ConfigSchema} from '../lib/lifecycle-v9-validation';
-import {type Block,type Field,type Document} from '../lib/lifecycle-v9-model';
+import {type Block,type Field,type Document,type PMChange} from '../lib/lifecycle-v9-model';
 import {validateSigningRoute,signingComplete,pendingSigningSteps,signingSendBack,type SigningDocument,type SigningRoute,type SigningGuardrails} from '../lib/document-signing-model';
 import {ProbationError} from '../lib/probation-model';
 import type {ProbationTemplate} from '../lib/probation-workflow';
-import {PROBATION_LETTER_KEYS} from '../lib/probation-letter-template';
+import {PROBATION_LETTER_KEYS,PROBATION_NATIVE_PERSONNEL_KEYS} from '../lib/probation-letter-template';
 import {createSigningDocumentTx,readSigningDocumentTx,recordDocumentSigningActionTx,reviseSigningDocumentTx,refreshCanonicalProbationSigningRouteTx,resendSigningDocumentTx,signingContentVisibleTx,canEditSigningContent,signingDocumentOwner,documentRoutingProblems,documentRoutingSignatureProblems,resolveDocumentRouting,type DocumentRouting,type DocumentRoutingWho} from '../packs/document-signing/service';
 import type {LetterBuilderCatalog} from '../lib/probation-letter-matching';
 import {resolveNativeDocumentRouting,type NativeDocumentRoutingFacts} from '../lib/document-signing-native-routing';
@@ -25,7 +28,7 @@ const route=z.object({version:z.number().int().positive(),steps:z.array(z.object
 const letterRules=base.shape.rules.pick({businessGroup:true,company:true,department:true,grade:true,employmentType:true,title:true}).extend({businessUnit:z.array(z.string().min(1).max(200)).max(200).optional(),outcome:z.array(z.enum(['confirm','extend','not_confirm'])).max(3).optional(),extensionNumber:z.array(z.string().regex(/^[0-2]$/)).max(3).optional()}).strict();
 const templateSchema=base.omit({module:true}).extend({gradeAtStartCodes:z.record(z.uuid(),z.string().min(1).max(100)).optional(),organisationMigration:z.object({sourceVersionId:z.uuid().nullable(),sourceVersion:z.number().int().nonnegative(),reviewed:z.literal(true),mappings:z.array(z.object({sourceField:z.enum(['businessGroup','businessUnit','company','department','grade']),sourceValue:z.string().min(1).max(200),targetField:z.enum(['businessGroup','company','department','grade']),targetValues:z.array(z.string().min(1).max(200)).min(1).max(200)}).strict()).max(1000)}).strict().optional(),routingRegistry:z.enum(['shared','on-off-boarding']).optional(),routingMigration:z.object({sourceVersionId:z.uuid(),sourceVersion:z.number().int().positive(),reviewed:z.literal(true)}).strict().optional(),organisationMapping:z.enum(['legacy-v1','personnel-v2']).optional(),rules:letterRules,module:z.literal('probation'),outcome:z.enum(['confirm','extend','not_confirm']),unfinished:z.boolean(),blocks:base.shape.versions.element.shape.blocks,fields:base.shape.versions.element.shape.fields,route,routing:nativeDocumentRoutingSchema.optional()}).strict();
 export type ProbationLetterDefinition={id:string;companyId:string;key:string;version:number;state:'draft'|'published'|'retired';retirementReason?:string|null;data:ProbationTemplate};
-export type ProbationLetterPreview={merge:Record<string,string>;blocks:Block[];fields:Field[];route:SigningRoute;guardrails:SigningGuardrails;companyId:string;employmentId:string;templateId:string;templateVersion:number;templateName?:string;outcomeRevision:number;sourceDigest:string};
+export type ProbationLetterPreview={merge:Record<string,string>;blocks:Block[];fields:Field[];route:SigningRoute;guardrails:SigningGuardrails;companyId:string;employmentId:string;templateId:string;templateVersion:number;templateName?:string;outcomeRevision:number;sourceDigest:string;personnelCompletionEligible?:boolean};
 /** Who holds each step of a letter's route (5765, L3/L4): name and job title of the holder, the routing or group it was routed to. */
 export type ProbationLetterSigner={holderId:string|null;name:string|null;title:string|null;label:string|null;role:string;representedName:string|null};
 export type ProbationLetterView={signers?:Record<string,ProbationLetterSigner>;routed:boolean;contentVisible:boolean;owner:{stepId:string|null;userId:string|null}|null;canEditContent:boolean;editableFieldOwner?:'employee'|'hr';unresolved:{stepId:string;meantFor:string;reason:string}[];id:string;caseId:string;outcomeId:string;outcomeRevision:number|null;storageRevision:number;state:string;createdAt:string;name:string;templateId:string;templateVersion:number;blocks:Block[];fields:Field[];merge:Record<string,string>;signing:{id:string;document:SigningDocument}|null;route:SigningRoute|null;runtimeEnabled:boolean;sourceMoved:boolean;canPrepare:boolean;canRelease:boolean;document:Document};
@@ -37,8 +40,9 @@ function validateTemplate(raw:unknown,publish:boolean):ProbationTemplate{
  if(value.routingRegistry!=='on-off-boarding'&&!documentRoutingSchema.optional().safeParse((value as ProbationTemplate&{routing?:DocumentRouting}).routing).success)throw new ProbationError('invalid','Choose a valid Shared routing identity.');
  if(value.type!=='Letter'||value.retired)throw new ProbationError('invalid','Choose an active outcome letter template.');
  if(new Set(value.blocks.map(b=>b.id)).size!==value.blocks.length||new Set(value.fields.map(f=>f.id)).size!==value.fields.length)throw new ProbationError('invalid','Document blocks and fields need unique identities.');
- const fieldIds=new Set(value.fields.map(f=>f.id)),keys=new Set<string>([...PROBATION_LETTER_KEYS,...fieldIds]);
- for(const field of value.fields){if(field.owner==='employee'&&value.routingRegistry!=='on-off-boarding'||field.owner==='pmLocked'&&(!field.pmKey||!PROBATION_LETTER_KEYS.includes(field.pmKey as typeof PROBATION_LETTER_KEYS[number]))||field.owner!=='pmLocked'&&(field.pmKey!==null||PROBATION_LETTER_KEYS.includes(field.id as typeof PROBATION_LETTER_KEYS[number]))||field.when&&!fieldIds.has(field.when.field))throw new ProbationError('invalid','Use declared HR fields or the registered read-only Personnel fields.');}
+ const fieldIds=new Set(value.fields.map(f=>f.id)),personnelKeys=new Set<string>([...PROBATION_LETTER_KEYS,...(value.routingRegistry==='on-off-boarding'?PROBATION_NATIVE_PERSONNEL_KEYS:[])]),keys=new Set<string>([...personnelKeys,...fieldIds]);
+ for(const field of value.fields){if(field.owner==='employee'&&value.routingRegistry!=='on-off-boarding'||field.owner==='pmLocked'&&(!field.pmKey||!personnelKeys.has(field.pmKey))||field.owner!=='pmLocked'&&(field.pmKey!==null||PROBATION_LETTER_KEYS.includes(field.id as typeof PROBATION_LETTER_KEYS[number]))||field.when&&!fieldIds.has(field.when.field))throw new ProbationError('invalid','Use declared HR fields or the registered read-only Personnel fields.');}
+ if(publish&&value.fields.some(field=>field.owner==='pmLocked'&&value.fields.some(other=>other.owner!=='pmLocked'&&other.id===field.pmKey)))throw new ProbationError('invalid','Resolve the ambiguous Personnel link and declared field before publishing.');
  for(const block of value.blocks){if(block.type==='field'&&(!block.fieldId||!fieldIds.has(block.fieldId)))throw new ProbationError('invalid','Choose an existing field for each document field block.');for(const text of[block.text,block.rows??'',block.label??'']){if(/\{\{|\}\}/.test(text))throw new ProbationError('invalid','Letter merge fields use single braces.');for(const match of text.matchAll(/\{([^{}]+)\}/g))if(!/^[a-zA-Z][a-zA-Z0-9_]*(?:\.[a-zA-Z0-9_]+)?$/.test(match[1])||!keys.has(match[1]))throw new ProbationError('invalid','Use a registered letter merge field.');}}
  validateSigningRoute(value.route,{requiredRoles:['employee']});
  const employee=value.route.steps.find(s=>s.role==='employee'&&s.required);
@@ -104,7 +108,7 @@ export async function renderProbationLetterPdf(document:Document,signing:Signing
 export async function prepareProbationLetterTx(tx:Tx,ctx:SessionContext,input:Parameters<typeof previewTx>[2]){
  const preview=await previewTx(tx,ctx,input);
  if(preview.blocks.some(block=>block.type==='letterhead')&&['company.name','company.regNo','company.address'].some(key=>!preview.merge[key]?.trim()))throw new ProbationError('invalid','An authorized Organisation administrator must complete the company letterhead before this letter can be prepared.');
- validateProbationLetterFields(preview.fields,preview.merge,{preparing:true});
+ validateProbationLetterFields(preview.personnelCompletionEligible?preview.fields.map(field=>field.pmKey&&PROBATION_NATIVE_PERSONNEL_KEYS.includes(field.pmKey)?{...field,required:false}:field):preview.fields,preview.merge,{preparing:true});
  const[row]=await tx.execute<{data:ProbationLetterPreview&{partId:string;contentHash:string;contentRevision:number;routing?:DocumentRouting;templateKey?:string;caseOwnerId?:string|null;fallbackGroupId?:string|null}}>(sql`select app.probation_prepare_letter(${input.outcomeId}::uuid,${input.templateId}::uuid,${json(input.edits)}::jsonb,${input.revision},${preview.sourceDigest}) as data`);
  // A routed template version (migration 5752): resolve its routing for this employee, freeze it on the letter, and create
  // the signing document with the routing's owner, send-back, edit-lock and visibility rules. Unrouted: exactly as before.
@@ -172,7 +176,7 @@ export function prepareProbationLetter(ctx:SessionContext,input:Parameters<typeo
 
 async function readLetterTx(tx:Tx,ctx:SessionContext,caseId:string,partId:string):Promise<ProbationLetterView>{
  id.parse(caseId);id.parse(partId);
- const[row]=await tx.execute<{id:string;case_id:string;revision:number;created_at:string;company_id:string;actor_is_employee:boolean;data:{state:string;letterOutcomeId:string;letterTemplateId:string;letterTemplateVersion:number;letterTemplateName?:string;letterBlocks:Block[];letterFields:Field[];letterMerge:Record<string,string>;letterRouting?:DocumentRouting;letterRoutingUnresolved?:{stepId:string;meantFor:string;reason:string}[]};outcome_revision:number|null;released:boolean;runtime_enabled:boolean;source_moved:boolean;can_prepare:boolean;can_release:boolean}>(sql`select p.id,p.case_id,p.revision,p.created_at::text,c.company_id,app.probation_role(c.employment_id,'employee') as actor_is_employee,p.data,(select revision from probation_outcome o where o.id=(p.data->>'letterOutcomeId')::uuid and o.tenant_id=p.tenant_id) as outcome_revision,exists(select 1 from probation_outcome o where o.letter_part_id=p.id and o.tenant_id=p.tenant_id and o.released_at is not null) as released,exists(select 1 from probation_activation activation where activation.tenant_id=c.tenant_id and activation.company_id=c.company_id and activation.enabled and activation.activation_on<=(now() at time zone 'Asia/Kuala_Lumpur')::date) and app.probation_owns_legacy(c.employment_id) as runtime_enabled,app.probation_case_source_moved(c.id) as source_moved,app.probation_role(c.employment_id,'pbp') or app.probation_role(c.employment_id,'gbs') as can_prepare,p.data->>'state' not in('locked','cancelled','release_requested') and exists(select 1 from probation_outcome current_outcome where current_outcome.id=(p.data->>'letterOutcomeId')::uuid and current_outcome.tenant_id=p.tenant_id and current_outcome.letter_part_id=p.id and current_outcome.released_at is null) and (app.probation_role(c.employment_id,'pbp') or app.probation_role(c.employment_id,'gbs') and p.data->'letterMerge'->>'outcome'='confirm') as can_release from probation_part p join probation_case c on c.id=p.case_id and c.tenant_id=p.tenant_id where p.id=${partId}::uuid and p.case_id=${caseId}::uuid and p.tenant_id=${ctx.tenantId}::uuid and p.data->>'documentKind'='letter'`);
+ const[row]=await tx.execute<{id:string;case_id:string;revision:number;created_at:string;company_id:string;actor_is_employee:boolean;data:{state:string;letterOutcomeId:string;letterTemplateId:string;letterTemplateVersion:number;letterTemplateName?:string;letterBlocks:Block[];letterFields:Field[];letterMerge:Record<string,string>;letterRouting?:DocumentRouting;letterRoutingUnresolved?:{stepId:string;meantFor:string;reason:string}[];personnelCompletion?:PersonnelCompletionPolicy};outcome_revision:number|null;released:boolean;runtime_enabled:boolean;source_moved:boolean;can_prepare:boolean;can_release:boolean}>(sql`select p.id,p.case_id,p.revision,p.created_at::text,c.company_id,app.probation_role(c.employment_id,'employee') as actor_is_employee,p.data,(select revision from probation_outcome o where o.id=(p.data->>'letterOutcomeId')::uuid and o.tenant_id=p.tenant_id) as outcome_revision,exists(select 1 from probation_outcome o where o.letter_part_id=p.id and o.tenant_id=p.tenant_id and o.released_at is not null) as released,exists(select 1 from probation_activation activation where activation.tenant_id=c.tenant_id and activation.company_id=c.company_id and activation.enabled and activation.activation_on<=(now() at time zone 'Asia/Kuala_Lumpur')::date) and app.probation_owns_legacy(c.employment_id) as runtime_enabled,app.probation_case_source_moved(c.id) as source_moved,app.probation_role(c.employment_id,'pbp') or app.probation_role(c.employment_id,'gbs') as can_prepare,p.data->>'state' not in('locked','cancelled','release_requested') and exists(select 1 from probation_outcome current_outcome where current_outcome.id=(p.data->>'letterOutcomeId')::uuid and current_outcome.tenant_id=p.tenant_id and current_outcome.letter_part_id=p.id and current_outcome.released_at is null) and (app.probation_role(c.employment_id,'pbp') or app.probation_role(c.employment_id,'gbs') and p.data->'letterMerge'->>'outcome'='confirm') as can_release from probation_part p join probation_case c on c.id=p.case_id and c.tenant_id=p.tenant_id where p.id=${partId}::uuid and p.case_id=${caseId}::uuid and p.tenant_id=${ctx.tenantId}::uuid and p.data->>'documentKind'='letter'`);
  if(!row)throw new ProbationError('forbidden','This outcome letter is unavailable in your current scope.');companyGate(ctx,row.company_id);
  const[stored]=await tx.execute<{id:string}>(sql`select id from document_signing_document where subject_type='probation' and subject_id=${row.id}::uuid and tenant_id=${ctx.tenantId}::uuid`);
  const signing=stored?{id:stored.id,document:await readSigningDocumentTx(tx,ctx,stored.id)}:null;
@@ -192,7 +196,7 @@ async function readLetterTx(tx:Tx,ctx:SessionContext,caseId:string,partId:string
  // name them; a step nobody holds yet keeps its routing or role label. Bounded by the route (at most 50 rows).
  const signers=currentRoute?await letterSignersTx(tx,row.id,currentRoute):undefined;
  const value={...routing,...(signers?{signers}:{}),id:row.id,caseId:row.case_id,outcomeId:row.data.letterOutcomeId,outcomeRevision:row.outcome_revision,storageRevision:row.revision,state:row.data.state,createdAt:row.created_at,name:row.data.letterTemplateName??'Probation outcome letter',templateId:row.data.letterTemplateId,templateVersion:row.data.letterTemplateVersion,blocks:shown.letterBlocks,fields:shown.letterFields,merge:shown.letterMerge,signing,route:currentRoute,runtimeEnabled:row.runtime_enabled&&!row.source_moved,sourceMoved:row.source_moved,canPrepare:row.runtime_enabled&&!row.source_moved&&row.can_prepare,canRelease:row.runtime_enabled&&!row.source_moved&&row.can_release};
- return{...value,document:probationLetterDocument({...value,signing:signing?.document})};
+ return{...value,document:{...probationLetterDocument({...value,signing:signing?.document}),...(contentVisible&&row.data.personnelCompletion?{personnelCompletion:row.data.personnelCompletion,...(signing?{signing:signing.document}:{})}:{})}};
 }
 async function letterSignersTx(tx:Tx,partId:string,route:SigningRoute):Promise<Record<string,ProbationLetterSigner>>{
  const rows=await tx.execute<{step_id:string;holder_id:string|null;name:string|null;title:string|null;label:string|null}>(sql`select step_id,holder_id,name,title,label from app.probation_letter_signers(${partId}::uuid)`);
@@ -207,6 +211,7 @@ async function letterSignersTx(tx:Tx,partId:string,route:SigningRoute):Promise<R
 export function readProbationLetter(ctx:SessionContext,caseId:string,partId:string){return withScopedLifecycleTenant(ctx,tx=>readLetterTx(tx,ctx,caseId,partId));}
 export function editProbationLetterContent(ctx:SessionContext,input:{caseId:string;partId:string;revision:number;edits:Record<string,string>;values:Record<string,string>;reason:string}){return withScopedLifecycleTenant(ctx,async tx=>{
  const view=await readLetterTx(tx,ctx,input.caseId,input.partId);if(!view.runtimeEnabled||!view.canEditContent||view.storageRevision!==input.revision||!view.signing)throw new ProbationError('conflict','Read the current editable letter before saving changes.');
+ if(view.document.personnelCompletion){await completionUpdateTx(tx,ctx,{...input,operation:'edit'});return{saved:true};}
  const[row]=await tx.execute<{data:{changed:boolean;documentId:string;contentHash:string}}>(sql`select app.probation_letter_edit_content(${id.parse(input.partId)}::uuid,${input.revision},${json(input.edits)}::jsonb,${json(input.values)}::jsonb,${input.reason}) as data`);
  if(row.data.changed)await reviseSigningDocumentTx(tx,ctx,{id:row.data.documentId,hash:row.data.contentHash,reason:input.reason});
  return{saved:true};
@@ -232,3 +237,54 @@ export function releaseProbationLetter(ctx:SessionContext,input:{caseId:string;p
 });}
 
 export function deleteProbationLetterTemplate(ctx:SessionContext,input:{companyId:string;key:string;expectedVersion:number;reason:string}){return withScopedLifecycleTenant(ctx,async tx=>{companyGate(ctx,id.parse(input.companyId));await tx.execute(sql`select app.probation_letter_template_delete(${input.companyId}::uuid,${input.key},${input.expectedVersion},${input.reason})`);return{deleted:true};}).catch((error:unknown)=>{const database=pgErrorChain(error).find(link=>['22023','40001','42501'].includes(link.code??''));if(database)throw new ProbationError(database.code==='40001'?'conflict':database.code==='42501'?'forbidden':'invalid',database.message??'The template deletion was refused.');throw error;});}
+
+
+/** A separately authorized field-only preparation never reveals private letter wording or grants a signing turn. */
+export type ProbationLetterCompletionView={caseId:string;partId:string;employmentId:string;storageRevision:number;document:Document;fieldOwner:'employee'|'hr';canEdit:boolean;canRefresh:boolean;canSubmit:boolean;canOverride:boolean;canReview:boolean;proposals:PMChange[];writableKeys:string[]};
+function completionError(error:unknown):never{
+ const database=pgErrorChain(error).find(link=>['22023','40001','42501','P0001'].includes(link.code??''));
+ if(database)throw new ProbationError(database.code==='40001'?'conflict':database.code==='42501'?'forbidden':'invalid',database.message??'The Personnel completion change was refused.');
+ throw error;
+}
+export function readProbationLetterCompletion(ctx:SessionContext,input:{caseId:string;partId:string}):Promise<ProbationLetterCompletionView|null>{
+ z.object({caseId:z.uuid(),partId:z.uuid()}).strict().parse(input);
+ return withAccessDisplayRead(()=>withScopedLifecycleTenant(ctx,async tx=>{
+  const[row]=await tx.execute<{data:(Omit<ProbationLetterCompletionView,'writableKeys'>&{canWritePersonnel:boolean})|null}>(sql`select app.probation_letter_completion_read(${input.caseId}::uuid,${input.partId}::uuid) as data`);
+  if(!row.data)return null;const{canWritePersonnel,...view}=row.data;
+  return{...view,writableKeys:canWritePersonnel?[...v9PersonnelWritableKeys]:[]};
+ },{readOnlySnapshot:true})).catch(completionError);
+}
+const completionInput=z.object({caseId:z.uuid(),partId:z.uuid(),revision:z.number().int().positive()});
+async function completionUpdateTx(tx:Tx,ctx:SessionContext,input:{caseId:string;partId:string;revision:number;values?:Record<string,string>;reason:string;submit?:boolean;operation?:'save'|'submit'|'refresh'|'override'|'edit';override?:{fieldId:string;owner:'employee'|'hr'};edits?:Record<string,string>}){
+ completionInput.parse(input);z.string().trim().min(3).max(5000).parse(input.reason);
+ const values=z.record(z.string().min(1).max(120),z.string().max(20000)).refine(value=>Object.keys(value).length<=200).parse(input.values??{});
+ // Country comes only from the authorized native source. SQL independently validates the normalized numbering plan.
+ const[view]=await tx.execute<{data:ProbationLetterCompletionView|null}>(sql`select app.probation_letter_completion_read(${input.caseId}::uuid,${input.partId}::uuid) as data`);
+ if(!view.data)throw new ProbationError('invalid','This retained letter uses its original completion rules.');
+ for(const[key,value]of Object.entries(values)){const field=view.data.document.fields.find(field=>field.id===key);if(field?.type==='phone'){try{values[key]=normalizeCompletionPhone(value,view.data.document.personnelCompletion?.country??null);}catch(error){throw new ProbationError('invalid',(error as Error).message);}}}
+ const[row]=await tx.execute<{data:{changed:boolean;revision:number}}>(sql`select app.probation_letter_completion_update(${input.caseId}::uuid,${input.partId}::uuid,${input.revision},${json(values)}::jsonb,${input.operation??(input.submit?'submit':'save')},${input.reason},${input.override?json(input.override):null}::jsonb,${json(input.edits??{})}::jsonb) as data`);
+ return row.data;
+}
+export function saveProbationLetterCompletion(ctx:SessionContext,input:{caseId:string;partId:string;revision:number;values:Record<string,string>;submit?:boolean;reason:string}){
+ input=z.object({...completionInput.shape,values:z.record(z.string().min(1).max(120),z.string().max(20000)),submit:z.boolean().optional(),reason:z.string().trim().min(3).max(5000)}).strict().parse(input);
+ return withScopedLifecycleTenant(ctx,tx=>completionUpdateTx(tx,ctx,input)).catch(completionError);
+}
+export function overrideProbationLetterCompletion(ctx:SessionContext,input:{caseId:string;partId:string;revision:number;fieldId:string;owner:'employee'|'hr';reason:string}){
+ input=z.object({...completionInput.shape,fieldId:z.string().min(1).max(120),owner:z.enum(['employee','hr']),reason:z.string().trim().min(3).max(5000)}).strict().parse(input);
+ return withScopedLifecycleTenant(ctx,tx=>completionUpdateTx(tx,ctx,{...input,operation:'override',override:{fieldId:input.fieldId,owner:input.owner}})).catch(completionError);
+}
+export function refreshProbationLetterCompletion(ctx:SessionContext,input:{caseId:string;partId:string;revision:number}){
+ input=completionInput.strict().parse(input);
+ return withScopedLifecycleTenant(ctx,tx=>completionUpdateTx(tx,ctx,{...input,operation:'refresh',reason:'Refresh current authorized Personnel values'})).catch(completionError);
+}
+export function reviewProbationLetterPersonnel(ctx:SessionContext,input:{caseId:string;partId:string;revision:number;ids:string[];action:'push'|'keep'}){
+ input=z.object({...completionInput.shape,ids:z.array(z.uuid()).min(1).max(200).refine(ids=>new Set(ids).size===ids.length),action:z.enum(['push','keep'])}).strict().parse(input);
+ return withScopedLifecycleTenant(ctx,async tx=>{
+  const[row]=await tx.execute<{data:{employmentId:string;proposals:{id:string;field:string;before:string;after:string}[]}}>(sql`select app.probation_letter_personnel_review_claim(${input.caseId}::uuid,${input.partId}::uuid,${input.revision},${json(input.ids)}::jsonb,${input.action}) as data`);
+  if(input.action==='push'&&row.data.proposals.some(proposal=>!v9PersonnelWritableKeys.includes(proposal.field)))throw new ProbationError('invalid','This field needs a mapping review in Personnel Management before it can be applied.');
+  const decisions:{id:string;status:'pushed'|'conflict'|'rejected'}[]=[];
+  for(const proposal of row.data.proposals)decisions.push({id:proposal.id,status:input.action==='keep'?'rejected':await pushV9PersonnelTx(tx,ctx,{employmentId:row.data.employmentId,field:proposal.field,before:proposal.before,after:proposal.after})});
+  await tx.execute(sql`select app.probation_letter_personnel_review_finish(${input.caseId}::uuid,${input.partId}::uuid,${input.revision},${json(decisions)}::jsonb)`);
+  return{reviewed:decisions};
+ }).catch(completionError);
+}

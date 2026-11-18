@@ -36962,6 +36962,7 @@
       }
     },
     "taskKinds": {
+      "letter_prepare": {"title": "கடிதத்தில் கோரிய விவரங்களைப் பூர்த்தி செய்யவும்", "action": "விவரங்களை நிரப்பவும்"},
       "submit_employee": {
         "title": "Complete your self-assessment · Part {part}",
         "action": "Open form"
