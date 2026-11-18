@@ -20,6 +20,13 @@ BEGIN
     k:=mapping->>'sourceField';target:=CASE WHEN k='businessGroup' AND coalesce(source.data->>'organisationMapping','legacy-v1')='legacy-v1' THEN 'company' WHEN k='businessUnit' AND coalesce(source.data->>'organisationMapping','legacy-v1')='legacy-v1' THEN 'businessGroup' WHEN k='businessUnit' THEN 'company' ELSE k END;
     IF mapping->>'targetField' IS DISTINCT FROM target OR NOT coalesce(source.data->'rules'->k,'[]'::jsonb)?(mapping->>'sourceValue') OR jsonb_typeof(mapping->'targetValues') IS DISTINCT FROM 'array' OR jsonb_array_length(mapping->'targetValues')=0 THEN RAISE EXCEPTION 'Keep each source rule and its actual identity kind in the review';END IF;
     IF k='businessGroup' AND coalesce(source.data->>'organisationMapping','legacy-v1')='legacy-v1' AND NOT EXISTS(SELECT 1 FROM company WHERE id=p_company AND tenant_id=app.current_tenant_id() AND coalesce(parent_company_id,id)::text=mapping->>'sourceValue') THEN RAISE EXCEPTION 'The saved parent company does not contain this template company';END IF;
+    IF (SELECT count(DISTINCT value) FROM jsonb_array_elements_text(mapping->'targetValues'))<>jsonb_array_length(mapping->'targetValues') THEN RAISE EXCEPTION 'Review unique target identities';END IF;
+    FOR item IN SELECT value FROM jsonb_array_elements(mapping->'targetValues') LOOP
+     IF target='company' AND item#>>'{}'<>p_company::text
+      OR target='businessGroup' AND NOT EXISTS(SELECT 1 FROM business_unit WHERE tenant_id=app.current_tenant_id() AND company_id=p_company AND id::text=item#>>'{}' AND archived_at IS NULL)
+      OR target='department' AND NOT EXISTS(SELECT 1 FROM department WHERE tenant_id=app.current_tenant_id() AND company_id=p_company AND id::text=item#>>'{}' AND archived_at IS NULL)
+      OR target='grade' AND NOT EXISTS(SELECT 1 FROM job_grade WHERE tenant_id=app.current_tenant_id() AND id::text=item#>>'{}' AND archived_at IS NULL AND (scope_company_ids IS NULL OR p_company=any(scope_company_ids))) THEN RAISE EXCEPTION 'Resolve each reviewed target to an active identity in this company';END IF;
+    END LOOP;
    END LOOP;
   ELSIF p_expected<>0 OR coalesce((review->>'sourceVersion')::integer,-1)<>0 OR jsonb_array_length(review->'mappings')<>0 THEN
    -- Subsequent versions of a canonical definition retain the original new-definition review.
