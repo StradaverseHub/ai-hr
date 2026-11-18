@@ -68,7 +68,7 @@ it.each(scenarios)('renders actual payroll maintenance views in $locale / $theme
 it('does not expose internal maintenance source snapshots as statutory money and labels exports without claiming settlement',()=>{
  const plan={...maintenanceEditPlan,rows:maintenanceEditPlan.rows.map(row=>({...row,values:{...row.values!,statutory:{...row.values!.statutory,historyMaintenance:{version:1,items:[{id:'opaque-owned-source-id'}]}}}}))};
  render(wrap(<><RevisionPreview plan={plan}/><HistoryMaintenanceAudit detail={maintenanceDetail}/></>));
- expect(screen.queryByText(/opaque-owned-source-id|statutory.historyMaintenance/)).not.toBeInTheDocument();expect(screen.getByText('2 recorded payment-summary exports stay unchanged. This is not evidence of bank settlement.')).toBeInTheDocument();
+ expect(screen.queryByText(/opaque-owned-source-id|statutory.historyMaintenance/)).not.toBeInTheDocument();for(const label of ['Pay Item changes','Audit history'])expect(within(screen.getByRole('region',{name:label})).getByText('2 recorded payment-summary exports stay unchanged. This is not evidence of bank settlement.')).toBeInTheDocument();
 });
 it.each(scenarios)('renders actual selected-item, batch and compatibility removal reviews in $locale / $theme / $mode',async({locale,theme,mode})=>{
  const t=catalogues[locale].payrollHistoryMaintenance,old=catalogues[locale].payroll.historyRevisions,user=userEvent.setup();
@@ -82,7 +82,8 @@ it.each(scenarios)('renders actual selected-item, batch and compatibility remova
 it('keeps unknown lineage distinct from empty history and does not offer source links beyond batch access',()=>{
  const unavailable={...maintenanceDetail,items:[],itemCount:0,canEdit:false,canRemove:false,unavailableReason:'The immutable source lineage requires review.'};
  const {unmount}=render(wrap(<HistoryMaintenanceControl detail={unavailable}/>));expect(screen.getByRole('status')).toHaveTextContent('Pay Item breakdown unavailable.');expect(screen.getByRole('status')).toHaveTextContent('immutable source lineage');expect(screen.queryByText('No effective imported items.')).not.toBeInTheDocument();expect(screen.queryByRole('button',{name:'Review changes'})).not.toBeInTheDocument();unmount();
- const current={...maintenanceDetail,items:[{...maintenanceDetail.items[0],sourceName:null}],audit:[{...maintenanceDetail.audit[0],sourceName:''}]};render(wrap(<><HistoryMaintenanceControl detail={current}/><HistoryMaintenanceAudit detail={current}/></>));expect(screen.queryByRole('link')).not.toBeInTheDocument();expect(screen.getAllByText('The original file requires access to the complete import batch.')).toHaveLength(2);
+ const current={...maintenanceDetail,items:[{...maintenanceDetail.items[0],sourceName:null}],audit:[{...maintenanceDetail.audit[0],sourceName:''}]};const shown=render(wrap(<><HistoryMaintenanceControl detail={current}/><HistoryMaintenanceAudit detail={current}/></>));expect(screen.queryByRole('link')).not.toBeInTheDocument();expect(screen.getAllByText('The original file requires access to the complete import batch.')).toHaveLength(2);shown.unmount();
+ render(wrap(<HistoryMaintenanceRecords page={{...maintenancePage,items:[{...maintenancePage.items[0],employeeName:''}]}} query={{}} companies={[]}/>));expect(screen.getByRole('heading',{name:'F001'})).toHaveTextContent(/^F001$/);expect(screen.getByText('Not recorded')).toBeInTheDocument();expect(screen.queryByText('Sample employee')).not.toBeInTheDocument();
 });
 
 it('distinguishes a recorded later correction from a promise to retain an explicitly removed item',()=>{
