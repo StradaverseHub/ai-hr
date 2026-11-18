@@ -5,6 +5,7 @@ import {withTenant,type SessionContext} from '../db/client';
 import * as s from '../db/schema';
 import {submitFeedback,getFeedback,approveFeedbackPlan} from '../core/feedback';
 import {answerFeedbackClarification} from '../core/feedback-clarification';
+import {notificationBellSummary,markNotificationRead} from '../core/notifications';
 import {pickupSql,completeSql,notifySql,type Completion} from '../scripts/improve/automation';
 import {adminCtx,closeAll,migrateTestDb,owner,resetDb,seedBase,type Base} from './harness';
 let b:Base,admin:SessionContext,reporter:SessionContext,other:SessionContext;
@@ -57,11 +58,12 @@ describe('durable operator feedback coordinator',()=>{
   const {id}=await report(),p=await completion();await script(completeSql(p));await script(notifySql(b.tenantId));await script(notifySql(b.tenantId));
   let notices=await owner.db.select().from(s.notification);expect(notices).toHaveLength(1);expect(notices[0]).toMatchObject({recipientUserId:reporter.userId,recipientEmploymentId:null,kind:'feedback.question',linkPath:'/feedback/'+id});
   const visible=await withTenant(reporter,tx=>tx.select().from(s.notification));expect(visible).toHaveLength(1);
+  const bell=await notificationBellSummary(reporter);expect(bell.taskCount).toBe(1);expect(bell.tasks[0]).toMatchObject({kind:'feedback.question',linkPath:'/feedback/'+id});
   expect(await withTenant(other,tx=>tx.select().from(s.notification))).toHaveLength(0);
   await answerFeedbackClarification(reporter,{feedbackId:id,questionId:p.claimToken,answer:'Preview in November.'});
   await script(notifySql(b.tenantId));notices=await owner.db.select().from(s.notification);expect(notices).toHaveLength(1);
   await expect(withTenant(reporter,tx=>tx.update(s.notification).set({body:'Rewritten'}).where(eq(s.notification.id,notices[0].id)))).rejects.toThrow();
-  await withTenant(reporter,tx=>tx.update(s.notification).set({readAt:new Date()}).where(eq(s.notification.id,notices[0].id)));
+  await markNotificationRead(reporter,notices[0].id);expect((await notificationBellSummary(reporter)).taskCount).toBe(0);
  });
  it('sends one reminder after 48h and never auto-closes or rejects a silent report',async()=>{
   const{id}=await report(),questionId=randomUUID();

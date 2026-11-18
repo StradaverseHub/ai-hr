@@ -1753,8 +1753,19 @@ it('stops on a cross-tenant row, then validates every company/tenant key without
   expect(afterPerformancePrivileges.columns.filter(row=>isRecruitmentRelation(row.rel)).map(row=>({rel:row.rel,col:row.col,acl:ownerAcl(row.acl)}))).toEqual(recruitmentColumns);
   expect(afterPerformancePrivileges.policies.filter(isRecruitmentPolicy).map(boardPolicyRow)).toEqual(recruitmentPolicies);
   expect(beforePerformancePrivileges.policies.filter(isRecruitmentPolicy)).toEqual([]);
+  // PR245's work ledger belongs to the operator connection, with no app policy or grant.
+  const feedbackWorkTable='feedback_automation_work';
+  expect(afterPerformancePrivileges.relations.filter(row=>row.rel===feedbackWorkTable)).toHaveLength(1);
+  expect(afterPerformancePrivileges.relations.find(row=>row.rel===feedbackWorkTable)).toMatchObject({rls:true,force:false});
+  expect(afterPerformancePrivileges.policies.filter(row=>row.tablename===feedbackWorkTable)).toEqual([]);
+  const [feedbackWorkRights]=await storage.client`select
+   has_table_privilege('ai_hr_app','public.feedback_automation_work','SELECT') as can_read,
+   has_table_privilege('ai_hr_app','public.feedback_automation_work','INSERT') as can_insert,
+   has_table_privilege('ai_hr_app','public.feedback_automation_work','UPDATE') as can_update,
+   has_table_privilege('ai_hr_app','public.feedback_automation_work','DELETE') as can_delete`;
+  expect(feedbackWorkRights).toEqual({can_read:false,can_insert:false,can_update:false,can_delete:false});
   const terminalComparable={
-   relations:afterPerformancePrivileges.relations.filter(row=>row.rel!==receiptTable&&!sealTables.includes(row.rel)&&!isCombinedRelation(row.rel)&&!Object.hasOwn(boardRelations,row.rel)&&!isRecruitmentRelation(row.rel)).map(row=>
+   relations:afterPerformancePrivileges.relations.filter(row=>row.rel!==feedbackWorkTable&&row.rel!==receiptTable&&!sealTables.includes(row.rel)&&!isCombinedRelation(row.rel)&&!Object.hasOwn(boardRelations,row.rel)&&!isRecruitmentRelation(row.rel)).map(row=>
     row.rel===clockTable?{...row,acl:beforeClockTable?.acl}:row),
    columns:afterPerformancePrivileges.columns.filter(row=>row.rel!==receiptTable&&row.rel!==clockTable&&!isCombinedRelation(row.rel)&&!isRecruitmentRelation(row.rel)),
    functions:afterPerformancePrivileges.functions.filter(row=>!addedFunctions.includes(row.fn)),
