@@ -29,13 +29,14 @@ export function CaseDocument({ c, document, template, actor, busy, command, conf
   const editable = !reserved && c.state === 'submitted' && !documentFinal(document) && !['superseded', 'withdrawn'].includes(document.status);
   const fields = document.fields.filter(field => effectivePersonnelCompletion(document,field) === 'hr');
   const canEditFields = editable && document.status === 'draft' && !document.hrSignature && !document.employeeSignature;
-  const dirty = fields.some(field => (values[field.id] ?? '') !== (document.values[field.id] ?? ''));
+  const completionLocked=!!document.personnelCompletion&&personnelCompletionLocked(document);
+  const dirty = !completionLocked&&fields.some(field => (values[field.id] ?? '') !== (document.values[field.id] ?? ''));
   const hrStep = document.hrStep ?? template?.hrStep;
   const needsSignature = editable && (document.templateType ?? template?.type) !== 'Attachment' && (hrStep === 'before' && document.status === 'draft' || hrStep === 'after' && document.status === 'countersign');
   const allowed=(config&&c.facts?v9CompanySigners(config,c.facts.company):[]).filter(id=>eligibleSignatoryIds===undefined||eligibleSignatoryIds.includes(id));
   const signatory = hrStep === 'after' || document.signatoryUserId === actor.id && (!config||allowed.includes(actor.id));
   const completionPanel=<PersonnelCompletionPanel document={document} busy={busy||reserved} canOverride={editable&&!personnelCompletionLocked(document)} onOverride={input=>execute({type:'documentCompletionOverride',id:document.id,...input})} onSave={values=>execute({type:'documentSave',id:document.id,values})} onRefresh={()=>execute({type:'documentRefresh',id:document.id})}/>;
-  const finalIssues=document.personnelCompletion?personnelCompletionIssues({...document,values:{...document.values,...Object.fromEntries(fields.map(field=>[field.id,values[field.id]??document.values[field.id]??'']))}},{final:true}):[];
+  const finalIssues=document.personnelCompletion?personnelCompletionIssues({...document,values:completionLocked?document.values:{...document.values,...Object.fromEntries(fields.map(field=>[field.id,values[field.id]??document.values[field.id]??'']))}},{final:true}):[];
   if(document.signing)return <div className="v9-stack"><RoutedDocumentSummary document={document} caseId={c.id}/>{completionPanel}</div>;
   return <div className="v9-stack">{reserved && <p className="v9-notice">This document is frozen for email delivery.</p>}{c.id && <a className="v9-button" href={`/lifecycle/v9/documents/${encodeURIComponent(c.id)}/${encodeURIComponent(document.id)}`}>Download PDF</a>}<PersonnelCompletionDocumentBody document={document} values={{ ...document.values, ...Object.fromEntries(fields.map(field => [field.id, values[field.id] ?? document.values[field.id] ?? ''])) }} editableBy="hr" disabled={busy || !canEditFields} change={(id, value) => setValues(previous => ({ ...previous, [id]: value }))}/>{error&&<p ref={errorRef} tabIndex={-1} role="alert" className="v9-notice v9-error">{error}</p>}
     {canEditFields && !document.personnelCompletion && missingPersonnel.length > 0 && <section className="v9-panel v9-stack">
