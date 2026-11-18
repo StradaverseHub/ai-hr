@@ -799,7 +799,32 @@ activation fields. `guarded-activate-prepared-ci-runtime` then runs the same
 owned-process checks. The live preparation remains30 seconds. Metadata rechecking,
 immutable prepared-tree publication, unit replacement and reload share M0/45.
 One absolute827-second live cap starts at guarded entry and never resets per child
-or phase. Original grant/approval/readiness clocks and mutation admission remain.
+or phase. Original grant/approval/readiness clocks are never reset or extended.
+
+Normal `activate-prepared-ci-runtime` gives only F4, the full fence immediately
+after its owned worker starts, a60-second slot. Cold worker bootstrap competed
+with the20-second scan on the small staging server. Every other full fence stays20,
+shared sleep/stability slots stay24, each native child stays20 and native freshness
+stays60. Published recovery retains its existing60-second F4; legacy unprepared
+activation and failed-preunit recovery retain20. All ten complete two-walk fences,
+source inventories, audits and ownership checks still run.
+
+For normal prepared activation, the post-mutation graph grows497→537 seconds.
+Before any unit mutation, remaining global opportunity must therefore be at
+least537 of the unchanged827-second cap (the pre-graph may consume at most290).
+The lesser of fresh root authority and the original installation grant must have
+at least567 seconds remaining, including the original30-second reserve. The
+original immutable native marker's `verifiedAt + 600` readiness deadline must have
+at least195 seconds remaining, versus155 in the legacy normal route. These are
+stricter admission floors, not new clocks; fresh root authority still has a900-second
+maximum and cannot outlive the original unexpired installation grant (at most1800).
+
+The original-grant fork reservation is
+`max(537, max(0, readinessDeadline + 15 - now) + 830) + 30` for prepared normal.
+The830-second native branch allowance remains an estimate, not a new asserted hard
+cap. Admission returns its actual567/195 required metrics. Legacy normal admission
+retains497/527/155 and its original fork formula. A refused or expired original
+grant/readiness window cannot be renewed by worker preparation or root approval.
 
 For the exact failure before immutable worker publication/unit mutation, preparation
 may instead select `failed-preunit`, the original fully extracted directory/inode,
