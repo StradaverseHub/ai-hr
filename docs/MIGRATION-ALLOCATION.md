@@ -1,3 +1,25 @@
+# Contract company scope and private digest retention — 18 November 2026 (reserved, unapplied)
+
+Reserve `6501_contract_company_scope_retention`, idx `5901`, when `1794988006501`.
+The reviewed SQL body and ordinary journal registration are pending; this reservation grants no
+installation, acceptance or provider authority. It repairs the three actual company/tenant key gaps
+on `app.contract_system_digest`, `public.contract_access_member` and `public.contract_shared_settings`,
+and declares private digest retention through the existing scoped company-deletion owner.
+Existing applied SQL, single-column foreign keys, object owners, ACLs, principals and tenant scope stay intact.
+
+A fresh source survey covered 4,834 local/origin ref commits, 772 distinct journals, 516 allocation
+blobs and 529 registered worktrees (eight conflict-marked journals). It found no tag, idx, time,
+exact filename, readable-worktree or allocation-document claim for this reservation. The maximum
+foreign pending timestamp was `1794998006699`; foreign 6600–6699 claims are preserved and excluded.
+This aggregate's existing coordinated serial order remains before those foreign candidates.
+
+Fresh official read-only staging probes at 14:14:54–14:15:12 UTC verified unchanged accepted source
+`f8c90ebcd3c0d4bd8310d9fb1cbab645b2ad108e`, build `MIdgSb_9kQdck-DwAgKj-`, healthy deployment
+state with no stale build, the complete ordered 924-row baseline and maximum installed timestamp
+`1794841006104`, below the proposed timestamp. The queue lease was free at epoch126. This is an
+off-lease reservation, not release evidence; requery exact installed hashes/watermark and ownership
+at admission. Any intervening higher installation requires stopping and explicit reallocation.
+
 # Contract/Probation native Business Partner compatibility — 18 November 2026
 
 Reserve `6442_contract_probation_business_partner_owner`, idx `5842`, when
