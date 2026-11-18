@@ -9,7 +9,8 @@ import {ContractSection} from './contract-section';
 
 /** Every Today draws the actual signing owner's bounded page, independently of the other panels. */
 export function TodayContracts({session,work}:{session:SessionContext;work?:Promise<TodayContractWork>}){
- if(!todayContractsEnabled(session))return null;
+ try{if(!todayContractsEnabled(session))return null;}
+ catch{return <ContractUnavailable/>;}
  return <PanelBoundary fallback={<ContractUnavailable/>}><Suspense fallback={null}><ContractSignatures work={work??readTodayContractWork(session)}/></Suspense></PanelBoundary>;
 }
 async function ContractUnavailable(){const t=await getTranslations('contractHome');return <PanelNote>{t('unavailable')} <Link className="underline underline-offset-4" href="/tasks">{t('openTasks')}</Link></PanelNote>;}
