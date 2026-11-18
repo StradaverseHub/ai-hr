@@ -27,19 +27,22 @@ export function caseCommunications(c:Case,config:Config,today:string){
   for(const run of runs.length?runs:[undefined]){
    const workflow=run?.definition??current,{date,until}=scheduledDate(c,workflow,run);
    const stage:CommunicationStage=workflow.trigger.event==='submitted'?'submitted':date&&validDate(anchor)?date<anchor?'before':date>anchor?'after':'day':'submitted';
+   const communicationSteps=workflow.steps.map((step,index)=>({step,index})).filter(({step})=>step.type==='email'||step.type==='notify'||step.type==='doc');
+   if(!communicationSteps.length){if(!otherWorkflows.some(item=>item.id===workflow.id))otherWorkflows.push(workflow);continue;}
+   const waitingStep=run?.status==='waiting'?workflow.steps[run.cursor]:undefined;
+   const waitTarget=waitingStep&&(waitingStep.type==='waitFile'||waitingStep.type==='waitSign')?(communicationSteps.find(({index})=>index>=run!.cursor)??[...communicationSteps].reverse().find(({step})=>step.type==='doc')??communicationSteps.at(-1))?.index:undefined;
    for(const [index,step]of workflow.steps.entries()){
-    // File waits surface only as current recovery blockers, not as extra planned communications.
-    if(step.type==='waitSign'||step.type==='waitFile'&&!(run?.status==='waiting'&&index===run.cursor&&!c.files.some(file=>file.slot===step.slot)))continue;
+    if(step.type!=='email'&&step.type!=='notify'&&step.type!=='doc')continue;
     const mails=receipts(c,run,step),effective=[...new Map(mails.map(mail=>{const current=effectiveDelivery(c,mail);return[current.id,current] as const;})).values()],mail=effective[0]??null,email=step.type==='email'?config.emails.find(email=>email.id===step.template):null;
     const roles=step.type==='email'||step.type==='notify'?stepRecipientRoles(c,workflow.id,step,email):{to:[],cc:[],overridden:false};
     const held=run?.hold?.stepId===step.id||run?.lateEmail?.stepId===step.id,failed=run?.status==='failed'&&index===run.cursor,done=!!run&&(run.status==='done'||run.status==='skipped'||index<run.cursor);
-    const current=!!run&&index===run.cursor&&['waiting','failed'].includes(run.status),fileSlot=step.type==='waitFile'&&!c.files.some(file=>file.slot===step.slot)?step.slot:step.type==='email'?email?.slots.find(slot=>slot.required&&!c.files.some(file=>file.slot===`${email.id}:${slot.id}`))?`${email.id}:${email.slots.find(slot=>slot.required&&!c.files.some(file=>file.slot===`${email.id}:${slot.id}`))!.id}`:undefined:undefined;
+    const current=!!run&&(index===run.cursor||index===waitTarget)&&['waiting','failed'].includes(run.status),fileSlot=index===waitTarget&&waitingStep?.type==='waitFile'&&!c.files.some(file=>file.slot===waitingStep.slot)?waitingStep.slot:step.type==='email'?email?.slots.find(slot=>slot.required&&!c.files.some(file=>file.slot===`${email.id}:${slot.id}`))?`${email.id}:${email.slots.find(slot=>slot.required&&!c.files.some(file=>file.slot===`${email.id}:${slot.id}`))!.id}`:undefined:undefined;
     const deliveryBlocked=current&&effective.some(mail=>['failed','uncertain','cancelled'].includes(mail.status));
     const blocker=held?'recipient':deliveryBlocked?'delivery':current&&fileSlot?'file':failed?'workflow':undefined;
     const status:CommunicationStatus=blocker?'attention':done?'done':'open';
     const linkedIds=[...new Set(mails.flatMap(mail=>mail.documentIds))],documents=linkedIds.flatMap(id=>{const document=c.documents.find(document=>document.id===id);return document?[document]:[];});
-    const title=step.type==='notify'?step.subject:step.type==='email'?email?.name??'Email':step.type==='waitFile'?step.label:config.templates.find(template=>template.id===step.template)?.name??'Document';
-    rows.push({id:`${workflow.id}/${run?.id??'planned'}/${step.id}`,workflow,run,step,stepIndex:index,title,date,until,stage,status,state:status==='attention'?'attention':done?'done':run&&index===run.cursor?'waiting':'notStarted',blocker,fileSlot,reason:held?run?.hold?.missing.map(missing=>`${missing.label}: ${missing.role==='supervisor'&&c.supervisorDelivery?.problem?c.supervisorDelivery.problem:missing.reason}`).join('; ')||run?.reason||'Review the late email.':blocker?run?.reason??mail?.failure??'Review the workflow.':'',...roles,mail,documents,availableDocument:step.type==='doc'||step.type==='waitSign'?activeDocument(c,step.template)??null:null,test:false});
+    const title=step.type==='notify'?step.subject:step.type==='email'?email?.name??'Email':config.templates.find(template=>template.id===step.template)?.name??'Document';
+    rows.push({id:`${workflow.id}/${run?.id??'planned'}/${step.id}`,workflow,run,step,stepIndex:index,title,date,until,stage,status,state:status==='attention'?'attention':done?'done':run&&index===run.cursor?'waiting':'notStarted',blocker,fileSlot,reason:held?run?.hold?.missing.map(missing=>`${missing.label}: ${missing.role==='supervisor'&&c.supervisorDelivery?.problem?c.supervisorDelivery.problem:missing.reason}`).join('; ')||run?.reason||'Review the late email.':blocker||index===waitTarget?run?.reason??mail?.failure??'Review the workflow.':'',...roles,mail,documents,availableDocument:step.type==='doc'?activeDocument(c,step.template)??null:null,test:false});
    }
   }
  }

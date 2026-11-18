@@ -26,9 +26,10 @@ it('uses effective retry outcomes for attention and preserves required-file wait
  let view=caseCommunications(c,config,'2026-11-27');expect(view.rows.find(row=>row.step?.id==='receipt')).toMatchObject({status:'attention',blocker:'delivery',mail:{id:mail.id}});
  c.mails.push({...structuredClone(mail),id:'retry-success',retryOf:mail.id,status:'sent',at:'2026-11-30T12:00:00Z'});
  expect(caseCommunications(c,config,'2026-11-27').rows.find(row=>row.step?.id==='receipt')?.status).toBe('open');
- run.definition!.steps=[{id:'file-step',type:'waitFile',slot:'proof',label:'Fictional proof'}];run.cursor=0;
- view=caseCommunications(c,config,'2026-11-27');expect(view.rows.find(row=>row.step?.id==='file-step')).toMatchObject({status:'attention',blocker:'file',fileSlot:'proof'});
- c.files.push({...c.files[0],id:'new-proof',slot:'proof'});expect(caseCommunications(c,config,'2026-11-27').rows.find(row=>row.step?.id==='file-step')).toBeUndefined();
+ run.definition!.steps=[{id:'file-step',type:'waitFile',slot:'proof',label:'Fictional proof'},{id:'next-email',type:'email',template:'welcome',to:['employee'],cc:[]}];run.cursor=0;
+ view=caseCommunications(c,config,'2026-11-27');expect(view.rows.find(row=>row.step?.id==='next-email')).toMatchObject({status:'attention',blocker:'file',fileSlot:'proof'});
+ c.files.push({...c.files[0],id:'new-proof',slot:'proof'});expect(caseCommunications(c,config,'2026-11-27').rows.find(row=>row.step?.id==='next-email')?.status).toBe('open');
+ run.definition!.steps=[{id:'file-only',type:'waitFile',slot:'missing',label:'Standalone file'}];const only=caseCommunications(c,config,'2026-11-27');expect(only.rows.some(row=>row.workflow?.id===run.workflowId)).toBe(false);expect(only.otherWorkflows.some(workflow=>workflow.id===run.workflowId)).toBe(true);
 });
 it('retains distinct unfinished runs and derives recurrence only from frozen definitions',()=>{
  const {c,config}=communicationsFixture();const first=c.runs[0];first.definition!.trigger.repeat=true;
