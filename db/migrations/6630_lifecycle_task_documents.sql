@@ -23,11 +23,11 @@ BEGIN
  ), owned AS MATERIALIZED (
   SELECT c.id,c.revision,c.data->>'number' AS number,'onb'::text AS module,c.data->>'state' AS state,c.data->'tasks' AS tasks,
    coalesce(c.data->'confirmedChecklist'->>'name','Onboarding checklist') AS checklist,p.data->'lifecycleV9'->'documents' AS documents,p.data->'lifecycleV9'->'runs' AS runs,u.id AS uid
-  FROM public.lc_onboarding_case c JOIN public.lc_onboarding_private p ON p.case_id=c.id AND p.tenant_id=c.tenant_id
+  FROM public.lc_onboarding_case c LEFT JOIN public.lc_onboarding_private p ON p.case_id=c.id AND p.tenant_id=c.tenant_id
   JOIN public.employment e ON e.id=c.employment_id AND e.tenant_id=c.tenant_id AND e.company_id=c.company_id AND e.person_id::text=c.data->>'personId'
   JOIN principal u ON u.person_id=e.person_id
   WHERE c.tenant_id=app.current_tenant_id() AND c.company_id=ANY(p_companies)
-   AND p.data->'lifecycleV9Subject'->>'employmentId'=e.id::text AND p.data->'lifecycleV9Subject'->>'personId'=e.person_id::text
+   AND (NOT(coalesce(p.data,'{}'::jsonb) ? 'lifecycleV9') OR (p.data->'lifecycleV9Subject'->>'employmentId'=e.id::text AND p.data->'lifecycleV9Subject'->>'personId'=e.person_id::text))
   UNION ALL
   SELECT c.id,c.revision,c.number,c.module,c.data->>'state',c.data->'tasks',coalesce(c.data->>'checklistName','Offboarding checklist'),c.data->'documents',c.data->'runs',u.id
   FROM public.lc_v9_case c JOIN public.employment e ON e.id=c.employment_id AND e.tenant_id=c.tenant_id JOIN principal u ON u.person_id=e.person_id
@@ -40,12 +40,9 @@ BEGIN
   WHERE t->>'documentTemplate' IS NOT NULL AND (t->>'assignee'=o.uid::text OR t->>'by' IN ('joiner','employee'))
   UNION ALL
   SELECT o.id,o.revision,o.number,o.module,NULL,NULL,NULL,NULL,NULL,
-   coalesce(origin.name,'Documents from HR'),CASE WHEN origin.name IS NULL THEN 'document' ELSE 'workflow' END,
+   'Documents from HR','document',
    d->>'name',app.lifecycle_task_document(o.documents,d->>'templateId')
-  FROM owned o CROSS JOIN LATERAL jsonb_array_elements(coalesce(o.documents,'[]'::jsonb)) d
-  LEFT JOIN LATERAL (SELECT r->'definition'->>'name' AS name FROM jsonb_array_elements(coalesce(o.runs,'[]'::jsonb)) r
-   WHERE EXISTS(SELECT 1 FROM jsonb_array_elements(coalesce(r->'definition'->'steps','[]'::jsonb)) step WHERE step->>'type'='doc' AND step->>'template'=d->>'templateId')
-   ORDER BY r->>'at',r->>'id' LIMIT 1) origin ON true
+  FROM owned o CROSS JOIN LATERAL (SELECT DISTINCT ON (saved->>'templateId') saved AS d FROM jsonb_array_elements(coalesce(o.documents,'[]'::jsonb)) saved WHERE saved->>'status' NOT IN ('withdrawn','superseded','draft','hrsigned') ORDER BY saved->>'templateId',(saved->>'version')::integer DESC,saved->>'createdAt' DESC,saved->>'id' DESC) visible
   WHERE d->>'status' NOT IN ('withdrawn','superseded','draft','hrsigned')
    AND NOT EXISTS(SELECT 1 FROM jsonb_array_elements(coalesce(o.tasks,'[]'::jsonb)) t WHERE t->>'documentTemplate'=d->>'templateId' AND (t->>'assignee'=o.uid::text OR t->>'by' IN ('joiner','employee')))
  ), projected AS MATERIALIZED (
