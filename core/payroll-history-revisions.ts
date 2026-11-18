@@ -436,7 +436,11 @@ export async function confirmPayrollHistoryUpload(ctx:SessionContext,input:Histo
   await shareMasterRowsTx(tx,source);
   const fresh=await planRows(tx,ctx,await parsePayrollHistorySource(source.sourceName,source.sourceContent),source.sourceHash,source.plan.maintenance,source.id);
   if(fresh.previewHash!==source.plan.previewHash||fresh.counts.invalid)fail('The source, master data, permissions or target revisions changed. Validate a new attempt.');
-  if(fresh.maintenance)await markHistoryAffectedPayrollTx(tx,ctx,fresh.rows.filter(applies));
+  if(fresh.maintenance){
+   const historical=[...new Set(fresh.rows.filter(row=>applies(row)&&row.recordId&&!row.withdrawal).map(row=>row.employmentId))];
+   if(historical.length){const [scope]=await tx.execute<{held:boolean}>(sql`select exists(select 1 from unnest(ARRAY[${sql.join(historical.map(id=>sql`${id}::uuid`),sql`, `)}]::uuid[]) e(id) where not app.can_admin_payroll_employment(e.id)) held`);if(scope?.held)fail('Confirm this original-employer correction through the reviewed payroll history job.');}
+   await markHistoryAffectedPayrollTx(tx,ctx,fresh.rows.filter(applies));
+  }
   const changes:HistoryRevisionChange[]=[];
   const groups=new Map<string,HistoryRevisionRow[]>();
   for(const row of fresh.rows)if(applies(row)){
@@ -475,7 +479,7 @@ export async function confirmPayrollHistoryUpload(ctx:SessionContext,input:Histo
 /** One record's identity, its adoption of a processed payslip (d28501b8 r2: the processed payslip enters history as
  * the record's first revision, set aside by the correction; the database checks the adopted values are that
  * payslip's own columns) and its imported payslip. Shared by the single transaction and the staged job's steps. */
-async function writeRecordPayslipTx(tx:Tx,ctx:SessionContext,attemptId:string,batchId:string,row:HistoryRevisionRow){
+async function writeRecordPayslipTx(tx:Tx,ctx:SessionContext,attemptId:string,batchId:string,row:HistoryRevisionRow,stagedPreviewHash?:string){
  if(!row.values||!row.valueHash||row.operation==='invalid')fail('The file contains an invalid record.');
  let recordId=row.recordId;
  if(!recordId){const [created]=await tx.insert(record).values({tenantId:ctx.tenantId,companyId:row.companyId,employmentId:row.employmentId,period:row.period,cycleId:row.cycleId}).returning({id:record.id});recordId=created.id;}
@@ -492,8 +496,15 @@ async function writeRecordPayslipTx(tx:Tx,ctx:SessionContext,attemptId:string,ba
    [current]=await tx.insert(revision).values({tenantId:ctx.tenantId,recordId,ordinal:1,attemptId,snapshotId:row.expectedOrdinaryPayslipId,previousRevisionId:null,kind:'adopted',cycleName:row.cycleName}).returning();
   }
  }
- const [slip]=await tx.insert(payslip).values({tenantId:ctx.tenantId,batchId,employmentId:row.employmentId,...row.values}).returning({id:payslip.id});
- return{recordId,slipId:slip.id,previous:current as typeof revision.$inferSelect|undefined};
+ let slipId:string;
+ if(row.recordId&&row.contributions&&stagedPreviewHash){
+  const [inserted]=await tx.execute<{id:string}>(sql`select app.payroll_history_maintenance_payslip(${attemptId}::uuid,${stagedPreviewHash},${batchId}::uuid,${recordId}::uuid) id`);
+  if(!inserted?.id)fail('The accepted historical record could not be written.');
+  slipId=inserted.id;
+ }else{
+  const [slip]=await tx.insert(payslip).values({tenantId:ctx.tenantId,batchId,employmentId:row.employmentId,...row.values}).returning({id:payslip.id});slipId=slip.id;
+ }
+ return{recordId,slipId,previous:current as typeof revision.$inferSelect|undefined};
 }
 async function writeSnapshotRevisionTx(tx:Tx,ctx:SessionContext,attemptId:string,item:{row:HistoryRevisionRow;recordId:string;slipId:string;previous:typeof revision.$inferSelect|undefined}):Promise<HistoryRevisionChange>{
  const {row,recordId,slipId,previous}=item;
@@ -582,9 +593,9 @@ export async function stageHistoryBatchTx(tx:Tx,ctx:SessionContext,attemptId:str
 }
 /** One staged record: everything the single transaction wrote for it, in its order (its snapshot and revision after
  * its payslip; the batch closes in the release). */
-export async function stageHistoryRowTx(tx:Tx,ctx:SessionContext,attemptId:string,batchId:string,row:HistoryRevisionRow){
+export async function stageHistoryRowTx(tx:Tx,ctx:SessionContext,attemptId:string,batchId:string,row:HistoryRevisionRow,previewHash:string){
  if(row.withdrawal)return writeHistoryWithdrawalTx(tx,ctx,attemptId,row);
- const written=await writeRecordPayslipTx(tx,ctx,attemptId,batchId,row);
+ const written=await writeRecordPayslipTx(tx,ctx,attemptId,batchId,row,previewHash);
  return writeSnapshotRevisionTx(tx,ctx,attemptId,{row,...written});
 }
 /** The staged confirm's release, in one short transaction: the history and Access write locks the single transaction

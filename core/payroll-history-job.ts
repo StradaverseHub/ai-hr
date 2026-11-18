@@ -158,10 +158,10 @@ export const payrollHistoryJobHandler:BulkJobHandler<Step>={
   const confirm=plan as ConfirmPlan&CommonPlan;
   const {group}=step.payload as {group:number};
   if(step.kind==='batch'){const batchId=await stageHistoryBatchTx(tx,ctx,plan.attemptId,confirm.groups[group]);cache.set('batch:'+group,batchId);return{result:{batchId}};}
-  if(group===-1)return{result:{change:await stageHistoryRowTx(tx,ctx,plan.attemptId,'',(step.payload as {row:HistoryRevisionRow}).row)},counters:{written:1}};
+  if(group===-1)return{result:{change:await stageHistoryRowTx(tx,ctx,plan.attemptId,'',(step.payload as {row:HistoryRevisionRow}).row,confirm.input.previewHash)},counters:{written:1}};
   const batchId=(cache.get('batch:'+group) as string|undefined)??await stagedBatchTx(tx,job.id,group);
   cache.set('batch:'+group,batchId);
-  return{result:{change:await stageHistoryRowTx(tx,ctx,plan.attemptId,batchId,(step.payload as {row:HistoryRevisionRow}).row)},counters:{written:1}};
+  return{result:{change:await stageHistoryRowTx(tx,ctx,plan.attemptId,batchId,(step.payload as {row:HistoryRevisionRow}).row,confirm.input.previewHash)},counters:{written:1}};
  },
  // Finalize clears the released stage's registry rows on the queue-owner connection (unit.ownerTx); the kind's
  // bulk_job_kind row declares finalize_owner to match (5055).
