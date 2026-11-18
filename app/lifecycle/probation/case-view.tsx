@@ -23,7 +23,7 @@ import {probationCaseClosed,probationCurrentPart,probationDayDiff,probationOutco
  * letters / Files / History. Each tab is its own address, so only the selected tab's data is read on the server; every
  * action keeps its own server-side check.
  */
-export type ProbationCaseViewProps={view:ProbationCaseView;today:string;tab:ProbationCaseTab;part:ProbationPartView|null;actor:{id:string;name:string};signerCandidates?:{id:string;name:string}[];history?:ProbationAutomationHistoryRun[];
+export type ProbationCaseViewProps={emailFiles?:ReactNode;view:ProbationCaseView;today:string;tab:ProbationCaseTab;part:ProbationPartView|null;actor:{id:string;name:string};signerCandidates?:{id:string;name:string}[];history?:ProbationAutomationHistoryRun[];
  /** Outcome & letters: the latest letter, read on the server (it authorizes and hides private content). */
  letter?:ProbationLetterView|null;letterSignerCandidates?:{id:string;name:string}[]};
 const caseHref=(view:ProbationCaseView)=>'/lifecycle/probation/'+view.record.id;
@@ -36,7 +36,7 @@ function Step({state,children,dashed}:{state:ProbationStepState;children:ReactNo
  return <li className="probation-step" data-state={state} data-dashed={dashed?'true':undefined} aria-current={state==='current'||state==='overdue'||state==='returned'?'step':undefined}>
   {state==='done'&&<Check size={14} aria-hidden="true"/>}<span>{children}</span><span className="sr-only"> ({t('stepState.'+state)})</span></li>;
 }
-export function ProbationCaseViewScreen({view,today,tab,part,actor,signerCandidates,history,letter,letterSignerCandidates}:ProbationCaseViewProps){
+export function ProbationCaseViewScreen({view,today,tab,part,actor,signerCandidates,history,letter,letterSignerCandidates,emailFiles}:ProbationCaseViewProps){
  const t=useTranslations('probation'),c=useTranslations('probation.caseView');
  const name=(id:string|null|undefined)=>id?view.holderNames[id]??null:null;
  const role=(r:string)=>t.has('roles.'+r)?t('roles.'+r):/^(routing:|group:|people$)/.test(r)?t('roles.approver'):r;
@@ -88,7 +88,7 @@ export function ProbationCaseViewScreen({view,today,tab,part,actor,signerCandida
   </nav>
   {(tab==='p1'||tab==='p2'||tab==='p3')&&(part?<PartTab view={view} part={part} actor={actor} signerCandidates={signerCandidates}/>:<p className="pcc-card pcc-empty">{c('noPart')}</p>)}
   {tab==='outcome'&&<OutcomeTab view={view} actor={actor} letter={letter??null} letterSignerCandidates={letterSignerCandidates}/>}
-  {tab==='files'&&<FilesTab view={view}/>}
+  {tab==='files'&&<><FilesTab view={view}/>{emailFiles}</>}
   {tab==='history'&&<HistoryTab view={view} history={history}/>}
  </main>;
 }

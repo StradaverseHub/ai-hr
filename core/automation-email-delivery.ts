@@ -20,9 +20,9 @@ import {automationEmailIpc,type AutomationDeliveryRequest,type AutomationDeliver
 
 export type AutomationEmailQueued = {queued: number; to: string[]; cc: string[]; unreachable: string[]};
 /** Records the email intent in the caller's transaction (idempotent on `key`). */
-export async function queueAutomationEmailTx(tx: Tx, input: {module: 'probation'; subjectId: string; key: string; to: readonly string[]; cc: readonly string[]; subject: string; body: string}): Promise<AutomationEmailQueued> {
+export async function queueAutomationEmailTx(tx: Tx, input: {module: 'probation'; subjectId: string; key: string; to: readonly string[]; cc: readonly string[]; subject: string; body: string;rich?:{templateId:string;html:string;documents?:import('../lib/automation-email-ipc').AutomationEmailDocumentRef[];caseFiles?:import('../lib/automation-email-ipc').AutomationEmailCaseFileRef[];assets:{id:string;kind:'file'|'image';contentHash:string}[]}}): Promise<AutomationEmailQueued> {
   const array = (ids: readonly string[]) => `{${ids.join(',')}}`;
-  const [row] = await tx.execute<{data: AutomationEmailQueued}>(sql`select app.automation_email_queue(${input.module}, ${input.subjectId}::uuid, ${input.key}, ${array(input.to)}::uuid[], ${array(input.cc)}::uuid[], ${input.subject.slice(0, 500)}, ${input.body.slice(0, 20000)}) as data`);
+  const [row] = input.rich ? await tx.execute<{data:AutomationEmailQueued}>(sql`select app.automation_rich_email_queue(${input.module},${input.subjectId}::uuid,${input.key},${array(input.to)}::uuid[],${array(input.cc)}::uuid[],${input.subject.slice(0,500)},${input.body.slice(0,20000)},${input.rich.templateId}::uuid,${JSON.stringify({version:2,html:input.rich.html,assets:input.rich.assets,documents:input.rich.documents??[],caseFiles:input.rich.caseFiles??[]})}::jsonb) as data`) : await tx.execute<{data: AutomationEmailQueued}>(sql`select app.automation_email_queue(${input.module}, ${input.subjectId}::uuid, ${input.key}, ${array(input.to)}::uuid[], ${array(input.cc)}::uuid[], ${input.subject.slice(0, 500)}, ${input.body.slice(0, 20000)}) as data`);
   return row.data;
 }
 

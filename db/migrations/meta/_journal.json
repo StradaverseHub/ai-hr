@@ -6469,6 +6469,34 @@
       "when": 1794841006104,
       "tag": "6104_lifecycle_recipient_fanout",
       "breakpoints": true
+    },
+    {
+      "idx": 10010,
+      "version": "7",
+      "when": 1794998006610,
+      "tag": "6610_probation_rich_email_definitions",
+      "breakpoints": true
+    },
+    {
+      "idx": 10011,
+      "version": "7",
+      "when": 1794998006611,
+      "tag": "6611_probation_rich_email_delivery",
+      "breakpoints": true
+    },
+    {
+      "idx": 10012,
+      "version": "7",
+      "when": 1794998006612,
+      "tag": "6612_probation_email_documents",
+      "breakpoints": true
+    },
+    {
+      "idx": 10013,
+      "version": "7",
+      "when": 1794998006613,
+      "tag": "6613_probation_email_case_files",
+      "breakpoints": true
     }
   ]
 }
