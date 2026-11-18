@@ -1,79 +1,491 @@
 {
   "sourceBase": "Unregistered6001–6009 on d50b1b7f849f870da15a2c07bb5f184ca3d1abf4 with explicitShared6000 prerequisite; literal DDL intent additions only, using3420c4aac fixture format; no installed-DB-derived expectations",
   "functionsAdded": [
-    {"signature":"app.preserve_payroll_metadata_owner(uuid,boolean,boolean)","appExecute":false,"publicExecute":false,"owner":"MIGRATION_OWNER"},
-    {"signature":"app.workforce_payroll_inputs_changed_windows_owner(uuid,jsonb,text)","appExecute":false,"publicExecute":false,"owner":"MIGRATION_OWNER"},
-    {"signature":"app.contract_posting_job_admission()","appExecute":false,"publicExecute":false,"owner":"MIGRATION_OWNER"},
-    {"signature":"app.contract_posting_request_values(uuid,integer,jsonb)","appExecute":false,"publicExecute":false,"owner":"MIGRATION_OWNER"},
-    {"signature":"app.contract_posting_request(uuid,integer,jsonb)","appExecute":true,"publicExecute":false,"owner":"MIGRATION_OWNER"},
-    {"signature":"app.contract_posting_job_held(uuid)","appExecute":false,"publicExecute":false,"owner":"MIGRATION_OWNER"},
-    {"signature":"app.contract_posting_job_tx_held(uuid,uuid)","appExecute":false,"publicExecute":false,"owner":"MIGRATION_OWNER"},
-    {"signature":"app.contract_posting_asof_legal_company(uuid,date)","appExecute":false,"publicExecute":false,"owner":"MIGRATION_OWNER"},
-    {"signature":"app.contract_posting_ledger_hash(uuid,bigint)","appExecute":false,"publicExecute":false,"owner":"MIGRATION_OWNER"},
-    {"signature":"app.contract_posting_original_source_intact(uuid,uuid)","appExecute":false,"publicExecute":false,"owner":"MIGRATION_OWNER"},
-    {"signature":"app.contract_posting_job_begin(uuid)","appExecute":false,"publicExecute":false,"owner":"MIGRATION_OWNER"},
-    {"signature":"app.contract_posting_job_protect(uuid,uuid)","appExecute":false,"publicExecute":false,"owner":"MIGRATION_OWNER"},
-    {"signature":"app.contract_posting_job_bind_intent(uuid,uuid)","appExecute":false,"publicExecute":false,"owner":"MIGRATION_OWNER"},
-    {"signature":"app.contract_posting_job_finish(uuid,uuid,boolean)","appExecute":false,"publicExecute":false,"owner":"MIGRATION_OWNER"},
-    {"signature":"app.contract_posting_request_status(uuid)","appExecute":true,"publicExecute":false,"owner":"MIGRATION_OWNER"},
-    {"signature":"app.contract_shared_posting_approve_before_job_guard(uuid,integer,jsonb)","appExecute":false,"publicExecute":false,"owner":"MIGRATION_OWNER"},
-    {"signature":"app.contract_posting_approval_row_guard()","appExecute":false,"publicExecute":false,"owner":"MIGRATION_OWNER"},
-    {"signature":"app.contract_posting_approval_commit_guard()","appExecute":false,"publicExecute":false,"owner":"MIGRATION_OWNER"},
-    {"signature":"app.contract_posting_assignment_hash(uuid)","appExecute":false,"publicExecute":false,"owner":"MIGRATION_OWNER"},
-    {"signature":"app.contract_posting_job_identity_held(uuid)","appExecute":false,"publicExecute":false,"owner":"MIGRATION_OWNER"},
-    {"signature":"app.contract_posting_group_hash(uuid,uuid)","appExecute":false,"publicExecute":false,"owner":"MIGRATION_OWNER"},
-    {"signature":"app.contract_posting_replay_checkpoint_held(uuid,uuid)","appExecute":false,"publicExecute":false,"owner":"MIGRATION_OWNER"},
-    {"signature":"app.contract_posting_replay_plan(uuid,jsonb)","appExecute":false,"publicExecute":false,"owner":"MIGRATION_OWNER"},
-    {"signature":"app.contract_posting_replay_step_begin(uuid,uuid,text)","appExecute":false,"publicExecute":false,"owner":"MIGRATION_OWNER"},
-    {"signature":"app.contract_posting_replay_step_end(uuid,uuid,text)","appExecute":false,"publicExecute":false,"owner":"MIGRATION_OWNER"},
-    {"signature":"app.contract_posting_history_write_held(uuid,uuid)","appExecute":false,"publicExecute":false,"owner":"MIGRATION_OWNER"},
-    {"signature":"app.contract_posting_replay_target_begin(uuid)","appExecute":false,"publicExecute":false,"owner":"MIGRATION_OWNER"},
-    {"signature":"app.contract_posting_target_source_held(uuid)","appExecute":false,"publicExecute":false,"owner":"MIGRATION_OWNER"},
-    {"signature":"app.contract_posting_intent_canonical_owner(uuid)","appExecute":false,"publicExecute":false,"owner":"MIGRATION_OWNER"},
-    {"signature":"app.contract_posting_replay_target_end(uuid)","appExecute":false,"publicExecute":false,"owner":"MIGRATION_OWNER"},
-    {"signature":"app.contract_posting_replay_complete(uuid)","appExecute":false,"publicExecute":false,"owner":"MIGRATION_OWNER"}
-,
-    {"signature":"app.contract_posting_replay_target_prepare(uuid)","appExecute":false,"publicExecute":false,"owner":"MIGRATION_OWNER"},
-    {"signature":"app.contract_shared_create_posting_before_producer(uuid,uuid,text)","appExecute":false,"publicExecute":false,"owner":"MIGRATION_OWNER"},
-    {"signature":"app.contract_posting_producer_disposition(uuid[])","appExecute":false,"publicExecute":false,"owner":"MIGRATION_OWNER"},
-    {"signature":"app.contract_posting_producer_yield(uuid)","appExecute":false,"publicExecute":false,"owner":"MIGRATION_OWNER"},
-    {"signature":"app.contract_posting_workflow_readiness(uuid[])","appExecute":false,"publicExecute":false,"owner":"MIGRATION_OWNER"},
-    {"signature":"app.contract_posting_application_metadata(uuid)","appExecute":false,"publicExecute":false,"owner":"MIGRATION_OWNER"},
-    {"signature":"app.contract_posting_request_before_application_metadata(uuid,integer,jsonb)","appExecute":false,"publicExecute":false,"owner":"MIGRATION_OWNER"},
-    {"signature":"app.contract_posting_status_before_application_metadata(uuid)","appExecute":false,"publicExecute":false,"owner":"MIGRATION_OWNER"},
-    {"signature":"app.contract_shared_posting_read_before_apply_metadata(uuid)","appExecute":false,"publicExecute":false,"owner":"MIGRATION_OWNER"},
-    {"signature":"app.contract_shared_posting_summary_before_apply_metadata(uuid)","appExecute":false,"publicExecute":false,"owner":"MIGRATION_OWNER"},
-    {"signature":"app.contract_shared_postings_page_before_apply_metadata(text,uuid,integer,integer,uuid)","appExecute":false,"publicExecute":false,"owner":"MIGRATION_OWNER"},
-    {"signature":"app.contract_posting_readiness_before_reconciliation(uuid[])","appExecute":false,"publicExecute":false,"owner":"MIGRATION_OWNER"},
-    {"signature":"app.contract_shared_postings_page_before_authority_factor(text,uuid,integer,integer,uuid)","appExecute":false,"publicExecute":false,"owner":"MIGRATION_OWNER"}
+    {
+      "signature": "app.preserve_payroll_metadata_owner(uuid,boolean,boolean)",
+      "appExecute": false,
+      "publicExecute": false,
+      "owner": "MIGRATION_OWNER"
+    },
+    {
+      "signature": "app.workforce_payroll_inputs_changed_windows_owner(uuid,jsonb,text)",
+      "appExecute": false,
+      "publicExecute": false,
+      "owner": "MIGRATION_OWNER"
+    },
+    {
+      "signature": "app.contract_posting_job_admission()",
+      "appExecute": false,
+      "publicExecute": false,
+      "owner": "MIGRATION_OWNER"
+    },
+    {
+      "signature": "app.contract_posting_request_values(uuid,integer,jsonb)",
+      "appExecute": false,
+      "publicExecute": false,
+      "owner": "MIGRATION_OWNER"
+    },
+    {
+      "signature": "app.contract_posting_request(uuid,integer,jsonb)",
+      "appExecute": true,
+      "publicExecute": false,
+      "owner": "MIGRATION_OWNER"
+    },
+    {
+      "signature": "app.contract_posting_job_held(uuid)",
+      "appExecute": false,
+      "publicExecute": false,
+      "owner": "MIGRATION_OWNER"
+    },
+    {
+      "signature": "app.contract_posting_job_tx_held(uuid,uuid)",
+      "appExecute": false,
+      "publicExecute": false,
+      "owner": "MIGRATION_OWNER"
+    },
+    {
+      "signature": "app.contract_posting_asof_legal_company(uuid,date)",
+      "appExecute": false,
+      "publicExecute": false,
+      "owner": "MIGRATION_OWNER"
+    },
+    {
+      "signature": "app.contract_posting_ledger_hash(uuid,bigint)",
+      "appExecute": false,
+      "publicExecute": false,
+      "owner": "MIGRATION_OWNER"
+    },
+    {
+      "signature": "app.contract_posting_original_source_intact(uuid,uuid)",
+      "appExecute": false,
+      "publicExecute": false,
+      "owner": "MIGRATION_OWNER"
+    },
+    {
+      "signature": "app.contract_posting_job_begin(uuid)",
+      "appExecute": false,
+      "publicExecute": false,
+      "owner": "MIGRATION_OWNER"
+    },
+    {
+      "signature": "app.contract_posting_job_protect(uuid,uuid)",
+      "appExecute": false,
+      "publicExecute": false,
+      "owner": "MIGRATION_OWNER"
+    },
+    {
+      "signature": "app.contract_posting_job_bind_intent(uuid,uuid)",
+      "appExecute": false,
+      "publicExecute": false,
+      "owner": "MIGRATION_OWNER"
+    },
+    {
+      "signature": "app.contract_posting_job_finish(uuid,uuid,boolean)",
+      "appExecute": false,
+      "publicExecute": false,
+      "owner": "MIGRATION_OWNER"
+    },
+    {
+      "signature": "app.contract_posting_request_status(uuid)",
+      "appExecute": true,
+      "publicExecute": false,
+      "owner": "MIGRATION_OWNER"
+    },
+    {
+      "signature": "app.contract_shared_posting_approve_before_job_guard(uuid,integer,jsonb)",
+      "appExecute": false,
+      "publicExecute": false,
+      "owner": "MIGRATION_OWNER"
+    },
+    {
+      "signature": "app.contract_posting_approval_row_guard()",
+      "appExecute": false,
+      "publicExecute": false,
+      "owner": "MIGRATION_OWNER"
+    },
+    {
+      "signature": "app.contract_posting_approval_commit_guard()",
+      "appExecute": false,
+      "publicExecute": false,
+      "owner": "MIGRATION_OWNER"
+    },
+    {
+      "signature": "app.contract_posting_assignment_hash(uuid)",
+      "appExecute": false,
+      "publicExecute": false,
+      "owner": "MIGRATION_OWNER"
+    },
+    {
+      "signature": "app.contract_posting_job_identity_held(uuid)",
+      "appExecute": false,
+      "publicExecute": false,
+      "owner": "MIGRATION_OWNER"
+    },
+    {
+      "signature": "app.contract_posting_group_hash(uuid,uuid)",
+      "appExecute": false,
+      "publicExecute": false,
+      "owner": "MIGRATION_OWNER"
+    },
+    {
+      "signature": "app.contract_posting_replay_checkpoint_held(uuid,uuid)",
+      "appExecute": false,
+      "publicExecute": false,
+      "owner": "MIGRATION_OWNER"
+    },
+    {
+      "signature": "app.contract_posting_replay_plan(uuid,jsonb)",
+      "appExecute": false,
+      "publicExecute": false,
+      "owner": "MIGRATION_OWNER"
+    },
+    {
+      "signature": "app.contract_posting_replay_step_begin(uuid,uuid,text)",
+      "appExecute": false,
+      "publicExecute": false,
+      "owner": "MIGRATION_OWNER"
+    },
+    {
+      "signature": "app.contract_posting_replay_step_end(uuid,uuid,text)",
+      "appExecute": false,
+      "publicExecute": false,
+      "owner": "MIGRATION_OWNER"
+    },
+    {
+      "signature": "app.contract_posting_history_write_held(uuid,uuid)",
+      "appExecute": false,
+      "publicExecute": false,
+      "owner": "MIGRATION_OWNER"
+    },
+    {
+      "signature": "app.contract_posting_replay_target_begin(uuid)",
+      "appExecute": false,
+      "publicExecute": false,
+      "owner": "MIGRATION_OWNER"
+    },
+    {
+      "signature": "app.contract_posting_target_source_held(uuid)",
+      "appExecute": false,
+      "publicExecute": false,
+      "owner": "MIGRATION_OWNER"
+    },
+    {
+      "signature": "app.contract_posting_intent_canonical_owner(uuid)",
+      "appExecute": false,
+      "publicExecute": false,
+      "owner": "MIGRATION_OWNER"
+    },
+    {
+      "signature": "app.contract_posting_replay_target_end(uuid)",
+      "appExecute": false,
+      "publicExecute": false,
+      "owner": "MIGRATION_OWNER"
+    },
+    {
+      "signature": "app.contract_posting_replay_complete(uuid)",
+      "appExecute": false,
+      "publicExecute": false,
+      "owner": "MIGRATION_OWNER"
+    },
+    {
+      "signature": "app.contract_posting_replay_target_prepare(uuid)",
+      "appExecute": false,
+      "publicExecute": false,
+      "owner": "MIGRATION_OWNER"
+    },
+    {
+      "signature": "app.contract_shared_create_posting_before_producer(uuid,uuid,text)",
+      "appExecute": false,
+      "publicExecute": false,
+      "owner": "MIGRATION_OWNER"
+    },
+    {
+      "signature": "app.contract_posting_producer_disposition(uuid[])",
+      "appExecute": false,
+      "publicExecute": false,
+      "owner": "MIGRATION_OWNER"
+    },
+    {
+      "signature": "app.contract_posting_producer_yield(uuid)",
+      "appExecute": false,
+      "publicExecute": false,
+      "owner": "MIGRATION_OWNER"
+    },
+    {
+      "signature": "app.contract_posting_workflow_readiness(uuid[])",
+      "appExecute": false,
+      "publicExecute": false,
+      "owner": "MIGRATION_OWNER"
+    },
+    {
+      "signature": "app.contract_posting_application_metadata(uuid)",
+      "appExecute": false,
+      "publicExecute": false,
+      "owner": "MIGRATION_OWNER"
+    },
+    {
+      "signature": "app.contract_posting_request_before_application_metadata(uuid,integer,jsonb)",
+      "appExecute": false,
+      "publicExecute": false,
+      "owner": "MIGRATION_OWNER"
+    },
+    {
+      "signature": "app.contract_posting_status_before_application_metadata(uuid)",
+      "appExecute": false,
+      "publicExecute": false,
+      "owner": "MIGRATION_OWNER"
+    },
+    {
+      "signature": "app.contract_shared_posting_read_before_apply_metadata(uuid)",
+      "appExecute": false,
+      "publicExecute": false,
+      "owner": "MIGRATION_OWNER"
+    },
+    {
+      "signature": "app.contract_shared_posting_summary_before_apply_metadata(uuid)",
+      "appExecute": false,
+      "publicExecute": false,
+      "owner": "MIGRATION_OWNER"
+    },
+    {
+      "signature": "app.contract_shared_postings_page_before_apply_metadata(text,uuid,integer,integer,uuid)",
+      "appExecute": false,
+      "publicExecute": false,
+      "owner": "MIGRATION_OWNER"
+    },
+    {
+      "signature": "app.contract_posting_readiness_before_reconciliation(uuid[])",
+      "appExecute": false,
+      "publicExecute": false,
+      "owner": "MIGRATION_OWNER"
+    },
+    {
+      "signature": "app.contract_shared_postings_page_before_authority_factor(text,uuid,integer,integer,uuid)",
+      "appExecute": false,
+      "publicExecute": false,
+      "owner": "MIGRATION_OWNER"
+    }
   ],
   "existingFunctionsTouched": [
-    {"signature":"app.preserve_payroll_metadata(uuid,boolean)","appExecute":false,"publicExecute":false},
-    {"signature":"app.workforce_payroll_inputs_changed_windows(uuid,jsonb,text)","appExecute":true,"publicExecute":false},
-    {"signature":"app.contract_shared_posting_approve(uuid,integer,jsonb)","appExecute":false,"publicExecute":false},
-    {"signature":"app.contract_shared_posting_intent_before_source_lock(uuid)","appExecute":false,"publicExecute":false},
-    {"signature":"app.contract_shared_create_posting(uuid,uuid,text)","appExecute":false,"publicExecute":false},
-    {"signature":"app.contract_shared_posting_workflow_ready(uuid)","appExecute":false,"publicExecute":false},
-    {"signature":"app.contract_shared_posting_read(uuid)","appExecute":true,"publicExecute":false},
-    {"signature":"app.contract_shared_posting_case_summary(uuid)","appExecute":true,"publicExecute":false},
-    {"signature":"app.contract_shared_postings_page(text,uuid,integer,integer,uuid)","appExecute":true,"publicExecute":false}
+    {
+      "signature": "app.preserve_payroll_metadata(uuid,boolean)",
+      "appExecute": false,
+      "publicExecute": false
+    },
+    {
+      "signature": "app.workforce_payroll_inputs_changed_windows(uuid,jsonb,text)",
+      "appExecute": true,
+      "publicExecute": false
+    },
+    {
+      "signature": "app.contract_shared_posting_approve(uuid,integer,jsonb)",
+      "appExecute": false,
+      "publicExecute": false
+    },
+    {
+      "signature": "app.contract_shared_posting_intent_before_source_lock(uuid)",
+      "appExecute": false,
+      "publicExecute": false
+    },
+    {
+      "signature": "app.contract_shared_create_posting(uuid,uuid,text)",
+      "appExecute": false,
+      "publicExecute": false
+    },
+    {
+      "signature": "app.contract_shared_posting_workflow_ready(uuid)",
+      "appExecute": false,
+      "publicExecute": false
+    },
+    {
+      "signature": "app.contract_shared_posting_read(uuid)",
+      "appExecute": true,
+      "publicExecute": false
+    },
+    {
+      "signature": "app.contract_shared_posting_case_summary(uuid)",
+      "appExecute": true,
+      "publicExecute": false
+    },
+    {
+      "signature": "app.contract_shared_postings_page(text,uuid,integer,integer,uuid)",
+      "appExecute": true,
+      "publicExecute": false
+    }
   ],
   "tablesAdded": [
-    {"table":"app.contract_posting_job_source","rls":true,"force":true,"explicitRolePrivileges":{"PUBLIC":[],"ai_hr_app":[],"ai_hr_owner":["INSERT","SELECT"]},"owner":"MIGRATION_OWNER"},
-    {"table":"app.contract_posting_job_tx","rls":true,"force":true,"explicitRolePrivileges":{"PUBLIC":[],"ai_hr_app":[],"ai_hr_owner":["INSERT","SELECT","UPDATE"]},"owner":"MIGRATION_OWNER"},
-    {"table":"app.contract_posting_job_result","rls":true,"force":true,"explicitRolePrivileges":{"PUBLIC":[],"ai_hr_app":[],"ai_hr_owner":["INSERT","SELECT"]},"owner":"MIGRATION_OWNER"},
-    {"table":"app.contract_posting_replay_state","rls":true,"force":true,"explicitRolePrivileges":{"PUBLIC":[],"ai_hr_app":[],"ai_hr_owner":["INSERT","SELECT","UPDATE"]},"owner":"MIGRATION_OWNER"},
-    {"table":"app.contract_posting_replay_step","rls":true,"force":true,"explicitRolePrivileges":{"PUBLIC":[],"ai_hr_app":[],"ai_hr_owner":["INSERT","SELECT","UPDATE"]},"owner":"MIGRATION_OWNER"},
-    {"table":"app.contract_posting_producer","rls":true,"force":true,"explicitRolePrivileges":{"PUBLIC":[],"ai_hr_app":[],"ai_hr_owner":["INSERT","SELECT"]},"owner":"MIGRATION_OWNER"},
-    {"table":"app.contract_posting_producer_certificate","rls":true,"force":true,"explicitRolePrivileges":{"PUBLIC":[],"ai_hr_app":[],"ai_hr_owner":["INSERT","SELECT"]},"owner":"MIGRATION_OWNER"}
+    {
+      "table": "app.contract_posting_job_source",
+      "rls": true,
+      "force": true,
+      "explicitRolePrivileges": {
+        "PUBLIC": [],
+        "ai_hr_app": [],
+        "ai_hr_owner": [
+          "INSERT",
+          "SELECT"
+        ]
+      },
+      "owner": "MIGRATION_OWNER"
+    },
+    {
+      "table": "app.contract_posting_job_tx",
+      "rls": true,
+      "force": true,
+      "explicitRolePrivileges": {
+        "PUBLIC": [],
+        "ai_hr_app": [],
+        "ai_hr_owner": [
+          "INSERT",
+          "SELECT",
+          "UPDATE"
+        ]
+      },
+      "owner": "MIGRATION_OWNER"
+    },
+    {
+      "table": "app.contract_posting_job_result",
+      "rls": true,
+      "force": true,
+      "explicitRolePrivileges": {
+        "PUBLIC": [],
+        "ai_hr_app": [],
+        "ai_hr_owner": [
+          "INSERT",
+          "SELECT"
+        ]
+      },
+      "owner": "MIGRATION_OWNER"
+    },
+    {
+      "table": "app.contract_posting_replay_state",
+      "rls": true,
+      "force": true,
+      "explicitRolePrivileges": {
+        "PUBLIC": [],
+        "ai_hr_app": [],
+        "ai_hr_owner": [
+          "INSERT",
+          "SELECT",
+          "UPDATE"
+        ]
+      },
+      "owner": "MIGRATION_OWNER"
+    },
+    {
+      "table": "app.contract_posting_replay_step",
+      "rls": true,
+      "force": true,
+      "explicitRolePrivileges": {
+        "PUBLIC": [],
+        "ai_hr_app": [],
+        "ai_hr_owner": [
+          "INSERT",
+          "SELECT",
+          "UPDATE"
+        ]
+      },
+      "owner": "MIGRATION_OWNER"
+    },
+    {
+      "table": "app.contract_posting_producer",
+      "rls": true,
+      "force": true,
+      "explicitRolePrivileges": {
+        "PUBLIC": [],
+        "ai_hr_app": [],
+        "ai_hr_owner": [
+          "INSERT",
+          "SELECT"
+        ]
+      },
+      "owner": "MIGRATION_OWNER"
+    },
+    {
+      "table": "app.contract_posting_producer_certificate",
+      "rls": true,
+      "force": true,
+      "explicitRolePrivileges": {
+        "PUBLIC": [],
+        "ai_hr_app": [],
+        "ai_hr_owner": [
+          "INSERT",
+          "SELECT"
+        ]
+      },
+      "owner": "MIGRATION_OWNER"
+    }
   ],
   "policiesAdded": [
-    {"schema":"app","table":"contract_posting_job_source","name":"contract_posting_job_source_owner","cmd":"ALL","roles":"ai_hr_owner","using":"app.acting_as_owner()","check":"app.acting_as_owner()","source":"6001_contract_posting_protected_job_foundation:194"},
-    {"schema":"app","table":"contract_posting_job_tx","name":"contract_posting_job_tx_owner","cmd":"ALL","roles":"ai_hr_owner","using":"app.acting_as_owner()","check":"app.acting_as_owner()","source":"6001_contract_posting_protected_job_foundation:195"},
-    {"schema":"app","table":"contract_posting_job_result","name":"contract_posting_job_result_owner","cmd":"ALL","roles":"ai_hr_owner","using":"app.acting_as_owner()","check":"app.acting_as_owner()","source":"6001_contract_posting_protected_job_foundation:196"},
-    {"schema":"app","table":"contract_posting_replay_state","name":"contract_posting_replay_state_owner","cmd":"ALL","roles":"ai_hr_owner","using":"app.acting_as_owner()","check":"app.acting_as_owner()","source":"6002_contract_posting_recorded_replay_frames:32"},
-    {"schema":"app","table":"contract_posting_replay_step","name":"contract_posting_replay_step_owner","cmd":"ALL","roles":"ai_hr_owner","using":"app.acting_as_owner()","check":"app.acting_as_owner()","source":"6002_contract_posting_recorded_replay_frames:33"},
-    {"schema":"app","table":"contract_posting_producer","name":"contract_posting_producer_owner","cmd":"ALL","roles":"ai_hr_owner","using":"app.acting_as_owner()","check":"app.acting_as_owner()","source":"6006_contract_posting_first_producer_readiness:34"},
-    {"schema":"app","table":"contract_posting_producer_certificate","name":"contract_posting_producer_certificate_owner","cmd":"ALL","roles":"ai_hr_owner","using":"app.acting_as_owner()","check":"app.acting_as_owner()","source":"6006_contract_posting_first_producer_readiness:35"}
+    {
+      "schema": "app",
+      "table": "contract_posting_job_source",
+      "name": "contract_posting_job_source_owner",
+      "cmd": "ALL",
+      "roles": "ai_hr_owner",
+      "using": "app.acting_as_owner()",
+      "check": "app.acting_as_owner()",
+      "source": "6421_contract_posting_protected_job_foundation:194"
+    },
+    {
+      "schema": "app",
+      "table": "contract_posting_job_tx",
+      "name": "contract_posting_job_tx_owner",
+      "cmd": "ALL",
+      "roles": "ai_hr_owner",
+      "using": "app.acting_as_owner()",
+      "check": "app.acting_as_owner()",
+      "source": "6421_contract_posting_protected_job_foundation:195"
+    },
+    {
+      "schema": "app",
+      "table": "contract_posting_job_result",
+      "name": "contract_posting_job_result_owner",
+      "cmd": "ALL",
+      "roles": "ai_hr_owner",
+      "using": "app.acting_as_owner()",
+      "check": "app.acting_as_owner()",
+      "source": "6421_contract_posting_protected_job_foundation:196"
+    },
+    {
+      "schema": "app",
+      "table": "contract_posting_replay_state",
+      "name": "contract_posting_replay_state_owner",
+      "cmd": "ALL",
+      "roles": "ai_hr_owner",
+      "using": "app.acting_as_owner()",
+      "check": "app.acting_as_owner()",
+      "source": "6422_contract_posting_recorded_replay_frames:32"
+    },
+    {
+      "schema": "app",
+      "table": "contract_posting_replay_step",
+      "name": "contract_posting_replay_step_owner",
+      "cmd": "ALL",
+      "roles": "ai_hr_owner",
+      "using": "app.acting_as_owner()",
+      "check": "app.acting_as_owner()",
+      "source": "6422_contract_posting_recorded_replay_frames:33"
+    },
+    {
+      "schema": "app",
+      "table": "contract_posting_producer",
+      "name": "contract_posting_producer_owner",
+      "cmd": "ALL",
+      "roles": "ai_hr_owner",
+      "using": "app.acting_as_owner()",
+      "check": "app.acting_as_owner()",
+      "source": "6426_contract_posting_first_producer_readiness:34"
+    },
+    {
+      "schema": "app",
+      "table": "contract_posting_producer_certificate",
+      "name": "contract_posting_producer_certificate_owner",
+      "cmd": "ALL",
+      "roles": "ai_hr_owner",
+      "using": "app.acting_as_owner()",
+      "check": "app.acting_as_owner()",
+      "source": "6426_contract_posting_first_producer_readiness:35"
+    }
   ]
 }

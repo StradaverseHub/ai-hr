@@ -14,7 +14,7 @@ import {PROJECT_INSTALLED_OWNERSHIP} from './installed-owner-projection';
 export type RestrictedPostingRuntimeReceipt={version:1;sessionUser:'ai_hr_owner';currentUser:'ai_hr_owner';superuser:false;bypassRls:false;postingStatus:'approved';applicationState:'applied';preservedPayslips:number;queueBackendMatchesReceipt:true};
 const RESULT='CONTRACT_RESTRICTED_OWNER_RESULT ';
 const REFUSAL='Restricted Contract runtime requires the existing admitted hosted disposable fixture.';
-const packet=['6001_contract_posting_protected_job_foundation','6002_contract_posting_recorded_replay_frames','6003_contract_posting_prepared_target_source','6004_contract_posting_bound_target_completion','6005_contract_posting_finish_and_commit_guard','6006_contract_posting_first_producer_readiness','6007_contract_posting_admission_and_status_ports','6008_contract_posting_application_metadata','6009_contract_posting_reconciliation_and_authority'];
+const packet=['6421_contract_posting_protected_job_foundation','6422_contract_posting_recorded_replay_frames','6423_contract_posting_prepared_target_source','6424_contract_posting_bound_target_completion','6425_contract_posting_finish_and_commit_guard','6426_contract_posting_first_producer_readiness','6427_contract_posting_admission_and_status_ports','6428_contract_posting_application_metadata','6429_contract_posting_reconciliation_and_authority'];
 function connectionAt(base:string,database:string,user:string){
  const url=new URL(base);url.pathname='/'+database;url.username=user;url.password='';return url.toString();
 }

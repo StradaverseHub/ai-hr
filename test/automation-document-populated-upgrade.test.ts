@@ -11,7 +11,7 @@ import {seedCatalogs} from '../scripts/seed-catalogs';
 import {withoutCombinedReleaseNulls} from './helpers/approved-upgrade';
 it('retains populated document heads and version bytes with null tombstones and an empty default note',async()=>{
  const journal=JSON.parse(readFileSync('db/migrations/meta/_journal.json','utf8')) as {entries:{tag:string;when:number}[]};
- const boundary=journal.entries.findIndex(entry=>entry.tag==='5925_contract_template_lifecycle');expect(boundary).toBeGreaterThan(0);
+ const boundary=journal.entries.findIndex(entry=>entry.tag==='6375_contract_template_lifecycle');expect(boundary).toBeGreaterThan(0);
  const directory=mkdtempSync(join(tmpdir(),'document-lifecycle-upgrade-')),name='document_upgrade_'+randomUUID().replaceAll('-','');
  const ownerUrl=new URL(process.env.TEST_MIGRATION_DATABASE_URL!);expect(['127.0.0.1','localhost']).toContain(ownerUrl.hostname);
  ownerUrl.pathname='/postgres';const admin=postgres(ownerUrl.toString(),{max:1,onnotice:()=>{}});ownerUrl.pathname='/'+name;const storage=createDb(ownerUrl.toString(),{max:1});let created=false;

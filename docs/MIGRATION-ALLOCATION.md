@@ -1,3 +1,187 @@
+# Combined staging session source allocation — 18 November 2026
+
+The owner explicitly requested one combined staging release of STAGING, PRODUCTION,
+RESIGNATION, CONTRACT MANAGEMENT / HR Automation, Audit system conventions screen by
+screen, Redesign table layouts, and Identify the production error. This is an isolated
+integrated release, with all member histories retained. It is not an ordinary migration-free
+queue batch. Production installation and package publication are outside this instruction.
+
+The release coordinator reserves **6300–6440**, idx **5700–5840**, when
+**1794988006300–1794988006440** for the exact sequence below under the owner's recorded
+approval of coordinated AI binding and migration ordering. The fresh read-only native staging
+ledger captured at 2026-11-18T07:42:14.646Z contains 924 entries through
+`6104_lifecycle_recipient_fanout` / `1794841006104`. Its expected vector digest is
+`0e1f7143cbab0dbb283626cc4996322bafeddaf6f3364f36e32ed52e9af61f61`; actual digest is
+`034f60e87d36df50d19535105548d51e355c4b7218c34427aa44b3481283107d`.
+These distinct retained vectors include historical installation provenance; neither is relabeled.
+Every one of the 139 original pending body hashes is absent from that actual ledger.
+
+A fresh source survey covered 4,704 unique ref commits, all readable committed journals,
+440 readable worktree journals and eight conflict-marked journals, plus registered migration
+filenames and allocation documents. There were no observed 6300–6440 tag or 5700–5840 idx
+claims. Foreign `6200_feedback_automation` / idx5600 / when1794974006200 remains reserved
+and excluded. The new timestamps exceed the maximum observed foreign timestamp.
+
+Preserve the frozen Board journal's first 924 entries and all applied SQL. All 139 original
+pending SQL bodies remain byte-identical; only filenames, journal allocation and source/test
+pins change. The two additive bodies are the exact independently reviewed directory bridge
+and final authority/email repair retained under `docs/reviews/`. The bridge follows the seven
+Resignation originals and precedes the Contract originals, which otherwise duplicate the
+native directory CREATE. The final repair preserves original signatures/OIDs/ACLs while
+composing Resignation and Contract guards. Audit follows these dependencies.
+
+**Source allocation only.** Board still holds its recovery lease. Revalidate the actual accepted
+source/build, complete ordered ledger and foreign claims at official handback before final
+admission. Restricted-owner populated upgrade, native actor/ACL/refusal checks, exact source
+binding, authenticated aggregate gate, worker package, arrival and changed journeys remain
+required. No database was migrated and no staging lease was claimed by this allocation.
+
+| Original source / repair | Forward tag | idx | when | Unchanged SQL SHA-256 |
+| --- | --- | --- | --- | --- |
+| `5881_resignation_journey` | `6300_resignation_journey` | 5700 | 1794988006300 | `130c0b99586bc316ac5203d27a65bfc0a565c4f608b8ab1ac336a8e8d41d1216` |
+| `5882_resignation_configuration` | `6301_resignation_configuration` | 5701 | 1794988006301 | `6e064c336c441fbbf01017debe9e1a748957976d3d6b2b96470747d07d7dacb5` |
+| `5883_resignation_postings` | `6302_resignation_postings` | 5702 | 1794988006302 | `5d26a0f446c3e72ed01861544af395690b08cdce47b9fc739f0b0d7d1b22a4f5` |
+| `5884_resignation_email_delivery` | `6303_resignation_email_delivery` | 5703 | 1794988006303 | `52bf3fa8f4430d37fd4dabd2164f00764e73245b38ee6520d2816dca7e03459b` |
+| `5885_resignation_letter_teams` | `6304_resignation_letter_teams` | 5704 | 1794988006304 | `b7769b4044d013cfb630d532d8cc5b7fd2c8635662cf05663a4dcf6746eae4f3` |
+| `5886_resignation_letter_fields` | `6305_resignation_letter_fields` | 5705 | 1794988006305 | `4bc7b4108976fe43d7909b6c4f7b8fa20076ff9aef6e3b4be34d24c0110e6025` |
+| `5887_resignation_case_communications` | `6306_resignation_case_communications` | 5706 | 1794988006306 | `3ddeecf73214d333678979e29d63a445b3841377e4e1f06d4f0a8d51aa001f65` |
+| `docs/reviews/contract-resignation-directory-bridge.sql` | `6307_contract_resignation_directory_bridge` | 5707 | 1794988006307 | `3d9aee1476b60dac984bd763be78af4c6fd4fd9f2962ae19e61961e659d19150` |
+| `5800_contract_shared_access` | `6308_contract_shared_access` | 5708 | 1794988006308 | `08671eb8f4654fb52af284d4202fc56f98befc38bca4bcab5b279cdb531dc756` |
+| `5801_contract_shared_flows` | `6309_contract_shared_flows` | 5709 | 1794988006309 | `12ff6216ebe82fcc0456ade8cf6a6f40d4daaf101782aa94136927e2f4f54382` |
+| `5802_contract_shared_builders` | `6310_contract_shared_builders` | 5710 | 1794988006310 | `c0fda7bf21a7d01dd214b7527736910eff7e0260962e1f67efda36ab2ffa97d0` |
+| `5803_shared_document_templates` | `6311_shared_document_templates` | 5711 | 1794988006311 | `adce2251c00b32bb1913ef5c385f40782fdbb2c28274d3cc611c4305f77c0e12` |
+| `5804_shared_email_rich_body` | `6312_shared_email_rich_body` | 5712 | 1794988006312 | `96dd54e4b9bd66c015296ec0874b32c6de2af9af7c40b6f5812eaa7d3e408754` |
+| `5805_native_contract_counter_and_cutover` | `6313_native_contract_counter_and_cutover` | 5713 | 1794988006313 | `caf0bdc349aa0f84c0edfeaeddff55f15318d235ba100c450062e497b929a9ac` |
+| `5806_contract_shared_projections` | `6314_contract_shared_projections` | 5714 | 1794988006314 | `02834a55469bd12ba44b5e6e299cda8f9374f4c22451b69958fac65e32344b25` |
+| `5807_contract_shared_commands` | `6315_contract_shared_commands` | 5715 | 1794988006315 | `e8c5737b8b0757fd2e3ce5c84b572a0933770fac76c6774d799eabcee91699d2` |
+| `5808_contract_shared_signing` | `6316_contract_shared_signing` | 5716 | 1794988006316 | `580fb0f986a84218b127dad7276954331eba90e1398b3b46a4ba4f2b47a68c9d` |
+| `5809_contract_shared_decision_identity` | `6317_contract_shared_decision_identity` | 5717 | 1794988006317 | `5e83fffd290b7cdbceb5d01b17c1b64241228dd905ac4738a721f3798787772b` |
+| `5810_contract_shared_execution_adapters` | `6318_contract_shared_execution_adapters` | 5718 | 1794988006318 | `f166257ff49068e15adda1a78a3070df1661fb65fd67e08e76d1b65643fd10f9` |
+| `5811_contract_shared_worker_binding` | `6319_contract_shared_worker_binding` | 5719 | 1794988006319 | `06f410b065580e27f79add6d988e0b3aaacb81ef786416ed395417860885d1e4` |
+| `5812_contract_shared_identity_context` | `6320_contract_shared_identity_context` | 5720 | 1794988006320 | `52297a99fc31f991954be72225bd15b1929de02fe0c798558498fb873f511345` |
+| `5813_contract_shared_email_notifications` | `6321_contract_shared_email_notifications` | 5721 | 1794988006321 | `dffc41e7da79471a45e00cf2fc8914107ac94978e856d40b863eef510f0a58eb` |
+| `5814_contract_shared_personnel_postings` | `6322_contract_shared_personnel_postings` | 5722 | 1794988006322 | `54a543202440caccc4e32f50eab39eecf76ae2497f2df850b6d6f8af02f793e3` |
+| `5815_contract_posting_movement_authority` | `6323_contract_posting_movement_authority` | 5723 | 1794988006323 | `3d77156d9159d3c6a972a1bb6369daa057d72d5536f201c377a55ee1364449a8` |
+| `5816_contract_posting_projections` | `6324_contract_posting_projections` | 5724 | 1794988006324 | `81a74ca3dbe2554756574c7684273a5ff7be69c615846482e794408459ed79da` |
+| `5817_contract_posting_receipts_and_tasks` | `6325_contract_posting_receipts_and_tasks` | 5725 | 1794988006325 | `97f25f6436ae0dc36e62eaba6cc9432b5a71d4ad47774b70aa916c430f58c6a4` |
+| `5818_contract_shared_tracker` | `6326_contract_shared_tracker` | 5726 | 1794988006326 | `b20ac0a47fb09b78bb02f71566726d0c3b09bb4f574d0e492c85cec4730a0daa` |
+| `5819_contract_shared_period_open` | `6327_contract_shared_period_open` | 5727 | 1794988006327 | `ca6b1667583d3b8544f1a6d8b4eb3168140d67a9fc4c916b9fa98b03f2c49c3c` |
+| `5820_contract_shared_case_workspace` | `6328_contract_shared_case_workspace` | 5728 | 1794988006328 | `d463af063a32e5abbba0485bac85c2eade319e1363d40df6ccb4c11c688e4eba` |
+| `5821_contract_shared_assigned_work` | `6329_contract_shared_assigned_work` | 5729 | 1794988006329 | `8880d4a73eb8b577e06ba4aec4d139b1bd0c693b8997e900b4d7dc1946c07d30` |
+| `5822_contract_shared_ending_handoff` | `6330_contract_shared_ending_handoff` | 5730 | 1794988006330 | `93453d2576f82d89f1007e0d558d55ca4cd4c8de7175059ccb8faca66390d6dc` |
+| `5823_contract_shared_decline` | `6331_contract_shared_decline` | 5731 | 1794988006331 | `f8c314de620cdc82f282d35908b70677fabcd2c9ad81cd2753d5a27aa80adaef` |
+| `5824_contract_shared_offboarding` | `6332_contract_shared_offboarding` | 5732 | 1794988006332 | `cbd497768b3ea5731c999dda3cf9ac3389fefd8612352186e4eb3620ca69617f` |
+| `5825_contract_shared_email_document_lifecycle` | `6333_contract_shared_email_document_lifecycle` | 5733 | 1794988006333 | `0e53c15e1a2f4d8be4095f1fa4e3baebbde9007bb5b9ccc63f41b8b2baa78cc7` |
+| `5826_automation_shared_assignment_groups` | `6334_automation_shared_assignment_groups` | 5734 | 1794988006334 | `4b112e626b80a509c6687fbfd3153bd56bd4ddfdda5cf1fb5c236f8bb9ff86f8` |
+| `5827_shared_automation_email_assets` | `6335_shared_automation_email_assets` | 5735 | 1794988006335 | `35f2cf530e008e6c47bc48f36640cc3f328a072ee29f73bb6523c41295485d66` |
+| `5828_automation_email_test_self` | `6336_automation_email_test_self` | 5736 | 1794988006336 | `2f14899f4fffb1c84cf20d6ba60b282b8f443a53471342611648583663a8afcc` |
+| `5829_shared_automation_email_asset_delivery` | `6337_shared_automation_email_asset_delivery` | 5737 | 1794988006337 | `96c9f4fdbb02063c6335c1d7f83dd5273d94a33515159a883712f7b30a68c925` |
+| `5830_contract_shared_tracker_choices` | `6338_contract_shared_tracker_choices` | 5738 | 1794988006338 | `ffe03a1ed05a62c27ec5fc554c50f0fc1cff854e2dc21ff2428c7db49a77a65a` |
+| `5832_contract_shared_starting_setup` | `6339_contract_shared_starting_setup` | 5739 | 1794988006339 | `115b3dcb22d478e7e106a3bac40c8210ca925cf71bcfa726fea975090a42c2ee` |
+| `5833_contract_shared_tracker_retained_cases` | `6340_contract_shared_tracker_retained_cases` | 5740 | 1794988006340 | `3d9992098d14c60bd6464b58b9a95a631238feb0bf09b0f4de019ac521934ca5` |
+| `5835_contract_shared_review_wording` | `6341_contract_shared_review_wording` | 5741 | 1794988006341 | `557fbe13eab31a62eda92dce6e6bb33b0c82139ac3d1d547e4e5366bd41197aa` |
+| `5836_contract_shared_ending_actions` | `6342_contract_shared_ending_actions` | 5742 | 1794988006342 | `26b4dd8d55fda25ea1f97f8e950243834555a4bc87a0110361a30d4d97c9cad9` |
+| `5837_contract_shared_email_self_binding` | `6343_contract_shared_email_self_binding` | 5743 | 1794988006343 | `d00b83a2300a3e26a25b79150d084d61fa224b688a43ccc4475b4e854d74c6d4` |
+| `5838_contract_shared_email_task_projection` | `6344_contract_shared_email_task_projection` | 5744 | 1794988006344 | `6796ee897abfa5c088b1f215afc5889cc6d1d2b3557d0f0deaac710fb23c4214` |
+| `5840_shared_email_test_asset_source` | `6345_shared_email_test_asset_source` | 5745 | 1794988006345 | `18e936754a6784f14911a82ea9654c2f3d8d2e9278d1d45c6663ce9c4e81a883` |
+| `5841_shared_email_case_file_pages` | `6346_shared_email_case_file_pages` | 5746 | 1794988006346 | `374d4ac7f8b47ebbd07bbf05374ad89b72cb4eab88e122d34e6a7f6301068c3a` |
+| `5842_probation_shared_email_asset_proof` | `6347_probation_shared_email_asset_proof` | 5747 | 1794988006347 | `b0deeef4ccebf79b41f57c8f44753c67a8039b50eea5414541ab87f81050bb15` |
+| `5844_shared_groups_preserve_members` | `6348_shared_groups_preserve_members` | 5748 | 1794988006348 | `3d5b0933efdee689848653da194bda914e93e7a94246c3b1345ad684e9e7ad9a` |
+| `5845_shared_groups_member_identity` | `6349_shared_groups_member_identity` | 5749 | 1794988006349 | `970591319022c650ce991c1ff6be1ad6ed7718fd8e7679f0dd88b7cb92fc4873` |
+| `5846_email_test_current_human` | `6350_email_test_current_human` | 5750 | 1794988006350 | `a3cd7270229682b341c50f05a7ef50fda655dcbc76d4deda66bc82b414318b0c` |
+| `5847_email_test_authority_utf8` | `6351_email_test_authority_utf8` | 5751 | 1794988006351 | `3ba274eada4346d5cfea1ac8dbb154e2f01374dab24325e45c9fabdd176a8186` |
+| `5848_contract_shared_virtual_period` | `6352_contract_shared_virtual_period` | 5752 | 1794988006352 | `d8686bc5d8eb4b862790f32b8a1e088aecf12d69f9a52a0ce0c077b7c2349018` |
+| `5849_contract_shared_case_references` | `6353_contract_shared_case_references` | 5753 | 1794988006353 | `420746f8e5fc37017e9a87c125cbd457b67e4f99e35bad4ab058c5f66b450319` |
+| `5896_contract_shared_directory_and_signer_caption` | `6354_contract_shared_directory_and_signer_caption` | 5754 | 1794988006354 | `b76119936a00827c77ec3de038bf3fa3bb61d439559257b4795b7e83e885a0cf` |
+| `5897_contract_shared_period_history` | `6355_contract_shared_period_history` | 5755 | 1794988006355 | `df2f4fd1dea25a1461fcb9e83bcdc21fc5d5658e6b9cb9618fb0f4f0807bbecc` |
+| `5898_contract_shared_work_page` | `6356_contract_shared_work_page` | 5756 | 1794988006356 | `f18a09d0a09539f502171b5d8e201298c75e627869c613f5cc90c9c0b71c0dca` |
+| `5899_contract_shared_legacy_inbox_cutover` | `6357_contract_shared_legacy_inbox_cutover` | 5757 | 1794988006357 | `7e03b54bd2375278e32aef835d2e88bf6fb017145bb3bf488ebffdd0a6dcc32e` |
+| `5900_contract_shared_manual_workflows` | `6358_contract_shared_manual_workflows` | 5758 | 1794988006358 | `4d3e71335e2cfa3864b7b0980cf7fe2d174608717adb1cd8944d2d089575e9c2` |
+| `5901_contract_shared_release_evidence` | `6359_contract_shared_release_evidence` | 5759 | 1794988006359 | `8fc880c2d4d671a3b92190a5a933814db0dbce7b725244872466acfa00089111` |
+| `5904_contract_shared_native_intake_guard` | `6360_contract_shared_native_intake_guard` | 5760 | 1794988006360 | `2e3725db72f7f2a080a2a6d0db9fcd748e800ab2700e65616681c951732419c8` |
+| `5905_contract_shared_body_identity` | `6361_contract_shared_body_identity` | 5761 | 1794988006361 | `12d630f93077d139a26a52c4a227d49edb2879e0d382f3abff8a89aacc468314` |
+| `5910_contract_shared_work_page_null_guards` | `6362_contract_shared_work_page_null_guards` | 5762 | 1794988006362 | `51ecf59479ae4516b699ef3020b08bd1ea4aa6eaf9d4b7ac67ff80c1120a547d` |
+| `5911_contract_posting_canonical_assignment_receipt` | `6363_contract_posting_canonical_assignment_receipt` | 5763 | 1794988006363 | `86d530dec94eb6cce45039e05adfba1a3b671764e5b8e687f1e5a64747f0b977` |
+| `5912_contract_posting_source_projection` | `6364_contract_posting_source_projection` | 5764 | 1794988006364 | `c4b3003dfd78efecdf4e1f9674769dcb8aee9701593bc327cdba24cdb28e746e` |
+| `5913_contract_posting_native_completion` | `6365_contract_posting_native_completion` | 5765 | 1794988006365 | `b267d52c086b6dabda037ada30eb5902144a236f873916cd82829dc9e7036e26` |
+| `5915_contract_posting_durable_job_readiness` | `6366_contract_posting_durable_job_readiness` | 5766 | 1794988006366 | `d6d2471e14534c8b8e68aa0fba0d0d4e3a2341db2f027cd88320884787359171` |
+| `5916_contract_ordinary_signing_company_gate` | `6367_contract_ordinary_signing_company_gate` | 5767 | 1794988006367 | `cd7f5ad4d52dede9a0210796a92c10ed9721fa8ba7fcd37e68e8ea1519db13f0` |
+| `5917_contract_work_exact_document_join` | `6368_contract_work_exact_document_join` | 5768 | 1794988006368 | `d8b115ca57db54c5c7b87ee92dae948af13b557a1e385f073d9695d0413a7855` |
+| `5918_contract_tracker_scheduled_period` | `6369_contract_tracker_scheduled_period` | 5769 | 1794988006369 | `28fa547dc48d49d488328cd6fb71229ab4368596b15d5702cc5c6f221a266d46` |
+| `5919_contract_work_case_source_anchor` | `6370_contract_work_case_source_anchor` | 5770 | 1794988006370 | `14e0235cbff2a0cd6fe97acf26a47b32b46899a485efe6c7a440ef9a1df75a6b` |
+| `5920_contract_case_progress_explanations` | `6371_contract_case_progress_explanations` | 5771 | 1794988006371 | `6fb83e2629a5fc599e51f253d3cbae894f0273fc6cbfd0955c798d8f05ddcac8` |
+| `5921_contract_case_fallback_receipts` | `6372_contract_case_fallback_receipts` | 5772 | 1794988006372 | `5a4a0c1c3d3aa5694ae47a8c7f31ed6e7d9eb2022316f1ff4c80886c3e152b5a` |
+| `5922_contract_email_assigned_work` | `6373_contract_email_assigned_work` | 5773 | 1794988006373 | `6a6ef5108fa9473f70dcb2e539447d945a1432b45d9512f705196cdc0c782d1a` |
+| `5923_contract_letter_purpose_guidance` | `6374_contract_letter_purpose_guidance` | 5774 | 1794988006374 | `d33fdacdaec8347bbd30d9cd27cfba9b7bbb289650440815f7bf8658a3ff1595` |
+| `5925_contract_template_lifecycle` | `6375_contract_template_lifecycle` | 5775 | 1794988006375 | `57bd8be55c0c646ac8b541b1e5e2b796e82072cc9c0564b7d31af2c08630dfe0` |
+| `5926_contract_template_draft_publication` | `6376_contract_template_draft_publication` | 5776 | 1794988006376 | `5add71cdc647ff5ee6200ed435a2d75429c5e86b5158a3cadb70761349e2398f` |
+| `5927_contract_routing_check_names` | `6377_contract_routing_check_names` | 5777 | 1794988006377 | `1e73ccf6a9d4d28aa1c206211dc9d53d92068c5b0c18756f86c63d6861055fa3` |
+| `5930_contract_tracker_attention_summary` | `6378_contract_tracker_attention_summary` | 5778 | 1794988006378 | `9446565465c8c8f1ec25cbef7f93df6672a03437a7b123b0237f7356e8cfa4a1` |
+| `5931_contract_starting_setup_completion` | `6379_contract_starting_setup_completion` | 5779 | 1794988006379 | `05ffef386dcc1c2f7612c700ce2d3be58185525f730659f4f507fbc29a78ce80` |
+| `5932_contract_native_system_kernel` | `6380_contract_native_system_kernel` | 5780 | 1794988006380 | `28983d2af360ba36f4587506df918cc471b338ea0f520db990b2a8e8641c6753` |
+| `5933_contract_system_period_events` | `6381_contract_system_period_events` | 5781 | 1794988006381 | `df371a0e3532dc25c4f4f69b3e8f5ea96388382abfae891d73d187de550d1921` |
+| `5934_contract_system_mail_digest` | `6382_contract_system_mail_digest` | 5782 | 1794988006382 | `f0352956ff1a038a3fda77ee27c596e9047af5f480815e478f0b31fff2741be8` |
+| `5935_contract_system_provenance_rechecks` | `6383_contract_system_provenance_rechecks` | 5783 | 1794988006383 | `2e0c3fc8e1e1952db417de76c3e1a61243155b94d940f7f389ec2ec748f8d2aa` |
+| `5936_contract_accept_no_matching_workflow` | `6384_contract_accept_no_matching_workflow` | 5784 | 1794988006384 | `f21e2a3ee02e2f17673dce57f3320e614236c17e8efc31e32284ecdf6d007767` |
+| `5937_contract_digest_queue_capability` | `6385_contract_digest_queue_capability` | 5785 | 1794988006385 | `b352d4968c10b3ecb8595a6a0f9828ce242e162c4a5f8566b02126aa174787ef` |
+| `5938_contract_system_private_row_security` | `6386_contract_system_private_row_security` | 5786 | 1794988006386 | `fd4816c1a9660558a966755e4b2dfd9bd5f72780bf4d546a3c900fdbf896b3b2` |
+| `5940_contract_form_response_owner` | `6387_contract_form_response_owner` | 5787 | 1794988006387 | `dd0d8981476f558821116f5ced16586994934c0aad1f709dbca2294f4470065f` |
+| `5941_country_owned_document_sources` | `6388_country_owned_document_sources` | 5788 | 1794988006388 | `e15604398e043678562179c08a53c8a534164b121fb1b2c89fce6e2a80bcfe00` |
+| `5942_contract_form_response_actions` | `6389_contract_form_response_actions` | 5789 | 1794988006389 | `e66c1c391bd35cb673e6e5fbaa40af3d9238a5a2e367530c17f56e6d215f1ca8` |
+| `5943_contract_email_document_readiness` | `6390_contract_email_document_readiness` | 5790 | 1794988006390 | `56510e47526ce0ab815044d283ff31ed1af1f8631af10f306a0c720bd2f2047b` |
+| `5944_contract_letterhead_fallback_evidence` | `6391_contract_letterhead_fallback_evidence` | 5791 | 1794988006391 | `2f041a122bb5090369d27e59559c5f0d6342d90917a900cc3300837558c9888a` |
+| `5945_contract_retrospective_ending_legacy_owner` | `6392_contract_retrospective_ending_legacy_owner` | 5792 | 1794988006392 | `d34c7ba568e69bab197b1cdbe3112d24386b5e26eed5775d21566dbeedc6e681` |
+| `5946_contract_snapshot_native_binding` | `6393_contract_snapshot_native_binding` | 5793 | 1794988006393 | `aa5900c654a63ad8607084c7245f7cc4d2536ff4ec00402190fa5c88430ed708` |
+| `5947_contract_email_document_identity` | `6394_contract_email_document_identity` | 5794 | 1794988006394 | `595f8d9c1078dffb16a2aff0524420c10f702b9f4fd02e885f07a60a3e56b435` |
+| `5948_contract_form_current_proof` | `6395_contract_form_current_proof` | 5795 | 1794988006395 | `44643617420c889b1f18743b99e3432a800020e8fc70db0b414b1599464532b1` |
+| `5949_contract_published_form_email_source` | `6396_contract_published_form_email_source` | 5796 | 1794988006396 | `d658a65e037260f1864ede14b7c048ee93f7250b888524d593e89bd9346ab0d6` |
+| `5955_shared_email_materialization_start` | `6397_shared_email_materialization_start` | 5797 | 1794988006397 | `156a7948da7836d8e9e9bbfe9aff3063be26586c726b142d5f3836ce390ddc7b` |
+| `5957_shared_email_explicit_tenant_start` | `6398_shared_email_explicit_tenant_start` | 5798 | 1794988006398 | `9a03a79f90973cb51eb7e7b02e0d5dcf3ea91f38afa7063c4c67ff3a053fb30c` |
+| `5960_contract_email_prerequisite_recovery` | `6399_contract_email_prerequisite_recovery` | 5799 | 1794988006399 | `f6c20bbdc4e28a5cb31036ac376e7587bd7b77ca7952d397a1bc7f04f57a4f36` |
+| `5961_contract_manual_attention_reconciliation` | `6400_contract_manual_attention_reconciliation` | 5800 | 1794988006400 | `567a501c1dec9dedfd69132626f645e5a0fe489ec09998c981972f22e0bd0975` |
+| `5962_contract_email_required_files` | `6401_contract_email_required_files` | 5801 | 1794988006401 | `a429585538814d9751a6a7a86fe23c433682a54d773c612ece427217c1093b25` |
+| `5964_shared_email_guard_preservation` | `6402_shared_email_guard_preservation` | 5802 | 1794988006402 | `3d7f565347886acfe1ebeff78f1206a1d2bc61387de4e873bf7d86d05bf0cdfa` |
+| `5966_contract_canonical_form_readiness` | `6403_contract_canonical_form_readiness` | 5803 | 1794988006403 | `199588e0599c3478027e43f59c40a7606671bb30fe8245fff60652f6551c039f` |
+| `5967_contract_intake_paged_read` | `6404_contract_intake_paged_read` | 5804 | 1794988006404 | `d69268f3cc938840b6984cfdb60315e9d670ff76338ddeb8e30c31428730eb17` |
+| `5968_contract_email_recovery_guard_identity` | `6405_contract_email_recovery_guard_identity` | 5805 | 1794988006405 | `fad87425ec2e8719eaf3f4ffcd92a586ff14dbc82c3e338bc73f0d134baf5c4e` |
+| `5969_contract_email_recovery_callback_identity` | `6406_contract_email_recovery_callback_identity` | 5806 | 1794988006406 | `4d7e95c4d9a6e01e4e1867c9d2c99a2e080abc3108ccb539750d9266cf025534` |
+| `5970_contract_live_form_source_owner` | `6407_contract_live_form_source_owner` | 5807 | 1794988006407 | `b42fc02e1df81cae00d8c73e8fcef98d0814d3d4f3ca3abece3fc9d38a3373bd` |
+| `5971_contract_email_prerequisite_state_binding` | `6408_contract_email_prerequisite_state_binding` | 5808 | 1794988006408 | `727905457b70345256b57e0322bbc55a0426a61f1c3b347d6140da0d579eca7f` |
+| `5972_contract_unsigned_email_form_sources` | `6409_contract_unsigned_email_form_sources` | 5809 | 1794988006409 | `023348f52876533cb0e773211b08e271959368d898a3b7edf572d62c8924794c` |
+| `5973_contract_original_email_readiness_recheck` | `6410_contract_original_email_readiness_recheck` | 5810 | 1794988006410 | `17ac1a87cb677263918a7dbaa5b08e14573d2bdbd62530a0692851c3f4967fb1` |
+| `5974_contract_form_native_field_parity` | `6411_contract_form_native_field_parity` | 5811 | 1794988006411 | `695077fddbcb4163712b8c49fb6d34eeddba1cb194394c5b43c220471b485d24` |
+| `5975_contract_setup_ending_email_readiness` | `6412_contract_setup_ending_email_readiness` | 5812 | 1794988006412 | `6e5c07eaff52a882a8c6342d0ceb8a9e58be6c74042b05533fdc95dc609cd804` |
+| `5976_contract_setup_preserved_definition_review` | `6413_contract_setup_preserved_definition_review` | 5813 | 1794988006413 | `e0e1e6ba6d0ebba90b9b78f7a789a5d67c7f4d84f9a80dbdeaf3767a20f08e66` |
+| `5977_contract_email_current_set_source` | `6414_contract_email_current_set_source` | 5814 | 1794988006414 | `1d743062638fa9184c8afba5fbd3d9a4992fb1026ca2a3b5de2d3feebe2a2ae8` |
+| `5978_contract_email_work_archived_company` | `6415_contract_email_work_archived_company` | 5815 | 1794988006415 | `6e0c37f61c66feb80f95a312a23d4f3910a2d7c91f79a0047acaebcdb6914523` |
+| `5979_contract_email_current_explicit_tenant` | `6416_contract_email_current_explicit_tenant` | 5816 | 1794988006416 | `5203f577fa7642f3fb140f30ffbccf45673a49382dc7b2f781963e96fa0770f5` |
+| `5989_contract_email_actual_upload_signal_identity` | `6417_contract_email_actual_upload_signal_identity` | 5817 | 1794988006417 | `ee2455c7f875d16ea99eec561e98e3b79456d1e1dfcb9acf1a3fda755d2e4076` |
+| `5990_contract_shared_mail_native_compatibility` | `6418_contract_shared_mail_native_compatibility` | 5818 | 1794988006418 | `392408cf03500a1ad8dd2d574ce36c6e09a08996aaaabb2eb82d0f6ff1f4f1e3` |
+| `5991_contract_configuration_directory` | `6419_contract_configuration_directory` | 5819 | 1794988006419 | `974118bc835a2ac0508bbe4156436c1f4a462268f828a572c6a1449a7bdaf72c` |
+| `6000_contract_historical_email_recovery` | `6420_contract_historical_email_recovery` | 5820 | 1794988006420 | `cbfb44f6df287476b7e42c93c69f2276f701808ce9cc429adcaa425db8fb09f2` |
+| `6001_contract_posting_protected_job_foundation` | `6421_contract_posting_protected_job_foundation` | 5821 | 1794988006421 | `11855741c65e76f5025dc6ecf5f398ec11ca32da465da8017483ad2d71e25bfd` |
+| `6002_contract_posting_recorded_replay_frames` | `6422_contract_posting_recorded_replay_frames` | 5822 | 1794988006422 | `1d31a6d7c8ff3b1c60866eacaf20100ae9d228a6318c0e3b1d8ee1e221c5485f` |
+| `6003_contract_posting_prepared_target_source` | `6423_contract_posting_prepared_target_source` | 5823 | 1794988006423 | `745bff94b485f6eab07068fa37c8af84730761fe474d112a8f3e2879e9ce3e92` |
+| `6004_contract_posting_bound_target_completion` | `6424_contract_posting_bound_target_completion` | 5824 | 1794988006424 | `bfcc647be0dc06ac1658b52abdb26dc87a7cac5ac2bec4e8e229aee0820286fe` |
+| `6005_contract_posting_finish_and_commit_guard` | `6425_contract_posting_finish_and_commit_guard` | 5825 | 1794988006425 | `836bb4381d471e5744e8477574a99b221adcddd066e8cc571b908ceb5bc2be5e` |
+| `6006_contract_posting_first_producer_readiness` | `6426_contract_posting_first_producer_readiness` | 5826 | 1794988006426 | `d9b5e3625c2d569a099805c369eb721d0c0ef1a04a79a4aac8ef3e53055a2295` |
+| `6007_contract_posting_admission_and_status_ports` | `6427_contract_posting_admission_and_status_ports` | 5827 | 1794988006427 | `f94fd9292674b0084aa5331eeb5b5be45d6417c47ff707df520937b7c9aac57b` |
+| `6008_contract_posting_application_metadata` | `6428_contract_posting_application_metadata` | 5828 | 1794988006428 | `9477f8b0f029ba475830d8174353b77e47ced60d0b7393a8d11d8df82092f422` |
+| `6009_contract_posting_reconciliation_and_authority` | `6429_contract_posting_reconciliation_and_authority` | 5829 | 1794988006429 | `d0ce6a32a101e8da9f87dc85da2a64158b720505cc36504a090cb9faf340b472` |
+| `6010_contract_email_document_hr_notices` | `6430_contract_email_document_hr_notices` | 5830 | 1794988006430 | `71afc04f48fda2449becba50bd156b698a0f5ce5d2f0f4765c4211904d9389c4` |
+| `6011_contract_posting_org_snapshot_owner` | `6431_contract_posting_org_snapshot_owner` | 5831 | 1794988006431 | `ba157898e5a35bfa08931aba91362ac43d985ef6e4c2293cd2cf9f49eeefabc2` |
+| `6012_contract_shared_navigation_access` | `6432_contract_shared_navigation_access` | 5832 | 1794988006432 | `8da44c0a2a09dd09681ce5b839f3ed1b4c46f218e1ad76ef432d9fa6c98aa146` |
+| `6013_contract_email_form_binding_order` | `6433_contract_email_form_binding_order` | 5833 | 1794988006433 | `a693631009b659dcabc5654eb205e65df9a05585fed617362488303a9df4d364` |
+| `6014_contract_empty_opening_technical_finish` | `6434_contract_empty_opening_technical_finish` | 5834 | 1794988006434 | `4c121b4f3d8e35a1573aba4cb1a858492f6a035ec2b0981f31502e816841091d` |
+| `6015_automation_offboarding_configuration_compatibility` | `6435_automation_offboarding_configuration_compatibility` | 5835 | 1794988006435 | `e0c866f621440434fd45ba1c847b28c8defdf0d7cca57420295d36c1b18282c5` |
+| `6016_contract_setup_fingerprint_setwise` | `6436_contract_setup_fingerprint_setwise` | 5836 | 1794988006436 | `0b51b7a40c7f76e2d23ca8f9d0c29be655e01fe52763f4b7c2c57dc0eded8dca` |
+| `6017_contract_completed_email_child_context` | `6437_contract_completed_email_child_context` | 5837 | 1794988006437 | `5248b84495325150a4fd07ba578b6398da937290cbc755e18fdd8cff3a380452` |
+| `6018_contract_setup_membership_fold` | `6438_contract_setup_membership_fold` | 5838 | 1794988006438 | `c62d082c718aa7944883ef5beba674bdfe52c3c130673e764f231df8af2f2d65` |
+| `docs/reviews/contract-resignation-shared-compatibility.sql` | `6439_contract_resignation_shared_compatibility` | 5839 | 1794988006439 | `be68596bde8fb8e26b0db3973e9f04100212b6c9694d27b03624404684ab76c8` |
+| `5787_own_leave_shared_access` | `6440_own_leave_shared_access` | 5840 | 1794988006440 | `843ded0c0542c47360989ef70f54dd6eed10c1d9aa5abe7cfa3b191e6e5d1f0c` |
+
+---
+
 # Approved board items — 17 November 2026 (source reservations; installation held)
 
 Coordinator `codex/approved-board-controller-20261117` reserves:

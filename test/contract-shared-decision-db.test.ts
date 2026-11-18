@@ -146,7 +146,7 @@ describe('protected Contract decision preview and submission',()=>{
   expect(await target()).toBeNull();
  });
  it('keeps the exact original setup fingerprint through set-based account and participant identity states',async()=>{
-  const migration=readFileSync(new URL('../db/migrations/5807_contract_shared_commands.sql',import.meta.url),'utf8');
+  const migration=readFileSync(new URL('../db/migrations/6315_contract_shared_commands.sql',import.meta.url),'utf8');
   const ownerStart=migration.indexOf('CREATE FUNCTION app.contract_shared_setup_revision(p_case uuid)');
   const originalBody=migration.slice(ownerStart).split('AS $$\n')[1].split('\n$$;')[0].replace(/\bp_case\b/g,()=>'$1::uuid');
   if(!originalBody.startsWith(' WITH workflows'))throw Error('The frozen5807 equivalence oracle changed');

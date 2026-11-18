@@ -4,22 +4,22 @@
   "proposalSource": "ab5c1c7fcfe63184d4a3e24249d51fee91f42d4a",
   "reviewedSqlSha256": "ba157898e5a35bfa08931aba91362ac43d985ef6e4c2293cd2cf9f49eeefabc2",
   "provisionalRegistration": {
-    "idx": 5411,
+    "idx": 5831,
     "version": "7",
-    "when": 1794841006011,
-    "tag": "6011_contract_posting_org_snapshot_owner",
+    "when": 1794988006431,
+    "tag": "6431_contract_posting_org_snapshot_owner",
     "breakpoints": true
   },
   "watermarkAlignment": "HELD for final post-Board installed watermark alignment; no other pending timestamps changed",
   "independentSourceReview": "V11 exact bytes passed independent review; native evidence NOT_RUN",
   "sourceGuardFixture": "test/fixtures/contract-posting-date-owner-source.json",
-  "sqlDependency": "after existing protected Contract source/replay owners6001\u20136009 and6010; before preserved6012",
+  "sqlDependency": "after existing protected Contract source/replay owners6001–6009 and6010; before preserved6012",
   "preserved6012": {
     "entry": {
-      "idx": 5412,
+      "idx": 5832,
       "version": "7",
-      "when": 1794841006012,
-      "tag": "6012_contract_shared_navigation_access",
+      "when": 1794988006432,
+      "tag": "6432_contract_shared_navigation_access",
       "breakpoints": true
     },
     "sqlSha256": "8da44c0a2a09dd09681ce5b839f3ed1b4c46f218e1ad76ef432d9fa6c98aa146"

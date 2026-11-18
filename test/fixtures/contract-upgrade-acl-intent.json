@@ -1,5 +1,5 @@
 {
-  "sourceBase": "69ba90700 original literal Contract intent; plus reviewed6000V3 SQL0e92e55257678ee5ceec522cb475ab56b2442059bff63457216bb1425266e9ec and root reviewed6001\u20136009 literal posting ACL additions (no observed database expectations); plus approved6010 literal private notice ACL intent at d29e5380d, SQL71afc04f48fd (same literal ACL after append-expression correction); plus independently reviewed6012 navigation source df3f269dd, exact SQL b2174ca4b5acd7d433a6a1407778d67c8cbfd4a307b1a8d45e4dbbc62c43834d (provisional registration; no runtime claim); never-applied6012 posting navigation extension selected SQL 6ab7c4d51c3beb606a1dddcf88bde26281556a5b93e179148db04afa88e7d461 returns five booleans using existing posting_scope; all literal grants and owners unchanged; inactive6012 canonical tracker company/managed owner extraction selected SQL 8da44c0a2a09dd09681ce5b839f3ed1b4c46f218e1ad76ef432d9fa6c98aa146; Reviewed6011 literal additions, V11 SQLba157898e5a35bfa08931aba91362ac43d985ef6e4c2293cd2cf9f49eeefabc2; source only, provisional identities held, no installed-DB-derived expectations.",
+  "sourceBase": "69ba90700 original literal Contract intent; plus reviewed6000V3 SQL0e92e55257678ee5ceec522cb475ab56b2442059bff63457216bb1425266e9ec and root reviewed6001–6009 literal posting ACL additions (no observed database expectations); plus approved6010 literal private notice ACL intent at d29e5380d, SQL71afc04f48fd (same literal ACL after append-expression correction); plus independently reviewed6012 navigation source df3f269dd, exact SQL b2174ca4b5acd7d433a6a1407778d67c8cbfd4a307b1a8d45e4dbbc62c43834d (provisional registration; no runtime claim); never-applied6012 posting navigation extension selected SQL 6ab7c4d51c3beb606a1dddcf88bde26281556a5b93e179148db04afa88e7d461 returns five booleans using existing posting_scope; all literal grants and owners unchanged; inactive6012 canonical tracker company/managed owner extraction selected SQL 8da44c0a2a09dd09681ce5b839f3ed1b4c46f218e1ad76ef432d9fa6c98aa146; Reviewed6011 literal additions, V11 SQLba157898e5a35bfa08931aba91362ac43d985ef6e4c2293cd2cf9f49eeefabc2; source only, provisional identities held, no installed-DB-derived expectations.",
   "functionsAdded": [
     {
       "signature": "app.automation_assignment_group_people(text)",
@@ -3033,7 +3033,7 @@
       "roles": "ai_hr_owner",
       "using": "app.acting_as_owner()",
       "check": "app.acting_as_owner()",
-      "source": "5800_contract_shared_access:74"
+      "source": "6308_contract_shared_access:74"
     },
     {
       "schema": "public",
@@ -3043,7 +3043,7 @@
       "roles": "ai_hr_owner",
       "using": "app.acting_as_owner()",
       "check": "app.acting_as_owner()",
-      "source": "5800_contract_shared_access:76"
+      "source": "6308_contract_shared_access:76"
     },
     {
       "schema": "public",
@@ -3053,7 +3053,7 @@
       "roles": "ai_hr_owner",
       "using": "app.acting_as_owner()",
       "check": "app.acting_as_owner()",
-      "source": "5800_contract_shared_access:77"
+      "source": "6308_contract_shared_access:77"
     },
     {
       "schema": "public",
@@ -3063,7 +3063,7 @@
       "roles": "ai_hr_app",
       "using": "tenant_id=app.current_tenant_id() AND app.contract_shared_access_admin()",
       "check": null,
-      "source": "5800_contract_shared_access:78"
+      "source": "6308_contract_shared_access:78"
     },
     {
       "schema": "public",
@@ -3073,7 +3073,7 @@
       "roles": "ai_hr_app",
       "using": "tenant_id=app.current_tenant_id() AND app.contract_shared_access_admin()",
       "check": null,
-      "source": "5800_contract_shared_access:80"
+      "source": "6308_contract_shared_access:80"
     },
     {
       "schema": "public",
@@ -3083,7 +3083,7 @@
       "roles": "ai_hr_app",
       "using": "tenant_id=app.current_tenant_id() AND app.contract_shared_permitted('access',company_id)",
       "check": null,
-      "source": "5800_contract_shared_access:81"
+      "source": "6308_contract_shared_access:81"
     },
     {
       "schema": "public",
@@ -3093,7 +3093,7 @@
       "roles": "ai_hr_owner",
       "using": "app.acting_as_owner()",
       "check": "app.acting_as_owner()",
-      "source": "5801_contract_shared_flows:20"
+      "source": "6309_contract_shared_flows:20"
     },
     {
       "schema": "public",
@@ -3103,7 +3103,7 @@
       "roles": "ai_hr_owner",
       "using": "app.acting_as_owner()",
       "check": "app.acting_as_owner()",
-      "source": "5801_contract_shared_flows:22"
+      "source": "6309_contract_shared_flows:22"
     },
     {
       "schema": "public",
@@ -3113,7 +3113,7 @@
       "roles": "ai_hr_app",
       "using": "tenant_id=app.current_tenant_id() AND app.contract_shared_case_permitted(case_id,'view')",
       "check": null,
-      "source": "5801_contract_shared_flows:32"
+      "source": "6309_contract_shared_flows:32"
     },
     {
       "schema": "public",
@@ -3123,7 +3123,7 @@
       "roles": "ai_hr_app",
       "using": "tenant_id=app.current_tenant_id() AND (app.contract_shared_case_permitted(case_id,'view') OR app.contract_shared_letter_assigned(case_id))",
       "check": null,
-      "source": "5801_contract_shared_flows:34"
+      "source": "6309_contract_shared_flows:34"
     },
     {
       "schema": "public",
@@ -3133,7 +3133,7 @@
       "roles": "ai_hr_owner",
       "using": "app.acting_as_owner()",
       "check": "app.acting_as_owner()",
-      "source": "5803_shared_document_templates:21"
+      "source": "6311_shared_document_templates:21"
     },
     {
       "schema": "public",
@@ -3143,7 +3143,7 @@
       "roles": "ai_hr_owner",
       "using": "app.acting_as_owner()",
       "check": "app.acting_as_owner()",
-      "source": "5803_shared_document_templates:23"
+      "source": "6311_shared_document_templates:23"
     },
     {
       "schema": "public",
@@ -3153,7 +3153,7 @@
       "roles": "ai_hr_app",
       "using": "tenant_id=app.current_tenant_id() AND app.automation_can_manage(module,'templates')",
       "check": null,
-      "source": "5803_shared_document_templates:24"
+      "source": "6311_shared_document_templates:24"
     },
     {
       "schema": "public",
@@ -3163,7 +3163,7 @@
       "roles": "ai_hr_app",
       "using": "tenant_id=app.current_tenant_id() AND EXISTS(SELECT 1 FROM public.automation_document_template h WHERE h.tenant_id=automation_document_template_version.tenant_id AND h.id=automation_document_template_version.template_id AND app.automation_can_manage(h.module,'templates'))",
       "check": null,
-      "source": "5803_shared_document_templates:25"
+      "source": "6311_shared_document_templates:25"
     },
     {
       "schema": "public",
@@ -3173,7 +3173,7 @@
       "roles": "ai_hr_owner",
       "using": "app.acting_as_owner()",
       "check": "app.acting_as_owner()",
-      "source": "5807_contract_shared_commands:40"
+      "source": "6315_contract_shared_commands:40"
     },
     {
       "schema": "public",
@@ -3183,7 +3183,7 @@
       "roles": "ai_hr_owner",
       "using": "app.acting_as_owner()",
       "check": "app.acting_as_owner()",
-      "source": "5807_contract_shared_commands:66"
+      "source": "6315_contract_shared_commands:66"
     },
     {
       "schema": "public",
@@ -3193,7 +3193,7 @@
       "roles": "ai_hr_owner",
       "using": "app.acting_as_owner()",
       "check": "app.acting_as_owner()",
-      "source": "5807_contract_shared_commands:67"
+      "source": "6315_contract_shared_commands:67"
     },
     {
       "schema": "public",
@@ -3203,7 +3203,7 @@
       "roles": "ai_hr_owner",
       "using": "app.acting_as_owner()",
       "check": "app.acting_as_owner()",
-      "source": "5807_contract_shared_commands:68"
+      "source": "6315_contract_shared_commands:68"
     },
     {
       "schema": "public",
@@ -3213,7 +3213,7 @@
       "roles": "ai_hr_owner",
       "using": "app.acting_as_owner()",
       "check": "app.acting_as_owner()",
-      "source": "5808_contract_shared_signing:31"
+      "source": "6316_contract_shared_signing:31"
     },
     {
       "schema": "public",
@@ -3223,7 +3223,7 @@
       "roles": "ai_hr_owner",
       "using": "app.acting_as_owner()",
       "check": "app.acting_as_owner()",
-      "source": "5808_contract_shared_signing:32"
+      "source": "6316_contract_shared_signing:32"
     },
     {
       "schema": "public",
@@ -3233,7 +3233,7 @@
       "roles": "ai_hr_owner",
       "using": "app.acting_as_owner()",
       "check": "app.acting_as_owner()",
-      "source": "5814_contract_shared_personnel_postings:19"
+      "source": "6322_contract_shared_personnel_postings:19"
     },
     {
       "schema": "public",
@@ -3243,7 +3243,7 @@
       "roles": "ai_hr_owner",
       "using": "app.acting_as_owner()",
       "check": "app.acting_as_owner()",
-      "source": "5815_contract_posting_movement_authority:10"
+      "source": "6323_contract_posting_movement_authority:10"
     },
     {
       "schema": "public",
@@ -3253,7 +3253,7 @@
       "roles": "ai_hr_app",
       "using": "tenant_id=app.current_tenant_id() AND app.contract_shared_posting_tx_subject(id)",
       "check": null,
-      "source": "5815_contract_posting_movement_authority:46"
+      "source": "6323_contract_posting_movement_authority:46"
     },
     {
       "schema": "public",
@@ -3263,7 +3263,7 @@
       "roles": "ai_hr_app",
       "using": "tenant_id=app.current_tenant_id() AND app.contract_shared_posting_tx_subject(employment_id)",
       "check": null,
-      "source": "5815_contract_posting_movement_authority:47"
+      "source": "6323_contract_posting_movement_authority:47"
     },
     {
       "schema": "public",
@@ -3273,7 +3273,7 @@
       "roles": "ai_hr_app",
       "using": "app.contract_shared_posting_employment_row(to_jsonb(employment),false)",
       "check": "app.contract_shared_posting_employment_row(to_jsonb(employment),true)",
-      "source": "5815_contract_posting_movement_authority:100"
+      "source": "6323_contract_posting_movement_authority:100"
     },
     {
       "schema": "public",
@@ -3283,7 +3283,7 @@
       "roles": "ai_hr_app",
       "using": null,
       "check": "app.contract_shared_posting_assignment_row(to_jsonb(assignment),false)",
-      "source": "5815_contract_posting_movement_authority:101"
+      "source": "6323_contract_posting_movement_authority:101"
     },
     {
       "schema": "public",
@@ -3293,7 +3293,7 @@
       "roles": "ai_hr_app",
       "using": "app.contract_shared_posting_assignment_row(to_jsonb(assignment),true)",
       "check": "app.contract_shared_posting_assignment_row(to_jsonb(assignment),false)",
-      "source": "5815_contract_posting_movement_authority:102"
+      "source": "6323_contract_posting_movement_authority:102"
     },
     {
       "schema": "public",
@@ -3303,7 +3303,7 @@
       "roles": "ai_hr_owner",
       "using": "true",
       "check": "true",
-      "source": "5835_contract_shared_review_wording:13"
+      "source": "6341_contract_shared_review_wording:13"
     },
     {
       "schema": "app",
@@ -3313,7 +3313,7 @@
       "roles": "ai_hr_owner",
       "using": "app.acting_as_owner()",
       "check": "app.acting_as_owner()",
-      "source": "5842_probation_shared_email_asset_proof:12"
+      "source": "6347_probation_shared_email_asset_proof:12"
     },
     {
       "schema": "public",
@@ -3323,7 +3323,7 @@
       "roles": "ai_hr_owner",
       "using": "true",
       "check": "true",
-      "source": "5901_contract_shared_release_evidence:12"
+      "source": "6359_contract_shared_release_evidence:12"
     },
     {
       "schema": "public",
@@ -3333,7 +3333,7 @@
       "roles": "ai_hr_owner",
       "using": "app.acting_as_owner()",
       "check": "app.acting_as_owner()",
-      "source": "5940_contract_form_response_owner:43"
+      "source": "6387_contract_form_response_owner:43"
     },
     {
       "schema": "public",
@@ -3343,7 +3343,7 @@
       "roles": "ai_hr_owner",
       "using": "app.acting_as_owner()",
       "check": "app.acting_as_owner()",
-      "source": "5940_contract_form_response_owner:44"
+      "source": "6387_contract_form_response_owner:44"
     },
     {
       "schema": "public",
@@ -3353,7 +3353,7 @@
       "roles": "ai_hr_owner",
       "using": "app.acting_as_owner()",
       "check": "app.acting_as_owner()",
-      "source": "5940_contract_form_response_owner:45"
+      "source": "6387_contract_form_response_owner:45"
     },
     {
       "schema": "public",
@@ -3363,7 +3363,7 @@
       "roles": "ai_hr_owner",
       "using": "app.acting_as_owner()",
       "check": "app.acting_as_owner()",
-      "source": "5940_contract_form_response_owner:46"
+      "source": "6387_contract_form_response_owner:46"
     },
     {
       "schema": "public",
@@ -3373,7 +3373,7 @@
       "roles": "ai_hr_owner",
       "using": "app.acting_as_owner()",
       "check": "app.acting_as_owner()",
-      "source": "5940_contract_form_response_owner:47"
+      "source": "6387_contract_form_response_owner:47"
     },
     {
       "schema": "public",
@@ -3383,7 +3383,7 @@
       "roles": "ai_hr_owner",
       "using": "app.acting_as_owner()",
       "check": "app.acting_as_owner()",
-      "source": "5943_contract_email_document_readiness:12"
+      "source": "6390_contract_email_document_readiness:12"
     },
     {
       "schema": "app",
@@ -3393,7 +3393,7 @@
       "roles": "ai_hr_owner",
       "using": "app.acting_as_owner()",
       "check": "app.acting_as_owner()",
-      "source": "5968_contract_email_recovery_guard_identity:39"
+      "source": "6405_contract_email_recovery_guard_identity:39"
     },
     {
       "schema": "app",
@@ -3403,7 +3403,7 @@
       "roles": "ai_hr_owner",
       "using": "app.acting_as_owner()",
       "check": "app.acting_as_owner()",
-      "source": "5968_contract_email_recovery_guard_identity:40"
+      "source": "6405_contract_email_recovery_guard_identity:40"
     },
     {
       "schema": "app",
@@ -3413,7 +3413,7 @@
       "roles": "ai_hr_owner",
       "using": "app.acting_as_owner()",
       "check": "app.acting_as_owner()",
-      "source": "5968_contract_email_recovery_guard_identity:41"
+      "source": "6405_contract_email_recovery_guard_identity:41"
     },
     {
       "schema": "app",
@@ -3423,7 +3423,7 @@
       "roles": "ai_hr_owner",
       "using": "app.acting_as_owner()",
       "check": "app.acting_as_owner()",
-      "source": "5968_contract_email_recovery_guard_identity:42"
+      "source": "6405_contract_email_recovery_guard_identity:42"
     },
     {
       "schema": "app",
@@ -3453,7 +3453,7 @@
       "roles": "ai_hr_owner",
       "using": "app.acting_as_owner()",
       "check": "app.acting_as_owner()",
-      "source": "6001_contract_posting_protected_job_foundation:194"
+      "source": "6421_contract_posting_protected_job_foundation:194"
     },
     {
       "schema": "app",
@@ -3463,7 +3463,7 @@
       "roles": "ai_hr_owner",
       "using": "app.acting_as_owner()",
       "check": "app.acting_as_owner()",
-      "source": "6001_contract_posting_protected_job_foundation:195"
+      "source": "6421_contract_posting_protected_job_foundation:195"
     },
     {
       "schema": "app",
@@ -3473,7 +3473,7 @@
       "roles": "ai_hr_owner",
       "using": "app.acting_as_owner()",
       "check": "app.acting_as_owner()",
-      "source": "6001_contract_posting_protected_job_foundation:196"
+      "source": "6421_contract_posting_protected_job_foundation:196"
     },
     {
       "schema": "app",
@@ -3483,7 +3483,7 @@
       "roles": "ai_hr_owner",
       "using": "app.acting_as_owner()",
       "check": "app.acting_as_owner()",
-      "source": "6002_contract_posting_recorded_replay_frames:32"
+      "source": "6422_contract_posting_recorded_replay_frames:32"
     },
     {
       "schema": "app",
@@ -3493,7 +3493,7 @@
       "roles": "ai_hr_owner",
       "using": "app.acting_as_owner()",
       "check": "app.acting_as_owner()",
-      "source": "6002_contract_posting_recorded_replay_frames:33"
+      "source": "6422_contract_posting_recorded_replay_frames:33"
     },
     {
       "schema": "app",
@@ -3503,7 +3503,7 @@
       "roles": "ai_hr_owner",
       "using": "app.acting_as_owner()",
       "check": "app.acting_as_owner()",
-      "source": "6006_contract_posting_first_producer_readiness:34"
+      "source": "6426_contract_posting_first_producer_readiness:34"
     },
     {
       "schema": "app",
@@ -3513,7 +3513,7 @@
       "roles": "ai_hr_owner",
       "using": "app.acting_as_owner()",
       "check": "app.acting_as_owner()",
-      "source": "6006_contract_posting_first_producer_readiness:35"
+      "source": "6426_contract_posting_first_producer_readiness:35"
     },
     {
       "schema": "app",
@@ -3523,7 +3523,7 @@
       "roles": "ai_hr_owner",
       "using": "app.acting_as_owner()",
       "check": "app.acting_as_owner()",
-      "source": "6010_contract_email_document_hr_notices:21"
+      "source": "6430_contract_email_document_hr_notices:21"
     },
     {
       "schema": "app",
@@ -3533,7 +3533,7 @@
       "roles": "ai_hr_owner",
       "using": "app.acting_as_owner()",
       "check": "app.acting_as_owner()",
-      "source": "6011_contract_posting_org_snapshot_owner reviewed-v11 literal source intent"
+      "source": "6431_contract_posting_org_snapshot_owner reviewed-v11 literal source intent"
     },
     {
       "schema": "public",
@@ -3543,7 +3543,7 @@
       "roles": "ai_hr_owner",
       "using": null,
       "check": "app.contract_posting_snapshot_insert_allowed(to_jsonb(information_payslip_snapshot))",
-      "source": "6011_contract_posting_org_snapshot_owner reviewed-v11 literal source intent"
+      "source": "6431_contract_posting_org_snapshot_owner reviewed-v11 literal source intent"
     },
     {
       "schema": "app",
@@ -3553,7 +3553,7 @@
       "roles": "ai_hr_owner",
       "using": "app.acting_as_owner()",
       "check": "app.acting_as_owner()",
-      "source": "6011_contract_posting_org_snapshot_owner reviewed-v11 literal source intent"
+      "source": "6431_contract_posting_org_snapshot_owner reviewed-v11 literal source intent"
     },
     {
       "schema": "app",
@@ -3563,7 +3563,7 @@
       "roles": "ai_hr_owner",
       "using": "app.acting_as_owner()",
       "check": "app.acting_as_owner()",
-      "source": "6011_contract_posting_org_snapshot_owner reviewed-v11 literal source intent"
+      "source": "6431_contract_posting_org_snapshot_owner reviewed-v11 literal source intent"
     }
   ]
 }

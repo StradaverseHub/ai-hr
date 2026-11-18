@@ -10,7 +10,7 @@ import {createDb} from '../db/client';
 import {seedCatalogs} from '../scripts/seed-catalogs';
 it('keeps prepared target and cached start callers on the native capability after the test-purpose upgrade',async()=>{
  const journal=JSON.parse(readFileSync('db/migrations/meta/_journal.json','utf8')) as {entries:{tag:string;when:number}[]};
- const boundary=journal.entries.findIndex(entry=>entry.tag==='5828_automation_email_test_self');expect(boundary).toBeGreaterThan(0);
+ const boundary=journal.entries.findIndex(entry=>entry.tag==='6336_automation_email_test_self');expect(boundary).toBeGreaterThan(0);
  const directory=mkdtempSync(join(tmpdir(),'automation-test-upgrade-')),name='automation_test_'+randomUUID().replaceAll('-','');
  const ownerUrl=new URL(process.env.TEST_MIGRATION_DATABASE_URL!),appUrl=new URL(process.env.TEST_DATABASE_URL!);
  expect(['127.0.0.1','localhost']).toContain(ownerUrl.hostname);expect(appUrl.username).toBe('ai_hr_app');

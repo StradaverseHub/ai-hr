@@ -10,7 +10,7 @@ import {createDb} from '../db/client';
 
 it('keeps pre-upgrade prepared and PLpgSQL worker/effect callers on the strict compatibility dispatchers',async()=>{
  const journal=JSON.parse(readFileSync('db/migrations/meta/_journal.json','utf8')) as {entries:{tag:string;when:number}[]};
- const boundary=journal.entries.findIndex(entry=>entry.tag==='5960_contract_email_prerequisite_recovery');expect(boundary).toBeGreaterThan(0);
+ const boundary=journal.entries.findIndex(entry=>entry.tag==='6399_contract_email_prerequisite_recovery');expect(boundary).toBeGreaterThan(0);
  const directory=mkdtempSync(join(tmpdir(),'contract-email-recovery-upgrade-')),name='contract_email_'+randomUUID().replaceAll('-','');
  const ownerUrl=new URL(process.env.TEST_MIGRATION_DATABASE_URL!);expect(['127.0.0.1','localhost']).toContain(ownerUrl.hostname);
  ownerUrl.pathname='/postgres';const admin=postgres(ownerUrl.toString(),{max:1,onnotice:()=>{}});ownerUrl.pathname='/'+name;

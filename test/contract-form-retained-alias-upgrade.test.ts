@@ -11,7 +11,7 @@ import {migrate} from 'drizzle-orm/postgres-js/migrator';
 import {expect,it} from 'vitest';
 
 it('preserves a genuinely signed old known label and old unresolved private label after the alias upgrade',async()=>{
- const tag='5974_contract_form_native_field_parity';
+ const tag='6411_contract_form_native_field_parity';
  const journal=JSON.parse(readFileSync('db/migrations/meta/_journal.json','utf8')) as {entries:{tag:string}[]};
  const boundary=journal.entries.findIndex(entry=>entry.tag===tag);expect(boundary).toBeGreaterThan(5300);
  const keys=['TEST_DATABASE_URL','TEST_MIGRATION_DATABASE_URL','DATABASE_URL','MIGRATION_DATABASE_URL'] as const;

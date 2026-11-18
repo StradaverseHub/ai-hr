@@ -163,9 +163,9 @@ it('pages 1,000 actual pending approvals across 70 companies with exact native e
  expect(companies).toHaveLength(70);checkpoint('source-oracle-read');
  // Inspect the native function's parameterized planner estimate without executing a different read.
  // Actual requests below retain the standard native request profile and all production predicates.
- const native=readFileSync(new URL('../db/migrations/5919_contract_work_case_source_anchor.sql',import.meta.url),'utf8'),begin=native.indexOf(' WITH clock'),finish=native.indexOf('\n$$;',begin);
+ const native=readFileSync(new URL('../db/migrations/6370_contract_work_case_source_anchor.sql',import.meta.url),'utf8'),begin=native.indexOf(' WITH clock'),finish=native.indexOf('\n$$;',begin);
  const statement=native.slice(begin,finish).replaceAll('p_cases','($1::uuid[])').replaceAll('p_assigned_only','($2::boolean)');
- const outer=readFileSync(new URL('../db/migrations/5898_contract_shared_work_page.sql',import.meta.url),'utf8'),outerBegin=outer.indexOf(' WITH assigned AS'),outerEnd=outer.indexOf(' INTO result;',outerBegin);
+ const outer=readFileSync(new URL('../db/migrations/6356_contract_shared_work_page.sql',import.meta.url),'utf8'),outerBegin=outer.indexOf(' WITH assigned AS'),outerEnd=outer.indexOf(' INTO result;',outerBegin);
  const outerStatement=outer.slice(outerBegin,outerEnd).replaceAll('p_category','($1::text)').replaceAll('p_companies','($2::uuid[])').replaceAll('p_limit','($3::integer)').replaceAll('p_offset','($4::integer)');
  const [functionOwner]=await owner.db.execute<{name:string}>(sql`select pg_get_userbyid(proowner) as name from pg_proc where oid='app.contract_shared_work_page(text,uuid[],integer,integer)'::regprocedure`);
  const diagnostics=await owner.withTenant(admin,async tx=>{
