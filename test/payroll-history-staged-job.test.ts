@@ -23,6 +23,7 @@ import {createBatch,generatePayslips,closeBatch} from '../core/payroll';
 import {setCompensation} from '../core/comp';
 import {setStatutoryProfileMY} from '../localization/my/statutory';
 import {seedPayrollCycleCatalog} from '../core/payroll-cycle';
+import {taxBasisSourceRowsTx,hashTaxBasisSource} from '../core/payroll-tax-basis-read';
 import {historyRecordKey} from '../lib/payroll-history-revisions';
 import {PAYROLL_HISTORY_HEADERS} from '../lib/payroll-history-import-schema';
 import {toCsv} from '../lib/csv';
@@ -98,6 +99,12 @@ async function state(t:Tenant,attemptId:string){
  const cycles=await q(sql`select id,code from payroll_cycle where tenant_id=${t.b.tenantId}::uuid`);
  const selections=await q(sql`select id,employment_id from employment_tax_selection_my where tenant_id=${t.b.tenantId}::uuid`);
  const salaries=await q(sql`select id,employment_id from compensation where tenant_id=${t.b.tenantId}::uuid`);
+ const sources=await withTenant(t.ctx,tx=>taxBasisSourceRowsTx(tx,slips.map(slip=>String(slip.id))));
+ const sourceHashes=new Map(sources.map(source=>[source.id,hashTaxBasisSource(source)]));
+ for(const slip of slips){const statutory=slip.statutory as {taxBasisOpeningSource?:{prefix:{payslipId:string;sourceHash:string}[]};taxBasisImportedSources?:{payslipId:string;sourceHash:string;importRevision:string}[]};
+  for(const entry of statutory.taxBasisOpeningSource?.prefix??[])expect(entry.sourceHash).toBe(sourceHashes.get(entry.payslipId));
+  for(const entry of statutory.taxBasisImportedSources??[]){expect(entry.sourceHash).toBe(sourceHashes.get(entry.payslipId));expect(entry.importRevision).toBe(sources.find(source=>source.id===entry.payslipId)?.importRevision);}
+ }
  const settings=importTaxSettingsWithBasic(await withTenant(t.ctx,importedTaxSettingsTx));
  const settingsHash=importedTaxSettingsHash(settings);
  // The digest binds tenant-specific Pay Item ids. Verify it before normalizing across tenants;
@@ -108,13 +115,16 @@ async function state(t:Tenant,attemptId:string){
   for(const line of stamp.lines)expect(stamp.settings.some(setting=>setting.id===line.settingId&&setting.code===line.code)).toBe(true);
  }
  const names=new Map<string,string>([[t.b.tenantId,'tenant'],[t.b.companyId,'company'],[t.b.adminUserId,'admin'],[t.ordinary,'ordinary-run'],
+  ...[...slipKey].map(([id,key])=>[id,'payslip:'+key] as [string,string]),
+  ...[...revisionKey].map(([id,key])=>[id,'import-revision:'+key] as [string,string]),
   ...settings.map(setting=>[setting.id,'pay-item:'+setting.code] as [string,string]),
   ...Object.entries(t.employments).map(([c,id])=>[id,'employment:'+c] as [string,string]),
   ...person.map(r=>[r.person_id as string,'person:'+code.get(r.id as string)] as [string,string]),
   ...cycles.map(c=>[c.id as string,'cycle:'+c.code] as [string,string]),
   ...selections.map(r=>[r.id as string,'tax-selection:'+code.get(r.employment_id as string)] as [string,string]),
   ...salaries.map(r=>[r.id as string,'compensation:'+code.get(r.employment_id as string)] as [string,string])]);
- const sort=<T,>(rows:T[])=>rows.map(r=>JSON.stringify(r).replaceAll(settingsHash,'verified-settings-digest').replace(/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/g,id=>names.get(id)??id)).sort();
+ const normalizeHashes=(text:string)=>[...sourceHashes].reduce((value,[id,digest])=>value.replaceAll(digest,'verified-source-hash:'+slipKey.get(id)),text);
+ const sort=<T,>(rows:T[])=>rows.map(r=>normalizeHashes(JSON.stringify(r)).replaceAll(settingsHash,'verified-settings-digest').replace(/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/g,id=>names.get(id)??id)).sort();
  return{
   periods:sort(periods),
   batches:sort(batches.map(b=>Object.fromEntries(Object.entries(b).filter(([k])=>k!=='id')))),
