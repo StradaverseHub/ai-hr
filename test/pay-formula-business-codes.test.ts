@@ -14,7 +14,7 @@ import {hireEmployee} from '../core/org';
 import {setCompensation} from '../core/comp';
 import {setStatutoryProfileMY} from '../localization/my/statutory';
 import {seedPayComponentCatalog,upsertPayComponent,setEmploymentPayComponent} from '../core/pay-components';
-import {createBatch,createAdditionalRun,generatePayslips} from '../core/payroll';
+import {createBatch,createAdditionalRun,generatePayslips,reprocessSelectedEmployees,closeBatch} from '../core/payroll';
 import {registerPayFormulaPersonnelField,payFormulaOptions,savePayFormula,testPayFormula,setPayFormulaActive,getFormulaEvaluation,saveFormulaAccumulationGroup} from '../core/pay-formula';
 import {closeAll,entitledCtx,migrateTestDb,owner,resetDb,seedBase,setModule,type Base} from './harness';
 import {withTenant,type SessionContext} from '../db/client';
@@ -23,7 +23,7 @@ let base:Base,ctx:SessionContext,employee:{employmentId:string;personId:string},
 const item={code:'EXACT_FORMULA',name:'Exact formula allowance',label:'Exact formula allowance',kind:'allowance' as const,includedInEpf:false,includedInSocsoEis:false,includedInPcb:false,includedInHrdfBase:false,isNonPayable:false,prorates:false,formulaContext:{rate:'1.005'}};
 beforeAll(migrateTestDb);afterAll(closeAll);
 beforeEach(async()=>{
- await resetDb();base=await seedBase();await setModule(base.tenantId,'typed_pay_components','active');ctx=await entitledCtx(base);
+ await resetDb();base=await seedBase();await setModule(base.tenantId,'typed_pay_components','active');await setModule(base.tenantId,'multi_cycle_payroll','active');ctx=await entitledCtx(base);
  employee=await hireEmployee(ctx,{person:{fullName:'Fictional runtime employee',primaryEmail:'formula-runtime@example.invalid'},companyId:base.companyId,departmentId:base.deptA,positionId:base.positionId,employmentType:'full_time',hiredOn:'2026-01-01'});
  await setCompensation(ctx,{employmentId:employee.employmentId,basicSalary:5000,monthlyAllowance:0,effectiveFrom:'2026-01-01'});
  await setStatutoryProfileMY(ctx,{personId:employee.personId,icNumber:'900101011234'});await seedPayComponentCatalog(ctx);
@@ -132,3 +132,20 @@ it('SQL-pages code choices across 70 companies/1000 employments and retains the 
   expect(statements).toBe(9);
  });
 },120_000);
+
+it('reprocesses eligible payroll from the effective source while preserving immutable previous evaluation evidence',async()=>{
+ await configuredCodes();await activate('If {#EmployeeProfile}("positionBusinessCode") = "J0113" Then\nReturn 123.45\nElse\nReturn 7\nEnd If');
+ const {batchId}=await createBatch(ctx,{companyId:base.companyId,payPeriod:context.period,payrollCycleId:context.cycleId});await generatePayslips(ctx,{batchId});
+ const [original]=await owner.db.select().from(schema.payFormulaEvaluation).where(eq(schema.payFormulaEvaluation.batchId,batchId));
+ const retained=JSON.stringify(original.payload);expect(original.amount).toBe('123.45');
+ await owner.db.update(schema.position).set({title:'J0114'}).where(eq(schema.position.id,base.positionId));
+ await reprocessSelectedEmployees(ctx,{batchId,employmentIds:[employee.employmentId],idempotencyKey:randomUUID()});
+ const evaluations=await owner.db.select().from(schema.payFormulaEvaluation).where(eq(schema.payFormulaEvaluation.batchId,batchId));
+ expect(evaluations.map(row=>row.amount).sort()).toEqual(['123.45','7']);
+ expect(JSON.stringify(evaluations.find(row=>row.id===original.id)!.payload)).toBe(retained);
+ const [slip]=await owner.db.select().from(schema.payslip).where(eq(schema.payslip.batchId,batchId));
+ expect((slip.statutory as {componentLines:{code:string;amount:number}[]}).componentLines.find(line=>line.code===item.code)?.amount).toBe(7);
+ await closeBatch(ctx,{batchId});
+ await expect(reprocessSelectedEmployees(ctx,{batchId,employmentIds:[employee.employmentId],idempotencyKey:randomUUID()})).rejects.toThrow();
+ expect(JSON.stringify((await owner.db.select().from(schema.payFormulaEvaluation).where(eq(schema.payFormulaEvaluation.id,original.id)))[0].payload)).toBe(retained);
+});
