@@ -15,7 +15,7 @@ function fixture(){
 it('opens unsigned employee preparation without sent task completion, then requires answers before the first HR signature and preserves the signed snapshot',()=>{
  const {c,env,config,workflow,source}=fixture();M.runWorkflow(c,config,workflow,env,'submitted');const doc=c.documents[0];
  expect(doc.personnelCompletion?.preparation).toEqual({at:env.now,by:env.actor});expect(doc.sentAt).toBeNull();expect(doc.status).toBe('draft');expect(c.tasks[0].status).toBe('todo');expect(c.runs[0].status).toBe('waiting');
- const signature={method:'typed' as const,value:'Fictional HR',consent:true,by:env.actor,at:env.now};expect(()=>M.signDocument(c,config,doc.id,'hr',signature,env)).toThrow('required');
+ const signature:M.Signature={method:'typed',value:'Fictional HR',consent:true,by:env.actor,at:env.now};expect(()=>M.signDocument(c,config,doc.id,'hr',signature,env)).toThrow('required');
  const own={...env,actor:{id:'fictional-employee',name:'Fictional employee'}};M.saveDocument(c,doc.id,{F51:'Employee supplied address'},'employee',own);M.submitDocumentPersonnelCompletion(c,doc.id,own);
  expect(c.pmChanges).toMatchObject([{field:'address',before:'',after:'Employee supplied address',status:'proposed',provenance:{by:own.actor}}]);M.submitDocumentPersonnelCompletion(c,doc.id,own);expect(c.pmChanges).toHaveLength(1);
  M.signDocument(c,config,doc.id,'hr',signature,env);const frozen=structuredClone(doc);source.address='Later official PM address';expect(M.refreshDocumentPersonnelCompletion(doc,env)).toBe(false);expect(doc).toEqual(frozen);

@@ -32,6 +32,7 @@ async function fixture(options:{extraFields?:Field[];values?:Record<string,strin
 async function page(as=hr){return await personnelCompletionRecoveryPage(as) as {items:PersonnelCompletionRecoveryCandidate[];total:number;after:{caseId:string;documentId:string}|null};}
 async function review(candidate:PersonnelCompletionRecoveryCandidate,as=hr){const [row]=await withTenant(as,tx=>tx.execute<{result:PersonnelCompletionRecoveryReview}>(sql`select app.personnel_completion_recovery_review(${JSON.stringify(candidate)}::jsonb) result`));return row.result;}
 async function adopt(value:PersonnelCompletionRecoveryReview,as=hr){const [row]=await withTenant(as,tx=>tx.execute<{revision:number}>(sql`select app.personnel_completion_recovery_adopt(${JSON.stringify(value)}::jsonb) revision`));return row.revision;}
+function requiredHrUserId(){if(!hr.userId)throw Error('Recovery fixture requires an authenticated HR user');return hr.userId;}
 async function saved(id:string){const [row]=await owner.client<{revision:number;data:Case;text:string}[]>`select revision,data,(data->'documents'->0)::text as text from lc_v9_case where id=${id}::uuid`;return row;}
 async function drain(id:string){for(let n=0;n<80;n++){const [job]=await owner.client<{state:string}[]>`select state from bulk_job where id=${id}::uuid`;if(['completed','failed','cancelled'].includes(job.state))return job.state;await runBulkJobTick(owner.client,{handlers:[lifecyclePersonnelCompletionPreviewHandler,lifecyclePersonnelCompletionRecoveryHandler]});}throw Error('Recovery fixture job did not finish');}
 it('pages only exact hashes and reviews without any case/source values or writes, then directly adopts once under current HR authority',async()=>{
@@ -90,7 +91,7 @@ it('proves legacy native date anchors from matched public/private retained snaps
  const candidate=(await page()).items.find(c=>c.caseId===id)!;expect(candidate).toBeTruthy();const r=await review(candidate);expect(r).toMatchObject({outcome:'late',runs:[{dueOn:addDays(original,1)}]});expect(JSON.stringify(r)).not.toContain(original);expect(JSON.stringify(r)).not.toContain('FICTIONAL-PRIVATE');
 });
 it('rechecks creator authority in the real worker after an admitted preview is queued',async()=>{
- const f=await fixture(),job=await requestPersonnelCompletionRecoveryPreview(hr,[(await page()).items[0]]),revoked=await owner.client`update role_assignment set role='employee' where tenant_id=${b.tenantId}::uuid and app_user_id=${hr.userId}::uuid and role='hr_admin' returning app_user_id`;expect(revoked).toHaveLength(1);expect(await drain(job.row.id)).toBe('failed');expect((await saved(f.id)).revision).toBe(1);
+ const f=await fixture(),job=await requestPersonnelCompletionRecoveryPreview(hr,[(await page()).items[0]]),revoked=await owner.client`update role_assignment set role='employee' where tenant_id=${b.tenantId}::uuid and app_user_id=${requiredHrUserId()}::uuid and role='hr_admin' returning app_user_id`;expect(revoked).toHaveLength(1);expect(await drain(job.row.id)).toBe('failed');expect((await saved(f.id)).revision).toBe(1);
 });
 it('pages a large saved population in stable case/document order with a bounded metadata-only result',async()=>{
  const f=await fixture();
@@ -120,7 +121,7 @@ it('matches independent ordered counts for 1,000 employments across 70 companies
  async function collect(as:SessionContext){let cursor:Awaited<ReturnType<typeof page>>['after']=null;const items:PersonnelCompletionRecoveryCandidate[]=[];let total=-1;for(let p=0;p<12;p++){const result=await personnelCompletionRecoveryPage(as,cursor,100) as Awaited<ReturnType<typeof page>>;if(total<0)total=result.total;expect(result.total).toBe(total);expect(result.items.length).toBeLessThanOrEqual(100);items.push(...result.items);if(!result.items.length)return{total,items};cursor=result.after;}throw Error('Scale page cursor did not finish');}
  const visible=(items:PersonnelCompletionRecoveryCandidate[])=>items.map(({caseId,companyId,documentId})=>({caseId,companyId,documentId}));
  const all=await collect(hr);expect(all.total).toBe(1000);expect(visible(all.items)).toEqual(expected);expect(JSON.stringify(all)).not.toContain('confidential');expect(await collect(employee)).toEqual({total:0,items:[]});
- const target=companies[1];await owner.client`update role_assignment set company_id=${target}::uuid where tenant_id=${b.tenantId}::uuid and app_user_id=${hr.userId}::uuid and role='hr_admin'`;
+ const target=companies[1];await owner.client`update role_assignment set company_id=${target}::uuid where tenant_id=${b.tenantId}::uuid and app_user_id=${requiredHrUserId()}::uuid and role='hr_admin'`;
  const scoped:SessionContext={...hr,grants:[{role:'hr_admin',companyId:target}]},one=await collect(scoped),expectedOne=expected.filter(c=>c.companyId===target);expect(one.total).toBe(expectedOne.length);expect(visible(one.items)).toEqual(expectedOne);expect(visible(one.items)).toEqual(visible(all.items).filter(c=>c.companyId===target));
 });
 async function forgedRecovery(as:SessionContext,manifest:unknown){
