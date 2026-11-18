@@ -1,7 +1,7 @@
 import {describe,expect,it} from 'vitest';
 import {documentRoutingProblems,documentRoutingSignatureProblems,resolveDocumentRouting,type DocumentRouting} from '../lib/document-signing-routing';
 import {documentRoutingSchema} from '../lib/document-signing-routing-schema';
-import {pendingSigningSteps,recordSigningAction,signingComplete,type SigningDocument} from '../lib/document-signing-model';
+import {currentRoundActions,pendingSigningSteps,recordSigningAction,signingComplete,type SigningDocument} from '../lib/document-signing-model';
 const refs={routingExists:()=>true,groupExists:()=>true,personExists:()=>true};
 const routing:DocumentRouting=[{id:'optional-review',order:1,action:'review',who:{kind:'employee'},owner:false,required:false},{id:'ack',order:2,action:'acknowledge',who:{kind:'employee'},owner:false,required:true}];
 function document():SigningDocument{
@@ -30,4 +30,18 @@ describe('required signing and explicit acknowledgement',()=>{
   expect(pendingSigningSteps(before).map(step=>step.id)).toEqual(['ack']);
   expect(documentRoutingProblems(routing.map(step=>({...step,required:false})),refs)).toContain('At least one step must be a Sign step, or nobody signs the document.');
  });
+});
+
+it('allows a completed frozen route holder to send back and removes signatures from the current round immediately',()=>{
+ let before=document();before.route.steps=[{id:'review',role:'reviewer',kind:'review',stage:1,holderId:'reviewer',required:true},{id:'sign',role:'signer',kind:'sign',stage:2,holderId:'signer',required:true},{id:'employee',role:'employee',kind:'acknowledge',stage:3,holderId:'employee',required:true}];
+ const act=(doc:SigningDocument,stepId:string,actor:string,action:'reviewed'|'signed'|'returned')=>recordSigningAction(doc,{requiredRoles:[]},{id:stepId+'-'+action,actorId:actor,actorPersonId:actor+'-person',actorName:actor,stepId,revision:1,hash:doc.contentHash,action,comment:action==='returned'?'Correct the wording':'',...(action==='signed'?{method:'typed' as const,value:actor,consent:true}:{}),at:'2026-11-18T02:00:00Z'});
+ before=act(before,'review','reviewer','reviewed');before=act(before,'sign','signer','signed');
+ const returned=act(before,'review','reviewer','returned');
+ expect(returned.actions).toHaveLength(3);
+ expect(pendingSigningSteps(returned)).toEqual([]);
+ expect(signingComplete(returned,{requiredRoles:[]})).toBe(false);
+ // Earlier signatures remain in history, but cannot fulfil or print in this signing round.
+ expect(currentRoundActions(returned).map(action=>action.action)).toEqual(['returned']);
+ expect(()=>act(returned,'employee','employee','signed')).toThrow();
+ expect(()=>act(before,'review','outsider','returned')).toThrow();
 });

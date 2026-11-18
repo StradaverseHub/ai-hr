@@ -13,7 +13,7 @@ export const signerMergeKey=(stepId:string,field:'name'|'title'|'label')=>`signi
 export function probationLetterDocument(input:{id:string;name:string;templateId:string;templateVersion:number;blocks:Block[];fields:Field[];merge:Record<string,string>;createdAt:string;signing?:SigningDocument|null;signers?:Record<string,{name:string|null;title:string|null;label:string|null;role:string}>}):Document{
  const mergeValues=Object.fromEntries(Object.entries(input.merge).map(([key,value])=>[key,value==null?'':String(value)]));
  if(!mergeValues['company.name']&&mergeValues.companyName)mergeValues['company.name']=mergeValues.companyName;
- const current=input.signing?.actions.filter(a=>a.action==='signed'&&a.contentHash===input.signing!.contentHash&&a.contentRevision===input.signing!.contentRevision).sort((a,b)=>input.signing!.route.steps.findIndex(s=>s.id===a.stepId)-input.signing!.route.steps.findIndex(s=>s.id===b.stepId))??[];
+ const current=(input.signing?.routing?currentRoundActions(input.signing):input.signing?.actions)?.filter(a=>a.action==='signed'&&a.contentHash===input.signing!.contentHash&&a.contentRevision===input.signing!.contentRevision).sort((a,b)=>input.signing!.route.steps.findIndex(s=>s.id===a.stepId)-input.signing!.route.steps.findIndex(s=>s.id===b.stepId))??[];
  const signature=(actor:typeof current[number]|undefined):Signature|null=>actor?.signature?{by:{id:actor.actorId,name:actor.actorName},at:actor.at,...actor.signature}:null;
  const employee=current.find(a=>a.role==='employee'),hr=current.find(a=>a.role!=='employee');
  // Acknowledgement values belong to the authenticated signature contribution, never posted HR text.
