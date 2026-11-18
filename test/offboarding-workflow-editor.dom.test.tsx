@@ -21,9 +21,9 @@ describe('Offboarding configuration editor',()=>{
   expect(screen.getByRole('button',{name:'Make it live'})).toBeDisabled();
   fireEvent.change(reason,{target:{value:'Retirement'}});
   expect(screen.getByRole('button',{name:'Make it live'})).toBeEnabled();
-  fireEvent.click(screen.getByRole('button',{name:'Save changes'}));
-  await waitFor(()=>expect(mocks.save).toHaveBeenCalledOnce());
-  expect(mocks.save.mock.calls[0][0].workflow.steps[0].params.exitReason).toBe('Retirement');
+  await waitFor(()=>expect(mocks.save).toHaveBeenCalledOnce(),{timeout:2000});
+  expect(mocks.save.mock.calls[0][0]).toMatchObject({expectedRevision:1,reason:'Automatically saved workflow changes',workflow:{status:'paused',steps:[{id:'start',params:{exitReason:'Retirement'}}]}});
+  expect(await screen.findByText('Changes save automatically')).toBeVisible();
  });
  it('keeps deciders and FYI recipients separate when saving acceptance-only decisions',async()=>{
   show(make());
@@ -31,9 +31,9 @@ describe('Offboarding configuration editor',()=>{
   expect(screen.getByRole('button',{name:'Keep in the loop'})).toHaveTextContent('BP by business group');
   fireEvent.change(screen.getByRole('combobox',{name:'They can choose'}),{target:{value:'accept'}});
   fireEvent.change(screen.getByRole('spinbutton',{name:'Due within (working days)'}),{target:{value:'4'}});
-  fireEvent.click(screen.getByRole('button',{name:'Save changes'}));
-  await waitFor(()=>expect(mocks.save).toHaveBeenCalledOnce());
-  expect(mocks.save.mock.calls[0][0].workflow.steps[0]).toMatchObject({to:[{kind:'role',role:'directSuperior'}],params:{choices:'accept',watch:[{kind:'routing',routingId:'bp'}],canComment:true,dueDays:4}});
+  await waitFor(()=>expect(mocks.save).toHaveBeenCalledOnce(),{timeout:2000});
+  expect(mocks.save.mock.calls[0][0]).toMatchObject({expectedRevision:1,reason:'Automatically saved workflow changes',workflow:{status:'paused',steps:[{to:[{kind:'role',role:'directSuperior'}],cc:[],params:{choices:'accept',watch:[{kind:'routing',routingId:'bp'}],canComment:true,dueDays:4}}]}});
+  expect(await screen.findByText('Changes save automatically')).toBeVisible();
  });
  it('blocks Live for a reminder that is not shorter than the retention reply window',()=>{
   const workflow=make('retention');workflow.steps=[{id:'doc',type:'generateDocument',to:[],cc:[],conditions:[],params:{letterTemplateId:'retention',replyDays:5,remindDays:5}}];

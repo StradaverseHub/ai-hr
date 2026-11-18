@@ -51,10 +51,10 @@ it('starts letterhead settings from company facts and retains independent signat
 });
 function OffboardingEditor(){
  const [config,setConfig]=useState(()=>{const value=v9Defaults();value.groups=[{id:'first',name:'Configured Operations',members:['hr'],limit:20},{id:'empty',name:'Replacement group',members:[],limit:20}];value.peopleOpsGroup='first';return value;});
- return <><WorkspaceSettings activeTab="off" config={config} options={{companies:[],users:[{id:'hr',name:'Fictional HR'}],employees:[]}} editable edit={change=>setConfig(old=>{const next=structuredClone(old);change(next);return next;})}/><output data-testid="offboarding-settings">{JSON.stringify(config.offboarding)}</output></>;
+ return <><WorkspaceSettings activeTab="off" config={config} options={{companies:[],users:[{id:'hr',name:'Fictional HR'}],employees:[]}} editable edit={change=>setConfig(old=>{const next=structuredClone(old);change(next);return next;})}/><output data-testid="offboarding-settings">{JSON.stringify(config.offboarding)}</output><output data-testid="people-ops-group">{config.peopleOpsGroup}</output></>;
 }
 it('stores explicit Offboarding posting and retention settings, including blank no-limit without changing shared People Ops',()=>{
- render(<OffboardingEditor/>);
+ render(<NextIntlClientProvider locale="en" messages={messages}><OffboardingEditor/></NextIntlClientProvider>);
  expect(screen.getByRole('combobox',{name:'Who approves Personnel postings'})).toHaveValue('first');
  const limit=screen.getByRole('spinbutton',{name:'No second retention offer within (months)'});
  expect(limit).toHaveValue(12);
@@ -62,5 +62,6 @@ it('stores explicit Offboarding posting and retention settings, including blank 
  expect(JSON.parse(screen.getByTestId('offboarding-settings').textContent!)).toEqual({postingApproverGroupId:'first',reofferMonths:null});
  fireEvent.change(screen.getByRole('combobox',{name:'Who approves Personnel postings'}),{target:{value:'empty'}});
  expect(JSON.parse(screen.getByTestId('offboarding-settings').textContent!)).toEqual({postingApproverGroupId:'empty',reofferMonths:null});
+ expect(screen.getByTestId('people-ops-group')).toHaveTextContent(/^first$/);
  expect(screen.getByRole('alert')).toHaveTextContent('Existing pending postings keep their current approvers');
 });

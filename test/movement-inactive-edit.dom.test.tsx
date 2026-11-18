@@ -45,18 +45,18 @@ describe('an inactive custom Movement keeps its authorized Edit behavior metadat
   expect(container.querySelector('select[name="kind"]')).toHaveValue(active.code);
   expect(screen.queryByRole('option',{name:inactive.label})).toBeNull();
  });
- it('the actual parent passes active-only New Event metadata and active plus exactly the edited code for Edit',()=>{
+ it('the actual parent excludes Contract posting types while retaining active New Event metadata and the inactive edited code',()=>{
   const source=fs.readFileSync(path.resolve(__dirname,'../app/admin/personnel/[employmentId]/page.tsx'),'utf8');
   const propsStart=source.indexOf('const movementFormProps'),propsEnd=source.indexOf('const newEventCard',propsStart);
   expect(propsStart).toBeGreaterThanOrEqual(0);expect(propsEnd).toBeGreaterThan(propsStart+500);
   const props=source.slice(propsStart,propsEnd);
-  expect(props).toContain('types: movementTypes');expect(props).toMatch(/\.filter\(\(r\) => r\.active\)/);
+  expect(props).toContain('types: movementTypes');expect(props).toMatch(/\.filter\(\(r\) => r\.active\s*&&\s*!isContractPostingMovementKind\(r\.behaviourKind\)\)/);
   const start=source.indexOf('const editEventCard'),end=source.indexOf('const hireCorrectionCard',start);
   expect(start).toBeGreaterThanOrEqual(0);expect(end).toBeGreaterThan(start+500);
   const parent=source.slice(start,end);
-  expect(parent).toContain('.filter((r) => r.active || r.code === (movementEditRow.correctionKind ?? movementEditRow.kind))');
+  expect(parent).toContain('.filter((r) => !isContractPostingMovementKind(r.behaviourKind)&&(r.active || r.code === (movementEditRow.correctionKind ?? movementEditRow.kind)))');
   expect(parent).toContain('behaviourKind: r.behaviourKind');
   expect(parent).toContain('kind: movementEditRow.correctionKind ?? movementEditRow.kind');
-  expect(parent).toContain('allowedKinds: Array.from(new Set([movementEditRow.correctionKind ?? movementEditRow.kind, ...movementTypes.filter(r => r.active).map(r => r.code)]))');
+  expect(parent).toContain('allowedKinds: Array.from(new Set([movementEditRow.correctionKind ?? movementEditRow.kind, ...movementTypes.filter(r => r.active&&!isContractPostingMovementKind(r.behaviourKind)).map(r => r.code)]))');
  });
 });
