@@ -40959,6 +40959,19 @@
     "approverGroupFallback": "the posting approver group"
   },
   "probationLetters": {
+    "builder": {
+      "inventoryTitle": "மாற்றுச் சரிபார்ப்பு · பதிப்பு {version}",
+      "inventoryHelp": "சேமித்த மதிப்புகளும் கையொப்ப மூலங்களும் பாதுகாக்கப்படும். இணைக்கப்படாத மதிப்புகளுக்கு நேரடிச் சரிபார்ப்பு தேவை. வெளியிட்ட கடிதங்களின் அமைப்பு மாறாது.",
+      "savedValue": "சேமித்த மதிப்பு",
+      "proposedValue": "பரிந்துரைத்த பணியாளர் மதிப்பு",
+      "reviewRequired": "சரிபார்ப்பு தேவை",
+      "migrationTitle": "தற்போதைய கையொப்பப் பொறுப்புகளைச் சரிபார்க்கவும்",
+      "migrationHelp": "சேமித்த ஒவ்வொரு பொறுப்புக்கும் On/Off Boarding விதி அல்லது குழுவைத் தேர்ந்தெடுக்கவும். முழுமையான மாற்றுப் பதிப்பு வெளியிடப்படும் வரை வெளியிட்ட கடிதங்கள் தற்போதைய அமைப்பைப் பயன்படுத்தும்.",
+      "currentSource": "தற்போதைய மூலம்",
+      "chooseSource": "On/Off Boarding மூலத்தைத் தேர்ந்தெடுக்கவும்",
+      "applyMapping": "சரிபார்த்த இணைப்பைப் பயன்படுத்தவும்",
+      "sample": "கற்பனை மாதிரி வழக்கு — முன்னோட்டத்திற்கு மட்டும்."
+    },
     "routing": {
       "title": "Signing and review routing",
       "help": "Who reviews, approves and signs this letter, and in what order. Steps with the same order number happen at the same time, and the letter moves on when all of them are done. Who each step resolves to comes from Assignment groups and Routing rules. A Review step can edit the letter until the first signature; after that the text is locked. Anyone can send the letter back with a comment: every signature is cleared and it returns to the step that owns the document (or the People Business Partner if none is ticked).",
