@@ -44198,5 +44198,36 @@
       "postedYear": "อัปโหลดเฉพาะปีก่อนการทบทวน AI-HR Rewards ครั้งแรกที่ส่งเข้าบัญชีเงินเดือนแล้ว"
     },
     "error": "ไม่สามารถดำเนินการตามคำขอได้ โปรดลองอีกครั้ง"
+  },
+  "taskDocuments": {
+    "heading": "เอกสารที่ต้องดำเนินการ",
+    "completed": "เอกสารที่เสร็จแล้ว",
+    "documentTasks": "งานเอกสาร",
+    "openDocument": "เปิดเอกสาร",
+    "viewDocument": "ดูเอกสาร",
+    "open": "เปิด",
+    "view": "ดู",
+    "notReleased": "ยังไม่ได้เผยแพร่เอกสารนี้",
+    "reviewRequired": "HR ต้องตรวจสอบเอกสารที่บันทึกไว้หลายฉบับสำหรับแม่แบบนี้",
+    "signCompletion": "เสร็จเมื่อคุณลงนามในเอกสาร",
+    "submitCompletion": "เสร็จเมื่อคุณส่งหรือลงนามในเอกสาร",
+    "sentCompletion": "เสร็จเมื่อ HR เผยแพร่เอกสาร",
+    "onboarding": "การเริ่มงาน",
+    "offboarding": "การพ้นสภาพ",
+    "notOpened": "ยังไม่เปิด",
+    "opened": "เปิดแล้ว",
+    "signed": "ลงนามแล้ว",
+    "acknowledged": "รับทราบแล้ว",
+    "awaitingHr": "รอลายเซ็น HR",
+    "submitted": "ส่งแล้ว",
+    "source": "จาก {name}",
+    "due": "ครบกำหนด {date}",
+    "done": "เสร็จแล้ว",
+    "inProgress": "กำลังดำเนินการ",
+    "todo": "ต้องทำ",
+    "pages": "หน้าเอกสาร",
+    "showing": "{from}–{to} จาก {total}",
+    "previous": "ก่อนหน้า",
+    "next": "ถัดไป"
   }
 }

@@ -1,21 +1,23 @@
 import { scopedSession } from '@/lib/scope';
 import { isModuleEnabledOrFalse } from '@/core/entitlements';
 import { myTaskSummary } from '@/core/approvals-inbox';
-import { onboardingTasks } from '@/packs/lifecycle/service';
+import { lifecycleTaskDocuments, onboardingTasks } from '@/packs/lifecycle/service';
 import {lifecycleModuleNavigation} from '../lifecycle/workflow-availability';
 import {lifecycleModuleInbox} from '../lifecycle/module-inbox';
 import { TasksView } from './tasks-view';
 // Recruitment slice 9 (D-034): My tasks lists the recruitment to-dos for the same company selection as the bell, whose
 // count is this page's sidebar badge (core/approvals-inbox.ts myTaskSummary, the summary form of listMyTasks).
-export default async function Page(){
+export default async function Page({searchParams}:{searchParams:Promise<Record<string,string|string[]|undefined>>}){
  const {s,scopeIds}=await scopedSession();
  const modules={attendance:isModuleEnabledOrFalse(s,'attendance'),claims:isModuleEnabledOrFalse(s,'claims'),performance:isModuleEnabledOrFalse(s,'performance'),rewards:isModuleEnabledOrFalse(s,'rewards'),recruitment:isModuleEnabledOrFalse(s,'recruitment'),
   // Probation (Lifecycle, possibly on for some companies only): its Approve steps and tasks are a shared task source.
   probation:isModuleEnabledOrFalse(s,'lifecycle')||!!s.entitlements?.scopedModules.lifecycle?.length};
- const [items,summary,navigation]=await Promise.all([
+ const query=await searchParams,documentPage=typeof query.documentsPage==='string'&&/^\d{1,5}$/.test(query.documentsPage)?Number(query.documentsPage):0;
+ const [items,summary,navigation,documents]=await Promise.all([
   isModuleEnabledOrFalse(s,'lifecycle')?onboardingTasks(s):Promise.resolve([]),
   myTaskSummary(s,scopeIds,modules),lifecycleModuleNavigation(s),
+  isModuleEnabledOrFalse(s,'lifecycle')?lifecycleTaskDocuments(s,{companyIds:scopeIds,offset:Math.min(documentPage,20000)*50}):Promise.resolve({items:[],total:0,offset:0,limit:50}),
  ]);
  const lifecycle=await lifecycleModuleInbox(s,navigation);
- return <TasksView items={items} existing={summary.items} existingTotal={summary.total} claimTotal={summary.claimTotal} lifecycleTasks={lifecycle.items} lifecycleTotal={lifecycle.count}/>;
+ return <TasksView documents={documents} items={items} existing={summary.items} existingTotal={summary.total} claimTotal={summary.claimTotal} lifecycleTasks={lifecycle.items} lifecycleTotal={lifecycle.count}/>;
 }

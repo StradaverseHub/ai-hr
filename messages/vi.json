@@ -44198,5 +44198,36 @@
       "postedYear": "Chỉ tải dữ liệu trước năm đánh giá AI-HR Rewards đầu tiên đã chuyển sang bảng lương."
     },
     "error": "Không thể hoàn tất yêu cầu. Vui lòng thử lại."
+  },
+  "taskDocuments": {
+    "heading": "Tài liệu cần hoàn tất",
+    "completed": "Tài liệu đã hoàn tất",
+    "documentTasks": "Công việc tài liệu",
+    "openDocument": "Mở tài liệu",
+    "viewDocument": "Xem tài liệu",
+    "open": "Mở",
+    "view": "Xem",
+    "notReleased": "Tài liệu này chưa được phát hành",
+    "reviewRequired": "HR cần xem xét nhiều tài liệu đã lưu cho mẫu này.",
+    "signCompletion": "Hoàn tất khi bạn ký tài liệu",
+    "submitCompletion": "Hoàn tất khi bạn gửi hoặc ký tài liệu",
+    "sentCompletion": "Hoàn tất khi HR phát hành tài liệu",
+    "onboarding": "Nhận việc",
+    "offboarding": "Nghỉ việc",
+    "notOpened": "Chưa mở",
+    "opened": "Đã mở",
+    "signed": "Đã ký",
+    "acknowledged": "Đã xác nhận",
+    "awaitingHr": "Đang chờ chữ ký HR",
+    "submitted": "Đã gửi",
+    "source": "Từ {name}",
+    "due": "Hạn {date}",
+    "done": "Đã xong",
+    "inProgress": "Đang thực hiện",
+    "todo": "Cần làm",
+    "pages": "Trang tài liệu",
+    "showing": "{from}–{to} trên {total}",
+    "previous": "Trước",
+    "next": "Tiếp"
   }
 }

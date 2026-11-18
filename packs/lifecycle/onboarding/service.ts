@@ -1076,6 +1076,8 @@ export type OnboardingTask = {
     tagged: boolean;
     team: boolean;
     taskId?: string;
+    documentTemplate?: string | null;
+    documentAction?: string;
     itemIds?: string[];
     stepId?: string;
     noteId?: string;
@@ -1116,7 +1118,7 @@ async function interpretOnboardingTasks(config: M.Config, actor: M.Actor, list: 
                     continue;
                 const locked = !!(t.opensOn && t.opensOn > today || t.gate && !r?.handedAt), lockReason = t.gate && !r?.handedAt ? 'After Day 1 handover' : t.opensOn && t.opensOn > today ? 'Opens ' + t.opensOn.split('-').reverse().join('/') : undefined;
                 if (t.assignee === actor.id)
-                    add({ kind: t.by === 'joiner' && t.gate ? 'acknowledgement' : 'checklist', title: t.name, taskId: t.id, due: t.dueOn, status: t.status, assigned: true, locked, lockReason });
+                    add({ kind: t.by === 'joiner' && t.gate ? 'acknowledgement' : 'checklist', title: t.name, taskId: t.id, documentTemplate:t.documentTemplate, documentAction:t.documentAction, due: t.dueOn, status: t.status, assigned: true, locked, lockReason });
                 if (t.by !== 'group' && !t.assignee && t.failure && actor.module)
                     add({ kind: 'owner', title: 'Link the Personnel account: ' + t.name, taskId: t.id, due: t.dueOn, team: true });
                 if (t.by === 'group' && !t.assignee && actor.module && (t.failure || t.dueOn <= M.dayDate(today, 8)))

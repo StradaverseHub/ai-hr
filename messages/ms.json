@@ -44198,5 +44198,36 @@
       "postedYear": "Muat naik hanya tahun sebelum semakan AI-HR Rewards pertama yang diposkan untuk syarikat."
     },
     "error": "Permintaan tidak dapat diselesaikan. Cuba lagi."
+  },
+  "taskDocuments": {
+    "heading": "Dokumen untuk dilengkapkan",
+    "completed": "Dokumen lengkap",
+    "documentTasks": "Tugasan dokumen",
+    "openDocument": "Buka dokumen",
+    "viewDocument": "Lihat dokumen",
+    "open": "Buka",
+    "view": "Lihat",
+    "notReleased": "Dokumen ini belum dikeluarkan",
+    "reviewRequired": "HR perlu menyemak beberapa dokumen tersimpan bagi templat ini.",
+    "signCompletion": "Selesai apabila anda menandatangani dokumen",
+    "submitCompletion": "Selesai apabila anda menghantar atau menandatangani dokumen",
+    "sentCompletion": "Selesai apabila HR mengeluarkan dokumen",
+    "onboarding": "Kemasukan",
+    "offboarding": "Keluar kerja",
+    "notOpened": "Belum dibuka",
+    "opened": "Dibuka",
+    "signed": "Ditandatangani",
+    "acknowledged": "Diakui",
+    "awaitingHr": "Menunggu tandatangan HR",
+    "submitted": "Dihantar",
+    "source": "Daripada {name}",
+    "due": "Tarikh akhir {date}",
+    "done": "Selesai",
+    "inProgress": "Sedang dijalankan",
+    "todo": "Untuk dibuat",
+    "pages": "Halaman dokumen",
+    "showing": "{from}–{to} daripada {total}",
+    "previous": "Sebelumnya",
+    "next": "Seterusnya"
   }
 }
