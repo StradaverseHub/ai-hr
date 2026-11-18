@@ -1,6 +1,7 @@
 /** Immutable historical worker sources against current web commands and the migrated schema.
  * This proves ordinary overlap while draining jobs. Release requires the matching worker package,
  * including the new admission and infrastructure-failure semantics. GHA disposable DB only. */
+import {withoutApprovedPhoneDependency} from './helpers/approved-phone-dependency';
 import {createHash} from 'node:crypto';
 import {execFileSync,spawnSync} from 'node:child_process';
 import {mkdtempSync,mkdirSync,readFileSync,rmSync,writeFileSync} from 'node:fs';
@@ -97,7 +98,7 @@ it.each([['legacy',WORKER_SOURCE],['staged',STAGING_BASELINE]] as const)(
  // still delegates to the same drizzle-kit engine; the archived worker is started directly below.
  // Normalize only this one EXACT reviewed comparison value; every other package key remains checked.
  const oldPackage=JSON.parse(execFileSync('git',['show',WORKER_SOURCE+':package.json'],{encoding:'utf8'}));
- const webPackage=JSON.parse(readFileSync('package.json','utf8'));
+ const webPackage=JSON.parse(withoutApprovedPhoneDependency('package.json',readFileSync('package.json','utf8'),archived(WORKER_SOURCE,'package.json').toString('utf8')));
  expect(oldPackage.scripts['db:migrate']).toBe(WORKER_MIGRATION_COMMAND);
  expect(webPackage.scripts['db:migrate']).toBe(WEB_MIGRATION_COMMAND);
  expect(oldPackage.scripts.build).toBe(WORKER_BUILD_COMMAND);
@@ -116,7 +117,7 @@ it.each([['legacy',WORKER_SOURCE],['staged',STAGING_BASELINE]] as const)(
  expect(postgresPatch,REVIEWED_POSTGRES_PATCH.path).toBe(REVIEWED_POSTGRES_PATCH.sha256);
  const patchEntry='  postgres@3.4.9:\n    hash: '+postgresPatch+'\n    path: '+REVIEWED_POSTGRES_PATCH.path+'\n';
  const patchedVersion='3.4.9(patch_hash='+postgresPatch+')';
- const currentLock=readFileSync('pnpm-lock.yaml','utf8');
+ const currentLock=withoutApprovedPhoneDependency('pnpm-lock.yaml',readFileSync('pnpm-lock.yaml','utf8'),securityLock);
  expect(currentLock.split(patchEntry),'one postgres patch entry').toHaveLength(2);
  expect(currentLock.split(patchedVersion),'five patched postgres references').toHaveLength(6);
  expect(currentLock.replace(patchEntry,'').split(patchedVersion).join('3.4.9'),'only the exact reviewed security dependency graph').toBe(securityLock);

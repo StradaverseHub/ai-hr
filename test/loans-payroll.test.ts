@@ -32,6 +32,7 @@
  * cannot move this file onto the component earnings path with nothing noticing. The tests that actually
  * prove the gate open and closed are typed-components-compat / fixed-transaction / overtime-provenance.
  */
+import {normalizeEmptyTaxOpeningProvenance} from './helpers/payroll-opening-provenance';
 import { and, eq, gt, isNull, lte, or } from 'drizzle-orm';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import * as schema from '../db/schema';
@@ -145,7 +146,7 @@ describe('ADR-0060 — loan ⊥ payroll', () => {
         compensationId: salaryOwners[0].id, effectiveFrom: '2026-01-01',
         basicSalary: '5000.00', payMode: 'monthly' });
       // Only independently validated per-employment identities differ; keep all other saved fields.
-      return {...statutory,salaryBasis:{...basis,compensationId:'validated-compensation-selection'},
+      return {...normalizeEmptyTaxOpeningProvenance(statutory,{year:2026,companyId:batch.companyId,employmentId:ps.employmentId}),salaryBasis:{...basis,compensationId:'validated-compensation-selection'},
         pcbMeta:{...meta,taxSelectionId:'validated-employment-selection'}};
     };
     expect(await verifiedStatutory(loanPs)).toEqual(await verifiedStatutory(noLoanPs));

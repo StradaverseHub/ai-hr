@@ -1,5 +1,6 @@
 /** Genuine signatures made by the pinned pre-alias application, followed by ordinary current migration.
  * No signed rows, receipts, function replacements or owner guards are manufactured by this fixture. */
+import {withoutApprovedPhoneDependency} from './helpers/approved-phone-dependency';
 import {execFile,execFileSync} from 'node:child_process';
 import {createHash,randomUUID} from 'node:crypto';
 import {copyFileSync,mkdtempSync,mkdirSync,lstatSync,readdirSync,readFileSync,realpathSync,rmSync,symlinkSync,writeFileSync} from 'node:fs';
@@ -92,7 +93,9 @@ it('preserves a genuinely signed old known label and old unresolved private labe
   expect(archivePaths(source).sort()).toEqual([...paths,'provenance.json'].sort());
   for(const [file,hash] of Object.entries(DEPENDENCIES)){
    expect(sha(readFileSync(join(source,file))),file+' historical source pin').toBe(hash);
-   expect(readFileSync(join(source,file)).equals(readFileSync(join(root,file))),file+' prepared dependency/toolchain equality').toBe(true);
+   const historical=readFileSync(join(source,file),'utf8'),prepared=readFileSync(join(root,file),'utf8');
+   expect(file==='tsconfig.json'?prepared:withoutApprovedPhoneDependency(file,prepared,historical),
+    file+' exact prepared dependency/toolchain transition').toBe(historical);
   }
   symlinkSync(realpathSync(join(root,'node_modules')),join(source,'node_modules'),'dir');
   // This source immediately predates native-field-parity (then5974, now6411). Its own journal
