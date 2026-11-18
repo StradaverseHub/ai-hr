@@ -659,7 +659,7 @@ it('guards version deletion using deduplicated current and historical instances'
   await v9SaveConfig(admin, config.revision, config);
   // Current and revision snapshots deduplicate to one use, and retained live history cannot be removed.
   await v9Command(admin, c.id, c.revision, { type: 'runWorkflows' });
-  await expect(owner.withTenant(admin,tx=>tx.execute(sql`update lc_v9_case set data=jsonb_set(data,'{documents}','[]'::jsonb) where id=${c.id}::uuid`))).rejects.toThrow('history');
+  await expect(owner.withTenant(admin,tx=>tx.execute(sql`update lc_v9_case set data=jsonb_set(data,'{documents}','[]'::jsonb) where id=${c.id}::uuid`))).rejects.toMatchObject({cause:expect.objectContaining({code:'P0001',message:'Released, prepared and signed completion history cannot be removed'})});
   const workspace = await v9Workspace(admin);
   expect(workspace.templateUsage?.find(row => row.templateId === template.id && row.version === 1)).toEqual({ templateId: template.id, version: 1, documents: 1 });
   const removeUsed = structuredClone(workspace.config!); removeUsed.templates.find(row => row.id === template.id)!.versions = [structuredClone(template.versions[1])];
