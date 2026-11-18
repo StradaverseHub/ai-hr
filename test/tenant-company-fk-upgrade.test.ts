@@ -51,6 +51,9 @@ const APPROVED_BOARD_TAIL:Entry[]=[
  {idx:10057,version:'7',when:1794998006657,tag:'6657_v9_document_routing_actions',breakpoints:true},
  {idx:10058,version:'7',when:1794998006658,tag:'6658_document_route_returned_content_custody',breakpoints:true},
  {idx:10059,version:'7',when:1794998006659,tag:'6659_v9_routed_document_source_events',breakpoints:true},
+ {idx:10070,version:'7',when:1794998006670,tag:'6670_offboarding_requisition',breakpoints:true},
+ {idx:10071,version:'7',when:1794998006671,tag:'6671_offboarding_requisition_exception',breakpoints:true},
+ {idx:10072,version:'7',when:1794998006672,tag:'6672_offboarding_requisition_list',breakpoints:true},
 ];
 
 it('stops on a cross-tenant row, then validates every company/tenant key without changing data or grants',async()=>{
@@ -922,6 +925,12 @@ it('stops on a cross-tenant row, then validates every company/tenant key without
    {fn:'app.v9_document_route_act(uuid,integer,text,jsonb)',app:true},
    {fn:'app.v9_document_route_edit(uuid,integer,text,jsonb,jsonb)',app:true},
    {fn:'app.v9_document_route_hr_complete(jsonb)',app:true},
+   //6670–6672: bounded RVK projections and guarded item exception; history hook is private.
+   {fn:'app.offboarding_items_resolved(jsonb)',app:true},
+   {fn:'app.offboarding_requisition_history()',app:false},
+   {fn:'app.offboarding_requisition(uuid)',app:true},
+   {fn:'app.offboarding_requisition_not_returned(uuid,integer,text,text)',app:true},
+   {fn:'app.offboarding_requisitions(uuid,text,integer,integer)',app:true},
    //6630/6631: employee-owned metadata/open commands;6640/6642: current manager and scoped recovery metadata.
    {fn:'app.lifecycle_task_document(jsonb,text)',app:true},
    {fn:'app.lifecycle_task_documents(uuid[],integer,integer,uuid)',app:true},
@@ -1931,11 +1940,12 @@ it('stops on a cross-tenant row, then validates every company/tenant key without
    await tx`drop table approved_rich_email_column_reference`;return expected.definition;
   });
   expect(await storage.client`select pg_get_constraintdef(oid) as definition from pg_constraint where conrelid='public.automation_email_template_version'::regclass and conname='automation_email_template_version_definition_check'`).toEqual([{definition:definitionCheck}]);
-  // All five source/immutability triggers are unconditional, enabled, row-level hooks with the reviewed timing/events.
+  // Source/immutability and canonical RVK completion hooks have exact reviewed timing/events.
   const templateTriggers=[
    {rel:'automation_email_asset',name:'automation_email_asset_integrity',kind:7,fn:'app.automation_email_asset_integrity()',enabled:'O',condition:null},
    {rel:'automation_email_template_version',name:'probation_email_definition_recheck',kind:5,fn:'app.probation_email_hold_recheck()',enabled:'O',condition:null},
    {rel:'lc_onboarding_private',name:'native_routed_document_source_guard',kind:23,fn:'app.v9_document_route_guard()',enabled:'O',condition:null},
+   {rel:'lc_v9_case',name:'offboarding_requisition_history',kind:19,fn:'app.offboarding_requisition_history()',enabled:'O',condition:null},
    {rel:'lc_v9_case',name:'v9_routed_document_source_guard',kind:23,fn:'app.v9_document_route_guard()',enabled:'O',condition:null},
    {rel:'probation_file',name:'probation_email_document_recheck',kind:5,fn:'app.probation_email_hold_recheck()',enabled:'O',condition:null},
   ];
