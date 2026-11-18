@@ -172,22 +172,3 @@ test('original AAD failure remains historical: its measurements fit the reviewed
  assert.equal(availableMemoryVerdict(actualAvailable),'within');
  // This model does not convert that original failed workflow into release evidence.
 });
-
-test('reviewed memory budget is bounded-profile only and defaults retain the original ceiling',()=>{
- assert.deepEqual(buildMemoryBudget(8192),{rssFailKiB:12.5*1024**2,minAvailableKiB:1.5*1024**2});
- assert.deepEqual(buildMemoryBudget(6144),{rssFailKiB:12*1024**2,minAvailableKiB:null});
- assert.throws(()=>buildMemoryBudget(12288));
- assert.equal(rssVerdict(12*1024**2+1,{fail:buildMemoryBudget(6144).rssFailKiB}),'fail');
-});
-test('sampled free-memory floor is inclusive and missing or invalid telemetry refuses',()=>{
- assert.equal(BUILD_MEM_AVAILABLE_MIN_KIB,1572864);
- assert.equal(availableMemoryVerdict(BUILD_MEM_AVAILABLE_MIN_KIB),'within');
- for(const value of [BUILD_MEM_AVAILABLE_MIN_KIB-1,0,-1,null,undefined,NaN,Infinity,1.5])assert.equal(availableMemoryVerdict(value),'fail');
-});
-test('original AAD failure remains historical: its measurements fit the reviewed model only',()=>{
- const actualRss=12713972,actualAvailable=1669464;
- assert.equal(rssVerdict(actualRss,{fail:BUILD_RSS_DEFAULT_FAIL_KIB}),'fail');
- assert.equal(rssVerdict(actualRss,{fail:BUILD_RSS_FAIL_KIB}),'warn');
- assert.equal(availableMemoryVerdict(actualAvailable),'within');
- // This model does not convert that original failed workflow into release evidence.
-});
