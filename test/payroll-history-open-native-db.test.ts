@@ -95,13 +95,30 @@ describe('detached history baseline and mutable native payroll owner',()=>{
    expect(await withTenant(as,tx=>tx.update(nativePayrollPayslipWrite).set({grossPay:'1.00'}).where(eq(nativePayrollPayslipWrite.id,original.id)).returning())).toEqual([]);
   }
  });
- it('never exposes unreleased copy rows through either view even with a forged stage GUC',async()=>{
-  const edit=await correction(),oldBudget=process.env.PAYROLL_HISTORY_CHUNK_BUDGET_MS;process.env.PAYROLL_HISTORY_CHUNK_BUDGET_MS='1';
+ it('publishes the exact staged native baseline through the real worker while forged stage IDs never expose its drafts',async()=>{
+  const [original]=await physical();const edit=await correction(),oldBudget=process.env.PAYROLL_HISTORY_CHUNK_BUDGET_MS;process.env.PAYROLL_HISTORY_CHUNK_BUDGET_MS='1';
   try{
    const job=await requestPayrollHistoryConfirm(ctx,{attemptId:edit.preview.attemptId,previewHash:edit.preview.plan.previewHash,confirmReplacement:true});if(!('jobId' in job))throw Error('Expected a staged native fixture');let stagedId:string|undefined;
    for(let n=0;n<50;n++){await runBulkJobTick(owner.client,{handlers:[payrollHistoryJobHandler]});const rows=await owner.client<{row_id:string}[]>`select row_id from app.payroll_history_staged_row where stage_id=${job.jobId}::uuid and relation='payslip' limit 1`;if(rows.length){stagedId=rows[0].row_id;break;}}
    expect(stagedId).toBeTruthy();
    await withTenant(ctx,async tx=>{await tx.execute(sql`select set_config('app.payroll_history_stage',${job.jobId},true)`);expect(await tx.select().from(nativePayrollPayslip).where(eq(nativePayrollPayslip.id,stagedId!))).toEqual([]);expect(await tx.select().from(nativePayrollPayslipWrite).where(eq(nativePayrollPayslipWrite.id,stagedId!))).toEqual([]);expect((await tx.execute<{ok:boolean}>(sql`select app.payroll_history_native_baseline(${stagedId}::uuid) ok`))[0].ok).toBe(false);});
+   const descriptor=edit.preview.plan.rows[0].detachedNativeBaseline!;expect(descriptor).toBeTruthy();
+   const [copy]=await owner.db.select().from(s.payrollBatch).where(eq(s.payrollBatch.id,descriptor.batchId));
+   expect(copy).toMatchObject({historyImportAttemptId:edit.preview.attemptId,status:'draft',companyId:b.companyId,payPeriod:period});
+   const [captured]=await owner.client<{attempt_id:string;source_batch_id:string;source_payslip_id:string;source_hash:string;baseline_batch_id:string;snapshot_id:string}[]>`select attempt_id,source_batch_id,source_payslip_id,source_hash,baseline_batch_id,snapshot_id from app.payroll_history_native_capture where snapshot_id=${descriptor.snapshotId}::uuid`;
+   expect(captured).toMatchObject({attempt_id:edit.preview.attemptId,source_batch_id:batchId,source_payslip_id:original.id,source_hash:descriptor.sourceHash,baseline_batch_id:descriptor.batchId,snapshot_id:descriptor.snapshotId});
+   for(let n=0;n<100;n++){
+    await runBulkJobTick(owner.client,{handlers:[payrollHistoryJobHandler]});
+    const [state]=await owner.client<{state:string;error:string|null}[]>`select state,error from public.bulk_job where id=${job.jobId}::uuid`;
+    if(state.state==='completed')break;if(state.state==='failed'||state.state==='discarding')throw Error(state.error??'Staged native capture refused');
+   }
+   const [finished]=await owner.client<{state:string}[]>`select state from public.bulk_job where id=${job.jobId}::uuid`;expect(finished.state).toBe('completed');
+   const [stage]=await owner.client<{state:string}[]>`select state from app.payroll_history_stage where stage_id=${job.jobId}::uuid`;expect(stage.state).toBe('released');
+   const [adopted]=await owner.db.select().from(s.payrollHistoryImportRevision).where(and(eq(s.payrollHistoryImportRevision.attemptId,edit.preview.attemptId),eq(s.payrollHistoryImportRevision.kind,'adopted')));
+   expect(adopted).toMatchObject({snapshotId:descriptor.snapshotId,nativeSource:{sourceBatchId:batchId,sourcePayslipId:original.id,sourceHash:descriptor.sourceHash,baselineBatchId:descriptor.batchId,baselineSnapshotId:descriptor.snapshotId}});
+   expect((await owner.db.select().from(s.payrollBatch).where(eq(s.payrollBatch.id,descriptor.batchId)))[0]).toMatchObject({historyImportAttemptId:edit.preview.attemptId,status:'closed'});
+   expect((await physical())[0]).toEqual(original);expect((await effective()).map(p=>p.grossPay)).toEqual(['6000.00']);
+
   }finally{if(oldBudget===undefined)delete process.env.PAYROLL_HISTORY_CHUNK_BUDGET_MS;else process.env.PAYROLL_HISTORY_CHUNK_BUDGET_MS=oldBudget;}
  });
  it('keeps same-tenant company scope on SELECT, DELETE, INSERT and UPDATE row moves',async()=>{

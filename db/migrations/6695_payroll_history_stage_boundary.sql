@@ -148,18 +148,38 @@ BEGIN
   group_:=proof->'plan'->'groups'->((proof->'payload'->>'group')::integer);
   ok:=(proof->>'kind'='batch' AND NEW.history_import_attempt_id::text=proof->>'attemptId'
    AND NEW.company_id::text=group_->>'companyId' AND NEW.pay_period=group_->>'period' AND NEW.payroll_cycle_id::text=group_->>'cycleId')
-   OR (proof->>'kind'='row' AND NEW.id::text=native_->>'batchId' AND NEW.history_import_attempt_id IS NULL
-    AND NEW.company_id::text=target_->>'companyId' AND NEW.pay_period=target_->>'period' AND NEW.payroll_cycle_id::text=target_->>'cycleId');
+   OR (proof->>'kind'='row' AND NEW.id::text=native_->>'batchId' AND NEW.history_import_attempt_id::text=proof->>'attemptId'
+    AND NEW.company_id::text=target_->>'companyId' AND NEW.pay_period=target_->>'period'
+    AND NEW.id=app.payroll_history_native_id((proof->>'attemptId')::uuid,(native_->>'sourceBatchId')::uuid,'batch')
+    AND EXISTS(SELECT 1 FROM public.payroll_batch original JOIN public.payslip source ON source.batch_id=original.id
+     JOIN public.pay_period period_owner ON period_owner.id=original.pay_period_id AND period_owner.tenant_id=original.tenant_id
+     WHERE original.id::text=native_->>'sourceBatchId' AND source.id::text=native_->>'sourcePayslipId'
+      AND original.tenant_id=NEW.tenant_id AND source.tenant_id=NEW.tenant_id AND original.history_import_attempt_id IS NULL
+      AND original.company_id=NEW.company_id AND original.pay_period=NEW.pay_period
+      AND original.payroll_cycle_id IS NOT DISTINCT FROM NEW.payroll_cycle_id
+      AND (NEW.payroll_cycle_id IS NULL OR NEW.payroll_cycle_id::text=target_->>'cycleId')
+      AND source.employment_id::text=target_->>'employmentId' AND source.version::text=native_->>'sourceVersion'
+      AND original.status IN ('draft','processing','processed')
+      AND app.payroll_history_native_source_hash(source,original,period_owner.status::text)=native_->>'sourceHash'
+      AND app.payroll_history_native_values(source)=native_->'values'));
  ELSIF TG_TABLE_NAME='payroll_history_import_record' THEN
   ok:=proof->>'kind'='row' AND target_->>'recordId' IS NULL AND NEW.company_id::text=target_->>'companyId'
    AND NEW.employment_id::text=target_->>'employmentId' AND NEW.period=target_->>'period' AND NEW.cycle_id::text=target_->>'cycleId';
  ELSIF TG_TABLE_NAME='payslip' THEN
   SELECT * INTO batch_ FROM public.payroll_batch WHERE id=NEW.batch_id;
   ok:=proof->>'kind'='row' AND NEW.employment_id::text=target_->>'employmentId'
-   AND batch_.company_id::text=target_->>'companyId' AND batch_.pay_period=target_->>'period' AND batch_.payroll_cycle_id::text=target_->>'cycleId'
-   AND ((batch_.history_import_attempt_id::text=proof->>'attemptId' AND EXISTS(SELECT 1 FROM public.bulk_job_step st
+   AND batch_.company_id::text=target_->>'companyId' AND batch_.pay_period=target_->>'period'
+   AND ((batch_.payroll_cycle_id::text=target_->>'cycleId' AND batch_.history_import_attempt_id::text=proof->>'attemptId' AND EXISTS(SELECT 1 FROM public.bulk_job_step st
      WHERE st.job_id=stage_ AND st.kind='batch' AND st.state='applied' AND st.payload->'group'=proof->'payload'->'group' AND st.result->>'batchId'=NEW.batch_id::text))
-    OR (NEW.id::text=native_->>'snapshotId' AND NEW.batch_id::text=native_->>'batchId' AND batch_.history_import_attempt_id IS NULL));
+    OR (NEW.id::text=native_->>'snapshotId' AND NEW.batch_id::text=native_->>'batchId'
+     AND batch_.history_import_attempt_id::text=proof->>'attemptId'
+     AND EXISTS(SELECT 1 FROM app.payroll_history_native_capture captured
+      WHERE captured.snapshot_id=NEW.id AND captured.baseline_batch_id=NEW.batch_id AND captured.tenant_id=NEW.tenant_id
+       AND captured.attempt_id::text=proof->>'attemptId' AND captured.source_batch_id::text=native_->>'sourceBatchId'
+       AND captured.source_payslip_id::text=native_->>'sourcePayslipId' AND captured.source_version::text=native_->>'sourceVersion'
+       AND captured.source_hash=native_->>'sourceHash'
+       AND NEW.id=app.payroll_history_native_id(captured.attempt_id,captured.source_payslip_id,'snapshot')
+       AND app.payroll_history_native_values(NEW)=native_->'values')));
  ELSE
   SELECT * INTO rec FROM public.payroll_history_import_record WHERE id=NEW.record_id;
   ok:=proof->>'kind' IN ('row','revert') AND rec.tenant_id=NEW.tenant_id
