@@ -1,6 +1,10 @@
 name: next-program-inventory
 run-name: Frozen 56a Next program inventory (no semantic check)
 on:
+  # One explicit owned-branch bootstrap: no default/shared branch movement is required for a new workflow.
+  push:
+    branches: ['codex/resignation-build-program-diagnosis-20261118']
+    paths: ['.github/workflows/next-program-inventory.yml', '.github/ci/diagnostics/next-program-inventory.mjs']
   workflow_dispatch:
     inputs:
       source_sha:
@@ -20,19 +24,19 @@ env:
   TZ: Asia/Kuala_Lumpur
   LANG: en_US.UTF-8
   AIHR_CI_CONTROL_HEAD: ${{ github.workflow_sha }}
-  AIHR_DIAG_SOURCE_SHA: ${{ inputs.source_sha }}
-  AIHR_DIAG_CONTROLLER_SHA: ${{ inputs.controller_sha }}
+  AIHR_DIAG_SOURCE_SHA: ${{ inputs.source_sha || '56a33b3eee49a28125eaaed9a7836a308873f417' }}
+  AIHR_DIAG_CONTROLLER_SHA: ${{ inputs.controller_sha || github.sha }}
 jobs:
   inventory:
-    if: ${{ github.repository == 'StradaverseHub/ai-hr' && github.event_name == 'workflow_dispatch' }}
+    if: ${{ github.repository == 'StradaverseHub/ai-hr' && (github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && github.ref == 'refs/heads/codex/resignation-build-program-diagnosis-20261118')) }}
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     steps:
       - name: Refuse unpinned diagnostic inputs
         shell: bash
         env:
-          SOURCE: ${{ inputs.source_sha }}
-          CONTROLLER: ${{ inputs.controller_sha }}
+          SOURCE: ${{ inputs.source_sha || '56a33b3eee49a28125eaaed9a7836a308873f417' }}
+          CONTROLLER: ${{ inputs.controller_sha || github.sha }}
           WORKFLOW_SHA: ${{ github.workflow_sha }}
         run: |
           [[ "$SOURCE" == 56a33b3eee49a28125eaaed9a7836a308873f417 ]]
@@ -41,10 +45,11 @@ jobs:
         with:
           ref: ${{ github.workflow_sha }}
           path: automation
+          fetch-depth: 16
           persist-credentials: false
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
         with:
-          ref: ${{ inputs.source_sha }}
+          ref: ${{ inputs.source_sha || '56a33b3eee49a28125eaaed9a7836a308873f417' }}
           path: source
           persist-credentials: false
       - uses: ./automation/.github/actions/setup-alpha
@@ -53,7 +58,7 @@ jobs:
           path: source
       - name: Inventory actual generated Next program and unadopted proposal
         working-directory: source
-        run: node ../automation/.github/ci/diagnostics/next-program-inventory.mjs "$RUNNER_TEMP/next-program-inventory-56a"
+        run: timeout --signal=TERM --kill-after=10s 900s node ../automation/.github/ci/diagnostics/next-program-inventory.mjs "$RUNNER_TEMP/next-program-inventory-56a"
       - name: Preserve original raw diagnostic evidence even on refusal
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02

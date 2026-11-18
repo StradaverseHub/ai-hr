@@ -17,15 +17,20 @@ const put=(path,value)=>writeFileSync(path,typeof value==='string'?value:JSON.st
 const source=realpathSync(process.cwd()),env=process.env;
 assert(process.platform==='linux'&&env.GITHUB_ACTIONS==='true'&&env.CI==='true'&&env.RUNNER_ENVIRONMENT==='github-hosted');
 assert(env.GITHUB_REPOSITORY==='StradaverseHub/ai-hr'&&env.GITHUB_REPOSITORY_ID==='1333414856');
-assert(env.GITHUB_EVENT_NAME==='workflow_dispatch'&&env.GITHUB_WORKFLOW_REF===WORKFLOW&&env.GITHUB_JOB==='inventory');
+assert(['workflow_dispatch','push'].includes(env.GITHUB_EVENT_NAME)&&env.GITHUB_WORKFLOW_REF===WORKFLOW&&env.GITHUB_JOB==='inventory');
 assert(env.GITHUB_WORKFLOW==='next-program-inventory'&&env.AIHR_DIAG_SOURCE_SHA===ORIGIN);
 assert(/^[a-f0-9]{40}$/.test(env.AIHR_DIAG_CONTROLLER_SHA??'')&&env.GITHUB_SHA===env.AIHR_DIAG_CONTROLLER_SHA&&env.AIHR_CI_CONTROL_HEAD===env.AIHR_DIAG_CONTROLLER_SHA);
 assert(git(source,'rev-parse','HEAD')===ORIGIN&&git(controller,'rev-parse','HEAD')===env.AIHR_DIAG_CONTROLLER_SHA);
+git(controller,'merge-base','--is-ancestor',ORIGIN,env.AIHR_DIAG_CONTROLLER_SHA);
+assert.deepStrictEqual(git(controller,'diff','--name-only',ORIGIN,env.AIHR_DIAG_CONTROLLER_SHA).split('\n'),[
+  '.github/ci/diagnostics/next-program-inventory.mjs','.github/workflows/next-program-inventory.yml',
+],'Diagnostic controller may differ from origin only in its two reviewed files');
 assert(git(source,'status','--porcelain','--untracked-files=all')===''&&git(controller,'status','--porcelain','--untracked-files=all')==='');
 assert(source===join(realpathSync(env.GITHUB_WORKSPACE),'source')&&controller===join(realpathSync(env.GITHUB_WORKSPACE),'automation'));
 const event=JSON.parse(readFileSync(env.GITHUB_EVENT_PATH,'utf8'));
 assert(!event.pull_request&&event.repository?.full_name===env.GITHUB_REPOSITORY&&event.repository?.id===1333414856);
-assert(event.inputs?.source_sha===ORIGIN&&event.inputs?.controller_sha===env.AIHR_DIAG_CONTROLLER_SHA);
+if(env.GITHUB_EVENT_NAME==='workflow_dispatch')assert(event.inputs?.source_sha===ORIGIN&&event.inputs?.controller_sha===env.AIHR_DIAG_CONTROLLER_SHA);
+else assert(event.ref==='refs/heads/codex/resignation-build-program-diagnosis-20261118'&&event.after===env.AIHR_DIAG_CONTROLLER_SHA&&event.deleted!==true);
 assert(!existsSync(join(source,'.next')),'Cold generated types/cache required');
 assert(!Object.keys(env).some(key=>(key.startsWith('AIHR_SYSTEM_TESTING_')||key.startsWith('AIHR_NEXT_BUILD_')||key==='AUTH_SESSION_KEY'||key==='MIGRATION_DATABASE_URL')&&env[key]));
 
@@ -46,7 +51,21 @@ const report={kind:'NEXT_PROGRAM_INVENTORY_ONLY_NO_SEMANTIC_CHECK',releaseEligib
   run:env.GITHUB_RUN_ID,attempt:env.GITHUB_RUN_ATTEMPT,runtime:{node:process.versions.node,next:nextPackage.version,typescript:tsPackage.version,platform:process.platform,arch:process.arch},
   admission,stages:[],generatedTypes:[],semanticChecksRun:0,proposalApplied:false,exitCode:1};
 const started=Date.now(),TOTAL_MS=900000,PHASE_MS=180000;
+let activeGroup=null,deadlineExpired=false,globalCleanup=Promise.resolve();
+function stopGroup(pid){
+  if(pid)try{process.kill(-pid,'SIGTERM');}catch{}
+  // Complete the owned-group hard kill before the independent outer 10s kill-after backstop.
+  return new Promise(done=>setTimeout(()=>{if(pid)try{process.kill(-pid,'SIGKILL');}catch{}done();},5000));
+}
+function deadline(){
+  if(deadlineExpired)return;deadlineExpired=true;report.exitCode=1;report.error='Diagnostic global deadline exceeded';
+  put(join(out,'deadline.json'),{source:ORIGIN,controller:report.controller,elapsedMs:Date.now()-started,activeGroup,releaseEligible:false});
+  globalCleanup=stopGroup(activeGroup);globalCleanup.then(()=>process.exit(124));
+}
+process.once('SIGTERM',deadline);
+const globalTimer=setTimeout(deadline,TOTAL_MS);
 function files(dir){return readdirSync(dir,{withFileTypes:true}).sort((a,b)=>a.name.localeCompare(b.name)).flatMap(entry=>{
+  assert(!deadlineExpired&&Date.now()-started<TOTAL_MS,'Diagnostic global deadline exhausted');
   const p=join(dir,entry.name);assert(!entry.isSymbolicLink(),'Generated symlinks refused');return entry.isDirectory()?files(p):[p];
 });}
 async function run(label,args){
@@ -55,14 +74,14 @@ async function run(label,args){
   const log=join(out,label+'.log'),fd=openSync(log,'wx',0o600),memory=join(out,label+'-memory');
   const argv=[join(controller,'.github/ci/build-heap.mjs'),'measure',memory,'--','/usr/bin/prlimit','--fsize=67108864','--',process.execPath,...args];
   const child=spawn(process.execPath,argv,{cwd:source,env:childEnv,stdio:['ignore',fd,fd],detached:true});
-  let timedOut=false,killTimer;
-  const timer=setTimeout(()=>{timedOut=true;try{process.kill(-child.pid,'SIGTERM');}catch{}killTimer=setTimeout(()=>{try{process.kill(-child.pid,'SIGKILL');}catch{}},10000);},PHASE_MS);
+  activeGroup=child.pid;let timedOut=false,killDone=Promise.resolve();
+  const timer=setTimeout(()=>{timedOut=true;killDone=stopGroup(child.pid);},PHASE_MS);
   let exit;
   try{exit=await new Promise((done,reject)=>{child.once('error',reject);child.once('exit',(code,signal)=>done({code,signal}));});}
-  finally{clearTimeout(timer);clearTimeout(killTimer);closeSync(fd);}
+  finally{clearTimeout(timer);await killDone;await globalCleanup;activeGroup=null;closeSync(fd);}
   const item={label,args,exit,timedOut,startedAt:new Date(phaseStarted).toISOString(),elapsedMs:Date.now()-phaseStarted,totalElapsedMs:Date.now()-started,log:relative(out,log),logSha256:sha(readFileSync(log))};report.stages.push(item);
   if(existsSync(join(memory,'build-memory.json')))item.memory=JSON.parse(readFileSync(join(memory,'build-memory.json'),'utf8'));
-  assert(!timedOut&&exit.code===0&&exit.signal===null,label+' failed; partial evidence retained, never PASS');
+  assert(!deadlineExpired&&!timedOut&&exit.code===0&&exit.signal===null,label+' failed; partial evidence retained, never PASS');
   assert(item.memory&&item.memory.verdict!=='fail'&&item.memory.verdict!==null,label+' memory evidence refused');
   return readFileSync(log,'utf8');
 }
@@ -92,16 +111,26 @@ try{
   const baseArgs=['--noEmit','--declarationMap','false','--emitDeclarationOnly','false','--tsBuildInfoFile',join(source,'.next/cache/.tsbuildinfo')];
   const inventoryArgs=['--listFilesOnly','--explainFiles','--pretty','false'];
   const proposed=join(out,'UNADOPTED-web-entry.tsconfig.json');
-  put(proposed,{extends:join(source,'tsconfig.build.json'),include:['next-env.d.ts','app/**/*.ts','app/**/*.tsx','components/**/*.ts','components/**/*.tsx','i18n/**/*.ts','packs/**/*.ts','localization/**/*.ts','types/**/*.d.ts','middleware.ts','instrumentation.ts','instrumentation-client.ts','next.config.ts','.next/types/**/*.ts'].map(p=>join(source,p))});
   const ts=require('typescript'),host={...ts.sys,onUnRecoverableConfigFileDiagnostic:()=>{throw Error('Configuration parsing refused');}};
   const options=project=>{
     const parsed=ts.getParsedCommandLineOfConfigFile(resolve(source,project),{},host);assert(parsed&&!parsed.errors.length);
     assert(parsed.options.strict===true&&parsed.options.noCheck!==true&&parsed.options.noEmit===true);
-    const {configFile,configFilePath,...semantic}=parsed.options;return semantic;
+    return parsed.options;
   };
-  const currentOptions=options('tsconfig.build.json'),proposedOptions=options(proposed);
-  assert.deepStrictEqual(proposedOptions,currentOptions,'The temporary proposal changed compiler semantics or path resolution');
-  put(join(out,'effective-compiler-options.json'),currentOptions);report.compilerOptionsSha256=sha(readFileSync(join(out,'effective-compiler-options.json')));
+  const currentOptions=options('tsconfig.build.json');
+  // A temporary config must not silently move implicit @types discovery to RUNNER_TEMP ancestors.
+  const currentTypeRoots=ts.getEffectiveTypeRoots(currentOptions,host)??[];
+  const currentAutomaticTypes=ts.getAutomaticTypeDirectiveNames(currentOptions,host).sort();
+  put(proposed,{extends:join(source,'tsconfig.build.json'),compilerOptions:{typeRoots:currentTypeRoots},include:['next-env.d.ts','app/**/*.ts','app/**/*.tsx','components/**/*.ts','components/**/*.tsx','i18n/**/*.ts','packs/**/*.ts','localization/**/*.ts','types/**/*.d.ts','middleware.ts','instrumentation.ts','instrumentation-client.ts','next.config.ts','.next/types/**/*.ts'].map(p=>join(source,p))});
+  const proposedOptions=options(proposed),proposedTypeRoots=ts.getEffectiveTypeRoots(proposedOptions,host)??[];
+  const proposedAutomaticTypes=ts.getAutomaticTypeDirectiveNames(proposedOptions,host).sort();
+  assert.deepStrictEqual(proposedTypeRoots,currentTypeRoots,'Temporary config changed effective ambient type roots');
+  assert.deepStrictEqual(proposedAutomaticTypes,currentAutomaticTypes,'Temporary config changed automatic ambient types');
+  const normalize=(value,typeRoots)=>{const {configFile,configFilePath,...semantic}=value;return {...semantic,typeRoots};};
+  const normalizedCurrent=normalize(currentOptions,currentTypeRoots),normalizedProposed=normalize(proposedOptions,proposedTypeRoots);
+  assert.deepStrictEqual(normalizedProposed,normalizedCurrent,'The temporary proposal changed compiler semantics or path resolution');
+  put(join(out,'effective-type-directives.json'),{currentTypeRoots,proposedTypeRoots,currentAutomaticTypes,proposedAutomaticTypes});
+  put(join(out,'effective-compiler-options.json'),normalizedCurrent);report.compilerOptionsSha256=sha(readFileSync(join(out,'effective-compiler-options.json')));
   const inventories={};
   for(const [name,project] of [['current','tsconfig.build.json'],['proposed',proposed]]){
     assert(!existsSync(join(source,'.next/cache/.tsbuildinfo')),'Inventory must not consume successful compiler state');
@@ -127,9 +156,10 @@ try{
   assert(git(source,'diff','--name-only')==='','Diagnostic changed tracked source');
   for(const [p,digest]of Object.entries(report.inputs))assert(sha(readFileSync(join(source,p)))===digest,'Input changed: '+p);
   for(const row of report.generatedTypes)assert(sha(readFileSync(join(generated,row.path)))===row.sha256,'Generated input changed between programs');
-  report.exitCode=0;
+  assert(!deadlineExpired&&Date.now()-started<TOTAL_MS,'Diagnostic global deadline exceeded');report.exitCode=0;
 }catch(error){report.error=error instanceof Error?error.message:String(error);}
 finally{
+  clearTimeout(globalTimer);process.removeListener('SIGTERM',deadline);await globalCleanup;
   report.elapsedMs=Date.now()-started;report.sourceAfter=git(source,'rev-parse','HEAD');report.sourceDiffAfter=git(source,'diff','--name-only');
   put(join(out,'report.json'),report);console.log(JSON.stringify({kind:report.kind,source:report.source,exitCode:report.exitCode,error:report.error,comparison:report.comparison}));
 }
