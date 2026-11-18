@@ -1,3 +1,5 @@
+import {probationEmailFileChoices} from '@/packs/automation/service';
+import {ProbationEmailCaseFiles} from '@/app/automation/templates/probation-email-case-files';
 import {notFound} from 'next/navigation';
 import {requireScopedLifecycleModule} from '@/lib/scoped-lifecycle-page';
 import {viewerIdentity} from '@/lib/viewer';
@@ -30,6 +32,7 @@ export async function ProbationCasePage({id,tab,partId}:{id:string;tab?:string;p
   selected==='history'?probationAutomationHistory(ctx,id).catch(()=>undefined):Promise.resolve(undefined),
   latestLetter?readProbationLetter(ctx,id,latestLetter.partId).catch(()=>null):Promise.resolve(null),
  ]);
+ const emailFiles=selected==='files'?await probationEmailFileChoices(ctx,id):[];
  const letterSignerCandidates=letter?.canPrepare?Array.from(await probationSignerCandidates(ctx,id)):undefined;
- return <ProbationCaseViewScreen view={view} today={todayInKualaLumpur()} tab={selected} part={part} actor={{id:ctx.userId??'',name:viewer?.name??''}} signerCandidates={signerCandidates} history={history} letter={letter} letterSignerCandidates={letterSignerCandidates}/>;
+ return <ProbationCaseViewScreen emailFiles={<ProbationEmailCaseFiles caseId={id} revision={view.record.revision} choices={emailFiles}/>} view={view} today={todayInKualaLumpur()} tab={selected} part={part} actor={{id:ctx.userId??'',name:viewer?.name??''}} signerCandidates={signerCandidates} history={history} letter={letter} letterSignerCandidates={letterSignerCandidates}/>;
 }

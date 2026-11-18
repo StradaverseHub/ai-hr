@@ -6,9 +6,11 @@ import { lifecycleV9DeliveryRequest, type LifecycleV9DeliveryRequest, type Lifec
  */
 export type AutomationDeliveryRequest = LifecycleV9DeliveryRequest;
 export type AutomationDeliveryResult = LifecycleV9DeliveryResult;
+export type AutomationEmailCaseFileRef={id:string;slotId:string;name:string;contentHash:string};
+export type AutomationEmailDocumentRef={id:string;templateId:string;name:string;contentHash:string;path:string;link:boolean;attach:boolean;outcome?:boolean;outcomeId?:string};
 export type AutomationMailTarget = {
   id: string; tenantId: string; module: 'probation'; subjectId: string;
-  payload: { version: 1; module: 'probation'; subjectId: string; linkPath: string; mail: { id: string; to: string[]; cc: string[]; subject: string; body: string; delivery: { version: 1; sender: string } } };
+  payload: { version: 1; module: 'probation'; subjectId: string; linkPath: string; mail: { id: string; to: string[]; cc: string[]; subject: string; body: string; delivery: { version: 1|2; sender: string;html?:string;documents?:AutomationEmailDocumentRef[];caseFiles?:AutomationEmailCaseFileRef[];assets?:{id:string;kind:'file'|'image';contentHash:string}[] } } };
   bindings: { userId: string; subject: string; issuer: string }[];
 };
 /** Compatibility adapters do not claim support for a private capability they cannot verify. */
