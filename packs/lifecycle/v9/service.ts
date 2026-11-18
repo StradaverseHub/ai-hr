@@ -1279,7 +1279,7 @@ export async function recoverManagerEmailHoldTx(tx: Tx, ctx: SessionContext, tar
   if(!dueOn)return{outcome:'unknownDate'};
   if(dueOn<env.today){run.lateEmail={stepId:step.id,dueOn,at:env.now};delete run.hold;run.reason=`This held email was due on ${dueOn}. HR must choose Send anyway or Skip this email.`;}
   else if(dueOn>env.today){delete run.hold;run.resumeOn=dueOn;run.reason=`Scheduled for ${dueOn}.`;}
-  else M.runWorkflow(c,config,workflow,env,'resume',{continueHeld:true});
+  else M.runWorkflow(c,config,workflow,env,'resume',{continueHeld:true,resumeRunId:run.id});
   M.appendLog(c,env,'workflow.managerRecovery',`${run.workflowId}: ${step.id} · due ${dueOn}`);
   await store(tx,ctx,row,c,'managerRecovery',config);
   return{outcome:dueOn<env.today?'late':dueOn>env.today?'scheduled':'resumed',revision:row.revision+1};

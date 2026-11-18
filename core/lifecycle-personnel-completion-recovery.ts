@@ -21,6 +21,8 @@ function human(ctx:SessionContext){if(!ctx.userId||ctx.agent)throw new Error('Si
 const valid=(r:PersonnelCompletionRecoveryReview)=>['eligible','future','late'].includes(r.outcome)&&!!r.reviewHash&&!!r.sourceFingerprint&&!!r.runs?.length;
 const candidates=z.array(personnelCompletionRecoveryCandidate).min(1).max(1000);
 const reviews=z.array(personnelCompletionRecoveryReview).min(1).max(1000);
+const application=z.object({previewJobId:z.uuid(),reviews}).strict();
+const applicationStep=z.object({previewJobId:z.uuid(),review:personnelCompletionRecoveryReview}).strict();
 function unique(targets:PersonnelCompletionRecoveryCandidate[]){return new Set(targets.map(t=>t.caseId+'\0'+t.documentId)).size===targets.length;}
 export async function personnelCompletionRecoveryPage(ctx:SessionContext,after:{caseId:string;documentId:string}|null=null,limit=50){
  human(ctx);const cursor=after?z.object({caseId:z.uuid(),documentId:z.string().max(200)}).strict().parse(after):null;
@@ -52,18 +54,21 @@ export async function requestPersonnelCompletionRecovery(ctx:SessionContext,inpu
   const hashes=sql`ARRAY[${sql.join(request.reviewHashes.map(h=>sql`${h}::text`),sql`, `)}]::text[]`;
   const rows=await tx.execute<{result:unknown}>(sql`select result from bulk_job_step where tenant_id=${ctx.tenantId}::uuid and job_id=${job.id}::uuid and state='applied' and result->>'reviewHash'=any(${hashes}) order by seq`);
   const selected=reviews.parse(rows.map(row=>row.result));if(selected.length!==request.reviewHashes.length||selected.some(r=>!valid(r)))throw new Error('Choose only eligible, unchanged preview results.');
-  const targets=selected.map(r=>r.candidate);if(new Set(targets.map(t=>t.caseId)).size!==targets.length)throw new Error('Choose one saved document per case in each recovery batch; preview the remaining documents again afterward.');if(!unique(targets)||targets.some(t=>t.tenantId!==ctx.tenantId))throw new Error('The reviewed recovery scope changed.');await admissionTx(tx,ctx,targets);return enqueueTx(tx,ctx,applyKind,targets,selected);
+  const targets=selected.map(r=>r.candidate);if(new Set(targets.map(t=>t.caseId)).size!==targets.length)throw new Error('Choose one saved document per case in each recovery batch; preview the remaining documents again afterward.');if(!unique(targets)||targets.some(t=>t.tenantId!==ctx.tenantId))throw new Error('The reviewed recovery scope changed.');await admissionTx(tx,ctx,targets);return enqueueTx(tx,ctx,applyKind,targets,{previewJobId:job.id,reviews:selected});
  });
 }
 function handler(preview:boolean):BulkJobHandler<unknown>{return{
  kind:preview?previewKind:applyKind,mode:'per-step',maxStepsPerChunk:1,chunkBudgetMs:100,phaseOf:()=>preview?'reviewing':'rechecking',
  async prepare(ctx,job){const bytes=Buffer.from(job.source_content??Buffer.alloc(0)),input=z.object({token:digest}).strict().parse(job.input);if(createHash('sha256').update(bytes).digest('hex')!==input.token)return{refused:'The recovery manifest identity changed.'};
-  const manifest=preview?candidates.parse(JSON.parse(bytes.toString('utf8'))):reviews.parse(JSON.parse(bytes.toString('utf8')));const targets=preview?manifest as PersonnelCompletionRecoveryCandidate[]:(manifest as PersonnelCompletionRecoveryReview[]).map(r=>r.candidate);if(!unique(targets)||targets.some(t=>t.tenantId!==ctx.tenantId))return{refused:'The recovery tenant or document scope changed.'};return{steps:manifest.map(target=>({kind:preview?'review':'adopt',payload:target})),counters:{total:targets.length}};
+  const parsed=JSON.parse(bytes.toString('utf8')),apply=preview?null:application.parse(parsed);const manifest=preview?candidates.parse(parsed):apply!.reviews;const targets=preview?manifest as PersonnelCompletionRecoveryCandidate[]:(manifest as PersonnelCompletionRecoveryReview[]).map(r=>r.candidate);if(!unique(targets)||targets.some(t=>t.tenantId!==ctx.tenantId)||!preview&&new Set(targets.map(t=>t.caseId)).size!==targets.length)return{refused:'The recovery tenant or document scope changed.'};return{steps:manifest.map(target=>({kind:preview?'review':'adopt',payload:preview?target:{previewJobId:apply!.previewJobId,review:target}})),counters:{total:targets.length}};
  },
  async beginChunkTx(tx,ctx){await lockAccessConfigurationReadTx(tx,ctx.tenantId);},
  async applyStepTx(tx,ctx,_job,step){
   if(preview){const target=personnelCompletionRecoveryCandidate.parse(step.payload);const [r]=await tx.execute<{result:unknown}>(sql`select app.personnel_completion_recovery_review(${JSON.stringify(target)}::jsonb) as result`);const result=personnelCompletionRecoveryReview.parse(r.result);return{result,counters:{[result.outcome]:1}};}
-  const reviewed=personnelCompletionRecoveryReview.parse(step.payload);if(!valid(reviewed))throw new Error('The selected preview is not eligible for recovery.');const [r]=await tx.execute<{revision:number}>(sql`select app.personnel_completion_recovery_adopt(${JSON.stringify(reviewed)}::jsonb) as revision`);if(!Number.isInteger(r.revision)||r.revision<1)throw new Error('The recovery target changed. Review a fresh preview.');
+  const selected=applicationStep.parse(step.payload),reviewed=selected.review;if(!valid(reviewed))throw new Error('The selected preview is not eligible for recovery.');
+  const previewJob=await bulkJobTx(tx,selected.previewJobId,{kind:previewKind});if(previewJob.state!=='completed'||previewJob.created_by!==ctx.userId)throw new Error('The completed preview is no longer available to its creator.');
+  const [proof]=await tx.execute<{ok:boolean}>(sql`select exists(select 1 from bulk_job_step where tenant_id=${ctx.tenantId}::uuid and job_id=${previewJob.id}::uuid and state='applied' and result=${JSON.stringify(reviewed)}::jsonb) as ok`);if(!proof.ok)throw new Error('The selected result no longer matches the completed preview.');
+  const [r]=await tx.execute<{revision:number}>(sql`select app.personnel_completion_recovery_adopt(${JSON.stringify(reviewed)}::jsonb) as revision`);if(!Number.isInteger(r.revision)||r.revision<1)throw new Error('The recovery target changed. Review a fresh preview.');
   const result=await recoverPersonnelCompletionRunsTx(tx,ctx,{caseId:reviewed.candidate.caseId,revision:r.revision,documentId:reviewed.candidate.documentId,runs:reviewed.runs!});return{result,counters:{adopted:1,[result.outcome]:1}};
  },
  async finalize(_ctx,job){return{result:{...job.counters,failed:job.errors.length}};},
