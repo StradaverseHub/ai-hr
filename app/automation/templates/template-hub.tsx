@@ -14,18 +14,19 @@ import {readV9Workspace} from '@/app/lifecycle/v9/read-workspace';
 import {V9Workspace} from '@/app/lifecycle/v9/workspace';
 import {ProbationTemplateSection,ProbationOnlyTemplateHub} from './probation-template-section';
 
-/** Each module loads through its own authority; Probation access never reads the V9 administrator payload. */
+/** Company letter configuration and tenant-wide email configuration keep their separate existing authorities. */
 export async function TemplateHub({module,company}:{module?:string;company?:string}){
  const ctx=await requireScopedLifecycleModule(),access=await automationPageAccess(ctx);
- if(!access.legacy&&!access.probation)notFound();
+ const letters=await readProbationLetterWorkspace(ctx,company).catch(error=>{if(error instanceof ProbationError&&error.code==='forbidden')return null;throw error;});
+ const hasProbation=access.probation||Boolean(letters);
+ if(!access.legacy&&!hasProbation)notFound();
  let probation:ReactNode;
- if(access.probation){
-  const[stored,routings,groups,sender]=await Promise.all([listAutomationEmailTemplates(ctx,{module:'probation'}),listAutomationRoutings(ctx),automationAssignmentGroups(ctx),lifecycleV9SenderName(ctx.tenantId)]);
-  const people=await automationPeopleNames(ctx,stored.flatMap(item=>item.template.cc.flatMap(recipient=>recipient.kind==='person'?[recipient.userId]:[])));
-  const letters=await readProbationLetterWorkspace(ctx,company).catch(error=>{if(error instanceof ProbationError&&error.code==='forbidden')return null;throw error;});
+ if(hasProbation){
+  const[stored,routings,groups,sender]=access.probation?await Promise.all([listAutomationEmailTemplates(ctx,{module:'probation'}),listAutomationRoutings(ctx),automationAssignmentGroups(ctx),lifecycleV9SenderName(ctx.tenantId)]):[[],[],[],undefined] as const;
+  const people=access.probation?await automationPeopleNames(ctx,stored.flatMap(item=>item.template.cc.flatMap(recipient=>recipient.kind==='person'?[recipient.userId]:[]))):[];
   const documents=letters?[...new Map(letters.definitions.filter(definition=>definition.state!=='retired').map(definition=>[definition.key,{id:definition.key,name:definition.data.name,type:'Letter' as const}])).values()]:[];
-  probation=<ProbationTemplateSection sender={sender} documents={documents} letters={letters?<TemplateWorkspace {...letters} embedded/>:undefined} emails={stored.map(item=>({template:item.template,revision:item.revision,retired:item.retired}))} refs={{routings:routings.map(row=>({id:row.routing.id,name:row.routing.name,retired:row.retired})),groups,people}}/>;
+  probation=<ProbationTemplateSection canEditEmails={access.probation} sender={sender} documents={documents} letters={letters?<TemplateWorkspace {...letters} embedded/>:undefined} emails={stored.map(item=>({template:item.template,revision:item.revision,retired:item.retired}))} refs={{routings:routings.map(row=>({id:row.routing.id,name:row.routing.name,retired:row.retired})),groups:[...groups],people}}/>;
  }
- if(access.legacy){const workspace=await readV9Workspace(ctx);return <V9Workspace {...workspace} navigation="global" initialView="templates" probationTemplates={probation} initialTemplateModule={module==='probation'&&access.probation?'probation':module==='onb'||module==='off'?module:'all'}/>;}
+ if(access.legacy){const workspace=await readV9Workspace(ctx);return <V9Workspace {...workspace} navigation="global" initialView="templates" probationTemplates={probation} initialTemplateModule={module==='probation'&&hasProbation?'probation':module==='onb'||module==='off'?module:'all'}/>;}
  return <ProbationOnlyTemplateHub>{probation}</ProbationOnlyTemplateHub>;
 }

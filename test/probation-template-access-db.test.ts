@@ -49,3 +49,12 @@ it('keeps ordered canonical list/count parity at 71 companies and 1000 employmen
   expect(observed.statements.filter(statement=>statement.sql.includes('from automation_email_template_version'))).toHaveLength(1);
  }
 },120000);
+
+it('preserves company-scoped letter configuration without granting tenant-wide email or V9 configuration',async()=>{
+ const ctx=await member(false,false),role=randomUUID();
+ await owner.db.execute(sql`insert into probation_access_role(id,tenant_id,name,permissions,created_by,updated_by) values(${role}::uuid,${b.tenantId}::uuid,'Fictional company letter preparer',array['settings.configure'],${admin.userId}::uuid,${admin.userId}::uuid)`);
+ await owner.db.execute(sql`insert into probation_access_member(tenant_id,role_id,user_id,company_id,valid_from,created_by) values(${b.tenantId}::uuid,${role}::uuid,${ctx.userId}::uuid,${b.companyId}::uuid,'2026-01-01',${admin.userId}::uuid)`);
+ const{readProbationLetterWorkspace}=await import('../app/lifecycle/probation/templates/read-workspace');const workspace=await readProbationLetterWorkspace(ctx,b.companyId);expect(workspace?.company.id).toBe(b.companyId);
+ expect((await automationBuilderAccess(ctx)).probation).toBe(false);expect(await v9WorkflowNavigationAllowed(ctx)).toBe(false);expect(await listAutomationEmailTemplates(ctx,{module:'probation'})).toEqual([]);
+ await expect(saveAutomationEmailTemplate(ctx,{template:{id:randomUUID(),module:'probation',name:'Forbidden tenant email',active:false,subject:'Subject',body:'Body',cc:[]},expectedRevision:0,retired:false,reason:'Refused global edit'})).rejects.toMatchObject({code:'forbidden'});
+});

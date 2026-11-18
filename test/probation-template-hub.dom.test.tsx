@@ -32,3 +32,8 @@ it('edits native Sign and Acknowledge block links without the duplicate legacy H
  await waitFor(()=>expect(screen.getByRole('heading',{name:'Signing and review routing'})).toBeInTheDocument());
  expect(screen.queryByRole('combobox',{name:'HR signature'})).toBeNull();expect(screen.getByRole('combobox',{name:'Signer 1'})).toHaveValue('step:hr');expect(screen.getByRole('combobox',{name:'Signer 2'})).toHaveValue('step:employee');
 });
+
+it('shows company letter configuration without global email authoring controls',()=>{
+ render(<NextIntlClientProvider locale="en" messages={messages}><ProbationTemplateSection canEditEmails={false} emails={[]} refs={{routings:[],groups:[],people:[]}} letters={<h2>Fictional company letter configuration</h2>}/></NextIntlClientProvider>);
+ expect(screen.getByRole('heading',{name:'Fictional company letter configuration'})).toBeInTheDocument();expect(screen.queryByRole('button',{name:'New email'})).toBeNull();expect(screen.queryByRole('region',{name:'Email templates · Probation'})).toBeNull();
+});
