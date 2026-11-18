@@ -52,7 +52,7 @@ BEGIN
  IF value='' THEN RETURN;END IF;
  IF field->>'type'='phone' AND app.personnel_completion_phone_valid(value) IS NOT TRUE THEN RAISE EXCEPTION 'Enter a valid international phone number';END IF;
  IF field->>'type'='email' AND value!~'^[^[:space:]@]+@[^[:space:]@]+[.][^[:space:]@]+$' THEN RAISE EXCEPTION 'Enter a valid email address';END IF;
- IF field->>'type'='number' THEN IF value!~'^-?(\d+([.]\d+)?|[.]\d+)$' THEN RAISE EXCEPTION 'Enter a valid number';END IF;PERFORM value::numeric;END IF;
+ IF field->>'type'='number' THEN IF value!~'^-?(\d+([.]\d+)?|[.]\d+)$' THEN RAISE EXCEPTION 'Enter a valid number';END IF;PERFORM value::numeric;IF abs(value::numeric)>=4.9406564584124654e-324 THEN PERFORM value::double precision;END IF;END IF;
  IF field->>'type'='date' THEN IF value!~'^\d{4}-\d{2}-\d{2}$' THEN RAISE EXCEPTION 'Enter a valid calendar date';END IF;PERFORM value::date;END IF;
  IF field->>'type'='checkbox' AND value NOT IN('true','false') OR field->>'type'='select' AND NOT coalesce(field->'options','[]'::jsonb)?value THEN RAISE EXCEPTION 'Use a declared field value';END IF;
 END $$;

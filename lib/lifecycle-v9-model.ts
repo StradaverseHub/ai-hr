@@ -444,10 +444,11 @@ export function regenerate(c: Case, config: Config, id: string, env: Environment
   if (!template || !currentVersion(template)) throw new V9Error('Publish the document template before regenerating.');
   // A failed/cancelled/test delivery still owns its frozen document identity.
   const referenced = c.mails.some(mail => mail.documentIds.includes(id));
-  if (previous.status === 'draft' && !referenced) c.documents = c.documents.filter(document => document.id !== id);
+  if (previous.status === 'draft' && !referenced && !previous.personnelCompletion?.preparation) c.documents = c.documents.filter(document => document.id !== id);
   else previous.status = 'superseded';
   const replacement = generate(c, config, previous.templateId, env);
   if (previous.status === 'superseded') previous.supersededBy = replacement.id;
+  reconcileDocumentCompletionProposals(c,previous,env);
   appendLog(c, env, 'document.regenerated', `${previous.name} (${previous.id}, v${previous.version}) replaced by ${replacement.id}, v${replacement.version}`);
   return replacement;
 }
@@ -486,7 +487,7 @@ export function overrideDocumentPersonnelCompletion(c:Case,id:string,input:{fiel
 /** An earlier submitted answer is audit history, not permission to push an abandoned draft. */
 export function currentDocumentCompletionProposal(doc:Document,change:PMChange):boolean{
   if(!doc.personnelCompletion||!doc.fields.some(field=>field.owner==='pmLocked'&&field.pmKey===change.field))return true;
-  if(change.provenance?.kind!=='missing-personnel')return false;
+  if(change.provenance?.kind!=='missing-personnel'||['withdrawn','superseded'].includes(doc.status))return false;
   return doc.fields.some(field=>{const entry=doc.personnelCompletion!.fields[field.id],answer=entry?.answer;return field.pmKey===change.field&&effectivePersonnelCompletion(doc,field)==='employee'&&answer?.owner==='employee'&&answer.value===change.after&&doc.values[field.id]===change.after&&answer.by.id===change.provenance!.by.id;});
 }
 function reconcileDocumentCompletionProposals(c:Case,doc:Document,env:Environment){

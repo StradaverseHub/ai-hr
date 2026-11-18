@@ -75,3 +75,10 @@ it('uses the same protected completion command and content hash through an expli
  const c=await current(id);expect(c.documents[0].status).toBe('signed');expect(c.documents[0].values.F0).toBe('Routed employee answer');expect(c.pmChanges.filter(change=>change.status==='proposed')).toMatchObject([{field:'address',after:'Routed employee answer',provenance:{by:{id:employee.userId}}}]);
  await expect(v9DocumentRouteEdit(employee,{caseId:id,caseRevision:c.revision,documentId:document.id,values:{F0:'Changed after signing'}})).rejects.toThrow();
 });
+
+it('serializes employee save against the first HR signature with one winning case revision and no signed-content overwrite',async()=>{
+ const {id,document}=await prepared();await v9SubmitOwnDocumentCompletion(employee,{caseId:id,revision:(await current(id)).revision,documentId:document.id,values:{F0:'Submitted answer'}});const revision=(await current(id)).revision;
+ const results=await Promise.allSettled([v9OwnDocument(employee,{caseId:id,revision,documentId:document.id,values:{F0:'Concurrent employee answer'}}),v9Command(hr,id,revision,{type:'documentSign',id:document.id,signature:{method:'typed',value:'Synthetic completion HR',consent:true}})]);
+ expect(results.filter(result=>result.status==='fulfilled')).toHaveLength(1);expect(results.filter(result=>result.status==='rejected')).toHaveLength(1);const c=await current(id),d=c.documents[0];
+ if(d.hrSignature){expect(d.values.F0).toBe('Submitted answer');await expect(v9OwnDocument(employee,{caseId:id,revision:c.revision,documentId:document.id,values:{F0:'After signature'}})).rejects.toThrow();}else expect(d.values.F0).toBe('Concurrent employee answer');
+});
