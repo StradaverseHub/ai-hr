@@ -32,6 +32,10 @@ BEGIN
   IF coalesce(p_data->>'routingRegistry','shared') NOT IN('shared','on-off-boarding') THEN RAISE EXCEPTION 'Choose a registered document routing source';END IF;
   -- Publish itself is the affirmative review. Content/schema/signature checks in the canonical writer remain.
   p_data:=p_data||jsonb_build_object('unfinished',false);
+  IF EXISTS(SELECT 1 FROM jsonb_array_elements(coalesce(p_data->'fields','[]'::jsonb)) field WHERE field->>'owner'='employee') AND p_data->>'routingRegistry' IS DISTINCT FROM 'on-off-boarding' THEN RAISE EXCEPTION 'Employee fields require the native reviewed document route';END IF;
+  IF p_publish AND EXISTS(SELECT 1 FROM jsonb_array_elements(coalesce(p_data->'fields','[]'::jsonb)) field WHERE field->>'owner'='employee' AND field->'required'='true'::jsonb)
+   AND NOT EXISTS(SELECT 1 FROM jsonb_array_elements(coalesce(p_data->'routing','[]'::jsonb)) review WHERE review->'who'->>'kind'='employee' AND review->>'action'='review' AND coalesce(review->'required','true'::jsonb)='true'::jsonb
+    AND (review->>'order')::integer<(SELECT min((signer->>'order')::integer) FROM jsonb_array_elements(coalesce(p_data->'routing','[]'::jsonb)) signer WHERE signer->>'action' IN('sign','acknowledge'))) THEN RAISE EXCEPTION 'Required Employee Review must precede signing so employee fields are completed before content locks';END IF;
   IF p_data->>'routingRegistry'='on-off-boarding' THEN
    SELECT * INTO prior FROM probation_builder_definition WHERE tenant_id=app.current_tenant_id() AND company_id=p_company AND definition_key=p_key AND kind='template' ORDER BY version DESC LIMIT 1;
    IF prior.id IS NOT NULL AND coalesce(prior.data->>'routingRegistry','shared')<>'on-off-boarding' THEN

@@ -36639,6 +36639,9 @@
       "legacyMapping": "此已保存版本保留原范围：业务集团指母公司，业务单位指人事管理中的业务单位。已保存的标识保持不变。"
     },
     "letters": {
+      "editContent": "编辑措辞和字段",
+      "wordingBlock": "措辞块 {id}",
+      "saveContent": "保存文档更改",
       "prepareHelp": "预览当前获授权的人事资料和已审核模板。准备操作会为指定签署人冻结一个新的函件版本。",
       "noTemplate": "此结果尚无已发布函件。请指定的试用期准备人完善并发布已审核模板。",
       "template": "已发布函件模板",
@@ -40973,6 +40976,14 @@
       "sample": "虚构示例个案，仅用于预览。"
     },
     "routing": {
+      "documentHelp": "选择审核、批准、签署或确认文档的人员。相同顺序号并行执行；必需步骤决定进度。首次签名前审核人可编辑。退回将清除当前签名并将文档交还所有者。",
+        "documentEmpty": "未设置路由。使用现有的人事和员工签署设置。",
+        "documentHint": {
+          "review": "可在首次签名前编辑文档。",
+          "approve": "记录批准，无需签名。",
+          "sign": "签署文档；无法编辑已签署的文本。",
+          "acknowledge": "签名确认文档。"
+        },
       "title": "Signing and review routing",
       "help": "Who reviews, approves and signs this letter, and in what order. Steps with the same order number happen at the same time, and the letter moves on when all of them are done. Who each step resolves to comes from Assignment groups and Routing rules. A Review step can edit the letter until the first signature; after that the text is locked. Anyone can send the letter back with a comment: every signature is cleared and it returns to the step that owns the document (or the People Business Partner if none is ticked).",
       "empty": "No signing routing set. This letter uses the signing route below, as today.",

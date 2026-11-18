@@ -29,7 +29,7 @@ export function newRoutingStep(routing:DocumentRouting,id:string,who:DocumentRou
  * (Review · Approve · Sign), Who, Owns the document; Add / Remove step; signature blocks linked to Sign steps. Problems
  * are the same pure checks the server applies. `editable` is false while the version is read-only.
  */
-export function TemplateRoutingEditor({value,blocks,choices,editable,onChange,onBlocksChange,newId}:{
+export function TemplateRoutingEditor({value,blocks,choices,editable,onChange,onBlocksChange,newId,subject='letter'}:{subject?:'letter'|'document';
  value:DocumentRouting;blocks:readonly Block[];choices:RoutingChoices;editable:boolean;
  onChange:(routing:DocumentRouting)=>void;onBlocksChange:(blocks:Block[])=>void;newId:()=>string;
 }){
@@ -43,8 +43,8 @@ export function TemplateRoutingEditor({value,blocks,choices,editable,onChange,on
  const disabled=!editable;
  return <section className="v9-stack probation-routing" aria-labelledby="probation-routing-title">
   <h3 id="probation-routing-title">{t('routing.title')}</h3>
-  <p className="v9-muted">{t('routing.help')}</p>
-  {!value.length&&<p className="v9-muted">{t('routing.empty')}</p>}
+  <p className="v9-muted">{t(subject==='document'?'routing.documentHelp':'routing.help')}</p>
+  {!value.length&&<p className="v9-muted">{t(subject==='document'?'routing.documentEmpty':'routing.empty')}</p>}
   {sorted.map((step,i)=>{const n=i+1,whoOptions=[
    {key:'employee',label:t('routing.whoEmployee')},{key:'directSuperior',label:t('routing.whoDirectSuperior')},
    ...choices.routings.map(r=>({key:'routing:'+r.id,label:t('routing.whoRouting',{name:r.name})})),
@@ -68,7 +68,7 @@ export function TemplateRoutingEditor({value,blocks,choices,editable,onChange,on
      <ul className="v9-list">{step.who.userIds.map(id=><li key={id}>{name(choices.people,id)} <button type="button" className="v9-button" onClick={()=>step.who.kind==='people'&&update(step.id,{who:{kind:'people',userIds:step.who.userIds.filter(other=>other!==id)}})}>{t('routing.removePerson',{name:name(choices.people,id)})}</button></li>)}</ul>
      <PeopleSearch disabled={disabled} known={step.who.userIds.map(id=>({id,name:name(choices.people,id)}))} onAdd={person=>{if(step.who.kind==='people'&&!step.who.userIds.includes(person.id))update(step.id,{who:{kind:'people',userIds:[...step.who.userIds,person.id]}});}}/>
     </div>}
-    <div className="probation-actions"><span className="v9-muted">{t('routing.hint.'+step.action)}{step.owner?' '+t('routing.hint.owner'):''}</span><button type="button" className="v9-button" onClick={()=>{onChange(value.filter(other=>other.id!==step.id));}}>{t('routing.remove',{n})}</button></div>
+    <div className="probation-actions"><span className="v9-muted">{t((subject==='document'?'routing.documentHint.':'routing.hint.')+step.action)}{step.owner?' '+t('routing.hint.owner'):''}</span><button type="button" className="v9-button" onClick={()=>{onChange(value.filter(other=>other.id!==step.id));}}>{t('routing.remove',{n})}</button></div>
    </fieldset>;})}
   <div><button type="button" className="v9-button" disabled={disabled} onClick={()=>onChange([...value,newRoutingStep(value,newId(),{kind:'employee'})])}>{t('routing.add')}</button></div>
   {value.length>0&&<div className="v9-stack"><h4>{t('routing.blocks')}</h4><p className="v9-muted">{t('routing.blocksHelp')}</p>
