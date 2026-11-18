@@ -1540,6 +1540,8 @@ it('saves image alt separately from immutable receipts and still names invalid f
   await expect(v9SaveConfig(admin, config.revision, blankAlt)).rejects.toThrow('alt text');
 });
 it('previews only the selected saved workflow step after current settings change, without queuing or generating anything',async()=>{
+ const reviewer=await hireEmployee(admin,{companyId:base.companyId,departmentId:base.deptA,employmentType:'full_time',hiredOn:'2026-01-01',person:{fullName:'Fictional preview reviewer',primaryEmail:'preview-reviewer@example.test'}});
+ await owner.db.execute(sql`update app_user set person_id=${reviewer.personId}::uuid where id=${admin.userId!}::uuid and tenant_id=${base.tenantId}::uuid`);admin={...admin,personId:reviewer.personId};
  let c=await prepared(),config=(await v9Workspace(admin)).config!;
  config.emails.push({id:'source-preview-email',name:'Fictional source preview',module:'off',active:true,sender:'noreply',subject:'For {owner.name}',body:'Saved preview copy',cc:[],links:[],attachments:[],slots:[]});
  const workflow:Workflow={id:'source-preview',name:'Frozen preview source',module:'off',status:'published',trigger:{event:'manual',days:0,workdays:false,repeat:false,skipIf:''},conditions:[],steps:[{id:'hold',type:'waitFile',slot:'source-preview-hold',label:'Preview evidence'},{id:'target-email',type:'email',template:'source-preview-email',to:[`person:${admin.userId!}`],cc:[]},{id:'tail-notify',type:'notify',subject:'Saved tail only',body:'Saved selected step',to:['employee'],cc:[]}],description:''};
