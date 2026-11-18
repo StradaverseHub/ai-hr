@@ -11,7 +11,7 @@ import {hash,assertNextAncestry,validateNextState} from './next-build-cache-poli
 import {NEXT_APPLICATION_STATE,NEXT_APPLICATION_MEMBERS,NEXT_APPLICATION_SEED,NEXT_APPLICATION_CODE,assertManagedNextInvocation,validateManagedNextOrigin,verifyNextPublisherTree,inspectNextStatePacket} from './next-application-cache-protocol.mjs';
 import {measuredCommand} from './diagnostics/compiler-incremental.mjs';
 import {cacheArtifactCandidates} from './cache-artifact-discovery.mjs';
-import {assertBuildHeapEnvironment,parseMaxRssKiB,parseMemAvailableKiB,rssVerdict,BUILD_RSS_WARN_KIB,BUILD_RSS_FAIL_KIB} from './build-heap.mjs';
+import {assertBuildHeapEnvironment,parseMaxRssKiB,parseMemAvailableKiB,buildMemoryBudget,buildMemoryVerdict,BUILD_RSS_WARN_KIB} from './build-heap.mjs';
 const ROOT=fileURLToPath(new URL('../../',import.meta.url));
 const REPO='StradaverseHub/ai-hr';
 const save=(path,value)=>writeFileSync(path,JSON.stringify(value,null,2)+'\n',{flag:'wx',mode:0o600});
@@ -81,6 +81,7 @@ export function restoreManagedNextState({source,out,e,context,report}){
 export async function managedApplicationBuild(){
  const e=process.env,event=e.GITHUB_EVENT_PATH?JSON.parse(readFileSync(e.GITHUB_EVENT_PATH,'utf8')):{};
  const admission=assertManagedNextInvocation(e,event),source=realpathSync(process.cwd());
+ const heapMb=assertBuildHeapEnvironment(e),memoryBudget=buildMemoryBudget(heapMb);
  assertNextBuildSource(source,e);
  const temp=realpathSync(e.RUNNER_TEMP),out=join(temp,'normal-next-application-cache'),output=join(temp,'production-build');
  mkdirSync(out,{mode:0o700});
@@ -90,7 +91,7 @@ export async function managedApplicationBuild(){
  const report={kind:'CANONICAL_CI_APPLICATION_COMPILER_STATE_NOT_RELEASE',releaseAuthorized:false,source:e.AIHR_CI_HEAD,controller:e.AIHR_CI_CONTROL_HEAD,
   runId:e.GITHUB_RUN_ID,attempt:'1',startedAt:new Date().toISOString(),cachePublishPermitted:admission.publish,lookup:[],phases:[],diskSamples:[],
   cacheHit:false,exitCode:1,capacityProfile:e.AIHR_CI_CAPACITY_PROFILE,buildOutputRetainedForOptionalCompilerCache:true,
-  memory:{nodeOptions:e.NODE_OPTIONS,heapMb:assertBuildHeapEnvironment(e),heapProfile:e.AIHR_CI_BUILD_HEAP_PROFILE??'default-6144',rssBudgetKiB:{warn:BUILD_RSS_WARN_KIB,fail:BUILD_RSS_FAIL_KIB},minMemAvailableKiB:null,peakRssKiB:null,verdict:null}};
+  memory:{nodeOptions:e.NODE_OPTIONS,heapMb,heapProfile:e.AIHR_CI_BUILD_HEAP_PROFILE??'default-6144',rssBudgetKiB:{warn:BUILD_RSS_WARN_KIB,fail:memoryBudget.rssFailKiB},minMemAvailableBudgetKiB:memoryBudget.minAvailableKiB,availableMemoryVerdict:null,minMemAvailableKiB:null,peakRssKiB:null,verdict:null}};
  let timer,recordIdentity,nextIdentity,stateBytes,envelope,logText,build,context;
  const sample=label=>{
   const volumes=[source,temp,homedir()].map(path=>{const s=statfsSync(path);return {path,availableBytes:s.bavail*s.bsize};});
@@ -106,13 +107,13 @@ export async function managedApplicationBuild(){
   const text=bounded(log).toString('utf8');
   // GNU time -v appends ru_maxrss: the largest single waited descendant, recorded even when the build fails.
   try{row.peakRssKiB=parseMaxRssKiB(text);}catch(error){row.peakRssError=String(error);}
-  if(name==='canonical-build'&&row.peakRssKiB){report.memory.peakRssKiB=row.peakRssKiB;report.memory.verdict=rssVerdict(row.peakRssKiB);}
+  if(name==='canonical-build'&&row.peakRssKiB){report.memory.peakRssKiB=row.peakRssKiB;Object.assign(report.memory,buildMemoryVerdict(heapMb,row.peakRssKiB,report.memory.minMemAvailableKiB));}
   assert(row.code===0&&row.signal===null&&!row.timedOut,'Actual '+name+' failed');
   return {row,text};
  };
  try{
   assert(sample('before')>=8*1024**3,'At least8GiB post-dependency build headroom');
-  timer=setInterval(()=>{try{sample('during');}catch(error){report.diskSamplingError=String(error);}},5000);
+  timer=setInterval(()=>{try{sample('during');}catch(error){report.diskSamplingError=String(error);}},2000);
   // Real generated types are part of applicability, not a substitute for compilation.
   await command('application-typegen','pnpm',['exec','next','typegen'],120000);
   nextIdentity=owned(join(source,'.next'));
@@ -128,13 +129,16 @@ export async function managedApplicationBuild(){
   assertNextBuildSource(source,e);
   const actual=await command('canonical-build','pnpm',['exec','tsx',join(ROOT,'.github/ci/build-production.mjs'),'--ci',output],720000);
   report.actualCanonicalBuild=actual.row;logText=actual.text;
+  sample('after-canonical-build');
+  Object.assign(report.memory,buildMemoryVerdict(heapMb,report.memory.peakRssKiB,report.memory.minMemAvailableKiB));
   assert(report.memory.verdict!==null,'Canonical build peak RSS telemetry required');
   // The release verifier accepts an exact artifact inventory, so canonical telemetry goes to the log, the step summary
   // and the optional compiler-graph producer report rather than a new artifact.
-  const memoryLine=`next build memory: heap=${e.NODE_OPTIONS} (${report.memory.heapProfile}); peak RSS=${report.memory.peakRssKiB} KiB; min MemAvailable=${report.memory.minMemAvailableKiB} KiB; budget warn>${BUILD_RSS_WARN_KIB} fail>${BUILD_RSS_FAIL_KIB} KiB; verdict=${report.memory.verdict}`;
+  const memoryLine=`next build memory: heap=${e.NODE_OPTIONS} (${report.memory.heapProfile}); peak RSS=${report.memory.peakRssKiB} KiB; min MemAvailable=${report.memory.minMemAvailableKiB} KiB; budget warn>${BUILD_RSS_WARN_KIB} fail>${memoryBudget.rssFailKiB} KiB; available floor=${memoryBudget.minAvailableKiB} KiB; available verdict=${report.memory.availableMemoryVerdict}; verdict=${report.memory.verdict}`;
   console.log(memoryLine);if(e.GITHUB_STEP_SUMMARY)try{appendFileSync(e.GITHUB_STEP_SUMMARY,memoryLine+'\n');}catch{}
   if(report.memory.verdict==='warn')console.log(`::warning::Canonical next build peak RSS ${report.memory.peakRssKiB} KiB exceeds the ${BUILD_RSS_WARN_KIB} KiB warning budget`);
-  assert(report.memory.verdict!=='fail','Canonical next build peak RSS exceeds the '+BUILD_RSS_FAIL_KIB+' KiB budget');
+  assert(report.memory.availableMemoryVerdict!=='fail','Canonical next build sampled available memory missing or below reviewed floor');
+  assert(report.memory.verdict!=='fail','Canonical next build peak RSS exceeds the '+memoryBudget.rssFailKiB+' KiB budget');
   assert(/\bCompiled successfully in /.test(logText)&&/Finished TypeScript in /.test(logText)
    &&!/Skipping validation of types|Finished TypeScript config validation|\berror TS\d+:/.test(logText),'Actual canonical application compiler must run');
   report.buildLogSha256=hash(Buffer.from(logText));recordIdentity=owned(recordDir);
@@ -155,7 +159,7 @@ export async function managedApplicationBuild(){
  }catch(error){report.error=String(error);console.error(error);throw error;}
  finally{
   clearInterval(timer);
-  try{sample('after');}catch(error){report.diskSamplingError=String(error);report.exitCode=1;}
+  try{sample('after');if(report.memory.peakRssKiB){Object.assign(report.memory,buildMemoryVerdict(heapMb,report.memory.peakRssKiB,report.memory.minMemAvailableKiB));if(report.memory.verdict==='fail')report.exitCode=1;}}catch(error){report.diskSamplingError=String(error);report.exitCode=1;}
   if(existsSync(recordDir)){if(recordIdentity)same(recordDir,recordIdentity);else owned(recordDir);rmSync(recordDir,{recursive:true});}
   report.ownedRecordsRemoved=!existsSync(recordDir);
   if(existsSync(graph)){const s=lstatSync(graph);assert(s.isFile()&&!s.isSymbolicLink()&&s.nlink===1,'Owned regular application graph cleanup');rmSync(graph);}
