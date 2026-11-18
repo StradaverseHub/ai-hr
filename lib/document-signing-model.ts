@@ -198,9 +198,9 @@ export function replacePendingSigner(document: SigningDocument, rules: SigningGu
  */
 export function signingDocumentOwner(document: SigningDocument): {stepId: string | null; userId: string | null} {
   const flagged=document.route.steps.find(step=>step.owner);
-  if(flagged)return{stepId:flagged.id,userId:flagged.holderId};
+  if(flagged)return{stepId:flagged.id,userId:flagged.holderId??document.routing?.caseOwnerId??null};
   const review=document.route.steps.map((step,index)=>({step,index})).filter(x=>x.step.kind==='review').sort((a,b)=>a.step.stage-b.step.stage||a.index-b.index)[0]?.step;
-  if(review)return{stepId:review.id,userId:review.holderId};
+  if(review)return{stepId:review.id,userId:review.holderId??document.routing?.caseOwnerId??null};
   return{stepId:null,userId:document.routing?.caseOwnerId??null};
 }
 /** True once a signature lands in the current round. Then the content is locked for everyone until a send-back. */

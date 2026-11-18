@@ -62,6 +62,8 @@ const APPROVED_BOARD_TAIL:Entry[]=[
  {idx:10083,version:'7',when:1794998006683,tag:'6683_personnel_completion_routing_bridge',breakpoints:true},
  {idx:10084,version:'7',when:1794998006684,tag:'6684_personnel_completion_projection',breakpoints:true},
  {idx:10085,version:'7',when:1794998006685,tag:'6685_personnel_completion_signature_projection',breakpoints:true},
+ {idx:10086,version:'7',when:1794998006686,tag:'6686_probation_personnel_completion',breakpoints:true},
+ {idx:10087,version:'7',when:1794998006687,tag:'6687_probation_personnel_completion_commands',breakpoints:true},
  {idx:10088,version:'7',when:1794998006688,tag:'6688_personnel_completion_recovery',breakpoints:true},
  {idx:10089,version:'7',when:1794998006689,tag:'6689_personnel_completion_recovery_jobs',breakpoints:true},
 ];
@@ -850,6 +852,35 @@ it('stops on a cross-tenant row, then validates every company/tenant key without
   addedFunctions.push('app.access_movement_delete_employment(uuid)','app.cost_allocations_after_hire_company_correction(uuid,uuid,text)','app.employment_payment_method_on(uuid,date)','app.preserve_movement_payroll(uuid)','app.preserve_payroll_metadata(uuid,boolean)','app.workforce_payroll_inputs_changed(uuid,date,date,text)','app.workforce_payroll_inputs_changed_windows(uuid,jsonb,text)');
   //6100–6102 and6600–6642: independently reviewed signatures and exact application EXECUTE decisions.
   const approvedFunctions:{fn:string;app:boolean}[]=[
+   //6686/87: native private source/custody; only scoped completion and explicit Personnel review are public.
+   {fn:'app.probation_letter_completion_actor()',app:false},
+   {fn:'app.probation_letter_completion_lock_person(uuid)',app:false},
+   {fn:'app.probation_letter_completion_source_unchecked(uuid,uuid,uuid,uuid)',app:false},
+   {fn:'app.probation_letter_completion_source(uuid)',app:false},
+   {fn:'app.probation_letter_completion_document(uuid)',app:false},
+   {fn:'app.probation_native_personnel_keys()',app:false},
+   {fn:'app.probation_letter_completion_requested(jsonb)',app:false},
+   {fn:'app.probation_letter_completion_identity(uuid)',app:false},
+   {fn:'app.probation_letter_completion_receipt(uuid,jsonb,jsonb,integer,text)',app:false},
+   {fn:'app.probation_letter_completion_guard()',app:false},
+   {fn:'app.probation_letter_completion_initialize(uuid)',app:false},
+   {fn:'app.probation_letter_completion_hr(uuid)',app:false},
+   {fn:'app.probation_letter_completion_own(uuid)',app:false},
+   {fn:'app.probation_letter_completion_reconcile(jsonb,jsonb,jsonb,text,boolean)',app:false},
+   {fn:'app.probation_letter_completion_sync(uuid,text)',app:false},
+   {fn:'app.probation_letter_completion_assert(uuid,boolean,boolean)',app:false},
+   {fn:'app.probation_letter_protected_keys_before_completion_6686()',app:false},
+   {fn:'app.probation_content_before_completion_6686(uuid)',app:false},
+   {fn:'app.probation_part_access_before_completion_6686(uuid,text)',app:false},
+   {fn:'app.probation_definition_save_before_completion_6686(uuid,text,text,jsonb,boolean,integer)',app:false},
+   {fn:'app.probation_letter_preview_before_completion_6686(uuid,uuid,jsonb,integer)',app:false},
+   {fn:'app.probation_signing_action_before_completion_6687(uuid,jsonb)',app:false},
+   {fn:'app.probation_release_signed_letter_before_completion_6687(uuid,uuid,integer,text)',app:false},
+   {fn:'app.probation_letter_tasks_before_completion_6687(uuid)',app:false},
+   {fn:'app.probation_letter_completion_read(uuid,uuid)',app:true},
+   {fn:'app.probation_letter_completion_update(uuid,uuid,integer,jsonb,text,text,jsonb,jsonb)',app:true},
+   {fn:'app.probation_letter_personnel_review_claim(uuid,uuid,integer,jsonb,text)',app:true},
+   {fn:'app.probation_letter_personnel_review_finish(uuid,uuid,integer,jsonb)',app:true},
    //6680–85/88–89: reviewed source design; private custody and bounded explicit HR recovery.
    {fn:'app.personnel_completion_phone_valid(text)',app:true},
    {fn:'app.personnel_completion_group(text)',app:true},
@@ -952,7 +983,7 @@ it('stops on a cross-tenant row, then validates every company/tenant key without
    {fn:'app.v9_document_route_signatures(jsonb)',app:true},
    {fn:'app.v9_document_route_participant(jsonb)',app:true},
    {fn:'app.v9_document_route_content_visible(jsonb)',app:true},
-   {fn:'app.v9_document_route_sources()',app:false},
+   {fn:'app.v9_document_route_sources(uuid)',app:false},
    //4c2900948: the canonical source is private; the scoped HR display wrapper checks the exact case authority.
    {fn:'app.v9_document_personnel_source_unchecked(uuid)',app:false},
    {fn:'app.v9_document_personnel_values(uuid)',app:true},
@@ -1947,6 +1978,8 @@ it('stops on a cross-tenant row, then validates every company/tenant key without
    'reward_plan_year':{rls:true,force:true,acl:'{OWNER=arwdDxt/OWNER,ai_hr_app=ar/OWNER}'},
    'reward_plan_year_company':{rls:true,force:true,acl:'{OWNER=arwdDxt/OWNER,ai_hr_app=arw/OWNER}'},
    'lifecycle_personnel_completion_custody':{rls:true,force:true,acl:'{OWNER=arwdDxt/OWNER}'},
+   'probation_letter_completion_custody':{rls:true,force:true,acl:'{OWNER=arwdDxt/OWNER}'},
+   'probation_letter_personnel_proposal':{rls:true,force:true,acl:'{OWNER=arwdDxt/OWNER}'},
    'automation_email_asset':{rls:true,force:true,acl:'{OWNER=arwdDxt/OWNER,ai_hr_app=ar/OWNER}'},
    'automation_email_case_file':{rls:true,force:true,acl:'{OWNER=arwdDxt/OWNER,ai_hr_app=r/OWNER}'},
    'automation_email_hold_context':{rls:true,force:true,acl:'{OWNER=arwdDxt/OWNER}'},
@@ -1987,6 +2020,12 @@ it('stops on a cross-tenant row, then validates every company/tenant key without
     ["after_hash","text",true,'',null],
     ["created_at","timestamp with time zone",true,'',"now()"],
    ],
+   probation_letter_completion_custody:[
+    ['id','uuid',true,'','gen_random_uuid()'],['tenant_id','uuid',true,'',null],['part_id','uuid',true,'',null],['actor_user_id','uuid',true,'',null],['transaction_id','xid8',true,'',null],['part_revision','integer',true,'',null],['before_hash','text',true,'',null],['after_hash','text',true,'',null],['operation','text',true,'',null],['created_at','timestamp with time zone',true,'','now()'],
+   ],
+   probation_letter_personnel_proposal:[
+    ['id','uuid',true,'','gen_random_uuid()'],['tenant_id','uuid',true,'',null],['part_id','uuid',true,'',null],['field_id','text',true,'',null],['field_key','text',true,'',null],['before_value','text',true,'',"''::text"],['after_value','text',true,'',null],['source_fingerprint','text',true,'',null],['status','text',true,'',"'proposed'::text"],['provenance','jsonb',true,'',null],['history','jsonb',true,'',"'[]'::jsonb"],['reviewed_by','uuid',false,'',null],['reviewed_at','timestamp with time zone',false,'',null],['created_at','timestamp with time zone',true,'','now()'],['updated_at','timestamp with time zone',true,'','now()'],
+   ],
   };
   const templateColumns=await storage.client`select c.relname::text as rel,a.attname::text as name,format_type(a.atttypid,a.atttypmod) as type,a.attnotnull as "notNull",a.attgenerated::text as generated,pg_get_expr(d.adbin,d.adrelid) as expression
    from pg_attribute a join pg_class c on c.oid=a.attrelid join pg_namespace n on n.oid=c.relnamespace left join pg_attrdef d on d.adrelid=a.attrelid and d.adnum=a.attnum
@@ -2010,6 +2049,7 @@ it('stops on a cross-tenant row, then validates every company/tenant key without
    {rel:'lc_v9_case',name:'v9_personnel_completion_guard',kind:23,fn:'app.v9_personnel_completion_guard()',enabled:'O',condition:null},
    {rel:'lc_v9_case',name:'v9_routed_document_source_guard',kind:23,fn:'app.v9_document_route_guard()',enabled:'O',condition:null},
    {rel:'probation_file',name:'probation_email_document_recheck',kind:5,fn:'app.probation_email_hold_recheck()',enabled:'O',condition:null},
+   {rel:'probation_part',name:'probation_letter_completion_guard',kind:23,fn:'app.probation_letter_completion_guard()',enabled:'O',condition:null},
   ];
   expect(await storage.client`select c.relname::text as rel,t.tgname::text as name,t.tgtype::integer as kind,t.tgfoid::regprocedure::text as fn,t.tgenabled::text as enabled,pg_get_expr(t.tgqual,t.tgrelid) as condition from pg_trigger t join pg_class c on c.oid=t.tgrelid join pg_namespace n on n.oid=c.relnamespace where n.nspname='public' and t.tgname=any(${templateTriggers.map(trigger=>trigger.name)}::text[]) order by c.relname,t.tgname`).toEqual(templateTriggers);
   type ApprovedPolicy={restrictive?:boolean;table:string;name:string;cmd:'ALL'|'SELECT'|'INSERT'|'UPDATE';role:'public'|'ai_hr_owner'|'ai_hr_app';using:string|null;check:string|null};
@@ -2017,6 +2057,8 @@ it('stops on a cross-tenant row, then validates every company/tenant key without
   const manage=(column:string)=>`tenant_id=app.current_tenant_id() AND app.reward_config_page_allowed(${column},'plans.manage','manage')`;
   const own='app.acting_as_owner()';
   const approvedPolicies:ApprovedPolicy[]=[
+   {table:'probation_letter_completion_custody',name:'probation_letter_completion_custody_tenant',cmd:'ALL',role:'public',using:'tenant_id=app.current_tenant_id()',check:'tenant_id=app.current_tenant_id()'},
+   {table:'probation_letter_personnel_proposal',name:'probation_letter_personnel_proposal_tenant',cmd:'ALL',role:'public',using:'tenant_id=app.current_tenant_id()',check:'tenant_id=app.current_tenant_id()'},
    {table:'lifecycle_personnel_completion_custody',name:'personnel_completion_custody_tenant',cmd:'ALL',role:'public',using:'tenant_id=app.current_tenant_id()',check:'tenant_id=app.current_tenant_id()'},
    {table:'payslip',name:'payroll_import_tax_basis_reader_guard',restrictive:true,cmd:'SELECT',role:'ai_hr_app',using:"app.payroll_import_tax_reader_compatible(employment_id,batch_id,statutory->'importedTaxBasis')",check:null},
    {table:'payslip',name:'payslip_original_employer_read',cmd:'SELECT',role:'ai_hr_app',using:'tenant_id=app.current_tenant_id() AND app.payroll_tax_basis_original_employer_read(batch_id)',check:null},

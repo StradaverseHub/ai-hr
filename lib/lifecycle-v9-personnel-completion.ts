@@ -44,7 +44,7 @@ export function effectivePersonnelCompletion(document:CompletionDocument,field:F
  return entry.override?.owner??(entry.group==='personal'?'employee':'hr');
 }
 export function missingPersonnelCompletion(document:CompletionDocument,owner:'employee'|'hr'){
- return document.fields.filter(field=>field.owner==='pmLocked'&&effectivePersonnelCompletion(document,field)===owner&&(!field.when||document.values[field.when.field]===field.when.value)&&!document.values[field.id]?.trim());
+ return document.fields.filter(field=>field.owner==='pmLocked'&&effectivePersonnelCompletion(document,field)===owner&&(!field.when||document.values[field.when.field]===field.when.value)&&(!document.values[field.id]?.trim()||field.required&&(field.type==='checkbox'&&document.values[field.id]!=='true'||field.type==='table'&&document.values[field.id]==='[]')));
 }
 /** The authorized case service supplies the actor and persists its normal immutable case revision/audit. */
 export function overridePersonnelCompletion(document:CompletionDocument,input:{fieldId:string;owner:'employee'|'hr';reason:string;actor:Actor;at:string}){

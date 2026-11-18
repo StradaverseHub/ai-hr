@@ -49,7 +49,7 @@ REVOKE ALL ON FUNCTION app.v9_document_route_apply(uuid,integer,text,jsonb,text)
 CREATE FUNCTION app.v9_document_route_read(p_case uuid,p_document text) RETURNS jsonb
 LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
  SELECT jsonb_build_object('caseId',case_id,'caseRevision',revision,'number',number,'state',state,'documentId',document->>'id','name',document->>'name','signing',document->'signing','document',CASE WHEN app.v9_document_route_content_visible(document) THEN document ELSE NULL END)
- FROM app.v9_document_route_sources() s WHERE s.case_id=p_case AND s.document->>'id'=p_document AND app.probation_company_entitled(s.company_id) AND app.v9_document_route_participant(s.document)
+ FROM app.v9_document_route_sources(p_case) s WHERE s.case_id=p_case AND s.document->>'id'=p_document AND app.probation_company_entitled(s.company_id) AND app.v9_document_route_participant(s.document)
 $$;
 CREATE FUNCTION app.v9_document_route_act(p_case uuid,p_revision integer,p_document text,p_action jsonb) RETURNS integer
 LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
@@ -60,7 +60,7 @@ BEGIN
  PERFORM pg_advisory_xact_lock(hashtext('audit-chain:'||app.current_tenant_id()::text));
  PERFORM pg_advisory_xact_lock(hashtextextended(app.current_tenant_id()::text||':onboarding',0));
  PERFORM pg_advisory_xact_lock(hashtextextended('lifecycle-v9:'||app.current_tenant_id()::text,0));
- SELECT * INTO source FROM app.v9_document_route_sources() WHERE case_id=p_case AND document->>'id'=p_document;
+ SELECT * INTO source FROM app.v9_document_route_sources(p_case) WHERE case_id=p_case AND document->>'id'=p_document;
  IF NOT FOUND OR app.probation_company_entitled(source.company_id) IS NOT TRUE OR NOT app.v9_document_route_content_visible(source.document) OR source.state IS DISTINCT FROM 'submitted' OR source.document->>'status' IN('withdrawn','superseded') THEN RAISE EXCEPTION 'Document is unavailable at your signing step' USING ERRCODE='42501';END IF;
  d:=source.document;s:=d->'signing';kind:=p_action->>'action';
  SELECT u.person_id,p.full_name INTO actor_person,actor_name FROM app_user u JOIN person p ON p.id=u.person_id AND p.tenant_id=u.tenant_id WHERE u.id=app.current_user_id() AND u.tenant_id=app.current_tenant_id();
@@ -105,7 +105,7 @@ BEGIN
  PERFORM pg_advisory_xact_lock(hashtext('audit-chain:'||app.current_tenant_id()::text));
  PERFORM pg_advisory_xact_lock(hashtextextended(app.current_tenant_id()::text||':onboarding',0));
  PERFORM pg_advisory_xact_lock(hashtextextended('lifecycle-v9:'||app.current_tenant_id()::text,0));
- SELECT * INTO source FROM app.v9_document_route_sources() WHERE case_id=p_case AND document->>'id'=p_document;
+ SELECT * INTO source FROM app.v9_document_route_sources(p_case) WHERE case_id=p_case AND document->>'id'=p_document;
  IF NOT FOUND OR app.probation_company_entitled(source.company_id) IS NOT TRUE OR source.revision IS DISTINCT FROM p_revision OR source.state IS DISTINCT FROM 'submitted' OR source.document->>'status' IN('withdrawn','superseded') THEN RAISE EXCEPTION 'The document is locked or it is not your turn to edit' USING ERRCODE='42501';END IF;
  d:=source.document;can_content:=app.document_signing_can_edit(d->'signing',app.current_user_id());
  can_employee:=NOT app.document_signing_locked(d->'signing') AND EXISTS(SELECT 1 FROM jsonb_array_elements(d->'signing'->'route'->'steps') step WHERE step->>'role'='employee' AND step->>'holderId'=app.current_user_id()::text);
