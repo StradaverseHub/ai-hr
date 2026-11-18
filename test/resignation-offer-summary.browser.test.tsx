@@ -65,7 +65,15 @@ it.each([320,390,1440])('keeps retention terms readable and paired at %i pixels 
    expect(heading).toHaveTextContent(expectedTerms[index][1]);expect(within(term).getByText('Current')).toBeVisible();expect(within(term).getByText('Proposed')).toBeVisible();
    expect(before).toHaveTextContent(expectedTerms[index][2]);expect(after).toHaveTextContent(expectedTerms[index][3]);
    const labelBox=heading.getBoundingClientRect(),beforeBox=before.getBoundingClientRect(),afterBox=after.getBoundingClientRect();
-   expect(labelBox.width).toBeGreaterThan(beforeBox.width+afterBox.width);expect(beforeBox.top).toBeGreaterThanOrEqual(labelBox.bottom);expect(afterBox.top).toBeGreaterThanOrEqual(labelBox.bottom);expect(beforeBox.left).toBeLessThan(afterBox.left);
+   expect(Math.abs(labelBox.width-term.getBoundingClientRect().width)).toBeLessThan(2);
+   expect(beforeBox.top).toBeGreaterThanOrEqual(labelBox.bottom);expect(afterBox.top).toBeGreaterThanOrEqual(labelBox.bottom);
+   if(width<360){
+    // Very narrow phones keep each labelled value full-width; never split ordinary job words to retain two columns.
+    expect(Math.abs(beforeBox.width-labelBox.width)).toBeLessThan(2);expect(Math.abs(afterBox.width-labelBox.width)).toBeLessThan(2);
+    expect(Math.abs(beforeBox.left-afterBox.left)).toBeLessThan(2);expect(afterBox.top).toBeGreaterThan(beforeBox.bottom);
+   }else{
+    expect(labelBox.width).toBeGreaterThan(beforeBox.width+afterBox.width);expect(beforeBox.left).toBeLessThan(afterBox.left);
+   }
   }
  }else{
   expect(desktop!).toBeVisible();expect(mobile!).not.toBeVisible();

@@ -56,7 +56,7 @@ export function ResignationOfferSummary({value}:{value:ResignationCaseView}){
  return <section className="space-y-3 rounded-lg border border-blue-200 bg-blue-50 p-4 dark:border-blue-800 dark:bg-blue-950"><h3 className="font-semibold">{t('offerTitle')}</h3>
   <table data-resignation-offer-desktop data-wrap-headings className="hidden w-full table-fixed text-sm sm:table [&_td]:[overflow-wrap:anywhere] [&_th]:[overflow-wrap:anywhere]"><thead><tr><th className="py-2 text-left">{t('term')}</th><th className="text-left">{t('current')}</th><th className="text-left">{t('proposed')}</th></tr></thead><tbody>{terms.map(term=><tr key={term.key}><th className="py-2 text-left font-normal">{term.label}</th><td className="pr-3">{term.current}</td><td className="font-semibold">{term.proposed}</td></tr>)}</tbody></table>
   <dl data-resignation-offer-mobile className="space-y-4 text-sm sm:hidden">{terms.map(term=><div key={term.key} data-offer-term={term.key}>
-   <dt className="font-medium">{term.label}</dt><dd className="mt-2"><dl className="grid grid-cols-2 gap-x-4">
+   <dt className="font-medium">{term.label}</dt><dd className="mt-2"><dl className="grid grid-cols-1 min-[360px]:grid-cols-2 gap-x-4 gap-y-3">
     <div className="min-w-0"><dt className="text-xs text-muted-foreground">{t('current')}</dt><dd data-offer-value="current" className="mt-1 [overflow-wrap:anywhere]">{term.current}</dd></div>
     <div className="min-w-0"><dt className="text-xs text-muted-foreground">{t('proposed')}</dt><dd data-offer-value="proposed" className="mt-1 font-semibold [overflow-wrap:anywhere]">{term.proposed}</dd></div>
    </dl></dd>
