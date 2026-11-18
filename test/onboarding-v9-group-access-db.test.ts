@@ -41,7 +41,7 @@ it('redacts hidden sections and HR facts before serialization and rejects hidden
 it('keeps record-group access independent and read-only without exposing a joiner page or private workspace metadata',async()=>{
  const context=await onboardingContext(admin);context.config.access.joinerViewGroups=[];context.config.access.recordGroups=['page-readers'];await onboardingSaveConfig(admin,context.revision,context.config);
  const rows=await onboardingList(member);expect(rows.find(row=>row.case.id===id)?.case).toMatchObject({tasks:[],history:[],notes:''});await expect(onboardingDetail(member,id)).rejects.toThrow();
- const workspace=await v9Workspace(member);expect(workspace.permissions).toMatchObject({onboarding:false,offboarding:false,administration:false,records:true});expect(workspace.config).toMatchObject({templates:[],emails:[],workflows:[],bpRules:[]});expect(workspace.options.employees).toEqual([]);
+ const workspace=await v9Workspace(member);expect(workspace.permissions).toMatchObject({onboarding:false,offboarding:false,administration:false,records:true});expect(workspace.config).toMatchObject({templates:[],emails:[],workflows:[]});expect(workspace.options.employees).toEqual([]);
  await expect(onboardingCommand(member,id,rows[0].revision,{type:'save',patch:{floor:'Denied record edit'}})).rejects.toThrow();
  expect(await withTenant(member,tx=>tx.execute(sql`update lc_onboarding_case set data=jsonb_set(data,'{floor}','"Denied record SQL"') where id=${id}::uuid returning id`))).toHaveLength(0);
 });
@@ -73,4 +73,16 @@ it('does not turn a scoped company HR viewer into a case writer or expose hidden
  const workspace=await v9Workspace(viewer);expect(workspace.permissions?.administration).toBe(false);expect(workspace.config).not.toHaveProperty('settlementPolicy');expect(workspace.config).not.toHaveProperty('companies');expect(workspace.options.employees).toEqual([]);
  await expect(onboardingCommand(viewer,id,detail.revision,{type:'save',patch:{floor:'Denied HR viewer'}})).rejects.toThrow();
  expect(await withTenant(viewer,tx=>tx.execute(sql`update lc_onboarding_case set data=jsonb_set(data,'{floor}','"Denied HR SQL"') where id=${id}::uuid returning id`))).toHaveLength(0);
+});
+
+it('binds a case TA only to an active account of the same tenant and retains legacy text without auto-linking', async () => {
+ let detail=await onboardingDetail(admin,id);
+ await onboardingCommand(admin,id,detail.revision,{type:'save',patch:{local:{taUserId:member.userId!}}});
+ detail=await onboardingDetail(admin,id);expect(detail.case.local.taUserId).toBe(member.userId);
+ const foreign=await seedBase(),foreignAdmin=await entitledCtx(foreign);
+ await expect(onboardingCommand(admin,id,detail.revision,{type:'save',patch:{local:{taUserId:foreignAdmin.userId!}}})).rejects.toThrow('current active user');
+ await owner.client`update app_user set archived_at=now() where id=${member.userId!}::uuid`;
+ await expect(onboardingCommand(admin,id,detail.revision,{type:'save',patch:{local:{taUserId:member.userId!}}})).rejects.toThrow('current active user');
+ await onboardingCommand(admin,id,detail.revision,{type:'save',patch:{local:{taUserId:''}}});
+ expect((await onboardingDetail(admin,id)).case.local.taUserId).toBe('');
 });

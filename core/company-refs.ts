@@ -278,6 +278,8 @@ export const COMPANY_REFERRERS: readonly CompanyRef[] = [
   { table: 'attendance_overtime_line', column: 'company_id', disposition: 'payroll', note: 'An exact overtime earning line is retained money evidence.' },
   { table: 'overtime_source_settlement', column: 'company_id', disposition: 'payroll', note: 'A cash or TOIL settlement receipt retains its company, including released claims.' },
 
+  { table: 'reward_person_history', column: 'company_id', disposition: 'payroll', existsFunction: 'app.reward_history_company_in_use', note: 'Immutable review awards and independently uploaded earlier reward history retain their company; deletion must never erase financial history.' },
+  { table: 'reward_plan_year_company', column: 'company_id', disposition: 'other', existsFunction: 'app.reward_plan_company_in_use', note: 'Retain annual company participation and plan choices, including drafts and no-award reasons.' },
   { table: 'reward_unit', column: 'company_id', disposition: 'payroll', note: 'A salary and bonus review with employee snapshots, funding and approval history. Preserve it even before posting.' },
   { table: 'reward_calendar', column: 'company_id', disposition: 'payroll', note: 'The reward approval deadlines set for a cycle in this company. They belong to the reward review history; preserve them with the reviews.' },
   { table: 'reward_company_exclusion', column: 'company_id', disposition: 'other', note: 'Company-year participation decisions retain their exclusion and ending reasons as audit history, including after a company is brought back.' },

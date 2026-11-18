@@ -191,10 +191,10 @@ it('batches eligible Plans companies in the established business group and compa
    const choices=await rewardPlanCompanyChoices(ctx,selectedYear);
    expect(choices).toEqual(legacy.map(({id,name})=>({id,name})));
    expect(choices.some(({id})=>id===foreign.companyId)).toBe(false);
-   const statements=probe.queries.filter(({sql})=>/reward_(setup_companies|company_structure)/.test(sql));
+   const statements=probe.queries.filter(({sql})=>/app\.reward_review_plan_company_rows/.test(sql));
    expect(statements).toHaveLength(1);
    expect(statements[0]).toMatchObject({params:[selectedYear,at],rows:expectedIds.length});
-   expect(statements[0].sql).toMatch(/from app\.reward_setup_companies.*\s+cross join lateral app\.reward_company_structure/);
+   expect(statements[0].sql).toMatch(/from app\.reward_review_plan_company_rows\([^)]*,false\)/);
    expect(probe.queries.some(({sql})=>/reward_private_pat_history|reward_pat_version/.test(sql))).toBe(false);
   }finally{probe.restore();}
  }

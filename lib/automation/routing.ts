@@ -6,9 +6,9 @@
  * in one dimension are alternatives. The most specific matching row wins; equally specific rows keep list order.
  * A row assigns to an assignment group or to named people.
  *
- * Specificity keeps the V9 PBP rule's order exactly (business group over company over department, then list order;
- * `lib/lifecycle-v9-model.ts` resolvePbp) and adds job title as the finest dimension, so a converted `bpRules` list
- * resolves to the same person it does today.
+ * Specificity preserves historical V9 PBP conversion outcomes (business group over company over department,
+ * then list order) and adds job title as the finest dimension. The lifecycle PBP resolver itself was removed
+ * by board 42f2b8a9; the conversion adapter remains for historical Probation routing imports.
  *
  * How a match becomes people depends on where the routing is used (state this in the UI):
  *  - in an approval or signing step it yields ONE person, chosen by that step's rule (any member or round robin);

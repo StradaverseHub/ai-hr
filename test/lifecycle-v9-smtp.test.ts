@@ -70,3 +70,20 @@ it('uses the connection name when no sender name is given', async () => {
   await sendSmtp(relay, input);
   expect(smtp.send.mock.calls[0][0].from).toEqual({ name: relay.config.fromName, address: relay.config.from });
 });
+
+it.each([{ toCount: 12, ccCount: 1 }, { toCount: 1, ccCount: 1030 }])('delivers every resolved mailbox in one envelope: $toCount To / $ccCount CC', async ({ toCount, ccCount }) => {
+  const to = Array.from({ length: toCount }, (_, i) => `to${i}@fixture.invalid`);
+  const copies = Array.from({ length: ccCount }, (_, i) => `cc${i}@fixture.invalid`);
+  smtp.send.mockResolvedValue({ accepted: [...to, ...copies] });
+  await sendSmtp(relay, { ...mail(), to, cc: copies });
+  expect(smtp.send).toHaveBeenCalledOnce();
+  expect(smtp.send).toHaveBeenCalledWith(expect.objectContaining({ to, cc: copies,
+    envelope: { from: relay.config.from, to: [...to, ...copies] } }));
+  expect(smtp.close).toHaveBeenCalledOnce();
+});
+it('still refuses duplicate or malformed mailboxes in a large resolved fanout before opening SMTP', async () => {
+  const to = Array.from({ length: 12 }, (_, i) => `member${i}@fixture.invalid`);
+  await expect(sendSmtp(relay, { ...mail(), to, cc: [to[0].toUpperCase()] })).rejects.toMatchObject({ code: 'invalid' });
+  await expect(sendSmtp(relay, { ...mail(), to: [...to, 'Injected <bad@fixture.invalid>'] })).rejects.toMatchObject({ code: 'invalid' });
+  expect(smtp.create).not.toHaveBeenCalled(); expect(smtp.send).not.toHaveBeenCalled();
+});

@@ -5,8 +5,7 @@
  *   A. A pay item's `pcb_exemption_code` (e.g. PCB_PERQUISITE, RM2,000 a year) reduces ONLY the PCB base.
  *      EPF, SOCSO, EIS and SKBBK follow the item's own ticks on the WHOLE amount, exempt or not.
  *   B. 'normal' | 'additional' is a PCB-only classification (Y1 vs Yt, and the payslip box). EPF has only
- *      normal wages, except money on an item ticked EPF Bonus 2012, which keeps the bonus EPF stream and
- *      stays out of SOCSO/EIS (SOCSO Act 1969 s.2).
+ *      normal wages, except money on an item ticked EPF Bonus 2012, which keeps the bonus EPF stream. SOCSO independently follows its own tick (ffb6c2e0).
  *
  * The pinned case is a production payslip shape (October 2026): Basic 3,734 + overtime (EPF no, SOCSO yes)
  * + a RM1,000 tax-exempt long service award (EPF yes, EPF Bonus 2012 no, SOCSO/EIS yes, PCB additional,
@@ -53,7 +52,7 @@ const AWARD = (over: Partial<PayComponentInput> = {}) =>
 const OT = item('OTX', 'Overtime', { includedInEpf: false, pcbRemunerationType: undefined, pcbExemptionCode: undefined, epfBonus2012: undefined });
 /** An 'additional'-classified item ticked EPF, NOT EPF Bonus 2012, not SOCSO, fully taxable. */
 const PERF = item('PERF', 'Performance incentive', { includedInSocsoEis: false, pcbRemunerationType: 'additional' });
-/** A declared bonus: EPF Bonus 2012, SOCSO ticked (and still excluded by law). */
+/** A declared bonus: EPF Bonus 2012, SOCSO ticked independently of the EPF classification. */
 const BNS = item('BNS', 'Bonus', { pcbRemunerationType: 'additional', epfBonus2012: true });
 
 const idByCode = async (code: string) =>
@@ -67,7 +66,10 @@ async function setup(items: PayComponentInput[]) {
   for (const i of items) await upsertPayComponent(a, i);
 }
 
+// Keep one identity per fictional employee; duplicate NRIC admission remains enforced.
+let icSeq = 0;
 async function hire(email: string, basic: number) {
+  icSeq += 1;
   const e = await hireEmployee(a, {
     person: { fullName: email.split('@')[0], primaryEmail: email },
     companyId: base.companyId,
@@ -76,7 +78,7 @@ async function hire(email: string, basic: number) {
     hiredOn: '2026-01-01',
   });
   // Born 1 Jan 1990: a Malaysian citizen below 60 — KWSP Part A, SOCSO First Category, EIS eligible.
-  await setStatutoryProfileMY(a, { personId: e.personId, icNumber: '900101015401', subjectToSkbbk: true });
+  await setStatutoryProfileMY(a, { personId: e.personId, icNumber: `90010101${String(5400 + icSeq).padStart(4, '0')}`, subjectToSkbbk: true });
   await setCompensation(a, { employmentId: e.employmentId, basicSalary: basic, monthlyAllowance: 0, effectiveFrom: '2026-01-01' });
   await setEmploymentPayComponent(a, { employmentId: e.employmentId, componentId: await idByCode('BASIC'), amount: basic, effectiveFrom: '2026-01-01' });
   return e;
@@ -218,17 +220,17 @@ describe('owner decision B — the PCB remuneration type does not choose the EPF
     expect(epfTraceItemRows(ex.trace!, t, money).find((r) => r.code === 'PERF')!.treatment).toBe('traceTreatEpfNormal');
   });
 
-  it('an EPF Bonus 2012 item is unchanged: bonus EPF stream, and not SOCSO wages even with SOCSO ticked', async () => {
+  it('an EPF Bonus 2012 item keeps its EPF stream and enters SOCSO wages when ticked', async () => {
     await setup([BNS]);
     const e = await hire('bns@acme.test', 4000);
     const batch = await createBatch(a, { companyId: base.companyId, payPeriod: PERIOD });
     await oneOff(batch.batchId, e.employmentId, 'BNS', 800);
     await generatePayslips(a, { batchId: batch.batchId });
     const st = statOf(await slipOf(batch.batchId, e.employmentId));
-    expect(st.bases).toMatchObject({ epf: 4000, epfAdditional: 800, socsoEis: 4000 });
+    expect(st.bases).toMatchObject({ epf: 4000, epfAdditional: 800, socsoEis: 4800 });
     expect([st.epfEmployee, st.epfEmployer]).toEqual([528, 624]);
-    expect([st.socsoEmployee, st.socsoEmployer]).toEqual([19.75, 69.15]);
-    expect(itemLine(st, 'BNS')).toMatchObject({ epfNormal: 0, epfBonus: 800, socsoEis: 0 });
+    expect([st.socsoEmployee, st.socsoEmployer]).toEqual([23.75, 83.15]);
+    expect(itemLine(st, 'BNS')).toMatchObject({ epfNormal: 0, epfBonus: 800, socsoEis: 800 });
     expect(st.statutoryTrace!.run.own).toMatchObject({ epfAdditional: 800, epfWageExtra: 0 });
   });
 });
@@ -268,12 +270,61 @@ describe('the month carry — later runs in the same wage month see both new fig
     // The month as ONE computation, whichever run charged which part.
     expect(r.epfEmployee + s1.epfEmployee + s2.epfEmployee).toBe(814);
     expect(r.epfEmployer + s1.epfEmployer + s2.epfEmployer).toBe(888);
-    // SOCSO: the award is in the month's SOCSO wage on every run, and neither bonus run adds any (PERF is not
-    // SOCSO-ticked; BNS is an EPF Bonus 2012 bonus).
-    expect([s1.socsoEmployee, s1.socsoEmployer, s2.socsoEmployee, s2.socsoEmployer]).toEqual([0, 0, 0, 0]);
-    expect(s2.statutoryTrace!.socso.wage).toBeCloseTo(4734, 2);
+    // ffb6c2e0: PERF stays out (unticked); BNS adds 2,000 despite its EPF classification.
+    // The 6,000 cap row is 29.75 / 104.15, less the regular 4,734 row 23.75 / 83.15.
+    expect([s1.socsoEmployee, s1.socsoEmployer, s2.socsoEmployee, s2.socsoEmployer]).toEqual([0, 0, 6, 21]);
+    expect(s2.statutoryTrace!.socso.wage).toBeCloseTo(6734, 2);
     for (const [s, kind] of [[r, 'regular'], [s1, 'bonus'], [s2, 'bonus']] as const) {
       expect(explainStatutory(s, kind).traceStatus).toBe('recorded');
     }
   });
+});
+
+describe('ffb6c2e0 — payroll and explanation use independent statutory switches', () => {
+  const cases = ['normal', 'additional'] as const;
+  for (const stream of cases) {
+    for (const exempt of [false, true]) {
+      it(`${stream}, ${exempt ? 'partly exempt' : 'taxable'}: recurring and one-off, EPF Bonus 2012 × SOCSO/EIS`, async () => {
+        await setup([]);
+        const batch = await createBatch(a, { companyId: base.companyId, payPeriod: PERIOD });
+        const subjects: { employmentId: string; code: string; b2012: boolean; socso: boolean }[] = [];
+        for (const oneOffSource of [false, true]) {
+          for (const b2012 of [false, true]) {
+            for (const socso of [false, true]) {
+              const code = `X${Number(oneOffSource)}${Number(b2012)}${Number(socso)}`;
+              await upsertPayComponent(a, item(code, code, { pcbRemunerationType: stream,
+                pcbExemptionCode: exempt ? 'PCB_PERQUISITE' : 'PCB_TAXABLE', epfBonus2012: b2012, includedInSocsoEis: socso }));
+              const e = await hire(`${code.toLowerCase()}@matrix.test`, 3500);
+              if (oneOffSource) await oneOff(batch.batchId, e.employmentId, code, 2500);
+              else await recurring(e.employmentId, code, 2500);
+              subjects.push({ employmentId: e.employmentId, code, b2012, socso });
+            }
+          }
+        }
+        await generatePayslips(a, { batchId: batch.batchId });
+        for (const { employmentId, code, b2012, socso } of subjects) {
+          const slip = await slipOf(batch.batchId, employmentId);
+          const st = statOf(slip);
+          expect(Number(slip.grossPay)).toBe(6000);
+          expect(st.bases).toMatchObject({ epf: b2012 ? 3500 : 6000, epfAdditional: b2012 ? 2500 : 0, socsoEis: socso ? 6000 : 3500 });
+          expect([st.epfEmployee, st.epfEmployer]).toEqual(b2012 ? [660, 780] : [660, 720]);
+          expect([st.socsoEmployee, st.socsoEmployer, st.socsoSkbbk, st.eisEmployee, st.eisEmployer])
+            .toEqual(socso ? [29.75, 104.15, 44.65, 11.9, 11.9] : [17.25, 60.35, 25.85, 6.9, 6.9]);
+          const tr = st.statutoryTrace!;
+          expect(itemLine(st, code)).toMatchObject({ epfNormal: b2012 ? 0 : 2500, epfBonus: b2012 ? 2500 : 0, socsoEis: socso ? 2500 : 0 });
+          for (const key of ['epfNormal', 'epfBonus', 'socsoEis'] as const) {
+            const expected = key === 'epfNormal' ? (b2012 ? 3500 : 6000) : key === 'epfBonus' ? (b2012 ? 2500 : 0) : (socso ? 6000 : 3500);
+            expect(tr.items.reduce((sum, row) => sum + row[key], 0)).toBe(expected);
+          }
+          expect(tr.items.some(row => row.kind === 'other')).toBe(false);
+          const ex = explainStatutory(st, 'regular');
+          expect(ex.traceStatus).toBe('recorded');
+          for (const key of ['socso', 'eis', 'skbbk'] as const) {
+            const row = scheduleTraceItemRows(ex.trace!, key, k => k, n => n.toFixed(2)).find(row => row.code === code)!;
+            expect(row.contribution).toBe(socso ? '2500.00' : '0.00');
+          }
+        }
+      }, 120_000); // Eight employee fixtures and processing: headroom beyond the single-person 30 s default.
+    }
+  }
 });

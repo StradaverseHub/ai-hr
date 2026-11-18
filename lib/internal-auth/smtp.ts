@@ -14,7 +14,7 @@ type TextMail={subject:string;text:string;html?:string};
 export type Mail=TextMail&(
   | {to:string;attachment?:undefined;messageId?:string;attachments?:never;cc?:never;senderName?:never}
   | {to:string;attachment:XlsxEmailAttachment;messageId:string;attachments?:never;cc?:never;senderName?:never}
-  /** Managed delivery: one message to everyone in To (at most eight) and CC together. */
+  /** Managed delivery: one message to all server-resolved To and CC addresses together; choice limits belong to the workflow. */
   | {to:string|string[];attachment?:never;attachments:ManagedEmailAttachment[];cc?:string[];senderName?:string;messageId:string;
      /** Optional per-message reply-to (recruitment candidate e-mail, slice 19); absent, the relay's reply-to as before. */
      replyTo?:string}
@@ -30,10 +30,10 @@ const messageId=z.string().max(320).regex(/^<[A-Za-z0-9][A-Za-z0-9._-]{0,119}@[A
   .refine(value=>value.slice(value.indexOf('@')+1,-1).split('.').every(label=>
     label.length<=63&&/^[A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?$/.test(label)));
 const canonicalAddress=canonicalEmailAddress;
-const message=z.object({to:z.union([z.string(),z.array(z.string()).min(1).max(8)]),subject:z.string(),text:z.string(),html:z.string().max(1000000).optional(),
+const message=z.object({to:z.union([z.string(),z.array(z.string()).min(1)]),subject:z.string(),text:z.string(),html:z.string().max(1000000).optional(),
   messageId:messageId.optional(),attachment:xlsxEmailAttachment.optional(),
   attachments:z.array(managedEmailAttachment).max(MANAGED_EMAIL_ATTACHMENTS_MAX_COUNT).optional(),
-  cc:z.array(canonicalAddress).max(1004).optional(),senderName:z.string().refine(value=>validManagedEmailSenderName(value)===value,'Invalid sender name.').optional(),replyTo:canonicalAddress.optional(),
+  cc:z.array(canonicalAddress).optional(),senderName:z.string().refine(value=>validManagedEmailSenderName(value)===value,'Invalid sender name.').optional(),replyTo:canonicalAddress.optional(),
 }).strict().superRefine((mail,ctx)=>{
   if(Array.isArray(mail.to)&&mail.attachments===undefined)ctx.addIssue({code:'custom',message:'Several To recipients require managed delivery.'});
   if(mail.attachment&&(!mail.messageId||typeof mail.to!=='string'||!z.email().max(320).regex(/^[\x21-\x7e]+$/).safeParse(mail.to).success))

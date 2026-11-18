@@ -144,6 +144,7 @@ const SURFACES:Readonly<Record<string,Surface>>={
  'app/payroll/transactions/individual/imports/batches/[jobId]/workbook/route.ts':'individual_transactions',
  'app/payroll/transactions/individual/imports/page.tsx':'individual_transactions',
  'app/performance/onehr-actions.ts':support('Record-scoped KPI and panel imports inside one OneHR cycle, admitted per cycle; not listed.'),
+ 'app/rewards/history-upload/actions.ts':support('Earlier reward history upload is admitted by the native Rewards service using effective Group Rewards and group/company setup authority; it is not a coarse-role AI Centre import owner.'),
  'app/rewards/actions.ts':support('Record-scoped facts import inside one rewards unit, admitted per unit; not listed.'),
  'app/roster/import/actions.ts':'shift_roster',
  'app/roster/import/page.tsx':'shift_roster',

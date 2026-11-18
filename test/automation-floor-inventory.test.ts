@@ -61,10 +61,10 @@ describe('Automation floor · On/Off Boarding V9',()=>{
   same(f.mergeFields.filter(key=>!['owner.name','pending.tasks','pending.count'].includes(key)),[...personnelMergeLabels.keys()]);
   expect(f.mergeFields).toEqual(expect.arrayContaining(['owner.name','pending.tasks','pending.count']));
  });
- it('pins checklist task assignment and the PBP rule dimensions',()=>{
+ it('pins checklist task assignment and the approved removal of lifecycle PBP routing',()=>{
   same(enumValues(path(v9ConfigSchema,'checklists','[]','tasks','[]','by')),f.taskAssignees);
   same(enumValues(path(v9ConfigSchema,'checklists','[]','tasks','[]','mode')),f.taskModes);
-  same(keys(path(v9ConfigSchema,'bpRules','[]','rules')),f.bpRuleFields);
+  expect(keys(v9ConfigSchema)).not.toContain('bpRules');
  });
 });
 

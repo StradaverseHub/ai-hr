@@ -28,6 +28,8 @@ vi.mock('../packs/rewards/service', () => ({ listRewardUnits: ports.list, listRe
 vi.mock('../app/rewards/actions', () => ({ createRewardAction: vi.fn(), memberAction: vi.fn(), policyAction: vi.fn(), deleteRewardAction: vi.fn(), calendarAction: vi.fn() }));
 vi.mock('../app/admin/rewards/actions', () => ({ cancelRewardAction: vi.fn() }));
 import { GET as rewardsBookmark, HEAD as rewardsBookmarkHead } from '../app/admin/rewards/route';
+import {GET as sharedBookmark,HEAD as sharedBookmarkHead} from '../app/admin/rewards/shared/route';
+import {GET as plansBookmark,HEAD as plansBookmarkHead} from '../app/admin/rewards/plans/route';
 import RewardAccessPage from '../app/admin/rewards/access/page';
 import ConfigurationPage from '../app/admin/rewards/[unitId]/page';
 import ReviewsPage from '../app/rewards/reviews/page';
@@ -72,12 +74,12 @@ beforeEach(() => {
 afterEach(cleanup);
 
 describe('Rewards administration and review destinations', () => {
-  it.each([['GET', rewardsBookmark], ['HEAD', rewardsBookmarkHead]] as const)(
+  it.each([['GET', rewardsBookmark], ['HEAD', rewardsBookmarkHead], ['GET shared', sharedBookmark], ['HEAD shared',sharedBookmarkHead], ['GET plans',plansBookmark], ['HEAD plans',plansBookmarkHead]] as const)(
     'redirects legacy Review Cycles with an uncached HTTP 307 on %s', async (method, handle) => {
-      const request = new Request('https://fixture.invalid/admin/rewards?version=approved&year=2026', { method });
+      const request = new Request('https://fixture.invalid/admin/rewards?version=approved&year=2026', { method:method.startsWith('HEAD')?'HEAD':'GET' });
       const response = await handle(request);
       expect(response.status).toBe(307);
-      expect(response.headers.get('location')).toBe('/admin/rewards/plans?version=approved&year=2026');
+      expect(response.headers.get('location')).toBe('/admin/rewards/review-plans?version=approved&year=2026');
       expect(response.headers.get('cache-control')).toBe('private, no-store');
       expect(await response.text()).toBe('');
       expect(ports.session).toHaveBeenCalledTimes(1);
@@ -93,7 +95,7 @@ describe('Rewards administration and review destinations', () => {
     ['?year=2026&sharedError=first&sharedError=second', '?year=2026'],
   ])('preserves the legacy scalar and error-precedence rules for %s', async (search, expected) => {
     const response = await rewardsBookmark(new Request(`https://fixture.invalid/admin/rewards${search}`));
-    expect(response.headers.get('location')).toBe('/admin/rewards/plans' + expected);
+    expect(response.headers.get('location')).toBe('/admin/rewards/review-plans' + expected);
   });
   it('runs identity, operator and Rewards module decisions before exposing the Plans target', async () => {
     const request = new Request('https://fixture.invalid/admin/rewards');

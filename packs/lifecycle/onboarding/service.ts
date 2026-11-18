@@ -411,7 +411,7 @@ export async function onboardingDetail(ctx: SessionContext, id: string, mode: 'c
                 labels.costCentre = cost.name;
         }
         if(mode==='case')visible=projectJoinerPage(visible,config,actor);
-        if(!actor.hr){const privateLabels:Record<string,keyof M.Facts>={supervisor:'supervisor',company:'company',group:'businessGroup',dept:'department',position:'title'};for(const field of config.v9CaseFields??[])if(field.hrOnly&&privateLabels[field.key])delete labels[privateLabels[field.key]];}
+        if(!actor.hr){const privateLabels:Record<string,keyof M.Facts>={supervisor:'supervisor',company:'company',group:'businessGroup',dept:'department',position:'title',ta:'gbsTa'};for(const field of config.v9CaseFields??[])if(field.hrOnly&&privateLabels[field.key])delete labels[privateLabels[field.key]];}
         if(!actor.module&&(mode==='requisition'||actor.sections?.case==='hidden'))for(const key of Object.keys(labels))if(!['company','businessGroup','title'].includes(key))delete labels[key as keyof M.Facts];
         return { canOpenRequisition: canReadRequisition(config, M.currentReq(c), actor), labels, case: visible, revision: row.revision, config, actor, directory: await directoryTx(tx), notes: thread.map(n => n.data).filter(n => actor.sections?.notes!=='hidden'&&(mode!=='case'||actor.module||actor.sections?.checklist==='all'||n.context==='case'||n.context==='requisition'&&actor.sections?.equip!=='hidden'||visible.tasks.some(task=>task.id===n.context))).filter(n => actor.module || actor.page&&actor.sections?.notes==='view' || n.by === actor.id || n.mentions.includes(actor.id) || c.tasks.some(t => t.id === n.context && t.assignee === actor.id) || n.context === 'requisition' && canReadRequisition(config, M.currentReq(c), actor)), availability: actor.module ? (await environmentTx(tx, ctx, config, [c])).leave : {} as M.Environment['leave'], today: todayInKualaLumpur() };
     });
@@ -521,6 +521,13 @@ export async function onboardingCommand(ctx: SessionContext, id: string, revisio
                 n: number;
             }>(await tx.execute(sql `select app.lc_next_number('IT-REQ') as n`));
             env.nextNumber = () => 'IT-REQ-' + String(seq!.n).padStart(4, '0');
+        }
+        if ((command.type === 'save' || command.type === 'saveSubmit') && command.patch.local?.taUserId) {
+            if (!actor.module && !actor.caseActions) M.fail('Case actions are not allowed for this group.', 'forbidden');
+            const taId = command.patch.local.taUserId;
+            const [ta] = await tx.execute<{ id: string }>(sql`select id from app_user where tenant_id=${ctx.tenantId}::uuid and id=${taId}::uuid and archived_at is null and not app.login_blocked(id)`);
+            if (!ta) M.fail('Choose a current active user for the TA.');
+            if (!env.users.includes(taId)) env.users.push(taId);
         }
         const r = M.currentReq(c);
         switch (command.type) {
