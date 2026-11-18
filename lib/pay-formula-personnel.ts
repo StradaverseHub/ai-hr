@@ -610,7 +610,7 @@ export const PAY_FORMULA_PERSONNEL_ADAPTERS:readonly PersonnelFormulaAdapter[] =
     "adapter": "employment",
     "column": "grade_id",
     "dateBasis": "current-only"
-  }
+  },
   // Department/Position Code use System Labels' Code columns (name/title), never its display label.
   {key:'departmentBusinessCode',fieldId:'employment.organisation_assignment.departmentname',group:'profile',type:'string',adapter:'business-code',column:'department_id',dateBasis:'effective-date'},
   {key:'positionBusinessCode',fieldId:'employment.organisation_assignment.positionname',group:'profile',type:'string',adapter:'business-code',column:'position_id',dateBasis:'effective-date'},
