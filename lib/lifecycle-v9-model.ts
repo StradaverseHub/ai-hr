@@ -724,11 +724,12 @@ export type EmailPreview = {
   html?: string;
 };
 /** Preview uses current authorized facts without generating documents, allocating IDs or queuing mail. */
-export function previewEmail(c: Case, config: Config, emailId: string, env: Environment): EmailPreview {
+export function previewEmail(c: Case, config: Config, emailId: string, env: Environment,context?:{workflowId:string;step:Extract<Step,{type:'email'}>}): EmailPreview {
   const email = config.emails.find(email => email.id === emailId && email.module === c.module);
   if (!email) throw new V9Error('Email template not found.', 'not_found');
+  const stepRecipients=context?resolveStepRecipients(c,config,stepRecipientRoles(c,context.workflowId,context.step,email),env):null;
   const holds: string[] = [], edit = c.emailEdits?.[email.id] ?? { subject: email.subject, body: email.body };
-  const values = { ...env.mergeValues, 'owner.name': c.facts.name, 'pending.tasks': pendingPre(c).map(t => `${t.name} (due ${t.dueOn})`).join('\n') };
+  const values = { ...env.mergeValues, 'owner.name': stepRecipients?stepRecipients.to.map(recipient=>recipient.name).join(', '):c.facts.name, 'pending.tasks': context?pendingTaskLines(c,env).join('\n'):pendingPre(c).map(t => `${t.name} (due ${t.dueOn})`).join('\n') };
   const sensitive = emailSensitiveKeys(config);
   const previewValues = Object.fromEntries(Object.entries(values).filter(([key]) => !sensitive.has(key)));
   let rich: ReturnType<typeof renderTemplateBody> = null;
@@ -742,18 +743,18 @@ export function previewEmail(c: Case, config: Config, emailId: string, env: Envi
   const missing = [...new Set([...subject.missing, ...body.missing])];
   if (missing.length) holds.push(`Complete missing merge fields: ${missing.join(', ')}.`);
   try { merge(edit.subject + '\n' + edit.body, previewValues, sensitive); } catch { holds.push('Remove sensitive fields from the email text.'); }
-  const contact = c.module === 'onb' && !c.facts.employeeUserId ? env.onboardingContact : undefined;
+  const contact = context?stepRecipients?.contact:c.module === 'onb' && !c.facts.employeeUserId ? env.onboardingContact : undefined;
   const target = c.facts.employeeUserId ?? contact?.email;
-  const to = target && (contact || env.eligibleUser(target)) ? [{ id: target, name: contact ? c.facts.name : recipientName(target, env) }] : [];
-  if (!to.length) holds.push('Link an available employee account or enter the onboarding contact before sending.');
+  const to = stepRecipients?stepRecipients.to.map(recipient=>({id:recipient.key,name:recipient.name})):target && (contact || env.eligibleUser(target)) ? [{ id: target, name: contact ? c.facts.name : recipientName(target, env) }] : [];
+  if (!context&&!to.length) holds.push('Link an available employee account or enter the onboarding contact before sending.');
   if (contact && email.links.length) holds.push('Link an employee account before sending document links.');
   const imageCount = (email.images ?? []).filter(image => usedImages.has(image.id)).length;
   const caseFileCount = c.files.filter(file => email.slots.some(slot => file.slot === `${email.id}:${slot.id}`)).length;
   if ((email.files?.length ?? 0) + imageCount + email.attachments.length + caseFileCount > MANAGED_EMAIL_ATTACHMENTS_MAX_COUNT) holds.push('Keep the total attached files and inline images within 20.');
   if ([...(email.files ?? []), ...(email.images ?? []).filter(image => usedImages.has(image.id))].reduce((sum, asset) => sum + asset.size, 0) > MANAGED_EMAIL_ATTACHMENT_MAX_BYTES) holds.push('Keep the total attached files and inline images within 20 MB.');
-  const copied = resolveStepRecipients(c, config, { to: ['employee'], cc: email.cc }, env);
-  for (const entry of copied.missing) if (email.cc.includes(entry.role)) holds.push(`Resolve the CC recipient: ${entry.label}: ${entry.reason}.`);
-  const cc = copied.cc.filter(recipient => recipient.key !== target).map(recipient => ({ id: recipient.key, name: recipient.name, ...(recipient.personal ? { personal: true as const } : {}) }));
+  const copied = stepRecipients??resolveStepRecipients(c, config, { to: ['employee'], cc: email.cc }, env);
+  for (const entry of copied.missing) if (context||email.cc.includes(entry.role)) holds.push(`${context?'Resolve recipient':'Resolve the CC recipient'}: ${entry.label}: ${entry.reason}.`);
+  const cc = copied.cc.filter(recipient => context||recipient.key !== target).map(recipient => ({ id: recipient.key, name: recipient.name, ...(recipient.personal ? { personal: true as const } : {}) }));
   const documents = [...new Set([...email.links, ...email.attachments])].flatMap(templateId => {
     const template = config.templates.find(template => template.id === templateId && template.module === c.module), document = activeDocument(c, templateId);
     if (!template) { holds.push('A linked document template is unavailable.'); return []; }
