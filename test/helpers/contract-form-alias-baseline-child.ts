@@ -167,8 +167,12 @@ async function main(){
   const {owner}=harness,{sql}=await load<typeof import('drizzle-orm')>('node_modules/drizzle-orm/index.js');
   const ledger=async()=>[...await owner.client<{hash:string;created_at:string}[]>`select hash,created_at::text as created_at from drizzle.__drizzle_migrations order by id`];
   const prefix=await ledger();assert.equal(prefix.length,input.prefixCount);
-  const [empty]=await owner.client<{n:number;future:boolean}[]>`select (select count(*)::int from tenant) as n,to_regprocedure('app.contract_shared_email_recovery_original(uuid)') is not null as future`;
-  assert.equal(empty.n,0,'Only a new disposable baseline may be seeded');assert.equal(empty.future,false,'No future recovery API may be installed');
+  // Migration0151 creates the reserved pre-auth audit tenant even in a new database.
+  // Admit exactly that native row and no business identities before ordinary seeding.
+  const tenants=await owner.client<{id:string;workos_org_id:string;name:string}[]>`select id::text,workos_org_id,name from tenant order by id`;
+  assert.deepEqual([...tenants],[{id:'00000000-0000-0000-0000-000000000000',workos_org_id:'org_system_auth_audit',name:'System (auth audit)'}],'Only the migration-owned system tenant may precede disposable seeding');
+  const [empty]=await owner.client<{companies:number;people:number;employments:number;users:number;future:boolean}[]>`select (select count(*)::int from company) as companies,(select count(*)::int from person) as people,(select count(*)::int from employment) as employments,(select count(*)::int from app_user) as users,to_regprocedure('app.contract_shared_email_recovery_original(uuid)') is not null as future`;
+  assert.deepEqual(empty,{companies:0,people:0,employments:0,users:0,future:false},'No business data or future recovery API may precede disposable seeding');
   const {seedCatalogs}=await load<typeof import('../../scripts/seed-catalogs')>('scripts/seed-catalogs.ts');await seedCatalogs(owner.db);
   // Only the existing pure ordinary identity/catalogue primitives, never harness reset or migration.
   const b=await harness.seedBase();await harness.setModule(b.tenantId,'lifecycle','active');await harness.setModule(b.tenantId,'payroll','active');
