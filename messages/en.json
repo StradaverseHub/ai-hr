@@ -10486,6 +10486,7 @@
       "sourceProcessed": "Processed in AIHR",
       "sourceImported": "Imported earlier",
       "warningsTitle": "Before you confirm, note what has already gone out for these months:",
+      "acknowledgeWarnings": "I have reviewed the warnings above and understand that importing history does not recalculate earlier payroll or resend payments, payslips or statutory reports.",
       "tickedTitle": "You have ticked {count, plural, one {# employee-month} other {# employee-months}} for overwrite. Your file's amounts replace what is on file exactly as written. Nothing is recalculated, no payroll is run and no payslip is generated.",
       "tickHint": "Payroll is already on file for some records. Tick the ones you want to overwrite; records you do not tick stay as they are.",
       "acknowledge": "I understand. Replace the ticked records with my file's values. The original values stay in the audit history and the overwrite can be undone from Log File.",

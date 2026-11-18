@@ -29,7 +29,55 @@ describe('payroll history revision workflow',()=>{
   await user.click(screen.getByLabelText('Overwrite 0000 2024-01'));
   expect(screen.getByText(/You have ticked 1 employee-month for overwrite/)).toBeVisible();expect(commit).toBeDisabled();
   await user.click(screen.getByLabelText(/I understand\. Replace the ticked records/));expect(commit).toBeEnabled();
-  await user.click(commit);expect(confirm).toHaveBeenCalledWith({attemptId:'attempt-a',previewHash:'preview-hash',confirmReplacement:true,selectedRecordKeys:['company-a:employee-a:2024-01:cycle-a'],acknowledgeWarnings:true});expect(await screen.findByRole('status')).toHaveTextContent('Import committed');
+  await user.click(commit);expect(confirm).toHaveBeenCalledWith({attemptId:'attempt-a',previewHash:'preview-hash',confirmReplacement:true,selectedRecordKeys:['company-a:employee-a:2024-01:cycle-a'],acknowledgeWarnings:false});expect(await screen.findByRole('status')).toHaveTextContent('Import committed');
+ });
+ it.each([false,true])('imports new records with warning acknowledgement when required (warnings=%s)',async(hasWarnings)=>{
+  const user=userEvent.setup(),fresh={...row(),operation:'create' as const,beforeValues:null,expectedSnapshotId:null,warnings:hasWarnings?['Later payroll used the figures already on file.']:[]};
+  const preview=plan([fresh]);preview.counts={created:1,replaced:0,unchanged:0,invalid:0};
+  vi.stubGlobal('fetch',vi.fn().mockResolvedValue({ok:true,json:async()=>({attemptId:'attempt-new',plan:preview})}));confirm.mockResolvedValue({ok:true,result:{}});
+  render(wrap(<HistoryWorkflow codes={[]}/>));await user.upload(screen.getByLabelText('Source file'),new File(['x'],'history.csv',{type:'text/csv'}));await user.click(screen.getByRole('button',{name:'Validate file'}));
+  const commit=screen.getByRole('button',{name:'Confirm import'});expect(commit).toBeDisabled();
+  expect(screen.queryByLabelText(/I understand\. Replace the ticked records/)).toBeNull();
+  await user.click(screen.getByLabelText(/I have reviewed the companies/));
+  if(hasWarnings){
+   expect(commit).toBeDisabled();await user.click(commit);expect(confirm).not.toHaveBeenCalled();
+   await user.click(screen.getByLabelText(/I have reviewed the warnings above/));
+  }else expect(screen.queryByLabelText(/I have reviewed the warnings above/)).toBeNull();
+  expect(commit).toBeEnabled();await user.click(commit);
+  expect(confirm).toHaveBeenCalledWith({attemptId:'attempt-new',previewHash:'preview-hash',confirmReplacement:false,acknowledgeWarnings:hasWarnings});
+  expect(await screen.findByRole('status')).toHaveTextContent('Import committed');
+ });
+ it.each(['new','replacement','both'] as const)('acknowledges applicable warnings for a mixed import (%s warnings)',async(warningSource)=>{
+  const user=userEvent.setup(),fresh={...row(1),employmentId:'employee-b',operation:'create' as const,beforeValues:null,expectedSnapshotId:null,warnings:warningSource!=='replacement'?['New record warning.']:[]};
+  const replacement={...row(),warnings:warningSource!=='new'?['Replacement warning.']:[]};
+  const preview=plan([replacement,fresh]);preview.counts={created:1,replaced:1,unchanged:0,invalid:0};
+  vi.stubGlobal('fetch',vi.fn().mockResolvedValue({ok:true,json:async()=>({attemptId:'attempt-mixed',plan:preview})}));confirm.mockResolvedValue({ok:true,result:{skippedReplacements:1}});
+  render(wrap(<HistoryWorkflow codes={[]}/>));await user.upload(screen.getByLabelText('Source file'),new File(['x'],'history.csv',{type:'text/csv'}));await user.click(screen.getByRole('button',{name:'Validate file'}));
+  await user.click(screen.getByLabelText(/I have reviewed the companies/));
+  const overwrite=screen.getByRole('button',{name:'Confirm overwrite and import'}),newOnly=screen.getByRole('button',{name:'Import new records only'});
+  await user.click(screen.getByLabelText('Overwrite 0000 2024-01'));
+  await user.click(screen.getByLabelText(/I understand\. Replace the ticked records/));
+  expect(overwrite).toBeDisabled();
+  // Skipping a replacement never requires acknowledging that replacement's warnings.
+  if(warningSource==='replacement')expect(newOnly).toBeEnabled();else expect(newOnly).toBeDisabled();
+  await user.click(screen.getByLabelText(/I have reviewed the warnings above/));expect(overwrite).toBeEnabled();expect(newOnly).toBeEnabled();
+  // A changed selection invalidates both acknowledgements.
+  await user.click(screen.getByLabelText('Overwrite 0000 2024-01'));expect(overwrite).toBeDisabled();
+  if(warningSource!=='replacement')await user.click(screen.getByLabelText(/I have reviewed the warnings above/));
+  await user.click(newOnly);
+  expect(confirm).toHaveBeenCalledWith({attemptId:'attempt-mixed',previewHash:'preview-hash',confirmReplacement:false,skipReplacements:true,acknowledgeWarnings:warningSource!=='replacement'});
+  expect(await screen.findByRole('status')).toHaveTextContent('1 existing record was left unchanged');
+ });
+ it('requires both warning acknowledgement and overwrite approval for replacements',async()=>{
+  const user=userEvent.setup(),preview=plan([{...row(),warnings:['Issued payroll is retained in audit history.']}]);
+  vi.stubGlobal('fetch',vi.fn().mockResolvedValue({ok:true,json:async()=>({attemptId:'attempt-replace',plan:preview})}));confirm.mockResolvedValue({ok:true,result:{}});
+  render(wrap(<HistoryWorkflow codes={[]}/>));await user.upload(screen.getByLabelText('Source file'),new File(['x'],'history.csv',{type:'text/csv'}));await user.click(screen.getByRole('button',{name:'Validate file'}));
+  await user.click(screen.getByLabelText('Overwrite 0000 2024-01'));await user.click(screen.getByLabelText(/I have reviewed the companies/));
+  const commit=screen.getByRole('button',{name:'Confirm overwrite and import'});
+  await user.click(screen.getByLabelText(/I have reviewed the warnings above/));expect(commit).toBeDisabled();
+  await user.click(screen.getByLabelText(/I understand\. Replace the ticked records/));expect(commit).toBeEnabled();await user.click(commit);
+  expect(confirm).toHaveBeenCalledWith({attemptId:'attempt-replace',previewHash:'preview-hash',confirmReplacement:true,selectedRecordKeys:['company-a:employee-a:2024-01:cycle-a'],acknowledgeWarnings:true});
+  expect(await screen.findByRole('status')).toHaveTextContent('Import committed');
  });
  it('renders source cycle, before-and-after money and bounded pages without truncating the record set',async()=>{
   const user=userEvent.setup();render(wrap(<RevisionPreview plan={plan(Array.from({length:51},(_,i)=>row(i)))}/>));
@@ -54,7 +102,7 @@ describe('payroll history revision workflow',()=>{
   expect(screen.getAllByText(/bank payment file was already exported/)).toHaveLength(2);
   await user.click(screen.getByLabelText('Overwrite 0000 2024-01'));
   await user.click(screen.getByLabelText(/I have reviewed the companies/));await user.click(screen.getByRole('button',{name:'Import new records only'}));
-  expect(confirm).toHaveBeenCalledWith({attemptId:'attempt-a',previewHash:'preview-hash',confirmReplacement:false,skipReplacements:true});
+  expect(confirm).toHaveBeenCalledWith({attemptId:'attempt-a',previewHash:'preview-hash',confirmReplacement:false,skipReplacements:true,acknowledgeWarnings:false});
   expect(await screen.findByRole('status')).toHaveTextContent('1 existing record was left unchanged');
   cleanup();render(wrap(<RevisionPreview plan={{...plan([{...row(2),operation:'invalid' as const,reasons:['Payroll for this period and Pay Cycle is still open in Payroll.']}]),counts:{created:0,replaced:0,unchanged:0,invalid:1}}}/>));
   expect(screen.getByText('Rejected')).toBeVisible();expect(screen.queryByRole('checkbox')).toBeNull();

@@ -10486,6 +10486,7 @@
       "sourceProcessed": "Đã xử lý trong AIHR",
       "sourceImported": "Đã nhập trước đó",
       "warningsTitle": "Trước khi xác nhận, hãy lưu ý những gì đã gửi đi cho các tháng này:",
+      "acknowledgeWarnings": "Tôi đã xem các cảnh báo trên và hiểu rằng việc nhập lịch sử không tính lại bảng lương trước đây hoặc gửi lại khoản thanh toán, phiếu lương hay báo cáo pháp định.",
       "tickedTitle": "Bạn đã chọn {count} nhân viên-tháng để ghi đè. Số tiền trong tệp thay thế dữ liệu hiện có đúng như đã ghi. Không tính lại, không chạy lương và không tạo phiếu lương.",
       "tickHint": "Một số bản ghi đã có dữ liệu lương. Chọn các bản ghi muốn ghi đè; bản ghi không chọn được giữ nguyên.",
       "acknowledge": "Tôi hiểu. Thay thế các bản ghi đã chọn bằng giá trị trong tệp của tôi. Giá trị gốc vẫn nằm trong lịch sử kiểm toán và có thể hoàn tác từ Log File.",

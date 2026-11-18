@@ -10486,6 +10486,7 @@
       "sourceProcessed": "Diproses dalam AIHR",
       "sourceImported": "Diimport sebelum ini",
       "warningsTitle": "Sebelum anda sahkan, ambil perhatian perkara yang telah dikeluarkan untuk bulan-bulan ini:",
+      "acknowledgeWarnings": "Saya telah menyemak amaran di atas dan memahami bahawa import sejarah tidak mengira semula gaji terdahulu atau menghantar semula bayaran, slip gaji atau laporan berkanun.",
       "tickedTitle": "Anda telah menanda {count} bulan-pekerja untuk ditulis ganti. Amaun dalam fail anda menggantikan rekod sedia ada tepat seperti ditulis. Tiada pengiraan semula, tiada larian gaji dan tiada slip gaji dijana.",
       "tickHint": "Gaji sudah wujud untuk sesetengah rekod. Tandakan rekod yang ingin ditulis ganti; rekod yang tidak ditanda kekal seperti sedia ada.",
       "acknowledge": "Saya faham. Gantikan rekod yang ditanda dengan nilai fail saya. Nilai asal kekal dalam sejarah audit dan tulis ganti boleh dibatalkan daripada Log File.",

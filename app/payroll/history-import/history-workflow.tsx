@@ -17,7 +17,7 @@ const button='inline-flex items-center justify-center rounded-lg border px-4 py-
 export function HistoryWorkflow({codes}:{codes:Code[]}){
  const t=useTranslations('payroll.historyRevisions'),old=useTranslations('payroll.historyImport');
  const [file,setFile]=useState<File|null>(null),[preview,setPreview]=useState<{attemptId:string;plan:HistoryRevisionPlan}|null>(null);
- const [busy,setBusy]=useState<'validate'|'confirm'|'template'|null>(null),[error,setError]=useState<string|null>(null),[confirmed,setConfirmed]=useState(false),[ticked,setTicked]=useState<Set<string>>(new Set()),[acknowledged,setAcknowledged]=useState(false),[skipped,setSkipped]=useState(0),[done,setDone]=useState(false);
+ const [busy,setBusy]=useState<'validate'|'confirm'|'template'|null>(null),[error,setError]=useState<string|null>(null),[confirmed,setConfirmed]=useState(false),[ticked,setTicked]=useState<Set<string>>(new Set()),[acknowledged,setAcknowledged]=useState(false),[warningsAcknowledged,setWarningsAcknowledged]=useState(false),[skipped,setSkipped]=useState(0),[done,setDone]=useState(false);
  const operation=useRef<string|null>(null);
  // The confirmation commits in the background; the panel follows the job and hands back its outcome.
  const [jobId,setJobId]=useState<string|null>(null);
@@ -27,7 +27,7 @@ export function HistoryWorkflow({codes}:{codes:Code[]}){
   else setError(job.error??t('failed'));
  },[t]);
  async function validate(){
-  if(!file||busy)return;setBusy('validate');setError(null);setDone(false);setConfirmed(false);setTicked(new Set());setAcknowledged(false);setSkipped(0);
+  if(!file||busy)return;setBusy('validate');setError(null);setDone(false);setConfirmed(false);setTicked(new Set());setAcknowledged(false);setWarningsAcknowledged(false);setSkipped(0);
   try{
    operation.current??=crypto.randomUUID();
    const response=await fetch('/payroll/history-import/upload?name='+encodeURIComponent(file.name),{method:'POST',headers:{'Content-Type':'application/octet-stream','X-Upload-Operation':operation.current},body:file});
@@ -38,9 +38,9 @@ export function HistoryWorkflow({codes}:{codes:Code[]}){
  // d28501b8 r2 — replacements are chosen record by record. "Import new records only" ticks none.
  async function commit(mode:'all'|'ticked'|'new'){
   if(!preview||busy)return;setBusy('confirm');setError(null);
-  const selection=mode==='ticked'?{confirmReplacement:true,selectedRecordKeys:[...ticked],acknowledgeWarnings:acknowledged}:mode==='new'?{confirmReplacement:false,skipReplacements:true}:{confirmReplacement:false};
+  const selection=mode==='ticked'?{confirmReplacement:true,selectedRecordKeys:[...ticked]}:mode==='new'?{confirmReplacement:false,skipReplacements:true}:{confirmReplacement:false};
   let following=false;
-  try{const result=await confirmHistoryUploadAction({attemptId:preview.attemptId,previewHash:preview.plan.previewHash,...selection});
+  try{const result=await confirmHistoryUploadAction({attemptId:preview.attemptId,previewHash:preview.plan.previewHash,...selection,acknowledgeWarnings:warningsAcknowledged});
    if(!result.ok)setError(result.error??t('failed'));else if('jobId' in result&&result.jobId){following=true;setJobId(result.jobId);}else if('result' in result&&result.result){setSkipped(result.result.skippedReplacements??0);setDone(true);}}
   catch{setError(t('failed'));}finally{if(!following)setBusy(null);}
  }
@@ -55,7 +55,8 @@ export function HistoryWorkflow({codes}:{codes:Code[]}){
  }
  useAssistantImportIntake('payroll_history',text=>{setFile(new File([text],'assistant-prepared.csv',{type:'text/csv'}));setPreview(null);operation.current=null;setDone(false);},setError);
  const replaceable=preview?preview.plan.rows.filter(row=>row.operation==='replace'):[];
- const tickedWarnings=[...new Set(replaceable.filter(row=>ticked.has(historyRecordKey(row))).flatMap(row=>row.warnings??[]))];
+ const newWarnings=preview?preview.plan.rows.filter(row=>row.operation==='create').flatMap(row=>row.warnings??[]):[];
+ const warnings=[...new Set([...newWarnings,...replaceable.filter(row=>ticked.has(historyRecordKey(row))).flatMap(row=>row.warnings??[])])];
  const blocked=!preview||busy!==null||!confirmed||preview.plan.counts.invalid>0||preview.plan.issues.length>0;
  return <div className="space-y-6" aria-busy={busy!==null}>
   <section className="space-y-4 rounded-xl border bg-card p-5"><div className="flex flex-wrap items-start justify-between gap-4"><div><h2 className="font-semibold">{t('fileTitle')}</h2><p className="mt-1 max-w-3xl text-sm text-muted-foreground">{t('fileHint')}</p></div><ActionButton aria-busy={busy==='template'} type="button" onClick={template} disabled={busy!==null} className={button}>{busy==='template'?t('working'):t('template')}</ActionButton></div>
@@ -66,25 +67,27 @@ export function HistoryWorkflow({codes}:{codes:Code[]}){
   </section>
   {error&&<p role="alert" className="rounded-lg border border-destructive/30 p-4 text-sm text-destructive">{error}</p>}
   {preview&&<section className="space-y-5 rounded-xl border bg-card p-5"><div className="flex flex-wrap justify-between gap-3"><h2 className="font-semibold">{done?t('results'):t('preview')}</h2><Link className="text-sm font-medium text-primary underline" href={'/payroll/history-import/logs/'+preview.attemptId}>{t('openLog')}</Link></div>
-   <RevisionPreview key={preview.attemptId} plan={preview.plan} selection={done||!replaceable.length?undefined:{ticked,toggle:key=>setTicked(prev=>{const next=new Set(prev);if(!next.delete(key))next.add(key);return next;}),
-    toggleAll:on=>setTicked(on?new Set(replaceable.map(historyRecordKey)):new Set())}}/>
+   <RevisionPreview key={preview.attemptId} plan={preview.plan} selection={done||!replaceable.length?undefined:{ticked,toggle:key=>{setAcknowledged(false);setWarningsAcknowledged(false);setTicked(prev=>{const next=new Set(prev);if(!next.delete(key))next.add(key);return next;});},
+    toggleAll:on=>{setAcknowledged(false);setWarningsAcknowledged(false);setTicked(on?new Set(replaceable.map(historyRecordKey)):new Set());}}}/>
    {jobId&&<HistoryJobPanel jobId={jobId} onFinished={finished}/>}
    {!done&&preview.plan.rows.some(row=>row.otherCompany)&&<div className="space-y-1 rounded-lg border border-amber-500/40 bg-amber-50/40 p-4 text-sm dark:bg-amber-500/5"><p className="font-medium">{t('otherCompanyTitle')}</p><ul className="list-disc space-y-1 pl-5">{preview.plan.rows.filter(row=>row.otherCompany).map(row=><li key={historyRecordKey(row)}>{t('otherCompanyRow',{employee:row.employeeNo,name:row.employeeName??'',period:row.period,company:row.companyName})}</li>)}</ul></div>}
    {done?<p role="status" className="rounded-lg border border-primary/30 bg-primary/5 p-4 text-sm">{t('success')}{skipped>0&&<> {t('successSkipped',{count:skipped})}</>}</p>:<div className="space-y-3 border-t pt-4"><p className="text-sm text-muted-foreground">{t('atomicHint')}</p>
     {replaceable.length>0&&<div className="space-y-3 rounded-lg border border-amber-500/40 bg-amber-50/40 p-4 text-sm dark:bg-amber-500/5">
      {ticked.size===0?<p>{t('tickHint')}</p>:<>
       <p className="font-medium">{t('tickedTitle',{count:ticked.size})}</p>
-      {tickedWarnings.length>0&&<><p>{t('warningsTitle')}</p><ul className="list-disc space-y-1 pl-5">{tickedWarnings.map(w=><li key={w}>{w}</li>)}</ul></>}
       <label className="flex items-start gap-3"><input type="checkbox" className="mt-1" checked={acknowledged} onChange={event=>setAcknowledged(event.target.checked)} disabled={busy!==null}/><span>{t('acknowledge')}</span></label>
      </>}
+    </div>}
+    {warnings.length>0&&<div className="space-y-3 rounded-lg border border-amber-500/40 bg-amber-50/40 p-4 text-sm dark:bg-amber-500/5"><p>{t('warningsTitle')}</p><ul className="list-disc space-y-1 pl-5">{warnings.map(w=><li key={w}>{w}</li>)}</ul>
+     <label className="flex items-start gap-3"><input type="checkbox" className="mt-1" checked={warningsAcknowledged} onChange={event=>setWarningsAcknowledged(event.target.checked)} disabled={busy!==null}/><span>{t('acknowledgeWarnings')}</span></label>
     </div>}
     <label className="flex items-start gap-3 text-sm"><input type="checkbox" className="mt-1" checked={confirmed} onChange={event=>setConfirmed(event.target.checked)} disabled={busy!==null}/><span>{t('confirmation')}</span></label>
     <div className="flex flex-wrap gap-3">
      {replaceable.length>0?<>
-      <ActionButton guardNavigation={true} aria-busy={busy==='confirm'} actionKind="submitting" type="button" className={button+' bg-primary text-primary-foreground'} onClick={()=>commit('ticked')} disabled={blocked||ticked.size===0||!acknowledged}>{busy==='confirm'?t('importing'):t('confirmOverwrite')}</ActionButton>
-      {preview.plan.counts.created>0&&<ActionButton guardNavigation={true} aria-busy={busy==='confirm'} actionKind="submitting" type="button" className={button} onClick={()=>commit('new')} disabled={blocked}>{t('importNewOnly')}</ActionButton>}
-     </>:<ActionButton guardNavigation={true} aria-busy={busy==='confirm'} actionKind="submitting" type="button" className={button+' bg-primary text-primary-foreground'} onClick={()=>commit('all')} disabled={blocked}>{busy==='confirm'?t('importing'):t('import')}</ActionButton>}
-     <button type="button" className={button} onClick={()=>{setPreview(null);setConfirmed(false);setTicked(new Set());setAcknowledged(false);operation.current=null;}} disabled={busy!==null}>{t('cancel')}</button></div>
+      <ActionButton guardNavigation={true} aria-busy={busy==='confirm'} actionKind="submitting" type="button" className={button+' bg-primary text-primary-foreground'} onClick={()=>commit('ticked')} disabled={blocked||ticked.size===0||!acknowledged||(warnings.length>0&&!warningsAcknowledged)}>{busy==='confirm'?t('importing'):t('confirmOverwrite')}</ActionButton>
+      {preview.plan.counts.created>0&&<ActionButton guardNavigation={true} aria-busy={busy==='confirm'} actionKind="submitting" type="button" className={button} onClick={()=>commit('new')} disabled={blocked||(newWarnings.length>0&&!warningsAcknowledged)}>{t('importNewOnly')}</ActionButton>}
+     </>:<ActionButton guardNavigation={true} aria-busy={busy==='confirm'} actionKind="submitting" type="button" className={button+' bg-primary text-primary-foreground'} onClick={()=>commit('all')} disabled={blocked||(newWarnings.length>0&&!warningsAcknowledged)}>{busy==='confirm'?t('importing'):t('import')}</ActionButton>}
+     <button type="button" className={button} onClick={()=>{setPreview(null);setConfirmed(false);setTicked(new Set());setAcknowledged(false);setWarningsAcknowledged(false);operation.current=null;}} disabled={busy!==null}>{t('cancel')}</button></div>
    </div>}
   </section>}
  </div>;
