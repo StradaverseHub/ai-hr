@@ -169,6 +169,8 @@ export function workflowWhen(workflow: Workflow): string {
 }
 export type Run = { id: string; workflowId: string; revision: number; date: string; status: 'running' | 'waiting' | 'done' | 'skipped' | 'failed'; cursor: number; reason: string; at: string; definition?: Workflow; actor?: Actor;
   /** An email step waiting because a recipient is missing. Only Continue looks the recipients up again. */
+  /** Original due day survives unsigned Personnel preparation and later signature/file waits. */
+  completionHold?: {documentId:string;stepId:string;dueOn:string|null;at:string};
   hold?: { stepId: string; missing: RecipientMissing[]; at: string }; lateEmail?: { stepId: string; dueOn: string; at: string }; resumeOn?: string; sourceEvent?: { kind: 'hrSigned' | 'docSigned' | 'taskDone' | 'fileUploaded'; sourceId: string; at: string; revision: number } };
 export type Mail = {
   id: string; key: string; workflowId: string | null; templateId: string | null;
@@ -958,6 +960,7 @@ export function planWorkflow(c: Case, config: Config, workflow: Workflow, env: P
 }
 /** Frozen workflow dates govern held mail; a repeated reminder keeps the run's own day. */
 export function heldEmailDueOn(c: Pick<Case, 'facts'>, run: Run): string | null {
+  if(run.completionHold)return run.completionHold.dueOn&&validDate(run.completionHold.dueOn)?run.completionHold.dueOn:null;
   const trigger = run.definition?.trigger;
   if (!trigger || !dateTrigger(trigger.event) || trigger.repeat) return validDate(run.date) ? run.date : null;
   const anchor = ['beforeLWD', 'afterLWD'].includes(trigger.event) ? c.facts.lastDay : c.facts.joinDate;
@@ -971,6 +974,7 @@ export function decideLateEmail(c: Case, config: Config, input: { workflowId: st
   const step = definition?.steps[run?.cursor ?? -1];
   const due = run && heldEmailDueOn(c, run);
   if (!run || !definition || !step || !['email', 'notify'].includes(step.type) || step.id !== input.stepId || !(run.hold?.stepId === step.id || run.lateEmail?.stepId === step.id) || !due || due >= env.today) throw new V9Error('This late email changed. Refresh before deciding.', 'conflict');
+  if(c.mails.some(mail=>mail.workflowId===definition.id&&(mail.key===`${run.id}:${step.id}`||mail.key.startsWith(`${run.id}:${step.id}:`))))throw new V9Error('This email already has a delivery record. Review its receipt.','conflict');
   return runWorkflow(c, config, definition, env, 'resume', { continueHeld: true, lateDecision: input });
 }
 export function runWorkflow(c: Case, config: Config, workflow: Workflow, env: Environment, event: 'submitted' | 'date' | 'resume' | 'hrSigned' | 'docSigned' | 'manual', options: { startNow?: boolean; continueHeld?: boolean; sourceEvent?:Run['sourceEvent'];lateDecision?:{runId:string;stepId:string;decision:'send'|'skip'} } = {}): Run | null {
@@ -1019,11 +1023,18 @@ export function runWorkflow(c: Case, config: Config, workflow: Workflow, env: En
             if (!waiting) { if(!doc.signing||!documentFinal(doc))doc.status = 'sent'; doc.sentAt = env.now; linkedTasks(c, doc, 'sent'); appendLog(c, env, 'document.released', doc.name); }
           }
         }
+        if(waiting&&step.release&&doc.personnelCompletion&&!run.completionHold){
+          run.completionHold={documentId:doc.id,stepId:step.id,dueOn:heldEmailDueOn(c,run),at:env.now};
+          appendLog(c,env,'workflow.personnelCompletionHeld',`${workflow.name}: ${doc.name}`);
+        }
       } else if (step.type === 'waitSign') { const d = activeDocument(c, step.template); if (!(step.by === 'hr' ? d&&(d.signing?v9RoutedHrComplete(d):d.hrSignature) : d && documentFinal(d))) waiting = `Waiting for ${step.by === 'hr' ? 'HR' : 'the employee'} to sign.`; }
       else if (step.type === 'waitFile') { if (!c.files.some(f => f.slot === step.slot)) waiting = `Waiting for ${step.label}.`; }
       else {
         const dueOn = heldEmailDueOn(c, run);
-        if ((run.hold?.stepId === step.id || run.lateEmail?.stepId === step.id) && dueOn && dueOn < env.today) {
+        const captured=c.mails.some(mail=>mail.workflowId===workflow.id&&(mail.key===`${run.id}:${step.id}`||mail.key.startsWith(`${run.id}:${step.id}:`)));
+        if(run.completionHold&&!captured&&!dueOn){run.status='waiting';run.reason='The original scheduled date is unavailable. HR must review this workflow.';return run;}
+        if(run.completionHold&&!captured&&dueOn&&dueOn>env.today){run.resumeOn=dueOn;run.status='waiting';run.reason=`Waiting until the original scheduled date ${dueOn}.`;return run;}
+        if (!captured&&(run.hold?.stepId === step.id || run.lateEmail?.stepId === step.id || run.completionHold) && dueOn && dueOn < env.today) {
           const decision = options.lateDecision;
           if (!decision || decision.runId !== run.id || decision.stepId !== step.id || env.actor.id === 'system') {
             run.lateEmail = { stepId: step.id, dueOn, at: run.lateEmail?.at ?? env.now };
@@ -1038,13 +1049,14 @@ export function runWorkflow(c: Case, config: Config, workflow: Workflow, env: En
         const outcome = enqueue(c, config, step, `${run.id}:${step.id}`, workflow.id, env);
         if (outcome && 'held' in outcome) { holdEmail(c, config, workflow, run, step, outcome.held, env); return run; }
         if (run.hold?.stepId === step.id) { appendLog(c, env, 'workflow.emailReleased', `${workflow.name}: ${stepMessageName(config, step)}`); delete run.hold; }
-        if (!outcome) delete run.lateEmail;
+        // A captured receipt owns further delivery progress; approval never needs to replay it.
+        if (!outcome||c.mails.some(mail=>mail.workflowId===workflow.id&&(mail.key===`${run.id}:${step.id}`||mail.key.startsWith(`${run.id}:${step.id}:`)))) delete run.lateEmail;
         waiting = outcome?.wait ?? '';
       }
       if (waiting) { run.status = 'waiting'; run.reason = waiting; return run; }
       run.cursor++;
     }
-    run.status = 'done'; run.reason = ''; appendLog(c, env, 'workflow.completed', workflow.name);
+    run.status = 'done'; run.reason = ''; delete run.completionHold; appendLog(c, env, 'workflow.completed', workflow.name);
   } catch (error) { run.status = 'failed'; run.reason = error instanceof Error ? error.message : 'Workflow could not complete.'; appendLog(c, env, 'workflow.failed', `${workflow.name}: ${run.reason}`); }
   return run;
 }
