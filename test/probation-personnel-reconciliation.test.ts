@@ -96,7 +96,11 @@ describe('Personnel to probation reconciliation',()=>{
   await drain();expect((await cases(id))[0].id).toBe(record.id);
  });
  it('records a successful empty pass without inventing a checked timestamp for queued work',async()=>{
+  // The base includes employed personas. Give them an independently ineligible status;
+  // deleting their intents alone would let the catch-up scan correctly queue them again.
+  await owner.db.execute(sql`update employment set confirmation_date=${today}::date where tenant_id=${b.tenantId}::uuid`);
   await owner.db.execute(sql`delete from probation_reconciliation_intent where tenant_id=${b.tenantId}::uuid`);
+  expect((await owner.db.execute<{n:number}>(sql`select count(*)::integer n from employment where tenant_id=${b.tenantId}::uuid and confirmation_date is null`))[0].n).toBe(0);
   await tick();
   const[empty]=await owner.db.execute<{last_success_at:unknown}>(sql`select last_success_at from probation_reconciliation_schedule where tenant_id=${b.tenantId}::uuid`);expect(empty.last_success_at).toBeTruthy();
   await starter();await owner.db.execute(sql`update probation_reconciliation_schedule set next_check_at=now(),last_success_at=null where tenant_id=${b.tenantId}::uuid`);
