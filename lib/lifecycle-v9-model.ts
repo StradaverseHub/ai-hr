@@ -507,7 +507,7 @@ export function editDocumentText(c: Case, config: Config, id: string, edits: Rec
   const template = config.templates.find(template => template.id === doc.templateId);
   if (!template) throw new V9Error('Document template not found.', 'not_found');
   if ((doc.templateType ?? template.type) === 'Attachment') throw new V9Error('Attachments are read-only PDFs.', 'forbidden');
-  if (c.state !== 'submitted' || (!doc.signing&&doc.status !== 'draft') || doc.hrSignature || doc.employeeSignature || documentDeliveryReserved(c, id)||doc.signing&&!canEditSigningContent(doc.signing,env.actor.id)) throw new V9Error('Only an unsigned document at your review step can be edited.', 'conflict');
+  if (c.state !== 'submitted' || (!doc.signing&&doc.status !== 'draft') || doc.hrSignature || doc.employeeSignature || documentDeliveryReserved(c, id)||doc.signing&&!canEditSigningContent(doc.signing,env.actor.id)) throw new V9Error(doc.signing?'Only an unsigned document at your review step can be edited.':'Only an unsigned draft not reserved for delivery can be edited.', 'conflict');
   const editable = doc.blocks.filter(block => ['heading','subheading','text'].includes(block.type));
   if (Object.keys(edits).length > 500 || Object.entries(edits).some(([key,value]) => !editable.some(block => block.id === key) || typeof value !== 'string' || value.length > 20000)) throw new V9Error('Choose an editable title, section heading or text block.', 'forbidden');
   const saved = Object.fromEntries(Object.entries(edits).filter(([key,value]) => value !== editable.find(block => block.id === key)!.text));
