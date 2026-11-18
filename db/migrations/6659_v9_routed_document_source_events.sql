@@ -1,7 +1,7 @@
 -- Extend the existing source-event owner; real signer attribution and outbox processing remain unchanged.
 CREATE FUNCTION app.v9_document_route_hr_complete(d jsonb) RETURNS boolean LANGUAGE sql IMMUTABLE SET search_path=pg_catalog,public,pg_temp AS $$
  SELECT jsonb_typeof(d->'signing')='object' AND NOT app.document_signing_returned(d->'signing')
- AND EXISTS(SELECT 1 FROM jsonb_array_elements(d->'signing'->'route'->'steps') s WHERE s->>'required'='true' AND s->>'role'<>'employee')
+ AND EXISTS(SELECT 1 FROM jsonb_array_elements(d->'signing'->'route'->'steps') s JOIN app.document_signing_round_actions(d->'signing') action ON action->>'stepId'=s->>'id' AND action->>'action'='signed' WHERE s->>'role'<>'employee' AND s->>'kind' IN('sign','acknowledge'))
  AND NOT EXISTS(SELECT 1 FROM jsonb_array_elements(d->'signing'->'route'->'steps') s WHERE s->>'required'='true' AND s->>'role'<>'employee' AND NOT app.document_signing_step_fulfilled(d->'signing',s))
 $$;
 REVOKE ALL ON FUNCTION app.v9_document_route_hr_complete(jsonb) FROM PUBLIC;

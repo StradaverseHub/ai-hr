@@ -5,7 +5,7 @@ CREATE FUNCTION app.v9_signing_current_actor() RETURNS boolean LANGUAGE sql STAB
   SELECT 1 FROM app_user u WHERE u.id=app.current_user_id() AND u.tenant_id=app.current_tenant_id() AND u.archived_at IS NULL AND NOT app.login_blocked(u.id))
 $$;
 CREATE FUNCTION app.v9_document_content_hash(d jsonb) RETURNS text LANGUAGE sql IMMUTABLE SET search_path=pg_catalog,public,pg_temp AS $$
- SELECT encode(sha256(convert_to(jsonb_build_object('templateId',d->'templateId','version',d->'version','blocks',d->'blocks','fields',d->'fields','values',d->'values','edits',d->'edits','mergeValues',coalesce(d->'mergeValues','{}'::jsonb))::text,'UTF8')),'hex')
+ SELECT encode(sha256(convert_to((jsonb_build_object('templateId',d->'templateId','version',d->'version','blocks',d->'blocks','fields',d->'fields','values',d->'values','edits',d->'edits','mergeValues',coalesce(d->'mergeValues','{}'::jsonb))||CASE WHEN jsonb_typeof(d->'personnelSourceReference')='object' THEN jsonb_build_object('personnelSourceReference',d->'personnelSourceReference') ELSE '{}'::jsonb END)::text,'UTF8')),'hex')
 $$;
 CREATE FUNCTION app.v9_document_route_complete(d jsonb) RETURNS boolean LANGUAGE sql IMMUTABLE SET search_path=pg_catalog,public,pg_temp AS $$
  SELECT jsonb_typeof(d->'signing')='object' AND NOT app.document_signing_returned(d->'signing') AND NOT EXISTS(
@@ -123,7 +123,7 @@ GRANT EXECUTE ON FUNCTION app.v9_document_route_validate_append(jsonb,jsonb,json
 CREATE FUNCTION app.v9_document_personnel_source_unchecked(p_case uuid) RETURNS jsonb
 LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
 DECLARE c lc_v9_case;n lc_onboarding_case;e employment;p person;draft employee_draft;a assignment;co company;st employee_statutory_my;
- native boolean:=false;f jsonb;profile jsonb;source_values jsonb;case_values jsonb;cfg jsonb;company_config jsonb;field jsonb;k text;v text;supervisor_id uuid;business_unit_id uuid;supervisor_name text;join_day date;day date:=(now() AT TIME ZONE 'Asia/Kuala_Lumpur')::date;
+ native boolean:=false;f jsonb;profile jsonb;source_values jsonb;case_values jsonb;cfg jsonb;company_config jsonb;field jsonb;k text;v text;supervisor_id uuid;reporting_id uuid;business_unit_id uuid;source_day date;source_basis text:='current';exit_event uuid;exit_sequence bigint;exit_count integer;supervisor_name text;join_day date;day date:=(now() AT TIME ZONE 'Asia/Kuala_Lumpur')::date;
 BEGIN
  SELECT * INTO c FROM lc_v9_case WHERE id=p_case AND tenant_id=app.current_tenant_id();
  IF NOT FOUND THEN
@@ -135,9 +135,27 @@ BEGIN
  IF c.employment_id IS NOT NULL THEN
   SELECT * INTO e FROM employment WHERE id=c.employment_id AND tenant_id=c.tenant_id;IF NOT FOUND OR e.company_id IS DISTINCT FROM co.id THEN RAISE EXCEPTION 'Personnel source no longer belongs to this case company';END IF;
   SELECT * INTO p FROM person WHERE id=e.person_id AND tenant_id=c.tenant_id;
+  source_day:=greatest(day,e.hired_on);
   SELECT * INTO a FROM assignment WHERE employment_id=e.id AND tenant_id=c.tenant_id AND superseded_at IS NULL AND valid_from<=greatest(day,e.hired_on) AND (valid_to IS NULL OR valid_to>greatest(day,e.hired_on)) ORDER BY valid_from DESC,id LIMIT 1;
   business_unit_id:=(nullif(app.company_org_employment_unchecked(e.id,greatest(day,e.hired_on))->>'businessUnitId',''))::uuid;
-  SELECT r.manager_employment_id INTO supervisor_id FROM reporting_line r WHERE r.tenant_id=c.tenant_id AND r.subordinate_employment_id=e.id AND r.line_type='administrative' AND r.superseded_at IS NULL AND r.valid_from<=day AND (r.valid_to IS NULL OR r.valid_to>day) ORDER BY r.valid_from DESC,r.id LIMIT 1;
+  SELECT r.manager_employment_id,r.id INTO supervisor_id,reporting_id FROM reporting_line r WHERE r.tenant_id=c.tenant_id AND r.subordinate_employment_id=e.id AND r.line_type='administrative' AND r.superseded_at IS NULL AND r.valid_from<=day AND (r.valid_to IS NULL OR r.valid_to>day) ORDER BY r.valid_from DESC,r.id LIMIT 1;
+  -- The movement owner closes versions on the exact exit date. Sequence ties mirror movementExitVersion;
+  -- ambiguous/replaced exit lineage fails closed instead of choosing a UUID or an unrelated later version.
+  IF e.terminated_on IS NOT NULL AND e.terminated_on<=day THEN
+   source_day:=e.terminated_on;source_basis:='unresolved-exit';
+   SELECT count(*)::integer,min(id::text)::uuid,min(sequence) INTO exit_count,exit_event,exit_sequence FROM domain_event WHERE tenant_id=c.tenant_id AND aggregate_type='employment' AND aggregate_id=e.id AND event_type='employment.terminated' AND payload->>'terminationDate'=e.terminated_on::text;
+   a:=NULL;supervisor_id:=NULL;reporting_id:=NULL;business_unit_id:=NULL;
+   IF exit_count<>1 THEN exit_event:=NULL;exit_sequence:=NULL;END IF;
+   IF exit_count=1 THEN
+    WITH candidates AS(SELECT av.*,(SELECT max(ev.sequence) FROM domain_event ev WHERE ev.tenant_id=av.tenant_id AND ev.aggregate_id=av.id AND ev.event_type IN('employment.assignment.changed','assignment.transferred')) AS start_sequence FROM assignment av WHERE av.tenant_id=c.tenant_id AND av.employment_id=e.id AND av.superseded_at IS NULL AND av.valid_from<=e.terminated_on AND av.valid_to=e.terminated_on),
+     eligible AS(SELECT * FROM candidates WHERE start_sequence IS NULL OR start_sequence<=exit_sequence),latest AS(SELECT * FROM eligible WHERE valid_from=(SELECT max(valid_from) FROM eligible))
+    SELECT av.* INTO a FROM assignment av JOIN latest ON latest.id=av.id WHERE (SELECT count(*) FROM latest WHERE start_sequence IS NULL)<=1 ORDER BY latest.start_sequence DESC NULLS LAST LIMIT 1;
+    WITH candidates AS(SELECT rv.*,(SELECT max(ev.sequence) FROM domain_event ev WHERE ev.tenant_id=rv.tenant_id AND ev.aggregate_id=rv.id AND ev.event_type='reporting-line.set') AS start_sequence FROM reporting_line rv WHERE rv.tenant_id=c.tenant_id AND rv.subordinate_employment_id=e.id AND rv.line_type='administrative' AND rv.superseded_at IS NULL AND rv.valid_from<=e.terminated_on AND rv.valid_to=e.terminated_on),
+     eligible AS(SELECT * FROM candidates WHERE start_sequence IS NULL OR start_sequence<=exit_sequence),latest AS(SELECT * FROM eligible WHERE valid_from=(SELECT max(valid_from) FROM eligible))
+    SELECT manager_employment_id,id INTO supervisor_id,reporting_id FROM latest WHERE (SELECT count(*) FROM latest WHERE start_sequence IS NULL)<=1 ORDER BY start_sequence DESC NULLS LAST LIMIT 1;
+    IF a.id IS NOT NULL THEN source_basis:='exit-boundary';business_unit_id:=a.business_unit_id;END IF;
+   END IF;
+  END IF;
   IF co.country='MY' THEN SELECT * INTO st FROM employee_statutory_my WHERE person_id=p.id AND tenant_id=c.tenant_id;END IF;
   profile:=jsonb_build_object('fullName',p.full_name,'primaryEmail',p.primary_email,'icNumber',st.ic_number,'passportNumber',st.passport_number,'race',p.race,'religion',p.religion,'nationality',p.nationality,'gender',p.gender,'maritalStatus',p.marital_status,'phone',p.phone,'homePhone',p.home_phone,'personalEmail',p.personal_email,
    'address',coalesce(nullif(p.address,''),concat_ws(', ',nullif(p.permanent_address_line1,''),nullif(p.permanent_address_line2,''),nullif(p.permanent_address_line3,''),nullif(p.permanent_postcode,''),nullif(p.permanent_city,''),nullif(p.permanent_state,''),nullif(p.permanent_country,''))));
@@ -145,6 +163,7 @@ BEGIN
  ELSE
   SELECT * INTO draft FROM employee_draft WHERE id=n.source_draft_id AND tenant_id=n.tenant_id AND company_id=n.company_id;
   IF NOT FOUND THEN RAISE EXCEPTION 'The authoritative Personnel draft is unavailable';END IF;
+  source_basis:='draft';source_day:=day;
   profile:=coalesce(draft.data->'profile','{}'::jsonb);profile:=profile||jsonb_build_object('address',concat_ws(', ',nullif(profile->>'permanentAddressLine1',''),nullif(profile->>'permanentAddressLine2',''),nullif(profile->>'permanentAddressLine3',''),nullif(profile->>'permanentPostcode',''),nullif(profile->>'permanentCity',''),nullif(profile->>'permanentState',''),nullif(profile->>'permanentCountry','')));
   a.department_id:=(nullif(draft.data->'employment'->>'departmentId',''))::uuid;a.position_id:=(nullif(draft.data->'employment'->>'positionId',''))::uuid;supervisor_id:=(nullif(draft.data->'employment'->>'reportingManagerEmploymentId',''))::uuid;
   join_day:=(nullif(draft.data->'employment'->>'hiredOn',''))::date;
@@ -168,7 +187,7 @@ BEGIN
   END IF;
   source_values:=source_values||jsonb_build_object('case.'||k,coalesce(v,''));
  END LOOP;
- RETURN source_values||jsonb_build_object('_companyId',co.id,'_employmentId',c.employment_id,'_personId',coalesce(e.person_id,(nullif(n.data->>'personId',''))::uuid),'_country',co.country);
+ RETURN source_values||jsonb_build_object('_companyId',co.id,'_employmentId',c.employment_id,'_personId',coalesce(e.person_id,(nullif(n.data->>'personId',''))::uuid),'_country',co.country,'_sourceBasis',source_basis,'_sourceAsOf',source_day,'_assignmentId',a.id,'_reportingLineId',reporting_id,'_exitEventId',exit_event);
 END $$;
 REVOKE ALL ON FUNCTION app.v9_document_personnel_source_unchecked(uuid) FROM PUBLIC,ai_hr_app;
 CREATE FUNCTION app.v9_document_personnel_values(p_case uuid) RETURNS jsonb
@@ -185,6 +204,12 @@ BEGIN
 END $$;
 REVOKE ALL ON FUNCTION app.v9_document_personnel_values(uuid) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION app.v9_document_personnel_values(uuid) TO ai_hr_app;
+--> statement-breakpoint
+CREATE FUNCTION app.v9_document_personnel_reference(p_source jsonb) RETURNS jsonb LANGUAGE sql IMMUTABLE SET search_path=pg_catalog,public,pg_temp AS $$
+ SELECT jsonb_build_object('version',1,'basis',p_source->>'_sourceBasis','asOf',p_source->>'_sourceAsOf','assignmentId',p_source->'_assignmentId','reportingLineId',p_source->'_reportingLineId','exitEventId',p_source->'_exitEventId')
+$$;
+REVOKE ALL ON FUNCTION app.v9_document_personnel_reference(jsonb) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.v9_document_personnel_reference(jsonb) TO ai_hr_app;
 --> statement-breakpoint
 CREATE FUNCTION app.v9_document_route_guard() RETURNS trigger LANGUAGE plpgsql SET search_path=pg_catalog,public,pg_temp AS $$
 DECLARE old_docs jsonb;new_docs jsonb;d jsonb;prior jsonb;definition jsonb;version jsonb;cfg jsonb;native_cfg jsonb;c lc_onboarding_case;facts jsonb;company uuid;subject_person uuid;admin boolean;step jsonb;spec jsonb;who jsonb;group_row jsonb;routing jsonb;candidate_row jsonb;selected_group text;possible text[];holder text;employee_user text;supervisor_user text;signature jsonb;body_changed boolean;content_edit boolean;source_case uuid;source_employment uuid;personnel_source jsonb;field jsonb;source_key text;expected text;
@@ -222,7 +247,7 @@ BEGIN
   PERFORM app.document_signing_validate(signature,'{"requiredRoles":[]}'::jsonb);
   IF coalesce(d->'stepSignatures','{}'::jsonb) IS DISTINCT FROM app.v9_document_route_signatures(d) OR (d->>'status'='signed') IS DISTINCT FROM app.v9_document_route_complete(d) AND d->>'status' NOT IN('withdrawn','superseded') THEN RAISE EXCEPTION 'Routed signature/status projection mismatch';END IF;
   IF jsonb_typeof(prior->'signing')='object' THEN
-   IF d->'routing' IS DISTINCT FROM prior->'routing' OR signature-ARRAY['contentRevision','contentHash','actions'] IS DISTINCT FROM (prior->'signing')-ARRAY['contentRevision','contentHash','actions'] THEN RAISE EXCEPTION 'Generated routes are frozen';END IF;
+   IF d->'personnelSourceReference' IS DISTINCT FROM prior->'personnelSourceReference' OR d->'routing' IS DISTINCT FROM prior->'routing' OR signature-ARRAY['contentRevision','contentHash','actions'] IS DISTINCT FROM (prior->'signing')-ARRAY['contentRevision','contentHash','actions'] THEN RAISE EXCEPTION 'Generated routes are frozen';END IF;
    body_changed:=app.v9_document_content_hash(prior) IS DISTINCT FROM app.v9_document_content_hash(d);
    IF body_changed THEN
     IF d->'fields' IS DISTINCT FROM prior->'fields' OR d->'blocks' IS DISTINCT FROM prior->'blocks' OR d->'mergeValues' IS DISTINCT FROM prior->'mergeValues' OR d->>'templateId' IS DISTINCT FROM prior->>'templateId' OR d->'version' IS DISTINCT FROM prior->'version' THEN RAISE EXCEPTION 'Frozen source fields and document structure cannot be replaced';END IF;
@@ -244,6 +269,9 @@ BEGIN
   IF d->'blocks' IS DISTINCT FROM version->'blocks' OR d->'fields' IS DISTINCT FROM version->'fields' OR d->>'templateType' IS DISTINCT FROM definition->>'type' OR d->'edits' IS DISTINCT FROM '{}'::jsonb OR signature->'route'->'version' IS DISTINCT FROM '1'::jsonb OR version IS NULL OR d->'routing' IS DISTINCT FROM version->'routing' OR jsonb_array_length(d->'routing')<>jsonb_array_length(signature->'route'->'steps') OR signature->'routing'->>'templateId' IS DISTINCT FROM d->>'templateId' OR signature->'routing'->'templateVersion' IS DISTINCT FROM d->'version' THEN RAISE EXCEPTION 'Signing route must come from the published saved version';END IF;
   IF personnel_source IS NULL THEN personnel_source:=app.v9_document_personnel_values(source_case);END IF;
   IF personnel_source IS NULL OR personnel_source->>'_companyId' IS DISTINCT FROM company::text OR personnel_source->>'_employmentId' IS DISTINCT FROM source_employment::text OR personnel_source->>'_personId' IS DISTINCT FROM subject_person::text THEN RAISE EXCEPTION 'The authoritative Personnel subject changed';END IF;
+  IF EXISTS(SELECT 1 FROM jsonb_object_keys(coalesce(d->'mergeValues','{}'::jsonb)) used(key) WHERE used.key IN('employee.department','employee.position','employee.supervisor','case.dept','case.position','case.supervisor','case.group','employee.businessUnit')) THEN
+   IF personnel_source->>'_sourceBasis'='unresolved-exit' OR d->'personnelSourceReference' IS DISTINCT FROM app.v9_document_personnel_reference(personnel_source) THEN RAISE EXCEPTION 'The dated Personnel source requires review';END IF;
+  ELSIF d ? 'personnelSourceReference' THEN RAISE EXCEPTION 'Unused Personnel source evidence is not permitted';END IF;
   IF personnel_source->>'_identityFieldsWithheld'='true' AND EXISTS(SELECT 1 FROM jsonb_array_elements(d->'fields') configured WHERE configured->>'pmKey' IN('personalEmail','employee.icNo','employee.passportNo','icNo','passportNo','case.icNo','case.passportNo')) THEN RAISE EXCEPTION 'Permission to view protected Personnel identity fields is required';END IF;
   FOR source_key IN SELECT jsonb_object_keys(coalesce(d->'mergeValues','{}'::jsonb)) LOOP
    IF personnel_source->>'_identityFieldsWithheld'='true' AND source_key IN('personalEmail','employee.icNo','employee.passportNo','icNo','passportNo','case.icNo','case.passportNo') THEN RAISE EXCEPTION 'Permission to view protected Personnel identity fields is required';END IF;
