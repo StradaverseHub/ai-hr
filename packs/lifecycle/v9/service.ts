@@ -1,3 +1,4 @@
+import {communicationPreviewSource,type WorkflowPreviewContext} from '../../../lib/lifecycle-case-preview';
 import {reviseV9DocumentRouting} from '../../../lib/lifecycle-v9-document-routing';
 import {documentRoutingProblems,resolveDocumentRouting} from '../../../lib/document-signing-routing';
 import {resolveNativeDocumentRouting} from '../../../lib/document-signing-native-routing';
@@ -45,7 +46,7 @@ export type OwnCase = Pick<M.Case, 'id' | 'number' | 'module' | 'revision' | 'st
 export type PendingReturns = { held:{id:string;name:string;kind:'system'|'device';group:string|null;source:'asset'|'onboarding';catalogueId?:string;requestNumber?:string}[]; catalogue:{id:string;name:string;kind:'system'|'device';group:string;active:boolean}[]; selected:string[];
   /** d1e26f81 — the rows submission will create, with their team, method and Day (presets applied). */
   rows:{previewId:string;name:string;kind:'system'|'device';group:string|null;method:M.ReturnMethod;dueDay:number|null;dueOn:string;cardStep?:'collect'|'deactivate'}[] };
-export type CaseDetail = { returns?:PendingReturns; case: M.Case; calculation: SettlementView | null; personnelWritableKeys: string[]; native?: { config: M.Config; actor: M.Actor } };
+export type CaseDetail = { canUploadFiles?:boolean; returns?:PendingReturns; case: M.Case; calculation: SettlementView | null; personnelWritableKeys: string[]; native?: { config: M.Config; actor: M.Actor } };
 const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 function identifier(value: string): string { if (!uuid.test(value)) throw new M.V9Error('A valid record identifier is required.'); return value; }
 async function admin(tx: Tx, companyId?: string): Promise<void> {
@@ -228,6 +229,12 @@ async function pendingReturnsTx(tx:Tx,ctx:SessionContext,c:M.Case,config:M.Confi
   const rows=returnRows(c,config,sources).map(row=>({previewId:row.previewId,name:row.name,kind:row.kind,group:row.group,method:row.method,...(M.validDate(anchor)?plannedDue(c,row,anchor,c.returnPresets):{dueOn:'',dueDay:row.dueDay}),...(row.cardStep?{cardStep:row.cardStep}:{})}));
   return {held:[...sources.assets.map(asset=>({id:'asset:'+asset.id,name:`${asset.code} · ${asset.model??asset.assetType}`,kind:'device' as const,group:null,source:'asset' as const})),...sources.holdings.map(item=>({id:'onboarding:'+item.itemId,name:item.name,kind:item.kind,group:item.group,source:'onboarding' as const,catalogueId:item.catalogueId,requestNumber:item.requestNumber}))],catalogue:sources.catalogue.filter(item=>offeredToCompany(item,c.facts.company)||(c.returnSelections??[]).includes(item.id)).map(({id,name,kind,group,active})=>({id,name,kind,group,active})),selected:c.returnSelections??[],rows};
 }
+/** Read-only projection of the existing lc_v9_file INSERT policy after the exact upload writer's load authority. */
+async function v9UploadCapabilityTx(tx:Tx,ctx:SessionContext,row:Row):Promise<boolean>{
+ if(!ctx.userId||!['pending','submitted'].includes(row.data.state))return false;
+ const [access]=await tx.execute<{ok:boolean}>(row.native?sql`select app.is_admin_for(${row.company_id}::uuid) and (app.onboarding_page_access() or app.onboarding_v9_case_actor() or app.is_group_admin()) as ok`:sql`select app.lc_v9_off_access(${row.company_id}::uuid) as ok`);
+ return !!access?.ok;
+}
 export async function v9CaseDetail(ctx: SessionContext, id: string): Promise<CaseDetail> {
   return withLifecycleTenant(ctx, async tx => {
     const row = await load(tx, ctx, id), config = await configTx(tx, ctx);
@@ -237,7 +244,7 @@ export async function v9CaseDetail(ctx: SessionContext, id: string): Promise<Cas
     const managerResult = managerRecipientResult(manager.recipient);
     row.data = { ...row.data, supervisorDelivery: { name: manager.recipient.name, problem: 'reason' in managerResult ? managerResult.reason : null, reason: 'reason' in managerResult ? manager.recipient.reason ?? (manager.recipient.email ? 'invalidEmail' : 'missingEmail') : null } };
     const reveal = await personalEmailRevealTx(tx, ctx);
-    return { ...(row.data.module==='off'&&row.data.state==='pending'?{returns:await pendingReturnsTx(tx,ctx,row.data,config,calculation?.lastDay??row.data.facts.lastDay)}:{}), case: reveal ? row.data : maskCasePersonalEmail(row.data), calculation, personnelWritableKeys: v9PersonnelWritableKeys, ...(row.native ? { native: { config, actor: await actor(tx, ctx) } } : {}) };
+    return { canUploadFiles:await v9UploadCapabilityTx(tx,ctx,row),...(row.data.module==='off'&&row.data.state==='pending'?{returns:await pendingReturnsTx(tx,ctx,row.data,config,calculation?.lastDay??row.data.facts.lastDay)}:{}), case: reveal ? row.data : maskCasePersonalEmail(row.data), calculation, personnelWritableKeys: v9PersonnelWritableKeys, ...(row.native ? { native: { config, actor: await actor(tx, ctx) } } : {}) };
   });
 }
 
@@ -255,29 +262,39 @@ export async function v9PreviewPersonnelValues(ctx: SessionContext, caseId: stri
   });
 }
 
-export async function v9PreviewEmail(ctx: SessionContext, caseId: string, emailId: string): Promise<M.EmailPreview> {
+export async function v9PreviewEmail(ctx: SessionContext, caseId: string, emailId: string,context?:WorkflowPreviewContext): Promise<M.EmailPreview> {
   emailId = z.string().min(1).max(120).parse(emailId);
   return withLifecycleTenant(ctx, async tx => {
     const row = await load(tx, ctx, caseId), config = await configTx(tx, ctx);
     if (!config) throw new M.V9Error('V9 configuration is not available.');
     const env = await environment(tx, ctx, row.data, config);
-    const preview = M.previewEmail(row.data, config, emailId, env);
+    const selected=context?communicationPreviewSource(row.data,config,parseCommunicationPreviewContext(context)):null;
+    const step=selected?.steps.find(step=>step.id===context?.stepId);if(context&&(step?.type!=='email'||step.template!==emailId))throw new M.V9Error('Choose the email step of this workflow version.','not_found');
+    const preview = M.previewEmail(row.data, config, emailId, env,selected&&step?.type==='email'?{workflowId:selected.id,step}:undefined);
     return await personalEmailRevealTx(tx, ctx) ? preview : maskPersonalEmailView(preview, [env.mergeValues.personalEmail ?? '', ...preview.cc.filter(recipient => recipient.personal).map(recipient => recipient.id)]);
   });
 }
 
-export async function v9PreviewWorkflow(ctx: SessionContext, caseId: string, workflowId: string) {
+const parseCommunicationPreviewContext=(input:WorkflowPreviewContext)=>z.object({workflowId:z.string().min(1).max(120),runId:z.string().min(1).max(1000).optional(),stepId:z.string().min(1).max(120)}).strict().parse(input);
+export async function v9PreviewWorkflow(ctx: SessionContext, caseId: string, workflowId: string,context?:Omit<WorkflowPreviewContext,'workflowId'>) {
   workflowId=z.string().min(1).max(120).parse(workflowId);
   return withLifecycleTenant(ctx, async tx => {
     const row=await load(tx,ctx,caseId), config=await configTx(tx,ctx);
-    const workflow=config?.workflows.find(workflow=>workflow.id===workflowId&&workflow.module===row.data.module);
+    const workflow=config?(context?communicationPreviewSource(row.data,config,parseCommunicationPreviewContext({...context,workflowId})):config.workflows.find(workflow=>workflow.id===workflowId&&workflow.module===row.data.module)):null;
     if(!config||!workflow)throw new M.V9Error('Workflow not found.','not_found');
-    if(workflow.status==='retired')throw new M.V9Error('This workflow is retired. Restore it before previewing it.','conflict');
+    if(workflow.status==='retired'&&!context?.runId)throw new M.V9Error('This workflow is retired. Restore it before previewing it.','conflict');
     const c=structuredClone(row.data),env=await environment(tx,ctx,c,config);
-    const email=workflow.steps.find(step=>step.type==='email'),notification=workflow.steps.find(step=>step.type==='notify'),document=workflow.steps.find(step=>step.type==='doc');
+    const steps=context?workflow.steps.filter(step=>step.id===context.stepId):workflow.steps;
+    const email=steps.find(step=>step.type==='email'),notification=steps.find(step=>step.type==='notify'),document=steps.find(step=>step.type==='doc');
     // Match the reference's single-output priority; an unrelated later draft cannot break this preview.
     const messages=notification?.type==='notify'&&!email?[{id:notification.id,name:'Notification',...M.previewWorkflowNotification(c,config,notification,env,workflow.id)}]:[];
-    const documents=!email&&!notification&&document?.type==='doc'?[M.generate({...c,documents:[]},config,document.template,env)]:[];
+    let documents:M.Document[]=[];
+    if(!email&&!notification&&document?.type==='doc'){
+     if(!context)documents=[M.generate({...c,documents:[]},config,document.template,env)];else{
+     const saved=M.activeDocument(c,document.template),template=config.templates.find(template=>template.id===document.template&&template.module===c.module),version=template?M.currentVersion(template):null;
+     if(saved)documents=[saved];else if(template&&version)documents=[{id:'preview:'+document.id,templateId:template.id,version:version.version,name:template.name,status:'draft',blocks:structuredClone(version.blocks),fields:structuredClone(version.fields),values:Object.fromEntries(version.fields.filter(field=>field.pmKey).map(field=>[field.id,M.personnelFieldSourceValue(field,env.mergeValues)])),edits:{},hrSignature:null,employeeSignature:null,createdAt:env.now,sentAt:null,mergeValues:M.documentMergeValues(version,env.mergeValues),templateType:template.type,hrStep:template.hrStep,employeeAck:template.employeeAck}];
+     }
+    }
     return {workflow, messages: await personalEmailRevealTx(tx, ctx) ? messages : maskPersonalEmailView(messages, [env.mergeValues.personalEmail ?? '']), documents};
   });
 }

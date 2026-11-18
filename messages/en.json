@@ -44635,5 +44635,89 @@
     "previous": "Previous",
     "next": "Next",
     "exceptionsReviewed": "{count} not returned — exception reviewed by HR."
+  },
+  "communications": {
+    "title": "Communications & documents",
+    "description": "Every email, reminder and document in this case, in date order.",
+    "statusSummary": "Schedule status",
+    "blockedTitle": "{count, plural, one {# item can’t run until fixed} other {# items can’t run until fixed}}",
+    "reviewRequired": "Review the saved workflow before continuing.",
+    "resolveRecipient": "Resolve recipient",
+    "reviewDelivery": "Review delivery",
+    "reviewItem": "Review item",
+    "showTests": "Show test sends ({count})",
+    "earlierRun": "Another run must continue first.",
+    "emptySchedule": "No scheduled work matches this case. Unscheduled templates remain available below.",
+    "testSend": "Test send",
+    "to": "To",
+    "cc": "CC",
+    "email": "Email",
+    "document": "Document",
+    "notRecorded": "Not recorded",
+    "availableVersion": "Available v{version}",
+    "notGenerated": "Not generated",
+    "viewSent": "View in sent log",
+    "previewDocument": "Preview document",
+    "preview": "Preview",
+    "more": "More actions for {name}",
+    "manualWorkflows": "Workflows started by hand",
+    "unscheduled": "Unscheduled email templates",
+    "generatedDocuments": "Generated documents",
+    "regenerateHelp": "Regenerating creates a new version. Sent versions stay on the case.",
+    "generateTemplate": "Generate from template",
+    "chooseTemplate": "Choose a template",
+    "generate": "Generate",
+    "submitFirst": "Submit the case before generating documents.",
+    "emptyDocuments": "No documents are available for this case.",
+    "linkedRecipient": "Linked recipient",
+    "emptySent": "No email deliveries recorded.",
+    "usedBy": "Used by: {name}",
+    "recordedBy": "Recorded by",
+    "recordedWhen": "Recorded when",
+    "uploadFile": "Upload file",
+    "uploadDirty": "A selected file has not been uploaded. Leave without uploading?",
+    "oneFile": "Choose one file at a time.",
+    "dropFile": "Choose or drop a file here (up to 10 MB)",
+    "tabs": {
+      "schedule": "Schedule",
+      "documents": "Documents & files",
+      "sent": "Sent log",
+      "personnel": "Personnel changes"
+    },
+    "filters": {
+      "all": "All",
+      "attention": "Needs attention",
+      "open": "Open",
+      "done": "Done"
+    },
+    "states": {
+      "attention": "Needs attention",
+      "notStarted": "Not started",
+      "waiting": "Waiting",
+      "done": "Done"
+    },
+    "count": {
+      "attention": "{count} need attention",
+      "open": "{count} open",
+      "done": "{count} done"
+    },
+    "stages": {
+      "onb": {
+        "submitted": "On case submission",
+        "before": "Before Day 1",
+        "day": "Day 1",
+        "after": "After Day 1"
+      },
+      "off": {
+        "submitted": "On case submission",
+        "before": "Before last day",
+        "day": "Last day",
+        "after": "After last day"
+      }
+    },
+    "templatePreview": "Preview email template",
+    "sourceFrozen": "Recipients use the saved workflow run and selected step.",
+    "sourceCurrent": "Recipients use the selected step of the current workflow.",
+    "previewOnly": "Read-only schedule preview. The current saved email copy is shown until queued; manual sends remain in the template preview."
   }
 }

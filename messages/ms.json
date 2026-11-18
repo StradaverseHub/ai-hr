@@ -44635,5 +44635,89 @@
     "previous": "Sebelumnya",
     "next": "Seterusnya",
     "exceptionsReviewed": "{count} tidak dipulangkan — pengecualian disemak oleh HR."
+  },
+  "communications": {
+    "title": "Komunikasi & dokumen",
+    "description": "Setiap e-mel, peringatan dan dokumen kes ini, mengikut tarikh.",
+    "statusSummary": "Status jadual",
+    "blockedTitle": "{count} item tidak boleh dijalankan sehingga dibetulkan",
+    "reviewRequired": "Semak aliran kerja tersimpan sebelum meneruskan.",
+    "resolveRecipient": "Selesaikan penerima",
+    "reviewDelivery": "Semak penghantaran",
+    "reviewItem": "Semak item",
+    "showTests": "Tunjukkan penghantaran ujian ({count})",
+    "earlierRun": "Larian lain mesti diteruskan dahulu.",
+    "emptySchedule": "Tiada kerja berjadual sepadan dengan kes ini. Templat tanpa jadual tersedia di bawah.",
+    "testSend": "Penghantaran ujian",
+    "to": "Kepada",
+    "cc": "CC",
+    "email": "E-mel",
+    "document": "Dokumen",
+    "notRecorded": "Tidak direkodkan",
+    "availableVersion": "Tersedia v{version}",
+    "notGenerated": "Belum dijana",
+    "viewSent": "Lihat dalam log penghantaran",
+    "previewDocument": "Pratonton dokumen",
+    "preview": "Pratonton",
+    "more": "Tindakan lain untuk {name}",
+    "manualWorkflows": "Aliran kerja yang dimulakan secara manual",
+    "unscheduled": "Templat e-mel tanpa jadual",
+    "generatedDocuments": "Dokumen dijana",
+    "regenerateHelp": "Penjanaan semula mencipta versi baharu. Versi yang dihantar kekal pada kes.",
+    "generateTemplate": "Jana daripada templat",
+    "chooseTemplate": "Pilih templat",
+    "generate": "Jana",
+    "submitFirst": "Hantar kes sebelum menjana dokumen.",
+    "emptyDocuments": "Tiada dokumen tersedia untuk kes ini.",
+    "linkedRecipient": "Penerima dipautkan",
+    "emptySent": "Tiada penghantaran e-mel direkodkan.",
+    "usedBy": "Digunakan oleh: {name}",
+    "recordedBy": "Direkodkan oleh",
+    "recordedWhen": "Masa direkodkan",
+    "uploadFile": "Muat naik fail",
+    "uploadDirty": "Fail yang dipilih belum dimuat naik. Tinggalkan tanpa memuat naik?",
+    "oneFile": "Pilih satu fail pada satu masa.",
+    "dropFile": "Pilih atau lepaskan fail di sini (sehingga 10 MB)",
+    "tabs": {
+      "schedule": "Jadual",
+      "documents": "Dokumen & fail",
+      "sent": "Log penghantaran",
+      "personnel": "Perubahan Personnel"
+    },
+    "filters": {
+      "all": "Semua",
+      "attention": "Perlu perhatian",
+      "open": "Terbuka",
+      "done": "Selesai"
+    },
+    "states": {
+      "attention": "Perlu perhatian",
+      "notStarted": "Belum bermula",
+      "waiting": "Menunggu",
+      "done": "Selesai"
+    },
+    "count": {
+      "attention": "{count} perlu perhatian",
+      "open": "{count} terbuka",
+      "done": "{count} selesai"
+    },
+    "stages": {
+      "onb": {
+        "submitted": "Semasa penghantaran kes",
+        "before": "Sebelum Hari 1",
+        "day": "Hari 1",
+        "after": "Selepas Hari 1"
+      },
+      "off": {
+        "submitted": "Semasa penghantaran kes",
+        "before": "Sebelum hari terakhir",
+        "day": "Hari terakhir",
+        "after": "Selepas hari terakhir"
+      }
+    },
+    "templatePreview": "Pratonton templat e-mel",
+    "sourceFrozen": "Penerima menggunakan larian aliran kerja tersimpan dan langkah yang dipilih.",
+    "sourceCurrent": "Penerima menggunakan langkah terpilih dalam aliran kerja semasa.",
+    "previewOnly": "Pratonton jadual baca sahaja. Salinan e-mel tersimpan semasa dipaparkan sehingga dibariskan; penghantaran manual tersedia dalam pratonton templat."
   }
 }

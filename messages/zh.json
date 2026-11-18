@@ -44635,5 +44635,89 @@
     "previous": "上一页",
     "next": "下一页",
     "exceptionsReviewed": "{count} 项未归还，人力资源已审核例外情况。"
+  },
+  "communications": {
+    "title": "通信与文档",
+    "description": "按日期查看此个案的所有邮件、提醒和文档。",
+    "statusSummary": "计划状态",
+    "blockedTitle": "{count} 项需修复后才能运行",
+    "reviewRequired": "请先审核已保存的工作流再继续。",
+    "resolveRecipient": "解决收件人问题",
+    "reviewDelivery": "审核投递",
+    "reviewItem": "审核项目",
+    "showTests": "显示测试发送（{count}）",
+    "earlierRun": "必须先继续另一个流程运行。",
+    "emptySchedule": "没有匹配的计划工作。未排程模板仍可在下方使用。",
+    "testSend": "测试发送",
+    "to": "收件人",
+    "cc": "抄送",
+    "email": "邮件",
+    "document": "文档",
+    "notRecorded": "未记录",
+    "availableVersion": "可用版本 v{version}",
+    "notGenerated": "未生成",
+    "viewSent": "查看发送日志",
+    "previewDocument": "预览文档",
+    "preview": "预览",
+    "more": "{name} 的更多操作",
+    "manualWorkflows": "手动启动的工作流",
+    "unscheduled": "未排程邮件模板",
+    "generatedDocuments": "已生成文档",
+    "regenerateHelp": "重新生成会创建新版本。已发送版本保留在个案中。",
+    "generateTemplate": "从模板生成",
+    "chooseTemplate": "选择模板",
+    "generate": "生成",
+    "submitFirst": "生成文档前请先提交个案。",
+    "emptyDocuments": "此个案暂无可用文档。",
+    "linkedRecipient": "关联收件人",
+    "emptySent": "尚无邮件投递记录。",
+    "usedBy": "使用者：{name}",
+    "recordedBy": "记录人",
+    "recordedWhen": "记录时间",
+    "uploadFile": "上传文件",
+    "uploadDirty": "所选文件尚未上传。要放弃上传并离开吗？",
+    "oneFile": "每次请选择一个文件。",
+    "dropFile": "在此选择或拖放文件（最大 10 MB）",
+    "tabs": {
+      "schedule": "计划",
+      "documents": "文档与文件",
+      "sent": "发送日志",
+      "personnel": "人事变更"
+    },
+    "filters": {
+      "all": "全部",
+      "attention": "需关注",
+      "open": "进行中",
+      "done": "已完成"
+    },
+    "states": {
+      "attention": "需关注",
+      "notStarted": "未开始",
+      "waiting": "等待中",
+      "done": "已完成"
+    },
+    "count": {
+      "attention": "{count} 项需关注",
+      "open": "{count} 项进行中",
+      "done": "{count} 项已完成"
+    },
+    "stages": {
+      "onb": {
+        "submitted": "提交个案时",
+        "before": "入职前",
+        "day": "入职当天",
+        "after": "入职后"
+      },
+      "off": {
+        "submitted": "提交个案时",
+        "before": "最后工作日前",
+        "day": "最后工作日",
+        "after": "最后工作日后"
+      }
+    },
+    "templatePreview": "预览邮件模板",
+    "sourceFrozen": "收件人依据已保存的工作流运行及所选步骤。",
+    "sourceCurrent": "收件人依据当前工作流的所选步骤。",
+    "previewOnly": "只读计划预览。入队前显示当前保存的邮件内容；手动发送仍可在模板预览中操作。"
   }
 }
