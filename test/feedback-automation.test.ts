@@ -64,7 +64,7 @@ describe('durable operator feedback coordinator',()=>{
  it('suspends an unchanged hold, caps retries, and permits a genuinely changed report',async()=>{
   const {id}=await report(),p=await completion('hold');await script(completeSql(p));expect(await pickup()).toHaveLength(0);
   await owner.db.update(s.feedbackRequest).set({description:'Reporter supplied the missing scope.'}).where(eq(s.feedbackRequest.id,id));
-  for(let n=0;n<3;n++){const retry=await completion('retry');await script(completeSql(retry));await owner.client`update feedback_automation_work set retry_at=now()-interval '1 second' where feedback_request_id=${id}`;}
+  for(let n=0;n<3;n++){const retry=await completion('retry');await script(completeSql(retry));await script(completeSql(retry));await owner.client`update feedback_automation_work set retry_at=now()-interval '1 second' where feedback_request_id=${id}`;}
   expect(await pickup()).toHaveLength(0);
  });
  it('creates private account-bell notices once, including a user-only reporter, and suppresses follow-up after an answer',async()=>{

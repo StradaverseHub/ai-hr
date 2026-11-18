@@ -89,7 +89,7 @@ export function completeSql(p: Completion): string {
  IF f.id IS NULL THEN RAISE EXCEPTION 'Report unavailable';END IF;
  SELECT * INTO w FROM feedback_automation_work WHERE feedback_request_id=f.id AND tenant_id=f.tenant_id FOR UPDATE;
  IF w.claim_token IS DISTINCT FROM ${token} OR w.source_digest IS DISTINCT FROM ${literal(p.sourceDigest)} THEN RAISE EXCEPTION 'Work claim changed';END IF;
- IF w.state IN ('completed','escalated') THEN
+ IF w.state IN ('completed','escalated','failed') THEN
   IF w.completion_digest IS DISTINCT FROM ${literal(resultDigest)} THEN RAISE EXCEPTION 'Claim already settled with a different result';END IF;
   RETURN;
  END IF;
