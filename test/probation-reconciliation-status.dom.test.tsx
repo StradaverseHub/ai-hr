@@ -25,7 +25,7 @@ describe('Probation no-case notice and reasons',()=>{
  it('shows an unverified/stale worker honestly and a view without a no-case notice after catch-up',()=>{
   show({total:0,rows:[],lastSuccessfulCheck:null,checkStale:true});
   expect(screen.getByRole('status')).toHaveTextContent('Personnel checks have not completed recently.');
-  expect(screen.getByText('No successful check recorded yet.')).toBeVisible();
+  expect(screen.getByRole('region',{name:'Personnel checks'})).toHaveTextContent('No successful check recorded yet.');
   expect(document.querySelector('details')).toBeNull();
  });
  it('keeps SQL pages open and preserves the selected company',()=>{
