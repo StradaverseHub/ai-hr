@@ -166,6 +166,7 @@ const APPROVED_COMBINED_RELEASE_TAGS=[
  '6439_contract_resignation_shared_compatibility',
  '6440_own_leave_shared_access',
  '6441_contract_resignation_email_modules',
+ '6500_ai_provider_candidate_presentation_rls',
 ] as const;
 
 // Approved but not yet installed forward tail; this fixture independently pins journal identity.
@@ -2113,6 +2114,7 @@ it('stops on a cross-tenant row, then validates every company/tenant key without
   const manage=(column:string)=>`tenant_id=app.current_tenant_id() AND app.reward_config_page_allowed(${column},'plans.manage','manage')`;
   const own='app.acting_as_owner()';
   const approvedPolicies:ApprovedPolicy[]=[
+   {table:'ai_provider_candidate',name:'ai_provider_candidate_owner_presentation',cmd:'SELECT',role:'public',using:"current_user=pg_get_userbyid((SELECT c.relowner FROM pg_catalog.pg_class c WHERE c.oid='public.ai_provider_candidate'::regclass)) AND tenant_id=app.current_tenant_id() AND app._ai_provider_presentation_actor_valid()",check:null},
    {table:'reward_plan_year',name:'reward_plan_year_read',cmd:'SELECT',role:'public',using:view('NULL'),check:null},
    {table:'reward_plan_year',name:'reward_plan_year_insert',cmd:'INSERT',role:'public',using:null,check:manage('NULL')+' AND created_by=app.current_user_id()'},
    {table:'reward_plan_year_company',name:'reward_plan_year_company_read',cmd:'SELECT',role:'public',using:view('company_id'),check:null},

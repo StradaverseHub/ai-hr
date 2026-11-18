@@ -7463,6 +7463,13 @@
       "when": 1794988006441,
       "tag": "6441_contract_resignation_email_modules",
       "breakpoints": true
+    },
+    {
+      "idx": 5900,
+      "version": "7",
+      "when": 1794988006500,
+      "tag": "6500_ai_provider_candidate_presentation_rls",
+      "breakpoints": true
     }
   ]
 }

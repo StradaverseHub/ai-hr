@@ -406,9 +406,11 @@ export const APPROVED_UPGRADE_TAIL=[
  {idx:5839,when:1794988006439,tag:'6439_contract_resignation_shared_compatibility'},
  {idx:5840,when:1794988006440,tag:'6440_own_leave_shared_access'},
  {idx:5841,when:1794988006441,tag:'6441_contract_resignation_email_modules'},
+ {idx:5900,when:1794988006500,tag:'6500_ai_provider_candidate_presentation_rls'},
 ] as const;
 // Final pending 2109/2126 bytes reviewed from engine 128bc2539; no applied-prefix hashes change.
 const APPROVED_UPGRADE_HASHES:Record<string,string>={
+ '6500_ai_provider_candidate_presentation_rls':'ded682ab21306480e2ea982b7bcb48337983b50086569268f52e5045bc7beaea',
  '6441_contract_resignation_email_modules':'6d9821ab2bfde4e13da07a8ad648b47f09e27805e993dd367b0badc36816d995',
  '6307_contract_resignation_directory_bridge':'3d9aee1476b60dac984bd763be78af4c6fd4fd9f2962ae19e61961e659d19150',
  '6439_contract_resignation_shared_compatibility':'be68596bde8fb8e26b0db3973e9f04100212b6c9694d27b03624404684ab76c8',
