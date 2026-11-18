@@ -789,9 +789,21 @@ after managed drain and **before starting the web installer/readiness window**, 
 `guarded-prepare-ci-worker` with `ADMIN_REVIEWED_CI_WORKER_PREPARATION`. Its closed
 `preparation` object selects `normal`, the original drain approval/receipt, an
 exclusive UUID, and fixed derived prepared-tree/proof paths. The separate IO-only
-operation expires within300 seconds, re-extracts and authenticates the complete
-archive, normalizes manifest modes, verifies every file byte/link/member/root
-identity, and seals a root-private immutable proof. It changes no unit or service.
+legacy `aihr-worker-prepared-handoff/v1` operation expires within300 seconds.
+For a new normal preparation, reviewed `aihr-worker-prepared-handoff/v2` permits
+at most600 seconds of separately authorized offline I/O. Two actual staging v1
+attempts exhausted300 seconds during full content verification; a subsequent
+storage diagnostic also did not finish the complete check under300. The v2
+choice belongs to a fresh hash-pinned root approval and a new exclusive attempt,
+not an extension, rewrite or reuse of an old300-second approval or failed tree.
+Both versions re-extract and authenticate the complete archive, normalize manifest
+modes, verify every file byte/link/member/root identity, and seal an immutable
+root-private proof. Neither changes a unit or service. V1 and failed-preunit
+preparation retain their original300-second maximum; published sealing also stays300.
+The native invocation starts the selected absolute ceiling BEFORE reading and
+admitting the protected approval, and always retains any tighter enclosing limit.
+Proof admission requires the exact matching policy and its original issue/expiry
+interval. There is no caller-selected duration field or new live authority.
 The independently reviewed later `ADMIN_AUTHORIZED_PREPARED_CI_WORKER_CUTOVER`
 adds only the exact `preparedWorker:{path,sha256}` selection to the original
 activation fields. `guarded-activate-prepared-ci-runtime` then runs the same
