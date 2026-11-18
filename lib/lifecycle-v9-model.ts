@@ -1,3 +1,4 @@
+import { managerRecipientResult, type PersonnelManagerRecipient } from './personnel-manager-recipient';
 import { bulkAssignmentProblem, RETURN_BULK_LABELS } from './lifecycle-bulk-assignment';
 import { personnelMergeLabels } from '@/lib/lifecycle-v9-personnel-merge-fields';
 import type { Note as LifecycleNote } from './onboarding-model';
@@ -160,7 +161,7 @@ export function workflowWhen(workflow: Workflow): string {
 }
 export type Run = { id: string; workflowId: string; revision: number; date: string; status: 'running' | 'waiting' | 'done' | 'skipped' | 'failed'; cursor: number; reason: string; at: string; definition?: Workflow; actor?: Actor;
   /** An email step waiting because a recipient is missing. Only Continue looks the recipients up again. */
-  hold?: { stepId: string; missing: RecipientMissing[]; at: string }; sourceEvent?: { kind: 'hrSigned' | 'docSigned' | 'taskDone' | 'fileUploaded'; sourceId: string; at: string; revision: number } };
+  hold?: { stepId: string; missing: RecipientMissing[]; at: string }; lateEmail?: { stepId: string; dueOn: string; at: string }; resumeOn?: string; sourceEvent?: { kind: 'hrSigned' | 'docSigned' | 'taskDone' | 'fileUploaded'; sourceId: string; at: string; revision: number } };
 export type Mail = {
   id: string; key: string; workflowId: string | null; templateId: string | null;
   to: string[]; cc: string[]; subject: string; body: string; documentIds: string[];
@@ -187,6 +188,8 @@ export type Case = {
   returnSelections?: string[];
   caseValues?: Record<string,string>;
   revokeMode?: 'lastday' | 'date';
+  /** Authorised read-only manager summary, excluded from persisted document state. */
+  supervisorDelivery?: { name: string | null; problem: string | null; reason?: PersonnelManagerRecipient['reason'] };
   emailEdits?: Record<string, { subject: string; body: string }>;
   /** Per case and step (`workflowId:stepId`): To and CC chosen for this person only. */
   recipientOverrides?: Record<string, RecipientOverride>;
@@ -217,6 +220,8 @@ export type Environment = {
   userEmail?: (userId: string) => string | null;
   /** Current PM supervisor account; null deliberately overrides an obsolete case snapshot. */
   supervisorUserId?: string | null;
+  /** Current Personnel employment and work destination; never grants task/login eligibility. */
+  supervisorRecipient?: PersonnelManagerRecipient;
   mergeValues: Record<string, string>;
   signatoryUserId?: string | null;
   actorSignatoryTitle?: string;
@@ -549,7 +554,7 @@ export type ResolvedRecipient = { key: string; name: string; personal?: true };
 export type StepRecipients = { to: ResolvedRecipient[]; cc: ResolvedRecipient[]; missing: RecipientMissing[]; contact?: { email: string; sourceRevision: string } };
 const literalEmail = (value: string | undefined) => { const email = value?.trim() ?? ''; return email && v9LiteralAddress('address:' + email) ? email : null; };
 /** One role, looked up now: Employee and Line manager come from the current Personnel facts, never the case's creation. */
-function resolveRole(c: Case, config: Config, role: Role, env: Pick<Environment, 'eligibleUser' | 'userName' | 'mergeValues' | 'onboardingContact' | 'supervisorUserId'>): { found: ResolvedRecipient[]; reason: string | null; contact?: { email: string; sourceRevision: string } } {
+function resolveRole(c: Case, config: Config, role: Role, env: Pick<Environment, 'eligibleUser' | 'userName' | 'mergeValues' | 'onboardingContact' | 'supervisorUserId' | 'supervisorRecipient'>): { found: ResolvedRecipient[]; reason: string | null; contact?: { email: string; sourceRevision: string } } {
   const user = (id: string | null | undefined, none: string, inactive = 'no longer has an active account') => !id ? { found: [], reason: none } : env.eligibleUser(id) ? { found: [{ key: id, name: recipientName(id, env) }], reason: null } : { found: [], reason: inactive };
   if (role.startsWith('address:')) return v9LiteralAddress(role) ? { found: [{ key: role, name: v9LiteralAddress(role)! }], reason: null } : { found: [], reason: 'not a valid email address' };
   if (role.startsWith('person:')) return user(role.slice(7), 'no person is chosen');
@@ -569,6 +574,10 @@ function resolveRole(c: Case, config: Config, role: Role, env: Pick<Environment,
     const contact = c.module === 'onb' ? env.onboardingContact : undefined;
     return contact ? { found: [{ key: contact.email, name: c.facts.name }], reason: null, contact } : { found: [], reason: 'Employee login is not linked' };
   }
+  if (role === 'supervisor' && env.supervisorRecipient) {
+    const recipient = managerRecipientResult(env.supervisorRecipient);
+    return 'reason' in recipient ? { found: [], reason: recipient.reason } : { found: [recipient], reason: null };
+  }
   if (role === 'supervisor') return user(env.supervisorUserId === undefined ? c.facts.supervisorUserId : env.supervisorUserId, 'no supervisor on the Personnel record', 'the line manager has no active account');
   if (role === 'ta') return user(c.facts.taUserId && env.eligibleUser(c.facts.taUserId) ? c.facts.taUserId : null, 'the TA is not linked to a user');
   if (role === 'hrSignatory') return user(config.companies?.find(company => company.companyId === c.facts.company)?.signatoryUserId, 'no HR signatory is set for the company');
@@ -587,7 +596,7 @@ function resolveRole(c: Case, config: Config, role: Role, env: Pick<Environment,
   return { found: [], reason: 'this recipient is unavailable' };
 }
 /** To and CC for one email, with every missing recipient named. One copy per address; To wins over CC. */
-export function resolveStepRecipients(c: Case, config: Config, roles: { to: Role[]; cc: Role[] }, env: Pick<Environment, 'eligibleUser' | 'userName' | 'mergeValues' | 'onboardingContact' | 'supervisorUserId'>): StepRecipients {
+export function resolveStepRecipients(c: Case, config: Config, roles: { to: Role[]; cc: Role[] }, env: Pick<Environment, 'eligibleUser' | 'userName' | 'mergeValues' | 'onboardingContact' | 'supervisorUserId' | 'supervisorRecipient'>): StepRecipients {
   const missing: RecipientMissing[] = [], seen = new Set<string>(), out: StepRecipients = { to: [], cc: [], missing };
   for (const position of ['to', 'cc'] as const) for (const role of roles[position]) {
     const result = resolveRole(c, config, role, env);
@@ -848,14 +857,14 @@ export function testWorkflowMessages(c: Case, config: Config, workflowId: string
   }
 }
 /** Source dry run: inspect every step against current data, independent of submission/date eligibility. */
-export type PlanEnvironment = Pick<Environment, 'today' | 'userName'> & Partial<Pick<Environment, 'eligibleUser' | 'mergeValues' | 'onboardingContact' | 'userEmail' | 'supervisorUserId'>> & { revealPersonal?: boolean; workflowId?: string | null };
+export type PlanEnvironment = Pick<Environment, 'today' | 'userName'> & Partial<Pick<Environment, 'eligibleUser' | 'mergeValues' | 'onboardingContact' | 'userEmail' | 'supervisorUserId' | 'supervisorRecipient'>> & { revealPersonal?: boolean; workflowId?: string | null };
 export function planWorkflow(c: Case, config: Config, workflow: Workflow, env: PlanEnvironment): { matches: boolean; lines: { text: string; ok: boolean }[] } {
   const matches = workflowMatches(c, workflow, env.today), lines: { text: string; ok: boolean }[] = [];
   if (!matches) return { matches, lines: [{ text: 'Skipped: this record does not match the conditions.', ok: false }] };
   lines.push({ text: 'Conditions match.', ok: true });
   const skipped = skipReason(c, workflow, config);
   if (skipped) return { matches, lines: [...lines, { text: `Would skip: ${skipped}`, ok: true }] };
-  const lookup = { eligibleUser: env.eligibleUser ?? (() => true), userName: env.userName, mergeValues: env.mergeValues ?? {}, onboardingContact: env.onboardingContact, supervisorUserId: env.supervisorUserId };
+  const lookup = { eligibleUser: env.eligibleUser ?? (() => true), userName: env.userName, mergeValues: env.mergeValues ?? {}, onboardingContact: env.onboardingContact, supervisorUserId: env.supervisorUserId, supervisorRecipient: env.supervisorRecipient };
   // A selected personal mailbox stays protected when another role resolves to the same address.
   const protectedPersonal = literalEmail(env.mergeValues?.personalEmail)?.toLowerCase();
   // Each person and the address they are reached at. Personal email is masked unless the viewer may see it.
@@ -884,10 +893,27 @@ export function planWorkflow(c: Case, config: Config, workflow: Workflow, env: P
   }
   return { matches, lines };
 }
-export function runWorkflow(c: Case, config: Config, workflow: Workflow, env: Environment, event: 'submitted' | 'date' | 'resume' | 'hrSigned' | 'manual', options: { startNow?: boolean; continueHeld?: boolean } = {}): Run | null {
+/** Frozen workflow dates govern held mail; a repeated reminder keeps the run's own day. */
+export function heldEmailDueOn(c: Pick<Case, 'facts'>, run: Run): string | null {
+  const trigger = run.definition?.trigger;
+  if (!trigger || !dateTrigger(trigger.event) || trigger.repeat) return validDate(run.date) ? run.date : null;
+  const anchor = ['beforeLWD', 'afterLWD'].includes(trigger.event) ? c.facts.lastDay : c.facts.joinDate;
+  return validDate(anchor) ? addDays(anchor, afterTrigger(trigger.event) ? trigger.days : -trigger.days, trigger.workdays) : null;
+}
+/** Only an existing held step, under the caller's case/revision authority, accepts a late decision. */
+export function decideLateEmail(c: Case, config: Config, input: { workflowId: string; runId: string; stepId: string; decision: 'send' | 'skip' }, env: Environment): Run | null {
+  if (env.actor.id === 'system') throw new V9Error('HR must decide whether a late email is sent.', 'forbidden');
+  const run = c.runs.find(run => run.id === input.runId && run.workflowId === input.workflowId && run.status === 'waiting');
+  const definition = run?.definition ?? config.workflows.find(workflow => workflow.id === input.workflowId);
+  const step = definition?.steps[run?.cursor ?? -1];
+  const due = run && heldEmailDueOn(c, run);
+  if (!run || !definition || !step || !['email', 'notify'].includes(step.type) || step.id !== input.stepId || !(run.hold?.stepId === step.id || run.lateEmail?.stepId === step.id) || !due || due >= env.today) throw new V9Error('This late email changed. Refresh before deciding.', 'conflict');
+  return runWorkflow(c, config, definition, env, 'resume', { continueHeld: true, lateDecision: input });
+}
+export function runWorkflow(c: Case, config: Config, workflow: Workflow, env: Environment, event: 'submitted' | 'date' | 'resume' | 'hrSigned' | 'manual', options: { startNow?: boolean; continueHeld?: boolean; lateDecision?: { runId: string; stepId: string; decision: 'send' | 'skip' } } = {}): Run | null {
   const unfinished = c.runs.find(r => r.workflowId === workflow.id && (r.status === 'waiting' || r.status === 'failed'));
   // A held email waits for HR: fixing a record alone sends nothing until someone presses Continue.
-  if (unfinished?.hold && unfinished.status === 'waiting' && !options.continueHeld) return unfinished;
+  if ((unfinished?.hold || unfinished?.lateEmail) && unfinished.status === 'waiting' && !options.continueHeld) return unfinished;
   // A retired workflow starts nothing new, but a run that already started finishes with the steps it saved.
   const finishing = workflow.status === 'retired' && event === 'resume' && !!unfinished;
   if (c.state !== 'submitted' || workflow.status !== 'published' && !finishing) return null;
@@ -908,6 +934,8 @@ export function runWorkflow(c: Case, config: Config, workflow: Workflow, env: En
   let run = c.runs.find(r => r.id === runKey);
   if (run?.status === 'done') return run;
   if (!run) { run = { id: runKey, workflowId: workflow.id, revision: config.revision, date: env.today, status: 'running', cursor: 0, reason: '', at: env.now, definition: structuredClone(workflow), actor: { ...env.actor } }; c.runs.push(run); }
+  if (run.resumeOn && env.today < run.resumeOn) return run;
+  delete run.resumeOn;
   const skip = skipReason(c, workflow, config); if (skip) { if (run.status !== 'skipped' || run.reason !== skip) appendLog(c, env, 'workflow.skipped', `${workflow.name}: ${skip}`); run.status = 'skipped'; run.reason = skip; return run; }
   run.status = 'running';
   try {
@@ -925,9 +953,23 @@ export function runWorkflow(c: Case, config: Config, workflow: Workflow, env: En
       } else if (step.type === 'waitSign') { const d = activeDocument(c, step.template); if (!(step.by === 'hr' ? d?.hrSignature : d && documentFinal(d))) waiting = `Waiting for ${step.by === 'hr' ? 'HR' : 'the employee'} to sign.`; }
       else if (step.type === 'waitFile') { if (!c.files.some(f => f.slot === step.slot)) waiting = `Waiting for ${step.label}.`; }
       else {
+        const dueOn = heldEmailDueOn(c, run);
+        if ((run.hold?.stepId === step.id || run.lateEmail?.stepId === step.id) && dueOn && dueOn < env.today) {
+          const decision = options.lateDecision;
+          if (!decision || decision.runId !== run.id || decision.stepId !== step.id || env.actor.id === 'system') {
+            run.lateEmail = { stepId: step.id, dueOn, at: run.lateEmail?.at ?? env.now };
+            run.status = 'waiting'; run.reason = `This held email was due on ${dueOn}. HR must choose Send anyway or Skip this email.`;
+            return run;
+          }
+          // No decision may replay a captured, delivered or uncertain message.
+          if (c.mails.some(mail => mail.workflowId === workflow.id && mail.key.startsWith(`${run.id}:${step.id}:`))) throw new V9Error('This email already has a delivery record. Review its receipt.', 'conflict');
+          appendLog(c, env, decision.decision === 'skip' ? 'workflow.lateEmailSkipped' : 'workflow.lateEmailApproved', `${workflow.name}: ${stepMessageName(config, step)} · due ${dueOn}`);
+          if (decision.decision === 'skip') { delete run.hold; delete run.lateEmail; run.cursor++; continue; }
+        }
         const outcome = enqueue(c, config, step, `${run.id}:${step.id}`, workflow.id, env);
         if (outcome && 'held' in outcome) { holdEmail(c, config, workflow, run, step, outcome.held, env); return run; }
         if (run.hold?.stepId === step.id) { appendLog(c, env, 'workflow.emailReleased', `${workflow.name}: ${stepMessageName(config, step)}`); delete run.hold; }
+        if (!outcome) delete run.lateEmail;
         waiting = outcome?.wait ?? '';
       }
       if (waiting) { run.status = 'waiting'; run.reason = waiting; return run; }

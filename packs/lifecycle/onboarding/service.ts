@@ -1,3 +1,4 @@
+import type { PersonnelManagerRecipient } from '../../../lib/personnel-manager-recipient';
 import {JOINER_SECTION_PRESETS,joinerPageSections,joinerRecordAccess} from '../../../lib/onboarding-page-access';
 import {projectJoinerPage} from '../../../lib/onboarding-page-projection';
 import { defaultV9CaseFields } from '../../../lib/lifecycle-v9-case-form';
@@ -366,6 +367,11 @@ function canReadRequisition(config: M.Config, r: M.Requisition | null, actor: M.
 export async function onboardingDetail(ctx: SessionContext, id: string, mode: 'case' | 'requisition' | 'task' = 'case', generation?: string) {
     return withTenant(ctx, async (tx) => {
         const { row, config, actor, c, personnelLabels } = await loadTx(tx, ctx, id);
+        if (actor.hr && (actor.module || actor.caseActions) && mode === 'case') {
+            const [manager] = await tx.execute<{ recipient: PersonnelManagerRecipient }>(sql`select app.lifecycle_personnel_manager(${id}::uuid) as recipient`);
+            c.source.supervisor = manager.recipient.employmentId ?? '';
+            personnelLabels.supervisor = manager.recipient.name ?? '';
+        }
         if (mode === 'case' && !actor.page)
             M.fail('Onboarding access is required.', 'forbidden');
         if (mode !== 'case' && !actor.module && !(mode==='requisition'&&actor.records) && !await participantTx(tx, id))

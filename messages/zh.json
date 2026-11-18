@@ -31183,7 +31183,21 @@
       "ca6e9d872b60f": "由 HR 从目录添加",
       "c6fec0ad3de1a": "案例项目",
       "c80fb96fe95dc": "HR 记录已确认的撤销",
-      "c9b7d033e978d": "请选择分配小组。"
+      "c9b7d033e978d": "请选择分配小组。",
+      "managerMail0cd4bb19dd": "此邮件已逾期",
+      "managerMail4cbbcd5184": "计划发送日期",
+      "managerMaild602b8efb9": "预定发送日期已过。请先检查收件人和内容，再决定如何处理。",
+      "managerMail911263feab": "仍然发送",
+      "managerMailff16427cf4": "跳过此邮件",
+      "managerMail27547fe255": "已找到直属上司",
+      "managerMaile2bd594a17": "来自人事管理的直属上司",
+      "managerMail4f40c3071b": "工作邮箱可用。接收此邮件无需登录账号。",
+      "managerMail4b1ea5a652": "人事记录中没有主管",
+      "managerMailcce1c2adb3": "记录了多位现任主管。人事部门需要核查汇报关系。",
+      "managerMail596ed0672a": "人事记录中的主管不可用。",
+      "managerMail358784d1e0": "直属主管 {name} 的雇佣状态已失效",
+      "managerMail2a65e6fe08": "直属主管 {name} 没有工作邮箱",
+      "managerMail3a024d9981": "直属主管 {name} 的工作邮箱无效"
     }
   },
   "processAssessment": {
@@ -40081,6 +40095,20 @@
         "cancelled": {
           "title": "奖励历史上传已停止",
           "body": "上传已停止，已保存的行仍可使用。"
+        }
+      },
+      "lifecycleManagerRecovery": {
+        "completed": {
+          "title": "主管邮件复查已完成",
+          "body": "请查看恢复任务中已恢复及逾期待处理的邮件。"
+        },
+        "failed": {
+          "title": "主管邮件复查需要检查",
+          "body": "重试前请查看恢复任务错误。"
+        },
+        "cancelled": {
+          "title": "主管邮件复查已停止",
+          "body": "已完成的复查仍记录在各个案例中。"
         }
       }
     },
