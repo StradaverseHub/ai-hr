@@ -74,9 +74,10 @@ const SCOPED:readonly {table:string;by:string}[]=[
  {table:'reporting_line',by:'subordinate_employment_id'},
 ];
 /** Tables only the database's own triggers write when the captured rows are written again (the audit chain's pending
- * rows, notification processing, the Access revision, tenant epochs and the replacement-holiday queue): their writes
+ * rows, notification processing, the Access revision, tenant epochs, replacement holidays and the indexed Personnel
+ * reconciliation intent queue): their writes
  * are not replayed, only counted. */
-const TRIGGER_MAINTAINED=new Set(['domain_event_chain_pending','notification_event_processing','access_configuration','company_organisation_source_epoch','performance_assessment_reminder_epoch','reward_access_source_epoch','system_label_criteria_epoch','replacement_holiday_queue']);
+const TRIGGER_MAINTAINED=new Set(['domain_event_chain_pending','notification_event_processing','access_configuration','company_organisation_source_epoch','performance_assessment_reminder_epoch','reward_access_source_epoch','system_label_criteria_epoch','replacement_holiday_queue','probation_reconciliation_intent']);
 /** Columns the database assigns to an appended event (sequence, chain, time): never copied. */
 const EVENT_ASSIGNED=new Set(['sequence','chain_seq','prev_hash','hash','occurred_at']);
 /** True for a row this transaction (or one of its savepoints) wrote: its creating transaction id lies at or above this

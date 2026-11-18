@@ -63,10 +63,10 @@ it('shows an unreleased task without identity and refuses draft, stranger, compa
 });
 it('holds duplicate live instances and replacement links never carry over a superseded identity',async()=>{
  const c=await prepared(),doc=c.documents[0],replacement={...doc,id:randomUUID(),version:2,createdAt:'2026-11-18T12:00:00Z'};
- await owner.client`update lc_v9_case set data=jsonb_set(data,'{documents}',${JSON.stringify([doc,replacement])}::jsonb) where id=${c.id}::uuid`;
+ await withTenant(admin,tx=>tx.execute(sql`update lc_v9_case set data=jsonb_set(data,'{documents}',${JSON.stringify([doc,replacement])}::jsonb) where id=${c.id}::uuid and tenant_id=${b.tenantId}::uuid`));
  expect((await lifecycleTaskDocuments(employee,{companyIds:[b.companyId]})).items[0]).toMatchObject({state:'review',documentId:null});
  await expect(openOwnLifecycleDocument(employee,{caseId:c.id,documentId:doc.id,revision:c.revision})).rejects.toThrow();
- await owner.client`update lc_v9_case set data=jsonb_set(data,'{documents}',${JSON.stringify([{...doc,status:'superseded',supersededBy:replacement.id},replacement])}::jsonb) where id=${c.id}::uuid`;
+ await withTenant(admin,tx=>tx.execute(sql`update lc_v9_case set data=jsonb_set(data,'{documents}',${JSON.stringify([{...doc,status:'superseded',supersededBy:replacement.id},replacement])}::jsonb) where id=${c.id}::uuid and tenant_id=${b.tenantId}::uuid`));
  const page=await lifecycleTaskDocuments(employee,{companyIds:[b.companyId]});expect(page.items[0].documentId).toBe(replacement.id);
  await expect(openOwnLifecycleDocument(employee,{caseId:c.id,documentId:doc.id,revision:c.revision})).rejects.toThrow();
  expect(currentTaskDocument([doc,replacement],doc.templateId).state).toBe('review');
@@ -143,14 +143,15 @@ it('resolves exact native task-card references beyond the document page without 
  await onboardingCommand(admin,native.case.id,native.revision,{type:'saveSubmit',patch:{hiring:'new_hire',local:{supervisor:employmentId}}});
  const saved=(await v9CaseDetail(admin,native.case.id)).case;
  const submittedNative=(await onboardingList(admin)).find(row=>row.case.id===saved.id)!;
- const docs=Array.from({length:61},(_,index)=>({...saved.documents[0],id:'card-document-'+index,templateId:'card-template-'+index,name:'Card saved form '+index,status:index===60?'draft':'sent',values:{privateAnswer:'Never exposed to task cards'}}));
- const tasks=Array.from({length:61},(_,index)=>({...submittedNative.case.tasks[0],id:'card-task-'+String(index).padStart(3,'0'),name:'Card task '+index,by:'joiner',assignee:joiner.userId,documentTemplate:'card-template-'+index,status:'todo'}));
+ const docs=Array.from({length:61},(_,index)=>index===0?saved.documents[0]:({...saved.documents[0],id:'card-document-'+index,templateId:'card-template-'+index,name:'Card saved form '+index,status:index===60?'draft':'sent',values:{privateAnswer:'Never exposed to task cards'}}));
+ const tasks=Array.from({length:61},(_,index)=>({...submittedNative.case.tasks[0],id:'card-task-'+String(index).padStart(3,'0'),name:'Card task '+index,by:'joiner',assignee:joiner.userId,documentTemplate:docs[index].templateId,status:'todo'}));
  tasks.push({...tasks[0],id:'card-task-shared',name:'Submit the same saved form',documentAction:'completed'});
  await owner.client`update lc_onboarding_case set data=jsonb_set(data,'{tasks}',${JSON.stringify(tasks)}::jsonb) where id=${saved.id}::uuid`;
- await owner.client`update lc_onboarding_private set data=jsonb_set(data,'{lifecycleV9,documents}',${JSON.stringify(docs)}::jsonb) where case_id=${saved.id}::uuid`;
+ await withTenant(admin,tx=>tx.execute(sql`update lc_onboarding_private set data=jsonb_set(data,'{lifecycleV9,documents}',${JSON.stringify(docs)}::jsonb) where case_id=${saved.id}::uuid and tenant_id=${b.tenantId}::uuid`));
+ expect((await v9CaseDetail(admin,saved.id)).case.documents.find(document=>document.id===saved.documents[0].id)).toEqual(saved.documents[0]);
  const refs=tasks.map(task=>({caseId:saved.id,taskId:task.id}));
  const first=await lifecycleTaskDocuments(joiner,{companyIds:[b.companyId],limit:50}),cards=await lifecycleTaskCardDocuments(joiner,{companyIds:[b.companyId],refs:[...refs,refs[0]]});
- expect(first.items).toHaveLength(50);expect(cards).toHaveLength(62);expect(new Set(cards.map(item=>item.taskId)).size).toBe(62);expect(first.total).toBe(61);expect(first.items.some(item=>item.documentId==='card-document-59')).toBe(false);expect(first.items.find(item=>item.documentId==='card-document-0')?.linkedTasks).toHaveLength(2);
+ expect(first.items).toHaveLength(50);expect(cards).toHaveLength(62);expect(new Set(cards.map(item=>item.taskId)).size).toBe(62);expect(first.total).toBe(61);expect(first.items.some(item=>item.documentId==='card-document-59')).toBe(false);expect(first.items.find(item=>item.documentId===saved.documents[0].id)?.linkedTasks).toHaveLength(2);
  expect(cards.every(item=>item.sourceFallback===null)).toBe(true);
  expect(cards.find(item=>item.taskId==='card-task-059')).toMatchObject({state:'released',documentId:'card-document-59',sourceName:'Card checklist provenance'});
  expect(cards.find(item=>item.taskId==='card-task-060')).toMatchObject({state:'unreleased',documentId:null});

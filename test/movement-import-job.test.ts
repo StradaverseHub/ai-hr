@@ -19,7 +19,7 @@ import {getImportAttempt,previewImportRevert} from '../core/import-history';
 import {previewImportRevertForAttempt,revertImportForAttempt} from '../core/import-history-handlers';
 import {revertImport} from '../core/import-history';
 import {revertMovementByJob} from './movement-revert-job-helper';
-import {getMovementImportRevertJob} from '../core/movement-import-revert-job';
+import {getMovementImportRevertJob,type MovementRevertCapture} from '../core/movement-import-revert-job';
 import {createHash} from 'node:crypto';
 import {movementRevertHandler} from '../core/movement-import-history';
 import {verifyTenantChain} from '../core/audit-chain';
@@ -383,6 +383,46 @@ describe('movement import background job (bulk-job kernel)',()=>{
   const after=await snapshot(f.b.tenantId);
   expect(perEmployeeEvents(after.tables)).toEqual(perEmployeeEvents(before.tables));
   await revertEventsInEmploymentOrder(f.b.tenantId,attempts2);
+ },300_000);
+
+ it.each(['existing','missing'] as const)('regenerates only the affected indexed Probation intents through the grouped release (%s intent)',async initial=>{
+  const checkedFile=await checked(f,FILE_A_SCOPED,{valid:['AC001','AC002','AC006'],invalid:['AC003']});
+  expect(await confirmMovementUpload(f.a,{attemptId:checkedFile.preview.attemptId,previewHash:checkedFile.preview.previewHash,employees:checkedFile.keys,acknowledgeExcluded:true,resolve})).toMatchObject({failed:0});
+  // A real unrelated tenant and the untouched AC003/AC004/AC005 queues must not be touched by this release.
+  const foreign=await seedBase();await hireEmployee(adminCtx(foreign),{companyId:foreign.companyId,departmentId:foreign.deptA,employmentType:'full_time',hiredOn:day(-400),person:{fullName:'Foreign queue owner',primaryEmail:'foreign-queue@example.test'}});
+  if(initial==='missing')await owner.client`delete from probation_reconciliation_intent where tenant_id=${f.b.tenantId}::uuid and employment_id=${f.ids.AC001}::uuid`;
+  const readQueue=()=>owner.client<{tenant_id:string;employment_id:string;revision:string;requested_at:unknown;retry_on:unknown;checked_at:unknown;failure:boolean}[]>`select tenant_id::text,employment_id::text,revision::text,requested_at,retry_on,checked_at,failure from probation_reconciliation_intent order by tenant_id,employment_id`;
+  const before=await readQueue();expect(before.some(row=>row.tenant_id===foreign.tenantId)).toBe(true);
+  const review=await previewImportRevertForAttempt(f.a,checkedFile.preview.attemptId);expect(review.eligible).toBe(true);
+  const admitted=await revertImportForAttempt(f.a,checkedFile.preview.attemptId,{previewHash:review.previewHash,reason:'Fictional indexed-queue batch proof'});
+  if(!('job' in admitted))throw Error('Expected the genuine movement revert job');
+  expect((await ticks(admitted.job.id,row=>row.state==='finalizing'||terminal(row))).state).toBe('finalizing');
+  const planned=await owner.client<{capture:MovementRevertCapture|null}[]>`select result->'capture' as capture from bulk_job_step where job_id=${admitted.job.id}::uuid order by seq`;
+  expect(planned).toHaveLength(3);
+  const captures=planned.map(row=>{if(!row.capture)throw Error('Expected a real captured release, not fallback');return row.capture;});
+  const affected=[f.ids.AC001,f.ids.AC002,f.ids.AC006].sort();
+  expect(captures.map(capture=>capture.employmentId).sort()).toEqual(affected);
+  // Worker rehearsals roll back the queue along with all other business writes.
+  expect(await readQueue()).toEqual(before);
+  for(const capture of captures){
+   const counts=capture.counts.probation_reconciliation_intent;
+   expect(counts,JSON.stringify(capture.counts)).toBeDefined();expect(counts[2]).toBe(0);
+   expect(counts[0]).toBe(initial==='missing'&&capture.employmentId===f.ids.AC001?1:0);
+   expect(counts[0]+counts[1]).toBeGreaterThan(0);
+  }
+  expect((await ticks(admitted.job.id,terminal)).state).toBe('completed');
+  const after=await readQueue(),owns=(row:{tenant_id:string;employment_id:string})=>row.tenant_id===f.b.tenantId&&affected.includes(row.employment_id);
+  expect(after.filter(row=>!owns(row))).toEqual(before.filter(row=>!owns(row)));
+  expect(after.filter(owns).map(row=>row.employment_id).sort()).toEqual(affected);
+  for(const capture of captures){
+   const was=before.find(row=>row.tenant_id===f.b.tenantId&&row.employment_id===capture.employmentId),now=after.find(row=>row.tenant_id===f.b.tenantId&&row.employment_id===capture.employmentId);
+   if(!now)throw Error('Released affected intent missing');
+   expect(BigInt(now.revision)).toBe(BigInt(was?.revision??0)+BigInt(capture.counts.probation_reconciliation_intent[0]+capture.counts.probation_reconciliation_intent[1]));
+   expect(now.failure).toBe(false);
+  }
+  const[job]=await owner.client<{plan:{released?:{path:string};fallback?:string};counters:Record<string,number>}[]>`select plan,counters from bulk_job where id=${admitted.job.id}::uuid`;
+  expect(job.plan.released?.path).toBe('release');expect(job.plan.fallback).toBeUndefined();expect(job.counters).toMatchObject({released:1});expect(job.counters.reference).toBeUndefined();
+  expect(await verifyTenantChain(f.a)).toMatchObject({valid:true});
  },300_000);
 
  it('falls back to the synchronous revert for the whole import when a planned record changed before the release',async()=>{
