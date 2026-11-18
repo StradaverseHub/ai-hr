@@ -36,6 +36,7 @@ import {
   anomalyMetrics,
   evaluateCircuitBreaker,
 } from '../core/payroll-anomaly';
+import {nativePayrollPayslipWrite} from '../core/payroll-history-native-baseline';
 import {requestPayrollHistoryConfirm,payrollHistoryJobHandler} from '../core/payroll-history-job';
 import {runBulkJobTick} from '../core/bulk-job-worker';
 import {previewPayrollHistoryUpload,confirmPayrollHistoryUpload} from '../core/payroll-history-revisions';
@@ -871,4 +872,14 @@ it('holds a partially overlaid SYSTEM source before its first verdict even when 
   for(let n=0;n<60;n++){await runBulkJobTick(owner.client,{handlers:[payrollHistoryJobHandler]});const [job]=await owner.db.select().from(schema.bulkJob).where(eq(schema.bulkJob.id,pending.jobId));if(job.state==='completed')break;if(job.state==='failed')throw Error(job.error??'The staged fixture failed');}
   expect((await owner.db.select().from(schema.bulkJob).where(eq(schema.bulkJob.id,pending.jobId)))[0].state).toBe('completed');
  }finally{if(budget===undefined)delete process.env.PAYROLL_HISTORY_CHUNK_BUDGET_MS;else process.env.PAYROLL_HISTORY_CHUNK_BUDGET_MS=budget;}
+});
+
+it('reevaluates an independently proven changed or empty physical cohort without erasing its retired anomaly records',async()=>{
+ const first=await makeEmp('OldCohortMember'),remaining=await makeEmp('RemainingCohortMember');await giveProfile(first.personId);await giveProfile(remaining.personId);const batchId=await makeBatch();
+ await addPayslip(batchId,first.employmentId,{}, {noAttendance:true});await addPayslip(batchId,remaining.employmentId,{}, {noAttendance:true});await evaluateBatchAnomalies(a,{batchId});
+ const prior=await liveVerdicts(batchId);expect(prior).toHaveLength(2);const old=prior.find(row=>row.employmentId===first.employmentId);if(!old)throw Error('Expected the actual original cohort verdict');const oldFindings=await findingsOf(old.id);
+ // This is the real authorized native physical writer, with its tenant/principal/company/open-batch gates.
+ await withTenant(a,tx=>tx.delete(nativePayrollPayslipWrite).where(and(eq(nativePayrollPayslipWrite.batchId,batchId),eq(nativePayrollPayslipWrite.employmentId,first.employmentId))));
+ const changedMoney=await owner.db.select().from(schema.payslip).where(eq(schema.payslip.batchId,batchId));expect(changedMoney).toHaveLength(1);await evaluateBatchAnomalies(a,{batchId});expect((await liveVerdicts(batchId)).map(row=>row.employmentId)).toEqual([remaining.employmentId]);expect((await owner.db.select().from(schema.payrollAnomalyVerdict).where(eq(schema.payrollAnomalyVerdict.id,old.id)))[0].supersededAt).not.toBeNull();expect(await findingsOf(old.id)).toEqual(oldFindings);expect(await owner.db.select().from(schema.payslip).where(eq(schema.payslip.batchId,batchId))).toEqual(changedMoney);
+ await withTenant(a,tx=>tx.delete(nativePayrollPayslipWrite).where(eq(nativePayrollPayslipWrite.batchId,batchId)));await evaluateBatchAnomalies(a,{batchId});expect(await liveVerdicts(batchId)).toEqual([]);expect(await owner.db.select().from(schema.payslip).where(eq(schema.payslip.batchId,batchId))).toEqual([]);expect(await findingsOf(old.id)).toEqual(oldFindings);
 });

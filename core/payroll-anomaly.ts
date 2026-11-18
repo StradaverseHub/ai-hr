@@ -367,13 +367,12 @@ async function gatherContext(tx: Tx, tenantId: string, batchId: string, entitlem
    from public.payslip p where p.batch_id=${batchId}::uuid
    union
    select p.id,p.employment_id,p.gross_pay,p.net_pay,p.basic_salary,p.allowance,p.overtime_pay,p.bonus,p.total_deductions,p.days_worked,p.statutory
-   from public.payroll_history_native_payslip p where p.batch_id=${batchId}::uuid order by 1`);
+   from public.payroll_history_native_payslip p where p.batch_id=${batchId}::uuid order by 1 limit 50001`);
+  if(slips.length>50000)throw new PayrollAnomalySourceUnavailableError();
   // Only an independent metadata witness can prove completeness. A false/unknown selector or a stale
   // run counter cannot turn hidden physical members into an apparently complete subset.
   const [source]=await tx.execute<{complete:boolean}>(sql`select app.payroll_history_native_anomaly_complete(${batchId}::uuid,ARRAY[${sql.join(slips.map(row=>sql`${row.id}::uuid`),sql`, `)}]::uuid[]) complete`);
   if(source?.complete!==true)throw new PayrollAnomalySourceUnavailableError();
-  const [prior]=await tx.execute<{missing:boolean}>(sql`select exists(select 1 from public.payroll_anomaly_verdict v where v.batch_id=${batchId}::uuid and v.superseded_at is null and not(v.employment_id=any(ARRAY[${sql.join(slips.map(row=>sql`${row.employmentId}::uuid`),sql`, `)}]::uuid[]))) missing`);
-  if(prior?.missing)throw new PayrollAnomalySourceUnavailableError();
   if (slips.length === 0) {
     return {
       batchId,
