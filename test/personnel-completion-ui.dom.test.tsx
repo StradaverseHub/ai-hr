@@ -46,8 +46,9 @@ it('reports all twenty approved fields as eleven personal and nine employment wi
  render(view(<PersonnelCompletionInventory/>));fireEvent.click(screen.getByText(messages.personnelCompletion.inventoryTitle));const lists=screen.getAllByRole('list');expect(within(lists[0]).getAllByRole('listitem')).toHaveLength(11);expect(within(lists[1]).getAllByRole('listitem')).toHaveLength(9);expect(screen.queryByRole('combobox')).toBeNull();
 });
 
-it('keeps an unclassified linked field with HR until an explicit case override',()=>{
+it('keeps an unclassified linked field with HR until its classification is explicitly extended',()=>{
  const document=completionDocument();document.fields.push({...document.fields[0],id:'unknown-answer',label:'Fictional unclassified link',pmKey:'case.newField'});document.values['unknown-answer']='';delete document.personnelCompletion;
  initializePersonnelCompletion(document,{country:'MY',sourceFingerprint:'unknown-link-source',officialValues:{passport:'Fictional passport in PM'},actor:completionActor,at:'2026-11-18T00:00:00.000Z'});
- render(view(<PersonnelCompletionDocumentBody document={document} editableBy="employee"/>));expect(screen.getByRole('textbox',{name:'Fictional unclassified link *'})).toBeDisabled();
+ const rendered=render(view(<PersonnelCompletionDocumentBody document={document} editableBy="employee"/>));expect(screen.getByRole('textbox',{name:'Fictional unclassified link *'})).toBeDisabled();rendered.unmount();
+ render(view(<PersonnelCompletionPanel document={document} canOverride onOverride={vi.fn()} onSave={vi.fn()}/>));expect(within(screen.getByRole('group',{name:'Fictional unclassified link'})).queryByRole('button',{name:'Ask the employee'})).toBeNull();expect(screen.getByRole('textbox',{name:'Fictional unclassified link *'})).toBeEnabled();
 });
