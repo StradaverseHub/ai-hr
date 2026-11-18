@@ -14,7 +14,7 @@ export function PersonnelExportOptions({ pageHref, allHref, hasPage, hasEmployee
   const common = useTranslations('common');
   const optionClass = 'block rounded-md px-3 py-2 text-sm font-medium hover:bg-accent focus-visible:outline-2';
   return <Dialog.Root>
-    <Dialog.Trigger className="rounded-lg border border-border px-3 py-1.5 text-sm font-medium hover:bg-accent">
+    <Dialog.Trigger className="inline-flex h-9 items-center justify-center rounded-lg border border-border px-3 text-sm font-medium hover:bg-accent pointer-coarse:min-h-11">
       {t('exportXlsx')}
     </Dialog.Trigger>
     <Dialog.Portal>

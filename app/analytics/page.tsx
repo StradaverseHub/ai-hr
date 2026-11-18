@@ -22,6 +22,7 @@ import { ChartCard } from '@/components/charts/ChartCard';
 import { FilterBar } from './FilterBar';
 import { YearSelect } from './YearSelect';
 import { bucketLabel, localizeDimension } from './labels';
+import {UNKNOWN_BUCKET} from '@/core/analytics';
 // 9cbf5e0d — one Employee Status vocabulary, shared with the Personnel badges.
 import type { EmploymentStatus } from '@/core/employment-status';
 
@@ -99,6 +100,10 @@ export default async function AnalyticsPage({
   // Localize the dimension buckets (enum codes + Unknown/Unassigned sentinels) into chart categories.
   const genderData = demographics.byGender.map((r) => ({ label: bucketLabel(r.name, t, 'gender'), value: r.count }));
   const maritalData = demographics.byMarital.map((r) => ({ label: bucketLabel(r.name, t, 'marital'), value: r.count }));
+  const coverageNote = (rows: readonly {name:string;count:number}[]) => {
+    const unknown=rows.find(row=>row.name===UNKNOWN_BUCKET)?.count??0;
+    return unknown>0?`${t('bucketUnknown')}: ${unknown} / ${rows.reduce((sum,row)=>sum+row.count,0)}`:undefined;
+  };
   const ageData = localizeDimension(demographics.byAgeBand, t, 'plain'); // age bands + Unknown
   const nationalityData = nationality ? localizeDimension(nationality, t, 'nationality') : null;
   const deptData = localizeDimension(demographics.byDepartment, t, 'plain');
@@ -160,10 +165,10 @@ export default async function AnalyticsPage({
 
       {/* ── Workforce demographics ─────────────────────────────────────────── */}
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-        <ChartCard title={t('chartGender')} svgId="chart-gender" filenameBase={`gender_${to}`} exportLabel={t('exportChart')}>
+        <ChartCard title={t('chartGender')} footnote={coverageNote(demographics.byGender)} svgId="chart-gender" filenameBase={`gender_${to}`} exportLabel={t('exportChart')}>
           <PieChart id="chart-gender" data={genderData} ariaLabel={t('chartGender')} />
         </ChartCard>
-        <ChartCard title={t('chartMarital')} svgId="chart-marital" filenameBase={`marital_${to}`} exportLabel={t('exportChart')}>
+        <ChartCard title={t('chartMarital')} footnote={coverageNote(demographics.byMarital)} svgId="chart-marital" filenameBase={`marital_${to}`} exportLabel={t('exportChart')}>
           <PieChart id="chart-marital" data={maritalData} ariaLabel={t('chartMarital')} />
         </ChartCard>
         <ChartCard title={t('chartAgeBand')} svgId="chart-age" filenameBase={`age-band_${to}`} exportLabel={t('exportChart')}>

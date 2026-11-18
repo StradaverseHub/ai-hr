@@ -23,7 +23,7 @@ export function hrDay(locale:string,iso:string,style:'short'|'long'|'day'|'weekd
 export function Panel({id,title,action,className,children,tone}:{id:string;title:ReactNode;action?:ReactNode;className?:string;children:ReactNode;tone?:'lead'}){
  return <section aria-labelledby={id} data-today-panel={id} className={cn(PANEL,'flex flex-col gap-3',tone==='lead'&&'border-primary/25 bg-primary/5',className)}>
   <div className="flex items-center justify-between gap-3">
-   <h2 id={id} className={EYEBROW}>{title}</h2>
+   <h2 id={id} className="text-sm font-semibold">{title}</h2>
    {action}
   </div>
   {children}

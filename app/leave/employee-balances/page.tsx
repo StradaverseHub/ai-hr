@@ -1,3 +1,4 @@
+import { InquiryScopeSummary } from '@/components/leave/inquiry-scope-summary';
 import { ExportDownloadLink } from '@/components/export-download-link';
 import Link from 'next/link';
 import { cookies } from 'next/headers';
@@ -117,6 +118,7 @@ export default async function EmployeeBalancesPage({
   const t = await getTranslations('leave');
   const tInq = await getTranslations('leave.inquiry');
   const tMe = await getTranslations('me');
+  const tPeople = await getTranslations('people.list');
   const tf = await getTranslations(LEAVE_FIGURE_NS); // 7da0a4e7 — one name per figure; see lib/leave-figure-labels.ts
   const locale = await getLocale();
   const sp = await searchParams;
@@ -447,7 +449,7 @@ export default async function EmployeeBalancesPage({
               />
               <span className="text-xs font-normal text-muted-foreground">{selected.company}</span>
             </div>
-          ) : <span className="text-sm font-semibold">{tInq('allEmployeesHeader', { count: employeeCount, companies: inquiry.companies.map(c => c.name).join(', ') })}</span>
+          ) : <InquiryScopeSummary heading={tInq('allEmployeesHeader', { count: employeeCount, companies: `${tPeople('company')}: ${inquiry.companies.length}` })} companies={inquiry.companies} />
         }
         panel={
           <Card className="p-4">

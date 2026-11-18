@@ -17,6 +17,7 @@ import './onboarding-workspace.css';
 // :root[data-ui-theme='atelier'], so loading it for every theme changes nothing for the others.
 import './atelier.css';
 import './atelier-action-feedback.css';
+import './operational-layout.css';
 // The Performance & Talent area theme (D-P1-32 D3): every rule is scoped to [data-area-theme='performance']
 // (app/performance/layout.tsx). Imported after atelier.css so its layer is declared after Tailwind's, as an explicit
 // module edge for the same cache reason as above.
@@ -519,12 +520,12 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
                   Making main the containing block keeps that overflow inside the scroller. */}
               <main className="relative min-w-0 flex-1 overflow-y-auto pb-1"><div className="atelier-filter-feedback" aria-hidden="true" /><Suspense fallback={null}><BackToInbox /></Suspense><AssistantImportHandoffProvider key={personnelImportBrowserKey(session,scopeIds??allowed.map(company=>company.id))}>{children}</AssistantImportHandoffProvider></main>
               <ShellStatusLine companies={allowed} selected={scopeIds} />
+              {launcher && <div data-assistant-dock data-position={launcher.position}><AssistantReplyClientEntry><AssistantLauncher key={shellScopeKey} position={launcher.position} hiddenAreas={launcher.hiddenAreas} /></AssistantReplyClientEntry></div>}
             </div>
           </div>
           </AiAskAvailability>
           </NavIndexProvider>
           <OnboardingTour tours={tours} autoStartTourId={onboarded || (pathname==='/'&&!isAdmin(session)) ? null : WELCOME_TOUR_ID} />
-          <AssistantReplyClientEntry>{launcher && <AssistantLauncher key={shellScopeKey} position={launcher.position} hiddenAreas={launcher.hiddenAreas} />}</AssistantReplyClientEntry>
           </ShellApprovalFactsProvider>
           {/* 6e122302 — the after-login notice popup, mounted beside the onboarding tour because that is
               the existing "show something once after login and remember the dismissal" surface. At most

@@ -185,7 +185,7 @@ export function EmployeeSwitcher({
                     <EmployeeName
                       code={e.employeeCode}
                       name={e.name}
-                      className="block truncate font-medium text-foreground"
+                      className="flex truncate font-medium text-foreground"
                     />
                     <span className="block truncate text-xs text-muted-foreground">
                       {e.company}

@@ -238,7 +238,7 @@ export default async function SystemLabelsPage({
   }));
 
   return (
-    <div className="w-full min-w-0 space-y-6">
+    <div className="w-full min-w-0 space-y-4">
       <PageHeader title={t('pageTitle')} description={t('pageDescription')} back={await peopleSettingsBack()} />
       <PeopleSettingsNavigation />
       <p className="text-sm text-muted-foreground">{t('criteriaHelp')}</p>

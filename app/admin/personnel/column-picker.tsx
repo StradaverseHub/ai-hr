@@ -139,7 +139,7 @@ export function ColumnPicker({
         aria-expanded={open}
         aria-haspopup="dialog"
         data-tour="people-columns"
-        className="flex items-center gap-2 rounded-md border border-border bg-card px-3 py-1.5 text-sm font-medium text-foreground transition duration-150 ease-snappy hover:bg-muted active:scale-[0.98]"
+        className="flex h-9 items-center gap-2 rounded-md border border-border bg-card px-3 text-sm font-medium text-foreground transition duration-150 ease-snappy hover:bg-muted active:scale-[0.98]"
       >
         <Columns3 className="size-4 text-muted-foreground" aria-hidden />
         {labels.title}
@@ -210,9 +210,9 @@ export function ColumnPicker({
             </ul>
             {/* 18103ba4's precedent: the fields that do not exist yet are NAMED here rather than silently
                 left out of the list, so "where is Division?" is answered on the screen that asks it. */}
-            <p className="border-t border-border px-4 py-2.5 text-[11px] leading-relaxed text-muted-foreground">
+            {labels.unavailableNote.trim() && <p className="border-t border-border px-4 py-2.5 text-xs leading-relaxed text-muted-foreground">
               {labels.unavailableNote}
-            </p>
+            </p>}
             <div className="flex items-center justify-between gap-2 border-t border-border px-4 py-2.5">
               <button aria-busy={pending}
                 type="button"

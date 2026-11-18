@@ -1,0 +1,8 @@
+/* Shared operational geometry. Keep viewport-fixed chat panels, but reserve a real
+   shell row for the closed launcher instead of covering the page's last actions. */
+[data-assistant-dock] { display: flex; flex: none; justify-content: flex-end; min-height: 3.5rem; padding: .5rem 1rem; border-top: 1px solid var(--border); background: var(--background); }
+[data-assistant-dock][data-position='bottom-left'] { justify-content: flex-start; }
+[data-assistant-dock]:empty { display: none; }
+[data-assistant-dock] > button[aria-haspopup='dialog'] { position: static; width: 2.5rem; height: 2.5rem; box-shadow: none; }
+textarea.ui-field:not([rows='1']) { height: auto; min-height: 5rem; padding-block: .5rem; resize: vertical; }
+@media (pointer: coarse) { [data-assistant-dock] > button[aria-haspopup='dialog'] { width: 2.75rem; height: 2.75rem; } }

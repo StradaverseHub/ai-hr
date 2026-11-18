@@ -392,12 +392,12 @@ export default async function RosterPage({
         {/* Filters — Business Group, Department, Employee, the window, and a Query button, exactly the row
             the reporter's own screen carries. A plain GET form: the URL is the state, so a filtered window
             is shareable and the export link below carries the same narrowing. */}
-        <form method="get" className="flex flex-wrap items-end gap-3 px-4 py-3">
+        <form method="get" className="grid grid-cols-1 items-end gap-3 px-4 py-3 sm:grid-cols-2 xl:grid-cols-[repeat(3,minmax(0,1fr))_auto_auto_auto]">
           {sp.myTeam && <input type="hidden" name="myTeam" value={sp.myTeam} />}
           {companyId && <input type="hidden" name="companyId" value={companyId} />}
           {/* The view is posted back with the filters, or Query would drop the operator to Month. */}
           <input type="hidden" name="view" value={win.kind} />
-          <label className="flex flex-col gap-1 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+          <label className="flex min-w-0 flex-col gap-1.5 text-xs font-medium text-muted-foreground">
             {t('filterBusinessGroup')}
             <select name="bu" defaultValue={sp.bu ?? ''} className={inputCls}>
               <option value="">{t('filterAll')}</option>
@@ -408,7 +408,7 @@ export default async function RosterPage({
               ))}
             </select>
           </label>
-          <label className="flex flex-col gap-1 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+          <label className="flex min-w-0 flex-col gap-1.5 text-xs font-medium text-muted-foreground">
             {t('filterDepartment')}
             <select name="dept" defaultValue={sp.dept ?? ''} className={inputCls}>
               <option value="">{t('filterAll')}</option>
@@ -419,14 +419,14 @@ export default async function RosterPage({
               ))}
             </select>
           </label>
-          <label className="flex flex-col gap-1 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+          <label className="flex min-w-0 flex-col gap-1.5 text-xs font-medium text-muted-foreground">
             {t('filterEmployee')}
             <input name="q" defaultValue={sp.q ?? ''} placeholder={t('filterEmployeePlaceholder')} className={inputCls} />
           </label>
           {/* ONE control per view, and only the one the view uses. A month picker sitting inert beside a
               From/To pair is a control that does nothing, which is worse than a control that is absent. */}
           {win.kind === 'month' && (
-            <label className="flex flex-col gap-1 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+            <label className="flex min-w-0 flex-col gap-1.5 text-xs font-medium text-muted-foreground">
               {t('filterMonth')}
               <input key={win.month} type="month" name="month" defaultValue={win.month} className={inputCls} />
             </label>
@@ -435,25 +435,25 @@ export default async function RosterPage({
             /* ANY date in the week identifies it and the resolver snaps to the Monday. NOT
                `<input type="week">`: it posts `YYYY-Www`, whose week-numbering year disagrees with the
                calendar year at the turn of January — a defect nobody would ever reproduce on purpose. */
-            <label className="flex flex-col gap-1 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+            <label className="flex min-w-0 flex-col gap-1.5 text-xs font-medium text-muted-foreground">
               {t('filterWeekOf')}
               <input key={win.from} type="date" name="from" defaultValue={win.from} className={inputCls} />
             </label>
           )}
           {win.kind === 'custom' && (
             <>
-              <label className="flex flex-col gap-1 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+              <label className="flex min-w-0 flex-col gap-1.5 text-xs font-medium text-muted-foreground">
                 {t('filterFrom')}
                 <input key={win.from} type="date" name="from" defaultValue={win.from} className={inputCls} />
               </label>
-              <label className="flex flex-col gap-1 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+              <label className="flex min-w-0 flex-col gap-1.5 text-xs font-medium text-muted-foreground">
                 {t('filterTo')}
                 <input key={win.to} type="date" name="to" defaultValue={win.to} className={inputCls} />
               </label>
             </>
           )}
           <button className={btnPrimary}>{t('query')}</button>
-          <span className="ml-auto text-xs text-muted-foreground">{t('rangeCapHint', { days: ROSTER_MAX_RANGE_DAYS })}</span>
+          <span className="text-xs text-muted-foreground sm:col-span-full">{t('rangeCapHint', { days: ROSTER_MAX_RANGE_DAYS })}</span>
         </form>
       </Card>
 

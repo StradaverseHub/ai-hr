@@ -321,8 +321,8 @@ async function renderPersonnelPage(sp: PersonnelSearchParams) {
               />
             )}
             <ResponsiveActions>
-{canCreate && <Link href="/admin/personnel/import" data-tour="people-import" className="min-h-11 rounded-lg border border-border px-3 py-2 text-sm font-medium hover:bg-accent">{t('importCsv')}</Link>}
-{isAdmin && <Link href="/admin/personnel/duplicates" className="min-h-11 rounded-lg border border-border px-3 py-2 text-sm font-medium hover:bg-accent">{t('duplicateRecords')}</Link>}
+{canCreate && <Link href="/admin/personnel/import" data-tour="people-import" className="inline-flex h-9 items-center justify-center rounded-lg border border-border px-3 text-sm font-medium hover:bg-accent pointer-coarse:min-h-11">{t('importCsv')}</Link>}
+{isAdmin && <Link href="/admin/personnel/duplicates" className="inline-flex h-9 items-center justify-center rounded-lg border border-border px-3 text-sm font-medium hover:bg-accent pointer-coarse:min-h-11">{t('duplicateRecords')}</Link>}
             {/* 04b88724 (r339) — THE "CHILD RELIEF REVIEW (PCB)" LINK WAS REMOVED FROM HERE, DELIBERATELY,
                 AND THE ROUTE WAS DELIBERATELY KEPT. Do not restore the link; do not delete the route
                 without reading this.
