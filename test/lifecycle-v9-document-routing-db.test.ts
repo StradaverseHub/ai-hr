@@ -11,6 +11,9 @@ import {closeAll,resetDb,seedBase,setModule,entitledCtx,owner,createAppUser,type
 let base: Base, admin: SessionContext, employee: SessionContext, other: SessionContext, employmentId: string;
 beforeEach(async () => {
   await resetDb(); base = await seedBase(); await setModule(base.tenantId, 'lifecycle', 'active'); admin = await entitledCtx(base);
+  const hr = await hireEmployee(admin, { companyId: base.companyId, departmentId: base.deptA, employmentType: 'full_time', hiredOn: '2026-01-01', person: { fullName: 'Fictional signing HR', primaryEmail: 'signing-hr@test.invalid' } });
+  await owner.withTenant(admin, tx => tx.execute(sql`update app_user set person_id=${hr.personId}::uuid where id=${admin.userId!}::uuid and tenant_id=${base.tenantId}::uuid`));
+  admin = { ...admin, personId: hr.personId };
   const subject = await hireEmployee(admin, { companyId: base.companyId, departmentId: base.deptA, positionId: base.positionId, employmentType: 'full_time', hiredOn: '2026-01-01', person: { fullName: 'V9 subject', primaryEmail: 'subject@test.invalid', phone: '+60123456789' } });
   employmentId = subject.employmentId;
   employee = { ...admin, userId: await createAppUser(base.tenantId, subject.personId, 'employee'), personId: subject.personId, roles: ['employee'], grants: undefined };
