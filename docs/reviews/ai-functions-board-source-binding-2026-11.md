@@ -1455,3 +1455,22 @@ typed, ordered patches against the same native setter. All 28 original patch exp
 the surrounding guards, transaction, query and audit remain unchanged. The complete diagnostic
 44301542100 motivates this measurement; it does not establish production-build or release readiness.
 The original 8 GiB production limits and required behavior/rendered/release checks remain in force.
+
+## Forward company-scope repair binding — 18 November 2026
+
+Under the existing owner authorization for the same 28 source-binding carries and migration order,
+the repaired source carries those approvals from
+`a4ded532cb02a3df0bf36772b34c199a7eac326133892de9e54326f9d0443dca` to
+`32c3d0d79da9a5b740e23ef0765045d63ce1756aacd238d672108d22d785cd2e` (1,791 covered files).
+The module-agent fingerprint is `434c996ddc47678a6ae41d9f7b8d2043ef00e79431dac2a457855dcfedd5949b`
+(497 files). Reversing only the 28 literal digest replacements restores the entire prior approval
+registry byte-for-byte. Approval statuses, purposes, provider data fields, reviewers, dates and
+pending/retired records stay unchanged. Provider policies and registered actions are unchanged.
+
+This binds the source-reviewed integration repairs, closed native action classifications and private
+projection-parser rename. The registered SQL snapshot is `e17b0e022c373af9b713940cb11cfff16fce8c2f`: all
+previous migration bytes and the 924-row baseline remain unchanged, with one guarded company-scope/index/
+retention addition making 145 pending entries. Native decisions stay with their existing permission owners.
+This carry is source custody, not a runtime PASS, staging acceptance, provider activation or production
+authority. Fresh affected checks, the justified final qualification and complete rendered journeys remain
+required. The original failed runs and successful source-specific evidence retain their original identities.
