@@ -1,4 +1,5 @@
 'use server';
+import {deleteProbationLetterTemplate} from '@/core/probation-letter';
 import {revalidatePath} from 'next/cache';
 import {requireScopedLifecycleModule} from '@/lib/scoped-lifecycle-page';
 import {previewProbationLetter,probationCase} from '@/packs/probation/service';
@@ -12,7 +13,7 @@ async function execute<T>(work:()=>Promise<T>){
 /** Saves a letter template version with its signing and review routing (empty routing: exactly as today). */
 export async function saveRoutedLetterTemplate(input:{companyId:string;template:ProbationRoutedTemplate;publish:boolean;expectedVersion:number}){
  const result=await execute(async()=>saveProbationLetterTemplateWithRouting(await requireScopedLifecycleModule(),input));
- if(result.ok)revalidatePath('/lifecycle/probation','layout');
+ if(result.ok){revalidatePath('/lifecycle/probation','layout');revalidatePath('/lifecycle/v9/templates');}
  return result;
 }
 
@@ -30,4 +31,9 @@ export async function previewTemplateForCase(input:{caseId:string;templateVersio
   // The preview service refuses drafts and versions that do not match this case's outcome: show placeholders.
   catch{return{merge:null,reason:'unavailable'};}
  });
+}
+
+export async function deleteLetterTemplate(input:{companyId:string;key:string;expectedVersion:number;reason:string}){
+ const result=await execute(async()=>deleteProbationLetterTemplate(await requireScopedLifecycleModule(),input));
+ if(result.ok){revalidatePath('/lifecycle/probation','layout');revalidatePath('/lifecycle/v9/templates');}return result;
 }

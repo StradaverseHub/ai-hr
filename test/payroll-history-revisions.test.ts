@@ -80,7 +80,7 @@ describe('immutable payroll history correction and recovery',()=>{
   await revertPayrollHistoryUpload(ctx,correction.attemptId,recovery.previewHash);expect((await effective()).map(row=>Number(row.grossPay))).toEqual([5000]);
   expect(await payrollDashboardCounts(ctx,[b.companyId])).toEqual({totalCount:(await listBatches(ctx,[b.companyId])).length,unpublishedCount:0});
   const [unchanged]=await owner.db.select().from(schema.payslip).where(eq(schema.payslip.id,original.id));expect(unchanged).toEqual(original);
-  await expect(revertPayrollHistoryUpload(ctx,correction.attemptId,recovery.previewHash)).rejects.toThrow(/already been reverted/);
+  const revisionsBeforeRetry=await owner.db.select().from(schema.payrollHistoryImportRevision),eventsBeforeRetry=await owner.db.select().from(schema.payrollHistoryImportEvent);expect(await revertPayrollHistoryUpload(ctx,correction.attemptId,recovery.previewHash)).toMatchObject({attemptId:correction.attemptId,restored:1});expect(await owner.db.select().from(schema.payrollHistoryImportRevision)).toEqual(revisionsBeforeRetry);expect(await owner.db.select().from(schema.payrollHistoryImportEvent)).toEqual(eventsBeforeRetry);
   await expect(owner.db.update(schema.payslip).set({grossPay:'1.00'}).where(eq(schema.payslip.id,initial.changes[0].snapshotId!))).rejects.toMatchObject({cause:{code:'23514',message:expect.stringMatching(/immutable/)}});
   expect((await owner.db.select().from(schema.payslip).where(eq(schema.payslip.id,original.id)))[0]).toEqual(original);
  });
@@ -157,14 +157,14 @@ describe('immutable payroll history correction and recovery',()=>{
   const first=await upload();await confirm(first);const recovery=await previewPayrollHistoryRevert(ctx,first.attemptId);await revertPayrollHistoryUpload(ctx,first.attemptId,recovery.previewHash);
   expect(await effective()).toEqual([]);expect(await owner.db.select().from(schema.payslip)).toHaveLength(1);
   expect(await listBatches(ctx,[b.companyId])).toEqual([]);
-  const logs=await listPayrollHistoryAttempts(ctx);expect(logs.items[0].events.map(event=>event.kind)).toEqual(['confirmed','reverted']);
+  const logs=await listPayrollHistoryAttempts(ctx);const originalLog=logs.items.find(item=>item.id===first.attemptId);expect(originalLog?.events.map(event=>event.kind)).toEqual(['confirmed','reverted']);
   expect((await payrollHistorySource(ctx,first.attemptId))?.content.toString()).toContain('0007');
  });
  it('refuses a stale confirmation and a revert after a later correction',async()=>{
   const first=await upload();await confirm(first);const recovery=await previewPayrollHistoryRevert(ctx,first.attemptId);
   const a=await upload('6000.00'),b=await upload('7000.00');await confirm(a);
   await expect(confirm(b)).rejects.toThrow(/changed/);
-  await expect(revertPayrollHistoryUpload(ctx,first.attemptId,recovery.previewHash)).rejects.toThrow(/later correction/);
+  await expect(revertPayrollHistoryUpload(ctx,first.attemptId,recovery.previewHash)).rejects.toThrow(/changed/);
   expect((await effective()).map(row=>Number(row.grossPay))).toEqual([6000]);
  });
  it('compares only effective imported runs and exact headcounts across correction and recovery',async()=>{
@@ -236,24 +236,25 @@ describe('immutable payroll history correction and recovery',()=>{
   await expect(confirm(preview)).rejects.toThrow();
   const [batch]=await owner.db.select().from(schema.payrollBatch).where(eq(schema.payrollBatch.id,ordinary.batchId));expect(batch.status).toBe('draft');
  });
- it('refuses recovery after a generated statutory artifact and keeps the original effective basis',async()=>{
-  const first=await upload();await confirm(first);const recovery=await previewPayrollHistoryRevert(ctx,first.attemptId);
-  await owner.db.insert(schema.statutoryReport).values({tenantId:b.tenantId,companyId:b.companyId,jurisdiction:'MY',reportType:'my.contributions',periodKind:'month',periodKey:period,status:'draft',generatedBy:ctx.userId});
-  await expect(revertPayrollHistoryUpload(ctx,first.attemptId,recovery.previewHash)).rejects.toThrow(/statutory/);
-  expect((await effective()).map(row=>Number(row.grossPay))).toEqual([5000]);
+ it('holds a stale recovery review, then accepts freshly reviewed removal while retaining the exact statutory artifact',async()=>{
+  const first=await upload();await confirm(first);const recovery=await previewPayrollHistoryRevert(ctx,first.attemptId),money=await owner.db.select().from(schema.payslip);
+  const [artifact]=await owner.db.insert(schema.statutoryReport).values({tenantId:b.tenantId,companyId:b.companyId,jurisdiction:'MY',reportType:'my.contributions',periodKind:'month',periodKey:period,status:'draft',generatedBy:ctx.userId}).returning();
+  await expect(revertPayrollHistoryUpload(ctx,first.attemptId,recovery.previewHash)).rejects.toThrow(/changed/);expect((await effective()).map(row=>Number(row.grossPay))).toEqual([5000]);
+  const reviewed=await previewPayrollHistoryRevert(ctx,first.attemptId);expect(reviewed.impact.some(item=>/statutory/i.test(item.message))).toBe(true);await revertPayrollHistoryUpload(ctx,first.attemptId,reviewed.previewHash);
+  expect(await effective()).toEqual([]);expect(await owner.db.select().from(schema.payslip)).toEqual(money);expect((await owner.db.select().from(schema.statutoryReport).where(eq(schema.statutoryReport.id,artifact.id)))[0]).toEqual(artifact);
  });
  it('reviews recovery without changing money or audit and binds confirmation to the exact preview',async()=>{
-  const first=await upload();await expect(previewPayrollHistoryRevert(ctx,first.attemptId)).rejects.toThrow(/no imported changes/);await confirm(first);
+  const first=await upload();await expect(previewPayrollHistoryRevert(ctx,first.attemptId)).rejects.toThrow(/no accepted import/);await confirm(first);
   const revisions=await owner.db.select().from(schema.payrollHistoryImportRevision),events=await owner.db.select().from(schema.payrollHistoryImportEvent),money=await effective();
   const recovery=await previewPayrollHistoryRevert(ctx,first.attemptId);expect(await previewPayrollHistoryRevert(ctx,first.attemptId)).toEqual(recovery);
   expect(await owner.db.select().from(schema.payrollHistoryImportRevision)).toEqual(revisions);expect(await owner.db.select().from(schema.payrollHistoryImportEvent)).toEqual(events);expect(await effective()).toEqual(money);
-  await expect(revertPayrollHistoryUpload(ctx,first.attemptId,'0'.repeat(64))).rejects.toThrow(/preview changed/);
+  await expect(revertPayrollHistoryUpload(ctx,first.attemptId,'0'.repeat(64))).rejects.toThrow(/preview.*changed/);
   await expect(revertPayrollHistoryUpload(ctx,first.attemptId,'not-a-preview')).rejects.toThrow(/Review the current/);
   expect(await owner.db.select().from(schema.payrollHistoryImportRevision)).toEqual(revisions);expect(await effective()).toEqual(money);
   const other=await seedBase();await setModule(other.tenantId,'payroll','active');const foreign=await entitledCtx(other);
   await expect(previewPayrollHistoryRevert(foreign,first.attemptId)).rejects.toThrow(/unavailable/);
   await expect(revertPayrollHistoryUpload(foreign,first.attemptId,recovery.previewHash)).rejects.toThrow(/unavailable/);expect(await effective()).toEqual(money);
-  await revertPayrollHistoryUpload(ctx,first.attemptId,recovery.previewHash);await expect(previewPayrollHistoryRevert(ctx,first.attemptId)).rejects.toThrow(/already been reverted/);
+  await revertPayrollHistoryUpload(ctx,first.attemptId,recovery.previewHash);const afterRemoval=await owner.db.select().from(schema.payrollHistoryImportRevision),retryReview=await previewPayrollHistoryRevert(ctx,first.attemptId);expect(retryReview.count).toBe(0);expect(retryReview.plan.counts.unchanged).toBe(1);expect(await owner.db.select().from(schema.payrollHistoryImportRevision)).toEqual(afterRemoval);expect(await effective()).toEqual([]);
  });
  it('labels recorded audit actors without granting a personnel directory or foreign attempt lookup',async()=>{
   const [actor]=await owner.db.insert(schema.person).values({tenantId:b.tenantId,fullName:'Payroll audit owner',primaryEmail:'payroll-audit-owner@fixture.test'}).returning();await owner.db.update(schema.appUser).set({personId:actor.id}).where(eq(schema.appUser.id,ctx.userId!));ctx={...ctx,personId:actor.id};

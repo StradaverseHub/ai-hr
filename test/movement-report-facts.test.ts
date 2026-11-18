@@ -61,3 +61,17 @@ describe('batched report lifecycle facts reuse Employment History', () => {
     });
   });
 });
+
+describe('dated grade correction field ownership', () => {
+  it('does not replace grade with a snapshot from an unrelated information-only correction', async () => {
+    const id=await hire('GRADE-OWNERSHIP');
+    const [grade]=await owner.client<{id:string}[]>`insert into job_grade(tenant_id,code,name,rank) values(${b.tenantId}::uuid,'EXG','Fictional retained grade',1) returning id`;
+    await owner.client`update employment set grade_id=${grade.id}::uuid where id=${id}::uuid`;
+    // Retained legacy payload snapshots may omit the unchanged grade. Its changed-fields owner is authoritative.
+    await owner.client`insert into domain_event(tenant_id,aggregate_type,aggregate_id,event_type,actor_type,subject_employment_id,payload)
+      values(${b.tenantId}::uuid,'employment',${id}::uuid,'employment.information.corrected','system',${id}::uuid,
+      ${JSON.stringify({fields:['orgDivision'],before:{orgDivision:null},after:{orgDivision:'Fictional division'},effectiveOn:day(-10)})}::jsonb)`;
+    const [facts]=await withTenant(adminCtx(b),tx=>movementReportFactsTx(tx,b.tenantId,[id],[day(-5)]),{readOnlySnapshot:true});
+    expect(facts.placements).toEqual([{date:day(-5),gradeId:grade.id,gradeKnown:true}]);
+  });
+});

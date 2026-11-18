@@ -1,4 +1,5 @@
 import {isContractPostingMovementKind} from '@/core/movement-kinds';
+import { MovementComparisonTable } from './movement-comparison-table';
 import {HIRE_SCALAR_INFORMATION_FIELDS} from '@/core/hire-employment-information';
 import {MOVEMENT_INFORMATION_FIELDS,type MovementInformationField} from '@/lib/movement-information-evidence';
 import {personnelMaintenanceCompanyIds} from '@/core/workforce-access';
@@ -3577,33 +3578,14 @@ export default async function EmployeePage({
           </dl>
         </section>
       ) : (
-      <table className="w-full border-t border-border text-sm">
-        <thead className="bg-muted/50 text-left text-xs uppercase tracking-wide text-muted-foreground">
-          <tr>
-            <th className="px-4 py-2 font-medium">{t('movement.detail.field')}</th>
-            <th className="px-4 py-2 font-medium">{t('movement.detail.beforeChanges')}</th>
-            <th className="px-4 py-2 font-medium">{t('movement.detail.afterChanges')}</th>
-          </tr>
-        </thead>
-        <tbody className="divide-y divide-border">
-          {movementComparisonRows.map((r) => {
-            // 08913328 — tint the fields this movement actually moved, so "what changed" is readable at a
-            // glance instead of being a diff the reader has to perform themselves.
-            const changed = !!movementDetailData.before && (r.before ?? null) !== (r.after ?? null);
-            return (
-              <tr key={r.key} className={changed ? 'bg-primary/5' : undefined}>
-                <td className="px-4 py-2.5 text-muted-foreground">{r.label}</td>
-                <td className="px-4 py-2.5 text-foreground">
-                  {movementDetailData.before ? (r.before ?? '—') : t('movement.detail.firstRecord')}
-                </td>
-                <td className={`px-4 py-2.5 font-medium ${changed ? 'text-primary' : 'text-foreground'}`}>
-                  {r.after ?? '—'}
-                </td>
-              </tr>
-            );
-          })}
-        </tbody>
-      </table>
+      <MovementComparisonTable rows={movementComparisonRows} hasBefore={!!movementDetailData.before}
+        labels={{field:t('movement.detail.field'),before:t('movement.detail.beforeChanges'),after:t('movement.detail.afterChanges'),firstRecord:t('movement.detail.firstRecord')}}
+        exit={movementDetailData.exitInformation ? {
+          title:t('movement.detail.exitInformation'),
+          note:t('movement.detail.exitInformationNote',{date:formatDmy(movementDetailData.exitInformation.effectiveDate)}),
+          column:t('movement.detail.atExit'),
+        } : undefined}
+      />
       )}
       <div className="p-4">
         <Link href={historyHref} className={btnGhost}>

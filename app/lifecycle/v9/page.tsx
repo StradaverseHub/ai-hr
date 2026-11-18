@@ -1,3 +1,4 @@
+import {TemplateHub} from '@/app/automation/templates/template-hub';
 import { redirect } from 'next/navigation';
 import { V9Error } from '@/lib/lifecycle-v9-model';
 import { requireModule } from '@/lib/authz';
@@ -7,10 +8,11 @@ import { V9Workspace } from './workspace';
 import { readV9Workspace } from './read-workspace';
 import { v9WorkspaceView } from '@/lib/lifecycle-v9-navigation';
 import './workspace.css';
-export default async function Page({ searchParams }: { searchParams: Promise<{view?: string | string[];workflow?:string|string[];case?:string|string[]}> }) {
-  const session = await requireModule('lifecycle');
+export default async function Page({ searchParams }: { searchParams: Promise<{view?: string | string[];workflow?:string|string[];case?:string|string[];module?:string|string[];company?:string|string[]}> }) {
   const query = await searchParams;
-  if(query.view==='workflows'||query.view==='templates'||query.view==='groups'){const target=query.view==='workflows'?'workflows':query.view==='templates'?'templates':'groups';const params=new URLSearchParams();if(target!=='groups')params.set('module','all');if(target==='workflows'&&typeof query.workflow==='string')params.set('workflow',query.workflow.slice(0,120));redirect('/automation/'+target+(params.size?'?'+params.toString():''));}
+  if(query.view==='templates')return <TemplateHub module={typeof query.module==='string'?query.module:undefined} company={typeof query.company==='string'?query.company:undefined}/>;
+  const session = await requireModule('lifecycle');
+  if(query.view==='workflows'||query.view==='groups'){const target=query.view==='workflows'?'workflows':'groups';const params=new URLSearchParams();if(target!=='groups')params.set('module','all');if(target==='workflows'&&typeof query.workflow==='string')params.set('workflow',query.workflow.slice(0,120));redirect('/automation/'+target+(params.size?'?'+params.toString():''));}
   const workspace=await readV9Workspace(session).catch(error=>{if(error instanceof V9Error&&error.code==='forbidden')redirect('/me/lifecycle');throw error;});
   const workflowNavigation=v9WorkspaceView(query.view)==='workflows'?<WorkflowModuleNavigation current="legacy" available={await lifecycleWorkflowAvailability(session,workspace.initial.permissions?.administration??workspace.initial.canConfigure)}/>:undefined;
   return <V9Workspace workflowNavigation={workflowNavigation} {...workspace} navigation="global" initialView={v9WorkspaceView(query.view)} initialWorkflow={typeof query.workflow === 'string' ? query.workflow.slice(0,120) : undefined} initialCase={typeof query.case === 'string' && /^[0-9a-f-]{36}$/i.test(query.case) ? query.case : undefined}/>;

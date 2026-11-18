@@ -1,8 +1,9 @@
+import {nativePayrollPayslip} from './payroll-history-native-baseline';
 import { lockOvertimeDayForAttendanceWriteTx } from '../packs/attendance/service';
 import { actorOf, appendEvent } from '../db/events';
 import { and, eq, inArray, sql } from 'drizzle-orm';
 import { type Tx, type SessionContext } from '../db/client';
-import { companyPayrollConfig, payrollBatch, payslip } from '../db/schema';
+import { companyPayrollConfig, payrollBatch } from '../db/schema';
 import { resolveAssignedPolicy } from './payroll-policy';
 import { anchorWindowFor, calendarWindowFor, cutOffWindowFor, type CompanyCutOffConfig, type PayrollPolicyConfig } from './payroll-policy-config';
 
@@ -41,9 +42,9 @@ export async function closedBatchesCoveringAttendanceDates(
   });
   if (batches.length === 0) return [];
   const slips = await tx
-    .select({ batchId: payslip.batchId, employmentId: payslip.employmentId })
-    .from(payslip)
-    .where(inArray(payslip.batchId, batches.map((b) => b.id)));
+    .select({ batchId: nativePayrollPayslip.batchId, employmentId: nativePayrollPayslip.employmentId })
+    .from(nativePayrollPayslip)
+    .where(inArray(nativePayrollPayslip.batchId, batches.map((b) => b.id)));
   const onRun = new Set(slips.map((s) => `${s.batchId}|${s.employmentId}`));
   const [cpc] = await tx
     .select({

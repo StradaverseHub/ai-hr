@@ -13,7 +13,7 @@ import {payFormulaTemplateSource} from '../lib/pay-formula-templates';
 import {PAY_FORMULA_VARIABLE_CATEGORIES} from '../lib/pay-formula-registry';
 import type {FormulaBuilderOptions,FormulaBuilderView} from '../app/payroll/formula-builder/ui-types';
 const state=vi.hoisted(()=>({save:vi.fn(),test:vi.fn(),activate:vi.fn(),remove:vi.fn(),group:vi.fn(),search:vi.fn(),batches:vi.fn(),push:vi.fn(),refresh:vi.fn(),replace:vi.fn(),draft:vi.fn(),read:vi.fn(),discard:vi.fn()}));
-vi.mock('../app/payroll/formula-builder/actions',()=>({startFormulaDraftAction:state.draft,readFormulaDraftAction:state.read,discardFormulaDraftAction:state.discard,saveFormulaAction:state.save,testFormulaAction:state.test,formulaStateAction:state.activate,deleteFormulaAction:state.remove,saveAccumulationAction:state.group,searchFormulaEmployeesAction:state.search,listFormulaBatchesAction:state.batches}));
+vi.mock('../app/payroll/formula-builder/actions',()=>({startFormulaDraftAction:state.draft,readFormulaDraftAction:state.read,discardFormulaDraftAction:state.discard,saveFormulaAction:state.save,testFormulaAction:state.test,formulaStateAction:state.activate,deleteFormulaAction:state.remove,saveAccumulationAction:state.group,searchFormulaEmployeesAction:state.search,listFormulaBatchesAction:state.batches,readFormulaCodeChoicesAction:vi.fn(),registerPersonnelFormulaFieldAction:vi.fn()}));
 vi.mock('../app/admin/pay-components/actions',()=>({draftPayRuleAction:vi.fn(),previewPayRuleAction:vi.fn(),searchPreviewEmployeesAction:vi.fn()}));
 vi.mock('next/navigation',()=>({useRouter:()=>({push:state.push,refresh:state.refresh,replace:state.replace})}));
 const catalogues={en,ms,zh,ta,th,vi:vietnamese};
@@ -148,3 +148,25 @@ End If`;
  it('shows immutable versions and disables editing in view mode',()=>{mount('en',fixture(),true);expect(screen.getByLabelText(en.payFormula.formulaId)).toBeDisabled();expect(screen.getByRole('textbox',{name:en.payFormula.source})).toBeDisabled();expect(screen.queryByRole('button',{name:en.payFormula.save})).not.toBeInTheDocument();expect(screen.getByText(en.payFormula.usageAndVersions)).toBeVisible();});
  it('honors authoritative view-only capabilities',()=>{const formula=fixture();formula.capabilities={view:true,edit:false,test:false,activate:false,deactivate:false,delete:false};mount('en',formula);expect(screen.getByLabelText(en.payFormula.description)).toBeDisabled();expect(screen.getByRole('button',{name:en.payFormula.testSaved})).toBeDisabled();expect(screen.queryByRole('button',{name:en.payFormula.activate})).not.toBeInTheDocument();});
 });
+
+it.each(['new','edit'] as const)('%s formula shows readable codes and requires reviewed draft conversion',async mode=>{
+ const codeField={fieldId:'employment.organisation_assignment.positionname',key:'positionBusinessCode',label:'Position code',labelKey:'payFormula.fields.positionBusinessCode',section:'Organisation assignment',group:'profile' as const,type:'choice',history:'dated',sensitivity:'personnel',grain:'single',unavailableReason:null,description:'Organisation assignment · Position code',formulaType:'string' as const,functionCode:'EmployeeProfile',dateBasis:'effective-date',enabled:true,codeValuesTotal:1,listValues:[{value:'J0113',label:'J0113 · Equipment controller'}]};
+ const older=fixture();older.latest.source='If {#EmployeeProfile}("positionCode") = "J0113" Then\nReturn 10\nElse\nReturn 0\nEnd If';older.latest.program=parsePayFormula(older.latest.source);
+ const view=render(<NextIntlClientProvider locale="en" messages={en}><FormulaEditor initial={mode==='new'?null:older} options={{...options,personnelFields:[codeField,{...codeField,key:'positionId',label:'Position internal ID',labelKey:'unknown',compatibility:true,codeValuesTotal:undefined,listValues:[]}]}}/></NextIntlClientProvider>);
+ fireEvent.click(screen.getByRole('tab',{name:en.payFormula.help.tabs.variables}));
+ expect(screen.getByRole('heading',{name:'Position code'})).toBeVisible();
+ expect(screen.queryByRole('heading',{name:'Position internal ID'})).toBeNull();
+ const codeArticle=screen.getByRole('heading',{name:'Position code'}).closest('article')!;
+ expect(within(codeArticle).getByText('{#EmployeeProfile}("positionBusinessCode")')).toBeVisible();
+ if(mode==='edit'){
+  const review=screen.getByRole('heading',{name:en.payFormula.businessCodes.reviewTitle}).closest('section')!;
+  expect(within(review).getByText(en.payFormula.businessCodes.preserved)).toBeVisible();
+  fireEvent.click(within(review).getByRole('button',{name:'J0113 · Equipment controller'}));
+  expect(within(review).getByRole('button',{name:en.payFormula.businessCodes.apply})).toBeDisabled();
+  fireEvent.click(within(review).getByRole('checkbox',{name:en.payFormula.businessCodes.reviewed}));
+  fireEvent.click(within(review).getByRole('button',{name:en.payFormula.businessCodes.apply}));
+  expect((screen.getByRole('textbox',{name:en.payFormula.source}) as HTMLTextAreaElement).value).toContain('"positionBusinessCode") = "J0113"');
+  expect(state.save).not.toHaveBeenCalled();
+ }
+ await captureAiReviewScreenshots(aiReviewDomHtml(view.container),'en',`feedback-formula-business-codes-${mode}`,'Actual FormulaEditor '+mode+' screen with fictional configured Code values, no authenticated server journey','atelier');
+},120_000);
