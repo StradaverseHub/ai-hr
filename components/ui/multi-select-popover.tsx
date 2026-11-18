@@ -300,6 +300,9 @@ export function MultiSelectPopover({
               value={search}
               maxLength={remote?200:undefined}
               onChange={(e) => {e.stopPropagation();changeSearch(e.target.value);}}
+              onKeyDown={(event)=>{
+                if(event.key==='Enter'&&!event.nativeEvent.isComposing&&event.keyCode!==229)event.preventDefault();
+              }}
               placeholder={searchPlaceholder}
               aria-label={searchPlaceholder}
               className={`${inputCls} mb-2`}

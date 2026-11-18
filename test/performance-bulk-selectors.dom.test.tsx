@@ -23,7 +23,7 @@ const fakeFetch=vi.fn(async(_url:unknown,init?:RequestInit)=>{
 });
 beforeEach(()=>{requests=[];failNext=false;vi.stubGlobal('fetch',fakeFetch);fakeFetch.mockClear();window.localStorage.clear();});
 afterEach(()=>{cleanup();vi.unstubAllGlobals();});
-function Picker(){const [selected,setSelected]=useState(new Set<string>());const receive=useCallback(()=>{},[]);return <NextIntlClientProvider locale="en" messages={messages}><form data-testid="bulk-form"><BulkEmployeePopover name="employmentIds" label="Employees" allLabel="Choose people" options={[]} selected={selected} onChange={setSelected} onRows={receive} searchPlaceholder="Search employees" selectAllLabel="Select all" clearAllLabel="Clear all" selectedCount={count=>`${count} selected`}/></form></NextIntlClientProvider>;}
+function Picker({onSubmit}:{onSubmit?:()=>void}){const [selected,setSelected]=useState(new Set<string>());const receive=useCallback(()=>{},[]);return <NextIntlClientProvider locale="en" messages={messages}><form data-testid="bulk-form" onSubmit={event=>{event.preventDefault();onSubmit?.();}}><BulkEmployeePopover name="employmentIds" label="Employees" allLabel="Choose people" options={[]} selected={selected} onChange={setSelected} onRows={receive} searchPlaceholder="Search employees" selectAllLabel="Select all" clearAllLabel="Clear all" selectedCount={count=>`${count} selected`}/></form></NextIntlClientProvider>;}
 it('renders 25 labels, retains off-page picks, and submits the exact complete Select All set',async()=>{
  const user=userEvent.setup();render(<Picker/>);await user.click(screen.getByRole('button',{name:'Employees'}));
  await waitFor(()=>expect(screen.getAllByRole('checkbox')).toHaveLength(25));
@@ -165,10 +165,11 @@ it('reference resolution A→B→A cannot reactivate cached confirmation while t
  finish(Response.json({selection:{ids:[rows[1].id],unmatched:[]},rows:[]}));expect(confirm.disabled).toBe(true);
 });
 
-it('pure picker browsing does not rerun the actual Generate preview or change its submitted employee set',async()=>{
+it('pure picker browsing neither reruns the actual Generate preview nor submits on Enter',async()=>{
+ const action=vi.fn((_fd:FormData)=>{});
  const user=userEvent.setup(),payloads:{employmentIds:string[]}[]=[];
  const preview=vi.fn(async(input:{employmentIds:string[]})=>{payloads.push(input);return {year:2026,employeesSelected:input.employmentIds.length,employeesReached:input.employmentIds.length,employeesPassed:input.employmentIds.length,employeesFailed:0,granted:input.employmentIds.length,skipped:0,forfeits:0,lines:[],decidedBy:[],accrual:null} as LeaveGenerationResult;});
- render(<NextIntlClientProvider locale="en" messages={messages}><GenerateForm action={()=>{}} previewAction={preview} years={[2026]} defaultYear={2026} leaveTypes={[{value:'lt',label:'Annual Leave'}]} criteriaSections={[]} employees={[]} remoteEmployees/></NextIntlClientProvider>);
+ render(<NextIntlClientProvider locale="en" messages={messages}><GenerateForm action={action} previewAction={preview} years={[2026]} defaultYear={2026} leaveTypes={[{value:'lt',label:'Annual Leave'}]} criteriaSections={[]} employees={[]} remoteEmployees/></NextIntlClientProvider>);
  const t=messages.admin.leave;await user.click(screen.getByRole('button',{name:t.generateStepWho}));await user.click(screen.getByRole('radio',{name:t.adjustmentsByIndividual}));
  await user.click(screen.getByRole('button',{name:t.generateEmployeePicker}));await user.click(await screen.findByRole('checkbox',{name:/Fictional employee 0000/}));
  await waitFor(()=>expect(payloads.at(-1)?.employmentIds).toEqual([rows[0].id]));preview.mockClear();
@@ -178,4 +179,15 @@ it('pure picker browsing does not rerun the actual Generate preview or change it
  await new Promise(resolve=>setTimeout(resolve,350));expect(preview).not.toHaveBeenCalled();
  const form=document.querySelector('input[name="employmentIds"]')!.closest('form')!;expect(new FormData(form).getAll('employmentIds')).toEqual([rows[0].id]);
  expect(requests.some(input=>input.operation==='page'&&input.query==='0999')).toBe(true);
+ // The Process button is mounted in its hidden review section after a valid preview.
+ expect(document.querySelector('button[type="submit"]')).not.toBeNull();
+ await user.keyboard('{Enter}');expect(action).not.toHaveBeenCalled();
+});
+
+it('search Enter is presentation-only while composing/legacy-IME Enter retains native input behavior',async()=>{
+ const user=userEvent.setup(),submit=vi.fn();render(<Picker onSubmit={submit}/>);await user.click(screen.getByRole('button',{name:'Employees'}));await waitFor(()=>expect(screen.getAllByRole('checkbox')).toHaveLength(25));
+ const search=screen.getByPlaceholderText('Search employees');await user.click(search);await user.keyboard('{Enter}');expect(submit).not.toHaveBeenCalled();
+ const composing=new KeyboardEvent('keydown',{key:'Enter',bubbles:true,cancelable:true,isComposing:true});search.dispatchEvent(composing);expect(composing.defaultPrevented).toBe(false);
+ const legacy=new KeyboardEvent('keydown',{key:'Enter',bubbles:true,cancelable:true});Object.defineProperty(legacy,'keyCode',{value:229});search.dispatchEvent(legacy);expect(legacy.defaultPrevented).toBe(false);
+ await user.click(screen.getAllByRole('checkbox')[0]);expect(new FormData(screen.getByTestId('bulk-form') as HTMLFormElement).getAll('employmentIds')).toEqual([rows[0].id]);
 });
