@@ -16,9 +16,14 @@ export type HistoryRevisionRow = {
  employeeName?:string|null;overwriteSource?:'processed'|'imported'|null;expectedOrdinaryPayslipId?:string|null;warnings?:string[];
  /** Board 154511c4 — the employee's dated history puts them in another company for this month (shown, not blocking). */
  otherCompany?:boolean;
+ itemChanges?:{key:string;code:string;label:string;before:string|null;after:string|null;operation:'add'|'change'|'keep'|'remove'|'restore';laterCorrection?:boolean}[];
+ impact?:import('./payroll-history-maintenance').PayrollHistoryMaintenanceImpact[];
+ withdrawal?:boolean;restoreSnapshotId?:string|null;
+ contributions?:import('./payroll-history-maintenance-lineage').HistoryContributionState;
 };
 /** The identity a replacement is ticked by on the screen and confirmed by on the server. */
 export const historyRecordKey=(row:Pick<HistoryRevisionRow,'companyId'|'employmentId'|'period'|'cycleId'>)=>[row.companyId,row.employmentId,row.period,row.cycleId].join(':');
 export type HistoryRevisionPlan = {version:1;rows:HistoryRevisionRow[];issues:{rowNum:number;reason:string}[];
+ maintenance?:{version:1;mode:'replace'|'update_listed'|'edit'|'remove_items'|'remove_batch';reason:string;request?:import('./payroll-history-maintenance').PayrollHistoryMaintenanceRequest};
  counts:{created:number;replaced:number;unchanged:number;invalid:number};companyIds:string[];sourceHash:string;previewHash:string};
 export type HistoryRevisionChange = {recordId:string;revisionId:string;previousRevisionId:string|null;snapshotId:string|null};
