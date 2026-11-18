@@ -165,6 +165,7 @@ const APPROVED_COMBINED_RELEASE_TAGS=[
  '6438_contract_setup_membership_fold',
  '6439_contract_resignation_shared_compatibility',
  '6440_own_leave_shared_access',
+ '6441_contract_resignation_email_modules',
 ] as const;
 
 // Approved but not yet installed forward tail; this fixture independently pins journal identity.

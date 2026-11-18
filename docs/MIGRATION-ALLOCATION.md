@@ -1,3 +1,23 @@
+# Combined email constraint forward repair — 18 November 2026
+
+Reserve `6441_contract_resignation_email_modules`, idx5841, when1794988006441,
+SQL SHA-256 `6d9821ab2bfde4e13da07a8ad648b47f09e27805e993dd367b0badc36816d995` after the unchanged141-body combined allocation below.
+The first frozen8af qualification44263612590 failed two real native Offboarding email cases:
+original Contract6321 replaced the delivery CHECK and removed the `off` module introduced by
+Resignation6303. The new body restores only the closed `probation,contract_staff,off` union,
+pins the validated original expression, and preserves table owner/ACL/RLS/policies/triggers.
+Queue, lease, recipient, subject and native target functions remain unchanged. No module other
+than those three is admitted; no grants or role changes are introduced.
+
+The fresh post-fetch survey covers4708ref commits/737journal blobs/450registered worktrees,
+with no6441tag/5841idx/timestamp/filename/allocation-document claim; maximum known timestamp
+was1794988006440. All139original bodies and both previous repair bodies remain byte-identical.
+This is source registration, not a database application. The failed run remains failed;
+new three-lane queue/claim/target, outsider/invalid-module, restricted-owner/populated upgrade
+and affected compiler checks must pass. Revalidate the accepted Board ledger at handback.
+
+---
+
 # Combined staging session source allocation — 18 November 2026
 
 The owner explicitly requested one combined staging release of STAGING, PRODUCTION,
