@@ -892,3 +892,14 @@ serializer or transport changes. Reversing the 28 substitutions reproduces the p
 registry byte-for-byte; pending, retired, reviewer and historical evidence metadata are retained.
 The derived agent manifest is regenerated after binding. This grants no passing verification,
 staging acceptance or production authority.
+
+
+### Historical hire-date organisation scope staging repair (18 November 2026)
+
+The owner explicitly approved the exact 28-record rebinding to `1960993ebff63ab7870df2d065f99a4e44157401443e5c547ecbc4ac9d3e7b6a` in the STAGING chat on 18 November 2026, replying "Approve this exact rebinding" after automatic approval review requested exact-source authorization. This is the controlling approval for this repair.
+
+The release coordinator carries forward the same 28 active provider source approvals under the repository owner's recorded standing staging pre-approval of 12 November 2026 ("I approve fully on the rebinding and the AI approval, dont have to wait for my decision"), and the owner's explicit request in the STAGING chat on 18 November to merge PR 246 and deploy this fix to staging. The pre-binding source is `9932afcee13bd90cd23243adacc84b25f33cff5b`.
+
+The covered change resolves the company at the corrected historical Group Join Date through the existing organisation owner before recording tags, instead of passing today's employer. It preserves transaction boundaries and historical-company permission checks. No provider contract, purpose, outbound field, serializer or transport changes. The fingerprint changes from `e7f9a66a837dd19dfa996048309c8df1e04b4a428243be9f0a5db99582a1d648` to `1960993ebff63ab7870df2d065f99a4e44157401443e5c547ecbc4ac9d3e7b6a`; reversing exactly 28 digest substitutions reproduces the prior approval registry byte-for-byte, preserving pending/retired statuses, reviewers and approval evidence. Both generated source manifests are refreshed.
+
+Original release run 44230047543 retains its admission failures: planning/build refused the stale provider manifest before application test execution. Its successful compiler, migrations and controller observations retain their original identities. This binding supplies no gate PASS, staging acceptance, or production authority.
