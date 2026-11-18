@@ -77,6 +77,7 @@ const APPROVED_BOARD_TAIL:Entry[]=[
  {idx:10098,version:'7',when:1794998006698,tag:'6698_payroll_history_maintenance_read',breakpoints:true},
  {idx:10099,version:'7',when:1794998006699,tag:'6699_payroll_history_maintenance_subjects',breakpoints:true},
  {idx:10100,version:'7',when:1794998006700,tag:'6700_payroll_history_retained_insert',breakpoints:true},
+ {idx:10101,version:'7',when:1794998006701,tag:'6701_payroll_history_native_anomaly_membership',breakpoints:true},
 ];
 
 it('stops on a cross-tenant row, then validates every company/tenant key without changing data or grants',async()=>{
@@ -938,6 +939,8 @@ it('stops on a cross-tenant row, then validates every company/tenant key without
    //6700: frozen505597 kernel-only retained insert plus private deferred custody.
    {fn:'app.payroll_history_maintenance_payslip(uuid,text,uuid,uuid)',app:true},
    {fn:'app.payroll_history_retained_insert_custody()',app:false},
+   //6701: metadata-only complete physical membership witness, frozen5e92882d.
+   {fn:'app.payroll_history_native_anomaly_complete(uuid,uuid[])',app:true},
    //6680–85/88–89: reviewed source design; private custody and bounded explicit HR recovery.
    {fn:'app.personnel_completion_phone_valid(text)',app:true},
    {fn:'app.personnel_completion_group(text)',app:true},
@@ -1115,6 +1118,7 @@ it('stops on a cross-tenant row, then validates every company/tenant key without
    {"fn":"app.payroll_history_maintenance_state_matches(jsonb,jsonb)","owner":"OWNER","definer":false,"volatility":"i","strict":false,"language":"plpgsql","config":["search_path=pg_catalog"]},
    {"fn":"app.payroll_history_maintenance_subjects(uuid[],text[],text[],integer,integer)","owner":"OWNER","definer":true,"volatility":"s","strict":false,"language":"plpgsql","config":["search_path=pg_catalog, public, pg_temp"]},
    {"fn":"app.payroll_history_native_affected(jsonb)","owner":"OWNER","definer":true,"volatility":"v","strict":false,"language":"plpgsql","config":["search_path=pg_catalog, public, pg_temp"]},
+   {"fn":"app.payroll_history_native_anomaly_complete(uuid,uuid[])","owner":"OWNER","definer":true,"volatility":"s","strict":false,"language":"plpgsql","config":["search_path=pg_catalog, pg_temp"]},
    {"fn":"app.payroll_history_native_artifact_allowed(uuid,uuid,uuid)","owner":"OWNER","definer":true,"volatility":"s","strict":false,"language":"sql","config":["search_path=pg_catalog, public, pg_temp"]},
    {"fn":"app.payroll_history_native_baseline(uuid)","owner":"OWNER","definer":true,"volatility":"s","strict":false,"language":"sql","config":["search_path=pg_catalog, public, pg_temp"]},
    {"fn":"app.payroll_history_native_batch_override(uuid)","owner":"OWNER","definer":true,"volatility":"s","strict":false,"language":"sql","config":["search_path=pg_catalog, public, pg_temp"]},
