@@ -17,7 +17,7 @@ BEGIN
  FOR item IN SELECT value FROM jsonb_array_elements(coalesce(NEW.data->'items','[]')) LOOP
   SELECT value INTO prior FROM jsonb_array_elements(coalesce(OLD.data->'items','[]')) WHERE value->>'id'=item->>'id';
   IF prior IS NULL OR (item->'status',item->'assignee',item->'group',item->'dueOn') IS DISTINCT FROM (prior->'status',prior->'assignee',prior->'group',prior->'dueOn') THEN
-   entries:=entries||jsonb_build_array(jsonb_build_object('id',gen_random_uuid(),'at',stamp,'actor',jsonb_build_object('id',coalesce(app.current_user_id()::text,'system'),'name',coalesce(actor_name,'System')),
+   entries:=entries||jsonb_build_array(jsonb_build_object('id',gen_random_uuid(),'at',stamp,'actor',jsonb_build_object('id',coalesce(app.current_user_id()::text,'system'),'name',coalesce(actor_name,CASE WHEN app.current_user_id() IS NULL THEN 'System' ELSE 'User' END)),
     'action',CASE WHEN prior IS NULL THEN 'requisition.itemAdded' ELSE 'requisition.itemUpdated' END,'detail',item->>'name','itemId',item->>'id','itemStatus',item->>'status','groupId',item->>'group','assigneeId',item->>'assignee','dueOn',item->>'dueOn'));
   END IF;
  END LOOP;

@@ -80,3 +80,17 @@ it('keeps saved legacy organisation labels but never treats an unresolved master
  await owner.client`update lc_v9_case set data=jsonb_set(jsonb_set(data,'{facts,title}',to_jsonb(${foreign.positionId}::text)),'{facts,businessGroup}',to_jsonb(${randomUUID()}::text)) where id=${id}::uuid`;
  expect(await offboardingRequisition(admin,id)).toMatchObject({position:'',businessGroup:''});
 });
+
+
+it('attributes a no-Person HR account as User and reserves System for a physical owner transition without a user',async()=>{
+ const id=await prepared(),userId=await createAppUser(b.tenantId,null,'hr_admin');
+ const native=await onboardingContext(admin);native.config.access.offboarding.push(userId);await onboardingSaveConfig(admin,native.revision,native.config);
+ const user:SessionContext={...admin,userId,personId:null,roles:['hr_admin'],grants:undefined};
+ const before=await offboardingRequisition(user,id);
+ const after=await updateOffboardingRequisitionItem(user,{caseId:id,revision:before.revision,itemId:'access',status:'progress',reason:'Reviewed by account holder'});
+ expect(after.activity[0]).toMatchObject({detail:'Fictional access',actor:'User'});
+ expect((await owner.client`select person_id from app_user where id=${userId}::uuid`)[0].person_id).toBeNull();
+ await owner.withTenant({...admin,userId:undefined,personId:null},tx=>tx.execute(sql`update lc_v9_case set data=jsonb_set(data,'{items,0,status}','"todo"'::jsonb) where id=${id}::uuid`));
+ const [saved]=await owner.client`select data->'requisitionActivity'->-1->'actor' as actor from lc_v9_case where id=${id}::uuid`;
+ expect(saved.actor).toEqual({id:'system',name:'System'});
+});
