@@ -2,7 +2,7 @@
 ALTER TABLE public.payroll_history_import_revision ADD COLUMN maintenance jsonb
  CHECK(maintenance IS NULL OR coalesce((jsonb_typeof(maintenance)='object' AND maintenance->>'version'='1' AND maintenance->'state'->>'version'='1' AND jsonb_typeof(maintenance->'state'->'chains')='object' AND length(maintenance->>'reason') BETWEEN 1 AND 2000),false));
 --> statement-breakpoint
-CREATE FUNCTION app.payroll_history_maintenance_revision_bind() RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,app AS $$
+CREATE FUNCTION app.payroll_history_maintenance_revision_bind() RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,pg_temp AS $$
 DECLARE identity public.payroll_history_import_record; source public.payroll_history_import_attempt; planned jsonb; permission_key text;
 BEGIN
  IF NEW.maintenance IS NULL THEN
@@ -42,7 +42,7 @@ CREATE TRIGGER payroll_history_maintenance_revision_binding BEFORE INSERT ON pub
 -- A contribution can refer only to an immutable accepted value of THIS record. This validates
 -- source ownership; the existing analyzer remains the one owner of import folding and payroll arithmetic.
 CREATE FUNCTION app.payroll_history_maintenance_code_owner(code_ text) RETURNS uuid
-LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,app AS $$
+LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,pg_temp AS $$
  WITH original AS(SELECT c.* FROM public.payroll_import_code c WHERE c.tenant_id=app.current_tenant_id() AND upper(c.code)=upper(code_)),
  target AS(SELECT CASE WHEN original.alias_for IS NULL THEN code_ ELSE original.alias_for END code FROM original UNION ALL SELECT code_ WHERE NOT EXISTS(SELECT 1 FROM original)),
  configured AS(SELECT t.code,c.id catalog_id,c.alias_for FROM target t LEFT JOIN public.payroll_import_code c ON c.tenant_id=app.current_tenant_id() AND upper(c.code)=upper(t.code))
@@ -51,8 +51,22 @@ $$;
 --> statement-breakpoint
 REVOKE ALL ON FUNCTION app.payroll_history_maintenance_code_owner(text) FROM PUBLIC;
 --> statement-breakpoint
+-- Admission validation mirrors the existing closed code vocabulary; no payroll arithmetic.
+CREATE FUNCTION app.payroll_history_maintenance_new_destination(code_ text) RETURNS text
+LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path=pg_catalog,pg_temp AS $$
+DECLARE catalog_ public.payroll_import_code; component_ public.pay_component;
+BEGIN
+ SELECT * INTO catalog_ FROM public.payroll_import_code WHERE tenant_id=app.current_tenant_id() AND upper(code)=upper(code_);
+ IF FOUND THEN IF NOT catalog_.active OR catalog_.alias_for IS NOT NULL THEN RETURN NULL;END IF;RETURN catalog_.destination;END IF;
+ SELECT * INTO component_ FROM public.pay_component WHERE tenant_id=app.current_tenant_id() AND upper(code)=upper(code_);
+ IF FOUND AND component_.archived_at IS NULL THEN RETURN CASE WHEN component_.is_non_payable THEN 'noncash' WHEN component_.kind='deduction' THEN 'other_deduction' WHEN component_.display_category='basic' THEN 'basic' WHEN component_.display_category='overtime' THEN 'overtime' WHEN component_.display_category='bonus' THEN 'bonus' WHEN component_.display_category IN('allowance','claim') THEN 'allowance' WHEN upper(code_)='BASIC' THEN 'basic' WHEN upper(code_) LIKE 'OT%' OR upper(code_)='OVERTIME' THEN 'overtime' WHEN upper(code_)='BONUS' THEN 'bonus' ELSE 'allowance' END;END IF;
+ RETURN CASE upper(code_) WHEN 'BASIC' THEN 'basic' WHEN 'EEEPF' THEN 'epf_employee' WHEN 'EREPF' THEN 'epf_employer' WHEN 'EESOCSO' THEN 'socso_employee' WHEN 'ERSOCSO' THEN 'socso_employer' WHEN 'EESOCSOSKBBK' THEN 'socso_skbbk' WHEN 'EEEIS' THEN 'eis_employee' WHEN 'EREIS' THEN 'eis_employer' WHEN 'PCB' THEN 'pcb' WHEN 'CP38' THEN 'cp38' WHEN 'ZAKAT' THEN 'zakat' WHEN 'LP' THEN 'lp' WHEN 'HRDF' THEN 'hrdf' ELSE NULL END;
+END $$;
+--> statement-breakpoint
+REVOKE ALL ON FUNCTION app.payroll_history_maintenance_new_destination(text) FROM PUBLIC;
+--> statement-breakpoint
 CREATE FUNCTION app.payroll_history_maintenance_item_proven(record_ uuid,baseline_ uuid,entry_ jsonb) RETURNS boolean
-LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,app AS $$
+LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path=pg_catalog,pg_temp AS $$
 DECLARE item_ jsonb; source_ uuid; snapshot_ record; amount_ numeric; key_ text; property_ text; total_ numeric;
 BEGIN
  item_:=entry_->'item'; IF item_='null'::jsonb THEN RETURN true;END IF;
@@ -63,12 +77,15 @@ BEGIN
   WHERE s.record_id=record_ AND s.tenant_id=app.current_tenant_id() AND ((source_ IS NULL AND s.id=baseline_ AND r.kind='adopted') OR(source_ IS NOT NULL AND r.attempt_id=source_ AND r.kind IN ('import','correction')))
  LOOP
   IF snapshot_.maintenance IS NOT NULL AND EXISTS(SELECT 1 FROM jsonb_each(snapshot_.maintenance->'state'->'chains') chain CROSS JOIN LATERAL jsonb_array_elements(chain.value) retained WHERE chain.key=key_ AND retained.value=entry_) THEN RETURN true;END IF;
-  IF item_->>'destination'='basic' AND key_='destination:basic' AND amount_=(snapshot_."values"->>'basicSalary')::numeric THEN RETURN true;END IF;
+  IF item_->>'destination'='basic' AND key_='destination:basic' AND amount_=(snapshot_."values"->>'basicSalary')::numeric AND(
+   EXISTS(SELECT 1 FROM jsonb_array_elements(coalesce(snapshot_."values"->'statutory'->'importedTaxBasis'->'lines','[]'::jsonb)) line WHERE upper(line->>'code')=upper(item_->>'code') AND line->>'direction'='earning' AND (line->>'amount')::numeric=amount_ AND(line->>'settingId'='system-basic-salary' AND upper(item_->>'code')='BASIC' OR line->>'settingId'=app.payroll_history_maintenance_code_owner(item_->>'code')::text))
+   OR upper(item_->>'code')='BASIC' AND NOT EXISTS(SELECT 1 FROM jsonb_array_elements(coalesce(snapshot_."values"->'statutory'->'importedTaxBasis'->'lines','[]'::jsonb)) line WHERE line->>'direction'='earning' AND (line->>'amount')::numeric=amount_)
+  ) THEN RETURN true;END IF;
   property_:=CASE item_->>'destination' WHEN 'epf_employee' THEN 'epfEmployee' WHEN 'epf_employer' THEN 'epfEmployer' WHEN 'socso_employee' THEN 'socsoEmployee' WHEN 'socso_employer' THEN 'socsoEmployer' WHEN 'socso_skbbk' THEN 'socsoSkbbk' WHEN 'eis_employee' THEN 'eisEmployee' WHEN 'eis_employer' THEN 'eisEmployer' WHEN 'pcb' THEN 'pcb' WHEN 'cp38' THEN 'cp38' WHEN 'zakat' THEN 'zakat' WHEN 'lp' THEN 'lp' WHEN 'hrdf' THEN 'hrdf' ELSE NULL END;
   IF property_ IS NOT NULL AND key_='statutory:'||(item_->>'destination') AND amount_=coalesce((snapshot_."values"->'statutory'->>property_)::numeric,0) THEN RETURN true;END IF;
   IF item_->>'direction'='noncash' THEN
-   IF EXISTS(SELECT 1 FROM jsonb_array_elements(coalesce(snapshot_."values"->'statutory'->'importedTaxBasis'->'lines','[]'::jsonb)) line WHERE line->>'code'=item_->>'code' AND 'component:'||(line->>'settingId')=key_ AND (line->>'amount')::numeric=amount_ AND line->>'direction'='noncash') THEN RETURN true;END IF;
-   IF source_ IS NULL AND EXISTS(SELECT 1 FROM jsonb_array_elements(coalesce(snapshot_."values"->'statutory'->'pcbNonCash'->'ownedEaEntries','[]'::jsonb)) line WHERE upper(line->>'code')=upper(item_->>'code') AND 'component:'||app.payroll_history_maintenance_code_owner(line->>'code')::text=key_ AND (line->>'entered')::numeric=amount_) THEN RETURN true;END IF;
+   IF amount_=(SELECT sum((line->>'amount')::numeric) FROM jsonb_array_elements(coalesce(snapshot_."values"->'statutory'->'importedTaxBasis'->'lines','[]'::jsonb)) line WHERE upper(line->>'code')=upper(item_->>'code') AND 'component:'||(line->>'settingId')=key_ AND line->>'direction'='noncash') THEN RETURN true;END IF;
+   IF source_ IS NULL AND amount_=(SELECT sum((line->>'entered')::numeric) FROM jsonb_array_elements(coalesce(snapshot_."values"->'statutory'->'pcbNonCash'->'ownedEaEntries','[]'::jsonb)) line WHERE upper(line->>'code')=upper(item_->>'code') AND 'component:'||app.payroll_history_maintenance_code_owner(line->>'code')::text=key_) THEN RETURN true;END IF;
   ELSE
    SELECT sum((line->>'amount')::numeric) INTO total_ FROM jsonb_array_elements(coalesce(snapshot_."values"->'statutory'->'importedLines',snapshot_."values"->'statutory'->'componentLines','[]'::jsonb)) line
     WHERE 'component:'||app.payroll_history_maintenance_code_owner(line->>'code')::text=key_
@@ -119,7 +136,7 @@ REVOKE ALL ON FUNCTION app.payroll_history_maintenance_state_matches(jsonb,jsonb
 -- Legacy revisions replaced whole records. Validate every retained active prefix, including
 -- explicit zero Pay Item lines, before admitting the first partial-ownership revision.
 CREATE FUNCTION app.payroll_history_maintenance_legacy_proven(record_ uuid,previous_ uuid,state_ jsonb,new_owner_ uuid,removed_ uuid) RETURNS boolean
-LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,app AS $$
+LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path=pg_catalog,pg_temp AS $$
 DECLARE original_ record; projected_ jsonb; line_ jsonb; path_ uuid[]; baseline_ uuid;
 BEGIN
  WITH RECURSIVE history AS(
@@ -149,7 +166,7 @@ END $$;
 REVOKE ALL ON FUNCTION app.payroll_history_maintenance_legacy_proven(uuid,uuid,jsonb,uuid,uuid) FROM PUBLIC;
 --> statement-breakpoint
 CREATE FUNCTION app.payroll_history_maintenance_state_bind() RETURNS trigger
-LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,app AS $$
+LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,pg_temp AS $$
 DECLARE previous_ public.payroll_history_import_revision; state_ jsonb; prior_ jsonb; expected_ jsonb; baseline_ uuid; first_baseline_ uuid; mode_ text; request_ jsonb; target_ uuid; chain_ record; entry_ jsonb; tail_ jsonb; item_ jsonb; count_ integer; old_ jsonb; prior_values_ jsonb; source_owner_ uuid; legacy_before_ jsonb; last_ordinal_ integer; ordinal_ integer;
 BEGIN
  SELECT * INTO previous_ FROM public.payroll_history_import_revision WHERE id=NEW.previous_revision_id AND record_id=NEW.record_id AND tenant_id=NEW.tenant_id;
@@ -182,6 +199,7 @@ BEGIN
     ELSE item_->>'direction'='statutory' AND chain_.key='statutory:'||(item_->>'destination') AND item_->>'destination'=ANY(ARRAY['epf_employee','epf_employer','socso_employee','socso_employer','socso_skbbk','eis_employee','eis_employer','pcb','cp38','zakat','lp','hrdf']) END
    THEN RAISE EXCEPTION 'Payroll history maintenance monetary kind changed' USING ERRCODE='23514';END IF;
    IF entry_->>'attemptId'=NEW.attempt_id::text THEN
+    IF item_<>'null'::jsonb AND item_->>'destination' IS DISTINCT FROM app.payroll_history_maintenance_new_destination(item_->>'code') THEN RAISE EXCEPTION 'Payroll history maintenance Pay Item mapping changed' USING ERRCODE='23514';END IF;
     IF item_<>'null'::jsonb AND item_->>'direction'<>'statutory' AND item_->>'destination'<>'basic' AND chain_.key IS DISTINCT FROM 'component:'||app.payroll_history_maintenance_code_owner(item_->>'code')::text THEN RAISE EXCEPTION 'Payroll history maintenance configured Pay Item identity changed' USING ERRCODE='23514';END IF;
     IF count_<>0 THEN RAISE EXCEPTION 'Payroll history maintenance cannot rewrite an earlier owner' USING ERRCODE='23514';END IF;
    ELSE

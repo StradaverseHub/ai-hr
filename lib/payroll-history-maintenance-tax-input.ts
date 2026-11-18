@@ -11,7 +11,7 @@ export function maintenanceTaxInput(items:readonly HistoryOwnedItem[],settings:r
   if(item.direction==='statutory')continue;
   const candidates=settings.filter(setting=>setting.code.trim().toUpperCase()===item.code.trim().toUpperCase());
   if(item.key!=='destination:basic'&&(candidates.length!==1||item.key!=='component:'+candidates[0].id))throw new ImportedTaxSourceError(`The accepted ${item.code} identity no longer matches its Pay Item.`);
-  if(item.key==='destination:basic'&&(item.destination!=='basic'||item.code.trim().toUpperCase()!=='BASIC'))throw new ImportedTaxSourceError('The accepted basic salary field owner is unavailable.');
+  if(item.key==='destination:basic'&&(item.destination!=='basic'||item.code.trim().toUpperCase()!=='BASIC'&&candidates.length!==1))throw new ImportedTaxSourceError('The accepted basic salary field owner is unavailable.');
   const key=item.code.trim().toUpperCase();if(codes.has(key))throw new ImportedTaxSourceError('The accepted merged Pay Item code is ambiguous.');
   codes.set(key,{code:item.code,targetCode:item.code,label:item.label,destination:item.destination,direction:item.direction==='noncash'?'earning':item.direction,source:'component',...(item.key==='destination:basic'?{basicSalaryOwner:true}:{})});
   rows.push({rowNum:rows.length+2,code:item.code,amount:Number(item.amount)});

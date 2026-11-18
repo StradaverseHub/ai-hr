@@ -65,6 +65,9 @@ export async function preprocessHistoryMaintenanceTx(tx:Tx,ctx:SessionContext,gr
   if(month.subject){const list=historical.get(group)??[];list.push({...month.subject});historical.set(group,list);}
   const canonicalCodes=new Map<string,string>();for(const item of items){const collision=canonicalCodes.get(up(item.code));if(collision&&collision!==item.key)fail(`Pay Item ${item.code} now identifies a different original owner.`);canonicalCodes.set(up(item.code),item.key);}
   const rows:HistoryOwnedItem[]=items.length?items:[{key:'destination:basic',code:'BASIC',label:'Basic salary',originalCodes:['BASIC'],amount:'0.00',destination:'basic',direction:'earning',sourceRows:[]},{key:'statutory:pcb',code:'PCB',label:'PCB',originalCodes:['PCB'],amount:'0.00',destination:'pcb',direction:'statutory',sourceRows:[]}];
+  // A reviewed removal can intentionally leave no statutory owner. The analysis marker
+  // expresses that proven absence only; it is never added to retained item lineage.
+  if(request&&items.length&&!items.some(item=>item.direction==='statutory'))rows.push({key:'statutory:pcb',code:'PCB',label:'PCB',originalCodes:['PCB'],amount:'0.00',destination:'pcb',direction:'statutory',sourceRows:[]});
   const target=output.get(group)!;for(const item of rows){target.records.push({employee_no:identity.employeeNo,payroll_period:identity.period,payroll_cycle:group.cycle.id,doe_code:item.code,company_code:group.company.id,amount:item.amount});target.indices.push(month.records[0].row);}
   for(const source of month.records){const entry=batch.codes.get(up(readHistoryField(source.record,'doe_code')));if(entry?.direction==='check'){target.records.push({...source.record,employee_no:identity.employeeNo,payroll_period:identity.period,payroll_cycle:group.cycle.id,company_code:group.company.id});target.indices.push(source.row);}}
   if(beforeValues&&options.mode!=='replace'){
