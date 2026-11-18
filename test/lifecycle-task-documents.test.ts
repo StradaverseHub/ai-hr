@@ -4,6 +4,7 @@ import {sql} from 'drizzle-orm';
 import {withTenant,type SessionContext} from '../db/client';
 import {saveEmployeeDraft,completeEmployeeDraft} from '../core/employee-draft';
 import {todayInKualaLumpur} from '../lib/hr-date';
+import {ModuleNotEnabledError} from '../core/entitlements';
 import {hireEmployee} from '../core/org';
 import {v9Setup,v9Workspace,v9SaveConfig,v9CreateOffboarding,v9Command,v9OwnDocument,v9OwnWork,v9CaseDetail,onboardingList,onboardingCommand,lifecycleTaskDocuments,lifecycleTaskCardDocuments,openOwnLifecycleDocument} from '../packs/lifecycle/service';
 import {closeAll,resetDb,seedBase,setModule,entitledCtx,createAppUser,owner,type Base} from './harness';
@@ -53,7 +54,12 @@ it('shows an unreleased task without identity and refuses draft, stranger, compa
  expect((await lifecycleTaskDocuments(employee,{companyIds:[b.companyId],caseId:randomUUID()})).total).toBe(0);
  await expect(openOwnLifecycleDocument(employee,{caseId:c.id,documentId:doc.id,revision:c.revision})).rejects.toThrow();
  await expect(openOwnLifecycleDocument(other,{caseId:c.id,documentId:doc.id,revision:c.revision})).rejects.toThrow();
- const foreign=await seedBase();expect((await lifecycleTaskDocuments(await entitledCtx(foreign),{companyIds:[b.companyId]})).total).toBe(0);
+ const foreign=await seedBase();
+ await expect(lifecycleTaskDocuments(await entitledCtx(foreign),{companyIds:[b.companyId]})).rejects.toBeInstanceOf(ModuleNotEnabledError);
+ await setModule(foreign.tenantId,'lifecycle','active');
+ const foreignCtx=await entitledCtx(foreign);
+ expect((await lifecycleTaskDocuments(foreignCtx,{companyIds:[b.companyId]})).total).toBe(0);
+ await expect(openOwnLifecycleDocument(foreignCtx,{caseId:c.id,documentId:doc.id,revision:c.revision})).rejects.toThrow();
 });
 it('holds duplicate live instances and replacement links never carry over a superseded identity',async()=>{
  const c=await prepared(),doc=c.documents[0],replacement={...doc,id:randomUUID(),version:2,createdAt:'2026-11-18T12:00:00Z'};
@@ -99,7 +105,7 @@ it('keeps ordered page/count parity across 70 companies and 1000 employments wit
  const c=await prepared();
  const companies=await owner.client<{id:string}[]>`insert into company(tenant_id,legal_name) select ${b.tenantId}::uuid,'Task documents group company '||n from generate_series(1,69) n returning id`;
  const companyIds=[b.companyId,...companies.map(c=>c.id)];
- await owner.client`with people as (insert into person(tenant_id,full_name) select ${b.tenantId}::uuid,'Other document person '||n from generate_series(1,1000) n returning id), ranked as(select id,row_number() over(order by id) as n from people)
+ await owner.client`with people as (insert into person(tenant_id,full_name,primary_email) select ${b.tenantId}::uuid,'Other document person '||n,'other-document-'||n||'@test.invalid' from generate_series(1,1000) n returning id), ranked as(select id,row_number() over(order by id) as n from people)
  insert into employment(tenant_id,person_id,company_id,employee_code,hired_on) select ${b.tenantId}::uuid,id,(${companyIds}::uuid[])[1+((n-1)%70)::int],'OTHER-DOC-'||n,'2026-01-01'::date from ranked`;
  const tasks=Array.from({length:101},(_,n)=>({...c.tasks[0],id:'task-'+String(n).padStart(3,'0'),dueOn:'2027-12-'+String(1+n%20).padStart(2,'0'),documentAction:n%2?'completed':'signed'}));
  await owner.client`update lc_v9_case set data=jsonb_set(data,'{tasks}',${JSON.stringify(tasks)}::jsonb) where id=${c.id}::uuid`;
@@ -160,5 +166,8 @@ it('resolves exact native task-card references beyond the document page without 
  await owner.client`update lc_onboarding_case set data=data-'confirmedChecklist' where id=${saved.id}::uuid`;
  expect((await lifecycleTaskCardDocuments(joiner,{companyIds:[b.companyId],refs:[refs[1]]}))[0]).toMatchObject({sourceName:'Onboarding checklist',sourceFallback:'onboardingChecklist'});
  expect((await lifecycleTaskDocuments(joiner,{companyIds:[b.companyId],limit:1})).items[0]).toMatchObject({sourceFallback:'onboardingChecklist'});
- const foreign=await seedBase();expect(await lifecycleTaskCardDocuments(await entitledCtx(foreign),{companyIds:[b.companyId],refs})).toEqual([]);
+ const foreign=await seedBase();
+ await expect(lifecycleTaskCardDocuments(await entitledCtx(foreign),{companyIds:[b.companyId],refs})).rejects.toBeInstanceOf(ModuleNotEnabledError);
+ await setModule(foreign.tenantId,'lifecycle','active');
+ expect(await lifecycleTaskCardDocuments(await entitledCtx(foreign),{companyIds:[b.companyId],refs})).toEqual([]);
 });
