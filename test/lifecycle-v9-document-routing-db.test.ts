@@ -4,7 +4,7 @@ import {sql} from 'drizzle-orm';
 import {withTenant,type SessionContext} from '../db/client';
 import {saveEmployeeDraft} from '../core/employee-draft';
 import {todayInKualaLumpur} from '../lib/hr-date';
-import {hireEmployee} from '../core/org';
+import {hireEmployee,updatePersonProfilePartial} from '../core/org';
 import {v9Setup,v9Workspace,v9SaveConfig,v9CreateOffboarding,v9Command,v9DocumentSigningWorkspace,v9ReadDocumentSigningWork,v9DocumentRouteAct,v9DocumentRouteEdit,v9Sweep,v9OwnWork,onboardingList,onboardingCommand,v9CaseDetail} from '../packs/lifecycle/service';
 import {v9SigningCanonicalText,v9DocumentSigningContent,recordV9DocumentRouteAction} from '../lib/lifecycle-v9-document-routing';
 import {closeAll,resetDb,seedBase,setModule,entitledCtx,owner,createAppUser,type Base} from './harness';
@@ -59,8 +59,8 @@ it('rejects changed published field structure and arbitrary active recipients wh
  function forged(){const copy=structuredClone(c),d=copy.documents[0];d.id=randomUUID();d.signing!.subjectId=d.id;return copy;}
  async function reject(copy:typeof c){const d=copy.documents[0];d.signing!.contentHash=createHash('sha256').update(v9SigningCanonicalText(v9DocumentSigningContent(d))).digest('hex');await expect(withTenant(admin,tx=>tx.execute(sql`update lc_v9_case set data=${JSON.stringify(copy)}::jsonb where id=${id}::uuid`))).rejects.toThrow();}
  let copy=forged();copy.documents[0].fields=[];await reject(copy);copy=forged();copy.documents[0].fields[0].owner='hr';await reject(copy);copy=forged();copy.documents[0].values['official-name']='Invented official name';await reject(copy);copy=forged();copy.documents[0].mergeValues!['employee.name']='Invented official name';copy.documents[0].values['official-name']='Invented official name';await reject(copy);copy=forged();copy.documents[0].mergeValues!['private.unused']='Unrelated private facts';await reject(copy);
- const [{name}]=await owner.client<{name:string}[]>`select full_name as name from person where id=${other.personId}::uuid`;
- await owner.client`update app_user set archived_at=now() where id=${employee.userId}::uuid`;
+ const [{name}]=await owner.db.execute<{name:string}>(sql`select full_name as name from person where id=${other.personId!}::uuid`);
+ await owner.db.execute(sql`update app_user set archived_at=now() where id=${employee.userId!}::uuid`);
  for(const stepId of ['employee-sign','superior-review']){copy=forged();const step=copy.documents[0].signing!.route.steps.find(s=>s.id===stepId)!;step.holderId=other.userId!;step.holderPersonId=other.personId!;step.label=name;await reject(copy);}
  expect((await v9Workspace(admin)).cases.find(c=>c.id===id)!.documents[0].id).toBe(c.documents[0].id);
 });
@@ -92,3 +92,12 @@ it('pages one set-based signing projection across 70 companies and 1,000 employm
  const first=await v9DocumentSigningWorkspace(admin,{search:'SIGN-SCALE-',offset:0}),second=await v9DocumentSigningWorkspace(admin,{search:'SIGN-SCALE-',offset:50}),last=await v9DocumentSigningWorkspace(admin,{search:'SIGN-SCALE-',offset:950}),expected=records.map(r=>r.caseId).sort();
  expect(first.total).toBe(1000);expect(second.total).toBe(1000);expect(first.items.map(r=>r.caseId)).toEqual(expected.slice(0,50));expect(second.items.map(r=>r.caseId)).toEqual(expected.slice(50,100));expect(last.items.map(r=>r.caseId)).toEqual(expected.slice(950));expect((await v9DocumentSigningWorkspace(other,{search:'SIGN-SCALE-'})).total).toBe(0);
 },60000);
+
+it('preserves the existing identity reveal permission at the direct scoped source RPC and denies the private source owner',async()=>{
+ const {payrollPermissionGrant}=await import('../db/schema');const {id}=await prepared(),mailbox='protected@fictional.invalid';await updatePersonProfilePartial(admin,{personId:employee.personId!,personalEmail:mailbox});
+ const source=()=>withTenant(admin,tx=>tx.execute<{value:Record<string,string>}>(sql`select app.v9_document_personnel_values(${id}::uuid) as value`));expect((await source())[0].value.personalEmail).toBe(mailbox);
+ await owner.db.insert(payrollPermissionGrant).values({tenantId:base.tenantId,companyId:null,role:'hr_admin',permissionKey:'report.read.identity',allowed:false});
+ const hidden=(await source())[0].value;expect(JSON.stringify(hidden)).not.toContain(mailbox);expect(hidden).not.toHaveProperty('personalEmail');expect(hidden).not.toHaveProperty('employee.icNo');expect(hidden._identityFieldsWithheld).toBe('true');
+ await expect(withTenant(admin,tx=>tx.execute(sql`select app.v9_document_personnel_source_unchecked(${id}::uuid)`))).rejects.toThrow();
+ const config=(await v9Workspace(admin)).config!,template={...structuredClone(config.templates[0]),id:'identity-guarded',name:'Protected identity document'};template.versions[0].fields.push({id:'personal',label:'Personal email',type:'email',owner:'pmLocked',pmKey:'personalEmail',required:false,sensitive:true,options:[],section:'',when:null});config.templates.push(template);await v9SaveConfig(admin,config.revision,config);const c=(await v9Workspace(admin)).cases.find(c=>c.id===id)!;await expect(v9Command(admin,id,c.revision,{type:'generate',template:template.id})).rejects.toThrow('protected Personnel identity');
+});
