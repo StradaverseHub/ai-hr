@@ -417,7 +417,7 @@ export function SharedLetterPage({
                   )}
                   <div>
                     <strong>
-                      {layer.label}
+                      {layer.kind==='review'?copy('Review'):layer.kind==='approve'?copy('Approve'):layer.kind==='sign'?copy('Sign'):layer.kind}{' · '}{layer.label}
                       {layer.owner ? copy(' · Owner') : ''}
                     </strong>
                     <p>{layer.assigneeName || 'Waiting for linked account'}</p>

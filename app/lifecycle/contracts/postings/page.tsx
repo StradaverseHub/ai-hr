@@ -14,5 +14,5 @@ export default async function Page({searchParams}:{searchParams:Promise<Record<s
  const postingId=z.uuid().safeParse(text('postingId')).success?text('postingId'):undefined;
  const offset=postingId?0:Math.min(100000,Math.max(0,Number.parseInt(text('offset')??'0',10)||0));
  const page=await listContractSharedPostings(session,{status,companyId,postingId,offset,limit:50});
- return <main className="v9-workspace"><ContractPostingsWorkspace page={page} status={status} companyId={companyId} today={todayInKualaLumpur()} error={text('error')} saved={text('saved')}/></main>;
+ return <main className="v9-workspace"><ContractPostingsWorkspace page={page} status={status} companyId={companyId} postingId={postingId} today={todayInKualaLumpur()} error={text('error')} saved={text('saved')}/></main>;
 }

@@ -15,6 +15,7 @@ import {PanelBoundary} from './panel-boundary';
 import {CalendarPanel,ComingUpPanel,HoursPanel,LeavePanel,NextStepPanel,NoticesPanel,PaydayPanel,RequestsPanel,WaitingPanel,type PanelContext} from './panels';
 import {TodayPerformance} from '../performance-slot';
 import {TodayContracts} from '../contract-slot';
+import {readTodayContractWork,type TodayContractWork} from '../contract-read';
 import {WorkspaceLinks} from '../workspace-links';
 import {moduleState,readAskAllowed,readOwnContext,readOwnPassportCards,readOwnReadiness} from './reads';
 
@@ -40,6 +41,7 @@ export async function EmployeeTodayPage({session,scopeIds,employmentId,notice,no
   return null;
  });
  const selected=own?.identity.selectedEmploymentId??null;
+ const contractWork=readTodayContractWork(session);
  const greeting=t(greetingFor(hour));
  const header=<header className="flex flex-wrap items-center justify-between gap-5">
   <div className="flex min-w-0 flex-col gap-1">
@@ -47,20 +49,20 @@ export async function EmployeeTodayPage({session,scopeIds,employmentId,notice,no
    <h1 className="m-0 text-2xl font-semibold tracking-tight text-balance sm:text-3xl">
     <Suspense fallback={greeting}><GreetingWithName session={session} employmentId={selected??undefined} period={greetingFor(hour)}/></Suspense>
    </h1>
-   {selected&&<Suspense fallback={null}><StepCount session={session} employmentId={selected} locale={locale} today={today}/></Suspense>}
+   {selected&&<Suspense fallback={null}><StepCount session={session} employmentId={selected} locale={locale} today={today} contractWork={contractWork}/></Suspense>}
   </div>
   <div className="w-full min-w-0 sm:w-auto sm:min-w-[18rem] sm:flex-[0_1_28rem]"><Suspense fallback={null}><AskBar session={session}/></Suspense></div>
  </header>;
  const [te,tNotices]=await Promise.all([getTranslations('today.employee'),getTranslations('notices')]);
  const pageUnavailable=(key:string)=><div data-today="employee" data-today-page-unavailable={key} className="mx-auto w-full max-w-[72rem] min-w-0 space-y-6">
-  {notice}{header}<TodayContracts session={session}/><PanelNote>{te('pageUnavailable')}</PanelNote>
+  {notice}{header}<TodayContracts session={session} work={contractWork}/><PanelNote>{te('pageUnavailable')}</PanelNote>
  </div>;
  if(!own)return pageUnavailable('context');
  // Your workspace: team pages for someone whose own employment manages people, and a partner's own payroll or
  // performance pages (the old team workbench and the old personal Home under a partner's Today are retired).
  const options=<Suspense fallback={null}><WorkspaceLinks session={session} team={own.identity.role==='manager'}/></Suspense>;
  if(!selected)return <div data-today="employee" className="mx-auto w-full max-w-[72rem] min-w-0 space-y-6">
-  {notice}{header}{options}<TodayContracts session={session}/>
+  {notice}{header}{options}<TodayContracts session={session} work={contractWork}/>
   {own.identity.employmentState==='choose'?<section aria-labelledby="today-choose" className="space-y-3 rounded-2xl border border-border bg-card p-5">
    <h2 id="today-choose" className="m-0 text-base font-semibold">{tHome('chooseEmployment')}</h2>
    <p className="m-0 text-sm text-muted-foreground">{tHome('chooseHelp')}</p>
@@ -75,7 +77,7 @@ export async function EmployeeTodayPage({session,scopeIds,employmentId,notice,no
    attendance:moduleState(session,'attendance',own.companyId),claims:moduleState(session,'claims',own.companyId)};
  }catch{return pageUnavailable('modules');}
  const visible=employeePanels(modules);
- const p:PanelContext={session,employmentId:selected,locale,today,modules};
+ const p:PanelContext={session,employmentId:selected,locale,today,modules,contractWork};
  const failed=<PanelNote>{te('unavailable')}</PanelNote>;
  /** One panel: its own error boundary around its own Suspense boundary. */
  const slot=(key:string,title:string,className:string,node:ReactNode)=><PanelBoundary key={key} fallback={<div className={className}>{failed}</div>}>
@@ -87,7 +89,7 @@ export async function EmployeeTodayPage({session,scopeIds,employmentId,notice,no
  return <div data-today="employee" className="mx-auto w-full max-w-[80rem] min-w-0 space-y-4">
   {notice}{header}{options}
   <TodayPerformance session={session} scopeIds={scopeIds}/>
-  <TodayContracts session={session}/>
+  <TodayContracts session={session} work={contractWork}/>
   <PanelBoundary fallback={failed}><Suspense fallback={null}><WaitingPanel session={session} locale={locale}/></Suspense></PanelBoundary>
   <div className="grid grid-cols-1 gap-4 lg:grid-cols-12">
    {slot('next',te('nextStep'),'lg:col-span-5 lg:row-span-2',<NextStepPanel {...p}/>)}
@@ -103,11 +105,11 @@ export async function EmployeeTodayPage({session,scopeIds,employmentId,notice,no
 }
 
 /** "2 things need you", from the same checklist read the Next step panel makes (read once per render). */
-async function StepCount({session,employmentId,locale,today}:{session:SessionContext;employmentId:string;locale:string;today:string}){
- const [t,readiness,passports]=await Promise.all([getTranslations('today.employee'),readOwnReadiness(session,employmentId,locale,today).catch(()=>undefined),
-  readOwnPassportCards(session,today).catch(()=>undefined)]);
- if(readiness===undefined||passports===undefined)return null;
- const count=nextStepsFrom(readiness?.items??[],passports).length;
+async function StepCount({session,employmentId,locale,today,contractWork}:{session:SessionContext;employmentId:string;locale:string;today:string;contractWork:Promise<TodayContractWork>}){
+ const [t,readiness,passports,contracts]=await Promise.all([getTranslations('today.employee'),readOwnReadiness(session,employmentId,locale,today).catch(()=>undefined),
+  readOwnPassportCards(session,today).catch(()=>undefined),contractWork]);
+ if(readiness===undefined||passports===undefined||contracts.status==='unavailable')return null;
+ const count=nextStepsFrom(readiness?.items??[],passports).length+(contracts.status==='ready'?contracts.page.taskTotal:0);
  return <p data-today-step-count={count} className="m-0 text-sm text-muted-foreground">{t('needsYouCount',{count})}</p>;
 }
 

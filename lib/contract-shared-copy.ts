@@ -502,6 +502,10 @@ const keys:Record<string,string>={
   "Show more workflow reviews": "cf022b2cc218f",
   "Workflow review records could not be loaded. Your current page is retained; try again.": "c554a2a84ec0f",
   "Historical workflows need People Ops review": "c6c8439281684",
-  "Access revocation date": "c78a3a78c4615"
+  "Access revocation date": "c78a3a78c4615",
+  "The employee declined this renewal. The renewal offer did not take effect; ending and Offboarding follow the configured workflow.": "c65c7c11aa5a5",
+  "Recorded at": "ce4cea0827a11",
+  "Review": "caff0766a5290",
+  "Sign": "c0c9618e9849a"
 };
 export function useContractSharedCopy(){const t=useTranslations('contractShared');return (text:string)=>{const caption=text.trim(),key=keys[caption];return key?text.slice(0,text.indexOf(caption))+t(key)+text.slice(text.indexOf(caption)+caption.length):text;};}

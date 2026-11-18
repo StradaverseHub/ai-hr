@@ -1,5 +1,5 @@
 import {beforeEach,expect,it,vi} from 'vitest';
-import {act,fireEvent,render,screen,waitFor} from '@testing-library/react';
+import {act,fireEvent,render,screen,waitFor,within} from '@testing-library/react';
 import {NextIntlClientProvider} from 'next-intl';
 import en from '../messages/en.json';
 import {SharedApprovalPage} from '../app/lifecycle/contracts/approvals/[approvalId]/review';
@@ -204,4 +204,21 @@ it('retains a dirty Form answer and its original response proof when an older re
  expect(screen.getByLabelText(/^Fictional contact/)).toHaveValue('Fictional unsaved contact');expect(screen.getByRole('button',{name:'Sign and release letter'})).toBeDisabled();
  actions.saveForm.mockResolvedValue({ok:false,error:'Fictional response conflict retained.'});fireEvent.click(screen.getByRole('button',{name:'Save form answers'}));
  await waitFor(()=>expect(actions.saveForm).toHaveBeenCalledWith({id,contentRevision:1,contentHash:hash,responseRevision:1,responseHash:form.responseHash,values:{contact:'Fictional unsaved contact'}}));
+});
+
+it('shows every actual routing action beside generic configured names, preserving order and owner',()=>{
+ const value:ContractSharedLetter={...letter(),pendingAction:{stepId:'review',kind:'review'},layers:[
+  {id:'review',label:'Named people',stage:1,kind:'review',owner:true,assigneeName:'Fictional reviewer',unavailable:false,fulfilled:false},
+  {id:'approve',label:'Named people',stage:2,kind:'approve',owner:false,assigneeName:'Fictional approver',unavailable:false,fulfilled:false},
+  {id:'sign',label:'The employee',stage:3,kind:'sign',owner:false,assigneeName:'Fictional employee',unavailable:false,fulfilled:false},
+ ]};
+ mount(<SharedLetterPage letter={value} document={document}/>);
+ const panel=screen.getByRole('heading',{name:'Letter routing'}).closest('section')!;
+ const rows=within(panel).getAllByRole('listitem');
+ expect(rows.map(row=>row.querySelector('strong')?.textContent)).toEqual(['Review · Named people · Owner','Approve · Named people','Sign · The employee']);
+ expect(within(rows[0]).getByText('Your current step')).toBeVisible();
+ expect(within(rows[1]).getByText('Order 2')).toBeVisible();expect(within(rows[2]).getByText('Order 3')).toBeVisible();
+ expect(within(rows[0]).getByText('Fictional reviewer')).toBeVisible();
+ expect(screen.queryByRole('button',{name:'Sign and release letter'})).not.toBeInTheDocument();
+ expect(actions.letter).not.toHaveBeenCalled();
 });

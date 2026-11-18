@@ -40923,6 +40923,15 @@
         "Letter": "Letter",
         "Form": "Form",
         "Acknowledgement": "Acknowledgement"
+      },
+      "previewingVersion": "Previewing version {version} ({status}).",
+      "previewUnsavedFrom": "Previewing unsaved changes based on version {version}.",
+      "previewUnsaved": "Previewing unsaved draft.",
+      "previewState": {
+        "draft": "Draft",
+        "published": "Published",
+        "inUse": "In use",
+        "checking": "Checking status"
       }
     },
     "sharedGroups": {
@@ -44645,7 +44654,11 @@
     "cf022b2cc218f": "Show more workflow reviews",
     "c554a2a84ec0f": "Workflow review records could not be loaded. Your current page is retained; try again.",
     "c6c8439281684": "Historical workflows need People Ops review",
-    "c78a3a78c4615": "Access revocation date"
+    "c78a3a78c4615": "Access revocation date",
+    "c65c7c11aa5a5": "The employee declined this renewal. The renewal offer did not take effect; ending and Offboarding follow the configured workflow.",
+    "ce4cea0827a11": "Recorded at",
+    "caff0766a5290": "Review",
+    "c0c9618e9849a": "Sign"
   },
   "resignationJourney": {
     "title": "辞职",

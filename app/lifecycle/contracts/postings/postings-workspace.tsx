@@ -8,12 +8,14 @@ import {SharedContractNavigation,ContractFeedback,contractDate} from '../shared-
 import {approveContractPostingAction,confirmContractPayrollAction} from './actions';
 import {ContractPostingEditor} from './posting-editor';
 import {usePostingApplicationRefresh} from './use-application-refresh';
-export function ContractPostingsWorkspace({page,status,companyId,today,error,saved}:{page:ContractSharedPostingPage;status:'pending'|'approved'|'all';companyId?:string;today:string;error?:string;saved?:string}){
+export function ContractPostingsWorkspace({page,status,companyId,postingId,today,error,saved}:{page:ContractSharedPostingPage;status:'pending'|'approved'|'all';companyId?:string;postingId?:string;today:string;error?:string;saved?:string}){
  const t=useTranslations('contractPostings');
+ const target=postingId?page.rows.find(row=>row.id===postingId):undefined;
+ const showSaved=saved&& (saved!=='queued'||(target?.status==='pending'&&(target.approvalApplication?.state==='queued'||target.approvalApplication?.state==='applying')));
  const {refreshing,refresh}=usePostingApplicationRefresh(page.rows.some(row=>row.approvalApplication?.state==='queued'||row.approvalApplication?.state==='applying'));
  const href=(nextStatus:string,nextOffset=0)=>{const query=new URLSearchParams({status:nextStatus});if(companyId)query.set('companyId',companyId);if(nextOffset)query.set('offset',String(nextOffset));return '/lifecycle/contracts/postings?'+query;};
  return <div className="v9-content"><SharedContractNavigation/><header className="v9-heading"><div><h1>{t('title')}</h1><p>{t('intro')}</p></div></header>
- <ContractFeedback error={error}/>{saved&&<p className="v9-notice" role="status">{t(saved==='pay'?'savedPay':saved==='edited'?'savedEdited':saved==='queued'?'savedQueued':'savedApproved')}</p>}
+ <ContractFeedback error={error}/>{showSaved&&<p className="v9-notice" role="status">{t(saved==='pay'?'savedPay':saved==='edited'?'savedEdited':saved==='queued'?'savedQueued':'savedApproved')}</p>}
  <section className="v9-panel v9-stack"><div className="contract-toolbar"><nav className="v9-tabs" aria-label={t('filterLabel')}>{(['pending','approved','all'] as const).map(value=><Link className={'v9-button'+(status===value?' v9-button-primary':'')} href={href(value)} key={value} aria-current={status===value?'page':undefined}>{t('filters.'+value)}</Link>)}</nav><p>{t('count',{count:page.total})}</p><ActionButton type="button" actionKind="loading" aria-busy={refreshing} className="v9-button" onClick={refresh}>{t('refresh')}</ActionButton></div>
     <div className="v9-table-scroll"><table className="v9-table contract-table contract-posting-table" aria-label={t('title')}><thead><tr>{(['posting','employee','event','values','status','actions'] as const).map(column=><th key={column} scope="col">{t('columns.'+column)}</th>)}</tr></thead><tbody>
  {!page.rows.length&&<tr><td colSpan={6}><p className="v9-empty">{t('empty')}</p></td></tr>}

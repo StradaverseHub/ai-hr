@@ -285,6 +285,25 @@ export function SharedContractDetail({
             )}
           </ContractPanel>
           <ContractAttention flags={[...(flow?.flags??[]),...(workspace.attention?.flags??[])]} stalledDays={workspace.attention?.stalledDays}/>
+          {flow?.declined && (
+            <ContractPanel title={copy('Employee declined renewal')}>
+              <p>{copy('The employee declined this renewal. The renewal offer did not take effect; ending and Offboarding follow the configured workflow.')}</p>
+              <dl className="v9-fields">
+                <div>
+                  <dt>{copy('Reason')}</dt>
+                  <dd>{reasonLabel(flow.declined.reason, displayReasons.find(reason => reason.code === flow.declined!.reason)?.label)}</dd>
+                </div>
+                <div>
+                  <dt>{copy('Recorded at')}</dt>
+                  <dd>{contractTimestamp(flow.declined.at)}</dd>
+                </div>
+                <div>
+                  <dt>{copy('Notes')}</dt>
+                  <dd className="whitespace-pre-wrap">{flow.declined.notes || '—'}</dd>
+                </div>
+              </dl>
+            </ContractPanel>
+          )}
           {!flow ? (
             <ContractPanel title={copy('Existing contract case')}>
               <p>{copy('Existing approvals, letters and record updates keep their original workflow.')}</p>

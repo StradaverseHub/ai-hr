@@ -171,3 +171,28 @@ it.each(['waiting','running'] as const)('shows the authorized reconciliation hol
  const unrelatedHeading=screen.getByRole('heading',{name:'Fictional unrelated current workflow · Version 3'}),unrelated=within(unrelatedHeading.closest('section')!);
  expect(unrelatedHeading.nextElementSibling).toHaveTextContent(status==='running'?/^Running$/:/^Waiting for assigned action$/);expect(unrelatedHeading.nextElementSibling).toBeVisible();expect(unrelated.queryByText('Needs People Ops review')).not.toBeInTheDocument();
 });
+
+it.each(['workflow','offboarding'] as const)('keeps the recorded decline visible and read-only while the case is %s',stage=>{
+ commands.path='/lifecycle/contracts/'+id;
+ const value=workspace('document'),flow=value.view.flow!;
+ flow.stage=stage;flow.declined={reason:'fictional_retained_reason',notes:'The employee told People Ops they will not renew.',by:'44444444-4444-4444-8444-444444444444',at};
+ flow.offboardingId=stage==='offboarding'?'55555555-5555-4555-8555-555555555555':null;
+ value.reasons=[];value.reasonLabels=[{code:'fictional_retained_reason',label:'Current tenant decline label'}];
+ value.waiting=null;value.view.permissions=['view','seePay'];
+ const retained=JSON.stringify(value),mounted=mount(<SharedContractDetail workspace={value} today="2026-11-17"/>);
+ const summary=within(screen.getByRole('heading',{name:'Employee declined renewal'}).closest('section')!);
+ expect(summary.getByText('Current tenant decline label')).toBeVisible();
+ expect(summary.getByText('The employee told People Ops they will not renew.')).toBeVisible();
+ expect(summary.getByText(/17[/]11[/]2026/)).toBeVisible();
+ expect(summary.queryByText('Recorded authorised actor')).not.toBeInTheDocument();
+ expect(summary.queryByText('Fictional Direct Superior')).not.toBeInTheDocument();
+ expect(summary.queryByText(flow.declined.by)).not.toBeInTheDocument();
+ expect(summary.getByText('The employee declined this renewal. The renewal offer did not take effect; ending and Offboarding follow the configured workflow.')).toBeVisible();
+ expect(summary.queryByRole('button')).not.toBeInTheDocument();expect(summary.queryByRole('textbox')).not.toBeInTheDocument();
+ expect(screen.queryByRole('button',{name:'Record employee decline'})).not.toBeInTheDocument();
+ const submitted=within(screen.getByRole('heading',{name:'Submitted decision'}).closest('section')!);
+ expect(submitted.getByText('Renew')).toBeVisible();expect(submitted.getByText('RM 5,200.00')).toBeVisible();
+ if(stage==='offboarding')expect(screen.getByRole('link',{name:'Open Offboarding case'})).toHaveAttribute('href','/lifecycle/v9?view=leavers&case='+flow.offboardingId);
+ expect(commands.preview).not.toHaveBeenCalled();expect(JSON.stringify(value)).toBe(retained);
+ mounted.unmount();
+});

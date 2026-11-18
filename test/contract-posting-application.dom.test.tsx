@@ -33,7 +33,7 @@ it.each(['queued','applying'] as const)('keeps the actual editor read-only while
  expect(screen.queryByText(/Posting approved/)).not.toBeInTheDocument();expect(actions.save).not.toHaveBeenCalled();
 });
 it.each(['queued','applying'] as const)('keeps the queue pending and offers no duplicate approval or Payroll action while %s',state=>{
- const row=posting(state);mount(<ContractPostingsWorkspace page={{rows:[row],total:1,offset:0,limit:50}} status="pending" today="2026-11-17" saved="queued"/>);
+ const row=posting(state);mount(<ContractPostingsWorkspace page={{rows:[row],total:1,offset:0,limit:50}} status="pending" today="2026-11-17" saved="queued" postingId={row.id}/>);
  const item=within(screen.getByRole('row',{name:/PP-1041/}));
  expect(item.getByText(en.contractPostings[state==='queued'?'applicationQueued':'applicationApplying'])).toBeVisible();expect(item.getByText(en.contractPostings.applicationPendingRule)).toBeVisible();
  expect(screen.getByText(en.contractPostings.savedQueued)).toBeVisible();expect(item.queryByText(en.contractPostings.approved)).not.toBeInTheDocument();expect(item.queryByText(en.contractPostings.inlineEdit)).not.toBeInTheDocument();
@@ -89,4 +89,26 @@ it('follows real navigation-index updates and uses the actual shared Automation 
  expect(screen.queryByRole('link',{name:'Contract cases'})).not.toBeInTheDocument();expect(screen.getByRole('link',{name:'Settings and access'})).toHaveAttribute('href','/lifecycle/contracts/settings');expect(screen.getByRole('link',{name:'HR Automation'})).toHaveAttribute('href','/automation/workflows');
  view.rerender(withNavigation([navigationEntry('/tasks'),navigationEntry('/approvals')],<SharedContractNavigation/>));
  expect(screen.queryByRole('navigation',{name:'Contract Management'})).not.toBeInTheDocument();expect(view.container.querySelector('.v9-tabs')).toHaveAttribute('aria-hidden','true');expect(view.container.querySelector('.v9-tabs')).toHaveStyle({minHeight:'44px'});expect(view.container.querySelector('.v9-tabs a')).toBeNull();
+});
+
+it.each([null,'2026-11-17T03:00:00Z'])('removes the target queued notice when its canonical posting becomes approved (applied=%s)',movementAppliedAt=>{
+ const row=posting('queued');
+ const view=mount(<ContractPostingsWorkspace page={{rows:[row],total:1,offset:0,limit:50}} status="all" today="2026-11-17" saved="queued" postingId={row.id}/>);
+ expect(screen.getByText(en.contractPostings.savedQueued)).toBeVisible();
+ const approved:ContractSharedPosting={...row,status:'approved',approvedAt:'2026-11-17T02:00:00Z',movementAppliedAt,canApprove:false,canEdit:false,approvalApplication:null};
+ view.rerender(<NextIntlClientProvider locale="en" messages={en}><ContractPostingsWorkspace page={{rows:[approved],total:1,offset:0,limit:50}} status="all" today="2026-11-17" saved="queued" postingId={row.id}/></NextIntlClientProvider>);
+ expect(screen.queryByText(en.contractPostings.savedQueued)).not.toBeInTheDocument();
+ expect(within(screen.getByRole('row',{name:/PP-1041/})).getByText(en.contractPostings.approved)).toBeVisible();
+ expect(actions.approve).not.toHaveBeenCalled();expect(actions.pay).not.toHaveBeenCalled();
+});
+it.each([undefined,'other-posting'])('does not infer a queued target receipt from another pending row (target=%s)',postingId=>{
+ mount(<ContractPostingsWorkspace page={{rows:[posting('queued')],total:1,offset:0,limit:50}} status="pending" today="2026-11-17" saved="queued" postingId={postingId}/>);
+ expect(screen.queryByText(en.contractPostings.savedQueued)).not.toBeInTheDocument();
+ expect(screen.getByText(en.contractPostings.applicationQueued)).toBeVisible();
+});
+it('removes a queued receipt when the actual target needs People Ops review instead',()=>{
+ const row=posting('needs_review');
+ mount(<ContractPostingsWorkspace page={{rows:[row],total:1,offset:0,limit:50}} status="pending" today="2026-11-17" saved="queued" postingId={row.id}/>);
+ expect(screen.queryByText(en.contractPostings.savedQueued)).not.toBeInTheDocument();
+ expect(within(screen.getByRole('row',{name:/PP-1041/})).getByText(en.contractPostings.applicationNeedsReview,{selector:'small[role="status"]'})).toBeVisible();
 });
