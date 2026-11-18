@@ -58,10 +58,11 @@ it('does not invent legacy completion dates or treat an unreviewed Not returned 
 it('SQL-pages exact register counts and order for 70 companies/1000 employments under all companies and one company',async()=>{
  const {offboardingRequisitions}=await import('../packs/lifecycle/service');const id=await prepared();
  const [source]=await owner.client`select data from lc_v9_case where id=${id}::uuid`;
+ // Each inserted fixture is a new case at physical revision 1; do not copy its donor's later JSON revision.
  const companies=await owner.client`insert into company(tenant_id,legal_name) select ${b.tenantId}::uuid,'RVK group '||lpad(n::text,3,'0') from generate_series(1,70) n returning id`;
  await owner.client`insert into person(tenant_id,full_name,primary_email) select ${b.tenantId}::uuid,'RVK employee '||lpad(n::text,4,'0'),'rvk-'||n||'@example.invalid' from generate_series(1,1000) n`;
  await owner.client`with people as(select id,row_number() over(order by full_name) n from person where tenant_id=${b.tenantId}::uuid and full_name like 'RVK employee %'),companies as(select id,row_number() over(order by legal_name)-1 n from company where tenant_id=${b.tenantId}::uuid and legal_name like 'RVK group %') insert into employment(tenant_id,person_id,company_id,hired_on) select ${b.tenantId}::uuid,p.id,c.id,'2026-01-01'::date from people p join companies c on c.n=(p.n-1)%70`;
- await owner.client`with people as(select gen_random_uuid() id,e.id employment_id,e.person_id,e.company_id,p.full_name,row_number() over(order by p.full_name) n from employment e join person p on p.id=e.person_id and p.tenant_id=e.tenant_id where e.tenant_id=${b.tenantId}::uuid and p.full_name like 'RVK employee %') insert into lc_v9_case(id,tenant_id,company_id,employment_id,module,number,data) select id,${b.tenantId}::uuid,company_id,employment_id,'off','OFB9-GROUP-'||lpad(n::text,4,'0'),${JSON.stringify(source.data)}::jsonb||jsonb_build_object('id',id,'number','OFB9-GROUP-'||lpad(n::text,4,'0'),'facts',${JSON.stringify(source.data.facts)}::jsonb||jsonb_build_object('employmentId',employment_id,'personId',person_id,'company',company_id,'name',full_name)) from people`;
+ await owner.client`with people as(select gen_random_uuid() id,e.id employment_id,e.person_id,e.company_id,p.full_name,row_number() over(order by p.full_name) n from employment e join person p on p.id=e.person_id and p.tenant_id=e.tenant_id where e.tenant_id=${b.tenantId}::uuid and p.full_name like 'RVK employee %') insert into lc_v9_case(id,tenant_id,company_id,employment_id,module,number,data) select id,${b.tenantId}::uuid,company_id,employment_id,'off','OFB9-GROUP-'||lpad(n::text,4,'0'),${JSON.stringify(source.data)}::jsonb||jsonb_build_object('id',id,'revision',1,'number','OFB9-GROUP-'||lpad(n::text,4,'0'),'facts',${JSON.stringify(source.data.facts)}::jsonb||jsonb_build_object('employmentId',employment_id,'personId',person_id,'company',company_id,'name',full_name)) from people`;
  const one=companies[0].id;
  for(const companyId of [undefined,one]){
   const expected=await owner.client`select id::text,number from lc_v9_case where tenant_id=${b.tenantId}::uuid and number like 'OFB9-GROUP-%' and (${companyId===undefined} or company_id=${companyId??null}::uuid) order by data->'facts'->>'lastDay',number,id`;
@@ -70,7 +71,7 @@ it('SQL-pages exact register counts and order for 70 companies/1000 employments 
   expect(actual.length).toBeGreaterThan(0);expect(actual).toEqual(expected.map(r=>r.id));expect(total).toBe(expected.length);expect(new Set(actual).size).toBe(actual.length);
  }
  expect((await offboardingRequisitions(other,{search:'OFB9-GROUP-'})).items).toEqual([]);
- const [shape]=await owner.client`select count(distinct company_id)::integer companies,count(*)::integer employments from lc_v9_case where tenant_id=${b.tenantId}::uuid and number like 'OFB9-GROUP-%'`;expect(shape).toEqual({companies:70,employments:1000});
+ const [shape]=await owner.client`select count(distinct company_id)::integer companies,count(*)::integer employments,count(*) filter(where revision<>1 or data->>'revision' is distinct from '1')::integer invalid_revisions from lc_v9_case where tenant_id=${b.tenantId}::uuid and number like 'OFB9-GROUP-%'`;expect(shape).toEqual({companies:70,employments:1000,invalid_revisions:0});
 },270000); // Includes canonical 1000-case inserts and two complete hosted SQL page walks; no request-side row loops.
 
 
@@ -90,7 +91,8 @@ it('attributes a no-Person HR account as User and reserves System for a physical
  const user:SessionContext={...admin,userId,personId:null,roles:['hr_admin'],grants:undefined};
  const before=await offboardingRequisition(user,id);
  const after=await updateOffboardingRequisitionItem(user,{caseId:id,revision:before.revision,itemId:'access',status:'progress',reason:'Reviewed by account holder'});
- expect(after.activity[0]).toMatchObject({detail:'Fictional access',actor:'User'});
+ expect(after.activity[0]).toMatchObject({action:'item.updated',detail:'Fictional access: progress',actor:'User'});
+ expect(after.activity.find(entry=>entry.action==='requisition.itemUpdated')).toMatchObject({detail:'Fictional access',actor:'User'});
  expect((await owner.client`select person_id from app_user where id=${userId}::uuid`)[0].person_id).toBeNull();
  await owner.withTenant({...admin,userId:undefined,personId:null},tx=>tx.execute(sql`update lc_v9_case set data=jsonb_set(data,'{items,0,status}','"todo"'::jsonb) where id=${id}::uuid`));
  const [saved]=await owner.client`select data->'requisitionActivity'->-1->'actor' as actor from lc_v9_case where id=${id}::uuid`;
