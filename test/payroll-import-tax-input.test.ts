@@ -26,12 +26,18 @@ describe('canonical imported tax source ownership',()=>{
   const result=project({settings:settings.map(setting=>setting.id==='travel'?{...setting,pcbExemptionCode:'PCB_TRA_BUSINESS'}:setting)});
   expect(result.state).toBe('held');expect(result.missing.join(' ')).toMatch(/prior-employer/);expect(result.basis).toBeUndefined();expect(result.lines).toHaveLength(5);
  });
- it('supports explicitly owned BIK outside cash gross and refuses an unclassified noncash item',()=>{
+ it('supports explicitly owned BIK outside cash gross and holds an unclassified noncash item without inventing tax basis',()=>{
   const benefit={...SYSTEM_BASIC_TAX_SETTING,id:'bik',code:'BIK',name:'Benefit',isNonPayable:true,displayCategory:'bik',eaFormLine:'EA_B3'};
   const benefitCodes=new Map(codes).set('BIK',{code:'BIK',label:'Benefit',destination:'noncash',direction:'earning',source:'component',targetCode:'BIK'});
   const result=project({rows:[...rows,{rowNum:7,code:'BIK',amount:400}],codes:benefitCodes,settings:[...settings,benefit]});
   expect(result.state).toBe('ready');expect(result.basis?.pcb).toBe(5600);expect(readPcbNonCash(result.basis?.pcbNonCash)).toMatchObject({owned:{bik:400,vola:0},cashNormal:5400});
-  expect(()=>project({rows:[...rows,{rowNum:7,code:'BIK',amount:400}],codes:benefitCodes,settings:[...settings,{...benefit,displayCategory:null,eaFormLine:null}]})).toThrow(/BIK\/VOLA/);
+  const unclassifiedRows=[...rows,{rowNum:7,code:'BIK',amount:400}],unclassifiedSettings=[...settings,{...benefit,displayCategory:null,eaFormLine:null}];
+  // The native ownership classifier still refuses; the projection retains this as an explicit hold.
+  expect(()=>importedTaxInput(unclassifiedRows,benefitCodes,unclassifiedSettings)).toThrow('Row 7: BIK has no supported BIK/VOLA ownership.');
+  const held=project({rows:unclassifiedRows,codes:benefitCodes,settings:unclassifiedSettings});
+  expect(held.state).toBe('held');expect(held.year).toBe(2026);
+  expect(held.missing).toEqual(['Row 7: BIK has no supported BIK/VOLA ownership.']);
+  expect(held.basis).toBeUndefined();expect(held.lines).toEqual([]);expect(held.settings).toEqual([]);
  });
 });
 describe('historical opening evidence boundary',()=>{

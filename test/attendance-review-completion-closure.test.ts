@@ -9,7 +9,8 @@ import {todayInKualaLumpur} from '../lib/hr-date';
 import {hireEmployee} from '../core/org';
 import {assertReviewBodyPendingParentContract} from './helpers/review-body-pending-parent-contract';
 import {createBatch,generatePayslips,createAdditionalRun,createAdditionalRunTx,createPolicy,assignPolicy,lockPayrollForAttendanceChange} from '../packs/payroll/service';
-import {previewPayrollHistoryUpload,confirmPayrollHistoryUpload,previewPayrollHistoryRevert,revertPayrollHistoryUpload} from '../core/payroll-history-revisions';
+import {previewPayrollHistoryUpload,confirmPayrollHistoryUpload,confirmPayrollHistoryUploadTx,previewPayrollHistoryRevert,revertPayrollHistoryUpload} from '../core/payroll-history-revisions';
+import {previewPayrollHistoryMaintenanceTx} from '../core/payroll-history-maintenance';
 import {seedPayrollCycleCatalog} from '../core/payroll-cycle';
 import {PAYROLL_HISTORY_HEADERS} from '../lib/payroll-history-import-schema';
 import {toCsv} from '../lib/csv';
@@ -275,15 +276,39 @@ async function historyFixture(){
  await seedPayrollCycleCatalog(ctx,b.companyId);await owner.db.insert(s.payComponent).values({tenantId:b.tenantId,code:'BASIC',name:'Fictional history basic',kind:'allowance',displayCategory:'basic'});
  const month=new Date(Date.parse(todayInKualaLumpur().slice(0,7)+'-01T00:00:00Z'));month.setUTCMonth(month.getUTCMonth()-1);const period=month.toISOString().slice(0,7),date=period+'-15';
  const csv=Buffer.from(toCsv([Array.from(PAYROLL_HISTORY_HEADERS),...(['BASIC','EEEPF','EESOCSO','EEEIS','PCB'] as const).map(code=>['HISTATTN001',period,'ME',code,'HATTN',code==='BASIC'?'5000.00':'0.00'])]));
- const upload=()=>previewPayrollHistoryUpload(ctx,{name:'fictional-attendance-history.csv',content:csv,operationKey:randomUUID()});
+ const upload=()=>previewPayrollHistoryUpload(ctx,{name:'fictional-attendance-history.csv',content:csv,operationKey:randomUUID(),maintenance:{version:1,mode:'replace'}});
  const first=await upload();expect(first.plan.counts).toMatchObject({created:1,invalid:0});const imported=await confirmPayrollHistoryUpload(ctx,{attemptId:first.attemptId,previewHash:first.plan.previewHash,confirmReplacement:true});expect(imported.changes).toHaveLength(1);const snapshotId=imported.changes[0].snapshotId;if(!snapshotId)throw Error('Missing real imported snapshot');
  expect((await withTenant(ctx,tx=>tx.execute<{active:boolean}>(sql`select app.payroll_history_effective(${snapshotId}::uuid) as active`)))[0].active).toBe(true);
  const revert=await previewPayrollHistoryRevert(ctx,first.attemptId);expect(revert.count).toBe(1);expect(await revertPayrollHistoryUpload(ctx,first.attemptId,revert.previewHash)).toMatchObject({restored:1});
  expect((await withTenant(ctx,tx=>tx.execute<{active:boolean}>(sql`select app.payroll_history_effective(${snapshotId}::uuid) as active`)))[0].active).toBe(false);
  const[record]=await owner.db.select().from(s.payrollHistoryImportRecord).where(and(eq(s.payrollHistoryImportRecord.employmentId,target.employmentId),eq(s.payrollHistoryImportRecord.period,period)));expect(record).toBeTruthy();
  const candidate=await upload();expect(candidate.plan.counts.invalid).toBe(0);expect(candidate.plan.rows).toHaveLength(1);
- return{date,period,snapshotId,recordId:record.id,attemptId:candidate.attemptId,upload};
+ return{date,period,snapshotId,recordId:record.id,attemptId:candidate.attemptId,previewHash:candidate.plan.previewHash,upload};
 }
+/** Actual current synchronous owners, in the existing Attendance transaction: no stage is opened,
+ * no lease/nonce/private JSON is manufactured, and an existing worker stage remains a hard refusal. */
+async function historyRoundtripTx(tx:Tx,f:Awaited<ReturnType<typeof historyFixture>>){
+ const revisions=()=>tx.select().from(s.payrollHistoryImportRevision).where(eq(s.payrollHistoryImportRevision.recordId,f.recordId)).orderBy(s.payrollHistoryImportRevision.ordinal);
+ const effective=()=>tx.execute<{id:string}>(sql`select p.id::text id from public.payslip p join public.payroll_batch b on b.id=p.batch_id where b.tenant_id=${b.tenantId}::uuid and app.payroll_history_effective(p.id) order by p.id`);
+ const before=await revisions(),effectiveBefore=await effective();expect(before.at(-1)?.snapshotId).toBeNull();
+ const [stage]=await tx.execute<{busy:boolean}>(sql`select app.payroll_history_stage_busy(null) busy`);expect(stage.busy).toBe(false);
+ const accepted=await confirmPayrollHistoryUploadTx(tx,ctx,{attemptId:f.attemptId,previewHash:f.previewHash,confirmReplacement:true});expect(accepted.changes).toHaveLength(1);
+ const newSnapshot=accepted.changes[0].snapshotId;expect(newSnapshot).toBeTruthy();expect(newSnapshot).not.toBe(f.snapshotId);
+ const [active]=await tx.execute<{active:boolean}>(sql`select app.payroll_history_effective(${newSnapshot}::uuid) active`);expect(active.active).toBe(true);
+ const removal=await previewPayrollHistoryMaintenanceTx(tx,ctx,{version:1,operation:'remove_batch',attemptId:f.attemptId,reason:'Fictional reviewed Attendance custody roundtrip'});
+ expect(removal.plan.counts.invalid).toBe(0);expect(removal.attemptId).not.toBe(f.attemptId);
+ const removed=await confirmPayrollHistoryUploadTx(tx,ctx,{attemptId:removal.attemptId,previewHash:removal.plan.previewHash,confirmReplacement:true});expect(removed.changes).toHaveLength(1);
+ const after=await revisions();expect(after.slice(0,before.length)).toEqual(before);expect(after).toHaveLength(before.length+2);
+ const correction=after[before.length],withdrawal=after[before.length+1];
+ expect(correction).toMatchObject({attemptId:f.attemptId,previousRevisionId:before.at(-1)!.id,snapshotId:newSnapshot,kind:'import'});
+ expect(withdrawal).toMatchObject({attemptId:removal.attemptId,previousRevisionId:correction.id,snapshotId:null,kind:'revert'});
+ expect(correction.maintenance).toMatchObject({version:1,operation:'replace'});expect(withdrawal.maintenance).toMatchObject({version:1,operation:'remove_batch'});
+ const events=await tx.select().from(s.payrollHistoryImportEvent).where(eq(s.payrollHistoryImportEvent.attemptId,f.attemptId));
+ expect(events.filter(event=>event.kind==='confirmed')).toHaveLength(1);expect(events.filter(event=>event.kind==='reverted')).toHaveLength(1);
+ expect(await effective()).toEqual(effectiveBefore);
+ const [finalStage]=await tx.execute<{busy:boolean}>(sql`select app.payroll_history_stage_busy(null) busy`);expect(finalStage.busy).toBe(false);
+}
+/** Deliberately illegal old manual writer: a custody refusal witness, never a native positive control. */
 async function historyWriter(f:Awaited<ReturnType<typeof historyFixture>>,roundtrip:boolean){
  const name='fixture_attendance_provenance_'+randomUUID().replaceAll('-','');
  await owner.db.execute(sql.raw(`create function app.${name}() returns integer language plpgsql security definer set search_path=pg_catalog,public,pg_temp as $$ declare prior public.payroll_history_import_revision;created public.payroll_history_import_revision;n integer;begin
@@ -293,14 +318,20 @@ async function historyWriter(f:Awaited<ReturnType<typeof historyFixture>>,roundt
  return ${roundtrip?2:1};end $$;revoke all on function app.${name}() from public;grant execute on function app.${name}() to ai_hr_app;`));
  cleanup.push(()=>owner.db.execute(sql.raw(`drop function if exists app.${name}()`)));return name;
 }
-it('actual native import/revert controls establish valid history provenance; a same-root revision-only reactivation refuses after IMMEDIATE',async()=>{
- const f=await historyFixture(),pick=await prepared(D.action,f.date),name=await historyWriter(f,false);await completionControl(pick);const before=await snapshot(),control=Error('rollback genuine next-revision SQL control');
- await expect(withTenant(ctx,async tx=>{const[row]=await tx.execute<{n:number}>(sql`select ${sql.raw('app.'+name)}() n`);expect(row.n).toBe(1);const[active]=await tx.execute<{active:boolean}>(sql`select app.payroll_history_effective(${f.snapshotId}::uuid) active`);expect(active.active).toBe(true);throw control;})).rejects.toBe(control);expect(await snapshot()).toEqual(before);
+it('native custody rejects a revision-only legacy reactivation, before and after Attendance IMMEDIATE, with unchanged history',async()=>{
+ const f=await historyFixture(),pick=await prepared(D.action,f.date),name=await historyWriter(f,false);await completionControl(pick);const before=await snapshot();
+ await refused(()=>withTenant(ctx,tx=>tx.execute(sql`select ${sql.raw('app.'+name)}()`)),before);
  await refused(()=>withTenant(ctx,async tx=>{await completeTx(tx,pick);await tx.execute(sql`set constraints all immediate`);await tx.execute(sql`select ${sql.raw('app.'+name)}()`);}),before);
 });
-it('protected dated SQL prepare evidence catches a BEFORE-ledger history correction/revert roundtrip even when the effective batch set ends unchanged',async()=>{
- const f=await historyFixture(),pick=await prepared(D.action,f.date),name=await historyWriter(f,true);await completionControl(pick);const before=await snapshot(),control=Error('rollback valid history roundtrip control');
- await expect(withTenant(ctx,async tx=>{const[row]=await tx.execute<{n:number}>(sql`select ${sql.raw('app.'+name)}() n`);expect(row.n).toBe(2);const[active]=await tx.execute<{active:boolean}>(sql`select app.payroll_history_effective(${f.snapshotId}::uuid) active`);expect(active.active).toBe(false);throw control;})).rejects.toBe(control);expect(await snapshot()).toEqual(before);
+it('protected dated SQL prepare refuses a genuine reviewed history roundtrip after capture despite the unchanged effective batch set',async()=>{
+ const f=await historyFixture(),pick=await prepared(D.action,f.date);await completionControl(pick);const before=await snapshot(),control=Error('rollback genuine current maintenance roundtrip control');
+ await expect(withTenant(ctx,async tx=>{await historyRoundtripTx(tx,f);throw control;})).rejects.toBe(control);expect(await snapshot()).toEqual(before);
+ let reached=false;
+ await refused(()=>withTenant(ctx,tx=>completeTx(tx,pick,async fresh=>{await historyRoundtripTx(fresh,f);reached=true;})),before);expect(reached).toBe(true);
+});
+it('BEFORE-ledger legacy history injection is refused at native custody entry and rolls back Attendance and history atomically',async()=>{
+ const f=await historyFixture(),pick=await prepared(D.action,f.date),name=await historyWriter(f,true);await completionControl(pick);const before=await snapshot();
+ await refused(()=>withTenant(ctx,tx=>tx.execute(sql`select ${sql.raw('app.'+name)}()`)),before);
  const sequence='fixture_attendance_history_seen_'+randomUUID().replaceAll('-','');await owner.db.execute(sql.raw(`create sequence public.${sequence}`));cleanup.push(()=>owner.db.execute(sql.raw(`drop sequence if exists public.${sequence}`)));
  await trigger('app.assistant_own_leave_review','before update',`if OLD.id='${pick.review.actionId}'::uuid and OLD.state='awaiting_confirmation' and NEW.state='completed' then perform nextval('public.${sequence}');perform app.${name}();end if;return NEW;`);
  await refused(()=>withTenant(ctx,tx=>completeTx(tx,pick)),before);const[seen]=await owner.db.execute<{called:boolean}>(sql.raw(`select is_called as called from public.${sequence}`));expect(seen.called).toBe(true);
@@ -373,11 +404,19 @@ async function contextRefused(pick:Pick,inner:string,otherTenant:string){
  expect(pgSqlState(failure)).toBe('42501');const messages:string[]=[];let cursor:unknown=failure;const seen=new Set<unknown>();while(cursor&&typeof cursor==='object'&&!seen.has(cursor)){seen.add(cursor);const e=cursor as {message?:string;cause?:unknown};if(e.message)messages.push(e.message);cursor=e.cause;}expect(messages.some(message=>message.includes('Attendance completed root tenant context changed'))).toBe(true);
  const[reach]=await owner.db.execute<{called:boolean}>(sql.raw(`select is_called called from public.${writer.sequence}`));expect(reach.called).toBe(true);expect(await snapshot()).toEqual(before);
 }
-it('V4 switched caller tenant cannot hide an original-tenant same-root history revision after IMMEDIATE',async()=>{
- const f=await historyFixture(),pick=await prepared(D.action,f.date),name=await historyWriter(f,false),other=await seedBase();await completionControl(pick);
- const before=await snapshot(),control=Error('rollback actual history revision under switched context');
- await expect(withTenant(ctx,async tx=>{await tx.execute(sql`select set_config('app.tenant_id',${other.tenantId},true)`);const[row]=await tx.execute<{n:number}>(sql`select ${sql.raw('app.'+name)}() n`);expect(row.n).toBe(1);throw control;})).rejects.toBe(control);expect(await snapshot()).toEqual(before);
- await contextRefused(pick,name,other.tenantId);
+it('V4 switched caller tenant cannot hide a genuine original-tenant history roundtrip before Attendance consumption',async()=>{
+ const f=await historyFixture(),pick=await prepared(D.action,f.date),other=await seedBase();await completionControl(pick);
+ const before=await snapshot();let mutated=false,switched=false;
+ await refused(()=>withTenant(ctx,tx=>completeTx(tx,pick,async fresh=>{
+  // Genuine native authority is used under the ORIGINAL context; switching later must not hide its effects.
+  await historyRoundtripTx(fresh,f);mutated=true;await fresh.execute(sql`set constraints all immediate`);
+  const[row]=await fresh.execute<{tenant:string}>(sql`select set_config('app.tenant_id',${other.tenantId},true) tenant`);expect(row.tenant).toBe(other.tenantId);switched=true;
+ })),before);expect(mutated).toBe(true);expect(switched).toBe(true);
+ // A different claim is separately refused: native history authority never survives a tenant switch.
+ await expect(withTenant(ctx,async tx=>{
+  await tx.execute(sql`select set_config('app.tenant_id',${other.tenantId},true)`);
+  await confirmPayrollHistoryUploadTx(tx,ctx,{attemptId:f.attemptId,previewHash:f.previewHash,confirmReplacement:true});
+ })).rejects.toThrow();expect(await snapshot()).toEqual(before);
 });
 it('V4 switched caller tenant cannot add original-tenant new payroll membership outside the recorded IDs',async()=>{
  const f=await payrollFixture(),pick=await prepared(D.action),name=await memberWriter(f.slipId,f.next),other=await seedBase();await completionControl(pick);

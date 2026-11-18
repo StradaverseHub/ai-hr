@@ -2,7 +2,7 @@ import {PayrollHistoryRevisionError} from '../lib/payroll-history-revisions';
 /** Authorised item/edit/removal previews on the existing immutable import attempt and staged writer. */
 import {and,eq,inArray,sql} from 'drizzle-orm';
 import {z} from 'zod';
-import {withTenant,type SessionContext} from '../db/client';
+import {withTenant,type SessionContext,type Tx} from '../db/client';
 import {payrollHistoryImportRecord as record,payrollHistoryImportRevision as revision,payrollHistoryImportAttempt as attempt,payrollHistoryImportEvent as event} from '../db/schema';
 import {assertModuleGate} from './module-gate';
 import {personnelFormulaPermissionsTx} from './pay-formula-personnel-permissions';
@@ -17,8 +17,15 @@ export const payrollHistoryMaintenanceRequestSchema=z.discriminatedUnion('operat
 ]);
 function fail(message:string):never{throw new PayrollHistoryRevisionError(message);}
 export async function previewPayrollHistoryMaintenance(ctx:SessionContext,input:PayrollHistoryMaintenanceRequest):Promise<PayrollHistoryMaintenancePreview>{
+ return previewPayrollHistoryMaintenanceOwner(ctx,input);
+}
+/** Canonical internal owner: preserves current principal/identity/granular permission and saved-plan checks. */
+export async function previewPayrollHistoryMaintenanceTx(tx:Tx,ctx:SessionContext,input:PayrollHistoryMaintenanceRequest):Promise<PayrollHistoryMaintenancePreview>{
+ return previewPayrollHistoryMaintenanceOwner(ctx,input,tx);
+}
+async function previewPayrollHistoryMaintenanceOwner(ctx:SessionContext,input:PayrollHistoryMaintenanceRequest,ownerTx?:Tx):Promise<PayrollHistoryMaintenancePreview>{
  assertModuleGate(ctx,'payroll');const request=payrollHistoryMaintenanceRequestSchema.parse(input);
- const rows=await withTenant(ctx,async tx=>{
+ const identitiesTx=async(tx:Tx)=>{
   const [principal]=await tx.execute<{ok:boolean}>(sql`select app.principal_snapshot_current() as ok`);if(!ctx.userId||principal?.ok!==true)fail('Your current payroll history access is unavailable.');
   let records:typeof record.$inferSelect[];
   if(request.operation==='remove_batch'){
@@ -35,9 +42,11 @@ export async function previewPayrollHistoryMaintenance(ctx:SessionContext,input:
   for(let offset=0;;offset+=500){const page=await tx.execute<typeof metadata[number]>(sql`select * from app.payroll_history_maintenance_identity(${ids},${offset},500)`);metadata.push(...page);if(page.length<500)break;}
   if(metadata.length!==records.length)fail('The original record identity is unavailable in your current scope.');
   return metadata.map(row=>[row.employeeNo,row.period,row.cycleId,'BASIC',row.companyId,'0.00']);
- },{readOnlySnapshot:true});
- const {previewPayrollHistoryMaintenanceSource}=await import('./payroll-history-revisions');
- return previewPayrollHistoryMaintenanceSource(ctx,{name:'payroll-history-maintenance.csv',content:Buffer.from(toCsv([Array.from(PAYROLL_HISTORY_HEADERS),...rows])),maintenance:{version:1,mode:request.operation,reason:request.reason,request}});
+ };
+ const rows=ownerTx?await identitiesTx(ownerTx):await withTenant(ctx,identitiesTx,{readOnlySnapshot:true});
+ const {previewPayrollHistoryMaintenanceSource,previewPayrollHistoryMaintenanceSourceTx}=await import('./payroll-history-revisions');
+ const source={name:'payroll-history-maintenance.csv',content:Buffer.from(toCsv([Array.from(PAYROLL_HISTORY_HEADERS),...rows])),maintenance:{version:1 as const,mode:request.operation,reason:request.reason,request}};
+ return ownerTx?previewPayrollHistoryMaintenanceSourceTx(ownerTx,ctx,source):previewPayrollHistoryMaintenanceSource(ctx,source);
 }
 /** Bind compatibility Revert to its actor's actual new removal preview, never posted source/row contents. */
 export async function payrollHistoryMaintenanceRevertReceipt(ctx:SessionContext,attemptId:string,previewHash:string){

@@ -334,13 +334,20 @@ export async function previewPayrollHistoryUpload(ctx:SessionContext,input:{name
  return previewHistorySource(ctx,{...input,maintenance:maintenance?{...maintenance,reason:maintenance.reason||'Payroll history upload'}:undefined});
 }
 export async function previewPayrollHistoryMaintenanceSource(ctx:SessionContext,input:{name:string;content:Buffer;maintenance:MaintenanceOptions}){
+ return previewPayrollHistoryMaintenanceSourceOwner(ctx,input);
+}
+/** Internal canonical preview/persistence owner; the caller supplies its existing tenant transaction. */
+export async function previewPayrollHistoryMaintenanceSourceTx(tx:Tx,ctx:SessionContext,input:{name:string;content:Buffer;maintenance:MaintenanceOptions}){
+ return previewPayrollHistoryMaintenanceSourceOwner(ctx,input,tx);
+}
+async function previewPayrollHistoryMaintenanceSourceOwner(ctx:SessionContext,input:{name:string;content:Buffer;maintenance:MaintenanceOptions},ownerTx?:Tx){
  const descriptor=z.object({version:z.literal(1),mode:z.enum(['replace','update_listed','edit','remove_items','remove_batch']),reason:z.string().trim().min(1).max(2000),request:payrollHistoryMaintenanceRequestSchema.optional()}).strict().safeParse(input.maintenance);
  if(!descriptor.success)fail('The payroll history maintenance request is invalid.');
  const maintenance=descriptor.data;
  if(maintenance.request?(maintenance.mode!==maintenance.request.operation||maintenance.reason!==maintenance.request.reason):!['replace','update_listed'].includes(maintenance.mode))fail('The payroll history maintenance operation does not match its reviewed request.');
- return previewHistorySource(ctx,{...input,maintenance});
+ return previewHistorySource(ctx,{...input,maintenance},ownerTx);
 }
-async function previewHistorySource(ctx:SessionContext,input:{name:string;mimeType?:string;content:Buffer;operationKey?:string;maintenance?:MaintenanceOptions}){
+async function previewHistorySource(ctx:SessionContext,input:{name:string;mimeType?:string;content:Buffer;operationKey?:string;maintenance?:MaintenanceOptions},ownerTx?:Tx){
  assertModuleGate(ctx,'payroll');
  const name=(input.name.split(/[\\/]/).pop()??'payroll-history.csv').slice(0,255)||'payroll-history.csv';
  if(input.content.length>10485760)fail('Choose a file no larger than 10 MB.');
@@ -355,20 +362,23 @@ async function previewHistorySource(ctx:SessionContext,input:{name:string;mimeTy
  // The plan is validated in one read-only snapshot with no tenant-wide lock: a history writer commits whole, so the
  // snapshot sees it all or nothing (as the shared history barrier made it before), and the database refuses any
  // write in it. Confirming re-plans under the history write lock and refuses a plan that changed.
- const planned=await withTenant(ctx,async tx=>{
+ // An internal owner uses its caller's existing transaction for both phases, with the same checks.
+ const planTx=async(tx:Tx)=>{
   await principal(tx,ctx);
   const prior=await priorTx(tx);if(prior)return prior;
   return {attemptId:null,plan:parseError?seal({...emptyPlan(sourceHash),issues:[{rowNum:1,reason:parseError}],counts:{created:0,replaced:0,unchanged:0,invalid:1}}):await planRows(tx,ctx,records,sourceHash,input.maintenance,attemptId)};
- },{readOnlySnapshot:true});
+ };
+ const planned=ownerTx?await planTx(ownerTx):await withTenant(ctx,planTx,{readOnlySnapshot:true});
  if(planned.attemptId)return {attemptId:planned.attemptId,plan:planned.plan};
  const plan=planned.plan;
- return withTenant(ctx,async tx=>{
+ const persistTx=async(tx:Tx)=>{
   await principal(tx,ctx);
   const prior=await priorTx(tx);if(prior)return prior;
   const [created]=await tx.insert(attempt).values({id:attemptId,tenantId:ctx.tenantId,createdBy:ctx.userId!,operationKey,sourceName:name,mimeType:name.toLowerCase().endsWith('.xlsx')?'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet':name.toLowerCase().endsWith('.xls')?'application/vnd.ms-excel':'text/csv',sourceHash,sourceContent:input.content,companyIds:plan.companyIds,plan}).returning({id:attempt.id});
   await appendEvent(tx,{tenantId:ctx.tenantId,aggregateType:'payroll-history-import',aggregateId:created.id,eventType:'payroll-history-import.validated',actor:actorOf(ctx),payload:{sourceHash,counts:plan.counts,companyIds:plan.companyIds}});
   return {attemptId:created.id,plan};
- });
+ };
+ return ownerTx?persistTx(ownerTx):withTenant(ctx,persistTx);
 }
 async function failureEvent(ctx:SessionContext,id:string,kind:'failed'|'revert_failed',error:unknown){
  try{await withTenant(ctx,async tx=>{
@@ -427,7 +437,14 @@ async function refuseWhileStagedTx(tx:Tx){
  * screen commits through the staged job (`requestPayrollHistoryConfirm`), which writes the same rows. */
 export async function confirmPayrollHistoryUpload(ctx:SessionContext,input:HistoryConfirmInput){
  assertModuleGate(ctx,'payroll');if(!uuid.test(input.attemptId))fail('Import attempt unavailable.');
- try{return await withTenant(ctx,async tx=>{
+ try{return await withTenant(ctx,tx=>confirmPayrollHistoryUploadTx(tx,ctx,input));}
+ catch(error){await failureEvent(ctx,input.attemptId,'failed',error);throw error;}
+}
+/** Canonical synchronous owner for an existing caller transaction. No stage authority is created:
+ * every current principal, permission, plan, lock, revision and finalization check remains here.
+ * The public wrapper owns its transaction and separate failure-event recording. */
+export async function confirmPayrollHistoryUploadTx(tx:Tx,ctx:SessionContext,input:HistoryConfirmInput){
+ assertModuleGate(ctx,'payroll');if(!uuid.test(input.attemptId))fail('Import attempt unavailable.');
   await lockPayrollHistoryWriteTx(tx,ctx.tenantId);await lockAccessConfigurationWriteTx(tx,ctx.tenantId);
   const {source,confirmed,applies}=await confirmChecksTx(tx,ctx,input,true);
   // importedRows: the source rows THIS call applied (none when an earlier confirmation already committed the attempt).
@@ -474,8 +491,8 @@ export async function confirmPayrollHistoryUpload(ctx:SessionContext,input:Histo
   await recordMaintenanceRemovalTx(tx,ctx,source,changes);
   const importedRows=fresh.rows.filter(applies).reduce((sum,row)=>sum+row.rowNums.length,0);
   return {attemptId:source.id,counts:fresh.counts,changes,skippedReplacements,alreadyCommitted:false,importedRows};
- });}catch(error){await failureEvent(ctx,input.attemptId,'failed',error);throw error;}
 }
+
 /** One record's identity, its adoption of a processed payslip (d28501b8 r2: the processed payslip enters history as
  * the record's first revision, set aside by the correction; the database checks the adopted values are that
  * payslip's own columns) and its imported payslip. Shared by the single transaction and the staged job's steps. */
