@@ -1,4 +1,5 @@
 import {randomUUID} from 'node:crypto';
+import {setLabelCriteriaBatch} from '../core/system-labels';
 import {createMovementEvent,movementHistory,reverseMovementEvent} from '../core/movement';
 import {personnelBusinessCodeChoicesTx,personnelBusinessCodeValueTx,personnelBusinessGradeAtTx} from '../core/pay-formula-business-codes';
 import {personnelFormulaLibraryTx} from '../core/pay-formula-personnel';
@@ -42,9 +43,10 @@ async function activate(source:string,input='3',overrides:{prorates?:boolean;for
 
 async function configuredCodes(){
  await owner.db.update(schema.company).set({companyLabel:'ARIU'}).where(eq(schema.company.id,base.companyId));
- await owner.db.update(schema.department).set({name:'DP0005',label:'Finance team',isGlobal:true}).where(eq(schema.department.id,base.deptA));
- await owner.db.update(schema.position).set({title:'J0113',label:'Equipment controller',isGlobal:true}).where(eq(schema.position.id,base.positionId));
- const [unit]=await owner.db.insert(schema.businessUnit).values({tenantId:base.tenantId,companyId:base.companyId,code:'GCHBM',name:'Operating business',label:'Business label',isGlobal:true}).returning();
+ await owner.db.update(schema.department).set({name:'DP0005',label:'Finance team'}).where(eq(schema.department.id,base.deptA));
+ await owner.db.update(schema.position).set({title:'J0113',label:'Equipment controller'}).where(eq(schema.position.id,base.positionId));
+ const [unit]=await owner.db.insert(schema.businessUnit).values({tenantId:base.tenantId,companyId:base.companyId,code:'GCHBM',name:'Operating business',label:'Business label'}).returning();
+ await setLabelCriteriaBatch(ctx,[{kind:'department',labelId:base.deptA,isGlobal:true,companyIds:[]},{kind:'position',labelId:base.positionId,isGlobal:true,companyIds:[]},{kind:'business_unit',labelId:unit.id,isGlobal:true,companyIds:[]}]);
  const [grade]=await owner.db.insert(schema.jobGrade).values({tenantId:base.tenantId,code:'JG17',name:'Senior technical grade'}).returning();
  await owner.db.update(schema.assignment).set({businessUnitId:unit.id}).where(eq(schema.assignment.employmentId,employee.employmentId));
  await owner.db.update(schema.employment).set({gradeId:grade.id}).where(eq(schema.employment.id,employee.employmentId));
@@ -69,7 +71,8 @@ it('uses actual Code columns in preview and native processing while saved ID/ali
 it('resolves the assignment and grade at the selected payroll date and excludes reversed changes',async()=>{
  const {grade}=await configuredCodes();
  const [nextGrade]=await owner.db.insert(schema.jobGrade).values({tenantId:base.tenantId,code:'JG18',name:'Different senior grade'}).returning();
- await owner.db.update(schema.department).set({name:'DP0006',isGlobal:true}).where(eq(schema.department.id,base.deptB));
+ await owner.db.update(schema.department).set({name:'DP0006'}).where(eq(schema.department.id,base.deptB));
+ await setLabelCriteriaBatch(ctx,[{kind:'department',labelId:base.deptB,isGlobal:true,companyIds:[]}]);
  await createMovementEvent(ctx,{employmentId:employee.employmentId,kind:'transfer',effectiveDate:'2026-05-10',departmentId:base.deptB});
  await createMovementEvent(ctx,{employmentId:employee.employmentId,kind:'promotion',effectiveDate:'2026-05-15',gradeId:nextGrade.id});
  const read=(asOf:string)=>withTenant(ctx,async tx=>({department:(await personnelBusinessCodeValueTx(tx,ctx,{employmentId:employee.employmentId,companyId:base.companyId,asOf,key:'departmentBusinessCode'}))?.value,grade:await personnelBusinessGradeAtTx(tx,ctx.tenantId,employee.employmentId,asOf)}));
@@ -115,7 +118,7 @@ it('SQL-pages code choices across 70 companies/1000 employments and retains the 
  const people=await owner.db.insert(schema.person).values(Array.from({length:1000},(_,index)=>({tenantId:base.tenantId,fullName:`Formula scale ${index}`}))).returning({id:schema.person.id});
  await owner.db.insert(schema.employment).values(people.map((person,index)=>({tenantId:base.tenantId,personId:person.id,companyId:companies[index%companies.length].id,hiredOn:'2026-01-01',employeeCode:`FX${index}`})));
  const codes=Array.from({length:125},(_,index)=>({tenantId:base.tenantId,companyId:companies[index%69].id,title:`P${String(index).padStart(4,'0')}`,label:`Position label ${index}`,isGlobal:true}));
- await owner.db.insert(schema.position).values(codes);
+ await owner.withTenant(ctx,tx=>tx.insert(schema.position).values(codes));
  const companyRows=[{id:base.companyId,name:'Base'},...companies.map(company=>({id:company.id,name:company.legalName}))];
  await withTenant(ctx,async tx=>{
   const all=await personnelBusinessCodeChoicesTx(tx,ctx,companyRows.map(company=>company.id),'positionBusinessCode');

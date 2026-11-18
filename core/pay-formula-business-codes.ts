@@ -17,9 +17,11 @@ export const isPersonnelBusinessCode=(key:string)=>sources.some(source=>source.k
  * Duplicate configured codes are one comparison literal; display descriptions never become the value. */
 export async function personnelBusinessCodeChoicesTx(tx:Tx,ctx:SessionContext,companyIds:string[],key:string,search='',offset=0){
  if(!companyIds.length)return {items:[] as {value:string;label:string}[],total:0};
+ // A Drizzle-interpolated JS array is a tuple; singleton scopes still need a typed PostgreSQL array.
+ const scope=sql`ARRAY[${sql.join([...new Set(companyIds)].map(id=>sql`${id}::uuid`),sql`, `)}]::uuid[]`;
  let source:SQL;
- if(key==='companyCode')source=sql`select c.company_label as value,c.legal_name as label from company c where c.tenant_id=${ctx.tenantId}::uuid and c.id=any(${companyIds}::uuid[]) and c.archived_at is null`;
- else if(key==='jobGradeCode')source=sql`select g.code as value,g.name as label from job_grade g where g.tenant_id=${ctx.tenantId}::uuid and g.archived_at is null and exists(select 1 from unnest(${companyIds}::uuid[]) c(id) where app.system_label_scope_applies(g.scope_company_ids,c.id))`;
+ if(key==='companyCode')source=sql`select c.company_label as value,c.legal_name as label from company c where c.tenant_id=${ctx.tenantId}::uuid and c.id=any(${scope}) and c.archived_at is null`;
+ else if(key==='jobGradeCode')source=sql`select g.code as value,g.name as label from job_grade g where g.tenant_id=${ctx.tenantId}::uuid and g.archived_at is null and exists(select 1 from unnest(${scope}) c(id) where app.system_label_scope_applies(g.scope_company_ids,c.id))`;
  else{
   const picked=sources.find(source=>source.key===key);if(!picked)return {items:[],total:0};
   source=sql`select ${picked.code} as value,${picked.label} as label from ${picked.table} where ${picked.table.tenantId}=${ctx.tenantId}::uuid and ${picked.table.archivedAt} is null and ${visibleLabelIdsCondition(picked.table,picked.kind,companyIds)}`;
