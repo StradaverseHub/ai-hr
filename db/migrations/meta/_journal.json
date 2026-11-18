@@ -6730,6 +6730,34 @@
       "breakpoints": true
     },
     {
+      "idx": 10091,
+      "version": "7",
+      "when": 1794998006691,
+      "tag": "6691_payroll_history_native_baseline_source",
+      "breakpoints": true
+    },
+    {
+      "idx": 10092,
+      "version": "7",
+      "when": 1794998006692,
+      "tag": "6692_payroll_history_native_baseline_capture",
+      "breakpoints": true
+    },
+    {
+      "idx": 10093,
+      "version": "7",
+      "when": 1794998006693,
+      "tag": "6693_payroll_history_native_effective_and_artifact",
+      "breakpoints": true
+    },
+    {
+      "idx": 10094,
+      "version": "7",
+      "when": 1794998006694,
+      "tag": "6694_payroll_history_native_membership",
+      "breakpoints": true
+    },
+    {
       "idx": 10098,
       "version": "7",
       "when": 1794998006698,
