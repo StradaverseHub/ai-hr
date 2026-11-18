@@ -12,7 +12,11 @@ vi.mock('@/components/today/employee/reads',()=>({
  readOwnReadiness:async()=>({failed:false,period:{cutOff:null},items:[]}),
  readOwnPassportCards:async()=>[],
 }));
-vi.mock('next-intl/server',async()=>{const {createTranslator}=await import('next-intl');const messages=(await import('../messages/en.json')).default;return {getTranslations:async(namespace:string)=>createTranslator({locale:'en',messages,namespace:namespace as never})};});
+vi.mock('next-intl/server',async()=>{
+ const {createTranslator}=await import('next-intl');const base=(await import('../messages/en.json')).default;
+ const {withAiCentre}=await import('./helpers/ai-centre-messages');const messages=withAiCentre('en',base);
+ return {getTranslations:async(namespace:string)=>createTranslator({locale:'en',messages,namespace:namespace as never})};
+});
 const labels={title:'Contract signatures',signLabel:'Sign letter',allLabel:'View all 127',countLabel:'127 letters are waiting for your signature'};
 describe('Today Contract signatures',()=>{
  it('shows the exact owner total with a bounded preview and the complete owner queue link',()=>{
@@ -53,6 +57,8 @@ describe('Today Contract native owner slot',()=>{
   const view=render(await resolveServerTree(<>{TodayContracts({session,work})}{await NextStepPanel(props)}</>));
   expect(native.read).toHaveBeenCalledExactlyOnceWith(session,{category:'tasks',limit:5,offset:0});
   expect(view.container.querySelector('[data-today-all-clear]')).not.toBeNull();
+  expect(screen.getByRole('heading',{name:"You're all set"})).toBeInTheDocument();
+  expect(screen.getByText('Nothing needs you right now.')).toBeInTheDocument();
  });
  it('keeps an entitlement failure unavailable without querying work or claiming all-clear',async()=>{
   native.entitlementError=new Error('Fictional entitlement resolution failed');const work=readTodayContractWork(session);
