@@ -1,8 +1,10 @@
 import {afterAll,beforeEach,expect,it} from 'vitest';
 import {sql} from 'drizzle-orm';
+import {saveEmployeeDraft} from '../core/employee-draft';
+import {todayInKualaLumpur} from '../lib/hr-date';
 import {hireEmployee,updatePersonProfilePartial} from '../core/org';
 import {withTenant,type SessionContext} from '../db/client';
-import {v9Setup,v9Workspace,v9SaveConfig,v9CreateOffboarding,v9Command,v9OwnWork,v9OwnDocument,v9SubmitOwnDocumentCompletion,v9RefreshOwnDocumentCompletion,v9DownloadDocument,v9ReadPersonnelCompletion,v9ReadDocumentSigningWork,v9DocumentRouteEdit,v9DocumentRouteAct} from '../packs/lifecycle/service';
+import {v9Setup,v9Workspace,v9SaveConfig,v9CreateOffboarding,v9Command,v9OwnWork,v9OwnDocument,v9SubmitOwnDocumentCompletion,v9RefreshOwnDocumentCompletion,v9DownloadDocument,v9ReadPersonnelCompletion,v9ReadDocumentSigningWork,v9DocumentRouteEdit,v9DocumentRouteAct,onboardingList,onboardingCommand,v9CaseDetail} from '../packs/lifecycle/service';
 import {effectivePersonnelCompletion,personnelCompletionClassification} from '../lib/lifecycle-v9-personnel-completion';
 import type {Document,Field} from '../lib/lifecycle-v9-model';
 import {closeAll,resetDb,seedBase,setModule,entitledCtx,owner,createAppUser,type Base} from './harness';
@@ -93,4 +95,23 @@ it('validates normalized versus forged phone answers independently in SQL',async
  const {id:allId,document:allDoc,fields}=await prepared(true),phone=fields.find(field=>field.pmKey==='homePhone')!;
  await v9OwnDocument(employee,{caseId:allId,revision:(await current(allId)).revision,documentId:allDoc.id,values:{[phone.id]:'012 345 6789'}});const c=await current(allId);expect(c.documents[0].values[phone.id]).toBe('+60123456789');
  for(const value of ['+600001234567','0123456789','+60123456789 ext 1'])await expect(withTenant(employee,tx=>tx.execute(sql`select app.v9_personnel_completion_update(${allId}::uuid,${c.revision},${allDoc.id},${JSON.stringify({[phone.id]:value})}::jsonb,'save',NULL)`))).rejects.toThrow();
+});
+
+it('keeps a relocked employment field visible only after an explicit employee assignment, retaining its conflicting draft',async()=>{
+ await updatePersonProfilePartial(hr,{personId:employee.personId!,primaryEmail:''});const {id,document,fields}=await prepared(true),mail=fields.find(field=>field.pmKey==='email')!;
+ await v9Command(hr,id,(await current(id)).revision,{type:'documentCompletionOverride',id:document.id,fieldId:mail.id,owner:'employee',reason:'Ask employee to verify this missing work address'});
+ await v9OwnDocument(employee,{caseId:id,revision:(await current(id)).revision,documentId:document.id,values:{[mail.id]:'employee-draft@example.invalid'}});
+ await updatePersonProfilePartial(hr,{personId:employee.personId!,primaryEmail:'official-work@example.invalid'});await v9RefreshOwnDocumentCompletion(employee,{caseId:id,revision:(await current(id)).revision,documentId:document.id});
+ const d=await v9ReadPersonnelCompletion(employee,{caseId:id,documentId:document.id});expect(d!.fields.some(field=>field.id===mail.id)).toBe(true);expect(d!.values[mail.id]).toBe('official-work@example.invalid');expect(d!.personnelCompletion!.fields[mail.id].conflict?.draft).toBe('employee-draft@example.invalid');expect(effectivePersonnelCompletion(d!,d!.fields.find(field=>field.id===mail.id)!)).toBe('pmLocked');expect(d!.fields.some(field=>field.pmKey==='unknown.future')).toBe(false);
+});
+it('denies direct native completion source, read and override to case-action users whose HR section is hidden',async()=>{
+ await prepared();let config=(await v9Workspace(hr)).config!;config.templates.push({...structuredClone(config.templates[0]),id:'native-completion',module:'onb'});config.workflows.push({id:'native-completion',name:'Native completion',module:'onb',status:'published',trigger:{event:'submitted',days:0,workdays:false,repeat:false,skipIf:''},conditions:[],description:'',steps:[{id:'native-doc',type:'doc',template:'native-completion',release:false}]});await v9SaveConfig(hr,config.revision,config);
+ const draft=await saveEmployeeDraft(hr,{currentStep:1,data:{profile:{fullName:'Synthetic native completion',primaryEmail:'native-completion@example.invalid'},employment:{companyId:b.companyId,departmentId:b.deptA,positionId:b.positionId,reportingManagerEmploymentId:employmentId,hiredOn:todayInKualaLumpur()}}});const native=(await onboardingList(hr)).find(row=>row.case.sourceDraftId===draft.id)!;await onboardingCommand(hr,native.case.id,native.revision,{type:'saveSubmit',patch:{hiring:'new_hire',local:{supervisor:employmentId}}});const detail=(await v9CaseDetail(hr,native.case.id)).case,d=detail.documents.find(d=>d.templateId==='native-completion')!;
+ await owner.withTenant(hr,async tx=>{const [row]=await tx.execute<{data:Record<string,unknown>}>(sql`select data from lc_onboarding_config where tenant_id=${b.tenantId}::uuid`);const next=row.data as {groups:unknown[];access:{onboarding:string[];joinerViewGroups:string[];joinerSections:Record<string,unknown>}};next.groups.push({id:'hidden-hr',name:'Synthetic hidden HR',members:[hr.userId!],limit:4});next.access.onboarding=next.access.onboarding.filter(id=>id!==hr.userId);next.access.joinerViewGroups=[...(next.access.joinerViewGroups??[]),'hidden-hr'];next.access.joinerSections={...next.access.joinerSections,'hidden-hr':{preset:'custom',s:{actions:'allowed',hr:'hidden',case:'view'}}};await tx.execute(sql`update lc_onboarding_config set revision=revision+1,data=${JSON.stringify(next)}::jsonb where tenant_id=${b.tenantId}::uuid`);});
+ const [read]=await withTenant(hr,tx=>tx.execute<{source:unknown;document:unknown}>(sql`select app.v9_document_personnel_values(${detail.id}::uuid) as source,app.v9_personnel_completion_read(${detail.id}::uuid,${d.id}) as document`));expect(read.source).toBeNull();expect(read.document).toBeNull();await expect(withTenant(hr,tx=>tx.execute(sql`select app.v9_personnel_completion_update(${detail.id}::uuid,${detail.revision},${d.id},'{}'::jsonb,'override',${JSON.stringify({fieldId:'F0',owner:'hr',reason:'Denied hidden HR tab'})}::jsonb)`))).rejects.toThrow();
+});
+it('enforces company lifecycle entitlement at the direct routed work, content and action SQL boundaries',async()=>{
+ const {id,document}=await prepared(false,true),c=await current(id);await setModule(b.tenantId,'lifecycle','suspended');
+ const [row]=await withTenant(employee,tx=>tx.execute<{document:unknown;page:{total:number;items:unknown[]}}>(sql`select app.v9_document_route_read(${id}::uuid,${document.id}) as document,app.v9_document_signing_work('',0,50) as page`));expect(row.document).toBeNull();expect(row.page).toEqual({total:0,items:[]});
+ await expect(withTenant(employee,tx=>tx.execute(sql`select app.v9_document_route_act(${id}::uuid,${c.revision},${document.id},'{}'::jsonb)`))).rejects.toThrow();await expect(withTenant(employee,tx=>tx.execute(sql`select app.v9_document_route_edit(${id}::uuid,${c.revision},${document.id},NULL,'{}'::jsonb)`))).rejects.toThrow();
 });
