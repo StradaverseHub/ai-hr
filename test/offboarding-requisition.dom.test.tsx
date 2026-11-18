@@ -25,3 +25,15 @@ it('links existing RVK Request Records by canonical case UUID and uses the item 
 it.each(['light','dark'] as const)('captures the actual RVK requisition component in %s on phone and desktop',async mode=>{
  const {container}=render(wrap());await captureAiReviewScreenshots(aiReviewDomHtml(container)+'<style>'+readFileSync('app/lifecycle/v9/workspace.css','utf8')+'</style>','en',`feedback-b472a445-rvk-${mode}`,'Actual requisition component, fictional record; canonical authorization and writes tested separately','classic',mode);
 },30000);
+
+
+it('keeps entered values and reports transport rejection while locking controls during submission',async()=>{
+ let reject:(reason:Error)=>void=()=>{throw Error('Submission did not start');};
+ update.mockImplementation(()=>new Promise((_resolve,rejectPromise)=>{reject=rejectPromise;}));
+ render(wrap({...detail,fullView:false,items:[item]}));
+ const reason=screen.getByRole('textbox',{name:'Reason / note (required for exceptions)'}),status=screen.getByRole('combobox',{name:'Status'});
+ fireEvent.change(reason,{target:{value:'Keep this entered note'}});fireEvent.change(status,{target:{value:'progress'}});fireEvent.click(screen.getByRole('button',{name:'Save item'}));
+ await waitFor(()=>expect(reason).toBeDisabled());expect(status).toBeDisabled();
+ reject(Error('Connection lost'));
+ await waitFor(()=>expect(screen.getByRole('alert')).toHaveTextContent('not saved'));expect(reason).toHaveValue('Keep this entered note');expect(status).toHaveValue('progress');expect(reason).not.toBeDisabled();
+});
