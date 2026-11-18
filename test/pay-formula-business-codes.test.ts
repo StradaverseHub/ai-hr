@@ -115,7 +115,7 @@ it('batches company field grants exactly like the permission owner, preserving n
 it('SQL-pages code choices across 70 companies/1000 employments and retains the prior ID list order/values',async()=>{
  await configuredCodes();
  const companies=await owner.db.insert(schema.company).values(Array.from({length:69},(_,index)=>({tenantId:base.tenantId,legalName:`Company ${index}`,companyLabel:`CO${String(index).padStart(3,'0')}`}))).returning();
- const people=await owner.db.insert(schema.person).values(Array.from({length:1000},(_,index)=>({tenantId:base.tenantId,fullName:`Formula scale ${index}`}))).returning({id:schema.person.id});
+ const people=await owner.db.insert(schema.person).values(Array.from({length:1000},(_,index)=>({tenantId:base.tenantId,fullName:`Formula scale ${index}`,primaryEmail:`formula-scale-${index}@test.invalid`}))).returning({id:schema.person.id});
  await owner.db.insert(schema.employment).values(people.map((person,index)=>({tenantId:base.tenantId,personId:person.id,companyId:companies[index%companies.length].id,hiredOn:'2026-01-01',employeeCode:`FX${index}`})));
  const codes=Array.from({length:125},(_,index)=>({tenantId:base.tenantId,companyId:companies[index%69].id,title:`P${String(index).padStart(4,'0')}`,label:`Position label ${index}`,isGlobal:true}));
  await owner.withTenant(ctx,tx=>tx.insert(schema.position).values(codes));
