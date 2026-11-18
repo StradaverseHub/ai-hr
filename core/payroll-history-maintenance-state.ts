@@ -43,25 +43,27 @@ export async function historyMaintenanceStatesTx(tx:Tx,ctx:SessionContext,ids:re
  if(revisions.length>50000)fail('Select fewer records to review this long correction history.');
  const snapshotIds=[...new Set(revisions.map(row=>row.snapshotId).filter((id):id is string=>!!id))];
  const snapshots=new Map((snapshotIds.length?await tx.select().from(snapshot).where(inArray(snapshot.id,snapshotIds)):[]).map(row=>[row.id,row]));
- const latest=new Map(revisions.map(row=>[row.recordId,row]));
+ const latest=new Map(revisions.map(row=>[row.recordId,row])),revisionsByRecord=new Map<string,typeof revisions>();for(const change of revisions){const rows=revisionsByRecord.get(change.recordId)??[];rows.push(change);revisionsByRecord.set(change.recordId,rows);}
  const legacy=revisions.filter(row=>!latest.get(row.recordId)?.maintenance&&!row.maintenance&&row.kind!=='adopted'&&row.kind!=='revert'),attemptIds=[...new Set(legacy.map(row=>row.attemptId))];
  const sizes=attemptIds.length?await tx.select({bytes:sql<number>`octet_length(${attempt.sourceContent})`}).from(attempt).where(inArray(attempt.id,attemptIds)):[];
  if(sizes.reduce((sum,row)=>sum+Number(row.bytes),0)>67108864)fail('Select fewer records to review their retained source files.');
  const sources=attemptIds.length?await tx.select().from(attempt).where(inArray(attempt.id,attemptIds)):[];
  const parsed=new Map<string,PayrollHistoryRecord[]>(),sourceOf=new Map(sources.map(row=>[row.id,row])),codes=await resolveImportCodes(ctx,tx);
+ const plannedKey=(row:{companyId:string;employmentId:string;period:string;cycleId:string;valueHash:string|null})=>[row.companyId,row.employmentId,row.period,row.cycleId,row.valueHash].join(':');
+ const plannedBySource=new Map(sources.map(source=>{const rows=new Map<string,typeof source.plan.rows>();for(const row of source.plan.rows){const key=plannedKey(row),group=rows.get(key)??[];group.push(row);rows.set(key,group);}return[source.id,rows] as const;}));
  const {parsePayrollHistorySource}=await import('./payroll-history-revisions');
  for(const source of sources){if(createHash('sha256').update(source.sourceContent).digest('hex')!==source.sourceHash)fail('The original retained source hash does not match.');parsed.set(source.id,await parsePayrollHistorySource(source.sourceName,source.sourceContent));}
  for(const identity of identities){let state:HistoryContributionState={version:1,baselineSnapshotId:null,chains:{}};let values:ImportedPayrollValues|null=null;const bySnapshot=new Map<string,HistoryContributionState>();
   const current=latest.get(identity.id);
   if(current?.maintenance){const saved=current.snapshotId?snapshots.get(current.snapshotId):null;out.set(identity.id,{state:structuredClone(current.maintenance.state),values:saved?.values??null});continue;}
-  try{for(const change of revisions.filter(row=>row.recordId===identity.id)){
+  try{for(const change of revisionsByRecord.get(identity.id)??[]){
    const saved=change.snapshotId?snapshots.get(change.snapshotId):null;values=saved?.values??null;
    if(change.maintenance){if(change.maintenance.version!==1||change.maintenance.state.version!==1)fail('The saved maintenance version is unsupported.');state=structuredClone(change.maintenance.state);effectiveHistoryItems(state);}
    else if(change.kind==='adopted'){if(!saved)fail('The retained native baseline is unavailable.');state={version:1,baselineSnapshotId:saved.id,chains:{}};for(const item of maintenanceNativeItems(saved.values,codes))state.chains[item.key]=[{attemptId:null,item}];}
    else if(change.kind==='revert'){state=change.snapshotId?structuredClone(bySnapshot.get(change.snapshotId)??fail('The reverted source lineage is unavailable.')):{version:1,baselineSnapshotId:state.baselineSnapshotId,chains:{}};}
    else{
     const source=sourceOf.get(change.attemptId);if(!saved)fail('The accepted source snapshot is unavailable.');if(!source)fail('The original item lineage is unavailable in your current scope. Its saved payroll figures are preserved.');
-    const planned=source.plan.rows.filter(row=>row.companyId===identity.companyId&&row.employmentId===identity.employmentId&&row.period===identity.period&&row.cycleId===identity.cycleId&&row.valueHash===saved.valueHash);if(planned.length!==1)fail('The accepted original source identity is ambiguous.');
+    const planned=plannedBySource.get(source.id)?.get(plannedKey({...identity,valueHash:saved.valueHash}))??[];if(planned.length!==1)fail('The accepted original source identity is ambiguous.');
     const rows=parsed.get(source.id)!;const items=maintenanceSourceItems(planned[0].rowNums.map(rowNum=>{const row=rows[rowNum-2];if(!row)fail('An original source row is unavailable.');return{rowNum,code:readHistoryField(row,'doe_code'),amount:readHistoryField(row,'amount').replace(/[,_\s]/g,'')};}),retainedHistoryCodes(saved.values,codes));
     if(!historyItemsMatchValues(items,saved.values))fail('The retained original item mappings no longer reconcile to their accepted snapshot. Review the original source.');
     state=appendHistoryContribution(state,source.id,items,'replace');
