@@ -1,5 +1,6 @@
 import type { getRewardUnit } from '@/packs/rewards/service';
-import { isSeniorPlanMember, type RewardFlag } from '@/packs/rewards/model';
+import { isSeniorPlanMember, type RewardFlag, type Recommendation } from '@/packs/rewards/model';
+import { rewardHistoryValues } from '@/packs/rewards/person-history-model';
 import { payWindowReasons, sum } from '@/packs/rewards/engine';
 
 /**
@@ -49,6 +50,13 @@ export type DeskRow = {
   inputs: { meritBp: number | null; promotionBp: number | null; specialBp: number | null; multiplierBp: number | null; lumpCents: number | null; promotionGrade: string | null };
   editable: { increase: boolean; bonus: boolean; lump: boolean };
   promotionGrades: string[];
+  suggested: { meritBp: number | null; promotionBp: number | null; specialBp: number | null; multiplierBp: number | null; lumpCents: number | null };
+  differences: { meritBp: number | null; promotionBp: number | null; specialBp: number | null; multiplierBp: number | null; lumpCents: number | null };
+  rangePosition: 'below' | 'in' | 'above'; bonusBasicCents: number | null; paidBonusMonthsBp: number | null; historyIncreaseBp: number | null;
+  meritCents: number | null; promotionCents: number | null; specialCents: number | null; incrementCents: number | null;
+  incrementReason: string; bonusReason: string; businessCase: string; note: string; withhold: NonNullable<Recommendation['withhold']>;
+  erCase: boolean; pipCase: boolean; erDecision: string; pipDecision: string; caseReason: string;
+  notesEditable: boolean; casesEditable: boolean; viewOnlyStage: string | null;
   flag: DeskFlagMark; flagCount: number; unverified: boolean; leftOn: string | null;
 };
 
@@ -62,10 +70,12 @@ export function deskCellsEditable(v: Pick<RewardView, 'uploaded' | 'canEdit' | '
 export function deskRow(v: RewardView, r: ViewRow, flags: readonly RewardFlag[]): DeskRow {
   const senior = isSeniorPlanMember(v.unit.policy, r.facts, r.source.grade);
   const hidden = senior && !v.seniorAmountsVisible;
-  const cells = deskCellsEditable(v) && !senior && r.plan !== 'ec' && !r.source.leftOn;
+  const permitted = deskCellsEditable(v) && !senior && !r.restrictedReadOnly && !r.source.leftOn;
+  const cells = permitted && r.plan !== 'ec';
   const own = flags.filter(flag => flag.entryId === r.id);
   const rec = r.recommendation;
-  const grades = Object.keys(v.unit.policy.ranges ?? {}).filter(g => { const jump = Number(g) - Number(r.source.grade); return Number.isInteger(jump) && jump >= 1 && jump <= 3; }).sort((a, b) => Number(a) - Number(b));
+  const history = hidden ? null : rewardHistoryValues(r);
+  const grades = r.allowedPromotionGrades ?? [];
   return {
     id: r.id, name: r.source.name, employeeCode: r.source.employeeCode, grade: r.source.grade, promotionGrade: rec.promotionGrade,
     talent: r.facts.talent, performance: r.facts.performance, plan: r.plan,
@@ -82,6 +92,15 @@ export function deskRow(v: RewardView, r: ViewRow, flags: readonly RewardFlag[])
       lump: cells && r.lumpEligible,
     },
     promotionGrades: grades,
+    suggested: { meritBp: hidden ? null : r.suggestedMeritBp, promotionBp: hidden ? null : r.suggestedPromotionBp, specialBp: hidden ? null : r.suggestedSpecialBp, multiplierBp: hidden ? null : r.suggestedMultiplierBp, lumpCents: hidden ? null : r.suggestedLumpCents },
+    differences: { meritBp: hidden ? null : r.meritBp - r.suggestedMeritBp, promotionBp: hidden ? null : r.promotionBp - r.suggestedPromotionBp, specialBp: hidden ? null : r.specialBp - r.suggestedSpecialBp, multiplierBp: hidden ? null : r.bonusMultiplierBp - r.suggestedMultiplierBp, lumpCents: hidden ? null : r.lumpCents - r.suggestedLumpCents },
+    rangePosition: r.rangePosition ?? 'in', bonusBasicCents: hidden ? null : r.bonusBasicCents, paidBonusMonthsBp: history?.bonusMonthsBp ?? null, historyIncreaseBp: history?.totalIncreaseBp ?? null,
+    meritCents: hidden ? null : r.meritCents, promotionCents: hidden ? null : r.promotionCents, specialCents: hidden ? null : r.specialCents, incrementCents: hidden ? null : r.newBasicCents - r.source.basicCents,
+    incrementReason: r.incrementReason, bonusReason: r.bonusReason, businessCase: hidden ? '' : rec.reason, note: hidden ? '' : rec.note ?? '', withhold: hidden ? {} : rec.withhold ?? {},
+    erCase: !!r.facts.erCase, pipCase: !!r.facts.pipCase, erDecision: r.facts.erDecision, pipDecision: r.facts.pipDecision, caseReason: hidden ? '' : r.facts.caseReason,
+    notesEditable: permitted && v.capabilities?.notesAdd !== false,
+    casesEditable: permitted && v.unit.status === 'draft' && v.roles.some(role => role === 'bu' || role === 'gr') && v.capabilities?.casesDecide !== false,
+    viewOnlyStage: deskCellsEditable(v) ? null : v.unit.status === 'draft' ? v.route[0] : v.unit.status === 'approved' ? 'payroll' : v.unit.status,
     flag: own.some(flag => flag.severity === 'block') ? 'block' : own.length ? 'warn' : null, flagCount: own.length,
     unverified: !r.facts.reviewed, leftOn: r.source.leftOn ?? null,
   };

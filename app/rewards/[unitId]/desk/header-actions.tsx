@@ -44,7 +44,8 @@ export function DecisionActions({ action, decisions, from }: {
   action: (form: FormData) => Promise<void>;
   decisions: { action: Decision; to: string }[]; from: string;
 }) {
-  const { unitId, revision, summary } = useReviewDesk();
+  const { unitId, revision, summary, saveState, stale } = useReviewDesk();
+  const unsettled = saveState === 'saving' || saveState === 'failed' || stale;
   const t = useTranslations('rewards'); const d = useTranslations('rewards.desk.decide');
   const [chosen, setChosen] = useState<Decision | null>(null);
   const [reason, setReason] = useState('');
@@ -56,7 +57,7 @@ export function DecisionActions({ action, decisions, from }: {
   return <div className="flex flex-col items-end gap-1">
     <div className="flex flex-wrap justify-end gap-2">{decisions.map(({ action: a }) => {
       const blocked = forward(a) && summary.blocks > 0;
-      return <Button key={a} type="button" size="sm" variant={a === 'return' ? 'outline' : 'default'} disabled={blocked} aria-describedby={blocked ? `decision-blocked-${a}` : undefined}
+      return <Button key={a} type="button" size="sm" variant={a === 'return' ? 'outline' : 'default'} disabled={blocked || unsettled} aria-describedby={blocked ? `decision-blocked-${a}` : undefined}
         onClick={() => { setChosen(a); setReason(''); }}>{t(a)}</Button>;
     })}</div>
     {summary.blocks > 0 && decisions.some(x => forward(x.action)) && <p id={`decision-blocked-${decisions.find(x => forward(x.action))!.action}`} role="status" className="text-xs text-destructive">{d('fixBlocks', { count: summary.blocks })}</p>}
@@ -74,7 +75,7 @@ export function DecisionActions({ action, decisions, from }: {
             {needsReason(current.action) && short && <p className="text-xs text-muted-foreground">{current.action === 'return' ? d('reasonForReturn') : d('reasonForWarnings', { count: summary.warnings })}</p>}
             <div className="flex justify-end gap-2">
               <AlertDialog.Cancel asChild><Button type="button" variant="outline" size="sm">{d('cancel')}</Button></AlertDialog.Cancel>
-              <Button type="submit" size="sm" variant={current.action === 'return' ? 'outline' : 'default'} disabled={needsReason(current.action) && short}>{t(current.action)}</Button>
+              <Button type="submit" size="sm" variant={current.action === 'return' ? 'outline' : 'default'} disabled={unsettled || (needsReason(current.action) && short)}>{t(current.action)}</Button>
             </div>
           </form>
         </AlertDialog.Content>}

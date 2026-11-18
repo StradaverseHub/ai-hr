@@ -373,13 +373,9 @@ describe('09b554e9 — engine: declared classification drives the PCB/EPF stream
     // Bonus 2012 bonus takes the month above RM5,000 at 13% of the month's wages: normal 4,000, bonus
     // 3,000 → 7,000 × 13% = 910.00 → 910 (was 840). The employee share keeps the combined row (770).
     expect(st.epfEmployer).toBe(910);
-    // ⚠️ WHAT THIS CASE STILL TESTS. Since 7f5cc653 the EPF Bonus 2012 flag changes the EPF EMPLOYER amount
-    // again for this shape — epf(4000, 3000) is 770 / 910 while epf(7000, 0) is 770 / 840 — so the 910 above
-    // is the flag at work. It remains the acceptance test for the classification because the flag still decides
-    // the PCB stream (Yt, the difference method) and still keeps the bonus out of the SOCSO/EIS base,
-    // which is what the two assertions below pin. Do not delete it as redundant.
-    // SOCSO excludes the bonus (Act 4 wages): the RM4,000 band employee share.
-    expect(st.socsoEmployee).toBeCloseTo(19.75, 2);
+    // Approved ffb6c2e0 (17 Nov): EPF classification and PCB routing above are unchanged.
+    // The independent SOCSO/EIS tick includes the 3,000, reaching the unchanged 6,000 cap row.
+    expect(st.socsoEmployee).toBeCloseTo(29.75, 2);
   });
 
   it('fail-closed guard: an unclassified PCB-only earning still throws; a classified one computes', async () => {

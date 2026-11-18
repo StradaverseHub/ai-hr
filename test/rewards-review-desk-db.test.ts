@@ -7,7 +7,7 @@ import { withTenant, type SessionContext } from '../db/client';
 import * as schema from '../db/schema';
 import { hireEmployee } from '../core/org';
 import { setCompensation } from '../core/comp';
-import { getRewardUnit, saveRewardEntry, decideRewardUnit } from '../packs/rewards/service';
+import { getRewardUnit, saveRewardEntry, saveRewardEntryCell, decideRewardUnit } from '../packs/rewards/service';
 import { emptyFacts, type RewardRole } from '../packs/rewards/model';
 import { closeAll, createAppUser, entitledCtx, owner, resetDb, seedBase, setModule, type Base } from './harness';
 import { todayInKualaLumpur } from '../lib/hr-date';
@@ -115,6 +115,41 @@ describe('Rewards review desk (37f82412)', () => {
     expect(gr.rows[0].crBeforeBp).toBe(10000);
     expect(gr.rows[0].totalIncreaseBp).toBe(gr.rows[0].meritBp + gr.rows[0].promotionBp + gr.rows[0].specialBp);
     expect((await view(actors.pbp!)).fullView).toBe(false);
+  });
+
+  it('applies a cell to the locked current recommendation, keeps unrelated fields and enforces native eligibility', async () => {
+    const before = await view(), entry = before.rows[0];
+    const after = await saveRewardEntryCell(actors.bu!, unitId, before.unit.revision, entry.id, 'meritBp', '4');
+    expect(after?.rows[0].meritBp).toBe(400);
+    const noted = await saveRewardEntryCell(actors.bu!, unitId, after!.unit.revision, entry.id, 'note', 'Fictional note from the panel.');
+    expect(noted?.rows[0].recommendation.meritBp).toBe(400);
+    expect(noted?.rows[0].recommendation.note).toBe('Fictional note from the panel.');
+    // A bonus-eligible employee cannot receive a lump sum, and no ER/PIP flag means no case decision.
+    await expect(saveRewardEntryCell(actors.bu!, unitId, noted!.unit.revision, entry.id, 'lumpCents', '100')).rejects.toThrow(/cannot be changed/);
+    await expect(saveRewardEntryCell(actors.bu!, unitId, noted!.unit.revision, entry.id, 'erDecision', 'in')).rejects.toThrow(/cannot be changed/);
+    await expect(saveRewardEntryCell(actors.bu!, unitId, noted!.unit.revision, entry.id, 'promotionGrade', '99')).rejects.toThrow(/allowed promotion grade/);
+    await submit();
+    const submitted = await view();
+    await expect(saveRewardEntryCell(actors.bu!, unitId, submitted.unit.revision, entry.id, 'meritBp', '5')).rejects.toThrow(/Return the unit to draft|cannot edit/);
+  });
+
+  it('returns the same transaction projection with withholding and an allowlisted before/after audit', async () => {
+    const before = await view(), entry = before.rows[0];
+    const after = await saveRewardEntry(actors.bu!, unitId, before.unit.revision, entry.id, { ...entry.recommendation, withhold: { increase: 'Approved fictional salary hold' } }, undefined, true);
+    expect(after?.unit.revision).toBe(before.unit.revision + 1);
+    expect(after?.rows[0].newBasicCents).toBe(entry.source.basicCents);
+    expect(after?.flags).toContainEqual(expect.objectContaining({ code: 'WITHHOLD-01', severity: 'exception', entryId: entry.id }));
+    const [event] = await owner.db.select().from(schema.domainEvent).where(eq(schema.domainEvent.aggregateId, unitId)).orderBy(sql`${schema.domainEvent.sequence} desc`).limit(1);
+    expect(event.eventType).toBe('reward-unit.recommendation-updated');
+    expect(event.payload).toMatchObject({ reason: 'Approved fictional salary hold', changes: [{ field: 'withhold', before: null, after: { increase: 'Approved fictional salary hold' } }] });
+    const current = await view();
+    // Clearing uses the explicit empty map; old forms omitting withholding preserve the decision.
+    const { withhold: _withhold, ...oldForm } = current.rows[0].recommendation;
+    await saveRewardEntry(actors.bu!, unitId, current.unit.revision, entry.id, oldForm);
+    expect((await view()).rows[0].recommendation.withhold?.increase).toBe('Approved fictional salary hold');
+    const kept = await view();
+    await saveRewardEntry(actors.bu!, unitId, kept.unit.revision, entry.id, { ...kept.rows[0].recommendation, withhold: {} });
+    expect((await view()).rows[0].meritCents).toBe(entry.meritCents);
   });
 
   it('keeps a saved note when a form does not send one, and stores it within its cap', async () => {

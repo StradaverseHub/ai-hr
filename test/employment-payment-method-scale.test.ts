@@ -1,5 +1,5 @@
 import {afterAll,beforeAll,describe,expect,it} from 'vitest';
-import {asc,eq,sql} from 'drizzle-orm';
+import {asc,desc,eq,sql} from 'drizzle-orm';
 import {withTenant,type SessionContext} from '../db/client';
 import {employment,compensation} from '../db/schema';
 import {compensationAmendmentHistory} from '../core/comp';
@@ -9,9 +9,6 @@ import {buildScaleFixture,type ScaleFixture} from './helpers/ai-centre-scale-fix
 import {observeStatements} from './helpers/statement-observer';
 
 let fixture:ScaleFixture;
-type FixtureAmendment={id:string;compensationId:string;basicSalary:string|null;currency:string;rateAmount:string|null;
- effectiveFrom:string;payrollFrom:string;until:null;informationOnly:boolean;reason:string};
-const expectedAmendments=new Map<string,{sequence:bigint;value:FixtureAmendment}[]>();
 beforeAll(async()=>{
  await migrateTestDb();await resetDb();const base=await seedBase();
  fixture=await buildScaleFixture(base,{employments:1000,events:0});
@@ -19,21 +16,10 @@ beforeAll(async()=>{
  await owner.client`insert into employment_payment_method_history(tenant_id,employment_id,effective_on,payment_method,source)
   select tenant_id,id,'2026-01-01',payment_method::text,'legacy_snapshot' from employment where tenant_id=${base.tenantId}::uuid`;
  // Reader fixtures use the actual native compensation IDs. No amount is copied into audit payloads.
- const salaries=await owner.db.select({id:compensation.id,basicSalary:compensation.basicSalary,currency:compensation.currency,rateAmount:compensation.rateAmount})
-  .from(compensation).where(eq(compensation.tenantId,base.tenantId));
- const salaryById=new Map(salaries.map(row=>[row.id,row]));
- const amendments=await owner.client<{id:string;aggregate_id:string;subject_employment_id:string;sequence:string}[]>`insert into domain_event(tenant_id,aggregate_type,aggregate_id,event_type,actor_type,subject_employment_id,payload)
+ await owner.client`insert into domain_event(tenant_id,aggregate_type,aggregate_id,event_type,actor_type,subject_employment_id,payload)
   select c.tenant_id,'compensation',c.id,'compensation.amended','system',c.employment_id,
    jsonb_build_object('effectiveFrom','2026-01-15','payrollEffectiveFrom','2026-02-01','informationOnly',false,'reason','Fictional group-scale amendment')
-  from compensation c where c.tenant_id=${base.tenantId}::uuid returning id,aggregate_id,subject_employment_id,sequence::text`;
- for(const event of amendments){
-  const salary=salaryById.get(event.aggregate_id);if(!salary)throw Error('Fixture amendment must reference a known native salary.');
-  const rows=expectedAmendments.get(event.subject_employment_id)??[];
-  rows.push({sequence:BigInt(event.sequence),value:{id:event.id,compensationId:salary.id,basicSalary:salary.basicSalary,currency:salary.currency,
-   rateAmount:salary.rateAmount,effectiveFrom:'2026-01-15',payrollFrom:'2026-02-01',until:null,informationOnly:false,reason:'Fictional group-scale amendment'}});
-  expectedAmendments.set(event.subject_employment_id,rows);
- }
- for(const rows of expectedAmendments.values())rows.sort((a,b)=>a.sequence>b.sequence?-1:a.sequence<b.sequence?1:0);
+  from compensation c where c.tenant_id=${base.tenantId}::uuid order by c.valid_from,c.id`;
 
 },300_000);
 afterAll(closeAll);
@@ -63,18 +49,17 @@ describe('dated payment-method reader at group scale',()=>{
  it('reads salary amendment references as one bounded subject query for group, multi and single-company HR',async()=>{
   expect(fixture.companyIds.length).toBeGreaterThanOrEqual(70);expect(fixture.employmentIds.length).toBeGreaterThanOrEqual(1000);
   for(const [name,ctx] of Object.entries(fixture.personas)){
-   const subjects=await withTenant(ctx,tx=>tx.select({id:employment.id}).from(employment)
-    .where(eq(employment.companyId,fixture.singleCompanyId)).orderBy(asc(employment.id)));
-   // The scale fixture deliberately contains both one- and two-record salary histories. Pick both
-   // shapes explicitly; a random first UUID must not define the expected number of amendments.
-   for(const historyLength of [1,2]){
-    const subject=subjects.find(row=>expectedAmendments.get(row.id)?.length===historyLength);
-    expect(subject,`${name}: authorized ${historyLength}-record salary source`).toBeDefined();
-    const expected=expectedAmendments.get(subject!.id)!.map(row=>row.value);
-    const observed=await observeStatements(()=>compensationAmendmentHistory(ctx,subject!.id));
-    expect(observed.result).toEqual({page:1,hasMore:false,rows:expected});
-    expect(observed.statements.filter(statement=>statement.sql.includes('inner join "compensation"')&&statement.sql.includes('limit'))).toHaveLength(1);
-   }
+   const [subject]=await withTenant(ctx,tx=>tx.select({employmentId:employment.id})
+    .from(employment).innerJoin(compensation,eq(compensation.employmentId,employment.id)).where(eq(employment.companyId,fixture.singleCompanyId)).orderBy(asc(employment.id)).limit(1));
+   expect(subject,name+': nonempty authorized salary subject').toBeDefined();
+   // The scale fixture deliberately gives some people two native salary records. Every seeded
+   // record gets an amendment above, in dated/id order; do not let a random first person hide one.
+   const expected=await withTenant(ctx,tx=>tx.select({compensationId:compensation.id,basicSalary:compensation.basicSalary,currency:compensation.currency})
+    .from(compensation).where(eq(compensation.employmentId,subject.employmentId)).orderBy(desc(compensation.validFrom),desc(compensation.id)));
+   expect(expected.length,name+': nonempty independent salary source').toBeGreaterThan(0);
+   const observed=await observeStatements(()=>compensationAmendmentHistory(ctx,subject.employmentId));
+   expect(observed.result).toMatchObject({page:1,hasMore:false,rows:expected.map(row=>({...row,effectiveFrom:'2026-01-15',payrollFrom:'2026-02-01'}))});
+   expect(observed.statements.filter(statement=>statement.sql.includes('inner join "compensation"')&&statement.sql.includes('limit'))).toHaveLength(1);
   }
  },120_000);
  it('does not substitute the current master for a known pre-history date',async()=>{

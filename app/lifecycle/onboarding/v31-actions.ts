@@ -1,7 +1,7 @@
 'use server';
 import { revalidatePath } from 'next/cache';
 import { getSession } from '@/lib/session';
-import { onboardingCommand, onboardingSaveConfig, onboardingSaveChecklistTasks, onboardingNote, onboardingSetup, onboardingDetail, onboardingMarkSeen, type OnboardingCommand, type OnboardingConfig } from '@/packs/lifecycle/service';
+import { onboardingCommand, onboardingSaveConfig, onboardingSaveChecklistTasks, onboardingNote, onboardingSetup, onboardingDetail, onboardingMarkSeen, searchOnboardingRecipientUsers, type OnboardingCommand, type OnboardingConfig } from '@/packs/lifecycle/service';
 import type { TaskDef } from '@/lib/onboarding-model';
 import { OnboardingError } from '@/lib/onboarding-model';
 import { ZodError } from 'zod';
@@ -73,3 +73,9 @@ export async function loadOnboardingTask(id: string) {
     }
 }
 export async function markOnboardingSeen(id: string) { await onboardingMarkSeen(await getSession(), id); revalidatePath('/lifecycle/onboarding'); }
+
+/** Read-only, authorized bounded search; the selected UUID is validated again when saving the case. */
+export async function searchOnboardingTaUsers(caseId: string, query: string) {
+    try { return { users: await searchOnboardingRecipientUsers(await getSession(), caseId, query), error: null }; }
+    catch { return { users: [], error: 'TA_SEARCH_UNAVAILABLE' }; }
+}

@@ -21,7 +21,7 @@ describe('ready-made workflows a new company group receives', () => {
       w3: { status: 'draft', steps: [{ id: 'w3-step-1', to: ['supervisor'], cc: ['ta'], setup: false }] },
       w6: { status: 'published', steps: [{ id: 'w6-step-1', to: ['supervisor'], cc: [], setup: false }] },
       w7: { status: 'published', steps: [{ id: 'w7-step-1', to: ['taskOwners'], cc: [], setup: false }] },
-      w8: { status: 'published', steps: [{ id: 'w8-step-1', to: [], cc: ['ta', 'supervisor'], setup: true }] },
+      w8: { status: 'draft', steps: [{ id: 'w8-step-1', to: [], cc: ['ta', 'supervisor'], setup: true }] },
       w9: { status: 'published', steps: [{ id: 'w9-step-2', to: ['employeeWork'], cc: [], setup: false }] },
       w10: { status: 'published', steps: [{ id: 'w10-step-1', to: ['employeeWork'], cc: [], setup: false }] },
       w11: { status: 'published', steps: [] },
@@ -31,9 +31,16 @@ describe('ready-made workflows a new company group receives', () => {
       w13: { status: 'published', steps: [{ id: 'w13-step-3', to: ['employeeWork'], cc: [], setup: false }] },
       w14: { status: 'published', steps: [{ id: 'w14-step-1', to: ['taskOwners'], cc: [], setup: false }] },
       // The escalation keeps its GBS People Ops CC; its PBP To is left for the company group to choose.
-      w15: { status: 'published', steps: [{ id: 'w15-step-1', to: [], cc: ['peopleOps'], setup: true }] },
+      w15: { status: 'draft', steps: [{ id: 'w15-step-1', to: [], cc: ['peopleOps'], setup: true }] },
     });
     expect(Object.fromEntries(v9Defaults().emails.map(email => [email.id, email.cc]))).toEqual({ e1: [], e2: [], e3: ['supervisor'], e4: [], e5: [], e6: [], e11: [], e12: [] });
+  });
+  it('starts setup-only escalations in Draft and describes the actual recipients without PBP or BP', () => {
+    const config = v9Defaults();
+    expect(config.workflows.filter(w => w.steps.some(s => 'to' in s && s.recipientSetup)).map(w => [w.id, w.status])).toEqual([['w8', 'draft'], ['w15', 'draft']]);
+    expect(config.workflows.filter(w => /\b(?:PBP|BP)\b/.test(w.description))).toEqual([]);
+    expect(config.workflows.find(w => w.id === 'w8')!.description).toContain('copying the TA and line manager');
+    expect(config.workflows.find(w => w.id === 'w15')!.description).toContain('copying GBS People Ops');
   });
   it('has no PBP, Whoever started it, legacy Employee or HR Ops substitute anywhere', () => {
     const config = v9Defaults(), roles = [...config.emails.flatMap(email => email.cc), ...config.workflows.flatMap(w => w.steps.flatMap(s => 'to' in s ? [...[s.to].flat(), ...s.cc] : []))];
@@ -58,9 +65,9 @@ describe('ready-made workflows a new company group receives', () => {
   });
   it('changes nothing else: timing, triggers, subjects and messages stay as supplied', () => {
     const config = v9Defaults(), w8 = config.workflows.find(w => w.id === 'w8')!, w15 = config.workflows.find(w => w.id === 'w15')!;
-    expect(w8).toMatchObject({ name: 'Escalate pending tasks 2 days before', status: 'published', trigger: { event: 'beforeJoin', days: 2, workdays: false, repeat: false, skipIf: 'noPre' } });
+    expect(w8).toMatchObject({ name: 'Escalate pending tasks 2 days before', status: 'draft', trigger: { event: 'beforeJoin', days: 2, workdays: false, repeat: false, skipIf: 'noPre' } });
     expect(w8.steps[0]).toMatchObject({ type: 'notify', subject: '{employee.name} may not be ready for Day 1' });
-    expect(w15).toMatchObject({ name: 'Escalate pending tasks 2 days before the last working day', status: 'published', trigger: { event: 'beforeLWD', days: 2, workdays: false, repeat: false, skipIf: 'noPre' } });
+    expect(w15).toMatchObject({ name: 'Escalate pending tasks 2 days before the last working day', status: 'draft', trigger: { event: 'beforeLWD', days: 2, workdays: false, repeat: false, skipIf: 'noPre' } });
     expect(w15.steps[0]).toMatchObject({ type: 'notify', subject: '{employee.name} may not be cleared by the last working day', body: 'Hi,\n\n{employee.name} leaves on {leaver.lastDay} and these items are still open:\n{pending.tasks}\n\nPlease follow up with the owners.\n\nRegards,\nAI HR' });
   });
 });
@@ -91,8 +98,10 @@ describe('recipient choices', () => {
 });
 
 describe('a step flagged for setup', () => {
-  it('stays live while unchanged, needs a To recipient to change, and stops being flagged once it has one', () => {
+  it('preserves an existing live setup step, but refuses reactivation until a To is chosen', () => {
     const previous = v9Defaults();
+    // Historical saved definitions are independent of the revised defaults for new groups.
+    previous.workflows.find(w => w.id === 'w15')!.status = 'published';
     expect(() => parseV9Config(structuredClone(previous), previous)).not.toThrow();
     const renamed = structuredClone(previous); renamed.workflows.find(w => w.id === 'w15')!.name = 'Fictional rename';
     expect(() => parseV9Config(renamed, previous)).toThrow('Step 1: choose a recipient.');
@@ -113,9 +122,9 @@ function runFixture() {
   let sequence = 0;
   const active = ['ops-1', 'ops-2', 'manager', 'viewer-1', 'owner-a'];
   const environment: M.Environment = { today: '2026-10-20', now: '2026-10-20T01:00:00.000Z', actor: { id: 'hr', name: 'Fictional HR' }, nextId: () => `id-${++sequence}`, onLeave: () => false, openLoad: () => 0, lastAssigned: () => 0, eligibleUser: id => active.includes(id), userName: id => `Name ${id}`, mergeValues: { 'employee.name': 'Fictional Leaver', 'leaver.lastDay': '22 Oct 2026', email: 'leaver.work@fictional.invalid', personalEmail: 'leaver.home@fictional.invalid' }, holdAlertUserIds: ['viewer-1'] };
-  const c: M.Case = { version: 9, id: 'case', number: 'OFB-7', module: 'off', revision: 1, state: 'submitted', facts: { name: 'Fictional Leaver', employeeNo: 'EMP-7', employmentId: 'employment', personId: 'person', joinDate: '2024-01-01', lastDay: '2026-10-22', noticeDate: '2026-09-22', employeeUserId: null, supervisorUserId: 'manager', pbpUserId: null, taUserId: null, businessGroup: 'group', company: 'company', department: 'dept', grade: 'grade', employmentType: 'contract', title: 'title', caseType: 'Resignation' }, checklistId: null, checklistName: '', override: 'automatic', tasks: [{ id: 'laptop', name: 'Return laptop', by: 'group', group: null, mode: 'rr', opens: null, due: 0, required: true, documentTemplate: null, documentAction: 'completed', opensOn: null, dueOn: '2026-10-21', assignee: 'owner-a', status: 'todo', reason: '', assignmentFailure: null }], items: [], documents: [], runs: [], mails: [], files: [], pmChanges: [], log: [], sourceRevision: 'source', submittedAt: null, closedAt: null, closedBy: null, closeReason: '', cancelReason: '', revokeDate: '', finalFigures: null, review: null };
+  const c: M.Case = { version: 9, id: 'case', number: 'OFB-7', module: 'off', revision: 1, state: 'submitted', facts: { name: 'Fictional Leaver', employeeNo: 'EMP-7', employmentId: 'employment', personId: 'person', joinDate: '2024-01-01', lastDay: '2026-10-22', noticeDate: '2026-09-22', employeeUserId: null, supervisorUserId: 'manager', taUserId: null, businessGroup: 'group', company: 'company', department: 'dept', grade: 'grade', employmentType: 'contract', title: 'title', caseType: 'Resignation' }, checklistId: null, checklistName: '', override: 'automatic', tasks: [{ id: 'laptop', name: 'Return laptop', by: 'group', group: null, mode: 'rr', opens: null, due: 0, required: true, documentTemplate: null, documentAction: 'completed', opensOn: null, dueOn: '2026-10-21', assignee: 'owner-a', status: 'todo', reason: '', assignmentFailure: null }], items: [], documents: [], runs: [], mails: [], files: [], pmChanges: [], log: [], sourceRevision: 'source', submittedAt: null, closedAt: null, closedBy: null, closeReason: '', cancelReason: '', revokeDate: '', finalFigures: null, review: null };
   const config = v9Defaults(); config.groups.push({ id: 'fictional-gbs', name: 'Fictional GBS People Ops', members: ['ops-1', 'ops-2', 'archived'], limit: 0 }); config.peopleOpsGroup = 'fictional-gbs';
-  const w15 = structuredClone(config.workflows.find(w => w.id === 'w15')!); w15.trigger = { ...w15.trigger, event: 'manual', days: 0 };
+  const w15 = structuredClone(config.workflows.find(w => w.id === 'w15')!); w15.status = 'published'; w15.trigger = { ...w15.trigger, event: 'manual', days: 0 };
   return { c, config, environment, w15 };
 }
 const workflowMails = (c: M.Case) => c.mails.filter(mail => mail.workflowId !== null);

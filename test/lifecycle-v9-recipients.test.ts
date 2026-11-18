@@ -3,14 +3,14 @@ import { describe, expect, it } from 'vitest';
 import * as M from '../lib/lifecycle-v9-model';
 import { parseV9Config } from '../lib/lifecycle-v9-validation';
 import { v9Defaults } from '../lib/lifecycle-v9-defaults';
-import { convertV9Recipients, maskEmail, v9RecipientReport, offeredRoles, roleLabel } from '../lib/lifecycle-v9-recipients';
+import { convertV9Recipients, maskEmail, maskPersonalEmailView, v9RecipientReport, offeredRoles, roleLabel } from '../lib/lifecycle-v9-recipients';
 
 function fixture(module: M.Module = 'off') {
   let sequence = 0;
   const users = ['hr', 'hr2', 'manager', 'owner-a', 'owner-b', 'signatory', 'ta-user', 'viewer-1', 'viewer-2', 'viewer-3', 'viewer-4', 'viewer-5', 'viewer-6', 'viewer-7', 'viewer-8', 'viewer-9'];
   const environment: M.Environment = { today: '2026-10-20', now: '2026-10-20T01:00:00.000Z', actor: { id: 'hr', name: 'Fictional HR' }, nextId: () => `id-${++sequence}`, onLeave: () => false, openLoad: () => 0, lastAssigned: () => 0, eligibleUser: id => users.includes(id), userName: id => `Name ${id}`, mergeValues: { 'employee.name': 'Fictional Person', email: 'person.work@fictional.invalid', personalEmail: 'person.home@fictional.invalid' }, holdAlertUserIds: ['viewer-1'] };
-  const c: M.Case = { version: 9, id: 'case', number: module === 'onb' ? 'ONB-1' : 'OFB-1', module, revision: 1, state: 'submitted', facts: { name: 'Fictional Person', employeeNo: 'EMP-1', employmentId: 'employment', personId: 'person', joinDate: '2026-11-01', lastDay: '2026-11-01', noticeDate: '2026-10-01', employeeUserId: null, supervisorUserId: 'manager', pbpUserId: null, taUserId: null, businessGroup: 'group', company: 'company', department: 'dept', grade: 'grade', employmentType: 'contract', title: 'title', caseType: 'Resignation' }, checklistId: null, checklistName: '', override: 'automatic', tasks: [], items: [], documents: [], runs: [], mails: [], files: [], pmChanges: [], log: [], sourceRevision: 'source', submittedAt: null, closedAt: null, closedBy: null, closeReason: '', cancelReason: '', revokeDate: '', finalFigures: null, review: null };
-  const config: M.Config = { version: 9, revision: 1, checklists: [], templates: [], emails: [], workflows: [], groups: [{ id: 'ops', name: 'Fictional Ops', members: ['hr', 'hr2'], limit: 0 }], peopleOpsGroup: 'ops', bpRules: [], companies: [{ companyId: 'company', signatoryUserId: 'signatory', signatoryTitle: 'HR' }] };
+  const c: M.Case = { version: 9, id: 'case', number: module === 'onb' ? 'ONB-1' : 'OFB-1', module, revision: 1, state: 'submitted', facts: { name: 'Fictional Person', employeeNo: 'EMP-1', employmentId: 'employment', personId: 'person', joinDate: '2026-11-01', lastDay: '2026-11-01', noticeDate: '2026-10-01', employeeUserId: null, supervisorUserId: 'manager', taUserId: null, businessGroup: 'group', company: 'company', department: 'dept', grade: 'grade', employmentType: 'contract', title: 'title', caseType: 'Resignation' }, checklistId: null, checklistName: '', override: 'automatic', tasks: [], items: [], documents: [], runs: [], mails: [], files: [], pmChanges: [], log: [], sourceRevision: 'source', submittedAt: null, closedAt: null, closedBy: null, closeReason: '', cancelReason: '', revokeDate: '', finalFigures: null, review: null };
+  const config: M.Config = { version: 9, revision: 1, checklists: [], templates: [], emails: [], workflows: [], groups: [{ id: 'ops', name: 'Fictional Ops', members: ['hr', 'hr2'], limit: 0 }], peopleOpsGroup: 'ops', companies: [{ companyId: 'company', signatoryUserId: 'signatory', signatoryTitle: 'HR' }] };
   return { c, config, environment };
 }
 const task = (id: string, assignee: string | null, dueOn = '2026-10-25'): M.Task => ({ id, name: id, by: 'group', group: 'ops', mode: 'rr', opens: null, due: 0, required: true, documentTemplate: null, documentAction: 'completed', opensOn: null, dueOn, assignee, status: 'todo', reason: '', assignmentFailure: null });
@@ -19,6 +19,15 @@ const workflowMails = (c: M.Case) => c.mails.filter(mail => mail.workflowId !== 
 const alerts = (c: M.Case) => c.mails.filter(mail => mail.key.startsWith('hold-alert:'));
 
 describe('hold when anyone is missing', () => {
+  it('uses the current PM supervisor for later emails and never falls back to an obsolete case manager after removal', () => {
+    const { c, config, environment } = fixture();
+    environment.supervisorUserId='hr2';
+    expect(M.resolveStepRecipients(c,config,{to:['supervisor'],cc:[]},environment).to).toEqual([{key:'hr2',name:'Name hr2'}]);
+    expect(c.facts.supervisorUserId).toBe('manager');
+    environment.supervisorUserId=null;
+    expect(M.resolveStepRecipients(c,config,{to:['supervisor'],cc:[]},environment).missing).toEqual([{role:'supervisor',label:'Line manager',reason:'no supervisor on the Personnel record'}]);
+  });
+
   it('queues nothing, not even CC, names who is missing and alerts Full case view users once', () => {
     const { c, config, environment } = fixture(); c.facts.supervisorUserId = null;
     const run = M.runWorkflow(c, config, notify(['employeeWork'], ['supervisor', 'hrSignatory']), environment, 'manual');
@@ -61,7 +70,7 @@ describe('hold when anyone is missing', () => {
   });
   it('holds a saved PBP that finds nobody, like any other role, and keeps "Skip when nothing is pending" quiet', () => {
     const { c, config, environment } = fixture();
-    expect(M.runWorkflow(c, config, notify(['employeeWork'], ['pbp']), environment, 'manual')).toMatchObject({ status: 'waiting', hold: { missing: [{ role: 'pbp', label: 'PBP', reason: 'no PBP is found for this case' }] } });
+    expect(M.runWorkflow(c, config, notify(['employeeWork'], ['pbp']), environment, 'manual')).toMatchObject({ status: 'waiting', hold: { missing: [{ role: 'pbp', label: 'PBP', reason: 'PBP routing has been removed; replace this recipient' }] } });
     const quiet = fixture();
     expect(M.runWorkflow(quiet.c, quiet.config, notify(['taskOwners'], [], 'off', 'noPre'), quiet.environment, 'manual')).toMatchObject({ status: 'skipped', reason: 'Nothing pending before the anchor date.' });
     expect(quiet.c.mails).toEqual([]);
@@ -129,6 +138,32 @@ describe('recipients changed for this case', () => {
 });
 
 describe('dry run', () => {
+  it('uses the runtime skip rule before missing-recipient resolution, with no false hold for quiet reminders', () => {
+    const { c, config, environment } = fixture();
+    const definition=notify(['taskOwners'],['pbp'],'off','noPre');
+    expect(M.planWorkflow(c,config,definition,environment).lines.at(-1)).toEqual({text:'Would skip: Nothing pending before the anchor date.',ok:true});
+    expect(M.runWorkflow(c,config,definition,environment,'manual')?.status).toBe('skipped');
+    expect(c.mails).toEqual([]);
+  });
+
+  it('uses canonical account destinations, dedupes by address with To winning and retains personal masking across roles', () => {
+    const { c, config, environment } = fixture();
+    const definition = notify(['supervisor'], ['address:manager.account@fictional.invalid', 'employeePersonal']);
+    const plan = M.planWorkflow(c, config, definition, { ...environment, userEmail: id => id === 'manager' ? 'manager.account@fictional.invalid' : null });
+    expect(plan.lines.at(-1)?.text).toBe(`Would send "Reminder for {employee.name}" to Name manager <manager.account@fictional.invalid>, CC Fictional Person <${maskEmail('person.home@fictional.invalid')}>`);
+    const sameMailbox = M.planWorkflow(c, config, notify(['supervisor'], ['employeePersonal']), { ...environment, userEmail: () => 'person.home@fictional.invalid' });
+    expect(sameMailbox.lines.at(-1)?.text).toBe(`Would send "Reminder for {employee.name}" to Name manager <${maskEmail('person.home@fictional.invalid')}>`);
+    expect(JSON.stringify(sameMailbox)).not.toContain('person.home@fictional.invalid');
+  });
+  it('names an unavailable verified account destination and still shows the found masked recipients without sending', () => {
+    const { c, config, environment } = fixture();
+    const plan = M.planWorkflow(c, config, notify(['employeePersonal'], ['supervisor']), { ...environment, userEmail: () => null });
+    expect(plan.lines.at(-1)).toMatchObject({ ok: false });
+    expect(plan.lines.at(-1)?.text).toContain('Name manager: no verified account email is available');
+    expect(plan.lines.at(-1)?.text).toContain(`Fictional Person <${maskEmail('person.home@fictional.invalid')}>`);
+    expect(c.mails).toEqual([]);
+  });
+
   it('shows each person and address, masks personal email unless permitted, and shows holds', () => {
     const { c, config, environment } = fixture(); const definition = notify(['employeePersonal'], ['supervisor']);
     expect(M.planWorkflow(c, config, definition, environment).lines.at(-1)?.text).toBe(`Would send "Reminder for {employee.name}" to Fictional Person <${maskEmail('person.home@fictional.invalid')}>, CC Name manager (account email)`);
@@ -166,6 +201,27 @@ describe('workflow and template validation', () => {
 });
 
 describe('one-off conversion and pre-release report', () => {
+  it('lists GBS People Ops, every Task owners use and modern Employee choices for information without flagging or converting them', () => {
+    const config = v9Defaults();
+    config.workflows = [
+      { ...notify(['peopleOps', 'address:private@fictional.invalid'], ['taskOwners', 'person:fictional-user', 'group:fictional-group'], 'off'), id: 'ops', name: 'GBS and owners' },
+      { ...notify(['employeePersonal'], ['employeeWork'], 'onb'), id: 'employee', name: 'Employee addresses' },
+      { ...notify(['taskOwners'], ['pbp'], 'off'), id: 'replace', name: 'Owners and removed PBP' },
+    ];
+    config.emails = [{ ...config.emails[0], cc: ['peopleOps', 'taskOwners'], active: false }];
+    const before = structuredClone(config);
+    expect(v9RecipientReport(config).map(row => [row.id, row.status, row.action, row.roles])).toEqual([
+      ['ops', 'published', 'information', ['peopleOps', 'taskOwners']],
+      ['employee', 'published', 'information', ['employeePersonal', 'employeeWork']],
+      ['replace', 'published', 'replace', ['taskOwners', 'pbp']],
+      [config.emails[0].id, 'inactive', 'information', ['peopleOps', 'taskOwners']],
+    ]);
+    expect(config).toEqual(before);
+    expect(JSON.stringify(v9RecipientReport(config))).not.toContain('private@fictional.invalid');
+    expect(JSON.stringify(v9RecipientReport(config))).not.toContain('fictional-user');
+    expect(JSON.stringify(v9RecipientReport(config))).not.toContain('fictional-group');
+    expect(convertV9Recipients(config).changes).toEqual([]);
+  });
   it('maps pre-start Employee choices to personal email, the rest to work email, flags them and reports removed roles', () => {
     const config = v9Defaults();
     config.workflows = [
@@ -173,7 +229,7 @@ describe('one-off conversion and pre-release report', () => {
       { ...notify(['employee'], ['employee', 'pbp'], 'off'), id: 'leaver', name: 'Leaver reminder' },
       { ...notify(['ta'], [], 'onb'), id: 'ta-only', name: 'TA note' },
     ];
-    config.emails[0].cc = ['employee'];
+    config.emails = [config.emails[0]]; config.emails[0].cc = ['employee'];
     const { config: converted, changes } = convertV9Recipients(config);
     expect(converted.workflows[0].steps[0]).toMatchObject({ to: ['employeePersonal'], cc: ['supervisor'], recipientReview: true });
     expect(converted.workflows[1].steps[0]).toMatchObject({ to: ['employeeWork'], cc: ['pbp'], recipientReview: true });
@@ -182,5 +238,15 @@ describe('one-off conversion and pre-release report', () => {
     expect(config.workflows[0].steps[0]).toMatchObject({ to: ['employee'] });
     expect(v9RecipientReport(config).map(row => [row.id, row.action, row.roles])).toEqual([['welcome', 'converted', ['employee']], ['leaver', 'replace', ['employee', 'employee', 'pbp']], ['ta-only', 'information', ['ta']], [config.emails[0].id, 'converted', ['employee']]]);
     expect(() => parseV9Config(converted)).not.toThrow();
+  });
+});
+
+describe('personal mailbox email view redaction', () => {
+  it('masks the recipient keys and every nested preview/receipt occurrence without changing stored content', () => {
+    const email = "private&'box@fictional.invalid";
+    const stored = { id: 'stable-receipt', to: ['address:'+email], cc: [], subject: email.toUpperCase(), body: 'Contact '+email, delivery: { personalKeys: ['address:'+email], toNames: [email], contact: {email}, html: '<p>private&amp;&#39;box@fictional.invalid</p>' } };
+    const before=structuredClone(stored),masked=maskPersonalEmailView(stored,['address:'+email]);
+    expect(masked).toEqual({ id: 'stable-receipt', to: ['address:p•••••@fictional.invalid'], cc: [], subject: 'p•••••@fictional.invalid', body: 'Contact p•••••@fictional.invalid', delivery: {personalKeys:['address:p•••••@fictional.invalid'],toNames:['p•••••@fictional.invalid'],contact:{email:'p•••••@fictional.invalid'},html:'<p>p•••••@fictional.invalid</p>'} });
+    expect(stored).toEqual(before);
   });
 });

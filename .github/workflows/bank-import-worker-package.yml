@@ -31,6 +31,33 @@ jobs:
           node: '22.23.3'
           path: .
           mobile: 'false'
+      - name: Verify handoff controls on the pinned worker runtime
+        timeout-minutes: 8
+        run: |
+          set -o pipefail
+          {
+            node -e "require('node:assert/strict').equal(process.versions.node, '22.23.3')"
+            python3 -I -B -c "import sys; assert sys.version_info >= (3,11) and sys.flags.safe_path and sys.flags.no_user_site; print('Worker controls Python:', sys.version.split()[0])"
+            worker_check_uid="$(id -u)"
+            worker_check_gid="$(id -g)"
+            test "$worker_check_uid" -gt 0
+            worker_checks_rc=0
+            python3 -I -B test/fixtures/bank-import-worker-upgrade-tests.py || worker_checks_rc=1
+            python3 -I -B test/fixtures/bank-import-worker-ci-runtime-tests.py || worker_checks_rc=1
+            python3 -I -B test/fixtures/bank-import-worker-operation-guard-tests.py || worker_checks_rc=1
+            sudo -n python3 -I -B test/fixtures/bank-import-worker-operation-guard-tests.py --privilege-boundary "$worker_check_uid" "$worker_check_gid" || worker_checks_rc=1
+            python3 -I -B test/fixtures/bank-import-worker-fences-tests.py || worker_checks_rc=1
+            sudo -n python3 -I -B test/fixtures/bank-import-worker-fences-tests.py --uid-race "$worker_check_uid" || worker_checks_rc=1
+            exit "$worker_checks_rc"
+          } 2>&1 | tee "$RUNNER_TEMP/worker-runtime-controls.log"
+      - name: Preserve pinned runtime control results
+        if: ${{ always() }}
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: worker-runtime-controls-v1
+          path: ${{ runner.temp }}/worker-runtime-controls.log
+          if-no-files-found: warn
+          retention-days: 14
       - name: Verify bounded worker package controls
         run: node --test scripts/bank-import-worker-package.test.mjs
       - name: Produce immutable worker bytes from this exact source

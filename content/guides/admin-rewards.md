@@ -1,12 +1,12 @@
-Rewards handles salary, promotion and bonus reviews when enabled. [Rewards configuration](/admin/rewards/plans) belongs to authorized administrators; [Rewards reviews](/rewards) is the workspace for explicitly assigned participants. The steps below apply where the relevant controls are available in your installation. If a required control is unavailable, ask the installation administrator to check its availability before proceeding.
+Rewards handles salary, promotion and bonus reviews when enabled. [Rewards configuration](/admin/rewards/review-plans) belongs to authorized administrators; [Rewards reviews](/rewards) is the workspace for explicitly assigned participants. The steps below apply where the relevant controls are available in your installation. If a required control is unavailable, ask the installation administrator to check its availability before proceeding.
 
 ## Set up a review
 
 1. Create/select the cycle, company, business unit, year and snapshot date.
-2. Review the selected shared configuration and version. Check its eligibility summary, effective dates and group policy before creating the review.
+2. Review the selected review plan and version. Check its eligibility summary, effective dates and group policy before creating the review.
 3. Use [Rewards access](/admin/rewards/access) to assign the review's BU, BG, GR, CTRO, EC and payroll responsibilities as required. An HR role alone does not grant every review role.
 4. Review employee source data and import the supported facts template if needed. Check confidentiality, performance, talent and any case decisions before submitting.
-5. Group Rewards enters the unit-specific bonus inputs in the review; those figures are separate from the shared configuration.
+5. Group Rewards enters the unit-specific bonus inputs in the review; those figures are separate from the review plan.
 6. Enter recommendations and explanations. For promotion, compare current/proposed roles and complete the required rationale and acknowledgements.
 
 ## Manage review access
@@ -17,32 +17,27 @@ Assignments are editable only while the review is Draft. Check required-role cov
 
 People changes can suspend an assignment, including resignation notice, a changed People assignment or an unavailable login. Check the displayed reason and effective dates. An explicit request to restore suspended access needs a reason and independent approval. Restoration cannot override an unavailable login or the assignment's date window; later People changes are checked again. Earlier requests, assignments and decisions remain available as history.
 
-## Share configuration and manage exclusions
+## Set up Review Plans
 
-Open [Shared rewards configuration](/admin/rewards/shared). Choose the reward year, then select company and business-unit pairs in the Business group → Business unit → Company hierarchy. Choices follow current effective People assignments, not a business unit's global catalogue availability or the company that created its label. A company with no current relationship shows an explanation instead of an empty list. Correct the underlying People assignment rather than choosing an unrelated business unit.
+Open [Review Plans](/admin/rewards/review-plans). Create a reward year and check its salary effective date, eligibility dates, salary-increase exclusion window and snapshot date. Prior-year dates move forward and can be edited. These dates apply to the whole year.
 
-Search and select-all controls apply within your permitted scope. The selected company/unit names remain above the choices while scrolling. Saved selections whose relationship is no longer valid remain visible for explicit correction; they are not silently reassigned. Review unavailable or already assigned pairs before saving. Each pair can belong to only one shared configuration for that year.
+Each eligible legal company gets one draft plan. Grouping records, archived entities, test or demo companies, aliases and companies not paid in Malaysian ringgit are left out. Review **Companies left out** to check classifications rather than adding an unsuitable company to the grid.
 
-A company exclusion covers that company for the whole reward year and prevents new unit reviews for it. It is separate from selecting business units or choosing a salary-only policy. Excluding a company or bringing it back requires a reason. Existing reviews and their records are retained.
+For each company, choose Standard plan, Uploaded awards, or Excluded – no awards. An exclusion needs a reason. Choose the active salary structure and bonus matrix for the year. Suggestions identify their source and remain highlighted until accepted or changed. Branch-factor matrices are suggested only where the company used them last year; deliberately choosing one elsewhere still needs the branch-factor acknowledgement.
 
-Inspect saved versions, compare policy and coverage changes, and check the reviews using a version. Changes create a version for future reviews; existing reviews retain their own policy snapshots, employees, budgets, access and approvals. Saving with no selected pairs archives the shared configuration for future use while retaining its history. You need authority over every company in an existing or proposed shared configuration to manage it.
+Select rows to apply choices together. **Accept all suggestions** and **Copy last year's choices** stage proposed changes; review and save them before they take effect. The coverage line shows companies ready and missing inputs. A plan becomes Ready when its required choices are reviewed, its Business Unit is confirmed and its PAT inputs are entered. There is no separate Make active step.
 
-## Edit shared policy and eligibility
+Authorized review creators can create selected reviews or all Ready reviews. Creation runs in the background with company progress and can resume safely. Uploaded-awards companies use the uploaded-awards review; excluded companies get no new review. Review creation does not replace Group Rewards preparation and release.
 
-Shared configuration holds group rules: eligibility dates, salary-increase pool percentages, merit and bonus matrices, salary ranges, bonus structure and lump-sum rules. PAT, target bonus months, multiplier overrides, branch ratings and budget-cap exemptions belong to each unit review. Editing shared policy does not change those unit inputs.
+Group Rewards, CTRO and HR Admin edit within their configuration authority; a company-scoped HR Admin edits only those companies. Creating a reward year needs whole-group authority. EC can view. Permission settings can narrow these defaults. Existing multi-company plans and versions remain read-only under **Earlier plans**.
 
-Use the salary-range and bonus-month tables instead of comma-separated text:
+## Change a company's library choices
 
-- Supply salary ranges for H and JG 12–22, with Minimum below Midpoint below Maximum. JG 23 has no range.
-- Supply bonus rows for H and JG 12–23. UA must be zero, months must rise across UA → BE → ME → AE → OU, and values support at most two decimal places.
-- **Import from Excel** checks the displayed column order and previews proposed values. Use an .xlsx file within the stated size limit. **Copy from last year’s configuration** lists only prior-year configurations you may access; choose the intended saved version and review its preview.
-- Apply proposed values to the draft, correct highlighted cells, then review and save the configuration. Importing or copying alone does not publish a configuration or update an existing review. Changing the reward year discards open copy choices and previews.
+Salary Structures and Bonus Matrices show read-only **Used by** lists, including drafts. Company assignments belong in Review Plans. Year settings own the merit matrix and pools; Limit Controls owns the limits.
 
-The branch-factor grid appears only for the PPCH branch-factor structure. Enter each segment's UA–OU factors there; UA is nil. Branch ratings are entered in the unit review, and that structure uses a fixed unit multiplier of 1.00. Standard plans do not apply dormant branch settings.
+A deliberate change to a company's salary structure or bonus matrix recalculates an existing review during set-up. After release to the BU CEO, review the impact and give a reason; the review is recalculated and its current approver is told. EC-approved reviews stay locked. Merely publishing a newer library version does not rebind an existing review.
 
-Before creating a review, check **Eligibility is judged against** for the selected configuration and version: Active as of, joined-before, confirmed-by and salary-effective dates; the salary-increase exclusion window; minimum bonus rating; notice and ER exclusions; and Senior plan treatment. The summary refreshes when the selected company, unit or year changes. A legacy configuration may identify snapshot-based status or an unspecified minimum instead of inventing a saved rule; review explicit settings before saving a new version.
-
-The salary-increase exclusion applies to employees whose basic salary changed within its dates. Their pay is excluded from the salary-increase pool base, while bonus remains subject to its own rules and uses the adjusted basic salary. A lateral transfer without a basic-salary change is not excluded for that reason.
+The salary-increase exclusion applies to employees whose basic salary changed within its dates. Their pay is excluded from the salary-increase pool base, while bonus remains subject to its own rules and uses adjusted basic salary. A lateral transfer without a basic-salary change is not excluded for that reason.
 
 ## Enter unit bonus inputs
 
@@ -56,7 +51,7 @@ Check the pool status before proceeding:
 
 Check both Standard and JG H utilisation again after an input change. Submission must fit the final pool. A budget-cap exemption requires a reason and is active when Group Rewards saves it; a recorded exemption does not bypass the final-pool submission control.
 
-A saved legacy budget basis is not automatically changed. Group Rewards must review the displayed basis and explicitly adopt unit inputs for that review. PAT figures and their change history are restricted to Group Rewards; other authorized approvers see the resulting pool and multiplier, not the underlying PAT. Shared configuration lists and version comparisons do not expose unit PAT.
+A saved legacy budget basis is not automatically changed. Group Rewards must review the displayed basis and explicitly adopt unit inputs for that review. PAT figures and their change history are restricted to Group Rewards; other authorized approvers see the resulting pool and multiplier, not the underlying PAT. Review Plans lists and version comparisons do not expose unit PAT.
 
 ## Record Senior plan decisions
 
@@ -95,7 +90,7 @@ Use [Rewards reviews](/rewards/reviews) for the review list and [Rewards](/rewar
 
 ## Configuration changes and the change log
 
-Group Rewards saves Rewards configuration directly: salary structures, bonus matrices, PAT Inputs, the Shared Rewards Configuration plan, Senior plan decisions, budget-cap exemptions and the review set-up release. **Save draft** keeps work in progress; **Save and make active** puts a change into effect. No second person confirms it. Changing PAT, a salary structure or a bonus matrix after a review that uses it has been released, releasing a review to the BU CEO and removing someone's access show **Review before saving** first: check what changes, which reviews are affected and what happens to them, then give a reason.
+Group Rewards saves Rewards configuration directly: salary structures, bonus matrices, PAT Inputs, Review Plans, Senior plan decisions, budget-cap exemptions and the review set-up release. **Save draft** keeps work in progress; **Save and make active** puts a change into effect. No second person confirms it. Changing PAT, a salary structure or a bonus matrix after a review that uses it has been released, releasing a review to the BU CEO and removing someone's access show **Review before saving** first: check what changes, which reviews are affected and what happens to them, then give a reason.
 
-Every save is recorded in the [Change log](/admin/rewards/change-log) with the person, date and time, the old and new values and the reason, and the other Rewards configuration holders receive one notice. The log can be filtered and exported to Excel. Reviews already running keep the salary structure and bonus matrix version they started with. Nobody can add or widen their own Rewards access or change the permission switches for a role they hold.
+Every save is recorded in the [Change log](/admin/rewards/change-log) with the person, date and time, the old and new values and the reason, and the other Rewards configuration holders receive one notice. The log can be filtered and exported to Excel. Reviews retain their library versions until an authorized person deliberately changes the company’s choice in Review Plans; EC-approved reviews stay locked. Nobody can add or widen their own Rewards access or change the permission switches for a role they hold.
 

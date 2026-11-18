@@ -7,7 +7,7 @@ it('imports the complete supplied definitions without fixture users or cases', (
   expect(config.templates).toHaveLength(7); expect(config.emails).toHaveLength(8);
   expect(config.checklists).toHaveLength(6); expect(config.workflows).toHaveLength(15);
   expect(config.groups.every(g => g.members.length === 0)).toBe(true);
-  expect(config.workflows.filter(w => w.status === 'draft')).toHaveLength(2);
+  expect(config.workflows.filter(w => w.status === 'draft')).toHaveLength(4);
   expect(config.workflows.find(w => w.id === 'w4')?.steps.map(s => s.type)).toEqual(['doc', 'waitSign']);
   expect(config.emails.find(e => e.id === 'e3')?.cc).toEqual(['supervisor']);
   // Board 4a60b3ec: the ready-made recipients are pinned in test/lifecycle-v9-default-recipients.test.ts.
@@ -82,4 +82,11 @@ it('allows turning an email off while protecting new or edited live workflow act
   expect(() => parseV9Config(next, previous)).toThrow('active email');
   workflow.status = 'draft';
   expect(() => parseV9Config(next, previous)).not.toThrow();
+});
+
+it('strips legacy PBP routing from stale tabs without mutating their input', () => {
+  const input = { ...v9Defaults(), bpRules: [{ rules: {}, userId: '11111111-1111-4111-8111-111111111111' }] };
+  expect(parseV9Config(input)).not.toHaveProperty('bpRules');
+  expect(input.bpRules).toHaveLength(1);
+  expect(v9Defaults()).not.toHaveProperty('bpRules');
 });

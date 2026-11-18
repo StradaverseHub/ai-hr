@@ -23,7 +23,7 @@ export type Rules = Partial<Record<RuleField, string[]>>;
 export type Facts = Record<RuleField, string> & EmploymentConfirmationDates & {
   name: string; employeeNo: string; employmentId: string; personId: string;
   joinDate: string; lastDay: string; noticeDate: string;
-  employeeUserId: string | null; supervisorUserId: string | null; pbpUserId: string | null; taUserId: string | null; starterUserId?: string | null;
+  employeeUserId: string | null; supervisorUserId: string | null; taUserId: string | null; starterUserId?: string | null;
 };
 export type Actor = { id: string; name: string };
 export type Log = { id: string; at: string; actor: Actor; action: string; detail: string; userId?: string; groupId?: string };
@@ -201,7 +201,6 @@ export type Config = {
   groupsRevision?: number;
   caseForms?: Partial<Record<Module, CaseField[]>>;
   emails: EmailTemplate[]; workflows: Workflow[]; groups: Group[]; peopleOpsGroup: string | null;
-  bpRules: { rules: Pick<Rules, 'businessGroup' | 'company' | 'department'>; userId: string }[];
   settlementPolicy?: SettlementPolicy;
   signatoryTitles?: Record<string,string>;
   companies?: { companyId: string; signatoryUserId: string | null; signatoryTitle: string; allowedSignatoryUserIds?: string[]; letterhead?: { registrationNo?: string; address?: string; color?: string } }[];
@@ -214,6 +213,10 @@ export type Environment = {
   /** Services reject identities without an authorized verified destination before delivery. */
   eligibleUser: (userId: string) => boolean;
   userName: (userId: string) => string;
+  /** Auth-owned actual account destination, provided only by the server's bounded preview read. */
+  userEmail?: (userId: string) => string | null;
+  /** Current PM supervisor account; null deliberately overrides an obsolete case snapshot. */
+  supervisorUserId?: string | null;
   mergeValues: Record<string, string>;
   signatoryUserId?: string | null;
   actorSignatoryTitle?: string;
@@ -257,11 +260,6 @@ export function matchChecklist(config: Config, c: Pick<Case, 'module' | 'facts' 
   if (c.override !== 'automatic') { const selected = lists.find(x => x.id === c.override); if (!selected) throw new V9Error('The selected checklist no longer exists.'); return { checklist: selected, tie: false }; }
   const ranked = lists.filter(x => matches(x.rules, c.facts)).map((x, index) => ({ x, index })).sort((a, b) => specificity(b.x.rules) - specificity(a.x.rules) || a.index - b.index);
   return { checklist: ranked[0]?.x ?? null, tie: ranked.length > 1 && specificity(ranked[0].x.rules) === specificity(ranked[1].x.rules) };
-}
-export function resolvePbp(config: Config, facts: Facts): string | null {
-  if (facts.pbpUserId) return facts.pbpUserId;
-  const score = (r: Rules) => (r.businessGroup?.length ? 4 : 0) + (r.company?.length ? 2 : 0) + (r.department?.length ? 1 : 0);
-  return config.bpRules.filter(r => matches(r.rules, facts)).map((r, index) => ({ r, index })).sort((a, b) => score(b.r.rules) - score(a.r.rules) || a.index - b.index)[0]?.r.userId ?? null;
 }
 export function assign(config: Config, groupId: string | null, due: string, env: Environment, extra: Record<string, number>, tieBreak: 'recent' | 'memberOrder' = 'recent', exclude: string | null = null): { userId: string | null; reason: string | null } {
   const group = config.groups.find(g => g.id === groupId);
@@ -541,7 +539,7 @@ function recipients(c: Case, config: Config, role: Role): string[] {
   if (role.startsWith('group:')) return config.groups.find(group => group.id === role.slice(6))?.members ?? [];
   if (role === 'peopleOps') return config.groups.find(g => g.id === config.peopleOpsGroup)?.members ?? [];
   if (role === 'taskOwners') return [...new Set(pendingPre(c).map(t => t.assignee).filter((id): id is string => !!id))];
-  const id = role === 'employee' ? c.facts.employeeUserId : role === 'supervisor' ? c.facts.supervisorUserId : role === 'pbp' ? resolvePbp(config, c.facts) : role === 'ta' ? c.facts.taUserId : role === 'hrSignatory' ? config.companies?.find(company => company.companyId === c.facts.company)?.signatoryUserId : role === 'starter' ? c.facts.starterUserId ?? c.log.find(log => log.action === 'case.submitted')?.actor.id : null;
+  const id = role === 'employee' ? c.facts.employeeUserId : role === 'supervisor' ? c.facts.supervisorUserId : role === 'ta' ? c.facts.taUserId : role === 'hrSignatory' ? config.companies?.find(company => company.companyId === c.facts.company)?.signatoryUserId : role === 'starter' ? c.facts.starterUserId ?? c.log.find(log => log.action === 'case.submitted')?.actor.id : null;
   return id ? [id] : [];
 }
 function recipientLabel(role: Role, config: Config, env: Pick<Environment, 'userName'>): string {
@@ -551,7 +549,7 @@ export type ResolvedRecipient = { key: string; name: string; personal?: true };
 export type StepRecipients = { to: ResolvedRecipient[]; cc: ResolvedRecipient[]; missing: RecipientMissing[]; contact?: { email: string; sourceRevision: string } };
 const literalEmail = (value: string | undefined) => { const email = value?.trim() ?? ''; return email && v9LiteralAddress('address:' + email) ? email : null; };
 /** One role, looked up now: Employee and Line manager come from the current Personnel facts, never the case's creation. */
-function resolveRole(c: Case, config: Config, role: Role, env: Pick<Environment, 'eligibleUser' | 'userName' | 'mergeValues' | 'onboardingContact'>): { found: ResolvedRecipient[]; reason: string | null; contact?: { email: string; sourceRevision: string } } {
+function resolveRole(c: Case, config: Config, role: Role, env: Pick<Environment, 'eligibleUser' | 'userName' | 'mergeValues' | 'onboardingContact' | 'supervisorUserId'>): { found: ResolvedRecipient[]; reason: string | null; contact?: { email: string; sourceRevision: string } } {
   const user = (id: string | null | undefined, none: string, inactive = 'no longer has an active account') => !id ? { found: [], reason: none } : env.eligibleUser(id) ? { found: [{ key: id, name: recipientName(id, env) }], reason: null } : { found: [], reason: inactive };
   if (role.startsWith('address:')) return v9LiteralAddress(role) ? { found: [{ key: role, name: v9LiteralAddress(role)! }], reason: null } : { found: [], reason: 'not a valid email address' };
   if (role.startsWith('person:')) return user(role.slice(7), 'no person is chosen');
@@ -571,14 +569,14 @@ function resolveRole(c: Case, config: Config, role: Role, env: Pick<Environment,
     const contact = c.module === 'onb' ? env.onboardingContact : undefined;
     return contact ? { found: [{ key: contact.email, name: c.facts.name }], reason: null, contact } : { found: [], reason: 'Employee login is not linked' };
   }
-  if (role === 'supervisor') return user(c.facts.supervisorUserId, 'no supervisor on the Personnel record', 'the line manager has no active account');
+  if (role === 'supervisor') return user(env.supervisorUserId === undefined ? c.facts.supervisorUserId : env.supervisorUserId, 'no supervisor on the Personnel record', 'the line manager has no active account');
   if (role === 'ta') return user(c.facts.taUserId && env.eligibleUser(c.facts.taUserId) ? c.facts.taUserId : null, 'the TA is not linked to a user');
   if (role === 'hrSignatory') return user(config.companies?.find(company => company.companyId === c.facts.company)?.signatoryUserId, 'no HR signatory is set for the company');
   if (role === 'taskOwners') {
     const owners = [...new Set(pendingPre(c).map(task => task.assignee).filter((id): id is string => !!id))].filter(env.eligibleUser);
     return owners.length ? { found: owners.map(id => ({ key: id, name: recipientName(id, env) })), reason: null } : { found: [], reason: 'no open task has an owner' };
   }
-  if (role === 'pbp') return user(resolvePbp(config, c.facts), 'no PBP is found for this case');
+  if (role === 'pbp') return { found: [], reason: 'PBP routing has been removed; replace this recipient' };
   if (role === 'peopleOps') {
     // The group chosen as the GBS People Ops group in Settings, every active member, looked up when the email goes out.
     if (!config.groups.some(group => group.id === config.peopleOpsGroup)) return { found: [], reason: 'no GBS People Ops group is chosen in Settings' };
@@ -589,7 +587,7 @@ function resolveRole(c: Case, config: Config, role: Role, env: Pick<Environment,
   return { found: [], reason: 'this recipient is unavailable' };
 }
 /** To and CC for one email, with every missing recipient named. One copy per address; To wins over CC. */
-export function resolveStepRecipients(c: Case, config: Config, roles: { to: Role[]; cc: Role[] }, env: Pick<Environment, 'eligibleUser' | 'userName' | 'mergeValues' | 'onboardingContact'>): StepRecipients {
+export function resolveStepRecipients(c: Case, config: Config, roles: { to: Role[]; cc: Role[] }, env: Pick<Environment, 'eligibleUser' | 'userName' | 'mergeValues' | 'onboardingContact' | 'supervisorUserId'>): StepRecipients {
   const missing: RecipientMissing[] = [], seen = new Set<string>(), out: StepRecipients = { to: [], cc: [], missing };
   for (const position of ['to', 'cc'] as const) for (const role of roles[position]) {
     const result = resolveRole(c, config, role, env);
@@ -850,18 +848,31 @@ export function testWorkflowMessages(c: Case, config: Config, workflowId: string
   }
 }
 /** Source dry run: inspect every step against current data, independent of submission/date eligibility. */
-export type PlanEnvironment = Pick<Environment, 'today' | 'userName'> & Partial<Pick<Environment, 'eligibleUser' | 'mergeValues' | 'onboardingContact'>> & { revealPersonal?: boolean; workflowId?: string | null };
+export type PlanEnvironment = Pick<Environment, 'today' | 'userName'> & Partial<Pick<Environment, 'eligibleUser' | 'mergeValues' | 'onboardingContact' | 'userEmail' | 'supervisorUserId'>> & { revealPersonal?: boolean; workflowId?: string | null };
 export function planWorkflow(c: Case, config: Config, workflow: Workflow, env: PlanEnvironment): { matches: boolean; lines: { text: string; ok: boolean }[] } {
   const matches = workflowMatches(c, workflow, env.today), lines: { text: string; ok: boolean }[] = [];
   if (!matches) return { matches, lines: [{ text: 'Skipped: this record does not match the conditions.', ok: false }] };
   lines.push({ text: 'Conditions match.', ok: true });
-  const lookup = { eligibleUser: env.eligibleUser ?? (() => true), userName: env.userName, mergeValues: env.mergeValues ?? {}, onboardingContact: env.onboardingContact };
+  const skipped = skipReason(c, workflow, config);
+  if (skipped) return { matches, lines: [...lines, { text: `Would skip: ${skipped}`, ok: true }] };
+  const lookup = { eligibleUser: env.eligibleUser ?? (() => true), userName: env.userName, mergeValues: env.mergeValues ?? {}, onboardingContact: env.onboardingContact, supervisorUserId: env.supervisorUserId };
+  // A selected personal mailbox stays protected when another role resolves to the same address.
+  const protectedPersonal = literalEmail(env.mergeValues?.personalEmail)?.toLowerCase();
   // Each person and the address they are reached at. Personal email is masked unless the viewer may see it.
-  const shown = (recipient: ResolvedRecipient) => { const address = v9LiteralAddress(recipient.key) ?? (recipient.key.includes('@') ? recipient.key : null); return address ? `${recipient.name} <${recipient.personal && !env.revealPersonal ? maskEmail(address) : address}>` : `${recipient.name} (account email)`; };
+  const shown = (recipient: ResolvedRecipient) => { const address = v9LiteralAddress(recipient.key) ?? (recipient.key.includes('@') ? recipient.key : env.userEmail?.(recipient.key)); return address ? `${recipient.name} <${(recipient.personal || address.toLowerCase() === protectedPersonal) && !env.revealPersonal ? maskEmail(address) : address}>` : `${recipient.name} (account email)`; };
   const message = (step: Extract<Step, { type: 'email' | 'notify' }>, what: string, active: boolean) => {
     const email = step.type === 'email' ? config.emails.find(e => e.id === step.template) : null;
     const roles = stepRecipientRoles(c, env.workflowId ?? workflow.id, step, email), resolved = resolveStepRecipients(c, config, roles, lookup);
-    if (resolved.missing.length) return { text: `Would hold ${what}: nobody is emailed because ${resolved.missing.map(entry => `${entry.label}: ${entry.reason}`).join('; ')}.`, ok: false };
+    if (env.userEmail) {
+      // Match the delivery owner's address dedupe, including a literal address equal to an account destination.
+      const seen = new Set<string>();
+      for (const position of ['to', 'cc'] as const) resolved[position] = resolved[position].filter(recipient => {
+        const address = v9LiteralAddress(recipient.key) ?? (recipient.key.includes('@') ? recipient.key : env.userEmail!(recipient.key));
+        if (!address) { resolved.missing.push({ role: `person:${recipient.key}`, label: recipient.name, reason: 'no verified account email is available' }); return true; }
+        const key = address.toLowerCase(); if (seen.has(key)) return false; seen.add(key); return true;
+      });
+    }
+    if (resolved.missing.length) return { text: `Would hold ${what}: nobody is emailed because ${resolved.missing.map(entry => `${entry.label}: ${entry.reason}`).join('; ')}.${env.userEmail && (resolved.to.length || resolved.cc.length) ? ` Found To: ${resolved.to.map(shown).join(', ') || 'No one'}; CC: ${resolved.cc.map(shown).join(', ') || 'No one'}.` : ''}`, ok: false };
     return { text: `Would send ${what} to ${resolved.to.map(shown).join(', ')}${resolved.cc.length ? ', CC ' + resolved.cc.map(shown).join(', ') : ''}${roles.overridden ? ' (recipients changed for this case)' : ''}`, ok: active };
   };
   for (const step of workflow.steps) {
@@ -1014,8 +1025,8 @@ export function lastDayCheck(c: Case, config: Config, env: Environment, figures:
   c.review = { firstAt: c.review?.firstAt ?? env.now, open: state.open.length, overdue: state.open.filter(t => t.dueOn <= env.today).length, notReturned: state.notReturned.length, detail };
   if (!first) return 'unchanged';
   appendLog(c, env, 'case.reviewRequired', detail);
-  const ops = recipients(c, config, 'peopleOps').filter(env.eligibleUser), pbp = resolvePbp(config, c.facts);
-  if (ops.length) c.mails.push({ id: env.nextId(), key: 'last-day-review', workflowId: null, templateId: null, to: [ops[0]], cc: [...new Set([...ops.slice(1), ...(pbp && env.eligibleUser(pbp) ? [pbp] : [])])].filter(id => id !== ops[0]), subject: `${c.facts.name}: last working day reached, case not closed`, body: `${c.facts.name}'s last working day (${c.facts.lastDay}) has been reached.\n\n${detail}\n\nPlease review the case.`, documentIds: [], fileIds: [], delivery: { version: 1, queuedBy: { ...env.actor }, sender: 'noreply', linkDocumentIds: [], pdfDocumentIds: [], toNames: [env.userName(ops[0])], ccNames: [...new Set([...ops.slice(1), ...(pbp && env.eligibleUser(pbp) ? [pbp] : [])])].filter(id => id !== ops[0]).map(env.userName) }, status: 'pending', test: false, at: env.now, deliveredAt: null, failure: null });
+  const ops = recipients(c, config, 'peopleOps').filter(env.eligibleUser);
+  if (ops.length) c.mails.push({ id: env.nextId(), key: 'last-day-review', workflowId: null, templateId: null, to: [ops[0]], cc: ops.slice(1), subject: `${c.facts.name}: last working day reached, case not closed`, body: `${c.facts.name}'s last working day (${c.facts.lastDay}) has been reached.\n\n${detail}\n\nPlease review the case.`, documentIds: [], fileIds: [], delivery: { version: 1, queuedBy: { ...env.actor }, sender: 'noreply', linkDocumentIds: [], pdfDocumentIds: [], toNames: [env.userName(ops[0])], ccNames: ops.slice(1).map(env.userName) }, status: 'pending', test: false, at: env.now, deliveredAt: null, failure: null });
   else appendLog(c, env, 'email.routingFailed', 'No eligible People Ops recipient for the last working day review.');
   return 'flagged';
 }

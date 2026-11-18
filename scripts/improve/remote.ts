@@ -16,6 +16,8 @@ import { RELEASE_STAGES, type FeedbackReleaseStage } from '../../lib/feedback-re
 import {dialogueText, FEEDBACK_QUESTION_LIMIT} from '../../lib/feedback-dialogue';
 import {FEEDBACK_DIALOGUE_SOURCE_AGGREGATE, FEEDBACK_DIALOGUE_SOURCE_WINDOW} from '../../lib/feedback-dialogue-source';
 
+import { recipientReportRoles, v9RecipientReport } from '../../lib/lifecycle-v9-recipients';
+
 const SSH = operatorSsh();
 const TARGET = SSH.target;
 const DIR = SSH.remoteDir;
@@ -119,6 +121,33 @@ function remote(cmd: string, stdin?: string): string {
 /** Private operator transport; never import into application request code. */
 export const runFeedbackOperatorSql = (statement: string): string =>
   remote('psql "$MIGRATION_DATABASE_URL" -X -q -A -t -v ON_ERROR_STOP=1 -f -', statement);
+
+/** Operator-only inventory for board 4a60b3ec and the 42f2b8a9 removal precondition. The database
+ * rejects writes for this session, and no case facts, addresses or message bodies leave the server. */
+export function lifecycleRecipientReport() {
+  // Filter before crossing SSH too: literal addresses and named users/groups are outside this inventory.
+  const roles = recipientReportRoles.map(role => `'${role}'`).join(',');
+  const roleArray = (expression: string) => `(select coalesce(jsonb_agg(value order by position), '[]') from jsonb_array_elements(
+    case jsonb_typeof(${expression}) when 'array' then ${expression} when 'string' then jsonb_build_array(${expression}) else '[]'::jsonb end
+    ) with ordinality as report_role(value,position) where value #>> '{}' in (${roles}))`;
+  const query = `select coalesce(json_agg(row_to_json(r)), '[]') from (
+    select v.tenant_id as "tenantId", t.name as "tenantName", jsonb_build_object(
+      'workflows', coalesce((select jsonb_agg(jsonb_build_object(
+        'id', w->'id', 'name', w->'name', 'module', w->'module', 'status', w->'status', 'trigger', w->'trigger',
+        'steps', coalesce((select jsonb_agg(jsonb_build_object('id', s->'id', 'type', s->'type',
+          'to', ${roleArray("s->'to'")}, 'cc', ${roleArray("s->'cc'")})) from jsonb_array_elements(coalesce(w->'steps', '[]')) s
+          where s->>'type' in ('email','notify')), '[]')))
+        from jsonb_array_elements(coalesce(v.data->'workflows', '[]')) w), '[]'),
+      'emails', coalesce((select jsonb_agg(jsonb_build_object('id', e->'id', 'name', e->'name',
+        'module', e->'module', 'active', e->'active', 'cc', ${roleArray("e->'cc'")}))
+        from jsonb_array_elements(coalesce(v.data->'emails', '[]')) e), '[]')) as config
+    from lc_v9_config v join tenant t on t.id=v.tenant_id order by t.name,v.tenant_id
+  ) r`;
+  const rows = JSON.parse(remote('PGOPTIONS="-c default_transaction_read_only=on" psql "$MIGRATION_DATABASE_URL" -X -v ON_ERROR_STOP=1 -tA -f -', query)) as {
+    tenantId: string; tenantName: string; config: Parameters<typeof v9RecipientReport>[0];
+  }[];
+  return rows.map(row => ({ tenantId: row.tenantId, tenantName: row.tenantName, recipients: v9RecipientReport(row.config) }));
+}
 
 /** One time this item was parked on a question, and what was said back (migration 0323). */
 export type RemoteBlockEpisode = {

@@ -115,10 +115,18 @@ export function NotificationCenter({
     return title&&body&&title.part==='title'&&body.part==='body'&&title.group===body.group&&title.outcome===body.outcome
       ?{title:tBulk(`${title.group}.${title.outcome}.title`),body:tBulk(`${body.group}.${body.outcome}.body`)}:null;
   },[tBulk]);
-  const notificationText=useCallback((item:NotificationRow)=>reminderText(item)??bulkJobText(item)??(item.kind==='employee-home.greeting'
+  const tReviewPlans=useTranslations('rewardsReviewPlans');
+  // Review Plans recipes store fixed message keys. Translate only the exact kind/key contract; company/year
+  // identity text on the new-company notice remains the stored body, never a translation expression.
+  const reviewPlanText=useCallback((item:NotificationRow)=>{
+    if(item.kind==='rewards.plan-company-added'&&item.title==='rewardsReviewPlans.newCompanyTitle')return{title:tReviewPlans('newCompanyTitle'),body:item.body};
+    if(item.kind==='rewards.plan-rebound'&&item.title==='rewardsReviewPlans.rebindNotificationTitle'&&item.body==='rewardsReviewPlans.rebindNotificationBody')return{title:tReviewPlans('rebindNotificationTitle'),body:tReviewPlans('rebindNotificationBody')};
+    return null;
+  },[tReviewPlans]);
+  const notificationText=useCallback((item:NotificationRow)=>reminderText(item)??bulkJobText(item)??reviewPlanText(item)??(item.kind==='employee-home.greeting'
     &&item.title==='employeeHome.greetingNotification.title'&&item.body==='employeeHome.greetingNotification.body'
     ?{title:tGreeting('title'),body:tGreeting('body')}:typeof item.kind==='string'&&item.body==='letters.notifications.body'&&item.title==='letters.notifications.'+item.kind.slice(7)&&['letter.approval','letter.approvalReminder','letter.escalation','letter.issued','letter.acknowledgementReminder','letter.returned','letter.rejected','letter.approved','letter.acknowledged','letter.signed','letter.created'].includes(item.kind)
-    ?{title:tLetter(item.kind.slice(7)),body:tLetter('body')}:{title:item.title,body:item.body}),[tGreeting,tLetter,reminderText,bulkJobText]);
+    ?{title:tLetter(item.kind.slice(7)),body:tLetter('body')}:{title:item.title,body:item.body}),[tGreeting,tLetter,reminderText,bulkJobText,reviewPlanText]);
   const router = useRouter();
   const [open, setOpen] = useState(false);
   const [tab, setTab] = useState<TabKey>('notifications');

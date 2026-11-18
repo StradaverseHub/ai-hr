@@ -12,7 +12,7 @@ import type { Config, Item } from '../lib/lifecycle-v9-model';
 vi.mock('../app/lifecycle/v9/actions', () => ({ readV9Case: vi.fn(), commandV9: vi.fn() }));
 vi.mock('next/navigation', () => ({ useRouter: () => ({ refresh: vi.fn() }) }));
 
-const config = { version: 9, revision: 1, checklists: [], templates: [], emails: [], workflows: [], peopleOpsGroup: null, bpRules: [], groups: [{ id: 'group-tech', name: 'Group Tech', members: ['alex', 'fictional-employee'], limit: 8 }, { id: 'facility', name: 'Facility', members: ['fay'], limit: 4 }] } as unknown as Config;
+const config = { version: 9, revision: 1, checklists: [], templates: [], emails: [], workflows: [], peopleOpsGroup: null, groups: [{ id: 'group-tech', name: 'Group Tech', members: ['alex', 'fictional-employee'], limit: 8 }, { id: 'facility', name: 'Facility', members: ['fay'], limit: 4 }] } as unknown as Config;
 const users = [{ id: 'alex', name: 'Alex Tan' }, { id: 'fay', name: 'Fay Lim' }, { id: 'fictional-employee', name: 'Fictional Employee' }];
 const item = (patch: Partial<Item>): Item => ({ id: 'i', name: 'Item', kind: 'system', sourceId: null, group: 'group-tech', assignee: null, dueOn: '2026-11-30', status: 'todo', reason: '', ...patch });
 const items: Item[] = [

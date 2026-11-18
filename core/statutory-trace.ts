@@ -1,3 +1,5 @@
+import { nonEpfStatutoryWage } from './statutory-wage-inclusion';
+
 /**
  * Item 69d6ed3c — THE KERNEL HALF OF STATUTORY TRACE v1.
  *
@@ -60,12 +62,11 @@ export type TraceSourceLine = {
  *   bonus     → if ticked EPF: EPF NORMAL wages on a line stamped `epfNormalStream` (an 'additional'-classified
  *               item not ticked EPF Bonus 2012 — owner decision B, 2026-11-13; since 2026-11-14 also a legacy
  *               unclassified item ticked EPF and not SOCSO), otherwise EPF bonus wages;
- *               SOCSO/EIS wages only if ticked SOCSO AND not EPF Bonus 2012 (a declared bonus is not SOCSO
- *               wages, SOCSO Act 1969 s.2);
+ *               SOCSO/EIS/SKBBK wages if ticked SOCSO, independently of EPF Bonus 2012;
  *   ot        → never EPF; always SOCSO/EIS wages (on a run that charges its own overtime);
  *   reimburse → no base, EXCEPT on a line stamped `exemptStatutory`: a PCB-exempt slice, which follows the
  *               item's ticks exactly as its taxable money does (owner decision A, 2026-11-13) — EPF normal
- *               (EPF bonus under EPF Bonus 2012), SOCSO/EIS if ticked and not EPF Bonus 2012;
+ *               (EPF bonus under EPF Bonus 2012), SOCSO/EIS/SKBBK if ticked;
  *   deduct    → out of each base whose box is ticked.
  */
 export function buildStatutoryTraceLines(p: {
@@ -100,11 +101,11 @@ export function buildStatutoryTraceLines(p: {
       } else if (bucket === 'bonus') {
         if (l.epf && l.epfNormalStream && !b2012) epfNormal = round2(epfNormal + a);
         else if (l.epf) epfBonus = round2(epfBonus + a);
-        if (l.socso && !b2012) socsoEis = round2(socsoEis + a);
+        socsoEis = round2(socsoEis + nonEpfStatutoryWage(a, l.socso));
       } else if (bucket === 'reimburse' && l.exemptStatutory) {
         if (l.epf && b2012) epfBonus = round2(epfBonus + a);
         else if (l.epf) epfNormal = round2(epfNormal + a);
-        if (l.socso && !b2012) socsoEis = round2(socsoEis + a);
+        socsoEis = round2(socsoEis + nonEpfStatutoryWage(a, l.socso));
       } else if (bucket === 'ot') {
         socsoEis = round2(socsoEis + a);
       }

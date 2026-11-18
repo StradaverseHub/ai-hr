@@ -78,6 +78,32 @@ function hasAssistantSessionGuard(source:string){
  const ast=ts.createSourceFile('layout.tsx',source,ts.ScriptTarget.Latest,true,ts.ScriptKind.TSX);let guarded=false;
  const visit=(node:ts.Node)=>{if(ts.isAwaitExpression(node)&&ts.isCallExpression(node.expression)&&ts.isIdentifier(node.expression.expression)&&node.expression.expression.text==='getBrowserCommandSession')guarded=true;ts.forEachChild(node,visit);};visit(ast);return guarded;
 }
+/** Review Plans resolves one authenticated module session, then the native SQL owner admits it.
+ * Only this actual exported page/import/call chain counts; inert names and coarse roles do not. */
+function hasRewardReviewPlansGuard(source:string):boolean{
+ const ast=ts.createSourceFile('page.tsx',source,ts.ScriptTarget.Latest,true,ts.ScriptKind.TSX);
+ const imports=(module:string,name:string)=>ast.statements.some(statement=>ts.isImportDeclaration(statement)&&ts.isStringLiteral(statement.moduleSpecifier)
+  &&statement.moduleSpecifier.text===module&&statement.importClause?.namedBindings&&ts.isNamedImports(statement.importClause.namedBindings)
+  &&statement.importClause.namedBindings.elements.some(binding=>!binding.propertyName&&binding.name.text===name));
+ if(!imports('@/lib/authz','requireModule')||!imports('@/packs/rewards/review-plans','rewardReviewPlans'))return false;
+ const page=ast.statements.find(statement=>ts.isFunctionDeclaration(statement)&&statement.modifiers?.some(modifier=>modifier.kind===ts.SyntaxKind.ExportKeyword)
+  &&statement.modifiers.some(modifier=>modifier.kind===ts.SyntaxKind.DefaultKeyword)&&statement.modifiers.some(modifier=>modifier.kind===ts.SyntaxKind.AsyncKeyword));
+ if(!page||!ts.isFunctionDeclaration(page)||!page.body)return false;
+ const sessions=new Map<string,number>();let guarded=false;
+ // A disconnected nested helper is not the exported page's admission chain.
+ const walk=(node:ts.Node)=>{if(node!==page.body&&(ts.isFunctionDeclaration(node)||ts.isArrowFunction(node)||ts.isFunctionExpression(node)))return;visitShallow(node);ts.forEachChild(node,walk);};
+ const visitShallow=(node:ts.Node)=>{
+  if(ts.isVariableDeclaration(node)&&ts.isIdentifier(node.name)&&node.initializer&&ts.isAwaitExpression(node.initializer)&&ts.isCallExpression(node.initializer.expression)){
+   const call=node.initializer.expression;
+   if(ts.isIdentifier(call.expression)&&call.expression.text==='requireModule'&&call.arguments.length===1&&ts.isStringLiteral(call.arguments[0])&&call.arguments[0].text==='rewards')sessions.set(node.name.text,node.end);
+  }
+  if(ts.isAwaitExpression(node)&&ts.isCallExpression(node.expression)){
+   const call=node.expression;
+   if(ts.isIdentifier(call.expression)&&call.expression.text==='rewardReviewPlans'&&call.arguments.length===2&&ts.isIdentifier(call.arguments[0])&&(sessions.get(call.arguments[0].text)??Infinity)<node.pos)guarded=true;
+  }
+ };
+ walk(page.body);return guarded;
+}
 function hasBookmarkHandlerGuards(source: string, requiredModule?: 'claims' | 'rewards', requiresAdmin = true): boolean {
   const ast = ts.createSourceFile('route.ts', source, ts.ScriptTarget.Latest, true);
   for (const statement of ast.statements) {
@@ -143,7 +169,8 @@ function guardedRoutes(): string[] {
         const guardedAssistant = assistantGuard && path.relative(APP, p).split(path.sep)[0] === 'assistant';
         const guardedAnalytics = analyticsGuard && p === path.join(APP, 'rewards/analytics/page.tsx')
           && /from '\.\/report'/.test(source) && /\bloadRewardsAnalytics\s*\(/.test(source);
-        if (!GUARD_RE.test(source) && !guardedAssistant && !guardedAnalytics) continue;
+        const guardedRewardPlans=p===path.join(APP,'admin/rewards/review-plans/page.tsx')&&hasRewardReviewPlansGuard(source);
+        if (!GUARD_RE.test(source) && !guardedAssistant && !guardedAnalytics && !guardedRewardPlans) continue;
         // app/foo/bar/page.tsx -> /foo/bar ; app/page.tsx -> /
         const rel = path.relative(APP, p).replace(/\\/g, '/'); // e.g. "foo/bar/page.tsx" or "page.tsx"
         const route = rel.replace(/(^|\/)page\.tsx$/, '');
@@ -280,6 +307,25 @@ describe('function-access registry (lib/permissions)', () => {
     expect(String(getPath(en,'admin.users.scope.assistantWorkspace'))).toContain('do not grant effect permission');
   });
 
+  it('recognizes the actual Review Plans native guard chain and rejects inert or disconnected calls',()=>{
+    const source=fs.readFileSync(path.join(APP,'admin/rewards/review-plans/page.tsx'),'utf8');
+    expect(hasRewardReviewPlansGuard(source)).toBe(true);
+    for(const altered of [source.replace("await requireModule('rewards')","requireModule('rewards')"),source.replace("requireModule('rewards')","requireModule('payroll')"),
+      source.replace('await rewardReviewPlans(s,','rewardReviewPlans(s,'),source.replace('rewardReviewPlans(s,','rewardReviewPlans(otherSession,'),
+      source.replace("from '@/packs/rewards/review-plans'","from '@/packs/rewards/foreign'"),source.replace('data=await rewardReviewPlans(s,','data=await foreignReader(s,')])expect(hasRewardReviewPlansGuard(altered)).toBe(false);
+    const imports="import {requireModule} from '@/lib/authz'; import {rewardReviewPlans} from '@/packs/rewards/review-plans';";
+    expect(hasRewardReviewPlansGuard(imports+"export default async function Page(){/* await requireModule('rewards'); await rewardReviewPlans(s,{year:2026}); */ return 'requireModule rewardReviewPlans';}")).toBe(false);
+    expect(hasRewardReviewPlansGuard(imports+"export default async function Page(){async function unused(){const s=await requireModule('rewards');await rewardReviewPlans(s,{year:2026});}return null;}")).toBe(false);
+  });
+  it('presents native Rewards plan and history access conditionally for every platform role',()=>{
+    const plans=SCREENS.find(row=>row.screenKey==='rewardsAdmin')!,history=SCREENS.find(row=>row.screenKey==='rewardsHistoryUpload')!;
+    expect(plans).toMatchObject({guard:'rewardReviewPlans',conditionalAccess:true,hasScopeNote:true});
+    expect(plans.routes).toContain('/admin/rewards/earlier-plans');
+    expect(history).toMatchObject({guard:'scopedSession',conditionalAccess:true,hasScopeNote:true,routes:['/rewards/history-upload']});
+    for(const role of MATRIX_ROLES){expect(canReach(role,plans)).toBe(true);expect(canReach(role,history)).toBe(true);}
+    expect(String(getPath(en,'admin.users.scope.rewardsAdmin'))).toContain('platform role alone');
+    expect(String(getPath(en,'admin.users.scope.rewardsHistoryUpload'))).toContain('HR administrator status alone does not grant');
+  });
   it('MATRIX_ROLES is exactly the roleEnum set (a new role forces a new grid row)', () => {
     expect([...MATRIX_ROLES].sort()).toEqual([...roleEnum.enumValues].sort());
   });
@@ -344,7 +390,7 @@ describe('function-access registry (lib/permissions)', () => {
   // assertion that matters: neither operator nor performance_partner is an admin role, so the loop below
   // also proves neither reaches a requireAdmin/scopedAdmin screen.
   it('access is guard-derived and honest: admin/scopedAdmin → 2 admin roles, scopedSession → all 9', () => {
-    const guardExpect: Record<Guard, number> = { requireSecurityCenter:9, requireGroupAdministration:2, assistantSession: 9, requireWorkforceAccess: 9, requireAccessConfiguration: 9, requireAdmin: 2, scopedAdmin: 2, scopedSession: 9, requireTeamAccess: 3, onboardingAccess: 9, onboardingParticipant: 9, onboardingMaster: 2 };
+    const guardExpect: Record<Guard, number> = { rewardReviewPlans:9, requireSecurityCenter:9, requireGroupAdministration:2, assistantSession: 9, requireWorkforceAccess: 9, requireAccessConfiguration: 9, requireAdmin: 2, scopedAdmin: 2, scopedSession: 9, requireTeamAccess: 3, onboardingAccess: 9, onboardingParticipant: 9, onboardingMaster: 2 };
 
     for (const g of Object.keys(guardExpect) as Guard[]) {
       expect(rolesForGuard(g).size, g).toBe(guardExpect[g]);

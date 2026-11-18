@@ -1,5 +1,5 @@
 /** Bounded operator-owned coordinator. No application principal, provider call, build or deploy. */
-import {askClarificationSql, pushPlanSql, attachPlanMockupsSql, runFeedbackOperatorSql, type PlanMockup} from './remote';
+import {askClarificationSql, pushPlanSql, attachPlanMockupsSql, runFeedbackOperatorSql, type PlanMockup, type RemoteFeedback, type RemoteBlockEpisode, type RemoteAttachment} from './remote';
 import {createHash} from 'node:crypto';
 const uuid = /^[a-f0-9]{8}(-[a-f0-9]{4}){3}-[a-f0-9]{12}$/i;
 const digest = /^[a-f0-9]{64}$/;
@@ -18,8 +18,8 @@ const snapshotDigest = (expr: string) => `encode(sha256(convert_to((${expr})::te
 export type Pickup = {tenantId: string; worker: string; limit?: number; feedbackIds?:string[]};
 export type ClaimedFeedback = {
  claimToken:string; sourceDigest:string; dialogueDigest:string;
- report:{id:string;tenant_id:string;reporter_employment_id:string|null;plan_revision:number};
- block_trail:unknown[]; attachments:unknown[];
+ report:Omit<RemoteFeedback,'block_trail'|'dialogue_digest'>;
+ block_trail:RemoteBlockEpisode[]; attachments:RemoteAttachment[];
 };
 export function pickupSql(p: Pickup): string {
  const tenant = id(p.tenantId), worker = literal(text(p.worker,120)), limit = p.limit ?? 3;
