@@ -91,6 +91,9 @@ $new$;
  THEN RAISE EXCEPTION 'Retention replacement changed native metadata or unexpected source bytes'; END IF;
 END $retention$;
 --> statement-breakpoint
+-- Bound the tenant/company retention lookup as private digest history grows.
+CREATE INDEX contract_system_digest_company_lookup ON app.contract_system_digest(tenant_id,company_id);
+--> statement-breakpoint
 ALTER TABLE app.contract_system_digest ADD CONSTRAINT contract_system_digest_company_tenant_fk
  FOREIGN KEY(company_id,tenant_id) REFERENCES public.company(id,tenant_id) ON DELETE NO ACTION NOT VALID;
 --> statement-breakpoint
