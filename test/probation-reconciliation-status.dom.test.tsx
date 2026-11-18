@@ -37,7 +37,7 @@ describe('Probation no-case notice and reasons',()=>{
   show({offset:25});
   const style=['app/onboarding-workspace.css','app/lifecycle/v9/workspace.css','app/lifecycle/probation/probation.css','app/lifecycle/probation/tracker-parity.css'].map(path=>readFileSync(path,'utf8')).join('\n');
   const html='<style>'+style+'</style><div class="v9-workspace probation"><main class="pct">'+aiReviewDomHtml(document.body)+'</main></div>';
-  await captureAiReviewScreenshots(html,'en','feedback-probation-reconciliation-'+mode,'Real no-case notice, scoped reasons and fix links; fictional data; not authenticated staging acceptance','atelier',mode);
+  await captureAiReviewScreenshots(html,'en',`feedback-probation-reconciliation-${mode}`,'Real no-case notice, scoped reasons and fix links; fictional data; not authenticated staging acceptance','atelier',mode);
  },120_000);
  it('has a translated label for every adjudication code in all supported locales',()=>{
   for(const locale of ['en','ms','zh','ta','th','vi']){

@@ -168,5 +168,5 @@ it.each(['new','edit'] as const)('%s formula shows readable codes and requires r
   expect((screen.getByRole('textbox',{name:en.payFormula.source}) as HTMLTextAreaElement).value).toContain('"positionBusinessCode") = "J0113"');
   expect(state.save).not.toHaveBeenCalled();
  }
- await captureAiReviewScreenshots(aiReviewDomHtml(view.container),'en','feedback-formula-business-codes-'+mode,'Actual FormulaEditor '+mode+' screen with fictional configured Code values, no authenticated server journey','atelier');
+ await captureAiReviewScreenshots(aiReviewDomHtml(view.container),'en',`feedback-formula-business-codes-${mode}`,'Actual FormulaEditor '+mode+' screen with fictional configured Code values, no authenticated server journey','atelier');
 },120_000);
