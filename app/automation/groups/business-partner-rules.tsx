@@ -21,6 +21,7 @@ export function BusinessPartnerRules({initial}:{initial:BusinessPartnerWorkspace
  const [people,setPeople]=useState(initial.people),[scopeLabels,setScopeLabels]=useState(initial.scopeLabels);
  const [reason,setReason]=useState(''),[dirty,setDirty]=useState(false),[notice,setNotice]=useState<{error:boolean;text:string;problems?:string[]}|null>(null),[busy,start]=useTransition();
  const alive=useRef(true);useEffect(()=>{alive.current=true;return()=>{alive.current=false;};},[]);
+ const searchPeople:typeof searchBusinessPartnerPeopleAction=async query=>{try{return await searchBusinessPartnerPeopleAction(query);}catch{return {ok:false,code:'unavailable',detail:t('searchFailed')};}};
  const sourceChanged=initial.revision>saved.revision;
  const valid=rows.length<=500&&rows.every(row=>!!row.assignment.userId&&people.some(person=>person.id===row.assignment.userId));
  const change=(update:(current:DraftRow[])=>DraftRow[])=>{if(busy)return;setRows(update);setDirty(true);setNotice(null);};
@@ -42,7 +43,7 @@ export function BusinessPartnerRules({initial}:{initial:BusinessPartnerWorkspace
   <div className="v9-stack">{rows.map((row,index)=>{const person=people.find(option=>option.id===row.assignment.userId);return <article className="pcg-card v9-stack" key={row.key} aria-label={t('assignment',{number:index+1})}>
    <div className="automation-row automation-between"><h3>{person?.name??t(row.assignment.userId?'unavailableAccount':'choosePerson')}</h3><button type="button" className="v9-button" disabled={busy||sourceChanged} aria-label={t('removeLabel',{number:index+1})} onClick={()=>change(current=>current.filter(item=>item.key!==row.key))}>{t('remove')}</button></div>
    {row.assignment.userId&&!person&&<p className="v9-notice">{t('unavailableHelp')}</p>}
-   <details open={!row.assignment.userId}><summary>{t('findPerson')}</summary><PeopleSearch searchPeople={searchBusinessPartnerPeopleAction} known={person?[person]:[]} disabled={busy||sourceChanged} onAdd={selected=>{if(busy||sourceChanged)return;setPeople(current=>include(current,selected));edit(row.key,rule=>{rule.userId=selected.id;});}}/></details>
+   <details open={!row.assignment.userId}><summary>{t('findPerson')}</summary><PeopleSearch searchPeople={searchPeople} known={person?[person]:[]} disabled={busy||sourceChanged} onAdd={selected=>{if(busy||sourceChanged)return;setPeople(current=>include(current,selected));edit(row.key,rule=>{rule.userId=selected.id;});}}/></details>
    <div className="v9-fields">{DIMENSIONS.map(dimension=><ScopeChoices key={dimension} dimension={dimension} row={index+1} value={row.assignment.rules[dimension]??[]} options={scopeLabels[dimension]} disabled={busy||sourceChanged}
     onChange={value=>edit(row.key,rule=>{if(value.length)rule.rules[dimension]=value;else delete rule.rules[dimension];})}
     onOption={option=>setScopeLabels(current=>({...current,[dimension]:include(current[dimension],option)}))}/>)}</div>
