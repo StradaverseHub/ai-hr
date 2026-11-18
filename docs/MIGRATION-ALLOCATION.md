@@ -20,6 +20,9 @@ build `MIdgSb_9kQdck-DwAgKj-`, and 924 applied migrations through 1794841006104.
 Production and all committed peer journals still require a fresh ordered-ledger and
 claim survey at integration/admission. These are source reservations for isolated
 builds, not approval to install, alter applied SQL or bypass release evidence.
+# Formula business codes — 18 November 2026 (unapplied candidate)
+
+Coordinator reserves `6650_pay_formula_business_code_registration`, idx `10050`, when `1794998006650` in the 6650–6659 block for approved board item 8fe17e53. It adds only the reviewed metadata-registration keys to the existing owner-owned function; no formula, payroll or employee rows are converted. Preserve existing applied SQL bytes. Target ledger/peer claims must be refreshed before admission; this reservation grants no installation authority.
 
 # Approved board items — 17 November 2026 (source reservations; installation held)
 

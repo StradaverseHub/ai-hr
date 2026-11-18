@@ -35179,7 +35179,11 @@
       "maritalStatus": "Marital status",
       "companyId": "Company internal ID",
       "companyName": "Company legal name",
-      "companyCode": "Company code"
+      "companyCode": "Company code",
+      "departmentBusinessCode": "Department code",
+      "positionBusinessCode": "Position code",
+      "businessUnitCode": "Business Unit code",
+      "jobGradeCode": "Job Grade code"
     },
     "parameter": {
       "payItem": "Pay Item",
@@ -35452,7 +35456,22 @@
       }
     },
     "missingItemZero": "{variable} ({code}): not in this run, counted as 0",
-    "missingMemberZero": "{variable} ({group}), member {code}: not in this run, counted as 0"
+    "missingMemberZero": "{variable} ({group}), member {code}: not in this run, counted as 0",
+    "businessCodes": {
+      "compatibility": "Show internal IDs for saved formulas",
+      "search": "Search configured codes",
+      "page": "{from}–{to} of {total} codes",
+      "none": "No configured code is available in your permitted companies.",
+      "previous": "Previous",
+      "next": "Next",
+      "loadFailed": "Codes could not be loaded. Try again.",
+      "reviewTitle": "Review older Personnel sources",
+      "preserved": "Saved internal references and older aliases keep their saved meaning. Nothing is converted automatically.",
+      "conversionHelp": "Choose the configured code for each direct comparison. Review the new meaning, then save a new revision and test it. Other uses can be edited with the variables library.",
+      "selected": "Selected code: {code}",
+      "reviewed": "I have reviewed this comparison and its business meaning.",
+      "apply": "Apply to this draft"
+    }
   },
   "payrollTaxBasis": {
     "title": "Recalculate Income Tax Value",

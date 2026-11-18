@@ -6476,6 +6476,13 @@
       "when": 1794998006630,
       "tag": "6630_lifecycle_task_documents",
       "breakpoints": true
+    },
+    {
+      "idx": 10050,
+      "version": "7",
+      "when": 1794998006650,
+      "tag": "6650_pay_formula_business_code_registration",
+      "breakpoints": true
     }
   ]
 }

@@ -35179,7 +35179,11 @@
       "maritalStatus": "Tình trạng hôn nhân",
       "companyId": "ID nội bộ của công ty",
       "companyName": "Tên pháp lý của công ty",
-      "companyCode": "Mã công ty"
+      "companyCode": "Mã công ty",
+      "departmentBusinessCode": "Mã phòng ban",
+      "positionBusinessCode": "Mã chức vụ",
+      "businessUnitCode": "Mã đơn vị kinh doanh",
+      "jobGradeCode": "Mã cấp bậc"
     },
     "parameter": {
       "payItem": "Khoản lương",
@@ -35452,7 +35456,22 @@
       }
     },
     "missingItemZero": "{variable} ({code}): không có trong kỳ chạy này, được tính là 0",
-    "missingMemberZero": "{variable} ({group}), thành phần {code}: không có trong kỳ chạy này, được tính là 0"
+    "missingMemberZero": "{variable} ({group}), thành phần {code}: không có trong kỳ chạy này, được tính là 0",
+    "businessCodes": {
+      "compatibility": "Hiện ID nội bộ cho công thức đã lưu",
+      "search": "Tìm mã đã cấu hình",
+      "page": "{from}–{to} trong {total} mã",
+      "none": "Không có mã được cấu hình trong các công ty được phép.",
+      "previous": "Trước",
+      "next": "Tiếp",
+      "loadFailed": "Không thể tải mã. Hãy thử lại.",
+      "reviewTitle": "Rà soát nguồn nhân sự cũ",
+      "preserved": "Tham chiếu nội bộ và bí danh cũ giữ nguyên ý nghĩa đã lưu. Không tự động chuyển đổi.",
+      "conversionHelp": "Chọn mã cho từng phép so sánh trực tiếp. Rà soát ý nghĩa mới, lưu phiên bản mới rồi kiểm tra. Có thể sửa cách dùng khác bằng thư viện biến.",
+      "selected": "Mã đã chọn: {code}",
+      "reviewed": "Tôi đã rà soát phép so sánh và ý nghĩa nghiệp vụ.",
+      "apply": "Áp dụng vào bản nháp"
+    }
   },
   "payrollTaxBasis": {
     "title": "Tính lại giá trị thu nhập chịu thuế",
