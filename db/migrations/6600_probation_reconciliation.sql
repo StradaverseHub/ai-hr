@@ -146,25 +146,25 @@ GRANT EXECUTE ON FUNCTION app.probation_reconciliation_view(uuid,integer,integer
 -- in the migration and no runtime activation. This also discovers tenants that existed before the triggers.
 CREATE FUNCTION app.probation_reconciliation_schedule_tick() RETURNS boolean
  LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp SET jit=off AS $$
-DECLARE s public.probation_reconciliation_schedule;last_id uuid;n integer;
+DECLARE scan_state public.probation_reconciliation_schedule;last_id uuid;n integer;
 BEGIN
  IF app.current_user_id() IS NOT NULL OR NOT EXISTS(SELECT 1 FROM pg_roles WHERE rolname=session_user AND(rolname='ai_hr_owner' OR rolsuper)) THEN RAISE EXCEPTION 'Physical no-login owner worker required' USING ERRCODE='42501';END IF;
- INSERT INTO public.probation_reconciliation_schedule(tenant_id) SELECT t.id FROM public.tenant t WHERE t.status IN('active','trial') AND NOT EXISTS(SELECT 1 FROM public.probation_reconciliation_schedule s WHERE s.tenant_id=t.id) ORDER BY t.id LIMIT 100 ON CONFLICT DO NOTHING;
- SELECT q.* INTO s FROM public.probation_reconciliation_schedule q JOIN public.tenant t ON t.id=q.tenant_id AND t.status IN('active','trial') WHERE q.next_check_at<=now() AND(q.cursor_id IS NOT NULL OR q.started_at IS NULL) ORDER BY q.next_check_at,q.tenant_id LIMIT 1 FOR UPDATE OF q SKIP LOCKED;
+ INSERT INTO public.probation_reconciliation_schedule(tenant_id) SELECT t.id FROM public.tenant t WHERE t.status IN('active','trial') AND NOT EXISTS(SELECT 1 FROM public.probation_reconciliation_schedule existing_schedule WHERE existing_schedule.tenant_id=t.id) ORDER BY t.id LIMIT 100 ON CONFLICT DO NOTHING;
+ SELECT q.* INTO scan_state FROM public.probation_reconciliation_schedule q JOIN public.tenant t ON t.id=q.tenant_id AND t.status IN('active','trial') WHERE q.next_check_at<=now() AND(q.cursor_id IS NOT NULL OR q.started_at IS NULL) ORDER BY q.next_check_at,q.tenant_id LIMIT 1 FOR UPDATE OF q SKIP LOCKED;
  IF NOT FOUND THEN RETURN false;END IF;
  -- Preserve a partially scanned pass across restarts. Only bounded 100-row source slices are queued.
- WITH cohort AS MATERIALIZED(SELECT e.id FROM public.employment e WHERE e.tenant_id=s.tenant_id AND(s.cursor_id IS NULL OR e.id>s.cursor_id) AND e.voided_at IS NULL AND e.import_pending_attempt_id IS NULL
+ WITH cohort AS MATERIALIZED(SELECT e.id FROM public.employment e WHERE e.tenant_id=scan_state.tenant_id AND(scan_state.cursor_id IS NULL OR e.id>scan_state.cursor_id) AND e.voided_at IS NULL AND e.import_pending_attempt_id IS NULL
  AND(e.confirmation_date IS NULL AND e.resignation_date IS NULL AND e.terminated_on IS NULL)
  AND(app.employment_status_on(e.blacklisted_at::timestamptz,e.resignation_date,e.last_working_date,e.terminated_on,e.final_confirmation_date,e.confirmation_date,e.probation_end_date,e.provisional_end_on,(now() AT TIME ZONE 'Asia/Kuala_Lumpur')::date)='probation' OR coalesce(e.join_date,e.hired_on)>(now() AT TIME ZONE 'Asia/Kuala_Lumpur')::date AND coalesce(e.probation_value,e.probation_months,-1)<>0)
  AND NOT EXISTS(SELECT 1 FROM public.probation_case c WHERE c.tenant_id=e.tenant_id AND c.employment_id=e.id AND c.data->>'state' NOT IN('withdrawn','confirmed','not_confirmed')) ORDER BY e.id LIMIT 100),
- queued AS(INSERT INTO public.probation_reconciliation_intent(tenant_id,employment_id) SELECT s.tenant_id,c.id FROM cohort c
+ queued AS(INSERT INTO public.probation_reconciliation_intent(tenant_id,employment_id) SELECT scan_state.tenant_id,c.id FROM cohort c
  ON CONFLICT(tenant_id,employment_id) DO UPDATE SET revision=probation_reconciliation_intent.revision+1,requested_at=now(),retry_on=now(),failure=false RETURNING employment_id)
  SELECT count(*)::integer,(array_agg(employment_id ORDER BY employment_id DESC))[1] INTO n,last_id FROM queued;
  UPDATE public.probation_reconciliation_schedule SET cursor_id=CASE WHEN n=100 THEN last_id ELSE NULL END,
   started_at=coalesce(started_at,now()),next_check_at=CASE WHEN n=100 THEN now() ELSE now()+interval '15 minutes' END,
-  pass_count=pass_count+CASE WHEN n<100 THEN 1 ELSE 0 END WHERE tenant_id=s.tenant_id;
+  pass_count=pass_count+CASE WHEN n<100 THEN 1 ELSE 0 END WHERE tenant_id=scan_state.tenant_id;
  IF n<100 THEN
-  UPDATE public.probation_reconciliation_schedule target SET last_success_at=now(),started_at=NULL WHERE target.tenant_id=s.tenant_id AND NOT EXISTS(SELECT 1 FROM public.probation_reconciliation_intent i WHERE i.tenant_id=s.tenant_id AND(i.checked_at IS NULL OR i.checked_at<i.requested_at OR i.failure));
+  UPDATE public.probation_reconciliation_schedule target SET last_success_at=now(),started_at=NULL WHERE target.tenant_id=scan_state.tenant_id AND NOT EXISTS(SELECT 1 FROM public.probation_reconciliation_intent i WHERE i.tenant_id=scan_state.tenant_id AND(i.checked_at IS NULL OR i.checked_at<i.requested_at OR i.failure));
  END IF;
  RETURN true;
 END $$;
