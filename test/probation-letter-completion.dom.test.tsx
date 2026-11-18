@@ -3,7 +3,8 @@ import {cleanup,fireEvent,render,screen,waitFor} from '@testing-library/react';
 import {NextIntlClientProvider} from 'next-intl';
 import {ProbationLetterCompletion} from '../app/lifecycle/probation/letter-completion';
 import type {ProbationLetterCompletionView} from '../packs/probation/service';
-import {completionDocument,completionReviewCase} from './helpers/personnel-completion-ui-fixture';
+import {reconcilePersonnelCompletion} from '../lib/lifecycle-v9-personnel-completion';
+import {completionDocument,completionReviewCase,completionActor} from './helpers/personnel-completion-ui-fixture';
 import {aiReviewDomHtml,captureAiReviewScreenshots} from './helpers/ai-review-screenshots';
 import messages from '../messages/en.json';
 const calls=vi.hoisted(()=>({save:vi.fn(),override:vi.fn(),refresh:vi.fn(),review:vi.fn(),navigate:vi.fn()}));
@@ -28,3 +29,12 @@ it('keeps native HR assignment overrides and selected PM push as separate author
 it('keeps released Personnel review history read-only even when proposals remain in the saved projection',()=>{
  const value=fixture('hr');value.canReview=false;value.proposals=completionReviewCase(value.document).pmChanges;show(value);expect(screen.getByRole('button',{name:'Keep on case only'})).toBeDisabled();expect(screen.getByRole('button',{name:'Push 1 change to PM'})).toBeDisabled();
 });
+
+it('retains the native preparation view and saved draft when every personal field relocks to current PM',async()=>{
+ const initial=fixture(),rendered=show(initial);fireEvent.change(screen.getByRole('textbox',{name:'Address *'}),{target:{value:'Unsaved browser draft'}});
+ const current=structuredClone(initial);current.storageRevision=5;current.document.values['address-answer']='Saved employee address';
+ reconcilePersonnelCompletion(current.document,{values:{'address-answer':'Current official address',mobile:'+60129876543',passport:'Fictional passport in PM',workEmail:'official-work@example.test'},sourceFingerprint:'new-source',actor:completionActor,at:'2026-11-18T03:00:00.000Z'});current.canEdit=false;current.canSubmit=false;
+ rendered.rerender(<NextIntlClientProvider locale="en" messages={messages}><div className="v9-workspace"><ProbationLetterCompletion view={current}/></div></NextIntlClientProvider>);
+ expect(screen.getByRole('textbox',{name:/^Address/})).toBeDisabled();expect(screen.getByRole('textbox',{name:/^Address/})).toHaveValue('Current official address');expect(screen.getByText('Saved employee address')).toBeVisible();expect(screen.getAllByText(messages.personnelCompletion.conflictHelp)[0]).toBeVisible();expect(screen.queryByRole('textbox',{name:/Work email/})).not.toBeInTheDocument();expect(screen.queryByRole('button',{name:'Save progress'})).not.toBeInTheDocument();expect(screen.queryByRole('button',{name:'Submit answers'})).not.toBeInTheDocument();expect(screen.getByRole('button',{name:'Refresh Personnel values'})).toBeVisible();
+ for(const mode of ['light','dark']as const)await captureAiReviewScreenshots(aiReviewDomHtml(document.body),'en',`feedback-pm-completion-native-relocked-${mode}`,'Actual native Probation field-only host after authorized official source arrival; saved employee conflict retained and stale browser draft readonly; fictional projection, no authenticated server journey','classic',mode);
+},120000);
