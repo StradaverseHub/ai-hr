@@ -11,7 +11,7 @@ export type TaxBasisCorrectionRef={id:string;batchId:string;sourceHash:string;ba
 export type TaxBasisSource={id:string;employmentId:string;companyId:string;period:string;source:Record<string,unknown>;batch:Record<string,unknown>;importRevision:string|null;historyAttemptId?:string|null};
 export async function taxBasisSourceRowsTx(tx:Tx,ids:string[]):Promise<TaxBasisSource[]>{
  if(!ids.length)return [];
- return await tx.execute<TaxBasisSource>(sql`select p.id,p.employment_id as "employmentId",b.company_id as "companyId",b.pay_period as period,b.history_import_attempt_id as "historyAttemptId",
+ return await tx.execute<TaxBasisSource>(sql`select p.id,p.employment_id as "employmentId",b.company_id as "companyId",b.pay_period as period,case when app.payroll_history_native_baseline(p.id) then null else b.history_import_attempt_id end as "historyAttemptId",
    to_jsonb(p) as source,jsonb_build_object('id',b.id,'company_id',b.company_id,'pay_period',b.pay_period,'run_seq',b.run_seq,'run_type',b.run_type,'cycle_id',b.payroll_cycle_id,'batch_date',b.batch_date) as batch,
    app.payroll_tax_import_source_revision(p.id)::text as "importRevision"
   from payslip p join payroll_batch b on b.id=p.batch_id where p.id=any(array[${sql.join(ids.map(id=>sql`${id}::uuid`),sql`, `)}]::uuid[]) order by b.pay_period,b.batch_date,b.payroll_cycle_id,b.run_seq,b.id,p.id`);
@@ -93,7 +93,10 @@ export async function readEffectiveTaxBasesTx(tx:Tx,ctx:SessionContext,payslipId
  // an older snapshot of the very same immutable import record, never another cycle or employer.
  const currentImported=sources.filter(source=>object(source.source.statutory)&&object(source.source.statutory.importedTaxBasis)).map(source=>source.id);
  const replaced=currentImported.length?await tx.execute<{id:string}>(sql`select r.id from payroll_tax_basis_revision r join payroll_history_import_snapshot previous on previous.id=r.payslip_id join payroll_history_import_record record on record.id=previous.record_id join lateral(select v.snapshot_id from payroll_history_import_revision v where v.record_id=record.id order by v.ordinal desc limit 1) latest on true join payroll_history_import_snapshot current on current.id=latest.snapshot_id and current.record_id=record.id where r.tenant_id=${ctx.tenantId}::uuid and current.id=any(array[${sql.join(currentImported.map(id=>sql`${id}::uuid`),sql`, `)}]::uuid[]) and previous.id<>current.id and r.company_id=record.company_id and r.employment_id=record.employment_id and r.period=record.period`):[];
- const superseded=new Set<string>(replaced.map(row=>row.id));for(const row of corrections)if(object(row.basis)&&Array.isArray(row.basis.supersedes))for(const id of row.basis.supersedes)if(typeof id==='string')superseded.add(id);
+ const detached=await tx.execute<{sourceId:string;id:string}>(sql`select * from app.payroll_history_native_tax_predecessors(array[${sql.join(sources.map(source=>sql`${source.id}::uuid`),sql`, `)}]::uuid[])`),importedIds=new Set(currentImported);
+ // A new accepted imported source supersedes only its proven physical-native predecessor.
+ // A restored native baseline requires a fresh exact-source review; no old receipt is copied onto it.
+ const superseded=new Set<string>([...replaced.map(row=>row.id),...detached.filter(row=>importedIds.has(row.sourceId)).map(row=>row.id)]);for(const row of corrections)if(object(row.basis)&&Array.isArray(row.basis.supersedes))for(const id of row.basis.supersedes)if(typeof id==='string')superseded.add(id);
  // A consumer may request one cycle of a corrected multi-cycle month. Other current sources in
  // that exact employer/month context must be validated, not mistaken for vanished source rows.
  const requested=new Set(payslipIds),known=new Set(sources.map(s=>s.id));

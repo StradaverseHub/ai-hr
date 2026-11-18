@@ -95,9 +95,9 @@ async function withUtcInputsTx(tx:Tx,p:InputQuery,processing:boolean):Promise<Ru
 async function runInputsUtcTx(tx:Tx,p:InputQuery,processing:boolean):Promise<RunInputs>{
  const {batchId,payPeriod,windows}=p;
  // The run's people, as a subquery: never a literal list of thousands of ids.
- const membership=sql`select s.employment_id from public.payslip s where s.batch_id=${batchId}::uuid`,inList=sql`(${membership})`;
+ const membership=sql`select s.employment_id from public.payroll_history_native_payslip s where s.batch_id=${batchId}::uuid`,inList=sql`(${membership})`;
  const grouped=processing?await processingAttendanceInputsTx(tx,membership,windows):undefined;
- const employments=grouped?.employments??Number((await rows(tx,sql`select count(distinct s.employment_id)::int as n from public.payslip s where s.batch_id=${batchId}::uuid`))[0]?.n??0);
+ const employments=grouped?.employments??Number((await rows(tx,sql`select count(distinct s.employment_id)::int as n from public.payroll_history_native_payslip s where s.batch_id=${batchId}::uuid`))[0]?.n??0);
  const queries:Readonly<Record<(typeof INPUT_COMPONENTS)[number],SQL>>={
   attendance:attendanceInput(membership,windows.attendance),
   overtime:overtimeInput(membership,windows.overtime),
@@ -117,7 +117,7 @@ async function runInputsUtcTx(tx:Tx,p:InputQuery,processing:boolean):Promise<Run
  for(const key of INPUT_COMPONENTS){
   components[key]=grouped&&(key==='attendance'||key==='overtime')?grouped[key]:await componentTx(tx,queries[key],key==='claims');
  }
- const results=await componentTx(tx,sql`select s.* from public.payslip s where s.batch_id=${batchId}::uuid`);
+ const results=await componentTx(tx,sql`select s.* from public.payroll_history_native_payslip s where s.batch_id=${batchId}::uuid`);
  return Object.freeze({employments,windows,components:Object.freeze(components),results});
 }
 

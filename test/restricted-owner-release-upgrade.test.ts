@@ -38,6 +38,10 @@ import {afterAll,expect,it} from 'vitest';
 import * as schema from '../db/schema';
 import {createDb} from '../db/client';
 import {hireEmployee} from '../core/org';
+import {seedPayrollCycleCatalog} from '../core/payroll-cycle';
+import {previewPayrollHistoryUpload,confirmPayrollHistoryUpload} from '../core/payroll-history-revisions';
+import {PAYROLL_HISTORY_HEADERS} from '../lib/payroll-history-import-schema';
+import {toCsv} from '../lib/csv';
 import {closeAll,entitledCtx,owner,resetDb,seedBase,setModule} from './harness';
 import {copyTenantRowsAtPrefix} from './helpers/prefix-seed';
 
@@ -248,6 +252,37 @@ const ownerAttributes=async(sql:postgres.Sql)=>[...await sql.unsafe<Keyed[]>(`SE
  rolcreaterole AS createrole,rolreplication AS replication,rolbypassrls AS bypassrls FROM pg_catalog.pg_roles WHERE rolname='${OWNER}'`)];
 const ledger=async(sql:postgres.Sql)=>[...await sql.unsafe<{hash:string;created_at:string}[]>('SELECT hash,created_at::text AS created_at FROM drizzle.__drizzle_migrations ORDER BY id')];
 const leftovers=async(sql:postgres.Sql)=>[...await sql.unsafe<{object:string}[]>(SUPERUSER_LEFTOVERS)].map(row=>row.object);
+/** Literal payroll evidence projection: only these independently asserted nullable additions may differ. */
+const HISTORY_TABLES=['payroll_history_import_attempt','payroll_batch','payslip','payroll_history_import_record','payroll_history_import_snapshot','payroll_history_import_revision','payroll_history_import_event'] as const;
+async function retainedHistory(sql:postgres.Sql,tenantId:string){
+ const result:Record<string,{row:string}[]>={};
+ await sql.begin(async tx=>{
+  await tx`set local timezone='UTC'`;
+  for(const table of HISTORY_TABLES){
+   const nullable=table==='payroll_batch'?['processing_job_id','processing_started_at']:table==='payroll_history_import_revision'?['maintenance','native_source']:[];
+   expect(await tx.unsafe("select count(*)::int as n from public."+table+" t where t.tenant_id=$1::uuid and exists(select 1 from unnest($2::text[]) key where to_jsonb(t)?key and to_jsonb(t)->key is distinct from 'null'::jsonb)",[tenantId,nullable]),table+' only null additions may be omitted').toEqual([{n:0}]);
+   result[table]=[...await tx.unsafe<{row:string}[]>('select (to_jsonb(t)-$2::text[])::text as row from public.'+table+' t where t.tenant_id=$1::uuid order by t.id',[tenantId,nullable])];
+   expect(result[table].length,table+' actual accepted prefix evidence').toBeGreaterThan(0);
+  }
+ });
+ return result;
+}
+async function assertHistoryColumns(sql:postgres.Sql,tenantId:string){
+ expect(await sql`select attname::text as name,format_type(atttypid,atttypmod) as type,attnotnull as required,attgenerated::text as generated from pg_attribute where attrelid='public.payroll_history_import_revision'::regclass and attname in('maintenance','native_source') order by attnum`)
+  .toEqual(['maintenance','native_source'].map(name=>({name,type:'jsonb',required:false,generated:''})));
+ expect(await sql`select count(*)::int as n from public.payroll_history_import_revision where tenant_id=${tenantId}::uuid and maintenance is null and native_source is null`).toEqual([{n:1}]);
+ expect(await sql`select count(*)::int as n from app.payroll_history_native_capture`).toEqual([{n:0}]);
+}
+/** Expected BEFORE grantees were derived from5055's literal reader/policy owners, not the new bridge. */
+const BEFORE_STAGE_EXECUTE=[
+ {fn:'app.payroll_history_hidden_rows(text)',grantee:'OWNER',grantable:false},
+ {fn:'app.payroll_history_hidden_rows(text)',grantee:'ai_hr_app',grantable:false},
+ {fn:'app.payroll_history_row_visible(text,uuid)',grantee:'OWNER',grantable:false},
+];
+async function stageReaderExecute(sql:postgres.Sql){
+ const rows=await sql<{fn:string;grantee:string;grantable:boolean}[]>`select p.oid::regprocedure::text as fn,case when a.grantee=0 then 'PUBLIC' when pg_get_userbyid(a.grantee)=current_user then 'OWNER' else pg_get_userbyid(a.grantee)::text end as grantee,a.is_grantable as grantable from pg_proc p cross join lateral aclexplode(coalesce(p.proacl,acldefault('f',p.proowner))) a where p.oid in('app.payroll_history_hidden_rows(text)'::regprocedure,'app.payroll_history_row_visible(text,uuid)'::regprocedure) and a.privilege_type='EXECUTE'`;
+ return [...rows].sort((a,b)=>a.fn===b.fn?(a.grantee<b.grantee?-1:1):a.fn<b.fn?-1:1);
+}
 const describeRefusal=(tag:string,error:unknown)=>{
  const cause=(error as {cause?:{code?:string;message?:string}}).cause??(error as {code?:string;message?:string});
  return `${tag}: ${cause.code??'?'} ${cause.message??String(error)}`;
@@ -265,7 +300,7 @@ it('applies every migration above main as the restricted ai_hr_owner login on th
  expect(['127.0.0.1','localhost']).toContain(base.hostname);expect(base.username).not.toBe(OWNER);expect(base.username).not.toBe('ai_hr_app');
  const at=(database:string,user?:string)=>{const url=new URL(base);url.pathname='/'+database;if(user){url.username=user;url.password='';}return url.toString();};
  const id=randomUUID().replaceAll('-',''),names={baseline:'ai_hr_owner_rehearsal_base_'+id,reference:'ai_hr_owner_rehearsal_ref_'+id,
-  restricted:'ai_hr_owner_rehearsal_owner_'+id,diagnosis:'ai_hr_owner_rehearsal_diag_'+id};
+  restricted:'ai_hr_owner_rehearsal_owner_'+id,diagnosis:'ai_hr_owner_rehearsal_diag_'+id,bridge:'ai_hr_owner_rehearsal_bridge_'+id};
  const admin=postgres(at('postgres'),{max:1,onnotice:()=>{}});
  const folder=mkdtempSync(join(tmpdir(),'aihr-restricted-owner-'));mkdirSync(join(folder,'meta'));
  const open:postgres.Sql[]=[];
@@ -300,19 +335,28 @@ it('applies every migration above main as the restricted ai_hr_owner login on th
   await resetDb();const b=await seedBase();await setModule(b.tenantId,'payroll','active');const ctx=await entitledCtx(b);
   await hireEmployee(ctx,{person:{fullName:'Fictional restricted-owner employee',primaryEmail:randomUUID()+'@restricted-owner.test'},
    companyId:b.companyId,departmentId:b.deptA,employmentType:'full_time',employeeCode:'OWNER-001',hiredOn:'2025-01-01'});
+  await seedPayrollCycleCatalog(ctx,b.companyId);
+  const historyRows=['BASIC','EEEPF','EESOCSO','EEEIS','PCB'].map(code=>['OWNER-001','2026-01','ME',code,b.companyId,code==='BASIC'?'5000.00':'0.00']);
+  const preview=await previewPayrollHistoryUpload(ctx,{name:'fictional-owner-upgrade.csv',content:Buffer.from(toCsv([Array.from(PAYROLL_HISTORY_HEADERS),...historyRows])),operationKey:randomUUID()});
+  expect(preview.plan.counts).toMatchObject({created:1,invalid:0});
+  await confirmPayrollHistoryUpload(ctx,{attemptId:preview.attemptId,previewHash:preview.plan.previewHash,confirmReplacement:true});
   const target=createDb(at(names.baseline),{max:1});
   try{
    const tables:PgTable[]=[schema.tenant,schema.company,schema.department,schema.position,schema.costCenter,schema.leaveType,
-    schema.person,schema.appUser,schema.roleAssignment,schema.employment,schema.assignment];
+    schema.person,schema.appUser,schema.roleAssignment,schema.employment,schema.assignment,
+    schema.payrollCycle,schema.payPeriod,schema.payrollHistoryImportAttempt,schema.payrollBatch,schema.payslip,
+    schema.payrollHistoryImportRecord,schema.payrollHistoryImportSnapshot,schema.payrollHistoryImportRevision,schema.payrollHistoryImportEvent];
    const copied:Record<string,number>={};
    for(const table of tables)copied[getTableName(table)]=await copyTenantRowsAtPrefix(owner,target,table,b.tenantId);
    for(const name of ['tenant','company','person','app_user','role_assignment','employment','assignment'])expect(copied[name],name+' rows copied').toBeGreaterThan(0);
   }finally{await target.client.end({timeout:5});}
+  const historyBefore=await retainedHistory(baseline,b.tenantId);
   await close(baseline);
 
   // 3. Two copies of the populated prefix: the superuser reference, and the installed ownership for ai_hr_owner.
   await admin.unsafe(`CREATE DATABASE "${names.reference}" TEMPLATE "${names.baseline}"`);
   await admin.unsafe(`CREATE DATABASE "${names.restricted}" TEMPLATE "${names.baseline}" OWNER ${OWNER}`);
+  await admin.unsafe(`CREATE DATABASE "${names.bridge}" TEMPLATE "${names.baseline}" OWNER ${OWNER}`);
   const observer=connect(at(names.restricted));
   await observer.unsafe(`GRANT CONNECT ON DATABASE "${names.restricted}" TO ai_hr_app`);
   await observer.unsafe(PROJECT_INSTALLED_OWNERSHIP);
@@ -337,6 +381,45 @@ it('applies every migration above main as the restricted ai_hr_owner login on th
    const [membership]=await observer.unsafe<{member:boolean}[]>(`SELECT pg_catalog.pg_has_role('${OWNER}',$1,'MEMBER') AS member`,[role]);
    expect(membership.member,`${OWNER} is not a member of ${role}`).toBe(false);
   }
+
+  // A separate restricted-owner prefix witness captures the predecessor ACL BEFORE6695. The
+  // original full-transaction restricted/reference twins below remain unchanged as migration admission.
+  const bridgeBuilder=connect(at(names.bridge));
+  await bridgeBuilder.unsafe(PROJECT_INSTALLED_OWNERSHIP);
+  await bridgeBuilder.unsafe(readFileSync('deploy/runner-control/rewards-deletion-role-prerequisite.sql','utf8'));
+  const bridgeOwner=connect(at(names.bridge,OWNER));
+  const throughNativeCapture=journal.entries.findIndex(entry=>entry.tag==='6693_payroll_history_native_effective_and_artifact');
+  const throughBeforeBridge=journal.entries.findIndex(entry=>entry.tag==='6695_payroll_history_stage_boundary');
+  expect(throughNativeCapture).toBeGreaterThan(MAIN_PREFIX);expect(throughBeforeBridge).toBe(throughNativeCapture+2);
+  writeFileSync(join(folder,'meta/_journal.json'),JSON.stringify({...journal,entries:journal.entries.slice(0,throughNativeCapture)}));
+  await migrate(drizzle(bridgeOwner),{migrationsFolder:folder});
+  // The expected view is rendered from this literal transformation of the independently captured
+  // predecessor. Never copy the new view definition as its own expected result.
+  const [oldEffective]=await bridgeOwner<{definition:string}[]>`select pg_get_viewdef('public.payroll_history_effective_batch'::regclass,true) as definition`;
+  const effectiveNeedle='app.payroll_history_batch_adopted(b.id)';expect(oldEffective.definition.split(effectiveNeedle)).toHaveLength(2);
+  const expectedEffective=oldEffective.definition.replace(effectiveNeedle,'(app.payroll_history_batch_adopted(b.id) OR app.payroll_history_native_batch_override(b.id))');
+  writeFileSync(join(folder,'meta/_journal.json'),JSON.stringify({...journal,entries:journal.entries.slice(0,throughBeforeBridge)}));
+  await migrate(drizzle(bridgeOwner),{migrationsFolder:folder});
+  expect(await bridgeOwner`select to_regprocedure('app.payroll_history_stage_authorized(uuid)')::text as fn`).toEqual([{fn:null}]);
+  const readerBefore=await stageReaderExecute(bridgeOwner);expect(readerBefore).toEqual(BEFORE_STAGE_EXECUTE);
+  const expectedUnion=[...new Set(readerBefore.map(row=>row.grantee))].sort();expect(expectedUnion).toEqual(['OWNER','ai_hr_app']);
+  const purposeAtBridge=await purposeOwned(bridgeBuilder,superuser);
+  writeFileSync(join(folder,'meta/_journal.json'),JSON.stringify(journal));
+  await migrate(drizzle(bridgeOwner),{migrationsFolder:folder});
+  const bridgeAcl=await bridgeOwner<{grantee:string;grantor:string;privilege:string;grantable:boolean}[]>`select case when a.grantee=0 then 'PUBLIC' when pg_get_userbyid(a.grantee)=current_user then 'OWNER' else pg_get_userbyid(a.grantee)::text end as grantee,case when pg_get_userbyid(a.grantor)=current_user then 'OWNER' else pg_get_userbyid(a.grantor)::text end as grantor,a.privilege_type as privilege,a.is_grantable as grantable from pg_proc p cross join lateral aclexplode(coalesce(p.proacl,acldefault('f',p.proowner))) a where p.oid='app.payroll_history_stage_authorized(uuid)'::regprocedure`;
+  expect([...bridgeAcl].sort((a,b)=>a.grantee<b.grantee?-1:1)).toEqual(expectedUnion.map(grantee=>({grantee,grantor:'OWNER',privilege:'EXECUTE',grantable:false})));
+  expect(await stageReaderExecute(bridgeOwner)).toEqual(readerBefore);
+  expect(await bridgeOwner`select has_table_privilege('ai_hr_app','app.bulk_job_seal','SELECT') as seal,has_table_privilege('ai_hr_app','app.bulk_job_step_seal','SELECT') as steps,has_table_privilege('ai_hr_app','app.payroll_history_stage','SELECT') as stage,has_table_privilege('ai_hr_app','app.payroll_history_staged_row','SELECT') as rows`).toEqual([{seal:false,steps:false,stage:false,rows:false}]);
+  expect(await purposeOwned(bridgeBuilder,superuser)).toEqual(purposeAtBridge);
+  const parsedEffective=await bridgeOwner.begin(async tx=>{
+   await tx.unsafe('create temporary view expected_history_effective_batch with(security_invoker=true) as '+expectedEffective);
+   const [row]=await tx<{definition:string}[]>`select pg_get_viewdef('pg_temp.expected_history_effective_batch'::regclass,true) as definition`;
+   await tx`drop view expected_history_effective_batch`;return row.definition;
+  });
+  expect(await bridgeOwner`select pg_get_viewdef('public.payroll_history_effective_batch'::regclass,true) as definition`).toEqual([{definition:parsedEffective}]);
+  await assertHistoryColumns(bridgeOwner,b.tenantId);expect(await retainedHistory(bridgeOwner,b.tenantId)).toEqual(historyBefore);
+  expect(await ledger(bridgeOwner)).toEqual(expectedLedger);
+  await close(bridgeOwner);await close(bridgeBuilder);
 
   // 4. The reference: the same populated prefix upgraded by the superuser, as every other CI database is.
   const referenceNotices:Notice[]=[];
@@ -384,6 +467,7 @@ it('applies every migration above main as the restricted ai_hr_owner login on th
   expect(Object.keys(restrictedCatalogue.routines).length).toBeGreaterThan(1000);
   expect(Number(restrictedCatalogue.rows.employment),'the populated tenant survives').toBeGreaterThan(0);
   expect(differences(referenceCatalogue,restrictedCatalogue)).toEqual([]);
+  for(const sql of [reference,observer]){await assertHistoryColumns(sql,b.tenantId);expect(await retainedHistory(sql,b.tenantId)).toEqual(historyBefore);}
 
   // 7. A second run of the engine as the owner is a no-op.
   await migrate(drizzle(restricted),{migrationsFolder:'db/migrations'});

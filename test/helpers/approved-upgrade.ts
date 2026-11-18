@@ -309,9 +309,33 @@ export const APPROVED_UPGRADE_TAIL=[
  {idx:10087,when:1794998006687,tag:'6687_probation_personnel_completion_commands'},
  {idx:10088,when:1794998006688,tag:'6688_personnel_completion_recovery'},
  {idx:10089,when:1794998006689,tag:'6689_personnel_completion_recovery_jobs'},
+ {idx:10090,when:1794998006690,tag:'6690_payroll_history_item_maintenance'},
+ {idx:10091,when:1794998006691,tag:'6691_payroll_history_native_baseline_source'},
+ {idx:10092,when:1794998006692,tag:'6692_payroll_history_native_baseline_capture'},
+ {idx:10093,when:1794998006693,tag:'6693_payroll_history_native_effective_and_artifact'},
+ {idx:10094,when:1794998006694,tag:'6694_payroll_history_native_membership'},
+ {idx:10095,when:1794998006695,tag:'6695_payroll_history_stage_boundary'},
+ {idx:10096,when:1794998006696,tag:'6696_payroll_history_reviewed_removal_admission'},
+ {idx:10097,when:1794998006697,tag:'6697_payroll_history_native_tax_predecessors'},
+ {idx:10098,when:1794998006698,tag:'6698_payroll_history_maintenance_read'},
+ {idx:10099,when:1794998006699,tag:'6699_payroll_history_maintenance_subjects'},
+ {idx:10100,when:1794998006700,tag:'6700_payroll_history_retained_insert'},
+ {idx:10101,when:1794998006701,tag:'6701_payroll_history_native_anomaly_membership'},
 ] as const;
 // Final pending 2109/2126 bytes reviewed from engine 128bc2539; no applied-prefix hashes change.
 const APPROVED_UPGRADE_HASHES:Record<string,string>={
+ '6701_payroll_history_native_anomaly_membership':'abd915e174cc62841f9d27cfceee147ab956b6daa9810152a5981e67dc53addc',
+ '6700_payroll_history_retained_insert':'3dd03ffb42776f4f56e482004ee7b34807aaf4d91de14e175c1bc389cf477650',
+ '6690_payroll_history_item_maintenance':'1c504d948e554570085e1485e852c6116ef5bff82998d31611f4cc81087971e0',
+ '6691_payroll_history_native_baseline_source':'38f93cee6e77964a9e22f4d7ee88a9f75bf955c188dfd69cc6711ec321d46dd1',
+ '6692_payroll_history_native_baseline_capture':'3d9b0485958a7b3a4882829b18fa92da095e278619ae19588d0ba5b01163e062',
+ '6693_payroll_history_native_effective_and_artifact':'204a206fcc16c95617de372d9c640aae6ad8926d9d036d0ec1c90f5fe12b570b',
+ '6694_payroll_history_native_membership':'cc46558232ea5ac90d47be03a24e973b682f08cbadadba1dc6502fe6ac105324',
+ '6695_payroll_history_stage_boundary':'9657dc8c73dd520c7bd9b0ff9ccf493cf6ab2caa4805fea6ec5bd5d2d70a562d',
+ '6696_payroll_history_reviewed_removal_admission':'3e175ce41056f1b045ecb6161fb98f8e0b31382ac37af616b80fad07e3497b23',
+ '6697_payroll_history_native_tax_predecessors':'95dc5dd1c46fcb96b1abdb8edd79657c88bbcda1e14a7a51a60120ceb7bd90e4',
+ '6698_payroll_history_maintenance_read':'f758f849410c22ebc5309f661f044e9a904089abf2286a7ae265b99e0f6c96ba',
+ '6699_payroll_history_maintenance_subjects':'9b04c4f5dc73d6162705b0458b4e91f39b76f24d6cbe214d7d2ef0df4dbf051d',
  '6686_probation_personnel_completion':'6d82db8f3f9a20dd743af7f1815ebe88c239c11e2559578f59c3668b1df544e1',
  '6687_probation_personnel_completion_commands':'ac4efbbe08e669a40527eb2337c141a2b9bb393923ae7ead34ebec99c774de34',
  '6688_personnel_completion_recovery':'436591720f4ac89b24b544bf1809c726eacf684cab1d84062946a207ae251d48',
@@ -601,6 +625,9 @@ export const COMBINED_RELEASE_NULL_COLUMNS:readonly {tag:string;table:string;col
  // Board 511aa74a (5695): no employment that predates it was rehired from another period.
  {tag:'5695_employment_rehire_link',table:'employment',columns:['rehired_from_employment_id']},
  {tag:'5760_probation_queue_kinds_and_pbp_tasks',table:'probation_outcome',columns:['extension_months']},
+ // Retained pre-maintenance revisions acquire no inferred item chains or native-source proof.
+ {tag:'6690_payroll_history_item_maintenance',table:'payroll_history_import_revision',columns:['maintenance']},
+ {tag:'6691_payroll_history_native_baseline_source',table:'payroll_history_import_revision',columns:['native_source']},
  ...['department','position','cost_center','business_unit','label_company_assignment','profile_option','job_grade','grade_group','grade_group_member']
   .map(table=>({tag:'5070_system_label_import_staged_job',table,columns:['import_pending_attempt_id']})),
 ]);

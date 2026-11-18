@@ -211,6 +211,8 @@ export type ImportCodeEntry = {
   source: 'statutory' | 'component' | 'catalog' | 'alias';
   /** Explicit canonical target; aliases never acquire ownership by their display code. */
   targetCode?:string;
+  /** Exact configured component/catalogue identity; copied through aliases. */
+  ownerId?:string;
   basicSalaryOwner?:boolean;
   taxSettings?:unknown;
 };
