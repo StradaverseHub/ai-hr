@@ -35,7 +35,7 @@ CREATE FUNCTION app.v9_personnel_completion_update(p_case uuid,p_revision intege
 LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
 DECLARE s record;c lc_v9_case;n lc_onboarding_case;private_data jsonb;case_data jsonb;before_doc jsonb;d jsonb;source jsonb;official jsonb;fingerprint text;policy jsonb;entries jsonb;entry jsonb;prior_entry jsonb;field jsonb;key text;value jsonb;answer text;old_value text;owner text;hr boolean;own boolean;actor jsonb;stamp text;history jsonb;changes jsonb;docs jsonb;log jsonb;reason text;before_owner text;after_owner text;recorded boolean:=false;target_revision integer;
 BEGIN
- IF NOT app.v9_signing_current_actor() OR p_operation NOT IN('save','submit','refresh','override','adopt') OR jsonb_typeof(p_values) IS DISTINCT FROM 'object' OR octet_length(p_values::text)>1048576 OR (SELECT count(*) FROM jsonb_each(p_values))>200 THEN RAISE EXCEPTION 'Invalid completion command' USING ERRCODE='42501';END IF;
+ IF NOT app.v9_signing_current_actor() OR coalesce(p_operation IN('save','submit','refresh','override','adopt'),false) IS NOT TRUE OR p_revision IS NULL OR p_revision<1 OR length(coalesce(p_document,'')) NOT BETWEEN 1 AND 120 OR p_override IS NOT NULL AND octet_length(p_override::text)>8000 OR jsonb_typeof(p_values) IS DISTINCT FROM 'object' OR octet_length(p_values::text)>1048576 OR (SELECT count(*) FROM jsonb_each(p_values))>200 THEN RAISE EXCEPTION 'Invalid completion command' USING ERRCODE='42501';END IF;
  PERFORM app.access_workforce_write_lock();PERFORM pg_advisory_xact_lock(hashtext('audit-chain:'||app.current_tenant_id()::text));PERFORM pg_advisory_xact_lock(hashtextextended(app.current_tenant_id()::text||':onboarding',0));PERFORM pg_advisory_xact_lock(hashtextextended('lifecycle-v9:'||app.current_tenant_id()::text,0));
  SELECT * INTO c FROM lc_v9_case WHERE id=p_case AND tenant_id=app.current_tenant_id() FOR UPDATE;
  IF c.id IS NULL THEN
@@ -54,7 +54,7 @@ BEGIN
  IF p_operation IN('override','adopt') AND NOT hr OR p_operation='submit' AND NOT own THEN RAISE EXCEPTION 'Completion action belongs to another owner' USING ERRCODE='42501';END IF;
  source:=app.v9_document_personnel_source_unchecked(p_case);official:=app.personnel_completion_official(d,source);stamp:=to_char(now() AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS.MS"Z"');
  IF source IS NULL THEN RAISE EXCEPTION 'Current Personnel source is unavailable';END IF;
- IF hr AND EXISTS(SELECT 1 FROM jsonb_array_elements(d->'fields') f WHERE f->>'pmKey' IN('personalEmail','employee.icNo','employee.passportNo')) AND NOT EXISTS(SELECT 1 FROM company co WHERE co.tenant_id=app.current_tenant_id() AND app.personnel_identity_search_permitted(co.id)) THEN RAISE EXCEPTION 'Protected Personnel identity permission is required';END IF;
+ IF hr AND EXISTS(SELECT 1 FROM jsonb_array_elements(d->'fields') f WHERE f->>'pmKey' IN('personalEmail','employee.icNo','employee.passportNo','icNo','passportNo','case.icNo','case.passportNo')) AND NOT EXISTS(SELECT 1 FROM company co WHERE co.tenant_id=app.current_tenant_id() AND app.personnel_identity_search_permitted(co.id)) THEN RAISE EXCEPTION 'Protected Personnel identity permission is required';END IF;
  IF p_operation='adopt' THEN
   IF d?'personnelCompletion' OR d->>'status'<>'draft' OR d->>'sentAt' IS NOT NULL THEN RAISE EXCEPTION 'Only an unsigned unreleased legacy draft can adopt completion';END IF;
   IF EXISTS(SELECT 1 FROM jsonb_array_elements(d->'fields') f WHERE f->>'owner'='pmLocked' AND btrim(coalesce(official->>(f->>'id'),''))='' AND btrim(coalesce(d->'values'->>(f->>'id'),''))<>'') THEN RAISE EXCEPTION 'Existing case answers need manual review before adoption';END IF;
@@ -78,7 +78,7 @@ BEGIN
   policy:=policy||jsonb_build_object('fields',entries,'history',history,'sourceFingerprint',fingerprint);d:=jsonb_set(d,'{personnelCompletion}',policy);
  END IF;
  IF p_operation='override' THEN
-  IF jsonb_typeof(p_override) IS DISTINCT FROM 'object' OR p_override-ARRAY['fieldId','owner','reason']<>'{}'::jsonb OR coalesce(p_override->>'owner' IN('employee','hr'),false) IS NOT TRUE OR length(btrim(coalesce(p_override->>'reason',''))) NOT BETWEEN 1 AND 4000 THEN RAISE EXCEPTION 'Record a bounded reason and completion owner';END IF;
+  IF jsonb_typeof(p_override) IS DISTINCT FROM 'object' OR jsonb_typeof(p_override->'fieldId') IS DISTINCT FROM 'string' OR length(p_override->>'fieldId') NOT BETWEEN 1 AND 120 OR jsonb_typeof(p_override->'reason') IS DISTINCT FROM 'string' OR p_override-ARRAY['fieldId','owner','reason']<>'{}'::jsonb OR coalesce(p_override->>'owner' IN('employee','hr'),false) IS NOT TRUE OR length(btrim(coalesce(p_override->>'reason',''))) NOT BETWEEN 1 AND 4000 THEN RAISE EXCEPTION 'Record a bounded reason and completion owner';END IF;
   key:=p_override->>'fieldId';SELECT item INTO field FROM jsonb_array_elements(d->'fields') item WHERE item->>'id'=key AND item->>'owner'='pmLocked';entry:=policy->'fields'->key;
   IF field IS NULL OR entry IS NULL OR btrim(coalesce(entry->>'sourceValue',''))<>'' THEN RAISE EXCEPTION 'Only a missing Personnel field can change owner';END IF;
   IF p_override->>'owner'='employee' AND app.personnel_completion_group(field->>'pmKey')='unknown' THEN RAISE EXCEPTION 'Unclassified Personnel fields remain with HR';END IF;
