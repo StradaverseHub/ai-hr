@@ -514,7 +514,7 @@ async function analyze(
   const cycleKeys = new Map<string, Set<string>>();
   for (const c of cycles) {
     if (c.archivedAt != null) continue;
-    for (const k of [c.code, c.name]) {
+    for (const k of [c.id, c.code, c.name]) {
       const kk = up(k ?? '');
       if (kk) { const ids = cycleKeys.get(kk) ?? new Set<string>(); ids.add(c.id); cycleKeys.set(kk, ids); }
     }

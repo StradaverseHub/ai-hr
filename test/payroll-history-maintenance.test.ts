@@ -10,6 +10,7 @@ import {previewPayrollHistoryUpload,confirmPayrollHistoryUpload,previewPayrollHi
 import {previewPayrollHistoryMaintenance} from '../core/payroll-history-maintenance';
 import {payrollHistoryMaintenanceRecords,payrollHistoryMaintenanceRecord} from '../core/payroll-history-maintenance-read';
 import {requestPayrollHistoryConfirm} from '../core/payroll-history-job';
+import {readEffectiveTaxBasesTx} from '../core/payroll-tax-basis-read';
 import {previewTaxBasisRecalculation} from '../core/payroll-tax-basis';
 import {PAYROLL_HISTORY_HEADERS} from '../lib/payroll-history-import-schema';
 import {toCsv} from '../lib/csv';
@@ -104,4 +105,12 @@ it('requires an actual preexisting sealed worker step for raw legacy restoration
 it('uses the canonical direct catalogue owner when its optional alias field is explicitly empty',async()=>{
  await owner.db.insert(schema.payrollImportCode).values({tenantId:b.tenantId,code:'TRV',label:'Travel',destination:'allowance',direction:'earning',aliasFor:''});
  await accept([['BASIC','1000.00'],['TRV','500.00'],['PCB','50.00']],'replace');await accept([['TRV','200.00']],'update_listed');expect((await detail()).items.find(item=>item.code==='TRV')).toMatchObject({key:'component:'+trvId,amount:'200.00'});
+});
+
+it('preserves proven noncash financial ownership when an unlisted archived cash setting holds only the tax projection',async()=>{
+ const [benefit]=await owner.db.insert(schema.payComponent).values({tenantId:b.tenantId,code:'BIK',name:'Fictional retained benefit',kind:'allowance',isNonPayable:true,displayCategory:'bik',eaFormLine:'EA_B3',includedInPcb:true,pcbRemunerationType:'normal'}).returning();
+ const original=await accept([['BASIC','1000.00'],['TRV','500.00'],['BIK','300.00'],['PCB','50.00']],'replace'),before=await detail(),[saved]=await owner.db.select().from(schema.payrollHistoryImportSnapshot).where(eq(schema.payrollHistoryImportSnapshot.id,(await owner.db.select().from(schema.payrollHistoryImportRevision).where(eq(schema.payrollHistoryImportRevision.attemptId,original.attemptId)))[0].snapshotId!));
+ await owner.db.update(schema.payComponent).set({archivedAt:new Date()}).where(eq(schema.payComponent.id,trvId));const review=await accept([['BASIC','1100.00']],'update_listed'),after=await detail();
+ expect(after.values).toMatchObject({basicSalary:'1100.00',allowance:'500.00',grossPay:'1600.00',statutory:{pcb:50,importedTaxBasis:{state:'held'}}});expect(after.items.find(item=>item.key==='component:'+benefit.id)).toMatchObject({amount:'300.00',direction:'noncash',sourceAttemptId:original.attemptId});expect(after.values?.statutory.importedTaxBasis).toMatchObject({missing:[expect.stringMatching(/TRV.*archived|archived.*TRV/)]});expect(before.values?.statutory.pcb).toBe(50);
+ const [revision]=await owner.db.select().from(schema.payrollHistoryImportRevision).where(eq(schema.payrollHistoryImportRevision.attemptId,review.attemptId));await expect(withTenant(ctx,tx=>readEffectiveTaxBasesTx(tx,ctx,[revision.snapshotId!],{includeImported:true}))).rejects.toThrow(/Imported wage inputs require review/);expect((await owner.db.select().from(schema.payrollHistoryImportSnapshot).where(eq(schema.payrollHistoryImportSnapshot.id,saved.id)))[0]).toEqual(saved);
 });

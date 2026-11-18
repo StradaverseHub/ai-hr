@@ -7,7 +7,7 @@ DECLARE identity public.payroll_history_import_record; source public.payroll_his
 BEGIN
  IF NEW.maintenance IS NULL THEN
   IF app.current_user_id() IS NOT NULL AND NEW.kind IN('import','correction','adopted') AND(NOT app.principal_snapshot_current() OR NOT EXISTS(SELECT 1 FROM public.payroll_history_import_record r JOIN public.payroll_history_import_attempt a ON a.id=NEW.attempt_id AND a.tenant_id=r.tenant_id WHERE r.id=NEW.record_id AND r.tenant_id=NEW.tenant_id AND a.created_by=app.current_user_id() AND app.payroll_history_maintenance_permission(r.company_id,'payroll.history.import'))) THEN RAISE EXCEPTION 'Payroll history import authority unavailable' USING ERRCODE='42501';END IF;
-  IF app.current_user_id() IS NOT NULL AND NEW.kind IN('import','correction') AND NOT EXISTS(SELECT 1 FROM public.payroll_history_import_snapshot s JOIN public.payslip p ON p.id=s.id AND p.tenant_id=s.tenant_id JOIN public.payroll_batch b ON b.id=p.batch_id AND b.tenant_id=p.tenant_id WHERE s.id=NEW.snapshot_id AND s.record_id=NEW.record_id AND s.tenant_id=NEW.tenant_id AND b.history_import_attempt_id=NEW.attempt_id AND NOT EXISTS(SELECT 1 FROM public.payroll_history_import_revision old WHERE old.record_id=NEW.record_id AND old.snapshot_id=NEW.snapshot_id)) THEN RAISE EXCEPTION 'A legacy correction must own its new accepted snapshot; use an authorized withdrawal for restoration' USING ERRCODE='42501';END IF;
+  IF app.current_user_id() IS NOT NULL AND NEW.kind IN('import','correction') AND NOT EXISTS(SELECT 1 FROM public.payroll_history_import_snapshot s JOIN public.payslip p ON p.id=s.id AND p.tenant_id=s.tenant_id JOIN public.payroll_batch b ON b.id=p.batch_id AND b.tenant_id=p.tenant_id WHERE s.id=NEW.snapshot_id AND s.record_id=NEW.record_id AND s.tenant_id=NEW.tenant_id AND b.history_import_attempt_id=NEW.attempt_id AND NOT EXISTS(SELECT 1 FROM public.payroll_history_import_revision prior_snapshot WHERE prior_snapshot.record_id=NEW.record_id AND prior_snapshot.snapshot_id=NEW.snapshot_id)) THEN RAISE EXCEPTION 'A legacy correction must own its new accepted snapshot; use an authorized withdrawal for restoration' USING ERRCODE='42501';END IF;
   IF NEW.kind='revert' AND app.current_user_id() IS NOT NULL AND NOT EXISTS(SELECT 1 FROM public.payroll_history_import_record r WHERE r.id=NEW.record_id AND r.tenant_id=NEW.tenant_id AND app.payroll_history_maintenance_permission(r.company_id,'payroll.history.revert')) THEN RAISE EXCEPTION 'Payroll history withdrawal authority unavailable' USING ERRCODE='42501'; END IF;
   RETURN NEW;
  END IF;
@@ -118,7 +118,9 @@ BEGIN
   IF values_->'statutory'->scalar_.property='null'::jsonb OR coalesce((totals_->>scalar_.destination)::numeric,0) IS DISTINCT FROM coalesce((values_->'statutory'->>scalar_.property)::numeric,0) THEN RETURN false;END IF;
  END LOOP;
  SELECT coalesce(jsonb_object_agg(code,amount),'{}'::jsonb) INTO owned_nc_ FROM(SELECT upper(item->>'code') code,sum((item->>'amount')::numeric) amount FROM jsonb_each(state_->'chains') chain CROSS JOIN LATERAL(SELECT chain.value->0->'item' item) owned WHERE item->>'direction'='noncash' GROUP BY upper(item->>'code')) grouped;
- IF jsonb_typeof(values_->'statutory'->'importedTaxBasis'->'lines')='array' THEN
+ IF values_->'statutory'->'historyMaintenance'->>'version'='1' AND jsonb_typeof(values_->'statutory'->'historyMaintenance'->'items')='array' THEN
+  SELECT coalesce(jsonb_object_agg(code,amount),'{}'::jsonb) INTO original_nc_ FROM(SELECT upper(item->>'code') code,sum((item->>'amount')::numeric) amount FROM jsonb_array_elements(values_->'statutory'->'historyMaintenance'->'items') item WHERE item->>'direction'='noncash' GROUP BY upper(item->>'code')) grouped;
+ ELSIF jsonb_typeof(values_->'statutory'->'importedTaxBasis'->'lines')='array' THEN
   SELECT coalesce(jsonb_object_agg(code,amount),'{}'::jsonb) INTO original_nc_ FROM(SELECT upper(line->>'code') code,sum((line->>'amount')::numeric) amount FROM jsonb_array_elements(values_->'statutory'->'importedTaxBasis'->'lines') line WHERE line->>'direction'='noncash' GROUP BY upper(line->>'code')) grouped;
  ELSE
   SELECT coalesce(jsonb_object_agg(code,amount),'{}'::jsonb) INTO original_nc_ FROM(SELECT upper(line->>'code') code,sum((line->>'entered')::numeric) amount FROM jsonb_array_elements(coalesce(values_->'statutory'->'pcbNonCash'->'ownedEaEntries','[]'::jsonb)) line GROUP BY upper(line->>'code')) grouped;
@@ -168,7 +170,7 @@ REVOKE ALL ON FUNCTION app.payroll_history_maintenance_legacy_proven(uuid,uuid,j
 --> statement-breakpoint
 CREATE FUNCTION app.payroll_history_maintenance_state_bind() RETURNS trigger
 LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,pg_temp AS $$
-DECLARE previous_ public.payroll_history_import_revision; state_ jsonb; prior_ jsonb; expected_ jsonb; baseline_ uuid; first_baseline_ uuid; mode_ text; request_ jsonb; target_ uuid; chain_ record; entry_ jsonb; tail_ jsonb; item_ jsonb; count_ integer; old_ jsonb; prior_values_ jsonb; source_owner_ uuid; legacy_before_ jsonb; last_ordinal_ integer; ordinal_ integer;
+DECLARE previous_ public.payroll_history_import_revision; state_ jsonb; prior_ jsonb; expected_ jsonb; baseline_ uuid; first_baseline_ uuid; mode_ text; request_ jsonb; target_ uuid; chain_ record; entry_ jsonb; tail_ jsonb; item_ jsonb; count_ integer; old_ jsonb; prior_values_ jsonb; source_owner_ uuid; legacy_before_ jsonb; last_ordinal_ integer; ordinal_ integer; saved_values_ jsonb; financial_items_ jsonb; owned_items_ jsonb;
 BEGIN
  SELECT * INTO previous_ FROM public.payroll_history_import_revision WHERE id=NEW.previous_revision_id AND record_id=NEW.record_id AND tenant_id=NEW.tenant_id;
  IF previous_.maintenance IS NOT NULL AND NEW.maintenance IS NULL THEN RAISE EXCEPTION 'Payroll history maintenance cannot downgrade its immutable lineage' USING ERRCODE='23514';END IF;
@@ -212,7 +214,14 @@ BEGIN
    END IF;count_:=count_+1;
   END LOOP;
  END LOOP;
- IF NOT app.payroll_history_maintenance_state_matches(state_,(SELECT s."values" FROM public.payroll_history_import_snapshot s WHERE s.id=NEW.snapshot_id AND s.record_id=NEW.record_id AND s.tenant_id=NEW.tenant_id)) THEN RAISE EXCEPTION 'Payroll history maintenance item totals do not match its snapshot' USING ERRCODE='23514';END IF;
+ SELECT s."values" INTO saved_values_ FROM public.payroll_history_import_snapshot s WHERE s.id=NEW.snapshot_id AND s.record_id=NEW.record_id AND s.tenant_id=NEW.tenant_id;
+ IF saved_values_->'statutory' ? 'historyMaintenance' THEN
+  IF saved_values_->'statutory'->'historyMaintenance'->>'version' IS DISTINCT FROM '1' OR jsonb_typeof(saved_values_->'statutory'->'historyMaintenance'->'items') IS DISTINCT FROM 'array' THEN RAISE EXCEPTION 'Payroll history financial item evidence is unavailable' USING ERRCODE='23514';END IF;
+  SELECT coalesce(jsonb_object_agg(item->>'key',item),'{}'::jsonb) INTO financial_items_ FROM jsonb_array_elements(saved_values_->'statutory'->'historyMaintenance'->'items') item;
+  SELECT coalesce(jsonb_object_agg(chain.key,chain.value->0->'item') FILTER(WHERE chain.value->0->'item'<>'null'::jsonb),'{}'::jsonb) INTO owned_items_ FROM jsonb_each(state_->'chains') chain;
+  IF financial_items_ IS DISTINCT FROM owned_items_ OR jsonb_array_length(saved_values_->'statutory'->'historyMaintenance'->'items')<>(SELECT count(*) FROM jsonb_each(owned_items_)) THEN RAISE EXCEPTION 'Payroll history financial items do not match their proven ownership' USING ERRCODE='23514';END IF;
+ END IF;
+ IF NOT app.payroll_history_maintenance_state_matches(state_,saved_values_) THEN RAISE EXCEPTION 'Payroll history maintenance item totals do not match its snapshot' USING ERRCODE='23514';END IF;
  prior_:=previous_.maintenance->'state';
  IF prior_ IS NOT NULL THEN
   IF state_=prior_ THEN RETURN NEW;END IF;
