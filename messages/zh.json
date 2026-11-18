@@ -44223,5 +44223,45 @@
       "postedYear": "仅可上传早于该公司首次已提交薪资的 AI-HR 奖励评审年度的数据。"
     },
     "error": "请求未能完成，请重试。"
+  },
+  "lifecycleDocumentRouting": {
+    "title": "我的文件审核与签署",
+    "help": "审核并签署分配给您的已保存文件。每份文件保留原始接收人和流程。",
+    "search": "搜索文件",
+    "back": "返回文件列表",
+    "count": "{total} 份文件",
+    "empty": "没有分配给您的文件。",
+    "previous": "上一页",
+    "next": "下一页",
+    "revision": "内容版本 {number}",
+    "refresh": "刷新",
+    "failed": "文件已变更或操作不可用。请刷新后重试。",
+    "returned": "已退回负责人：{comment}",
+    "unassigned": "未分配",
+    "required": "必需",
+    "optional": "可选",
+    "done": "已完成",
+    "pending": "轮到您",
+    "waiting": "等待中",
+    "privateUntilTurn": "轮到您时即可查看文件内容。",
+    "download": "下载 PDF",
+    "saveFields": "保存字段",
+    "edit": "编辑文字",
+    "textBlock": "文字块 {number}",
+    "save": "保存文字",
+    "yourStep": "您的步骤：{action}",
+    "confirm": "确认{action}",
+    "returnComment": "退回原因",
+    "sendBack": "退回",
+    "resend": "重新传阅",
+    "open": "打开审核与签署",
+    "savedRoute": "此已保存文件使用生成时确定的审核与签署流程。",
+    "preparation": "请在首次签署前填写员工字段。任何人签署后，答案和文字都会锁定，直至文件被退回。",
+    "actions": {
+      "review": "审核",
+      "approve": "批准",
+      "sign": "签署",
+      "acknowledge": "确认收到"
+    }
   }
 }

@@ -44223,5 +44223,45 @@
       "postedYear": "Upload only years before the company’s first posted AI-HR Rewards review."
     },
     "error": "The request could not finish. Try again."
+  },
+  "lifecycleDocumentRouting": {
+    "title": "My document reviews and signatures",
+    "help": "Review and sign the saved documents assigned to you. Each document keeps its original recipients and route.",
+    "search": "Search documents",
+    "back": "Back to documents",
+    "count": "{total} documents",
+    "empty": "No documents are assigned to you.",
+    "previous": "Previous",
+    "next": "Next",
+    "revision": "Content revision {number}",
+    "refresh": "Refresh",
+    "failed": "This document changed or the action is unavailable. Refresh and try again.",
+    "returned": "Returned to its owner: {comment}",
+    "unassigned": "Unassigned",
+    "required": "Required",
+    "optional": "Optional",
+    "done": "Done",
+    "pending": "Your turn",
+    "waiting": "Waiting",
+    "privateUntilTurn": "The document content becomes available when it is your turn.",
+    "download": "Download PDF",
+    "saveFields": "Save fields",
+    "edit": "Edit wording",
+    "textBlock": "Text block {number}",
+    "save": "Save wording",
+    "yourStep": "Your step: {action}",
+    "confirm": "Confirm {action}",
+    "returnComment": "Reason for sending back",
+    "sendBack": "Send back",
+    "resend": "Send round again",
+    "open": "Open signing and review",
+    "savedRoute": "This saved document uses its frozen signing and review route.",
+    "actions": {
+      "review": "Review",
+      "approve": "Approve",
+      "sign": "Sign",
+      "acknowledge": "Acknowledge"
+    },
+    "preparation": "Complete your employee fields before the first signature. After anyone signs, the answers and wording are locked until a send-back."
   }
 }

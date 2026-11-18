@@ -1,3 +1,6 @@
+import {initializeV9DocumentRouting,reviseV9DocumentRouting,v9RouteReadyForEmployee,v9RoutedHrComplete,type V9DocumentRoutingEnvironment} from './lifecycle-v9-document-routing';
+import {canEditSigningContent,type SigningDocument} from './document-signing-model';
+import type {DocumentRouting,DocumentRoutingUnresolved} from './document-signing-routing';
 import { bulkAssignmentProblem, RETURN_BULK_LABELS } from './lifecycle-bulk-assignment';
 import { personnelMergeLabels } from '@/lib/lifecycle-v9-personnel-merge-fields';
 import type { Note as LifecycleNote } from './onboarding-model';
@@ -68,7 +71,7 @@ export type Field = {
   when: { field: string; value: string } | null;
 };
 export type Block = { id: string; type: 'letterhead' | 'heading' | 'subheading' | 'text' | 'fields' | 'field' | 'table' | 'signature'; text: string; section: string; fieldId?: string; columns?: string; rows?: string; role?: string; label?: string };
-export type TemplateVersion = { version: number; state: 'draft' | 'published'; at: string; by: string; blocks: Block[]; fields: Field[] };
+export type TemplateVersion = { version: number; state: 'draft' | 'published'; at: string; by: string; blocks: Block[]; fields: Field[]; routing?:DocumentRouting };
 export type Template = {
   id: string; name: string; module: Module; type: 'Form' | 'Letter' | 'Acknowledgement' | 'Attachment';
   rules: Rules; hrStep: 'none' | 'before' | 'after'; employeeAck: boolean; retired: boolean;
@@ -86,6 +89,8 @@ export type Document = {
   hrStep?: Template['hrStep']; employeeAck?: boolean; signatoryUserId?: string | null; templateType?: Template['type'];
   /** Documents generated from a routed template version: each Sign step's signature, keyed by step id (`step:<id>` signature blocks). */
   stepSignatures?: Record<string, Signature>;
+  /** Frozen source routing and canonical content-bound signing state, owned by this saved instance. */
+  routing?:DocumentRouting;signing?:SigningDocument;routingUnresolved?:DocumentRoutingUnresolved[];signingWorkflowRevision?:number;
 };
 export type Role = 'employeeWork' | 'employeePersonal' | 'employee' | 'supervisor' | 'pbp' | 'ta' | 'peopleOps' | 'taskOwners' | 'hrSignatory' | 'starter' | `group:${string}` | `person:${string}` | `address:${string}`;
 /** A recipient that could not be found when the step ran. Labels and reasons only, never an address. */
@@ -207,6 +212,7 @@ export type Config = {
 };
 export type Environment = {
   today: string; now: string; actor: Actor; nextId: () => string;
+  documentRouting?:V9DocumentRoutingEnvironment;
   onLeave: (userId: string, date: string) => boolean;
   openLoad: (userId: string, groupId: string) => number;
   lastAssigned: (userId: string, groupId: string) => number;
@@ -401,11 +407,12 @@ export function generate(c: Case, config: Config, templateId: string, env: Envir
   const values: Record<string, string> = {};
   for (const field of version.fields) if (field.pmKey) values[field.id] = personnelFieldSourceValue(field, env.mergeValues);
   const doc: Document = { id: env.nextId(), templateId, version: version.version, name: template.name, status: 'draft', blocks: structuredClone(version.blocks), fields: structuredClone(version.fields), values, edits: {}, hrSignature: null, employeeSignature: null, createdAt: env.now, sentAt: null, mergeValues: documentMergeValues(version,env.mergeValues), templateType: template.type, hrStep: template.hrStep, employeeAck: template.employeeAck, signatoryUserId: env.signatoryUserId ?? null };
+  initializeV9DocumentRouting(c,version,doc,env);
   c.documents.push(doc); appendLog(c, env, 'document.generated', `${doc.name} version ${doc.version}`); return doc;
 }
 /** Regeneration is explicit; publishing alone never replaces a person's document. */
 export function canRegenerate(c: Pick<Case, 'state' | 'mails'>, document: Document): boolean {
-  return ['pending', 'submitted'].includes(c.state) && !documentFinal(document) && !['superseded', 'withdrawn', 'countersign'].includes(document.status) && !documentDeliveryReserved(c, document.id);
+  return ['pending', 'submitted'].includes(c.state) && !document.signing?.actions.length && !documentFinal(document) && !['superseded', 'withdrawn', 'countersign'].includes(document.status) && !documentDeliveryReserved(c, document.id);
 }
 export function regenerate(c: Case, config: Config, id: string, env: Environment): Document {
   const previous = c.documents.find(document => document.id === id);
@@ -449,7 +456,7 @@ function documentPersonnelHold(doc: Document): string | null {
 export function fillDocumentPersonnelValues(c: Case, id: string, values: Record<string, string>, env: Environment): void {
   const doc = c.documents.find(document => document.id === id);
   if (!doc) throw new V9Error('Document not found.', 'not_found');
-  if (c.state !== 'submitted' || doc.status !== 'draft' || doc.hrSignature || doc.employeeSignature ||
+  if (c.state !== 'submitted' || (!doc.signing&&doc.status !== 'draft') || doc.hrSignature || doc.employeeSignature ||
       documentDeliveryReserved(c, id)) throw new V9Error('Only an unsigned draft can be filled in.', 'conflict');
   const missing = new Set(missingDocumentPersonnelValues(doc));
   for (const [key, value] of Object.entries(values)) {
@@ -467,21 +474,25 @@ export function fillDocumentPersonnelValues(c: Case, id: string, values: Record<
       if (field.owner === 'pmLocked' && field.pmKey === key && !doc.values[field.id]?.trim()) doc.values[field.id] = value.trim();
     }
   }
+  reviseV9DocumentRouting(doc,env);
   appendLog(c, env, 'document.saved', doc.name);
 }
 export function saveDocument(c: Case, id: string, values: Record<string, string>, owner: 'employee' | 'hr', env: Environment): void {
   const doc = c.documents.find(d => d.id === id); if (!doc) throw new V9Error('Document not found.', 'not_found');
+  if(doc.signing&&!canEditSigningContent(doc.signing,env.actor.id)&&owner==='hr')throw new V9Error('The document is locked or it is not your turn to edit.','forbidden');
+  if(doc.signing&&owner==='employee'&&doc.signing.actions.some(action=>action.action==='signed'&&action.contentHash===doc.signing!.contentHash))throw new V9Error('Signed document content is locked.','conflict');
   if (owner === 'employee' && doc.templateType === 'Attachment') throw new V9Error('Attachments are read-only PDFs.', 'forbidden');
   if (c.state !== 'submitted' || documentFinal(doc) || ['withdrawn', 'superseded'].includes(doc.status)) throw new V9Error('This document is no longer editable.', 'conflict');
-  if (owner === 'hr' && doc.status !== 'draft') throw new V9Error('Released document fields are frozen. Prepare a new document to make this correction.', 'conflict');
+  if (owner === 'hr' && !doc.signing && doc.status !== 'draft') throw new V9Error('Released document fields are frozen. Prepare a new document to make this correction.', 'conflict');
   if (owner === 'hr' && documentDeliveryReserved(c, id)) throw new V9Error('This document is frozen for email delivery.', 'conflict');
   if (owner === 'hr' && (doc.hrSignature || doc.employeeSignature)) throw new V9Error('Signed document fields are frozen. Prepare a new document to make this correction.', 'conflict');
-  if (owner === 'employee' && !['sent', 'opened'].includes(doc.status)) throw new V9Error('This document has not been released to you.');
+  if (owner === 'employee' && !doc.signing && !['sent', 'opened'].includes(doc.status)) throw new V9Error('This document has not been released to you.');
   for (const [key, value] of Object.entries(values)) {
     const field = doc.fields.find(f => f.id === key); if (!field || field.owner !== owner) throw new V9Error('This field cannot be changed.', 'forbidden');
     validateFieldValue(field, value);
     doc.values[key] = value;
   }
+  reviseV9DocumentRouting(doc,env,owner==='employee');
   appendLog(c, env, 'document.saved', doc.name);
 }
 /** Per-person wording is stored on the saved instance, never on the published template. */
@@ -491,16 +502,18 @@ export function editDocumentText(c: Case, config: Config, id: string, edits: Rec
   const template = config.templates.find(template => template.id === doc.templateId);
   if (!template) throw new V9Error('Document template not found.', 'not_found');
   if ((doc.templateType ?? template.type) === 'Attachment') throw new V9Error('Attachments are read-only PDFs.', 'forbidden');
-  if (c.state !== 'submitted' || doc.status !== 'draft' || doc.hrSignature || doc.employeeSignature || documentDeliveryReserved(c, id)) throw new V9Error('Only an unsigned draft not reserved for delivery can be edited.', 'conflict');
+  if (c.state !== 'submitted' || (!doc.signing&&doc.status !== 'draft') || doc.hrSignature || doc.employeeSignature || documentDeliveryReserved(c, id)||doc.signing&&!canEditSigningContent(doc.signing,env.actor.id)) throw new V9Error('Only an unsigned document at your review step can be edited.', 'conflict');
   const editable = doc.blocks.filter(block => ['heading','subheading','text'].includes(block.type));
   if (Object.keys(edits).length > 500 || Object.entries(edits).some(([key,value]) => !editable.some(block => block.id === key) || typeof value !== 'string' || value.length > 20000)) throw new V9Error('Choose an editable title, section heading or text block.', 'forbidden');
   const saved = Object.fromEntries(Object.entries(edits).filter(([key,value]) => value !== editable.find(block => block.id === key)!.text));
   doc.edits = saved;
+  reviseV9DocumentRouting(doc,env);
   appendLog(c, env, 'document.textEdited', doc.name);
 }
 export function signDocument(c: Case, config: Config, id: string, role: 'employee' | 'hr', signature: Signature, env: Environment): void {
   const doc = c.documents.find(d => d.id === id), template = doc && config.templates.find(t => t.id === doc.templateId);
   if (!doc || !template) throw new V9Error('Document not found.', 'not_found');
+  if(doc.signing)throw new V9Error('Use the assigned signing route for this document.','conflict');
   if ((doc.templateType ?? template.type) === 'Attachment') throw new V9Error('Attachments are read-only PDFs and do not require a signature.', 'conflict');
   const hrStep = doc.hrStep ?? template.hrStep, employeeAck = doc.employeeAck ?? template.employeeAck;
   if (c.state !== 'submitted' || ['superseded', 'withdrawn'].includes(doc.status)) throw new V9Error('This document is no longer open.', 'conflict');
@@ -737,13 +750,13 @@ export function previewEmail(c: Case, config: Config, emailId: string, env: Envi
     if (!template) { holds.push('A linked document template is unavailable.'); return []; }
     const version = document?.version ?? currentVersion(template)?.version ?? null;
     if (!version) holds.push(`Publish ${template.name} before sending.`);
-    if ((document?.hrStep ?? template.hrStep) === 'before' && !document?.hrSignature) holds.push(`HR must review and sign ${template.name} before sending.`);
+    if (document?.signing?!v9RouteReadyForEmployee(document):(document?.hrStep ?? template.hrStep) === 'before' && !document?.hrSignature) holds.push(`HR must review and sign ${template.name} before sending.`);
     return [{ templateId, name: document?.name ?? template.name, version, generated: !!document }];
   });
   for (const slot of email.slots) if (slot.required && !c.files.some(file => file.slot === `${email.id}:${slot.id}`)) holds.push(`Upload ${slot.label}.`);
   if (email.id === 'e3') {
     const acceptance = activeDocument(c, 't4');
-    if (!acceptance?.hrSignature && !holds.some(hold => hold.startsWith('HR must review and sign'))) holds.push('HR must review and sign the acceptance letter before sending.');
+    if (!(acceptance?.signing?v9RouteReadyForEmployee(acceptance):acceptance?.hrSignature) && !holds.some(hold => hold.startsWith('HR must review and sign'))) holds.push('HR must review and sign the acceptance letter before sending.');
   }
   const assets = [...(email.files ?? []), ...(email.images ?? []).filter(image => usedImages.has(image.id))];
   return { emailId, name: email.name, subject: subject.text, body: body.text, ...(rich ? { html: rich.html } : {}), edit: { ...edit }, to, cc, documents, holds: [...new Set(holds)], canSend: holds.length === 0, ...(assets.length ? { assets: structuredClone(assets) } : {}) };
@@ -823,7 +836,7 @@ export function queueEmail(c: Case, config: Config, emailId: string, env: Enviro
   const acceptance = c.module === 'off' && emailId === 'e3';
   const doc = acceptance ? activeDocument(c, 't4') : null;
   if (!test) { const hold = acceptanceDeliveryHold(c, emailId); if (hold) throw new V9Error(hold, 'conflict'); }
-  if (acceptance && !test && (!doc || !doc.hrSignature)) throw new V9Error('HR must review and sign the acceptance letter before sending.');
+  if (acceptance && !test && (!doc || (doc.signing?!v9RouteReadyForEmployee(doc):!doc.hrSignature))) throw new V9Error('HR must review and sign the acceptance letter before sending.');
   const key = test ? `test:${env.nextId()}` : acceptance ? `acceptance:${doc!.id}` : `manual:${env.nextId()}`;
   const held = outcomeText(enqueue(c, config, { id: key, type: 'email', template: emailId, to: 'employee', cc: [] }, key, null, env, test));
   if (held) throw new V9Error(held);
@@ -880,11 +893,11 @@ export function planWorkflow(c: Case, config: Config, workflow: Workflow, env: P
     else if (step.type === 'email') { const email = config.emails.find(e => e.id === step.template); lines.push(message(step, `"${email?.name ?? ''}"`, !!email?.active)); }
     else if (step.type === 'notify') lines.push(message(step, `"${step.subject || 'the notification'}"`, true));
     else if (step.type === 'waitFile') { const present = c.files.some(file => file.slot === step.slot); lines.push({ text: present ? `${step.label || 'The file'} is uploaded, so it carries on.` : `Would wait: ${step.label || 'the file'} is not uploaded yet.`, ok: present }); }
-    else { const doc = activeDocument(c, step.template), name = config.templates.find(t => t.id === step.template)?.name ?? 'the document', signed = step.by === 'hr' ? !!doc?.hrSignature : !!doc && documentFinal(doc); lines.push({ text: signed ? `${name} is signed, so it carries on.` : `Would wait for ${name} to be signed by ${step.by === 'hr' ? 'the HR signatory' : c.facts.name}.`, ok: signed }); }
+    else { const doc = activeDocument(c, step.template), name = config.templates.find(t => t.id === step.template)?.name ?? 'the document', signed = step.by === 'hr' ? !!doc&&(doc.signing?v9RoutedHrComplete(doc):!!doc.hrSignature) : !!doc && documentFinal(doc); lines.push({ text: signed ? `${name} is signed, so it carries on.` : `Would wait for ${name} to be signed by ${step.by === 'hr' ? 'the HR signatory' : c.facts.name}.`, ok: signed }); }
   }
   return { matches, lines };
 }
-export function runWorkflow(c: Case, config: Config, workflow: Workflow, env: Environment, event: 'submitted' | 'date' | 'resume' | 'hrSigned' | 'manual', options: { startNow?: boolean; continueHeld?: boolean } = {}): Run | null {
+export function runWorkflow(c: Case, config: Config, workflow: Workflow, env: Environment, event: 'submitted' | 'date' | 'resume' | 'hrSigned' | 'docSigned' | 'manual', options: { startNow?: boolean; continueHeld?: boolean; sourceEvent?:Run['sourceEvent'] } = {}): Run | null {
   const unfinished = c.runs.find(r => r.workflowId === workflow.id && (r.status === 'waiting' || r.status === 'failed'));
   // A held email waits for HR: fixing a record alone sends nothing until someone presses Continue.
   if (unfinished?.hold && unfinished.status === 'waiting' && !options.continueHeld) return unfinished;
@@ -904,10 +917,10 @@ export function runWorkflow(c: Case, config: Config, workflow: Workflow, env: En
     if (env.today < due || !afterTrigger(trigger.event) && env.today > anchor) return null;
   }
   const repeat = trigger.repeat && dateTrigger(trigger.event) && !afterTrigger(trigger.event);
-  const runKey = waiting?.id ?? `${workflow.id}:${repeat ? env.today : 'once'}`;
+  const runKey = waiting?.id ?? `${workflow.id}:${options.sourceEvent ? `${options.sourceEvent.kind}:${options.sourceEvent.sourceId}:${options.sourceEvent.revision}` : repeat ? env.today : 'once'}`;
   let run = c.runs.find(r => r.id === runKey);
   if (run?.status === 'done') return run;
-  if (!run) { run = { id: runKey, workflowId: workflow.id, revision: config.revision, date: env.today, status: 'running', cursor: 0, reason: '', at: env.now, definition: structuredClone(workflow), actor: { ...env.actor } }; c.runs.push(run); }
+  if (!run) { run = { id: runKey, workflowId: workflow.id, revision: config.revision, date: env.today, status: 'running', cursor: 0, reason: '', at: env.now, definition: structuredClone(workflow), actor: { ...env.actor },...(options.sourceEvent?{sourceEvent:structuredClone(options.sourceEvent)}:{}) }; c.runs.push(run); }
   const skip = skipReason(c, workflow, config); if (skip) { if (run.status !== 'skipped' || run.reason !== skip) appendLog(c, env, 'workflow.skipped', `${workflow.name}: ${skip}`); run.status = 'skipped'; run.reason = skip; return run; }
   run.status = 'running';
   try {
@@ -916,13 +929,13 @@ export function runWorkflow(c: Case, config: Config, workflow: Workflow, env: En
       if (step.type === 'doc') {
         const doc = generate(c, config, step.template, env), template = config.templates.find(t => t.id === step.template);
         if (step.release && ['draft', 'hrsigned'].includes(doc.status)) {
-          if ((doc.hrStep ?? template?.hrStep) === 'before' && !doc.hrSignature) waiting = 'HR must sign before release.';
+          if (doc.signing?!v9RouteReadyForEmployee(doc):(doc.hrStep ?? template?.hrStep) === 'before' && !doc.hrSignature) waiting = 'HR must sign before release.';
           else {
             waiting = documentPersonnelHold(doc) ?? '';
             if (!waiting) { doc.status = 'sent'; doc.sentAt = env.now; linkedTasks(c, doc, 'sent'); appendLog(c, env, 'document.released', doc.name); }
           }
         }
-      } else if (step.type === 'waitSign') { const d = activeDocument(c, step.template); if (!(step.by === 'hr' ? d?.hrSignature : d && documentFinal(d))) waiting = `Waiting for ${step.by === 'hr' ? 'HR' : 'the employee'} to sign.`; }
+      } else if (step.type === 'waitSign') { const d = activeDocument(c, step.template); if (!(step.by === 'hr' ? d&&(d.signing?v9RoutedHrComplete(d):d.hrSignature) : d && documentFinal(d))) waiting = `Waiting for ${step.by === 'hr' ? 'HR' : 'the employee'} to sign.`; }
       else if (step.type === 'waitFile') { if (!c.files.some(f => f.slot === step.slot)) waiting = `Waiting for ${step.label}.`; }
       else {
         const outcome = enqueue(c, config, step, `${run.id}:${step.id}`, workflow.id, env);

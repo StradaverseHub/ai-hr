@@ -1,3 +1,7 @@
+import {reviseV9DocumentRouting} from '../../../lib/lifecycle-v9-document-routing';
+import {documentRoutingProblems,resolveDocumentRouting} from '../../../lib/document-signing-routing';
+import {resolveNativeDocumentRouting} from '../../../lib/document-signing-native-routing';
+import type {Routing as NativeDocumentRouting} from '../../../lib/onboarding-model';
 import { personnelMergeLabels } from '@/lib/lifecycle-v9-personnel-merge-fields';
 import {joinerPageSections} from '../../../lib/onboarding-page-access';
 import type {Config as NativeConfig} from '../../../lib/onboarding-model';
@@ -34,7 +38,7 @@ import { resolveDocumentUpload } from '../../../core/employee-documents';
 
 type Row = { id: string; revision: number; company_id: string; data: M.Case; native?: true };
 export type DirectoryUser = { id: string; name: string };
-export type Options = { checklistOwnerIds?: string[]; users: DirectoryUser[]; companies: { id: string; name: string; registrationNo?: string; address?: string }[]; employees: { id: string; name: string; employeeNo: string; companyId: string }[]; signatoryCandidates?: Record<string,string[]>; signatoryCandidatesByModule?:Record<M.Module,Record<string,string[]>>; labels?: Partial<Record<M.RuleField, Record<string, string>>>; leaveTypes?: { id: string; name: string }[] };
+export type Options = { documentRoutingChoices?:{routings:{id:string;name:string}[];groups:{id:string;name:string}[];people:{id:string;name:string}[]}; checklistOwnerIds?: string[]; users: DirectoryUser[]; companies: { id: string; name: string; registrationNo?: string; address?: string }[]; employees: { id: string; name: string; employeeNo: string; companyId: string }[]; signatoryCandidates?: Record<string,string[]>; signatoryCandidatesByModule?:Record<M.Module,Record<string,string[]>>; labels?: Partial<Record<M.RuleField, Record<string, string>>>; leaveTypes?: { id: string; name: string }[] };
 export type Workspace = { permissions?:{onboarding:boolean;offboarding:boolean;administration:boolean;records?:boolean}; config: M.Config | null; cases: M.Case[]; options: Options; canConfigure: boolean; actor: M.Actor; personnelWritableKeys: string[]; templateUsage?: M.TemplateUsage[]; definitionUsage?: M.DefinitionUsage[]; sender?: { name: string | null; configured: boolean } };
 export type OwnCase = Pick<M.Case, 'id' | 'number' | 'module' | 'revision' | 'state' | 'facts' | 'tasks' | 'documents'> & { items:(M.Item&{canFulfil?:boolean})[]; own: boolean; equipment?: { id: string; name: string; kind: 'device'|'system'; state: string; approval: string; handedAt: string|null; receipt: {status:'received'|'problem';at:string;by:string;note:string}|null }[] };
 export type PendingReturns = { held:{id:string;name:string;kind:'system'|'device';group:string|null;source:'asset'|'onboarding';catalogueId?:string;requestNumber?:string}[]; catalogue:{id:string;name:string;kind:'system'|'device';group:string;active:boolean}[]; selected:string[];
@@ -193,11 +197,20 @@ async function environment(tx: Tx, ctx: SessionContext, c: M.Case, config: M.Con
   for(const field of caseFields) values['case.'+field.key]=field.key in caseLabels?caseLabels[field.key]:field.type==='date'?fmt(caseValues[field.key]??''):caseValues[field.key]??'';
 
   if (calculation?.ready) Object.assign(values, { 'leave.remaining': String(calculation.remainingLeave), 'leave.encashDays': String(calculation.encashDays), 'leave.encashAmount': `${calculation.currency} ${calculation.amount!.toFixed(2)}`, 'leave.dailyRate': `${calculation.currency} ${calculation.dailyRate!.toFixed(2)}`, 'pay.finalPayDate': fmt(calculation.payDate) });
-  return { today, now: new Date().toISOString(), actor: who, supervisorUserId, nextId: randomUUID,
+  const [nativeRoutingConfig]=await tx.execute<{routings:NativeDocumentRouting[]}>(sql`select data->'routings' as routings from lc_onboarding_config where tenant_id=${ctx.tenantId}::uuid`);
+  const env:M.Environment={ today, now: new Date().toISOString(), actor: who, supervisorUserId, nextId: randomUUID,
     onLeave: (id, date) => unavailable.some(r => r.user_id === id && r.on_date === date),
     openLoad: id => Number(sharedLoads.find(load => load.user_id === id)?.task_load ?? 0),
     lastAssigned: id => { const last = sharedLoads.find(load => load.user_id === id)?.last_auto; return last ? Date.parse(last) || 0 : 0; },
     eligibleUser: id => users.some(u => u.id === id), userName: id => users.find(u => u.id === id)?.name ?? 'Unlinked user', mergeValues: values, ...(calculation?.lastDay ? { effectiveLastDay: calculation.lastDay } : {}), holdAlertUserIds: ['pending', 'submitted'].includes(c.state) ? await holdAlertUsersTx(tx, ctx.tenantId, c.facts.company, c.module) : [], signatoryUserId: signatory?.signatoryUserId ?? null, actorSignatoryTitle:v9SignatoryTitle(config,who.id,c.facts.company), requireDeliveryAck: true, ...(native && !c.facts.employeeUserId && z.email().max(320).regex(/^[\x21-\x7e]+$/).safeParse((native.c.caseContactEmail ?? nf?.email)?.trim()).success ? { onboardingContact: { email: (native.c.caseContactEmail ?? nf!.email).trim(), sourceRevision: native.c.sourceVersion } } : {}) };
+  env.documentRouting={tenantId:ctx.tenantId,hash:text=>createHash('sha256').update(text).digest('hex'),resolve:routing=>{
+   const resolved=resolveDocumentRouting(routing,{employeeUserId:c.facts.employeeUserId,directSuperiorUserId:supervisorUserId,facts:{company:c.facts.company,businessGroup:c.facts.businessGroup,department:c.facts.department,jobTitle:c.facts.title},routing:()=>null,
+    nativeRouting:id=>{const definition=nativeRoutingConfig?.routings?.find(definition=>definition.id===id);return definition?resolveNativeDocumentRouting(definition,c.facts,config.groups,id=>env.eligibleUser(id)&&!env.onLeave(id,today)):{userIds:[],groupId:null,reason:'The On/Off Boarding routing no longer exists.'};},
+    groupMembers:id=>config.groups.find(group=>group.id===id)?.members??null,fallback:null,describe:who=>who.kind==='employee'?'Employee':who.kind==='directSuperior'?'Direct Superior':who.kind==='people'?'Named people':who.kind==='routing'?'On/Off Boarding routing':'On/Off Boarding group',
+    choose:(candidates,pick,groupId)=>{if(groupId)return M.assign(config,groupId,today,env,{},pick==='roundRobin'?'recent':'memberOrder').userId;return candidates.filter(id=>env.eligibleUser(id)&&!env.onLeave(id,today)).sort((a,b)=>pick==='roundRobin'?env.lastAssigned(a,'')-env.lastAssigned(b,'')||candidates.indexOf(a)-candidates.indexOf(b):candidates.indexOf(a)-candidates.indexOf(b))[0]??null;}});
+   resolved.route.steps=resolved.route.steps.map(step=>({...step,label:step.holderId?env.userName(step.holderId):'Unassigned'}));return resolved;
+  }};
+  return env;
 }
 /** d1e26f81 — the sources a leaver's Return and revoke rows are built from, read once per command or view. */
 async function returnSourcesTx(tx:Tx,ctx:SessionContext,c:M.Case):Promise<ReturnSources> {
@@ -339,7 +352,8 @@ export async function v9Workspace(ctx: SessionContext): Promise<Workspace> {
     const leaveTypes = await tx.execute<{ id: string; name: string }>(sql`select id,name from leave_type where tenant_id=${ctx.tenantId}::uuid and archived_at is null order by name,id`);
     const usage = config && permission?.ok ? await tx.execute<M.TemplateUsage>(sql`select template_id as "templateId",version,documents from app.lc_v9_document_usage()`) : [];
     const definitionUsage = config && permission?.ok ? await tx.execute<M.DefinitionUsage>(sql`select kind,definition_id as "definitionId",messages,runs from app.lc_v9_definition_usage()`) : [];
-    return { permissions:{onboarding:!!permission?.onboarding,offboarding:!!permission?.offboarding,administration:!!permission?.ok||!!permission?.administration&&(!!permission?.onboardingModule||!!permission?.offboarding),records:!!permission?.records}, definitionUsage: [...definitionUsage], templateUsage: [...usage], config, cases: rows.map(r => reveal ? r.data : maskCasePersonalEmail(r.data)), options: { checklistOwnerIds:checklistOwners.map(user=>user.id), signatoryCandidates:permission?.onboardingModule||permission?.offboarding?signatoryCandidates:{}, signatoryCandidatesByModule:permission?.onboardingModule||permission?.offboarding?signatoryCandidatesByModule:undefined, companies: [...companies], users: [...users], employees:permission?.onboardingModule||permission?.offboarding?[...employees]:[], labels, leaveTypes: [...leaveTypes] }, canConfigure: !!permission?.ok, actor: who, personnelWritableKeys: v9PersonnelWritableKeys };
+    const [nativeRoutes]=await tx.execute<{routings:NativeDocumentRouting[]}>(sql`select data->'routings' as routings from lc_onboarding_config where tenant_id=${ctx.tenantId}::uuid`);
+    return { permissions:{onboarding:!!permission?.onboarding,offboarding:!!permission?.offboarding,administration:!!permission?.ok||!!permission?.administration&&(!!permission?.onboardingModule||!!permission?.offboarding),records:!!permission?.records}, definitionUsage: [...definitionUsage], templateUsage: [...usage], config, cases: rows.map(r => reveal ? r.data : maskCasePersonalEmail(r.data)), options: { documentRoutingChoices:{routings:(nativeRoutes?.routings??[]).map(route=>({id:route.id,name:route.name})),groups:config?.groups.map(group=>({id:group.id,name:group.name}))??[],people:[...users]},checklistOwnerIds:checklistOwners.map(user=>user.id), signatoryCandidates:permission?.onboardingModule||permission?.offboarding?signatoryCandidates:{}, signatoryCandidatesByModule:permission?.onboardingModule||permission?.offboarding?signatoryCandidatesByModule:undefined, companies: [...companies], users: [...users], employees:permission?.onboardingModule||permission?.offboarding?[...employees]:[], labels, leaveTypes: [...leaveTypes] }, canConfigure: !!permission?.ok, actor: who, personnelWritableKeys: v9PersonnelWritableKeys };
   });
 }
 export async function v9Setup(ctx: SessionContext): Promise<void> {
@@ -371,11 +385,18 @@ export async function v9SaveConfig(ctx: SessionContext, revision: number, input:
     await lockTx(tx, ctx); await admin(tx); const previous = await configTx(tx, ctx, true);
     if (!previous || previous.revision !== revision) throw new M.V9Error('Settings changed. Refresh before saving.', 'conflict');
     const config = parseV9Config(input, previous) as M.Config;
+    const [nativeRegistry]=await tx.execute<{routings:NativeDocumentRouting[]}>(sql`select data->'routings' as routings from lc_onboarding_config where tenant_id=${ctx.tenantId}::uuid`);
+    const routeUsers=await tx.execute<{id:string}>(sql`select id from app_user where tenant_id=${ctx.tenantId}::uuid and archived_at is null and not app.login_blocked(id)`);
+    for(const template of config.templates)for(const version of template.versions){
+     // Published definitions are immutable and may retain an archived historical reference; new drafts/publications must resolve.
+     const old=previous.templates.find(item=>item.id===template.id)?.versions.find(item=>item.version===version.version);
+     if(version.routing?.length&&(!old||!v9Equal(old,version))){const problems=documentRoutingProblems(version.routing,{routingExists:id=>nativeRegistry?.routings?.some(route=>route.id===id)??false,groupExists:id=>config.groups.some(group=>group.id===id),personExists:id=>routeUsers.some(user=>user.id===id)});if(problems.length)throw new M.V9Error(problems[0]);}
+    }
     const references = config.emails.flatMap(email => [...(email.files ?? []), ...(email.images ?? [])].map(asset => ({ emailId: email.id, asset })));
     if (references.length) {
       const ids = [...new Set(references.map(reference => reference.asset.id))];
       const assets = await tx.execute<EmailAssetRow>(sql`select *,octet_length(content) as size from lc_v9_email_asset where tenant_id=${ctx.tenantId}::uuid and id in (${sql.join(ids.map(id => sql`${id}::uuid`),sql`,`)})`);
-      for (const reference of references) { const actual = assets.find(asset => asset.id === reference.asset.id && asset.email_template_id === reference.emailId); if (!actual || !v9Equal(emailAssetMetadata(actual), reference.asset)) throw new M.V9Error('An email file no longer matches its uploaded receipt. Upload or select the actual file again.', 'conflict'); }
+      for (const reference of references) { const actual = assets.find(asset => asset.id === reference.asset.id && asset.email_template_id === reference.emailId); if (!actual || !v9Equal(emailAssetMetadata(actual), (({alt: _alt,...receipt})=>receipt)(reference.asset))) throw new M.V9Error('An email file no longer matches its uploaded receipt. Upload or select the actual file again.', 'conflict'); }
     }
     const deletesVersion = previous.templates.some(template => { const retained = config.templates.find(next => next.id === template.id); return !retained || template.versions.some(version => !retained.versions.some(next => next.version === version.version)); });
     const usage = deletesVersion ? await tx.execute<M.TemplateUsage>(sql`select template_id as "templateId",version,documents from app.lc_v9_document_usage()`) : [];
@@ -769,7 +790,7 @@ export async function v9Command(ctx: SessionContext, id: string, revision: numbe
       M.signDocument(c, config, command.id, 'hr', { ...command.signature, by: env.actor, at: env.now }, env);
       if(c.documents.find(document=>document.id===command.id)?.status==='hrsigned')for(const workflow of config.workflows)M.runWorkflow(c,config,workflow,env,'hrSigned');
     }
-    else if (command.type === 'documentRefresh') { const document = c.documents.find(d => d.id === command.id); if (!document || document.status !== 'draft' || M.documentDeliveryReserved(c, command.id)) throw new M.V9Error('Only an unsigned draft not reserved for email delivery can refresh its source values.'); document.signatoryUserId ??= env.signatoryUserId ?? null; document.mergeValues = M.documentMergeValues(document,{...env.mergeValues,'signatory.name':document.signatoryUserId?env.userName(document.signatoryUserId):'','signatory.title':v9SignatoryTitle(config,document.signatoryUserId,c.facts.company)}); for (const field of document.fields) if (field.owner === 'pmLocked' && field.pmKey) document.values[field.id] = M.personnelFieldSourceValue(field, document.mergeValues); M.appendLog(c, env, 'document.refreshed', document.name); }
+    else if (command.type === 'documentRefresh') { const document = c.documents.find(d => d.id === command.id); if (!document || document.status !== 'draft' || M.documentDeliveryReserved(c, command.id)) throw new M.V9Error('Only an unsigned draft not reserved for email delivery can refresh its source values.'); document.signatoryUserId ??= env.signatoryUserId ?? null; document.mergeValues = M.documentMergeValues(document,{...env.mergeValues,'signatory.name':document.signatoryUserId?env.userName(document.signatoryUserId):'','signatory.title':v9SignatoryTitle(config,document.signatoryUserId,c.facts.company)}); for (const field of document.fields) if (field.owner === 'pmLocked' && field.pmKey) document.values[field.id] = M.personnelFieldSourceValue(field, document.mergeValues); reviseV9DocumentRouting(document,env); M.appendLog(c, env, 'document.refreshed', document.name); }
     else if (command.type === 'settlementOptions') {
       if (!['pending', 'submitted'].includes(c.state)) throw new M.V9Error('Reopen this case before changing its figures.'); c.settlementOptions = command.options; M.appendLog(c, env, 'settlement.adjusted', command.reason);
       // d1e26f81 — default Return and revoke dates follow the effective last working day; fixed dates stay.
@@ -842,6 +863,13 @@ export async function v9Command(ctx: SessionContext, id: string, revision: numbe
     await store(tx, ctx, row, c, command.type, config);
   });
 }
+/** Signing completion is consumed once by the existing privileged workflow scheduler. No signer receives case administration. */
+function consumeRoutedDocumentCompletions(c:M.Case,config:M.Config,env:M.Environment){
+ for(const document of c.documents)if(document.signing&&M.documentFinal(document)&&document.signingWorkflowRevision!==document.signing.contentRevision){
+  for(const workflow of config.workflows)M.runWorkflow(c,config,workflow,env,'docSigned',{sourceEvent:{kind:'docSigned',sourceId:document.id,at:env.now,revision:document.signing.contentRevision}});
+  document.signingWorkflowRevision=document.signing.contentRevision;
+ }
+}
 /** Native submission and the privileged minute worker use the same idempotent workflow transition. */
 export async function v9NativeTransitionTx(ctx: SessionContext, tx: Tx, id: string, now = new Date(), dates = true): Promise<{ revision: number; changed: boolean }> {
   const native = await onboardingV9ReadTx(ctx, tx, id), config = await configTx(tx, ctx);
@@ -849,6 +877,7 @@ export async function v9NativeTransitionTx(ctx: SessionContext, tx: Tx, id: stri
   const c = projectNativeCase(native.c, native.row.revision, native.documentState, native.employeeUserId, native.supervisorUserId);
   const env = await environment(tx, ctx, c, config); env.today = todayInKualaLumpur(now); env.now = now.toISOString();
   env.mergeValues.today = env.mergeValues['today.date'] = env.today.slice(8) + '/' + env.today.slice(5, 7) + '/' + env.today.slice(0, 4);
+  if(c.state==='submitted')consumeRoutedDocumentCompletions(c,config,env);
   if (c.state === 'submitted') for (const workflow of config.workflows) {
     M.runWorkflow(c, config, workflow, env, 'submitted');
     if (c.runs.some(run => run.workflowId === workflow.id && run.status === 'waiting')) M.runWorkflow(c, config, workflow, env, 'resume');
@@ -879,6 +908,7 @@ export async function v9Sweep(ctx: SessionContext, connection: NotificationSweep
       if (!row) return false; const config = await configTx(tx, ctx); if (!config) return false;
       const c = structuredClone(row.data), env = await environment(tx, ctx, c, config);
       env.today = todayInKualaLumpur(now); env.now = now.toISOString();
+      consumeRoutedDocumentCompletions(c,config,env);
       for (const w of config.workflows) { if (c.runs.some(r => r.workflowId === w.id && r.status === 'waiting')) M.runWorkflow(c, config, w, env, 'resume'); if (dates) M.runWorkflow(c, config, w, env, 'date'); }
       const calculation = dates && c.module === 'off' ? await readSettlementTx(tx, ctx, c, config) : null;
       const figures = calculation?.ready && calculation.lastDay === c.facts.lastDay ? { sourceRevision: calculation.sourceRevision, lastDay: calculation.lastDay, leaveDays: String(calculation.encashDays), amount: calculation.amount!.toFixed(2), currency: calculation.currency, payDate: calculation.payDate, lockedAt: env.now, payrollReference: randomUUID() } : null;
@@ -1173,6 +1203,7 @@ export async function v9DownloadDocument(ctx: SessionContext, caseId: string, do
     if (!(error instanceof M.V9Error || error instanceof OnboardingError) || !['forbidden', 'not_found'].includes(error.code)) throw error;
     const own = (await v9OwnWork(ctx)).find(c => c.id === caseId); document = own?.documents.find(d => d.id === documentId); reference = own?.number ?? '';
   }
+  if(!document){const {v9ReadDocumentSigningWork}=await import('./document-routing');const routed=await v9ReadDocumentSigningWork(ctx,caseId,documentId).catch(()=>null);document=routed?.document??undefined;reference=routed?.number??'';}
   if (!document) throw new M.V9Error('Document not found or unavailable.', 'not_found');
   const { renderV9DocumentPdf } = await import('../../../lib/lifecycle-v9-pdf');
   const result = await renderV9DocumentPdf(document, reference);

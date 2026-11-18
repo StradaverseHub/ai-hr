@@ -44223,5 +44223,45 @@
       "postedYear": "Muat naik hanya tahun sebelum semakan AI-HR Rewards pertama yang diposkan untuk syarikat."
     },
     "error": "Permintaan tidak dapat diselesaikan. Cuba lagi."
+  },
+  "lifecycleDocumentRouting": {
+    "title": "Semakan dan tandatangan dokumen saya",
+    "help": "Semak dan tandatangani dokumen tersimpan yang ditugaskan kepada anda. Penerima dan laluan asal dikekalkan.",
+    "search": "Cari dokumen",
+    "back": "Kembali ke dokumen",
+    "count": "{total} dokumen",
+    "empty": "Tiada dokumen ditugaskan kepada anda.",
+    "previous": "Sebelumnya",
+    "next": "Seterusnya",
+    "revision": "Semakan kandungan {number}",
+    "refresh": "Muat semula",
+    "failed": "Dokumen berubah atau tindakan tidak tersedia. Muat semula dan cuba lagi.",
+    "returned": "Dikembalikan kepada pemilik: {comment}",
+    "unassigned": "Belum ditugaskan",
+    "required": "Wajib",
+    "optional": "Pilihan",
+    "done": "Selesai",
+    "pending": "Giliran anda",
+    "waiting": "Menunggu",
+    "privateUntilTurn": "Kandungan tersedia apabila tiba giliran anda.",
+    "download": "Muat turun PDF",
+    "saveFields": "Simpan medan",
+    "edit": "Sunting teks",
+    "textBlock": "Blok teks {number}",
+    "save": "Simpan teks",
+    "yourStep": "Langkah anda: {action}",
+    "confirm": "Sahkan {action}",
+    "returnComment": "Sebab mengembalikan",
+    "sendBack": "Kembalikan",
+    "resend": "Hantar semula",
+    "open": "Buka semakan dan tandatangan",
+    "savedRoute": "Dokumen tersimpan ini menggunakan laluan semakan dan tandatangan yang dibekukan.",
+    "preparation": "Lengkapkan medan pekerja sebelum tandatangan pertama. Selepas sesiapa menandatangani, jawapan dan teks dikunci sehingga dokumen dikembalikan.",
+    "actions": {
+      "review": "Semak",
+      "approve": "Luluskan",
+      "sign": "Tandatangan",
+      "acknowledge": "Akui"
+    }
   }
 }
