@@ -820,7 +820,7 @@ it('stops on a cross-tenant row, then validates every company/tenant key without
   ];
   // Movement5773–5779: exact new function inventory, with no PUBLIC execute and one private implementation.
   addedFunctions.push('app.access_movement_delete_employment(uuid)','app.cost_allocations_after_hire_company_correction(uuid,uuid,text)','app.employment_payment_method_on(uuid,date)','app.preserve_movement_payroll(uuid)','app.preserve_payroll_metadata(uuid,boolean)','app.workforce_payroll_inputs_changed(uuid,date,date,text)','app.workforce_payroll_inputs_changed_windows(uuid,jsonb,text)');
-  //6100–6102: exact independently reviewed new signatures and application EXECUTE decisions.
+  //6100–6102 and6600–6642: independently reviewed signatures and exact application EXECUTE decisions.
   const approvedFunctions:{fn:string;app:boolean}[]=[
    {fn:'app.reward_review_plan_population(integer,date)',app:true},
    {fn:'app.reward_review_plan_rows(integer)',app:true},
@@ -857,6 +857,19 @@ it('stops on a cross-tenant row, then validates every company/tenant key without
    {fn:'app.reward_review_activity_changes(uuid[],uuid,uuid)',app:true},
    {fn:'app.lifecycle_recipient_case_allowed(uuid,boolean)',app:false},
    {fn:'app.lifecycle_recipient_accounts(uuid,text,uuid[],text)',app:true},
+   //6600: two trigger writers, the population seam and worker tick stay private; only the scoped view is callable.
+   {fn:'app.probation_queue_personnel_reconciliation()',app:false},
+   {fn:'app.probation_queue_setup_reconciliation()',app:false},
+   {fn:'app.probation_reconciliation_population(uuid,uuid)',app:false},
+   {fn:'app.probation_reconciliation_schedule_tick()',app:false},
+   {fn:'app.probation_reconciliation_view(uuid,integer,integer)',app:true},
+   //6630/6631: employee-owned metadata/open commands;6640/6642: current manager and scoped recovery metadata.
+   {fn:'app.lifecycle_task_document(jsonb,text)',app:true},
+   {fn:'app.lifecycle_task_documents(uuid[],integer,integer,uuid)',app:true},
+   {fn:'app.lifecycle_open_own_document(uuid,text,integer)',app:true},
+   {fn:'app.lifecycle_task_card_documents(uuid[],jsonb)',app:true},
+   {fn:'app.lifecycle_personnel_manager(uuid)',app:true},
+   {fn:'app.lifecycle_manager_recovery_page(text,integer)',app:true},
   ];
   addedFunctions.push(...approvedFunctions.map(row=>row.fn));
   privateFunctions.push(...approvedFunctions.filter(row=>!row.app).map(row=>row.fn));
@@ -1809,7 +1822,8 @@ it('stops on a cross-tenant row, then validates every company/tenant key without
   expect(afterPerformancePrivileges.columns.filter(row=>isRecruitmentRelation(row.rel)).map(row=>({rel:row.rel,col:row.col,acl:ownerAcl(row.acl)}))).toEqual(recruitmentColumns);
   expect(afterPerformancePrivileges.policies.filter(isRecruitmentPolicy).map(boardPolicyRow)).toEqual(recruitmentPolicies);
   expect(beforePerformancePrivileges.policies.filter(isRecruitmentPolicy)).toEqual([]);
-  //6100–6102: assert every new security delta before excluding ONLY its exact identity below.
+  //6100–6102 and6600: assert every new security delta before excluding ONLY its exact identity below.
+  //6601/6650 replace function bodies while retaining ACLs;6630–6642 add no tables or policies;6641 adds only a job-kind row.
   const approvedRelations:Record<string,{rls:boolean;force:boolean;acl:string}>={
    'app.reward_review_plan_company_outbox':{rls:true,force:true,acl:'{OWNER=arwdDxt/OWNER}'},
    'app.reward_review_plan_write_lease':{rls:true,force:true,acl:'{OWNER=arwdDxt/OWNER}'},
@@ -1817,6 +1831,8 @@ it('stops on a cross-tenant row, then validates every company/tenant key without
    'reward_person_history':{rls:true,force:true,acl:'{OWNER=arwdDxt/OWNER,ai_hr_app=a/OWNER}'},
    'reward_plan_year':{rls:true,force:true,acl:'{OWNER=arwdDxt/OWNER,ai_hr_app=ar/OWNER}'},
    'reward_plan_year_company':{rls:true,force:true,acl:'{OWNER=arwdDxt/OWNER,ai_hr_app=arw/OWNER}'},
+   'probation_reconciliation_intent':{rls:true,force:true,acl:'{OWNER=arwdDxt/OWNER}'},
+   'probation_reconciliation_schedule':{rls:true,force:true,acl:'{OWNER=arwdDxt/OWNER}'},
   };
   const isApprovedRelation=(rel:string)=>Object.hasOwn(approvedRelations,rel);
   expect(Object.fromEntries(afterPerformancePrivileges.relations.filter(row=>isApprovedRelation(row.rel)).map(row=>[row.rel,{rls:row.rls,force:row.force,acl:ownerAcl(row.acl)}]))).toEqual(approvedRelations);
@@ -1831,6 +1847,8 @@ it('stops on a cross-tenant row, then validates every company/tenant key without
   const manage=(column:string)=>`tenant_id=app.current_tenant_id() AND app.reward_config_page_allowed(${column},'plans.manage','manage')`;
   const own='app.acting_as_owner()';
   const approvedPolicies:ApprovedPolicy[]=[
+   {table:'probation_reconciliation_intent',name:'probation_reconciliation_owner',cmd:'ALL',role:'ai_hr_owner',using:own,check:own},
+   {table:'probation_reconciliation_schedule',name:'probation_reconciliation_owner',cmd:'ALL',role:'ai_hr_owner',using:own,check:own},
    {table:'reward_plan_year',name:'reward_plan_year_read',cmd:'SELECT',role:'public',using:view('NULL'),check:null},
    {table:'reward_plan_year',name:'reward_plan_year_insert',cmd:'INSERT',role:'public',using:null,check:manage('NULL')+' AND created_by=app.current_user_id()'},
    {table:'reward_plan_year_company',name:'reward_plan_year_company_read',cmd:'SELECT',role:'public',using:view('company_id'),check:null},
