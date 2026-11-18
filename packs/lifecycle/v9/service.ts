@@ -1268,3 +1268,26 @@ export async function recoverManagerEmailHoldTx(tx: Tx, ctx: SessionContext, tar
   await store(tx,ctx,row,c,'managerRecovery',config);
   return{outcome:dueOn<env.today?'late':dueOn>env.today?'scheduled':'resumed',revision:row.revision+1};
 }
+
+/** After the guarded SQL adoption, one fenced worker checkpoint resumes only its reviewed
+ * frozen runs. It never invokes transport or manufactures a source event. */
+export async function recoverPersonnelCompletionRunsTx(tx:Tx,ctx:SessionContext,target:{caseId:string;revision:number;documentId:string;runs:{id:string;stepId:string;dueOn:string}[]}){
+ if(!ctx.userId||ctx.agent)throw new M.V9Error('Current HR recovery authority is required.','forbidden');
+ await lockTx(tx,ctx);const row=await load(tx,ctx,target.caseId),config=await configTx(tx,ctx);
+ if(!config||row.revision!==target.revision)throw new M.V9Error('The adopted case changed. Review recovery again.','conflict');
+ const c=structuredClone(row.data),document=c.documents.find(d=>d.id===target.documentId);
+ if(c.state!=='submitted'||!document?.personnelCompletion||document.sentAt||document.status!=='draft')throw new M.V9Error('Only the reviewed unreleased completion draft can resume.','conflict');
+ if(!target.runs.length||new Set(target.runs.map(r=>r.id)).size!==target.runs.length)throw new M.V9Error('Choose the exact reviewed frozen runs.','conflict');
+ const env=await environment(tx,ctx,c,config),results:{runId:string;status:M.Run['status'];reason:string}[]=[];
+ for(const reviewed of target.runs){
+  const run=c.runs.find(r=>r.id===reviewed.id),step=run?.definition?.steps[run.cursor];
+  if(!run||run.status!=='waiting'||!run.definition||!step||step.id!==reviewed.stepId||step.type!=='doc'||!step.release||step.template!==document.templateId||!M.validDate(reviewed.dueOn))throw new M.V9Error('A reviewed document wait changed.','conflict');
+  if(run.completionHold&&(run.completionHold.documentId!==document.id||run.completionHold.stepId!==step.id||run.completionHold.dueOn!==reviewed.dueOn))throw new M.V9Error('The original scheduled document wait changed.','conflict');
+  run.completionHold??={documentId:document.id,stepId:step.id,dueOn:reviewed.dueOn,at:env.now};
+  if(reviewed.dueOn>env.today){run.resumeOn=reviewed.dueOn;run.reason=`Scheduled for ${reviewed.dueOn}.`;}
+  else M.runWorkflow(c,config,run.definition,env,'resume',{resumeRunId:run.id});
+  results.push({runId:run.id,status:run.status,reason:run.reason});
+ }
+ M.appendLog(c,env,'workflow.personnelCompletionRecovery',`${document.name}: ${target.runs.length} reviewed frozen run(s).`);await store(tx,ctx,row,c,'personnelCompletionRecovery',config);
+ return{outcome:target.runs.every(r=>r.dueOn>env.today)?'scheduled':c.runs.some(r=>target.runs.some(t=>t.id===r.id)&&r.lateEmail)?'late':'prepared',revision:row.revision+1,runs:results};
+}

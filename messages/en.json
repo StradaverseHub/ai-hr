@@ -40153,6 +40153,34 @@
           "title": "Manager email recheck stopped",
           "body": "Completed rechecks remain recorded on their cases."
         }
+      },
+      "personnelCompletionPreview": {
+        "completed": {
+          "title": "Personnel completion review finished",
+          "body": "Review the saved results before choosing recovery."
+        },
+        "failed": {
+          "title": "Personnel completion needs review",
+          "body": "Review the recorded errors before trying again."
+        },
+        "cancelled": {
+          "title": "Personnel completion stopped",
+          "body": "Completed checkpoints remain recorded."
+        }
+      },
+      "personnelCompletionRecovery": {
+        "completed": {
+          "title": "Personnel completion recovery finished",
+          "body": "Review each case result; late emails still need an HR decision."
+        },
+        "failed": {
+          "title": "Personnel completion needs review",
+          "body": "Review the recorded errors before trying again."
+        },
+        "cancelled": {
+          "title": "Personnel completion stopped",
+          "body": "Completed checkpoints remain recorded."
+        }
       }
     },
     "panel": {

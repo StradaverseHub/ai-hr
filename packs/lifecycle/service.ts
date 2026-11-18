@@ -35,3 +35,4 @@ export type {V9DocumentSigningWork,V9DocumentRouteAction} from './v9/document-ro
 export { lifecycleTaskDocuments, lifecycleTaskCardDocuments, openOwnLifecycleDocument } from './v9/task-documents';
 
 export {v9SubmitOwnDocumentCompletion,v9RefreshOwnDocumentCompletion,v9ReadPersonnelCompletion} from './v9/personnel-completion';
+export {recoverPersonnelCompletionRunsTx} from './v9/service';
