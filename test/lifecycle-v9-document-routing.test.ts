@@ -21,12 +21,12 @@ function routed(){
  const f=fixture();const definition=template();definition.versions[0].fields=[];
  const routing:DocumentRouting=[{id:'review',order:1,action:'review',who:{kind:'people',userIds:['hr']},owner:true},{id:'hr-sign',order:2,action:'sign',who:{kind:'people',userIds:['hr2']},owner:false},{id:'employee-sign',order:2,action:'sign',who:{kind:'employee'},owner:false},{id:'optional',order:2,action:'approve',who:{kind:'people',userIds:['observer']},owner:false,required:false}];
  definition.versions[0].routing=routing;definition.versions[0].blocks=[{id:'text',type:'text',text:'Original wording',section:''},{id:'hr-block',type:'signature',text:'',section:'',role:'step:hr-sign'},{id:'employee-block',type:'signature',text:'',section:'',role:'step:employee-sign'}];f.config.templates=[definition];
- f.environment.documentRouting={tenantId:'tenant',hash:text=>createHash('sha256').update(text).digest('hex'),resolve:routing=>resolveDocumentRouting(routing,{employeeUserId:'employee',directSuperiorUserId:'manager',facts:{},routing:()=>null,groupMembers:()=>null,choose:ids=>ids[0]??null,fallback:null,describe:()=>''})};
+ f.environment.mergeValues['bankAcc']='Private unrelated account';f.environment.documentRouting={tenantId:'tenant',hash:text=>createHash('sha256').update(text).digest('hex'),resolve:routing=>resolveDocumentRouting(routing,{employeeUserId:'employee',directSuperiorUserId:'manager',facts:{},routing:()=>null,groupMembers:()=>null,choose:ids=>ids[0]??null,fallback:null,describe:()=>''})};
  const document=M.generate(f.c,f.config,definition.id,f.environment);return {...f,document,definition};
 }
 function action(f:ReturnType<typeof routed>,user:string,stepId:string,kind:'signed'|'reviewed'|'returned'|'resent',id=kind+stepId){return recordV9DocumentRouteAction(f.document,{id,stepId,revision:f.document.signing!.contentRevision,hash:f.document.signing!.contentHash,action:kind,comment:kind==='returned'?'Please correct the wording.':'',...(kind==='signed'?{signature:{method:'typed' as const,value:user,consent:true as const}}:{})},{id:user,personId:'person-'+user,name:user},f.environment.now);}
 it('freezes the saved version and resolved recipients; legacy HR-first documents retain their existing path',()=>{
- const f=routed();expect(f.document.signing?.route.steps.map(s=>s.holderId)).toEqual(['hr','hr2','employee','observer']);
+ const f=routed();expect(f.document.mergeValues).not.toHaveProperty('bankAcc');expect(f.document.signing?.route.steps.map(s=>s.holderId)).toEqual(['hr','hr2','employee','observer']);
  f.definition.versions[0].routing![0].who={kind:'people',userIds:['replacement']};expect(f.document.routing?.[0].who).toEqual({kind:'people',userIds:['hr']});
  const legacy=fixture();const t=template();t.hrStep='before';legacy.config.templates=[t];const d=M.generate(legacy.c,legacy.config,t.id,legacy.environment);expect(d.signing).toBeUndefined();expect(d.hrStep).toBe('before');
  expect(()=>M.signDocument(f.c,f.config,f.document.id,'hr',{by:f.environment.actor,at:f.environment.now,method:'typed',value:'hr',consent:true},f.environment)).toThrow();
@@ -49,3 +49,10 @@ it('binds workflow runs to one exact completed saved document revision, keeping 
  M.runWorkflow(f.c,f.config,w,f.environment,'docSigned',{sourceEvent});M.runWorkflow(f.c,f.config,w,f.environment,'docSigned',{sourceEvent});expect(f.c.runs).toHaveLength(1);expect(f.c.mails).toHaveLength(1);expect(f.c.runs[0].sourceEvent).toEqual(sourceEvent);expect(f.c.runs[0].status).toBe('done');
 });
 it('canonicalizes the precise JSONB signature envelope with byte-length key order',()=>{expect(v9SigningCanonicalText({zz:'a',a:'b',é:'c',nil:null,empty:[],bool:true})).toBe('{"a": "b", "zz": "a", "é": "c", "nil": null, "bool": true, "empty": []}');const f=routed();expect(f.document.signing?.contentHash).toBe(createHash('sha256').update(v9SigningCanonicalText(v9DocumentSigningContent(f.document))).digest('hex'));expect(v9RouteReadyForEmployee(f.document)).toBe(false);});
+
+it('admits a second exact document completion even while another notification from the same workflow is held',()=>{
+ const f=routed();const w=workflow({trigger:{event:'docSigned',days:0,workdays:false,repeat:false,skipIf:''},steps:[{id:'notify',type:'notify',subject:'Signed',body:'Saved document signed',to:['supervisor'],cc:[]}]});f.c.facts.supervisorUserId=null;
+ const first={kind:'docSigned' as const,sourceId:'document-one',revision:1,at:f.environment.now},second={...first,sourceId:'document-two'};
+ M.runWorkflow(f.c,f.config,w,f.environment,'docSigned',{sourceEvent:first});expect(f.c.runs[0].hold).toBeDefined();M.runWorkflow(f.c,f.config,w,f.environment,'docSigned',{sourceEvent:second});
+ expect(f.c.runs).toHaveLength(2);expect(f.c.runs.map(r=>r.sourceEvent?.sourceId)).toEqual(['document-one','document-two']);expect(f.c.runs.every(r=>r.status==='waiting'&&!!r.hold)).toBe(true);expect(f.c.mails).toEqual([]);
+});

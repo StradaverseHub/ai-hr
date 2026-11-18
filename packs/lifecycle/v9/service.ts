@@ -150,7 +150,7 @@ async function store(tx: Tx, ctx: SessionContext, row: Row, next: M.Case, action
 }
 async function environment(tx: Tx, ctx: SessionContext, c: M.Case, config: M.Config): Promise<M.Environment> {
   const who = await actor(tx, ctx), today = todayInKualaLumpur();
-  const users = await tx.execute<DirectoryUser>(sql`select u.id,coalesce(p.full_name,'User') as name from app_user u left join person p on p.id=u.person_id and p.tenant_id=u.tenant_id where u.tenant_id=${ctx.tenantId}::uuid and u.archived_at is null and not app.login_blocked(u.id)`);
+  const users = await tx.execute<DirectoryUser & {personId:string}>(sql`select u.id,u.person_id as "personId",coalesce(p.full_name,'User') as name from app_user u left join person p on p.id=u.person_id and p.tenant_id=u.tenant_id where u.tenant_id=${ctx.tenantId}::uuid and u.archived_at is null and u.person_id is not null and not app.login_blocked(u.id)`);
   const dates = new Set([today, c.facts.lastDay, c.facts.joinDate, ...c.tasks.map(t => t.dueOn), ...c.items.map(i => i.dueOn)]);
   // d1e26f81 — Return and revoke items are due Day -1/0 from the effective last working day; leave is checked on those dates.
   const calculation = c.module === 'off' ? await readSettlementTx(tx, ctx, c, config) : null;
@@ -210,10 +210,10 @@ async function environment(tx: Tx, ctx: SessionContext, c: M.Case, config: M.Con
     eligibleUser: id => users.some(u => u.id === id), userName: id => users.find(u => u.id === id)?.name ?? 'Unlinked user', mergeValues: values, ...(calculation?.lastDay ? { effectiveLastDay: calculation.lastDay } : {}), holdAlertUserIds: ['pending', 'submitted'].includes(c.state) ? await holdAlertUsersTx(tx, ctx.tenantId, c.facts.company, c.module) : [], signatoryUserId: signatory?.signatoryUserId ?? null, actorSignatoryTitle:v9SignatoryTitle(config,who.id,c.facts.company), requireDeliveryAck: true, ...(native && !c.facts.employeeUserId && z.email().max(320).regex(/^[\x21-\x7e]+$/).safeParse((native.c.caseContactEmail ?? nf?.email)?.trim()).success ? { onboardingContact: { email: (native.c.caseContactEmail ?? nf!.email).trim(), sourceRevision: native.c.sourceVersion } } : {}) };
   env.documentRouting={tenantId:ctx.tenantId,hash:text=>createHash('sha256').update(text).digest('hex'),resolve:routing=>{
    const resolved=resolveDocumentRouting(routing,{employeeUserId:c.facts.employeeUserId,directSuperiorUserId:supervisorUserId,facts:{company:c.facts.company,businessGroup:c.facts.businessGroup,department:c.facts.department,jobTitle:c.facts.title},routing:()=>null,
-    nativeRouting:id=>{const definition=nativeRoutingConfig?.routings?.find(definition=>definition.id===id);return definition?resolveNativeDocumentRouting(definition,c.facts,config.groups,id=>env.eligibleUser(id)&&!env.onLeave(id,today)):{userIds:[],groupId:null,reason:'The On/Off Boarding routing no longer exists.'};},
+    nativeRouting:id=>{const definition=nativeRoutingConfig?.routings?.find(definition=>definition.id===id);return definition?resolveNativeDocumentRouting(definition,{...c.facts,finalConfirmationDate:c.facts.finalConfirmationDate??undefined,confirmationDate:c.facts.confirmationDate??undefined,probationEndDate:c.facts.probationEndDate??undefined,provisionalEndOn:c.facts.provisionalEndOn??undefined},config.groups,id=>env.eligibleUser(id)&&!env.onLeave(id,today)):{userIds:[],groupId:null,reason:'The On/Off Boarding routing no longer exists.'};},
     groupMembers:id=>config.groups.find(group=>group.id===id)?.members??null,fallback:null,describe:who=>who.kind==='employee'?'Employee':who.kind==='directSuperior'?'Direct Superior':who.kind==='people'?'Named people':who.kind==='routing'?'On/Off Boarding routing':'On/Off Boarding group',
     choose:(candidates,pick,groupId)=>{if(groupId)return M.assign(config,groupId,today,env,{},pick==='roundRobin'?'recent':'memberOrder').userId;return candidates.filter(id=>env.eligibleUser(id)&&!env.onLeave(id,today)).sort((a,b)=>pick==='roundRobin'?env.lastAssigned(a,'')-env.lastAssigned(b,'')||candidates.indexOf(a)-candidates.indexOf(b):candidates.indexOf(a)-candidates.indexOf(b))[0]??null;}});
-   resolved.route.steps=resolved.route.steps.map(step=>({...step,label:step.holderId?env.userName(step.holderId):'Unassigned'}));return resolved;
+   resolved.route.steps=resolved.route.steps.map(step=>({...step,...(step.holderId?{holderPersonId:users.find(user=>user.id===step.holderId)!.personId}:{}),label:step.holderId?env.userName(step.holderId):'Unassigned'}));return resolved;
   }};
   return env;
 }
@@ -879,13 +879,6 @@ export async function v9Command(ctx: SessionContext, id: string, revision: numbe
     await store(tx, ctx, row, c, command.type, config);
   });
 }
-/** Signing completion is consumed once by the existing privileged workflow scheduler. No signer receives case administration. */
-function consumeRoutedDocumentCompletions(c:M.Case,config:M.Config,env:M.Environment){
- for(const document of c.documents)if(document.signing&&M.documentFinal(document)&&document.signingWorkflowRevision!==document.signing.contentRevision){
-  for(const workflow of config.workflows)M.runWorkflow(c,config,workflow,env,'docSigned',{sourceEvent:{kind:'docSigned',sourceId:document.id,at:env.now,revision:document.signing.contentRevision}});
-  document.signingWorkflowRevision=document.signing.contentRevision;
- }
-}
 /** Native submission and the privileged minute worker use the same idempotent workflow transition. */
 export async function v9NativeTransitionTx(ctx: SessionContext, tx: Tx, id: string, now = new Date(), dates = true): Promise<{ revision: number; changed: boolean }> {
   const native = await onboardingV9ReadTx(ctx, tx, id), config = await configTx(tx, ctx);
@@ -893,7 +886,6 @@ export async function v9NativeTransitionTx(ctx: SessionContext, tx: Tx, id: stri
   const c = projectNativeCase(native.c, native.row.revision, native.documentState, native.employeeUserId, native.supervisorUserId);
   const env = await environment(tx, ctx, c, config); env.today = todayInKualaLumpur(now); env.now = now.toISOString();
   env.mergeValues.today = env.mergeValues['today.date'] = env.today.slice(8) + '/' + env.today.slice(5, 7) + '/' + env.today.slice(0, 4);
-  if(c.state==='submitted')consumeRoutedDocumentCompletions(c,config,env);
   if (c.state === 'submitted') for (const workflow of config.workflows) {
     M.runWorkflow(c, config, workflow, env, 'submitted');
     if (c.runs.some(run => run.workflowId === workflow.id && run.status === 'waiting')) M.runWorkflow(c, config, workflow, env, 'resume');
@@ -924,7 +916,6 @@ export async function v9Sweep(ctx: SessionContext, connection: NotificationSweep
       if (!row) return false; const config = await configTx(tx, ctx); if (!config) return false;
       const c = structuredClone(row.data), env = await environment(tx, ctx, c, config);
       env.today = todayInKualaLumpur(now); env.now = now.toISOString();
-      consumeRoutedDocumentCompletions(c,config,env);
       for (const w of config.workflows) { if (c.runs.some(r => r.workflowId === w.id && r.status === 'waiting')) M.runWorkflow(c, config, w, env, 'resume'); if (dates) M.runWorkflow(c, config, w, env, 'date'); }
       const calculation = dates && c.module === 'off' ? await readSettlementTx(tx, ctx, c, config) : null;
       const figures = calculation?.ready && calculation.lastDay === c.facts.lastDay ? { sourceRevision: calculation.sourceRevision, lastDay: calculation.lastDay, leaveDays: String(calculation.encashDays), amount: calculation.amount!.toFixed(2), currency: calculation.currency, payDate: calculation.payDate, lockedAt: env.now, payrollReference: randomUUID() } : null;

@@ -91,7 +91,7 @@ export type Document = {
   /** Documents generated from a routed template version: each Sign step's signature, keyed by step id (`step:<id>` signature blocks). */
   stepSignatures?: Record<string, Signature>;
   /** Frozen source routing and canonical content-bound signing state, owned by this saved instance. */
-  routing?:DocumentRouting;signing?:SigningDocument;routingUnresolved?:DocumentRoutingUnresolved[];signingWorkflowRevision?:number;
+  routing?:DocumentRouting;signing?:SigningDocument;routingUnresolved?:DocumentRoutingUnresolved[];
 };
 export type Role = 'employeeWork' | 'employeePersonal' | 'employee' | 'supervisor' | 'pbp' | 'ta' | 'peopleOps' | 'taskOwners' | 'hrSignatory' | 'starter' | `group:${string}` | `person:${string}` | `address:${string}`;
 /** A recipient that could not be found when the step ran. Labels and reasons only, never an address. */
@@ -924,7 +924,7 @@ export function decideLateEmail(c: Case, config: Config, input: { workflowId: st
   return runWorkflow(c, config, definition, env, 'resume', { continueHeld: true, lateDecision: input });
 }
 export function runWorkflow(c: Case, config: Config, workflow: Workflow, env: Environment, event: 'submitted' | 'date' | 'resume' | 'hrSigned' | 'docSigned' | 'manual', options: { startNow?: boolean; continueHeld?: boolean; sourceEvent?:Run['sourceEvent'];lateDecision?:{runId:string;stepId:string;decision:'send'|'skip'} } = {}): Run | null {
-  const unfinished = c.runs.find(r => r.workflowId === workflow.id && (r.status === 'waiting' || r.status === 'failed'));
+  const unfinished = c.runs.find(r => r.workflowId === workflow.id && (r.status === 'waiting' || r.status === 'failed') && (!options.sourceEvent || r.sourceEvent?.kind===options.sourceEvent.kind && r.sourceEvent.sourceId===options.sourceEvent.sourceId && r.sourceEvent.revision===options.sourceEvent.revision));
   // A held email waits for HR: fixing a record alone sends nothing until someone presses Continue.
   if ((unfinished?.hold || unfinished?.lateEmail) && unfinished.status === 'waiting' && !options.continueHeld) return unfinished;
   // A retired workflow starts nothing new, but a run that already started finishes with the steps it saved.
@@ -956,11 +956,11 @@ export function runWorkflow(c: Case, config: Config, workflow: Workflow, env: En
       const step = workflow.steps[run.cursor]; let waiting = '';
       if (step.type === 'doc') {
         const doc = generate(c, config, step.template, env), template = config.templates.find(t => t.id === step.template);
-        if (step.release && ['draft', 'hrsigned'].includes(doc.status)) {
+        if (step.release && (['draft', 'hrsigned'].includes(doc.status)||doc.signing&&!doc.sentAt&&!['withdrawn','superseded'].includes(doc.status))) {
           if (doc.signing?!v9RouteReadyForEmployee(doc):(doc.hrStep ?? template?.hrStep) === 'before' && !doc.hrSignature) waiting = 'HR must sign before release.';
           else {
             waiting = documentPersonnelHold(doc) ?? '';
-            if (!waiting) { doc.status = 'sent'; doc.sentAt = env.now; linkedTasks(c, doc, 'sent'); appendLog(c, env, 'document.released', doc.name); }
+            if (!waiting) { if(!doc.signing||!documentFinal(doc))doc.status = 'sent'; doc.sentAt = env.now; linkedTasks(c, doc, 'sent'); appendLog(c, env, 'document.released', doc.name); }
           }
         }
       } else if (step.type === 'waitSign') { const d = activeDocument(c, step.template); if (!(step.by === 'hr' ? d&&(d.signing?v9RoutedHrComplete(d):d.hrSignature) : d && documentFinal(d))) waiting = `Waiting for ${step.by === 'hr' ? 'HR' : 'the employee'} to sign.`; }
