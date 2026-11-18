@@ -100,6 +100,8 @@ export type DocumentRoutingResolveContext = {
   /** Organisation facts that routings match on. */
   facts: RoutingFacts;
   routing: (id: string) => Routing | null;
+  /** A subject explicitly using the native On/Off Boarding registry resolves its original match rules here. */
+  nativeRouting?: (id:string)=>{userIds:string[];groupId:string|null;reason:string|null};
   groupMembers: (groupId: string) => readonly string[] | null;
   /** Picks one person for a step (V9 `assign` semantics; see the module comment). `groupId` is null for named people. */
   choose: (candidates: readonly string[], rule: DocumentRoutingPick, groupId: string | null) => string | null;
@@ -118,6 +120,7 @@ function candidatesFor(who: DocumentRoutingWho, ctx: DocumentRoutingResolveConte
   if (who.kind === 'people') return {userIds: [...new Set(who.userIds)], groupId: null, reason: who.userIds.length ? null : 'Nobody is named.'};
   const groupMembers = (groupId: string) => { const members = ctx.groupMembers(groupId); return members ? {userIds: [...new Set(members)], groupId, reason: members.length ? null : 'The group has no members.'} : {userIds: [], groupId, reason: 'The group no longer exists.'}; };
   if (who.kind === 'group') return groupMembers(who.groupId);
+  if(ctx.nativeRouting)return ctx.nativeRouting(who.routingId);
   const routing = ctx.routing(who.routingId);
   if (!routing) return {userIds: [], groupId: null, reason: 'The routing no longer exists.'};
   const match = resolveRoutingRow(routing, ctx.facts);
