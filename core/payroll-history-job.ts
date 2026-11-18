@@ -88,10 +88,9 @@ export async function requestPayrollHistoryConfirm(ctx:SessionContext,input:Hist
 /** Web side of revert: authority and the attempt's state (a refusal records the failure and throws, as before). */
 export async function requestPayrollHistoryRevert(ctx:SessionContext,attemptId:string,previewHash:string):Promise<{jobId:string;existing:boolean}>{
  ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(g=>({...g}))};
- const checked=await checkPayrollHistoryRevert(ctx,attemptId,previewHash);
- return withTenant(ctx,async tx=>{
-  return admitTx(tx,ctx,{operation:'revert',attemptId,previewHash} satisfies RevertJobInput,checked.companyIds);
- });
+ const {payrollHistoryMaintenanceRevertReceipt}=await import('./payroll-history-maintenance');const receipt=await payrollHistoryMaintenanceRevertReceipt(ctx,attemptId,previewHash);
+ if(receipt){const input={attemptId:receipt.id,previewHash,confirmReplacement:true};const checked=await checkPayrollHistoryConfirm(ctx,input);return withTenant(ctx,tx=>admitTx(tx,ctx,{operation:'confirm',...input} satisfies ConfirmJobInput,checked.companyIds));}
+ throw new Error('The removal preview is unavailable or changed. Preview the current history again.');
 }
 /** The creator's own job, for the screen's progress panel. */
 export async function payrollHistoryJobStatus(ctx:SessionContext,jobId:string):Promise<PayrollHistoryJobStatus|null>{
@@ -158,6 +157,7 @@ export const payrollHistoryJobHandler:BulkJobHandler<Step>={
   const confirm=plan as ConfirmPlan&CommonPlan;
   const {group}=step.payload as {group:number};
   if(step.kind==='batch'){const batchId=await stageHistoryBatchTx(tx,ctx,plan.attemptId,confirm.groups[group]);cache.set('batch:'+group,batchId);return{result:{batchId}};}
+  if(group===-1)return{result:{change:await stageHistoryRowTx(tx,ctx,plan.attemptId,'',(step.payload as {row:HistoryRevisionRow}).row)},counters:{written:1}};
   const batchId=(cache.get('batch:'+group) as string|undefined)??await stagedBatchTx(tx,job.id,group);
   cache.set('batch:'+group,batchId);
   return{result:{change:await stageHistoryRowTx(tx,ctx,plan.attemptId,batchId,(step.payload as {row:HistoryRevisionRow}).row)},counters:{written:1}};

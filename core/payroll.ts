@@ -54,7 +54,7 @@ import { type SessionContext, type Tx } from '../db/client';
 // See core/module-gate.ts.
 import { assertModuleGate,withPayrollTenant as withTenant } from './module-gate';
 import { pricesChildReliefFromGrid } from './dependents';
-import { actorOf, appendEvent } from '../db/events';
+import { actorOf, appendEvent,appendEvents } from '../db/events';
 import {
   PAYROLL_PERMISSION_DEFAULTS,
   decidePayrollPermission,
@@ -911,6 +911,25 @@ export async function markBatchNeedsRecalc(
     // "compensation" says the salary record moved, not to what.
     payload: { employmentIds: next, addedEmploymentIds: adding, ...(p.category ? { changeCategory: p.category } : {}) },
   });
+}
+
+/** Historical-source invalidation under the existing history barrier, before effective source release.
+ * One batch-lock set and one update; existing closed artifacts and processing/payment decisions stay owned. */
+export async function markHistoryAffectedPayrollTx(tx:Tx,ctx:SessionContext,targets:readonly {companyId:string;employmentId:string;period:string}[]){
+ if(!targets.length)return;
+ const selected=JSON.stringify([...new Map(targets.map(row=>[[row.companyId,row.employmentId,row.period].join(':'),row])).values()]);
+ const locked=await tx.execute<{id:string;ids:string[];existing:unknown;at:Date|null}>(sql`with source as(select * from jsonb_to_recordset(${selected}::jsonb) s("companyId" uuid,"employmentId" uuid,period text)),candidate as(
+  select distinct b.id from payroll_batch b join pay_period period on period.id=b.pay_period_id join source s on s."companyId"=b.company_id
+  where b.tenant_id=${ctx.tenantId}::uuid and b.history_import_attempt_id is null and b.status in ('processed','processing') and period.status='open'
+   and b.pay_period>=s.period and left(b.pay_period,4)=left(s.period,4) and app.can_admin_payroll_for(b.company_id)
+   and exists(select 1 from payslip p where p.batch_id=b.id and p.employment_id=s."employmentId")),locked as(
+  select b.id,b.company_id,b.pay_period,b.recalc_employment_ids,b.needs_recalc_at from payroll_batch b join candidate c on c.id=b.id order by b.id for update of b)
+  select l.id,l.recalc_employment_ids as existing,l.needs_recalc_at as at,array(select distinct s."employmentId"::text from source s
+   where s."companyId"=l.company_id and l.pay_period>=s.period and left(l.pay_period,4)=left(s.period,4)
+   and exists(select 1 from payslip p where p.batch_id=l.id and p.employment_id=s."employmentId") order by s."employmentId"::text) as ids from locked l order by l.id`);
+ const rows=locked.filter(row=>row.ids.length).map(row=>({...row,next:[...new Set([...asIdArray(row.existing),...row.ids])].sort()}));if(!rows.length)return;
+ await tx.execute(sql`update payroll_batch b set needs_recalc_at=coalesce(b.needs_recalc_at,now()),recalc_employment_ids=u.ids from jsonb_to_recordset(${JSON.stringify(rows.map(row=>({id:row.id,ids:row.next})))}::jsonb) u(id uuid,ids jsonb) where b.id=u.id and b.tenant_id=${ctx.tenantId}::uuid and b.status in ('processed','processing')`);
+ await appendEvents(tx,rows.map(row=>({tenantId:ctx.tenantId,aggregateType:'payroll-batch',aggregateId:row.id,eventType:'payroll-batch.recalc-required',actor:actorOf(ctx),payload:{employmentIds:row.next,addedEmploymentIds:row.ids,changeCategory:'statutory',source:'payroll_history_maintenance'}})));
 }
 
 /**

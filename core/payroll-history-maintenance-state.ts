@@ -24,7 +24,7 @@ export function maintenanceNativeItems(values:ImportedPayrollValues,codes:Readon
  if(Array.isArray(lines))for(const line of lines){if(!line||typeof line.code!=='string'||!Number.isFinite(Number(line.amount)))fail('The native baseline has ambiguous original Pay Item lines.');const entry=codes.get(upper(line.code));if(!entry)fail(`Native Pay Item ${line.code} is unavailable.`);if(entry.destination==='basic')continue;rows.push({rowNum:rows.length+1,code:line.code,amount:Number(line.amount).toFixed(2)});}
  const nc=values.statutory.pcbNonCash as {ownedEaEntries?:{code:string;entered:number}[]}|undefined;
  for(const entry of nc?.ownedEaEntries??[])rows.push({rowNum:rows.length+1,code:entry.code,amount:entry.entered.toFixed(2)});
- const items=maintenanceSourceItems(rows,codes),sum=(dest:string)=>items.filter(item=>item.destination===dest).reduce((n,item)=>n+historyMoneyCents(item.amount),0n);
+ const items=maintenanceSourceItems(rows,codes),sum=(dest:string)=>items.filter(item=>item.destination===dest).reduce((n,item)=>n+historyMoneyCents(item.amount),BigInt(0));
  for(const [dest,value]of [['allowance',values.allowance],['overtime',values.overtimePay],['bonus',values.bonus],['other_deduction',values.otherDeductions]] as const)if(sum(dest)!==historyMoneyCents(value))fail('The original native Pay Item detail does not reconcile. Its baseline is preserved; item maintenance requires unambiguous source detail.');
  return items;
 }

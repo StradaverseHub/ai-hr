@@ -3,7 +3,7 @@ import {createHash} from 'node:crypto';
 import {sql} from 'drizzle-orm';
 import type {Tx} from '../db/client';
 import type {CountryPack,StatutoryRuleset} from '../localization/country-pack';
-import {importedTaxInput,SYSTEM_BASIC_TAX_SETTING,type ImportedTaxSetting,type ImportedTaxLine} from '../lib/payroll-import-tax-input';
+import {importedTaxInput,SYSTEM_BASIC_TAX_SETTING,ImportedTaxSourceError,type ImportedTaxSetting,type ImportedTaxLine} from '../lib/payroll-import-tax-input';
 import type {ImportCodeEntry} from '../lib/payroll-history-import-schema';
 /** Consumer evidence excludes display-name edits; classification and exact identity remain bound. */
 export function importedTaxSettingEvidence(value:unknown){
@@ -32,9 +32,10 @@ export function importedTaxNeedsOpening(lines:readonly ImportedTaxLine[],setting
 }
 export type ImportedTaxBasisStamp={version:1;state:'ready'|'held';year:number;settingsHash:string;settings:ImportedTaxSetting[];lines:ImportedTaxLine[];missing:string[];rulesState?:{digest:string;packDisabled:boolean};rulesEvidence?:unknown;basis?:import('../lib/payroll-tax-basis').TaxBasisValue};
 export function projectImportedTaxBasis(input:{ownerKey:string;replay:CountryPack['payroll']['replayTaxBasis'];period:string;rows:{rowNum:number;code:string;amount:number}[];codes:ReadonlyMap<string,ImportCodeEntry>;settings:readonly ImportedTaxSetting[];rules:StatutoryRuleset;rulesHash:string;rulesState?:{digest:string;packDisabled:boolean};rulesEvidence?:unknown;gross:number;deductions:number;statutory:Record<string,unknown>}):ImportedTaxBasisStamp{
- const settings=importTaxSettingsWithBasic(input.settings),lines=importedTaxInput(input.rows,input.codes,settings),year=Number(input.period.slice(0,4));
+ const settings=importTaxSettingsWithBasic(input.settings),year=Number(input.period.slice(0,4));let lines:ImportedTaxLine[]=[],sourceError:string|undefined;try{lines=importedTaxInput(input.rows,input.codes,settings);}catch(error){if(!(error instanceof ImportedTaxSourceError))throw error;sourceError=error.message;}
  for(const line of lines)if(line.direction==='noncash')line.nonCashSource={source:'one_off',sourceId:'import:'+createHash('sha256').update(JSON.stringify({owner:input.ownerKey,period:input.period,row:line})).digest('hex')};
  const stamp:ImportedTaxBasisStamp={version:1,state:'held',year,settingsHash:importedTaxSettingsHash(settings),settings:settings.filter(setting=>lines.some(line=>line.settingId===setting.id)),lines,missing:[],rulesEvidence:input.rulesEvidence,rulesState:input.rulesState};
+ if(sourceError){stamp.missing=[sourceError];return stamp;}
  if(importedTaxNeedsOpening(lines,settings,input.rules)){stamp.missing=['Original prior-employer exemption usage and same-year annual source prefix require reviewed historical evidence.'];return stamp;}
  // Uncapped inputs do not depend on prior-employer exemption usage. No zero is asserted or saved.
  try{stamp.basis=input.replay({year,upToMonth:Number(input.period.slice(5)),slips:[{id:'accepted-import:'+createHash('sha256').update(JSON.stringify({period:input.period,lines})).digest('hex'),period:input.period,runOrder:1,sourceKind:'import',sourceLines:lines,statutory:input.statutory,expectedGross:input.gross,expectedOtherDeductions:input.deductions}],settings,rulesByPeriod:{[input.period]:{rules:input.rules,hash:input.rulesHash}},openingExemptionUsed:{},nonCashPrefixComplete:false})[0].basis;stamp.state='ready';}
