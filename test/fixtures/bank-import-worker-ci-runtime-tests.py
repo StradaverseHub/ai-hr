@@ -593,7 +593,8 @@ class ConditionalRuntimeTests(unittest.TestCase):
                     f.runtime['authorizationSha256']=f.auth['grantSha256'];f.private_record('runtime.json',f.runtime);f.auth['runtimeSha256']=ci.sha(encoded(f.runtime))
                 if defect=='fence-deadline':f.deadline_at=3
                 f.persist_authority()
-                with self.assertRaisesRegex(ValueError,'insufficient mandatory|insufficient estimated global|stage deadline'):f.conditional()
+                reason='aggregate proof slot expired'if defect=='fence-deadline'else'insufficient mandatory|insufficient estimated global|stage deadline'
+                with self.assertRaisesRegex(ValueError,reason):f.conditional()
                 self.assertEqual(f.native_calls,1);self.assertEqual(f.fast_calls,3);self.assertEqual(f.unit.read_bytes(),before);self.assertFalse((f.operation/'activated.json').exists())
                 mutations=[v for v in f.events[events:]if isinstance(v,list)and v[:2]in [['/usr/bin/systemctl','daemon-reload'],['/usr/bin/systemctl','start']]]
                 self.assertEqual(mutations,[])
