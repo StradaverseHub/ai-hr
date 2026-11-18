@@ -52,6 +52,8 @@ export const BULK_JOB_NOTICES:Record<string,{messages:string;linkPath:string}>={
  movement_import_revert:{messages:'movementImportRevert',linkPath:'/admin/personnel/import/history?kind=movement'},
  recruitment_candidate_import:{messages:'recruitmentImport',linkPath:'/recruitment/candidates/import'},
  lifecycle_manager_recovery:{messages:'lifecycleManagerRecovery',linkPath:'/lifecycle/v9'},
+ lifecycle_personnel_completion_preview:{messages:'personnelCompletionPreview',linkPath:'/lifecycle/v9'},
+ lifecycle_personnel_completion_recovery:{messages:'personnelCompletionRecovery',linkPath:'/lifecycle/v9'},
  reward_person_history:{messages:'rewardPersonHistory',linkPath:'/rewards/history-upload'},
 };
 export function bulkJobNoticeKeys(kind:string,outcome:string){

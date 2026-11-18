@@ -40153,6 +40153,34 @@
           "title": "主管邮件复查已停止",
           "body": "已完成的复查仍记录在各个案例中。"
         }
+      },
+      "personnelCompletionPreview": {
+        "completed": {
+          "title": "人事资料补充检查已完成",
+          "body": "请先查看已保存的结果，再选择恢复。"
+        },
+        "failed": {
+          "title": "人事资料补充需要检查",
+          "body": "请先查看已记录的错误，再重试。"
+        },
+        "cancelled": {
+          "title": "人事资料补充已停止",
+          "body": "已完成的检查点记录将保留。"
+        }
+      },
+      "personnelCompletionRecovery": {
+        "completed": {
+          "title": "人事资料补充恢复已完成",
+          "body": "请查看各个案例的结果；逾期邮件仍须由人事部门决定。"
+        },
+        "failed": {
+          "title": "人事资料补充需要检查",
+          "body": "请先查看已记录的错误，再重试。"
+        },
+        "cancelled": {
+          "title": "人事资料补充已停止",
+          "body": "已完成的检查点记录将保留。"
+        }
       }
     },
     "panel": {

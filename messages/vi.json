@@ -40153,6 +40153,34 @@
           "title": "Đã dừng kiểm tra email quản lý",
           "body": "Các lần kiểm tra hoàn tất vẫn được ghi lại trong hồ sơ."
         }
+      },
+      "personnelCompletionPreview": {
+        "completed": {
+          "title": "Đã kiểm tra việc bổ sung thông tin nhân sự",
+          "body": "Xem kết quả đã lưu trước khi chọn khôi phục."
+        },
+        "failed": {
+          "title": "Cần kiểm tra việc bổ sung thông tin nhân sự",
+          "body": "Xem lỗi đã ghi nhận trước khi thử lại."
+        },
+        "cancelled": {
+          "title": "Đã dừng bổ sung thông tin nhân sự",
+          "body": "Các mốc đã hoàn tất vẫn được lưu."
+        }
+      },
+      "personnelCompletionRecovery": {
+        "completed": {
+          "title": "Đã khôi phục việc bổ sung thông tin nhân sự",
+          "body": "Xem kết quả từng hồ sơ; email quá hạn vẫn cần quyết định của HR."
+        },
+        "failed": {
+          "title": "Cần kiểm tra việc bổ sung thông tin nhân sự",
+          "body": "Xem lỗi đã ghi nhận trước khi thử lại."
+        },
+        "cancelled": {
+          "title": "Đã dừng bổ sung thông tin nhân sự",
+          "body": "Các mốc đã hoàn tất vẫn được lưu."
+        }
       }
     },
     "panel": {

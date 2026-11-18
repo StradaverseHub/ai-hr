@@ -40153,6 +40153,34 @@
           "title": "Semakan e-mel penyelia dihentikan",
           "body": "Semakan yang selesai kekal direkodkan pada kes masing-masing."
         }
+      },
+      "personnelCompletionPreview": {
+        "completed": {
+          "title": "Semakan pelengkapan maklumat selesai",
+          "body": "Semak keputusan yang disimpan sebelum memilih pemulihan."
+        },
+        "failed": {
+          "title": "Pelengkapan maklumat memerlukan semakan",
+          "body": "Semak ralat yang direkodkan sebelum mencuba semula."
+        },
+        "cancelled": {
+          "title": "Pelengkapan maklumat dihentikan",
+          "body": "Titik semak yang selesai kekal direkodkan."
+        }
+      },
+      "personnelCompletionRecovery": {
+        "completed": {
+          "title": "Pemulihan pelengkapan maklumat selesai",
+          "body": "Semak keputusan setiap kes; e-mel lewat masih memerlukan keputusan HR."
+        },
+        "failed": {
+          "title": "Pelengkapan maklumat memerlukan semakan",
+          "body": "Semak ralat yang direkodkan sebelum mencuba semula."
+        },
+        "cancelled": {
+          "title": "Pelengkapan maklumat dihentikan",
+          "body": "Titik semak yang selesai kekal direkodkan."
+        }
       }
     },
     "panel": {
