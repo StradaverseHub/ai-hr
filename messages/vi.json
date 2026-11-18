@@ -31180,7 +31180,21 @@
       "ca6e9d872b60f": "HR thêm từ danh mục",
       "c6fec0ad3de1a": "Mục của hồ sơ",
       "c80fb96fe95dc": "HR ghi nhận việc thu hồi đã xác nhận",
-      "c9b7d033e978d": "Chọn nhóm phân công."
+      "c9b7d033e978d": "Chọn nhóm phân công.",
+      "managerMail0cd4bb19dd": "Email này đã trễ",
+      "managerMail4cbbcd5184": "Được lên lịch vào",
+      "managerMaild602b8efb9": "Ngày gửi dự kiến đã qua. Hãy kiểm tra người nhận và nội dung trước khi quyết định.",
+      "managerMail911263feab": "Vẫn gửi",
+      "managerMailff16427cf4": "Bỏ qua email này",
+      "managerMail27547fe255": "Đã tìm thấy quản lý trực tiếp",
+      "managerMaile2bd594a17": "Cấp trên trực tiếp từ Quản lý nhân sự",
+      "managerMail4f40c3071b": "Có email công việc. Không cần tài khoản đăng nhập để nhận email này.",
+      "managerMail4b1ea5a652": "Không có cấp trên trong hồ sơ nhân sự",
+      "managerMailcce1c2adb3": "Có nhiều cấp trên hiện tại được ghi nhận. Nhân sự cần xem lại tuyến báo cáo.",
+      "managerMail596ed0672a": "Cấp trên được ghi trong hồ sơ nhân sự không khả dụng.",
+      "managerMail358784d1e0": "Quan hệ lao động của quản lý trực tiếp {name} không còn hoạt động",
+      "managerMail2a65e6fe08": "Quản lý trực tiếp {name} không có email công việc",
+      "managerMail3a024d9981": "Email công việc của quản lý trực tiếp {name} không hợp lệ"
     }
   },
   "processAssessment": {
@@ -40059,6 +40073,20 @@
         "cancelled": {
           "title": "Đã dừng tải lên lịch sử thưởng",
           "body": "Đã dừng tải lên. Các dòng đã lưu vẫn còn."
+        }
+      },
+      "lifecycleManagerRecovery": {
+        "completed": {
+          "title": "Đã hoàn tất kiểm tra email quản lý",
+          "body": "Xem tác vụ khôi phục để biết email được tiếp tục và email trễ đang chờ."
+        },
+        "failed": {
+          "title": "Cần xem lại kiểm tra email quản lý",
+          "body": "Xem lỗi tác vụ khôi phục trước khi thử lại."
+        },
+        "cancelled": {
+          "title": "Đã dừng kiểm tra email quản lý",
+          "body": "Các lần kiểm tra hoàn tất vẫn được ghi lại trong hồ sơ."
         }
       }
     },

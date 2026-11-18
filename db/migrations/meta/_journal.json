@@ -6469,6 +6469,20 @@
       "when": 1794841006104,
       "tag": "6104_lifecycle_recipient_fanout",
       "breakpoints": true
+    },
+    {
+      "idx": 10040,
+      "version": "7",
+      "when": 1794998006640,
+      "tag": "6640_lifecycle_personnel_manager",
+      "breakpoints": true
+    },
+    {
+      "idx": 10041,
+      "version": "7",
+      "when": 1794998006641,
+      "tag": "6641_lifecycle_manager_recovery_job",
+      "breakpoints": true
     }
   ]
 }

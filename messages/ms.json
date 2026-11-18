@@ -31180,7 +31180,21 @@
       "ca6e9d872b60f": "Ditambah oleh HR daripada katalog",
       "c6fec0ad3de1a": "Item kes",
       "c80fb96fe95dc": "HR merekodkan pembatalan yang disahkan",
-      "c9b7d033e978d": "Pilih kumpulan penugasan."
+      "c9b7d033e978d": "Pilih kumpulan penugasan.",
+      "managerMail0cd4bb19dd": "E-mel ini lewat",
+      "managerMail4cbbcd5184": "Dijadualkan pada",
+      "managerMaild602b8efb9": "Tarikh penghantaran yang ditetapkan telah berlalu. Semak penerima dan mesej sebelum membuat pilihan.",
+      "managerMail911263feab": "Hantar juga",
+      "managerMailff16427cf4": "Langkau e-mel ini",
+      "managerMail27547fe255": "Penyelia ditemui",
+      "managerMaile2bd594a17": "Penyelia langsung daripada Pengurusan Personel",
+      "managerMail4f40c3071b": "E-mel kerja tersedia. Akaun log masuk tidak diperlukan untuk menerima e-mel ini.",
+      "managerMail4b1ea5a652": "Tiada penyelia dalam rekod Personel",
+      "managerMailcce1c2adb3": "Lebih daripada seorang penyelia semasa direkodkan. HR perlu menyemak hubungan pelaporan.",
+      "managerMail596ed0672a": "Penyelia dalam rekod Personel tidak tersedia.",
+      "managerMail358784d1e0": "Pekerjaan penyelia {name} tidak aktif",
+      "managerMail2a65e6fe08": "Penyelia {name} tiada e-mel kerja",
+      "managerMail3a024d9981": "E-mel kerja penyelia {name} tidak sah"
     }
   },
   "processAssessment": {
@@ -40059,6 +40073,20 @@
         "cancelled": {
           "title": "Muat naik sejarah ganjaran dihentikan",
           "body": "Muat naik dihentikan. Baris yang sudah disimpan masih tersedia."
+        }
+      },
+      "lifecycleManagerRecovery": {
+        "completed": {
+          "title": "Semakan e-mel penyelia selesai",
+          "body": "Semak tugas pemulihan untuk e-mel yang disambung dan e-mel lewat yang ditahan."
+        },
+        "failed": {
+          "title": "Semakan e-mel penyelia perlu disemak",
+          "body": "Semak ralat tugas pemulihan sebelum mencuba lagi."
+        },
+        "cancelled": {
+          "title": "Semakan e-mel penyelia dihentikan",
+          "body": "Semakan yang selesai kekal direkodkan pada kes masing-masing."
         }
       }
     },

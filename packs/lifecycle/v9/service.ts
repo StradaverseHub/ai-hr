@@ -1,3 +1,4 @@
+import { managerRecipientResult, type PersonnelManagerRecipient } from '../../../lib/personnel-manager-recipient';
 import { personnelMergeLabels } from '@/lib/lifecycle-v9-personnel-merge-fields';
 import {joinerPageSections} from '../../../lib/onboarding-page-access';
 import type {Config as NativeConfig} from '../../../lib/onboarding-model';
@@ -69,10 +70,12 @@ async function holdAlertUsersTx(tx: Tx, tenantId: string, companyId: string, mod
 type HoldKey = { runId: string; stepId: string; at: string; workflow: string; email: string; missing: M.RecipientMissing[] };
 function openHolds(c: Pick<M.Case, 'runs' | 'state'>, config: M.Config | null): HoldKey[] {
   if (c.state !== 'submitted') return [];
-  return c.runs.flatMap(run => run.hold && run.status === 'waiting' ? [(() => {
-    const definition = run.definition ?? config?.workflows.find(workflow => workflow.id === run.workflowId), step = definition?.steps.find(step => step.id === run.hold!.stepId);
+  return c.runs.flatMap(run => (run.hold || run.lateEmail) && run.status === 'waiting' ? [(() => {
+    const hold = run.lateEmail ?? run.hold!;
+    const definition = run.definition ?? config?.workflows.find(workflow => workflow.id === run.workflowId), step = definition?.steps.find(step => step.id === hold.stepId);
     const email = step?.type === 'email' ? config?.emails.find(email => email.id === step.template)?.name ?? 'Email' : step?.type === 'notify' ? step.subject || 'Notification' : 'Email';
-    return { runId: run.id, stepId: run.hold!.stepId, at: run.hold!.at, workflow: definition?.name ?? 'Workflow', email, missing: run.hold!.missing };
+    const missing: M.RecipientMissing[] = run.lateEmail ? [{role:'supervisor',label:'Late email',reason:`Scheduled for ${run.lateEmail.dueOn}; HR must choose Send anyway or Skip this email`}] : run.hold!.missing;
+    return { runId: run.id, stepId: hold.stepId, at: hold.at, workflow: definition?.name ?? 'Workflow', email, missing };
   })()] : []);
 }
 /** The Inbox projection of held emails, written in the same transaction as the case store. */
@@ -161,6 +164,8 @@ async function environment(tx: Tx, ctx: SessionContext, c: M.Case, config: M.Con
     : { email: nf?.email ?? '', icNo: nf?.ic ?? '', passportNo: nf?.passport ?? '',
         ...(native ? await onboardingV9DraftEmailFieldsTx(ctx, tx, native) : {}) };
   const supervisorUserId = native ? native.supervisorUserId : source.supervisorUserId || null;
+  const [manager] = await tx.execute<{ recipient: PersonnelManagerRecipient }>(sql`select app.lifecycle_personnel_manager(${c.id}::uuid) as recipient`);
+  const supervisorRecipient = manager.recipient;
   const currentBusinessUnit = native?.personnelLabels.businessGroup;
   const [unit] = !native && ctx.userId && c.facts.employmentId
     ? await tx.execute<{ name: string | null }>(sql`
@@ -175,7 +180,7 @@ async function environment(tx: Tx, ctx: SessionContext, c: M.Case, config: M.Con
   const fmt = (value: string) => M.validDate(value) ? value.slice(8) + '/' + value.slice(5, 7) + '/' + value.slice(0, 4) : '';
   const values: Record<string, string> = { ...source,
     'employee.name': c.facts.name, 'employee.empNo': c.facts.employeeNo, 'employee.position': personnel?.position ?? c.facts.title, 'employee.department': personnel?.department ?? c.facts.department,
-    'employee.icNo': source.icNo ?? '', 'employee.passportNo': source.passportNo ?? '', 'employee.supervisor': users.find(u => u.id === supervisorUserId)?.name ?? native?.personnelLabels.supervisor ?? '',
+    'employee.icNo': source.icNo ?? '', 'employee.passportNo': source.passportNo ?? '', 'employee.supervisor': supervisorRecipient.name ?? '',
     'employee.businessUnit': currentBusinessUnit ?? (unit ? unit.name ?? '' : personnel?.business_group ?? ''),
     'company.name': company[0]?.name ?? '', 'joiner.joinDate': fmt(c.facts.joinDate), 'leaver.lastDay': fmt(c.facts.lastDay),
     'leaver.noticeDate': fmt(c.facts.noticeDate), 'leaver.type': c.facts.caseType, 'today.date': fmt(today), today: fmt(today),
@@ -189,11 +194,11 @@ async function environment(tx: Tx, ctx: SessionContext, c: M.Case, config: M.Con
   values['company.color'] = signatory?.letterhead?.color ?? '#4F46E5';
   values['employee.company']=company[0]?.name??'';values['employee.businessGroup']=personnel?.business_group??'';
   const caseFields=resolveV9CaseFields(c.module,config.caseForms?.[c.module],true),caseValues=native?nativeCaseFormValues(native.c):offCaseFormValues(c);
-  const caseLabels: Record<string,string>={name:c.facts.name,company:company[0]?.name??'',group:personnel?.business_group??'',dept:personnel?.department??'',position:personnel?.position??'',supervisor:users.find(user=>user.id===supervisorUserId)?.name??'',ta:users.find(user=>user.id===c.facts.taUserId)?.name??''};
+  const caseLabels: Record<string,string>={name:c.facts.name,company:company[0]?.name??'',group:personnel?.business_group??'',dept:personnel?.department??'',position:personnel?.position??'',supervisor:supervisorRecipient.name??'',ta:users.find(user=>user.id===c.facts.taUserId)?.name??''};
   for(const field of caseFields) values['case.'+field.key]=field.key in caseLabels?caseLabels[field.key]:field.type==='date'?fmt(caseValues[field.key]??''):caseValues[field.key]??'';
 
   if (calculation?.ready) Object.assign(values, { 'leave.remaining': String(calculation.remainingLeave), 'leave.encashDays': String(calculation.encashDays), 'leave.encashAmount': `${calculation.currency} ${calculation.amount!.toFixed(2)}`, 'leave.dailyRate': `${calculation.currency} ${calculation.dailyRate!.toFixed(2)}`, 'pay.finalPayDate': fmt(calculation.payDate) });
-  return { today, now: new Date().toISOString(), actor: who, supervisorUserId, nextId: randomUUID,
+  return { today, now: new Date().toISOString(), actor: who, supervisorUserId, supervisorRecipient, nextId: randomUUID,
     onLeave: (id, date) => unavailable.some(r => r.user_id === id && r.on_date === date),
     openLoad: id => Number(sharedLoads.find(load => load.user_id === id)?.task_load ?? 0),
     lastAssigned: id => { const last = sharedLoads.find(load => load.user_id === id)?.last_auto; return last ? Date.parse(last) || 0 : 0; },
@@ -214,6 +219,9 @@ export async function v9CaseDetail(ctx: SessionContext, id: string): Promise<Cas
     const row = await load(tx, ctx, id), config = await configTx(tx, ctx);
     if (!config) throw new M.V9Error('V9 configuration is not available.');
     const calculation = await readSettlementTx(tx, ctx, row.data, config);
+    const [manager] = await tx.execute<{ recipient: PersonnelManagerRecipient }>(sql`select app.lifecycle_personnel_manager(${row.id}::uuid) as recipient`);
+    const managerResult = managerRecipientResult(manager.recipient);
+    row.data = { ...row.data, supervisorDelivery: { name: manager.recipient.name, problem: 'reason' in managerResult ? managerResult.reason : null, reason: 'reason' in managerResult ? manager.recipient.reason ?? (manager.recipient.email ? 'invalidEmail' : 'missingEmail') : null } };
     const reveal = await personalEmailRevealTx(tx, ctx);
     return { ...(row.data.module==='off'&&row.data.state==='pending'?{returns:await pendingReturnsTx(tx,ctx,row.data,config,calculation?.lastDay??row.data.facts.lastDay)}:{}), case: reveal ? row.data : maskCasePersonalEmail(row.data), calculation, personnelWritableKeys: v9PersonnelWritableKeys, ...(row.native ? { native: { config, actor: await actor(tx, ctx) } } : {}) };
   });
@@ -598,6 +606,7 @@ export type Command = CaseNoteCommand
   | {type:'emailReplace';id:string;reason:string;sourceRevision:string}
   | { type: 'runWorkflows' }
   | { type: 'retryWorkflow' | 'startWorkflow' | 'testWorkflow'; workflowId: string }
+  | { type: 'lateEmail'; workflowId: string; runId: string; stepId: string; decision: 'send' | 'skip' }
   | { type: 'override'; checklist: string }
   | {type:'returnSelections';ids:string[]}
   | ({ type: 'returnPresets' } & M.ReturnPreset)
@@ -617,6 +626,7 @@ const commandSchema = z.discriminatedUnion('type', [
   z.object({type:z.literal('itemsBulk'),ids:z.array(commandId).min(1).max(500),group:commandId.optional(),method:z.enum(['rr','manual']).optional(),due:z.number().int().min(-999).max(9999).optional()}).strict(),
   z.object({ type: z.literal('submit') }).strict(), z.object({ type: z.literal('runWorkflows') }).strict(),
   z.object({ type: z.literal('retryWorkflow'), workflowId: commandId }).strict(),
+  z.object({ type: z.literal('lateEmail'), workflowId: commandId, runId: z.string().min(1).max(500), stepId: commandId, decision: z.enum(['send', 'skip']) }).strict(),
   z.object({ type: z.literal('startWorkflow'), workflowId: commandId }).strict(),
   z.object({ type: z.literal('testWorkflow'), workflowId: commandId }).strict(),
   z.object({ type: z.literal('task'), id: commandId, status: z.enum(['todo', 'progress', 'done', 'notNeeded']), reason: reasonText }).strict(),
@@ -647,7 +657,7 @@ export async function v9Command(ctx: SessionContext, id: string, revision: numbe
     const row = await load(tx, ctx, id); if (row.revision !== revision) throw new M.V9Error('This case changed. Refresh before trying again.', 'conflict');
     const config = await configTx(tx, ctx); if (!config) throw new M.V9Error('V9 configuration is unavailable.');
     const c = structuredClone(row.data); let env = await environment(tx, ctx, c, config);
-    if (row.native && !['generate', 'emailSend', 'emailTest', 'emailEdit', 'emailRetry', 'emailReplace', 'documentTextEdit', 'documentFillPersonnel', 'documentSave', 'documentSignatory', 'documentSign', 'documentRefresh', 'documentRegenerate', 'runWorkflows', 'retryWorkflow', 'startWorkflow', 'testWorkflow', 'pmKeep', 'pmPush', 'pmPushSelected', 'recipientsOverride'].includes(command.type)) throw new M.V9Error('Use the onboarding case controls for this change.');
+    if (row.native && !['generate', 'emailSend', 'emailTest', 'emailEdit', 'emailRetry', 'emailReplace', 'documentTextEdit', 'documentFillPersonnel', 'documentSave', 'documentSignatory', 'documentSign', 'documentRefresh', 'documentRegenerate', 'runWorkflows', 'retryWorkflow', 'lateEmail', 'startWorkflow', 'testWorkflow', 'pmKeep', 'pmPush', 'pmPushSelected', 'recipientsOverride'].includes(command.type)) throw new M.V9Error('Use the onboarding case controls for this change.');
     if (row.native && ['pmPush', 'pmPushSelected'].includes(command.type) && !c.facts.employmentId) throw new M.V9Error('Activate this Personnel draft before applying its proposed changes.');
     if(command.type==='note')changeV9Note(c,env,command);
     if(command.type==='returnSelections'){
@@ -804,6 +814,7 @@ export async function v9Command(ctx: SessionContext, id: string, revision: numbe
       else M.runWorkflow(c,config,workflow,env,'manual',{startNow:true});
       M.appendLog(c,env,'workflow.startedByHand',workflow.name);
     }
+    else if (command.type === 'lateEmail') { M.decideLateEmail(c, config, command, env); }
     else if (command.type === 'retryWorkflow') { const workflow = config.workflows.find(w => w.id === command.workflowId); if (!workflow) throw new M.V9Error('Workflow not found.'); M.runWorkflow(c, config, workflow, env, 'resume', { continueHeld: true }); }
     else if (command.type === 'recipientsOverride') {
       // Case-edit authority: the same load/admin path (offboarding) or Native case actions (onboarding) as every case change.
@@ -1177,4 +1188,54 @@ export async function v9DownloadDocument(ctx: SessionContext, caseId: string, do
   const { renderV9DocumentPdf } = await import('../../../lib/lifecycle-v9-pdf');
   const result = await renderV9DocumentPdf(document, reference);
   return { name: document.name.replace(/[^\p{L}\p{N} ._()-]/gu, '_') + '.pdf', content: result.bytes };
+}
+
+
+/** Exact no-supervisor recovery target. Private manifests keep these IDs off public source. */
+export type ManagerEmailRecoveryTarget = { tenantId: string; caseId: string; companyId: string; revision: number; runId: string; stepId: string; heldAt: string; dueOn: string | null; classification: 'future' | 'today' | 'late' | 'unknown' };
+/** SQL-paged read, no message or private answer blobs leave the service. The apply worker revalidates identities. */
+export async function managerEmailRecoveryPage(ctx: SessionContext, after = '', limit = 100) {
+  if (!ctx.userId) throw new M.V9Error('Sign in as authorised HR before reviewing recovery.', 'forbidden');
+  return withLifecycleTenant(ctx, async tx => {
+    const rows = await tx.execute<{case_id:string;company_id:string;revision:number;run:M.Run;facts:M.Case['facts'];total:string}>(sql`
+      with candidates as materialized (
+        select distinct h.case_id,h.company_id from lc_v9_email_hold h where h.tenant_id=${ctx.tenantId}::uuid and h.released_at is null
+        and exists(select 1 from jsonb_array_elements(h.missing) m where m->>'reason'='no supervisor on the Personnel record')
+      ), cases as (
+        select c.id,c.revision,c.data->'facts' as facts,c.data->'runs' as runs from lc_v9_case c join candidates h on h.case_id=c.id where c.tenant_id=${ctx.tenantId}::uuid and c.data->>'state'='submitted'
+        union all
+        select c.id,c.revision,jsonb_build_object('joinDate',coalesce(p.data->'source'->>'joinDate',c.data->'source'->>'joinDate'),'lastDay','') as facts,p.data->'lifecycleV9'->'runs' as runs
+        from lc_onboarding_case c join candidates h on h.case_id=c.id join lc_onboarding_private p on p.case_id=c.id and p.tenant_id=c.tenant_id
+        where c.tenant_id=${ctx.tenantId}::uuid and c.data->>'state'='submitted'
+      ), held as (
+        select c.id as case_id,h.company_id,c.revision,c.facts,r as run from cases c join candidates h on h.case_id=c.id
+        cross join lateral jsonb_array_elements(coalesce(c.runs,'[]')) r
+        where r->>'status'='waiting' and exists(select 1 from jsonb_array_elements(coalesce(r->'hold'->'missing','[]')) m where m->>'role'='supervisor' and m->>'reason'='no supervisor on the Personnel record')
+      ) select *,count(*) over()::text as total from held
+      where case_id::text||':'||(run->>'id')>${after} order by case_id::text,run->>'id' limit ${Math.max(1,Math.min(100,limit))}`);
+    const today=todayInKualaLumpur();
+    return {items:rows.map(row=>{const dueOn=M.heldEmailDueOn({facts:row.facts},row.run);return{tenantId:ctx.tenantId,caseId:row.case_id,companyId:row.company_id,revision:row.revision,runId:row.run.id,stepId:row.run.hold!.stepId,heldAt:row.run.hold!.at,dueOn,classification:!dueOn?'unknown':dueOn<today?'late':dueOn===today?'today':'future'} satisfies ManagerEmailRecoveryTarget;}),remainingCount:Number(rows[0]?.total??0),after:rows.length?rows.at(-1)!.case_id+':'+rows.at(-1)!.run.id:null};
+  });
+}
+/** One fenced bulk-job step: current permission/revision/hold and delivery state are rechecked together. */
+export async function recoverManagerEmailHoldTx(tx: Tx, ctx: SessionContext, target: ManagerEmailRecoveryTarget) {
+  if(target.tenantId!==ctx.tenantId||!ctx.userId)throw new M.V9Error('Recovery scope changed.', 'forbidden');
+  await lockTx(tx,ctx);
+  const row=await load(tx,ctx,target.caseId),config=await configTx(tx,ctx);
+  if(!config||row.revision!==target.revision)return{outcome:'changed'};
+  const c=structuredClone(row.data),run=c.runs.find(run=>run.id===target.runId&&run.status==='waiting'&&run.hold?.stepId===target.stepId&&run.hold.at===target.heldAt);
+  if(c.state!=='submitted'||!run||!run.hold?.missing.some(m=>m.role==='supervisor'&&m.reason==='no supervisor on the Personnel record'))return{outcome:'changed'};
+  if(c.mails.some(mail=>mail.workflowId===run.workflowId&&mail.key.startsWith(`${run.id}:${target.stepId}:`)))return{outcome:'deliveryExists'};
+  const workflow=run.definition??config.workflows.find(w=>w.id===run.workflowId),step=workflow?.steps[run.cursor];
+  if(!workflow||!step||step.id!==target.stepId||!(step.type==='email'||step.type==='notify'))return{outcome:'changed'};
+  const env=await environment(tx,ctx,c,config),email=step.type==='email'?config.emails.find(e=>e.id===step.template):null;
+  const recipients=M.resolveStepRecipients(c,config,M.stepRecipientRoles(c,workflow.id,step,email),env),dueOn=M.heldEmailDueOn(c,run);
+  if(recipients.missing.length){run.hold={stepId:step.id,missing:recipients.missing,at:env.now};M.appendLog(c,env,'workflow.managerRecoveryHeld','Current Personnel recipients still require review.');await store(tx,ctx,row,c,'managerRecoveryHeld',config);return{outcome:'stillHeld',revision:row.revision+1};}
+  if(!dueOn)return{outcome:'unknownDate'};
+  if(dueOn<env.today){run.lateEmail={stepId:step.id,dueOn,at:env.now};delete run.hold;run.reason=`This held email was due on ${dueOn}. HR must choose Send anyway or Skip this email.`;}
+  else if(dueOn>env.today){delete run.hold;run.resumeOn=dueOn;run.reason=`Scheduled for ${dueOn}.`;}
+  else M.runWorkflow(c,config,workflow,env,'resume',{continueHeld:true});
+  M.appendLog(c,env,'workflow.managerRecovery',`${run.workflowId}: ${step.id} · due ${dueOn}`);
+  await store(tx,ctx,row,c,'managerRecovery',config);
+  return{outcome:dueOn<env.today?'late':dueOn>env.today?'scheduled':'resumed',revision:row.revision+1};
 }

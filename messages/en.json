@@ -31180,7 +31180,21 @@
       "ca6e9d872b60f": "Added by HR from the catalogue",
       "c6fec0ad3de1a": "Case item",
       "c80fb96fe95dc": "HR records confirmed revocation",
-      "c9b7d033e978d": "Choose an assignment group."
+      "c9b7d033e978d": "Choose an assignment group.",
+      "managerMail0cd4bb19dd": "This email is late",
+      "managerMail4cbbcd5184": "Scheduled for",
+      "managerMaild602b8efb9": "The intended send date has passed. Review the recipients and message before choosing what to do.",
+      "managerMail911263feab": "Send anyway",
+      "managerMailff16427cf4": "Skip this email",
+      "managerMail27547fe255": "Line manager found",
+      "managerMaile2bd594a17": "Direct superior from Personnel Management",
+      "managerMail4f40c3071b": "Work email available. A login account is not needed to receive this email.",
+      "managerMail4b1ea5a652": "No supervisor on the Personnel record",
+      "managerMailcce1c2adb3": "More than one current supervisor is recorded. HR must review the reporting line.",
+      "managerMail596ed0672a": "The supervisor recorded in Personnel is unavailable.",
+      "managerMail358784d1e0": "Line manager {name} has inactive employment",
+      "managerMail2a65e6fe08": "Line manager {name} has no work email",
+      "managerMail3a024d9981": "Line manager {name} has an invalid work email"
     }
   },
   "processAssessment": {
@@ -40059,6 +40073,20 @@
         "cancelled": {
           "title": "Reward history upload stopped",
           "body": "The upload stopped. Rows already saved remain available."
+        }
+      },
+      "lifecycleManagerRecovery": {
+        "completed": {
+          "title": "Manager email recheck completed",
+          "body": "Review the recovery job for resumed and late held emails."
+        },
+        "failed": {
+          "title": "Manager email recheck needs review",
+          "body": "Review the recovery job errors before trying again."
+        },
+        "cancelled": {
+          "title": "Manager email recheck stopped",
+          "body": "Completed rechecks remain recorded on their cases."
         }
       }
     },
