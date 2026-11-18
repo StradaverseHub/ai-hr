@@ -22,9 +22,9 @@ describe('email designer',()=>{
   setup();fireEvent.click(screen.getByRole('button',{name:en.emailDesign.blocksNames.text}));
   fireEvent.change(screen.getByRole('textbox',{name:en.emailDesign.heading}),{target:{value:'Welcome {first_name}'}});
   expect(document.querySelector('iframe')!.srcdoc).toContain('Welcome Alex');
-  fireEvent.change(screen.getByRole('textbox',{name:en.emailDesign.text,exact:true}),{target:{value:'Original text'}});
-  fireEvent.click(screen.getByRole('button',{name:en.emailDesign.addText,exact:true}));
-  const runs=screen.getAllByRole<HTMLTextAreaElement>('textbox',{name:en.emailDesign.text,exact:true});
+  fireEvent.change(screen.getByRole('textbox',{name:en.emailDesign.text}),{target:{value:'Original text'}});
+  fireEvent.click(screen.getByRole('button',{name:en.emailDesign.addText}));
+  const runs=screen.getAllByRole<HTMLTextAreaElement>('textbox',{name:en.emailDesign.text});
   expect(runs).toHaveLength(2);expect(runs[0].value).toBe('Original text');
   fireEvent.change(runs[1],{target:{value:'Appended text'}});
   expect(document.querySelector('iframe')!.srcdoc).toContain('Original text');expect(document.querySelector('iframe')!.srcdoc).toContain('Appended text');
