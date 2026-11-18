@@ -28,6 +28,9 @@ export function assertContractCaptureCoverage(captures){
   assert.equal(capture.geometry.width,mobile?390:1440,'Required viewport width: '+id);assert.equal(capture.geometry.height,mobile?844:1000,'Required viewport height: '+id);
   assert(capture.url.startsWith('/'),'Actual route required: '+id);assert(/^[a-f0-9]{64}$/.test(capture.sha256),'Actual PNG fingerprint required: '+id);
   if(SUPPORT_CONTRACT_CAPTURES.includes(id)){const target=capture.target;assert(target?.unobscured===true,'Visible target proof required: '+id);
+   assert.equal(capture.captureMode,'viewport','Support capture must preserve the checked viewport: '+id);
+   assert(capture.targetAfter?.unobscured===true,'Target must remain unobscured after capture: '+id);
+   for(const key of ['x','y','width','height'])assert(Number.isFinite(capture.targetAfter[key])&&Math.abs(capture.targetAfter[key]-target[key])<=1,'Target moved during capture: '+id);
    assert(['x','y','width','height'].every(key=>Number.isFinite(target[key])),'Actual target bounds required: '+id);
    assert(target.width>0&&target.height>0&&target.x>=-1&&target.y>=-1&&target.x+target.width<=capture.geometry.width+1&&target.y+target.height<=capture.geometry.height+1,'Target must fit the actual viewport: '+id);
   }
@@ -59,19 +62,29 @@ export async function exerciseContractBrowser({base,browser,fixture,observe,tick
  async function visit(page,path){const response=await page.goto(base+path,{waitUntil:'load'});assert(response&&response.status()<500,'Actual route failed');return response;}
  async function capture(page,id,mobile=false,targetLocator){
   await page.setViewportSize(mobile?{width:390,height:844}:{width:1440,height:1000});await page.evaluate(()=>document.fonts.ready);await page.waitForTimeout(100);
-  let target;
+  let target,targetAfter,locator;
+  const readTarget=async()=>locator.evaluate(node=>{const r=node.getBoundingClientRect(),hit=document.elementFromPoint(r.x+r.width/2,r.y+r.height/2);
+   return{x:r.x,y:r.y,width:r.width,height:r.height,unobscured:hit!==null&&(hit===node||node.contains(hit))};});
   if(targetLocator){
    // Resolve after responsive layout settles, then move the real app/dialog scroll pane naturally.
-   const locator=targetLocator();await locator.waitFor({state:'visible'});assert.equal(await locator.count(),1,'Unique capture target required: '+id);
+   locator=targetLocator();await locator.waitFor({state:'visible'});assert.equal(await locator.count(),1,'Unique capture target required: '+id);
    await locator.scrollIntoViewIfNeeded();await page.waitForTimeout(100);
-   target=await locator.evaluate(node=>{const r=node.getBoundingClientRect(),hit=document.elementFromPoint(r.x+r.width/2,r.y+r.height/2);
-    return{x:r.x,y:r.y,width:r.width,height:r.height,unobscured:hit!==null&&(hit===node||node.contains(hit))};});
+   target=await readTarget();
+   await page.evaluate(()=>new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve))));
+   const settled=await readTarget();
+   for(const key of ['x','y','width','height'])assert(Math.abs(settled[key]-target[key])<=1,'Capture target layout is unstable: '+id);
+   target=settled;
    assert(target.unobscured,'Capture target is covered: '+id);
    const viewport=page.viewportSize();assert(viewport&&target.width>0&&target.height>0&&target.x>=-1&&target.y>=-1&&target.x+target.width<=viewport.width+1&&target.y+target.height<=viewport.height+1,'Capture target is outside the actual viewport: '+id);
   }
   const geometry=await page.evaluate(()=>({width:innerWidth,height:innerHeight,content:document.documentElement.scrollWidth,headings:Array.from(document.querySelectorAll('h1')).map(n=>n.textContent)}));
-  assert(geometry.content<=geometry.width+1,'Page overflow in '+id);const file=id+'.png';await page.screenshot({path:join(out,file),fullPage:true});
-  report.screenshots.push({id,file,sha256:createHash('sha256').update(readFileSync(join(out,file))).digest('hex'),actor:actorKey,url:new URL(page.url()).pathname+new URL(page.url()).search,geometry,...(target?{target}:{})});save();if(mobile)await page.setViewportSize({width:1440,height:1000});
+  assert(geometry.content<=geometry.width+1,'Page overflow in '+id);const file=id+'.png';
+  // Full-page capture may reposition a nested scroll pane. Targeted evidence must show the viewport just checked.
+  const captureMode=targetLocator?'viewport':'fullPage';await page.screenshot({path:join(out,file),fullPage:!targetLocator});
+  if(targetLocator){targetAfter=await readTarget();assert(targetAfter.unobscured,'Capture target became covered: '+id);
+   for(const key of ['x','y','width','height'])assert(Math.abs(targetAfter[key]-target[key])<=1,'Capture target moved during screenshot: '+id);
+  }
+  report.screenshots.push({id,file,sha256:createHash('sha256').update(readFileSync(join(out,file))).digest('hex'),actor:actorKey,url:new URL(page.url()).pathname+new URL(page.url()).search,geometry,captureMode,...(target?{target,targetAfter}:{})});save();if(mobile)await page.setViewportSize({width:1440,height:1000});
  }
  async function advance(predicate,label){for(let n=0;n<40;n++){tick();const state=observe();if(await predicate(state))return state;await new Promise(resolve=>setTimeout(resolve,250));}throw Error('Native progression did not reach '+label);}
  const stateCase=state=>state.cases.find(c=>c.id===caseId);let caseId;
@@ -93,7 +106,7 @@ export async function exerciseContractBrowser({base,browser,fixture,observe,tick
   await page.getByRole('checkbox',{name:'Pay changes',exact:true}).check();await page.getByLabel('Proposed basic salary (RM)',{exact:true}).fill(fixture.agreedSalary);await page.getByLabel('Reason for decision',{exact:true}).fill('Retain the agreed fictional specialist role.');await capture(page,'renew-decision');
   await page.getByRole('button',{name:'Preview decision',exact:true}).click();await advance(async()=>page.getByRole('button',{name:'Submit decision',exact:true}).isEnabled().catch(()=>false),'preview');await capture(page,'decision-preview');
   await page.getByRole('button',{name:'Submit decision',exact:true}).click();let state=await advance(s=>s.approvals.length===1,'CEO approval');assert.equal(state.facts.salary,fixture.initialSalary);assert.equal(state.facts.contract_number,4);
-  page=await login('proposer');await visit(page,'/lifecycle/contracts/'+caseId);await page.getByText('CEO approval',{exact:false}).first().waitFor();await capture(page,'case-in-progress');await capture(page,'case-progress-mobile',true);await capture(page,'case-progress-rail-mobile',true,()=>page.locator('ol.contract-progress'));
+  page=await login('proposer');await visit(page,'/lifecycle/contracts/'+caseId);await page.getByText('CEO approval',{exact:false}).first().waitFor();await capture(page,'case-in-progress');await capture(page,'case-progress-mobile',true);await capture(page,'case-progress-rail-mobile',true,()=>page.getByRole('heading',{name:'Workflow progress',exact:true}).locator('..').locator(':scope > section').filter({has:page.locator('ol.contract-rail')}));
   page=await login('ceo');await visit(page,'/approvals?category=contracts');await page.locator('a[href="/lifecycle/contracts/approvals/'+state.approvals[0].id+'"]').waitFor();await capture(page,'approval-items');await visit(page,'/lifecycle/contracts/approvals/'+state.approvals[0].id);await page.getByRole('button',{name:'Approve',exact:true}).waitFor();await capture(page,'ceo-approval');await page.getByRole('button',{name:'Approve',exact:true}).click();
   state=await advance(s=>s.letters.length===1,'letter review');const letterId=state.letters[0].id;
   page=await login('peopleOps');await visit(page,'/lifecycle/contracts/letters/'+letterId);await page.getByRole('button',{name:'Complete review',exact:true}).waitFor();await capture(page,'people-ops-review');await page.getByRole('button',{name:'Edit wording for this case',exact:true}).click();const wording=page.getByLabel('Letter text',{exact:true});await wording.fill((await wording.inputValue())+'\nThank you for your continued contribution.');await capture(page,'case-letter-edit');await page.getByRole('button',{name:'Complete review and save wording',exact:true}).click();await page.getByRole('button',{name:'Complete review',exact:true}).waitFor({state:'hidden'});tick();

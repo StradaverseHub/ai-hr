@@ -29,7 +29,7 @@ test('requires actual builder, approval, both signatures, posting, manual pay, c
 test('pins every approved product view and rejects partial/mobile-only/duplicated review evidence',()=>{
  const ids=['tracker','decision','decision-preview','conversion','ending','case-progress','approvals','approval-detail','letter-review','letter-edit','tasks','needs','sign','decline','postings','movement','pay','payroll','handoff','leavers','leaver','personnel','settings','access','workflows','workflow','dryrun','templates','template','fields','template-preview','versions','email','email-preview','groups','routing','recipients','states','conversion-preview','closed'];
  assert.deepEqual(Object.keys(CONTRACT_MOCKUP_CAPTURE_MAP).sort(),ids.sort());
- const captures=REQUIRED_CONTRACT_CAPTURES.map(id=>({id,url:'/actual-route',geometry:{width:id.endsWith('-mobile')?390:1440,height:id.endsWith('-mobile')?844:1000},sha256:'f'.repeat(64),...(SUPPORT_CONTRACT_CAPTURES.includes(id)?{target:{x:20,y:120,width:200,height:100,unobscured:true}}:{})}));
+ const captures=REQUIRED_CONTRACT_CAPTURES.map(id=>({id,url:'/actual-route',geometry:{width:id.endsWith('-mobile')?390:1440,height:id.endsWith('-mobile')?844:1000},sha256:'f'.repeat(64),...(SUPPORT_CONTRACT_CAPTURES.includes(id)?{captureMode:'viewport',target:{x:20,y:120,width:200,height:100,unobscured:true},targetAfter:{x:20,y:120,width:200,height:100,unobscured:true}}:{})}));
  assert.doesNotThrow(()=>assertContractCaptureCoverage(captures));
  for(const mutate of [v=>v.splice(v.findIndex(c=>c.id==='conversion-preview'),1),v=>v.push({...v[0]}),v=>v.find(c=>c.id==='my-tasks').geometry.width=390,v=>v.find(c=>c.id==='native-offboarding-case').sha256='',v=>v.find(c=>c.id==='recipient-picker').url='']){const value=structuredClone(captures);mutate(value);assert.throws(()=>assertContractCaptureCoverage(value));}
 });
@@ -47,10 +47,10 @@ test('denial requires the actual native screen, noindex and no private case evid
 });
 
 test('requires visible bounded target evidence for every support capture at the real viewport size',()=>{
- const captures=REQUIRED_CONTRACT_CAPTURES.map(id=>({id,url:'/actual-route',geometry:{width:id.endsWith('-mobile')?390:1440,height:id.endsWith('-mobile')?844:1000},sha256:'f'.repeat(64),...(SUPPORT_CONTRACT_CAPTURES.includes(id)?{target:{x:20,y:120,width:200,height:100,unobscured:true}}:{})}));
+ const captures=REQUIRED_CONTRACT_CAPTURES.map(id=>({id,url:'/actual-route',geometry:{width:id.endsWith('-mobile')?390:1440,height:id.endsWith('-mobile')?844:1000},sha256:'f'.repeat(64),...(SUPPORT_CONTRACT_CAPTURES.includes(id)?{captureMode:'viewport',target:{x:20,y:120,width:200,height:100,unobscured:true},targetAfter:{x:20,y:120,width:200,height:100,unobscured:true}}:{})}));
  for(const id of SUPPORT_CONTRACT_CAPTURES){
   assert.throws(()=>assertContractCaptureCoverage(captures.filter(c=>c.id!==id)));
-  for(const mutate of [c=>delete c.target,c=>c.target.unobscured=false,c=>c.target.x=-2,c=>c.target.y=c.geometry.height,c=>c.target.width=0,c=>c.target.height=NaN,c=>c.target.width=true,c=>c.geometry.height+=100]){
+  for(const mutate of [c=>delete c.target,c=>delete c.targetAfter,c=>c.captureMode='fullPage',c=>c.targetAfter.y+=2,c=>c.targetAfter.unobscured=false,c=>c.target.unobscured=false,c=>c.target.x=-2,c=>c.target.y=c.geometry.height,c=>c.target.width=0,c=>c.target.height=NaN,c=>c.target.width=true,c=>c.geometry.height+=100]){
    const value=structuredClone(captures);mutate(value.find(c=>c.id===id));assert.throws(()=>assertContractCaptureCoverage(value));
   }
  }
