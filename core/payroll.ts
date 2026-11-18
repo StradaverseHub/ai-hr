@@ -1,3 +1,4 @@
+import {nativePayrollPayslip,nativePayrollPayslipWrite} from './payroll-history-native-baseline';
 import { nonEpfStatutoryWage } from './statutory-wage-inclusion';
 import {movementPayrollInvalidationDeferredTx} from './workforce-payroll-invalidation';
 import {employmentPaymentMethodOnSql} from './employment-payment-method';
@@ -54,7 +55,7 @@ import { type SessionContext, type Tx } from '../db/client';
 // See core/module-gate.ts.
 import { assertModuleGate,withPayrollTenant as withTenant } from './module-gate';
 import { pricesChildReliefFromGrid } from './dependents';
-import { actorOf, appendEvent } from '../db/events';
+import { actorOf, appendEvent,appendEvents } from '../db/events';
 import {
   PAYROLL_PERMISSION_DEFAULTS,
   decidePayrollPermission,
@@ -890,8 +891,8 @@ export async function markBatchNeedsRecalc(
   // from the changed inputs (their chunk reads them under this same batch-row lock), so only an employee it has
   // already paid is stale. Their chunk committed before this row lock was granted, so the set cannot move here.
   if (row.status === 'processing') {
-    const paid = await tx.select({ employmentId: payslip.employmentId }).from(payslip)
-      .where(and(eq(payslip.batchId, p.batchId), inArray(payslip.employmentId, adding)));
+    const paid = await tx.select({ employmentId: nativePayrollPayslip.employmentId }).from(nativePayrollPayslip)
+      .where(and(eq(nativePayrollPayslip.batchId, p.batchId), inArray(nativePayrollPayslip.employmentId, adding)));
     const paidIds = new Set(paid.map((r) => r.employmentId));
     adding.splice(0, adding.length, ...adding.filter((id) => paidIds.has(id)));
     if (adding.length === 0) return;
@@ -911,6 +912,17 @@ export async function markBatchNeedsRecalc(
     // "compensation" says the salary record moved, not to what.
     payload: { employmentIds: next, addedEmploymentIds: adding, ...(p.category ? { changeCategory: p.category } : {}) },
   });
+}
+
+/** Historical-source invalidation under the existing history barrier, before effective source release.
+ * One batch-lock set and one update; existing closed artifacts and processing/payment decisions stay owned. */
+export async function markHistoryAffectedPayrollTx(tx:Tx,ctx:SessionContext,targets:readonly {companyId:string;employmentId:string;period:string}[]){
+ if(!targets.length)return;
+ const selected=JSON.stringify([...new Map(targets.map(row=>[[row.companyId,row.employmentId,row.period].join(':'),row])).values()]);
+ const locked=await tx.execute<{id:string;ids:string[];existing:unknown;at:Date|null}>(sql`select * from app.payroll_history_native_affected(${selected}::jsonb)`);
+ const rows=locked.filter(row=>row.ids.length).map(row=>({...row,next:[...new Set([...asIdArray(row.existing),...row.ids])].sort()}));if(!rows.length)return;
+ await tx.execute(sql`update payroll_batch b set needs_recalc_at=coalesce(b.needs_recalc_at,now()),recalc_employment_ids=u.ids from jsonb_to_recordset(${JSON.stringify(rows.map(row=>({id:row.id,ids:row.next})))}::jsonb) u(id uuid,ids jsonb) where b.id=u.id and b.tenant_id=${ctx.tenantId}::uuid and b.status in ('processed','processing')`);
+ await appendEvents(tx,rows.map(row=>({tenantId:ctx.tenantId,aggregateType:'payroll-batch',aggregateId:row.id,eventType:'payroll-batch.recalc-required',actor:actorOf(ctx),payload:{employmentIds:row.next,addedEmploymentIds:row.ids,changeCategory:'statutory',source:'payroll_history_maintenance'}})));
 }
 
 /**
@@ -950,12 +962,12 @@ export async function markRunsAffectedByEmploymentChangeTx(
   if (ids.length === 0) return [];
   const fromPeriod = p.from && /^\d{4}-\d{2}/.test(p.from) ? p.from.slice(0, 7) : null;
   const rows = await tx
-    .select({ batchId: payslip.batchId, employmentId: payslip.employmentId })
-    .from(payslip)
-    .innerJoin(payrollBatch, eq(payrollBatch.id, payslip.batchId))
+    .select({ batchId: nativePayrollPayslip.batchId, employmentId: nativePayrollPayslip.employmentId })
+    .from(nativePayrollPayslip)
+    .innerJoin(payrollBatch, eq(payrollBatch.id, nativePayrollPayslip.batchId))
     .where(
       and(
-        inArray(payslip.employmentId, ids),
+        inArray(nativePayrollPayslip.employmentId, ids),
         // A run the background job is still processing holds payslips only for employees it has already paid:
         // those are stale exactly like a processed run's (the others will read the change when computed).
         inArray(payrollBatch.status, ['processed', 'processing']),
@@ -988,10 +1000,10 @@ export async function markProcessingRunsForEmploymentsTx(
   const ids = asIdArray(p.employmentIds);
   if (ids.length === 0) return;
   const rows = await tx
-    .selectDistinct({ batchId: payslip.batchId })
-    .from(payslip)
-    .innerJoin(payrollBatch, eq(payrollBatch.id, payslip.batchId))
-    .where(and(inArray(payslip.employmentId, ids), eq(payrollBatch.status, 'processing'), sql`app.can_admin_payroll_for(${payrollBatch.companyId})`));
+    .selectDistinct({ batchId: nativePayrollPayslip.batchId })
+    .from(nativePayrollPayslip)
+    .innerJoin(payrollBatch, eq(payrollBatch.id, nativePayrollPayslip.batchId))
+    .where(and(inArray(nativePayrollPayslip.employmentId, ids), eq(payrollBatch.status, 'processing'), sql`app.can_admin_payroll_for(${payrollBatch.companyId})`));
   for (const { batchId } of [...rows].sort((a, b) => a.batchId.localeCompare(b.batchId))) {
     await markBatchNeedsRecalc(tx, ctx, { batchId, employmentIds: ids, category: p.category });
   }
@@ -1105,24 +1117,24 @@ export async function markRunsAffectedByPayComponentTx(
     // (1) the payslip itemises this code. `componentLines` is a jsonb ARRAY of {code,name,amount,buckets},
     // so the containment operator reads it directly — no per-row unnest, and it uses the jsonb index shape.
     const itemised = await tx
-      .select({ batchId: payslip.batchId, employmentId: payslip.employmentId })
-      .from(payslip)
+      .select({ batchId: nativePayrollPayslip.batchId, employmentId: nativePayrollPayslip.employmentId })
+      .from(nativePayrollPayslip)
       .where(
         and(
-          inArray(payslip.batchId, openIds),
-          sql`${payslip.statutory} -> 'componentLines' @> ${JSON.stringify([{ code: p.code }])}::jsonb`,
+          inArray(nativePayrollPayslip.batchId, openIds),
+          sql`${nativePayrollPayslip.statutory} -> 'componentLines' @> ${JSON.stringify([{ code: p.code }])}::jsonb`,
         ),
       );
     for (const r of itemised) add(r.batchId, r.employmentId);
 
     // (2) a live recurring assignment of this component, on an employment that has a slip on the run.
     const recurring = await tx
-      .select({ batchId: payslip.batchId, employmentId: payslip.employmentId })
-      .from(payslip)
-      .innerJoin(employmentPayComponent, eq(employmentPayComponent.employmentId, payslip.employmentId))
+      .select({ batchId: nativePayrollPayslip.batchId, employmentId: nativePayrollPayslip.employmentId })
+      .from(nativePayrollPayslip)
+      .innerJoin(employmentPayComponent, eq(employmentPayComponent.employmentId, nativePayrollPayslip.employmentId))
       .where(
         and(
-          inArray(payslip.batchId, openIds),
+          inArray(nativePayrollPayslip.batchId, openIds),
           eq(employmentPayComponent.componentId, p.componentId),
           isNull(employmentPayComponent.supersededAt),
         ),
@@ -1588,9 +1600,9 @@ export async function batchesCoveringAttendanceDates(
   if (batches.length === 0) return [];
   const batchIds = batches.map((b) => b.id);
   const slips = await tx
-    .select({ batchId: payslip.batchId, employmentId: payslip.employmentId })
-    .from(payslip)
-    .where(inArray(payslip.batchId, batchIds));
+    .select({ batchId: nativePayrollPayslip.batchId, employmentId: nativePayrollPayslip.employmentId })
+    .from(nativePayrollPayslip)
+    .where(inArray(nativePayrollPayslip.batchId, batchIds));
   const onRun = new Set(slips.map((s) => `${s.batchId}|${s.employmentId}`));
   const sched = await loadBatchCutOffSchedule(tx, p.companyId);
   // Keyed by employment+period: one employment's window differs BETWEEN periods, so caching on the
@@ -2640,7 +2652,7 @@ export async function teardownDraftChildren(tx: Tx, ctx: SessionContext, batchId
     .delete(payrollBatchComponent)
     .where(eq(payrollBatchComponent.batchId, batchId))
     .returning({ id: payrollBatchComponent.id });
-  const payslips = await tx.delete(payslip).where(eq(payslip.batchId, batchId)).returning({ id: payslip.id });
+  const payslips = await tx.delete(nativePayrollPayslipWrite).where(eq(nativePayrollPayslipWrite.batchId, batchId)).returning({ id: nativePayrollPayslipWrite.id });
 
   // ── Batch-keyed audit / control rows (feedback ec3873a6) ──────────────────────────────────────────
   // A hard draft delete must clear EVERY child that FK-references payroll_batch.id, else the final
@@ -3983,7 +3995,7 @@ export function reverseRetiredAttendanceFormulaInputs(
    select app.principal_snapshot_current() and app.can_admin_payroll_for(${batch.companyId}::uuid) as allowed
   `);
   if(!access?.allowed||batch.status!=='draft')throw new BatchNotDraftError();
-  if((await tx.select({id:payslip.id}).from(payslip).where(eq(payslip.batchId,batch.id)).limit(1)).length)
+  if((await tx.select({id:nativePayrollPayslip.id}).from(nativePayrollPayslip).where(eq(nativePayrollPayslip.batchId,batch.id)).limit(1)).length)
    throw new BatchNotDraftError();
   if(!await payrollHasRetiredAttendanceFormulaInputsTx(tx,batch.id))return;
 
@@ -4204,9 +4216,9 @@ async function generatePayslipsTx(tx: Tx, ctx: SessionContext, p: GeneratePaysli
     if (subset) {
       const idFilter = postedSubsetIds.length ? postedSubsetIds : [NO_ROWS_UUID];
       const slipRows = await tx
-        .select({ employmentId: payslip.employmentId })
-        .from(payslip)
-        .where(and(eq(payslip.batchId, p.batchId), inArray(payslip.employmentId, idFilter)));
+        .select({ employmentId: nativePayrollPayslip.employmentId })
+        .from(nativePayrollPayslip)
+        .where(and(eq(nativePayrollPayslip.batchId, p.batchId), inArray(nativePayrollPayslip.employmentId, idFilter)));
       const hasSlip = new Set(slipRows.map((r) => r.employmentId));
       const eligibleRows = await tx
         .select({ id: employment.id, name: person.fullName, employeeCode: employment.employeeCode })
@@ -6752,8 +6764,8 @@ async function generatePayslipsTx(tx: Tx, ctx: SessionContext, p: GeneratePaysli
       const subsetIds = emps.map((e) => e.employmentId);
       const existing = await tx
         .select()
-        .from(payslip)
-        .where(and(eq(payslip.batchId, p.batchId), inArray(payslip.employmentId, subsetIds)))
+        .from(nativePayrollPayslip)
+        .where(and(eq(nativePayrollPayslip.batchId, p.batchId), inArray(nativePayrollPayslip.employmentId, subsetIds)))
         .for('update');
       taxReplacement = await prepareTaxBasisReplacementTx(tx,ctx,existing.map(sl=>sl.id));
       const correctedSourceIds=new Set(taxReplacement.corrections.map(c=>c.payslipId));
@@ -6779,7 +6791,7 @@ async function generatePayslipsTx(tx: Tx, ctx: SessionContext, p: GeneratePaysli
         oldTotals.hrdfEmployer += Number(st.hrdf ?? 0);
       }
       const replaceIds=existing.filter(sl=>!retainedSlipIds.has(sl.employmentId)).map(sl=>sl.id);
-      if(replaceIds.length)await tx.delete(payslip).where(inArray(payslip.id,replaceIds));
+      if(replaceIds.length)await tx.delete(nativePayrollPayslipWrite).where(inArray(nativePayrollPayslipWrite.id,replaceIds));
     }
 
     // 1e — apply the policy OT caps to a prefilled OT total. Uses the stored rate-bucket decomposition
@@ -8615,8 +8627,8 @@ async function generatePayslipsTx(tx: Tx, ctx: SessionContext, p: GeneratePaysli
       };
       if(retainedSlipIds.has(e.employmentId)){
         const {id:retainedId,...values}=nextSlip;
-        await tx.update(payslip).set(values).where(eq(payslip.id,retainedId!));
-      }else await tx.insert(payslip).values(nextSlip);
+        await tx.update(nativePayrollPayslipWrite).set(values).where(eq(nativePayrollPayslipWrite.id,retainedId!));
+      }else await tx.insert(nativePayrollPayslipWrite).values(nextSlip);
 
       totals.gross += roundedGross;
       totals.net += net;
@@ -8718,8 +8730,8 @@ async function generatePayslipsTx(tx: Tx, ctx: SessionContext, p: GeneratePaysli
       // failed job could leave one out.
       const [{ n: payslipCount } = { n: 0 }] = await tx
         .select({ n: sql<number>`count(*)::int` })
-        .from(payslip)
-        .where(eq(payslip.batchId, p.batchId));
+        .from(nativePayrollPayslip)
+        .where(eq(nativePayrollPayslip.batchId, p.batchId));
       await tx
         .update(payrollBatch)
         .set({ totals: deltaTotals, employeeCount: Number(payslipCount) })
@@ -8859,8 +8871,8 @@ async function generatePayslipsTx(tx: Tx, ctx: SessionContext, p: GeneratePaysli
       // Per-employee before/after result snapshots (dedicated audit table — reporter req.).
       const newSlips = await tx
         .select()
-        .from(payslip)
-        .where(and(eq(payslip.batchId, p.batchId), inArray(payslip.employmentId, emps.map((e) => e.employmentId))));
+        .from(nativePayrollPayslip)
+        .where(and(eq(nativePayrollPayslip.batchId, p.batchId), inArray(nativePayrollPayslip.employmentId, emps.map((e) => e.employmentId))));
       // Outstanding-payment cycles own independent cash, but monthly contributions share a
       // cumulative basis. A changed earlier owner invalidates later writable charges, never history.
       for(const sl of newSlips.filter(row=>postEmploymentIds.has(row.employmentId))){
@@ -9251,7 +9263,7 @@ async function preparePayrollCloseTx(tx:Tx,ctx:SessionContext,p:{batchId:string}
     const cashProof=await readPayrollOvertimePatternCashTx(tx, ctx, { batchId: p.batchId });
     const closeSchedule = await loadBatchCutOffSchedule(tx, batch.companyId,closeConfiguration.config);
     const closeWindow = await unionTypeWindow(tx, closeSchedule, batch.companyId, 'overtime', batch.payPeriod);
-    const closingEmployees = await tx.select({ id: payslip.employmentId }).from(payslip).where(eq(payslip.batchId, p.batchId));
+    const closingEmployees = await tx.select({ id: nativePayrollPayslip.employmentId }).from(nativePayrollPayslip).where(eq(nativePayrollPayslip.batchId, p.batchId));
     const overtimeProof=await readPayrollOvertimeCoverageTx(tx, ctx, { companyId: batch.companyId, from: closeWindow.start, to: closeWindow.end,
       employmentIds: closingEmployees.map(r => r.id), refuseUnresolved: true, payPeriod: batch.payPeriod });
     // ADR-0076 slice 3 — refuse while unresolved BLOCK anomalies stand against this run. Thrown BEFORE any
@@ -9388,16 +9400,16 @@ async function preparePayrollCloseTx(tx:Tx,ctx:SessionContext,p:{batchId:string}
       // slip covers its whole period, so on any run without a split month this returns nobody.
       const closeSlips = await tx
         .select({
-          employmentId: payslip.employmentId,
+          employmentId: nativePayrollPayslip.employmentId,
           partial: sql<boolean>`coalesce(
-            ${payslip.coverageFrom} > ${closePeriodStart}
-              or ${payslip.coverageTo} < ${closePeriodEnd}
-              or ${payslip.statutory} -> 'segment' is not null,
+            ${nativePayrollPayslip.coverageFrom} > ${closePeriodStart}
+              or ${nativePayrollPayslip.coverageTo} < ${closePeriodEnd}
+              or ${nativePayrollPayslip.statutory} -> 'segment' is not null,
             false
           )`,
         })
-        .from(payslip)
-        .where(eq(payslip.batchId, p.batchId));
+        .from(nativePayrollPayslip)
+        .where(eq(nativePayrollPayslip.batchId, p.batchId));
       const closeOwed = await tx
         .select({ id: employment.id })
         .from(employment)
@@ -10112,7 +10124,7 @@ export async function resetProcessedBatchTx(tx:Tx,ctx:SessionContext,p:{batchId:
     // ── 3. Clear the calculation results; 4. back to draft ──
     // (Per-payslip history lives on the earlier processed-batch events; the batch-level reset event
     // below records the count — same convention as teardownDraftChildren's child deletes.)
-    const clearedSlips = await tx.delete(payslip).where(eq(payslip.batchId, p.batchId)).returning({ id: payslip.id });
+    const clearedSlips = await tx.delete(nativePayrollPayslipWrite).where(eq(nativePayrollPayslipWrite.batchId, p.batchId)).returning({ id: nativePayrollPayslipWrite.id });
     // 0db616f3 (0437) — the payslips that justified the consumed marker have just been deleted, so the
     // one-off lines this run paid are unpaid again and the corrected re-run must pay them. Without this
     // the re-run would still pay them (the fold's `OR consumed_batch_id = this batch` half), but the row
@@ -10547,8 +10559,8 @@ export async function reprocessEmployeeTx(tx:Tx,ctx:SessionContext,run:Selective
   // A mid-period leaver or joiner is IN the month and is recalculated (prorated) as before.
   // Only for somebody whose result IS on the run: that is the stale payslip to deal with. An employee
   // with no payslip here is an addition, and an addition outside the month keeps its fbcf706d refusal.
-  const [onThisRun] = await tx.select({id:payslip.id}).from(payslip)
-    .where(and(eq(payslip.batchId,run.batchId),eq(payslip.employmentId,employmentId))).limit(1);
+  const [onThisRun] = await tx.select({id:nativePayrollPayslip.id}).from(nativePayrollPayslip)
+    .where(and(eq(nativePayrollPayslip.batchId,run.batchId),eq(nativePayrollPayslip.employmentId,employmentId))).limit(1);
   let exclusion: ReprocessEmploymentNotInPeriodError | null = null;
   if (onThisRun && !identity.outstanding && identity.terminatedOn && identity.terminatedOn < periodStart) {
     exclusion = new ReprocessEmploymentNotInPeriodError('RESIGNED_BEFORE_PERIOD', identity.terminatedOn);
@@ -10562,8 +10574,8 @@ export async function reprocessEmployeeTx(tx:Tx,ctx:SessionContext,run:Selective
       .orderBy(desc(assignment.validTo)).limit(1);
     exclusion = new ReprocessEmploymentNotInPeriodError('NOT_WITH_COMPANY_IN_PERIOD', left?.validTo ?? null);
   }
-  const [before] = await tx.select({id:payslip.id,version:payslip.version}).from(payslip)
-    .where(and(eq(payslip.batchId,run.batchId),eq(payslip.employmentId,employmentId))).limit(1);
+  const [before] = await tx.select({id:nativePayrollPayslip.id,version:nativePayrollPayslip.version}).from(nativePayrollPayslip)
+    .where(and(eq(nativePayrollPayslip.batchId,run.batchId),eq(nativePayrollPayslip.employmentId,employmentId))).limit(1);
   let classification: ReprocessEmployeeOutcome['classification'];
   let historyId: string | null = null;
   let outcomeState: Pick<ReprocessEmployeeOutcome,'status'|'reasonCode'|'validationCode'|'validationDetails'|'configuredTaxScheme'|'effectiveTaxScheme'|'formulaFailure'>;
@@ -10615,8 +10627,8 @@ export async function reprocessEmployeeTx(tx:Tx,ctx:SessionContext,run:Selective
       }
     }
   }
-  const [after] = await tx.select({id:payslip.id,version:payslip.version,statutory:payslip.statutory}).from(payslip)
-    .where(and(eq(payslip.batchId,run.batchId),eq(payslip.employmentId,employmentId))).limit(1);
+  const [after] = await tx.select({id:nativePayrollPayslip.id,version:nativePayrollPayslip.version,statutory:nativePayrollPayslip.statutory}).from(nativePayrollPayslip)
+    .where(and(eq(nativePayrollPayslip.batchId,run.batchId),eq(nativePayrollPayslip.employmentId,employmentId))).limit(1);
   const savedScheme = (after?.statutory as {pcbMeta?:{calculationScheme?:unknown}} | undefined)?.pcbMeta?.calculationScheme;
   const outcome: ReprocessEmployeeOutcome = {
     employmentId,name:identity.name,employeeCode:identity.employeeCode,...outcomeState,classification,
@@ -10699,7 +10711,7 @@ export async function enqueueSelectiveReprocess(
     // reprocess August for employee 100814 on the FIAMMA run — thrown from exactly here, on exactly this
     // predicate. 100814's `employment.company_id` had already moved to ISEDECOR, so the outgoing
     // employer's own run refused to recompute the ten days it owes, which is the run that has to produce
-    // the missing counterpart payslip. Every other read on this path was widened in stage one; this one
+    // the missing counterpart nativePayrollPayslip. Every other read on this path was widened in stage one; this one
     // is the gate in front of them, so leaving it on the column made the rest unreachable.
     //
     // It still only NARROWS: the id must have belonged to this company during this period, so a stale or
@@ -10721,9 +10733,9 @@ export async function enqueueSelectiveReprocess(
     // company membership for it any more, and that is exactly the person whose stale result the loop must
     // reach to exclude. A payslip on this very batch cannot widen anything: it is already on the run.
     const onRun = await tx
-      .select({ id: payslip.employmentId })
-      .from(payslip)
-      .where(and(eq(payslip.batchId, p.batchId), inArray(payslip.employmentId, requested)));
+      .select({ id: nativePayrollPayslip.employmentId })
+      .from(nativePayrollPayslip)
+      .where(and(eq(nativePayrollPayslip.batchId, p.batchId), inArray(nativePayrollPayslip.employmentId, requested)));
     const employmentIds = requested.filter(
       (id) => companyEmps.some((e) => e.id === id) || onRun.some((r) => r.id === id),
     );
@@ -11182,25 +11194,25 @@ export function listRemovableEmployees(ctx: SessionContext, p: { batchId: string
     if (!batch) return [];
     const rows = await tx
       .select({
-        employmentId: payslip.employmentId,
+        employmentId: nativePayrollPayslip.employmentId,
         employeeCode: employment.employeeCode,
         name: person.fullName,
-        gross: payslip.grossPay,
-        net: payslip.netPay,
+        gross: nativePayrollPayslip.grossPay,
+        net: nativePayrollPayslip.netPay,
         department: sql<string | null>`(
           select d.name
           from ${assignment} a
           join ${department} d on d.id = a.department_id
-          where a.employment_id = ${payslip.employmentId}
+          where a.employment_id = ${nativePayrollPayslip.employmentId}
             and a.superseded_at is null
           order by a.valid_from desc, a.recorded_at desc
           limit 1
         )`,
       })
-      .from(payslip)
-      .innerJoin(employment, eq(employment.id, payslip.employmentId))
+      .from(nativePayrollPayslip)
+      .innerJoin(employment, eq(employment.id, nativePayrollPayslip.employmentId))
       .innerJoin(person, eq(person.id, employment.personId))
-      .where(eq(payslip.batchId, p.batchId))
+      .where(eq(nativePayrollPayslip.batchId, p.batchId))
       .orderBy(person.fullName);
     if (rows.length === 0) return [];
 
@@ -11342,8 +11354,8 @@ export async function removeEmployeePayrollTx(
   //     never be recovered.
   const onRun = await tx
     .select()
-    .from(payslip)
-    .where(eq(payslip.batchId, p.batchId))
+    .from(nativePayrollPayslip)
+    .where(eq(nativePayrollPayslip.batchId, p.batchId))
     .for('update');
   const removing = onRun.filter((sl) => requested.includes(sl.employmentId));
   if (removing.length === 0) throw new RemoveNoEmployeesError();
@@ -11417,8 +11429,8 @@ export async function removeEmployeePayrollTx(
 
   // ── 5a. Delete the payslips. ──
   await tx
-    .delete(payslip)
-    .where(and(eq(payslip.batchId, p.batchId), inArray(payslip.employmentId, removedIds)));
+    .delete(nativePayrollPayslipWrite)
+    .where(and(eq(nativePayrollPayslipWrite.batchId, p.batchId), inArray(nativePayrollPayslipWrite.employmentId, removedIds)));
 
   // ── 5b. Totals BY DELTA, exactly as the subset reprocess path does: subtract what the removed
   //    payslips contributed from the stored figure, rather than re-summing the run. `hrdfEmployer` is
@@ -11448,8 +11460,8 @@ export async function removeEmployeePayrollTx(
   // headcount note on the subset reprocess path.
   const [{ n: payslipCount } = { n: 0 }] = await tx
     .select({ n: sql<number>`count(*)::int` })
-    .from(payslip)
-    .where(eq(payslip.batchId, p.batchId));
+    .from(nativePayrollPayslip)
+    .where(eq(nativePayrollPayslip.batchId, p.batchId));
   await tx
     .update(payrollBatch)
     .set({ totals: delta, employeeCount: Number(payslipCount) })
@@ -12339,7 +12351,7 @@ function listPayslipLessEligibleTx(
           payrollEmploymentPredicate({...batch,id:p.batchId},settingEnabled(ctx,'payroll.individual_txn_pay_enabled')),
           // NOT EXISTS a payslip for this employment on this batch. Correlated rather than a NOT IN over a
           // fetched id list: the id list is unbounded in company size and a NULL in it would swallow the row.
-          sql`not exists (select 1 from ${payslip} where ${payslip.batchId} = ${p.batchId} and ${payslip.employmentId} = ${employment.id})`,
+          sql`not exists (select 1 from ${nativePayrollPayslip} where ${nativePayrollPayslip.batchId} = ${p.batchId} and ${nativePayrollPayslip.employmentId} = ${employment.id})`,
         ),
       )
       .orderBy(desc(employment.createdAt), person.fullName);
@@ -12454,6 +12466,10 @@ export function preProcessAdvisoryForSelection(
 
 async function readBatchHeaderTx(tx: Tx, batchId: string) {
   const [batch] = await tx.select().from(payrollHistoryEffectiveBatch).where(eq(payrollBatch.id, batchId)).limit(1);
+  if(batch&&!batch.historyImportAttemptId){
+    const [physical]=await tx.select().from(payrollBatch).where(and(eq(payrollBatch.id,batchId),sql`app.payroll_history_native_batch_override(${batchId}::uuid)`)).limit(1);
+    if(physical)return physical;
+  }
   return batch ?? null;
 }
 
@@ -12471,10 +12487,10 @@ export function batchSummary(ctx: SessionContext, batchId: string) {
   return withTenant(ctx, async tx => {
     const batch = await readBatchHeaderTx(tx, batchId);
     if (!batch) return null;
-    const [row] = await tx.select({slipCount: sql<number>`count(*)::int`}).from(payslip)
-      .innerJoin(employment, eq(employment.id, payslip.employmentId))
+    const [row] = await tx.select({slipCount: sql<number>`count(*)::int`}).from(nativePayrollPayslip)
+      .innerJoin(employment, eq(employment.id, nativePayrollPayslip.employmentId))
       .innerJoin(person, eq(person.id, employment.personId))
-      .where(eq(payslip.batchId, batchId));
+      .where(eq(nativePayrollPayslip.batchId, batchId));
     return {batch, slipCount: row.slipCount};
   });
 }
@@ -12485,27 +12501,27 @@ export function batchDetail(ctx: SessionContext, batchId: string) {
     if (!batch) return null;
     const slips = await tx
       .select({
-        id: payslip.id,
-        employmentId: payslip.employmentId,
+        id: nativePayrollPayslip.id,
+        employmentId: nativePayrollPayslip.employmentId,
         name: person.fullName,
         employeeCode: employment.employeeCode,
-        basic: payslip.basicSalary,
-        bonus: payslip.bonus,
-        daysWorked: payslip.daysWorked,
-        gross: payslip.grossPay,
-        statutory: payslip.statutory,
-        totalDeductions: payslip.totalDeductions,
-        net: payslip.netPay,
-        employerCost: payslip.employerCost,
+        basic: nativePayrollPayslip.basicSalary,
+        bonus: nativePayrollPayslip.bonus,
+        daysWorked: nativePayrollPayslip.daysWorked,
+        gross: nativePayrollPayslip.grossPay,
+        statutory: nativePayrollPayslip.statutory,
+        totalDeductions: nativePayrollPayslip.totalDeductions,
+        net: nativePayrollPayslip.netPay,
+        employerCost: nativePayrollPayslip.employerCost,
         // 97a9b0ab — the revision counter (1 = as first generated, >1 = selectively reprocessed).
         // It has always been stored and never shown, which is why a moved figure looked unexplainable.
         // The RULESET version rides `statutory.version` (already selected above) — no column, no DDL.
-        version: payslip.version,
+        version: nativePayrollPayslip.version,
       })
-      .from(payslip)
-      .innerJoin(employment, eq(employment.id, payslip.employmentId))
+      .from(nativePayrollPayslip)
+      .innerJoin(employment, eq(employment.id, nativePayrollPayslip.employmentId))
       .innerJoin(person, eq(person.id, employment.personId))
-      .where(eq(payslip.batchId, batchId))
+      .where(eq(nativePayrollPayslip.batchId, batchId))
       .orderBy(person.fullName);
     return { batch, slips };
   });
@@ -12531,17 +12547,17 @@ export function payrollRunRegisterPage(ctx: SessionContext, batchId: string, pag
     // Both consumers reference the same CTE, so Postgres materializes one narrow RLS-visible set.
     // The payload stays on payslip and is fetched only for the requested page.
     const visibleRegister = tx.$with('visible_register').as(tx.select({
-      id: payslip.id,
-      employmentId: payslip.employmentId,
+      id: nativePayrollPayslip.id,
+      employmentId: nativePayrollPayslip.employmentId,
       name: person.fullName,
       employeeCode: employment.employeeCode,
       matched: matched.as('matched'),
-    }).from(payslip)
-      .innerJoin(employment, eq(employment.id, payslip.employmentId))
+    }).from(nativePayrollPayslip)
+      .innerJoin(employment, eq(employment.id, nativePayrollPayslip.employmentId))
       .innerJoin(person, eq(person.id, employment.personId))
       // A run the background job is still processing shows no register: its payslips become the run's together,
       // when the job's finalize flips it to processed.
-      .where(and(eq(payslip.batchId, batchId), batch.status === 'processing' ? sql`false` : undefined)));
+      .where(and(eq(nativePayrollPayslip.batchId, batchId), batch.status === 'processing' ? sql`false` : undefined)));
     // `total` is the searched population (the pager and the count); `runTotal` is every visible payslip
     // of the run, which the run's own actions (Close, Reprocess, Remove) are gated on whatever is typed.
     const registerTotal = tx.select({
@@ -12559,15 +12575,15 @@ export function payrollRunRegisterPage(ctx: SessionContext, batchId: string, pag
       .offset(Math.min(page.offset, Number.MAX_SAFE_INTEGER))
       .as('register_page');
     const pageSlip = tx.select({
-      id: payslip.id,
-      basic: payslip.basicSalary,
-      bonus: payslip.bonus,
-      daysWorked: payslip.daysWorked,
-      gross: payslip.grossPay,
-      statutory: payslip.statutory,
-      net: payslip.netPay,
-      version: payslip.version,
-    }).from(payslip).where(eq(payslip.id, registerPage.id)).limit(1).as('page_slip');
+      id: nativePayrollPayslip.id,
+      basic: nativePayrollPayslip.basicSalary,
+      bonus: nativePayrollPayslip.bonus,
+      daysWorked: nativePayrollPayslip.daysWorked,
+      gross: nativePayrollPayslip.grossPay,
+      statutory: nativePayrollPayslip.statutory,
+      net: nativePayrollPayslip.netPay,
+      version: nativePayrollPayslip.version,
+    }).from(nativePayrollPayslip).where(eq(nativePayrollPayslip.id, registerPage.id)).limit(1).as('page_slip');
     // The close prompt needs one cycle label. Keep it in this register query instead of
     // listing every run in the company and period after the access audit.
     const closeCycleName = batch.status === 'processed' && batch.payrollCycleId &&
@@ -12606,7 +12622,7 @@ export function payrollRunRegisterPage(ctx: SessionContext, batchId: string, pag
 /** Run-wide stale banner identities, including people outside the visible register page. */
 export function listBatchRecalcPayslipIdentities(ctx: SessionContext, batchId: string, employmentIds: readonly string[]) {
   // The prior JS join matched the exact lowercase IDs returned by Postgres. Invalid or differently
-  // formatted IDs in a retained event did not match any payslip.
+  // formatted IDs in a retained event did not match any nativePayrollPayslip.
   const ids = employmentIds.filter(id => /^[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}$/.test(id));
   if (ids.length === 0) return Promise.resolve([]);
   return withTenant(ctx, async tx => {
@@ -12614,14 +12630,14 @@ export function listBatchRecalcPayslipIdentities(ctx: SessionContext, batchId: s
     if (!batch) return [];
     const selectedIds = '{' + ids.join(',') + '}';
     return tx.select({
-      employmentId: payslip.employmentId,
+      employmentId: nativePayrollPayslip.employmentId,
       name: person.fullName,
       employeeCode: employment.employeeCode,
-    }).from(payslip)
-      .innerJoin(employment, eq(employment.id, payslip.employmentId))
+    }).from(nativePayrollPayslip)
+      .innerJoin(employment, eq(employment.id, nativePayrollPayslip.employmentId))
       .innerJoin(person, eq(person.id, employment.personId))
-      .where(and(eq(payslip.batchId, batchId), sql`${payslip.employmentId} = any(${selectedIds}::uuid[])`))
-      .orderBy(asc(person.fullName), asc(payslip.id));
+      .where(and(eq(nativePayrollPayslip.batchId, batchId), sql`${nativePayrollPayslip.employmentId} = any(${selectedIds}::uuid[])`))
+      .orderBy(asc(person.fullName), asc(nativePayrollPayslip.id));
   });
 }
 
@@ -12682,13 +12698,13 @@ export function paymentSummaryForBatch(ctx: SessionContext, batchId: string) {
         // Emitting the method turns a flat list into something the payment run can be split on, instead of
         // whoever opens the CSV having to remember who is not on transfer.
         paymentMethod: employmentPaymentMethodOnSql(sql`${employment.id}`),
-        net: payslip.netPay,
+        net: nativePayrollPayslip.netPay,
       })
-      .from(payslip)
-      .innerJoin(employment, eq(employment.id, payslip.employmentId))
+      .from(nativePayrollPayslip)
+      .innerJoin(employment, eq(employment.id, nativePayrollPayslip.employmentId))
       .innerJoin(person, eq(person.id, employment.personId))
       .leftJoin(employeeStatutoryMy, eq(employeeStatutoryMy.personId, employment.personId))
-      .where(eq(payslip.batchId, batchId))
+      .where(eq(nativePayrollPayslip.batchId, batchId))
       .orderBy(person.fullName);
     if (rows.length === 0) throw new PaymentSummaryNotReadyError('This batch has no payslips to export.');
 
@@ -12770,8 +12786,8 @@ export function payslipDetail(ctx: SessionContext, payslipId: string, ownOnly = 
     if (ownOnly) await tx.execute(sql`select set_config('app.payslip_self_issued','on',true)`);
     const [liveRow] = await tx
       .select({
-        id: payslip.id,
-        employmentId: payslip.employmentId,
+        id: nativePayrollPayslip.id,
+        employmentId: nativePayrollPayslip.employmentId,
         employee: person.fullName,
         employeeCode: employment.employeeCode,
         companyId: payrollBatch.companyId,
@@ -12780,7 +12796,7 @@ export function payslipDetail(ctx: SessionContext, payslipId: string, ownOnly = 
         // r360 — the NAME of the configured Pay Cycle this run was opened under, so the EMPLOYEE's own
         // copy of the document says what the reviewer's copy says. The two PDF routes render one document
         // (`renderPayslipPdf` through `payslipPdfStrings`); feeding the cycle name to only one of them
-        // would print "Monthly" on the review copy and "Regular" on the issued copy of the same payslip.
+        // would print "Monthly" on the review copy and "Regular" on the issued copy of the same nativePayrollPayslip.
         // Null on a batch that names no cycle (nullable since migration 0441) ⇒ the run-type word, exactly
         // as today. See core/payslip-cycle-label.ts for the one rule both routes apply.
         cycleName: payrollCycle.name,
@@ -12790,24 +12806,24 @@ export function payslipDetail(ctx: SessionContext, payslipId: string, ownOnly = 
         runType: payrollBatch.runType,
         runSeq: payrollBatch.runSeq,
         status: payrollBatch.status,
-        basic: payslip.basicSalary,
-        allowance: payslip.allowance,
-        overtime: payslip.overtimePay,
-        bonus: payslip.bonus,
-        daysWorked: payslip.daysWorked,
+        basic: nativePayrollPayslip.basicSalary,
+        allowance: nativePayrollPayslip.allowance,
+        overtime: nativePayrollPayslip.overtimePay,
+        bonus: nativePayrollPayslip.bonus,
+        daysWorked: nativePayrollPayslip.daysWorked,
         // 1b0943d5 (0446) — the coverage window this slip claims, read through `payslipSegmentOf` so the
         // document and the completeness control cannot disagree about which days it paid.
-        coverageFrom: payslip.coverageFrom,
-        coverageTo: payslip.coverageTo,
-        gross: payslip.grossPay,
-        statutory: payslip.statutory,
-        otherDeductions: payslip.otherDeductions,
-        totalDeductions: payslip.totalDeductions,
-        net: payslip.netPay,
-        employerCost: payslip.employerCost,
+        coverageFrom: nativePayrollPayslip.coverageFrom,
+        coverageTo: nativePayrollPayslip.coverageTo,
+        gross: nativePayrollPayslip.grossPay,
+        statutory: nativePayrollPayslip.statutory,
+        otherDeductions: nativePayrollPayslip.otherDeductions,
+        totalDeductions: nativePayrollPayslip.totalDeductions,
+        net: nativePayrollPayslip.netPay,
+        employerCost: nativePayrollPayslip.employerCost,
         // 97a9b0ab — revision counter for the payslip's own provenance footer (the ruleset version it
         // sits beside is already in `statutory`). Read-side only; both values predate this change.
-        version: payslip.version,
+        version: nativePayrollPayslip.version,
         // Step 6 (f3148da1) — the release instant, materialized at close time (RLS-safe: readable by the
         // employee via their own payslip's batch, unlike the admin-only company_payroll_config).
         releasedAt: payrollBatch.releasedAt,
@@ -12836,10 +12852,10 @@ export function payslipDetail(ctx: SessionContext, payslipId: string, ownOnly = 
         socsoNumber: employeeStatutoryMy.socsoNumber,
         taxNumber: employeeStatutoryMy.taxNumber,
       })
-      .from(payslip)
-      .innerJoin(payrollBatch, eq(payrollBatch.id, payslip.batchId))
+      .from(nativePayrollPayslip)
+      .innerJoin(payrollBatch, eq(payrollBatch.id, nativePayrollPayslip.batchId))
       .innerJoin(company, eq(company.id, payrollBatch.companyId))
-      .innerJoin(employment, eq(employment.id, payslip.employmentId))
+      .innerJoin(employment, eq(employment.id, nativePayrollPayslip.employmentId))
       .innerJoin(person, eq(person.id, employment.personId))
       // LEFT, every one of them. An employee with no current assignment, no grade or no MY statutory row
       // would lose their payslip entirely behind an inner join — the one real risk in widening this read.
@@ -12860,7 +12876,7 @@ export function payslipDetail(ctx: SessionContext, payslipId: string, ownOnly = 
       .leftJoin(position, eq(position.id, assignment.positionId))
       .leftJoin(jobGrade, eq(jobGrade.id, employment.gradeId))
       .leftJoin(employeeStatutoryMy, eq(employeeStatutoryMy.personId, employment.personId))
-      .where(and(eq(payslip.id, payslipId),isNull(payrollBatch.historyImportAttemptId), ownOnly ? ctx.personId ? and(eq(employment.personId,ctx.personId),sql`app.principal_snapshot_current() AND app.is_self_person(${employment.personId})`) : sql`false` : undefined))
+      .where(and(eq(nativePayrollPayslip.id, payslipId),isNull(payrollBatch.historyImportAttemptId), ownOnly ? ctx.personId ? and(eq(employment.personId,ctx.personId),sql`app.principal_snapshot_current() AND app.is_self_person(${employment.personId})`) : sql`false` : undefined))
       .limit(1);
     if (!liveRow) return null;
     const row=overlayInformationDocument(liveRow,await informationPayslipDocument(tx,payslipId));
@@ -13296,23 +13312,23 @@ export function listAdjustmentEmployees(ctx: SessionContext, p: { batchId: strin
   return withTenant(ctx, async (tx) => {
     const rows = await tx
       .select({
-        employmentId: payslip.employmentId,
+        employmentId: nativePayrollPayslip.employmentId,
         employeeCode: employment.employeeCode,
         name: person.fullName,
-        netPay: payslip.netPay,
+        netPay: nativePayrollPayslip.netPay,
         adjustedAt: payrollStatutoryAdjustment.updatedAt,
       })
-      .from(payslip)
-      .innerJoin(employment, eq(employment.id, payslip.employmentId))
+      .from(nativePayrollPayslip)
+      .innerJoin(employment, eq(employment.id, nativePayrollPayslip.employmentId))
       .innerJoin(person, eq(person.id, employment.personId))
       .leftJoin(
         payrollStatutoryAdjustment,
         and(
-          eq(payrollStatutoryAdjustment.batchId, payslip.batchId),
-          eq(payrollStatutoryAdjustment.employmentId, payslip.employmentId),
+          eq(payrollStatutoryAdjustment.batchId, nativePayrollPayslip.batchId),
+          eq(payrollStatutoryAdjustment.employmentId, nativePayrollPayslip.employmentId),
         ),
       )
-      .where(eq(payslip.batchId, p.batchId))
+      .where(eq(nativePayrollPayslip.batchId, p.batchId))
       .orderBy(employment.employeeCode);
     const q = (p.q ?? '').trim().toLowerCase();
     if (!q) return rows;
@@ -13346,8 +13362,8 @@ export function getStatutoryAdjustmentDetail(ctx: SessionContext, p: { batchId: 
     if (!batch) return null;
     const [slip] = await tx
       .select()
-      .from(payslip)
-      .where(and(eq(payslip.batchId, p.batchId), eq(payslip.employmentId, p.employmentId)))
+      .from(nativePayrollPayslip)
+      .where(and(eq(nativePayrollPayslip.batchId, p.batchId), eq(nativePayrollPayslip.employmentId, p.employmentId)))
       .limit(1);
     if (!slip) return null;
     const [emp] = await tx
@@ -13455,9 +13471,9 @@ export function saveStatutoryAdjustment(
       .limit(1);
     if (!batch || batch.status !== 'processed') throw new StatutoryAdjustmentBatchNotOpenError();
     const [slip] = await tx
-      .select({ statutory: payslip.statutory })
-      .from(payslip)
-      .where(and(eq(payslip.batchId, p.batchId), eq(payslip.employmentId, p.employmentId)))
+      .select({ statutory: nativePayrollPayslip.statutory })
+      .from(nativePayrollPayslip)
+      .where(and(eq(nativePayrollPayslip.batchId, p.batchId), eq(nativePayrollPayslip.employmentId, p.employmentId)))
       .limit(1);
     if (!slip) throw new StatutoryAdjustmentNotFoundError();
 
@@ -13641,7 +13657,7 @@ export async function previewReviewedPayrollResetTx(tx:Tx,supplied:SessionContex
  const schedules=loanIds.length?await tx.select().from(loanRepayment).where(inArray(loanRepayment.loanId,loanIds)).orderBy(loanRepayment.id).limit(10001).for('update',{noWait:true}):[];
  budget([loans,schedules]);
  const lockSources=async()=>{
-  const slips=await tx.select().from(payslip).where(eq(payslip.batchId,batchId)).orderBy(payslip.id).limit(10001).for('update',{noWait:true});
+  const slips=await tx.select().from(nativePayrollPayslip).where(eq(nativePayrollPayslip.batchId,batchId)).orderBy(nativePayrollPayslip.id).limit(10001).for('update',{noWait:true});
   // Lock every batch claim, including currently approved rows: status can change without changing FK.
   const claims=await tx.select().from(claimRequest).where(eq(claimRequest.payrollBatchId,batchId)).orderBy(claimRequest.id).limit(10001).for('update',{noWait:true});
   const individuals=await tx.select().from(payrollIndividualTxn).where(or(eq(payrollIndividualTxn.batchId,batchId),eq(payrollIndividualTxn.consumedBatchId,batchId))).orderBy(payrollIndividualTxn.id).limit(10001).for('update',{noWait:true});

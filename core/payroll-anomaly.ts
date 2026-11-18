@@ -1,3 +1,4 @@
+import {nativePayrollPayslip} from './payroll-history-native-baseline';
 import {employmentPaymentMethodOnSql} from './employment-payment-method';
 import {assertAiPrincipalTx} from './ai-principal';
 import {resolveEntitlementsTx,assertModuleEnabled,isModuleEnabled,TENANT_STATUS_GOOD_STANDING} from './entitlements';
@@ -357,19 +358,19 @@ async function gatherContext(tx: Tx, tenantId: string, batchId: string, entitlem
 
   const slips = await tx
     .select({
-      employmentId: schema.payslip.employmentId,
-      grossPay: schema.payslip.grossPay,
-      netPay: schema.payslip.netPay,
-      basicSalary: schema.payslip.basicSalary,
-      allowance: schema.payslip.allowance,
-      overtimePay: schema.payslip.overtimePay,
-      bonus: schema.payslip.bonus,
-      totalDeductions: schema.payslip.totalDeductions,
-      daysWorked: schema.payslip.daysWorked,
-      statutory: schema.payslip.statutory,
+      employmentId: nativePayrollPayslip.employmentId,
+      grossPay: nativePayrollPayslip.grossPay,
+      netPay: nativePayrollPayslip.netPay,
+      basicSalary: nativePayrollPayslip.basicSalary,
+      allowance: nativePayrollPayslip.allowance,
+      overtimePay: nativePayrollPayslip.overtimePay,
+      bonus: nativePayrollPayslip.bonus,
+      totalDeductions: nativePayrollPayslip.totalDeductions,
+      daysWorked: nativePayrollPayslip.daysWorked,
+      statutory: nativePayrollPayslip.statutory,
     })
-    .from(schema.payslip)
-    .where(eq(schema.payslip.batchId, batchId));
+    .from(nativePayrollPayslip)
+    .where(eq(nativePayrollPayslip.batchId, batchId));
   if (slips.length === 0) {
     return {
       batchId,

@@ -372,7 +372,8 @@ export const AGENT_CAPABILITY_INVENTORY:Readonly<Record<string,Readonly<Record<s
  "app/payroll/configuration/actions.ts":{"archiveStatutoryAction":"backlog:approve","archiveStatutoryComponentAction":"backlog:approve","saveStatutoryAction":"backlog:approve","setStatutoryComponentAction":"backlog:approve"},
  "app/payroll/history-import/upload/route.ts#route":{"POST":"backlog:approve"},
  "app/payroll/payment-submission/bank-file/route.ts#route":{"POST":"backlog:approve"},
- "app/payroll/history-import/workflow-actions.ts":{"confirmHistoryUploadAction":"backlog:approve","previewHistoryRevertAction":"backlog:automatic","revertHistoryUploadAction":"handoff:payroll_reversal"},
+ "app/payroll/history-import/maintenance-actions.ts":{"previewHistoryMaintenanceAction":"backlog:approve","confirmHistoryMaintenanceAction":"handoff:payroll_reversal"},
+ "app/payroll/history-import/workflow-actions.ts":{"confirmHistoryUploadAction":"backlog:approve","previewHistoryRevertAction":"backlog:approve","revertHistoryUploadAction":"handoff:payroll_reversal"},
  // Formula configuration remains native-only; these are inventory ceilings, not registered agent effects.
  // Tax-basis corrections change closed-payroll tax history: the effects stay human, like Payroll Corrections.
  "app/payroll/income-tax-recalculation/actions.ts":{"previewTaxBasisAction":"backlog:approve","confirmTaxBasisAction":"handoff:payroll_reversal","continueTaxBasisAction":"handoff:payroll_reversal","recoverTaxBasisAction":"handoff:payroll_reversal"},
