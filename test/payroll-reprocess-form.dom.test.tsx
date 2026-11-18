@@ -39,6 +39,11 @@ vi.mock('../app/payroll/actions', () => ({ reprocessSelectedAction: vi.fn() }));
 // form is rendered against, not a second one.
 import { reprocessSelectedAction } from '../app/payroll/actions';
 
+// Navigation is tested separately; these tests retain the real selection/review/form state.
+vi.mock('../components/client-pager', () => ({ ClientPager: ({rememberAs}:{rememberAs?:string}) => <nav aria-label={rememberAs}/> }));
+vi.mock('../app/payroll/selection-search', () => ({ PayrollSelectionSearch: () => null }));
+import { pageState, parsePageQuery } from '../lib/pagination';
+
 const wrap = (ui: ReactNode) =>
   render(
     <NextIntlClientProvider locale="en" messages={messages}>
@@ -123,7 +128,7 @@ describe('e440991b — the review step restates what will and will not happen', 
   it('Select all and Clear move the whole selection, and the review follows', async () => {
     const user = userEvent.setup();
     form();
-    await user.click(screen.getByRole('button', { name: 'Select all' }));
+    await user.click(screen.getByRole('button', { name: 'Select this page' }));
     expect(boxes().every((b) => b.checked)).toBe(true);
     expect(screen.getByText('3 of 3 selected')).toBeInTheDocument();
     expect(screen.getByText(/Before you submit/).closest('div')!.textContent).toContain(
@@ -402,7 +407,7 @@ describe('65e2d5de — the submitted set IS the reviewed set, filtered or not', 
     const user = userEvent.setup();
     const { container } = form();
     await user.type(screen.getByRole('searchbox'), 'Lim');
-    await user.click(screen.getByRole('button', { name: 'Select all' }));
+    await user.click(screen.getByRole('button', { name: 'Select this page' }));
     // Narrower than the word "all" — deliberately, and matching the Remove screen. The count and the
     // button move with it, so the operator is never told more than is happening.
     expect(posted(container)).toEqual(['e2']);
@@ -617,5 +622,38 @@ describe('c3258a72 — the Skipped group', () => {
     await user.clear(screen.getByPlaceholderText('Search by employee ID or name'));
     await user.type(screen.getByPlaceholderText('Search by employee ID or name'), 'Siti');
     expect(tableWith(container, 'Skipped')!.textContent).toContain('No employee matches your search.');
+  });
+});
+
+
+describe('server-paged Reprocess defaults and selection', () => {
+  it('defaults only the initial visible ready rows and preserves exact selection and idempotency on navigation', async () => {
+    const user=userEvent.setup();
+    const addition=(id:string):ReprocessAddCandidate=>({employmentId:id,employeeCode:id,name:'New '+id,hiredOn:'2026-01-01',outsideScope:false,blockers:[],warnings:[]});
+    const view=(employees:ReprocessCandidate[],newCandidates:ReprocessAddCandidate[],page:number)=>(
+      <NextIntlClientProvider locale="en" messages={messages}>
+        <ReprocessForm batchId="b1" employees={employees} newCandidates={newCandidates} currency="MYR"
+          preselectedIds={['e1','e3']} paging={{existing:pageState(parsePageQuery({page:String(page)}),3,employees.length),
+          additions:pageState(parsePageQuery({page:String(page)}),3,newCandidates.length),runTotal:6,existingTotal:3,search:''}} />
+      </NextIntlClientProvider>
+    );
+    const {container,rerender}=render(view(PEOPLE.slice(0,1),[addition('n1'),{...addition('blocked'),blockers:['missingCompensation']},{...addition('skipped'),skip:'NOTHING_PAYABLE_THIS_PERIOD'}],0));
+    expect(posted(container).sort()).toEqual(['e1','n1']);
+    const key=()=>new FormData(container.querySelector('form')!).get('idempotencyKey');
+    const initialKey=key();expect(initialKey).toBeTruthy();
+    rerender(view(PEOPLE.slice(1),[addition('n2')],1));
+    expect(screen.getByRole('navigation',{name:'payroll-reprocess-existing'})).toBeInTheDocument();
+    expect(screen.getByRole('navigation',{name:'payroll-reprocess-new'})).toBeInTheDocument();
+    expect(posted(container).sort()).toEqual(['e1','n1']);
+    expect(key()).toBe(initialKey);
+    expect(screen.getByText('2 of 6 selected')).toBeInTheDocument();
+    expect(screen.getByText(/Before you submit/).closest('div')?.textContent).toContain('New n1');
+    // Neither ready arrivals nor an off-page stale id silently join the original reviewed set.
+    expect(boxes().some(b=>b.checked)).toBe(false);
+    await user.click(screen.getByRole('button',{name:'Select this page'}));
+    expect(posted(container).sort()).toEqual(['e2','e3']);
+    expect(key()).toBe(initialKey);
+    await user.click(screen.getByRole('button',{name:'Clear'}));
+    expect(posted(container)).toEqual([]);
   });
 });

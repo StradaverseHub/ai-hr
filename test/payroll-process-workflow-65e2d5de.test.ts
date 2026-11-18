@@ -207,13 +207,12 @@ describe('65e2d5de · D — the reprocess search cannot shrink the submitted set
     // The failure this prevents is silent: the review names three people, one id is posted, and the screen
     // agrees with itself throughout. Proved by FormData in the dom test; pinned at the source here because
     // the contract spans the review block and the form, and either half alone passes whatever the other does.
-    expect(REPROCESS_FORM).toMatch(/const pickedOffscreen = picked\.filter\(\(e\) => !visibleIds\.has\(e\.employmentId\)\)/);
     expect(REPROCESS_FORM).toMatch(
-      /pickedOffscreen\.map\(\(e\) => \(\s*<input key=\{e\.employmentId\} type="hidden" name="employmentIds" value=\{e\.employmentId\} \/>/,
+      /picked\.map\(\(e\) => \(\s*<input key=\{e\.employmentId\} type="hidden" name="employmentIds" value=\{e\.employmentId\} \/>/,
     );
-    // visibleIds spans the additions as well as the people already paid, or an ADD hidden by the search
-    // would be dropped while the review still promises it.
-    expect(REPROCESS_FORM).toMatch(/new Set\(\[\.\.\.visibleEmployees, \.\.\.visibleAdditions\]\.map\(\(e\) => e\.employmentId\)\)/);
+    // Every reviewed selection, including additions and rows on other pages, is posted once.
+    expect(REPROCESS_FORM).toContain('{picked.map((e) => (');
+    expect(REPROCESS_FORM).not.toMatch(/type="checkbox"\s+name="employmentIds"/);
   });
 
   it('both tables render the FILTERED rows, and Select all takes only what is on screen', () => {
@@ -224,7 +223,7 @@ describe('65e2d5de · D — the reprocess search cannot shrink the submitted set
     expect(REPROCESS_FORM).toContain('{visiblePending.map((c) => additionRow(c))}');
     expect(REPROCESS_FORM).toContain('{visibleSkipped.map((c) => additionRow(c))}');
     expect(REPROCESS_FORM).toContain('{visibleEmployees.map((e) => {');
-    expect(REPROCESS_FORM).toContain('setSelected(new Set(visibleEmployees.map((e) => e.employmentId)))');
+    expect(REPROCESS_FORM).toContain('setSelected(new Map(visibleEmployees.map((e) => [e.employmentId,e])))');
   });
 
   it('the match is the SHARED employee-search rule, not a fourth hand-rolled copy of it', () => {

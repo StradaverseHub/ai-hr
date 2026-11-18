@@ -309,6 +309,7 @@ it('stops on a cross-tenant row, then validates every company/tenant key without
    '5778_movement_payroll_windows',
    '5779_hire_company_allocation_review',
    // Recruitment slices 1–25 (17 November 2026; renumbered 5700–5727 → 5850–5877).
+   '5787_own_leave_shared_access',
    '5850_recruiting_partner_role',
    '5851_recruitment_core',
    '5852_recruitment_team_interviews',

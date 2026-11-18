@@ -238,6 +238,7 @@ export const APPROVED_UPGRADE_TAIL=[
  {idx:5178,when:1793330005478,tag:'5778_movement_payroll_windows'},
  {idx:5179,when:1793330005479,tag:'5779_hire_company_allocation_review'},
  // Recruitment slices 1–25 (renumbered 5700–5727 → 5850–5877 on 17 Nov 2026; docs/MIGRATION-ALLOCATION.md).
+ {idx:5187,when:1793330005487,tag:'5787_own_leave_shared_access'},
  {idx:5250,when:1793330005550,tag:'5850_recruiting_partner_role'},
  {idx:5251,when:1793330005551,tag:'5851_recruitment_core'},
  {idx:5252,when:1793330005552,tag:'5852_recruitment_team_interviews'},
@@ -317,6 +318,7 @@ const APPROVED_UPGRADE_HASHES:Record<string,string>={
  '5877_recruitment_agency_portal':'f92d2277433ba41add69ab9574e7f7309be68a9c699524488dcb7ffabb7a62d3',
  '5770_attendance_workflow_approver_codes':'f71cf33a9ced5f4e1007de02388a858bd31c64006a422352193bd7c14e367ec0',
  '5771_assistant_legacy_index_shared_access':'433dfd7549b496b034bdeaa2c06484b700b5dd5647213106d68487f0b485c7c0',
+ '5787_own_leave_shared_access':'843ded0c0542c47360989ef70f54dd6eed10c1d9aa5abe7cfa3b191e6e5d1f0c',
  '5761_probation_automation_recipients_and_tracker_steps':'c39e471adb80e51b56466c264bc6546dc6ce48a354e30d8e9ef3629a82b2184b',
  '5760_probation_queue_kinds_and_pbp_tasks':'c3ab5ddf4c702dd1ca947b3a350c7e852ab8699524c9da7fcad11f19887cdb59',
  '5150_attendance_policy_dated_rounding':'f1549fefc467398d9701ba5428e238134a8ca248fb645046b4b23877280e3408',

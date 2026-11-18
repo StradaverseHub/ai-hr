@@ -37,6 +37,11 @@ import { RemoveForm, type RemoveCandidate } from '../app/payroll/[batchId]/remov
 // test/payroll-remove-employee.test.ts.
 vi.mock('../app/payroll/actions', () => ({ removeEmployeePayrollAction: vi.fn() }));
 
+// Navigation is tested separately; these tests retain the real selection/review/form state.
+vi.mock('../components/client-pager', () => ({ ClientPager: ({rememberAs}:{rememberAs?:string}) => <nav aria-label={rememberAs}/> }));
+vi.mock('../app/payroll/selection-search', () => ({ PayrollSelectionSearch: () => null }));
+import { pageState, parsePageQuery } from '../lib/pagination';
+
 const wrap = (ui: ReactNode) =>
   render(
     <NextIntlClientProvider locale="en" messages={messages}>
@@ -211,5 +216,35 @@ describe('Enter in the search box cannot bypass the confirmation dialog', () => 
       reason.dispatchEvent(nl);
       expect(nl.defaultPrevented, 'the guard swallowed Enter in a textarea').toBe(false);
     }
+  });
+});
+
+
+describe('server-paged Remove selection', () => {
+  it('retains reviewed and submitted rows plus reason across page/search changes; Select this page replaces them', async () => {
+    const user = userEvent.setup();
+    const view = (employees: RemoveCandidate[], page: number, search = '') => (
+      <NextIntlClientProvider locale="en" messages={messages}>
+        <RemoveForm batchId="b1" employees={employees} currency="MYR" from={null}
+          paging={{state:pageState(parsePageQuery({page:String(page)}),4,employees.length),runTotal:4,search}} />
+      </NextIntlClientProvider>
+    );
+    const {container,rerender}=render(view(PEOPLE.slice(0,2),0));
+    await tick(user,'Alice Lim');
+    await user.type(screen.getByRole('textbox',{name:/Reason/}),'correct this employee');
+    rerender(view(PEOPLE.slice(2),1,'Devi'));
+    expect(screen.getByRole('navigation',{name:'payroll-remove'})).toBeInTheDocument();
+    expect(posted(container)).toEqual(['e1']);
+    expect(screen.getByRole('textbox',{name:/Reason/})).toHaveValue('correct this employee');
+    expect(screen.getByText('1 of 4 selected')).toBeInTheDocument();
+    expect(container.querySelector('.border-dashed')?.textContent).toContain('Alice Lim');
+    await tick(user,'Devi Nair');
+    expect(posted(container).sort()).toEqual(['e1','e4']);
+    expect(screen.getByRole('button',{name:'Remove 2 employee payroll'})).toBeEnabled();
+    await user.click(screen.getByRole('button',{name:'Select this page'}));
+    expect(posted(container).sort()).toEqual(['e3','e4']);
+    expect(container.querySelector('.border-dashed')?.textContent).not.toContain('Alice Lim');
+    await user.click(screen.getByRole('button',{name:'Clear'}));
+    expect(posted(container)).toEqual([]);
   });
 });

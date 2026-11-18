@@ -58,6 +58,7 @@ import {
   collectableCycleIds,
   intendedCycleFilter,
   listPayslipLessEligible,
+  payslipLessEligiblePage,
   payrollCloseCompanyIdsTx,
   resolveBatchScopeFilter,
   type BatchScope,
@@ -2665,7 +2666,7 @@ const PENDING_MONEY_DOORS: readonly PendingMoneyDoor[] = [
  * Read-only: no DomainEvent (CLAUDE.md substrate rule — events follow state-changing writes, and there
  * are none here).
  */
-export function pendingBatchMoney(ctx: SessionContext, p: { batchId: string }): Promise<PendingBatchMoney> {
+export function pendingBatchMoney(ctx: SessionContext, p: { batchId: string;employmentIds?:readonly string[] }): Promise<PendingBatchMoney> {
   return withTenant(ctx, (tx) => pendingBatchMoneyTx(tx, ctx, p));
 }
 
@@ -2674,13 +2675,15 @@ export function pendingBatchMoney(ctx: SessionContext, p: { batchId: string }): 
  * it holds the run's locks, and a nested `withTenant` would open a SECOND connection that never joins
  * them (db/client.ts). The body is unchanged; only who opens the transaction moved.
  */
-export function pendingBatchMoneyTx(tx: Tx, ctx: SessionContext, p: { batchId: string }): Promise<PendingBatchMoney> {
+export function pendingBatchMoneyTx(tx: Tx, ctx: SessionContext, p: { batchId: string;employmentIds?:readonly string[] }): Promise<PendingBatchMoney> {
   const typedComponents = isModuleEnabled(ctx, 'typed_pay_components');
   // Matches generatePayslips' own dependency: the individual fold rides the per-component fold, so with
   // typed components off a payable one-off row has nothing to fold through and pays nothing either.
   const individualTxnPay = typedComponents && settingEnabled(ctx, 'payroll.individual_txn_pay_enabled');
   return (async () => {
     let inertRows = 0;
+    const selected=p.employmentIds?new Set(p.employmentIds):null;
+    const selectedOnly=(column:SQLWrapper)=>p.employmentIds?inArray(column,[...p.employmentIds]):undefined;
     const empty: PendingBatchMoney = { lines: [], byDoor: [], employees: 0, earnings: 0, deductions: 0, inertRows: 0 };
     const [batch] = await tx
       .select({
@@ -2697,7 +2700,7 @@ export function pendingBatchMoneyTx(tx: Tx, ctx: SessionContext, p: { batchId: s
       .from(payrollBatch)
       .where(eq(payrollBatch.id, p.batchId))
       .limit(1);
-    if (!batch) return empty;
+    if (!batch || selected?.size===0) return empty;
 
     const [pYear, pMonth] = batch.payPeriod.split('-').map(Number);
     const periodStart = `${batch.payPeriod}-01`;
@@ -2725,11 +2728,11 @@ export function pendingBatchMoneyTx(tx: Tx, ctx: SessionContext, p: { batchId: s
     let formulaOvertimeReview: PendingOvertimeReview;
     try {
       const cash = await readPayrollOvertimePatternCashTx(tx, ctx, p);
-      const ids = [...cash.byEmployment.keys()];
+      const ids = [...cash.byEmployment.keys()].filter(id=>!selected||selected.has(id));
       const people = ids.length ? await tx.select({employmentId: employment.id, employeeName: person.fullName, employeeCode: employment.employeeCode})
         .from(employment).innerJoin(person, eq(person.id, employment.personId)).where(inArray(employment.id, ids)) : [];
       const byId = new Map(people.map(row => [row.employmentId, row]));
-      const formulaLines: PendingMoneyLine[] = cash.lines.map(line => {
+      const formulaLines: PendingMoneyLine[] = cash.lines.filter(line=>!selected||selected.has(line.employmentId)).map(line => {
         const who = byId.get(line.employmentId);
         if (!who) throw new OvertimePayrollError('unavailable');
         return {...who, door: 'overtime', itemName: line.earningItemName, amount: Number(line.amountMinorUnits) / 100,
@@ -2763,7 +2766,7 @@ export function pendingBatchMoneyTx(tx: Tx, ctx: SessionContext, p: { batchId: s
       .from(payrollInput)
       .innerJoin(employment, eq(employment.id, payrollInput.employmentId))
       .innerJoin(person, eq(person.id, employment.personId))
-      .where(eq(payrollInput.batchId, p.batchId));
+      .where(and(eq(payrollInput.batchId, p.batchId),selectedOnly(payrollInput.employmentId)));
     for (const r of inputs) {
       const who = { employmentId: r.employmentId, employeeName: r.employeeName, employeeCode: r.employeeCode };
       push(who, 'overtime', Number(r.overtime), null, r.otSource);
@@ -2791,7 +2794,7 @@ export function pendingBatchMoneyTx(tx: Tx, ctx: SessionContext, p: { batchId: s
       .innerJoin(payComponent, eq(payComponent.id, payrollBatchComponent.componentId))
       .innerJoin(employment, eq(employment.id, payrollBatchComponent.employmentId))
       .innerJoin(person, eq(person.id, employment.personId))
-      .where(eq(payrollBatchComponent.batchId, p.batchId));
+      .where(and(eq(payrollBatchComponent.batchId, p.batchId),selectedOnly(payrollBatchComponent.employmentId)));
     for (const r of batchComps) {
       if (!(Math.abs(Number(r.amount)) > 0)) continue;
       if (!typedComponents) {
@@ -2833,7 +2836,7 @@ export function pendingBatchMoneyTx(tx: Tx, ctx: SessionContext, p: { batchId: s
       .innerJoin(person, eq(person.id, employment.personId))
       .leftJoin(payComponent, eq(payComponent.id, payrollIndividualTxn.componentId))
       .where(
-        attachesUnattached
+        and(selectedOnly(payrollIndividualTxn.employmentId),attachesUnattached
           ? or(
               eq(payrollIndividualTxn.batchId, p.batchId),
               and(
@@ -2843,7 +2846,7 @@ export function pendingBatchMoneyTx(tx: Tx, ctx: SessionContext, p: { batchId: s
                 intentFilter,
               ),
             )
-          : eq(payrollIndividualTxn.batchId, p.batchId),
+          : eq(payrollIndividualTxn.batchId, p.batchId)),
       );
     for (const r of txnRows) {
       // 'leave' is RECORD-ONLY in v1 (the kernel does not fold it into pay — see generatePayslips), so it
@@ -2894,6 +2897,7 @@ export function pendingBatchMoneyTx(tx: Tx, ctx: SessionContext, p: { batchId: s
           // excluded for the same reason basic salary is (see the section docstring).
           sql`${payComponent.code} <> 'BASIC'`,
           scopeFilter,
+          selectedOnly(employmentPayComponent.employmentId),
         ),
       );
     for (const r of fixed) {
@@ -3022,6 +3026,16 @@ export async function listPayslipLessEligibleWithSkip(
     r.blockers.length === 0 && !r.outsideScope && r.warnings.includes('nothingPayable');
   const pending = rows.some(could) ? await pendingBatchMoney(ctx, p) : null;
   return rows.map((r) => ({ ...r, skip: pending && could(r) ? nothingPayableSkipKind(r.employmentId, pending) : null }));
+}
+
+/** SQL-bounded new-employee page; financial readiness only examines its members. Global formula-overtime
+ * availability stays with its existing native owner: an unrelated failed proof must not become a definite skip. */
+export async function payslipLessEligibleWithSkipPage(ctx:SessionContext,p:{batchId:string;page:PageQuery;search?:string}){
+ const result=await payslipLessEligiblePage(ctx,p);
+ const could=(r:PayslipLessEligibleRow)=>r.blockers.length===0&&!r.outsideScope&&r.warnings.includes('nothingPayable');
+ const ids=result.rows.filter(could).map(r=>r.employmentId);
+ const pending=ids.length?await pendingBatchMoney(ctx,{batchId:p.batchId,employmentIds:ids}):null;
+ return {...result,rows:result.rows.map(r=>({...r,skip:pending&&could(r)?nothingPayableSkipKind(r.employmentId,pending):null}))};
 }
 
 // ───────────────────── 9. When a run was processed (dashboard "Processed date") ─────────────────────

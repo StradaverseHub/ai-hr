@@ -988,3 +988,27 @@ The integration preserves Board F8 `f8c90ebcd3c0d4bd8310d9fb1cbab645b2ad108e` an
 Exactly 28 existing approved records carry forward from F8's `f42ac08a93a79641f915d20db0add2824ef595440eb108369fb3188ef41fa3fe` to `5f801c74f85675df2f7d6e2b4c34e7de98bb704e3d88a7f4f33e9caa011ec63b` (1708 files). Reversing those 28 substitutions reproduces F8's approval registry byte-for-byte, including both pending records, the unchanged historical Attendance approval, all original reviewer/evidence/date fields and record order. The module-agent manifest is `9c5e4416a84d81e13a560c99e09cc91b4be6e7188d758f17029030c21ddaba72` (496 files). This records source provenance, not test success, acceptance, publication or production authority.
 
 The initial automatic rejection concerned the pre-integration binding at `1960993e`; the owner's subsequent exact approval resolved it before commit `0cb2d9bb3`. No automatic rejection was issued for this combined fingerprint. The extra exact-fingerprint prompt was an inference from that earlier rejection, not a separate requirement in the source policy. The direct standing authorization and exact registry/delta proof are retained with the private combined review packet. Any actual new automatic review refusal remains binding and must not be bypassed.
+
+### Own Leave and Payroll paging staging carry-forward (17 November 2026)
+
+The repository owner directly approved in the COORDINATOR chat: "I approve all the AI binding and migration ordering".
+The direct human instruction was independently read before applying this binding. It also follows the standing
+12 November staging-only carry-forward decision recorded above, explicitly applied to this performance work.
+The owner separately instructed that Movement must be the first of the four coordinated releases. This batch
+therefore prepares outside the staging lease and must merge the actual accepted Movement baseline after its verified
+release and lease handback; generation, this approval record and development checks do not authorize bypassing that order.
+
+Reviewed application source `6350cacc0cbf36f5c700ffd2131f7dc43a83458c` changes Own Leave's shared read/privacy intervals,
+Payroll's native candidate-page projections and the six message catalogues. Current allocated migration is
+`5787_own_leave_shared_access`, idx5187 / when1793330005487; the never-applied provisional5880 is retired.
+SQL SHA256 `843ded0c0542c47360989ef70f54dd6eed10c1d9aa5abe7cfa3b191e6e5d1f0c` is unchanged by renumbering.
+The provider fingerprint remains `d02f341541d15afcca36200fc5d891b4a9a2b981cf2a4ace09bae2a112ebdb50` over1,624files.
+The same28 active approval literals carry forward from `0b60766ac33a0418d98b24ff7da5aaab08d17c927ced7d9c7853b929bc35930b`;
+reviewers, original evidence/timestamps, purposes, pending records and the retired Attendance Formula contract are unchanged.
+No provider transform, outbound field, purpose, transport, tool registration or action tier is added or widened.
+After the literal update the derived agent manifest is `81ea5ce1721023e6189b7c258c436ec31e31df8881f75ab99493544fca217bdc`
+over494files. Any subsequent accepted-baseline integration requires regeneration, source review and another exact binding
+record under the same scoped owner decision; no evaluated/promoted agent identity is renewed by source binding.
+
+The full release gate, authenticated evidence, restricted-owner migration rehearsal, fresh ordered installation ledgers,
+arrival/rendered acceptance and guarded lease remain required. This authorizes no production installation or package publication.
