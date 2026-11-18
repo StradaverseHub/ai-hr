@@ -5,7 +5,7 @@ import {readFileSync} from 'node:fs';
 import {fileURLToPath} from 'node:url';
 import {join} from 'node:path';
 import {parseProcessStat,parseProcessMemory,buildProcessKind,createBuildProcessObserver} from './build-process-memory.mjs';
-import {BUILD_HEAP_CEILING_MB,BUILD_HEAP_DEFAULT_MB,BUILD_HEAP_PROFILE,BUILD_HEAP_NODE_OPTIONS,BUILD_RSS_WARN_KIB,BUILD_RSS_FAIL_KIB,
+import {BUILD_HEAP_CEILING_MB,BUILD_HEAP_DEFAULT_MB,BUILD_HEAP_PROFILE,BUILD_HEAP_NODE_OPTIONS,BUILD_RSS_WARN_KIB,BUILD_RSS_FAIL_KIB,BUILD_RSS_DEFAULT_FAIL_KIB,BUILD_MEM_AVAILABLE_MIN_KIB,buildMemoryBudget,availableMemoryVerdict,
  parseMemTotalKiB,parseMaxRssKiB,assertBuildHeapRunner,assertRequestedHeapMb,admitBuildHeap,assertBuildHeapEnvironment,admittedBuildNodeOptions,rssVerdict} from './build-heap.mjs';
 
 const processStat=(pid,parent,start,name='node')=>{const fields=Array(20).fill('0');fields[0]='S';fields[1]=String(parent);fields[19]=String(start);return `${pid} (${name}) ${fields.join(' ')}`;};
@@ -65,7 +65,7 @@ const hosted16='MemTotal:       16374980 kB\nMemFree:         1000000 kB\nMemAva
 const e={GITHUB_ACTIONS:'true',CI:'true',RUNNER_ENVIRONMENT:'github-hosted',RUNNER_OS:'Linux',AIHR_CI_BUILD_HEAP_MB:'8192'};
 test('ceiling stays 8192 and default stays 6144 (changing either needs owner review)',()=>{
  assert.equal(BUILD_HEAP_CEILING_MB,8192);assert.equal(BUILD_HEAP_DEFAULT_MB,6144);assert.equal(BUILD_HEAP_NODE_OPTIONS,'--max-old-space-size=8192');
- assert.equal(BUILD_RSS_WARN_KIB,10*1024**2);assert.equal(BUILD_RSS_FAIL_KIB,12*1024**2);
+ assert.equal(BUILD_RSS_WARN_KIB,10*1024**2);assert.equal(BUILD_RSS_FAIL_KIB,12.5*1024**2);assert.equal(BUILD_RSS_DEFAULT_FAIL_KIB,12*1024**2);
 });
 test('admits exactly 8192 on a GitHub-hosted 16 GB Linux runner',()=>{
  const a=admitBuildHeap(e,hosted16);
@@ -109,7 +109,7 @@ test('GNU time maximum RSS is parsed and judged against the stated budget',()=>{
  const text='\tCommand being timed: "pnpm build"\n\tMaximum resident set size (kbytes): 9123456\n\tExit status: 0\n';
  assert.equal(parseMaxRssKiB(text),9123456);assert.throws(()=>parseMaxRssKiB('no rss here'));
  assert.equal(parseMemTotalKiB(hosted16),16374980);
- assert.equal(rssVerdict(9*1024**2),'within');assert.equal(rssVerdict(10*1024**2+1),'warn');assert.equal(rssVerdict(12*1024**2+1),'fail');
+ assert.equal(rssVerdict(9*1024**2),'within');assert.equal(rssVerdict(10*1024**2+1),'warn');assert.equal(rssVerdict(BUILD_RSS_FAIL_KIB),'warn');assert.equal(rssVerdict(BUILD_RSS_FAIL_KIB+1),'fail');
 });
 test('bounded heap is wired only into the hosted next build steps; typecheck, diagnostics and native jobs keep their heaps',()=>{
  const focused=readFileSync(join(root,'.github/workflows/alpha-focused-checks.yml'),'utf8');
@@ -152,4 +152,23 @@ test('one identical bounded profile everywhere it applies: every admission is 81
   assert.doesNotMatch(jobs[0],/container:|services:/,name);
  }
  assert.deepEqual(admitting,['ai-orchestrator-walkthrough.yml','alpha-focused-checks.yml','alpha-staging.yml']);
+});
+
+test('reviewed memory budget is bounded-profile only and defaults retain the original ceiling',()=>{
+ assert.deepEqual(buildMemoryBudget(8192),{rssFailKiB:12.5*1024**2,minAvailableKiB:1.5*1024**2});
+ assert.deepEqual(buildMemoryBudget(6144),{rssFailKiB:12*1024**2,minAvailableKiB:null});
+ assert.throws(()=>buildMemoryBudget(12288));
+ assert.equal(rssVerdict(12*1024**2+1,{fail:buildMemoryBudget(6144).rssFailKiB}),'fail');
+});
+test('sampled free-memory floor is inclusive and missing or invalid telemetry refuses',()=>{
+ assert.equal(BUILD_MEM_AVAILABLE_MIN_KIB,1572864);
+ assert.equal(availableMemoryVerdict(BUILD_MEM_AVAILABLE_MIN_KIB),'within');
+ for(const value of [BUILD_MEM_AVAILABLE_MIN_KIB-1,0,-1,null,undefined,NaN,Infinity,1.5])assert.equal(availableMemoryVerdict(value),'fail');
+});
+test('original AAD failure remains historical: its measurements fit the reviewed model only',()=>{
+ const actualRss=12713972,actualAvailable=1669464;
+ assert.equal(rssVerdict(actualRss,{fail:BUILD_RSS_DEFAULT_FAIL_KIB}),'fail');
+ assert.equal(rssVerdict(actualRss,{fail:BUILD_RSS_FAIL_KIB}),'warn');
+ assert.equal(availableMemoryVerdict(actualAvailable),'within');
+ // This model does not convert that original failed workflow into release evidence.
 });
