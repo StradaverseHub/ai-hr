@@ -44195,5 +44195,36 @@
       "postedYear": "仅可上传早于该公司首次已提交薪资的 AI-HR 奖励评审年度的数据。"
     },
     "error": "请求未能完成，请重试。"
+  },
+  "taskDocuments": {
+    "heading": "待完成文件",
+    "completed": "已完成文件",
+    "documentTasks": "文件任务",
+    "openDocument": "打开文件",
+    "viewDocument": "查看文件",
+    "open": "打开",
+    "view": "查看",
+    "notReleased": "此文件尚未发布",
+    "reviewRequired": "此模板有多份已保存文件，需要 HR 审核。",
+    "signCompletion": "签署文件后自动完成",
+    "submitCompletion": "提交或签署文件后自动完成",
+    "sentCompletion": "HR 发布文件后自动完成",
+    "onboarding": "入职",
+    "offboarding": "离职",
+    "notOpened": "未打开",
+    "opened": "已打开",
+    "signed": "已签署",
+    "acknowledged": "已确认",
+    "awaitingHr": "等待 HR 签名",
+    "submitted": "已提交",
+    "source": "来自 {name}",
+    "due": "截止日期 {date}",
+    "done": "已完成",
+    "inProgress": "进行中",
+    "todo": "待办",
+    "pages": "文件分页",
+    "showing": "第 {from}–{to} 项，共 {total} 项",
+    "previous": "上一页",
+    "next": "下一页"
   }
 }

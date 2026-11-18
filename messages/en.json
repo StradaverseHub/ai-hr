@@ -44195,5 +44195,36 @@
       "postedYear": "Upload only years before the company’s first posted AI-HR Rewards review."
     },
     "error": "The request could not finish. Try again."
+  },
+  "taskDocuments": {
+    "heading": "Documents to complete",
+    "completed": "Completed documents",
+    "documentTasks": "Document tasks",
+    "openDocument": "Open document",
+    "viewDocument": "View document",
+    "open": "Open",
+    "view": "View",
+    "notReleased": "This document hasn’t been released yet",
+    "reviewRequired": "HR needs to review multiple saved documents for this template.",
+    "signCompletion": "Completes when you sign the document",
+    "submitCompletion": "Completes when you submit or sign the document",
+    "sentCompletion": "Completes when HR releases the document",
+    "onboarding": "Onboarding",
+    "offboarding": "Offboarding",
+    "notOpened": "Not opened",
+    "opened": "Opened",
+    "signed": "Signed",
+    "acknowledged": "Acknowledged",
+    "awaitingHr": "Awaiting HR signature",
+    "submitted": "Submitted",
+    "source": "From {name}",
+    "due": "Due {date}",
+    "done": "Done",
+    "inProgress": "In progress",
+    "todo": "To do",
+    "pages": "Document pages",
+    "showing": "{from}–{to} of {total}",
+    "previous": "Previous",
+    "next": "Next"
   }
 }

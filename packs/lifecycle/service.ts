@@ -29,3 +29,5 @@ export {v9WorkflowNavigationAllowed} from './v9/navigation';
 export async function searchOnboardingRecipientUsers(...args: Parameters<typeof import('./v9/recipient-directory').searchOnboardingRecipientUsers>) {
   return (await import('./v9/recipient-directory')).searchOnboardingRecipientUsers(...args);
 }
+
+export { lifecycleTaskDocuments, openOwnLifecycleDocument } from './v9/task-documents';
