@@ -4,6 +4,8 @@ import { useMemo, useState } from 'react';
 
 import { ChipMultiSelect } from '@/components/ui/chip-multi-select';
 import { MultiSelectPopover } from '@/components/ui/multi-select-popover';
+import {BulkEmployeePopover,BulkEmployeeSelectionStatus} from '@/components/bulk-employee-popover';
+import {useBulkEmployeeVocabulary,fetchBulkEmployeeSelection} from '@/components/use-bulk-employee-vocabulary';
 import { Markdown } from '@/components/markdown';
 import {NoticeAttachmentEditor,type NoticeAttachmentMetadata,type NoticeAttachmentEditorLabels} from './attachment-editor';
 import { Button, Field, inputCls } from '@/components/ui';
@@ -119,6 +121,7 @@ export function NoticeForm({
   employmentTypes,
   orgCriteria,
   employees,
+  remoteEmployees=false,
   targetingFrozen,
   labels,
   authoring,
@@ -138,6 +141,7 @@ export function NoticeForm({
    * nobody on any page that forgot to pass it, which is the failure this round exists to remove.
    */
   employees: EmployeePickOption[];
+  remoteEmployees?:boolean;
   /** True once the notice is published — the audience snapshot is fixed and the step is read-only. */
   targetingFrozen: boolean;
   labels: NoticeFormLabels;
@@ -194,19 +198,10 @@ export function NoticeForm({
   );
   // The chosen rows in the SERVER'S order (listEmployees sorts by full name), so the strip never reshuffles
   // for a reason the operator cannot see. A `Set` is also why the same person cannot be added twice.
-  const pickedRows = useMemo(() => employees.filter((e) => picked.has(e.id)), [employees, picked]);
-  // THE ONE LIST OUT — the same rule `createNoticeAction` / `updateNoticeAction` run over the same two
-  // posted fields (lib/employment-selection.ts). This copy exists only to decide what the screen SAYS.
-  //
-  // r289 — AND WHAT IT COULD NOT READ. `unmatched` is what lets the box stop failing silently, and this
-  // screen is the one that needed it most: `notice.criteria` is a jsonb column, so an unresolvable token
-  // SAVES and only dies at Publish. It is a MESSAGE, not a gate — every one of those tokens is still
-  // inside `ids` and is still stored, because dropping them on Save would silently shrink the audience of
-  // a notice (the same call the known/unknown split above makes, for the same reason).
-  const selection = useMemo(
-    () => resolveEmploymentSelection([...picked], pastedRaw, employees),
-    [picked, pastedRaw, employees],
-  );
+  const vocabulary=useBulkEmployeeVocabulary(remoteEmployees,employees,picked,pastedRaw);
+  const pickedRows=vocabulary.rows;
+  const selection=vocabulary.selection;
+  const EmployeePopover=remoteEmployees?BulkEmployeePopover:MultiSelectPopover;
   const individualIds = selection.ids;
   const unpick = (id: string) => {
     const next = new Set(picked);
@@ -224,7 +219,7 @@ export function NoticeForm({
    * set legitimately means everyone and has its own warning. Never while `targetingFrozen` — a published
    * notice posts no audience at all and its Save must keep working for a typo fix.
    */
-  const audienceBlocked = !targetingFrozen && mode === 'individual' && individualIds.length === 0;
+  const audienceBlocked = !targetingFrozen && mode === 'individual' && (individualIds.length === 0||vocabulary.pending);
 
   return (
     <form action={action} className="space-y-6 [&_input[type=text]]:min-h-11 [&_input[type=date]]:min-h-11 [&_select]:min-h-11 [&_button]:min-h-11 [&_label]:min-h-11">
@@ -426,7 +421,8 @@ export function NoticeForm({
                * (`lib/employment-selection.ts`) that `inputFrom` runs on the server for create AND update.
                */
               <div className="space-y-3">
-                <MultiSelectPopover
+                <EmployeePopover
+              onRows={vocabulary.receiveRows}
                   name="employmentIds"
                   label={labels.employeePicker}
                   allLabel={labels.employeeNoneChosen}
@@ -442,6 +438,7 @@ export function NoticeForm({
                   // names what was searched. An empty panel asserts nothing (CLAUDE.md §8).
                   emptyLabelFor={(query) => labels.employeeNoMatchTemplate.replace('{query}', query)}
                 />
+            {remoteEmployees&&<BulkEmployeeSelectionStatus pending={vocabulary.pending} failed={vocabulary.failed} retry={vocabulary.retry}/>}
                 {pickedRows.length > 0 ? (
                   <div className="flex flex-wrap gap-1.5">
                     {pickedRows.map((e) => {

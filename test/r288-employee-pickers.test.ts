@@ -381,18 +381,18 @@ describe('r288 §C · all four call sites reach for the ONE rule', () => {
    * RSC payload as `{id, name, employeeCode}` and zero MISSING_MESSAGE / IntlError — and this keeps that
    * wiring from being deleted afterwards.
    */
-  it('both server pages read the employment list and hand it over as PLAIN DATA', () => {
+  it('server pages request bounded native browsing without an eager workforce DTO', () => {
     const adjPage = read('app/admin/leave-config/adjustments/page.tsx');
-    expect(adjPage).toContain('listEmployees');
-    expect(adjPage).toContain('employees={employments.map(');
-    expect(adjPage).toContain('employeeCode: e.employeeCode');
+    expect(adjPage).not.toContain('listEmployees');
+    expect(adjPage).toContain('employees={[]}');
+    expect(adjPage).toContain('remoteEmployees');
     expect(adjPage.includes("'use client'"), 'the page must stay a server component').toBe(false);
 
     // Notice Board reads it ONCE in the shared vocabulary module, because two pages mount the same form and
     // a second `listEmployees` call is a second thing to keep in step.
     const vocab = read('app/admin/notice-board/criteria-options.ts');
-    expect(vocab).toContain('listEmployees');
-    expect(vocab).toContain('employeeCode: e.employeeCode');
+    expect(vocab).toContain('listEmployeePickOptions(s,selectedIds)');
+    expect(vocab).not.toContain('await listEmployees');
     for (const rel of ['app/admin/notice-board/new/page.tsx', 'app/admin/notice-board/[id]/page.tsx']) {
       const page = read(rel);
       expect(page, `${rel} must hand the list over`).toContain('employees={vocab.employees}');

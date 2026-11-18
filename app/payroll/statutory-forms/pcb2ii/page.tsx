@@ -3,7 +3,7 @@ import { validPcb2iiSelectedDate } from '@/lib/pcb2ii-form';
 import { notFound, redirect } from 'next/navigation';
 import { getTranslations } from 'next-intl/server';
 import { scopedAdmin } from '@/lib/scope';
-import { listCompanies, listEmployees } from '@/core/read';
+import { listCompanies, statutoryPickerEmployees } from '@/core/read';
 import { listStatutoryCatalog, reportPreview } from '@/core/reporting';
 import { deriveEmploymentStatus } from '@/core/employment-status';
 import { Card, PageHeader, SectionHeader, btnGhost, pageWideCls } from '@/components/ui';
@@ -84,7 +84,7 @@ export default async function Pcb2iiEmployeeSelectionPage({
   const today = todayInKualaLumpur();
 
   const population = await reportPreview(s, { companyId, reportId, periodKey: year });
-  const roster = new Map((await listEmployees(s, [companyId])).map((e) => [e.employmentId, e]));
+  const roster = new Map((await statutoryPickerEmployees(s,companyId,population.rows.flatMap(row=>typeof row.employmentId==='string'?[row.employmentId]:[]))).map((e) => [e.employmentId, e]));
 
   const rows: EaPickerRow[] = population.rows
     .map((r): EaPickerRow | null => {

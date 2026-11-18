@@ -99,6 +99,7 @@ export function MultiSelectPopover({
   emptyLabelFor,
   optionNote,
   optionDisabled,
+  remote,
 }: {
   /** Translated caption shown above the trigger (owned by the component — no <Field> at the call site). */
   label: string;
@@ -138,6 +139,10 @@ export function MultiSelectPopover({
    * WHICH rows from facts it was handed; this component owns no rule about them.
    */
   optionDisabled?: (option: MultiSelectPopoverOption) => boolean;
+  /** Paged browsing and complete matching identity selection are distinct reads. */
+  remote?: {load:(query:string,offset:number,all:boolean,signal:AbortSignal)=>Promise<{options:MultiSelectPopoverOption[];total:number;ids?:string[]}>;
+    loadingLabel:string;failedLabel:string;retryLabel:string;previousLabel:string;nextLabel:string;
+    range:(from:number,to:number,total:number)=>string};
 }) {
   const captionId = useId();
   const summaryId = useId();
@@ -147,14 +152,48 @@ export function MultiSelectPopover({
   const panelRef = useRef<HTMLDivElement>(null);
   const [open, setOpen] = useState(false);
   const [search, setSearch] = useState('');
+  const [offset,setOffset]=useState(0),[retry,setRetry]=useState(0),[bulkBusy,setBulkBusy]=useState(false);
+  const [response,setResponse]=useState<{key:string;options:MultiSelectPopoverOption[];total:number}|null>(null);
+  const [failedKey,setFailedKey]=useState<string|null>(null);
+  const readKey=JSON.stringify([search,offset,retry]);
+  const currentKey=useRef(readKey);currentKey.current=readKey;
+  const bulkControllerRef=useRef<AbortController|null>(null);
+  useEffect(()=>()=>bulkControllerRef.current?.abort(),[]);
+  useEffect(()=>{if(!open){bulkControllerRef.current?.abort();setBulkBusy(false);}},[open]);
+  const selectedRef=useRef(selected);selectedRef.current=selected;
+  const loader=remote?.load;
+  useEffect(()=>{
+    if(!open||!loader)return;
+    const controller=new AbortController();let active=true;
+    const timer=setTimeout(()=>{void loader(search,offset,false,controller.signal).then(value=>{
+      if(active)setResponse({key:readKey,...value});
+    }).catch(()=>{if(active&&!controller.signal.aborted)setFailedKey(readKey);});},search?180:0);
+    return()=>{active=false;clearTimeout(timer);controller.abort();};
+  },[open,loader,readKey,search,offset]);
+  const remoteCurrent=response?.key===readKey?response:null;
+  const loading=Boolean(remote&&open&&!remoteCurrent&&failedKey!==readKey);
+  const offered=remote?remoteCurrent?.options??[]:options;
+  const changeSearch=(value:string)=>{setSearch(value);setOffset(0);};
+  const completeSelection=async(clear:boolean)=>{
+    if(!remote||bulkBusy)return;
+    const key=readKey,controller=new AbortController();bulkControllerRef.current=controller;setBulkBusy(true);
+    try{
+      const result=await remote.load(search,0,true,controller.signal);
+      if(controller.signal.aborted||currentKey.current!==key)return;
+      if(!result.ids||result.ids.length!==result.total)throw Error('Incomplete selection');
+      const ids=new Set(result.ids);
+      onChange(clear?new Set([...selectedRef.current].filter(id=>!ids.has(id))):new Set([...selectedRef.current,...ids]));
+    }catch{if(!controller.signal.aborted&&currentKey.current===key)setFailedKey(key);}finally{if(bulkControllerRef.current===controller){bulkControllerRef.current=null;setBulkBusy(false);}}
+  };
 
   const visible = useMemo(() => {
     const q = search.trim();
+    if (remote) return offered;
     if (!q) return options;
     if (matchOption) return options.filter((o) => matchOption(o, q));
     const lower = q.toLowerCase();
     return options.filter((o) => o.name.toLowerCase().includes(lower));
-  }, [options, search, matchOption]);
+  }, [options, offered, remote, search, matchOption]);
   const visibleIds = useMemo(() => new Set(visible.map((o) => o.id)), [visible]);
   // Opened near the bottom of the window or inside a dialog, the panel opens upwards or shrinks to fit;
   // the option list is the part that gives up height (min-h-0), the search box and bulk links stay.
@@ -208,8 +247,8 @@ export function MultiSelectPopover({
     onChange(next);
   };
   // Select/Clear All act on the currently VISIBLE (search-filtered) options, matching both prior copies.
-  const selectAll = () => onChange(new Set([...selected, ...selectableVisibleIds]));
-  const clearAll = () => onChange(new Set([...selected].filter((id) => !visibleIds.has(id))));
+  const selectAll = () => remote?void completeSelection(false):onChange(new Set([...selected, ...selectableVisibleIds]));
+  const clearAll = () => remote?void completeSelection(true):onChange(new Set([...selected].filter((id) => !visibleIds.has(id))));
 
   const triggerLabel = selected.size === 0 ? allLabel : selectedCount(selected.size);
 
@@ -247,27 +286,35 @@ export function MultiSelectPopover({
             <input
               type="text"
               value={search}
-              onChange={(e) => setSearch(e.target.value)}
+              onChange={(e) => changeSearch(e.target.value)}
               placeholder={searchPlaceholder}
               aria-label={searchPlaceholder}
               className={`${inputCls} mb-2`}
             />
             <div className="mb-2 flex items-center gap-3 px-1 text-xs">
-              <button type="button" onClick={selectAll} className="font-medium text-primary hover:underline">
+              <button type="button" onClick={selectAll} disabled={loading||bulkBusy||Boolean(remote&&failedKey===readKey)} className="font-medium text-primary hover:underline">
                 {selectAllLabel}
               </button>
-              <button type="button" onClick={clearAll} className="font-medium text-muted-foreground hover:underline">
+              <button type="button" onClick={clearAll} disabled={loading||bulkBusy||Boolean(remote&&failedKey===readKey)} className="font-medium text-muted-foreground hover:underline">
                 {clearAllLabel}
               </button>
               <span className="ml-auto text-muted-foreground">{selectedCount(selected.size)}</span>
             </div>
             {/* r287 — said out loud, naming what was typed. An empty box asserts nothing (CLAUDE.md §8);
                 this is the difference between "no such employee" and "the screen is still thinking". */}
-            {noMatches && (
+            {noMatches && !loading && !remote?.load && (
               <NoSearchResults message={emptyLabelFor?.(search.trim())}/>
             )}
+            {remote&&(loading||bulkBusy)&&<p role="status" className="px-2 text-xs">{remote.loadingLabel}</p>}
+            {remote&&failedKey===readKey&&<div role="alert" className="px-2 text-xs"><p>{remote.failedLabel}</p><button type="button" onClick={()=>{setFailedKey(null);setRetry(n=>n+1);}}>{remote.retryLabel}</button></div>}
+            {remoteCurrent&&remoteCurrent.total===0&&<NoSearchResults message={emptyLabelFor?.(search.trim())}/>}
+            {remote&&remoteCurrent&&<div className="flex justify-between gap-2 px-2 text-xs">
+              <button type="button" disabled={offset===0||bulkBusy} onClick={()=>setOffset(n=>Math.max(0,n-25))}>{remote.previousLabel}</button>
+              <span>{remote.range(offered.length?offset+1:0,offered.length?offset+offered.length:0,remoteCurrent.total)}</span>
+              <button type="button" disabled={offset+offered.length>=remoteCurrent.total||bulkBusy} onClick={()=>setOffset(n=>n+25)}>{remote.nextLabel}</button>
+            </div>}
             <div className="max-h-56 min-h-0 overflow-y-auto">
-              {options.map((o) => {
+              {offered.map((o) => {
                 // r293 — computed per row and rendered ONLY when the caller returns one. It sits INSIDE the
                 // <label>, so it is part of the option's accessible name too — a screen reader hears
                 // "…, Entitlement-based".
@@ -275,7 +322,7 @@ export function MultiSelectPopover({
                 // r299 — a disabled row is LISTED, greyed and inert: nobody wonders where it went, and
                 // nobody can tick it. `disabled` on the checkbox is what makes it inert — the label cannot
                 // toggle a disabled control — and `toggle` is not reachable from it.
-                const disabledRow = optionDisabled?.(o) === true;
+                const disabledRow = bulkBusy || optionDisabled?.(o) === true;
                 return (
                   <label
                     key={o.id}

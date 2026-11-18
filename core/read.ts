@@ -450,37 +450,45 @@ export function payrollProcessEmployeeCount(ctx:SessionContext,companyId:string)
   });
 }
 
-/**
- * r289 — THE POPULATION THE "PICK INDIVIDUALLY" CONTROLS RESOLVE AGAINST, for the three WRITE PATHS.
- *
- * The three server pages read this list to fill their picker (`listCompanies` → `listEmployees` → three
- * plain fields). Their three server actions now need the SAME list for a different job: turning a pasted
- * `EMP-0008` into an employment id before handing the restriction to `resolveOrgCriteriaTargets`.
- *
- * ⚠️ WHY THE ACTION READS IT AGAIN INSTEAD OF TRUSTING THE POST. The browser already holds this list and
- * already resolves against it for the live preview — but a resolution the client performs is a resolution
- * the server cannot check, and the whole point of `lib/employment-selection.ts` is that the population the
- * screen CONFIRMS and the population the write COVERS are computed by one rule from one input. Two
- * different inputs would put them back out of step while both halves' tests stayed green. So the rule is
- * shared and the input is read on each side from the same query.
- *
- * ⚠️ IT IS NOT AN AUTHORITY AND MUST NOT BECOME ONE. Nothing here decides who qualifies; it decides only
- * what a typed reference NAMES. An unresolved token is still handed over, and `resolveOrgCriteriaTargets`
- * still adjudicates every id under the session's own scope and the run's as-at date.
- *
- * SCOPED EXACTLY AS THE PAGES SCOPE IT, INCLUDING THE EMPTY CASE. `listEmployees` treats an empty
- * `companyIds` as "no filter" (see `core/payroll-txn-import.ts` on why that is dangerous where it writes
- * money). It is deliberately NOT guarded here: the three pages pass the same possibly-empty array to the
- * same call, and a resolver that recognised fewer codes than the picker beside it offers is the drift this
- * function exists to prevent. Recognising a code is not reaching a person.
- */
-export async function listEmployeePickOptions(ctx: SessionContext): Promise<EmployeePickOption[]> {
+/** Complete minimal reference vocabulary for paste-code resolution at command admission.
+ * It retains inactive employments and native RLS/empty-company semantics. Selected labels
+ * use an explicit identity restriction; an empty selection means no labels. */
+export async function listEmployeePickOptions(ctx: SessionContext,selectedIds?:readonly string[]): Promise<EmployeePickOption[]> {
+  if(selectedIds!==undefined&&!selectedIds.length)return [];
+  const selected=selectedIds?.filter(id=>/^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/.test(id));
+  if(selected!==undefined&&!selected.length)return [];
   const companies = await listCompanies(ctx);
-  const employments = await listEmployees(
-    ctx,
-    companies.map((c) => c.id),
-  );
-  return employments.map((e) => ({ id: e.employmentId, name: e.name, employeeCode: e.employeeCode }));
+  return withTenant(ctx,tx=>tx.execute<EmployeePickOption>(sql`
+    select ${employment.id} as id,${person.fullName} as name,${employment.employeeCode} as "employeeCode"
+    from ${employment} join ${person} on ${person.id}=${employment.personId}
+    join ${company} on ${company.id}=${employment.companyId}
+    where ${companies.length?sql`${employment.companyId}=any(${'{'+companies.map(c=>c.id).join(',')+'}'}::uuid[])`:sql`true`}
+      ${selected!==undefined?sql`and ${employment.id}=any(${'{'+selected.join(',')+'}'}::uuid[])`:sql``}
+    order by ${person.fullName},${employment.id}
+  `),{readOnlySnapshot:true});
+}
+
+type StatutoryPickerEmployee=Pick<Awaited<ReturnType<typeof listEmployees>>[number],
+ 'employmentId'|'name'|'employeeCode'|'department'|'terminatedOn'|'confirmationDate'|'finalConfirmationDate'|
+ 'probationEndDate'|'provisionalEndOn'|'resignationDate'|'lastWorkingDate'|'blacklistedAt'>;
+/** Enrich only the canonical report's own complete cohort, never the current workforce.
+ * Lifecycle inputs remain complete so every native status badge keeps its meaning. */
+export function statutoryPickerEmployees(ctx:SessionContext,companyId:string,employmentIds:readonly string[]){
+ const ids=[...new Set(employmentIds.filter(id=>/^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/.test(id)))];
+ if(!ids.length)return Promise.resolve([] as StatutoryPickerEmployee[]);
+ return withTenant(ctx,tx=>tx.execute<StatutoryPickerEmployee>(sql`
+  select ${employment.id} as "employmentId",${person.fullName} as name,${employment.employeeCode} as "employeeCode",
+   ${department.name} as department,${employment.terminatedOn}::text as "terminatedOn",
+   ${employment.confirmationDate}::text as "confirmationDate",${employment.finalConfirmationDate}::text as "finalConfirmationDate",
+   ${employment.probationEndDate}::text as "probationEndDate",${employment.provisionalEndOn}::text as "provisionalEndOn",
+   ${employment.resignationDate}::text as "resignationDate",${employment.lastWorkingDate}::text as "lastWorkingDate",${employment.blacklistedAt} as "blacklistedAt"
+  from ${employment} join ${person} on ${person.id}=${employment.personId}
+  join ${company} on ${company.id}=${employment.companyId}
+  left join ${assignment} on ${assignment.employmentId}=${employment.id} and ${assignment.validTo} is null and ${assignment.supersededAt} is null
+  left join ${department} on ${department.id}=${assignment.departmentId}
+  where ${employment.companyId}=${companyId}::uuid and ${employment.id}=any(${'{'+ids.join(',')+'}'}::uuid[])
+  order by ${person.fullName},${employment.id}
+ `),{readOnlySnapshot:true});
 }
 
 export type EmployeeListRow = {

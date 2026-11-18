@@ -1,7 +1,7 @@
 import { notFound, redirect } from 'next/navigation';
 import { getTranslations } from 'next-intl/server';
 import { scopedAdmin } from '@/lib/scope';
-import { listCompanies, listEmployees } from '@/core/read';
+import { listCompanies, statutoryPickerEmployees } from '@/core/read';
 import { listStatutoryCatalog, reportPreview } from '@/core/reporting';
 import { deriveEmploymentStatus } from '@/core/employment-status';
 import { Card, PageHeader, SectionHeader, pageWideCls } from '@/components/ui';
@@ -94,7 +94,7 @@ export default async function EaEmployeeSelectionPage({
   // The SHARED generator, resolved through the same seam every other statutory screen uses. No second
   // implementation of the year population lives here — 241817ef spent two rounds undoing exactly that.
   const population = await reportPreview(s, { companyId, reportId, periodKey: year });
-  const roster = new Map((await listEmployees(s, [companyId])).map((e) => [e.employmentId, e]));
+  const roster = new Map((await statutoryPickerEmployees(s,companyId,population.rows.flatMap(row=>typeof row.employmentId==='string'?[row.employmentId]:[]))).map((e) => [e.employmentId, e]));
 
   const rows: EaPickerRow[] = population.rows
     .map((r): EaPickerRow | null => {
@@ -106,7 +106,7 @@ export default async function EaEmployeeSelectionPage({
       // THE WHOLE ROW, not one field of it. Handing the deriver `{ terminatedOn }` alone left four of its
       // six buckets unreachable — a probationer, a blacklisted employment, a recorded resignation with no
       // termination date and a last working day ALL printed "Active" here while Personnel said otherwise
-      // about the same person on the same day. `listEmployees` now carries the full lifecycle set, and this
+      // about the same person on the same day. `statutoryPickerEmployees` now carries the full lifecycle set, and this
       // reads it the way every other status badge in the product does.
       const status = person ? deriveEmploymentStatus(person, today) : 'active';
       return {

@@ -1,7 +1,7 @@
 import { getTranslations } from 'next-intl/server';
 
 import { requireAdmin } from '@/lib/authz';
-import { listLeaveTypes, listCompanies, listDepartments, listJobGrades, listEmployees } from '@/core/read';
+import { listLeaveTypes, listCompanies, listDepartments, listJobGrades } from '@/core/read';
 import { listBusinessUnits, listCostCenters, listPositions } from '@/core/admin';
 import { listLeaveAdjustmentBatches } from '@/core/leave-adjustment';
 import { buildOrgCriteriaSections } from '@/core/org-criteria-form';
@@ -78,7 +78,6 @@ export default async function LeaveConfigAdjustmentsPage({
   const { error } = await searchParams;
 
   const companies = await listCompanies(s);
-  const companyIds = companies.map((c) => c.id);
   const [
     types,
     departments,
@@ -88,7 +87,6 @@ export default async function LeaveConfigAdjustmentsPage({
     positions,
     costCenters,
     businessUnits,
-    employments,
   ] = await Promise.all([
     listLeaveTypes(s, { includeArchived: false }),
     listDepartments(s),
@@ -98,22 +96,6 @@ export default async function LeaveConfigAdjustmentsPage({
     listPositions(s),
     listCostCenters(s),
     listBusinessUnits(s),
-    /**
-     * r288 (8521e160) — STEP ②'s "Pick individually" picker, read ONCE for the page.
-     *
-     * `listEmployees` is the UNPAGINATED picker read (see its header: "Do NOT swap in the paginated
-     * `listEmployeesPage`" — a checkbox set that silently drops people past a page boundary is the defect
-     * this screen cannot afford). Scoped to the administrator's own companies, exactly as Generate
-     * Entitlement's identical read is. (ADR-0086: a `listLocations` read sat beside it, feeding the Work
-     * Site criteria picker. The axis is retired, so the read is too.)
-     *
-     * ⚠️ NOT FILTERED TO ACTIVE EMPLOYMENTS, and that is a decision rather than an omission — the same
-     * one r287 recorded. This list is the SECOND door onto the population the paste box has always
-     * reached, and narrowing one door but not the other is how "two ways in, one list out" stops being
-     * true. Whether a selected person actually qualifies is `resolveAdjustmentTargets`'s to decide — as at
-     * the EFFECTIVE DATE on step ③, identically for both doors — and the live matched count reports it.
-     */
-    listEmployees(s, companyIds),
   ]);
 
   // 3fb1a611 fix pass (D3) — Replacement Leave leaves this screen ONLY while the tenant's Leave Credit register
@@ -176,11 +158,8 @@ export default async function LeaveConfigAdjustmentsPage({
                down in production by handing a client component a server closure, and
                test/server-client-boundary.test.ts pins that class; the form composes every string it
                shows from this data on its own side of the boundary. */
-            employees={employments.map((e) => ({
-              id: e.employmentId,
-              name: e.name,
-              employeeCode: e.employeeCode,
-            }))}
+            employees={[]}
+            remoteEmployees
           />
         </div>
       </Card>

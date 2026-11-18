@@ -1,7 +1,7 @@
 import { organisationChoiceLabels } from '@/lib/organisation-choice-label';
 import { getTranslations } from 'next-intl/server';
 
-import { listCompanies, listDepartments, listEmployees } from '@/core/read';
+import { listCompanies, listDepartments, listEmployeePickOptions } from '@/core/read';
 import { ORG_ASSIGNMENT_CRITERIA } from '@/core/leave-org-criteria';
 import { listAllProfileOptions } from '@/core/profile-options';
 import type { EmployeePickOption } from '@/lib/employment-selection';
@@ -47,7 +47,7 @@ export type CriteriaVocabulary = {
   employees: EmployeePickOption[];
 };
 
-export async function criteriaVocabulary(s: SessionContext): Promise<CriteriaVocabulary> {
+export async function criteriaVocabulary(s: SessionContext,selectedIds:readonly string[]=[]): Promise<CriteriaVocabulary> {
   const tOrg = await getTranslations('admin.profileOptions.category');
   const tEmploymentType = await getTranslations('people.wizard.employmentType');
 
@@ -57,24 +57,11 @@ export async function criteriaVocabulary(s: SessionContext): Promise<CriteriaVoc
     listAllProfileOptions(s),
   ]);
 
-  /**
-   * Scoped to the administrator's own companies, exactly as the two leave screens' identical read is.
-   *
-   * ⚠️ NOT FILTERED TO ACTIVE EMPLOYMENTS, and that is a decision rather than an omission — the same one
-   * r287 recorded on Generate Entitlement. The picker is the SECOND door onto the population the paste box
-   * has always reached, and narrowing one door but not the other is how "two ways in, one list out" stops
-   * being true. `publishNotice` decides who a notice actually reaches, identically for both doors.
-   *
-   * `listEmployees` is the UNPAGINATED read on purpose (see its header): a checkbox set that silently drops
-   * people past a page boundary is exactly the defect an audience picker cannot afford.
-   */
-  const employees = await listEmployees(
-    s,
-    companies.map((c) => c.id),
-  );
+  // Only a reopened notice's explicit selection needs labels before hydration.
+  const employees=await listEmployeePickOptions(s,selectedIds);
 
   return {
-    employees: employees.map((e) => ({ id: e.employmentId, name: e.name, employeeCode: e.employeeCode })),
+    employees,
     companies: companies.map((c) => ({ value: c.id, label: c.name })),
     departments: organisationChoiceLabels(departments).map((d) => ({ value: d.id, label: d.displayLabel })),
     employmentTypes: EMPLOYMENT_TYPE_VALUES.map((v) => ({ value: v, label: tEmploymentType(v) })),

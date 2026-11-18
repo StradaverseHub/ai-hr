@@ -6,6 +6,8 @@ import { useTranslations } from 'next-intl';
 
 import { ChipMultiSelect } from '@/components/ui/chip-multi-select';
 import { MultiSelectPopover } from '@/components/ui/multi-select-popover';
+import {BulkEmployeePopover,BulkEmployeeSelectionStatus} from '@/components/bulk-employee-popover';
+import {useBulkEmployeeVocabulary,fetchBulkEmployeeSelection} from '@/components/use-bulk-employee-vocabulary';
 import { SubStepBar } from '@/components/leave-sub-step-bar';
 import { Button, Field, inputCls } from '@/components/ui';
 import { cn } from '@/lib/utils';
@@ -104,6 +106,7 @@ export function GenerateForm({
   leaveTypes,
   criteriaSections,
   employees,
+  remoteEmployees=false,
 }: {
   action: Action;
   previewAction: PreviewAction;
@@ -117,6 +120,7 @@ export function GenerateForm({
    * offers nobody on any page that forgot to pass it, which is the failure this round exists to remove.
    */
   employees: EmployeePickOption[];
+  remoteEmployees?:boolean;
 }) {
   const t = useTranslations('admin.leave');
   const [step, setStep] = useState<StepKey>('types');
@@ -140,6 +144,7 @@ export function GenerateForm({
    */
   const [previewFailed, setPreviewFailed] = useState(false);
   const formRef = useRef<HTMLFormElement>(null);
+  const previewVersionRef=useRef(0);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // ── ③ PICK INDIVIDUALLY: two ways in, one list out ──────────────────────────────────────────────────
@@ -221,20 +226,18 @@ export function GenerateForm({
       // only becomes an employment id against a list of employments; `openLeaveYearAction` reads the
       // identical list server-side before merging, so a pasted `EMP-0008` means the same person here as
       // it does on submit.
-      employmentIds:
-        mode === 'individual'
-          ? mergeEmploymentSelection(
-              fd.getAll('employmentIds').map(String),
-              String(fd.get('employmentIdsRaw') ?? ''),
-              employees,
-            )
-          : [],
+      employmentIds: mode==='individual'&&!remoteEmployees?mergeEmploymentSelection(fd.getAll('employmentIds').map(String),String(fd.get('employmentIdsRaw')??''),employees):[],
     };
+    const previewVersion=++previewVersionRef.current;
     startPreview(async () => {
       try {
-        setPreview(await previewAction(payload));
+        if(mode==='individual'&&remoteEmployees)payload.employmentIds=(await fetchBulkEmployeeSelection(fd.getAll('employmentIds').map(String),String(fd.get('employmentIdsRaw')??''))).selection.ids;
+        const nextPreview=await previewAction(payload);
+        if(previewVersionRef.current!==previewVersion)return;
+        setPreview(nextPreview);
         setPreviewFailed(false);
       } catch {
+        if(previewVersionRef.current!==previewVersion)return;
         // A failed preview must not block the flow or invent a number. It must also not go on claiming to
         // be working: `previewFailed` is what lets the screen print a terminal sentence instead of the
         // pending one. The write path validates independently.
@@ -246,6 +249,8 @@ export function GenerateForm({
 
   /** Debounced, because this fires on every chip toggle and every keystroke in the employee box. */
   const schedulePreview = () => {
+    previewVersionRef.current++;
+    setPreview(null);
     if (debounceRef.current) clearTimeout(debounceRef.current);
     debounceRef.current = setTimeout(refreshPreview, 250);
   };
@@ -285,17 +290,10 @@ export function GenerateForm({
   );
   // The chosen rows in the SERVER'S order (listEmployees sorts by full name), so the strip never reshuffles
   // for a reason the operator cannot see. A `Set` is also why the same person cannot be added twice.
-  const pickedRows = useMemo(() => employees.filter((e) => picked.has(e.id)), [employees, picked]);
-  // THE ONE LIST OUT. Identical rule to the one the posted form goes through — see lib/employment-selection.ts.
-  //
-  // r289 — AND WHAT IT COULD NOT READ. `unmatched` is what lets the box stop failing silently: paste twelve
-  // references, get two wrong, and the screen names the two. It is a MESSAGE, not a gate — both tokens are
-  // still inside `ids`, still posted, and still answer to `resolveOrgCriteriaTargets`. Dropping them here
-  // would turn a twelve-person run into a ten-person run that looked like it worked.
-  const selection = useMemo(
-    () => resolveEmploymentSelection([...picked], pastedRaw, employees),
-    [picked, pastedRaw, employees],
-  );
+  const vocabulary=useBulkEmployeeVocabulary(remoteEmployees,employees,picked,pastedRaw);
+  const pickedRows=vocabulary.rows;
+  const selection=vocabulary.selection;
+  const EmployeePopover=remoteEmployees?BulkEmployeePopover:MultiSelectPopover;
   const individualIds = selection.ids;
   /**
    * THE ONE WRITER for the picked set (the ChipMultiSelect `apply` idiom). The popover and the chips' ×
@@ -331,7 +329,7 @@ export function GenerateForm({
    * meaning "everyone" (`generateEveryoneWarning` says so on screen), so blocking it there would break the
    * behaviour the bare Generate button this screen replaces has always had.
    */
-  const nextBlocked = step === 'employees' && mode === 'individual' && individualIds.length === 0;
+  const nextBlocked = step === 'employees' && mode === 'individual' && (individualIds.length === 0||vocabulary.pending);
   // r301 (e5018593) — an earned Annual Leave line the accrual REACHED is not an issue: its days are added (or
   // already were). The server decided that (`earnedAccrual`); this reads the flag and restates nothing.
   const failures = (preview?.lines ?? []).filter(
@@ -539,7 +537,8 @@ export function GenerateForm({
            * `core/org-criteria.ts` — extend that rather than minting an employee-search endpoint.
            */
           <div className="space-y-3">
-            <MultiSelectPopover
+            <EmployeePopover
+              onRows={vocabulary.receiveRows}
               name="employmentIds"
               label={t('generateEmployeePicker')}
               allLabel={t('generateEmployeeNoneChosen')}
@@ -555,6 +554,7 @@ export function GenerateForm({
               // what was searched. An empty panel asserts nothing.
               emptyLabelFor={(query) => t('generateEmployeeNoMatch', { query })}
             />
+            {remoteEmployees&&<BulkEmployeeSelectionStatus pending={vocabulary.pending} failed={vocabulary.failed} retry={vocabulary.retry}/>}
             {pickedRows.length > 0 ? (
               <div className="flex flex-wrap gap-1.5">
                 {pickedRows.map((e) => {
@@ -835,7 +835,7 @@ export function GenerateForm({
               </div>
             </dl>
             <p className="text-[11px] text-muted-foreground">{t('generateProcessNote')}</p>
-            <Button type="submit" size="sm">
+            <Button type="submit" size="sm" disabled={previewPending||(remoteEmployees&&mode==='individual'&&vocabulary.pending)}>
               {t('generateButton')}
             </Button>
           </>

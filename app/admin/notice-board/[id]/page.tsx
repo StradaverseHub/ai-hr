@@ -49,7 +49,7 @@ export default async function NoticeDetailPage({
   const n = await getNotice(s, id);
   if (!n) notFound();
 
-  const vocab = await criteriaVocabulary(s);
+  const vocab = await criteriaVocabulary(s,n.criteria.employmentIds??[]);
   const authoring=await noticeAuthoringScope(s);
   const published = n.publishedAt != null;
   const attachments=await noticeAttachmentMetadata(s,n.id);
@@ -175,6 +175,7 @@ export default async function NoticeDetailPage({
             /* r288 — the audience step's picker, read once in ../criteria-options.ts and handed over as
                PLAIN DATA: no functions cross this boundary (test/server-client-boundary.test.ts). */
             employees={vocab.employees}
+            remoteEmployees
             targetingFrozen={published}
             labels={{
               attachmentLocale:locale,
