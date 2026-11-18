@@ -50,7 +50,7 @@ export function TemplatesWorkspace({filter,access,emails,letters,refs}:{filter:A
        <Link className="v9-button" aria-label={t('templates.editLetter',{name:l.name})} href={`/lifecycle/probation/templates?company=${letters.company.id}`}>{t('workflows.edit')}</Link></div></li>)}</ul>
     </>}
    </section>
-   <section className="pcg-card" aria-label={t('templates.emails')}><h2>{t('templates.emails')}</h2><p className="pcg-sub">{b('moved')}</p><Link className="v9-button" href="/lifecycle/v9?view=templates&module=probation">{b('openEmails')}</Link></section>
+   <section className="pcg-card" aria-label={t('templates.emails')}><h2>{t('templates.emails')}</h2><p className="pcg-sub">{b('moved')}</p><Link className="v9-button" href={'/lifecycle/v9?view=templates&module=probation'+(letters?'&company='+encodeURIComponent(letters.company.id):'')}>{b('openEmails')}</Link></section>
   </>}
   {legacy.map(module=><LegacyBuilderCard key={module} module={module} kind="templates" href={LEGACY_BUILDERS.templates[module]} allowed={module==='contract_staff'?access.contractStaff:access.legacy}/>)}
  </main>;

@@ -120,3 +120,21 @@ REVOKE ALL ON FUNCTION app.probation_email_hold_recheck() FROM PUBLIC,ai_hr_app;
 CREATE TRIGGER probation_email_definition_recheck AFTER INSERT ON automation_email_template_version FOR EACH ROW EXECUTE FUNCTION app.probation_email_hold_recheck();
 --> statement-breakpoint
 CREATE TRIGGER probation_email_document_recheck AFTER INSERT ON probation_file FOR EACH ROW EXECUTE FUNCTION app.probation_email_hold_recheck();
+
+--> statement-breakpoint
+-- Only attachment metadata crosses into the workflow planner. Bytes remain behind the leased private capability.
+CREATE FUNCTION app.probation_email_file_budget(p_case uuid,p_documents uuid[],p_files uuid[]) RETURNS jsonb LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE result jsonb;
+BEGIN
+ IF app.automation_can_run('probation',p_case) IS NOT TRUE THEN RAISE EXCEPTION 'Workflow unavailable' USING ERRCODE='42501';END IF;
+ IF coalesce(cardinality(p_documents),0)>100 OR coalesce(cardinality(p_files),0)>50 THEN RAISE EXCEPTION 'Too many email files' USING ERRCODE='22023';END IF;
+ SELECT jsonb_build_object('count',count(*),'bytes',coalesce(sum(size),0)) INTO result FROM (
+  SELECT octet_length(f.content) AS size FROM unnest(p_documents) r(id) JOIN probation_file f ON f.id=r.id AND f.tenant_id=app.current_tenant_id() AND f.case_id=p_case AND f.kind='letter_released'
+  UNION ALL SELECT octet_length(f.content) FROM unnest(p_files) r(id) JOIN automation_email_case_file f ON f.id=r.id AND f.tenant_id=app.current_tenant_id() AND f.case_id=p_case
+ ) sizes;
+ RETURN result;
+END $$;
+--> statement-breakpoint
+REVOKE ALL ON FUNCTION app.probation_email_file_budget(uuid,uuid[],uuid[]) FROM PUBLIC;
+--> statement-breakpoint
+GRANT EXECUTE ON FUNCTION app.probation_email_file_budget(uuid,uuid[],uuid[]) TO ai_hr_app;

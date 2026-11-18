@@ -22,6 +22,7 @@
  * still match through the runner's aliases (one-off read-time compatibility).
  */
 import {sql} from 'drizzle-orm';
+import {MANAGED_EMAIL_ATTACHMENTS_MAX_COUNT,MANAGED_EMAIL_ATTACHMENT_MAX_BYTES} from '../lib/managed-email-policy';
 import type {SessionContext,Tx} from '../db/client';
 import {randomUUID} from 'node:crypto';
 import {runAutomationEventTx,resumeAutomationRunsTx,liveAutomationWorkflowsTx,sqlAutomationRunStore} from './automation-runtime';
@@ -244,6 +245,12 @@ function probationRuntime(tx: Tx, input: ExecutorInput): {executors: AutomationE
         const existing=documents.find(document=>document.id===outcomeDocument.data!.id);
         if(existing)Object.assign(existing,{attach:true,outcome:true,outcomeId:outcomeDocument.data.outcomeId});else documents.push({...outcomeDocument.data,link:false,attach:true});
       }
+    }
+    if(richTemplate){
+      const attached=documents.filter(document=>document.attach),shared=[...richTemplate.definition.files,...richTemplate.definition.images];
+      const[budget]=await tx.execute<{data:{count:number;bytes:number}}>(sql`select app.probation_email_file_budget(${record.id}::uuid,${'{'+attached.map(document=>document.id).join(',')+'}'}::uuid[],${'{'+caseFiles.map(file=>file.id).join(',')+'}'}::uuid[]) as data`);
+      if(Number(budget.data.count)!==attached.length+caseFiles.length)return {resolved,email:null,hold:'A selected email file is no longer available. Review the email files before sending.'};
+      if(Number(budget.data.count)+shared.length>MANAGED_EMAIL_ATTACHMENTS_MAX_COUNT||Number(budget.data.bytes)+shared.reduce((total,asset)=>total+asset.size,0)>MANAGED_EMAIL_ATTACHMENT_MAX_BYTES)return {resolved,email:null,hold:'This email exceeds the shared limit of 20 files and 20 MB. Review its documents and files before sending.'};
     }
     const renderedSubject=fillAutomationMergeFields(subject,merge).replace(/\s+/g,' ').trim()||'Probation update';
     if(rich&&automationMergeTokens(renderedSubject).length)throw new Error('Complete the missing email subject fields before sending.');

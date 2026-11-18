@@ -40,3 +40,44 @@ it('holds a required per-person file, resumes the same frozen email once after u
  expect(await owner.db.execute(sql`select * from app.automation_email_case_files(${delivery.id}::uuid,${randomUUID()}::uuid,${origin})`)).toHaveLength(0);
  const[run]=await owner.db.execute<{status:string}>(sql`select status from automation_run where id=${result.runs[0].id}::uuid`);expect(run.status).toBe('done');
 });
+
+it('attaches the exact released outcome PDF without regenerating it or selecting another outcome',async()=>{
+ const{newProbationLetterTemplate}=await import('../lib/probation-letter-template');
+ const{saveProbationLetterTemplate,prepareProbationLetter,readProbationLetter,actOnProbationLetter,releaseProbationLetter,sweepProbation}=await import('../packs/probation/service');
+ const fixture=await probationOutcomeFixture(b,admin).recordedConfirm();admin=fixture.admin;
+ const letterTemplate=newProbationLetterTemplate('confirm','frozen-letter-'+randomUUID().slice(0,8),'Fictional exact released letter');
+ letterTemplate.unfinished=false;letterTemplate.blocks=letterTemplate.blocks.filter(block=>block.type!=='letterhead');
+ const templateId=await saveProbationLetterTemplate(admin,{companyId:b.companyId,template:letterTemplate,publish:true,expectedVersion:0});
+ const prepared=await prepareProbationLetter(admin,{outcomeId:fixture.decision.id,templateId,revision:fixture.decision.revision,edits:{}});
+ let letter=await readProbationLetter(admin,fixture.ids.caseId,prepared.partId);
+ const hr=letter.signing!.document.route.steps.find(step=>step.role==='pbp')!;
+ await actOnProbationLetter(admin,{caseId:fixture.ids.caseId,partId:letter.id,revision:letter.storageRevision,stepId:hr.id,action:'signed',method:'typed',value:'Fictional PBP',consent:true});
+ letter=await readProbationLetter(fixture.staff.ctx,fixture.ids.caseId,prepared.partId);
+ const employee=letter.signing!.document.route.steps.find(step=>step.role==='employee')!;
+ await actOnProbationLetter(fixture.staff.ctx,{caseId:fixture.ids.caseId,partId:letter.id,revision:letter.storageRevision,stepId:employee.id,action:'signed',method:'typed',value:'Fictional Staff',consent:true});
+ letter=await readProbationLetter(admin,fixture.ids.caseId,prepared.partId);
+ await releaseProbationLetter(admin,{caseId:fixture.ids.caseId,partId:letter.id,outcomeRevision:letter.outcomeRevision!,reason:'Release the exact approved letter'});
+ const runner={...admin,userId:undefined,roles:[],grants:undefined};
+ await sweepProbation(runner,port);await sweepProbation(runner,port);
+ const[file]=await owner.db.execute<{id:string;content:Buffer;hash:string}>(sql`select f.id,f.content,f.content_hash as hash from probation_outcome o join probation_file f on f.id=o.letter_file_id and f.tenant_id=o.tenant_id where o.id=${fixture.decision.id}::uuid and o.released_at is not null`);
+ expect(file.content.subarray(0,5).toString()).toBe('%PDF-');
+ const refs=await owner.withTenant(runner,async tx=>{
+  const[exact]=await tx.execute<{data:import('../lib/automation-email-ipc').AutomationEmailDocumentRef}>(sql`select app.probation_email_outcome_document(${fixture.ids.caseId}::uuid,${fixture.decision.id}::uuid,null) as data`);
+  const[wrong]=await tx.execute<{data:unknown}>(sql`select app.probation_email_outcome_document(${fixture.ids.caseId}::uuid,${randomUUID()}::uuid,null) as data`);expect(wrong.data).toBeNull();
+  return exact.data;
+ });
+ expect(refs).toMatchObject({id:file.id,contentHash:file.hash,outcomeId:fixture.decision.id});
+ const template={id:randomUUID(),module:'probation' as const,name:'Your probation letter',active:true,subject:'Your probation letter',body:'Dear {{employee.name}}',cc:[]};
+ const converted=convertProbationEmail(template);if(converted.state!=='ready')throw new Error('convert');converted.definition.outcomeLetter=true;
+ await saveAutomationEmailTemplate(admin,{template:{...template,definition:converted.definition},expectedRevision:0,retired:false,reason:'Exact released PDF fixture'});
+ const origin='https://probation-outcome-pdf.example';await owner.db.execute(sql`insert into app_external_identity(issuer,subject,app_user_id) values(${origin+'/auth/'+b.tenantId},${randomUUID()},${fixture.staff.userId}::uuid)`);
+ const{queueAutomationEmailTx}=await import('../core/automation-email-delivery');
+ await owner.withTenant(runner,tx=>queueAutomationEmailTx(tx,{module:'probation',subjectId:fixture.ids.caseId,key:'exact-outcome-pdf',to:[fixture.staff.userId],cc:[],subject:template.subject,body:'Dear Fictional Staff',rich:{templateId:template.id,html:'<p>Dear Fictional Staff</p>',assets:[],documents:[{...refs,attach:true,link:false}]}}));
+ const[delivery]=await owner.db.execute<{id:string;payload:{mail:{delivery:{documents:{id:string;contentHash:string}[]}}}}>(sql`select id,payload from automation_email_delivery where tenant_id=${b.tenantId}::uuid and mail_key like 'exact-outcome-pdf:%'`);
+ expect(delivery.payload.mail.delivery.documents).toMatchObject([{id:file.id,contentHash:file.hash}]);
+ const token=randomUUID();await owner.db.execute(sql`update automation_email_delivery set status='leased',lease_token=${token}::uuid,lease_until=now()+interval '3 minutes' where id=${delivery.id}::uuid`);
+ const frozen=await owner.db.execute<{id:string;bytes:string}>(sql`select * from app.automation_email_document_files(${delivery.id}::uuid,${token}::uuid,${origin})`);
+ expect(frozen).toHaveLength(1);expect(frozen[0].id).toBe(file.id);expect(Buffer.from(frozen[0].bytes,'base64')).toEqual(file.content);
+ expect(await owner.db.execute(sql`select * from app.automation_email_document_files(${delivery.id}::uuid,${randomUUID()}::uuid,${origin})`)).toHaveLength(0);
+ const[after]=await owner.db.execute<{count:number}>(sql`select count(*)::int as count from probation_file where tenant_id=${b.tenantId}::uuid and case_id=${fixture.ids.caseId}::uuid and kind='letter_released'`);expect(after.count).toBe(1);
+});

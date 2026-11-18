@@ -1,6 +1,7 @@
 'use client';
 import {useProbationEmailCopy} from './use-probation-email-copy';
 import {useEffect,useMemo,useState,useTransition} from 'react';
+import {useTranslations} from 'next-intl';
 import {useRouter} from 'next/navigation';
 import {EmailMergeInput} from '@/app/lifecycle/v9/email-merge-input';
 import {RichBody} from '@/app/lifecycle/v9/email-definition';
@@ -15,12 +16,13 @@ import type {ListedEmailTemplate} from './templates-workspace';
 
 type Refs={routings:(NamedOption&{retired?:boolean})[];groups:NamedOption[];people:NamedOption[]};
 export function ProbationEmailEditor({initial,refs,documents=[],onClose,onDirtyChange}:{initial:ListedEmailTemplate;refs:Refs;documents?:{id:string;name:string;type:'Letter'}[];onClose:()=>void;onDirtyChange?:(dirty:boolean)=>void}){
+ const legacyCopy=useTranslations('automation');
  const{copy:t,fields,fieldGroups}=useProbationEmailCopy();
- const router=useRouter(),[busy,start]=useTransition(),[draft,setDraft]=useState<AutomationEmailTemplate>(initial.template),[revision,setRevision]=useState(initial.revision),[saved,setSaved]=useState(true),[error,setError]=useState(''),[notice,setNotice]=useState(''),[history,setHistory]=useState<{revision:number;savedAt:string;savedBy:string;template:AutomationEmailTemplate}[]>([]),[viewing,setViewing]=useState<number|null>(null);
+ const router=useRouter(),[busy,start]=useTransition(),[draft,setDraft]=useState<AutomationEmailTemplate>(initial.template),[revision,setRevision]=useState(initial.revision),[saved,setSaved]=useState(true),[isRetired,setRetired]=useState(initial.retired),[error,setError]=useState(''),[notice,setNotice]=useState(''),[history,setHistory]=useState<{revision:number;savedAt:string;savedBy:string;template:AutomationEmailTemplate}[]>([]),[viewing,setViewing]=useState<number|null>(null);
  useEffect(()=>onDirtyChange?.(!saved),[saved,onDirtyChange]);
  const conversion=useMemo(()=>draft.definition?{state:'ready' as const,definition:draft.definition}:convertProbationEmail(draft),[draft]);
  const definition=conversion.state==='ready'?conversion.definition:null;
- const disabled=busy||initial.retired;
+ const disabled=busy||isRetired;
  const update=(change:(next:AutomationEmailTemplate)=>void)=>{setDraft(previous=>{const next=structuredClone(previous);change(next);return next;});setSaved(false);setError('');};
  const rich=(change:(next:ProbationEmailDefinition)=>void)=>update(next=>{const conversion=next.definition?{state:'ready' as const,definition:next.definition}:convertProbationEmail(next);if(conversion.state!=='ready')return;next.definition=structuredClone(conversion.definition);change(next.definition);next.body=probationEmailLegacyBody(next.definition.bodyDoc);});
  const email={id:draft.id,body:draft.body,bodyDoc:definition?.bodyDoc,images:definition?.images,files:definition?.files,links:definition?.links??[]};
@@ -28,11 +30,11 @@ export function ProbationEmailEditor({initial,refs,documents=[],onClose,onDirtyC
  const warnings=definition?automationEmailMergeWarnings(draft,PROBATION_AUTOMATION_CATALOGUE):[];
  const problems=[...automationEmailTemplateProblems(draft,PROBATION_AUTOMATION_CATALOGUE,references),...warnings];
  const recipients=recipientOptions(PROBATION_AUTOMATION_CATALOGUE,{routings:refs.routings,groups:refs.groups,people:refs.people},{routing:name=>name,group:name=>name}).filter(option=>option.value!=='pending');
- const save=()=>start(async()=>{
+ const save=(retired=false)=>start(async()=>{
    const template=structuredClone(draft);if(definition)template.definition=definition;
-   const result=await saveEmailTemplateAction({template,retired:false,expectedRevision:revision,reason:revision?'Updated Probation email in On/Off Boarding template builder':'Created Probation email in On/Off Boarding template builder'});
+   const result=await saveEmailTemplateAction({template,retired,expectedRevision:revision,reason:retired?'Retired Probation email in On/Off Boarding template builder':revision?'Updated Probation email in On/Off Boarding template builder':'Created Probation email in On/Off Boarding template builder'});
    if(!result.ok){setError(t('saveFailed'));return;}
-   setRevision(result.result.revision);setDraft(template);setSaved(true);setNotice(t('saved'));router.refresh();
+   setRevision(result.result.revision);setDraft(template);setSaved(true);setNotice(t('saved'));router.refresh();if(retired)setRetired(true);
  });
  return <section className="v9-panel v9-stack" aria-label={t('editNamed',{name:draft.name})}>
   <header className="v9-heading"><h2>{draft.name}</h2><button type="button" className="v9-button" onClick={()=>{if(onDirtyChange||saved||window.confirm(t('leave')))onClose();}}>{t('back')}</button></header>
@@ -52,6 +54,7 @@ export function ProbationEmailEditor({initial,refs,documents=[],onClose,onDirtyC
    <h3>{t('perPerson')}</h3><p className="v9-muted">{t('perPersonHelp')}</p>{definition.slots.map(slot=><div className="v9-panel v9-stack" key={slot.id}><label className="v9-field"><span>{t('fileLabel')}</span><input value={slot.label} maxLength={500} disabled={disabled} onChange={event=>rich(next=>{next.slots.find(value=>value.id===slot.id)!.label=event.target.value;})}/></label><label><input type="checkbox" checked={slot.required} disabled={disabled} onChange={event=>rich(next=>{next.slots.find(value=>value.id===slot.id)!.required=event.target.checked;})}/>{t('required')}</label><button type="button" className="v9-button" disabled={disabled} onClick={()=>rich(next=>{next.slots=next.slots.filter(value=>value.id!==slot.id);})}>{t('removeSlot')}</button></div>)}<button type="button" className="v9-button" disabled={disabled||definition.slots.length>=50} onClick={()=>rich(next=>{next.slots.push({id:crypto.randomUUID(),label:t('newSlot'),required:false});})}>{t('addSlot')}</button>
   </>}
   {revision>0&&<details onToggle={event=>{if(event.currentTarget.open)void readEmailTemplateHistoryAction(draft.id).then(result=>{if(result.ok)setHistory(result.result);});}}><summary>{t('history')}</summary><ul className="v9-list">{history.map(item=><li key={item.revision}><button type="button" className="v9-button" onClick={()=>setViewing(viewing===item.revision?null:item.revision)}>{t('historyVersion',{version:item.revision,date:new Date(item.savedAt).toISOString().slice(0,10)})}</button>{viewing===item.revision&&<div className="v9-panel"><p>{item.template.name}</p><p>{item.template.subject}</p><pre className="v9-prewrap">{item.template.body}</pre></div>}</li>)}</ul></details>}
-  {error&&<p role="alert" className="v9-notice v9-error">{error}</p>}{notice&&<p role="status">{notice}</p>}{!initial.retired&&<button type="button" className="v9-button v9-button-primary" disabled={disabled||problems.length>0||(saved&&Boolean(draft.definition))} onClick={save}>{t('save')}</button>}
+  {error&&<p role="alert" className="v9-notice v9-error">{error}</p>}{notice&&<p role="status">{notice}</p>}{!isRetired&&<button type="button" className="v9-button v9-button-primary" disabled={disabled||problems.length>0||(saved&&Boolean(draft.definition))} onClick={()=>save()}>{t('save')}</button>}
+  {!isRetired&&revision>0&&<button type="button" className="v9-button" disabled={disabled} onClick={()=>{if(window.confirm(legacyCopy('templates.retireConfirm')))save(true);}}>{legacyCopy('templates.retire')}</button>}
  </section>;
 }
