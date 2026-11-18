@@ -11,7 +11,7 @@ import {observeStatements} from './helpers/statement-observer';
 let b:Base,admin:SessionContext;
 beforeAll(migrateTestDb);afterAll(closeAll);beforeEach(async()=>{await resetDb();b=await seedBase();await setModule(b.tenantId,'lifecycle','active');admin=adminCtx(b);});
 async function member(probation:boolean,legacy:boolean){
- const[person]=await owner.db.execute<{id:string}>(sql`insert into person(tenant_id,full_name) values(${b.tenantId}::uuid,'Fictional template maintainer') returning id`);
+ const[person]=await owner.db.execute<{id:string}>(sql`insert into person(tenant_id,full_name,primary_email) values(${b.tenantId}::uuid,'Fictional template maintainer',${randomUUID()+'@probation.example.test'}) returning id`);
  const userId=await createAppUser(b.tenantId,person.id,legacy?'hr_admin':'employee');
  await owner.db.execute(sql`insert into access_user_override(tenant_id,user_id,capability_id,effect) values(${b.tenantId}::uuid,${userId}::uuid,'probation.module',${probation?'allow':'deny'})`);
  return {...admin,userId,personId:person.id,roles:[legacy?'hr_admin':'employee'],grants:undefined};

@@ -99,7 +99,7 @@ CREATE FUNCTION app.probation_email_hold_context(p_case uuid,p_template uuid,p_r
 DECLARE result jsonb;
 BEGIN
  IF app.automation_can_run('probation',p_case) IS NOT TRUE OR NOT EXISTS(SELECT 1 FROM automation_run r WHERE r.id=p_run AND r.tenant_id=app.current_tenant_id() AND r.subject_id=p_case AND r.module='probation' AND r.status IN ('running','waiting')) THEN RAISE EXCEPTION 'Workflow unavailable' USING ERRCODE='42501';END IF;
- IF p_facts IS NOT NULL THEN INSERT INTO automation_email_hold_context(run_id,tenant_id,case_id,template_id,facts) VALUES(p_run,app.current_tenant_id(),p_case,p_template,p_facts) ON CONFLICT(tenant_id,run_id) DO NOTHING;END IF;
+ IF p_facts IS NOT NULL THEN INSERT INTO automation_email_hold_context(run_id,tenant_id,case_id,template_id,facts) VALUES(p_run,app.current_tenant_id(),p_case,p_template,p_facts) ON CONFLICT(tenant_id,run_id) DO UPDATE SET case_id=excluded.case_id,template_id=excluded.template_id,facts=excluded.facts,needs_check=false,checked_at=NULL;END IF;
  SELECT facts INTO result FROM automation_email_hold_context WHERE run_id=p_run AND case_id=p_case AND template_id=p_template AND tenant_id=app.current_tenant_id();RETURN result;
 END $$;
 --> statement-breakpoint

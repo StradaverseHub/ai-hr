@@ -1,3 +1,4 @@
+import {randomUUID} from 'node:crypto';
 import {describe,it,expect} from 'vitest';
 import {convertProbationEmail,parseProbationEmailDefinition,probationEmailLegacyBody,renderProbationEmail} from '../lib/automation/probation-email-definition';
 import {PROBATION_DEFAULTS} from '../app/automation/probation-defaults';
@@ -30,4 +31,11 @@ describe('Probation email conversion keeps the canonical words and field semanti
   expect(()=>parseProbationEmailDefinition({...converted.definition,bodyDoc:{type:'doc',content:[{type:'paragraph',content:[{type:'field',attrs:{key:'bankAccount'}}]}]}})).toThrow();
   expect(()=>parseProbationEmailDefinition({...converted.definition,links:['11111111-1111-4111-8111-111111111111']})).toThrow('Probation document');
  });
+});
+
+it('refuses shared attachments over the aggregate private delivery budget',()=>{
+ const converted=convertProbationEmail({subject:'Subject',body:'Body'});if(converted.state!=='ready')throw new Error('conversion');
+ const file=()=>({id:randomUUID(),kind:'file',name:'Fictional.pdf',mimeType:'application/pdf',size:8_000_000,contentHash:'a'.repeat(64),at:'2026-11-18T00:00:00.000Z',by:'Fictional HR'});
+ expect(()=>parseProbationEmailDefinition({...converted.definition,files:[file(),file(),file()]})).toThrow('20 MB');
+ expect(()=>parseProbationEmailDefinition({...converted.definition,files:Array.from({length:20},()=>({...file(),size:1})),images:[{...file(),kind:'image',alt:'Fictional image',size:1}]})).toThrow('20 files');
 });

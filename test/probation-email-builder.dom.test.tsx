@@ -39,7 +39,7 @@ it('preserves a concurrent rich-body edit when a shared-file upload finishes',as
 });
 it('names the unconverted email and field and saves it through its original legacy path',async()=>{
  fixture({body:'Keep {{unknown.field}} exactly'});
- expect(screen.getByRole('status')).toHaveTextContent('Review form is open');expect(screen.getByRole('status')).toHaveTextContent('{{unknown.field}}');
+ expect(screen.getByText(/these fields could not be converted/)).toHaveTextContent('Review form is open');expect(screen.getByText(/these fields could not be converted/)).toHaveTextContent('{{unknown.field}}');
  expect(screen.queryByLabelText('Fixture rich body')).toBeNull();
  fireEvent.click(screen.getByRole('button',{name:'Save email'}));await waitFor(()=>expect(actions.save).toHaveBeenCalledOnce());
  expect(actions.save.mock.calls[0][0].template).toMatchObject({body:'Keep {{unknown.field}} exactly'});expect(actions.save.mock.calls[0][0].template.definition).toBeUndefined();

@@ -1,4 +1,5 @@
 import {z} from 'zod';
+import {MANAGED_EMAIL_ATTACHMENTS_MAX_COUNT,MANAGED_EMAIL_ATTACHMENT_MAX_BYTES} from '../managed-email-policy';
 import {PROBATION_AUTOMATION_CATALOGUE} from './catalogues/probation';
 import {automationMergeTokens, type AutomationEmailTemplate} from './email';
 import {createEmailBodyDocSchema, type EmailBodyDoc, type EmailInline, type EmailParagraph} from '../email-body/doc';
@@ -45,6 +46,8 @@ export function parseProbationEmailDefinition(input: unknown, documents: Iterabl
   const documentIds=new Set(documents);
   if([...data.links,...data.attachments].some(id=>!documentIds.has(id)))throw new Error('Choose a Probation document available to this template.');
   if(data.images.some(image=>image.kind!=='image'||!image.alt?.trim())||data.files.some(file=>file.kind!=='file'))throw new Error('Email images need alt text and valid uploaded receipts.');
+  const shared=[...data.files,...data.images];
+  if(shared.length>MANAGED_EMAIL_ATTACHMENTS_MAX_COUNT||shared.reduce((total,file)=>total+file.size,0)>MANAGED_EMAIL_ATTACHMENT_MAX_BYTES)throw new Error('Shared email files exceed the limit of 20 files and 20 MB.');
   const ids=[...data.files,...data.images].map(file=>file.id);
   if(new Set(ids).size!==ids.length)throw new Error('An uploaded file can be included only once.');
   const bodyDoc=createEmailBodyDocSchema({fieldAllowed:key=>allowed.has(key),imageIds:data.images.map(image=>image.id),documentIds:data.links}).parse(data.bodyDoc);

@@ -155,7 +155,7 @@ export async function installAutomationDefaults(ctx: SessionContext, defaults: A
         if (existing.has(routing.id)) continue;
         const problems = routingProblems(routing, id => groups.has(id));
         if (problems.length) throw new AutomationError('invalid', 'A default routing is not valid.', problems);
-        await tx.execute(sql`select app.automation_routing_save(${routing.id}::uuid, ${routing.name}, ${JSON.stringify(routing.rows)}::jsonb, false, 0, ${reason}, null::jsonb)`);
+        await tx.execute(sql`select app.automation_routing_save(${routing.id}::uuid, ${routing.name}, ${JSON.stringify(routing.rows)}::jsonb, false, 0, ${reason})`);
         installed.routings++;
       }
       // References after the routings above exist in this transaction.

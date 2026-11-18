@@ -39,7 +39,7 @@ describe('the moved Probation email builder uses its original canonical versions
   await expect(uploadAutomationEmailAsset(admin,{emailId:original.id,revision:1,kind:'file',name:'Late.txt',content:Buffer.from('late')})).rejects.toMatchObject({code:'conflict'});
   const foreign=await seedBase();await setModule(foreign.tenantId,'lifecycle','active');
   await expect(downloadAutomationEmailAsset(adminCtx(foreign),asset.id)).rejects.toThrow();
-  const[p]=await owner.db.execute<{id:string}>(sql`insert into person(tenant_id,full_name) values(${b.tenantId}::uuid,'Fictional staff') returning id`);
+  const[p]=await owner.db.execute<{id:string}>(sql`insert into person(tenant_id,full_name,primary_email) values(${b.tenantId}::uuid,'Fictional staff',${randomUUID()+'@probation.example.test'}) returning id`);
   const user=await createAppUser(b.tenantId,p.id,'employee'),plain={...admin,userId:user,personId:p.id,roles:['employee'],grants:undefined};
   await expect(downloadAutomationEmailAsset(plain,asset.id)).rejects.toThrow();
   // Direct writes cannot mutate an upload after it was used in a queued snapshot.
