@@ -1,3 +1,4 @@
+import {withAccessDisplayRead} from './access-configuration-lock';
 import type {ProbationOrganisationMapping} from '../lib/probation-organisation';
 import {LeaveDependencyUnavailable} from './leave-dependency-lock';
 import {validateProbationOfflinePdf} from '../lib/probation-offline-pdf';
@@ -660,13 +661,13 @@ export type ProbationTaskList={count:number;capped:boolean;items:ProbationTaskIt
 export function probationTaskList(ctx:SessionContext,options:{category?:'approval'|'task';limit?:number;companyIds?:readonly string[]}={}):Promise<ProbationTaskList>{
  if(!probationModuleOn(ctx))return Promise.resolve({count:0,capped:false,items:[]});
  const limit=Math.max(1,Math.min(200,Math.floor(options.limit??200)));
- return withProbationTenant(ctx,async tx=>{
+ return withAccessDisplayRead(()=>withProbationTenant(ctx,async tx=>{
   const[row]=await tx.execute<{data:ProbationTaskList}>(sql`select app.probation_task_list(${options.category??null}::text,${limit}::integer) as data`);
   const data=row.data;
   if(!options.companyIds)return data;
   const companies=new Set(options.companyIds),items=data.items.filter(item=>companies.has(item.companyId));
   return {count:items.length,capped:data.capped,items};
- });
+ },{readOnlySnapshot:true}));
 }
 /** The kind of task label for one Probation task in the shared task list (lib/assigned-work.ts PACK_TASK_KINDS). */
 const probationPackKind=(item:ProbationTaskItem)=>item.category==='approval'?'probationApproval' as const:'probationTask' as const;
