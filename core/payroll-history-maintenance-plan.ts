@@ -11,7 +11,7 @@ import {historyMaintenanceStatesTx,maintenanceNativeItems,maintenanceSourceItems
 import {toIsoPeriod,type HistoryAnalyzeBatchContext,type HistoryMaintenanceSubject} from './payroll-history-import';
 export type MaintenanceOptions=NonNullable<HistoryRevisionPlan['maintenance']>;
 export type MaintenanceGroup={company:{id:string;name:string;label:string|null};cycle:{id:string;name:string;code:string|null};records:PayrollHistoryRecord[];indices:number[]};
-export type MaintenanceRecordPreparation={detachedNativeBaseline?:DetachedNativeHistoryBaseline;before:HistoryContributionState;after:HistoryContributionState;beforeValues:ImportedPayrollValues|null;withdrawal:boolean;restoreSnapshotId:string|null;restoreValues:ImportedPayrollValues|null;itemChanges:NonNullable<HistoryRevisionRow['itemChanges']>};
+export type MaintenanceRecordPreparation={sourceRows:number[];detachedNativeBaseline?:DetachedNativeHistoryBaseline;before:HistoryContributionState;after:HistoryContributionState;beforeValues:ImportedPayrollValues|null;withdrawal:boolean;restoreSnapshotId:string|null;restoreValues:ImportedPayrollValues|null;itemChanges:NonNullable<HistoryRevisionRow['itemChanges']>};
 function fail(message:string):never{throw new PayrollHistoryRevisionError(message);}
 const up=(s:string)=>s.trim().toUpperCase();
 export const maintenanceIdentity=(value:{companyId:string;employmentId:string;period:string;cycleId:string})=>[value.companyId,value.employmentId,value.period,value.cycleId].join(':');
@@ -69,7 +69,7 @@ export async function preprocessHistoryMaintenanceTx(tx:Tx,ctx:SessionContext,gr
   const withdrawal=!Object.values(after.chains).some(entries=>entries[0]?.item&&entries[0].attemptId!==null);
   if(withdrawal){restoreSnapshotId=after.baselineSnapshotId;restoreValues=restoreSnapshotId?baselines.get(restoreSnapshotId)??fail('The adopted native baseline is unavailable.'):null;after=restoreValues?retainedNativeHistoryBaseline(before):baselineState(null,[]);items=effectiveHistoryItems(after);}
   const changes=historyContributionChanges(before,after,request?.operation==='remove_batch'?request.attemptId:undefined);
-  metadata.set(key,{...(detachedNativeBaseline?{detachedNativeBaseline}:{}),before,after,beforeValues,withdrawal,restoreSnapshotId,restoreValues,itemChanges:changes});
+  metadata.set(key,{sourceRows:[...new Set(month.records.map(source=>source.row))].sort((a,b)=>a-b),...(detachedNativeBaseline?{detachedNativeBaseline}:{}),before,after,beforeValues,withdrawal,restoreSnapshotId,restoreValues,itemChanges:changes});
   if(month.subject){const list=historical.get(group)??[];list.push({...month.subject});historical.set(group,list);}
   const canonicalCodes=new Map<string,string>();for(const item of items){const collision=canonicalCodes.get(up(item.code));if(collision&&collision!==item.key)fail(`Pay Item ${item.code} now identifies a different original owner.`);canonicalCodes.set(up(item.code),item.key);}
   const rows:HistoryOwnedItem[]=items.length?items:[{key:'destination:basic',code:'BASIC',label:'Basic salary',originalCodes:['BASIC'],amount:'0.00',destination:'basic',direction:'earning',sourceRows:[]},{key:'statutory:pcb',code:'PCB',label:'PCB',originalCodes:['PCB'],amount:'0.00',destination:'pcb',direction:'statutory',sourceRows:[]}];

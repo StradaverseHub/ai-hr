@@ -288,7 +288,7 @@ async function planRowsWithFacts(tx:Tx,ctx:SessionContext,records:PayrollHistory
      }
     }
    }
-   if(maintenance&&resolved){const prepared=maintenancePrepared?.metadata.get(maintenanceIdentity(row));if(!prepared)fail('The maintenance source identity is unavailable.');row.contributions=prepared.after;row.detachedNativeBaseline=prepared.detachedNativeBaseline;row.maintenanceMode=maintenance.mode;row.maintenanceReason=maintenance.reason;row.itemChanges=prepared.itemChanges;row.withdrawal=prepared.withdrawal;row.restoreSnapshotId=prepared.restoreSnapshotId;
+   if(maintenance&&resolved){const prepared=maintenancePrepared?.metadata.get(maintenanceIdentity(row));if(!prepared)fail('The maintenance source identity is unavailable.');row.rowNums=prepared.sourceRows;row.contributions=prepared.after;row.detachedNativeBaseline=prepared.detachedNativeBaseline;row.maintenanceMode=maintenance.mode;row.maintenanceReason=maintenance.reason;row.itemChanges=prepared.itemChanges;row.withdrawal=prepared.withdrawal;row.restoreSnapshotId=prepared.restoreSnapshotId;
     if(prepared.withdrawal){row.values=prepared.restoreValues;row.valueHash=row.values?hash(canonical(row.values)):null;}
     else if(row.values){row.values.statutory.historyMaintenance={version:1,items:effectiveHistoryItems(prepared.after)};row.valueHash=hash(canonical(row.values));}
     if(canonical(prepared.before)===canonical(prepared.after)&&(prepared.beforeValues===null?row.values===null:hash(canonical(prepared.beforeValues))===row.valueHash))row.operation='unchanged';else if(row.recordId||row.expectedOrdinaryPayslipId)row.operation='replace';

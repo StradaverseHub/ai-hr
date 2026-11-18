@@ -34,7 +34,7 @@ beforeEach(async()=>{
 afterAll(closeAll);
 it('sets repeated alias totals and preserves every unlisted original item and imported statutory amount',async()=>{
  const original=await accept([['BASIC','1000.00'],['TRV','500.00'],['OTHER','100.00'],['PCB','50.00'],['EREPF','130.00']]);const old=(await detail()).values;
- const review=await accept([['ALIAS','100.00'],['TRV','200.00']],'update_listed');expect(review.plan.rows[0].itemChanges?.find(item=>item.code==='TRV')).toMatchObject({before:'500.00',after:'300.00'});
+ const review=await accept([['ALIAS','100.00'],['TRV','200.00']],'update_listed');expect(review.plan.rows[0].rowNums).toEqual([2,3]);expect(review.plan.rows[0].itemChanges?.find(item=>item.code==='TRV')).toMatchObject({before:'500.00',after:'300.00'});
  const current=await detail();expect(current.values).toMatchObject({basicSalary:'1000.00',allowance:'400.00',grossPay:'1400.00',totalDeductions:'50.00',netPay:'1350.00',statutory:{pcb:50,epfEmployer:130}});expect(current.items.find(item=>item.code==='OTHER')).toMatchObject({amount:'100.00',sourceAttemptId:original.attemptId});
  const [saved]=await owner.db.select().from(schema.payrollHistoryImportSnapshot).where(eq(schema.payrollHistoryImportSnapshot.id,original.plan.rows[0].expectedSnapshotId??(await owner.db.select().from(schema.payrollHistoryImportRevision).where(eq(schema.payrollHistoryImportRevision.attemptId,original.attemptId)))[0].snapshotId!));expect(saved.values).toEqual(old);
 });
