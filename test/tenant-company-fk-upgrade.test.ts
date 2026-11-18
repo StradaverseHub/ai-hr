@@ -66,6 +66,17 @@ const APPROVED_BOARD_TAIL:Entry[]=[
  {idx:10087,version:'7',when:1794998006687,tag:'6687_probation_personnel_completion_commands',breakpoints:true},
  {idx:10088,version:'7',when:1794998006688,tag:'6688_personnel_completion_recovery',breakpoints:true},
  {idx:10089,version:'7',when:1794998006689,tag:'6689_personnel_completion_recovery_jobs',breakpoints:true},
+ {idx:10090,version:'7',when:1794998006690,tag:'6690_payroll_history_item_maintenance',breakpoints:true},
+ {idx:10091,version:'7',when:1794998006691,tag:'6691_payroll_history_native_baseline_source',breakpoints:true},
+ {idx:10092,version:'7',when:1794998006692,tag:'6692_payroll_history_native_baseline_capture',breakpoints:true},
+ {idx:10093,version:'7',when:1794998006693,tag:'6693_payroll_history_native_effective_and_artifact',breakpoints:true},
+ {idx:10094,version:'7',when:1794998006694,tag:'6694_payroll_history_native_membership',breakpoints:true},
+ {idx:10095,version:'7',when:1794998006695,tag:'6695_payroll_history_stage_boundary',breakpoints:true},
+ {idx:10096,version:'7',when:1794998006696,tag:'6696_payroll_history_reviewed_removal_admission',breakpoints:true},
+ {idx:10097,version:'7',when:1794998006697,tag:'6697_payroll_history_native_tax_predecessors',breakpoints:true},
+ {idx:10098,version:'7',when:1794998006698,tag:'6698_payroll_history_maintenance_read',breakpoints:true},
+ {idx:10099,version:'7',when:1794998006699,tag:'6699_payroll_history_maintenance_subjects',breakpoints:true},
+ {idx:10100,version:'7',when:1794998006700,tag:'6700_payroll_history_retained_insert',breakpoints:true},
 ];
 
 it('stops on a cross-tenant row, then validates every company/tenant key without changing data or grants',async()=>{
