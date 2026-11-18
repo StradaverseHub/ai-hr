@@ -5,6 +5,7 @@ import {eq,sql} from 'drizzle-orm';
 import {withTenant,type SessionContext} from '../db/client';
 import * as schema from '../db/schema';
 import {hireEmployee} from '../core/org';
+import {createBatch} from '../core/payroll';
 import {seedPayrollCycleCatalog} from '../core/payroll-cycle';
 import {previewPayrollHistoryUpload,confirmPayrollHistoryUpload} from '../core/payroll-history-revisions';
 import {requestPayrollHistoryConfirm,payrollHistoryJobHandler} from '../core/payroll-history-job';
@@ -60,6 +61,11 @@ it('forged GUCs cannot read, mutate, stamp or append an unstaged descendant of a
  const [batch]=await owner.client<{id:string}[]>`select row_id id from app.payroll_history_staged_row where stage_id=${jobId}::uuid and relation='payroll_batch' limit 1`;
  const updated=await withTenant(ctx,async tx=>{await tx.execute(sql`select set_config('app.payroll_history_stage',${jobId},true)`);return tx.execute(sql`update payroll_batch set remarks='forged' where id=${batch.id}::uuid returning id`);});expect(updated).toHaveLength(0);
  const deleted=await withTenant(ctx,async tx=>{await tx.execute(sql`select set_config('app.payroll_history_stage',${jobId},true)`);return tx.execute(sql`delete from payroll_batch where id=${batch.id}::uuid returning id`);});expect(deleted).toHaveLength(0);
+ // Even the physical owner connection cannot mutate a staged row without the private held capability.
+ await expect(owner.client`update public.payroll_batch set remarks='owner without capability' where id=${batch.id}::uuid`).rejects.toThrow();
+ await expect(owner.client`delete from public.payroll_history_import_revision where id=${staged.id}::uuid`).rejects.toThrow();
+ const native=await createBatch(ctx,{companyId:b.companyId,payPeriod:period.slice(0,4)+'-02'});
+ expect(await owner.client`select * from app.payroll_history_staged_row where relation='payroll_batch' and row_id=${native.batchId}::uuid`).toHaveLength(0);
  await expect(withTenant(ctx,tx=>tx.execute(sql`select app.payroll_history_stage_release(${jobId}::uuid)`))).rejects.toThrow();
  const [state]=await owner.client<{state:string}[]>`select state from app.payroll_history_stage where stage_id=${jobId}::uuid`;expect(state.state).toBe('staged');
 });
