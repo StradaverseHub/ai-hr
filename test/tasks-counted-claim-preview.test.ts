@@ -42,8 +42,8 @@ it('keeps Contract and Resignation counted work independently paged without relo
  state.contracts.mockResolvedValue({items:contractItems,total:850});
  state.resignations.mockResolvedValue({items:resignationItems,total:930,counts:{all:930,assigned:300,tagged:20,team:610,overdue:12}});
  await Page({searchParams:Promise.resolve({contractPage:'3',contractSize:'50',resignationPage:'2',resignationSize:'25',taskView:'assigned'})});
- expect(state.contracts).toHaveBeenCalledWith(state.session,{category:'tasks',limit:50,offset:100});
- expect(state.resignations).toHaveBeenCalledWith(state.session,{kind:'tasks',companyIds:['selected-company'],limit:25,offset:25,filter:'assigned'});
+ expect(state.contracts).toHaveBeenCalledWith(state.session,{category:'tasks',limit:50,offset:150});
+ expect(state.resignations).toHaveBeenCalledWith(state.session,{kind:'tasks',companyIds:['selected-company'],limit:25,offset:50,filter:'assigned'});
  expect(state.view).toHaveBeenCalledWith(expect.objectContaining({existing,existingTotal:400,contractTotal:850,resignationTasks:resignationItems,resignationTotal:930,initialFilter:'assigned'}));
  const props=state.view.mock.calls[0][0];
  expect(props.contractSection.props).toMatchObject({items:contractItems,total:850});

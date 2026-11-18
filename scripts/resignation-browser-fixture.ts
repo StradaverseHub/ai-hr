@@ -94,7 +94,7 @@ async function main(){
    if(!uploadGroup||!isDeepStrictEqual(uploadGroup.members,[gbs.userId,chain.appUserId]))throw Error('The canonical upload group did not retain its actual members.');
    config=structuredClone(grouped);
    config.emails.push({id:uploadEmailId,name:'Fictional required-file email',module:'off',active:true,sender:'noreply',subject:'Fictional handover file received',body:'The fictional handover file for {{employee.name}} is attached.',cc:[],links:[],attachments:[],slots:[{id:'synthetic-handover',label:'Fictional handover attachment',required:true,by:{kind:'group',groupId:uploadGroupId}}]});
-   config.offboarding={postingApproverGroupId:groupId,reofferMonths:12};config.bpRules.push({rules:{company:[company.id],department:[department.id,gapDepartment.id]},userId:bp.userId});
+   config.offboarding={postingApproverGroupId:groupId,reofferMonths:12};
    config.settlementPolicy??=defaultSettlementPolicy();
    config.settlementPolicy.leaveTypeIds=[settlementLeaveSource.id];
    await v9SaveConfig(root,config.revision,config);
