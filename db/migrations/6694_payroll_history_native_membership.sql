@@ -17,9 +17,19 @@ REVOKE ALL ON FUNCTION app.payroll_history_native_affected(jsonb) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION app.payroll_history_native_affected(jsonb) TO ai_hr_app;
 --> statement-breakpoint
 CREATE FUNCTION app.payroll_history_native_capture_immutable() RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE stage_id_ uuid; job_ public.bulk_job;
 BEGIN
- IF TG_OP='DELETE' AND EXISTS(SELECT 1 FROM app.payroll_history_staged_row sr JOIN app.payroll_history_stage stage ON stage.stage_id=sr.stage_id WHERE sr.relation='payroll_history_import_snapshot' AND sr.row_id=OLD.snapshot_id AND stage.state='staged') THEN RETURN OLD;END IF;
- RAISE EXCEPTION 'Native history capture evidence is immutable';
+ IF TG_OP='DELETE' THEN
+  SELECT stage.stage_id INTO stage_id_ FROM app.payroll_history_staged_row sr JOIN app.payroll_history_stage stage ON stage.stage_id=sr.stage_id
+  WHERE sr.relation='payroll_history_import_snapshot' AND sr.row_id=OLD.snapshot_id AND stage.state='staged'
+   AND stage.tenant_id=OLD.tenant_id AND stage.attempt_id=OLD.attempt_id AND stage.created_by=OLD.created_by AND stage.job_id=stage.stage_id;
+  IF stage_id_ IS NOT NULL THEN
+   job_:=app.bulk_job_held(stage_id_);
+   IF job_.id=stage_id_ AND job_.tenant_id=OLD.tenant_id AND job_.kind='payroll_history' AND job_.state='discarding'
+    THEN RETURN OLD;END IF;
+  END IF;
+ END IF;
+ RAISE EXCEPTION 'Native history capture evidence is immutable' USING ERRCODE='42501';
 END
 $$;
 REVOKE ALL ON FUNCTION app.payroll_history_native_capture_immutable() FROM PUBLIC;

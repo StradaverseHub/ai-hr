@@ -5,6 +5,9 @@ import {withTenant,type SessionContext} from '../db/client';
 import * as s from '../db/schema';
 import {createCompany,createDepartment} from '../core/admin';
 import {hireEmployee} from '../core/org';
+import {upsertPayComponent,setEmploymentPayComponent} from '../core/pay-components';
+import {readEffectiveTaxBasesTx,taxBasisSourceRowsTx} from '../core/payroll-tax-basis-read';
+import {readPcbNonCash} from '../localization/noncash-benefits';
 import {setCompensation} from '../core/comp';
 import {setStatutoryProfileMY} from '../localization/my/statutory';
 import {seedPayrollCycleCatalog} from '../core/payroll-cycle';
@@ -39,6 +42,31 @@ beforeEach(async()=>{
 });
 afterAll(closeAll);
 describe('detached history baseline and mutable native payroll owner',()=>{
+ it('restores generated recurring BIK and VOLA as native owned evidence and consumes it exactly once in the next month',async()=>{
+  await setModule(b.tenantId,'typed_pay_components','active');ctx=await entitledCtx(b);await resetProcessedBatch(ctx,{batchId,reason:'Add fictional native recurring benefits'});
+  const flags={kind:'non_payable' as const,isNonPayable:true,prorates:false,includedInPcb:true,includedInEpf:false,includedInSocsoEis:false,includedInHrdfBase:false,pcbRemunerationType:'normal' as const,pcbExemptionCode:'PCB_TAXABLE',epfBonus2012:false};
+  const bik=await upsertPayComponent(ctx,{...flags,code:'NATIVE_CAR',label:'Fictional recurring car',name:'Fictional recurring car',displayCategory:'bik',eaFormLine:'EA_B3'}),vola=await upsertPayComponent(ctx,{...flags,code:'NATIVE_HOME',label:'Fictional recurring home',name:'Fictional recurring home',displayCategory:'vola',eaFormLine:'EA_B4'});
+  await setEmploymentPayComponent(ctx,{employmentId,componentId:bik.id,amount:600,effectiveFrom:`${year-1}-01-01`});await setEmploymentPayComponent(ctx,{employmentId,componentId:vola.id,amount:900,effectiveFrom:`${year-1}-01-01`});await generatePayslips(ctx,{batchId});
+  const [original]=await physical(),noncash=readPcbNonCash((original.statutory as {pcbNonCash:unknown}).pcbNonCash);expect(noncash).not.toBeNull();expect(noncash!.owned).toEqual({bik:600,vola:900});expect(noncash!.ownedEaEntries).toEqual(expect.arrayContaining([expect.objectContaining({code:'NATIVE_CAR',source:'recurring',reportableAmount:600}),expect.objectContaining({code:'NATIVE_HOME',source:'recurring',reportableAmount:900})]));
+  const edit=await correction();await edit.commit();expect((await effective()).map(row=>row.grossPay)).toEqual(['6000.00']);const review=await previewPayrollHistoryRevert(ctx,edit.preview.attemptId);await revertPayrollHistoryUpload(ctx,edit.preview.attemptId,review.previewHash);
+  const [restored]=await effective();expect(restored.id).not.toBe(original.id);expect(restored.statutory).toEqual(original.statutory);expect(readPcbNonCash((restored.statutory as {pcbNonCash:unknown}).pcbNonCash)).toEqual(noncash);
+  const sources=await withTenant(ctx,tx=>taxBasisSourceRowsTx(tx,[restored.id]));expect(sources).toHaveLength(1);expect(sources[0].historyAttemptId).toBeNull();expect((await withTenant(ctx,tx=>readEffectiveTaxBasesTx(tx,ctx,[restored.id],{includeImported:true}))).size).toBe(0);
+  const nextPeriod=`${year}-02`,nextBatch=(await createBatch(ctx,{companyId:b.companyId,payPeriod:nextPeriod})).batchId;await generatePayslips(ctx,{batchId:nextBatch});const [next]=await owner.db.select().from(s.payslip).where(eq(s.payslip.batchId,nextBatch)),nextNoncash=readPcbNonCash((next.statutory as {pcbNonCash:unknown}).pcbNonCash);
+  expect(nextNoncash).not.toBeNull();expect(nextNoncash!.accumulated).toMatchObject({bik:600,vola:900,complete:true});expect(nextNoncash!.owned).toEqual({bik:600,vola:900});expect((await effective()).map(row=>row.id).sort()).toEqual([restored.id,next.id].sort());
+  // Damaged ownership remains unknown to the existing strict reader, never a fabricated zero source.
+  expect(readPcbNonCash({...noncash,ownedEaEntries:[]})).toBeNull();
+ });
+ it('requires the held discard capability to delete private pending baseline proof, including after creator access is revoked',async()=>{
+  const [original]=await physical(),edit=await correction(),oldBudget=process.env.PAYROLL_HISTORY_CHUNK_BUDGET_MS;process.env.PAYROLL_HISTORY_CHUNK_BUDGET_MS='1';
+  try{
+   const job=await requestPayrollHistoryConfirm(ctx,{attemptId:edit.preview.attemptId,previewHash:edit.preview.plan.previewHash,confirmReplacement:true});if(!('jobId' in job))throw Error('Expected staged native baseline');let snapshotId:string|undefined;
+   for(let n=0;n<100;n++){await runBulkJobTick(owner.client,{handlers:[payrollHistoryJobHandler]});const rows=await owner.client<{snapshot_id:string}[]>`select snapshot_id from app.payroll_history_native_capture where attempt_id=${edit.preview.attemptId}::uuid`;if(rows.length){snapshotId=rows[0].snapshot_id;break;}}
+   expect(snapshotId).toBeTruthy();await expect(owner.client`delete from app.payroll_history_native_capture where snapshot_id=${snapshotId!}::uuid`).rejects.toThrow();await expect(owner.client`update app.payroll_history_native_capture set source_hash=${'0'.repeat(64)} where snapshot_id=${snapshotId!}::uuid`).rejects.toThrow();
+   await owner.db.insert(s.payrollPermissionGrant).values({tenantId:b.tenantId,companyId:b.companyId,permissionKey:'payroll.history.import',role:'hr_admin',allowed:false});
+   for(let n=0;n<100;n++){await runBulkJobTick(owner.client,{handlers:[payrollHistoryJobHandler]});const [state]=await owner.client<{state:string}[]>`select state from public.bulk_job where id=${job.jobId}::uuid`;if(state.state==='failed'||state.state==='cancelled')break;}
+   expect((await owner.client<{state:string}[]>`select state from app.payroll_history_stage where stage_id=${job.jobId}::uuid`)[0].state).toBe('discarded');expect(await owner.client`select snapshot_id from app.payroll_history_native_capture where attempt_id=${edit.preview.attemptId}::uuid`).toHaveLength(0);expect(await owner.client`select * from app.payroll_history_staged_row where stage_id=${job.jobId}::uuid`).toHaveLength(0);expect((await owner.db.select().from(s.payslip).where(eq(s.payslip.id,original.id)))[0]).toEqual(original);
+  }finally{if(oldBudget===undefined)delete process.env.PAYROLL_HISTORY_CHUNK_BUDGET_MS;else process.env.PAYROLL_HISTORY_CHUNK_BUDGET_MS=oldBudget;}
+ });
  it('keeps a native run visible, resets and regenerates it, deletes the whole native batch, and restores the exact detached baseline',async()=>{
   const [original]=await physical();expect(original).toBeTruthy();const edit=await correction();await edit.commit();
   const [baseline]=await owner.db.select().from(s.payrollHistoryImportRevision).where(and(eq(s.payrollHistoryImportRevision.kind,'adopted'),eq(s.payrollHistoryImportRevision.attemptId,edit.preview.attemptId)));
