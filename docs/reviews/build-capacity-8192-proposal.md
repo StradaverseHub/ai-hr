@@ -23,3 +23,9 @@ The 58-view Resignation walkthrough, Contract walkthrough, current-source compil
 ## Rollback
 
 Revert this capacity decision's implementation to restore the previous 12 GiB budget and previous available-memory reporting behavior; process observation can remain independently. A failed build never authorizes staging installation.
+
+## Cross-consumer review and initial model run
+
+The first proposed implementation at `2e9f512e0c34b28bf95c3ac4d68f3f955f963a1c` was not adopted. Independent review found the canonical application-cache wrapper also consumed the shared RSS constant and required the same profile-specific budget and available-memory refusal. Both actual wrappers now use a shared acceptance model; canonical sampling is aligned to two seconds, including an explicit post-build sample and final cleanup re-evaluation. Default 6144 remains 12 GiB with no new free-memory floor.
+
+Hosted controller-only run [44313186695](https://github.com/StradaverseHub/ai-hr/actions/runs/44313186695) passed its controller regression steps but failed the scheduling model's assumption that isolated/balanced DB unit count equals naive alphabetical chunk count (87 versus 86). Complete file coverage matched. The model now verifies identical complete coverage, uniqueness, nonempty units and maximum size without assuming isolated units have naive chunk count. This is a diagnostic-only model repair, not a release gate coverage change. Original failure is retained; hosted validation must pass on the frozen repair before adoption.

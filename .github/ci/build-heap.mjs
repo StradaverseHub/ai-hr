@@ -109,6 +109,12 @@ export function buildMemoryBudget(heapMb){
 export function availableMemoryVerdict(availableKiB){
  return Number.isSafeInteger(availableKiB)&&availableKiB>=BUILD_MEM_AVAILABLE_MIN_KIB?'within':'fail';
 }
+/** Shared acceptance model for both actual build wrappers; original command status remains separate. */
+export function buildMemoryVerdict(heapMb,peakKiB,minAvailableKiB){
+ const budget=buildMemoryBudget(heapMb),rss=rssVerdict(peakKiB,{fail:budget.rssFailKiB});
+ const available=budget.minAvailableKiB===null?'not_applicable':availableMemoryVerdict(minAvailableKiB);
+ return {rssVerdict:rss,availableMemoryVerdict:available,verdict:available==='fail'?'fail':rss};
+}
 const gib=kib=>(kib/1024**2).toFixed(2)+' GiB';
 
 async function measure(dir,argv){
@@ -139,7 +145,7 @@ async function measure(dir,argv){
   peakRssKiB:null,peakRssMeasure:'GNU time ru_maxrss: largest single waited descendant process, not the sum of concurrent processes',
   minMemAvailableKiB:Number.isFinite(minAvailable)?minAvailable:null,memAvailableSamples:samples.length,rssBudgetKiB:{warn:BUILD_RSS_WARN_KIB,fail:rssFailKiB},
   minMemAvailableBudgetKiB:bounded?BUILD_MEM_AVAILABLE_MIN_KIB:null,availableMemoryVerdict:bounded?availableMemoryVerdict(Number.isFinite(minAvailable)?minAvailable:null):'not_applicable',verdict:null};
- try{report.peakRssKiB=parseMaxRssKiB(readFileSync(timeFile,'utf8'));report.verdict=rssVerdict(report.peakRssKiB,{fail:rssFailKiB});if(bounded&&report.availableMemoryVerdict==='fail')report.verdict='fail';}catch(error){report.telemetryError=String(error);}
+ try{report.peakRssKiB=parseMaxRssKiB(readFileSync(timeFile,'utf8'));Object.assign(report,buildMemoryVerdict(bounded?BUILD_HEAP_CEILING_MB:BUILD_HEAP_DEFAULT_MB,report.peakRssKiB,report.minMemAvailableKiB));}catch(error){report.telemetryError=String(error);}
  writeFileSync(join(dir,'build-memory.json'),JSON.stringify(report,null,2)+'\n',{flag:'wx',mode:0o600});
  const line=`next build memory: exit=${exit.code}${exit.signal?' signal='+exit.signal:''}; heap=${report.nodeOptions} (${report.heapProfile}); peak RSS=${report.peakRssKiB?gib(report.peakRssKiB):'unknown'}; `
   +`min MemAvailable=${report.minMemAvailableKiB!=null?gib(report.minMemAvailableKiB):'unknown'} of MemTotal ${gib(report.memTotalKiB)}; budget warn>${gib(BUILD_RSS_WARN_KIB)} fail>${gib(rssFailKiB)}${bounded?'; sampled available floor='+gib(BUILD_MEM_AVAILABLE_MIN_KIB):''}; verdict=${report.verdict??'unmeasured'}`;
