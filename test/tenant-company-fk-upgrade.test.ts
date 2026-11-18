@@ -911,6 +911,7 @@ it('stops on a cross-tenant row, then validates every company/tenant key without
    //6656–6659: participants receive bounded saved-document projections; source/apply internals are private.
    {fn:'app.v9_signing_current_actor()',app:true},
    {fn:'app.v9_document_content_hash(jsonb)',app:true},
+   {fn:'app.v9_document_personnel_reference(jsonb)',app:true},
    {fn:'app.v9_document_route_complete(jsonb)',app:true},
    {fn:'app.v9_document_route_signatures(jsonb)',app:true},
    {fn:'app.v9_document_route_participant(jsonb)',app:true},
