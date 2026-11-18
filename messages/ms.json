@@ -44583,6 +44583,12 @@
     "openError": "Dokumen tidak dapat dibuka. Muat semula dan semak bahawa HR telah melepaskannya."
   },
   "offboardingRequisition": {
+    "notRecorded": "Tidak direkodkan",
+    "issuingTeam": "Pasukan pengeluar",
+    "issuingPerson": "Dikeluarkan oleh",
+    "issuedAt": "Tarikh dikeluarkan",
+    "issuingRecord": "Rekod pengeluaran",
+    "currentIssuerNames": "Nama yang ditunjukkan ialah nama semasa bagi rujukan pengeluar yang disimpan. Rujukan penugasan dan katalog tidak mengenal pasti pihak yang mengeluarkan item.",
     "records": "Rekod permintaan",
     "leavers": "Pekerja keluar",
     "tasks": "Tugasan saya",

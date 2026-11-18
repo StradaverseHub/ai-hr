@@ -38,15 +38,19 @@ BEGIN
  SELECT EXISTS(SELECT 1 FROM employment e JOIN app_user u ON u.person_id=e.person_id AND u.tenant_id=e.tenant_id WHERE e.id=c.employment_id AND e.tenant_id=c.tenant_id AND u.id=app.current_user_id()) INTO is_subject;
  full_view:=app.lc_v9_off_access(c.company_id);
  SELECT data INTO cfg FROM lc_onboarding_config WHERE tenant_id=c.tenant_id;
- WITH teams AS MATERIALIZED(SELECT g->>'id' AS id FROM jsonb_array_elements(cfg->'groups') g WHERE g->'members' ? uid), visible AS MATERIALIZED (
+ WITH groups AS MATERIALIZED(SELECT g FROM jsonb_array_elements(cfg->'groups') g),
+ teams AS MATERIALIZED(SELECT g->>'id' AS id FROM groups WHERE g->'members' ? uid), visible AS MATERIALIZED (
   SELECT i,n FROM jsonb_array_elements(coalesce(c.data->'items','[]')) WITH ORDINALITY a(i,n)
   WHERE full_view OR (i->>'assignee'=uid AND EXISTS(SELECT 1 FROM teams g WHERE g.id=i->>'group') AND NOT is_subject)
  ), people AS MATERIALIZED (
-  SELECT u.id::text,p.full_name FROM app_user u JOIN person p ON p.id=u.person_id AND p.tenant_id=u.tenant_id WHERE u.tenant_id=c.tenant_id AND u.id::text IN(SELECT i->>'assignee' FROM visible)
+  SELECT u.id::text,p.full_name FROM app_user u JOIN person p ON p.id=u.person_id AND p.tenant_id=u.tenant_id WHERE u.tenant_id=c.tenant_id AND u.id::text IN(SELECT i->>'assignee' FROM visible UNION SELECT i->'providedBy'->>'userId' FROM visible)
  ) SELECT coalesce(jsonb_agg(jsonb_build_object('id',i->>'id','name',i->>'name','kind',i->>'kind','status',i->>'status','reason',i->>'reason','dueOn',i->>'dueOn',
-  'groupId',i->>'group','team',coalesce(g->>'name',''),'assigneeId',i->>'assignee','assignee',coalesce(p.full_name,''),'canAct',c.data->>'state'='submitted' AND (full_view OR i->>'assignee'=uid) AND (full_view OR i->>'status' NOT IN('notReturned','notNeeded')),
-  'catalogueId',coalesce(i->>'catalogueId',i->>'sourceCatalogueId'),'providedBy',i->'providedBy') ORDER BY n),'[]') INTO items
- FROM visible v LEFT JOIN people p ON p.id=i->>'assignee' LEFT JOIN LATERAL(SELECT value g FROM jsonb_array_elements(cfg->'groups') WHERE value->>'id'=i->>'group') team ON true;
+  'groupId',i->>'group','team',coalesce(team.g->>'name',''),'assigneeId',i->>'assignee','assignee',coalesce(p.full_name,''),'canAct',c.data->>'state'='submitted' AND (full_view OR i->>'assignee'=uid) AND (full_view OR i->>'status' NOT IN('notReturned','notNeeded')),
+  'catalogueId',coalesce(i->>'catalogueId',i->>'sourceCatalogueId'),'providedBy',CASE WHEN jsonb_typeof(i->'providedBy')='object' THEN jsonb_build_object('group',i->'providedBy'->>'group','userId',i->'providedBy'->>'userId','at',i->'providedBy'->>'at','groupName',issuer_team.g->>'name','userName',issuer.full_name) ELSE NULL END) ORDER BY n),'[]') INTO items
+ FROM visible v LEFT JOIN people p ON p.id=i->>'assignee'
+ LEFT JOIN groups team ON team.g->>'id'=i->>'group'
+ LEFT JOIN people issuer ON issuer.id=i->'providedBy'->>'userId'
+ LEFT JOIN groups issuer_team ON issuer_team.g->>'id'=i->'providedBy'->>'group';
  IF NOT full_view AND jsonb_array_length(items)=0 THEN RETURN NULL;END IF;
  SELECT jsonb_build_object('id',c.id,'revision',c.revision,'number','RVK-'||right(c.number,4),'caseNumber',c.number,'state',c.data->>'state','fullView',full_view,
   'name',c.data->'facts'->>'name','businessGroup',coalesce(b.name,CASE WHEN c.data->'facts'->>'businessGroup' !~* '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$' THEN c.data->'facts'->>'businessGroup' END,''),'position',coalesce(p.title,CASE WHEN c.data->'facts'->>'title' !~* '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$' THEN c.data->'facts'->>'title' END,''),'lastDay',c.data->'facts'->>'lastDay','noticeDate',c.data->'facts'->>'noticeDate','caseType',c.data->'facts'->>'caseType',

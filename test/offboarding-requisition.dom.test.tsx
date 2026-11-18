@@ -1,5 +1,5 @@
 import {readFileSync} from 'node:fs';
-import {render,screen,fireEvent,waitFor} from '@testing-library/react';
+import {render,screen,fireEvent,waitFor,within} from '@testing-library/react';
 import {NextIntlClientProvider} from 'next-intl';
 import {expect,it,vi} from 'vitest';
 import {OffboardingRequisitionView} from '../app/lifecycle/requisitions/offboarding/[id]/view';
@@ -10,7 +10,7 @@ import {captureAiReviewScreenshots,aiReviewDomHtml} from './helpers/ai-review-sc
 import messages from '../messages/en.json';
 const update=vi.hoisted(()=>vi.fn());vi.mock('../app/lifecycle/requisitions/offboarding/[id]/actions',()=>({updateRequisitionItem:update}));
 const item={id:'access',name:'Microsoft 365',kind:'system' as const,status:'todo' as const,reason:'',dueOn:'2026-12-01',groupId:'it',team:'IT',assigneeId:'person',assignee:'Alex Tan',canAct:true,catalogueId:'catalogue',providedBy:null};
-const detail:OffboardingRequisition={id:'fictional-case',revision:4,number:'RVK-0042',caseNumber:'OFB9-0042',state:'submitted',fullView:true,exceptionsReviewed:false,name:'Sample leaver',businessGroup:'Fictional Group',position:'Analyst',lastDay:'2026-12-18',noticeDate:'2026-11-18',caseType:'Resignation',revokeMode:'date',revokeDate:'2026-12-01',items:[item,{...item,id:'laptop',name:'Laptop',kind:'device',status:'progress',dueOn:'2026-12-18'},{...item,id:'card',name:'Access card',kind:'device',status:'notReturned',reason:'HR review required',dueOn:'2026-12-18'}],clearedAt:null,activity:[{id:'activity',at:'2026-11-18T10:00:00Z',action:'requisition.itemAdded',detail:'Microsoft 365',itemStatus:'todo',actor:'Alex Tan'}]};
+const detail:OffboardingRequisition={id:'fictional-case',revision:4,number:'RVK-0042',caseNumber:'OFB9-0042',state:'submitted',fullView:true,exceptionsReviewed:false,name:'Sample leaver',businessGroup:'Fictional Group',position:'Analyst',lastDay:'2026-12-18',noticeDate:'2026-11-18',caseType:'Resignation',revokeMode:'date',revokeDate:'2026-12-01',items:[{...item,providedBy:{group:'issuing-team',userId:'issuer',at:'2026-02-03T10:00:00Z',groupName:'Fictional issuing team',userName:'Jamie Lee'}},{...item,id:'laptop',name:'Laptop',kind:'device',status:'progress',dueOn:'2026-12-18'},{...item,id:'card',name:'Access card',kind:'device',status:'notReturned',reason:'HR review required',dueOn:'2026-12-18'}],clearedAt:null,activity:[{id:'activity',at:'2026-11-18T10:00:00Z',action:'requisition.itemAdded',detail:'Microsoft 365',itemStatus:'todo',actor:'Alex Tan'}]};
 const wrap=(d=detail)=><NextIntlClientProvider locale="en" messages={messages}><OffboardingRequisitionView initial={d} today="2026-11-18"/></NextIntlClientProvider>;
 it('shows the dedicated record, canonical dates, exception review and scoped case link',()=>{
  render(wrap());expect(screen.getByRole('heading',{name:'RVK-0042'})).toBeInTheDocument();expect(screen.getByRole('link',{name:'View offboarding case'})).toHaveAttribute('href','/lifecycle/v9?view=leavers&case=fictional-case');expect(screen.getByText('1 not returned — HR review required.')).toBeInTheDocument();expect(screen.getAllByText(/2026-12-01/).length).toBeGreaterThan(0);
@@ -36,4 +36,14 @@ it('keeps entered values and reports transport rejection while locking controls 
  await waitFor(()=>expect(reason).toBeDisabled());expect(status).toBeDisabled();
  reject(Error('Connection lost'));
  await waitFor(()=>expect(screen.getByRole('alert')).toHaveTextContent('not saved'));expect(reason).toHaveValue('Keep this entered note');expect(status).toHaveValue('progress');expect(reason).not.toBeDisabled();
+});
+
+it('shows recorded issuing parties and date, distinguishes manual references, and scopes the summary to visible items',()=>{
+ const issued={...item,providedBy:{group:'old-team',userId:'issuer',at:'2026-02-03T10:00:00Z',groupName:'Current issuing team',userName:'Current issuer name'}};
+ const {unmount}=render(wrap({...detail,items:[issued,{...item,id:'manual',name:'Manual catalogue item'},{...item,id:'unknown',name:'Item without provenance',catalogueId:null}]}));
+ const summary=within(screen.getByRole('region',{name:'Items offered by'}));
+ expect(summary.getByText('Current issuing team')).toBeInTheDocument();expect(summary.getByText('Current issuer name')).toBeInTheDocument();expect(summary.getByText('2026-02-03T10:00:00Z')).toBeInTheDocument();expect(summary.getAllByText('Not recorded')).toHaveLength(3);
+ expect(screen.queryByText('Matched from Offboarding settings')).not.toBeInTheDocument();expect(screen.queryByText('Matching rules in Offboarding settings')).not.toBeInTheDocument();expect(summary.getByText(/Names shown are current names/)).toBeInTheDocument();
+ unmount();render(wrap({...detail,fullView:false,items:[{...item,catalogueId:null}]}));
+ const scoped=within(screen.getByRole('region',{name:'Items offered by'}));expect(scoped.getAllByText('Not recorded')).toHaveLength(3);expect(screen.queryByText('Current issuer name')).not.toBeInTheDocument();expect(screen.queryByText('Current issuing team')).not.toBeInTheDocument();
 });

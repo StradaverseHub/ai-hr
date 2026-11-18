@@ -44583,6 +44583,12 @@
     "openError": "无法打开文件。请刷新并确认人事部门已发布此文件。"
   },
   "offboardingRequisition": {
+    "notRecorded": "未记录",
+    "issuingTeam": "发放团队",
+    "issuingPerson": "发放人",
+    "issuedAt": "发放日期",
+    "issuingRecord": "已记录的发放信息",
+    "currentIssuerNames": "此处显示的是已保存发放方引用对应的当前名称。分配和目录引用不能证明物品由谁发放。",
     "records": "申请记录",
     "leavers": "离职员工",
     "tasks": "我的任务",

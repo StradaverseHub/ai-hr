@@ -18,12 +18,14 @@ beforeEach(async()=>{
 });afterAll(closeAll);
 async function prepared(){
  const id=await v9CreateOffboarding(admin,{employmentId,type:'Resignation',noticeDate:'2026-11-01',lastDay:'2027-01-31'});await v9Command(admin,id,1,{type:'submit'});
- const items=[{id:'access',name:'Fictional access',kind:'system',sourceId:null,group:'rvk-it',assignee:team.userId,dueOn:'2027-01-20',status:'todo',reason:''},{id:'laptop',name:'Fictional laptop',kind:'device',sourceId:null,group:'rvk-it',assignee:team.userId,dueOn:'2027-01-31',status:'todo',reason:''},{id:'private',name:'Private facilities item',kind:'device',sourceId:null,group:'private-group',assignee:other.userId,dueOn:'2027-01-31',status:'todo',reason:''}];
+ const items=[{id:'access',name:'Fictional access',kind:'system',sourceId:null,group:'rvk-it',assignee:team.userId,dueOn:'2027-01-20',status:'todo',reason:'',providedBy:{group:'rvk-it',userId:team.userId,at:'2026-02-03T10:00:00Z'}},{id:'laptop',name:'Fictional laptop',kind:'device',sourceId:null,group:'rvk-it',assignee:team.userId,dueOn:'2027-01-31',status:'todo',reason:'',catalogueId:'manual-catalogue-reference',providedBy:null},{id:'private',name:'Private facilities item',kind:'device',sourceId:null,group:'private-group',assignee:other.userId,dueOn:'2027-01-31',status:'todo',reason:'',providedBy:{group:'private-group',userId:other.userId,at:'2026-03-04T11:00:00Z',privateExtra:'Must not escape'}}];
  await owner.client`update lc_v9_case set data=data||jsonb_build_object('items',${JSON.stringify(items)}::jsonb,'privateFixture','No case blob may escape','revokeMode','date','revokeDate','2027-01-20') where id=${id}::uuid`;
  return id;
 }
 it('projects the existing RVK owner with exact item scope, safe activity and independently counted statuses',async()=>{
  const id=await prepared(),full=await offboardingRequisition(admin,id),own=await offboardingRequisition(team,id);
+ expect(own.items[0].providedBy).toEqual({group:'rvk-it',userId:team.userId,at:'2026-02-03T10:00:00Z',groupName:'IT',userName:'Fictional IT fulfiller'});expect(own.items[1].providedBy).toBeNull();expect(own.items[1].catalogueId).toBe('manual-catalogue-reference');
+ expect(full.items[2].providedBy?.userName).toBe('Fictional stranger');expect(JSON.stringify(full)).not.toContain('Must not escape');expect(JSON.stringify(own)).not.toContain('Fictional stranger');expect(JSON.stringify(own)).not.toContain('2026-03-04T11:00:00Z');
  expect(full.items.map(i=>i.id)).toEqual(['access','laptop','private']);expect(own.items.map(i=>i.id)).toEqual(['access','laptop']);expect(own.fullView).toBe(false);expect(own.items.map(i=>i.dueOn)).toEqual(['2027-01-20','2027-01-31']);
  expect(JSON.stringify(own)).not.toContain('Private facilities');expect(JSON.stringify(own)).not.toContain('No case blob');expect(own.activity.map(a=>a.detail)).toEqual(['Fictional laptop','Fictional access']);
  await expect(offboardingRequisition(other,id)).rejects.toThrow('unavailable');
@@ -93,4 +95,12 @@ it('attributes a no-Person HR account as User and reserves System for a physical
  await owner.withTenant({...admin,userId:undefined,personId:null},tx=>tx.execute(sql`update lc_v9_case set data=jsonb_set(data,'{items,0,status}','"todo"'::jsonb) where id=${id}::uuid`));
  const [saved]=await owner.client`select data->'requisitionActivity'->-1->'actor' as actor from lc_v9_case where id=${id}::uuid`;
  expect(saved.actor).toEqual({id:'system',name:'System'});
+});
+
+it('preserves saved issuing references without resolving a foreign account or guessing a missing team',async()=>{
+ const id=await prepared(),foreign=await seedBase();
+ const foreignUser=foreign.adminUserId;
+ await owner.client`update lc_v9_case set data=jsonb_set(data,'{items,0,providedBy}',${JSON.stringify({group:'deleted-team',userId:foreignUser,at:null,privateExtra:'Do not project'})}::jsonb) where id=${id}::uuid`;
+ const own=await offboardingRequisition(team,id);
+ expect(own.items[0].providedBy).toEqual({group:'deleted-team',userId:foreignUser,at:null,groupName:null,userName:null});expect(JSON.stringify(own)).not.toContain('Do not project');
 });

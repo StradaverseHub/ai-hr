@@ -44583,6 +44583,12 @@
     "openError": "The document could not be opened. Refresh and check that HR has released it."
   },
   "offboardingRequisition": {
+    "notRecorded": "Not recorded",
+    "issuingTeam": "Issuing team",
+    "issuingPerson": "Issued by",
+    "issuedAt": "Issued on",
+    "issuingRecord": "Recorded issue",
+    "currentIssuerNames": "Names shown are current names for the saved issuing references. Assignment and catalogue references do not identify who issued an item.",
     "records": "Request records",
     "leavers": "Leavers",
     "tasks": "My tasks",
