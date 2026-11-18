@@ -28,4 +28,4 @@ it('keeps the exact saved document identity in the HR handoff and renders locali
  const html='<style>'+readFileSync('app/lifecycle/v9/workspace.css','utf8')+'</style>'+aiReviewDomHtml(result.container);
  for(const mode of ['light','dark'] as const)await captureAiReviewScreenshots(html,'en','feedback-v9-document-routing-'+mode,'Actual V9 routed signing component, fictional immutable route and document; service authority exercised in DB suite','classic',mode);
  result.unmount();render(<NextIntlClientProvider locale="en" messages={messages}><RoutedDocumentSummary document={value.document!} caseId="case"/></NextIntlClientProvider>);expect(screen.getByRole('link',{name:'Open signing and review'})).toHaveAttribute('href','/me/document-signing?case=case&document=document');
-});
+},60000);

@@ -5,7 +5,7 @@ CREATE FUNCTION app.v9_signing_current_actor() RETURNS boolean LANGUAGE sql STAB
   SELECT 1 FROM app_user u WHERE u.id=app.current_user_id() AND u.tenant_id=app.current_tenant_id() AND u.archived_at IS NULL AND NOT app.login_blocked(u.id))
 $$;
 CREATE FUNCTION app.v9_document_content_hash(d jsonb) RETURNS text LANGUAGE sql IMMUTABLE SET search_path=pg_catalog,public,pg_temp AS $$
- SELECT encode(public.digest(jsonb_build_object('templateId',d->'templateId','version',d->'version','blocks',d->'blocks','fields',d->'fields','values',d->'values','edits',d->'edits','mergeValues',coalesce(d->'mergeValues','{}'::jsonb))::text,'sha256'),'hex')
+ SELECT encode(sha256(convert_to(jsonb_build_object('templateId',d->'templateId','version',d->'version','blocks',d->'blocks','fields',d->'fields','values',d->'values','edits',d->'edits','mergeValues',coalesce(d->'mergeValues','{}'::jsonb))::text,'UTF8')),'hex')
 $$;
 CREATE FUNCTION app.v9_document_route_complete(d jsonb) RETURNS boolean LANGUAGE sql IMMUTABLE SET search_path=pg_catalog,public,pg_temp AS $$
  SELECT jsonb_typeof(d->'signing')='object' AND NOT app.document_signing_returned(d->'signing') AND NOT EXISTS(
