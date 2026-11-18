@@ -2,6 +2,7 @@
 import {randomUUID} from 'node:crypto';
 import {beforeAll,afterAll,it,expect} from 'vitest';
 import {sql} from 'drizzle-orm';
+import {readBulkJob} from '../core/bulk-job';
 import {migrateTestDb,closeAll,owner,createAppUser} from './harness';
 import {contractPostingFixture,finishContractPostingJob} from './helpers/contract-posting-fixture';
 import {saveTerminationReason,setTerminationReasonActive} from '../core/termination-reason-catalog';
@@ -20,7 +21,9 @@ it('keeps inactive tenant labels on retained case, assigned approval and native 
  const assigned=await readContractSharedApprovalReview(f.approver,pending.id);expect(assigned.approval.canAct).toBe(true);expect(assigned.reasonLabels).toEqual([{code,label:'Fictional original work-pass reason'}]);
  await expect(readContractSharedApprovalReview(f.employeeActor,pending.id)).rejects.toThrow();
  const a=assigned.approval;await actContractSharedApproval(f.approver,{id:a.id,actionId:randomUUID(),layerId:a.pendingLayerId!,revision:a.contentRevision,hash:a.contentHash,action:'approve',reason:'Reviewed'});
- const [approvalJob]=await owner.db.execute<{id:string}>(sql`select job_id as id from contract_shared_event where tenant_id=${f.b.tenantId}::uuid and case_id=${f.caseId}::uuid and trigger_event='approvalsComplete'`);await finishContractPostingJob(approvalJob.id,f.admin,'contract_automation');
+ const [approvalJob]=await owner.db.execute<{id:string}>(sql`select job_id as id from contract_shared_event where tenant_id=${f.b.tenantId}::uuid and case_id=${f.caseId}::uuid and trigger_event='approvalsComplete'`);
+ await expect(readBulkJob(f.admin,approvalJob.id,'contract_automation')).rejects.toMatchObject({status:404,message:'Job unavailable.'});
+ await finishContractPostingJob(approvalJob.id,f.approver,'contract_automation');
  const letterId=(await contractSharedWorkspace(f.admin,f.caseId)).letters[0].id,l=await readContractSharedLetter(f.admin,letterId);await actContractSharedLetter(f.admin,{id:l.id,actionId:randomUUID(),stepId:l.pendingAction!.stepId,revision:l.contentRevision,hash:l.contentHash!,action:'reviewed'});
  const [releasedJob]=await owner.db.execute<{id:string}>(sql`select job_id as id from contract_shared_event where tenant_id=${f.b.tenantId}::uuid and case_id=${f.caseId}::uuid and trigger_event='letterReleased' and data->>'letterId'=${letterId}`);await finishContractPostingJob(releasedJob.id,f.admin,'contract_automation');
  await saveTerminationReason(f.admin,{code,label:'Fictional current renamed work-pass reason'});await setTerminationReasonActive(f.admin,{code,active:false});
