@@ -90,16 +90,19 @@ export function validateSigningRoute(route: SigningRoute, rules: SigningGuardrai
 const atCurrentContent=(action:SigningAction,document:SigningDocument)=>action.contentRevision===document.contentRevision&&(
  action.contentHash===document.contentHash||document.subjectType==='contract'&&document.routing?.liveMergeReviews===true&&action.signature===null&&['reviewed','approved','returned','resent'].includes(action.action)
 );
+// Managed Resignation has its own native exact-content round and required-step admission rules.
+// Its template metadata does not opt it into native lifecycle returned-custody semantics.
+const usesNativeRoutingRules=(document:SigningDocument)=>Boolean(document.routing)&&document.subjectType!=='resignation';
 /** Actions of the current round: current content, after the latest re-send of that content. */
 export function currentRoundActions(document: SigningDocument): SigningAction[] {
   let start=0;
   for(let index=0;index<document.actions.length;index++){
     const action=document.actions[index];
-    if(document.routing){if(action.action==='returned')start=index;else if(action.action==='resent')start=index+1;}
+    if(usesNativeRoutingRules(document)){if(action.action==='returned')start=index;else if(action.action==='resent')start=index+1;}
     else if(atCurrentContent(action,document)&&action.action==='resent')start=index+1;
   }
   const boundary=document.actions[start];
-  if(document.routing&&boundary?.action==='returned')return [boundary];
+  if(usesNativeRoutingRules(document)&&boundary?.action==='returned')return [boundary];
   return document.actions.slice(start).filter(action=>atCurrentContent(action,document));
 }
 /** The send-back that currently holds the document with its owner, or null. */
@@ -126,8 +129,8 @@ export function pendingSigningSteps(document: SigningDocument): SigningStep[] {
   const remaining=document.route.steps.filter(step=>!signingStepFulfilled(document,step));
   const stage=Math.min(...remaining.filter(step=>step.required).map(step=>step.stage));
   // Optional routed steps may act alongside/before the next required stage, but never delay it.
-  // Existing subject routes without template routing retain their original required-only queue.
-  return remaining.filter(step=>!step.coveredByStepId&&Number.isFinite(stage)&&(step.required?step.stage===stage:!!document.routing&&step.stage<=stage));
+  // Managed Resignation and routes without template routing keep their required-only queue.
+  return remaining.filter(step=>!step.coveredByStepId&&Number.isFinite(stage)&&(step.required?step.stage===stage:usesNativeRoutingRules(document)&&step.stage<=stage));
 }
 export function signingComplete(document: SigningDocument, rules: SigningGuardrails): boolean {
   validateSigningRoute(document.route,rules);
@@ -164,7 +167,7 @@ export function recordSigningAction(document: SigningDocument, rules: SigningGua
     if (prior.actorId===input.actorId&&prior.actorPersonId===input.actorPersonId&&prior.stepId===input.stepId&&prior.contentHash===input.hash&&prior.contentRevision===input.revision&&prior.action===input.action&&prior.comment===(input.comment?.trim()??'')&&(input.action!=='signed'||prior.signature?.method===input.method&&prior.signature?.value===input.value&&input.consent===true)) return document;
     throw new SigningError('conflict','This action reference was already used.');
   }
-  const steps=input.action==='returned'&&document.routing&&!signingSendBack(document)?document.route.steps:pendingSigningSteps(document);
+  const steps=input.action==='returned'&&usesNativeRoutingRules(document)&&!signingSendBack(document)?document.route.steps:pendingSigningSteps(document);
   const step=steps.find(s=>s.id===input.stepId);
   if (!step || !step.holderId || step.holderId!==input.actorId) throw new SigningError('forbidden','Only the current assigned signer can act at this step.');
   if (!input.actorPersonId || !input.actorName.trim() || !Number.isFinite(Date.parse(input.at))) invalid('The verified signer and action time are required.');
@@ -207,9 +210,9 @@ export function replacePendingSigner(document: SigningDocument, rules: SigningGu
  */
 export function signingDocumentOwner(document: SigningDocument): {stepId: string | null; userId: string | null} {
   const flagged=document.route.steps.find(step=>step.owner);
-  if(flagged)return{stepId:flagged.id,userId:flagged.holderId??(document.subjectType==='contract'?null:document.routing?.caseOwnerId??null)};
+  if(flagged)return{stepId:flagged.id,userId:flagged.holderId??(document.subjectType==='contract'||!usesNativeRoutingRules(document)?null:document.routing?.caseOwnerId??null)};
   const review=document.route.steps.map((step,index)=>({step,index})).filter(x=>x.step.kind==='review'||document.subjectType==='contract'&&x.step.kind==='approve').sort((a,b)=>a.step.stage-b.step.stage||a.index-b.index)[0]?.step;
-  if(review)return{stepId:review.id,userId:review.holderId??(document.subjectType==='contract'?null:document.routing?.caseOwnerId??null)};
+  if(review)return{stepId:review.id,userId:review.holderId??(document.subjectType==='contract'||!usesNativeRoutingRules(document)?null:document.routing?.caseOwnerId??null)};
   return{stepId:null,userId:document.routing?.caseOwnerId??null};
 }
 /** True once a signature lands in the current round. Then the content is locked for everyone until a send-back. */
