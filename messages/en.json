@@ -44897,6 +44897,13 @@
     "pushField": "Push {field} to Personnel Management"
   },
   "payrollHistoryMaintenance": {
+    "impactKinds": {
+          "payroll": "{count} existing payroll runs stay unchanged. Review their history inputs separately.",
+          "report": "{count} recorded statutory reports stay unchanged. Review affected reports separately.",
+          "payment": "{count} recorded payment-summary exports stay unchanged. This is not evidence of bank settlement.",
+          "issued": "{count} released payroll results stay unchanged. Issued copies are not regenerated or resent.",
+          "review": "{count} eligible payroll records require source review before further processing."
+    },
     "selectListedHint": "Select the employee-month records whose listed Pay Item totals should change. Unlisted items remain.",
     "selectListedRecord": "Update listed totals for {employee} {period}",
     "revertReview": "Review removal of still-current batch contributions from {count} records. Later corrections and unrelated items remain.",
@@ -44932,7 +44939,7 @@
       "period": "Payroll month",
       "includeWithdrawn": "Include withdrawn records",
       "filter": "Apply filters",
-      "recordCount": "{count} imported records",
+      "recordCount": "{count, plural, one {# imported record} other {# imported records}}",
       "employee": "Employee",
       "cycle": "Pay Cycle",
       "items": "Pay Items",

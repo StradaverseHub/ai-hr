@@ -1,5 +1,6 @@
 'use client';
 import {useState} from 'react';
+import {HistoryMaintenanceImpacts} from './maintenance-impact';
 import {useTranslations} from 'next-intl';
 import type {ImportedTaxLine,ImportedTaxSetting} from '@/lib/payroll-import-tax-input';
 import type {PcbNonCashSnapshot} from '@/localization/noncash-benefits';
@@ -11,7 +12,7 @@ const cell='px-3 py-3 text-left align-top';
 function entries(values:ImportedPayrollValues|null):Record<string,unknown>{
  if(!values)return {};
  const {statutory,...amounts}=values;
- return {...amounts,...Object.fromEntries(Object.entries(statutory).filter(([key])=>!['importedTaxBasis','bases','exemptionUsed','pcbNonCash'].includes(key)).map(([key,value])=>['statutory.'+key,value]))};
+ return {...amounts,...Object.fromEntries(Object.entries(statutory).filter(([key])=>!['importedTaxBasis','bases','exemptionUsed','pcbNonCash','historyMaintenance'].includes(key)).map(([key,value])=>['statutory.'+key,value]))};
 }
 function Amounts({row}:{row:HistoryRevisionRow}){
  const t=useTranslations('payroll.historyRevisions');
@@ -48,7 +49,7 @@ function MaintenanceItems({row}:{row:HistoryRevisionRow}){
  return <section className="min-w-0 space-y-3 rounded-lg border border-border p-4" aria-label={t('itemComparison')}><h3 className="break-words text-sm font-medium">{row.employeeNo}{row.employeeName?' · '+row.employeeName:''} · {row.period} · {row.cycleName}</h3>
   {row.withdrawal&&<p className="text-sm">{t('withdrawalHelp')}</p>}{row.restoreSnapshotId&&<p className="text-sm">{t('restoreHelp')}</p>}
   <div className="space-y-2">{row.itemChanges?.map(item=><article key={item.key} className="grid min-w-0 gap-2 rounded-lg border border-border p-3 text-sm sm:grid-cols-4"><h4 className="break-words font-medium">{item.code} · {item.label}</h4><p className="tabular-nums"><span className="block text-xs text-muted-foreground">{t('before')}</span>{item.before===null?t('notRecorded'):formatMoney(item.before,row.currency)}</p><p className="tabular-nums"><span className="block text-xs text-muted-foreground">{t('after')}</span>{item.after===null?t('removed'):formatMoney(item.after,row.currency)}</p><div><p className="font-medium">{t('itemOperations.'+item.operation)}</p>{item.laterCorrection&&<p className="mt-1 text-xs text-muted-foreground">{t('laterCorrection')}</p>}</div></article>)}</div>
-  {!!row.impact?.length&&<div className="space-y-2 rounded-lg bg-muted/50 p-3 text-sm"><h4 className="font-medium">{t('impact')}</h4>{row.impact.map((item,index)=><p key={index}>{item.message}</p>)}</div>}
+  {!!row.impact?.length&&<div className="space-y-2 rounded-lg bg-muted/50 p-3 text-sm"><h4 className="font-medium">{t('impact')}</h4><HistoryMaintenanceImpacts items={row.impact}/></div>}
  </section>;
 }
 /** d28501b8 r2 — when `selection` is given, replacement rows carry a tick box; only ticked rows are overwritten. */

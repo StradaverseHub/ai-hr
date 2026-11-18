@@ -44897,6 +44897,13 @@
     "pushField": "Đẩy {field} sang Quản lý nhân sự"
   },
   "payrollHistoryMaintenance": {
+    "impactKinds": {
+          "payroll": "Giữ nguyên {count} đợt lương hiện có. Kiểm tra dữ liệu lịch sử của chúng riêng.",
+          "report": "Giữ nguyên {count} báo cáo theo luật đã ghi nhận. Kiểm tra riêng báo cáo bị ảnh hưởng.",
+          "payment": "Giữ nguyên {count} bản xuất tóm tắt thanh toán đã ghi nhận. Đây không phải bằng chứng ngân hàng đã thanh toán.",
+          "issued": "Giữ nguyên {count} kết quả lương đã phát hành. Không tạo lại hay gửi lại bản đã phát hành.",
+          "review": "{count} bản ghi lương đủ điều kiện cần kiểm tra nguồn trước khi xử lý tiếp."
+    },
     "selectListedHint": "Chọn bản ghi nhân viên-tháng cần đổi tổng Khoản lương được liệt kê. Giữ nguyên các khoản khác.",
     "selectListedRecord": "Cập nhật tổng được liệt kê cho {employee} {period}",
     "revertReview": "Kiểm tra việc xóa phần đóng góp của lô còn hiệu lực trong {count} bản ghi. Giữ sửa đổi sau và khoản không liên quan.",
