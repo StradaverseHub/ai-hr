@@ -25,6 +25,13 @@ beforeEach(async () => {
   await v9Setup(admin);
 });
 afterAll(closeAll);
+/** These recipient/provider journeys need a real HR directory identity; other tests retain seedBase's deliberate no-Person actor. */
+async function bindAdminFixturePerson(){
+ const [person]=await owner.db.execute<{id:string}>(sql`insert into person(tenant_id,full_name,primary_email) values(${base.tenantId}::uuid,'Fictional recipient HR','recipient-hr@test.invalid') returning id`);
+ await owner.db.execute(sql`update app_user set person_id=${person.id}::uuid where id=${admin.userId!}::uuid and tenant_id=${base.tenantId}::uuid`);
+ admin={...admin,personId:person.id};
+}
+
 it('reports retained V9 company history without granting private case access to organisation HR',async()=>{
   const c=await prepared(),userId=await createAppUser(base.tenantId,other.personId!,'hr_admin');
   await owner.client`update role_assignment set company_id=${base.companyId}::uuid where tenant_id=${base.tenantId}::uuid and app_user_id=${userId}::uuid and role='hr_admin'`;
@@ -803,6 +810,7 @@ it('saves per-person text through the case owner, retains it in PDF content and 
   await v9Command(admin,c.id,after.revision,{type:'documentTextEdit',id:doc.id,edits:{}});expect((await v9CaseDetail(admin,c.id)).case.documents.find(document=>document.id===doc.id)!.edits).toEqual({});
 });
 it('fires the HR-signature workflow from an actual sign command and starts a manual workflow only through HR scope',async()=>{
+  await bindAdminFixturePerson();
   const before=await prepared(),config=(await v9Workspace(admin)).config!;
   config.companies=[{companyId:base.companyId,signatoryUserId:admin.userId!,signatoryTitle:'Fictional HR'}];
   config.templates.push({id:'event-letter',name:'Fictional event letter',module:'off',type:'Letter',rules:{},hrStep:'before',employeeAck:true,retired:false,versions:[{version:1,state:'published',at:'',by:'',blocks:[{id:'body',type:'text',text:'Fictional letter',section:''}],fields:[]}]});
@@ -819,6 +827,7 @@ it('fires the HR-signature workflow from an actual sign command and starts a man
 });
 
 it('accepts tenant directory recipients and rejects foreign people and deleted recipient groups', async () => {
+  await bindAdminFixturePerson();
   const c = await prepared(); const config = (await v9Workspace(admin)).config!;
   config.groups.push({ id: 'review-recipient-group', name: 'Fictional reviewers', members: [admin.userId!, other.userId!], limit: 0 });
   config.workflows.push({ id: 'directory-review', name: 'Directory review', module: 'off', status: 'published', trigger: { event: 'manual', days: 0, workdays: false, repeat: false, skipIf: '' }, conditions: [], steps: [{ id: 'notice', type: 'notify', to: 'group:review-recipient-group', cc: [`person:${other.userId}`], subject: 'Directory review', body: 'Fictional' }], description: '' });
@@ -952,6 +961,7 @@ it('uses approved categories from real Personnel confirmation dates in both matc
 
 
 it('snapshots handed Native items by employment and records recovery on their original owner atomically', async () => {
+  await bindAdminFixturePerson();
   const context = await onboardingContext(admin), native = structuredClone(context.config);
   native.groups.find(group => group.id === native.techGroup)!.members = [admin.userId!];
   native.catalogue = [
@@ -1004,7 +1014,10 @@ it('snapshots handed Native items by employment and records recovery on their or
   expect(currentReq(receiptOwner.case)!.handedAt).toBe(receiptItem.handedAt);
   expect(currentReq(receiptOwner.case)!.items.find(item=>item.id===receiptItem.id)).toMatchObject({state:'handed',employeeReceipt:{status:'received',by:holder.userId}});
   expect(await withTenant(admin,tx=>onboardingHoldingsTx(admin,tx,active.employmentId,base.companyId))).toHaveLength(2);
-  const first = await exit();
+  let first = await exit();
+  // Freeze an explicit provider baseline before exercising one reassignment. RR may legitimately choose the employee for either item.
+  for(const item of first.items){await v9Command(admin,first.id,first.revision,{type:'assignItem',id:item.id,userId:admin.userId!});first=(await v9CaseDetail(admin,first.id)).case;}
+  expect(first.items.every(item=>item.assignee===admin.userId)).toBe(true);
   await expect(exit()).rejects.toThrow('already has an open offboarding case');
   expect(first.items).toHaveLength(2);
   await expect(v9Command(admin, first.id, first.revision, {type:'assignItem',id:first.items[0].id,userId:other.userId!})).rejects.toThrow('providing group');
@@ -1600,7 +1613,14 @@ async function whilePreviewCaseLocked<T>(id:string,native:boolean,read:()=>Promi
  expect(modes).toHaveLength(expectedReads);expect(modes.every(m=>m.isolation==='repeatable read'&&m.readOnly==='on')).toBe(true);
  return result as T;
 }
+async function withFictionalPreviewAuthOrigin<T>(work:()=>Promise<T>):Promise<T>{
+ const previous={AUTH_PUBLIC_ORIGIN:process.env.AUTH_PUBLIC_ORIGIN,AUTH_SESSION_KEY:process.env.AUTH_SESSION_KEY};
+ // Fictional auth-adapter fixture only; never infer a trusted origin from a request or persist it outside this journey.
+ process.env.AUTH_PUBLIC_ORIGIN='https://fictional-preview.example.test';process.env.AUTH_SESSION_KEY='11'.repeat(32);
+ try{return await work();}finally{for(const [key,value]of Object.entries(previous)){if(value===undefined)delete process.env[key];else process.env[key]=value;}}
+}
 it.each(['onb','off'] as const)('previews populated %s communications in PostgreSQL read-only mode while the actual owner case is locked, without mutation',async module=>{
+ return withFictionalPreviewAuthOrigin(async()=>{
  let id:string;
  if(module==='off')id=(await prepared()).id;
  else{
@@ -1619,6 +1639,7 @@ it.each(['onb','off'] as const)('previews populated %s communications in Postgre
   expect(await v9PlanWorkflow(admin,id,workflow)).toEqual({matches:true,lines:[{text:'Conditions match.',ok:true},expect.objectContaining({text:expect.stringContaining('\"Read-only notice\"')})]});
  },4);
  expect(await previewPhysicalSnapshot(id)).toEqual(before);
+ });
 },30000);
 it('refuses a native Personnel company rebind during preview, then lets the existing case-detail owner persist it',async()=>{
  const draft=await saveEmployeeDraft(admin,{currentStep:5,data:{profile:{fullName:'Fictional company correction',employeeCode:'RO-CORRECTION',primaryEmail:'correction@example.test'},employment:{companyId:base.companyId,departmentId:base.deptA,positionId:base.positionId,employmentType:'full_time',hiredOn:todayInKualaLumpur()},payroll:{basicSalary:'5000'}}});
