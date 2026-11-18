@@ -5,6 +5,7 @@ import {requireAdmin} from '@/lib/authz';
 import {getPayrollHistoryAttempt} from '@/packs/payroll/service';
 import {PageHeader,pageWideCls} from '@/components/ui';
 import {RevisionPreview} from '../../revision-preview';
+import {HistoryMaintenanceControl} from '../../maintenance-control';
 import {RevertControl} from './revert-control';
 import {formatImportActor,formatImportBatch} from '@/lib/import-reference';
 export default async function PayrollHistoryLogPage({params}:{params:Promise<{attemptId:string}>}){
@@ -15,6 +16,7 @@ export default async function PayrollHistoryLogPage({params}:{params:Promise<{at
   <section className="space-y-4 rounded-xl border p-5"><dl className="grid gap-4 text-sm sm:grid-cols-2"><div><dt className="text-muted-foreground">{t('time')}</dt><dd>{format.dateTime(item.createdAt,{dateStyle:'medium',timeStyle:'short',timeZone:'Asia/Kuala_Lumpur'})}</dd></div><div><dt className="text-muted-foreground">{t('user')}</dt><dd className="break-words">{formatImportActor(labels,item.createdByActor)}</dd></div><div className="sm:col-span-2"><dt className="text-muted-foreground">{t('fingerprint')}</dt><dd className="break-all font-mono text-xs">{item.sourceHash}</dd></div></dl><div className="flex flex-wrap gap-3"><Link className="rounded-lg border px-4 py-2 text-sm font-medium" href={'/payroll/history-import/logs/'+item.id+'/source'}>{t('downloadSource')}</Link><Link className="rounded-lg border px-4 py-2 text-sm font-medium" href={'/payroll/history-import/logs/'+item.id+'/report'}>{t('downloadReport')}</Link></div></section>
   <section className="space-y-4 rounded-xl border p-5"><h2 className="font-semibold">{t('audit')}</h2><p className="text-sm text-muted-foreground">{t('auditHint')}</p>{item.events.length===0?<p className="text-sm">{t('states.validated')}</p>:<ol className="divide-y">{item.events.map(event=><li key={event.id} className="space-y-1 py-3 text-sm"><p className="font-medium">{t(`events.${event.kind}`)} · {format.dateTime(event.createdAt,{dateStyle:'medium',timeStyle:'short',timeZone:'Asia/Kuala_Lumpur'})}</p><p className="text-xs text-muted-foreground">{formatImportActor(labels,event.actor)}</p>{typeof event.detail.reason==='string'&&<p className="text-destructive">{event.detail.reason}</p>}</li>)}</ol>}</section>
   <RevisionPreview plan={item.plan}/>
+  {committed&&committed.changes.length>0&&!reverted&&<HistoryMaintenanceControl attemptId={item.id}/>}
   {committed&&committed.changes.length>0&&!reverted&&<RevertControl attemptId={item.id} count={committed.changes.length}/>}
  </div>;
 }
