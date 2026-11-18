@@ -12,7 +12,7 @@ export function ProbationTemplateSection({emails,refs,documents=[],letters,newRe
  const newEmail=()=>setEditing({template:{id:crypto.randomUUID(),name:t('newName'),module:'probation',active:false,subject:'',body:'',cc:[]},revision:0,retired:false});
  useEffect(()=>{if(newRequest>0){newEmail();onNewRequestHandled?.();}},[newRequest]);
  const counts=emails.reduce((total,item)=>{const state=item.template.definition?'converted':convertProbationEmail(item.template).state==='ready'?'ready':'legacy';total[state]++;return total;},{converted:0,ready:0,legacy:0});
- return <div className="v9-stack" data-probation-template-section>
+ return <div className="automation probation v9-stack" data-probation-template-section>
   {letters}
   <p className="v9-notice" role="status">{t('conversionTotals',counts)}</p>
   <section className="v9-panel v9-stack v9-template-list" aria-label={t('emailTemplates')+' · '+t('probation')}><header className="v9-heading"><div><h2>{t('emailTemplates')} · {t('probation')}</h2><p className="v9-muted">{t('intro')}</p></div><button type="button" className="v9-button" onClick={newEmail}>{t('newEmail')}</button></header>

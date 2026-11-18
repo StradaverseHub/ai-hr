@@ -1,3 +1,6 @@
+import '@/app/automation/automation.css';
+import '@/app/automation/pcg.css';
+import '@/app/lifecycle/probation/probation.css';
 import {lifecycleV9SenderName} from '@/lib/lifecycle-v9-sender';
 import type {ReactNode} from 'react';
 import {readProbationLetterWorkspace} from '@/app/lifecycle/probation/templates/read-workspace';
