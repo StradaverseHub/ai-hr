@@ -54,15 +54,17 @@ class Fixture(core.Fixture):
    operation=self.operation;self.source=manifest['source'];operation.rename(self.operation)
    self.archive.write_bytes(package.read_bytes());(self.operation/'authenticated-worker.zip').write_bytes(package.read_bytes())
    self.fmt=actual_fmt;self.manifest=manifest
-   for key in('grant','runtime','activated','verified','auth','first','current','prior'):setattr(self,key,replace(getattr(self,key),changes))
+   for key in('grant','runtime','activated','verified','auth','first','current','prior','ledger','lease'):setattr(self,key,replace(getattr(self,key),changes))
    m=json.loads(self.source_manifest_file.read_bytes());m['source']=self.source;self.source_manifest_file.write_bytes(encoded(m));self.auth['sourceManifestSha256']=ci.sha(self.source_manifest_file.read_bytes());self.first['sourceManifestSha256']=self.auth['sourceManifestSha256']
   else:
    raw=b'fictional package';self.manifest={'entries':[{'path':'package.json','type':'file','mode':0o644,'size':len(raw),'sha256':ci.sha(raw)}]}
   # Assemble the fictitious initial drain before exercising any reviewed operation.
   record=json.loads((self.operation/'drained.json').read_bytes());record['manifestSha256']=self.fmt.digest(self.fmt.canonical(self.manifest));record['identity']=copy.deepcopy(self.auth['identity']);record['identity']['archive_sha256']=ci.sha(self.archive.read_bytes())
   self.auth['identity']=record['identity'];self.auth['drainSha256']=ci.sha(self.fmt.canonical(record));(self.operation/'drained.json').chmod(0o600);(self.operation/'drained.json').write_bytes(self.fmt.canonical(record));(self.operation/'drained.json').chmod(0o400);os.utime(self.operation/'drained.json',(1794873602,1794873602))
+  self.leasefile.write_bytes(encoded(self.lease));self.auth['leaseFileSha256']=ci.sha(self.leasefile.read_bytes());self.first['leaseFileSha256']=self.auth['leaseFileSha256']
   self.first['identity']=copy.deepcopy(record['identity']);self.first['gate']={k:self.grant[k]for k in('source','controller','runId','build','artifact','witnessFingerprint','policyVersion')}
   self.firstfile.write_bytes(encoded(self.first));self.auth['firstStageApprovalSha256']=ci.sha(self.firstfile.read_bytes())
+  for record_value in (self.runtime,self.activated,self.verified):record_value['authorizationSha256']=ci.sha(encoded(self.grant))
   for name,value in [('authorization.json',self.grant),('runtime.json',self.runtime),('activated.json',self.activated),('verified.json',self.verified)]:self.private_record(name,value)
   self.auth.update(grantSha256=ci.sha(encoded(self.grant)),runtimeSha256=ci.sha(encoded(self.runtime)),activatedSha256=ci.sha(encoded(self.activated)))
   self.current['log']=str(root/'original-deploy.log');self.auth['launch']['current']['log']=self.current['log'];self.write_records();self.original_auth=copy.deepcopy(self.auth);self.events=[];self.saved_tree=None
@@ -91,7 +93,7 @@ class Fixture(core.Fixture):
   else:
    directory=self.operation/('prepared-'+ident);d=None;self.held_phase='claimed';self.web=self.previous_web
   output=self.operation/('prepared-worker-'+ident+'.json');self.additional_root_private_files.add(output)
-  a={**copy.deepcopy(self.first),'kind':prepared.KINDS['prepare-ci-worker'],'issuedAt':self.iso(),'expiresAt':self.iso(300),'preparation':{'policy':prepared.POLICY,'mode':'failed-preunit'if recovery else'normal','id':ident,'firstStageApproval':str(self.firstfile),'firstStageApprovalSha256':ci.sha(self.firstfile.read_bytes()),'drainSha256':self.auth['drainSha256'],'directory':str(directory),'directoryIdentity':d,'proof':str(output),'failure':failure}}
+  a={**copy.deepcopy(self.first),'kind':prepared.KINDS['prepare-ci-worker'],'helperSha256':ci.sha(self.helper.read_bytes()),'issuedAt':self.iso(),'expiresAt':self.iso(300),'preparation':{'policy':prepared.POLICY,'mode':'failed-preunit'if recovery else'normal','id':ident,'firstStageApproval':str(self.firstfile),'firstStageApprovalSha256':ci.sha(self.firstfile.read_bytes()),'drainSha256':self.auth['drainSha256'],'directory':str(directory),'directoryIdentity':d,'proof':str(output),'failure':failure}}
   return a
  @contextlib.contextmanager
  def prepared_ports(self):
@@ -106,7 +108,7 @@ class Fixture(core.Fixture):
     if old is not None:os.umask(old)
   proof=Path(record['preparation']['proof']);os.utime(proof,(self.clock,self.clock));return proof
  def live_record(self,preparation,proof):
-  a=copy.deepcopy(self.original_auth);a.update(kind=prepared.KINDS['recover-ci-runtime'if preparation['preparation']['failure']else'activate-prepared-ci-runtime'],issuedAt=self.iso(),expiresAt=self.iso(900),preparedWorker={'path':str(proof),'sha256':ci.sha(proof.read_bytes())})
+  a=copy.deepcopy(self.original_auth);a.update(helperSha256=ci.sha(self.helper.read_bytes()),kind=prepared.KINDS['recover-ci-runtime'if preparation['preparation']['failure']else'activate-prepared-ci-runtime'],issuedAt=self.iso(),expiresAt=self.iso(900),preparedWorker={'path':str(proof),'sha256':ci.sha(proof.read_bytes())})
   if preparation['preparation']['failure']:a['recovery']=copy.deepcopy(preparation['preparation']['failure'])
   return a
  def invoke_live(self,a):
@@ -141,8 +143,10 @@ class PreparedFlowTests(unittest.TestCase):
    o.slot('A0',180);self.assertEqual(ci.SLOT_DEADLINE,827);self.assertEqual(o.base.VERIFIED_OPERATION_DEADLINE,827)
    with patch.object(ci.time,'monotonic',return_value=828),patch.object(ci,'bounded_process',side_effect=AssertionError('Expired global budget spawned child')):
     self.assertRaisesRegex(ValueError,'expired',ci.child,[sys.executable,'-c','print(1)'],SimpleNamespace(pw_uid=os.getuid(),pw_gid=os.getgid()),{},timeout=180)
+ def test_new_qualified_helper_keeps_distinct_historical_helper_provenance(self):
+  f=self.fixture();historical=f.original_auth['helperSha256'];f.helper.write_text('a distinct qualified prepared recovery bundle');a=f.prepare_record(True);self.assertNotEqual(a['helperSha256'],historical);proof=f.invoke_preparation(a);r=f.invoke_live(f.live_record(a,proof));self.assertEqual(r['mode'],'recover-ci-runtime');self.assertEqual(json.loads(f.firstfile.read_bytes())['helperSha256'],historical)
  def test_prepared_file_bytes_must_authenticate_before_seal(self):
-  f=self.fixture();a=f.prepare_record(True);Path(a['preparation']['directory'],'package.json').write_text('altered');self.assertRaisesRegex(ValueError,'content differs',f.invoke_preparation,a);self.assertFalse(Path(a['preparation']['proof']).exists());self.assert_no_unit_mutation(f)
+  f=self.fixture();a=f.prepare_record(True);target=Path(a['preparation']['directory'],'package.json');target.write_bytes(b'X'*target.stat().st_size);self.assertRaisesRegex(ValueError,'content differs',f.invoke_preparation,a);self.assertFalse(Path(a['preparation']['proof']).exists());self.assert_no_unit_mutation(f)
  def test_live_file_drift_refuses_without_recovery_publication(self):
   f=self.fixture();a=f.prepare_record(True);proof=f.invoke_preparation(a);Path(a['preparation']['directory'],'package.json').write_text('altered');self.assertRaisesRegex(ValueError,'differs|changed',f.invoke_live,f.live_record(a,proof));self.assertFalse(any(x.name.startswith('recovery-')for x in f.operation.iterdir()));self.assert_no_unit_mutation(f)
  def test_changed_terminal_failure_refuses_without_attempt_directory(self):

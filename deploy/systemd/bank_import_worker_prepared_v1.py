@@ -49,7 +49,9 @@ def tree_identity(root,manifest,*,deadline,content=False,uid=0):
             elif row['type']=='directory':check(stat.S_ISDIR(s.st_mode) and stat.S_IMODE(s.st_mode)==0o755,'directory kind/mode differs')
             else:
                 check(stat.S_ISLNK(s.st_mode) and os.readlink(path)==row['target'],'link differs')
-                check(path.resolve(strict=True).is_relative_to(root),'prepared link escapes')
+                # The content pass seals actual link closure. Later metadata-only passes
+                # compare every root/member identity and exact literal target to that seal.
+                if content:check(path.resolve(strict=True).is_relative_to(root),'prepared link escapes')
                 actual['target']=row['target']
             rows.append(actual)
     rows.sort(key=lambda row:row['path'])
