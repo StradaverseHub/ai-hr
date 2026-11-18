@@ -30,10 +30,10 @@ describe('payroll history eligibility and exact recovery confirmation',()=>{
   expect(mocks.revert).toHaveBeenCalledExactlyOnceWith('attempt-a',hash);await waitFor(()=>expect(mocks.refresh).toHaveBeenCalledOnce());
   expect(mocks.fetch).toHaveBeenCalledExactlyOnceWith('/payroll/history-import/job?id=job-a',{cache:'no-store'});expect(screen.queryByRole('alert')).toBeNull();expect(screen.queryByRole('checkbox')).toBeNull();
  });
- it('blocks recovery for an ineligible or changed set without exposing a confirmation',async()=>{
+ it('refuses an invalid preview, then uses the actual surviving contribution count instead of the original batch count',async()=>{
   const user=userEvent.setup();mocks.preview.mockResolvedValueOnce({ok:false,error:'A later correction changed this record.'}).mockResolvedValueOnce({ok:true,result:{count:1,previewHash:hash}});const t=show();
   await user.click(screen.getByRole('button',{name:t.reviewRevert}));expect(screen.getByRole('alert')).toHaveTextContent('A later correction');expect(screen.queryByRole('checkbox')).toBeNull();
-  await user.click(screen.getByRole('button',{name:t.reviewRevert}));expect(screen.getByRole('alert')).toHaveTextContent(t.revertChanged);expect(screen.queryByRole('checkbox')).toBeNull();expect(mocks.revert).not.toHaveBeenCalled();
+  await user.click(screen.getByRole('button',{name:t.reviewRevert}));expect(screen.queryByRole('alert')).toBeNull();expect(screen.getByText(/contributions from 1 records/)).toBeInTheDocument();expect(screen.getByRole('checkbox')).not.toBeChecked();expect(screen.getByRole('button',{name:t.revert})).toBeDisabled();expect(mocks.revert).not.toHaveBeenCalled();
  });
  it('disables duplicate review while pending and requires a new review after a failed recovery',async()=>{
   const user=userEvent.setup();let resolve!:(value:unknown)=>void;mocks.preview.mockImplementationOnce(()=>new Promise(done=>{resolve=done;}));mocks.revert.mockResolvedValue({ok:false,error:'A statutory report now depends on this history.'});const t=show();
