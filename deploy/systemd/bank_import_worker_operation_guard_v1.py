@@ -108,7 +108,7 @@ class GuardedInvocation:
         self.ci.verify_python(b,a['python'])
         self.ci.verify_node_options_pins(b,a['nodeOptions'])
         b.root_protected(b.NODE,regular=True)
-        b.check(self.ci.sha(b.read_bounded(b.NODE,128*1024**2))==a['nodeSha256'],'independently approved Node bytes changed')
+        b.check(self.ci.bounded_file_sha256(b,b.NODE,128*1024**2)==a['nodeSha256'],'independently approved Node bytes changed')
         return self.lock.fd
 
     def bind_install(self,fd,path):

@@ -19,4 +19,7 @@ jobs:
       - name: Focused development controls, not worker release authority
         run: |
           node -e "require('node:assert/strict').equal(process.versions.node, '22.23.3')"
+          python3 -I -B test/fixtures/bank-import-worker-runtime-hash-tests.py
+          python3 -I -B test/fixtures/bank-import-worker-native-errors-tests.py
+          python3 -I -B test/fixtures/bank-import-worker-ci-runtime-tests.py ConditionalRuntimeTests.test_native_output_and_silent_runtime_have_hard_streaming_and_time_bounds
           python3 -I -B test/fixtures/bank-import-worker-prepared-tests.py
