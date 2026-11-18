@@ -37015,6 +37015,7 @@
       }
     },
     "taskKinds": {
+      "letter_prepare": {"title": "填写信函所需资料", "action": "填写资料"},
       "submit_employee": {
         "title": "Complete your self-assessment · Part {part}",
         "action": "Open form"

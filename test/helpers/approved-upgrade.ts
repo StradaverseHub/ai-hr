@@ -305,11 +305,15 @@ export const APPROVED_UPGRADE_TAIL=[
  {idx:10083,when:1794998006683,tag:'6683_personnel_completion_routing_bridge'},
  {idx:10084,when:1794998006684,tag:'6684_personnel_completion_projection'},
  {idx:10085,when:1794998006685,tag:'6685_personnel_completion_signature_projection'},
+ {idx:10086,when:1794998006686,tag:'6686_probation_personnel_completion'},
+ {idx:10087,when:1794998006687,tag:'6687_probation_personnel_completion_commands'},
  {idx:10088,when:1794998006688,tag:'6688_personnel_completion_recovery'},
  {idx:10089,when:1794998006689,tag:'6689_personnel_completion_recovery_jobs'},
 ] as const;
 // Final pending 2109/2126 bytes reviewed from engine 128bc2539; no applied-prefix hashes change.
 const APPROVED_UPGRADE_HASHES:Record<string,string>={
+ '6686_probation_personnel_completion':'3301a993b95716c02af1d71079d8a84854edc6bcefdac0716190fdf430cf38ae',
+ '6687_probation_personnel_completion_commands':'1559c694d713bdd0466bf9e9c8f43020d46eae868a2dbb7c482662a0f9d8f47b',
  '6688_personnel_completion_recovery':'9c545555286be42949da90817a003f3cdae2c15f8bacc993c293966ed412fa62',
  '6689_personnel_completion_recovery_jobs':'5cd7a902f1bef6290a4c9d54711f84b5dccceb154eacd1bcea59d6127323f5b4',
  '6680_personnel_completion_phone_metadata':'3e6abfc893c876c3d06dc73fcd63bf601687da8654e22dfb5d3a4026ac6b738a',

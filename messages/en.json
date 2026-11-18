@@ -37015,6 +37015,7 @@
       }
     },
     "taskKinds": {
+      "letter_prepare": {"title": "Complete requested letter details", "action": "Fill in details"},
       "submit_employee": {
         "title": "Complete your self-assessment · Part {part}",
         "action": "Open form"

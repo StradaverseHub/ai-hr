@@ -37015,6 +37015,7 @@
       }
     },
     "taskKinds": {
+      "letter_prepare": {"title": "Lengkapkan butiran surat yang diminta", "action": "Isi butiran"},
       "submit_employee": {
         "title": "Complete your self-assessment · Part {part}",
         "action": "Open form"
