@@ -74,7 +74,7 @@ it.each(['light','dark'] as const)('captures the real modal save failure and ret
  render(<TemplateSurface kind="email" dirty close={()=>{}} heading={<h2>Fictional Welcome email</h2>}><ConfigurationSaveStatus state="error" error="The image receipt could not be verified." names={['Fictional welcome.png']} retry={()=>{}} reload={()=>{}}/><EmailDefinition email={{...v9Defaults().emails[0],images:[{...image,alt:'Connect, learn and grow'}]}} templates={[]} disabled={false} saved={false} uploadsReady={false} change={()=>{}}/></TemplateSurface>);
  fireEvent.click(screen.getByRole('tab',{name:'Preview'}));
  const style=readFileSync('app/lifecycle/v9/workspace.css','utf8')+readFileSync('app/onboarding-workspace.css','utf8');
- await captureAiReviewScreenshots('<style>'+style+'</style><div class="v9-workspace">'+aiReviewDomHtml(document.body)+'</div>','en','feedback-image-save-ack-'+mode,'Actual email modal, named save failure, retry and dirty preview; fictional content; controlled render, not staging acceptance','atelier',mode);
+ await captureAiReviewScreenshots('<style>'+style+'</style><div class="v9-workspace">'+aiReviewDomHtml(document.body)+'</div>','en',`feedback-image-save-ack-${mode}`,'Actual email modal, named save failure, retry and dirty preview; fictional content; controlled render, not staging acceptance','atelier',mode);
 },120000);
 
 it('warns before reload and in-app navigation only while a save is unacknowledged',()=>{

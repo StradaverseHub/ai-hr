@@ -19,7 +19,7 @@ it('serializes exact owned bytes and Content-ID for all four raster MIME types w
  const formats=[['png','image/png',png],['jpg','image/jpeg',await sharp(png).jpeg().toBuffer()],['gif','image/gif',await sharp(png).gif().toBuffer()],['webp','image/webp',await sharp(png).webp().toBuffer()]] as const;
  for(const [extension,mime,bytes] of formats){
   const image:EmailAsset={id:'9ea43e78-c325-4f88-8313-1b6fc3a1a78e',kind:'image',name:'Fictional welcome.'+extension,mimeType:mime,size:bytes.length,contentHash:'a'.repeat(64),at:'2026-11-18T00:00:00Z',by:'Fictional HR',alt:'Grow "safely" & <together>'};
-  const content=renderEmailBody({type:'doc',content:[{type:'paragraph',content:[{type:'text',text:'Before'},{type:'image',attrs:{assetId:image.id,alt:image.alt??image.name}},{type:'text',text:'After'}]}]},{images:[{id:image.id,alt:image.alt??image.name,cid:v9ImageCid(image.id)}]});
+  const content=renderEmailBody({type:'doc',content:[{type:'paragraph',content:[{type:'text',text:'Before'},{type:'image',attrs:{assetId:image.id,alt:image.alt??image.name}},{type:'text',text:'After'}]}]},{values:{},images:[{id:image.id,alt:image.alt??image.name,cid:v9ImageCid(image.id)}]});
   expect(content.html).toContain('alt="Grow &quot;safely&quot; &amp; &lt;together&gt;"');
   expect(v9EmailContent('{image:'+image.id+'}',[{...image,alt:''}]).html).toContain('alt="'+image.name+'"');
   await sendSmtp({config:{host:'unused.fixture.invalid',port:465,security:'tls',from:'owner@fictional.invalid',fromName:'Fictional HR',replyTo:'',auth:false,user:''}},{to:'recipient@fictional.invalid',subject:'Fictional image',text:content.text,html:content.html,messageId:'<image-fixture@fictional.invalid>',attachments:[{filename:image.name,contentType:mime,bytes,cid:v9ImageCid(image.id)}]});
