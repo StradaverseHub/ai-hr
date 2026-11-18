@@ -1,7 +1,7 @@
 // Lane K2 (migration 5764): the shared routings are the one owner of a case's PBP and Head of Department. Converted
 // Native shared Business Partner rules resolve to the same person, a routing edit re-resolves unsigned holders, no matching row goes to
 // the fallback group, and a group row makes each member a holder. Fictional people and companies only.
-import {automationBusinessPartnerWorkspace,saveAutomationBusinessPartners} from '../packs/automation/service';
+import {automationBusinessPartnerWorkspace,saveAutomationBusinessPartners,type BusinessPartnerRule} from '../packs/automation/service';
 import {afterAll,beforeAll,beforeEach,describe,expect,it} from 'vitest';
 import {randomUUID} from 'node:crypto';
 import {sql} from 'drizzle-orm';
@@ -14,7 +14,7 @@ import {probationFormCaseFixture} from './helpers/probation-form-case-fixture';
 
 const BP='a0700000-0000-4000-8000-000000001001',HOD='a0700000-0000-4000-8000-000000001002';
 let b:Base,admin:SessionContext;
-async function saveBusinessPartners(rules:Parameters<typeof saveAutomationBusinessPartners>[1]['rules']){
+async function saveBusinessPartners(rules:BusinessPartnerRule[]){
  // The fixture's existing privileged account needs a genuine Person, not an identity exemption.
  const[account]=await owner.db.execute<{person_id:string|null}>(sql`select person_id from app_user where tenant_id=${b.tenantId}::uuid and id=${admin.userId}::uuid`);
  if(!account)throw Error('The actual fixture administrator account is missing.');

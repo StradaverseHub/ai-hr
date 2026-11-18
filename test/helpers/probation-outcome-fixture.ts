@@ -1,6 +1,6 @@
 // Shared fixture for the Probation runtime wiring tests (lane D2): a native Part 3 case taken through the real
 // commands up to a recorded outcome. Fictional people only.
-import {automationBusinessPartnerWorkspace,saveAutomationBusinessPartners} from '../../packs/automation/service';
+import {automationBusinessPartnerWorkspace,saveAutomationBusinessPartners,type BusinessPartnerRule} from '../../packs/automation/service';
 import {sql} from 'drizzle-orm';
 import {randomUUID} from 'node:crypto';
 import {hireEmployee,setReportingLine} from '../../core/org';
@@ -13,7 +13,7 @@ import {probationCase,saveProbationDraft,actOnProbation,DEFAULT_PROBATION_CONFIG
 
 export function probationOutcomeFixture(b:Base,start:SessionContext){
  let admin=start;
-async function saveBusinessPartners(rules:Parameters<typeof saveAutomationBusinessPartners>[1]['rules']){
+async function saveBusinessPartners(rules:BusinessPartnerRule[]){
  const current=await automationBusinessPartnerWorkspace(admin);
  if(!current)throw Error('The actual fixture administrator cannot configure Business Partner responsibilities.');
  await saveAutomationBusinessPartners(admin,{expectedRevision:current.revision,rules,reason:'Reviewed fictional Contract and Probation Business Partner responsibilities'});

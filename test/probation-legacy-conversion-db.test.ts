@@ -3,7 +3,7 @@
 // rendered with lib/probation-workflow.ts) are compared with what the converted shared workflow sends on the same case
 // at each stage: recipients, subject and body. "Move to shared workflows" is idempotent and audited, and a moved
 // definition never notifies a case twice. Fictional people only.
-import {automationBusinessPartnerWorkspace,saveAutomationBusinessPartners} from '../packs/automation/service';
+import {automationBusinessPartnerWorkspace,saveAutomationBusinessPartners,type BusinessPartnerRule} from '../packs/automation/service';
 import {beforeAll,beforeEach,afterAll,describe,it,expect} from 'vitest';
 import {sql} from 'drizzle-orm';
 import {randomUUID} from 'node:crypto';
@@ -19,7 +19,7 @@ import {probationNotifyPreviewTx,probationAutomationCaseTx} from '../core/probat
 import {probationCase,saveProbationDraft,actOnProbation,moveProbationWorkflowsToShared,DEFAULT_PROBATION_CONFIG,DEFAULT_PROBATION_FORM,defaultProbationRoutes} from '../packs/probation/service';
 
 let b:Base,admin:SessionContext;
-async function saveBusinessPartners(rules:Parameters<typeof saveAutomationBusinessPartners>[1]['rules']){
+async function saveBusinessPartners(rules:BusinessPartnerRule[]){
  const current=await automationBusinessPartnerWorkspace(admin);
  if(!current)throw Error('The actual fixture administrator cannot configure Business Partner responsibilities.');
  await saveAutomationBusinessPartners(admin,{expectedRevision:current.revision,rules,reason:'Reviewed fictional Contract and Probation Business Partner responsibilities'});

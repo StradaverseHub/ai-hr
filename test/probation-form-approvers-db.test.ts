@@ -3,7 +3,7 @@
 // Manager submits, frozen for the Part; nobody available goes to the case's fallback group and is recorded; Review and
 // Approve rows record decisions without a signature; a Direct Superior row follows the case's holder and the
 // duplicate-role policy; an assigned person's general Probation delegation moves the step. Fictional people only.
-import {automationBusinessPartnerWorkspace,saveAutomationBusinessPartners} from '../packs/automation/service';
+import {automationBusinessPartnerWorkspace,saveAutomationBusinessPartners,type BusinessPartnerRule} from '../packs/automation/service';
 import {beforeAll,beforeEach,afterAll,describe,it,expect} from 'vitest';
 import {sql} from 'drizzle-orm';
 import {randomUUID} from 'node:crypto';
@@ -17,7 +17,7 @@ import type {ProbationApprovalRow} from '../lib/probation-form';
 import {probationCase,saveProbationDraft,actOnProbation,probationTaskList,probationSummaryRows,DEFAULT_PROBATION_CONFIG,DEFAULT_PROBATION_FORM,defaultProbationRoutes} from '../packs/probation/service';
 
 let b:Base,admin:SessionContext;
-async function saveBusinessPartners(rules:Parameters<typeof saveAutomationBusinessPartners>[1]['rules']){
+async function saveBusinessPartners(rules:BusinessPartnerRule[]){
  const current=await automationBusinessPartnerWorkspace(admin);
  if(!current)throw Error('The actual fixture administrator cannot configure Business Partner responsibilities.');
  await saveAutomationBusinessPartners(admin,{expectedRevision:current.revision,rules,reason:'Reviewed fictional Contract and Probation Business Partner responsibilities'});

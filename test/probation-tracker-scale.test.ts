@@ -4,7 +4,7 @@
  * counts) for every existing tile, plus an independent count for the new "Suggestion overridden" tile and the
  * Ext. column. Fixture rows are fictional and generated set-based.
  */
-import {automationBusinessPartnerWorkspace,saveAutomationBusinessPartners} from '../packs/automation/service';
+import {automationBusinessPartnerWorkspace,saveAutomationBusinessPartners,type BusinessPartnerRule} from '../packs/automation/service';
 import {afterAll,beforeAll,beforeEach,describe,expect,it} from 'vitest';
 import {randomUUID} from 'node:crypto';
 import {readFileSync} from 'node:fs';
@@ -18,7 +18,7 @@ import {DEFAULT_PROBATION_CONFIG,DEFAULT_PROBATION_FORM,defaultProbationRoutes,p
 
 const COMPANIES=72,PER_COMPANY=15;
 let b:Base,admin:SessionContext;
-async function saveBusinessPartners(rules:Parameters<typeof saveAutomationBusinessPartners>[1]['rules']){
+async function saveBusinessPartners(rules:BusinessPartnerRule[]){
  const current=await automationBusinessPartnerWorkspace(admin);
  if(!current)throw Error('The actual fixture administrator cannot configure Business Partner responsibilities.');
  await saveAutomationBusinessPartners(admin,{expectedRevision:current.revision,rules,reason:'Reviewed fictional Contract and Probation Business Partner responsibilities'});

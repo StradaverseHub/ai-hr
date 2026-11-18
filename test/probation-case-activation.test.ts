@@ -1,5 +1,5 @@
 /** Decision 6 (migration 5744, core/probation.ts sweep): a case opens at activation, waits for the start date, and closes as Did not join. */
-import {automationBusinessPartnerWorkspace,saveAutomationBusinessPartners} from '../packs/automation/service';
+import {automationBusinessPartnerWorkspace,saveAutomationBusinessPartners,type BusinessPartnerRule} from '../packs/automation/service';
 import {afterAll,beforeAll,beforeEach,describe,expect,it} from 'vitest';
 import {randomUUID} from 'node:crypto';
 import {sql} from 'drizzle-orm';
@@ -11,7 +11,7 @@ import {addDaysIso} from '../lib/roster-month';
 import {DEFAULT_PROBATION_CONFIG,DEFAULT_PROBATION_FORM,defaultProbationRoutes,probationActivationCounts,saveProbationConfiguration,sweepProbation} from '../packs/probation/service';
 
 let b:Base,admin:SessionContext,grade:string;
-async function saveBusinessPartners(rules:Parameters<typeof saveAutomationBusinessPartners>[1]['rules']){
+async function saveBusinessPartners(rules:BusinessPartnerRule[]){
  const current=await automationBusinessPartnerWorkspace(admin);
  if(!current)throw Error('The actual fixture administrator cannot configure Business Partner responsibilities.');
  await saveAutomationBusinessPartners(admin,{expectedRevision:current.revision,rules,reason:'Reviewed fictional Contract and Probation Business Partner responsibilities'});

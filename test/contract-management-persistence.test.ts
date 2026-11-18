@@ -1,4 +1,4 @@
-import {automationBusinessPartnerWorkspace,saveAutomationBusinessPartners} from '../packs/automation/service';
+import {automationBusinessPartnerWorkspace,saveAutomationBusinessPartners,type BusinessPartnerRule} from '../packs/automation/service';
 import {randomUUID} from 'node:crypto';
 import {afterAll,beforeAll,beforeEach,describe,expect,it} from 'vitest';
 import {eq,sql} from 'drizzle-orm';
@@ -16,7 +16,7 @@ import {closeAll,migrateTestDb,resetDb,seedBase,setModule,entitledCtx,createAppU
 import * as S from '../db/schema';
 import {contractConfigurationDirectory,contractConfigurationWorkflows,contractDirectory,contractNavigationAccess,contractInbox,reconcileContractSource,contractCompanies,canConfigureContractWorkflows,setupContractManagement,contractWorkflowWorkspace,assignContractRole,captureContractRetirementEvidence,saveContractTemplate,publishContractTemplate,saveContractWorkflow,saveContractConfiguration,contractSettings,intakeContract,previewContractIntake,contractCase,contractCases,submitContractDecision,confirmContractDecision,decideContractApproval,acceptContract,retryContractRecords,amendContractEnd,contractLetterEditor,releaseContractLetter,handoffContract,sweepContractManagement} from '../packs/contracts/service';
 let b:Base,admin:SessionContext;
-async function saveBusinessPartners(rules:Parameters<typeof saveAutomationBusinessPartners>[1]['rules']){
+async function saveBusinessPartners(rules:BusinessPartnerRule[]){
  // The fixture's existing privileged account needs a genuine Person, not an identity exemption.
  const[account]=await owner.db.execute<{person_id:string|null}>(sql`select person_id from app_user where tenant_id=${b.tenantId}::uuid and id=${admin.userId}::uuid`);
  if(!account)throw Error('The actual fixture administrator account is missing.');

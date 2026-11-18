@@ -1,4 +1,4 @@
-import {automationBusinessPartnerWorkspace,saveAutomationBusinessPartners} from '../packs/automation/service';
+import {automationBusinessPartnerWorkspace,saveAutomationBusinessPartners,type BusinessPartnerRule} from '../packs/automation/service';
 import {beforeAll,beforeEach,afterAll,describe,it,expect} from 'vitest';
 import {sql} from 'drizzle-orm';
 import {PgDialect} from 'drizzle-orm/pg-core';
@@ -23,7 +23,7 @@ import {listPendingTasks} from '../core/approvals-inbox';
 import {adminCtx,entitledCtx,closeAll,setModule,migrateTestDb,owner,resetDb,seedBase,type Base} from './harness';
 import {bootstrapProbationPreparer,installProbationDrafts,probationSetup,saveProbationConfiguration,DEFAULT_PROBATION_CONFIG,DEFAULT_PROBATION_FORM,defaultProbationRoutes,canConfigureProbationWorkflows,probationEmployeeNameSuggestions,probationSummaryRows,sweepProbation} from '../packs/probation/service';
 let b:Base,admin:SessionContext;
-async function saveBusinessPartners(rules:Parameters<typeof saveAutomationBusinessPartners>[1]['rules']){
+async function saveBusinessPartners(rules:BusinessPartnerRule[]){
  const current=await automationBusinessPartnerWorkspace(admin);
  if(!current)throw Error('The actual fixture administrator cannot configure Business Partner responsibilities.');
  await saveAutomationBusinessPartners(admin,{expectedRevision:current.revision,rules,reason:'Reviewed fictional Contract and Probation Business Partner responsibilities'});

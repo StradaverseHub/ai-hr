@@ -1,5 +1,5 @@
 /** Native custody fixtures use actual offboarding, P-file PDFs and independently verified roles. */
-import {automationBusinessPartnerWorkspace,saveAutomationBusinessPartners} from '../packs/automation/service';
+import {automationBusinessPartnerWorkspace,saveAutomationBusinessPartners,type BusinessPartnerRule} from '../packs/automation/service';
 import {randomUUID} from 'node:crypto';
 import {PDFDocument} from 'pdf-lib';
 import {beforeAll,beforeEach,afterAll,describe,it,expect} from 'vitest';
@@ -14,7 +14,7 @@ import {todayInKualaLumpur} from '../lib/hr-date';
 import type {SessionContext} from '../db/client';
 import {closeAll,migrateTestDb,resetDb,seedBase,setModule,entitledCtx,createAppUser,owner,type Base} from './harness';
 let b:Base,admin:SessionContext;
-async function saveBusinessPartners(rules:Parameters<typeof saveAutomationBusinessPartners>[1]['rules']){
+async function saveBusinessPartners(rules:BusinessPartnerRule[]){
  const current=await automationBusinessPartnerWorkspace(admin);
  if(!current)throw Error('The actual fixture administrator cannot configure Business Partner responsibilities.');
  await saveAutomationBusinessPartners(admin,{expectedRevision:current.revision,rules,reason:'Reviewed fictional Contract and Probation Business Partner responsibilities'});
