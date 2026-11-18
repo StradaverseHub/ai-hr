@@ -1,4 +1,4 @@
-import {readEffectiveTaxBasesTx,type TaxBasisCorrectionRef} from '../../core/payroll-tax-basis-read';
+import type {TaxBasisCorrectionRef} from '../../packs/payroll/service';
 import {PayrollTaxBasisError} from '../../lib/payroll-tax-basis';
 import {employmentInformationAt,informationReportRelation} from '../../core/information-correction-history';
 import {readSavedTaxCircumstance} from './tax-circumstance';
@@ -959,7 +959,7 @@ async function loadYearRows(
       .leftJoin(informationReportRelation('employee_statutory_my',companyId,year), eq(employeeStatutoryMy.personId, employment.personId))
       .where(and(eq(payrollBatch.companyId, companyId), like(payrollBatch.payPeriod, `${year}-%`)));
 
-    const corrections = await readEffectiveTaxBasesTx(tx, ctx, slips.map(s => s.id));
+    const corrections = await (await import('../../packs/payroll/service')).readEffectiveTaxBasesTx(tx, ctx, slips.map(s => s.id));
     const correctionEmploymentIds = new Set(slips.filter(s => corrections.has(s.id)).map(s => s.employmentId));
     const byEmp = new Map<string, YearRow>();
     for (const s of slips) {
@@ -1979,7 +1979,7 @@ export async function eaStatement(
      */
     if (employerId !== info.companyId && slips.length === 0) return null;
     const originalSlips = slips.map(s => ({...s}));
-    const correctedBases = await readEffectiveTaxBasesTx(tx, ctx, slips.map(s => s.id));
+    const correctedBases = await (await import('../../packs/payroll/service')).readEffectiveTaxBasesTx(tx, ctx, slips.map(s => s.id));
     const taxBasisCorrections = [...correctedBases.values()].flatMap(value => value.correction?[value.correction]:[]);
     for (const slip of slips) {
       const corrected = correctedBases.get(slip.id);

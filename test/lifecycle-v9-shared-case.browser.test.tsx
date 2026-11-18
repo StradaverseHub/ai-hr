@@ -3,7 +3,7 @@ import '../app/globals.css';
 import '../app/atelier.css';
 import '../app/onboarding-workspace.css';
 import '../app/lifecycle/v9/workspace.css';
-import {beforeAll,expect,it,vi} from 'vitest';
+import {afterEach,beforeAll,expect,it,vi} from 'vitest';
 import {cleanup,fireEvent,render,screen,within} from '@testing-library/react';
 import {NextIntlClientProvider} from 'next-intl';
 import messages from '../messages/en.json';
@@ -19,6 +19,8 @@ vi.mock('../app/lifecycle/onboarding/v31-actions',()=>({changeOnboarding:vi.fn()
 vi.mock('next/navigation',()=>({useRouter:()=>({refresh:vi.fn()})}));
 vi.mock('../app/lifecycle/v9/actions',()=>({readV9PersonnelPreview:vi.fn().mockResolvedValue({ok:true,values:{}}),commandV9:vi.fn(),readV9Case:vi.fn().mockResolvedValue({ok:false,error:'Salary source unavailable'}),readV9Email:vi.fn(),readV9UpdatedEmail:vi.fn(),readV9Workflow:vi.fn()}));
 beforeAll(()=>{HTMLDialogElement.prototype.showModal=function(){this.setAttribute('open','');};});
+// Each width ends with its onboarding render; never leave that tree in the next viewport case.
+afterEach(cleanup);
 function fixture(state:'submitted'|'cleared'|'cancelled'|'pending'='submitted'){
  const communications=communicationsFixture('off');
  const c=fictionalV9Case({...communications.c,state,tasks:[{...fictionalV9Task('Later task'),dueOn:'2026-12-02'},{...fictionalV9Task('Document task'),documentTemplate:'document',dueOn:'2026-11-28'},fictionalV9Task('Earlier task')],items:[{id:'item',name:'Fictional laptop',kind:'device',sourceId:null,group:null,assignee:null,dueOn:'2026-11-30',status:'todo',reason:'',returnReported:{at:'2026-11-01T00:00:00Z',by:'employee',note:'Reception receipt'},nativeSource:{caseId:'native-case',requestId:'request',itemId:'native-item',requestNumber:'IT-FICTIONAL'}}]});
@@ -36,7 +38,7 @@ it.each([1440,390])('renders the approved shared case structure at %i pixels wit
  // Assert its populated replacement surfaces independently rather than restoring the obsolete six-section layout.
  const headings=[...container.querySelectorAll('.lifecycle-case-page>.lifecycle-case-section')].map(section=>section.querySelector('h2')?.textContent);
  expect(headings).toEqual(['Return and revoke','Exit clearance']);
- const communications=screen.getByRole('region',{name:'Communications & documents'});
+ const communications=within(container).getByRole('region',{name:'Communications & documents'});
  const tabs=within(communications).getAllByRole('tab');
  expect(tabs.map(tab=>tab.textContent?.replace(/\s+\d+$/, '').trim())).toEqual(['Schedule','Documents & files','Sent log','Personnel changes']);
  const assertWidth=()=>expect(workspace.scrollWidth).toBeLessThanOrEqual(workspace.clientWidth+1);
