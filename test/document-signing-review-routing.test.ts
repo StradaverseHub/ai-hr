@@ -53,10 +53,11 @@ describe('template-routing signing model',()=>{
   expect(resendSigningDocument(resent,{id:'r1',actorId:'gbs',actorPersonId:'person-gbs',actorName:'gbs',at})).toBe(resent);
   expect(()=>resendSigningDocument(resent,{id:'r2',actorId:'gbs',actorPersonId:'person-gbs',actorName:'gbs',at})).toThrow('sent back');
  });
- it('restarts routing from the first stage when the owner revises the returned content',()=>{
+ it('restarts routing from the first stage only after the owner resends revised returned content',()=>{
   const returned=act(act(chain(),'review','gbs','reviewed'),'approve','hod','returned','Wrong date');
   expect(canEditSigningContent(returned,'gbs')).toBe(true);expect(canEditSigningContent(returned,'hod')).toBe(false);
-  expect(pending(reviseSigningDocument(returned,'b'.repeat(64)))).toEqual(['review']);
+  const revised=reviseSigningDocument(returned,'b'.repeat(64));expect(pending(revised)).toEqual([]);
+  expect(pending(resendSigningDocument(revised,{id:'resend-revised',actorId:'gbs',actorPersonId:'person-gbs',actorName:'gbs',at}))).toEqual(['review']);
  });
  it('lets the owner and the pending Review step edit until the first signature, then locks the content for everyone',()=>{
   const doc=routed([step('review','review',1,'gbs'),step('second-review','review',1,'hod'),step('sign','sign',2,'pbp')],'case-owner');
@@ -143,4 +144,11 @@ describe('signing and review routing per template version',()=>{
   const {route,unresolved}=resolveDocumentRouting([{id:'e',order:1,action:'sign',who:{kind:'employee'},owner:false}],ctx);
   expect(route.steps[0].holderId).toBeNull();expect(unresolved[0]).toMatchObject({stepId:'e',holderId:null,fallbackGroupId:null});
  });
+});
+
+it('retains returned owner custody across revised content until explicit resend, without reviving old signatures',()=>{
+ let doc=act(act(chain(),'review','gbs','reviewed'),'approve','hod','approved');doc=act(doc,'sign-pbp','pbp','signed');doc=act(doc,'sign-pbp','pbp','returned','Correct the wording');
+ const returned=doc.actions.at(-1)!;doc=reviseSigningDocument(doc,'b'.repeat(64));
+ expect(signingSendBack(doc)).toEqual(returned);expect(pending(doc)).toEqual([]);expect(signingContentLocked(doc)).toBe(false);expect(canEditSigningContent(doc,'gbs')).toBe(true);expect(canEditSigningContent(doc,'pbp')).toBe(false);
+ doc=resendSigningDocument(doc,{id:'edited-resend',actorId:'gbs',actorPersonId:'person-gbs',actorName:'gbs',at});expect(signingSendBack(doc)).toBeNull();expect(pending(doc)).toEqual(['review']);expect(doc.actions).toHaveLength(5);
 });

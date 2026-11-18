@@ -1,0 +1,30 @@
+import {afterEach,expect,it,vi} from 'vitest';
+import {aiReviewDomHtml,captureAiReviewScreenshots} from './helpers/ai-review-screenshots';
+import {cleanup,fireEvent,render,screen} from '@testing-library/react';
+import {NextIntlClientProvider} from 'next-intl';
+import messages from '../messages/en.json';
+import {UiThemeProvider} from '../components/ui-theme-context';
+import {newProbationLetterTemplate} from '../lib/probation-letter-template';
+import type {LetterBuilderCatalog} from '../lib/probation-letter-matching';
+
+vi.mock('next/navigation',()=>({usePathname:()=>'/lifecycle/v9/templates',useSearchParams:()=>new URLSearchParams(),useRouter:()=>({refresh:vi.fn(),push:vi.fn()})}));
+vi.mock('next/link',async()=>{const React=await import('react');return{default:({prefetch,...props}:any)=>React.createElement('a',props,props.children)};});
+vi.mock('../app/lifecycle/probation/templates/actions',()=>({saveRoutedLetterTemplate:vi.fn(),previewTemplateForCase:vi.fn(),deleteLetterTemplate:vi.fn()}));
+vi.mock('../app/lifecycle/probation/actions',()=>({readPublicationRetirement:vi.fn(),retirePublication:vi.fn()}));
+vi.mock('../app/automation/actions',()=>({searchPeopleAction:vi.fn()}));
+const {TemplateWorkspace}=await import('../app/lifecycle/probation/templates/template-workspace');
+afterEach(()=>{cleanup();document.documentElement.classList.remove('dark');document.documentElement.removeAttribute('data-ui-theme');});
+const choice=(id:string,code:string)=>({id,code,name:code,archived:false});
+const catalog:LetterBuilderCatalog={companyId:'company',parentCompanyId:'parent',targets:{company:[choice('company','FICTIONAL')],businessGroup:[choice('bu','OPS')],department:[choice('dept','People')],grade:[choice('grade','JG17')]},positions:[choice('title','People Adviser')]};
+for(const theme of ['classic','monolith','atelier'] as const)for(const dark of [false,true])it(`renders the actual Probation builder ${theme} ${dark?'dark':'light'}`,async()=>{
+ document.documentElement.dataset.uiTheme=theme;document.documentElement.classList.toggle('dark',dark);
+ const template={...newProbationLetterTemplate('confirm','fictional','Fictional confirmation letter'),organisationMapping:'personnel-v2' as const,organisationMigration:{sourceVersionId:null,sourceVersion:0,reviewed:true as const,mappings:[]},rules:{company:['company']},routingRegistry:'on-off-boarding' as const,routing:[{id:'hr',order:1,action:'sign' as const,who:{kind:'group' as const,groupId:'people'},owner:true},{id:'employee',order:2,action:'acknowledge' as const,who:{kind:'employee' as const},owner:false}]};
+ template.blocks.find(block=>block.id==='body')!.text='Dear {employeeName}';
+ template.blocks=template.blocks.map(block=>block.type==='signature'?{...block,role:block.role==='hr'?'step:hr':'step:employee'}:block);
+ render(<UiThemeProvider theme={theme}><NextIntlClientProvider locale="en" messages={messages}><main className="v9-workspace p-4" style={{maxWidth:'100%',minWidth:0}}><TemplateWorkspace embedded company={{id:'company',name:'Fictional Company'}} companies={[{id:'company',name:'Fictional Company'}]} builderCatalog={catalog} ruleOptions={{businessGroups:[],businessUnits:[],departments:[],grades:[]}} routingStored nativeRoutingChoices={{routings:[],groups:[{id:'people',name:'Fictional People Ops'}]}} definitions={[{id:'version',companyId:'company',key:'fictional',version:1,state:'draft',data:template}]}/></main></NextIntlClientProvider></UiThemeProvider>);
+ fireEvent.click(screen.getByRole('button',{name:'Fictional confirmation letter'}));
+ expect(screen.getByLabelText('Grade at start')).toBeVisible();expect(screen.getByLabelText('Employment type')).toBeVisible();expect(screen.getByRole('heading',{name:'Signing and review routing'})).toBeVisible();
+ expect(screen.getByRole('combobox',{name:'Signature block 5'})).toBeDefined();
+ await captureAiReviewScreenshots(aiReviewDomHtml(document.body),`en-${theme}-${dark?'dark':'light'}`,'lifecycle-letter-template','Actual canonical Probation template workspace and native signing editor; fictional scoped props and component interactions; no authenticated server journey',theme,dark?'dark':'light');
+ fireEvent.click(screen.getByRole('tab',{name:'Preview'}));expect(screen.getByText(/Dear Alex Tan \(sample\)/)).toBeVisible();
+},120_000);

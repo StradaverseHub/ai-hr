@@ -164,7 +164,7 @@ export async function installAutomationDefaults(ctx: SessionContext, defaults: A
         if (existing.has(template.id)) continue;
         const problems = automationEmailTemplateProblems(template, catalogue, refs);
         if (problems.length) throw new AutomationError('invalid', 'A default email template is not valid.', problems);
-        await tx.execute(sql`select app.automation_email_template_save(${template.id}::uuid, ${template.module}, ${template.name}, ${template.active}, ${template.subject}, ${template.body}, ${JSON.stringify(template.cc)}::jsonb, false, 0, ${reason})`);
+        await tx.execute(sql`select app.automation_rich_email_template_save(${template.id}::uuid, ${template.module}, ${template.name}, ${template.active}, ${template.subject}, ${template.body}, ${JSON.stringify(template.cc)}::jsonb, false, 0, ${reason}, null::jsonb)`);
         installed.emailTemplates++;
       }
       for (const workflow of defaults.workflows) {

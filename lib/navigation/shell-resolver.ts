@@ -187,7 +187,7 @@ export function resolveShellNavigation({
   const v9Administration = onboardingV9Access && !!onboardingV9Navigation?.administration;
   const automationRows: ChildItem[] = [
     ...(probationAccess.configure || contractStaffAccess.configure || v9Administration ? AUTOMATION_NAVIGATION : []),
-    ...V9_AUTOMATION_NAVIGATION.filter(() => v9Administration).map(item => ({
+    ...V9_AUTOMATION_NAVIGATION.filter(item => v9Administration || item.view==='templates'&&probationAccess.configure).map(item => ({
       href: item.href, labelKey: item.automationLabelKey, icon: ONBOARDING_NODE.icon, exactHref: true,
     } satisfies ChildItem)).filter(canSeeChild),
   ];

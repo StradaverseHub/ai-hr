@@ -1,4 +1,4 @@
-import {notFound} from 'next/navigation';
+import {notFound,redirect} from 'next/navigation';
 import {requireScopedLifecycleModule} from '@/lib/scoped-lifecycle-page';
 import {automationAssignmentGroups,automationPeopleNames,listAutomationEmailTemplates,listAutomationRoutings} from '@/packs/automation/service';
 import {automationFilter,automationPageAccess} from '../access';
@@ -8,6 +8,7 @@ import {TemplatesWorkspace,type LetterSection,type ListedEmailTemplate} from './
 export default async function Page({searchParams}:{searchParams:Promise<Record<string,string|string[]|undefined>>}){
  const ctx=await requireScopedLifecycleModule(),query=await searchParams,access=await automationPageAccess(ctx);
  if(!access.any)notFound();
+ if(query.module==='probation'&&access.probation)redirect('/lifecycle/v9?view=templates&module=probation'+(typeof query.company==='string'?'&company='+encodeURIComponent(query.company):''));
  const filter=automationFilter(query.module,access);
  let emails:ListedEmailTemplate[]=[],letters:LetterSection=null;
  const refs:{routings:{id:string;name:string;retired?:boolean}[];groups:{id:string;name:string}[];people:{id:string;name:string}[]}={routings:[],groups:[],people:[]};

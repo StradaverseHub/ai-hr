@@ -4,7 +4,7 @@ import {requireScopedLifecycleModule} from '@/lib/scoped-lifecycle-page';
 import {
   AutomationError,automationBuilderAccess,automationPeopleNames,conditionFieldsForTrigger,dryRunAutomationWorkflow,
   installAutomationDefaults,listAutomationRoutings,automationAssignmentGroups,resolveRoutingRow,
-  saveAutomationEmailTemplate,saveAutomationRouting,saveAutomationWorkflow,searchAutomationPeople,
+  automationEmailTemplateHistory,saveAutomationEmailTemplate,saveAutomationRouting,saveAutomationWorkflow,searchAutomationPeople,
   type AutomationDryRun,type AutomationEmailTemplate,type AutomationRecipient,type AutomationWorkflow,type Routing,
 } from '@/packs/automation/service';
 import {probationCase,probationSummaryRows,moveProbationWorkflowsToShared} from '@/packs/probation/service';
@@ -117,4 +117,8 @@ export async function dryRunWorkflowAction(input: { workflow: AutomationWorkflow
     });
     return { employeeName: facts.employeeName, run };
   });
+}
+
+export async function readEmailTemplateHistoryAction(templateId:string){
+ return execute(async()=>automationEmailTemplateHistory(await requireScopedLifecycleModule(),templateId));
 }

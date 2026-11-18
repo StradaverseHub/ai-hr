@@ -1,4 +1,5 @@
 'use client';
+import {RoutedDocumentSummary} from '@/app/me/document-signing/summary';
 import { ActionButton } from '@/components/ui/action-button';
 import { v9CompanySigners } from '@/lib/lifecycle-v9-signatories';
 import type { Config } from '@/lib/lifecycle-v9-model';
@@ -30,6 +31,7 @@ export function CaseDocument({ c, document, template, actor, busy, command, conf
   const needsSignature = editable && (document.templateType ?? template?.type) !== 'Attachment' && (hrStep === 'before' && document.status === 'draft' || hrStep === 'after' && document.status === 'countersign');
   const allowed=(config&&c.facts?v9CompanySigners(config,c.facts.company):[]).filter(id=>eligibleSignatoryIds===undefined||eligibleSignatoryIds.includes(id));
   const signatory = hrStep === 'after' || document.signatoryUserId === actor.id && (!config||allowed.includes(actor.id));
+  if(document.signing)return <RoutedDocumentSummary document={document} caseId={c.id}/>;
   return <div className="v9-stack">{reserved && <p className="v9-notice">This document is frozen for email delivery.</p>}{c.id && <a className="v9-button" href={`/lifecycle/v9/documents/${encodeURIComponent(c.id)}/${encodeURIComponent(document.id)}`}>Download PDF</a>}<DocumentBody document={document} values={{ ...document.values, ...Object.fromEntries(fields.map(field => [field.id, values[field.id] ?? document.values[field.id] ?? ''])) }} editableBy="hr" disabled={busy || !canEditFields} change={(id, value) => setValues(previous => ({ ...previous, [id]: value }))}/>{error&&<p ref={errorRef} tabIndex={-1} role="alert" className="v9-notice v9-error">{error}</p>}
     {canEditFields && missingPersonnel.length > 0 && <section className="v9-panel v9-stack">
       <strong>Complete missing Personnel values</strong>

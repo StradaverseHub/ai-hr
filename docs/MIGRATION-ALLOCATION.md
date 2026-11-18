@@ -4612,3 +4612,8 @@ grant, function, column or row changes; existing rows already satisfy the wider 
 `1b92edf3fe85d66954e50f5677bc1cf5122f8fe92faf22db636181c5ed8503f8`. The approved upgrade tail pin
 (`test/helpers/approved-upgrade.ts`) and `test/tenant-company-fk-upgrade.test.ts` carry `5162`. Recheck peer claims and
 the installed ledger at admission. This entry carries no deployment authority.
+
+
+2026-11-18 — coordinator reservation for `codex/v9-document-routing-20261118`: tags 6656–6657, idx 10056–10057, when 1794998006656–1794998006657. Additive saved-document signing subject guard and narrow authorized action custodian; no historical document rewrite. Parent survey: staging 924 receipts, max 1794841006104 at f8c90ebc; production and committed peer survey must be refreshed before admission. No installation or deployment authority.
+
+The same coordinator-owned block also allocates 6658 / idx 10058 / when 1794998006658 for shared returned-content custody, and 6659 / idx 10059 / when 1794998006659 for canonical V9 source-event dispatch. These are uninstalled candidate migrations; final hashes and ledger admission remain required.

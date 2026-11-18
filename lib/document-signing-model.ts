@@ -86,10 +86,16 @@ export function validateSigningRoute(route: SigningRoute, rules: SigningGuardrai
   }
 }
 const atCurrentContent=(action:SigningAction,document:SigningDocument)=>action.contentRevision===document.contentRevision&&action.contentHash===document.contentHash;
-/** Actions of the current round: current content, after the latest re-send of that content. */
+/** Routed send-backs hold custody across content edits until an explicit resend. Historical decisions never revive. */
 export function currentRoundActions(document: SigningDocument): SigningAction[] {
   let start=0;
-  document.actions.forEach((action,index)=>{if(action.action==='resent'&&atCurrentContent(action,document))start=index+1;});
+  for(let index=0;index<document.actions.length;index++){
+    const action=document.actions[index];
+    if(document.routing){if(action.action==='returned')start=index;else if(action.action==='resent')start=index+1;}
+    else if(atCurrentContent(action,document)&&action.action==='resent')start=index+1;
+  }
+  const boundary=document.actions[start];
+  if(document.routing&&boundary?.action==='returned')return [boundary];
   return document.actions.slice(start).filter(action=>atCurrentContent(action,document));
 }
 /** The send-back that currently holds the document with its owner, or null. */
@@ -108,9 +114,11 @@ export function signingStepFulfilled(document: SigningDocument, step: SigningSte
 /** Missing holders block; one real approval can fulfil its explicitly covered adjacent role. Steps sharing a stage act in parallel. */
 export function pendingSigningSteps(document: SigningDocument): SigningStep[] {
   if(signingSendBack(document))return [];
-  const remaining=document.route.steps.filter(step=>step.required&&!signingStepFulfilled(document,step));
-  const stage=Math.min(...remaining.map(step=>step.stage));
-  return remaining.filter(step=>step.stage===stage&&!step.coveredByStepId);
+  const remaining=document.route.steps.filter(step=>!signingStepFulfilled(document,step));
+  const stage=Math.min(...remaining.filter(step=>step.required).map(step=>step.stage));
+  // Optional routed steps may act alongside/before the next required stage, but never delay it.
+  // Existing subject routes without template routing retain their original required-only queue.
+  return remaining.filter(step=>!step.coveredByStepId&&Number.isFinite(stage)&&(step.required?step.stage===stage:!!document.routing&&step.stage<=stage));
 }
 export function signingComplete(document: SigningDocument, rules: SigningGuardrails): boolean {
   validateSigningRoute(document.route,rules);
@@ -147,7 +155,8 @@ export function recordSigningAction(document: SigningDocument, rules: SigningGua
     if (prior.actorId===input.actorId&&prior.actorPersonId===input.actorPersonId&&prior.stepId===input.stepId&&prior.contentHash===input.hash&&prior.contentRevision===input.revision&&prior.action===input.action&&prior.comment===(input.comment?.trim()??'')&&(input.action!=='signed'||prior.signature?.method===input.method&&prior.signature?.value===input.value&&input.consent===true)) return document;
     throw new SigningError('conflict','This action reference was already used.');
   }
-  const step=pendingSigningSteps(document).find(s=>s.id===input.stepId);
+  const steps=input.action==='returned'&&document.routing&&!signingSendBack(document)?document.route.steps:pendingSigningSteps(document);
+  const step=steps.find(s=>s.id===input.stepId);
   if (!step || !step.holderId || step.holderId!==input.actorId) throw new SigningError('forbidden','Only the current assigned signer can act at this step.');
   if (!input.actorPersonId || !input.actorName.trim() || !Number.isFinite(Date.parse(input.at))) invalid('The verified signer and action time are required.');
   if (input.action==='returned'&&!input.comment?.trim()) invalid('Explain why the review is being returned.');
