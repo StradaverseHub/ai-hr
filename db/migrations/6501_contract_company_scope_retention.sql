@@ -1,4 +1,4 @@
--- Unregistered forward draft: preserve existing rows, single FKs and company deletion actions.
+-- Forward repair: preserve existing rows, single FKs and company deletion actions.
 -- Same native retention owner; no private table grants, permission changes or historical SQL edits.
 DO $retention$
 DECLARE prior pg_catalog.pg_proc; after_row pg_catalog.pg_proc; definition text; expected text; replacement text; app_role oid; digest_owner oid;
