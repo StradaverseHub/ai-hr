@@ -8,7 +8,7 @@ import {platform} from 'node:os';
 import postgres from 'postgres';
 import {inspectContractBrowserRoleAdmission,sameContractBrowserRoleBinding,CONTRACT_BROWSER_ROLE_MODE,type ContractBrowserRoleBinding} from '../../scripts/lib/contract-browser-role-admission';
 import {inspectResignationBrowserRoleAdmission,sameResignationBrowserRoleBinding,RESIGNATION_BROWSER_ROLE_MODE,type ResignationBrowserRoleBinding} from '../../scripts/lib/resignation-browser-role-admission';
-import {hasFullCiRoleIntent,hasFocusedMigrationIntent,inspectFullCiRoleAdmission,sameFullCiRoleBinding,FULL_CI_PLAN_OBSERVER,type FullCiRoleBinding,type FullCiRoleHost,type FullCiRoleAdmission} from '../../scripts/lib/discard-premigration';
+import {hasFullCiRoleIntent,hasFocusedMigrationIntent,inspectFullCiRoleAdmission,sameFullCiRoleBinding,FULL_CI_PLAN_OBSERVER,type FullCiRoleBinding,type FullCiRoleHost,type FullCiRoleAdmission,type FullCiReadonlyRehearsalFile} from '../../scripts/lib/discard-premigration';
 const fullCiRoleHost=():FullCiRoleHost=>({platform:platform(),cwd:process.cwd(),realpath:path=>realpathSync(path),read:path=>readFileSync(path,'utf8'),
  git:(cwd,args)=>execFileSync('git',[...args],{cwd,encoding:'utf8',maxBuffer:16*1024*1024}),
  observePlan:cwd=>JSON.parse(execFileSync(process.execPath,['--input-type=module','-e',FULL_CI_PLAN_OBSERVER],{cwd,env:process.env,encoding:'utf8',maxBuffer:16*1024*1024})),});
@@ -173,9 +173,9 @@ export function ensureDraftDiscardTestRoles(adminUrl:string):Promise<DraftDiscar
 
 /** Full-CI restricted-owner rehearsal consumes the already provisioned graph only. No new role
  * mutation or provisioning hint is accepted from a Vitest worker. Focused admission is unchanged. */
-export function assertDraftDiscardRehearsalContext(adminUrl:string):FullCiRoleAdmission|undefined{
+export function assertDraftDiscardRehearsalContext(adminUrl:string,rehearsalFile:FullCiReadonlyRehearsalFile='test/personnel-draft-discard-role-transfer.test.ts'):FullCiRoleAdmission|undefined{
  if(hasFocusedMigrationIntent(process.env)){assertDisposableDraftDiscardFixture(adminUrl);return;}
- const observed=inspectFullCiRoleAdmission(process.env,fullCiRoleHost(),true);
+ const observed=inspectFullCiRoleAdmission(process.env,fullCiRoleHost(),true,rehearsalFile);
  if(observed.admin!==adminUrl)throw Error('Full CI readonly rehearsal cluster changed.');
  return observed;
 }

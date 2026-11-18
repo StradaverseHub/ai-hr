@@ -42,7 +42,7 @@ async function child(phase:'prepare'|'measure',database:string,nonce:string,fold
 export async function runRestrictedContractNavigationRuntime():Promise<RestrictedNavigationRuntimeReceipt>{
  const migration=process.env.TEST_MIGRATION_DATABASE_URL;if(!migration)throw Error(REFUSAL);
  const base=new URL(migration);base.pathname='/postgres';
- assertDraftDiscardRehearsalContext(base.toString());
+ assertDraftDiscardRehearsalContext(base.toString(),'test/contract-navigation-owner-extraction-db.test.ts');
  if(base.hostname!=='127.0.0.1'||base.port!=='5433'||base.username!=='postgres'||base.password||base.search||base.hash)throw Error(REFUSAL);
  const journal=JSON.parse(readFileSync('db/migrations/meta/_journal.json','utf8')) as {entries:{tag:string;when:number}[]};
  if(!journal.entries.some(entry=>entry.tag.endsWith('_contract_shared_navigation_access')))throw Error('Reviewed navigation SQL must be registered in the normal journal before this fixture runs.');

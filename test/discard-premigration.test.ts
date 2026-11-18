@@ -55,7 +55,7 @@ it('keeps the CLI wiring explicit and its package target fixed without importing
 
 // Pure injected observations only. These fixtures do NOT spoof a hosted full-CI execution.
 import {createHash} from 'node:crypto';
-import {FULL_CI_ROLE_ENV,FULL_CI_ROLE_MODE,FULL_CI_ROLE_URLS,FULL_CI_ROLE_SOURCE,FULL_CI_ROLE_KIND,hasFullCiRoleIntent,inspectFullCiRoleAdmission,fullCiRoleReceiptBasename,type FullCiRoleHost,type FullCiRoleBinding,type FullCiRoleAdmission} from '../scripts/lib/discard-premigration';
+import {FULL_CI_READONLY_REHEARSAL_FILES,FULL_CI_ROLE_ENV,FULL_CI_ROLE_MODE,FULL_CI_ROLE_URLS,FULL_CI_ROLE_SOURCE,FULL_CI_ROLE_KIND,hasFullCiRoleIntent,inspectFullCiRoleAdmission,fullCiRoleReceiptBasename,type FullCiRoleHost,type FullCiRoleBinding,type FullCiRoleAdmission} from '../scripts/lib/discard-premigration';
 function fullFixture(){
  const source='/runner/work/repo/source',controller='/runner/work/repo/automation',temp='/runner/temp',unit='db-1111111111111111',candidate='a'.repeat(40),control='b'.repeat(40),planFingerprint='c'.repeat(64);
  const env:Record<string,string|undefined>={...FULL_CI_ROLE_URLS,GITHUB_ACTIONS:'true',CI:'true',RUNNER_ENVIRONMENT:'github-hosted',RUNNER_OS:'Linux',GITHUB_REPOSITORY:'StradaverseHub/ai-hr',GITHUB_REPOSITORY_ID:'1333414856',GITHUB_WORKFLOW:'alpha-staging-ci',GITHUB_JOB:'test',GITHUB_RUN_ID:'12345',GITHUB_RUN_ATTEMPT:'1',AIHR_CI_HEAD:candidate,AIHR_CI_CONTROL_HEAD:control,AIHR_CI_MIGRATION_BASE:'d'.repeat(40),GITHUB_SHA:control,GITHUB_REF:'refs/heads/main',GITHUB_WORKFLOW_REF:'StradaverseHub/ai-hr/.github/workflows/alpha-staging.yml@refs/heads/main',GITHUB_EVENT_NAME:'workflow_dispatch',GITHUB_WORKSPACE:'/runner/work/repo',RUNNER_TEMP:temp,GITHUB_EVENT_PATH:temp+'/_github_workflow/event.json',[FULL_CI_ROLE_ENV.mode]:FULL_CI_ROLE_MODE,[FULL_CI_ROLE_ENV.unit]:unit,[FULL_CI_ROLE_ENV.offset]:'0',[FULL_CI_ROLE_ENV.evidence]:temp+'/aihr-ci',[FULL_CI_ROLE_ENV.plan]:planFingerprint,UNIT:unit};
@@ -121,3 +121,19 @@ it('full context does not let direct URL arguments diverge from the controller-b
 it.each(['candidate input','event repo','build only','malformed event'])('refuses dispatch %s before helper import',async mutation=>{const f=fullFixture();if(mutation==='candidate input')f.event.inputs={expected_sha:'e'.repeat(40)};if(mutation==='event repo')f.event.repository={id:1,full_name:'foreign/repo'};if(mutation==='build only')f.event.inputs={expected_sha:f.candidate,build_only:true};if(mutation==='malformed event'){const real=vi.mocked(f.host.read).getMockImplementation()!;vi.mocked(f.host.read).mockImplementation(path=>path===f.env.GITHUB_EVENT_PATH?'NOT-JSON-FICTIONAL-SECRET':real(path));}let failure:unknown;try{await f.run();}catch(error){failure=error;}expect(failure).toBeInstanceOf(Error);expect(String(failure)).not.toContain('FICTIONAL-SECRET');expect(f.order).toEqual([]);});
 it('full readonly rehearsal rejects a remote credential without including it in a refusal',()=>{const f=fullFixture();for(const key of Object.values(FULL_CI_ROLE_ENV))delete f.env[key];f.env.TEST_MIGRATION_DATABASE_URL='invalid-FICTIONAL-SECRET';let failure:unknown;try{inspectFullCiRoleAdmission(f.env,f.host,true);}catch(error){failure=error;}expect(failure).toBeInstanceOf(Error);expect(String(failure)).not.toContain('FICTIONAL-SECRET');expect(f.order).toEqual([]);});
 it('receipt failure is terminal even after an exact graph was prepared',async()=>{const f=fullFixture();f.owners.recordPrerequisites.mockImplementationOnce(()=>{throw Error('existing receipt refused');});await expect(f.run()).rejects.toThrow('existing receipt');expect(f.prepare).toHaveBeenCalledTimes(1);expect(f.owners.migrate).not.toHaveBeenCalled();});
+
+it('binds each closed readonly rehearsal to its own actual DB unit and exact batch',()=>{
+ for(const file of FULL_CI_READONLY_REHEARSAL_FILES){
+  const f=fullFixture();for(const key of Object.values(FULL_CI_ROLE_ENV))delete f.env[key];
+  f.env.DATABASE_URL=f.env.TEST_DATABASE_URL='postgres://ai_hr_app@127.0.0.1:5433/ai_hr_test_w2';
+  f.env.MIGRATION_DATABASE_URL=f.env.TEST_MIGRATION_DATABASE_URL='postgres://postgres@127.0.0.1:5433/ai_hr_test_w2';
+  f.observed.plan.units[0].files=['test/fictional-first.test.ts',file];
+  expect(inspectFullCiRoleAdmission(f.env,f.host,true,file).binding).toMatchObject({offset:1,batchFiles:[file]});
+  expect(f.order).toEqual([]);
+  f.observed.plan.units[0].files=['test/fictional-first.test.ts'];
+  expect(()=>inspectFullCiRoleAdmission(f.env,f.host,true,file)).toThrow('actual rehearsal file membership');
+ }
+ const f=fullFixture();expect(()=>inspectFullCiRoleAdmission(f.env,f.host,true,'test/unreviewed.test.ts' as never)).toThrow('closed readonly rehearsal caller');
+ expect(()=>inspectFullCiRoleAdmission(f.env,f.host,false,FULL_CI_READONLY_REHEARSAL_FILES[1])).toThrow('bootstrap cannot select a rehearsal caller');
+ expect(f.order).toEqual([]);
+});
