@@ -116,8 +116,12 @@ it('pages one set-based signing projection across 70 companies and 1,000 employm
   const outsideDocument=await v9ReadDocumentSigningWork(companyContext,outside.caseId,outside.data.documents[0].id);expect(outsideDocument.caseId).toBe(outside.caseId);expect(outsideDocument).not.toHaveProperty('case');
   // A company-only lifecycle entitlement is a separate boundary; it is not a reassignment of the frozen route.
   await setModule(base.tenantId,'lifecycle',null);await setModule(base.tenantId,'lifecycle','active',companyId);const licensedContext=await refreshedContext();
-  const licensed=await v9DocumentSigningWorkspace(licensedContext,{search:'SIGN-SCALE-'});expect(licensed.total).toBe(15);expect(licensed.items.map(row=>row.caseId)).toEqual(companyIds);
-  expect((await v9ReadDocumentSigningWork(licensedContext,companyIds[0],companyRecords.find(row=>row.caseId===companyIds[0])!.data.documents[0].id)).caseId).toBe(companyIds[0]);await expect(v9ReadDocumentSigningWork(licensedContext,outside.caseId,outside.data.documents[0].id)).rejects.toThrow();
+  // Legacy public onb/off services still require the global module gate; do not widen it in this fixture.
+  await expect(v9DocumentSigningWorkspace(licensedContext,{search:'SIGN-SCALE-'})).rejects.toMatchObject({name:'ModuleNotEnabledError',moduleCode:'lifecycle'});
+  await expect(v9ReadDocumentSigningWork(licensedContext,companyIds[0],companyRecords.find(row=>row.caseId===companyIds[0])!.data.documents[0].id)).rejects.toMatchObject({name:'ModuleNotEnabledError',moduleCode:'lifecycle'});
+  // The independently authorized SQL custody seam enforces the target-company entitlement floor.
+  const [licensed]=await withTenant(licensedContext,tx=>tx.execute<{page:{total:number;items:{caseId:string}[]};inside:{caseId:string}|null;outside:unknown}>(sql`select app.v9_document_signing_work('SIGN-SCALE-',0,50) as page,app.v9_document_route_read(${companyIds[0]}::uuid,${companyRecords.find(row=>row.caseId===companyIds[0])!.data.documents[0].id}) as inside,app.v9_document_route_read(${outside.caseId}::uuid,${outside.data.documents[0].id}) as outside`));
+  expect(licensed.page.total).toBe(15);expect(licensed.page.items.map(row=>row.caseId)).toEqual(companyIds);expect(licensed.inside?.caseId).toBe(companyIds[0]);expect(licensed.outside).toBeNull();
  }finally{
   await owner.db.execute(sql`update role_assignment set company_id=null where tenant_id=${base.tenantId}::uuid and app_user_id=${admin.userId!}::uuid and role='hr_admin' and company_id=${companyId}::uuid`);
   await setModule(base.tenantId,'lifecycle',null,companyId);await setModule(base.tenantId,'lifecycle','active');
