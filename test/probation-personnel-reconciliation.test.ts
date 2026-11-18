@@ -122,6 +122,34 @@ describe('Personnel to probation reconciliation',()=>{
   const[state]=await owner.db.execute<{last_success_at:unknown;pass_count:string}>(sql`select last_success_at,pass_count::text from probation_reconciliation_schedule where tenant_id=${b.tenantId}::uuid`);
   expect(state).toEqual({last_success_at:null,pass_count:'0'});
  });
+ it('removes only the exact deleted employment intent while preserving other tenants and native people',async()=>{
+  const other=await seedBase();
+  const bare=async(tenantId:string,companyId:string)=>{
+   const[person]=await owner.db.execute<{id:string}>(sql`insert into person(tenant_id,full_name,primary_email)
+    values(${tenantId}::uuid,'Fictional transient intent',${randomUUID()+'@reconciliation.example.test'}) returning id`);
+   const[employment]=await owner.db.execute<{id:string}>(sql`insert into employment(tenant_id,person_id,company_id,hired_on)
+    values(${tenantId}::uuid,${person.id}::uuid,${companyId}::uuid,'2024-01-01') returning id`);
+   return {id:employment.id,personId:person.id};
+  };
+  const target=await bare(b.tenantId,b.companyId),survivor=await bare(b.tenantId,b.companyId),foreign=await bare(other.tenantId,other.companyId);
+  const ids=[target.id,survivor.id,foreign.id];
+  const intents=()=>owner.db.execute<{row:{tenant_id:string;employment_id:string;revision:number}}>(sql`select to_jsonb(i) as row
+   from probation_reconciliation_intent i where employment_id=any(${ids}::uuid[]) order by tenant_id,employment_id`);
+  const employments=()=>owner.db.execute<{row:{id:string}}>(sql`select to_jsonb(e) as row from employment e
+   where id=any(${ids}::uuid[]) order by tenant_id,id`);
+  const people=()=>owner.db.execute(sql`select to_jsonb(p) as row from person p
+   where id=any(${[target.personId,survivor.personId,foreign.personId]}::uuid[]) order by tenant_id,id`);
+  const before=await intents(),beforeEmployments=await employments(),beforePeople=await people();
+  expect(before.map(({row})=>[row.tenant_id,row.employment_id]).sort()).toEqual([
+   [b.tenantId,target.id],[b.tenantId,survivor.id],[other.tenantId,foreign.id],
+  ].sort());
+  for(const {row} of before)expect(Number(row.revision)).toBeGreaterThan(0);
+  // The same ordinary owner deletion used by Payroll learning must clear only its derived queue row.
+  await owner.db.execute(sql`delete from employment where tenant_id=${b.tenantId}::uuid and id=${target.id}::uuid`);
+  expect(await intents()).toEqual(before.filter(({row})=>row.employment_id!==target.id));
+  expect(await employments()).toEqual(beforeEmployments.filter(({row})=>row.id!==target.id));
+  expect(await people()).toEqual(beforePeople);
+ });
  it('refuses application-role worker/admission escalation and crosses no tenant boundary',async()=>{
   await starter();
   await expect(withTenant(admin,tx=>tx.execute(sql`select app.probation_reconciliation_schedule_tick()`))).rejects.toThrow();

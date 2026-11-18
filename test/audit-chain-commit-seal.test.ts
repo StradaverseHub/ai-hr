@@ -469,8 +469,12 @@ describe('audit-chain key holders', () => {
       where p.oid in ('app.onboarding_v9_save_case_values(uuid,integer,jsonb)'::regprocedure,'app.onboarding_v9_receipt(uuid,integer,text,text,text)'::regprocedure,
        'app.lc_v9_report_return(uuid,integer,text,text)'::regprocedure,'app.lc_v9_assigned_item(uuid,integer,text)'::regprocedure,
        'app.onboarding_draft_discard_absence_context(uuid,uuid,uuid)'::regprocedure,'app.probation_offboarding_intent(uuid)'::regprocedure,
-       'app.contract_lock_authority_sources()'::regprocedure) order by 1`;
-    expect(converted).toHaveLength(7);
+       'app.contract_lock_authority_sources()'::regprocedure,
+       'app.v9_document_route_act(uuid,integer,text,jsonb)'::regprocedure,
+       'app.v9_document_route_edit(uuid,integer,text,jsonb,jsonb)'::regprocedure,
+       'app.v9_personnel_completion_update(uuid,integer,text,jsonb,text,jsonb)'::regprocedure,
+       'app.personnel_completion_recovery_adopt(jsonb)'::regprocedure) order by 1`;
+    expect(converted).toHaveLength(11);
     for (const row of converted) expect(row.takes, row.signature as string).toBe(false);
     for (const file of ['packs/lifecycle/onboarding/service.ts', 'packs/lifecycle/v9/service.ts']) {
       expect(readFileSync(file, 'utf8'), file).not.toContain("'audit-chain:'");

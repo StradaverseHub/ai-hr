@@ -1,11 +1,12 @@
 -- Approved board c20f82c3. Source reservation only; activation and historical cutover authority are unchanged.
 -- idx 10000 / when 1794998006600. A rehire has a new employment identity; the existing canonical
 -- UNIQUE(tenant_id,employment_id) case owner remains stricter than one open case and is preserved.
+-- Intent is transient derived work, not retained case or completion history.
 CREATE TABLE public.probation_reconciliation_intent(
  tenant_id uuid NOT NULL REFERENCES tenant(id),employment_id uuid NOT NULL,
  revision bigint NOT NULL DEFAULT 1,requested_at timestamptz NOT NULL DEFAULT now(),checked_at timestamptz,
  retry_on timestamptz NOT NULL DEFAULT now(),failure boolean NOT NULL DEFAULT false,
- PRIMARY KEY(tenant_id,employment_id),FOREIGN KEY(tenant_id,employment_id) REFERENCES employment(tenant_id,id)
+ PRIMARY KEY(tenant_id,employment_id),FOREIGN KEY(tenant_id,employment_id) REFERENCES employment(tenant_id,id) ON DELETE CASCADE
 );
 CREATE INDEX probation_reconciliation_due ON public.probation_reconciliation_intent(retry_on,tenant_id,employment_id);
 CREATE TABLE public.probation_reconciliation_schedule(
