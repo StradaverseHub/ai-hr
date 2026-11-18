@@ -101,3 +101,51 @@ it('pages a large saved population in stable case/document order with a bounded 
 it('allows an unchanged future review to adopt policy while preserving its original future wait',async()=>{
  const future=addDays(today(),10),f=await fixture({runs:[{date:future}]}),r=await review((await page()).items[0]);expect(r.outcome).toBe('future');expect(await adopt(r)).toBe(2);const after=await saved(f.id);expect(after.data.runs[0]).toMatchObject({status:'waiting',date:future,cursor:0});expect(after.data.documents[0].sentAt).toBeNull();expect(after.data.mails).toEqual([]);
 });
+it('matches independent ordered counts for 1,000 employments across 70 companies under all-company, scoped-HR and employee authority',async()=>{
+ const f=await fixture(),companies=[b.companyId,...Array.from({length:69},()=>randomUUID())];
+ const subjects=Array.from({length:999},(_,index)=>({n:index+1,companyId:companies[(index+1)%70],personId:randomUUID(),employmentId:randomUUID(),caseId:randomUUID()}));
+ await owner.withTenant(hr,async tx=>{
+  await tx.execute(sql`insert into company(id,tenant_id,legal_name) select c.id::uuid,${b.tenantId}::uuid,'Fictional scale company '||c.ordinality from jsonb_array_elements_text(${JSON.stringify(companies.slice(1))}::jsonb) with ordinality c(id,ordinality)`);
+  await tx.execute(sql`insert into person(id,tenant_id,full_name,primary_email) select "personId",${b.tenantId}::uuid,'Fictional scale person '||n,'scale-'||n||'@fixture.invalid' from jsonb_to_recordset(${JSON.stringify(subjects)}::jsonb) s(n integer,"personId" uuid)`);
+  await tx.execute(sql`insert into employment(id,tenant_id,person_id,company_id,employee_code,hired_on) select "employmentId",${b.tenantId}::uuid,"personId","companyId",'RECOVERY-'||n,'2026-01-01'::date from jsonb_to_recordset(${JSON.stringify(subjects)}::jsonb) s(n integer,"personId" uuid,"employmentId" uuid,"companyId" uuid)`);
+  await tx.execute(sql`insert into lc_v9_case(id,tenant_id,company_id,employment_id,module,number,revision,data) select "caseId",${b.tenantId}::uuid,"companyId","employmentId",'off','FX-'||"caseId"::text,1,${JSON.stringify(f.c)}::jsonb||jsonb_build_object('id',"caseId",'number','FX-'||"caseId"::text,'revision',1,'facts',${JSON.stringify(f.c.facts)}::jsonb||jsonb_build_object('company',"companyId",'employmentId',"employmentId",'personId',"personId")) from jsonb_to_recordset(${JSON.stringify(subjects)}::jsonb) s("personId" uuid,"employmentId" uuid,"companyId" uuid,"caseId" uuid)`);
+ });
+ const [population]=await owner.client<{companies:number;employments:number;validRevisions:boolean}[]>`select count(distinct company_id)::integer companies,count(distinct employment_id)::integer employments,bool_and(revision=1 and data->>'revision'='1') as "validRevisions" from lc_v9_case where tenant_id=${b.tenantId}::uuid`;
+ expect(population).toEqual({companies:70,employments:1000,validRevisions:true});
+ const expected=[{caseId:f.id,companyId:b.companyId,documentId:f.doc.id},...subjects.map(s=>({caseId:s.caseId,companyId:s.companyId,documentId:f.doc.id}))].sort((a,b)=>a.caseId<b.caseId?-1:a.caseId>b.caseId?1:a.documentId<b.documentId?-1:1);
+ async function collect(as:SessionContext){let cursor:Awaited<ReturnType<typeof page>>['after']=null;const items:PersonnelCompletionRecoveryCandidate[]=[];let total=-1;for(let p=0;p<12;p++){const result=await personnelCompletionRecoveryPage(as,cursor,100) as Awaited<ReturnType<typeof page>>;if(total<0)total=result.total;expect(result.total).toBe(total);expect(result.items.length).toBeLessThanOrEqual(100);items.push(...result.items);if(!result.items.length)return{total,items};cursor=result.after;}throw Error('Scale page cursor did not finish');}
+ const visible=(items:PersonnelCompletionRecoveryCandidate[])=>items.map(({caseId,companyId,documentId})=>({caseId,companyId,documentId}));
+ const all=await collect(hr);expect(all.total).toBe(1000);expect(visible(all.items)).toEqual(expected);expect(JSON.stringify(all)).not.toContain('confidential');expect(await collect(employee)).toEqual({total:0,items:[]});
+ const target=companies[1];await owner.client`update role_assignment set company_id=${target}::uuid where tenant_id=${b.tenantId}::uuid and app_user_id=${hr.userId}::uuid and role='hr_admin'`;
+ const scoped:SessionContext={...hr,grants:[{role:'hr_admin',companyId:target}]},one=await collect(scoped),expectedOne=expected.filter(c=>c.companyId===target);expect(one.total).toBe(expectedOne.length);expect(visible(one.items)).toEqual(expectedOne);expect(visible(one.items)).toEqual(visible(all.items).filter(c=>c.companyId===target));
+});
+async function forgedRecovery(as:SessionContext,manifest:unknown){
+ const content=Buffer.from(JSON.stringify(manifest)),token=createHash('sha256').update(content).digest('hex');
+ const [row]=await withTenant(as,tx=>tx.execute<{admitted:{id:string}}>(sql`select app.bulk_job_enqueue('lifecycle_personnel_completion_recovery',${randomUUID()}::uuid,ARRAY[${b.companyId}::uuid],'fictional-forged-recovery.json',${content}::bytea,${JSON.stringify({token})}::jsonb) as admitted`));
+ expect(row.admitted.id).toBeTruthy();await drain(row.admitted.id);return row.admitted.id;
+}
+async function expectNoAppliedRecovery(jobId:string,caseId:string){
+ const [job]=await owner.client<{state:string;error:string|null;errors:unknown[]}[]>`select state,error,errors from bulk_job where id=${jobId}::uuid`;
+ const [steps]=await owner.client<{applied:number}[]>`select count(*) filter(where state='applied')::integer applied from bulk_job_step where job_id=${jobId}::uuid`;
+ expect(['completed','failed']).toContain(job.state);expect(job.error!==null||job.errors.length>0).toBe(true);expect(steps.applied).toBe(0);expect((await saved(caseId)).revision).toBe(1);expect((await saved(caseId)).data.mails).toEqual([]);
+}
+it('refuses direct public bulk admission with a valid review but no completed preview envelope or with a nonexistent preview',async()=>{
+ const f=await fixture(),r=await review((await page()).items[0]);expect(r.outcome).toBe('eligible');
+ await expectNoAppliedRecovery(await forgedRecovery(hr,[r]),f.id);
+ await expectNoAppliedRecovery(await forgedRecovery(hr,{previewJobId:randomUUID(),reviews:[r]}),f.id);
+});
+it('rejects a directly admitted envelope whose result differs from its creator’s completed sealed preview',async()=>{
+ const f=await fixture(),job=await requestPersonnelCompletionRecoveryPreview(hr,[(await page()).items[0]]);expect(await drain(job.row.id)).toBe('completed');
+ const r=(await readPersonnelCompletionRecoveryPreview(hr,job.row.id)).items[0].result as PersonnelCompletionRecoveryReview;
+ const forged={...r,reason:'A forged reason with the original unchanged review hash'};expect(forged.reviewHash).toBe(r.reviewHash);
+ const id=await forgedRecovery(hr,{previewJobId:job.row.id,reviews:[forged]});await expectNoAppliedRecovery(id,f.id);
+ const [step]=await owner.client<{error:string}[]>`select error from bulk_job_step where job_id=${id}::uuid order by seq limit 1`;expect(step.error).toContain('no longer matches the completed preview');
+});
+it('refuses another HR creator’s completed preview even when the direct envelope uses a valid current-actor review',async()=>{
+ const f=await fixture(),candidate=(await page()).items[0],r=await review(candidate),p=randomUUID();await owner.client`insert into person(id,tenant_id,full_name,primary_email) values(${p}::uuid,${b.tenantId}::uuid,'Fictional second HR','second-hr@fixture.invalid')`;
+ const userId=await createAppUser(b.tenantId,p,'hr_admin'),other:SessionContext={...hr,userId,personId:p,grants:[{role:'hr_admin',companyId:null}]};
+ await owner.client`update lc_onboarding_config set data=jsonb_set(data,'{access,offboarding}',coalesce(data->'access'->'offboarding','[]'::jsonb)||jsonb_build_array(${userId}::text)) where tenant_id=${b.tenantId}::uuid`;
+ const preview=await requestPersonnelCompletionRecoveryPreview(other,[candidate]);expect(await drain(preview.row.id)).toBe('completed');expect((await readPersonnelCompletionRecoveryPreview(other,preview.row.id)).items[0].result).toMatchObject({outcome:'eligible'});
+ await expect(requestPersonnelCompletionRecovery(hr,{previewJobId:preview.row.id,reviewHashes:[r.reviewHash!],confirmed:true})).rejects.toThrow();
+ await expectNoAppliedRecovery(await forgedRecovery(hr,{previewJobId:preview.row.id,reviews:[r]}),f.id);
+});
