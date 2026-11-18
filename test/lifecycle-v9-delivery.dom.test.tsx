@@ -1,7 +1,7 @@
 import { expect, it, vi } from 'vitest';
 import { render, screen } from '@testing-library/react';
 vi.mock('next/navigation', () => ({ useRouter: () => ({ refresh: vi.fn() }) }));
-vi.mock('../app/me/lifecycle/actions', () => ({ saveOwnLifecycleDocument: vi.fn(), updateOwnLifecycleTask: vi.fn() }));
+vi.mock('../app/me/lifecycle/actions', () => ({ saveOwnLifecycleDocument: vi.fn(), updateOwnLifecycleTask: vi.fn(), openLifecycleDocument:vi.fn().mockResolvedValue({ok:true}) }));
 import { EmployeeLifecycle } from '../app/me/lifecycle/view';
 import { CaseMailHistory } from '../app/lifecycle/v9/mail-history';
 import { CaseDocument } from '../app/lifecycle/v9/case-document';

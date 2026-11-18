@@ -19,7 +19,7 @@ beforeEach(async()=>{
 afterAll(closeAll);
 async function prepared(release=true,action:'completed'|'signed'|'sent'='signed'){
  const config=(await v9Workspace(admin)).config!;
- config.templates.push({id:'document-task-form',name:'Saved acceptance',type:'Form',module:'off',rules:{},hrStep:'none',employeeAck:false,retired:false,versions:[{version:1,state:'published',at:'',by:'',blocks:[{id:'body',type:'text',text:'Saved form',section:''}],fields:[]}]});
+ config.templates.push({id:'document-task-form',name:'Saved acceptance',type:'Form',module:'off',rules:{},hrStep:'none',employeeAck:false,retired:false,versions:[{version:1,state:'published',at:'',by:'',blocks:[{id:'body',type:'text',text:'Saved form',section:''}],fields:[{id:'answer',label:'Saved answer',type:'text',owner:'employee',pmKey:null,required:false,sensitive:false,options:[],section:'main',when:null}]}]});
  config.checklists=[...config.checklists.filter(c=>c.module==='onb'),{id:'doc-checklist',name:'Exit document checklist',module:'off',rules:{},tasks:[{id:'acceptance-task',name:'Accept saved form',by:'employee',group:null,mode:'manual',opens:null,due:0,required:true,documentTemplate:'document-task-form',documentAction:action}]}];
  config.workflows=[{id:'release-document',name:'Release saved document',module:'off',status:'published',trigger:{event:'submitted',days:0,workdays:false,repeat:false,skipIf:''},conditions:[],steps:[{id:'doc',type:'doc',template:'document-task-form',release}],description:''}];
  await v9SaveConfig(admin,config.revision,config);
@@ -27,7 +27,8 @@ async function prepared(release=true,action:'completed'|'signed'|'sent'='signed'
  return (await v9Workspace(admin)).cases.find(c=>c.id===id)!;
 }
 it('opens the exact released instance, retains answers, progresses only unfinished tasks and is idempotent',async()=>{
- const c=await prepared(),doc=c.documents[0],before=structuredClone(doc);
+ let c=await prepared();await v9OwnDocument(employee,{caseId:c.id,documentId:c.documents[0].id,revision:c.revision,values:{answer:'Answers from the emailed saved instance'}});c=(await v9Workspace(admin)).cases.find(row=>row.id===c.id)!;
+ const doc=c.documents[0],before=structuredClone(doc);expect(before.values.answer).toBe('Answers from the emailed saved instance');
  const page=await lifecycleTaskDocuments(employee,{companyIds:[b.companyId]});
  expect(page.total).toBe(1);expect(page.items[0]).toMatchObject({documentId:doc.id,state:'released',sourceName:'Exit document checklist',sourceKind:'checklist',taskStatus:'todo',documentStatus:'sent'});
  expect(JSON.stringify(page)).not.toContain('mergeValues');expect(JSON.stringify(page)).not.toContain('fields');
