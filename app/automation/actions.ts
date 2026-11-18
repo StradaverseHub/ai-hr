@@ -10,6 +10,8 @@ import {
   saveAutomationAssignmentGroups,
   testAutomationEmail,
   searchAutomationGroupPeople,
+  saveAutomationBusinessPartners,searchAutomationBusinessPartnerPeople,searchAutomationBusinessPartnerScopeOptions,
+  type SaveBusinessPartnersInput,type BusinessPartnerDimension,
   type AutomationDryRun,type AutomationEmailTemplate,type AutomationRecipient,type AutomationWorkflow,type Routing,
 } from '@/packs/automation/service';
 import {contractConfigurationDirectory} from '@/packs/contracts/service';
@@ -71,6 +73,15 @@ export async function saveAssignmentGroupsAction(input:unknown){
 }
 export async function searchAssignmentGroupPeopleAction(query:string){
  return execute(async()=>searchAutomationGroupPeople(await requireScopedLifecycleModule(),query));
+}
+export async function saveBusinessPartnersAction(input:SaveBusinessPartnersInput){
+ return execute(async()=>saveAutomationBusinessPartners(await requireScopedLifecycleModule(),input));
+}
+export async function searchBusinessPartnerPeopleAction(query:string){
+ return execute(async()=>searchAutomationBusinessPartnerPeople(await requireScopedLifecycleModule(),query));
+}
+export async function searchBusinessPartnerScopeOptionsAction(dimension:BusinessPartnerDimension,query:string){
+ return execute(async()=>searchAutomationBusinessPartnerScopeOptions(await requireScopedLifecycleModule(),dimension,query));
 }
 export async function sendTestEmailAction(input:unknown){
  return execute(async()=>testAutomationEmail(await requireScopedLifecycleModule(),input));

@@ -5,6 +5,8 @@ export * from '../../core/automation-email-assets';
 export * from '../../core/automation-documents';
 export * from '../../core/automation-builder';
 export * from '../../core/automation-groups';
+export * from '../../core/automation-business-partners';
+export type {BusinessPartnerDimension,BusinessPartnerRule,BusinessPartnerPerson,BusinessPartnerWorkspace,SaveBusinessPartnersInput} from '../../lib/automation/business-partners';
 export * from '../../core/automation-email-test';
 export * from '../../lib/automation/conditions';
 export * from '../../lib/automation/catalogue';

@@ -25,7 +25,7 @@ async function main(){
  const {saveContractSharedRole,saveContractSharedMember,contractSharedSettings,saveContractSharedSettings}=await import('../../packs/contracts/service');
  const {hireEmployee,setEmploymentInfo}=await import('../../core/org');
  const {assignRole}=await import('../../core/admin');
- const {v9Workspace,v9SaveConfig}=await import('../../packs/lifecycle/service');
+ const {automationBusinessPartnerWorkspace,saveAutomationBusinessPartners}=await import('../../packs/automation/service');
  const {resolveEntitlementsTx}=await import('../../core/entitlements');
  try{
   const[bound]=await owner.db.execute<{nonce:string;candidate:string;database_name:string}>(sql`select nonce,candidate,database_name from app._test_contract_navigation_owner_runtime_binding`);assert.deepEqual(bound,{nonce,candidate,database_name:database});
@@ -39,7 +39,7 @@ async function main(){
    await grant(viewer,companies[1].id);await grant(expired,companies[2].id,{expired:true});await grant(revoked,companies[3].id,{revoked:true});await grant(disabledCompanyViewer,companies[6].id);await grant(archivedActor,companies[7].id);
    const[empty]=await owner.db.execute<{id:string}>(sql`insert into company(tenant_id,legal_name) values(${b.tenantId}::uuid,'Fictional empty view scope') returning id`);await grant(emptyViewer,empty.id);
    await assignRole(f.admin,{appUserId:scopedHr.userId!,role:'hr_admin',companyId:companies[5].id});
-   const config=(await v9Workspace(f.admin)).config!;await v9SaveConfig(f.admin,config.revision,{...config,bpRules:[...config.bpRules,{userId:pbp.userId!,rules:{company:[b.companyId]}},{userId:ambiguous.userId!,rules:{company:[companies[0].id]}},{userId:otherPbp.userId!,rules:{company:[companies[0].id]}}]});
+   const partners=await automationBusinessPartnerWorkspace(f.admin);assert(partners);await saveAutomationBusinessPartners(f.admin,{expectedRevision:partners.revision,rules:[...partners.rules,{userId:pbp.userId!,rules:{company:[b.companyId]}},{userId:ambiguous.userId!,rules:{company:[companies[0].id]}},{userId:otherPbp.userId!,rules:{company:[companies[0].id]}}],reason:'Configure actual unique and ambiguous navigation responsibilities'});
    for(const[as,company,role]of [[f.approver,b.companyId,'gbs'],[pbp,b.companyId,'pbp'],[ambiguous,companies[0].id,'pbp'],[otherPbp,companies[0].id,'pbp']]as const)await owner.db.execute(sql`insert into contract_role_assignment(tenant_id,company_id,user_id,role,valid_from,created_by) values(${b.tenantId}::uuid,${company}::uuid,${as.userId}::uuid,${role},${start}::date,${f.admin.userId}::uuid)`);
    const manager=await hireEmployee(f.admin,{person:{fullName:'Fictional view-disabled superior',primaryEmail:randomUUID()+'@navigation.test'},companyId:companies[4].id,departmentId:companies[4].departmentId,employmentType:'full_time',hiredOn:start});const disabledId=await createAppUser(b.tenantId,manager.personId,'employee');
    const report=await hireEmployee(f.admin,{person:{fullName:'Fictional disabled-superior report',primaryEmail:randomUUID()+'@navigation.test'},companyId:companies[4].id,departmentId:companies[4].departmentId,employmentType:'contract',hiredOn:start,provisionalEndOn:end,reportingManagerEmploymentId:manager.employmentId});await setEmploymentInfo(f.admin,{employmentId:report.employmentId,contractStartDate:start,contractEndDate:end,contractNumber:4});
