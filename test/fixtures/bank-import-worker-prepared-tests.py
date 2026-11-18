@@ -365,7 +365,9 @@ class PreparedFlowTests(unittest.TestCase):
      return capture(*args,**kwargs)
     with patch.object(core.fences,'capture_tree',delayed),self.assertRaisesRegex(RuntimeError,'activation failed'):
      if a:f.invoke_live(f.live_record(a,proof))
-     else:f.conditional()
+     else:
+      # The prepared fixture rebuilt the drain pins after its parent's approval.
+      f.auth=copy.deepcopy(f.original_auth);f.persist_authority();f.conditional()
     self.assertEqual(fired,[True]);self.assertFalse((f.app/'releases'/f.source/'worker-install-v2.json').exists())
 
  def test_normal_prepared_original600_and_grant_expiry_cannot_be_reset(self):
@@ -385,7 +387,13 @@ class PreparedFlowTests(unittest.TestCase):
    boundary(kind,count)
    if kind=='fast'and count==2:f.finish('R1')
    if kind=='fast'and count==3:f.finish()
-   if kind=='fast'and count==7:f.begin_cleanup()
+   if kind=='fast'and count==7:
+    self.assertEqual(f.current['result'],'ok');self.assertEqual(f.prior['result'],'')
+    finished={name:(f.state/name).read_bytes()for name in('current','last-ok')}
+    # Native completion already happened at F2; cleanup must not publish it twice.
+    with patch.object(f,'finish')as duplicate_finish:f.begin_cleanup()
+    duplicate_finish.assert_called_once_with()
+    self.assertEqual({name:(f.state/name).read_bytes()for name in finished},finished)
   f.boundary=progress;r=f.invoke_live(f.live_record(a,proof))
   self.assertEqual(r['transitionStages'][:3],['R0','R1','O']);self.assertEqual(r['transitionStages'][-1],'O')
   self.assertEqual((r['completeMetadataFences'],r['fullNativeAudits']),(10,2));self.assertFalse(r['journeyVerified'])
