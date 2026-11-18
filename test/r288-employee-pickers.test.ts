@@ -330,7 +330,9 @@ describe('r288 §C · all four call sites reach for the ONE rule', () => {
 
   it("the Adjustments live count merges the SAME two fields through the SAME function", () => {
     expect(adjForm).toContain("import { mergeEmploymentSelection, resolveEmploymentSelection } from '@/lib/employment-selection'");
-    expect(adjForm).toMatch(MERGES_BOTH_FIELDS);
+    expect(adjForm).toContain('fetchBulkEmployeeSelection(fd.getAll');
+    expect(adjForm).toContain("String(fd.get('employmentIdsRaw')??'')");
+    expect(read('core/bulk-employee-picker.ts')).toContain('resolveEmploymentSelection(picked,raw,known)');
     expect(adjForm).not.toContain('.split(/[\\s,]+/)');
   });
 
@@ -391,7 +393,7 @@ describe('r288 §C · all four call sites reach for the ONE rule', () => {
     // Notice Board reads it ONCE in the shared vocabulary module, because two pages mount the same form and
     // a second `listEmployees` call is a second thing to keep in step.
     const vocab = read('app/admin/notice-board/criteria-options.ts');
-    expect(vocab).toContain('listEmployeePickOptions(s,selectedIds)');
+    expect(vocab).toContain('employeePickSelection(s,selectedIds)');
     expect(vocab).not.toContain('await listEmployees');
     for (const rel of ['app/admin/notice-board/new/page.tsx', 'app/admin/notice-board/[id]/page.tsx']) {
       const page = read(rel);

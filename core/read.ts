@@ -450,22 +450,42 @@ export function payrollProcessEmployeeCount(ctx:SessionContext,companyId:string)
   });
 }
 
-/** Complete minimal reference vocabulary for paste-code resolution at command admission.
- * It retains inactive employments and native RLS/empty-company semantics. Selected labels
- * use an explicit identity restriction; an empty selection means no labels. */
-export async function listEmployeePickOptions(ctx: SessionContext,selectedIds?:readonly string[]): Promise<EmployeePickOption[]> {
-  if(selectedIds!==undefined&&!selectedIds.length)return [];
-  const selected=selectedIds?.filter(id=>/^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/.test(id));
-  if(selected!==undefined&&!selected.length)return [];
-  const companies = await listCompanies(ctx);
-  return withTenant(ctx,tx=>tx.execute<EmployeePickOption>(sql`
-    select ${employment.id} as id,${person.fullName} as name,${employment.employeeCode} as "employeeCode"
-    from ${employment} join ${person} on ${person.id}=${employment.personId}
-    join ${company} on ${company.id}=${employment.companyId}
-    where ${companies.length?sql`${employment.companyId}=any(${'{'+companies.map(c=>c.id).join(',')+'}'}::uuid[])`:sql`true`}
-      ${selected!==undefined?sql`and ${employment.id}=any(${'{'+selected.join(',')+'}'}::uuid[])`:sql``}
-    order by ${person.fullName},${employment.id}
-  `),{readOnlySnapshot:true});
+/** The native vocabulary shared by bulk browsing, paste resolution and command admission.
+ * listCompanies owns archived-company behavior; an empty list retains the legacy RLS-only fallback.
+ * The caller must own the read snapshot. IDs identify candidates, never command authority. */
+export async function employeePickVocabularyTx(tx:Tx,ctx:SessionContext){
+ const companies=await tx.select({id:company.id}).from(company).where(companyCatalogPredicate({}));
+ return sql`from ${employment} join ${person} on ${person.id}=${employment.personId}
+  join ${company} on ${company.id}=${employment.companyId}
+  where ${employment.tenantId}=${ctx.tenantId}::uuid and ${companies.length?sql`${employment.companyId}=any(${'{'+companies.map(c=>c.id).join(',')+'}'}::uuid[])`:sql`true`}`;
+}
+export function employeePickProjection(alias:'id'|'employmentId'='id'){
+ return sql`${employment.id} as ${sql.identifier(alias)},${person.fullName} as name,${employment.employeeCode} as "employeeCode"`;
+}
+const canonicalEmploymentIds=(ids:readonly string[])=>[...new Set(ids.filter(id=>/^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/.test(id)))];
+/** Complete minimal code vocabulary, required for exact/folded collision refusal.
+ * Unknown tokens remain present for the native command's own eligibility adjudication. */
+export async function listEmployeePickOptions(ctx:SessionContext,selectedIds?:readonly string[]):Promise<EmployeePickOption[]>{
+ const selected=selectedIds===undefined?undefined:canonicalEmploymentIds(selectedIds);
+ if(selected!==undefined&&!selected.length)return [];
+ return withTenant(ctx,async tx=>{
+  const from=await employeePickVocabularyTx(tx,ctx);
+  return tx.execute<EmployeePickOption>(sql`select ${employeePickProjection()} ${from}
+   ${selected!==undefined?sql`and ${employment.id}=any(${'{'+selected.join(',')+'}'}::uuid[])`:sql``}
+   order by ${person.fullName},${employment.id}`);
+ },{readOnlySnapshot:true});
+}
+/** A reopened form needs a complete known/unknown identity split and at most25 labels.
+ * Keep these outputs independent: limiting the known IDs would silently shrink a saved audience. */
+export async function employeePickSelection(ctx:SessionContext,selectedIds:readonly string[]){
+ const selected=canonicalEmploymentIds(selectedIds);
+ if(!selected.length)return {ids:[] as string[],rows:[] as EmployeePickOption[]};
+ return withTenant(ctx,async tx=>{
+  const from=await employeePickVocabularyTx(tx,ctx),where=sql`and ${employment.id}=any(${'{'+selected.join(',')+'}'}::uuid[])`;
+  const ids=await tx.execute<{id:string}>(sql`select ${employment.id} as id ${from} ${where} order by ${person.fullName},${employment.id}`);
+  const rows=await tx.execute<EmployeePickOption>(sql`select ${employeePickProjection()} ${from} ${where} order by ${person.fullName},${employment.id} limit 25`);
+  return {ids:ids.map(row=>row.id),rows};
+ },{readOnlySnapshot:true});
 }
 
 type StatutoryPickerEmployee=Pick<Awaited<ReturnType<typeof listEmployees>>[number],
@@ -1570,6 +1590,10 @@ export function getCompanyCurrency(ctx: SessionContext, companyId: string): Prom
   });
 }
 
+/** One catalogue predicate for full company forms and minimal identity vocabularies. */
+function companyCatalogPredicate(opts:{includeArchived?:boolean;adminOnly?:boolean}){
+ return and(opts.includeArchived?undefined:isNull(company.archivedAt),opts.adminOnly?sql`app.is_admin_for(company.id)`:undefined);
+}
 export function listCompanies(
   ctx: SessionContext,
   opts: { includeArchived?: boolean; adminOnly?: boolean } = {},
@@ -1613,14 +1637,7 @@ export function listCompanies(
         hasLogo: sql<boolean>`exists (select 1 from company_logo cl where cl.company_id = company.id)`,
       })
       .from(company)
-      .where(
-        and(
-          opts.includeArchived ? undefined : isNull(company.archivedAt),
-          // Raw SQL, and `company.id` unqualified, because that is the table's alias in this FROM —
-          // the same call shape adminCompanies() already uses.
-          opts.adminOnly ? sql`app.is_admin_for(company.id)` : undefined,
-        ),
-      )
+      .where(companyCatalogPredicate(opts))
       .orderBy(company.legalName);
   return outerTx?run(outerTx):withTenant(ctx,run);
 }

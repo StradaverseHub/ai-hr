@@ -4,7 +4,7 @@ import {afterAll,beforeAll,expect,it,vi} from 'vitest';
 import * as database from '../db/client';
 import type {SessionContext,Tx} from '../db/client';
 import * as s from '../db/schema';
-import {listEmployees,listEmployeePickOptions,statutoryPickerEmployees} from '../core/read';
+import {listEmployees,listEmployeePickOptions,employeePickSelection,listCompanies,statutoryPickerEmployees} from '../core/read';
 import {bulkEmployeePicker,resolveBulkEmployeeSelection} from '../core/bulk-employee-picker';
 import {bulkEmployeePickerRequest} from '../core/bulk-employee-picker-request';
 import {EmployeeChoiceAccessError,EmployeeChoiceInputError} from '../core/employee-choice';
@@ -51,7 +51,7 @@ it('keeps complete all-status populations and exact folded searches across every
 it('preserves exact/folded code collision refusal, complete statutory lifecycle labels and RO/shared carriers',async()=>{
  const {b,ctx,companies,employees}=await fixture();
  await owner.db.update(s.employment).set({employeeCode:'P0008'}).where(eq(s.employment.id,employees[7].id));
- await owner.db.update(s.employment).set({blacklistedAt:new Date('2026-01-01')}).where(eq(s.employment.id,employees[0].id));
+ await owner.db.update(s.employment).set({blacklistedAt:'2026-01-01'}).where(eq(s.employment.id,employees[0].id));
  const known=(await listEmployees(ctx)).map(identity);
  for(const raw of ['P-0008','P0008','P 0008','P.0008','P 0008,missing'])expect((await resolveBulkEmployeeSelection(ctx,[],raw)).selection).toEqual(resolveEmploymentSelection([],raw,known));
  for(const companyId of companies.slice(0,3)){
@@ -75,3 +75,27 @@ it('bounds private request bytes and refuses scope injection or malformed operat
  expect(await bulkEmployeePickerRequest(request({operation:'page',query:'',offset:0}))).toEqual({operation:'page',query:'',offset:0});
  for(const input of [{operation:'page',query:'',offset:-1},{operation:'page',query:'',offset:0,companyIds:[]},{operation:'all',query:'',offset:0,roles:['super_admin']},{operation:'resolve',picked:[1],raw:''},{operation:'resolve',picked:[],raw:'x'.repeat(1048576)}])await expect(bulkEmployeePickerRequest(request(input))).rejects.toBeInstanceOf(EmployeeChoiceInputError);
 });
+
+it('shares the archived-company vocabulary with native command admission and hydrates only25 selected labels',async()=>{
+ const {b,ctx,companies,employees}=await fixture();
+ const stored=[...employees.map(row=>row.id),'unknown',employees[0].id.toUpperCase()];
+ const initial=await employeePickSelection(ctx,stored),known=await listEmployeePickOptions(ctx);
+ expect(initial.ids).toEqual(known.map(row=>row.id));expect(initial.ids).toHaveLength(1000);expect(initial.rows).toEqual(known.slice(0,25));
+ await owner.db.update(s.company).set({archivedAt:new Date('2026-01-01')}).where(eq(s.company.id,companies[0]));
+ for(const allArchived of [false,true]){
+  if(allArchived)await owner.db.update(s.company).set({archivedAt:new Date('2026-01-01')}).where(eq(s.company.tenantId,b.tenantId));
+  const catalog=await listCompanies(ctx),legacy=(await listEmployees(ctx,catalog.map(row=>row.id))).map(identity);
+  expect(await listEmployeePickOptions(ctx)).toEqual(legacy);
+  const page=await bulkEmployeePicker(ctx,{query:'',offset:0,all:true});expect(page.rows).toEqual(legacy.slice(0,25));expect(page.ids).toEqual(legacy.map(row=>row.id));
+  for(const raw of ['P0000','P 0000','p0070'])expect((await resolveBulkEmployeeSelection(ctx,[],raw)).selection).toEqual(resolveEmploymentSelection([],raw,legacy));
+ }
+},300000);
+it('retains exact Unicode whitespace/code folding and native count/page results on qualified ASCII needles',async()=>{
+ const {ctx,employees}=await fixture();
+ for(const [index,employeeCode] of [[10,'Q\u00a0._-\t123'],[11,'K-17'],[12,'İ-17']] as const)await owner.db.update(s.employment).set({employeeCode}).where(eq(s.employment.id,employees[index].id));
+ const known=await listEmployeePickOptions(ctx);
+ for(const query of ['q123','Q 123','k17','i17','i','İ','P-','._-','\0']){
+  const expected=known.filter(row=>matchesEmployeeSearch(row,query));
+  const page=await bulkEmployeePicker(ctx,{query,offset:0,all:true});expect(page.rows).toEqual(expected.slice(0,25));expect(page.total).toBe(expected.length);expect(page.ids).toEqual(expected.map(row=>row.id));
+ }
+},300000);

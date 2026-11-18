@@ -122,6 +122,7 @@ export function NoticeForm({
   orgCriteria,
   employees,
   remoteEmployees=false,
+  knownEmployeeIds,
   targetingFrozen,
   labels,
   authoring,
@@ -142,6 +143,7 @@ export function NoticeForm({
    */
   employees: EmployeePickOption[];
   remoteEmployees?:boolean;
+  knownEmployeeIds?:string[];
   /** True once the notice is published — the audience snapshot is fixed and the step is read-only. */
   targetingFrozen: boolean;
   labels: NoticeFormLabels;
@@ -169,7 +171,7 @@ export function NoticeForm({
    * Dropping the unknown half instead would be the worst option available: it would silently shrink the
    * audience of a notice on a plain Save.
    */
-  const known = useMemo(() => new Set(employees.map((e) => e.id)), [employees]);
+  const known = useMemo(() => new Set(knownEmployeeIds??employees.map((e) => e.id)), [employees,knownEmployeeIds]);
   const [picked, setPicked] = useState<Set<string>>(
     () => new Set(values.employmentIds.filter((id) => known.has(id))),
   );

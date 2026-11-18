@@ -14,8 +14,9 @@ export async function fetchBulkEmployeeSelection(picked:string[],raw:string,sign
  * A stale resolution cannot enable Next/Save or claim a reviewed population. */
 export function useBulkEmployeeVocabulary(remote:boolean,initial:EmployeePickOption[],picked:Set<string>,raw:string){
  const key=JSON.stringify([[...picked],raw]);
- const [result,setResult]=useState<{key:string;selection:EmploymentSelection;rows:EmployeePickOption[]}|null>(null);
- const [failed,setFailed]=useState<string|null>(null),[retry,setRetry]=useState(0);
+ const [result,setResult]=useState<{identity:object;selection:EmploymentSelection;rows:EmployeePickOption[]}|null>(null);
+ const [failed,setFailed]=useState<object|null>(null),[retry,setRetry]=useState(0);
+ const identity=useMemo(()=>({key}),[key,retry,remote]);
  const [cache,setCache]=useState(initial);
  const receiveRows=useCallback((rows:EmployeePickOption[])=>setCache(previous=>{
   const values=new Map(previous.filter(row=>picked.has(row.id)).map(row=>[row.id,row]));for(const row of rows)values.set(row.id,row);return [...values.values()];
@@ -24,12 +25,12 @@ export function useBulkEmployeeVocabulary(remote:boolean,initial:EmployeePickOpt
   if(!remote)return;
   const controller=new AbortController();let active=true;
   const timer=setTimeout(()=>{void fetchBulkEmployeeSelection([...picked],raw,controller.signal).then(value=>{
-   if(active)setResult({key,...value});
-  }).catch(()=>{if(active&&!controller.signal.aborted)setFailed(key);});},raw?180:0);
+   if(active)setResult({identity,...value});
+  }).catch(()=>{if(active&&!controller.signal.aborted)setFailed(identity);});},raw?180:0);
   return()=>{active=false;clearTimeout(timer);controller.abort();};
- },[remote,key,retry]);
- const current=result?.key===key?result:null;
+ },[remote,identity]);
+ const current=result?.identity===identity?result:null;
  const selection=useMemo(()=>remote?current?.selection??{ids:[],unmatched:[]}:resolveEmploymentSelection([...picked],raw,initial),[remote,current,picked,raw,initial]);
  const rows=remote?current?.rows??cache.filter(row=>picked.has(row.id)).slice(0,25):initial.filter(row=>picked.has(row.id));
- return {selection,rows,receiveRows,pending:remote&&!current,failed:remote&&failed===key,retry:()=>{setFailed(null);setRetry(n=>n+1);}};
+ return {selection,rows,receiveRows,pending:remote&&!current,failed:remote&&failed===identity,retry:()=>{setFailed(null);setRetry(n=>n+1);}};
 }

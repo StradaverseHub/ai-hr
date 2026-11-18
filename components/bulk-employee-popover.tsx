@@ -12,8 +12,9 @@ export function BulkEmployeePopover({onRows,...props}:Omit<ComponentProps<typeof
   if(!response.ok)throw Error('Unavailable');
   const data=await response.json();
   if(!data||data.query!==query||data.offset!==offset||!Number.isSafeInteger(data.total)||data.total<0||!Array.isArray(data.rows)||data.rows.length>25
+   ||data.rows.length!==Math.min(25,Math.max(0,data.total-offset))||new Set(data.rows.map((row:EmployeePickOption)=>row.id)).size!==data.rows.length
    ||data.rows.some((row:EmployeePickOption)=>!row||typeof row.id!=='string'||typeof row.name!=='string'||row.employeeCode!==null&&typeof row.employeeCode!=='string')
-   ||all&&(!Array.isArray(data.ids)||data.ids.length!==data.total||data.ids.some((id:unknown)=>typeof id!=='string')))throw Error('Unavailable');
+   ||all&&(!Array.isArray(data.ids)||data.ids.length!==data.total||data.ids.some((id:unknown)=>typeof id!=='string')||new Set(data.ids).size!==data.total))throw Error('Unavailable');
   if(!signal.aborted)onRows(data.rows);
   return {options:data.rows.map((row:EmployeePickOption):MultiSelectPopoverOption=>({id:row.id,name:row.employeeCode?`${row.name} · ${row.employeeCode}`:row.name})),total:data.total,ids:data.ids as string[]|undefined};
  },[onRows]);

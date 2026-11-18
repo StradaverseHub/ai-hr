@@ -419,7 +419,13 @@ describe('r289 §D · one rule, one normaliser, six call sites', () => {
   it.each(SITES)('%s resolves the two fields against a population', (_label, rel) => {
     const src = read(rel);
     expect(src).toMatch(/from '@\/lib\/employment-selection'/);
-    expect(src).toMatch(MERGES_WITH_POPULATION);
+    if(rel.startsWith('components/')){
+      expect(src).toContain('useBulkEmployeeVocabulary(remoteEmployees,employees,picked,pastedRaw)');
+      expect(read('components/use-bulk-employee-vocabulary.ts')).toContain('resolveEmploymentSelection([...picked],raw,initial)');
+      const native=read('core/bulk-employee-picker.ts');
+      expect(native).toContain('resolveEmploymentSelection(picked,raw,known)');
+      expect(native).toContain('employeePickVocabularyTx(tx,ctx)');
+    }else expect(src).toMatch(MERGES_WITH_POPULATION);
     // The hand-rolled split must stay gone from every one of them.
     expect(src).not.toContain('.split(/[\\s,]+/)');
   });

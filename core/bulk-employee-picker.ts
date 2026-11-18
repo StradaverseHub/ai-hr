@@ -1,8 +1,10 @@
 import {sql} from 'drizzle-orm';
 import {withTenant,type SessionContext} from '../db/client';
-import {employment,person,company} from '../db/schema';
+import {employment,person} from '../db/schema';
 import {assertAiPresentationPrincipalTx} from './ai-principal';
 import {EmployeeChoiceAccessError,EmployeeChoiceInputError,exactEmployeeChoiceMatches} from './employee-choice';
+import {employeePickVocabularyTx,employeePickProjection} from './read';
+import {bulkEmployeeExactPredicate} from './bulk-employee-search';
 import {isAdmin} from '../lib/authz-model';
 import {matchesEmployeeSearch} from '../lib/employee-search';
 import {resolveEmploymentSelection,type EmployeePickOption} from '../lib/employment-selection';
@@ -18,19 +20,19 @@ export async function bulkEmployeePicker(ctx:SessionContext,input:{query:string;
  if(typeof query!=='string'||query.length>200||!Number.isSafeInteger(offset)||offset<0||input.all!==undefined&&typeof input.all!=='boolean')throw new EmployeeChoiceInputError();
  return withTenant(ctx,async tx=>{
   await assertAiPresentationPrincipalTx(tx,ctx);signal?.throwIfAborted();
-  const from=sql`from ${employment} join ${person} on ${person.id}=${employment.personId}
-   join ${company} on ${company.id}=${employment.companyId}
-   where ${employment.tenantId}=${ctx.tenantId}::uuid`;
-  const projection=sql`${employment.id} as "employmentId",${person.fullName} as name,${employment.employeeCode} as "employeeCode"`;
+  const from=await employeePickVocabularyTx(tx,ctx),projection=employeePickProjection('employmentId');
+  const exact=bulkEmployeeExactPredicate(sql`${person.fullName}`,sql`coalesce(${employment.employeeCode},'')`,query.trim().toLowerCase());
   let total=0,rows:EmployeePickOption[]=[],ids:string[]|undefined;
-  if(!query.trim()){
-   if(input.all){const identities=await tx.execute<{id:string}>(sql`select ${employment.id} as id ${from} order by ${person.fullName},${employment.id}`);ids=identities.map(row=>row.id);total=ids.length;}
-   else {const [count]=await tx.execute<{total:number}>(sql`select count(*)::int as total ${from}`);total=count.total;}
-   rows=(await tx.execute<{employmentId:string;name:string;employeeCode:string|null}>(sql`select ${projection} ${from} order by ${person.fullName},${employment.id} limit 25 offset ${offset}`)).map(({employmentId,...row})=>({id:employmentId,...row}));
+  if(!query.trim()||exact){
+   const filtered=sql`${from} ${exact?sql`and ${exact}`:sql``}`;
+   if(input.all){const identities=await tx.execute<{id:string}>(sql`select ${employment.id} as id ${filtered} order by ${person.fullName},${employment.id}`);ids=identities.map(row=>row.id);total=ids.length;}
+   else {const [count]=await tx.execute<{total:number}>(sql`select count(*)::int as total ${filtered}`);total=count.total;}
+   rows=(await tx.execute<{employmentId:string;name:string;employeeCode:string|null}>(sql`select ${projection} ${filtered} order by ${person.fullName},${employment.id} limit 25 offset ${offset}`)).map(({employmentId,...row})=>({id:employmentId,...row}));
   }else{
-   // ECMAScript folding includes Unicode whitespace and case mappings not shared by
-   // PostgreSQL collations. Stream minimal identities; retain only 25 labels and,
-   // on an explicit Select/Clear All request, complete matching IDs.
+   // Native Unicode/unknown-runtime compatibility path: PostgreSQL locale lower is
+   // not ECMAScript lower. As in employee-choice's approved exact reader, stream
+   // minimal identities and keep25 labels, plus IDs only for an explicit All read.
+   // This fallback is separately costed; the qualified ASCII path counts/pages in SQL.
    const matching:string[]=[];
    const result=await exactEmployeeChoiceMatches(tx,sql`select ${projection} ${from} order by ${person.fullName},${employment.id}`,'',offset,25,signal,row=>{
     const match=matchesEmployeeSearch(row,query);if(match&&input.all)matching.push(row.employmentId);return match;
@@ -52,9 +54,8 @@ export async function resolveBulkEmployeeSelection(ctx:SessionContext,picked:str
   if(!picked.length&&!raw.trim())return {selection:{ids:[],unmatched:[]},rows:[]};
   const selected=picked.filter(id=>/^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/.test(id));
   const restriction=!raw.trim()?selected.length?sql`and ${employment.id}=any(${'{'+selected.join(',')+'}'}::uuid[])`:sql`and false`:sql``;
-  const known=await tx.execute<EmployeePickOption>(sql`select ${employment.id} as id,${person.fullName} as name,${employment.employeeCode} as "employeeCode"
-   from ${employment} join ${person} on ${person.id}=${employment.personId} join ${company} on ${company.id}=${employment.companyId}
-   where ${employment.tenantId}=${ctx.tenantId}::uuid ${restriction} order by ${person.fullName},${employment.id}`);
+  const from=await employeePickVocabularyTx(tx,ctx);
+  const known=await tx.execute<EmployeePickOption>(sql`select ${employeePickProjection()} ${from} ${restriction} order by ${person.fullName},${employment.id}`);
   signal?.throwIfAborted();const selection=resolveEmploymentSelection(picked,raw,known),chosen=new Set(picked);
   return {selection,rows:known.filter(row=>chosen.has(row.id)).slice(0,25)};
  },{readOnlySnapshot:true,readSignal:signal});

@@ -1,7 +1,7 @@
 import { organisationChoiceLabels } from '@/lib/organisation-choice-label';
 import { getTranslations } from 'next-intl/server';
 
-import { listCompanies, listDepartments, listEmployeePickOptions } from '@/core/read';
+import { listCompanies, listDepartments, employeePickSelection } from '@/core/read';
 import { ORG_ASSIGNMENT_CRITERIA } from '@/core/leave-org-criteria';
 import { listAllProfileOptions } from '@/core/profile-options';
 import type { EmployeePickOption } from '@/lib/employment-selection';
@@ -45,6 +45,7 @@ export type CriteriaVocabulary = {
    * on its own side of the boundary (test/server-client-boundary.test.ts pins the class).
    */
   employees: EmployeePickOption[];
+  employeeIds:string[];
 };
 
 export async function criteriaVocabulary(s: SessionContext,selectedIds:readonly string[]=[]): Promise<CriteriaVocabulary> {
@@ -58,10 +59,11 @@ export async function criteriaVocabulary(s: SessionContext,selectedIds:readonly 
   ]);
 
   // Only a reopened notice's explicit selection needs labels before hydration.
-  const employees=await listEmployeePickOptions(s,selectedIds);
+  const selection=await employeePickSelection(s,selectedIds);
 
   return {
-    employees,
+    employees:selection.rows,
+    employeeIds:selection.ids,
     companies: companies.map((c) => ({ value: c.id, label: c.name })),
     departments: organisationChoiceLabels(departments).map((d) => ({ value: d.id, label: d.displayLabel })),
     employmentTypes: EMPLOYMENT_TYPE_VALUES.map((v) => ({ value: v, label: tEmploymentType(v) })),

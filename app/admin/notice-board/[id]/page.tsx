@@ -175,6 +175,7 @@ export default async function NoticeDetailPage({
             /* r288 — the audience step's picker, read once in ../criteria-options.ts and handed over as
                PLAIN DATA: no functions cross this boundary (test/server-client-boundary.test.ts). */
             employees={vocab.employees}
+            knownEmployeeIds={vocab.employeeIds}
             remoteEmployees
             targetingFrozen={published}
             labels={{

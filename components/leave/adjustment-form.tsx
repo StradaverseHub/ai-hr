@@ -164,6 +164,7 @@ export function AdjustmentForm({
   const [previewFailed, setPreviewFailed] = useState(false);
   const formRef = useRef<HTMLFormElement>(null);
   const previewVersionRef=useRef(0);
+  const previewControllerRef=useRef<AbortController|null>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // ── ② PICK INDIVIDUALLY: two ways in, one list out ──────────────────────────────────────────────────
@@ -258,9 +259,12 @@ export function AdjustmentForm({
       employmentIds: mode==='individual'&&!remoteEmployees?mergeEmploymentSelection(fd.getAll('employmentIds').map(String),String(fd.get('employmentIdsRaw')??''),employees):[],
     };
     const previewVersion=++previewVersionRef.current;
+    previewControllerRef.current?.abort();
+    const previewController=new AbortController();previewControllerRef.current=previewController;
     startPreview(async () => {
       try {
-        if(mode==='individual'&&remoteEmployees)payload.employmentIds=(await fetchBulkEmployeeSelection(fd.getAll('employmentIds').map(String),String(fd.get('employmentIdsRaw')??''))).selection.ids;
+        if(mode==='individual'&&remoteEmployees)payload.employmentIds=(await fetchBulkEmployeeSelection(fd.getAll('employmentIds').map(String),String(fd.get('employmentIdsRaw')??''),previewController.signal)).selection.ids;
+        if(previewVersionRef.current!==previewVersion)return;
         const nextPreview=await previewAction(payload);
         if(previewVersionRef.current!==previewVersion)return;
         setPreview(nextPreview);
@@ -279,12 +283,14 @@ export function AdjustmentForm({
   /** Debounced, because this fires on every keystroke in the reason box and every chip toggle. */
   const schedulePreview = () => {
     previewVersionRef.current++;
+    previewControllerRef.current?.abort();
     setPreview(null);
     if (debounceRef.current) clearTimeout(debounceRef.current);
     debounceRef.current = setTimeout(refreshPreview, 250);
   };
   useEffect(
     () => () => {
+      previewControllerRef.current?.abort();
       if (debounceRef.current) clearTimeout(debounceRef.current);
     },
     [],
