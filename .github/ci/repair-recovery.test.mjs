@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {fixture,now,time} from './resume-test-fixtures.mjs';
 import {assessResumeCoverage} from './resume-assessment.mjs';
-import {hash} from './manifest.mjs';
+import {hash,buildUnits} from './manifest.mjs';
 import {verifyRepairRecovery,repairDisposition,validateRepairFocusedMetadata,validateRepairBuildMetadata,validateRepairGrantEvidence,validateFixturePinRepair,FIXTURE_PIN_REPAIR_PATH,FIXTURE_MIGRATION_PINS,REPAIR_RECOVERY_POLICY} from './repair-recovery-policy.mjs';
 import {createInstallGrant} from './ci-install-grant.mjs';
 import {installationFixture} from './staging-install-test-fixture.mjs';
@@ -142,3 +142,47 @@ test('Actual Git delta adapter refuses matching claimed helper pins when committ
   assert.throws(()=>validateRepairDelta({cwd:root,original,candidate:git('rev-parse','HEAD')}),/migration-owner digest/);
  }finally{rmSync(root,{recursive:true,force:true});}
 });
+
+/** Synthetic complete manifest, not actual hosted execution evidence. Uses the native grouping,
+ * report assessor, PG profile validator, recovery accounting and format2 grant constructor. */
+function compoundFixtureDbInput(){
+ const f=input(),template=structuredClone(f.focused[0]),oldDb=f.reports.find(r=>r.databaseTerminalEvidence),resource=structuredClone(oldDb.databaseTerminalEvidence);
+ const db=[FIXTURE_PIN_REPAIR_PATH,...Array.from({length:48},(_,i)=>`test/fixture-recovery-db-${String(i).padStart(2,'0')}.test.ts`)].sort(),nodb=['test/plain.test.ts'];
+ const units=buildUnits([...db,...nodb],{db,nodb},['test/ui.browser.test.tsx']);
+ assert.equal(units.filter(u=>u.kind==='db').length,3);
+ const originalBody={...f.sourcePlan,suite:[...db,...nodb].sort(),units};delete originalBody.fingerprint;f.sourcePlan={...originalBody,fingerprint:hash(originalBody)};
+ const body={...f.sourcePlan,sha:f.plan.sha};delete body.fingerprint;f.plan={...body,fingerprint:hash(body)};
+ const names=path=>path===FIXTURE_PIN_REPAIR_PATH?['runs immutable legacy worker source against the migrated database and current web commands','runs immutable staged worker source against the migrated database and current web commands']:['native unchanged case '+path];
+ const processResult=(files,cwd,passing)=>{
+  const testResults=files.map(path=>({name:cwd+'/'+path,status:passing?'passed':'failed',assertionResults:names(path).map(fullName=>({fullName,status:passing?'passed':'failed'}))}));
+  const total=testResults.reduce((n,r)=>n+r.assertionResults.length,0);
+  return {success:passing,numTotalTests:total,numPassedTests:passing?total:0,numFailedTests:passing?0:total,numFailedTestSuites:passing?0:files.length,numPendingTests:0,numPendingTestSuites:0,numTodoTests:0,testResults};
+ };
+ f.reports=units.map(u=>({schemaVersion:1,id:u.id,sha:f.sourcePlan.sha,fingerprint:f.sourcePlan.fingerprint,cwd:'/candidate',files:u.files,exitCode:u.kind==='db'?1:0,...(u.kind==='db'?{databaseTerminalEvidence:structuredClone(resource)}:{}),batches:[{exitCode:u.kind==='db'?1:0,...(u.kind==='db'?{databaseEvidence:structuredClone(resource)}:{}),result:processResult(u.files,'/candidate',u.kind!=='db')}]}));
+ const expected={candidate:f.sourcePlan.sha,controller:f.sourcePlan.controller,baseline:f.sourcePlan.migrationBase};
+ f.assessment={...assessResumeCoverage({expectedPlan:f.sourcePlan,reports:f.reports,expected}),sourceRun:{id:f.sourceRun.id},observations:units.filter(u=>u.kind==='db').map(u=>({id:u.id,conclusion:'failure'}))};
+ for(const r of f.assessment.reusable)r.source={runId:f.sourceRun.id,jobId:123,artifactId:456,digest:'sha256:'+'a'.repeat(64)};
+ const impact={...f.impactContext.plan,changed:[FIXTURE_PIN_REPAIR_PATH],classifications:[{path:FIXTURE_PIN_REPAIR_PATH,risk:'low',uncertainties:[]}],run:[FIXTURE_PIN_REPAIR_PATH],selection:{[FIXTURE_PIN_REPAIR_PATH]:['changed test']}};delete impact.fingerprint;f.impactContext.plan={...impact,fingerprint:hash(impact)};
+ f.delta={changed:[FIXTURE_PIN_REPAIR_PATH],fixturePinRepair:validateFixturePinRepair(fixturePinInput())};
+ f.focused=units.filter(u=>u.kind==='db').map((u,i)=>{
+  const p=structuredClone(template),runId=201+i;p.run.id=runId;
+  p.jobs=p.jobs.map((j,k)=>({...j,id:runId*10+k,run_id:runId}));p.producer=p.jobs.find(j=>j.name==='selected-tests');
+  p.artifact={...p.artifact,id:401+i,workflow_run:{...p.artifact.workflow_run,id:runId}};p.jobs.find(j=>j.name==='typecheck').conclusion=i===0?'success':'skipped';p.compiler=i===0?{runId,jobId:p.jobs.find(j=>j.name==='typecheck').id,controller:f.plan.controller}:null;
+  p.report={...p.report,runId:String(runId),files:u.files.slice().sort(),groups:{DB:u.files.slice().sort(),NODB:[]},manifestHash:hash(JSON.stringify(u.files.slice().sort())),databaseTerminalEvidence:{...structuredClone(resource),name:`aihr-ci-${runId}-1-db-1`,capturedAt:time(2.2)}};
+  p.result=processResult(u.files,'/home/runner/work/ai-hr/ai-hr/source',true);
+  p.report.batches=[{kind:'DB',files:p.report.files,exitCode:0,processExitCode:0,signal:null,assertions:p.result.numTotalTests,startedAt:time(2.9)}];
+  const authenticated=validateRepairFocusedMetadata({run:p.run,jobs:p.jobs,artifacts:[p.artifact],expected:{runId,controller:f.plan.controller,workflowId:999,after:f.sourceRun.updated_at},now});assert.deepEqual(authenticated.compiler,p.compiler);return p;
+ });
+ f.history.runIds=[...f.focused.map(p=>p.run.id),f.buildRun.id];return f;
+}
+test('v3 composes the exact fixture in three whole failed DB units with retained coverage and native grant binding',()=>{
+ const f=compoundFixtureDbInput(),before=structuredClone(f.reports),c=verifyRepairRecovery(f);
+ assert.deepEqual(f.reports,before);assert.equal(c.units.filter(u=>u.kind==='repaired-source').length,3);assert.equal(c.units.filter(u=>u.kind==='retained').length,4);
+ assert.equal(c.tests,54);assert.ok(f.plan.units.find(u=>u.kind==='db'&&u.files.includes(FIXTURE_PIN_REPAIR_PATH)));assert.deepEqual(c.delta,f.delta);
+ assert.equal(c.focusedSources.length,3);assert.equal(c.compilers.length,1);assert.equal(c.originalConclusion,'failure');
+ const g=installationFixture(),e={...g.evidence,...c,recovery:c,fingerprint:hash(c),build:{...g.evidence.build,...f.build}},run={...g.run,id:c.runId,head_sha:c.controller},producer={...g.producer,run_id:c.runId,head_sha:c.controller};
+ const grant=createInstallGrant({...g,evidence:e,run,producer});assert.equal(grant.source,f.plan.sha);assert.equal(grant.runId,f.buildRun.id);assert.equal(grant.witnessFingerprint,hash(c));assert.equal(grant.build.archiveSha256,e.build.archiveSha256);
+});
+for(const [name,change] of [
+ ['missing whole DB unit',f=>f.focused.pop()],['foreign replacement source',f=>f.focused[1].report.sha=f.sourcePlan.sha],['PG profile mutation',f=>f.focused[1].report.databaseTerminalEvidence.memoryMax=1073741824],['dropped compatibility variant',f=>{const p=f.focused.find(p=>p.report.files.includes(FIXTURE_PIN_REPAIR_PATH));p.result.testResults.find(r=>r.name.endsWith(FIXTURE_PIN_REPAIR_PATH)).assertionResults.pop();}],
+])test('v3 compound DB composition refuses '+name,()=>{const f=compoundFixtureDbInput();change(f);assert.throws(()=>verifyRepairRecovery(f));});

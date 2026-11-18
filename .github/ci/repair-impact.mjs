@@ -62,6 +62,8 @@ export function readCommittedBlobBatches(cwd, entries, {run = execFileSync, now 
     const bytes = run('git', ['cat-file', '--batch'], {cwd, input: ids.join('\n') + '\n', maxBuffer: limit, timeout: remaining});
     if (!Buffer.isBuffer(bytes) || bytes.length > limit || now() > deadline) fail('blob transport bound or phase deadline exceeded');
     for (const [id, text] of decodeCommittedBlobs(ids, bytes, sizes)) result.set(id, text);
+    const decodedAt = now();
+    if (!Number.isFinite(decodedAt) || decodedAt > deadline) fail('blob phase deadline exceeded after decode');
   }
   return result;
 }

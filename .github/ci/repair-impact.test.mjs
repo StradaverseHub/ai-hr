@@ -33,11 +33,16 @@ test('Exact framing bounds refuse oversize singletons and conflicting declared i
   assert.throws(()=>decodeCommittedBlobs([a],blob(a,'alpha'),new Map([[a,4]])),/declared blob size/);
 });
 test('All batches share one original 60-second deadline; failure never returns a partial plan',()=>{
-  const entries=[{id:a,size:5},{id:b,size:4}],clocks=[0,0,40000,40000,59000],calls=[];
+  const entries=[{id:a,size:5},{id:b,size:4}],clocks=[0,0,40000,40000,40000,59000,59000],calls=[];
   const result=readCommittedBlobBatches('/immutable',entries,{limit:54,now:()=>clocks.shift(),run:(_b,_a,o)=>{calls.push(o);return blob(o.input.trim(),calls.length===1?'alpha':'beta');}});
   assert.equal(result.size,2);assert.deepEqual(calls.map(o=>o.timeout),[60000,20000]);
   let clock=0,count=0;
   assert.throws(()=>readCommittedBlobBatches('/immutable',entries,{limit:54,now:()=>clock,run:(_b,_a,o)=>{count++;clock=60001;return blob(o.input.trim(),'alpha');}}),/deadline/);assert.equal(count,1);
   for(const bytes of [blob(b,'beta'),blob(a,'alpha').subarray(0,-1),Buffer.concat([blob(a,'alpha'),Buffer.from('suffix')])])
     assert.throws(()=>readCommittedBlobBatches('/immutable',[entries[0]],{now:()=>0,run:()=>bytes}));
+});
+
+test('Final batch decoding cannot return a partial source map after the shared deadline',()=>{
+ const clocks=[0,0,100,60001];
+ assert.throws(()=>readCommittedBlobBatches('/immutable',[{id:a,size:5}],{now:()=>clocks.shift(),run:()=>blob(a,'alpha')}),/deadline exceeded after decode/);
 });
