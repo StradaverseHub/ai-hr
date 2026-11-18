@@ -108,6 +108,7 @@ def check_history(o):
     b.check(all(old[k]==a[k]for k in('install','grantSha256','activatedSha256','runtimeSha256','drainSha256','ledger','bootIdSha256','webPid','webStartedMonotonicUs','priorLastOkSha256','launch','firstStageApproval','firstStageApprovalSha256')),'original exact installation/failure pins differ')
     first=json.loads(o.first_bytes);b.check(first['helperSha256']==old['helperSha256'],'original helper provenance differs')
     failure_snapshot(b,c,f,a['identity'],a['launch'])
+    if o.guard.stage=='recover-published-ci-runtime':c.PUBLISHED.load_seal(o.guard,o.fmt,b,c,c.RECOVERY)
 
 
 def failed_snapshot(o):return failure_snapshot(o.base,o.guard.ci,o.recovery,o.auth['identity'],o.auth['launch'])
@@ -121,7 +122,7 @@ def admit_mutation(o):
     return {'recoveryOnly':True,'originalReadinessWindowRevived':False,'expiredGrantWriteAuthority':False}
 
 
-def prepared_proof(base,ci,fmt,selected,identity,*,deadline,metadata=True):
+def prepared_proof(base,ci,fmt,selected,identity,*,deadline,metadata=True,published_root=None):
     base.check(set(selected)=={'path','sha256'},'closed prepared proof selection required');path=Path(selected['path']);ci.protected_private(base,path)
     raw=base.read_bounded(path,65536);base.check(ci.sha(raw)==selected['sha256'],'sealed prepared proof differs');proof=json.loads(raw)
     base.check(set(proof)=={'format','kind','policy','preparationApproval','preparationApprovalSha256','preparedAt','identity','archiveSha256','manifestSha256','directory','tree','preparation','releaseAuthorized'} and proof['format']==1 and proof['kind']=='ROOT_AUTHENTICATED_WORKER_PREPARATION_NOT_ACTIVATION' and proof['policy']==POLICY and proof['identity']==identity and proof['releaseAuthorized']is False,'closed prepared byte attestation required')
@@ -134,7 +135,9 @@ def prepared_proof(base,ci,fmt,selected,identity,*,deadline,metadata=True):
     operation=base.ROOT/'upgrades'/identity['source'];archive=operation/'authenticated-worker.zip';base.root_protected(archive,regular=True)
     manifest=fmt.inspect_archive(archive,identity['source'],identity['lock_sha256'],identity['package_sha256'])
     base.check(proof['archiveSha256']==identity['archive_sha256'] and proof['manifestSha256']==fmt.digest(fmt.canonical(manifest)),'prepared archive/manifest identity differs')
-    root=Path(proof['directory']);base.root_protected(root)
+    root=Path(proof['directory'])if published_root is None else Path(published_root)
+    if published_root is not None:base.check(not metadata and root==base.ROOT/'releases'/identity['source'],'published proof requires explicit immutable destination and separate seal')
+    base.root_protected(root)
     if metadata:base.check(tree_identity(root,manifest,deadline=deadline)==proof['tree'],'previously byte-proved root tree identity/membership changed')
     return proof,root,manifest
 
@@ -199,6 +202,8 @@ def run(stage,guard,fmt,base,ci,update):
     base.root_protected(lock,regular=True);fd=os.open(lock,os.O_RDWR|os.O_NOFOLLOW)
     try:
         fcntl.flock(fd,fcntl.LOCK_EX|fcntl.LOCK_NB);guard.bind_install(fd,lock)
+        if stage=='seal-published-ci-worker':return ci.PUBLISHED.seal(guard,fmt,base,ci,ci.RECOVERY,update)
+        if stage=='recover-published-ci-runtime':return ci.PUBLISHED.run(guard,fmt,base,ci,ci.RECOVERY,update)
         if stage=='prepare-ci-worker':return prepare(guard,fmt,base,ci,update)
         a=guard.a;identity=a['identity'];original=base.ROOT/'upgrades'/identity['source'];base.root_protected(original)
         recovery=a.get('recovery');selected=a['preparedWorker']

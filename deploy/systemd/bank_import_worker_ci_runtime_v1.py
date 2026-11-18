@@ -387,7 +387,9 @@ class RuntimeObservation:
         base.check(sha(self.bytes) == args.ci_runtime_authorization_sha256, 'root CI cutover authorization hash differs')
         a = self.auth = json.loads(self.bytes)
         fields = ACTIVATION_FIELDS if prepared is None else RECOVERY.NORMAL_FIELDS if recovery is None else RECOVERY.FIELDS
-        kind='ADMIN_AUTHORIZED_SINGLE_CI_WORKER_CUTOVER' if prepared is None else RECOVERY.KINDS[ACTIVE_OPERATION_GUARD.stage]
+        published=getattr(ACTIVE_OPERATION_GUARD,'stage',None)=='recover-published-ci-runtime'
+        if published:fields=PUBLISHED.LIVE_FIELDS
+        kind=PUBLISHED.KINDS[ACTIVE_OPERATION_GUARD.stage]if published else 'ADMIN_AUTHORIZED_SINGLE_CI_WORKER_CUTOVER' if prepared is None else RECOVERY.KINDS[ACTIVE_OPERATION_GUARD.stage]
         base.check(set(a) == fields and a['format'] == 1 and a['kind'] == kind and
                    a['policy'] == POLICY and a['target'] == 'alpha-staging' and a['releaseAuthorized'] is False,
                    'exact administrator CI cutover authority required')
