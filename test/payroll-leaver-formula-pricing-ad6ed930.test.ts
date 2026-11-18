@@ -1,3 +1,4 @@
+import { transactionFailureForPayrollError } from '../core/payroll-run-group-result';
 /**
  * ad6ed930 — A FORMULA-PRICED TRANSACTION FOR SOMEONE WHO HAS LEFT.
  *
@@ -164,6 +165,16 @@ describe('ad6ed930 — formula pricing and the employee’s last day', () => {
     expect(outcome).toMatchObject({ status: 'reprocessed', reasonCode: null });
     expect(outcome.repricedItems).toBeUndefined();
     expect(Number((await slip(batchId, leaver)).grossPay)).toBe(168.75);
+  });
+
+  it('whole-run refusal resolves the employee identity from the tenant-scoped transaction', async () => {
+    await keyOnor(leaver, '2026-10', '2026-10-31');
+    await leave();
+    const {batchId}=await createBatch(ctx,{companyId:base.companyId,payPeriod:'2026-10',payrollCycleId:monthly});
+    let failure:unknown;
+    try {await generatePayslips(ctx,{batchId});} catch(error) {failure=error;}
+    expect(transactionFailureForPayrollError(failure)).toEqual({employeeName:'Fictional Departed Keyer',employeeCode:'ZX0001',
+      itemName:'NORMAL OT',itemCode:'ONOR',dates:'2026-10-31',lastDay:LEFT_ON});
   });
 
   it('a stored row dated after the last day makes reprocess name the leaving date, not the formula', async () => {

@@ -2,7 +2,7 @@
 import {and,asc,eq,inArray,isNotNull,isNull,or,sql} from 'drizzle-orm';
 import {withTenant,type SessionContext,type Tx} from '../../db/client';
 import {actorOf,appendEvent} from '../../db/events';
-import {payComponent,payrollIndividualTxn} from '../../db/schema';
+import {payComponent,payrollIndividualTxn,employment,person} from '../../db/schema';
 import {deriveIndividualTxnAmountTx,TxnQuantityRequiredError} from '../../core/pay-components';
 import {payRuleDerivesAmount,payRuleInputUnit} from '../../core/pay-rule';
 import {isDatabaseError} from '../../lib/db-error';
@@ -99,24 +99,9 @@ export async function individualTxnPricingMarkerTx(tx:Tx,ctx:SessionContext,p:{c
  return {pricingSource:'pay_item_rule',pricingRef:'rule:'+item.hash,pricedAt:new Date()};
 }
 
-/** ad6ed930 — 'after_leaving_date': the row's Effective Date is after the employee's last day (`leftOn`). */
-export type PayItemRepriceReason='formula_failed'|'not_positive'|'zero_divisor'|'input_missing'|'no_longer_calculates'|'after_leaving_date';
-/** The updated Pay Item formula could not price one or more of an employee's transactions. Never a silent fallback to
- * the previous figure: a reprocess maps it to a Configuration incomplete outcome (core/payroll.ts) and keeps the run
- * marked; a whole-run processing job fails with this message and the run returns to draft. */
-export class PayItemFormulaRepriceError extends Error{
- constructor(public readonly employmentId:string,public readonly componentId:string,public readonly code:string,public readonly itemName:string,
-  public readonly dates:string[],public readonly reason:PayItemRepriceReason,public readonly detail:string|null,public readonly leftOn:string|null=null){
-  const why={formula_failed:'The formula could not be calculated for these inputs.',not_positive:'The formula did not produce a positive amount.',
-   zero_divisor:'The formula divides by zero for these inputs.',input_missing:'The transaction has no Hours, Days or Quantity the formula needs.',
-   no_longer_calculates:'The Pay Item no longer calculates its amount from a formula.',after_leaving_date:''}[reason];
-  // ad6ed930 — a date after the last day is not a formula fault: say so, with the date, and do not send HR to Pay Items.
-  super(reason==='after_leaving_date'&&leftOn
-   ?`${itemName} (${code}): ${dates.length} transaction${dates.length===1?' is':'s are'} dated after this employee's last day (${dates.join(', ')}). This employee left on ${leftOn}. Choose an effective date on or before that day.`
-   :`${itemName} (${code}): the updated formula could not calculate ${dates.length} transaction${dates.length===1?'':'s'} (${dates.join(', ')}). ${why}${detail?` ${detail}`:''} Correct the formula in Payroll > Settings > Pay Items and process again.`);
-  this.name='PayItemFormulaRepriceError';
- }
-}
+// Shared error contract stays dependency-free for job results and presentation.
+import {PayItemFormulaRepriceError,type PayItemRepriceReason} from '../../lib/pay-item-reprice-error';
+export {PayItemFormulaRepriceError,type PayItemRepriceReason} from '../../lib/pay-item-reprice-error';
 export type RepricedPayItem={componentId:string;code:string;name:string;count:number;quantity:number;unit:string|null;before:number;after:number};
 
 /**
@@ -180,7 +165,13 @@ export async function repriceIndividualLedgerTx(tx:Tx,ctx:SessionContext,p:{batc
   const amount=ledgerMoney(priced.amount);
   if(amount!==ledgerMoney(Number(row.amount))||priced.ref!==row.pricingRef||priced.source!==row.pricingSource)changes.push({row,amount,ref:priced.ref,source:priced.source});
  }
- if(failures.size){const f=[...failures.values()][0];throw new PayItemFormulaRepriceError(f.row.employmentId,f.row.componentId!,f.row.code,f.row.name,f.dates,f.reason,f.detail,f.leftOn);}
+ if(failures.size){
+  const f=[...failures.values()][0];
+  // Resolve only the refused employee, under this transaction's tenant/company row security.
+  const [employee]=await tx.select({name:person.fullName,code:employment.employeeCode}).from(employment)
+   .innerJoin(person,eq(person.id,employment.personId)).where(eq(employment.id,f.row.employmentId)).limit(1);
+  throw new PayItemFormulaRepriceError(f.row.employmentId,f.row.componentId!,f.row.code,f.row.name,f.dates,f.reason,f.detail,f.leftOn,employee);
+ }
  const pricedAt=new Date();
  for(const {row,amount,ref,source} of changes){
   const relinked=source!==row.pricingSource;

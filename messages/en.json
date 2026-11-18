@@ -8490,6 +8490,7 @@
         "partial": "Partially succeeded",
         "failed": "Failed"
       },
+      "transactionAfterLeaving": "{employeeName} ({employeeCode}) — {itemName} ({itemCode}): transaction date(s) {dates} are after the employee’s last day, {lastDay}. Review the transaction’s effective date before processing again.",
       "reason": {
         "TAX_SELECTION_CONFIRMATION_REQUIRED": "Confirm the Income Tax Resident selection for this employer before processing payroll.",
         "TAX_SELECTION_INVALID_SCHEME": "Review the selected income tax category before processing payroll.",
@@ -8506,6 +8507,7 @@
         "NOT_AUTHORIZED": "You do not have access to this company",
         "INVALID_CYCLE": "No valid payroll cycle for this company",
         "PRE_PROCESS_BLOCKED": "Employees in scope have no current salary record",
+        "TRANSACTION_AFTER_LEAVING": "Transaction dated after the employee’s last day",
         "SYSTEM_VALIDATION_ERROR": "System validation error",
         "MISSING_SALARY": "Missing salary information",
         "EMPTY_SELECTION": "No employees from the explicit selection belong to this company for the selected period. No whole-company run was created.",
