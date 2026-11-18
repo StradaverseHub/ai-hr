@@ -148,6 +148,7 @@ it('preserves an intervening Personnel correction instead of overwriting it with
 it('stores private file bytes, resumes the waiting workflow and deduplicates a successful retry', async () => {
   const c = await prepared(), bytes = Buffer.from('%PDF-1.4\nV9 fixture bytes\n%%EOF');
   expect(c.runs[0].status).toBe('waiting');
+  expect((await v9CaseDetail(admin,c.id)).canUploadFiles).toBe(true);await expect(v9CaseDetail(other,c.id)).rejects.toThrow();
   const input = { caseId: c.id, revision: c.revision, slot: 'fixture-support', name: 'support.pdf', content: bytes };
   await expect(v9UploadFile(other, input)).rejects.toThrow();
   const id = await v9UploadFile(admin, input);
@@ -157,6 +158,7 @@ it('stores private file bytes, resumes the waiting workflow and deduplicates a s
   expect((await v9DownloadFile(admin, c.id, id)).content.equals(bytes)).toBe(true);
   await expect(v9DownloadFile(other, c.id, id)).rejects.toThrow();
   await expect(v9UploadFile(admin, { ...input, revision: next.revision, name: 'spoof.pdf', content: Buffer.from('not a PDF') })).rejects.toThrow('contents');
+  await v9Command(admin,next.id,next.revision,{type:'cancel',reason:'Close fictional upload case'});expect((await v9CaseDetail(admin,next.id)).canUploadFiles).toBe(false);
 });
 it('enforces revision, status and private configuration boundaries inside the SQL commands', async () => {
   const c = await prepared();

@@ -44559,5 +44559,84 @@
       "documentsFromHr": "Tài liệu từ Nhân sự"
     },
     "openError": "Không thể mở tài liệu. Hãy làm mới và kiểm tra Nhân sự đã phát hành tài liệu."
+  },
+  "communications": {
+    "title": "Thông tin liên lạc & tài liệu",
+    "description": "Mọi email, lời nhắc và tài liệu của hồ sơ theo ngày.",
+    "statusSummary": "Trạng thái lịch",
+    "blockedTitle": "{count} mục cần sửa trước khi chạy",
+    "reviewRequired": "Rà soát quy trình đã lưu trước khi tiếp tục.",
+    "resolveRecipient": "Xử lý người nhận",
+    "reviewDelivery": "Rà soát giao nhận",
+    "reviewItem": "Rà soát mục",
+    "showTests": "Hiển thị quy trình thử ({count})",
+    "emptySchedule": "Không có công việc đã lên lịch phù hợp. Mẫu chưa lên lịch vẫn có ở dưới.",
+    "testSend": "Gửi thử",
+    "to": "Đến",
+    "cc": "CC",
+    "email": "Email",
+    "document": "Tài liệu",
+    "notRecorded": "Chưa ghi nhận",
+    "availableVersion": "Có sẵn v{version}",
+    "notGenerated": "Chưa tạo",
+    "viewSent": "Xem nhật ký gửi",
+    "previewDocument": "Xem trước tài liệu",
+    "preview": "Xem trước",
+    "more": "Thao tác khác cho {name}",
+    "manualWorkflows": "Quy trình khởi chạy thủ công",
+    "unscheduled": "Mẫu email chưa lên lịch",
+    "generatedDocuments": "Tài liệu đã tạo",
+    "regenerateHelp": "Tạo lại sẽ tạo phiên bản mới. Phiên bản đã gửi vẫn được giữ trong hồ sơ.",
+    "generateTemplate": "Tạo từ mẫu",
+    "chooseTemplate": "Chọn mẫu",
+    "generate": "Tạo",
+    "submitFirst": "Gửi hồ sơ trước khi tạo tài liệu.",
+    "emptyDocuments": "Chưa có tài liệu cho hồ sơ này.",
+    "linkedRecipient": "Người nhận được liên kết",
+    "emptySent": "Chưa có bản ghi giao nhận email.",
+    "usedBy": "Được dùng bởi: {name}",
+    "recordedBy": "Người ghi nhận",
+    "recordedWhen": "Thời điểm ghi nhận",
+    "uploadFile": "Tải tệp lên",
+    "uploadDirty": "Tệp đã chọn chưa được tải lên. Rời đi mà không tải lên?",
+    "oneFile": "Chọn mỗi lần một tệp.",
+    "dropFile": "Chọn hoặc thả tệp vào đây (tối đa 10 MB)",
+    "tabs": {
+      "schedule": "Lịch",
+      "documents": "Tài liệu & tệp",
+      "sent": "Nhật ký gửi",
+      "personnel": "Thay đổi Nhân sự"
+    },
+    "filters": {
+      "all": "Tất cả",
+      "attention": "Cần chú ý",
+      "open": "Đang mở",
+      "done": "Hoàn tất"
+    },
+    "states": {
+      "attention": "Cần chú ý",
+      "notStarted": "Chưa bắt đầu",
+      "waiting": "Đang chờ",
+      "done": "Hoàn tất"
+    },
+    "count": {
+      "attention": "{count} cần chú ý",
+      "open": "{count} đang mở",
+      "done": "{count} hoàn tất"
+    },
+    "stages": {
+      "onb": {
+        "submitted": "Khi gửi hồ sơ",
+        "before": "Trước ngày đầu",
+        "day": "Ngày đầu",
+        "after": "Sau ngày đầu"
+      },
+      "off": {
+        "submitted": "Khi gửi hồ sơ",
+        "before": "Trước ngày cuối",
+        "day": "Ngày cuối",
+        "after": "Sau ngày cuối"
+      }
+    }
   }
 }

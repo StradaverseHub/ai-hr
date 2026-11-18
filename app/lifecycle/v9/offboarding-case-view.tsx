@@ -19,17 +19,13 @@ import {WorkAssignee} from './work-assignee';
 import {ChecklistPreview} from './checklist-preview';
 import {OffboardingReturns} from './offboarding-returns';
 import {CaseCalculator} from './case-calculator';
-import {CaseFiles} from './case-files';
-import {CaseWorkflows} from './case-workflows';
-import {CaseEmails} from './email-composer';
-import {CaseMailHistory} from './mail-history';
-import {PersonnelReview} from './personnel-review';
+import {CaseCommunications} from './case-communications';
 
 const date=(value:string)=>M.validDate(value)?value.split('-').reverse().join('/'):'—';
 export {caseTasksByDue} from '@/components/lifecycle-v9/case-layout';
-export function OffboardingCaseView({c, config, users, actor, personnelWritableKeys, busy, command, onDocument, onReason, onOpenWorkflow, onBack, canOpenTasks=true, today=todayInKualaLumpur()}: {
+export function OffboardingCaseView({c, config, users, actor, personnelWritableKeys, busy, command, onDocument, onReason, onOpenWorkflow, onBack, canOpenTasks=true,canUploadFiles=false, today=todayInKualaLumpur()}: {
  c:M.Case;config:M.Config;users:Workspace['options']['users'];actor:M.Actor;personnelWritableKeys:string[];busy:boolean;
- command:(value:Command)=>Promise<{ok:boolean;error?:string}>;onDocument:(document:M.Document)=>void;onReason:(type:'cancel'|'reopen')=>void;onOpenWorkflow:(id:string)=>void;onBack:()=>void;canOpenTasks?:boolean;today?:string;
+ command:(value:Command)=>Promise<{ok:boolean;error?:string}>;onDocument:(document:M.Document)=>void;onReason:(type:'cancel'|'reopen')=>void;onOpenWorkflow:(id:string)=>void;onBack:()=>void;canOpenTasks?:boolean;canUploadFiles?:boolean;today?:string;
 }){
  const copy=useOnboardingCopy(),locale=useLocale();
  const [editing,setEditing]=useState(c.state==='pending'),[error,setError]=useState('');
@@ -77,14 +73,9 @@ export function OffboardingCaseView({c, config, users, actor, personnelWritableK
   </div><CaseAside label={copy('Summary')}>
    <CaseSection title={copy('Progress by assignee')}>{[...new Set(c.tasks.map(task=>task.assignee))].map(id=>{const assigned=c.tasks.filter(task=>task.assignee===id),done=assigned.filter(task=>M.isResolved(task.status)).length;return <div key={id??'unassigned'}><div className="flex justify-between gap-3"><strong>{userName(id)}</strong><span className="onb-muted">{done} of {assigned.length} done</span></div><progress value={done} max={assigned.length||1} aria-label={userName(id)} className="h-1 w-full"/></div>;})}{!c.tasks.length&&<p className="onb-muted">{copy('Tasks start when the checklist is confirmed.')}</p>}</CaseSection>
    <CaseSection title={copy('Case history')}><ol className="lifecycle-case-history v9-list">{c.log.slice().reverse().map(log=><li key={log.id}><div>{log.detail}</div><div className="onb-muted">{log.actor.name} · {onboardingTimestamp(log.at)}</div></li>)}</ol></CaseSection>
-   <CaseSection title={copy('From Personnel Management')}>{c.pmChanges.length?<PersonnelReview key={c.id} c={c} busy={busy} writableKeys={personnelWritableKeys} command={command}/>:<p className="onb-muted">{copy('No changes awaiting Personnel Management review.')}</p>}</CaseSection>
   </CaseAside></CaseColumns>
   <OffboardingReturns c={c} config={config} users={users} busy={busy} command={command} note={note}/>
-  <CaseSection title={copy('Documents')}><CaseDocumentsList empty={copy("Documents appear when their workflow runs.")}>{c.documents.length?c.documents.map(document=><CaseDocumentRow key={document.id} name={document.name} detail={`Version ${document.version}`} status={<OnboardingBadge>{copy(document.status)}</OnboardingBadge>} actions={<><Button variant="outline" onClick={()=>onDocument(document)}>{copy("Open")} {document.name}</Button>{M.canRegenerate(c,document)&&<Button variant="outline" disabled={busy} onClick={()=>void command({type:'documentRegenerate',id:document.id})}>{copy("Regenerate")} {document.name}</Button>}</>}/>):null}</CaseDocumentsList></CaseSection>
-  <CaseFiles key={c.id} c={c} config={config} readOnly/>
-  <CaseWorkflows c={c} config={config} busy={busy} command={command} onOpenWorkflow={onOpenWorkflow} users={users}/>
-  <CaseEmails c={c} config={config} busy={busy} command={command}/>
-  <CaseSection title={copy('Sent emails')}>{c.mails.length?<CaseMailHistory caseId={c.id} mails={c.mails} userName={userName} open={c.state==='submitted'} busy={busy} command={command}/>:<p className="onb-muted">{copy('No email deliveries recorded.')}</p>}</CaseSection>
+  <CaseCommunications c={c} config={config} busy={busy} command={command} users={users} writableKeys={personnelWritableKeys} onDocument={onDocument} onOpenWorkflow={onOpenWorkflow} canUploadFiles={canUploadFiles} today={today}/>
   <CaseSection title={copy('Exit clearance')}>{c.state==='pending'?<p className="onb-muted">Submit this case to start its checklist and return/revoke work.</p>:c.state==='cleared'?<p>Cleared by {c.closedBy?.name} · {c.closedAt?onboardingTimestamp(c.closedAt):''}{c.closeReason?' · '+c.closeReason:''}</p>:<p className="onb-muted">{state.open.length} tasks or items still open. {state.notReturned.length?`${state.notReturned.length} items were not returned. HR must record how they were settled.`:''}</p>}</CaseSection>
  </div>;
 }

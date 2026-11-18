@@ -36,7 +36,7 @@ import type { ChecklistCandidate } from '@/lib/lifecycle-v9-population';
 import { RequestRecords } from './request-records';
 import { TaskQueue } from './task-queue';
 import { NativeJoiners, type NativeJoinersData } from './native-joiners';
-import { commandV9, createV9Offboarding, readV9PersonnelPreview, saveV9Config, setupV9, readV9WorkflowRemoval, removeV9Workflow, restoreV9Workflow } from './actions';
+import { commandV9, createV9Offboarding, readV9Case, readV9PersonnelPreview, saveV9Config, setupV9, readV9WorkflowRemoval, removeV9Workflow, restoreV9Workflow } from './actions';
 import type { WorkflowRemovalActions } from './workflow-removal';
 
 /** Stable references, resolved only when called, for the workflow Delete/Retire/Restore server actions. */
@@ -75,6 +75,8 @@ export function V9Workspace({ initial, viewer, joiners = null, nativeCase, nativ
   const scopedCases = initial.cases.filter(c => inCompany(c.facts.company));
   const current = scopedCases.find(c => c.id === selected) ?? null;
   const openedDocument=current?.documents.find(candidate=>candidate.id===document?.id)??document;
+  const [uploadCapability,setUploadCapability]=useState<{id:string;revision:number;allowed:boolean}|null>(null);
+  useEffect(()=>{let active=true;if(current)void Promise.resolve(readV9Case(current.id)).then(result=>{if(active&&result?.ok)setUploadCapability({id:current.id,revision:current.revision,allowed:result.detail.canUploadFiles===true});}).catch(()=>{if(active)setUploadCapability(null);});return()=>{active=false;};},[current?.id,current?.revision]);
   const scopedJoiners = joiners ? { ...joiners, rows: joiners.rows.filter(row => inCompany(nativeV9Facts(row.case).company)) } : null;
   const activeSearch = navigation === 'standalone' || ['leavers', 'tasks', 'records'].includes(view) ? search : '';
   const cases = scopedCases.filter(c => (!activeSearch || `${c.facts.name} ${c.facts.employeeNo} ${c.number}`.toLocaleLowerCase().includes(activeSearch.toLocaleLowerCase())));
@@ -106,7 +108,7 @@ export function V9Workspace({ initial, viewer, joiners = null, nativeCase, nativ
       {nativeSettingsError && view !== 'groups' && view !== 'access' && (view !== 'settings' || settingsTab !== 'onb') && <div className="v9-notice v9-error" role="alert">Onboarding settings have unsaved changes: {nativeSettingsError}</div>}
       {error && !creating && <div className="v9-notice v9-error" role="alert">{error}</div>}{notice && <div className="v9-notice" role="status">{notice}</div>}
       {nativeCase && view === 'joiners' && <section className="v9-stack" aria-label={`Onboarding case for ${nativeCase.name}`}>{nativeCase.content}</section>}
-      {current ? <OffboardingCaseView key={current.id} actor={initial.actor} onBack={()=>openCase(null)} canOpenTasks={initial.permissions?.offboarding!==false} c={current} config={config} users={initial.options.users} personnelWritableKeys={initial.personnelWritableKeys} busy={busy} command={command} onDocument={setDocument} onReason={type => setReason({ type, value: '' })} onOpenWorkflow={id=>{if(navigation==='global'){router.push(`/lifecycle/v9?view=workflows&workflow=${encodeURIComponent(id)}`);return;}setSelected(null);setView('workflows');setPick(id);}}/> : <>
+      {current ? <OffboardingCaseView canUploadFiles={uploadCapability?.id===current.id&&uploadCapability.revision===current.revision&&uploadCapability.allowed} key={current.id} actor={initial.actor} onBack={()=>openCase(null)} canOpenTasks={initial.permissions?.offboarding!==false} c={current} config={config} users={initial.options.users} personnelWritableKeys={initial.personnelWritableKeys} busy={busy} command={command} onDocument={setDocument} onReason={type => setReason({ type, value: '' })} onOpenWorkflow={id=>{if(navigation==='global'){router.push(`/lifecycle/v9?view=workflows&workflow=${encodeURIComponent(id)}`);return;}setSelected(null);setView('workflows');setPick(id);}}/> : <>
       {view === 'joiners' && !nativeCase && <NativeJoiners data={scopedJoiners} company={company} search={navigation === 'standalone' ? search : ''}/>}
       {view === 'leavers' && <><div className="v9-notice">Start a case from the employee record, review the checklist and confirm the case to begin assignments and workflows.</div><CaseList cases={cases.filter(c => c.module === 'off')} open={openCase}/></>}
       {view === 'tasks' && <TaskQueue cases={scopedCases} config={config} native={scopedJoiners} actor={initial.actor.id} users={initial.options.users} company={company} search={search} openCase={openCase}/>}
