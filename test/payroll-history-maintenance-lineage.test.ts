@@ -44,6 +44,10 @@ describe('merged history uses the canonical tax input adapter',()=>{
  it('retains unlisted original cash ownership and reads latest PCB flags without changing original amounts',()=>{
   const result=maintenanceTaxInput(items,[{...setting,includedInPcb:false}],[]);expect(result.map(line=>[line.code,line.amount,line.direction,line.settingId])).toEqual([['BASIC',1000,'earning','system-basic-salary'],['TRV',500,'earning','TRV']]);expect(items[1].amount).toBe('500.00');
  });
+ it('supports an explicitly recorded custom basic-field owner only when its exact current component is available',()=>{
+  const basic={...item('BASIC','1000.00'),code:'SALARY',originalCodes:['SALARY']},salary={...SYSTEM_BASIC_TAX_SETTING,id:'salary-owner',code:'SALARY',name:'Salary'};
+  expect(maintenanceTaxInput([basic],[salary],[])[0]).toMatchObject({code:'SALARY',settingId:'salary-owner',amount:1000,direction:'earning'});expect(()=>maintenanceTaxInput([basic],[],[])).toThrow(/basic salary/);
+ });
  it('does not use a remapped UUID or changed monetary kind',()=>{
   expect(()=>maintenanceTaxInput(items,[{...setting,id:'OTHER'}],[])).toThrow(/identity/);expect(()=>maintenanceTaxInput(items,[{...setting,kind:'deduction'}],[])).toThrow(/direction/);expect(()=>maintenanceTaxInput([...items,items[1]],[setting],[])).toThrow(/duplicated/);
  });
