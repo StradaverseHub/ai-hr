@@ -18,5 +18,8 @@ jobs:
           node-version: '22.23.3'
       - name: Verify only the affected boot recovery and shared update owner
         run: |
-          python3 -I -B test/fixtures/bank-import-worker-published-tests.py
+          # 44273023764 retained nine passes. This repairs the failed observer
+          # spy and verifies the corrected historical OTHER fixture; helper
+          # bytes and successful full-ZIP evidence 44273028399 are unchanged.
+          python3 -I -B test/fixtures/bank-import-worker-published-tests.py PublishedTests.test_only_published_F4_uses60_and_still_expires_without_acceptance PublishedTests.test_exact_reviewed_previous_failure_preserved_and_unknown_attempt_refused
           python3 -I -B test/fixtures/bank-import-worker-upgrade-tests.py

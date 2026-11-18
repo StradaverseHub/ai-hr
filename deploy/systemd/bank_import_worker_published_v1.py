@@ -33,7 +33,7 @@ def selected_json(b,ci,selected):
 
 def historical(b,ci,prepared,a,pins):
     """Immutable lineage only; remains valid after our new worker has started."""
-    b.check(set(pins)==FAILURE_FIELDS,'closed published failure selection required')
+    b.check(set(pins)in(FAILURE_FIELDS,FAILURE_FIELDS|{'previousPublished'}),'closed published failure selection required')
     approval,old=selected_json(b,ci,{'path':pins['approval'],'sha256':pins['approvalSha256']})
     b.check(set(old)==prepared.FIELDS and old['kind']==prepared.KINDS['recover-ci-runtime'] and
             old['target']=='alpha-staging' and old['releaseAuthorized']is False,'historical failed recovery authority required')
@@ -70,7 +70,59 @@ def historical(b,ci,prepared,a,pins):
     b.check(records['activation-failed.json'].get('source')==a['identity']['source'] and
             records['activation-failed.json'].get('accepted')is False,'historical activation failure required')
     b.check(ci.sha(b.read_bounded(ci.BOOT_ID,4096))==old['bootIdSha256'],'published failure boot changed')
+    previous_published(b,ci,prepared,a,pins,old)
     return old,started['process'],candidate
+
+def previous_published(b,ci,prepared,a,pins,original):
+    """One explicitly reviewed failed published attempt, kept in place. No automatic retries."""
+    reviewed=pins.get('previousPublished',{})
+    b.check(type(reviewed)is dict and len(reviewed)<=1,'at most one exact reviewed prior published failure required')
+    processes=[];parent=b.ROOT/'upgrades'/a['identity']['source']
+    for name,selected in reviewed.items():
+        b.check(re.fullmatch('published-recovery-[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}',name) and
+                set(selected)=={'approval','approvalSha256','operationIdentity','members'},'closed prior published failure selection required')
+        operation=parent/name;b.root_protected(operation)
+        members=ATTEMPT_MEMBERS|{'activation-failure-observation.json'}
+        b.check(identity(operation)==selected['operationIdentity'] and set(os.listdir(operation))==members and
+                set(selected['members'])==members,'prior published failure namespace/identity changed')
+        _,old=selected_json(b,ci,{'path':selected['approval'],'sha256':selected['approvalSha256']})
+        b.check(set(old)==LIVE_FIELDS and old['kind']==KINDS[LIVE_STAGE] and old['target']=='alpha-staging' and
+                old['releaseAuthorized']is False,'exact original published recovery authority required')
+        b.check(all(old[k]==original[k]for k in prepared.FIELDS-{'kind','helperSha256','issuedAt','expiresAt'}),
+                'prior published recovery original installation differs')
+        seal_selection=old['publishedSeal']
+        b.check(set(seal_selection)=={'path','sha256','identity'},'closed original published seal selection required')
+        seal_path,seal_record=selected_json(b,ci,{k:seal_selection[k]for k in('path','sha256')})
+        b.check(identity(seal_path)==seal_selection['identity'] and seal_record['kind']=='ROOT_AUTHENTICATED_PUBLISHED_WORKER_NOT_ACTIVATION' and
+                seal_record['sealId']==name.removeprefix('published-recovery-') and seal_record['identity']==a['identity'] and
+                seal_record['publishedFailure']=={k:pins[k]for k in FAILURE_FIELDS} and seal_record['releaseAuthorized']is False,
+                'prior published seal provenance changed')
+        records={}
+        for leaf in sorted(members):
+            path=operation/leaf;ci.protected_private(b,path);before=identity(path);raw=b.read_bounded(path,65536)
+            b.check(before==identity(path) and {**before,'sha256':ci.sha(raw)}==selected['members'][leaf],
+                    'prior published failure record identity/content changed')
+            records[leaf]=json.loads(raw)
+            b.check(ci.epoch(old['issuedAt'])<=int(before['st_mtime_ns'])/10**9<=ci.epoch(old['expiresAt']),
+                    'prior published failure outside original actual authority')
+        b.check(identity(operation)==selected['operationIdentity'] and set(os.listdir(operation))==members,'prior published failure changed during observation')
+        b.check(records['ci-runtime-started.json']=={'authorizationSha256':selected['approvalSha256'],'journeyVerified':False},'prior published start authority changed')
+        started=records['ci-worker-started.json'];intent=records['ci-worker-start-request.json'];process=started['process']
+        b.check(started['intent']==intent and started['journeyVerified']is False and intent['source']==a['identity']['source'] and
+                intent['unitSha256']==ci.sha(b.service_unit(a['identity']['source']).encode()) and intent['bootIdSha256']==original['bootIdSha256'] and
+                process['source']==a['identity']['source'] and re.fullmatch('[1-9][0-9]*',process['pid']) and
+                int(process['startTicks'])>=intent['notBeforeTicks'],'prior published owned start changed')
+        b.check(records['ci-worker-quarantine-authority.json']=={'ownedStartedProcess':process,'freshLeaseAssertFailed':False,
+                'failureOnly':True,'successAuthorized':False,'journeyVerified':False},'prior published quarantine authority changed')
+        result=records['activation-failure-observation.json'];failure=result.get('failure',{})
+        b.check(result.get('source')==a['identity']['source'] and all(result.get(k)is v for k,v in
+                {'accepted':False,'stopped':True,'disabled':True,'forcedKill':False}.items()) and
+                set(failure)=={'slot','category','stageRemainingMs'} and failure['slot']=='F4' and
+                failure['category']in('OTHER','METADATA_DEADLINE','HASH_DEADLINE','STAGE_DEADLINE') and
+                type(failure['stageRemainingMs'])is int and failure['stageRemainingMs']<=0 and
+                records['activation-failed.json'].get('failure')==failure,'exact stopped rejected F4 boundary failure required')
+        processes.append(process)
+    return processes
 
 def stopped(b,ci,update,a,pins):
     report=update.properties(b);release=b.ROOT/'releases'/a['identity']['source']
@@ -89,6 +141,8 @@ def tree(b,ci,fmt,prepared,a,pins,*,deadline,content):
     release=b.ROOT/'releases'/a['identity']['source']
     old,process,_=historical(b,ci,prepared,a,pins)
     b.check(not (ci.PROCESS_ROOT/process['pid']).exists(),'old owned PID still exists or was reused')
+    b.check(all(not(ci.PROCESS_ROOT/p['pid']).exists()for p in previous_published(b,ci,prepared,a,pins,old)),
+            'prior published worker PID still exists or was reused')
     proof,root,manifest=prepared.prepared_proof(b,ci,fmt,old['preparedWorker'],a['identity'],deadline=deadline,metadata=False,published_root=release)
     actual=prepared.tree_identity(root,manifest,deadline=deadline,content=content)
     b.check(identity(root)==pins['releaseIdentity'],'published root identity differs')
@@ -147,7 +201,8 @@ def run(guard,fmt,b,ci,prepared,update):
     a=guard.a;record=load_seal(guard,fmt,b,ci,prepared);pins=record['publishedFailure']
     release=b.ROOT/'releases'/a['identity']['source'];original=b.ROOT/'upgrades'/a['identity']['source']
     operation=original/('published-recovery-'+record['sealId'])
-    b.check(not any(p.name.startswith('published-recovery-')for p in original.iterdir()),'previous published recovery requires separate review')
+    b.check({p.name for p in original.iterdir()if p.name.startswith('published-recovery-')}==set(pins.get('previousPublished',{})),
+            'previous published recovery requires separate review')
     stopped(b,ci,update,a,pins)
     _,actual,proof,_=tree(b,ci,fmt,prepared,a,pins,deadline=ci.SLOT_DEADLINE,content=False)
     b.check(actual==record['tree'],'published seal tree changed')

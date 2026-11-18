@@ -38,10 +38,11 @@ class Fixture(core.Fixture):
   self.clock+=1;self.events=[]
  def seal_record(self):
   a=copy.deepcopy(self.first);a.update(kind=published.KINDS[published.SEAL_STAGE],helperSha256=ci.sha(self.helper.read_bytes()),
-    issuedAt=self.iso(),expiresAt=self.iso(300),publishedFailure=self.pins,sealId='b0000000-0000-4000-8000-000000000008')
+    issuedAt=self.iso(),expiresAt=self.iso(300),publishedFailure=self.pins,sealId=getattr(self,'nextSealId','b0000000-0000-4000-8000-000000000008'))
   return a
  def invoke_published(self,stage,a):
-  path=self.approval(self.root/(stage+'.json'),a);self.auth=a
+  suffix=a['sealId']if'sealId'in a else Path(a['publishedSeal']['path']).stem
+  path=self.approval(self.root/(stage+'-'+suffix+'.json'),a);self.auth=a;self.lastApproval=path
   with self.prepared_ports(),contextlib.redirect_stdout(io.StringIO()),contextlib.redirect_stderr(io.StringIO()):
    guard.launch(['guarded-'+stage,'--approval',str(path),'--approval-sha256',ci.sha(path.read_bytes())],self.fmt,self.base,ci,update)
  def seal(self):
@@ -51,6 +52,25 @@ class Fixture(core.Fixture):
   a=copy.deepcopy(self.old);a.update(kind=published.KINDS[published.LIVE_STAGE],helperSha256=ci.sha(self.helper.read_bytes()),
     issuedAt=self.iso(),expiresAt=self.iso(900),publishedSeal={'path':str(proof),'sha256':ci.sha(proof.read_bytes()),'identity':published.identity(proof)})
   return a
+
+ def retain_failed_published(self):
+  proof=self.seal();live=self.live(proof);original=ci.RuntimeObservation.complete_fence
+  def fail(o,*args,**kw):
+   if o.started_sha is not None:
+    # Reproduce the retained historical20s/OTHER boundary, not the corrected live budget.
+    o.slot('F4',20);self.monotonic_offset+=20.01
+    raise ValueError('retained original unclassified F4 boundary')
+   return original(o,*args,**kw)
+  with patch.object(ci.RuntimeObservation,'complete_fence',fail):
+   try:self.invoke_published(published.LIVE_STAGE,live)
+   except RuntimeError:pass
+   else:raise AssertionError('Expected failed published boundary')
+  self.monotonic_offset=0;operation=self.operation/('published-recovery-'+json.loads(proof.read_bytes())['sealId'])
+  for path in operation.iterdir():os.utime(path,(self.clock,self.clock));self.additional_root_private_files.add(path)
+  self.pins['previousPublished']={operation.name:{'approval':str(self.lastApproval),'approvalSha256':ci.sha(self.lastApproval.read_bytes()),
+   'operationIdentity':published.identity(operation),'members':{p.name:{**published.identity(p),'sha256':ci.sha(p.read_bytes())}for p in operation.iterdir()}}}
+  self.nextSealId='c0000000-0000-4000-8000-000000000009';self.clock+=1;self.events=[]
+  return operation
 
 class PublishedTests(unittest.TestCase):
  def fixture(self):
@@ -138,10 +158,73 @@ class PublishedTests(unittest.TestCase):
     self.assertEqual(f.report['MainPID'],'0');self.assertEqual(f.report['UnitFileState'],'disabled')
     self.assertFalse((f.app/'releases'/f.source/'worker-install-v2.json').exists())
 
+ def test_only_published_F4_uses60_and_still_expires_without_acceptance(self):
+  for seconds,accepted in((30,True),(61,False)):
+   with self.subTest(seconds=seconds):
+    f=self.fixture();proof=f.seal();capture=core.core.fences.capture_tree;seen=[];timeouts=[];native=f.native
+    def timed_native(argv,*args,**kwargs):
+     observer=getattr(ci.ACTIVE_OPERATION_GUARD,'observer',None)
+     if observer is not None and observer.slot_name=='F4'and '-e'in argv and 'CI_WORKER_COMPLETE_FENCE_V2'in argv[argv.index('-e')+1]:timeouts.append(kwargs['timeout'])
+     return native(argv,*args,**kwargs)
+    f.native=timed_native
+    def delayed(*args,**kwargs):
+     observer=ci.ACTIVE_OPERATION_GUARD.observer
+     if observer.slot_name=='F4'and not seen:
+      seen.append(True);remaining=ci.SLOT_DEADLINE-ci.time.monotonic()
+      self.assertGreater(remaining,55);self.assertLessEqual(remaining,60);f.monotonic_offset+=seconds
+     return capture(*args,**kwargs)
+    with patch.object(core.core.fences,'capture_tree',delayed):
+     if accepted:f.invoke_published(published.LIVE_STAGE,f.live(proof))
+     else:
+      with self.assertRaisesRegex(RuntimeError,'explicit administrator recovery'):f.invoke_published(published.LIVE_STAGE,f.live(proof))
+      record=json.loads(next(f.operation.glob('published-recovery-*/activation-failed.json')).read_bytes())
+      self.assertEqual(record['failure']['category'],'METADATA_DEADLINE')
+      self.assertFalse((f.app/'releases'/f.source/'worker-install-v2.json').exists())
+    self.assertEqual(seen,[True])
+    if accepted:self.assertEqual(timeouts,[20])
+
+ def test_native_timestamp_freshness_remains60_seconds(self):
+  from types import SimpleNamespace
+  now=1794874000;base=SimpleNamespace(check=core.core.check)
+  stamp=lambda age:ci.datetime.fromtimestamp(now-age,ci.timezone.utc).isoformat(timespec='milliseconds').replace('+00:00','Z')
+  ci.native_timestamp(base,stamp(60),now-3600,now,fresh=True)
+  with self.assertRaisesRegex(ValueError,'native evidence timestamp is invalid or stale'):
+   ci.native_timestamp(base,stamp(61),now-3600,now,fresh=True)
+
+ def test_published_admission_reserves537_global_and567_authority(self):
+  admit=ci.RuntimeObservation.admit_mutation
+  for kind in('global','authority'):
+   with self.subTest(kind=kind):
+    f=self.fixture();proof=f.seal()
+    def insufficient(o):
+     if kind=='global':f.monotonic_offset+=o.overall_deadline-ci.time.monotonic()-536
+     else:f.clock=ci.epoch(o.auth['expiresAt'])-566
+     return admit(o)
+    with patch.object(ci.RuntimeObservation,'admit_mutation',insufficient),self.assertRaisesRegex(ValueError,'insufficient independently authorized recovery/global opportunity'):
+     f.invoke_published(published.LIVE_STAGE,f.live(proof))
+    self.unchanged(f)
+
+ def test_exact_reviewed_previous_failure_preserved_and_unknown_attempt_refused(self):
+  for defect in(None,'record','unknown'):
+   with self.subTest(defect=defect):
+    f=self.fixture();old=f.retain_failed_published();before=copy.deepcopy(f.pins['previousPublished'][old.name]);proof=f.seal()
+    if defect=='record':
+     target=old/'activation-failure-observation.json';target.chmod(0o600);target.write_text('{}')
+    if defect=='unknown':(f.operation/'published-recovery-unreviewed').mkdir()
+    if defect:
+     reason='prior published failure record identity/content changed'if defect=='record'else'previous published recovery requires separate review'
+     with self.assertRaisesRegex(ValueError,reason):f.invoke_published(published.LIVE_STAGE,f.live(proof))
+     self.unchanged(f)
+    else:
+     f.invoke_published(published.LIVE_STAGE,f.live(proof))
+     self.assertEqual(published.identity(old),before['operationIdentity'])
+     for name,pins in before['members'].items():
+      target=old/name;self.assertEqual({**published.identity(target),'sha256':ci.sha(target.read_bytes())},pins)
+
 class ActualPublishedCapacityTests(unittest.TestCase):
  def test_original_full_package_published_recovery_graph(self):
   with tempfile.TemporaryDirectory()as tmp:
-   began=ci.time.monotonic();f=Fixture(Path(tmp),core.PACKAGE)
+   began=ci.time.monotonic();f=Fixture(Path(tmp),core.PACKAGE);f.retain_failed_published()
    self.assertGreater(len(f.manifest['entries']),60000)
    proof=f.seal();live=f.live(proof);before=copy.deepcopy(f.pins);started=ci.time.monotonic()
    f.invoke_published(published.LIVE_STAGE,live)

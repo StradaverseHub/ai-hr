@@ -465,6 +465,10 @@ class RuntimeObservation:
                 result.update(category='NATIVE_PROOF',native=dict(details))
         elif type(error)is ValueError and error.args==('Worker installation refused: aggregate cutover stage deadline exceeded',):
             result['category']='STAGE_DEADLINE'
+        elif type(error)is ValueError and error.args==('Complete metadata fence refused: absolute monotonic deadline exceeded',):
+            result['category']='METADATA_DEADLINE'
+        elif type(error)is ValueError and error.args==('Worker installation refused: aggregate proof slot expired',):
+            result['category']='HASH_DEADLINE'
         return result
 
     def check_authority(self):
@@ -970,7 +974,7 @@ class RuntimeObservation:
         b.check(self.fence_count<10 and FENCES is not None,'reviewed complete metadata primitive and exactly ten fences required')
         if shared_stability_deadline:
             self.check_slot();self.slot_name='F'+str(self.fence_count)
-        else:self.slot('F'+str(self.fence_count),20)
+        else:self.slot('F'+str(self.fence_count),60 if self.guard.stage=='recover-published-ci-runtime' and self.fence_count==4 else 20)
         self.check_authority();before,_=self.snapshot()
         for attempt in range(16):
             try:
