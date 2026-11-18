@@ -657,9 +657,9 @@ it('guards version deletion using deduplicated current and historical instances'
   const c = await prepared(), config = (await v9Workspace(admin)).config!, template = config.templates.find(template => template.id === 'fixture-form')!;
   template.versions.push({ ...structuredClone(template.versions[0]), version: 2 }); template.currentVersion = 2;
   await v9SaveConfig(admin, config.revision, config);
-  // A real service command preserves the prior document instance before an owner-only loss injection.
+  // Current and revision snapshots deduplicate to one use, and retained live history cannot be removed.
   await v9Command(admin, c.id, c.revision, { type: 'runWorkflows' });
-  await owner.client`update lc_v9_case set data=jsonb_set(data,'{documents}','[]'::jsonb) where id=${c.id}::uuid`;
+  await expect(owner.withTenant(admin,tx=>tx.execute(sql`update lc_v9_case set data=jsonb_set(data,'{documents}','[]'::jsonb) where id=${c.id}::uuid`))).rejects.toThrow('history');
   const workspace = await v9Workspace(admin);
   expect(workspace.templateUsage?.find(row => row.templateId === template.id && row.version === 1)).toEqual({ templateId: template.id, version: 1, documents: 1 });
   const removeUsed = structuredClone(workspace.config!); removeUsed.templates.find(row => row.id === template.id)!.versions = [structuredClone(template.versions[1])];
@@ -1372,7 +1372,7 @@ it('previews only the first notification or first document without creating live
  const notification=await v9PreviewWorkflow(admin,id,'preview-notice');expect(notification.messages).toEqual([expect.objectContaining({subject:'First notification',to:'Employee (login account)',cc:'Line manager'})]);expect(notification.documents).toEqual([]);
  const document=await v9PreviewWorkflow(admin,id,'preview-document');expect(document.messages).toEqual([]);expect(document.documents).toHaveLength(1);expect(document.documents[0].templateId).toBe(templates[0].id);expect((await v9CaseDetail(admin,id)).case).toEqual(before);
  const older={...document.documents[0],id:'fictional-existing-document',version:0,name:'Old saved document',edits:{},hrSignature:null,employeeSignature:null};
- await owner.db.execute(sql`update lc_v9_case set data=${JSON.stringify({...before,documents:[older]})}::jsonb where id=${id}::uuid`);
+ await owner.withTenant(admin,tx=>tx.execute(sql`update lc_v9_case set data=${JSON.stringify({...before,documents:[older]})}::jsonb where id=${id}::uuid`));
  const current=await v9PreviewWorkflow(admin,id,'preview-document');expect(current.documents[0].version).not.toBe(0);expect(current.documents[0].name).not.toBe('Old saved document');expect(current.documents[0].hrSignature).toBeNull();expect((await v9CaseDetail(admin,id)).case.documents).toEqual([older]);
 });
 
