@@ -44,7 +44,7 @@ BEGIN
  IF NOT app.payroll_history_native_module() OR wanted IS NULL OR cardinality(wanted)>50000 THEN RAISE EXCEPTION 'Native payroll source scope unavailable' USING ERRCODE='42501';END IF;
  RETURN QUERY SELECT jsonb_build_object('sourceBatchId',b.id,'sourcePayslipId',p.id,'sourceVersion',p.version,'sourceHash',app.payroll_history_native_source_hash(p,b,period.status::text),'values',app.payroll_history_native_values(p))
  FROM public.payslip p JOIN public.payroll_batch b ON b.id=p.batch_id AND b.tenant_id=p.tenant_id JOIN public.pay_period period ON period.id=b.pay_period_id AND period.tenant_id=b.tenant_id
- WHERE p.id=ANY(wanted) AND p.tenant_id=app.current_tenant_id() AND b.history_import_attempt_id IS NULL AND b.status IN('draft','processing','processed')
+ WHERE p.id=ANY(wanted) AND p.tenant_id=app.current_tenant_id() AND b.history_import_attempt_id IS NULL AND b.status::text IN('draft','processing','processed')
  AND app.payroll_history_native_permission(b.company_id,'payroll.history.import')
  AND NOT EXISTS(SELECT 1 FROM app.payroll_history_staged_row sr JOIN app.payroll_history_stage stage ON stage.stage_id=sr.stage_id WHERE stage.state='staged' AND((sr.relation='payslip' AND sr.row_id=p.id) OR(sr.relation='payroll_batch' AND sr.row_id=b.id))) ORDER BY p.id;
 END
