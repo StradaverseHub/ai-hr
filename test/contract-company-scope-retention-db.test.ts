@@ -237,9 +237,12 @@ it('retains genuine scheduled Contract provenance and its scoped company without
    }
   }
   expect(await snapshot()).toEqual(before);
-  const postUpgradeTenantMember=randomUUID();
-  await contracts.saveContractSharedMember(admin,{id:postUpgradeTenantMember,roleId,userId:admin.userId,companyId:null,businessGroupId:null,validFrom:start,validTo:null,revoked:false,expectedRevision:0});
-  expect((await h.owner.client`select company_id from contract_access_member where tenant_id=${b.tenantId} and id=${postUpgradeTenantMember}`)[0].company_id).toBeNull();
+  // Exercise the retained nullable scope through its native CAS writer, rather than creating an overlapping grant.
+  expect(await contracts.saveContractSharedMember(admin,{id:tenantMemberId,roleId,userId:admin.userId,companyId:null,businessGroupId:null,validFrom:start,validTo:null,revoked:false,expectedRevision:1})).toEqual({id:tenantMemberId});
+  expect(await h.owner.client`select company_id,revision from contract_access_member where tenant_id=${b.tenantId} and id=${tenantMemberId}`).toEqual([{company_id:null,revision:2}]);
+  const membersAfterUpdate=await h.owner.client`select to_jsonb(m) as row from contract_access_member m where tenant_id=${b.tenantId} order by id`;
+  await expect(contracts.saveContractSharedMember(admin,{id:randomUUID(),roleId,userId:admin.userId,companyId:null,businessGroupId:null,validFrom:start,validTo:null,revoked:false,expectedRevision:0})).rejects.toMatchObject({code:'invalid'});
+  expect(await h.owner.client`select to_jsonb(m) as row from contract_access_member m where tenant_id=${b.tenantId} order by id`).toEqual(membersAfterUpdate);
   const retained=(ctx:SessionContext,id:string|null)=>withTenant(ctx,async tx=>(await tx.execute<{used:boolean}>(sql`select app.replan_retained_company_in_use(${id}::uuid) as used`))[0].used);
   expect(await retained(admin,b.companyId)).toBe(true);expect(await retained(admin,emptyCompany.id)).toBe(false);
   expect(await retained(admin,foreign.companyId)).toBe(false);expect(await retained(admin,null)).toBe(false);
