@@ -11,7 +11,7 @@ import {resignationJourneyFixture} from './helpers/resignation-journey-fixture';
 import {commandResignationJourney,resignationCase} from '../packs/lifecycle/service';
 import {prepareResignationProofTx} from '../core/resignation-proof';
 import {deliverAutomationEmails} from '../core/automation-email-delivery';
-import {pgSqlState} from '../lib/db-error';
+import {pgErrorChain,pgSqlState} from '../lib/db-error';
 
 beforeAll(migrateTestDb);beforeEach(resetDb);afterEach(()=>vi.unstubAllEnvs());afterAll(closeAll);
 async function access(ctx:SessionContext,subjectId:string){
@@ -29,6 +29,13 @@ async function access(ctx:SessionContext,subjectId:string){
 it('preserves actual Contract Case View and Resignation participant access without cross-module or direct-human runner authority',async()=>{
  // Contract's existing fixture resets the disposable DB, so construct it before the other tenant.
  const contract=await contractPostingFixture({future:false,payChanges:false}),resignation=await resignationJourneyFixture();
+ // The bridge's retained original OID must not remain a second application reader.
+ const[session]=await withTenant(contract.admin,tx=>tx.execute<{role:string}>(sql`select current_user as role`));
+ expect(session.role).toBe('ai_hr_app');
+ let archiveRefusal:unknown;
+ try{await withTenant(contract.admin,tx=>tx.execute(sql`select * from app.contract_configuration_directory_before_combined(ARRAY[${contract.b.companyId}::uuid], 'Fictional', ARRAY[${contract.proposer.userId!}::uuid])`));}catch(error){archiveRefusal=error;}
+ expect(pgSqlState(archiveRefusal)).toBe('42501');
+ expect(pgErrorChain(archiveRefusal).find(link=>link.code==='42501')?.message).toContain('permission denied for function contract_configuration_directory_before_combined');
  expect(await access(contract.proposer,contract.caseId)).toEqual({contractView:true,offView:false,contractRun:false,offRun:false,unknownView:false,unknownRun:false});
  expect(await access(resignation.staff,resignation.journey.id)).toEqual({contractView:false,offView:true,contractRun:false,offRun:false,unknownView:false,unknownRun:false});
  expect(await access(resignation.watcher,resignation.journey.id)).toMatchObject({offView:true,offRun:false});
