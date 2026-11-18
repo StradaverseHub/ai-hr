@@ -520,7 +520,8 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
                   Making main the containing block keeps that overflow inside the scroller. */}
               <main className="relative min-w-0 flex-1 overflow-y-auto pb-1"><div className="atelier-filter-feedback" aria-hidden="true" /><Suspense fallback={null}><BackToInbox /></Suspense><AssistantImportHandoffProvider key={personnelImportBrowserKey(session,scopeIds??allowed.map(company=>company.id))}>{children}</AssistantImportHandoffProvider></main>
               <ShellStatusLine companies={allowed} selected={scopeIds} />
-              {launcher && <div data-assistant-dock data-position={launcher.position}><AssistantReplyClientEntry><AssistantLauncher key={shellScopeKey} position={launcher.position} hiddenAreas={launcher.hiddenAreas} /></AssistantReplyClientEntry></div>}
+              {/* Keep the reply entry registered even when this login has no launcher. */}
+              <AssistantReplyClientEntry>{launcher && <div data-assistant-dock data-position={launcher.position}><AssistantLauncher key={shellScopeKey} position={launcher.position} hiddenAreas={launcher.hiddenAreas} /></div>}</AssistantReplyClientEntry>
             </div>
           </div>
           </AiAskAvailability>
