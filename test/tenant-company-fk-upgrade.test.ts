@@ -56,6 +56,14 @@ const APPROVED_BOARD_TAIL:Entry[]=[
  {idx:10070,version:'7',when:1794998006670,tag:'6670_offboarding_requisition',breakpoints:true},
  {idx:10071,version:'7',when:1794998006671,tag:'6671_offboarding_requisition_exception',breakpoints:true},
  {idx:10072,version:'7',when:1794998006672,tag:'6672_offboarding_requisition_list',breakpoints:true},
+ {idx:10080,version:'7',when:1794998006680,tag:'6680_personnel_completion_phone_metadata',breakpoints:true},
+ {idx:10081,version:'7',when:1794998006681,tag:'6681_personnel_completion_custody',breakpoints:true},
+ {idx:10082,version:'7',when:1794998006682,tag:'6682_personnel_completion_commands',breakpoints:true},
+ {idx:10083,version:'7',when:1794998006683,tag:'6683_personnel_completion_routing_bridge',breakpoints:true},
+ {idx:10084,version:'7',when:1794998006684,tag:'6684_personnel_completion_projection',breakpoints:true},
+ {idx:10085,version:'7',when:1794998006685,tag:'6685_personnel_completion_signature_projection',breakpoints:true},
+ {idx:10088,version:'7',when:1794998006688,tag:'6688_personnel_completion_recovery',breakpoints:true},
+ {idx:10089,version:'7',when:1794998006689,tag:'6689_personnel_completion_recovery_jobs',breakpoints:true},
 ];
 
 it('stops on a cross-tenant row, then validates every company/tenant key without changing data or grants',async()=>{
@@ -842,6 +850,32 @@ it('stops on a cross-tenant row, then validates every company/tenant key without
   addedFunctions.push('app.access_movement_delete_employment(uuid)','app.cost_allocations_after_hire_company_correction(uuid,uuid,text)','app.employment_payment_method_on(uuid,date)','app.preserve_movement_payroll(uuid)','app.preserve_payroll_metadata(uuid,boolean)','app.workforce_payroll_inputs_changed(uuid,date,date,text)','app.workforce_payroll_inputs_changed_windows(uuid,jsonb,text)');
   //6100–6102 and6600–6642: independently reviewed signatures and exact application EXECUTE decisions.
   const approvedFunctions:{fn:string;app:boolean}[]=[
+   //6680–85/88–89: reviewed source design; private custody and bounded explicit HR recovery.
+   {fn:'app.personnel_completion_phone_valid(text)',app:true},
+   {fn:'app.personnel_completion_group(text)',app:true},
+   {fn:'app.personnel_completion_owner(jsonb,jsonb)',app:true},
+   {fn:'app.personnel_completion_locked(jsonb)',app:true},
+   {fn:'app.personnel_completion_official(jsonb,jsonb)',app:true},
+   {fn:'app.personnel_completion_fingerprint(jsonb,text)',app:true},
+   {fn:'app.personnel_completion_custody(jsonb,jsonb,uuid,integer)',app:true},
+   {fn:'app.personnel_completion_scalar(jsonb,text)',app:true},
+   {fn:'app.personnel_completion_render_values(jsonb)',app:true},
+   {fn:'app.personnel_completion_document_projection(jsonb)',app:true},
+   {fn:'app.personnel_completion_preparation_projection(jsonb)',app:true},
+   {fn:'app.v9_personnel_completion_read(uuid,text)',app:true},
+   {fn:'app.v9_personnel_completion_update(uuid,integer,text,jsonb,text,jsonb)',app:true},
+   {fn:'app.personnel_completion_assert_current(jsonb,uuid,boolean)',app:false},
+   {fn:'app.v9_personnel_completion_guard()',app:false},
+   {fn:'app.v9_personnel_completion_sources(uuid)',app:false},
+   {fn:'app.lc_v9_work_before_personnel_completion_6684(uuid)',app:false},
+   {fn:'app.onboarding_v9_work_before_personnel_completion_6684()',app:false},
+   {fn:'app.personnel_completion_recovery_hash(jsonb)',app:false},
+   {fn:'app.personnel_completion_recovery_context(uuid,text)',app:false},
+   {fn:'app.personnel_completion_recovery_result(text,jsonb,text,jsonb,text,jsonb)',app:false},
+   {fn:'app.personnel_completion_recovery_due(text,integer,boolean)',app:false},
+   {fn:'app.personnel_completion_recovery_candidates(uuid,text,integer)',app:true},
+   {fn:'app.personnel_completion_recovery_review(jsonb)',app:true},
+   {fn:'app.personnel_completion_recovery_adopt(jsonb)',app:true},
    {fn:'app.reward_review_plan_population(integer,date)',app:true},
    {fn:'app.reward_review_plan_rows(integer)',app:true},
    {fn:'app.reward_review_plan_grid(integer,jsonb,integer)',app:true},
@@ -1912,6 +1946,7 @@ it('stops on a cross-tenant row, then validates every company/tenant key without
    'reward_person_history':{rls:true,force:true,acl:'{OWNER=arwdDxt/OWNER,ai_hr_app=a/OWNER}'},
    'reward_plan_year':{rls:true,force:true,acl:'{OWNER=arwdDxt/OWNER,ai_hr_app=ar/OWNER}'},
    'reward_plan_year_company':{rls:true,force:true,acl:'{OWNER=arwdDxt/OWNER,ai_hr_app=arw/OWNER}'},
+   'lifecycle_personnel_completion_custody':{rls:true,force:true,acl:'{OWNER=arwdDxt/OWNER}'},
    'automation_email_asset':{rls:true,force:true,acl:'{OWNER=arwdDxt/OWNER,ai_hr_app=ar/OWNER}'},
    'automation_email_case_file':{rls:true,force:true,acl:'{OWNER=arwdDxt/OWNER,ai_hr_app=r/OWNER}'},
    'automation_email_hold_context':{rls:true,force:true,acl:'{OWNER=arwdDxt/OWNER}'},
@@ -1939,6 +1974,19 @@ it('stops on a cross-tenant row, then validates every company/tenant key without
    automation_email_hold_context:[
     ['run_id','uuid',true,'',null],['tenant_id','uuid',true,'',null],['case_id','uuid',true,'',null],['template_id','uuid',true,'',null],['facts','jsonb',true,'',null],['needs_check','boolean',true,'','false'],['checked_at','timestamp with time zone',false,'',null],['created_at','timestamp with time zone',true,'','now()'],
    ],
+   lifecycle_personnel_completion_custody:[
+    ["id","uuid",true,'',"gen_random_uuid()"],
+    ["tenant_id","uuid",true,'',null],
+    ["case_id","uuid",true,'',null],
+    ["document_id","text",true,'',null],
+    ["case_revision","integer",true,'',null],
+    ["actor_user_id","uuid",false,'',null],
+    ["transaction_id","xid8",true,'',null],
+    ["operation","text",true,'',null],
+    ["before_hash","text",true,'',null],
+    ["after_hash","text",true,'',null],
+    ["created_at","timestamp with time zone",true,'',"now()"],
+   ],
   };
   const templateColumns=await storage.client`select c.relname::text as rel,a.attname::text as name,format_type(a.atttypid,a.atttypmod) as type,a.attnotnull as "notNull",a.attgenerated::text as generated,pg_get_expr(d.adbin,d.adrelid) as expression
    from pg_attribute a join pg_class c on c.oid=a.attrelid join pg_namespace n on n.oid=c.relnamespace left join pg_attrdef d on d.adrelid=a.attrelid and d.adnum=a.attnum
@@ -1956,8 +2004,10 @@ it('stops on a cross-tenant row, then validates every company/tenant key without
   const templateTriggers=[
    {rel:'automation_email_asset',name:'automation_email_asset_integrity',kind:7,fn:'app.automation_email_asset_integrity()',enabled:'O',condition:null},
    {rel:'automation_email_template_version',name:'probation_email_definition_recheck',kind:5,fn:'app.probation_email_hold_recheck()',enabled:'O',condition:null},
+   {rel:'lc_onboarding_private',name:'native_personnel_completion_guard',kind:23,fn:'app.v9_personnel_completion_guard()',enabled:'O',condition:null},
    {rel:'lc_onboarding_private',name:'native_routed_document_source_guard',kind:23,fn:'app.v9_document_route_guard()',enabled:'O',condition:null},
    {rel:'lc_v9_case',name:'offboarding_requisition_history',kind:19,fn:'app.offboarding_requisition_history()',enabled:'O',condition:null},
+   {rel:'lc_v9_case',name:'v9_personnel_completion_guard',kind:23,fn:'app.v9_personnel_completion_guard()',enabled:'O',condition:null},
    {rel:'lc_v9_case',name:'v9_routed_document_source_guard',kind:23,fn:'app.v9_document_route_guard()',enabled:'O',condition:null},
    {rel:'probation_file',name:'probation_email_document_recheck',kind:5,fn:'app.probation_email_hold_recheck()',enabled:'O',condition:null},
   ];
@@ -1967,6 +2017,7 @@ it('stops on a cross-tenant row, then validates every company/tenant key without
   const manage=(column:string)=>`tenant_id=app.current_tenant_id() AND app.reward_config_page_allowed(${column},'plans.manage','manage')`;
   const own='app.acting_as_owner()';
   const approvedPolicies:ApprovedPolicy[]=[
+   {table:'lifecycle_personnel_completion_custody',name:'personnel_completion_custody_tenant',cmd:'ALL',role:'public',using:'tenant_id=app.current_tenant_id()',check:'tenant_id=app.current_tenant_id()'},
    {table:'payslip',name:'payroll_import_tax_basis_reader_guard',restrictive:true,cmd:'SELECT',role:'ai_hr_app',using:"app.payroll_import_tax_reader_compatible(employment_id,batch_id,statutory->'importedTaxBasis')",check:null},
    {table:'payslip',name:'payslip_original_employer_read',cmd:'SELECT',role:'ai_hr_app',using:'tenant_id=app.current_tenant_id() AND app.payroll_tax_basis_original_employer_read(batch_id)',check:null},
    {table:'automation_email_asset',name:'automation_email_asset_owner',cmd:'ALL',role:'ai_hr_owner',using:own,check:own},
