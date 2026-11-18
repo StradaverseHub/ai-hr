@@ -1,15 +1,24 @@
-import {describe,it,expect} from 'vitest';
-import {normalisePostingValues as nativeValues,postingValueChanges,type PersonnelPostingEvent} from '../lib/personnel-posting';
+import {describe,it,expect,expectTypeOf} from 'vitest';
+import {normalisePostingValues as nativeValues,postingValueChanges,type PersonnelPostingEvent,type PersonnelPostingSource} from '../lib/personnel-posting';
 const normalisePostingValues=(event:PersonnelPostingEvent,raw:Record<string,unknown>)=>nativeValues(event,raw,event==='contractRenewal'||event==='contractConversion'?'contract_staff':'probation');
 describe('Contract Personnel posting values',()=>{
  const renew={effectiveDate:'2027-01-01',previousEndDate:'2026-12-31',endDate:'2027-06-30',contractNumber:'5'};
  it('keeps a renewal period and native counter together, without monetary fields',()=>{
   expect(normalisePostingValues('contractRenewal',renew)).toEqual({ok:true,values:renew});
   expect(nativeValues('contractRenewal',renew,'probation').ok).toBe(false);
-  // @ts-expect-error Offboarding is outside this source API; untyped runtime callers must also deny it.
-  expect(nativeValues('contractRenewal',renew,'offboarding').ok).toBe(false);
+  // Offboarding is a legitimate source, but cannot admit a Contract event.
+  expect(nativeValues('contractRenewal',renew,'offboarding')).toEqual({ok:false,problem:'fields'});
   expect(normalisePostingValues('contractRenewal',{...renew,basicSalary:9000})).toEqual({ok:false,problem:'fields'});
   expect(normalisePostingValues('contractRenewal',{...renew,employmentType:'full_time'})).toEqual({ok:false,problem:'fields'});
+ });
+ it('keeps the source API exact while refusing untyped unknown sources for Contract events',()=>{
+  expectTypeOf<NonNullable<Parameters<typeof nativeValues>[2]>>().toEqualTypeOf<PersonnelPostingSource>();
+  expectTypeOf<PersonnelPostingSource>().toEqualTypeOf<'probation'|'offboarding'|'contract_staff'>();
+  // Reflect.apply exercises an actual untyped boundary without widening the typed source API.
+  for(const source of ['unknown','off','contract']){
+   expect(Reflect.apply(nativeValues,undefined,['contractRenewal',renew,source])).toEqual({ok:false,problem:'fields'});
+   expect(Reflect.apply(nativeValues,undefined,['contractConversion',{effectiveDate:renew.effectiveDate,previousEndDate:renew.previousEndDate},source])).toEqual({ok:false,problem:'fields'});
+  }
  });
  it('requires valid ordered dates and a whole supported counter',()=>{
   expect(normalisePostingValues('contractRenewal',{...renew,effectiveDate:'2027-02-30'}).ok).toBe(false);
