@@ -1415,3 +1415,27 @@ worker readiness and changed rendered/denied journeys remain mandatory before ha
 
 
 The first combined development qualification `44263612590` remains failed at source `8afdc969b94c92c963bec02d13dee8144d4397a6` (213 passed assertions / 3 failed, plus one obsolete browser-fixture type property). Worker package qualification `44263659870` passed at that source; it is not relabeled onto a later commit. The bounded repair removes the obsolete fixture property, corrects a zero-based pagination test oracle, and appends `6441_contract_resignation_email_modules` without changing the previous 141 SQL bodies. It restores the previously separate native email module constraints as a closed three-module union; native queue/lease/subject/target guards and grants remain unchanged. These changes are outside both covered source sets: the provider fingerprint remains `2f57be40fe74b8a48e85f57950b8b9223b9b284161c7c24cd6f196e50ef8e1e4` and module-agent fingerprint remains `d7a2c23d3048350d9fca26fabbad78197627f8c02788da575c3691b6f3e26646`. No approval row changes or new provider permission are needed. Original failures and successful slices retain their identities; failed/invalidated checks and new native regressions require their own hosted results.
+
+
+## Combined native Business Partner and provider-presentation binding — 18 November 2026
+
+Under the recorded owner approval of all AI binding and migration ordering, the release coordinator
+carried forward exactly the same 28 existing active approvals from `2f57be40fe74b8a48e85f57950b8b9223b9b284161c7c24cd6f196e50ef8e1e4`
+to `b321c31a27f4b9932703efb09c41c6d1194f9523d9987ff4de8000b697fabd98` (1,791 covered source files). The module-agent source
+fingerprint is `3c66e596e30973345089f0afd6e037b66d7a49edee2c7da21250e1df168f96e2` (497 files).
+Reversing only those 28 digest replacements reproduces the prior registry byte-for-byte. Pending
+and retired records, contract purposes, provider data fields, reviewer names and dates are unchanged.
+
+Source includes the reviewed shared native Contract/Probation Business Partner owner, service and
+authorized management panel (frozen member f6f7da9158), plus selected provider presentation SELECT
+policy 6500 (22a8e7e0). The latter changes settings metadata visibility only, without new credentials,
+provider calls, activation authority or write grants. BP routing remains separate from document
+signers and retired On/Off recipients; raw configuration is guarded by the prior native tenant-wide
+group-admin and Lifecycle entitlement. No provider protocol, policy, transport or outbound purpose
+is changed by this binding. This is source custody, not a check PASS or release authorization.
+
+Exact 924+142 rehearsal evidence at a609 remains tied to that source. The current pending tail144
+requires its own restricted-owner populated rehearsal, affected permissions/scale/whole-type checks
+and production renderer qualification. Both original56a build failures remain failed; inventory
+diagnostic44278414933 is not semantic compiler or release evidence. No production installation or
+provider activation is implied.
