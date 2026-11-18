@@ -11,11 +11,14 @@ import {DEFAULT_PROBATION_FORM,type ProbationForm} from '../lib/probation-form';
 import {PROBATION_SCOPED_FIELDS} from '../lib/probation-settings-scope';
 import type {ProbationSettings,ProbationSettingsScopeView,ProbationAdministrationOptions} from '../packs/probation/service';
 
-const m=vi.hoisted(()=>({refresh:vi.fn(),saveScope:vi.fn(),saveRouting:vi.fn(),saveEmail:vi.fn()}));
+const m=vi.hoisted(()=>({refresh:vi.fn(),saveScope:vi.fn(),saveRouting:vi.fn(),saveEmail:vi.fn(),
+ searchContractRoutingCases:vi.fn<typeof import('../app/automation/actions').searchContractRoutingCasesAction>().mockResolvedValue({ok:true,result:[]}),
+ checkContractRouting:vi.fn<typeof import('../app/automation/actions').checkContractRoutingAction>().mockResolvedValue({ok:false,code:'unavailable'}),
+}));
 vi.mock('next/navigation',()=>({useRouter:()=>({refresh:m.refresh,push:vi.fn()})}));
 vi.mock('next/link',async()=>{const React=await import('react');return {default:({prefetch:_prefetch,...props}:Record<string,unknown>)=>React.createElement('a',props,props.children as React.ReactNode)};});
 vi.mock('../app/lifecycle/probation/actions',()=>({saveSettingsScope:m.saveScope,retireCompanySetting:vi.fn(),refreshCompanySettings:vi.fn()}));
-vi.mock('../app/automation/actions',()=>({saveRoutingAction:m.saveRouting,saveEmailTemplateAction:m.saveEmail,searchPeopleAction:vi.fn()}));
+vi.mock('../app/automation/actions',()=>({saveRoutingAction:m.saveRouting,saveEmailTemplateAction:m.saveEmail,searchPeopleAction:vi.fn(),searchContractRoutingCasesAction:m.searchContractRoutingCases,checkContractRoutingAction:m.checkContractRouting}));
 
 import {SETTINGS_CARDS} from '../app/lifecycle/probation/settings/field-groups';
 import {SettingsScopeEditor} from '../app/lifecycle/probation/settings-scope-editor';
@@ -161,5 +164,6 @@ describe('HR Automation templates and assignment groups (prototype TemplatesPage
   const routing=screen.getByRole('article',{name:'BP by business group'});
   expect(routing).toHaveClass('pcg-rt-card');
   expect(within(screen.getByRole('region',{name:a.groups.routings})).getByRole('button',{name:a.groups.newRouting})).toBeInTheDocument();
+  expect(m.searchContractRoutingCases).not.toHaveBeenCalled();expect(m.checkContractRouting).not.toHaveBeenCalled();
  });
 });
