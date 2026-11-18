@@ -7,6 +7,7 @@
  * digest was recorded on the base commit, before the lock changes (claude/access-reader-writer-20261110
  * @ 9b94dafef), so this compares the converted code with the old exclusive-lock code on the same inputs.
  */
+import {verifyTaxOpeningProvenance,legacyOpeningDocument} from './helpers/payroll-opening-provenance';
 import {createHash} from 'node:crypto';
 import {asc,eq,inArray} from 'drizzle-orm';
 import {afterAll,beforeAll,beforeEach,describe,expect,it} from 'vitest';
@@ -75,6 +76,14 @@ describe('payroll figures under the reader/writer Access lock',()=>{
 
   const snapshot=async()=>{
    const slips=await owner.db.select().from(schema.payslip).where(eq(schema.payslip.batchId,batchId));
+   expect(slips).toHaveLength(people.length);
+   for(const person of people){
+    const employmentId=hired.get(person.label)!.employmentId;
+    const owned=slips.filter(row=>row.employmentId===employmentId);
+    expect(owned).toHaveLength(1);
+    expect(owned[0]).toMatchObject({tenantId:base.tenantId,batchId,employmentId});
+    verifyTaxOpeningProvenance(owned[0].statutory as Record<string,unknown>,{year:2026,companyId:base.companyId,employmentId});
+   }
    const [batch]=await owner.db.select({status:schema.payrollBatch.status,employeeCount:schema.payrollBatch.employeeCount,totals:schema.payrollBatch.totals}).from(schema.payrollBatch).where(eq(schema.payrollBatch.id,batchId));
    const [ledger]=await owner.db.select({outstandingBalance:schema.employeeLoan.outstandingBalance,instalmentsPaid:schema.employeeLoan.instalmentsPaid,status:schema.employeeLoan.status}).from(schema.employeeLoan).where(eq(schema.employeeLoan.id,loan.id));
    const schedule=await owner.db.select({sequenceNo:schema.loanRepayment.sequenceNo,dueAmount:schema.loanRepayment.dueAmount,appliedAmount:schema.loanRepayment.appliedAmount,status:schema.loanRepayment.status}).from(schema.loanRepayment).where(eq(schema.loanRepayment.loanId,loan.id)).orderBy(asc(schema.loanRepayment.sequenceNo));
@@ -96,7 +105,7 @@ describe('payroll figures under the reader/writer Access lock',()=>{
   expect(second).toEqual(first);
   // 69d6ed3c — the golden predates statutory trace v1; each trace is verified against its payslip, then set aside.
   expect(verifyStoredTraces(await owner.db.select({statutory:schema.payslip.statutory}).from(schema.payslip).where(eq(schema.payslip.batchId,batchId)))).toBe(people.length);
-  const document=JSON.stringify(withoutTraces(first)),digest=createHash('sha256').update(document).digest('hex');
+  const document=JSON.stringify(legacyOpeningDocument(withoutTraces(first))),digest=createHash('sha256').update(document).digest('hex');
   if(digest!==GOLDEN)console.log(`PAYROLL_EQUIVALENCE_DOCUMENT ${document}`);
   expect(digest).toBe(GOLDEN);
  },240000);

@@ -24,6 +24,7 @@
  *       'as of' a date that does not exist threw out of createBatch when this round was first written —
  *       found by test/cp39-form-report.test.ts, and pinned here at the stamp rather than at the screen.
  */
+import {withoutVerifiedTaxOpeningProvenance} from './helpers/payroll-opening-provenance';
 import { and, eq, gt, isNull, lte, or } from 'drizzle-orm';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import * as schema from '../db/schema';
@@ -370,7 +371,9 @@ describe('00e28308 · the month records the ruleset version it was opened under'
     // Golden, captured from the code as it stood BEFORE the period stamp was added (RM5,000 basic, no
     // allowance, no OT, category 1, no children, 2026-05). Every stored column, so a change to any
     // figure — or to the immutable statutory snapshot the filings and the PDF read — fails here.
-    expect(slip).toEqual({
+    expect({...slip,statutory:withoutVerifiedTaxOpeningProvenance(slip.statutory as Record<string,unknown>,{
+      year:2026,companyId:base.companyId,employmentId,
+    })}).toEqual({
       basicSalary: '5000.00',
       allowance: '0.00',
       overtimePay: '0.00',

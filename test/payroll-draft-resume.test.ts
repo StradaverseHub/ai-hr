@@ -20,6 +20,7 @@
  *      (unmodified scope) then generate.
  *   g. Off-cycle draft resume — cycle/paymentDate/remarks survive the resume round-trip unchanged.
  */
+import {normalizeEmptyTaxOpeningProvenance} from './helpers/payroll-opening-provenance';
 import { and, eq, gt, isNull, lte, or } from 'drizzle-orm';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import * as schema from '../db/schema';
@@ -429,7 +430,7 @@ describe('Payroll draft-resume — updateBatchScope (DB)', () => {
         compensationId: salaryOwners[0].id, effectiveFrom: '2026-01-01',
         basicSalary: '4321.00', payMode: 'monthly' });
       // Independent fixtures have different owner UUIDs. Every other saved field remains exact.
-      return {...statutory,reportContext:{...report,payingCompanyId:'validated-paying-company'},salaryBasis:{...basis,compensationId:'validated-compensation-selection'},
+      return {...normalizeEmptyTaxOpeningProvenance(statutory,{year:2026,companyId:batch.companyId,employmentId:ps.employmentId}),reportContext:{...report,payingCompanyId:'validated-paying-company'},salaryBasis:{...basis,compensationId:'validated-compensation-selection'},
         pcbMeta:{...meta,taxSelectionId:'validated-employment-selection'}};
     };
     // Path A — plain create + generate (the pre-feature direct path).
