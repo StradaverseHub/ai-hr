@@ -83,3 +83,8 @@ it('replays merged listed and unlisted items through the historical tax preview 
  await accept([['BASIC','1000.00'],['TRV','500.00'],['OTHER','100.00'],['PCB','50.00']]);await accept([['ALIAS','200.00']],'update_listed');
  const before=await detail(),preview=await previewTaxBasisRecalculation(ctx,{companyId:b.companyId,year,upToMonth:1,employmentIds:[employmentId]});expect(preview.employees[0].reason).toBeNull();expect(preview.employees[0].months[0]).toMatchObject({taxable:1300});expect(preview.employees[0].months[0].items).toEqual(expect.arrayContaining([expect.objectContaining({code:'BASIC',amount:1000}),expect.objectContaining({code:'TRV',amount:200}),expect.objectContaining({code:'OTHER',amount:100})]));expect(preview.employees[0].pcbComparison).toMatchObject({originalPaid:50});expect((await detail()).values).toEqual(before.values);
 });
+
+it('holds case-folded duplicate configured codes rather than choosing an arbitrary component UUID',async()=>{
+ await owner.db.insert(schema.payComponent).values({tenantId:b.tenantId,code:'trv',name:'Fictional ambiguous duplicate',kind:'allowance',displayCategory:'allowance'});
+ await expect(upload([['BASIC','1000.00'],['TRV','500.00'],['PCB','0.00']],'replace')).rejects.toThrow(/unmapped|unavailable|ambiguous/);expect(await owner.db.select().from(schema.payrollHistoryImportRecord)).toEqual([]);
+});

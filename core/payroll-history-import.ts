@@ -279,10 +279,12 @@ export async function resolveImportCodes(ctx: SessionContext, transaction?: Tx):
   };
   const { components, catalog } = await (transaction ? read(transaction) : withTenant(ctx, read));
 
+  const counts=new Map<string,number>();for(const component of components)counts.set(up(component.code),(counts.get(up(component.code))??0)+1);
+  const ambiguous=new Set([...counts].filter(([,count])=>count>1).map(([code])=>code));
   const byCode = new Map<string, ImportCodeEntry>();
   for (const s of STATUTORY_IMPORT_CODES) byCode.set(up(s.code), { ...s });
   for (const c of components) {
-    if (c.archivedAt != null) continue;
+    if (c.archivedAt != null||ambiguous.has(up(c.code))) continue;
     const { destination, direction } = payComponentDestination({
       code: c.code,
       kind: c.kind,
@@ -290,10 +292,12 @@ export async function resolveImportCodes(ctx: SessionContext, transaction?: Tx):
     });
     byCode.set(up(c.code), { code: c.code, label: c.name, destination:c.isNonPayable?'noncash':destination, direction, source: 'component',targetCode:c.code,ownerId:c.id,taxSettings:c });
   }
+  for(const code of ambiguous)byCode.delete(code);
   // Pass 1: direct catalog rows (and removals). Pass 2: aliases, so an alias may point at a row added in
   // pass 1 regardless of the order they came back from the database.
   const aliases: typeof catalog = [];
   for (const row of catalog) {
+    if(ambiguous.has(up(row.code))){byCode.delete(up(row.code));continue;}
     if (row.aliasFor != null && norm(row.aliasFor) !== '') {
       aliases.push(row);
       continue;

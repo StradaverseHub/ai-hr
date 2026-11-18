@@ -385,7 +385,11 @@ type AttemptRow=typeof attempt.$inferSelect;
 async function confirmChecksTx(tx:Tx,ctx:SessionContext,input:HistoryConfirmInput,lock:boolean):Promise<{source:AttemptRow;confirmed:typeof historyEvent.$inferSelect|null;applies:(row:HistoryRevisionRow)=>boolean}>{
  await principal(tx,ctx);
  const query=tx.select().from(attempt).where(eq(attempt.id,input.attemptId)),[source]=lock?await query.for('update'):await query;if(!source)fail('Import attempt unavailable.');
- for(const id of source.companyIds)await permission(tx,ctx,id,source.plan.maintenance?.mode==='remove_items'||source.plan.maintenance?.mode==='remove_batch'?'revert':'import');
+ if(source.plan.maintenance){
+  const key=source.plan.maintenance.mode==='remove_items'||source.plan.maintenance.mode==='remove_batch'?'payroll.history.revert':'payroll.history.import';
+  const allowed=(await personnelFormulaPermissionsTx(tx,ctx,source.companyIds,[key])).get(key),scoped=new Set((source.companyIds.length?await tx.select({id:company.id}).from(company).where(and(inArray(company.id,source.companyIds),sql`app.can_admin_payroll_for(${company.id})`)):[]).map(row=>row.id));
+  if(source.companyIds.some(id=>!allowed?.has(id)||!scoped.has(id)))fail('Payroll history access is unavailable for a company in this operation.');
+ }else for(const id of source.companyIds)await permission(tx,ctx,id,'import');
  if(input.expectedCompanyId&&(!uuid.test(input.expectedCompanyId)||source.companyIds.some(id=>id!==input.expectedCompanyId)))fail('This record-based import is restricted to its selected company. Use the original-file workflow for a multi-company import.');
  const events=await tx.select().from(historyEvent).where(eq(historyEvent.attemptId,source.id));
  if(events.some(event=>event.kind==='reverted'))fail('This import was reverted. Validate a new upload to import again.');
