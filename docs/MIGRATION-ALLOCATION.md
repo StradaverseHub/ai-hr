@@ -1,3 +1,26 @@
+# Approved board build — 18 November 2026 (source reservations only)
+
+Coordinator `codex/approved-board-build-20261118` reserves the following disjoint blocks.
+Each numbered tag uses the stated index and timestamp, with a descriptive suffix chosen by its owner.
+
+| Tags | idx | when | Owner |
+| --- | --- | --- | --- |
+| 6600–6609 | 10000–10009 | 1794998006600–1794998006609 | Probation reconciliation |
+| 6610–6619 | 10010–10019 | 1794998006610–1794998006619 | Probation email builder |
+| 6620–6629 | 10020–10029 | 1794998006620–1794998006629 | Probation letters and signing |
+| 6630–6639 | 10030–10039 | 1794998006630–1794998006639 | My tasks document projection |
+| 6640–6649 | 10040–10049 | 1794998006640–1794998006649 | Personnel manager email recipients |
+| 6650–6659 | 10050–10059 | 1794998006650–1794998006659 | Pay formula business-code sources |
+
+Fresh main/alpha refs were fetched before choosing main `5f29160ef`. A read of every
+readable Git-registered worktree journal found no tag in 6600–6659 and no index in
+10000–10059. The highest observed competing timestamp was 1794988006500 and index
+9934. Staging independently reported source `f8c90ebcd3c0d4bd8310d9fb1cbab645b2ad108e`,
+build `MIdgSb_9kQdck-DwAgKj-`, and 924 applied migrations through 1794841006104.
+Production and all committed peer journals still require a fresh ordered-ledger and
+claim survey at integration/admission. These are source reservations for isolated
+builds, not approval to install, alter applied SQL or bypass release evidence.
+
 # Approved board items — 17 November 2026 (source reservations; installation held)
 
 Coordinator `codex/approved-board-controller-20261117` reserves:
