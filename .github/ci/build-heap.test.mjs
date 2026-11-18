@@ -57,6 +57,7 @@ test('observer records disappearing and unreadable processes and enforces finite
  f.tick();f.rows.delete(200);observer.sample();assert(observer.report().processes.find(p=>p.pid===200).exitedSeenMs!==undefined);
  const limited=createBuildProcessObserver(100,{io:f.io,now:f.now,expectedParentPid:90,scanLimit:1});limited.sample();assert(limited.report().issues.process_scan_limit>0);
  const absent=createBuildProcessObserver(999,{io:f.io,now:f.now,expectedParentPid:90});absent.sample();assert(absent.report().issues.root_identity_unavailable>0);
+ const wrongParent=createBuildProcessObserver(100,{io:f.io,now:f.now,expectedParentPid:91});wrongParent.sample();assert(wrongParent.report().issues.root_identity_unavailable>0);
 });
 import {readdirSync} from 'node:fs';
 const root=fileURLToPath(new URL('../../',import.meta.url));
