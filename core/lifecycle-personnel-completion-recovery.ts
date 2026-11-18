@@ -32,7 +32,7 @@ export async function personnelCompletionRecoveryPage(ctx:SessionContext,after:{
 async function admissionTx(tx:Tx,ctx:SessionContext,targets:PersonnelCompletionRecoveryCandidate[]){
  const [r]=await tx.execute<{count:number}>(sql`with requested as(select * from jsonb_to_recordset(${JSON.stringify(targets)}::jsonb) t("caseId" uuid,"companyId" uuid,revision integer)), visible as(
  select r."caseId" from requested r join lc_v9_case c on c.id=r."caseId" and c.company_id=r."companyId" and c.revision=r.revision where c.tenant_id=${ctx.tenantId}::uuid and app.is_admin_for(c.company_id) and app.lc_v9_off_access(c.company_id)
- union all select r."caseId" from requested r join lc_onboarding_case c on c.id=r."caseId" and c.company_id=r."companyId" and c.revision=r.revision where c.tenant_id=${ctx.tenantId}::uuid and app.is_admin_for(c.company_id) and (app.onboarding_page_access() or app.onboarding_v9_case_actor() or app.is_group_admin())) select count(*)::integer as count from visible where app.v9_signing_current_actor()`);
+ union all select r."caseId" from requested r join lc_onboarding_case c on c.id=r."caseId" and c.company_id=r."companyId" and c.revision=r.revision where c.tenant_id=${ctx.tenantId}::uuid and app.is_admin_for(c.company_id) and (app.onboarding_v9_case_actor() and coalesce(app.onboarding_v9_sections()->>'hr'='view',false))) select count(*)::integer as count from visible where app.v9_signing_current_actor()`);
  if(r.count!==targets.length)throw new Error('Current full case access and the reviewed revisions are required for every target.');
 }
 async function enqueueTx(tx:Tx,ctx:SessionContext,kind:string,targets:PersonnelCompletionRecoveryCandidate[],manifest:unknown){
