@@ -1028,6 +1028,13 @@ it('stops on a cross-tenant row, then validates every company/tenant key without
     from pg_proc p where p.oid=to_regprocedure(${fn})`;
    expect(permission).toEqual({app_execute:!privateFunctions.includes(fn),public_execute:publicFunctions.includes(fn)});
   }
+  // The private trigger may invoke the private signing validator as the canonical writer owner.
+  // Application/public execution remains denied above; no caller-controlled search path enters it.
+  const [routeGuard]=await storage.client`select p.prosecdef as definer,p.proconfig as config,
+   p.proowner=(select proowner from pg_proc where oid='app.v9_document_route_apply(uuid,integer,text,jsonb,text)'::regprocedure) as canonical_owner
+   from pg_proc p where p.oid='app.v9_document_route_guard()'::regprocedure`;
+  expect(routeGuard.definer).toBe(true);expect(routeGuard.canonical_owner).toBe(true);
+  expect(routeGuard.config).toHaveLength(1);expect(routeGuard.config[0].replaceAll(' ','')).toBe('search_path=pg_catalog,public,pg_temp');
   // Independently parse both reviewed Claim expressions against this table. No broad policy
   // exception: only this exact USING representation may differ; WITH CHECK and every other field stay.
   const expectedClaimQuals=await storage.client.begin(async tx=>{
