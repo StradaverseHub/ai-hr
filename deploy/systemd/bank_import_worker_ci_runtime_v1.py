@@ -35,7 +35,7 @@ FIRST_APPROVAL_FIELDS = {'format','kind','policy','target','issuedAt','expiresAt
 
 
 def require_operation_guard(base):
-    base.check(ACTIVE_OPERATION_GUARD is not None and ACTIVE_OPERATION_GUARD.stage in ('activate-ci-runtime','activate-prepared-ci-runtime','recover-ci-runtime'),'fixed root guarded activation invocation required')
+    base.check(ACTIVE_OPERATION_GUARD is not None and ACTIVE_OPERATION_GUARD.stage in ('activate-ci-runtime','activate-prepared-ci-runtime','recover-ci-runtime','recover-published-ci-runtime'),'fixed root guarded activation invocation required')
     ACTIVE_OPERATION_GUARD.verify()
     return ACTIVE_OPERATION_GUARD
 

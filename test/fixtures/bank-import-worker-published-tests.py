@@ -90,7 +90,8 @@ class PublishedTests(unittest.TestCase):
     if defect=='attempt':(f.operation/'published-recovery-existing').mkdir()
     if defect=='tree':os.chmod(f.app/'releases'/f.source/'package.json',0o600)
     if defect=='approval':f.oldpath.write_text('{}')
-    if defect=='history':(Path(f.pins['operation'])/'ci-worker-started.json').write_text('{}')
+    if defect=='history':
+     target=Path(f.pins['operation'])/'ci-worker-started.json';target.chmod(0o600);target.write_text('{}')
     with self.assertRaisesRegex(ValueError,reasons[defect]):f.invoke_published(published.LIVE_STAGE,f.live(proof))
     self.unchanged(f)
  def test_live_authority_expiry_is_fatal(self):
