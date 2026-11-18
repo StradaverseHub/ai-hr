@@ -94,6 +94,7 @@ BEGIN
   source_case:=NEW.id;company:=NEW.company_id;target_revision:=NEW.revision;
   old_docs:=CASE WHEN TG_OP='INSERT' THEN '[]'::jsonb ELSE coalesce(OLD.data->'documents','[]'::jsonb) END;new_docs:=coalesce(NEW.data->'documents','[]'::jsonb);
  END IF;
+ IF NOT(session_user='ai_hr_owner' OR EXISTS(SELECT 1 FROM pg_roles WHERE rolname=session_user AND rolsuper)) AND EXISTS(SELECT 1 FROM jsonb_array_elements(new_docs) candidate WHERE NOT candidate?'personnelCompletion' AND NOT EXISTS(SELECT 1 FROM jsonb_array_elements(old_docs) existing_document WHERE existing_document->>'id'=candidate->>'id') AND EXISTS(SELECT 1 FROM jsonb_array_elements(coalesce(candidate->'fields','[]'::jsonb)) configured_field WHERE configured_field->>'owner'='pmLocked')) THEN RAISE EXCEPTION 'New Personnel-linked documents require versioned completion custody';END IF;
  IF NOT EXISTS(SELECT 1 FROM jsonb_array_elements(old_docs||new_docs) candidate WHERE candidate?'personnelCompletion') THEN RETURN NEW;END IF;
  company_entitled:=app.probation_company_entitled(company);
  SELECT data INTO config FROM lc_v9_config WHERE tenant_id=NEW.tenant_id;
