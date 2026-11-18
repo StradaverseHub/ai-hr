@@ -30,7 +30,7 @@ CREATE FUNCTION app.payroll_history_native_artifact_allowed(subject_batch uuid,s
  SELECT app.payroll_history_native_module() AND EXISTS(SELECT 1 FROM public.payroll_batch b
  WHERE b.id=subject_batch AND b.tenant_id=app.current_tenant_id()
  AND NOT EXISTS(SELECT 1 FROM app.payroll_history_staged_row sr JOIN app.payroll_history_stage stage ON stage.stage_id=sr.stage_id WHERE stage.state='staged' AND((sr.relation='payroll_batch' AND sr.row_id=b.id) OR(sr.relation='payslip' AND sr.row_id=subject_payslip)))
- AND(((app.payroll_history_effective(subject_payslip) OR app.payroll_history_self_issued(subject_payslip)) AND(app.can_see_employment(subject_employment) OR app.can_admin_payroll_employment(subject_employment)))
+ AND(((app.payroll_history_effective(subject_payslip) OR app.payroll_history_self_issued(subject_payslip)) AND(app.can_admin_payroll_employment(subject_employment) OR EXISTS(SELECT 1 FROM public.employment own WHERE own.id=subject_employment AND own.tenant_id=b.tenant_id AND app.is_self_person(own.person_id))))
  OR app.can_admin_payroll_for(b.company_id) AND app.can_admin_payroll_employment(subject_employment) AND b.history_import_attempt_id IS NULL AND(
  b.status IN('draft','processing','processed') AND EXISTS(SELECT 1 FROM public.pay_period period WHERE period.id=b.pay_period_id AND period.tenant_id=b.tenant_id)
  OR EXISTS(SELECT 1 FROM app.payroll_history_native_capture c JOIN public.payroll_history_import_record r ON r.id=c.record_id AND r.tenant_id=c.tenant_id JOIN public.payroll_history_import_revision adopted ON adopted.record_id=r.id AND adopted.ordinal=1 AND adopted.native_source=app.payroll_history_native_proof(c)

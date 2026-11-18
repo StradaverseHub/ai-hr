@@ -37,10 +37,11 @@ BEGIN
  OR NOT EXISTS(SELECT 1 FROM jsonb_array_elements(a.plan->'rows') planned WHERE planned->>'companyId'=r.company_id::text AND planned->>'employmentId'=r.employment_id::text AND planned->>'period'=r.period AND planned->>'cycleId'=r.cycle_id::text AND planned->>'operation' IN('create','replace') AND planned->'detachedNativeBaseline'=input)
  THEN RAISE EXCEPTION 'The native baseline is not in the reviewed source' USING ERRCODE='42501';END IF;
  IF stage IS NOT NULL AND NOT EXISTS(SELECT 1 FROM app.payroll_history_stage s WHERE s.stage_id=stage AND s.tenant_id=r.tenant_id AND s.attempt_id=a.id AND s.created_by=app.current_user_id() AND s.state='staged') THEN RAISE EXCEPTION 'Native baseline stage unavailable' USING ERRCODE='42501';END IF;
+ SELECT period_owner.* INTO period FROM public.pay_period period_owner WHERE period_owner.id=(SELECT source.pay_period_id FROM public.payroll_batch source WHERE source.id=(input->>'sourceBatchId')::uuid AND source.tenant_id=r.tenant_id) AND period_owner.tenant_id=r.tenant_id FOR SHARE;
  SELECT x.* INTO b FROM public.payroll_batch x WHERE x.id=(input->>'sourceBatchId')::uuid AND x.tenant_id=r.tenant_id FOR UPDATE;
  SELECT x.* INTO p FROM public.payslip x WHERE x.id=(input->>'sourcePayslipId')::uuid AND x.tenant_id=r.tenant_id FOR UPDATE;
- SELECT * INTO period FROM public.pay_period WHERE id=b.pay_period_id AND tenant_id=r.tenant_id;
- IF p.id IS NULL OR b.id IS NULL OR p.batch_id<>b.id OR p.employment_id<>r.employment_id OR b.company_id<>r.company_id OR b.pay_period<>r.period OR(b.payroll_cycle_id IS NOT NULL AND b.payroll_cycle_id<>r.cycle_id) OR b.history_import_attempt_id IS NOT NULL OR b.status NOT IN('draft','processing','processed') OR period.id IS NULL
+
+ IF p.id IS NULL OR b.id IS NULL OR p.batch_id<>b.id OR p.employment_id<>r.employment_id OR b.company_id<>r.company_id OR b.pay_period<>r.period OR(b.payroll_cycle_id IS NOT NULL AND b.payroll_cycle_id<>r.cycle_id) OR b.history_import_attempt_id IS NOT NULL OR b.status NOT IN('draft','processing','processed') OR period.id IS NULL OR b.pay_period_id IS DISTINCT FROM period.id
  OR p.version IS DISTINCT FROM (input->>'sourceVersion')::integer OR input->>'sourceHash' IS DISTINCT FROM app.payroll_history_native_source_hash(p,b,period.status::text) OR input->'values' IS DISTINCT FROM app.payroll_history_native_values(p)
  THEN RAISE EXCEPTION 'The native payroll source changed. Review a new preview.' USING ERRCODE='40001';END IF;
  batch_id:=app.payroll_history_native_id(a.id,b.id,'batch');slip_id:=app.payroll_history_native_id(a.id,p.id,'snapshot');
@@ -72,6 +73,10 @@ BEGIN
  IF NOT app.payroll_history_native_module() OR NOT EXISTS(SELECT 1 FROM public.payroll_history_import_attempt a WHERE a.id=p_attempt AND a.tenant_id=app.current_tenant_id() AND a.created_by=app.current_user_id()) THEN RAISE EXCEPTION 'Native baseline release unavailable' USING ERRCODE='42501';END IF;
  SELECT coalesce(array_agg(DISTINCT c.baseline_batch_id),'{}') INTO batch_ids FROM app.payroll_history_native_capture c WHERE c.attempt_id=p_attempt AND c.tenant_id=app.current_tenant_id();
  IF cardinality(batch_ids)=0 THEN RETURN;END IF;
+ -- Fence direct RPC callers as well as the canonical writer: source cannot mutate after the final hash check.
+ PERFORM 1 FROM public.pay_period period_owner WHERE period_owner.id IN(SELECT source.pay_period_id FROM app.payroll_history_native_capture c JOIN public.payroll_batch source ON source.id=c.source_batch_id WHERE c.attempt_id=p_attempt AND c.tenant_id=app.current_tenant_id()) ORDER BY period_owner.id FOR SHARE;
+ PERFORM 1 FROM public.payroll_batch source WHERE source.id IN(SELECT c.source_batch_id FROM app.payroll_history_native_capture c WHERE c.attempt_id=p_attempt AND c.tenant_id=app.current_tenant_id()) ORDER BY source.id FOR UPDATE;
+ PERFORM 1 FROM public.payslip source WHERE source.id IN(SELECT c.source_payslip_id FROM app.payroll_history_native_capture c WHERE c.attempt_id=p_attempt AND c.tenant_id=app.current_tenant_id()) ORDER BY source.id FOR UPDATE;
  PERFORM 1 FROM public.payroll_batch b WHERE b.id=ANY(batch_ids) ORDER BY b.id FOR UPDATE;
  IF EXISTS(SELECT 1 FROM app.payroll_history_native_capture c JOIN public.payroll_history_import_snapshot s ON s.id=c.snapshot_id JOIN public.payroll_history_import_record r ON r.id=c.record_id
  LEFT JOIN public.payslip original ON original.id=c.source_payslip_id LEFT JOIN public.payroll_batch source ON source.id=c.source_batch_id LEFT JOIN public.pay_period period ON period.id=source.pay_period_id
