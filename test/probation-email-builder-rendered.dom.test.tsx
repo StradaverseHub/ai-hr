@@ -18,5 +18,5 @@ for(const[locale,messages]of Object.entries({en,ms,zh,ta,th,vi:viMessages}))for(
  fireEvent.click(screen.getByRole('tab',{name:t.preview}));
  expect(screen.getByText('Hello '+t.sampleEmployee+',')).toBeVisible();
  expect(screen.getByRole('checkbox',{name:t.attachOutcome})).toBeVisible();
- await captureAiReviewScreenshots(aiReviewDomHtml(document.querySelector('main')!),locale,`feedback-probation-email-${theme}-${dark?'dark':'light'}`,'Actual canonical rich Probation email editor and localized preview; fictional props and component interactions; no authenticated server journey',theme,dark?'dark':'light');
+ await captureAiReviewScreenshots(aiReviewDomHtml(document.body),locale,`feedback-probation-email-${theme}-${dark?'dark':'light'}`,'Actual canonical rich Probation email editor and localized preview; fictional props and component interactions; no authenticated server journey',theme,dark?'dark':'light');
 },120000);
