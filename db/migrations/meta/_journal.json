@@ -6721,6 +6721,13 @@
       "when": 1794998006689,
       "tag": "6689_personnel_completion_recovery_jobs",
       "breakpoints": true
+    },
+    {
+      "idx": 10090,
+      "version": "7",
+      "when": 1794998006690,
+      "tag": "6690_payroll_history_item_maintenance",
+      "breakpoints": true
     }
   ]
 }

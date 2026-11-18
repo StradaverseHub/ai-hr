@@ -263,6 +263,7 @@ export async function resolveImportCodes(ctx: SessionContext, transaction?: Tx):
   const read = async (tx: Tx) => {
     const components = await tx
       .select({
+        id: payComponent.id,
         code: payComponent.code,
         name: payComponent.name,
         kind: payComponent.kind,
@@ -286,7 +287,7 @@ export async function resolveImportCodes(ctx: SessionContext, transaction?: Tx):
       kind: c.kind,
       displayCategory: c.displayCategory,
     });
-    byCode.set(up(c.code), { code: c.code, label: c.name, destination:c.isNonPayable?'noncash':destination, direction, source: 'component',targetCode:c.code,taxSettings:c });
+    byCode.set(up(c.code), { code: c.code, label: c.name, destination:c.isNonPayable?'noncash':destination, direction, source: 'component',targetCode:c.code,ownerId:c.id,taxSettings:c });
   }
   // Pass 1: direct catalog rows (and removals). Pass 2: aliases, so an alias may point at a row added in
   // pass 1 regardless of the order they came back from the database.
@@ -306,7 +307,7 @@ export async function resolveImportCodes(ctx: SessionContext, transaction?: Tx):
       label: row.label,
       destination: row.destination as PayrollImportDestination,
       direction: row.direction as ImportCodeEntry['direction'],
-      source: 'catalog',targetCode:row.code,taxSettings:components.find(component=>up(component.code)===up(row.code)),...(up(row.code)==='BASIC'&&row.destination==='basic'?{basicSalaryOwner:true}:{}),
+      source: 'catalog',targetCode:row.code,ownerId:components.find(component=>up(component.code)===up(row.code))?.id??row.id,taxSettings:components.find(component=>up(component.code)===up(row.code)),...(up(row.code)==='BASIC'&&row.destination==='basic'?{basicSalaryOwner:true}:{}),
     });
   }
   for (const row of aliases) {
@@ -321,7 +322,7 @@ export async function resolveImportCodes(ctx: SessionContext, transaction?: Tx):
       label: row.label,
       destination: target.destination,
       direction: target.direction,
-      source: 'alias',targetCode:target.targetCode??target.code,basicSalaryOwner:target.basicSalaryOwner,
+      source: 'alias',targetCode:target.targetCode??target.code,ownerId:target.ownerId,basicSalaryOwner:target.basicSalaryOwner,
     });
   }
   return byCode;
