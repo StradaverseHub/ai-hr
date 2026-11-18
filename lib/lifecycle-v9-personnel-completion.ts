@@ -5,6 +5,8 @@ import {signingContentLocked} from './document-signing-model';
 import {isCalendarDate} from './calendar-date';
 export const PERSONNEL_COMPLETION_VERSION=1 as const;
 export const PERSONNEL_COMPLETION_CLASSIFICATION='2026-11-18' as const;
+/** Existing case signatory facts keep their dedicated authorized owner. Future unknown keys stay held. */
+export function personnelCompletionManagedField(field:Field){return field.owner==='pmLocked'&&!['signatory.name','signatory.title'].includes(field.pmKey??'');}
 export const personnelCompletionClassification={
  'employee.icNo':'personal',race:'personal',religion:'personal',nationality:'personal',gender:'personal',marital:'personal',
  'employee.passportNo':'personal',mobile:'personal',homePhone:'personal',personalEmail:'personal',address:'personal',
@@ -29,10 +31,10 @@ export function personnelCompletionGroup(key:string|null|undefined):PersonnelCom
 export function personnelCompletionLocked(document:CompletionDocument){return !!document.employeeSignature||!!document.hrSignature||!!document.signing&&signingContentLocked(document.signing)||['withdrawn','superseded'].includes(document.status)||!document.signing&&['signed','completed','acknowledged'].includes(document.status);}
 /** Only newly generated or explicitly recovered unsigned drafts may adopt the new rule. Existing released snapshots stay legacy. */
 export function initializePersonnelCompletion(document:CompletionDocument,input:{country:string|null;sourceFingerprint:string;officialValues:Record<string,string>;actor:Actor;at:string}){
- if(document.personnelCompletion)return;
+ if(document.personnelCompletion||!document.fields.some(personnelCompletionManagedField))return;
  if(document.sentAt||document.status!=='draft'||personnelCompletionLocked(document))throw new Error('Only an unsigned, unreleased draft can adopt Personnel completion.');
  const fields:PersonnelCompletionPolicy['fields']={};
- for(const field of document.fields)if(field.owner==='pmLocked'){const official=input.officialValues[field.id]??'';fields[field.id]={key:field.pmKey,group:personnelCompletionGroup(field.pmKey),sourceValue:official,sourceFingerprint:input.sourceFingerprint};document.values[field.id]=official;}
+ for(const field of document.fields)if(personnelCompletionManagedField(field)){const official=input.officialValues[field.id]??'';fields[field.id]={key:field.pmKey,group:personnelCompletionGroup(field.pmKey),sourceValue:official,sourceFingerprint:input.sourceFingerprint};document.values[field.id]=official;}
  document.personnelCompletion={version:1,classification:PERSONNEL_COMPLETION_CLASSIFICATION,country:input.country,sourceFingerprint:input.sourceFingerprint,adoptedAt:input.at,adoptedBy:{...input.actor},fields,history:[]};
  if(document.fields.some(field=>field.required&&effectivePersonnelCompletion(document,field)==='employee'))document.personnelCompletion.preparation={at:input.at,by:{...input.actor}};
 }

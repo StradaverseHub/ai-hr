@@ -1166,6 +1166,15 @@ it('limits unsigned signer choices to fresh company HR and lets an authorized HR
   await v9SaveConfig(admin,config.revision,config);
   const workspace=await v9Workspace(admin);expect(workspace.options.signatoryCandidates![base.companyId]).toContain(alternateId);expect(workspace.options.signatoryCandidates![base.companyId]).not.toContain(employee.userId);
   await v9Command(admin,c.id,c.revision,{type:'generate',template:'signer-letter'});c=(await v9CaseDetail(admin,c.id)).case;const doc=c.documents.find(doc=>doc.templateId==='signer-letter')!;
+  expect(doc.personnelCompletion).toBeUndefined(); // Existing case-owned signatory aliases are not missing Personnel fields.
+  const forgedAlias=async(kind:'value'|'merge'|'user')=>{
+    const forged=structuredClone(c),target=forged.documents.find(document=>document.id===doc.id)!;
+    if(kind==='value')target.values['printed-title']='Forged field-only title';
+    if(kind==='merge'){target.values['printed-title']='Forged canonical title';target.mergeValues!['signatory.title']='Forged canonical title';}
+    if(kind==='user'){target.signatoryUserId=employee.userId!;target.values['printed-signer']='V9 subject';target.mergeValues!['signatory.name']='V9 subject';}
+    await withTenant(admin,tx=>tx.execute(sql`update lc_v9_case set data=${JSON.stringify(forged)}::jsonb where id=${c.id}::uuid and tenant_id=${base.tenantId}::uuid`));
+  };
+  for(const kind of ['value','merge','user'] as const)await expect(forgedAlias(kind)).rejects.toThrow();
   await expect(v9Command(employee,c.id,c.revision,{type:'documentSignatory',id:doc.id,userId:employee.userId!})).rejects.toThrow();
   await expect(v9Command(admin,c.id,c.revision,{type:'documentSignatory',id:doc.id,userId:employee.userId!})).rejects.toThrow('permitted');
   await v9Command(admin,c.id,c.revision,{type:'documentSignatory',id:doc.id,userId:alternateId});c=(await v9CaseDetail(admin,c.id)).case;

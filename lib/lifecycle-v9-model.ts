@@ -1,4 +1,4 @@
-import {initializePersonnelCompletion,effectivePersonnelCompletion,missingPersonnelCompletion,overridePersonnelCompletion,reconcilePersonnelCompletion,personnelCompletionLocked,savePersonnelCompletionAnswer,personnelCompletionIssues,personnelCompletionMergeValues,personnelCompletionEmployeeAnswers,type PersonnelCompletionPolicy} from './lifecycle-v9-personnel-completion';
+import {initializePersonnelCompletion,personnelCompletionManagedField,effectivePersonnelCompletion,missingPersonnelCompletion,overridePersonnelCompletion,reconcilePersonnelCompletion,personnelCompletionLocked,savePersonnelCompletionAnswer,personnelCompletionIssues,personnelCompletionMergeValues,personnelCompletionEmployeeAnswers,type PersonnelCompletionPolicy} from './lifecycle-v9-personnel-completion';
 import {initializeV9DocumentRouting,reviseV9DocumentRouting,v9RouteReadyForEmployee,v9RoutedHrComplete,v9RoutedHasSigningReceipt,type V9DocumentRoutingEnvironment} from './lifecycle-v9-document-routing';
 import {canEditSigningContent,type SigningDocument} from './document-signing-model';
 import type {DocumentRouting,DocumentRoutingUnresolved} from './document-signing-routing';
@@ -425,12 +425,12 @@ export function generate(c: Case, config: Config, templateId: string, env: Envir
   const values: Record<string, string> = {};
   for (const field of version.fields) if (field.pmKey) values[field.id] = personnelFieldSourceValue(field, env.mergeValues);
   const doc: Document = { id: env.nextId(), templateId, version: version.version, name: template.name, status: 'draft', blocks: structuredClone(version.blocks), fields: structuredClone(version.fields), values, edits: {}, hrSignature: null, employeeSignature: null, createdAt: env.now, sentAt: null, mergeValues: documentMergeValues(version,env.mergeValues), templateType: template.type, hrStep: template.hrStep, employeeAck: template.employeeAck, signatoryUserId: env.signatoryUserId ?? null };
-  if(env.personnelCompletion&&doc.fields.some(field=>field.owner==='pmLocked')){
+  if(env.personnelCompletion&&doc.fields.some(personnelCompletionManagedField)){
     if(env.personnelCompletion.available===false)throw new V9Error('The current authorized Personnel source is unavailable.','conflict');
     const source=env.personnelCompletion.source;
     if(source._sourceBasis==='unresolved-exit'&&doc.fields.some(field=>['employee.department','employee.position','employee.supervisor'].includes(field.pmKey??'')))throw new V9Error('The dated Personnel source requires review.','conflict');
     if(source._identityFieldsWithheld==='true'&&doc.fields.some(field=>['personalEmail','employee.icNo','employee.passportNo'].includes(field.pmKey??'')))throw new V9Error('Permission to view protected Personnel identity fields is required for this document.','forbidden');
-    const official=Object.fromEntries(doc.fields.filter(field=>field.owner==='pmLocked').map(field=>[field.id,personnelFieldSourceValue(field,source)]));
+    const official=Object.fromEntries(doc.fields.filter(personnelCompletionManagedField).map(field=>[field.id,personnelFieldSourceValue(field,source)]));
     initializePersonnelCompletion(doc,{country:env.personnelCompletion.country,sourceFingerprint:env.personnelCompletion.fingerprint(official,env.personnelCompletion.country),officialValues:official,actor:env.actor,at:env.now});
   }
   if(doc.personnelCompletion){doc.mergeValues=documentMergeValues(doc,{...doc.mergeValues,...Object.fromEntries(Object.entries(env.personnelCompletion!.source).filter(([key])=>!key.startsWith('_')))},true);if(env.personnelCompletion!.source._identityFieldsWithheld==='true'&&['personalEmail','employee.icNo','employee.passportNo','icNo','passportNo','case.icNo','case.passportNo'].some(key=>Object.hasOwn(doc.mergeValues!,key)))throw new V9Error('Permission to view protected Personnel identity fields is required for this document.','forbidden');}
@@ -479,7 +479,7 @@ export function missingDocumentPersonnelValues(doc: Document): string[] {
 export function refreshDocumentPersonnelCompletion(doc:Document,env:Environment):boolean{
   if(!doc.personnelCompletion||personnelCompletionLocked(doc))return false;
   if(!env.personnelCompletion)throw new V9Error('Current Personnel values are unavailable. Refresh before continuing.','conflict');
-  const values=Object.fromEntries(doc.fields.filter(field=>field.owner==='pmLocked').map(field=>[field.id,personnelFieldSourceValue(field,env.personnelCompletion!.source)]));
+  const values=Object.fromEntries(doc.fields.filter(personnelCompletionManagedField).map(field=>[field.id,personnelFieldSourceValue(field,env.personnelCompletion!.source)]));
   return reconcilePersonnelCompletion(doc,{values,sourceFingerprint:env.personnelCompletion.fingerprint(values,doc.personnelCompletion.country),actor:env.actor,at:env.now});
 }
 export function overrideDocumentPersonnelCompletion(c:Case,id:string,input:{fieldId:string;owner:'employee'|'hr';reason:string},env:Environment){

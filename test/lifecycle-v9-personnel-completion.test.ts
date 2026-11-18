@@ -57,3 +57,9 @@ it('defensively distinguishes a synthetic kernel completion without a receipt fr
  d.signing=recordSigningAction(beforeFinalDecision,{requiredRoles:[]},{id:'signed',stepId:'optional-sign',revision:1,hash:'hash',action:'signed',actorId:hr.id,actorPersonId:'hr-person',actorName:hr.name,at,method:'typed',value:hr.name,consent:true});
  expect(()=>savePersonnelCompletionValue(d,d.fields[0],'Changed after actual signature',{actor,at})).toThrow('locked');
 });
+
+it('preserves the existing case signatory owner without reclassifying the two aliases or weakening unknown Personnel holds',()=>{
+ const aliases=[field('signer','signatory.name'),field('title','signatory.title')],d:CompletionDocument={fields:aliases,values:{signer:'Permitted case signer',title:'Permitted title'},status:'draft',sentAt:null,employeeSignature:null,hrSignature:null};
+ initializePersonnelCompletion(d,{country:'MY',sourceFingerprint:'source',officialValues:{},actor:hr,at});expect(d.personnelCompletion).toBeUndefined();expect(d.values).toEqual({signer:'Permitted case signer',title:'Permitted title'});
+ d.fields.push(field('address','address'),field('unknown','new.personnel.key'));initializePersonnelCompletion(d,{country:'MY',sourceFingerprint:'managed-source',officialValues:{},actor:hr,at});expect(Object.keys(d.personnelCompletion!.fields).sort()).toEqual(['address','unknown']);expect(effectivePersonnelCompletion(d,aliases[0])).toBe('pmLocked');expect(effectivePersonnelCompletion(d,d.fields[3])).toBe('hr');expect(personnelCompletionMergeValues(d)).not.toHaveProperty('signatory.name');
+});

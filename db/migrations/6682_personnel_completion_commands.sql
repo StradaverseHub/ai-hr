@@ -12,12 +12,12 @@ $$;
 REVOKE ALL ON FUNCTION app.v9_personnel_completion_sources(uuid) FROM PUBLIC,ai_hr_app;
 CREATE FUNCTION app.personnel_completion_preparation_projection(d jsonb) RETURNS jsonb LANGUAGE sql IMMUTABLE SET search_path=pg_catalog,app AS $$
  WITH allowed AS(SELECT f FROM jsonb_array_elements(d->'fields') f WHERE
- (app.personnel_completion_owner(d,f)='employee' OR f->>'owner'='pmLocked' AND (app.personnel_completion_group(f->>'pmKey')='personal' OR d->'personnelCompletion'->'fields'->(f->>'id')->'override'->>'owner'='employee' OR d->'personnelCompletion'->'fields'->(f->>'id')->'draft'?'by'))
+ (app.personnel_completion_owner(d,f)='employee' OR f->>'owner'='pmLocked' AND coalesce(f->>'pmKey','') NOT IN('signatory.name','signatory.title') AND (app.personnel_completion_group(f->>'pmKey')='personal' OR d->'personnelCompletion'->'fields'->(f->>'id')->'override'->>'owner'='employee' OR d->'personnelCompletion'->'fields'->(f->>'id')->'draft'?'by'))
  AND (f->'when' IS NULL OR f->'when'='null'::jsonb OR d->'values'->>(f->'when'->>'field')=f->'when'->>'value')),
  projection AS(SELECT coalesce(jsonb_agg(f||jsonb_build_object('when',NULL)),'[]'::jsonb) fields,
  coalesce(jsonb_agg(jsonb_build_object('id','preparation:'||(f->>'id'),'type','field','fieldId',f->>'id','text','','section',f->>'section')),'[]'::jsonb) blocks,
  coalesce(jsonb_object_agg(f->>'id',coalesce(d->'values'->(f->>'id'),'""'::jsonb)),'{}'::jsonb) values,
- coalesce(jsonb_object_agg(f->>'id',d->'personnelCompletion'->'fields'->(f->>'id')) FILTER(WHERE f->>'owner'='pmLocked'),'{}'::jsonb) entries FROM allowed)
+ coalesce(jsonb_object_agg(f->>'id',d->'personnelCompletion'->'fields'->(f->>'id')) FILTER(WHERE f->>'owner'='pmLocked' AND coalesce(f->>'pmKey','') NOT IN('signatory.name','signatory.title')),'{}'::jsonb) entries FROM allowed)
  SELECT jsonb_build_object('id',d->'id','templateId',d->'templateId','version',d->'version','name',d->'name','status',d->'status','createdAt',d->'createdAt','sentAt',NULL,'employeeSignature',NULL,'hrSignature',NULL,'templateType',d->'templateType','hrStep',d->'hrStep','employeeAck',d->'employeeAck','blocks',blocks,'fields',fields,'values',values,'edits','{}'::jsonb,'mergeValues','{}'::jsonb,
  'personnelCompletion',(d->'personnelCompletion')||jsonb_build_object('fields',entries,'history',coalesce((SELECT jsonb_agg(item) FROM jsonb_array_elements(d->'personnelCompletion'->'history') item WHERE entries ? (item->>'fieldId')),'[]'::jsonb))) FROM projection
 $$;
@@ -57,14 +57,14 @@ BEGIN
  IF hr AND EXISTS(SELECT 1 FROM jsonb_array_elements(d->'fields') f WHERE f->>'pmKey' IN('personalEmail','employee.icNo','employee.passportNo','icNo','passportNo','case.icNo','case.passportNo')) AND NOT EXISTS(SELECT 1 FROM company co WHERE co.tenant_id=app.current_tenant_id() AND app.personnel_identity_search_permitted(co.id)) THEN RAISE EXCEPTION 'Protected Personnel identity permission is required';END IF;
  IF p_operation='adopt' THEN
   IF d?'personnelCompletion' OR d->>'status'<>'draft' OR d->>'sentAt' IS NOT NULL THEN RAISE EXCEPTION 'Only an unsigned unreleased legacy draft can adopt completion';END IF;
-  IF EXISTS(SELECT 1 FROM jsonb_array_elements(d->'fields') f WHERE f->>'owner'='pmLocked' AND btrim(coalesce(official->>(f->>'id'),''))='' AND btrim(coalesce(d->'values'->>(f->>'id'),''))<>'') THEN RAISE EXCEPTION 'Existing case answers need manual review before adoption';END IF;
+  IF EXISTS(SELECT 1 FROM jsonb_array_elements(d->'fields') f WHERE f->>'owner'='pmLocked' AND coalesce(f->>'pmKey','') NOT IN('signatory.name','signatory.title') AND btrim(coalesce(official->>(f->>'id'),''))='' AND btrim(coalesce(d->'values'->>(f->>'id'),''))<>'') THEN RAISE EXCEPTION 'Existing case answers need manual review before adoption';END IF;
   fingerprint:=app.personnel_completion_fingerprint(official,source->>'_country');entries:='{}';
-  FOR field IN SELECT item FROM jsonb_array_elements(d->'fields') item WHERE item->>'owner'='pmLocked' LOOP entries:=entries||jsonb_build_object(field->>'id',jsonb_build_object('key',field->'pmKey','group',app.personnel_completion_group(field->>'pmKey'),'sourceValue',official->>(field->>'id'),'sourceFingerprint',fingerprint));d:=jsonb_set(d,ARRAY['values',field->>'id'],official->(field->>'id'),true);END LOOP;
+  FOR field IN SELECT item FROM jsonb_array_elements(d->'fields') item WHERE item->>'owner'='pmLocked' AND coalesce(item->>'pmKey','') NOT IN('signatory.name','signatory.title') LOOP entries:=entries||jsonb_build_object(field->>'id',jsonb_build_object('key',field->'pmKey','group',app.personnel_completion_group(field->>'pmKey'),'sourceValue',official->>(field->>'id'),'sourceFingerprint',fingerprint));d:=jsonb_set(d,ARRAY['values',field->>'id'],official->(field->>'id'),true);END LOOP;
   policy:=jsonb_build_object('version',1,'classification','2026-11-18','country',source->'_country','sourceFingerprint',fingerprint,'adoptedAt',stamp,'adoptedBy',actor,'fields',entries,'history','[]'::jsonb);d:=d||jsonb_build_object('personnelCompletion',policy);
  ELSE
   policy:=d->'personnelCompletion';IF policy IS NULL OR policy->>'version'<>'1' THEN RAISE EXCEPTION 'This document uses its saved completion rules';END IF;
   fingerprint:=app.personnel_completion_fingerprint(official,policy->>'country');entries:=policy->'fields';history:=policy->'history';
-  FOR field IN SELECT item FROM jsonb_array_elements(d->'fields') item WHERE item->>'owner'='pmLocked' LOOP
+  FOR field IN SELECT item FROM jsonb_array_elements(d->'fields') item WHERE item->>'owner'='pmLocked' AND coalesce(item->>'pmKey','') NOT IN('signatory.name','signatory.title') LOOP
    key:=field->>'id';entry:=entries->key;answer:=coalesce(official->>key,'');old_value:=coalesce(entry->>'sourceValue','');
    IF answer IS DISTINCT FROM old_value THEN
     IF btrim(answer)<>'' THEN
@@ -79,7 +79,7 @@ BEGIN
  END IF;
  IF p_operation='override' THEN
   IF jsonb_typeof(p_override) IS DISTINCT FROM 'object' OR jsonb_typeof(p_override->'fieldId') IS DISTINCT FROM 'string' OR length(p_override->>'fieldId') NOT BETWEEN 1 AND 120 OR jsonb_typeof(p_override->'reason') IS DISTINCT FROM 'string' OR p_override-ARRAY['fieldId','owner','reason']<>'{}'::jsonb OR coalesce(p_override->>'owner' IN('employee','hr'),false) IS NOT TRUE OR length(btrim(coalesce(p_override->>'reason',''))) NOT BETWEEN 1 AND 4000 THEN RAISE EXCEPTION 'Record a bounded reason and completion owner';END IF;
-  key:=p_override->>'fieldId';SELECT item INTO field FROM jsonb_array_elements(d->'fields') item WHERE item->>'id'=key AND item->>'owner'='pmLocked';entry:=policy->'fields'->key;
+  key:=p_override->>'fieldId';SELECT item INTO field FROM jsonb_array_elements(d->'fields') item WHERE item->>'id'=key AND item->>'owner'='pmLocked' AND coalesce(item->>'pmKey','') NOT IN('signatory.name','signatory.title');entry:=policy->'fields'->key;
   IF field IS NULL OR entry IS NULL OR btrim(coalesce(entry->>'sourceValue',''))<>'' THEN RAISE EXCEPTION 'Only a missing Personnel field can change owner';END IF;
   IF p_override->>'owner'='employee' AND app.personnel_completion_group(field->>'pmKey')='unknown' THEN RAISE EXCEPTION 'Unclassified Personnel fields remain with HR';END IF;
   before_owner:=app.personnel_completion_owner(d,field);after_owner:=p_override->>'owner';
@@ -95,7 +95,7 @@ BEGIN
   IF p_operation='submit' AND owner<>'employee' THEN RAISE EXCEPTION 'Only employee answers can be submitted';END IF;
   PERFORM app.personnel_completion_scalar(field,value#>>'{}');d:=jsonb_set(d,ARRAY['values',key],value,true);
   IF owner='employee' THEN policy:=policy-'submitted';END IF;
-  IF field->>'owner'='pmLocked' THEN
+  IF field->>'owner'='pmLocked' AND coalesce(field->>'pmKey','') NOT IN('signatory.name','signatory.title') THEN
    entry:=policy->'fields'->key;entry:=entry||jsonb_build_object('answer',jsonb_build_object('value',value,'owner',owner,'by',actor,'at',stamp));
    IF owner='employee' THEN entry:=entry||jsonb_build_object('draft',jsonb_build_object('value',value,'by',actor,'at',stamp));END IF;
    policy:=jsonb_set(policy,ARRAY['fields',key],entry)-'submitted';
