@@ -175,6 +175,7 @@ const APPROVED_COMBINED_RELEASE_TAGS=[
  '6441_contract_resignation_email_modules',
  '6442_contract_probation_business_partner_owner',
  '6500_ai_provider_candidate_presentation_rls',
+ '6501_contract_company_scope_retention',
 ] as const;
 
 // Approved but not yet installed forward tail; this fixture independently pins journal identity.
@@ -2387,13 +2388,21 @@ it('stops on a cross-tenant row, then validates every company/tenant key without
    { rel: 'reward_person_history', conname: 'reward_person_history_company_tenant_fk', convalidated: true, action: 'a' },
   ];
   const boardReleaseNames = new Set(boardReleaseKeys.map(row => row.conname));
+  // 6501 adds only these validated NO ACTION company/tenant keys; every other key stays exact.
+  const contractScopeKeys = [
+   { rel: 'app.contract_system_digest', conname: 'contract_system_digest_company_tenant_fk', convalidated: true, action: 'a' },
+   { rel: 'contract_access_member', conname: 'contract_access_member_company_tenant_fk', convalidated: true, action: 'a' },
+   { rel: 'contract_shared_settings', conname: 'contract_shared_settings_company_tenant_fk', convalidated: true, action: 'a' },
+  ];
+  const contractScopeNames = new Set(contractScopeKeys.map(row => row.conname));
   expect(await storage.client`select i.indisvalid as valid,i.indisready as ready,i.indisunique as unique,
    array(select a.attname::text from unnest(i.indkey::smallint[]) with ordinality k(num,ord) join pg_attribute a on a.attrelid=i.indrelid and a.attnum=k.num order by k.ord) as columns,
    pg_get_expr(i.indpred,i.indrelid) as predicate from pg_index i where i.indexrelid='public.reward_person_history_company'::regclass`)
    .toEqual([{valid:true,ready:true,unique:false,columns:['tenant_id','company_id'],predicate:null}]);
   const completeKeys = await keys();
+  expect(completeKeys.filter(row => contractScopeNames.has(row.conname))).toEqual([...contractScopeKeys].sort((a,b)=>a.rel.localeCompare(b.rel)));
   expect(completeKeys.filter(row => boardReleaseNames.has(row.conname))).toEqual([...boardReleaseKeys].sort((a,b)=>a.rel.localeCompare(b.rel)));
-  expect(completeKeys.filter(row => !expansionNames.has(row.conname) && !boardReleaseNames.has(row.conname))).toEqual(installed);
+  expect(completeKeys.filter(row => !expansionNames.has(row.conname) && !boardReleaseNames.has(row.conname) && !contractScopeNames.has(row.conname))).toEqual(installed);
   expect(completeKeys.filter(row => expansionNames.has(row.conname))).toEqual(expansionRelations.map(rel => ({
    rel, conname: rel + '_company_tenant_fk', convalidated: true, action: 'a',
   })));
