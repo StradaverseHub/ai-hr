@@ -1,4 +1,4 @@
-import {expect} from 'vitest';
+import assert from 'node:assert/strict';
 
 /** Reverse only the approved additive leaf from the PREPARED dependency comparison.
  * Historical archives and executed worker bytes remain unchanged. Unknown graph drift still fails. */
@@ -14,8 +14,8 @@ export function withoutApprovedPhoneDependency(file:string,prepared:string,histo
  const blocks=additions[file];
  if(!blocks)throw new Error('Only the approved package manifest and lockfile can reverse the phone leaf.');
  for(const block of blocks){
-  expect(historical.includes(block),file+' frozen runtime lacks the new leaf').toBe(false);
-  expect(prepared.split(block),file+' exact approved leaf occurs once').toHaveLength(2);
+  assert.equal(historical.includes(block),false,file+' frozen runtime lacks the new leaf');
+  assert.equal(prepared.split(block).length,2,file+' exact approved leaf occurs once');
   prepared=prepared.replace(block,'');
  }
  return prepared;

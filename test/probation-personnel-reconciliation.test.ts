@@ -133,12 +133,14 @@ describe('Personnel to probation reconciliation',()=>{
   };
   const target=await bare(b.tenantId,b.companyId),survivor=await bare(b.tenantId,b.companyId),foreign=await bare(other.tenantId,other.companyId);
   const ids=[target.id,survivor.id,foreign.id];
+  const idList=sql.join(ids.map(id=>sql`${id}::uuid`),sql`, `);
+  const personIdList=sql.join([target.personId,survivor.personId,foreign.personId].map(id=>sql`${id}::uuid`),sql`, `);
   const intents=()=>owner.db.execute<{row:{tenant_id:string;employment_id:string;revision:number}}>(sql`select to_jsonb(i) as row
-   from probation_reconciliation_intent i where employment_id=any(${ids}::uuid[]) order by tenant_id,employment_id`);
+   from probation_reconciliation_intent i where employment_id in (${idList}) order by tenant_id,employment_id`);
   const employments=()=>owner.db.execute<{row:{id:string}}>(sql`select to_jsonb(e) as row from employment e
-   where id=any(${ids}::uuid[]) order by tenant_id,id`);
+   where id in (${idList}) order by tenant_id,id`);
   const people=()=>owner.db.execute(sql`select to_jsonb(p) as row from person p
-   where id=any(${[target.personId,survivor.personId,foreign.personId]}::uuid[]) order by tenant_id,id`);
+   where id in (${personIdList}) order by tenant_id,id`);
   const before=await intents(),beforeEmployments=await employments(),beforePeople=await people();
   expect(before.map(({row})=>[row.tenant_id,row.employment_id]).sort()).toEqual([
    [b.tenantId,target.id],[b.tenantId,survivor.id],[other.tenantId,foreign.id],
