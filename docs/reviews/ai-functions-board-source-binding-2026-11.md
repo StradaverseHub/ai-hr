@@ -1376,3 +1376,39 @@ This supersedes the pending application status of the proposal above, for source
 without changing its approval-registry or module-manifest content. The 28 fingerprint-only
 substitutions retain all other registry bytes. The proposal's earlier chronology is retained.
 No provider call, new AI use, passing gate, merge or release is authorized by this approval.
+
+
+### Combined seven-session staging source binding (18 November 2026)
+
+The owner requested one combined staging release containing the hire-date organisation-scope
+fix (merged PR246), payroll-history warning acknowledgement (PRODUCTION/PR247), Resignation,
+Contract Management and shared HR Automation, the selected Own Leave/Payroll paging Audit,
+approved shared-table layouts (PR243), and employee-specific payroll failure details (PR242).
+The previously recorded owner approval of all coordinated AI binding and migration ordering
+covers the release coordinator's scoped carry-forward here. No new provider approval, evaluation,
+promotion, production installation or package publication is granted.
+
+The reviewed integrated source checkpoint is `532b5684fd462014f0621e0118a64364737086bb`.
+The exact provider fingerprint is `2f57be40fe74b8a48e85f57950b8b9223b9b284161c7c24cd6f196e50ef8e1e4` over 1789 files;
+the derived module-agent fingerprint is `d7a2c23d3048350d9fca26fabbad78197627f8c02788da575c3691b6f3e26646` over 496 files.
+Only the same 28 active sourceDigest values carry forward from
+`5f801c74f85675df2f7d6e2b4c34e7de98bb704e3d88a7f4f33e9caa011ec63b`.
+Reversing those substitutions reproduces the previous registry byte-for-byte. Both pending
+records, the retired Attendance Formula record, human reviewer/evidence dates/statuses,
+and historical evaluation identities remain unchanged. Active provider policies, protocol,
+contract definitions and transport implementations have no diff from the integrated main base.
+
+Native services retain tenant/company scope and human decision/signature/pay/Personnel owners.
+Sensitive resignation actions remain human handoffs. Contract adds authorized nested Org assignment
+IDs/types/dates and immutable mapping receipts to native audit/history/export; that concrete data
+delta was reviewed with source-bound privacy checks and is not a new provider transport or field
+permission. Current employer and dated historical assignment remain distinct. Native recipient
+proofs, protected posting jobs, real account/Person signers, no automatic Payroll attestation,
+retired PBP reconciliation and current source/version checks survive the integration. The explicit
+forward migration allocation preserves 139 original SQL bodies and adds two guarded compatibility
+bodies; native SQL guards and this binding still require genuine restricted-owner/populated tests.
+
+This is source-binding custody only. Member focused/compiler/rendered passes retain their original
+source identities. No aggregate PASS or staging acceptance is claimed. Board's recovery lease is
+foreign; final exact-source hosted verification, original source/build/ledger/service evidence,
+worker readiness and changed rendered/denied journeys remain mandatory before handback.
