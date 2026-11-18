@@ -10,7 +10,7 @@ beforeAll(migrateTestDb);afterAll(closeAll);
 it('keeps historical report grade known after an actual native reversal and records exact inverse ownership',async()=>{
  await resetDb();const b=await seedBase(),ctx=adminCtx(b);
  const {employmentId}=await hireEmployee(ctx,{person:{fullName:'Fictional grade replay',primaryEmail:randomUUID()+'@fixture.test'},companyId:b.companyId,departmentId:b.deptA,employmentType:'full_time',hiredOn:'2026-01-01'});
- const a=await createJobGrade(ctx,{code:'GRADE-A',name:'Grade A',rank:1}),z=await createJobGrade(ctx,{code:'GRADE-B',name:'Grade B',rank:2});
+ const a=await createJobGrade(ctx,{code:'GRADE_A',name:'Grade A',rank:1}),z=await createJobGrade(ctx,{code:'GRADE_B',name:'Grade B',rank:2});
  await createMovementEvent(ctx,{employmentId,kind:'promotion',effectiveDate:'2026-02-01',gradeId:a.id});
  await createMovementEvent(ctx,{employmentId,kind:'promotion',effectiveDate:'2026-03-01',gradeId:z.id});
  const movement=(await movementHistory(ctx,employmentId)).find(row=>row.effectiveDate==='2026-03-01')!;
