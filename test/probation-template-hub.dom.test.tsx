@@ -25,7 +25,7 @@ it('offers Probation from the common New email control and keeps its draft outsi
  fixture();
  const tabs=screen.getByRole('tablist',{name:'Module'});expect(within(tabs).getAllByRole('tab').map(tab=>tab.textContent)).toEqual(['All modules','Onboarding','Offboarding','Probation']);
  const shared=screen.getByRole('region',{name:'Email templates'});fireEvent.click(within(shared).getByRole('button',{name:'New email'}));fireEvent.click(screen.getByRole('menuitem',{name:'Probation'}));
- expect(await screen.findByRole('dialog',{name:'Edit Probation email'})).toBeInTheDocument();expect(screen.getByRole('combobox',{name:'Module'})).toHaveValue('probation');expect(actions.saveV9).not.toHaveBeenCalled();
+ const dialog=await screen.findByRole('dialog',{name:'Edit email template'});expect(within(dialog).getByRole('heading',{name:'New Probation email'})).toBeInTheDocument();expect(within(dialog).getByRole('combobox',{name:'Module'})).toHaveValue('probation');expect(actions.saveV9).not.toHaveBeenCalled();
 });
 it('edits native Sign and Acknowledge block links without the duplicate legacy HR signature setting',async()=>{
  fixture(true);fireEvent.click(screen.getByRole('button',{name:'Edit Fictional routed letter'}));

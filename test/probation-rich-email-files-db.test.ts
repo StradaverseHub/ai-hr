@@ -57,6 +57,8 @@ it('attaches the exact released outcome PDF without regenerating it or selecting
  const fixture=await probationOutcomeFixture(b,admin).recordedConfirm();admin=fixture.admin;
  const letterTemplate=newProbationLetterTemplate('confirm','frozen-letter-'+randomUUID().slice(0,8),'Fictional exact released letter');
  letterTemplate.unfinished=false;letterTemplate.blocks=letterTemplate.blocks.filter(block=>block.type!=='letterhead');
+ // The blank draft factory deliberately has no approved wording. Supply a real fictional letter while retaining both required signature blocks.
+ letterTemplate.blocks.find(block=>block.id==='body')!.text='Dear {employeeName}, your probation confirmation is effective on {confirmationEffectiveOn}.';
  const templateId=await saveProbationLetterTemplate(admin,{companyId:b.companyId,template:letterTemplate,publish:true,expectedVersion:0});
  const prepared=await prepareProbationLetter(admin,{outcomeId:fixture.decision.id,templateId,revision:fixture.decision.revision,edits:{}});
  let letter=await readProbationLetter(admin,fixture.ids.caseId,prepared.partId);
