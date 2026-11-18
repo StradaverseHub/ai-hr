@@ -140,3 +140,11 @@ it('keeps required Review and Approve content editable until the actual Sign ste
  const work=await v9ReadDocumentSigningWork(hr,id,document.id);await v9DocumentRouteAct(hr,{caseId:id,caseRevision:work.caseRevision,documentId:document.id,contentHash:work.signing.contentHash,contentRevision:work.signing.contentRevision,stepId:'final-sign',action:'signed',signature:{method:'typed',value:'Synthetic completion HR',consent:true}});
  c=await current(id);expect(c.tasks.find(task=>task.id==='signed')?.status).toBe('done');await expect(v9OwnDocument(employee,{caseId:id,revision:c.revision,documentId:document.id,values:{F0:'Attempt after the actual signature'}})).rejects.toThrow();
 });
+
+it('keeps the existing signatory alias owner in a mixed Personnel document without exposing an unused signatory title',async()=>{
+ const {id}=await prepared(),config=(await v9Workspace(hr)).config!,template={...structuredClone(config.templates[0]),id:'mixed-signatory',name:'Mixed completion and signatory'};
+ template.versions[0].fields.push({id:'printed',label:'Printed signer',type:'text',owner:'pmLocked',pmKey:'signatory.name',required:false,sensitive:false,options:[],section:'main',when:null});template.versions[0].blocks.push({id:'signatory-copy',type:'text',text:'Signed by {signatory.name}',section:'main'});config.templates.push(template);await v9SaveConfig(hr,config.revision,config);
+ await v9Command(hr,id,(await current(id)).revision,{type:'generate',template:template.id});const c=await current(id),d=c.documents.find(document=>document.templateId===template.id)!;
+ expect(d.personnelCompletion).toBeDefined();expect(d.personnelCompletion!.fields).not.toHaveProperty('printed');expect(d.values.printed).toBe('Synthetic completion HR');expect(d.mergeValues!['signatory.name']).toBe('Synthetic completion HR');expect(d.mergeValues).not.toHaveProperty('signatory.title');
+ const forged=structuredClone(c),target=forged.documents.find(document=>document.id===d.id)!;target.values.printed='';delete target.mergeValues!['signatory.name'];await expect(withTenant(hr,tx=>tx.execute(sql`update lc_v9_case set data=${JSON.stringify(forged)}::jsonb where id=${id}::uuid and tenant_id=${b.tenantId}::uuid`))).rejects.toThrow();
+});
