@@ -11,6 +11,20 @@ import {sql} from 'drizzle-orm';
 import {expect,it} from 'vitest';
 import type {SessionContext} from '../db/client';
 
+const companyConstraints={
+ 'app.contract_system_digest':'contract_system_digest_company_tenant_fk',
+ 'public.contract_access_member':'contract_access_member_company_tenant_fk',
+ 'public.contract_shared_settings':'contract_shared_settings_company_tenant_fk',
+} as const;
+function constraintRefusal(error:unknown):{code?:string;constraint_name?:string}{
+ let current=error as {code?:unknown;constraint_name?:unknown;cause?:unknown}|null;
+ for(let depth=0;current&&typeof current==='object'&&depth<4;depth++){
+  if(typeof current.code==='string'&&/^[0-9A-Z]{5}$/.test(current.code))return {code:current.code,constraint_name:typeof current.constraint_name==='string'?current.constraint_name:undefined};
+  current=current.cause as typeof current;
+ }
+ return {};
+}
+
 it('retains genuine scheduled Contract provenance and its scoped company without changing the native retention identity or granting private reads',async()=>{
  const journal=JSON.parse(readFileSync('db/migrations/meta/_journal.json','utf8')) as {entries:{tag:string;when:number}[]};
  const tag='6501_contract_company_scope_retention',boundary=journal.entries.findIndex(entry=>entry.tag===tag);
@@ -129,12 +143,14 @@ it('retains genuine scheduled Contract provenance and its scoped company without
   const code=async(work:()=>Promise<unknown>)=>{try{await work();return 'accepted';}catch(error){return pgSqlState(error);}};
   // Explicit negative legacy-data injection: an existing globally valid company UUID belongs to
   // another tenant. Ordinary VALIDATE must reject it and roll back both function and journal changes.
-  for(const table of ['app.contract_system_digest','public.contract_access_member','public.contract_shared_settings'] as const){
+  for(const [table,constraint] of Object.entries(companyConstraints)){
    const key=table==='app.contract_system_digest'?'mail_key':table==='public.contract_access_member'?'id':'company_id';
    const selected=table==='app.contract_system_digest'?digest[0].mail_key:table==='public.contract_access_member'?memberId:b.companyId;
    await h.owner.client.unsafe(`update ${table} set company_id=$1::uuid where tenant_id=$2::uuid and ${key}=$3`,[foreign.companyId,b.tenantId,selected]);
    const corrupted=await snapshot();
-   expect(await code(()=>migrate(drizzle(storage!),{migrationsFolder:'db/migrations'}))).toBe('23503');
+   let refused:ReturnType<typeof constraintRefusal>={};
+   try{await migrate(drizzle(storage),{migrationsFolder:'db/migrations'});}catch(error){refused=constraintRefusal(error);}
+   expect(refused).toEqual({code:'23503',constraint_name:constraint});
    expect(await snapshot()).toEqual(corrupted);expect(await proc()).toEqual(functionBefore);
    expect(await storage`select hash,created_at::text from drizzle.__drizzle_migrations order by created_at,id`).toEqual(ledger);
    const restoreKey=key==='company_id'?foreign.companyId:selected;
@@ -151,7 +167,7 @@ it('retains genuine scheduled Contract provenance and its scoped company without
   expect(constraints).toHaveLength(3);for(const constraint of constraints){expect(constraint.convalidated).toBe(true);expect(constraint.confdeltype).toBe('a');expect(constraint.definition).toBe('FOREIGN KEY (company_id, tenant_id) REFERENCES company(id, tenant_id)');}
   const [emptyCompany]=await h.owner.client<{id:string}[]>`insert into company(tenant_id,legal_name) values(${b.tenantId},'Fictional unretained employer') returning id`;
   const rollback=Symbol('constraint probe rollback');
-  for(const table of ['app.contract_system_digest','public.contract_access_member','public.contract_shared_settings'] as const){
+  for(const [table,constraint] of Object.entries(companyConstraints)){
    for(const operation of ['insert','update'] as const){
     const probe=async(companyId:string)=>h.owner.client.begin(async tx=>{
      const patch={company_id:companyId,...(operation==='insert'&&table==='app.contract_system_digest'?{mail_key:'constraint-probe:'+randomUUID()}:{}),...(operation==='insert'&&table==='public.contract_access_member'?{id:randomUUID()}:{}),...(operation==='insert'&&table==='public.contract_shared_settings'?{company_id:companyId===b.companyId?emptyCompany.id:companyId}:{})};
@@ -163,7 +179,7 @@ it('retains genuine scheduled Contract provenance and its scoped company without
     });
     // Only rollback sentinel means the genuine same-tenant constraint accepted the cloned source image.
     await expect(probe(b.companyId)).rejects.toBe(rollback);
-    await expect(probe(foreign.companyId)).rejects.toMatchObject({code:'23503'});
+    await expect(probe(foreign.companyId)).rejects.toMatchObject({code:'23503',constraint_name:constraint});
    }
   }
   expect(await snapshot()).toEqual(before);
