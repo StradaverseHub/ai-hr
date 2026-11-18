@@ -83,7 +83,7 @@ GRANT EXECUTE ON FUNCTION app.v9_document_native_rules_match(jsonb,jsonb) TO ai_
 -- Every source writer, including pre-existing SECURITY DEFINER RPCs, must prove the exact append.
 CREATE FUNCTION app.v9_document_route_validate_append(p_before jsonb,p_after jsonb,p_document jsonb) RETURNS void
 LANGUAGE plpgsql SET search_path=pg_catalog,public,pg_temp AS $$
-DECLARE a jsonb;step jsonb;uid uuid:=app.current_user_id();person uuid;actor_name text;i integer;n integer:=jsonb_array_length(p_before->'actions');kind text;f jsonb;value text;token text;
+DECLARE a jsonb;step jsonb;uid uuid:=app.current_user_id();person uuid;actor_name text;i integer;n integer:=jsonb_array_length(p_before->'actions');kind text;f jsonb;field_value text;token text;
 BEGIN
  IF jsonb_array_length(p_after->'actions')<>n+1 THEN RAISE EXCEPTION 'Signing history is append-only';END IF;
  FOR i IN 0..n-1 LOOP IF p_after->'actions'->i IS DISTINCT FROM p_before->'actions'->i THEN RAISE EXCEPTION 'Signing history is immutable';END IF;END LOOP;
@@ -110,9 +110,9 @@ BEGIN
   IF step->>'kind' NOT IN('sign','acknowledge') OR app.document_signature_valid(a->'signature') IS NOT TRUE THEN RAISE EXCEPTION 'Valid signature and consent required';END IF;
   FOR f IN SELECT value FROM jsonb_array_elements(p_document->'fields') LOOP
    IF f->'when' IS NOT NULL AND jsonb_typeof(f->'when')='object' AND p_document->'values'->>(f->'when'->>'field') IS DISTINCT FROM f->'when'->>'value' THEN CONTINUE;END IF;
-   value:=coalesce(p_document->'values'->>(f->>'id'),'');
-   IF f->>'required'='true' AND (btrim(value)='' OR f->>'type'='checkbox' AND value<>'true' OR f->>'type'='table' AND value='[]') THEN RAISE EXCEPTION 'Required document fields are incomplete';END IF;
-   IF value<>'' AND (f->>'type'='select' AND NOT f->'options' ? value OR f->>'type'='checkbox' AND value NOT IN('true','false') OR f->>'type'='number' AND value !~ '^-?[0-9]+(\.[0-9]+)?$' OR f->>'type'='email' AND value !~ '^[^[:space:]@]+@[^[:space:]@]+\.[^[:space:]@]+$') THEN RAISE EXCEPTION 'A document field has an invalid value';END IF;
+   field_value:=coalesce(p_document->'values'->>(f->>'id'),'');
+   IF f->>'required'='true' AND (btrim(field_value)='' OR f->>'type'='checkbox' AND field_value<>'true' OR f->>'type'='table' AND field_value='[]') THEN RAISE EXCEPTION 'Required document fields are incomplete';END IF;
+   IF field_value<>'' AND (f->>'type'='select' AND NOT f->'options' ? field_value OR f->>'type'='checkbox' AND field_value NOT IN('true','false') OR f->>'type'='number' AND field_value !~ '^-?[0-9]+(\.[0-9]+)?$' OR f->>'type'='email' AND field_value !~ '^[^[:space:]@]+@[^[:space:]@]+\.[^[:space:]@]+$') THEN RAISE EXCEPTION 'A document field has an invalid value';END IF;
   END LOOP;
   FOR token IN SELECT DISTINCT m[1] FROM jsonb_array_elements(p_document->'blocks') b CROSS JOIN LATERAL regexp_matches(coalesce(p_document->'edits'->>(b->>'id'),b->>'text','')||' '||coalesce(b->>'rows','')||' '||coalesce(b->>'label',''),'\{([a-zA-Z][a-zA-Z0-9_]*(?:\.[a-zA-Z0-9_]+)?)\}','g') m LOOP
    IF coalesce(nullif(p_document->'values'->>token,''),nullif(p_document->'mergeValues'->>token,'')) IS NULL THEN RAISE EXCEPTION 'A document merge field is missing';END IF;
@@ -243,6 +243,9 @@ BEGIN
  END LOOP;
  FOR d IN SELECT value FROM jsonb_array_elements(new_docs) LOOP
   SELECT value INTO prior FROM jsonb_array_elements(old_docs) WHERE value->>'id'=d->>'id';
+  -- Preserve a byte-identical frozen route when a former holder later becomes unavailable.
+  -- Tenant/case/subject checks above and removed-document history checks still apply.
+  IF d IS NOT DISTINCT FROM prior THEN CONTINUE;END IF;
   IF jsonb_typeof(d->'signing') IS DISTINCT FROM 'object' THEN
    IF jsonb_typeof(prior->'signing')='object' THEN RAISE EXCEPTION 'A saved document keeps its signing route';END IF;CONTINUE;
   END IF;

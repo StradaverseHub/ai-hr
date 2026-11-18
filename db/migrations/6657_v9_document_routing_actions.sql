@@ -53,7 +53,7 @@ LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp A
 $$;
 CREATE FUNCTION app.v9_document_route_act(p_case uuid,p_revision integer,p_document text,p_action jsonb) RETURNS integer
 LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
-DECLARE source record;d jsonb;s jsonb;step jsonb;prior_action jsonb;next jsonb;action jsonb;kind text;actor_person uuid;actor_name text;f jsonb;value text;
+DECLARE source record;d jsonb;s jsonb;step jsonb;prior_action jsonb;next jsonb;action jsonb;kind text;actor_person uuid;actor_name text;f jsonb;field_value text;
 BEGIN
  IF NOT app.v9_signing_current_actor() THEN RAISE EXCEPTION 'Verified signer required' USING ERRCODE='42501';END IF;
  PERFORM app.access_workforce_write_lock();
@@ -83,8 +83,8 @@ BEGIN
    IF step->>'kind' NOT IN('sign','acknowledge') OR app.document_signature_valid(p_action->'signature') IS NOT TRUE THEN RAISE EXCEPTION 'Valid signature and consent required';END IF;
    FOR f IN SELECT value FROM jsonb_array_elements(d->'fields') LOOP
     IF f->'when' IS NOT NULL AND jsonb_typeof(f->'when')='object' AND d->'values'->>(f->'when'->>'field') IS DISTINCT FROM f->'when'->>'value' THEN CONTINUE;END IF;
-    value:=coalesce(d->'values'->>(f->>'id'),'');
-    IF f->>'required'='true' AND (btrim(value)='' OR f->>'type'='checkbox' AND value<>'true' OR f->>'type'='table' AND value='[]') THEN RAISE EXCEPTION 'Complete required document fields before signing';END IF;
+    field_value:=coalesce(d->'values'->>(f->>'id'),'');
+    IF f->>'required'='true' AND (btrim(field_value)='' OR f->>'type'='checkbox' AND field_value<>'true' OR f->>'type'='table' AND field_value='[]') THEN RAISE EXCEPTION 'Complete required document fields before signing';END IF;
    END LOOP;
   ELSE RAISE EXCEPTION 'Invalid signing action kind';END IF;
  END IF;

@@ -32,6 +32,9 @@ BEGIN
  END LOOP;
  FOR d IN SELECT value FROM jsonb_array_elements(new_docs) LOOP
   SELECT value INTO prior FROM jsonb_array_elements(old_docs) WHERE value->>'id'=d->>'id';
+  -- Preserve a byte-identical frozen route when a former holder later becomes unavailable.
+  -- Tenant/case/subject checks above and removed-document history checks still apply.
+  IF d IS NOT DISTINCT FROM prior THEN CONTINUE;END IF;
   IF jsonb_typeof(d->'signing') IS DISTINCT FROM 'object' THEN
    IF jsonb_typeof(prior->'signing')='object' THEN RAISE EXCEPTION 'A saved document keeps its signing route';END IF;CONTINUE;
   END IF;
