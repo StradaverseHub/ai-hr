@@ -6,7 +6,8 @@ import {mkdirSync,readFileSync,realpathSync,writeFileSync} from 'node:fs';
 import {basename,join,resolve,sep} from 'node:path';
 import type {SessionContext} from '../../db/client';
 import type {RestrictedNavigationRuntimeReceipt} from './contract-navigation-restricted-owner-runtime';
-type Prepared={tenantId:string;companyId:string;subjectEmploymentId:string;ambiguousEmploymentId:string;users:Record<string,string>};
+import type {BusinessPartnerRule} from '../../lib/automation/business-partners';
+type Prepared={tenantId:string;companyId:string;subjectEmploymentId:string;ambiguousEmploymentId:string;users:Record<string,string>;businessPartner:{revision:number;rules:BusinessPartnerRule[]}};
 type Right={employment_id:string;can_view:boolean|null;can_decide:boolean|null};
 const RESULT='CONTRACT_NAVIGATION_OWNER_RESULT ';
 async function main(){
@@ -39,7 +40,9 @@ async function main(){
    await grant(viewer,companies[1].id);await grant(expired,companies[2].id,{expired:true});await grant(revoked,companies[3].id,{revoked:true});await grant(disabledCompanyViewer,companies[6].id);await grant(archivedActor,companies[7].id);
    const[empty]=await owner.db.execute<{id:string}>(sql`insert into company(tenant_id,legal_name) values(${b.tenantId}::uuid,'Fictional empty view scope') returning id`);await grant(emptyViewer,empty.id);
    await assignRole(f.admin,{appUserId:scopedHr.userId!,role:'hr_admin',companyId:companies[5].id});
-   const partners=await automationBusinessPartnerWorkspace(f.admin);assert(partners);await saveAutomationBusinessPartners(f.admin,{expectedRevision:partners.revision,rules:[...partners.rules,{userId:pbp.userId!,rules:{company:[b.companyId]}},{userId:ambiguous.userId!,rules:{company:[companies[0].id]}},{userId:otherPbp.userId!,rules:{company:[companies[0].id]}}],reason:'Configure actual unique and ambiguous navigation responsibilities'});
+   const partners=await automationBusinessPartnerWorkspace(f.admin);assert(partners);
+   const desiredRules:BusinessPartnerRule[]=[...partners.rules,{userId:otherPbp.userId!,rules:{}},{userId:pbp.userId!,rules:{company:[b.companyId]}},{userId:ambiguous.userId!,rules:{company:[companies[0].id]}},{userId:otherPbp.userId!,rules:{company:[companies[0].id]}}];
+   const savedPartners=await saveAutomationBusinessPartners(f.admin,{expectedRevision:partners.revision,rules:desiredRules,reason:'Configure actual unique and ambiguous navigation responsibilities'});assert.deepEqual(savedPartners.rules,desiredRules);
    for(const[as,company,role]of [[f.approver,b.companyId,'gbs'],[pbp,b.companyId,'pbp'],[ambiguous,companies[0].id,'pbp'],[otherPbp,companies[0].id,'pbp']]as const)await owner.db.execute(sql`insert into contract_role_assignment(tenant_id,company_id,user_id,role,valid_from,created_by) values(${b.tenantId}::uuid,${company}::uuid,${as.userId}::uuid,${role},${start}::date,${f.admin.userId}::uuid)`);
    const manager=await hireEmployee(f.admin,{person:{fullName:'Fictional view-disabled superior',primaryEmail:randomUUID()+'@navigation.test'},companyId:companies[4].id,departmentId:companies[4].departmentId,employmentType:'full_time',hiredOn:start});const disabledId=await createAppUser(b.tenantId,manager.personId,'employee');
    const report=await hireEmployee(f.admin,{person:{fullName:'Fictional disabled-superior report',primaryEmail:randomUUID()+'@navigation.test'},companyId:companies[4].id,departmentId:companies[4].departmentId,employmentType:'contract',hiredOn:start,provisionalEndOn:end,reportingManagerEmploymentId:manager.employmentId});await setEmploymentInfo(f.admin,{employmentId:report.employmentId,contractStartDate:start,contractEndDate:end,contractNumber:4});
@@ -49,7 +52,7 @@ async function main(){
    await owner.db.execute(sql`delete from tenant_module where tenant_id=${b.tenantId}::uuid and module_code='lifecycle'`);
    await owner.db.execute(sql`insert into tenant_module(tenant_id,module_code,status,company_id) select ${b.tenantId}::uuid,'lifecycle','active',id from company where tenant_id=${b.tenantId}::uuid and id<>${companies[6].id}::uuid`);
    await owner.db.execute(sql`update app_user set archived_at=now() where tenant_id=${b.tenantId}::uuid and id=${archivedActor.userId}::uuid`);
-   const prepared:Prepared={tenantId:b.tenantId,companyId:b.companyId,subjectEmploymentId:f.employee.employmentId,ambiguousEmploymentId:target.id,users:{admin:f.admin.userId!,superior:f.proposer.userId!,gbs:f.approver.userId!,viewer:viewer.userId!,outsider:outsider.userId!,expired:expired.userId!,revoked:revoked.userId!,pbp:pbp.userId!,ambiguous:ambiguous.userId!,emptyViewer:emptyViewer.userId!,scopedHr:scopedHr.userId!,viewDisabledSuperior:disabledId,disabledCompanyViewer:disabledCompanyViewer.userId!,archivedActor:archivedActor.userId!}};
+   const prepared:Prepared={businessPartner:{revision:savedPartners.revision,rules:savedPartners.rules},tenantId:b.tenantId,companyId:b.companyId,subjectEmploymentId:f.employee.employmentId,ambiguousEmploymentId:target.id,users:{admin:f.admin.userId!,superior:f.proposer.userId!,gbs:f.approver.userId!,viewer:viewer.userId!,outsider:outsider.userId!,expired:expired.userId!,revoked:revoked.userId!,pbp:pbp.userId!,ambiguous:ambiguous.userId!,emptyViewer:emptyViewer.userId!,scopedHr:scopedHr.userId!,viewDisabledSuperior:disabledId,disabledCompanyViewer:disabledCompanyViewer.userId!,archivedActor:archivedActor.userId!}};
    writeFileSync(join(folder,'prepared.json'),JSON.stringify(prepared),{mode:0o600,flag:'wx'});console.log(RESULT+JSON.stringify({prepared:true}));return;
   }
   const[identity]=await owner.client<{session:string;current:string;super:boolean;bypass:boolean;createRole:boolean}[]>`select session_user::text as session,current_user::text as current,(select rolsuper from pg_roles where rolname=current_user) as super,(select rolbypassrls from pg_roles where rolname=current_user) as bypass,(select rolcreaterole from pg_roles where rolname=current_user) as "createRole"`;
@@ -61,7 +64,18 @@ async function main(){
   const prepared=JSON.parse(readFileSync(join(folder,'prepared.json'),'utf8')) as Prepared;
   const journal=JSON.parse(readFileSync('db/migrations/meta/_journal.json','utf8')) as {entries:{tag:string}[]};const originals=journal.entries.filter(entry=>entry.tag.endsWith('_contract_shared_tracker'));assert.equal(originals.length,1);
   const original=readFileSync('db/migrations/'+originals[0].tag+'.sql','utf8').split('AS $$',2)[1].split('$$;',1)[0];assert.equal(createHash('sha256').update(original).digest('hex'),'2205d31871034e13ef046ed9f22922a1bbc26a2f54b42e3a634a4bb5643d53f6');
+  // Preserve the frozen query's business rules; adapt only the retired BP fact-owner lookup.
+  // The independent People Ops lc_v9_config lookup, joins, weights and role guards stay literal.
+  const oldBpSource="FROM public.lc_v9_config v CROSS JOIN LATERAL jsonb_array_elements(coalesce(v.data->'bpRules','[]'::jsonb)) r WHERE v.tenant_id=app.current_tenant_id()";
+  const sharedBpSource="FROM public.automation_business_partner_config v CROSS JOIN LATERAL jsonb_array_elements(coalesce(v.rules,'[]'::jsonb)) r WHERE v.tenant_id=app.current_tenant_id()";
+  assert.equal(original.split(oldBpSource).length-1,1,'Frozen BP source clause must occur exactly once');
+  const adaptedOriginal=original.replace(oldBpSource,sharedBpSource);
+  assert.equal(adaptedOriginal.replace(sharedBpSource,oldBpSource),original);
+  const currentTracker=definitions.find(definition=>definition.signature==='app.contract_shared_tracker_subjects()');assert(currentTracker);
+  assert.equal(currentTracker.body.split(sharedBpSource).length-1,1,'Actual native tracker must use the same shared BP fact owner');
+  assert.ok(prepared.businessPartner.revision>0);assert.ok(prepared.businessPartner.rules.length>=4);
   async function context(userId:string):Promise<SessionContext>{const[account]=await owner.db.execute<{person:string}>(sql`select person_id as person from app_user where tenant_id=${prepared.tenantId}::uuid and id=${userId}::uuid`);assert.ok(account?.person);const grants=await owner.db.execute<{role:string;companyId:string|null}>(sql`select role::text as role,company_id as "companyId" from role_assignment where tenant_id=${prepared.tenantId}::uuid and app_user_id=${userId}::uuid`);return {tenantId:prepared.tenantId,userId,personId:account.person,grants:Array.from(grants),roles:[...new Set(grants.map(g=>g.role))],entitlements:await owner.db.transaction(tx=>resolveEntitlementsTx(tx,prepared.tenantId))};}
+  const nativePartners=await automationBusinessPartnerWorkspace(await context(prepared.users.admin));assert(nativePartners);assert.deepEqual({revision:nativePartners.revision,rules:nativePartners.rules},prepared.businessPartner);
   const snapshot=async()=>{const result:Record<string,string>={};for(const table of ['employment','assignment','compensation','contract_case','contract_shared_case','contract_shared_event','automation_run','personnel_posting','domain_event']){const rows=await owner.client.unsafe<{digest:string}[]>(`select md5(coalesce(string_agg(to_jsonb(t)::text,'|' order by to_jsonb(t)::text),'')) as digest from public.${table} t where tenant_id=$1::uuid`,[prepared.tenantId]);result[table]=rows[0].digest;}return result;};
   const before=await snapshot(),timings:RestrictedNavigationRuntimeReceipt['timings']={},plans:Record<string,unknown>={},outputs:Record<string,Right[]>={};
   const backends:RestrictedNavigationRuntimeReceipt['backends']={},seenBackends=new Set<number>(),seenClients=new WeakSet<object>();
@@ -92,7 +106,9 @@ async function main(){
      assert.equal(real.session,'ai_hr_owner');assert.equal(real.current,'ai_hr_owner');assert.equal(real.ro,'on');assert.equal(real.noTemp,true);
      // Literal bodies qualify all relations/app calls. Record caller namespace; do not bypass the read carrier's setting guard.
      plans[key+':context']={session:real.session,current:real.current,readOnly:real.ro,searchPath:real.path,noTemp:real.noTemp};
-     const prior=sorted(await tx.execute<Right>(sql.raw('select * from ('+original.trim()+') frozen_original(employment_id,can_view,can_decide)'))),current=sorted(await tx.execute<Right>(sql`select * from app.contract_shared_tracker_subjects()`));assert.deepEqual(current,prior,key+' tracker rights differ from frozen5818');outputs[key]=current;
+     const [rules]=await tx.execute<{revision:number;rules:BusinessPartnerRule[]}>(sql`select revision,rules from public.automation_business_partner_config where tenant_id=app.current_tenant_id()`);
+     assert(rules);assert.deepEqual({revision:rules.revision,rules:rules.rules},prepared.businessPartner,'Both queries must use the same nonempty native saved rule slice');
+     const prior=sorted(await tx.execute<Right>(sql.raw('select * from ('+adaptedOriginal.trim()+') frozen_business_rules_shared_owner(employment_id,can_view,can_decide)'))),current=sorted(await tx.execute<Right>(sql`select * from app.contract_shared_tracker_subjects()`));assert.deepEqual(current,prior,key+' tracker rights differ from frozen5818 business-rule semantics over the shared fact owner');outputs[key]=current;
     }));
     if(['admin','superior','viewer','outsider'].includes(key))await owner.withTenant(ctx,async tx=>{
      // EXPLAIN requires its own transaction per the canonical shared-read contract.
