@@ -907,6 +907,7 @@ it('stops on a cross-tenant row, then validates every company/tenant key without
    {fn:'app.personnel_completion_recovery_candidates(uuid,text,integer)',app:true},
    {fn:'app.personnel_completion_recovery_review(jsonb)',app:true},
    {fn:'app.personnel_completion_recovery_adopt(jsonb)',app:true},
+   {fn:'app.personnel_completion_preview_retained(uuid)',app:true},
    {fn:'app.reward_review_plan_population(integer,date)',app:true},
    {fn:'app.reward_review_plan_rows(integer)',app:true},
    {fn:'app.reward_review_plan_grid(integer,jsonb,integer)',app:true},

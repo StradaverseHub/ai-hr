@@ -56,6 +56,8 @@ it('rejects stale official-source and document hashes and employee/cross-tenant 
 });
 it('uses the real bulk handler/kernel: metadata preview makes no case write and only explicit sealed selection adopts and continues the reviewed run',async()=>{
  const f=await fixture(),candidate=(await page()).items[0],before=await saved(f.id),job=await requestPersonnelCompletionRecoveryPreview(hr,[candidate]);expect(await drain(job.row.id)).toBe('completed');expect(await saved(f.id)).toEqual(before);
+ const [cleaned]=await owner.client<{source_content:Buffer|null;input:unknown;steps:number;plan:unknown}[]>`select j.source_content,j.input,j.plan,(select count(*)::integer from bulk_job_step where job_id=j.id) as steps from bulk_job j where j.id=${job.row.id}::uuid`;
+ expect(cleaned.source_content).toBeNull();expect(cleaned.input).toBeNull();expect(cleaned.steps).toBe(0);expect(JSON.stringify(cleaned.plan)).not.toContain('F51');expect(JSON.stringify(cleaned.plan)).not.toContain('confidential');
  const preview=await readPersonnelCompletionRecoveryPreview(hr,job.row.id);expect(preview.items).toHaveLength(1);expect(preview.items[0].seq).toBe(0);expect(preview.after).toBe(0);expect((await readPersonnelCompletionRecoveryPreview(hr,job.row.id,preview.after!)).items).toEqual([]);const r=preview.items[0].result as PersonnelCompletionRecoveryReview;expect(r.outcome).toBe('eligible');
  const apply=await requestPersonnelCompletionRecovery(hr,{previewJobId:job.row.id,reviewHashes:[r.reviewHash!],confirmed:true});expect(await drain(apply.row.id)).toBe('completed');const after=await saved(f.id);expect(after.data.documents[0].personnelCompletion?.preparation).toBeTruthy();expect(after.data.documents[0].sentAt).toBeNull();expect(after.data.mails).toEqual([]);expect(after.data.runs[0].status).toBe('waiting');
 });
@@ -141,7 +143,7 @@ it('rejects a directly admitted envelope whose result differs from its creatorâ€
  const r=(await readPersonnelCompletionRecoveryPreview(hr,job.row.id)).items[0].result as PersonnelCompletionRecoveryReview;
  const forged={...r,reason:'A forged reason with the original unchanged review hash'};expect(forged.reviewHash).toBe(r.reviewHash);
  const id=await forgedRecovery(hr,{previewJobId:job.row.id,reviews:[forged]});await expectNoAppliedRecovery(id,f.id);
- const [step]=await owner.client<{error:string}[]>`select error from bulk_job_step where job_id=${id}::uuid order by seq limit 1`;expect(step.error).toContain('no longer matches the completed preview');
+ const [failed]=await owner.client<{errors:{message:string}[]}[]>`select errors from bulk_job where id=${id}::uuid`;expect(failed.errors.some(error=>error.message.includes('no longer matches the completed preview'))).toBe(true);
 });
 it('refuses another HR creatorâ€™s completed preview even when the direct envelope uses a valid current-actor review',async()=>{
  const f=await fixture(),candidate=(await page()).items[0],r=await review(candidate),p=randomUUID();await owner.client`insert into person(id,tenant_id,full_name,primary_email) values(${p}::uuid,${b.tenantId}::uuid,'Fictional second HR','second-hr@fixture.invalid')`;
@@ -157,4 +159,15 @@ it('preserves a trusted national-format Personnel phone while recovering a separ
  const mobile:Field={...personal,id:'official-mobile',type:'phone',pmKey:'mobile',label:'Official mobile'},home:Field={...mobile,id:'official-home',pmKey:'homePhone',label:'Official home phone'},f=await fixture({extraFields:[mobile,home]});
  const r=await review((await page()).items[0]);expect(r.outcome).toBe('eligible');expect(await adopt(r)).toBe(2);const after=await saved(f.id);expect(after.data.documents[0].values).toMatchObject({'official-mobile':'0123456789','official-home':'0398765432',F51:''});expect(after.data.documents[0].personnelCompletion?.fields['official-mobile'].sourceValue).toBe('0123456789');
  const [source]=await owner.client<{phone:string;home:string}[]>`select phone,home_phone home from person where id=${personId}::uuid`;expect(source).toEqual({phone:'0123456789',home:'0398765432'});expect(after.data.documents[0].sentAt).toBeNull();expect(after.data.mails).toEqual([]);
+});
+
+it('refuses a changed retained preview even when the completed header and review hash remain the same',async()=>{
+ const f=await fixture(),job=await requestPersonnelCompletionRecoveryPreview(hr,[(await page()).items[0]]);expect(await drain(job.row.id)).toBe('completed');
+ const r=(await readPersonnelCompletionRecoveryPreview(hr,job.row.id)).items[0].result as PersonnelCompletionRecoveryReview;
+ await expect(withTenant(hr,tx=>tx.execute(sql`update bulk_job set plan='{}'::jsonb where id=${job.row.id}::uuid`))).rejects.toThrow();
+ // Owner corruption models storage drift; it cannot manufacture the private kernel seal.
+ await owner.client`update bulk_job set plan=jsonb_set(plan,'{completionPreview,items,0,result,reason}','"Unsealed changed reason"'::jsonb) where id=${job.row.id}::uuid`;
+ await expect(readPersonnelCompletionRecoveryPreview(hr,job.row.id)).rejects.toThrow('preview proof');
+ await expect(requestPersonnelCompletionRecovery(hr,{previewJobId:job.row.id,reviewHashes:[r.reviewHash!],confirmed:true})).rejects.toThrow('preview proof');
+ await expectNoAppliedRecovery(await forgedRecovery(hr,{previewJobId:job.row.id,reviews:[r]}),f.id);
 });
