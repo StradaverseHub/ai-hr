@@ -1,3 +1,4 @@
+import {PayrollHistoryRevisionError} from '../lib/payroll-history-revisions';
 /** Reconstruct item ownership from immutable accepted source/revisions; no independent money store. */
 import {createHash} from 'node:crypto';
 import {asc,inArray,sql} from 'drizzle-orm';
@@ -5,9 +6,9 @@ import type {SessionContext,Tx} from '../db/client';
 import {payrollHistoryImportRecord as record,payrollHistoryImportRevision as revision,payrollHistoryImportSnapshot as snapshot,payrollHistoryImportAttempt as attempt} from '../db/schema';
 import {resolveImportCodes} from './payroll-history-import';
 import {readHistoryField,STATUTORY_IMPORT_CODES,type ImportCodeEntry,type PayrollHistoryRecord} from '../lib/payroll-history-import-schema';
-import {aggregateHistoryItems,appendHistoryContribution,effectiveHistoryItems,historyMoney,historyMoneyCents,type HistoryContributionState,type HistoryOwnedItem} from '../lib/payroll-history-maintenance-lineage';
+import {aggregateHistoryItems,appendHistoryContribution,effectiveHistoryItems,historyMoney,historyMoneyCents,historyItemsMatchValues,type HistoryContributionState,type HistoryOwnedItem} from '../lib/payroll-history-maintenance-lineage';
 import type {ImportedPayrollValues} from '../lib/payroll-history-revisions';
-const fail=(message:string):never=>{throw new Error(message);};
+const fail=(message:string):never=>{throw new PayrollHistoryRevisionError(message);};
 const upper=(value:string)=>value.trim().toUpperCase();
 export function maintenanceSourceItems(rows:readonly {rowNum:number;code:string;amount:string}[],codes:ReadonlyMap<string,ImportCodeEntry>):HistoryOwnedItem[]{
  return aggregateHistoryItems(rows.flatMap(row=>{const entry=codes.get(upper(row.code));if(!entry)fail(`Pay Item ${row.code} is archived, unmapped or unavailable. Review its original mapping.`);if(entry.direction==='check')return[];
@@ -24,10 +25,16 @@ export function maintenanceNativeItems(values:ImportedPayrollValues,codes:Readon
  if(Array.isArray(lines))for(const line of lines){if(!line||typeof line.code!=='string'||!Number.isFinite(Number(line.amount)))fail('The native baseline has ambiguous original Pay Item lines.');const entry=codes.get(upper(line.code));if(!entry)fail(`Native Pay Item ${line.code} is unavailable.`);if(entry.destination==='basic')continue;rows.push({rowNum:rows.length+1,code:line.code,amount:Number(line.amount).toFixed(2)});}
  const nc=values.statutory.pcbNonCash as {ownedEaEntries?:{code:string;entered:number}[]}|undefined;
  for(const entry of nc?.ownedEaEntries??[])rows.push({rowNum:rows.length+1,code:entry.code,amount:entry.entered.toFixed(2)});
- const items=maintenanceSourceItems(rows,codes),sum=(dest:string)=>items.filter(item=>item.destination===dest).reduce((n,item)=>n+historyMoneyCents(item.amount),BigInt(0));
+ const items=maintenanceSourceItems(rows,retainedHistoryCodes(values,codes)),sum=(dest:string)=>items.filter(item=>item.destination===dest).reduce((n,item)=>n+historyMoneyCents(item.amount),BigInt(0));
  for(const [dest,value]of [['allowance',values.allowance],['overtime',values.overtimePay],['bonus',values.bonus],['other_deduction',values.otherDeductions]] as const)if(sum(dest)!==historyMoneyCents(value))fail('The original native Pay Item detail does not reconcile. Its baseline is preserved; item maintenance requires unambiguous source detail.');
- return items;
+ return items.map(item=>({...item,sourceRows:[]}));
 }
+function retainedHistoryCodes(values:ImportedPayrollValues,codes:ReadonlyMap<string,ImportCodeEntry>):Map<string,ImportCodeEntry>{
+ const retained=new Map(codes),lines=values.statutory.importedLines??values.statutory.componentLines;
+ if(Array.isArray(lines))for(const line of lines){if(!line||typeof line.code!=='string'||!Array.isArray(line.buckets))continue;const buckets=[...new Set(line.buckets.map((bucket:{bucket?:string})=>bucket.bucket).filter((bucket:unknown)=>['wage','ot','bonus','deduct'].includes(String(bucket))))];if(buckets.length!==1)fail('The original cash item destination is ambiguous.');const current=codes.get(upper(line.code));if(!current)fail(`Original Pay Item ${line.code} is archived or unmapped.`);const destination=buckets[0]==='wage'?'allowance':buckets[0]==='ot'?'overtime':buckets[0]==='bonus'?'bonus':'other_deduction';retained.set(upper(line.code),{...current,destination,direction:destination==='other_deduction'?'deduction':'earning'});}
+ return retained;
+}
+
 export type HistoryMaintenanceState={state:HistoryContributionState;values:ImportedPayrollValues|null;unavailableReason?:string};
 export async function historyMaintenanceStatesTx(tx:Tx,ctx:SessionContext,ids:readonly string[]):Promise<Map<string,HistoryMaintenanceState>>{
  const out=new Map<string,HistoryMaintenanceState>();if(!ids.length)return out;
@@ -55,7 +62,8 @@ export async function historyMaintenanceStatesTx(tx:Tx,ctx:SessionContext,ids:re
    else{
     const source=sourceOf.get(change.attemptId);if(!saved)fail('The accepted source snapshot is unavailable.');if(!source)fail('The original item lineage is unavailable in your current scope. Its saved payroll figures are preserved.');
     const planned=source.plan.rows.filter(row=>row.companyId===identity.companyId&&row.employmentId===identity.employmentId&&row.period===identity.period&&row.cycleId===identity.cycleId&&row.valueHash===saved.valueHash);if(planned.length!==1)fail('The accepted original source identity is ambiguous.');
-    const rows=parsed.get(source.id)!;const items=maintenanceSourceItems(planned[0].rowNums.map(rowNum=>{const row=rows[rowNum-2];if(!row)fail('An original source row is unavailable.');return{rowNum,code:readHistoryField(row,'doe_code'),amount:readHistoryField(row,'amount').replace(/[,_\s]/g,'')};}),codes);
+    const rows=parsed.get(source.id)!;const items=maintenanceSourceItems(planned[0].rowNums.map(rowNum=>{const row=rows[rowNum-2];if(!row)fail('An original source row is unavailable.');return{rowNum,code:readHistoryField(row,'doe_code'),amount:readHistoryField(row,'amount').replace(/[,_\s]/g,'')};}),retainedHistoryCodes(saved.values,codes));
+    if(!historyItemsMatchValues(items,saved.values))fail('The retained original item mappings no longer reconcile to their accepted snapshot. Review the original source.');
     state=appendHistoryContribution(state,source.id,items,'replace');
    }
    if(change.snapshotId)bySnapshot.set(change.snapshotId,structuredClone(state));

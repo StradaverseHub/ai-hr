@@ -1,3 +1,4 @@
+import {PayrollHistoryRevisionError} from '../lib/payroll-history-revisions';
 /** Authorised item/edit/removal previews on the existing immutable import attempt and staged writer. */
 import {and,eq,inArray,sql} from 'drizzle-orm';
 import {z} from 'zod';
@@ -9,14 +10,14 @@ import {toCsv} from '../lib/csv';
 import {PAYROLL_HISTORY_HEADERS} from '../lib/payroll-history-import-schema';
 import type {PayrollHistoryMaintenanceRequest,PayrollHistoryMaintenancePreview} from '../lib/payroll-history-maintenance';
 const reason=z.string().trim().min(1).max(2000),reference={version:z.literal(1),recordId:z.uuid(),expectedRevisionId:z.uuid(),reason};
-const requestSchema=z.discriminatedUnion('operation',[
+export const payrollHistoryMaintenanceRequestSchema=z.discriminatedUnion('operation',[
  z.object({...reference,operation:z.literal('edit'),items:z.array(z.object({key:z.string().min(1).max(200),amount:z.string().regex(/^\d+(?:\.\d{1,2})?$/)}).strict()).min(1).max(1000)}).strict(),
  z.object({...reference,operation:z.literal('remove_items'),itemKeys:z.array(z.string().min(1).max(200)).min(1).max(1000)}).strict(),
  z.object({version:z.literal(1),operation:z.literal('remove_batch'),attemptId:z.uuid(),reason}).strict(),
 ]);
-const fail=(message:string):never=>{throw new Error(message);};
+const fail=(message:string):never=>{throw new PayrollHistoryRevisionError(message);};
 export async function previewPayrollHistoryMaintenance(ctx:SessionContext,input:PayrollHistoryMaintenanceRequest):Promise<PayrollHistoryMaintenancePreview>{
- assertModuleGate(ctx,'payroll');const request=requestSchema.parse(input);
+ assertModuleGate(ctx,'payroll');const request=payrollHistoryMaintenanceRequestSchema.parse(input);
  const rows=await withTenant(ctx,async tx=>{
   const [principal]=await tx.execute<{ok:boolean}>(sql`select app.principal_snapshot_current() as ok`);if(!ctx.userId||principal?.ok!==true)fail('Your current payroll history access is unavailable.');
   let records:typeof record.$inferSelect[];

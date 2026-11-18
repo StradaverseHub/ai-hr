@@ -1,4 +1,5 @@
 import {z} from 'zod';
+import {payrollHistoryMaintenanceRequestSchema} from './payroll-history-maintenance';
 import {historyAnalyzeBatchTx,historyAnalyzeBatchFact} from './payroll-history-import';
 import {preprocessHistoryMaintenanceTx,maintenanceIdentity,type MaintenanceOptions} from './payroll-history-maintenance-plan';
 import {effectiveHistoryItems} from '../lib/payroll-history-maintenance-lineage';
@@ -19,11 +20,11 @@ import {historyAnalyzeFactsTx,preparePayrollHistoryRevisionTx,toIsoPeriod} from 
 import {todayInKualaLumpur} from '../lib/hr-date';
 import {parseCsvRecords} from '../lib/csv';
 import {historyColumnLabel,readHistoryField,type PayrollHistoryRecord} from '../lib/payroll-history-import-schema';
-import {historyRecordKey,type HistoryRevisionPlan,type HistoryRevisionRow,type ImportedPayrollValues,type HistoryRevisionChange} from '../lib/payroll-history-revisions';
+import {historyRecordKey,PayrollHistoryRevisionError,type HistoryRevisionPlan,type HistoryRevisionRow,type ImportedPayrollValues,type HistoryRevisionChange} from '../lib/payroll-history-revisions';
 import {actorOn,creatorOf,resolveImportActors,type ImportRowActors} from './import-actor-label';
 import type {ImportActor} from '../lib/import-reference';
 
-export class PayrollHistoryRevisionError extends Error{constructor(message:string){super(message);this.name='PayrollHistoryRevisionError';}}
+export {PayrollHistoryRevisionError} from '../lib/payroll-history-revisions';
 function fail(message:string):never{throw new PayrollHistoryRevisionError(message);}
 const uuid=/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const hash=(value:string|Buffer)=>createHash('sha256').update(value).digest('hex');
@@ -199,7 +200,7 @@ async function planRowsWithFacts(tx:Tx,ctx:SessionContext,records:PayrollHistory
  const maintenancePrepared=maintenance&&attemptId&&batch?await preprocessHistoryMaintenanceTx(tx,ctx,[...groups.values()],maintenance,attemptId,batch):null;
  const analyzed=new Map<string,unknown>();
  const prepared:{group:typeof groups extends Map<string,infer G>?G:never;result:Awaited<ReturnType<typeof preparePayrollHistoryRevisionTx>>}[]=[];
- for(const group of groups.values())prepared.push({group,result:await preparePayrollHistoryRevisionTx(ctx,tx,group.company.id,group.records,f=>{if(!analyzed.has(group.company.id))analyzed.set(group.company.id,f);},{batch,retainedCodes:maintenancePrepared?.retained.get(group),historical:maintenancePrepared?.historical.get(group)})});
+ for(const group of groups.values())prepared.push({group,result:await preparePayrollHistoryRevisionTx(ctx,tx,group.company.id,group.records,f=>{if(!analyzed.has(group.company.id))analyzed.set(group.company.id,f);},{batch,retainedCodes:maintenancePrepared?.retained.get(group),historical:maintenancePrepared?.historical.get(group),netModes:maintenancePrepared?.netModes.get(group)})});
  facts.analyze=[...analyzed].sort(([a],[b])=>byText(a,b));
  const keys:PlanKey[]=[];
  for(const {group,result} of prepared)for(const month of result.preview.months){const resolved=result.months.find(m=>m.month.key===month.key);if(resolved)keys.push({companyId:group.company.id,employmentId:resolved.employmentId,period:month.period,cycleId:group.cycle.id});}
@@ -287,7 +288,7 @@ async function planRowsWithFacts(tx:Tx,ctx:SessionContext,records:PayrollHistory
    if(maintenance&&resolved){const prepared=maintenancePrepared?.metadata.get(maintenanceIdentity(row));if(!prepared)fail('The maintenance source identity is unavailable.');row.contributions=prepared.after;row.maintenanceMode=maintenance.mode;row.maintenanceReason=maintenance.reason;row.itemChanges=prepared.itemChanges;row.withdrawal=prepared.withdrawal;row.restoreSnapshotId=prepared.restoreSnapshotId;
     if(prepared.withdrawal){row.values=prepared.restoreValues;row.valueHash=row.values?hash(canonical(row.values)):null;}
     else if(row.values){row.values.statutory.historyMaintenance={version:1,items:effectiveHistoryItems(prepared.after)};row.valueHash=hash(canonical(row.values));}
-    if(canonical(prepared.before)===canonical(prepared.after))row.operation='unchanged';else if(row.recordId||row.expectedOrdinaryPayslipId)row.operation='replace';
+    if(canonical(prepared.before)===canonical(prepared.after)&&(prepared.beforeValues===null?row.values===null:hash(canonical(prepared.beforeValues))===row.valueHash))row.operation='unchanged';else if(row.recordId||row.expectedOrdinaryPayslipId)row.operation='replace';
     row.impact=(row.warnings??[]).map(message=>({kind:'review' as const,message}));
    }
    if(row.reasons.length||(!row.values&&!row.withdrawal))row.operation='invalid';
@@ -329,7 +330,13 @@ export async function previewPayrollHistoryUpload(ctx:SessionContext,input:{name
  const maintenance=input.maintenance?z.object({version:z.literal(1),mode:z.enum(['replace','update_listed']),reason:z.string().trim().max(2000).optional()}).strict().parse(input.maintenance):undefined;
  return previewHistorySource(ctx,{...input,maintenance:maintenance?{...maintenance,reason:maintenance.reason||'Payroll history upload'}:undefined});
 }
-export async function previewPayrollHistoryMaintenanceSource(ctx:SessionContext,input:{name:string;content:Buffer;maintenance:MaintenanceOptions}){return previewHistorySource(ctx,input);}
+export async function previewPayrollHistoryMaintenanceSource(ctx:SessionContext,input:{name:string;content:Buffer;maintenance:MaintenanceOptions}){
+ const descriptor=z.object({version:z.literal(1),mode:z.enum(['replace','update_listed','edit','remove_items','remove_batch']),reason:z.string().trim().min(1).max(2000),request:payrollHistoryMaintenanceRequestSchema.optional()}).strict().safeParse(input.maintenance);
+ if(!descriptor.success)fail('The payroll history maintenance request is invalid.');
+ const maintenance=descriptor.data;
+ if(maintenance.request?(maintenance.mode!==maintenance.request.operation||maintenance.reason!==maintenance.request.reason):!['replace','update_listed'].includes(maintenance.mode))fail('The payroll history maintenance operation does not match its reviewed request.');
+ return previewHistorySource(ctx,{...input,maintenance});
+}
 async function previewHistorySource(ctx:SessionContext,input:{name:string;mimeType?:string;content:Buffer;operationKey?:string;maintenance?:MaintenanceOptions}){
  assertModuleGate(ctx,'payroll');
  const name=(input.name.split(/[\\/]/).pop()??'payroll-history.csv').slice(0,255)||'payroll-history.csv';

@@ -442,7 +442,7 @@ async function analyze(
   ctx: SessionContext,
   companyId: string,
   records: PayrollHistoryRecord[],
-  options: { transaction?: Tx; prepareRevision?: boolean; facts?: (facts: ReturnType<typeof analyzeFacts>) => void; batch?:HistoryAnalyzeBatchContext;retainedCodes?:ImportCodeEntry[];historical?:HistoryMaintenanceSubject[] } = {},
+  options: { transaction?: Tx; prepareRevision?: boolean; facts?: (facts: ReturnType<typeof analyzeFacts>) => void; batch?:HistoryAnalyzeBatchContext;retainedCodes?:ImportCodeEntry[];historical?:HistoryMaintenanceSubject[];netModes?:Map<string,'separate'|'zakat_in_pcb'> } = {},
 ): Promise<{ preview: HistoryImportPreview; months: ResolvedMonth[]; statutoryVersion: string }> {
   const originalCodes=options.batch?.codes??await resolveImportCodes(ctx,options.transaction),codes=new Map(originalCodes);
   for(const entry of options.retainedCodes??[])codes.set(up(entry.code),entry);
@@ -810,7 +810,7 @@ async function analyze(
         ),
       );
     }
-    let net = netCash;
+    let net = options.netModes?.get(b.key)==='zakat_in_pcb'?netZakatInPcb:netCash;
     if (statedNet.length > 0) {
       if (Math.abs(t.net - netCash) <= MONEY_TOL) {
         net = t.net;
@@ -1035,7 +1035,7 @@ async function analyze(
 
 /** Pure preparation for the revision owner. Occupancy is adjudicated there against exact imported
  * identities, inside this same transaction. This helper grants no write or replacement authority. */
-export function preparePayrollHistoryRevisionTx(ctx: SessionContext, tx: Tx, companyId: string, records: PayrollHistoryRecord[], facts?: (facts: Awaited<ReturnType<typeof historyAnalyzeFactsTx>>) => void,options?:{batch?:HistoryAnalyzeBatchContext;retainedCodes?:ImportCodeEntry[];historical?:HistoryMaintenanceSubject[]}) {
+export function preparePayrollHistoryRevisionTx(ctx: SessionContext, tx: Tx, companyId: string, records: PayrollHistoryRecord[], facts?: (facts: Awaited<ReturnType<typeof historyAnalyzeFactsTx>>) => void,options?:{batch?:HistoryAnalyzeBatchContext;retainedCodes?:ImportCodeEntry[];historical?:HistoryMaintenanceSubject[];netModes?:Map<string,'separate'|'zakat_in_pcb'>}) {
   return analyze(ctx, companyId, records, {transaction: tx, prepareRevision: true, facts,...options});
 }
 

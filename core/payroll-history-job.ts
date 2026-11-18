@@ -90,7 +90,7 @@ export async function requestPayrollHistoryRevert(ctx:SessionContext,attemptId:s
  ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(g=>({...g}))};
  const {payrollHistoryMaintenanceRevertReceipt}=await import('./payroll-history-maintenance');const receipt=await payrollHistoryMaintenanceRevertReceipt(ctx,attemptId,previewHash);
  if(receipt){const input={attemptId:receipt.id,previewHash,confirmReplacement:true};const checked=await checkPayrollHistoryConfirm(ctx,input);return withTenant(ctx,tx=>admitTx(tx,ctx,{operation:'confirm',...input} satisfies ConfirmJobInput,checked.companyIds));}
- throw new Error('The removal preview is unavailable or changed. Preview the current history again.');
+ throw new PayrollHistoryRevisionError('The removal preview is unavailable or changed. Preview the current history again.');
 }
 /** The creator's own job, for the screen's progress panel. */
 export async function payrollHistoryJobStatus(ctx:SessionContext,jobId:string):Promise<PayrollHistoryJobStatus|null>{

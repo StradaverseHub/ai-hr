@@ -1,3 +1,4 @@
+export class PayrollHistoryRevisionError extends Error{constructor(message:string){super(message);this.name='PayrollHistoryRevisionError';}}
 /** Import provenance is immutable evidence. Effective money remains in the canonical payslip rows. */
 export type ImportedPayrollValues = {
  basicSalary:string;allowance:string;overtimePay:string;bonus:string;grossPay:string;
