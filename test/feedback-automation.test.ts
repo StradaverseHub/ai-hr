@@ -13,11 +13,11 @@ beforeEach(async()=>{
  await resetDb();b=await seedBase();admin=adminCtx(b);
  const login=async():Promise<SessionContext>=>{const[u]=await owner.db.insert(s.appUser).values({tenantId:b.tenantId,workosUserId:randomUUID()}).returning();
  await owner.db.insert(s.roleAssignment).values({tenantId:b.tenantId,appUserId:u.id,role:'employee',companyId:null});
- return {...admin,userId:u.id,personId:undefined,roles:['employee'],grants:[{role:'employee',companyId:null}]};};
+ return {...admin,userId:u.id,personId:null,roles:['employee'],grants:[{role:'employee',companyId:null}]};};
  reporter=await login();other=await login();
 });
 async function script(statement:string){const c=await owner.client.reserve();try{return await c.unsafe(statement).simple();}catch(e){await c.unsafe('ROLLBACK').simple();throw e;}finally{c.release();}}
-const report=()=>submitFeedback(reporter,{category:'bug',title:'Payroll preview',description:'The preview shows the wrong November date.',expectedBehavior:'Show the selected date.'});
+const report=()=>submitFeedback(reporter,{category:'issue',title:'Payroll preview',description:'The preview shows the wrong November date.',expectedBehavior:'Show the selected date.'});
 async function pickup(tenantId=b.tenantId){await script(pickupSql({tenantId,worker:'fixture'}));return owner.client<{feedback_request_id:string;claim_token:string;source_digest:string}[]>`select * from feedback_automation_work where tenant_id=${tenantId} and state='claimed' order by updated_at`;}
 async function completion(action:Completion['action']='ask'){
  const [w]=await pickup();const detail=(await getFeedback(reporter,w.feedback_request_id))!;
@@ -33,6 +33,7 @@ describe('durable operator feedback coordinator',()=>{
  it('commits one question, preserves its identity on retry, waits for reply, then picks the answer as new source',async()=>{
   const {id}=await report(),p=await completion();await script(completeSql(p));await script(completeSql(p));
   expect((await getFeedback(reporter,id))?.blockHistory).toHaveLength(1);expect(await pickup()).toHaveLength(0);
+  await expect(script(completeSql({...p,question:'A different retry question.'}))).rejects.toThrow(/different result/);
   await answerFeedbackClarification(reporter,{feedbackId:id,questionId:p.claimToken,answer:'November payroll preview.'});
   const next=await completion('plan');expect(next.sourceDigest).not.toBe(p.sourceDigest);await script(completeSql(next));await script(completeSql(next));
   expect((await getFeedback(reporter,id))?.planRevision).toBe(1);expect((await getFeedback(reporter,id))?.status).toBe('planned');

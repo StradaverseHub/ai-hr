@@ -1,5 +1,6 @@
 /** Bounded operator-owned coordinator. No application principal, provider call, build or deploy. */
 import {askClarificationSql, pushPlanSql, attachPlanMockupsSql, runFeedbackOperatorSql, type PlanMockup} from './remote';
+import {createHash} from 'node:crypto';
 const uuid = /^[a-f0-9]{8}(-[a-f0-9]{4}){3}-[a-f0-9]{12}$/i;
 const digest = /^[a-f0-9]{64}$/;
 function id(value: string) {if (!uuid.test(value)) throw Error('A valid bound identifier is required.'); return `'${value}'::uuid`;}
@@ -44,7 +45,7 @@ export function pickupSql(p: Pickup): string {
    VALUES(f.id,f.tenant_id,fingerprint,token,${worker},'claimed',1,now()+interval '30 minutes')
    ON CONFLICT(feedback_request_id) DO UPDATE SET source_digest=excluded.source_digest,claim_token=excluded.claim_token,worker=excluded.worker,
     state='claimed',attempts=CASE WHEN feedback_automation_work.source_digest=excluded.source_digest THEN feedback_automation_work.attempts+1 ELSE 1 END,
-    lease_until=excluded.lease_until,retry_at=now(),last_error=NULL,updated_at=now();
+    lease_until=excluded.lease_until,retry_at=now(),last_error=NULL,completion_digest=NULL,updated_at=now();
   INSERT INTO domain_event(tenant_id,aggregate_type,aggregate_id,event_type,actor_type,payload)
    VALUES(f.tenant_id,'feedback',f.id,'feedback.automation.claimed','agent',jsonb_build_object('worker',${worker},'claimToken',token,'sourceDigest',fingerprint));
   INSERT INTO _feedback_pickup VALUES(snapshot||jsonb_build_object('claimToken',token,'sourceDigest',fingerprint));
@@ -73,6 +74,7 @@ export function completeSql(p: Completion): string {
  }
  else if(p.action!=='hold'&&p.action!=='retry')throw Error('Unsupported action.');
  const reason=p.action==='hold'?text(p.reason,1000):null;
+ const resultDigest=createHash('sha256').update(JSON.stringify({action:p.action,effect,reason})).digest('hex');
  return protectBlock(`BEGIN; SET LOCAL jit=off; SET LOCAL lock_timeout='3s'; SET LOCAL statement_timeout='30s';
  DO $complete$ DECLARE f feedback_request%ROWTYPE; w feedback_automation_work%ROWTYPE;
  BEGIN
@@ -80,7 +82,10 @@ export function completeSql(p: Completion): string {
  IF f.id IS NULL THEN RAISE EXCEPTION 'Report unavailable';END IF;
  SELECT * INTO w FROM feedback_automation_work WHERE feedback_request_id=f.id AND tenant_id=f.tenant_id FOR UPDATE;
  IF w.claim_token IS DISTINCT FROM ${token} OR w.source_digest IS DISTINCT FROM ${literal(p.sourceDigest)} THEN RAISE EXCEPTION 'Work claim changed';END IF;
- IF w.state IN ('completed','escalated') THEN RETURN;END IF;
+ IF w.state IN ('completed','escalated') THEN
+  IF w.completion_digest IS DISTINCT FROM ${literal(resultDigest)} THEN RAISE EXCEPTION 'Claim already settled with a different result';END IF;
+  RETURN;
+ END IF;
  IF w.state<>'claimed' OR w.lease_until<=now() THEN RAISE EXCEPTION 'Work claim expired';END IF;
  IF f.status NOT IN ('open','contested') OR f.plan_revision<>${p.expectedPlanRevision}
  OR w.source_digest IS DISTINCT FROM ${snapshotDigest('app.feedback_automation_snapshot(f.id)')}
@@ -89,7 +94,7 @@ export function completeSql(p: Completion): string {
  ${p.action==='ask'?`IF (SELECT count(*) FROM domain_event WHERE tenant_id=f.tenant_id AND aggregate_id=f.id AND event_type='feedback.clarification.requested' AND payload->>'planRevision'=f.plan_revision::text)>=2 THEN RAISE EXCEPTION 'Dialogue budget exhausted; escalate to the operator';END IF;`:''}
  ${effect?`EXECUTE ${literal(effect)};`:''}
  UPDATE feedback_automation_work SET state=${literal(p.action==='hold'?'escalated':p.action==='retry'?'failed':'completed')},
-  retry_at=now()+interval '15 minutes',last_error=${reason?literal(reason):p.action==='retry'?"'investigation_failed'":'NULL'},updated_at=now() WHERE feedback_request_id=f.id;
+  retry_at=now()+interval '15 minutes',completion_digest=${literal(resultDigest)},last_error=${reason?literal(reason):p.action==='retry'?"'investigation_failed'":'NULL'},updated_at=now() WHERE feedback_request_id=f.id;
  INSERT INTO domain_event(tenant_id,aggregate_type,aggregate_id,event_type,actor_type,payload)
   VALUES(f.tenant_id,'feedback',f.id,'feedback.automation.settled','agent',jsonb_build_object('claimToken',${token},'action',${literal(p.action)},'sourceDigest',w.source_digest));
  END $complete$; COMMIT;`, 'complete');

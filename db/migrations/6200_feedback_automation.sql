@@ -6,6 +6,7 @@ CREATE TABLE feedback_automation_work (
  tenant_id uuid NOT NULL REFERENCES tenant(id), source_digest text NOT NULL CHECK(source_digest ~ '^[a-f0-9]{64}$'),
  claim_token uuid NOT NULL, worker text NOT NULL CHECK(length(worker) BETWEEN 1 AND 120),
  state text NOT NULL CHECK(state IN ('claimed','completed','failed','escalated')),
+ completion_digest text CHECK(completion_digest IS NULL OR completion_digest ~ '^[a-f0-9]{64}$'),
  attempts integer NOT NULL CHECK(attempts BETWEEN 1 AND 3), lease_until timestamptz NOT NULL,
  retry_at timestamptz NOT NULL DEFAULT now(), last_error text, updated_at timestamptz NOT NULL DEFAULT now(),
  FOREIGN KEY(tenant_id,feedback_request_id) REFERENCES feedback_request(tenant_id,id)

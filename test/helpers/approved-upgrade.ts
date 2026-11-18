@@ -266,6 +266,7 @@ export const APPROVED_UPGRADE_TAIL=[
  {idx:5275,when:1793330005575,tag:'5875_recruitment_referral_rewards_agency_fees'},
  {idx:5276,when:1793330005576,tag:'5876_recruitment_ai_match_summary'},
  {idx:5277,when:1793330005577,tag:'5877_recruitment_agency_portal'},
+ {idx:5600,when:1794974006200,tag:'6200_feedback_automation'},
 ] as const;
 // Final pending 2109/2126 bytes reviewed from engine 128bc2539; no applied-prefix hashes change.
 const APPROVED_UPGRADE_HASHES:Record<string,string>={
@@ -305,6 +306,7 @@ const APPROVED_UPGRADE_HASHES:Record<string,string>={
  '5875_recruitment_referral_rewards_agency_fees':'39cdc06b4fff3afaedf50e8061a22420e40fb1bcae89bb42545e1d8246ff4575',
  '5876_recruitment_ai_match_summary':'d23289bec17b303e15f1ea36c2e4f0b72b14fd3d6580885485b167ba00dd8c47',
  '5877_recruitment_agency_portal':'f92d2277433ba41add69ab9574e7f7309be68a9c699524488dcb7ffabb7a62d3',
+ '6200_feedback_automation':'b13b687185504afe60457f0aa9ef6d1afaf345b3242ccc37fd7217fd82dd592b',
  '5770_attendance_workflow_approver_codes':'f71cf33a9ced5f4e1007de02388a858bd31c64006a422352193bd7c14e367ec0',
  '5771_assistant_legacy_index_shared_access':'433dfd7549b496b034bdeaa2c06484b700b5dd5647213106d68487f0b485c7c0',
  '5761_probation_automation_recipients_and_tracker_steps':'c39e471adb80e51b56466c264bc6546dc6ce48a354e30d8e9ef3629a82b2184b',

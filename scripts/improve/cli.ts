@@ -26,7 +26,7 @@ import {pickupFeedback, completeFeedback, notifyFeedback, feedbackAutomationStat
  * a picture cannot hedge the way a sentence can.
  */
 import { basename, extname } from 'node:path';
-import { readFileSync } from 'node:fs';
+import { readFileSync, statSync } from 'node:fs';
 import { writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import {
@@ -156,8 +156,12 @@ async function main() {
       if (p.action === 'plan') {
         if (p.mockups !== undefined) throw new Error('Use local mockupPaths for plan images.');
         const paths = p.mockupPaths ?? [];
-        if (!Array.isArray(paths) || paths.length > 6 || paths.some(path => typeof path !== 'string')) throw new Error('At most six rendered mockup paths required.');
-        p.mockups = paths.map((path: string) => ({fileName: basename(path), mimeType: mimeOf(path), content: readFileSync(path)}));
+        if (!Array.isArray(paths) || paths.length > 6 || paths.some((path: unknown) => typeof path !== 'string')) throw new Error('At most six rendered mockup paths required.');
+        p.mockups = paths.map((path: string) => {
+          const file = statSync(path);
+          if (!file.isFile() || file.size < 1 || file.size > 10 * 1024 * 1024) throw new Error('Each mockup must be a nonempty image file of at most 10 MB.');
+          return {fileName: basename(path), mimeType: mimeOf(path), content: readFileSync(path)};
+        });
       }
       completeFeedback(p);
       notifyFeedback(p.tenantId);
