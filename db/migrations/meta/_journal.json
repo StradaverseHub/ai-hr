@@ -6469,6 +6469,13 @@
       "when": 1794841006104,
       "tag": "6104_lifecycle_recipient_fanout",
       "breakpoints": true
+    },
+    {
+      "idx": 5900,
+      "version": "7",
+      "when": 1794988006500,
+      "tag": "6500_ai_provider_candidate_presentation_rls",
+      "breakpoints": true
     }
   ]
 }

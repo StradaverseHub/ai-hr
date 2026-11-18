@@ -271,9 +271,11 @@ export const APPROVED_UPGRADE_TAIL=[
  {idx:5502,when:1794841006102,tag:'6102_lifecycle_recipient_directory'},
  {idx:5503,when:1794841006103,tag:'6103_lifecycle_pbp_removal'},
  {idx:5504,when:1794841006104,tag:'6104_lifecycle_recipient_fanout'},
+ {idx:5900,when:1794988006500,tag:'6500_ai_provider_candidate_presentation_rls'},
 ] as const;
 // Final pending 2109/2126 bytes reviewed from engine 128bc2539; no applied-prefix hashes change.
 const APPROVED_UPGRADE_HASHES:Record<string,string>={
+ '6500_ai_provider_candidate_presentation_rls':'ded682ab21306480e2ea982b7bcb48337983b50086569268f52e5045bc7beaea',
  '6100_rewards_review_plans':'ce6c91a351f2c5178101da137c601b363b5bacc8b560f46e808b319d54c9f0e5',
  '6101_reward_person_history':'055838fa4f2ccc7110b4cd56030e4e97e9ddd85d8455f1ade581fb74e51345f8',
  '6102_lifecycle_recipient_directory':'b7ba294ffdf0a95439995c61730407dfda7b204d07ba32f2adc15b94a3f7e2e3',

@@ -1,3 +1,19 @@
+# AI provider candidate display — 18 November 2026 (unapplied)
+
+`codex/ai-provider-candidate-display-20261118` reserves
+`6500_ai_provider_candidate_presentation_rls`, idx `5900`, when `1794988006500`.
+A fresh main/alpha fetch and survey of 4,723 local/origin heads, 738 distinct
+committed journals and 457 registered worktree journals found no tag/index/time
+collision; the highest observed timestamp was `1794988006441`. Read-only live
+checks found staging at 924 migrations / `1794841006104`, production at 883 /
+`1793330005471`. Recheck claims and exact ledgers at integration/admission.
+
+Adds only a SELECT policy for the existing current group-admin presentation proof
+and current tenant, through the restricted table owner. No table grants, ciphertext
+access, command authority, stored credentials or active provider changes.
+SQL SHA-256 `ded682ab21306480e2ea982b7bcb48337983b50086569268f52e5045bc7beaea`.
+No installation or activation authority is conferred by this reservation.
+
 # Approved board items — 17 November 2026 (source reservations; installation held)
 
 Coordinator `codex/approved-board-controller-20261117` reserves:

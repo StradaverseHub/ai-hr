@@ -28,6 +28,7 @@ const APPROVED_BOARD_TAIL:Entry[]=[
  {idx:5502,version:'7',when:1794841006102,tag:'6102_lifecycle_recipient_directory',breakpoints:true},
  {idx:5503,version:'7',when:1794841006103,tag:'6103_lifecycle_pbp_removal',breakpoints:true},
  {idx:5504,version:'7',when:1794841006104,tag:'6104_lifecycle_recipient_fanout',breakpoints:true},
+ {idx:5900,version:'7',when:1794988006500,tag:'6500_ai_provider_candidate_presentation_rls',breakpoints:true},
 ];
 
 it('stops on a cross-tenant row, then validates every company/tenant key without changing data or grants',async()=>{
@@ -1823,6 +1824,7 @@ it('stops on a cross-tenant row, then validates every company/tenant key without
   const manage=(column:string)=>`tenant_id=app.current_tenant_id() AND app.reward_config_page_allowed(${column},'plans.manage','manage')`;
   const own='app.acting_as_owner()';
   const approvedPolicies:ApprovedPolicy[]=[
+   {table:'ai_provider_candidate',name:'ai_provider_candidate_owner_presentation',cmd:'SELECT',role:'public',using:"current_user=pg_get_userbyid((SELECT c.relowner FROM pg_catalog.pg_class c WHERE c.oid='public.ai_provider_candidate'::regclass)) AND tenant_id=app.current_tenant_id() AND app._ai_provider_presentation_actor_valid()",check:null},
    {table:'reward_plan_year',name:'reward_plan_year_read',cmd:'SELECT',role:'public',using:view('NULL'),check:null},
    {table:'reward_plan_year',name:'reward_plan_year_insert',cmd:'INSERT',role:'public',using:null,check:manage('NULL')+' AND created_by=app.current_user_id()'},
    {table:'reward_plan_year_company',name:'reward_plan_year_company_read',cmd:'SELECT',role:'public',using:view('company_id'),check:null},
