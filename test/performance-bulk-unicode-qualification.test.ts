@@ -10,6 +10,7 @@ import {afterAll,beforeAll,expect,it,vi,type TestContext} from 'vitest';
 import * as database from '../db/client';
 import type {SessionContext,Tx} from '../db/client';
 import * as choice from '../core/employee-choice';
+import {AiGatewayError} from '../lib/ai/types';
 import {bulkEmployeePicker} from '../core/bulk-employee-picker';
 import {listCompanies,listEmployeesTx} from '../core/read';
 import {assertAiPresentationPrincipalTx} from '../core/ai-principal';
@@ -22,7 +23,7 @@ beforeAll(migrateTestDb);afterAll(closeAll);
 const dialect=new PgDialect(),digest=(text:string)=>createHash('sha256').update(text).digest('hex');
 type Row={id:string;n:number;name:string;employeeCode:string;companyId:string};
 type State={pid:number;role:string;bypass:boolean;ro:string;isolation:string;jit:string;access:string|null;workMem:string;version:string};
-type Event={sqlHash:string;kind:string;rows:number;ms:number;bytes?:number;keys?:string[]};
+type Event={sqlHash:string;kind:string;rows:number;ms:number;bytes?:number;keys?:string[];principalAllowed?:boolean};
 type Plan={kind:string;sqlHash:string;parameterCount:number;raw:unknown;rootRows:number;tempWritten:number};
 type Observation={label:string;trace:boolean;events:Event[];planInputs:{kind:string;query:SQL}[];plans:Plan[];bodyMs?:number;wallMs?:number;state?:State;error?:string};
 const report:Record<string,unknown>={kind:'BULK_UNICODE_NATIVE_COST_QUALIFICATION',releaseAuthorized:false,installationAcceptance:false,
@@ -52,12 +53,12 @@ async function fixture(count:number,progress:Record<string,unknown>){
    select ${b.tenantId}::uuid,(${employmentPrefix}||lpad(n::text,12,'0'))::uuid,(${companyJson}::jsonb->>((n-1)%70))::uuid,
     (${departmentJson}::jsonb->>((n-1)%70))::uuid,'full_time','2020-01-01'::date from generate_series(${start}::int,${end}::int)n`;
  });progress.committed=end;save();}
- async function scoped(companyId:string){const personId=(await owner.db.insert(schema.person).values({tenantId:b.tenantId,fullName:'Fictional Unicode operator '+randomUUID()}).returning({id:schema.person.id}))[0].id;
+ async function scoped(companyId:string){const personId=(await owner.db.insert(schema.person).values({tenantId:b.tenantId,fullName:'Fictional Unicode operator '+randomUUID(),primaryEmail:randomUUID()+'@unicode-fixture.invalid'}).returning({id:schema.person.id}))[0].id;
   const userId=await createAppUser(b.tenantId,personId,'hr_admin');await owner.db.update(schema.roleAssignment).set({companyId}).where(eq(schema.roleAssignment.appUserId,userId));
   return {...ctx,userId,personId,roles:['hr_admin'],grants:[{role:'hr_admin',companyId}]} satisfies SessionContext;
  }
  const single=await scoped(companies[0]),emptyCtx=await scoped(empty),revoked=await scoped(companies[0]);
- const foreignPerson=(await owner.db.insert(schema.person).values({tenantId:foreign.tenantId,fullName:'Fictional foreign 人員'}).returning({id:schema.person.id}))[0].id;
+ const foreignPerson=(await owner.db.insert(schema.person).values({tenantId:foreign.tenantId,fullName:'Fictional foreign 人員',primaryEmail:randomUUID()+'@unicode-fixture.invalid'}).returning({id:schema.person.id}))[0].id;
  const foreignId=(await owner.db.insert(schema.employment).values({tenantId:foreign.tenantId,personId:foreignPerson,companyId:foreign.companyId,hiredOn:'2020-01-01'}).returning({id:schema.employment.id}))[0].id;
  for(const table of ['person','employment','assignment','company','department','app_user','role_assignment'])await owner.client.unsafe('analyze '+table);
  const [totals]=await owner.client`select (select count(*)::int from employment where tenant_id=${b.tenantId}::uuid) employments,(select count(*)::int from assignment where tenant_id=${b.tenantId}::uuid) assignments`;
@@ -75,14 +76,15 @@ async function legacy(ctx:SessionContext,signal:AbortSignal){return database.wit
  return listEmployeesTx(tx,companies.map(row=>row.id));
 },{readOnlySnapshot:true,readSignal:signal});}
 
-for(const count of [1000,10000,50000])it('qualifies exact native Unicode work at '+count+' employments across70 companies',async(context:TestContext)=>{
+for(const count of [1000,10000,50000])it('qualifies exact native Unicode work at '+count+' employments across70 companies',(context:TestContext)=>{
+ const pending=(async()=>{
  const phase:Record<string,unknown>={count,stage:'fixture',developmentOnly:true,observations:[],cases:[]};(report.phases as unknown[]).push(phase);save();
  const f=await fixture(count,phase);phase.stage='native-calls';save();
  let active:Observation|undefined;
  const actual=database.withTenant,actualMatch=choice.exactEmployeeChoiceMatches;
  const observations=phase.observations as Observation[],cases=phase.cases as Record<string,unknown>[];
  const matchSpy=vi.spyOn(choice,'exactEmployeeChoiceMatches').mockImplementation((tx,query,...args)=>{
-  if(active?.trace)active.planInputs.push({kind:'cursor-population',query});return actualMatch(tx,query,...args);
+  return actualMatch(tx,query,...args);
  });
  const tenantSpy=vi.spyOn(database,'withTenant').mockImplementation(<T>(who:SessionContext,read:(tx:Tx)=>Promise<T>,options?:Parameters<typeof database.withTenant>[2])=>{
   const observation=active;if(!observation)return actual(who,read,options);
@@ -91,9 +93,13 @@ for(const count of [1000,10000,50000])it('qualifies exact native Unicode work at
     const compiled=dialect.sqlToQuery(query),started=performance.now();const value=await run();
     const kind=/^fetch /i.test(compiled.sql.trim())?'fetch':/^declare /i.test(compiled.sql.trim())?'declare':/^close /i.test(compiled.sql.trim())?'close':'statement';
     const event:Event={sqlHash:digest(JSON.stringify(compiled)),kind,rows:Array.isArray(value)?value.length:0,ms:performance.now()-started};
-    if(kind==='fetch'&&Array.isArray(value)){event.bytes=Buffer.byteLength(JSON.stringify(value));event.keys=value.length?Object.keys(value[0]).sort():[];}
+    event.keys=Array.isArray(value)&&value.length?Object.keys(value[0]).sort():[];
+    if(Array.isArray(value)&&value.length===1&&typeof value[0]?.allowed==='boolean')event.principalAllowed=value[0].allowed;
+    if(kind==='fetch'&&Array.isArray(value))event.bytes=Buffer.byteLength(JSON.stringify(value));
     observation.events.push(event);
-    if(/^select /i.test(compiled.sql.trim()))observation.planInputs.push({kind:'native-select',query});return value;
+    if(kind==='declare')observation.planInputs.push({kind:'cursor-population',query});
+    else if(/^select /i.test(compiled.sql.trim()))observation.planInputs.push({kind:event.keys?.includes('email')&&event.keys.includes('employmentId')?'legacy-full-projection':'native-select',query});
+    return value;
    };
    const wrap=(builder:object):object=>new Proxy(builder,{get(target,key){
     const value=Reflect.get(target,key);
@@ -128,7 +134,7 @@ for(const count of [1000,10000,50000])it('qualifies exact native Unicode work at
  });
  async function observe<T>(label:string,trace:boolean,run:()=>Promise<T>){
   const observation:Observation={label,trace,events:[],planInputs:[],plans:[]};observations.push(observation);active=observation;save();
-  const started=performance.now();try{return {value:await run(),observation};}finally{observation.wallMs=performance.now()-started;active=undefined;save();}
+  const started=performance.now();try{return {value:await run(),observation};}finally{observation.wallMs=performance.now()-started;observation.planInputs=[];active=undefined;save();}
  }
  try{
   for(const [scope,ctx,visible]of [['group',f.ctx,f.records],['company',f.single,f.records.filter(row=>row.companyId===f.companies[0])]] as const){
@@ -138,6 +144,12 @@ for(const count of [1000,10000,50000])it('qualifies exact native Unicode work at
     {key:'missing',query:'不存在',offset:0,expected:[] as Row[]},{key:'final-sigma',query:'ος',offset:0,expected:visible.filter(row=>row.n%4===0||row.n%4===1)},
     {key:'complete-all',query:'人員',offset:0,all:true,expected:visible}];
    let reference:Awaited<ReturnType<typeof legacy>>|undefined;
+   if(count===1000){
+    const legacyWork=await observe(scope+':legacy-trace',true,()=>legacy(ctx,context.signal));
+    expect(legacyWork.value.map(row=>row.employmentId)).toEqual(visible.map(row=>row.id));
+    expect(legacyWork.observation.state!.pid).toBe(trace.observation.state!.pid);
+    const legacyPlan=legacyWork.observation.plans.find(plan=>plan.kind==='legacy-full-projection');expect(legacyPlan).toBeDefined();expect(legacyPlan!.rootRows).toBe(visible.length);
+   }
    for(const test of queries){const samples:Observation[]=[];
     const work=test.key==='dense-first'?trace:await observe(scope+':'+test.key+':trace',true,()=>bulkEmployeePicker(ctx,{query:test.query,offset:test.offset,all:'all'in test?test.all:undefined},context.signal));
     expect(work.value.total).toBe(test.expected.length);
@@ -161,7 +173,7 @@ for(const count of [1000,10000,50000])it('qualifies exact native Unicode work at
     const assessment='all'in test?{qualified:false,gaps:['explicit-complete-ID-output-is-not-an-ordinary-page-claim']}:
      assessUnicodeCost({visible:visible.length,returned:Math.min(25,Math.max(0,test.expected.length-test.offset)),identityFetched:fetched,sqlPaged:false,exact:true,
       nativeRole:state.role,bypassRls:state.bypass,readOnly:state.ro,isolation:state.isolation,jit:state.jit,exclusive:state.access==='X',planRows:population!.rootRows,
-      tempWrittenBlocks:population!.tempWritten,bodyMaxMs:bodyMax,bodyBudgetMs:budget});
+      tempWrittenBlocks:work.observation.plans.reduce((n,plan)=>n+plan.tempWritten,0),bodyMaxMs:bodyMax,bodyBudgetMs:budget});
     cases.push({scope,key:test.key,query:test.query,total:test.expected.length,offset:test.offset,sampleLabels:samples.map(s=>s.label),bodyMaxMs:bodyMax,bodyBudgetMs:budget,
      visibleIdentities:fetched,serializedIdentityBytes:fetches.reduce((n,event)=>n+(event.bytes??0),0),fetchCalls:fetches.length,actualPlanHash:population!.sqlHash,assessment});save();
    }
@@ -173,10 +185,14 @@ for(const count of [1000,10000,50000])it('qualifies exact native Unicode work at
   const denied={...f.ctx,roles:['employee'],grants:[{role:'employee',companyId:null}]};
   const rejected=await observe('forbidden',true,async()=>{await expect(bulkEmployeePicker(denied,{query:'人員',offset:0},context.signal)).rejects.toBeInstanceOf(choice.EmployeeChoiceAccessError);return null;});expect(rejected.observation.state).toBeUndefined();expect(rejected.observation.events).toEqual([]);
   await owner.db.update(schema.roleAssignment).set({role:'employee'}).where(eq(schema.roleAssignment.appUserId,f.revoked.userId!));
-  const revoked=await observe('revoked-principal',true,async()=>{await expect(bulkEmployeePicker(f.revoked,{query:'人員',offset:0},context.signal)).rejects.toThrow();return null;});
+  const revoked=await observe('revoked-principal',true,async()=>{await expect(bulkEmployeePicker(f.revoked,{query:'人員',offset:0},context.signal)).rejects.toBeInstanceOf(AiGatewayError);return null;});
+  expect(revoked.observation.events.some(event=>event.principalAllowed===false)).toBe(true);
   expect(revoked.observation.events.filter(event=>event.kind==='fetch')).toEqual([]);
   phase.stage='complete';phase.semanticEquivalence=true;phase.ordinarySearchQualified=false;save();
  }finally{tenantSpy.mockRestore();matchSpy.mockRestore();active=undefined;save();}
+ })();
+ context.onTestFinished(async()=>{await pending.catch(()=>{});});
+ return pending;
  // Native full-call/EXPLAIN work at50k can exceed15s;300s gives the existing50k
  // employee-choice suite's measured300s headroom without changing database timeouts.
 },300000);

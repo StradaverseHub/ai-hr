@@ -12,7 +12,7 @@ The ordinary Leave/Notice bulk reader's non-ASCII path preserves exact ECMAScrip
 
 - Three retained fixture sizes:1,000,10,000,50,000 employments/assignments across70 populated companies, plus an empty company and a separate foreign tenant. Names are all Unicode and contain independently predictable ordinal, Greek sigma, Turkish I and emoji cases. Retained ended employments remain present.
 - Group and company-scoped HR actors run dense first/deep pages, sparse/missing queries, contextual sigma and complete Select All. Empty, forbidden, revoked and foreign-tenant cases verify the native boundary.
-- Every observed call uses the real public reader and standard application pool/role, RR/READ ONLY and current native principal proof. Capture actual carrier/settings/backend IDs, row transfers, minimal columns, cursor fetches and raw EXPLAIN ANALYZE/BUFFERS/VERBOSE/SETTINGS for actual executed statements within their native snapshot. Trace and EXPLAIN passes are separate from timing samples.
+- Every observed call uses the real public reader and standard application pool/role, RR/READ ONLY and current native principal proof. Capture actual carrier/settings/backend IDs, row transfers, minimal columns, cursor fetches and raw EXPLAIN ANALYZE/BUFFERS/VERBOSE/SETTINGS for actual executed statements, including the original DECLARE cursor options within their native snapshot. Trace and EXPLAIN passes are separate from timing samples.
 - At the1,000 minimum fixture, alternate current calls with a matched-carrier legacy full projection using the published native transaction reader. Verify exact IDs/order and the actual same backend before comparing. This is controlled native read comparison, not a historical whole-browser or production latency claim.
 - Timing samples contain no byte/plan tracing before the body finishes; complete-call wall observations include a declared post-read carrier probe. Three repetitions retain maxima, not a fabricated P95 from a large population. No memory, admission, JIT or timeout policy is altered. Record standard runner resources and PostgreSQL settings.
 
@@ -23,3 +23,10 @@ Ordinary-search qualification requires exact counts/rows, native non-bypass auth
 Native regression cases execute without skips in ordinary gates. Timing observations do not create flaky pass thresholds; the assessor retains actual qualification failures even when correctness tests pass. Hosted reports are fictional-fixture development evidence, not signed release receipts. Whole compiler is required for the new tests; the successful prior production build remains applicable only while application/package bytes stay unchanged. Independent Spec and Standards reviews must distinguish measurement completeness from a green application-cost verdict.
 
 Measurements, plans and final qualification decision are pending. No observation is closed and no staging/combined-release authority is granted.
+
+
+## Observation-method review
+
+Initial preflight source captured a standalone SELECT plan for the cursor population. That surrogate is not accepted as cursor-plan qualification. The corrected observer captures/explains the actual DECLARE, adds a separate legacy full-projection plan pass, assesses temporary writes across all native statements, and requires a successful native principal proof returning false for the revocation witness. Infrastructure errors cannot satisfy that refusal check. Outstanding work is awaited on case completion/abort before any next fixture reset.
+
+The method follows [PostgreSQL16 EXPLAIN](https://www.postgresql.org/docs/16/sql-explain.html) and the [PostgreSQL cursor EXPLAIN implementation](https://doxygen.postgresql.org/explain_8c_source.html): DECLARE is explainable with its cursor planning options, and the analyze form executes its query without creating a cursor. Profiling remains a separate pass, with no planner-setting override or latency subtraction.
