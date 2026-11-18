@@ -6728,6 +6728,20 @@
       "when": 1794998006690,
       "tag": "6690_payroll_history_item_maintenance",
       "breakpoints": true
+    },
+    {
+      "idx": 10098,
+      "version": "7",
+      "when": 1794998006698,
+      "tag": "6698_payroll_history_maintenance_read",
+      "breakpoints": true
+    },
+    {
+      "idx": 10099,
+      "version": "7",
+      "when": 1794998006699,
+      "tag": "6699_payroll_history_maintenance_subjects",
+      "breakpoints": true
     }
   ]
 }
