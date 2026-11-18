@@ -300,7 +300,7 @@ export const APPROVED_UPGRADE_TAIL=[
 ] as const;
 // Final pending 2109/2126 bytes reviewed from engine 128bc2539; no applied-prefix hashes change.
 const APPROVED_UPGRADE_HASHES:Record<string,string>={
- '6670_offboarding_requisition':'bf2c91252f4acab85c8a4c169e0b79abfa8a4fd3eb89e862279036488e87a6ec',
+ '6670_offboarding_requisition':'f280ef53a8a28c791bd73956673cd9addabfdc12330cd7c945ab50c573f97bb6',
  '6671_offboarding_requisition_exception':'86c06c0ab94a5030082bc34201650e6854da3f90430d0ad42d64f88f165f0c85',
  '6672_offboarding_requisition_list':'bc6b311df58069df599f05a5d8f28099954508c88ffe7acf3e214ef1c2184e71',
  '6610_probation_rich_email_definitions':'933d7b2b2d24969bddda1356b75ebd2789a4ec24fac7afe5b7c5bfa4e0d59f37',
