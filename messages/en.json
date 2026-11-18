@@ -36639,6 +36639,9 @@
       "legacyMapping": "This saved version retains its earlier scope: Business group means parent company; Business unit means Personnel Business Unit. Its stored identities are preserved."
     },
     "letters": {
+      "editContent": "Edit wording and fields",
+      "wordingBlock": "Wording block {id}",
+      "saveContent": "Save document changes",
       "prepareHelp": "Preview the current authorized Personnel details and reviewed template. Preparation freezes a new letter revision for the assigned signers.",
       "noTemplate": "No published letter is available for this outcome. Ask a named probation preparer to complete and publish the reviewed template.",
       "template": "Published letter template",
@@ -40973,6 +40976,14 @@
       "sample": "Fictional sample case — preview only."
     },
     "routing": {
+      "documentHelp": "Choose who reviews, approves, signs or acknowledges this document. Equal order numbers act together; required steps control progression. Reviewers edit before the first signature. Sending back clears the current signatures and returns the document to its owner.",
+        "documentEmpty": "No routing set. The existing HR and employee signing settings apply.",
+        "documentHint": {
+          "review": "Can edit the document before its first signature.",
+          "approve": "Records an approval without a signature.",
+          "sign": "Signs the document; cannot edit signed text.",
+          "acknowledge": "Acknowledges the document with a signature."
+        },
       "title": "Signing and review routing",
       "help": "Who reviews, approves and signs this letter, and in what order. Steps with the same order number happen at the same time, and the letter moves on when all of them are done. Who each step resolves to comes from Assignment groups and Routing rules. A Review step can edit the letter until the first signature; after that the text is locked. Anyone can send the letter back with a comment: every signature is cleared and it returns to the step that owns the document (or the People Business Partner if none is ticked).",
       "empty": "No signing routing set. This letter uses the signing route below, as today.",

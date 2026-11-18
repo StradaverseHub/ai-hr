@@ -1,5 +1,6 @@
 import {describe,expect,it} from 'vitest';
 import {resolveNativeDocumentRouting} from '../lib/document-signing-native-routing';
+import {documentRoutingSchema,nativeDocumentRoutingSchema} from '../lib/document-signing-routing-schema';
 import type {Routing} from '../lib/onboarding-model';
 const facts={businessGroup:'BU',company:'CO',department:'DP',title:'POS',grade:'JG17',employmentType:'full_time',joinDate:'2026-01-01',confirmationDate:'2026-07-01'};
 const groups=[{id:'broad',name:'Broad',members:['one'],limit:0},{id:'specific',name:'Specific',members:['two'],limit:0},{id:'default',name:'Default',members:['three'],limit:0}];
@@ -16,3 +17,5 @@ describe('native document signing routing',()=>{
   expect(resolveNativeDocumentRouting({...routing,rows:[]},facts,groups,()=>true).reason).toContain('No row');
  });
 });
+
+it('keeps Shared UUID identities strict and supports retained native string routing IDs explicitly',()=>{const value=[{id:'step',order:1,action:'sign',owner:false,who:{kind:'routing',routingId:'retained-native-id'}}];expect(documentRoutingSchema.safeParse(value).success).toBe(false);expect(nativeDocumentRoutingSchema.safeParse(value).success).toBe(true);});
