@@ -115,7 +115,7 @@ async function compile() {
   binding(); assert(!existsSync(out)); mkdirSync(out, { mode: 0o700 });
   const started = Date.now(), report = { kind: 'NEXT_COMPLETE_SEMANTIC_DIAGNOSTIC', releaseEligible: false, source: SOURCE, controller: env.AIHR_DIAG_CONTROLLER_SHA, run: env.GITHUB_RUN_ID, attempt: env.GITHUB_RUN_ATTEMPT, stages: [], semanticCheckSucceeded: false, exitCode: 1 };
   let active = null, timer, monitor, cleanup = Promise.resolve(), refusal = null;
-  const owned = new Map();
+  const owned = new Map(), compilerRows = new Map();
   const driverIdentity = {role:'compile-driver',cleanupGroup:false,pid:process.pid,...proc(process.pid),source:SOURCE,controller:report.controller,run:report.run,attempt:report.attempt};
   put(join(out,'compile-driver-identity.json'),driverIdentity);
   function registerShims() {
@@ -126,7 +126,17 @@ async function compile() {
       const helper = owned.get(id.driverPid);
       assert(helper?.role === 'helper' && id.driverStarttime === helper.starttime && id.parentPid === helper.pid);
       assert(id.pgid === id.pid && Number.isInteger(id.pid) && id.pid > 1);
-      if (live && live.starttime === id.starttime && live.pgid === id.pid) owned.set(id.pid, { ...id });
+      if(live)assert(live.starttime===id.starttime&&live.pgid===id.pid,'Registered shim PID reused');
+      owned.set(id.pid, { ...id });
+      const compilerPath=join(out,`shim-${stage}-compiler-identity.json`);
+      if(existsSync(compilerPath)) {
+        const child=small(compilerPath),registered=owned.get(child.shimPid);
+        assert(child.source===SOURCE&&child.controller===report.controller&&String(child.run)===report.run&&String(child.attempt)===report.attempt);
+        assert(child.role===`compiler-${stage}`&&child.shimPid===id.pid&&child.shimStarttime===id.starttime&&child.pgid===id.pgid&&child.parentPid===id.pid);
+        assert(registered?.starttime===child.shimStarttime&&Number.isInteger(child.pid)&&child.pid>1);
+        const childLive=proc(child.pid);if(childLive)assert(childLive.starttime===child.starttime&&childLive.pgid===child.pgid);
+        compilerRows.set(child.pid,child);
+      }
     }
   }
   async function stop(reason) {
@@ -168,7 +178,7 @@ async function compile() {
     assert(process.versions.node === '20.20.2' && require('next/package.json').version === '16.4.1' && require('typescript/package.json').version === '5.9.3');
     report.runtime = { node: process.versions.node, next: require('next/package.json').version, typescript: require('typescript/package.json').version, platform: process.platform, arch: process.arch };
     report.inputs = {}; for (const [p, expected] of Object.entries(inputPins)) { const actual = await digest(join(source, p)); assert(actual === expected, `Input pin mismatch: ${p}`); report.inputs[p] = actual; }
-    for (const p of ['package.json', 'next-env.d.ts', '.github/ci/build-heap.mjs']) report.inputs[p] = await digest(join(source, p));
+    for (const p of ['package.json', '.github/ci/build-heap.mjs']) report.inputs[p] = await digest(join(source, p));
     report.helpers = {}; for (const [p, expected] of Object.entries(helperPins)) { const actual = await digest(require.resolve(p)); assert(actual === expected, `Installed helper mismatch: ${p}`); report.helpers[p] = actual; }
     for (const p of ['next/dist/bin/next', 'next/dist/cli/next-typegen.js', 'typescript/lib/typescript.js']) report.helpers[p] = await digest(require.resolve(p));
     report.controllerFiles = {}; for (const p of git(controller, 'diff', '--name-only', SOURCE, report.controller).split('\n')) report.controllerFiles[p] = await digest(join(controller, p));
@@ -180,8 +190,9 @@ async function compile() {
         registerShims(); const all = files(out), sizes = all.map(p => lstatSync(p).size), diskNow = statfsSync(out);
         if (sizes.some(n => n >= FILE_CAP) || sizes.reduce((a, b) => a + b, 0) >= TOTAL_CAP) void stop('artifact_cap');
         if (diskNow.bavail * diskNow.bsize < 1024 ** 3) void stop('disk_exhaustion_guard');
-        const rows = [...owned.keys(), ...(active ? [active.pid] : [])].map(pid => {
-          try { return { pid, status: readFileSync(`/proc/${pid}/status`, 'utf8').split('\n').filter(line => /^(Name|VmRSS|VmHWM|VmSwap|PPid):/.test(line)) }; } catch { return { pid, exited: true }; }
+        const rows = [driverIdentity,...owned.values(),...compilerRows.values()].map(identity => {
+          const {pid,role,starttime,pgid}=identity;
+          try { const live=proc(pid);if(live?.starttime!==starttime||live.pgid!==pgid)return{pid,role,starttime,pgid,exited:true};return { pid,role,starttime,pgid,status: readFileSync(`/proc/${pid}/status`, 'utf8').split('\n').filter(line => /^(Name|VmRSS|VmHWM|VmSwap|PPid):/.test(line)) }; } catch { return { pid,role,starttime,pgid,exited: true }; }
         });
         writeFileSync(join(out, 'resource-telemetry.jsonl'), JSON.stringify({ elapsedMs: Date.now() - started, processes: rows, meminfo: readFileSync('/proc/meminfo', 'utf8').split('\n').filter(line => /^(MemAvailable|SwapTotal|SwapFree):/.test(line)) }) + '\n', { flag: 'a' });
       } catch (error) { report.monitorError = String(error); void stop('monitor_integrity_failure'); }
@@ -192,7 +203,7 @@ async function compile() {
     report.generated = []; for (const p of files(generated)) { const name = relative(generated, p); report.generated.push({ path: name, bytes: lstatSync(p).size, sha256: await digest(p) }); const target = join(out, 'generated-types', name); mkdirSync(dirname(target), { recursive: true, mode: 0o700 }); copyFileSync(p, target); }
     assert(report.generated.length > 0); report.nextEnv = await digest(join(source, 'next-env.d.ts')); copyFileSync(join(source, 'next-env.d.ts'), join(out, 'next-env.d.ts'));
     // Short-lived configuration-only process exits before the one semantic helper.
-    const capture = `const assert=require('node:assert/strict'),fs=require('node:fs'),path=require('node:path');const {createRequire}=require('node:module');const r=createRequire(${JSON.stringify(join(source,'package.json'))});const source=${JSON.stringify(source)},out=${JSON.stringify(out)};const put=(name,value)=>fs.writeFileSync(path.join(out,name),JSON.stringify(value,null,2)+'\\n',{flag:'wx',mode:384});(async()=>{const raw=r('next/dist/server/config');const config=await(raw.default??raw)(r('next/dist/shared/lib/constants').PHASE_PRODUCTION_BUILD,source);assert(config.typescript.tsconfigPath==='tsconfig.build.json'&&config.typescript.ignoreBuildErrors===false&&config.experimental.useTypeScriptCli===true&&config.distDir==='.next');put('production-config-selection.json',{tsconfigPath:config.typescript.tsconfigPath,ignoreBuildErrors:config.typescript.ignoreBuildErrors,useTypeScriptCli:config.experimental.useTypeScriptCli,distDir:config.distDir});const ts=r('typescript'),host={...ts.sys,onUnRecoverableConfigFileDiagnostic:()=>{throw Error('Config parse failed')}};const parsed=ts.getParsedCommandLineOfConfigFile(path.join(source,'tsconfig.build.json'),{},host);assert(parsed&&!parsed.errors.length&&parsed.options.strict&&parsed.options.noEmit&&!parsed.options.noCheck);const{configFile,configFilePath,...options}=parsed.options;put('original-effective-options.json',options);put('original-effective-roots.json',parsed.fileNames.map(p=>path.relative(source,p)));put('ambient-types.json',{effectiveTypeRoots:ts.getEffectiveTypeRoots(parsed.options,host),automaticTypeDirectiveNames:ts.getAutomaticTypeDirectiveNames(parsed.options,host).sort()});})().catch(e=>{console.error(e);process.exitCode=1});`;
+    const capture = `const assert=require('node:assert/strict'),fs=require('node:fs'),path=require('node:path');const {createRequire}=require('node:module');const r=createRequire(${JSON.stringify(join(source,'package.json'))});const source=${JSON.stringify(source)},out=${JSON.stringify(out)};const put=(name,value)=>fs.writeFileSync(path.join(out,name),JSON.stringify(value,null,2),{flag:'wx',mode:384});(async()=>{const raw=r('next/dist/server/config');const config=await(raw.default??raw)(r('next/dist/shared/lib/constants').PHASE_PRODUCTION_BUILD,source);assert(config.typescript.tsconfigPath==='tsconfig.build.json'&&config.typescript.ignoreBuildErrors===false&&config.experimental.useTypeScriptCli===true&&config.distDir==='.next');put('production-config-selection.json',{tsconfigPath:config.typescript.tsconfigPath,ignoreBuildErrors:config.typescript.ignoreBuildErrors,useTypeScriptCli:config.experimental.useTypeScriptCli,distDir:config.distDir});const ts=r('typescript'),host={...ts.sys,onUnRecoverableConfigFileDiagnostic:()=>{throw Error('Config parse failed')}};const parsed=ts.getParsedCommandLineOfConfigFile(path.join(source,'tsconfig.build.json'),{},host);assert(parsed&&!parsed.errors.length&&parsed.options.strict&&parsed.options.noEmit&&!parsed.options.noCheck);const{configFile,configFilePath,...options}=parsed.options;put('original-effective-options.json',options);put('original-effective-roots.json',parsed.fileNames.map(p=>path.relative(source,p)));put('ambient-types.json',{effectiveTypeRoots:ts.getEffectiveTypeRoots(parsed.options,host),automaticTypeDirectiveNames:ts.getAutomaticTypeDirectiveNames(parsed.options,host).sort()});})().catch(e=>{console.error(e);process.exitCode=1});`;
     await run('capture-original-configuration',['-e',capture],'configuration');
     assert(!existsSync(join(source, '.next/cache/.tsbuildinfo')));
     const invocation = { baseDir: source, tsConfigPath: join(source, 'tsconfig.build.json'), cacheDir: join(source, '.next/cache'), tscPath: join(controller, '.github/ci/diagnostics/next-complete-semantic-shim.cjs') };
@@ -224,11 +235,16 @@ async function summarize() {
   const summary = { kind: 'COMPLETE_TRACE_SUMMARY_NOT_RELEASE', releaseEligible: false, source: SOURCE, controller: env.AIHR_DIAG_CONTROLLER_SHA, integrity: false, limits: { chunkBytes: CHUNK, recordBytes: RECORD_CAP, cataloguePasses: 3, frontier: FRONTIER_CAP, depth: 4, groupKeys: KEY_CAP }, overflow: [], limitations: ['Types are compiler-created identities, not heap dominators or retained bytes.', 'Nested event durations overlap; totals are not exclusive CPU or GC allocation measurements.', 'Instrumented 12GiB diagnostic cannot establish 8GiB production readiness.'] };
   const overflow = name => { if (!summary.overflow.includes(name)) summary.overflow.push(name); };
   const top = (rows, row, key = 'durationMicroseconds') => { rows.push(row); rows.sort((a, b) => b[key] - a[key]); if (rows.length > 100) rows.pop(); };
-  const grouped = (map, key) => { if (typeof key !== 'string' || key.length > 1024) { overflow('group_key_length'); return; } if (map.has(key)) map.set(key, map.get(key) + 1); else if (map.size < KEY_CAP) map.set(key, 1); else overflow('group_keys'); };
+  let groupKeyBytes=0,groupKeyCount=0;
+  summary.limits.groupKeyEstimatedBytes=32*1024**2;
+  const grouped = (map, key) => { if (typeof key !== 'string' || key.length > 1024) { overflow('group_key_length'); return; } if (map.has(key)) map.set(key, map.get(key) + 1); else if (groupKeyCount < KEY_CAP&&groupKeyBytes+key.length*2+64<=32*1024**2) {map.set(key, 1);groupKeyBytes+=key.length*2+64;groupKeyCount++;} else overflow('group_keys'); };
   try {
+    const compilePath = join(out, 'compile-report.json'); summary.compile = existsSync(compilePath) ? small(compilePath) : { semanticCheckSucceeded: false, error: 'compile report absent; abrupt termination possible' };
+    summary.independentCleanup=small(join(out,'independent-cleanup.json'));
+    assert(summary.independentCleanup.source===SOURCE&&summary.independentCleanup.controller===env.AIHR_DIAG_CONTROLLER_SHA&&String(summary.independentCleanup.run)===env.GITHUB_RUN_ID&&String(summary.independentCleanup.attempt)===env.GITHUB_RUN_ATTEMPT&&summary.independentCleanup.ok===true,'Independent cleanup missing/refused/binding mismatch');
     const controlsDir = join(out, 'synthetic-parser-controls'); mkdirSync(controlsDir, { mode: 0o700 });
     const cases = [
-      { name: 'split-escapes-unicode', text: '[{"name":"α😀\\\"\\\\{[}"},{"name":"ok"}]', count: 2, complete: true },
+      { name: 'split-escapes-unicode', text: JSON.stringify([{name:'α😀"\\{[}'},{name:'ok'}]), count: 2, complete: true },
       { name: 'empty', text: ' [ ] \n', count: 0, complete: true },
       { name: 'partial-tail', text: '[{"name":"ok"},{"name":', count: 1, complete: false },
       { name: 'malformed-middle', text: '[{"name":"ok"},{bad},{"name":"untrusted"}]', count: 1, complete: false },
@@ -236,6 +252,9 @@ async function summarize() {
     ];
     summary.parserControls = [];
     for (const row of cases) { const p = join(controlsDir, row.name + '.json'); put(p, row.text); const values = []; const result = await parseArray(p, value => values.push(value), { chunkSize: 1, deadline }); assert(result.count === row.count && result.complete === row.complete); if (row.name === 'split-escapes-unicode') assert(values[0].name === 'α😀"\\{[}'); summary.parserControls.push({ name: row.name, ...result }); }
+    const invalidPath=join(controlsDir,'invalid-utf8.json'),invalidBytes=Buffer.concat([Buffer.from('[{"name":"'),Buffer.from([0xf0,0x28,0x8c,0x28]),Buffer.from('"}]')]);
+    writeFileSync(invalidPath,invalidBytes,{flag:'wx',mode:0o600});await assert.rejects(()=>parseArray(invalidPath,()=>{}, {chunkSize:1,deadline}),TypeError);
+    assert(readFileSync(invalidPath).equals(invalidBytes));summary.parserControls.push({name:'invalid-utf8',rejected:true,originalBytesPreserved:true,sha256:await digest(invalidPath)});
     const require = createRequire(join(controller, 'package.json'));
     const { validateOriginalArgs } = require('./.github/ci/diagnostics/next-complete-semantic-shim.cjs');
     const project = join(source, 'tsconfig.build.json');
@@ -244,7 +263,12 @@ async function summarize() {
     assert(validateOriginalArgs(show, { source, out }).mode === 'showConfig'); assert(validateOriginalArgs(semantic, { source, out }).mode === 'semantic');
     for (const args of [[...show, '--noCheck'], [...semantic, '--noCheck'], [...semantic, '--generateTrace', '/tmp/other'], semantic.slice(0, -2), semantic.map(v => v === project ? '/tmp/other.json' : v), [...semantic, '--pretty', 'true'], [...semantic, '--noEmit']]) assert.throws(() => validateOriginalArgs(args, { source, out }));
     summary.argumentControls = 'passed_pure_validation_no_compiler';
-    const compilePath = join(out, 'compile-report.json'); summary.compile = existsSync(compilePath) ? small(compilePath) : { semanticCheckSucceeded: false, error: 'compile report absent; abrupt termination possible' };
+    summary.currentInputs={sourceSha:git(source,'rev-parse','HEAD'),trackedDiff:git(source,'diff','--name-only'),status:git(source,'status','--porcelain','--untracked-files=all'),inputHashes:{},generatedHashes:[],nextEnv:null};
+    for(const p of Object.keys(summary.compile.inputs??inputPins))summary.currentInputs.inputHashes[p]=await digest(join(source,p));
+    if(existsSync(join(source,'next-env.d.ts')))summary.currentInputs.nextEnv=await digest(join(source,'next-env.d.ts'));
+    for(const row of summary.compile.generated??[])summary.currentInputs.generatedHashes.push({path:row.path,sha256:existsSync(join(source,'.next/types',row.path))?await digest(join(source,'.next/types',row.path)):null});
+    summary.currentInputs.generatedPaths=existsSync(join(source,'.next/types'))?files(join(source,'.next/types')).map(p=>relative(join(source,'.next/types'),p)):[];
+    summary.currentInputs.unchanged=summary.currentInputs.sourceSha===SOURCE&&summary.currentInputs.trackedDiff===''&&summary.currentInputs.status===''&&summary.currentInputs.nextEnv===summary.compile.nextEnv&&Object.entries(summary.compile.inputs??{}).every(([p,expected])=>summary.currentInputs.inputHashes[p]===expected)&&(summary.compile.generated??[]).every((row,i)=>summary.currentInputs.generatedHashes[i].sha256===row.sha256)&&JSON.stringify(summary.currentInputs.generatedPaths)===JSON.stringify((summary.compile.generated??[]).map(row=>row.path));
     const time = join(realpathSync(env.RUNNER_TEMP), 'next-complete-semantic-profile-34fe-time.txt'); if (existsSync(time)) copyFileSync(time, join(out, 'external-time.txt'));
     const traceDir = join(out, 'trace');
     const tracePaths = existsSync(traceDir) ? files(traceDir).filter(p => /^trace(?:\.[0-9-]+)?\.json$/.test(p.split('/').at(-1))) : [];
@@ -280,9 +304,10 @@ async function summarize() {
     const needed = new Set(relations.flatMap(row => [row.sourceId, row.targetId]).filter(Number.isSafeInteger)), requested = new Map([...needed].map(id => [id, 0])), resolved = new Map();
     const symbols = new Map(), declarations = new Map(), targets = new Map();
     const referenceKeys = ['instantiatedType', 'typeArguments', 'aliasTypeArguments', 'unionTypes', 'intersectionTypes', 'conditionalCheckType', 'conditionalExtendsType', 'conditionalTrueType', 'conditionalFalseType', 'indexedAccessObjectType', 'indexedAccessIndexType', 'substitutionBaseType', 'substitutionConstraintType', 'keyofType', 'reverseMappedSourceType', 'reverseMappedMappedType', 'reverseMappedConstraintType'];
-    function references(type) { return referenceKeys.flatMap(key => Array.isArray(type[key]) ? type[key] : [type[key]]).filter(id => Number.isSafeInteger(id) && id > 0); }
+    function references(type) {const result=[];for(const key of referenceKeys)for(const id of Array.isArray(type[key])?type[key]:[type[key]])if(Number.isSafeInteger(id)&&id>0){if(result.length>=FRONTIER_CAP){overflow('record_reference_frontier');return result;}result.push(id);}return result;}
     let catalogue;
     for (let pass = 0; pass < 3; pass++) {
+      summary.cataloguePassesUsed=pass+1;
       const pending = new Map([...requested].filter(([id]) => !resolved.has(id))), discovered = new Map();
       const result = await parseArray(catalogPath, type => {
         assert(Number.isSafeInteger(type.id) && type.id > 0, 'Catalogue record lacks genuine positive type id');
@@ -291,6 +316,7 @@ async function summarize() {
         const depth = pending.get(type.id), refs = references(type);
         // Preserve only bounded selected records; never retain the entire catalogue.
         const display = typeof type.display === 'string' ? type.display : null;
+        if(display&&display.length>4096)overflow('selected_display');
         const selected={id:type.id,symbolName:type.symbolName,recursionId:type.recursionId,firstDeclaration:type.firstDeclaration,referenceLocation:type.referenceLocation,instantiatedType:type.instantiatedType,flags:type.flags,display:display?.slice(0,4096),displayTruncated:!!display&&display.length>4096};
         for(const key of referenceKeys) if(type[key]!==undefined) { if(Array.isArray(type[key])&&type[key].length>256) { selected[key]=type[key].slice(0,256);overflow('selected_type_links'); } else selected[key]=type[key]; }
         if(JSON.stringify(selected).length>16384) { overflow('selected_type_record'); resolved.set(type.id,{id:type.id,recordOmitted:true,reason:'selected_record_limit'}); } else resolved.set(type.id,selected);
@@ -307,8 +333,9 @@ async function summarize() {
     summary.requestedTypes = [...requested].map(([id, depth]) => ({ id, depth, record: resolved.get(id) ?? null }));
     summary.unresolvedTypeIds = [...requested.keys()].filter(id => !resolved.has(id));
     summary.unresolvedRelationTypeIds = [...needed].filter(id => !resolved.has(id));
+    summary.frontier={requested:requested.size,resolved:resolved.size,maxRequestedDepth:Math.max(0,...requested.values()),unresolvedIds:summary.unresolvedTypeIds,terminationReason:summary.unresolvedTypeIds.length?'bounded_passes_or_missing_id':'requested_frontier_resolved',optionalExpansionComplete:summary.unresolvedTypeIds.length===0};
     const ranking = map => [...map].map(([key, count]) => ({ key, count })).sort((a, b) => b.count - a.count).slice(0, 100);
-    summary.typeGroups = { symbols: ranking(symbols), declarationPaths: ranking(declarations), instantiatedTargetIds: ranking(targets), completeRankings: !summary.overflow.some(name=>name.startsWith('group_')) };
+    summary.typeGroups = { symbols: ranking(symbols), declarationPaths: ranking(declarations), instantiatedTargetIds: ranking(targets), completeRankings: catalogue.complete&&!summary.overflow.some(name=>name.startsWith('group_')) };
     const diagnostics = {};
     for (const name of ['shim-semantic.stdout.log', 'shim-semantic.stderr.log']) {
       const p = join(out, name); if (!existsSync(p)) continue;
@@ -322,9 +349,12 @@ async function summarize() {
     summary.rawManifest = []; let total = 0;
     for (const p of files(out)) { assert(Date.now() < deadline); const bytes = lstatSync(p).size; total += bytes; summary.rawManifest.push({ path: relative(out, p), bytes, sha256: await digest(p) }); if (bytes >= FILE_CAP) overflow('raw_file_cap'); }
     if (total >= TOTAL_CAP) overflow('aggregate_cap');
-    summary.integrity = summary.trace.complete && catalogue.complete && !summary.trace.fileCapReached && !catalogue.fileCapReached && badFrames === 0 && summary.fileFrames.open.length === 0 && summary.unresolvedTypeIds.length === 0 && summary.overflow.length === 0;
-    summary.success = summary.integrity && summary.compile.semanticCheckSucceeded === true && summary.compile.unchangedInputs === true && summary.compilerOutcome?.exitCode === 0 && summary.compilerOutcome?.signal === null;
+    summary.rawIntegrity=summary.trace.complete&&catalogue.complete&&!summary.trace.fileCapReached&&!catalogue.fileCapReached&&!summary.overflow.some(name=>['raw_file_cap','aggregate_cap'].includes(name));
+    summary.summaryComplete=summary.unresolvedTypeIds.length===0&&summary.overflow.length===0;
+    summary.integrity = summary.rawIntegrity && badFrames === 0 && summary.fileFrames.open.length === 0 && summary.unresolvedRelationTypeIds.length === 0&&!summary.overflow.some(name=>['file_frame_depth','thread_keys'].includes(name));
+    summary.success = summary.integrity && summary.compile.semanticCheckSucceeded === true && summary.compile.unchangedInputs === true && summary.currentInputs.unchanged && summary.compilerOutcome?.exitCode === 0 && summary.compilerOutcome?.signal === null;
   } catch (error) { summary.error = String(error); summary.success = false; }
+  const externalTime=join(realpathSync(env.RUNNER_TEMP),'next-complete-semantic-profile-34fe-time.txt');if(existsSync(externalTime)&&!existsSync(join(out,'external-time.txt')))copyFileSync(externalTime,join(out,'external-time.txt'));
   put(join(out, 'complete-summary.json'), summary);
   console.log(JSON.stringify({ source: SOURCE, success: summary.success === true, integrity: summary.integrity, error: summary.error, releaseEligible: false }));
   process.exitCode = summary.success ? 0 : 1;
