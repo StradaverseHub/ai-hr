@@ -13,7 +13,7 @@ $$;
 REVOKE ALL ON FUNCTION app.lifecycle_task_document(jsonb,text) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION app.lifecycle_task_document(jsonb,text) TO ai_hr_app;
 
-CREATE FUNCTION app.lifecycle_task_documents(p_companies uuid[],p_offset integer DEFAULT 0,p_limit integer DEFAULT 50) RETURNS jsonb
+CREATE FUNCTION app.lifecycle_task_documents(p_companies uuid[],p_offset integer DEFAULT 0,p_limit integer DEFAULT 50,p_case uuid DEFAULT NULL) RETURNS jsonb
 LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
 DECLARE result jsonb;
 BEGIN
@@ -26,12 +26,12 @@ BEGIN
   FROM public.lc_onboarding_case c LEFT JOIN public.lc_onboarding_private p ON p.case_id=c.id AND p.tenant_id=c.tenant_id
   JOIN public.employment e ON e.id=c.employment_id AND e.tenant_id=c.tenant_id AND e.company_id=c.company_id AND e.person_id::text=c.data->>'personId'
   JOIN principal u ON u.person_id=e.person_id
-  WHERE c.tenant_id=app.current_tenant_id() AND c.company_id=ANY(p_companies)
+  WHERE c.tenant_id=app.current_tenant_id() AND c.company_id=ANY(p_companies) AND (p_case IS NULL OR c.id=p_case)
    AND (NOT(coalesce(p.data,'{}'::jsonb) ? 'lifecycleV9') OR (p.data->'lifecycleV9Subject'->>'employmentId'=e.id::text AND p.data->'lifecycleV9Subject'->>'personId'=e.person_id::text))
   UNION ALL
   SELECT c.id,c.revision,c.number,c.module,c.data->>'state',c.data->'tasks',coalesce(c.data->>'checklistName','Offboarding checklist'),c.data->'documents',c.data->'runs',u.id
   FROM public.lc_v9_case c JOIN public.employment e ON e.id=c.employment_id AND e.tenant_id=c.tenant_id JOIN principal u ON u.person_id=e.person_id
-  WHERE c.tenant_id=app.current_tenant_id() AND c.company_id=ANY(p_companies)
+  WHERE c.tenant_id=app.current_tenant_id() AND c.company_id=ANY(p_companies) AND (p_case IS NULL OR c.id=p_case)
  ), entries AS MATERIALIZED (
   SELECT o.id,o.revision,o.number,o.module,t->>'id' AS task_id,t->>'name' AS task_name,t->>'status' AS task_status,t->>'dueOn' AS due_on,
    coalesce(t->>'documentAction','completed') AS action,o.checklist AS source_name,'checklist'::text AS source_kind,
@@ -56,10 +56,10 @@ BEGIN
  RETURN result;
 END;
 $$;
-REVOKE ALL ON FUNCTION app.lifecycle_task_documents(uuid[],integer,integer) FROM PUBLIC;
-GRANT EXECUTE ON FUNCTION app.lifecycle_task_documents(uuid[],integer,integer) TO ai_hr_app;
+REVOKE ALL ON FUNCTION app.lifecycle_task_documents(uuid[],integer,integer,uuid) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.lifecycle_task_documents(uuid[],integer,integer,uuid) TO ai_hr_app;
 
-CREATE FUNCTION app.lifecycle_open_own_document(p_case uuid,p_document text,p_revision integer) RETURNS integer
+CREATE FUNCTION app.lifecycle_open_own_document(p_case uuid,p_document text,p_revision integer) RETURNS jsonb
 LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
 DECLARE c public.lc_v9_case%ROWTYPE; n public.lc_onboarding_case%ROWTYPE; private_data jsonb; native boolean:=false;
  who uuid:=app.current_user_id(); actor_name text; doc jsonb; choice jsonb; next_docs jsonb; next_tasks jsonb; entry jsonb; changed boolean;
@@ -85,12 +85,12 @@ BEGIN
  choice:=app.lifecycle_task_document(c.data->'documents',doc->>'templateId');
  IF choice->>'state' IS DISTINCT FROM 'released' OR choice->>'documentId' IS DISTINCT FROM p_document THEN RAISE EXCEPTION 'Document not available'; END IF;
  -- Final documents are viewable, and repeated opens are no-ops even after another tab advanced revision.
- IF doc->>'status' NOT IN ('sent','opened') OR c.data->>'state'<>'submitted' THEN RETURN c.revision; END IF;
+ IF doc->>'status' NOT IN ('sent','opened') OR c.data->>'state'<>'submitted' THEN RETURN jsonb_build_object('revision',c.revision,'employmentId',c.employment_id,'changed',false); END IF;
  SELECT coalesce(jsonb_agg(CASE WHEN t->>'documentTemplate'=doc->>'templateId' AND t->>'status'='todo' AND
   (t->>'assignee'=who::text OR t->>'by' IN ('joiner','employee')) THEN t||jsonb_build_object('status','progress') ELSE t END ORDER BY ordinal),'[]'::jsonb)
  INTO next_tasks FROM jsonb_array_elements(coalesce(c.data->'tasks','[]'::jsonb)) WITH ORDINALITY a(t,ordinal);
  changed:=doc->>'status'='sent' OR next_tasks IS DISTINCT FROM c.data->'tasks';
- IF NOT changed THEN RETURN c.revision; END IF;
+ IF NOT changed THEN RETURN jsonb_build_object('revision',c.revision,'employmentId',c.employment_id,'changed',false); END IF;
  IF c.revision IS DISTINCT FROM p_revision THEN RAISE EXCEPTION 'This case changed. Refresh before opening.'; END IF;
  SELECT coalesce(p.full_name,'Employee') INTO actor_name FROM public.app_user u LEFT JOIN public.person p ON p.id=u.person_id AND p.tenant_id=u.tenant_id WHERE u.id=who AND u.tenant_id=c.tenant_id;
  SELECT jsonb_agg(CASE WHEN d->>'id'=p_document AND d->>'status'='sent' THEN d||jsonb_build_object('status','opened') ELSE d END ORDER BY ordinal)
@@ -105,7 +105,7 @@ BEGIN
   INSERT INTO public.lc_v9_case_revision(tenant_id,case_id,company_id,revision,data,actor_user_id) VALUES(c.tenant_id,c.id,c.company_id,c.revision,c.data,who);
   UPDATE public.lc_v9_case SET revision=c.revision+1,updated_at=now(),data=c.data||jsonb_build_object('revision',c.revision+1,'documents',next_docs,'tasks',next_tasks,'log',coalesce(c.data->'log','[]'::jsonb)||jsonb_build_array(entry)) WHERE id=c.id AND tenant_id=c.tenant_id;
  END IF;
- RETURN c.revision+1;
+ RETURN jsonb_build_object('revision',c.revision+1,'employmentId',c.employment_id,'changed',true);
 END;
 $$;
 REVOKE ALL ON FUNCTION app.lifecycle_open_own_document(uuid,text,integer) FROM PUBLIC;

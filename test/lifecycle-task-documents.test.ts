@@ -17,10 +17,10 @@ beforeEach(async()=>{
  other={...employee,userId:await createAppUser(b.tenantId,stranger.personId,'employee'),personId:stranger.personId};await v9Setup(admin);
 });
 afterAll(closeAll);
-async function prepared(release=true){
+async function prepared(release=true,action:'completed'|'signed'|'sent'='signed'){
  const config=(await v9Workspace(admin)).config!;
  config.templates.push({id:'document-task-form',name:'Saved acceptance',type:'Form',module:'off',rules:{},hrStep:'none',employeeAck:false,retired:false,versions:[{version:1,state:'published',at:'',by:'',blocks:[{id:'body',type:'text',text:'Saved form',section:''}],fields:[]}]});
- config.checklists=[...config.checklists.filter(c=>c.module==='onb'),{id:'doc-checklist',name:'Exit document checklist',module:'off',rules:{},tasks:[{id:'acceptance-task',name:'Accept saved form',by:'employee',group:null,mode:'manual',opens:null,due:0,required:true,documentTemplate:'document-task-form',documentAction:'signed'}]}];
+ config.checklists=[...config.checklists.filter(c=>c.module==='onb'),{id:'doc-checklist',name:'Exit document checklist',module:'off',rules:{},tasks:[{id:'acceptance-task',name:'Accept saved form',by:'employee',group:null,mode:'manual',opens:null,due:0,required:true,documentTemplate:'document-task-form',documentAction:action}]}];
  config.workflows=[{id:'release-document',name:'Release saved document',module:'off',status:'published',trigger:{event:'submitted',days:0,workdays:false,repeat:false,skipIf:''},conditions:[],steps:[{id:'doc',type:'doc',template:'document-task-form',release}],description:''}];
  await v9SaveConfig(admin,config.revision,config);
  const id=await v9CreateOffboarding(admin,{employmentId,type:'Resignation',noticeDate:'2026-10-01',lastDay:'2027-12-01'});await v9Command(admin,id,1,{type:'submit'});
@@ -36,6 +36,8 @@ it('opens the exact released instance, retains answers, progresses only unfinish
  expect(opened.documents).toHaveLength(1);expect(opened.documents[0]).toEqual({...before,status:'opened'});expect(opened.tasks[0].status).toBe('progress');
  await openOwnLifecycleDocument(employee,{caseId:c.id,documentId:doc.id,revision:c.revision});
  expect((await v9Workspace(admin)).cases.find(x=>x.id===c.id)!.revision).toBe(opened.revision);
+ const events=await owner.client`select actor_id,payload from domain_event where aggregate_id=${c.id}::uuid and event_type='lifecycle-v9.employeeDocumentOpened'`;
+ expect(events).toHaveLength(1);expect(events[0].actor_id).toBe(employee.userId);expect(events[0].payload.documentId).toBe(doc.id);
  await v9OwnDocument(employee,{caseId:c.id,documentId:doc.id,revision:opened.revision,values:{},signature:{method:'typed',value:'Document owner',consent:true}});
  const completed=(await v9Workspace(admin)).cases.find(x=>x.id===c.id)!;expect(completed.tasks[0].status).toBe('done');
  await openOwnLifecycleDocument(employee,{caseId:c.id,documentId:doc.id,revision:1});
@@ -47,6 +49,7 @@ it('shows an unreleased task without identity and refuses draft, stranger, compa
  expect((await lifecycleTaskDocuments(employee,{companyIds:[b.companyId]})).items[0]).toMatchObject({state:'unreleased',documentId:null});
  expect((await lifecycleTaskDocuments(employee,{companyIds:[]})).total).toBe(0);
  expect((await lifecycleTaskDocuments(other,{companyIds:[b.companyId]})).total).toBe(0);
+ expect((await lifecycleTaskDocuments(employee,{companyIds:[b.companyId],caseId:randomUUID()})).total).toBe(0);
  await expect(openOwnLifecycleDocument(employee,{caseId:c.id,documentId:doc.id,revision:c.revision})).rejects.toThrow();
  await expect(openOwnLifecycleDocument(other,{caseId:c.id,documentId:doc.id,revision:c.revision})).rejects.toThrow();
  const foreign=await seedBase();expect((await lifecycleTaskDocuments(await entitledCtx(foreign),{companyIds:[b.companyId]})).total).toBe(0);
@@ -71,6 +74,9 @@ it('opens a linked activated native joiner document and preserves the native pri
  config.workflows=[{id:'native-release',name:'Native release workflow',module:'onb',status:'published',trigger:{event:'beforeJoin',days:0,workdays:false,repeat:false,skipIf:''},conditions:[],steps:[{id:'release',type:'doc',template:'native-doc',release:true}],description:''}];
  await v9SaveConfig(admin,config.revision,config);
  const draft=await saveEmployeeDraft(admin,{currentStep:5,data:{profile:{fullName:'Native document owner',employeeCode:'NATIVE-DOC',primaryEmail:'native-owner@test.invalid'},employment:{companyId:b.companyId,departmentId:b.deptA,positionId:b.positionId,reportingManagerEmploymentId:employmentId,employmentType:'full_time',hiredOn:todayInKualaLumpur()},payroll:{basicSalary:'5000'}}});
+ expect((await lifecycleTaskDocuments(employee,{companyIds:[b.companyId]})).total).toBe(0);
+ const pending=(await onboardingList(admin)).find(row=>row.case.sourceDraftId===draft.id)!;
+ expect((await v9OwnWork(employee)).some(row=>row.id===pending.case.id)).toBe(false);
  const active=await completeEmployeeDraft(admin,draft.id);
  const [subject]=await owner.client<{person_id:string}[]>`select person_id from employment where id=${active.employmentId}::uuid`;
  const joiner={...employee,personId:subject.person_id,userId:await createAppUser(b.tenantId,subject.person_id,'employee')};
@@ -102,3 +108,15 @@ it('keeps ordered page/count parity across 70 companies and 1000 employments wit
  expect(all.total).toBe(101);expect(all.items.map(item=>item.taskId)).toEqual(expected.slice(0,100));expect(single).toEqual(all);expect(next.items.map(item=>item.taskId)).toEqual(expected.slice(100));
  expect((await lifecycleTaskDocuments(other,{companyIds,limit:100})).total).toBe(0);expect((await lifecycleTaskDocuments(admin,{companyIds,limit:100})).total).toBe(0);
 },90000);
+
+it('retains the sent-only completion policy and denies document access to an unrelated task assignee',async()=>{
+ const c=await prepared(true,'sent'),doc=c.documents[0];expect(c.tasks[0].status).toBe('done');
+ await openOwnLifecycleDocument(employee,{caseId:c.id,documentId:doc.id,revision:c.revision});
+ expect((await v9Workspace(admin)).cases.find(row=>row.id===c.id)!.tasks[0].status).toBe('done');
+ const current=(await v9Workspace(admin)).cases.find(row=>row.id===c.id)!;
+ const tasks=current.tasks.map(task=>({...task,by:'group',assignee:other.userId,status:'todo'}));
+ await owner.client`update lc_v9_case set data=jsonb_set(data,'{tasks}',${JSON.stringify(tasks)}::jsonb) where id=${c.id}::uuid`;
+ expect((await v9OwnWork(other)).find(row=>row.id===c.id)!.tasks).toHaveLength(1);
+ expect((await lifecycleTaskDocuments(other,{companyIds:[b.companyId]})).total).toBe(0);
+ await expect(openOwnLifecycleDocument(other,{caseId:c.id,documentId:doc.id,revision:current.revision})).rejects.toThrow();
+});
