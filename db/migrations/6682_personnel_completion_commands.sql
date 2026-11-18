@@ -12,7 +12,7 @@ $$;
 REVOKE ALL ON FUNCTION app.v9_personnel_completion_sources(uuid) FROM PUBLIC,ai_hr_app;
 CREATE FUNCTION app.personnel_completion_preparation_projection(d jsonb) RETURNS jsonb LANGUAGE sql IMMUTABLE SET search_path=pg_catalog,app AS $$
  WITH allowed AS(SELECT f FROM jsonb_array_elements(d->'fields') f WHERE
- (app.personnel_completion_owner(d,f)='employee' OR f->>'owner'='pmLocked' AND app.personnel_completion_group(f->>'pmKey')='personal')
+ (app.personnel_completion_owner(d,f)='employee' OR f->>'owner'='pmLocked' AND (app.personnel_completion_group(f->>'pmKey')='personal' OR d->'personnelCompletion'->'fields'->(f->>'id')->'override'->>'owner'='employee' OR d->'personnelCompletion'->'fields'->(f->>'id')->'draft'?'by'))
  AND (f->'when' IS NULL OR f->'when'='null'::jsonb OR d->'values'->>(f->'when'->>'field')=f->'when'->>'value')),
  projection AS(SELECT coalesce(jsonb_agg(f||jsonb_build_object('when',NULL)),'[]'::jsonb) fields,
  coalesce(jsonb_agg(jsonb_build_object('id','preparation:'||(f->>'id'),'type','field','fieldId',f->>'id','text','','section',f->>'section')),'[]'::jsonb) blocks,
@@ -24,7 +24,7 @@ $$;
 CREATE FUNCTION app.v9_personnel_completion_read(p_case uuid,p_document text) RETURNS jsonb LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
  SELECT CASE WHEN hr.allowed OR jsonb_typeof(s.document->'signing')='object' AND app.v9_document_route_content_visible(s.document) OR s.document->>'sentAt' IS NOT NULL THEN app.personnel_completion_document_projection(s.document) ELSE app.personnel_completion_preparation_projection(s.document) END
  FROM app.v9_personnel_completion_sources(p_case) s
- CROSS JOIN LATERAL(SELECT app.is_admin_for(s.company_id) AND CASE WHEN s.is_native THEN app.onboarding_page_access() OR app.onboarding_v9_case_actor() OR app.is_group_admin() ELSE app.lc_v9_off_access(s.company_id) END AS allowed) hr
+ CROSS JOIN LATERAL(SELECT app.is_admin_for(s.company_id) AND CASE WHEN s.is_native THEN app.onboarding_v9_case_actor() AND coalesce(app.onboarding_v9_sections()->>'hr'='view',false) ELSE app.lc_v9_off_access(s.company_id) END AS allowed) hr
  WHERE app.v9_signing_current_actor() AND app.probation_company_entitled(s.company_id) AND s.document->>'id'=p_document AND s.state='submitted' AND s.document->>'status' NOT IN('withdrawn','superseded') AND s.document?'personnelCompletion'
  AND (hr.allowed OR EXISTS(SELECT 1 FROM app_user u WHERE u.id=app.current_user_id() AND u.tenant_id=app.current_tenant_id() AND u.person_id=s.person_id AND (s.document->'personnelCompletion'?'preparation' OR s.document->>'sentAt' IS NOT NULL OR jsonb_typeof(s.document->'signing')='object' AND app.v9_document_route_content_visible(s.document))))
 $$;
@@ -45,7 +45,7 @@ BEGIN
  ELSE case_data:=c.data;END IF;
  SELECT * INTO s FROM app.v9_personnel_completion_sources(p_case) WHERE document->>'id'=p_document;
  IF NOT FOUND OR app.probation_company_entitled(s.company_id) IS NOT TRUE OR s.revision IS DISTINCT FROM p_revision OR s.state IS DISTINCT FROM 'submitted' THEN RAISE EXCEPTION 'The case changed. Refresh before trying again';END IF;
- hr:=app.is_admin_for(s.company_id) AND CASE WHEN s.is_native THEN app.onboarding_page_access() OR app.onboarding_v9_case_actor() OR app.is_group_admin() ELSE app.lc_v9_off_access(s.company_id) END;
+ hr:=app.is_admin_for(s.company_id) AND CASE WHEN s.is_native THEN app.onboarding_v9_case_actor() AND coalesce(app.onboarding_v9_sections()->>'hr'='view',false) ELSE app.lc_v9_off_access(s.company_id) END;
  SELECT jsonb_build_object('id',u.id,'name',coalesce(p.full_name,'User')),u.person_id=s.person_id INTO actor,own FROM app_user u LEFT JOIN person p ON p.id=u.person_id AND p.tenant_id=u.tenant_id WHERE u.id=app.current_user_id() AND u.tenant_id=app.current_tenant_id() AND u.archived_at IS NULL AND NOT app.login_blocked(u.id);
  before_doc:=s.document;d:=before_doc;
  IF NOT coalesce(hr,false) AND NOT coalesce(own,false) OR app.personnel_completion_locked(d) OR d->>'status' IN('withdrawn','superseded') OR EXISTS(SELECT 1 FROM jsonb_array_elements(coalesce(case_data->'mails','[]'::jsonb)) mail WHERE coalesce(mail->>'test','false')<>'true' AND mail->>'status' IN('pending','sending','uncertain') AND mail->'documentIds'?p_document) THEN RAISE EXCEPTION 'Completion is locked or outside your current authority' USING ERRCODE='42501';END IF;

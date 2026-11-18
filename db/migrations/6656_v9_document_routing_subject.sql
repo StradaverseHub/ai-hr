@@ -42,9 +42,12 @@ LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp A
 $$;
 CREATE FUNCTION app.v9_document_signing_work(p_search text DEFAULT '',p_offset integer DEFAULT 0,p_limit integer DEFAULT 50) RETURNS jsonb
 LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
- WITH visible AS (
-  SELECT * FROM app.v9_document_route_sources() s WHERE app.v9_signing_current_actor()
-   AND app.v9_document_route_participant(s.document) AND s.document->>'status' NOT IN('withdrawn','superseded')
+ WITH actor AS MATERIALIZED(SELECT app.current_user_id() AS uid,app.v9_signing_current_actor() AS allowed),
+ entitled AS MATERIALIZED(SELECT m.company_id FROM tenant_module m JOIN tenant t ON t.id=m.tenant_id WHERE m.tenant_id=app.current_tenant_id() AND m.module_code='lifecycle' AND m.status IN('active','trial') AND m.activated_at<=now() AND (m.expires_at IS NULL OR m.expires_at>now()) AND t.status IN('active','trial')),
+ visible AS (
+  SELECT s.* FROM app.v9_document_route_sources() s CROSS JOIN actor WHERE actor.allowed
+   AND EXISTS(SELECT 1 FROM entitled WHERE entitled.company_id IS NULL OR entitled.company_id=s.company_id)
+   AND (app.document_signing_owner(s.document->'signing')=actor.uid OR EXISTS(SELECT 1 FROM jsonb_array_elements(s.document->'signing'->'route'->'steps') frozen WHERE frozen->>'holderId'=actor.uid::text) OR EXISTS(SELECT 1 FROM jsonb_array_elements(s.document->'signing'->'actions') receipt WHERE receipt->>'actorId'=actor.uid::text)) AND s.document->>'status' NOT IN('withdrawn','superseded')
    AND position(lower(left(coalesce(p_search,''),100)) IN lower(s.number||' '||(s.document->>'name')))>0
  ), page AS(SELECT * FROM visible ORDER BY document->>'createdAt',case_id,document->>'id' LIMIT least(50,greatest(1,p_limit)) OFFSET greatest(0,least(1000000,p_offset)))
  SELECT jsonb_build_object('total',(SELECT count(*) FROM visible),'items',coalesce((SELECT jsonb_agg(jsonb_build_object(
@@ -196,7 +199,7 @@ DECLARE company_id uuid;native boolean:=false;owner_call boolean:=app.current_us
 BEGIN
  SELECT c.company_id INTO company_id FROM lc_v9_case c WHERE c.id=p_case AND c.tenant_id=app.current_tenant_id();
  IF NOT FOUND THEN SELECT c.company_id INTO company_id FROM lc_onboarding_case c WHERE c.id=p_case AND c.tenant_id=app.current_tenant_id();native:=true;END IF;
- IF company_id IS NULL OR NOT(owner_call OR app.v9_signing_current_actor() AND app.is_admin_for(company_id) AND CASE WHEN native THEN app.onboarding_page_access() OR app.onboarding_v9_case_actor() OR app.is_group_admin() ELSE app.lc_v9_off_access(company_id) END) THEN RETURN NULL;END IF;
+ IF company_id IS NULL OR NOT(owner_call OR app.v9_signing_current_actor() AND app.is_admin_for(company_id) AND CASE WHEN native THEN app.onboarding_v9_case_actor() AND coalesce(app.onboarding_v9_sections()->>'hr'='view',false) ELSE app.lc_v9_off_access(company_id) END) THEN RETURN NULL;END IF;
  IF EXISTS(SELECT 1 FROM lc_v9_case c JOIN employment e ON e.id=c.employment_id AND e.tenant_id=c.tenant_id WHERE c.id=p_case AND c.tenant_id=app.current_tenant_id() AND e.company_id<>c.company_id) OR EXISTS(SELECT 1 FROM lc_onboarding_case c JOIN employment e ON e.id=c.employment_id AND e.tenant_id=c.tenant_id WHERE c.id=p_case AND c.tenant_id=app.current_tenant_id() AND e.company_id<>c.company_id) THEN RETURN NULL;END IF;
  IF NOT owner_call AND (NOT app.access_workforce_projection_company(company_id) OR EXISTS(SELECT 1 FROM employment e WHERE e.id=(SELECT c.employment_id FROM lc_v9_case c WHERE c.id=p_case AND c.tenant_id=app.current_tenant_id() UNION ALL SELECT n.employment_id FROM lc_onboarding_case n WHERE n.id=p_case AND n.tenant_id=app.current_tenant_id() LIMIT 1) AND e.tenant_id=app.current_tenant_id() AND NOT app.access_workforce_employment(e.id,'workforce.view'))) THEN RETURN NULL;END IF;
  IF NOT owner_call AND NOT EXISTS(SELECT 1 FROM company visible_company WHERE visible_company.tenant_id=app.current_tenant_id() AND app.personnel_identity_search_permitted(visible_company.id)) THEN RETURN (app.v9_document_personnel_source_unchecked(p_case)-ARRAY['personalEmail','employee.icNo','employee.passportNo','icNo','passportNo','case.icNo','case.passportNo'])||jsonb_build_object('_identityFieldsWithheld','true');END IF;
