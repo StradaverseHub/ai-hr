@@ -6707,6 +6707,20 @@
       "when": 1794998006685,
       "tag": "6685_personnel_completion_signature_projection",
       "breakpoints": true
+    },
+    {
+      "idx": 10088,
+      "version": "7",
+      "when": 1794998006688,
+      "tag": "6688_personnel_completion_recovery",
+      "breakpoints": true
+    },
+    {
+      "idx": 10089,
+      "version": "7",
+      "when": 1794998006689,
+      "tag": "6689_personnel_completion_recovery_jobs",
+      "breakpoints": true
     }
   ]
 }

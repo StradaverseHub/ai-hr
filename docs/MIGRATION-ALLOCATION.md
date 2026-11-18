@@ -4620,3 +4620,5 @@ The same coordinator-owned block also allocates 6658 / idx 10058 / when 17949980
 - 18 November 2026 approved PCB history lane: 6660–6669 / idx10060–10069 / when1794998006660–6669 reserved by release coordinator. 6660 adds the noncash import vocabulary and additive imported-tax compatible-reader guard; no existing data rewrite. Final integration re-surveys all registered worktrees and installed journals.
 
 - PCB lane6661 / idx10061 / when1794998006661: set-paged canonical historical subjects and recursion-safe read-only original payroll employer audience. Existing restrictive reader/effective-source guards and all write policies remain in force.
+
+2026-11-18 — coordinator source reservation: `codex/pm-recovery-sql-20261118` owns 6688–6689 / idx 10088–10089 / when 1794998006688–1794998006689 for explicit Personnel completion recovery review/adoption and bulk-job kinds. One target per worker checkpoint; no email replay. Source reservation only; final ordered ledger/hash and installation authority remain with the coordinator.
