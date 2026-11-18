@@ -6,7 +6,7 @@ import {withTenant,type SessionContext,type Tx} from '../db/client';
 import {adminCtx,closeAll,createAppUser,migrateTestDb,owner,resetDb,seedBase,setModule,type Base} from './harness';
 import {hireEmployee} from '../core/org';
 import {pgErrorChain,pgSqlState} from '../lib/db-error';
-import {currentRoundActions} from '../lib/document-signing-model';
+import {currentRoundActions,signingSendBack} from '../lib/document-signing-model';
 import {prepareResignationProofTx} from '../core/resignation-proof';
 import {resignationRuntimeKey,signResignationRuntime} from '../lib/resignation-runtime-proof';
 import {actResignationLetter,generateResignationLetter,regenerateResignationLetter,reconcileResignationLetter,resignationLetterCapabilities,resignationLetterPendingSteps,resignationLetterEmployeePending,type ResignationLetter,type ResignationLetterAction,type GenerateResignationLetterInput} from '../core/resignation-letter';
@@ -165,10 +165,52 @@ it('uses exact content identity and the latest matching re-send when deciding na
   if(expected)await admission;else await nativeRefusal(admission,'42501');
   expect(await persisted()).toEqual(before);
  };
- await assertAdmission({...signed,document:{...signed.document,actions:[...signed.document.actions,{...returned,contentHash:'different-content'}]}},false);
- await assertAdmission({...signed,document:{...signed.document,actions:[...signed.document.actions,{...returned,contentRevision:signed.document.contentRevision+1}]}},false);
+ const signedRound=structuredClone(currentRoundActions(signed.document));
+ expect(signedRound.map(receipt=>receipt.action)).toEqual(['reviewed','signed']);
+ expect(signingSendBack(signed.document)).toBeNull();
+ const malformedReturns=[{...returned,contentHash:'different-content'},{...returned,contentRevision:signed.document.contentRevision+1}];
+ for(const malformed of malformedReturns){
+  const letter={...signed,document:{...signed.document,actions:[...signed.document.actions,malformed]}};
+  // A foreign-content return must not hide effective signatures, fabricate owner custody,
+  // or admit an owner edit. Check both the pure round and the signed native boundary.
+  expect(currentRoundActions(letter.document)).toEqual(signedRound);expect(signingSendBack(letter.document)).toBeNull();
+  await assertAdmission(letter,false);await assertAdmission(letter,false,manager);
+ }
+ // Historical/unrelated re-sends cannot erase signatures of the current content either.
+ const unrelatedResends=[
+  {...returned,action:'resent' as const,contentHash:'different-content'},
+  {...returned,action:'resent' as const,contentRevision:signed.document.contentRevision-1},
+ ];
+ for(const unrelated of unrelatedResends){
+  const letter={...signed,document:{...signed.document,actions:[...signed.document.actions,unrelated]}};
+  expect(currentRoundActions(letter.document)).toEqual(signedRound);expect(signingSendBack(letter.document)).toBeNull();
+  await assertAdmission(letter,false);await assertAdmission(letter,false,manager);
+ }
+ // A matching re-send before these signatures is historical, not permission to erase later work.
+ const earlierResend={...returned,action:'resent' as const};
+ const laterSigned={...signed,document:{...signed.document,actions:[earlierResend,...signed.document.actions]}};
+ expect(currentRoundActions(laterSigned.document)).toEqual(signedRound);expect(signingSendBack(laterSigned.document)).toBeNull();
+ await assertAdmission(laterSigned,false);await assertAdmission(laterSigned,false,manager);
  // An actual matching re-send excludes the old signed/returned round even without a content revision bump.
- const resent=act(recalled,manager,{type:'resend'});expect(resent.revision).toBe(signed.revision);await assertAdmission(resent,true,manager);
+ const resent=act(recalled,manager,{type:'resend'});expect(resent.revision).toBe(signed.revision);
+ expect(currentRoundActions(resent.document)).toEqual([]);expect(signingSendBack(resent.document)).toBeNull();await assertAdmission(resent,true,manager);
  let fresh=act(resent,manager,{type:'complete',stepId:'owner-review'});fresh=act(fresh,fyi,{type:'complete',stepId:'team-sign',signature:'Fresh CEO signature',consent:true});await assertAdmission(fresh,false);
  expect(fresh.document.actions).toContainEqual(returned);expect(currentRoundActions(fresh.document).some(receipt=>receipt.action==='returned')).toBe(false);
+});
+
+
+it('keeps optional routed steps out of managed Resignation pending actors and native admission',async()=>{
+ const input=letterInput(),route=input.template.versions[0]!.routing!;
+ route[0]!.who={kind:'people',userIds:[manager.userId!]};
+ route.push({id:'optional-observer-review',order:1,action:'review',required:false,who:{kind:'people',userIds:[fyi.userId!]},owner:false});
+ const letter=generateResignationLetter(input).letter;
+ expect(letter.document.route.steps.find(step=>step.id==='optional-observer-review')).toMatchObject({required:false,holderId:fyi.userId});
+ expect(resignationLetterPendingSteps(letter).map(step=>step.id)).toEqual(['owner-review']);
+ expect(resignationLetterCapabilities(letter,fyi.userId!,fyi.personId)).toMatchObject({canReview:false,canEditContent:false,canSendBack:false});
+ data={...data,decision:null,letters:[letter]};await seedJourney('retention');const original=await persisted();
+ await nativeRefusal(withTenant(fyi,tx=>begin(tx,fyi,{type:'letterAction',action:'review',documentId:letter.id,documentRevision:letter.revision})),'42501');
+ expect(await persisted()).toEqual(original);
+ // Positive control: the required current owner still passes exactly the same public admission.
+ await withTenant(manager,tx=>begin(tx,manager,{type:'letterAction',action:'review',documentId:letter.id,documentRevision:letter.revision}));
+ expect(await persisted()).toEqual(original);
 });
