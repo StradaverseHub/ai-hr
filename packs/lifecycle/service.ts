@@ -31,3 +31,5 @@ export async function searchOnboardingRecipientUsers(...args: Parameters<typeof 
 }
 
 export { lifecycleTaskDocuments, lifecycleTaskCardDocuments, openOwnLifecycleDocument } from './v9/task-documents';
+export {offboardingRequisition,updateOffboardingRequisitionItem} from './v9/offboarding-requisition';
+export {offboardingRequisitions} from './v9/offboarding-requisition';

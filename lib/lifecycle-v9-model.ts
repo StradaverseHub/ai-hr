@@ -182,6 +182,7 @@ export type Case = {
   files: { id: string; slot: string; name: string; storageId: string; contentHash?: string }[];
   pmChanges: PMChange[]; log: Log[]; sourceRevision: string;
   submittedAt: string | null; closedAt: string | null; closedBy: Actor | null; closeReason: string;
+  itemsClearedAt?: string | null;
   cancelReason: string; revokeDate: string; finalFigures: FinalFigures | null;
   review: { firstAt: string; open: number; overdue: number; notReturned: number; detail: string } | null;
   notes?: LifecycleNote[];
