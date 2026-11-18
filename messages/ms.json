@@ -44438,7 +44438,11 @@
       "discardReload": "Buang perubahan dan muat semula",
       "keepEditing": "Teruskan menyunting",
       "retrySave": "Cuba simpan lagi",
-      "reloadSaved": "Muat semula tetapan tersimpan"
+      "reloadSaved": "Muat semula tetapan tersimpan",
+      "conversionRich": "Editor kaya",
+      "conversionReady": "Sedia untuk ditukar",
+      "conversionLegacy": "Tetapan penghantaran asal",
+      "conversionTotals": "{converted} menggunakan editor kaya; {ready} sedia untuk ditukar; {legacy} mengekalkan tetapan penghantaran asal."
     },
     "fields": {
       "employee_name": "Nama penuh",

@@ -44438,7 +44438,11 @@
       "discardReload": "放弃更改并重新加载",
       "keepEditing": "继续编辑",
       "retrySave": "重新尝试保存",
-      "reloadSaved": "重新加载已保存的设置"
+      "reloadSaved": "重新加载已保存的设置",
+      "conversionRich": "富文本编辑器",
+      "conversionReady": "可转换",
+      "conversionLegacy": "原有发送设置",
+      "conversionTotals": "{converted} 个使用富文本编辑器；{ready} 个可转换；{legacy} 个保留原有发送设置。"
     },
     "fields": {
       "employee_name": "全名",

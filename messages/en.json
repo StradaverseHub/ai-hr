@@ -44438,7 +44438,11 @@
       "discardReload": "Discard changes and reload",
       "keepEditing": "Keep editing",
       "retrySave": "Try saving again",
-      "reloadSaved": "Reload saved settings"
+      "reloadSaved": "Reload saved settings",
+      "conversionRich": "Rich editor",
+      "conversionReady": "Ready to convert",
+      "conversionLegacy": "Original sending setup",
+      "conversionTotals": "{converted} use the rich editor; {ready} are ready to convert; {legacy} keep the original sending setup."
     },
     "fields": {
       "employee_name": "Full name",

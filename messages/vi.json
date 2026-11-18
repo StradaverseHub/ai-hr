@@ -44438,7 +44438,11 @@
       "discardReload": "Bỏ thay đổi và tải lại",
       "keepEditing": "Tiếp tục chỉnh sửa",
       "retrySave": "Thử lưu lại",
-      "reloadSaved": "Tải lại cài đặt đã lưu"
+      "reloadSaved": "Tải lại cài đặt đã lưu",
+      "conversionRich": "Trình soạn thảo định dạng",
+      "conversionReady": "Sẵn sàng chuyển đổi",
+      "conversionLegacy": "Thiết lập gửi ban đầu",
+      "conversionTotals": "{converted} mẫu dùng trình soạn thảo định dạng; {ready} mẫu sẵn sàng chuyển đổi; {legacy} mẫu giữ thiết lập gửi ban đầu."
     },
     "fields": {
       "employee_name": "Họ và tên",
