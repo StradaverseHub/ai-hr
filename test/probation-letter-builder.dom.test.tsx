@@ -14,9 +14,9 @@ it('inserts a registered Probation field at the cursor without exposing unrelate
  const text=screen.getByLabelText('Text 1') as HTMLTextAreaElement;
  fireEvent.focus(text);text.setSelectionRange(5,5);
  fireEvent.change(screen.getByLabelText('Search merge fields'),{target:{value:'Extension months'}});
- fireEvent.click(screen.getByRole('button',{name:'Extension months',exact:true}));
+ fireEvent.click(screen.getByRole('button',{name:'Extension months'}));
  expect(JSON.parse(screen.getByTestId('saved').textContent!).blocks[0].text).toBe('Dear {extensionMonths}');
- expect(screen.queryByRole('button',{name:'IC number',exact:true})).not.toBeInTheDocument();
+ expect(screen.queryByRole('button',{name:'IC number'})).not.toBeInTheDocument();
  fireEvent.click(screen.getByRole('tab',{name:'Preview'}));
  expect(screen.getByText('Dear 3')).toBeInTheDocument();
 });
