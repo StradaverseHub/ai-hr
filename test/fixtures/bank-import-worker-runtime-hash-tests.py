@@ -31,11 +31,12 @@ class RuntimeHashTests(unittest.TestCase):
                 self.assertEqual(owner.bounded_file_sha256(base,path,128*1024**2),hashlib.sha256(expected).hexdigest())
                 self.assertEqual(sum(counts)-before,len(expected))
     def test_actual_96mib_file_hash_fits_64mib_process_address_space(self):
-        path=self.fixture();size=96*1024**2
+        path=self.fixture(b'');size=96*1024**2
         with path.open('r+b')as stream:stream.truncate(size)
         expected=hashlib.sha256();zero=bytes(1024**2)
         for _ in range(96):expected.update(zero)
-        child=subprocess.run([sys.executable,'-I','-B',str(Path(__file__).resolve()),'--memory-child',str(path),expected.hexdigest()],capture_output=True,text=True,check=True,timeout=30)
+        child=subprocess.run([sys.executable,'-I','-B',str(Path(__file__).resolve()),'--memory-child',str(path),expected.hexdigest()],capture_output=True,text=True,check=False,timeout=30)
+        self.assertEqual(child.returncode,0,'Memory child failed:\n'+child.stdout+'\n'+child.stderr)
         proof=json.loads(child.stdout);self.assertEqual(proof['fileBytes'],size);self.assertLess(proof['maxRssKiB'],64*1024)
         print(child.stdout.strip())
     def test_oversize_refuses_before_read(self):
