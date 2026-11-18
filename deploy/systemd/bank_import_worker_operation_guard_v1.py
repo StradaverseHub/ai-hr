@@ -74,8 +74,8 @@ class GuardedInvocation:
         self.bytes=base.read_bounded(self.path,65536)
         base.check(ci.sha(self.bytes)==pinned,'root invocation approval hash differs')
         self.a=json.loads(self.bytes)
-        fields=ci.FIRST_APPROVAL_FIELDS if stage=='drain' else ci.ACTIVATION_FIELDS
-        kind='ADMIN_REVIEWED_CI_WORKER_DRAIN_PINS' if stage=='drain' else 'ADMIN_AUTHORIZED_SINGLE_CI_WORKER_CUTOVER'
+        fields=ci.FIRST_APPROVAL_FIELDS if stage=='drain' else ci.ACTIVATION_FIELDS if stage=='activate-ci-runtime' else ci.RECOVERY.PREP_FIELDS if stage=='prepare-ci-worker' else ci.RECOVERY.NORMAL_FIELDS if stage=='activate-prepared-ci-runtime' else ci.RECOVERY.FIELDS
+        kind='ADMIN_REVIEWED_CI_WORKER_DRAIN_PINS' if stage=='drain' else 'ADMIN_AUTHORIZED_SINGLE_CI_WORKER_CUTOVER' if stage=='activate-ci-runtime' else ci.RECOVERY.KINDS[stage]
         base.check(set(self.a)==fields and self.a['kind']==kind and self.a['policy']==ci.POLICY and self.a['format']==1 and
                    self.a['target']=='alpha-staging' and self.a['releaseAuthorized'] is False,'fixed root invocation approval differs')
         base.check(base.read_bounded(Path(sys.argv[0]),16*1024**2) and ci.sha(base.read_bounded(Path(sys.argv[0]),16*1024**2))==self.a['helperSha256'],'independently pinned helper required')
@@ -138,7 +138,7 @@ class GuardedInvocation:
         fd=self.verify()
         held=self.ci.child(['/usr/bin/python3',str(self.ci.COORDINATOR)],self.owner,self.environment,
                            input=json.dumps({'protocol':'aihr-staging-queue/v1','action':'assert','actor':'root-worker-operation',**self.lease}),timeout=15,operation_fd=fd)
-        allowed=('claimed',)if self.stage=='drain' else ('installing','arrived')
+        allowed=('claimed',)if self.stage=='drain' or self.stage=='prepare-ci-worker' and self.a['preparation'].get('mode')=='normal' else ('installing',) if self.stage in ('prepare-ci-worker','recover-ci-runtime') else ('installing','arrived')
         self.base.check(held.get('releaseAuthorized') is False and all(held.get(k)==self.a['lease'][k]for k in self.a['lease']) and held.get('phase')in allowed,'fixed root operation native lease differs')
         self.base.check(self.last_phase!='arrived' or held['phase']=='arrived','native lease backslid')
         self.last_phase=held['phase'];return held
@@ -172,14 +172,16 @@ class GuardedInvocation:
 
 def launch(argv,fmt,base,ci,update):
     parser=argparse.ArgumentParser()
-    parser.add_argument('mode',choices=['guarded-drain','guarded-activate-ci-runtime'])
+    parser.add_argument('mode',choices=['guarded-drain','guarded-activate-ci-runtime','guarded-prepare-ci-worker','guarded-activate-prepared-ci-runtime','guarded-recover-ci-runtime'])
     parser.add_argument('--approval',required=True);parser.add_argument('--approval-sha256',required=True)
     args=parser.parse_args(argv);base.check(os.geteuid()==0,'fixed root launcher must run after the privilege boundary')
-    stage='drain'if args.mode=='guarded-drain' else 'activate-ci-runtime'
+    stage={'guarded-drain':'drain','guarded-activate-ci-runtime':'activate-ci-runtime','guarded-prepare-ci-worker':'prepare-ci-worker','guarded-activate-prepared-ci-runtime':'activate-prepared-ci-runtime','guarded-recover-ci-runtime':'recover-ci-runtime'}[args.mode]
     guard=None;previous=base.command;previous_fds=getattr(base,'VERIFIED_OPERATION_FDS',());previous_guard=getattr(base,'VERIFIED_OPERATION_GUARD',None)
-    previous_deadline=getattr(base,'VERIFIED_OPERATION_DEADLINE',None);previous_slot=getattr(ci,'SLOT_DEADLINE',None)
-    if stage=='activate-ci-runtime':
-        initial_deadline=min([time.monotonic()+30,*[value for value in (previous_deadline,previous_slot)if value is not None]])
+    previous_deadline=getattr(base,'VERIFIED_OPERATION_DEADLINE',None);previous_slot=getattr(ci,'SLOT_DEADLINE',None);previous_overall=getattr(base,'RECOVERY_OVERALL_DEADLINE',None)
+    if stage in ('activate-prepared-ci-runtime','recover-ci-runtime'):base.RECOVERY_OVERALL_DEADLINE=min(time.monotonic()+827,previous_overall if previous_overall is not None else float('inf'))
+    if stage in ('activate-ci-runtime','prepare-ci-worker','activate-prepared-ci-runtime','recover-ci-runtime'):
+        initial_seconds=300 if stage=='prepare-ci-worker' else 30
+        initial_deadline=min([time.monotonic()+initial_seconds,*[value for value in (previous_deadline,previous_slot)if value is not None]])
         base.VERIFIED_OPERATION_DEADLINE=initial_deadline;ci.SLOT_DEADLINE=initial_deadline
     try:
         guard=GuardedInvocation(base,ci,stage,args.approval,args.approval_sha256)
@@ -193,7 +195,7 @@ def launch(argv,fmt,base,ci,update):
                 if guard.quarantine:
                     base.check(guard.observer is not None,'owned quarantine proof missing');guard.observer.quarantine_fence()
                 else:guard.before_mutation()
-            if command==['/usr/bin/systemctl','start','aihr-bank-import.service'] and stage=='activate-ci-runtime':guard.start_sent=True;guard.observer.start_requested()
+            if command==['/usr/bin/systemctl','start','aihr-bank-import.service'] and stage in ('activate-ci-runtime','activate-prepared-ci-runtime','recover-ci-runtime'):guard.start_sent=True;guard.observer.start_requested()
             return previous(command,**options)
         base.command=fenced_command
         # A fixed target phase and original managed arguments, never a user-supplied executable or command.
@@ -203,7 +205,9 @@ def launch(argv,fmt,base,ci,update):
         managed=[stage,*[part for name in names for part in ('--'+name,guard.identity[name.replace('-','_')])]]
         if 'previous_worker_env_sha256'in guard.identity:managed+=['--previous-worker-env-sha256',guard.identity['previous_worker_env_sha256']]
         if stage=='activate-ci-runtime':managed+=['--ci-runtime-authorization',str(guard.path),'--ci-runtime-authorization-sha256',args.approval_sha256]
-        update.upgrade(managed,fmt,base,ci)
+        if stage in ('prepare-ci-worker','activate-prepared-ci-runtime','recover-ci-runtime'):
+            ci.RECOVERY.run(stage,guard,fmt,base,ci,update)
+        else:update.upgrade(managed,fmt,base,ci)
     finally:
-        base.command=previous;base.VERIFIED_OPERATION_FDS=previous_fds;base.VERIFIED_OPERATION_GUARD=previous_guard;base.VERIFIED_OPERATION_DEADLINE=previous_deadline;ci.SLOT_DEADLINE=previous_slot;ci.ACTIVE_OPERATION_GUARD=None
+        base.command=previous;base.VERIFIED_OPERATION_FDS=previous_fds;base.VERIFIED_OPERATION_GUARD=previous_guard;base.VERIFIED_OPERATION_DEADLINE=previous_deadline;base.RECOVERY_OVERALL_DEADLINE=previous_overall;ci.SLOT_DEADLINE=previous_slot;ci.ACTIVE_OPERATION_GUARD=None
         if guard:guard.close()

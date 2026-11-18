@@ -366,13 +366,14 @@ def stage_release(base, fmt, archive, operation, args, manifest):
     return release
 
 
-def replace_and_start(base, fmt, args, operation, release, state, prior_unit_sha256, receipt, ci_observer=None):
+def replace_and_start(base, fmt, args, operation, release, state, prior_unit_sha256, receipt, ci_observer=None, prepare_release=None):
     """Atomic current-template unit, reload, start, three stable observations, receipt; quarantine on any failure.
     Shared by activate and adopt-stopped; only the pinned prior unit hash and receipt provenance differ.
     """
     try:
         if ci_observer:
             ci_observer.slot('M0',45)
+        if prepare_release is not None:release=prepare_release()
         atomic_unit(base, base.service_unit(args.source).encode(), prior_unit_sha256)
         base.command(['/usr/bin/systemctl', 'daemon-reload'])
         base.validate_service(properties(base), release)
@@ -395,6 +396,7 @@ def replace_and_start(base, fmt, args, operation, release, state, prior_unit_sha
             base.validate_service(report, release)
             base.check(report.get('NRestarts') == '0' and report.get('NeedDaemonReload') == 'no', 'updated service is not stable')
             pid = validate_process(base, report, args.source)
+            if ci_observer:ci_observer.assert_owned_worker(report)
             base.check(stable_pid in (None, pid), 'updated worker PID changed')
             stable_pid = pid
             if ci_observer:
