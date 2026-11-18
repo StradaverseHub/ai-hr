@@ -17,11 +17,11 @@ import unittest
 import uuid
 
 ROOT=Path(__file__).resolve().parents[2]
-parser=argparse.ArgumentParser();parser.add_argument('--source',required=True);parser.add_argument('--output',required=True)
+parser=argparse.ArgumentParser();parser.add_argument('--source',required=True);parser.add_argument('--output',required=True);parser.add_argument('--node',required=True)
 args=parser.parse_args()
 assert os.geteuid()==0 and re.fullmatch('[a-f0-9]{40}',args.source)
 assert Path('/run/systemd/system').is_dir(), 'Actual hosted systemd is required; never skip this control'
-node=Path(shutil.which('node')).resolve()
+node=Path(args.node).resolve();assert node.is_absolute() and node.is_file()
 assert subprocess.check_output([str(node),'--version'],text=True).strip()=='v22.23.3'
 results=[]
 
