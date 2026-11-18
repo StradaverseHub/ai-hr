@@ -85,8 +85,9 @@ it('retains the native off journey target after genuine workflow queueing and a 
  await commandResignationJourney(f.admin,{caseId:f.journey.id,revision:f.journey.revision,command:{type:'runWorkflowsAgain'}});
  const[delivery]=await owner.db.execute<{id:string;createdBy:string;module:string;subjectId:string}>(sql`select id,created_by as "createdBy",module,subject_id as "subjectId" from automation_email_delivery where tenant_id=${f.base.tenantId}::uuid and module='off' and subject_id=${f.journey.id}::uuid and payload->'mail'->>'subject'='Fictional native compatibility notice'`);
  expect(delivery).toMatchObject({createdBy:f.managerUserId,module:'off',subjectId:f.journey.id});
- let inspected=0;
+ let inspected=0;let senderFailure:unknown;
  await deliverAutomationEmails({...f.admin,userId:undefined,personId:undefined,roles:[],grants:undefined},owner,async request=>{
+  try{
   expect(request.deliveryId).toBe(delivery.id);inspected++;
   // The canonical sweep created the lease; owner use here is custody reads only, never forged delivery/proof.
   const [custody]=await owner.db.execute<{target:{id:string;tenantId:string;module:string;subjectId:string;bindings:{userId:string;issuer:string}[]}|null;unknown:unknown;wrongOrigin:unknown}>(sql`select
@@ -97,6 +98,8 @@ it('retains the native off journey target after genuine workflow queueing and a 
   expect(custody.unknown).toBeNull();expect(custody.wrongOrigin).toBeNull();
   // No human transport is invoked and no claim of a sent email is manufactured.
   return {outcome:'skipped',error:'notEligible'};
+  }catch(error){senderFailure=error;throw error;}
  });
+ if(senderFailure)throw senderFailure;
  expect(inspected).toBe(1);
 },180_000);
