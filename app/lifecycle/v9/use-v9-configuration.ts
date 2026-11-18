@@ -9,7 +9,7 @@ export function useV9Configuration(initial: Config | null, save: (revision: numb
   const [draft, setDraft] = useState(initial), [state, setState] = useState<V9ConfigurationState>('saved'), [error, setError] = useState('');
   const latest = useRef(initial), generation = useRef(0), savedGeneration = useRef(0), active = useRef(true), inFlight = useRef(false), timer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const awaitingSave = useRef<Array<(saved: boolean) => void>>([]);
-  const settle = (saved: boolean) => { for (const resolve of awaitingSave.current.splice(0)) resolve(saved); };
+  const settle = (saved: boolean) => { if (!saved && timer.current) { clearTimeout(timer.current); timer.current = null; } for (const resolve of awaitingSave.current.splice(0)) resolve(saved); };
   const baselineGroups = useRef(structuredClone(initial?.groups ?? []));
   const revision = useRef(initial?.revision ?? 0), groupsRevision = useRef(initial?.groupsRevision ?? 0), saveRef = useRef(save), refreshedRef = useRef(refreshed), runRef = useRef<() => Promise<void>>(async () => {});
   saveRef.current = save; refreshedRef.current = refreshed;

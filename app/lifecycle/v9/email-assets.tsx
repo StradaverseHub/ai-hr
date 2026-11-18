@@ -1,27 +1,34 @@
 'use client';
 import { ActionButton } from '@/components/ui/action-button';
-import { useState, useTransition } from 'react';
+import { useEffect, useRef, useState, useTransition } from 'react';
 import { HR_LOCAL_TZ } from '@/lib/hr-date';
 import type { EmailAsset, EmailTemplate } from '@/lib/lifecycle-v9-model';
 import { withoutEmailImage } from '@/lib/email-body/edit';
 type AssetEmail=Pick<EmailTemplate,'id'|'body'|'bodyDoc'|'images'|'files'>;
 const size = (bytes: number) => bytes < 1048576 ? `${Math.ceil(bytes / 1024)} KB` : `${(bytes / 1048576).toFixed(1)} MB`;
-export function EmailAssets({ email, revision, ready, disabled, change, section = 'both', richBody = false, assetBaseUrl = '/lifecycle/v9/email-assets', copy }: { copy?:(key:string,values?:Record<string,string|number>)=>string;assetBaseUrl?:string;richBody?: boolean; section?: 'images' | 'files' | 'both'; email: AssetEmail; revision?: number; ready: boolean; disabled: boolean; change: (update: (email: AssetEmail) => void) => void }) {
+export function EmailAssets({ email, revision, ready, disabled, change, section = 'both', richBody = false, assetBaseUrl = '/lifecycle/v9/email-assets', copy, onUploadingChange }: { onUploadingChange?:(busy:boolean)=>void;copy?:(key:string,values?:Record<string,string|number>)=>string;assetBaseUrl?:string;richBody?: boolean; section?: 'images' | 'files' | 'both'; email: AssetEmail; revision?: number; ready: boolean; disabled: boolean; change: (update: (email: AssetEmail) => void) => void }) {
   const l=(key:string,fallback:string,values?:Record<string,string|number>)=>copy?.(key,values)??fallback;
   const [busy, start] = useTransition(), [error, setError] = useState('');
+  const active=useRef(true), request=useRef<AbortController|null>(null), latest=useRef(email), reportBusy=useRef(onUploadingChange);
+  latest.current=email; reportBusy.current=onUploadingChange;
+  useEffect(()=>{active.current=true;return()=>{active.current=false;request.current?.abort();reportBusy.current?.(false);};},[]);
+  useEffect(()=>{reportBusy.current?.(busy);},[busy]);
   function upload(file: File | undefined, kind: 'file' | 'image') {
     if (!file || !revision || !ready || disabled || busy) return;
     setError('');
     if (!(kind === 'image' ? /\.(png|jpe?g|gif|webp)$/i : /\.(pdf|png|jpe?g|gif|webp|docx?|xlsx?|txt|csv)$/i).test(file.name)) { setError(kind === 'image' ? l('imageType','Use PNG, JPG, GIF or WebP for an email image.') : l('fileType','Use PDF, Word, Excel, CSV, text or an image.')); return; }
     if (!file.size || file.size > (kind === 'image' ? 1048576 : 10485760)) { setError(kind === 'image' ? l('imageLimit','Images in emails can be up to 1 MB.') : l('fileLimit','Files can be up to 10 MB.')); return; }
+    const uploadedFor=email.id, controller=new AbortController();request.current=controller;
     const data = new FormData(); data.set('file', file); data.set('emailId', email.id); data.set('revision', String(revision)); data.set('kind', kind);
     start(async () => {
       try {
-        const response = await fetch(assetBaseUrl, { method: 'POST', body: data }), result = await response.json() as { asset?: EmailAsset; error?: string };
-        if (!response.ok || !result.asset) { setError(copy?l('uploadFailed','The email file could not be uploaded. Try again.'):result.error ?? 'The email file could not be uploaded. Try again.'); return; }
+        const response = await fetch(assetBaseUrl, { method: 'POST', body: data, signal: controller.signal }), result = await response.json() as { asset?: EmailAsset; error?: string };
+        if(!active.current || latest.current.id!==uploadedFor)return;
+        if (!response.ok || !result.asset) { setError(l('ackUploadFailed',`Could not upload ${file.name}. Your other edits are still here. Try again.`,{name:file.name})+(!copy&&result.error?' '+result.error:'')); return; }
         const asset = result.asset;
-        change(next => { const field = kind === 'image' ? 'images' : 'files'; if (!next[field]?.some(existing => existing.id === asset.id)) next[field] = [...(next[field] ?? []), asset]; });
-      } catch { setError(l('uploadFailed','The email file could not be uploaded. Try again.')); }
+        if((latest.current[kind==='image'?'images':'files']?.length??0)>=(kind==='image'?3:20)){setError(l('ackUploadLimit','The upload is retained, but this template has reached its file limit. Remove a file before trying again.'));return;}
+        change(next => { const field = kind === 'image' ? 'images' : 'files'; if(next.id!==uploadedFor)return; if (!next[field]?.some(existing => existing.id === asset.id)) next[field] = [...(next[field] ?? []), asset]; });
+      } catch { if(!active.current || controller.signal.aborted)return; setError(l('ackUploadFailed',`Could not upload ${file.name}. Your other edits are still here. Try again.`,{name:file.name})); }
     });
   }
   const blocked = disabled || busy || !revision || !ready;

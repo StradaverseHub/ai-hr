@@ -61,3 +61,12 @@ it('requires explicit confirmation before discarding unsaved template changes', 
   fireEvent.click(screen.getByRole('button', { name: 'Discard changes and reload' }));
   expect(reload).toHaveBeenCalledOnce();
 });
+it('aborts a closing editor upload and ignores a late receipt instead of editing another definition',async()=>{
+  let resolve!:(value:unknown)=>void;
+  const upload=new Promise(done=>{resolve=done;}),fetcher=vi.fn((_url:string,_options:RequestInit)=>upload),changed=vi.fn();vi.stubGlobal('fetch',fetcher);
+  const {EmailAssets}=await import('../app/lifecycle/v9/email-assets');
+  const view=render(<EmailAssets email={initial} revision={1} ready disabled={false} change={changed}/>);
+  fireEvent.change(screen.getByLabelText('Add image'),{target:{files:[new File(['Fictional'],'Fictional logo.png',{type:'image/png'})]}});
+  const signal=fetcher.mock.calls[0][1].signal as AbortSignal;view.unmount();expect(signal.aborted).toBe(true);
+  resolve({ok:true,json:async()=>({asset:image})});await upload;await Promise.resolve();await Promise.resolve();expect(changed).not.toHaveBeenCalled();
+});
