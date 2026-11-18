@@ -23,8 +23,14 @@ export async function fixture(kind:'renew'|'end',twoDocuments=false,period?:{sta
  await resetDb();const b=await seedBase();await setModule(b.tenantId,'lifecycle','active');let admin=await entitledCtx(b);
  const [person]=await owner.db.execute<{id:string}>(sql`insert into person(tenant_id,full_name,primary_email) values(${b.tenantId}::uuid,'Fictional ending administrator',${randomUUID()+'@ending.test'}) returning id`);
  await owner.db.execute(sql`update app_user set person_id=${person.id}::uuid where tenant_id=${b.tenantId}::uuid and id=${admin.userId}::uuid`);admin={...admin,personId:person.id};
- await v9Setup(admin);const config=(await v9Workspace(admin)).config!,groupId=randomUUID();
- await v9SaveConfig(admin,config.revision,{...config,groups:[...config.groups,{id:groupId,name:'Contract ending People Ops',members:[admin.userId!],limit:0}],peopleOpsGroup:groupId});
+ await v9Setup(admin);const config=(await v9Workspace(admin)).config!,groupId=config.peopleOpsGroup;
+ // This Form fixture changes membership, not the unrelated native Offboarding posting-group assignment.
+ if(!groupId)throw Error('The native People Ops group is required for the Contract Form fixture.');
+ expect(config.groups.filter(group=>group.id===groupId)).toHaveLength(1);
+ await v9SaveConfig(admin,config.revision,{...config,groups:config.groups.map(group=>group.id===groupId?{...group,name:'Contract ending People Ops',members:[admin.userId!]}:group)});
+ const savedConfig=(await v9Workspace(admin)).config!;
+ expect(savedConfig.peopleOpsGroup).toBe(groupId);
+ expect(savedConfig.groups.filter(group=>group.id===groupId)).toMatchObject([{id:groupId,name:'Contract ending People Ops',members:[admin.userId!]}]);
  const year=Number(todayInKualaLumpur().slice(0,4)),start=period?.start??`${year}-01-01`,end=period?.end??`${year}-12-31`;
  const employee=await hireEmployee(admin,{person:{fullName:'Fictional ending subject',primaryEmail:randomUUID()+'@ending.test'},companyId:b.companyId,departmentId:b.deptA,employmentType:'contract',hiredOn:period?.hiredOn??start,provisionalEndOn:end});
  await setEmploymentInfo(admin,{employmentId:employee.employmentId,contractStartDate:start,contractEndDate:end,contractNumber:3});
