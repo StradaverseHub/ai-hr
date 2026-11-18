@@ -97,6 +97,13 @@ $$;
 REVOKE ALL ON FUNCTION app.probation_part_access(uuid,text) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION app.probation_part_access(uuid,text) TO ai_hr_app;
 --> statement-breakpoint
+-- RLS expressions retain function OIDs across RENAME. Rebind to the guarded public wrapper;
+-- the legacy implementation remains private and cannot bypass the identity boundary.
+ALTER POLICY probation_part_read ON probation_part USING(tenant_id=app.current_tenant_id() AND app.probation_part_access(id));
+ALTER POLICY probation_rater_read ON probation_rater_draft USING(tenant_id=app.current_tenant_id() AND app.probation_part_access(part_id,rater));
+ALTER POLICY probation_revision_read ON probation_revision USING(tenant_id=app.current_tenant_id() AND (rater='meta' AND app.probation_part_access(part_id) OR rater<>'meta' AND EXISTS(SELECT 1 FROM probation_part p JOIN probation_case c ON c.id=p.case_id AND c.tenant_id=p.tenant_id WHERE p.id=part_id AND p.tenant_id=probation_revision.tenant_id AND NOT app.probation_case_source_moved(c.id) AND (app.probation_role(c.employment_id,rater) OR app.probation_role(c.employment_id,'pbp') OR app.probation_role(c.employment_id,'gbs')))));
+ALTER POLICY probation_delegate_read ON probation_delegate USING(tenant_id=app.current_tenant_id() AND app.probation_part_access(part_id));
+--> statement-breakpoint
 ALTER FUNCTION app.probation_definition_save(uuid,text,text,jsonb,boolean,integer) RENAME TO probation_definition_save_before_completion_6686;
 REVOKE ALL ON FUNCTION app.probation_definition_save_before_completion_6686(uuid,text,text,jsonb,boolean,integer) FROM PUBLIC,ai_hr_app;
 CREATE FUNCTION app.probation_definition_save(p_company uuid,p_key text,p_kind text,p_data jsonb,p_publish boolean,p_expected integer) RETURNS uuid LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
