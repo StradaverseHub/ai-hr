@@ -86,6 +86,7 @@ export type Document = {
   hrSignature: Signature | null; employeeSignature: Signature | null; createdAt: string; sentAt: string | null;
   supersededBy?: string;
   mergeValues?: Record<string, string>;
+  personnelSourceReference?:{version:1;basis:'current'|'exit-boundary'|'draft';asOf:string;assignmentId:string|null;reportingLineId:string|null;exitEventId:string|null};
   hrStep?: Template['hrStep']; employeeAck?: boolean; signatoryUserId?: string | null; templateType?: Template['type'];
   /** Documents generated from a routed template version: each Sign step's signature, keyed by step id (`step:<id>` signature blocks). */
   stepSignatures?: Record<string, Signature>;

@@ -15,7 +15,7 @@ export function v9SigningCanonicalText(value:unknown):string{
  const compare=(a:string,b:string)=>{const x=bytes(a),y=bytes(b);if(x.length!==y.length)return x.length-y.length;for(let i=0;i<x.length;i++)if(x[i]!==y[i])return x[i]-y[i];return 0;};
  return '{'+Object.keys(value).filter(key=>Reflect.get(value,key)!==undefined).sort(compare).map(key=>JSON.stringify(key)+': '+v9SigningCanonicalText(Reflect.get(value,key))).join(', ')+'}';
 }
-export function v9DocumentSigningContent(document:Document){return {templateId:document.templateId,version:document.version,blocks:document.blocks,fields:document.fields,values:document.values,edits:document.edits,mergeValues:document.mergeValues??{}};}
+export function v9DocumentSigningContent(document:Document){return {templateId:document.templateId,version:document.version,blocks:document.blocks,fields:document.fields,values:document.values,edits:document.edits,mergeValues:document.mergeValues??{},...(document.personnelSourceReference?{personnelSourceReference:document.personnelSourceReference}:{})};}
 export function initializeV9DocumentRouting(c:Case,version:TemplateVersion,document:Document,env:Environment){
  if(!version.routing?.length)return;
  if(!env.documentRouting)throw new V9Error('Signing route resolution is unavailable.','conflict');
@@ -24,6 +24,8 @@ export function initializeV9DocumentRouting(c:Case,version:TemplateVersion,docum
  // Persist only the source values this document uses; signing participation grants no unrelated Personnel data.
  const used=new Set(document.fields.flatMap(field=>field.pmKey?[field.pmKey]:[]));
  for(const block of document.blocks){for(const match of [block.text,block.rows??'',block.label??''].join(' ').matchAll(/\{([a-zA-Z][a-zA-Z0-9_]*(?:\.[a-zA-Z0-9_]+)?)\}/g))used.add(match[1]);if(block.type==='letterhead')for(const key of ['company.name','company.regNo','company.address','company.color'])used.add(key);}
+ const source=env.documentRouting.personnelSource;
+ if(source&&['employee.department','employee.position','employee.supervisor','case.dept','case.position','case.supervisor','case.group','employee.businessUnit'].some(key=>used.has(key))){if(!['current','exit-boundary','draft'].includes(source._sourceBasis))throw new V9Error('The dated Personnel source requires review.','conflict');document.personnelSourceReference={version:1,basis:source._sourceBasis as 'current'|'exit-boundary'|'draft',asOf:source._sourceAsOf,assignmentId:source._assignmentId??null,reportingLineId:source._reportingLineId??null,exitEventId:source._exitEventId??null};}
  if(env.documentRouting.personnelSource?._identityFieldsWithheld==='true'&&['personalEmail','employee.icNo','employee.passportNo','icNo','passportNo','case.icNo','case.passportNo'].some(key=>used.has(key)))throw new V9Error('Permission to view protected Personnel identity fields is required for this document.','forbidden');
  document.mergeValues=Object.fromEntries(Object.entries(document.mergeValues??{}).filter(([key])=>used.has(key)));
  const resolved=env.documentRouting.resolve(version.routing);validateSigningRoute(resolved.route,V9_DOCUMENT_SIGNING_RULES);
@@ -36,7 +38,7 @@ export function v9RouteReadyForEmployee(document:Document){
  const employeeStage=Math.min(...document.signing.route.steps.filter(step=>step.role==='employee').map(step=>step.stage));
  return document.signing.route.steps.filter(step=>step.required&&step.role!=='employee'&&step.stage<employeeStage).every(step=>signingStepFulfilled(document.signing!,step));
 }
-export function v9RoutedHrComplete(document:Document){return !!document.signing&&!signingSendBack(document.signing)&&document.signing.route.steps.filter(step=>step.required&&step.role!=='employee').every(step=>signingStepFulfilled(document.signing!,step));}
+export function v9RoutedHrComplete(document:Document){const signing=document.signing;if(!signing||signingSendBack(signing))return false;const signed=new Set(currentRoundActions(signing).filter(action=>action.action==='signed').map(action=>action.stepId));return signing.route.steps.some(step=>step.role!=='employee'&&['sign','acknowledge'].includes(step.kind)&&signed.has(step.id))&&signing.route.steps.filter(step=>step.required&&step.role!=='employee').every(step=>signingStepFulfilled(signing,step));}
 export function reviseV9DocumentRouting(document:Document,env:Environment,employeeFields=false){
  if(!document.signing)return;
  const employeeEdit=employeeFields&&!signingContentLocked(document.signing)&&document.signing.route.steps.some(step=>step.role==='employee'&&step.holderId===env.actor.id);

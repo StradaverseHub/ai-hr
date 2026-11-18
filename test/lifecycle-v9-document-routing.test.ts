@@ -2,7 +2,7 @@ import {expect,it} from 'vitest';
 import {createHash} from 'node:crypto';
 import * as M from '../lib/lifecycle-v9-model';
 import {resolveDocumentRouting,type DocumentRouting} from '../lib/document-signing-routing';
-import {recordV9DocumentRouteAction,reviseV9DocumentRouting,v9SigningCanonicalText,v9DocumentSigningContent,v9RouteReadyForEmployee} from '../lib/lifecycle-v9-document-routing';
+import {recordV9DocumentRouteAction,reviseV9DocumentRouting,v9SigningCanonicalText,v9DocumentSigningContent,v9RouteReadyForEmployee,v9RoutedHrComplete} from '../lib/lifecycle-v9-document-routing';
 import {canEditSigningContent,pendingSigningSteps,signingSendBack,currentRoundActions} from '../lib/document-signing-model';
 function fixture(module: M.Module = 'off') {
   let sequence = 0;
@@ -55,4 +55,9 @@ it('admits a second exact document completion even while another notification fr
  const first={kind:'docSigned' as const,sourceId:'document-one',revision:1,at:f.environment.now},second={...first,sourceId:'document-two'};
  M.runWorkflow(f.c,f.config,w,f.environment,'docSigned',{sourceEvent:first});expect(f.c.runs[0].hold).toBeDefined();M.runWorkflow(f.c,f.config,w,f.environment,'docSigned',{sourceEvent:second});
  expect(f.c.runs).toHaveLength(2);expect(f.c.runs.map(r=>r.sourceEvent?.sourceId)).toEqual(['document-one','document-two']);expect(f.c.runs.every(r=>r.status==='waiting'&&!!r.hold)).toBe(true);expect(f.c.mails).toEqual([]);
+});
+
+it('never invents HR signing from review or approval decisions, or from employee-only signatures',()=>{
+ const f=routed();f.document.signing!.route.steps=f.document.signing!.route.steps.filter(step=>step.id!=='hr-sign');expect(v9RoutedHrComplete(f.document)).toBe(false);action(f,'hr','review','reviewed');expect(v9RoutedHrComplete(f.document)).toBe(false);action(f,'employee','employee-sign','signed');expect(f.document.status).toBe('signed');expect(v9RoutedHrComplete(f.document)).toBe(false);
+ const actual=routed();action(actual,'hr','review','reviewed');action(actual,'hr2','hr-sign','signed');expect(v9RoutedHrComplete(actual.document)).toBe(true);
 });
