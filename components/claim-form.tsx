@@ -348,7 +348,7 @@ export function ClaimForm({
       </Field>
 
       <Field label={t('receiptLabel')}>
-        <input name="receipt" type="file" accept="application/pdf,image/jpeg,image/png" className="min-h-9 rounded-md border border-input bg-card px-3 py-1 text-sm file:mr-3 file:rounded file:border-0 file:bg-muted file:px-2 file:py-1" />
+        <input name="receipt" type="file" accept="application/pdf,image/jpeg,image/png" className="h-9 min-w-0 w-full rounded-md border border-input bg-card px-3 py-1 text-sm file:mr-3 file:rounded file:border-0 file:bg-muted file:px-2 file:py-0.5" />
         <span className="text-xs text-muted-foreground">{t('attachmentHint')}</span>
       </Field>
 

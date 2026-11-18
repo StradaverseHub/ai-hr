@@ -1,5 +1,10 @@
-import {afterEach,describe,expect,it} from 'vitest';
+import {afterEach,describe,expect,it,vi} from 'vitest';
 import {page} from 'vitest/browser';
+import {NextIntlClientProvider} from 'next-intl';
+import {enWithAiCentre as en} from './helpers/ai-centre-messages';
+vi.mock('next/navigation',()=>({usePathname:()=>'/admin/settings/system-labels'}));
+vi.mock('../app/assistant/launcher-actions',()=>({askFromLauncherAction:vi.fn()}));
+const {AssistantLauncher}=await import('../components/assistant/assistant-launcher');
 import {cleanup,render} from '@testing-library/react';
 import {EmployeeName,Field,inputCls} from '../components/ui';
 import {PieChart} from '../components/charts/PieChart';
@@ -40,6 +45,15 @@ describe('operational spacing in the browser',()=>{
   expect(details.querySelectorAll('li')).toHaveLength(40);
   expect(view.getByText('Fictional company 40')).toBeVisible();
   expect(details.getBoundingClientRect().height).toBeLessThan(260);
+ });
+ for(const position of ['bottom-right','bottom-left'] as const)it(`keeps the real ${position} launcher clear of the last row action`,()=>{
+  const view=render(<NextIntlClientProvider locale="en" messages={en}><div style={{height:400,width:320,display:'flex',flexDirection:'column'}}><main style={{minHeight:0,flex:1,overflowY:'auto'}}><div style={{height:800,display:'flex',alignItems:'end',justifyContent:position==='bottom-left'?'start':'end'}}><button type="button">Archive fixture</button></div></main><div data-assistant-dock data-position={position}><AssistantLauncher position={position} hiddenAreas={[]}/></div></div></NextIntlClientProvider>);
+  const main=view.container.querySelector('main')!;
+  main.scrollTop=main.scrollHeight;
+  const archive=view.getByRole('button',{name:'Archive fixture'}),launcher=view.container.querySelector<HTMLButtonElement>('[aria-haspopup="dialog"]')!,dock=launcher.parentElement!;
+  expect(getComputedStyle(launcher).position).toBe('static');
+  expect(archive.getBoundingClientRect().bottom).toBeLessThanOrEqual(dock.getBoundingClientRect().top+1);
+  expect(launcher.getBoundingClientRect().top).toBeGreaterThanOrEqual(dock.getBoundingClientRect().top);
  });
  it('retains readable pie legends and a scroll boundary on narrow screens',async()=>{
   const view=render(<main style={{width:320,padding:16}}><PieChart id="coverage-fixture" data={[{label:'Recorded',value:12},{label:'Unknown',value:28}]}/></main>);

@@ -92,6 +92,7 @@ export default async function EmployeeLeaveRecordPage({
   const { s: session, scopeIds } = await scopedAdmin();
   const t = await getTranslations('leave');
   const tInq = await getTranslations('leave.inquiry');
+  const tPeople = await getTranslations('people.list');
   const locale = await getLocale();
   const sp = await searchParams;
 
