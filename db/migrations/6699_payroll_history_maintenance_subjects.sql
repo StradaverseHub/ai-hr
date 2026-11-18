@@ -17,7 +17,7 @@ CREATE FUNCTION app.payroll_history_maintenance_identity_page(targets uuid[],rec
 RETURNS TABLE("recordId" uuid,"companyId" uuid,"employmentId" uuid,"employeeNo" text,"hiredOn" text,"terminatedOn" text,period text,"cycleId" uuid,"calendarEvidence" text,segment jsonb,"unavailableReason" text)
 LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
 BEGIN
- IF p_offset IS NULL OR p_limit IS NULL OR p_offset<0 OR p_limit NOT BETWEEN 1 AND 500 THEN RAISE EXCEPTION 'Invalid accepted history identity page' USING ERRCODE='22023';END IF;
+ IF p_offset IS NULL OR p_limit IS NULL OR p_offset<0 OR p_offset>1000000 OR p_limit NOT BETWEEN 1 AND 500 THEN RAISE EXCEPTION 'Invalid accepted history identity page' USING ERRCODE='22023';END IF;
  RETURN QUERY
  WITH hidden AS MATERIALIZED(SELECT s.relation,s.row_id FROM app.payroll_history_staged_row s JOIN app.payroll_history_stage stage ON stage.stage_id=s.stage_id WHERE stage.tenant_id=app.current_tenant_id() AND stage.state='staged'),
  permissions AS MATERIALIZED(SELECT p.company_id FROM app.payroll_history_maintenance_permissions(CASE WHEN targets IS NULL THEN ARRAY(SELECT DISTINCT r.company_id FROM public.payroll_history_import_record r WHERE r.tenant_id=app.current_tenant_id() AND r.id=ANY(record_ids)) ELSE targets END) p WHERE p.can_edit OR p.can_remove),
@@ -39,7 +39,7 @@ CREATE FUNCTION app.payroll_history_maintenance_subjects(targets uuid[],employee
 RETURNS TABLE("recordId" uuid,"companyId" uuid,"employmentId" uuid,"employeeNo" text,"hiredOn" text,"terminatedOn" text,period text,"cycleId" uuid,"calendarEvidence" text,segment jsonb,"unavailableReason" text)
 LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
 BEGIN
- IF targets IS NULL OR employee_codes IS NULL OR periods IS NULL OR p_offset IS NULL OR p_limit IS NULL OR p_offset<0 OR p_limit NOT BETWEEN 1 AND 500 OR cardinality(targets) NOT BETWEEN 1 AND 500 OR cardinality(employee_codes) NOT BETWEEN 1 AND 5000 OR cardinality(periods) NOT BETWEEN 1 AND 1200 OR array_position(targets,NULL) IS NOT NULL OR array_position(employee_codes,NULL) IS NOT NULL OR array_position(periods,NULL) IS NOT NULL OR EXISTS(SELECT 1 FROM unnest(employee_codes) code WHERE length(btrim(code)) NOT BETWEEN 1 AND 200) OR EXISTS(SELECT 1 FROM unnest(periods) month WHERE month!~'^[0-9]{4}-(0[1-9]|1[0-2])$') THEN RAISE EXCEPTION 'Invalid accepted history subject page' USING ERRCODE='22023';END IF;
+ IF targets IS NULL OR employee_codes IS NULL OR periods IS NULL OR p_offset IS NULL OR p_limit IS NULL OR p_offset<0 OR p_offset>1000000 OR p_limit NOT BETWEEN 1 AND 500 OR cardinality(targets) NOT BETWEEN 1 AND 500 OR cardinality(employee_codes) NOT BETWEEN 1 AND 50000 OR cardinality(periods) NOT BETWEEN 1 AND 1200 OR array_position(targets,NULL) IS NOT NULL OR array_position(employee_codes,NULL) IS NOT NULL OR array_position(periods,NULL) IS NOT NULL OR EXISTS(SELECT 1 FROM unnest(employee_codes) code WHERE length(btrim(code)) NOT BETWEEN 1 AND 200) OR EXISTS(SELECT 1 FROM unnest(periods) month WHERE month!~'^[0-9]{4}-(0[1-9]|1[0-2])$') THEN RAISE EXCEPTION 'Invalid accepted history subject page' USING ERRCODE='22023';END IF;
  RETURN QUERY SELECT * FROM app.payroll_history_maintenance_identity_page(targets,NULL,employee_codes,periods,p_offset,p_limit);
 END $$;
 --> statement-breakpoint
@@ -51,7 +51,7 @@ CREATE FUNCTION app.payroll_history_maintenance_identity(record_ids uuid[],p_off
 RETURNS TABLE("recordId" uuid,"companyId" uuid,"employmentId" uuid,"employeeNo" text,"hiredOn" text,"terminatedOn" text,period text,"cycleId" uuid,"calendarEvidence" text,segment jsonb,"unavailableReason" text)
 LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
 BEGIN
- IF record_ids IS NULL OR cardinality(record_ids) NOT BETWEEN 1 AND 5000 OR array_position(record_ids,NULL) IS NOT NULL OR p_offset IS NULL OR p_limit IS NULL OR p_offset<0 OR p_limit NOT BETWEEN 1 AND 500 THEN RAISE EXCEPTION 'Invalid accepted history identity page' USING ERRCODE='22023';END IF;
+ IF record_ids IS NULL OR cardinality(record_ids) NOT BETWEEN 1 AND 50000 OR array_position(record_ids,NULL) IS NOT NULL OR p_offset IS NULL OR p_limit IS NULL OR p_offset<0 OR p_offset>1000000 OR p_limit NOT BETWEEN 1 AND 500 THEN RAISE EXCEPTION 'Invalid accepted history identity page' USING ERRCODE='22023';END IF;
  RETURN QUERY SELECT * FROM app.payroll_history_maintenance_identity_page(NULL,record_ids,NULL,NULL,p_offset,p_limit);
 END $$;
 --> statement-breakpoint

@@ -120,3 +120,13 @@ it('uses only retained accepted names when a transferred subject’s current nam
  const correction=await previewPayrollHistoryUpload(scoped,{name:'fictional-correction-2026.csv',operationKey:randomUUID(),content:content('1100.00'),maintenance:{version:1,mode:'replace',reason:'Reviewed original-employer correction'}});expect(correction.plan.rows[0].employeeName).toBeNull();expect(correction.plan.counts.invalid).toBe(0);await confirmPayrollHistoryUpload(scoped,{attemptId:correction.attemptId,previewHash:correction.plan.previewHash,confirmReplacement:true});
  const page=await payrollHistoryMaintenanceRecords(scoped,{period:month}),detail=await payrollHistoryMaintenanceRecord(scoped,id);expect(page.items[0].employeeName).toBe('Fictional historical employee');expect(detail?.employeeName).toBe('Fictional historical employee');expect(JSON.stringify({page,detail})).not.toContain('Private receiving-employer current name');expect((await payrollHistoryMaintenanceRecords(scoped,{search:'Private receiving-employer current name'})).total).toBe(0);expect((await payrollHistoryMaintenanceRecords(scoped,{search:'Fictional historical employee'})).total).toBe(1);
 });
+
+it('accepts the existing 50,000-source-row metadata bound while keeping output pages and offsets bounded',async()=>{
+ await accepted();const id=(await payrollHistoryMaintenanceRecords(ctx)).items[0].id;
+ expect(await withTenant(ctx,tx=>tx.execute(sql`select * from app.payroll_history_maintenance_identity(ARRAY(select ${id}::uuid from generate_series(1,50000)),0,1)`))).toHaveLength(1);
+ expect(await withTenant(ctx,tx=>tx.execute(sql`select * from app.payroll_history_maintenance_subjects(ARRAY[${b.companyId}::uuid],ARRAY(select 'F001'::text from generate_series(1,50000)),ARRAY[${period}],0,1)`))).toHaveLength(1);
+ await expect(withTenant(ctx,tx=>tx.execute(sql`select * from app.payroll_history_maintenance_identity(ARRAY(select ${id}::uuid from generate_series(1,50001)),0,1)`))).rejects.toThrow();
+ await expect(withTenant(ctx,tx=>tx.execute(sql`select * from app.payroll_history_maintenance_subjects(ARRAY[${b.companyId}::uuid],ARRAY(select 'F001'::text from generate_series(1,50001)),ARRAY[${period}],0,1)`))).rejects.toThrow();
+ await expect(withTenant(ctx,tx=>tx.execute(sql`select * from app.payroll_history_maintenance_identity(ARRAY[${id}::uuid],1000001,1)`))).rejects.toThrow();
+ await expect(withTenant(ctx,tx=>tx.execute(sql`select * from app.payroll_history_maintenance_identity(ARRAY[${id}::uuid],0,501)`))).rejects.toThrow();
+});
