@@ -198,7 +198,7 @@ export function editProbationLetterContent(ctx:SessionContext,input:{caseId:stri
  const view=await readLetterTx(tx,ctx,input.caseId,input.partId);if(!view.runtimeEnabled||!view.canEditContent||view.storageRevision!==input.revision||!view.signing)throw new ProbationError('conflict','Read the current editable letter before saving changes.');
  const[row]=await tx.execute<{data:{changed:boolean;documentId:string;contentHash:string}}>(sql`select app.probation_letter_edit_content(${id.parse(input.partId)}::uuid,${input.revision},${json(input.edits)}::jsonb,${json(input.values)}::jsonb,${input.reason}) as data`);
  if(row.data.changed)await reviseSigningDocumentTx(tx,ctx,{id:row.data.documentId,hash:row.data.contentHash,reason:input.reason});
- await tx.execute(sql`select app.probation_letter_transition(${input.partId}::uuid)`);return{saved:true};
+ return{saved:true};
 });}
 export function actOnProbationLetter(ctx:SessionContext,input:{caseId:string;partId:string;revision:number;stepId:string;action:'signed'|'returned'|'reviewed'|'approved';comment?:string;method?:'typed'|'drawn';value?:string;consent?:boolean;actionId?:string}){return withScopedLifecycleTenant(ctx,async tx=>{
  const view=await readLetterTx(tx,ctx,input.caseId,input.partId);if(!view.runtimeEnabled||view.storageRevision!==input.revision||!view.signing)throw new ProbationError('conflict','Read the current letter revision before acting.');
