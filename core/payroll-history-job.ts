@@ -152,6 +152,7 @@ export const payrollHistoryJobHandler:BulkJobHandler<Step>={
   await joinPayrollHistoryStageTx(tx,stageOf(job));
  },
  async applyStepTx(tx,ctx,job,step,cache){
+  await tx.execute(sql`select app.payroll_history_stage_step(${job.id}::uuid,${step.seq}::integer)`);
   const plan=planOf(job)!;
   if(step.kind==='revert')return{result:{change:await stageHistoryRevertTx(tx,ctx,plan.attemptId,(step.payload as {target:StagedHistoryRevertTarget}).target)}};
   const confirm=plan as ConfirmPlan&CommonPlan;

@@ -520,7 +520,7 @@ async function writeHistoryWithdrawalTx(tx:Tx,ctx:SessionContext,attemptId:strin
 // ── Staged confirm and revert (core/payroll-history-job.ts drives them on the shared bulk-job kernel) ────────────
 /** The transaction-local setting that makes this transaction's inserts belong to its job's stage (5055), and shows it
  * the rows its stage wrote. Only the job's chunk and release transactions set it. */
-export async function joinPayrollHistoryStageTx(tx:Tx,stageId:string){await tx.execute(sql`select set_config('app.payroll_history_stage',${stageId},true)`);}
+export async function joinPayrollHistoryStageTx(tx:Tx,stageId:string){await tx.execute(sql`select app.payroll_history_stage_join(${stageId}::uuid)`);}
 /** Whether another history job's stage is open in this tenant (the job then waits its turn; it never refuses). */
 export async function payrollHistoryStageBusyTx(tx:Tx,stageId:string){
  const [row]=await tx.execute<{busy:boolean}>(sql`select app.payroll_history_stage_busy(${stageId}::uuid) as busy`);return row?.busy===true;

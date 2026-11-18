@@ -6758,6 +6758,13 @@
       "breakpoints": true
     },
     {
+      "idx": 10095,
+      "version": "7",
+      "when": 1794998006695,
+      "tag": "6695_payroll_history_stage_boundary",
+      "breakpoints": true
+    },
+    {
       "idx": 10098,
       "version": "7",
       "when": 1794998006698,
