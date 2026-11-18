@@ -13,6 +13,14 @@ beforeAll(migrateTestDb);afterAll(closeAll);
 describe('Posting followed by an independent email Form in the same frozen workflow',()=>{
  it('approves the released agreement while only that email waits, advances the case, then sends the same email once after real HR and employee completion',async()=>{
   const f=await contractPostingFixture({payChanges:false});
+  const issuer='https://contract-email-producer-fixture.invalid/auth/'+f.b.tenantId,subject=randomUUID();
+  await owner.db.execute(sql`insert into app_external_identity(issuer,subject,app_user_id) values(${issuer},${subject},${f.employeeActor.userId!}::uuid)`);
+  const [recipient]=await owner.db.execute<{userId:string;personId:string;tenantId:string;issuer:string;subject:string;unrevoked:boolean;reachable:boolean}>(sql`
+   select u.id as "userId",u.person_id as "personId",u.tenant_id as "tenantId",identity.issuer,identity.subject,identity.revoked_at is null as unrevoked,
+    (identity.revoked_at is null and identity.issuer like '%/auth/'||u.tenant_id::text and u.person_id is not null and u.archived_at is null and not app.login_blocked(u.id)) as reachable
+   from app_user u join app_external_identity identity on identity.app_user_id=u.id
+   where u.tenant_id=${f.b.tenantId}::uuid and u.id=${f.employeeActor.userId!}::uuid and identity.issuer=${issuer} and identity.subject=${subject}`);
+  expect(recipient).toEqual({userId:f.employeeActor.userId,personId:f.employeeActor.personId,tenantId:f.b.tenantId,issuer,subject,unrevoked:true,reachable:true});
   const documentId=randomUUID(),emailId=randomUUID(),emailStep=randomUUID();
   await saveAutomationDocumentTemplate(f.admin,{template:{id:documentId,module:'contract_staff',name:'Fictional retained acknowledgement',description:'',rules:{},
    blocks:[{id:'intro',type:'text',text:'Acknowledge the retained agreement.',section:''},{id:'answers',type:'fields',text:'',section:'main'}],
