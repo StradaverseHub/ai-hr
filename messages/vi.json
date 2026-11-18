@@ -44897,6 +44897,7 @@
     "pushField": "Đẩy {field} sang Quản lý nhân sự"
   },
   "payrollHistoryMaintenance": {
+    "laterCorrectionRecorded": "Đã ghi nhận sửa đổi sau",
     "itemsUnavailable": "Không có chi tiết Khoản lương.",
     "sourceLimited": "Cần quyền truy cập toàn bộ lô nhập để mở tệp gốc.",
     "impactKinds": {

@@ -44897,6 +44897,7 @@
     "pushField": "{field} புலத்தைப் பணியாளர் மேலாண்மைக்கு அனுப்பு"
   },
   "payrollHistoryMaintenance": {
+    "laterCorrectionRecorded": "பிந்தைய திருத்தம் பதிவுசெய்யப்பட்டது",
     "itemsUnavailable": "ஊதிய உருப்படி விவரம் கிடைக்கவில்லை.",
     "sourceLimited": "அசல் கோப்பைத் திறக்க முழு இறக்குமதித் தொகுப்பிற்கான அணுகல் தேவை.",
     "impactKinds": {

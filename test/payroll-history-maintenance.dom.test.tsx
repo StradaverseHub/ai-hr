@@ -84,3 +84,8 @@ it('keeps unknown lineage distinct from empty history and does not offer source 
  const {unmount}=render(wrap(<HistoryMaintenanceControl detail={unavailable}/>));expect(screen.getByRole('status')).toHaveTextContent('Pay Item breakdown unavailable.');expect(screen.getByRole('status')).toHaveTextContent('immutable source lineage');expect(screen.queryByText('No effective imported items.')).not.toBeInTheDocument();expect(screen.queryByRole('button',{name:'Review changes'})).not.toBeInTheDocument();unmount();
  const current={...maintenanceDetail,items:[{...maintenanceDetail.items[0],sourceName:null}],audit:[{...maintenanceDetail.audit[0],sourceName:''}]};render(wrap(<><HistoryMaintenanceControl detail={current}/><HistoryMaintenanceAudit detail={current}/></>));expect(screen.queryByRole('link')).not.toBeInTheDocument();expect(screen.getAllByText('The original file requires access to the complete import batch.')).toHaveLength(2);
 });
+
+it('distinguishes a recorded later correction from a promise to retain an explicitly removed item',()=>{
+ const {unmount}=render(wrap(<HistoryMaintenanceControl detail={maintenanceDetail}/>));expect(screen.getByText('Later correction recorded')).toBeInTheDocument();expect(screen.queryByText('Later correction retained')).not.toBeInTheDocument();unmount();
+ const removed={...maintenanceRemovalPlan,rows:maintenanceRemovalPlan.rows.map(row=>({...row,itemChanges:[{key:'meal',code:'MEAL',label:'Meal allowance',before:'80.00',after:null,operation:'remove' as const,laterCorrection:true}]}))};render(wrap(<RevisionPreview plan={removed}/>));expect(screen.getByText('Remove Pay Item')).toBeInTheDocument();expect(screen.queryByText('Later correction retained')).not.toBeInTheDocument();
+});
