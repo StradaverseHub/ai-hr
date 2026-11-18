@@ -1,6 +1,6 @@
 import {describe,it,expect} from 'vitest';
 import {aggregateHistoryItems,appendHistoryContribution,removeHistoryAttempt,removeHistoryItems,effectiveHistoryItems,retainedNativeHistoryBaseline,historyMoneyCents,type HistoryOwnedItem,type HistoryContributionState} from '../lib/payroll-history-maintenance-lineage';
-import {maintenanceSourceItems} from '../core/payroll-history-maintenance-state';
+import {maintenanceSourceItems,maintenanceNativeItems} from '../core/payroll-history-maintenance-state';
 import {maintenanceTaxInput} from '../lib/payroll-history-maintenance-tax-input';
 import {SYSTEM_BASIC_TAX_SETTING} from '../lib/payroll-import-tax-input';
 import type {ImportCodeEntry} from '../lib/payroll-history-import-schema';
@@ -33,6 +33,10 @@ describe('canonical total-setting maintenance lineage',()=>{
  it('restores only the immutable native baseline, never a removed imported owner',()=>{
   const native:HistoryContributionState={version:1,baselineSnapshotId:'native-copy',chains:{'destination:basic':[{attemptId:null,item:item('BASIC','900.00')}]}};
   const imported=appendHistoryContribution(native,'A',[item('BASIC','1000.00')],'replace');expect(retainedNativeHistoryBaseline(imported)).toEqual(native);expect(amounts(native)).toEqual({BASIC:'900.00'});
+ });
+ it('holds unknown or inexact original statutory amounts instead of coercing null to zero or rounding them',()=>{
+  const values={basicSalary:'1000.00',allowance:'0.00',overtimePay:'0.00',bonus:'0.00',grossPay:'1000.00',otherDeductions:'0.00',totalDeductions:'0.00',netPay:'1000.00',employerCost:'1000.00',statutory:{pcb:null}},codes=new Map<string,ImportCodeEntry>([['BASIC',{code:'BASIC',label:'Basic',destination:'basic',direction:'earning',source:'statutory',basicSalaryOwner:true}],['PCB',{code:'PCB',label:'PCB',destination:'pcb',direction:'deduction',source:'statutory'}]]);
+  expect(()=>maintenanceNativeItems(values,codes)).toThrow(/original PCB amount/);expect(()=>maintenanceNativeItems({...values,statutory:{pcb:0.001}},codes)).toThrow(/inexact/);expect(maintenanceNativeItems({...values,statutory:{pcb:0}},codes).find(item=>item.code==='PCB')?.amount).toBe('0.00');
  });
  it('refuses ambiguous canonical identities, negative/inexact values and aggregate overflow',()=>{
   expect(()=>aggregateHistoryItems([item('TRV','1.00'),{...item('TRV','1.00'),direction:'deduction'}])).toThrow(/ambiguous/);

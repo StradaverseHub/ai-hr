@@ -115,7 +115,7 @@ BEGIN
   IF coalesce((totals_->>scalar_.destination)::numeric,0) IS DISTINCT FROM (values_->>scalar_.property)::numeric THEN RETURN false;END IF;
  END LOOP;
  FOR scalar_ IN SELECT * FROM (VALUES('epf_employee','epfEmployee'),('epf_employer','epfEmployer'),('socso_employee','socsoEmployee'),('socso_employer','socsoEmployer'),('socso_skbbk','socsoSkbbk'),('eis_employee','eisEmployee'),('eis_employer','eisEmployer'),('pcb','pcb'),('cp38','cp38'),('zakat','zakat'),('lp','lp'),('hrdf','hrdf')) owned(destination,property) LOOP
-  IF coalesce((totals_->>scalar_.destination)::numeric,0) IS DISTINCT FROM coalesce((values_->'statutory'->>scalar_.property)::numeric,0) THEN RETURN false;END IF;
+  IF values_->'statutory'->scalar_.property='null'::jsonb OR coalesce((totals_->>scalar_.destination)::numeric,0) IS DISTINCT FROM coalesce((values_->'statutory'->>scalar_.property)::numeric,0) THEN RETURN false;END IF;
  END LOOP;
  SELECT coalesce(jsonb_object_agg(code,amount),'{}'::jsonb) INTO owned_nc_ FROM(SELECT upper(item->>'code') code,sum((item->>'amount')::numeric) amount FROM jsonb_each(state_->'chains') chain CROSS JOIN LATERAL(SELECT chain.value->0->'item' item) owned WHERE item->>'direction'='noncash' GROUP BY upper(item->>'code')) grouped;
  IF jsonb_typeof(values_->'statutory'->'importedTaxBasis'->'lines')='array' THEN

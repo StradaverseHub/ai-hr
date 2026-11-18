@@ -27,6 +27,6 @@ export function historyItemsMatchValues(items:readonly HistoryOwnedItem[],values
  const total=(destination:string)=>items.filter(item=>item.destination===destination).reduce((sum,item)=>sum+historyMoneyCents(item.amount),BigInt(0));
  for(const [destination,property]of [['basic','basicSalary'],['allowance','allowance'],['overtime','overtimePay'],['bonus','bonus'],['other_deduction','otherDeductions']] as const)if(total(destination)!==historyMoneyCents(values[property]))return false;
  const statutory:Record<string,string>={epf_employee:'epfEmployee',epf_employer:'epfEmployer',socso_employee:'socsoEmployee',socso_employer:'socsoEmployer',socso_skbbk:'socsoSkbbk',eis_employee:'eisEmployee',eis_employer:'eisEmployer',pcb:'pcb',cp38:'cp38',zakat:'zakat',lp:'lp',hrdf:'hrdf'};
- for(const [destination,property]of Object.entries(statutory))if(total(destination)!==historyMoneyCents(Number(values.statutory[property]??0).toFixed(2)))return false;
+ for(const [destination,property]of Object.entries(statutory)){const original=values.statutory[property];if(original!==undefined&&typeof original!=='number'&&typeof original!=='string')return false;try{if(total(destination)!==historyMoneyCents(String(original??0)))return false;}catch{return false;}}
  return true;
 }

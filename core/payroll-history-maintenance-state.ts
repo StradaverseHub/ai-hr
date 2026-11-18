@@ -1,6 +1,7 @@
 import {PayrollHistoryRevisionError} from '../lib/payroll-history-revisions';
 /** Reconstruct item ownership from immutable accepted source/revisions; no independent money store. */
 import {createHash} from 'node:crypto';
+import {readPcbNonCash} from '../localization/noncash-benefits';
 import {asc,inArray,sql} from 'drizzle-orm';
 import type {SessionContext,Tx} from '../db/client';
 import {payrollHistoryImportRecord as record,payrollHistoryImportRevision as revision,payrollHistoryImportSnapshot as snapshot,payrollHistoryImportAttempt as attempt} from '../db/schema';
@@ -18,13 +19,14 @@ export function maintenanceSourceItems(rows:readonly {rowNum:number;code:string;
   return[{key,code,label:entry.label,originalCodes:[row.code],amount:historyMoney(historyMoneyCents(row.amount)),destination:entry.destination,direction:entry.destination==='noncash'?'noncash' as const:monetary?entry.direction==='deduction'?'deduction' as const:'earning' as const:'statutory' as const,sourceRows:[row.rowNum]}];}));
 }
 const statutoryKeys:Record<string,string>={epf_employee:'epfEmployee',epf_employer:'epfEmployer',socso_employee:'socsoEmployee',socso_employer:'socsoEmployer',socso_skbbk:'socsoSkbbk',eis_employee:'eisEmployee',eis_employer:'eisEmployer',pcb:'pcb',cp38:'cp38',zakat:'zakat',lp:'lp',hrdf:'hrdf'};
+function originalMoney(code:string,value:unknown):string{if(typeof value!=='number'&&typeof value!=='string')fail(`The original ${code} amount is unavailable.`);try{return historyMoney(historyMoneyCents(String(value)));}catch{fail(`The original ${code} amount is inexact or unavailable.`);}}
 export function maintenanceNativeItems(values:ImportedPayrollValues,codes:ReadonlyMap<string,ImportCodeEntry>):HistoryOwnedItem[]{
  const rows:{rowNum:number;code:string;amount:string}[]=[{rowNum:1,code:'BASIC',amount:values.basicSalary}];
- for(const code of STATUTORY_IMPORT_CODES){const key=statutoryKeys[code.destination];if(key&&values.statutory[key]!==undefined)rows.push({rowNum:rows.length+1,code:code.code,amount:Number(values.statutory[key]).toFixed(2)});}
+ for(const code of STATUTORY_IMPORT_CODES){const key=statutoryKeys[code.destination];if(key&&values.statutory[key]!==undefined)rows.push({rowNum:rows.length+1,code:code.code,amount:originalMoney(code.code,values.statutory[key])});}
  const lines=values.statutory.importedLines??values.statutory.componentLines;
- if(Array.isArray(lines))for(const line of lines){if(!line||typeof line.code!=='string'||!Number.isFinite(Number(line.amount)))fail('The native baseline has ambiguous original Pay Item lines.');const entry=codes.get(upper(line.code));if(!entry)fail(`Native Pay Item ${line.code} is unavailable.`);if(entry.destination==='basic')continue;rows.push({rowNum:rows.length+1,code:line.code,amount:Number(line.amount).toFixed(2)});}
- const nc=values.statutory.pcbNonCash as {ownedEaEntries?:{code:string;entered:number}[]}|undefined;
- for(const entry of nc?.ownedEaEntries??[])rows.push({rowNum:rows.length+1,code:entry.code,amount:entry.entered.toFixed(2)});
+ if(Array.isArray(lines))for(const line of lines){if(!line||typeof line.code!=='string')fail('The native baseline has ambiguous original Pay Item lines.');const entry=codes.get(upper(line.code));if(!entry)fail(`Native Pay Item ${line.code} is unavailable.`);if(entry.destination==='basic')continue;rows.push({rowNum:rows.length+1,code:line.code,amount:originalMoney(line.code,line.amount)});}
+ const nc=readPcbNonCash(values.statutory.pcbNonCash);if(values.statutory.pcbNonCash!=null&&!nc)fail('The original native noncash ownership is unavailable.');
+ for(const entry of nc?.ownedEaEntries??[])rows.push({rowNum:rows.length+1,code:entry.code,amount:originalMoney(entry.code,entry.entered)});
  const items=maintenanceSourceItems(rows,retainedHistoryCodes(values,codes)),sum=(dest:string)=>items.filter(item=>item.destination===dest).reduce((n,item)=>n+historyMoneyCents(item.amount),BigInt(0));
  for(const [dest,value]of [['allowance',values.allowance],['overtime',values.overtimePay],['bonus',values.bonus],['other_deduction',values.otherDeductions]] as const)if(sum(dest)!==historyMoneyCents(value))fail('The original native Pay Item detail does not reconcile. Its baseline is preserved; item maintenance requires unambiguous source detail.');
  return items.map(item=>({...item,sourceRows:[]}));
