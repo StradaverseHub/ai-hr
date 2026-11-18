@@ -225,7 +225,7 @@ BEGIN
   source_case:=NEW.id;source_employment:=NEW.employment_id;
   old_docs:=CASE WHEN TG_OP='INSERT' THEN '[]'::jsonb ELSE coalesce(OLD.data->'documents','[]'::jsonb) END;new_docs:=coalesce(NEW.data->'documents','[]'::jsonb);company:=NEW.company_id;facts:=NEW.data->'facts';subject_person:=(facts->>'personId')::uuid;admin:=app.lc_v9_off_access(company);
  END IF;
- IF NOT EXISTS(SELECT 1 FROM jsonb_array_elements(old_docs||new_docs) d WHERE jsonb_typeof(d->'signing')='object') THEN RETURN NEW;END IF;
+ IF NOT EXISTS(SELECT 1 FROM jsonb_array_elements(old_docs||new_docs) candidate_document WHERE jsonb_typeof(candidate_document->'signing')='object') THEN RETURN NEW;END IF;
  IF TG_TABLE_NAME='lc_onboarding_private' THEN
   IF NEW.data->'lifecycleV9Subject'->>'personId' IS DISTINCT FROM c.data->>'personId' OR NEW.data->'lifecycleV9Subject'->>'employmentId' IS DISTINCT FROM c.employment_id::text THEN RAISE EXCEPTION 'Frozen document subject mismatch';END IF;
  ELSE
@@ -251,7 +251,7 @@ BEGIN
    body_changed:=app.v9_document_content_hash(prior) IS DISTINCT FROM app.v9_document_content_hash(d);
    IF body_changed THEN
     IF d->'fields' IS DISTINCT FROM prior->'fields' OR d->'blocks' IS DISTINCT FROM prior->'blocks' OR d->'mergeValues' IS DISTINCT FROM prior->'mergeValues' OR d->>'templateId' IS DISTINCT FROM prior->>'templateId' OR d->'version' IS DISTINCT FROM prior->'version' THEN RAISE EXCEPTION 'Frozen source fields and document structure cannot be replaced';END IF;
-    IF EXISTS(SELECT 1 FROM jsonb_array_elements(prior->'fields') field WHERE field->>'owner'='pmLocked' AND d->'values'->(field->>'id') IS DISTINCT FROM prior->'values'->(field->>'id')) THEN RAISE EXCEPTION 'Personnel source fields are locked';END IF;
+    IF EXISTS(SELECT 1 FROM jsonb_array_elements(prior->'fields') configured_field WHERE configured_field->>'owner'='pmLocked' AND d->'values'->(configured_field->>'id') IS DISTINCT FROM prior->'values'->(configured_field->>'id')) THEN RAISE EXCEPTION 'Personnel source fields are locked';END IF;
     content_edit:=app.document_signing_can_edit(prior->'signing',app.current_user_id());
     IF NOT content_edit AND NOT app.document_signing_locked(prior->'signing')
      AND EXISTS(SELECT 1 FROM jsonb_array_elements(prior->'signing'->'route'->'steps') st WHERE st->>'role'='employee' AND st->>'holderId'=app.current_user_id()::text)
