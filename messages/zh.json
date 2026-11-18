@@ -35176,7 +35176,11 @@
       "maritalStatus": "婚姻状况",
       "companyId": "公司内部 ID",
       "companyName": "公司法定名称",
-      "companyCode": "公司代码"
+      "companyCode": "公司代码",
+      "departmentBusinessCode": "部门代码",
+      "positionBusinessCode": "职位代码",
+      "businessUnitCode": "业务单位代码",
+      "jobGradeCode": "职级代码"
     },
     "parameter": {
       "payItem": "薪资项目",
@@ -35449,7 +35453,22 @@
       }
     },
     "missingItemZero": "{variable}（{code}）：本次运行中没有，按 0 计算",
-    "missingMemberZero": "{variable}（{group}）成员 {code}：本次运行中没有，按 0 计算"
+    "missingMemberZero": "{variable}（{group}）成员 {code}：本次运行中没有，按 0 计算",
+    "businessCodes": {
+      "compatibility": "显示已保存公式的内部 ID",
+      "search": "搜索已配置的代码",
+      "page": "第 {from}–{to} 项，共 {total} 个代码",
+      "none": "获准访问的公司中没有可用的已配置代码。",
+      "previous": "上一页",
+      "next": "下一页",
+      "loadFailed": "无法加载代码，请重试。",
+      "reviewTitle": "检查旧版人事数据来源",
+      "preserved": "已保存的内部引用和旧别名保持原有含义，不会自动转换。",
+      "conversionHelp": "为每项直接比较选择已配置代码。检查新含义后，保存为新版本并测试。其他用法可通过变量库编辑。",
+      "selected": "已选代码：{code}",
+      "reviewed": "我已检查此比较及其业务含义。",
+      "apply": "应用到此草稿"
+    }
   },
   "payrollTaxBasis": {
     "title": "重新计算所得税基数",

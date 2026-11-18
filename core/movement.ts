@@ -1143,8 +1143,8 @@ export async function movementReportFactsTx(tx: Tx, tenantId: string, employment
       const group = eventsByGroup.get(key) ?? []; group.push(event); eventsByGroup.set(key, group);
     }
     const groupOf=(row:ProjectedRow)=>eventsByGroup.get(row.groupId??row.id)??[];
-    const informationCorrections=projected.events.filter(event=>event.eventType==='employment.information.corrected');
-    const gradeEvents=projected.events.filter(event=>event.eventType==='employment.grade.changed'||event.eventType==='employment.information.corrected').map(event=>event.eventType==='employment.information.corrected'?{...event,payload:{before:(event.payload as {before:{gradeId:string|null}}).before.gradeId,after:(event.payload as {after:{gradeId:string|null}}).after.gradeId}}:event);
+    const informationCorrections=projected.events.filter(isGradeInformationCorrection);
+    const gradeEvents=projected.events.filter(event=>event.eventType==='employment.grade.changed'||isGradeInformationCorrection(event)).map(event=>event.eventType==='employment.information.corrected'?{...event,payload:{before:(event.payload as {before:{gradeId:string|null}}).before.gradeId,after:(event.payload as {after:{gradeId:string|null}}).after.gradeId}}:event);
     const gradeRows=projected.rows.filter(row=>groupOf(row).some(event=>event.eventType==='employment.grade.changed'));
     // Unattributed legacy writes and compensating grade legs have no independently recorded effective
     // date. Do not substitute today's grade for an unprovable historical context.
@@ -1782,6 +1782,13 @@ async function projectMovementHistoryTx(tx:Tx,ctx:SessionContext,employmentId:st
     const resignation=includeResignation?await resignationInformationFromProjection(tx,employmentId,projection):null;
     return {movements,catalogue,resignation};
   }
+
+/** Full correction snapshots contain unrelated fields; only a changed grade belongs in grade replay. */
+function isGradeInformationCorrection(event: RawEvent): boolean {
+  if (event.eventType !== 'employment.information.corrected') return false;
+  const payload = event.payload as { fields?: unknown } | null;
+  return Array.isArray(payload?.fields) && payload.fields.includes('gradeId');
+}
 
 /** The grade in force just before/at an event, replayed from employment.grade.changed events (gradeId is
  *  a flat column, so as-of reconstruction must come from the ledger). `bound` is the row's sequence;

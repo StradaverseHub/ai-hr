@@ -35176,7 +35176,11 @@
       "maritalStatus": "Status perkahwinan",
       "companyId": "ID dalaman syarikat",
       "companyName": "Nama sah syarikat",
-      "companyCode": "Kod syarikat"
+      "companyCode": "Kod syarikat",
+      "departmentBusinessCode": "Kod jabatan",
+      "positionBusinessCode": "Kod jawatan",
+      "businessUnitCode": "Kod unit perniagaan",
+      "jobGradeCode": "Kod gred jawatan"
     },
     "parameter": {
       "payItem": "Item gaji",
@@ -35449,7 +35453,22 @@
       }
     },
     "missingItemZero": "{variable} ({code}): tiada dalam larian ini, dikira sebagai 0",
-    "missingMemberZero": "{variable} ({group}), ahli {code}: tiada dalam larian ini, dikira sebagai 0"
+    "missingMemberZero": "{variable} ({group}), ahli {code}: tiada dalam larian ini, dikira sebagai 0",
+    "businessCodes": {
+      "compatibility": "Tunjukkan ID dalaman untuk formula tersimpan",
+      "search": "Cari kod yang dikonfigurasi",
+      "page": "{from}–{to} daripada {total} kod",
+      "none": "Tiada kod dikonfigurasi dalam syarikat yang dibenarkan.",
+      "previous": "Sebelumnya",
+      "next": "Seterusnya",
+      "loadFailed": "Kod tidak dapat dimuatkan. Cuba lagi.",
+      "reviewTitle": "Semak sumber Personnel terdahulu",
+      "preserved": "Rujukan dalaman dan alias lama mengekalkan makna tersimpan. Tiada penukaran automatik.",
+      "conversionHelp": "Pilih kod untuk setiap perbandingan langsung. Semak makna baharu, simpan versi baharu dan uji. Penggunaan lain boleh disunting melalui pustaka pemboleh ubah.",
+      "selected": "Kod dipilih: {code}",
+      "reviewed": "Saya telah menyemak perbandingan ini dan makna perniagaannya.",
+      "apply": "Gunakan pada draf ini"
+    }
   },
   "payrollTaxBasis": {
     "title": "Kira Semula Nilai Cukai Pendapatan",

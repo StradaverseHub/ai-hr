@@ -6469,6 +6469,13 @@
       "when": 1794841006104,
       "tag": "6104_lifecycle_recipient_fanout",
       "breakpoints": true
+    },
+    {
+      "idx": 10050,
+      "version": "7",
+      "when": 1794998006650,
+      "tag": "6650_pay_formula_business_code_registration",
+      "breakpoints": true
     }
   ]
 }
