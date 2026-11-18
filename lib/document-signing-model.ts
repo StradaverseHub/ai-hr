@@ -89,7 +89,7 @@ const atCurrentContent=(action:SigningAction,document:SigningDocument)=>action.c
 /** Actions of the current round: current content, after the latest re-send of that content. */
 export function currentRoundActions(document: SigningDocument): SigningAction[] {
   let start=0;
-  document.actions.forEach((action,index)=>{if(action.action==='resent'&&atCurrentContent(action,document))start=index+1;});
+  document.actions.forEach((action,index)=>{if(atCurrentContent(action,document)){if(action.action==='resent')start=index+1;else if(document.routing&&action.action==='returned')start=index;}});
   return document.actions.slice(start).filter(action=>atCurrentContent(action,document));
 }
 /** The send-back that currently holds the document with its owner, or null. */
@@ -149,7 +149,8 @@ export function recordSigningAction(document: SigningDocument, rules: SigningGua
     if (prior.actorId===input.actorId&&prior.actorPersonId===input.actorPersonId&&prior.stepId===input.stepId&&prior.contentHash===input.hash&&prior.contentRevision===input.revision&&prior.action===input.action&&prior.comment===(input.comment?.trim()??'')&&(input.action!=='signed'||prior.signature?.method===input.method&&prior.signature?.value===input.value&&input.consent===true)) return document;
     throw new SigningError('conflict','This action reference was already used.');
   }
-  const step=pendingSigningSteps(document).find(s=>s.id===input.stepId);
+  const steps=input.action==='returned'&&document.routing&&!signingSendBack(document)?document.route.steps:pendingSigningSteps(document);
+  const step=steps.find(s=>s.id===input.stepId);
   if (!step || !step.holderId || step.holderId!==input.actorId) throw new SigningError('forbidden','Only the current assigned signer can act at this step.');
   if (!input.actorPersonId || !input.actorName.trim() || !Number.isFinite(Date.parse(input.at))) invalid('The verified signer and action time are required.');
   if (input.action==='returned'&&!input.comment?.trim()) invalid('Explain why the review is being returned.');
