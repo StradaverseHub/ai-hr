@@ -743,6 +743,11 @@ at most16 short attempts inside the SAME20/24-second slot, with fresh original p
 Existing accepted record changes, wrong closed records, retained audit integrity errors and every genuine
 native byte-proof error are fatal; there is no generic exception retry or fallback.
 
+Bounded native failures report a fixed reason (deadline, child exit, stdout/stderr
+bound, wait timeout, interruption or other) and numeric exit/timing/byte counts.
+They never include command arguments, environment, input, captured output or arbitrary
+exception text. The original owned-process cleanup and all proof budgets still apply.
+
 Only the same original `ci-build-health` launch may progress R0 (running with pinned old last-ok) → R1
 (native exit0/finished-at/last-ok publication) → O (strict normal success). Direct R0→O is allowed. The same
 lease may advance installing→arrived only under strict O. Failed/foreign/pending/backsliding states refuse.

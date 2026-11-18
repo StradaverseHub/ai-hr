@@ -245,6 +245,13 @@ MAX_NATIVE_STDOUT = 32 * 1024**2
 MAX_NATIVE_STDERR = 64 * 1024
 
 
+class NativeProofFailure(ValueError):
+    """Only fixed categories and numeric process metadata may leave the protected runner."""
+    def __init__(self,details):
+        self.details=details
+        super().__init__('CI runtime cutover refused: bounded native owner proof failed; safe details '+json.dumps(details,sort_keys=True,separators=(',',':')))
+
+
 def bounded_process(argv, **options):
     """Hard streaming bounds and one finite deadline, including silent children. Kill only this new child session.
     Do not reap/poll before failure cleanup: the unreaped child retains its PID, preventing process-group ID reuse.
@@ -276,7 +283,17 @@ def bounded_process(argv, **options):
         result=process.wait(timeout=max(.001,deadline-time.monotonic()));reaped=True
         if result:raise ValueError('native proof command failed')
         return b''.join(output['out'])
-    except BaseException:
+    except BaseException as error:
+        # Preserve the actual failure branch before cleanup, without publishing
+        # argv, environment, input, stdout, stderr, or arbitrary exception text.
+        message=error.args[0]if type(error)is ValueError and error.args and type(error.args[0])is str else None
+        reason={'native proof deadline exceeded':'DEADLINE','native proof command failed':'CHILD_EXIT'}.get(message,'OTHER')
+        if message=='native proof output exceeds hard bound':reason='STDOUT_BOUND'if sizes.get('out',0)>MAX_NATIVE_STDOUT else'STDERR_BOUND'
+        if isinstance(error,subprocess.TimeoutExpired):reason='WAIT_TIMEOUT'
+        if isinstance(error,(KeyboardInterrupt,SystemExit)):reason='INTERRUPTED'
+        before_cleanup=process.returncode
+        elapsed_ms=round((time.monotonic()-(deadline-timeout))*1000)
+        remaining_ms=round((deadline-time.monotonic())*1000)
         # No shell, no foreign service/unit/PID, and only our unreaped new session is targeted.
         if not reaped:
             try:os.killpg(process.pid,signal.SIGTERM)
@@ -286,7 +303,10 @@ def bounded_process(argv, **options):
                 try:os.killpg(process.pid,signal.SIGKILL)
                 except ProcessLookupError:pass
                 process.wait(timeout=5)
-        raise ValueError('CI runtime cutover refused: bounded native owner proof failed (private diagnostics withheld)') from None
+        details={'reason':reason,'returnCodeBeforeCleanup':before_cleanup,'returnCodeAfterCleanup':process.returncode,
+                 'elapsedMs':elapsed_ms,'remainingMs':remaining_ms,'budgetMs':round(timeout*1000),
+                 'stdoutBytes':sizes.get('out',0),'stderrBytes':sizes.get('err',0)}
+        raise NativeProofFailure(details) from None
     finally:
         streams.close()
         for pipe in (process.stdout,process.stderr):
