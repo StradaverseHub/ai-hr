@@ -18,7 +18,7 @@ export type HistoryRevisionRow = {
  otherCompany?:boolean;
  itemChanges?:{key:string;code:string;label:string;before:string|null;after:string|null;operation:'add'|'change'|'keep'|'remove'|'restore';laterCorrection?:boolean}[];
  impact?:import('./payroll-history-maintenance').PayrollHistoryMaintenanceImpact[];
- withdrawal?:boolean;restoreSnapshotId?:string|null;
+ withdrawal?:boolean;restoreSnapshotId?:string|null;maintenanceMode?:NonNullable<HistoryRevisionPlan['maintenance']>['mode'];maintenanceReason?:string;
  contributions?:import('./payroll-history-maintenance-lineage').HistoryContributionState;
 };
 /** The identity a replacement is ticked by on the screen and confirmed by on the server. */
