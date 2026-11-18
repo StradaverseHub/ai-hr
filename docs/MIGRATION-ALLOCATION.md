@@ -1,3 +1,15 @@
+## Remaining approved board source reservations — 18 November 2026
+
+The coordinator reserves these append-only source blocks for the remaining approved items. A fresh survey read 482 working-tree journals; the only claim in these ranges was this session's assigned RVK owner at 6670–6671. The inspected staging ledger is below these ranges. Re-survey committed peers and the actual installation before release admission; these are source reservations, not installation authority.
+
+| Owner / item | Tags | Journal indices | Timestamps |
+| --- | --- | --- | --- |
+| Imported PCB history, 3c93ac46 | 6660–6669 | 10060–10069 | 1794998006660–1794998006669 |
+| Offboarding requisition, b472a445 | 6670–6679 | 10070–10079 | 1794998006670–1794998006679 |
+| Missing Personnel completion, fb99243c | 6680–6689 | 10080–10089 | 1794998006680–1794998006689 |
+
+The communications layout (88328f42) and email-image save acknowledgement (692520d1) require no migration at current design. Preserve prior allocation records and applied SQL bytes. Each used entry requires exact SQL hash, grants/RLS review and restricted-owner populated upgrade evidence.
+
 ## Probation queue and employment rollback — 18 November 2026
 
 The reserved source slot 6601 uses idx 10001 / when 1794998006601. It excludes only the automatic
