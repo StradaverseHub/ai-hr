@@ -379,16 +379,22 @@ export function attachPlanMockups(p: {
   tenantId: string;
   mockups: PlanMockup[];
 }): void {
+  const rows = attachPlanMockupsSql(p);
+  if (rows) remote(`psql "$MIGRATION_DATABASE_URL" -v ON_ERROR_STOP=1 -f -`, `BEGIN;\n${rows}\nCOMMIT;`);
+}
+
+/** Shared statement builder so a claimed plan and its images can commit atomically. */
+export function attachPlanMockupsSql(p: {id: string; tenantId: string; mockups: PlanMockup[]}): string {
   assertUuid(p.id, 'feedback id');
   assertUuid(p.tenantId, 'tenant id');
-  if (p.mockups.length === 0) return;
+  if (p.mockups.length === 0) return '';
   for (const m of p.mockups) {
     if (m.content.byteLength === 0) throw new Error(`mockup ${m.fileName} is empty`);
     // Mirrors the 10 MB ceiling addFeedbackAttachment enforces. Checked here too because this path does
     // not go through it — the in-app limit would otherwise be advisory for the one caller that bypasses it.
     if (m.content.byteLength > 10 * 1024 * 1024) throw new Error(`mockup ${m.fileName} exceeds 10 MB`);
   }
-  const rows = p.mockups
+  return p.mockups
     .map(
       (m) =>
         `INSERT INTO feedback_attachment
@@ -398,7 +404,6 @@ export function attachPlanMockups(p: {
          FROM feedback_request WHERE id = '${p.id}';`,
     )
     .join('\n');
-  remote(`psql "$MIGRATION_DATABASE_URL" -v ON_ERROR_STOP=1 -f -`, `BEGIN;\n${rows}\nCOMMIT;`);
 }
 
 /**

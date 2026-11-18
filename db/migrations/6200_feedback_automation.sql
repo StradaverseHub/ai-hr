@@ -44,7 +44,7 @@ BEGIN
  suffix:=CASE e.event_type WHEN 'feedback.clarification.requested' THEN 'question' WHEN 'feedback.clarification.reminded' THEN 'reminder' WHEN 'feedback.plan.drafted' THEN 'plan' END;
  IF f.id IS NULL OR e.id IS NULL OR suffix IS NULL OR f.reporter_user_id IS DISTINCT FROM (n->>'recipient_user_id')::uuid
  OR n->>'kind' IS DISTINCT FROM 'feedback.'||suffix OR n->>'title' IS DISTINCT FROM 'Feedback update'
- OR n->>'body' IS DISTINCT FROM CASE suffix WHEN 'question' THEN 'A question is waiting on your report.' WHEN 'reminder' THEN 'Your report is still waiting for an answer. Reply when convenient.' ELSE 'Your report has a plan ready for your review.' END
+ OR n->>'body' IS DISTINCT FROM (CASE suffix WHEN 'question' THEN 'A question is waiting on your report.' WHEN 'reminder' THEN 'Your report is still waiting for an answer. Reply when convenient.' ELSE 'Your report has a plan ready for your review.' END)
  OR n->>'link_path' IS DISTINCT FROM '/feedback/'||f.id::text OR (n->>'portal_visible')::boolean IS DISTINCT FROM true
  OR n->>'severity' IS DISTINCT FROM 'action' OR n->>'read_at' IS NOT NULL
  OR n->>'recipient_employment_id' IS NOT NULL OR n->>'letter_job_id' IS NOT NULL OR n->>'company_id' IS NOT NULL

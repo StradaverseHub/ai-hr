@@ -179,3 +179,8 @@ These questions need source/runtime evidence during implementation, not assumpti
 [simulation]: https://tigerbeetle.com/blog/2026-08-20-protocol-aware-dst/
 [cache]: https://turborepo.dev/docs/crafting-your-repository/caching
 [selection]: https://experts.illinois.edu/en/publications/safety-of-a-smart-classes-used-regression-test-selection-algorith/
+
+
+### Implementation boundary — 18 November 2026
+
+PR245 adds the operator-side durable investigation coordinator and canonical in-app reporter notifications. It uses explicit tenant scope, source-bound30-minute claims, at most3 attempts and2 question bundles per plan revision. Answers wake investigation on the next scheduled pass; one48-hour reminder then quiet waiting bounds human communication. The [automation runbook](../../scripts/improve/AUTOMATION.md) owns commissioning. This is not a replacement release witness or activation of automatic build/release. Existing release authority remains until the separate continuous-assurance proposal is qualified. Email and server-side model admission remain separate.

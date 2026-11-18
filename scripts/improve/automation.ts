@@ -1,16 +1,24 @@
 /** Bounded operator-owned coordinator. No application principal, provider call, build or deploy. */
-import {askClarificationSql, pushPlanSql, runFeedbackOperatorSql} from './remote';
+import {askClarificationSql, pushPlanSql, attachPlanMockupsSql, runFeedbackOperatorSql, type PlanMockup} from './remote';
 const uuid = /^[a-f0-9]{8}(-[a-f0-9]{4}){3}-[a-f0-9]{12}$/i;
 const digest = /^[a-f0-9]{64}$/;
 function id(value: string) {if (!uuid.test(value)) throw Error('A valid bound identifier is required.'); return `'${value}'::uuid`;}
-function literal(value: string) {return "'" + value.replaceAll("'", "''") + "'";}
+function literal(value: string) {return "E'" + value.replaceAll('\\', '\\\\').replaceAll("'", "''") + "'";}
+/** PostgreSQL's outer dollar quote also sees delimiters inside quoted user text. */
+function protectBlock(statement: string, label: string): string {
+ const marker = `$${label}$`, start = statement.indexOf(marker), end = statement.lastIndexOf(marker);
+ const body = statement.slice(start + marker.length, end);
+ let tag = label;
+ while (body.includes(`$${tag}$`)) tag += 'x';
+ return statement.slice(0,start) + `$${tag}$` + body + `$${tag}$` + statement.slice(end + marker.length);
+}
 function text(value: string, max: number) {if (typeof value !== 'string' || !value.trim() || value.length > max || value.includes('\0')) throw Error('Bounded nonempty text required.'); return value.trim();}
 const snapshotDigest = (expr: string) => `encode(sha256(convert_to((${expr})::text,'UTF8')),'hex')`;
 export type Pickup = {tenantId: string; worker: string; limit?: number};
 export function pickupSql(p: Pickup): string {
  const tenant = id(p.tenantId), worker = literal(text(p.worker,120)), limit = p.limit ?? 3;
  if (!Number.isSafeInteger(limit) || limit < 1 || limit > 3) throw Error('Pickup admits 1–3 reports.');
- return `BEGIN; SET LOCAL jit=off; SET LOCAL lock_timeout='3s'; SET LOCAL statement_timeout='30s';
+ return protectBlock(`BEGIN; SET LOCAL jit=off; SET LOCAL lock_timeout='3s'; SET LOCAL statement_timeout='30s';
  CREATE TEMP TABLE _feedback_pickup (result jsonb) ON COMMIT DROP;
  DO $pickup$ DECLARE f feedback_request%ROWTYPE; w feedback_automation_work%ROWTYPE; snapshot jsonb; fingerprint text; token uuid;
  BEGIN
@@ -19,10 +27,16 @@ export function pickupSql(p: Pickup): string {
  AND NOT EXISTS(SELECT 1 FROM feedback_block q WHERE q.feedback_request_id=r.id AND q.resolved_at IS NULL)
  AND (prior.feedback_request_id IS NULL OR ((prior.state<>'claimed' OR prior.lease_until<now()) AND (
  prior.source_digest IS DISTINCT FROM encode(sha256(convert_to(app.feedback_automation_snapshot(r.id)::text,'UTF8')),'hex') OR
- (prior.state IN ('claimed','failed') AND prior.attempts<3 AND prior.retry_at<=now()))))
+ (prior.state IN ('claimed','failed') AND prior.retry_at<=now()))))
  ORDER BY r.created_at,r.id LIMIT 100 FOR UPDATE OF r SKIP LOCKED LOOP
   snapshot:=app.feedback_automation_snapshot(f.id); fingerprint:=${snapshotDigest('snapshot')};
   SELECT * INTO w FROM feedback_automation_work WHERE feedback_request_id=f.id FOR UPDATE;
+  IF w.source_digest=fingerprint AND w.state IN ('claimed','failed') AND w.attempts>=3 THEN
+   UPDATE feedback_automation_work SET state='escalated',last_error='retry_budget_exhausted',updated_at=now() WHERE feedback_request_id=f.id;
+   INSERT INTO domain_event(tenant_id,aggregate_type,aggregate_id,event_type,actor_type,payload)
+    VALUES(f.tenant_id,'feedback',f.id,'feedback.automation.escalated','agent',jsonb_build_object('reason','retry_budget_exhausted','sourceDigest',fingerprint));
+   CONTINUE;
+  END IF;
   IF w.feedback_request_id IS NOT NULL AND w.source_digest=fingerprint AND
    (w.state IN ('completed','escalated') OR w.retry_at>now() OR w.attempts>=3) THEN CONTINUE;END IF;
   token:=gen_random_uuid();
@@ -37,22 +51,29 @@ export function pickupSql(p: Pickup): string {
   EXIT WHEN (SELECT count(*) FROM _feedback_pickup)>=${limit};
  END LOOP;
  END $pickup$;
- SELECT coalesce(jsonb_agg(result),'[]') FROM _feedback_pickup; COMMIT;`;
+ SELECT coalesce(jsonb_agg(result),'[]') FROM _feedback_pickup; COMMIT;`, 'pickup');
 }
 export type Completion = {
  tenantId: string; id: string; claimToken: string; sourceDigest: string;
  reporterEmploymentId: string | null; expectedPlanRevision: number; dialogueDigest?: string | null;
-} & ({action:'ask'; question: string} | {action:'plan'; plan: string; model: string} | {action:'hold'; reason: string} | {action:'retry'});
+} & ({action:'ask'; question: string} | {action:'plan'; plan: string; model: string; visualChange:boolean; mockups?:PlanMockup[]} | {action:'hold'; reason: string} | {action:'retry'});
 export function completeSql(p: Completion): string {
  const tenant=id(p.tenantId), report=id(p.id), token=id(p.claimToken);
  if (!digest.test(p.sourceDigest)) throw Error('Exact reviewed source required.');
  if (!Number.isSafeInteger(p.expectedPlanRevision) || p.expectedPlanRevision<0) throw Error('Current plan revision required.');
  let effect='';
  if(p.action==='ask')effect=askClarificationSql({...p,questionId:p.claimToken});
- else if(p.action==='plan')effect=pushPlanSql({...p,plan:text(p.plan,40000),model:text(p.model,200)}).replace(/^BEGIN;\n/,'').replace(/\nCOMMIT;$/,'');
+ else if(p.action==='plan') {
+  if (typeof p.visualChange!=='boolean') throw Error('Declare whether the plan changes an interface.');
+  const mockups=p.mockups??[];
+  if (mockups.length>6 || mockups.reduce((n,m)=>n+m.content.byteLength,0)>30*1024*1024 || (p.visualChange&&!mockups.length))
+   throw Error('A visual plan needs rendered mockups within the image budget.');
+  if (mockups.some(m=>!['image/png','image/jpeg','image/webp'].includes(m.mimeType))) throw Error('Rendered image mockups required.');
+  effect=pushPlanSql({...p,plan:text(p.plan,40000),model:text(p.model,200)}).replace(/^BEGIN;\n/,'').replace(/\nCOMMIT;$/,'')+'\n'+attachPlanMockupsSql({...p,mockups});
+ }
  else if(p.action!=='hold'&&p.action!=='retry')throw Error('Unsupported action.');
  const reason=p.action==='hold'?text(p.reason,1000):null;
- return `BEGIN; SET LOCAL jit=off; SET LOCAL lock_timeout='3s'; SET LOCAL statement_timeout='30s';
+ return protectBlock(`BEGIN; SET LOCAL jit=off; SET LOCAL lock_timeout='3s'; SET LOCAL statement_timeout='30s';
  DO $complete$ DECLARE f feedback_request%ROWTYPE; w feedback_automation_work%ROWTYPE;
  BEGIN
  SELECT * INTO f FROM feedback_request WHERE id=${report} AND tenant_id=${tenant} FOR UPDATE;
@@ -71,7 +92,7 @@ export function completeSql(p: Completion): string {
   retry_at=now()+interval '15 minutes',last_error=${reason?literal(reason):p.action==='retry'?"'investigation_failed'":'NULL'},updated_at=now() WHERE feedback_request_id=f.id;
  INSERT INTO domain_event(tenant_id,aggregate_type,aggregate_id,event_type,actor_type,payload)
   VALUES(f.tenant_id,'feedback',f.id,'feedback.automation.settled','agent',jsonb_build_object('claimToken',${token},'action',${literal(p.action)},'sourceDigest',w.source_digest));
- END $complete$; COMMIT;`;
+ END $complete$; COMMIT;`, 'complete');
 }
 /** One reminder per live question after 48h, no auto-close/rejection. Bell text contains no report text. */
 export function notifySql(tenantId: string): string {
@@ -113,3 +134,9 @@ export function notifySql(tenantId: string): string {
 export const pickupFeedback = (p:Pickup): unknown => JSON.parse(runFeedbackOperatorSql(pickupSql(p)));
 export const completeFeedback = (p:Completion): void => {runFeedbackOperatorSql(completeSql(p));};
 export const notifyFeedback = (tenantId:string): void => {runFeedbackOperatorSql(notifySql(tenantId));};
+/** Private operator attention, not a reporter message or a public health response. */
+export function feedbackAutomationStatus(tenantId:string): unknown {
+ return JSON.parse(runFeedbackOperatorSql(`SELECT coalesce(jsonb_agg(to_jsonb(w)),'[]') FROM
+  (SELECT feedback_request_id,state,attempts,last_error,updated_at FROM feedback_automation_work
+   WHERE tenant_id=${id(tenantId)} AND state='escalated' ORDER BY updated_at,feedback_request_id LIMIT 100) w;`));
+}

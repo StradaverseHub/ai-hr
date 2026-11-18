@@ -22,7 +22,7 @@ async function pickup(tenantId=b.tenantId){await script(pickupSql({tenantId,work
 async function completion(action:Completion['action']='ask'){
  const [w]=await pickup();const detail=(await getFeedback(reporter,w.feedback_request_id))!;
  const common={id:w.feedback_request_id,tenantId:b.tenantId,reporterEmploymentId:null,claimToken:w.claim_token,sourceDigest:w.source_digest,expectedPlanRevision:detail.planRevision,dialogueDigest:detail.dialogueDigest};
- return action==='ask'?{...common,action,question:'Which preview screen did you open?'} as const:action==='plan'?{...common,action,plan:'Fix the selected date and show independent verification.',model:'fixture'} as const:action==='hold'?{...common,action,reason:'Needs a scope decision.'} as const:{...common,action:'retry'} as const;
+ return action==='ask'?{...common,action,question:'Which preview screen did you open?'} as const:action==='plan'?{...common,action,plan:'Fix the selected date and show independent verification.',model:'fixture',visualChange:false} as const:action==='hold'?{...common,action,reason:'Needs a scope decision.'} as const:{...common,action:'retry'} as const;
 }
 describe('durable operator feedback coordinator',()=>{
  it('claims only the explicit tenant and cannot double-pick a live lease',async()=>{
@@ -82,5 +82,24 @@ describe('durable operator feedback coordinator',()=>{
   expect((await getFeedback(reporter,id))?.planRevision).toBe(1);await script(notifySql(b.tenantId));
   const[n]=await owner.db.select().from(s.notification);
   await expect(owner.db.insert(s.notification).values({...n,id:randomUUID(),recipientUserId:other.userId})).rejects.toThrow();
+ });
+ it('treats dollar delimiters, quotes and backslashes as text at both SQL boundaries',async()=>{
+  const {id}=await report();
+  await script(pickupSql({tenantId:b.tenantId,worker:"fixture $pickup$ O'Reilly \\ literal"}));
+  const [w]=await owner.client`select * from feedback_automation_work where feedback_request_id=${id}`;
+  const question="Which screen? $complete$ $completex$ O'Reilly \\ path; not a command.";
+  await script(completeSql({tenantId:b.tenantId,id,claimToken:w.claim_token,sourceDigest:w.source_digest,reporterEmploymentId:null,expectedPlanRevision:0,action:'ask',question}));
+  expect((await getFeedback(reporter,id))?.blockHistory[0].question).toBe(question);
+ });
+ it('requires a design for an interface plan and commits images on the same revision',async()=>{
+  const {id}=await report(),p=await completion('plan');
+  if(p.action!=='plan')throw Error('Fixture plan required.');
+  expect(()=>completeSql({...p,visualChange:true})).toThrow(/rendered mockups/);
+  const mockup={fileName:'review.png',mimeType:'image/png',content:Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jB+0AAAAASUVORK5CYII=','base64')};
+  const input={...p,visualChange:true,mockups:[mockup]};
+  await script(completeSql(input));await script(completeSql(input));
+  expect((await getFeedback(reporter,id))?.planRevision).toBe(1);
+  const attachments=await owner.db.select().from(s.feedbackAttachment).where(eq(s.feedbackAttachment.feedbackRequestId,id));
+  expect(attachments).toHaveLength(1);expect(attachments[0]).toMatchObject({stage:'plan',planRevision:1,fileName:'review.png'});
  });
 });

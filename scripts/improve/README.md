@@ -17,6 +17,10 @@ Follow [Operator access](../../deploy/OPERATOR-ACCESS.md). The default SSH desti
 available. The default remote application directory is /opt/ai-hr. Database credentials remain on
 the server; only SQL and results travel over SSH.
 
+## Automatic pickup and follow-up
+
+[Automation commissioning and bounded execution](AUTOMATION.md) owns the scheduled operator loop, durable claims, retry/source fencing and canonical reporter notices. Source is implemented in PR245; scheduler activation requires staging acceptance.
+
 ## Phase A — plan (proven)
 
 ### Asynchronous clarification before planning

@@ -1,4 +1,4 @@
-import {pickupFeedback, completeFeedback, notifyFeedback} from './automation';
+import {pickupFeedback, completeFeedback, notifyFeedback, feedbackAutomationStatus} from './automation';
 /**
  * Improvement-loop CLI (ADR-0044). The operator (a Claude Code session) drives the loop by piping JSON
  * between these subcommands and the planning/build steps:
@@ -146,8 +146,19 @@ async function main() {
       process.stdout.write(JSON.stringify(pickupFeedback(p), null, 2) + '\n');
       break;
     }
+    case 'automation-status': {
+      const p = JSON.parse(await readStdin());
+      process.stdout.write(JSON.stringify(feedbackAutomationStatus(p.tenantId), null, 2) + '\n');
+      break;
+    }
     case 'complete': {
       const p = JSON.parse(await readStdin());
+      if (p.action === 'plan') {
+        if (p.mockups !== undefined) throw new Error('Use local mockupPaths for plan images.');
+        const paths = p.mockupPaths ?? [];
+        if (!Array.isArray(paths) || paths.length > 6 || paths.some(path => typeof path !== 'string')) throw new Error('At most six rendered mockup paths required.');
+        p.mockups = paths.map((path: string) => ({fileName: basename(path), mimeType: mimeOf(path), content: readFileSync(path)}));
+      }
       completeFeedback(p);
       notifyFeedback(p.tenantId);
       console.log('Work settled; read back the report and claim before reporting its outcome.');
