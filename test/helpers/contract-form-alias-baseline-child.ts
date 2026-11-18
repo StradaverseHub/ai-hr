@@ -2,7 +2,7 @@
 import assert from 'node:assert/strict';
 import {createHash,randomUUID} from 'node:crypto';
 import {execFileSync} from 'node:child_process';
-import {existsSync,readFileSync,realpathSync} from 'node:fs';
+import {existsSync,lstatSync,readFileSync,readdirSync,realpathSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import {dirname,isAbsolute,join,relative,resolve,sep} from 'node:path';
 import {pathToFileURL} from 'node:url';
@@ -11,6 +11,13 @@ import type {Field} from '../../lib/lifecycle-v9-model';
 import type {AutomationWorkflow} from '../../packs/automation/service';
 
 const SOURCE='175bdd3f31320711e84c49a16239220eb00233e0';
+// SOURCE is unpublished provenance only. Custody comes from this separately approved public capsule.
+const CAPSULE='cf7a4a2952702683fd21de8fbdd2bd96c5c9e3c8';
+const CAPSULE_PATH='.github/ci/fixtures/contract-form-pre6411-runtime';
+const CAPSULE_TREE='53c9c512306a642de01a063b24cf89f04d9ef591';
+const CAPSULE_PARENT='fca9a75fc28260f725e0f067d8d6879e2a70bb04';
+const PROVENANCE_SHA256='165dec96a678265239676a2a8551cd23ba780602844dc96a457d219111c8bd3e';
+const SOURCE_VECTOR_SHA256='5bb5329c43f657adc0c95b8434686731e8380107a1ec034a1021162751c3009e';
 const RESULT='CONTRACT_FORM_ALIAS_BASELINE_RESULT ';
 const PINS={
  'package.json':'e90075de8d53a96463a1a7310646d313cc4c076ae9fa39e6100f9cd664ee7e1e',
@@ -45,6 +52,8 @@ const PINS={
  'packs/catalog.ts':'80ce4ae14cece1bbeb5ca538187d14be0b31a1b84999edd9493bb5b92191e793',
 };
 type Input={sourceRoot:string;expectedDatabase:string;prefixCount:number};
+type CapsuleFile={path:string;gitMode:string;bytes:number;sha256:string;provenanceGitBlobSHA1:string};
+type CapsuleManifest={schemaVersion:number;kind:string;historicalProvenance:{commit:string;commitPublished:boolean;privateHistoryIncluded:boolean;sourceJournalLastTag:string};evidenceParent:string;sourceFileCount:number;sourceBytes:number;sourceVector:{sha256:string;notGitTreeIdentity:boolean};files:CapsuleFile[]};
 const sha=(value:Buffer|string)=>createHash('sha256').update(value).digest('hex');
 const uuid=(value:unknown):value is string=>typeof value==='string'&&/^[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}$/i.test(value);
 function database(value:string|undefined,username:'postgres'|'ai_hr_app',name:string){
@@ -57,6 +66,65 @@ function sqlState(error:unknown):string|undefined{
  for(let cause=error,n=0;cause&&typeof cause==='object'&&n<8;cause=(cause as {cause?:unknown}).cause,n++){
   const code=(cause as {code?:unknown}).code;if(typeof code==='string'&&/^[0-9A-Z]{5}$/.test(code))return code;
  }
+}
+
+/** Read-only custody verification of the COMPLETE capsule, before any historical application import.
+ * The immutable public tree, pinned manifest and all source bytes/modes are separate checks.
+ * No mixed current-source overlay, hard link, unlisted file/directory or source symlink is accepted.
+ */
+function validateCapsule(source:string,current:string,git:(args:string[])=>string){
+ assert.equal(git(['rev-parse',CAPSULE+'^{commit}']).trim(),CAPSULE);
+ assert.equal(git(['show','-s','--format=%P',CAPSULE]).trim(),CAPSULE_PARENT);
+ assert.equal(git(['rev-parse',CAPSULE+':'+CAPSULE_PATH]).trim(),CAPSULE_TREE);
+ const provenanceStat=lstatSync(join(source,'provenance.json'));assert(provenanceStat.isFile()&&!provenanceStat.isSymbolicLink()&&provenanceStat.nlink===1);
+ const manifestBytes=readFileSync(join(source,'provenance.json'));
+ assert.equal(sha(manifestBytes),PROVENANCE_SHA256);
+ assert.equal(sha(git(['show',CAPSULE+':'+CAPSULE_PATH+'/provenance.json'])),PROVENANCE_SHA256);
+ const manifest=JSON.parse(manifestBytes.toString('utf8')) as CapsuleManifest;
+ assert.equal(manifest.schemaVersion,1);assert.equal(manifest.kind,'CONTRACT_FORM_PRE6411_HISTORICAL_RUNTIME_SOURCE_CAPSULE');
+ assert.deepEqual(manifest.historicalProvenance,{commit:SOURCE,commitPublished:false,privateHistoryIncluded:false,sourceJournalLastTag:'5972_contract_unsigned_email_form_sources'});
+ assert.equal(manifest.evidenceParent,CAPSULE_PARENT);assert.equal(manifest.sourceFileCount,1071);assert.equal(manifest.sourceBytes,39200382);
+ assert.equal(manifest.sourceVector.sha256,SOURCE_VECTOR_SHA256);assert.equal(manifest.sourceVector.notGitTreeIdentity,true);
+ assert(Array.isArray(manifest.files));assert.equal(manifest.files.length,1071);
+ const tree=new Map<string,{mode:string;blob:string}>();
+ for(const record of git(['ls-tree','-rz',CAPSULE+':'+CAPSULE_PATH]).split('\0').filter(Boolean)){
+  const entry=/^([0-7]{6}) blob ([a-f0-9]{40})\t(.+)$/.exec(record);assert(entry,'Only native regular source blobs are admitted');
+  assert(!tree.has(entry[3]),'Duplicate capsule tree path');tree.set(entry[3],{mode:entry[1],blob:entry[2]});
+ }
+ const paths=manifest.files.map(file=>file.path);assert.equal(new Set(paths).size,1071);assert.deepEqual(paths,[...paths].sort());
+ const allowedFiles=new Set([...paths,'provenance.json']),allowedDirectories=new Set(['']);
+ for(const path of allowedFiles){
+  assert(path&&!isAbsolute(path)&&!path.includes('\\')&&!path.includes('\0'));
+  const parts=path.split('/');assert(parts.every(part=>part!==''&&part!=='.'&&part!=='..'),'No source path traversal');
+  for(let length=1;length<parts.length;length++)allowedDirectories.add(parts.slice(0,length).join('/'));
+ }
+ assert.deepEqual([...tree.keys()].sort(),[...allowedFiles].sort());
+ const seenFiles:string[]=[];
+ const walk=(relativeDirectory:string)=>{
+  for(const name of readdirSync(join(source,relativeDirectory))){
+   const path=relativeDirectory?relativeDirectory+'/'+name:name,absolute=join(source,path),stat=lstatSync(absolute);
+   if(path==='node_modules'){
+    assert(stat.isSymbolicLink(),'Only the approved prepared dependency link is permitted');
+    assert.equal(realpathSync(absolute),realpathSync(join(current,'node_modules')));continue;
+   }
+   assert(!stat.isSymbolicLink(),'Source symlinks are not admitted');
+   if(stat.isDirectory()){assert(allowedDirectories.has(path),'Unlisted source directory');walk(path);}
+   else{assert(stat.isFile()&&stat.nlink===1,'Only independent regular source files are admitted');assert(allowedFiles.has(path),'Unlisted source file');seenFiles.push(path);}
+  }
+ };
+ walk('');assert.deepEqual(seenFiles.sort(),[...allowedFiles].sort());
+ const files=[...manifest.files,{path:'provenance.json',gitMode:'100644',bytes:manifestBytes.length,sha256:PROVENANCE_SHA256,provenanceGitBlobSHA1:tree.get('provenance.json')!.blob}];
+ const vector:(string|number)[][]=[];let bytes=0;
+ for(const file of files){
+  assert(file.gitMode==='100644'||file.gitMode==='100755');assert(Number.isSafeInteger(file.bytes)&&file.bytes>0);assert(/^[a-f0-9]{64}$/.test(file.sha256));assert(/^[a-f0-9]{40}$/.test(file.provenanceGitBlobSHA1));
+  const stat=lstatSync(join(source,file.path)),body=readFileSync(join(source,file.path));
+  assert.equal((stat.mode&0o111)!==0,file.gitMode==='100755','Exact Git source mode required');
+  assert.equal(body.length,file.bytes);assert.equal(sha(body),file.sha256);
+  const blob=createHash('sha1').update(Buffer.from('blob '+body.length+'\0')).update(body).digest('hex');
+  assert.equal(blob,file.provenanceGitBlobSHA1);assert.deepEqual(tree.get(file.path),{mode:file.gitMode,blob});
+  if(file.path!=='provenance.json'){bytes+=body.length;vector.push([file.path,file.gitMode,body.length,file.sha256]);}
+ }
+ assert.equal(bytes,39200382);assert.equal(sha(JSON.stringify(vector)),SOURCE_VECTOR_SHA256);
 }
 
 async function main(){
@@ -74,12 +142,12 @@ async function main(){
  const git=(args:string[])=>execFileSync('git',args,{cwd:current,encoding:'utf8',maxBuffer:8*1024*1024});
  assert.equal(git(['rev-parse','--show-toplevel']).trim(),current);assert.equal(git(['rev-parse','HEAD']).trim(),env.AIHR_CI_HEAD);
  assert.equal(git(['status','--porcelain','--untracked-files=no']).trim(),'','The current source checkout must be frozen');
- assert.equal(git(['rev-parse',SOURCE+'^{commit}']).trim(),SOURCE);
  const self='test/helpers/contract-form-alias-baseline-child.ts';assert.equal(realpathSync(process.argv[1]),join(current,self));assert.equal(sha(readFileSync(join(current,self))),sha(git(['show','HEAD:'+self])));
  const source=realpathSync(input.sourceRoot),inside=relative(realpathSync(tmpdir()),source);
  assert(isAbsolute(input.sourceRoot)&&source===resolve(input.sourceRoot));assert(inside&&!inside.startsWith('..'+sep)&&!isAbsolute(inside));
  assert(inside.split(sep).some(part=>/^contract-form-alias-upgrade-[A-Za-z0-9_-]+$/.test(part)),'Only the parent-owned temporary source archive is admitted');
  assert(!existsSync(join(source,'.git'))&&!existsSync(join(source,'.env'))&&!existsSync(join(source,'.env.local')));
+ validateCapsule(source,current,git);
  for(const [file,hash]of Object.entries(PINS))assert.equal(sha(readFileSync(join(source,file))),hash,'Frozen source mismatch: '+file);
  for(const file of ['package.json','pnpm-lock.yaml'])assert.equal(sha(readFileSync(join(current,file))),sha(readFileSync(join(source,file))),'Prepared dependencies must match historical source');
  assert.equal(realpathSync(join(source,'node_modules')),realpathSync(join(current,'node_modules')));assert(existsSync(join(source,'node_modules/drizzle-orm/index.js')));

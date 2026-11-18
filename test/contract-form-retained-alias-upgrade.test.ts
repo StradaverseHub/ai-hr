@@ -2,7 +2,7 @@
  * No signed rows, receipts, function replacements or owner guards are manufactured by this fixture. */
 import {execFile,execFileSync} from 'node:child_process';
 import {createHash,randomUUID} from 'node:crypto';
-import {copyFileSync,mkdtempSync,mkdirSync,readFileSync,realpathSync,rmSync,symlinkSync,writeFileSync} from 'node:fs';
+import {copyFileSync,mkdtempSync,mkdirSync,lstatSync,readdirSync,readFileSync,realpathSync,rmSync,symlinkSync,writeFileSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import {join,resolve} from 'node:path';
 import {promisify} from 'node:util';
@@ -16,7 +16,14 @@ import type {ContractSharedForm} from '../core/contract-shared-form';
 type VisibleForm=Extract<ContractSharedForm,{visible:true}>;
 type Ledger={hash:string;created_at:string};
 type Baseline={version:1;source:string;tenantId:string;companyId:string;employmentId:string;employeePersonId:string;caseId:string;letterId:string;admin:{userId:string;personId:string};employee:{userId:string;personId:string};before:ContractSharedLetter;form:VisibleForm;rendered:string;ledger:Ledger[]};
+// The original commit is unpublished provenance; only the reviewed public capsule is archived.
 const SOURCE='175bdd3f31320711e84c49a16239220eb00233e0';
+const CAPSULE='cf7a4a2952702683fd21de8fbdd2bd96c5c9e3c8';
+const CAPSULE_PATH='.github/ci/fixtures/contract-form-pre6411-runtime';
+const CAPSULE_TREE='53c9c512306a642de01a063b24cf89f04d9ef591';
+const CAPSULE_MANIFEST='165dec96a678265239676a2a8551cd23ba780602844dc96a457d219111c8bd3e';
+const SOURCE_VECTOR='5bb5329c43f657adc0c95b8434686731e8380107a1ec034a1021162751c3009e';
+type CapsuleManifest={schemaVersion:number;kind:string;historicalProvenance:{commit:string;commitPublished:boolean;privateHistoryIncluded:boolean};evidenceParent:string;sourceFileCount:number;sourceBytes:number;sourceVector:{sha256:string};files:{path:string;gitMode:string;bytes:number;sha256:string;provenanceGitBlobSHA1:string}[]};
 const DEPENDENCIES={'package.json':'e90075de8d53a96463a1a7310646d313cc4c076ae9fa39e6100f9cd664ee7e1e','pnpm-lock.yaml':'7c833cb438bd31a1e22045b1704ed1498a4922343828e2d302e3ef4a6cdfb99a','tsconfig.json':'f5bc3a05bc19d85f6d1b7735e34bdd6b93f8f15741316108cc55d67ff4173785'};
 const sha=(bytes:Buffer|string)=>createHash('sha256').update(bytes).digest('hex');
 const exec=promisify(execFile);
@@ -53,11 +60,36 @@ it('preserves a genuinely signed old known label and old unresolved private labe
  const directory=realpathSync(mkdtempSync(join(tmpdir(),'contract-form-alias-upgrade-'))),source=join(directory,'source'),prefix=join(directory,'migrations');
  let created=false,storage:postgres.Sql|undefined,close:(()=>Promise<unknown>)|undefined;
  try{
-  // Materialize only tracked historical public source. No network fallback or checkout/private env copy.
-  expect(execFileSync('git',['rev-parse',SOURCE+'^{commit}'],{cwd:root,encoding:'utf8'}).trim()).toBe(SOURCE);
+  // The published evidence commit has only public-main ancestry. No network fallback, private
+  // history lookup or current-source overlay is permitted inside this test.
+  const revision=(ref:string)=>execFileSync('git',['rev-parse',ref],{cwd:root,encoding:'utf8'}).trim();
+  expect(revision(CAPSULE+'^{commit}')).toBe(CAPSULE);
+  expect(revision(CAPSULE+'^')).toBe('fca9a75fc28260f725e0f067d8d6879e2a70bb04');
+  expect(revision(CAPSULE+':'+CAPSULE_PATH)).toBe(CAPSULE_TREE);
   mkdirSync(source);const archive=join(directory,'historical.tar');
-  execFileSync('git',['archive','--format=tar','--output='+archive,SOURCE],{cwd:root});
+  execFileSync('git',['archive','--format=tar','--output='+archive,CAPSULE+':'+CAPSULE_PATH],{cwd:root});
   execFileSync('tar',['-xf',archive,'-C',source]);
+  const manifestBytes=readFileSync(join(source,'provenance.json'));expect(sha(manifestBytes)).toBe(CAPSULE_MANIFEST);
+  const manifest=JSON.parse(manifestBytes.toString('utf8')) as CapsuleManifest;
+  expect(manifest).toMatchObject({schemaVersion:1,kind:'CONTRACT_FORM_PRE6411_HISTORICAL_RUNTIME_SOURCE_CAPSULE',historicalProvenance:{commit:SOURCE,commitPublished:false,privateHistoryIncluded:false},evidenceParent:'fca9a75fc28260f725e0f067d8d6879e2a70bb04',sourceFileCount:1071,sourceBytes:39200382,sourceVector:{sha256:SOURCE_VECTOR}});
+  expect(manifest.files).toHaveLength(1071);
+  const paths=manifest.files.map(file=>file.path);expect(paths).toEqual([...paths].sort());expect(new Set(paths).size).toBe(1071);
+  const vector=manifest.files.map(file=>[file.path,file.gitMode,file.bytes,file.sha256]);expect(sha(JSON.stringify(vector))).toBe(SOURCE_VECTOR);
+  let sourceBytes=0;
+  for(const file of manifest.files){
+   expect(file.gitMode).toBe('100644');expect(file.path.split('/').every(part=>part.length>0&&part!=='.'&&part!=='..')).toBe(true);
+   expect(file.path).not.toContain('\\');expect(file.path.startsWith('/')).toBe(false);
+   const path=join(source,file.path),stat=lstatSync(path);expect(stat.isFile()).toBe(true);expect(stat.isSymbolicLink()).toBe(false);expect(stat.mode&0o111).toBe(0);
+   expect(realpathSync(path)).toBe(resolve(source,file.path));
+   const bytes=readFileSync(path);expect(bytes.length).toBe(file.bytes);expect(sha(bytes),file.path).toBe(file.sha256);
+   expect(createHash('sha1').update('blob '+bytes.length+'\0').update(bytes).digest('hex')).toBe(file.provenanceGitBlobSHA1);sourceBytes+=bytes.length;
+  }
+  expect(sourceBytes).toBe(39200382);
+  const archivePaths=(folder:string,relative=''):string[]=>readdirSync(folder,{withFileTypes:true}).flatMap(entry=>{
+   const path=relative?relative+'/'+entry.name:entry.name;expect(entry.isSymbolicLink(),path).toBe(false);
+   if(entry.isDirectory())return archivePaths(join(folder,entry.name),path);expect(entry.isFile(),path).toBe(true);return[path];
+  });
+  expect(archivePaths(source).sort()).toEqual([...paths,'provenance.json'].sort());
   for(const [file,hash] of Object.entries(DEPENDENCIES)){
    expect(sha(readFileSync(join(source,file))),file+' historical source pin').toBe(hash);
    expect(readFileSync(join(source,file)).equals(readFileSync(join(root,file))),file+' prepared dependency/toolchain equality').toBe(true);
