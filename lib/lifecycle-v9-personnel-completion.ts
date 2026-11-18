@@ -32,7 +32,7 @@ export function initializePersonnelCompletion(document:CompletionDocument,input:
  if(document.personnelCompletion)return;
  if(document.sentAt||document.status!=='draft'||personnelCompletionLocked(document))throw new Error('Only an unsigned, unreleased draft can adopt Personnel completion.');
  const fields:PersonnelCompletionPolicy['fields']={};
- for(const field of document.fields)if(field.owner==='pmLocked'){const official=input.officialValues[field.id]??'',before=document.values[field.id]??'';fields[field.id]={key:field.pmKey,group:personnelCompletionGroup(field.pmKey),sourceValue:official,sourceFingerprint:input.sourceFingerprint,...(official.trim()&&before&&before!==official?{conflict:{draft:before,official,at:input.at}}:{})};if(official.trim())document.values[field.id]=official;}
+ for(const field of document.fields)if(field.owner==='pmLocked'){const official=input.officialValues[field.id]??'';fields[field.id]={key:field.pmKey,group:personnelCompletionGroup(field.pmKey),sourceValue:official,sourceFingerprint:input.sourceFingerprint};document.values[field.id]=official;}
  document.personnelCompletion={version:1,classification:PERSONNEL_COMPLETION_CLASSIFICATION,country:input.country,sourceFingerprint:input.sourceFingerprint,adoptedAt:input.at,adoptedBy:{...input.actor},fields,history:[]};
 }
 export function effectivePersonnelCompletion(document:CompletionDocument,field:Field):PersonnelCompletionOwner{
