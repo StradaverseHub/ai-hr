@@ -1,0 +1,22 @@
+name: worker-published-finish
+run-name: Published worker boot recovery controls · ${{ github.sha }}
+on:
+  push:
+    branches: ['codex/board-worker-published-finish-*']
+permissions:
+  contents: read
+jobs:
+  published-finish:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38
+        with:
+          node-version: '22.23.3'
+      - name: Verify only the affected boot recovery and shared update owner
+        run: |
+          python3 -I -B test/fixtures/bank-import-worker-published-tests.py
+          python3 -I -B test/fixtures/bank-import-worker-upgrade-tests.py

@@ -243,6 +243,9 @@ class Fixture(old.UpgradeFlowFixture):
                 (process/'cgroup').write_text('0::/system.slice/aihr-bank-import.service\n')
                 ticks=int(time.monotonic()*os.sysconf('SC_CLK_TCK'))+1
                 (process/'stat').write_text(self.report['MainPID']+' (owned worker) '+' '.join(['S']+['0']*18+[str(ticks)]))
+            if argv==['/usr/bin/systemctl','stop','--no-block','aihr-bank-import.service'] and self.report['MainPID']=='0':
+                # A genuinely stopped process disappears from proc; retain it only in explicit reuse tests.
+                shutil.rmtree(self.proc/'456')
     @contextlib.contextmanager
     def ports(self):
         original_fstat=os.fstat;original_monotonic=time.monotonic

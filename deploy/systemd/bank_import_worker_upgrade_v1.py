@@ -293,12 +293,13 @@ def atomic_unit(base, raw, expected_prior):
             os.unlink(name)
 
 
-def quiesce_failed_activation(base, operation, source):
+def quiesce_failed_activation(base, operation, source, failure=None):
     """Quarantine only this updater's exact candidate unit; never restore an old worker.
     Persist failure evidence, prevent automatic starts, and drain without forced termination.
     If any protection cannot be established, report uncertainty and require administrator recovery.
     """
     result = {'source': source, 'accepted': False, 'stopped': False, 'disabled': False, 'forcedKill': False}
+    if failure is not None:result['failure']=failure
     candidate = base.service_unit(source).encode()
     try:
         publish(base,operation / 'activation-failed.json', json.dumps(result, sort_keys=True).encode(), 0o400,failure_only=True)
@@ -341,7 +342,11 @@ def quiesce_failed_activation(base, operation, source):
     except Exception:
         result['quiescenceUnconfirmed'] = True
     try:
-        publish(base,operation / 'activation-failure-observation.json', json.dumps(result, sort_keys=True).encode(), 0o400,failure_only=True)
+        guard=getattr(base,'VERIFIED_OPERATION_GUARD',None)
+        if guard is not None and result['stopped']:
+            guard.observer.publish_stopped_failure_observation(result,properties)
+        else:
+            publish(base,operation / 'activation-failure-observation.json', json.dumps(result, sort_keys=True).encode(), 0o400,failure_only=True)
     except Exception:
         result['observationUnavailable'] = True
     return result
@@ -366,7 +371,7 @@ def stage_release(base, fmt, archive, operation, args, manifest):
     return release
 
 
-def replace_and_start(base, fmt, args, operation, release, state, prior_unit_sha256, receipt, ci_observer=None, prepare_release=None):
+def replace_and_start(base, fmt, args, operation, release, state, prior_unit_sha256, receipt, ci_observer=None, prepare_release=None, enable_after_verification=False):
     """Atomic current-template unit, reload, start, three stable observations, receipt; quarantine on any failure.
     Shared by activate and adopt-stopped; only the pinned prior unit hash and receipt provenance differ.
     """
@@ -411,6 +416,18 @@ def replace_and_start(base, fmt, args, operation, release, state, prior_unit_sha
         else:
             base.check(healthy_web_state(base, args.source, args.build_id) == state, 'web changed before worker acceptance')
         base.check(digest(base.read_bounded(base.ENV, 1024**2)) == args.worker_env_sha256, 'worker environment changed during activation')
+        if enable_after_verification:
+            # Published recovery starts from a disabled quarantine. Arm boot only
+            # AFTER the full graph passes; any failure still has exact owned-PID
+            # quarantine authority, including disabling again. Never arm pre-start.
+            base.check(ci_observer is not None and ci_observer.guard.stage=='recover-published-ci-runtime',
+                       'boot enablement requires explicit published recovery')
+            ci_observer.check_slot()
+            base.command(['/usr/bin/systemctl','enable','aihr-bank-import.service'])
+            report=properties(base);base.validate_service(report,release);ci_observer.assert_owned_worker(report)
+            base.check(report.get('UnitFileState')=='enabled' and report.get('NeedDaemonReload')=='no' and
+                       report.get('Restart')=='on-failure','verified published worker boot enablement failed')
+            ci_observer.check_slot();receipt={**receipt,'workerBootEnabled':True}
         accepted = {**receipt, 'source': args.source, 'webBuildId': args.build_id, 'archiveSha256': args.archive_sha256,
                     'selectedEnvironmentSha256': args.worker_env_sha256,
                     'unitSha256': digest(base.service_unit(args.source).encode()), 'workerPid': stable_pid,
@@ -419,15 +436,18 @@ def replace_and_start(base, fmt, args, operation, release, state, prior_unit_sha
         publish(base,operation / 'activated.json', fmt.canonical(accepted), 0o400)
         print(json.dumps(accepted))
         return accepted
-    except Exception:
+    except Exception as error:
         # Includes replacement/fsync, reload/start, process proof and receipt persistence failures.
         # Quarantine refuses any foreign/unchanged unit rather than touching another release.
+        failure=ci_observer.failure_summary(error)if ci_observer else None
+        if failure is not None:
+            print(json.dumps({'kind':'WORKER_ACTIVATION_FAILURE_CAUSE','failure':failure}),file=sys.stderr,flush=True)
         if ci_observer:
             try:
                 ci_observer.failure_deadline(30)
                 ci_observer.authorize_quarantine()
                 ci_observer.failure_deadline(330)
-                observed=quiesce_failed_activation(base,operation,args.source)
+                observed=quiesce_failed_activation(base,operation,args.source,failure=failure)
             except Exception:
                 observed={'source':args.source,'accepted':False,'stopped':False,'disabled':False,'forcedKill':False,'quiescenceUnconfirmed':True,'ownedProcessQuarantineRefused':True}
             finally:ci_observer.guard.quarantine=False

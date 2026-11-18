@@ -825,3 +825,74 @@ full source-bound ZIP extraction with more than30 seconds elapsed, the old30-sec
 negative control, and real-root full-package content/metadata/tamper checks. Native
 CI/database/systemd proof ports in graph fixtures are explicitly identified; they
 are not reported as an actual installed application acceptance.
+
+Activation failure diagnostics snapshot the closed stage name, remaining stage
+milliseconds and a fixed category before changing to failure-only clocks. Native
+child failures retain only the existing fixed reason and numeric exit/time/byte
+counts. Arbitrary exception messages, paths, argv, environment and child output
+are never serialized. This safe summary is flushed to stderr before quarantine
+and included in protected failure records when those records can be published.
+The outer recovery error remains generic; the summary identifies the original
+failure separately from any quarantine or evidence-publication failure.
+
+The active owned-process fence still protects every quarantine command and unit
+write. After graceful stop, a separate method can publish only the fixed immutable
+`activation-failure-observation.json` leaf. It rechecks held locks, protected start
+and quarantine records, boot, exact quarantine unit, current environment and one
+complete native systemd observation: stopped, disabled, no restart and no remaining
+or reused owned PID. It grants no command, activation receipt or arrival authority.
+If these checks fail, the original safe summary remains in stderr and the caller
+reports the final observation unavailable. This diagnostic repair neither retries
+an activation nor admits an already published, quarantined release through the
+pre-unit recovery route. That state requires its own reviewed recovery contract.
+
+### Published but unaccepted staging worker
+
+`bank_import_worker_published_v1.py` adds two explicit guarded modes for the
+narrow state where the prior prepared recovery published the worker directory,
+started its own process and quarantined it before producing an install receipt.
+The pre-unit modes continue to reject an existing release. Neither new mode
+extracts, renames, restores or deletes an existing release or failure record.
+
+First, `guarded-seal-published-ci-worker` takes a separately reviewed root approval
+with the original first-stage fields, `sealId` and `publishedFailure`. The latter
+selects the prior recovery approval/hash, exact operation directory/stat identity,
+all ten retained record identities/hashes, current published root identity and
+quarantine unit hash. The exact namespace includes start intent, started process,
+quarantine authority, failure record, F0–F3 and A0; unknown/partial attempts refuse.
+This read-only authentication stage holds the existing queue SH and install EX,
+requires PID0/dead/disabled/no restart and no worker UID or cgroup processes, and
+authenticates every installed file plus the original archive within300 seconds.
+Original prepared member identities and link closure must match; only the old
+root location and ctime may differ because of the recorded publication rename.
+It writes one root-private immutable `published-worker-<sealId>.json` proof, with
+no service mutation or installation acceptance.
+
+Only after that proof exists may the operator mint a fresh, at-most900-second
+`ADMIN_AUTHORIZED_PUBLISHED_WORKER_RECOVERY` for
+`guarded-recover-published-ci-runtime`. Its original recovery fields remain
+unchanged, with one additional `publishedSeal` selecting path, SHA and the complete
+seal stat identity. Mint inside the seal approval's original300-second freshness
+window. The proof's original time is never rewritten. The new graph has its own
+unchanged absolute827-second limit and original20/24-second fence slots.
+
+The live mode independently rechecks historical records, exact installed tree,
+stopped state, original failed native installation, original grant/runtime/ledger,
+web source/build and held installing lease. It runs the same F0/S0/F1/A0/F2
+admission and full subsequent proof graph. M0/45 rechecks the existing published
+tree and replaces the exact quarantine unit with the candidate unit; it publishes
+no directory. A fresh exclusive `published-recovery-<sealId>` attempt preserves
+all older attempts. A previous published recovery refuses rather than retrying.
+Any activation failure retains its safe original diagnosis and uses only the
+exact owned-process quarantine. Successful receipts explicitly identify this as
+published worker recovery; they grant no application arrival, acceptance,
+production or expired-grant write authority. The unchanged original
+`resume-arrival` remains responsible for closing the installation after actual
+all-kind worker readiness.
+
+Because quarantine disabled boot start, this published-only route restores and
+independently reads back boot enablement after the full proof graph while its
+exact owned worker is still running, before either success receipt, within the
+unchanged15-second receipt slot. It never enables before starting: a pre-start
+failure must leave the unaccepted unit disabled. Enable or readback failure uses
+the same owned-process quarantine and disables the rejected worker again.

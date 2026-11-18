@@ -43,6 +43,8 @@ jobs:
             test "$worker_check_uid" -gt 0
             worker_checks_rc=0
             python3 -I -B test/fixtures/bank-import-worker-runtime-hash-tests.py || worker_checks_rc=1
+            python3 -I -B test/fixtures/bank-import-worker-activation-failure-tests.py || worker_checks_rc=1
+            python3 -I -B test/fixtures/bank-import-worker-published-tests.py || worker_checks_rc=1
             python3 -I -B test/fixtures/bank-import-worker-upgrade-tests.py || worker_checks_rc=1
             sudo -n python3 -I -B test/fixtures/bank-import-worker-systemd-drain-tests.py --node "$(command -v node)" --source "$GITHUB_SHA" --output "$RUNNER_TEMP/worker-native-systemd-drain.json" || worker_checks_rc=1
             python3 -I -B test/fixtures/bank-import-worker-ci-runtime-tests.py || worker_checks_rc=1
