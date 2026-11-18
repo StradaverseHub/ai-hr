@@ -1,3 +1,4 @@
+import {movementGradeEvidence} from '../lib/movement-grade-evidence';
 import {movementPayrollWindows} from '../lib/movement-payroll-windows';
 import {withMovementPayrollWindowsTx} from './workforce-payroll-invalidation';
 import {originalHireDecisionPreimage,movementInformationEvidence,type MovementInformationField,type MovementInformationFact} from '../lib/movement-information-evidence';
@@ -1146,14 +1147,7 @@ export async function movementReportFactsTx(tx: Tx, tenantId: string, employment
       const group = eventsByGroup.get(key) ?? []; group.push(event); eventsByGroup.set(key, group);
     }
     const groupOf=(row:ProjectedRow)=>eventsByGroup.get(row.groupId??row.id)??[];
-    const informationCorrections=projected.events.filter(isGradeInformationCorrection);
-    const gradeEvents=projected.events.filter(event=>event.eventType==='employment.grade.changed'||isGradeInformationCorrection(event)).map(event=>event.eventType==='employment.information.corrected'?{...event,payload:{before:(event.payload as {before:{gradeId:string|null}}).before.gradeId,after:(event.payload as {after:{gradeId:string|null}}).after.gradeId}}:event);
-    const gradeRows=projected.rows.filter(row=>groupOf(row).some(event=>event.eventType==='employment.grade.changed'));
-    // Unattributed legacy writes and compensating grade legs have no independently recorded effective
-    // date. Do not substitute today's grade for an unprovable historical context.
-    const attributedGrades=new Set(gradeRows.flatMap(row=>groupOf(row).map(event=>event.id)));
-    const gradeKnown=gradeEvents.every(event=>event.eventType==='employment.information.corrected'||attributedGrades.has(event.id));
-    const gradeBaseline=gradeEvents.length?((gradeEvents[0].payload??{}) as {before?:string|null}).before??null:emp.gradeId;
+    const gradeEvidence=movementGradeEvidence(projected.events,projected.rows.map(row=>({...row,status:projected.statusOf(row)})),emp.gradeId);
     const hireCorrections=projected.events.filter(event=>isAssignmentReplacementEvent(event.eventType,HIRE_CORRECTED_EVENT)).map(event=>event.payload);
     const salaryChanged=(row:ProjectedRow)=>groupOf(row).some(event=>{
       if(event.eventType!=='compensation.set')return false;
@@ -1164,11 +1158,7 @@ export async function movementReportFactsTx(tx: Tx, tenantId: string, employment
     });
     facts.push({employmentId: emp.id, hireDate:emp.hiredOn,
       placements:[...new Set(asOfDates)].map(date=>{
-        let gradeId=gradeBaseline;
-        const datedGrades=gradeRows.filter(row=>projected.statusOf(row)==='applied').flatMap(row=>groupOf(row).filter(event=>event.eventType==='employment.grade.changed').map(event=>({date:row.effectiveDate,sequence:event.sequence,gradeId:((event.payload??{}) as {after?:string|null}).after??null})));
-        for(const event of informationCorrections){const payload=event.payload as {effectiveOn:string;after:{gradeId:string|null}};datedGrades.push({date:payload.effectiveOn,sequence:event.sequence,gradeId:payload.after.gradeId});}
-        for(const revision of datedGrades.sort((a,b)=>a.date.localeCompare(b.date)||a.sequence-b.sequence))if(revision.date<=date)gradeId=revision.gradeId;
-        return {date,gradeId:gradeKnown?gradeId:null,gradeKnown};
+        return {date,...gradeEvidence.at(date)};
       }),rows: projected.rows.map(row => ({
       id: row.id, kind: row.kind, behaviourKind: projected.resolvedTypes.get(row.kind)?.behaviourKind ?? row.kind,
       effectiveDate: row.effectiveDate, endDate: row.endDate, sequence: row.sequence,
@@ -4960,7 +4950,7 @@ async function reverseMovementTx(
     actor: actorOf(ctx),
     subjectEmploymentId: employmentId,
     payload: {
-      movementId, kind: row.kind, effectiveDate: row.effectiveDate, reason, corrected,
+      movementId, reversalGroupId:tag.groupId, kind: row.kind, effectiveDate: row.effectiveDate, reason, corrected,
       ...(opts?.replayOf ? { replayOf: opts.replayOf } : {}),
       // 646355e5 — the audit trail of an acknowledged correction behind closed payroll, and the business
       // day the leave owner treats as the correction boundary (assertInformationLeavePeriodTx).
