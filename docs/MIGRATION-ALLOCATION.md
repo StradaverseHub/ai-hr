@@ -1,3 +1,11 @@
+## Probation queue and employment rollback — 18 November 2026
+
+The reserved source slot 6601 uses idx 10001 / when 1794998006601. It excludes only the automatic
+reconciliation intent from the existing rehire/import-void activity scanners, preserving their
+permissions, all business-activity blockers, queue FK/RLS and applied SQL. The hosted rehire
+regression at c777d4475 showed an untouched new employment was blocked by this technical queue.
+This is uninstalled source and grants no deployment authority.
+
 # Approved board build — 18 November 2026 (source reservations only)
 
 Coordinator `codex/approved-board-build-20261118` reserves the following disjoint blocks.

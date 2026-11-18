@@ -1,3 +1,4 @@
+import {captureAiReviewScreenshots,aiReviewDomHtml} from './helpers/ai-review-screenshots';
 import {afterEach,describe,expect,it} from 'vitest';
 import {cleanup,render,screen,within} from '@testing-library/react';
 import {MovementComparisonTable} from '../app/admin/personnel/[employmentId]/movement-comparison-table';
@@ -35,4 +36,10 @@ describe('retained exit employment information',()=>{
    expect(copy.exitInformationNote).toContain('{date}');
   }
  });
+ it.each(['light','dark'] as const)('captures the real retained-exit table on phone and desktop (%s)',async mode=>{
+  const copy=en.people.detail.movement.detail;
+  const {container}=render(<main className="mx-auto max-w-5xl space-y-5 p-4"><h1 className="text-2xl font-semibold">Fictional resignation event</h1><div className="overflow-hidden rounded-xl border border-border bg-card"><MovementComparisonTable rows={rows} hasBefore labels={labels} exit={{title:copy.exitInformation,note:copy.exitInformationNote.replace('{date}','13/10/2026'),column:copy.atExit}}/></div></main>);
+  await captureAiReviewScreenshots(aiReviewDomHtml(container),'en','feedback-movement-exit-'+mode,'Real Personnel comparison table with retained fictional exit facts; no current assignment or live data','classic',mode);
+ },120000);
+
 });

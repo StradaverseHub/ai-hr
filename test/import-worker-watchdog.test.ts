@@ -12,12 +12,13 @@ import {
 afterEach(()=>{vi.useRealTimers();});
 
 /** The runner's loop shape with injectable phases; `rounds` bounds it so a test can end. */
-async function loop(watchdog:{enter(phase:ImportWorkerPhase):void},phases:Record<'bank'|'individual'|'bulk'|'reward-plan-companies'|'pause',()=>Promise<unknown>>,rounds:number){
+async function loop(watchdog:{enter(phase:ImportWorkerPhase):void},phases:Record<'bank'|'individual'|'bulk'|'reward-plan-companies'|'probation-personnel'|'pause',()=>Promise<unknown>>,rounds:number){
  for(let i=0;i<rounds;i++){
   watchdog.enter('bank');await phases.bank();
   watchdog.enter('individual');await phases.individual();
   watchdog.enter('bulk');await phases.bulk();
   watchdog.enter('reward-plan-companies');await phases['reward-plan-companies']();
+  watchdog.enter('probation-personnel');await phases['probation-personnel']();
   watchdog.enter('pause');await phases.pause();
  }
 }
@@ -25,11 +26,11 @@ const sleep=(ms:number)=>()=>new Promise(resolve=>setTimeout(resolve,ms));
 const never=()=>new Promise(()=>{});
 
 describe('import worker stall watchdog',()=>{
- it.each(['bank','individual','bulk','reward-plan-companies','pause'] as const)('exits once with status 70 when the %s phase never returns',async stalled=>{
+ it.each(['bank','individual','bulk','reward-plan-companies','probation-personnel','pause'] as const)('exits once with status 70 when the %s phase never returns',async stalled=>{
   vi.useFakeTimers();
   const log=vi.fn(),exit=vi.fn();
   const watchdog=startImportWorkerWatchdog({limitSeconds:1800,log,exit});
-  const phases={bank:sleep(5),individual:sleep(5),bulk:sleep(5),'reward-plan-companies':sleep(5),pause:sleep(1000),[stalled]:never};
+  const phases={bank:sleep(5),individual:sleep(5),bulk:sleep(5),'reward-plan-companies':sleep(5),'probation-personnel':sleep(5),pause:sleep(1000),[stalled]:never};
   void loop(watchdog,phases,3);
   // Not yet: exactly the limit has passed (the timer checks every 30 s).
   await vi.advanceTimersByTimeAsync(1800_000);
@@ -49,12 +50,12 @@ describe('import worker stall watchdog',()=>{
   const log=vi.fn(),exit=vi.fn();
   const watchdog=startImportWorkerWatchdog({limitSeconds:IMPORT_WORKER_STALL_DEFAULT_SECONDS,log,exit});
   // Idle polling: fast ticks and the 1 s pause, for about three limits.
-  const idle=loop(watchdog,{bank:sleep(20),individual:sleep(20),bulk:sleep(40),'reward-plan-companies':sleep(5),pause:sleep(1000)},3_000);
+  const idle=loop(watchdog,{bank:sleep(20),individual:sleep(20),bulk:sleep(40),'reward-plan-companies':sleep(5),'probation-personnel':sleep(5),pause:sleep(1000)},3_000);
   await vi.advanceTimersByTimeAsync(3_600_000);await idle;
   // A bulk-job prepare that uses its whole 900 s lease, every round, and a Bank first tick of 1,700 s: the measured
   // maximum workbook (339 s on a runner) scaled by 5, just under the limit.
-  const busy=loop(watchdog,{bank:sleep(1_700_000),individual:sleep(10),bulk:sleep(900_000),'reward-plan-companies':sleep(5),pause:sleep(25)},3);
-  await vi.advanceTimersByTimeAsync(3*(1_700_000+900_000+10+5+25)+1_000);await busy;
+  const busy=loop(watchdog,{bank:sleep(1_700_000),individual:sleep(10),bulk:sleep(900_000),'reward-plan-companies':sleep(5),'probation-personnel':sleep(5),pause:sleep(25)},3);
+  await vi.advanceTimersByTimeAsync(3*(1_700_000+900_000+10+5+5+25)+1_000);await busy;
   expect(exit).not.toHaveBeenCalled();expect(log).not.toHaveBeenCalled();
   watchdog.stop();
  });
