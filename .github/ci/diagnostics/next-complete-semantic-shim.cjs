@@ -100,14 +100,20 @@ async function main(){
    const stdoutPath=path.join(out,stdoutLog),rootsPath=path.join(out,'original-effective-roots.json');
    assert(fs.statSync(stdoutPath).size<=32*1024**2&&fs.statSync(rootsPath).size<=32*1024**2,'Configuration metadata bound refused');
    const actual=JSON.parse(fs.readFileSync(stdoutPath,'utf8')),baseline=JSON.parse(fs.readFileSync(rootsPath,'utf8'));
-   assert(Array.isArray(actual.files)&&Array.isArray(baseline),'Complete original root lists required');
+   assert(Array.isArray(baseline),'Complete original root list required');
+   // --showConfig omits files covered by include globs. Reconstruct its genuine full scope.
+   // This configuration-only shim exits before the separate semantic process starts.
+   const ts=localRequire('typescript');
+   const parsed=ts.parseJsonConfigFileContent(actual,ts.sys,source,undefined,path.join(source,'tsconfig.build.json'));
+   assert(parsed&&!parsed.errors.length,'Actual CLI configuration could not be reconstructed');
    const normalize=rows=>rows.map(value=>{assert(typeof value==='string');return path.resolve(source,value);}).sort();
-   const observedRoots=normalize(actual.files),originalRoots=normalize(baseline);
+   const observedRoots=normalize(parsed.fileNames),originalRoots=normalize(baseline);
    assert(new Set(observedRoots).size===observedRoots.length&&new Set(originalRoots).size===originalRoots.length,'Duplicate root identity refused');
    assert.deepStrictEqual(observedRoots,originalRoots,'Actual Next CLI changed original program roots');
    assert(actual.compilerOptions?.strict===true&&actual.compilerOptions.noEmit===true&&actual.compilerOptions.noCheck!==true,'Original strict semantic checking required');
    put(path.join(out,'shim-showConfig-scope-proof.json'),{...identity,originalRootCount:originalRoots.length,actualRootCount:observedRoots.length,
-    originalRootsSha256:hash(fs.readFileSync(rootsPath)),actualShowConfigSha256:hash(fs.readFileSync(stdoutPath)),sameNormalizedRoots:true,strict:true,noEmit:true,noCheck:false,releaseEligible:false});
+    originalRootsSha256:hash(fs.readFileSync(rootsPath)),actualShowConfigSha256:hash(fs.readFileSync(stdoutPath)),sameNormalizedRoots:true,
+    reconstruction:'source-installed parseJsonConfigFileContent; no createProgram; process exits before semantic',strict:true,noEmit:true,noCheck:false,releaseEligible:false});
   }
   process.exitCode=result.exitCode??128+(constants.signals[result.signal]??1);
  }finally{
