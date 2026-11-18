@@ -3,9 +3,9 @@ import {fireEvent,render,screen,waitFor} from '@testing-library/react';
 import {NextIntlClientProvider} from 'next-intl';
 import messages from '../messages/en.json';
 import type {EmailBodyDoc} from '../lib/email-body/doc';
-const actions=vi.hoisted(()=>({save:vi.fn().mockResolvedValue({ok:true,result:{revision:2,warnings:[]}}),history:vi.fn().mockResolvedValue({ok:true,result:[]})}));
+const actions=vi.hoisted(()=>({save:vi.fn().mockResolvedValue({ok:true,result:{revision:2,warnings:[]}}),history:vi.fn().mockResolvedValue({ok:true,result:[]}),search:vi.fn().mockResolvedValue({ok:true,result:[{id:'86f137e7-6ec5-44fe-bba6-a7fc8a1a5526',name:'Fictional new CC colleague'}]})}));
 vi.mock('next/navigation',()=>({useRouter:()=>({refresh:vi.fn()})}));
-vi.mock('../app/automation/actions',()=>({saveEmailTemplateAction:actions.save,readEmailTemplateHistoryAction:actions.history}));
+vi.mock('../app/automation/actions',()=>({saveEmailTemplateAction:actions.save,readEmailTemplateHistoryAction:actions.history,searchPeopleAction:actions.search}));
 // The real rich editor has separate behavioral coverage. This seam exercises its parent adapter's asynchronous draft ownership.
 vi.mock('../components/email-body-editor',()=>({EmailBodyEditor:({value,onChange}:{value:EmailBodyDoc;onChange:(doc:EmailBodyDoc)=>void})=><textarea aria-label="Fixture rich body" value={JSON.stringify(value)} onChange={event=>onChange({type:'doc',content:[{type:'paragraph',content:[{type:'text',text:event.target.value}]}]})}/>}));
 import {ProbationEmailEditor} from '../app/automation/templates/probation-email-editor';
@@ -43,4 +43,10 @@ it('names the unconverted email and field and saves it through its original lega
  expect(screen.queryByLabelText('Fixture rich body')).toBeNull();
  fireEvent.click(screen.getByRole('button',{name:'Save email'}));await waitFor(()=>expect(actions.save).toHaveBeenCalledOnce());
  expect(actions.save.mock.calls[0][0].template).toMatchObject({body:'Keep {{unknown.field}} exactly'});expect(actions.save.mock.calls[0][0].template.definition).toBeUndefined();
+});
+
+it('adds a newly searched named colleague to canonical Default CC without requiring V9 configuration',async()=>{
+ fixture();fireEvent.change(screen.getByRole('textbox',{name:'Search people'}),{target:{value:'Fictional'}});fireEvent.click(screen.getByRole('button',{name:'Find'}));
+ fireEvent.click(await screen.findByRole('button',{name:'Add Fictional new CC colleague'}));fireEvent.click(screen.getByRole('button',{name:'Save email'}));await waitFor(()=>expect(actions.save).toHaveBeenCalledOnce());
+ expect(actions.save.mock.calls[0][0].template.cc).toEqual([{kind:'person',userId:'86f137e7-6ec5-44fe-bba6-a7fc8a1a5526'}]);
 });

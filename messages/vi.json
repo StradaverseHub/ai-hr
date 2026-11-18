@@ -44458,7 +44458,9 @@
       "ackCloseHelp": "Thay đổi chưa được lưu xong. Nội dung chỉnh sửa vẫn ở trang này, nhưng tệp chưa tải lên xong có thể cần thử lại.",
       "ackClose": "Đóng trình chỉnh sửa",
       "ackPreview": "Xem trước các thay đổi chưa lưu. Việc gửi thử sẽ đợi các thay đổi này được lưu.",
-      "ackUploadLimit": "Tệp tải lên được giữ lại nhưng mẫu này đã đạt giới hạn số tệp. Hãy xóa một tệp trước khi thử lại."
+      "ackUploadLimit": "Tệp tải lên được giữ lại nhưng mẫu này đã đạt giới hạn số tệp. Hãy xóa một tệp trước khi thử lại.",
+      "senderUnconfigured": "Chưa thiết lập gửi email",
+      "senderHelp": "Email thử việc và email hội nhập/nghỉ việc dùng cùng tên người gửi, do quản trị viên email quản lý."
     },
     "fields": {
       "employee_name": "Họ và tên",

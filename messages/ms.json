@@ -44458,7 +44458,9 @@
       "ackCloseHelp": "Perubahan belum selesai disimpan. Suntingan kekal pada halaman ini, tetapi muat naik yang belum selesai mungkin perlu dicuba semula.",
       "ackClose": "Tutup penyunting",
       "ackPreview": "Pratonton perubahan yang belum disimpan. Penghantaran ujian menunggu perubahan ini disimpan.",
-      "ackUploadLimit": "Muat naik disimpan, tetapi templat ini telah mencapai had failnya. Alih keluar satu fail sebelum mencuba semula."
+      "ackUploadLimit": "Muat naik disimpan, tetapi templat ini telah mencapai had failnya. Alih keluar satu fail sebelum mencuba semula.",
+      "senderUnconfigured": "Penghantaran e-mel belum disediakan",
+      "senderHelp": "E-mel percubaan dan kemasukan/pelepasan menggunakan nama pengirim yang sama, diurus oleh pentadbir e-mel anda."
     },
     "fields": {
       "employee_name": "Nama penuh",

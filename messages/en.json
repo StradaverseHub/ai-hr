@@ -44458,7 +44458,9 @@
       "ackCloseHelp": "Changes have not finished saving. Edits stay on this page, but an unfinished upload may need to be tried again.",
       "ackClose": "Close editor",
       "ackPreview": "Preview of unsaved changes. Sending a test waits for these changes to save.",
-      "ackUploadLimit": "The upload is retained, but this template has reached its file limit. Remove a file before trying again."
+      "ackUploadLimit": "The upload is retained, but this template has reached its file limit. Remove a file before trying again.",
+      "senderUnconfigured": "Email delivery is not set up",
+      "senderHelp": "Probation and On/Off Boarding emails use the same sender name, managed by your email administrator."
     },
     "fields": {
       "employee_name": "Full name",
