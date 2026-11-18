@@ -44291,7 +44291,13 @@
       "imageType": "邮件图片请使用 PNG、JPG、GIF 或 WebP。",
       "fileType": "请使用 PDF、Word、Excel、CSV、文本或图片。",
       "imageLimit": "邮件图片大小不得超过 1 MB。",
-      "fileLimit": "文件大小不得超过 10 MB。"
+      "fileLimit": "文件大小不得超过 10 MB。",
+      "reloadTitle": "重新加载已保存的设置吗？",
+      "reloadHelp": "重新加载将放弃未保存的更改，并恢复上次保存的设置。",
+      "discardReload": "放弃更改并重新加载",
+      "keepEditing": "继续编辑",
+      "retrySave": "重新尝试保存",
+      "reloadSaved": "重新加载已保存的设置"
     },
     "fields": {
       "employee_name": "全名",

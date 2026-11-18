@@ -44291,7 +44291,13 @@
       "imageType": "Dùng PNG, JPG, GIF hoặc WebP cho hình ảnh email.",
       "fileType": "Dùng PDF, Word, Excel, CSV, văn bản hoặc hình ảnh.",
       "imageLimit": "Hình ảnh trong email có thể có dung lượng tối đa 1 MB.",
-      "fileLimit": "Tệp có thể có dung lượng tối đa 10 MB."
+      "fileLimit": "Tệp có thể có dung lượng tối đa 10 MB.",
+      "reloadTitle": "Tải lại cài đặt đã lưu?",
+      "reloadHelp": "Việc tải lại sẽ bỏ các thay đổi chưa lưu và khôi phục cài đặt đã lưu gần nhất.",
+      "discardReload": "Bỏ thay đổi và tải lại",
+      "keepEditing": "Tiếp tục chỉnh sửa",
+      "retrySave": "Thử lưu lại",
+      "reloadSaved": "Tải lại cài đặt đã lưu"
     },
     "fields": {
       "employee_name": "Họ và tên",

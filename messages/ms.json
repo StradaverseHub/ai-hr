@@ -44291,7 +44291,13 @@
       "imageType": "Gunakan PNG, JPG, GIF atau WebP untuk imej e-mel.",
       "fileType": "Gunakan PDF, Word, Excel, CSV, teks atau imej.",
       "imageLimit": "Saiz imej dalam e-mel boleh sehingga 1 MB.",
-      "fileLimit": "Saiz fail boleh sehingga 10 MB."
+      "fileLimit": "Saiz fail boleh sehingga 10 MB.",
+      "reloadTitle": "Muat semula tetapan tersimpan?",
+      "reloadHelp": "Memuat semula akan membuang perubahan yang belum disimpan dan memulihkan tetapan terakhir yang disimpan.",
+      "discardReload": "Buang perubahan dan muat semula",
+      "keepEditing": "Teruskan menyunting",
+      "retrySave": "Cuba simpan lagi",
+      "reloadSaved": "Muat semula tetapan tersimpan"
     },
     "fields": {
       "employee_name": "Nama penuh",

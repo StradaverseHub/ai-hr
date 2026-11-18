@@ -44291,7 +44291,13 @@
       "imageType": "Use PNG, JPG, GIF or WebP for an email image.",
       "fileType": "Use PDF, Word, Excel, CSV, text or an image.",
       "imageLimit": "Images in emails can be up to 1 MB.",
-      "fileLimit": "Files can be up to 10 MB."
+      "fileLimit": "Files can be up to 10 MB.",
+      "reloadTitle": "Reload saved settings?",
+      "reloadHelp": "Reloading will discard your unsaved changes and restore the last saved settings.",
+      "discardReload": "Discard changes and reload",
+      "keepEditing": "Keep editing",
+      "retrySave": "Try saving again",
+      "reloadSaved": "Reload saved settings"
     },
     "fields": {
       "employee_name": "Full name",
