@@ -101,7 +101,9 @@ describe('Personnel to probation reconciliation',()=>{
   await owner.db.execute(sql`update employment set confirmation_date=${today}::date where tenant_id=${b.tenantId}::uuid`);
   await owner.db.execute(sql`delete from probation_reconciliation_intent where tenant_id=${b.tenantId}::uuid`);
   expect((await owner.db.execute<{n:number}>(sql`select count(*)::integer n from employment where tenant_id=${b.tenantId}::uuid and confirmation_date is null`))[0].n).toBe(0);
-  await tick();
+  // The reserved auth-audit tenant is also scanned. Drive the bounded worker to idle,
+  // rather than assuming this business tenant wins the first scheduling tick.
+  await drain();
   const[empty]=await owner.db.execute<{last_success_at:unknown}>(sql`select last_success_at from probation_reconciliation_schedule where tenant_id=${b.tenantId}::uuid`);expect(empty.last_success_at).toBeTruthy();
   await starter();await owner.db.execute(sql`update probation_reconciliation_schedule set next_check_at=now(),last_success_at=null where tenant_id=${b.tenantId}::uuid`);
   await owner.db.execute(sql`select app.probation_reconciliation_schedule_tick()`);
