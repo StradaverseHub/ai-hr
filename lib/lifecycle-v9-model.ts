@@ -394,11 +394,12 @@ export function validateFieldValue(field: Field, value: string): void {
 }
 export function documentFinal(d: Document): boolean { return ['completed', 'signed', 'acknowledged'].includes(d.status) || d.templateType === 'Attachment' && ['sent', 'opened'].includes(d.status); }
 /** Unused case-form answers never travel with a released document's merge snapshot. */
-export function documentMergeValues(document: Pick<Document,'blocks'|'fields'> & { edits?: Document['edits'] }, values: Record<string,string>): Record<string,string> {
+export function documentMergeValues(document: Pick<Document,'blocks'|'fields'> & { edits?: Document['edits'] }, values: Record<string,string>,restrictToUsed=false): Record<string,string> {
   const content=document.blocks.flatMap(block=>[document.edits?.[block.id]??block.text,block.rows??'',block.label??'']).join('\n');
-  const used=new Set([...content.matchAll(/\{(case\.[A-Za-z0-9_.-]+)\}/g)].map(match=>match[1]));
-  for(const field of document.fields)if(field.pmKey?.startsWith('case.'))used.add(field.pmKey);
-  return Object.fromEntries(Object.entries(values).filter(([key])=>!key.startsWith('case.')||used.has(key)));
+  const used=new Set([...content.matchAll(/\{([A-Za-z][A-Za-z0-9_.-]*)\}/g)].map(match=>match[1]));
+  for(const field of document.fields)if(field.pmKey)used.add(field.pmKey);
+  if(document.blocks.some(block=>block.type==='letterhead'))for(const key of ['company.name','company.regNo','company.address','company.color'])used.add(key);
+  return Object.fromEntries(Object.entries(values).filter(([key])=>restrictToUsed?used.has(key):!key.startsWith('case.')||used.has(key)));
 }
 export function personnelFieldSourceValue(field: Field, values: Readonly<Record<string, string>>): string {
   const value = field.pmKey ? values[field.pmKey] ?? '' : '';
@@ -423,6 +424,7 @@ export function generate(c: Case, config: Config, templateId: string, env: Envir
     const official=Object.fromEntries(doc.fields.filter(field=>field.owner==='pmLocked').map(field=>[field.id,personnelFieldSourceValue(field,source)]));
     initializePersonnelCompletion(doc,{country:env.personnelCompletion.country,sourceFingerprint:env.personnelCompletion.fingerprint(official,env.personnelCompletion.country),officialValues:official,actor:env.actor,at:env.now});
   }
+  if(doc.personnelCompletion)doc.mergeValues=documentMergeValues(doc,doc.mergeValues??{},true);
   initializeV9DocumentRouting(c,version,doc,env);
   c.documents.push(doc); appendLog(c, env, 'document.generated', `${doc.name} version ${doc.version}`); return doc;
 }
