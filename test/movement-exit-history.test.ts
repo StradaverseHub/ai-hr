@@ -2,9 +2,10 @@ import {randomUUID} from 'node:crypto';
 import {asc, eq} from 'drizzle-orm';
 import {afterAll, beforeAll, beforeEach, describe, expect, it} from 'vitest';
 import {withTenant} from '../db/client';
-import {assignment, compensation, domainEvent, employment, payPeriod, payrollBatch, payslip, reportingLine, roleAssignment} from '../db/schema';
+import {assignment, compensation, domainEvent, employment, payPeriod, payrollBatch, payslip, reportingLine, roleAssignment, position} from '../db/schema';
 import {hireEmployee, setReportingLine} from '../core/org';
 import {setCompensation} from '../core/comp';
+import {correctHireDetails} from '../core/hire-correction';
 import {applyDueMovementsTx, createMovementEvent, editMovementEvent, movementCurrentState, movementDetail, movementHistory, reverseMovementEvent} from '../core/movement';
 import {saveMovementEventType} from '../core/movement-type';
 import {todayInKualaLumpur} from '../lib/hr-date';
@@ -57,6 +58,19 @@ describe('retained exit organisation history',()=>{
   expect(detail?.before).toMatchObject({department:'Operations',position:'Executive'});
   expect(detail?.after).toMatchObject({department:'Operations',position:'Executive'});
   expect(row).toMatchObject({department:'Operations',jobTitle:'Executive'});
+ });
+ it('follows audited original-hire replacement lineage after a same-day transfer and exit',async()=>{
+  const id=await hire();
+  await createMovementEvent(adminCtx(b),{employmentId:id,kind:'transfer',effectiveDate:day(-3),departmentId:b.deptB});
+  const row=await terminate(id);
+  const [corrected]=await owner.db.insert(position).values({tenantId:b.tenantId,companyId:b.companyId,title:'Fictional corrected exit position'}).returning();
+  await correctHireDetails(adminCtx(b),{employmentId:id,changes:{positionId:corrected.id},reason:'Correct fictional original hire position'});
+  const detail=await movementDetail(adminCtx(b),id,row.id);
+  expect(detail?.before).toMatchObject({department:'Operations',position:'Fictional corrected exit position'});
+  expect(detail?.after).toMatchObject({department:'Operations',position:'Fictional corrected exit position'});
+  expect((await movementHistory(adminCtx(b),id)).find(item=>item.id===row.id)).toMatchObject({department:'Operations',jobTitle:'Fictional corrected exit position'});
+  expect((await snapshot(id)).employment[0].terminatedOn).toBe(day(-3));
+  expect((await movementCurrentState(adminCtx(b),id)).departmentId).toBeNull();
  });
  it('keeps future exits as pending intent until the sweep applies and then retains the closing assignment',async()=>{
   const id=await hire(),row=await terminate(id,day(7));
