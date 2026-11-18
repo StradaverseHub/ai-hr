@@ -38,6 +38,17 @@ describe('template-routing signing model',()=>{
   expect(signingDocumentOwner(routed([step('sign','sign',1,'staff')],'case-owner'))).toEqual({stepId:null,userId:'case-owner'});
   expect(()=>validateSigningRoute({version:1,steps:[step('a','sign',1,'x',{owner:true}),step('b','sign',1,'y',{owner:true})]},rules)).toThrow('Only one step');
  });
+ it('returns administrative custody to the frozen case owner when a flagged or first Review holder is missing, without making them that step signer',()=>{
+  for(const flagged of [false,true]){
+   const doc=routed([step('review','review',1,'unassigned',{holderId:null,holderPersonId:undefined,...(flagged?{owner:true}:{})}),step('sign','sign',2,'staff')],'case-owner');
+   expect(signingDocumentOwner(doc)).toEqual({stepId:'review',userId:'case-owner'});
+   const returned=act(doc,'sign','staff','returned','Resolve the unassigned reviewer');expect(canEditSigningContent(returned,'case-owner')).toBe(true);
+   expect(()=>resendSigningDocument(returned,{id:'wrong',actorId:'staff',actorPersonId:'person-staff',actorName:'staff',at})).toThrow('owner');
+   const resent=resendSigningDocument(returned,{id:'again',actorId:'case-owner',actorPersonId:'person-case-owner',actorName:'case-owner',at});
+   expect(pending(resent)).toEqual(['review']);expect(resent.route.steps[0].holderId).toBeNull();expect(()=>act(resent,'review','case-owner','reviewed')).toThrow();
+   expect(signingDocumentOwner({...doc,routing:{...doc.routing!,caseOwnerId:null}}).userId).toBeNull();
+  }
+ });
  it('sends back from any step: comment required, every completed step cleared, document held with the owner',()=>{
   let doc=act(act(act(chain(),'review','gbs','reviewed'),'approve','hod','approved'),'sign-emp','staff','signed');
   expect(()=>act(doc,'sign-pbp','pbp','returned','  ')).toThrow('Explain');

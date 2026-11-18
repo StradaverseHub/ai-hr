@@ -26,17 +26,17 @@ CREATE FUNCTION app.v9_document_route_content_visible(d jsonb) RETURNS boolean L
   OR EXISTS(SELECT 1 FROM app.document_signing_round_actions(d->'signing') a WHERE a->>'actorId'=app.current_user_id()::text))
 $$;
 -- Private set-based source seam. Callers never receive a case's private blob.
-CREATE FUNCTION app.v9_document_route_sources() RETURNS TABLE(case_id uuid,revision integer,company_id uuid,employment_id uuid,person_id uuid,is_native boolean,number text,state text,document jsonb)
+CREATE FUNCTION app.v9_document_route_sources(p_case uuid DEFAULT NULL) RETURNS TABLE(case_id uuid,revision integer,company_id uuid,employment_id uuid,person_id uuid,is_native boolean,number text,state text,document jsonb)
 LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
  SELECT c.id,c.revision,c.company_id,c.employment_id,e.person_id,false,c.number,c.data->>'state',d
  FROM lc_v9_case c JOIN employment e ON e.id=c.employment_id AND e.tenant_id=c.tenant_id
  CROSS JOIN LATERAL jsonb_array_elements(coalesce(c.data->'documents','[]'::jsonb)) d
- WHERE c.tenant_id=app.current_tenant_id() AND jsonb_typeof(d->'signing')='object'
+ WHERE c.tenant_id=app.current_tenant_id() AND (p_case IS NULL OR c.id=p_case) AND jsonb_typeof(d->'signing')='object'
  UNION ALL
  SELECT c.id,c.revision,c.company_id,c.employment_id,(c.data->>'personId')::uuid,true,c.data->>'number',c.data->>'state',d
  FROM lc_onboarding_case c JOIN lc_onboarding_private p ON p.case_id=c.id AND p.tenant_id=c.tenant_id
  CROSS JOIN LATERAL jsonb_array_elements(coalesce(p.data->'lifecycleV9'->'documents','[]'::jsonb)) d
- WHERE c.tenant_id=app.current_tenant_id() AND jsonb_typeof(d->'signing')='object'
+ WHERE c.tenant_id=app.current_tenant_id() AND (p_case IS NULL OR c.id=p_case) AND jsonb_typeof(d->'signing')='object'
   AND p.data->'lifecycleV9Subject'->>'personId' IS NOT DISTINCT FROM c.data->>'personId'
   AND p.data->'lifecycleV9Subject'->>'employmentId' IS NOT DISTINCT FROM c.employment_id::text
 $$;
@@ -55,7 +55,7 @@ LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp A
   'signing',document->'signing','document',CASE WHEN app.v9_document_route_content_visible(document) THEN document ELSE NULL END)
   ORDER BY document->>'createdAt',case_id,document->>'id') FROM page),'[]'::jsonb))
 $$;
-REVOKE ALL ON FUNCTION app.v9_signing_current_actor(),app.v9_document_content_hash(jsonb),app.v9_document_route_complete(jsonb),app.v9_document_route_signatures(jsonb),app.v9_document_route_participant(jsonb),app.v9_document_route_content_visible(jsonb),app.v9_document_route_sources(),app.v9_document_signing_work(text,integer,integer) FROM PUBLIC;
+REVOKE ALL ON FUNCTION app.v9_signing_current_actor(),app.v9_document_content_hash(jsonb),app.v9_document_route_complete(jsonb),app.v9_document_route_signatures(jsonb),app.v9_document_route_participant(jsonb),app.v9_document_route_content_visible(jsonb),app.v9_document_route_sources(uuid),app.v9_document_signing_work(text,integer,integer) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION app.v9_signing_current_actor(),app.v9_document_content_hash(jsonb),app.v9_document_route_complete(jsonb),app.v9_document_route_signatures(jsonb),app.v9_document_route_participant(jsonb),app.v9_document_route_content_visible(jsonb),app.v9_document_signing_work(text,integer,integer) TO ai_hr_app;
 --> statement-breakpoint
 -- Mirror the native registry's six-dimensional match and canonical employment category.

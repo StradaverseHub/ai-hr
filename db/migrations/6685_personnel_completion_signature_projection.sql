@@ -121,3 +121,15 @@ BEGIN
   END LOOP;
  ELSE RAISE EXCEPTION 'Unsupported signing action';END IF;
 END $$;
+
+--> statement-breakpoint
+-- Administrative return custody falls back only to the case owner already frozen by the subject adapter.
+-- A null step holder stays null and cannot act on its pending Review/Sign step.
+CREATE OR REPLACE FUNCTION app.document_signing_owner(p_data jsonb) RETURNS uuid
+LANGUAGE plpgsql IMMUTABLE SET search_path=pg_catalog,public,pg_temp AS $$
+DECLARE s jsonb:=app.document_signing_owner_step(p_data);
+BEGIN
+ IF s IS NOT NULL AND nullif(s->>'holderId','') IS NOT NULL THEN RETURN (s->>'holderId')::uuid;END IF;
+ IF jsonb_typeof(p_data->'routing') IS DISTINCT FROM 'object' THEN RETURN NULL;END IF;
+ RETURN nullif(p_data->'routing'->>'caseOwnerId','')::uuid;
+END $$;
