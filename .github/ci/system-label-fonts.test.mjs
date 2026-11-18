@@ -3,7 +3,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import {systemLabelFontsRequired} from './system-label-fonts.mjs';
-import {bootstrapFixedNoto,assertFixedNotoRunner} from './fixed-noto-bootstrap.mjs';
+import {bootstrapFixedNoto,assertFixedNotoRunner,configureFixedNotoTransport,ubuntuFontTransportDiagnostic,decodeUbuntuSourceBytes} from './fixed-noto-bootstrap.mjs';
 
 const consumer='test/system-label-exchange-browser.test.ts',other='test/plain.test.ts';
 const expected={candidate:'a'.repeat(40),controller:'c'.repeat(40)};
@@ -70,7 +70,7 @@ test('both actual resolver control lists execute these prerequisite controls',()
  for(const name of ['alpha-focused-checks.yml','alpha-staging.yml']){
   const text=workflow(name),start=text.indexOf('\n  resolve:');
   const next=text.indexOf(name==='alpha-focused-checks.yml'?'\n  selected-tests:':'\n  typecheck:',start);
-  assert(start>0&&next>start);assert(text.slice(start,next).includes('.github/ci/system-label-fonts.test.mjs'));
+  assert(start>0&&next>start);assert(text.slice(start,next).includes('.github/ci/system-label-fonts.test.mjs'));assert(text.slice(start,next).includes('.github/ci/ubuntu-browser-mirror.test.mjs'));
  }
 });
 
@@ -117,4 +117,79 @@ test('only the same disposable source-bound repository runner can execute font m
  for(const change of [{GITHUB_ACTIONS:'false'},{CI:'false'},{RUNNER_ENVIRONMENT:'self-hosted'},{GITHUB_REPOSITORY:'foreign/repo'},
   {GITHUB_REPOSITORY_ID:'1'},{AIHR_CI_HEAD:'main'},{AIHR_CI_CONTROL_HEAD:undefined}])assert.throws(()=>assertFixedNotoRunner({...env,...change},'linux'));
  assert.throws(()=>assertFixedNotoRunner(env,'darwin'));
+});
+
+const standardUbuntu='Types: deb\nURIs: mirror+file:/etc/apt/apt-mirrors.txt\nSuites: noble noble-updates noble-backports\nComponents: main restricted universe multiverse\nSigned-By: /usr/share/keyrings/ubuntu-archive-keyring.gpg\n';
+const standardMirrors='http://azure.archive.ubuntu.com/ubuntu/\tpriority:1\nhttps://archive.ubuntu.com/ubuntu/\tpriority:2\nhttps://security.ubuntu.com/ubuntu/\tpriority:3\n';
+function transportFixture({source=standardUbuntu,writeResult=commandResult(0),badReadback=false,changedBeforeWrite=false}={}){
+ let value=source,sourceReads=0;const reads=[],writes=[],observed=[];
+ const read=(file,limit)=>{
+  reads.push({file,limit});
+  if(file==='/etc/apt/apt-mirrors.txt'){assert.equal(limit,4096);return standardMirrors;}
+  assert.equal(file,'/etc/apt/sources.list.d/ubuntu.sources');assert.equal(limit,65536);sourceReads++;
+  if(changedBeforeWrite&&sourceReads===2)return value+'# changed';
+  return value;
+ };
+ const write=text=>{writes.push(text);if(!badReadback)value=text;return writeResult;};
+ return {read,write,onStep:proof=>observed.push({...proof}),reads,writes,observed};
+}
+test('fixed font transport reuses the existing pure validator and verifies actual after bytes without raw config evidence',()=>{
+ const f=transportFixture(),proof=configureFixedNotoTransport(f);
+ assert.equal(f.writes.length,1);assert.equal(f.writes[0],standardUbuntu.replace('mirror+file:/etc/apt/apt-mirrors.txt','https://archive.ubuntu.com/ubuntu/'));
+ assert.equal(proof.variant,'primary-https');assert.equal(proof.signaturePolicyUnchanged,true);assert.equal(proof.packageSelectionUnchanged,true);
+ assert.equal(proof.afterBytesVerified,true);assert.equal(proof.releaseAuthorized,false);assert.notEqual(proof.beforeSha256,proof.afterSha256);
+ assert.deepEqual(proof.write.args,['-n','tee','/etc/apt/sources.list.d/ubuntu.sources']);
+ assert.equal(f.reads.filter(row=>row.file==='/etc/apt/sources.list.d/ubuntu.sources').length,3);
+ assert(!JSON.stringify(proof).includes('Types:'));assert(!JSON.stringify(proof).includes('priority:1'));
+});
+test('unknown Ubuntu source or concurrent source change refuses before any privileged write',()=>{
+ for(const options of [{source:standardUbuntu.replace('mirror+file:/etc/apt/apt-mirrors.txt','https://example.invalid/ubuntu/')},{changedBeforeWrite:true}]){
+  const f=transportFixture(options);assert.throws(()=>configureFixedNotoTransport(f),/Fixed Ubuntu transport validation\/write refused/);assert.equal(f.writes.length,0);
+ }
+});
+test('transport wrapper failure and wrong after bytes retain sanitized proof and refuse before APT',()=>{
+ for(const options of [{writeResult:commandResult(1,{stderr:'tee failed'})},{writeResult:commandResult(null,{errorCode:'ETIMEDOUT'})},{badReadback:true}]){
+  const f=transportFixture(options);let failure;try{configureFixedNotoTransport(f);}catch(error){failure=error;}
+  assert(failure);assert.equal(f.writes.length,1);assert(failure.fontTransportProof);assert(!JSON.stringify(failure.fontTransportProof).includes('Types:'));
+ }
+});
+test('rejected mirror content cannot escape through assertion messages or proof',()=>{
+ const f=transportFixture(),read=f.read;
+ f.read=(file,limit)=>file==='/etc/apt/apt-mirrors.txt'?standardMirrors+'https://private.invalid/secret-token\n':read(file,limit);
+ let failure;try{configureFixedNotoTransport(f);}catch(error){failure=error;}
+ assert(failure);assert.equal(f.writes.length,0);assert(!String(failure).includes('secret-token'));assert(!JSON.stringify(failure.fontTransportProof).includes('secret-token'));
+});
+test('fixed bootstrap CLI alone owns source mutation and existing diagnostic workflow guard is unchanged',()=>{
+ const helper=readFileSync(new URL('./fixed-noto-bootstrap.mjs',import.meta.url),'utf8');
+ const cli=helper.slice(helper.indexOf('if(process.argv[1]'));
+ assert(cli.indexOf('assertFixedNotoRunner')<cli.indexOf('configureFixedNotoTransport'));
+ assert(cli.indexOf('configureFixedNotoTransport')<cli.indexOf('bootstrapFixedNoto'));
+ assert(helper.includes('constants.O_NOFOLLOW'));assert(helper.includes('st.uid===0'));assert(helper.includes('timeout:10000'));
+ const diagnostic=readFileSync(new URL('./ubuntu-browser-mirror.mjs',import.meta.url),'utf8');
+ assert(diagnostic.includes("process.env.GITHUB_WORKFLOW==='browser-provisioning-diagnostics'"));
+});
+
+test('read-only transport diagnostics explain standard/EC2 layouts without expanding mutable sources or leaking unknown fields',()=>{
+ const ec2='http://us-east-2.ec2.archive.ubuntu.com/ubuntu/';
+ const diag=ubuntuFontTransportDiagnostic('URIs: '+ec2+'\n',ec2+' priority:1\nhttps://archive.ubuntu.com/ubuntu/ priority:2\n');
+ assert.equal(diag.sourceUris[0].url,ec2);assert.equal(diag.mirrorList.rows[0].url,ec2);assert.equal(diag.mirrorList.rows[0].priority,1);
+ for(const value of ['https://name:secret@archive.ubuntu.com/ubuntu/','https://archive.ubuntu.com/ubuntu/?token=secret',
+  'https://private.invalid/secret','https://archive.ubuntu.com/other#secret']){
+  const result=ubuntuFontTransportDiagnostic('URIs: '+value+'\n',value+' priority:1\n');
+  assert.equal(result.sourceUris[0].redacted,true);assert(!JSON.stringify(result).includes('secret'));
+ }
+ const unknown=ubuntuFontTransportDiagnostic(standardUbuntu,'https://archive.ubuntu.com/ubuntu/ priority:2 private=secret\n');
+ assert.equal(unknown.mirrorList.rows[0].redacted,true);assert(!JSON.stringify(unknown).includes('secret'));
+ const f=transportFixture({source:standardUbuntu.replace('mirror+file:/etc/apt/apt-mirrors.txt',ec2)});
+ assert.throws(()=>configureFixedNotoTransport(f));assert.equal(f.writes.length,0);
+});
+
+test('real Ubuntu source boundary preserves valid Unicode and BOM bytes and refuses replacement decoding',()=>{
+ const valid=Buffer.from('# தமிழ்中文\nTypes: deb\n','utf8');
+ assert(Buffer.from(decodeUbuntuSourceBytes(valid),'utf8').equals(valid));
+ const bom=Buffer.concat([Buffer.from([0xef,0xbb,0xbf]),valid]);
+ const decoded=decodeUbuntuSourceBytes(bom);assert.equal(decoded.charCodeAt(0),0xfeff);assert(Buffer.from(decoded,'utf8').equals(bom));
+ for(const invalid of [Buffer.from([0xff]),Buffer.from([0xc3,0x28]),Buffer.from([0xe2,0x82])])assert.throws(()=>decodeUbuntuSourceBytes(invalid));
+ const helper=readFileSync(new URL('./fixed-noto-bootstrap.mjs',import.meta.url),'utf8');
+ assert(helper.includes('return decodeUbuntuSourceBytes(buffer.subarray(0,count))'));
 });
