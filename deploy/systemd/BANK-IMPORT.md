@@ -889,3 +889,10 @@ published worker recovery; they grant no application arrival, acceptance,
 production or expired-grant write authority. The unchanged original
 `resume-arrival` remains responsible for closing the installation after actual
 all-kind worker readiness.
+
+Because quarantine disabled boot start, this published-only route restores and
+independently reads back boot enablement after the full proof graph while its
+exact owned worker is still running, before either success receipt, within the
+unchanged15-second receipt slot. It never enables before starting: a pre-start
+failure must leave the unaccepted unit disabled. Enable or readback failure uses
+the same owned-process quarantine and disables the rejected worker again.

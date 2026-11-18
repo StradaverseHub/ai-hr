@@ -11,6 +11,12 @@ published=core.core.load_native('published_owner','bank_import_worker_published_
 published.configure(ci,prepared);ci.PUBLISHED=published
 
 class Fixture(core.Fixture):
+ def command(self,argv,**options):
+  if argv==['/usr/bin/systemctl','enable','aihr-bank-import.service']:
+   if self.fault=='published-enable':raise OSError('fixture enable failure')
+   self.report['UnitFileState']='enabled'
+   if self.fault=='published-enable-readback':self.report['NeedDaemonReload']='yes'
+  return super().command(argv,**options)
  def __init__(self,root,package=None):
   super().__init__(root,package);self.report['ExecMainCode']='0'
   a=self.prepare_record(True);proof=self.invoke_preparation(a);old=self.live_record(a,proof)
@@ -60,6 +66,7 @@ class PublishedTests(unittest.TestCase):
    f.invoke_published(published.LIVE_STAGE,f.live(proof))
   receipt=json.loads((f.app/'releases'/f.source/'worker-install-v2.json').read_bytes())
   self.assertTrue(receipt['publishedRecoveryOnly']);self.assertTrue(receipt['serviceStable']);self.assertFalse(receipt['journeyVerified'])
+  self.assertTrue(receipt['workerBootEnabled']);self.assertEqual(f.report['UnitFileState'],'enabled')
   self.assertEqual(receipt['publishedSealSha256'],ci.sha(proof.read_bytes()))
   for name,pins in before['members'].items():
    p=Path(before['operation'])/name;self.assertEqual({**published.identity(p),'sha256':ci.sha(p.read_bytes())},pins)
@@ -122,6 +129,15 @@ class PublishedTests(unittest.TestCase):
     with self.assertRaisesRegex(ValueError,reason):f.seal()
     self.unchanged(f)
 
+ def test_boot_enable_failure_quarantines_owned_worker_without_acceptance(self):
+  for fault in('published-enable','published-enable-readback'):
+   with self.subTest(fault=fault):
+    f=self.fixture();proof=f.seal();f.fault=fault
+    with self.assertRaisesRegex(RuntimeError,'explicit administrator recovery'):
+     f.invoke_published(published.LIVE_STAGE,f.live(proof))
+    self.assertEqual(f.report['MainPID'],'0');self.assertEqual(f.report['UnitFileState'],'disabled')
+    self.assertFalse((f.app/'releases'/f.source/'worker-install-v2.json').exists())
+
 class ActualPublishedCapacityTests(unittest.TestCase):
  def test_original_full_package_published_recovery_graph(self):
   with tempfile.TemporaryDirectory()as tmp:
@@ -131,6 +147,7 @@ class ActualPublishedCapacityTests(unittest.TestCase):
    f.invoke_published(published.LIVE_STAGE,live)
    receipt=json.loads((f.app/'releases'/f.source/'worker-install-v2.json').read_bytes())
    self.assertTrue(receipt['publishedRecoveryOnly']);self.assertEqual(receipt['completeMetadataFences'],10)
+   self.assertTrue(receipt['workerBootEnabled']);self.assertEqual(f.report['UnitFileState'],'enabled')
    self.assertEqual(receipt['fullNativeAudits'],2);self.assertLess(ci.time.monotonic()-started,827)
    for name,pins in before['members'].items():
     p=Path(before['operation'])/name;self.assertEqual({**published.identity(p),'sha256':ci.sha(p.read_bytes())},pins)

@@ -171,7 +171,7 @@ def run(guard,fmt,b,ci,prepared,update):
              'publishedSealSha256':a['publishedSeal']['sha256'],'previousWebSource':args.previous_web_source,
              'previousWebBuildId':args.previous_web_build,'previousWorkerSource':args.previous_worker_source,
              'originalInstallationGrantExpiresAt':observer.grant['expiresAt'],'workerRecoveryOnly':True,'publishedRecoveryOnly':True}
-    return update.replace_and_start(b,fmt,args,operation,release,None,pins['unitSha256'],receipt,observer,prepare_release=revalidate_published)
+    return update.replace_and_start(b,fmt,args,operation,release,None,pins['unitSha256'],receipt,observer,prepare_release=revalidate_published,enable_after_verification=True)
 
 def configure(ci,prepared):
     global SEAL_FIELDS,LIVE_FIELDS

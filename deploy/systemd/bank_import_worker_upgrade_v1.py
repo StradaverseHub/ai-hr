@@ -371,7 +371,7 @@ def stage_release(base, fmt, archive, operation, args, manifest):
     return release
 
 
-def replace_and_start(base, fmt, args, operation, release, state, prior_unit_sha256, receipt, ci_observer=None, prepare_release=None):
+def replace_and_start(base, fmt, args, operation, release, state, prior_unit_sha256, receipt, ci_observer=None, prepare_release=None, enable_after_verification=False):
     """Atomic current-template unit, reload, start, three stable observations, receipt; quarantine on any failure.
     Shared by activate and adopt-stopped; only the pinned prior unit hash and receipt provenance differ.
     """
@@ -416,6 +416,18 @@ def replace_and_start(base, fmt, args, operation, release, state, prior_unit_sha
         else:
             base.check(healthy_web_state(base, args.source, args.build_id) == state, 'web changed before worker acceptance')
         base.check(digest(base.read_bounded(base.ENV, 1024**2)) == args.worker_env_sha256, 'worker environment changed during activation')
+        if enable_after_verification:
+            # Published recovery starts from a disabled quarantine. Arm boot only
+            # AFTER the full graph passes; any failure still has exact owned-PID
+            # quarantine authority, including disabling again. Never arm pre-start.
+            base.check(ci_observer is not None and ci_observer.guard.stage=='recover-published-ci-runtime',
+                       'boot enablement requires explicit published recovery')
+            ci_observer.check_slot()
+            base.command(['/usr/bin/systemctl','enable','aihr-bank-import.service'])
+            report=properties(base);base.validate_service(report,release);ci_observer.assert_owned_worker(report)
+            base.check(report.get('UnitFileState')=='enabled' and report.get('NeedDaemonReload')=='no' and
+                       report.get('Restart')=='on-failure','verified published worker boot enablement failed')
+            ci_observer.check_slot();receipt={**receipt,'workerBootEnabled':True}
         accepted = {**receipt, 'source': args.source, 'webBuildId': args.build_id, 'archiveSha256': args.archive_sha256,
                     'selectedEnvironmentSha256': args.worker_env_sha256,
                     'unitSha256': digest(base.service_unit(args.source).encode()), 'workerPid': stable_pid,
