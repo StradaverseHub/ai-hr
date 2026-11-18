@@ -64,3 +64,9 @@ it('keeps captured receipt recipients after the current employee or manager labe
  const row=document.getElementById(communicationAnchor('schedule','release-flow/finished-run/receipt'))!;
  expect(within(row).getByText(/Captured original recipient/)).toHaveTextContent('CC: Captured original copy');expect(within(row).queryByText(/Changed current employee/)).toBeNull();
 });
+it('routes a required-file blocker to the authorized upload form and selects its exact existing slot without a write',async()=>{
+ const fixture=communicationsFixture();const run=fixture.c.runs[0];delete run.hold;run.reason='Upload the fictional proof.';run.definition!.steps.unshift({id:'proof-wait',type:'waitFile',slot:'required-proof',label:'Fictional proof'});const command=vi.fn();
+ render(<NextIntlClientProvider locale="en" messages={messages}><CaseCommunications {...fixture} busy={false} writableKeys={[]} command={command} canUploadFiles onDocument={vi.fn()} today="2026-11-27"/></NextIntlClientProvider>);
+ expect(screen.getByRole('tab',{name:'Schedule 3'})).toBeVisible();fireEvent.click(screen.getByRole('button',{name:'Upload file'}));await act(async()=>{await new Promise(resolve=>requestAnimationFrame(resolve));});
+ expect(screen.getByRole('tab',{name:'Documents & files 2'})).toHaveAttribute('aria-selected','true');expect(screen.getByRole('combobox',{name:'Attachment for'})).toHaveValue('required-proof');expect(document.activeElement?.id).toBe(`communications-upload-${fixture.c.id}`);expect(command).not.toHaveBeenCalled();
+});

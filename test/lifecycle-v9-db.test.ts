@@ -1550,5 +1550,16 @@ it('previews only the selected saved workflow step after current settings change
  expect(preview.to.map(recipient=>recipient.id)).toEqual([admin.userId]);expect((await v9PreviewEmail(admin,c.id,'source-preview-email')).to.map(recipient=>recipient.id)).toEqual([employee.userId]);
  const selected=await v9PreviewWorkflow(admin,c.id,workflow.id,{runId:run.id,stepId:'tail-notify'});expect(selected.workflow.name).toBe('Frozen preview source');expect(selected.messages.map(message=>message.subject)).toEqual(['Saved tail only']);expect(selected.documents).toEqual([]);
  await expect(v9PreviewEmail(other,c.id,'source-preview-email',{workflowId:workflow.id,runId:run.id,stepId:'target-email'})).rejects.toThrow();await expect(v9PreviewEmail(admin,c.id,'source-preview-email',{workflowId:workflow.id,runId:'not-this-case',stepId:'target-email'})).rejects.toThrow();
+ // Unrelated group size must not change this case-scoped read, recipient order, counts or authorization.
+ await owner.db.execute(sql`insert into company(tenant_id,legal_name,country,currency) select ${base.tenantId}::uuid,'Fictional preview scale company '||n,'MY','MYR' from generate_series(1,70) n`);
+ await owner.db.execute(sql`insert into person(tenant_id,full_name,primary_email) select ${base.tenantId}::uuid,'Fictional preview scale person '||lpad(n::text,4,'0'),'preview-scale-'||n||'@example.test' from generate_series(1,1000) n`);
+ await owner.db.execute(sql`with people as (select id,row_number() over(order by full_name) n from person where tenant_id=${base.tenantId}::uuid and full_name like 'Fictional preview scale person %'),companies as (select id,row_number() over(order by legal_name)-1 k from company where tenant_id=${base.tenantId}::uuid and legal_name like 'Fictional preview scale company %') insert into employment(tenant_id,person_id,company_id,hired_on) select ${base.tenantId}::uuid,p.id,co.id,'2026-01-01' from people p join companies co on co.k=(p.n-1)%70`);
+ const [shape]=await owner.db.execute<{companies:number;employments:number}>(sql`select (select count(*)::int from company where tenant_id=${base.tenantId}::uuid and legal_name like 'Fictional preview scale company %') companies,(select count(*)::int from employment e join person p on p.id=e.person_id where e.tenant_id=${base.tenantId}::uuid and p.full_name like 'Fictional preview scale person %') employments`);expect(shape).toEqual({companies:70,employments:1000});
+ for(const context of [admin,{...admin,grants:[{role:'hr_admin',companyId:base.companyId}]}]){
+  expect(await v9PreviewEmail(context,c.id,'source-preview-email',{workflowId:workflow.id,runId:run.id,stepId:'target-email'})).toEqual(preview);
+  expect(await v9PreviewWorkflow(context,c.id,workflow.id,{runId:run.id,stepId:'tail-notify'})).toEqual(selected);
+  expect((await v9CaseDetail(context,c.id)).canUploadFiles).toBe(true);
+ }
+ await expect(v9CaseDetail(other,c.id)).rejects.toThrow();
  expect((await v9CaseDetail(admin,c.id)).case).toEqual(before);
 });

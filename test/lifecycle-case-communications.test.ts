@@ -23,7 +23,7 @@ it('keeps nonmatching and manually started workflows outside ordinary counts and
 it('uses effective retry outcomes for attention and preserves required-file waiting rows',()=>{
  const {c,config}=communicationsFixture();const run=c.runs.find(run=>run.id==='finished-run')!;run.status='waiting';run.cursor=1;
  const mail=c.mails.find(mail=>!mail.test)!;mail.status='uncertain';
- let view=caseCommunications(c,config,'2026-11-27');expect(view.rows.find(row=>row.step?.id==='receipt')).toMatchObject({status:'attention',blocker:'delivery',mail:{id:mail.id}});
+ let view=caseCommunications(c,config,'2026-11-27');for(const status of ['failed','uncertain','cancelled'] as const){mail.status=status;view=caseCommunications(c,config,'2026-11-27');expect(view.rows.find(row=>row.step?.id==='receipt')).toMatchObject({status:'attention',blocker:'delivery',mail:{id:mail.id}});}
  c.mails.push({...structuredClone(mail),id:'retry-success',retryOf:mail.id,status:'sent',at:'2026-11-30T12:00:00Z'});
  expect(caseCommunications(c,config,'2026-11-27').rows.find(row=>row.step?.id==='receipt')?.status).toBe('open');
  run.definition!.steps=[{id:'file-step',type:'waitFile',slot:'proof',label:'Fictional proof'},{id:'next-email',type:'email',template:'welcome',to:['employee'],cc:[]}];run.cursor=0;
@@ -37,4 +37,10 @@ it('retains distinct unfinished runs and derives recurrence only from frozen def
  expect(caseCommunications(c,config,'2026-11-27').rows.filter(row=>row.workflow?.id===first.workflowId).map(row=>row.run?.id)).toEqual(['held-run','second-held']);
  config.workflows[0].trigger.repeat=true;first.definition!.trigger.repeat=false;
  expect(caseCommunications(c,config,'2026-11-27').rows.filter(row=>row.workflow?.id===first.workflowId)).toHaveLength(2);
+});
+
+it('does not treat a future email attachment as a current blocker while awaiting a signature',()=>{
+ const {c,config}=communicationsFixture();const run=c.runs[0];delete run.hold;config.emails[0].slots=[{id:'required',label:'Required proof',required:true}];run.definition!.steps.unshift({id:'sign-first',type:'waitSign',template:'letter',by:'employee'});
+ let row=caseCommunications(c,config,'2026-11-27').rows.find(row=>row.run?.id===run.id)!;expect(row.status).toBe('open');expect(row.blocker).toBeUndefined();
+ run.cursor=1;row=caseCommunications(c,config,'2026-11-27').rows.find(row=>row.run?.id===run.id)!;expect(row).toMatchObject({status:'attention',blocker:'file',fileSlot:'welcome:required'});
 });
