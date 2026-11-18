@@ -149,3 +149,10 @@ it('refuses another HR creator’s completed preview even when the direct envelo
  await expect(requestPersonnelCompletionRecovery(hr,{previewJobId:preview.row.id,reviewHashes:[r.reviewHash!],confirmed:true})).rejects.toThrow();
  await expectNoAppliedRecovery(await forgedRecovery(hr,{previewJobId:preview.row.id,reviews:[r]}),f.id);
 });
+
+it('preserves a trusted national-format Personnel phone while recovering a separate missing address',async()=>{
+ await owner.client`update person set phone='0123456789',home_phone='0398765432' where id=${personId}::uuid and tenant_id=${b.tenantId}::uuid`;
+ const mobile:Field={...personal,id:'official-mobile',type:'phone',pmKey:'mobile',label:'Official mobile'},home:Field={...mobile,id:'official-home',pmKey:'homePhone',label:'Official home phone'},f=await fixture({extraFields:[mobile,home]});
+ const r=await review((await page()).items[0]);expect(r.outcome).toBe('eligible');expect(await adopt(r)).toBe(2);const after=await saved(f.id);expect(after.data.documents[0].values).toMatchObject({'official-mobile':'0123456789','official-home':'0398765432',F51:''});expect(after.data.documents[0].personnelCompletion?.fields['official-mobile'].sourceValue).toBe('0123456789');
+ const [source]=await owner.client<{phone:string;home:string}[]>`select phone,home_phone home from person where id=${personId}::uuid`;expect(source).toEqual({phone:'0123456789',home:'0398765432'});expect(after.data.documents[0].sentAt).toBeNull();expect(after.data.mails).toEqual([]);
+});
