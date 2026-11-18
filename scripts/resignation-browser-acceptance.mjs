@@ -198,25 +198,75 @@ export async function exerciseResignationBrowser({base,browser,fixture,observe,c
   if(actorKey===employeeKey){page=await login(actorKey);await visit(page,'/me?tab=documents');scope=page.locator('[data-resignation-employee]:visible');await scope.waitFor();assert.equal(await scope.count(),1,'Exactly one visible employee signing subject is required');await scope.getByRole('button',{name:t.openLetter,exact:true}).waitFor();}
   else{({page,panel,row}=await openTask(actorKey,employeeKey,'sign',{dismiss:captureId==='ceo-sign-retention',captureId:captureId==='ceo-sign-retention'?'my-tasks-sign-panel':undefined}));scope=panel;}
   await scope.getByRole('button',{name:t.openLetter,exact:true}).click();
-  if(offerSign&&captureId){const summary=scope.getByRole('heading',{name:t.offerTitle,exact:true}).locator('..');await sectionCapture(page,'employee-offer',summary);const previous=page.viewportSize();await page.setViewportSize({width:390,height:844});try{
-   await sectionCapture(page,'employee-offer-mobile',summary);
-   const metrics=await page.evaluate(()=>({viewportWidth:innerWidth,documentWidth:document.documentElement.scrollWidth,bodyWidth:document.body.scrollWidth}));
-   assert(metrics.documentWidth<=392&&metrics.bodyWidth<=392,'Offer summary overflows mobile page');
-   // Page width alone misses a table clipped inside its own scrolling wrapper.
-   const termCells=await summary.locator('th,td').evaluateAll(cells=>cells.map(cell=>{
-    const bounds=cell.getBoundingClientRect(),range=document.createRange();range.selectNodeContents(cell);
-    const fragments=Array.from(range.getClientRects(),rect=>({left:rect.left,right:rect.right,top:rect.top,bottom:rect.bottom}));
-    return {text:cell.textContent?.trim()??'',bounds:{left:bounds.left,right:bounds.right,top:bounds.top,bottom:bounds.bottom},fragments};
-   }));
-   assert.equal(termCells.length,12,'Offer comparison must retain three headers and all nine term cells');
-   const geometry=await summary.evaluate(resignationCaptureGeometry),left=Math.max(geometry.bounds.x,geometry.clip.left),right=Math.min(geometry.bounds.x+geometry.bounds.width,geometry.clip.left+geometry.clip.width);
-   for(const cell of termCells){
-    assert(cell.text&&cell.fragments.length,'Every offer comparison cell must contain rendered text');
-    assert(cell.bounds.left>=left-1&&cell.bounds.right<=right+1,'Offer comparison cell is horizontally clipped: '+cell.text);
-    for(const fragment of cell.fragments)assert(fragment.left>=cell.bounds.left-1&&fragment.right<=cell.bounds.right+1&&fragment.top>=cell.bounds.top-1&&fragment.bottom<=cell.bounds.bottom+1,'Offer comparison text must wrap fully inside its cell: '+cell.text);
-   }
-   report.mobileChecks??=[];report.mobileChecks.push({id:'employee-offer-mobile',actor:active?.key,metrics,termCells,passed:true});save();
-  }finally{await page.setViewportSize(previous);}}
+  if(offerSign&&captureId){
+   const summary=scope.getByRole('heading',{name:t.offerTitle,exact:true}).locator('..'),desktop=summary.locator('[data-resignation-offer-desktop]'),mobile=summary.locator('dl[data-resignation-offer-mobile]');
+   const native=caseFor(employeeKey);
+   assert.equal(native.currency,'MYR');assert.equal(native.position,'Fictional resignation coordinator');assert.equal(native.jobGrade,'RJ_BROWSER');assert.equal(Number(native.currentBasicSalary),5000);
+   assert.equal(native.offer?.position,'Fictional resignation coordinator');assert.equal(native.offer?.jobGrade,'RJ_BROWSER');assert.equal(Number(native.offer?.basicSalary),5500);
+   const expectedTerms=[
+    {key:'position',caption:t.position,current:'Fictional resignation coordinator',proposed:'Fictional resignation coordinator'},
+    {key:'grade',caption:t.grade,current:'RJ_BROWSER',proposed:'RJ_BROWSER'},
+    {key:'salary',caption:t.salaryMonthly+' · MYR',current:'MYR 5,000.00',proposed:'MYR 5,500.00'},
+   ];
+   const checkCells=(cells,geometry,label)=>{
+    const left=Math.max(geometry.bounds.x,geometry.clip.left),right=Math.min(geometry.bounds.x+geometry.bounds.width,geometry.clip.left+geometry.clip.width);
+    assert(right>left,label+' has no horizontal capture space');
+    for(const cell of cells){
+     assert(cell.text&&cell.fragments.length,label+' comparison cell must contain rendered text');
+     assert(cell.bounds.right>cell.bounds.left&&cell.bounds.bottom>cell.bounds.top,label+' comparison cell must have positive area');
+     assert(cell.bounds.left>=left-1&&cell.bounds.right<=right+1,label+' comparison cell is horizontally clipped: '+cell.text);
+     for(const fragment of cell.fragments)assert(fragment.left>=cell.bounds.left-1&&fragment.right<=cell.bounds.right+1&&fragment.top>=cell.bounds.top-1&&fragment.bottom<=cell.bounds.bottom+1,label+' comparison text must wrap fully inside its cell: '+cell.text);
+    }
+   };
+   const measureCells=cells=>cells.map(cell=>{
+    const rect=value=>({left:value.left,right:value.right,top:value.top,bottom:value.bottom}),range=document.createRange();range.selectNodeContents(cell);
+    return{text:cell.textContent?.trim()??'',bounds:rect(cell.getBoundingClientRect()),fragments:Array.from(range.getClientRects(),rect)};
+   });
+   await expect(desktop).toHaveCount(1);await expect(mobile).toHaveCount(1);await expect(desktop).toBeVisible();await expect(mobile).toBeHidden();
+   await sectionCapture(page,'employee-offer',summary);
+   const desktopCells=await desktop.locator('th,td').evaluateAll(measureCells);
+   assert.equal(desktopCells.length,12,'Offer comparison must retain three headers and all nine term cells');
+   assert.deepEqual(desktopCells.map(cell=>cell.text),[t.term,t.current,t.proposed,...expectedTerms.flatMap(term=>[term.caption,term.current,term.proposed])],'Desktop terms must retain the exact fixture facts and currency');
+   const desktopGeometry=await summary.evaluate(resignationCaptureGeometry);checkCells(desktopCells,desktopGeometry,'Desktop offer');
+   const previous=page.viewportSize(),viewports=[];
+   try{
+    for(const width of [390,320]){
+     await page.setViewportSize({width,height:844});await expect(mobile).toBeVisible();await expect(desktop).toBeHidden();
+     if(width===390)await sectionCapture(page,'employee-offer-mobile',summary);
+     else await summary.evaluate(element=>element.scrollIntoView({block:'center',inline:'nearest'}));
+     const metrics=await page.evaluate(()=>({viewportWidth:innerWidth,documentWidth:document.documentElement.scrollWidth,bodyWidth:document.body.scrollWidth}));
+     assert.equal(metrics.viewportWidth,width);assert(metrics.documentWidth<=width+2&&metrics.bodyWidth<=width+2,'Offer summary overflows '+width+'px page');
+     const groups=mobile.locator(':scope > div');await expect(groups).toHaveCount(3);
+     assert.deepEqual(await groups.evaluateAll(rows=>rows.map(row=>row.getAttribute('data-offer-term'))),expectedTerms.map(term=>term.key),'Mobile terms must retain every named comparison group in order');
+     for(let index=0;index<expectedTerms.length;index++){
+      const term=expectedTerms[index],group=groups.nth(index),caption=group.locator(':scope > dt');await expect(caption).toHaveCount(1);assert.equal((await caption.innerText()).trim(),term.caption);
+      const pairs=group.locator(':scope > dd > dl > div');await expect(pairs).toHaveCount(2);
+      for(const [pairIndex,side,label]of [[0,'current',t.current],[1,'proposed',t.proposed]]){
+       const pair=pairs.nth(pairIndex),pairLabel=pair.locator(':scope > dt'),value=pair.locator(':scope > dd[data-offer-value="'+side+'"]');
+       await expect(pairLabel).toHaveCount(1);await expect(value).toHaveCount(1);assert.equal((await pairLabel.innerText()).trim(),label);assert.equal((await value.innerText()).trim(),term[side]);
+       assert(await value.evaluate(element=>element.childNodes.length===1&&element.firstChild?.nodeType===Node.TEXT_NODE),'Offer values must remain plain text');
+      }
+     }
+     const cells=await mobile.locator('dt,dd[data-offer-value]').evaluateAll(measureCells);assert.equal(cells.length,15,'Mobile terms require three captions, six comparison labels and six values');
+     const geometry=await summary.evaluate(resignationCaptureGeometry);assertResignationCaptureVisibility(geometry,'Offer '+width+'px');checkCells(cells,geometry,'Offer '+width+'px');
+     // Measure actual non-whitespace word ranges, not just enclosing cells: anywhere-wrap may split a word while every cell still fits.
+     const words=await mobile.locator('dt,dd[data-offer-value]').evaluateAll(cells=>cells.flatMap(cell=>{
+      const words=[],walker=document.createTreeWalker(cell,NodeFilter.SHOW_TEXT);let node;
+      while((node=walker.nextNode()))for(const match of node.textContent.matchAll(/\S+/gu)){
+       const range=document.createRange();range.setStart(node,match.index);range.setEnd(node,match.index+match[0].length);
+       words.push({word:match[0],fragments:Array.from(range.getClientRects(),rect=>({left:rect.left,right:rect.right,top:rect.top,bottom:rect.bottom}))});
+      }
+      return words;
+     }));
+     assert(words.length>0,'Mobile offer must contain measurable words');
+     for(const word of words)assert(word.fragments.length===1&&word.fragments[0].right>word.fragments[0].left&&word.fragments[0].bottom>word.fragments[0].top,'Offer '+width+'px must not split a fixture word mid-word: '+word.word);
+     for(const token of ['resignation','coordinator','RJ_BROWSER','MYR','5,000.00','5,500.00'])assert(words.some(word=>word.word===token),'Mobile word proof omitted '+token);
+     viewports.push({width,metrics,geometry,cells,words,passed:true});
+    }
+    assert(!report.mobileChecks?.some(check=>check.id==='employee-offer-mobile'),'Employee offer mobile receipt must have one producer');
+    report.mobileChecks??=[];report.mobileChecks.push({id:'employee-offer-mobile',actor:active?.key,metrics:viewports[0].metrics,desktop:{termCells:desktopCells,geometry:desktopGeometry},viewports,passed:true});save();
+   }finally{await page.setViewportSize(previous??{width:1440,height:1000});}
+  }
   await scope.getByLabel(t.signature,{exact:true}).filter({visible:true}).fill(actor.name);await scope.getByRole('checkbox',{name:offerSign?t.offerConsent:t.consent,exact:true}).check();if(captureId)await sectionCapture(page,captureId,scope.getByLabel(t.signature,{exact:true}).filter({visible:true}));const caseBeforeSign=caseFor(employeeKey),expectedDocument=caseBeforeSign.letters.find(letter=>letter.kind===(employeeKey==='accept'?'acceptance':'retention')),signingCandidates=offerSign?[]:observe().signingObservation.filter(item=>item.actorId===actor.userId&&item.caseId===caseBeforeSign.id&&item.documentId===expectedDocument?.id),signing=signingCandidates[0];if(!offerSign){assert.equal(signingCandidates.length,1,'Exactly one actual pending signer capability is required');assert(signing&&typeof signing.releaseOnSign==='boolean','Actual pending signer release capability is required');assert.equal(signing.releaseOnSign,employeeKey==='accept','Seeded final-step release capability differs');}const signLabel=offerSign?t.signOffer:signing.releaseOnSign?t.signRelease:t.sign;assert.equal(typeof signLabel,'string');const postingProof=offerSign&&employeeKey==='retain'?await exercisePostingBlock(page,scope,actor,caseBeforeSign,expectedDocument,signLabel):null;if(!postingProof)await scope.getByRole('button',{name:signLabel,exact:true}).click();
   if(panel){await panel.waitFor({state:'hidden'});await row.waitFor({state:'hidden'});report.taskPanels??=[];report.taskPanels.push({actor:actorKey,employee:employeeKey,kind:'sign',closedBy:'completion',rowRemoved:true});}else await scope.getByRole('button',{name:t.signOffer,exact:true}).waitFor({state:'hidden'});
   const letter=caseFor(employeeKey).letters.find(letter=>letter.kind===(employeeKey==='accept'?'acceptance':'retention'));assert.equal(letter?.id,expectedDocument?.id,'Signing must complete the exact opened document');if(panel)assert.equal(observe().signingObservation.filter(item=>item.actorId===actor.userId&&item.caseId===caseBeforeSign.id&&item.documentId===expectedDocument.id).length,0,'Completed signer capability must disappear from the actual task inbox');assert(letter?.routing.some(step=>step.action==='Sign'&&step.status==='done'&&step.people.some(person=>person.id===actor.userId)),'The actual assigned signer was not recorded');if(postingProof){const completed=observe();postingProof.afterRetry=completed.postingGuardObservation;assert.equal(postingProof.afterRetry.stage,'retained');assert.equal(postingProof.afterRetry.postingIds.length,1,'The repaired final sign must create exactly one target promotion');assert.equal(postingProof.afterRetry.retainedMailIds.length,1,'The repaired sign must queue exactly one mail for this released offer');assert.equal(completed.reviewObservations.retain.currentRoundReceipts.filter(receipt=>receipt.action==='signed'&&receipt.actorId===actor.userId).length,1);postingProof.passed=true;save();}report.signatures??=[];report.signatures.push({actor:actorKey,userId:actor.userId,employee:employeeKey,documentId:letter.id,role:actorKey==='bp'?'BP':actorKey==='ceo'?'BU / BG CEO':'employee',actionLabel:signLabel,...(!offerSign?{releaseOnSign:signing.releaseOnSign}:{})});return page;

@@ -49,7 +49,7 @@ describe('employee resignation journey',()=>{
  });
  it('renders the same employee terms and reply timing on the authorized direct case, without exposing a private offer',()=>{
   const offer={position:'Senior Analyst',jobGrade:'G4',basicSalary:'7600.00',effectiveDate:'2027-01-01',justification:'Revised terms'},value=c({stage:'offer',offer,viewerIsEmployee:true,offerReplyBy:'2026-11-20',offerWorkingDaysRemaining:2,offerReplyWarning:true,capabilities:{withdraw:false,accept:false,offer:false,comment:false,retry:false}});
-  const rendered=wrap(<ResignationCaseCard initial={value} today="2026-11-16"/>);expect(screen.getByText('Senior Analyst')).toBeInTheDocument();expect(screen.getByText('MYR 7,600.00')).toBeInTheDocument();expect(rendered.container.querySelector('[data-offer-reply]')).toHaveTextContent('2 working days left');
+  const rendered=wrap(<ResignationCaseCard initial={value} today="2026-11-16"/>);expect(within(screen.getByRole('table')).getByText('Senior Analyst')).toBeInTheDocument();expect(within(screen.getByRole('table')).getByText('MYR 7,600.00')).toBeInTheDocument();expect(rendered.container.querySelector('[data-offer-reply]')).toHaveTextContent('2 working days left');
   cleanup();wrap(<ResignationCaseCard initial={{...value,stage:'retention'}} today="2026-11-16"/>);expect(screen.queryByText('MYR 7,600.00')).not.toBeInTheDocument();expect(screen.queryByText('Senior Analyst')).not.toBeInTheDocument();
  });
 
@@ -74,9 +74,16 @@ describe('employee resignation journey',()=>{
   expect(await screen.findByText('Your resignation is recorded. A decision maker has not been assigned yet.')).toBeInTheDocument();expect(screen.getByText('RSN-42')).toBeInTheDocument();expect(screen.getByText(reason)).toBeInTheDocument();expect(screen.getByText('No active PeopleOps or authorized Offboarding HR recipient is configured. No repair notification was sent.')).toBeInTheDocument();expect(screen.getByText('A decision maker has not been assigned. The workflow setup needs attention.')).toBeInTheDocument();expect(screen.queryByRole('button',{name:'Submit resignation'})).not.toBeInTheDocument();expect(screen.queryByRole('button',{name:'Run workflows again'})).not.toBeInTheDocument();expect(screen.queryByText('HR has been notified.')).not.toBeInTheDocument();expect(screen.queryByText('Your resignation is accepted. Your exit checklist follows.')).not.toBeInTheDocument();expect(screen.getByText('Next steps will appear after a decision is recorded.')).toBeInTheDocument();expect((actions.submitOwnResignation.mock.calls[1][0] as FormData).get('reason')).toBe(reason);
  });
  it('shows the employee retention comparison in the case currency',()=>{
-  const offer={position:'Analyst',jobGrade:'G4',basicSalary:'7600.00',effectiveDate:'2027-01-01',justification:'Revised terms'};
-  wrap(<EmployeeResignation employmentId="employment-a" initial={{today:'2026-11-16',earliestLastDay:'2026-12-16',noticeLabel:'1 month',unavailableReason:null,canSubmit:false,cases:[c({stage:'offer',currency:'SGD',offer,capabilities:{withdraw:false,accept:false,offer:false,comment:false,retry:false}})]}}/>);
-  expect(screen.getByText('SGD 6,800.00')).toBeInTheDocument();expect(screen.getByText('SGD 7,600.00')).toBeInTheDocument();expect(screen.getByText('Basic salary (per month) · SGD')).toBeInTheDocument();expect(screen.queryByText(/RM |MYR /)).not.toBeInTheDocument();
+  const offer={position:'Senior Analyst',jobGrade:'G4',basicSalary:'7600.00',effectiveDate:'2027-01-01',justification:'Revised terms'};
+  const rendered=wrap(<EmployeeResignation employmentId="employment-a" initial={{today:'2026-11-16',earliestLastDay:'2026-12-16',noticeLabel:'1 month',unavailableReason:null,canSubmit:false,cases:[c({stage:'offer',currency:'SGD',offer,capabilities:{withdraw:false,accept:false,offer:false,comment:false,retry:false}})]}}/>);
+  const desktop=within(screen.getByRole('table'));expect(desktop.getByText('SGD 6,800.00')).toBeInTheDocument();expect(desktop.getByText('SGD 7,600.00')).toBeInTheDocument();expect(desktop.getByText('Basic salary (per month) · SGD')).toBeInTheDocument();expect(screen.queryByText(/RM |MYR /)).not.toBeInTheDocument();
+  const mobile=rendered.container.querySelector<HTMLElement>('[data-resignation-offer-mobile]');expect(mobile).not.toBeNull();
+  expect(mobile!.querySelectorAll('[data-offer-term]')).toHaveLength(3);
+  for(const [key,label,before,after] of [['position','Position','Analyst','Senior Analyst'],['grade','Job Grade','G3','G4'],['salary','Basic salary (per month) · SGD','SGD 6,800.00','SGD 7,600.00']]){
+   const term=mobile!.querySelector<HTMLElement>('[data-offer-term="'+key+'"]');expect(term).not.toBeNull();
+   expect(term!.querySelector(':scope > dt')).toHaveTextContent(label);expect(within(term!).getByText('Current')).toBeInTheDocument();expect(within(term!).getByText('Proposed')).toBeInTheDocument();
+   expect(term!.querySelector('[data-offer-value="current"]')).toHaveTextContent(before);expect(term!.querySelector('[data-offer-value="proposed"]')).toHaveTextContent(after);
+  }
  });
  it('allows a new case after retention without deleting earlier history',()=>{
   wrap(<EmployeeResignation employmentId="employment-a" initial={{today:'2026-11-16',earliestLastDay:'2026-12-16',noticeLabel:'1 month',unavailableReason:null,canSubmit:true,cases:[c({stage:'retained',capabilities:{withdraw:false,accept:false,offer:false,comment:false,retry:false}})]}}/>);
