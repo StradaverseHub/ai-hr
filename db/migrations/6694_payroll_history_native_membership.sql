@@ -24,3 +24,10 @@ END
 $$;
 REVOKE ALL ON FUNCTION app.payroll_history_native_capture_immutable() FROM PUBLIC;
 CREATE TRIGGER payroll_history_native_capture_frozen BEFORE UPDATE OR DELETE ON app.payroll_history_native_capture FOR EACH ROW EXECUTE FUNCTION app.payroll_history_native_capture_immutable();
+--> statement-breakpoint
+-- The existing reset receipt seals the physical rows its native owner deletes. Its identity/permission/budget proof is unchanged.
+DO $migration$ DECLARE body text;a text:='(app.payroll_history_effective(q.id) OR app.payroll_history_self_issued(q.id))';b text:='(app.payroll_history_effective(slip.id) OR app.payroll_history_self_issued(slip.id))';BEGIN
+ SELECT pg_get_functiondef('app._payroll_reset_source(uuid,uuid[],uuid[])'::regprocedure) INTO body;
+ IF(length(body)-length(replace(body,a,'')))/length(a)<>1 OR(length(body)-length(replace(body,b,'')))/length(b)<>1 THEN RAISE EXCEPTION 'Unexpected native reset source predicates';END IF;
+ body:=replace(replace(body,a,'app.payroll_history_native_artifact_allowed(q.batch_id,q.employment_id,q.id)'),b,'app.payroll_history_native_artifact_allowed(slip.batch_id,slip.employment_id,slip.id)');EXECUTE body;
+END $migration$;
