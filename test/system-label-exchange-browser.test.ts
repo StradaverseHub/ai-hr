@@ -245,7 +245,15 @@ describe('System Labels authenticated Excel browser journey',()=>{
    console.info('SYSTEM_LABEL_FONT_SETUP '+JSON.stringify({phase:'update',elapsedMs:0}));
    execFileSync('sudo',['apt-get','update','-qq'],{stdio:'pipe',timeout:120000});
    console.info('SYSTEM_LABEL_FONT_SETUP '+JSON.stringify({phase:'install',elapsedMs:Math.round(performance.now()-fontSetupStarted)}));
-   execFileSync('sudo',['apt-get','install','-y','--no-install-recommends','fonts-noto-core','fonts-noto-cjk'],{stdio:'pipe',timeout:120000});
+   try{
+    execFileSync('sudo',['apt-get','install','-y','--no-install-recommends','fonts-noto-core','fonts-noto-cjk'],{stdio:'pipe',timeout:120000});
+   }catch(error){
+    const failure=error as {code?:string;signal?:string;stdout?:Buffer;stderr?:Buffer};
+    // Only this fixed public-runner package command's bounded output; no environment or application logs.
+    console.error('SYSTEM_LABEL_FONT_INSTALL_FAILURE '+JSON.stringify({elapsedMs:Math.round(performance.now()-fontSetupStarted),code:failure.code,signal:failure.signal,
+     stdout:failure.stdout?.subarray(-8192).toString('utf8'),stderr:failure.stderr?.subarray(-8192).toString('utf8')}));
+    throw error;
+   }
    console.info('SYSTEM_LABEL_FONT_SETUP '+JSON.stringify({phase:'ready',elapsedMs:Math.round(performance.now()-fontSetupStarted)}));
   }
   // No production credentials or identity provider. This is the existing explicit developer identity route.
