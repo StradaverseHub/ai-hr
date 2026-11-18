@@ -479,7 +479,7 @@ export function refreshDocumentPersonnelCompletion(doc:Document,env:Environment)
 export function overrideDocumentPersonnelCompletion(c:Case,id:string,input:{fieldId:string;owner:'employee'|'hr';reason:string},env:Environment){
   const doc=c.documents.find(document=>document.id===id);if(!doc)throw new V9Error('Document not found.','not_found');
   if(c.state!=='submitted'||documentDeliveryReserved(c,id))throw new V9Error('This document is no longer editable.','conflict');
-  refreshDocumentPersonnelCompletion(doc,env);overridePersonnelCompletion(doc,{...input,actor:env.actor,at:env.now});doc.mergeValues={...doc.mergeValues,...personnelCompletionMergeValues(doc)};reviseV9DocumentRouting(doc,env);
+  refreshDocumentPersonnelCompletion(doc,env);overridePersonnelCompletion(doc,{...input,actor:env.actor,at:env.now});reviseV9DocumentRouting(doc,env);
   reconcileDocumentCompletionProposals(c,doc,env);
   appendLog(c,env,'document.completionOwnerChanged',`${doc.name}: ${input.fieldId}; ${input.reason.trim()}`);
 }
@@ -548,7 +548,6 @@ export function saveDocument(c: Case, id: string, values: Record<string, string>
     validateFieldValue(field, value);
     if(field.owner==='pmLocked')savePersonnelCompletionAnswer(doc,field,value,{owner,actor:env.actor,at:env.now});else doc.values[key] = value;
   }
-  if(doc.personnelCompletion)doc.mergeValues={...doc.mergeValues,...personnelCompletionMergeValues(doc)};
   reviseV9DocumentRouting(doc,env,owner==='employee');
   reconcileDocumentCompletionProposals(c,doc,env);
   appendLog(c, env, 'document.saved', doc.name);

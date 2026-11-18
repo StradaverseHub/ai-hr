@@ -56,6 +56,14 @@ BEGIN
  IF field->>'type'='date' THEN IF value!~'^\d{4}-\d{2}-\d{2}$' THEN RAISE EXCEPTION 'Enter a valid calendar date';END IF;PERFORM value::date;END IF;
  IF field->>'type'='checkbox' AND value NOT IN('true','false') OR field->>'type'='select' AND NOT coalesce(field->'options','[]'::jsonb)?value THEN RAISE EXCEPTION 'Use a declared field value';END IF;
 END $$;
+CREATE FUNCTION app.personnel_completion_render_values(d jsonb) RETURNS jsonb LANGUAGE sql IMMUTABLE SET search_path=pg_catalog,app AS $$
+ SELECT coalesce(jsonb_object_agg(f->>'pmKey',CASE WHEN f->>'type'='date' AND answer.value~'^\d{4}-\d{2}-\d{2}$' THEN to_char(answer.value::date,'DD/MM/YYYY') WHEN answer.value='' AND f->>'required' IS DISTINCT FROM 'true' THEN '—' ELSE answer.value END ORDER BY ordinal),'{}'::jsonb)
+ FROM jsonb_array_elements(coalesce(d->'fields','[]'::jsonb)) WITH ORDINALITY x(f,ordinal)
+ CROSS JOIN LATERAL(SELECT CASE WHEN btrim(coalesce(d->'personnelCompletion'->'fields'->(f->>'id')->>'sourceValue',''))<>'' THEN d->'personnelCompletion'->'fields'->(f->>'id')->>'sourceValue' ELSE coalesce(d->'values'->>(f->>'id'),'') END AS value) answer
+ WHERE f->>'pmKey' IS NOT NULL AND d->'personnelCompletion'->'fields'?(f->>'id') AND (f->'when' IS NULL OR f->'when'='null'::jsonb OR d->'values'->>(f->'when'->>'field')=f->'when'->>'value')
+$$;
+REVOKE ALL ON FUNCTION app.personnel_completion_render_values(jsonb) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION app.personnel_completion_render_values(jsonb) TO ai_hr_app;
 CREATE FUNCTION app.personnel_completion_assert_current(d jsonb,p_case uuid,p_final boolean DEFAULT false) RETURNS void
 LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
 DECLARE source jsonb;official jsonb;field jsonb;entry jsonb;value text;
@@ -77,7 +85,7 @@ END $$;
 REVOKE ALL ON FUNCTION app.personnel_completion_assert_current(jsonb,uuid,boolean) FROM PUBLIC,ai_hr_app;
 --> statement-breakpoint
 CREATE FUNCTION app.v9_personnel_completion_guard() RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public,pg_temp AS $$
-DECLARE old_docs jsonb;new_docs jsonb;d jsonb;prior jsonb;source_case uuid;target_revision integer;source jsonb;official jsonb;policy jsonb;expected_fields jsonb;field jsonb;actor jsonb;company uuid;native lc_onboarding_case;definition jsonb;version jsonb;config jsonb;first_signature boolean;new_signature jsonb;signer_person uuid;is_hr boolean;
+DECLARE old_docs jsonb;new_docs jsonb;d jsonb;prior jsonb;source_case uuid;target_revision integer;source jsonb;official jsonb;policy jsonb;expected_fields jsonb;field jsonb;actor jsonb;company uuid;native lc_onboarding_case;definition jsonb;version jsonb;config jsonb;first_signature boolean;new_signature jsonb;signer_person uuid;is_hr boolean;signatory_config jsonb;signatory_name text;signatory_title text;signatory_allowed boolean;company_entitled boolean;
 BEGIN
  IF TG_TABLE_NAME='lc_onboarding_private' THEN
   source_case:=NEW.case_id;SELECT * INTO native FROM lc_onboarding_case WHERE id=source_case AND tenant_id=NEW.tenant_id;company:=native.company_id;target_revision:=native.revision;
@@ -86,29 +94,38 @@ BEGIN
   source_case:=NEW.id;company:=NEW.company_id;target_revision:=NEW.revision;
   old_docs:=CASE WHEN TG_OP='INSERT' THEN '[]'::jsonb ELSE coalesce(OLD.data->'documents','[]'::jsonb) END;new_docs:=coalesce(NEW.data->'documents','[]'::jsonb);
  END IF;
+ IF NOT EXISTS(SELECT 1 FROM jsonb_array_elements(old_docs||new_docs) candidate WHERE candidate?'personnelCompletion') THEN RETURN NEW;END IF;
+ company_entitled:=app.probation_company_entitled(company);
+ SELECT data INTO config FROM lc_v9_config WHERE tenant_id=NEW.tenant_id;
+ SELECT jsonb_build_object('id',u.id,'name',coalesce(p.full_name,'User')),u.person_id INTO actor,signer_person FROM app_user u LEFT JOIN person p ON p.id=u.person_id AND p.tenant_id=u.tenant_id WHERE u.id=app.current_user_id() AND u.tenant_id=NEW.tenant_id AND u.archived_at IS NULL AND NOT app.login_blocked(u.id);
+ IF actor IS NULL AND app.current_user_id() IS NULL AND (session_user='ai_hr_owner' OR EXISTS(SELECT 1 FROM pg_roles WHERE rolname=session_user AND rolsuper)) THEN actor:='{"id":"system","name":"System"}'::jsonb;END IF;
  FOR prior IN SELECT item FROM jsonb_array_elements(old_docs) item WHERE item?'personnelCompletion' LOOP
   IF NOT EXISTS(SELECT 1 FROM jsonb_array_elements(new_docs) item WHERE item->>'id'=prior->>'id') AND (app.personnel_completion_locked(prior) OR prior->>'sentAt' IS NOT NULL OR prior->'personnelCompletion'?'preparation') THEN RAISE EXCEPTION 'Released, prepared and signed completion history cannot be removed';END IF;
  END LOOP;
  FOR d IN SELECT item FROM jsonb_array_elements(new_docs) item LOOP
   SELECT item INTO prior FROM jsonb_array_elements(old_docs) item WHERE item->>'id'=d->>'id';
-  IF d?'personnelCompletion' AND d IS DISTINCT FROM prior AND app.probation_company_entitled(company) IS NOT TRUE THEN RAISE EXCEPTION 'Lifecycle is unavailable for this company' USING ERRCODE='42501';END IF;
+  IF d?'personnelCompletion' AND d IS DISTINCT FROM prior AND company_entitled IS NOT TRUE THEN RAISE EXCEPTION 'Lifecycle is unavailable for this company' USING ERRCODE='42501';END IF;
   IF NOT d?'personnelCompletion' THEN IF prior?'personnelCompletion' THEN RAISE EXCEPTION 'The completion version cannot be removed';END IF;CONTINUE;END IF;
   IF prior IS NOT NULL AND prior?'personnelCompletion' AND (prior->'hrSignature' IS DISTINCT FROM 'null'::jsonb AND prior->'hrSignature' IS NOT NULL AND d->'hrSignature' IS DISTINCT FROM prior->'hrSignature' OR prior->'employeeSignature' IS DISTINCT FROM 'null'::jsonb AND prior->'employeeSignature' IS NOT NULL AND d->'employeeSignature' IS DISTINCT FROM prior->'employeeSignature' OR prior->>'sentAt' IS NOT NULL AND d->'sentAt' IS DISTINCT FROM prior->'sentAt' OR jsonb_typeof(prior->'signing') IS DISTINCT FROM 'object' AND prior->>'status' IN('signed','completed','acknowledged') AND d->>'status' IS DISTINCT FROM prior->>'status') THEN RAISE EXCEPTION 'Completion signatures, release and final status cannot be downgraded';END IF;
   IF prior IS NOT NULL AND prior?'personnelCompletion' AND (d->'fields' IS DISTINCT FROM prior->'fields' OR d->'blocks' IS DISTINCT FROM prior->'blocks' OR d->'templateId' IS DISTINCT FROM prior->'templateId' OR d->'version' IS DISTINCT FROM prior->'version' OR d->'templateType' IS DISTINCT FROM prior->'templateType' OR d->'hrStep' IS DISTINCT FROM prior->'hrStep' OR d->'employeeAck' IS DISTINCT FROM prior->'employeeAck') THEN RAISE EXCEPTION 'Saved completion structure and ownership are frozen';END IF;
   IF prior IS NOT NULL AND app.personnel_completion_locked(prior) AND (d->'values' IS DISTINCT FROM prior->'values' OR d->'edits' IS DISTINCT FROM prior->'edits' OR d->'mergeValues' IS DISTINCT FROM prior->'mergeValues' OR d->'personnelCompletion' IS DISTINCT FROM prior->'personnelCompletion') THEN RAISE EXCEPTION 'Signed completion content is immutable';END IF;
+  IF prior IS NOT NULL AND prior?'personnelCompletion' AND (d->'mergeValues' IS DISTINCT FROM prior->'mergeValues' OR d->'signatoryUserId' IS DISTINCT FROM prior->'signatoryUserId') AND NOT app.personnel_completion_custody(prior,d,source_case,target_revision) THEN
+   SELECT item INTO signatory_config FROM jsonb_array_elements(config->'companies') item WHERE item->>'companyId'=company::text;
+   SELECT p.full_name INTO signatory_name FROM app_user u JOIN person p ON p.id=u.person_id AND p.tenant_id=u.tenant_id WHERE u.id::text=d->>'signatoryUserId' AND u.tenant_id=NEW.tenant_id AND u.archived_at IS NULL AND NOT app.login_blocked(u.id);
+   signatory_title:=coalesce(config->'signatoryTitles'->>(d->>'signatoryUserId'),CASE WHEN signatory_config->>'signatoryUserId'=d->>'signatoryUserId' THEN signatory_config->>'signatoryTitle' ELSE '' END,'');
+   signatory_allowed:=coalesce(signatory_config->'allowedSignatoryUserIds',jsonb_build_array(signatory_config->>'signatoryUserId'))?(d->>'signatoryUserId');
+   IF app.personnel_completion_locked(prior) OR app.is_admin_for(company) IS NOT TRUE OR (CASE WHEN TG_TABLE_NAME='lc_onboarding_private' THEN app.onboarding_page_access() OR app.onboarding_v9_case_actor() OR app.is_group_admin() ELSE app.lc_v9_off_access(company) END) IS NOT TRUE OR signatory_allowed IS NOT TRUE OR signatory_name IS NULL OR d->'mergeValues'-ARRAY['signatory.name','signatory.title'] IS DISTINCT FROM prior->'mergeValues'-ARRAY['signatory.name','signatory.title'] OR d->'mergeValues'->>'signatory.name' IS DISTINCT FROM signatory_name OR d->'mergeValues'->>'signatory.title' IS DISTINCT FROM signatory_title THEN RAISE EXCEPTION 'Document source values require canonical completion custody';END IF;
+  END IF;
   IF prior IS NULL THEN
    IF source IS NULL THEN source:=app.v9_document_personnel_values(source_case);END IF;
    IF source IS NULL THEN RAISE EXCEPTION 'Authorized Personnel values are unavailable';END IF;
-   SELECT data INTO config FROM lc_v9_config WHERE tenant_id=NEW.tenant_id;
    SELECT item INTO definition FROM jsonb_array_elements(config->'templates') item WHERE item->>'id'=d->>'templateId';
    SELECT item INTO version FROM jsonb_array_elements(definition->'versions') item WHERE item->'version'=d->'version' AND item->>'state'='published';
-   IF version IS NULL OR d->'fields' IS DISTINCT FROM version->'fields' OR d->'blocks' IS DISTINCT FROM version->'blocks' OR d->>'status'<>'draft' OR d->>'sentAt' IS NOT NULL OR app.personnel_completion_locked(d) THEN RAISE EXCEPTION 'Completion starts from a published unsigned draft';END IF;
+   IF version IS NULL OR d->'fields' IS DISTINCT FROM version->'fields' OR d->'blocks' IS DISTINCT FROM version->'blocks' OR d->>'templateType' IS DISTINCT FROM definition->>'type' OR d->>'hrStep' IS DISTINCT FROM definition->>'hrStep' OR d->'employeeAck' IS DISTINCT FROM definition->'employeeAck' OR d->>'status'<>'draft' OR d->>'sentAt' IS NOT NULL OR app.personnel_completion_locked(d) THEN RAISE EXCEPTION 'Completion starts from a published unsigned draft';END IF;
    IF source->>'_identityFieldsWithheld'='true' AND EXISTS(SELECT 1 FROM jsonb_array_elements(d->'fields') f WHERE f->>'pmKey' IN('personalEmail','employee.icNo','employee.passportNo')) THEN RAISE EXCEPTION 'Protected Personnel identity permission is required';END IF;
    IF d->'mergeValues' IS DISTINCT FROM app.personnel_completion_document_projection(d)->'mergeValues' OR EXISTS(SELECT 1 FROM jsonb_each(coalesce(d->'mergeValues','{}'::jsonb)) used WHERE source?used.key AND used.value IS DISTINCT FROM source->used.key) THEN RAISE EXCEPTION 'Only referenced canonical source values may enter a new completion document';END IF;
    IF source->>'_identityFieldsWithheld'='true' AND coalesce(d->'mergeValues','{}'::jsonb)?|ARRAY['personalEmail','employee.icNo','employee.passportNo','icNo','passportNo','case.icNo','case.passportNo'] THEN RAISE EXCEPTION 'Protected Personnel identity permission is required';END IF;
    official:=app.personnel_completion_official(d,source);policy:=d->'personnelCompletion';expected_fields:='{}'::jsonb;
-   SELECT jsonb_build_object('id',u.id,'name',coalesce(p.full_name,'User')) INTO actor FROM app_user u LEFT JOIN person p ON p.id=u.person_id AND p.tenant_id=u.tenant_id WHERE u.id=app.current_user_id() AND u.tenant_id=NEW.tenant_id AND u.archived_at IS NULL AND NOT app.login_blocked(u.id);
-   IF actor IS NULL AND app.current_user_id() IS NULL AND (session_user='ai_hr_owner' OR EXISTS(SELECT 1 FROM pg_roles WHERE rolname=session_user AND rolsuper)) THEN actor:='{"id":"system","name":"System"}'::jsonb;END IF;
    IF actor IS NULL OR policy->>'version' IS DISTINCT FROM '1' OR policy->>'classification' IS DISTINCT FROM '2026-11-18' OR policy->>'country' IS DISTINCT FROM source->>'_country' OR policy->>'sourceFingerprint' IS DISTINCT FROM app.personnel_completion_fingerprint(official,source->>'_country') OR policy->'adoptedBy' IS DISTINCT FROM actor OR jsonb_typeof(policy->'adoptedAt') IS DISTINCT FROM 'string' OR (abs(extract(epoch FROM(now()-(policy->>'adoptedAt')::timestamptz)))<=10) IS NOT TRUE OR policy->'history' IS DISTINCT FROM '[]'::jsonb OR policy-ARRAY['version','classification','country','sourceFingerprint','adoptedAt','adoptedBy','fields','history','preparation']<>'{}'::jsonb THEN RAISE EXCEPTION 'Invalid initial completion policy';END IF;
    FOR field IN SELECT item FROM jsonb_array_elements(d->'fields') item WHERE item->>'owner'='pmLocked' LOOP
     expected_fields:=expected_fields||jsonb_build_object(field->>'id',jsonb_build_object('key',field->'pmKey','group',app.personnel_completion_group(field->>'pmKey'),'sourceValue',official->>(field->>'id'),'sourceFingerprint',policy->>'sourceFingerprint'));
@@ -121,7 +138,6 @@ BEGIN
    IF app.personnel_completion_locked(prior) THEN RAISE EXCEPTION 'Signed completion content is immutable';END IF;
   END IF;
   IF prior IS NOT NULL AND jsonb_typeof(d->'signing') IS DISTINCT FROM 'object' THEN
-   SELECT jsonb_build_object('id',u.id,'name',coalesce(p.full_name,'User')),u.person_id INTO actor,signer_person FROM app_user u LEFT JOIN person p ON p.id=u.person_id AND p.tenant_id=u.tenant_id WHERE u.id=app.current_user_id() AND u.tenant_id=NEW.tenant_id AND u.archived_at IS NULL AND NOT app.login_blocked(u.id);
    is_hr:=app.is_admin_for(company) AND CASE WHEN TG_TABLE_NAME='lc_onboarding_private' THEN app.onboarding_page_access() OR app.onboarding_v9_case_actor() OR app.is_group_admin() ELSE app.lc_v9_off_access(company) END;
    IF coalesce(d->'employeeSignature','null'::jsonb)<>'null'::jsonb AND d->'employeeSignature' IS DISTINCT FROM prior->'employeeSignature' THEN
     new_signature:=d->'employeeSignature';source:=app.v9_document_personnel_source_unchecked(source_case);
@@ -135,6 +151,7 @@ BEGIN
   IF prior IS NOT NULL THEN
    first_signature:=(coalesce(d->'employeeSignature','null'::jsonb)<>'null'::jsonb AND coalesce(prior->'employeeSignature','null'::jsonb)='null'::jsonb) OR (coalesce(d->'hrSignature','null'::jsonb)<>'null'::jsonb AND coalesce(prior->'hrSignature','null'::jsonb)='null'::jsonb)
     OR EXISTS(SELECT 1 FROM jsonb_array_elements(coalesce(d->'signing'->'actions','[]'::jsonb)) a WHERE a->>'action'='signed' AND NOT coalesce(prior->'signing'->'actions','[]'::jsonb) @> jsonb_build_array(a));
+   IF first_signature AND NOT app.v9_signing_current_actor() THEN RAISE EXCEPTION 'Current verified signing actor required';END IF;
    IF first_signature AND NOT app.personnel_completion_locked(prior) THEN PERFORM app.personnel_completion_assert_current(d,source_case,true);END IF;
   END IF;
  END LOOP;

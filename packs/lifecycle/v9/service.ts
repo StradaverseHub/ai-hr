@@ -696,10 +696,12 @@ export async function v9Command(ctx: SessionContext, id: string, revision: numbe
   if (!Number.isSafeInteger(revision) || revision < 1) throw new M.V9Error('A current case revision is required.');
   await withLifecycleTenant(ctx, async tx => {
     if (command.type === 'pmPush' || command.type === 'pmPushSelected') await lockV9PersonnelWritesTx(tx, ctx);
+    if(['documentSave','documentRefresh','documentCompletionOverride','documentSign'].includes(command.type))await lockAccessConfigurationWriteTx(tx,ctx.tenantId);
     await lockTx(tx, ctx);
-    const row = await load(tx, ctx, id); if (row.revision !== revision) throw new M.V9Error('This case changed. Refresh before trying again.', 'conflict');
+    let row = await load(tx, ctx, id); if (row.revision !== revision) throw new M.V9Error('This case changed. Refresh before trying again.', 'conflict');
     const config = await configTx(tx, ctx); if (!config) throw new M.V9Error('V9 configuration is unavailable.');
-    const c = structuredClone(row.data); let env = await environment(tx, ctx, c, config);
+    let c = structuredClone(row.data); let env = await environment(tx, ctx, c, config);
+    if(command.type==='documentSign'&&c.documents.find(document=>document.id===command.id)?.personnelCompletion){const refreshed=await updatePersonnelCompletionTx(tx,{caseId:id,revision,documentId:command.id},'refresh');if(refreshed!==row.revision){row=await load(tx,ctx,id);c=structuredClone(row.data);env=await environment(tx,ctx,c,config);}}
     if(command.type==='documentCompletionOverride'){await updatePersonnelCompletionTx(tx,{caseId:id,revision,documentId:command.id,override:{fieldId:command.fieldId,owner:command.owner,reason:command.reason}},'override');return;}
     if((command.type==='documentSave'||command.type==='documentRefresh')&&c.documents.find(document=>document.id===command.id)?.personnelCompletion){await updatePersonnelCompletionTx(tx,{caseId:id,revision,documentId:command.id,...(command.type==='documentSave'?{values:command.values}:{})},command.type==='documentSave'?'save':'refresh');return;}
     if (row.native && !['generate', 'emailSend', 'emailTest', 'emailEdit', 'emailRetry', 'emailReplace', 'documentTextEdit', 'documentFillPersonnel', 'documentCompletionOverride', 'documentSave', 'documentSignatory', 'documentSign', 'documentRefresh', 'documentRegenerate', 'runWorkflows', 'retryWorkflow', 'lateEmail', 'startWorkflow', 'testWorkflow', 'pmKeep', 'pmPush', 'pmPushSelected', 'recipientsOverride'].includes(command.type)) throw new M.V9Error('Use the onboarding case controls for this change.');
@@ -1182,7 +1184,7 @@ export async function v9OwnDocument(ctx: SessionContext, input: { caseId: string
   identifier(input.caseId);
   if (!Number.isSafeInteger(input.revision) || input.revision < 1 || !input.documentId || input.documentId.length > 120 || JSON.stringify(input.values).length > 1048576) throw new M.V9Error('Invalid document details.');
   await withLifecycleTenant(ctx, async tx => {
-    await lockTx(tx, ctx); await actor(tx, ctx);
+    await lockAccessConfigurationWriteTx(tx,ctx.tenantId);await lockTx(tx, ctx); await actor(tx, ctx);
     const [completion]=await tx.execute<{document:M.Document|null}>(sql`select app.v9_personnel_completion_read(${input.caseId}::uuid,${input.documentId}) as document`);
     let revision=input.revision,values=input.values;
     if(completion.document){

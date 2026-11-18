@@ -115,12 +115,6 @@ BEGIN
  END IF;
  IF p_operation='adopt' AND EXISTS(SELECT 1 FROM jsonb_array_elements(d->'fields') f WHERE f->>'required'='true' AND app.personnel_completion_owner(d,f)='employee') AND NOT EXISTS(SELECT 1 FROM jsonb_array_elements(d->'fields') f WHERE app.personnel_completion_owner(d,f)='hr' AND btrim(coalesce(d->'values'->>(f->>'id'),''))='') THEN d:=jsonb_set(d,'{personnelCompletion,preparation}',jsonb_build_object('at',stamp,'by',actor));END IF;
  IF NOT(policy?'preparation') AND EXISTS(SELECT 1 FROM jsonb_array_elements(d->'fields') f WHERE f->>'required'='true' AND app.personnel_completion_owner(d,f)='employee') THEN policy:=policy||jsonb_build_object('preparation',jsonb_build_object('at',stamp,'by',actor));d:=jsonb_set(d,'{personnelCompletion}',policy);END IF;
- FOR field IN SELECT item FROM jsonb_array_elements(d->'fields') item WHERE item->>'owner'='pmLocked' AND policy->'fields'?(item->>'id') LOOP
-  key:=field->>'id';answer:=coalesce(d->'values'->>key,'');
-  IF field->>'type'='date' AND answer~'^\d{4}-\d{2}-\d{2}$' THEN answer:=to_char(answer::date,'DD/MM/YYYY');END IF;
-  IF answer='' AND field->>'required' IS DISTINCT FROM 'true' THEN answer:='—';END IF;
-  d:=jsonb_set(d,ARRAY['mergeValues',field->>'pmKey'],to_jsonb(answer),true);
- END LOOP;
  d:=app.personnel_completion_document_projection(d);
  IF d IS NOT DISTINCT FROM before_doc AND changes IS NOT DISTINCT FROM coalesce(case_data->'pmChanges','[]'::jsonb) THEN RETURN s.revision;END IF;
  IF jsonb_typeof(d->'signing')='object' THEN

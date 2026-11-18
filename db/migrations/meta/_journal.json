@@ -6665,6 +6665,13 @@
       "when": 1794998006684,
       "tag": "6684_personnel_completion_projection",
       "breakpoints": true
+    },
+    {
+      "idx": 10085,
+      "version": "7",
+      "when": 1794998006685,
+      "tag": "6685_personnel_completion_signature_projection",
+      "breakpoints": true
     }
   ]
 }
