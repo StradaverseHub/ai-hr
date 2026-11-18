@@ -110,7 +110,7 @@ for(const count of [1000,10000,50000])it('qualifies exact native Unicode work at
    }});
    const proxy=observation.trace?new Proxy(tx,{get(target,key,receiver){
     if(key==='execute')return (query:SQL)=>track(query,()=>target.execute(query));
-    if(key==='select')return (...args:unknown[])=>wrap(Reflect.get(target,key).apply(target,args));
+    if(key==='select')return (...args:Parameters<Tx['select']>)=>wrap(Reflect.get(target,key).apply(target,args));
     const value=Reflect.get(target,key,receiver);return typeof value==='function'?value.bind(target):value;
    }}):tx;
    const started=performance.now();

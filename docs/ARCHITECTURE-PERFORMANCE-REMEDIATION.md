@@ -49,7 +49,7 @@ Initial integration base: `59f06b08db014e01cd553a827c62ccf864d33f78`. Preserve t
 | AP-023 | P1 | Shift Card Pay Item Fixed Transaction and standalone Cost Allocation imports | Open; implementation pending |
 | AP-024 | P1 | Income Tax Recalculation Confirm and Continue | Open; implementation pending |
 | AP-025 | P2 | Statutory Adjustment Save and Revert | Open; implementation pending |
-| AP-026 | P1 | Shared employee selection and selected-subject guards | Batches10–12 development checked: shared/detail/PDF and bulk selection readers improved; Unicode/runtime fallback cost, remaining table/ranked/metadata/report readers and staging acceptance stay open |
+| AP-026 | P1 | Shared employee selection and selected-subject guards | Batches10–12 readers development checked; Batch13 Unicode native correctness passes but cost is NOT QUALIFIED (full streams,50k spill and4.23s company body). Scope filtering/SQL matching, other runtimes, table/ranked/metadata/report readers and staging acceptance stay open |
 | AP-027 | P2 | Leave Inquiry and balance detail hydration | Open; implementation pending |
 | AP-028 | P1 | Approvals Bulk Approve and Reject | Open; implementation pending |
 | AP-029 | P1 | Onboarding and Offboarding V9 workspace | Open; implementation pending |
@@ -266,3 +266,12 @@ EA/PCB2II keep their canonical report-year cohort/order and preview/download lim
 Independent Spec review is clear. Standards review retains one scale qualification: non-ASCII searches and unqualified runtime configurations still use the established exact minimal-cursor compatibility path. Its native plan/maximum representative cost remains open; this is not a universally SQL-bounded-query remediation. The literal application `listEmployees` inventory is12 callers, down from17; ranked/person-ID/provisioning/routing/status, complete reference/report outputs and no-paste command-dictionary optimization retain separate owners.
 
 AP-026 remains partial/open, and no observation is newly closed:60 remain open. No staging/production installation, main/alpha merge, queue/lease operation or AI approval rebinding occurred. The static manifests are regenerated, while future covered-source rebinding requires its recorded owner/release authority. An explicit owner selection/approval, fresh integration and required release qualification precede staging; rendered installation, native plan/latency and mixed-load acceptance remain pending.
+
+
+## Batch13 — Unicode search cost (qualification complete; checks pending; isolated release hold)
+
+See [method, measurements and priorities](reviews/performance-unicode-cost-20261118.md). This qualification-only branch changes no application, dependency, migration or policy. All3 native cases pass in[44307001855](https://github.com/StradaverseHub/ai-hr/actions/runs/44307001855) at1k/10k/50k employments across70 companies. Exact counts/labels/order, scopes, complete Select All and actual forbidden/revoked refusal remain correct on the native non-bypass READ ONLY/RR/no-exclusive carrier.
+
+Ordinary Unicode search is **NOT QUALIFIED** in all30 measured query/scope combinations: JavaScript paging/counting still streams every authorized minimal identity. At50k, group searches transfer50,000 identities/~6.28MB internally and the actual cursor writes427 temporary blocks; the company scope returns715 identities but its native body maxima reach4.23s and its plan performs broad filtering/~428k shared-buffer hits. These are hosted development observations, not staging/production acceptance or a demonstrated lock-contention cause. Fast smaller cases do not waive SQL count/page requirements.
+
+AP-026 remains P1/partial/open. Priorities are to prove narrower native scope filtering without weakening RLS, establish exact database Unicode semantics before SQL count/page adoption, then qualify concurrent/runtime/installation behavior. No observation newly closed:60 remain open. Existing report/table/ranked/metadata costs retain their separate owners. All3 assessor cases pass with0 skipped in[44308291219](https://github.com/StradaverseHub/ai-hr/actions/runs/44308291219); whole compiler is pending. Prior production build is retained for unchanged application bytes. This batch remains outside the combined staging release until explicit owner approval.
