@@ -56,7 +56,7 @@ describe('payroll history revision workflow',()=>{
   await user.click(screen.getByLabelText(/I have reviewed the companies/));await user.click(screen.getByRole('button',{name:'Import new records only'}));
   expect(confirm).toHaveBeenCalledWith({attemptId:'attempt-a',previewHash:'preview-hash',confirmReplacement:false,skipReplacements:true});
   expect(await screen.findByRole('status')).toHaveTextContent('1 existing record was left unchanged');
-  cleanup();render(wrap(<RevisionPreview plan={{...plan([{...row(2),operation:'invalid' as const,reasons:['Payroll for this period and Pay Cycle is still open in Payroll.']}]),counts:{created:0,replaced:0,unchanged:0,invalid:1}}}/>));
+  cleanup();render(wrap(<RevisionPreview plan={{...plan([{...row(2),operation:'invalid' as const,reasons:['Two Pay Cycles match this source record.']}]),counts:{created:0,replaced:0,unchanged:0,invalid:1}}}/>));
   expect(screen.getByText('Rejected')).toBeVisible();expect(screen.queryByRole('checkbox')).toBeNull();
  });
 });

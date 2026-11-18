@@ -44897,18 +44897,19 @@
     "pushField": "Push {field} to Personnel Management"
   },
   "payrollHistoryMaintenance": {
+    "laterCorrectionRecorded": "Later correction recorded",
     "itemsUnavailable": "Pay Item breakdown unavailable.",
     "sourceLimited": "The original file requires access to the complete import batch.",
     "impactKinds": {
-          "payroll": "{count} existing payroll runs stay unchanged. Review their history inputs separately.",
-          "report": "{count} recorded statutory reports stay unchanged. Review affected reports separately.",
-          "payment": "{count} recorded payment-summary exports stay unchanged. This is not evidence of bank settlement.",
-          "issued": "{count} released payroll results stay unchanged. Issued copies are not regenerated or resent.",
-          "review": "{count} eligible payroll records require source review before further processing."
+          "payroll": "{count, plural, one {# existing payroll run stays unchanged. Review its history inputs separately.} other {# existing payroll runs stay unchanged. Review their history inputs separately.}}",
+          "report": "{count, plural, one {# recorded statutory report stays unchanged. Review the affected report separately.} other {# recorded statutory reports stay unchanged. Review affected reports separately.}}",
+          "payment": "{count, plural, one {# recorded payment-summary export stays unchanged. This is not evidence of bank settlement.} other {# recorded payment-summary exports stay unchanged. This is not evidence of bank settlement.}}",
+          "issued": "{count, plural, one {# released payroll result stays unchanged. Its issued copies are not regenerated or resent.} other {# released payroll results stay unchanged. Issued copies are not regenerated or resent.}}",
+          "review": "{count, plural, one {# eligible payroll record requires source review before further processing.} other {# eligible payroll records require source review before further processing.}}"
     },
     "selectListedHint": "Select the employee-month records whose listed Pay Item totals should change. Unlisted items remain.",
     "selectListedRecord": "Update listed totals for {employee} {period}",
-    "revertReview": "Review removal of still-current batch contributions from {count} records. Later corrections and unrelated items remain.",
+    "revertReview": "{count, plural, one {Review removal of still-current batch contributions from # record. Later corrections and unrelated items remain.} other {Review removal of still-current batch contributions from # records. Later corrections and unrelated items remain.}}",
     "noChange": "This review has no effective changes to confirm.",
     "maintainItems": "Maintain imported items",
       "remove_batch": "Remove import batch",

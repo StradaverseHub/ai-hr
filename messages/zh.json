@@ -44897,6 +44897,7 @@
     "pushField": "将 {field} 推送至人事管理"
   },
   "payrollHistoryMaintenance": {
+    "laterCorrectionRecorded": "已记录后续更正",
     "itemsUnavailable": "薪资项目明细暂不可用。",
     "sourceLimited": "查看原始文件需要整个导入批次的访问权限。",
     "impactKinds": {
