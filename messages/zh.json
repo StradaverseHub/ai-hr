@@ -1710,6 +1710,9 @@
           "movementId": "异动事件编号"
         },
         "detail": {
+          "exitInformation": "离职时的任职信息",
+          "exitInformationNote": "以下为雇佣关系于 {date} 结束前生效的信息。这些是保留的历史记录，并非当前任职信息。",
+          "atExit": "离职时",
           "eventInformation": "事件信息",
           "companyReviewNeeded": "更正原入职公司后，请检查以下设置：",
           "notRecorded": "此事件历史中未记录",
@@ -31180,7 +31183,21 @@
       "ca6e9d872b60f": "由 HR 从目录添加",
       "c6fec0ad3de1a": "案例项目",
       "c80fb96fe95dc": "HR 记录已确认的撤销",
-      "c9b7d033e978d": "请选择分配小组。"
+      "c9b7d033e978d": "请选择分配小组。",
+      "managerMail0cd4bb19dd": "此邮件已逾期",
+      "managerMail4cbbcd5184": "计划发送日期",
+      "managerMaild602b8efb9": "预定发送日期已过。请先检查收件人和内容，再决定如何处理。",
+      "managerMail911263feab": "仍然发送",
+      "managerMailff16427cf4": "跳过此邮件",
+      "managerMail27547fe255": "已找到直属上司",
+      "managerMaile2bd594a17": "来自人事管理的直属上司",
+      "managerMail4f40c3071b": "工作邮箱可用。接收此邮件无需登录账号。",
+      "managerMail4b1ea5a652": "人事记录中没有主管",
+      "managerMailcce1c2adb3": "记录了多位现任主管。人事部门需要核查汇报关系。",
+      "managerMail596ed0672a": "人事记录中的主管不可用。",
+      "managerMail358784d1e0": "直属主管 {name} 的雇佣状态已失效",
+      "managerMail2a65e6fe08": "直属主管 {name} 没有工作邮箱",
+      "managerMail3a024d9981": "直属主管 {name} 的工作邮箱无效"
     }
   },
   "processAssessment": {
@@ -35176,7 +35193,11 @@
       "maritalStatus": "婚姻状况",
       "companyId": "公司内部 ID",
       "companyName": "公司法定名称",
-      "companyCode": "公司代码"
+      "companyCode": "公司代码",
+      "departmentBusinessCode": "部门代码",
+      "positionBusinessCode": "职位代码",
+      "businessUnitCode": "业务单位代码",
+      "jobGradeCode": "职级代码"
     },
     "parameter": {
       "payItem": "薪资项目",
@@ -35449,7 +35470,22 @@
       }
     },
     "missingItemZero": "{variable}（{code}）：本次运行中没有，按 0 计算",
-    "missingMemberZero": "{variable}（{group}）成员 {code}：本次运行中没有，按 0 计算"
+    "missingMemberZero": "{variable}（{group}）成员 {code}：本次运行中没有，按 0 计算",
+    "businessCodes": {
+      "compatibility": "显示已保存公式的内部 ID",
+      "search": "搜索已配置的代码",
+      "page": "第 {from}–{to} 项，共 {total} 个代码",
+      "none": "获准访问的公司中没有可用的已配置代码。",
+      "previous": "上一页",
+      "next": "下一页",
+      "loadFailed": "无法加载代码，请重试。",
+      "reviewTitle": "检查旧版人事数据来源",
+      "preserved": "已保存的内部引用和旧别名保持原有含义，不会自动转换。",
+      "conversionHelp": "为每项直接比较选择已配置代码。检查新含义后，保存为新版本并测试。其他用法可通过变量库编辑。",
+      "selected": "已选代码：{code}",
+      "reviewed": "我已检查此比较及其业务含义。",
+      "apply": "应用到此草稿"
+    }
   },
   "payrollTaxBasis": {
     "title": "重新计算所得税基数",
@@ -37268,6 +37304,46 @@
         "returnedBy": "Returned by {name}:",
         "returnedNote": "Earlier signatures were cleared. The part goes through the signing route again.",
         "decisionHeading": "Your decision"
+      }
+    },
+    "reconciliation": {
+      "title": "人事核查",
+      "cadence": "每15分钟核查一次。",
+      "lastCheck": "最近成功核查：{time}（马来西亚时间）。",
+      "notChecked": "尚无成功核查记录。",
+      "stale": "人事核查近期未完成，请联系操作人员检查后台工作进程。",
+      "missing": "{count}名试用期员工没有个案",
+      "buAdvisory": "仅缺少业务单元不会阻止创建个案。",
+      "missingBu": "人事记录没有业务单元。",
+      "employee": "员工",
+      "company": "公司",
+      "reason": "原因／警告",
+      "fix": "处理",
+      "queued": "已排队等待下一次后台核查。",
+      "settings": "试用期设置",
+      "forms": "表单编辑器",
+      "routes": "审批路线",
+      "personnel": "人事管理",
+      "intake": "导入与启用",
+      "pages": "无个案员工分页",
+      "previous": "上一页",
+      "next": "下一页",
+      "reasons": {
+        "settings": "此公司没有已发布的设置。",
+        "form": "此职级没有已发布的评估表。",
+        "route": "没有已发布的签署路线。",
+        "activation": "公司尚未启用。",
+        "grade_missing": "人事记录没有职级。",
+        "grade_ineligible": "职级{grade}不符合资格。",
+        "assignment": "没有适用的组织任职记录。",
+        "employment_type": "此雇佣类型不符合试用期导入资格。",
+        "no_probation": "人事记录明确注明无试用期。",
+        "period_review": "缺少试用期限，需要获授权人员审核导入。",
+        "eligibility_review": "入职或重新雇佣记录需要获授权人员审核。",
+        "excluded": "获授权的导入审核已明确排除此员工。",
+        "cutover": "历史试用记录需要经过审核的导入与启用。",
+        "prior_case": "先前已关闭的个案需要HR审核；未创建重复个案。",
+        "retry": "后台核查需要操作人员审核。没有更改任何个案。"
       }
     }
   },
@@ -40062,6 +40138,20 @@
         "cancelled": {
           "title": "奖励历史上传已停止",
           "body": "上传已停止，已保存的行仍可使用。"
+        }
+      },
+      "lifecycleManagerRecovery": {
+        "completed": {
+          "title": "主管邮件复查已完成",
+          "body": "请查看恢复任务中已恢复及逾期待处理的邮件。"
+        },
+        "failed": {
+          "title": "主管邮件复查需要检查",
+          "body": "重试前请查看恢复任务错误。"
+        },
+        "cancelled": {
+          "title": "主管邮件复查已停止",
+          "body": "已完成的复查仍记录在各个案例中。"
         }
       }
     },
@@ -44432,5 +44522,42 @@
       "sign": "签署",
       "acknowledge": "确认收到"
     }
+  },
+  "taskDocuments": {
+    "heading": "待完成文件",
+    "completed": "已完成文件",
+    "documentTasks": "文件任务",
+    "openDocument": "打开文件",
+    "viewDocument": "查看文件",
+    "open": "打开",
+    "view": "查看",
+    "notReleased": "此文件尚未发布",
+    "reviewRequired": "此模板有多份已保存文件，需要 HR 审核。",
+    "signCompletion": "签署文件后自动完成",
+    "submitCompletion": "提交或签署文件后自动完成",
+    "sentCompletion": "HR 发布文件后自动完成",
+    "onboarding": "入职",
+    "offboarding": "离职",
+    "notOpened": "未打开",
+    "opened": "已打开",
+    "signed": "已签署",
+    "acknowledged": "已确认",
+    "awaitingHr": "等待 HR 签名",
+    "submitted": "已提交",
+    "source": "来自 {name}",
+    "due": "截止日期 {date}",
+    "done": "已完成",
+    "inProgress": "进行中",
+    "todo": "待办",
+    "pages": "文件分页",
+    "showing": "第 {from}–{to} 项，共 {total} 项",
+    "previous": "上一页",
+    "next": "下一页",
+    "sources": {
+      "onboardingChecklist": "入职清单",
+      "offboardingChecklist": "离职清单",
+      "documentsFromHr": "人事部门的文件"
+    },
+    "openError": "无法打开文件。请刷新并确认人事部门已发布此文件。"
   }
 }

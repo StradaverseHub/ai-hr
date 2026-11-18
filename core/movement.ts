@@ -1,3 +1,4 @@
+import {movementGradeEvidence} from '../lib/movement-grade-evidence';
 import {movementPayrollWindows} from '../lib/movement-payroll-windows';
 import {withMovementPayrollWindowsTx} from './workforce-payroll-invalidation';
 import {originalHireDecisionPreimage,movementInformationEvidence,type MovementInformationField,type MovementInformationFact} from '../lib/movement-information-evidence';
@@ -40,6 +41,7 @@ import {ownPersonPredicate} from './own-person';
 import { randomUUID } from 'node:crypto';
 import { and, asc, desc, eq, inArray, isNull, sql } from 'drizzle-orm';
 import { todayInKualaLumpur } from '../lib/hr-date';
+import { movementExitVersion } from '../lib/movement-exit-version';
 import {isCalendarDate} from '../lib/calendar-date';
 import {MOVEMENT_FLAT_FIELDS,MOVEMENT_END_DATE_FIELDS,movementEndDateFieldFor,MOVEMENT_PENDING_COMPARISON_FIELDS,MOVEMENT_PENDING_INPUT_FIELDS,movementPendingFormValues,type MovementFlatField,type MovementEndDateField,type MovementPendingFormValues} from '../lib/movement-pending-input';
 import { withTenant, type SessionContext, type Tx } from '../db/client';
@@ -381,6 +383,8 @@ export type MovementIntentField = 'tenderResignationDate' | 'resignationEffectiv
 export type MovementPendingIntent = { values: { field: MovementIntentField; value: string | null }[] };
 
 export type MovementDetail = {
+  /** Retained organisation facts at an actual exit, never a current assignment. */
+  exitInformation?: { effectiveDate: string };
   payrollAdjustmentReview?:{periods:string[]};
   informationCorrections?: InformationHistoryCorrection[];
   row: MovementRowSummary;
@@ -1143,14 +1147,7 @@ export async function movementReportFactsTx(tx: Tx, tenantId: string, employment
       const group = eventsByGroup.get(key) ?? []; group.push(event); eventsByGroup.set(key, group);
     }
     const groupOf=(row:ProjectedRow)=>eventsByGroup.get(row.groupId??row.id)??[];
-    const informationCorrections=projected.events.filter(event=>event.eventType==='employment.information.corrected');
-    const gradeEvents=projected.events.filter(event=>event.eventType==='employment.grade.changed'||event.eventType==='employment.information.corrected').map(event=>event.eventType==='employment.information.corrected'?{...event,payload:{before:(event.payload as {before:{gradeId:string|null}}).before.gradeId,after:(event.payload as {after:{gradeId:string|null}}).after.gradeId}}:event);
-    const gradeRows=projected.rows.filter(row=>groupOf(row).some(event=>event.eventType==='employment.grade.changed'));
-    // Unattributed legacy writes and compensating grade legs have no independently recorded effective
-    // date. Do not substitute today's grade for an unprovable historical context.
-    const attributedGrades=new Set(gradeRows.flatMap(row=>groupOf(row).map(event=>event.id)));
-    const gradeKnown=gradeEvents.every(event=>event.eventType==='employment.information.corrected'||attributedGrades.has(event.id));
-    const gradeBaseline=gradeEvents.length?((gradeEvents[0].payload??{}) as {before?:string|null}).before??null:emp.gradeId;
+    const gradeEvidence=movementGradeEvidence(projected.events,projected.rows.map(row=>({...row,status:projected.statusOf(row)})),emp.gradeId);
     const hireCorrections=projected.events.filter(event=>isAssignmentReplacementEvent(event.eventType,HIRE_CORRECTED_EVENT)).map(event=>event.payload);
     const salaryChanged=(row:ProjectedRow)=>groupOf(row).some(event=>{
       if(event.eventType!=='compensation.set')return false;
@@ -1161,11 +1158,7 @@ export async function movementReportFactsTx(tx: Tx, tenantId: string, employment
     });
     facts.push({employmentId: emp.id, hireDate:emp.hiredOn,
       placements:[...new Set(asOfDates)].map(date=>{
-        let gradeId=gradeBaseline;
-        const datedGrades=gradeRows.filter(row=>projected.statusOf(row)==='applied').flatMap(row=>groupOf(row).filter(event=>event.eventType==='employment.grade.changed').map(event=>({date:row.effectiveDate,sequence:event.sequence,gradeId:((event.payload??{}) as {after?:string|null}).after??null})));
-        for(const event of informationCorrections){const payload=event.payload as {effectiveOn:string;after:{gradeId:string|null}};datedGrades.push({date:payload.effectiveOn,sequence:event.sequence,gradeId:payload.after.gradeId});}
-        for(const revision of datedGrades.sort((a,b)=>a.date.localeCompare(b.date)||a.sequence-b.sequence))if(revision.date<=date)gradeId=revision.gradeId;
-        return {date,gradeId:gradeKnown?gradeId:null,gradeKnown};
+        return {date,...gradeEvidence.at(date)};
       }),rows: projected.rows.map(row => ({
       id: row.id, kind: row.kind, behaviourKind: projected.resolvedTypes.get(row.kind)?.behaviourKind ?? row.kind,
       effectiveDate: row.effectiveDate, endDate: row.endDate, sequence: row.sequence,
@@ -1479,6 +1472,7 @@ function companyIdsInPlay(companyEvents: RawEvent[], currentCompanyId: string): 
  */
 async function placementColumnsTx(tx: Tx, employmentId: string, companyId: string, events: RawEvent[]) {
   const companyEvents = events.filter(isCompanyReplayEvent);
+  const versionEvents = exitVersionEventsOf(events);
   // Board 154511c4 — a history movement rewrites the dated company of the period before its date, which the
   // sequence replay cannot see (it is recorded later than the movements it precedes). For an employee with one,
   // the company comes from the dated assignment version, like Department and Position already do.
@@ -1486,6 +1480,7 @@ async function placementColumnsTx(tx: Tx, employmentId: string, companyId: strin
 
   const asgRows = await tx
     .select({
+      id: assignment.id,
       validFrom: assignment.validFrom,
       validTo: assignment.validTo,
       companyId: assignment.companyId,
@@ -1519,8 +1514,10 @@ async function placementColumnsTx(tx: Tx, employmentId: string, companyId: strin
 
   const companyNames = await companyNamesTx(tx, [...new Set([...companyIdsInPlay(companyEvents, companyId), ...(datedCompany ? asgRows.map((a) => a.companyId).filter((id): id is string => !!id) : [])])]);
 
-  return (asOf: string, seqBound: number) => {
-    const asg = asgRows.filter((a) => a.validFrom <= asOf && (a.validTo == null || a.validTo > asOf)).pop() ?? null;
+  return (asOf: string, seqBound: number, exitSequence?: number) => {
+    const asg = exitSequence === undefined
+      ? asgRows.filter((a) => a.validFrom <= asOf && (a.validTo == null || a.validTo > asOf)).pop() ?? null
+      : movementExitVersion(asgRows, asOf, exitSequence, versionEvents);
     const comp = compRows.filter((c) => c.validFrom <= asOf && (c.validTo == null || c.validTo > asOf)).pop() ?? null;
     return {
       company: companyNames.get((datedCompany ? asg?.companyId : null) ?? companyIdAtSequence(companyEvents, seqBound, true, companyId)) ?? null,
@@ -1620,7 +1617,8 @@ async function personnelCorrectionViewTx(tx:Tx,events:RawEvent[],rows:ProjectedR
  const beforeRows=hasCorrections
   ? rows.filter(row=>row.kind!=='hired').map(row=>{
    const first=row.groupId?firstSequenceByGroup.get(row.groupId):undefined;
-   return {...row,id:row.id+':before',effectiveDate:dayBefore(row.effectiveDate),groupId:null,scheduled:false,appliedAt:null,sequence:Math.min(row.sequence,first??row.sequence)-.5};
+   const exit = groupEventsOf(events, row).some(event => event.eventType === 'employment.terminated');
+   return {...row,id:row.id+':before',effectiveDate:exit?row.effectiveDate:dayBefore(row.effectiveDate),groupId:null,scheduled:false,appliedAt:null,sequence:Math.min(row.sequence,first??row.sequence)-.5};
   })
   : [];
  const corrections=personnelInformationCorrections(events,[...rows,...beforeRows]);
@@ -1742,7 +1740,8 @@ async function projectMovementHistoryTx(tx:Tx,ctx:SessionContext,employmentId:st
       const payrollFrom=[r.effectiveDate,...exitDates].sort()[0];
       const closedPeriods = financial ? closed.filter((period) => overlapsClosedPeriod([period], payrollFrom, null)).sort() : [];
       const locked = closedPeriods.length > 0;
-      const placement=placementAt(r.effectiveDate,spanEnd===-1?r.sequence:spanEnd);
+      const exitEvent = g.find(event => event.eventType === 'employment.terminated');
+      const placement=placementAt(r.effectiveDate,spanEnd===-1?r.sequence:spanEnd,exitEvent?.sequence);
       const salaryLeg=[...g].reverse().find(event=>event.eventType==='compensation.set');
       const hireSalaryApplies=latestHireSalary?.replacementId&&(r.kind==='hired'||r.effectiveDate>=(latestHireSalary.validFrom??emp.hiredOn)&&(!latestHireSalary.until||r.effectiveDate<latestHireSalary.until));
       const salaryReference=salaryLeg?.aggregateId??(hireSalaryApplies?latestHireSalary?.replacementId:null);
@@ -1783,6 +1782,13 @@ async function projectMovementHistoryTx(tx:Tx,ctx:SessionContext,employmentId:st
     return {movements,catalogue,resignation};
   }
 
+/** Full correction snapshots contain unrelated fields; only a changed grade belongs in grade replay. */
+function isGradeInformationCorrection(event: RawEvent): boolean {
+  if (event.eventType !== 'employment.information.corrected') return false;
+  const payload = event.payload as { fields?: unknown } | null;
+  return Array.isArray(payload?.fields) && payload.fields.includes('gradeId');
+}
+
 /** The grade in force just before/at an event, replayed from employment.grade.changed events (gradeId is
  *  a flat column, so as-of reconstruction must come from the ledger). `bound` is the row's sequence;
  *  `inclusive` includes the bound event itself (the After side). */
@@ -1805,6 +1811,12 @@ function gradeIdAtSequence(
   return first ? (((first.payload ?? {}) as any).before ?? null) : currentGradeId;
 }
 
+/** Follow audited information/hire/history replacements without changing their original ledger order. */
+function exitVersionEventsOf(events: RawEvent[]): RawEvent[] {
+  const replacements = events.filter(event => isAssignmentReplacementEvent(event.eventType, HIRE_CORRECTED_EVENT)).map(event => event.payload);
+  return events.map(event => ({ ...event, aggregateId: liveIncarnationOf(event.aggregateId, replacements) }));
+}
+
 /** Reconstruct the employee's state as of `asOf` (assignment version, reporting line, compensation) with
  *  every id resolved to its CURRENT label — no stored snapshots, so renames never stale the view. */
 async function snapshotAt(
@@ -1824,10 +1836,12 @@ async function snapshotAt(
   companyEvents: RawEvent[] = [],
   /** Board 154511c4 — the employee has a history movement: read the company from the dated version (see placementColumnsTx). */
   datedCompany = false,
+  exitBoundary?: { sequence: number; events: RawEvent[] },
 ): Promise<MovementSnapshot> {
 
   const asgRows = await tx
     .select({
+      id: assignment.id,
       validFrom: assignment.validFrom,
       validTo: assignment.validTo,
       employmentType: assignment.employmentType,
@@ -1842,8 +1856,9 @@ async function snapshotAt(
     .leftJoin(businessUnit, eq(businessUnit.id, assignment.businessUnitId))
     .where(and(eq(assignment.employmentId, emp.id), isNull(assignment.supersededAt)))
     .orderBy(asc(assignment.validFrom));
-  const asg =
-    asgRows.filter((a) => a.validFrom <= asOf && (a.validTo == null || a.validTo > asOf)).pop() ?? null;
+  const asg = exitBoundary
+    ? movementExitVersion(asgRows, asOf, exitBoundary.sequence, exitBoundary.events)
+    : asgRows.filter((a) => a.validFrom <= asOf && (a.validTo == null || a.validTo > asOf)).pop() ?? null;
   const datedCompanyId = datedCompany ? asg?.companyId ?? null : null;
   const companyNames = await companyNamesTx(tx, [...companyIdsInPlay(companyEvents, emp.companyId), ...(datedCompanyId ? [datedCompanyId] : [])]);
   const companyName =
@@ -1851,6 +1866,7 @@ async function snapshotAt(
 
   const rlRows = await tx
     .select({
+      id: reportingLine.id,
       validFrom: reportingLine.validFrom,
       validTo: reportingLine.validTo,
       managerEmploymentId: reportingLine.managerEmploymentId,
@@ -1864,7 +1880,9 @@ async function snapshotAt(
       ),
     )
     .orderBy(asc(reportingLine.validFrom));
-  const rl = rlRows.filter((r) => r.validFrom <= asOf && (r.validTo == null || r.validTo > asOf)).pop() ?? null;
+  const rl = exitBoundary
+    ? movementExitVersion(rlRows, asOf, exitBoundary.sequence, exitBoundary.events)
+    : rlRows.filter((r) => r.validFrom <= asOf && (r.validTo == null || r.validTo > asOf)).pop() ?? null;
   let managerName: string | null = null;
   if (rl) {
     const [m] = await tx
@@ -2072,7 +2090,7 @@ async function projectMovementDetailTx(tx:Tx,ctx:SessionContext,employmentId:str
     const { emp, events, rows, statusOf } = await projectRows(tx, ctx.tenantId, employmentId);
     const row = rows.find((r) => r.id === movementId);
     if (!row) return null;
-    const gradeEvents = events.filter((e) => e.eventType === 'employment.grade.changed'||e.eventType==='employment.information.corrected').map(e=>e.eventType==='employment.information.corrected'?{...e,payload:{before:(e.payload as {before: {gradeId:string|null}}).before.gradeId,after:(e.payload as {after: {gradeId:string|null}}).after.gradeId}}:e);
+    const gradeEvents = events.filter((e) => e.eventType === 'employment.grade.changed'||isGradeInformationCorrection(e)).map(e=>e.eventType==='employment.information.corrected'?{...e,payload:{before:(e.payload as {before: {gradeId:string|null}}).before.gradeId,after:(e.payload as {after: {gradeId:string|null}}).after.gradeId}}:e);
     // b7b22514 — the company moves this employment recorded (and any that were rolled back), for the
     // as-of replay in snapshotAt.
     const companyEvents = events.filter(isCompanyReplayEvent);
@@ -2098,8 +2116,11 @@ async function projectMovementDetailTx(tx:Tx,ctx:SessionContext,employmentId:str
     const afterBound = Math.max(...seqs);
     const beforeBound = Math.min(...seqs);
 
+    const exitEvent = group.find(event => event.eventType === 'employment.terminated');
+    const exitBoundary = exitEvent ? { sequence: exitEvent.sequence, events: exitVersionEventsOf(events) } : undefined;
+    const beforeDate = exitBoundary ? row.effectiveDate : dayBefore(row.effectiveDate);
     const correctionView=await personnelCorrectionViewTx(tx,events,rows);
-    const after = correctionView.apply(row.id,await snapshotAt(tx, emp, row.effectiveDate, gradeEvents, afterBound, true, companyEvents, hasDatedCompanyHistory(events)));
+    const after = correctionView.apply(row.id,await snapshotAt(tx, emp, row.effectiveDate, gradeEvents, afterBound, true, companyEvents, hasDatedCompanyHistory(events), exitBoundary));
     // The entered business day and the first open payroll day are distinct after a closed-payroll correction.
     // Resolve this event's own amount by reference; never substitute the amount paid in the protected month.
     const salaryLeg=[...group].reverse().find(event=>event.eventType==='compensation.set');
@@ -2112,7 +2133,7 @@ async function projectMovementDetailTx(tx:Tx,ctx:SessionContext,employmentId:str
     const before =
       row.kind === 'hired'
         ? null
-        : correctionView.apply(row.id+':before',await snapshotAt(tx, emp, dayBefore(row.effectiveDate), gradeEvents, beforeBound, false, companyEvents, hasDatedCompanyHistory(events)));
+        : correctionView.apply(row.id+':before',await snapshotAt(tx, emp, beforeDate, gradeEvents, beforeBound, false, companyEvents, hasDatedCompanyHistory(events), exitBoundary));
 
     after.informationEvidence=movementInformationEvidence(events,row.effectiveDate,afterBound,true);
     if(row.kind==='hired')for(const event of events){
@@ -2122,7 +2143,7 @@ async function projectMovementDetailTx(tx:Tx,ctx:SessionContext,employmentId:str
         const value=payload.after?.[field];if(value===null||typeof value==='string')after.informationEvidence[field as MovementInformationField]={known:true,value,eventId:event.id};
       }
     }
-    if(before)before.informationEvidence=movementInformationEvidence(events,dayBefore(row.effectiveDate),beforeBound,false);
+    if(before)before.informationEvidence=movementInformationEvidence(events,beforeDate,beforeBound,false);
     return {
       row: {
         id: row.id,
@@ -2134,6 +2155,7 @@ async function projectMovementDetailTx(tx:Tx,ctx:SessionContext,employmentId:str
         remarks: row.remarks,
         reversed: row.reversed,
       },
+      ...(exitBoundary ? { exitInformation: { effectiveDate: row.effectiveDate } } : {}),
       informationCorrections:correctionView.corrections.get(row.id)??[],
       ...(row.kind==='hired'?{payrollAdjustmentReview:{periods:[...new Set(events.filter(event=>event.eventType===HIRE_CORRECTED_EVENT).flatMap(event=>{
         const review=(event.payload as {payrollAdjustmentReview?:{periods?:unknown[]}})?.payrollAdjustmentReview;
@@ -4928,7 +4950,7 @@ async function reverseMovementTx(
     actor: actorOf(ctx),
     subjectEmploymentId: employmentId,
     payload: {
-      movementId, kind: row.kind, effectiveDate: row.effectiveDate, reason, corrected,
+      movementId, reversalGroupId:tag.groupId, kind: row.kind, effectiveDate: row.effectiveDate, reason, corrected,
       ...(opts?.replayOf ? { replayOf: opts.replayOf } : {}),
       // 646355e5 — the audit trail of an acknowledged correction behind closed payroll, and the business
       // day the leave owner treats as the correction boundary (assertInformationLeavePeriodTx).

@@ -431,7 +431,7 @@ it('lets only the linked activated joiner complete a released native document an
   expect(await v9Sweep(system, owner, sweepAt)).toEqual({ processed: 0, failed: 0 });
   const detail = await v9CaseDetail(admin, own.id);
   expect(detail.case.runs).toHaveLength(3); expect(detail.case.runs[0]).toMatchObject({ status: 'waiting', reason: 'Waiting for email delivery confirmation.' });
-  expect(detail.case.mails).toHaveLength(3); expect(detail.case.mails[0]).toMatchObject({ subject: 'Native form completed', status: 'pending', to: [employee.userId] });
+  expect(detail.case.mails).toHaveLength(3); expect(detail.case.mails[0]).toMatchObject({ subject: 'Native form completed', status: 'pending', to: ['address:subject@test.invalid'] });
   expect(detail.case.documents[0].employeeSignature?.by.id).toBe(userId);
   expect(detail.case.pmChanges).toHaveLength(1);
   const pdf = await v9DownloadDocument(joiner, own.id, own.documents[0].id); expect(Buffer.from(pdf.content).subarray(0,5).toString()).toBe('%PDF-');
@@ -1472,7 +1472,7 @@ it('resolves an offboarding email manager from current PM reporting lines withou
   await setReportingLine(admin,{subordinateEmploymentId:employmentId,managerEmploymentId:managers[1].employmentId,lineType:'administrative',validFrom:todayInKualaLumpur()});
   await v9Command(admin,caseId,1,{type:'submit'});let current=(await v9CaseDetail(admin,caseId)).case;
   await v9Command(admin,caseId,current.revision,{type:'startWorkflow',workflowId:workflow.id});current=(await v9CaseDetail(admin,caseId)).case;
-  expect(current.mails.filter(mail=>mail.workflowId===workflow.id)).toMatchObject([{to:[managers[1].userId],body:'For Fictional New manager'}]);
+  expect(current.mails.filter(mail=>mail.workflowId===workflow.id)).toMatchObject([{to:['address:new.manager@test.invalid'],body:'For Fictional New manager'}]);
   expect(current.facts.supervisorUserId).toBe(managers[0].userId);
 });
 

@@ -1,4 +1,4 @@
-import {personnelFormulaDependencyTx,personnelFormulaLibraryTx} from './pay-formula-personnel';
+import {personnelFormulaDependencyTx,personnelFormulaLibraryTx,personnelFormulaCodePageTx} from './pay-formula-personnel';
 import {PAY_FORMULA_PERSONNEL_ADAPTERS} from '../lib/pay-formula-personnel';
 /** Native owner of reusable saved formula identities and immutable calculation evidence. */
 import {createHash,randomUUID} from 'node:crypto';
@@ -11,7 +11,7 @@ import {companySegmentsForPeriodBulk,employedByCompanyDuring} from './employment
 import {isCalendarDate} from '../lib/calendar-date';
 import {workforceEmploymentSetPredicate} from './workforce-access';
 import {lockPayrollHistoryReadTx} from './payroll-history-lock';
-import {lockAccessConfigurationWriteTx} from './access-configuration-lock';
+import {lockAccessConfigurationReadTx,lockAccessConfigurationWriteTx} from './access-configuration-lock';
 import {lockPayComponentCatalogTx} from './pay-component-catalog-lock';
 import {assertPayFormulaCompleteSource,parsePayFormula,printPayFormula,analyzePayFormula,PAY_FORMULA_EVALUATOR_VERSION,type FormulaProgram} from '../lib/pay-formula-language';
 import {PAY_FORMULA_REGISTRY_VERSION,PAY_FORMULA_PROVIDER_VERSION} from '../lib/pay-formula-registry';
@@ -237,4 +237,9 @@ export async function listPayFormulaBatches(ctx:SessionContext,p:{companyId:stri
 export async function registerPayFormulaPersonnelField(ctx:SessionContext,input:{sourceKey:string;label:string;description:string;enabled:boolean}){
  if(!PAY_FORMULA_PERSONNEL_ADAPTERS.some(adapter=>adapter.key===input.sourceKey)||typeof input.label!=='string'||!input.label.trim()||input.label.trim().length>120||typeof input.description!=='string'||!input.description.trim()||input.description.trim().length>1000||typeof input.enabled!=='boolean')throw new PayFormulaError('Choose a supported typed source and supply its label and description.');
  return locked(ctx,async tx=>{await tx.execute(sql`select app.pay_formula_personnel_register(${input.sourceKey},${input.label.trim()},${input.description.trim()},${input.enabled})`);return {saved:true};});
+}
+
+/** Page reads take shared Access; neither formula catalogue writes nor payroll locks are needed. */
+export async function payFormulaCodeChoices(ctx:SessionContext,input:{key:string;search?:string;offset?:number}){
+ return withTenant(ctx,async tx=>{await lockAccessConfigurationReadTx(tx,ctx.tenantId);await authority(tx,ctx);return personnelFormulaCodePageTx(tx,ctx,input);},{readOnlySnapshot:true});
 }

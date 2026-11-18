@@ -1710,6 +1710,9 @@
           "movementId": "Mã sự kiện biến động"
         },
         "detail": {
+          "exitInformation": "Thông tin công việc khi nghỉ việc",
+          "exitInformationNote": "Thông tin có hiệu lực ngay trước khi quan hệ lao động kết thúc vào {date}. Đây là thông tin lịch sử được lưu giữ, không phải phân công hiện tại.",
+          "atExit": "Khi nghỉ việc",
           "eventInformation": "Thông tin sự kiện",
           "companyReviewNeeded": "Kiểm tra các thiết lập này sau khi sửa công ty ban đầu:",
           "notRecorded": "Không được ghi lại trong lịch sử sự kiện này",
@@ -31180,7 +31183,21 @@
       "ca6e9d872b60f": "HR thêm từ danh mục",
       "c6fec0ad3de1a": "Mục của hồ sơ",
       "c80fb96fe95dc": "HR ghi nhận việc thu hồi đã xác nhận",
-      "c9b7d033e978d": "Chọn nhóm phân công."
+      "c9b7d033e978d": "Chọn nhóm phân công.",
+      "managerMail0cd4bb19dd": "Email này đã trễ",
+      "managerMail4cbbcd5184": "Được lên lịch vào",
+      "managerMaild602b8efb9": "Ngày gửi dự kiến đã qua. Hãy kiểm tra người nhận và nội dung trước khi quyết định.",
+      "managerMail911263feab": "Vẫn gửi",
+      "managerMailff16427cf4": "Bỏ qua email này",
+      "managerMail27547fe255": "Đã tìm thấy quản lý trực tiếp",
+      "managerMaile2bd594a17": "Cấp trên trực tiếp từ Quản lý nhân sự",
+      "managerMail4f40c3071b": "Có email công việc. Không cần tài khoản đăng nhập để nhận email này.",
+      "managerMail4b1ea5a652": "Không có cấp trên trong hồ sơ nhân sự",
+      "managerMailcce1c2adb3": "Có nhiều cấp trên hiện tại được ghi nhận. Nhân sự cần xem lại tuyến báo cáo.",
+      "managerMail596ed0672a": "Cấp trên được ghi trong hồ sơ nhân sự không khả dụng.",
+      "managerMail358784d1e0": "Quan hệ lao động của quản lý trực tiếp {name} không còn hoạt động",
+      "managerMail2a65e6fe08": "Quản lý trực tiếp {name} không có email công việc",
+      "managerMail3a024d9981": "Email công việc của quản lý trực tiếp {name} không hợp lệ"
     }
   },
   "processAssessment": {
@@ -35176,7 +35193,11 @@
       "maritalStatus": "Tình trạng hôn nhân",
       "companyId": "ID nội bộ của công ty",
       "companyName": "Tên pháp lý của công ty",
-      "companyCode": "Mã công ty"
+      "companyCode": "Mã công ty",
+      "departmentBusinessCode": "Mã phòng ban",
+      "positionBusinessCode": "Mã chức vụ",
+      "businessUnitCode": "Mã đơn vị kinh doanh",
+      "jobGradeCode": "Mã cấp bậc"
     },
     "parameter": {
       "payItem": "Khoản lương",
@@ -35449,7 +35470,22 @@
       }
     },
     "missingItemZero": "{variable} ({code}): không có trong kỳ chạy này, được tính là 0",
-    "missingMemberZero": "{variable} ({group}), thành phần {code}: không có trong kỳ chạy này, được tính là 0"
+    "missingMemberZero": "{variable} ({group}), thành phần {code}: không có trong kỳ chạy này, được tính là 0",
+    "businessCodes": {
+      "compatibility": "Hiện ID nội bộ cho công thức đã lưu",
+      "search": "Tìm mã đã cấu hình",
+      "page": "{from}–{to} trong {total} mã",
+      "none": "Không có mã được cấu hình trong các công ty được phép.",
+      "previous": "Trước",
+      "next": "Tiếp",
+      "loadFailed": "Không thể tải mã. Hãy thử lại.",
+      "reviewTitle": "Rà soát nguồn nhân sự cũ",
+      "preserved": "Tham chiếu nội bộ và bí danh cũ giữ nguyên ý nghĩa đã lưu. Không tự động chuyển đổi.",
+      "conversionHelp": "Chọn mã cho từng phép so sánh trực tiếp. Rà soát ý nghĩa mới, lưu phiên bản mới rồi kiểm tra. Có thể sửa cách dùng khác bằng thư viện biến.",
+      "selected": "Mã đã chọn: {code}",
+      "reviewed": "Tôi đã rà soát phép so sánh và ý nghĩa nghiệp vụ.",
+      "apply": "Áp dụng vào bản nháp"
+    }
   },
   "payrollTaxBasis": {
     "title": "Tính lại giá trị thu nhập chịu thuế",
@@ -37268,6 +37304,46 @@
         "returnedBy": "Returned by {name}:",
         "returnedNote": "Earlier signatures were cleared. The part goes through the signing route again.",
         "decisionHeading": "Your decision"
+      }
+    },
+    "reconciliation": {
+      "title": "Kiểm tra Nhân sự",
+      "cadence": "Kiểm tra mỗi 15 phút.",
+      "lastCheck": "Lần kiểm tra thành công gần nhất: {time} (giờ Malaysia).",
+      "notChecked": "Chưa ghi nhận lần kiểm tra thành công.",
+      "stale": "Kiểm tra Nhân sự chưa hoàn tất gần đây. Hãy nhờ người vận hành kiểm tra tiến trình nền.",
+      "missing": "{count} nhân viên Thử việc chưa có hồ sơ",
+      "buAdvisory": "Chỉ thiếu Đơn vị kinh doanh không ngăn tạo hồ sơ.",
+      "missingBu": "Chưa có Đơn vị kinh doanh trên bản ghi Nhân sự.",
+      "employee": "Nhân viên",
+      "company": "Công ty",
+      "reason": "Lý do / cảnh báo",
+      "fix": "Khắc phục",
+      "queued": "Đang chờ lần kiểm tra nền tiếp theo.",
+      "settings": "Cài đặt thử việc",
+      "forms": "Trình sửa biểu mẫu",
+      "routes": "Tuyến phê duyệt",
+      "personnel": "Quản lý Nhân sự",
+      "intake": "Tiếp nhận và kích hoạt",
+      "pages": "Các trang nhân viên chưa có hồ sơ",
+      "previous": "Trước",
+      "next": "Tiếp",
+      "reasons": {
+        "settings": "Chưa có cài đặt đã công bố cho công ty này.",
+        "form": "Chưa có biểu mẫu đánh giá đã công bố cho cấp bậc này.",
+        "route": "Chưa có tuyến ký đã công bố.",
+        "activation": "Công ty chưa được kích hoạt.",
+        "grade_missing": "Chưa có Cấp bậc công việc trên bản ghi Nhân sự.",
+        "grade_ineligible": "Cấp bậc {grade} không đủ điều kiện.",
+        "assignment": "Chưa có phân công tổ chức áp dụng.",
+        "employment_type": "Loại hình tuyển dụng này không đủ điều kiện tiếp nhận thử việc.",
+        "no_probation": "Bản ghi Nhân sự ghi rõ không có thời gian thử việc.",
+        "period_review": "Thiếu thời gian thử việc, cần rà soát tiếp nhận bởi người có thẩm quyền.",
+        "eligibility_review": "Lịch sử bắt đầu làm việc hoặc tuyển lại cần người có thẩm quyền rà soát.",
+        "excluded": "Rà soát tiếp nhận có thẩm quyền đã loại trừ nhân viên này.",
+        "cutover": "Thử việc trong quá khứ cần tiếp nhận và kích hoạt đã được rà soát.",
+        "prior_case": "Hồ sơ cũ đã đóng cần HR rà soát; chưa tạo hồ sơ trùng.",
+        "retry": "Kiểm tra nền cần người vận hành rà soát. Không hồ sơ nào bị thay đổi."
       }
     }
   },
@@ -40062,6 +40138,20 @@
         "cancelled": {
           "title": "Đã dừng tải lên lịch sử thưởng",
           "body": "Đã dừng tải lên. Các dòng đã lưu vẫn còn."
+        }
+      },
+      "lifecycleManagerRecovery": {
+        "completed": {
+          "title": "Đã hoàn tất kiểm tra email quản lý",
+          "body": "Xem tác vụ khôi phục để biết email được tiếp tục và email trễ đang chờ."
+        },
+        "failed": {
+          "title": "Cần xem lại kiểm tra email quản lý",
+          "body": "Xem lỗi tác vụ khôi phục trước khi thử lại."
+        },
+        "cancelled": {
+          "title": "Đã dừng kiểm tra email quản lý",
+          "body": "Các lần kiểm tra hoàn tất vẫn được ghi lại trong hồ sơ."
         }
       }
     },
@@ -44432,5 +44522,42 @@
       "sign": "Ký",
       "acknowledge": "Xác nhận"
     }
+  },
+  "taskDocuments": {
+    "heading": "Tài liệu cần hoàn tất",
+    "completed": "Tài liệu đã hoàn tất",
+    "documentTasks": "Công việc tài liệu",
+    "openDocument": "Mở tài liệu",
+    "viewDocument": "Xem tài liệu",
+    "open": "Mở",
+    "view": "Xem",
+    "notReleased": "Tài liệu này chưa được phát hành",
+    "reviewRequired": "HR cần xem xét nhiều tài liệu đã lưu cho mẫu này.",
+    "signCompletion": "Hoàn tất khi bạn ký tài liệu",
+    "submitCompletion": "Hoàn tất khi bạn gửi hoặc ký tài liệu",
+    "sentCompletion": "Hoàn tất khi HR phát hành tài liệu",
+    "onboarding": "Nhận việc",
+    "offboarding": "Nghỉ việc",
+    "notOpened": "Chưa mở",
+    "opened": "Đã mở",
+    "signed": "Đã ký",
+    "acknowledged": "Đã xác nhận",
+    "awaitingHr": "Đang chờ chữ ký HR",
+    "submitted": "Đã gửi",
+    "source": "Từ {name}",
+    "due": "Hạn {date}",
+    "done": "Đã xong",
+    "inProgress": "Đang thực hiện",
+    "todo": "Cần làm",
+    "pages": "Trang tài liệu",
+    "showing": "{from}–{to} trên {total}",
+    "previous": "Trước",
+    "next": "Tiếp",
+    "sources": {
+      "onboardingChecklist": "Danh sách kiểm tra tiếp nhận",
+      "offboardingChecklist": "Danh sách kiểm tra nghỉ việc",
+      "documentsFromHr": "Tài liệu từ Nhân sự"
+    },
+    "openError": "Không thể mở tài liệu. Hãy làm mới và kiểm tra Nhân sự đã phát hành tài liệu."
   }
 }

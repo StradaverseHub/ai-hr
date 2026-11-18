@@ -1710,6 +1710,9 @@
           "movementId": "ID Peristiwa Pergerakan"
         },
         "detail": {
+          "exitInformation": "Maklumat pekerjaan semasa keluar",
+          "exitInformationNote": "Maklumat yang berkuat kuasa sejurus sebelum pekerjaan tamat pada {date}. Ini ialah butiran sejarah yang dikekalkan, bukan penempatan semasa.",
+          "atExit": "Semasa keluar",
           "eventInformation": "Maklumat Acara",
           "companyReviewNeeded": "Semak penetapan berikut selepas membetulkan syarikat asal:",
           "notRecorded": "Tidak direkodkan dalam sejarah peristiwa ini",
@@ -31180,7 +31183,21 @@
       "ca6e9d872b60f": "Ditambah oleh HR daripada katalog",
       "c6fec0ad3de1a": "Item kes",
       "c80fb96fe95dc": "HR merekodkan pembatalan yang disahkan",
-      "c9b7d033e978d": "Pilih kumpulan penugasan."
+      "c9b7d033e978d": "Pilih kumpulan penugasan.",
+      "managerMail0cd4bb19dd": "E-mel ini lewat",
+      "managerMail4cbbcd5184": "Dijadualkan pada",
+      "managerMaild602b8efb9": "Tarikh penghantaran yang ditetapkan telah berlalu. Semak penerima dan mesej sebelum membuat pilihan.",
+      "managerMail911263feab": "Hantar juga",
+      "managerMailff16427cf4": "Langkau e-mel ini",
+      "managerMail27547fe255": "Penyelia ditemui",
+      "managerMaile2bd594a17": "Penyelia langsung daripada Pengurusan Personel",
+      "managerMail4f40c3071b": "E-mel kerja tersedia. Akaun log masuk tidak diperlukan untuk menerima e-mel ini.",
+      "managerMail4b1ea5a652": "Tiada penyelia dalam rekod Personel",
+      "managerMailcce1c2adb3": "Lebih daripada seorang penyelia semasa direkodkan. HR perlu menyemak hubungan pelaporan.",
+      "managerMail596ed0672a": "Penyelia dalam rekod Personel tidak tersedia.",
+      "managerMail358784d1e0": "Pekerjaan penyelia {name} tidak aktif",
+      "managerMail2a65e6fe08": "Penyelia {name} tiada e-mel kerja",
+      "managerMail3a024d9981": "E-mel kerja penyelia {name} tidak sah"
     }
   },
   "processAssessment": {
@@ -35176,7 +35193,11 @@
       "maritalStatus": "Status perkahwinan",
       "companyId": "ID dalaman syarikat",
       "companyName": "Nama sah syarikat",
-      "companyCode": "Kod syarikat"
+      "companyCode": "Kod syarikat",
+      "departmentBusinessCode": "Kod jabatan",
+      "positionBusinessCode": "Kod jawatan",
+      "businessUnitCode": "Kod unit perniagaan",
+      "jobGradeCode": "Kod gred jawatan"
     },
     "parameter": {
       "payItem": "Item gaji",
@@ -35449,7 +35470,22 @@
       }
     },
     "missingItemZero": "{variable} ({code}): tiada dalam larian ini, dikira sebagai 0",
-    "missingMemberZero": "{variable} ({group}), ahli {code}: tiada dalam larian ini, dikira sebagai 0"
+    "missingMemberZero": "{variable} ({group}), ahli {code}: tiada dalam larian ini, dikira sebagai 0",
+    "businessCodes": {
+      "compatibility": "Tunjukkan ID dalaman untuk formula tersimpan",
+      "search": "Cari kod yang dikonfigurasi",
+      "page": "{from}–{to} daripada {total} kod",
+      "none": "Tiada kod dikonfigurasi dalam syarikat yang dibenarkan.",
+      "previous": "Sebelumnya",
+      "next": "Seterusnya",
+      "loadFailed": "Kod tidak dapat dimuatkan. Cuba lagi.",
+      "reviewTitle": "Semak sumber Personnel terdahulu",
+      "preserved": "Rujukan dalaman dan alias lama mengekalkan makna tersimpan. Tiada penukaran automatik.",
+      "conversionHelp": "Pilih kod untuk setiap perbandingan langsung. Semak makna baharu, simpan versi baharu dan uji. Penggunaan lain boleh disunting melalui pustaka pemboleh ubah.",
+      "selected": "Kod dipilih: {code}",
+      "reviewed": "Saya telah menyemak perbandingan ini dan makna perniagaannya.",
+      "apply": "Gunakan pada draf ini"
+    }
   },
   "payrollTaxBasis": {
     "title": "Kira Semula Nilai Cukai Pendapatan",
@@ -37268,6 +37304,46 @@
         "returnedBy": "Returned by {name}:",
         "returnedNote": "Earlier signatures were cleared. The part goes through the signing route again.",
         "decisionHeading": "Your decision"
+      }
+    },
+    "reconciliation": {
+      "title": "Semakan Personel",
+      "cadence": "Semakan setiap 15 minit.",
+      "lastCheck": "Semakan berjaya terakhir: {time} (waktu Malaysia).",
+      "notChecked": "Belum ada semakan berjaya direkodkan.",
+      "stale": "Semakan Personel belum selesai baru-baru ini. Minta operator menyemak pekerja latar belakang.",
+      "missing": "{count} pekerja berstatus Percubaan tiada kes",
+      "buAdvisory": "Ketiadaan Unit Perniagaan sahaja tidak menghalang penciptaan kes.",
+      "missingBu": "Tiada Unit Perniagaan pada rekod Personel.",
+      "employee": "Pekerja",
+      "company": "Syarikat",
+      "reason": "Sebab / amaran",
+      "fix": "Betulkan",
+      "queued": "Menunggu semakan latar belakang seterusnya.",
+      "settings": "Tetapan percubaan",
+      "forms": "Editor borang",
+      "routes": "Laluan kelulusan",
+      "personnel": "Pengurusan Personel",
+      "intake": "Pengambilan dan pengaktifan",
+      "pages": "Halaman pekerja tanpa kes",
+      "previous": "Sebelumnya",
+      "next": "Seterusnya",
+      "reasons": {
+        "settings": "Tiada tetapan diterbitkan untuk syarikat ini.",
+        "form": "Tiada borang penilaian diterbitkan untuk gred ini.",
+        "route": "Tiada laluan tandatangan diterbitkan.",
+        "activation": "Syarikat belum diaktifkan.",
+        "grade_missing": "Tiada Gred Jawatan pada rekod Personel.",
+        "grade_ineligible": "Gred {grade} tidak layak.",
+        "assignment": "Tiada penempatan organisasi yang berkenaan.",
+        "employment_type": "Jenis pekerjaan ini tidak layak untuk pengambilan percubaan.",
+        "no_probation": "Rekod Personel menyatakan tiada percubaan.",
+        "period_review": "Tempoh percubaan yang tiada memerlukan semakan pengambilan yang dibenarkan.",
+        "eligibility_review": "Sejarah mula kerja atau pengambilan semula memerlukan semakan yang dibenarkan.",
+        "excluded": "Semakan pengambilan yang dibenarkan mengecualikan pekerja ini.",
+        "cutover": "Percubaan terdahulu memerlukan pengambilan dan pengaktifan yang disemak.",
+        "prior_case": "Kes terdahulu yang ditutup memerlukan semakan HR; tiada kes pendua dicipta.",
+        "retry": "Semakan latar belakang memerlukan semakan operator. Tiada kes diubah."
       }
     }
   },
@@ -40062,6 +40138,20 @@
         "cancelled": {
           "title": "Muat naik sejarah ganjaran dihentikan",
           "body": "Muat naik dihentikan. Baris yang sudah disimpan masih tersedia."
+        }
+      },
+      "lifecycleManagerRecovery": {
+        "completed": {
+          "title": "Semakan e-mel penyelia selesai",
+          "body": "Semak tugas pemulihan untuk e-mel yang disambung dan e-mel lewat yang ditahan."
+        },
+        "failed": {
+          "title": "Semakan e-mel penyelia perlu disemak",
+          "body": "Semak ralat tugas pemulihan sebelum mencuba lagi."
+        },
+        "cancelled": {
+          "title": "Semakan e-mel penyelia dihentikan",
+          "body": "Semakan yang selesai kekal direkodkan pada kes masing-masing."
         }
       }
     },
@@ -44432,5 +44522,42 @@
       "sign": "Tandatangan",
       "acknowledge": "Akui"
     }
+  },
+  "taskDocuments": {
+    "heading": "Dokumen untuk dilengkapkan",
+    "completed": "Dokumen lengkap",
+    "documentTasks": "Tugasan dokumen",
+    "openDocument": "Buka dokumen",
+    "viewDocument": "Lihat dokumen",
+    "open": "Buka",
+    "view": "Lihat",
+    "notReleased": "Dokumen ini belum dikeluarkan",
+    "reviewRequired": "HR perlu menyemak beberapa dokumen tersimpan bagi templat ini.",
+    "signCompletion": "Selesai apabila anda menandatangani dokumen",
+    "submitCompletion": "Selesai apabila anda menghantar atau menandatangani dokumen",
+    "sentCompletion": "Selesai apabila HR mengeluarkan dokumen",
+    "onboarding": "Kemasukan",
+    "offboarding": "Keluar kerja",
+    "notOpened": "Belum dibuka",
+    "opened": "Dibuka",
+    "signed": "Ditandatangani",
+    "acknowledged": "Diakui",
+    "awaitingHr": "Menunggu tandatangan HR",
+    "submitted": "Dihantar",
+    "source": "Daripada {name}",
+    "due": "Tarikh akhir {date}",
+    "done": "Selesai",
+    "inProgress": "Sedang dijalankan",
+    "todo": "Untuk dibuat",
+    "pages": "Halaman dokumen",
+    "showing": "{from}–{to} daripada {total}",
+    "previous": "Sebelumnya",
+    "next": "Seterusnya",
+    "sources": {
+      "onboardingChecklist": "Senarai semak kemasukan",
+      "offboardingChecklist": "Senarai semak keluar",
+      "documentsFromHr": "Dokumen daripada HR"
+    },
+    "openError": "Dokumen tidak dapat dibuka. Muat semula dan semak bahawa HR telah melepaskannya."
   }
 }

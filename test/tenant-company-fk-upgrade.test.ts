@@ -28,6 +28,14 @@ const APPROVED_BOARD_TAIL:Entry[]=[
  {idx:5502,version:'7',when:1794841006102,tag:'6102_lifecycle_recipient_directory',breakpoints:true},
  {idx:5503,version:'7',when:1794841006103,tag:'6103_lifecycle_pbp_removal',breakpoints:true},
  {idx:5504,version:'7',when:1794841006104,tag:'6104_lifecycle_recipient_fanout',breakpoints:true},
+ {idx:10000,version:'7',when:1794998006600,tag:'6600_probation_reconciliation',breakpoints:true},
+ {idx:10001,version:'7',when:1794998006601,tag:'6601_probation_intent_not_employment_activity',breakpoints:true},
+ {idx:10030,version:'7',when:1794998006630,tag:'6630_lifecycle_task_documents',breakpoints:true},
+ {idx:10031,version:'7',when:1794998006631,tag:'6631_lifecycle_task_card_documents',breakpoints:true},
+ {idx:10040,version:'7',when:1794998006640,tag:'6640_lifecycle_personnel_manager',breakpoints:true},
+ {idx:10041,version:'7',when:1794998006641,tag:'6641_lifecycle_manager_recovery_job',breakpoints:true},
+ {idx:10042,version:'7',when:1794998006642,tag:'6642_lifecycle_manager_recovery_reader',breakpoints:true},
+ {idx:10050,version:'7',when:1794998006650,tag:'6650_pay_formula_business_code_registration',breakpoints:true},
 ];
 
 it('stops on a cross-tenant row, then validates every company/tenant key without changing data or grants',async()=>{

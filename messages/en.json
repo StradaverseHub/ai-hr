@@ -1710,6 +1710,9 @@
           "movementId": "Movement Event ID"
         },
         "detail": {
+          "exitInformation": "Employment information at exit",
+          "exitInformationNote": "Information in force immediately before employment ended on {date}. These are retained historical details, not a current assignment.",
+          "atExit": "At exit",
           "eventInformation": "Event Information",
           "companyReviewNeeded": "Review these assignments after correcting the original company:",
           "notRecorded": "Not recorded in this event’s history",
@@ -31180,7 +31183,21 @@
       "ca6e9d872b60f": "Added by HR from the catalogue",
       "c6fec0ad3de1a": "Case item",
       "c80fb96fe95dc": "HR records confirmed revocation",
-      "c9b7d033e978d": "Choose an assignment group."
+      "c9b7d033e978d": "Choose an assignment group.",
+      "managerMail0cd4bb19dd": "This email is late",
+      "managerMail4cbbcd5184": "Scheduled for",
+      "managerMaild602b8efb9": "The intended send date has passed. Review the recipients and message before choosing what to do.",
+      "managerMail911263feab": "Send anyway",
+      "managerMailff16427cf4": "Skip this email",
+      "managerMail27547fe255": "Line manager found",
+      "managerMaile2bd594a17": "Direct superior from Personnel Management",
+      "managerMail4f40c3071b": "Work email available. A login account is not needed to receive this email.",
+      "managerMail4b1ea5a652": "No supervisor on the Personnel record",
+      "managerMailcce1c2adb3": "More than one current supervisor is recorded. HR must review the reporting line.",
+      "managerMail596ed0672a": "The supervisor recorded in Personnel is unavailable.",
+      "managerMail358784d1e0": "Line manager {name} has inactive employment",
+      "managerMail2a65e6fe08": "Line manager {name} has no work email",
+      "managerMail3a024d9981": "Line manager {name} has an invalid work email"
     }
   },
   "processAssessment": {
@@ -35176,7 +35193,11 @@
       "maritalStatus": "Marital status",
       "companyId": "Company internal ID",
       "companyName": "Company legal name",
-      "companyCode": "Company code"
+      "companyCode": "Company code",
+      "departmentBusinessCode": "Department code",
+      "positionBusinessCode": "Position code",
+      "businessUnitCode": "Business Unit code",
+      "jobGradeCode": "Job Grade code"
     },
     "parameter": {
       "payItem": "Pay Item",
@@ -35449,7 +35470,22 @@
       }
     },
     "missingItemZero": "{variable} ({code}): not in this run, counted as 0",
-    "missingMemberZero": "{variable} ({group}), member {code}: not in this run, counted as 0"
+    "missingMemberZero": "{variable} ({group}), member {code}: not in this run, counted as 0",
+    "businessCodes": {
+      "compatibility": "Show internal IDs for saved formulas",
+      "search": "Search configured codes",
+      "page": "{from}–{to} of {total} codes",
+      "none": "No configured code is available in your permitted companies.",
+      "previous": "Previous",
+      "next": "Next",
+      "loadFailed": "Codes could not be loaded. Try again.",
+      "reviewTitle": "Review older Personnel sources",
+      "preserved": "Saved internal references and older aliases keep their saved meaning. Nothing is converted automatically.",
+      "conversionHelp": "Choose the configured code for each direct comparison. Review the new meaning, then save a new revision and test it. Other uses can be edited with the variables library.",
+      "selected": "Selected code: {code}",
+      "reviewed": "I have reviewed this comparison and its business meaning.",
+      "apply": "Apply to this draft"
+    }
   },
   "payrollTaxBasis": {
     "title": "Recalculate Income Tax Value",
@@ -37268,6 +37304,46 @@
         "returnedBy": "Returned by {name}:",
         "returnedNote": "Earlier signatures were cleared. The part goes through the signing route again.",
         "decisionHeading": "Your decision"
+      }
+    },
+    "reconciliation": {
+      "title": "Personnel checks",
+      "cadence": "Checks every 15 minutes.",
+      "lastCheck": "Last successful check: {time} (Malaysia time).",
+      "notChecked": "No successful check recorded yet.",
+      "stale": "Personnel checks have not completed recently. Ask your operator to check the background worker.",
+      "missing": "{count, plural, one {# employee on Probation has no case} other {# employees on Probation have no case}}",
+      "buAdvisory": "A missing Business Unit alone does not block case creation.",
+      "missingBu": "No Business Unit on the Personnel record.",
+      "employee": "Employee",
+      "company": "Company",
+      "reason": "Reason / warning",
+      "fix": "Fix",
+      "queued": "Queued for the next background check.",
+      "settings": "Probation settings",
+      "forms": "Form editor",
+      "routes": "Approval routes",
+      "personnel": "Personnel Management",
+      "intake": "Intake and activation",
+      "pages": "Employees without a case pages",
+      "previous": "Previous",
+      "next": "Next",
+      "reasons": {
+        "settings": "No published settings for this company.",
+        "form": "No published evaluation form for this grade.",
+        "route": "No published signing route.",
+        "activation": "Company not activated.",
+        "grade_missing": "No Job Grade on the Personnel record.",
+        "grade_ineligible": "Grade {grade} is not an eligible grade.",
+        "assignment": "No applicable organisation assignment.",
+        "employment_type": "This employment type is not eligible for probation intake.",
+        "no_probation": "The Personnel record explicitly specifies no probation.",
+        "period_review": "The missing probation period requires an authorised intake review.",
+        "eligibility_review": "The employment start or rehire history requires an authorised intake review.",
+        "excluded": "An authorised intake review explicitly excluded this employee.",
+        "cutover": "Historical probation requires its reviewed intake and activation.",
+        "prior_case": "An earlier closed case needs HR review; no duplicate case was created.",
+        "retry": "The background check needs an operator review. No case was changed."
       }
     }
   },
@@ -40062,6 +40138,20 @@
         "cancelled": {
           "title": "Reward history upload stopped",
           "body": "The upload stopped. Rows already saved remain available."
+        }
+      },
+      "lifecycleManagerRecovery": {
+        "completed": {
+          "title": "Manager email recheck completed",
+          "body": "Review the recovery job for resumed and late held emails."
+        },
+        "failed": {
+          "title": "Manager email recheck needs review",
+          "body": "Review the recovery job errors before trying again."
+        },
+        "cancelled": {
+          "title": "Manager email recheck stopped",
+          "body": "Completed rechecks remain recorded on their cases."
         }
       }
     },
@@ -44432,5 +44522,42 @@
       "acknowledge": "Acknowledge"
     },
     "preparation": "Complete your employee fields before the first signature. After anyone signs, the answers and wording are locked until a send-back."
+  },
+  "taskDocuments": {
+    "heading": "Documents to complete",
+    "completed": "Completed documents",
+    "documentTasks": "Document tasks",
+    "openDocument": "Open document",
+    "viewDocument": "View document",
+    "open": "Open",
+    "view": "View",
+    "notReleased": "This document hasn’t been released yet",
+    "reviewRequired": "HR needs to review multiple saved documents for this template.",
+    "signCompletion": "Completes when you sign the document",
+    "submitCompletion": "Completes when you submit or sign the document",
+    "sentCompletion": "Completes when HR releases the document",
+    "onboarding": "Onboarding",
+    "offboarding": "Offboarding",
+    "notOpened": "Not opened",
+    "opened": "Opened",
+    "signed": "Signed",
+    "acknowledged": "Acknowledged",
+    "awaitingHr": "Awaiting HR signature",
+    "submitted": "Submitted",
+    "source": "From {name}",
+    "due": "Due {date}",
+    "done": "Done",
+    "inProgress": "In progress",
+    "todo": "To do",
+    "pages": "Document pages",
+    "showing": "{from}–{to} of {total}",
+    "previous": "Previous",
+    "next": "Next",
+    "sources": {
+      "onboardingChecklist": "Onboarding checklist",
+      "offboardingChecklist": "Offboarding checklist",
+      "documentsFromHr": "Documents from HR"
+    },
+    "openError": "The document could not be opened. Refresh and check that HR has released it."
   }
 }
