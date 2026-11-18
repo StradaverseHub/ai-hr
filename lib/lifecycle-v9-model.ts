@@ -548,6 +548,7 @@ export function saveDocument(c: Case, id: string, values: Record<string, string>
     const field = doc.fields.find(f => f.id === key); if (!field || effectivePersonnelCompletion(doc,field) !== owner) throw new V9Error('This field cannot be changed.', 'forbidden');
     validateFieldValue(field, value);
     if(field.owner==='pmLocked')savePersonnelCompletionAnswer(doc,field,value,{owner,actor:env.actor,at:env.now});else doc.values[key] = value;
+    if(owner==='employee'&&doc.personnelCompletion)delete doc.personnelCompletion.submitted;
   }
   reviseV9DocumentRouting(doc,env,owner==='employee');
   reconcileDocumentCompletionProposals(c,doc,env);

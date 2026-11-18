@@ -94,6 +94,7 @@ BEGIN
   -- HR acting on their own case still edits HR answers through save; submit is always the employee role.
   IF p_operation='submit' AND owner<>'employee' THEN RAISE EXCEPTION 'Only employee answers can be submitted';END IF;
   PERFORM app.personnel_completion_scalar(field,value#>>'{}');d:=jsonb_set(d,ARRAY['values',key],value,true);
+  IF owner='employee' THEN policy:=policy-'submitted';END IF;
   IF field->>'owner'='pmLocked' THEN
    entry:=policy->'fields'->key;entry:=entry||jsonb_build_object('answer',jsonb_build_object('value',value,'owner',owner,'by',actor,'at',stamp));
    IF owner='employee' THEN entry:=entry||jsonb_build_object('draft',jsonb_build_object('value',value,'by',actor,'at',stamp));END IF;
